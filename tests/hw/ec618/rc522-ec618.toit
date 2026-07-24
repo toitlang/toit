@@ -2,13 +2,17 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import ec618 show Ec618
+import gpio
+import spi
+
 /**
 EC618 SPI bring-up test against a real MFRC522 (RC522) RFID reader.
 
 Standalone (no ESP32 helper: SPI0's CLK/MISO pads ARE the UART2 control
-lane, so no lane is available — and none is needed). The reader hangs on
-SPI0 with its RST on PAD16 (pulled down externally, so it sits in hard
-power-down except while this test runs). Checks:
+  lane, so no lane is available — and none is needed). The reader hangs on
+  SPI0 with its RST on PAD16 (pulled down externally, so it sits in hard
+  power-down except while this test runs). Checks:
 
 - version register reads an MFRC522 id (0x91/0x92; this unit: 0x92);
 - FIFO write/read-back loopback, 64 bytes (the FIFO depth), several
@@ -26,14 +30,12 @@ Wiring: RC522 SDA(=CS)=PAD23, MOSI=PAD24, MISO=PAD25, SCK=PAD26,
 
 Run via the mini-jag tester:
 
+```
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
       --chip ec618 --toit-exe build/host/sdk/bin/toit \
       --port-board1 <ec618-uart0-port> tests/hw/ec618/rc522-ec618.toit
+```
 */
-
-import ec618 show Ec618
-import gpio
-import spi
 
 RST-PAD ::= 16
 CS-PAD ::= 23

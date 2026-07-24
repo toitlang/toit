@@ -2,16 +2,19 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+import uart
+
 /**
 ESP32 half of the exhaustive UART2 round-trip test.
 
 Listens on a CONTROL lane (the EC618's UART1 TX, IO4) for the baud rate to use,
-then opens a TEST UART (RX from the EC618's UART2 TX on IO27, TX to the EC618's
-UART2 RX on IO14) at that baud and echoes everything it receives. The EC618 half
-(uart2-echo-ec618.toit) sweeps the baud rates over the control lane and verifies
-the round-trip at each, so one deploy of this program covers the whole sweep
-(unlike the older TX-only uart2-esp32.toit, which needed a per-baud deploy).
-Both directions are 3.3 V now, so driving the EC618 RX directly is safe.
+  then opens a TEST UART (RX from the EC618's UART2 TX on IO27, TX to the EC618's
+  UART2 RX on IO14) at that baud and echoes everything it receives. The EC618 half
+  (uart2-echo-ec618.toit) sweeps the baud rates over the control lane and verifies
+  the round-trip at each, so one deploy of this program covers the whole sweep
+  (unlike the older TX-only uart2-esp32.toit, which needed a per-baud deploy).
+  Both directions are 3.3 V now, so driving the EC618 RX directly is safe.
 
 Wiring: EC618 UART1 TX (PAD34) -> IO4 (control RX);
         EC618 UART2 TX (PAD26) -> IO27 (test RX);
@@ -19,11 +22,10 @@ Wiring: EC618 UART1 TX (PAD34) -> IO4 (control RX);
 
 Run via Jaguar, FIRST (so it is listening before the EC618 sweep starts):
 
+```
   jag run tests/hw/ec618/uart2-echo-esp32.toit --device <esp32>
+```
 */
-
-import gpio
-import uart
 
 CONTROL-RX ::= 4
 TEST-RX ::= 27

@@ -2,32 +2,35 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import expect show *
+import gpio
+import ec618
+
 /**
 Multiple concurrent GPIO outputs (EC618-only, register-verified).
 
 Opening or closing one pin must not disturb another pin's configuration.
-This was in doubt: a register probe during bring-up showed the boot OUTEN
-mask (0x3fbc) collapsing to just the newly-opened pin, which would be
-fatal for any program driving two outputs — so this test asserts the
-contract through the GPIO controller registers (wiring-independent; the
-pins' nets don't matter):
+  This was in doubt: a register probe during bring-up showed the boot OUTEN
+  mask (0x3fbc) collapsing to just the newly-opened pin, which would be
+  fatal for any program driving two outputs — so this test asserts the
+  contract through the GPIO controller registers (wiring-independent; the
+  pins' nets don't matter):
 
 - opening pin B leaves pin A's output enable set;
 - driving one pin changes only its own DATAOUT bit;
 - closing pin B leaves A and C configured and drivable.
 
 Pins (gpio.Pin numbers are PAD numbers on EC618):
-  PAD26 = GPIO11 (controller GPIO0, bit 11)
-  PAD22 = GPIO7  (controller GPIO0, bit 7)
-  PAD47 = GPIO27 (controller GPIO1, bit 11 there; AON domain)
+
+```
+PAD26 = GPIO11 (controller GPIO0, bit 11)
+PAD22 = GPIO7  (controller GPIO0, bit 7)
+PAD47 = GPIO27 (controller GPIO1, bit 11 there; AON domain)
+```
 
 Registers: GPIO0 at 0x4D070000, GPIO1 at +0x1000; DATAOUT +0x4,
-OUTENSET +0x10 (reads as the enable mask). Each instance is 16 bits.
+  OUTENSET +0x10 (reads as the enable mask). Each instance is 16 bits.
 */
-
-import expect show *
-import gpio
-import ec618
 
 GPIO-BASE ::= 0x4D07_0000
 

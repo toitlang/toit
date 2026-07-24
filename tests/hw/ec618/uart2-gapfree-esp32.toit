@@ -2,27 +2,31 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+import pulse-counter
+import uart
+
 /**
 ESP32 half of the UART gap-free-TX test: the pause detector.
 
 Watches the EC618's UART2 TX wire (IO27) with the pulse counter behind
-its maximum-ish glitch filter (12 us). The EC618 sends all-0x00 bytes
-(1 stop bit), so a gap-free stream never holds the line high longer
-than ONE bit time — the whole stream is rejected by the filter as
-jitter and the filtered signal stays low. Only a PAUSE (line idles
-high) or the end of the stream survives the filter as a rising edge:
+  its maximum-ish glitch filter (12 us). The EC618 sends all-0x00 bytes
+  (1 stop bit), so a gap-free stream never holds the line high longer
+  than ONE bit time — the whole stream is rejected by the filter as
+  jitter and the filtered signal stays low. Only a PAUSE (line idles
+  high) or the end of the stream survives the filter as a rising edge:
 
   rising-edge count = pauses + 1 (the trailing idle).
 
 Detection floor = the filter: pauses shorter than ~12 us pass unseen
-(PCNT's filter caps at ~12.7 us; an RMT idle-threshold variant could
-reach ~3 us if ever needed). LED-strip latch thresholds are >=50 us
-(rare clones ~9 us), and software/DMA seams are tens of us, so 12 us
-covers the failure mode that matters. 115200 is the baud floor: its
-8.7 us stop bit must stay below the filter.
+  (PCNT's filter caps at ~12.7 us; an RMT idle-threshold variant could
+  reach ~3 us if ever needed). LED-strip latch thresholds are >=50 us
+  (rare clones ~9 us), and software/DMA seams are tens of us, so 12 us
+  covers the failure mode that matters. 115200 is the baud floor: its
+  8.7 us stop bit must stay below the filter.
 
 Command lane: EC618 UART1 (PAD34 -> IO4 commands in; IO16 -> PAD33
-replies out), 115200.
+  replies out), 115200.
 
   "G <window-ms> <filter-ns>" -> arms the counter on IO27, waits the
                      window, replies "G <rising-edge-count>". The filter
@@ -37,12 +41,10 @@ replies out), 115200.
 
 Run via Jaguar BEFORE the EC618 half:
 
+```
   jag run tests/hw/ec618/uart2-gapfree-esp32.toit --device <esp32>
+```
 */
-
-import gpio
-import pulse-counter
-import uart
 
 RX ::= 4                   // <- EC618 UART1 TX (commands).
 TX ::= 16                  // -> EC618 UART1 RX (replies).

@@ -13,29 +13,6 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-/**
-EC618 (Air780E) chip-specific helpers.
-
-# Addressing model
-
-On the EC618, $Pin numbers are physical PAD indices (1..48), not logical
-GPIO numbers. PADs are unambiguous: each one is a single physical pin on
-the chip. A few PADs share a GPIO controller bit (e.g. PAD27 and PAD11
-both connect to GPIO12), so addressing by GPIO number alone is ambiguous
-in those cases — addressing by PAD never is.
-
-Most user code shouldn't construct $Pin directly on the EC618. Use the
-helpers on $Ec618:
-
-- $Ec618.gpio for "the primary pad of GPIO N" (matches Air780 silkscreen
-  labels for most boards).
-- $Ec618.gpio --alt for the alternate pad of a GPIO that has one.
-- $Ec618.pad to address a physical pad directly when you know the number.
-- $Ec618.uart0, $Ec618.uart1, $Ec618.uart2 for fully-configured
-  $uart.Port instances.
-- $Ec618.adc0, $Ec618.adc1 for the two analog ADC inputs (AIO3/AIO4).
-*/
-
 import gpio show Pin
 import gpio.adc
 import i2c
@@ -43,8 +20,28 @@ import spi
 import uart
 
 /**
+EC618 chip-specific helpers.
+
+# Addressing model
+
+On the EC618, $Pin numbers are physical pad indices from 1 through 48, not
+  logical GPIO numbers. Pads are unambiguous: each one is a single physical
+  pin on the chip. A few pads share a GPIO controller bit, so addressing by
+  GPIO number alone is ambiguous in those cases.
+
+Most user code should use the helpers on $Ec618:
+
+- $Ec618.gpio returns the primary pad of a logical GPIO.
+- $Ec618.gpio with `--alt` returns the alternate pad where one exists.
+- $Ec618.pad addresses a physical pad directly.
+- $Ec618.uart0, $Ec618.uart1, and $Ec618.uart2 return configured $uart.Port
+  instances.
+- $Ec618.adc0 and $Ec618.adc1 return the two analog ADC inputs.
+*/
+
+/**
 Enters deep sleep for the specified $duration and does not return.
-Exiting deep sleep causes the device to start over from main.
+  Exiting deep sleep causes the device to start over from main.
 */
 deep-sleep duration/Duration -> none:
   __deep-sleep__ duration.in-ms
@@ -54,11 +51,9 @@ Returns the UART id (0/1/2) that the firmware redirects `print` output
   to, or -1 if the print redirect was disabled at build time
   (CONFIG_TOIT_EC618_PRINT_UART=0).
 
-Use this to write tests that adapt to whichever firmware variant is
-  loaded — opening the print UART via $Ec618.uart0/1/2 fails with
-  "ALREADY_IN_USE" when the redirect is on (unless the firmware was
-  built with CONFIG_TOIT_EC618_ALLOW_PRINT_UART_REUSE, which lets the
-  port adopt the console).
+Use this to adapt to the console selected in the running firmware. Opening the
+  selected print UART through $Ec618 fails with `ALREADY_IN_USE`, unless the
+  firmware permits the port to adopt the console.
 */
 print-uart-id -> int:
   #primitive.ec618.print-uart-id
@@ -102,9 +97,8 @@ configure-wakeup-pad_ index enabled pos-edge neg-edge pull-up pull-down -> none:
 /**
 Selects bring-up variants of the deep-sleep wakeup-pad arming sequence.
 
-Temporary diagnostic while the GPIO-wake bring-up settles — see
-  arm_wakeup_pads in toit_ec618.cc for the bit meanings. The default (0)
-  is the canonical sequence.
+This is a private diagnostic entry point. The default value of 0 selects the
+  normal arming sequence.
 */
 wakeup-arm-flags_ flags/int -> none:
   #primitive.ec618.wakeup-arm-flags
@@ -113,9 +107,7 @@ wakeup-arm-flags_ flags/int -> none:
 Returns the flashed base's identity ("base-v<N>+<fingerprint>"), or
   "base-unknown" for a base without an id record.
 
-Slot OTAs are accepted only when the incoming image was linked against
-  exactly this base (docs/ec618-base-image.md); a mismatch fails the
-  firmware write with a "base mismatch" error on the console.
+The device never activates a slot linked against a different base.
 */
 base-id -> string:
   #primitive.ec618.base-id
@@ -256,9 +248,9 @@ wakeup-cause-name cause/int -> string:
 /**
 Helpers for EC618 pin addressing and peripheral construction.
 
-All pin indices used by Toit on the EC618 are physical PAD numbers, but
-silkscreens and datasheets normally refer to logical GPIO numbers; see the
-top-of-file comment for the addressing model.
+All pin indices used by Toit on the EC618 are physical pad numbers.
+  Silkscreens and datasheets often use logical GPIO numbers, for which $gpio
+  provides a convenience conversion.
 */
 class Ec618:
   // GPIO -> primary PAD lookup. This is intentionally the only GPIO -> PAD
@@ -355,8 +347,7 @@ class Ec618:
     pointed elsewhere via the anchor record's console byte.
 
   With $mode equal to $uart.Port.MODE-RS485-HALF-DUPLEX, pass the RS485
-    direction (DE) pin as $rs485-de; any GPIO-capable pad works. See
-    $uart2 for details.
+    direction (DE) pin as $rs485-de; any GPIO-capable pad works.
   */
   static uart0
       --mapping/int=0
@@ -401,9 +392,7 @@ class Ec618:
     here), every cold-boot starts with a single garbled line on UART1
     before the first real output. The chip leaves some TX state on
     UART1 that we cannot fully drain from software. This is cosmetic
-    and only happens on cold boot — a warm reset is clean. See
-    toolchains/ec618/ec618_config.h for the details and how to choose a
-    different print UART.
+    and only happens on cold boot; a warm reset is clean.
   */
   static uart1
       --mapping/int=0
@@ -605,7 +594,7 @@ Reads a 32-bit word from a raw memory/peripheral address.
 
 Bring-up diagnostic: lets the HW test rig inspect live peripheral
   registers from a test container instead of needing a JTAG debugger.
-The $address must be 4-byte aligned. Handle with care.
+  The $address must be 4-byte aligned. Handle with care.
 */
 peek32 address/int -> int:
   #primitive.ec618.peek32
@@ -625,7 +614,7 @@ set-console-uart id/int -> none:
 Writes a 32-bit $value to a raw memory/peripheral $address.
 
 Bring-up diagnostic — see $peek32. The $address must be 4-byte aligned.
-Writing random addresses can corrupt or hang the system; handle with care.
+  Writing random addresses can corrupt or hang the system; handle with care.
 */
 poke32 address/int value/int -> none:
   #primitive.ec618.poke32

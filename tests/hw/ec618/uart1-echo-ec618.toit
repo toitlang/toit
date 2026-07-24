@@ -2,26 +2,28 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import ec618 show Ec618
+import uart
+
 /**
 EC618 half of the UART1 round-trip test (device under test).
 
 UART1 runs on the same CMSIS driver path as UART0/UART2 since the
-uniform-uart migration; this locks in TX+RX round-trips on controller 1
-at several bauds, in both reopen and set-baud modes (mirroring
-uart2-echo-ec618, scaled down — UART1 is exercised as the one-way control
-lane by every other test already).
+  uniform-uart migration; this locks in TX+RX round-trips on controller 1
+  at several bauds, in both reopen and set-baud modes (mirroring
+  uart2-echo-ec618, scaled down — UART1 is exercised as the one-way control
+  lane by every other test already).
 
 Wiring: EC618 UART1 TX (PAD34) -> ESP32 IO4; ESP32 IO16 -> EC618 UART1 RX (PAD33).
 
 Run via the mini-jag tester (start uart1-echo-esp32.toit on the ESP32 first):
 
+```
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \\
       --chip ec618 --toit-exe build/host/sdk/bin/toit \\
       --port-board1 <ec618-uart0-port> tests/hw/ec618/uart1-echo-ec618.toit
+```
 */
-
-import ec618 show Ec618
-import uart
 
 // 2 MBd is wiring-marginal on the test rig (long jumpers on the PAD33/
 // IO16 net; it passed some days, failed others) — cap at the control

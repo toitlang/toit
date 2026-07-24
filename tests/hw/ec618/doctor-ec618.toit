@@ -2,18 +2,20 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import ec618
+import ec618.slot
+
 /**
 Device-side doctor: dumps the identity and layout state a healthy EC618
-should be able to report, so rig triage starts from facts instead of
-silence. Run via the tester like any test:
+  should be able to report, so rig triage starts from facts instead of
+  silence. Run via the tester like any test:
 
+```
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
       --chip ec618 --toit-exe build/host/sdk/bin/toit \
       --port-board1 <ec618-tty> tests/hw/ec618/doctor-ec618.toit
+```
 */
-
-import ec618
-import ec618.slot
 
 main:
   print "doctor: base-id: $ec618.base-id"

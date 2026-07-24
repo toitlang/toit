@@ -2,17 +2,21 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import ec618 show Ec618
+import gpio.pwm show Pwm PwmChannel
+import uart
+
 /**
 EC618 half of the AON-pad PWM test (device under test).
 
 The module's "PWM01"/"PWM04" silkscreen pins are real AP-timer PWM
-routes: the SDK's luat_pwm_ec618.c maps PWM channel 1 (TIMER1) to PAD44
-and channel 4 (TIMER4) to PAD47 (RTE_PWM1/RTE_PWM4 in the SDK project
-configs), iomux ALT5 like every other PWM pad — the pads just live in
-the AON domain, so the driver powers the AON IO LDO first.
+  routes: the SDK's luat_pwm_ec618.c maps PWM channel 1 (TIMER1) to PAD44
+  and channel 4 (TIMER4) to PAD47 (RTE_PWM1/RTE_PWM4 in the SDK project
+  configs), iomux ALT5 like every other PWM pad — the pads just live in
+  the AON domain, so the driver powers the AON IO LDO first.
 
 This is also the first HW exercise of TIMER1's PWM (the base pwm test
-could only reach TIMER0/TIMER4 wires). Phases:
+  could only reach TIMER0/TIMER4 wires). Phases:
 
 1. PAD44 (TIMER1) alone: 1 kHz frequency + duty 0.25/0.75 at 10 Hz.
 2. PAD47 (TIMER4) alone: 1 kHz frequency.
@@ -20,15 +24,15 @@ could only reach TIMER0/TIMER4 wires). Phases:
    closing PAD44's channel silences it while PAD47 keeps running.
 
 MEASURED RIG QUIRK (2026-07-02): when BOTH AON pads drive, edge counts
-on the pin-18 wire include the pin-27 wire's transitions (1 kHz + 1 kHz
-counted ~2023 Hz; 1 kHz + 700 Hz counted ~1338 Hz; alone it is exact,
-and it snaps back the moment the other channel closes). The coupled
-pulses survive the ESP32 counter's maximum ~12.7 us glitch filter, so
-they are real us-scale level shifts — plausibly AON-rail bounce between
-the two (shared-LDO, modest-drive) AON output cells, or breadboard
-coupling; one-channel counts and polled duty are unaffected. The
-simultaneous phase therefore asserts PAD44 by DUTY (polling is immune)
-and PAD47 by count.
+  on the pin-18 wire include the pin-27 wire's transitions (1 kHz + 1 kHz
+  counted ~2023 Hz; 1 kHz + 700 Hz counted ~1338 Hz; alone it is exact,
+  and it snaps back the moment the other channel closes). The coupled
+  pulses survive the ESP32 counter's maximum ~12.7 us glitch filter, so
+  they are real us-scale level shifts — plausibly AON-rail bounce between
+  the two (shared-LDO, modest-drive) AON output cells, or breadboard
+  coupling; one-channel counts and polled duty are unaffected. The
+  simultaneous phase therefore asserts PAD44 by DUTY (polling is immune)
+  and PAD47 by count.
 
 Wiring: EC618 UART2 (PAD26 -> IO27, IO14 -> PAD25) = command lane;
         EC618 PAD44 (PWM ch1, board pin 18) -> ESP32 IO19;
@@ -36,14 +40,12 @@ Wiring: EC618 UART2 (PAD26 -> IO27, IO14 -> PAD25) = command lane;
 
 Run via the mini-jag tester (start pwm-esp32.toit on the ESP32 FIRST):
 
+```
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
       --chip ec618 --toit-exe build/host/sdk/bin/toit \
       --port-board1 <ec618-uart0-port> tests/hw/ec618/pwm-aon-ec618.toit
+```
 */
-
-import ec618 show Ec618
-import gpio.pwm show Pwm PwmChannel
-import uart
 
 IO-PAD44 ::= 19  // ESP32 pin watching PAD44 (board pin 18).
 IO-PAD47 ::= 2   // ESP32 pin watching PAD47 (board pin 27).

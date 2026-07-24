@@ -2,24 +2,26 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+import uart
+
 /**
 ESP32 half of the GPIO-interrupt test: a pulse generator.
 
 Listens on the control lane for "P <count> <phase-ms>" and then drives
-that many clean pulses on IO27 (high phase-ms, low phase-ms), after a
-short settle delay so the EC618 is already waiting. "Q" quits. All
-assertions run on the EC618.
+  that many clean pulses on IO27 (high phase-ms, low phase-ms), after a
+  short settle delay so the EC618 is already waiting. "Q" quits. All
+  assertions run on the EC618.
 
 Wiring: EC618 UART1 TX (PAD34) -> IO4 (control RX);
         IO27 -> EC618 PAD26 (pulse line).
 
 Run via Jaguar, FIRST:
 
+```
   jag run tests/hw/ec618/gpio-interrupt-esp32.toit --device <esp32>
+```
 */
-
-import gpio
-import uart
 
 CONTROL-RX ::= 4
 OUT ::= 27

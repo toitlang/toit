@@ -2,14 +2,14 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+
 /**
 ESP32 half of the alternate-pad GPIO output test.
 
 EC618 PAD13 / GPIO14 ALT4 is wired to IO17, and PAD14 / GPIO15 ALT4 to IO18.
-Count the two distinct square waves emitted by gpio-alt-ec618.toit.
+  Count the two distinct square waves emitted by gpio-alt-ec618.toit.
 */
-
-import gpio
 
 WAIT ::= Duration --s=40
 WINDOW ::= Duration --s=18

@@ -13,48 +13,50 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-/**
-Dual-slot OTA receiver — request/ack protocol over UART1.
-
-The host drives every step; the device only acts after being told
-to. This both flow-controls the transfer (we have no hardware flow
-control on UART1) and gives the operator a clear progress signal
-each step of the way.
-
-Wire protocol (all bytes, no framing — host knows what it asked for):
-
-  host : 'P'                       ping
-  dev  : 'P'
-
-  host : 'I'                       which slot is active?
-  dev  : 'A' or 'B'
-
-  host : 'E'                       erase the inactive slot (~7 s)
-  dev  : 'K'  (ok)  or 'X'  (fail)
-
-  host : 'W'<off:4 BE><len:4 BE>   prepare to receive `len` bytes
-  dev  : 'R'                       ready, send the payload
-  host : <len bytes>
-  dev  : 'K' or 'X'                after flash write
-
-  host : 'S'                       set inactive-slot byte + reset
-  dev  : 'K'                       (and reboots immediately)
-
-`len` for write must be a multiple of 16 (flash segment size). `off`
-must be aligned the same way and fit inside the slot. Sensible chunk
-size is 4 KB — one sector worth, big enough to amortise the per-write
-flash-controller overhead, small enough to fit in the 2 KB RX buffer
-twice over.
-
-Status / debug strings are emitted on the same TX path; they're
-human-readable and end with `\n` so the host can tee them to a log
-without parsing.
-*/
-
 import ec618 show Ec618
 import ec618.slot
 import io
 import uart
+
+/**
+Dual-slot OTA receiver — request/ack protocol over UART1.
+
+The host drives every step; the device only acts after being told
+  to. This both flow-controls the transfer (we have no hardware flow
+  control on UART1) and gives the operator a clear progress signal
+  each step of the way.
+
+Wire protocol (all bytes, no framing — host knows what it asked for):
+
+```
+host : 'P'                       ping
+dev  : 'P'
+
+host : 'I'                       which slot is active?
+dev  : 'A' or 'B'
+
+host : 'E'                       erase the inactive slot (~7 s)
+dev  : 'K'  (ok)  or 'X'  (fail)
+
+host : 'W'<off:4 BE><len:4 BE>   prepare to receive len bytes
+dev  : 'R'                       ready, send the payload
+host : <len bytes>
+dev  : 'K' or 'X'                after flash write
+
+host : 'S'                       set inactive-slot byte + reset
+dev  : 'K'                       (and reboots immediately)
+```
+
+`len` for write must be a multiple of 16 (flash segment size). `off`
+  must be aligned the same way and fit inside the slot. Sensible chunk
+  size is 4 KB — one sector worth, big enough to amortise the per-write
+  flash-controller overhead, small enough to fit in the 2 KB RX buffer
+  twice over.
+
+Status / debug strings are emitted on the same TX path; they're
+  human-readable and end with `\n` so the host can tee them to a log
+  without parsing.
+*/
 
 CMD-PING       ::= 'P'
 CMD-INFO       ::= 'I'

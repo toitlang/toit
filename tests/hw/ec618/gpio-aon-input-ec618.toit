@@ -2,33 +2,35 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+import ec618 show Ec618
+
 /**
 EC618 half of the AON-pad GPIO-input HW test (device under test).
 
 Closes the last input gap in the per-pin coverage matrix
-(docs/ec618-hw-tests.md): the AON pads PAD44 (GPIO24, board pin 18) and
-PAD47 (GPIO27, board pin 27) are output-confirmed but were never read as
-inputs. The ESP32 (gpio-aon-input-esp32.toit) drives BOTH wires at
-DIFFERENT frequencies — IO19 fast, IO2 slow — and the EC618 reads both.
+  (docs/ec618-hw-tests.md): the AON pads PAD44 (GPIO24, board pin 18) and
+  PAD47 (GPIO27, board pin 27) are output-confirmed but were never read as
+  inputs. The ESP32 (gpio-aon-input-esp32.toit) drives BOTH wires at
+  DIFFERENT frequencies — IO19 fast, IO2 slow — and the EC618 reads both.
 
 Passes if each pin sees both levels and enough edges, AND the fast wire
-counts clearly more edges than the slow one on the pin it is supposed to
-reach — a swapped or cross-coupled pair inverts/equalizes the ratio and
-fails.
+  counts clearly more edges than the slow one on the pin it is supposed to
+  reach — a swapped or cross-coupled pair inverts/equalizes the ratio and
+  fails.
 
 Wiring: ESP32 IO19 -> EC618 board pin 18 (GPIO24 / PAD44),
         ESP32 IO2  -> EC618 board pin 27 (GPIO27 / PAD47).
 
 Run via the mini-jag tester (start gpio-aon-input-esp32.toit on the ESP32
-first):
+  first):
 
+```
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
       --chip ec618 --toit-exe build/host/sdk/bin/toit \
       --port-board1 <ec618-uart0-port> tests/hw/ec618/gpio-aon-input-ec618.toit
+```
 */
-
-import gpio
-import ec618 show Ec618
 
 GPIO-FAST ::= 24                // PAD44, board pin 18, driven by ESP32 IO19 (10 Hz).
 GPIO-SLOW ::= 27                // PAD47, board pin 27, driven by ESP32 IO2 (4 Hz).

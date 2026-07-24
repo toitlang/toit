@@ -1,25 +1,25 @@
 // Copyright (C) 2026 Toit contributors.
 
+import ec618
+import gpio
+
 /**
 EC618 half of the GPIO22 (PAD42 = wakeup pad 5) deep-sleep wake test.
 
 Pair with wakeup-gpio22-esp32.toit on the ESP32 (its IO13 is wired to
-GPIO22, board pin 9; the BMP280 must be unplugged so the net is a clean
-point-to-point wire). The helper holds the net low, waits 60s for this
-side to hibernate, then pulses it.
+  GPIO22, board pin 9; the BMP280 must be unplugged so the net is a clean
+  point-to-point wire). The helper holds the net low, waits 60s for this
+  side to hibernate, then pulses it.
 
 Armed for both edges with an internal pull-down, a pulse must end the
-hibernate early: the device reboots after ~60s (not the full 150s RTC
-fallback) and the boot after the sleep reports wake=pad (the mini-jag
-banner and ec618.wakeup-cause).
+  hibernate early: the device reboots after ~60s (not the full 150s RTC
+  fallback) and the boot after the sleep reports wake=pad (the mini-jag
+  banner and ec618.wakeup-cause).
 
 The harness reports "did not pass" by design — the device reboots
-instead of exiting 0. The verdict is the wake cause + the timing of the
-boot that follows.
+  instead of exiting 0. The verdict is the wake cause + the timing of the
+  boot that follows.
 */
-
-import ec618
-import gpio
 
 // Bring-up sequence variants (see arm_wakeup_pads in toit_ec618.cc).
 // 0 = the canonical sequence: NVIC enable + slpManSetWakeupPadCfg.

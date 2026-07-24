@@ -2,6 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+
 /**
 Oscilloscope target for docs/ec618-known-issues.md #5 (AGPIOWU output).
 
@@ -27,12 +29,12 @@ No pokes, no ESP32 helper — pure current-boot driver state.
 
 Run when the probe is on (rerun to retrigger):
 
+```
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
       --chip ec618 --toit-exe build/host/sdk/bin/toit \
       --port-board1 <ec618-uart0-port> tests/hw/ec618/aon-wu-scope-ec618.toit
+```
 */
-
-import gpio
 
 WU-PAD ::= 42    // Board pin 9 — the gated pad, 100 Hz.
 REF-PAD ::= 44   // Board pin 18 — the reference, 50 Hz.

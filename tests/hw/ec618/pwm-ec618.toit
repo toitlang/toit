@@ -2,12 +2,16 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import ec618 show Ec618
+import gpio.pwm show Pwm PwmChannel
+import uart
+
 /**
 EC618 half of the PWM test (device under test).
 
 Drives PWM and asks the ESP32 helper to measure it, over UART2 as a
-command/response lane (UART2 is free: the PWM outputs live on other pads).
-Phases:
+  command/response lane (UART2 is free: the PWM outputs live on other pads).
+  Phases:
 
 1. Frequency: 1 kHz, duty 0.5 on PAD33 (TIMER4) — the ESP32 counts rising
    edges over ~2 s.
@@ -28,14 +32,12 @@ Wiring: EC618 UART2 (PAD26 -> IO27, IO14 -> PAD25) = command lane;
 
 Run via the mini-jag tester (start pwm-esp32.toit on the ESP32 FIRST):
 
+```
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
       --chip ec618 --toit-exe build/host/sdk/bin/toit \
       --port-board1 <ec618-uart0-port> tests/hw/ec618/pwm-ec618.toit
+```
 */
-
-import ec618 show Ec618
-import gpio.pwm show Pwm PwmChannel
-import uart
 
 IO-PAD33 ::= 16  // ESP32 pin watching PAD33.
 IO-PAD16 ::= 23  // ESP32 pin watching PAD16.

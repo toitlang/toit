@@ -2,12 +2,15 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+import uart
+
 /**
 ESP32 half of the UART2 RS485-half-duplex test.
 
 Acts as the bus peer: receives each message on the test UART, verifies its
-content, and echoes it back — while a background task counts rising edges
-on the EC618's DE (direction) line at IO16. Per message it checks that
+  content, and echoes it back — while a background task counts rising edges
+  on the EC618's DE (direction) line at IO16. Per message it checks that
 
 - exactly ONE DE pulse covered the message (a mid-message drop — e.g. the
   driver releasing the line between internal TX chunks — would show up as
@@ -16,9 +19,9 @@ on the EC618's DE (direction) line at IO16. Per message it checks that
 - DE is low while THIS side transmits (the EC618 must be listening).
 
 The plan (bauds, sizes, counts) is fixed and mirrored in
-uart2-rs485-ec618.toit; there is no control lane. The big message is
-acknowledged with a single 'K' so the EC618 knows the DE checks are done
-before switching baud.
+  uart2-rs485-ec618.toit; there is no control lane. The big message is
+  acknowledged with a single 'K' so the EC618 knows the DE checks are done
+  before switching baud.
 
 Wiring: EC618 UART2 TX (PAD26) -> IO27 (test RX);
         IO14 (test TX) -> EC618 UART2 RX (PAD25);
@@ -26,11 +29,10 @@ Wiring: EC618 UART2 TX (PAD26) -> IO27 (test RX);
 
 Run via Jaguar, FIRST (so it is listening before the EC618 starts):
 
+```
   jag run tests/hw/ec618/uart2-rs485-esp32.toit --device <esp32>
+```
 */
-
-import gpio
-import uart
 
 DE ::= 16
 TEST-RX ::= 27

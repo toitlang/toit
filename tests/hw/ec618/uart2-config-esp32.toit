@@ -2,13 +2,16 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+import uart
+
 /**
 ESP32 half of the UART2 configuration-matrix test.
 
 Listens on the CONTROL lane (the EC618's UART1 TX on IO4) for newline lines of
-the form "<baud> <data-bits> <parity> <stop-code>" (parity 1=none 2=even 3=odd;
-stop-code 1=1 2=1.5 3=2, matching Toit's uart constants), reopens the TEST UART
-with that exact configuration, and echoes everything it receives. "Q" quits.
+  the form "<baud> <data-bits> <parity> <stop-code>" (parity 1=none 2=even 3=odd;
+  stop-code 1=1 2=1.5 3=2, matching Toit's uart constants), reopens the TEST UART
+  with that exact configuration, and echoes everything it receives. "Q" quits.
 
 Wiring: EC618 UART1 TX (PAD34) -> IO4 (control RX);
         EC618 UART2 TX (PAD26) -> IO27 (test RX);
@@ -16,11 +19,10 @@ Wiring: EC618 UART1 TX (PAD34) -> IO4 (control RX);
 
 Run via Jaguar, FIRST (so it is listening before the EC618 starts):
 
+```
   jag run tests/hw/ec618/uart2-config-esp32.toit --device <esp32>
+```
 */
-
-import gpio
-import uart
 
 CONTROL-RX ::= 4
 TEST-RX ::= 27

@@ -2,13 +2,19 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import bmp280
+import ec618 show Ec618
+import i2c
+import io
+import uart
+
 /**
 EC618 I2C bring-up test against a real BMP280 (device under test).
 
 The sensor (SDO grounded -> address 0x76) hangs on the EC618's I2C1 bus
-(SDA=PAD23, SCL=PAD24 — the module's I2C1 pins, board pins 10/13; the
-module's "I2C0" board pins turned out to be unreachable); the ESP32 only
-switches its power. Checks, all on this side:
+  (SDA=PAD23, SCL=PAD24 — the module's I2C1 pins, board pins 10/13; the
+  module's "I2C0" board pins turned out to be unreachable); the ESP32 only
+  switches its power. Checks, all on this side:
 
 - $i2c.Bus.scan finds exactly the sensor (this exercises the probe
   primitive — scanning previously failed on the EC618);
@@ -20,7 +26,7 @@ switches its power. Checks, all on this side:
   temperature and pressure).
 
 The powered-off behavior is PRINTED, not asserted: with power off the
-sensor may stay half-alive through its breakout pull-ups (back-powering).
+  sensor may stay half-alive through its breakout pull-ups (back-powering).
 
 Wiring: EC618 UART2 (PAD26 -> IO27, IO14 -> PAD25) = power-control lane;
         sensor SDA on the PAD23 <-> ESP32 IO33 net, SCL on the PAD24 <->
@@ -28,16 +34,12 @@ Wiring: EC618 UART2 (PAD26 -> IO27, IO14 -> PAD25) = power-control lane;
 
 Run via the mini-jag tester (start bmp280-esp32.toit FIRST):
 
+```
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
       --chip ec618 --toit-exe build/host/sdk/bin/toit \
       --port-board1 <ec618-uart0-port> tests/hw/ec618/bmp280-ec618.toit
+```
 */
-
-import bmp280
-import ec618 show Ec618
-import i2c
-import io
-import uart
 
 SDA-PAD ::= 23
 SCL-PAD ::= 24

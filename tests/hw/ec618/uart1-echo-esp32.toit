@@ -2,26 +2,30 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+import uart
+
 /**
 ESP32 half of the UART1 round-trip test: echoes everything it receives.
 
 The EC618's UART1 TX (PAD34) doubles as the control lane in the other
-tests; here it is simply the test TX. The echo goes back over IO16 into
-the EC618's UART1 RX (PAD33 — the same wire the watchdog scope-trigger
-uses, which is only driven on a fatal).
+  tests; here it is simply the test TX. The echo goes back over IO16 into
+  the EC618's UART1 RX (PAD33 — the same wire the watchdog scope-trigger
+  uses, which is only driven on a fatal).
 
 Wiring: EC618 UART1 TX (PAD34) -> IO4 (rx); IO16 (tx) -> EC618 UART1 RX (PAD33).
 
 The EC618 side opens at one baud per "round": it switches this port on
-the magic PAIR 0xF5 0x5F followed by 4 little-endian baud bytes (sent at
-the CURRENT baud before switching; 0 = quit). The test pattern has
-consecutive deltas of +31, so the pair can never occur in payload.
+  the magic PAIR 0xF5 0x5F followed by 4 little-endian baud bytes (sent at
+  the CURRENT baud before switching; 0 = quit). The test pattern has
+  consecutive deltas of +31, so the pair can never occur in payload.
 
-Run via Jaguar, FIRST: jag run tests/hw/ec618/uart1-echo-esp32.toit --device <esp32>
+Run via Jaguar before the EC618 half:
+
+```
+jag run tests/hw/ec618/uart1-echo-esp32.toit --device <esp32>
+```
 */
-
-import gpio
-import uart
 
 RX ::= 4
 TX ::= 16

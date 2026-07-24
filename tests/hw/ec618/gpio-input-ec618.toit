@@ -2,15 +2,18 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+import ec618 show Ec618
+
 /**
 EC618 half of the GPIO-input HW test (device under test).
 
 The reverse of gpio-output: the ESP32 (gpio-input-esp32.toit) drives a square
-wave and the EC618 reads it as a GPIO input. This validates the receive
-direction (ESP32 -> EC618), which is safe now that the EC618 IO rail is 3.3 V
-(see docs/ec618-hw-tests.md "Voltage domains"). The EC618 configures GPIO11
-(PAD26) as input only — it never drives the line, so there is no contention with
-the ESP32 output.
+  wave and the EC618 reads it as a GPIO input. This validates the receive
+  direction (ESP32 -> EC618), which is safe now that the EC618 IO rail is 3.3 V
+  (see docs/ec618-hw-tests.md "Voltage domains"). The EC618 configures GPIO11
+  (PAD26) as input only — it never drives the line, so there is no contention with
+  the ESP32 output.
 
 Passes if the EC618 sees the square wave: both levels and enough edges.
 
@@ -18,13 +21,12 @@ Wiring (NOTE: gpio.Pin numbers are PAD numbers on EC618): ESP32 IO27 -> EC618 bo
 
 Run via the mini-jag tester (start gpio-input-esp32.toit on the ESP32 first):
 
+```
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
       --chip ec618 --toit-exe build/host/sdk/bin/toit \
       --port-board1 <ec618-uart0-port> tests/hw/ec618/gpio-input-ec618.toit
+```
 */
-
-import gpio
-import ec618 show Ec618
 
 GPIO-EC618 ::= 11               // Primary PAD26, driven by ESP32 IO27.
 SAMPLE ::= Duration --ms=2      // Poll fast enough to catch a 10 Hz square wave.

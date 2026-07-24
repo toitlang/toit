@@ -2,20 +2,20 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import ec618 show Ec618
+import gpio
+
 /**
 EC618 half of the alternate-pad GPIO output test.
 
 GPIO14 and GPIO15 have primary ALT0 pads 29/30 and alternate ALT4 pads 13/14.
-The alternate pads are wired to ESP32 IO17/18 on the rig. Drive distinct square
-waves on both so the helper can prove that `Ec618.gpio --alt` resolves and muxes
-both physical pads correctly.
+  The alternate pads are wired to ESP32 IO17/18 on the rig. Drive distinct square
+  waves on both so the helper can prove that `Ec618.gpio --alt` resolves and muxes
+  both physical pads correctly.
 
 Start gpio-alt-esp32.toit on the ESP32 first, then run this file through the
-mini-jag tester.
+  mini-jag tester.
 */
-
-import ec618 show Ec618
-import gpio
 
 DURATION ::= Duration --s=20
 HALF-14 ::= Duration --ms=25  // 20 Hz.

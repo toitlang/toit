@@ -2,20 +2,23 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import ec618 show Ec618
+import uart
+
 /**
 EC618 half of the UART gap-free-TX test (device under test).
 
 A normal UART is allowed to pause between bytes — but when the UART is
-(ab)used as a waveform generator for LED strips, ANY pause on the wire
-corrupts the protocol (an idle line reads as a long high / latch). This
-test asserts the TX path emits a multi-chunk burst with NO pause the
-detector can see, at every tested baud.
+  (ab)used as a waveform generator for LED strips, ANY pause on the wire
+  corrupts the protocol (an idle line reads as a long high / latch). This
+  test asserts the TX path emits a multi-chunk burst with NO pause the
+  detector can see, at every tested baud.
 
 Method (see uart2-gapfree-esp32.toit for the detector math): the payload
-is all-0x00 bytes, so a gap-free stream never holds the wire high longer
-than one stop bit; the ESP32's glitch-filtered pulse counter then counts
+  is all-0x00 bytes, so a gap-free stream never holds the wire high longer
+  than one stop bit; the ESP32's glitch-filtered pulse counter then counts
   rising edges = pauses + 1 (trailing idle).
-Each baud runs two phases:
+  Each baud runs two phases:
 
 1. Positive control: the same payload written as two halves with a 20 ms
    sleep between them — the detector MUST count >= 2 (proves it is armed
@@ -24,20 +27,19 @@ Each baud runs two phases:
    seams — the place a pause would live) — the count MUST be exactly 1.
 
 The wall-clock of the flush is also checked against the wire time (a
-coarse, filter-independent bound, same idea as uart2-flush).
+  coarse, filter-independent bound, same idea as uart2-flush).
 
 Wiring: EC618 UART2 TX (PAD26) -> IO27 (watched);
         EC618 UART1 (PAD34 -> IO4, IO16 -> PAD33) = command lane.
 
 Run via the mini-jag tester (start uart2-gapfree-esp32.toit FIRST):
 
+```
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
       --chip ec618 --toit-exe build/host/sdk/bin/toit \
       --port-board1 <ec618-uart0-port> tests/hw/ec618/uart2-gapfree-ec618.toit
+```
 */
-
-import ec618 show Ec618
-import uart
 
 // The SUPPORTED gap-free contract (Florian, 2026-07-16): any length up
 // to 921600 (multi-chunk seams are IRQ-chained); at pixel-strip rates

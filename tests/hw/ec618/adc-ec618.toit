@@ -2,44 +2,46 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio.adc show Adc
+
 /**
 EC618 half of the ADC HW test (device under test): verifies the ADC reads the
-ESP32 DAC's exact voltages, within a delta.
+  ESP32 DAC's exact voltages, within a delta.
 
 The ESP32 (adc-esp32.toit) drives both ADC inputs with a known staircase
-($DAC-LEVELS volts). For each channel this test samples the resulting waveform
-and:
+  ($DAC-LEVELS volts). For each channel this test samples the resulting waveform
+  and:
   1. self-calibrates the rig's board-to-board divider from the two extreme DAC
      levels (a 2-point fit: pin = offset + ratio * dac), and
   2. checks every intermediate DAC level lands at the predicted pin voltage,
      within $MATCH-DELTA volts.
 
 Why calibrate instead of assuming a ratio: two resistor dividers are in play.
-The EC618's *internal* ADC range divider (inside the chip) is already
-compensated by the ADC driver, so adc.get returns the true *pin* voltage. But
-the rig's *external* divider (resistors on the wire between the two boards) is
-not — and it differs per channel — so the EC618 sees DAC * ratio with an
-unknown, per-channel ratio. The 2-point fit recovers that ratio (and any ADC
-offset/gain), turning "does it swing" into "does it read the right value".
+  The EC618's *internal* ADC range divider (inside the chip) is already
+  compensated by the ADC driver, so adc.get returns the true *pin* voltage. But
+  the rig's *external* divider (resistors on the wire between the two boards) is
+  not — and it differs per channel — so the EC618 sees DAC * ratio with an
+  unknown, per-channel ratio. The 2-point fit recovers that ratio (and any ADC
+  offset/gain), turning "does it swing" into "does it read the right value".
 
 Both channels must read accurately: a channel that does not swing
-($LIVE-SPREAD-MIN), or whose readings are off by more than $MATCH-DELTA, fails.
+  ($LIVE-SPREAD-MIN), or whose readings are off by more than $MATCH-DELTA, fails.
 
 Wiring: ESP32 IO25 (DAC1) -> ~2:1 divider -> EC618 ADC0 (channel 0 / AIO3, pin 3)
         ESP32 IO26 (DAC2) -> ~2:1 divider -> EC618 ADC1 (channel 1 / AIO4, pin 4)
 
 Run via the mini-jag tester (start adc-esp32.toit on the ESP32 first so the
-staircase is already running):
+  staircase is already running):
 
+```
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
       --chip ec618 --toit-exe build/host/sdk/bin/toit \
       --port-board1 <ec618-uart0-port> tests/hw/ec618/adc-ec618.toit
+```
 
 (--port-board1 is the EC618's UART0 port — the CH340 adapter; the /dev/ttyUSBN
-number swaps between sessions, so identify it by chip. See docs/ec618-hw-tests.md.)
+  number swaps between sessions, so identify it by chip. See docs/ec618-hw-tests.md.)
 */
-
-import gpio.adc show Adc
 
 CHANNELS ::= [0, 1]
 // The known staircase the ESP32 drives (adc-esp32.toit), in volts. The first

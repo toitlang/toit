@@ -2,21 +2,23 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import ec618 show Ec618
+
 /**
 EC618 UART open/close stress (device under test, no ESP32 needed).
 
 Opens and closes UART2 repeatedly at a fixed baud to check that re-opening a UART
-controller works (it surfaced as an INVALID_ARGUMENT on a later open during the
-baud sweep). Isolates "re-open" from "baud value": all opens use the same baud.
+  controller works (it surfaced as an INVALID_ARGUMENT on a later open during the
+  baud sweep). Isolates "re-open" from "baud value": all opens use the same baud.
 
 Run via the mini-jag tester:
 
+```
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
       --chip ec618 --toit-exe build/host/sdk/bin/toit \
       --port-board1 <ec618-uart0-port> tests/hw/ec618/uart-reopen-ec618.toit
+```
 */
-
-import ec618 show Ec618
 
 // 460800 first (direct open), then a sweep that revisits it: isolates whether
 // opening AT 460800 fails vs whether the position/sequence matters.

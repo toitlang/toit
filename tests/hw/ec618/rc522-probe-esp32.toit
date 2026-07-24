@@ -2,15 +2,18 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+import spi
+
 /**
 ESP32-side RC522 wiring probe — validates the breadboard hookup before
-the EC618 SPI bring-up uses the reader.
+  the EC618 SPI bring-up uses the reader.
 
 Wakes the RC522 out of hard power-down (RST on the PAD16/IO23 net),
-reads the version register (0x37: 0x91 = v1, 0x92 = v2, others are
-usually clones — report, don't judge) and runs a FIFO write/read-back
-loopback, exercising MOSI and MISO with real data. Then drops RST so
-the reader goes back to its quiet power-down state.
+  reads the version register (0x37: 0x91 = v1, 0x92 = v2, others are
+  usually clones — report, don't judge) and runs a FIFO write/read-back
+  loopback, exercising MOSI and MISO with real data. Then drops RST so
+  the reader goes back to its quiet power-down state.
 
 Wiring (shared nets with the EC618's SPI0 pads 23/24/25/26):
   RC522 SDA(=CS) - IO33 | MOSI - IO22 | MISO - IO14 | SCK - IO27
@@ -18,11 +21,10 @@ Wiring (shared nets with the EC618's SPI0 pads 23/24/25/26):
 
 Run via Jaguar:
 
+```
   jag run tests/hw/ec618/rc522-probe-esp32.toit --device <esp32>
+```
 */
-
-import gpio
-import spi
 
 RST ::= 23
 CS ::= 33

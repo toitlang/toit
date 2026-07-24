@@ -2,35 +2,37 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+import pulse-counter
+
 /**
 ESP32 half of the I2C0 bus-level HW test: hardware pulse counters watch
-both I2C0 wires while the EC618 (i2c0-scan-ec618.toit) drives scan
-traffic on pads 14 (SDA) / 13 (SCL).
+  both I2C0 wires while the EC618 (i2c0-scan-ec618.toit) drives scan
+  traffic on pads 14 (SDA) / 13 (SCL).
 
 Two things are proven at once (per docs/ec618-hw-tests.md, the coverage
-matrix): the I2C0 controller really drives board pins 22/23, and — for
-the first time — WHICH wire is which: the two pins have only ever moved
-in lockstep. During an address scan SCL carries ~18 edges per 9-bit
-frame while SDA carries a handful, so the expected-SCL wire (IO17) must
-count clearly more edges than the expected-SDA wire (IO18). A swapped
-pair inverts the ratio and fails — with counts that say so.
+  matrix): the I2C0 controller really drives board pins 22/23, and — for
+  the first time — WHICH wire is which: the two pins have only ever moved
+  in lockstep. During an address scan SCL carries ~18 edges per 9-bit
+  frame while SDA carries a handful, so the expected-SCL wire (IO17) must
+  count clearly more edges than the expected-SDA wire (IO18). A swapped
+  pair inverts the ratio and fails — with counts that say so.
 
 The I2C clock (~46 kHz on the EC618) is far too fast for GPIO polling;
-the ESP32's pulse-counter peripheral counts in hardware (the pwm test's
-trick). Internal pull-ups on both observer pins keep the open-drain bus
-high alongside the EC618's own pad pull-ups.
+  the ESP32's pulse-counter peripheral counts in hardware (the pwm test's
+  trick). Internal pull-ups on both observer pins keep the open-drain bus
+  high alongside the EC618's own pad pull-ups.
 
 Wiring: ESP32 IO18 -> EC618 board pin 22 (I2C0_SDA / PAD14),
         ESP32 IO17 -> EC618 board pin 23 (I2C0_SCL / PAD13).
 
 Run via Jaguar FIRST (it baselines a quiet bus, then watches), then start
-the EC618 half:
+  the EC618 half:
 
+```
   jag run tests/hw/ec618/i2c0-wire-esp32.toit --device <esp32>
+```
 */
-
-import gpio
-import pulse-counter
 
 PIN-SCL ::= 17                 // Expected SCL (board pin 23 / PAD13).
 PIN-SDA ::= 18                 // Expected SDA (board pin 22 / PAD14).

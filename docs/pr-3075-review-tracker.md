@@ -401,7 +401,7 @@ specific behavior named; a related general-audit item can remain open.
 | --- | --- | --- |
 | Original commit mapping | **Resolved** | All 377 comments retain `original_commit_id`; 140 distinct reviewed commits are recoverable. |
 | Copyright/name cleanup | **Resolved** | The three explicitly commented files use the requested 2026 contributor header, and the former chip codename no longer appears in the current tree. |
-| Toitdoc/conventions | **Audit** | Violations remain across `lib/ec618`, EC618 extensions, tools, and hardware tests. The review explicitly broadened this beyond the attached lines. |
+| Toitdoc/conventions | **Resolved** | Audited every PR-added Toitdoc, not just the attached lines: library comments follow imports, continuation paragraphs are indented, examples use fenced code blocks, EC618 UART detail lives in `lib/ec618`, function comments in `mini-jag` are Toitdocs, and all edited sources pass `toit analyze` plus documentation generation. |
 | Generic catch/CLI guidance | **Audit** | Catch-alls that can mask unexpected failures and hand-written print/exit/fail paths remain in tests and tools. |
 | GPIO/pad ownership | **Open** | The rewrite cleans resources up, but it has no locked pad/GPIO-bit pools and can let two resources claim aliases of the same controller. |
 | ADC | **Open** | No exclusivity pool; the newly allocated resource is not registered; conversion and one-time trim state are unsynchronized; conversion busy-polls in a primitive. |

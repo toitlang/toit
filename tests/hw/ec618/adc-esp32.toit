@@ -2,15 +2,18 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+import gpio.dac show Dac
+
 /**
 ESP32 half of the ADC HW test: drives the EC618 ADC inputs with a known
-staircase.
+  staircase.
 
 Steps both DACs through a fixed list of voltages ($LEVELS), holding each for
-$HOLD, and loops for $DURATION. The EC618 half (adc-ec618.toit) samples the
-resulting waveform, self-calibrates the board-to-board divider from the two
-extreme levels, and then checks that every intermediate level lands at the
-expected voltage (see that file).
+  $HOLD, and loops for $DURATION. The EC618 half (adc-ec618.toit) samples the
+  resulting waveform, self-calibrates the board-to-board divider from the two
+  extreme levels, and then checks that every intermediate level lands at the
+  expected voltage (see that file).
 
 Two resistor dividers sit between the ESP32 DAC and what the EC618 reads:
   - an EXTERNAL ~2:1 divider on the rig wiring (these resistors, between the
@@ -18,17 +21,18 @@ Two resistor dividers sit between the ESP32 DAC and what the EC618 reads:
     exact ratio empirically per channel.
   - the EC618's INTERNAL ADC range divider (inside the chip) — already
     compensated by the EC618 ADC driver, so adc.get returns the true pin volts.
-So a 1.0 V DAC step shows up as ~0.5 V at the EC618; the test verifies that.
+  So a 1.0 V DAC step shows up as ~0.5 V at the EC618; the test verifies that.
 
 Wiring: ESP32 IO25 (DAC1) -> ~2:1 divider -> EC618 ADC0 (pin 3)
         ESP32 IO26 (DAC2) -> ~2:1 divider -> EC618 ADC1 (pin 4)
 
 Run via Jaguar (start this BEFORE the EC618 half so the staircase is already
-running): jag run tests/hw/ec618/adc-esp32.toit --device <esp32>
-*/
+  running):
 
-import gpio
-import gpio.dac show Dac
+```
+jag run tests/hw/ec618/adc-esp32.toit --device <esp32>
+```
+*/
 
 DAC1 ::= 25
 DAC2 ::= 26

@@ -2,23 +2,28 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import crypto.crc show Crc32
+import ec618 show Ec618
+import system
+import uart
+
 /**
 EC618 half of the UART2 big-data / throughput / leak test (device under test).
 
 Pushes a large, deterministic stream through UART2 in EACH direction at high baud
-and checks that the UART keeps up (no drops/corruption) and that the heap does not
-leak. Unlike an echo, neither side ever has to read-and-write at once, so the test
-exercises the UART itself instead of the partner's full-duplex limit: the receiver
-only reads + checksums (a native CRC-32 over whole chunks, never byte-bound), and
-the sender only writes a stream both sides generate identically.
+  and checks that the UART keeps up (no drops/corruption) and that the heap does not
+  leak. Unlike an echo, neither side ever has to read-and-write at once, so the test
+  exercises the UART itself instead of the partner's full-duplex limit: the receiver
+  only reads + checksums (a native CRC-32 over whole chunks, never byte-bound), and
+  the sender only writes a stream both sides generate identically.
 
 Per baud, two phases:
   - TX: EC618 sends $TOTAL bytes of $gen-byte; the ESP32 CRC-32s what it received
     and reports "C <crc> <count>" back. EC618 checks crc+count -> EC618 TX keep-up.
   - RX: ESP32 sends $TOTAL bytes of $gen-byte; EC618 CRC-32s what it received and
     compares to the expected (same generator) -> EC618 RX keep-up.
-The heap is sampled (after a full GC) before and after the whole sweep; a stable
-allocated figure means no leak across all the I/O.
+  The heap is sampled (after a full GC) before and after the whole sweep; a stable
+  allocated figure means no leak across all the I/O.
 
 Control lane (EC618 UART1 TX, PAD34 -> ESP32 IO4) carries newline commands:
   "B <baud>"  (re)open the test UART at <baud>
@@ -31,15 +36,12 @@ Wiring: EC618 UART1 TX (PAD34) -> ESP32 IO4 (control);
 
 Run via the mini-jag tester (start uart2-bigdata-esp32.toit on the ESP32 first):
 
+```
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
       --chip ec618 --toit-exe build/host/sdk/bin/toit \
       --port-board1 <ec618-uart0-port> tests/hw/ec618/uart2-bigdata-ec618.toit
+```
 */
-
-import crypto.crc show Crc32
-import ec618 show Ec618
-import system
-import uart
 
 // High bauds: this is the keep-up test. The middle rates map the cliff between
 // "clean at 921600" and "drops bytes at 4M".

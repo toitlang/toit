@@ -2,23 +2,25 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+
 /**
 ESP32 half of the GPIO pull-up/down HW test.
 
 Holds IO27 high-impedance (input, no pull) so the EC618's own weak pull is the
-only thing setting the shared line, and never drives it — the EC618 pad is
-1.8 V, so we must not push 3.3 V into it. As a bonus cross-check it samples the
-line and reports whether it saw both a high and a low level while the EC618 half
-(gpio-pull-ec618.toit) sweeps pull-up then pull-down.
+  only thing setting the shared line, and never drives it — the EC618 pad is
+  1.8 V, so we must not push 3.3 V into it. As a bonus cross-check it samples the
+  line and reports whether it saw both a high and a low level while the EC618 half
+  (gpio-pull-ec618.toit) sweeps pull-up then pull-down.
 
 Wiring: EC618 board pin 5 (GPIO11 / PAD26) <-> ESP32 IO27.
 
 Run via Jaguar (output goes to the serial console), BEFORE the EC618 half:
 
+```
   jag run tests/hw/ec618/gpio-pull-esp32.toit --device <esp32>
+```
 */
-
-import gpio
 
 PIN-ESP32 ::= 27
 HOLD ::= Duration --s=45

@@ -2,16 +2,21 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import ec618 show Ec618
+import i2c
+import io
+import uart
+
 /**
 EC618 I2C shape-change torture (device under test) — the known-issues #6
-regression test, on the CMSIS IRQ-mode engine WITHOUT any per-transfer
-reset.
+  regression test, on the CMSIS IRQ-mode engine WITHOUT any per-transfer
+  reset.
 
 The closed soc_i2c engine silently swallowed a transfer whose shape
-differed from the previous one (instant fake success, untouched buffer),
-which forced a GPR module reset before EVERY transfer. The open bsp_i2c.c
-engine must not need that: this test hammers shape-changing transfers
-against a real BMP280 at 100 kHz and 400 kHz, validating every byte read.
+  differed from the previous one (instant fake success, untouched buffer),
+  which forced a GPR module reset before EVERY transfer. The open bsp_i2c.c
+  engine must not need that: this test hammers shape-changing transfers
+  against a real BMP280 at 100 kHz and 400 kHz, validating every byte read.
 
 Per round (every consecutive pair differs in shape and direction):
   - 1-byte register read (chip-id, value-checked 0x58),
@@ -23,19 +28,16 @@ Per round (every consecutive pair differs in shape and direction):
   - probe of an empty address (NACK path between data transfers).
 
 Wiring: as bmp280-ec618.toit (sensor on I2C1 pads 23/24; ESP32 IO13 powers
-it; UART2 lane carries the power command).
+  it; UART2 lane carries the power command).
 
 Run via the mini-jag tester (start bmp280-esp32.toit FIRST):
 
+```
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
       --chip ec618 --toit-exe build/host/sdk/bin/toit \
       --port-board1 <ec618-uart0-port> tests/hw/ec618/i2c-torture-ec618.toit
+```
 */
-
-import ec618 show Ec618
-import i2c
-import io
-import uart
 
 ADDRESS ::= 0x76
 EMPTY-ADDRESS ::= 0x40

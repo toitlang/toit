@@ -2,11 +2,15 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import ec618 show Ec618
+import gpio
+import uart
+
 /**
 EC618 half of the GPIO-interrupt test (device under test).
 
 The ESP32 drives pulse trains into PAD26 (its IO27); this side counts them
-with $gpio.Pin.wait-for — the interrupt path, not polling. Checks:
+  with $gpio.Pin.wait-for — the interrupt path, not polling. Checks:
 
 1. 50 pulses at 50 Hz (10 ms per phase) are counted EXACTLY — level
    interrupts plus the waiter must not miss or double-count edges.
@@ -15,21 +19,19 @@ with $gpio.Pin.wait-for — the interrupt path, not polling. Checks:
    around faster than a phase; this guards the interrupt dispatch latency.
 
 Commands go over UART1 TX -> ESP32 IO4 (one-directional; all assertions
-run here, the helper just drives).
+  run here, the helper just drives).
 
 Wiring: EC618 UART1 TX (PAD34) -> IO4 (control);
         IO27 -> EC618 PAD26 (the pulse line; ESP32 3.3 V push-pull).
 
 Run via the mini-jag tester (start gpio-interrupt-esp32.toit FIRST):
 
+```
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
       --chip ec618 --toit-exe build/host/sdk/bin/toit \
       --port-board1 <ec618-uart0-port> tests/hw/ec618/gpio-interrupt-ec618.toit
+```
 */
-
-import ec618 show Ec618
-import gpio
-import uart
 
 PULSES ::= 50
 

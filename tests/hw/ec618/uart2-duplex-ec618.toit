@@ -2,26 +2,31 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import crypto.crc show Crc32
+import ec618 show Ec618
+import monitor
+import uart
+
 /**
 EC618 half of the UART2 FULL-DUPLEX stress test (device under test).
 
 The EC618 sends and receives 256 KiB CONCURRENTLY per baud — the case that
-historically locked the device up hard (uart2-bigdata deliberately avoids it by
-running one direction at a time). With the software watchdog in place a lockup
-now shows up as a watchdog reset (the tester reports it) instead of a dead rig.
+  historically locked the device up hard (uart2-bigdata deliberately avoids it by
+  running one direction at a time). With the software watchdog in place a lockup
+  now shows up as a watchdog reset (the tester reports it) instead of a dead rig.
 
 Per baud the EC618 asks the ESP32 for a "D <n>" phase: both sides then send the
-deterministic $gen-byte stream while receiving + CRC-checking the peer's. The
-ESP32 reports its RX verdict on its CONSOLE only (an in-band reply would be
-eaten by the EC618's receiver if bytes were lost), so the host checks the jag
-log for the ESP32-side verdict; this container's exit code only covers the
-EC618 side.
+  deterministic $gen-byte stream while receiving + CRC-checking the peer's. The
+  ESP32 reports its RX verdict on its CONSOLE only (an in-band reply would be
+  eaten by the EC618's receiver if bytes were lost), so the host checks the jag
+  log for the ESP32-side verdict; this container's exit code only covers the
+  EC618 side.
 
 Without flow control a duplex flood is ALLOWED to drop on the RX side — the
-contract (known-issues #4/#7/#8) is that every byte is either delivered or
-counted in $uart.Port.errors (ring drop-newest), the stream that does arrive
-is clean, the device survives, and the container exits normally. Full
-delivery needs RTS/CTS (rig wiring pending). Per round this asserts:
+  contract (known-issues #4/#7/#8) is that every byte is either delivered or
+  counted in $uart.Port.errors (ring drop-newest), the stream that does arrive
+  is clean, the device survives, and the container exits normally. Full
+  delivery needs RTS/CTS (rig wiring pending). Per round this asserts:
   - accounting: count + errors >= TOTAL - 1000 (hardware FIFO overruns at
     multi-MBd are the only uncounted losses),
   - a delivery floor: count >= TOTAL / 4 (catches an RX collapse),
@@ -32,15 +37,12 @@ Wiring: EC618 UART1 TX (PAD34) -> ESP32 IO4 (control);
 
 Run via the mini-jag tester (start uart2-bigdata-esp32.toit on the ESP32 first):
 
+```
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
       --chip ec618 --toit-exe build/host/sdk/bin/toit \
       --port-board1 <ec618-uart0-port> tests/hw/ec618/uart2-duplex-ec618.toit
+```
 */
-
-import crypto.crc show Crc32
-import ec618 show Ec618
-import monitor
-import uart
 
 // 4 MBd RX already loses bytes HALF-duplex (known-issues #4), so it would not
 // tell us anything duplex-specific; the sweep tops out at 3 MBd, the highest

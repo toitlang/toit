@@ -2,32 +2,34 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+import uart
+
 /**
 ESP32 half of the UART2 HW test.
 
 Opens a UART RX-only on IO27 (where the EC618's UART2 TX is wired) at the baud
-given as the program argument, and confirms it receives several cleanly-framed
-lines carrying that exact baud value ("EC618-UART2 <baud> <n>"). Counting
-newline-delimited lines that contain the exact expected prefix verifies framing
-AND content at that baud — at a wrong baud the bytes would be garbage and never
-match. RX-only (no TX pin), so the ESP32 drives nothing on the shared wire.
+  given as the program argument, and confirms it receives several cleanly-framed
+  lines carrying that exact baud value ("EC618-UART2 <baud> <n>"). Counting
+  newline-delimited lines that contain the exact expected prefix verifies framing
+  AND content at that baud — at a wrong baud the bytes would be garbage and never
+  match. RX-only (no TX pin), so the ESP32 drives nothing on the shared wire.
 
 Wiring: EC618 GPIO11 / PAD26 (UART2 TX) -> ESP32 IO27.
 
 Run via Jaguar (start this FIRST so it is already listening, then launch
-uart2-ec618.toit via the tester). NOTE: `jag run` cannot pass program arguments
-to a networked device, so the baud here defaults to 115200; an automated
-multi-baud sweep needs the in-device control lane (the EC618 telling the ESP32
-the baud over UART1) — see docs/ec618-hw-tests.md.
+  uart2-ec618.toit via the tester). NOTE: `jag run` cannot pass program arguments
+  to a networked device, so the baud here defaults to 115200; an automated
+  multi-baud sweep needs the in-device control lane (the EC618 telling the ESP32
+  the baud over UART1) — see docs/ec618-hw-tests.md.
 
+```
   jag run tests/hw/ec618/uart2-esp32.toit --device <esp32>
+```
 
 Reads the ESP32 serial console (e.g. via the CP2102N port) for the single
-"uart2-esp32: PASS ..." / "... FAIL ..." verdict line.
+  "uart2-esp32: PASS ..." / "... FAIL ..." verdict line.
 */
-
-import gpio
-import uart
 
 RX-PIN ::= 27
 DEFAULT-BAUD ::= 115200

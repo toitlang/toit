@@ -2,23 +2,25 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+
 /**
 ESP32 half of the AON-pad GPIO-input HW test: drives both AON wires at
-distinct frequencies for the EC618 to read (and tell apart).
+  distinct frequencies for the EC618 to read (and tell apart).
 
 IO19 waves at 10 Hz, IO2 at 4 Hz. IMPORTANT: the EC618 side must already
-have PAD44/PAD47 configured as INPUTS before this starts, or two 3.3 V
-drivers fight — the runner starts the EC618 reader first.
+  have PAD44/PAD47 configured as INPUTS before this starts, or two 3.3 V
+  drivers fight — the runner starts the EC618 reader first.
 
 Wiring: ESP32 IO19 -> EC618 board pin 18 (GPIO24 / PAD44),
         ESP32 IO2  -> EC618 board pin 27 (GPIO27 / PAD47).
 
 Run via Jaguar, AFTER the EC618 reader has configured its inputs:
 
+```
   jag run tests/hw/ec618/gpio-aon-input-esp32.toit --device <esp32>
+```
 */
-
-import gpio
 
 PIN-FAST ::= 19                // -> EC618 GPIO24 (PAD44).
 PIN-SLOW ::= 2                 // -> EC618 GPIO27 (PAD47).

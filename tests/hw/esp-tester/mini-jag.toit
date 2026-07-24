@@ -136,11 +136,14 @@ run-test:
 // ready for the next test or a firmware OTA. See shared.toit for the wire
 // format.
 
-// Opens the UART the firmware redirects `print` to, so the agent's control
-// channel and the test's print output ride one wire. Which controller that is
-// follows the anchor record's console byte (via ec618.print-uart-id); we
-// hardcoding, so a rig that breaks out a different UART only needs the build
-// config changed (test rig uses UART0, the quirky-plenty dev rig uses UART1).
+/**
+Opens the UART to which the firmware redirects `print`.
+
+The agent's control channel and the test's print output share that wire. The
+  controller follows the anchor record's console byte through
+  $ec618.print-uart-id, so changing the provisioned console does not require a
+  change to this agent.
+*/
 open-control-uart -> uart.Port:
   id := ec618.print-uart-id
   // --large-buffers: the port OPENS at 115200 (which would auto-select the
@@ -196,8 +199,11 @@ main-ec618:
         if e: print "[mini-jag] rescue listener stopped: $e"
   serve port
 
-// Serves the request/ack protocol on $port until the device reboots (or,
-// for the non-primary rescue listener, until the port is closed under it).
+/**
+Serves the request/ack protocol on $port until the device reboots.
+
+For the non-primary rescue listener, returns when the port is closed.
+*/
 serve port/uart.Port --primary/bool=true -> none:
   reader := port.in
   out := port.out
@@ -269,21 +275,27 @@ serve port/uart.Port --primary/bool=true -> none:
       // resync on the next byte; the host re-pings to recover.
       status out "ignoring 0x$(%02x command)"
 
-// Writes one `[mini-jag] ...` status line to the host. The agent uses these
-// for all of its own chatter; the host prints them and otherwise ignores any
-// '['-led line, which is how it tells status text from a single ack byte.
+/**
+Writes one `[mini-jag] ...` status line to the host.
+
+The agent uses these for all of its own chatter. The host prints them and
+  otherwise ignores any line starting with `[`, which distinguishes status
+  text from a single acknowledgement byte.
+*/
 status out/io.Writer message/string -> none:
   out.write "$MINI-JAG-TAG $message\n"
 
-// Receives a container image and installs it, clearing any previously
-// installed test first. Returns whether it succeeded (the caller writes the
-// final ack from the result).
-//
-// Wire format: `<size:4 LE><crc32:4>` then, after ACK-READY, a sequence of
-// `<len:4 BE><bytes>` chunks each acked with ACK-OK. The per-chunk ack
-// flow-controls the transfer: the shared UART has no hardware flow control and
-// the device RX buffer is small, so the host waits for each chunk to reach
-// flash before sending the next.
+/**
+Receives and installs a container image after clearing any prior test.
+
+Returns whether installation succeeded; the caller writes the final
+  acknowledgement from the result.
+
+The wire format starts with `<size:4 LE><crc32:4>`. After ACK-READY, it carries
+  a sequence of `<len:4 BE><bytes>` chunks, each acknowledged with ACK-OK. The
+  per-chunk acknowledgement flow-controls the transfer because the shared UART
+  has no hardware flow control.
+*/
 install-container reader/io.Reader out/io.Writer port/uart.Port -> bool:
   size := reader.little-endian.read-int32
   expected-crc := reader.read-bytes 4
@@ -337,10 +349,12 @@ test-running_/bool := false
 // (and releases) the UART2 rescue listener in main-ec618.
 primary-contact_/bool := false
 
-// Starts the installed test container in the BACKGROUND and reports its exit via
-// a status line, so the command loop keeps reading (and the watchdog keeps being
-// fed by the host's pings) while the test runs. The host watches for
-// "run: test exited code=" and pings throughout.
+/**
+Starts the installed test container in the background.
+
+Reports its exit through a status line so the command loop keeps reading, and
+  the host's pings keep feeding the watchdog, while the test runs.
+*/
 run-installed arg/string out/io.Writer --embedded/bool=false -> none:
   test-image/containers.ContainerImage? := null
   containers.images.do: | image/containers.ContainerImage |
@@ -369,8 +383,12 @@ run-installed arg/string out/io.Writer --embedded/bool=false -> none:
     else:
       status out "run: test exited code=$code"
 
-// Reads one OTA chunk (`<len:4 BE><bytes>`) and feeds it to the firmware
-// $writer. Acks ready before the payload so the host paces the transfer.
+/**
+Reads one OTA chunk and feeds it to the firmware $writer.
+
+Each chunk is encoded as `<len:4 BE><bytes>`. Acknowledges readiness before the
+  payload so the host paces the transfer.
+*/
 fw-write reader/io.Reader writer/firmware.FirmwareWriter? out/io.Writer -> bool:
   length := reader.big-endian.read-uint32
   out.write #[ACK-READY]

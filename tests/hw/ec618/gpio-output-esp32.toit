@@ -2,23 +2,25 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+
 /**
 ESP32 half of the GPIO-output HW test.
 
 Reads the pin that the EC618 half (gpio-output-ec618.toit) toggles and confirms
-it sees a square wave: it waits for the first edge (the EC618 side starts a
-little after us), then counts edges over a short window.
+  it sees a square wave: it waits for the first edge (the EC618 side starts a
+  little after us), then counts edges over a short window.
 
 Wiring: EC618 board pin 5 (GPIO11 / PAD26) -> ESP32 IO27.
 
 Run via Jaguar (output goes to the serial console):
 
+```
   jag run tests/hw/ec618/gpio-output-esp32.toit --device <esp32>
+```
 
 Prints a single "gpio-output-esp32: PASS ..." / "... FAIL ..." verdict line.
 */
-
-import gpio
 
 PIN-ESP32 ::= 27
 // The EC618 side is launched after us (compile + serial install), so wait

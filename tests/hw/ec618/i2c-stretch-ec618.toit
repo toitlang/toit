@@ -2,6 +2,11 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import ec618 show Ec618
+import i2c
+import io
+import uart
+
 /**
 EC618 I2C long-transfer + clock-stretch validation (device under test).
 
@@ -17,26 +22,23 @@ Validates the two paths the bmp280/torture tests cannot reach:
    errors, elapsed time >= the hold.
 
 Stretched operations are SINGLE-LEG transfers (one MasterReceive or one
-MasterTransmit) at 10 kHz (the arbitrary-TPR path), so the hold lands
-deterministically inside the transfer. A stretch landing exactly in the
-microsecond gap between the two legs of a chained write-then-read would
-abort that transfer cleanly (bounded chain wait) — a documented
-limitation, not exercised here.
+  MasterTransmit) at 10 kHz (the arbitrary-TPR path), so the hold lands
+  deterministically inside the transfer. A stretch landing exactly in the
+  microsecond gap between the two legs of a chained write-then-read would
+  abort that transfer cleanly (bounded chain wait) — a documented
+  limitation, not exercised here.
 
 Wiring: as bmp280-ec618.toit, plus the SCL net (PAD24) reaching ESP32
-IO22 for the squat.
+  IO22 for the squat.
 
 Run via the mini-jag tester (start i2c-stretch-esp32.toit FIRST):
 
+```
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
       --chip ec618 --toit-exe build/host/sdk/bin/toit \
       --port-board1 <ec618-uart0-port> tests/hw/ec618/i2c-stretch-ec618.toit
+```
 */
-
-import ec618 show Ec618
-import i2c
-import io
-import uart
 
 ADDRESS ::= 0x76
 REG-CALIBRATION ::= 0x88

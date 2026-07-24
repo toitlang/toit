@@ -2,11 +2,16 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+import ec618 show Ec618
+import ec618
+import i2c
+
 /**
 EXPERIMENT container for docs/ec618-known-issues.md #5 (AGPIOWU output
-gate) — pokes the AON IO control registers directly (no firmware change
-needed). Register map recovered by disassembling ioCtrl.o in the SDK's
-libdriver_private.a (all offsets from AON base 0x4D020000):
+  gate) — pokes the AON IO control registers directly (no firmware change
+  needed). Register map recovered by disassembling ioCtrl.o in the SDK's
+  libdriver_private.a (all offsets from AON base 0x4D020000):
 
   0x54  AONIO voltage      (slpManAONIOVoltSet: 3.3V group v -> ((v-16)<<2)|1)
   0x70  AONIO LDO power    (slpManAONIOPowerOn: writes 1, then polls)
@@ -17,28 +22,25 @@ libdriver_private.a (all offsets from AON base 0x4D020000):
   0x170 the vendor magic   (example_gpio writes 1 before its output demo)
 
 RULED OUT (both rounds, 2026-07-02, HW): the magic write (sticks, no
-effect), NVIC PadWakeup3..5 disable (they idle disabled: ISER0=0xf400),
-AONIO volt-set to 3.30 V (S3), latch-disable (S4; bit 23 idles clear).
-S5 (magic as a per-pad bank, 0x170=0x7) WEDGES the container — bits 1+
-are apparently reserved; kept here for the record, do not re-run S5
-casually. Full findings: docs/ec618-known-issues.md #5 ("Round 2").
+  effect), NVIC PadWakeup3..5 disable (they idle disabled: ISER0=0xf400),
+  AONIO volt-set to 3.30 V (S3), latch-disable (S4; bit 23 idles clear).
+  S5 (magic as a per-pad bank, 0x170=0x7) WEDGES the container — bits 1+
+  are apparently reserved; kept here for the record, do not re-run S5
+  casually. Full findings: docs/ec618-known-issues.md #5 ("Round 2").
 
 Probe: board pin 9's net is the BMP280's VCC — chip-id readable = the
-output reached the wire. Standalone; don't run bmp280-esp32.toit
-concurrently.
+  output reached the wire. Standalone; don't run bmp280-esp32.toit
+  concurrently.
 
 Run via the mini-jag tester:
 
+```
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
       --chip ec618 --toit-exe build/host/sdk/bin/toit \
       --port-board1 <ec618-uart0-port> \
       tests/hw/ec618/aon-wu-output-experiments-ec618.toit
+```
 */
-
-import gpio
-import ec618 show Ec618
-import ec618
-import i2c
 
 POWER-PAD ::= 42  // GPIO22, board pin 9 — the wakeup-capable AON trio.
 SDA-PAD ::= 23

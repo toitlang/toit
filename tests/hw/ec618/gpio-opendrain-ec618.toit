@@ -2,13 +2,17 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import ec618 show Ec618
+import gpio
+import uart
+
 /**
 EC618 half of the GPIO open-drain test (device under test).
 
 The EC618 has no native open-drain; the driver emulates it by making the
-pin direction track the value (output-low for 0, high-Z for 1). This test
-puts that emulation on a real two-master bus: EC618 PAD33 and ESP32 IO16
-share the wire, both open-drain, pull-ups on both sides. Checks:
+  pin direction track the value (output-low for 0, high-Z for 1). This test
+  puts that emulation on a real two-master bus: EC618 PAD33 and ESP32 IO16
+  share the wire, both open-drain, pull-ups on both sides. Checks:
 
 - driving 0 pulls the wire low; releasing lets the pull-up raise it;
 - `get` reads the WIRE, not the latch: with the EC618 released and the
@@ -26,14 +30,12 @@ Wiring: EC618 UART2 (PAD26 -> IO27, IO14 -> PAD25) = command lane;
 
 Run via the mini-jag tester (start gpio-opendrain-esp32.toit FIRST):
 
+```
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
       --chip ec618 --toit-exe build/host/sdk/bin/toit \
       --port-board1 <ec618-uart0-port> tests/hw/ec618/gpio-opendrain-ec618.toit
+```
 */
-
-import ec618 show Ec618
-import gpio
-import uart
 
 failures := []
 

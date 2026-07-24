@@ -2,21 +2,23 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+
 /**
 ESP32 half of the rig connectivity-map test.
 
 Holds a broad set of candidate input pins low (input + pull-down, so nothing is
-driven), waits for the EC618's sync burst on IO27 to lock t0, then for each fixed
-time slot reports which input pin(s) toggled — i.e. which ESP32 pin is wired to
-the EC618 GPIO bit driven in that slot (see gpio-map-ec618.toit for the schedule).
-EC618 drives -> ESP32 reads only, so there is no short-circuit risk.
+  driven), waits for the EC618's sync burst on IO27 to lock t0, then for each fixed
+  time slot reports which input pin(s) toggled — i.e. which ESP32 pin is wired to
+  the EC618 GPIO bit driven in that slot (see gpio-map-ec618.toit for the schedule).
+  EC618 drives -> ESP32 reads only, so there is no short-circuit risk.
 
 Run via Jaguar (output to the serial console), BEFORE the EC618 half:
 
+```
   jag run tests/hw/ec618/gpio-map-esp32.toit --device <esp32>
+```
 */
-
-import gpio
 
 ANCHOR ::= 27
 // Candidate ESP32 input pins wired to the EC618 (GPIO-capable, with internal

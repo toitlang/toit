@@ -2,32 +2,34 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-/**
-Transparent TCP <-> UART bridge (rescue channel for the EC618 rig).
-
-Forwards bytes between a TCP client and the wired test UART (ESP32
-IO27 <- EC618 UART2 TX, IO14 -> EC618 UART2 RX) at a fixed 115200. With
-mini-jag's UART2 rescue listener armed on the EC618, the host reaches the
-agent even when the primary control UART is broken:
-
-  jag run tests/hw/esp-tester/uart-bridge-esp32.toit --device <esp32>
-  socat -d pty,link=/tmp/ec618-rescue,raw,echo=0 tcp:<esp32-ip>:18555 &
-  tester.toit run ... --port-board1 /tmp/ec618-rescue --fast-baud 115200 <test>
-
-(--fast-baud 115200 disables the baud hop: the bridge UART is fixed.)
-One client at a time; a new connection replaces the old one.
-
-The socat PTY comes up with termios VMIN=0: blocking-style readers
-(cat, grep) drain the buffer and hit EOF instead of waiting. Run
-`stty -F /tmp/<pty> min 1 time 0` before reading, re-apply after any
-tester session on the PTY, and never point two readers at one PTY
-(they steal bytes from each other). See docs/ec618-known-issues.md #14.
-*/
-
 import gpio
 import monitor
 import net
 import uart
+
+/**
+Transparent TCP <-> UART bridge (rescue channel for the EC618 rig).
+
+Forwards bytes between a TCP client and the wired test UART (ESP32
+  IO27 <- EC618 UART2 TX, IO14 -> EC618 UART2 RX) at a fixed 115200. With
+  mini-jag's UART2 rescue listener armed on the EC618, the host reaches the
+  agent even when the primary control UART is broken:
+
+```
+  jag run tests/hw/esp-tester/uart-bridge-esp32.toit --device <esp32>
+  socat -d pty,link=/tmp/ec618-rescue,raw,echo=0 tcp:<esp32-ip>:18555 &
+  tester.toit run ... --port-board1 /tmp/ec618-rescue --fast-baud 115200 <test>
+```
+
+(--fast-baud 115200 disables the baud hop: the bridge UART is fixed.)
+  One client at a time; a new connection replaces the old one.
+
+The socat PTY comes up with termios VMIN=0: blocking-style readers
+  (cat, grep) drain the buffer and hit EOF instead of waiting. Run
+  `stty -F /tmp/<pty> min 1 time 0` before reading, re-apply after any
+  tester session on the PTY, and never point two readers at one PTY
+  (they steal bytes from each other). See docs/ec618-known-issues.md #14.
+*/
 
 RX ::= 27
 TX ::= 14

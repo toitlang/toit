@@ -2,27 +2,29 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import ec618 show Ec618
+import uart
+
 /**
 EC618 half of the UART2 configuration-matrix test (device under test).
 
 Round-trips a token through the ESP32 echo helper at EVERY combination of
-data bits (5..8), parity (none/even/odd) and stop bits (1/2) at two bauds,
-reopening the EC618 UART2 with the matching configuration each time. A final
-phase deliberately MISMATCHES parity (EC618 even vs ESP32 odd) and checks that
-the driver's error counter reacts; the observed delivery behavior is printed
-either way (we record reality, we don't assume it).
+  data bits (5..8), parity (none/even/odd) and stop bits (1/2) at two bauds,
+  reopening the EC618 UART2 with the matching configuration each time. A final
+  phase deliberately MISMATCHES parity (EC618 even vs ESP32 odd) and checks that
+  the driver's error counter reacts; the observed delivery behavior is printed
+  either way (we record reality, we don't assume it).
 
 Wiring + helper: see uart2-config-esp32.toit (control = UART1 TX -> IO4).
 
 Run via the mini-jag tester (start uart2-config-esp32.toit on the ESP32 first):
 
+```
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
       --chip ec618 --toit-exe build/host/sdk/bin/toit \
       --port-board1 <ec618-uart0-port> tests/hw/ec618/uart2-config-ec618.toit
+```
 */
-
-import ec618 show Ec618
-import uart
 
 CONTROL-BAUD ::= 115200
 BAUDS ::= [115200, 921600]

@@ -2,11 +2,16 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import crypto.crc show Crc32
+import gpio
+import monitor
+import uart
+
 /**
 ESP32 half of the UART2 big-data / throughput / leak test.
 
 Partner for uart2-bigdata-ec618.toit. Listens on the CONTROL lane (the EC618's
-UART1 TX on IO4) for newline commands and acts on each over the TEST UART:
+  UART1 TX on IO4) for newline commands and acts on each over the TEST UART:
   "B <baud>"  (re)open the test UART at <baud>
   "R <n>"     receive <n> bytes, CRC-32 them, reply "C <crc> <count>"
   "S <n>"     send <n> deterministic bytes ($gen-byte)
@@ -14,10 +19,10 @@ UART1 TX on IO4) for newline commands and acts on each over the TEST UART:
               for the received stream goes to the CONSOLE only — an in-band
               reply would be eaten by the EC618's receiver if it lost bytes.
   "Q"         quit
-It never echoes, so it never has to read and write at once: under "R" it only
-reads + checksums (native CRC over whole chunks), under "S" it only writes. That
-keeps the ESP32 off the critical path so the test measures the EC618 UART, not a
-full-duplex echo bottleneck.
+  It never echoes, so it never has to read and write at once: under "R" it only
+  reads + checksums (native CRC over whole chunks), under "S" it only writes. That
+  keeps the ESP32 off the critical path so the test measures the EC618 UART, not a
+  full-duplex echo bottleneck.
 
 Wiring: EC618 UART1 TX (PAD34) -> IO4 (control RX);
         EC618 UART2 TX (PAD26) -> IO27 (test RX);
@@ -25,13 +30,10 @@ Wiring: EC618 UART1 TX (PAD34) -> IO4 (control RX);
 
 Run via Jaguar, FIRST (so it is listening before the EC618 starts):
 
+```
   jag run tests/hw/ec618/uart2-bigdata-esp32.toit --device <esp32>
+```
 */
-
-import crypto.crc show Crc32
-import gpio
-import monitor
-import uart
 
 CONTROL-RX ::= 4
 TEST-RX ::= 27

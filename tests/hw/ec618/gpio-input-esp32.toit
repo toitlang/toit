@@ -2,23 +2,25 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+
 /**
 ESP32 half of the GPIO-input HW test: drives a square wave for the EC618 to read.
 
 The reverse of gpio-output. Now that the EC618 IO rail is 3.3 V (see
-docs/ec618-hw-tests.md), the ESP32 can drive the EC618 input directly. IMPORTANT:
-the EC618 side must already have PAD26 configured as INPUT before this starts, or
-two 3.3 V drivers fight on the wire — the runner starts the EC618 reader first and
-waits before launching this. This program drives IO27 as a 10 Hz square wave.
+  docs/ec618-hw-tests.md), the ESP32 can drive the EC618 input directly. IMPORTANT:
+  the EC618 side must already have PAD26 configured as INPUT before this starts, or
+  two 3.3 V drivers fight on the wire — the runner starts the EC618 reader first and
+  waits before launching this. This program drives IO27 as a 10 Hz square wave.
 
 Wiring: ESP32 IO27 -> EC618 board pin 5 (GPIO11 / PAD26).
 
 Run via Jaguar, AFTER the EC618 reader has set PAD26 to input:
 
+```
   jag run tests/hw/ec618/gpio-input-esp32.toit --device <esp32>
+```
 */
-
-import gpio
 
 PIN-ESP32 ::= 27
 HALF ::= Duration --ms=50      // 10 Hz square wave.

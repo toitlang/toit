@@ -2,6 +2,10 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+import pulse-counter
+import uart
+
 /**
 ESP32 half of the PWM test — a dumb measurement server.
 
@@ -13,20 +17,18 @@ Listens on the command lane (UART2 of the EC618) and answers:
   "Q"      -> quits.
 
 All pass/fail logic lives on the EC618 side (pwm-ec618.toit). Pins are
-opened with a pull-down per measurement so a released (high-Z) EC618 pad
-reads as a steady 0.
+  opened with a pull-down per measurement so a released (high-Z) EC618 pad
+  reads as a steady 0.
 
 Wiring: EC618 UART2 TX (PAD26) -> IO27; IO14 -> EC618 UART2 RX (PAD25);
         EC618 PAD33 -> IO16; EC618 PAD16 -> IO23.
 
 Run via Jaguar, FIRST (so it is listening before the EC618 starts):
 
+```
   jag run tests/hw/ec618/pwm-esp32.toit --device <esp32>
+```
 */
-
-import gpio
-import pulse-counter
-import uart
 
 RX ::= 27
 TX ::= 14

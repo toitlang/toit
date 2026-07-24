@@ -2,17 +2,17 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+import uart
+
 /**
 ESP32 half of the UART1 idle-RX test: sends a small marker into the
-EC618's UART1 RX every 5 s for ~200 s (outlasting the EC618 half's
-5 x 30 s window), then reports. No reading, no line parsing — the EC618
-boot banner on our RX is ignored by construction.
+  EC618's UART1 RX every 5 s for ~200 s (outlasting the EC618 half's
+  5 x 30 s window), then reports. No reading, no line parsing — the EC618
+  boot banner on our RX is ignored by construction.
 
 Wiring: ESP32 IO16 -> EC618 PAD33 (UART1 RX); ESP32 IO4 <- EC618 PAD34.
 */
-
-import gpio
-import uart
 
 MARKS ::= 40
 INTERVAL-MS ::= 5_000

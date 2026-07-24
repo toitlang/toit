@@ -2,12 +2,15 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+import uart
+
 /**
 ESP32 half of the EC618 I2C/BMP280 test: the power switch.
 
 The BMP280 on the breadboard is powered from IO13. This helper switches it
-on command and otherwise stays OFF the I2C nets (IO17/IO18 remain
-unconfigured/high-Z so the EC618 owns the bus). Commands over UART2:
+  on command and otherwise stays OFF the I2C nets (IO17/IO18 remain
+  unconfigured/high-Z so the EC618 owns the bus). Commands over UART2:
 
   "P 1" -> sensor power on  (replies "P 1")
   "P 0" -> sensor power off (replies "P 0")
@@ -19,11 +22,10 @@ Wiring: EC618 UART2 TX (PAD26) -> IO27; IO14 -> EC618 UART2 RX (PAD25);
 
 Run via Jaguar, FIRST:
 
+```
   jag run tests/hw/ec618/bmp280-esp32.toit --device <esp32>
+```
 */
-
-import gpio
-import uart
 
 RX ::= 27
 TX ::= 14

@@ -2,6 +2,9 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
+import uart
+
 /**
 ESP32 half of the GPIO open-drain test: the second bus master.
 
@@ -21,11 +24,10 @@ Wiring: EC618 UART2 TX (PAD26) -> IO27; IO14 -> EC618 UART2 RX (PAD25);
 
 Run via Jaguar, FIRST:
 
+```
   jag run tests/hw/ec618/gpio-opendrain-esp32.toit --device <esp32>
+```
 */
-
-import gpio
-import uart
 
 RX ::= 27
 TX ::= 14

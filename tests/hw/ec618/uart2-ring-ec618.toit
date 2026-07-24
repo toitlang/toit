@@ -2,12 +2,16 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import crypto.crc show Crc32
+import ec618 show Ec618
+import uart
+
 /**
 EC618 half of the UART2 RX-ring contract test (CMSIS driver).
 
 Locks in the Toit-owned RX ring behavior of the CMSIS UART2 path
-(docs/ec618-uart-cmsis-rewrite.md, known-issues #7/#8) so a regression gets
-noticed:
+  (docs/ec618-uart-cmsis-rewrite.md, known-issues #7/#8) so a regression gets
+  noticed:
   - At >= 460800 baud the port defaults to --large-buffers: the ring holds
     32 KiB (one slot reserved, so 32767 usable; the armed 512-byte chunk and
     the 32-deep hardware FIFO add a little slack at the boundary).
@@ -20,21 +24,19 @@ noticed:
   - set-baud does not disturb RX (it is a full controller power-cycle).
 
 The ESP32 half is the uart2-bigdata-esp32.toit command server (B/S/Q over the
-control lane); the EC618 sleeps through each burst so the ring has no reader.
+  control lane); the EC618 sleeps through each burst so the ring has no reader.
 
 Wiring: EC618 UART1 TX (PAD34) -> ESP32 IO4 (control);
         ESP32 IO14 -> EC618 UART2 RX (PAD25).
 
 Run via the mini-jag tester (start uart2-bigdata-esp32.toit on the ESP32 first):
 
+```
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \\
       --chip ec618 --toit-exe build/host/sdk/bin/toit \\
       --port-board1 <ec618-uart0-port> tests/hw/ec618/uart2-ring-ec618.toit
+```
 */
-
-import crypto.crc show Crc32
-import ec618 show Ec618
-import uart
 
 CONTROL-BAUD ::= 115200
 BAUD ::= 921600
