@@ -15,6 +15,9 @@ main:
     print "Connecting to $host:$port..."
     socket := network.tcp-connect host port
     try:
+      if socket.no-delay:
+        throw "TCP_NODELAY unexpectedly enabled by default"
+
       // Send a simple HTTP GET request.
       request := "GET / HTTP/1.0\r\nHost: $host\r\nConnection: close\r\n\r\n"
       socket.out.write request
@@ -26,7 +29,7 @@ main:
 
       print "Received $total bytes"
       if total < 100: throw "response too small"
-      print "TCP TEST PASSED"
+      print "TCP TEST PASSED with Nagle enabled"
     finally:
       socket.close
   finally:

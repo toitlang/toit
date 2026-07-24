@@ -108,10 +108,6 @@ int LwipSocket::on_accept(tcp_pcb* tpcb, err_t err) {
   if (result != ERR_OK) {
     socket_error(err);
   }
-#ifdef TOIT_EC618
-  // EC618's lwIP has broken Nagle timers — force disable on accepted sockets.
-  tcp_nagle_disable(tpcb);
-#endif
   send_state();
   return result;
 }
@@ -121,9 +117,6 @@ int LwipSocket::on_connected(err_t err) {
   // to be defensive here.
   if (err == ERR_OK) {
     tcp_recv(tpcb_, on_read);
-#ifdef TOIT_EC618
-    tcp_nagle_disable(tpcb_);
-#endif
   } else {
     socket_error(err);
   }
@@ -474,9 +467,9 @@ PRIMITIVE(write) {
     err_t err = tcp_write(capture.socket->tpcb(), capture.content, to, TCP_WRITE_FLAG_COPY);
 #endif
     if (err == ERR_OK) {
-      if (tcp_nagle_disabled(capture.socket->tpcb())) {
-        tcp_output(capture.socket->tpcb());
-      }
+      // tcp_write only queues data. tcp_output applies Nagle and sends
+      // whatever the current window and algorithm permit.
+      tcp_output(capture.socket->tpcb());
 
       capture.socket->set_send_pending(capture.socket->send_pending() + to);
       tcp_sent(capture.socket->tpcb(), LwipSocket::on_wrote);
@@ -612,12 +605,7 @@ PRIMITIVE(set_option) {
           tcp_nagle_disable(capture.socket->tpcb());
           tcp_output(capture.socket->tpcb());
         } else if (capture.raw == process->false_object()) {
-#ifdef TOIT_EC618
-          // EC618's lwIP has broken Nagle timers — keep Nagle disabled.
-          tcp_nagle_disable(capture.socket->tpcb());
-#else
           tcp_nagle_enable(capture.socket->tpcb());
-#endif
         } else {
           FAIL(WRONG_OBJECT_TYPE);
         }
