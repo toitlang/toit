@@ -26,7 +26,6 @@
 import cli
 import crypto.sha256 show sha256
 import host.file
-import host.pipe
 import io show LITTLE-ENDIAN
 
 import .partitions
@@ -52,15 +51,11 @@ main args:
             --help="The output image (same container as the input)."
             --required,
         cli.OptionInt "console-uart"
-            --help="Override the console/control UART id (default: preserve the source record's).",
+            --help="Override the console/control UART id stored in the output anchor record (default: preserve the value embedded in the input image).",
         partitions-option,
       ]
       --run=:: run it
   cmd.run args
-
-fail message/string -> none:
-  pipe.print-to-stderr "provision: $message"
-  exit 1
 
 // Returns the first entry of $type in $entries (Partition list).
 first-of entries/List type/string -> Partition?:
@@ -68,10 +63,11 @@ first-of entries/List type/string -> Partition?:
   return null
 
 run invocation/cli.Invocation -> none:
+  ui := invocation.cli.ui
   input := file.read-contents invocation["image"]
   target/Partitions? := null
   error := catch: target = Partitions.load invocation["partitions"]
-  if error: fail "$error"
+  if error: ui.abort "$error"
 
   // A binpkg starts with its zero-filled 52-byte file header; a raw AP
   // image starts with SDK image content.
@@ -87,14 +83,14 @@ run invocation/cli.Invocation -> none:
       data := input.copy (pos + ZONE-HEADER-SIZE) (pos + ZONE-HEADER-SIZE + size)
       subsystem := header[336..340]
       if subsystem[0] == 'A' and subsystem[1] == 'P':
-        data = retarget data target --console=invocation["console-uart"]
+        data = retarget data target --ui=ui --console=invocation["console-uart"]
         LITTLE-ENDIAN.put-uint32 header 76 data.size
         retargeted = true
       out += header + data
       pos += ZONE-HEADER-SIZE + size
-    if not retargeted: fail "no AP zone in the binpkg"
+    if not retargeted: ui.abort "no AP zone in the binpkg"
   else:
-    out = retarget input target --console=invocation["console-uart"]
+    out = retarget input target --ui=ui --console=invocation["console-uart"]
 
   file.write-contents --path=invocation["out"] out
   print "provision: $(target.entries.size)-entry table -> $invocation["out"] ($out.size bytes)"
@@ -103,16 +99,16 @@ run invocation/cli.Invocation -> none:
 Retargets the raw AP $image (its slots and anchor record) to the $target
   descriptor and returns the new image.
 */
-retarget image/ByteArray target/Partitions --console/int?=null -> ByteArray:
+retarget image/ByteArray target/Partitions --ui/cli.Ui --console/int?=null -> ByteArray:
   source-entries := find-anchor-table image
   if source-entries == null:
-    fail "no anchor record in the AP image — provision the default layout first (gen-anchor.toit)"
+    ui.abort "no anchor record in the AP image — provision the default layout first (gen-anchor.toit)"
 
   source-base := first-of source-entries "base"
   source-slot := first-of source-entries "slot"
   source-anchor := first-of source-entries "anchor"
   if source-base == null or source-slot == null or source-anchor == null:
-    fail "source table lacks base/slot/anchor entries"
+    ui.abort "source table lacks base/slot/anchor entries"
 
   target-base := first-of target.entries "base"
   target-slot := first-of target.entries "slot"
@@ -122,27 +118,27 @@ retarget image/ByteArray target/Partitions --console/int?=null -> ByteArray:
   // match (the image is built for its reservation), and data partitions
   // must not move relative to the source (they may hold live bytes).
   if target-base.offset != source-base.offset or target-base.size != source-base.size:
-    fail "the base partition cannot move (frozen contract)"
+    ui.abort "the base partition cannot move (frozen contract)"
   if (target["anchor"].offset) != source-anchor.offset:
-    fail "the anchor cannot move without a base bump (it is the findable spot)"
+    ui.abort "the anchor cannot move without a base bump (it is the findable spot)"
   if target-slot.size != source-slot.size:
-    fail "slot size 0x$(%x target-slot.size) != image's 0x$(%x source-slot.size) — rebuild, don't retarget"
+    ui.abort "slot size 0x$(%x target-slot.size) != image's 0x$(%x source-slot.size) — rebuild, don't retarget"
   source-entries.do: | p/Partition |
     if p.type == "data":
       t := target.entries.filter: it.name == p.name
       if t.is-empty or t[0].offset != p.offset or t[0].size != p.size:
-        fail "refusing to move/resize data partition '$p.name' (may hold live data; no migration journal yet)"
+        ui.abort "refusing to move/resize data partition '$p.name' (may hold live data; no migration journal yet)"
 
   // Lift the slot-A reservation and read the merged relocation table at
   // its tail: [ table ][ size : last u32 ].
   src-file := source-slot.offset - source-base.offset
   slot-size := source-slot.size
   if src-file + slot-size > image.size:
-    fail "image ($image.size bytes) does not span the source slot reservation"
+    ui.abort "image ($image.size bytes) does not span the source slot reservation"
   slot-bytes := image.copy src-file (src-file + slot-size)
   table-length := LITTLE-ENDIAN.uint32 slot-bytes (slot-size - 4)
   if table-length <= 0 or table-length > slot-size - 4:
-    fail "no merged relocation table at the source slot tail"
+    ui.abort "no merged relocation table at the source slot tail"
   merged := SlotRelocTable.parse (slot-bytes.copy (slot-size - 4 - table-length) (slot-size - 4))
 
   // Un-relocate the body to canonical, re-relocate to the target slot.

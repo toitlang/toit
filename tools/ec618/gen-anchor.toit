@@ -12,7 +12,6 @@
 
 import cli
 import host.file
-import host.pipe
 
 import .partitions
 
@@ -39,14 +38,13 @@ main args:
   cmd.run args
 
 run invocation/cli.Invocation -> none:
+  ui := invocation.cli.ui
   parts/Partitions? := null
   region/ByteArray? := null
   error := catch:
     parts = Partitions.load invocation["partitions"]
     region = encode-anchor-region parts --console=invocation["console-uart"]
-  if error:
-    pipe.print-to-stderr "gen-anchor: $error"
-    exit 1
+  if error: ui.abort "$error"
 
   file.write-contents --path=invocation["out"] region
   print "gen-anchor: $parts.entries.size entries -> $invocation["out"]"
@@ -57,8 +55,7 @@ run invocation/cli.Invocation -> none:
   invocation["splice"].do: | path/string |
     image := file.read-contents path
     if file-offset + region.size > image.size:
-      pipe.print-to-stderr "gen-anchor: $path ($image.size bytes) does not reach the anchor region (file 0x$(%x file-offset))"
-      exit 1
+      ui.abort "$path ($image.size bytes) does not reach the anchor region (file 0x$(%x file-offset))"
     patched := image.copy
     patched.replace file-offset region
     file.write-contents --path=path patched

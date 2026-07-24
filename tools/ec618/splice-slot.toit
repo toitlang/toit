@@ -11,7 +11,6 @@
 
 import cli
 import host.file
-import host.pipe
 
 import .partitions
 
@@ -41,6 +40,7 @@ main args:
   cmd.run args
 
 run invocation/cli.Invocation -> none:
+  ui := invocation.cli.ui
   parts := Partitions.load invocation["partitions"]
   base := file.read-contents invocation["base"]
   slot := file.read-contents invocation["slot-bin"]
@@ -51,8 +51,7 @@ run invocation/cli.Invocation -> none:
 
   offset := slot-address - ap-load-addr
   if offset < 0:
-    pipe.print-to-stderr "slot address 0x$(%x slot-address) is below the image base 0x$(%x ap-load-addr)"
-    exit 1
+    ui.abort "slot address 0x$(%x slot-address) is below the image base 0x$(%x ap-load-addr)"
 
   // The output must span the WHOLE slot reservation, not just the link's
   // bytes: downstream writes the reloc trailer at the reservation's tail.
@@ -62,11 +61,10 @@ run invocation/cli.Invocation -> none:
   raw := slot-address - parts.xip-offset
   reservation-end := offset + slot.size
   parts.entries.do: | p/Partition |
-    if p.offset <= raw and raw < p.offset + p.size:
+    if p.offset <= raw < p.offset + p.size:
       reservation-end = p.offset + p.size + parts.xip-offset - ap-load-addr
       if offset + slot.size > reservation-end:
-        pipe.print-to-stderr "slot bytes [file 0x$(%x offset), +0x$(%x slot.size)) overflow the '$p.name' reservation (ends at file 0x$(%x reservation-end))"
-        exit 1
+        ui.abort "slot bytes [file 0x$(%x offset), +0x$(%x slot.size)) overflow the '$p.name' reservation (ends at file 0x$(%x reservation-end))"
 
   size := max base.size reservation-end
   out := ByteArray size --initial=0xff
