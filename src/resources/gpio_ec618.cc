@@ -19,6 +19,7 @@
 
 #include "../event_sources/uart_ec618.h"
 #include "../objects_inline.h"
+#include "../os.h"
 #include "../primitive.h"
 #include "../process.h"
 #include "../resource.h"
@@ -139,17 +140,48 @@ static void gpio_isr_handler() {
 static uint64_t open_drain_pads = 0;
 
 // A controller bit can be routed to more than one physical PAD, but its
-// direction, data and interrupt registers are shared. PADs remain the public
-// resource identity; only one sibling may own the controller bit at a time.
-// Store pad + 1 so the zero-initialized array means "unowned".
-static uint8_t gpio_pad_owner[32] = {};
+// direction, data and interrupt registers are shared. Reserve both identities:
+// this enforces gpio.Pin's system-wide exclusivity and prevents two alternate
+// pads from independently owning the same hardware bit. Peripheral drivers
+// receive an open gpio.Pin, so the reservation covers their use too.
+//
+// Acquiring both identities under one lock is important. Two containers
+// opening sibling pads concurrently must not each observe one identity as
+// available and then claim half of the pair.
+static bool pads_in_use[kMaxPadIndex + 1] = {};
+static bool gpio_bits_in_use[32] = {};
 
-static bool gpio_owned_by_other_pad(int gpio_bit, int pad) {
-  return gpio_pad_owner[gpio_bit] != 0 && gpio_pad_owner[gpio_bit] != pad + 1;
+static bool reserve_pad(int pad) {
+  Locker locker(OS::global_mutex());
+  int gpio_bit = pad_to_gpio(pad);
+  if (pads_in_use[pad]) return false;
+  if (gpio_bit >= 0 && gpio_bits_in_use[gpio_bit]) return false;
+  pads_in_use[pad] = true;
+  if (gpio_bit >= 0) gpio_bits_in_use[gpio_bit] = true;
+  return true;
+}
+
+static void release_pad(int pad) {
+  Locker locker(OS::global_mutex());
+  int gpio_bit = pad_to_gpio(pad);
+  ASSERT(pads_in_use[pad]);
+  ASSERT(gpio_bit < 0 || gpio_bits_in_use[gpio_bit]);
+  pads_in_use[pad] = false;
+  if (gpio_bit >= 0) gpio_bits_in_use[gpio_bit] = false;
 }
 
 static bool is_open_drain(int pad) {
+  Locker locker(OS::global_mutex());
   return (open_drain_pads >> pad) & 1;
+}
+
+static void set_open_drain_state(int pad, bool enabled) {
+  Locker locker(OS::global_mutex());
+  if (enabled) {
+    open_drain_pads |= 1ULL << pad;
+  } else {
+    open_drain_pads &= ~(1ULL << pad);
+  }
 }
 
 // Applies an emulated open-drain level: 0 drives, anything else releases.
@@ -197,15 +229,12 @@ void pad_aon_power_on() {
 void pad_release(int pad) {
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit >= 0) {
-    // Do not disturb a sibling that owns the shared controller bit.
-    if (!gpio_owned_by_other_pad(gpio_bit, pad)) {
-      GPIO_interruptConfig(to_port(gpio_bit), to_pin_index(gpio_bit),
-                           GPIO_INTERRUPT_DISABLED);
-      GpioPinConfig_t config;
-      memset(&config, 0, sizeof(config));
-      config.pinDirection = GPIO_DIRECTION_INPUT;
-      GPIO_pinConfig(to_port(gpio_bit), to_pin_index(gpio_bit), &config);
-    }
+    GPIO_interruptConfig(to_port(gpio_bit), to_pin_index(gpio_bit),
+                         GPIO_INTERRUPT_DISABLED);
+    GpioPinConfig_t config;
+    memset(&config, 0, sizeof(config));
+    config.pinDirection = GPIO_DIRECTION_INPUT;
+    GPIO_pinConfig(to_port(gpio_bit), to_pin_index(gpio_bit), &config);
     // Disconnect a shared PAD on close so later use of its sibling cannot
     // also reach this physical pin through the same controller bit.
     int mux = pad_gpio_is_shared(pad)
@@ -232,12 +261,9 @@ void pad_emergency_high(int pad) {
 
 void GpioResourceGroup::on_unregister_resource(Resource* r) {
   GpioResource* resource = static_cast<GpioResource*>(r);
-  open_drain_pads &= ~(1ULL << resource->pad());
-  int gpio_bit = resource->gpio_bit();
-  if (gpio_bit >= 0 && gpio_pad_owner[gpio_bit] == resource->pad() + 1) {
-    gpio_pad_owner[gpio_bit] = 0;
-    pad_release(resource->pad());
-  }
+  set_open_drain_state(resource->pad(), false);
+  pad_release(resource->pad());
+  release_pad(resource->pad());
 }
 
 static bool isr_installed = false;
@@ -278,9 +304,13 @@ PRIMITIVE(use) {
   // take Pin arguments, and the pad number is all they need. gpio_bit stays
   // -1; config/get/set reject it.
   int gpio_bit = pad_to_gpio(pad);
+  if (!reserve_pad(pad)) FAIL(ALREADY_IN_USE);
 
   GpioResource* resource = _new GpioResource(group, pad, gpio_bit);
-  if (resource == null) FAIL(MALLOC_FAILED);
+  if (resource == null) {
+    release_pad(pad);
+    FAIL(MALLOC_FAILED);
+  }
 
   group->register_resource(resource);
   proxy->set_external_address(resource);
@@ -303,8 +333,8 @@ PRIMITIVE(config) {
   if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
-  if (gpio_owned_by_other_pad(gpio_bit, pad)) FAIL(ALREADY_IN_USE);
-  gpio_pad_owner[gpio_bit] = pad + 1;
+  if (pull_up && pull_down) FAIL(INVALID_ARGUMENT);
+  if (value < -1 || value > 1) FAIL(INVALID_ARGUMENT);
 
   // AON-domain pads sit behind the AON IO LDO, which is off at boot —
   // without power the pad neither drives nor reads. Turning it on is
@@ -330,10 +360,10 @@ PRIMITIVE(config) {
   GPIO_IomuxEC618(pad, pad_gpio_mux(pad), 0, (input || open_drain) ? 1 : 0);
 
   if (open_drain) {
-    open_drain_pads |= 1ULL << pad;
+    set_open_drain_state(pad, true);
     apply_open_drain_level(gpio_bit, (value == -1) ? 0 : value);
   } else {
-    open_drain_pads &= ~(1ULL << pad);
+    set_open_drain_state(pad, false);
     GpioPinConfig_t config;
     memset(&config, 0, sizeof(config));
     if (output) {
@@ -355,7 +385,6 @@ PRIMITIVE(get) {
   if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
-  if (gpio_owned_by_other_pad(gpio_bit, pad)) FAIL(ALREADY_IN_USE);
   return Smi::from(GPIO_pinRead(to_port(gpio_bit), to_pin_index(gpio_bit)) ? 1 : 0);
 }
 
@@ -364,7 +393,7 @@ PRIMITIVE(set) {
   if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
-  if (gpio_owned_by_other_pad(gpio_bit, pad)) FAIL(ALREADY_IN_USE);
+  if (value != 0 && value != 1) FAIL(INVALID_ARGUMENT);
   if (is_open_drain(pad)) {
     apply_open_drain_level(gpio_bit, value);
   } else {
@@ -378,7 +407,7 @@ PRIMITIVE(config_interrupt) {
   ARGS(GpioResource, resource, bool, enable, int, value);
   int gpio_bit = resource->gpio_bit();
   if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
-  if (gpio_owned_by_other_pad(gpio_bit, resource->pad())) FAIL(ALREADY_IN_USE);
+  if (value != 0 && value != 1) FAIL(INVALID_ARGUMENT);
   // Capture the trigger sequence BEFORE arming: an interrupt firing
   // between the arming and the return then still reads as "after".
   uint32_t seq = edge_sequence;
@@ -396,7 +425,6 @@ PRIMITIVE(config_interrupt) {
 PRIMITIVE(last_edge_trigger_timestamp) {
   ARGS(GpioResource, resource);
   if (resource->gpio_bit() < 0) FAIL(INVALID_ARGUMENT);
-  if (gpio_owned_by_other_pad(resource->gpio_bit(), resource->pad())) FAIL(ALREADY_IN_USE);
   return Smi::from(last_edge_seq[resource->gpio_bit()] & 0x3FFFFFFF);
 }
 
@@ -405,19 +433,18 @@ PRIMITIVE(set_open_drain) {
   if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
-  if (gpio_owned_by_other_pad(gpio_bit, pad)) FAIL(ALREADY_IN_USE);
   if (value == is_open_drain(pad)) return process->null_object();
   if (value) {
     // Carry the pin's current line level into the emulation (the input
     // buffer must be on before we can trust the read).
     GPIO_IomuxEC618(pad, pad_gpio_mux(pad), 0, 1);
     int level = GPIO_pinRead(to_port(gpio_bit), to_pin_index(gpio_bit)) ? 1 : 0;
-    open_drain_pads |= 1ULL << pad;
+    set_open_drain_state(pad, true);
     apply_open_drain_level(gpio_bit, level);
   } else {
     // Back to push-pull, driving the current line level.
     int level = GPIO_pinRead(to_port(gpio_bit), to_pin_index(gpio_bit)) ? 1 : 0;
-    open_drain_pads &= ~(1ULL << pad);
+    set_open_drain_state(pad, false);
     GpioPinConfig_t config;
     memset(&config, 0, sizeof(config));
     config.pinDirection = GPIO_DIRECTION_OUTPUT;
@@ -432,7 +459,7 @@ PRIMITIVE(set_pull) {
   if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
-  if (gpio_owned_by_other_pad(gpio_bit, pad)) FAIL(ALREADY_IN_USE);
+  if (value < -1 || value > 1) FAIL(INVALID_ARGUMENT);
   apply_pull(pad, value > 0, value < 0);
   return process->null_object();
 }

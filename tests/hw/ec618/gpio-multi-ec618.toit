@@ -2,7 +2,6 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import expect show *
 import gpio
 import ec618
 
@@ -19,6 +18,8 @@ Opening or closing one pin must not disturb another pin's configuration.
 - opening pin B leaves pin A's output enable set;
 - driving one pin changes only its own DATAOUT bit;
 - closing pin B leaves A and C configured and drivable.
+- running with argument `leak` exits with PAD26 still open; a following normal
+  run verifies that forced container teardown returned its reservations.
 
 Pins (gpio.Pin numbers are PAD numbers on EC618):
 
@@ -45,6 +46,13 @@ dataout bit/int -> int:
   reg := ec618.peek32 GPIO-BASE + (bit >= 16 ? 0x1000 : 0) + 0x4
   return (reg >> (bit % 16)) & 1
 
+expect-throws expected/string [block] -> none:
+  caught := catch: block.call
+  if caught == null:
+    throw "expected '$expected' to be thrown, nothing was"
+  if caught is string and caught.contains expected: return
+  throw "expected '$expected', got: $caught"
+
 check-outens opened/List label/string:
   opened.do: | entry/List |
     bit := entry[1]
@@ -52,7 +60,33 @@ check-outens opened/List label/string:
       print "gpio-multi: FAIL $label: controller bit $bit lost its output enable"
       exit 1
 
-main:
+main args:
+  if not args.is-empty and args[0] == "leak":
+    gpio.Pin 26 --output --value=1
+    print "gpio-multi: leaving PAD26 open for container-teardown coverage"
+    return
+
+  print "gpio-multi: checking initial value and ownership"
+  initial := gpio.Pin 26 --output --value=1
+  if (dataout 11) != 1:
+    print "gpio-multi: FAIL initial output value was not applied"
+    exit 1
+  expect-throws "ALREADY_IN_USE":
+    gpio.Pin 26
+  expect-throws "INVALID_ARGUMENT":
+    initial.set 2
+  initial.close
+
+  // PAD27 and PAD11 are distinct physical pads, but both route GPIO12.
+  // They must not be owned independently because their data, direction, and
+  // interrupt registers are the same controller bit.
+  primary := gpio.Pin 27
+  expect-throws "ALREADY_IN_USE":
+    gpio.Pin 11
+  primary.close
+  alternate := gpio.Pin 11
+  alternate.close
+
   print "gpio-multi: opening $(PINS.size) outputs one by one"
   pins := []
   opened := []
