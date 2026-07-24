@@ -40,6 +40,7 @@ extern "C" {
 #include "heap_report.h"
 #include "memory.h"
 #include "os.h"
+#include "os_freertos.h"
 #include "rtc_memory_ec618.h"
 #include "process.h"
 #include "program.h"
@@ -57,16 +58,6 @@ static const int MAX_THREADS = 16;
 static struct {
   TaskHandle_t task;
   Thread* thread;
-  // Per-thread wake semaphore for the condition variables below. FreeRTOS
-  // task notifications are a single shared 32-bit slot per task; timed
-  // waits can leave stale bits that a LATER wait on a DIFFERENT condition
-  // variable consumes — a wakeup silently stolen from the original
-  // waiters. At boot the interleaving is instruction-timing-deterministic,
-  // which made the resulting hang track binary layout (the shifted-slot /
-  // console-arc "boot program never runs" bug). A binary semaphore owned
-  // by the thread cannot be stolen across threads: a stale give only
-  // causes one spurious recheck on its own thread.
-  SemaphoreHandle_t wake;
 } thread_map[MAX_THREADS];
 
 // Returns the awake time at the resolution of the hardware SysTick counter.
@@ -93,20 +84,6 @@ static int64 awake_time_us() {
       + static_cast<uint64>(sub_ticks) * 1000000ULL / SystemCoreClock;
 }
 
-// Returns the calling task's wake semaphore, creating it on first use
-// (from task context only; creation races are impossible for one's own
-// slot). Falls back per-call if the task is not in the map yet.
-static SemaphoreHandle_t current_wake_semaphore() {
-  TaskHandle_t task = xTaskGetCurrentTaskHandle();
-  for (int i = 0; i < MAX_THREADS; i++) {
-    if (thread_map[i].task == task) {
-      if (thread_map[i].wake == null) thread_map[i].wake = xSemaphoreCreateBinary();
-      return thread_map[i].wake;
-    }
-  }
-  return null;
-}
-
 int64 OS::get_system_time() {
   // Combine the awake clock with accumulated time from previous sleep cycles.
   return RtcMemory::wakeup_time() * 1000LL + awake_time_us();
@@ -119,82 +96,6 @@ int OS::num_cores() {
 void OS::close(int fd) {
   // Do nothing.
 }
-
-// Condition variable implementation using FreeRTOS task notifications.
-// Inspired by the ESP32 implementation.
-struct ConditionVariableWaiter {
-  SemaphoreHandle_t wake;
-  TAILQ_ENTRY(ConditionVariableWaiter) link;
-};
-
-class ConditionVariable {
- public:
-  explicit ConditionVariable(Mutex* mutex)
-    : mutex_(mutex) {
-    TAILQ_INIT(&waiter_list_);
-  }
-
-  ~ConditionVariable() {}
-
-  void wait() {
-    wait_ticks(portMAX_DELAY);
-  }
-
-  bool wait_us(int64 us) {
-    if (us <= 0LL) return false;
-    // Use ceiling division to avoid rounding ticks down.
-    uint32 ms = 1 + static_cast<uint32>((us - 1) / 1000LL);
-    uint32 ticks = (ms + portTICK_PERIOD_MS - 1) / portTICK_PERIOD_MS;
-    return wait_ticks(ticks);
-  }
-
-  bool wait_ticks(uint32 ticks) {
-    if (!mutex_->is_locked()) {
-      FATAL("wait on unlocked mutex");
-    }
-
-    ConditionVariableWaiter w{};
-    w.wake = current_wake_semaphore();
-    if (w.wake == null) FATAL("wait from unregistered thread");
-
-    TAILQ_INSERT_TAIL(&waiter_list_, &w, link);
-
-    mutex_->unlock();
-
-    bool success = xSemaphoreTake(w.wake, ticks) == pdTRUE;
-
-    mutex_->lock();
-    TAILQ_REMOVE(&waiter_list_, &w, link);
-    return success;
-  }
-
-  void signal() {
-    if (!mutex_->is_locked()) {
-      FATAL("signal on unlocked mutex");
-    }
-    ConditionVariableWaiter* entry = TAILQ_FIRST(&waiter_list_);
-    if (entry) {
-      xSemaphoreGive(entry->wake);
-    }
-  }
-
-  void signal_all() {
-    if (!mutex_->is_locked()) {
-      FATAL("signal_all on unlocked mutex");
-    }
-    // Every waiter has its own semaphore, so signal_all wakes them all
-    // DIRECTLY — no fragile wake-one-relay-next chain.
-    ConditionVariableWaiter* entry;
-    TAILQ_FOREACH(entry, &waiter_list_, link) {
-      xSemaphoreGive(entry->wake);
-    }
-  }
-
- private:
-  Mutex* mutex_;
-  TAILQ_HEAD(, ConditionVariableWaiter) waiter_list_;
-
-};
 
 const int DEFAULT_STACK_SIZE = 2 * KB;
 

@@ -35,6 +35,7 @@
 #include "heap_report.h"
 #include "memory.h"
 #include "os.h"
+#include "os_freertos.h"
 #include "rtc_memory_esp32.h"
 #include "scheduler.h"
 #include "utils.h"
@@ -122,89 +123,6 @@ int OS::num_cores() {
 void OS::close(int fd) {
   // Do nothing.
 }
-
-// Inspired by pthread_cond_t impl on esp32-idf.
-struct ConditionVariableWaiter {
-  // Task to wait on.
-  TaskHandle_t task;
-  // Link to next semaphore to be notified.
-  TAILQ_ENTRY(ConditionVariableWaiter) link;
-};
-
-class ConditionVariable {
- public:
-  explicit ConditionVariable(Mutex* mutex)
-    : mutex_(mutex) {
-    TAILQ_INIT(&waiter_list_);
-  }
-
-  ~ConditionVariable() {}
-
-  void wait() {
-    wait_ticks(portMAX_DELAY);
-  }
-
-  bool wait_us(int64 us) {
-    if (us <= 0LL) return false;
-
-    // Use ceiling divisions to avoid rounding the ticks down and thus
-    // not waiting long enough.
-    uint32 ms = 1 + static_cast<uint32>((us - 1) / 1000LL);
-    uint32 ticks = (ms + portTICK_PERIOD_MS - 1) / portTICK_PERIOD_MS;
-    return wait_ticks(ticks);
-  }
-
-  bool wait_ticks(uint32 ticks) {
-    if (!mutex_->is_locked()) {
-      FATAL("wait on unlocked mutex");
-    }
-
-    ConditionVariableWaiter w{};
-    w.task = xTaskGetCurrentTaskHandle();
-
-    TAILQ_INSERT_TAIL(&waiter_list_, &w, link);
-
-    mutex_->unlock();
-
-    uint32_t value = 0;
-    bool success = xTaskNotifyWait(0x00, 0xffffffff, &value, ticks) == pdTRUE;
-
-    mutex_->lock();
-    TAILQ_REMOVE(&waiter_list_, &w, link);
-
-    if ((value & SIGNAL_ALL) != 0) signal_all();
-    return success;
-  }
-
-  void signal() {
-    if (!mutex_->is_locked()) {
-      FATAL("signal on unlocked mutex");
-    }
-    ConditionVariableWaiter* entry = TAILQ_FIRST(&waiter_list_);
-    if (entry) {
-      xTaskNotify(entry->task, SIGNAL_ONE, eSetBits);
-    }
-  }
-
-  void signal_all() {
-    if (!mutex_->is_locked()) {
-      FATAL("signal_all on unlocked mutex");
-    }
-    ConditionVariableWaiter* entry = TAILQ_FIRST(&waiter_list_);
-    if (entry) {
-      xTaskNotify(entry->task, SIGNAL_ALL, eSetBits);
-    }
-  }
-
- private:
-  Mutex* mutex_;
-
-  // Head of the list of semaphores.
-  TAILQ_HEAD(, ConditionVariableWaiter) waiter_list_;
-
-  static const uint32 SIGNAL_ONE = 1 << 0;
-  static const uint32 SIGNAL_ALL = 1 << 1;
-};
 
 const int DEFAULT_STACK_SIZE = 2 * KB;
 
