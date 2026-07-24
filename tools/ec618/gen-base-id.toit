@@ -57,6 +57,7 @@ main args:
   cmd.run args
 
 run invocation/cli.Invocation -> none:
+  ui := invocation.cli.ui
   parts := Partitions.load invocation["partitions"]
   base := file.read-contents invocation["base"]
   version-text := (file.read-contents invocation["version-file"]).to-string.trim
@@ -66,16 +67,15 @@ run invocation/cli.Invocation -> none:
   // frozen literals and the descriptor is the source of truth — refuse to
   // stamp (and thereby release) a base whose symbols disagree.
   geometry := read-geometry invocation["nm"] invocation["elf"]
-  check-symbol geometry "__toit_base_id_start" (parts.xip "base-id")
-  check-symbol geometry "__toit_anchor_start" (parts.xip "anchor")
-  check-symbol geometry "__vm_a_start" (parts.xip "ota-a")
-  check-symbol geometry "__vm_b_start" (parts.xip "ota-b")
+  check-symbol geometry "__toit_base_id_start" (parts.xip "base-id") --ui=ui
+  check-symbol geometry "__toit_anchor_start" (parts.xip "anchor") --ui=ui
+  check-symbol geometry "__vm_a_start" (parts.xip "ota-a") --ui=ui
+  check-symbol geometry "__vm_b_start" (parts.xip "ota-b") --ui=ui
 
   offset := (parts.xip "base-id") - (parts.xip "base")
   page-size := parts["base-id"].size
   if offset + page-size > base.size:
-    pipe.print-to-stderr "base image ($base.size bytes) does not reach the base-id page (file 0x$(%x offset))"
-    exit 1
+    ui.abort "base image ($base.size bytes) does not reach the base-id page (file 0x$(%x offset))"
 
   // Fingerprint everything except the record's own page.
   pageless := (base.copy 0 offset) + (base.copy (offset + page-size))
@@ -126,15 +126,13 @@ read-geometry nm/string elf/string -> Map:
 Asserts that the base's linker $symbol (from $geometry) sits at the
   $expected XIP address from the partition descriptor.
 
-Exits with an error when the symbol is missing or disagrees — a base
+Aborts with an error when the symbol is missing or disagrees — a base
   whose layout drifted from the descriptor must not be stamped.
 */
-check-symbol geometry/Map symbol/string expected/int -> none:
+check-symbol geometry/Map symbol/string expected/int --ui/cli.Ui -> none:
   value := geometry.get symbol
   if value == null:
-    pipe.print-to-stderr "gen-base-id: base.elf does not define $symbol (template drift?)"
-    exit 1
+    ui.abort "base.elf does not define $symbol (template drift?)"
   actual := int.parse value[2..] --radix=16
   if actual != expected:
-    pipe.print-to-stderr "gen-base-id: $symbol is $value but the descriptor says 0x$(%x expected) — refusing to stamp a drifted base"
-    exit 1
+    ui.abort "$symbol is $value but the descriptor says 0x$(%x expected) — refusing to stamp a drifted base"

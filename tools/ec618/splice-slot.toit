@@ -44,9 +44,9 @@ run invocation/cli.Invocation -> none:
   parts := Partitions.load invocation["partitions"]
   base := file.read-contents invocation["base"]
   slot := file.read-contents invocation["slot-bin"]
-  slot-address := parse-int invocation["slot-address"]
+  slot-address := int.parse invocation["slot-address"]
   ap-load-addr := invocation["ap-load-addr"]
-      ? parse-int invocation["ap-load-addr"]
+      ? int.parse invocation["ap-load-addr"]
       : parts.xip "base"
 
   offset := slot-address - ap-load-addr
@@ -72,9 +72,3 @@ run invocation/cli.Invocation -> none:
   out.replace offset slot
   file.write-contents --path=invocation["out"] out
   print "spliced 0x$(%x slot.size) slot bytes at file 0x$(%x offset) -> $invocation["out"] ($size bytes)"
-
-/** Parses an integer that may be hex (`0x`-prefixed) or decimal. */
-parse-int s/string -> int:
-  if s.starts-with "0x" or s.starts-with "0X":
-    return int.parse s[2..] --radix=16
-  return int.parse s

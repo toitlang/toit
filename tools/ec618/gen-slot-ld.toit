@@ -54,18 +54,17 @@ main args:
   cmd.run args
 
 run invocation/cli.Invocation -> none:
+  ui := invocation.cli.ui
   nm := invocation["nm"]
   base-elf := invocation["base-elf"]
   slot := invocation["slot"]
   if slot != "a" and slot != "b":
-    pipe.print-to-stderr "--slot must be 'a' or 'b'"
-    exit 1
+    ui.abort "--slot must be 'a' or 'b'"
 
   syms := read-symbols nm base-elf
   WANTED.do: | name/string |
     if not syms.contains name:
-      pipe.print-to-stderr "missing geometry symbol $name in $base-elf"
-      exit 1
+      ui.abort "missing geometry symbol $name in $base-elf"
 
   link-base := syms["__vm_link_base"]
   slot-a := syms["__vm_a_start"]

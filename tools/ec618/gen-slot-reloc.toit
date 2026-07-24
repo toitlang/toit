@@ -143,7 +143,7 @@ run invocation/cli.Invocation -> none:
   verify-path := invocation["verify-slot-b"]
   parts := Partitions.load invocation["partitions"]
   ap-load-addr := invocation["ap-load-addr"]
-      ? parse-int invocation["ap-load-addr"]
+      ? int.parse invocation["ap-load-addr"]
       : parts.xip "base"
 
   // The image is LINKED at the neutral __vm_link_base (the canonical VMA, NEITHER
@@ -453,12 +453,6 @@ put-thumb-branch-imm bytes/ByteArray offset/int imm/int -> none:
   hi := (hi-old & 0xd000) | (j1 << 13) | (j2 << 11) | imm11
   LITTLE-ENDIAN.put-uint16 bytes offset lo
   LITTLE-ENDIAN.put-uint16 bytes (offset + 2) hi
-
-/** Parses an integer that may be hex (`0x`-prefixed) or decimal. */
-parse-int s/string -> int:
-  if s.starts-with "0x" or s.starts-with "0X":
-    return int.parse s[2..] --radix=16
-  return int.parse s
 
 /** Splits a string on runs of whitespace, dropping empty tokens. */
 split-whitespace str/string -> List:
