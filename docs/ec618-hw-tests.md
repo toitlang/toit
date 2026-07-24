@@ -176,7 +176,7 @@ MIRRORS (pin 11 = PAD25's net, pin 14 = PAD26's net), not alternate pads.
 Testing RTS/CTS needs the board's MAIN_RTS/MAIN_CTS (GPIO16/17) pins — if the
 dev board exposes them — wired to free ESP32 GPIOs. **DROPPED**
 (Florian, 2026-06-10): no board with exposed RTS/CTS pins is available; a
-temporary QCX216 dev-board rig (UART1+RTS/CTS to an ESP32-S3, 1.8 V IO)
+temporary alternate EC618 dev-board rig (UART1+RTS/CTS to an ESP32-S3, 1.8 V IO)
 didn't boot our image and wasn't worth diagnosing. Revisit only if a
 suitable board appears.
 

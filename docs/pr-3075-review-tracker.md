@@ -333,7 +333,7 @@ already clear from the complete comment pass.
    eagerly, and place private primitives at file ends.
    Correct Toitdoc across every changed library, tool, and test—not merely the
    commented examples. Move EC618-specific restrictions out of generic UART
-   docs, remove stale Qcx216/1.8 V/build-time-console claims, and use
+   docs, remove stale chip-codename/1.8 V/build-time-console claims, and use
    `2026 Toit contributors` on every new 2026-owned file.
 
 8. **Consolidate tools and build setup.**
@@ -400,7 +400,7 @@ specific behavior named; a related general-audit item can remain open.
 | Area | Status | Current finding |
 | --- | --- | --- |
 | Original commit mapping | **Resolved** | All 377 comments retain `original_commit_id`; 140 distinct reviewed commits are recoverable. |
-| Copyright/name cleanup | **Open** | The three explicitly commented files still use a 2024 Toitware header. Qcx216 also survives in hardware-test documentation. |
+| Copyright/name cleanup | **Resolved** | The three explicitly commented files use the requested 2026 contributor header, and the former chip codename no longer appears in the current tree. |
 | Toitdoc/conventions | **Audit** | Violations remain across `lib/ec618`, EC618 extensions, tools, and hardware tests. The review explicitly broadened this beyond the attached lines. |
 | Generic catch/CLI guidance | **Audit** | Catch-alls that can mask unexpected failures and hand-written print/exit/fail paths remain in tests and tools. |
 | GPIO/pad ownership | **Open** | The rewrite cleans resources up, but it has no locked pad/GPIO-bit pools and can let two resources claim aliases of the same controller. |
