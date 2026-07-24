@@ -12,8 +12,8 @@ Drives every GPIO-capable EC618 PAD one at a time, each as a square wave for a
   fixed time slot, so the ESP32 half (gpio-map-esp32.toit) can see which of its
   input pins moves in each slot and print the complete PAD <-> ESP32-pin map.
   This implements the "always gpio-toggle a wire to confirm connectivity" safety
-  step at rig scale, answers any "which pad is this module pin?" question in one
-  run, and resolves the "to verify" rows in docs/ec618-hw-tests.md.
+  step at rig scale and answers any "which pad is this module pin?" question
+  in one run.
 
 Only EC618-drives -> ESP32-reads is used (the safe direction; the ESP32 never
   drives, so there is no short-circuit risk regardless of how the rig is wired).

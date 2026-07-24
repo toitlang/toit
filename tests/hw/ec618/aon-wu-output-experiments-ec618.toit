@@ -8,10 +8,11 @@ import ec618
 import i2c
 
 /**
-EXPERIMENT container for docs/ec618-known-issues.md #5 (AGPIOWU output
-  gate) — pokes the AON IO control registers directly (no firmware change
-  needed). Register map recovered by disassembling ioCtrl.o in the SDK's
-  libdriver_private.a (all offsets from AON base 0x4D020000):
+Experiments with the EC618 AGPIOWU output path.
+
+Pokes the AON IO control registers directly without a firmware change.
+  Register addresses were recovered from `ioCtrl.o` in the SDK's
+  `libdriver_private.a`; all offsets below use AON base 0x4D020000:
 
   0x54  AONIO voltage      (slpManAONIOVoltSet: 3.3V group v -> ((v-16)<<2)|1)
   0x70  AONIO LDO power    (slpManAONIOPowerOn: writes 1, then polls)
@@ -26,7 +27,7 @@ RULED OUT (both rounds, 2026-07-02, HW): the magic write (sticks, no
   AONIO volt-set to 3.30 V (S3), latch-disable (S4; bit 23 idles clear).
   S5 (magic as a per-pad bank, 0x170=0x7) WEDGES the container — bits 1+
   are apparently reserved; kept here for the record, do not re-run S5
-  casually. Full findings: docs/ec618-known-issues.md #5 ("Round 2").
+  casually.
 
 Probe: board pin 9's net is the BMP280's VCC — chip-id readable = the
   output reached the wire. Standalone; don't run bmp280-esp32.toit

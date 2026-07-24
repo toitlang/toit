@@ -268,7 +268,7 @@ PRIMITIVE(slot_reloc_begin) {
     FAIL(INVALID_ARGUMENT);
   }
 
-  // Base-id gate (frozen-base phase 4): the incoming image's SRL3 table
+  // Base-id gate: the incoming image's SRL3 table
   // carries the base it was linked against; refuse it if that is not the
   // base THIS device runs — a mismatched slot would branch to addresses the
   // flashed base does not have, an undebuggable fault. The device's own
@@ -567,7 +567,7 @@ PRIMITIVE(slot_program_mode) {
 // Set modem functionality via appSetCFUN (0 = off). The dual-slot OTA
 // turns the modem off for the duration of the flash, because sustained
 // AP flash+UART activity with the modem on resets the chip after a few
-// seconds (a CP real-time deadline — see docs/ota-dual-slot-plan.md).
+// seconds because it misses a CP real-time deadline.
 // Returns the SDK result code.
 PRIMITIVE(modem_set_function) {
   ARGS(int, fun);

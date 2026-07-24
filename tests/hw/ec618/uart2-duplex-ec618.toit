@@ -22,8 +22,8 @@ Per baud the EC618 asks the ESP32 for a "D <n>" phase: both sides then send the
   log for the ESP32-side verdict; this container's exit code only covers the
   EC618 side.
 
-Without flow control a duplex flood is ALLOWED to drop on the RX side — the
-  contract (known-issues #4/#7/#8) is that every byte is either delivered or
+Without flow control a duplex flood is ALLOWED to drop on the RX side. The
+  contract is that every byte is either delivered or
   counted in $uart.Port.errors (ring drop-newest), the stream that does arrive
   is clean, the device survives, and the container exits normally. Full
   delivery needs RTS/CTS (rig wiring pending). Per round this asserts:
@@ -44,7 +44,7 @@ Run via the mini-jag tester (start uart2-bigdata-esp32.toit on the ESP32 first):
 ```
 */
 
-// 4 MBd RX already loses bytes HALF-duplex (known-issues #4), so it would not
+// 4 MBd RX already loses bytes half-duplex, so it would not
 // tell us anything duplex-specific; the sweep tops out at 3 MBd, the highest
 // rate that is clean one-direction-at-a-time.
 BAUDS ::= [921600, 2000000, 3000000]

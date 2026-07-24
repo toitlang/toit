@@ -9,9 +9,8 @@ import uart
 /**
 EC618 half of the UART2 RX-ring contract test (CMSIS driver).
 
-Locks in the Toit-owned RX ring behavior of the CMSIS UART2 path
-  (docs/ec618-uart-cmsis-rewrite.md, known-issues #7/#8) so a regression gets
-  noticed:
+Locks in the Toit-owned RX ring behavior of the CMSIS UART2 path so a
+  regression gets noticed:
   - At >= 460800 baud the port defaults to --large-buffers: the ring holds
     32 KiB (one slot reserved, so 32767 usable; the armed 512-byte chunk and
     the 32-deep hardware FIFO add a little slack at the boundary).
@@ -20,7 +19,7 @@ Locks in the Toit-owned RX ring behavior of the CMSIS UART2 path
     is counted in $uart.Port.errors.
   - RX SURVIVES an overflow: the next burst (with a reader) delivers fully.
     (The old blob driver discarded the whole buffer, kept errors at 0, and
-    wedged RX until reopen — known-issues #4.)
+    wedged RX until reopen.)
   - set-baud does not disturb RX (it is a full controller power-cycle).
 
 The ESP32 half is the uart2-bigdata-esp32.toit command server (B/S/Q over the

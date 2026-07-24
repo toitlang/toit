@@ -33,13 +33,12 @@ extern "C" {
   #include "gpio.h"
   #include "platform_define.h"
   #include "anchor.h"     // anchor_console — the provisioned console/control UART.
-  #include "slpman.h"     // Sleep vote (via the jump table) — see uart_sleep_vote.
+  #include "slpman.h"     // Sleep-vote API used by uart_sleep_vote.
   // All three UARTs run on the OPEN CMSIS driver (bsp_usart.c) instead of
-  // the closed Uart_* blob (docs/ec618-uart-cmsis-rewrite.md): the blob's
-  // RX ring silently discarded everything on overflow and killed RX until
-  // reopen, and its close path could hang container teardown
-  // (known-issues #1/#4). The access structs are DATA (never routed
-  // through the jump table — see gen-plat-jt's DATA-SYMBOLS).
+  // the closed Uart_* blob. The blob discarded its whole RX buffer on
+  // overflow, left RX unusable until reopen, and could hang during close.
+  // The CMSIS access structs are data symbols resolved directly from the
+  // selected base.
   #include "Driver_USART.h"
   extern ARM_DRIVER_USART Driver_USART0;
   extern ARM_DRIVER_USART Driver_USART1;
@@ -197,8 +196,7 @@ class UartResourceGroup : public ResourceGroup {
 // Module-global (one vote across all groups): the deep-sleep path must
 // be able to release a vote leaked by an open port at VM exit (see
 // uart_sleep_vote_release_for_sleep), which per-group state can't offer.
-// (Statics are OTA-safe since the per-slot .data design — see
-// docs/ota-contract.md §5.)
+// These statics are OTA-safe because every slot carries its own .data image.
 static uint8_t uart_sleep_vote_handle = 0xff;
 static bool uart_sleep_vote_held = false;
 static int uart_open_ports = 0;
@@ -266,7 +264,7 @@ void UartResourceGroup::on_unregister_resource(Resource* r) {
 #endif
     if (state.cmsis_rx != null) {
       // CMSIS teardown from a quiesced state — this is the path the
-      // blob's Uart_DeInit hangs on (known-issues #1). CONTROL_RX 0 is
+      // closed blob's Uart_DeInit could hang on this path. CONTROL_RX 0 is
       // the supported abort (ABORT_RECEIVE is not): RX irqs masked, DMA
       // suspended, rx_busy cleared. POWER_OFF then resets the module
       // and stops+resets the RX DMA channel, so nothing references
@@ -336,7 +334,7 @@ static void cmsis_ring_push(int id, const uint8_t* data, uint32_t n) {
   uint32_t free_space = rx->ring_size - 1 - used;  // One slot separates full from empty.
   uint32_t take = n < free_space ? n : free_space;
   if (take < n) {
-    // Drop-NEWEST, counted; RX stays alive (known-issues #4 contract).
+    // Drop newest and count it; RX remains usable after overflow.
     rx->dropped += n - take;
     uart_states[id].errors += n - take;
     send_uart_event(id, Event::UART_KIND_ERROR);

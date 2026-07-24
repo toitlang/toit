@@ -2,7 +2,7 @@
 
 // Shared loader for the EC618 partition descriptor
 // (toolchains/ec618/partitions.yaml — the single source of truth for the
-// flash layout, docs/partition-table-design.md §0).
+// flash layout).
 //
 // Entries may omit `offset`: it is then derived as the end of the previous
 // entry. This is how the anchor chain stays soft — base-id starts wherever
@@ -25,8 +25,7 @@ SECTOR ::= 0x1000
 /**
 Partition types, numbered as stored in the anchor record's table entries.
 
-Mirrors the PARTITION_TYPE_* enum in toolchains/ec618/project/inc/anchor.h
-  (docs/partition-table-design.md §0.1).
+Mirrors the PARTITION_TYPE_* enum in toolchains/ec618/project/inc/anchor.h.
 */
 TYPE-CODES ::= {
   "locked": 1,

@@ -4,7 +4,7 @@
 // sequence-numbered, CRC-protected record; reads pick the valid record
 // with the higher sequence number, writes rewrite the *other* sector.
 //
-// Record v2 on-flash layout (docs/partition-table-design.md §0.1) — all
+// Record v2 on-flash layout. All
 // three parts are multiples of the 16-byte flash write segment, and the
 // CRC trailer is written with the same single write as the rest, sitting
 // last so a torn write leaves an invalid record:

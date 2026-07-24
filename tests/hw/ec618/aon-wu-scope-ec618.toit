@@ -5,7 +5,7 @@
 import gpio
 
 /**
-Oscilloscope target for docs/ec618-known-issues.md #5 (AGPIOWU output).
+Oscilloscope target for the AGPIOWU output path.
 
 Drives, for ~150 s (the mini-jag watchdog allows 3 min):
 

@@ -7,8 +7,8 @@ import gpio
 /**
 ESP32 half of the GPIO-input HW test: drives a square wave for the EC618 to read.
 
-The reverse of gpio-output. Now that the EC618 IO rail is 3.3 V (see
-  docs/ec618-hw-tests.md), the ESP32 can drive the EC618 input directly. IMPORTANT:
+The reverse of gpio-output. The measured EC618 IO rail is 3.3 V, so the ESP32
+  can drive the EC618 input directly. IMPORTANT:
   the EC618 side must already have PAD26 configured as INPUT before this starts, or
   two 3.3 V drivers fight on the wire — the runner starts the EC618 reader first and
   waits before launching this. This program drives IO27 as a 10 Hz square wave.

@@ -78,8 +78,7 @@ main:
   slot.program-mode 1
   // Modem OFF for the duration of the OTA. This is currently REQUIRED:
   // with the modem on, sustained AP flash+UART activity resets the chip
-  // after ~3-4 s (a CP real-time deadline we don't yet fully understand —
-  // see docs/ota-dual-slot-plan.md "Phase 5 status"). A full UART OTA
+  // after ~3-4 s because it misses a CP real-time deadline. A full UART OTA
   // takes ~34 s, so it can't run modem-on yet. TEST-ONLY for a UART
   // transport; a cellular OTA would need the modem up (open work).
   modem-rc := slot.modem-set-function 0

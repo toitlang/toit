@@ -1,6 +1,6 @@
 // Copyright (C) 2026 Toit contributors.
 
-// Prints the flashed base's identity record (frozen-base phase 4). Fails
+// Prints the flashed base's identity record. Fails
 // if the reserved page carries no record — every base since the two-stage
 // split is stamped by gen-base-id.toit.
 

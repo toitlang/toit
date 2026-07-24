@@ -10,8 +10,8 @@ ESP32 half of the I2C0 bus-level HW test: hardware pulse counters watch
   both I2C0 wires while the EC618 (i2c0-scan-ec618.toit) drives scan
   traffic on pads 14 (SDA) / 13 (SCL).
 
-Two things are proven at once (per docs/ec618-hw-tests.md, the coverage
-  matrix): the I2C0 controller really drives board pins 22/23, and — for
+Two things are proven at once for the rig's coverage matrix: the I2C0
+  controller really drives board pins 22/23, and — for
   the first time — WHICH wire is which: the two pins have only ever moved
   in lockstep. During an address scan SCL carries ~18 edges per 9-bit
   frame while SDA carries a handful, so the expected-SCL wire (IO17) must

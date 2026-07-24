@@ -1,6 +1,6 @@
-# SHIFTED test descriptor for the slot-move acceptance test
-# (docs/partition-table-design.md §0.6): identical to the default
-# toolchains/ec618/partitions.yaml except a 4 KiB pad pushed in front of
+# SHIFTED test descriptor for the slot-move acceptance test. It is identical
+# to the default toolchains/ec618/partitions.yaml except for a 4 KiB pad
+# pushed in front of
 # ota-a, so BOTH slots sit one sector higher. Provisioning an image with
 # this table (tools/ec618/provision.toit) and booting it proves the
 # device really follows the anchor record, not the link: the dispatcher

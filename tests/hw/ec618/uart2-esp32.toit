@@ -21,7 +21,7 @@ Run via Jaguar (start this FIRST so it is already listening, then launch
   uart2-ec618.toit via the tester). NOTE: `jag run` cannot pass program arguments
   to a networked device, so the baud here defaults to 115200; an automated
   multi-baud sweep needs the in-device control lane (the EC618 telling the ESP32
-  the baud over UART1) — see docs/ec618-hw-tests.md.
+  the baud over UART1).
 
 ```
   jag run tests/hw/ec618/uart2-esp32.toit --device <esp32>

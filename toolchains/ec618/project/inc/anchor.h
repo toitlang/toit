@@ -1,8 +1,7 @@
 // Copyright (C) 2026 Toit contributors.
 //
-// Power-fail-safe active-slot marker for the dual-slot VM OTA — record v2
-// carries the ACTIVE PARTITION TABLE alongside the boot state
-// (docs/partition-table-design.md §0.1).
+// Power-fail-safe active-slot marker for the dual-slot VM OTA. Record v2
+// carries the active partition table alongside the boot state.
 //
 // The marker records which VM slot ('A'/'B') is the known-good one and,
 // during an OTA, which slot is on trial and how far the trial has

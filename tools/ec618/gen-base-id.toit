@@ -1,7 +1,6 @@
 // Copyright (C) 2026 Toit contributors.
 
-// Stamp the base-id record into the base AP image (frozen-base phase 4,
-// docs/frozen-base-phase4.md).
+// Stamp the base-id record into the base AP image.
 //
 // The record identifies the exact base build a slot must be linked against:
 //

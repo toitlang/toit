@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Toit contributors.
 //
-// Host unit test for anchor.c (the anchor record: boot state + partition
-// table, docs/partition-table-design.md §0.1). Backs the two sectors with
+// Host unit test for anchor.c and its boot-state/partition-table record.
+// Backs the two sectors with
 // a RAM buffer and a fault-injectable flash emulator, then asserts the
 // power-fail-safe invariants:
 //   - ping-pong picks the higher-seq valid record;

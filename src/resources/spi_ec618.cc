@@ -53,9 +53,8 @@ namespace toit {
 //   SPI1: MOSI=PAD28, MISO=PAD29, CLK=PAD30 (shared with UART0 — unusable
 //         while UART0 is the console; accepted but untested)
 //
-// Driver statics are fine since the reserved VM dram sections (frozen-base
-// phase 3): the base's layout no longer depends on VM statics, so the
-// historical zero-statics rule for this file is retired.
+// Driver statics are safe because VM writable data lives in reserved
+// per-slot sections; the base layout does not depend on these statics.
 
 static int pads_to_controller(int mosi, int miso, int clock) {
   if (mosi == 24 && miso == 25 && clock == 26) return 0;

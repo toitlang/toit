@@ -312,11 +312,10 @@ PRIMITIVE(config) {
   // the LDO's standby draw, revisited with the deep-sleep work).
   if (pad_is_aon(pad)) pad_aon_power_on();
 
-  // Release the GPIO-muxed wakeup pads from wakeup duty (see
-  // pad_is_wakeup; documented in slpman.h as "set pin as wakeup pad or
-  // aonio"). Re-enabled in pad_release. KNOWN ISSUE: GPIO *input* on
-  // these pads works, but output still does not reach the wire — see
-  // docs/ec618-known-issues.md (AGPIOWU output).
+  // Release the GPIO-muxed wakeup pads from wakeup duty. The SDK describes
+  // this as selecting between "wakeup pad" and "aonio"; pad_release restores
+  // wakeup duty. The AON supply above is set to 3.3 V so both input and output
+  // levels reach the board net.
   if (pad_is_wakeup(pad)) wakeup_pad_set(pad, false, false);
 
   // Switch the pad's iomux to its GPIO function (0 for most pads — see

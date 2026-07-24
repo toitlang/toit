@@ -240,17 +240,14 @@ EC618_ENVELOPE = $(BUILD)/ec618/firmware.envelope
 EC618_BINPKG = $(BUILD)/ec618/toit.binpkg
 # Where the slot build finds the base artifacts (base.elf + stamped
 # base.bin). Defaults to the locally built base; point it at a downloaded
-# base-vN release to build slots against a published base
-# (docs/ec618-base-image.md).
+# base-vN release to build slots against a published base.
 EC618_BASE_DIR ?= $(BUILD)/ec618-base
 
 .PHONY: ec618
-# The BASE half of the two-stage link (frozen-base phase 4,
-# docs/frozen-base-phase4.md): PLAT + dispatcher + keep-list, NO VM
-# archives. Produces the artifact set slots link against (base.elf) and
-# the flashable base image parts. NOT independently bootable — a device
-# needs a slot spliced in; this is the linking/assembly input and the
-# future base-vN release payload.
+# The BASE half of the two-stage link: PLAT + dispatcher + keep-list, with
+# no VM archives. Produces the artifact set slots link against (base.elf)
+# and the flashable base image parts. It is not independently bootable; a
+# device needs a slot spliced in.
 .PHONY: ec618-base
 ec618-base: check-env host-tools
 	mkdir -p $(BUILD)/ec618-base
@@ -275,10 +272,10 @@ ec618: check-env host-tools
 	mkdir -p $(BUILD)/ec618
 	(cd $(BUILD)/ec618 && cmake $(CURDIR) -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=$(CURDIR)/toolchains/ec618.cmake --no-warn-unused-cli)
 	(cd $(BUILD)/ec618 && ninja toit_vm mbedtls mbedx509 mbedcrypto)
-	# TWO-STAGE LINK (frozen-base phase 4, docs/frozen-base-phase4.md): the
-	# slot links SEPARATELY against the base's symbols (--just-symbols), so
+	# TWO-STAGE LINK: the slot links separately against the base's symbols
+	# (--just-symbols), so
 	# base and slot stop sharing a link. VM->PLAT calls resolve to the base's
-	# addresses and are captured as SRL2 branch entries; symbols the base does
+	# addresses and are captured as SRL3 branch entries; symbols the base does
 	# not export (the slot compiler's own libgcc/libstdc++ helpers) are pulled
 	# from the SLOT toolchain's archives and land in-slot — the structural fix
 	# for the C++ comdat spill. NOTE: the base is NOT rebuilt automatically —
@@ -337,8 +334,8 @@ ec618: check-env host-tools
 		--out=$(BUILD)/ec618/anchor-region.bin \
 		--splice=$(BUILD)/ec618/ap-slot-a.bin --splice=$(BUILD)/ec618/ap-slot-b.bin
 	$(BUILD)/ec618/anchor_test $(BUILD)/ec618/anchor-region.bin
-	# Verify: no FIXED (non-relocated) section points into the slot. TODO
-	# (phase 4): rethink for the split world — the base cannot reference VM
+	# Verify: no FIXED (non-relocated) section points into the slot. TODO:
+	# the base cannot reference VM
 	# symbols at all now; the residual exposure is numeric slot addresses in
 	# base data, which this scan over the slot elf does not see.
 	$(TOIT_BIN) run --project-root tools tools/ec618/check-slot-refs.toit -- \

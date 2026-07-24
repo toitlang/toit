@@ -288,8 +288,8 @@ extern void _ZdaPv(void);
 extern void _ZdlPv(void);
 // NO C++ runtime symbols (std::*, libstdc++ helpers) in this list: with the
 // two-stage link each slot carries its OWN compiler runtime in-slot, and a
-// base export would silently re-couple slots to the base's libstdc++
-// (the comdat-spill class, docs/frozen-base-phase4.md).
+// base export would silently re-couple slots to the base's libstdc++ and
+// recreate the comdat-spill failure.
 extern void __aeabi_atexit(void);
 extern void __aeabi_cdcmpeq(void);
 extern void __aeabi_cdcmple(void);

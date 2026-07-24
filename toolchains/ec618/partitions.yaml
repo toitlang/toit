@@ -1,5 +1,5 @@
-# EC618 flash partition descriptor — the DEFAULT layout, consumed by the
-# host tools (docs/partition-table-design.md §0). Offsets are RAW flash
+# EC618 flash partition descriptor — the default layout consumed by the
+# host tools. Offsets are raw flash
 # addresses (erase/write view); the XIP view adds xip-offset.
 #
 # The device itself never sees this file: provisioning bakes it into the

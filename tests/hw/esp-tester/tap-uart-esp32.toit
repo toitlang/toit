@@ -6,9 +6,9 @@
 // host->EC618 uart0 RX wire (CH340 TX -> PAD29, parallel tap on ESP32
 // IO18 — INPUT only, the CH340 drives the net). Counts + CRCs each
 // quiet-gap-delimited burst at the configured baud and reports on the
-// jag console: shows byte-exactly what the wire carries while the
-// device-under-test claims it received something else (known-issues #9
-// was pinned to the chip with this — the wire was byte-perfect).
+// jag console. This distinguishes corruption on the wire from corruption
+// inside the device-under-test; the original receive failure had a
+// byte-perfect wire trace.
 //
 // Verify the wiring first: send a known pattern from the host (e.g.
 // 16 x 'P' pings -> n=16 crc=3f762b06) and check the tap reports it.

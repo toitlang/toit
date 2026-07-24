@@ -8,8 +8,8 @@ import ec618 show Ec618
 /**
 EC618 half of the AON-pad GPIO-input HW test (device under test).
 
-Closes the last input gap in the per-pin coverage matrix
-  (docs/ec618-hw-tests.md): the AON pads PAD44 (GPIO24, board pin 18) and
+Closes the last input gap in the per-pin coverage matrix: the AON pads PAD44
+  (GPIO24, board pin 18) and
   PAD47 (GPIO27, board pin 27) are output-confirmed but were never read as
   inputs. The ESP32 (gpio-aon-input-esp32.toit) drives BOTH wires at
   DIFFERENT frequencies — IO19 fast, IO2 slow — and the EC618 reads both.

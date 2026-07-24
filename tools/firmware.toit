@@ -118,12 +118,12 @@ AR-ENTRY-HOST-RUN-IMAGE ::= "\$run-image"
 AR-ENTRY-EC618-FIRMWARE-BIN ::= "\$ec618-fw.bin"
 // The CP (modem-core) image. Bundled so `flash` can program a matching
 // CP — a mismatched CP resets the chip a few seconds after the modem is
-// enabled. See docs/ota-dual-slot-plan.md "RESOLVED (2026-05-29)".
+// enabled.
 AR-ENTRY-EC618-CP-BIN ::= "\$ec618-cp.bin"
 // The "SRL2" dual-slot relocation table (built by tools/ec618/gen-slot-reloc.toit
 // from the slot-A link). Carried in the envelope so `extract` can place the
 // bundled extension inside the VM slot and relocate it with the VM body
-// (option A; see docs/ota-relocation-convergence.md). When absent, the
+// using one relocation pass. When absent, the
 // extension is appended after the AP image (legacy out-of-slot layout).
 AR-ENTRY-EC618-RELOC ::= "\$ec618-reloc.bin"
 // The VM's writable-.data init image (the per-slot data region, built by
@@ -131,7 +131,7 @@ AR-ENTRY-EC618-RELOC ::= "\$ec618-reloc.bin"
 // carries its OWN .data so an A!=B OTA boots correct VM state: the bytes ride
 // inside the slot after the VM body+extension (verbatim, never relocated), and
 // the device copies the active slot's copy to __vm_data_start at boot. Its size
-// must equal the reloc table's data_size. See docs/ota-contract.md. (The AR
+// must equal the relocation table's data_size. (The AR
 // name must stay <=16 chars, like the other entries.)
 AR-ENTRY-EC618-VM-DATA ::= "\$ec618-data.bin"
 
@@ -1170,8 +1170,8 @@ extract-binary-content-ec618 -> ByteArray
   return result
 
 /**
-Produces the EC618 AP image with the bundled extension placed INSIDE the VM
-  slot (option A; see docs/ota-relocation-convergence.md).
+Produces the EC618 AP image with the bundled extension placed inside the VM
+  slot.
 
 The slot is laid out as
   `[ VM body ][ extension ][ VM .data init ][ free ][ SRL2 table ][ size ]`,
@@ -1219,7 +1219,7 @@ extract-binary-in-slot-ec618_ -> ByteArray
   // byte-for-byte. Any differing word is an address-dependent value that
   // `pointer-offsets` failed to capture (or captured at the wrong offset) — it
   // would leave a slot-A pointer in slot B and make the firmware service run
-  // from the wrong slot. See docs/ota-relocation-convergence.md.
+  // from the wrong slot.
   verify-ec618-extension-relocation_ extension
       --containers=containers
       --system-uuid=system-uuid

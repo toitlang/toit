@@ -8,9 +8,9 @@ import io
 import uart
 
 /**
-EC618 I2C shape-change torture (device under test) — the known-issues #6
-  regression test, on the CMSIS IRQ-mode engine WITHOUT any per-transfer
-  reset.
+EC618 I2C shape-change regression test on the CMSIS IRQ-mode engine.
+
+The engine runs without any per-transfer reset.
 
 The closed soc_i2c engine silently swallowed a transfer whose shape
   differed from the previous one (instant fake success, untouched buffer),

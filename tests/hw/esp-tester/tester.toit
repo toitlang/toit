@@ -185,7 +185,7 @@ main args:
             --help="Log the raw console for a few seconds after the upgrade reboot (to debug a trial slot that never reconnects)"
             --default=false,
         cli.OptionInt "fast-baud"
-            --help="Hop the control UART to this baud after each handshake (115200 disables; >115200 currently trips known-issues #9 on the uart0 agent)"
+            --help="Hop the control UART to this baud after each handshake (115200 disables; higher rates currently corrupt the uart0 agent during flash stalls)"
             --default=115200,
       ]
       --run=:: | invocation/cli.Invocation |

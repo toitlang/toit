@@ -1,7 +1,6 @@
 // Copyright (C) 2026 Toit contributors.
 
-// Splice a separately linked slot image into the base AP image (frozen-base
-// phase 4, docs/frozen-base-phase4.md).
+// Splice a separately linked slot image into the base AP image.
 //
 // The slot link (tools/ec618/gen-slot-ld.toit) confines all of its loadable
 // bytes — body plus the .data init that rides after it — to the slot's flash

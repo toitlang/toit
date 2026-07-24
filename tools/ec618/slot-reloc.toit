@@ -159,8 +159,7 @@ class SlotRelocTable:
     absolute pointers move with the slot exactly like the VM body's ABS32
     pointers. $extra-abs32 holds their slot-relative offsets; they are merged
     into $abs32-offsets (sorted, de-duplicated) so the device's single
-    relocate-on-write / un-relocate-on-read pass fixes the whole slot uniformly
-    (option A, see docs/ota-relocation-convergence.md).
+    relocate-on-write / un-relocate-on-read pass fixes the whole slot uniformly.
 
   $populated-size becomes the new $body-size: the populated front of the slot
     (VM body + extension), i.e. where the free region and tail trailer begin.

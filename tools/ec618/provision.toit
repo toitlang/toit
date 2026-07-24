@@ -2,7 +2,7 @@
 
 // Retargets a provisioned EC618 AP image to a DIFFERENT partition
 // descriptor — the "firmware and partition table are independent
-// artifacts" promise made real (docs/partition-table-design.md §0):
+// artifacts" contract:
 //
 //   1. finds the image's current anchor record (its table names where
 //      slot A and the base live — no layout constants here);

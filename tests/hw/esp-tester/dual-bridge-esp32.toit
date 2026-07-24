@@ -35,7 +35,7 @@ The socat PTY comes up with termios VMIN=0: blocking-style readers
   (cat, grep) drain the buffer and hit EOF instead of waiting. Run
   `stty -F /tmp/<pty> min 1 time 0` before reading, re-apply after any
   tester session on the PTY, and never point two readers at one PTY
-  (they steal bytes from each other). See docs/ec618-known-issues.md #14.
+  because they steal bytes from each other.
 */
 
 BAUD ::= 115200

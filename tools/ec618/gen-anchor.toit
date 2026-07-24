@@ -6,7 +6,7 @@
 // table — and sector 1 is left erased (0xff, the ping-pong partner).
 // Spliced into the flashable AP image (Makefile), this is what makes a
 // fresh flash bootable: the dispatcher refuses to boot without a valid
-// record, by design (docs/partition-table-design.md §0.1). The on-flash
+// record. The on-flash
 // format lives in tools/ec618/partitions.toit (shared with provision.toit),
 // mirroring toolchains/ec618/project/inc/anchor.h.
 

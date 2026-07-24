@@ -39,8 +39,8 @@ Run via the mini-jag tester (start adc-esp32.toit on the ESP32 first so the
       --port-board1 <ec618-uart0-port> tests/hw/ec618/adc-ec618.toit
 ```
 
-(--port-board1 is the EC618's UART0 port — the CH340 adapter; the /dev/ttyUSBN
-  number swaps between sessions, so identify it by chip. See docs/ec618-hw-tests.md.)
+(--port-board1 is the EC618's UART0 port through the CH340 adapter. Device
+  numbers can change between sessions, so identify the adapter by chip.)
 */
 
 CHANNELS ::= [0, 1]

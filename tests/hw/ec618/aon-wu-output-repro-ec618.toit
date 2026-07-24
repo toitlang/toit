@@ -7,8 +7,7 @@ import ec618 show Ec618
 import i2c
 
 /**
-Regression test for docs/ec618-known-issues.md #5 (RESOLVED 2026-07-02):
-  the "AGPIOWU output gate" that never was.
+Regression test for the resolved AGPIOWU output-level failure.
 
 PAD42 (GPIO22, board pin 9) drives the BMP280's VCC on this rig. For
   weeks a configured GPIO output "never reached the wire" — the scope

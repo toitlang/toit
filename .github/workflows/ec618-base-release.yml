@@ -13,10 +13,9 @@
 # OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 # PERFORMANCE OF THIS SOFTWARE.
 
-# Publishes an EC618 base release: the artifact set slots link against
-# (docs/ec618-base-image.md, docs/frozen-base-phase4.md). The release is
-# named from toolchains/ec618/base-version (ec618-base-vN) and is
-# IMMUTABLE — bump the version file for a new base.
+# Publishes the immutable EC618 base artifact set against which slots link.
+# The release is named from toolchains/ec618/base-version (ec618-base-vN);
+# bump that version file whenever the base changes.
 #
 # Each release carries the universal base. The console UART is selected by
 # the anchor record, so the same base runs every rig. The base is proven by
@@ -68,7 +67,7 @@ jobs:
         run: |
           gh release create "ec618-base-v$VERSION" \
             --title "EC618 base v$VERSION" \
-            --notes "EC618 base artifact set (frozen-base contract — see docs/ec618-base-image.md).
+            --notes "EC618 base artifact set used to link and flash compatible slots.
 
           This is the universal base; the anchor record selects the console
           UART. Slots link against base.elf; base.bin carries the stamped

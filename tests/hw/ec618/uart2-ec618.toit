@@ -29,8 +29,8 @@ Run via the mini-jag tester, passing the baud as --arg (start the ESP32 half
       --port-board1 <ec618-uart0-port> tests/hw/ec618/uart2-ec618.toit
 ```
 
-(--port-board1 is the EC618's UART0 port — the CH340 adapter; the /dev/ttyUSBN
-  number swaps between sessions, so identify it by chip. See docs/ec618-hw-tests.md.)
+(--port-board1 is the EC618's UART0 port through the CH340 adapter. Device
+  numbers can change between sessions, so identify the adapter by chip.)
 */
 
 TOKEN ::= "EC618-UART2"

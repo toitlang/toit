@@ -9,9 +9,8 @@
 //   1. ABS32 data pointers that point INTO the slot (vtables, const pointer
 //      tables, .init_array, the .vm_entry word, ...). They move with the
 //      slot, so the device adds `delta = dest_base - link_base` to each.
-//   2. The Thumb BL/B.W branches that ESCAPE the slot to a fixed PLAT
-//      address — every direct VM->PLAT call (there is no jump table; see
-//      docs/frozen-base-design.md). Their source moves but their target is
+//   2. The Thumb BL/B.W branches that escape the slot to a fixed PLAT
+//      address. Their source moves but their target is
 //      fixed, so the device subtracts `delta` from the branch immediate.
 //      The ones that straddle a 4 KB flash sector go to the SRL2 straddle
 //      stream with their canonical bytes (see encode-table).
@@ -219,8 +218,8 @@ run invocation/cli.Invocation -> none:
   // Extract the VM's writable-.data init image (the per-slot data region). It is
   // bracketed in .load_dram_shared by __vm_data_start/_end (VMA); its bytes live
   // in ap.bin at the section's LOAD base plus the same in-section offset. The
-  // image holds link-base slot pointers — carried per-slot, copied to RAM at
-  // boot, then fixed up by relocate_data_slot_pointers (see docs/ota-contract.md).
+  // image holds link-base slot pointers, carried per-slot, copied to RAM at
+  // boot, then fixed up by relocate_data_slot_pointers.
   vm-data-start := syms.get "__vm_data_start"
   vm-data-end := syms.get "__vm_data_end"
   dram-vma := syms.get "Image\$\$VM_DRAM_DATA\$\$Base"
@@ -303,8 +302,7 @@ read-relocs readelf/string elf/string section/string -> List:
 
 // Symbols read from the link: the slot/link geometry, plus the VM .data bracket
 // (__vm_data_start/_end) and the .vm_dram_data section's VMA/LMA bases, used
-// to extract the VM's writable-.data init image from ap.bin (the per-slot data
-// region — see docs/ota-contract.md).
+// to extract the VM's writable-.data init image from ap.bin.
 WANTED-SYMBOLS ::= {
   "__vm_a_start", "__vm_a_end", "__vm_b_start", "__vm_b_end",
   "__vm_link_base", "__vm_link_end",

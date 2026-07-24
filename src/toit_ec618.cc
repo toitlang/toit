@@ -285,8 +285,8 @@ static bool booted_slot_geometry(uint32_t* base, uint32_t* size) {
 // any mutable VM globals) differs between firmware builds, so a slot-B firmware
 // that differs from slot A would boot with slot A's values and fault (the
 // A!=B OTA bug). Each slot now ships its OWN .data init image, carried verbatim
-// right after its body+extension (slot offset == body_size; see
-// slot_reloc_ec618.h / docs/ota-contract.md). Copy the booted slot's copy into
+// right after its body+extension (slot offset == body_size, as recorded in
+// the slot relocation trailer). Copy the booted slot's copy into
 // [__vm_data_start, __vm_data_end) BEFORE relocate_data_slot_pointers() shifts
 // the (still link-base) slot pointers. A no-op for legacy images with no data
 // region (data_size == 0).
@@ -453,7 +453,7 @@ static void start() {
   install_hardfault_dumper();
 
   // Vote against sleep1 during execution so the scheduler tick keeps running.
-  // OPEN QUESTION (idle-deafness post-mortem, docs/ec618-known-issues.md #10):
+  // OPEN QUESTION from the idle-RX investigation:
   // this vote should have made SLEEP1 impossible while the VM runs, yet idle
   // SLEEP1 demonstrably happened (it killed armed uart0 DMA receives) until
   // the UART driver added its own, late-applied vote. Suspect: applying a

@@ -47,9 +47,9 @@ Run via the mini-jag tester (start uart2-gapfree-esp32.toit FIRST):
 // recipe: 9 UART signals (start bit + 7 data bits + stop bit, line
 // INVERTED by an external NOT gate — the EC618 cannot invert TX) carry
 // 3 protocol bits, so one 24-bit LED = 8 UART bytes and a 4 KiB frame
-// = 512 LEDs (~61 fps) — enough for now. Multi-chunk at MBd rates has
-// ~3 us splice seams — known-issues #13 documents the (unplanned)
-// descriptor-chaining enhancement.
+// = 512 LEDs (~61 fps) — enough for now. Multi-chunk transfers at MBd
+// rates still have ~3 us splice seams; descriptor chaining could remove
+// them in the future.
 BAUDS ::= [115_200, 921_600, 2_500_000]
 payload-size-for baud/int -> int:
   return baud >= 2_000_000 ? 4 * 1024 : 32 * 1024

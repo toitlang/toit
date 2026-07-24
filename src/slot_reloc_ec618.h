@@ -45,9 +45,8 @@
 // instead keep their native position-independent bitmap form (like programs-
 // partition images, baked by ImageOutputStream/RelocationBits) rather than
 // being baked at slot-A addresses and delta-shifted here. That would keep an
-// unchanged container's canonical bytes position-independent, so delta-OTA
-// skips re-sending it when the VM body grows and shifts it. See
-// docs/ota-relocation-convergence.md.
+// unchanged container's canonical bytes position-independent, so delta OTA
+// can skip re-sending it when the VM body grows and shifts it.
 
 #ifndef TOIT_SRC_SLOT_RELOC_EC618_H_
 #define TOIT_SRC_SLOT_RELOC_EC618_H_

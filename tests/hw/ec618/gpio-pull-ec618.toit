@@ -20,9 +20,9 @@ The pull-UP is validated directly: with no pull the floating line reads a noisy
   pull this pad low — PAD26 (the UART2_TXD pad) appears pull-up-only: the
   GPIO_PullConfig(pad, 1, 0) call matches the SDK's own pull-down usage, and pull-
   down on the EC618 is mainly available on the dedicated wakeup pads (a different
-  APmuWakeupPadSettings path). So this is a pad/HW limitation, not a firmware bug;
-  the test reports it and a clean pull-down check is a rig-mapping TODO (see
-  docs/ec618-hw-tests.md).
+  APmuWakeupPadSettings path). So this is a pad/HW limitation, not a firmware
+  bug; the test reports it and a clean pull-down check on a capable pad remains
+  a rig-mapping TODO.
 
 Wiring (NOTE: gpio.Pin numbers are PAD numbers on EC618): EC618 board pin 5 (PAD26 = GPIO11) <-> ESP32 IO27 (held high-Z).
 

@@ -23,8 +23,8 @@ target(TARGET_NAME)
     -- Link the project's own library.
     LIB_USER = LIB_USER .. SDK_TOP .. "/" .. LIB_DIR .. LIB_NAME .. " "
 
-    -- Link the Toit VM library and mbedTLS libraries — except in the BASE
-    -- link (frozen-base phase 4, docs/frozen-base-phase4.md):
+    -- Link the Toit VM library and mbedTLS libraries, except in the base
+    -- half of the two-stage link:
     -- TOIT_BASE_LINK=1 links the base alone, with no VM archives; slots
     -- link separately against the resulting base.elf.
     if os.getenv("TOIT_BASE_LINK") ~= "1" then
