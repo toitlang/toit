@@ -81,10 +81,12 @@ main args:
   // They must not be owned independently because their data, direction, and
   // interrupt registers are the same controller bit.
   primary := gpio.Pin 27
-  expect-throws "ALREADY_IN_USE":
-    gpio.Pin 11
-  primary.close
   alternate := gpio.Pin 11
+  primary.configure --output
+  expect-throws "ALREADY_IN_USE":
+    alternate.configure --output
+  primary.close
+  alternate.configure --output
   alternate.close
 
   print "gpio-multi: opening $(PINS.size) outputs one by one"
