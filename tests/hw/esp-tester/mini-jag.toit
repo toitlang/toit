@@ -72,7 +72,7 @@ clear-containers -> string?:
   containers.images.do: | image/containers.ContainerImage |
     // ContainerImageWriter tests are anonymous. Preserve named containers
     // embedded in the firmware slot, including oversized hardware tests.
-    if image.id != containers.current and image.name == null:
+    if image.id != containers.current and image.name != SLEEPER-NAME and not image.name:
       error := catch: containers.uninstall image.id
       if error and not first-error:
         first-error = "id=$image.id error=$error"
