@@ -34,12 +34,32 @@ runs:
         cd ${{inputs.toit-dir}}
         git fetch --tags --recurse-submodules=no
 
-    - name: Initialize all submodules
+    - name: Initialize top-level build submodules
       shell: bash
       run: |
         cd ${{inputs.toit-dir}}
+        git submodule sync -- third_party/esp-idf third_party/luatos-soc-ec618
+        git submodule update --init --jobs 2 -- \
+          third_party/esp-idf \
+          third_party/luatos-soc-ec618
+
+    # Host builds only need mbedTLS from ESP-IDF. Initializing every ESP-IDF
+    # component is substantially slower.
+    - name: Initialize mbedTLS submodule
+      if: inputs.esp32 == 'false'
+      shell: bash
+      run: |
+        cd ${{inputs.toit-dir}}/third_party/esp-idf
+        git submodule sync -- components/mbedtls/mbedtls
+        git submodule update --init -- components/mbedtls/mbedtls
+
+    - name: Initialize ESP32 submodules
+      if: inputs.esp32 == 'true'
+      shell: bash
+      run: |
+        cd ${{inputs.toit-dir}}/third_party/esp-idf
         git submodule sync --recursive
-        git submodule update --init --recursive -j 16
+        git submodule update --init --recursive --jobs 16
 
     - name: Setup Go
       uses: actions/setup-go@v6
