@@ -21,18 +21,9 @@ This is also the first HW exercise of TIMER1's PWM (the base pwm test
 1. PAD44 (TIMER1) alone: 1 kHz frequency + duty 0.25/0.75 at 10 Hz.
 2. PAD47 (TIMER4) alone: 1 kHz frequency.
 3. Both simultaneously — from TWO generators at different rates — then
-   closing PAD44's channel silences it while PAD47 keeps running.
-
-MEASURED RIG QUIRK (2026-07-02): when BOTH AON pads drive, edge counts
-  on the pin-18 wire include the pin-27 wire's transitions (1 kHz + 1 kHz
-  counted ~2023 Hz; 1 kHz + 700 Hz counted ~1338 Hz; alone it is exact,
-  and it snaps back the moment the other channel closes). The coupled
-  pulses survive the ESP32 counter's maximum ~12.7 us glitch filter, so
-  they are real us-scale level shifts — plausibly AON-rail bounce between
-  the two (shared-LDO, modest-drive) AON output cells, or breadboard
-  coupling; one-channel counts and polled duty are unaffected. The
-  simultaneous phase therefore asserts PAD44 by DUTY (polling is immune)
-  and PAD47 by count.
+   measuring both frequencies independently, then closing PAD44's channel
+   silences it while PAD47 keeps running. This is a regression for
+   cross-channel pulses on the shared AON supply.
 
 Wiring: EC618 UART2 (PAD26 -> IO27, IO14 -> PAD25) = command lane;
         EC618 PAD44 (PWM ch1, board pin 18) -> ESP32 IO19;
@@ -77,14 +68,13 @@ main:
   channel.close
   generator.close
 
-  // Phase 3: both AON PWM pins at once (TIMER1 + TIMER4), two
-  // generators at different rates. PAD44 is asserted by DUTY — edge
-  // counts on its wire double-count the neighbor's transitions while
-  // both drive (see the rig quirk above).
+  // Phase 3: both AON PWM pins at once (TIMER1 + TIMER4), with distinct
+  // frequencies so coupled pulses on either wire cannot hide.
   generator = Pwm --frequency=10
   channel = generator.start (Ec618.pad 44) --duty-factor=0.25
   generator47 := Pwm --frequency=1000
   channel47 := generator47.start (Ec618.pad 47) --duty-factor=0.5
+  expect-hz control IO-PAD44 10 "both-pad44-frequency"
   expect-duty control IO-PAD44 250 "both-pad44-duty"
   expect-hz control IO-PAD47 1000 "both-pad47"
   channel.close
