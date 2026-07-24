@@ -155,7 +155,7 @@ if it fails, the relocation model is incomplete and the build stops.
 
 `make ec618` produces a flashable image with slot A populated, slot B erased,
 and an anchor record selecting slot A. The normal OTA path writes and validates
-slot B as a trial; pre-populating both slots is unnecessary and was removed.
+slot B as a trial.
 
 To retarget a built image to an accepted alternate partition descriptor, use
 [tools/ec618/provision.toit](tools/ec618/provision.toit). It reads the source

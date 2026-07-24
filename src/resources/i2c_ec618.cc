@@ -160,14 +160,9 @@ static void i2c0_event(uint32_t event) { i2c_cmsis_event(0, event); }
 static void i2c1_event(uint32_t event) { i2c_cmsis_event(1, event); }
 static const ARM_I2C_SignalEvent_t kI2cCallbacks[2] = { i2c0_event, i2c1_event };
 
-// Wire pace (HW-calibrated 2026-07-18, ESP32 RMT): the automatic/control-
-// mode engine counts SCL phases at the full functional clock and honors
-// TPR. In its bounded linear region:
+// The automatic/control-mode engine counts SCL phases at the full functional
+// clock and honors TPR. In its bounded linear region:
 //   period_ticks = 2 * SCLx + kPaceOverheadTicks
-// API sweeps on the 51.2 MHz source gave 253 kHz at SCLx=91 and 298..307
-// kHz at 74..75. The earlier 305-tick model came from batch timing, where
-// per-probe software/recovery time was incorrectly attributed to the
-// controller.
 //
 // The 26 MHz source (always running with the AP) covers ~49..206 kHz; the
 // gate-enabled 51.2 MHz root covers intermediate fast requests. Source
@@ -201,9 +196,9 @@ static void ensure_setup(int controller, uint32_t hz) {
   if (state->current_hz == hz) return;
   ARM_DRIVER_I2C* driver = kI2cDrivers[controller];
   // LuatOS's production setup uses the complete 0x01882020 timing word on
-  // 26 MHz and measures 344 kHz. SCLx=30 keeps the same setup/hold/filter
-  // fields and is the HW-bisected fastest bounded variant: 1.25 us high +
-  // 1.50 us low = 363 kHz. SCLx=28 free-runs the NACK path.
+  // 26 MHz. SCLx=30 keeps the same setup/hold/filter fields and is the
+  // fastest bounded variant: 1.25 us high + 1.50 us low = 363 kHz.
+  // Smaller divisors can free-run the address-NACK path.
   bool luat_fast = hz >= kFastRequestHz;
   bool fast_src = !luat_fast && hz > kMax26MHz;
   uint32_t src = fast_src ? kSrc51M : kSrc26M;
@@ -614,10 +609,8 @@ PRIMITIVE(bus_create) {
   }
   state->initialized = true;
   // Pin the functional clock to the always-running 26 MHz source BEFORE
-  // the block gets clocked (PowerControl FULL): unpinned, the selection
-  // floats, and a floating mux once dead-stalled every transfer (see the
-  // pace-model comment at ensure_setup — the historic ~46/~85 kHz "drift"
-  // was the two TPR states, and the 51.2 MHz stall was its ungated root).
+  // the block gets clocked (PowerControl FULL): an unpinned selection can
+  // float to the 51.2 MHz root while that root is gated and stall transfers.
   // ensure_setup elevates to the 51.2 MHz source when a device's pace
   // needs it.
   GPR_setClockSrc(controller == 0 ? FCLK_I2C0 : FCLK_I2C1,

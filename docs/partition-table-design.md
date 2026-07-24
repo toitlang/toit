@@ -319,8 +319,9 @@ The old 64 KB registry could not hold even the 90,112-byte relocated O2 HTTPS
 test container. Base-v3 resolves this by placing all frozen regions, including
 the 128 KB LittleFS, before the anchor and allocating the remaining high flash
 band to the registry. The default capacity is now 672 KB. A one-sector `free`
-partition immediately before it keeps the shifted-layout acceptance descriptor
-usable without moving live data.
+partition immediately before it lets the acceptance test move the
+free/registry boundary down by one sector without moving existing registry
+data.
 
 The expansion is downward-only: `0x3CC000..0x3DC000`, the complete old
 registry, is the upper subset of the new range. Existing allocation addresses

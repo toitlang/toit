@@ -29,8 +29,7 @@ namespace toit {
 // pads for GPIO12..15.
 //
 // All primary GPIO pads mux at function 0. The alternate pads 11..14 and
-// 38..39 use function 4 — see pad_gpio_mux below. (Our earlier sweep drove
-// pads 13/14 at function 0 and wrongly concluded they had no GPIO.)
+// 38..39 use function 4 — see pad_gpio_mux below.
 //
 // This table deliberately runs in the public direction: PAD in, controller
 // bit out. Logical GPIO -> PAD selection belongs in lib/ec618/ec618.toit.
