@@ -11,7 +11,8 @@ EC618 half of the GPIO-output HW test.
 Drives EC618 GPIO11 as a square wave so the ESP32 half
   (gpio-output-esp32.toit) can confirm it sees the toggles. GPIO11's EC618 pad is
   PAD26 (board pin 5, "uart2_txd"). The dev board mirrors that module net at
-  board pin 14; this is board wiring, not a second EC618 GPIO11 pad.
+  board pin 14; this is board wiring, not a second EC618 GPIO11 pad, so
+  `Ec618.gpio 11 --alt` must be rejected.
 
 Wiring (NOTE: gpio.Pin numbers are PAD numbers on EC618): EC618 board pin 5 (PAD26 = GPIO11) -> ESP32 IO27.
 
@@ -31,6 +32,9 @@ DRIVE-DURATION ::= Duration --s=20  // Long enough for the ESP32 to sample.
 
 main:
   pin := Ec618.gpio GPIO-EC618
+  if pin.num != 26: throw "GPIO11 must resolve to PAD26"
+  alt-error := catch: Ec618.gpio GPIO-EC618 --alt
+  if alt-error == null: throw "GPIO11 must not expose the mirrored board net as an alternate pad"
   pin.configure --output --value=0
   print "gpio-output-ec618: driving GPIO$GPIO-EC618 at $(1000 / (2 * HALF-PERIOD.in-ms)) Hz for $(DRIVE-DURATION.in-s)s"
   deadline := Time.monotonic-us + DRIVE-DURATION.in-us

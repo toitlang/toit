@@ -156,16 +156,12 @@ Remaining gap work, in order:
    counters (the I2C clock is far too fast for GPIO polling) measured
    scl=3360 vs sda=1212 rising edges — IO17=SCL, IO18=SDA, the lockstep
    ambiguity resolved and it matches the table above.
-3. **Pads-40..42 output gate** (pin 9, known-issues #5) — RESOLVED
-   2026-07-02 **by oscilloscope**: the output worked all along, at
-   1.8 V — the AON IO LDO boots at IOVOLT_1_80V and nothing raised it,
-   so all AON outputs were invisible(-ish) to the rig's 3.3 V logic.
-   Fix: `pad_aon_power_on()` raises the LDO to 3.3 V (GPIO + PWM
-   paths); scope re-verified at full swing, and the reworked
-   `aon-wu-output-repro` now PASSES (pin 9 literally powers the
-   BMP280). The earlier poke rounds live on in the known-issue entry as
-   the investigation record. THE MATRIX IS COMPLETE — every wired pin
-   demonstrates all its functions.
+3. **Pads-40..42 output voltage** (pin 9) — RESOLVED 2026-07-02. The
+   AON IO LDO boots at 1.8 V, so `pad_aon_power_on()` raises it to 3.3 V
+   for the GPIO and PWM paths. `gpio-aon-output-ec618` verifies on
+   modest-affair that PAD42 can power the BMP280 twice across a power
+   toggle. THE MATRIX IS COMPLETE — every wired pin demonstrates all
+   its functions.
 
 **No hardware flow control is wireable as-is (measured 2026-06-10):** UART2 has
 no flow control in the chip; UART1's RTS/CTS pads (PAD31/PAD32 = GPIO16/17,

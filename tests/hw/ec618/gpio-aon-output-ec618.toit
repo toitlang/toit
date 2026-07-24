@@ -7,29 +7,23 @@ import ec618 show Ec618
 import i2c
 
 /**
-Regression test for the resolved AGPIOWU output-level failure.
+Regression test for AGPIOWU output voltage on the modest-affair rig.
 
-PAD42 (GPIO22, board pin 9) drives the BMP280's VCC on this rig. For
-  weeks a configured GPIO output "never reached the wire" — the scope
-  finally showed it always did, at 1.8 V: the AON IO LDO boots at
-  IOVOLT_1_80V and nothing raised it, so every 3.3 V observer (ESP32
-  input thresholds, the sensor's supply needs) was blind to it. The
-  driver now raises the LDO to 3.3 V whenever it powers it
-  (pad_aon_power_on), scope-verified full swing.
+PAD42 (GPIO22, board pin 9) drives the BMP280's VCC on this rig. For a
+  usable high level, the AON IO LDO must be powered and set to 3.3 V.
+  The GPIO driver does both when it opens an AON pad.
 
-This test asserts the once-impossible part: driving pin 9 HIGH powers
-  the sensor and its chip-id answers over I2C — twice, across a power
-  toggle, so the drive is repeatable.
+Driving pin 9 high must power the sensor so its chip-id answers over I2C.
+  The test repeats this across a power toggle.
 
 It deliberately does NOT assert "bus dead while the rail is low": with
   the I2C bus open, the BMP280 survives on parasitic supply through its
   SDA/SCL clamp diodes, and its storage caps hold the ~0.1 uA sleep
-  current for many seconds — the sensor can answer long after (and even
-  without) VCC. That assertion was electrically unsound; the low level
-  itself is scope-verified (clean 0 V) and the ESP32-side gpio22 tests
-  cover the wire digitally.
+  current for many seconds, so the sensor can answer long after VCC is
+  removed.
 
-Standalone (no ESP32 helper); don't run bmp280-esp32.toit concurrently.
+This wiring is present on modest-affair, not quirky-plenty. Standalone
+  (no ESP32 helper); don't run bmp280-esp32.toit concurrently.
 
 Run via the mini-jag tester:
 
@@ -37,7 +31,7 @@ Run via the mini-jag tester:
   build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
       --chip ec618 --toit-exe build/host/sdk/bin/toit \
       --port-board1 <ec618-uart0-port> \
-      tests/hw/ec618/aon-wu-output-repro-ec618.toit
+      tests/hw/ec618/gpio-aon-output-ec618.toit
 ```
 */
 
@@ -51,9 +45,9 @@ failures := []
 
 check name/string condition/bool:
   if condition:
-    print "aon-wu-output: $name: ok"
+    print "gpio-aon-output: $name: ok"
   else:
-    print "aon-wu-output: $name: FAILED"
+    print "gpio-aon-output: $name: FAILED"
     failures.add name
 
 read-chip-id bus/i2c.Bus -> int?:
@@ -89,7 +83,7 @@ main:
       power.set 1
       sleep --ms=500
     id := read-chip-id bus
-    print "aon-wu-output: round $round chip-id $(id ? "0x$(%02x id)" : "unreadable")"
+    print "gpio-aon-output: round $round chip-id $(id ? "0x$(%02x id)" : "unreadable")"
     check "round $round: pin 9 high powers the sensor (chip-id 0x58)" (id == 0x58)
 
   power.set 0
@@ -97,7 +91,7 @@ main:
   power.close
 
   if failures.is-empty:
-    print "aon-wu-output-repro-ec618: PASS — pin 9 output drives the sensor rail (#5 stays resolved)"
+    print "gpio-aon-output-ec618: PASS — pin 9 output drives the sensor rail"
   else:
-    print "aon-wu-output-repro-ec618: FAIL ($failures) — #5 may have regressed (LDO voltage?)"
-    throw "aon-wu-output: $failures"
+    print "gpio-aon-output-ec618: FAIL ($failures) — check the AON LDO voltage"
+    throw "gpio-aon-output: $failures"

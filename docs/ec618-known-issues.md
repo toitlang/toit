@@ -193,98 +193,18 @@ driver level.
 4. Independently: re-test whether the 32 KiB ring tracks the requested
    `RxCacheLen` at all (we pass 4 KiB and get 32 KiB).
 
-## 5. AGPIOWU pads (40..42): "GPIO output never reaches the wire" — RESOLVED (2026-07-02, by oscilloscope)
+## 5. AGPIOWU pads (40..42) need the AON LDO at 3.3 V — RESOLVED
 
-**Resolution.** The output worked ALL ALONG — at 1.8 V. The AON IO LDO
-**boots at IOVOLT_1_80V** (register 0x4D020054 reads 0x0c at boot) and
-nothing ever raised it, so every AON pad output swung 0..1.8 V. The rig's
-3.3 V observers were blind to it: 1.8 V sits below the ESP32's real input
-threshold, and pin 9's load (the BMP280's VCC) needs more. Florian's scope
-showed the driven square immediately — first at 1.8 V, then at full 3.3 V
-swing after the fix. Not a config gate, not a weak driver: a voltage-domain
-mismatch. (Bonus explanation: the pads 43..48 outputs "worked" pre-fix only
-because 1.8 V hovers right AT the ESP32's switching threshold — which is
-also what the pwm-aon "coupling" double-counts were.)
+The AON IO LDO boots at `IOVOLT_1_80V`. AON pad outputs therefore need the
+driver to select 3.3 V before they can drive the rig's 3.3 V inputs and loads.
 
-**Fix.** `pad_aon_power_on()` (pad_table_ec618.h / gpio_ec618.cc):
+`pad_aon_power_on()` (`pad_table_ec618.h` / `gpio_ec618.cc`) calls
 `slpManAONIOPowerOn()` + `slpManAONIOVoltSet(IOVOLT_3_30V)` — the same
 pair the SDK's example_gpio uses. Called by the GPIO and PWM paths for
-every AON pad. Regression: `aon-wu-output-repro-ec618.toit` (pin 9 high
-powers the BMP280, chip-id reads 0x58 — the once-impossible check).
-
-**Epilogue / rig lesson.** Validating the fix cost an extra hour on a red
-herring: the BMP280 had wedged into a bus-holding state (both I2C wires
-clamped low, immune to the driver's SCL-clocking unstick) after a day of
-1.8 V half-supply and parasitic feeding through its SDA/SCL clamp diodes —
-with the bus open, the sensor never truly powers off (and the released
-pin 9 carries the wake pull-up, feeding it between tests too). An
-ESP32-side session (clean strong-drive power cycle + a proper transaction)
-reset it. When this sensor acts dead: power it off with the BUS CLOSED for
-10+ s, or exercise it from the ESP32 (`bme280-probe-esp32.toit`).
-
-Everything below is the (pre-resolution) investigation record.
-
-**Symptom.** With the AON IO LDO powered (`slpManAONIOPowerOn`), the plain
-AGPIO pads (43..48) drive fine as GPIO outputs (PAD44/PAD47 exact-pulse
-verified on the rig). The wakeup-capable trio (pads 40..42 = WAKEUP_PAD_3..5,
-the board's "AGPIOWU" pins) does NOT: GPIO *reads* follow the wire perfectly
-(PAD42 tracked an externally driven rail through 20 s steady-high and
-steady-low phases), but a configured GPIO *output* never appears on the wire.
-
-**What was tried (all HW-tested, none unblocked the output).**
-- `slpManSetWakeupPadCfg(WAKEUP_PAD_x, false, ...)` — the documented "set pin
-  as wakeup pad **or aonio**" release; tried per-pad and for all three at
-  once (the WAKEUP_PAD_3..5 <-> pad 40..42 order is unverified).
-- The vendor's undocumented AON register write `*(uint32_t*)0x4D020170 = 0x1`
-  (from `example_gpio`'s `all_gpio_init_output`, which precedes its AGPIOWU
-  output demo).
-- Iomux ALT0 + GPIO controller output config — identical to what works on
-  pads 43..48.
-
-**Not yet tried.** `slpManAONIOVoltSet(IOVOLT_3_30V)` (the example sets it;
-an output at a mis-set voltage could read as low, though pads 43..48 read
-fine at the default), the example's `slpManAONIOLatchEn` dance, and the
-ordering magic-write-BEFORE-first-LDO-power-on. Revisit with the deep-sleep
-work, where the wakeup-pad configuration gets exercised anyway.
-(Update: the *wake* function of these pads is now fully working — see #12
-— but that changed nothing here: the GPIO output gate is still closed.)
-
-**Round 2 (2026-07-02, `aon-wu-output-experiments-ec618.toit` — poke32
-against the AON block; register map recovered by disassembling ioCtrl.o
-in libdriver_private.a, offsets from 0x4D020000):**
-
-    0x54   AONIO voltage    (slpManAONIOVoltSet; 3.3V-group v -> ((v-16)<<2)|1)
-    0x70   AONIO LDO power  (slpManAONIOPowerOn writes 1 + polls)
-    0xAC   bit 23           (slpManAONIOLatchEn)
-    0x148  WU pull banks    (bits 0..5 / 8..13)
-    0x14C  WU wake-enable   (bits 0..2 = WAKEUP_PAD_3..5 = pads 40..42)
-    0x150  WU aonio-release
-    0x170  the vendor magic
-
-ELIMINATED on hardware: volt-set to 3.30 V (poke 0x54=0x15 — and the PWM
-work proved pads 44/47 drive full-swing off the same LDO anyway),
-latch-disable (bit 23 idles clear), NVIC PadWakeup3..5 disable (ISER0
-idles 0xf400 — never enabled), and the magic write again (sticks, reads
-back 1, output still dead). Verified as a side effect: the driver's
-wake-release on open / re-arm on close hit the real banks (0x14C bit 2
-flips exactly as decoded). Writing 0x170=0x7 (probing it as a per-pad
-bank) wedges the container — treat bits 1+ as reserved.
-
-**Current lead.** The SDK example's own comments measured LOADED WU-pad
-outputs at only ~2.0 V ("异常" — abnormal); the WU trio's output cells
-may be intrinsically weak, and pin 9's net carries the BMP280's VCC plus
-bus pull-ups — a heavy load the sensor-based repro cannot separate from
-"no drive". Next measurement: high-Z probe via the ESP32 (IO13) with a
-long settle, and the cold-boot ordering variant (magic write before the
-first LDO power-on — needs a power-cycle).
-
-**Repro.** `tests/hw/ec618/aon-wu-output-repro-ec618.toit` (standalone;
-drives PAD42, whose net is the rig's BMP280 power rail — the sensor coming
-up, or the ESP32 reading IO13 high, would mean the output works).
-
-**Driver state.** `gpio_ec618.cc` releases the wakeup function on open and
-restores it (wakeup input, pull-up — the boot state) in `pad_release`;
-correct per the docs and harmless, but not sufficient for output.
+every AON pad. `gpio-aon-output-ec618.toit` is the modest-affair regression:
+PAD42 powers the BMP280 and its chip-id must read `0x58` twice across a power
+toggle. Keep the I2C bus closed during the initial 10-second discharge; its
+pull-ups can otherwise parasitically power the sensor.
 
 ## 6. Blob I2C no-block engine swallows shape-changing transfers — RESOLVED (CMSIS rewrite)
 
