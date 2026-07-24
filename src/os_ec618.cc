@@ -69,6 +69,30 @@ static struct {
   SemaphoreHandle_t wake;
 } thread_map[MAX_THREADS];
 
+// Returns the awake time at the resolution of the hardware SysTick counter.
+// The kernel tick is 1 kHz, but the SysTick current-value register supplies
+// the elapsed hardware-clock cycles within the current millisecond.
+static int64 awake_time_us() {
+  static uint32 previous_kernel_ticks = 0;
+  static uint64 kernel_tick_epoch = 0;
+
+  taskENTER_CRITICAL();
+  uint32 kernel_ticks = xTaskGetTickCount();
+  uint32 sub_ticks = SysTick->LOAD - SysTick->VAL;
+  if ((SysTick->CTRL & SysTick_CTRL_COUNTFLAG_Msk) != 0) {
+    sub_ticks = SysTick->LOAD - SysTick->VAL;
+    kernel_ticks++;
+  }
+  if (kernel_ticks < previous_kernel_ticks) kernel_tick_epoch += 1ULL << 32;
+  previous_kernel_ticks = kernel_ticks;
+  uint64 extended_kernel_ticks = kernel_tick_epoch + kernel_ticks;
+  taskEXIT_CRITICAL();
+
+  ASSERT(SystemCoreClock != 0);
+  return extended_kernel_ticks * 1000000ULL / configTICK_RATE_HZ
+      + static_cast<uint64>(sub_ticks) * 1000000ULL / SystemCoreClock;
+}
+
 // Returns the calling task's wake semaphore, creating it on first use
 // (from task context only; creation races are impossible for one's own
 // slot). Falls back per-call if the task is not in the map yet.
@@ -84,12 +108,8 @@ static SemaphoreHandle_t current_wake_semaphore() {
 }
 
 int64 OS::get_system_time() {
-  // Combine the current tick count with accumulated time from previous
-  // sleep cycles (stored in RTC memory) to get total uptime.
-  uint32_t ticks = osKernelGetTickCount();
-  int64 current_ms = static_cast<int64>(ticks) * portTICK_PERIOD_MS;
-  int64 wakeup_ms = RtcMemory::wakeup_time();
-  return (wakeup_ms + current_ms) * 1000LL;  // ms to us.
+  // Combine the awake clock with accumulated time from previous sleep cycles.
+  return RtcMemory::wakeup_time() * 1000LL + awake_time_us();
 }
 
 int OS::num_cores() {
@@ -582,8 +602,7 @@ extern "C" int mbedtls_hardware_poll(
 
 // mbedTLS platform time function (MBEDTLS_PLATFORM_MS_TIME_ALT).
 extern "C" int64_t mbedtls_ms_time(void) {
-  uint32_t ticks = osKernelGetTickCount();
-  return static_cast<int64_t>(ticks) * portTICK_PERIOD_MS;
+  return toit::OS::get_system_time() / 1000;
 }
 
 #endif  // TOIT_EC618

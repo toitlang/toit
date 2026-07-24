@@ -84,9 +84,7 @@ void OS::timespec_increment(timespec* ts, int64 ns) {
 
 #ifdef TOIT_EC618
 bool OS::monotonic_gettime(int64* timestamp) {
-  uint32_t ticks = osKernelGetTickCount();
-  // Convert ticks to microseconds via portTICK_PERIOD_MS.
-  *timestamp = static_cast<int64>(ticks) * portTICK_PERIOD_MS * 1000LL;
+  *timestamp = OS::get_system_time();
   return true;
 }
 #else
