@@ -17,8 +17,8 @@
 // This is used instead of the ESP-IDF esp_config.h when cross-compiling
 // for the EC618 target.
 
-#ifndef MBEDTLS_CONFIG_TOIT_H
-#define MBEDTLS_CONFIG_TOIT_H
+#ifndef MBEDTLS_EC618_CONFIG_H
+#define MBEDTLS_EC618_CONFIG_H
 
 // Platform
 #define MBEDTLS_HAVE_ASM
@@ -111,4 +111,4 @@
 // Note: do NOT include check_config.h here. In mbedtls 3.x, the config
 // adjustment and checking is done by build_info.h after including this file.
 
-#endif // MBEDTLS_CONFIG_TOIT_H
+#endif  // MBEDTLS_EC618_CONFIG_H

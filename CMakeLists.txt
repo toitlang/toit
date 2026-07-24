@@ -152,7 +152,7 @@ if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   # MbedTLS sources agree on the defines.
   set(MBEDTLS_C_FLAGS "-DMBEDTLS_CONFIG_FILE=\\\"mbedtls/esp_config.h\\\"")
 elseif ("${TOIT_SYSTEM_NAME}" STREQUAL "ec618")
-  set(MBEDTLS_C_FLAGS "-DMBEDTLS_CONFIG_FILE=\\\"${CMAKE_SOURCE_DIR}/third_party/mbedtls_config_toit.h\\\"")
+  set(MBEDTLS_C_FLAGS "-DMBEDTLS_CONFIG_FILE=\\\"${CMAKE_SOURCE_DIR}/mbedtls/include/ec618_config.h\\\"")
 else()
   # For now we run with the full 16k size in the input buffer on host systems.
   # For devices we still run with a smaller buffer, which saves memory
