@@ -2646,7 +2646,7 @@ PRIMITIVE(firmware_map) {
   const void* mapped_to = null;
   esp_err_t err = esp_partition_mmap(
       current_partition,
-      0,
+      0,  // Offset from start of partition.
       current_partition->size,
       memory,
       &mapped_to,

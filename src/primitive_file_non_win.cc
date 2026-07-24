@@ -22,7 +22,7 @@
 #include "process.h"
 #include "objects_inline.h"
 
-#if !defined(TOIT_EC618) && (defined(TOIT_POSIX) || defined(TOIT_FREERTOS))
+#if defined(TOIT_POSIX) || defined(TOIT_ESP32)
 
 #include <dirent.h>
 #include <errno.h>

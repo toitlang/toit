@@ -132,8 +132,10 @@ struct DromData {
 // we don't want that.  But it's still const because it goes in a flash section.
 #ifdef TOIT_ESP32
 DromData drom_data __attribute__((section(".rodata_custom_desc")));
-#else
+#elif defined(TOIT_EC618)
 DromData drom_data __attribute__((section(".rodata")));
+#else
+#error "DromData section is not defined for this platform"
 #endif
 
 const uint8* EmbeddedData::uuid() {

@@ -583,7 +583,8 @@ void set_up_mbedtls_threading() {
       toit_mbedtls_mutex_unlock);
 }
 
-// Hardware RNG for mbedTLS entropy.
+// Hardware entropy from the SDK's MP_TRNG driver. rngGenRandom runs the
+// peripheral's validity/health checks and returns 24 bytes per successful call.
 extern "C" int mbedtls_hardware_poll(
     void* data, unsigned char* output, size_t len, size_t* olen) {
   size_t total = 0;
