@@ -28,9 +28,9 @@ extern "C" {
   #include "driver_gpio.h"
   #include "gpio.h"
   #include "ic.h"
-  // slpman.h (via the jump table): the AON IO LDO power (the AON-domain
-  // GPIOs, pads 40..48, are dead until it is on) and the wakeup-pad
-  // configuration shared with the GPIO-muxed wakeup pads.
+  // slpman.h: AON IO LDO power (the AON-domain GPIOs, pads 40..48, are
+  // dead until it is on) and wakeup-pad configuration. These calls resolve
+  // directly against the selected base.
   #include "slpman.h"
 }
 

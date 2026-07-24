@@ -2,14 +2,12 @@
 
 // Generate (or verify) the VM shared-.data slot-pointer relocation table.
 //
-// The VM's writable .data (.load_dram_shared) is loaded ONCE by PLAT from a
-// fixed flash image — the link slot's (slot A's) data-init — and the per-slot
-// SRL2 relocation (gen-slot-reloc.toit) only ever touches the VM slot itself,
-// never this shared RAM. So every word in .data that holds a VM-slot pointer —
-// the interpreter's computed-goto dispatch_table and the per-module
-// `*_primitives_` tables — is baked at slot A. When the device boots a
-// DIFFERENT slot those words point into slot A, so the interpreter would run
-// slot A's code (and an OTA writing slot A would erase the code it executes).
+// Each slot carries its own VM .data init, linked at the neutral link base.
+// The per-slot SRL3 relocation (gen-slot-reloc.toit) only touches flash, never
+// the shared RAM into which that init image is copied. Therefore every word in
+// .data that holds a VM-slot pointer — the interpreter's computed-goto
+// dispatch_table and the per-module `*_primitives_` tables — still points at
+// the neutral link base after the copy.
 //
 // This tool reads the linker's own `.rel.load_dram_* -> .vm_a` records (the
 // SAME ground truth `--emit-relocs` produces for the slot table) and emits a C
@@ -171,9 +169,9 @@ render-source addresses/List -> string:
     //
     // RAM addresses of writable .data words (.load_dram_shared) that hold
     // VM-slot pointers: the interpreter computed-goto dispatch_table and the
-    // per-module *_primitives_ tables. This shared .data is loaded once from a
-    // fixed flash image (the link slot's data-init), so on any other slot they
-    // point into the wrong slot; toit_ec618.cc relocates them at boot (start()).
+    // per-module *_primitives_ tables. Each slot's .data init is linked at the
+    // neutral link base, so toit_ec618.cc shifts these words to the booted slot
+    // before the VM starts.
     #include <stdint.h>
 
     const uint32_t toit_data_reloc_count = $addresses.size;

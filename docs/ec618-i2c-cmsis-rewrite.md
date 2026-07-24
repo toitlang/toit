@@ -76,15 +76,14 @@ during implementation, beyond the design below:
   repeated-start (write-then-read without STOP) — cleaner than the
   blob's opaque op codes, and what register reads actually want.
 - Removes the last blob driver the Toit port depends on (UART blob is
-  already gone) and the soc_i2c jump-table entries with it.
+  already gone) and its `soc_i2c` base dependencies with it.
 
 ## Driver surface (scouted)
 
 - `Driver_I2C0/1` (CMSIS structs): Initialize(cb)/Uninitialize/
   PowerControl/MasterTransmit/MasterReceive/Control/GetStatus.
-  DATA bindings — already excluded from JT veneering (gen-plat-jt
-  DATA-SYMBOLS); slots bind them by absolute base address (frozen-base
-  caveat applies, same as Driver_USARTn).
+  DATA bindings; slots resolve them directly against the selected frozen
+  base, just like `Driver_USARTn`.
 - Events via `cb_event(ARM_I2C_EVENT_*)` from I2C_IRQHandler:
   TRANSFER_DONE / TRANSFER_INCOMPLETE / ADDRESS_NACK / ARBITRATION_LOST
   / BUS_ERROR. Completion model maps 1:1 onto the existing
@@ -149,13 +148,11 @@ src/resources/i2c_ec618.cc changes:
    repro) WITHOUT the GPR reset.
 2. **I2C0 same path** (pads 13/14 route; no device currently wired —
    validate scan/clock on the wire-tap or rewire the sensor if needed).
-3. **Cleanup**: drop the dead soc_i2c JT entries via gen-plat-jt
-   --exclude (index shift folds into the same full flash), delete the
-   blob glue, resolve known-issues #6, update memory/docs.
+3. **Cleanup**: drop the dead `soc_i2c` dependencies, delete the blob glue,
+   resolve known-issues #6, and update memory/docs.
 
 ## Base-change plan (ONE full flash)
 
-RTE IO_MODE flip + JT exclusion/renumber + driver rewrite all land in
-one build: flash once, validate phases 1-3 on hardware, then iterate
-slot-only (OTA) for fixes that don't touch jt_data / shared DRAM —
-fingerprint-checked against /tmp/fp_ref.elf as usual.
+The RTE IO_MODE flip and driver rewrite landed in one base build. Later
+slot-only fixes link directly against that selected base and carry its id in
+SRL3, so the device rejects a mismatch before writing.

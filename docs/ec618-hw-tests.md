@@ -288,9 +288,10 @@ calls still in the glue.
 - **PWM implemented + `pwm` dual-board test** (2026-06-10, passing): new
   `pwm_ec618.cc` behind the generic `gpio.pwm` API. PWM rides the AP TIMER
   instances (one output each; TIMER0/1/2/4 — 3 and 5 are platform-reserved),
-  iomux ALT5, 26 MHz source; registers are programmed directly (the SDK's
-  `TIMER_setupPwm` isn't jump-tabled and is integer-percent only), clocks +
-  start/stop via the jump table — no base-image change. Test: EC618 commands
+  iomux ALT5, 26 MHz source; registers are programmed directly because the
+  SDK's `TIMER_setupPwm` only accepts integer-percent duty cycles. The slot
+  links the required clock and timer helpers directly from the selected frozen
+  base. Test: EC618 commands
   the ESP32 over UART2; ESP32 measures with a pulse counter (frequency) and
   busy-polling (duty/level). Verified: 1/2 kHz frequency (~+1.2% measured —
   crystal tolerance, consistent everywhere), duty 0.25/0.5/0.75 (±1%),
@@ -448,7 +449,7 @@ flash always worked because it rewrites the base `.data`.)
 **Fix (shipped, HW-verified):** each firmware carries its **own** VM `.data` init
 image **inside its slot**, and the device copies the **active slot's** copy to
 RAM at boot before relocating the `.data` slot pointers. Mechanism: a `data_size`
-word in the SRL1 table; a `__vm_data_start/_end` linker bracket; `gen-slot-reloc`
+word in the SRL3 table; a `__vm_data_start/_end` linker bracket; `gen-slot-reloc`
 extracts the image → `slot-data.bin` (`$ec618-data.bin`); `firmware.toit` places
 it after the extension + appends it to the canonical image; `toit_ec618.cc`
 `load_active_slot_vm_data()` copies it at boot. Full details + the frozen contract
@@ -465,10 +466,9 @@ and validates. (Previously the changed `.data` wedged + rolled back.)
    sized to the base VM's `.data` (not padded), so a future OTA whose `.data` is
    *larger* than the base image's would overrun PLAT `.init_array`. Today's images
    fit; consider padding the reservation if VM `.data` grows. (`docs/ota-contract.md`.)
-3. **ADC accuracy / calibration**: `trimAdcSetGolbalVar` is not in the jump table,
-   so `HAL_ADC_CalibrateRawCode` uses its uncalibrated linear fallback (fine for
-   ratiometric tracking; add it to the wrapped set for a calibrated reading —
-   base-image change, needs a full flash).
+3. **ADC calibration is enabled.** The frozen base keep-list retains
+   `trimAdcSetGolbalVar`, `delay_us`, and the ADC helpers, so the slot can use
+   the calibrated path through direct base links.
 4. **GPIO-service teardown crash → deep-sleep brick (2026-06-08).** Running
    `gpio-map` (which opened/closed ~6 GPIO pins in a container, re-using
    controller bit 11) crashed the device on container teardown: a `CLOSED`
@@ -551,10 +551,10 @@ rule no longer applies:
 - [x] Full-flash + confirm firmware boots clean (isolates OTA from firmware).
 - [x] Fix the OTA A≠B / per-slot `.data` bug.
 - [x] Run the ADC functional test on the test rig (both channels track; no dead pin).
-- [x] Add `trimAdcSetGolbalVar` + `delay_us` to the jump-table wrapped set
-      (`gen-plat-jt`) for a calibrated ADC + clean conversion wait — DONE
-      2026-06-10; calibrated path re-validated on HW 2026-06-11 after the
-      latest table renumber (both channels, max err 8 mV).
+- [x] Retain `trimAdcSetGolbalVar` + `delay_us` in the frozen base keep-list
+      for a calibrated ADC + clean conversion wait — DONE 2026-06-10;
+      calibrated path re-validated on HW 2026-06-11 (both channels,
+      max err 8 mV).
 - [ ] Generalize `--debug-boot` into a `--verbose-uart` tester flag.
 - [x] **Tester baud-rate switch** — DONE: CMD-BAUD hops the control UART
       after every handshake (default 921600, --fast-baud); the handshake
@@ -590,23 +590,11 @@ rule no longer applies:
       per-byte timeouts, completion via the event source, VM never blocks.
       Gotcha for posterity: `I2C_SetNoBlock` must precede EVERY
       `I2C_MasterXfer`, or the completion callback never fires.
-- [ ] **OTA layout-contract guard** (URGENT, from the async-I2C incident):
-      ANY VM change shifts the whole base link — base functions move AND
-      the shared RAM (.load_dram_*) can move; a slot-only OTA then runs
-      against a base whose layout it wasn't linked for → silent dumpless
-      resets on container spawns / slot-flash writes while the agent keeps
-      working (the smoke-validate passes: necessary, not sufficient).
-      Plan: stamp a base-ABI fingerprint (shared-RAM section map +
-      .jt_data content hash) into the base AND every OTA payload;
-      fw-begin + the host tester refuse on mismatch ("base epoch mismatch
-      — full flash required"). Extend check-slot-refs to reject direct
-      slot->base data relocations outside the JT. Longer-term: two-stage
-      linking (frozen base artifact + slots linked against its symbol
-      file) makes the base immune to VM changes by construction — and
-      then reconsider whether the jump table is still needed at all.
-      Until the guard lands: builds that change VM statics/layout get a
-      FULL FLASH; before any OTA, manually diff .jt_data content and
-      .load_dram_* addresses against the flashed build's elf.
+- [x] **OTA base/layout contract guard.** The base and slot are linked in two
+      stages; slots resolve PLAT symbols directly against the selected
+      `base.elf`, carry its base id in SRL3, and are rejected by the device
+      before writing when that id differs from the flashed base. VM RAM lives
+      in fixed-size reserved regions, and the build checks those budgets.
 - [x] **SPI** — driver implemented + HW-verified against a real MFRC522
       RFID reader (rc522 test; see Done). Sync transfers (bounded by
       length/speed — the master owns the clock).
@@ -620,8 +608,9 @@ rule no longer applies:
 - [x] **AON pads** (40..48, GPIO20..28) — RESOLVED (2026-06-10, late
       evening): they sit behind the AON IO LDO, which is OFF at boot. With
       `slpManAONIOPowerOn()` (now called by the GPIO driver when an AON
-      pad is opened; jump-tabled together with PowerOff/VoltSet/VoltGet/
-      LatchEn) they drive as plain GPIOs: PAD44 (GPIO24, board pin 18) and
+      pad is opened and retained in the frozen base together with
+      PowerOff/VoltSet/VoltGet/LatchEn) they drive as plain GPIOs: PAD44
+      (GPIO24, board pin 18) and
       PAD47 (GPIO27, board pin 27) exact-pulse-confirmed. The earlier
       "CP-owned modem pins" conclusion was wrong — the pads were simply
       unpowered. PAD42 (GPIO22, board pin 9) stayed silent as an OUTPUT —

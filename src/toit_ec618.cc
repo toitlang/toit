@@ -74,9 +74,9 @@ extern "C" {
   extern uint32_t __vm_link_base[];
 
   // The VM's writable-.data init image lives in RAM at [__vm_data_start,
-  // __vm_data_end) (the reserved .vm_dram_data section). PLAT loads it from
-  // the base LMA at startup; load_active_slot_vm_data() overwrites it with
-  // the ACTIVE slot's own per-slot copy before the slot pointers are relocated.
+  // __vm_data_end) (the reserved .vm_dram_data section). The two-stage base
+  // carries no init bytes; load_active_slot_vm_data() copies the active slot's
+  // image before its slot pointers are relocated.
   extern uint8_t __vm_data_start[];
   extern uint8_t __vm_data_end[];
 
@@ -147,9 +147,8 @@ static void deep_sleep_timer_cb(uint8_t id) {
 
 // The fault path emits via putchar() rather than printf(): printf pulls in
 // vfprintf and its integer formatter, a lot of code to run from a fault context
-// while diagnosing a possibly mis-relocated slot. putchar is on the VM->PLAT
-// wrap list (tools/ec618/plat_jt_ldflags.lua), so it routes through the slot's
-// jump-table stub and stays position-independent in either slot.
+// while diagnosing a possibly mis-relocated slot. putchar is exported by the
+// base keep-list; the slot links to it directly and SRL3 relocates that branch.
 static void hf_puts(const char* s) {
   while (*s != '\0') putchar(*s++);
 }
@@ -244,19 +243,15 @@ static const char* last_reset_name(LastResetState_e s) {
   }
 }
 
-// The VM's writable .data (.load_dram_shared) is loaded ONCE by PLAT from a
-// fixed flash image — the data-init linked at the neutral __vm_link_base — and
-// the per-slot SRL2 relocation only ever touches the slot itself, never this
-// shared RAM. So every VM-slot pointer that lives in .data — the interpreter's
-// computed-goto dispatch_table and the per-module *_primitives_ tables (see
-// toit_data_reloc.c) — is baked at the link base. On EVERY boot they point at
-// the link base, not the booted slot, so the interpreter would run the wrong
-// code (and an OTA writing the booted slot could erase code it is executing).
-// Shift them by the slot displacement here, before any static initializer or
-// the interpreter reads them. Because the link base is NEITHER slot, delta is
-// non-zero on both slot A and slot B (the slot-A relocation is no longer a
-// no-op); it is only zero if the link base is set back to a real slot. This
-// function itself touches no .data slot pointer, so it is safe to run first.
+// Each slot carries its own VM .data init, linked at the neutral
+// __vm_link_base. load_active_slot_vm_data() copies it into shared RAM, but
+// SRL3 only relocates bytes in flash. Therefore every VM-slot pointer in .data
+// — the interpreter's computed-goto dispatch_table and the per-module
+// *_primitives_ tables (see toit_data_reloc.c) — still points at the link base.
+// Shift those words by the booted slot's displacement before any static
+// initializer or the interpreter reads them. Because the link base is neither
+// slot, the delta is non-zero for both slot A and slot B. This function itself
+// touches no .data slot pointer, so it is safe to run first.
 // Returns the BOOTED slot's XIP base and size per the anchor record's
 // table — the single layout authority. Safe in earliest boot: it reads
 // flash over XIP through the base's anchor_table and touches no VM
@@ -278,18 +273,13 @@ static bool booted_slot_geometry(uint32_t* base, uint32_t* size) {
   return false;
 }
 
-// Loads the ACTIVE slot's OWN VM .data init image over the base-loaded RAM.
+// Loads the active slot's VM .data init image.
 //
-// PLAT loads .load_dram_shared once from the base image's fixed LMA — i.e. slot
-// A's VM .data. But the VM's writable .data (dispatch_table, *_primitives_, and
-// any mutable VM globals) differs between firmware builds, so a slot-B firmware
-// that differs from slot A would boot with slot A's values and fault (the
-// A!=B OTA bug). Each slot now ships its OWN .data init image, carried verbatim
-// right after its body+extension (slot offset == body_size, as recorded in
-// the slot relocation trailer). Copy the booted slot's copy into
+// The two-stage base has no VM .data LMA. Each slot carries its own image
+// verbatim after its body+extension (slot offset == body_size, as recorded in
+// the relocation trailer). Copy the booted slot's image into
 // [__vm_data_start, __vm_data_end) BEFORE relocate_data_slot_pointers() shifts
-// the (still link-base) slot pointers. A no-op for legacy images with no data
-// region (data_size == 0).
+// its still-link-base slot pointers.
 static void load_active_slot_vm_data() {
   // Zero the VM's .bss first: it lives in the reserved .vm_dram_zi section,
   // which PLAT's startup ZI loop does not cover (see the linker script).

@@ -28,10 +28,11 @@ Make the EC618 use the **standard `system.firmware` API** (`FirmwareWriter`,
 ESP32, with the dual-slot relocation hidden inside the EC618 C++. The Toit
 firmware code stays architecture-agnostic (no `system.architecture` branch).
 
-Mental model: **EC618 = a preexisting platform (bootloader + PLAT + CP behind
-the fixed jump table) + our firmware**. "Our firmware" is the active VM slot —
-a single position-independent image. That is the OTA unit: SHA'd, validated,
-rolled back, and delta-OTA'd as one thing, just like the ESP32 app partition.
+Mental model: **EC618 = a selected frozen base (bootloader + PLAT + CP) + our
+firmware**. "Our firmware" is the active VM slot, linked directly against that
+base and relocated to either slot by SRL3. That is the OTA unit: SHA'd,
+validated, rolled back, and delta-OTA'd as one thing, just like the ESP32 app
+partition. The base id in SRL3 rejects an image built for another base.
 
 ## Decisions already taken (by the user)
 
@@ -58,7 +59,7 @@ to its flash address; slot A is not a privileged "delta 0" canonical — table-
 first:
 
 ```
-[ table_size : u32 ][ SRL1 reloc table ][ VM body ][ extension ]
+[ table_size : u32 ][ SRL3 reloc table ][ VM body ][ extension ]
 \___________________ all of it is SHA'd; the table is part of the firmware ____/
 ```
 
@@ -78,7 +79,7 @@ __vm_a_start = 0x991000  (slot A flash addr; the image is linked at the
   [ VM body (relocated) ]  code + rodata + .init_array + .vm_entry
   [ extension           ]  bundled container images + image table + config
   [ free                ]
-  [ SRL1 reloc table    ]  (variable)
+  [ SRL3 reloc table    ]  (variable)
   [ table_size : u32    ]  the slot's last word (self-locating)
 __vm_a_start + SLOT_SIZE ──────────────────────────────────────────────┘
                                             (slot B identical, +SLOT_SIZE)
@@ -98,9 +99,9 @@ ever overflow, we grow `SLOT_SIZE` (both slots) and shift `.slot_marker`.
 
 ## What is relocated, and what is not
 
-**Decision: option A — one relocatable image, one SRL1 table.** Treat the whole
+**Decision: option A — one relocatable image, one SRL3 table.** Treat the whole
 slot (VM body + bundled extension + container images) as a single relocatable
-unit, with one SRL1 table covering every absolute pointer that lands in the
+unit, with one SRL3 table covering every absolute pointer that lands in the
 slot. This is the natural (and only correct) fit because of how EC618 runs
 bundled containers:
 
@@ -116,12 +117,12 @@ So the earlier "make addressing slot-relative" idea (option B) does not work for
 the image *contents*: an XIP-run image can't be "computed slot-relative", its
 pointers have to be relocated regardless. Option A handles everything uniformly:
 
-- **VM body pointers** (1903 ABS32 + 2 `__wrap_time` branches): the SRL1 table
+- **VM body pointers** (1903 ABS32 + 2 `__wrap_time` branches): the SRL3 table
   from `toit.elf` (`--emit-relocs`). Already handled.
 - **In-slot extension/container pointers** — the image-table entries,
   `DromData.extension`, and each container image's own relocation sites (from
   `container.relocation-information`). These are written post-link by
-  `tools/firmware.toit`, which therefore **extends the SRL1 table** with their
+  `tools/firmware.toit`, which therefore **extends the SRL3 table** with their
   offsets (only those whose value lands in the slot — same in-slot test as the
   VM body). The device's existing relocate-on-write / un-relocate-on-read then
   fixes them with no special cases.
@@ -130,11 +131,11 @@ pointers have to be relocated regardless. Option A handles everything uniformly:
 keeps reading absolute pointers — they are simply *correct for the active slot*
 because they were relocated to it on write. The work is entirely in the envelope
 tool (place the extension in-slot; merge the post-link relocations into the
-SRL1 table) plus the dual-image builder. `firmware.map`'s read-path change is
+SRL3 table) plus the dual-image builder. `firmware.map`'s read-path change is
 separate (and still needed).
 
 > **TODO / future (delta-OTA):** option A bakes containers at slot-A addresses
-> and merges their pointer sites into the SRL1 (delta-shift). The cost: when the
+> and merges their pointer sites into the SRL3 (delta-shift). The cost: when the
 > VM body grows and shifts a container, that container's canonical bytes change,
 > so delta-OTA re-transmits it **even if it's unchanged**. Keeping bundled
 > containers in their **native position-independent bitmask form** instead —
@@ -148,55 +149,45 @@ separate (and still needed).
 > it has Thumb branches that aren't single-word pointers — so this only applies
 > to the container pointers.)
 
-## Relocation completeness: THREE regions (2026-06-04)
+## Relocation completeness: three regions (2026-06-04)
 
-The image is linked once at slot A's base, so slot A is the "canonical" image
-and `delta == 0` when writing slot A. The trap (Florian): a slot pointer that is
-**missed** by relocation stays at its slot-A value, which on slot A is *valid* —
-so A→B always works, reads on B "work", and only **B→A** (the one direction that
-erases slot A) explodes. Three regions hold slot pointers; the original design
-only relocated the first, so B→A hard-faulted until all three were covered:
+The canonical image is now linked at a neutral base, so both slot A and slot B
+require relocation. A missed site therefore fails in either destination instead
+of being masked on slot A. Three regions hold slot pointers:
 
-1. **VM body** (`.vm_a`) — the SRL1 table (`--emit-relocs`), applied
+1. **VM body** (`.vm_a`) — the SRL3 table (`--emit-relocs`), applied
    relocate-on-write. Verified by `gen-slot-reloc --verify-slot-b` (byte-identity
    against an independent slot-B link).
-2. **In-slot extension** — pointer-offsets merged into the SRL1 table by
+2. **In-slot extension** — pointer-offsets merged into the SRL3 table by
    `tools/firmware.toit`. `--verify-slot-b` does **not** cover it, so a new
    `[ext-verify]` self-check (`verify-ec618-extension-relocation_`) builds the
    extension at slot B too and asserts `relocate(A) == B` byte-for-byte. (This is
    exactly Florian's debug method: build an independent slot-B image and diff
    `relocate(A)` against it — any difference is a missed/misaligned pointer.)
-3. **Shared writable `.data`** (`.load_dram_shared`) — the interpreter's
-   computed-goto `dispatch_table` and the per-module `*_primitives_` pointers.
-   PLAT loads this RAM **once** from a fixed flash image (the link slot's
-   data-init), and the per-slot SRL1 relocation never touches it, so these ~141
-   words are slot-A forever. On a slot-B boot the interpreter therefore ran
-   slot-A code, and a B→A OTA self-erased the code it was executing. Fix:
-   `tools/ec618/gen-data-reloc.toit` extracts the linker's
-   `.rel.load_dram_* → .vm_a` records into `src/toit_data_reloc.c`;
-   `relocate_data_slot_pointers()` (toit_ec618.cc `start()`) adds
-   `active_slot_base − link_base` to each word at boot, before any static
-   initializer or the interpreter runs (no-op on the link slot). `make ec618`
-   guards staleness with `gen-data-reloc.toit --check`.
+3. **Shared writable `.data`** (`.vm_dram_data`) — each slot carries its own
+   init image, but the interpreter's computed-goto `dispatch_table` and the
+   per-module `*_primitives_` pointers inside it are still linked at the neutral
+   base. `tools/ec618/gen-data-reloc.toit` extracts the relevant relocation
+   records into `src/toit_data_reloc.c`; `relocate_data_slot_pointers()`
+   (`toit_ec618.cc`) adds `active_slot_base − link_base` before any static
+   initializer or the interpreter runs. `make ec618` guards staleness with
+   `gen-data-reloc.toit --check`.
 
-A separate, related hazard (Option M): the in-slot `__wrap_<sym>` jump-table
-stubs are reached by **PLAT/RAM-resident code** too (because `-Wl,--wrap` is
-global), resolved to the absolute slot-A copy — so a context switch mid-B→A-erase
-calls an erased stub → undefined-instruction fault. Fixed by wrapping **only the
-VM archive** (`objcopy --redefine-syms`) and dropping `--wrap` from the final
-link, so PLAT calls the real functions and never branches into a slot. The VM
-still calls its in-slot stubs, so the SRL1 table is unchanged.
+An earlier implementation had a related hazard: global `-Wl,--wrap` made
+PLAT/RAM-resident code reach in-slot jump-table stubs. A context switch during a
+B→A erase could then call an erased stub. That intermediate design was first
+contained by wrapping only the VM archive and was later removed entirely with
+the jump table. The current slot calls base functions directly.
 
-> **The clean future direction (Florian):** relocate **every** slot from a
-> neutral base — no slot is "canonical". Then a missed/misaligned relocation
-> fails loudly on slot A too, and "no word in slot B may point into slot A"
-> becomes a hard, checkable invariant instead of a latent B→A-only fault.
+> **Implemented direction (Florian):** relocate **every** slot from a neutral
+> base — no slot is privileged as canonical. A missed/misaligned relocation
+> now fails loudly on slot A too.
 
 ## Completeness, the fourth concern: the FIXED side (2026-06-07)
 
 The three regions above are all places that **do** get relocated. The dual
-invariant — the one nothing checked — is the **fixed** side: PLAT `.text`, the
-jump table, `.init`/`.fini`, every allocated section the device loads once at its
+invariant — the one nothing checked — is the **fixed** side: PLAT `.text`,
+`.init`/`.fini`, and every allocated section the device loads once at its
 link address and **never** relocates. A pointer into the slot from any of those
 is fixed at link time, so after OTA it resolves to the wrong slot — or, with the
 neutral base, an unmapped `0x01xxxxxx` VMA — the same invisible class of fault,
@@ -213,7 +204,7 @@ allocated section, which words resolve into the slot's link range) found two:
   and the leaked init_array pointers sat in fixed PLAT memory aiming into the
   slot. Fix: `EXCLUDE_FILE` the VM archives from `*(.init*)` (mirroring the
   `.text`/`.rodata` rules), so the init_array lands in the slot, runs via
-  `run_static_initializers()`, and is relocated by the SRL1 table — whose ABS32
+  `run_static_initializers()`, and is relocated by the SRL3 table — whose ABS32
   count rose by exactly those 6 (1907 → 1913).
 - **`operator new(nothrow)` reached from fixed code.** PLAT-resident
   `__cxa_thread_atexit` (libstdc++) calls the slot's `operator new`. That path is
@@ -224,29 +215,18 @@ allocated section, which words resolve into the slot's link range) found two:
 
 `tools/ec618/check-slot-refs.toit` makes this a hard build-time invariant
 (`make ec618`): it reads the retained relocations and **fails** if any allocated,
-non-relocated section references the slot, except the allow-set. It is the exact
-dual of `check-slot-pic.toit` (which guards slot→outside escapes). HW: slot A
-boots with the constructors now running + 4/4 A↔B OTA soak.
+non-relocated fixed section references the slot, except the allow-set. Direct
+slot→base branches are expected and represented in SRL3. HW: slot A boots with
+the constructors now running + 4/4 A↔B OTA soak.
 
-### The jump table is the VM↔PLAT ABI — keep it generous (2026-06-07)
+### The frozen base is the VM↔PLAT contract
 
-The flip side of "no fixed word may point into the slot" is how the slot reaches
-the fixed side: every VM→PLAT call goes through `g_plat_jt[]`, a `const` table at
-a FIXED flash address (`.jt_data`). It is baked at PLAT-build time and — because
-the whole point of dual-slot OTA is that PLAT is NOT reflashed — effectively
-FROZEN: a future firmware OTA'd into a slot can only reach PLAT functions that
-already have a table entry. So `tools/ec618/gen-plat-jt.toit` includes, in
-addition to the symbols the current VM calls (derived from the VM archives' call
-relocations), a curated "always-include" API surface of likely-useful PLAT
-functions — `BSP_`/`GPIO_`/peripheral drivers/`slpMan`/power/clock/flash/RTC/
-`luat_`/`__aeabi_` plus libc/libm — restricted to functions PLAT already DEFINES.
-Exposing an already-linked function is cheap (a 4 B table slot + a 16 B in-slot
-stub, no PLAT growth); the modem/USB/IP stack internals (`Cerrc*`/`Asn*`/`usb*`/
-`tcp`…) are deliberately excluded. Bound: `.jt_data` is 4 KB ≈ 1024 entries; the
-table is 456 (181 relocation-derived + the curated set). Indices come from sorting
-the final set, so changing the set reshuffles them — a future firmware must be
-built against the SAME `plat_jt.h` that matches the flashed `g_plat_jt[]`. HW:
-boots + 4/4 A↔B OTA soak.
+The slot link uses `--just-symbols=<base.elf>` to resolve VM→PLAT functions and
+data directly against the selected frozen base. The base keep-list retains the
+API that later slots may need. Non-inlined calls are direct Thumb branches and
+SRL3 carries every branch that escapes the slot; in-slot inlining is unaffected.
+The slot's SRL3 header carries the selected base version and fingerprint, and
+the device rejects it before writing if the flashed `.base_id` differs.
 
 ## Read path: `firmware.map` → active slot, canonical (table-first)
 
@@ -333,7 +313,7 @@ survives only as the build-time byte-identity oracle).
 
 ## Transport / host driver
 
-The OTA artifact is the canonical firmware framed table-first: `[N][SRL1
+The OTA artifact is the canonical firmware framed table-first: `[N][SRL3
 table][body+extension]`. The host driver (replacing `tools/ota_uart_stream.py`,
 in Toit) streams it; the device's `FirmwareWriter` path does the rest. Same
 artifact works for UART now and any `system.firmware`-based transport (HTTP,
@@ -358,12 +338,12 @@ the slot layout check.
 
 1. **Dual-image builder** (Toit, replaces `splice_dual_slot.py`) — **DONE,
    THEN RETIRED.**
-   From slot-A `ap.bin` + the SRL1 table, relocate slot A → slot B and write the
+   From slot-A `ap.bin` + the SRL3 table, relocate slot A → slot B and write the
    active-slot marker. **Hardware:** the relocate-built dual image boots both
    slots — proven a *bootable* slot B, not just byte-identity.
 2. **Containers into the slot, option A** — **DONE + HW-validated.**
    `tools/firmware.toit` places the extension inside the slot (after the VM body)
-   and **extends the SRL1 table** with the in-slot post-link pointers (image
+   and **extends the SRL3 table** with the in-slot post-link pointers (image
    table, `DromData.extension`, each container's relocation-bitmap sites); the
    merged table rides at the slot tail; build-time fit check; `build-dual-image`
    relocates the whole slot. No `embedded_data` change. **Hardware:** slot A and
@@ -403,22 +383,16 @@ the slot layout check.
    deleted (checked-in scripts must be Toit, and the build must not depend on
    Python).
 
-## Future: drop the runtime jump table (Flavor B — TODO)
+## Direct frozen-base linking — implemented
 
-Replace the runtime PLAT jump table with **flash-time symbol resolution**: the
-VM calls PLAT directly (no `g_plat_jt` indirection, no in-slot stubs); the
-device keeps `g_plat_jt` as a flash-time symbol table (index → PLAT address),
-and the OTA reloc table carries `(offset, index)` per VM→PLAT call. On flash the
-device resolves each against `g_plat_jt` and bakes the `BL`. Keeps the stable
-index ABI (one OTA image works across devices with different-but-compatible PLAT
-builds) but with no runtime indirection, and frees the ~3 KB/slot of stubs.
-Cost: a bigger reloc table, and the canonical image must keep PLAT branches in a
-PLAT-address-independent placeholder form (so un-relocate-on-read / delta-OTA
-re-placeholder them). Orthogonal to this convergence — a focused follow-up.
+The runtime jump table, its generated stubs, and its wrappers are gone. Slots
+resolve PLAT symbols directly from the selected `base.elf`; escaping Thumb
+branches are relocated by SRL3, and the base-id gate provides exact
+compatibility rather than an index ABI across different bases.
 
 ## Open decisions for you
 
-- **Container addressing** — RESOLVED to **option A** (one SRL1 table covers the
+- **Container addressing** — RESOLVED to **option A** (one SRL3 table covers the
   whole slot; the envelope tool merges in the post-link pointers). Forced by the
   finding that bundled containers run XIP from build-time-relocated absolute
   addresses (option B is infeasible for XIP-run images). For **bundled**

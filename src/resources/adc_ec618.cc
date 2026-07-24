@@ -31,12 +31,9 @@ extern "C" {
   void delay_us(uint32_t us);
 }
 
-// trimAdcSetGolbalVar and delay_us are in the generated jump table by name
-// (gen-plat-jt's ALWAYS-INCLUDE-EXACT); everything else used here is covered
-// by the ADC_*/HAL_* prefixes. NOTE: the two named entries were added
-// 2026-06-10 — a VM containing this code requires a base image (full flash)
-// at least that recent; the frozen table of an older base has no slots for
-// them.
+// trimAdcSetGolbalVar, delay_us, and the ADC_*/HAL_* helpers are exported by
+// the base keep-list. A slot that needs them must link against a base that
+// exports them; the base-id check rejects any other pairing.
 
 namespace toit {
 

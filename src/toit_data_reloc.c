@@ -4,9 +4,9 @@
 //
 // RAM addresses of writable .data words (.load_dram_shared) that hold
 // VM-slot pointers: the interpreter computed-goto dispatch_table and the
-// per-module *_primitives_ tables. This shared .data is loaded once from a
-// fixed flash image (the link slot's data-init), so on any other slot they
-// point into the wrong slot; toit_ec618.cc relocates them at boot (start()).
+// per-module *_primitives_ tables. Each slot's .data init is linked at the
+// neutral link base, so toit_ec618.cc shifts these words to the booted slot
+// before the VM starts.
 #include <stdint.h>
 
 const uint32_t toit_data_reloc_count = 142;

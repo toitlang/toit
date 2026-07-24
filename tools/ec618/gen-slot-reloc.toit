@@ -1,6 +1,7 @@
 // Copyright (C) 2026 Toit contributors.
 
-// Build the EC618 dual-slot relocation table from the slot-A link.
+// Build the EC618 dual-slot relocation table from the canonical neutral-base
+// link (the slot-A build artifact).
 //
 // The Toit firmware is a single position-independent image that the device
 // localizes to whichever slot it writes (relocate-on-write). Slot A and slot
@@ -12,7 +13,7 @@
 //   2. The Thumb BL/B.W branches that escape the slot to a fixed PLAT
 //      address. Their source moves but their target is
 //      fixed, so the device subtracts `delta` from the branch immediate.
-//      The ones that straddle a 4 KB flash sector go to the SRL2 straddle
+//      The ones that straddle a 4 KB flash sector go to the SRL3 straddle
 //      stream with their canonical bytes (see encode-table).
 //
 // Everything else is already slot-independent: within-slot BL/B.W branches
@@ -94,11 +95,12 @@ class Reloc:
 main args:
   cmd := cli.Command "gen-slot-reloc"
       --help="""
-        Extracts the EC618 dual-slot relocation table from the slot-A link
-        (toit.elf built with -Wl,--emit-relocs) and writes it to --out.
+        Extracts the EC618 dual-slot relocation table from the canonical
+        neutral-base link (stored as the slot-A artifact and built with
+        -Wl,--emit-relocs) and writes it to --out.
 
-        With --verify-slot-b it proves the table by relocating the slot-A
-        image to slot B and asserting byte-identity with the slot-B link.
+        With --verify-slot-b it proves the table by relocating the canonical
+        image to slot B and asserting byte-identity with the slot-B oracle.
         """
       --options=[
         cli.Option "readelf"
@@ -111,7 +113,7 @@ main args:
             --help="XIP address of ap.bin byte 0 (hex or decimal; default: the base XIP address from the partition descriptor).",
         partitions-option,
         cli.Option "elf"
-            --help="The slot-A toit.elf (linked with --emit-relocs)."
+            --help="The canonical neutral-base toit.elf (the slot-A artifact, linked with --emit-relocs)."
             --required,
         cli.Option "ap"
             --help="The slot-A ap.bin (flat binary)."
@@ -159,7 +161,7 @@ run invocation/cli.Invocation -> none:
     pipe.print-to-stderr "missing __vm_link_base/__vm_link_end/__vm_a_start/__vm_b_start in $elf"
     exit 1
   if link-base == link-end:
-    pipe.print-to-stderr "VM body is empty — expected the slot-A link (built without TOIT_VM_SLOT_B)"
+    pipe.print-to-stderr "VM body is empty — expected the canonical slot-A artifact"
     exit 1
   slot-size := slot-b-flash - slot-a-flash
   body-size := link-end - link-base

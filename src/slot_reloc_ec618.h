@@ -15,16 +15,16 @@
 
 // EC618 dual-slot relocation.
 //
-// The Toit firmware is one position-independent image, linked once at slot A's
-// base. The handful of words that depend on the slot base are captured in a
+// The Toit firmware is one position-independent image, linked once at a
+// neutral link base. The words that depend on its position are captured in a
 // relocation table (the "SRL3" artifact, see tools/ec618/gen-slot-reloc.toit).
 // This module applies that table, in BOTH directions, so the relocation is
 // invisible to the (architecture-agnostic) Toit firmware code:
 //
 //   - relocate   (canonical link-base image -> a destination slot): used when
 //     writing a new image to the inactive slot. `word += delta` for ABS32
-//     pointers into the slot; `imm -= delta` for the Thumb branches that
-//     escape the slot to a fixed address (the __wrap_time shim).
+//     pointers into the slot; `imm -= delta` for direct Thumb branches that
+//     escape the slot to a fixed base address.
 //   - un-relocate (a slot -> canonical link-base image): used when reading the
 //     active slot back (firmware.map, SHA, delta-OTA), so every reader sees the
 //     same canonical bytes regardless of which slot is live. The inverse:

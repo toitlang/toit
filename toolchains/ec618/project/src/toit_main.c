@@ -30,9 +30,8 @@
 // TODO(toit): drop the LuatOS `luat_*` interface layer from the EC618 glue.
 // The Toit VM resources (gpio/i2c/uart/adc/...) bind the PLAT driver/HAL
 // directly; the glue should too, so we don't depend on the LuatOS interface
-// layer at all. Remaining users: this file (luat_rtos_task_*) and plat_jt.c's
-// jump-table entries (luat_rtos_task_*, luat_uart_*, luat_mobile_config).
-// Replace luat_rtos_task_* with the FreeRTOS task API directly.
+// layer at all. This file still uses luat_rtos_task_*; replace it with the
+// FreeRTOS task API directly.
 #include "luat_rtos.h"
 #include "mem_map.h"    // AP_FLASH_XIP_ADDR.
 #include "anchor.h"

@@ -38,12 +38,12 @@ extern "C" {
   // engine runs the transfer in hardware, the IRQ handler feeds/drains the
   // 16-deep FIFO, completion comes through the event callback. No DMA
   // channels are consumed (the 7-channel MP pool is 6/7 committed when all
-  // three UARTs are open). The Driver_I2Cn access structs are DATA (never
-  // routed through the jump table — see gen-plat-jt's DATA-SYMBOLS).
+  // three UARTs are open). The Driver_I2Cn access structs are data symbols
+  // resolved directly from the selected base.
   #include "Driver_I2C.h"
   extern ARM_DRIVER_I2C Driver_I2C0;
   extern ARM_DRIVER_I2C Driver_I2C1;
-  extern void delay_us(uint32_t us);  // PLAT busy-wait (jump table).
+  extern void delay_us(uint32_t us);  // PLAT busy-wait exported by the base.
 }
 
 namespace toit {

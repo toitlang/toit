@@ -1,9 +1,10 @@
 # EC618: the frozen-base contract — removing the jump table
 
-Status: phases 1–3 DONE + HW-validated (2026-07-02): SRL2 (`43ea9e8a`),
-jump-table removal (`8d7dfb01`), pooled dram reserve (`c254f5fd`).
-Phase 4 is designed in [frozen-base-phase4.md](frozen-base-phase4.md)
-(base-vN publishing, two-stage link, device-side reject).
+Status: implemented. Phases 1–3 were HW-validated on 2026-07-02: SRL2
+straddle handling (`43ea9e8a`), jump-table removal (`8d7dfb01`), and the
+pooled DRAM reserve (`c254f5fd`). Phase 4 subsequently added SRL3,
+base-vN artifacts, the two-stage link, and device-side mismatch rejection;
+see [frozen-base-phase4.md](frozen-base-phase4.md).
 
 ## Goal
 
@@ -41,7 +42,7 @@ against the *published base's symbol addresses* answers it directly.
 
 Everything a slot build must agree on with the flashed base:
 
-| # | Coupling | Today | Target |
+| # | Coupling | Before | Current |
 |---|----------|-------|--------|
 | 1 | VM->PLAT calls | JT stubs + sorted indices (`.jt_data`, 4 KB, curated) | **direct calls**, relocated by the slot table; symbol addresses from the published base |
 | 2 | PLAT symbol availability | JT FORCE-INCLUDE pulls un-referenced API into the base link | keep-list in the base link (bounded by flash, not a 4 KB table) |

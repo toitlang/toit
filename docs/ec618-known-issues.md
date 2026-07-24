@@ -353,8 +353,8 @@ is reachable from an ALTERNATE pad (reconfiguring the shared bit would
 hijack the user's other pin — today's pad table is 1:1 so the guard is
 dormant, but it fences the day alternates appear). The command length field is 9-bit
 (512-byte transfer cap, longer rejected). The closed
-soc_i2c stack is deliberately dropped from the jump-table ABI (sticky
-exclude in gen-plat-jt: the two stacks must never be mixed). Remaining
+`soc_i2c` stack is deliberately absent from the frozen base's exported
+surface: the two stacks must never be mixed. Remaining
 documented limitation: a clock stretch landing in the microsecond gap
 between the two legs of a chained write-then-read aborts that transfer
 cleanly (bounded chain wait) — retry-able, never corrupting.

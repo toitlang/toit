@@ -38,10 +38,10 @@ namespace toit {
 // (ALT5). TIMER3 and TIMER5 are reserved by the platform (the SDK's own
 // PWM layer, luat_pwm_ec618.c, excludes them), leaving four PWM outputs.
 //
-// The timer registers are programmed directly (the SDK's TIMER_setupPwm
-// is not in the jump table, and its duty cycle is integer-percent only —
-// too coarse). The clock plumbing and start/stop go through the
-// jump-tabled SDK calls. Timers run from the 26 MHz source, so a period
+// The timer registers are programmed directly because the SDK's
+// TIMER_setupPwm duty cycle is integer-percent only and too coarse. The
+// clock and timer calls resolve directly against the selected base. Timers
+// run from the 26 MHz source, so a period
 // is 26e6/frequency ticks and the duty resolution improves as the
 // frequency drops (1 kHz -> 1/26000).
 

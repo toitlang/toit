@@ -82,7 +82,7 @@ static void test_real(const char* ap_a_path, const char* ap_b_path, const char* 
 
   uint32_t body = t.body_size;
   // The image is LINKED at t.link_base (the neutral canonical base, NEITHER
-  // slot). ap_a (the slot-A link) holds the canonical body at slot A's flash
+  // slot). ap_a (the neutral-base link artifact) holds the canonical body at slot A's flash
   // file offset; ap_b (the slot-B link) is the oracle at slot B's address. The
   // device adds `dest_slot_base - link_base`, so the canonical-to-slot-B delta
   // is non-zero even though slot A also relocates now.
@@ -102,7 +102,7 @@ static void test_real(const char* ap_a_path, const char* ap_b_path, const char* 
   // Whole-body: un-relocate slot B -> slot A (canonical).
   memcpy(work.data(), slot_b, body);
   CHECK(slot_reloc_apply(&t, work.data(), 0, body, delta, SLOT_RELOC_TO_CANONICAL), "whole-body un-relocate ok");
-  CHECK(memcmp(work.data(), slot_a, body) == 0, "un-relocated slot B == slot-A link (whole body)");
+  CHECK(memcmp(work.data(), slot_a, body) == 0, "un-relocated slot B == canonical body (whole body)");
 
   // Sector-chunked (the device write path): relocate slot A -> slot B.
   CHECK(relocate_chunked(&t, slot_a, work.data(), body, delta, SLOT_RELOC_TO_SLOT), "sector-chunked relocate ok");
@@ -110,7 +110,7 @@ static void test_real(const char* ap_a_path, const char* ap_b_path, const char* 
 
   // Sector-chunked: un-relocate slot B -> slot A.
   CHECK(relocate_chunked(&t, slot_b, work.data(), body, delta, SLOT_RELOC_TO_CANONICAL), "sector-chunked un-relocate ok");
-  CHECK(memcmp(work.data(), slot_a, body) == 0, "sector-chunked un-relocate == slot-A link");
+  CHECK(memcmp(work.data(), slot_a, body) == 0, "sector-chunked un-relocate == canonical body");
 
   free(ap_a); free(ap_b); free(tbl);
 }

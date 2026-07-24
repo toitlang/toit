@@ -106,13 +106,12 @@ Phase plan:
 ## Lesson (2026-06-11): Driver_* struct bindings pin the base
 
 The slot binds `Driver_USART2` (and would any CMSIS access struct) by
-ABSOLUTE base address. That is only valid while the FLASHED base ==
-the BUILT base — the jump table tolerates base drift, direct data
-bindings do not. First OTA of the CMSIS UART2 code hardfaulted
+absolute base address. That is only valid while the flashed base is the base
+selected for the slot link. First OTA of the CMSIS UART2 code hardfaulted
 (INVSTATE, jump into rotted struct address) because the running base
-predated the cmpctmalloc move. Consequence: any build that adds/changes
-a Driver_* binding, or any base drift after one exists, requires a FULL
-FLASH. The planned frozen-base artifact removes this class entirely.
+predated the cmpctmalloc move. The two-stage frozen-base build removes this
+class: the slot resolves data and code symbols against the selected `base.elf`
+and the device rejects a mismatched base id before writing.
 
 ## Phase 1.5 (2026-06-11): the duplex corruption arc — RX moved to IRQ mode
 
@@ -147,10 +146,9 @@ known-issues #7; the operative facts:
   wedged only at exit; slot-B fault addresses symbolize via
   `link_addr = PC - __vm_b_start + 0x01000000` against the slot-A elf.
 
-Switching RX_IO_MODE recompiles bsp_usart.c → BASE change → full flash
-(also dropped the now-undefined `USART2_DmaRxEvent` from the jump table
-via `gen-plat-jt --exclude`, which shifts JT indices — full flash covers
-that too).
+Switching RX_IO_MODE recompiles `bsp_usart.c`, so it required a base change and
+full flash. The now-undefined `USART2_DmaRxEvent` dependency was removed in the
+same build.
 
 ## Phase 1.6 (2026-06-12): IRQ-mode hardening — the flood battery
 

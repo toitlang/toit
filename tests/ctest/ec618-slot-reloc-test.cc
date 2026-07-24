@@ -125,7 +125,7 @@ static void test_straddle() {
 }
 
 // A Thumb-branch site at `sector_end - 2` (the device writes 4 KB sector
-// chunks) is carried in the SRL2 straddle stream with its canonical bytes, so
+// chunks) is carried in the SRL3 straddle stream with its canonical bytes, so
 // the chunked applier patches it without seeing the neighbouring chunk — the
 // case the regular streams reject above. The oracle: a table carrying the SAME
 // site as a regular branch entry, applied whole-body (the long-proven path).

@@ -7,8 +7,8 @@
 // own references keep the currently-used set alive; this table keeps the
 // GENEROUS surface alive too — PLAT/libc/libm/libgcc functions a future
 // firmware is likely to need that the current image happens not to call.
-// It carries forward the exact symbol surface the (retired) plat jump
-// table exported, so no capability is lost in the direct-call switch.
+// It carries forward the previously exported symbol surface, so no
+// capability was lost in the switch to direct calls.
 //
 // Referencing a symbol's address pulls its object out of the prebuilt
 // archives past --gc-sections; the array itself costs 4 bytes of rodata
@@ -27,9 +27,8 @@
 #pragma GCC diagnostic ignored "-Wbuiltin-declaration-mismatch"
 
 // CMSIS driver ACCESS STRUCTS (data, not functions): the VM binds to these
-// directly — the old jump table deliberately kept them OUT of the table
-// (routing a struct address through a code veneer faults). The base's own
-// code only references some of them, so the rest must be kept explicitly.
+// directly. The base's own code only references some of them, so the rest
+// must be kept explicitly.
 extern void Driver_I2C0(void);
 extern void Driver_I2C1(void);
 extern void Driver_USART0(void);

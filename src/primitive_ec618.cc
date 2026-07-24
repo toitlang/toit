@@ -35,8 +35,8 @@ extern "C" {
   #include "reset.h"  // ResetStateGet / LastResetState_e.
   #include "wdt.h"    // The WDT module — the watchdog's busy-lockup backstop.
 
-  // From slpman (jump-tabled): live AON wakeup-pad levels, and the latched
-  // wakeup source of the most recent boot (slpManWakeSrc_e).
+  // From slpman in the selected frozen base: live AON wakeup-pad levels, and
+  // the latched wakeup source of the most recent boot (slpManWakeSrc_e).
   uint32_t slpManGetWakeupPinValue(void);
   int slpManGetWakeupSrc(void);
   #include "clock.h"  // GPR_setClock* for the WDT functional clock.
@@ -220,13 +220,13 @@ bool ec618_active_firmware_copy(uint32_t from, uint32_t to, uint8_t* dest) {
 
 // Relocate-on-write context. The OTA receiver streams the CANONICAL
 // (link-base) image; slot_reloc_begin arms relocation with that image's reloc
-// table (the "SRL2" artifact, see src/slot_reloc_ec618.h), and
+// table (the "SRL3" artifact, see src/slot_reloc_ec618.h), and
 // slot_inactive_write relocates each chunk onto the destination slot before
 // the flash write — so the relocation is invisible to the (architecture-
 // agnostic) Toit firmware code. `slot_reloc_delta = dest_slot_base - link_base`
 // is 0 when the canonical image lands at its link home and the slot
 // displacement otherwise.
-static uint8_t* slot_reloc_blob = null;  // Owned copy of the SRL2 table bytes.
+static uint8_t* slot_reloc_blob = null;  // Owned copy of the SRL3 table bytes.
 static SlotRelocTable slot_reloc_table;
 static int32_t slot_reloc_delta = 0;
 static bool slot_reloc_armed = false;

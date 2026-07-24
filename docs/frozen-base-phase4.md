@@ -1,18 +1,17 @@
 # EC618 frozen base, phase 4: two-stage linking + the published base
 
-Status: design (2026-07-02). Phases 1–3 are done and HW-validated: SRL2
-straddle handling (`43ea9e8a`), jump-table removal (`8d7dfb01`), the pooled
-VM dram reserve + pinned heap start (`c254f5fd`). This phase makes the base
-a versioned, published artifact — **base-vN** (decided) — that slots link
-against independently: any time, any toolchain, with the device refusing a
-mismatched slot instead of faulting.
+Status: implemented. Phases 1–3 are HW-validated: SRL2 straddle handling
+(`43ea9e8a`), jump-table removal (`8d7dfb01`), and the pooled VM DRAM reserve
++ pinned heap start (`c254f5fd`). This phase made the base a versioned
+artifact — **base-vN** — that slots link against independently, with the
+device refusing a mismatched slot instead of faulting.
 
 ## Why two links
 
-Today base and slot are one link. Phase 1–3 removed most couplings, but the
-mixed-compiler experiment exposed the one a single link cannot fix: **C++
-comdat spill**. Which libstdc++ helpers the VM emits as in-slot comdats vs
-imports from the base differs per compiler (GCC 16 emits
+Before this phase, base and slot were one link. Phases 1–3 removed most
+couplings, but the mixed-compiler experiment exposed the one a single link
+cannot fix: **C++ comdat spill**. Which libstdc++ helpers the VM emits as
+in-slot comdats versus imports from the base differs per compiler (GCC 16 emits
 `_S_copy_chars` itself; GCC 14 imports it), so the base's libstdc++ content
 — and everything placed after it — depends on the slot's compiler. Separate
 links break that dependency structurally: the base exports **no C++ runtime
@@ -59,7 +58,7 @@ and lands in-slot.
 The correctness machinery carries over unchanged in spirit:
 - **Byte-identity oracle**: link the slot twice (slot-A and slot-B
   geometry) from the same objects; `gen-slot-reloc` diffs and proves the
-  SRL2 table, exactly as today.
+  SRL3 table.
 - `check-slot-refs` keeps guarding fixed words pointing into the slot;
   `gen-data-reloc` now extracts the per-slot `.data` init from the slot
   link (its only source — the base carries none).

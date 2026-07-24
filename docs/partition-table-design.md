@@ -239,7 +239,7 @@ gap into the AP image. (Confirmed by the `_Static_assert` in
 | 0x3fe000 | 0xbfe000 | 4 KB | excep key info | `FLASH_EXCEP_KEY_INFO_ADDR`/`_LEN` | SDK crash dump |
 | 0x400000 | 0xc00000 | — | end of 4 MB | | |
 
-### How Toit re-carves the AP image (linker script)
+### Historical AP-image carve before the frozen base
 
 Toit does **not** use the SDK's app layout as-is. The linker script
 [`ec618_0h00_flash.ld`](../third_party/luatos-soc-ec618/PLAT/core/ld/ec618_0h00_flash.ld)
@@ -249,15 +249,16 @@ ending exactly at the FOTA region) and carves it:
 | XIP addr | Raw addr | Size | Section | Linker symbols | OTA'd? |
 |---|---|---|---|---|---|
 | 0x824000 | 0x024000 | ~1.4 MB | **PLAT base** (modem, RTOS, drivers, libc, dispatcher) | (image start) | **no** |
-| 0x990000 | 0x190000 | 4 KB | jump table | `__jt_data_start`/`_end` | no |
+| 0x990000 | 0x190000 | 4 KB | former jump-table page | `__jt_data_start`/`_end` | no |
 | 0x991000 | 0x191000 | 384 KB | **VM slot A** | `__vm_a_start`/`_end` | **yes** |
 | 0x9f1000 | 0x1f1000 | 384 KB | **VM slot B** | `__vm_b_start`/`_end` | **yes** |
 | 0xa51000 | 0x251000 | 8 KB | **slot marker** (OTA state) | `__slot_marker_start`/`_end` | written on OTA |
 | 0xa53000 | 0x253000 | — | end of used flash | `totalFlashLimit` | |
 
-The PLAT base and VM are decoupled by a **jump table** at 0x990000: the VM
-(in the slots) calls PLAT functions through it. This is what lets the small
-VM be A/B'd while the large PLAT base stays fixed. From the dual-slot doc:
+This historical layout used a jump table at 0x990000. The frozen-base design
+replaced it with direct links against the selected `base.elf`, SRL3 relocation,
+and a base-id record in that page. The small VM remains A/B'd while the large
+PLAT base stays fixed. From the dual-slot doc:
 PLAT SDK ≈ 1180 KB (rarely changes), VM + mbedtls ≈ 250 KB (changes on SDK
 updates), extension = variable (every OTA). A 250 KB VM in a 384 KB slot has
 headroom; the ~1.4 MB base does not fit twice in 4 MB — hence A/B of the VM
@@ -403,14 +404,11 @@ marker records where they actually live (and thus they can be resized)?
 high-value step** — much cheaper than the Tier-0 split that *PLAT* updates
 would need (§6.2 / §6.5).
 
-The VM is **already a separate link unit**: it is position-dependent code that
-reaches PLAT through exactly one channel — the **207-entry jump table**
-(`g_plat_jt`), the deliberate ABI boundary (see
-[`ota-dual-slot-plan.md`](ota-dual-slot-plan.md) "jump table"). In the base
-build, `libtoit_vm.a` + mbedtls are linked into slot B's address and slot A is
-left **empty** (`__vm_a_start == __vm_a_end`); an OTA writes a VM image linked
-for the inactive slot. So the slots are logically outside PLAT — what pins them
-*inside* it is purely mechanical:
+At the time of this brainstorm the VM was already a separate link unit, but
+used a fixed jump table as its only route into PLAT. The implemented design goes
+further: slots resolve PLAT symbols directly from the selected `base.elf` and
+SRL3 makes them relocatable. The remaining coupling discussed here was
+mechanical:
 
 1. **Fixed addresses in PLAT's linker script** — `.vm_a 0x991000`,
    `.vm_b 0x9f1000`, `totalFlashLimit`
@@ -435,10 +433,8 @@ The dual-slot plan already sketches this — distinct `PLAT_FLASH` / `VM_A_FLASH
 
 - **AP entry 0x824000** — the SDK bootloader jumps here; the dispatcher lives
   here and reads the table.
-- **The jump-table address (0x990000)** — the VM is XIP-linked *against* it, so
-  treat it as a frozen ABI constant. PLAT grows *below* it; slots float
-  *elsewhere*. If PLAT ever needs to cross it, that is a breaking change
-  requiring a coordinated reflash anyway.
+- **The base-id page (0x990000)** — the device compares this fixed record with
+  the id in the incoming SRL3 table before accepting a slot.
 - **The marker/table anchor** — fixed (top), so the dispatcher always finds it.
 
 **The one unavoidable constraint is XIP:** "move or resize a slot" always means
@@ -568,8 +564,9 @@ error, it's a hang.
    base+size from the marker instead of the linker symbols `__vm_a_start` /
    `__vm_b_start`. The slots now *float* (PLAT, slot A, slot B become
    independent partitions) and the VM becomes **resizable on its own** —
-   without the Tier-0 split. The only fixed cross-reference left is the
-   jump-table address (frozen ABI). This is the high-value, moderate-cost step.
+   without the Tier-0 split. The slot links directly against the selected
+   frozen base and carries its id in SRL3. This is the high-value,
+   moderate-cost step.
 4. **(Optional, gated on real need) Tier-0 split + base update via staging.**
    Carve a tiny frozen loader at 0x824000, move the PLAT runtime into a
    table-described partition, and add a staging+apply flow with a survivable
@@ -601,11 +598,10 @@ else stays negotiable.
       (offset/size/type/flags/label), max partitions, alignment.
 - [ ] How does this unify with the `firmware.toit` service so there is one OTA
       story, not two?
-- [ ] Confirm the jump table is the VM's *only* cross-reference into PLAT (no
-      stray direct `bl <plat_sym>` / data references that bypass `g_plat_jt`).
-      Any such leak would break when PLAT internals move and undermines the
-      slot-decoupling in §6.3. Check the VM link map / the `--wrap` set
-      described in `ota-dual-slot-plan.md`.
+- [x] Direct VM→PLAT references are expected: the slot is linked with
+      `--just-symbols=<base.elf>`, escaping Thumb branches are carried in SRL3,
+      and `check-slot-refs` rejects fixed-side references back into the slot.
+      The base-id gate rejects a slot built for any other base.
 - [ ] If/when we want FAT-on-SD: add `fatfs` + `vfs` + `diskio_spitf` to the
       Toit build and write a Toit VFS/driver binding mirroring ESP32's FAT/SD
       (separate from the internal partition table; SPI bus + CS + power GPIO).

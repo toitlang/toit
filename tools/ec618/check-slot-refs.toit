@@ -5,7 +5,7 @@
 // WHY: the dual-slot OTA relocates the VM image on write, and a handful of
 // regions hold pointers INTO the slot that must move with it:
 //
-//   * the slot body itself (.vm_a)       -> relocated by the SRL2 table
+//   * the slot body itself (.vm_a)       -> relocated by the SRL3 table
 //                                           (tools/ec618/gen-slot-reloc.toit),
 //   * the shared writable .data          -> relocated at boot by
 //     (.load_dram_shared/.load_dram_bsp)    relocate_data_slot_pointers()
@@ -19,11 +19,11 @@
 // relocation design fights — but on the FIXED side, where no relocation can
 // rescue it.
 //
-// check-slot-pic.toit guards the slot->outside direction (every VM->PLAT call
-// must go through an in-slot jump-table stub). This tool guards the inverse:
-// it reads the linker's retained relocations (--emit-relocs) and FAILS if any
-// allocated, non-relocated section has a relocation whose target resolves into
-// the slot. The only sanctioned exceptions are in the allow-set.
+// Direct VM->PLAT branches are expected and carried in SRL3. This tool guards
+// the inverse direction: it reads the linker's retained relocations
+// (--emit-relocs) and FAILS if an allocated, non-relocated section has a
+// relocation whose target resolves into the slot. The only sanctioned
+// exceptions are in the allow-set.
 
 import cli
 import host.pipe
@@ -108,7 +108,7 @@ run invocation/cli.Invocation -> none:
       A fixed (non-relocated) section points INTO the slot. The device never
       relocates these words, so they resolve to the wrong (unmapped, with the
       neutral link base) address after OTA. Move the referenced object into the
-      slot, route the call through the jump table, or — if the edge is provably
+      slot, provide a base-owned implementation, or — if the edge is provably
       dead — add the target symbol to check-slot-refs.toit's allow-set."""
     exit 1
 
@@ -119,7 +119,7 @@ Returns the populated VM slot range as a two-element list `[lo, hi]`.
 
 Prefers `__vm_link_base`/`__vm_link_end` (the link-domain VMA the slot-A image's
   code lives at); falls back to `__vm_b_start`/`__vm_b_end` (the slot-B oracle
-  link). Reads hex addresses from `$nm $elf`. Mirrors check-slot-pic.toit.
+  link). Reads hex addresses from `$nm $elf`.
 */
 slot-range nm/string elf/string -> List:
   symbols := {:}
