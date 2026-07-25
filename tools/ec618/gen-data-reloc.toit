@@ -23,6 +23,8 @@ import cli
 import host.file
 import host.pipe
 
+import .elf
+
 TOOL-NAME ::= "tools/ec618/gen-data-reloc.toit"
 
 // The writable RAM .data PROGBITS sections that hold the shared VM globals.
@@ -64,6 +66,7 @@ main args:
   cmd.run args
 
 run invocation/cli.Invocation -> none:
+  ui := invocation.cli.ui
   readelf := invocation["readelf"]
   elf := invocation["elf"]
   out-path := invocation["out"]
@@ -71,8 +74,7 @@ run invocation/cli.Invocation -> none:
 
   addresses := extract-addresses --readelf=readelf --elf=elf
   if addresses.is-empty:
-    pipe.print-to-stderr "no .data -> .vm_a relocations found in $elf"
-    exit 1
+    ui.abort "no .data -> .vm_a relocations found in $elf"
 
   source := render-source addresses
 
@@ -80,11 +82,10 @@ run invocation/cli.Invocation -> none:
     existing/string? := null
     catch: existing = (file.read-contents out-path).to-string
     if existing != source:
-      pipe.print-to-stderr """
+      ui.abort """
         $out-path is STALE ($addresses.size .data slot pointers in $elf).
         The VM .data layout changed; regenerate with:
           $TOOL-NAME --elf=<toit.elf> --out=$out-path"""
-      exit 1
     print "gen-data-reloc: $out-path matches the elf ($addresses.size pointers)."
     return
 
@@ -119,14 +120,14 @@ extract-addresses --readelf/string --elf/string -> List:
       // Line: `Relocation section '.rel.load_dram_shared' at offset ...`.
       current = relocation-target-section line
       continue.split
-    if current == null or not (DATA-SECTIONS.contains current): continue.split
+    if not current or not (DATA-SECTIONS.contains current): continue.split
     parts := split-whitespace line
     if parts.size < 4: continue.split
     if parts[2] != "R_ARM_ABS32": continue.split
     // Keep only words that point INTO the VM slot (section symbol `.vm_a` or
     // any named symbol defined there): Sym.Value lands in `.vm_a`.
     sym-value := int.parse parts[3] --radix=16
-    if not (vm-start <= sym-value and sym-value < vm-end): continue.split
+    if not (vm-start <= sym-value < vm-end): continue.split
     sym-name := parts.size > 4 ? parts[4] : ""
     if FIXED-SLOT-SYMBOLS.contains sym-name: continue.split
     addresses.add (int.parse parts[0] --radix=16)
@@ -186,18 +187,3 @@ render-source addresses/List -> string:
     $body
     };
     """
-
-/** Splits a string on runs of whitespace, dropping empty tokens. */
-split-whitespace str/string -> List:
-  result := []
-  current := []
-  str.do: | c/int |
-    if c == ' ' or c == '\t':
-      if not current.is-empty:
-        result.add (string.from-runes current)
-        current = []
-    else:
-      current.add c
-  if not current.is-empty:
-    result.add (string.from-runes current)
-  return result

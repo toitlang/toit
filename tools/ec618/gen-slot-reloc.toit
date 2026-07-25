@@ -32,6 +32,7 @@ import io show Buffer LITTLE-ENDIAN
 import host.file
 import host.pipe
 
+import .elf
 import .partitions
 
 // Reloc-table artifact magic: "SRL3" (Slot ReLoc, version 3 — v2 added the
@@ -134,6 +135,7 @@ main args:
   cmd.run args
 
 run invocation/cli.Invocation -> none:
+  ui := invocation.cli.ui
   readelf := invocation["readelf"]
   nm := invocation["nm"]
   elf := invocation["elf"]
@@ -157,12 +159,10 @@ run invocation/cli.Invocation -> none:
   link-end := syms.get "__vm_link_end"
   slot-a-flash := syms.get "__vm_a_start"
   slot-b-flash := syms.get "__vm_b_start"
-  if link-base == null or link-end == null or slot-a-flash == null or slot-b-flash == null:
-    pipe.print-to-stderr "missing __vm_link_base/__vm_link_end/__vm_a_start/__vm_b_start in $elf"
-    exit 1
+  if not link-base or not link-end or not slot-a-flash or not slot-b-flash:
+    ui.abort "missing __vm_link_base/__vm_link_end/__vm_a_start/__vm_b_start in $elf"
   if link-base == link-end:
-    pipe.print-to-stderr "VM body is empty — expected the canonical slot-A artifact"
-    exit 1
+    ui.abort "VM body is empty — expected the canonical slot-A artifact"
   slot-size := slot-b-flash - slot-a-flash
   body-size := link-end - link-base
   hi := link-base + slot-size  // Link-domain upper bound for "points into the slot".
@@ -177,14 +177,12 @@ run invocation/cli.Invocation -> none:
   id-off := (parts.xip "base-id") - ap-load-addr
   if not (base-bin.size > id-off + 24 and base-bin[id-off] == 'T' and base-bin[id-off + 1] == 'B'
       and base-bin[id-off + 2] == 'I' and base-bin[id-off + 3] == '1'):
-    pipe.print-to-stderr "no base-id record in $invocation["base"] — run gen-base-id first"
-    exit 1
+    ui.abort "no base-id record in $invocation["base"] — run gen-base-id first"
   base-version := LITTLE-ENDIAN.uint32 base-bin (id-off + 4)
   base-fp := base-bin.copy (id-off + 8) (id-off + 24)
   relocs := read-relocs readelf elf ".rel.vm_a"
   if relocs.is-empty:
-    pipe.print-to-stderr "no .rel.vm_a relocations in $elf (was it linked with -Wl,--emit-relocs?)"
-    exit 1
+    ui.abort "no .rel.vm_a relocations in $elf (was it linked with -Wl,--emit-relocs?)"
 
   abs32 := []  // Slot-relative offsets of ABS32 words to add `delta` to.
   thmbl := []  // Slot-relative offsets of escaping branches to re-encode.
@@ -192,16 +190,16 @@ run invocation/cli.Invocation -> none:
     rel-off := r.offset - link-base
     if ABS32-TYPES.contains r.type:
       word := LITTLE-ENDIAN.uint32 ap-a (slot-a-file + rel-off)
-      if link-base <= word and word < hi and not FIXED-SLOT-SYMBOLS.contains r.sym-name:
+      if link-base <= word < hi and not FIXED-SLOT-SYMBOLS.contains r.sym-name:
         abs32.add rel-off
     else if BRANCH-TYPES.contains r.type:
-      if not (link-base <= r.sym-value and r.sym-value < hi):
+      if not (link-base <= r.sym-value < hi):
         thmbl.add rel-off
     else if MOVW-MOVT-TYPES.contains r.type:
-      if link-base <= r.sym-value and r.sym-value < hi and not FIXED-SLOT-SYMBOLS.contains r.sym-name:
-        throw "unsupported in-slot movw/movt at 0x$(%x r.offset) -> $r.sym-name; extend gen-slot-reloc + the device relocator"
+      if link-base <= r.sym-value < hi and not FIXED-SLOT-SYMBOLS.contains r.sym-name:
+        ui.abort "unsupported in-slot movw/movt at 0x$(%x r.offset) -> $r.sym-name; extend gen-slot-reloc + the device relocator"
     else:
-      throw "unknown relocation type $r.type at 0x$(%x r.offset) -> $r.sym-name"
+      ui.abort "unknown relocation type $r.type at 0x$(%x r.offset) -> $r.sym-name"
   abs32.sort --in-place
   thmbl.sort --in-place
 
@@ -226,18 +224,15 @@ run invocation/cli.Invocation -> none:
   vm-data-end := syms.get "__vm_data_end"
   dram-vma := syms.get "Image\$\$VM_DRAM_DATA\$\$Base"
   dram-lma := syms.get "Load\$\$VM_DRAM_DATA\$\$Base"
-  if vm-data-start == null or vm-data-end == null or dram-vma == null or dram-lma == null:
-    pipe.print-to-stderr "missing __vm_data_start/_end or .vm_dram_data load/image base in $elf (linker .data bracket present?)"
-    exit 1
+  if not vm-data-start or not vm-data-end or not dram-vma or not dram-lma:
+    ui.abort "missing __vm_data_start/_end or .vm_dram_data load/image base in $elf (linker .data bracket present?)"
   data-size := vm-data-end - vm-data-start
   if data-size < 0 or (data-size & 3) != 0:
-    pipe.print-to-stderr "VM .data range [0x$(%x vm-data-start), 0x$(%x vm-data-end)) is empty or not word-aligned"
-    exit 1
+    ui.abort "VM .data range [0x$(%x vm-data-start), 0x$(%x vm-data-end)) is empty or not word-aligned"
   vm-data-lma := dram-lma + (vm-data-start - dram-vma)
   vm-data-file := vm-data-lma - ap-load-addr
   if vm-data-file < 0 or vm-data-file + data-size > ap-a.size:
-    pipe.print-to-stderr "VM .data init [ap file 0x$(%x vm-data-file), +0x$(%x data-size)) exceeds ap.bin ($ap-a.size bytes)"
-    exit 1
+    ui.abort "VM .data init [ap file 0x$(%x vm-data-file), +0x$(%x data-size)) exceeds ap.bin ($ap-a.size bytes)"
   vm-data := ap-a.copy vm-data-file (vm-data-file + data-size)
   file.write-contents --path=data-out-path vm-data
 
@@ -262,6 +257,7 @@ run invocation/cli.Invocation -> none:
   if verify-path:
     ap-b := file.read-contents verify-path
     ok := verify
+        --ui=ui
         --ap-a=ap-a
         --ap-b=ap-b
         --slot-a-file=slot-a-file
@@ -271,8 +267,7 @@ run invocation/cli.Invocation -> none:
         --thmbl=thmbl
         --delta=(slot-b-flash - link-base)
     if not ok:
-      pipe.print-to-stderr "Byte-identity FAILED: the relocation table is incomplete or wrong."
-      exit 1
+      ui.abort "Byte-identity FAILED: the relocation table is incomplete or wrong."
     print "Byte-identity OK: canonical body relocated to slot B == slot-B link ($verify-path)."
 
 /**
@@ -417,13 +412,21 @@ Relocates the slot-A image to slot B and checks byte-identity with $ap-b.
 Returns whether the relocated slot-A content equals the slot-B link's content
   over $body-size bytes. Reports the first mismatch to stderr on failure.
 */
-verify --ap-a/ByteArray --ap-b/ByteArray --slot-a-file/int --slot-b-file/int \
-    --body-size/int --abs32/List --thmbl/List --delta/int -> bool:
+verify -> bool
+    --ui/cli.Ui
+    --ap-a/ByteArray
+    --ap-b/ByteArray
+    --slot-a-file/int
+    --slot-b-file/int
+    --body-size/int
+    --abs32/List
+    --thmbl/List
+    --delta/int:
   region := ap-a.copy slot-a-file (slot-a-file + body-size)
   apply-reloc region 0 abs32 thmbl delta
   body-size.repeat: | i/int |
     if region[i] != ap-b[slot-b-file + i]:
-      pipe.print-to-stderr "  first mismatch at slot offset 0x$(%x i): relocated=0x$(%x region[i]) slot-B=0x$(%x ap-b[slot-b-file + i])"
+      ui.emit --error "first mismatch at slot offset 0x$(%x i): relocated=0x$(%x region[i]) slot-B=0x$(%x ap-b[slot-b-file + i])"
       return false
   return true
 
@@ -468,18 +471,3 @@ put-thumb-branch-imm bytes/ByteArray offset/int imm/int -> none:
   hi := (hi-old & 0xd000) | (j1 << 13) | (j2 << 11) | imm11
   LITTLE-ENDIAN.put-uint16 bytes offset lo
   LITTLE-ENDIAN.put-uint16 bytes (offset + 2) hi
-
-/** Splits a string on runs of whitespace, dropping empty tokens. */
-split-whitespace str/string -> List:
-  result := []
-  current := []
-  str.do: | c/int |
-    if c == ' ' or c == '\t':
-      if not current.is-empty:
-        result.add (string.from-runes current)
-        current = []
-    else:
-      current.add c
-  if not current.is-empty:
-    result.add (string.from-runes current)
-  return result

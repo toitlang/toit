@@ -28,6 +28,8 @@
 import cli
 import host.pipe
 
+import .elf
+
 // Sections the device DOES relocate, so a pointer into the slot is expected and
 // handled. Every other allocated section is fixed and must not reference the slot.
 RELOCATED-SECTIONS ::= {".vm_a", ".vm_dram_data"}
@@ -75,6 +77,7 @@ main args:
   cmd.run args
 
 run invocation/cli.Invocation -> none:
+  ui := invocation.cli.ui
   readelf := invocation["readelf"]
   nm := invocation["nm"]
   elf := invocation["elf"]
@@ -86,8 +89,7 @@ run invocation/cli.Invocation -> none:
   lo := range[0]
   hi := range[1]
   if lo == hi:
-    pipe.print-to-stderr "no populated VM slot found (both __vm_link and __vm_b are empty)"
-    exit 1
+    ui.abort "no populated VM slot found (both __vm_link and __vm_b are empty)"
 
   alloc := alloc-sections readelf elf
   violations := find-references readelf elf lo hi alloc allow
@@ -97,20 +99,18 @@ run invocation/cli.Invocation -> none:
     counts := {:}
     violations.do: | key/string |
       counts[key] = (counts.get key --if-absent=: 0) + 1
-    pipe.print-to-stderr "FAIL: $violations.size fixed-region word(s) reference the VM slot:"
+    ui.emit --error "$violations.size fixed-region word(s) reference the VM slot:"
     keys := []
     keys.add-all counts.keys
     keys.sort --in-place
     keys.do: | key/string |
-      pipe.print-to-stderr "  $counts[key]x  $key"
-    pipe.print-to-stderr """
-
+      ui.emit --error "$counts[key]x  $key"
+    ui.abort """
       A fixed (non-relocated) section points INTO the slot. The device never
       relocates these words, so they resolve to the wrong (unmapped, with the
       neutral link base) address after OTA. Move the referenced object into the
       slot, provide a base-owned implementation, or — if the edge is provably
       dead — add the target symbol to check-slot-refs.toit's allow-set."""
-    exit 1
 
   print "OK: no fixed-region word references the VM slot."
 
@@ -132,21 +132,21 @@ slot-range nm/string elf/string -> List:
     parts := split-whitespace line
     if parts.size < 2: continue.split
     name := parts.last
-    if name == "__vm_link_base" or name == "__vm_link_end" \
-        or name == "__vm_b_start" or name == "__vm_b_end":
+    if name == "__vm_link_base" or name == "__vm_link_end" or
+        name == "__vm_b_start" or name == "__vm_b_end":
       symbols[name] = int.parse parts[0] --radix=16
 
   a-start := symbols.get "__vm_link_base"
   a-end := symbols.get "__vm_link_end"
-  if a-start != null and a-end != null and a-start != a-end:
+  if a-start and a-end and a-start != a-end:
     return [a-start, a-end]
 
   b-start := symbols.get "__vm_b_start"
   b-end := symbols.get "__vm_b_end"
-  if b-start != null and b-end != null:
+  if b-start and b-end:
     return [b-start, b-end]
 
-  if a-start != null and a-end != null:
+  if a-start and a-end:
     return [a-start, a-end]
   return [0, 0]
 
@@ -175,8 +175,8 @@ alloc-sections readelf/string elf/string -> Set:
 /** Whether $token is an ELF section-flags token (letters like `WAX`, `AL`, `WA`). */
 is-flags-token token/string -> bool:
   if token.is-empty: return false
-  token.do: | c/int |
-    if not ('A' <= c and c <= 'Z'): return false
+  token.do: | c/int? |
+    if not c or not ('A' <= c <= 'Z'): return false
   return true
 
 /**
@@ -211,7 +211,7 @@ find-references readelf/string elf/string lo/int hi/int alloc/Set allow/Set -> L
     if parts.size < 4: continue.split
     if not parts[2].starts-with "R_ARM": continue.split
     sym-value := int.parse parts[3] --radix=16 --if-error=: continue.split
-    if not (lo <= sym-value and sym-value < hi): continue.split
+    if not (lo <= sym-value < hi): continue.split
     sym-name := parts.size > 4 ? parts[4] : "(section)"
     if allow.contains sym-name: continue.split
     references.add "$current -> $sym-name"
@@ -231,18 +231,3 @@ relocation-target-section line/string -> string?:
   if name.starts-with ".rela": return name[5..]
   if name.starts-with ".rel": return name[4..]
   return name
-
-/** Splits a string on runs of whitespace, dropping empty tokens. */
-split-whitespace str/string -> List:
-  result := []
-  current := []
-  str.do: | c/int |
-    if c == ' ' or c == '\t':
-      if not current.is-empty:
-        result.add (string.from-runes current)
-        current = []
-    else:
-      current.add c
-  if not current.is-empty:
-    result.add (string.from-runes current)
-  return result
