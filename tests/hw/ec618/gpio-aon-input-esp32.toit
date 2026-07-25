@@ -4,42 +4,51 @@
 
 import gpio
 
+import .framed-control show FramedChannel
+import .uart-rig as rig
 import .wiring as wiring
 
 /**
-ESP32 half of the AON-pad GPIO-input HW test: drives both AON wires at
-  distinct frequencies for the EC618 to read (and tell apart).
+ESP32 driver for the EC618 AON-pad GPIO-input regression.
 
-IO19 waves at 10 Hz, IO2 at 4 Hz. IMPORTANT: the EC618 side must already
-  have PAD44/PAD47 configured as INPUTS before this starts, or two 3.3 V
-  drivers fight — the runner starts the EC618 reader first.
-
+The two test pins remain high impedance until the EC618 reports that its inputs
+  are ready. Each requested output pattern is acknowledged after it is driven.
 */
 
-HALF-FAST ::= Duration --ms=50   // 10 Hz.
-HALF-SLOW ::= Duration --ms=125  // 4 Hz.
-DURATION ::= Duration --s=45
-
 main:
-  fast := gpio.Pin wiring.ESP32-GPIO24-PIN --output
-  slow := gpio.Pin wiring.ESP32-GPIO27-PIN --output
-  print "gpio-aon-input-esp32: IO$(wiring.ESP32-GPIO24-PIN) at 10 Hz + IO$(wiring.ESP32-GPIO27-PIN) at 4 Hz for $(DURATION.in-s)s"
-  deadline := Time.monotonic-us + DURATION.in-us
-  task::
-    v := 0
-    while Time.monotonic-us < deadline:
-      v = 1 - v
-      fast.set v
-      sleep HALF-FAST
-    fast.set 0
-  v := 0
-  while Time.monotonic-us < deadline:
-    v = 1 - v
-    slow.set v
-    sleep HALF-SLOW
-  slow.set 0
-  // Let the fast task finish its last half-period before closing.
-  sleep --ms=200
-  fast.close
-  slow.close
-  print "gpio-aon-input-esp32: done"
+  control-owner := rig.esp32-uart 1 115200
+  control := FramedChannel control-owner.port
+  first := gpio.Pin wiring.ESP32-GPIO24-PIN
+  second := gpio.Pin wiring.ESP32-GPIO27-PIN
+  configured := false
+
+  try:
+    while true:
+      message := control.receive --timeout-ms=(configured ? 15_000 : 120_000)
+      if message == "HELLO":
+        first.configure --output --value=0
+        second.configure --output --value=0
+        configured = true
+        control.send "READY"
+      else if message == "Q":
+        if configured:
+          first.set 0
+          second.set 0
+        control.send "BYE"
+        return
+      else:
+        parts := message.split " "
+        if not configured or parts.size != 2 or parts[0] != "SET":
+          throw "unexpected command '$message'"
+        pattern := parts[1]
+        if pattern.size != 2 or
+            (pattern[0] != '0' and pattern[0] != '1') or
+            (pattern[1] != '0' and pattern[1] != '1'):
+          throw "invalid pattern '$pattern'"
+        first.set pattern[0] - '0'
+        second.set pattern[1] - '0'
+        control.send "SET $pattern"
+  finally:
+    second.close
+    first.close
+    control-owner.close
