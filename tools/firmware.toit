@@ -44,8 +44,8 @@ import .image
 import .snapshot
 import .snapshot-to-image
 
-ENVELOPE-FORMAT-VERSION ::= 8
-ENVELOPE-FORMAT-VERSION-EC618 ::= 1000
+ENVELOPE-FORMAT-VERSION-ESP32-HOST ::= 8
+ENVELOPE-FORMAT-VERSION-EC618      ::= 1000
 
 WORD-SIZE-ESP32 ::= 4
 WORD-SIZE-EC618 ::= firmware-ec618.WORD-SIZE
@@ -149,10 +149,10 @@ write-file path/string --ui/cli.Ui [block] -> none:
     stream.close
 
 main arguments/List:
-  firmware-cmd := build-command --create-esp32-only
+  firmware-cmd := build-command --legacy-create-layout
   firmware-cmd.run arguments
 
-build-command --create-esp32-only/bool=false -> cli.Command:
+build-command --legacy-create-layout/bool=false -> cli.Command:
   firmware-cmd := cli.Command "firmware"
       --help="""
         Manipulate firmware envelopes.
@@ -167,7 +167,9 @@ build-command --create-esp32-only/bool=false -> cli.Command:
             --type="file"
             --required
       ]
-  if create-esp32-only:
+  if legacy-create-layout:
+    // Preserve the standalone tool's historical spelling. The SDK command
+    // uses the unambiguous `toit tool firmware create esp32` hierarchy.
     firmware-cmd.add (create-esp32-cmd --name="create")
     firmware-cmd.add (create-ec618-cmd --name="create-ec618")
   else:
@@ -1787,7 +1789,9 @@ class Envelope:
     if sdk-version == "": throw "cannot open envelope - missing or corrupt metadata entry"
 
   constructor.create .entries --.sdk-version --.kind --.word-size:
-    version_ = kind == KIND-EC618 ? ENVELOPE-FORMAT-VERSION-EC618 : ENVELOPE-FORMAT-VERSION
+    version_ = kind == KIND-EC618
+        ? ENVELOPE-FORMAT-VERSION-EC618
+        : ENVELOPE-FORMAT-VERSION-ESP32-HOST
 
   store path/string --ui/cli.Ui -> none:
     write-file path --ui=ui: | writer/io.Writer |
@@ -1827,8 +1831,8 @@ class Envelope:
     version := LITTLE-ENDIAN.uint32 info 4
     if marker != MARKER:
       throw "cannot open envelope - malformed"
-    if version != ENVELOPE-FORMAT-VERSION and version != ENVELOPE-FORMAT-VERSION-EC618:
-      throw "cannot open envelope - expected version $ENVELOPE-FORMAT-VERSION or $ENVELOPE-FORMAT-VERSION-EC618, was $version"
+    if version != ENVELOPE-FORMAT-VERSION-ESP32-HOST and version != ENVELOPE-FORMAT-VERSION-EC618:
+      throw "cannot open envelope - expected version $ENVELOPE-FORMAT-VERSION-ESP32-HOST or $ENVELOPE-FORMAT-VERSION-EC618, was $version"
     return version
 
 class RelocationInformation:
