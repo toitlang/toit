@@ -109,6 +109,7 @@ extern "C" {
 
 #include "anchor.h"
 #include "slot_reloc_ec618.h"
+#include "watchdog_ec618.h"
 
 namespace toit {
 
@@ -135,7 +136,6 @@ static uint8 sleep_vote_handle = 0;
 
 // Deep-sleep-path hooks into VM drivers (see the sleep path below).
 extern "C" bool toit_uart_sleep_vote_release_for_sleep();  // uart_ec618.cc.
-extern "C" void toit_watchdog_presleep();                  // primitive_ec618.cc.
 extern "C" int toit_capture_boot_wakeup_src();             // primitive_ec618.cc.
 extern "C" int toit_wakeup_pad_config(int pad);            // primitive_ec618.cc.
 extern "C" int toit_wakeup_arm_flags();                    // primitive_ec618.cc.
