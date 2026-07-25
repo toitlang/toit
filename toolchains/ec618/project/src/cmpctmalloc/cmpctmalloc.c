@@ -810,7 +810,7 @@ IRAM_ATTR void *cmpct_aligned_alloc_impl(cmpct_heap_t *heap, size_t size, size_t
 
     // The page allocator already has the ability to return allocations that
     // are more aligned than the page size.
-    if (alignment >= PAGE_SIZE / 2) {
+    if (alignment >= PAGE_SIZE / 2 || size >= PAGE_SIZE / 4 * 3) {
         // We take 2k (half-page) allocations in here too, because treating them as
         // page allocations will waste 2k, but putting them in the normal system
         // actually wastes even more.
