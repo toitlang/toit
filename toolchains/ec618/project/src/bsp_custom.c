@@ -30,13 +30,9 @@ extern ARM_DRIVER_USART Driver_USART2;
 // The console UART is RUNTIME state from the anchor record (per-device
 // provisioning, gen-anchor --console-uart), so ONE base image serves
 // every rig — a compile-time id would fork the base fingerprint per
-// debug wire. Known issue with console=1: one garbled line at the start
-// of every cold boot ("boot.rom"-shaped fragment). Our SetPrintUart path
-// is the only code in the PLAT that initialises Driver_USART1 directly
-// via the CMSIS USART API; the init flushes chip-level TX state that is
-// otherwise invisible. ARM_USART_ABORT_SEND below reduces the noise from
-// many bytes to one; the last byte sits in the shift register and we
-// have not found a way to kill it from software. A warm reset is clean.
+// debug wire. UART1 carries a complete "^boot.rom..." banner at every
+// reset. The mask ROM emits it before this code runs, so neither the
+// CMSIS initialization below nor application software can suppress it.
 static ARM_DRIVER_USART* const print_uart_drivers[3] = {
     &Driver_USART0, &Driver_USART1, &Driver_USART2,
 };
@@ -84,9 +80,6 @@ static void SetPrintUart(void) {
                     ARM_USART_STOP_BITS_1 |
                     ARM_USART_FLOW_CONTROL_NONE,
                     CONFIG_TOIT_EC618_PRINT_UART_BAUD);
-    // Best-effort mitigation for the cold-boot TX garbage described above:
-    // drop any bytes already in the controller's TX path.
-    driver->Control(ARM_USART_ABORT_SEND, 0);
     driver->Control(ARM_USART_CONTROL_TX, 1);
 
     UsartPrintHandle = driver;

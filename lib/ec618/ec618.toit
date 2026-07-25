@@ -410,12 +410,11 @@ class Ec618:
     on GPIO11; if your module exposes only that one, pass $mapping equal
     to 1 along with $cts-enabled.
 
-  Note on UART1 as the print UART: if the firmware was built with
-    a console byte of 1 (so Toit's `print` is routed
-    here), every cold-boot starts with a single garbled line on UART1
-    before the first real output. The chip leaves some TX state on
-    UART1 that we cannot fully drain from software. This is cosmetic
-    and only happens on cold boot; a warm reset is clean.
+  Note on UART1: the chip's mask ROM emits a complete "^boot.rom..."
+    banner on UART1 at every reset, before application software runs.
+    The banner has no trailing newline and cannot be suppressed, so a
+    line-oriented receiver should discard it before accepting application
+    traffic.
   */
   static uart1 -> uart.Port
       --mapping/int=0
