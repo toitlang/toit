@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=https://toit.io/schemas/ec618/partition-table/v1.json
+#
 # SHIFTED test descriptor for the slot-move acceptance test. It is identical
 # to the default toolchains/ec618/partitions.yaml except for a 4 KiB pad
 # pushed in front of
@@ -9,6 +11,7 @@
 # The default layout's one-sector free reserve moves in front of the slots;
 # the registry therefore stays at the same address and size.
 
+$schema: https://toit.io/schemas/ec618/partition-table/v1.json
 xip-offset: 0x800000
 
 partitions:

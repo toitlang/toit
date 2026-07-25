@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=https://toit.io/schemas/ec618/partition-table/v1.json
+#
 # EC618 flash partition descriptor — the default layout consumed by the
 # host tools. Offsets are raw flash
 # addresses (erase/write view); the XIP view adds xip-offset.
@@ -27,6 +29,7 @@
 #   data     - Toit-managed data (flash registry today).
 #   free     - available; becomes user-assignable via table edits.
 
+$schema: https://toit.io/schemas/ec618/partition-table/v1.json
 xip-offset: 0x800000
 
 partitions:
