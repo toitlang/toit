@@ -1,0 +1,6 @@
+name: missing
+description: Package without a license file.
+url: localhost:<[*PORT*]>/pkg/missing
+version: 1.0.0
+hash: deadbeef1234567890abcdef1234567890abcdef
+license: MIT

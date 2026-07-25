@@ -1,0 +1,44 @@
+OK
+[pkg, registry, add, test-registry, --local, registry]
+==================
+OK
+[pkg, install, remote]
+Package 'localhost:<[*PORT*]>/pkg/remote@1.0.0' installed with prefix 'remote'.
+==================
+OK
+[pkg, licenses, --no-include-sdk, --output=THIRD_PARTY_LICENSES]
+Wrote licenses for 4 packages to 'THIRD_PARTY_LICENSES'.
+==================
+== cat THIRD_PARTY_LICENSES
+================================================================================
+Package: license-app
+Source: .
+License file: LICENSE
+================================================================================
+Root application license.
+
+================================================================================
+Package: local
+Source: local
+License file: LICENSE
+================================================================================
+Local package license.
+
+================================================================================
+Package: nested
+Source: localhost:<[*PORT*]>/pkg/nested
+Version: 1.0.0
+Revision: deadbeef1234567890abcdef1234567890abcdef
+License file: LICENSE
+================================================================================
+Nested remote package license.
+
+================================================================================
+Package: remote
+Source: localhost:<[*PORT*]>/pkg/remote
+Version: 1.0.0
+Revision: deadbeef1234567890abcdef1234567890abcdef
+License file: LICENSE
+================================================================================
+Remote package license.
+

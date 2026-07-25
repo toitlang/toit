@@ -1,0 +1,3 @@
+OK
+[pkg, licenses, --output=LICENSES_WITH_SDK]
+Wrote licenses for 5 packages to 'LICENSES_WITH_SDK'.

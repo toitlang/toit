@@ -18,6 +18,7 @@ import system
 import cli show *
 
 import .commands.install
+import .commands.licenses
 import .commands.version
 import .commands.update
 import .commands.init
@@ -37,6 +38,7 @@ build-command -> Command:
           DescribeCommand.CLI-COMMAND,
           InitCommand.CLI-COMMAND,
           InstallCommand.CLI-COMMAND,
+          LicensesCommand.CLI-COMMAND,
           ListCommand.CLI-COMMAND,
           RegistryCommand.CLI-COMMAND,
           SearchCommand.CLI-COMMAND,
@@ -70,4 +72,3 @@ main arguments/List --cli/Cli?:
 OPTION-SDK-VERSION ::= "sdk-version"
 OPTION-PROJECT-ROOT ::= "project-root"
 OPTION-AUTO-SYNC ::= "auto-sync"
-

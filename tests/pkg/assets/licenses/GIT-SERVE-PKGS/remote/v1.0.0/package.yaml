@@ -1,0 +1,6 @@
+name: remote
+description: Remote package.
+dependencies:
+  nested:
+    url: localhost:<[*PORT*]>/pkg/nested
+    version: ^1.0.0

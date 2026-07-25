@@ -192,6 +192,19 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   add_subdirectory(tools)
   add_subdirectory(system/extensions/host)
 
+  # Keep the license information shipped with the SDK identical to the
+  # information used by the Debian package.
+  configure_file(
+    "${CMAKE_SOURCE_DIR}/debian/copyright"
+    "${CMAKE_BINARY_DIR}/sdk/lib/toit/SDK-LICENSES"
+    COPYONLY
+  )
+  install(
+    FILES "${CMAKE_SOURCE_DIR}/debian/copyright"
+    DESTINATION lib/toit
+    RENAME SDK-LICENSES
+  )
+
   # Copy the lib folder to /usr/lib/toit/lib (recursively).
   install(DIRECTORY ${CMAKE_SOURCE_DIR}/lib/
     DESTINATION lib/toit/lib

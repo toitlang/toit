@@ -1,0 +1,4 @@
+name: license-app
+dependencies:
+  local:
+    path: local
