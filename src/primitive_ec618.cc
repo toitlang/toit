@@ -28,6 +28,7 @@
 #include "sha.h"
 #include "slot_reloc_ec618.h"
 #include "watchdog_ec618.h"
+#include "wakeup_ec618.h"
 
 extern "C" {
   #include "flash_rt.h"
@@ -625,46 +626,31 @@ PRIMITIVE(wakeup_cause) {
 //
 // Packed per-pad config: bit 0 enabled, bit 1 posEdge, bit 2 negEdge,
 // bit 3 pullUp, bit 4 pullDown.
-static const int kWakeupPadCount = 6;
 static uint8_t wakeup_pad_configs_[kWakeupPadCount];
-static int wakeup_arm_flags_ = 0;
 
 extern "C" int toit_wakeup_pad_config(int pad) {
   if (pad < 0 || pad >= kWakeupPadCount) return 0;
   return wakeup_pad_configs_[pad];
 }
 
-extern "C" int toit_wakeup_arm_flags() {
-  return wakeup_arm_flags_;
-}
-
-extern "C" void toit_restore_wakeup_config(
-    const uint8_t* configs,
-    int flags) {
+extern "C" void toit_restore_wakeup_config(const uint8_t* configs) {
   memcpy(wakeup_pad_configs_, configs, sizeof(wakeup_pad_configs_));
-  wakeup_arm_flags_ = flags;
 }
 
 PRIMITIVE(wakeup_pad_configure) {
   ARGS(int, pad, bool, enabled, bool, pos_edge, bool, neg_edge,
        bool, pull_up, bool, pull_down);
-  if (pad < 0 || pad >= kWakeupPadCount) FAIL(OUT_OF_RANGE);
+  int index = wakeup_index_for_pad(pad);
+  if (index < 0) FAIL(INVALID_ARGUMENT);
+  if (enabled && !pos_edge && !neg_edge) FAIL(INVALID_ARGUMENT);
+  if (pull_up && pull_down) FAIL(INVALID_ARGUMENT);
   uint8_t packed = 0;
-  if (enabled) packed |= 1;
-  if (pos_edge) packed |= 2;
-  if (neg_edge) packed |= 4;
-  if (pull_up) packed |= 8;
-  if (pull_down) packed |= 16;
-  wakeup_pad_configs_[pad] = packed;
-  return process->null_object();
-}
-
-// Bring-up diagnostic: selects arming-sequence variants (see
-// toit_ec618.cc arm_wakeup_pads for the bit meanings) so the wake
-// sequence can be A/B-tested from a test container without reflashing.
-PRIMITIVE(wakeup_arm_flags) {
-  ARGS(int, flags);
-  wakeup_arm_flags_ = flags;
+  if (enabled) packed |= kWakeupEnabled;
+  if (pos_edge) packed |= kWakeupPositiveEdge;
+  if (neg_edge) packed |= kWakeupNegativeEdge;
+  if (pull_up) packed |= kWakeupPullUp;
+  if (pull_down) packed |= kWakeupPullDown;
+  wakeup_pad_configs_[index] = packed;
   return process->null_object();
 }
 

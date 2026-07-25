@@ -110,21 +110,24 @@ rewritten.
 
 **Decision:** distinguish normal resource ownership from explicit deep-sleep
 wake configuration. Normal GPIO/peripheral reservations end with the
-container/VM. The wake API must accept/document physical `gpio.Pin` values and
-state exactly which pins are wake-capable, including the corresponding EC618
-GPIO names:
+container/VM. The wake API now accepts physical `gpio.Pin` values and documents
+exactly which pins are wake-capable, including the corresponding EC618 GPIO
+names:
 
 - PAD40 / `Ec618.gpio 20` maps to wakeup input 3.
 - PAD41 / `Ec618.gpio 21` maps to wakeup input 4.
 - PAD42 / `Ec618.gpio 22` maps to wakeup input 5.
 
-The implementation must reject other ordinary GPIO pins instead of exposing
-the PMU's unrelated numeric wakeup index. The pad-based API is canonical, but
-provide a convenience conversion from an EC618 GPIO index for users bringing
-number-based code from another platform. The dedicated WAKEUP0–2 package pins
-do not currently have a normal `gpio.Pin` representation and remain outside
-this initial ordinary-GPIO API. Output hold remains a separate future API
-after SDK/hardware proof.
+Other ordinary GPIO pins are rejected instead of exposing the PMU's unrelated
+numeric wakeup index. `Ec618.gpio` provides the convenience conversion from an
+EC618 GPIO index for users bringing number-based code from another platform.
+Enabling and disabling are separate operations; disable actively clears both
+the PMU configuration and NVIC state before hibernate. Enabling uses the SDK's
+single `GPIO_WakeupPadConfig` path, and the separate AON IO LDO is always
+powered down because neither wake edges nor their pulls require it. The
+dedicated WAKEUP0–2 package pins do not currently have a normal `gpio.Pin`
+representation and remain outside this initial ordinary-GPIO API. Output hold
+remains a separate future API after SDK/hardware proof.
 
 ### 4. Which hardware rewiring and measurements are available?
 

@@ -589,7 +589,8 @@ rule no longer applies:
       wake tests prove IO13 -> pin 9 as an input/wake source, 2026-07-02);
       what remains gated is the pads-40..42 GPIO *output* path
       (known-issues #5). The `ec618.wakeup-pin-values` mask (idle
-      0b111111) is live and `ec618.configure-wakeup-pad` wakes hibernate.
+      0b111111) is live; `ec618.configure-wakeup-pad` accepts the physical
+      PAD40..42 `gpio.Pin` identities and wakes hibernate.
 - [x] **Pad/GPIO table — final** (2026-06-10, late evening). The
       authoritative source turned out to be the SDK's own GPIO example
       (`project_legacy/example_gpio`, `allGpioMap`) — the one table with

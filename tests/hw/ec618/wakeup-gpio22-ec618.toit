@@ -1,7 +1,6 @@
 // Copyright (C) 2026 Toit contributors.
 
 import ec618
-import gpio
 
 import .wiring as wiring
 
@@ -23,23 +22,20 @@ The harness reports "did not pass" by design — the device reboots
   boot that follows.
 */
 
-// Bring-up sequence variants (see arm_wakeup_pads in toit_ec618.cc).
-// 0 = the canonical sequence: NVIC enable + slpManSetWakeupPadCfg.
-ARM-FLAGS ::= 0
-
-GPIO22-WAKEUP-PAD ::= 5  // GPIO22 = PAD42 = wakeup pad 5.
-
 main:
   print "reset=$(ec618.reset-reason-name ec618.reset-reason) wake=$(ec618.wakeup-cause-name ec618.wakeup-cause)"
   print "wupins=0b$(%b ec618.wakeup-pin-values)"
 
   // Wire health: the ESP32 helper holds the net low before pulsing.
-  pin := gpio.Pin wiring.EC618-GPIO22-PAD --input
+  pin := ec618.Ec618.gpio 22 --input
+  if pin.num != wiring.EC618-GPIO22-PAD:
+    throw "GPIO22 must resolve to PAD$(wiring.EC618-GPIO22-PAD)"
   print "gpio22=$pin.get (expect 0 while the helper holds the net low)"
   pin.close
 
-  ec618.wakeup-arm-flags_ ARM-FLAGS
-  ec618.configure-wakeup-pad GPIO22-WAKEUP-PAD --pos-edge --neg-edge --pull-down
+  ec618.configure-wakeup-pad pin --pos-edge --pull-down
+  ec618.disable-wakeup-pad pin
+  ec618.configure-wakeup-pad pin --pos-edge --neg-edge --pull-down
   print "Going to deep sleep for 150s; a GPIO22 edge should wake us early..."
   ec618.deep-sleep (Duration --s=150)
   print "ERROR: deep-sleep returned!"

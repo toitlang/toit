@@ -585,10 +585,9 @@ at deep-sleep entry, for every pad configured via
 `ec618.configure-wakeup-pad`, enable its NVIC line (raw `ISER` write,
 same as the prebuilt driver) and apply `slpManSetWakeupPadCfg`. The AON
 IO LDO still powers off for the sleep (the wakeup-pad domain does not
-need it — HW-verified). A bring-up `wakeup-arm-flags` primitive can
-A/B sequence variants (skip-NVIC / keep-LDO / latch /
-`GPIO_WakeupPadConfig` path) from a test container without reflashing;
-the canonical pair (flags=0) is the verified default.
+need it, including for the configured pull resistor — HW-verified). The
+implementation uses the SDK's `GPIO_WakeupPadConfig`, which performs this
+verified pair.
 
 **HW evidence.** Two identical runs
 (`tests/hw/ec618/wakeup-gpio22-ec618.toit` + the ESP32 pulser holding
@@ -598,10 +597,13 @@ timestamp to the second, 109 s before the RTC fallback, with
 Before the fix the identical config always fell through to `wake src=1`
 (RTC).
 
-**API.** `ec618.configure-wakeup-pad index --pos-edge --neg-edge
---pull-up --pull-down` (index 0..5; GPIO22 = PAD42 = wakeup pad 5;
-GPIO20/21 = pads 3/4; 0..2 are the dedicated WAKEUP pins). Takes effect
-at the next `ec618.deep-sleep`; the wake is a reboot whose
+**API.** `ec618.configure-wakeup-pad pin --pos-edge --neg-edge
+--pull-up --pull-down` accepts PAD40, PAD41, or PAD42 as a `gpio.Pin`
+(EC618 GPIO20..22 / wakeup inputs 3..5). For example, use
+`ec618.Ec618.gpio 22` for PAD42. The dedicated WAKEUP inputs 0..2 have
+no ordinary `gpio.Pin` identity and are not exposed by this API.
+`ec618.disable-wakeup-pad pin` removes the configuration. Changes take
+effect at the next `ec618.deep-sleep`; the wake is a reboot whose
 `ec618.wakeup-cause` reads `WAKEUP-PAD`. Note the pad should rest at
 the level opposite the armed edge when the sleep starts (the SDK
 examples arm the falling edge with a pull-up, or the rising edge with a

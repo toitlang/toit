@@ -51,10 +51,6 @@ extern "C" {
   void GPIO_WakeupPadConfig(uint32_t pin, uint8_t is_rise_high,
                             uint8_t is_fall_low, uint8_t pullup,
                             uint8_t pulldown);
-  // LuatOS core GPIO driver init; the argument is an optional CBFuncEx_t
-  // interrupt callback (NULL keeps per-pin callbacks).
-  void GPIO_GlobalInit(void* callback);
-
   // VM-side C++ static initializers. The linker script splits the
   // init_array between PLAT (.load_dram_shared, used by PLAT startup)
   // and the active VM slot. Each slot's run_static_initializers()
@@ -110,6 +106,7 @@ extern "C" {
 #include "anchor.h"
 #include "slot_reloc_ec618.h"
 #include "watchdog_ec618.h"
+#include "wakeup_ec618.h"
 
 namespace toit {
 
@@ -136,13 +133,6 @@ static uint8 sleep_vote_handle = 0;
 
 // Deep-sleep-path hooks into VM drivers (see the sleep path below).
 extern "C" bool toit_uart_sleep_vote_release_for_sleep();  // uart_ec618.cc.
-extern "C" int toit_capture_boot_wakeup_src();             // primitive_ec618.cc.
-extern "C" int toit_wakeup_pad_config(int pad);            // primitive_ec618.cc.
-extern "C" int toit_wakeup_arm_flags();                    // primitive_ec618.cc.
-// Restores wake-pad state before an intermediate deep-sleep continuation.
-extern "C" void toit_restore_wakeup_config(
-    const uint8_t* configs,
-    int flags);
 
 // Callback for deep sleep timer expiration. Must be registered for
 // slpManDeepSlpTimerStart to work. The ID is ignored — the wake-up
@@ -352,68 +342,40 @@ static void relocate_data_slot_pointers() {
 //      enable is why the first bring-up attempt never woke.
 //   2. slpManSetWakeupPadCfg with the edge/pull settings.
 //
-// The flags argument (ec618 wakeup-arm-flags primitive) selects bring-up
-// sequence variants so the rig can A/B the arming without reflashing:
-//   bit 0 (1)  - skip the NVIC enable (isolates its contribution).
-//   bit 1 (2)  - keep the AON IO LDO powered (skip slpManAONIOPowerOff).
-//   bit 2 (4)  - latch AON IO state across the sleep (slpManAONIOLatchEn).
-//   bit 3 (8)  - GPIO_GlobalInit(NULL) first (LuatOS pm does; suspected
-//                only needed for awake-mode IRQ dispatch).
-//   bit 4 (16) - arm through GPIO_WakeupPadConfig instead of the manual
-//                pair (should be behaviorally identical).
-static const int kWakeupArmSkipNvic = 1;
-static const int kWakeupArmKeepLdo = 2;
-static const int kWakeupArmLatch = 4;
-static const int kWakeupArmGlobalInit = 8;
-static const int kWakeupArmUseDriver = 16;
-
-// NVIC set-enable / clear-pending for IRQ lines 0..31. The CMSIS core header
-// is not included in this file; these are the same raw writes the prebuilt
-// GPIO_WakeupPadConfig performs.
-static void nvic_enable_irq(int irqn) {
-  *reinterpret_cast<volatile uint32_t*>(0xE000E280) = 1u << irqn;  // ICPR0.
-  *reinterpret_cast<volatile uint32_t*>(0xE000E100) = 1u << irqn;  // ISER0.
-}
-
 static bool arm_wakeup_pads() {
-  int flags = toit_wakeup_arm_flags();
   bool any = false;
-  for (int pad = 0; pad < WAKEUP_PAD_MAX && pad <= WAKEUP_PAD_5; pad++) {
-    int packed = toit_wakeup_pad_config(pad);
-    if ((packed & 1) == 0) continue;
-    if (!any && (flags & kWakeupArmGlobalInit) != 0) GPIO_GlobalInit(NULL);
-    any = true;
-    uint8_t pos_edge = (packed >> 1) & 1;
-    uint8_t neg_edge = (packed >> 2) & 1;
-    uint8_t pull_up = (packed >> 3) & 1;
-    uint8_t pull_down = (packed >> 4) & 1;
-    if ((flags & kWakeupArmUseDriver) != 0) {
-      // HAL pin numbering: HAL_WAKEUP_0 == 32, the driver subtracts it again.
-      GPIO_WakeupPadConfig(32 + pad, pos_edge, neg_edge, pull_up, pull_down);
-    } else {
-      // Same order as the prebuilt driver: NVIC line first, then the config.
-      if ((flags & kWakeupArmSkipNvic) == 0) nvic_enable_irq(pad);
-      APmuWakeupPadSettings_t cfg = {};
-      cfg.posEdgeEn = pos_edge != 0;
-      cfg.negEdgeEn = neg_edge != 0;
-      cfg.pullUpEn = pull_up != 0;
-      cfg.pullDownEn = pull_down != 0;
-      slpManSetWakeupPadCfg(static_cast<APmuWakeupPad_e>(pad), true, &cfg);
+  for (int index = kFirstGpioWakeupIndex;
+       index < WAKEUP_PAD_MAX && index < kWakeupPadCount;
+       index++) {
+    int packed = toit_wakeup_pad_config(index);
+    if ((packed & kWakeupEnabled) == 0) {
+      // An earlier sleep may have armed this input. Explicitly return it to
+      // AON-IO mode and clear the NVIC state; skipping it is not sufficient
+      // because the PMU configuration can survive until rewritten. The SDK
+      // helper implements this symmetric disable when both edges are false.
+      GPIO_WakeupPadConfig(32 + index, false, false, false, false);
+      continue;
     }
+    any = true;
+    uint8_t pos_edge = (packed & kWakeupPositiveEdge) != 0;
+    uint8_t neg_edge = (packed & kWakeupNegativeEdge) != 0;
+    uint8_t pull_up = (packed & kWakeupPullUp) != 0;
+    uint8_t pull_down = (packed & kWakeupPullDown) != 0;
+    // HAL pin numbering: HAL_WAKEUP_0 == 32, the driver subtracts it again.
+    // The SDK helper performs the verified NVIC-enable + PMU-config pair.
+    GPIO_WakeupPadConfig(32 + index, pos_edge, neg_edge, pull_up, pull_down);
     // Read back what the sleep manager recorded — the pre-sleep evidence
     // that the arming took (the post-sleep evidence is the wake itself).
     bool armed = false;
     APmuWakeupPadSettings_t readback = {};
-    slpManGetWakeupPadCfg(static_cast<APmuWakeupPad_e>(pad), &armed, &readback);
+    slpManGetWakeupPadCfg(static_cast<APmuWakeupPad_e>(index), &armed, &readback);
     printf("[toit] DEBUG: wakeup pad %d armed=%d pos=%d neg=%d pu=%d pd=%d\n",
-           pad, armed ? 1 : 0, readback.posEdgeEn ? 1 : 0,
+           index, armed ? 1 : 0, readback.posEdgeEn ? 1 : 0,
            readback.negEdgeEn ? 1 : 0, readback.pullUpEn ? 1 : 0,
            readback.pullDownEn ? 1 : 0);
   }
   if (any) {
-    if ((flags & kWakeupArmLatch) != 0) slpManAONIOLatchEn(AonIOLatch_Enable);
-    printf("[toit] DEBUG: wakeup pads: flags=%d nvic_iser=0x%08x wupins=0x%02x\n",
-           flags,
+    printf("[toit] DEBUG: wakeup pads: nvic_iser=0x%08x wupins=0x%02x\n",
            static_cast<unsigned>(*reinterpret_cast<volatile uint32_t*>(0xE000E100)),
            static_cast<unsigned>(slpManGetWakeupPinValue()));
   }
@@ -425,10 +387,7 @@ static uint32 prepare_deep_sleep(int64 sleep_ms) {
   for (int pad = 0; pad < RtcMemory::DEEP_SLEEP_WAKEUP_PAD_COUNT; pad++) {
     wakeup_pad_configs[pad] = toit_wakeup_pad_config(pad);
   }
-  return RtcMemory::prepare_deep_sleep(
-      sleep_ms,
-      wakeup_pad_configs,
-      toit_wakeup_arm_flags());
+  return RtcMemory::prepare_deep_sleep(sleep_ms, wakeup_pad_configs);
 }
 
 [[noreturn]] static void enter_deep_sleep(uint32 timer_ms) {
@@ -461,7 +420,7 @@ static uint32 prepare_deep_sleep(int64 sleep_ms) {
   // Arm any wakeup pads configured via ec618.configure-wakeup-pad, so a
   // GPIO edge can end the hibernate early (the wake is a reboot with
   // wakeup-cause == WAKEUP-PAD).
-  bool wakeup_pads_armed = arm_wakeup_pads();
+  arm_wakeup_pads();
 
   // Power off the AON IO LDO for the sleep. Toit has no pin-hold API yet
   // (the ESP32 port's deep-sleep pin holds have no counterpart here, and
@@ -469,12 +428,10 @@ static uint32 prepare_deep_sleep(int64 sleep_ms) {
   // be used *correctly* across deep sleep — a held level would be unowned
   // state. Until holds exist, the rail goes down (all AON IOs drop low,
   // the wakeup pads are on a separate domain and keep working); the GPIO
-  // driver powers it back up when an AON pad is opened after the wake.
-  // Bring-up flag kWakeupArmKeepLdo keeps the rail up instead, to A/B
-  // whether the wakeup-pad edge detector depends on it after all.
-  if (!wakeup_pads_armed || (toit_wakeup_arm_flags() & kWakeupArmKeepLdo) == 0) {
-    slpManAONIOPowerOff();
-  }
+  // driver powers it back up when an AON pad is opened after the wake. The
+  // wake input and its pull resistor use a separate always-on domain; hardware
+  // verification shows neither depends on this GPIO-output rail.
+  slpManAONIOPowerOff();
 
   // Use HIBERNATE for all deep sleep cases. SLP2 does not reliably
   // preserve ASMB noinit data on this platform — the save/restore
@@ -584,13 +541,11 @@ static void start() {
   RtcMemory::set_up();
   {
     uint8_t wakeup_pad_configs[RtcMemory::DEEP_SLEEP_WAKEUP_PAD_COUNT] = {};
-    int wakeup_arm_flags = 0;
     uint32_t continuation_ms = RtcMemory::continue_deep_sleep(
         wakeup_src == WAKEUP_FROM_RTC,
-        wakeup_pad_configs,
-        &wakeup_arm_flags);
+        wakeup_pad_configs);
     if (continuation_ms != 0) {
-      toit_restore_wakeup_config(wakeup_pad_configs, wakeup_arm_flags);
+      toit_restore_wakeup_config(wakeup_pad_configs);
       printf("[toit] INFO: continuing deep sleep for %ums without starting the VM\n",
              static_cast<unsigned>(continuation_ms));
       enter_deep_sleep(continuation_ms);

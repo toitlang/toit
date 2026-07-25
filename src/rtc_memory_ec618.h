@@ -16,6 +16,7 @@
 #pragma once
 
 #include "top.h"
+#include "wakeup_ec618.h"
 
 #ifdef TOIT_EC618
 
@@ -51,17 +52,15 @@ class RtcMemory {
   // interval. Wake-pad settings are retained for intermediate timer wakes.
   static uint32 prepare_deep_sleep(
       int64 sleep_ms,
-      const uint8* wakeup_pad_configs,
-      int wakeup_arm_flags);
+      const uint8* wakeup_pad_configs);
 
   // On an RTC-timer wake, returns the next interval without starting the Toit
   // VM. Other wake sources cancel the pending continuation and return zero.
   static uint32 continue_deep_sleep(
       bool timer_wakeup,
-      uint8* wakeup_pad_configs,
-      int* wakeup_arm_flags);
+      uint8* wakeup_pad_configs);
 
-  static const int DEEP_SLEEP_WAKEUP_PAD_COUNT = 6;
+  static const int DEEP_SLEEP_WAKEUP_PAD_COUNT = kWakeupPadCount;
 
   // User data.
   static uint8* user_data_address();

@@ -64,9 +64,11 @@ console-uart-id -> int:
   #primitive.ec618.console-uart-id
 
 /**
-Returns the live levels of the AON wakeup pads as a bitmask (bit N =
-  WAKEUP_PAD N). The AON-domain pads are not readable through the plain
-  GPIO controller; this is the input path for them.
+Returns the live levels of the AON wakeup inputs as a bitmask.
+
+Bits 3, 4, and 5 are PAD40, PAD41, and PAD42 respectively (EC618 GPIO20,
+  GPIO21, and GPIO22). Bits 0 through 2 are the dedicated package wake inputs,
+  which do not have ordinary $Pin identities.
 */
 wakeup-pin-values -> int:
   #primitive.ec618.wakeup-pin-values
@@ -74,39 +76,35 @@ wakeup-pin-values -> int:
 /**
 Configures an AON wakeup pad as a deep-sleep wake source.
 
-The $index is the wakeup-pad number 0..5: pads 0..2 are the module's
-  dedicated WAKEUP pins, pads 3..5 are the GPIO-muxed trio GPIO20..22
-  (physical pads 40..42, the board's "AGPIOWU" pins). GPIO22 = wakeup
-  pad 5.
+The $pin must identify one of the three ordinary GPIO wake pads:
+
+- PAD40 / `Ec618.gpio 20` / wakeup input 3.
+- PAD41 / `Ec618.gpio 21` / wakeup input 4.
+- PAD42 / `Ec618.gpio 22` / wakeup input 5.
+
+Other pins are rejected. The dedicated package wake inputs 0 through 2 do not
+  have ordinary $Pin identities and are not supported by this API.
 
 The configuration only takes effect at the next $deep-sleep: an edge of
   the enabled polarity ($pos-edge / $neg-edge, at least one required)
   then ends the hibernate early. The wake is a reboot; $wakeup-cause
   reports $WAKEUP-PAD on the boot it causes. $pull-up / $pull-down
   select the pad's internal pull while asleep.
-
-Pass --no-enabled to remove a previously configured pad from the wake
-  set.
 */
-configure-wakeup-pad index/int
-    --enabled/bool=true
+configure-wakeup-pad pin/Pin
     --pos-edge/bool=false
     --neg-edge/bool=false
     --pull-up/bool=false
     --pull-down/bool=false -> none:
-  configure-wakeup-pad_ index enabled pos-edge neg-edge pull-up pull-down
-
-configure-wakeup-pad_ index enabled pos-edge neg-edge pull-up pull-down -> none:
-  #primitive.ec618.wakeup-pad-configure
+  wakeup-pad-configure_ pin.num true pos-edge neg-edge pull-up pull-down
 
 /**
-Selects bring-up variants of the deep-sleep wakeup-pad arming sequence.
+Disables $pin as a deep-sleep wake source.
 
-This is a private diagnostic entry point. The default value of 0 selects the
-  normal arming sequence.
+The supported pins are the same as for $configure-wakeup-pad.
 */
-wakeup-arm-flags_ flags/int -> none:
-  #primitive.ec618.wakeup-arm-flags
+disable-wakeup-pad pin/Pin -> none:
+  wakeup-pad-configure_ pin.num false false false false false
 
 /**
 Returns the flashed base's identity ("base-v<N>+<fingerprint>"), or
@@ -653,3 +651,6 @@ Bring-up diagnostic — see $peek32. The $address must be 4-byte aligned.
 */
 poke32 address/int value/int -> none:
   #primitive.ec618.poke32
+
+wakeup-pad-configure_ pad enabled pos-edge neg-edge pull-up pull-down -> none:
+  #primitive.ec618.wakeup-pad-configure

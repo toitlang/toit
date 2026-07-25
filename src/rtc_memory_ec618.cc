@@ -36,7 +36,7 @@ struct RtcData {
   int64 deep_sleep_remaining_ms;
 
   uint8 deep_sleep_wakeup_pad_configs[RtcMemory::DEEP_SLEEP_WAKEUP_PAD_COUNT];
-  int32 deep_sleep_wakeup_arm_flags;
+  int32 deep_sleep_reserved;  // Preserves the persisted layout.
 
   uint32 boot_count;
   uint32 out_of_memory_count;
@@ -177,34 +177,31 @@ static uint32 next_deep_sleep_chunk() {
 
 uint32 RtcMemory::prepare_deep_sleep(
     int64 sleep_ms,
-    const uint8* wakeup_pad_configs,
-    int wakeup_arm_flags) {
+    const uint8* wakeup_pad_configs) {
   ASSERT(sleep_ms > 0);
   rtc.deep_sleep_remaining_ms = sleep_ms;
   memcpy(rtc.deep_sleep_wakeup_pad_configs,
          wakeup_pad_configs,
          sizeof(rtc.deep_sleep_wakeup_pad_configs));
-  rtc.deep_sleep_wakeup_arm_flags = wakeup_arm_flags;
+  rtc.deep_sleep_reserved = 0;
   return next_deep_sleep_chunk();
 }
 
 uint32 RtcMemory::continue_deep_sleep(
     bool timer_wakeup,
-    uint8* wakeup_pad_configs,
-    int* wakeup_arm_flags) {
+    uint8* wakeup_pad_configs) {
   if (!timer_wakeup || rtc.deep_sleep_remaining_ms <= 0) {
     rtc.deep_sleep_remaining_ms = 0;
     memset(rtc.deep_sleep_wakeup_pad_configs,
            0,
            sizeof(rtc.deep_sleep_wakeup_pad_configs));
-    rtc.deep_sleep_wakeup_arm_flags = 0;
+    rtc.deep_sleep_reserved = 0;
     update_rtc_checksum();
     return 0;
   }
   memcpy(wakeup_pad_configs,
          rtc.deep_sleep_wakeup_pad_configs,
          sizeof(rtc.deep_sleep_wakeup_pad_configs));
-  *wakeup_arm_flags = rtc.deep_sleep_wakeup_arm_flags;
   return next_deep_sleep_chunk();
 }
 

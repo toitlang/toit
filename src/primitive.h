@@ -447,7 +447,6 @@ namespace toit {
   PRIMITIVE(poke32, 2)                       \
   PRIMITIVE(wakeup_cause, 0)                 \
   PRIMITIVE(wakeup_pad_configure, 6)         \
-  PRIMITIVE(wakeup_arm_flags, 1)             \
   PRIMITIVE(base_id, 0)                      \
   PRIMITIVE(slot_size, 0)                    \
   PRIMITIVE(console_uart_set, 1)             \
