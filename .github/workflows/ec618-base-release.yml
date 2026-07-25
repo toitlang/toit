@@ -31,12 +31,36 @@ permissions:
 
 jobs:
   release:
-    runs-on: self-linux
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
+          fetch-depth: 0
+
+      - name: Setup build environment
+        uses: ./actions/setup-build
+        with:
+          toit-dir: .
+
+      - name: Setup Xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: '2.7.2'
+
+      - name: Install EC618 GNU toolchain
+        shell: bash
+        run: |
+          toolchain="$RUNNER_TEMP/gcc-arm-none-eabi-10.3-2021.10"
+          archive="$RUNNER_TEMP/gcc-arm-none-eabi-10.3-2021.10-x86_64-linux.tar.bz2"
+          curl --fail --location --retry 3 \
+            --output "$archive" \
+            https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu-rm/10.3-2021.10/gcc-arm-none-eabi-10.3-2021.10-x86_64-linux.tar.bz2
+          echo "97dbb4f019ad1650b732faffcc881689cedc14e2b7ee863d390e0a41ef16c9a3  $archive" |
+            sha256sum --check -
+          tar --extract --bzip2 --file "$archive" --directory "$RUNNER_TEMP"
+          echo "EC618_GCC_PATH=$toolchain" >> "$GITHUB_ENV"
+          echo "$toolchain/bin" >> "$GITHUB_PATH"
 
       - name: Build SDK
         run: make
