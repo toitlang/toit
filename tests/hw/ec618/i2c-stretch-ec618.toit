@@ -5,8 +5,9 @@
 import ec618 show Ec618
 import i2c
 import io
-import uart
 
+import .framed-control show FramedChannel
+import .uart-rig as rig
 /**
 EC618 I2C long-transfer + clock-stretch validation (device under test).
 
@@ -41,8 +42,12 @@ REG-CONTROL-MEAS ::= 0xf4
 failures := []
 
 main:
-  control := Ec618.uart2 --baud-rate=115200
-  exchange control "P 1"
+  control-owner := rig.ec618-uart 2 115200
+  control := FramedChannel control-owner.port
+  control.send "HELLO"
+  control.expect "READY" --timeout-ms=120_000
+  control.send "P 1"
+  control.expect "P 1" --timeout-ms=10_000
 
   bus := Ec618.i2c1  // SDA=PAD23, SCL=PAD24.
 
@@ -77,7 +82,8 @@ main:
     slow.read LONG
   print "i2c-stretch-ec618: 51 kHz baseline pointer+$(LONG)B read: $(baseline-us / 1000) ms"
 
-  exchange control "H 30 $HOLD"             // Squat SCL at +30 ms for 150 ms.
+  control.send "H 30 $HOLD"                 // Squat SCL at +30 ms for 150 ms.
+  control.expect "H ok" --timeout-ms=10_000
   stretched/ByteArray? := null
   stretched-us := elapsed-us:
     slow.write #[REG-CALIBRATION]
@@ -94,7 +100,8 @@ main:
   (LONG / 2).repeat: | i |
     long-pairs[2 * i] = REG-CONFIG
     long-pairs[2 * i + 1] = (i == LONG / 2 - 1) ? 0b000_100_00 : (i & 0xff)
-  exchange control "H 30 $HOLD"
+  control.send "H 30 $HOLD"
+  control.expect "H ok" --timeout-ms=10_000
   write-us := elapsed-us:
     slow.write long-pairs
   config2 := (slow.registers.read-u8 REG-CONFIG)
@@ -109,7 +116,8 @@ main:
   // well after the cancelled task has unwound; any resulting stale event must
   // be harmless.
   slow.write #[REG-CALIBRATION]
-  exchange control "H 20 300"
+  control.send "H 20 300"
+  control.expect "H ok" --timeout-ms=10_000
   cancellation := catch:
     with-timeout --ms=100:
       slow.read LONG
@@ -122,9 +130,11 @@ main:
 
   slow.close
   bus.close
-  exchange control "P 0"
-  control.out.write "Q\n"
-  control.close
+  control.send "P 0"
+  control.expect "P 0" --timeout-ms=10_000
+  control.send "Q"
+  control.expect "BYE" --timeout-ms=10_000
+  control-owner.close
 
   if not failures.is-empty:
     print "i2c-stretch-ec618: FAIL $failures"
@@ -138,16 +148,3 @@ check ok/bool label/string -> none:
 elapsed-us [block] -> int:
   duration := Duration.of block
   return duration.in-us
-
-// Sends a command and reads one newline-terminated reply.
-exchange control/uart.Port command/string -> string:
-  control.out.write "$command\n"
-  buffer := #[]
-  with-timeout --ms=10_000:
-    while true:
-      nl := buffer.index-of '\n'
-      if nl >= 0: return buffer[..nl].to-string.trim
-      chunk := control.in.read
-      if chunk == null: throw "control lane closed"
-      buffer += chunk
-  unreachable
