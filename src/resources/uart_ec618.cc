@@ -505,19 +505,22 @@ static void cmsis_uart_event(int id, uint32_t event) {
       uint32_t len = transfer->tx_pending_len;
       transfer->tx_pending_len = 0;
       uint8_t* buf = transfer->tx_bufs[transfer->tx_active];
-      // Pre-feed the FIFO from the CPU before arming the DMA: with the
-      // 8-byte TX trigger (tx_trigger_boost) the FIFO holds ~8 bytes at
-      // this point; 8 THR writes top it up to ~16 without tripping
-      // Send's FIFO-relax spin (> 16), and the DMA takes over well
-      // before that drains. Skipped for tiny chunks so the DMA remainder
-      // stays >= 2 (Send's num==1 path is lossy).
-      uint32_t prefeed = 0;
-      if (len > 10) {
-        prefeed = 8;
-        USART_TypeDef* reg = kUartRegs[id];
+      USART_TypeDef* reg = kUartRegs[id];
+      if (len <= 10) {
+        // At the 8-byte TX-empty trigger at most 8 of the 32 FIFO entries
+        // remain occupied. Tiny tails fit completely, so avoid a redundant
+        // DMA setup (and its lossy one-byte special case) and let the normal
+        // task-context line-idle drain below finish the transfer.
+        for (uint32_t i = 0; i < len; i++) reg->THR = buf[i];
+      } else {
+        // Pre-feed the FIFO before arming the DMA. Eight THR writes top it
+        // up without tripping Send's FIFO-relax spin (> 16), and leave at
+        // least three bytes for the asynchronous path.
+        const uint32_t prefeed = 8;
         for (uint32_t i = 0; i < prefeed; i++) reg->THR = buf[i];
+        chained =
+            kDrivers[id]->Send(buf + prefeed, len - prefeed) == ARM_DRIVER_OK;
       }
-      chained = kDrivers[id]->Send(buf + prefeed, len - prefeed) == ARM_DRIVER_OK;
     }
     if (!chained) {
       if (!transfer->tx_waiting_for_empty) {

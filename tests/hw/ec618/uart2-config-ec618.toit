@@ -74,8 +74,10 @@ main:
   // 2048-byte normal and 4096-byte large TX staging boundaries. The 512-byte
   // cases also straddle the armed receive chunk.
   boundary-cases := [
-    [115200, false, [1, 2, 511, 512, 513, 1023, 1024, 1025, 2047, 2048, 2049]],
-    [921600, true, [4095, 4096, 4097]],
+    [115200, false,
+      [1, 2, 511, 512, 513, 1023, 1024, 1025,
+       2047, 2048, 2049, 2050, 2058, 2059]],
+    [921600, true, [4095, 4096, 4097, 4098, 4106, 4107]],
   ]
   boundary-cases.do: | c/List |
     baud := c[0]
