@@ -91,8 +91,7 @@ struct I2cState {
   bool in_use;
   bool initialized;          // Our Initialize() ran (Initialize is a
                              // no-op on an initialized driver, and
-                             // Uninitialize on a never-initialized one
-                             // is undefined — the UART tracker lesson).
+                             // Uninitialize requires a prior Initialize).
   uint32_t current_hz;       // Programmed wire pace once SETUP ran; 0 =
                              // must rerun (cleared by quiesce/power
                              // cycles).
@@ -105,12 +104,7 @@ struct I2cState {
   volatile I2cStage stage;
   volatile bool notify_toit;     // Async transfer: completion must wake the
                                  // Toit event state. A spin-consumed probe
-                                 // MUST NOT notify: the
-                                 // stale dispatch would land after the NEXT
-                                 // transfer's clear-state and wake it early
-                                 // (finish then sees an incomplete transfer
-                                 // -> phantom HARDWARE_ERROR on whichever
-                                 // transfer follows a probe).
+                                 // must not leave a queued notification.
   volatile uint32_t last_event;  // ARM_I2C_EVENT_* bits; 0 = running.
   volatile uint16_t seq;         // Transfer sequence, bumped at every
                                  // start; the completion dispatch carries
@@ -253,15 +247,14 @@ static const ARM_I2C_SignalEvent_t kI2cCallbacks[2] = { i2c0_event, i2c1_event }
 // The 26 MHz source (always running with the AP) covers ~49..206 kHz; the
 // gate-enabled 51.2 MHz root covers intermediate fast requests. Source
 // switches use the SDK LCD driver's CLOCK_clockEnable(CLK_HF51M) recipe.
-// A 400 kHz request uses the fastest bounded LuatOS-style timing word on
-// 26 MHz: 363 kHz measured. Requests above 400 kHz use the same ceiling;
+// A 400 kHz request uses the fastest validated timing word on 26 MHz:
+// approximately 363 kHz. Requests above 400 kHz use the same ceiling;
 // requests below the floor are rejected.
 static const uint32_t kPaceOverheadTicks = 20;
 static const uint32_t kSrc26M = 26000000;
 static const uint32_t kSrc51M = 51200000;
 static const uint32_t kFastRequestHz = 400000;
-// Separate measured-safe floors. On 51.2 MHz SCLx=62 is bounded while
-// SCLx=53 free-runs an address-NACK command; do not enter that gap.
+// Validated divisor floors for each functional-clock source.
 static const uint32_t kMinScl26 = 53;
 static const uint32_t kMinScl51 = 62;
 // Above this the 51.2 MHz source is selected: the fastest pace where the
@@ -284,16 +277,14 @@ static void ensure_setup(int controller, uint32_t hz) {
   I2cState* state = &i2c_states[controller];
   if (state->current_hz == hz) return;
   ARM_DRIVER_I2C* driver = kI2cDrivers[controller];
-  // LuatOS's production setup uses the complete 0x01882020 timing word on
-  // 26 MHz. SCLx=30 keeps the same setup/hold/filter fields and is the
-  // fastest bounded variant: 1.25 us high + 1.50 us low = 363 kHz.
-  // Smaller divisors can free-run the address-NACK path.
+  // Keep the setup/hold/filter fields while selecting the fastest validated
+  // phase divisor: 1.25 us high + 1.50 us low, approximately 363 kHz.
   bool luat_fast = hz >= kFastRequestHz;
   bool fast_src = !luat_fast && hz > kMax26MHz;
   uint32_t src = fast_src ? kSrc51M : kSrc26M;
   if (src != state->src_hz) {
-    // Source switches happen in the unclocked window (the mux-droop
-    // lesson — see quiesce), with the 51.2 MHz root gate-enabled first.
+    // Switch the source while the peripheral is unclocked. Gate the
+    // 51.2 MHz root before selecting it.
     driver->PowerControl(ARM_POWER_OFF);
     if (fast_src) CLOCK_clockEnable(CLK_HF51M);
     if (controller == 0) {
@@ -328,14 +319,9 @@ static void ensure_setup(int controller, uint32_t hz) {
   state->current_hz = hz;
 }
 
-// Hard recovery: the CMSIS abort and bus-clear entry points are empty
-// stubs, so the reliable reset is a power cycle of the block (the UART
-// recipe). Clears the engine, FIFOs and the SETUP flag. The functional
-// clock source is RE-PINNED in the unclocked window between OFF and FULL:
-// the disable/enable cycle can drop the mux back to its floating default,
-// and the 51 MHz input it may land on is not reliably running (a transfer
-// on a dead clock stalls the engine and can wedge the device) — observed
-// as flaky HARDWARE_ERRORs that appeared with quiesce-heavy tests.
+// Hard recovery: the CMSIS abort and bus-clear entries are empty, so reset
+// the engine, FIFOs, and SETUP flag with a peripheral power cycle. Reapply
+// the functional-clock source while the block is unclocked.
 static void quiesce(int controller) {
   I2cState* state = &i2c_states[controller];
   // Make an IRQ that races the abort stale before power-down. In
@@ -343,22 +329,12 @@ static void quiesce(int controller) {
   // read while the block is being reset.
   state->transfer_active = false;
   ARM_DRIVER_I2C* driver = kI2cDrivers[controller];
-  // Let a dying transaction finish its STOP first: the completion event
-  // (e.g. the NACK that brought us here) leads the STOP by up to a
-  // bit-time, and power-cycling the engine mid-STOP abandons the wire
-  // with a line held low — after which every transfer fails the
-  // bus_free() peek and nothing ever recovers (observed: torture-test
-  // HARDWARE_ERRORs whose register snapshot showed MCR=0 with the bus
-  // monitor stuck busy; twice as frequent at the slower 46 kHz wire,
-  // because the race window is a bit-time).
+  // The completion event can lead the final STOP by one bit-time. Wait for
+  // the wire state machine before removing peripheral power.
   I2C_TypeDef* regs = kI2cRegs[controller];
   for (int spin = 20000; (regs->STR & I2C_STR_BUSY_Msk) && spin > 0; spin--) {}
   driver->PowerControl(ARM_POWER_OFF);
-  // Re-pin the CURRENT source selection (re-enabling the 51.2 MHz root
-  // first when that is the selection): recovery must not silently change
-  // the pace, and dropping to 26 MHz here would make every NACK on a
-  // fast bus pay a double source-switch (measured ~104 us + two extra
-  // power cycles per probe) when ensure_setup re-elevates.
+  // Preserve the current source selection and pace across recovery.
   bool fast_src = state->src_hz == kSrc51M;
   if (fast_src) CLOCK_clockEnable(CLK_HF51M);
   if (controller == 0) {
@@ -793,7 +769,7 @@ PRIMITIVE(device_create) {
   if (disable_ack_check) FAIL(INVALID_ARGUMENT);
   if (frequency_hz == 0) FAIL(INVALID_ARGUMENT);
   // Honorable requests span ~49 kHz upward (see ensure_setup). A nominal
-  // 400 kHz request selects the measured-safe ~363 kHz wire ceiling.
+  // A 400 kHz request selects the validated ~363 kHz wire ceiling.
   // Requests above the ceiling run AT the ceiling (slower than asked is
   // I2C-legal), but a request BELOW the floor cannot be honored — a
   // deliberately slow bus may be a hard requirement, so reject instead
