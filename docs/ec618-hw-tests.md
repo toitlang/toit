@@ -397,17 +397,13 @@ calls still in the glue.
   `EXIT_DONE` therefore keeps the normal finished-program behavior; the rig does
   not need a platform-specific reset-on-exit policy. **HW-verified:** agent and
   sleeper coexist, basics pass, and the board stays responsive after 90 s idle.
-  - **Watchdog model (clarified):** the EC618 has two watchdogs. The **main WDT**
-    (`ec618.watchdog`, fed by the agent on host messages) counts **active (awake)
-    time** — the SDK's `WDT_enterLowPowerStatePrepare` disables its clock before
-    any chip low-power sleep — so it catches **busy hangs**, not an idle-stuck
-    agent. The **AON watchdog** (`slpManAonWdt*`, fed by the scheduler tick) is the
-    always-on one and guards **VM liveness**. A Toit `sleep` is just a FreeRTOS
-    timer-wait (`xTaskNotifyWait`); the chip only low-power-sleeps when the *whole*
-    VM is idle (FreeRTOS tickless idle → slpman) — that's correct, not a misrouted
-    scheduler sleep. Gap: an agent stuck *while the VM idles* is covered by neither
-    (main WDT paused in sleep; AON fed by the still-ticking scheduler) — rare, and
-    a healthy idle agent is fine.
+  - **Watchdog model:** the normal WDT counts active CPU time and therefore
+    acts as the busy-lockup backstop. The platform AON watchdog is CP-owned.
+    A high-priority deadline task enforces the application watchdog in wall
+    time: its timed wait wakes tickless idle at the remaining deadline, while
+    shorter sleeps naturally reduce the remaining time. The three-stage
+    `watchdog.toit` regression verifies feeds across short sleep and busy
+    intervals, followed by no-feed resets in both states.
 - **ADC exact-value test passing** (2026-06-08, test rig): the ESP32 drives a
   known DAC staircase; the EC618 self-calibrates the per-channel board divider
   (2-point fit) and verifies every level within ±60 mV. Both channels pass
@@ -517,9 +513,9 @@ rule no longer applies:
   (the historical lockup case: EC618 sending AND receiving at high rate).
 - **RESOLVED (2026-06-08):** the earlier "modest-affair EC618 went unresponsive,
   needs a physical power-cycle" blocker is fixed by the **general mini-jag
-  watchdog** (commit 92dde5d8): the agent now arms the hardware watchdog for its
-  whole life and feeds it on every host message, so an agent wedge / hung VM
-  resets straight back into a fresh agent (~60 s) with no external reset. A
+  watchdog**: the agent arms the application watchdog for its whole life and
+  feeds it on every host message, so an agent wedge / hung VM resets straight
+  back into a fresh agent (~60 s) with no external reset. A
   device hang no longer stalls autonomous HW work. (A **short-circuit** can still
   damage the boards — that risk is unchanged; follow the safe-direction +
   gpio-toggle-first rule below.)

@@ -1,21 +1,20 @@
-// Tests the EC618 hardware watchdog (lib/ec618/watchdog.toit) end to end.
+// Tests the EC618 application watchdog (lib/ec618/watchdog.toit) end to end.
 //
-// The watchdog guards against a hung (busy) device, so the test keeps the CPU
-// busy rather than sleeping: the EC618 gates the watchdog clock in deep sleep,
-// so a sleeping device would never trip it.
+// The user deadline is enforced by a high-priority task whose timed wait wakes
+// the chip from tickless idle. The normal WDT is its active-time backstop if a
+// busy lockup starves that task. This test verifies the observable deadline
+// during both application sleep and busy execution.
 //
 // Self-verifying across the reset it induces, using a flash-backed state byte.
-// The EC618 main WDT reset is reported as a power-on (the chip has no AP-side
-// watchdog interrupt to record a reason), so the test does NOT rely on the
-// reset reason; instead it detects that the device was reset *while hanging*:
+// Watchdog resets can be reported as power-on, so the test does not rely on the
+// reset reason. It records each armed phase before waiting for its reset:
 //
-//   Fresh boot (state 0): arm a watchdog, feed it for longer than the timeout
-//     while busy (proving feeding keeps the device alive), write state=1, then
-//     stop feeding and busy-loop. The watchdog must reset the device. If the
-//     loop instead runs to completion, write state=2 (watchdog failed to fire).
-//   Boot with state 1: we were reset during the hang => the watchdog fired.
-//     Report PASS (and print the reset reason for information).
-//   Boot with state 2: the hang completed without a reset => FAIL.
+//   State 0: feed across short sleeps for longer than the timeout, then record
+//     state 1 and sleep without feeding. The deadline must wake/reset the chip.
+//   State 1: the idle deadline passed. Feed across busy intervals, then record
+//     state 2 and stay busy without feeding. The deadline must reset the chip.
+//   State 2: both reset phases passed; report PASS and clear the state.
+//   State 0x81/0x82: the corresponding no-feed phase outlived its bound; FAIL.
 //
 // Re-runnable: each terminal case resets the state, so a power cycle repeats it.
 //
@@ -27,7 +26,7 @@ import ec618
 import ec618.watchdog
 import system.storage
 
-TIMEOUT-S ::= 3
+TIMEOUT-S ::= 2
 STATE-KEY ::= "state"
 
 main:
@@ -37,51 +36,67 @@ main:
   bucket := storage.Bucket.open --flash "test/watchdog"
   state := ((bucket.get STATE-KEY) or #[0])[0]
 
-  if state == 1:
-    // We wrote state=1, started hanging, and were reset before clearing it,
-    // so the watchdog reset the device mid-hang.
-    print "[watchdog-test] WATCHDOG TEST PASSED: device was reset while hung"
-    print "[watchdog-test]   reset reason: $(ec618.reset-reason-name reason) (the EC618 main WDT reset reads as power-on)"
+  if state == 2:
+    print "[watchdog-test] WATCHDOG TEST PASSED: idle and busy no-feed deadlines both reset the device"
+    print "[watchdog-test]   final reset reason: $(ec618.reset-reason-name reason)"
     bucket[STATE-KEY] = #[0]  // Re-arm for a re-run on the next power cycle.
     bucket.close
     return
 
-  if state == 2:
-    print "[watchdog-test] WATCHDOG TEST FAILED: the previous hang completed without a reset"
+  if state == 0x81 or state == 0x82:
+    phase := state == 0x81 ? "idle" : "busy"
+    print "[watchdog-test] WATCHDOG TEST FAILED: the $phase no-feed phase completed without a reset"
     bucket[STATE-KEY] = #[0]
     bucket.close
     return
 
-  // Fresh boot: arm, prove feeding keeps us alive, then hang.
-  print "[watchdog-test] arming watchdog with a $(TIMEOUT-S)s timeout"
+  if state == 1:
+    print "[watchdog-test] idle/light-sleep deadline passed; testing busy execution"
+    watchdog.watchdog-start --timeout=(Duration --s=TIMEOUT-S)
+
+    // Feed while busy for longer than the timeout.
+    5.repeat:
+      busy-wait --ms=1000
+      watchdog.watchdog-feed
+      print "[watchdog-test] busy feed, alive at $(it + 1)s"
+
+    bucket[STATE-KEY] = #[2]
+    print "[watchdog-test] busy without feed; expect a reset within $(TIMEOUT-S)s"
+    wait-bound --busy
+
+    watchdog.watchdog-stop
+    bucket[STATE-KEY] = #[0x82]
+    bucket.close
+    print "[watchdog-test] busy deadline did not fire"
+    return
+
+  // Fresh run: prove that sleeps shorter than the deadline preserve the
+  // remaining wall-clock deadline when it is fed.
+  print "[watchdog-test] testing idle/light-sleep deadline at $(TIMEOUT-S)s"
   watchdog.watchdog-start --timeout=(Duration --s=TIMEOUT-S)
-
-  // Feed while busy, for longer than the timeout, to prove the device stays
-  // alive as long as it is fed.
-  6.repeat:
-    busy-wait --ms=1000
+  5.repeat:
+    sleep --ms=1000
     watchdog.watchdog-feed
-    print "[watchdog-test] fed, alive at $(it + 1)s (> $(TIMEOUT-S)s timeout)"
+    print "[watchdog-test] sleep feed, alive at $(it + 1)s"
 
-  // Record that we are about to hang (persisted to flash immediately).
   bucket[STATE-KEY] = #[1]
+  print "[watchdog-test] sleeping without feed; expect a reset within $(TIMEOUT-S)s"
+  wait-bound
 
-  print "[watchdog-test] simulating a hang (busy, no feed); expect a reset shortly"
-  start-us := Time.monotonic-us
-  bound-us := (4 * TIMEOUT-S) * 1_000_000
-  while (Time.monotonic-us - start-us) < bound-us:
-    busy-wait --ms=1000
-    print "[watchdog-test] hung for $((Time.monotonic-us - start-us) / 1_000_000)s (no feed) ..."
-
-  // Only reached if the watchdog never reset us.
   watchdog.watchdog-stop
-  bucket[STATE-KEY] = #[2]
+  bucket[STATE-KEY] = #[0x81]
   bucket.close
-  print "[watchdog-test] WATCHDOG DID NOT FIRE within $(4 * TIMEOUT-S)s of a busy no-feed loop"
+  print "[watchdog-test] idle deadline did not fire"
 
-// Busy-waits about $ms milliseconds, keeping the CPU active so the device does
-// not enter deep sleep (which would gate the watchdog clock).
 busy-wait --ms/int -> none:
   deadline := Time.monotonic-us + ms * 1000
   while Time.monotonic-us < deadline:
     null  // Spin.
+
+wait-bound --busy/bool=false -> none:
+  (4 * TIMEOUT-S).repeat:
+    if busy:
+      busy-wait --ms=1000
+    else:
+      sleep --ms=1000
+    print "[watchdog-test] no feed for $(it + 1)s ..."

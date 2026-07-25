@@ -178,16 +178,16 @@ open-control-uart -> Ec618Control:
   throw "mini-jag needs a print UART (build with CONFIG_TOIT_EC618_PRINT_UART=1)"
 
 main-ec618:
-  // Arm the GENERAL watchdog FIRST, before anything that could wedge (e.g. opening
-  // the UART). It is fed below on every host message, so if the host goes quiet or
-  // our read wedges, the watchdog resets us straight back into a fresh agent.
-  watchdog.watchdog-start --timeout=WATCHDOG-HARDWARE-TIMEOUT
+  // Arm the application watchdog first, before anything that could wedge (for
+  // example, opening the UART). It is fed below on every host message, so if
+  // the host goes quiet or our read wedges, it resets into a fresh agent.
+  watchdog.watchdog-start --timeout=WATCHDOG-TIMEOUT
   // The VM is kept alive by a SEPARATE "sleeper" container installed alongside us
   // (see the tester's envelope build) — a task here would die with us if we throw.
   // If this agent ever crashes, the sleeper keeps the VM scheduling so it never
-  // reaches EXIT_DONE / deep sleep (which would gate the watchdog and brick a
-  // no-remote-reset rig). The sleeper does NOT feed the watchdog — only host
-  // messages (below) do — so a dead/silent agent still gets reset.
+  // reaches EXIT_DONE / deep sleep (which would tear down the application
+  // watchdog and brick a no-remote-reset rig). The sleeper does NOT feed it —
+  // only host messages (below) do — so a dead/silent agent still gets reset.
   // The lane + any open failure go to the CONSOLE (print), which is
   // visible even when the control lane itself is the thing that broke.
   print "[mini-jag] starting; control uart=$ec618.console-uart-id"
@@ -349,19 +349,14 @@ install-container reader/io.Reader out/io.Writer port/uart.Port -> bool:
   status out "install size=$size written=$written rx-errs=$(port.errors - errors-before)$(error ? " error=$error" : " ok")"
   return error == null
 
-// A GENERAL hardware watchdog, armed for the agent's whole life (main-ec618) and
-// fed DIRECTLY on every host message — the agent is "alive" exactly while it is
-// servicing the host. A test runs in the BACKGROUND so the command loop keeps
-// reading the UART while it runs; the host pings throughout, which keeps feeding
-// the watchdog. If the agent ever stops servicing host messages (wedged loop,
-// hung VM, or a test that wedges the device), the feeds stop and the watchdog
-// resets straight back into a fresh agent — no external reset needed (which
-// matters on a rig with no remote reset). The host pings far more often than
-// this while driving us; the watchdog is a rare recovery mechanism, so we use
-// the hardware MAX timeout — a slow (~1 min) reset is fine, and the generous
-// window also gives a freshly-OTA'd agent time for the host to reconnect before
-// any reset.
-WATCHDOG-HARDWARE-TIMEOUT ::= Duration --s=60
+// The application watchdog is armed for the agent's whole life and fed on
+// every host message: the agent is alive exactly while it services the host.
+// A test runs in the background, so host pings keep feeding the watchdog while
+// a healthy command loop remains responsive. If the loop, VM, or whole device
+// wedges, feeds stop and the device reboots into a fresh agent without an
+// external reset. The one-minute recovery window also gives a newly OTA'd
+// agent time for the host to reconnect.
+WATCHDOG-TIMEOUT ::= Duration --s=60
 
 // True while a test container runs in the background. While set, a CMD-PING is
 // fed but NOT acked, so the host's keep-alive pings don't interleave ack bytes

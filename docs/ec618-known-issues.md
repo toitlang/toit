@@ -60,13 +60,11 @@ cleanly.)
 
 ## 2. Neither HARDWARE watchdog catches an IDLE application wedge — FIXED with a software watchdog
 
-**Status:** FIXED (2026-06-10, HW-verified). The `ec618.watchdog` API is now a
-software watchdog (a dedicated FreeRTOS task in
-[primitive_ec618.cc](../src/primitive_ec618.cc)) with the WDT module as a
-busy-lockup backstop. Verified on quirky-plenty: an idle, unfed device resets
-at exactly the configured timeout (60 s armed → `[toit] FATAL: watchdog
-timeout` + reset at +59.8 s, periodic), and a fed device (ping every 2 s)
-stays up indefinitely.
+**Status:** FIXED (HW-verified). The `ec618.watchdog` API uses a deadline task
+in [watchdog_ec618.cc](../src/watchdog_ec618.cc) with the normal WDT module as
+an active-time busy-lockup backstop. The deterministic rig test verifies that
+feeds preserve the watchdog across both short sleeps and busy intervals, then
+that no-feed deadlines reset the device from both states.
 
 **Symptom (historical).** When issue #1 wedged the agent, NEITHER the main WDT
 nor the AON watchdog reset the device — a manual power-cycle was required.
@@ -94,8 +92,10 @@ must be stopped before hibernate, where the CP stops feeding
 
 **The fix.** `watchdog-start` spawns a high-priority FreeRTOS task (priority
 30, above the Toit task's 20 — independent of the Toit scheduler, so it
-survives a wedged VM; its timed waits wake the chip from tickless idle, so the
-timeout is wall-clock). It checks the feed deadline and calls
+survives a wedged VM). Its timed wait is capped by the remaining deadline:
+shorter scheduler sleeps naturally reduce the remaining wall-clock time, and
+a longer tickless idle is cut short by the watchdog task's wake. It checks the
+feed deadline and calls
 `ec618_system_reset()` when it passes, printing
 `[toit] FATAL: watchdog timeout (...) — resetting` first. The task also kicks
 the WDT module (10 s of active time, interrupt+reset mode): a lockup hard
