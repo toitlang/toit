@@ -137,7 +137,7 @@ Board pin  Functions (real)            Covered by                               
                                        pwm-aon (1 kHz, simultaneous with ch1)
 30  PAD34  GPIO19, UART1_TX            control lane (every dual-board test),         —
                                        gpio-map
-31  PAD33  GPIO18, UART1_RX,           uart1-echo (RX), pwm (TIMER4),                —
+31  PAD33  GPIO18, UART1_RX,           uart-echo (RX), pwm (TIMER4),                 —
            PWM (TIMER4)                gpio-opendrain, uart2-rs485 (DE)
 ```
 
@@ -340,9 +340,16 @@ calls still in the glue.
   (`waited-on_` strong set in `lib/system/containers.toit`) + mini-jag catches
   wait errors + the host tester fails fast on `run: test wait failed`. Found
   with the new software watchdog. Details: `docs/ec618-known-issues.md` #3.
-- **`uart2-echo` extended to 4 MBd** (2026-06-10): the small-token round-trip
-  passes at 9600..4 MHz in both reopen and set-baud modes — the raw baud
-  config is fine all the way up; high-baud problems are load problems.
+- **Consolidated `uart-echo` test:** UART1 starts as a bidirectional framed
+  control lane while UART2 is swept, then both boards handshake a switch to
+  UART2 before sweeping UART1. The shared test body covers reopen and set-baud
+  modes. Every port/baud transition is acknowledged instead of sleeping, and
+  each control/test message is length-delimited and protected by CRC-16 so
+  arbitrary chunks, reset junk, and a corrupt frame cannot be mistaken for a
+  command. Hardware passes UART2 at 9600..4 MBd and UART1 at
+  115200..921600 in both modes. The earlier sweep exposed the generic UART
+  library's ESP32-only `high-priority` TX flag at baud >= 460800; EC618 now
+  ignores that flag.
 - **`uart2-bigdata` throughput + leak test** (2026-06-10): 256 KiB per
   direction per baud, deterministic stream + CRC, no echo (each side only
   reads or only writes — per Florian: the ESP32 can't echo fast enough at high
@@ -369,16 +376,6 @@ calls still in the glue.
   PAD26. Validates the receive direction at 3.3 V (172 edges read). The runner
   sets the EC618 pad to input before the ESP32 drives, so two 3.3 V drivers never
   fight. `gpio-input-{ec618,esp32}.toit`.
-- **`uart2-echo` exhaustive UART2 round-trip** (2026-06-08): the EC618 sweeps the
-  baud rates in BOTH modes (re-open per baud, and one open + set-baud), telling
-  the ESP32 the baud over a **control lane** (UART1 TX PAD34 → ESP32 IO4) so one
-  deploy covers the sweep; the ESP32 echoes on UART2 so the EC618 verifies TX **and**
-  RX. **Passes 9600..921600 in both modes.** This surfaced + fixed a real bug: the
-  generic uart lib auto-sets the ESP32-only `high-priority` tx-flag for
-  baud ≥ 460800, which the EC618 create primitive rejected → every ≥460800 open
-  failed `INVALID_ARGUMENT` (set-baud worked, the tell). Fixed by ignoring that
-  flag on EC618 (commit 96b9f86b). `uart2-echo-{ec618,esp32}.toit`,
-  `uart-reopen-ec618.toit` (open 9600..3 MHz regression).
 - **Consolidated GPIO map/behavior test:** `gpio-map-{ec618,esp32}.toit`
   coordinates at 9600 baud over UART rather than synchronized time slots. It
   checks every ordinary dev-board GPIO net in both directions, detects mirrored
@@ -512,8 +509,9 @@ rule no longer applies:
 - **I2C / SPI**: last; likely reflash the ESP32 with a C **slave** sketch.
 
 ### Status / blocker
-- The control lane works; the full baud sweep (uart2-echo, 9600..4 MHz, both
-  modes) and the bigdata throughput test ride on it. Current UART focus:
+- The framed control lane works; the full bidirectional sweep (`uart-echo`,
+  UART2 at 9600..4 MHz and UART1 at 115200..921600, both modes) and the
+  bigdata throughput test ride on these wires. Current UART focus:
   4 MBd RX loss (known-issues #4 — flow control is the fix path), then
   RTS/CTS, RS485, parity/stop/data-bit configs, and a full-duplex stress test
   (the historical lockup case: EC618 sending AND receiving at high rate).

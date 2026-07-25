@@ -6,6 +6,7 @@ import gpio
 import monitor
 import uart
 
+import .framed-control show FramedChannel
 import .wiring as wiring
 
 /**
@@ -28,7 +29,7 @@ class Control:
   tx/gpio.Pin
   rx/gpio.Pin
   port/uart.Port
-  pending_/ByteArray := #[]
+  channel/FramedChannel
 
   constructor .id:
     tx-num := id == 1 ? wiring.ESP32-UART1-TX-PIN : wiring.ESP32-UART2-TX-PIN
@@ -36,25 +37,13 @@ class Control:
     tx = gpio.Pin tx-num
     rx = gpio.Pin rx-num
     port = uart.Port --tx=tx --rx=rx --baud-rate=CONTROL-BAUD
+    channel = FramedChannel port
 
   send line/string -> none:
-    // A stale byte can prefix one UART2 line after the GPIO-to-UART handoff.
-    // Repeat replies so the receiver can discard the contaminated copy.
-    port.out.write "$line\n$line\n"
-    port.out.flush
+    channel.send line
 
   read-line --timeout-ms/int=CONTROL-TIMEOUT-MS -> string:
-    with-timeout --ms=timeout-ms:
-      while true:
-        newline := pending_.index-of '\n'
-        if newline >= 0:
-          result := pending_[..newline].to-string-non-throwing.trim
-          pending_ = pending_[newline + 1 ..]
-          return result
-        chunk := port.in.read
-        if not chunk: throw "control UART$id closed"
-        pending_ += chunk
-    unreachable
+    return channel.receive --timeout-ms=timeout-ms
 
   close -> none:
     port.close

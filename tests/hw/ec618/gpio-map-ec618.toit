@@ -5,6 +5,7 @@
 import gpio
 import uart
 
+import .framed-control show FramedChannel
 import .wiring as wiring
 
 /**
@@ -43,8 +44,7 @@ class Control:
   tx/gpio.Pin
   rx/gpio.Pin
   port/uart.Port
-  pending_/ByteArray := #[]
-  last-matched_/string? := null
+  channel/FramedChannel
 
   constructor .id:
     tx-pad := id == 1 ? wiring.EC618-UART1-TX-PAD : wiring.EC618-UART2-TX-PAD
@@ -52,34 +52,17 @@ class Control:
     tx = gpio.Pin tx-pad
     rx = gpio.Pin rx-pad
     port = uart.Port --tx=tx --rx=rx --baud-rate=CONTROL-BAUD
+    channel = FramedChannel port
     print "gpio-map-ec618: opened UART$id control (TX PAD$tx-pad / RX PAD$rx-pad)"
 
   send line/string -> none:
-    port.out.write "$line\n"
-    port.out.flush
+    channel.send line
 
   read-line -> string:
-    with-timeout --ms=CONTROL-TIMEOUT-MS:
-      while true:
-        newline := pending_.index-of '\n'
-        if newline >= 0:
-          result := pending_[..newline].to-string-non-throwing.trim
-          pending_ = pending_[newline + 1 ..]
-          return result
-        chunk := port.in.read
-        if not chunk: throw "control UART$id closed"
-        pending_ += chunk
-    unreachable
+    return channel.receive --timeout-ms=CONTROL-TIMEOUT-MS
 
   expect expected/string -> none:
-    8.repeat:
-      line := read-line
-      if line == expected:
-        last-matched_ = line
-        return
-      if line == last-matched_: continue.repeat
-      print "gpio-map-ec618: ignoring control line '$line' while waiting for '$expected'"
-    throw "expected control reply '$expected'"
+    channel.expect expected --timeout-ms=CONTROL-TIMEOUT-MS
 
   close -> none:
     port.close
@@ -88,8 +71,6 @@ class Control:
 
 main:
   control := Control 1
-  // Terminate any UART1 boot-ROM residue in the helper's line buffer.
-  control.send ""
   control.send "HELLO 1"
   control.expect "READY 1"
 
