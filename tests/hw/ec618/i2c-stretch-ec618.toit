@@ -10,7 +10,7 @@ import uart
 /**
 EC618 I2C long-transfer + clock-stretch validation (device under test).
 
-Validates the two paths the bmp280/torture tests cannot reach:
+Validates the paths the bmp280/torture tests cannot reach:
 
 1. TX FIFO REFILL: a 25-byte register-pair stream write (reg,val,reg,val,
    ... — the BMP280 ACKs arbitrary pair streams) exceeds the 16-deep TX
@@ -20,9 +20,12 @@ Validates the two paths the bmp280/torture tests cannot reach:
    real stretching slave) in the middle of a long transfer. The master
    must pause and complete correctly after the release — same data, no
    errors, elapsed time >= the hold.
+3. CANCELLATION + LATE RELEASE: a transfer is cancelled while the ESP32
+   holds SCL low. The helper releases SCL after the cancelled task has
+   unwound, and the same device must transfer successfully again.
 
 Stretched operations are SINGLE-LEG transfers (one MasterReceive or one
-  MasterTransmit) at 10 kHz (the arbitrary-TPR path), so the hold lands
+  MasterTransmit) at 51 kHz (the arbitrary-TPR path), so the hold lands
   deterministically inside the transfer. A stretch landing exactly in the
   microsecond gap between the two legs of a chained write-then-read would
   abort that transfer cleanly (bounded chain wait) — a documented
@@ -85,7 +88,7 @@ main:
   check (stretched-us < baseline-us + 3 * HOLD * 1000) "stretch-read-resumed"
 
   // --- 3. Stretch during a long single-leg WRITE. ----------------------------
-  // 1024 (register, value) pairs, all targeting config: ~360 ms on the
+  // 256 (register, value) pairs, all targeting config: ~90 ms on the
   // wire; the hold lands mid-write; the LAST value must stick.
   long-pairs := ByteArray LONG
   (LONG / 2).repeat: | i |
@@ -99,6 +102,24 @@ main:
   check (config2 == 0b000_100_00) "stretch-write-data-intact"
   check (write-us >= baseline-us + (HOLD - 50) * 1000) "stretch-write-paused"
 
+  // --- 4. Cancel while the peripheral is stalled, then recover. -------------
+  // Set the pointer before holding SCL so the timed operation has one async
+  // hardware leg. The helper asserts SCL low in the middle of that leg, and
+  // the deadline then cancels the stalled operation. It releases the line
+  // well after the cancelled task has unwound; any resulting stale event must
+  // be harmless.
+  slow.write #[REG-CALIBRATION]
+  exchange control "H 20 300"
+  cancellation := catch:
+    with-timeout --ms=100:
+      slow.read LONG
+  check (cancellation == "DEADLINE_EXCEEDED") "cancel-held-read-deadline"
+
+  sleep --ms=350
+  slow.write #[REG-CALIBRATION]
+  recovered := slow.read 24
+  check (recovered == reference) "recover-after-cancel-and-late-release"
+
   slow.close
   bus.close
   exchange control "P 0"
@@ -108,7 +129,7 @@ main:
   if not failures.is-empty:
     print "i2c-stretch-ec618: FAIL $failures"
     throw "I2C stretch test failed: $failures"
-  print "i2c-stretch-ec618: PASS TX refill >16B + SCL stretch tolerated on read and write"
+  print "i2c-stretch-ec618: PASS refill + stretch + cancellation recovery"
 
 check ok/bool label/string -> none:
   print "i2c-stretch-ec618: $label $(ok ? "ok" : "FAIL")"
