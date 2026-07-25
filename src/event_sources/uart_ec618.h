@@ -109,9 +109,14 @@ class Ec618EventSource : public EventSource, public Thread {
 
  private:
   void entry() override;
+  bool claim_uart_error(Event::Type type, word data, uint32_t* pending_bit);
+  void release_uart_error(uint32_t pending_bit);
 
   static Ec618EventSource* instance_;
   QueueHandle_t queue_;
+  // One bit per UART. Error counters remain exact, but repeated error
+  // callbacks share one queued notification until it has been dispatched.
+  uint32_t pending_uart_errors_;
   bool stop_;
 };
 

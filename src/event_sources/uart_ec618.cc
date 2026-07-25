@@ -27,6 +27,7 @@ Ec618EventSource::Ec618EventSource()
     : EventSource("Ec618", 1)
     , Thread("Ec618Event")
     , queue_(xQueueCreate(32, sizeof(Event)))
+    , pending_uart_errors_(0)
     , stop_(false) {
   ASSERT(instance_ == null);
   instance_ = this;
@@ -46,17 +47,44 @@ void Ec618EventSource::on_unregister_resource(Locker& locker, Resource* r) {
   // Nothing special needed.
 }
 
+bool Ec618EventSource::claim_uart_error(Event::Type type,
+                                        word data,
+                                        uint32_t* pending_bit) {
+  *pending_bit = 0;
+  if (data != Event::UART_KIND_ERROR ||
+      type < Event::UART_0 || type > Event::UART_2) {
+    return true;
+  }
+  *pending_bit = 1u << (type - Event::UART_0);
+  return !(__atomic_fetch_or(&pending_uart_errors_, *pending_bit,
+                             __ATOMIC_RELAXED) & *pending_bit);
+}
+
+void Ec618EventSource::release_uart_error(uint32_t pending_bit) {
+  if (pending_bit == 0) return;
+  __atomic_fetch_and(&pending_uart_errors_, ~pending_bit, __ATOMIC_RELAXED);
+}
+
 void Ec618EventSource::send_event(Event::Type type, word data) {
   if (instance_ == null) return;
+  uint32_t pending_bit;
+  if (!instance_->claim_uart_error(type, data, &pending_bit)) return;
   Event event = { type, data };
-  xQueueSend(instance_->queue_, &event, 0);
+  if (xQueueSend(instance_->queue_, &event, 0) != pdTRUE) {
+    instance_->release_uart_error(pending_bit);
+  }
 }
 
 void Ec618EventSource::send_event_from_isr(Event::Type type, word data) {
   if (instance_ == null) return;
+  uint32_t pending_bit;
+  if (!instance_->claim_uart_error(type, data, &pending_bit)) return;
   Event event = { type, data };
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-  xQueueSendFromISR(instance_->queue_, &event, &xHigherPriorityTaskWoken);
+  if (xQueueSendFromISR(instance_->queue_, &event,
+                        &xHigherPriorityTaskWoken) != pdTRUE) {
+    instance_->release_uart_error(pending_bit);
+  }
   portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
@@ -74,6 +102,11 @@ void Ec618EventSource::entry() {
       if (er->event_type() == event.type) {
         dispatch(locker, r, event.data);
       }
+    }
+    if (event.data == Event::UART_KIND_ERROR &&
+        event.type >= Event::UART_0 && event.type <= Event::UART_2) {
+      uint32_t pending_bit = 1u << (event.type - Event::UART_0);
+      release_uart_error(pending_bit);
     }
   }
 }
