@@ -314,12 +314,12 @@ static void load_active_slot_vm_data() {
       return;
     }
   }
-  // No per-slot .data (no trailer / legacy / size mismatch). Nothing else
-  // initializes .vm_dram_data — PLAT startup does not cover it and, with the
-  // two-stage link, the base carries no init image for it at all. Continuing
-  // would run on garbage globals; reset instead. A trial slot in this state
-  // resets before validating, so the dispatcher rolls back to the known-good
-  // slot — the failure is self-healing, not a brick.
+  // The slot has no usable .data image (missing/invalid trailer or size
+  // mismatch). Nothing else initializes .vm_dram_data — PLAT startup does not
+  // cover it and, with the two-stage link, the base carries no init image for
+  // it at all. Continuing would run on garbage globals; reset instead. A trial
+  // slot in this state resets before validating, so the dispatcher rolls back
+  // to the known-good slot — the failure is self-healing, not a brick.
   printf("[toit] ERROR: no usable per-slot VM .data init — resetting\n");
   ec618_system_reset();
 }
@@ -522,9 +522,10 @@ static uint32 prepare_deep_sleep(int64 sleep_ms) {
 }
 
 static void start() {
-  // Load the booted slot's OWN VM .data init image (overriding the base image's
-  // slot-A copy), THEN fix that .data's VM-slot pointers for the booted slot —
-  // both BEFORE anything (static constructors, the interpreter) reads .data.
+  // Load the booted slot's OWN VM .data init image, THEN fix that .data's
+  // VM-slot pointers for the booted slot — both BEFORE anything (static
+  // constructors, the interpreter) reads .data. The two-stage base carries no
+  // VM .data init image of its own.
   load_active_slot_vm_data();
   relocate_data_slot_pointers();
 
