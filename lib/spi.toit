@@ -139,6 +139,7 @@ class Bus:
 
     d := spi-device_ spi_ cs-num dc-num command-bits address-bits frequency mode
     device := Device_.init_ this d
+        --has-prefix=(command-bits != 0 or address-bits != 0)
     // Same lifetime rule as the bus pins: the device borrows cs/dc, so it
     // must keep them reachable for as long as it lives.
     device.pins_ = [cs, dc]
@@ -299,6 +300,7 @@ class Device_ extends DeviceBase_:
   device_ := ?
   owning-bus_/bool := false
   pins_/List := []
+  has-prefix_/bool := false
   state_/monitor.ResourceState_? := null
 
   registers_/Registers? := null
@@ -318,7 +320,8 @@ class Device_ extends DeviceBase_:
   /** Deprecated. Use $Bus.device. */
   constructor .spi_ .device_:
 
-  constructor.init_ .spi_ .device_:
+  constructor.init_ .spi_ .device_ --has-prefix/bool:
+    has-prefix_ = has-prefix
 
   /** See $Device.close. */
   close:
@@ -338,7 +341,7 @@ class Device_ extends DeviceBase_:
       --keep-cs-active/bool=false:
     if keep-cs-active and not owning-bus_: throw "INVALID_STATE"
     spi_.transfer-mutex_.do:
-      if command == 0 and address == 0 and to - from >= ASYNC-THRESHOLD_:
+      if not has-prefix_ and to - from >= ASYNC-THRESHOLD_:
         if transfer-async_ data from to read dc keep-cs-active: return
       spi-transfer_ device_ data command address from to read dc keep-cs-active
 
@@ -518,7 +521,7 @@ spi-init_ mosi/int miso/int clock/int:
 spi-close_ spi:
   #primitive.spi.close
 
-spi-device_ spi cs/int dc/int frequency/int mode/int command-bits/int address-bits/int:
+spi-device_ spi cs/int dc/int command-bits/int address-bits/int frequency/int mode/int:
   #primitive.spi.device
 
 spi-device-close_ spi device:

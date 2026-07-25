@@ -60,7 +60,8 @@ main args:
   rst := gpio.Pin wiring.EC618-RC522-RST-PAD --output --value=1
   sleep --ms=50  // Crystal start-up out of hard power-down.
 
-  device := bus.device --cs=(Ec618.pad wiring.EC618-SPI0-CS-PAD) --frequency=1_000_000
+  cs := Ec618.pad wiring.EC618-SPI0-CS-PAD
+  device := bus.device --cs=cs --frequency=1_000_000
 
   version := rc522.read-reg device rc522.REG-VERSION
   print "rc522-ec618: version 0x$(%02x version)"
@@ -142,7 +143,40 @@ main args:
   check ((rc522.read-reg device rc522.REG-VERSION) == version) "reuse-after-cancel"
 
   device.close
+
+  // The EC618 byte-frame engine can pack command+address phases exactly
+  // whenever their combined width is byte-aligned. Exercise two 4-bit
+  // phases as the RC522 register byte, including an actual command value 0.
+  prefixed := bus.device
+      --cs=cs
+      --frequency=1_000_000
+      --command-bits=4
+      --address-bits=4
+  version-byte := ByteArray 1
+  version-command := (rc522.REG-VERSION << 1) | 0x80
+  prefixed.transfer version-byte
+      --read
+      --command=(version-command >> 4)
+      --address=(version-command & 0xf)
+  check (version-byte[0] == version) "command-address-prefix-read"
+  prefixed.transfer #[rc522.COMMAND-IDLE]
+      --command=0
+      --address=((rc522.REG-COMMAND << 1) & 0xf)
+  command-byte := ByteArray 1
+  command-read := (rc522.REG-COMMAND << 1) | 0x80
+  prefixed.transfer command-byte
+      --read
+      --command=(command-read >> 4)
+      --address=(command-read & 0xf)
+  check (command-byte[0] == rc522.COMMAND-IDLE) "zero-command-prefix-write"
+  prefixed.close
+
+  invalid-prefix-error := catch:
+    bus.device --cs=cs --frequency=1_000_000 --command-bits=1
+  check (invalid-prefix-error == "INVALID_ARGUMENT") "unaligned-prefix-rejected"
+
   bus.close
+  cs.close
   rst.set 0  // Hard power-down: quiet pins for the shared nets.
   rst.close
 

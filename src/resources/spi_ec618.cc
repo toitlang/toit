@@ -221,13 +221,16 @@ class SpiDevice : public EventResource {
  public:
   TAG(SpiDevice);
   SpiDevice(SpiResourceGroup* group, int cs, int dc,
-            uint32_t frequency, uint8_t mode)
+            uint32_t frequency, uint8_t mode,
+            uint8_t command_bits, uint8_t address_bits)
     : EventResource(group, Event::spi_type(group->controller()))
     , group_(group)
     , cs_(cs)
     , dc_(dc)
     , frequency_(frequency)
-    , mode_(mode) {}
+    , mode_(mode)
+    , command_bits_(command_bits)
+    , address_bits_(address_bits) {}
 
   ~SpiDevice() override {
     if (cs_ >= 0) {
@@ -240,6 +243,8 @@ class SpiDevice : public EventResource {
   int controller() const { return group_->controller(); }
   int cs() const { return cs_; }
   int dc() const { return dc_; }
+  int command_bits() const { return command_bits_; }
+  int address_bits() const { return address_bits_; }
 
   void ensure_config() { group_->ensure_config(frequency_, mode_); }
 
@@ -254,6 +259,8 @@ class SpiDevice : public EventResource {
   int dc_;
   uint32_t frequency_;
   uint8_t mode_;
+  uint8_t command_bits_;
+  uint8_t address_bits_;
 };
 
 MODULE_IMPLEMENTATION(spi, MODULE_SPI)
@@ -301,9 +308,12 @@ PRIMITIVE(close) {
 PRIMITIVE(device) {
   ARGS(SpiResourceGroup, group, int, cs, int, dc, int, command_bits,
        int, address_bits, int, frequency, int, mode);
-  // Hardware command/address phases are an ESP32 feature; the EC618 path
-  // sends everything as plain data.
-  if (command_bits != 0 || address_bits != 0) FAIL(INVALID_ARGUMENT);
+  if (command_bits < 0 || command_bits > 16) FAIL(INVALID_ARGUMENT);
+  if (address_bits < 0 || address_bits > 64) FAIL(INVALID_ARGUMENT);
+  // The core driver transfers complete 8-bit frames. A byte-aligned combined
+  // prefix can be packed exactly under one CS assertion; any other total
+  // would require extra trailing clocks and is rejected rather than rounded.
+  if ((command_bits + address_bits) % 8 != 0) FAIL(INVALID_ARGUMENT);
   if (mode < 0 || mode > 3) FAIL(INVALID_ARGUMENT);
   if (frequency <= 0) FAIL(INVALID_ARGUMENT);
   if (cs >= 0 && pad_to_gpio(cs) < 0) FAIL(INVALID_ARGUMENT);
@@ -312,7 +322,9 @@ PRIMITIVE(device) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  SpiDevice* device = _new SpiDevice(group, cs, dc, frequency, (uint8_t)mode);
+  SpiDevice* device = _new SpiDevice(
+      group, cs, dc, frequency, (uint8_t)mode,
+      (uint8_t)command_bits, (uint8_t)address_bits);
   if (device == null) FAIL(MALLOC_FAILED);
 
   if (cs >= 0) {
@@ -336,27 +348,59 @@ PRIMITIVE(device_close) {
   return process->null_object();
 }
 
+static void append_bits(uint8_t* out, int* offset,
+                        uint64_t value, int bit_count) {
+  for (int source_bit = bit_count - 1; source_bit >= 0; source_bit--) {
+    int target_bit = *offset;
+    if ((value >> source_bit) & 1) {
+      out[target_bit >> 3] |= 1 << (7 - (target_bit & 7));
+    }
+    (*offset)++;
+  }
+}
+
 PRIMITIVE(transfer) {
   ARGS(SpiDevice, device, MutableBlob, tx, int, command, int64, address,
        int, from, int, to, bool, read, int, dc, bool, keep_cs_active);
-  if (command != 0 || address != 0) FAIL(INVALID_ARGUMENT);
   if (from < 0 || from > to || to > tx.length()) FAIL(OUT_OF_BOUNDS);
+
+  int prefix_bits = device->command_bits() + device->address_bits();
+  int prefix_bytes = prefix_bits / 8;
+  int data_length = to - from;
+  int transfer_length = prefix_bytes + data_length;
+
+  uint8_t* allocated = null;
+  uint8_t* data = tx.address() + from;
+  if (prefix_bytes != 0) {
+    allocated = unvoid_cast<uint8_t*>(malloc(transfer_length));
+    if (allocated == null) FAIL(MALLOC_FAILED);
+    memset(allocated, 0, prefix_bytes);
+    int bit_offset = 0;
+    append_bits(allocated, &bit_offset, (uint64_t)(uint32_t)command,
+                device->command_bits());
+    append_bits(allocated, &bit_offset, (uint64_t)address,
+                device->address_bits());
+    memcpy(allocated + prefix_bytes, data, data_length);
+    data = allocated;
+  }
+  Defer free_allocated {[&] { free(allocated); }};
 
   device->ensure_config();
   if (device->dc() >= 0) pad_set(device->dc(), dc);
   if (device->cs() >= 0) pad_set(device->cs(), 0);
 
-  // Full duplex; with --read the received bytes replace the transmitted
-  // ones in place (the documented library semantics). The transfer is
-  // synchronous, bounded by length/speed.
-  uint8_t* data = tx.address() + from;
+  // Full duplex; prefix receive bits are discarded and data-phase receive
+  // bytes replace the requested range in the caller's ByteArray.
   int32_t result = SPI_BlockTransfer(device->controller(), data,
-                                     read ? data : null, to - from);
+                                     read ? data : null, transfer_length);
 
   if (device->cs() >= 0 && !keep_cs_active) pad_set(device->cs(), 1);
   if (result != 0) {
     SPI_TransferStop(device->controller());
     FAIL(HARDWARE_ERROR);
+  }
+  if (read && prefix_bytes != 0) {
+    memcpy(tx.address() + from, data + prefix_bytes, data_length);
   }
   return process->null_object();
 }
@@ -376,6 +420,11 @@ static const int kMaxAsyncTransfer = 0x10000;
 PRIMITIVE(device_transfer_start) {
   ARGS(SpiDevice, device, Blob, tx, int, from, int, to, bool, read,
        int, dc, bool, keep_cs_active);
+  // Prefix phases are packed by the synchronous primitive so command,
+  // address and data remain under one CS assertion.
+  if (device->command_bits() != 0 || device->address_bits() != 0) {
+    return process->false_object();
+  }
   if (from < 0 || from > to || to > tx.length()) FAIL(OUT_OF_BOUNDS);
   int length = to - from;
   if (length == 0 || length > kMaxAsyncTransfer) FAIL(OUT_OF_RANGE);
