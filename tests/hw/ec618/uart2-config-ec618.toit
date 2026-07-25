@@ -13,7 +13,9 @@ Round-trips a token through the ESP32 echo helper at EVERY combination of
   reopening the EC618 UART2 with the matching configuration each time. A final
   phase deliberately MISMATCHES parity (EC618 even vs ESP32 odd) and checks that
   the driver's error counter reacts; the observed delivery behavior is printed
-  either way (we record reality, we don't assume it).
+  either way (we record reality, we don't assume it). The helper then transmits
+  a break and the EC618 verifies that it wakes $uart.Port.wait-for-break without
+  incrementing the error counter.
 
 */
 
@@ -82,13 +84,30 @@ main:
   if errs == 0: failures.add "parity-mismatch-undetected"
   test.close
 
+  // A break is a UART signal in its own right, not a parity/framing error.
+  // Give the helper and EC618 matching framing again, then ask the ESP32 to
+  // transmit one byte followed by a 12-bit break.
+  control.out.write "115200 8 1 1\n"
+  sleep --ms=700
+  test = Ec618.uart2 --baud-rate=115200
+  errors-before = test.errors
+  control.out.write "B\n"
+  break-error := catch:
+    with-timeout --ms=3000:
+      test.wait-for-break
+  errs = test.errors - errors-before
+  break-ok := break-error == null and errs == 0
+  print "uart2-config-ec618: receive-break: $(break-error == null ? "detected" : "TIMEOUT") errors+=$errs $(break-ok ? "ok" : "FAIL")"
+  if not break-ok: failures.add "receive-break"
+  test.close
+
   control.out.write "Q\n"
   control.close
 
   if not failures.is-empty:
     print "uart2-config-ec618: FAIL $failures"
     throw "UART2 config matrix failed: $failures"
-  print "uart2-config-ec618: PASS $configs.size configs x $BAUDS.size bauds + parity-error detection"
+  print "uart2-config-ec618: PASS $configs.size configs x $BAUDS.size bauds + parity-error and break detection"
 
 // Reads exactly n bytes (or fewer on a 3s stall), as one ByteArray.
 read-exactly port/uart.Port n/int -> ByteArray:

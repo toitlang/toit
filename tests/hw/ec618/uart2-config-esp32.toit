@@ -13,7 +13,8 @@ ESP32 half of the UART2 configuration-matrix test.
 Listens on the CONTROL lane (the EC618's UART1 TX on IO4) for newline lines of
   the form "<baud> <data-bits> <parity> <stop-code>" (parity 1=none 2=even 3=odd;
   stop-code 1=1 2=1.5 3=2, matching Toit's uart constants), reopens the TEST UART
-  with that exact configuration, and echoes everything it receives. "Q" quits.
+  with that exact configuration, and echoes everything it receives. "B"
+  transmits one byte followed by a 12-bit break; "Q" quits.
 
 */
 
@@ -29,6 +30,7 @@ main:
   print "uart2-config-esp32: ready (control IO$(wiring.ESP32-UART1-RX-PIN); test IO$(wiring.ESP32-UART2-RX-PIN) in / IO$(wiring.ESP32-UART2-TX-PIN) out)"
 
   pending/List? := null            // A newly-requested [baud, data, parity, stop].
+  send-break := false
   done := false
 
   task::
@@ -57,6 +59,9 @@ main:
         if line == "Q":
           done = true
           continue
+        if line == "B":
+          send-break = true
+          continue
         parts := line.split " "
         if parts.size != 4: continue
         config/List? := null
@@ -81,6 +86,11 @@ main:
           --parity=config[2]
           --stop-bits=(stop-bits-of config[3])
       print "uart2-config-esp32: test UART $config[0] $(config[1])d p$config[2] s$config[3]"
+    if send-break and test:
+      send-break = false
+      // Let the EC618 enter wait-for-break after sending the command.
+      sleep --ms=100
+      test.out.write #[0x55] --break-length=12 --flush
     if test:
       data/ByteArray? := null
       catch: data = with-timeout --ms=200: test.in.read

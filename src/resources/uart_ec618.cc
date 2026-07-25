@@ -113,7 +113,7 @@ static inline void irq_restore(uint32_t m) {
 struct UartState {
   uint32_t baud_rate;   // Cached baud rate, for `get_baud_rate` without register reads.
   uint32_t errors;      // Counter incremented from the driver callback on
-                        // parity/overrun/break.
+                        // parity/framing/overrun.
   int de_pad;           // RS485 direction pin (PAD number), or -1.
   CmsisRx* cmsis_rx;    // Non-null when this controller runs on the CMSIS driver.
 };
@@ -146,6 +146,7 @@ static const bool kRxIsDma[3] = { true, true, true };
 static const uint32_t kReadState  = 1 << 0;
 static const uint32_t kErrorState = 1 << 1;
 static const uint32_t kWriteState = 1 << 2;
+static const uint32_t kBreakState = 1 << 3;
 
 // --- Resource ---------------------------------------------------------------
 
@@ -184,6 +185,9 @@ class UartResourceGroup : public ResourceGroup {
         // hardware FIFO (see the read primitive's FIFO rescue) — a
         // reader waiting only for kReadState would never look.
         state |= kErrorState | kReadState;
+        break;
+      case Event::UART_KIND_BREAK:
+        state |= kBreakState;
         break;
     }
     return state;
@@ -530,8 +534,14 @@ static void cmsis_uart_event(int id, uint32_t event) {
       send_uart_event(id, Event::UART_KIND_TX_DONE);
     }
   }
-  if (event & (ARM_USART_EVENT_RX_FRAMING_ERROR | ARM_USART_EVENT_RX_PARITY_ERROR |
-               ARM_USART_EVENT_RX_BREAK)) {
+  if (event & ARM_USART_EVENT_RX_BREAK) {
+    // A break is data-line signalling, not a receive error. The hardware
+    // generally reports framing/parity alongside it because the line stays
+    // low; match the ESP32 API and expose the break without counting those
+    // derivative status bits as errors.
+    send_uart_event(id, Event::UART_KIND_BREAK);
+  } else if (event & (ARM_USART_EVENT_RX_FRAMING_ERROR |
+                      ARM_USART_EVENT_RX_PARITY_ERROR)) {
     uart_states[id].errors++;
     send_uart_event(id, Event::UART_KIND_ERROR);
   }

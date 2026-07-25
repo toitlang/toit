@@ -47,6 +47,7 @@ struct Event {
     UART_KIND_RX = 0,
     UART_KIND_TX_DONE = 1,
     UART_KIND_ERROR = 2,
+    UART_KIND_BREAK = 3,
   };
 
   static Type gpio_type(int pin) {
