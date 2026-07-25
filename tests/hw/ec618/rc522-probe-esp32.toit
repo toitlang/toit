@@ -6,6 +6,7 @@ import gpio
 import spi
 
 import .wiring as wiring
+import ..shared.rc522 as rc522
 
 /**
 ESP32-side RC522 wiring probe — validates the breadboard hookup before
@@ -19,22 +20,6 @@ Wakes the RC522 out of hard power-down (RST on the PAD16/IO23 net),
 
 */
 
-REG-FIFO-DATA ::= 0x09
-REG-FIFO-LEVEL ::= 0x0a
-REG-COMMAND ::= 0x01
-REG-VERSION ::= 0x37
-COMMAND-IDLE ::= 0x00
-COMMAND-FLUSH ::= 0b0001_0000  // FIFOLevelReg flush bit.
-
-read-reg device/spi.Device register/int -> int:
-  data := ByteArray 2
-  data[0] = (register << 1) | 0x80
-  device.transfer data --read
-  return data[1]
-
-write-reg device/spi.Device register/int value/int -> none:
-  device.transfer #[(register << 1) & 0x7e, value]
-
 main:
   rst := gpio.Pin wiring.ESP32-RC522-RST-PIN --output --value=1
   sleep --ms=50  // Oscillator start-up out of hard power-down.
@@ -45,25 +30,30 @@ main:
       --miso=(gpio.Pin wiring.ESP32-SPI0-MISO-PIN)
   device := bus.device --cs=(gpio.Pin wiring.ESP32-SPI0-CS-PIN) --frequency=1_000_000
 
-  version := read-reg device REG-VERSION
-  kind/string := "unknown/clone"
-  if version == 0x91: kind = "MFRC522 v1"
-  if version == 0x92: kind = "MFRC522 v2"
-  print "rc522-probe: version 0x$(%02x version) -> $kind"
-  if version == 0x00 or version == 0xff:
-    print "rc522-probe: FAIL bus dead (all-$(version == 0 ? "zeros" : "ones") — check wiring)"
+  passed := false
+  try:
+    version := rc522.read-reg device rc522.REG-VERSION
+    kind/string := "unknown/clone"
+    if version == 0x91: kind = "MFRC522 v1"
+    if version == 0x92: kind = "MFRC522 v2"
+    print "rc522-probe: version 0x$(%02x version) -> $kind"
+    if version == 0x00 or version == 0xff:
+      print "rc522-probe: FAIL bus dead (all-$(version == 0 ? "zeros" : "ones") — check wiring)"
+    else:
+      // FIFO loopback: flush, write a pattern, check the level, read it back.
+      rc522.write-reg device rc522.REG-COMMAND rc522.COMMAND-IDLE
+      rc522.write-reg device rc522.REG-FIFO-LEVEL rc522.FIFO-FLUSH
+      pattern := ByteArray 16: (it * 31 + 7) & 0xff
+      rc522.write-fifo device pattern
+      level := rc522.read-reg device rc522.REG-FIFO-LEVEL
+      got := rc522.read-fifo device pattern.size
+      passed = level == pattern.size and got == pattern
+      print "rc522-probe: fifo loopback $(passed ? "ok" : "FAIL") (level=$level, data $(got == pattern ? "match" : "MISMATCH"))"
+  finally:
+    device.close
+    bus.close
     rst.set 0
-    return
+    rst.close
 
-  // FIFO loopback: flush, write a pattern, check the level, read it back.
-  write-reg device REG-COMMAND COMMAND-IDLE
-  write-reg device REG-FIFO-LEVEL COMMAND-FLUSH
-  pattern := ByteArray 16: (it * 31 + 7) & 0xff
-  pattern.size.repeat: write-reg device REG-FIFO-DATA pattern[it]
-  level := read-reg device REG-FIFO-LEVEL
-  got := ByteArray pattern.size: read-reg device REG-FIFO-DATA
-  ok := level == pattern.size and got == pattern
-  print "rc522-probe: fifo loopback $(ok ? "ok" : "FAIL") (level=$level, data $(got == pattern ? "match" : "MISMATCH"))"
-
-  rst.set 0  // Back to hard power-down: quiet pins, microamps.
-  print "rc522-probe: $(ok and version != 0 ? "PASS" : "FAIL"); reader powered down"
+  if not passed: throw "RC522 probe failed"
+  print "rc522-probe: PASS; reader powered down"

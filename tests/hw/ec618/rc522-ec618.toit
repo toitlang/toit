@@ -7,6 +7,7 @@ import gpio
 import spi
 
 import .wiring as wiring
+import ..shared.rc522 as rc522
 
 /**
 EC618 SPI bring-up test against a real MFRC522 (RC522) RFID reader.
@@ -29,12 +30,6 @@ Standalone (no ESP32 helper: SPI0's CLK/MISO pads ARE the UART2 control
 
 */
 
-REG-COMMAND ::= 0x01
-REG-FIFO-DATA ::= 0x09
-REG-FIFO-LEVEL ::= 0x0a
-REG-VERSION ::= 0x37
-COMMAND-IDLE ::= 0x00
-FIFO-FLUSH ::= 0b1000_0000
 POWER-DOWN-BIT ::= 0b0001_0000
 
 failures := []
@@ -67,19 +62,19 @@ main args:
 
   device := bus.device --cs=(Ec618.pad wiring.EC618-SPI0-CS-PAD) --frequency=1_000_000
 
-  version := read-reg device REG-VERSION
+  version := rc522.read-reg device rc522.REG-VERSION
   print "rc522-ec618: version 0x$(%02x version)"
   check (version == 0x91 or version == 0x92) "version-mfrc522"
 
   // FIFO loopbacks: full 64-byte FIFO, several patterns.
   3.repeat: | round/int |
-    write-reg device REG-COMMAND COMMAND-IDLE
-    write-reg device REG-FIFO-LEVEL FIFO-FLUSH
+    rc522.write-reg device rc522.REG-COMMAND rc522.COMMAND-IDLE
+    rc522.write-reg device rc522.REG-FIFO-LEVEL rc522.FIFO-FLUSH
     pattern := ByteArray 64: (it * 31 + 7 + round * 13) & 0xff
-    pattern.size.repeat: write-reg device REG-FIFO-DATA pattern[it]
-    level := read-reg device REG-FIFO-LEVEL
-    got := ByteArray pattern.size: read-reg device REG-FIFO-DATA
-    drained := read-reg device REG-FIFO-LEVEL
+    rc522.write-fifo device pattern
+    level := rc522.read-reg device rc522.REG-FIFO-LEVEL
+    got := rc522.read-fifo device pattern.size
+    drained := rc522.read-reg device rc522.REG-FIFO-LEVEL
     ok := level == 64 and got == pattern and drained == 0
     print "rc522-ec618: fifo round $round $(ok ? "ok" : "FAIL") (level=$level drained=$drained match=$(got == pattern))"
     if not ok: failures.add "fifo-$round"
@@ -89,29 +84,29 @@ main args:
   // path (transfer-start, event wait, transfer-finish). The read is a
   // full-duplex burst, exercising the driver's copy-back.
   3.repeat: | round/int |
-    write-reg device REG-COMMAND COMMAND-IDLE
-    write-reg device REG-FIFO-LEVEL FIFO-FLUSH
+    rc522.write-reg device rc522.REG-COMMAND rc522.COMMAND-IDLE
+    rc522.write-reg device rc522.REG-FIFO-LEVEL rc522.FIFO-FLUSH
     pattern := ByteArray 64: (it * 17 + 3 + round * 29) & 0xff
-    write-fifo-burst device pattern
-    level := read-reg device REG-FIFO-LEVEL
-    got := read-fifo-burst device pattern.size
-    drained := read-reg device REG-FIFO-LEVEL
+    rc522.write-fifo-burst device pattern
+    level := rc522.read-reg device rc522.REG-FIFO-LEVEL
+    got := rc522.read-fifo-burst device pattern.size
+    drained := rc522.read-reg device rc522.REG-FIFO-LEVEL
     ok := level == 64 and got == pattern and drained == 0
     print "rc522-ec618: burst round $round $(ok ? "ok" : "FAIL") (level=$level drained=$drained match=$(got == pattern))"
     if not ok: failures.add "burst-$round"
 
   // Soft power-down: the bit must set, and clear again on wake.
-  write-reg device REG-COMMAND POWER-DOWN-BIT
+  rc522.write-reg device rc522.REG-COMMAND POWER-DOWN-BIT
   sleep --ms=5
-  down := (read-reg device REG-COMMAND) & POWER-DOWN-BIT != 0
+  down := (rc522.read-reg device rc522.REG-COMMAND) & POWER-DOWN-BIT != 0
   check down "soft-power-down-sets"
-  write-reg device REG-COMMAND COMMAND-IDLE
+  rc522.write-reg device rc522.REG-COMMAND rc522.COMMAND-IDLE
   sleep --ms=5
-  up := (read-reg device REG-COMMAND) & POWER-DOWN-BIT == 0
+  up := (rc522.read-reg device rc522.REG-COMMAND) & POWER-DOWN-BIT == 0
   check up "soft-power-down-clears"
 
   // Read the version once more after the power cycle dance.
-  check ((read-reg device REG-VERSION) == version) "version-stable"
+  check ((rc522.read-reg device rc522.REG-VERSION) == version) "version-stable"
 
   device.close
   bus.close
@@ -126,30 +121,3 @@ main args:
 check ok/bool label/string -> none:
   print "rc522-ec618: $label $(ok ? "ok" : "FAIL")"
   if not ok: failures.add label
-
-read-reg device/spi.Device register/int -> int:
-  data := ByteArray 2
-  data[0] = (register << 1) | 0x80
-  device.transfer data --read
-  return data[1]
-
-write-reg device/spi.Device register/int value/int -> none:
-  device.transfer #[(register << 1) & 0x7e, value]
-
-// Writes all $bytes into a register in ONE transfer (the MFRC522 keeps
-// the address for every following byte; for the FIFO register each byte
-// enters the FIFO).
-write-fifo-burst device/spi.Device bytes/ByteArray -> none:
-  data := ByteArray bytes.size + 1
-  data[0] = (REG-FIFO-DATA << 1) & 0x7e
-  data.replace 1 bytes
-  device.transfer data
-
-// Reads $count FIFO bytes in ONE full-duplex transfer: every MOSI byte
-// but the last repeats the read address, and each MISO byte from index 1
-// on carries FIFO data (the MFRC522 burst-read convention).
-read-fifo-burst device/spi.Device count/int -> ByteArray:
-  data := ByteArray count + 1: (REG-FIFO-DATA << 1) | 0x80
-  data[count] = 0
-  device.transfer data --read
-  return data[1..]
