@@ -396,10 +396,11 @@ PRIMITIVE(slot_inactive_write) {
   ARGS(int, offset, Blob, bytes);
 
   if (offset < 0) FAIL(INVALID_ARGUMENT);
-  if (bytes.length() % FLASH_SEGMENT_SIZE != 0) FAIL(INVALID_ARGUMENT);
+  const uint32_t length = static_cast<uint32_t>(bytes.length());
+  if (length % FLASH_SEGMENT_SIZE != 0) FAIL(INVALID_ARGUMENT);
   const uint32_t off = static_cast<uint32_t>(offset);
   if (off % FLASH_SEGMENT_SIZE != 0) FAIL(INVALID_ARGUMENT);
-  if (off > slot_size() || bytes.length() > slot_size() - off) FAIL(OUT_OF_BOUNDS);
+  if (off > slot_size() || length > slot_size() - off) FAIL(OUT_OF_BOUNDS);
 
   const uint32_t base_xip = inactive_slot_base();
   const uint32_t base_phys = base_xip - AP_FLASH_XIP_ADDR;
@@ -414,10 +415,10 @@ PRIMITIVE(slot_inactive_write) {
   const uint8_t* source = bytes.address();
   uint8_t* relocated = null;
   if (slot_reloc_armed && slot_reloc_delta != 0) {
-    relocated = unvoid_cast<uint8_t*>(malloc(bytes.length()));
+    relocated = unvoid_cast<uint8_t*>(malloc(length));
     if (relocated == null) FAIL(MALLOC_FAILED);
-    memcpy(relocated, bytes.address(), bytes.length());
-    if (!slot_reloc_apply(&slot_reloc_table, relocated, off, bytes.length(),
+    memcpy(relocated, bytes.address(), length);
+    if (!slot_reloc_apply(&slot_reloc_table, relocated, off, length,
                           slot_reloc_delta, SLOT_RELOC_TO_SLOT)) {
       free(relocated);
       FAIL(INVALID_ARGUMENT);
@@ -434,7 +435,7 @@ PRIMITIVE(slot_inactive_write) {
   // source must live in RAM — both Blob::address() (a process-heap pointer)
   // and the relocation scratch are in MSMB RAM.
   int rc = BSP_QSPI_Write_Safe(
-      const_cast<uint8_t*>(source), dest, bytes.length());
+      const_cast<uint8_t*>(source), dest, length);
 
   toit_ap_image_modify_start = saved_start;
   toit_ap_image_modify_end = saved_end;
