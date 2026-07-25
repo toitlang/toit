@@ -13,7 +13,11 @@
 //      every OTA uses, host-side);
 //   3. erases the old reservation, places the retargeted slot, pads the
 //      image to the target reservations, and writes the target anchor
-//      record — table and image move as one.
+//      record — table and image move as one;
+//   4. normalizes the AP image through the end of the target's last slot
+//      reservation and appends one fresh SHA-256 trailer. The compact image
+//      emitted by `firmware extract` ends after slot A and therefore becomes
+//      canonical on its first pass.
 //
 // The writer refuses to move partitions that could carry live data
 // (type `data`): until a migration journal exists, layout changes may
@@ -41,7 +45,8 @@ main args:
   cmd := cli.Command "provision"
       --help="""
         Retargets a provisioned AP image (slots + anchor record) to a
-        different partition descriptor.
+        different partition descriptor. The output AP zone is normalized
+        through the end of the descriptor's last slot reservation.
         """
       --options=[
         cli.Option "image"
@@ -69,6 +74,20 @@ run invocation/cli.Invocation -> none:
   error := catch: target = Partitions.load invocation["partitions"]
   if error: ui.abort "$error"
 
+  out := retarget-container input target
+      --ui=ui
+      --console=invocation["console-uart"]
+
+  file.write-contents --path=invocation["out"] out
+  print "provision: $(target.entries.size)-entry table -> $invocation["out"] ($out.size bytes)"
+
+/**
+Retargets the AP image in $input and returns the same container type.
+
+The AP image may be raw or embedded in a binpkg. Every other binpkg zone is
+  preserved byte for byte.
+*/
+retarget-container input/ByteArray target/Partitions --ui/cli.Ui --console/int?=null -> ByteArray:
   // A binpkg starts with its zero-filled 52-byte file header; a raw AP
   // image starts with SDK image content.
   is-binpkg := input.size > BINPKG-HEADER-SIZE and (input[..BINPKG-HEADER-SIZE].every: it == 0)
@@ -83,17 +102,15 @@ run invocation/cli.Invocation -> none:
       data := input.copy (pos + ZONE-HEADER-SIZE) (pos + ZONE-HEADER-SIZE + size)
       subsystem := header[336..340]
       if subsystem[0] == 'A' and subsystem[1] == 'P':
-        data = retarget data target --ui=ui --console=invocation["console-uart"]
+        data = retarget data target --ui=ui --console=console
         LITTLE-ENDIAN.put-uint32 header 76 data.size
         retargeted = true
       out += header + data
       pos += ZONE-HEADER-SIZE + size
     if not retargeted: ui.abort "no AP zone in the binpkg"
   else:
-    out = retarget input target --ui=ui --console=invocation["console-uart"]
-
-  file.write-contents --path=invocation["out"] out
-  print "provision: $(target.entries.size)-entry table -> $invocation["out"] ($out.size bytes)"
+    out = retarget input target --ui=ui --console=console
+  return out
 
 /**
 Retargets the raw AP $image (its slots and anchor record) to the $target
@@ -154,13 +171,15 @@ retarget image/ByteArray target/Partitions --ui/cli.Ui --console/int?=null -> By
   // (this tool handles single-populated-slot images; anything after —
   // extract's whole-image SHA trailer or padding — is dropped and
   // re-derived). Erase the source reservation, place the retargeted
-  // slot, pad to the end of the LAST target slot reservation (erased
-  // slot B), write the target record, and append a fresh trailer for
-  // parity with what `firmware extract` emits.
+  // slot, normalize to the end of the LAST target slot reservation
+  // (erased slot B), write the target record, and append a fresh trailer
+  // for parity with what `firmware extract` emits.
   content := src-file + slot-size
   last-slot := slots.last
-  needed := last-slot.offset + last-slot.size - target-base.offset
-  out := ByteArray (max content needed) --initial=0xff
+  normalized-size := last-slot.offset + last-slot.size - target-base.offset
+  if content > normalized-size:
+    ui.abort "target slot reservations end before the source slot-A image content"
+  out := ByteArray normalized-size --initial=0xff
   out.replace 0 image[..content]
   out.fill --from=src-file --to=(src-file + slot-size) 0xff
   tgt-file := target-slot.offset - target-base.offset

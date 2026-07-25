@@ -386,6 +386,9 @@ ec618: check-env host-tools
 		--system.snapshot $(BUILD)/ec618/system.snapshot
 	# Extract the binpkg (the extension now lives inside slot A).
 	$(TOIT_BIN) tool firmware -e $(EC618_ENVELOPE) extract -o $(EC618_BINPKG) --format image
+	# Retargeting has one canonical output size, including when its input is
+	# the compact extracted binpkg that ends after the populated slot A.
+	$(TOIT_BIN) run --project-root tools tools/ec618/provision-test.toit -- $(EC618_BINPKG)
 	@echo "Envelope: $(EC618_ENVELOPE)"
 	@echo "Binpkg:   $(EC618_BINPKG)"
 	@echo "Reloc:    $(BUILD)/ec618/slot-reloc.bin"
