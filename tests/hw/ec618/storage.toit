@@ -4,7 +4,7 @@ import system.storage
 
 main:
   // Heartbeat task to detect freezes.
-  task::
+  task --background::
     while true:
       print "[heartbeat] alive"
       sleep --ms=2000
