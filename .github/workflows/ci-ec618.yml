@@ -24,10 +24,18 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-15-intel
+          - windows-latest
+
+    runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -41,7 +49,8 @@ jobs:
         with:
           xmake-version: '2.7.2'
 
-      - name: Install EC618 GNU toolchain
+      - name: Install EC618 GNU toolchain - Linux
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           toolchain="$RUNNER_TEMP/gcc-arm-none-eabi-10.3-2021.10"
@@ -55,11 +64,53 @@ jobs:
           echo "EC618_GCC_PATH=$toolchain" >> "$GITHUB_ENV"
           echo "$toolchain/bin" >> "$GITHUB_PATH"
 
+      - name: Install EC618 GNU toolchain - macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          toolchain="$RUNNER_TEMP/gcc-arm-none-eabi-10.3-2021.10"
+          archive="$RUNNER_TEMP/gcc-arm-none-eabi-10.3-2021.10-mac.tar.bz2"
+          curl --fail --location --retry 3 \
+            --output "$archive" \
+            https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu-rm/10.3-2021.10/gcc-arm-none-eabi-10.3-2021.10-mac.tar.bz2
+          echo "fb613dacb25149f140f73fe9ff6c380bb43328e6bf813473986e9127e2bc283b  $archive" |
+            shasum --algorithm 256 --check
+          tar --extract --bzip2 --file "$archive" --directory "$RUNNER_TEMP"
+          echo "EC618_GCC_PATH=$toolchain" >> "$GITHUB_ENV"
+          echo "$toolchain/bin" >> "$GITHUB_PATH"
+
+      - name: Install EC618 GNU toolchain - Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          runner_temp="$(cygpath --unix "$RUNNER_TEMP")"
+          toolchain="$runner_temp/gcc-arm-none-eabi-10.3-2021.10"
+          archive="$runner_temp/gcc-arm-none-eabi-10.3-2021.10-win32.zip"
+          curl --fail --location --retry 3 \
+            --output "$archive" \
+            https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu-rm/10.3-2021.10/gcc-arm-none-eabi-10.3-2021.10-win32.zip
+          echo "d287439b3090843f3f4e29c7c41f81d958a5323aecefcf705c203bfd8ae3f2e7  $archive" |
+            sha256sum --check -
+          unzip -q "$archive" -d "$runner_temp"
+          echo "EC618_GCC_PATH=$toolchain" >> "$GITHUB_ENV"
+          echo "$toolchain/bin" >> "$GITHUB_PATH"
+
+      - name: Report toolchain
+        shell: bash
+        run: arm-none-eabi-gcc --version
+
       - name: Build SDK
+        shell: bash
         run: make
 
       - name: Build EC618 base
+        shell: bash
+        # The Toit build consumes ap.bin and creates its own binpkg. Skip the
+        # SDK's unrelated host-specific fcelf packaging step.
+        env:
+          BINPKG_CROSS: "true "
         run: make ec618-base
 
       - name: Build EC618 firmware (slot vs base + guards + envelope)
+        shell: bash
         run: make ec618

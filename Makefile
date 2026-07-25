@@ -389,9 +389,9 @@ ec618: check-env host-tools
 	# Retargeting has one canonical output size, including when its input is
 	# the compact extracted binpkg that ends after the populated slot A.
 	$(TOIT_BIN) run --project-root tools tools/ec618/provision-test.toit -- $(EC618_BINPKG)
-	@echo "Envelope: $(EC618_ENVELOPE)"
-	@echo "Binpkg:   $(EC618_BINPKG)"
-	@echo "Reloc:    $(BUILD)/ec618/slot-reloc.bin"
+	@echo Envelope: $(EC618_ENVELOPE)
+	@echo Binpkg: $(EC618_BINPKG)
+	@echo Reloc: $(BUILD)/ec618/slot-reloc.bin
 
 # ESP32 VARIANTS
 .PHONY: check-esp32-env
