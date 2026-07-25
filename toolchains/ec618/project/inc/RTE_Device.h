@@ -19,33 +19,8 @@
 #define IRQ_MODE                0x3
 #define UNILOG_MODE             0x4
 
-// ALL three UARTs use the same configuration — DMA for both directions —
-// so Toit's uart driver behaves identically on every controller (one
-// driver path, one contract; the Uart_* blob is no longer used).
-//
-// DMA TX: a single-shot, auditable descriptor. Polling-mode Send blocked
-// the VM one FIFO-drain per byte and starved every other Toit task; the
-// write primitive stages bytes in a malloc'd buffer (DMA must not read a
-// movable Toit heap object) and completion is signalled via SEND_COMPLETE.
-//
-// DMA RX: the engine's zero-length-descriptor bug is
-// FIXED by our patch in bsp_usart.c's USART_DmaUpdateRxConfig — IRQ mode
-// (the interim sidestep) lost multi-KB bursts whenever the CPU stalled on
-// XIP flash operations: the IRQ handlers live in flash
-// and are dead for the stall, while the DMA hardware (and the driver's
-// RAMCODE paths) capture regardless. The closed blob was DMA-based too —
-// that is why it never showed these failures.
-// UART0 TX was UNILOG_MODE: unilog is disabled in this build and printf
-// goes through the CMSIS print path, so nothing needed it.
-// UART0 (console + agent) runs RX in DMA mode: with the zero-length-
-// descriptor patch in bsp_usart.c, the DMA engine captures straight
-// through XIP flash stalls — full-speed agent installs/OTA at 921600.
-// IRQ-mode handlers live in flash and are unavailable
-// during every flash erase/write). UART1/UART2 RX run in DMA mode for
-// the same reason — user UARTs must not drop bytes while a concurrent
-// flash write stalls XIP. Keep kRxIsDma in uart_ec618.cc in sync with
-// these. (The TRIG_LVL defines only matter in IRQ mode; kept for easy
-// fallback.)
+// UART RX and TX use DMA so transfers continue through XIP flash
+// erase/write stalls. Each controller uses one DMA channel per direction.
 #define RTE_UART0_TX_IO_MODE    DMA_MODE
 #define RTE_UART0_RX_IO_MODE    DMA_MODE
 
@@ -61,11 +36,8 @@
 
 #define RTE_SPI1_IO_MODE        POLLING_MODE
 
-// I2C runs IRQ-driven on the (fork-completed) bsp_i2c.c engine: the
-// command engine does the transfer in hardware, the IRQ handler feeds and
-// drains the 16-deep FIFO, no DMA channels consumed (the 7-channel MP pool
-// is already 6/7 committed when all three UARTs are open). Upstream never
-// shipped this mode.
+// I2C uses the hardware command engine in IRQ mode. Its handler feeds and
+// drains the FIFO, leaving the DMA channels available to the UARTs.
 #define RTE_I2C0_IO_MODE        IRQ_MODE
 #define RTE_I2C1_IO_MODE        IRQ_MODE
 
