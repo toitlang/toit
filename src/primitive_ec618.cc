@@ -77,6 +77,25 @@ static uintptr_t base_id_xip() {
   return reinterpret_cast<uintptr_t>(__toit_base_id_start);
 }
 
+struct BaseId {
+  uint32_t version;
+  const uint8_t* fingerprint;
+};
+
+static bool read_base_id(BaseId* id) {
+  const uint8_t* record = reinterpret_cast<const uint8_t*>(base_id_xip());
+  if (!(record[0] == 'T' && record[1] == 'B' &&
+        record[2] == 'I' && record[3] == '1')) {
+    return false;
+  }
+  id->version = static_cast<uint32_t>(record[4]) |
+                (static_cast<uint32_t>(record[5]) << 8) |
+                (static_cast<uint32_t>(record[6]) << 16) |
+                (static_cast<uint32_t>(record[7]) << 24);
+  id->fingerprint = record + 8;
+  return true;
+}
+
 MODULE_IMPLEMENTATION(ec618, MODULE_EC618)
 
 PRIMITIVE(console_uart_id) {
@@ -276,20 +295,15 @@ PRIMITIVE(slot_reloc_begin) {
   // flashed base does not have, an undebuggable fault. The device's own
   // record is stamped by gen-base-id.toit into the reserved flash page.
   {
-    const uint8_t* record = reinterpret_cast<const uint8_t*>(base_id_xip());
-    bool device_ok = record[0] == 'T' && record[1] == 'B' &&
-                     record[2] == 'I' && record[3] == '1';
-    uint32_t device_version = device_ok
-        ? (record[4] | (record[5] << 8) | (record[6] << 16) |
-           (static_cast<uint32_t>(record[7]) << 24))
-        : 0;
-    bool match = device_ok && device_version == slot_reloc_table.base_version &&
-                 memcmp(record + 8, slot_reloc_table.base_fp, 16) == 0;
+    BaseId device;
+    bool device_ok = read_base_id(&device);
+    bool match = device_ok && device.version == slot_reloc_table.base_version &&
+                 memcmp(device.fingerprint, slot_reloc_table.base_fp, 16) == 0;
     if (!match) {
       printf("[toit] ERROR: base mismatch — image built for base-v%u, "
              "device runs base-v%u%s; full-flash the matching base\n",
              static_cast<unsigned>(slot_reloc_table.base_version),
-             static_cast<unsigned>(device_version),
+             static_cast<unsigned>(device_ok ? device.version : 0),
              device_ok ? "" : " (no base-id record)");
       free(copy);
       FAIL(OUT_OF_BOUNDS);
@@ -659,18 +673,15 @@ PRIMITIVE(wakeup_arm_flags) {
 // base). Slot OTAs are accepted only when the incoming image's SRL3 table
 // matches this id (see slot_reloc_begin).
 PRIMITIVE(base_id) {
-  const uint8_t* record = reinterpret_cast<const uint8_t*>(base_id_xip());
-  if (!(record[0] == 'T' && record[1] == 'B' &&
-        record[2] == 'I' && record[3] == '1')) {
+  BaseId id;
+  if (!read_base_id(&id)) {
     return process->allocate_string_or_error("base-unknown");
   }
-  uint32_t version = record[4] | (record[5] << 8) | (record[6] << 16) |
-                     (static_cast<uint32_t>(record[7]) << 24);
   char buffer[8 + 10 + 1 + 32 + 1];  // "base-v" + digits + '+' + hex + NUL.
   int n = snprintf(buffer, sizeof(buffer), "base-v%u+",
-                   static_cast<unsigned>(version));
+                   static_cast<unsigned>(id.version));
   for (int i = 0; i < 16; i++) {
-    n += snprintf(buffer + n, sizeof(buffer) - n, "%02x", record[8 + i]);
+    n += snprintf(buffer + n, sizeof(buffer) - n, "%02x", id.fingerprint[i]);
   }
   return process->allocate_string_or_error(buffer);
 }
