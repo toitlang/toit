@@ -298,6 +298,9 @@ calls still in the glue.
   one-way trap (compare writes latch on the match event, which never fires
   — the SDK's `TIMER_updatePwmDutyCycle` has the same bug), so leaving it
   restarts the timer via the TCCR enable bit. `pwm-{ec618,esp32}.toit`.
+  The channel resource itself owns timer stop, pad release, and the locked
+  timer lease; a `leak` run followed by the normal test verifies the same
+  cleanup on forced container teardown.
 - **`uart2-flush` flush semantics** (reworked and HW-verified 2026-07-25):
   `out.flush` /
   `write --flush` must return when the last bit leaves the wire — verified by

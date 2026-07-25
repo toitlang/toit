@@ -21,6 +21,7 @@
 #include "../primitive.h"
 #include "../process.h"
 #include "../resource.h"
+#include "../resource_pool.h"
 #include "pad_table_ec618.h"
 
 extern "C" {
@@ -78,7 +79,7 @@ static const uint32_t kFClkSel26M[kTimerCount] = {
   FCLK_TIMER3_SEL_26M, FCLK_TIMER4_SEL_26M, FCLK_TIMER5_SEL_26M,
 };
 
-static bool timer_in_use[kTimerCount] = {};
+static ResourcePool<int, -1> pwm_timers(0, 1, 2, 4);
 
 static int pad_to_timer(int pad) {
   for (size_t i = 0; i < sizeof(kPwmPads) / sizeof(kPwmPads[0]); i++) {
@@ -92,6 +93,12 @@ class PwmResource : public Resource {
   TAG(PwmResource);
   PwmResource(ResourceGroup* group, int timer, int pad, double factor)
     : Resource(group), timer_(timer), pad_(pad), factor_(factor) {}
+
+  ~PwmResource() override {
+    TIMER_stop(timer_);
+    pad_release(pad_);
+    pwm_timers.put(timer_);
+  }
 
   int timer() const { return timer_; }
   int pad() const { return pad_; }
@@ -128,14 +135,6 @@ class PwmResourceGroup : public ResourceGroup {
       EIGEN_TIMER(channel->timer())->TMR[1] = p - 1;
       apply_duty(channel->timer(), p, channel->factor());
     }
-  }
-
- protected:
-  void on_unregister_resource(Resource* r) override {
-    PwmResource* channel = static_cast<PwmResource*>(r);
-    TIMER_stop(channel->timer());
-    pad_release(channel->pad());
-    timer_in_use[channel->timer()] = false;
   }
 
  private:
@@ -221,14 +220,17 @@ PRIMITIVE(start) {
   ARGS(PwmResourceGroup, group, int, pad, double, factor);
   int timer = pad_to_timer(pad);
   if (timer < 0) FAIL(INVALID_ARGUMENT);
-  if (timer_in_use[timer]) FAIL(ALREADY_IN_USE);
   if (factor < 0.0 || factor > 1.0) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
+  if (!pwm_timers.take(timer)) FAIL(ALREADY_IN_USE);
   PwmResource* channel = _new PwmResource(group, timer, pad, factor);
-  if (channel == null) FAIL(MALLOC_FAILED);
+  if (channel == null) {
+    pwm_timers.put(timer);
+    FAIL(MALLOC_FAILED);
+  }
 
   CLOCK_setClockSrc(kFClks[timer], (ClockSelect_e)kFClkSel26M[timer]);
   CLOCK_setClockDiv(kFClks[timer], 1);
@@ -244,7 +246,6 @@ PRIMITIVE(start) {
   program_pwm(timer, group->period(), factor);
   TIMER_start(timer);
 
-  timer_in_use[timer] = true;
   group->register_resource(channel);
   proxy->set_external_address(channel);
   return proxy;
