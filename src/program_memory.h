@@ -168,22 +168,10 @@ class ProgramHeapMemory {
 
   void set_writable(ProgramBlock* block, bool value);
 
-  Mutex* mutex() {
-    if (!memory_mutex_) {
-      memory_mutex_ = OS::allocate_mutex(0, "Memory mutex");
-    }
-    return memory_mutex_;
-  }
-
   static ProgramHeapMemory* instance() { return &instance_; }
-
-  ProgramHeapMemory();
-  ~ProgramHeapMemory();
 
  private:
   static ProgramHeapMemory instance_;
-
-  Mutex* memory_mutex_;
 };
 
 class ProgramRawHeap {

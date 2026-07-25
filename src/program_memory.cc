@@ -126,20 +126,6 @@ void ProgramBlockList::do_pointers(Program* program, PointerCallback* callback) 
   callback->c_address(reinterpret_cast<void**>(hack.tail_cell()));
 }
 
-ProgramHeapMemory::ProgramHeapMemory()
-#ifndef TOIT_EC618
-  : memory_mutex_(OS::allocate_mutex(0, "Memory mutex")) {
-#else
-  // On EC618, static constructors run before FreeRTOS is started.
-  // Defer mutex allocation to first use via ensure_initialized().
-  : memory_mutex_(null) {
-#endif
-}
-
-ProgramHeapMemory::~ProgramHeapMemory() {
-  if (memory_mutex_) OS::dispose(memory_mutex_);
-}
-
 void ProgramHeapMemory::set_writable(ProgramBlock* block, bool value) {
   OS::set_writable(block, value);
 }
