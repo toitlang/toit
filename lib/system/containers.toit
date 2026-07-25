@@ -84,12 +84,8 @@ class Container extends ServiceResourceProxy:
 
   // Identity hash so containers can go in hashed collections (see $waited-on_);
   // same pattern as the service framework's resources.
-  hash-code/int ::= hash-code-next_
+  hash-code/int ::= hash-code-counter_++
   static hash-code-counter_/int := 0
-  static hash-code-next_ -> int:
-    next := hash-code-counter_
-    hash-code-counter_ = (next + 1) & 0x1fff_ffff
-    return next
 
   constructor.internal_ --handle/int --.id --.gid --on-event/Lambda? --on-stopped/Lambda?:
     on-event_ = on-event
