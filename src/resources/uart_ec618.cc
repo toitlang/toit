@@ -89,6 +89,7 @@ struct UartTransferState {
   volatile uint32_t tx_pending_len;  // Bytes staged in the spare buffer (0 = none).
   volatile bool tx_busy;
   volatile bool tx_waiting_for_empty;
+  volatile bool closing;             // Teardown waits for the final TX drain.
   // Diagnostic counters (kept cheap; exposed to debugging sessions).
   uint32_t cb_events;       // Callback invocations.
   uint32_t rearm_fails;     // Receive() re-arms that returned an error.
@@ -121,6 +122,7 @@ struct UartState {
 static UartState uart_states[3] = {};
 static ResourcePool<int, -1> uart_controllers(0, 1, 2);
 
+static void finish_uart_close(int id, UartTransferState* transfer);
 
 // Whether OUR code has run Initialize() on the controller (the boot-time
 // console init is handled separately in create).
@@ -244,7 +246,6 @@ void UartResourceGroup::on_unregister_resource(Resource* r) {
   auto uart_res = static_cast<UartResource*>(r);
   int id = uart_res->uart_id();
   UartState& state = uart_states[id];
-  uart_sleep_vote(-1);
 #if CONFIG_TOIT_EC618_PRINT_UART
   // The print UART shares the controller with printf/monitor output:
   // tear down OUR half only (RX irqs + buffers) and leave the
@@ -255,19 +256,18 @@ void UartResourceGroup::on_unregister_resource(Resource* r) {
     if (transfer != null) {
       uint32_t mask = irq_save();
       kDrivers[id]->Control(ARM_USART_CONTROL_RX, 0);
-      state.transfer = null;  // Unhook before freeing (the IRQ checks it).
+      transfer->closing = true;
+      bool tx_busy = transfer->tx_busy;
       irq_restore(mask);
-      // A DMA Send still in flight reads the staging buffers: wait for
-      // it (bounded by both buffers' drain time — a chain may still be
-      // running) before freeing.
-      for (int spin = 0; transfer->tx_busy && spin < 4000; spin++) osDelay(1);
-      free(transfer->tx_bufs[0]);
-      free(transfer->tx_bufs[1]);
-      free(transfer->ring);
-      free(transfer);
+      // Keep the transfer state and controller lease alive while DMA still
+      // owns a staging buffer. The normal TX drain task finishes teardown
+      // after the physical line-idle edge; an idle port can finish now.
+      if (!tx_busy) finish_uart_close(id, transfer);
+    } else {
+      state.de_pad = -1;
+      uart_controllers.put(id);
+      uart_sleep_vote(-1);
     }
-    state.de_pad = -1;
-    uart_controllers.put(id);
     return;
   }
 #endif
@@ -297,6 +297,7 @@ void UartResourceGroup::on_unregister_resource(Resource* r) {
   }
   state.de_pad = -1;
   uart_controllers.put(id);
+  uart_sleep_vote(-1);
 }
 
 // Drives the RS485 direction line through the same GPIO_pin* API as
@@ -307,6 +308,31 @@ static void set_de_level(int pad, int level) {
   if (gpio_bit < 0) return;
   uint16_t mask = 1 << (gpio_bit & 0xf);
   GPIO_pinWrite(gpio_bit >> 4, mask, level ? mask : 0);
+}
+
+// Releases a print-UART transfer only after its asynchronous TX has stopped.
+// The ordinary close path powers the controller off and can free immediately;
+// the print path must leave it configured for SendPolling, so the drain task
+// owns the final release instead.
+static void finish_uart_close(int id, UartTransferState* transfer) {
+  int de_pad;
+  uint32_t mask = irq_save();
+  if (uart_states[id].transfer != transfer || transfer->tx_busy) {
+    irq_restore(mask);
+    return;
+  }
+  uart_states[id].transfer = null;
+  de_pad = uart_states[id].de_pad;
+  uart_states[id].de_pad = -1;
+  irq_restore(mask);
+
+  if (de_pad >= 0) set_de_level(de_pad, 0);
+  free(transfer->tx_bufs[0]);
+  free(transfer->tx_bufs[1]);
+  free(transfer->ring);
+  free(transfer);
+  uart_controllers.put(id);
+  uart_sleep_vote(-1);
 }
 
 // --- CMSIS driver path (UART2) ----------------------------------------------
@@ -361,6 +387,7 @@ static void uart_tx_drain_task(void*) {
       }
 
       bool notify = false;
+      bool finish_close = false;
       mask = irq_save();
       transfer = uart_states[id].transfer;
       if (transfer != null && transfer->tx_waiting_for_empty &&
@@ -369,10 +396,15 @@ static void uart_tx_drain_task(void*) {
         int de = uart_states[id].de_pad;
         if (de >= 0) set_de_level(de, 0);
         transfer->tx_busy = false;
-        notify = true;
+        finish_close = transfer->closing;
+        notify = !finish_close;
       }
       irq_restore(mask);
-      if (notify) send_uart_event(id, Event::UART_KIND_TX_DONE);
+      if (finish_close) {
+        finish_uart_close(id, transfer);
+      } else if (notify) {
+        send_uart_event(id, Event::UART_KIND_TX_DONE);
+      }
       break;
     }
   }
