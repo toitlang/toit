@@ -16,7 +16,7 @@ import cli
 import crypto.crc show Crc
 import encoding.yaml
 import host.file
-import io show LITTLE-ENDIAN
+import io show Buffer LITTLE-ENDIAN
 
 DEFAULT-DESCRIPTOR-PATH ::= "toolchains/ec618/partitions.yaml"
 FLASH-END ::= 0x40_0000
@@ -147,27 +147,29 @@ encode-anchor-record parts/Partitions --console/int=0 -> ByteArray:
   entries := parts.entries
   if entries.size > ANCHOR-MAX-ENTRIES:
     throw "$entries.size entries exceed the device cap of $ANCHOR-MAX-ENTRIES"
-  record-size := ANCHOR-HEADER-SIZE + entries.size * ANCHOR-ENTRY-SIZE + ANCHOR-TRAILER-SIZE
-  record := ByteArray record-size  // Zero-filled: reserved fields stay 0.
-  LITTLE-ENDIAN.put-uint16 record 0 ANCHOR-MAGIC
-  record[2] = ANCHOR-VERSION
-  record[3] = 0    // SLOT_STATE_NONE: no trial in progress.
-  LITTLE-ENDIAN.put-uint32 record 4 1  // seq = 1.
-  record[8] = 'A'  // Known-good slot.
-  record[9] = 0    // No pending trial.
-  record[10] = entries.size
-  record[11] = console
-  offset := ANCHOR-HEADER-SIZE
+  buffer := Buffer
+  le := buffer.little-endian
+  le.write-uint16 ANCHOR-MAGIC
+  buffer.write-byte ANCHOR-VERSION
+  buffer.write-byte 0    // SLOT_STATE_NONE: no trial in progress.
+  le.write-uint32 1      // seq = 1.
+  buffer.write-byte 'A'  // Known-good slot.
+  buffer.write-byte 0    // No pending trial.
+  buffer.write-byte entries.size
+  buffer.write-byte console
+  buffer.write (ByteArray 4)  // Reserved header bytes.
   entries.do: | p/Partition |
-    record.replace offset p.name.to-byte-array
-    LITTLE-ENDIAN.put-uint32 record (offset + 16) p.offset
-    LITTLE-ENDIAN.put-uint32 record (offset + 20) p.size
-    record[offset + 24] = TYPE-CODES[p.type]
-    offset += ANCHOR-ENTRY-SIZE
-  LITTLE-ENDIAN.put-uint32 record (record-size - ANCHOR-TRAILER-SIZE)
-      (anchor-crc_ record[..record-size - ANCHOR-TRAILER-SIZE])
-  record.fill --from=(record-size - ANCHOR-TRAILER-SIZE + 4) 0xff
-  return record
+    name := p.name.to-byte-array
+    buffer.write name
+    buffer.write (ByteArray (16 - name.size))
+    le.write-uint32 p.offset
+    le.write-uint32 p.size
+    buffer.write-byte TYPE-CODES[p.type]
+    buffer.write (ByteArray 7)  // Reserved.
+  body := buffer.bytes
+  le.write-uint32 (anchor-crc_ body)
+  buffer.write (ByteArray 12 --initial=0xff)
+  return buffer.bytes
 
 /**
 Encodes the full anchor region for $parts: sector 0 carries the
