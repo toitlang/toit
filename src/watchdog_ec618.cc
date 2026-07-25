@@ -74,6 +74,12 @@ static const uint32_t WD_MAX_SLEEP_MS = 5000;
 // starved-task busy lockup resets within 10-20 s of active time).
 static const int WD_BACKSTOP_S = 10;
 
+#if CONFIG_TOIT_EC618_WATCHDOG_FATAL_PAD >= 0
+static_assert(CONFIG_TOIT_EC618_WATCHDOG_FATAL_PAD > 0 &&
+              CONFIG_TOIT_EC618_WATCHDOG_FATAL_PAD <= kMaxPadIndex,
+              "watchdog fatal marker must be a physical EC618 PAD");
+#endif
+
 static void watchdog_task(void* arg) {
   (void)arg;
   while (true) {
@@ -82,11 +88,12 @@ static void watchdog_task(void* arg) {
       WDT_kick();
       int32_t remain = static_cast<int32_t>(wd_deadline - osKernelGetTickCount());
       if (remain <= 0) {
-        // Scope trigger (rail-drop diagnosis): PAD33 (board pin 31, the
-        // ESP32-IO16 wire) goes HIGH before anything else in this path.
-        // A rail drop WITHOUT this marker = the reset came from somewhere
-        // else (e.g. the WDT busy-backstop or the platform's AON guard).
-        pad_emergency_high(33);
+#if CONFIG_TOIT_EC618_WATCHDOG_FATAL_PAD >= 0
+        // Optional scope trigger goes HIGH before anything else in this path.
+        // A reset without it came from elsewhere (the busy backstop, platform
+        // watchdog, power, or another fatal path).
+        pad_emergency_high(CONFIG_TOIT_EC618_WATCHDOG_FATAL_PAD);
+#endif
         printf("[toit] FATAL: watchdog timeout (%u ms without feed) — resetting\n",
                static_cast<unsigned>(wd_timeout_ms));
         ec618_system_reset();

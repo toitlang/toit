@@ -107,6 +107,14 @@
 #define CONFIG_TOIT_EC618_VM_WATCHDOG 1
 #endif
 
+// Optional physical PAD to drive HIGH immediately before Toit's application
+// watchdog resets the chip. This is a scope/rig diagnostic for distinguishing
+// the software-watchdog fatal path from a platform or power reset. Keep -1 in
+// normal builds; set a GPIO-capable PAD number in [1..48] for diagnosis.
+#ifndef CONFIG_TOIT_EC618_WATCHDOG_FATAL_PAD
+#define CONFIG_TOIT_EC618_WATCHDOG_FATAL_PAD -1
+#endif
+
 // Reset the chip when the boot program's VM exits "done" (all processes
 // finished) instead of deep-sleeping with no wakeup timer. Deep-sleep-without-
 // wakeup leaves the device dead until an external reset, which a rig with no
