@@ -31,33 +31,35 @@ TOKEN-SIZE ::= 256
 BIG-SIZE ::= 4096
 main:
   failures := []
+  port := Ec618.uart2
+      --baud-rate=BAUDS.first
+      --mode=uart.Port.MODE-RS485-HALF-DUPLEX
+      --rs485-de=(Ec618.pad wiring.EC618-UART2-DIRECTION-PAD)
 
-  BAUDS.do: | baud/int |
-    // After the previous phase's ack the helper still sleeps 200ms before
-    // reopening its port at the new baud; sending into that window loses
-    // the first token (observed: the whole phase then runs shifted by one
-    // message).
-    if baud != BAUDS.first: sleep --ms=1000
-    port := Ec618.uart2
-        --baud-rate=baud
-        --mode=uart.Port.MODE-RS485-HALF-DUPLEX
-        --rs485-de=(Ec618.pad wiring.EC618-UART2-DIRECTION-PAD)
+  try:
+    BAUDS.do: | baud/int |
+      // After the previous phase's ack the helper still sleeps 200ms before
+      // reopening its port at the new baud; sending into that window loses
+      // the first token (observed: the whole phase then runs shifted by one
+      // message).
+      if baud != BAUDS.first: sleep --ms=1000
+      port.baud-rate = baud
 
-    ITERATIONS.repeat: | i/int |
-      token := ByteArray TOKEN-SIZE: (it * 31 + 7 + i) & 0xff
-      port.out.write token
-      got := read-exactly port TOKEN-SIZE
-      ok := got == token
-      print "uart2-rs485-ec618: $baud iter $i $(ok ? "ok" : "FAIL (echo $got.size bytes)")"
-      if not ok: failures.add "$baud/iter$i"
+      ITERATIONS.repeat: | i/int |
+        token := ByteArray TOKEN-SIZE: (it * 31 + 7 + i) & 0xff
+        port.out.write token
+        got := read-exactly port TOKEN-SIZE
+        ok := got == token
+        print "uart2-rs485-ec618: $baud iter $i $(ok ? "ok" : "FAIL (echo $got.size bytes)")"
+        if not ok: failures.add "$baud/iter$i"
 
-    big := ByteArray BIG-SIZE: (it * 31 + 7) & 0xff
-    port.out.write big
-    ack := read-exactly port 1
-    ack-ok := ack == #['K']
-    print "uart2-rs485-ec618: $baud big $(ack-ok ? "ok" : "FAIL (ack $ack)")"
-    if not ack-ok: failures.add "$baud/big"
-
+      big := ByteArray BIG-SIZE: (it * 31 + 7) & 0xff
+      port.out.write big
+      ack := read-exactly port 1
+      ack-ok := ack == #['K']
+      print "uart2-rs485-ec618: $baud big $(ack-ok ? "ok" : "FAIL (ack $ack)")"
+      if not ack-ok: failures.add "$baud/big"
+  finally:
     port.close
 
   if not failures.is-empty:
@@ -70,7 +72,8 @@ read-exactly port/uart.Port n/int -> ByteArray:
   result := #[]
   while result.size < n:
     chunk/ByteArray? := null
-    catch: chunk = with-timeout --ms=5000: port.in.read
+    catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
+      chunk = with-timeout --ms=5000: port.in.read
     if chunk == null: break
     result += chunk
   return result.size > n ? result[..n] : result

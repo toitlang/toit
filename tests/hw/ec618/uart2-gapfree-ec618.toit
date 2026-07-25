@@ -51,49 +51,51 @@ main:
   control := Ec618.uart1 --baud-rate=115200
   control.out.write "\n"     // Fresh-open glitch-byte flush (rig rule).
   print "uart2-gapfree-ec618: control lane open"
+  test := Ec618.uart2 --baud-rate=BAUDS.first
 
-  BAUDS.do: | baud/int |
-    size := payload-size-for baud
-    payload := ByteArray size  // All zeros — exactly what we want.
-    test := Ec618.uart2 --baud-rate=baud
-    wire-ms := size * 10 * 1000 / baud
-    window-ms := wire-ms + 2_000  // Arm latency + margin + trailing idle.
-    // Filter: must exceed the stop-bit high (1 bit) and stay below the
-    // 9-bit low runs of the 0x00 payload; ~3 bit times, capped at PCNT's
-    // ~12.7us maximum. The detectable-pause floor is thus ~3 bit times.
-    filter-ns := min 12_000 (3 * 1_000_000_000 / baud)
-    print "uart2-gapfree-ec618: baud=$baud wire=$(wire-ms)ms window=$(window-ms)ms filter=$(filter-ns)ns"
+  try:
+    BAUDS.do: | baud/int |
+      test.baud-rate = baud
+      size := payload-size-for baud
+      payload := ByteArray size  // All zeros — exactly what we want.
+      wire-ms := size * 10 * 1000 / baud
+      window-ms := wire-ms + 2_000  // Arm latency + margin + trailing idle.
+      // Filter: must exceed the stop-bit high (1 bit) and stay below the
+      // 9-bit low runs of the 0x00 payload; ~3 bit times, capped at PCNT's
+      // ~12.7us maximum. The detectable-pause floor is thus ~3 bit times.
+      filter-ns := min 12_000 (3 * 1_000_000_000 / baud)
+      print "uart2-gapfree-ec618: baud=$baud wire=$(wire-ms)ms window=$(window-ms)ms filter=$(filter-ns)ns"
 
-    // Phase 1: positive control — a deliberate pause must be detected.
-    count := measure control window-ms filter-ns:
-      test.out.write payload[..size / 2] --flush
-      sleep --ms=20
-      test.out.write payload[size / 2..] --flush
-    check "$baud: detector sees the deliberate pause" (count >= 2)
-        --detail="count=$count (want >= 2)"
+      // Phase 1: positive control — a deliberate pause must be detected.
+      count := measure control window-ms filter-ns:
+        test.out.write payload[..size / 2] --flush
+        sleep --ms=20
+        test.out.write payload[size / 2..] --flush
+      check "$baud: detector sees the deliberate pause" (count >= 2)
+          --detail="count=$count (want >= 2)"
 
-    // Phase 2: the real assertion — one burst, no pauses.
-    elapsed-us/int? := null
-    count = measure control window-ms filter-ns:
-      start := Time.monotonic-us
-      test.out.write payload --flush
-      elapsed-us = Time.monotonic-us - start
-    check "$baud: burst is gap-free" (count == 1)
-        --detail="count=$count (want exactly 1 = trailing idle only)"
-    // Coarse wall-clock cross-check: the flush cannot beat the wire time
-    // (minus the ~1.2% crystal tolerance — the real bit clock runs a hair
-    // fast on this module, measured by the pwm tests), and big
-    // accumulated pauses would show up here even below the detector's
-    // floor.
-    wire-us := size * 10 * 1_000_000 / baud
-    timing-ok := elapsed-us >= wire-us * 97 / 100 and elapsed-us < wire-us + wire-us / 10 + 50_000
-    check "$baud: flush matches wire time" timing-ok
-        --detail="$(elapsed-us)us for $(wire-us)us of wire"
+      // Phase 2: the real assertion — one burst, no pauses.
+      elapsed-us/int? := null
+      count = measure control window-ms filter-ns:
+        start := Time.monotonic-us
+        test.out.write payload --flush
+        elapsed-us = Time.monotonic-us - start
+      check "$baud: burst is gap-free" (count == 1)
+          --detail="count=$count (want exactly 1 = trailing idle only)"
+      // Coarse wall-clock cross-check: the flush cannot beat the wire time
+      // (minus the ~1.2% crystal tolerance — the real bit clock runs a hair
+      // fast on this module, measured by the pwm tests), and big
+      // accumulated pauses would show up here even below the detector's
+      // floor.
+      wire-us := size * 10 * 1_000_000 / baud
+      timing-ok := elapsed-us >= wire-us * 97 / 100 and elapsed-us < wire-us + wire-us / 10 + 50_000
+      check "$baud: flush matches wire time" timing-ok
+          --detail="$(elapsed-us)us for $(wire-us)us of wire"
 
+    control.out.write "Q\n"
+  finally:
     test.close
-
-  control.out.write "Q\n"
-  control.close
+    control.close
 
   if not failures.is-empty:
     print "uart2-gapfree-ec618: FAIL $failures"

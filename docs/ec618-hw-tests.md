@@ -298,33 +298,25 @@ calls still in the glue.
   one-way trap (compare writes latch on the match event, which never fires
   — the SDK's `TIMER_updatePwmDutyCycle` has the same bug), so leaving it
   restarts the timer via the TCCR enable bit. `pwm-{ec618,esp32}.toit`.
-- **`uart2-flush` flush semantics** (2026-06-10, passing): `out.flush` /
+- **`uart2-flush` flush semantics** (reworked and HW-verified 2026-07-25):
+  `out.flush` /
   `write --flush` must return when the last bit leaves the wire — verified by
   pure timing (2 KiB cannot flush faster than its wire time, nor much slower)
-  at 9600/115200/921600, no helper board needed. Found a real bug: the
-  `wait_tx` primitive was a non-blocking TEMT check and the lib then waited
-  for a TX event to retry — but the blob's TX_ALL_DONE is best-effort (same
-  root cause as the RS485 DE bug), so **flush hung forever at 9600** (115200+
-  only worked by event-timing luck). `wait_tx` now polls LSR.TEMT bounded by
-  the cache+FIFO drain time. Also: `--break-length` now throws UNIMPLEMENTED
-  instead of silently sending break-less data (no break API in the PLAT
-  blob), and a fresh UART2 open is verified quiet (no garbage byte).
+  at 9600/115200/921600, no helper board needed. The CMSIS SEND_COMPLETE
+  callback queues a small UART drain worker; that worker waits for LSR.TEMT
+  in task context and posts the real TX-done event. `wait_tx` is therefore a
+  non-blocking state check, with no polling in a VM primitive or long IRQ
+  spin. Also: `--break-length` throws UNIMPLEMENTED instead of silently
+  sending break-less data, and a fresh UART2 open is verified quiet.
   `uart2-flush-ec618.toit`.
-- **`uart2-rs485` RS485 half-duplex** (2026-06-10, passing 9600/115200/921600):
+- **`uart2-rs485` RS485 half-duplex** (reworked and HW-verified 2026-07-25,
+  passing 9600/115200/921600):
   UART2 in `MODE-RS485-HALF-DUPLEX` with the direction line on PAD33 (any
   GPIO-capable pad works; new `--rs485-de` pin on the `Ec618.uartN`
   constructors); the ESP32 verifies exactly one DE pulse per message at IO16,
-  DE released right after the last bit, and DE low while it echoes. Found and
-  fixed TWO driver bugs: (1) the DE pad was driven through the luatos
-  core-driver `GPIO_Config`/`GPIO_Output` — a *different* GPIO stack than the
-  OEM `GPIO_pin*` API the gpio driver uses (mixing is forbidden by its own
-  header), and on hardware those calls never moved the pad; (2) the PLAT
-  blob's `UART_CB_TX_ALL_DONE` is **best-effort** — it samples LSR.TEMT once
-  at TX-DMA-done dispatch (disassembly of `prvUart_TxDone`,
-  `libcore_airm2m.a`) and stays silent if the FIFO is still draining, so at
-  ≤115200 DE stayed high forever. The write primitive now polls
-  `Uart_IsTSREmpty` and releases DE synchronously (ISR drop kept as the
-  zero-latency fast path at high baud). `uart2-rs485-{ec618,esp32}.toit`.
+  DE released after the last bit, and DE low while it echoes. DE uses the same
+  GPIO_pin API as the GPIO driver and is released by the task-context TEMT
+  worker that completes flush. `uart2-rs485-{ec618,esp32}.toit`.
 - **`uart2-config` configuration matrix** (2026-06-10, passing): all 49
   combinations — data bits 5..8 × parity none/even/odd × stop bits 1/2 (+ a
   1.5-stop probe) at 115200 and 921600, reopening both sides per config —
@@ -558,8 +550,8 @@ rule no longer applies:
 - [x] **UART configs**: parity, stop bits, data bits + error counter on
       induced parity errors (uart2-config, all 49 configs pass).
 - [x] **RS485 half-duplex** (uart2-rs485): DE timing verified at the ESP32;
-      fixed the mixed-GPIO-stack DE drive and the best-effort TX_ALL_DONE
-      reliance (synchronous TEMT drain in write).
+      DE uses the shared GPIO API and drops from the task-context TEMT drain
+      worker after the final frame.
 - [x] **I2C**: working against a real BMP280 on I2C1 pads 23/24 (see Done).
 - [x] **Async I2C** (clock-stretch-safe) — DONE, HW-verified (bmp280 suite
       through the async path; ESP32 through the sentinel sync fallback).
