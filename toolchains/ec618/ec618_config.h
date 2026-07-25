@@ -40,12 +40,6 @@
 #define CONFIG_TOIT_EC618_PRINT_UART 1
 #endif
 
-// The console/control UART id is NOT a compile-time knob: it is a byte
-// in the anchor record (per-device provisioning — gen-anchor.toit
-// --console-uart, provision.toit, or ec618.set-console-uart at runtime),
-// so ONE base image serves every rig. See
-// toolchains/ec618/project/inc/anchor.h.
-
 // Baud rate used for the print UART when the redirect is enabled.
 #ifndef CONFIG_TOIT_EC618_PRINT_UART_BAUD
 #define CONFIG_TOIT_EC618_PRINT_UART_BAUD 115200
