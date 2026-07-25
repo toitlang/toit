@@ -13,19 +13,16 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import system.api.firmware show FirmwareService
 import system.services show ServiceProvider ServiceResource
-import system.base.firmware show FirmwareServiceProviderBase FirmwareWriter
+import system.base.firmware show FirmwareWriter
 
 import esp32
-import encoding.ubjson
 
-class FirmwareServiceProvider extends FirmwareServiceProviderBase:
-  config_/Map ::= {:}
+import ..shared.firmware show EmbeddedFirmwareServiceProviderBase
 
+class FirmwareServiceProvider extends EmbeddedFirmwareServiceProviderBase:
   constructor:
-    catch: config_ = ubjson.decode firmware-embedded-config_
-    super "system/firmware/esp32" --major=0 --minor=1
+    super "system/firmware/esp32"
 
   is-validation-pending -> bool:
     return (ota-state_ & OTA-STATE-VALIDATION-PENDING_) != 0
@@ -44,23 +41,6 @@ class FirmwareServiceProvider extends FirmwareServiceProviderBase:
     // TODO(kasper): Don't just reboot from here. Shut down the
     // system properly instead.
     esp32.deep-sleep (Duration --ms=10)
-
-  config-ubjson -> ByteArray:
-    // TODO(kasper): We have to copy this for now, because we
-    // cannot transfer a non-disposable byte array across the
-    // RPC boundary just yet.
-    return firmware-embedded-config_.copy
-
-  config-entry key/string -> any:
-    return config_.get key
-
-  content -> ByteArray?:
-    // We deliberately return null here to let the caller know that
-    // it should try to use the firmware content provided by the
-    // underlying system (if any). On the ESP32, the system will
-    // use this to give access to the content of the currently
-    // running OTA partition.
-    return null
 
   uri -> string?:
     return "partition:$ota-current-partition-name_"
@@ -155,6 +135,3 @@ ota-validate_ -> bool:
 
 ota-rollback_ -> none:
   #primitive.esp32.ota-rollback
-
-firmware-embedded-config_ -> any:
-  #primitive.programs-registry.config

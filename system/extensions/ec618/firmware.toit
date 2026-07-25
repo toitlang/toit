@@ -13,24 +13,22 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import system.api.firmware show FirmwareService
 import system.services show ServiceResource
-import system.base.firmware show FirmwareServiceProviderBase FirmwareWriter
+import system.base.firmware show FirmwareWriter
 
 import ec618
 import ec618.slot
 
 import crypto.sha256 show Sha256
-import encoding.ubjson
 import io show Buffer LITTLE-ENDIAN
 
-class FirmwareServiceProvider extends FirmwareServiceProviderBase:
-  config_/Map ::= {:}
+import ..shared.firmware show EmbeddedFirmwareServiceProviderBase
+
+class FirmwareServiceProvider extends EmbeddedFirmwareServiceProviderBase:
   writer_/FirmwareWriter_? := null
 
   constructor:
-    catch: config_ = ubjson.decode firmware-embedded-config_
-    super "system/firmware/ec618" --major=0 --minor=1
+    super "system/firmware/ec618"
 
   // A freshly written slot boots on trial; the running image must validate
   // itself or the next reset rolls back. So validation is pending exactly when
@@ -56,16 +54,6 @@ class FirmwareServiceProvider extends FirmwareServiceProviderBase:
     // firmware.upgrade exits the VM via deep sleep; the EC618 run loop
     // (toit_ec618.cc) then hard-resets into the staged slot.
     ec618.deep-sleep (Duration --ms=10)
-
-  config-ubjson -> ByteArray:
-    return firmware-embedded-config_.copy
-
-  config-entry key/string -> any:
-    return config_.get key
-
-  content -> ByteArray?:
-    // Return null so the caller maps the running firmware via firmware.map.
-    return null
 
   uri -> string?:
     return "flash:ec618"
@@ -221,8 +209,3 @@ class FirmwareWriter_ extends ServiceResource implements FirmwareWriter:
         slot.program-mode 0
       finally:
         service_.on-writer-closed_ this
-
-// ----------------------------------------------------------------------------
-
-firmware-embedded-config_ -> any:
-  #primitive.programs-registry.config
