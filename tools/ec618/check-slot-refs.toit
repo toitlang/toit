@@ -22,8 +22,7 @@
 // Direct VM->PLAT branches are expected and carried in SRL3. This tool guards
 // the inverse direction: it reads the linker's retained relocations
 // (--emit-relocs) and FAILS if an allocated, non-relocated section has a
-// relocation whose target resolves into the slot. The only sanctioned
-// exceptions are in the allow-set.
+// relocation whose target resolves into the slot.
 
 import cli
 import host.pipe
@@ -34,18 +33,6 @@ import .elf
 // handled. Every other allocated section is fixed and must not reference the slot.
 RELOCATED-SECTIONS ::= {".vm_a", ".vm_dram_data"}
 
-// Sanctioned fixed-region -> slot references (by target symbol name).
-//
-// `_ZnwjRKSt9nothrow_t` is `operator new(unsigned int, std::nothrow_t const&)`,
-// defined in the slot (the VM's allocator). The C++ runtime's PLAT-resident
-// `__cxa_thread_atexit` (libstdc++) calls it to allocate a thread-local-dtor
-// node. That path is dead on this target (the VM registers no thread_local with
-// a non-trivial destructor, so __cxa_thread_atexit is never invoked); it is
-// allow-listed rather than relocated because PLAT cannot be relocated. If the VM
-// ever uses such a thread_local this edge goes live and faults — eliminate it
-// then (e.g. a VM-side __cxa_thread_atexit stub) rather than widening this set.
-DEFAULT-ALLOW ::= {"_ZnwjRKSt9nothrow_t"}
-
 main args:
   cmd := cli.Command "check-slot-refs"
       --help="""
@@ -55,7 +42,7 @@ main args:
         it, so it points at the wrong (or an unmapped) address after OTA.
 
         The slot body (.vm_a) and the relocated shared .data are skipped — those
-        ARE relocated. Targets in the allow-set are tolerated.
+        ARE relocated.
         """
       --options=[
         cli.Option "readelf"
@@ -64,9 +51,6 @@ main args:
         cli.Option "nm"
             --help="The arm nm binary."
             --default="arm-none-eabi-nm",
-        cli.Option "allow"
-            --help="Extra target symbol allowed as a fixed->slot reference (repeatable)."
-            --multi,
       ]
       --rest=[
         cli.Option "elf"
@@ -81,10 +65,6 @@ run invocation/cli.Invocation -> none:
   readelf := invocation["readelf"]
   nm := invocation["nm"]
   elf := invocation["elf"]
-  allow := {}
-  allow.add-all DEFAULT-ALLOW
-  allow.add-all invocation["allow"]
-
   range := slot-range nm elf
   lo := range[0]
   hi := range[1]
@@ -92,7 +72,7 @@ run invocation/cli.Invocation -> none:
     ui.abort "no populated VM slot found (both __vm_link and __vm_b are empty)"
 
   alloc := alloc-sections readelf elf
-  violations := find-references readelf elf lo hi alloc allow
+  violations := find-references readelf elf lo hi alloc
 
   if not violations.is-empty:
     // Aggregate by "section -> symbol" for a compact report.
@@ -109,8 +89,7 @@ run invocation/cli.Invocation -> none:
       A fixed (non-relocated) section points INTO the slot. The device never
       relocates these words, so they resolve to the wrong (unmapped, with the
       neutral link base) address after OTA. Move the referenced object into the
-      slot, provide a base-owned implementation, or — if the edge is provably
-      dead — add the target symbol to check-slot-refs.toit's allow-set."""
+      slot or provide a base-owned implementation."""
 
   print "OK: no fixed-region word references the VM slot."
 
@@ -184,8 +163,8 @@ Returns the fixed-region -> slot references in $elf as a list of
   "section -> symbol" strings (one per offending relocation, duplicates kept).
 
 A reference offends when the patched section is allocated (in $alloc) but NOT a
-  relocated section ($RELOCATED-SECTIONS), the relocation's target value lands in
-  `[$lo, $hi)`, and the target symbol is not in $allow.
+  relocated section ($RELOCATED-SECTIONS), and the relocation's target value
+  lands in `[$lo, $hi)`.
 
 The parsed `readelf -rW` header and record lines look like:
 
@@ -194,7 +173,7 @@ Relocation section '.rel.vm_a' at offset 0x9fa798 contains 9246 entries:
 00d00000  00172402 R_ARM_ABS32  00d2b8ad  toit_start
 ```
 */
-find-references readelf/string elf/string lo/int hi/int alloc/Set allow/Set -> List:
+find-references readelf/string elf/string lo/int hi/int alloc/Set -> List:
   references := []
   out := pipe.backticks [readelf, "-rW", elf]
   current/string? := null  // The allocated section the current `.rel.*` patches.
@@ -213,7 +192,6 @@ find-references readelf/string elf/string lo/int hi/int alloc/Set allow/Set -> L
     sym-value := int.parse parts[3] --radix=16 --if-error=: continue.split
     if not (lo <= sym-value < hi): continue.split
     sym-name := parts.size > 4 ? parts[4] : "(section)"
-    if allow.contains sym-name: continue.split
     references.add "$current -> $sym-name"
   return references
 
