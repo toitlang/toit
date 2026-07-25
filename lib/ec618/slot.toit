@@ -87,9 +87,10 @@ erase-inactive-sector offset/int -> none:
 Writes $bytes into the inactive slot at $offset.
 
 Both $offset and the size of $bytes must be multiples of 16 (the flash segment
-  size). Call $erase-inactive-sector first; flash NOR cells can
-  only go 1 → 0 in a single write, so writing into a non-erased region
-  silently produces garbage.
+  size), and a write is limited to one 4 KB sector. Call
+  $erase-inactive-sector first; flash NOR cells can only go 1 → 0 in a
+  single write, so writing into a non-erased region silently produces
+  garbage.
 */
 write-inactive offset/int bytes/ByteArray -> none:
   #primitive.ec618.slot-inactive-write
@@ -109,8 +110,9 @@ The table is also stored at the slot's tail (with its size as the slot's last
   word) so that, once this image boots as the active slot, the VM can recover
   its own table to un-relocate firmware reads. Call this AFTER erasing the slot
   and while holding $program-mode (the trailer is written immediately). Call
-  $reloc-end when the write completes. Chunks passed to $write-inactive must be
-  sector-aligned while armed so no relocation site straddles a chunk.
+  $reloc-end when the write completes. Chunks passed to $write-inactive are
+  limited to one sector; full chunks are sector-aligned, and only the final
+  chunk may be shorter, so no relocation site straddles a chunk.
 */
 reloc-begin table/ByteArray -> none:
   #primitive.ec618.slot-reloc-begin

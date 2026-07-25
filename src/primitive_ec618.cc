@@ -409,6 +409,7 @@ PRIMITIVE(slot_inactive_write) {
   if (offset < 0) FAIL(INVALID_ARGUMENT);
   const uint32_t length = static_cast<uint32_t>(bytes.length());
   if (length % FLASH_SEGMENT_SIZE != 0) FAIL(INVALID_ARGUMENT);
+  if (length > FLASH_SECTOR_SIZE) FAIL(OUT_OF_BOUNDS);
   const uint32_t off = static_cast<uint32_t>(offset);
   if (off % FLASH_SEGMENT_SIZE != 0) FAIL(INVALID_ARGUMENT);
   if (off > slot_size() || length > slot_size() - off) FAIL(OUT_OF_BOUNDS);
