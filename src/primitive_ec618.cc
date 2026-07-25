@@ -454,9 +454,7 @@ PRIMITIVE(slot_inactive_write) {
 // the preceding status line reaches the wire.
 [[noreturn]] void ec618_system_reset() {
   for (volatile uint32_t i = 0; i < 200000; i++) { /* spin */ }
-  // SCB->AIRCR: VECTKEY (0x05FA << 16) | SYSRESETREQ (bit 2).
-  volatile uint32_t* const SCB_AIRCR = reinterpret_cast<uint32_t*>(0xE000ED0C);
-  *SCB_AIRCR = (0x05FAu << 16) | (1u << 2);
+  ResetECSystemReset();
   while (1) { /* unreachable */ }
 }
 
