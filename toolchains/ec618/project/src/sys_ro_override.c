@@ -11,19 +11,24 @@
 
 #include "mem_map.h"
 
-// AP_IMAGE_END below assumes the Toit layout's __USER_CODE__ size. Fail
-// the build if the SDK map and this protection boundary drift apart.
-_Static_assert(AP_FLASH_LOAD_SIZE == 0x2E0000,
-               "sys_ro_override.c hard-codes AP_IMAGE_END assuming __USER_CODE__");
+// mem_map.h expresses image load addresses in the AP's XIP address space,
+// while sysROSpaceCheck receives raw flash offsets. Derive every boundary
+// from that SDK map instead of copying its current evaluated addresses.
+#define RAW_FLASH_OFFSET(xip_address) ((xip_address) - AP_FLASH_XIP_ADDR)
+#define BOOTLOADER_END \
+  (RAW_FLASH_OFFSET(BOOTLOADER_FLASH_LOAD_ADDR) + BOOTLOADER_FLASH_LOAD_SIZE)
+#define AP_IMAGE_START RAW_FLASH_OFFSET(AP_FLASH_LOAD_ADDR)
+#define AP_IMAGE_END (AP_IMAGE_START + AP_FLASH_LOAD_SIZE)
+
+_Static_assert(BOOTLOADER_END <= AP_IMAGE_START,
+               "bootloader and AP image overlap");
+_Static_assert(AP_IMAGE_END == FLASH_FOTA_REGION_START,
+               "AP image does not end at the SDK FOTA boundary");
 
 // Writable window for flash operations. Set these before performing
 // flash writes to regions inside the AP image area (flash registry, OTA).
 uint32_t toit_ap_image_modify_start = 0;
 uint32_t toit_ap_image_modify_end   = 0;
-
-#define BOOTLOADER_END  0x22000
-#define AP_IMAGE_START  0x24000
-#define AP_IMAGE_END    0x304000  // 0x24000 + 0x2E0000.
 
 static uint8_t sysROAddrCheck(uint32_t addr) {
     if (addr < BOOTLOADER_END) {
