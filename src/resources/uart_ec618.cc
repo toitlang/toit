@@ -57,8 +57,8 @@ namespace toit {
 // in `pad_table_ec618.h`, which is the single source of truth for which
 // physical pad carries which UART role.
 
-// Per-UART state.
-// CMSIS-path RX context (heap-allocated at open). The driver DMAs each
+// Per-controller CMSIS transfer state (heap-allocated at open). The driver
+// uses the two TX staging buffers asynchronously and DMAs each
 // armed transfer into `chunk`; the event callback copies it into `ring`.
 // RX_TIMEOUT does NOT end the armed transfer on this driver — bsp_usart.c
 // reloads the descriptor and keeps streaming into the same buffer — so the
@@ -66,7 +66,7 @@ namespace toit {
 // re-arms only on RECEIVE_COMPLETE. Between transfers the driver's own
 // 32-byte staging FIFO catches the line, so the re-arm gap loses nothing
 // at sane bauds.
-struct CmsisRx {
+struct UartTransferState {
   uint8_t* ring;            // malloc'd ring buffer.
   uint32_t ring_size;
   volatile uint32_t head;   // Write index — IRQ context only.
@@ -115,7 +115,7 @@ struct UartState {
   uint32_t errors;      // Counter incremented from the driver callback on
                         // parity/framing/overrun.
   int de_pad;           // RS485 direction pin (PAD number), or -1.
-  CmsisRx* cmsis_rx;    // Non-null when this controller runs on the CMSIS driver.
+  UartTransferState* transfer;  // Non-null while the controller is open.
 };
 
 static UartState uart_states[3] = {};
@@ -251,27 +251,27 @@ void UartResourceGroup::on_unregister_resource(Resource* r) {
   // controller powered and configured so printf keeps flowing
   // (SendPolling needs only the CONFIGURED flag).
   if (id == anchor_console()) {
-    CmsisRx* rx = state.cmsis_rx;
-    if (rx != null) {
+    UartTransferState* transfer = state.transfer;
+    if (transfer != null) {
       uint32_t mask = irq_save();
       kDrivers[id]->Control(ARM_USART_CONTROL_RX, 0);
-      state.cmsis_rx = null;  // Unhook before freeing (the IRQ checks it).
+      state.transfer = null;  // Unhook before freeing (the IRQ checks it).
       irq_restore(mask);
       // A DMA Send still in flight reads the staging buffers: wait for
       // it (bounded by both buffers' drain time — a chain may still be
       // running) before freeing.
-      for (int spin = 0; rx->tx_busy && spin < 4000; spin++) osDelay(1);
-      free(rx->tx_bufs[0]);
-      free(rx->tx_bufs[1]);
-      free(rx->ring);
-      free(rx);
+      for (int spin = 0; transfer->tx_busy && spin < 4000; spin++) osDelay(1);
+      free(transfer->tx_bufs[0]);
+      free(transfer->tx_bufs[1]);
+      free(transfer->ring);
+      free(transfer);
     }
     state.de_pad = -1;
     uart_controllers.put(id);
     return;
   }
 #endif
-  if (state.cmsis_rx != null) {
+  if (state.transfer != null) {
     // CMSIS teardown from a quiesced state — this is the path the
     // closed blob's Uart_DeInit could hang on this path. CONTROL_RX 0 is
     // the supported abort (ABORT_RECEIVE is not): RX irqs masked, DMA
@@ -284,16 +284,16 @@ void UartResourceGroup::on_unregister_resource(Resource* r) {
     kDrivers[id]->PowerControl(ARM_POWER_OFF);
     kDrivers[id]->Uninitialize();
     cmsis_initialized[id] = false;
-    CmsisRx* rx = state.cmsis_rx;
-    state.cmsis_rx = null;  // Unhook before freeing (the IRQ checks it).
+    UartTransferState* transfer = state.transfer;
+    state.transfer = null;  // Unhook before freeing (the IRQ checks it).
     irq_restore(mask);
     // POWER_OFF stopped the TX DMA channel and Uninitialize closed it,
     // so nothing references the staging buffers (or chunk) past this
     // point.
-    free(rx->tx_bufs[0]);
-    free(rx->tx_bufs[1]);
-    free(rx->ring);
-    free(rx);
+    free(transfer->tx_bufs[0]);
+    free(transfer->tx_bufs[1]);
+    free(transfer->ring);
+    free(transfer);
   }
   state.de_pad = -1;
   uart_controllers.put(id);
@@ -350,8 +350,8 @@ static void uart_tx_drain_task(void*) {
 
     while (true) {
       uint32_t mask = irq_save();
-      CmsisRx* rx = uart_states[id].cmsis_rx;
-      bool pending = rx != null && rx->tx_waiting_for_empty;
+      UartTransferState* transfer = uart_states[id].transfer;
+      bool pending = transfer != null && transfer->tx_waiting_for_empty;
       bool idle = (kUartRegs[id]->LSR & USART_LSR_TX_EMPTY_Msk) != 0;
       irq_restore(mask);
       if (!pending) break;
@@ -362,13 +362,13 @@ static void uart_tx_drain_task(void*) {
 
       bool notify = false;
       mask = irq_save();
-      rx = uart_states[id].cmsis_rx;
-      if (rx != null && rx->tx_waiting_for_empty &&
+      transfer = uart_states[id].transfer;
+      if (transfer != null && transfer->tx_waiting_for_empty &&
           (kUartRegs[id]->LSR & USART_LSR_TX_EMPTY_Msk) != 0) {
-        rx->tx_waiting_for_empty = false;
+        transfer->tx_waiting_for_empty = false;
         int de = uart_states[id].de_pad;
         if (de >= 0) set_de_level(de, 0);
-        rx->tx_busy = false;
+        transfer->tx_busy = false;
         notify = true;
       }
       irq_restore(mask);
@@ -406,42 +406,42 @@ static void queue_uart_tx_drain(int id) {
 // and 921600 baud there are ~170 us before the hardware FIFO overruns, so
 // the copy is two memcpys, not a byte loop.
 static void cmsis_ring_push(int id, const uint8_t* data, uint32_t n) {
-  CmsisRx* rx = uart_states[id].cmsis_rx;
-  uint32_t head = rx->head;
-  uint32_t tail = rx->tail;
-  uint32_t used = head >= tail ? head - tail : rx->ring_size - tail + head;
-  uint32_t free_space = rx->ring_size - 1 - used;  // One slot separates full from empty.
+  UartTransferState* transfer = uart_states[id].transfer;
+  uint32_t head = transfer->head;
+  uint32_t tail = transfer->tail;
+  uint32_t used = head >= tail ? head - tail : transfer->ring_size - tail + head;
+  uint32_t free_space = transfer->ring_size - 1 - used;  // One slot separates full from empty.
   uint32_t take = n < free_space ? n : free_space;
   if (take < n) {
     // Drop newest and count it; RX remains usable after overflow.
-    rx->dropped += n - take;
+    transfer->dropped += n - take;
     uart_states[id].errors += n - take;
     send_uart_event(id, Event::UART_KIND_ERROR);
   }
-  uint32_t first = rx->ring_size - head;
+  uint32_t first = transfer->ring_size - head;
   if (first > take) first = take;
-  memcpy(rx->ring + head, data, first);
-  if (take > first) memcpy(rx->ring, data + first, take - first);
+  memcpy(transfer->ring + head, data, first);
+  if (take > first) memcpy(transfer->ring, data + first, take - first);
   head += take;
-  if (head >= rx->ring_size) head -= rx->ring_size;
-  rx->head = head;
+  if (head >= transfer->ring_size) head -= transfer->ring_size;
+  transfer->head = head;
 }
 
 static void cmsis_uart_event(int id, uint32_t event) {
   uint32_t mask = irq_save();
-  CmsisRx* rx = uart_states[id].cmsis_rx;
-  if (rx == null) {
+  UartTransferState* transfer = uart_states[id].transfer;
+  if (transfer == null) {
     irq_restore(mask);
     return;
   }
-  rx->cb_events++;
+  transfer->cb_events++;
   ARM_DRIVER_USART* driver = kDrivers[id];
   if (event & (ARM_USART_EVENT_RECEIVE_COMPLETE | ARM_USART_EVENT_RX_TIMEOUT)) {
     uint32_t n = driver->GetRxCount();
-    if (n > sizeof(rx->chunk)) n = sizeof(rx->chunk);
-    if (n > rx->seen) {
-      cmsis_ring_push(id, rx->chunk + rx->seen, n - rx->seen);
-      rx->seen = n;
+    if (n > sizeof(transfer->chunk)) n = sizeof(transfer->chunk);
+    if (n > transfer->seen) {
+      cmsis_ring_push(id, transfer->chunk + transfer->seen, n - transfer->seen);
+      transfer->seen = n;
       send_uart_event(id, Event::UART_KIND_RX);
     }
     if (event & ARM_USART_EVENT_RECEIVE_COMPLETE) {
@@ -453,9 +453,9 @@ static void cmsis_uart_event(int id, uint32_t event) {
       // that re-entrancy wrote received bytes outside `chunk` and
       // corrupted the heap (hardfault in the interpreter). Push the
       // delta above; arm a new transfer only when the old one is over.
-      rx->seen = 0;
-      if (driver->Receive(rx->chunk, sizeof(rx->chunk)) != ARM_DRIVER_OK) {
-        rx->rearm_fails++;
+      transfer->seen = 0;
+      if (driver->Receive(transfer->chunk, sizeof(transfer->chunk)) != ARM_DRIVER_OK) {
+        transfer->rearm_fails++;
       }
     }
   }
@@ -470,10 +470,10 @@ static void cmsis_uart_event(int id, uint32_t event) {
       // `i = bytes_in_fifo - 1` on an empty FIFO and hard-wedges reading
       // RBR). Push the chunk delta first so byte order holds.
       uint32_t n = driver->GetRxCount();
-      if (n > sizeof(rx->chunk)) n = sizeof(rx->chunk);
-      if (n > rx->seen) {
-        cmsis_ring_push(id, rx->chunk + rx->seen, n - rx->seen);
-        rx->seen = n;
+      if (n > sizeof(transfer->chunk)) n = sizeof(transfer->chunk);
+      if (n > transfer->seen) {
+        cmsis_ring_push(id, transfer->chunk + transfer->seen, n - transfer->seen);
+        transfer->seen = n;
       }
       USART_TypeDef* reg = kUartRegs[id];
       uint8_t fifo_buf[32];
@@ -491,7 +491,7 @@ static void cmsis_uart_event(int id, uint32_t event) {
   }
   if (event & (ARM_USART_EVENT_SEND_COMPLETE | ARM_USART_EVENT_TX_COMPLETE)) {
     bool chained = false;
-    if (rx->tx_pending_len > 0) {
+    if (transfer->tx_pending_len > 0) {
       // Chain the staged next chunk right here in the IRQ: only the shift
       // register is still draining, so a fast re-kick keeps the wire
       // gapless (uart2-gapfree — a task-level re-stage costs ~0.5 ms of
@@ -501,10 +501,10 @@ static void cmsis_uart_event(int id, uint32_t event) {
       // the idle handling so the writer wakes and can act, rather than
       // waiting for a completion that will not come (the pending bytes
       // are lost — like any hardware TX error).
-      rx->tx_active ^= 1;
-      uint32_t len = rx->tx_pending_len;
-      rx->tx_pending_len = 0;
-      uint8_t* buf = rx->tx_bufs[rx->tx_active];
+      transfer->tx_active ^= 1;
+      uint32_t len = transfer->tx_pending_len;
+      transfer->tx_pending_len = 0;
+      uint8_t* buf = transfer->tx_bufs[transfer->tx_active];
       // Pre-feed the FIFO from the CPU before arming the DMA: with the
       // 8-byte TX trigger (tx_trigger_boost) the FIFO holds ~8 bytes at
       // this point; 8 THR writes top it up to ~16 without tripping
@@ -520,17 +520,17 @@ static void cmsis_uart_event(int id, uint32_t event) {
       chained = kDrivers[id]->Send(buf + prefeed, len - prefeed) == ARM_DRIVER_OK;
     }
     if (!chained) {
-      if (!rx->tx_waiting_for_empty) {
+      if (!transfer->tx_waiting_for_empty) {
         // The CMSIS driver has no TX_COMPLETE event. Finish the FIFO and
         // shift-register drain in task context, outside both the IRQ and
         // the VM primitive.
-        rx->tx_waiting_for_empty = true;
+        transfer->tx_waiting_for_empty = true;
         queue_uart_tx_drain(id);
       }
     }
     // A chained send freed the spare buffer. A final send wakes waiters only
     // after the true line-idle edge above.
-    if (chained || !rx->tx_busy) {
+    if (chained || !transfer->tx_busy) {
       send_uart_event(id, Event::UART_KIND_TX_DONE);
     }
   }
@@ -560,12 +560,12 @@ static void (* const kUartCallbacks[3])(uint32_t) = {
 // TX shift register + FIFO empty, read straight from the LSR (the driver
 // has no API for it).
 static bool tx_idle(int id) {
-  CmsisRx* rx = uart_states[id].cmsis_rx;
-  if (rx == null) return true;
+  UartTransferState* transfer = uart_states[id].transfer;
+  if (transfer == null) return true;
   // tx_busy covers the armed-but-not-yet-started DMA gap, where the
   // FIFO is still empty and TEMT alone would report idle too early.
   // (It stays true across chained Sends; the pending check is belt.)
-  if (rx->tx_busy || rx->tx_pending_len > 0) return false;
+  if (transfer->tx_busy || transfer->tx_pending_len > 0) return false;
   return (kUartRegs[id]->LSR & USART_LSR_TX_EMPTY_Msk) != 0;
 }
 
@@ -821,24 +821,25 @@ PRIMITIVE(create) {
     // staging buffer), RX is IRQ mode.
     uint32_t ring_size = (tx_flags & kTxFlagLargeBuffers) ? 32768 : 8192;
     uint32_t tx_buf_size = (tx_flags & kTxFlagLargeBuffers) ? 4096 : 2048;
-    CmsisRx* rx = unvoid_cast<CmsisRx*>(calloc(1, sizeof(CmsisRx)));
-    uint8_t* ring = rx ? unvoid_cast<uint8_t*>(malloc(ring_size)) : null;
+    UartTransferState* transfer =
+        unvoid_cast<UartTransferState*>(calloc(1, sizeof(UartTransferState)));
+    uint8_t* ring = transfer ? unvoid_cast<uint8_t*>(malloc(ring_size)) : null;
     uint8_t* tx_buf0 = ring ? unvoid_cast<uint8_t*>(malloc(tx_buf_size)) : null;
     uint8_t* tx_buf1 = tx_buf0 ? unvoid_cast<uint8_t*>(malloc(tx_buf_size)) : null;
-    if (rx == null || ring == null || tx_buf0 == null || tx_buf1 == null) {
+    if (transfer == null || ring == null || tx_buf0 == null || tx_buf1 == null) {
       free(tx_buf0);
       free(ring);
-      free(rx);
+      free(transfer);
       delete resource;
       FAIL(MALLOC_FAILED);
     }
-    rx->ring = ring;
-    rx->ring_size = ring_size;
-    rx->tx_bufs[0] = tx_buf0;
-    rx->tx_bufs[1] = tx_buf1;
-    rx->tx_buf_size = tx_buf_size;
-    rx->control = cmsis_control_word(data_bits, parity, stop_bits);
-    uart_states[id].cmsis_rx = rx;  // Set before the first event can fire.
+    transfer->ring = ring;
+    transfer->ring_size = ring_size;
+    transfer->tx_bufs[0] = tx_buf0;
+    transfer->tx_bufs[1] = tx_buf1;
+    transfer->tx_buf_size = tx_buf_size;
+    transfer->control = cmsis_control_word(data_bits, parity, stop_bits);
+    uart_states[id].transfer = transfer;  // Set before the first event can fire.
     ARM_DRIVER_USART* driver = kDrivers[id];
     // Uninitialize first — but ONLY if the driver is genuinely
     // initialized: Initialize() is a no-op on an INITIALIZED driver (the
@@ -868,7 +869,7 @@ PRIMITIVE(create) {
     // (The RX FIFO triggers are 16 via USARTn_RX_TRIG_LVL in RTE_Device.h
     // — the IRQ-mode default of 30-of-32 left 2 bytes of overrun
     // headroom.)
-    driver->Control(rx->control, baud_rate);
+    driver->Control(transfer->control, baud_rate);
     // Autobaud off, explicitly: the boot ROM leaves UART0 in autobaud
     // ("urc baud: 0") and SetBaudrate only clears ADCR for baud==0; with
     // ADCR live, the irq handler treats RX timeouts as autobaud events.
@@ -885,8 +886,8 @@ PRIMITIVE(create) {
     // window runs a second callback concurrently, and two ring pushes
     // racing on `head` turn the ring memcpy into a wild write.
     uint32_t arm_mask = irq_save();
-    if (driver->Receive(rx->chunk, sizeof(rx->chunk)) != ARM_DRIVER_OK) {
-      rx->rearm_fails++;
+    if (driver->Receive(transfer->chunk, sizeof(transfer->chunk)) != ARM_DRIVER_OK) {
+      transfer->rearm_fails++;
     }
     irq_restore(arm_mask);
   }
@@ -922,8 +923,8 @@ PRIMITIVE(set_baud_rate) {
   ARGS(UartResource, resource, int, baud_rate);
   if (baud_rate <= 0 || baud_rate > 4000000) FAIL(INVALID_ARGUMENT);
   int id = resource->uart_id();
-  CmsisRx* rx = uart_states[id].cmsis_rx;
-  if (rx == null) FAIL(ALREADY_CLOSED);
+  UartTransferState* transfer = uart_states[id].transfer;
+  if (transfer == null) FAIL(ALREADY_CLOSED);
   {
     // Set-baud is a full power-cycle of the controller, mirroring the
     // create path exactly (one mental model, one tested sequence). A baud
@@ -938,19 +939,19 @@ PRIMITIVE(set_baud_rate) {
     driver->Control(ARM_USART_CONTROL_TX, 0);
     driver->PowerControl(ARM_POWER_OFF);   // GPR block reset (clocked).
     driver->PowerControl(ARM_POWER_FULL);
-    driver->Control(rx->control, static_cast<uint32_t>(baud_rate));
+    driver->Control(transfer->control, static_cast<uint32_t>(baud_rate));
     driver->Control(ARM_USART_CONTROL_TX, 1);
     driver->Control(ARM_USART_CONTROL_RX, 1);
     if (uart_states[id].de_pad < 0) tx_trigger_boost(id);
-    rx->seen = 0;
+    transfer->seen = 0;
     // The power cycle killed any in-flight Send (a baud change loses
     // in-flight bytes by definition); without this the writer would wait
     // forever for a SEND_COMPLETE that can no longer fire.
-    rx->tx_busy = false;
-    rx->tx_pending_len = 0;
-    rx->tx_waiting_for_empty = false;
-    if (driver->Receive(rx->chunk, sizeof(rx->chunk)) != ARM_DRIVER_OK) {
-      rx->rearm_fails++;
+    transfer->tx_busy = false;
+    transfer->tx_pending_len = 0;
+    transfer->tx_waiting_for_empty = false;
+    if (driver->Receive(transfer->chunk, sizeof(transfer->chunk)) != ARM_DRIVER_OK) {
+      transfer->rearm_fails++;
     }
     irq_restore(mask);
   }
@@ -974,8 +975,8 @@ PRIMITIVE(write) {
 
   int len = to - from;
   int written;
-  CmsisRx* rx = uart_states[id].cmsis_rx;
-  if (rx == null) FAIL(ALREADY_CLOSED);
+  UartTransferState* transfer = uart_states[id].transfer;
+  if (transfer == null) FAIL(ALREADY_CLOSED);
   {
     // CMSIS path: TX is DMA_MODE (RTE_Device.h) — Send is ASYNCHRONOUS
     // and keeps reading its buffer after this primitive returns, so the
@@ -984,17 +985,17 @@ PRIMITIVE(write) {
     // staged into the SPARE buffer for the completion IRQ to chain
     // gaplessly; only with both buffers occupied does the writer wait
     // for the TX event.
-    if (rx->tx_busy) {
+    if (transfer->tx_busy) {
       uint32_t mask = irq_save();
-      if (rx->tx_busy && !rx->tx_waiting_for_empty &&
-          rx->tx_pending_len == 0 && len > 1) {
+      if (transfer->tx_busy && !transfer->tx_waiting_for_empty &&
+          transfer->tx_pending_len == 0 && len > 1) {
         // len == 1 stays on the SendPolling path below (via a retry once
         // idle): a chained Send() of a single byte would hit the driver's
         // lossy num==1 special case.
         int chunk = len;
-        if (chunk > (int)rx->tx_buf_size) chunk = (int)rx->tx_buf_size;
-        memcpy(rx->tx_bufs[rx->tx_active ^ 1], data.address() + from, chunk);
-        rx->tx_pending_len = chunk;
+        if (chunk > (int)transfer->tx_buf_size) chunk = (int)transfer->tx_buf_size;
+        memcpy(transfer->tx_bufs[transfer->tx_active ^ 1], data.address() + from, chunk);
+        transfer->tx_pending_len = chunk;
         written = chunk;
       } else {
         written = 0;
@@ -1010,12 +1011,12 @@ PRIMITIVE(write) {
       written = (status32 == ARM_DRIVER_OK) ? 1 : 0;
     } else {
       int chunk = len;
-      if (chunk > (int)rx->tx_buf_size) chunk = (int)rx->tx_buf_size;
-      memcpy(rx->tx_bufs[rx->tx_active], data.address() + from, chunk);
-      rx->tx_busy = true;
-      int32_t status32 = kDrivers[id]->Send(rx->tx_bufs[rx->tx_active], chunk);
+      if (chunk > (int)transfer->tx_buf_size) chunk = (int)transfer->tx_buf_size;
+      memcpy(transfer->tx_bufs[transfer->tx_active], data.address() + from, chunk);
+      transfer->tx_busy = true;
+      int32_t status32 = kDrivers[id]->Send(transfer->tx_bufs[transfer->tx_active], chunk);
       if (status32 != ARM_DRIVER_OK) {
-        rx->tx_busy = false;
+        transfer->tx_busy = false;
         written = 0;
       } else {
         written = chunk;
@@ -1032,8 +1033,8 @@ PRIMITIVE(read) {
   ARGS(UartResource, resource);
   int id = resource->uart_id();
 
-  CmsisRx* rx = uart_states[id].cmsis_rx;
-  if (rx != null) {
+  UartTransferState* transfer = uart_states[id].transfer;
+  if (transfer != null) {
     if (!kRxIsDma[id]) {
       // IRQ-mode rescue: a full-rate burst can end an overrun storm with
       // bytes stranded in the hardware FIFO and no interrupt edge left to
@@ -1049,10 +1050,10 @@ PRIMITIVE(read) {
       }
       if (got > 0) {
         uint32_t n = kDrivers[id]->GetRxCount();
-        if (n > sizeof(rx->chunk)) n = sizeof(rx->chunk);
-        if (n > rx->seen) {
-          cmsis_ring_push(id, rx->chunk + rx->seen, n - rx->seen);
-          rx->seen = n;
+        if (n > sizeof(transfer->chunk)) n = sizeof(transfer->chunk);
+        if (n > transfer->seen) {
+          cmsis_ring_push(id, transfer->chunk + transfer->seen, n - transfer->seen);
+          transfer->seen = n;
         }
         cmsis_ring_push(id, fifo_buf, got);
       }
@@ -1060,19 +1061,19 @@ PRIMITIVE(read) {
     }
     // Drain our ring (filled by cmsis_uart_event). Snapshot head once: the
     // IRQ only ever ADDS bytes, so the window we copy is stable.
-    uint32_t head = rx->head;
-    uint32_t tail = rx->tail;
+    uint32_t head = transfer->head;
+    uint32_t tail = transfer->tail;
     uint32_t available = head >= tail ? head - tail
-                                      : rx->ring_size - tail + head;
+                                      : transfer->ring_size - tail + head;
     if (available == 0) return process->null_object();
     ByteArray* result = process->allocate_byte_array(available);
     if (result == null) FAIL(ALLOCATION_FAILED);
     ByteArray::Bytes bytes(result);
     for (uint32_t i = 0; i < available; i++) {
-      bytes.address()[i] = rx->ring[tail];
-      tail = tail + 1 == rx->ring_size ? 0 : tail + 1;
+      bytes.address()[i] = transfer->ring[tail];
+      tail = tail + 1 == transfer->ring_size ? 0 : tail + 1;
     }
-    rx->tail = tail;
+    transfer->tail = tail;
     return result;
   }
   FAIL(ALREADY_CLOSED);
