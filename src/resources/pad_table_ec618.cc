@@ -128,11 +128,11 @@ int uart_pad(int uart_id, UartRole role, int mapping, int* out_mux) {
   for (size_t i = 0; i < sizeof(kUartPads) / sizeof(kUartPads[0]); i++) {
     const UartPad& row = kUartPads[i];
     if (row.uart_id == uart_id && row.role == role && row.mapping == mapping) {
-      if (out_mux != nullptr) *out_mux = row.mux;
+      if (out_mux != null) *out_mux = row.mux;
       return row.pad;
     }
   }
-  if (out_mux != nullptr) *out_mux = -1;
+  if (out_mux != null) *out_mux = -1;
   return -1;
 }
 

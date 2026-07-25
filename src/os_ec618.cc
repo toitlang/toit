@@ -461,7 +461,7 @@ extern "C" {
 
 static void toit_mbedtls_mutex_init(mbedtls_threading_mutex_t* mutex) {
   mutex->mutex = xSemaphoreCreateMutex();
-  mutex->is_valid = mutex->mutex != nullptr;
+  mutex->is_valid = mutex->mutex != null;
 }
 
 static void toit_mbedtls_mutex_free(mbedtls_threading_mutex_t* mutex) {
