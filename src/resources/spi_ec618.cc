@@ -29,6 +29,7 @@
 
 extern "C" {
   #include "bsp_common.h"
+  #include "clock.h"        // GPR_swReset: make vendor DMA cleanup nonblocking.
   #include "driver_gpio.h"   // GPIO_IomuxEC618.
   #include "gpio.h"          // OEM GPIO_pinConfig/pinWrite for CS/DC.
   #include "soc_spi.h"       // The luatos core SPI driver.
@@ -64,6 +65,7 @@ static int pads_to_controller(int mosi, int miso, int clock) {
 }
 
 static bool controllers_in_use[2] = {};
+static SPI_TypeDef* const kSpiRegs[2] = {SPI0, SPI1};
 
 static bool reserve_controller(int controller) {
   Locker locker(OS::global_mutex());
@@ -83,14 +85,14 @@ static void pad_set(int pad, int level);
 // Async-transfer state, one per controller. The DMA moves driver-owned
 // (malloc'd) bytes — GC moves heap objects, so the Toit buffer is copied
 // out at start and back at finish. The sequence tag keeps a late
-// completion of an aborted transfer from claiming the next one's wait
-// (the I2C lesson).
+// completion of an aborted transfer from claiming the next one's wait.
 struct SpiState {
   volatile bool active;
   volatile uint8_t seq;
   volatile bool done;      // Set by the completion callback.
   bool read;               // Full duplex: received bytes replace sent ones.
   uint8_t* buffer;         // Driver-owned tx (and rx, in place) bytes.
+  uint32_t from;           // Copy-back offset in the caller's ByteArray.
   uint32_t length;
   int cs;                  // Pad to deselect on completion; -1 = none.
   bool keep_cs;
@@ -133,6 +135,23 @@ static void pad_set(int pad, int level) {
   GPIO_pinWrite(gpio_bit >> 4, mask, level ? mask : 0);
 }
 
+// Makes callbacks for this transfer stale before stopping DMA, then leaves
+// the target deselected unless the caller explicitly retained CS.
+static void stop_transfer(int controller, SpiState* state) {
+  state->active = false;
+  // The vendor function named SPI_TransferStop first waits for the entire
+  // wire transfer to drain, and only then disables its DMA channels. Turn
+  // off peripheral DMA requests and the shift engine first so that it is a
+  // real cancellation rather than a length-dependent blocking wait.
+  SPI_TypeDef* regs = kSpiRegs[controller];
+  regs->DMACR = 0;
+  regs->CR1 &= ~SPI_CR1_SSE_Msk;
+  GPR_swReset(controller == 0 ? RST_PCLK_SPI0 : RST_PCLK_SPI1);
+  GPR_swReset(controller == 0 ? RST_FCLK_SPI0 : RST_FCLK_SPI1);
+  SPI_TransferStop(controller);
+  if (state->cs >= 0 && !state->keep_cs) pad_set(state->cs, 1);
+}
+
 class SpiResourceGroup : public ResourceGroup {
  public:
   TAG(SpiResourceGroup);
@@ -147,14 +166,14 @@ class SpiResourceGroup : public ResourceGroup {
   // release any async buffer only after DMA can no longer write it.
   ~SpiResourceGroup() override {
     SpiState* state = &spi_states[controller_];
-    state->active = false;
-    SPI_TransferStop(controller_);
+    stop_transfer(controller_, state);
     SPI_SetCallbackFun(controller_, null, null);
     if (state->buffer != null) {
       free(state->buffer);
       state->buffer = null;
     }
     state->done = false;
+    state->from = 0;
     state->length = 0;
     state->cs = -1;
     state->keep_cs = false;
@@ -183,6 +202,10 @@ class SpiResourceGroup : public ResourceGroup {
     SPI_SetNewConfig(controller_, frequency, mode);
     speed_ = frequency;
     mode_ = mode;
+  }
+
+  void invalidate_config() {
+    speed_ = 0;
   }
 
  private:
@@ -219,6 +242,11 @@ class SpiDevice : public EventResource {
   int dc() const { return dc_; }
 
   void ensure_config() { group_->ensure_config(frequency_, mode_); }
+
+  void recover_after_abort() {
+    SPI_MasterInit(controller(), 8, 0, 1000000, null, null);
+    group_->invalidate_config();
+  }
 
  private:
   SpiResourceGroup* group_;
@@ -368,6 +396,7 @@ PRIMITIVE(device_transfer_start) {
   state->done = false;
   state->read = read;
   state->buffer = buffer;
+  state->from = from;
   state->length = length;
   state->cs = device->cs();
   state->keep_cs = keep_cs_active;
@@ -381,11 +410,15 @@ PRIMITIVE(device_transfer_start) {
   int32_t rc = SPI_TransferEx(controller, buffer, read ? buffer : null,
                               length, /*IsBlock=*/0, /*UseDMA=*/1);
   if (rc != 0) {
-    state->active = false;
+    stop_transfer(controller, state);
+    device->recover_after_abort();
     free(buffer);
     state->buffer = null;
-    SPI_TransferStop(controller);
-    if (device->cs() >= 0 && !keep_cs_active) pad_set(device->cs(), 1);
+    state->done = false;
+    state->from = 0;
+    state->length = 0;
+    state->cs = -1;
+    state->keep_cs = false;
     FAIL(HARDWARE_ERROR);
   }
   return process->true_object();
@@ -399,19 +432,27 @@ PRIMITIVE(device_transfer_finish) {
 
   int result = 0;
   if (!state->done) {
-    // Not complete — the library's deadline fired first. Stop the engine
-    // before releasing the buffer the DMA is still writing.
-    SPI_TransferStop(controller);
-    if (state->cs >= 0 && !state->keep_cs) pad_set(state->cs, 1);
+    // The caller left its wait before completion (for example, an outer
+    // with-timeout canceled it). Stop DMA before releasing its buffer.
+    stop_transfer(controller, state);
+    device->recover_after_abort();
     result = -1;
   } else if (state->read) {
     uint32_t n = state->length;
-    if (n > (uint32_t)rx_out.length()) n = rx_out.length();
-    memcpy(rx_out.address(), state->buffer, n);
+    uint32_t available = state->from < (uint32_t)rx_out.length()
+        ? rx_out.length() - state->from
+        : 0;
+    if (n > available) n = available;
+    memcpy(rx_out.address() + state->from, state->buffer, n);
   }
   state->active = false;
   free(state->buffer);
   state->buffer = null;
+  state->done = false;
+  state->from = 0;
+  state->length = 0;
+  state->cs = -1;
+  state->keep_cs = false;
   return Primitive::integer(result, process);
 }
 

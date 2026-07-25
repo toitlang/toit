@@ -142,7 +142,6 @@ class Bus:
     // Same lifetime rule as the bus pins: the device borrows cs/dc, so it
     // must keep them reachable for as long as it lives.
     device.pins_ = [cs, dc]
-    device.frequency_ = frequency
     return device
 
 /**
@@ -300,9 +299,6 @@ class Device_ extends DeviceBase_:
   device_ := ?
   owning-bus_/bool := false
   pins_/List := []
-  // The device's clock frequency; null through the deprecated constructor.
-  // Used to bound the asynchronous-transfer deadline.
-  frequency_/int? := null
   state_/monitor.ResourceState_? := null
 
   registers_/Registers? := null
@@ -359,19 +355,17 @@ class Device_ extends DeviceBase_:
     state_.clear-state TRANSFER-DONE-STATE_
     if not spi-device-transfer-start_ device_ data from to read dc keep-cs-active:
       return false
-    // The master drives the clock, so the duration is bounded by
-    // length/frequency by construction; double it and add headroom for
-    // DMA setup and dispatch latency.
-    bits := (to - from) * 8
-    frequency := frequency_ or 100_000  // Deprecated constructor: assume slow.
-    e := catch:
-      with-timeout --ms=(1_000 + 2_000 * bits / frequency):
-        state_.wait-for-state TRANSFER-DONE-STATE_
-    if e:
-      // Deadline fired: stop the engine and release the driver buffer.
-      spi-device-transfer-finish_ device_ #[]
-      throw e
-    result := spi-device-transfer-finish_ device_ (read ? data[from..to] : #[])
+    finished := false
+    result := 0
+    try:
+      state_.wait-for-state TRANSFER-DONE-STATE_
+      result = spi-device-transfer-finish_ device_ (read ? data : #[])
+      finished = true
+    finally:
+      if not finished:
+        // Cancellation or another exceptional exit must stop the engine
+        // and release the native transfer buffer.
+        catch: spi-device-transfer-finish_ device_ #[]
     if result != 0: throw "HARDWARE_ERROR"
     return true
 

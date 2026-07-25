@@ -95,6 +95,20 @@ main args:
     print "rc522-ec618: burst round $round $(ok ? "ok" : "FAIL") (level=$level drained=$drained match=$(got == pattern))"
     if not ok: failures.add "burst-$round"
 
+  // Async full-duplex copy-back must honor a nonzero transfer range without
+  // touching prefix/suffix sentinels in the caller's ByteArray.
+  rc522.write-reg device rc522.REG-COMMAND rc522.COMMAND-IDLE
+  rc522.write-reg device rc522.REG-FIFO-LEVEL rc522.FIFO-FLUSH
+  offset-pattern := ByteArray 64: (it * 23 + 11) & 0xff
+  rc522.write-fifo-burst device offset-pattern
+  ranged := ByteArray 69 --initial=0xa5
+  65.repeat: ranged[2 + it] = (rc522.REG-FIFO-DATA << 1) | 0x80
+  ranged[66] = 0
+  device.transfer ranged --from=2 --to=67 --read
+  check (ranged[..2] == #[0xa5, 0xa5]) "async-offset-prefix-intact"
+  check (ranged[3..67] == offset-pattern) "async-offset-copy-back"
+  check (ranged[67..] == #[0xa5, 0xa5]) "async-offset-suffix-intact"
+
   // Soft power-down: the bit must set, and clear again on wake.
   rc522.write-reg device rc522.REG-COMMAND POWER-DOWN-BIT
   sleep --ms=5
@@ -107,6 +121,25 @@ main args:
 
   // Read the version once more after the power cycle dance.
   check ((rc522.read-reg device rc522.REG-VERSION) == version) "version-stable"
+
+  // A user deadline must cancel the asynchronous DMA transfer, stop the
+  // engine before its native buffer is released, and leave the controller
+  // reusable. At 1 MHz this transfer would take over 250 ms.
+  cancellation := null
+  cancellation-us := Duration.of:
+    cancellation = catch:
+      with-timeout --ms=20:
+        device.transfer (ByteArray 0x8000)
+  check (cancellation == "DEADLINE_EXCEEDED") "dma-cancellation"
+  check (cancellation-us.in-ms < 150) "dma-cancellation-prompt"
+
+  // The cancelled stream intentionally wrote arbitrary bytes to the reader.
+  // Reset the slave protocol, then prove the same SPI device still works.
+  rst.set 0
+  sleep --ms=5
+  rst.set 1
+  sleep --ms=50
+  check ((rc522.read-reg device rc522.REG-VERSION) == version) "reuse-after-cancel"
 
   device.close
   bus.close
