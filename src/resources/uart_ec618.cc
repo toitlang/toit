@@ -17,6 +17,7 @@
 
 #ifdef TOIT_EC618
 
+#include <atomic>
 #include <string.h>
 
 #include "../event_sources/uart_ec618.h"
@@ -69,8 +70,11 @@ namespace toit {
 struct UartTransferState {
   uint8_t* ring;            // malloc'd ring buffer.
   uint32_t ring_size;
-  volatile uint32_t head;   // Write index — IRQ context only.
-  volatile uint32_t tail;   // Read index — primitive only.
+  // Single-producer/single-consumer ring indices. Publishing `head` makes
+  // the IRQ's preceding ring writes visible to the primitive; publishing
+  // `tail` lets the IRQ reuse only bytes the primitive has finished copying.
+  std::atomic<uint32_t> head{0};
+  std::atomic<uint32_t> tail{0};
   uint32_t seen;            // Bytes of the CURRENT transfer already pushed.
   uint32_t dropped;         // Bytes discarded with the ring full (drop-newest).
   uint32_t control;         // The ARM_USART_CONTROL_* framing word (for set-baud).
@@ -293,7 +297,7 @@ void UartResourceGroup::on_unregister_resource(Resource* r) {
     free(transfer->tx_bufs[0]);
     free(transfer->tx_bufs[1]);
     free(transfer->ring);
-    free(transfer);
+    delete transfer;
   }
   state.de_pad = -1;
   uart_controllers.put(id);
@@ -330,7 +334,7 @@ static void finish_uart_close(int id, UartTransferState* transfer) {
   free(transfer->tx_bufs[0]);
   free(transfer->tx_bufs[1]);
   free(transfer->ring);
-  free(transfer);
+  delete transfer;
   uart_controllers.put(id);
   uart_sleep_vote(-1);
 }
@@ -439,8 +443,8 @@ static void queue_uart_tx_drain(int id) {
 // the copy is two memcpys, not a byte loop.
 static void cmsis_ring_push(int id, const uint8_t* data, uint32_t n) {
   UartTransferState* transfer = uart_states[id].transfer;
-  uint32_t head = transfer->head;
-  uint32_t tail = transfer->tail;
+  uint32_t head = transfer->head.load(std::memory_order_relaxed);
+  uint32_t tail = transfer->tail.load(std::memory_order_acquire);
   uint32_t used = head >= tail ? head - tail : transfer->ring_size - tail + head;
   uint32_t free_space = transfer->ring_size - 1 - used;  // One slot separates full from empty.
   uint32_t take = n < free_space ? n : free_space;
@@ -456,7 +460,7 @@ static void cmsis_ring_push(int id, const uint8_t* data, uint32_t n) {
   if (take > first) memcpy(transfer->ring, data + first, take - first);
   head += take;
   if (head >= transfer->ring_size) head -= transfer->ring_size;
-  transfer->head = head;
+  transfer->head.store(head, std::memory_order_release);
 }
 
 static void cmsis_uart_event(int id, uint32_t event) {
@@ -852,19 +856,18 @@ PRIMITIVE(create) {
 
   {
     // Every controller runs the open CMSIS driver (see the include
-    // comment): TX is DMA mode (asynchronous Send from the malloc'd
-    // staging buffer), RX is IRQ mode.
+    // comment): TX and RX are DMA mode. RX must continue while flash writes
+    // stall XIP; the callback copies each completed DMA chunk into our ring.
     uint32_t ring_size = (tx_flags & kTxFlagLargeBuffers) ? 32768 : 8192;
     uint32_t tx_buf_size = (tx_flags & kTxFlagLargeBuffers) ? 4096 : 2048;
-    UartTransferState* transfer =
-        unvoid_cast<UartTransferState*>(calloc(1, sizeof(UartTransferState)));
+    UartTransferState* transfer = _new UartTransferState();
     uint8_t* ring = transfer ? unvoid_cast<uint8_t*>(malloc(ring_size)) : null;
     uint8_t* tx_buf0 = ring ? unvoid_cast<uint8_t*>(malloc(tx_buf_size)) : null;
     uint8_t* tx_buf1 = tx_buf0 ? unvoid_cast<uint8_t*>(malloc(tx_buf_size)) : null;
     if (transfer == null || ring == null || tx_buf0 == null || tx_buf1 == null) {
       free(tx_buf0);
       free(ring);
-      free(transfer);
+      delete transfer;
       delete resource;
       FAIL(MALLOC_FAILED);
     }
@@ -1095,20 +1098,24 @@ PRIMITIVE(read) {
       irq_restore(mask);
     }
     // Drain our ring (filled by cmsis_uart_event). Snapshot head once: the
-    // IRQ only ever ADDS bytes, so the window we copy is stable.
-    uint32_t head = transfer->head;
-    uint32_t tail = transfer->tail;
+    // IRQ only ever ADDS bytes, so the acquired window we copy is stable.
+    uint32_t head = transfer->head.load(std::memory_order_acquire);
+    uint32_t tail = transfer->tail.load(std::memory_order_relaxed);
     uint32_t available = head >= tail ? head - tail
                                       : transfer->ring_size - tail + head;
     if (available == 0) return process->null_object();
     ByteArray* result = process->allocate_byte_array(available);
     if (result == null) FAIL(ALLOCATION_FAILED);
     ByteArray::Bytes bytes(result);
-    for (uint32_t i = 0; i < available; i++) {
-      bytes.address()[i] = transfer->ring[tail];
-      tail = tail + 1 == transfer->ring_size ? 0 : tail + 1;
+    uint32_t first = transfer->ring_size - tail;
+    if (first > available) first = available;
+    memcpy(bytes.address(), transfer->ring + tail, first);
+    if (available > first) {
+      memcpy(bytes.address() + first, transfer->ring, available - first);
     }
-    transfer->tail = tail;
+    tail += available;
+    if (tail >= transfer->ring_size) tail -= transfer->ring_size;
+    transfer->tail.store(tail, std::memory_order_release);
     return result;
   }
   FAIL(ALREADY_CLOSED);
