@@ -1,0 +1,99 @@
+# Zero-Clause BSD License
+
+# Copyright (C) 2026 Toit contributors.
+
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted.
+
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+# REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+# FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+# INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+# LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+
+# This workflow exists only on the isolated parity branch. It tests whether the
+# pinned SDK toolchain and the complete EC618 build are usable on hosted
+# non-Linux runners without changing the production EC618 workflow.
+
+name: CI EC618 parity experiment
+
+on:
+  push:
+    branches:
+      - "floitsch/ec618-ci-parity"
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-15-intel
+          - windows-latest
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup build environment
+        uses: ./actions/setup-build
+        with:
+          toit-dir: .
+
+      - name: Setup Xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: '2.7.2'
+
+      - name: Install EC618 GNU toolchain - macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          toolchain="$RUNNER_TEMP/gcc-arm-none-eabi-10.3-2021.10"
+          archive="$RUNNER_TEMP/gcc-arm-none-eabi-10.3-2021.10-mac.tar.bz2"
+          curl --fail --location --retry 3 \
+            --output "$archive" \
+            https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu-rm/10.3-2021.10/gcc-arm-none-eabi-10.3-2021.10-mac.tar.bz2
+          echo "fb613dacb25149f140f73fe9ff6c380bb43328e6bf813473986e9127e2bc283b  $archive" |
+            shasum --algorithm 256 --check
+          tar --extract --bzip2 --file "$archive" --directory "$RUNNER_TEMP"
+          echo "EC618_GCC_PATH=$toolchain" >> "$GITHUB_ENV"
+          echo "$toolchain/bin" >> "$GITHUB_PATH"
+
+      - name: Install EC618 GNU toolchain - Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          runner_temp="$(cygpath --unix "$RUNNER_TEMP")"
+          toolchain="$runner_temp/gcc-arm-none-eabi-10.3-2021.10"
+          archive="$runner_temp/gcc-arm-none-eabi-10.3-2021.10-win32.zip"
+          curl --fail --location --retry 3 \
+            --output "$archive" \
+            https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu-rm/10.3-2021.10/gcc-arm-none-eabi-10.3-2021.10-win32.zip
+          echo "d287439b3090843f3f4e29c7c41f81d958a5323aecefcf705c203bfd8ae3f2e7  $archive" |
+            sha256sum --check -
+          unzip -q "$archive" -d "$runner_temp"
+          echo "EC618_GCC_PATH=$toolchain" >> "$GITHUB_ENV"
+          echo "$toolchain/bin" >> "$GITHUB_PATH"
+
+      - name: Report toolchain
+        shell: bash
+        run: arm-none-eabi-gcc --version
+
+      - name: Build SDK
+        shell: bash
+        run: make
+
+      - name: Build EC618 base
+        shell: bash
+        run: make ec618-base
+
+      - name: Build EC618 firmware (slot vs base + guards + envelope)
+        shell: bash
+        run: make ec618
