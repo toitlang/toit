@@ -623,16 +623,6 @@ class Ec618:
     return adc.Adc.channel 1 --max-voltage=max-voltage
 
 /**
-Reads a 32-bit word from a raw memory/peripheral address.
-
-Bring-up diagnostic: lets the HW test rig inspect live peripheral
-  registers from a test container instead of needing a JTAG debugger.
-  The $address must be 4-byte aligned. Handle with care.
-*/
-peek32 address/int -> int:
-  #primitive.ec618.peek32
-
-/**
 Sets the provisioned console/control UART in the anchor record.
 
 The $id selects UART 0, 1 or 2; 0xff disables the redirect. Takes effect
@@ -642,15 +632,6 @@ The $id selects UART 0, 1 or 2; 0xff disables the redirect. Takes effect
 */
 set-console-uart id/int -> none:
   #primitive.ec618.console-uart-set
-
-/**
-Writes a 32-bit $value to a raw memory/peripheral $address.
-
-Bring-up diagnostic — see $peek32. The $address must be 4-byte aligned.
-  Writing random addresses can corrupt or hang the system; handle with care.
-*/
-poke32 address/int value/int -> none:
-  #primitive.ec618.poke32
 
 wakeup-pad-configure_ pad enabled pos-edge neg-edge pull-up pull-down -> none:
   #primitive.ec618.wakeup-pad-configure

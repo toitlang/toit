@@ -134,8 +134,8 @@ build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit firmware-update \
 - **I2C driver**: `src/resources/i2c_ec618.cc` (on the fork-completed CMSIS
   `bsp_i2c.c` IRQ engine).
 - **Toit-side lib**: `lib/ec618/ec618.toit` (`Ec618.uart0/1/2`, `.i2c0/i2c1`,
-  `.spi0`, `console-uart-id`, `set-console-uart`, `peek32`/`poke32`, watchdog,
-  deep sleep, wake config, base-id, slot info).
+  `.spi0`, `console-uart-id`, `set-console-uart`, watchdog, deep sleep, wake
+  config, base-id, slot info).
 - **EC618-only tooling**: `tools/ec618/` (partitions codec, gen-anchor,
   provision, gen-base-id, splice-slot, doctor, gen-data-reloc). **Checked-in
   scripts must be Toit** (no Python/shell in the build path).

@@ -367,10 +367,9 @@ then the same stall. The same bursts into UART1/UART2 deliver (uart1-echo,
 uart2 floods), and the blob-era UART0 did 921600 bulk for days.
 
 **Diagnosis trail (rescue-channel register autopsy + dual-channel watch).**
-- The divisor is NOT the problem: a peek32 watch sampling DLL through a
-  kill shows div=14 -> 1 at the hop and STAYS at the fast rate through and
-  after the swallowed burst. (An earlier div=14 autopsy was a post-reset
-  red herring.)
+- The divisor is NOT the problem: sampling DLL through a kill showed
+  div=14 -> 1 at the hop and staying at the fast rate through and after the
+  swallowed burst. (An earlier div=14 autopsy was a post-reset red herring.)
 - IER stays 0x15 (all RX irqs armed), ADCR=0 (no autobaud), MFCR sane.
 - The burst produces 2-4 RX_OVERFLOW/error events and then silence: the
   overrun starvation of #8 eats the burst, and the storm can END with

@@ -443,8 +443,6 @@ namespace toit {
   PRIMITIVE(watchdog_feed, 0)                \
   PRIMITIVE(watchdog_deinit, 0)              \
   PRIMITIVE(wakeup_pin_values, 0)            \
-  PRIMITIVE(peek32, 1)                       \
-  PRIMITIVE(poke32, 2)                       \
   PRIMITIVE(wakeup_cause, 0)                 \
   PRIMITIVE(wakeup_pad_configure, 6)         \
   PRIMITIVE(base_id, 0)                      \

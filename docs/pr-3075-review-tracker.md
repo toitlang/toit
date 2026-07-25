@@ -273,6 +273,10 @@ coherent change.
   labels expose independent chip pads: they are one mirrored board net. It
   does not supersede alternate-pad support for GPIOs whose chip mux really
   offers alternatives.
+- The raw `peek32`/`poke32` bring-up primitives are removed. The concurrent
+  GPIO regression now keeps three outputs open, walks combined patterns, and
+  has the ESP32 observe the physical wires over the framed control protocol;
+  closing the middle pad must leave both survivors driving.
 
 ## Implementation plan
 

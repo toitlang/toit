@@ -238,10 +238,6 @@ and #4 (discard-all + RX-wedge) for UART0/1. Pieces that mattered:
   RX via the PAD33/IO16 wire); rescue control channel — mini-jag serves
   UART2 if UART0 sees no host contact after boot, reachable through the
   ESP32 TCP bridge + socat PTY (tester needs no changes).
-- peek32/poke32 primitives (lib/ec618): register-level autopsies from a
-  test container; with the rescue channel this replaced a JTAG debugger
-  during this work.
-
 OPEN: UART0 bulk-RX collapses after a set-baud at any rate > 115200
 (known-issues #9, fully characterized). The rig runs at --fast-baud
 115200 until fixed.
