@@ -33,6 +33,19 @@ main args:
   expect-throws "ALREADY_IN_USE":
     Adc.channel 1
 
+  progress := 0
+  keep-running := true
+  task::
+    while keep-running:
+      progress++
+      sleep --ms=1
+  try:
+    adc0.get --samples=64
+  finally:
+    keep-running = false
+  if progress < 10:
+    throw "ADC sampling blocked Toit scheduling (progress=$progress)"
+
   adc0.close
   adc1.close
 

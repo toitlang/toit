@@ -29,12 +29,11 @@ extern "C" {
   // extern "C" / heavy includes), so declare the helpers we need directly.
   uint32_t HAL_ADC_CalibrateRawCode(uint32_t input);
   void trimAdcSetGolbalVar(void);
-  void delay_us(uint32_t us);
 }
 
-// trimAdcSetGolbalVar, delay_us, and the ADC_*/HAL_* helpers are exported by
-// the base keep-list. A slot that needs them must link against a base that
-// exports them; the base-id check rejects any other pairing.
+// trimAdcSetGolbalVar and the ADC_*/HAL_* helpers are exported by the base
+// keep-list. A slot that needs them must link against a base that exports them;
+// the base-id check rejects any other pairing.
 
 namespace toit {
 
@@ -96,9 +95,22 @@ static const AioRange* select_range(double max_volts) {
 
 class AdcResource : public SimpleResource {
  public:
+  enum RequestKind {
+    REQUEST_NONE,
+    REQUEST_VOLTAGE,
+    REQUEST_RAW,
+  };
+
   TAG(AdcResource);
   AdcResource(SimpleResourceGroup* group, int channel, float ratio)
-      : SimpleResource(group), channel_(channel), ratio_(ratio) {}
+      : SimpleResource(group)
+      , channel_(channel)
+      , ratio_(ratio)
+      , request_kind_(REQUEST_NONE)
+      , requested_samples_(0)
+      , remaining_samples_(0)
+      , sum_(0.0)
+      , deadline_us_(0) {}
 
   ~AdcResource() override {
     {
@@ -111,29 +123,55 @@ class AdcResource : public SimpleResource {
   int channel() const { return channel_; }
   float ratio() const { return ratio_; }
 
+  RequestKind request_kind() const { return request_kind_; }
+  int requested_samples() const { return requested_samples_; }
+  int remaining_samples() const { return remaining_samples_; }
+  double sum() const { return sum_; }
+  int64 deadline_us() const { return deadline_us_; }
+
+  void begin_request(RequestKind kind, int samples) {
+    ASSERT(request_kind_ == REQUEST_NONE);
+    request_kind_ = kind;
+    requested_samples_ = samples;
+    remaining_samples_ = samples;
+    sum_ = 0.0;
+  }
+
+  void set_deadline(int64 deadline_us) { deadline_us_ = deadline_us; }
+
+  void add_sample(double value) {
+    ASSERT(remaining_samples_ > 0);
+    sum_ += value;
+    remaining_samples_--;
+  }
+
+  void reset_request() {
+    request_kind_ = REQUEST_NONE;
+    requested_samples_ = 0;
+    remaining_samples_ = 0;
+    sum_ = 0.0;
+    deadline_us_ = 0;
+  }
+
  private:
   int channel_;
   float ratio_;
+  RequestKind request_kind_;
+  int requested_samples_;
+  int remaining_samples_;
+  double sum_;
+  int64 deadline_us_;
 };
 
-// Poll bound that comfortably outlasts a single conversion (well under a
-// millisecond): 500 polls of 10 us = 5 ms.
-static const int kConversionPollLimit = 500;
+static const int64 kConversionTimeoutUs = 5000;
 
-// Runs one conversion on `channel`. On success stores the input voltage (volts)
-// in `*out_volts` and returns true; returns false on timeout.
-static bool convert_once(int channel, float ratio, double* out_volts) {
+// Starts one conversion and records its deadline. The vendor ADC driver
+// serializes requests from different channels in its IRQ-safe queue.
+static bool start_conversion(AdcResource* resource) {
+  int channel = resource->channel();
   conversion_done[channel] = false;
-  ADC_startConversion(aio_channel(channel), ADC_USER_APP);
-  // The conversion completes from the ADC ISR; `conversion_done` is volatile.
-  for (int polls = 0; polls < kConversionPollLimit && !conversion_done[channel]; polls++) {
-    delay_us(10);
-  }
-  if (!conversion_done[channel]) return false;
-  // CalibrateRawCode returns the core ADC voltage in microvolts (0..1.2e6);
-  // the range ratio scales it back to the (divided-down) input.
-  uint32_t core_uv = HAL_ADC_CalibrateRawCode(conversion_result[channel]);
-  *out_volts = ((double)core_uv * ratio) / 1e6;
+  if (ADC_startConversion(aio_channel(channel), ADC_USER_APP) != 0) return false;
+  resource->set_deadline(OS::get_monotonic_time() + kConversionTimeoutUs);
   return true;
 }
 
@@ -192,21 +230,71 @@ PRIMITIVE(get) {
   ARGS(AdcResource, resource, int, samples);
   if (samples < 1 || samples > 64) FAIL(OUT_OF_RANGE);
 
-  double sum = 0.0;
-  for (int i = 0; i < samples; i++) {
-    double volts;
-    if (!convert_once(resource->channel(), resource->ratio(), &volts)) FAIL(HARDWARE_ERROR);
-    sum += volts;
+  if (resource->request_kind() == AdcResource::REQUEST_NONE) {
+    resource->begin_request(AdcResource::REQUEST_VOLTAGE, samples);
+    if (!start_conversion(resource)) {
+      resource->reset_request();
+      FAIL(HARDWARE_ERROR);
+    }
+    return process->null_object();
   }
-  return Primitive::allocate_double(sum / samples, process);
+  if (resource->request_kind() != AdcResource::REQUEST_VOLTAGE ||
+      resource->requested_samples() != samples) {
+    FAIL(ALREADY_IN_USE);
+  }
+
+  int channel = resource->channel();
+  if (!conversion_done[channel]) {
+    if (OS::get_monotonic_time() > resource->deadline_us()) {
+      resource->reset_request();
+      FAIL(HARDWARE_ERROR);
+    }
+    return process->null_object();
+  }
+
+  // CalibrateRawCode returns the core ADC voltage in microvolts (0..1.2e6);
+  // the range ratio scales it back to the (divided-down) input.
+  uint32_t core_uv = HAL_ADC_CalibrateRawCode(conversion_result[channel]);
+  resource->add_sample(((double)core_uv * resource->ratio()) / 1e6);
+  if (resource->remaining_samples() > 0) {
+    if (!start_conversion(resource)) {
+      resource->reset_request();
+      FAIL(HARDWARE_ERROR);
+    }
+    return process->null_object();
+  }
+
+  double average = resource->sum() / samples;
+  resource->reset_request();
+  return Primitive::allocate_double(average, process);
 }
 
 PRIMITIVE(get_raw) {
   ARGS(AdcResource, resource);
-  double volts;
-  if (!convert_once(resource->channel(), resource->ratio(), &volts)) FAIL(HARDWARE_ERROR);
+
+  if (resource->request_kind() == AdcResource::REQUEST_NONE) {
+    resource->begin_request(AdcResource::REQUEST_RAW, 1);
+    if (!start_conversion(resource)) {
+      resource->reset_request();
+      FAIL(HARDWARE_ERROR);
+    }
+    return process->null_object();
+  }
+  if (resource->request_kind() != AdcResource::REQUEST_RAW) FAIL(ALREADY_IN_USE);
+
+  int channel = resource->channel();
+  if (!conversion_done[channel]) {
+    if (OS::get_monotonic_time() > resource->deadline_us()) {
+      resource->reset_request();
+      FAIL(HARDWARE_ERROR);
+    }
+    return process->null_object();
+  }
+
   // The raw conversion register is 12 bits.
-  return Smi::from((word)(conversion_result[resource->channel()] & 0xFFF));
+  word result = conversion_result[channel] & 0xFFF;
+  resource->reset_request();
+  return Smi::from(result);
 }
 
 PRIMITIVE(close) {

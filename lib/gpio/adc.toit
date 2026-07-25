@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import .gpio
+import monitor
 
 /**
 Analog-to-Digital Conversion.
@@ -63,6 +64,7 @@ class Adc:
   // dedicated analog input that is not a GPIO pad — see $Adc.channel).
   pin/Pin?
   resource_ := ?
+  mutex_/monitor.Mutex ::= monitor.Mutex
 
   /**
   Initializes an Adc unit for the $pin.
@@ -106,20 +108,32 @@ class Adc:
   Measures the voltage on the pin.
   */
   get --samples=64 -> float:
+    result := 0.0
+    mutex_.do: result = get-locked_ samples
+    return result
+
+  get-locked_ samples/int -> float:
     if samples < 1: throw "OUT_OF_BOUNDS"
-    if samples <= MAX-SAMPLES-PER-CALL_: return adc-get_ resource_ samples
-    // Sample in chunks of 64, so we don't spend too much time in
-    // the primitive.
+    if samples <= MAX-SAMPLES-PER-CALL_: return get-chunk_ samples
+    // Keep each native request bounded. An asynchronous platform may return
+    // null while a conversion is pending; get-chunk_ yields before polling
+    // again, so other Toit tasks continue to run.
     full-chunk-factor := MAX-SAMPLES-PER-CALL_.to-float / samples
     result := 0.0
     sampled := 0
     while sampled < samples:
       is-full-chunk := sampled + MAX-SAMPLES-PER-CALL_ <= samples
       chunk-size := is-full-chunk ? MAX-SAMPLES-PER-CALL_ : samples - sampled
-      value := adc-get_ resource_ chunk-size
+      value := get-chunk_ chunk-size
       result += value * (is-full-chunk ? full-chunk-factor : (chunk-size.to-float / samples))
       sampled += chunk-size
     return result
+
+  get-chunk_ samples/int -> float:
+    while true:
+      result := adc-get_ resource_ samples
+      if result != null: return result
+      sleep --ms=1
 
   /**
   Measures the voltage on the pin and returns the obtained raw value.
@@ -131,16 +145,25 @@ class Adc:
   The value is not using the calibration data of the chip.
   */
   get --raw/bool -> int:
+    result := 0
+    mutex_.do: result = get-raw-locked_ raw
+    return result
+
+  get-raw-locked_ raw/bool -> int:
     if not raw: throw "INVALID_ARGUMENT"
-    return adc-get-raw_ resource_
+    while true:
+      result := adc-get-raw_ resource_
+      if result != null: return result
+      sleep --ms=1
 
   /**
   Closes the ADC unit and releases the associated resources.
   */
   close:
-    if resource_:
-      adc-close_ resource_
-      resource_ = null
+    mutex_.do:
+      if resource_:
+        adc-close_ resource_
+        resource_ = null
 
 adc-init_ group num allow-restricted max:
   #primitive.adc.init
