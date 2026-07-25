@@ -69,6 +69,26 @@ run-tests -> none:
       rx.close
       tx.close
 
+  test "uart2-controller-pool":
+    tx := Pin PAD-UART2-TX
+    rx := Pin PAD-UART2-RX
+    first/uart.Port? := null
+    contender/uart.Port? := null
+    reopened/uart.Port? := null
+    try:
+      first = uart.Port --tx=tx --rx=rx --baud-rate=115200
+      expect-throws "ALREADY_IN_USE":
+        contender = uart.Port --tx=tx --rx=rx --baud-rate=115200
+      first.close
+      first = null
+      reopened = uart.Port --tx=tx --rx=rx --baud-rate=9600
+    finally:
+      if reopened: reopened.close
+      if contender: contender.close
+      if first: first.close
+      rx.close
+      tx.close
+
   test "uart2-default-opens-cleanly":
     port := Ec618.uart2 --baud-rate=115200
     port.close

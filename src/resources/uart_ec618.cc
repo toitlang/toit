@@ -24,6 +24,8 @@
 #include "../primitive.h"
 #include "../process.h"
 #include "../resource.h"
+#include "../resource_pool.h"
+#include "../utils.h"
 #include "pad_table_ec618.h"
 
 extern "C" {
@@ -105,7 +107,6 @@ static inline void irq_restore(uint32_t m) {
 }
 
 struct UartState {
-  bool in_use;          // Whether the controller currently has a Toit resource.
   uint32_t baud_rate;   // Cached baud rate, for `get_baud_rate` without register reads.
   uint32_t errors;      // Counter incremented from the driver callback on
                         // parity/overrun/break.
@@ -114,6 +115,7 @@ struct UartState {
 };
 
 static UartState uart_states[3] = {};
+static ResourcePool<int, -1> uart_controllers(0, 1, 2);
 
 
 // Whether OUR code has run Initialize() on the controller (the boot-time
@@ -234,61 +236,59 @@ void UartResourceGroup::on_unregister_resource(Resource* r) {
   auto uart_res = static_cast<UartResource*>(r);
   int id = uart_res->uart_id();
   UartState& state = uart_states[id];
-  if (state.in_use) {
-    uart_sleep_vote(-1);
+  uart_sleep_vote(-1);
 #if CONFIG_TOIT_EC618_PRINT_UART
-    // The print UART shares the controller with printf/monitor output:
-    // tear down OUR half only (RX irqs + buffers) and leave the
-    // controller powered and configured so printf keeps flowing
-    // (SendPolling needs only the CONFIGURED flag).
-    if (id == anchor_console()) {
-      CmsisRx* rx = state.cmsis_rx;
-      if (rx != null) {
-        uint32_t mask = irq_save();
-        kDrivers[id]->Control(ARM_USART_CONTROL_RX, 0);
-        state.cmsis_rx = null;  // Unhook before freeing (the IRQ checks it).
-        irq_restore(mask);
-        // A DMA Send still in flight reads the staging buffers: wait for
-        // it (bounded by both buffers' drain time — a chain may still be
-        // running) before freeing.
-        for (int spin = 0; rx->tx_busy && spin < 4000; spin++) osDelay(1);
-        free(rx->tx_bufs[0]);
-        free(rx->tx_bufs[1]);
-        free(rx->ring);
-        free(rx);
-      }
-      state.in_use = false;
-      state.de_pad = -1;
-      return;
-    }
-#endif
-    if (state.cmsis_rx != null) {
-      // CMSIS teardown from a quiesced state — this is the path the
-      // closed blob's Uart_DeInit could hang on this path. CONTROL_RX 0 is
-      // the supported abort (ABORT_RECEIVE is not): RX irqs masked, DMA
-      // suspended, rx_busy cleared. POWER_OFF then resets the module
-      // and stops+resets the RX DMA channel, so nothing references
-      // `chunk` by the time it is freed below.
+  // The print UART shares the controller with printf/monitor output:
+  // tear down OUR half only (RX irqs + buffers) and leave the
+  // controller powered and configured so printf keeps flowing
+  // (SendPolling needs only the CONFIGURED flag).
+  if (id == anchor_console()) {
+    CmsisRx* rx = state.cmsis_rx;
+    if (rx != null) {
       uint32_t mask = irq_save();
       kDrivers[id]->Control(ARM_USART_CONTROL_RX, 0);
-      kDrivers[id]->Control(ARM_USART_CONTROL_TX, 0);
-      kDrivers[id]->PowerControl(ARM_POWER_OFF);
-      kDrivers[id]->Uninitialize();
-      cmsis_initialized[id] = false;
-      CmsisRx* rx = state.cmsis_rx;
       state.cmsis_rx = null;  // Unhook before freeing (the IRQ checks it).
       irq_restore(mask);
-      // POWER_OFF stopped the TX DMA channel and Uninitialize closed it,
-      // so nothing references the staging buffers (or chunk) past this
-      // point.
+      // A DMA Send still in flight reads the staging buffers: wait for
+      // it (bounded by both buffers' drain time — a chain may still be
+      // running) before freeing.
+      for (int spin = 0; rx->tx_busy && spin < 4000; spin++) osDelay(1);
       free(rx->tx_bufs[0]);
       free(rx->tx_bufs[1]);
       free(rx->ring);
       free(rx);
     }
-    state.in_use = false;
     state.de_pad = -1;
+    uart_controllers.put(id);
+    return;
   }
+#endif
+  if (state.cmsis_rx != null) {
+    // CMSIS teardown from a quiesced state — this is the path the
+    // closed blob's Uart_DeInit could hang on this path. CONTROL_RX 0 is
+    // the supported abort (ABORT_RECEIVE is not): RX irqs masked, DMA
+    // suspended, rx_busy cleared. POWER_OFF then resets the module
+    // and stops+resets the RX DMA channel, so nothing references
+    // `chunk` by the time it is freed below.
+    uint32_t mask = irq_save();
+    kDrivers[id]->Control(ARM_USART_CONTROL_RX, 0);
+    kDrivers[id]->Control(ARM_USART_CONTROL_TX, 0);
+    kDrivers[id]->PowerControl(ARM_POWER_OFF);
+    kDrivers[id]->Uninitialize();
+    cmsis_initialized[id] = false;
+    CmsisRx* rx = state.cmsis_rx;
+    state.cmsis_rx = null;  // Unhook before freeing (the IRQ checks it).
+    irq_restore(mask);
+    // POWER_OFF stopped the TX DMA channel and Uninitialize closed it,
+    // so nothing references the staging buffers (or chunk) past this
+    // point.
+    free(rx->tx_bufs[0]);
+    free(rx->tx_bufs[1]);
+    free(rx->ring);
+    free(rx);
+  }
+  state.de_pad = -1;
+  uart_controllers.put(id);
 }
 
 // Drives the RS485 direction line. Uses the OEM GPIO_pin* API (like
@@ -726,7 +726,13 @@ PRIMITIVE(create) {
   if (id == anchor_console()) FAIL(ALREADY_IN_USE);
 #endif
 
-  if (uart_states[id].in_use) FAIL(ALREADY_IN_USE);
+  if (!uart_controllers.take(id)) FAIL(ALREADY_IN_USE);
+  bool controller_handed_to_resource = false;
+  Defer return_controller {
+    [&] {
+      if (!controller_handed_to_resource) uart_controllers.put(id);
+    }
+  };
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
@@ -817,12 +823,12 @@ PRIMITIVE(create) {
     irq_restore(arm_mask);
   }
 
-  uart_states[id].in_use = true;
   uart_states[id].baud_rate = baud_rate;
   uart_states[id].errors = 0;
   uart_states[id].de_pad = de_pad;
 
   group->register_resource(resource);
+  controller_handed_to_resource = true;
   uart_sleep_vote(1);
   proxy->set_external_address(resource);
   return proxy;
