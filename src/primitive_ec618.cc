@@ -302,18 +302,17 @@ PRIMITIVE(slot_reloc_begin) {
   // (so the size word is the slot's last word). Its sectors must not overlap
   // the body's sectors, since the body's lazy erase would otherwise erase the
   // trailer that this call writes.
-  const uint32_t block_size = (static_cast<uint32_t>(length) + 4 +
-                               FLASH_SEGMENT_SIZE - 1) & ~(FLASH_SEGMENT_SIZE - 1);
+  const uint32_t block_size =
+      Utils::round_up(static_cast<uint32_t>(length) + 4, FLASH_SEGMENT_SIZE);
   if (block_size > slot_size()) { free(copy); FAIL(OUT_OF_BOUNDS); }
   const uint32_t trailer_first_sector =
-      (slot_size() - block_size) & ~(FLASH_SECTOR_SIZE - 1);
+      Utils::round_down(slot_size() - block_size, FLASH_SECTOR_SIZE);
   // The populated front is body + extension (body_size) PLUS the verbatim VM
   // .data init image that rides after it (data_size) — both are streamed
   // front-to-back with a lazy per-sector erase, so the whole front must clear
   // the trailer's sectors.
   const uint32_t front = slot_reloc_table.body_size + slot_reloc_table.data_size;
-  const uint32_t front_sectors_end =
-      (front + FLASH_SECTOR_SIZE - 1) & ~(FLASH_SECTOR_SIZE - 1);
+  const uint32_t front_sectors_end = Utils::round_up(front, FLASH_SECTOR_SIZE);
   if (front_sectors_end > trailer_first_sector) {
     free(copy);
     FAIL(OUT_OF_BOUNDS);  // Body + .data and trailer would share a sector.
