@@ -146,11 +146,6 @@ static USART_TypeDef* const kUartRegs[3] = {
   reinterpret_cast<USART_TypeDef*>(MP_UART1_BASE_ADDR),
   reinterpret_cast<USART_TypeDef*>(MP_UART2_BASE_ADDR),
 };
-// Which controllers run RX in DMA mode (must mirror RTE_UARTn_RX_IO_MODE
-// in RTE_Device.h): the IRQ-mode controllers need the FIFO crutches
-// below, and manual RBR reads would corrupt a DMA-owned FIFO.
-static const bool kRxIsDma[3] = { true, true, true };
-
 // --- Toit state bits (match lib/uart.toit). --------------------------------
 static const uint32_t kReadState  = 1 << 0;
 static const uint32_t kErrorState = 1 << 1;
@@ -189,10 +184,6 @@ class UartResourceGroup : public ResourceGroup {
         state |= kWriteState;
         break;
       case Event::UART_KIND_ERROR:
-        // Also wake blocked readers: after an overrun storm the final
-        // event may be an ERROR while rescued bytes wait in the ring /
-        // hardware FIFO (see the read primitive's FIFO rescue) — a
-        // reader waiting only for kReadState would never look.
         state |= kErrorState | kReadState;
         break;
       case Event::UART_KIND_BREAK:
@@ -504,33 +495,7 @@ static void cmsis_uart_event(int id, uint32_t event) {
   }
   if (event & ARM_USART_EVENT_RX_OVERFLOW) {
     uart_states[id].errors++;
-    if (!kRxIsDma[id]) {
-      // IRQ-mode self-heal: the SDK irq handler is an else-if chain that
-      // services LINE_STATUS (the overrun) INSTEAD of draining data; with
-      // the FIFO still full the overrun re-asserts and RX delivers
-      // nothing until the line idles. Drain the FIFO ourselves — to ONE
-      // byte, never empty (the RX_DATA_REQ handler underflows
-      // `i = bytes_in_fifo - 1` on an empty FIFO and hard-wedges reading
-      // RBR). Push the chunk delta first so byte order holds.
-      uint32_t n = driver->GetRxCount();
-      if (n > sizeof(transfer->chunk)) n = sizeof(transfer->chunk);
-      if (n > transfer->seen) {
-        cmsis_ring_push(id, transfer->chunk + transfer->seen, n - transfer->seen);
-        transfer->seen = n;
-      }
-      USART_TypeDef* reg = kUartRegs[id];
-      uint8_t fifo_buf[32];
-      uint32_t got = 0;
-      while (got < sizeof(fifo_buf) &&
-             EIGEN_FLD2VAL(USART_FCNR_RX_FIFO_NUM, reg->FCNR) > 1) {
-        fifo_buf[got++] = (uint8_t)reg->RBR;
-      }
-      if (got > 0) cmsis_ring_push(id, fifo_buf, got);
-      send_uart_event(id, got > 0 ? Event::UART_KIND_RX : Event::UART_KIND_ERROR);
-    } else {
-      // DMA-owned FIFO: counted only; the engine captures through stalls.
-      send_uart_event(id, Event::UART_KIND_ERROR);
-    }
+    send_uart_event(id, Event::UART_KIND_ERROR);
   }
   if (event & (ARM_USART_EVENT_SEND_COMPLETE | ARM_USART_EVENT_TX_COMPLETE)) {
     bool chained = false;
@@ -1076,29 +1041,6 @@ PRIMITIVE(read) {
 
   UartTransferState* transfer = uart_states[id].transfer;
   if (transfer != null) {
-    if (!kRxIsDma[id]) {
-      // IRQ-mode rescue: a full-rate burst can end an overrun storm with
-      // bytes stranded in the hardware FIFO and no interrupt edge left to
-      // deliver them. Pull them in whenever the reader looks (to ONE
-      // byte, see the overflow handler). Never on a DMA-owned FIFO.
-      IrqMaskGuard guard;
-      USART_TypeDef* reg = kUartRegs[id];
-      uint8_t fifo_buf[32];
-      uint32_t got = 0;
-      while (got < sizeof(fifo_buf) &&
-             EIGEN_FLD2VAL(USART_FCNR_RX_FIFO_NUM, reg->FCNR) > 1) {
-        fifo_buf[got++] = (uint8_t)reg->RBR;
-      }
-      if (got > 0) {
-        uint32_t n = kDrivers[id]->GetRxCount();
-        if (n > sizeof(transfer->chunk)) n = sizeof(transfer->chunk);
-        if (n > transfer->seen) {
-          cmsis_ring_push(id, transfer->chunk + transfer->seen, n - transfer->seen);
-          transfer->seen = n;
-        }
-        cmsis_ring_push(id, fifo_buf, got);
-      }
-    }
     // Drain our ring (filled by cmsis_uart_event). Snapshot head once: the
     // IRQ only ever ADDS bytes, so the acquired window we copy is stable.
     uint32_t head = transfer->head.load(std::memory_order_acquire);

@@ -428,9 +428,8 @@ the burst was never requested. Root-caused with register-level probes
 passing rounds — the EC618 transmitted every byte) plus a verbose helper
 that logged the glued line verbatim. Fix: every EC618-side test writes a
 sacrificial "\n" after opening the control lane (see the boot-ROM-banner
-gotcha in tests/hw/ec618/README.md). The IRQ-mode crutches in
-uart_ec618.cc (drain-to-1 self-heal, read-side FIFO rescue) remain in
-the code, gated off by kRxIsDma, as the documented fallback.
+gotcha in tests/hw/ec618/README.md). The UART implementation now supports
+DMA mode only.
 
 Two rig bugs found while validating (both fixed): create() must not
 Uninitialize a never-initialized driver (closing never-opened DMA
