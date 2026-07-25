@@ -1342,6 +1342,10 @@ flash invocation/cli.Invocation -> none:
     if not stat or stat[file.ST-TYPE] != file.CHARACTER-DEVICE:
       throw "cannot open port '$port'"
 
+  // Resolve the external tool before building the image or creating temporary
+  // partition files, so a missing esptool fails without leaving file output.
+  esptool := find-esptool_
+
   config-encoded := ByteArray 0
   if config-path:
     config-encoded = read-file config-path --ui=ui
@@ -1358,8 +1362,6 @@ flash invocation/cli.Invocation -> none:
             write-file tmp-file --ui=ui: it.write contents
             partition-args.add "0x$(%x offset)"
             partition-args.add tmp-file
-
-          esptool := find-esptool_
 
           // The new esptool has deprecated underscores in some arguments.
           // TODO(floitsch): remove these replacements when the esp-idf has been updated
@@ -1393,6 +1395,10 @@ flash-ec618 invocation/cli.Invocation envelope/Envelope -> none:
   config-path := invocation["config"]
   port := invocation["port"]
 
+  // Resolve the external tool before building the image or creating the
+  // temporary binpkg, so a missing ectool fails without leaving file output.
+  ectool := find-ectool_
+
   config-encoded := ByteArray 0
   if config-path:
     config-encoded = read-file config-path --ui=ui
@@ -1415,7 +1421,6 @@ flash-ec618 invocation/cli.Invocation envelope/Envelope -> none:
     binpkg-path := "$tmp/toit.binpkg"
     write-file binpkg-path --ui=ui: it.write binpkg
 
-    ectool := find-ectool_
     code := pipe.run-program [ectool, "burn", "--burn_bl", "n", "--burn_cp", burn-cp, "-f", binpkg-path]
     if code != 0: exit 1
   finally:
