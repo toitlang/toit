@@ -37,15 +37,26 @@ class EntropyMixer {
     mbedtls_entropy_init(&context_);
 #else
     // On EC618, static constructors run before FreeRTOS is started,
-    // so we can't allocate a mutex here. Defer to ensure_initialized().
+    // so we can't allocate a mutex here. set_up is called during the
+    // single-threaded VM startup, after the OS and mbedTLS threading setup.
     : mutex_(null) {
 #endif
   }
 
   ~EntropyMixer() {
-    mbedtls_entropy_free(&context_);
-    if (mutex_) OS::dispose(mutex_);
+    if (mutex_) {
+      mbedtls_entropy_free(&context_);
+      OS::dispose(mutex_);
+    }
   }
+
+#ifdef TOIT_EC618
+  void set_up() {
+    ASSERT(mutex_ == null);
+    mutex_ = OS::allocate_mutex(4, "Entropy mutex");
+    mbedtls_entropy_init(&context_);
+  }
+#endif
 
   void add_entropy_byte(int datum) {
     const uint8 d = datum;
@@ -53,13 +64,13 @@ class EntropyMixer {
   }
 
   void add_entropy(const uint8* data, size_t size) {
-    ensure_initialized();
+    ASSERT(mutex_ != null);
     Locker locker(mutex_);
     mbedtls_entropy_update_manual(&context_, data, size);
   }
 
   bool get_entropy(uint8* data, size_t size) {
-    ensure_initialized();
+    ASSERT(mutex_ != null);
     Locker locker(mutex_);
     int result = mbedtls_entropy_func(&context_, data, size);
     return result == 0;
@@ -68,12 +79,6 @@ class EntropyMixer {
   static EntropyMixer* instance() { return &instance_; }
 
  private:
-  void ensure_initialized() {
-    if (mutex_) return;
-    mutex_ = OS::allocate_mutex(4, "Entropy mutex");
-    mbedtls_entropy_init(&context_);
-  }
-
   mbedtls_entropy_context context_;
   Mutex* mutex_;
   static EntropyMixer instance_;

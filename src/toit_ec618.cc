@@ -93,6 +93,7 @@ extern "C" {
 }
 
 #include "embedded_data.h"
+#include "entropy_mixer.h"
 #include "flash_registry.h"
 #include "sha.h"
 #include "heap.h"
@@ -589,6 +590,7 @@ static void start() {
   ObjectMemory::set_up();
   extern void set_up_mbedtls_threading();
   set_up_mbedtls_threading();
+  EntropyMixer::instance()->set_up();
 
   // Set fault action to reset after platform init is done. Setting it
   // earlier causes bootloops because the PS stack hits transient
