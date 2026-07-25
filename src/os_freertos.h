@@ -30,6 +30,7 @@ namespace toit {
 struct ConditionVariableWaiter {
   StaticSemaphore_t storage;
   SemaphoreHandle_t wake;
+  bool signaled;
   TAILQ_ENTRY(ConditionVariableWaiter) link;
 };
 
@@ -67,24 +68,44 @@ class ConditionVariable {
     TAILQ_INSERT_TAIL(&waiter_list_, &waiter, link);
 
     mutex_->unlock();
-    bool success = xSemaphoreTake(waiter.wake, ticks) == pdTRUE;
+    bool woke = xSemaphoreTake(waiter.wake, ticks) == pdTRUE;
     mutex_->lock();
 
-    TAILQ_REMOVE(&waiter_list_, &waiter, link);
-    return success;
+    if (waiter.signaled) {
+      // If the semaphore wait timed out, a signal claimed this waiter while it
+      // was reacquiring the mutex. Consume that signal before the stack-backed
+      // semaphore goes out of scope.
+      if (!woke && xSemaphoreTake(waiter.wake, 0) != pdTRUE) {
+        FATAL("condition-variable signal without semaphore wakeup");
+      }
+    } else {
+      // No signal claimed this waiter, so it is still on the list.
+      TAILQ_REMOVE(&waiter_list_, &waiter, link);
+      if (woke) FATAL("condition-variable wakeup without signal");
+    }
+    return waiter.signaled;
   }
 
   void signal() {
     if (!mutex_->is_locked()) FATAL("signal on unlocked mutex");
     ConditionVariableWaiter* waiter = TAILQ_FIRST(&waiter_list_);
-    if (waiter) xSemaphoreGive(waiter->wake);
+    if (waiter) {
+      TAILQ_REMOVE(&waiter_list_, waiter, link);
+      waiter->signaled = true;
+      if (xSemaphoreGive(waiter->wake) != pdTRUE) {
+        FATAL("unable to signal condition variable");
+      }
+    }
   }
 
   void signal_all() {
     if (!mutex_->is_locked()) FATAL("signal_all on unlocked mutex");
-    ConditionVariableWaiter* waiter;
-    TAILQ_FOREACH(waiter, &waiter_list_, link) {
-      xSemaphoreGive(waiter->wake);
+    while (ConditionVariableWaiter* waiter = TAILQ_FIRST(&waiter_list_)) {
+      TAILQ_REMOVE(&waiter_list_, waiter, link);
+      waiter->signaled = true;
+      if (xSemaphoreGive(waiter->wake) != pdTRUE) {
+        FATAL("unable to signal condition variable");
+      }
     }
   }
 
