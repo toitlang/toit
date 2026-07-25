@@ -537,7 +537,7 @@ class Ec618Link:
     if got != want:
       // Dump whatever the device says next — the mismatch byte is usually
       // the first character of an error/trace line that explains it.
-      catch:
+      catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
         with-timeout --ms=1500:
           8.repeat:
             line := reader_.read-line
@@ -552,7 +552,9 @@ class Ec618Link:
     // invocation may be lingering at the fast rate (until its 60 s idle
     // watchdog resets it). Alternate the ping attempts across both rates.
     rates := fast-baud_ != 115200 ? [115200, fast-baud_] : [115200]
-    catch: port_.baud-rate = 115200
+    initial-rate-error := catch: port_.baud-rate = 115200
+    if initial-rate-error:
+      log "$name_: could not initially select 115200 baud: $initial-rate-error"
     sleep --ms=1000  // Let the boot banner start.
     // Drain the post-reset boot backlog FIRST. After a reset the device streams a
     // long boot-ROM + bootloader banner (hundreds of mostly non-'['-led bytes);
@@ -565,7 +567,8 @@ class Ec618Link:
     drain-deadline := Time.monotonic-us + 10_000_000
     while Time.monotonic-us < drain-deadline:
       data/ByteArray? := null
-      catch: data = with-timeout --ms=600: reader_.read
+      catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
+        data = with-timeout --ms=600: reader_.read
       if not data: break  // ~600 ms quiet => backlog cleared, agent up and idle.
     succeeded := false
     attempts.repeat: | attempt/int |
@@ -573,12 +576,16 @@ class Ec618Link:
         // The host tty can transiently fail a rate change or a write
         // (EBUSY/EIO); skip to the next attempt rather than killing the
         // whole tool.
-        catch: port_.baud-rate = rates[attempt % rates.size]
-        catch:
+        rate-error := catch: port_.baud-rate = rates[attempt % rates.size]
+        if rate-error:
+          log "$name_: baud selection failed on ping $(attempt + 1): $rate-error"
+        ping-error := catch:
           send CMD-PING
           if (read-ack --timeout-ms=1500) == ACK-PONG:
             log "$name_: agent responded (ping $(attempt + 1), $port_.baud-rate baud)"
             succeeded = true
+        if ping-error:
+          log "$name_: ping $(attempt + 1) failed: $ping-error"
     if not succeeded: throw "no response from the mini-jag agent on $name_"
     drain
 
@@ -592,14 +599,16 @@ class Ec618Link:
     io.LITTLE-ENDIAN.put-uint32 header 0 baud
     send CMD-BAUD
     writer_.write header
-    catch:
+    timeout-error := catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
       if (read-ack --timeout-ms=2000) == ACK-OK:
-        catch: port_.baud-rate = baud
+        port_.baud-rate = baud
         log "$name_: control UART now at $baud baud"
         // The agent's "baud=" status line arrives at the new rate; a
         // mismatch would surface here as garbage instead of an ack later.
         drain --quiet-ms=300
         return true
+    if timeout-error:
+      log "$name_: timed out waiting for the baud-switch acknowledgement"
     log "$name_: baud switch to $baud failed; staying at $old-baud"
     return false
 
@@ -607,7 +616,8 @@ class Ec618Link:
   drain --quiet-ms/int=400 -> none:
     while true:
       data/ByteArray? := null
-      catch: data = with-timeout --ms=quiet-ms: reader_.read
+      catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
+        data = with-timeout --ms=quiet-ms: reader_.read
       if not data: return
 
   // Reads and logs the raw console for $ms. Used to debug a trial boot that
@@ -618,7 +628,8 @@ class Ec618Link:
     deadline := Time.monotonic-us + ms * 1000
     while Time.monotonic-us < deadline:
       data/ByteArray? := null
-      catch: data = with-timeout --ms=1000: reader_.read
+      catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
+        data = with-timeout --ms=1000: reader_.read
       if data: emit-device-output (data.to-string-non-throwing)
     flush-pending_
 
@@ -670,7 +681,8 @@ class Ec618Link:
         send CMD-PING
         next-ping-us = Time.monotonic-us + 3_000_000
       data/ByteArray? := null
-      catch: data = with-timeout --ms=1000: reader_.read
+      catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
+        data = with-timeout --ms=1000: reader_.read
       if not data: continue
       collected += emit-device-output (data.to-string-non-throwing)
       index := collected.index-of marker
@@ -679,7 +691,10 @@ class Ec618Link:
         newline := rest.index-of "\n"
         if newline >= 0:
           code := -1
-          catch: code = int.parse rest[..newline].trim
+          parse-error := catch: code = int.parse rest[..newline].trim
+          if parse-error:
+            log "$name_: invalid test exit code from the agent: $parse-error"
+            return false
           return code == 0
       // The agent survived but could not obtain the test's exit code (e.g. the
       // container-wait machinery threw). The test's verdict is unknown — fail.
@@ -699,13 +714,16 @@ class Ec618Link:
     // ready banner as garbage, so the recovery check above can't see it.
     // Probe at 115200 before declaring a plain timeout.
     if port_.baud-rate != 115200:
-      catch: port_.baud-rate = 115200
-      drain --quiet-ms=300
-      send CMD-PING
-      catch:
-        if (read-ack --timeout-ms=1500) == ACK-PONG:
-          log "$name_: the watchdog reset the device during the test (recovered at 115200)"
-          return false
+      rate-error := catch: port_.baud-rate = 115200
+      if rate-error:
+        log "$name_: could not select 115200 baud for recovery: $rate-error"
+      else:
+        drain --quiet-ms=300
+        send CMD-PING
+        catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
+          if (read-ack --timeout-ms=1500) == ACK-PONG:
+            log "$name_: the watchdog reset the device during the test (recovered at 115200)"
+            return false
     log "$name_: timed out waiting for the test to finish"
     return false
 
