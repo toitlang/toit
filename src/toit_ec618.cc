@@ -471,7 +471,8 @@ static uint32 prepare_deep_sleep(int64 sleep_ms) {
   // preserve ASMB noinit data on this platform — the save/restore
   // mechanism corrupts user data. HIBERNATE wakes reliably via the
   // deep sleep timer after appSetCFUN(0) releases PS stack votes.
-  // RTC memory is backed by flash (saved before sleep, restored on boot).
+  // RTC memory is saved and restored through the SDK's wear-levelled
+  // hibernation backup store.
   apmuSetDeepestSleepMode(AP_STATE_HIBERNATE);
 
   // Switch the PS stack to power-saver mode.

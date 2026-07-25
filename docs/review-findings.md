@@ -183,20 +183,29 @@ No test for `get-tower-info` in `lib/net/cellular.toit`.
 
 ## 4. Flash Layout Reference
 
-For anyone modifying flash usage:
+For anyone modifying the default flash layout, the authoritative descriptor is
+`toolchains/ec618/partitions.yaml`. Its current layout is:
 
 ```
+0x000000-0x004000  Boot headers
 0x004000-0x024000  Bootloader
-0x024000-0x2A4000  AP image (2.5MB)
-0x304000-0x384000  FOTA staging region (512KB)
-0x384000-0x3CC000  FS region (288KB, mostly unused by Toit)
-  0x384000           └─ RTC memory flash backup (1 sector, 4KB)
-0x3CC000-0x3DC000  Flash registry / SOFTSIM (64KB, used by Toit)
-0x3DC000-0x3E0000  NVRAM factory (16KB, DO NOT USE)
-0x3E0000-0x3E4000  NVRAM (16KB, DO NOT USE)
-0x3E4000-0x3FC000  FLASH_MEM_BACKUP (96KB)
-0x3FC000-0x3FE000  PLAT_INFO + RESET_INFO
+0x024000-0x190000  Frozen base
+0x190000-0x191000  Base identity
+0x191000-0x1B1000  SDK LittleFS
+0x1B1000-0x1B3000  Anchor records
+0x1B3000-0x273000  OTA slot A
+0x273000-0x333000  OTA slot B
+0x333000-0x334000  Free
+0x334000-0x3DC000  Flash registry
+0x3DC000-0x3E0000  NVRAM factory
+0x3E0000-0x3E4000  NVRAM
+0x3E4000-0x3FC000  SDK hibernation backup
+0x3FC000-0x400000  SDK configuration/reset/exception/reserved tail
 ```
+
+RTC memory uses the application-reserved sector in the SDK-managed
+hibernation backup shadow. It does not reserve space in LittleFS or add a
+separate flash partition.
 
 ---
 
