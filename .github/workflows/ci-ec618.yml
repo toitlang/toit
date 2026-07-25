@@ -26,9 +26,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    env:
-      EC618_GCC_PATH: ${{ runner.temp }}/gcc-arm-none-eabi-10.3-2021.10
-
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,6 +44,7 @@ jobs:
       - name: Install EC618 GNU toolchain
         shell: bash
         run: |
+          toolchain="$RUNNER_TEMP/gcc-arm-none-eabi-10.3-2021.10"
           archive="$RUNNER_TEMP/gcc-arm-none-eabi-10.3-2021.10-x86_64-linux.tar.bz2"
           curl --fail --location --retry 3 \
             --output "$archive" \
@@ -54,7 +52,8 @@ jobs:
           echo "97dbb4f019ad1650b732faffcc881689cedc14e2b7ee863d390e0a41ef16c9a3f2e7  $archive" |
             sha256sum --check -
           tar --extract --bzip2 --file "$archive" --directory "$RUNNER_TEMP"
-          echo "$EC618_GCC_PATH/bin" >> "$GITHUB_PATH"
+          echo "EC618_GCC_PATH=$toolchain" >> "$GITHUB_ENV"
+          echo "$toolchain/bin" >> "$GITHUB_PATH"
 
       - name: Build SDK
         run: make
