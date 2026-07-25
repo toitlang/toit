@@ -4,56 +4,48 @@
 
 import gpio
 
+import .framed-control show FramedChannel
+import .uart-rig as rig
 import .wiring as wiring
 
 /**
 ESP32 half of the alternate-pad GPIO output test.
 
 EC618 PAD13 / GPIO14 ALT4 is wired to IO17, and PAD14 / GPIO15 ALT4 to IO18.
-  Count the two distinct square waves emitted by gpio-alt-ec618.toit.
+  A framed UART1 command names the pattern that this side must read on the two
+  wires. The acknowledgement includes the observed pattern.
 */
 
-WAIT ::= Duration --s=40
-WINDOW ::= Duration --s=18
-SAMPLE ::= Duration --ms=2
-
 main:
-  pins := [
-    gpio.Pin wiring.ESP32-GPIO14-ALT-PIN --input --pull-down,
-    gpio.Pin wiring.ESP32-GPIO15-ALT-PIN --input --pull-down,
-  ]
-  names := ["GPIO14/PAD13", "GPIO15/PAD14"]
-  expected-min := [400, 250]
-  expected-max := [1000, 700]
+  control-owner := rig.esp32-uart 1 115200
+  control := FramedChannel control-owner.port
+  gpio14 := gpio.Pin wiring.ESP32-GPIO14-ALT-PIN --input --pull-down
+  gpio15 := gpio.Pin wiring.ESP32-GPIO15-ALT-PIN --input --pull-down
+  connected := false
 
-  print "gpio-alt-esp32: waiting for EC618 alternate-pad activity"
-  idle := [pins[0].get, pins[1].get]
-  caught := catch:
-    with-timeout WAIT:
-      while pins[0].get == idle[0] and pins[1].get == idle[1]: sleep SAMPLE
-  if caught:
-    print "gpio-alt-esp32: FAIL no activity"
-    pins.do: | pin/gpio.Pin | pin.close
-    return
+  try:
+    while true:
+      message := control.receive --timeout-ms=(connected ? 15_000 : 120_000)
+      if message == "HELLO":
+        connected = true
+        control.send "READY"
+        continue
+      if message == "Q":
+        control.send "BYE"
+        return
 
-  edges := [0, 0]
-  last := [pins[0].get, pins[1].get]
-  deadline := Time.monotonic-us + WINDOW.in-us
-  while Time.monotonic-us < deadline:
-    2.repeat: | i/int |
-      value := pins[i].get
-      if value != last[i]:
-        edges[i]++
-        last[i] = value
-    sleep SAMPLE
-
-  failed := false
-  2.repeat: | i/int |
-    print "gpio-alt-esp32: $(names[i]) edges=$(edges[i])"
-    if edges[i] < expected-min[i] or edges[i] > expected-max[i]: failed = true
-
-  pins.do: | pin/gpio.Pin | pin.close
-  if failed:
-    print "gpio-alt-esp32: FAIL edge count outside expected range"
-  else:
-    print "gpio-alt-esp32: PASS both ALT4 pads"
+      parts := message.split " "
+      if not connected or parts.size != 2 or parts[0] != "CHECK":
+        throw "unexpected command '$message'"
+      expected := parts[1]
+      if expected.size != 2 or
+          (expected[0] != '0' and expected[0] != '1') or
+          (expected[1] != '0' and expected[1] != '1'):
+        throw "invalid pattern '$expected'"
+      actual := "$(gpio14.get)$(gpio15.get)"
+      print "gpio-alt-esp32: expected=$expected actual=$actual"
+      control.send "READ $actual"
+  finally:
+    gpio15.close
+    gpio14.close
+    control-owner.close
