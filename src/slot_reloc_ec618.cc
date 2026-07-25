@@ -40,7 +40,7 @@ static void store_le32(uint8_t* p, uint32_t v) {
 }
 
 // Decodes one unsigned LEB128 varint at `p` (< `end`). Returns the byte after
-// the varint, or nullptr on truncation.
+// the varint, or null on truncation.
 static const uint8_t* decode_varint(const uint8_t* p, const uint8_t* end, uint32_t* out) {
   uint32_t value = 0;
   int shift = 0;
@@ -53,7 +53,7 @@ static const uint8_t* decode_varint(const uint8_t* p, const uint8_t* end, uint32
     }
     shift += 7;
   }
-  return nullptr;
+  return null;
 }
 
 // Decodes the signed branch immediate of a Thumb-2 BL/B.W at `p` (4 bytes, two
@@ -98,9 +98,7 @@ static void thumb_branch_encode(uint8_t* p, int32_t imm) {
 
 bool slot_reloc_parse(const uint8_t* blob, size_t len, SlotRelocTable* table) {
   if (len < SRL3_HEADER_SIZE) return false;
-  for (int i = 0; i < 4; i++) {
-    if (blob[i] != SRL3_MAGIC[i]) return false;
-  }
+  if (memcmp(blob, SRL3_MAGIC, sizeof(SRL3_MAGIC)) != 0) return false;
   table->link_base = load_le32(blob + 4);
   table->slot_size = load_le32(blob + 8);
   table->body_size = load_le32(blob + 12);
@@ -117,14 +115,14 @@ bool slot_reloc_parse(const uint8_t* blob, size_t len, SlotRelocTable* table) {
   for (uint32_t i = 0; i < table->abs32_count; i++) {
     uint32_t delta;
     p = decode_varint(p, table->end, &delta);
-    if (p == nullptr) return false;
+    if (p == null) return false;
   }
   table->thmbl_varints = p;
   // Walk the branch stream to locate the start of the straddle stream.
   for (uint32_t i = 0; i < table->thmbl_count; i++) {
     uint32_t delta;
     p = decode_varint(p, table->end, &delta);
-    if (p == nullptr) return false;
+    if (p == null) return false;
   }
   table->straddle_entries = p;
   // Validate the straddle stream (delta-varint offset + 4 canonical site
@@ -132,7 +130,7 @@ bool slot_reloc_parse(const uint8_t* blob, size_t len, SlotRelocTable* table) {
   for (uint32_t i = 0; i < table->straddle_count; i++) {
     uint32_t delta;
     p = decode_varint(p, table->end, &delta);
-    if (p == nullptr || p + 4 > table->end) return false;
+    if (p == null || p + 4 > table->end) return false;
     p += 4;
   }
   return true;
@@ -150,9 +148,9 @@ bool slot_reloc_build_trailer(const uint8_t* table_blob, uint32_t len,
                               uint8_t* out, uint32_t out_size) {
   if (out_size < len + 4) return false;
   uint32_t pad = out_size - len - 4;
-  for (uint32_t i = 0; i < pad; i++) out[i] = 0xff;  // Leave the lead as erased.
-  for (uint32_t i = 0; i < len; i++) out[pad + i] = table_blob[i];
-  store_le32(out + pad + len, len);                  // Size in the last word.
+  memset(out, 0xff, pad);  // Leave the lead as erased.
+  memcpy(out + pad, table_blob, len);
+  store_le32(out + pad + len, len);  // Size in the last word.
   return true;
 }
 
@@ -166,7 +164,7 @@ static bool apply_stream(const uint8_t* p, const uint8_t* end, uint32_t count,
   for (uint32_t i = 0; i < count; i++) {
     uint32_t step;
     p = decode_varint(p, end, &step);
-    if (p == nullptr) return false;
+    if (p == null) return false;
     off += step;
     if (off >= window_end) break;            // Ascending: nothing more here.
     if (off + 4 <= window_off) continue;     // Fully before the window.
@@ -195,7 +193,7 @@ static bool apply_straddles(const SlotRelocTable* table,
   for (uint32_t i = 0; i < table->straddle_count; i++) {
     uint32_t step;
     p = decode_varint(p, table->end, &step);
-    if (p == nullptr || p + 4 > table->end) return false;
+    if (p == null || p + 4 > table->end) return false;
     const uint8_t* canonical = p;
     p += 4;
     off += step;
@@ -259,64 +257,73 @@ bool SlotFirmware::open(const uint8_t* slot, uint32_t slot_base_addr, uint32_t s
   return true;
 }
 
-void SlotFirmware::unrelocate_window(uint8_t* buf, uint32_t wf, uint32_t wt) const {
+void SlotFirmware::unrelocate_window(
+    uint8_t* buffer, uint32_t window_from, uint32_t window_to) const {
   if (delta_ == 0) return;  // Slot already at the link base: canonical as-is.
   // ABS32 words move WITH the slot, so un-relocating subtracts the slot delta;
   // branches to a fixed target move AGAINST it, so theirs adds it.
   uint32_t word_delta = static_cast<uint32_t>(-delta_);
   int32_t branch_delta = delta_;
 
-  // ABS32 sites: 4-byte words at 4-aligned offsets, fully contained in [wf, wt)
-  // because both bounds are word-aligned. Modify in place in `buf`.
-  const uint8_t* p = table_.abs32_varints;
-  uint32_t off = 0;
+  // ABS32 sites are 4-byte words and fully contained because both bounds are
+  // word-aligned. Modify them in place in `buffer`.
+  const uint8_t* cursor = table_.abs32_varints;
+  uint32_t reloc_offset = 0;
   for (uint32_t i = 0; i < table_.abs32_count; i++) {
     uint32_t step;
-    p = decode_varint(p, table_.thmbl_varints, &step);
-    if (p == nullptr) return;
-    off += step;
-    if (off >= wt) break;            // Ascending: nothing more in the window.
-    if (off < wf) continue;
-    uint8_t* q = buf + (off - wf);
-    store_le32(q, load_le32(q) + word_delta);
+    cursor = decode_varint(cursor, table_.thmbl_varints, &step);
+    if (cursor == null) return;
+    reloc_offset += step;
+    if (reloc_offset >= window_to) break;
+    if (reloc_offset < window_from) continue;
+    uint8_t* word = buffer + (reloc_offset - window_from);
+    store_le32(word, load_le32(word) + word_delta);
   }
 
   // Thumb-branch sites: 4 bytes at 2-aligned offsets, so they can straddle the
   // window bounds. Re-encode each from the FULL site in the slot and copy only
-  // the bytes that fall inside [wf, wt).
-  p = table_.thmbl_varints;
-  off = 0;
+  // the bytes that fall inside the window.
+  cursor = table_.thmbl_varints;
+  reloc_offset = 0;
   for (uint32_t i = 0; i < table_.thmbl_count; i++) {
     uint32_t step;
-    p = decode_varint(p, table_.straddle_entries, &step);
-    if (p == nullptr) return;
-    off += step;
-    if (off >= wt) break;            // Site starts at/after the window end.
-    if (off + 4 <= wf) continue;     // Site ends at/before the window start.
+    cursor = decode_varint(cursor, table_.straddle_entries, &step);
+    if (cursor == null) return;
+    reloc_offset += step;
+    if (reloc_offset >= window_to) break;
+    if (reloc_offset + 4 <= window_from) continue;
     uint8_t site[4];
-    memcpy(site, slot_ + off, 4);
+    memcpy(site, slot_ + reloc_offset, 4);
     thumb_branch_encode(site, thumb_branch_decode(site) + branch_delta);
-    uint32_t lo = off > wf ? off : wf;
-    uint32_t hi = (off + 4) < wt ? (off + 4) : wt;
-    for (uint32_t k = lo; k < hi; k++) buf[k - wf] = site[k - off];
+    uint32_t overlap_from =
+        reloc_offset > window_from ? reloc_offset : window_from;
+    uint32_t overlap_to =
+        (reloc_offset + 4) < window_to ? (reloc_offset + 4) : window_to;
+    for (uint32_t offset = overlap_from; offset < overlap_to; offset++) {
+      buffer[offset - window_from] = site[offset - reloc_offset];
+    }
   }
 
   // Sector-straddling branch sites: their entries carry the site's canonical
   // bytes, so un-relocation is a verbatim copy of the in-window overlap.
-  p = table_.straddle_entries;
-  off = 0;
+  cursor = table_.straddle_entries;
+  reloc_offset = 0;
   for (uint32_t i = 0; i < table_.straddle_count; i++) {
     uint32_t step;
-    p = decode_varint(p, table_.end, &step);
-    if (p == nullptr || p + 4 > table_.end) return;
-    const uint8_t* canonical = p;
-    p += 4;
-    off += step;
-    if (off >= wt) break;            // Site starts at/after the window end.
-    if (off + 4 <= wf) continue;     // Site ends at/before the window start.
-    uint32_t lo = off > wf ? off : wf;
-    uint32_t hi = (off + 4) < wt ? (off + 4) : wt;
-    for (uint32_t k = lo; k < hi; k++) buf[k - wf] = canonical[k - off];
+    cursor = decode_varint(cursor, table_.end, &step);
+    if (cursor == null || cursor + 4 > table_.end) return;
+    const uint8_t* canonical = cursor;
+    cursor += 4;
+    reloc_offset += step;
+    if (reloc_offset >= window_to) break;
+    if (reloc_offset + 4 <= window_from) continue;
+    uint32_t overlap_from =
+        reloc_offset > window_from ? reloc_offset : window_from;
+    uint32_t overlap_to =
+        (reloc_offset + 4) < window_to ? (reloc_offset + 4) : window_to;
+    for (uint32_t offset = overlap_from; offset < overlap_to; offset++) {
+      buffer[offset - window_from] = canonical[offset - reloc_offset];
+    }
   }
 }
 

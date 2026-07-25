@@ -51,6 +51,8 @@
 #ifndef TOIT_SRC_SLOT_RELOC_EC618_H_
 #define TOIT_SRC_SLOT_RELOC_EC618_H_
 
+#include "top.h"
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -84,7 +86,7 @@ struct SlotRelocTable {
   const uint8_t* end;            // One past the blob's last byte.
 };
 
-// Parses the "SRL3" header of `blob` (`len` bytes) into `out`. Returns whether
+// Parses the "SRL3" header of `blob` (`len` bytes) into `table`. Returns whether
 // the magic, sizes and varint streams are well-formed.
 bool slot_reloc_parse(const uint8_t* blob, size_t len, SlotRelocTable* table);
 
@@ -157,8 +159,8 @@ bool slot_reloc_apply(const SlotRelocTable* table,
 // points into them, so the slot must stay mapped for the view's lifetime.
 class SlotFirmware {
  public:
-  SlotFirmware() : valid_(false), slot_(nullptr), slot_size_(0),
-                   table_blob_(nullptr), table_len_(0), populated_(0),
+  SlotFirmware() : valid_(false), slot_(null), slot_size_(0),
+                   table_blob_(null), table_len_(0), populated_(0),
                    delta_(0), canonical_size_(0) {}
 
   // Opens a view over the slot whose bytes are at `slot` and whose logical base
@@ -187,13 +189,15 @@ class SlotFirmware {
   // Canonical region starts: [0,4) size word, [4, body_off) table, [body_off,..) body.
   uint32_t body_off() const { return 4 + table_len_; }
 
-  // Un-relocates a body window [wf, wt) in place (TO_CANONICAL). `buf[0]` is body
-  // offset `wf`; `wf`/`wt` are 4-byte aligned. ABS32 words are word-aligned and
-  // fully contained; Thumb-branch sites are 2-aligned and may straddle `wf`/`wt`,
-  // so each is re-encoded from the full 4 bytes in the slot and only its
-  // in-window bytes are written. A no-op when the slot already sits at the link
-  // base (delta == 0).
-  void unrelocate_window(uint8_t* buf, uint32_t wf, uint32_t wt) const;
+  // Un-relocates a body window [window_from, window_to) in place
+  // (TO_CANONICAL). `buffer[0]` is body offset `window_from`; both bounds are
+  // 4-byte aligned. ABS32 words are word-aligned and fully contained;
+  // Thumb-branch sites are 2-aligned and may straddle either bound, so each is
+  // re-encoded from the full 4 bytes in the slot and only its in-window bytes
+  // are written. A no-op when the slot already sits at the link base
+  // (delta == 0).
+  void unrelocate_window(
+      uint8_t* buffer, uint32_t window_from, uint32_t window_to) const;
 
   bool valid_;
   const uint8_t* slot_;        // Physical slot bytes (body+extension at offset 0).
