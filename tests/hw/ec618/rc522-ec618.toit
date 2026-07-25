@@ -27,13 +27,6 @@ Standalone (no ESP32 helper: SPI0's CLK/MISO pads ARE the UART2 control
 - the reader is left in hard power-down (RST low) so it cannot disturb
   the I2C1/UART2 tests that share these nets.
 
-Run via the mini-jag tester:
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/rc522-ec618.toit
-```
 */
 
 REG-COMMAND ::= 0x01

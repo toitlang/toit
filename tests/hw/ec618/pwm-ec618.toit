@@ -29,13 +29,6 @@ Drives PWM and asks the ESP32 helper to measure it, over UART2 as a
 
 All assertions happen here; the helper only measures.
 
-Run via the mini-jag tester (start pwm-esp32.toit on the ESP32 FIRST):
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/pwm-ec618.toit
-```
 */
 
 failures := []

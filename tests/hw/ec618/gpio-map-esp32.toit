@@ -15,11 +15,6 @@ Holds a broad set of candidate input pins low (input + pull-down, so nothing is
   the EC618 GPIO bit driven in that slot (see gpio-map-ec618.toit for the schedule).
   EC618 drives -> ESP32 reads only, so there is no short-circuit risk.
 
-Run via Jaguar (output to the serial console), BEFORE the EC618 half:
-
-```
-  jag run tests/hw/ec618/gpio-map-esp32.toit --device <esp32>
-```
 */
 
 // Slot order — MUST match PADS in gpio-map-ec618.toit. (PAD26 is not a slot;

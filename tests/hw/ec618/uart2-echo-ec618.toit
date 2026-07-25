@@ -19,13 +19,6 @@ Sweeps a set of baud rates in TWO modes:
   can be driven directly; each UART wire is one-directional (UART2 TX always
   EC618-driven, UART2 RX always ESP32-driven), so there is no bus contention.
 
-Run via the mini-jag tester (start uart2-echo-esp32.toit on the ESP32 first):
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/uart2-echo-ec618.toit
-```
 */
 
 BAUDS ::= [9600, 115200, 921600, 1500000, 2000000, 3000000, 4000000]

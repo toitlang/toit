@@ -27,13 +27,6 @@ This is also the first HW exercise of TIMER1's PWM (the base pwm test
    silences it while PAD47 keeps running. This is a regression for
    cross-channel pulses on the shared AON supply.
 
-Run via the mini-jag tester (start pwm-esp32.toit on the ESP32 FIRST):
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/pwm-aon-ec618.toit
-```
 */
 
 failures := []

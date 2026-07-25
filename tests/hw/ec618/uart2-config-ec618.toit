@@ -15,13 +15,6 @@ Round-trips a token through the ESP32 echo helper at EVERY combination of
   the driver's error counter reacts; the observed delivery behavior is printed
   either way (we record reality, we don't assume it).
 
-Run via the mini-jag tester (start uart2-config-esp32.toit on the ESP32 first):
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/uart2-config-ec618.toit
-```
 */
 
 CONTROL-BAUD ::= 115200

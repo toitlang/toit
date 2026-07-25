@@ -8,9 +8,7 @@
 // loopback test. Optional: longer external cabling instead of a jumper to
 // stress the signal-integrity path more realistically.
 //
-// Run for $DURATION-S seconds (or pass a different duration as `args[0]`):
-//
-//   jag run -d air780e tests/hw/ec618/uart-soak-test.toit -- 60
+// Runs for $DURATION-S seconds unless `args[0]` overrides the duration.
 //
 // What it watches for:
 //   - Cumulative TX/RX byte mismatch (data corruption).

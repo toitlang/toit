@@ -11,13 +11,6 @@ Opens and closes UART2 repeatedly at a fixed baud to check that re-opening a UAR
   controller works (it surfaced as an INVALID_ARGUMENT on a later open during the
   baud sweep). Isolates "re-open" from "baud value": all opens use the same baud.
 
-Run via the mini-jag tester:
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/uart-reopen-ec618.toit
-```
 */
 
 // 460800 first (direct open), then a sweep that revisits it: isolates whether

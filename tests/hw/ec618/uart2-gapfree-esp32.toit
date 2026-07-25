@@ -41,11 +41,6 @@ Command lane: EC618 UART1 (PAD34 -> IO4 commands in; IO16 -> PAD33
                      line never moves and even real pauses count 0.)
   "Q"             -> quits.
 
-Run via Jaguar BEFORE the EC618 half:
-
-```
-  jag run tests/hw/ec618/uart2-gapfree-esp32.toit --device <esp32>
-```
 */
 
 main:

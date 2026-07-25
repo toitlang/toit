@@ -25,12 +25,6 @@ Two resistor dividers sit between the ESP32 DAC and what the EC618 reads:
     compensated by the EC618 ADC driver, so adc.get returns the true pin volts.
   So a 1.0 V DAC step shows up as ~0.5 V at the EC618; the test verifies that.
 
-Run via Jaguar (start this BEFORE the EC618 half so the staircase is already
-  running):
-
-```
-jag run tests/hw/ec618/adc-esp32.toit --device <esp32>
-```
 */
 
 // A clean 0.5 V staircase. 0.0 and 3.0 V are the calibration endpoints; the

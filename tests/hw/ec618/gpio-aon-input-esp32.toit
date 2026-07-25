@@ -14,11 +14,6 @@ IO19 waves at 10 Hz, IO2 at 4 Hz. IMPORTANT: the EC618 side must already
   have PAD44/PAD47 configured as INPUTS before this starts, or two 3.3 V
   drivers fight — the runner starts the EC618 reader first.
 
-Run via Jaguar, AFTER the EC618 reader has configured its inputs:
-
-```
-  jag run tests/hw/ec618/gpio-aon-input-esp32.toit --device <esp32>
-```
 */
 
 HALF-FAST ::= Duration --ms=50   // 10 Hz.

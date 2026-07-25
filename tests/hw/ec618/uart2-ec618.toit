@@ -19,17 +19,6 @@ UART2 is opened TX-only
   (--rx-disabled), so only the EC618 drives the line and the ESP32 RX is high-
   impedance — no contention, no short risk on the direct wiring.
 
-Run via the mini-jag tester, passing the baud as --arg (start the ESP32 half
-  first, at the same baud, so it is already listening):
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit --arg 115200 \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/uart2-ec618.toit
-```
-
-(--port-board1 is the EC618's UART0 port through the CH340 adapter. Device
-  numbers can change between sessions, so identify the adapter by chip.)
 */
 
 TOKEN ::= "EC618-UART2"

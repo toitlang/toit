@@ -18,11 +18,6 @@ Measures the EC618's GPIO10 output-high level on the ESP32 ADC, to confirm the
   (max-voltage 3.3) reads up to ~3.1 V, so ~1.8 V vs a saturated ~3.0+ V is clearly
   distinguishable.
 
-Run via Jaguar (output to the serial console), BEFORE the EC618 half:
-
-```
-  jag run tests/hw/ec618/gpio-vlevel-esp32.toit --device <esp32>
-```
 */
 
 DURATION ::= Duration --s=35

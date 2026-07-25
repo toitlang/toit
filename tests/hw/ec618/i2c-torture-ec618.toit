@@ -27,13 +27,6 @@ Per round (every consecutive pair differs in shape and direction):
   - 1-byte read with NO register write (SMBus receive-byte),
   - probe of an empty address (NACK path between data transfers).
 
-Run via the mini-jag tester (start bmp280-esp32.toit FIRST):
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/i2c-torture-ec618.toit
-```
 */
 
 ADDRESS ::= 0x76

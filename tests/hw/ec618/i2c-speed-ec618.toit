@@ -26,13 +26,6 @@ Model (HW-calibrated 2026-07-18 with ESP32 RMT): the bounded linear region
   free-runs an address-NACK command. Higher requests clamp to the safe setting.
   The final 50 kHz batch re-crosses the source boundary downward.
 
-Run via the mini-jag tester:
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/i2c-speed-ec618.toit
-```
 */
 
 EMPTY-ADDRESS ::= 0x40

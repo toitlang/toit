@@ -8,13 +8,7 @@ import ec618.slot
 /**
 Device-side doctor: dumps the identity and layout state a healthy EC618
   should be able to report, so rig triage starts from facts instead of
-  silence. Run via the tester like any test:
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-tty> tests/hw/ec618/doctor-ec618.toit
-```
+  silence.
 */
 
 main:

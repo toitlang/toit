@@ -22,11 +22,6 @@ Commands over UART2:
                         hold SCL low for <hold> ms and release.
   "Q"                -> power off + quit.
 
-Run via Jaguar, FIRST:
-
-```
-  jag run tests/hw/ec618/i2c-stretch-esp32.toit --device <esp32>
-```
 */
 
 main:

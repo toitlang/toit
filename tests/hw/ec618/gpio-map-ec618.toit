@@ -25,13 +25,6 @@ Only EC618-drives -> ESP32-reads is used (the safe direction; the ESP32 never
 A short sync burst on PAD26 (-> the confirmed ESP32 IO27 wire) lets the ESP32
   lock onto t0 before the per-slot sequence; everything after is fixed timing.
 
-Run via the mini-jag tester (start gpio-map-esp32.toit on the ESP32 first):
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/gpio-map-ec618.toit
-```
 */
 
 // EC618 PADs to map, one per slot. PAD26 is NOT in the slot list — it is

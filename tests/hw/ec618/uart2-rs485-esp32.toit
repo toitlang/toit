@@ -25,11 +25,6 @@ The plan (bauds, sizes, counts) is fixed and mirrored in
   acknowledged with a single 'K' so the EC618 knows the DE checks are done
   before switching baud.
 
-Run via Jaguar, FIRST (so it is listening before the EC618 starts):
-
-```
-  jag run tests/hw/ec618/uart2-rs485-esp32.toit --device <esp32>
-```
 */
 
 BAUDS ::= [9600, 115200, 921600]

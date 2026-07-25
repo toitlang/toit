@@ -20,8 +20,8 @@ Hunts the "agent goes deaf" symptom seen on the quirky-plenty rig (its
   phase flatlining. The UART0 agent (mini-jag) is the liveness control —
   the test keeps printing either way.
 
-Run the ESP32 half (uart1-idle-rx-esp32.toit) FIRST; it sends markers
-  for ~200 s, longer than this test's 5 x 30 s window.
+The ESP32 half sends markers for ~200 s, longer than this test's 5 x 30 s
+  window.
 */
 
 PHASES ::= 5

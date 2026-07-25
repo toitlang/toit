@@ -29,14 +29,6 @@ Why calibrate instead of assuming a ratio: two resistor dividers are in play.
 Both channels must read accurately: a channel that does not swing
   ($LIVE-SPREAD-MIN), or whose readings are off by more than $MATCH-DELTA, fails.
 
-Run via the mini-jag tester (start adc-esp32.toit on the ESP32 first so the
-  staircase is already running):
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/adc-ec618.toit
-```
 */
 
 CHANNELS ::= [wiring.EC618-ADC0-CHANNEL, wiring.EC618-ADC1-CHANNEL]

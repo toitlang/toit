@@ -14,11 +14,6 @@ Holds IO27 high-impedance (input, no pull) so the EC618's own weak pull is the
   line and reports whether it saw both a high and a low level while the EC618 half
   (gpio-pull-ec618.toit) sweeps pull-up then pull-down.
 
-Run via Jaguar (output goes to the serial console), BEFORE the EC618 half:
-
-```
-  jag run tests/hw/ec618/gpio-pull-esp32.toit --device <esp32>
-```
 */
 
 HOLD ::= Duration --s=45

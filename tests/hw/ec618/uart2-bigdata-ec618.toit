@@ -31,13 +31,6 @@ Control lane (EC618 UART1 TX, PAD34 -> ESP32 IO4) carries newline commands:
   "S <n>"     send <n> deterministic bytes
   "Q"         quit
 
-Run via the mini-jag tester (start uart2-bigdata-esp32.toit on the ESP32 first):
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/uart2-bigdata-ec618.toit
-```
 */
 
 // High bauds: this is the keep-up test. The middle rates map the cliff between

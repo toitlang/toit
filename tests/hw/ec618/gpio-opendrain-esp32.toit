@@ -21,11 +21,6 @@ Holds IO16 (the shared wire) and acts on commands:
 
 All assertions run on the EC618 (gpio-opendrain-ec618.toit).
 
-Run via Jaguar, FIRST:
-
-```
-  jag run tests/hw/ec618/gpio-opendrain-esp32.toit --device <esp32>
-```
 */
 
 main:

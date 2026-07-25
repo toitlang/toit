@@ -27,13 +27,6 @@ Also asserts a freshly opened UART2 is quiet (no garbage byte on open; the
   and that `write --break-length` is rejected (the PLAT driver has no break
   API; silently sending without the break would be worse).
 
-Run via the mini-jag tester:
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/uart2-flush-ec618.toit
-```
 */
 
 BAUDS ::= [9600, 115200, 921600]

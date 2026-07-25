@@ -7,11 +7,7 @@ import ec618
 /**
 Sets the console byte in the anchor record (rig utility, not a test).
 
-The target UART id comes in as the test argument; run it via the tester:
-
-```
-  tester.toit run ... --arg 1 tests/hw/ec618/console-set-ec618.toit
-```
+The target UART id comes in as the test argument.
 
 The change takes effect at the NEXT boot: the running agent keeps its
   current control UART, and on a rig the mini-jag general watchdog reboots

@@ -26,11 +26,6 @@ Partner for uart2-bigdata-ec618.toit. Listens on the CONTROL lane (the EC618's
   keeps the ESP32 off the critical path so the test measures the EC618 UART, not a
   full-duplex echo bottleneck.
 
-Run via Jaguar, FIRST (so it is listening before the EC618 starts):
-
-```
-  jag run tests/hw/ec618/uart2-bigdata-esp32.toit --device <esp32>
-```
 */
 
 CONTROL-BAUD ::= 115200

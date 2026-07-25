@@ -27,14 +27,6 @@ It deliberately does NOT assert "bus dead while the rail is low": with
 This wiring is present on modest-affair, not quirky-plenty. Standalone
   (no ESP32 helper); don't run bmp280-esp32.toit concurrently.
 
-Run via the mini-jag tester:
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> \
-      tests/hw/ec618/gpio-aon-output-ec618.toit
-```
 */
 
 ADDRESS ::= 0x76

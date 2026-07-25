@@ -18,11 +18,6 @@ Listens on a CONTROL lane (the EC618's UART1 TX, IO4) for the baud rate to use,
   (unlike the older TX-only uart2-esp32.toit, which needed a per-baud deploy).
   Both directions are 3.3 V now, so driving the EC618 RX directly is safe.
 
-Run via Jaguar, FIRST (so it is listening before the EC618 sweep starts):
-
-```
-  jag run tests/hw/ec618/uart2-echo-esp32.toit --device <esp32>
-```
 */
 
 CONTROL-BAUD ::= 115200

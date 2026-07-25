@@ -14,13 +14,6 @@ UART1 runs on the same CMSIS driver path as UART0/UART2 since the
   uart2-echo-ec618, scaled down — UART1 is exercised as the one-way control
   lane by every other test already).
 
-Run via the mini-jag tester (start uart1-echo-esp32.toit on the ESP32 first):
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \\
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \\
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/uart1-echo-ec618.toit
-```
 */
 
 // 2 MBd is wiring-marginal on the test rig (long jumpers on the PAD33/

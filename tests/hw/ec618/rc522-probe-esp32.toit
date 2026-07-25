@@ -17,11 +17,6 @@ Wakes the RC522 out of hard power-down (RST on the PAD16/IO23 net),
   loopback, exercising MOSI and MISO with real data. Then drops RST so
   the reader goes back to its quiet power-down state.
 
-Run via Jaguar:
-
-```
-  jag run tests/hw/ec618/rc522-probe-esp32.toit --device <esp32>
-```
 */
 
 REG-FIFO-DATA ::= 0x09

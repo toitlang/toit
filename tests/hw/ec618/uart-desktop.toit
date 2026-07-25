@@ -4,14 +4,9 @@
 
 // Host-side companion for `tests/hw/ec618/uart.toit`.
 //
-// Connect a USB<->UART adapter to the EC618 pins that correspond to the
-// preset you are testing (TX<->RX, RX<->TX, common GND), then run this
-// program with the adapter's device path as the first argument.
-//
-// Usage:
-//
-//   toit tests/hw/ec618/uart-desktop.toit /dev/ttyUSB0
-//   toit tests/hw/ec618/uart-desktop.toit /dev/ttyUSB0 9600
+// Connects through a USB<->UART adapter on the EC618 pins for the selected
+// preset (TX<->RX, RX<->TX, common GND). The adapter device path is the first
+// program argument.
 //
 // The program sends a fixed test payload, reads back the EC618's echo
 // (bytes with bit 7 flipped) and checks that the number of echoed bytes
@@ -27,7 +22,6 @@ READ-TIMEOUT-MS ::= 10_000
 main args:
   if args.size < 1:
     print "Usage: uart-desktop.toit <device> [baud-rate]"
-    print "  e.g.: uart-desktop.toit /dev/ttyUSB0 115200"
     exit 1
 
   device := args[0]

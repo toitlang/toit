@@ -4,13 +4,11 @@
 
 // ESP32-side controller for `tests/hw/ec618/uart-bidirectional-test.toit`.
 //
-// Sends test lines to the EC618 and verifies the uppercase echo. Args:
-//
-//   jag run -d esp32 tests/hw/ec618/uart-controller.toit -- 32 33 [baud]
-//
-// Where 32 is the ESP32 GPIO wired to EC618 GPIO11 (TX from EC618's
+// Sends test lines to the EC618 and verifies the uppercase echo. The first
+// argument is the ESP32 GPIO wired to EC618 GPIO11 (TX from EC618's
 // perspective, RX on ESP32) and 33 is the ESP32 GPIO wired to EC618
-// GPIO10 (RX from EC618, TX on ESP32). Default baud is 115200.
+// GPIO10 (RX from EC618, TX on ESP32); an optional third argument selects
+// the baud. Default baud is 115200.
 
 import gpio
 import io

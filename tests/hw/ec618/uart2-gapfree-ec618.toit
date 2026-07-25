@@ -29,13 +29,6 @@ Method (see uart2-gapfree-esp32.toit for the detector math): the payload
 The wall-clock of the flush is also checked against the wire time (a
   coarse, filter-independent bound, same idea as uart2-flush).
 
-Run via the mini-jag tester (start uart2-gapfree-esp32.toit FIRST):
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/uart2-gapfree-ec618.toit
-```
 */
 
 // The SUPPORTED gap-free contract (Florian, 2026-07-16): any length up

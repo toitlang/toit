@@ -20,11 +20,6 @@ The EC618 side opens at one baud per "round": it switches this port on
   the CURRENT baud before switching; 0 = quit). The test pattern has
   consecutive deltas of +31, so the pair can never occur in payload.
 
-Run via Jaguar before the EC618 half:
-
-```
-jag run tests/hw/ec618/uart1-echo-esp32.toit --device <esp32>
-```
 */
 
 MARKER0 ::= 0xF5

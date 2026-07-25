@@ -15,11 +15,6 @@ Listens on the control lane for "P <count> <phase-ms>" and then drives
   short settle delay so the EC618 is already waiting. "Q" quits. All
   assertions run on the EC618.
 
-Run via Jaguar, FIRST:
-
-```
-  jag run tests/hw/ec618/gpio-interrupt-esp32.toit --device <esp32>
-```
 */
 
 main:

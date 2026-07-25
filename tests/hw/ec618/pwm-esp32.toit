@@ -22,11 +22,6 @@ All pass/fail logic lives on the EC618 side (pwm-ec618.toit). Pins are
   opened with a pull-down per measurement so a released (high-Z) EC618 pad
   reads as a steady 0.
 
-Run via Jaguar, FIRST (so it is listening before the EC618 starts):
-
-```
-  jag run tests/hw/ec618/pwm-esp32.toit --device <esp32>
-```
 */
 
 main:

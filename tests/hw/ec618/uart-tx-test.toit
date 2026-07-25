@@ -15,8 +15,6 @@
 //   GPIO11 (UART2 TX, primary pad PAD26) -> 32
 //   GPIO11 (UART2 TX, alt pad   PAD22)   -> 35
 //
-// Run: `jag run -d air780e tests/hw/ec618/uart-tx-test.toit`
-//
 // The `print` stream goes out UART1 and announces the active phase, so
 // you can correlate phase boundaries with whatever the ESP32 monitor
 // reports on its RX pin.

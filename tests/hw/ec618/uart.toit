@@ -7,16 +7,10 @@
 // The device opens one of the supported UART pin presets, sends a short
 // greeting, then loops echoing any received byte back with the top bit set.
 // After $DURATION-S seconds it prints a summary with the number of bytes
-// seen. Run `tests/hw/ec618/uart-desktop.toit` on a host connected through
-// a USB<->serial adapter.
+// seen. The host-side companion is `uart-desktop.toit`.
 //
-// Usage (defaults to the `uart1` preset at 115200 baud):
-//
-//   jag run -d air780e tests/hw/ec618/uart.toit
-//   jag run -d air780e tests/hw/ec618/uart.toit -- uart2
-//   jag run -d air780e tests/hw/ec618/uart.toit -- uart2-alt1 9600
-//
-// Supported presets (see `lib/uart.toit` for the full table):
+// Supported presets (the first argument; see `lib/uart.toit` for the full
+// table):
 //
 //   uart0        TX=15 RX=14
 //   uart0-alt    TX=17 RX=16

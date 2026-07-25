@@ -15,11 +15,6 @@ The reverse of gpio-output. The measured EC618 IO rail is 3.3 V, so the ESP32
   two 3.3 V drivers fight on the wire — the runner starts the EC618 reader first and
   waits before launching this. This program drives IO27 as a 10 Hz square wave.
 
-Run via Jaguar, AFTER the EC618 reader has set PAD26 to input:
-
-```
-  jag run tests/hw/ec618/gpio-input-esp32.toit --device <esp32>
-```
 */
 
 HALF ::= Duration --ms=50      // 10 Hz square wave.

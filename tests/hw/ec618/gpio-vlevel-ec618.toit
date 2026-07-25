@@ -12,19 +12,11 @@ EC618 half of the IO-voltage characterization.
 
 Drives GPIO10 (PAD25) HIGH and holds it, so the ESP32 half
   (gpio-vlevel-esp32.toit) can measure the EC618's output-high voltage on its ADC
-  and tell whether the dev-board IO rail is 1.8 V or 3.3 V. (This matters for the
-  safe direction of dual-board tests: if the dev-board level-shifts its IO to
-  3.3 V, then ESP32 -> EC618 is no longer the "risky 3.3 V into 1.8 V" case.)
+  and confirm the dev-board's 3.3 V IO rail. A reading near 1.8 V is a
+  regression.
 
 EC618 drives, ESP32 reads -> safe regardless of the rail.
 
-Run via the mini-jag tester (start gpio-vlevel-esp32.toit on the ESP32 first):
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/gpio-vlevel-ec618.toit
-```
 */
 
 HOLD ::= Duration --s=40

@@ -15,11 +15,6 @@ Listens on the CONTROL lane (the EC618's UART1 TX on IO4) for newline lines of
   stop-code 1=1 2=1.5 3=2, matching Toit's uart constants), reopens the TEST UART
   with that exact configuration, and echoes everything it receives. "Q" quits.
 
-Run via Jaguar, FIRST (so it is listening before the EC618 starts):
-
-```
-  jag run tests/hw/ec618/uart2-config-esp32.toit --device <esp32>
-```
 */
 
 CONTROL-BAUD ::= 115200

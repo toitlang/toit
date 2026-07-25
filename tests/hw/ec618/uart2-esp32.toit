@@ -17,18 +17,7 @@ Opens a UART RX-only on IO27 (where the EC618's UART2 TX is wired) at the baud
   AND content at that baud — at a wrong baud the bytes would be garbage and never
   match. RX-only (no TX pin), so the ESP32 drives nothing on the shared wire.
 
-Run via Jaguar (start this FIRST so it is already listening, then launch
-  uart2-ec618.toit via the tester). NOTE: `jag run` cannot pass program arguments
-  to a networked device, so the baud here defaults to 115200; an automated
-  multi-baud sweep needs the in-device control lane (the EC618 telling the ESP32
-  the baud over UART1).
-
-```
-  jag run tests/hw/ec618/uart2-esp32.toit --device <esp32>
-```
-
-Reads the ESP32 serial console (e.g. via the CP2102N port) for the single
-  "uart2-esp32: PASS ..." / "... FAIL ..." verdict line.
+Produces a single "uart2-esp32: PASS ..." / "... FAIL ..." verdict line.
 */
 
 DEFAULT-BAUD ::= 115200

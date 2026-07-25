@@ -23,14 +23,6 @@ Plan (fixed on both sides, no control lane): for each baud, ITERATIONS
   between internal TX chunks would be visible — acknowledged by the helper
   with a single 'K' after it checked the DE pulse.
 
-Run via the mini-jag tester (start uart2-rs485-esp32.toit on the ESP32
-  FIRST):
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/uart2-rs485-ec618.toit
-```
 */
 
 BAUDS ::= [9600, 115200, 921600]

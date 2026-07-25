@@ -12,8 +12,8 @@ EC618 half of the GPIO pull-up/down HW test (device under test).
 
 Exercises the new pull support on GPIO11 (PAD26): it samples the pad with the
   pull-down, the pull-up, and no pull (the far end, ESP32 IO27, is held high-
-  impedance by gpio-pull-esp32.toit, so nothing fights the EC618's own weak pull —
-  which also keeps the 3.3 V ESP32 off the 1.8 V pad). Reaching set-pull at all
+  impedance by gpio-pull-esp32.toit, so nothing fights the EC618's own weak pull).
+  Reaching set-pull at all
   proves the primitive exists (it throws UNIMPLEMENTED on a firmware without pull
   support).
 
@@ -26,13 +26,6 @@ The pull-UP is validated directly: with no pull the floating line reads a noisy
   bug; the test reports it and a clean pull-down check on a capable pad remains
   a rig-mapping TODO.
 
-Run via the mini-jag tester (start gpio-pull-esp32.toit on the ESP32 first):
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/gpio-pull-ec618.toit
-```
 */
 
 SETTLE ::= Duration --ms=20     // Let the weak pull + line capacitance settle.

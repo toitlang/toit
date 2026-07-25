@@ -15,11 +15,6 @@
 //   GPIO11 (TX2 primary pad)      -> 32
 //   GPIO11 (TX2 alt pad)          -> 35
 //
-// Run, picking the ESP32 RX pin to listen on:
-//
-//   jag run -d esp32 tests/hw/ec618/uart-monitor.toit -- 26
-//   jag run -d esp32 tests/hw/ec618/uart-monitor.toit -- 32 9600
-//
 // A keepalive print every $ALIVE-MS makes silent phases visible.
 
 import gpio

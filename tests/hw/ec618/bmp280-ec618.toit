@@ -28,13 +28,6 @@ The sensor (SDO grounded -> address 0x76) hangs on the EC618's I2C1 bus
 The powered-off behavior is PRINTED, not asserted: with power off the
   sensor may stay half-alive through its breakout pull-ups (back-powering).
 
-Run via the mini-jag tester (start bmp280-esp32.toit FIRST):
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/bmp280-ec618.toit
-```
 */
 
 ADDRESS ::= 0x76

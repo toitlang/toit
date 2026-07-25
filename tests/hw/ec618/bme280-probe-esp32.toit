@@ -19,11 +19,6 @@ Powers the sensor from IO13, scans the I2C bus on the shared nets
   BME280, takes real measurements via the driver package. SDO is tied to
   GND, so the address is 0x76.
 
-Run via Jaguar:
-
-```
-  jag run tests/hw/ec618/bme280-probe-esp32.toit --device <esp32>
-```
 */
 
 ADDRESS ::= 0x76     // SDO tied to GND.

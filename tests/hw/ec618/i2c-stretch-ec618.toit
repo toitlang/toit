@@ -28,13 +28,6 @@ Stretched operations are SINGLE-LEG transfers (one MasterReceive or one
   abort that transfer cleanly (bounded chain wait) — a documented
   limitation, not exercised here.
 
-Run via the mini-jag tester (start i2c-stretch-esp32.toit FIRST):
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/i2c-stretch-ec618.toit
-```
 */
 
 ADDRESS ::= 0x76

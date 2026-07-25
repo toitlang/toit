@@ -20,13 +20,6 @@ The bus has no devices (the wires go straight to ESP32 inputs), so the
 Internal pull-ups both sides (--pull-up here; the ESP32 pulls its
   observer pins up too) keep the open-drain bus high.
 
-Run via the mini-jag tester AFTER the ESP32 observer is armed:
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/i2c0-scan-ec618.toit
-```
 */
 
 SCANS ::= 3

@@ -27,13 +27,6 @@ The EC618 has no native open-drain; the driver emulates it by making the
 
 The ESP32 measures/acts on command over UART2; all assertions run here.
 
-Run via the mini-jag tester (start gpio-opendrain-esp32.toit FIRST):
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/gpio-opendrain-ec618.toit
-```
 */
 
 failures := []

@@ -32,13 +32,6 @@ Without flow control a duplex flood is ALLOWED to drop on the RX side. The
   - a delivery floor: count >= TOTAL / 4 (catches an RX collapse),
   - full CRC integrity whenever nothing was dropped.
 
-Run via the mini-jag tester (start uart2-bigdata-esp32.toit on the ESP32 first):
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/uart2-duplex-ec618.toit
-```
 */
 
 // 4 MBd RX already loses bytes half-duplex, so it would not

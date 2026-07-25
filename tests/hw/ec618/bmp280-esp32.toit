@@ -18,11 +18,6 @@ The BMP280 on the breadboard is powered from IO13. This helper switches it
   "P 0" -> sensor power off (replies "P 0")
   "Q"   -> power off + quit.
 
-Run via Jaguar, FIRST:
-
-```
-  jag run tests/hw/ec618/bmp280-esp32.toit --device <esp32>
-```
 */
 
 main:

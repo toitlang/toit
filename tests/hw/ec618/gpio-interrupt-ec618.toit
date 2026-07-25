@@ -23,13 +23,6 @@ The ESP32 drives pulse trains into PAD26 (its IO27); this side counts them
 Commands go over UART1 TX -> ESP32 IO4 (one-directional; all assertions
   run here, the helper just drives).
 
-Run via the mini-jag tester (start gpio-interrupt-esp32.toit FIRST):
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 <ec618-uart0-port> tests/hw/ec618/gpio-interrupt-ec618.toit
-```
 */
 
 PULSES ::= 50

@@ -25,12 +25,6 @@ The I2C clock (~46 kHz on the EC618) is far too fast for GPIO polling;
   trick). Internal pull-ups on both observer pins keep the open-drain bus
   high alongside the EC618's own pad pull-ups.
 
-Run via Jaguar FIRST (it baselines a quiet bus, then watches), then start
-  the EC618 half:
-
-```
-  jag run tests/hw/ec618/i2c0-wire-esp32.toit --device <esp32>
-```
 */
 
 BASELINE ::= Duration --s=3

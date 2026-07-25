@@ -15,9 +15,8 @@ The EC618 firmware arms the wakeup pads (both edges, internal pull-down) at
   deep-sleep entry. This helper holds IO13 low while the EC618 hibernates,
   then toggles it to make edges that should wake the EC618 (wake src=PAD).
 
-Run it (board2) just before/at the same time as triggering the EC618
-  hibernate on board1; it waits long enough for the EC618 to be asleep before
-  pulsing.
+The initial delay gives the EC618 enough time to enter hibernation before the
+  helper starts pulsing.
 */
 
 main:
