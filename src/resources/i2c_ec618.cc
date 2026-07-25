@@ -84,8 +84,6 @@ class I2cDeviceResource;
 // Per-controller state. The async transfer buffers are driver-owned
 // copies: an asynchronous transfer outlives the primitive call, and the GC
 // moves Toit heap objects, so the hardware must never see a Toit buffer.
-// (The bounded synchronous paths use the caller's buffers directly — a
-// primitive cannot GC mid-spin.)
 struct I2cState {
   bool in_use;
   bool initialized;          // Our Initialize() ran (Initialize is a
@@ -103,8 +101,8 @@ struct I2cState {
   volatile bool transfer_active;
   volatile uint8_t stage;
   volatile bool notify_toit;     // Async transfer: completion must wake the
-                                 // Toit event state. Spin-consumed transfers
-                                 // (sync paths, probe) MUST NOT notify: the
+                                 // Toit event state. A spin-consumed probe
+                                 // MUST NOT notify: the
                                  // stale dispatch would land after the NEXT
                                  // transfer's clear-state and wake it early
                                  // (finish then sees an incomplete transfer
@@ -114,13 +112,13 @@ struct I2cState {
   volatile uint16_t seq;         // Transfer sequence, bumped at every
                                  // start; the completion dispatch carries
                                  // it so on_event can DISCARD dispatches
-                                 // from earlier transfers (e.g. an async
-                                 // transfer the library deadline-aborted,
+                                 // from earlier transfers (e.g. a transfer
+                                 // canceled by an outer with-timeout,
                                  // whose late completion would otherwise
                                  // claim the NEXT transfer's wait).
   uint8_t address;               // Target, for the chained read leg.
   I2cDeviceResource* active_device;  // Null for a bus-level probe.
-  bool owns_buffers;             // Async (malloc'd) vs sync (caller's).
+  bool owns_buffers;             // Async transfer (malloc'd) vs probe (stack).
   uint8_t* tx;
   uint32_t tx_len;
   uint8_t* rx;
@@ -467,12 +465,11 @@ class I2cDeviceResource : public EventResource {
  public:
   TAG(I2cDeviceResource);
   I2cDeviceResource(ResourceGroup* group, I2cBusResource* bus, int address,
-                    uint32_t frequency, uint32_t timeout_us)
+                    uint32_t frequency)
     : EventResource(group, Event::i2c_type(bus->controller()))
     , bus_(bus)
     , address_(address)
-    , frequency_(frequency)
-    , timeout_us_(timeout_us) {
+    , frequency_(frequency) {
     bus_->retain_device();
   }
 
@@ -490,19 +487,10 @@ class I2cDeviceResource : public EventResource {
   int address() const { return address_; }
   uint32_t frequency() const { return frequency_; }
 
-  // Per-byte timeout for the bounded synchronous paths, in ms.
-  uint16_t toms() const {
-    uint32_t ms = timeout_us_ / 1000 + (timeout_us_ % 1000 != 0);
-    if (ms < 1) ms = 1;
-    if (ms > 1000) ms = 1000;
-    return (uint16_t)ms;
-  }
-
  private:
   I2cBusResource* bus_;
   int address_;
   uint32_t frequency_;
-  uint32_t timeout_us_;
 };
 
 class I2cResourceGroup : public ResourceGroup {
@@ -566,47 +554,6 @@ static bool start_legs(I2cState* state, int controller) {
     return false;
   }
   return true;
-}
-
-// Bounded synchronous transfer (probe + the library's sync fallback).
-// Spins on the completion event with a deadline scaled by the device's
-// per-byte timeout; uses the caller's buffers directly (no GC inside a
-// primitive). Returns the result code, or -1 on deadline (engine reset).
-static int sync_transfer(I2cDeviceResource* device, const uint8_t* tx,
-                         uint32_t tx_len, uint8_t* rx, uint32_t rx_len) {
-  int controller = device->controller();
-  I2cState* state = &i2c_states[controller];
-  state->bus_hz = device->frequency();
-  ensure_setup(controller, device->frequency());
-
-  state->address = device->address();
-  state->active_device = device;
-  state->seq++;
-  state->notify_toit = false;
-  state->owns_buffers = false;
-  state->tx = const_cast<uint8_t*>(tx);
-  state->tx_len = tx_len;
-  state->rx = rx;
-  state->rx_len = rx_len;
-  state->last_event = 0;
-  state->transfer_active = true;
-
-  if (!start_legs(state, controller)) return 2;
-
-  int64 deadline_us = OS::get_monotonic_time() +
-      (int64)device->toms() * 1000 * (tx_len + rx_len + 2);
-  while (state->last_event == 0) {
-    if (OS::get_monotonic_time() > deadline_us) {
-      quiesce(controller);
-      release_transfer(state);
-      return -1;
-    }
-  }
-  uint32_t event = state->last_event;
-  int result = event_to_result(event);
-  if (result != 0) quiesce(controller);
-  release_transfer(state);
-  return result;
 }
 
 MODULE_IMPLEMENTATION(i2c, MODULE_I2C)
@@ -724,8 +671,10 @@ PRIMITIVE(bus_probe) {
   state->transfer_active = true;
   if (!start_legs(state, controller)) return BOOL(false);
 
-  uint16_t toms = timeout_ms < 1 ? 1 : (timeout_ms > 1000 ? 1000 : timeout_ms);
-  int64 deadline_us = OS::get_monotonic_time() + (int64)toms * 1000 * 3;
+  uint16_t clamped_timeout_ms =
+      timeout_ms < 1 ? 1 : (timeout_ms > 1000 ? 1000 : timeout_ms);
+  int64 deadline_us =
+      OS::get_monotonic_time() + (int64)clamped_timeout_ms * 1000 * 3;
   while (state->last_event == 0) {
     if (OS::get_monotonic_time() > deadline_us) {
       quiesce(controller);
@@ -751,6 +700,9 @@ PRIMITIVE(bus_reset) {
 PRIMITIVE(device_create) {
   ARGS(I2cBusResource, bus, int, address_bit_size, uint16, address,
        uint32, frequency_hz, uint32, timeout_us, bool, disable_ack_check);
+  // Kept in the common primitive signature for synchronous platforms. EC618
+  // transfers are asynchronous and are canceled by the caller.
+  USE(timeout_us);
   // 10-bit mode exists in the hardware but is untested; reject until
   // needed.
   if (address_bit_size != 7) FAIL(INVALID_ARGUMENT);
@@ -771,7 +723,7 @@ PRIMITIVE(device_create) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   I2cDeviceResource* device = _new I2cDeviceResource(
-      bus->resource_group(), bus, address, frequency_hz, timeout_us);
+      bus->resource_group(), bus, address, frequency_hz);
   if (device == null) FAIL(MALLOC_FAILED);
 
   bus->resource_group()->register_resource(device);
@@ -786,47 +738,20 @@ PRIMITIVE(device_close) {
   return process->null_object();
 }
 
-// --- Synchronous paths (the lib's fallback; bounded by toms) ----------------
-
-static bool sync_precheck(I2cDeviceResource* device) {
-  if (device->bus()->state()->transfer_active) return false;
-  if (!device->bus()->bus_usable()) return false;
-  return true;
-}
+// EC618 always starts transfers asynchronously. These primitives remain in
+// the common module ABI for platforms whose transfer_start returns false, but
+// the EC618 library path cannot reach them.
 
 PRIMITIVE(device_write) {
-  ARGS(I2cDeviceResource, device, Blob, buffer);
-  if (buffer.length() > kMaxTransfer) FAIL(OUT_OF_RANGE);
-  if (!sync_precheck(device)) FAIL(HARDWARE_ERROR);
-  if (sync_transfer(device, buffer.address(), buffer.length(), null, 0) != 0) {
-    FAIL(HARDWARE_ERROR);
-  }
-  return process->null_object();
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(device_read) {
-  ARGS(I2cDeviceResource, device, MutableBlob, buffer, int, length);
-  if (length < 0) FAIL(OUT_OF_BOUNDS);
-  if (length > buffer.length()) FAIL(OUT_OF_BOUNDS);
-  if (length > kMaxTransfer) FAIL(OUT_OF_RANGE);
-  if (!sync_precheck(device)) FAIL(HARDWARE_ERROR);
-  if (sync_transfer(device, null, 0, buffer.address(), length) != 0) {
-    FAIL(HARDWARE_ERROR);
-  }
-  return process->null_object();
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(device_write_read) {
-  ARGS(I2cDeviceResource, device, Blob, tx_buffer, MutableBlob, rx_buffer, int, length);
-  if (length < 0) FAIL(OUT_OF_BOUNDS);
-  if (length > rx_buffer.length()) FAIL(OUT_OF_BOUNDS);
-  if (length > kMaxTransfer || tx_buffer.length() > kMaxTransfer) FAIL(OUT_OF_RANGE);
-  if (!sync_precheck(device)) FAIL(HARDWARE_ERROR);
-  if (sync_transfer(device, tx_buffer.address(), tx_buffer.length(),
-                    rx_buffer.address(), length) != 0) {
-    FAIL(HARDWARE_ERROR);
-  }
-  return process->null_object();
+  FAIL(UNIMPLEMENTED);
 }
 
 // --- Asynchronous transfers --------------------------------------------------
@@ -898,7 +823,8 @@ PRIMITIVE(device_transfer_finish) {
 
   uint32_t event = state->last_event;
   if (event == 0) {
-    // Not complete — the library's deadline fired first. Abort cleanly.
+    // The caller left its wait before completion (for example, an outer
+    // with-timeout canceled it). Stop the engine before releasing buffers.
     quiesce(device->controller());
     release_transfer(state);
     return Primitive::integer(-1, process);
