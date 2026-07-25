@@ -178,7 +178,15 @@ SECTIONS
   file.write-contents --path=invocation["out"] script
   print "slot-$slot ld: vma=0x$(%x vma) lma=0x$(%x lma) data-vma=0x$(%x data-vma) -> $invocation["out"]"
 
-/** Reads the $WANTED symbol addresses from `$nm $elf`. */
+/**
+Reads the $WANTED symbol addresses from `$nm $elf`.
+
+A relevant input line looks like:
+
+```
+00d00000 ? __vm_link_base
+```
+*/
 read-symbols nm/string elf/string -> Map:
   result := {:}
   out := pipe.backticks [nm, elf]

@@ -95,10 +95,17 @@ run invocation/cli.Invocation -> none:
 Returns the sorted RAM addresses of the writable-.data words that hold a
   pointer into the VM slot (`.vm_a`).
 
-Parses `readelf -rW`: in each `.rel.load_dram_*` section, every `R_ARM_ABS32`
+Parses `readelf -rW`: in `.rel.vm_dram_data`, every `R_ARM_ABS32`
   whose target symbol resolves into `.vm_a` is such a word. For a linked
   EXECUTABLE the relocation Offset is already the absolute virtual (RAM)
   address, so it is used directly.
+
+The parsed header and record lines look like:
+
+```
+Relocation section '.rel.vm_dram_data' at offset 0xa0c888 contains 144 entries:
+0043b900  00000102 R_ARM_ABS32  00d00000  .vm_a
+```
 */
 extract-addresses --readelf/string --elf/string -> List:
   range := vm-a-range readelf elf

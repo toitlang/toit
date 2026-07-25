@@ -119,7 +119,11 @@ Returns the populated VM slot range as a two-element list `[lo, hi]`.
 
 Prefers `__vm_link_base`/`__vm_link_end` (the link-domain VMA the slot-A image's
   code lives at); falls back to `__vm_b_start`/`__vm_b_end` (the slot-B oracle
-  link). Reads hex addresses from `$nm $elf`.
+  link). Reads hex addresses from `$nm $elf`, whose relevant lines look like:
+
+```
+00d00000 ? __vm_link_base
+```
 */
 slot-range nm/string elf/string -> List:
   symbols := {:}
@@ -182,6 +186,13 @@ Returns the fixed-region -> slot references in $elf as a list of
 A reference offends when the patched section is allocated (in $alloc) but NOT a
   relocated section ($RELOCATED-SECTIONS), the relocation's target value lands in
   `[$lo, $hi)`, and the target symbol is not in $allow.
+
+The parsed `readelf -rW` header and record lines look like:
+
+```
+Relocation section '.rel.vm_a' at offset 0x9fa798 contains 9246 entries:
+00d00000  00172402 R_ARM_ABS32  00d2b8ad  toit_start
+```
 */
 find-references readelf/string elf/string lo/int hi/int alloc/Set allow/Set -> List:
   references := []
@@ -208,7 +219,8 @@ find-references readelf/string elf/string lo/int hi/int alloc/Set allow/Set -> L
 
 /**
 Returns the section a `.rel.<section>`/`.rela.<section>` patches from a `readelf`
-  "Relocation section '...'" header $line, or null.
+  header $line, or null. For example, "Relocation section '.rel.vm_a' at
+  offset ..." yields ".vm_a".
 */
 relocation-target-section line/string -> string?:
   start := line.index-of "'"

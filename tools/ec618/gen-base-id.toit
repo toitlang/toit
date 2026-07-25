@@ -113,6 +113,15 @@ GEOMETRY-SYMBOLS ::= {
   "__toit_anchor_start", "__toit_base_id_start",
 }
 
+/**
+Reads $GEOMETRY-SYMBOLS from `$nm $elf`.
+
+A relevant input line looks like:
+
+```
+00990000 A __toit_base_id_start
+```
+*/
 read-geometry nm/string elf/string -> Map:
   result := {:}
   out := pipe.backticks [nm, elf]

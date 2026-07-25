@@ -280,6 +280,13 @@ Reads the relocation records of $section from `$readelf -r $elf`.
 
 Returns a list of $Reloc. Only data lines (whose type starts with `R_ARM`) are
   kept, so the column header and blank lines are skipped automatically.
+
+For example:
+
+```
+Relocation section '.rel.vm_a' at offset 0x9fa798 contains 9246 entries:
+00d00000  00172402 R_ARM_ABS32  00d2b8ad  toit_start
+```
 */
 read-relocs readelf/string elf/string section/string -> List:
   relocs := []
@@ -312,7 +319,15 @@ WANTED-SYMBOLS ::= {
   "Load\$\$VM_DRAM_DATA\$\$Base", "Image\$\$VM_DRAM_DATA\$\$Base",
 }
 
-/** Reads the wanted symbol addresses (see $WANTED-SYMBOLS) from `$nm $elf`. */
+/**
+Reads the wanted symbol addresses (see $WANTED-SYMBOLS) from `$nm $elf`.
+
+A relevant input line looks like:
+
+```
+009b3000 A __vm_a_start
+```
+*/
 slot-symbols nm/string elf/string -> Map:
   result := {:}
   out := pipe.backticks [nm, elf]
