@@ -186,8 +186,13 @@ static uint32_t active_slot_base() {
 // through SlotFirmware, so the integrity SHA and delta-OTA see the same bytes
 // regardless of which slot is live. The helpers below back the firmware_map /
 // firmware_mapping_at / firmware_mapping_copy core primitives
-// (src/primitive_core.cc) on the EC618 target. The view borrows the slot's XIP
-// bytes, which stay mapped, so it survives between calls.
+// (src/primitive_core.cc) on the EC618 target.
+//
+// This deliberately is not a mapping resource like ESP32's temporary mmap:
+// EC618 XIP stays mapped, the active slot is immutable until reset, and the
+// view only borrows those bytes. It owns no allocation or handle to clean up.
+// Multiple FirmwareMapping instances keep their own ranges and read the same
+// immutable canonical view.
 static SlotFirmware g_active_firmware;
 
 // Opens the view over the running slot and returns its canonical size (0 on
@@ -213,7 +218,13 @@ bool ec618_active_firmware_copy(uint32_t from, uint32_t to, uint8_t* dest) {
   return g_active_firmware.copy(from, to, dest);
 }
 
-// Relocate-on-write context. The OTA receiver streams the CANONICAL
+// Relocate-on-write context. The native state is process-global because flash
+// program mode and the inactive slot are device-global. Its owner is the
+// system firmware provider's single ServiceResource: the primitives below are
+// PRIVILEGED, the provider rejects a second writer, and resource teardown on
+// explicit close or client death calls slot_reloc_end and leaves program mode.
+//
+// The OTA receiver streams the CANONICAL
 // (link-base) image; slot_reloc_begin arms relocation with that image's reloc
 // table (the "SRL3" artifact, see src/slot_reloc_ec618.h), and
 // slot_inactive_write relocates each chunk onto the destination slot before
