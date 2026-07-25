@@ -775,7 +775,7 @@ static int rsa_rng(void* ctx, unsigned char* buffer, size_t len) {
     return -1;
   }
 #else
-  // Use std::random_device for non-ESP32 platforms.
+  // Use std::random_device when no platform hardware RNG is available.
   static thread_local std::random_device device;
   static thread_local std::uniform_int_distribution<> distribution(0, 255);
   for (size_t i = 0; i < len; i++) {
