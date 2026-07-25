@@ -26,6 +26,11 @@ labels such as `GPIO22` and `NET_STATUS` are not unique physical identifiers,
 and some board contacts mirror the same net. Tests that depend on a particular
 wire use the shared wiring data.
 
+The chip-level GPIO/PAD mapping comes from the EC618 CSDK's complete
+`allGpioMap` example table and its `GPIO_ToPadEC618` helper. The hardware-test
+plan records the separate board-level evidence: which Air780E connector
+contact reaches which pad, and which contacts are mirrors of the same net.
+
 The rig uses 3.3 V digital IO on both the EC618 and ESP32. EC618 AIO3/AIO4 are
 separate analog inputs; the wired ESP32 DAC signals pass through voltage
 dividers.

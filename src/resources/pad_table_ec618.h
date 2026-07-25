@@ -34,7 +34,10 @@ namespace toit {
 // what Air780 silkscreens print) are resolved exclusively by the `ec618`
 // Toit library; native code always receives a PAD.
 //
-// Data extracted from RTE_Device.h comments and luat_uart_ec618.c.
+// GPIO data comes from the official CSDK's complete `allGpioMap` example
+// table and its GPIO_ToPadEC618 helper. Peripheral routes come from the
+// CSDK RTE_Device.h tables and luat_uart_ec618.c. Air780E board-contact
+// aliases are a separate board-level concern documented by the hardware rig.
 
 // Highest pad index we know about. Pads outside [1..kMaxPadIndex] or pads
 // that aren't listed in the table are rejected at the primitive boundary.

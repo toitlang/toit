@@ -23,10 +23,12 @@ namespace toit {
 
 // --- PAD -> GPIO-controller mapping ---------------------------------------
 //
-// Sourced from the SDK's GPIO_ToPadEC618 implementation. Its alt-function
-// selector matters: GPIO12..15 and GPIO18..19 each have two physical pads.
-// This agrees with the SDK GPIO example, which deliberately selects the ALT4
-// pads for GPIO12..15.
+// Sourced from the official EC618 CSDK's complete `allGpioMap` table in
+// project_legacy/example_gpio/src/example_main.c. The prebuilt
+// GPIO_ToPadEC618 implementation shipped in libcore_airm2m.a agrees with it.
+// Its alt-function selector matters: GPIO12..15 and GPIO18..19 each have two
+// physical pads. The example deliberately selects ALT4 pads 11..14 for
+// GPIO12..15; the ordinary ALT0 pads are 27..30.
 //
 // All primary GPIO pads mux at function 0. The alternate pads 11..14 and
 // 38..39 use function 4 — see pad_gpio_mux below.
@@ -83,8 +85,9 @@ bool pad_is_aon(int pad) {
 //   UART2 mapping=0: primary pads (GPIO10/11)
 //   UART2 mapping=1: alt 1        (pads 27/28 muxed to UART2 with mux=5)
 //
-// The mux values are extracted from luat_uart_ec618.c (UART2 alt 1 uses
-// mux=5; everything else uses each chip's standard mux for that role).
+// The mux values are extracted from the CSDK RTE_Device.h tables and
+// luat_uart_ec618.c (UART2 alt 1 uses mux=5; everything else uses each
+// controller's standard mux for that role).
 
 struct UartPad {
   uint8_t uart_id;

@@ -262,9 +262,10 @@ class Ec618:
 
   // GPIO -> primary PAD lookup. This is intentionally the only GPIO -> PAD
   // resolver; native drivers receive PADs and only derive controller bits
-  // from them. Values come from the SDK's GPIO mapping helper. GPIO20..28
-  // (pads 40..48) are AON-domain GPIOs: the driver powers their LDO on first
-  // use and they keep working in sleep modes.
+  // from them. Values come from the official CSDK's complete `allGpioMap`
+  // example table and its GPIO_ToPadEC618 helper. GPIO20..28 (pads 40..48)
+  // are AON-domain GPIOs: the driver powers their LDO on first use and they
+  // keep working in sleep modes.
   static GPIO-PRIMARY-PAD_/ByteArray ::= #[
     15,  16,  17,  18,  19,  20,  21,  22,
     23,  24,  25,  26,  27,  28,  29,  30,
@@ -273,7 +274,7 @@ class Ec618:
   ]
 
   // GPIO -> alternate ALT4 PAD lookup. 0xff means the GPIO has no alt pad.
-  // Values match GPIO_ToPadEC618 in the SDK.
+  // Values match the CSDK's `allGpioMap` table and GPIO_ToPadEC618 helper.
   static GPIO-ALT-PAD_/ByteArray ::= #[
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
     0xff, 0xff, 0xff, 0xff,   11,   12,   13,   14,
