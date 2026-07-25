@@ -116,6 +116,15 @@ namespace toit {
 // not return. Used to reboot into a freshly staged VM slot.
 [[noreturn]] void ec618_system_reset();
 
+static void reset_into_staged_slot_if_needed() {
+  slot_record record;
+  anchor_read(&record);
+  if (record.state != SLOT_STATE_NEW) return;
+  printf("[toit] INFO: firmware updated; resetting into staged slot %c\n",
+         record.pending);
+  ec618_system_reset();
+}
+
 static void run_static_initializers() {
   for (void (**fn)(void) = __vm_init_array_start; fn < __vm_init_array_end; fn++) {
     (*fn)();
@@ -622,15 +631,7 @@ static void start() {
     // slot, exactly like ESP32 calls esp_restart() on a firmware update. Done here
     // — before the VM destructor and OS::tear_down() — because EC618's external
     // handler teardown can block; a firmware-update reset needs no clean shutdown.
-    {
-      slot_record record;
-      anchor_read(&record);
-      if (record.state == SLOT_STATE_NEW) {
-        printf("[toit] INFO: firmware updated; resetting into staged slot %c\n",
-               record.pending);
-        ec618_system_reset();  // Does not return.
-      }
-    }
+    reset_into_staged_slot_if_needed();
   }
 
   GcMetadata::tear_down();
