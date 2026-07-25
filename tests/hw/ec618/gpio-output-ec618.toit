@@ -15,15 +15,6 @@ Drives EC618 GPIO11 as a square wave so the ESP32 half
   `Ec618.gpio 11 --alt` must be rejected.
 
 Wiring (NOTE: gpio.Pin numbers are PAD numbers on EC618): EC618 board pin 5 (PAD26 = GPIO11) -> ESP32 IO27.
-
-Run via the mini-jag tester (passes when the container exits cleanly; the real
-  signal check happens on the ESP32 side):
-
-```
-  build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
-      --chip ec618 --toit-exe build/host/sdk/bin/toit \
-      --port-board1 /dev/ttyUSB1 tests/hw/ec618/gpio-output-ec618.toit
-```
 */
 
 GPIO-EC618 ::= 11                   // Primary PAD26, wired to ESP32 IO27.

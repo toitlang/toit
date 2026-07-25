@@ -6,9 +6,9 @@ document** — update it as tests/peripherals land or as the setup changes.
 
 The pattern (after `tests/hw/esp32`): each dual-board test is two files,
 `<name>-ec618.toit` (device under test, run via the mini-jag tester) and
-`<name>-esp32.toit` (helper that drives/observes signals, run via Jaguar). They
-coordinate by signal + generous timing windows (the two boards are driven by two
-independent control planes, so there is no shared barrier).
+`<name>-esp32.toit` (helper that drives/observes signals, run via Jaguar).
+Their test-specific protocol provides explicit readiness and result messages
+where coordination is required.
 
 See also: `tests/hw/ec618/README.md` (how to run), `tests/hw/esp-tester/`
 (the mini-jag harness), `docs/ota-dual-slot-plan.md` (the OTA design),
@@ -16,30 +16,27 @@ See also: `tests/hw/ec618/README.md` (how to run), `tests/hw/esp-tester/`
 
 ## The two rigs
 
-There are **two** physical setups on Florian's desk. The EC618 is moved between
-them; only one is "live" at a time.
+There are **two** physical setups on Florian's desk. Both EC618s and both
+helpers may be connected at the same time; identify them by their console
+banner and USB topology, never by a volatile `/dev/ttyUSBN`.
 
 ### 1. Test rig — `modest-affair` (dual-board peripheral tests)
 - **ESP32**: classic ESP32 `modest-affair` (Jaguar over WiFi). Has **DACs**
   (IO25/IO26) — needed for the ADC test. USB serial = **CP2102N** (Silicon Labs).
 - **EC618**: console/control on **UART0**. USB serial = **CH340** (QinHeng).
-- **Identify the ports by CHIP, not by `/dev/ttyUSBN`** — the numbering swaps
-  between sessions. As of 2026-06-08: EC618 (CH340) = `/dev/ttyUSB0`, ESP32
-  (CP2102N) = `/dev/ttyUSB1`. Confirm with
-  `udevadm info -q property -n <port> | grep ID_VENDOR` or
-  `esptool.py --port <port> chip_id` (only the ESP32 answers). The EC618
-  `toit tool firmware flash --port <x>` value is **unused** (ectool finds the
-  boot-ROM COM itself) — only the CLI requires the flag.
+- **Port identification**: use the banner and USB-topology procedure in
+  [ec618-rig-guide.md](ec618-rig-guide.md). The two EC618 adapters can expose
+  the same USB identity, so even a `/dev/serial/by-id` link is not sufficient.
 - **Boot mode**: **manual** (no auto-boot); operator triggers the boot ROM by
   hand for a full flash.
 - **Wiring**: full ESP32↔EC618 GPIO/ADC harness (see table below). This is the
   only rig that can run the dual-board peripheral tests.
 
 ### 2. Dev/flash rig — `quirky-plenty` (full-flash + OTA debugging)
-- **ESP32**: ESP32-C6 `quirky-plenty` (`/dev/ttyACM0`). **No DAC**, and **no
+- **ESP32**: ESP32-C6 `quirky-plenty`. **No DAC**, and **no
   GPIO/ADC test wiring** — wired to the EC618 only for boot control and console.
   Cannot run the dual-board peripheral tests.
-- **EC618**: console/control on **UART1** (CH340, e.g. `/dev/ttyUSB0` there).
+- **EC618**: console/control on **UART1** through its USB serial adapter.
 - **Boot mode**: **automatic** — ESP32-C6 GPIO19 → EC618 USB_BOOT (active high),
   GPIO23 → 5 V relay (active high). So this rig can **full-flash a complete
   image** over the boot ROM (and is the safe place to iterate on the OTA path —
