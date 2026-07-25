@@ -4,8 +4,9 @@
 // link (the slot-A build artifact).
 //
 // The Toit firmware is a single position-independent image that the device
-// localizes to whichever slot it writes (relocate-on-write). Slot A and slot
-// B are 0x60000 apart, so the two images differ ONLY in:
+// localizes to whichever descriptor-defined slot it writes
+// (relocate-on-write). The two independently linked slot images differ ONLY
+// in:
 //
 //   1. ABS32 data pointers that point INTO the slot (vtables, const pointer
 //      tables, .init_array, the .vm_entry word, ...). They move with the

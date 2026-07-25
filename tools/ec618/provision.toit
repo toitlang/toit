@@ -137,7 +137,7 @@ retarget image/ByteArray target/Partitions --ui/cli.Ui --console/int?=null -> By
     ui.abort "image ($image.size bytes) does not span the source slot reservation"
   slot-bytes := image.copy src-file (src-file + slot-size)
   table-length := LITTLE-ENDIAN.uint32 slot-bytes (slot-size - 4)
-  if table-length <= 0 or table-length > slot-size - 4:
+  if not (0 < table-length <= slot-size - 4):
     ui.abort "no merged relocation table at the source slot tail"
   merged := SlotRelocTable.parse (slot-bytes.copy (slot-size - 4 - table-length) (slot-size - 4))
 

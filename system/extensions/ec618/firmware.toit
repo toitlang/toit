@@ -157,6 +157,8 @@ class FirmwareWriter_ extends ServiceResource implements FirmwareWriter:
       header-length_++
       if header-length_ == 4:
         table-length_ = LITTLE-ENDIAN.uint32 header_.bytes 0
+        if not (0 < table-length_ <= slot.SLOT-SIZE - 4):
+          throw "firmware: invalid relocation table size"
       else if table-length_ >= 0 and header-length_ == 4 + table-length_:
         full := header_.bytes
         slot.reloc-begin full[4 .. 4 + table-length_]

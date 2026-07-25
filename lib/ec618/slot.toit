@@ -16,9 +16,9 @@
 /**
 EC618 dual-slot OTA helpers with esp-idf-style trial boot + rollback.
 
-The EC618 AP image carries two VM slots, each $SLOT-SIZE bytes at fixed XIP
-  addresses. A power-fail-safe anchor record tracks which slot is known-good
-  and which, if any, is on trial.
+The EC618 AP image carries two VM slots, each $SLOT-SIZE bytes at XIP addresses
+  supplied by the active partition table. A power-fail-safe anchor record
+  tracks the table, which slot is known-good, and which, if any, is on trial.
 
 A newly written slot is *staged* as a trial rather than activated outright. On
   the next boot the dispatcher runs it once; the new image must $validate
@@ -99,12 +99,13 @@ write-inactive offset/int bytes/ByteArray -> none:
 Arms relocate-on-write with the new image's SRL3 relocation $table and writes
   that table as the inactive slot's tail trailer.
 
-The firmware is one position-independent image linked at slot A's base. While
-  armed, $write-inactive relocates the CANONICAL bytes it is given onto the
-  destination slot (the VM does the byte-level relocation in C++), so the
-  caller only ever streams canonical image bytes — relocation is invisible.
-  Relocating onto slot A is a no-op (it already sits at the link base); onto
-  slot B the words are shifted by the slot displacement.
+The firmware is one position-independent image linked at a neutral base that
+  is distinct from both slots. While armed, $write-inactive relocates the
+  CANONICAL bytes it is given onto the destination slot (the VM does the
+  byte-level relocation in C++), so the caller only ever streams canonical
+  image bytes — relocation is invisible. Both slots are localized by the
+  difference between their table-provided XIP address and the neutral link
+  base.
 
 The table is also stored at the slot's tail (with its size as the slot's last
   word) so that, once this image boots as the active slot, the VM can recover
