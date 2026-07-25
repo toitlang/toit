@@ -286,18 +286,17 @@ calls still in the glue.
   SDK's `TIMER_setupPwm` only accepts integer-percent duty cycles. The slot
   links the required clock and timer helpers directly from the selected frozen
   base. Test: EC618 commands
-  the ESP32 over UART2; ESP32 measures with a pulse counter (frequency) and
-  busy-polling (duty/level). Verified: 1/2 kHz frequency (~+1.2% measured —
-  crystal tolerance, consistent everywhere), duty 0.25/0.5/0.75 (±1%),
-  constant low/high extremes, live set-frequency, two simultaneous channels
-  (TIMER4/PAD33 -> IO16, TIMER0/PAD16 -> IO23 — confirming that wire),
-  closed channel goes silent while the other keeps running. TWO hardware
-  quirks found (vs the SDK's own code): `TMR[0] == TMR[1]` ("100%" per the
-  SDK) and `TMR[0] == 0` both give constant LOW — duty 1.0 is programmed as
-  high with a 2-tick (77 ns) low notch; and the constant-low state is a
-  one-way trap (compare writes latch on the match event, which never fires
-  — the SDK's `TIMER_updatePwmDutyCycle` has the same bug), so leaving it
-  restarts the timer via the TCCR enable bit. `pwm-{ec618,esp32}.toit`.
+  the ESP32 over UART2; ESP32 measures with a pulse counter (frequency),
+  busy-polling (duty/level), and a 20 MHz RMT capture for endpoint waveform
+  detail. Verified: 1/2 kHz frequency (~+1.2% measured — crystal tolerance,
+  consistent everywhere), duty 0.25/0.5/0.75 (±1%), exact static low/high
+  endpoints with no sub-microsecond transitions, live set-frequency, and two
+  simultaneous channels (TIMER4/PAD33 -> IO16, TIMER0/PAD16 -> IO23 —
+  confirming that wire). Closed channels go silent while the other keeps
+  running. `TMR[0] == TMR[1]` ("100%" per the SDK) and `TMR[0] == 0` both
+  measured constant low, so exact 0%/100% stop the timer and drive a static
+  GPIO level; fractional factors remux and restart timer PWM.
+  `pwm-{ec618,esp32}.toit`.
   The channel resource itself owns timer stop, pad release, and the locked
   timer lease; a `leak` run followed by the normal test verifies the same
   cleanup on forced container teardown.
