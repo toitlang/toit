@@ -20,6 +20,7 @@
 #include <string.h>
 
 #include "../objects_inline.h"
+#include "../os.h"
 #include "../primitive.h"
 #include "../process.h"
 #include "../resource.h"
@@ -60,6 +61,21 @@ static int pads_to_controller(int mosi, int miso, int clock) {
   if (mosi == 24 && miso == 25 && clock == 26) return 0;
   if (mosi == 28 && miso == 29 && clock == 30) return 1;
   return -1;
+}
+
+static bool controllers_in_use[2] = {};
+
+static bool reserve_controller(int controller) {
+  Locker locker(OS::global_mutex());
+  if (controllers_in_use[controller]) return false;
+  controllers_in_use[controller] = true;
+  return true;
+}
+
+static void release_controller(int controller) {
+  Locker locker(OS::global_mutex());
+  ASSERT(controllers_in_use[controller]);
+  controllers_in_use[controller] = false;
 }
 
 static void pad_set(int pad, int level);
@@ -127,19 +143,25 @@ class SpiResourceGroup : public ResourceGroup {
 
   // Hands the bus pads back disconnected — also on the forced teardown of
   // a killed container; the wires must not stay muxed to the controller.
-  // An async transfer still in flight is abandoned: stop the engine and
-  // release its buffer (the DMA must not keep writing freed memory).
+  // Stop the engine even when it appears idle, detach the callback, and
+  // release any async buffer only after DMA can no longer write it.
   ~SpiResourceGroup() override {
     SpiState* state = &spi_states[controller_];
-    if (state->active) {
-      state->active = false;
-      SPI_TransferStop(controller_);
+    state->active = false;
+    SPI_TransferStop(controller_);
+    SPI_SetCallbackFun(controller_, null, null);
+    if (state->buffer != null) {
       free(state->buffer);
       state->buffer = null;
     }
+    state->done = false;
+    state->length = 0;
+    state->cs = -1;
+    state->keep_cs = false;
     pad_release(mosi_);
     pad_release(miso_);
     pad_release(clock_);
+    release_controller(controller_);
   }
 
   // Completion dispatch: only the CURRENT transfer's callback may set the
@@ -216,6 +238,18 @@ PRIMITIVE(init) {
   int controller = pads_to_controller(mosi, miso, clock);
   if (controller < 0) FAIL(INVALID_ARGUMENT);
 
+  Ec618EventSource* event_source = Ec618EventSource::instance();
+  if (event_source == null) FAIL(ALREADY_CLOSED);
+  if (!reserve_controller(controller)) FAIL(ALREADY_IN_USE);
+
+  SpiResourceGroup* group = _new SpiResourceGroup(process, event_source,
+                                                  controller,
+                                                  mosi, miso, clock);
+  if (group == null) {
+    release_controller(controller);
+    FAIL(MALLOC_FAILED);
+  }
+
   // Route the three bus pads to the controller (ALT1; input buffer for
   // MISO so reads see the wire).
   GPIO_IomuxEC618(mosi, 1, 0, 0);
@@ -224,14 +258,6 @@ PRIMITIVE(init) {
 
   // Mode/speed are per-device; start with a safe default.
   SPI_MasterInit(controller, 8, 0, 1000000, null, null);
-
-  Ec618EventSource* event_source = Ec618EventSource::instance();
-  if (event_source == null) FAIL(ALREADY_CLOSED);
-
-  SpiResourceGroup* group = _new SpiResourceGroup(process, event_source,
-                                                  controller,
-                                                  mosi, miso, clock);
-  if (group == null) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(group);
   return proxy;
@@ -252,15 +278,23 @@ PRIMITIVE(device) {
   if (command_bits != 0 || address_bits != 0) FAIL(INVALID_ARGUMENT);
   if (mode < 0 || mode > 3) FAIL(INVALID_ARGUMENT);
   if (frequency <= 0) FAIL(INVALID_ARGUMENT);
+  if (cs >= 0 && pad_to_gpio(cs) < 0) FAIL(INVALID_ARGUMENT);
+  if (dc >= 0 && pad_to_gpio(dc) < 0) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  if (cs >= 0 && !pad_output(cs, 1)) FAIL(INVALID_ARGUMENT);
-  if (dc >= 0 && !pad_output(dc, 0)) FAIL(INVALID_ARGUMENT);
-
   SpiDevice* device = _new SpiDevice(group, cs, dc, frequency, (uint8_t)mode);
   if (device == null) FAIL(MALLOC_FAILED);
+
+  if (cs >= 0) {
+    bool configured = pad_output(cs, 1);
+    ASSERT(configured);
+  }
+  if (dc >= 0) {
+    bool configured = pad_output(dc, 0);
+    ASSERT(configured);
+  }
 
   group->register_resource(device);
   proxy->set_external_address(device);
