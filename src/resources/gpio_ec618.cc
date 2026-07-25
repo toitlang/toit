@@ -29,6 +29,7 @@ extern "C" {
   #include "driver_gpio.h"
   #include "gpio.h"
   #include "ic.h"
+  #include "pad.h"
   // slpman.h: AON IO LDO power (the AON-domain GPIOs, pads 40..48, are
   // dead until it is on) and wakeup-pad configuration. These calls resolve
   // directly against the selected base.
@@ -47,15 +48,27 @@ static uint32_t to_port(int gpio_bit) { return gpio_bit >> 4; }
 static uint16_t to_pin_index(int gpio_bit) { return gpio_bit & 0xf; }
 static uint16_t to_pin_mask(int gpio_bit) { return 1 << (gpio_bit & 0xf); }
 
-// Applies (or clears) a pad's pull resistor. On the EC618 a pull is a pad-level
-// property set through GPIO_PullConfig(pad, enable, is_up); calling it also
-// turns off the iomux "auto pull", so our explicit choice wins. At most one of
-// pull_up/pull_down is set (the Toit gpio library enforces it).
+static bool pad_is_wakeup(int pad);
+static void wakeup_pad_set(int pad, bool wakeup_en,
+                           bool pull_up, bool pull_down);
+
+// Applies (or clears) a pad's pull resistor. Use the low-level PAD operation for
+// an explicit direction: it directly selects the internal resistor while
+// clearing the opposite one. The higher-level GPIO_PullConfig helper is kept
+// for disabling both during cleanup. At most one of pull_up/pull_down is set
+// (the Toit gpio library enforces it).
 static void apply_pull(int pad, bool pull_up, bool pull_down) {
+  // PAD40..42 are AON wake pads. Their documented programmable pulls live in
+  // the wake-pad block, and GPIO reads remain available while that input path
+  // is enabled. The ordinary PAD pull has no usable software effect here.
+  if (pad_is_wakeup(pad)) {
+    wakeup_pad_set(pad, pull_up || pull_down, pull_up, pull_down);
+    return;
+  }
   if (pull_up) {
-    GPIO_PullConfig(pad, 1, 1);
+    PAD_setPinPullConfig(pad, PAD_INTERNAL_PULL_UP);
   } else if (pull_down) {
-    GPIO_PullConfig(pad, 1, 0);
+    PAD_setPinPullConfig(pad, PAD_INTERNAL_PULL_DOWN);
   } else {
     GPIO_PullConfig(pad, 0, 0);
   }
@@ -216,9 +229,11 @@ static bool pad_is_wakeup(int pad) {
   return 40 <= pad && pad <= 42;
 }
 
-static void wakeup_pad_set(int pad, bool wakeup_en, bool pull_up) {
+static void wakeup_pad_set(int pad, bool wakeup_en,
+                           bool pull_up, bool pull_down) {
   APmuWakeupPadSettings_t cfg = {};
   cfg.pullUpEn = pull_up;
+  cfg.pullDownEn = pull_down;
   slpManSetWakeupPadCfg(
       static_cast<APmuWakeupPad_e>(WAKEUP_PAD_3 + (pad - 40)),
       wakeup_en, &cfg);
@@ -258,7 +273,7 @@ void pad_release(int pad) {
   GPIO_PullConfig(pad, 0, 0);
   // Hand the wakeup-capable pads back to wakeup duty in their boot state
   // (wakeup input, pull-up — no wake edges armed).
-  if (pad_is_wakeup(pad)) wakeup_pad_set(pad, true, true);
+  if (pad_is_wakeup(pad)) wakeup_pad_set(pad, true, true, false);
 }
 
 void pad_emergency_high(int pad) {
@@ -360,7 +375,7 @@ PRIMITIVE(config) {
   // this as selecting between "wakeup pad" and "aonio"; pad_release restores
   // wakeup duty. The AON supply above is set to 3.3 V so both input and output
   // levels reach the board net.
-  if (pad_is_wakeup(pad)) wakeup_pad_set(pad, false, false);
+  if (pad_is_wakeup(pad)) wakeup_pad_set(pad, false, false, false);
 
   // Switch the pad's iomux to its GPIO function (0 for most pads — see
   // pad_gpio_mux). Without this, the pad would stay in whatever role a

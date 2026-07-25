@@ -3,64 +3,178 @@
 // be found in the tests/LICENSE file.
 
 import gpio
+import monitor
+import uart
 
 import .wiring as wiring
 
 /**
-ESP32 half of the rig connectivity-map test.
+ESP32 half of the consolidated dev-board GPIO test.
 
-Holds a broad set of candidate input pins low (input + pull-down, so nothing is
-  driven), waits for the EC618's sync burst on IO27 to lock t0, then for each fixed
-  time slot reports which input pin(s) toggled — i.e. which ESP32 pin is wired to
-  the EC618 GPIO bit driven in that slot (see gpio-map-ec618.toit for the schedule).
-  EC618 drives -> ESP32 reads only, so there is no short-circuit risk.
-
+Every phase is commanded by the EC618 over a UART and acknowledged before
+  either side changes a pin's direction. UART1 is used while UART2's pads are
+  tested; the `SWITCH 2` handshake closes the old observers/control pins on
+  both boards before UART2 opens and UART1's pads become test GPIOs.
 */
 
-// Slot order — MUST match PADS in gpio-map-ec618.toit. (PAD26 is not a slot;
-// it is the sync anchor on IO27.)
-EC618-PADS ::= [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 31, 32, 33, 34, 35, 36, 37, 40, 41, 42, 43, 44, 45, 46, 47, 48]
+CONTROL-BAUD ::= 9600
+CONTROL-TIMEOUT-MS ::= 15_000
+STARTUP-TIMEOUT-MS ::= 120_000
+SAMPLE ::= Duration --ms=1
+MIN-EDGES ::= 8
 
-// Schedule constants — MUST match gpio-map-ec618.toit.
-SYNC-MS ::= 6 * 2 * 80
-LEAD-IN-MS ::= 600
-SLOT-MS ::= 2000
-WAIT-FOR-SYNC ::= Duration --s=40
+class Control:
+  id/int
+  tx/gpio.Pin
+  rx/gpio.Pin
+  port/uart.Port
+  pending_/ByteArray := #[]
+
+  constructor .id:
+    tx-num := id == 1 ? wiring.ESP32-UART1-TX-PIN : wiring.ESP32-UART2-TX-PIN
+    rx-num := id == 1 ? wiring.ESP32-UART1-RX-PIN : wiring.ESP32-UART2-RX-PIN
+    tx = gpio.Pin tx-num
+    rx = gpio.Pin rx-num
+    port = uart.Port --tx=tx --rx=rx --baud-rate=CONTROL-BAUD
+
+  send line/string -> none:
+    // A stale byte can prefix one UART2 line after the GPIO-to-UART handoff.
+    // Repeat replies so the receiver can discard the contaminated copy.
+    port.out.write "$line\n$line\n"
+    port.out.flush
+
+  read-line --timeout-ms/int=CONTROL-TIMEOUT-MS -> string:
+    with-timeout --ms=timeout-ms:
+      while true:
+        newline := pending_.index-of '\n'
+        if newline >= 0:
+          result := pending_[..newline].to-string-non-throwing.trim
+          pending_ = pending_[newline + 1 ..]
+          return result
+        chunk := port.in.read
+        if not chunk: throw "control UART$id closed"
+        pending_ += chunk
+    unreachable
+
+  close -> none:
+    port.close
+    rx.close
+    tx.close
 
 main:
+  control := Control 1
+  pins := open-observers 1
+  connected := false
+  try:
+    while true:
+      line := control.read-line
+          --timeout-ms=(connected ? CONTROL-TIMEOUT-MS : STARTUP-TIMEOUT-MS)
+      if line == "": continue
+      parts := line.split " "
+      command := parts[0]
+
+      if command == "HELLO" and parts.size == 2:
+        control.send "READY $parts[1]"
+        connected = true
+      else if command == "OBSERVE" and parts.size == 2:
+        pad := int.parse parts[1]
+        observe control pins pad
+      else if command == "DRIVE" and parts.size == 3:
+        pad := int.parse parts[1]
+        level := int.parse parts[2]
+        drive control pins pad level
+      else if command == "RELEASE" and parts.size == 2:
+        pad := int.parse parts[1]
+        release control pins pad
+      else if command == "SWITCH" and parts.size == 2:
+        id := int.parse parts[1]
+        pins.do: | _ pin/gpio.Pin | pin.close
+        pins = {:}
+        replacement := Control id
+        control.send "SWITCHING $id"
+        replacement.send "HELLO $id"
+        if replacement.read-line != "READY $id":
+          throw "control-lane switch was not acknowledged"
+        control.close
+        control = replacement
+        pins = open-observers id
+        control.send "ACTIVE $id"
+        print "gpio-map-esp32: control moved to UART$id"
+      else if command == "Q":
+        control.send "BYE"
+        return
+  finally:
+    pins.do: | _ pin/gpio.Pin | pin.close
+    control.close
+    print "gpio-map-esp32: done"
+
+open-observers control-id/int -> Map:
+  excluded := control-id == 1
+      ? [wiring.ESP32-UART1-TX-PIN, wiring.ESP32-UART1-RX-PIN]
+      : wiring.ESP32-UART2-TX-NET-PINS + wiring.ESP32-UART2-RX-NET-PINS
   pins := {:}
-  wiring.ESP32-GPIO-OBSERVATION-PINS.do: | n/int |
-    pins[n] = gpio.Pin n --input --pull-down
-  print "gpio-map-esp32: waiting up to $(WAIT-FOR-SYNC.in-s)s for the sync burst on IO$(wiring.ESP32-GPIO11-PIN)"
-  if (catch: with-timeout WAIT-FOR-SYNC: pins[wiring.ESP32-GPIO11-PIN].wait-for 1) != null:
-    print "gpio-map-esp32: FAIL no sync seen on IO$(wiring.ESP32-GPIO11-PIN) (EC618 not driving, or wire missing)"
-    pins.do: | n pin | pin.close
-    return
-  t0 := Time.monotonic-us
-  print "gpio-map-esp32: sync detected; mapping $(EC618-PADS.size) slots"
+  wiring.ESP32-GPIO-OBSERVATION-PINS.do: | num/int |
+    if not excluded.contains num:
+      pins[num] = gpio.Pin num --input --pull-down
+  return pins
 
-  EC618-PADS.size.repeat: | i/int |
-    slot-start-ms := SYNC-MS + LEAD-IN-MS + i * SLOT-MS
-    // Sample the middle 60% of the slot to avoid boundary edges.
-    sample-start-us := t0 + (slot-start-ms + SLOT-MS / 5) * 1000
-    sample-end-us := t0 + (slot-start-ms + SLOT-MS * 4 / 5) * 1000
-    now := Time.monotonic-us
-    if now < sample-start-us: sleep --ms=((sample-start-us - now) / 1000)
-    counts := {:}
-    wiring.ESP32-GPIO-OBSERVATION-PINS.do: | n/int | counts[n] = 0
-    samples := 0
-    while Time.monotonic-us < sample-end-us:
-      wiring.ESP32-GPIO-OBSERVATION-PINS.do: | n/int |
-        if pins[n].get == 1: counts[n] = counts[n] + 1
-      samples++
-      sleep --ms=3
-    toggled := wiring.ESP32-GPIO-OBSERVATION-PINS.filter: | n/int |
-      counts[n] > 0 and counts[n] < samples
-    stuck-high := wiring.ESP32-GPIO-OBSERVATION-PINS.filter: | n/int |
-      samples > 0 and counts[n] == samples
-    line := "gpio-map-esp32: EC618 PAD$(EC618-PADS[i]) <-> ESP32 IO$toggled"
-    if not stuck-high.is-empty: line += "  (always-high: IO$stuck-high)"
-    print line
+wire-for pad/int -> List:
+  wiring.GPIO-TEST-WIRES.do: | wire/List |
+    if wire[0] == pad: return wire
+  throw "unknown EC618 pad $pad"
 
-  pins.do: | n pin | pin.close
-  print "gpio-map-esp32: done"
+observe control/Control pins/Map pad/int -> none:
+  // Re-establish deterministic low baselines after any earlier drive phase.
+  pins.do: | _ pin/gpio.Pin |
+    pin.configure --input
+    pin.set-pull --down
+
+  stop := false
+  started := monitor.Latch
+  finished := monitor.Latch
+  counts := {:}
+  previous := {:}
+  pins.do: | num/int pin/gpio.Pin |
+    counts[num] = 0
+    previous[num] = pin.get
+
+  task::
+    started.set true
+    while not stop:
+      pins.do: | num/int pin/gpio.Pin |
+        level := pin.get
+        if level != previous[num]:
+          counts[num] = counts[num] + 1
+          previous[num] = level
+      sleep SAMPLE
+    observed := wiring.ESP32-GPIO-OBSERVATION-PINS.filter: | num/int |
+      counts.contains num and counts[num] >= MIN-EDGES
+    finished.set observed
+
+  started.get
+  control.send "READY-TO-OBSERVE $pad"
+  done := control.read-line
+  if done != "OBSERVE-DONE $pad": throw "expected OBSERVE-DONE $pad, got '$done'"
+  stop = true
+  observed/List := finished.get
+  control.send "OBSERVED $pad $observed"
+  print "gpio-map-esp32: PAD$pad observed on IO$observed"
+
+drive control/Control pins/Map pad/int level/int -> none:
+  if level != 0 and level != 1: throw "invalid drive level $level"
+  wire := wire-for pad
+  num/int := wire[1][0]
+  pin/gpio.Pin? := pins[num]
+  if not pin: throw "ESP32 IO$num is unavailable while UART$control.id is active"
+  pin.set-pull --off
+  pin.configure --output --value=level
+  control.send "DRIVEN $pad $level"
+
+release control/Control pins/Map pad/int -> none:
+  wire := wire-for pad
+  num/int := wire[1][0]
+  pin/gpio.Pin? := pins[num]
+  if not pin: throw "ESP32 IO$num is unavailable while UART$control.id is active"
+  pin.configure --input
+  pin.set-pull --off
+  control.send "RELEASED $pad"

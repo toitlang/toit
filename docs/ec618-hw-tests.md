@@ -112,10 +112,11 @@ Board pin  Functions (real)            Covered by                               
 ---------  --------------------------  -------------------------------------------  -----------------
 3   ADC0   analog in                   adc (exact staircase, self-calibrated)        —
 4   ADC1   analog in                   adc (exact staircase, self-calibrated)        —
-5   PAD26  GPIO11, UART2_TX, SPI0_CLK  gpio-{output,input,pull,interrupt,map},       —
+5   PAD26  GPIO11, UART2_TX, SPI0_CLK  gpio-{output,input,interrupt,map},            —
                                        uart2 battery, rc522 (CLK)
 6   PAD25  GPIO10, UART2_RX, SPI0_MISO uart2 battery, rc522 (MISO), gpio-map         —
-9   PAD42  GPIO22 (AON), wakeup pad    gpio22-read (input), wakeup-gpio22            —
+9   PAD42  GPIO22 (AON), wakeup pad    gpio22-read (input), wakeup-gpio22,           —
+                                       gpio-map (pull-down),
                                        (hibernate wake), aon-wu-output (output
                                        powers the BMP280; #5 resolved: the AON
                                        LDO boots at 1.8 V — scope-diagnosed)
@@ -196,7 +197,7 @@ suitable board appears.
 
 | Peripheral | Status | Notes |
 |-----------|--------|-------|
-| GPIO | ✅ implemented, HW-tested | `gpio_ec618.cc`. Pull-up **HW-validated**; pull-down via `GPIO_PullConfig` (matches the SDK) but **pad-limited** — PAD26/UART pads are pull-up-only (pull-down is mainly on the wakeup pads). Input-buffer now enabled for input pins. **Open-drain: TODO** (emulate via output↔input). |
+| GPIO | ✅ implemented, HW-tested | `gpio_ec618.cc`. Regular-pad pulls use the pad PCR configuration; wake-domain PAD40–42 pulls use the PMU wake-pad block. Pull-down is HW-validated on PAD42 and pull-up on PAD34. Input buffers and emulated open-drain are HW-tested. |
 | UART | ✅ implemented | `uart_ec618.cc` (UART0/1/2). |
 | I2C | ✅ implemented | `i2c_ec618.cc`. |
 | Cellular | ✅ implemented | `cellular_ec618.cc`. |
@@ -378,15 +379,17 @@ calls still in the glue.
   failed `INVALID_ARGUMENT` (set-baud worked, the tell). Fixed by ignoring that
   flag on EC618 (commit 96b9f86b). `uart2-echo-{ec618,esp32}.toit`,
   `uart-reopen-ec618.toit` (open 9600..3 MHz regression).
-- **`gpio-pull`** (2026-06-08): **pull-up HW-validated** on PAD26 — with no pull
-  the floating line reads a noisy ~8-11/16, and enabling the internal pull-up pins
-  it to 16/16. **Pull-down does NOT pull PAD26 low** (reads 16/16 high even from a
-  floating start, and the no-pull "float" read is jittery, so it isn't an external
-  pull-up): PAD26 (UART2_TXD) is **pull-up-only**. The firmware's
-  `GPIO_PullConfig(pad, 1, 0)` matches the SDK's own pull-down usage, so this is a
-  pad/HW limitation (pull-down on the EC618 is mainly on the dedicated wakeup pads,
-  a separate `APmuWakeupPadSettings` path), not a firmware bug. A clean pull-down
-  check needs a pad that supports it — **rig-mapping TODO**. `gpio-pull-{ec618,esp32}.toit`.
+- **Consolidated GPIO map/behavior test:** `gpio-map-{ec618,esp32}.toit`
+  coordinates at 9600 baud over UART rather than synchronized time slots. It
+  checks every ordinary dev-board GPIO net in both directions, detects mirrored
+  and sensor-coupled observer nets, and switches from UART1 to UART2 with a
+  two-lane handshake before testing UART1's pads. The ESP32 only drives after
+  the EC618 has configured an input and acknowledged it. Pull-down is verified
+  on wake-domain PAD42 and pull-up on regular PAD34 after a driven opposite
+  level and acknowledged ESP32 release. PAD42's loaded sensor-power connection
+  is checked ESP32-to-EC618 here; its EC618 output is covered by
+  `gpio-aon-output-ec618.toit`, which powers and reads the BMP280 across two
+  cycles. The old floating-line `gpio-pull` programs are removed.
 - **mini-jag reconnect-after-OTA fixed** (2026-06-08): the host now drains the
   post-reset boot-ROM/bootloader banner before pinging, so the firmware-update
   reconnect/validate succeeds without `--debug-boot` (previously `read-ack` spent
@@ -503,9 +506,9 @@ rule no longer applies:
 - **PWM** — *done* (implemented + HW-tested; see Done).
 - **ADC**: exact-value staircase (EC618 measures the ESP32 DAC, self-calibrating
   the board divider, ±60 mV per level) — *done*.
-- **GPIO**: output modes (done) + pull-up (done); input driven by the ESP32 is now
-  safe (drive directly). EC618 open-drain emulation is optional (no longer needed
-  for the rig's risky direction).
+- **GPIO**: output modes, input, pull-up/down, and open-drain are done. The
+  ESP32 drives only after the EC618 has acknowledged input mode and releases
+  before pull validation.
 - **I2C / SPI**: last; likely reflash the ESP32 with a C **slave** sketch.
 
 ### Status / blocker
@@ -611,7 +614,8 @@ rule no longer applies:
       exposed a latent bug: Pin construction on a GPIO-less pad used to
       throw, killing the agent at boot when Ec618.uart0 built its Pins —
       such pads are now legal "carrier" Pins.)
-- [x] **GPIO pull-up/down** (`set_pull`, and `config` honours it) + input buffer
+- [x] **GPIO pull-up/down** (`set_pull`, and `config` honours it): PAD34
+      pull-up and wake-domain PAD42 pull-down + input buffer
       for input pins.
 - [x] **GPIO open-drain**: emulated via direction-tracks-value (output-low /
       high-Z); HW-tested as a real two-master wired-AND bus (gpio-opendrain).

@@ -5,6 +5,7 @@
 import crypto.crc
 import esp32
 import expect show *
+import gpio
 import io
 import net
 import net.tcp
@@ -136,24 +137,44 @@ run-test:
 // ready for the next test or a firmware OTA. See shared.toit for the wire
 // format.
 
+class Ec618Control:
+  port/uart.Port
+  tx_/gpio.Pin
+  rx_/gpio.Pin
+
+  constructor id/int --large-buffers/bool=false:
+    tx-pad := id == 0 ? 30 : (id == 1 ? 34 : 26)
+    rx-pad := id == 0 ? 29 : (id == 1 ? 33 : 25)
+    tx_ = ec618.Ec618.pad tx-pad
+    rx_ = ec618.Ec618.pad rx-pad
+    port = uart.Port
+        --tx=tx_
+        --rx=rx_
+        --baud-rate=115200
+        --large-buffers=large-buffers
+
+  close -> none:
+    port.close
+    rx_.close
+    tx_.close
+
 /**
 Opens the UART to which the firmware redirects `print`.
 
 The agent's control channel and the test's print output share that wire. The
   controller follows the anchor record's console byte through
   $ec618.console-uart-id, so changing the provisioned console does not require a
-  change to this agent.
+  change to this agent. The returned owner closes both the UART controller and
+  its internally created pad objects.
 */
-open-control-uart -> uart.Port:
+open-control-uart -> Ec618Control:
   id := ec618.console-uart-id
   // --large-buffers: the port OPENS at 115200 (which would auto-select the
   // small 8 KiB ring) but CMD-BAUD later hops it to ~921600 for bulk
   // transfers — and a container install must ride out multi-hundred-ms
   // flash stalls on RX buffering alone (no flow control). 32 KiB matches
   // what the old blob driver always allocated.
-  if id == 0: return ec618.Ec618.uart0 --baud-rate=115200 --large-buffers
-  if id == 1: return ec618.Ec618.uart1 --baud-rate=115200 --large-buffers
-  if id == 2: return ec618.Ec618.uart2 --baud-rate=115200 --large-buffers
+  if 0 <= id <= 2: return Ec618Control id --large-buffers
   throw "mini-jag needs a print UART (build with CONFIG_TOIT_EC618_PRINT_UART=1)"
 
 main-ec618:
@@ -170,8 +191,8 @@ main-ec618:
   // The lane + any open failure go to the CONSOLE (print), which is
   // visible even when the control lane itself is the thing that broke.
   print "[mini-jag] starting; control uart=$ec618.console-uart-id"
-  port/uart.Port? := null
-  open-error := catch: port = open-control-uart
+  control/Ec618Control? := null
+  open-error := catch: control = open-control-uart
   if open-error:
     print "[mini-jag] control uart open FAILED: $open-error"
     throw open-error
@@ -186,17 +207,20 @@ main-ec618:
       sleep --ms=45_000
       if not primary-contact_:
         e := catch:
-          rescue := ec618.Ec618.uart2 --baud-rate=115200
-          // The rescue must NEVER starve the tests of UART2: release the
-          // controller the moment the PRIMARY channel hears the host
-          // (silence windows are routine in the rig's watchdog-recovery
-          // flow, so the rescue arms regularly on healthy rigs too).
-          task --background::
-            while not primary-contact_: sleep --ms=1_000
-            catch: rescue.close  // Unblocks the rescue serve loop.
-          serve rescue --primary=false
+          rescue := Ec618Control 2
+          try:
+            // The rescue must NEVER starve the tests of UART2: release the
+            // controller the moment the PRIMARY channel hears the host
+            // (silence windows are routine in the rig's watchdog-recovery
+            // flow, so the rescue arms regularly on healthy rigs too).
+            task --background::
+              while not primary-contact_: sleep --ms=1_000
+              catch: rescue.port.close  // Unblocks the rescue serve loop.
+            serve rescue.port --primary=false
+          finally:
+            rescue.close
         if e: print "[mini-jag] rescue listener stopped: $e"
-  serve port
+  serve control.port
 
 /**
 Serves the request/ack protocol on $port until the device reboots.

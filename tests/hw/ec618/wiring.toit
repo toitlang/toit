@@ -28,6 +28,8 @@ EC618-UART2-TX-PAD ::= 26
 EC618-UART2-RX-PAD ::= 25
 ESP32-UART2-RX-PIN ::= 27
 ESP32-UART2-TX-PIN ::= 14
+ESP32-UART2-RX-NET-PINS ::= [27, 21]
+ESP32-UART2-TX-NET-PINS ::= [14, 32]
 
 // UART2 RS485 direction and the open-drain regression share the PAD33 wire.
 EC618-UART2-DIRECTION-PAD ::= 33
@@ -85,6 +87,32 @@ ESP32-GPIO15-ALT-PIN ::= 18
 
 // Safe ESP32 inputs physically connected to EC618 GPIO-capable pads.
 ESP32-GPIO-OBSERVATION-PINS ::= [27, 21, 14, 16, 4, 13, 33, 32, 23, 22, 19, 18, 17, 2]
+
+// Every distinct GPIO-capable dev-board net:
+//   [EC618 PAD, direct ESP32 GPIOs, optional observed coupled GPIOs].
+// The duplicated GPIO10/GPIO11 board contacts are the same physical nets, so
+// PAD25 and PAD26 each intentionally have two ESP32 observers.
+// The powered BMP280 fixture couples SDA/SCL/power transitions; the third
+// element on PAD23/PAD24 records that observed cluster without claiming extra
+// direct wires.
+GPIO-TEST-WIRES ::= [
+  [26, ESP32-UART2-RX-NET-PINS],
+  [25, ESP32-UART2-TX-NET-PINS],
+  [42, [13]],
+  [23, [33], [13, 33, 22]],
+  [16, [23]],
+  [24, [22], [13, 33, 22]],
+  [44, [19]],
+  [14, [18]],
+  [13, [17]],
+  [47, [2]],
+  [34, [4]],
+  [33, [16]],
+]
+
+// Dev-board nets used for programmable pull verification.
+EC618-GPIO-PULL-DOWN-TEST-PAD ::= 42
+EC618-GPIO-PULL-UP-TEST-PAD ::= 34
 
 // PWM observation nets.
 EC618-TIMER0-PAD ::= 16

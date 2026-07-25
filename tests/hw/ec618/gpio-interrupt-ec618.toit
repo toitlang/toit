@@ -36,7 +36,6 @@ main:
   sleep --ms=100
 
   // PAD26 is input-only here; the ESP32 drives it push-pull, so no pull.
-  // (PAD26 is pull-up-only anyway; see gpio-pull.)
   pin := gpio.Pin wiring.EC618-GPIO11-PAD --input
 
   count-pulses control pin 10 "50Hz"
