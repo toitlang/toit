@@ -21,6 +21,7 @@
 #include "../primitive.h"
 #include "../process.h"
 #include "../resource.h"
+#include "../resource_pool.h"
 
 extern "C" {
   #include "adc.h"
@@ -44,6 +45,8 @@ namespace toit {
 //   channel 1 -> AIO4  (board "ADC1")
 // VBAT and the internal thermal sensor are separate channels; not exposed yet.
 static const int kNumChannels = 2;
+static ResourcePool<int, -1> adc_channels(0, 1);
+static bool trim_loaded = false;
 
 static AdcChannel_e aio_channel(int channel) {
   return channel == 0 ? ADC_CHANNEL_AIO3 : ADC_CHANNEL_AIO4;
@@ -97,6 +100,14 @@ class AdcResource : public SimpleResource {
   AdcResource(SimpleResourceGroup* group, int channel, float ratio)
       : SimpleResource(group), channel_(channel), ratio_(ratio) {}
 
+  ~AdcResource() override {
+    {
+      Locker locker(OS::global_mutex());
+      ADC_channelDeInit(aio_channel(channel_), ADC_USER_APP);
+    }
+    adc_channels.put(channel_);
+  }
+
   int channel() const { return channel_; }
   float ratio() const { return ratio_; }
 
@@ -137,28 +148,42 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
+  if (!adc_channels.take(channel)) FAIL(ALREADY_IN_USE);
+  bool channel_handed_to_resource = false;
+  Defer release_channel {
+    [&] {
+      if (!channel_handed_to_resource) adc_channels.put(channel);
+    }
+  };
+
   const AioRange* range = select_range(max);
 
   // Load the efuse ADC trim once so HAL_ADC_CalibrateRawCode uses the
   // chip's calibrated transfer curve instead of its linear fallback.
-  static bool trim_loaded = false;
-  if (!trim_loaded) {
-    trimAdcSetGolbalVar();
-    trim_loaded = true;
-  }
+  // ADC setup is global vendor state, so serialize initialization of the two
+  // otherwise independent application channels.
+  {
+    Locker locker(OS::global_mutex());
+    if (!trim_loaded) {
+      trimAdcSetGolbalVar();
+      trim_loaded = true;
+    }
 
-  AdcConfig_t config;
-  ADC_getDefaultConfig(&config);
-  config.channelConfig.aioResDiv = range->resdiv;
-  ADC_channelInit(aio_channel(channel), ADC_USER_APP, &config,
-                  channel == 0 ? adc_callback_0 : adc_callback_1);
+    AdcConfig_t config;
+    ADC_getDefaultConfig(&config);
+    config.channelConfig.aioResDiv = range->resdiv;
+    ADC_channelInit(aio_channel(channel), ADC_USER_APP, &config,
+                    channel == 0 ? adc_callback_0 : adc_callback_1);
+  }
 
   AdcResource* resource = _new AdcResource(group, channel, range->ratio);
   if (resource == null) {
+    Locker locker(OS::global_mutex());
     ADC_channelDeInit(aio_channel(channel), ADC_USER_APP);
     FAIL(MALLOC_FAILED);
   }
 
+  channel_handed_to_resource = true;
   proxy->set_external_address(resource);
   return proxy;
 }
@@ -186,7 +211,6 @@ PRIMITIVE(get_raw) {
 
 PRIMITIVE(close) {
   ARGS(AdcResource, resource);
-  ADC_channelDeInit(aio_channel(resource->channel()), ADC_USER_APP);
   resource->resource_group()->unregister_resource(resource);
   resource_proxy->clear_external_address();
   return process->null_object();
