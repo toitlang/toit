@@ -44,11 +44,6 @@ extern "C" {
   #include "task.h"        // xTaskCreate — the software-watchdog task.
   #include "cmsis_os2.h"   // osDelay / osKernelGetTickCount.
 
-  // From ps_lib_api.h. CFUN=0 turns the modem off (RF + PS stack) — the
-  // bulk of CP (cellular-processor) activity. The dual-slot OTA turns it
-  // off during the flash (the modem_set_function primitive).
-  int appSetCFUN(int fun);
-
   // From the SDK FOTA layer (luat_flash_ctrl_fw_sectors -> this). Must be
   // set (1) around any erase/write into the protected AP-image region;
   // it is the mode the SDK FOTA uses to write firmware there while the
@@ -563,16 +558,6 @@ PRIMITIVE(slot_program_mode) {
   return process->null_object();
 }
 
-// Set modem functionality via appSetCFUN (0 = off). The dual-slot OTA
-// turns the modem off for the duration of the flash, because sustained
-// AP flash+UART activity with the modem on resets the chip after a few
-// seconds because it misses a CP real-time deadline.
-// Returns the SDK result code.
-PRIMITIVE(modem_set_function) {
-  ARGS(int, fun);
-  return Smi::from(appSetCFUN(fun));
-}
-
 PRIMITIVE(wakeup_pin_values) {
   // Live levels of the AON wakeup pads (WAKEUP_PAD0.. as a bitmask) — the
   // AON-domain pads are not readable through the plain GPIO controller.
@@ -846,7 +831,6 @@ PRIMITIVE(slot_mark_valid) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_mark_invalid_and_reset) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_trial) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_program_mode) { FAIL(UNIMPLEMENTED); }
-PRIMITIVE(modem_set_function) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(reset_reason) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(wakeup_cause) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(wakeup_pad_configure) { FAIL(UNIMPLEMENTED); }

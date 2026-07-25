@@ -779,11 +779,11 @@ writes the same way the SDK's own full-OTA does (it writes into
 `0x214000` after `fotaNvmNfsPeInit(1)`). The receiver brackets the slot
 erase/write with `program-mode 1 … 0`.
 
-The receiver currently turns the modem off (`appSetCFUN(0)`) for the
-flash window. That was a workaround for the chip reset; with a matching
-CP image (see RESOLVED) the modem can stay on, so it is no longer
-required — left in place only because the modem-off path is the one that
-has been validated end-to-end.
+The receiver originally turned the modem off (`appSetCFUN(0)`) for the
+flash window as a workaround for the chip reset. With a matching CP image
+(see RESOLVED), the modem can stay on. The workaround and its OTA-specific
+primitive were therefore removed; modem control remains internal to the
+cellular driver and deep-sleep implementation.
 
 ## RESOLVED (2026-05-29): the "modem-on ~4 s flash deadline" was a MISMATCHED CP IMAGE
 

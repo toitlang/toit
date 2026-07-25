@@ -183,14 +183,3 @@ Required around any $erase-inactive-sector / $write-inactive into the
 */
 program-mode on/int -> none:
   #primitive.ec618.slot-program-mode
-
-/**
-Sets modem functionality via the SDK's `appSetCFUN` ($fun; 0 turns the
-  modem/PS off). Returns the SDK result code.
-
-The dual-slot OTA turns the modem off for the flash, because sustained
-  AP flash + UART activity with the modem on resets the chip after a few
-  seconds (an as-yet-unexplained CP real-time deadline).
-*/
-modem-set-function fun/int -> int:
-  #primitive.ec618.modem-set-function

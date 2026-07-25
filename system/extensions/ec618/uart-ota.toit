@@ -76,13 +76,6 @@ main:
   // luat_flash_ctrl_fw_sectors) before writing firmware there. Without
   // it, slot writes reset the chip almost immediately even modem-off.
   slot.program-mode 1
-  // Modem OFF for the duration of the OTA. This is currently REQUIRED:
-  // with the modem on, sustained AP flash+UART activity resets the chip
-  // after ~3-4 s because it misses a CP real-time deadline. A full UART OTA
-  // takes ~34 s, so it can't run modem-on yet. TEST-ONLY for a UART
-  // transport; a cellular OTA would need the modem up (open work).
-  modem-rc := slot.modem-set-function 0
-  print "[ota] modem off (appSetCFUN 0) rc=$modem-rc"
   port := Ec618.uart1 --baud-rate=115200
   reader := port.in
   out := port.out

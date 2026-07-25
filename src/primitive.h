@@ -438,7 +438,6 @@ namespace toit {
   PRIMITIVE(slot_mark_invalid_and_reset, 0)  \
   PRIMITIVE(slot_trial, 0)                   \
   PRIMITIVE(slot_program_mode, 1)            \
-  PRIMITIVE(modem_set_function, 1)           \
   PRIMITIVE(reset_reason, 0)                 \
   PRIMITIVE(watchdog_init, 1)                \
   PRIMITIVE(watchdog_feed, 0)                \
