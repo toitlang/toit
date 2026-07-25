@@ -192,10 +192,14 @@ static bool claim_gpio_bit(int pad, int gpio_bit) {
   return true;
 }
 
-static bool gpio_owned_by_other_pad(int gpio_bit, int pad) {
-  Locker locker(OS::global_mutex());
+static bool gpio_owned_by_other_pad_locked(int gpio_bit, int pad) {
   uint8_t owner = gpio_bit_owners[gpio_bit];
   return owner != 0 && owner != pad + 1;
+}
+
+static bool gpio_owned_by_other_pad(int gpio_bit, int pad) {
+  Locker locker(OS::global_mutex());
+  return gpio_owned_by_other_pad_locked(gpio_bit, pad);
 }
 
 static bool is_open_drain(int pad) {
@@ -285,10 +289,14 @@ static void gpio_aon_power_release(int pad) {
 // See pad_table_ec618.h. Lives here because this is the file with the SDK
 // GPIO includes; all pad-muxing drivers (GPIO, I2C, SPI, PWM) share it.
 void pad_release(int pad) {
+  // Keep both ownership pools stable until every controller-register and mux
+  // transition is complete. Otherwise a sibling could claim the shared GPIO
+  // bit after the owner check but before this cleanup made the bit an input.
+  Locker locker(OS::global_mutex());
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit >= 0) {
     // Do not disturb a sibling that currently owns the shared GPIO bit.
-    if (!gpio_owned_by_other_pad(gpio_bit, pad)) {
+    if (!gpio_owned_by_other_pad_locked(gpio_bit, pad)) {
       GPIO_interruptConfig(to_port(gpio_bit), to_pin_index(gpio_bit),
                            GPIO_INTERRUPT_DISABLED);
       GpioPinConfig_t config;
