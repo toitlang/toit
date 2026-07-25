@@ -350,25 +350,26 @@ calls still in the glue.
   115200..921600 in both modes. The earlier sweep exposed the generic UART
   library's ESP32-only `high-priority` TX flag at baud >= 460800; EC618 now
   ignores that flag.
-- **`uart2-bigdata` throughput + leak test** (2026-06-10): 256 KiB per
-  direction per baud, deterministic stream + CRC, no echo (each side only
-  reads or only writes — per Florian: the ESP32 can't echo fast enough at high
-  baud, and the EC618 lockup case was simultaneous TX+RX, which gets its own
-  test). TX clean at all bauds; RX clean through 3 MBd; **4 MBd RX loses 8–21
-  bytes per 256 KiB** (known-issues #4). Reports max-read (ring fill),
-  first-bad offset, and the driver error counter per phase.
-- **`uart2-ring` driver characterization** (2026-06-10, passing): locks in the
-  measured PLAT RX-ring behavior — exactly 32 KiB capacity (independent of
-  `RxCacheLen`), overflow silently discards the ENTIRE buffer, error callback
-  never fires, and **one overflow kills RX on the port until reopen** (set-baud
-  does not recover it). If an SDK change moves these, this test says so.
-- **`uart2-duplex` full-duplex stress** (2026-06-10): EC618 sends AND receives
-  256 KiB concurrently per baud — the historical lockup case, now split out of
-  bigdata per Florian. Result: **no lockup** (agent survives, watchdog never
-  fires), TX is flawless (ESP32 CRC-verifies all 256 KiB at every baud), but
-  **RX delivers 0 bytes** — the receiver falls behind the 32 KiB ring once and
-  the overflow-wedge (known-issues #4) kills RX for the rest of the run. The
-  test stays red until the RX path is fixed.
+- **`uart2-bigdata` throughput + leak test** (reworked and HW-verified
+  2026-07-25): per baud, the EC618 sends 256 KiB and receives one continuous
+  1 MiB deterministic stream. The phases are intentionally one-directional,
+  so the test does not rely on a peer echo implementation. Both boards
+  acknowledge each transition over the framed UART1 lane and validate
+  count+CRC. The 921600..4 MBd sweep is clean in both directions with zero
+  UART errors; 6.55 MiB moves with 1656 bytes of retained-heap growth.
+- **`uart2-ring` driver contract** (reworked and HW-verified 2026-07-25):
+  acknowledged bursts accumulate while the application reads only UART1.
+  The ring holds 32767 bytes plus at most one armed chunk and the hardware-FIFO
+  slack; the measured 40000-byte burst retained the exact 32767-byte prefix
+  and reported the 7233 dropped-newest bytes through `Port.errors`. Subsequent
+  receives pass without reopening, including after set-baud and explicit
+  close/reopen.
+- **`uart2-duplex` full-duplex stress** (reworked and HW-verified 2026-07-25):
+  both peers receive before an acknowledged go command releases simultaneous
+  256 KiB deterministic streams. Each side reports count+CRC through the
+  separate control lane. The test is clean with zero errors at 921600, 2 MBd,
+  and 3 MBd. The shared sender yields between chunks so the cooperatively
+  scheduled peer receiver can drain its ring.
 - **Dual-board harness** validated end-to-end (ESP32 Jaguar + EC618 mini-jag).
 - **`gpio-output`** (EC618 drives GPIO11/PAD26 square wave, ESP32 IO27 counts
   edges) — **passing, committed**.
@@ -542,16 +543,18 @@ rule no longer applies:
 - [x] Implement + test **PWM** (EC618 drives, ESP32 measures frequency/duty;
       pwm_ec618.cc on TIMER0/1/2/4, generic `gpio.pwm` API).
 - [x] **UART2** round-trip: echo sweep 9600..4 MHz (both modes) + bigdata
-      256 KiB/direction + ring characterization.
-- [ ] **UART RX overflow-wedge** (known-issues #4, the big one): try
-      `Uart_RxBufferClear` as an unwedge; real fix = move RX onto the open
-      CMSIS `bsp_usart.c` driver with our own ring; then RTS/CTS flow control.
-- [ ] **UART2 4 MBd RX loss** (known-issues #4): investigate the IRQ-latency
-      source. RTS/CTS testing is SKIPPED for now (see the wiring note above):
+      256 KiB TX/continuous 1 MiB RX per baud + exact ring contract.
+- [x] **UART RX overflow recovery** (known-issues #4): a 40000-byte no-reader
+      burst retains the ring-capacity prefix (plus bounded driver/FIFO slack),
+      counts the dropped-newest bytes, and the same open port receives the
+      next burst cleanly.
+- [x] **UART2 4 MBd sustained RX** (known-issues #4): continuous 1 MiB stream
+      passes with exact CRC/count and zero errors. RTS/CTS testing remains
+      skipped for now (see the wiring note above):
       UART1's PAD31/32 don't reach the ESP32 and no board with exposed
       MAIN_RTS/MAIN_CTS pins is available (Florian, 2026-06-10).
-- [x] **UART full-duplex stress** test written + run (uart2-duplex): no
-      lockup; TX clean; RX dead via the overflow-wedge — red until #4 is fixed.
+- [x] **UART full-duplex stress** (uart2-duplex): exact 256 KiB count+CRC in
+      both directions with zero errors at 921600, 2 MBd, and 3 MBd.
 - [x] **UART configs**: parity, stop bits, data bits + error counter on
       induced parity errors (uart2-config, all 49 configs pass).
 - [x] **RS485 half-duplex** (uart2-rs485): DE timing verified at the ESP32;

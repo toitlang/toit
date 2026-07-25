@@ -2,140 +2,74 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import crypto.crc show Crc32
-import gpio
 import monitor
-import uart
 
-import .wiring as wiring
+import .framed-control show FramedChannel
+import .uart-rig as rig
+import .uart-stream as stream
 
 /**
-ESP32 half of the UART2 big-data / throughput / leak test.
+ESP32 command server for UART2 sustained, ring, and duplex tests.
 
-Partner for uart2-bigdata-ec618.toit. Listens on the CONTROL lane (the EC618's
-  UART1 TX on IO4) for newline commands and acts on each over the TEST UART:
-  "B <baud>"  (re)open the test UART at <baud>
-  "R <n>"     receive <n> bytes, CRC-32 them, reply "C <crc> <count>"
-  "S <n>"     send <n> deterministic bytes ($gen-byte)
-  "D <n>"     full-duplex: send <n> AND receive <n> concurrently. The verdict
-              for the received stream goes to the CONSOLE only — an in-band
-              reply would be eaten by the EC618's receiver if it lost bytes.
-  "Q"         quit
-  It never echoes, so it never has to read and write at once: under "R" it only
-  reads + checksums (native CRC over whole chunks), under "S" it only writes. That
-  keeps the ESP32 off the critical path so the test measures the EC618 UART, not a
-  full-duplex echo bottleneck.
-
+The bidirectional UART1 control lane is length-delimited and CRC-protected.
+  Raw UART2 data only starts after both peers acknowledge the phase.
 */
 
 CONTROL-BAUD ::= 115200
-CHUNK ::= 4096
-
-gen-byte i/int -> int: return (i * 31 + 7) & 0xff
+CONTROL-TIMEOUT-MS ::= 35_000
 
 main:
-  control := uart.Port --tx=null --rx=(gpio.Pin wiring.ESP32-UART1-RX-PIN) --baud-rate=CONTROL-BAUD
-  print "uart2-bigdata-esp32: control RX on IO$(wiring.ESP32-UART1-RX-PIN) (test RX IO$(wiring.ESP32-UART2-RX-PIN) / TX IO$(wiring.ESP32-UART2-TX-PIN))"
-  reader := LineReader control
+  control-owner := rig.esp32-uart 1 CONTROL-BAUD
+  control := FramedChannel control-owner.port
+  test-owner/rig.OwnedPort? := null
 
-  test/uart.Port? := null
-  rx/gpio.Pin? := null
-  tx/gpio.Pin? := null
   try:
     while true:
-      line := reader.next
-      if line == "": continue
-      parts := line.split " "
-      cmd := parts[0]
-      // The control wire carries garbage when the EC618 reboots (watchdog
-      // resets between runs) or hops bauds: ignore anything that isn't a
-      // well-formed command, and never act on R/S/D/Q before the first B
-      // — a stray byte decoding as 'Q' used to kill the helper mid-rig.
-      if cmd == "B" and parts.size == 2:
-        baud := int.parse parts[1] --if-error=: continue
-        if test: test.close
-        if rx: rx.close
-        if tx: tx.close
-        rx = gpio.Pin wiring.ESP32-UART2-RX-PIN
-        tx = gpio.Pin wiring.ESP32-UART2-TX-PIN
-        test = uart.Port --rx=rx --tx=tx --baud-rate=baud
-        print "uart2-bigdata-esp32: test UART @ $baud"
-      else if test == null:
-        continue
-      else if cmd == "R" and parts.size == 2:
-        n := int.parse parts[1] --if-error=: continue
-        result := recv-stream test n         // [crc, count]
-        test.out.write "C $result[0] $result[1]\n"
-        print "uart2-bigdata-esp32: R $n -> crc=$result[0] count=$result[1]"
-      else if cmd == "S" and parts.size == 2:
-        n := int.parse parts[1] --if-error=: continue
-        send-stream test n
-        print "uart2-bigdata-esp32: S $n done"
-      else if cmd == "D" and parts.size == 2:
-        n := int.parse parts[1] --if-error=: continue
+      message := control.receive --timeout-ms=120_000
+      parts := message.split " "
+      command := parts[0]
+
+      if command == "HELLO" and parts.size == 1:
+        control.send "READY"
+        print "uart2-bigdata-esp32: control ready"
+      else if command == "BAUD" and parts.size == 2:
+        baud := int.parse parts[1]
+        if test-owner: test-owner.close
+        test-owner = rig.esp32-uart 2 baud
+        control.send "READY $baud"
+        print "uart2-bigdata-esp32: UART2 ready at $baud"
+      else if command == "RECEIVE" and parts.size == 2:
+        n := int.parse parts[1]
+        if not test-owner: throw "test UART is not open"
+        control.send "READY-RECEIVE $n"
+        print "uart2-bigdata-esp32: receiving $n"
+        result := stream.recv-stream test-owner.port n
+        control.send "RECEIVED $result[0] $result[1]"
+        print "uart2-bigdata-esp32: received $result[1]/$n"
+      else if command == "SEND" and parts.size == 2:
+        n := int.parse parts[1]
+        if not test-owner: throw "test UART is not open"
+        control.send "READY-SEND $n"
+        control.expect "GO-SEND $n" --timeout-ms=CONTROL-TIMEOUT-MS
+        print "uart2-bigdata-esp32: sending $n"
+        stream.send-stream test-owner.port n
+        control.send "SENT $n"
+      else if command == "DUPLEX" and parts.size == 2:
+        n := int.parse parts[1]
+        if not test-owner: throw "test UART is not open"
+        control.send "READY-DUPLEX $n"
+        control.expect "GO-DUPLEX $n" --timeout-ms=CONTROL-TIMEOUT-MS
         received := monitor.Latch
-        task::
-          received.set (recv-stream test n)
-        send-stream test n
-        result := received.get               // [crc, count]
-        print "uart2-bigdata-esp32: D $n -> crc=$result[0] count=$result[1]"
-      else if cmd == "Q":
-        break
-  finally:
-    if test: test.close
-    control.close
-    print "uart2-bigdata-esp32: done"
-
-// Sends n bytes of the deterministic stream.
-send-stream port/uart.Port n/int -> none:
-  off := 0
-  while off < n:
-    size := min CHUNK (n - off)
-    port.out.write (ByteArray size: gen-byte (off + it))
-    off += size
-
-// Reads exactly n bytes (or fewer on timeout), returning [crc-32, bytes-read].
-recv-stream port/uart.Port n/int -> List:
-  crc := Crc32
-  count := 0
-  deadline := Time.monotonic-us + 12_000_000
-  while count < n:
-    if Time.monotonic-us > deadline: break
-    chunk/ByteArray? := null
-    catch: chunk = with-timeout --ms=2000: port.in.read
-    if chunk == null: break
-    take := min chunk.size (n - count)
-    crc.add chunk 0 take
-    count += take
-  return [crc.get-as-int, count]
-
-// Buffers a UART's bytes and hands out newline-terminated lines.
-class LineReader:
-  port_/uart.Port
-  pending_/string := ""
-
-  constructor .port_:
-
-  // Returns the next line (without the newline), or "Q" if the port closes.
-  next -> string:
-    while true:
-      nl := pending_.index-of "\n"
-      if nl >= 0:
-        line := pending_[..nl].trim
-        pending_ = pending_[nl + 1 ..]
-        return line
-      chunk/ByteArray? := null
-      if pending_ == "":
-        chunk = port_.in.read
+        task:: received.set (stream.recv-stream test-owner.port n)
+        stream.send-stream test-owner.port n
+        result := received.get
+        control.send "DUPLEXED $result[0] $result[1]"
+      else if command == "Q":
+        control.send "BYE"
+        return
       else:
-        // A partial line that goes idle is reset junk — the EC618 boot ROM
-        // sprays a newline-less banner on UART1 at every reset. Discard it
-        // so it cannot glue onto (and eat) the next real command; real
-        // commands arrive in a single write, never with an idle gap inside.
-        e := catch: chunk = with-timeout --ms=300: port_.in.read
-        if e:
-          print "uart2-bigdata-esp32: discarding $pending_.size idle junk bytes"
-          pending_ = ""
-          continue
-      if chunk == null: return "Q"
-      pending_ += chunk.to-string-non-throwing
+        throw "invalid control message '$message'"
+  finally:
+    if test-owner: test-owner.close
+    control-owner.close
+    print "uart2-bigdata-esp32: done"
