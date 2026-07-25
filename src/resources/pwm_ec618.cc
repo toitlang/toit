@@ -28,6 +28,7 @@ extern "C" {
   #include "clock.h"
   #include "driver_gpio.h"
   #include "ec618.h"
+  #include "gpio.h"
   #include "slpman.h"  // slpManAONIOPowerOn for the AON-domain PWM pads.
   #include "timer.h"
 }
@@ -88,6 +89,8 @@ static int pad_to_timer(int pad) {
   return -1;
 }
 
+static void apply_output(int timer, int pad, uint32_t period, double factor);
+
 class PwmResource : public Resource {
  public:
   TAG(PwmResource);
@@ -100,19 +103,17 @@ class PwmResource : public Resource {
     pwm_timers.put(timer_);
   }
 
-  int timer() const { return timer_; }
-  int pad() const { return pad_; }
   double factor() const { return factor_; }
-  void set_factor(double factor) { factor_ = factor; }
+  void apply(uint32_t period, double factor) {
+    apply_output(timer_, pad_, period, factor);
+    factor_ = factor;
+  }
 
  private:
   int timer_;
   int pad_;
   double factor_;
 };
-
-static void program_duty(int timer, uint32_t period, double factor);
-static void apply_duty(int timer, uint32_t period, double factor);
 
 class PwmResourceGroup : public ResourceGroup {
  public:
@@ -132,8 +133,7 @@ class PwmResourceGroup : public ResourceGroup {
     uint32_t p = period();
     for (Resource* r : resources()) {
       PwmResource* channel = static_cast<PwmResource*>(r);
-      EIGEN_TIMER(channel->timer())->TMR[1] = p - 1;
-      apply_duty(channel->timer(), p, channel->factor());
+      channel->apply(p, channel->factor());
     }
   }
 
@@ -142,52 +142,44 @@ class PwmResourceGroup : public ResourceGroup {
   uint32_t max_frequency_;
 };
 
-// Programs the duty threshold. The hardware holds the output low for
-// counts [0..TMR[0]] and high until the period register TMR[1]
-// (mode MCS=2, as in the SDK's TIMER_setupPwm). TMR[0] > TMR[1] gives a
-// constant low. The SDK's TMR[0] == TMR[1] "constant high" trick does
-// NOT work: measured on hardware it yields constant LOW (the two
-// matches apparently cancel), and TMR[0] == 0 is constant low as well
-// (the match collides with the period reset). A 1.0 duty factor is
-// therefore programmed as the closest the mode can express — high with
-// a two-source-tick (77 ns) low notch per period.
+// Programs a fractional duty threshold. The hardware holds the output low
+// for counts [0..TMR[0]] and high until the period register TMR[1].
 static void program_duty(int timer, uint32_t period, double factor) {
   uint32_t high_ticks = (uint32_t)(period * factor + 0.5);
-  uint32_t tmr0;
-  if (high_ticks == 0) {
-    tmr0 = period;               // Constant low.
-  } else if (high_ticks >= period - 1) {
-    tmr0 = 1;                    // Maximum expressible high time.
-  } else {
-    tmr0 = period - high_ticks - 1;
-  }
-  EIGEN_TIMER(timer)->TMR[0] = tmr0;
+  if (high_ticks == 0) high_ticks = 1;
+  if (high_ticks >= period) high_ticks = period - 1;
+  EIGEN_TIMER(timer)->TMR[0] = period - high_ticks - 1;
 }
 
-// Updates the duty threshold of a RUNNING timer. The constant-low state
-// is a one-way trap when written live: with TMR[0] > TMR[1] the match0
-// event never fires, and the hardware apparently latches compare-register
-// writes on the match event — so a new TMR[0] never takes effect and the
-// output stays low forever (measured; the SDK's TIMER_updatePwmDutyCycle
-// has the same trap). Leaving that state needs a timer restart, which is
-// just the TCCR enable bit (config and period are retained).
-static void apply_duty(int timer, uint32_t period, double factor) {
-  TIMER_TypeDef* t = EIGEN_TIMER(timer);
-  bool wedged = t->TMR[0] > t->TMR[1];
-  program_duty(timer, period, factor);
-  if (wedged) {
-    TIMER_stop(timer);
-    TIMER_start(timer);
-  }
+static void drive_static_level(int pad, bool high) {
+  int gpio_bit = pad_to_gpio(pad);
+  ASSERT(gpio_bit >= 0);
+  GpioPinConfig_t config = {};
+  config.pinDirection = GPIO_DIRECTION_OUTPUT;
+  config.misc.initOutput = high;
+  GPIO_pinConfig(gpio_bit >> 4, gpio_bit & 0xf, &config);
+  GPIO_IomuxEC618(pad, pad_gpio_mux(pad), 0, 0);
 }
 
-static void program_pwm(int timer, uint32_t period, double factor) {
+static void apply_output(int timer, int pad, uint32_t period, double factor) {
+  TIMER_stop(timer);
+  if (factor == 0.0 || factor == 1.0) {
+    // The timer cannot express a dependable endpoint: equal match values
+    // have hardware-state-dependent ordering, while the closest unequal
+    // values leave a short notch. A static GPIO level is exact and also
+    // avoids the constant-low compare-register update trap.
+    drive_static_level(pad, factor == 1.0);
+    return;
+  }
+
   EIGEN_TIMER(timer)->TMR[1] = period - 1;
   program_duty(timer, period, factor);
   EIGEN_TIMER(timer)->TIVR = 0;
   EIGEN_TIMER(timer)->TCTLR =
       (EIGEN_TIMER(timer)->TCTLR & ~TIMER_TCTLR_MCS_Msk) |
       EIGEN_VAL2FLD(TIMER_TCTLR_MCS, 2u) | TIMER_TCTLR_PWMOUT_Msk;
+  TIMER_start(timer);
+  GPIO_IomuxEC618(pad, 5, 0, 0);  // ALT5 = the timer's PWM output.
 }
 
 MODULE_IMPLEMENTATION(pwm, MODULE_PWM)
@@ -242,9 +234,7 @@ PRIMITIVE(start) {
   // and defaulting to 1.8 V — same rule as the GPIO path; idempotent.
   if (pad_is_aon(pad)) pad_aon_power_on();
 
-  GPIO_IomuxEC618(pad, 5, 0, 0);  // ALT5 = the timer's PWM output.
-  program_pwm(timer, group->period(), factor);
-  TIMER_start(timer);
+  channel->apply(group->period(), factor);
 
   group->register_resource(channel);
   proxy->set_external_address(channel);
@@ -260,8 +250,7 @@ PRIMITIVE(factor) {
 PRIMITIVE(set_factor) {
   ARGS(PwmResourceGroup, group, PwmResource, channel, double, factor);
   if (factor < 0.0 || factor > 1.0) FAIL(INVALID_ARGUMENT);
-  apply_duty(channel->timer(), group->period(), factor);
-  channel->set_factor(factor);
+  channel->apply(group->period(), factor);
   return process->null_object();
 }
 
