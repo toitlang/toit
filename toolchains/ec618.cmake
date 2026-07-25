@@ -32,9 +32,13 @@ set(FIND_LIBRARY_USE_LIB64_PATHS OFF)
 if(NOT EC618_GCC_PATH)
   message(FATAL_ERROR "EC618_GCC_PATH must name the SDK-pinned GNU Arm toolchain")
 endif()
-set(CMAKE_C_COMPILER "${EC618_GCC_PATH}/bin/arm-none-eabi-gcc" CACHE FILEPATH "" FORCE)
-set(CMAKE_CXX_COMPILER "${EC618_GCC_PATH}/bin/arm-none-eabi-g++" CACHE FILEPATH "" FORCE)
-set(CMAKE_ASM_COMPILER "${EC618_GCC_PATH}/bin/arm-none-eabi-gcc" CACHE FILEPATH "" FORCE)
+set(EC618_TOOL_SUFFIX "")
+if(CMAKE_HOST_WIN32)
+  set(EC618_TOOL_SUFFIX ".exe")
+endif()
+set(CMAKE_C_COMPILER "${EC618_GCC_PATH}/bin/arm-none-eabi-gcc${EC618_TOOL_SUFFIX}" CACHE FILEPATH "" FORCE)
+set(CMAKE_CXX_COMPILER "${EC618_GCC_PATH}/bin/arm-none-eabi-g++${EC618_TOOL_SUFFIX}" CACHE FILEPATH "" FORCE)
+set(CMAKE_ASM_COMPILER "${EC618_GCC_PATH}/bin/arm-none-eabi-gcc${EC618_TOOL_SUFFIX}" CACHE FILEPATH "" FORCE)
 
 # --- PLAT SDK paths ---
 # The PLAT SDK comes from our fork of the openLuat CSDK:
