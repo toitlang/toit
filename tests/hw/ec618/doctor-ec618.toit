@@ -22,7 +22,7 @@ main:
   active := string.from-rune slot.active
   print "doctor: booted slot: $active (trial=$slot.trial)"
   print "doctor: slot size: 0x$(%x slot.SLOT-SIZE) (from the anchor table)"
-  console := ec618.print-uart-id
+  console := ec618.console-uart-id
   print "doctor: console/control uart: $(console < 0 ? "off" : "uart$console") (anchor record byte)"
   print "doctor: reset: $(ec618.reset-reason-name ec618.reset-reason), wake: $(ec618.wakeup-cause-name ec618.wakeup-cause)"
   if slot.SLOT-SIZE <= 0:

@@ -34,13 +34,13 @@ PAD-OUT-OF-RANGE ::= 99  // Beyond kMaxPadIndex.
 // redirect is on, $emit calls $print directly; when it's off, $emit
 // appends here and $flush-output dumps the buffer to UART2 at the end.
 buffered-output_/List := []
-print-uart-id_/int := -1
+console-uart-id_/int := -1
 
 failures := 0
 
 main:
-  print-uart-id_ = ec618.print-uart-id
-  emit "ec618 print-uart-id = $print-uart-id_"
+  console-uart-id_ = ec618.console-uart-id
+  emit "ec618 console-uart-id = $console-uart-id_"
   try:
     run-tests
     if failures == 0:
@@ -125,15 +125,15 @@ run-tests -> none:
 
   // Adapts to whichever UART carries print in this build (or skips if
   // the redirect is disabled entirely).
-  if print-uart-id_ == 0:
+  if console-uart-id_ == 0:
     test "uart0-collides-with-print":
       expect-throws "ALREADY_IN_USE":
         Ec618.uart0 --baud-rate=115200
-  else if print-uart-id_ == 1:
+  else if console-uart-id_ == 1:
     test "uart1-collides-with-print":
       expect-throws "ALREADY_IN_USE":
         Ec618.uart1 --baud-rate=115200
-  else if print-uart-id_ == 2:
+  else if console-uart-id_ == 2:
     test "uart2-collides-with-print":
       expect-throws "ALREADY_IN_USE":
         Ec618.uart2 --baud-rate=115200
@@ -151,7 +151,7 @@ run-tests -> none:
   // the print redirect — the collision check above already covers that
   // case and any further open of UART0 would just bounce on
   // ALREADY_IN_USE.
-  if print-uart-id_ != 0:
+  if console-uart-id_ != 0:
     test "uart0-rts-but-no-cts-ok":
       // Mapping 0 of UART0 has both RTS and CTS pads available; enabling
       // only one is allowed (it just wires up that one direction).
@@ -166,7 +166,7 @@ run-tests -> none:
   // The same mapping checks for UART1. UART1 mapping 0 has both
   // RTS and CTS pads; mapping 1 has only a CTS pad, so requesting RTS
   // on that mapping must be rejected.
-  if print-uart-id_ != 1:
+  if console-uart-id_ != 1:
     test "uart1-rts-but-no-cts-ok":
       port := Ec618.uart1 --rts-enabled --baud-rate=115200
       port.close
@@ -234,7 +234,7 @@ run-tests -> none:
       // UART2's rescue listener and the selected print UART own their pads in
       // the mini-jag envelope. Those mappings are covered by the table/build
       // checks; exercise every unoccupied primary pad here.
-      occupied-pad := pad == 25 or pad == 26 or (print-uart-id_ == 0 and (pad == 29 or pad == 30)) or (print-uart-id_ == 1 and (pad == 33 or pad == 34))
+      occupied-pad := pad == 25 or pad == 26 or (console-uart-id_ == 0 and (pad == 29 or pad == 30)) or (console-uart-id_ == 1 and (pad == 33 or pad == 34))
       if not occupied-pad:
         p := Ec618.gpio gpio
         try:
@@ -310,7 +310,7 @@ expect-throws [block] -> none:
   if caught == null: throw "expected exception, nothing was thrown"
 
 emit line/string -> none:
-  if print-uart-id_ >= 0:
+  if console-uart-id_ >= 0:
     print line
   else:
     buffered-output_.add line
@@ -318,7 +318,7 @@ emit line/string -> none:
 // Writes the buffered output to UART2 when the print redirect is off.
 // A no-op when print is enabled — the lines went straight out via $print.
 flush-output -> none:
-  if print-uart-id_ >= 0: return
+  if console-uart-id_ >= 0: return
   port := Ec618.uart2 --baud-rate=115200
   try:
     buffered-output_.do: | line/string |

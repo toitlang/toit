@@ -86,7 +86,7 @@ typedef struct {
 // and the mini-jag control protocol; ANCHOR_CONSOLE_OFF = no redirect.
 // Per-device provisioning state (gen-anchor --console-uart), preserved by
 // every write; the base reads it before its first print, the VM's
-// print-uart-id primitive and the uart driver's shared-port check follow
+// console-uart-id primitive and the uart driver's shared-port check follow
 // it. Defaults to UART0 when no record exists so an unprovisioned
 // device's halt loop stays visible.
 #define ANCHOR_CONSOLE_OFF ((uint8_t)0xff)

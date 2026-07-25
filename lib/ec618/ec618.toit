@@ -60,8 +60,8 @@ Use this to adapt to the console selected in the running firmware. Opening the
   selected print UART through $Ec618 fails with `ALREADY_IN_USE`, unless the
   firmware permits the port to adopt the console.
 */
-print-uart-id -> int:
-  #primitive.ec618.print-uart-id
+console-uart-id -> int:
+  #primitive.ec618.console-uart-id
 
 /**
 Returns the live levels of the AON wakeup pads as a bitmask (bit N =
@@ -639,7 +639,7 @@ Sets the provisioned console/control UART in the anchor record.
 
 The $id selects UART 0, 1 or 2; 0xff disables the redirect. Takes effect
   on the NEXT boot: the base reads the byte before its first print, and
-  the mini-jag agent follows it via $print-uart-id. Per-device
+  the mini-jag agent follows it via $console-uart-id. Per-device
   provisioning state — it survives OTAs and resets.
 */
 set-console-uart id/int -> none:

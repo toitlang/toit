@@ -20,7 +20,7 @@ namespace compiler {
 
 MODULE_TYPES(ec618, MODULE_EC618)
 
-TYPE_PRIMITIVE_INT(print_uart_id)
+TYPE_PRIMITIVE_INT(console_uart_id)
 TYPE_PRIMITIVE_INT(peek32)
 TYPE_PRIMITIVE_ANY(poke32)
 TYPE_PRIMITIVE_INT(slot_active)

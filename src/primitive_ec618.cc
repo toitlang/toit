@@ -88,7 +88,7 @@ static uintptr_t base_id_xip() {
 
 MODULE_IMPLEMENTATION(ec618, MODULE_EC618)
 
-PRIMITIVE(print_uart_id) {
+PRIMITIVE(console_uart_id) {
   // Returns the UART id (0/1/2) the firmware redirects `print` to, or -1
   // if the redirect was disabled at build time. This lets test programs
   // adapt to whichever firmware variant is loaded without rebuilding.
@@ -832,7 +832,7 @@ namespace toit {
 
 MODULE_IMPLEMENTATION(ec618, MODULE_EC618)
 
-PRIMITIVE(print_uart_id) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(console_uart_id) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(wakeup_pin_values) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_active) { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(slot_size) { FAIL(UNIMPLEMENTED); }

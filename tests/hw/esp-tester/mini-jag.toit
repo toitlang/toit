@@ -141,11 +141,11 @@ Opens the UART to which the firmware redirects `print`.
 
 The agent's control channel and the test's print output share that wire. The
   controller follows the anchor record's console byte through
-  $ec618.print-uart-id, so changing the provisioned console does not require a
+  $ec618.console-uart-id, so changing the provisioned console does not require a
   change to this agent.
 */
 open-control-uart -> uart.Port:
-  id := ec618.print-uart-id
+  id := ec618.console-uart-id
   // --large-buffers: the port OPENS at 115200 (which would auto-select the
   // small 8 KiB ring) but CMD-BAUD later hops it to ~921600 for bulk
   // transfers — and a container install must ride out multi-hundred-ms
@@ -170,7 +170,7 @@ main-ec618:
   // ends the whole VM still resets via CONFIG_TOIT_EC618_RESET_ON_VM_EXIT.)
   // The lane + any open failure go to the CONSOLE (print), which is
   // visible even when the control lane itself is the thing that broke.
-  print "[mini-jag] starting; control uart=$ec618.print-uart-id"
+  print "[mini-jag] starting; control uart=$ec618.console-uart-id"
   port/uart.Port? := null
   open-error := catch: port = open-control-uart
   if open-error:
@@ -182,7 +182,7 @@ main-ec618:
   // ESP32 TCP bridge (uart-bridge-esp32.toit) + socat PTY on the host. On a
   // healthy rig the host connects immediately, the rescue never arms, and
   // UART2 stays free for tests.
-  if ec618.print-uart-id != 2:
+  if ec618.console-uart-id != 2:
     task --background::
       sleep --ms=45_000
       if not primary-contact_:

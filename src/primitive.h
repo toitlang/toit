@@ -426,7 +426,7 @@ namespace toit {
   PRIMITIVE(pm_locks_dump, 0)                \
 
 #define MODULE_EC618(PRIMITIVE)              \
-  PRIMITIVE(print_uart_id, 0)                \
+  PRIMITIVE(console_uart_id, 0)              \
   PRIMITIVE(slot_active, 0)                  \
   PRIMITIVE(slot_inactive_erase, 1)          \
   PRIMITIVE(slot_inactive_write, 2)          \

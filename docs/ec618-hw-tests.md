@@ -53,7 +53,7 @@ them; only one is "live" at a time.
 > `anchor_console()`, so **one universal base serves both rigs**. Set it with
 > `ec618.set-console-uart <id>` + reboot (or `tests/hw/ec618/console-set-ec618.toit
 > --arg <id>`). The old `CONFIG_TOIT_EC618_PRINT_UART_ID` knob is **deleted**.
-> The mini-jag agent still opens whatever `ec618.print-uart-id` reports.
+> The mini-jag agent still opens whatever `ec618.console-uart-id` reports.
 > See [ec618-rig-guide.md](ec618-rig-guide.md) and [ec618-roadmap.md](ec618-roadmap.md).
 
 ## Control planes
@@ -428,7 +428,7 @@ calls still in the glue.
   so it is robust to the actual ratio. `adc-{ec618,esp32}.toit`.
 - **OTA A≠B FIXED** (see below) — changed-firmware OTA now boots + validates, so
   real (non-smoke) dual-board tests can be delivered by OTA.
-- **EC618 mini-jag tester** on a configurable print UART (`ec618.print-uart-id`).
+- **EC618 mini-jag tester** on a configurable print UART (`ec618.console-uart-id`).
 - **`basics`** smoke test passing on the test rig (UART0).
 
 ## OTA A≠B — FIXED (2026-06-08)
@@ -543,7 +543,7 @@ rule no longer applies:
   gpio-toggle-first rule below.)
 
 ## TODO / roadmap
-- [x] Make mini-jag open `ec618.print-uart-id`'s controller.
+- [x] Make mini-jag open `ec618.console-uart-id`'s controller.
 - [x] Full-flash + confirm firmware boots clean (isolates OTA from firmware).
 - [x] Fix the OTA A≠B / per-slot `.data` bug.
 - [x] Run the ADC functional test on the test rig (both channels track; no dead pin).

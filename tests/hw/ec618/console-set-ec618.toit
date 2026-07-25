@@ -23,6 +23,6 @@ The change takes effect at the NEXT boot: the running agent keeps its
 
 main args:
   target := int.parse args[0]
-  before := ec618.print-uart-id
+  before := ec618.console-uart-id
   ec618.set-console-uart target
   print "console-set: anchor console byte $before -> $target (takes effect at next boot)"
