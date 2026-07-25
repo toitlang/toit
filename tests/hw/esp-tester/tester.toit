@@ -582,11 +582,12 @@ class Ec618Link:
     if not succeeded: throw "no response from the mini-jag agent on $name_"
     drain
 
-  // Hops the control UART to $baud (e.g. 921600) for bulk transfers.
+  // Changes the control UART to $baud (e.g. 921600 for bulk transfers).
   // Call after a successful handshake. Returns whether the device made
-  // the switch; on failure the link stays at 115200.
+  // the switch; on failure the link stays at its current rate.
   switch-baud baud/int -> bool:
-    if baud == 115200: return true
+    old-baud := port_.baud-rate
+    if baud == old-baud: return true
     header := ByteArray 4
     io.LITTLE-ENDIAN.put-uint32 header 0 baud
     send CMD-BAUD
@@ -599,7 +600,7 @@ class Ec618Link:
         // mismatch would surface here as garbage instead of an ack later.
         drain --quiet-ms=300
         return true
-    log "$name_: baud switch to $baud failed; staying at 115200"
+    log "$name_: baud switch to $baud failed; staying at $old-baud"
     return false
 
   // Discards buffered input until the wire is quiet for $quiet-ms.
@@ -841,6 +842,8 @@ run-test-ec618 invocation/cli.Invocation:
       // returns early either way (on the test's exit code or the reboot banner).
       passed := link.run --timeout-ms=240_000
       if not passed: throw "test did not pass"
+      if not (link.switch-baud 115200):
+        throw "test passed, but restoring the control UART to 115200 failed"
       log "Test passed"
     finally:
       link.close
@@ -856,6 +859,8 @@ run-embedded-ec618 invocation/cli.Invocation:
     log "Running embedded test container"
     passed := link.run --timeout-ms=240_000 --embedded
     if not passed: throw "embedded test did not pass"
+    if not (link.switch-baud 115200):
+      throw "embedded test passed, but restoring the control UART to 115200 failed"
     log "Embedded test passed"
   finally:
     link.close
@@ -920,6 +925,8 @@ firmware-update invocation/cli.Invocation:
         log "Validated — the new firmware is now permanent"
       else:
         log "Left unvalidated — the next reset rolls back to the previous slot"
+      if not (link.switch-baud 115200):
+        throw "firmware update passed, but restoring the control UART to 115200 failed"
     finally:
       link.close
 
