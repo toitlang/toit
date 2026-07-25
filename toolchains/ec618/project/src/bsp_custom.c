@@ -3,7 +3,6 @@
 // Board-specific initialization for the Toit project on EC618.
 
 #include <stdio.h>
-#include <string.h>
 
 #include "bsp.h"
 #include "bsp_custom.h"
@@ -125,10 +124,6 @@ void BSP_CustomInit(void) {
 #if CONFIG_TOIT_EC618_PRINT_UART
     SetPrintUart();
     setvbuf(stdout, NULL, _IONBF, 0);
-
-    // Test: write directly via SendPolling (synchronous).
-    const char *msg = "[toit] BSP_CustomInit reached\r\n";
-    UsartPrintHandle->SendPolling((const uint8_t*)msg, 31);
 #else
     // Print redirect disabled. With no SetPrintUart() and nothing else
     // referencing the CMSIS USART driver, the linker (--gc-sections)

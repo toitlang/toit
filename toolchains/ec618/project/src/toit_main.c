@@ -185,5 +185,7 @@ static void toit_task_init(void) {
   luat_rtos_task_create(&toit_task_handle, 8 * 1024, 20, "toit", toit_task, NULL, 0);
 }
 
-// Register at task init level 1 (runs after hardware and driver init).
+// INIT_TASK_EXPORT stores this function pointer in `.task_fun_array.1`.
+// The EC618 platform startup walks that linker array after hardware and driver
+// initialization; calling this entry creates the FreeRTOS task above.
 INIT_TASK_EXPORT(toit_task_init, "1");

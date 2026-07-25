@@ -1,3 +1,10 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// This configuration is intentionally project-local. The EC618 SDK does not
+// provide one global RTE_Device.h: each user project supplies one to select
+// its peripheral modes, DMA requests, and default pad routes. Toit's settings
+// differ from the SDK examples and are part of the frozen base configuration.
+
 #ifndef __RTE_DEVICE_H
 #define __RTE_DEVICE_H
 
