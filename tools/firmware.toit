@@ -88,8 +88,7 @@ AR-ENTRY-EC618-CP-BIN ::= "\$ec618-cp.bin"
 // The "SRL3" dual-slot relocation table (built by tools/ec618/gen-slot-reloc.toit
 // from the canonical neutral-base link). Carried in the envelope so `extract` can place the
 // bundled extension inside the VM slot and relocate it with the VM body
-// using one relocation pass. When absent, the
-// extension is appended after the AP image (legacy out-of-slot layout).
+// using one relocation pass. Every EC618 envelope must carry this entry.
 AR-ENTRY-EC618-RELOC ::= "\$ec618-reloc.bin"
 // The VM's writable-.data init image (the per-slot data region, built by
 // tools/ec618/gen-slot-reloc.toit alongside the reloc table). Each firmware
@@ -264,10 +263,12 @@ create-ec618-cmd --name/string="ec618" -> cli.Command:
             --required,
         cli.Option "cp.bin"
             --help="Set the CP (modem-core) image, so 'flash' can program a matching CP."
-            --type="file",
+            --type="file"
+            --required,
         cli.Option "reloc.bin"
-            --help="Set the dual-slot relocation table (slot-reloc.bin), enabling the in-slot extension layout."
-            --type="file",
+            --help="Set the required dual-slot relocation table (slot-reloc.bin)."
+            --type="file"
+            --required,
         cli.Option "data.bin"
             --help="Set the per-slot VM .data init image (slot-data.bin) carried inside each slot."
             --type="file",
@@ -299,14 +300,20 @@ create-envelope-ec618 invocation/cli.Invocation -> none:
     },
   }
 
-  cp-path := invocation["cp.bin"]
-  if cp-path: entries[AR-ENTRY-EC618-CP-BIN] = read-file cp-path --ui=ui
+  entries[AR-ENTRY-EC618-CP-BIN] = read-file invocation["cp.bin"] --ui=ui
 
-  reloc-path := invocation["reloc.bin"]
-  if reloc-path: entries[AR-ENTRY-EC618-RELOC] = read-file reloc-path --ui=ui
+  reloc := read-file invocation["reloc.bin"] --ui=ui
+  reloc-table := SlotRelocTable.parse reloc
+  entries[AR-ENTRY-EC618-RELOC] = reloc
 
   data-path := invocation["data.bin"]
-  if data-path: entries[AR-ENTRY-EC618-VM-DATA] = read-file data-path --ui=ui
+  if data-path:
+    data := read-file data-path --ui=ui
+    if data.size != reloc-table.data-size:
+      ui.abort "EC618 relocation table requires 0x$(%x reloc-table.data-size) bytes of VM .data, but '$data-path' contains 0x$(%x data.size)."
+    entries[AR-ENTRY-EC618-VM-DATA] = data
+  else if reloc-table.data-size != 0:
+    ui.abort "EC618 relocation table requires a VM .data image; pass --data.bin."
 
   envelope := Envelope.create entries
       --sdk-version=system-snapshot.sdk-version
@@ -968,7 +975,7 @@ extract-ec618 -> none
   if format != "binary" and format != "ubjson" and format != "image":
     ui.abort "Unsupported format for EC618 envelope: '$format'. Use 'binary', 'image' (binpkg), or 'ubjson'."
 
-  firmware-bin := extract-binary-ec618 envelope --config-encoded=config-encoded
+  firmware-bin := extract-binary-ec618 envelope --config-encoded=config-encoded --ui=ui
 
   if format == "image":
     // Produce a .binpkg (the EC618 flashable format), including the CP
@@ -984,12 +991,11 @@ extract-ec618 -> none
     // returns and the device FirmwareWriter consumes (relocate-on-write). This
     // matches the standard contract where `extract --format binary` is the
     // image that is OTA'd. The flashable whole-AP image is the 'image'/binpkg
-    // format. Falls back to the raw AP for legacy envelopes without a table.
-    reloc-table/SlotRelocTable? := envelope.entries.get AR-ENTRY-EC618-RELOC
+    // format.
+    reloc-table := envelope.entries.get AR-ENTRY-EC618-RELOC
         --if-present=: SlotRelocTable.parse it
-    output := reloc-table
-        ? (firmware-ec618.canonical-firmware firmware-bin reloc-table)
-        : firmware-bin
+        --if-absent=: ui.abort "EC618 envelope is missing its SRL3 relocation table."
+    output := firmware-ec618.canonical-firmware firmware-bin reloc-table
     write-file output-path --ui=ui: it.write output
     return
 
@@ -1000,7 +1006,7 @@ extract-ec618 -> none
   }
   write-file output-path --ui=ui: it.write (ubjson.encode output)
 
-extract-binary-ec618 envelope/Envelope --config-encoded/ByteArray -> ByteArray:
+extract-binary-ec618 envelope/Envelope --config-encoded/ByteArray --ui/cli.Ui -> ByteArray:
   containers := []
   entries := envelope.entries
   properties := entries.get AR-ENTRY-PROPERTIES
@@ -1037,8 +1043,9 @@ extract-binary-ec618 envelope/Envelope --config-encoded/ByteArray -> ByteArray:
     system-uuid = Uuid.parse properties["uuid"] --if-error=(: null)
   system-uuid = system-uuid or sdk-version-uuid --sdk-version=envelope.sdk-version
 
-  reloc-table/SlotRelocTable? := entries.get AR-ENTRY-EC618-RELOC
+  reloc-table := entries.get AR-ENTRY-EC618-RELOC
       --if-present=: SlotRelocTable.parse it
+      --if-absent=: ui.abort "EC618 envelope is missing its SRL3 relocation table."
   vm-data/ByteArray? := entries.get AR-ENTRY-EC618-VM-DATA
 
   return firmware-ec618.build-image
@@ -1407,7 +1414,7 @@ flash-ec618 invocation/cli.Invocation envelope/Envelope -> none:
     exception := catch: ubjson.decode config-encoded
     if exception: config-encoded = ubjson.encode (json.decode config-encoded)
 
-  firmware-bin := extract-binary-ec618 envelope --config-encoded=config-encoded
+  firmware-bin := extract-binary-ec618 envelope --config-encoded=config-encoded --ui=ui
 
   // Program the CP (modem-core) image when the envelope carries one. A CP
   // that does not match the AP PLAT resets the chip a few seconds after the

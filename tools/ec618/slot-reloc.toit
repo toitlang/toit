@@ -33,7 +33,7 @@ class SlotRelocTable:
   // Size of the VM's writable .data init image that rides in the slot after the
   // body+extension (verbatim, NOT relocated — the device copies it into RAM at
   // boot and relocate_data_slot_pointers fixes the slot pointers there). Lets an
-  // OTA carry each firmware's own .data. 0 for legacy tables.
+  // OTA carry each firmware's own .data. Zero when there is no carried region.
   data-size/int
   abs32-offsets/List
   thmbl-offsets/List

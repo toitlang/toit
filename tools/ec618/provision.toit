@@ -152,7 +152,7 @@ retarget image/ByteArray target/Partitions --ui/cli.Ui --console/int?=null -> By
 
   // Assemble: the image proper ends at the source slot-A reservation
   // (this tool handles single-populated-slot images; anything after —
-  // extract's legacy whole-image SHA trailer, padding — is dropped and
+  // extract's whole-image SHA trailer or padding — is dropped and
   // re-derived). Erase the source reservation, place the retargeted
   // slot, pad to the end of the LAST target slot reservation (erased
   // slot B), write the target record, and append a fresh trailer for
