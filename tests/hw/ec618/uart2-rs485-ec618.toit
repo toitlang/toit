@@ -5,6 +5,8 @@
 import ec618 show Ec618
 import uart
 
+import .wiring as wiring
+
 /**
 EC618 half of the UART2 RS485-half-duplex test (device under test).
 
@@ -21,9 +23,6 @@ Plan (fixed on both sides, no control lane): for each baud, ITERATIONS
   between internal TX chunks would be visible — acknowledged by the helper
   with a single 'K' after it checked the DE pulse.
 
-Wiring: EC618 UART2 TX (PAD26) -> IO27; IO14 -> EC618 UART2 RX (PAD25);
-        EC618 PAD33 (DE, plain GPIO) -> IO16.
-
 Run via the mini-jag tester (start uart2-rs485-esp32.toit on the ESP32
   FIRST):
 
@@ -38,8 +37,6 @@ BAUDS ::= [9600, 115200, 921600]
 ITERATIONS ::= 5
 TOKEN-SIZE ::= 256
 BIG-SIZE ::= 4096
-DE-PAD ::= 33
-
 main:
   failures := []
 
@@ -52,7 +49,7 @@ main:
     port := Ec618.uart2
         --baud-rate=baud
         --mode=uart.Port.MODE-RS485-HALF-DUPLEX
-        --rs485-de=(Ec618.pad DE-PAD)
+        --rs485-de=(Ec618.pad wiring.EC618-UART2-DIRECTION-PAD)
 
     ITERATIONS.repeat: | i/int |
       token := ByteArray TOKEN-SIZE: (it * 31 + 7 + i) & 0xff

@@ -5,6 +5,8 @@
 import gpio
 import uart
 
+import .wiring as wiring
+
 /**
 ESP32 half of the GPIO open-drain test: the second bus master.
 
@@ -19,9 +21,6 @@ Holds IO16 (the shared wire) and acts on commands:
 
 All assertions run on the EC618 (gpio-opendrain-ec618.toit).
 
-Wiring: EC618 UART2 TX (PAD26) -> IO27; IO14 -> EC618 UART2 RX (PAD25);
-        EC618 PAD33 <-> IO16 (bus wire).
-
 Run via Jaguar, FIRST:
 
 ```
@@ -29,14 +28,13 @@ Run via Jaguar, FIRST:
 ```
 */
 
-RX ::= 27
-TX ::= 14
-BUS ::= 16
-
 main:
-  port := uart.Port --rx=(gpio.Pin RX) --tx=(gpio.Pin TX) --baud-rate=115200
-  bus := gpio.Pin BUS --input --pull-up
-  print "gpio-opendrain-esp32: ready (bus IO$BUS)"
+  port := uart.Port
+      --rx=(gpio.Pin wiring.ESP32-UART2-RX-PIN)
+      --tx=(gpio.Pin wiring.ESP32-UART2-TX-PIN)
+      --baud-rate=115200
+  bus := gpio.Pin wiring.ESP32-OPEN-DRAIN-BUS-PIN --input --pull-up
+  print "gpio-opendrain-esp32: ready (bus IO$(wiring.ESP32-OPEN-DRAIN-BUS-PIN))"
 
   buffer := #[]
   while true:

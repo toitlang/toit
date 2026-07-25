@@ -5,6 +5,8 @@
 import gpio
 import uart
 
+import .wiring as wiring
+
 /**
 ESP32 half of the UART1 round-trip test: echoes everything it receives.
 
@@ -12,8 +14,6 @@ The EC618's UART1 TX (PAD34) doubles as the control lane in the other
   tests; here it is simply the test TX. The echo goes back over IO16 into
   the EC618's UART1 RX (PAD33 — the same wire the watchdog scope-trigger
   uses, which is only driven on a fatal).
-
-Wiring: EC618 UART1 TX (PAD34) -> IO4 (rx); IO16 (tx) -> EC618 UART1 RX (PAD33).
 
 The EC618 side opens at one baud per "round": it switches this port on
   the magic PAIR 0xF5 0x5F followed by 4 little-endian baud bytes (sent at
@@ -27,8 +27,6 @@ jag run tests/hw/ec618/uart1-echo-esp32.toit --device <esp32>
 ```
 */
 
-RX ::= 4
-TX ::= 16
 MARKER0 ::= 0xF5
 MARKER1 ::= 0x5F
 
@@ -41,10 +39,10 @@ find-marker data/ByteArray -> int:
 main:
   baud := 115200
   while true:
-    rx := gpio.Pin RX
-    tx := gpio.Pin TX
+    rx := gpio.Pin wiring.ESP32-UART1-RX-PIN
+    tx := gpio.Pin wiring.ESP32-UART1-TX-PIN
     port := uart.Port --rx=rx --tx=tx --baud-rate=baud
-    print "uart1-echo-esp32: echoing at $baud (rx IO$RX / tx IO$TX)"
+    print "uart1-echo-esp32: echoing at $baud (rx IO$(wiring.ESP32-UART1-RX-PIN) / tx IO$(wiring.ESP32-UART1-TX-PIN))"
     pending := #[]
     new-baud/int? := null
     while true:

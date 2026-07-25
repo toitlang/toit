@@ -6,6 +6,8 @@ import gpio
 import pulse-counter
 import uart
 
+import .wiring as wiring
+
 /**
 ESP32 half of the PWM test — a dumb measurement server.
 
@@ -20,9 +22,6 @@ All pass/fail logic lives on the EC618 side (pwm-ec618.toit). Pins are
   opened with a pull-down per measurement so a released (high-Z) EC618 pad
   reads as a steady 0.
 
-Wiring: EC618 UART2 TX (PAD26) -> IO27; IO14 -> EC618 UART2 RX (PAD25);
-        EC618 PAD33 -> IO16; EC618 PAD16 -> IO23.
-
 Run via Jaguar, FIRST (so it is listening before the EC618 starts):
 
 ```
@@ -30,12 +29,12 @@ Run via Jaguar, FIRST (so it is listening before the EC618 starts):
 ```
 */
 
-RX ::= 27
-TX ::= 14
-
 main:
-  port := uart.Port --rx=(gpio.Pin RX) --tx=(gpio.Pin TX) --baud-rate=115200
-  print "pwm-esp32: ready (control IO$RX in / IO$TX out)"
+  port := uart.Port
+      --rx=(gpio.Pin wiring.ESP32-UART2-RX-PIN)
+      --tx=(gpio.Pin wiring.ESP32-UART2-TX-PIN)
+      --baud-rate=115200
+  print "pwm-esp32: ready (control IO$(wiring.ESP32-UART2-RX-PIN) in / IO$(wiring.ESP32-UART2-TX-PIN) out)"
 
   buffer := #[]
   while true:

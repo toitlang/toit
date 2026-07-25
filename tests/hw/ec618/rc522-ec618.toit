@@ -6,6 +6,8 @@ import ec618 show Ec618
 import gpio
 import spi
 
+import .wiring as wiring
+
 /**
 EC618 SPI bring-up test against a real MFRC522 (RC522) RFID reader.
 
@@ -25,9 +27,6 @@ Standalone (no ESP32 helper: SPI0's CLK/MISO pads ARE the UART2 control
 - the reader is left in hard power-down (RST low) so it cannot disturb
   the I2C1/UART2 tests that share these nets.
 
-Wiring: RC522 SDA(=CS)=PAD23, MOSI=PAD24, MISO=PAD25, SCK=PAD26,
-        RST=PAD16 (+pull-down), VCC=3.3V rail.
-
 Run via the mini-jag tester:
 
 ```
@@ -36,12 +35,6 @@ Run via the mini-jag tester:
       --port-board1 <ec618-uart0-port> tests/hw/ec618/rc522-ec618.toit
 ```
 */
-
-RST-PAD ::= 16
-CS-PAD ::= 23
-MOSI-PAD ::= 24
-MISO-PAD ::= 25
-SCK-PAD ::= 26
 
 REG-COMMAND ::= 0x01
 REG-FIFO-DATA ::= 0x09
@@ -54,11 +47,11 @@ POWER-DOWN-BIT ::= 0b0001_0000
 failures := []
 
 main:
-  rst := gpio.Pin RST-PAD --output --value=1
+  rst := gpio.Pin wiring.EC618-RC522-RST-PAD --output --value=1
   sleep --ms=50  // Crystal start-up out of hard power-down.
 
   bus := Ec618.spi0  // MOSI=PAD24, MISO=PAD25, CLK=PAD26.
-  device := bus.device --cs=(Ec618.pad CS-PAD) --frequency=1_000_000
+  device := bus.device --cs=(Ec618.pad wiring.EC618-SPI0-CS-PAD) --frequency=1_000_000
 
   version := read-reg device REG-VERSION
   print "rc522-ec618: version 0x$(%02x version)"

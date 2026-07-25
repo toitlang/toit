@@ -5,6 +5,8 @@
 import gpio
 import uart
 
+import .wiring as wiring
+
 /**
 ESP32 half of the UART2 configuration-matrix test.
 
@@ -13,10 +15,6 @@ Listens on the CONTROL lane (the EC618's UART1 TX on IO4) for newline lines of
   stop-code 1=1 2=1.5 3=2, matching Toit's uart constants), reopens the TEST UART
   with that exact configuration, and echoes everything it receives. "Q" quits.
 
-Wiring: EC618 UART1 TX (PAD34) -> IO4 (control RX);
-        EC618 UART2 TX (PAD26) -> IO27 (test RX);
-        IO14 (test TX) -> EC618 UART2 RX (PAD25).
-
 Run via Jaguar, FIRST (so it is listening before the EC618 starts):
 
 ```
@@ -24,9 +22,6 @@ Run via Jaguar, FIRST (so it is listening before the EC618 starts):
 ```
 */
 
-CONTROL-RX ::= 4
-TEST-RX ::= 27
-TEST-TX ::= 14
 CONTROL-BAUD ::= 115200
 
 stop-bits-of code/int -> uart.StopBits:
@@ -35,8 +30,8 @@ stop-bits-of code/int -> uart.StopBits:
   return uart.Port.STOP-BITS-1
 
 main:
-  control := uart.Port --tx=null --rx=(gpio.Pin CONTROL-RX) --baud-rate=CONTROL-BAUD
-  print "uart2-config-esp32: ready (control IO$CONTROL-RX; test IO$TEST-RX in / IO$TEST-TX out)"
+  control := uart.Port --tx=null --rx=(gpio.Pin wiring.ESP32-UART1-RX-PIN) --baud-rate=CONTROL-BAUD
+  print "uart2-config-esp32: ready (control IO$(wiring.ESP32-UART1-RX-PIN); test IO$(wiring.ESP32-UART2-RX-PIN) in / IO$(wiring.ESP32-UART2-TX-PIN) out)"
 
   pending/List? := null            // A newly-requested [baud, data, parity, stop].
   done := false
@@ -83,8 +78,8 @@ main:
       if test: test.close
       if rx: rx.close
       if tx: tx.close
-      rx = gpio.Pin TEST-RX
-      tx = gpio.Pin TEST-TX
+      rx = gpio.Pin wiring.ESP32-UART2-RX-PIN
+      tx = gpio.Pin wiring.ESP32-UART2-TX-PIN
       test = uart.Port --rx=rx --tx=tx
           --baud-rate=config[0]
           --data-bits=config[1]

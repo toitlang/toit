@@ -5,6 +5,8 @@
 import gpio
 import ec618 show Ec618
 
+import .wiring as wiring
+
 /**
 EC618 half of the GPIO-output HW test.
 
@@ -14,20 +16,18 @@ Drives EC618 GPIO11 as a square wave so the ESP32 half
   board pin 14; this is board wiring, not a second EC618 GPIO11 pad, so
   `Ec618.gpio 11 --alt` must be rejected.
 
-Wiring (NOTE: gpio.Pin numbers are PAD numbers on EC618): EC618 board pin 5 (PAD26 = GPIO11) -> ESP32 IO27.
 */
 
-GPIO-EC618 ::= 11                   // Primary PAD26, wired to ESP32 IO27.
 HALF-PERIOD ::= Duration --ms=50    // 10 Hz square wave.
 DRIVE-DURATION ::= Duration --s=20  // Long enough for the ESP32 to sample.
 
 main:
-  pin := Ec618.gpio GPIO-EC618
+  pin := Ec618.gpio wiring.EC618-GPIO11-NUM
   if pin.num != 26: throw "GPIO11 must resolve to PAD26"
-  alt-error := catch: Ec618.gpio GPIO-EC618 --alt
+  alt-error := catch: Ec618.gpio wiring.EC618-GPIO11-NUM --alt
   if alt-error == null: throw "GPIO11 must not expose the mirrored board net as an alternate pad"
   pin.configure --output --value=0
-  print "gpio-output-ec618: driving GPIO$GPIO-EC618 at $(1000 / (2 * HALF-PERIOD.in-ms)) Hz for $(DRIVE-DURATION.in-s)s"
+  print "gpio-output-ec618: driving GPIO$(wiring.EC618-GPIO11-NUM) at $(1000 / (2 * HALF-PERIOD.in-ms)) Hz for $(DRIVE-DURATION.in-s)s"
   deadline := Time.monotonic-us + DRIVE-DURATION.in-us
   value := 0
   toggles := 0

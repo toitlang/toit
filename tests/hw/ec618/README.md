@@ -15,13 +15,16 @@ identify each board, launch a test, and recover either rig. See
 [the hardware-test plan](../../../docs/ec618-hw-tests.md) for the authoritative
 wiring and coverage matrix.
 
+Executable tests import their physical signal assignments from
+[`wiring.toit`](wiring.toit). Add a function-named signal there instead of
+embedding a rig pin number in an individual test.
+
 ## Pin identity
 
 Toit identifies an EC618 pin by its physical PAD number. Module silkscreen
 labels such as `GPIO22` and `NET_STATUS` are not unique physical identifiers,
 and some board contacts mirror the same net. Tests that depend on a particular
-wire should state the EC618 PAD, board contact, and ESP32 GPIO in their protocol
-or shared wiring data.
+wire use the shared wiring data.
 
 The rig uses 3.3 V digital IO on both the EC618 and ESP32. EC618 AIO3/AIO4 are
 separate analog inputs; the wired ESP32 DAC signals pass through voltage

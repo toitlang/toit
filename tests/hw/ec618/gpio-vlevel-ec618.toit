@@ -5,6 +5,8 @@
 import gpio
 import ec618 show Ec618
 
+import .wiring as wiring
+
 /**
 EC618 half of the IO-voltage characterization.
 
@@ -16,8 +18,6 @@ Drives GPIO10 (PAD25) HIGH and holds it, so the ESP32 half
 
 EC618 drives, ESP32 reads -> safe regardless of the rail.
 
-Wiring: EC618 board pin (GPIO10 / PAD25) <-> ESP32 IO32 (ADC1) and IO14 (ADC2).
-
 Run via the mini-jag tester (start gpio-vlevel-esp32.toit on the ESP32 first):
 
 ```
@@ -27,13 +27,12 @@ Run via the mini-jag tester (start gpio-vlevel-esp32.toit on the ESP32 first):
 ```
 */
 
-GPIO-EC618 ::= 10               // Primary PAD25, wired to ESP32 IO32 (ADC1) + IO14 (ADC2).
 HOLD ::= Duration --s=40
 
 main:
-  pin := Ec618.gpio GPIO-EC618
+  pin := Ec618.gpio wiring.EC618-GPIO10-NUM
   pin.configure --output --value=1
-  print "gpio-vlevel-ec618: driving GPIO$GPIO-EC618 HIGH for $(HOLD.in-s)s (measure on the ESP32 ADC)"
+  print "gpio-vlevel-ec618: driving GPIO$(wiring.EC618-GPIO10-NUM) HIGH for $(HOLD.in-s)s (measure on the ESP32 ADC)"
   sleep HOLD
   pin.set 0
   pin.close

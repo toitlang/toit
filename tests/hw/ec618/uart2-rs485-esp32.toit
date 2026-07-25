@@ -5,6 +5,8 @@
 import gpio
 import uart
 
+import .wiring as wiring
+
 /**
 ESP32 half of the UART2 RS485-half-duplex test.
 
@@ -23,10 +25,6 @@ The plan (bauds, sizes, counts) is fixed and mirrored in
   acknowledged with a single 'K' so the EC618 knows the DE checks are done
   before switching baud.
 
-Wiring: EC618 UART2 TX (PAD26) -> IO27 (test RX);
-        IO14 (test TX) -> EC618 UART2 RX (PAD25);
-        EC618 PAD33 (DE) -> IO16.
-
 Run via Jaguar, FIRST (so it is listening before the EC618 starts):
 
 ```
@@ -34,17 +32,13 @@ Run via Jaguar, FIRST (so it is listening before the EC618 starts):
 ```
 */
 
-DE ::= 16
-TEST-RX ::= 27
-TEST-TX ::= 14
-
 BAUDS ::= [9600, 115200, 921600]
 ITERATIONS ::= 5
 TOKEN-SIZE ::= 256
 BIG-SIZE ::= 4096
 
 main:
-  de := gpio.Pin DE --input --pull-down
+  de := gpio.Pin wiring.ESP32-UART2-DIRECTION-PIN --input --pull-down
   failures := []
 
   rises := 0
@@ -54,12 +48,12 @@ main:
       rises++
       de.wait-for 0
 
-  print "uart2-rs485-esp32: ready (DE IO$DE level $de.get; test IO$TEST-RX in / IO$TEST-TX out)"
+  print "uart2-rs485-esp32: ready (DE IO$(wiring.ESP32-UART2-DIRECTION-PIN) level $de.get; test IO$(wiring.ESP32-UART2-RX-PIN) in / IO$(wiring.ESP32-UART2-TX-PIN) out)"
 
   first := true
   BAUDS.do: | baud/int |
-    rx := gpio.Pin TEST-RX
-    tx := gpio.Pin TEST-TX
+    rx := gpio.Pin wiring.ESP32-UART2-RX-PIN
+    tx := gpio.Pin wiring.ESP32-UART2-TX-PIN
     port := uart.Port --rx=rx --tx=tx --baud-rate=baud
 
     ITERATIONS.repeat: | i/int |

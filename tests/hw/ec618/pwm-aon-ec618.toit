@@ -6,6 +6,8 @@ import ec618 show Ec618
 import gpio.pwm show Pwm PwmChannel
 import uart
 
+import .wiring as wiring
+
 /**
 EC618 half of the AON-pad PWM test (device under test).
 
@@ -25,10 +27,6 @@ This is also the first HW exercise of TIMER1's PWM (the base pwm test
    silences it while PAD47 keeps running. This is a regression for
    cross-channel pulses on the shared AON supply.
 
-Wiring: EC618 UART2 (PAD26 -> IO27, IO14 -> PAD25) = command lane;
-        EC618 PAD44 (PWM ch1, board pin 18) -> ESP32 IO19;
-        EC618 PAD47 (PWM ch4, board pin 27) -> ESP32 IO2.
-
 Run via the mini-jag tester (start pwm-esp32.toit on the ESP32 FIRST):
 
 ```
@@ -38,9 +36,6 @@ Run via the mini-jag tester (start pwm-esp32.toit on the ESP32 FIRST):
 ```
 */
 
-IO-PAD44 ::= 19  // ESP32 pin watching PAD44 (board pin 18).
-IO-PAD47 ::= 2   // ESP32 pin watching PAD47 (board pin 27).
-
 failures := []
 
 main:
@@ -48,38 +43,38 @@ main:
 
   // Phase 1: PAD44 = TIMER1 — frequency and duty.
   generator := Pwm --frequency=1000
-  channel := generator.start (Ec618.pad 44) --duty-factor=0.5
-  expect-hz control IO-PAD44 1000 "pad44-1kHz"
+  channel := generator.start (Ec618.pad wiring.EC618-TIMER1-PAD) --duty-factor=0.5
+  expect-hz control wiring.ESP32-TIMER1-PIN 1000 "pad44-1kHz"
   channel.close
   generator.close
 
   generator = Pwm --frequency=10
-  channel = generator.start (Ec618.pad 44) --duty-factor=0.25
-  expect-duty control IO-PAD44 250 "pad44-duty-0.25"
+  channel = generator.start (Ec618.pad wiring.EC618-TIMER1-PAD) --duty-factor=0.25
+  expect-duty control wiring.ESP32-TIMER1-PIN 250 "pad44-duty-0.25"
   channel.set-duty-factor 0.75
-  expect-duty control IO-PAD44 750 "pad44-duty-0.75"
+  expect-duty control wiring.ESP32-TIMER1-PIN 750 "pad44-duty-0.75"
   channel.close
   generator.close
 
   // Phase 2: PAD47 = TIMER4.
   generator = Pwm --frequency=1000
-  channel = generator.start (Ec618.pad 47) --duty-factor=0.5
-  expect-hz control IO-PAD47 1000 "pad47-1kHz"
+  channel = generator.start (Ec618.pad wiring.EC618-TIMER4-AON-PAD) --duty-factor=0.5
+  expect-hz control wiring.ESP32-TIMER4-AON-PIN 1000 "pad47-1kHz"
   channel.close
   generator.close
 
   // Phase 3: both AON PWM pins at once (TIMER1 + TIMER4), with distinct
   // frequencies so coupled pulses on either wire cannot hide.
   generator = Pwm --frequency=10
-  channel = generator.start (Ec618.pad 44) --duty-factor=0.25
+  channel = generator.start (Ec618.pad wiring.EC618-TIMER1-PAD) --duty-factor=0.25
   generator47 := Pwm --frequency=1000
-  channel47 := generator47.start (Ec618.pad 47) --duty-factor=0.5
-  expect-hz control IO-PAD44 10 "both-pad44-frequency"
-  expect-duty control IO-PAD44 250 "both-pad44-duty"
-  expect-hz control IO-PAD47 1000 "both-pad47"
+  channel47 := generator47.start (Ec618.pad wiring.EC618-TIMER4-AON-PAD) --duty-factor=0.5
+  expect-hz control wiring.ESP32-TIMER1-PIN 10 "both-pad44-frequency"
+  expect-duty control wiring.ESP32-TIMER1-PIN 250 "both-pad44-duty"
+  expect-hz control wiring.ESP32-TIMER4-AON-PIN 1000 "both-pad47"
   channel.close
-  expect-level control IO-PAD44 0 "closed-pad44-silent"
-  expect-hz control IO-PAD47 1000 "pad47-still-alive"
+  expect-level control wiring.ESP32-TIMER1-PIN 0 "closed-pad44-silent"
+  expect-hz control wiring.ESP32-TIMER4-AON-PIN 1000 "pad47-still-alive"
   channel47.close
   generator47.close
   generator.close

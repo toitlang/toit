@@ -6,6 +6,8 @@ import ec618 show Ec618
 import gpio
 import uart
 
+import .wiring as wiring
+
 /**
 EC618 half of the GPIO-interrupt test (device under test).
 
@@ -20,9 +22,6 @@ The ESP32 drives pulse trains into PAD26 (its IO27); this side counts them
 
 Commands go over UART1 TX -> ESP32 IO4 (one-directional; all assertions
   run here, the helper just drives).
-
-Wiring: EC618 UART1 TX (PAD34) -> IO4 (control);
-        IO27 -> EC618 PAD26 (the pulse line; ESP32 3.3 V push-pull).
 
 Run via the mini-jag tester (start gpio-interrupt-esp32.toit FIRST):
 
@@ -45,7 +44,7 @@ main:
 
   // PAD26 is input-only here; the ESP32 drives it push-pull, so no pull.
   // (PAD26 is pull-up-only anyway; see gpio-pull.)
-  pin := gpio.Pin 26 --input
+  pin := gpio.Pin wiring.EC618-GPIO11-PAD --input
 
   count-pulses control pin 10 "50Hz"
 

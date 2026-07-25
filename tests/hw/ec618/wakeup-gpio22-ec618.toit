@@ -3,6 +3,8 @@
 import ec618
 import gpio
 
+import .wiring as wiring
+
 /**
 EC618 half of the GPIO22 (PAD42 = wakeup pad 5) deep-sleep wake test.
 
@@ -32,7 +34,7 @@ main:
   print "wupins=0b$(%b ec618.wakeup-pin-values)"
 
   // Wire health: the ESP32 helper holds the net low before pulsing.
-  pin := gpio.Pin 42 --input
+  pin := gpio.Pin wiring.EC618-GPIO22-PAD --input
   print "gpio22=$pin.get (expect 0 while the helper holds the net low)"
   pin.close
 

@@ -2,6 +2,8 @@
 
 import gpio
 
+import .wiring as wiring
+
 /**
 ESP32 half of the EC618 GPIO22 (PAD42) wakeup-pad test.
 
@@ -18,10 +20,8 @@ Run it (board2) just before/at the same time as triggering the EC618
   pulsing.
 */
 
-PAD42-NET ::= 13  // ESP32 IO13 -> EC618 board pin 9 (GPIO22 / PAD42).
-
 main:
-  pin := gpio.Pin PAD42-NET --output --value=0
+  pin := gpio.Pin wiring.ESP32-GPIO22-PIN --output --value=0
   print "wakeup-gpio22-esp32: IO13 low; waiting 60s for the EC618 to hibernate"
   sleep --ms=60_000
   print "wakeup-gpio22-esp32: pulsing IO13 (6x) to wake the EC618"

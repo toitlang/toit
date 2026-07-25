@@ -4,14 +4,14 @@
 
 import gpio
 
+import .wiring as wiring
+
 /**
 ESP32 half of the GPIO-output HW test.
 
 Reads the pin that the EC618 half (gpio-output-ec618.toit) toggles and confirms
   it sees a square wave: it waits for the first edge (the EC618 side starts a
   little after us), then counts edges over a short window.
-
-Wiring: EC618 board pin 5 (GPIO11 / PAD26) -> ESP32 IO27.
 
 Run via Jaguar (output goes to the serial console):
 
@@ -22,7 +22,6 @@ Run via Jaguar (output goes to the serial console):
 Prints a single "gpio-output-esp32: PASS ..." / "... FAIL ..." verdict line.
 */
 
-PIN-ESP32 ::= 27
 // The EC618 side is launched after us (compile + serial install), so wait
 // generously for the first edge before giving up.
 WAIT-FOR-FIRST ::= Duration --s=40
@@ -31,12 +30,12 @@ PER-EDGE-TIMEOUT ::= Duration --ms=500
 MIN-EDGES ::= 10
 
 main:
-  pin := gpio.Pin PIN-ESP32 --input --pull-down
-  print "gpio-output-esp32: waiting up to $(WAIT-FOR-FIRST.in-s)s for activity on IO$PIN-ESP32"
+  pin := gpio.Pin wiring.ESP32-GPIO11-PIN --input --pull-down
+  print "gpio-output-esp32: waiting up to $(WAIT-FOR-FIRST.in-s)s for activity on IO$(wiring.ESP32-GPIO11-PIN)"
 
   saw-activity := (catch: with-timeout WAIT-FOR-FIRST: pin.wait-for 1) == null
   if not saw-activity:
-    print "gpio-output-esp32: FAIL no high level seen on IO$PIN-ESP32 within $(WAIT-FOR-FIRST.in-s)s (EC618 not driving or started late — settle and retry; if it persists, power-cycle the ESP32: a latched input reads frozen while the wire is fine)"
+    print "gpio-output-esp32: FAIL no high level seen on IO$(wiring.ESP32-GPIO11-PIN) within $(WAIT-FOR-FIRST.in-s)s (EC618 not driving or started late — settle and retry; if it persists, power-cycle the ESP32: a latched input reads frozen while the wire is fine)"
     pin.close
     return
 

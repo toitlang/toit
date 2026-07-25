@@ -15,8 +15,7 @@ Sends a known, self-describing token line ("EC618-UART2 <baud> <n>") repeatedly
   baud to sweep the supported range (an "exhaustive" baud check rather than a
   single does-it-work check).
 
-Wiring: EC618 GPIO11 / PAD26 (UART2 TX, mapping 0) -> ESP32 IO27 (the same wire
-  the gpio-output test already connectivity-verified). UART2 is opened TX-only
+UART2 is opened TX-only
   (--rx-disabled), so only the EC618 drives the line and the ESP32 RX is high-
   impedance — no contention, no short risk on the direct wiring.
 

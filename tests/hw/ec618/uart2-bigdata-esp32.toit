@@ -7,6 +7,8 @@ import gpio
 import monitor
 import uart
 
+import .wiring as wiring
+
 /**
 ESP32 half of the UART2 big-data / throughput / leak test.
 
@@ -24,10 +26,6 @@ Partner for uart2-bigdata-ec618.toit. Listens on the CONTROL lane (the EC618's
   keeps the ESP32 off the critical path so the test measures the EC618 UART, not a
   full-duplex echo bottleneck.
 
-Wiring: EC618 UART1 TX (PAD34) -> IO4 (control RX);
-        EC618 UART2 TX (PAD26) -> IO27 (test RX);
-        IO14 (test TX) -> EC618 UART2 RX (PAD25).
-
 Run via Jaguar, FIRST (so it is listening before the EC618 starts):
 
 ```
@@ -35,17 +33,14 @@ Run via Jaguar, FIRST (so it is listening before the EC618 starts):
 ```
 */
 
-CONTROL-RX ::= 4
-TEST-RX ::= 27
-TEST-TX ::= 14
 CONTROL-BAUD ::= 115200
 CHUNK ::= 4096
 
 gen-byte i/int -> int: return (i * 31 + 7) & 0xff
 
 main:
-  control := uart.Port --tx=null --rx=(gpio.Pin CONTROL-RX) --baud-rate=CONTROL-BAUD
-  print "uart2-bigdata-esp32: control RX on IO$CONTROL-RX (test RX IO$TEST-RX / TX IO$TEST-TX)"
+  control := uart.Port --tx=null --rx=(gpio.Pin wiring.ESP32-UART1-RX-PIN) --baud-rate=CONTROL-BAUD
+  print "uart2-bigdata-esp32: control RX on IO$(wiring.ESP32-UART1-RX-PIN) (test RX IO$(wiring.ESP32-UART2-RX-PIN) / TX IO$(wiring.ESP32-UART2-TX-PIN))"
   reader := LineReader control
 
   test/uart.Port? := null
@@ -66,8 +61,8 @@ main:
         if test: test.close
         if rx: rx.close
         if tx: tx.close
-        rx = gpio.Pin TEST-RX
-        tx = gpio.Pin TEST-TX
+        rx = gpio.Pin wiring.ESP32-UART2-RX-PIN
+        tx = gpio.Pin wiring.ESP32-UART2-TX-PIN
         test = uart.Port --rx=rx --tx=tx --baud-rate=baud
         print "uart2-bigdata-esp32: test UART @ $baud"
       else if test == null:

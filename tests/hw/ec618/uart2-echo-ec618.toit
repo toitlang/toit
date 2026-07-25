@@ -19,9 +19,6 @@ Sweeps a set of baud rates in TWO modes:
   can be driven directly; each UART wire is one-directional (UART2 TX always
   EC618-driven, UART2 RX always ESP32-driven), so there is no bus contention.
 
-Wiring: EC618 UART1 TX (PAD34) -> ESP32 IO4 (control);
-        EC618 UART2 TX (PAD26) -> ESP32 IO27, ESP32 IO14 -> EC618 UART2 RX (PAD25).
-
 Run via the mini-jag tester (start uart2-echo-esp32.toit on the ESP32 first):
 
 ```

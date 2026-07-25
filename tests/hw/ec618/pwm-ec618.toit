@@ -6,6 +6,8 @@ import ec618 show Ec618
 import gpio.pwm show Pwm PwmChannel
 import uart
 
+import .wiring as wiring
+
 /**
 EC618 half of the PWM test (device under test).
 
@@ -27,9 +29,6 @@ Drives PWM and asks the ESP32 helper to measure it, over UART2 as a
 
 All assertions happen here; the helper only measures.
 
-Wiring: EC618 UART2 (PAD26 -> IO27, IO14 -> PAD25) = command lane;
-        EC618 PAD33 (PWM, TIMER4) -> IO16; EC618 PAD16 (PWM, TIMER0) -> IO23.
-
 Run via the mini-jag tester (start pwm-esp32.toit on the ESP32 FIRST):
 
 ```
@@ -39,9 +38,6 @@ Run via the mini-jag tester (start pwm-esp32.toit on the ESP32 FIRST):
 ```
 */
 
-IO-PAD33 ::= 16  // ESP32 pin watching PAD33.
-IO-PAD16 ::= 23  // ESP32 pin watching PAD16.
-
 failures := []
 
 main:
@@ -49,48 +45,48 @@ main:
 
   // Phase 1: frequency.
   generator := Pwm --frequency=1000
-  channel := generator.start (Ec618.pad 33) --duty-factor=0.5
-  expect-hz control IO-PAD33 1000 "1kHz"
+  channel := generator.start (Ec618.pad wiring.EC618-TIMER4-PAD) --duty-factor=0.5
+  expect-hz control wiring.ESP32-TIMER4-PIN 1000 "1kHz"
   channel.close
   generator.close
 
   // Phase 2: duty factors at 10 Hz (slow enough for polled sampling).
   generator = Pwm --frequency=10
-  channel = generator.start (Ec618.pad 33) --duty-factor=0.25
-  expect-duty control IO-PAD33 250 "duty-0.25"
+  channel = generator.start (Ec618.pad wiring.EC618-TIMER4-PAD) --duty-factor=0.25
+  expect-duty control wiring.ESP32-TIMER4-PIN 250 "duty-0.25"
   channel.set-duty-factor 0.5
-  expect-duty control IO-PAD33 500 "duty-0.50"
+  expect-duty control wiring.ESP32-TIMER4-PIN 500 "duty-0.50"
   channel.set-duty-factor 0.75
-  expect-duty control IO-PAD33 750 "duty-0.75"
+  expect-duty control wiring.ESP32-TIMER4-PIN 750 "duty-0.75"
   channel.set-duty-factor 0.0
-  expect-level control IO-PAD33 0 "duty-0"
+  expect-level control wiring.ESP32-TIMER4-PIN 0 "duty-0"
   channel.set-duty-factor 1.0
-  expect-level control IO-PAD33 1 "duty-1"
+  expect-level control wiring.ESP32-TIMER4-PIN 1 "duty-1"
   // Coming back from the extremes must work too (0.0 is a hardware trap:
   // leaving it needs the driver's timer restart).
   channel.set-duty-factor 0.5
-  expect-duty control IO-PAD33 500 "duty-recover"
+  expect-duty control wiring.ESP32-TIMER4-PIN 500 "duty-recover"
   channel.close
   generator.close
 
   // Phase 3: live frequency change on the generator.
   generator = Pwm --frequency=1000 --max-frequency=8000
-  channel = generator.start (Ec618.pad 33) --duty-factor=0.5
+  channel = generator.start (Ec618.pad wiring.EC618-TIMER4-PAD) --duty-factor=0.5
   generator.frequency = 2000
   if generator.frequency != 2000: failures.add "frequency-readback"
-  expect-hz control IO-PAD33 2000 "2kHz"
+  expect-hz control wiring.ESP32-TIMER4-PIN 2000 "2kHz"
   channel.close
   generator.close
 
   // Phase 4: two channels (two timers) from one generator.
   generator = Pwm --frequency=1000
-  channel = generator.start (Ec618.pad 33) --duty-factor=0.5
-  channel16 := generator.start (Ec618.pad 16) --duty-factor=0.5
-  expect-hz control IO-PAD33 1000 "two-ch-pad33"
-  expect-hz control IO-PAD16 1000 "two-ch-pad16"
+  channel = generator.start (Ec618.pad wiring.EC618-TIMER4-PAD) --duty-factor=0.5
+  channel16 := generator.start (Ec618.pad wiring.EC618-TIMER0-PAD) --duty-factor=0.5
+  expect-hz control wiring.ESP32-TIMER4-PIN 1000 "two-ch-pad33"
+  expect-hz control wiring.ESP32-TIMER0-PIN 1000 "two-ch-pad16"
   channel.close
-  expect-level control IO-PAD33 0 "closed-ch-silent"
-  expect-hz control IO-PAD16 1000 "other-ch-alive"
+  expect-level control wiring.ESP32-TIMER4-PIN 0 "closed-ch-silent"
+  expect-hz control wiring.ESP32-TIMER0-PIN 1000 "other-ch-alive"
   channel16.close
   generator.close
 

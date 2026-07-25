@@ -5,6 +5,8 @@
 import gpio
 import gpio.dac show Dac
 
+import .wiring as wiring
+
 /**
 ESP32 half of the ADC HW test: drives the EC618 ADC inputs with a known
   staircase.
@@ -23,9 +25,6 @@ Two resistor dividers sit between the ESP32 DAC and what the EC618 reads:
     compensated by the EC618 ADC driver, so adc.get returns the true pin volts.
   So a 1.0 V DAC step shows up as ~0.5 V at the EC618; the test verifies that.
 
-Wiring: ESP32 IO25 (DAC1) -> ~2:1 divider -> EC618 ADC0 (pin 3)
-        ESP32 IO26 (DAC2) -> ~2:1 divider -> EC618 ADC1 (pin 4)
-
 Run via Jaguar (start this BEFORE the EC618 half so the staircase is already
   running):
 
@@ -34,8 +33,6 @@ jag run tests/hw/ec618/adc-esp32.toit --device <esp32>
 ```
 */
 
-DAC1 ::= 25
-DAC2 ::= 26
 // A clean 0.5 V staircase. 0.0 and 3.0 V are the calibration endpoints; the
 // EC618 verifies the values in between. With the ~2:1 divider, 3.0 V maps to
 // ~1.5 V at the EC618 AIO pin (well within its 3.8 V range).
@@ -46,9 +43,9 @@ HOLD ::= Duration --ms=1200
 DURATION ::= Duration --s=180
 
 main:
-  dac1 := Dac (gpio.Pin DAC1)
-  dac2 := Dac (gpio.Pin DAC2)
-  print "adc-esp32: staircase $LEVELS V on IO$DAC1+IO$DAC2, $(HOLD.in-ms)ms/step, for $(DURATION.in-s)s"
+  dac1 := Dac (gpio.Pin wiring.ESP32-ADC0-DAC-PIN)
+  dac2 := Dac (gpio.Pin wiring.ESP32-ADC1-DAC-PIN)
+  print "adc-esp32: staircase $LEVELS V on IO$(wiring.ESP32-ADC0-DAC-PIN)+IO$(wiring.ESP32-ADC1-DAC-PIN), $(HOLD.in-ms)ms/step, for $(DURATION.in-s)s"
   deadline := Time.monotonic-us + DURATION.in-us
   i := 0
   while Time.monotonic-us < deadline:

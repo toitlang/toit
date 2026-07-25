@@ -5,6 +5,8 @@
 import gpio
 import uart
 
+import .wiring as wiring
+
 /**
 ESP32 half of the GPIO-interrupt test: a pulse generator.
 
@@ -13,9 +15,6 @@ Listens on the control lane for "P <count> <phase-ms>" and then drives
   short settle delay so the EC618 is already waiting. "Q" quits. All
   assertions run on the EC618.
 
-Wiring: EC618 UART1 TX (PAD34) -> IO4 (control RX);
-        IO27 -> EC618 PAD26 (pulse line).
-
 Run via Jaguar, FIRST:
 
 ```
@@ -23,13 +22,10 @@ Run via Jaguar, FIRST:
 ```
 */
 
-CONTROL-RX ::= 4
-OUT ::= 27
-
 main:
-  control := uart.Port --tx=null --rx=(gpio.Pin CONTROL-RX) --baud-rate=115200
-  out := gpio.Pin OUT --output
-  print "gpio-interrupt-esp32: ready (control IO$CONTROL-RX; pulses on IO$OUT)"
+  control := uart.Port --tx=null --rx=(gpio.Pin wiring.ESP32-UART1-RX-PIN) --baud-rate=115200
+  out := gpio.Pin wiring.ESP32-GPIO11-PIN --output
+  print "gpio-interrupt-esp32: ready (control IO$(wiring.ESP32-UART1-RX-PIN); pulses on IO$(wiring.ESP32-GPIO11-PIN))"
 
   buffer := #[]
   while true:

@@ -5,6 +5,8 @@
 import gpio
 import uart
 
+import .wiring as wiring
+
 /**
 EC618 half of the UART1 idle-RX test (device under test).
 
@@ -18,10 +20,6 @@ Hunts the "agent goes deaf" symptom seen on the quirky-plenty rig (its
   phase flatlining. The UART0 agent (mini-jag) is the liveness control —
   the test keeps printing either way.
 
-Wiring (mini-jag control-lane wiring, as used by uart2-gapfree):
-  ESP32 IO16 -> EC618 PAD33 (UART1 RX); EC618 PAD34 -> ESP32 IO4.
-  gpio.Pin numbers are PAD numbers on EC618.
-
 Run the ESP32 half (uart1-idle-rx-esp32.toit) FIRST; it sends markers
   for ~200 s, longer than this test's 5 x 30 s window.
 */
@@ -30,7 +28,10 @@ PHASES ::= 5
 PHASE-MS ::= 30_000
 
 main:
-  port := uart.Port --rx=(gpio.Pin 33) --tx=(gpio.Pin 34) --baud-rate=115200
+  port := uart.Port
+      --rx=(gpio.Pin wiring.EC618-UART1-RX-PAD)
+      --tx=(gpio.Pin wiring.EC618-UART1-TX-PAD)
+      --baud-rate=115200
   total := 0
   reader := task::
     catch:  // Closing the port unblocks the read with an exception.

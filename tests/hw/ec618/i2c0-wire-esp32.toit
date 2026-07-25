@@ -5,6 +5,8 @@
 import gpio
 import pulse-counter
 
+import .wiring as wiring
+
 /**
 ESP32 half of the I2C0 bus-level HW test: hardware pulse counters watch
   both I2C0 wires while the EC618 (i2c0-scan-ec618.toit) drives scan
@@ -23,9 +25,6 @@ The I2C clock (~46 kHz on the EC618) is far too fast for GPIO polling;
   trick). Internal pull-ups on both observer pins keep the open-drain bus
   high alongside the EC618's own pad pull-ups.
 
-Wiring: ESP32 IO18 -> EC618 board pin 22 (I2C0_SDA / PAD14),
-        ESP32 IO17 -> EC618 board pin 23 (I2C0_SCL / PAD13).
-
 Run via Jaguar FIRST (it baselines a quiet bus, then watches), then start
   the EC618 half:
 
@@ -34,8 +33,6 @@ Run via Jaguar FIRST (it baselines a quiet bus, then watches), then start
 ```
 */
 
-PIN-SCL ::= 17                 // Expected SCL (board pin 23 / PAD13).
-PIN-SDA ::= 18                 // Expected SDA (board pin 22 / PAD14).
 BASELINE ::= Duration --s=3
 WINDOW ::= Duration --s=25
 MAX-BASELINE-EDGES ::= 20      // A pulled-up idle bus is quiet.
@@ -53,14 +50,14 @@ count pin-num/int window/Duration -> int:
 
 main:
   print "i2c0-wire-esp32: baseline (quiet bus) $(BASELINE.in-s)s"
-  base-scl := count PIN-SCL BASELINE
-  base-sda := count PIN-SDA BASELINE
+  base-scl := count wiring.ESP32-I2C0-SCL-PIN BASELINE
+  base-sda := count wiring.ESP32-I2C0-SDA-PIN BASELINE
   print "i2c0-wire-esp32: baseline scl=$base-scl sda=$base-sda"
 
-  print "i2c0-wire-esp32: watching IO$PIN-SCL (SCL?) + IO$PIN-SDA (SDA?) for $(WINDOW.in-s)s"
+  print "i2c0-wire-esp32: watching IO$(wiring.ESP32-I2C0-SCL-PIN) (SCL?) + IO$(wiring.ESP32-I2C0-SDA-PIN) (SDA?) for $(WINDOW.in-s)s"
   // The counters watch sequentially-opened units on both pins at once.
-  scl-pin := gpio.Pin PIN-SCL --input --pull-up
-  sda-pin := gpio.Pin PIN-SDA --input --pull-up
+  scl-pin := gpio.Pin wiring.ESP32-I2C0-SCL-PIN --input --pull-up
+  sda-pin := gpio.Pin wiring.ESP32-I2C0-SDA-PIN --input --pull-up
   scl-unit := pulse-counter.Unit scl-pin
   sda-unit := pulse-counter.Unit sda-pin
   sleep WINDOW
@@ -76,9 +73,9 @@ main:
   if base-scl > MAX-BASELINE-EDGES or base-sda > MAX-BASELINE-EDGES:
     failures.add "noisy-baseline ($base-scl/$base-sda)"
   if scl-edges < MIN-SCL-EDGES:
-    failures.add "scl-quiet (IO$PIN-SCL saw $scl-edges, wanted >= $MIN-SCL-EDGES)"
+    failures.add "scl-quiet (IO$(wiring.ESP32-I2C0-SCL-PIN) saw $scl-edges, wanted >= $MIN-SCL-EDGES)"
   if sda-edges < MIN-SDA-EDGES:
-    failures.add "sda-quiet (IO$PIN-SDA saw $sda-edges, wanted >= $MIN-SDA-EDGES)"
+    failures.add "sda-quiet (IO$(wiring.ESP32-I2C0-SDA-PIN) saw $sda-edges, wanted >= $MIN-SDA-EDGES)"
   if scl-edges < 2 * sda-edges:
     failures.add "wire-identity (SCL should clock ~4x SDA; a swap inverts this: $scl-edges vs $sda-edges)"
 

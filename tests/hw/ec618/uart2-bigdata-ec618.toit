@@ -31,9 +31,6 @@ Control lane (EC618 UART1 TX, PAD34 -> ESP32 IO4) carries newline commands:
   "S <n>"     send <n> deterministic bytes
   "Q"         quit
 
-Wiring: EC618 UART1 TX (PAD34) -> ESP32 IO4 (control);
-        EC618 UART2 TX (PAD26) -> ESP32 IO27, ESP32 IO14 -> EC618 UART2 RX (PAD25).
-
 Run via the mini-jag tester (start uart2-bigdata-esp32.toit on the ESP32 first):
 
 ```

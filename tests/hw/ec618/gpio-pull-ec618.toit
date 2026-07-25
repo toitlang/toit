@@ -5,6 +5,8 @@
 import gpio
 import ec618 show Ec618
 
+import .wiring as wiring
+
 /**
 EC618 half of the GPIO pull-up/down HW test (device under test).
 
@@ -24,8 +26,6 @@ The pull-UP is validated directly: with no pull the floating line reads a noisy
   bug; the test reports it and a clean pull-down check on a capable pad remains
   a rig-mapping TODO.
 
-Wiring (NOTE: gpio.Pin numbers are PAD numbers on EC618): EC618 board pin 5 (PAD26 = GPIO11) <-> ESP32 IO27 (held high-Z).
-
 Run via the mini-jag tester (start gpio-pull-esp32.toit on the ESP32 first):
 
 ```
@@ -35,7 +35,6 @@ Run via the mini-jag tester (start gpio-pull-esp32.toit on the ESP32 first):
 ```
 */
 
-GPIO-EC618 ::= 11               // Primary PAD26, wired to ESP32 IO27.
 SETTLE ::= Duration --ms=20     // Let the weak pull + line capacitance settle.
 READS ::= 16                    // Sample several times to catch an unstable line.
 TOLERANCE ::= 2                 // Allow a couple of noisy samples either way.
@@ -54,7 +53,7 @@ read-with-pull pin/gpio.Pin --up/bool=false --down/bool=false --off/bool=false -
   return count-ones pin
 
 main:
-  pin := Ec618.gpio GPIO-EC618
+  pin := Ec618.gpio wiring.EC618-GPIO11-NUM
   pin.configure --input
   // Pull-down first (from the floating state, so a high reading can't be residual
   // charge from a preceding pull-up), then pull-up, then no pull.

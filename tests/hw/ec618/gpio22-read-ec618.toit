@@ -7,8 +7,10 @@
 
 import gpio
 
+import .wiring as wiring
+
 main:
-  pin := gpio.Pin 42 --input  // PAD42 = GPIO22.
+  pin := gpio.Pin wiring.EC618-GPIO22-PAD --input
   print "gpio22-read: start"
   40.repeat:
     print "gpio22=$pin.get"

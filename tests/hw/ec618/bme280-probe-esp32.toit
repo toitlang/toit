@@ -6,6 +6,8 @@ import bme280
 import gpio
 import i2c
 
+import .wiring as wiring
+
 /**
 ESP32-side BME/BMP280 probe — validates the breadboard hookup before the
   EC618 I2C bring-up uses the sensor.
@@ -24,17 +26,16 @@ Run via Jaguar:
 ```
 */
 
-POWER ::= 13
-SDA ::= 33
-SCL ::= 22
 ADDRESS ::= 0x76     // SDO tied to GND.
 REG-CHIP-ID ::= 0xd0
 
 main:
-  power := gpio.Pin POWER --output --value=1
+  power := gpio.Pin wiring.ESP32-SENSOR-POWER-PIN --output --value=1
   sleep --ms=20  // Sensor start-up (2 ms per datasheet; generous).
 
-  bus := i2c.Bus --sda=(gpio.Pin SDA) --scl=(gpio.Pin SCL)
+  bus := i2c.Bus
+      --sda=(gpio.Pin wiring.ESP32-I2C1-SDA-PIN)
+      --scl=(gpio.Pin wiring.ESP32-I2C1-SCL-PIN)
   devices := bus.scan
   print "bme280-probe: scan -> $(devices.map: "0x$(%02x it)")"
 

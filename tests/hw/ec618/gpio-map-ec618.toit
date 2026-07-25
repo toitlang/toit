@@ -5,6 +5,8 @@
 import gpio
 import ec618 show Ec618
 
+import .wiring as wiring
+
 /**
 EC618 half of the rig connectivity-map test (device under test).
 
@@ -38,7 +40,6 @@ Run via the mini-jag tester (start gpio-map-esp32.toit on the ESP32 first):
 // console. Pads without a GPIO controller bit can't be driven this way and
 // are not listed (the gpio.Pin constructor would reject them).
 PADS ::= [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 31, 32, 33, 34, 35, 36, 37, 40, 41, 42, 43, 44, 45, 46, 47, 48]
-SYNC-PAD ::= 26                  // -> ESP32 IO27, the confirmed anchor wire.
 SYNC-PULSES ::= 6
 SYNC-HALF ::= Duration --ms=80   // 6.25 Hz burst, distinct from the 25 Hz slot wave.
 LEAD-IN ::= Duration --ms=600    // Quiet gap after the sync burst, before slot 0.
@@ -56,9 +57,9 @@ drive-square pin/gpio.Pin half/Duration duration/Duration -> none:
 
 main:
   // Sync burst on the anchor wire so the ESP32 can lock t0.
-  sync := Ec618.pad SYNC-PAD
+  sync := Ec618.pad wiring.EC618-GPIO11-PAD
   sync.configure --output --value=0
-  print "gpio-map-ec618: sync burst on PAD$SYNC-PAD ($SYNC-PULSES pulses)"
+  print "gpio-map-ec618: sync burst on PAD$(wiring.EC618-GPIO11-PAD) ($SYNC-PULSES pulses)"
   drive-square sync SYNC-HALF (Duration --ms=(SYNC-PULSES * 2 * SYNC-HALF.in-ms))
   sync.close
   sleep LEAD-IN

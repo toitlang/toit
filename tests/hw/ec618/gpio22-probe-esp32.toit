@@ -5,8 +5,10 @@
 // read side can confirm the wire + input path.
 import gpio
 
+import .wiring as wiring
+
 main:
-  pin := gpio.Pin 13 --output --value=0
+  pin := gpio.Pin wiring.ESP32-GPIO22-PIN --output --value=0
   print "gpio22-probe-esp32: IO13 LOW 10s"
   sleep --ms=10_000
   print "gpio22-probe-esp32: IO13 HIGH 15s"

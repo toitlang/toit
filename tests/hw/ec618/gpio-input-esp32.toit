@@ -4,6 +4,8 @@
 
 import gpio
 
+import .wiring as wiring
+
 /**
 ESP32 half of the GPIO-input HW test: drives a square wave for the EC618 to read.
 
@@ -13,8 +15,6 @@ The reverse of gpio-output. The measured EC618 IO rail is 3.3 V, so the ESP32
   two 3.3 V drivers fight on the wire — the runner starts the EC618 reader first and
   waits before launching this. This program drives IO27 as a 10 Hz square wave.
 
-Wiring: ESP32 IO27 -> EC618 board pin 5 (GPIO11 / PAD26).
-
 Run via Jaguar, AFTER the EC618 reader has set PAD26 to input:
 
 ```
@@ -22,13 +22,12 @@ Run via Jaguar, AFTER the EC618 reader has set PAD26 to input:
 ```
 */
 
-PIN-ESP32 ::= 27
 HALF ::= Duration --ms=50      // 10 Hz square wave.
 DURATION ::= Duration --s=45
 
 main:
-  pin := gpio.Pin PIN-ESP32 --output
-  print "gpio-input-esp32: driving IO$PIN-ESP32 at $(1000 / (2 * HALF.in-ms)) Hz for $(DURATION.in-s)s"
+  pin := gpio.Pin wiring.ESP32-GPIO11-PIN --output
+  print "gpio-input-esp32: driving IO$(wiring.ESP32-GPIO11-PIN) at $(1000 / (2 * HALF.in-ms)) Hz for $(DURATION.in-s)s"
   deadline := Time.monotonic-us + DURATION.in-us
   v := 0
   while Time.monotonic-us < deadline:

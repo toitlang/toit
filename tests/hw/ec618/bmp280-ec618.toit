@@ -28,10 +28,6 @@ The sensor (SDO grounded -> address 0x76) hangs on the EC618's I2C1 bus
 The powered-off behavior is PRINTED, not asserted: with power off the
   sensor may stay half-alive through its breakout pull-ups (back-powering).
 
-Wiring: EC618 UART2 (PAD26 -> IO27, IO14 -> PAD25) = power-control lane;
-        sensor SDA on the PAD23 <-> ESP32 IO33 net, SCL on the PAD24 <->
-        IO22 net (board pins 10/13); sensor VCC from ESP32 IO13.
-
 Run via the mini-jag tester (start bmp280-esp32.toit FIRST):
 
 ```
@@ -41,8 +37,6 @@ Run via the mini-jag tester (start bmp280-esp32.toit FIRST):
 ```
 */
 
-SDA-PAD ::= 23
-SCL-PAD ::= 24
 ADDRESS ::= 0x76
 EMPTY-ADDRESS ::= 0x40
 

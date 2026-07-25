@@ -4,6 +4,8 @@
 
 import gpio.adc show Adc
 
+import .wiring as wiring
+
 /**
 EC618 half of the ADC HW test (device under test): verifies the ADC reads the
   ESP32 DAC's exact voltages, within a delta.
@@ -27,9 +29,6 @@ Why calibrate instead of assuming a ratio: two resistor dividers are in play.
 Both channels must read accurately: a channel that does not swing
   ($LIVE-SPREAD-MIN), or whose readings are off by more than $MATCH-DELTA, fails.
 
-Wiring: ESP32 IO25 (DAC1) -> ~2:1 divider -> EC618 ADC0 (channel 0 / AIO3, pin 3)
-        ESP32 IO26 (DAC2) -> ~2:1 divider -> EC618 ADC1 (channel 1 / AIO4, pin 4)
-
 Run via the mini-jag tester (start adc-esp32.toit on the ESP32 first so the
   staircase is already running):
 
@@ -38,12 +37,9 @@ Run via the mini-jag tester (start adc-esp32.toit on the ESP32 first so the
       --chip ec618 --toit-exe build/host/sdk/bin/toit \
       --port-board1 <ec618-uart0-port> tests/hw/ec618/adc-ec618.toit
 ```
-
-(--port-board1 is the EC618's UART0 port through the CH340 adapter. Device
-  numbers can change between sessions, so identify the adapter by chip.)
 */
 
-CHANNELS ::= [0, 1]
+CHANNELS ::= [wiring.EC618-ADC0-CHANNEL, wiring.EC618-ADC1-CHANNEL]
 // The known staircase the ESP32 drives (adc-esp32.toit), in volts. The first
 // and last are the calibration endpoints; the ones in between are verified.
 DAC-LEVELS ::= [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]

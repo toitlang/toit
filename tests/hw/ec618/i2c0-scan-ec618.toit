@@ -20,9 +20,6 @@ The bus has no devices (the wires go straight to ESP32 inputs), so the
 Internal pull-ups both sides (--pull-up here; the ESP32 pulls its
   observer pins up too) keep the open-drain bus high.
 
-Wiring: ESP32 IO18 -> EC618 board pin 22 (I2C0_SDA / PAD14),
-        ESP32 IO17 -> EC618 board pin 23 (I2C0_SCL / PAD13).
-
 Run via the mini-jag tester AFTER the ESP32 observer is armed:
 
 ```

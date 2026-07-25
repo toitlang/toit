@@ -28,9 +28,6 @@ Stretched operations are SINGLE-LEG transfers (one MasterReceive or one
   abort that transfer cleanly (bounded chain wait) — a documented
   limitation, not exercised here.
 
-Wiring: as bmp280-ec618.toit, plus the SCL net (PAD24) reaching ESP32
-  IO22 for the squat.
-
 Run via the mini-jag tester (start i2c-stretch-esp32.toit FIRST):
 
 ```

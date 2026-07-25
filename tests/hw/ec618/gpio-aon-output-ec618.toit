@@ -6,6 +6,8 @@ import gpio
 import ec618 show Ec618
 import i2c
 
+import .wiring as wiring
+
 /**
 Regression test for AGPIOWU output voltage on the modest-affair rig.
 
@@ -35,9 +37,6 @@ Run via the mini-jag tester:
 ```
 */
 
-POWER-PAD ::= 42  // GPIO22, board pin 9 — AON wakeup-pad domain.
-SDA-PAD ::= 23
-SCL-PAD ::= 24
 ADDRESS ::= 0x76
 REG-CHIP-ID ::= 0xd0
 
@@ -58,7 +57,7 @@ read-chip-id bus/i2c.Bus -> int?:
   return id
 
 main:
-  power := gpio.Pin POWER-PAD --output --value=0
+  power := gpio.Pin wiring.EC618-GPIO22-PAD --output --value=0
 
   // TRUE sensor reset first: rail hard-low with NO i2c bus open — an
   // idle I2C controller feeds the sensor through its SDA/SCL clamp
@@ -73,7 +72,9 @@ main:
   // exercises the driver's unstick path instead of this test's subject.
   power.set 1
   sleep --ms=500  // Rail charge + sensor startup (~2 ms, generously).
-  bus := i2c.Bus --sda=(Ec618.pad SDA-PAD) --scl=(Ec618.pad SCL-PAD)
+  bus := i2c.Bus
+      --sda=(Ec618.pad wiring.EC618-I2C1-SDA-PAD)
+      --scl=(Ec618.pad wiring.EC618-I2C1-SCL-PAD)
 
   2.repeat: | round/int |
     if round > 0:

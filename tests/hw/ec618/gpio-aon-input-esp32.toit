@@ -4,6 +4,8 @@
 
 import gpio
 
+import .wiring as wiring
+
 /**
 ESP32 half of the AON-pad GPIO-input HW test: drives both AON wires at
   distinct frequencies for the EC618 to read (and tell apart).
@@ -12,9 +14,6 @@ IO19 waves at 10 Hz, IO2 at 4 Hz. IMPORTANT: the EC618 side must already
   have PAD44/PAD47 configured as INPUTS before this starts, or two 3.3 V
   drivers fight — the runner starts the EC618 reader first.
 
-Wiring: ESP32 IO19 -> EC618 board pin 18 (GPIO24 / PAD44),
-        ESP32 IO2  -> EC618 board pin 27 (GPIO27 / PAD47).
-
 Run via Jaguar, AFTER the EC618 reader has configured its inputs:
 
 ```
@@ -22,16 +21,14 @@ Run via Jaguar, AFTER the EC618 reader has configured its inputs:
 ```
 */
 
-PIN-FAST ::= 19                // -> EC618 GPIO24 (PAD44).
-PIN-SLOW ::= 2                 // -> EC618 GPIO27 (PAD47).
 HALF-FAST ::= Duration --ms=50   // 10 Hz.
 HALF-SLOW ::= Duration --ms=125  // 4 Hz.
 DURATION ::= Duration --s=45
 
 main:
-  fast := gpio.Pin PIN-FAST --output
-  slow := gpio.Pin PIN-SLOW --output
-  print "gpio-aon-input-esp32: IO$PIN-FAST at 10 Hz + IO$PIN-SLOW at 4 Hz for $(DURATION.in-s)s"
+  fast := gpio.Pin wiring.ESP32-GPIO24-PIN --output
+  slow := gpio.Pin wiring.ESP32-GPIO27-PIN --output
+  print "gpio-aon-input-esp32: IO$(wiring.ESP32-GPIO24-PIN) at 10 Hz + IO$(wiring.ESP32-GPIO27-PIN) at 4 Hz for $(DURATION.in-s)s"
   deadline := Time.monotonic-us + DURATION.in-us
   task::
     v := 0

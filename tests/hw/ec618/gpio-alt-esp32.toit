@@ -4,6 +4,8 @@
 
 import gpio
 
+import .wiring as wiring
+
 /**
 ESP32 half of the alternate-pad GPIO output test.
 
@@ -16,7 +18,10 @@ WINDOW ::= Duration --s=18
 SAMPLE ::= Duration --ms=2
 
 main:
-  pins := [gpio.Pin 17 --input --pull-down, gpio.Pin 18 --input --pull-down]
+  pins := [
+    gpio.Pin wiring.ESP32-GPIO14-ALT-PIN --input --pull-down,
+    gpio.Pin wiring.ESP32-GPIO15-ALT-PIN --input --pull-down,
+  ]
   names := ["GPIO14/PAD13", "GPIO15/PAD14"]
   expected-min := [400, 250]
   expected-max := [1000, 700]

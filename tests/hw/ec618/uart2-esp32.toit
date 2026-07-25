@@ -5,6 +5,8 @@
 import gpio
 import uart
 
+import .wiring as wiring
+
 /**
 ESP32 half of the UART2 HW test.
 
@@ -14,8 +16,6 @@ Opens a UART RX-only on IO27 (where the EC618's UART2 TX is wired) at the baud
   newline-delimited lines that contain the exact expected prefix verifies framing
   AND content at that baud — at a wrong baud the bytes would be garbage and never
   match. RX-only (no TX pin), so the ESP32 drives nothing on the shared wire.
-
-Wiring: EC618 GPIO11 / PAD26 (UART2 TX) -> ESP32 IO27.
 
 Run via Jaguar (start this FIRST so it is already listening, then launch
   uart2-ec618.toit via the tester). NOTE: `jag run` cannot pass program arguments
@@ -31,7 +31,6 @@ Reads the ESP32 serial console (e.g. via the CP2102N port) for the single
   "uart2-esp32: PASS ..." / "... FAIL ..." verdict line.
 */
 
-RX-PIN ::= 27
 DEFAULT-BAUD ::= 115200
 TOKEN ::= "EC618-UART2"
 MIN-LINES ::= 5
@@ -42,9 +41,9 @@ WAIT ::= Duration --s=40
 main args:
   baud := args.is-empty ? DEFAULT-BAUD : int.parse args[0]
   expect := "$TOKEN $baud "
-  rx := gpio.Pin RX-PIN
+  rx := gpio.Pin wiring.ESP32-UART2-RX-PIN
   port := uart.Port --tx=null --rx=rx --baud-rate=baud
-  print "uart2-esp32: RX-only on IO$RX-PIN at $baud baud, want >= $MIN-LINES lines \"$expect<n>\" (up to $(WAIT.in-s)s)"
+  print "uart2-esp32: RX-only on IO$(wiring.ESP32-UART2-RX-PIN) at $baud baud, want >= $MIN-LINES lines \"$expect<n>\" (up to $(WAIT.in-s)s)"
 
   good := 0
   buffer := #[]

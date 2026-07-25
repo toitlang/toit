@@ -5,6 +5,8 @@
 import gpio
 import uart
 
+import .wiring as wiring
+
 /**
 ESP32 half of the exhaustive UART2 round-trip test.
 
@@ -16,10 +18,6 @@ Listens on a CONTROL lane (the EC618's UART1 TX, IO4) for the baud rate to use,
   (unlike the older TX-only uart2-esp32.toit, which needed a per-baud deploy).
   Both directions are 3.3 V now, so driving the EC618 RX directly is safe.
 
-Wiring: EC618 UART1 TX (PAD34) -> IO4 (control RX);
-        EC618 UART2 TX (PAD26) -> IO27 (test RX);
-        IO14 (test TX) -> EC618 UART2 RX (PAD25).
-
 Run via Jaguar, FIRST (so it is listening before the EC618 sweep starts):
 
 ```
@@ -27,14 +25,11 @@ Run via Jaguar, FIRST (so it is listening before the EC618 sweep starts):
 ```
 */
 
-CONTROL-RX ::= 4
-TEST-RX ::= 27
-TEST-TX ::= 14
 CONTROL-BAUD ::= 115200
 
 main:
-  control := uart.Port --tx=null --rx=(gpio.Pin CONTROL-RX) --baud-rate=CONTROL-BAUD
-  print "uart2-echo-esp32: control RX on IO$CONTROL-RX; ready to echo test UART (IO$TEST-RX in / IO$TEST-TX out)"
+  control := uart.Port --tx=null --rx=(gpio.Pin wiring.ESP32-UART1-RX-PIN) --baud-rate=CONTROL-BAUD
+  print "uart2-echo-esp32: control RX on IO$(wiring.ESP32-UART1-RX-PIN); ready to echo test UART (IO$(wiring.ESP32-UART2-RX-PIN) in / IO$(wiring.ESP32-UART2-TX-PIN) out)"
 
   pending/int? := null            // a newly-requested baud (0 = done)
   done := false
@@ -79,8 +74,8 @@ main:
       if b == 0:
         done = true
       else:
-        rx = gpio.Pin TEST-RX
-        tx = gpio.Pin TEST-TX
+        rx = gpio.Pin wiring.ESP32-UART2-RX-PIN
+        tx = gpio.Pin wiring.ESP32-UART2-TX-PIN
         test = uart.Port --rx=rx --tx=tx --baud-rate=b
         print "uart2-echo-esp32: echoing at $b baud"
     if test:

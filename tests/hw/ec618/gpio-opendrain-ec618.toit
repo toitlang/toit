@@ -6,6 +6,8 @@ import ec618 show Ec618
 import gpio
 import uart
 
+import .wiring as wiring
+
 /**
 EC618 half of the GPIO open-drain test (device under test).
 
@@ -24,9 +26,6 @@ The EC618 has no native open-drain; the driver emulates it by making the
   against the peer's weak pull-down, which a push-pull high would win.
 
 The ESP32 measures/acts on command over UART2; all assertions run here.
-
-Wiring: EC618 UART2 (PAD26 -> IO27, IO14 -> PAD25) = command lane;
-        EC618 PAD33 <-> IO16 = the open-drain bus wire.
 
 Run via the mini-jag tester (start gpio-opendrain-esp32.toit FIRST):
 
@@ -47,7 +46,7 @@ main:
   check (reply[1] == "1") "idle-high (got $reply[1])"
 
   // Open as open-drain; the constructor's default value 0 drives low.
-  od := gpio.Pin 33 --input --output --open-drain --pull-up
+  od := gpio.Pin wiring.EC618-OPEN-DRAIN-BUS-PAD --input --output --open-drain --pull-up
   check ((remote-read control) == 0) "drive-0"
   check (od.get == 0) "drive-0-readback"
 
@@ -85,7 +84,7 @@ main:
   // Phase 2: open-drain WITHOUT the internal pull-up — the classic
   // configuration where an external pull-up (here: the ESP32's) supplies
   // the high level.
-  od = gpio.Pin 33 --output --open-drain
+  od = gpio.Pin wiring.EC618-OPEN-DRAIN-BUS-PAD --output --open-drain
   check ((remote-read control) == 0) "nopull-drive-0"
   od.set 1
   check ((remote-read control) == 1) "nopull-release"

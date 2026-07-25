@@ -25,9 +25,6 @@ Locks in the Toit-owned RX ring behavior of the CMSIS UART2 path so a
 The ESP32 half is the uart2-bigdata-esp32.toit command server (B/S/Q over the
   control lane); the EC618 sleeps through each burst so the ring has no reader.
 
-Wiring: EC618 UART1 TX (PAD34) -> ESP32 IO4 (control);
-        ESP32 IO14 -> EC618 UART2 RX (PAD25).
-
 Run via the mini-jag tester (start uart2-bigdata-esp32.toit on the ESP32 first):
 
 ```

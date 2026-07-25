@@ -5,6 +5,8 @@
 import gpio
 import ec618 show Ec618
 
+import .wiring as wiring
+
 /**
 EC618 half of the AON-pad GPIO-input HW test (device under test).
 
@@ -19,9 +21,6 @@ Passes if each pin sees both levels and enough edges, AND the fast wire
   reach — a swapped or cross-coupled pair inverts/equalizes the ratio and
   fails.
 
-Wiring: ESP32 IO19 -> EC618 board pin 18 (GPIO24 / PAD44),
-        ESP32 IO2  -> EC618 board pin 27 (GPIO27 / PAD47).
-
 Run via the mini-jag tester (start gpio-aon-input-esp32.toit on the ESP32
   first):
 
@@ -32,8 +31,6 @@ Run via the mini-jag tester (start gpio-aon-input-esp32.toit on the ESP32
 ```
 */
 
-GPIO-FAST ::= 24                // PAD44, board pin 18, driven by ESP32 IO19 (10 Hz).
-GPIO-SLOW ::= 27                // PAD47, board pin 27, driven by ESP32 IO2 (4 Hz).
 SAMPLE ::= Duration --ms=2
 WINDOW ::= Duration --s=20      // Inputs are configured first; the ESP32 starts a
                                 // few seconds into this window (no shared barrier).
@@ -41,11 +38,11 @@ MIN-EDGES-FAST ::= 100          // 10 Hz over the overlap gives 100s of edges.
 MIN-EDGES-SLOW ::= 40           // 4 Hz proportionally fewer.
 
 main:
-  fast := Ec618.gpio GPIO-FAST  // Opening an AON pad powers the AON IO LDO.
-  slow := Ec618.gpio GPIO-SLOW
+  fast := Ec618.gpio wiring.EC618-GPIO24-NUM  // Opening an AON pad powers the AON IO LDO.
+  slow := Ec618.gpio wiring.EC618-GPIO27-NUM
   fast.configure --input
   slow.configure --input
-  print "gpio-aon-input-ec618: reading GPIO$GPIO-FAST (fast) + GPIO$GPIO-SLOW (slow) for $(WINDOW.in-s)s"
+  print "gpio-aon-input-ec618: reading GPIO$(wiring.EC618-GPIO24-NUM) (fast) + GPIO$(wiring.EC618-GPIO27-NUM) (slow) for $(WINDOW.in-s)s"
 
   last-fast := fast.get
   last-slow := slow.get
@@ -76,9 +73,9 @@ main:
 
   failures := []
   if not (edges-fast >= MIN-EDGES-FAST and saw0-fast and saw1-fast):
-    failures.add "fast-pin (GPIO$GPIO-FAST/PAD44 input dead or weak)"
+    failures.add "fast-pin (GPIO$(wiring.EC618-GPIO24-NUM)/PAD44 input dead or weak)"
   if not (edges-slow >= MIN-EDGES-SLOW and saw0-slow and saw1-slow):
-    failures.add "slow-pin (GPIO$GPIO-SLOW/PAD47 input dead or weak)"
+    failures.add "slow-pin (GPIO$(wiring.EC618-GPIO27-NUM)/PAD47 input dead or weak)"
   // Wire identity: the fast wire must land on the fast pin. A swap inverts
   // the ratio; coupling equalizes it.
   if edges-fast * 2 <= edges-slow * 3:

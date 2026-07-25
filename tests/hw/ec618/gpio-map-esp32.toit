@@ -4,6 +4,8 @@
 
 import gpio
 
+import .wiring as wiring
+
 /**
 ESP32 half of the rig connectivity-map test.
 
@@ -20,10 +22,6 @@ Run via Jaguar (output to the serial console), BEFORE the EC618 half:
 ```
 */
 
-ANCHOR ::= 27
-// Candidate ESP32 input pins wired to the EC618 (GPIO-capable, with internal
-// pulls; excludes the analog DAC pins IO25/26 and input-only/flash pins).
-WATCH ::= [27, 21, 14, 16, 4, 13, 33, 32, 23, 22, 19, 18, 17, 2]
 // Slot order — MUST match PADS in gpio-map-ec618.toit. (PAD26 is not a slot;
 // it is the sync anchor on IO27.)
 EC618-PADS ::= [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 31, 32, 33, 34, 35, 36, 37, 40, 41, 42, 43, 44, 45, 46, 47, 48]
@@ -36,10 +34,11 @@ WAIT-FOR-SYNC ::= Duration --s=40
 
 main:
   pins := {:}
-  WATCH.do: | n/int | pins[n] = gpio.Pin n --input --pull-down
-  print "gpio-map-esp32: waiting up to $(WAIT-FOR-SYNC.in-s)s for the sync burst on IO$ANCHOR"
-  if (catch: with-timeout WAIT-FOR-SYNC: pins[ANCHOR].wait-for 1) != null:
-    print "gpio-map-esp32: FAIL no sync seen on IO$ANCHOR (EC618 not driving, or wire missing)"
+  wiring.ESP32-GPIO-OBSERVATION-PINS.do: | n/int |
+    pins[n] = gpio.Pin n --input --pull-down
+  print "gpio-map-esp32: waiting up to $(WAIT-FOR-SYNC.in-s)s for the sync burst on IO$(wiring.ESP32-GPIO11-PIN)"
+  if (catch: with-timeout WAIT-FOR-SYNC: pins[wiring.ESP32-GPIO11-PIN].wait-for 1) != null:
+    print "gpio-map-esp32: FAIL no sync seen on IO$(wiring.ESP32-GPIO11-PIN) (EC618 not driving, or wire missing)"
     pins.do: | n pin | pin.close
     return
   t0 := Time.monotonic-us
@@ -53,14 +52,17 @@ main:
     now := Time.monotonic-us
     if now < sample-start-us: sleep --ms=((sample-start-us - now) / 1000)
     counts := {:}
-    WATCH.do: | n/int | counts[n] = 0
+    wiring.ESP32-GPIO-OBSERVATION-PINS.do: | n/int | counts[n] = 0
     samples := 0
     while Time.monotonic-us < sample-end-us:
-      WATCH.do: | n/int | if pins[n].get == 1: counts[n] = counts[n] + 1
+      wiring.ESP32-GPIO-OBSERVATION-PINS.do: | n/int |
+        if pins[n].get == 1: counts[n] = counts[n] + 1
       samples++
       sleep --ms=3
-    toggled := WATCH.filter: | n/int | counts[n] > 0 and counts[n] < samples
-    stuck-high := WATCH.filter: | n/int | samples > 0 and counts[n] == samples
+    toggled := wiring.ESP32-GPIO-OBSERVATION-PINS.filter: | n/int |
+      counts[n] > 0 and counts[n] < samples
+    stuck-high := wiring.ESP32-GPIO-OBSERVATION-PINS.filter: | n/int |
+      samples > 0 and counts[n] == samples
     line := "gpio-map-esp32: EC618 PAD$(EC618-PADS[i]) <-> ESP32 IO$toggled"
     if not stuck-high.is-empty: line += "  (always-high: IO$stuck-high)"
     print line

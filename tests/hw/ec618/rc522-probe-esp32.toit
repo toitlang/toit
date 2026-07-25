@@ -5,6 +5,8 @@
 import gpio
 import spi
 
+import .wiring as wiring
+
 /**
 ESP32-side RC522 wiring probe — validates the breadboard hookup before
   the EC618 SPI bring-up uses the reader.
@@ -15,22 +17,12 @@ Wakes the RC522 out of hard power-down (RST on the PAD16/IO23 net),
   loopback, exercising MOSI and MISO with real data. Then drops RST so
   the reader goes back to its quiet power-down state.
 
-Wiring (shared nets with the EC618's SPI0 pads 23/24/25/26):
-  RC522 SDA(=CS) - IO33 | MOSI - IO22 | MISO - IO14 | SCK - IO27
-  RST - IO23 (with a pull-down) | VCC - 3.3 V | GND - GND
-
 Run via Jaguar:
 
 ```
   jag run tests/hw/ec618/rc522-probe-esp32.toit --device <esp32>
 ```
 */
-
-RST ::= 23
-CS ::= 33
-MOSI ::= 22
-MISO ::= 14
-SCK ::= 27
 
 REG-FIFO-DATA ::= 0x09
 REG-FIFO-LEVEL ::= 0x0a
@@ -49,11 +41,14 @@ write-reg device/spi.Device register/int value/int -> none:
   device.transfer #[(register << 1) & 0x7e, value]
 
 main:
-  rst := gpio.Pin RST --output --value=1
+  rst := gpio.Pin wiring.ESP32-RC522-RST-PIN --output --value=1
   sleep --ms=50  // Oscillator start-up out of hard power-down.
 
-  bus := spi.Bus --clock=(gpio.Pin SCK) --mosi=(gpio.Pin MOSI) --miso=(gpio.Pin MISO)
-  device := bus.device --cs=(gpio.Pin CS) --frequency=1_000_000
+  bus := spi.Bus
+      --clock=(gpio.Pin wiring.ESP32-SPI0-CLK-PIN)
+      --mosi=(gpio.Pin wiring.ESP32-SPI0-MOSI-PIN)
+      --miso=(gpio.Pin wiring.ESP32-SPI0-MISO-PIN)
+  device := bus.device --cs=(gpio.Pin wiring.ESP32-SPI0-CS-PIN) --frequency=1_000_000
 
   version := read-reg device REG-VERSION
   kind/string := "unknown/clone"

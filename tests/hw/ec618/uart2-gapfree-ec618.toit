@@ -29,9 +29,6 @@ Method (see uart2-gapfree-esp32.toit for the detector math): the payload
 The wall-clock of the flush is also checked against the wire time (a
   coarse, filter-independent bound, same idea as uart2-flush).
 
-Wiring: EC618 UART2 TX (PAD26) -> IO27 (watched);
-        EC618 UART1 (PAD34 -> IO4, IO16 -> PAD33) = command lane.
-
 Run via the mini-jag tester (start uart2-gapfree-esp32.toit FIRST):
 
 ```

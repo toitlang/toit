@@ -5,6 +5,8 @@
 import gpio
 import uart
 
+import .wiring as wiring
+
 /**
 ESP32 half of the EC618 I2C/BMP280 test: the power switch.
 
@@ -16,10 +18,6 @@ The BMP280 on the breadboard is powered from IO13. This helper switches it
   "P 0" -> sensor power off (replies "P 0")
   "Q"   -> power off + quit.
 
-Wiring: EC618 UART2 TX (PAD26) -> IO27; IO14 -> EC618 UART2 RX (PAD25);
-        IO13 -> BMP280 VCC; the sensor's SDA/SCL sit on the IO18/IO17 nets
-        which also reach the EC618's I2C0 pads (PAD27/PAD28).
-
 Run via Jaguar, FIRST:
 
 ```
@@ -27,14 +25,13 @@ Run via Jaguar, FIRST:
 ```
 */
 
-RX ::= 27
-TX ::= 14
-POWER ::= 13
-
 main:
-  port := uart.Port --rx=(gpio.Pin RX) --tx=(gpio.Pin TX) --baud-rate=115200
-  power := gpio.Pin POWER --output --value=0
-  print "bmp280-esp32: ready (power IO$POWER)"
+  port := uart.Port
+      --rx=(gpio.Pin wiring.ESP32-UART2-RX-PIN)
+      --tx=(gpio.Pin wiring.ESP32-UART2-TX-PIN)
+      --baud-rate=115200
+  power := gpio.Pin wiring.ESP32-SENSOR-POWER-PIN --output --value=0
+  print "bmp280-esp32: ready (power IO$(wiring.ESP32-SENSOR-POWER-PIN))"
 
   buffer := #[]
   while true:

@@ -27,9 +27,6 @@ Per round (every consecutive pair differs in shape and direction):
   - 1-byte read with NO register write (SMBus receive-byte),
   - probe of an empty address (NACK path between data transfers).
 
-Wiring: as bmp280-ec618.toit (sensor on I2C1 pads 23/24; ESP32 IO13 powers
-  it; UART2 lane carries the power command).
-
 Run via the mini-jag tester (start bmp280-esp32.toit FIRST):
 
 ```

@@ -5,6 +5,8 @@
 import gpio
 import uart
 
+import .wiring as wiring
+
 /**
 ESP32 half of the EC618 I2C clock-stretch test: power switch + SCL squatter.
 
@@ -20,10 +22,6 @@ Commands over UART2:
                         hold SCL low for <hold> ms and release.
   "Q"                -> power off + quit.
 
-Wiring: EC618 UART2 TX (PAD26) -> IO27; IO14 -> EC618 UART2 RX (PAD25);
-        IO13 -> BMP280 VCC; SCL net = EC618 PAD24 <-> IO22 (the stretch
-        target); SDA net = PAD23 <-> IO33 (untouched here).
-
 Run via Jaguar, FIRST:
 
 ```
@@ -31,18 +29,16 @@ Run via Jaguar, FIRST:
 ```
 */
 
-RX ::= 27
-TX ::= 14
-POWER ::= 13
-SCL ::= 22
-
 main:
-  port := uart.Port --rx=(gpio.Pin RX) --tx=(gpio.Pin TX) --baud-rate=115200
-  power := gpio.Pin POWER --output --value=0
+  port := uart.Port
+      --rx=(gpio.Pin wiring.ESP32-UART2-RX-PIN)
+      --tx=(gpio.Pin wiring.ESP32-UART2-TX-PIN)
+      --baud-rate=115200
+  power := gpio.Pin wiring.ESP32-SENSOR-POWER-PIN --output --value=0
   // Open-drain, idle released: value 1 = high-Z (the bus pull-up rules),
   // value 0 = actively held low. Never drives high.
-  scl := gpio.Pin SCL --output --open-drain --value=1
-  print "i2c-stretch-esp32: ready (power IO$POWER, SCL squat IO$SCL open-drain)"
+  scl := gpio.Pin wiring.ESP32-I2C1-SCL-PIN --output --open-drain --value=1
+  print "i2c-stretch-esp32: ready (power IO$(wiring.ESP32-SENSOR-POWER-PIN), SCL squat IO$(wiring.ESP32-I2C1-SCL-PIN) open-drain)"
 
   buffer := #[]
   while true:

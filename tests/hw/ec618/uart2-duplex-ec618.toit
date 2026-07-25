@@ -32,9 +32,6 @@ Without flow control a duplex flood is ALLOWED to drop on the RX side. The
   - a delivery floor: count >= TOTAL / 4 (catches an RX collapse),
   - full CRC integrity whenever nothing was dropped.
 
-Wiring: EC618 UART1 TX (PAD34) -> ESP32 IO4 (control);
-        EC618 UART2 TX (PAD26) -> ESP32 IO27, ESP32 IO14 -> EC618 UART2 RX (PAD25).
-
 Run via the mini-jag tester (start uart2-bigdata-esp32.toit on the ESP32 first):
 
 ```

@@ -15,8 +15,6 @@ Round-trips a token through the ESP32 echo helper at EVERY combination of
   the driver's error counter reacts; the observed delivery behavior is printed
   either way (we record reality, we don't assume it).
 
-Wiring + helper: see uart2-config-esp32.toit (control = UART1 TX -> IO4).
-
 Run via the mini-jag tester (start uart2-config-esp32.toit on the ESP32 first):
 
 ```
