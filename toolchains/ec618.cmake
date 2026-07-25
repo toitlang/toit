@@ -23,14 +23,18 @@ set(TOIT_SYSTEM_NAME "ec618" CACHE STRING "The Toit system name")
 
 # We only build static libraries for this target — the final linking is done
 # by the PLAT Makefile. Skip CMake's compiler linking test.
-set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY CACHE STRING "" FORCE)
+set(CMAKE_TRY_COMPILE_PLATFORM_VARIABLES EC618_GCC_PATH CACHE STRING "" FORCE)
 
 set(FIND_LIBRARY_USE_LIB64_PATHS OFF)
 
 # --- Compiler ---
-set(CMAKE_C_COMPILER arm-none-eabi-gcc CACHE PATH "" FORCE)
-set(CMAKE_CXX_COMPILER arm-none-eabi-g++ CACHE PATH "" FORCE)
-set(CMAKE_ASM_COMPILER arm-none-eabi-gcc CACHE PATH "" FORCE)
+if(NOT EC618_GCC_PATH)
+  message(FATAL_ERROR "EC618_GCC_PATH must name the SDK-pinned GNU Arm toolchain")
+endif()
+set(CMAKE_C_COMPILER "${EC618_GCC_PATH}/bin/arm-none-eabi-gcc" CACHE FILEPATH "" FORCE)
+set(CMAKE_CXX_COMPILER "${EC618_GCC_PATH}/bin/arm-none-eabi-g++" CACHE FILEPATH "" FORCE)
+set(CMAKE_ASM_COMPILER "${EC618_GCC_PATH}/bin/arm-none-eabi-gcc" CACHE FILEPATH "" FORCE)
 
 # --- PLAT SDK paths ---
 # The PLAT SDK comes from our fork of the openLuat CSDK:

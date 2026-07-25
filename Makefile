@@ -270,7 +270,7 @@ ec618-base: check-env host-tools
 ec618: check-env host-tools
 	# Build the EC618 VM library.
 	mkdir -p $(BUILD)/ec618
-	(cd $(BUILD)/ec618 && cmake $(CURDIR) -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=$(CURDIR)/toolchains/ec618.cmake --no-warn-unused-cli)
+	(cd $(BUILD)/ec618 && cmake $(CURDIR) -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=$(CURDIR)/toolchains/ec618.cmake -DEC618_GCC_PATH=$(EC618_GCC_PATH) --no-warn-unused-cli)
 	(cd $(BUILD)/ec618 && ninja toit_vm mbedtls mbedx509 mbedcrypto)
 	# TWO-STAGE LINK: the slot links separately against the base's symbols
 	# (--just-symbols), so
@@ -292,7 +292,7 @@ ec618: check-env host-tools
 		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm \
 		--base-elf=$(EC618_BASE_DIR)/base.elf --slot=b --out=$(BUILD)/ec618/slot-b.ld
 	for s in a b; do \
-		arm-none-eabi-g++ -mcpu=cortex-m3 -mthumb -nostartfiles --specs=nano.specs \
+		$(EC618_GCC_PATH)/bin/arm-none-eabi-g++ -mcpu=cortex-m3 -mthumb -nostartfiles --specs=nano.specs \
 			-T $(BUILD)/ec618/slot-$$s.ld \
 			-Wl,--just-symbols=$(EC618_BASE_DIR)/base.elf \
 			-Wl,--emit-relocs -Wl,--gc-sections -Wl,-e,toit_start \
