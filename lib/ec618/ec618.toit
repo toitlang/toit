@@ -194,7 +194,7 @@ The $reason should be one of the RESET-* constants, typically the result of
   $reset-reason. Unrecognized values are formatted as "reset-<n>".
 */
 reset-reason-name reason/int -> string:
-  if 0 <= reason and reason < RESET-REASON-NAMES_.size:
+  if 0 <= reason < RESET-REASON-NAMES_.size:
     return RESET-REASON-NAMES_[reason]
   return "reset-$reason"
 
@@ -246,7 +246,7 @@ The $cause should be one of the WAKEUP-* constants, typically the result
   of $wakeup-cause. Unrecognized values are formatted as "wakeup-<n>".
 */
 wakeup-cause-name cause/int -> string:
-  if 0 <= cause and cause < WAKEUP-CAUSE-NAMES_.size:
+  if 0 <= cause < WAKEUP-CAUSE-NAMES_.size:
     return WAKEUP-CAUSE-NAMES_[cause]
   return "wakeup-$cause"
 
@@ -314,7 +314,7 @@ class Ec618:
     physical PAD number as its unique identity.
   */
   static gpio num/int --alt/bool=false -> Pin:
-    if num < 0 or num >= 32: throw "INVALID_ARGUMENT"
+    if not 0 <= num < 32: throw "INVALID_ARGUMENT"
     pad-num/int := alt ? GPIO-ALT-PAD_[num] : GPIO-PRIMARY-PAD_[num]
     if pad-num == NO-PAD_: throw "INVALID_ARGUMENT"
     return Pin pad-num
@@ -537,8 +537,8 @@ class Ec618:
       --rs485-de/Pin?
       --large-buffers/bool?
       -> uart.Port:
-    if uart-id < 0 or uart-id > 2: throw "INVALID_ARGUMENT"
-    if mapping < 0 or mapping >= UART-MAPPINGS-PER-CONTROLLER_:
+    if not 0 <= uart-id <= 2: throw "INVALID_ARGUMENT"
+    if not 0 <= mapping < UART-MAPPINGS-PER-CONTROLLER_:
       throw "INVALID_ARGUMENT"
 
     rs485 := mode == uart.Port.MODE-RS485-HALF-DUPLEX
