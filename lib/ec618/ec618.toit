@@ -302,9 +302,22 @@ class Ec618:
 
   Use this when the chip's PAD index is what you have. For most boards
     silkscreens don't label PADs directly; in that case prefer $gpio.
+  The configuration options have the same meaning as on $(Pin.constructor num).
   */
-  static pad num/int -> Pin:
+  static pad num/int -> Pin
+      --input/bool=false
+      --output/bool=false
+      --pull-up/bool=false
+      --pull-down/bool=false
+      --open-drain/bool=false
+      --value/int=0:
     return Pin num
+        --input=input
+        --output=output
+        --pull-up=pull-up
+        --pull-down=pull-down
+        --open-drain=open-drain
+        --value=value
 
   /**
   Returns a $Pin for the EC618 logical GPIO with the given $num.
@@ -312,12 +325,26 @@ class Ec618:
   Defaults to the primary ALT0 pad of that GPIO. Pass $alt to address its
     alternate ALT4 pad where one exists. The returned $Pin still uses the
     physical PAD number as its unique identity.
+  The configuration options have the same meaning as on $(Pin.constructor num).
   */
-  static gpio num/int --alt/bool=false -> Pin:
+  static gpio num/int -> Pin
+      --alt/bool=false
+      --input/bool=false
+      --output/bool=false
+      --pull-up/bool=false
+      --pull-down/bool=false
+      --open-drain/bool=false
+      --value/int=0:
     if not 0 <= num < 32: throw "INVALID_ARGUMENT"
     pad-num/int := alt ? GPIO-ALT-PAD_[num] : GPIO-PRIMARY-PAD_[num]
     if pad-num == NO-PAD_: throw "INVALID_ARGUMENT"
-    return Pin pad-num
+    return pad pad-num
+        --input=input
+        --output=output
+        --pull-up=pull-up
+        --pull-down=pull-down
+        --open-drain=open-drain
+        --value=value
 
   /**
   Opens UART0 (EC618 controller 0).
