@@ -1650,8 +1650,10 @@ show invocation/cli.Invocation -> none:
     kind-string = Envelope.KIND-STRING-ESP32
   else if envelope.kind == Envelope.KIND-EC618:
     kind-string = Envelope.KIND-STRING-EC618
-  else:
+  else if envelope.kind == Envelope.KIND-HOST:
     kind-string = Envelope.KIND-STRING-HOST
+  else:
+    unreachable
 
   result := {
     "envelope-format-version": envelope.version_,
