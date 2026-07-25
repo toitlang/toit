@@ -155,7 +155,7 @@ Remaining gap work, in order:
    scl=3360 vs sda=1212 rising edges — IO17=SCL, IO18=SDA, the lockstep
    ambiguity resolved and it matches the table above.
 3. **Pads-40..42 output voltage** (pin 9) — RESOLVED 2026-07-02. The
-   AON IO LDO boots at 1.8 V, so `pad_aon_power_on()` raises it to 3.3 V
+   The AON IO LDO boots at 1.8 V, so its first user raises it to 3.3 V
    for the GPIO and PWM paths. `gpio-aon-output-ec618` verifies on
    modest-affair that PAD42 can power the BMP280 twice across a power
    toggle. THE MATRIX IS COMPLETE — every wired pin demonstrates all

@@ -262,8 +262,8 @@ class Ec618:
   // resolver; native drivers receive PADs and only derive controller bits
   // from them. Values come from the official CSDK's complete `allGpioMap`
   // example table and its GPIO_ToPadEC618 helper. GPIO20..28 (pads 40..48)
-  // are AON-domain GPIOs: the driver powers their LDO on first use and they
-  // keep working in sleep modes.
+  // are AON-domain GPIOs: their shared LDO is powered while at least one is
+  // configured for GPIO or PWM. Deep-sleep wake inputs use a separate rail.
   static GPIO-PRIMARY-PAD_/ByteArray ::= #[
     15,  16,  17,  18,  19,  20,  21,  22,
     23,  24,  25,  26,  27,  28,  29,  30,

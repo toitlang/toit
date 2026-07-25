@@ -161,7 +161,7 @@ These are executable contracts, not just historical characterizations:
 The AON IO LDO boots at `IOVOLT_1_80V`. AON pad outputs therefore need the
 driver to select 3.3 V before they can drive the rig's 3.3 V inputs and loads.
 
-`pad_aon_power_on()` (`pad_table_ec618.h` / `gpio_ec618.cc`) calls
+`pad_aon_power_acquire()` (`pad_table_ec618.h` / `gpio_ec618.cc`) calls
 `slpManAONIOPowerOn()` + `slpManAONIOVoltSet(IOVOLT_3_30V)` — the same
 pair the SDK's example_gpio uses. Called by the GPIO and PWM paths for
 every AON pad. `gpio-aon-output-ec618.toit` is the modest-affair regression:

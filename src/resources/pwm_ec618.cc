@@ -29,7 +29,6 @@ extern "C" {
   #include "driver_gpio.h"
   #include "ec618.h"
   #include "gpio.h"
-  #include "slpman.h"  // slpManAONIOPowerOn for the AON-domain PWM pads.
   #include "timer.h"
 }
 
@@ -100,6 +99,7 @@ class PwmResource : public Resource {
   ~PwmResource() override {
     TIMER_stop(timer_);
     pad_release(pad_);
+    if (pad_is_aon(pad_)) pad_aon_power_release();
     pwm_timers.put(timer_);
   }
 
@@ -230,9 +230,7 @@ PRIMITIVE(start) {
   CLOCK_clockEnable(kFClks[timer]);
   TIMER_driverInit();
 
-  // The AON pads (43/44/45/47) sit behind the AON IO LDO, off at boot
-  // and defaulting to 1.8 V — same rule as the GPIO path; idempotent.
-  if (pad_is_aon(pad)) pad_aon_power_on();
+  if (pad_is_aon(pad)) pad_aon_power_acquire();
 
   channel->apply(group->period(), factor);
 

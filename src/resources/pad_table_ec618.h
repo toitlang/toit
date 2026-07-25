@@ -52,17 +52,13 @@ int pad_to_gpio(int pad);
 int pad_gpio_mux(int pad);
 
 // Whether the pad is an AON-domain GPIO (AGPIO, pads 40..48 / GPIO20..28).
-// These are powered by the AON IO LDO (slpManAONIOPowerOn) and keep
-// working in sleep modes.
+// These are powered by the AON IO LDO (slpManAONIOPowerOn).
 bool pad_is_aon(int pad);
 
-// Powers the AON IO LDO and raises it to the 3.3 V group. The LDO BOOTS
-// AT 1.80 V (register 0x4D020054 reads IOVOLT_1_80V), so without the
-// volt-set every AON pad outputs 1.8 V highs — invisible to 3.3 V logic;
-// scope-diagnosed 2026-07-02 (the "AGPIOWU output gate" was exactly
-// this). The SDK's example_gpio does the same pair. Idempotent; call
-// before using any AON pad. (Implemented in gpio_ec618.cc.)
-void pad_aon_power_on();
+// Acquires/releases a reference to the AON IO LDO. The first user powers
+// the rail and selects 3.3 V; the last release powers it off.
+void pad_aon_power_acquire();
+void pad_aon_power_release();
 
 // Whether another physical PAD maps to the same GPIO controller bit.
 bool pad_gpio_is_shared(int pad);

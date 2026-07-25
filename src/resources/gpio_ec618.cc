@@ -164,6 +164,8 @@ static uint64_t open_drain_pads = 0;
 static bool pads_in_use[kMaxPadIndex + 1] = {};
 // Store pad + 1 so zero means "unowned".
 static uint8_t gpio_bit_owners[kGpioBitCount] = {};
+static bool gpio_aon_powered[kMaxPadIndex + 1] = {};
+static int aon_power_users = 0;
 
 static bool reserve_pad(int pad) {
   Locker locker(OS::global_mutex());
@@ -242,14 +244,42 @@ static void wakeup_pad_set(int pad, bool wakeup_en,
       wakeup_en, &cfg);
 }
 
-// See pad_table_ec618.h: LDO on + raise to 3.3 V. The LDO boots at
-// 1.80 V, and 1.8 V AON outputs read as LOW to the rig's 3.3 V logic —
-// that (not a config gate) was the whole "AGPIOWU output" mystery,
-// settled by oscilloscope 2026-07-02. The SDK example does this exact
-// pair before driving AON pads.
-void pad_aon_power_on() {
-  slpManAONIOPowerOn();
-  slpManAONIOVoltSet(IOVOLT_3_30V);
+static void aon_power_acquire_locked() {
+  if (aon_power_users++ == 0) {
+    slpManAONIOPowerOn();
+    slpManAONIOVoltSet(IOVOLT_3_30V);
+  }
+}
+
+static void aon_power_release_locked() {
+  ASSERT(aon_power_users > 0);
+  if (--aon_power_users == 0) slpManAONIOPowerOff();
+}
+
+void pad_aon_power_acquire() {
+  Locker locker(OS::global_mutex());
+  aon_power_acquire_locked();
+}
+
+void pad_aon_power_release() {
+  Locker locker(OS::global_mutex());
+  aon_power_release_locked();
+}
+
+static void gpio_aon_power_acquire(int pad) {
+  if (!pad_is_aon(pad)) return;
+  Locker locker(OS::global_mutex());
+  if (gpio_aon_powered[pad]) return;
+  gpio_aon_powered[pad] = true;
+  aon_power_acquire_locked();
+}
+
+static void gpio_aon_power_release(int pad) {
+  if (!pad_is_aon(pad)) return;
+  Locker locker(OS::global_mutex());
+  if (!gpio_aon_powered[pad]) return;
+  gpio_aon_powered[pad] = false;
+  aon_power_release_locked();
 }
 
 // See pad_table_ec618.h. Lives here because this is the file with the SDK
@@ -294,6 +324,7 @@ void GpioResourceGroup::on_unregister_resource(Resource* r) {
   GpioResource* resource = static_cast<GpioResource*>(r);
   set_open_drain_state(resource->pad(), false);
   pad_release(resource->pad());
+  gpio_aon_power_release(resource->pad());
   release_pad(resource->pad());
 }
 
@@ -368,11 +399,9 @@ PRIMITIVE(config) {
   if (value < -1 || value > 1) FAIL(INVALID_ARGUMENT);
   if (!claim_gpio_bit(pad, gpio_bit)) FAIL(ALREADY_IN_USE);
 
-  // AON-domain pads sit behind the AON IO LDO, which is off at boot —
-  // without power the pad neither drives nor reads. Turning it on is
-  // idempotent and it stays on (other AON pads may be in use; the cost is
-  // the LDO's standby draw, revisited with the deep-sleep work).
-  if (pad_is_aon(pad)) pad_aon_power_on();
+  // AON-domain pads sit behind the AON IO LDO. Wake-only pins don't need
+  // this rail, so acquire it when the pin is first configured as GPIO.
+  gpio_aon_power_acquire(pad);
 
   // Release the GPIO-muxed wakeup pads from wakeup duty. The SDK describes
   // this as selecting between "wakeup pad" and "aonio"; pad_release restores
