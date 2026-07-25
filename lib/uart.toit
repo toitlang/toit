@@ -96,6 +96,10 @@ class Port extends Object with io.InMixin implements reader.Reader:
   The ESP32 has hardware support for up to two UART ports (the third one is
     normally already taken for the USB connection/debugging console.
 
+  On the EC618, UART pins have fixed controller-specific mappings and not all
+    options are supported. Use the helpers in the `ec618` library; their
+    documentation lists the available mappings and platform restrictions.
+
   */
   constructor
       --tx/gpio.Pin? --rx/gpio.Pin? --rts/gpio.Pin?=null --cts/gpio.Pin?=null
