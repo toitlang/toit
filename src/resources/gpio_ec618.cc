@@ -43,10 +43,13 @@ namespace toit {
 // (e.g. PAD27 and PAD11 are both GPIO12). Plain-GPIO read/write goes
 // through the controller bit, while iomux affects the physical pad.
 
-// GPIO controller bit decomposition: port = bit / 16, index = bit % 16.
-static uint32_t to_port(int gpio_bit) { return gpio_bit >> 4; }
-static uint16_t to_pin_index(int gpio_bit) { return gpio_bit & 0xf; }
-static uint16_t to_pin_mask(int gpio_bit) { return 1 << (gpio_bit & 0xf); }
+// Each SDK GPIO instance uses uint16_t masks for its 16 pins.
+static const int kPinsPerGpioPort = 16;
+static const int kGpioBitCount = GPIO_INSTANCE_NUM * kPinsPerGpioPort;
+
+static uint32_t to_port(int gpio_bit) { return gpio_bit / kPinsPerGpioPort; }
+static uint16_t to_pin_index(int gpio_bit) { return gpio_bit % kPinsPerGpioPort; }
+static uint16_t to_pin_mask(int gpio_bit) { return 1 << to_pin_index(gpio_bit); }
 
 static bool pad_is_wakeup(int pad);
 static void wakeup_pad_set(int pad, bool wakeup_en,
@@ -104,7 +107,7 @@ static const uint32_t kEdgeTriggeredState = 1;
 // both sides share a global trigger sequence number: arming captures it,
 // the ISR advances it and records it per GPIO bit.
 static volatile uint32_t edge_sequence = 0;
-static volatile uint32_t last_edge_seq[32] = {};
+static volatile uint32_t last_edge_seq[kGpioBitCount] = {};
 
 class GpioResourceGroup : public ResourceGroup {
  public:
@@ -126,10 +129,10 @@ class GpioResourceGroup : public ResourceGroup {
 
 // GPIO ISR handler — dispatches events for all triggered pins.
 static void gpio_isr_handler() {
-  for (uint32_t port = 0; port < 2; port++) {
+  for (uint32_t port = 0; port < GPIO_INSTANCE_NUM; port++) {
     uint16_t flags = GPIO_getInterruptFlags(port);
     if (flags == 0) continue;
-    for (int bit = 0; bit < 16; bit++) {
+    for (int bit = 0; bit < kPinsPerGpioPort; bit++) {
       if (flags & (1 << bit)) {
         int gpio_bit = (port << 4) | bit;
         // Disable further interrupts on this pin (level-triggered would
@@ -160,7 +163,7 @@ static uint64_t open_drain_pads = 0;
 // direction/data/interrupt registers require one owner.
 static bool pads_in_use[kMaxPadIndex + 1] = {};
 // Store pad + 1 so zero means "unowned".
-static uint8_t gpio_bit_owners[32] = {};
+static uint8_t gpio_bit_owners[kGpioBitCount] = {};
 
 static bool reserve_pad(int pad) {
   Locker locker(OS::global_mutex());
