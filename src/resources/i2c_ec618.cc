@@ -346,23 +346,12 @@ static void quiesce(int controller) {
   state->current_hz = 0;
 }
 
-// The pad-GPIO tricks below (wire peek, 9-clock bus clear) commandeer the
-// pad's GPIO controller bit: they reconfigure its direction and, for the
-// clear, drive it. That is only safe while the bit is reachable from THIS
-// pad alone — the controller bit of a pad with a sibling may be in use by the
-// user through that other pad, and reconfiguring the shared bit would
-// hijack their pin (direction and drive). Skip this optional recovery path
-// for shared controller bits; normal I2C transfers do not commandeer them.
-static bool gpio_bit_exclusive(int pad) {
-  return pad_to_gpio(pad) >= 0 && !pad_gpio_is_shared(pad);
-}
-
 // Reads the wire level of an I2C pad: direction input, briefly mux to
-// plain GPIO, sample, restore the controller mux (ALT2).
+// plain GPIO, sample, restore the controller mux (ALT2). The caller holds
+// PadGpioLock across the complete probe/recovery sequence.
 static bool wire_high(int pad) {
-  if (!gpio_bit_exclusive(pad)) return true;  // Cannot peek safely; assume fine.
   int gpio_bit = pad_to_gpio(pad);
-  if (gpio_bit < 0) return true;  // Cannot peek; assume fine.
+  ASSERT(gpio_bit >= 0);
   GpioPinConfig_t config;
   memset(&config, 0, sizeof(config));
   config.pinDirection = GPIO_DIRECTION_INPUT;
@@ -398,10 +387,9 @@ static void release_line(int pad, int gpio_bit) {
 }
 
 static void bus_clear(int sda, int scl) {
-  if (!gpio_bit_exclusive(sda) || !gpio_bit_exclusive(scl)) return;
   int sda_bit = pad_to_gpio(sda);
   int scl_bit = pad_to_gpio(scl);
-  if (sda_bit < 0 || scl_bit < 0) return;
+  ASSERT(sda_bit >= 0 && scl_bit >= 0);
   release_line(sda, sda_bit);
   release_line(scl, scl_bit);
   delay_us(20);
@@ -496,6 +484,11 @@ class I2cBusResource : public EventResource {
   // 9-clock bus clear (stuck slave, or a transaction the engine abandoned
   // mid-STOP) before the verdict.
   bool bus_usable() const {
+    // The bus already owns its physical pads. Lock the GPIO-bit pool across
+    // every temporary mux/register operation, and proceed only if neither
+    // bit is owned by a GPIO pin (including a sibling physical pad).
+    PadGpioLock gpio_lock(sda_, scl_);
+    if (!gpio_lock.available()) return true;
     if (bus_free()) return true;
     printf("[i2c] bus stuck: sda=%d scl=%d - clearing\n",
            wire_high(sda_) ? 1 : 0, wire_high(scl_) ? 1 : 0);

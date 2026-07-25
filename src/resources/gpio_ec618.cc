@@ -202,6 +202,18 @@ static bool gpio_owned_by_other_pad(int gpio_bit, int pad) {
   return gpio_owned_by_other_pad_locked(gpio_bit, pad);
 }
 
+PadGpioLock::PadGpioLock(int first_pad, int second_pad)
+  : locker_(OS::global_mutex())
+  , available_(false) {
+  int first_bit = pad_to_gpio(first_pad);
+  if (first_bit < 0 || gpio_bit_owners[first_bit] != 0) return;
+  if (second_pad >= 0) {
+    int second_bit = pad_to_gpio(second_pad);
+    if (second_bit < 0 || gpio_bit_owners[second_bit] != 0) return;
+  }
+  available_ = true;
+}
+
 static bool is_open_drain(int pad) {
   Locker locker(OS::global_mutex());
   return (open_drain_pads >> pad) & 1;

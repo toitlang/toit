@@ -18,6 +18,7 @@
 #ifdef TOIT_EC618
 
 #include "../top.h"
+#include "../mutex.h"
 
 namespace toit {
 
@@ -62,6 +63,22 @@ void pad_aon_power_release();
 
 // Whether another physical PAD maps to the same GPIO controller bit.
 bool pad_gpio_is_shared(int pad);
+
+// Holds the global pad/GPIO ownership lock while a peripheral temporarily
+// accesses one or two pads through their GPIO controller bits. `available`
+// is true only when every requested bit is currently unowned; a competing
+// GPIO claim waits for this object's lifetime instead of observing a
+// transient lease.
+class PadGpioLock {
+ public:
+  PadGpioLock(int first_pad, int second_pad = -1);
+
+  bool available() const { return available_; }
+
+ private:
+  Locker locker_;
+  bool available_;
+};
 
 // UART function lookup. `mapping` selects between alternate routings:
 //   UART0:  0 = primary (TX=PAD30 RX=PAD29), 1 = alt (TX=PAD24 RX=PAD23)
