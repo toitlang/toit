@@ -391,18 +391,12 @@ calls still in the glue.
   post-reset boot-ROM/bootloader banner before pinging, so the firmware-update
   reconnect/validate succeeds without `--debug-boot` (previously `read-ack` spent
   one ping attempt per backlog byte and never reached the agent's pong).
-- **Resilience: reset-on-VM-exit + sleeper keep-alive** (2026-06-08): two layers
-  against the deep-sleep brick (see the incident below). (1)
-  `CONFIG_TOIT_EC618_RESET_ON_VM_EXIT` (default 1): on a full-VM `EXIT_DONE` the
-  firmware resets (reboots into the program) instead of deep-sleeping with no
-  wakeup timer — **HW-verified**: a `gpio-map` teardown crash rebooted and
-  recovered the agent, no brick. (2) A separate **`sleeper`** keep-alive container
-  in the EC618 envelope (installed alongside mini-jag) so the VM keeps a runnable
-  process and never falls into the `EXIT_DONE` deep-sleep-without-wakeup that the
-  watchdog can't escape (deep sleep ≈ power-off; the watchdogs are off there, which
-  is fair). `sleeper.toit`; **HW-verified**: agent + sleeper coexist, basics pass,
-  and the board survives a 90 s idle and stays responsive (an earlier "sleeper
-  breaks idle" claim was a misdiagnosis).
+- **Sleeper keep-alive:** the EC618 test envelope installs a separate `sleeper`
+  container alongside mini-jag. It keeps the VM runnable even if the agent
+  container fails, without feeding the watchdog or owning a shared service.
+  `EXIT_DONE` therefore keeps the normal finished-program behavior; the rig does
+  not need a platform-specific reset-on-exit policy. **HW-verified:** agent and
+  sleeper coexist, basics pass, and the board stays responsive after 90 s idle.
   - **Watchdog model (clarified):** the EC618 has two watchdogs. The **main WDT**
     (`ec618.watchdog`, fed by the agent on host messages) counts **active (awake)
     time** — the SDK's `WDT_enterLowPowerStatePrepare` disables its clock before
@@ -462,19 +456,9 @@ and validates. (Previously the changed `.data` wedged + rolled back.)
 3. **ADC calibration is enabled.** The frozen base keep-list retains
    `trimAdcSetGolbalVar`, `delay_us`, and the ADC helpers, so the slot can use
    the calibrated path through direct base links.
-4. **GPIO-service teardown crash → deep-sleep brick (2026-06-08).** Running
-   `gpio-map` (which opened/closed ~6 GPIO pins in a container, re-using
-   controller bit 11) crashed the device on container teardown: a `CLOSED`
-   exception in the shared GPIO service (decoded with the *agent's* snapshot, not
-   the test's) brought the whole VM down (`EXIT_DONE`), and the firmware deep-slept
-   with **no wakeup timer** → bricked until a physical power-cycle (watchdogs are
-   gated while asleep; the rig has no remote reset). Two follow-ups: **(a)**
-   `CONFIG_TOIT_EC618_RESET_ON_VM_EXIT=1` (added, default on) turns that VM exit
-   into a self-recovering reboot — the rig-level safety net; **(b)** the GPIO
-   service should not crash on a normal multi-pin open/close/teardown — root-cause
-   the `CLOSED` exception in the gpio resource/service path (suspects: re-opening a
-   just-closed controller bit, or finalizer ordering). `gpio-map` is hardened to
-   not re-drive bit 11 and must only be run on `RESET_ON_VM_EXIT=1` firmware.
+4. **GPIO-service teardown.** Multi-pin open/close and forced container teardown
+   are covered directly by the GPIO lifecycle tests. The rig's separate sleeper
+   container keeps a failed test or agent container from ending the whole VM.
 
 ## Exhaustive dual-board testing — design + status (2026-06-08)
 

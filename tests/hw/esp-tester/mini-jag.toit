@@ -166,8 +166,7 @@ main-ec618:
   // If this agent ever crashes, the sleeper keeps the VM scheduling so it never
   // reaches EXIT_DONE / deep sleep (which would gate the watchdog and brick a
   // no-remote-reset rig). The sleeper does NOT feed the watchdog — only host
-  // messages (below) do — so a dead/silent agent still gets reset. (A crash that
-  // ends the whole VM still resets via CONFIG_TOIT_EC618_RESET_ON_VM_EXIT.)
+  // messages (below) do — so a dead/silent agent still gets reset.
   // The lane + any open failure go to the CONSOLE (print), which is
   // visible even when the control lane itself is the thing that broke.
   print "[mini-jag] starting; control uart=$ec618.console-uart-id"
