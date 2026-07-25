@@ -258,51 +258,43 @@ All pin indices used by Toit on the EC618 are physical pad numbers.
   provides a convenience conversion.
 */
 class Ec618:
+  static NO-PAD_ ::= 0xff
+
   // GPIO -> primary PAD lookup. This is intentionally the only GPIO -> PAD
   // resolver; native drivers receive PADs and only derive controller bits
   // from them. Values come from the SDK's GPIO mapping helper. GPIO20..28
   // (pads 40..48) are AON-domain GPIOs: the driver powers their LDO on first
   // use and they keep working in sleep modes.
-  static GPIO-PRIMARY-PAD_/List ::= [
+  static GPIO-PRIMARY-PAD_/ByteArray ::= #[
     15,  16,  17,  18,  19,  20,  21,  22,
     23,  24,  25,  26,  27,  28,  29,  30,
     31,  32,  33,  34,  40,  41,  42,  43,
     44,  45,  46,  47,  48,  35,  36,  37,
   ]
 
-  // GPIO -> alternate ALT4 PAD lookup. -1 means the GPIO has no alt pad.
+  // GPIO -> alternate ALT4 PAD lookup. 0xff means the GPIO has no alt pad.
   // Values match GPIO_ToPadEC618 in the SDK.
-  static GPIO-ALT-PAD_/List ::= [
-    -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
-    -1,  -1,  -1,  -1,  11,  12,  13,  14,
-    -1,  -1,  38,  39,  -1,  -1,  -1,  -1,
-    -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
+  static GPIO-ALT-PAD_/ByteArray ::= #[
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff,   11,   12,   13,   14,
+    0xff, 0xff,   38,   39, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
   ]
 
   // UART pad layout. Values must match `kUartPads` in pad_table_ec618.cc.
-  // Indexed first by uart-id (0..2), then by mapping (0..1). Each entry
-  // is [tx-pad, rx-pad, rts-pad, cts-pad]; -1 means the corresponding
-  // role isn't available on that mapping.
-  static UART-PADS_/List ::= [
-    // UART0.
-    [
-      [30, 29, 27, 28],   // Mapping 0 — primary.
-      [32, 31, -1, -1],   // Mapping 1 — alt; no flow control.
-    ],
-    // UART1.
-    [
-      [34, 33, 31, 32],   // Mapping 0 — only mapping for TX/RX/RTS.
-      // Mapping 1 — the alt CTS pad. TX/RX have a single routing on UART1,
-      // so this mapping keeps them; only CTS differs. (With TX/RX as -1
-      // this mapping was unusable: open-uart_ rejects an enabled role
-      // without a pad.)
-      [34, 33, -1, 22],
-    ],
-    // UART2.
-    [
-      [26, 25, -1, -1],   // Mapping 0 — primary.
-      [28, 27, -1, -1],   // Mapping 1 — alt 1, pads 27/28.
-    ],
+  // Flattened as controller, mapping, then [tx, rx, rts, cts]. 0xff means
+  // the corresponding role isn't available on that mapping.
+  static UART-MAPPINGS-PER-CONTROLLER_ ::= 2
+  static UART-PADS-PER-MAPPING_ ::= 4
+  static UART-PADS_/ByteArray ::= #[
+    30, 29,   27,   28,  // UART0 mapping 0 — primary.
+    32, 31, 0xff, 0xff,  // UART0 mapping 1 — alt; no flow control.
+
+    34, 33,   31,   32,  // UART1 mapping 0 — only TX/RX/RTS route.
+    34, 33, 0xff,   22,  // UART1 mapping 1 — alternate CTS.
+
+    26, 25, 0xff, 0xff,  // UART2 mapping 0 — primary.
+    28, 27, 0xff, 0xff,  // UART2 mapping 1 — alt 1.
   ]
 
   /**
@@ -324,7 +316,7 @@ class Ec618:
   static gpio num/int --alt/bool=false -> Pin:
     if num < 0 or num >= 32: throw "INVALID_ARGUMENT"
     pad-num/int := alt ? GPIO-ALT-PAD_[num] : GPIO-PRIMARY-PAD_[num]
-    if pad-num < 0: throw "INVALID_ARGUMENT"
+    if pad-num == NO-PAD_: throw "INVALID_ARGUMENT"
     return Pin pad-num
 
   /**
@@ -546,17 +538,20 @@ class Ec618:
       --large-buffers/bool?
       -> uart.Port:
     if uart-id < 0 or uart-id > 2: throw "INVALID_ARGUMENT"
-    if mapping < 0 or mapping >= UART-PADS_[uart-id].size: throw "INVALID_ARGUMENT"
+    if mapping < 0 or mapping >= UART-MAPPINGS-PER-CONTROLLER_:
+      throw "INVALID_ARGUMENT"
 
     rs485 := mode == uart.Port.MODE-RS485-HALF-DUPLEX
     if rs485 and (rts-enabled or cts-enabled): throw "INVALID_ARGUMENT"
     if rs485 != (rs485-de != null): throw "INVALID_ARGUMENT"
 
-    layout/List := UART-PADS_[uart-id][mapping]
-    tx-pad := layout[0]
-    rx-pad := layout[1]
-    rts-pad := layout[2]
-    cts-pad := layout[3]
+    layout-offset := (
+        uart-id * UART-MAPPINGS-PER-CONTROLLER_ + mapping
+      ) * UART-PADS-PER-MAPPING_
+    tx-pad := uart-pad_ layout-offset
+    rx-pad := uart-pad_ layout-offset + 1
+    rts-pad := uart-pad_ layout-offset + 2
+    cts-pad := uart-pad_ layout-offset + 3
 
     if tx-disabled and rx-disabled: throw "INVALID_ARGUMENT"
     if (not tx-disabled) and tx-pad < 0: throw "INVALID_ARGUMENT"
@@ -582,6 +577,10 @@ class Ec618:
         --stop-bits=stop-bits
         --parity=parity
         --mode=mode
+
+  static uart-pad_ offset/int -> int:
+    value := UART-PADS_[offset]
+    return value == NO-PAD_ ? -1 : value
 
   /**
   Opens ADC channel 0 — the EC618's AIO3 input (the board's "ADC0").
