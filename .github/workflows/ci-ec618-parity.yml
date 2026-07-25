@@ -92,6 +92,10 @@ jobs:
 
       - name: Build EC618 base
         shell: bash
+        # The Toit build consumes ap.bin and creates its own binpkg. Skip the
+        # SDK's unrelated host-specific fcelf packaging step.
+        env:
+          BINPKG_CROSS: "true "
         run: make ec618-base
 
       - name: Build EC618 firmware (slot vs base + guards + envelope)
