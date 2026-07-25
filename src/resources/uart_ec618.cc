@@ -603,7 +603,7 @@ static void configure_de_pad(int pad) {
   // Any pad can serve as the RS485 direction line; we drive it as plain
   // GPIO, configured as output starting low (= RX direction).
   int gpio_bit = pad_to_gpio(pad);
-  if (gpio_bit < 0) return;
+  ASSERT(gpio_bit >= 0);  // Validated before preset resolution in create.
   GPIO_IomuxEC618(pad, pad_gpio_mux(pad), 0, 0);
   GpioPinConfig_t config;
   memset(&config, 0, sizeof(config));

@@ -52,6 +52,23 @@ main:
   if failures != 0: exit 1
 
 run-tests -> none:
+  test "uart-rs485-non-gpio-de-rejected":
+    tx := Pin PAD-UART2-TX
+    rx := Pin PAD-UART2-RX
+    de := Pin PAD-NOT-A-GPIO
+    try:
+      expect-throws "INVALID_ARGUMENT":
+        uart.Port
+            --tx=tx
+            --rx=rx
+            --rts=de
+            --baud-rate=115200
+            --mode=uart.Port.MODE-RS485-HALF-DUPLEX
+    finally:
+      de.close
+      rx.close
+      tx.close
+
   test "uart2-default-opens-cleanly":
     port := Ec618.uart2 --baud-rate=115200
     port.close
