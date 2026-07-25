@@ -558,7 +558,10 @@ static bool resolve_preset(int tx_pad, int rx_pad, int rts_pad, int cts_pad,
       if (rx_pad >= 0 && rx_pad != expected_rx) continue;
 
       // Flow-control pads (if requested) must agree with this controller.
-      // We try every CTS mapping in case the alt pad is in use.
+      // Every supported TX and RX pad uniquely identifies its data mapping,
+      // and at least one direction is present. Once those pads match, no later
+      // data mapping can make an invalid flow-control pad valid. We still try
+      // every role mapping here because UART1 has an alternate CTS pad.
       int rts_mux_found = -1, cts_mux_found = -1;
       if (rts_pad >= 0) {
         bool rts_ok = false;
@@ -567,7 +570,7 @@ static bool resolve_preset(int tx_pad, int rx_pad, int rts_pad, int cts_pad,
           int p = uart_pad(uart_id, UartRole::RTS, rts_mapping, &mux);
           if (p == rts_pad) { rts_ok = true; rts_mux_found = mux; break; }
         }
-        if (!rts_ok) continue;
+        if (!rts_ok) return false;
       }
       if (cts_pad >= 0) {
         bool cts_ok = false;
@@ -576,7 +579,7 @@ static bool resolve_preset(int tx_pad, int rx_pad, int rts_pad, int cts_pad,
           int p = uart_pad(uart_id, UartRole::CTS, cts_mapping, &mux);
           if (p == cts_pad) { cts_ok = true; cts_mux_found = mux; break; }
         }
-        if (!cts_ok) continue;
+        if (!cts_ok) return false;
       }
 
       out->uart_id = uart_id;
