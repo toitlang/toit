@@ -1665,8 +1665,6 @@ show invocation/cli.Invocation -> none:
     firmware-bin := extract-binary-esp32 envelope --config-encoded=#[]
     binary := Esp32Binary firmware-bin
     result["chip"] = binary.chip-name
-  else if envelope.kind == Envelope.KIND-EC618:
-    result["chip"] = "ec618"
 
   // Add the containers after the chip name for esthetical reasons.
   entries-json := build-entries-json envelope.entries --word-size=envelope.word-size
