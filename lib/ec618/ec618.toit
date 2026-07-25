@@ -346,7 +346,7 @@ class Ec618:
   With $mode equal to $uart.Port.MODE-RS485-HALF-DUPLEX, pass the RS485
     direction (DE) pin as $rs485-de; any GPIO-capable pad works.
   */
-  static uart0
+  static uart0 -> uart.Port
       --mapping/int=0
       --rts-enabled/bool=false
       --cts-enabled/bool=false
@@ -358,8 +358,7 @@ class Ec618:
       --parity/int=uart.Port.PARITY-DISABLED
       --mode/int=uart.Port.MODE-UART
       --rs485-de/Pin?=null
-      --large-buffers/bool?=null
-      -> uart.Port:
+      --large-buffers/bool?=null:
     return open-uart_
         --uart-id=0
         --mapping=mapping
@@ -391,7 +390,7 @@ class Ec618:
     UART1 that we cannot fully drain from software. This is cosmetic
     and only happens on cold boot; a warm reset is clean.
   */
-  static uart1
+  static uart1 -> uart.Port
       --mapping/int=0
       --rts-enabled/bool=false
       --cts-enabled/bool=false
@@ -403,8 +402,7 @@ class Ec618:
       --parity/int=uart.Port.PARITY-DISABLED
       --mode/int=uart.Port.MODE-UART
       --rs485-de/Pin?=null
-      --large-buffers/bool?=null
-      -> uart.Port:
+      --large-buffers/bool?=null:
     return open-uart_
         --uart-id=1
         --mapping=mapping
@@ -436,7 +434,7 @@ class Ec618:
     (use $Ec618.gpio or $Ec618.pad). Required in RS485 mode; rejected
     otherwise.
   */
-  static uart2
+  static uart2 -> uart.Port
       --mapping/int=0
       --tx-disabled/bool=false
       --rx-disabled/bool=false
@@ -446,8 +444,7 @@ class Ec618:
       --parity/int=uart.Port.PARITY-DISABLED
       --mode/int=uart.Port.MODE-UART
       --rs485-de/Pin?=null
-      --large-buffers/bool?=null
-      -> uart.Port:
+      --large-buffers/bool?=null:
     return open-uart_
         --uart-id=2
         --mapping=mapping
@@ -522,7 +519,7 @@ class Ec618:
   static spi1 -> spi.Bus:
     return spi.Bus --mosi=(pad 28) --miso=(pad 29) --clock=(pad 30)
 
-  static open-uart_
+  static open-uart_ -> uart.Port
       --uart-id/int
       --mapping/int
       --rts-enabled/bool
@@ -535,8 +532,7 @@ class Ec618:
       --parity/int
       --mode/int
       --rs485-de/Pin?
-      --large-buffers/bool?
-      -> uart.Port:
+      --large-buffers/bool?:
     if not 0 <= uart-id <= 2: throw "INVALID_ARGUMENT"
     if not 0 <= mapping < UART-MAPPINGS-PER-CONTROLLER_:
       throw "INVALID_ARGUMENT"
