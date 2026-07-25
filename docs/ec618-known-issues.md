@@ -589,10 +589,10 @@ need it, including for the configured pull resistor — HW-verified). The
 implementation uses the SDK's `GPIO_WakeupPadConfig`, which performs this
 verified pair.
 
-**HW evidence.** Two identical runs
-(`tests/hw/ec618/wakeup-gpio22-ec618.toit` + the ESP32 pulser holding
-the net low, first rising edge 60 s in): boot banner lands at the pulse
-timestamp to the second, 109 s before the RTC fallback, with
+**HW evidence.** Two identical bring-up runs (using the predecessor of the
+current synchronized PAD42 regression and an ESP32 pulser holding the net low,
+first rising edge 60 s in): the boot banner landed at the pulse timestamp to
+the second, 109 s before the RTC fallback, with
 `wake src=2` (`WAKEUP-PAD`) `last_slp_state=4` and RTC memory intact.
 Before the fix the identical config always fell through to `wake src=1`
 (RTC).

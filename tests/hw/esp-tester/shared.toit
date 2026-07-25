@@ -58,6 +58,11 @@ MINI-JAG-TAG ::= "[mini-jag]"
 // Status line emitted once the EC618 resident agent is listening.
 MINI-JAG-EC618-READY ::= "[mini-jag] ec618 ready"
 
+// A test prints this immediately before a deliberate EC618 deep-sleep reboot.
+// The host then treats the next mini-jag ready line as the test verdict and
+// compares its `wake=` field with the value after this prefix.
+EC618-EXPECT-REBOOT-WAKE-TAG ::= "[ec618-test] expect-reboot-wake="
+
 // Name of the long-running keep-alive container the EC618 envelope installs
 // alongside the agent. It keeps the VM scheduling (never EXIT_DONE / deep sleep,
 // which would gate the watchdog and brick a no-remote-reset rig) even if the

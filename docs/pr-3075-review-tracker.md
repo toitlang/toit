@@ -129,6 +129,15 @@ dedicated WAKEUP0–2 package pins do not currently have a normal `gpio.Pin`
 representation and remain outside this initial ordinary-GPIO API. Output hold
 remains a separate future API after SDK/hardware proof.
 
+The paired PAD42 regression is now a synchronized two-run state machine rather
+than a long blind pulse window. Its `enabled` phase must reboot with
+`wake=pad`; the immediately following `disabled` phase requires that pad wake,
+disables the same physical pin, repeats the pulse, and must reboot from the RTC
+timer instead. The mini-jag host recognizes an explicit expected-reboot marker
+and checks the next boot's reported wake cause. The BMP280 can remain connected
+because its shared power/wake net is deliberately held low between the short
+pulses. Run this on hardware before closing the disable/re-sleep comments.
+
 ### 4. Which hardware rewiring and measurements are available?
 
 This was two separate comments:

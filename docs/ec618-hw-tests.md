@@ -82,7 +82,7 @@ ESP32 pin   EC618 board pin (label)              EC618 pad / channel     status
 26 (DAC2) -> [~2:1 divider] -> ADC1 (pin 4)      ADC channel 1 (AIO4)    CONFIRMED (exact, ratio ~0.46)
 27        -> 05  (GPIO11, uart2_txd)             PAD26 (GPIO11 primary)  CONFIRMED (gpio-output)
 14        -> 06  (GPIO10, uart2_rxd)             PAD25 (GPIO10 primary)  CONFIRMED (uart2 tests; gpio-map)
-13        -> 09  (GPIO22, MAIN_DTR)              PAD42 (GPIO22, AON/WU)  CONFIRMED input+wake+output (gpio22-read, wakeup-gpio22, aon-wu-output; the "output gate" was the AON LDO's 1.8 V boot default — #5 resolved)
+13        -> 09  (GPIO22, MAIN_DTR)              PAD42 (GPIO22, AON/WU)  CONFIRMED input+wake+output (gpio-map, wakeup-pad42, aon-wu-output; the "output gate" was the AON LDO's 1.8 V boot default — #5 resolved)
 33        -> 10  (GPIO08, SPI0_CS, I2C1_SDA)     PAD23 (GPIO8)           CONFIRMED (gpio-map: 23 pulses at IO33)
 32        -> 11  (GPIO10, UART2_RX, SPI0_MISO)   MIRRORS PAD25's net     CONFIRMED (gpio-map: GPIO10 hits IO14+IO32)
 23        -> 12  (GPIO01, PWM10)                 PAD16 (TIMER0 PWM)      CONFIRMED (pwm test: 1 kHz measured at IO23)
@@ -115,7 +115,7 @@ Board pin  Functions (real)            Covered by                               
 5   PAD26  GPIO11, UART2_TX, SPI0_CLK  gpio-{output,input,interrupt,map},            —
                                        uart2 battery, rc522 (CLK)
 6   PAD25  GPIO10, UART2_RX, SPI0_MISO uart2 battery, rc522 (MISO), gpio-map         —
-9   PAD42  GPIO22 (AON), wakeup pad    gpio22-read (input), wakeup-gpio22,           —
+9   PAD42  GPIO22 (AON), wakeup pad    gpio-map (input), wakeup-pad42,                —
                                        gpio-map (pull-down),
                                        (hibernate wake), aon-wu-output (output
                                        powers the BMP280; #5 resolved: the AON
@@ -585,7 +585,7 @@ rule no longer applies:
       PAD47 (GPIO27, board pin 27) exact-pulse-confirmed. The earlier
       "CP-owned modem pins" conclusion was wrong — the pads were simply
       unpowered. PAD42 (GPIO22, board pin 9) stayed silent as an OUTPUT —
-      later resolved: the wire IS connected (gpio22-read + the hibernate
+      later resolved: the wire IS connected (gpio-map + the hibernate
       wake tests prove IO13 -> pin 9 as an input/wake source, 2026-07-02);
       what remains gated is the pads-40..42 GPIO *output* path
       (known-issues #5). The `ec618.wakeup-pin-values` mask (idle

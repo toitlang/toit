@@ -671,13 +671,14 @@ class Ec618Link:
     wait-failed-marker := "$MINI-JAG-TAG run: test wait failed"
     cleanup-failed-marker := "$MINI-JAG-TAG run: test cleanup failed"
     collected := ""
+    expected-reboot-wake/string? := null
     next-ping-us := Time.monotonic-us  // Feed the device watchdog right away.
     while Time.monotonic-us < deadline:
       // The test runs in the BACKGROUND on the device, so its command loop keeps
       // reading the UART. Keep its general watchdog fed with a fire-and-forget
       // ping every few seconds (the agent feeds on it and stays silent while a
       // test runs, so it doesn't pollute the test output stream).
-      if Time.monotonic-us >= next-ping-us:
+      if not expected-reboot-wake and Time.monotonic-us >= next-ping-us:
         send CMD-PING
         next-ping-us = Time.monotonic-us + 3_000_000
       data/ByteArray? := null
@@ -685,6 +686,26 @@ class Ec618Link:
         data = with-timeout --ms=1000: reader_.read
       if not data: continue
       collected += emit-device-output (data.to-string-non-throwing)
+
+      if not expected-reboot-wake:
+        expectation := collected.index-of EC618-EXPECT-REBOOT-WAKE-TAG
+        if expectation >= 0:
+          rest := collected[expectation + EC618-EXPECT-REBOOT-WAKE-TAG.size ..]
+          newline := rest.index-of "\n"
+          if newline >= 0:
+            expected-reboot-wake = rest[..newline].trim
+            if expected-reboot-wake != "pad" and expected-reboot-wake != "rtc":
+              log "$name_: invalid expected reboot wake cause '$expected-reboot-wake'"
+              return false
+            // Deep sleep resets the device UART to 115200. Switch as soon as
+            // the test's final marker has arrived, so the reboot banner is
+            // decoded instead of becoming fast-baud garbage.
+            if port_.baud-rate != 115200:
+              rate-error := catch: port_.baud-rate = 115200
+              if rate-error:
+                log "$name_: could not select 115200 for the expected reboot: $rate-error"
+                return false
+
       index := collected.index-of marker
       if index >= 0:
         rest := collected[index + marker.size ..]
@@ -708,6 +729,12 @@ class Ec618Link:
       // fresh ready banner mid-run means the test hung or crashed the device and
       // the watchdog recovered it — a failure, but the device is back on its own.
       if collected.contains MINI-JAG-EC618-READY:
+        if expected-reboot-wake:
+          if collected.contains " wake=$expected-reboot-wake ":
+            log "$name_: deliberate reboot woke from $expected-reboot-wake as expected"
+            return true
+          log "$name_: deliberate reboot had the wrong wake cause (expected $expected-reboot-wake)"
+          return false
         log "$name_: the watchdog reset the device during the test (recovered, no external reset)"
         return false
     // On a fast-baud link a rebooted device (back at 115200) prints its
