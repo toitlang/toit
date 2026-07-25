@@ -126,7 +126,7 @@ build-image -> ByteArray
 
   result := binary-input.copy
   details-offset := image-details.find-offset result --word-size=WORD-SIZE
-  if details-offset < slot-file or details-offset >= slot-file + vm-body:
+  if not (slot-file <= details-offset < slot-file + vm-body):
     throw "EC618 DromData at file 0x$(%x details-offset) is outside the VM slot"
   patch-details_ result
       --extension-xip-addr=extension-xip-addr
