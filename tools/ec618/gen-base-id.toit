@@ -26,6 +26,7 @@ import host.file
 import host.pipe
 import io show LITTLE-ENDIAN
 
+import .elf
 import .partitions
 
 MAGIC ::= #['T', 'B', 'I', '1']
@@ -126,7 +127,7 @@ read-geometry nm/string elf/string -> Map:
   result := {:}
   out := pipe.backticks [nm, elf]
   out.split "\n": | line/string |
-    parts := line.split " "
+    parts := split-whitespace line
     if parts.size >= 3 and GEOMETRY-SYMBOLS.contains parts.last:
       result[parts.last] = "0x$(%x (int.parse parts[0] --radix=16))"
   return result

@@ -23,6 +23,8 @@ import cli
 import host.file
 import host.pipe
 
+import .elf
+
 // Geometry symbols read from base.elf. The link base is recovered from
 // __vm_link_base (defined by the base link even though its .vm_a is empty).
 WANTED ::= {
@@ -191,7 +193,7 @@ read-symbols nm/string elf/string -> Map:
   result := {:}
   out := pipe.backticks [nm, elf]
   out.split "\n": | line/string |
-    parts := line.split " "
+    parts := split-whitespace line
     if parts.size >= 3 and WANTED.contains parts.last:
       result[parts.last] = int.parse parts[0] --radix=16
   return result

@@ -11,7 +11,7 @@ split-whitespace str/string -> List:
   current := []
   str.do: | c/int? |
     if not c: continue.do
-    if c == ' ' or c == '\t':
+    if c == ' ' or c == '\t' or c == '\r' or c == '\n':
       if not current.is-empty:
         result.add (string.from-runes current)
         current = []
