@@ -100,20 +100,23 @@ struct UartTransferState {
   uint8_t chunk[512];       // The armed receive target.
 };
 
-// PRIMASK guard, same pattern as bsp_usart.c's SaveAndSetIRQMask. The UART
-// irq and the DMA-end irq are separate vectors that both walk the driver's
-// transfer state; sections that read or reconfigure it must be atomic
-// against both.
-static inline uint32_t irq_save() {
-  uint32_t m = __get_PRIMASK();
-  __disable_irq();
-  return m;
-}
-static inline void irq_restore(uint32_t m) {
-  __DSB();
-  __ISB();
-  __set_PRIMASK(m);
-}
+// Same pattern as bsp_usart.c's SaveAndSetIRQMask. The UART irq and the
+// DMA-end irq are separate vectors that both walk the driver's transfer
+// state; sections that read or reconfigure it must be atomic against both.
+// Restoring the saved mask (rather than unconditionally enabling IRQs)
+// preserves nesting.
+class IrqMaskGuard {
+ public:
+  IrqMaskGuard() : mask_(__get_PRIMASK()) { __disable_irq(); }
+  ~IrqMaskGuard() {
+    __DSB();
+    __ISB();
+    __set_PRIMASK(mask_);
+  }
+
+ private:
+  uint32_t mask_;
+};
 
 struct UartState {
   uint32_t baud_rate;   // Cached baud rate, for `get_baud_rate` without register reads.
@@ -258,11 +261,13 @@ void UartResourceGroup::on_unregister_resource(Resource* r) {
   if (id == anchor_console()) {
     UartTransferState* transfer = state.transfer;
     if (transfer != null) {
-      uint32_t mask = irq_save();
-      kDrivers[id]->Control(ARM_USART_CONTROL_RX, 0);
-      transfer->closing = true;
-      bool tx_busy = transfer->tx_busy;
-      irq_restore(mask);
+      bool tx_busy;
+      {
+        IrqMaskGuard guard;
+        kDrivers[id]->Control(ARM_USART_CONTROL_RX, 0);
+        transfer->closing = true;
+        tx_busy = transfer->tx_busy;
+      }
       // Keep the transfer state and controller lease alive while DMA still
       // owns a staging buffer. The normal TX drain task finishes teardown
       // after the physical line-idle edge; an idle port can finish now.
@@ -282,15 +287,17 @@ void UartResourceGroup::on_unregister_resource(Resource* r) {
     // suspended, rx_busy cleared. POWER_OFF then resets the module
     // and stops+resets the RX DMA channel, so nothing references
     // `chunk` by the time it is freed below.
-    uint32_t mask = irq_save();
-    kDrivers[id]->Control(ARM_USART_CONTROL_RX, 0);
-    kDrivers[id]->Control(ARM_USART_CONTROL_TX, 0);
-    kDrivers[id]->PowerControl(ARM_POWER_OFF);
-    kDrivers[id]->Uninitialize();
-    cmsis_initialized[id] = false;
-    UartTransferState* transfer = state.transfer;
-    state.transfer = null;  // Unhook before freeing (the IRQ checks it).
-    irq_restore(mask);
+    UartTransferState* transfer;
+    {
+      IrqMaskGuard guard;
+      kDrivers[id]->Control(ARM_USART_CONTROL_RX, 0);
+      kDrivers[id]->Control(ARM_USART_CONTROL_TX, 0);
+      kDrivers[id]->PowerControl(ARM_POWER_OFF);
+      kDrivers[id]->Uninitialize();
+      cmsis_initialized[id] = false;
+      transfer = state.transfer;
+      state.transfer = null;  // Unhook before freeing (the IRQ checks it).
+    }
     // POWER_OFF stopped the TX DMA channel and Uninitialize closed it,
     // so nothing references the staging buffers (or chunk) past this
     // point.
@@ -320,15 +327,13 @@ static void set_de_level(int pad, int level) {
 // owns the final release instead.
 static void finish_uart_close(int id, UartTransferState* transfer) {
   int de_pad;
-  uint32_t mask = irq_save();
-  if (uart_states[id].transfer != transfer || transfer->tx_busy) {
-    irq_restore(mask);
-    return;
+  {
+    IrqMaskGuard guard;
+    if (uart_states[id].transfer != transfer || transfer->tx_busy) return;
+    uart_states[id].transfer = null;
+    de_pad = uart_states[id].de_pad;
+    uart_states[id].de_pad = -1;
   }
-  uart_states[id].transfer = null;
-  de_pad = uart_states[id].de_pad;
-  uart_states[id].de_pad = -1;
-  irq_restore(mask);
 
   if (de_pad >= 0) set_de_level(de_pad, 0);
   free(transfer->tx_bufs[0]);
@@ -379,11 +384,15 @@ static void uart_tx_drain_task(void*) {
     if (xQueueReceive(uart_tx_drain_queue, &id, portMAX_DELAY) != pdTRUE) continue;
 
     while (true) {
-      uint32_t mask = irq_save();
-      UartTransferState* transfer = uart_states[id].transfer;
-      bool pending = transfer != null && transfer->tx_waiting_for_empty;
-      bool idle = (kUartRegs[id]->LSR & USART_LSR_TX_EMPTY_Msk) != 0;
-      irq_restore(mask);
+      UartTransferState* transfer;
+      bool pending;
+      bool idle;
+      {
+        IrqMaskGuard guard;
+        transfer = uart_states[id].transfer;
+        pending = transfer != null && transfer->tx_waiting_for_empty;
+        idle = (kUartRegs[id]->LSR & USART_LSR_TX_EMPTY_Msk) != 0;
+      }
       if (!pending) break;
       if (!idle) {
         osDelay(1);
@@ -392,18 +401,19 @@ static void uart_tx_drain_task(void*) {
 
       bool notify = false;
       bool finish_close = false;
-      mask = irq_save();
-      transfer = uart_states[id].transfer;
-      if (transfer != null && transfer->tx_waiting_for_empty &&
-          (kUartRegs[id]->LSR & USART_LSR_TX_EMPTY_Msk) != 0) {
-        transfer->tx_waiting_for_empty = false;
-        int de = uart_states[id].de_pad;
-        if (de >= 0) set_de_level(de, 0);
-        transfer->tx_busy = false;
-        finish_close = transfer->closing;
-        notify = !finish_close;
+      {
+        IrqMaskGuard guard;
+        transfer = uart_states[id].transfer;
+        if (transfer != null && transfer->tx_waiting_for_empty &&
+            (kUartRegs[id]->LSR & USART_LSR_TX_EMPTY_Msk) != 0) {
+          transfer->tx_waiting_for_empty = false;
+          int de = uart_states[id].de_pad;
+          if (de >= 0) set_de_level(de, 0);
+          transfer->tx_busy = false;
+          finish_close = transfer->closing;
+          notify = !finish_close;
+        }
       }
-      irq_restore(mask);
       if (finish_close) {
         finish_uart_close(id, transfer);
       } else if (notify) {
@@ -464,12 +474,9 @@ static void cmsis_ring_push(int id, const uint8_t* data, uint32_t n) {
 }
 
 static void cmsis_uart_event(int id, uint32_t event) {
-  uint32_t mask = irq_save();
+  IrqMaskGuard guard;
   UartTransferState* transfer = uart_states[id].transfer;
-  if (transfer == null) {
-    irq_restore(mask);
-    return;
-  }
+  if (transfer == null) return;
   transfer->cb_events++;
   ARM_DRIVER_USART* driver = kDrivers[id];
   if (event & (ARM_USART_EVENT_RECEIVE_COMPLETE | ARM_USART_EVENT_RX_TIMEOUT)) {
@@ -584,7 +591,6 @@ static void cmsis_uart_event(int id, uint32_t event) {
     uart_states[id].errors++;
     send_uart_event(id, Event::UART_KIND_ERROR);
   }
-  irq_restore(mask);
 }
 
 // The CMSIS event callback carries no context argument — one thunk per
@@ -923,11 +929,10 @@ PRIMITIVE(create) {
     // event callback from THIS task context — an RX irq landing in that
     // window runs a second callback concurrently, and two ring pushes
     // racing on `head` turn the ring memcpy into a wild write.
-    uint32_t arm_mask = irq_save();
+    IrqMaskGuard guard;
     if (driver->Receive(transfer->chunk, sizeof(transfer->chunk)) != ARM_DRIVER_OK) {
       transfer->rearm_fails++;
     }
-    irq_restore(arm_mask);
   }
 
   uart_states[id].baud_rate = baud_rate;
@@ -971,7 +976,7 @@ PRIMITIVE(set_baud_rate) {
     // bsp_usart.c; CONTROL_RX 0 is the supported abort, and Control()
     // with a mode word disables the whole UART while it swaps the
     // divisor, so the quiesce must come first.
-    uint32_t mask = irq_save();
+    IrqMaskGuard guard;
     ARM_DRIVER_USART* driver = kDrivers[id];
     driver->Control(ARM_USART_CONTROL_RX, 0);
     driver->Control(ARM_USART_CONTROL_TX, 0);
@@ -991,7 +996,6 @@ PRIMITIVE(set_baud_rate) {
     if (driver->Receive(transfer->chunk, sizeof(transfer->chunk)) != ARM_DRIVER_OK) {
       transfer->rearm_fails++;
     }
-    irq_restore(mask);
   }
   uart_states[id].baud_rate = baud_rate;
   return process->null_object();
@@ -1024,7 +1028,7 @@ PRIMITIVE(write) {
     // gaplessly; only with both buffers occupied does the writer wait
     // for the TX event.
     if (transfer->tx_busy) {
-      uint32_t mask = irq_save();
+      IrqMaskGuard guard;
       if (transfer->tx_busy && !transfer->tx_waiting_for_empty &&
           transfer->tx_pending_len == 0 && len > 1) {
         // len == 1 stays on the SendPolling path below (via a retry once
@@ -1038,7 +1042,6 @@ PRIMITIVE(write) {
       } else {
         written = 0;
       }
-      irq_restore(mask);
     } else if (len == 1) {
       // Send() special-cases num==1 (no DMA: IER |= TX_DATA_REQ + a direct
       // THR write) and that byte was observed to VANISH from the wire under
@@ -1078,7 +1081,7 @@ PRIMITIVE(read) {
       // bytes stranded in the hardware FIFO and no interrupt edge left to
       // deliver them. Pull them in whenever the reader looks (to ONE
       // byte, see the overflow handler). Never on a DMA-owned FIFO.
-      uint32_t mask = irq_save();
+      IrqMaskGuard guard;
       USART_TypeDef* reg = kUartRegs[id];
       uint8_t fifo_buf[32];
       uint32_t got = 0;
@@ -1095,7 +1098,6 @@ PRIMITIVE(read) {
         }
         cmsis_ring_push(id, fifo_buf, got);
       }
-      irq_restore(mask);
     }
     // Drain our ring (filled by cmsis_uart_event). Snapshot head once: the
     // IRQ only ever ADDS bytes, so the acquired window we copy is stable.
