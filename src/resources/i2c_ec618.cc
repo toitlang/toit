@@ -28,19 +28,15 @@
 #include "pad_table_ec618.h"
 
 extern "C" {
+  #include "FreeRTOS.h"
+  #include "queue.h"
+  #include "task.h"
   #include "bsp_common.h"
   #include "clock.h"         // GPR_setClockSrc: pin the I2C functional clock.
   #include "driver_gpio.h"   // GPIO_PullConfig / GPIO_IomuxEC618.
   #include "gpio.h"          // OEM GPIO_pinConfig/pinRead, for the bus peek.
-  // I2C runs on the OPEN CMSIS driver (bsp_i2c.c) in IRQ mode — a mode the
-  // vendor never finished or shipped (their production glue uses the
-  // closed soc_i2c blob; the CMSIS branch of luat_i2c_ec618.c is #if 0).
-  // Our submodule fork implements the IRQ-mode master engine: the command
-  // engine runs the transfer in hardware, the IRQ handler feeds/drains the
-  // 16-deep FIFO, completion comes through the event callback. No DMA
-  // channels are consumed (the 7-channel MP pool is 6/7 committed when all
-  // three UARTs are open). The Driver_I2Cn access structs are data symbols
-  // resolved directly from the selected base.
+  // I2C uses the CMSIS command engine in IRQ mode. The IRQ handler
+  // feeds/drains the FIFO, leaving DMA channels available to the UARTs.
   #include "Driver_I2C.h"
   extern ARM_DRIVER_I2C Driver_I2C0;
   extern ARM_DRIVER_I2C Driver_I2C1;
@@ -65,19 +61,26 @@ static int pads_to_controller(int sda, int scl) {
 
 static ARM_DRIVER_I2C* const kI2cDrivers[2] = { &Driver_I2C0, &Driver_I2C1 };
 static I2C_TypeDef* const kI2cRegs[2] = { I2C0, I2C1 };
-// The RTE pins that the driver's Initialize() muxes on its own (I2C0's are
-// the "AUDIO" routing). Undone in bus_create when the user chose others.
+// Runtime Environment (RTE) pins muxed by Driver_I2C::Initialize. bus_create
+// releases these when the user selects another route.
 static const uint8_t kRteSda[2] = { 27, 19 };
 static const uint8_t kRteScl[2] = { 28, 20 };
 
-// Transfer stages. A write+read transfer runs as two chained legs — the
-// engine has no working repeated-start (the CMSIS xfer_pending flag is
-// write-only in bsp_i2c.c), so the wire carries write,STOP,START,read,
-// exactly like the vendor's shipped luat_i2c_transfer.
-static const uint8_t kStageIdle = 0;
-static const uint8_t kStageSingle = 1;            // One leg only.
-static const uint8_t kStageWritePendingRead = 2;  // Write leg in flight.
-static const uint8_t kStageReading = 3;           // Chained read leg.
+enum class I2cStage : uint8_t {
+  IDLE,
+  SINGLE,
+  WRITE_PENDING_READ,
+  READING,
+};
+
+enum class I2cResult : int {
+  OK = 0,
+  ADDRESS_NACK,
+  BUS_ERROR,
+  ARBITRATION_LOST,
+  INCOMPLETE,
+  CANCELED = -1,
+};
 
 class I2cDeviceResource;
 
@@ -99,7 +102,7 @@ struct I2cState {
                              // device transfer's frequency (sticky across
                              // quiesce), else kBusDefaultHz.
   volatile bool transfer_active;
-  volatile uint8_t stage;
+  volatile I2cStage stage;
   volatile bool notify_toit;     // Async transfer: completion must wake the
                                  // Toit event state. A spin-consumed probe
                                  // MUST NOT notify: the
@@ -127,6 +130,14 @@ struct I2cState {
 
 static I2cState i2c_states[2] = {};
 
+struct ChainedRead {
+  uint8_t controller;
+  uint16_t seq;
+};
+
+static QueueHandle_t i2c_chain_queue = null;
+static bool i2c_chain_task_created = false;
+
 static bool reserve_controller(int controller) {
   Locker locker(OS::global_mutex());
   I2cState* state = &i2c_states[controller];
@@ -141,32 +152,94 @@ static void release_controller(int controller) {
   i2c_states[controller].in_use = false;
 }
 
-// Completion callback, registered at Initialize; runs from the I2C IRQ.
-// Chains the read leg of a write+read transfer, and only signals the Toit
-// event source for the FINAL leg.
+static void send_i2c_completion(int id, I2cState* state, uint32_t event,
+                                bool from_isr) {
+  state->last_event = event;
+  if (!state->notify_toit) return;
+  word data = event | (static_cast<uint32_t>(state->seq) << 16);
+  if (from_isr) {
+    Ec618EventSource::send_event_from_isr(Event::i2c_type(id), data);
+  } else {
+    Ec618EventSource::send_event(Event::i2c_type(id), data);
+  }
+}
+
+static void i2c_chain_task(void*) {
+  ChainedRead request;
+  while (true) {
+    if (xQueueReceive(i2c_chain_queue, &request, portMAX_DELAY) != pdTRUE) {
+      continue;
+    }
+    int id = request.controller;
+    I2cState* state = &i2c_states[id];
+    while (state->transfer_active &&
+           state->stage == I2cStage::WRITE_PENDING_READ &&
+           state->seq == request.seq &&
+           (kI2cRegs[id]->STR & I2C_STR_BUSY_Msk)) {
+      vTaskDelay(1);
+    }
+
+    taskENTER_CRITICAL();
+    bool current = state->transfer_active &&
+        state->stage == I2cStage::WRITE_PENDING_READ &&
+        state->seq == request.seq;
+    int32_t rc = ARM_DRIVER_OK;
+    bool notify_failure = false;
+    word failure_data = 0;
+    if (current) {
+      state->stage = I2cStage::READING;
+      rc = kI2cDrivers[id]->MasterReceive(
+          state->address, state->rx, state->rx_len, false);
+      if (rc != ARM_DRIVER_OK) {
+        uint32_t event =
+            ARM_I2C_EVENT_BUS_ERROR | ARM_I2C_EVENT_TRANSFER_INCOMPLETE;
+        state->last_event = event;
+        notify_failure = state->notify_toit;
+        failure_data =
+            event | (static_cast<uint32_t>(request.seq) << 16);
+      }
+    }
+    taskEXIT_CRITICAL();
+
+    if (notify_failure) {
+      Ec618EventSource::send_event(Event::i2c_type(id), failure_data);
+    }
+  }
+}
+
+static bool ensure_i2c_chain_task() {
+  if (i2c_chain_task_created) return true;
+  if (i2c_chain_queue == null) {
+    i2c_chain_queue = xQueueCreate(2, sizeof(ChainedRead));
+    if (i2c_chain_queue == null) return false;
+  }
+  if (xTaskCreate(i2c_chain_task, "toit_i2c", 512, null,
+                  tskIDLE_PRIORITY + 2, null) != pdPASS) {
+    return false;
+  }
+  i2c_chain_task_created = true;
+  return true;
+}
+
+// Completion callback registered at Initialize. A write+read transfer queues
+// its second leg for task context, so clock stretching never spins in an IRQ.
 static void i2c_cmsis_event(int id, uint32_t event) {
   I2cState* state = &i2c_states[id];
   if (!state->transfer_active) return;  // Stale (aborted under us).
-  if (state->stage == kStageWritePendingRead &&
+  if (state->stage == I2cStage::WRITE_PENDING_READ &&
       event == ARM_I2C_EVENT_TRANSFER_DONE) {
-    // The write leg landed clean — chain the read. The engine may still
-    // be clocking out the STOP (TRANSFER_DONE leads it slightly and
-    // MasterReceive rejects a busy bus); the wait is a bit-time, bounded.
-    I2C_TypeDef* regs = kI2cRegs[id];
-    int spin = 20000;
-    while ((regs->STR & I2C_STR_BUSY_Msk) && --spin > 0) {}
-    state->stage = kStageReading;
-    int32_t rc = kI2cDrivers[id]->MasterReceive(
-        state->address, state->rx, state->rx_len, false);
-    if (rc == ARM_DRIVER_OK) return;  // Completion re-enters here.
-    event = ARM_I2C_EVENT_BUS_ERROR | ARM_I2C_EVENT_TRANSFER_INCOMPLETE;
+    ChainedRead request = {
+      static_cast<uint8_t>(id),
+      state->seq,
+    };
+    BaseType_t woken = pdFALSE;
+    if (xQueueSendFromISR(i2c_chain_queue, &request, &woken) == pdTRUE) {
+      portYIELD_FROM_ISR(woken);
+      return;
+    }
+    event = ARM_I2C_EVENT_TRANSFER_INCOMPLETE;
   }
-  state->last_event = event;
-  if (state->notify_toit) {
-    // The dispatch word: event bits | originating transfer's sequence.
-    Ec618EventSource::send_event_from_isr(
-        Event::i2c_type(id), event | ((uint32_t)state->seq << 16));
-  }
+  send_i2c_completion(id, state, event, true);
 }
 
 static void i2c0_event(uint32_t event) { i2c_cmsis_event(0, event); }
@@ -372,6 +445,11 @@ static void bus_clear(int sda, int scl) {
 
 // Releases a finished (or aborted) transfer's buffers.
 static void release_transfer(I2cState* state) {
+  if (state->transfer_active) {
+    int controller = static_cast<int>(state - i2c_states);
+    ASSERT(state->last_event != 0);
+    ASSERT(!kI2cDrivers[controller]->GetStatus().busy);
+  }
   // Make any late IRQ callback stale before releasing memory it could use.
   state->transfer_active = false;
   if (state->owns_buffers) {
@@ -385,7 +463,7 @@ static void release_transfer(I2cState* state) {
   state->rx = null;
   state->rx_len = 0;
   state->active_device = null;
-  state->stage = kStageIdle;
+  state->stage = I2cStage::IDLE;
 }
 
 class I2cBusResource : public EventResource {
@@ -520,13 +598,13 @@ static const int kMaxTransfer = 512;
 
 // Maps the recorded completion event to the primitive result code
 // (0 = clean; the library turns nonzero into HARDWARE_ERROR).
-static int event_to_result(uint32_t event) {
-  if (event & ARM_I2C_EVENT_ADDRESS_NACK) return 1;
-  if (event & ARM_I2C_EVENT_BUS_ERROR) return 2;
-  if (event & ARM_I2C_EVENT_ARBITRATION_LOST) return 3;
-  if (event & ARM_I2C_EVENT_TRANSFER_INCOMPLETE) return 4;
-  if (!(event & ARM_I2C_EVENT_TRANSFER_DONE)) return 4;
-  return 0;
+static I2cResult event_to_result(uint32_t event) {
+  if (event & ARM_I2C_EVENT_ADDRESS_NACK) return I2cResult::ADDRESS_NACK;
+  if (event & ARM_I2C_EVENT_BUS_ERROR) return I2cResult::BUS_ERROR;
+  if (event & ARM_I2C_EVENT_ARBITRATION_LOST) return I2cResult::ARBITRATION_LOST;
+  if (event & ARM_I2C_EVENT_TRANSFER_INCOMPLETE) return I2cResult::INCOMPLETE;
+  if (!(event & ARM_I2C_EVENT_TRANSFER_DONE)) return I2cResult::INCOMPLETE;
+  return I2cResult::OK;
 }
 
 // Starts the hardware legs for a transfer whose state is already set up.
@@ -535,20 +613,21 @@ static bool start_legs(I2cState* state, int controller) {
   ARM_DRIVER_I2C* driver = kI2cDrivers[controller];
   int32_t rc;
   if (state->tx != null && state->rx != null) {
-    state->stage = kStageWritePendingRead;
+    state->stage = I2cStage::WRITE_PENDING_READ;
     rc = driver->MasterTransmit(state->address, state->tx, state->tx_len, false);
   } else if (state->tx != null) {
-    state->stage = kStageSingle;
+    state->stage = I2cStage::SINGLE;
     rc = driver->MasterTransmit(state->address, state->tx, state->tx_len, false);
   } else {
-    state->stage = kStageSingle;
+    state->stage = I2cStage::SINGLE;
     rc = driver->MasterReceive(state->address, state->rx, state->rx_len, false);
   }
   if (rc != ARM_DRIVER_OK) {
     printf("[i2c] start_legs rc=%ld stage=%d tx=%lu rx=%lu STR=%08lx\n",
-           (long)rc, (int)state->stage, (unsigned long)state->tx_len,
-           (unsigned long)state->rx_len,
-           (unsigned long)kI2cRegs[controller]->STR);
+           static_cast<long>(rc), static_cast<int>(state->stage),
+           static_cast<unsigned long>(state->tx_len),
+           static_cast<unsigned long>(state->rx_len),
+           static_cast<unsigned long>(kI2cRegs[controller]->STR));
     quiesce(controller);
     release_transfer(state);
     return false;
@@ -579,6 +658,7 @@ PRIMITIVE(bus_create) {
 
   int controller = pads_to_controller(sda, scl);
   if (controller < 0) FAIL(INVALID_ARGUMENT);
+  if (!ensure_i2c_chain_task()) FAIL(MALLOC_FAILED);
   if (!reserve_controller(controller)) FAIL(ALREADY_IN_USE);
 
   I2cBusResource* bus = _new I2cBusResource(group, controller, sda, scl);
@@ -674,7 +754,8 @@ PRIMITIVE(bus_probe) {
   uint16_t clamped_timeout_ms =
       timeout_ms < 1 ? 1 : (timeout_ms > 1000 ? 1000 : timeout_ms);
   int64 deadline_us =
-      OS::get_monotonic_time() + (int64)clamped_timeout_ms * 1000 * 3;
+      OS::get_monotonic_time() +
+      static_cast<int64>(clamped_timeout_ms) * 1000 * 3;
   while (state->last_event == 0) {
     if (OS::get_monotonic_time() > deadline_us) {
       quiesce(controller);
@@ -682,10 +763,10 @@ PRIMITIVE(bus_probe) {
       return BOOL(false);
     }
   }
-  int result = event_to_result(state->last_event);
-  if (result != 0) quiesce(controller);
+  I2cResult result = event_to_result(state->last_event);
+  if (result != I2cResult::OK) quiesce(controller);
   release_transfer(state);
-  return BOOL(result == 0);
+  return BOOL(result == I2cResult::OK);
 }
 
 PRIMITIVE(bus_reset) {
@@ -827,22 +908,23 @@ PRIMITIVE(device_transfer_finish) {
     // with-timeout canceled it). Stop the engine before releasing buffers.
     quiesce(device->controller());
     release_transfer(state);
-    return Primitive::integer(-1, process);
+    return Primitive::integer(static_cast<int>(I2cResult::CANCELED), process);
   }
-  int result = event_to_result(event);
-  if (result == 0 && state->rx != null) {
+  I2cResult result = event_to_result(event);
+  if (result == I2cResult::OK && state->rx != null) {
     uint32_t n = state->rx_len;
-    if (n > (uint32_t)rx_out.length()) n = rx_out.length();
+    if (n > static_cast<uint32_t>(rx_out.length())) n = rx_out.length();
     memcpy(rx_out.address(), state->rx, n);
   }
-  if (result != 0) {
+  if (result != I2cResult::OK) {
     printf("[i2c] finish event=%08lx stage=%d tx=%lu rx=%lu\n",
-           (unsigned long)event, (int)state->stage,
-           (unsigned long)state->tx_len, (unsigned long)state->rx_len);
+           static_cast<unsigned long>(event), static_cast<int>(state->stage),
+           static_cast<unsigned long>(state->tx_len),
+           static_cast<unsigned long>(state->rx_len));
     quiesce(device->controller());
   }
   release_transfer(state);
-  return Primitive::integer(result, process);
+  return Primitive::integer(static_cast<int>(result), process);
 }
 
 }  // namespace toit
