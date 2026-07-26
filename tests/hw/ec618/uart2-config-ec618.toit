@@ -2,7 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ec618 show Ec618
+import gpio show Pin
 import uart
 
 /**
@@ -31,7 +31,10 @@ stop-bits-of code/int -> uart.StopBits:
   return uart.Port.STOP-BITS-1
 
 main:
-  control := Ec618.uart1 --baud-rate=CONTROL-BAUD --rx-disabled
+  control-tx := Pin 34
+  test-tx := Pin 26
+  test-rx := Pin 25
+  control := uart.Port --tx=control-tx --rx=null --baud-rate=CONTROL-BAUD
   // A fresh UART1 open can emit a glitch byte that garbles the first line on
   // the wire; terminate any such garbage with a newline (the helper discards
   // malformed lines) before the first real command.
@@ -56,7 +59,9 @@ main:
       stop := c[2]
       control.out.write "$baud $data $parity $stop\n"
       sleep --ms=700                  // Let the ESP32 reopen its side.
-      test := Ec618.uart2
+      test := uart.Port
+          --tx=test-tx
+          --rx=test-rx
           --baud-rate=baud
           --data-bits=data
           --parity=parity
@@ -85,7 +90,11 @@ main:
     sizes := c[2]
     control.out.write "$baud 8 1 1\n"
     sleep --ms=700
-    test := Ec618.uart2 --baud-rate=baud --large-buffers=large
+    test := uart.Port
+        --tx=test-tx
+        --rx=test-rx
+        --baud-rate=baud
+        --large-buffers=large
     sizes.do: | size/int |
       token := ByteArray size: (it * 31 + 7) & 0xff
       test.out.write token
@@ -101,7 +110,12 @@ main:
   // is recorded, not asserted.)
   control.out.write "115200 8 3 1\n"
   sleep --ms=700
-  test := Ec618.uart2 --baud-rate=115200 --data-bits=8 --parity=uart.Port.PARITY-EVEN
+  test := uart.Port
+      --tx=test-tx
+      --rx=test-rx
+      --baud-rate=115200
+      --data-bits=8
+      --parity=uart.Port.PARITY-EVEN
   token := ByteArray TOKEN-SIZE: (it * 31 + 7) & 0xff
   errors-before := test.errors
   test.out.write token
@@ -116,7 +130,7 @@ main:
   // transmit one byte followed by a 12-bit break.
   control.out.write "115200 8 1 1\n"
   sleep --ms=700
-  test = Ec618.uart2 --baud-rate=115200
+  test = uart.Port --tx=test-tx --rx=test-rx --baud-rate=115200
   errors-before = test.errors
   control.out.write "B\n"
   break-error := catch:
@@ -130,6 +144,9 @@ main:
 
   control.out.write "Q\n"
   control.close
+  test-rx.close
+  test-tx.close
+  control-tx.close
 
   if not failures.is-empty:
     print "uart2-config-ec618: FAIL $failures"
