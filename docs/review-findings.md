@@ -36,9 +36,8 @@ position-independent image relocated to whichever slot it is written to:
   back. Backed by the power-fail-safe `.slot_marker` (ping-ponged seq+CRC).
 
 There is no copy-into-active step to brick on power loss. See
-[ota-relocation-convergence.md](ota-relocation-convergence.md) for the full
-design + status. **Remaining:** Artemis delta-apply (the canonical read path it
-needs is done) and deleting the dead legacy Python OTA tooling.
+[ota-contract.md](ota-contract.md) for the full design and current contract.
+**Remaining:** Artemis delta-apply (the canonical read path it needs is done).
 
 ### GPIO Pull-up/Pull-down and Open-drain
 

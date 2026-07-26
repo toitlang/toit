@@ -11,8 +11,8 @@ Their test-specific protocol provides explicit readiness and result messages
 where coordination is required.
 
 See also: `tests/hw/ec618/README.md` (how to run), `tests/hw/esp-tester/`
-(the mini-jag harness), `docs/ota-dual-slot-plan.md` (the OTA design),
-`docs/ota-contract.md` (the frozen base/VM ABI).
+(the mini-jag harness), and `docs/ota-contract.md` (the OTA design and frozen
+base/VM ABI).
 
 ## The two rigs
 

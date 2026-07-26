@@ -14,11 +14,8 @@ the wrong PLAT function), exactly the failure modes the relocation design fights
 Such a change is only safe as a **coordinated base + VM reflash**, never as an
 OTA.
 
-For the *mechanism* (relocate-on-write / un-relocate-on-read, the SRL3 table, the
-container-in-slot layout) see [ota-relocation-convergence.md](ota-relocation-convergence.md);
-for the storage/marker plan see [ota-dual-slot-plan.md](ota-dual-slot-plan.md).
-The contract lives in the selected base ELF and ID, the linker template,
-the anchor partition record, and the SRL3 framing implemented by
+The contract and mechanism live in the selected base ELF and ID, the linker
+template, the anchor partition record, and the SRL3 framing implemented by
 `src/slot_reloc_ec618.*` and `tools/ec618/slot-reloc.toit`.
 
 ---

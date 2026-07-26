@@ -191,7 +191,7 @@ what this document is about building.
 ## 1. Background
 
 We just shipped dual-slot OTA with esp-idf-style trial boot + automatic
-rollback (see [`ota-dual-slot-plan.md`](ota-dual-slot-plan.md)). The Toit
+rollback (see [`ota-contract.md`](ota-contract.md)). The Toit
 VM lives in two slots (`.vm_a` / `.vm_b`, 384 KB each) and the known-good /
 trial state is tracked in a power-fail-safe `.slot_marker` region (two 4 KB
 sectors, sequence-numbered + CRC). Each OTA-state record uses one 4 KB flash
@@ -427,7 +427,7 @@ marker is authoritative — exactly "the active-slot flash page knows where the
 data lives." PLAT, slot A, and slot B become three independent partitions
 rather than sub-regions of one linked image; the build emits separate images.
 The dual-slot plan already sketches this — distinct `PLAT_FLASH` / `VM_A_FLASH`
-/ `VM_B_FLASH` memory regions ([`ota-dual-slot-plan.md`](ota-dual-slot-plan.md)
+/ `VM_B_FLASH` memory regions ([`ota-contract.md`](ota-contract.md)
 "Modify the xmake linker script").
 
 **What still has to stay anchored** (everything else floats):
@@ -542,11 +542,10 @@ error, it's a hang.
    slot geometry adjustable, and (with the Tier-0 split) enable
    loader-applied base updates. Whether base-update is worth the foot-guns
    depends on how often PLAT really changes after ship.
-6. **Two OTA paths today.** The standard Toit firmware service
-   ([`firmware.toit`](../system/extensions/ec618/firmware.toit)) reports
-   `is-rollback-possible = false` / `is-validation-pending = false`; the real
-   dual-slot logic lives in `ec618.slot` + `uart-ota`. A partition system
-   should unify these or clearly define how they relate.
+6. **One OTA path.** The standard Toit firmware service
+   ([`firmware.toit`](../system/extensions/ec618/firmware.toit)) owns slot
+   writes, trial boot, validation, and rollback. There is no EC618-specific
+   transport beside it.
 
 ## 9. Suggested incremental path
 
@@ -617,4 +616,4 @@ else stays negotiable.
 - Slot primitives: [`primitive_ec618.cc`](../src/primitive_ec618.cc)
 - Flash registry (Toit storage): [`flash_registry_ec618.cc`](../src/flash_registry_ec618.cc)
 - Toit-side slot API: [`slot.toit`](../lib/ec618/slot.toit)
-- Prior OTA design: [`ota-dual-slot-plan.md`](ota-dual-slot-plan.md)
+- OTA contract: [`ota-contract.md`](ota-contract.md)
