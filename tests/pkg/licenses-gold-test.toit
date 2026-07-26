@@ -30,3 +30,33 @@ test tester/GoldTester:
     ["pkg", "install", "missing"],
     ["pkg", "licenses", "--output=THIRD_PARTY_LICENSES"],
   ]
+
+  file.write-contents
+      --path="$tester.working-dir/licenses.yaml"
+      """
+      overrides:
+        - url: localhost:$tester.port/pkg/missing
+          version: 1.0.0
+          path: overrides/missing.LICENSE
+      """
+  tester.gold "30-license-override" [
+    ["pkg", "licenses", "--no-include-sdk", "--output=THIRD_PARTY_LICENSES"],
+  ]
+  with-override := (file.read-contents "$tester.working-dir/THIRD_PARTY_LICENSES").to-string
+  expect (with-override.contains "License override: overrides/missing.LICENSE")
+  expect (with-override.contains "Overridden package license.")
+
+  file.write-contents
+      --path="$tester.working-dir/licenses.yaml"
+      """
+      overrides:
+        - url: localhost:$tester.port/pkg/missing
+          version: 1.0.0
+          path: overrides/missing.LICENSE
+        - url: localhost:$tester.port/pkg/missing
+          version: 2.0.0
+          path: overrides/missing.LICENSE
+      """
+  tester.gold "40-unused-license-override" [
+    ["pkg", "licenses", "--no-include-sdk", "--output=THIRD_PARTY_LICENSES"],
+  ]

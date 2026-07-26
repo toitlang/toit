@@ -14,6 +14,7 @@
 // directory of this repository.
 
 import cli
+import encoding.yaml
 import fs
 import host.file
 import io
@@ -23,8 +24,16 @@ import ..pkg
 import ..project
 import ..project.lock
 import ..project.specification
+import ..semantic-version
 
 import .base_
+
+class LicenseOverride_:
+  url/string
+  version/string
+  path/string
+
+  constructor --.url --.version --.path:
 
 class LicenseEntry_:
   name/string
@@ -33,6 +42,7 @@ class LicenseEntry_:
   license-name/string
   version/string?
   revision/string?
+  is-override/bool
 
   constructor
       --.name
@@ -40,7 +50,8 @@ class LicenseEntry_:
       --.license-path
       --.license-name
       --.version
-      --.revision:
+      --.revision
+      --.is-override/bool=false:
 
   compare-to other/LicenseEntry_ -> int:
     return source.compare-to other.source --if-equal=:
@@ -66,6 +77,7 @@ class LicensesCommand extends PkgProjectCommand:
     ui.emit --info "Wrote licenses for $entries.size packages to '$output-path'."
 
   collect-entries_ -> List:
+    overrides := load-overrides_
     root-specification := project.specification
     root-name := root-specification.has-name
         ? root-specification.name
@@ -89,13 +101,21 @@ class LicensesCommand extends PkgProjectCommand:
         specification := project.load-package-specification
             repository-package.url
             repository-package.version
+        version := repository-package.version.to-string
+        override := find-override_
+            overrides
+            repository-package.url
+            version
         continue.map LicenseEntry_
             --name=specification.name
             --source=repository-package.url
-            --license-path=(fs.join specification.root-dir "LICENSE")
-            --license-name="LICENSE"
-            --version=repository-package.version.to-string
+            --license-path=(override
+                ? fs.join project.root override.path
+                : fs.join specification.root-dir "LICENSE")
+            --license-name=(override ? override.path : "LICENSE")
+            --version=version
             --revision=repository-package.ref-hash
+            --is-override=override != null
 
       local-package := package as LocalPackage
       root := root-specification.absolute-path-for-dependency local-package.path
@@ -117,6 +137,62 @@ class LicensesCommand extends PkgProjectCommand:
     entries.add-all dependency-entries
     if include-sdk: entries.add sdk-license-entry_
     return entries
+
+  load-overrides_ -> List:
+    config-path := fs.join project.root LICENSES-FILE
+    if not file.is-file config-path: return []
+
+    decoded := yaml.decode (file.read-contents config-path) --if-error=: | error/string |
+      ui.abort "Invalid $LICENSES-FILE content: $error."
+    if decoded is not Map:
+      ui.abort "Invalid $LICENSES-FILE content: not a map."
+    config := decoded as Map
+    config.do --keys: | key/string |
+      if key != OVERRIDES-KEY:
+        ui.abort "Invalid $LICENSES-FILE content: unknown key '$key'."
+
+    raw-overrides := config.get OVERRIDES-KEY
+    if raw-overrides == null: return []
+    if raw-overrides is not List:
+      ui.abort "Invalid $LICENSES-FILE content: '$OVERRIDES-KEY' is not a list."
+
+    result := []
+    seen := {}
+    (raw-overrides as List).do: | raw-override |
+      if raw-override is not Map:
+        ui.abort "Invalid license override: not a map."
+      map := raw-override as Map
+      map.do --keys: | key/string |
+        if not [URL-KEY, VERSION-KEY, PATH-KEY].contains key:
+          ui.abort "Invalid license override: unknown key '$key'."
+
+      url := required-override-string_ map URL-KEY
+      version := required-override-string_ map VERSION-KEY
+      path := required-override-string_ map PATH-KEY
+      parsed-version := SemanticVersion.parse version --on-error=: | error/string |
+        ui.abort "Invalid license override version '$version': $error."
+      version = parsed-version.to-string
+      if not fs.is-relative path:
+        ui.abort "Invalid license override path '$path': must be relative."
+
+      key := "$url\n$version"
+      if seen.contains key:
+        ui.abort "Duplicate license override for '$url@$version'."
+      seen.add key
+      result.add (LicenseOverride_ --url=url --version=version --path=path)
+    return result
+
+  required-override-string_ map/Map key/string -> string:
+    value := map.get key
+    if value is not string or value == "":
+      ui.abort "Invalid license override: '$key' must be a non-empty string."
+    return value
+
+  find-override_ overrides/List url/string version/string -> LicenseOverride_?:
+    overrides.do: | override/LicenseOverride_ |
+      if override.url == url and override.version == version:
+        return override
+    return null
 
   sdk-license-entry_ -> LicenseEntry_:
     program-dir := fs.dirname system.program-path
@@ -154,6 +230,10 @@ class LicensesCommand extends PkgProjectCommand:
 
   write-entry_ output/io.Writer entry/LicenseEntry_:
     if not file.is-file entry.license-path:
+      if entry.is-override:
+        error """
+            License override for package '$entry.name' does not exist at
+              '$entry.license-path'."""
       error "Package '$entry.name' has no top-level LICENSE file at '$entry.license-path'."
 
     output.write """
@@ -163,7 +243,7 @@ class LicensesCommand extends PkgProjectCommand:
         """
     if entry.version: output.write "Version: $entry.version\n"
     if entry.revision: output.write "Revision: $entry.revision\n"
-    output.write "License file: $entry.license-name\n"
+    output.write "$(entry.is-override ? "License override" : "License file"): $entry.license-name\n"
     output.write "================================================================================\n"
     license-content := file.read-contents entry.license-path
     output.write license-content
@@ -173,6 +253,11 @@ class LicensesCommand extends PkgProjectCommand:
 
   static OUTPUT-OPTION ::= "output"
   static INCLUDE-SDK-OPTION ::= "include-sdk"
+  static LICENSES-FILE ::= "licenses.yaml"
+  static OVERRIDES-KEY ::= "overrides"
+  static URL-KEY ::= "url"
+  static VERSION-KEY ::= "version"
+  static PATH-KEY ::= "path"
 
   static CLI-COMMAND ::=
       cli.Command "licenses"
@@ -181,6 +266,17 @@ class LicensesCommand extends PkgProjectCommand:
 
               The packages are taken from package.lock. Missing packages are downloaded
                 before their licenses are collected.
+
+              Repository-package licenses can be overridden in a root-level
+                licenses.yaml file:
+
+                overrides:
+                  - url: github.com/example/package
+                    version: 1.2.3
+                    path: licenses/example-package-1.2.3.LICENSE
+
+              URLs and versions must exactly match package.lock. Override paths are
+                relative to the project root.
               """
           --options=[
             cli.Flag INCLUDE-SDK-OPTION
