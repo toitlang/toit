@@ -35,8 +35,9 @@ extern "C" {
   #include "clock.h"         // GPR_setClockSrc: pin the I2C functional clock.
   #include "driver_gpio.h"   // GPIO_PullConfig / GPIO_IomuxEC618.
   #include "gpio.h"          // OEM GPIO_pinConfig/pinRead, for the bus peek.
-  // I2C uses the CMSIS command engine in IRQ mode. The IRQ handler
-  // feeds/drains the FIFO, leaving DMA channels available to the UARTs.
+  #include "ic.h"            // XIC_SetVector: slot-resident IRQ handlers.
+  // The base driver owns only stable power/clock lifecycle operations. The
+  // transfer state machine and IRQ handlers live in this OTA-updatable slot.
   #include "Driver_I2C.h"
   extern ARM_DRIVER_I2C Driver_I2C0;
   extern ARM_DRIVER_I2C Driver_I2C1;
@@ -61,6 +62,7 @@ static int pads_to_controller(int sda, int scl) {
 
 static ARM_DRIVER_I2C* const kI2cDrivers[2] = { &Driver_I2C0, &Driver_I2C1 };
 static I2C_TypeDef* const kI2cRegs[2] = { I2C0, I2C1 };
+static const IRQn_Type kI2cIrqs[2] = { PXIC0_I2C0_IRQn, PXIC0_I2C1_IRQn };
 static const ClockResetVector_t kI2cResetVectors[2] = {
   I2C0_RESET_VECTOR,
   I2C1_RESET_VECTOR,
@@ -105,7 +107,10 @@ struct I2cState {
                              // device transfer's frequency (sticky across
                              // quiesce), else kBusDefaultHz.
   volatile bool transfer_active;
+  volatile bool hardware_busy;
+  bool dedicated_mode;
   volatile I2cStage stage;
+  volatile uint32_t count;
   volatile bool notify_toit;     // Async transfer: completion must wake the
                                  // Toit event state. A spin-consumed probe
                                  // must not leave a queued notification.
@@ -128,9 +133,17 @@ struct I2cState {
 
 static I2cState i2c_states[2] = {};
 
-struct ChainedRead {
+static int32_t start_receive(int controller);
+
+enum class I2cTaskAction : uint8_t {
+  COMPLETE,
+  START_READ,
+};
+
+struct I2cTaskRequest {
   uint8_t controller;
   uint16_t seq;
+  I2cTaskAction action;
 };
 
 static QueueHandle_t i2c_chain_queue = null;
@@ -163,31 +176,48 @@ static void send_i2c_completion(int id, I2cState* state, uint32_t event,
 }
 
 static void i2c_chain_task(void*) {
-  ChainedRead request;
+  I2cTaskRequest request;
   while (true) {
     if (xQueueReceive(i2c_chain_queue, &request, portMAX_DELAY) != pdTRUE) {
       continue;
     }
     int id = request.controller;
     I2cState* state = &i2c_states[id];
-    while (state->transfer_active &&
-           state->stage == I2cStage::WRITE_PENDING_READ &&
-           state->seq == request.seq &&
-           (kI2cRegs[id]->STR & I2C_STR_BUSY_Msk)) {
+    I2C_TypeDef* regs = kI2cRegs[id];
+    for (int wait = 0;
+         wait < 2 &&
+         state->transfer_active &&
+         state->seq == request.seq &&
+         (regs->STR & I2C_STR_BUSY_Msk);
+         wait++) {
       vTaskDelay(1);
+    }
+    if (state->transfer_active &&
+        state->seq == request.seq &&
+        (regs->STR & I2C_STR_BUSY_Msk)) {
+      // Dedicated mode puts the STOP on the wire but leaves STR.BUSY
+      // latched. The wire has had two scheduler ticks to reach idle; reset
+      // just the command engine before publishing completion or beginning a
+      // chained read. Preserve the programmed pace and the base driver's
+      // stable power/setup lifecycle.
+      uint32_t pace = regs->TPR;
+      regs->IER = 0;
+      GPR_swResetModule(&kI2cResetVectors[id]);
+      regs->TPR = pace;
     }
 
     taskENTER_CRITICAL();
-    bool current = state->transfer_active &&
-        state->stage == I2cStage::WRITE_PENDING_READ &&
-        state->seq == request.seq;
+    bool current =
+        state->transfer_active && state->seq == request.seq;
     int32_t rc = ARM_DRIVER_OK;
     bool notify_failure = false;
+    bool notify_completion = false;
     word failure_data = 0;
-    if (current) {
+    if (current && request.action == I2cTaskAction::START_READ &&
+        state->stage == I2cStage::WRITE_PENDING_READ) {
+      state->hardware_busy = false;
       state->stage = I2cStage::READING;
-      rc = kI2cDrivers[id]->MasterReceive(
-          state->address, state->rx, state->rx_len, false);
+      rc = start_receive(id);
       if (rc != ARM_DRIVER_OK) {
         uint32_t event =
             ARM_I2C_EVENT_BUS_ERROR | ARM_I2C_EVENT_TRANSFER_INCOMPLETE;
@@ -196,11 +226,19 @@ static void i2c_chain_task(void*) {
         failure_data =
             event | (static_cast<uint32_t>(request.seq) << 16);
       }
+    } else if (current && request.action == I2cTaskAction::COMPLETE) {
+      state->hardware_busy = false;
+      state->last_event = ARM_I2C_EVENT_TRANSFER_DONE;
+      notify_completion = state->notify_toit;
     }
     taskEXIT_CRITICAL();
 
     if (notify_failure) {
       Ec618EventSource::send_event(Event::i2c_type(id), failure_data);
+    } else if (notify_completion) {
+      word data = ARM_I2C_EVENT_TRANSFER_DONE |
+          (static_cast<uint32_t>(request.seq) << 16);
+      Ec618EventSource::send_event(Event::i2c_type(id), data);
     }
   }
 }
@@ -208,7 +246,7 @@ static void i2c_chain_task(void*) {
 static bool ensure_i2c_chain_task() {
   if (i2c_chain_task_created) return true;
   if (i2c_chain_queue == null) {
-    i2c_chain_queue = xQueueCreate(2, sizeof(ChainedRead));
+    i2c_chain_queue = xQueueCreate(2, sizeof(I2cTaskRequest));
     if (i2c_chain_queue == null) return false;
   }
   if (xTaskCreate(i2c_chain_task, "toit_i2c", 512, null,
@@ -226,9 +264,10 @@ static void i2c_cmsis_event(int id, uint32_t event) {
   if (!state->transfer_active) return;  // Stale (aborted under us).
   if (state->stage == I2cStage::WRITE_PENDING_READ &&
       event == ARM_I2C_EVENT_TRANSFER_DONE) {
-    ChainedRead request = {
+    I2cTaskRequest request = {
       static_cast<uint8_t>(id),
       state->seq,
+      I2cTaskAction::START_READ,
     };
     BaseType_t woken = pdFALSE;
     if (xQueueSendFromISR(i2c_chain_queue, &request, &woken) == pdTRUE) {
@@ -243,6 +282,283 @@ static void i2c_cmsis_event(int id, uint32_t event) {
 static void i2c0_event(uint32_t event) { i2c_cmsis_event(0, event); }
 static void i2c1_event(uint32_t event) { i2c_cmsis_event(1, event); }
 static const ARM_I2C_SignalEvent_t kI2cCallbacks[2] = { i2c0_event, i2c1_event };
+
+static const uint32_t kKnownLengthMax = 512;
+
+static bool is_transmit(const I2cState* state) {
+  return state->stage == I2cStage::WRITE_PENDING_READ ||
+      (state->stage == I2cStage::SINGLE && state->tx != null);
+}
+
+static bool is_receive(const I2cState* state) {
+  return state->stage == I2cStage::READING ||
+      (state->stage == I2cStage::SINGLE && state->tx == null);
+}
+
+static uint32_t transfer_length(const I2cState* state) {
+  return is_transmit(state) ? state->tx_len : state->rx_len;
+}
+
+static void i2c_irq(int controller) {
+  I2cState* state = &i2c_states[controller];
+  I2C_TypeDef* regs = kI2cRegs[controller];
+  uint32_t status = regs->ISR;
+  regs->ISR = status;  // Write one to clear.
+  if (!state->hardware_busy) {
+    regs->IER = 0;
+    return;
+  }
+
+  bool transmit = is_transmit(state);
+  bool receive = is_receive(state);
+  uint32_t length = transfer_length(state);
+  bool unknown_length = length > kKnownLengthMax;
+  bool stop_detected = (status & I2C_ISR_DETECT_STOP_Msk) != 0;
+  uint32_t count_before = state->count;
+  uint32_t event = 0;
+  bool dedicated_done = false;
+
+  if (unknown_length && transmit &&
+      (status & I2C_ISR_TX_ONE_DATA_Msk)) {
+    if (state->count < length) {
+      regs->TDR = state->tx[state->count++];
+      if (state->count >= length) {
+        __DSB();
+        static_cast<void>(regs->FSR);
+        regs->IER &= ~I2C_IER_TX_ONE_DATA_Msk;
+        regs->SCR = I2C_SCR_STOP_Msk;
+        dedicated_done = true;
+      }
+    } else {
+      regs->IER &= ~I2C_IER_TX_ONE_DATA_Msk;
+      regs->SCR = I2C_SCR_STOP_Msk;
+      dedicated_done = true;
+    }
+  }
+
+  if (unknown_length && receive &&
+      (status & I2C_ISR_RX_ONE_DATA_Msk)) {
+    state->rx[state->count++] = regs->RDR;
+    if (state->count < length) {
+      regs->SCR = I2C_SCR_ACK_Msk;
+    } else {
+      regs->IER &= ~I2C_IER_RX_ONE_DATA_Msk;
+      regs->SCR =
+          I2C_SCR_ACK_Msk | I2C_SCR_ACK_VALUE_Msk | I2C_SCR_STOP_Msk;
+      dedicated_done = true;
+    }
+  }
+
+  if (receive && !unknown_length) {
+    uint32_t available =
+        EIGEN_FLD2VAL(I2C_FSR_RX_FIFO_DATA_NUM, regs->FSR);
+    while (available-- > 0 && state->count < length) {
+      state->rx[state->count++] = regs->RDR;
+    }
+  }
+
+  if (transmit && !unknown_length) {
+    uint32_t free =
+        EIGEN_FLD2VAL(I2C_FSR_TX_FIFO_FREE_NUM, regs->FSR);
+    while (free-- > 0 && state->count < length) {
+      regs->TDR = state->tx[state->count++];
+    }
+    if (state->count >= length) {
+      regs->IER &=
+          ~(I2C_IER_TX_FIFO_EMPTY_Msk | I2C_IER_WAIT_TX_FIFO_Msk);
+    }
+  }
+
+  if (status & I2C_ISR_RX_NACK_Msk) {
+    event |= ARM_I2C_EVENT_ADDRESS_NACK | ARM_I2C_EVENT_TRANSFER_INCOMPLETE;
+  }
+  if (status & I2C_ISR_BUS_ERROR_Msk) {
+    event |= ARM_I2C_EVENT_BUS_ERROR | ARM_I2C_EVENT_TRANSFER_INCOMPLETE;
+  }
+  if (status & I2C_ISR_ARBITRATATION_LOST_Msk) {
+    event |= ARM_I2C_EVENT_ARBITRATION_LOST |
+        ARM_I2C_EVENT_TRANSFER_INCOMPLETE;
+  }
+  uint32_t fifo_errors =
+      status & (I2C_ISR_TX_FIFO_OVERFLOW_Msk |
+                I2C_ISR_RX_FIFO_OVERFLOW_Msk |
+                I2C_ISR_TX_FIFO_UNDERRUN_Msk);
+  if (fifo_errors != 0) {
+    event |= ARM_I2C_EVENT_BUS_ERROR | ARM_I2C_EVENT_TRANSFER_INCOMPLETE;
+  }
+
+  uint32_t service_requests =
+      status & (I2C_ISR_TX_FIFO_EMPTY_Msk |
+                I2C_ISR_WAIT_TX_FIFO_Msk |
+                I2C_ISR_RX_FIFO_FULL_Msk |
+                I2C_ISR_WAIT_RX_FIFO_Msk);
+  if (event == 0 && state->count < length &&
+      state->count == count_before && service_requests != 0) {
+    event |= ARM_I2C_EVENT_TRANSFER_INCOMPLETE;
+  }
+  if (status & I2C_ISR_TRANSFER_DONE_Msk) {
+    event |= ARM_I2C_EVENT_TRANSFER_DONE;
+    if (state->count < length) {
+      event |= ARM_I2C_EVENT_TRANSFER_INCOMPLETE;
+    }
+  }
+  if (stop_detected && unknown_length && state->count >= length) {
+    event |= ARM_I2C_EVENT_TRANSFER_DONE;
+  }
+
+  if (dedicated_done && event == 0) {
+    regs->IER = 0;
+    I2cTaskRequest request = {
+      static_cast<uint8_t>(controller),
+      state->seq,
+      state->stage == I2cStage::WRITE_PENDING_READ
+          ? I2cTaskAction::START_READ
+          : I2cTaskAction::COMPLETE,
+    };
+    BaseType_t woken = pdFALSE;
+    if (xQueueSendFromISR(i2c_chain_queue, &request, &woken) == pdTRUE) {
+      portYIELD_FROM_ISR(woken);
+      return;
+    }
+    event = ARM_I2C_EVENT_TRANSFER_INCOMPLETE;
+  }
+
+  if (event != 0 && state->hardware_busy) {
+    regs->IER = 0;
+    state->hardware_busy = false;
+    i2c_cmsis_event(controller, event);
+  }
+}
+
+static void i2c0_irq() { i2c_irq(0); }
+static void i2c1_irq() { i2c_irq(1); }
+static const ISRFunc_T kI2cIrqHandlers[2] = { i2c0_irq, i2c1_irq };
+
+static int32_t power_full(int controller) {
+  int32_t result =
+      kI2cDrivers[controller]->PowerControl(ARM_POWER_FULL);
+  if (result != ARM_DRIVER_OK) return result;
+  // PowerControl installs the base driver's handler. Replace it immediately
+  // with this slot's handler; the XIC callback table accepts RAM/slot code.
+  XIC_SetVector(kI2cIrqs[controller], kI2cIrqHandlers[controller]);
+  XIC_EnableIRQ(kI2cIrqs[controller]);
+  return ARM_DRIVER_OK;
+}
+
+static int32_t start_transmit(int controller) {
+  I2cState* state = &i2c_states[controller];
+  I2C_TypeDef* regs = kI2cRegs[controller];
+  uint32_t length = state->tx_len;
+  if (state->hardware_busy || (regs->STR & I2C_STR_BUSY_Msk)) {
+    return ARM_DRIVER_ERROR_BUSY;
+  }
+
+  state->count = 0;
+  state->hardware_busy = true;
+  bool unknown_length = length > kKnownLengthMax;
+  if (unknown_length) {
+    regs->MCR = 0;
+    regs->MCR = I2C_MCR_I2C_EN_Msk;
+    state->dedicated_mode = true;
+    regs->ISR = regs->ISR;
+    regs->TDR = state->tx[state->count++];
+    regs->IER =
+        I2C_IER_TRANSFER_DONE_Msk |
+        I2C_IER_DETECT_STOP_Msk |
+        I2C_IER_ARBITRATATION_LOST_Msk |
+        I2C_IER_BUS_ERROR_Msk |
+        I2C_IER_RX_NACK_Msk |
+        I2C_IER_TX_ONE_DATA_Msk;
+    regs->SCR =
+        ((state->address << 1) & I2C_SCR_TARGET_SLAVE_ADDR_Msk) |
+        I2C_SCR_START_Msk;
+    return ARM_DRIVER_OK;
+  }
+  if (state->dedicated_mode) regs->MCR = 0;
+  regs->MCR =
+      EIGEN_VAL2FLD(I2C_MCR_TX_FIFO_THRESHOLD, 8) |
+      EIGEN_VAL2FLD(I2C_MCR_RX_FIFO_THRESHOLD, 8) |
+      I2C_MCR_CONTROL_MODE_Msk |
+      I2C_MCR_I2C_EN_Msk;
+  state->dedicated_mode = false;
+  regs->ISR = regs->ISR;
+  regs->SCR =
+      ((state->address << 1) & I2C_SCR_TARGET_SLAVE_ADDR_Msk) |
+      ((length - 1) << I2C_SCR_BYTE_NUM_Pos) |
+      I2C_SCR_START_Msk;
+
+  uint32_t free =
+      EIGEN_FLD2VAL(I2C_FSR_TX_FIFO_FREE_NUM, regs->FSR);
+  while (free-- > 0 && state->count < length) {
+    regs->TDR = state->tx[state->count++];
+  }
+  regs->IER =
+      I2C_IER_TRANSFER_DONE_Msk |
+      I2C_IER_ARBITRATATION_LOST_Msk |
+      I2C_IER_BUS_ERROR_Msk |
+      I2C_IER_RX_NACK_Msk |
+      I2C_IER_TX_FIFO_UNDERRUN_Msk |
+      I2C_IER_TX_FIFO_OVERFLOW_Msk |
+      (state->count < length
+          ? I2C_IER_TX_FIFO_EMPTY_Msk | I2C_IER_WAIT_TX_FIFO_Msk
+          : 0);
+  return ARM_DRIVER_OK;
+}
+
+static int32_t start_receive(int controller) {
+  I2cState* state = &i2c_states[controller];
+  I2C_TypeDef* regs = kI2cRegs[controller];
+  uint32_t length = state->rx_len;
+  if (state->hardware_busy || (regs->STR & I2C_STR_BUSY_Msk)) {
+    return ARM_DRIVER_ERROR_BUSY;
+  }
+
+  state->count = 0;
+  state->hardware_busy = true;
+  bool unknown_length = length > kKnownLengthMax;
+  if (unknown_length) {
+    regs->MCR = 0;
+    regs->MCR = I2C_MCR_I2C_EN_Msk;
+    state->dedicated_mode = true;
+    regs->ISR = regs->ISR;
+    regs->IER =
+        I2C_IER_TRANSFER_DONE_Msk |
+        I2C_IER_DETECT_STOP_Msk |
+        I2C_IER_ARBITRATATION_LOST_Msk |
+        I2C_IER_BUS_ERROR_Msk |
+        I2C_IER_RX_NACK_Msk |
+        I2C_IER_RX_ONE_DATA_Msk;
+    regs->SCR =
+        ((state->address << 1) & I2C_SCR_TARGET_SLAVE_ADDR_Msk) |
+        I2C_SCR_TARGET_RWN_Msk |
+        I2C_SCR_START_Msk;
+    return ARM_DRIVER_OK;
+  }
+  if (state->dedicated_mode) regs->MCR = 0;
+  regs->MCR =
+      EIGEN_VAL2FLD(I2C_MCR_TX_FIFO_THRESHOLD, 8) |
+      EIGEN_VAL2FLD(I2C_MCR_RX_FIFO_THRESHOLD, 8) |
+      I2C_MCR_CONTROL_MODE_Msk |
+      I2C_MCR_I2C_EN_Msk;
+  state->dedicated_mode = false;
+  regs->ISR = regs->ISR;
+  regs->IER =
+      I2C_IER_TRANSFER_DONE_Msk |
+      I2C_IER_ARBITRATATION_LOST_Msk |
+      I2C_IER_BUS_ERROR_Msk |
+      I2C_IER_RX_NACK_Msk |
+      I2C_IER_RX_FIFO_OVERFLOW_Msk |
+      I2C_IER_RX_FIFO_FULL_Msk |
+      I2C_IER_WAIT_RX_FIFO_Msk;
+  regs->SCR =
+      ((state->address << 1) & I2C_SCR_TARGET_SLAVE_ADDR_Msk) |
+      (unknown_length
+          ? I2C_SCR_BYTE_NUM_UNKNOWN_Msk
+          : ((length - 1) << I2C_SCR_BYTE_NUM_Pos)) |
+      I2C_SCR_TARGET_RWN_Msk |
+      I2C_SCR_START_Msk;
+  return ARM_DRIVER_OK;
+}
 
 // The automatic/control-mode engine counts SCL phases at the full functional
 // clock and honors TPR. In its bounded linear region:
@@ -296,7 +612,7 @@ static void ensure_setup(int controller, uint32_t hz) {
     } else {
       GPR_setClockSrc(FCLK_I2C1, fast_src ? FCLK_I2C1_SEL_51M : FCLK_I2C1_SEL_26M);
     }
-    driver->PowerControl(ARM_POWER_FULL);
+    power_full(controller);
     state->src_hz = src;
   }
   driver->Control(ARM_I2C_BUS_SPEED, ARM_I2C_BUS_SPEED_STANDARD);
@@ -332,6 +648,7 @@ static void quiesce(int controller) {
   // particular, a late write-leg completion must not start the chained
   // read while the block is being reset.
   state->transfer_active = false;
+  state->hardware_busy = false;
   ARM_DRIVER_I2C* driver = kI2cDrivers[controller];
   // The completion event can lead the final STOP by one bit-time. Wait for
   // the wire state machine before removing peripheral power.
@@ -339,9 +656,8 @@ static void quiesce(int controller) {
   for (int spin = 20000; (regs->STR & I2C_STR_BUSY_Msk) && spin > 0; spin--) {}
   driver->PowerControl(ARM_POWER_OFF);
   // PowerControl(OFF) gates the clocks and clears the software status, but
-  // does not reset the command engine: STR.BUSY can survive and make every
-  // later Master* call return ARM_DRIVER_ERROR_BUSY. Use the same module
-  // reset that the vendor's polling timeout paths use.
+  // does not reset the command engine: STR.BUSY can survive and reject every
+  // later transfer. Use the same module reset as the vendor's timeout paths.
   GPR_swResetModule(&kI2cResetVectors[controller]);
   // Preserve the current source selection and pace across recovery.
   bool fast_src = state->src_hz == kSrc51M;
@@ -351,7 +667,7 @@ static void quiesce(int controller) {
   } else {
     GPR_setClockSrc(FCLK_I2C1, fast_src ? FCLK_I2C1_SEL_51M : FCLK_I2C1_SEL_26M);
   }
-  driver->PowerControl(ARM_POWER_FULL);
+  power_full(controller);
   state->current_hz = 0;
 }
 
@@ -419,12 +735,12 @@ static void bus_clear(int sda, int scl) {
 // Releases a finished (or aborted) transfer's buffers.
 static void release_transfer(I2cState* state) {
   if (state->transfer_active) {
-    int controller = static_cast<int>(state - i2c_states);
     ASSERT(state->last_event != 0);
-    ASSERT(!kI2cDrivers[controller]->GetStatus().busy);
+    ASSERT(!state->hardware_busy);
   }
   // Make any late IRQ callback stale before releasing memory it could use.
   state->transfer_active = false;
+  state->hardware_busy = false;
   if (state->owns_buffers) {
     free(state->tx);
     free(state->rx);
@@ -582,24 +898,18 @@ static I2cResult event_to_result(uint32_t event) {
 // Starts the hardware legs for a transfer whose state is already set up.
 // Returns false when the driver rejected the start (state released).
 static bool start_legs(I2cState* state, int controller) {
-  ARM_DRIVER_I2C* driver = kI2cDrivers[controller];
   int32_t rc;
   if (state->tx != null && state->rx != null) {
     state->stage = I2cStage::WRITE_PENDING_READ;
-    rc = driver->MasterTransmit(state->address, state->tx, state->tx_len, false);
+    rc = start_transmit(controller);
   } else if (state->tx != null) {
     state->stage = I2cStage::SINGLE;
-    rc = driver->MasterTransmit(state->address, state->tx, state->tx_len, false);
+    rc = start_transmit(controller);
   } else {
     state->stage = I2cStage::SINGLE;
-    rc = driver->MasterReceive(state->address, state->rx, state->rx_len, false);
+    rc = start_receive(controller);
   }
   if (rc != ARM_DRIVER_OK) {
-    printf("[i2c] start_legs rc=%ld stage=%d tx=%lu rx=%lu STR=%08lx\n",
-           static_cast<long>(rc), static_cast<int>(state->stage),
-           static_cast<unsigned long>(state->tx_len),
-           static_cast<unsigned long>(state->rx_len),
-           static_cast<unsigned long>(kI2cRegs[controller]->STR));
     quiesce(controller);
     release_transfer(state);
     return false;
@@ -663,7 +973,7 @@ PRIMITIVE(bus_create) {
   // needs it.
   GPR_setClockSrc(controller == 0 ? FCLK_I2C0 : FCLK_I2C1,
                   controller == 0 ? FCLK_I2C0_SEL_26M : FCLK_I2C1_SEL_26M);
-  if (driver->PowerControl(ARM_POWER_FULL) != ARM_DRIVER_OK) {
+  if (power_full(controller) != ARM_DRIVER_OK) {
     FAIL(HARDWARE_ERROR);
   }
   state->src_hz = kSrc26M;
@@ -888,10 +1198,6 @@ PRIMITIVE(device_transfer_finish) {
     memcpy(rx_out.address(), state->rx, n);
   }
   if (result != I2cResult::OK) {
-    printf("[i2c] finish event=%08lx stage=%d tx=%lu rx=%lu\n",
-           static_cast<unsigned long>(event), static_cast<int>(state->stage),
-           static_cast<unsigned long>(state->tx_len),
-           static_cast<unsigned long>(state->rx_len));
     quiesce(device->controller());
   }
   release_transfer(state);
