@@ -32,11 +32,8 @@
 // application use; diagnostic output still goes to whatever the PLAT
 // configures (USB CDC, unilog, ...).
 #ifndef CONFIG_TOIT_EC618_PRINT_UART
-// Temporarily 1 to surface [toit] printf() output (e.g. the slot
-// primitives' debug prints) while the OTA path is still being
-// brought up. Output mixes with the protocol bytes on UART1 — the
-// host strips status lines but raw [toit] log noise around an ack
-// can confuse it. Disable again once the receiver is stable.
+// Enabled by default. The anchor record selects the actual console
+// controller transactionally for each slot.
 #define CONFIG_TOIT_EC618_PRINT_UART 1
 #endif
 
@@ -48,13 +45,11 @@
 // Allow opening a `uart.Port` on the same UART controller that print
 // output is going to. By default the UART primitive rejects this with
 // `ALREADY_IN_USE` because mixed TX is surprising at runtime; the
-// dual-slot OTA path needs to receive on the print UART (only one
-// wire on quirky-plenty), so this knob exists to lift the check. We
-// have verified empirically that concurrent TX+RX on this chip works
-// — there's no driver-level fight — but interleaved bytes on TX are
-// up to the application to manage.
+// hardware-test agent needs to receive on its console wire, so this
+// knob exists to lift the check. We have verified empirically that
+// concurrent TX+RX on this chip works, but interleaved bytes on TX
+// are up to the application to manage.
 #ifndef CONFIG_TOIT_EC618_ALLOW_PRINT_UART_REUSE
-// 1 while the dual-slot OTA receiver shares UART1 with print output.
 #define CONFIG_TOIT_EC618_ALLOW_PRINT_UART_REUSE 1
 #endif
 
@@ -68,8 +63,8 @@
 //   BSP_SetPlatConfigItemValue(PLAT_CONFIG_ITEM_LOG_CONTROL, 0)
 // early, which tells the unilog subsystem to stop writing.
 //
-// Note: the bootloader / mask-ROM banner on UART0 TX (GPIO15) at chip
-// reset is in ROM and cannot be suppressed from software.
+// UART1 independently carries a complete "^boot.rom..." mask-ROM banner at
+// every reset. It is emitted before application code and cannot be suppressed.
 #ifndef CONFIG_TOIT_EC618_DISABLE_UNILOG
 #define CONFIG_TOIT_EC618_DISABLE_UNILOG 1
 #endif
