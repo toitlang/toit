@@ -583,9 +583,17 @@ class Ec618Link:
           log "$name_: baud selection failed on ping $(attempt + 1): $rate-error"
         ping-error := catch:
           send CMD-PING
-          if (read-ack --timeout-ms=1500) == ACK-PONG:
+          ack := read-ack --timeout-ms=1500
+          if ack == ACK-PONG:
             log "$name_: agent responded (ping $(attempt + 1), $port_.baud-rate baud)"
             succeeded = true
+          else:
+            // A ping sent at the wrong baud makes a live agent print a status
+            // line at its own baud. After switching rates that line can appear
+            // as a backlog of unrelated ack-sized bytes; consuming only one
+            // byte per attempt exhausts all retries before we reach its pong.
+            log "$name_: ping $(attempt + 1) got stray '$(printable_ ack)'"
+            drain --quiet-ms=100
         if ping-error:
           log "$name_: ping $(attempt + 1) failed: $ping-error"
     if not succeeded: throw "no response from the mini-jag agent on $name_"
