@@ -11,6 +11,7 @@ STATUS-LENGTH ::= 8
 COMMAND-READ-PATTERN ::= 0xa1
 COMMAND-WRITE-PATTERN ::= 0xa2
 COMMAND-READ-STATUS ::= 0xa3
+COMMAND-USE-PREPARED-RESPONSE ::= 0xaf
 
 main:
   bus := Ec618.i2c0 --pull-up
@@ -39,18 +40,28 @@ main:
     sleep --ms=20
     with-timeout --ms=5_000:
       device.write #[COMMAND-READ-STATUS]
+    sleep --ms=20
     status := with-timeout --ms=5_000:
       device.read STATUS-LENGTH
     check-status status
 
     with-timeout --ms=5_000:
       device.write #[COMMAND-READ-PATTERN]
+    // The ESP-IDF slave callback hands response selection to a task. Give
+    // that task time to run before requesting the prepared response.
+    sleep --ms=20
     separate-read := with-timeout --ms=5_000:
       device.read LONG-TRANSFER-LENGTH
     check-pattern "separate read" separate-read
 
+    // Pre-arm the task-backed ESP-IDF slave. Its explicit "use prepared"
+    // command avoids mutating the ESP32 TX queue while the response is being
+    // consumed by the combined EC618 API operation.
+    with-timeout --ms=5_000:
+      device.write #[COMMAND-READ-PATTERN]
+    sleep --ms=20
     combined-read := with-timeout --ms=5_000:
-      device.write-read #[COMMAND-READ-PATTERN] LONG-TRANSFER-LENGTH
+      device.write-read #[COMMAND-USE-PREPARED-RESPONSE] LONG-TRANSFER-LENGTH
     check-pattern "combined write-read" combined-read
 
     print "i2c-long-transfer-ec618: PASS 1,025-byte write/read/write-read"

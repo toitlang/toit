@@ -28,15 +28,10 @@ enum {
   COMMAND_READ_PATTERN = 0xa1,
   COMMAND_WRITE_PATTERN = 0xa2,
   COMMAND_READ_STATUS = 0xa3,
+  COMMAND_USE_PREPARED_RESPONSE = 0xaf,
 };
 
-typedef enum {
-  EVENT_RECEIVE,
-  EVENT_REQUEST,
-} event_type_t;
-
 typedef struct {
-  event_type_t type;
   uint8_t command;
   bool overflow;
   uint32_t length;
@@ -67,21 +62,6 @@ static uint8_t write_pattern_byte(uint32_t index) {
   return (uint8_t)((index * 17 + 3) & 0xff);
 }
 
-static bool request_callback(
-    i2c_slave_dev_handle_t slave,
-    const i2c_slave_request_event_data_t *event_data,
-    void *user_data) {
-  (void)slave;
-  (void)event_data;
-  context_t *context = user_data;
-  event_t event = {
-      .type = EVENT_REQUEST,
-  };
-  BaseType_t task_woken = pdFALSE;
-  xQueueSendFromISR(context->event_queue, &event, &task_woken);
-  return task_woken == pdTRUE;
-}
-
 static bool receive_callback(
     i2c_slave_dev_handle_t slave,
     const i2c_slave_rx_done_event_data_t *event_data,
@@ -89,7 +69,6 @@ static bool receive_callback(
   (void)slave;
   context_t *context = user_data;
   event_t event = {
-      .type = EVENT_RECEIVE,
       .command = event_data->length == 0 ? 0 : event_data->buffer[0],
       .length = event_data->length,
       .first_error = UINT32_MAX,
@@ -168,27 +147,30 @@ static void slave_task(void *user_data) {
       continue;
     }
 
-    if (event.type == EVENT_REQUEST) {
-      send_response(context);
-      continue;
-    }
-
     switch (event.command) {
       case COMMAND_READ_PATTERN:
         context->response = RESPONSE_PATTERN;
+        send_response(context);
         ESP_LOGI(TAG, "long-pattern response selected");
         break;
       case COMMAND_READ_STATUS:
         context->response = RESPONSE_STATUS;
+        send_response(context);
         break;
       case COMMAND_WRITE_PATTERN:
         prepare_status(context, &event);
+        send_response(context);
         ESP_LOGI(
             TAG,
             "write length=%" PRIu32 ", errors=%" PRIu32 ", overflow=%d",
             event.length,
             event.error_count,
             event.overflow);
+        break;
+      case COMMAND_USE_PREPARED_RESPONSE:
+        // Deliberately leave the already queued response untouched. Calling
+        // i2c_slave_write while the ESP32 is transmitting that response can
+        // overwrite bytes still owned by the peripheral.
         break;
       default:
         ESP_LOGW(
@@ -228,7 +210,6 @@ void app_main(void) {
   ESP_ERROR_CHECK(i2c_new_slave_device(&configuration, &context.slave));
 
   const i2c_slave_event_callbacks_t callbacks = {
-      .on_request = request_callback,
       .on_receive = receive_callback,
   };
   ESP_ERROR_CHECK(

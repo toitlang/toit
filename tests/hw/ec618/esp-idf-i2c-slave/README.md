@@ -27,3 +27,15 @@ idf.py -C tests/hw/ec618/esp-idf-i2c-slave -p PORT flash monitor
 
 The slave uses address `0x42`. Its ready message reports the address and GPIO
 assignment.
+
+The ESP-IDF v2 slave driver on the classic ESP32 can retain prefetched TX
+bytes after a master stops reading. Reset the ESP32 fixture before each test
+invocation (the EC618 stays live):
+
+```sh
+esptool --chip esp32 --port PORT --after hard-reset run
+```
+
+Do not reset the fixture through an I²C command: disappearing before the
+master observes the final ACK/STOP turns fixture setup into a bus-recovery
+test.
