@@ -404,10 +404,9 @@ class Ec618:
   Opens UART1 (EC618 controller 1, the only one that can wake the chip
     from deep sleep at low baud rates).
 
-  Single mapping: TX=GPIO19, RX=GPIO18. With $rts-enabled or $cts-enabled,
-    RTS=GPIO16 and CTS=GPIO17. UART1 also has a fixed alternate CTS pad
-    on GPIO11; if your module exposes only that one, pass $mapping equal
-    to 1 along with $cts-enabled.
+  TX=GPIO19 and RX=GPIO18 on both mappings. Mapping 0 provides RTS=GPIO16
+    and CTS=GPIO17. Mapping 1 has no RTS and selects the alternate CTS pad
+    on GPIO11; use it when your module only exposes that CTS route.
 
   Note on UART1: the chip's mask ROM emits a complete "^boot.rom..."
     banner on UART1 at every reset, before application software runs.
