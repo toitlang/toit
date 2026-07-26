@@ -20,7 +20,17 @@ P 1  // Inputs with pull-ups.
 L    // Report SCL and SDA levels.
 Q    // Quit.
 ```
+
+On a minimal rig without the UART2 control wires, launch
+  `i2c-pull-standalone-matrix-esp32.toit`. Each EC618 phase ends with a
+  two-level marker on SDA/SCL. The helper uses those markers to advance from
+  no pulls, to ESP32 pull-ups, to passive observation of the EC618 pull-ups.
+  It acknowledges the final observation on the same two wires after the
+  EC618 closes its I2C bus.
 */
+
+OBSERVER-TIMEOUT ::= Duration --s=120
+STABLE-MS ::= 200
 
 class I2cInputs:
   scl/gpio.Pin
@@ -74,3 +84,59 @@ main:
   finally:
     inputs.close
     control-owner.close
+
+run-standalone-matrix -> none:
+  inputs := I2cInputs --pull-up=false
+  try:
+    print "i2c-pull-matrix-esp32: no-pulls ready"
+    wait-for-start-sequence inputs
+  finally:
+    inputs.close
+
+  inputs = I2cInputs --pull-up
+  try:
+    wait-for-stable-levels inputs "1 1"
+    print "i2c-pull-matrix-esp32: pull-ups ready"
+    wait-for-start-sequence inputs
+  finally:
+    inputs.close
+
+  observe-ec-pulls
+
+observe-ec-pulls -> none:
+  inputs := I2cInputs --pull-up=false
+  observed := false
+  try:
+    wait-for-start-sequence inputs
+    wait-for-stable-levels inputs "1 1"
+    observed = true
+  finally:
+    if not observed:
+      print "i2c-pull-matrix-esp32: FAIL did not observe EC618 pull-ups ($(inputs.levels))"
+    inputs.close
+
+  // Acknowledge the observed EC618 pull-ups after it closes its I2C bus.
+  scl := gpio.Pin wiring.ESP32-I2C0-SCL-PIN --output --value=1
+  sda := gpio.Pin wiring.ESP32-I2C0-SDA-PIN --output --value=0
+  try:
+    print "i2c-pull-matrix-esp32: PASS observed EC618 pull-ups"
+    sleep --ms=10_000
+  finally:
+    sda.close
+    scl.close
+
+wait-for-start-sequence inputs/I2cInputs -> none:
+  wait-for-stable-levels inputs "0 1"
+  wait-for-stable-levels inputs "1 0"
+
+wait-for-levels inputs/I2cInputs expected/string -> none:
+  with-timeout OBSERVER-TIMEOUT:
+    while inputs.levels != expected:
+      sleep --ms=10
+
+wait-for-stable-levels inputs/I2cInputs expected/string -> none:
+  with-timeout OBSERVER-TIMEOUT:
+    while true:
+      wait-for-levels inputs expected
+      sleep --ms=STABLE-MS
+      if inputs.levels == expected: return
