@@ -131,6 +131,8 @@ class LicensesCommand extends PkgProjectCommand:
             "toit",
             "SDK-LICENSES",
           ],
+      // This fallback is only for development when running
+      // `toit tools/toit.toit`.
       fs.to-absolute
           fs.join [program-dir, "..", "..", "debian", "copyright"],
     ]
@@ -150,7 +152,7 @@ class LicensesCommand extends PkgProjectCommand:
         --version=system.vm-sdk-version
         --revision=null
 
-  write-entry_ output/io.Buffer entry/LicenseEntry_:
+  write-entry_ output/io.Writer entry/LicenseEntry_:
     if not file.is-file entry.license-path:
       error "Package '$entry.name' has no top-level LICENSE file at '$entry.license-path'."
 
