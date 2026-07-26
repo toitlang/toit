@@ -19,7 +19,13 @@ Detection floor = the filter: pauses shorter than ~12 us pass unseen (PCNT's fil
 
 Command lane: EC618 UART1 (PAD34 -> IO4 commands in; IO16 -> PAD33 replies out), 115200.
 
-"G <window-ms> <filter-ns>" -> arms the counter on IO27, waits the window, replies "G <rising-edge-count>". The filter must sit between one bit time (the stop-bit high) and the 9-bit low runs of the 0x00 payload — the EC618 side computes ~3 bit times, capped at PCNT's ~12.7 us maximum. (A fixed max filter swallows the ENTIRE signal above ~150 kBd: there the 9-bit lows are shorter than the filter too, so the filtered line never moves and even real pauses count 0.) "Q"             -> quits.
+```
+"G <window-ms> <filter-ns>" -> arm the counter on IO27, wait the window,
+                               reply "G <rising-edge-count>"
+"Q"                         -> quit
+```
+
+The filter must sit between one bit time (the stop-bit high) and the 9-bit low runs of the 0x00 payload. The EC618 side computes about three bit times, capped at PCNT's approximately 12.7 us maximum. A fixed maximum filter swallows the entire signal above approximately 150 kBd: the 9-bit lows are then shorter than the filter too, so the filtered line never moves and even real pauses count zero.
 */
 
 main:
