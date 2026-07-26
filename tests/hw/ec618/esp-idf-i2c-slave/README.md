@@ -3,7 +3,7 @@
 This ESP-IDF application makes an ESP32 a deterministic I²C slave for
 [`i2c-long-transfer-ec618.toit`](../i2c-long-transfer-ec618.toit). It checks
 the exact length and contents of a 1,025-byte write, and supplies deterministic
-data for 1,025-byte read and repeated-start tests.
+data for 1,025-byte read and combined write-read tests.
 
 Wire the boards as follows, with a shared ground:
 

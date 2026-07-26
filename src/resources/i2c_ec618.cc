@@ -559,12 +559,6 @@ class I2cResourceGroup : public ResourceGroup {
   }
 };
 
-// The hardware command register carries the transfer length in a 9-bit
-// field: 512 bytes is the longest single transfer the engine can run.
-// (Longer would silently truncate at the hardware; chunking would insert
-// STOP/START between chunks and change the wire protocol, so reject.)
-static const int kMaxTransfer = 512;
-
 // Maps the recorded completion event to the primitive result code
 // (0 = clean; the library turns nonzero into HARDWARE_ERROR).
 static I2cResult event_to_result(uint32_t event) {
@@ -813,8 +807,7 @@ PRIMITIVE(device_write_read) {
 
 PRIMITIVE(device_transfer_start) {
   ARGS(I2cDeviceResource, device, Blob, tx, int, rx_length);
-  if (rx_length < 0 || rx_length > kMaxTransfer) FAIL(OUT_OF_RANGE);
-  if (tx.length() > kMaxTransfer) FAIL(OUT_OF_RANGE);
+  if (rx_length < 0) FAIL(OUT_OF_RANGE);
   if (tx.length() == 0 && rx_length == 0) FAIL(INVALID_ARGUMENT);
 
   I2cState* state = device->bus()->state();

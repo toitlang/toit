@@ -33,9 +33,9 @@ main:
     separate-read := device.read LONG-TRANSFER-LENGTH
     check-pattern "separate read" separate-read
 
-    repeated-start-read :=
+    combined-read :=
         device.write-read #[COMMAND-READ-PATTERN] LONG-TRANSFER-LENGTH
-    check-pattern "repeated-start read" repeated-start-read
+    check-pattern "combined write-read" combined-read
 
     print "i2c-long-transfer-ec618: PASS 1,025-byte write/read/write-read"
   finally:
