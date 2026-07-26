@@ -1,0 +1,11 @@
+OK
+[pkg, install, copyleft]
+Package 'localhost:<[*PORT*]>/pkg/copyleft@1.0.0' installed with prefix 'copyleft'.
+==================
+Aborted
+[pkg, licenses, --no-include-sdk, --output=THIRD_PARTY_LICENSES]
+Wrote licenses for 6 packages to 'THIRD_PARTY_LICENSES'.
+Warning: Package 'copyleft' (localhost:<[*PORT*]>/pkg/copyleft@1.0.0) uses GNU Lesser General Public License (LGPL):
+  Toit package source is compiled into the application; treat this as
+  GPL-like and expect to release corresponding application source.
+Error: 1 package failed the license policy.

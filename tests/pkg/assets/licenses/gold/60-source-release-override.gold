@@ -1,0 +1,3 @@
+OK
+[pkg, licenses, --no-include-sdk, --output=THIRD_PARTY_LICENSES]
+Wrote licenses for 6 packages to 'THIRD_PARTY_LICENSES'.

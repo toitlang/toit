@@ -20,6 +20,7 @@ import host.file
 import io
 import system
 
+import ..license
 import ..pkg
 import ..project
 import ..project.lock
@@ -35,15 +36,23 @@ class LicenseOverride_:
 
   constructor --.url --.version --.path:
 
+class LicensePolicyIssue_:
+  license/string
+  summary/string
+
+  constructor --.license --.summary:
+
 class LicenseEntry_:
   name/string
   source/string
   license-path/string
   license-name/string
   notice-path/string?
+  declared-license/string?
   version/string?
   revision/string?
   is-override/bool
+  check-policy/bool
 
   constructor
       --.name
@@ -51,9 +60,11 @@ class LicenseEntry_:
       --.license-path
       --.license-name
       --.notice-path/string?=null
+      --.declared-license/string?=null
       --.version
       --.revision
-      --.is-override/bool=false:
+      --.is-override/bool=false
+      --.check-policy/bool=false:
 
   compare-to other/LicenseEntry_ -> int:
     return source.compare-to other.source --if-equal=:
@@ -63,10 +74,12 @@ class LicenseEntry_:
 class LicensesCommand extends PkgProjectCommand:
   output-path/string
   include-sdk/bool
+  ignore-license-policy/bool
 
   constructor invocation/cli.Invocation:
     output-path = invocation[OUTPUT-OPTION]
     include-sdk = invocation[INCLUDE-SDK-OPTION]
+    ignore-license-policy = invocation[IGNORE-LICENSE-POLICY-OPTION]
     super invocation
 
   execute:
@@ -74,9 +87,12 @@ class LicensesCommand extends PkgProjectCommand:
 
     entries := collect-entries_
     output := io.Buffer
-    entries.do: write-entry_ output it
+    entries.size.repeat: | i/int |
+      write-entry_ output entries[i]
+      if i < entries.size - 1: output.write "\n"
     file.write-contents output.bytes --path=output-path
     ui.emit --info "Wrote licenses for $entries.size packages to '$output-path'."
+    check-license-policy_ entries
 
   collect-entries_ -> List:
     overrides := load-overrides_
@@ -91,6 +107,7 @@ class LicensesCommand extends PkgProjectCommand:
           --license-path=(fs.join project.root "LICENSE")
           --license-name="LICENSE"
           --notice-path=(notice-path_ project.root)
+          --declared-license=root-specification.license
           --version=null
           --revision=null,
     ]
@@ -117,25 +134,31 @@ class LicensesCommand extends PkgProjectCommand:
                 : fs.join specification.root-dir "LICENSE")
             --license-name=(override ? override.path : "LICENSE")
             --notice-path=(notice-path_ specification.root-dir)
+            --declared-license=specification.license
             --version=version
             --revision=repository-package.ref-hash
             --is-override=override != null
+            --check-policy
 
       local-package := package as LocalPackage
       root := root-specification.absolute-path-for-dependency local-package.path
       name := local-package.name or fs.basename root
+      declared-license/string? := null
       specification-path := fs.join root Specification.FILE-NAME
       if file.is-file specification-path:
         specification := project.load-local-specification local-package.path
         if specification.has-name: name = specification.name
+        declared-license = specification.license
       continue.map LicenseEntry_
           --name=name
           --source=local-package.path
           --license-path=(fs.join root "LICENSE")
           --license-name="LICENSE"
           --notice-path=(notice-path_ root)
+          --declared-license=declared-license
           --version=null
           --revision=null
+          --check-policy
 
     dependency-entries.sort --in-place: | a/LicenseEntry_ b/LicenseEntry_ |
       a.compare-to b
@@ -203,6 +226,87 @@ class LicensesCommand extends PkgProjectCommand:
     path := fs.join root NOTICE-FILE
     return file.is-file path ? path : null
 
+  check-license-policy_ entries/List:
+    count := 0
+    entries.do: | entry/LicenseEntry_ |
+      if not entry.check-policy: continue.do
+      issue := license-policy-issue_ entry
+      if not issue: continue.do
+      count++
+      package-id := entry.version
+          ? "$entry.source@$entry.version"
+          : entry.source
+      warning """
+          Package '$entry.name' ($package-id) uses $issue.license:
+            $issue.summary"""
+    if count > 0 and not ignore-license-policy:
+      ui.abort """
+          $count package$(count == 1 ? "" : "s") failed the license policy."""
+
+  license-policy-issue_ entry/LicenseEntry_ -> LicensePolicyIssue_?:
+    declared := entry.is-override ? null : entry.declared-license
+    content := (file.read-contents entry.license-path).to-string-non-throwing
+
+    if (declared and declared.starts-with "AGPL-") or
+       content.contains "GNU AFFERO GENERAL PUBLIC LICENSE":
+      return LicensePolicyIssue_
+          --license="GNU Affero General Public License (AGPL)"
+          --summary="""
+              distributing the application, or offering it over a network, may
+                require releasing its complete corresponding source under the AGPL."""
+
+    if (declared and declared.starts-with "LGPL-") or
+       content.contains "GNU LESSER GENERAL PUBLIC LICENSE":
+      return LicensePolicyIssue_
+          --license="GNU Lesser General Public License (LGPL)"
+          --summary="""
+              Toit package source is compiled into the application; treat this as
+                GPL-like and expect to release corresponding application source."""
+
+    if (declared and declared.starts-with "GPL-") or
+       content.contains "GNU GENERAL PUBLIC LICENSE":
+      return LicensePolicyIssue_
+          --license="GNU General Public License (GPL)"
+          --summary="""
+              distributing an application containing this package may require
+                releasing its complete corresponding source under the GPL."""
+
+    if (declared and declared.starts-with "MPL-") or
+       content.contains "Mozilla Public License":
+      return LicensePolicyIssue_
+          --license="Mozilla Public License (MPL)"
+          --summary="""
+              distributing modified covered files may require releasing their source
+                under the MPL."""
+
+    if (declared and declared.starts-with "EPL-") or
+       content.contains "Eclipse Public License":
+      return LicensePolicyIssue_
+          --license="Eclipse Public License (EPL)"
+          --summary="""
+              distributing modified covered code may require making its source
+                available under the EPL."""
+
+    if (declared and declared.starts-with "CDDL-") or
+       content.contains "COMMON DEVELOPMENT AND DISTRIBUTION LICENSE":
+      return LicensePolicyIssue_
+          --license="Common Development and Distribution License (CDDL)"
+          --summary="""
+              distributing modified covered files may require making their source
+                available under the CDDL."""
+
+    guessed := guess-license content
+    if guessed and APPROVED-LICENSES.contains guessed: return null
+
+    license-name := declared
+        ? "license text not recognized as '$declared'"
+        : "an unrecognized license"
+    return LicensePolicyIssue_
+        --license=license-name
+        --summary="""
+            it is not on the approved allowlist; review it manually or provide a
+              recognized license override."""
+
   sdk-license-entry_ -> LicenseEntry_:
     program-dir := fs.dirname system.program-path
     candidates := [
@@ -269,16 +373,22 @@ class LicensesCommand extends PkgProjectCommand:
       output.write notice-content
       if notice-content.is-empty or notice-content.last != '\n':
         output.write "\n"
-    output.write "\n"
 
   static OUTPUT-OPTION ::= "output"
   static INCLUDE-SDK-OPTION ::= "include-sdk"
+  static IGNORE-LICENSE-POLICY-OPTION ::= "ignore-license-policy"
   static LICENSES-FILE ::= "licenses.yaml"
   static NOTICE-FILE ::= "NOTICE"
   static OVERRIDES-KEY ::= "overrides"
   static URL-KEY ::= "url"
   static VERSION-KEY ::= "version"
   static PATH-KEY ::= "path"
+  static APPROVED-LICENSES ::= {
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "MIT",
+  }
 
   static CLI-COMMAND ::=
       cli.Command "licenses"
@@ -299,11 +409,19 @@ class LicensesCommand extends PkgProjectCommand:
 
               URLs and versions must exactly match package.lock. Override paths are
                 relative to the project root.
+
+              After writing the output, the command fails unless every dependency has
+                an approved license. Source-release licenses get a requirement summary;
+                unrecognized licenses require manual review or an override. Use
+                --ignore-license-policy to report policy issues without failing.
               """
           --options=[
             cli.Flag INCLUDE-SDK-OPTION
                 --help="Include the licenses of the Toit SDK."
                 --default=true,
+            cli.Flag IGNORE-LICENSE-POLICY-OPTION
+                --help="Report license-policy issues without failing."
+                --default=false,
             cli.OptionPath OUTPUT-OPTION
                 --short-name="o"
                 --help="Write the collected licenses to this file."

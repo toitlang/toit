@@ -1,0 +1,6 @@
+name: unknown
+description: Package with an unrecognized license.
+url: localhost:<[*PORT*]>/pkg/unknown
+version: 1.0.0
+hash: deadbeef1234567890abcdef1234567890abcdef
+license: MIT

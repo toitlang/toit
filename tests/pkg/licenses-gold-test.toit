@@ -60,3 +60,46 @@ test tester/GoldTester:
   tester.gold "40-unused-license-override" [
     ["pkg", "licenses", "--no-include-sdk", "--output=THIRD_PARTY_LICENSES"],
   ]
+
+  file.write-contents
+      --path="$tester.working-dir/licenses.yaml"
+      """
+      overrides:
+        - url: localhost:$tester.port/pkg/missing
+          version: 1.0.0
+          path: overrides/missing.LICENSE
+      """
+  tester.gold "50-source-release" [
+    ["pkg", "install", "copyleft"],
+    ["pkg", "licenses", "--no-include-sdk", "--output=THIRD_PARTY_LICENSES"],
+  ]
+
+  file.write-contents
+      --path="$tester.working-dir/licenses.yaml"
+      """
+      overrides:
+        - url: localhost:$tester.port/pkg/missing
+          version: 1.0.0
+          path: overrides/missing.LICENSE
+        - url: localhost:$tester.port/pkg/copyleft
+          version: 1.0.0
+          path: overrides/missing.LICENSE
+      """
+  tester.gold "60-source-release-override" [
+    ["pkg", "licenses", "--no-include-sdk", "--output=THIRD_PARTY_LICENSES"],
+  ]
+
+  tester.gold "70-unrecognized-license" [
+    ["pkg", "install", "unknown"],
+    ["pkg", "licenses", "--no-include-sdk", "--output=THIRD_PARTY_LICENSES"],
+  ]
+
+  tester.gold "80-ignore-license-policy" [
+    [
+      "pkg",
+      "licenses",
+      "--no-include-sdk",
+      "--ignore-license-policy",
+      "--output=THIRD_PARTY_LICENSES",
+    ],
+  ]
