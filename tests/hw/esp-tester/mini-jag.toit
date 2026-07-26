@@ -127,16 +127,11 @@ run-test:
     if image.id != containers.current:
       containers.start image.id [arg]
 
-// ----------------------------------------------------------------------------
-// EC618 resident agent.
-//
-// The agent owns the print UART (whichever controller the firmware redirects
-// `print` to) and serves the request/ack protocol from $shared. It never
-// reboots itself: a test runs as a child container whose `print` output streams
-// back on the same wire, and once it exits the agent loops back to listening —
-// ready for the next test or a firmware OTA. See shared.toit for the wire
-// format.
+/**
+EC618 resident-agent control channel.
 
+The agent owns the print UART selected by the firmware and serves the shared request/ack protocol. It never reboots itself: a test runs as a child container whose `print` output streams back on the same wire, and once it exits the agent listens for the next test or firmware update.
+*/
 class Ec618Control:
   port/uart.Port
   tx_/gpio.Pin

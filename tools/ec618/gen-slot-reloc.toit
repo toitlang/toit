@@ -225,7 +225,7 @@ run invocation/cli.Invocation -> none:
   vm-data-end := syms.get "__vm_data_end"
   dram-vma := syms.get "Image\$\$VM_DRAM_DATA\$\$Base"
   dram-lma := syms.get "Load\$\$VM_DRAM_DATA\$\$Base"
-  if not vm-data-start or not vm-data-end or not dram-vma or not dram-lma:
+  if vm-data-start == null or vm-data-end == null or dram-vma == null or dram-lma == null:
     ui.abort "missing __vm_data_start/_end or .vm_dram_data load/image base in $elf (linker .data bracket present?)"
   data-size := vm-data-end - vm-data-start
   if data-size < 0 or (data-size & 3) != 0:
