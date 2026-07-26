@@ -525,7 +525,7 @@ class Ec618:
     (see $spi.Bus.device).
   */
   static spi0 -> spi.Bus:
-    return spi.Bus --mosi=(pad 24) --miso=(pad 25) --clock=(pad 26)
+    return open-spi_ 24 25 26
 
   /**
   Opens the SPI1 bus (master).
@@ -534,7 +534,7 @@ class Ec618:
     unusable while UART0 is the console. Accepted but untested.
   */
   static spi1 -> spi.Bus:
-    return spi.Bus --mosi=(pad 28) --miso=(pad 29) --clock=(pad 30)
+    return open-spi_ 28 29 30
 
   static open-i2c_ sda-pad/int scl-pad/int
       --frequency/int
@@ -554,6 +554,20 @@ class Ec618:
         if not handed-off: scl.close
     finally:
       if not handed-off: sda.close
+
+  static open-spi_ mosi-pad/int miso-pad/int clock-pad/int -> spi.Bus:
+    pins := []
+    handed-off := false
+    try:
+      mosi := owned-pin_ mosi-pad pins
+      miso := owned-pin_ miso-pad pins
+      clock := owned-pin_ clock-pad pins
+      bus := Ec618SpiBus_ mosi miso clock pins
+      handed-off = true
+      return bus
+    finally:
+      if not handed-off:
+        pins.do: it.close
 
   static open-uart_ -> uart.Port
       --uart-id/int
@@ -591,24 +605,36 @@ class Ec618:
     if rts-enabled and rts-pad < 0: throw "INVALID_ARGUMENT"
     if cts-enabled and cts-pad < 0: throw "INVALID_ARGUMENT"
 
-    tx/Pin? := tx-disabled ? null : (Pin tx-pad)
-    rx/Pin? := rx-disabled ? null : (Pin rx-pad)
-    // In RS485 mode the generic uart API carries the direction pin in the
-    // rts slot (the driver takes it out of flow-control matching).
-    rts/Pin? := rs485 ? rs485-de : (rts-enabled ? (Pin rts-pad) : null)
-    cts/Pin? := cts-enabled ? (Pin cts-pad) : null
+    owned-pins := []
+    handed-off := false
+    try:
+      tx/Pin? := tx-disabled ? null : (owned-pin_ tx-pad owned-pins)
+      rx/Pin? := rx-disabled ? null : (owned-pin_ rx-pad owned-pins)
+      // In RS485 mode the generic uart API carries the direction pin in the
+      // rts slot (the driver takes it out of flow-control matching). It was
+      // supplied by the caller, so it remains caller-owned.
+      rts/Pin? := rs485
+          ? rs485-de
+          : (rts-enabled ? (owned-pin_ rts-pad owned-pins) : null)
+      cts/Pin? := cts-enabled ? (owned-pin_ cts-pad owned-pins) : null
 
-    return uart.Port
-        --tx=tx
-        --rx=rx
-        --rts=rts
-        --cts=cts
-        --large-buffers=large-buffers
-        --baud-rate=baud-rate
-        --data-bits=data-bits
-        --stop-bits=stop-bits
-        --parity=parity
-        --mode=mode
+      port := Ec618UartPort_ tx rx rts cts owned-pins
+          --large-buffers=large-buffers
+          --baud-rate=baud-rate
+          --data-bits=data-bits
+          --stop-bits=stop-bits
+          --parity=parity
+          --mode=mode
+      handed-off = true
+      return port
+    finally:
+      if not handed-off:
+        owned-pins.do: it.close
+
+  static owned-pin_ pad-number/int pins/List -> Pin:
+    pin := Pin pad-number
+    pins.add pin
+    return pin
 
   static uart-pad_ offset/int -> int:
     value := UART-PADS_[offset]
@@ -650,6 +676,48 @@ class Ec618I2cBus_ extends i2c.Bus:
     super
     scl_.close
     sda_.close
+    closed_ = true
+
+class Ec618SpiBus_ extends spi.Bus:
+  owned-pins_/List
+  closed_ := false
+
+  constructor mosi/Pin miso/Pin clock/Pin .owned-pins_:
+    super --mosi=mosi --miso=miso --clock=clock
+
+  close -> none:
+    if closed_: return
+    super
+    owned-pins_.do: it.close
+    closed_ = true
+
+class Ec618UartPort_ extends uart.Port:
+  owned-pins_/List
+  closed_ := false
+
+  constructor tx/Pin? rx/Pin? rts/Pin? cts/Pin? .owned-pins_
+      --large-buffers/bool?
+      --baud-rate/int
+      --data-bits/int
+      --stop-bits/uart.StopBits
+      --parity/int
+      --mode/int:
+    super
+        --tx=tx
+        --rx=rx
+        --rts=rts
+        --cts=cts
+        --large-buffers=large-buffers
+        --baud-rate=baud-rate
+        --data-bits=data-bits
+        --stop-bits=stop-bits
+        --parity=parity
+        --mode=mode
+
+  close -> none:
+    if closed_: return
+    super
+    owned-pins_.do: it.close
     closed_ = true
 
 /**
