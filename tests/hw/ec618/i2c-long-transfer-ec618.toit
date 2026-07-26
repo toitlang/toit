@@ -20,21 +20,26 @@ main:
     long-write[0] = COMMAND-WRITE-PATTERN
     for i := 1; i < long-write.size; i++:
       long-write[i] = write-pattern-byte i
-    device.write long-write
+    with-timeout --ms=5_000:
+      device.write long-write
 
     // Let the ESP32 task consume the receive callback before requesting its
     // result in a separate transaction.
     sleep --ms=20
-    device.write #[COMMAND-READ-STATUS]
-    status := device.read STATUS-LENGTH
+    with-timeout --ms=5_000:
+      device.write #[COMMAND-READ-STATUS]
+    status := with-timeout --ms=5_000:
+      device.read STATUS-LENGTH
     check-status status
 
-    device.write #[COMMAND-READ-PATTERN]
-    separate-read := device.read LONG-TRANSFER-LENGTH
+    with-timeout --ms=5_000:
+      device.write #[COMMAND-READ-PATTERN]
+    separate-read := with-timeout --ms=5_000:
+      device.read LONG-TRANSFER-LENGTH
     check-pattern "separate read" separate-read
 
-    combined-read :=
-        device.write-read #[COMMAND-READ-PATTERN] LONG-TRANSFER-LENGTH
+    combined-read := with-timeout --ms=5_000:
+      device.write-read #[COMMAND-READ-PATTERN] LONG-TRANSFER-LENGTH
     check-pattern "combined write-read" combined-read
 
     print "i2c-long-transfer-ec618: PASS 1,025-byte write/read/write-read"
