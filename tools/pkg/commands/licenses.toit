@@ -74,10 +74,12 @@ class LicenseEntry_:
 class LicensesCommand extends PkgProjectCommand:
   output-path/string
   include-sdk/bool
+  ignore-license-policy/bool
 
   constructor invocation/cli.Invocation:
     output-path = invocation[OUTPUT-OPTION]
     include-sdk = invocation[INCLUDE-SDK-OPTION]
+    ignore-license-policy = invocation[IGNORE-LICENSE-POLICY-OPTION]
     super invocation
 
   execute:
@@ -237,7 +239,7 @@ class LicensesCommand extends PkgProjectCommand:
       warning """
           Package '$entry.name' ($package-id) uses $issue.license:
             $issue.summary"""
-    if count > 0:
+    if count > 0 and not ignore-license-policy:
       ui.abort """
           $count package$(count == 1 ? "" : "s") failed the license policy."""
 
@@ -374,6 +376,7 @@ class LicensesCommand extends PkgProjectCommand:
 
   static OUTPUT-OPTION ::= "output"
   static INCLUDE-SDK-OPTION ::= "include-sdk"
+  static IGNORE-LICENSE-POLICY-OPTION ::= "ignore-license-policy"
   static LICENSES-FILE ::= "licenses.yaml"
   static NOTICE-FILE ::= "NOTICE"
   static OVERRIDES-KEY ::= "overrides"
@@ -409,12 +412,16 @@ class LicensesCommand extends PkgProjectCommand:
 
               After writing the output, the command fails unless every dependency has
                 an approved license. Source-release licenses get a requirement summary;
-                unrecognized licenses require manual review or an override.
+                unrecognized licenses require manual review or an override. Use
+                --ignore-license-policy to report policy issues without failing.
               """
           --options=[
             cli.Flag INCLUDE-SDK-OPTION
                 --help="Include the licenses of the Toit SDK."
                 --default=true,
+            cli.Flag IGNORE-LICENSE-POLICY-OPTION
+                --help="Report license-policy issues without failing."
+                --default=false,
             cli.OptionPath OUTPUT-OPTION
                 --short-name="o"
                 --help="Write the collected licenses to this file."

@@ -93,3 +93,13 @@ test tester/GoldTester:
     ["pkg", "install", "unknown"],
     ["pkg", "licenses", "--no-include-sdk", "--output=THIRD_PARTY_LICENSES"],
   ]
+
+  tester.gold "80-ignore-license-policy" [
+    [
+      "pkg",
+      "licenses",
+      "--no-include-sdk",
+      "--ignore-license-policy",
+      "--output=THIRD_PARTY_LICENSES",
+    ],
+  ]

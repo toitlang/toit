@@ -1,0 +1,6 @@
+OK
+[pkg, licenses, --no-include-sdk, --ignore-license-policy, --output=THIRD_PARTY_LICENSES]
+Wrote licenses for 7 packages to 'THIRD_PARTY_LICENSES'.
+Warning: Package 'unknown' (localhost:<[*PORT*]>/pkg/unknown@1.0.0) uses license text not recognized as 'MIT':
+  it is not on the approved allowlist; review it manually or provide a
+  recognized license override.
