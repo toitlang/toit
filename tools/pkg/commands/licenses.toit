@@ -40,6 +40,7 @@ class LicenseEntry_:
   source/string
   license-path/string
   license-name/string
+  notice-path/string?
   version/string?
   revision/string?
   is-override/bool
@@ -49,6 +50,7 @@ class LicenseEntry_:
       --.source
       --.license-path
       --.license-name
+      --.notice-path/string?=null
       --.version
       --.revision
       --.is-override/bool=false:
@@ -88,6 +90,7 @@ class LicensesCommand extends PkgProjectCommand:
           --source="."
           --license-path=(fs.join project.root "LICENSE")
           --license-name="LICENSE"
+          --notice-path=(notice-path_ project.root)
           --version=null
           --revision=null,
     ]
@@ -113,6 +116,7 @@ class LicensesCommand extends PkgProjectCommand:
                 ? fs.join project.root override.path
                 : fs.join specification.root-dir "LICENSE")
             --license-name=(override ? override.path : "LICENSE")
+            --notice-path=(notice-path_ specification.root-dir)
             --version=version
             --revision=repository-package.ref-hash
             --is-override=override != null
@@ -129,6 +133,7 @@ class LicensesCommand extends PkgProjectCommand:
           --source=local-package.path
           --license-path=(fs.join root "LICENSE")
           --license-name="LICENSE"
+          --notice-path=(notice-path_ root)
           --version=null
           --revision=null
 
@@ -194,6 +199,10 @@ class LicensesCommand extends PkgProjectCommand:
         return override
     return null
 
+  notice-path_ root/string -> string?:
+    path := fs.join root NOTICE-FILE
+    return file.is-file path ? path : null
+
   sdk-license-entry_ -> LicenseEntry_:
     program-dir := fs.dirname system.program-path
     candidates := [
@@ -249,11 +258,23 @@ class LicensesCommand extends PkgProjectCommand:
     output.write license-content
     if license-content.is-empty or license-content.last != '\n':
       output.write "\n"
+    if entry.notice-path:
+      output.write """
+
+          --------------------------------------------------------------------------------
+          Notice file: $NOTICE-FILE
+          --------------------------------------------------------------------------------
+          """
+      notice-content := file.read-contents entry.notice-path
+      output.write notice-content
+      if notice-content.is-empty or notice-content.last != '\n':
+        output.write "\n"
     output.write "\n"
 
   static OUTPUT-OPTION ::= "output"
   static INCLUDE-SDK-OPTION ::= "include-sdk"
   static LICENSES-FILE ::= "licenses.yaml"
+  static NOTICE-FILE ::= "NOTICE"
   static OVERRIDES-KEY ::= "overrides"
   static URL-KEY ::= "url"
   static VERSION-KEY ::= "version"
@@ -262,7 +283,8 @@ class LicensesCommand extends PkgProjectCommand:
   static CLI-COMMAND ::=
       cli.Command "licenses"
           --help="""
-              Collects the top-level LICENSE files of a project and its dependencies.
+              Collects the top-level LICENSE and NOTICE files of a project and its
+                dependencies.
 
               The packages are taken from package.lock. Missing packages are downloaded
                 before their licenses are collected.
