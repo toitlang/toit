@@ -292,7 +292,10 @@ PRIMITIVE(unuse) {
 }
 
 PRIMITIVE(config) {
-  ARGS(int, num, bool, pull_up, bool, pull_down, bool, input, bool, output, bool, open_drain, int, value);
+  ARGS(GpioResource, resource, bool, pull_up, bool, pull_down, bool, input,
+       bool, output, bool, open_drain, int, value);
+  int num = resource->pin();
+  if (value < -1 || value > 1) FAIL(INVALID_ARGUMENT);
 
   gpio_config_t cfg = {
     .pin_bit_mask = 1ULL << num,
@@ -366,8 +369,8 @@ PRIMITIVE(config_interrupt) {
 // If the pin is used in some peripheral, a call to this primitive doesn't
 // affect that configuration.
 PRIMITIVE(set_open_drain) {
-  ARGS(int, num, bool, enable);
-  if (num < 0 || num >= GPIO_NUM_MAX) FAIL(INVALID_ARGUMENT);
+  ARGS(GpioResource, resource, bool, enable);
+  int num = resource->pin();
 
   // Change the open-drain bit.
   // Directly writes to the memory-mapped register.
@@ -380,8 +383,9 @@ PRIMITIVE(set_open_drain) {
 // If the pin is used in some peripheral, a call to this primitive doesn't
 // affect that configuration.
 PRIMITIVE(set_pull) {
-  ARGS(int, num, int, direction);
-  if (num < 0 || num >= GPIO_NUM_MAX) FAIL(INVALID_ARGUMENT);
+  ARGS(GpioResource, resource, int, direction);
+  int num = resource->pin();
+  if (direction < -1 || direction > 1) FAIL(INVALID_ARGUMENT);
 
   gpio_pull_mode_t mode;
   if (direction == 0) {
@@ -403,13 +407,16 @@ PRIMITIVE(last_edge_trigger_timestamp) {
 }
 
 PRIMITIVE(get) {
-  ARGS(int, num);
+  ARGS(GpioResource, resource);
+  int num = resource->pin();
 
   return Smi::from(gpio_get_level((gpio_num_t)num));
 }
 
 PRIMITIVE(set) {
-  ARGS(int, num, int, value);
+  ARGS(GpioResource, resource, int, value);
+  int num = resource->pin();
+  if (value != 0 && value != 1) FAIL(INVALID_ARGUMENT);
 
   esp_err_t err = gpio_set_level((gpio_num_t)num, value);
   if (err != ESP_OK) return Primitive::os_error(err, process);

@@ -409,11 +409,11 @@ PRIMITIVE(unuse) {
 }
 
 PRIMITIVE(config) {
-  ARGS(int, pad, bool, pull_up, bool, pull_down, bool, input,
+  ARGS(GpioResource, resource, bool, pull_up, bool, pull_down, bool, input,
        bool, output, bool, open_drain, int, value);
 
-  if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
-  int gpio_bit = pad_to_gpio(pad);
+  int pad = resource->pad();
+  int gpio_bit = resource->gpio_bit();
   if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
   if (pull_up && pull_down) FAIL(INVALID_ARGUMENT);
   if (value < -1 || value > 1) FAIL(INVALID_ARGUMENT);
@@ -462,18 +462,18 @@ PRIMITIVE(config) {
 }
 
 PRIMITIVE(get) {
-  ARGS(int, pad);
-  if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
-  int gpio_bit = pad_to_gpio(pad);
+  ARGS(GpioResource, resource);
+  int pad = resource->pad();
+  int gpio_bit = resource->gpio_bit();
   if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
   if (gpio_owned_by_other_pad(gpio_bit, pad)) FAIL(ALREADY_IN_USE);
   return Smi::from(GPIO_pinRead(to_port(gpio_bit), to_pin_index(gpio_bit)) ? 1 : 0);
 }
 
 PRIMITIVE(set) {
-  ARGS(int, pad, int, value);
-  if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
-  int gpio_bit = pad_to_gpio(pad);
+  ARGS(GpioResource, resource, int, value);
+  int pad = resource->pad();
+  int gpio_bit = resource->gpio_bit();
   if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
   if (value != 0 && value != 1) FAIL(INVALID_ARGUMENT);
   if (!claim_gpio_bit(pad, gpio_bit)) FAIL(ALREADY_IN_USE);
@@ -514,9 +514,9 @@ PRIMITIVE(last_edge_trigger_timestamp) {
 }
 
 PRIMITIVE(set_open_drain) {
-  ARGS(int, pad, bool, value);
-  if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
-  int gpio_bit = pad_to_gpio(pad);
+  ARGS(GpioResource, resource, bool, value);
+  int pad = resource->pad();
+  int gpio_bit = resource->gpio_bit();
   if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
   if (!claim_gpio_bit(pad, gpio_bit)) FAIL(ALREADY_IN_USE);
   if (value == is_open_drain(pad)) return process->null_object();
@@ -541,9 +541,10 @@ PRIMITIVE(set_open_drain) {
 }
 
 PRIMITIVE(set_pull) {
-  ARGS(int, pad, int, value);  // value: 1 pull-up, -1 pull-down, 0 none.
-  if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
-  int gpio_bit = pad_to_gpio(pad);
+  ARGS(GpioResource, resource, int, value);
+  // value: 1 pull-up, -1 pull-down, 0 none.
+  int pad = resource->pad();
+  int gpio_bit = resource->gpio_bit();
   if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
   if (value < -1 || value > 1) FAIL(INVALID_ARGUMENT);
   apply_pull(pad, value > 0, value < 0);

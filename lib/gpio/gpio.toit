@@ -546,19 +546,19 @@ class Pin_ extends PinBase:
       --open-drain/bool
       --value/int?:
     if not value: value = -1
-    gpio-config_ num pull-up pull-down input output open-drain value
+    gpio-config_ resource_ pull-up pull-down input output open-drain value
 
   /**
   See $Pin.get.
   */
   get -> int:
-    return gpio-get_ num
+    return gpio-get_ resource_
 
   /**
   See Pin.set.
   */
   set value/int:
-    gpio-set_ num value
+    gpio-set_ resource_ value
 
   /**
   See $Pin.wait-for.
@@ -600,7 +600,7 @@ class Pin_ extends PinBase:
   See $Pin.set-open-drain.
   */
   set-open-drain value/bool:
-    gpio-set-open-drain_ num value
+    gpio-set-open-drain_ resource_ value
 
   /**
   See $Pin.set-pull.
@@ -613,7 +613,7 @@ class Pin_ extends PinBase:
     value := 0
     if up: value = 1
     if down: value = -1
-    gpio-set-pull_ num value
+    gpio-set-pull_ resource_ value
 
 
 /**
@@ -914,13 +914,13 @@ gpio-use_ resource-group num allow-restricted:
 gpio-unuse_ resource-group num:
   #primitive.gpio.unuse
 
-gpio-config_ num pull-up pull-down input output open-drain value:
+gpio-config_ resource pull-up pull-down input output open-drain value:
   #primitive.gpio.config
 
-gpio-get_ num:
+gpio-get_ resource:
   #primitive.gpio.get
 
-gpio-set_ num value:
+gpio-set_ resource value:
   #primitive.gpio.set
 
 gpio-config-interrupt_ resource enabled/bool value/int:
@@ -929,10 +929,10 @@ gpio-config-interrupt_ resource enabled/bool value/int:
 gpio-last-edge-trigger-timestamp_ resource:
   #primitive.gpio.last-edge-trigger-timestamp
 
-gpio-set-open-drain_ num value/bool:
+gpio-set-open-drain_ resource value/bool:
   #primitive.gpio.set-open-drain
 
-gpio-set-pull_ num value/int:
+gpio-set-pull_ resource value/int:
   #primitive.gpio.set-pull
 
 gpio-linux-list-chips_ -> List:
