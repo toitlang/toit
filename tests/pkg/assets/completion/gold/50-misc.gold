@@ -5,6 +5,7 @@ clean	Removes unnecessary packages.
 describe	Generates a description of the given package.
 init	Initializes the current directory as the root of the project.
 install	Installs a package in the current project, or downloads all dependencies.
+licenses	Collects the top-level LICENSE files of a project and its dependencies.
 list	Lists all packages.
 registry	Manages registries.
 search	Searches for the given name in all packages.

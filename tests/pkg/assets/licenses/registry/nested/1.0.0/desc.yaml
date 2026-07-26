@@ -1,0 +1,6 @@
+name: nested
+description: Nested remote package.
+url: localhost:<[*PORT*]>/pkg/nested
+version: 1.0.0
+hash: deadbeef1234567890abcdef1234567890abcdef
+license: MIT

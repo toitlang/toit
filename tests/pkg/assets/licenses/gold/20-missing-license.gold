@@ -1,0 +1,7 @@
+OK
+[pkg, install, missing]
+Package 'localhost:<[*PORT*]>/pkg/missing@1.0.0' installed with prefix 'missing'.
+==================
+Aborted
+[pkg, licenses, --output=THIRD_PARTY_LICENSES]
+Error: Package 'missing' has no top-level LICENSE file at '<[*WORKING-DIR*]>/.packages/localhost:<[*PORT*]>/pkg/missing/1.0.0/LICENSE'.

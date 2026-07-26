@@ -1,0 +1,9 @@
+name: remote
+description: Remote package.
+url: localhost:<[*PORT*]>/pkg/remote
+version: 1.0.0
+hash: deadbeef1234567890abcdef1234567890abcdef
+license: MIT
+dependencies:
+  - url: localhost:<[*PORT*]>/pkg/nested
+    version: ^1.0.0
