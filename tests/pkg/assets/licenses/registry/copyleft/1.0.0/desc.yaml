@@ -1,0 +1,6 @@
+name: copyleft
+description: Package requiring source release.
+url: localhost:<[*PORT*]>/pkg/copyleft
+version: 1.0.0
+hash: deadbeef1234567890abcdef1234567890abcdef
+license: LGPL-2.1-only
