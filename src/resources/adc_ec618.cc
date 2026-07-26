@@ -51,9 +51,10 @@ static AdcChannel_e aio_channel(int channel) {
   return channel == 0 ? ADC_CHANNEL_AIO3 : ADC_CHANNEL_AIO4;
 }
 
-// Conversion results, filled from the ADC ISR callback. The `adc` primitives
-// are synchronous (start a conversion, busy-wait for the callback) and
-// serialized per process, so one slot per channel is enough.
+// Conversion results, filled from the ADC ISR callback. A primitive invocation
+// starts or harvests one conversion and returns null while it is pending; the
+// Toit library yields before polling again. The vendor driver serializes
+// requests across channels, so one result slot per channel is enough.
 static volatile uint32_t conversion_result[kNumChannels] = {0, 0};
 static volatile bool conversion_done[kNumChannels] = {false, false};
 
