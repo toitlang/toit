@@ -20,8 +20,19 @@ main:
     long-write[0] = COMMAND-WRITE-PATTERN
     for i := 1; i < long-write.size; i++:
       long-write[i] = write-pattern-byte i
-    with-timeout --ms=5_000:
-      device.write long-write
+    long-write-error := catch:
+      with-timeout --ms=5_000:
+        device.write long-write
+    if long-write-error:
+      // Prove that cancellation quiesced the peripheral and released the
+      // bus before preserving the original test failure.
+      recovery-error := catch:
+        with-timeout --ms=1_000:
+          device.write #[COMMAND-READ-STATUS]
+      if recovery-error:
+        throw "long write failed: $long-write-error; same-device recovery failed: $recovery-error"
+      print "i2c-long-transfer-ec618: same-device recovery after failure: PASS"
+      throw long-write-error
 
     // Let the ESP32 task consume the receive callback before requesting its
     // result in a separate transaction.

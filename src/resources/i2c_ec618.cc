@@ -61,6 +61,10 @@ static int pads_to_controller(int sda, int scl) {
 
 static ARM_DRIVER_I2C* const kI2cDrivers[2] = { &Driver_I2C0, &Driver_I2C1 };
 static I2C_TypeDef* const kI2cRegs[2] = { I2C0, I2C1 };
+static const ClockResetVector_t kI2cResetVectors[2] = {
+  I2C0_RESET_VECTOR,
+  I2C1_RESET_VECTOR,
+};
 // Runtime Environment (RTE) pins muxed by Driver_I2C::Initialize. bus_create
 // releases these when the user selects another route.
 static const uint8_t kRteSda[2] = { 27, 19 };
@@ -334,6 +338,11 @@ static void quiesce(int controller) {
   I2C_TypeDef* regs = kI2cRegs[controller];
   for (int spin = 20000; (regs->STR & I2C_STR_BUSY_Msk) && spin > 0; spin--) {}
   driver->PowerControl(ARM_POWER_OFF);
+  // PowerControl(OFF) gates the clocks and clears the software status, but
+  // does not reset the command engine: STR.BUSY can survive and make every
+  // later Master* call return ARM_DRIVER_ERROR_BUSY. Use the same module
+  // reset that the vendor's polling timeout paths use.
+  GPR_swResetModule(&kI2cResetVectors[controller]);
   // Preserve the current source selection and pace across recovery.
   bool fast_src = state->src_hz == kSrc51M;
   if (fast_src) CLOCK_clockEnable(CLK_HF51M);
