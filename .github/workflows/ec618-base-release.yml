@@ -91,12 +91,13 @@ jobs:
         run: |
           gh release create "ec618-base-v$VERSION" \
             --title "EC618 base v$VERSION" \
-            --notes "EC618 base artifact set used to link and flash compatible slots.
+            --notes "EC618 base artifact set used by envelope producers to link compatible slots.
 
           This is the universal base; the anchor record selects the console
           UART. Slots link against base.elf; base.bin carries the stamped
-          base-id record the device checks before accepting a slot OTA. To
-          build a slot against this release: download the files into a
-          directory as base.elf/base.bin and run
-          \`make ec618 EC618_BASE_DIR=<dir>\`." \
+          base-id record the device checks before accepting a slot OTA.
+          Distributed envelopes carry the complete matching AP image; a
+          flasher never downloads this release separately. To build an
+          envelope against this release: download the files into a directory
+          as base.elf/base.bin and run \`make ec618 EC618_BASE_DIR=<dir>\`." \
             build/release-ec618-base/*

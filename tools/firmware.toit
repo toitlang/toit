@@ -288,8 +288,13 @@ create-envelope-ec618 invocation/cli.Invocation -> none:
   system-snapshot-content := read-file invocation["system.snapshot"] --ui=ui
   system-snapshot := SnapshotBundle system-snapshot-content
 
+  reloc := read-file invocation["reloc.bin"] --ui=ui
+  reloc-table := SlotRelocTable.parse reloc
+  firmware-ec618.validate-envelope-base firmware-bin-data reloc-table
+
   // For EC618, we include the raw firmware binary without stripping
-  // DROM extensions (no ESP32-style segment parsing needed).
+  // DROM extensions (no ESP32-style segment parsing needed). This is the
+  // complete AP image, including the exact base verified above.
   entries := {
     AR-ENTRY-EC618-FIRMWARE-BIN: firmware-bin-data,
     SYSTEM-CONTAINER-NAME: system-snapshot-content,
@@ -302,8 +307,6 @@ create-envelope-ec618 invocation/cli.Invocation -> none:
 
   entries[AR-ENTRY-EC618-CP-BIN] = read-file invocation["cp.bin"] --ui=ui
 
-  reloc := read-file invocation["reloc.bin"] --ui=ui
-  reloc-table := SlotRelocTable.parse reloc
   entries[AR-ENTRY-EC618-RELOC] = reloc
 
   data-path := invocation["data.bin"]

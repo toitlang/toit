@@ -108,11 +108,29 @@ The "EC618 base release" workflow (`workflow_dispatch`) publishes the
 artifact set as an immutable GitHub release `ec618-base-vN` (named from
 `toolchains/ec618/base-version`; bump it for every shipped base change):
 the universal base's `{elf, bin, json-manifest}`, proven by a full slot
-build with all guards before publishing.
+build with all guards before publishing. This release is a producer input,
+not an artifact that an end user or flasher has to find.
 
 To build a slot against a release, put its files in a directory as
 `base.elf`/`base.bin` and:
 
     make ec618 EC618_BASE_DIR=<dir>
+
+Every distributed EC618 envelope is self-contained. It carries the complete
+AP image, including the exact base, the matching CP image, and the slot
+relocation metadata. Envelope creation checks that the carried base identity
+matches the slot before producing the artifact. A static flash therefore
+never downloads or selects a base and cannot create a base/slot mismatch.
+
+`toitlang/envelopes` owns the public supported-base list and releases one
+EC618 envelope for each base on that list. The list initially contains only
+the current base; another base is added when there is a concrete user need.
+Old bases are not accumulated inside one envelope.
+
+An OTA extracted from an envelope contains only its canonical slot image.
+Jaguar should compare its carried base identity with the target before
+transfer. Independently, the on-device OTA path rejects the slot before
+activation if it does not match the installed base. Updating the base by OTA
+is unsupported.
 
 The CI job (`ci-ec618.yml`) builds base + slot + guards on every push.

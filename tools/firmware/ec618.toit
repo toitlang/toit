@@ -13,11 +13,11 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import crypto.crc show Crc
 import crypto.sha256 as crypto
 import io show LITTLE-ENDIAN
 import uuid show Uuid
 
+import ..ec618.partitions show find-anchor-table
 import ..ec618.slot-reloc show SlotRelocTable TO-SLOT TO-CANONICAL
 import .image-details as image-details
 
@@ -39,27 +39,44 @@ pad_ bits/ByteArray alignment/int -> ByteArray:
   padded-size := round-up bits.size alignment
   return bits + (ByteArray padded-size - bits.size)
 
+partition-xip_ image/ByteArray type/string -> int:
+  table := find-anchor-table image
+  if table == null:
+    throw "no anchor record in the AP image — it must be provisioned (tools/ec618/gen-anchor.toit)"
+  for i := 0; i < table.size; i++:
+    partition := table[i]
+    if partition.type == type:
+      return XIP-BASE_ + partition.offset
+  throw "no '$type' partition in the EC618 anchor record"
+
 /**
 Returns slot A's XIP address from the anchor record in the AP $image.
 */
 slot-a-xip_ image/ByteArray -> int:
-  for off := 0; off + 32 <= image.size; off += 0x1000:
-    if (LITTLE-ENDIAN.uint16 image off) != 0x4154: continue
-    if image[off + 2] != 2: continue
-    count := image[off + 10]
-    record-size := 16 + count * 32 + 16
-    if count == 0 or off + record-size > image.size: continue
-    crc := Crc.little-endian 32
-        --polynomial=0xEDB88320
-        --initial-state=0xffff_ffff
-        --xor-result=0xffff_ffff
-    crc.add image[off .. off + record-size - 16]
-    if crc.get-as-int != (LITTLE-ENDIAN.uint32 image (off + record-size - 16)): continue
-    count.repeat: | i/int |
-      entry := off + 16 + i * 32
-      if image[entry + 24] == 5:
-        return XIP-BASE_ + (LITTLE-ENDIAN.uint32 image (entry + 16))
-  throw "no anchor record in the AP image — it must be provisioned (tools/ec618/gen-anchor.toit)"
+  return partition-xip_ image "slot"
+
+/**
+Verifies that a static EC618 envelope carries the exact base used by its slot.
+
+The AP $image must contain a stamped base-id partition, and that identity must
+  match the one in the slot $table. This makes a missing, slot-only, or
+  mismatched base fail while the envelope is created instead of leaving the
+  flasher to discover or download a base later.
+*/
+validate-envelope-base image/ByteArray table/SlotRelocTable -> none:
+  load-xip := XIP-BASE_ + AP-LOAD-OFFSET_
+  id-file := (partition-xip_ image "base-id") - load-xip
+  if id-file < 0 or id-file + 24 > image.size:
+    throw "EC618 AP image does not contain its complete base-id partition"
+  if image[id-file] != 'T' or
+      image[id-file + 1] != 'B' or
+      image[id-file + 2] != 'I' or
+      image[id-file + 3] != '1':
+    throw "EC618 AP image has no stamped base-id record"
+  version := LITTLE-ENDIAN.uint32 image (id-file + 4)
+  fingerprint := image[id-file + 8 .. id-file + 24]
+  if version != table.base-version or fingerprint != table.base-fp:
+    throw "EC618 AP image carries a different base than its slot relocation table"
 
 /**
 Builds the canonical table-first OTA image from a slot-A AP $image.
