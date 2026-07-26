@@ -313,6 +313,13 @@ calls still in the glue.
   spin. Also: `--break-length` throws UNIMPLEMENTED instead of silently
   sending break-less data, and a fresh UART2 open is verified quiet.
   `uart2-flush-ec618.toit`.
+- **UART close/teardown during active TX** (HW-verified 2026-07-26):
+  `uart-lifecycle-ec618.toit` starts an 8 KiB non-blocking write, confirms
+  that 2 KiB entered the DMA staging path, and closes UART2 before it drains.
+  The controller becomes available again after explicit close. A separate
+  `leak` run exits the whole test container with the same amount in flight;
+  the immediately following normal run reacquires UART2 and passes without a
+  reset. Final doctor also passes on the unchanged base and slot.
 - **`uart2-rs485` RS485 half-duplex** (reworked and HW-verified 2026-07-25,
   passing 9600/115200/921600):
   UART2 in `MODE-RS485-HALF-DUPLEX` with the direction line on PAD33 (any
