@@ -200,7 +200,7 @@ suitable board appears.
 |-----------|--------|-------|
 | GPIO | ✅ implemented, HW-tested | `gpio_ec618.cc`. Regular-pad pulls use the pad PCR configuration; wake-domain PAD40–42 pulls use the PMU wake-pad block. Pull-down is HW-validated on PAD42 and pull-up on PAD34. Input buffers and emulated open-drain are HW-tested. |
 | UART | ✅ implemented | `uart_ec618.cc` (UART0/1/2). |
-| I2C | ✅ implemented | `i2c_ec618.cc`. |
+| I2C | ✅ implemented, HW-tested | `i2c_ec618.cc`; both controllers, clock stretching, cancellation recovery, long FIFO refill, and internal/external/no-pull electrical behavior are covered. |
 | Cellular | ✅ implemented | `cellular_ec618.cc`. |
 | **ADC** | ✅ implemented, **HW-tested exact-value (both channels)** | `adc_ec618.cc`; `gpio.adc` channel ctor (0→AIO3, 1→AIO4). Self-calibrating ±60 mV. |
 | DAC | ❌ n/a | EC618 needs no DAC for these tests (the ESP32 provides DAC). |
@@ -243,12 +243,13 @@ calls still in the glue.
   one each), and (2) when using a non-RTE routing the blob's RTE pads must
   be muxed BACK to GPIO — two pads on one controller leave the input path
   reading the floating RTE pad, so the controller sees a busy bus and
-  never clocks. Also: a DEAD bus (no pull-ups, e.g. sensor power off)
-  blocks the blob's polling transfer forever → watchdog reset (observed);
-  every transfer/probe is now preceded by a wire-level bus-free peek
-  (brief GPIO-mux sample of SDA/SCL). Remaining gap: transfers are
-  synchronous and a mid-transfer clock stretch has no timeout — see the
-  async-I2C TODO. `bmp280-{ec618,esp32}.toit`, `bme280-probe-esp32.toit`.
+  never clocks. The current IRQ engine checks bus usability before each
+  transfer, defers chained reads to task context, and recovers after
+  cancellation while SCL is stretched. The paired `i2c-pull-matrix` test
+  verifies bounded failure with no pull-ups, then successful idle-high NACK
+  traffic with only the ESP32's or only the EC618's internal pull-ups.
+  `bmp280-{ec618,esp32}.toit`, `bme280-probe-esp32.toit`,
+  `i2c-{stretch,pull-matrix}-{ec618,esp32}.toit`.
 - **GPIO open-drain emulation + `gpio-opendrain` test** (2026-06-10,
   passing): the EC618 GPIO has no open-drain bit, so the driver now
   emulates it — the pin DIRECTION tracks the value (0 = output-low,

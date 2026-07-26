@@ -500,11 +500,7 @@ class Ec618:
     or more use that ceiling.
   */
   static i2c0 --frequency/int=100_000 --pull-up/bool=false -> i2c.Bus:
-    return i2c.Bus
-        --sda=(pad 14)
-        --scl=(pad 13)
-        --frequency=frequency
-        --pull-up=pull-up
+    return open-i2c_ 14 13 --frequency=frequency --pull-up=pull-up
 
   /**
   Opens the I2C1 bus.
@@ -519,11 +515,7 @@ class Ec618:
     or more use that ceiling.
   */
   static i2c1 --frequency/int=100_000 --pull-up/bool=false -> i2c.Bus:
-    return i2c.Bus
-        --sda=(pad 23)
-        --scl=(pad 24)
-        --frequency=frequency
-        --pull-up=pull-up
+    return open-i2c_ 23 24 --frequency=frequency --pull-up=pull-up
 
   /**
   Opens the SPI0 bus (master).
@@ -543,6 +535,25 @@ class Ec618:
   */
   static spi1 -> spi.Bus:
     return spi.Bus --mosi=(pad 28) --miso=(pad 29) --clock=(pad 30)
+
+  static open-i2c_ sda-pad/int scl-pad/int
+      --frequency/int
+      --pull-up/bool
+      -> i2c.Bus:
+    sda := pad sda-pad
+    handed-off := false
+    try:
+      scl := pad scl-pad
+      try:
+        bus := Ec618I2cBus_ sda scl
+            --frequency=frequency
+            --pull-up=pull-up
+        handed-off = true
+        return bus
+      finally:
+        if not handed-off: scl.close
+    finally:
+      if not handed-off: sda.close
 
   static open-uart_ -> uart.Port
       --uart-id/int
@@ -621,6 +632,25 @@ class Ec618:
   */
   static adc1 --max-voltage/float?=null -> adc.Adc:
     return adc.Adc.channel 1 --max-voltage=max-voltage
+
+class Ec618I2cBus_ extends i2c.Bus:
+  sda_/Pin
+  scl_/Pin
+  closed_ := false
+
+  constructor .sda_ .scl_ --frequency/int --pull-up/bool:
+    super
+        --sda=sda_
+        --scl=scl_
+        --frequency=frequency
+        --pull-up=pull-up
+
+  close -> none:
+    if closed_: return
+    super
+    scl_.close
+    sda_.close
+    closed_ = true
 
 /**
 Attaches a console/control UART to the freshly staged OTA.
