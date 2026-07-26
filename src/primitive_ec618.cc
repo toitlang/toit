@@ -651,9 +651,9 @@ PRIMITIVE(wakeup_pad_configure) {
 }
 
 // Returns the flashed base's identity as "base-v<N>+<fingerprint hex>", or
-// "base-unknown" when the reserved page carries no record (a pre-phase-4
-// base). Slot OTAs are accepted only when the incoming image's SRL3 table
-// matches this id (see slot_reloc_begin).
+// "base-unknown" when the reserved page carries no record. Slot OTAs are
+// accepted only when the incoming image's SRL3 table matches this id (see
+// slot_reloc_begin).
 PRIMITIVE(base_id) {
   BaseId id;
   if (!read_base_id(&id)) {
