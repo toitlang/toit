@@ -328,14 +328,19 @@ calls still in the glue.
   DE released after the last bit, and DE low while it echoes. DE uses the same
   GPIO_pin API as the GPIO driver and is released by the task-context TEMT
   worker that completes flush. `uart2-rs485-{ec618,esp32}.toit`.
-- **`uart2-config` configuration matrix** (2026-06-10, passing): all 49
+- **`uart2-config` configuration matrix** (reworked and HW-verified
+  2026-07-26): all 49
   combinations — data bits 5..8 × parity none/even/odd × stop bits 1/2 (+ a
   1.5-stop probe) at 115200 and 921600, reopening both sides per config —
   round-trip correctly. A deliberate parity mismatch shows the error counter
   fires once per bad byte while the bytes are still delivered intact
-  (detectable, not filtering). Gotcha: a fresh UART1 open can emit a glitch
-  byte that garbles the first control-lane line; tests flush a newline after
-  opening control. `uart2-config-{ec618,esp32}.toit`.
+  (256 errors for 256 bytes: detectable, not filtering). The receive-break
+  phase detects the helper's 12-bit break without incrementing the error
+  counter. Exact round trips pass at 1/2, 511/512/513, 1023/1024/1025,
+  2047–2059, and 4095–4107 bytes, covering the receive chunk and both normal
+  and large TX staging boundaries. Gotcha: a fresh UART1 open can emit a
+  glitch byte that garbles the first control-lane line; tests flush a newline
+  after opening control. `uart2-config-{ec618,esp32}.toit`.
 - **`Container.wait` spurious-CLOSED fix** (2026-06-10, HW-verified): a failing
   memory-churning test killed the agent (watchdog reset 60 s later) because a
   waited-on container is only weakly rooted while its waiter task is blocked —
