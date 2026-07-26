@@ -1,0 +1,4 @@
+Aborted
+[pkg, licenses, --no-include-sdk, --output=THIRD_PARTY_LICENSES]
+Error: License override for 'localhost:<[*PORT*]>/pkg/missing@2.0.0' does not match
+  any package in package.lock.
