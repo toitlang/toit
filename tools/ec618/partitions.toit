@@ -109,10 +109,11 @@ class Partitions:
     return this[name].offset + xip-offset
 
 // The anchor record's on-flash format (anchor.h, design doc §0.1):
-// header 16B { magic 'T','A', version, state, seq, active, pending, count }
-// + N x 32B entries { name[16], offset, size, type } + 16B CRC trailer.
+// header 16B { magic, version, state, seq, active, pending,
+//              active-count, pending-count, active-console, pending-console }
+// + active entries + pending entries + 16B CRC trailer.
 ANCHOR-MAGIC ::= 0x4154  // Reads as 'T','A' on flash (little-endian).
-ANCHOR-VERSION ::= 2
+ANCHOR-VERSION ::= 3
 ANCHOR-SECTOR ::= 0x1000
 ANCHOR-HEADER-SIZE ::= 16
 ANCHOR-ENTRY-SIZE ::= 32
@@ -137,16 +138,18 @@ ANCHOR-CONSOLE-OFF ::= 0xff
 
 /**
 Encodes the provisioning anchor record for $parts: boot state
-  { active='A', pending=0, state=NONE, seq=1 } plus the full table.
+  { active='A', pending=0, state=NONE, seq=1 } plus the known-good
+  configuration. The trial configuration is empty until an OTA is staged.
 
 The $console byte selects the console/control UART (0/1/2, or
-  $ANCHOR-CONSOLE-OFF) — per-device provisioning read by the base before
-  its first print.
+  $ANCHOR-CONSOLE-OFF) attached to the initially known-good image.
 */
 encode-anchor-record parts/Partitions --console/int=0 -> ByteArray:
   entries := parts.entries
   if entries.size > ANCHOR-MAX-ENTRIES:
     throw "$entries.size entries exceed the device cap of $ANCHOR-MAX-ENTRIES"
+  if console != ANCHOR-CONSOLE-OFF and not 0 <= console <= 2:
+    throw "console UART must be 0, 1, 2, or $ANCHOR-CONSOLE-OFF"
   buffer := Buffer
   le := buffer.little-endian
   le.write-uint16 ANCHOR-MAGIC
@@ -155,9 +158,11 @@ encode-anchor-record parts/Partitions --console/int=0 -> ByteArray:
   le.write-uint32 1      // seq = 1.
   buffer.write-byte 'A'  // Known-good slot.
   buffer.write-byte 0    // No pending trial.
-  buffer.write-byte entries.size
-  buffer.write-byte console
-  buffer.write (ByteArray 4)  // Reserved header bytes.
+  buffer.write-byte entries.size  // Known-good table.
+  buffer.write-byte 0             // No trial table.
+  buffer.write-byte console       // Known-good console.
+  buffer.write-byte ANCHOR-CONSOLE-OFF
+  buffer.write (ByteArray 2)      // Reserved header bytes.
   entries.do: | p/Partition |
     name := p.name.to-byte-array
     buffer.write name
@@ -181,12 +186,12 @@ encode-anchor-region parts/Partitions --console/int=0 -> ByteArray:
   return region
 
 /**
-Returns the console byte of the anchor record found in the AP $image, or
-  null when the image carries no valid record.
+Returns the known-good console byte of the anchor record found in the AP
+  $image, or null when the image carries no valid record.
 */
 find-anchor-console image/ByteArray -> int?:
   offset := find-anchor-offset_ image
-  return offset == null ? null : image[offset + 11]
+  return offset == null ? null : image[offset + 12]
 
 /**
 Finds the anchor record in the AP $image (4 KiB-aligned scan for magic +
@@ -217,9 +222,15 @@ find-anchor-offset_ image/ByteArray -> int?:
   for off := 0; off + 32 <= image.size; off += ANCHOR-SECTOR:
     if (LITTLE-ENDIAN.uint16 image off) != ANCHOR-MAGIC: continue
     if image[off + 2] != ANCHOR-VERSION: continue
-    count := image[off + 10]
+    active-count := image[off + 10]
+    pending-count := image[off + 11]
+    count := active-count + pending-count
     record-size := ANCHOR-HEADER-SIZE + count * ANCHOR-ENTRY-SIZE + ANCHOR-TRAILER-SIZE
-    if count == 0 or off + record-size > image.size: continue
+    if active-count == 0 or
+        active-count > ANCHOR-MAX-ENTRIES or
+        pending-count > ANCHOR-MAX-ENTRIES or
+        off + record-size > image.size:
+      continue
     if (anchor-crc_ image[off .. off + record-size - ANCHOR-TRAILER-SIZE]) != (LITTLE-ENDIAN.uint32 image (off + record-size - ANCHOR-TRAILER-SIZE)): continue
     return off
   return null

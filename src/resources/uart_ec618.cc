@@ -38,7 +38,7 @@ extern "C" {
   #include "driver_gpio.h"
   #include "gpio.h"
   #include "platform_define.h"
-  #include "anchor.h"     // anchor_console — the provisioned console/control UART.
+  #include "anchor.h"     // Transactional console/control UART selection.
   #include "slpman.h"     // Sleep-vote API used by uart_sleep_vote.
   // All three UARTs run on the OPEN CMSIS driver (bsp_usart.c) instead of
   // the closed Uart_* blob. The blob discarded its whole RX buffer on
@@ -49,9 +49,14 @@ extern "C" {
   extern ARM_DRIVER_USART Driver_USART0;
   extern ARM_DRIVER_USART Driver_USART1;
   extern ARM_DRIVER_USART Driver_USART2;
+  extern uint8_t toit_booted_slot;
 }
 
 namespace toit {
+
+static uint8_t current_console() {
+  return anchor_console_for_slot(toit_booted_slot);
+}
 
 // All pin arguments to PRIMITIVE(create) are PAD numbers (1..kMaxPadIndex).
 // -1 means "not used". Pin/function validation goes through the pad table
@@ -249,7 +254,7 @@ void UartResourceGroup::on_unregister_resource(Resource* r) {
   // tear down OUR half only (RX irqs + buffers) and leave the
   // controller powered and configured so printf keeps flowing
   // (SendPolling needs only the CONFIGURED flag).
-  if (id == anchor_console()) {
+  if (id == current_console()) {
     UartTransferState* transfer = state.transfer;
     if (transfer != null) {
       bool tx_busy;
@@ -801,7 +806,7 @@ PRIMITIVE(create) {
   // wire that's also carrying print output. We've observed it working
   // in practice (TX and RX paths don't fight on this chip).
 #if CONFIG_TOIT_EC618_PRINT_UART && !CONFIG_TOIT_EC618_ALLOW_PRINT_UART_REUSE
-  if (id == anchor_console()) FAIL(ALREADY_IN_USE);
+  if (id == current_console()) FAIL(ALREADY_IN_USE);
 #endif
 
   if (!uart_controllers.take(id)) FAIL(ALREADY_IN_USE);
@@ -860,7 +865,7 @@ PRIMITIVE(create) {
     // initialized.
     bool was_initialized = cmsis_initialized[id];
 #if CONFIG_TOIT_EC618_PRINT_UART
-    if (id == anchor_console()) was_initialized = true;
+    if (id == current_console()) was_initialized = true;
 #endif
     if (was_initialized) driver->Uninitialize();
     driver->Initialize(kUartCallbacks[id]);

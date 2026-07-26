@@ -45,10 +45,12 @@ The brainstorm sections are kept for reasoning; the decided shape is:
    declares (the same machinery every OTA uses). Compatibility at write
    time = base-id match (exists) + image-fits-declared-slot (trivial).
 2. **The table lives in the ANCHOR RECORD** (the A/B two-sector record
-   at the anchor) — { seq, crc, boot state, table[] }. Boot state and
-   layout are one atomic, power-fail-safe unit, flipped together:
-   rollback restores layout AND image. (ESP-IDF-like table, but A/B and
-   co-committed — their single fixed table region cannot do either.)
+   at the anchor). Record v3 carries the boot state plus separate
+   known-good and trial configurations; each configuration is a partition
+   table and console UART. Validation promotes the complete trial
+   configuration, while rollback discards it and retains the complete
+   known-good configuration. (ESP-IDF-like table, but A/B and co-committed
+   with the image — their single fixed table region cannot do either.)
 3. **All frozen geometry first, then the anchor.** The base ends at raw
    0x190000, followed by the base-id page and the SDK LittleFS reservation;
    the anchor is fixed at 0x1B1000..0x1B3000 in base-v3. The fixed spot is
@@ -81,10 +83,15 @@ The brainstorm sections are kept for reasoning; the decided shape is:
    nothing on the device compiles the layout in (see 0.1) — the linker
    template's frozen literals are the one exception, and gen-base-id
    refuses to stamp a base whose symbols disagree with the descriptor.
-6. **OTA resize: later.** The record flip already gives the atomic
-   swap; until a power-fail-safe data-migration journal exists, the
-   writer REFUSES table changes that move or shrink a non-empty data
-   partition. The registry is movable-in-principle behind that guard.
+6. **OTA layout changes: represented and tested, but not exposed.** The
+   record flip already provides the atomic configuration swap, and the
+   fault-injecting host test exercises different known-good/trial tables,
+   promotion, rollback and torn writes. The current device OTA path always
+   clones the known-good table for the trial: no Toit API can supply a
+   different table, and partition-size changes are rejected by the static
+   provisioner too. A future dynamic implementation additionally needs a
+   power-fail-safe data-migration journal before any live data partition
+   may move or resize.
    **Acceptance test — PASSED 2026-07-19 on quirky-plenty:** slots moved
    +0x1000 via tests/hw/ec618/partitions-shifted.yaml + provision.toit;
    the device booted the moved slot A from the record, the agent came up
@@ -110,22 +117,24 @@ The brainstorm sections are kept for reasoning; the decided shape is:
 Terminology: "the anchor" is the fixed location directly after the base
 image; "the anchor record" is the two-sector, ping-ponged record living
 there (toolchains/ec618/project/{inc/anchor.h,src/anchor.c}). One record
-= header + table entries + trailer, all sizes multiples of 16 (the flash
-write segment), so any entry count writes cleanly and the CRC lands in
-the final segment (written last → a torn write is detected):
+= header + known-good entries + trial entries + trailer, all sizes multiples
+of 16 (the flash write segment), so any entry count writes cleanly and the
+CRC lands in the final segment (written last → a torn write is detected):
 
     header (16 bytes):
       0   u16  magic 'T','A' (0x4154)
-      2   u8   version = 2
+      2   u8   version = 3
       3   u8   state                       (SLOT_STATE_*)
       4   u32  seq                         — higher valid record wins
       8   u8   active   'A'/'B'
       9   u8   pending  'A'/'B' or 0
-      10  u8   table_count N               (0 = no table)
-      11  u8   console                     (0/1/2 = console+control UART;
+      10  u8   active_count N
+      11  u8   pending_count M             (0 = no trial configuration)
+      12  u8   active_console              (0/1/2 = console+control UART;
                                             0xff = no redirect)
-      12  u8[4] reserved (0)
-    entries (N x 32 bytes), flash order:
+      13  u8   pending_console
+      14  u8[2] reserved (0)
+    entries ((N + M) x 32 bytes), known-good first, trial second:
       0   char name[16]                    — NUL-padded
       16  u32  offset                      — RAW flash address
       20  u32  size
@@ -137,25 +146,29 @@ the final segment (written last → a torn write is detected):
 
 The two-sector ping-pong, higher-seq-wins and write-the-other-sector
 rules carry over from the v1 slot marker. There is NO fallback anywhere:
-`anchor_table` returns 0 for a missing/corrupt record or one without a
-table, and the dispatcher then halts with a periodic console message —
-provisioning (gen-anchor.toit, run by `make ec618`) is what puts the
-record on flash. `anchor_write` keeps the 3-argument boot-state-flip
-signature and PRESERVES the stored table; `anchor_write_table` sets
-state+table atomically (the layout-change path). Consumers:
+`anchor_table_for_slot` returns 0 for a missing/corrupt record or one
+without a table, and the dispatcher then halts with a periodic console
+message — provisioning (gen-anchor.toit, run by `make ec618`) is what puts
+the record on flash. `anchor_stage` clones the known-good configuration;
+`anchor_set_pending_console` can only edit that NEW trial; consume preserves
+both; `anchor_validate` promotes the trial configuration; and
+`anchor_rollback` discards it. `anchor_stage_table` is base-only,
+fault-injection-tested scaffolding for a future migration implementation
+and is deliberately not exposed to Toit. Consumers:
 
-- The DISPATCHER boots from the active table's `slot` entries (first =
-  'A', second = 'B'). The `__vm_a_start`/`__vm_b_start` linker symbols
-  remain as the link-time reservation only.
+- The DISPATCHER first chooses the slot, then boots from that slot's table
+  entries (first = 'A', second = 'B'). The `__vm_a_start`/`__vm_b_start`
+  linker symbols remain as the link-time reservation only.
 - The VM reads everything at runtime over the frozen ABI: slot bases and
-  size via `anchor_table` (slot-size primitive included), the flash
+  size via `anchor_table_for_slot` (slot-size primitive included), the flash
   registry by locating the `registry` data entry, and the base-id page
   via the exported `__toit_base_id_start` symbol. Nothing layout-shaped
   is compiled into the slot image.
 - Host tools read partitions.yaml directly (tools/ec618/partitions.toit);
   the fault-injecting host test (tools/anchor_test, wired into
   `make ec618`) proves the record rules AND validates gen-anchor's bytes
-  through the real device reader.
+  through the real device reader. It also proves that a torn write cannot
+  mix boot state, console, or either table.
 
 ### 0.2 LittleFS shrink — implemented in base-v3 (2026-07-18)
 

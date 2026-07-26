@@ -1,7 +1,8 @@
 // Copyright (C) 2026 Toit contributors.
 //
-// Power-fail-safe active-slot marker for the dual-slot VM OTA. Record v2
-// carries the active partition table alongside the boot state.
+// Power-fail-safe active-slot marker for the dual-slot VM OTA. Record v3
+// carries separate known-good and trial configurations alongside the boot
+// state. A configuration is a partition table plus its console UART.
 //
 // The marker records which VM slot ('A'/'B') is the known-good one and,
 // during an OTA, which slot is on trial and how far the trial has
@@ -10,8 +11,8 @@
 // reader picks the valid record with the higher sequence number, and the
 // writer rewrites the *other* sector. One fully valid record therefore
 // always survives a power loss or torn write mid-update. Because the
-// table rides in the same record, boot state and flash layout flip as one
-// atomic unit — a rollback restores layout AND image.
+// configurations ride in the same record, boot state, flash layout and
+// console flip as one atomic unit — a rollback restores all three.
 //
 // Both the PLAT boot dispatcher (toit_main.c) and the VM primitives
 // (src/primitive_ec618.cc) use this module so the on-flash format and the
@@ -29,7 +30,7 @@ extern "C" {
 
 // Distinguishes a written record from erased flash (0xffff) or all-zero.
 #define ANCHOR_MAGIC ((uint16_t)0x4154)  // bytes 'T','A'
-#define ANCHOR_VERSION ((uint8_t)2)
+#define ANCHOR_VERSION ((uint8_t)3)
 
 // The unprovisioned base carries these bytes at the exact start of the
 // anchor region. gen-anchor verifies them before replacing both sectors,
@@ -37,11 +38,13 @@ extern "C" {
 // part of the AP image. This is a locator sentinel, not part of a written
 // anchor record.
 #define ANCHOR_SENTINEL_SIZE 16
-#define ANCHOR_SENTINEL_BYTES \
-  { 'T', 'O', 'I', 'T', '-', 'A', 'N', 'C', 'H', 'O', 'R', '-', 'V', '1', 0xa5, 0x5a }
+#define ANCHOR_SENTINEL_BYTES               \
+  {'T', 'O', 'I', 'T', '-', 'A', 'N',  'C', \
+   'H', 'O', 'R', '-', 'V', '1', 0xa5, 0x5a}
 
-// Cap on table entries the module stages in RAM (the on-flash format
-// allows up to 127 in a sector; the default table has 17).
+// Cap on entries in either configuration. Two maximum-sized tables plus
+// header/trailer fit comfortably in one 4 KiB record sector; the default
+// table has 17 entries.
 #define ANCHOR_MAX_ENTRIES 32
 
 // Trial state of the `pending` slot. Only meaningful when pending != 0.
@@ -66,8 +69,8 @@ enum {
 // One partition-table entry as stored in the record (32 bytes — a
 // multiple of the 16-byte flash write segment for any entry count).
 typedef struct {
-  char name[16];      // NUL-padded.
-  uint32_t offset;    // RAW flash address (add TOIT_PART_XIP_OFFSET for XIP).
+  char name[16];    // NUL-padded.
+  uint32_t offset;  // RAW flash address (add TOIT_PART_XIP_OFFSET for XIP).
   uint32_t size;
   uint8_t type;
   uint8_t reserved[7];
@@ -76,25 +79,30 @@ typedef struct {
 // The logical boot state of the current record. (The on-flash layout —
 // header + table entries + CRC trailer — is private to anchor.c.)
 typedef struct {
-  uint8_t state;      // One of SLOT_STATE_*.
-  uint32_t seq;       // Monotonic; the higher valid record wins.
-  uint8_t active;     // 'A'/'B': last KNOWN-GOOD slot.
-  uint8_t pending;    // 'A'/'B', or 0 = no trial in progress.
+  uint8_t state;    // One of SLOT_STATE_*.
+  uint32_t seq;     // Monotonic; the higher valid record wins.
+  uint8_t active;   // 'A'/'B': last KNOWN-GOOD slot.
+  uint8_t pending;  // 'A'/'B', or 0 = no trial in progress.
 } slot_record;
 
-// The provisioned console/control UART: 0/1/2 = that UART carries printf
+// A configuration's console/control UART: 0/1/2 = that UART carries printf
 // and the mini-jag control protocol; ANCHOR_CONSOLE_OFF = no redirect.
-// Per-device provisioning state (gen-anchor --console-uart), preserved by
-// every write; the base reads it before its first print, the VM's
-// console-uart-id primitive and the uart driver's shared-port check follow
-// it. Defaults to UART0 when no record exists so an unprovisioned
-// device's halt loop stays visible.
 #define ANCHOR_CONSOLE_OFF ((uint8_t)0xff)
-uint8_t anchor_console(void);
 
-// Rewrites the record with a new console byte, preserving boot state and
-// table. Same program-mode requirement as anchor_write.
-bool anchor_set_console(uint8_t console);
+// Returns the console to initialize before the dispatcher runs: the trial
+// console for a NEW record, otherwise the known-good console. Defaults to
+// UART0 when no record exists so an unprovisioned halt loop stays visible.
+uint8_t anchor_boot_console(void);
+
+// Returns the console attached to `slot`: the trial console when `slot` is
+// the pending slot, otherwise the known-good console.
+uint8_t anchor_console_for_slot(uint8_t slot);
+
+// Changes the console attached to the staged OTA. This is intentionally
+// rejected unless a NEW trial exists: changing the running/known-good
+// image's console outside an OTA transaction would make rollback ambiguous.
+// Same program-mode requirement as the transition functions below.
+bool anchor_set_pending_console(uint8_t console);
 
 // Reads the current valid record (higher seq) into `out`. Returns true if
 // a stored record was found; false if neither sector held a valid record
@@ -103,32 +111,54 @@ bool anchor_set_console(uint8_t console);
 // Pure flash reads (XIP) — safe at early boot, needs no program mode.
 bool anchor_read(slot_record* out);
 
-// Copies the ACTIVE partition table into out[0..max) and returns the
-// entry count. Returns 0 when no valid record exists or the record
-// carries no table — there is NO compiled-in fallback: the table is
-// written at provisioning time and a device without one cannot boot
-// (the dispatcher halts loudly). Pure XIP reads.
-int anchor_table(partition_entry* out, int max);
+// Copies the configuration attached to `slot` into out[0..max) and returns
+// the entry count. When `slot` is the pending slot this is the trial table;
+// otherwise it is the known-good table. Returns 0 when no valid record exists
+// or the selected configuration has no table. Pure XIP reads.
+int anchor_table_for_slot(uint8_t slot, partition_entry* out, int max);
 
-// Commits a new {active, pending, state}, PRESERVING the stored table
-// (a record without a table stays without one — plain boot-state flips
-// never bake a layout in). magic/version/seq/crc are filled internally;
-// seq is set to (current max valid seq) + 1. Erases and writes only the
-// sector that does NOT hold the current valid record, so the live record
-// is never destroyed. Returns true on success.
+// Stages `pending` as a NEW trial of `active`, cloning the known-good
+// configuration for it. Rejected if another trial already exists. This is
+// the currently exposed OTA path: layout changes are deliberately unavailable.
+bool anchor_stage(uint8_t active, uint8_t pending);
+
+// Same transaction, with an explicitly supplied trial configuration. Kept at
+// the base layer and covered by host tests so a future migration implementation
+// has power-fail-safe machinery to build on; it is not exposed to Toit yet.
+bool anchor_stage_table(uint8_t active,
+                        uint8_t pending,
+                        const partition_entry* table,
+                        int count,
+                        uint8_t console);
+
+// Persists NEW -> PENDING_VERIFY without changing either configuration.
+bool anchor_consume_trial(uint8_t active, uint8_t pending);
+
+// Promotes the pending slot and its configuration atomically, clearing the
+// trial. Rejected unless `slot` is the pending slot.
+bool anchor_validate(uint8_t slot);
+
+// Discards the pending slot and its configuration atomically, retaining the
+// known-good slot/configuration.
+bool anchor_rollback(void);
+
+// All transition functions fill magic/version/seq/crc internally, set seq to
+// (current max valid seq) + 1, and rewrite only the sector that does NOT hold
+// the current valid record. The live record therefore survives a torn write.
 //
 // REQUIRES the caller to have enabled firmware program/erase mode
 // (fotaNvmNfsPeInit(1)) — the anchor lives in the protected AP-image
 // region. The modify window consulted by sysROSpaceCheck is managed
 // internally (saved and restored).
-bool anchor_write(uint8_t active, uint8_t pending, uint8_t state);
-
-// Commits boot state AND table as one atomic record (the provisioning /
-// layout-change path). `count` must be <= ANCHOR_MAX_ENTRIES;
-// `table` may be NULL with count 0 to strip the table. Same program-mode
-// requirement as anchor_write.
-bool anchor_write_table(uint8_t active, uint8_t pending, uint8_t state,
-                             const partition_entry* table, int count);
+//
+// Writes the initial known-good slot/configuration. `pending` must be zero,
+// `state` must be NONE, and `count` must be <= ANCHOR_MAX_ENTRIES. This is the
+// provisioning path used by the host-generated record and anchor tests.
+bool anchor_write_table(uint8_t active,
+                        uint8_t pending,
+                        uint8_t state,
+                        const partition_entry* table,
+                        int count);
 
 #ifdef __cplusplus
 }

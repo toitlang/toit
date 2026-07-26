@@ -17,8 +17,9 @@
 EC618 dual-slot OTA helpers with esp-idf-style trial boot + rollback.
 
 The EC618 AP image carries two VM slots, each $SLOT-SIZE bytes at XIP addresses
-  supplied by the active partition table. A power-fail-safe anchor record
-  tracks the table, which slot is known-good, and which, if any, is on trial.
+  supplied by the booted image's partition table. A power-fail-safe anchor
+  record tracks separate known-good and trial configurations (partition table
+  plus console UART), which slot is known-good, and which, if any, is on trial.
 
 A newly written slot is *staged* as a trial rather than activated outright. On
   the next boot the dispatcher runs it once; the new image must $validate
@@ -44,7 +45,8 @@ After the reboot the new image runs. Once it has confirmed itself healthy
 slot.validate
 ```
 
-If it never validates, the next reset rolls back to the previous slot.
+If it never validates, the next reset rolls back to the previous slot,
+  partition table, and console.
   $trial reports whether the running image is an unconfirmed trial.
 */
 
@@ -126,7 +128,8 @@ reloc-end -> none:
 Stages the freshly-written inactive slot as a trial and resets the chip
   so it boots into that slot. Does not return.
 
-The known-good slot is left unchanged; the new slot boots *on trial*.
+The known-good slot/configuration is left unchanged; the new slot boots *on
+  trial* with a cloned configuration.
   The dispatcher records that it has run the trial once, so a crashing or
   hanging image is automatically rolled back on the next reset. The new
   image must call $validate to keep the change permanent.
@@ -150,9 +153,9 @@ stage -> none:
   #primitive.ec618.slot-stage
 
 /**
-Confirms the slot the runtime is running from: promotes it to the
-  known-good slot and cancels the pending rollback. Call this once the new
-  image has verified it is healthy. Returns normally (no reset).
+Confirms the slot the runtime is running from: promotes its partition table
+  and console with it, then cancels the pending rollback. Call this once the
+  new image has verified it is healthy. Returns normally (no reset).
 
 A no-op-equivalent when not running a trial (it simply re-asserts the
   current slot as known-good).
@@ -161,9 +164,10 @@ validate -> none:
   #primitive.ec618.slot-mark-valid
 
 /**
-Rejects the slot the runtime is running from and resets back to the
-  previous known-good slot (esp-idf's invalid-rollback-and-reboot). Use
-  when the running image detects it cannot function. Does not return.
+Rejects the pending trial and resets back to the previous known-good slot,
+  partition table, and console (esp-idf's invalid-rollback-and-reboot). Use
+  when the trial image detects it cannot function. Throws when the running
+  image is not a trial; otherwise it does not return.
 */
 mark-invalid-and-reset -> none:
   #primitive.ec618.slot-mark-invalid-and-reset

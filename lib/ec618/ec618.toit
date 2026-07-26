@@ -623,12 +623,13 @@ class Ec618:
     return adc.Adc.channel 1 --max-voltage=max-voltage
 
 /**
-Sets the provisioned console/control UART in the anchor record.
+Attaches a console/control UART to the freshly staged OTA.
 
-The $id selects UART 0, 1 or 2; 0xff disables the redirect. Takes effect
-  on the NEXT boot: the base reads the byte before its first print, and
-  the mini-jag agent follows it via $console-uart-id. Per-device
-  provisioning state — it survives OTAs and resets.
+The $id selects UART 0, 1 or 2; 0xff disables the redirect. This function
+  must be called after the new image has been committed and before it is
+  rebooted on trial; otherwise it throws. The change takes effect when the
+  trial boots. Validation promotes the new console with the image, while
+  rollback restores the previous image's console.
 */
 set-console-uart id/int -> none:
   #primitive.ec618.console-uart-set

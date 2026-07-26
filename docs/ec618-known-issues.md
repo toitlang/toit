@@ -650,17 +650,19 @@ also never shared its console with the control lane (UART0 vs UART1),
 so the shared-UART1 path was the standing suspect.
 
 **What it is NOT (2026-07-17 campaign).** The shared-console-on-UART1
-software path is exonerated, warm case. `modest-affair` was flipped to
-quirky's exact configuration at runtime (`ec618.set-console-uart 1` +
-watchdog reboot — one universal base, no reflash) and probed over the
+software path is exonerated, warm case. Under the then-current v2 anchor
+semantics, `modest-affair` was flipped to quirky's exact configuration
+(`ec618.set-console-uart 1` + watchdog reboot — one universal base, no
+reflash) and probed over the
 wired UART1 lane (ESP32 IO16/IO4) through a TCP bridge
 (tests/hw/esp-tester/dual-bridge-esp32.toit + socat PTY). Boot-ROM
 banner noise on the lane included, the replica answered at ping 1 at
 t+5 s, t+40 s and t+55 s into idle watchdog cycles, and after 220 s of
 uptime followed by a 55 s idle window. The #10 sleep vote demonstrably
 holds on a UART1 control lane exactly as on UART0. The flip and the
-way back (the UART2 rescue lane, HW-validated the same day) are cheap
-to repeat.
+way back (the UART2 rescue lane, HW-validated the same day) worked. Record
+v3 now attaches console changes to a freshly staged OTA transaction, so
+repeating this experiment requires staging a trial first.
 
 **Remaining suspects, in order.**
 1. **Quirky's CH340 dongle path** (host→device direction wedging looks

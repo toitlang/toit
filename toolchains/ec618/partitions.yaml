@@ -24,7 +24,7 @@
 #   locked   - vendor/boot territory; never managed or moved by Toit.
 #   base     - the frozen AP/PLAT base image (max extent; frozen ABI edge).
 #   base-id  - the base version+fingerprint page the OTA gate checks.
-#   anchor   - the anchor record (boot state + the active table).
+#   anchor   - the anchor record (boot state + known-good/trial configs).
 #   slot     - a VM slot (relocate-on-write target).
 #   data     - Toit-managed data (flash registry today).
 #   free     - available; becomes user-assignable via table edits.

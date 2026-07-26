@@ -104,22 +104,21 @@ PRIMITIVE(console_uart_id) {
   // if the redirect was disabled at build time. This lets test programs
   // adapt to whichever firmware variant is loaded without rebuilding.
 #if CONFIG_TOIT_EC618_PRINT_UART
-  int console = anchor_console();
+  int console = anchor_console_for_slot(toit_booted_slot);
   return Smi::from(console > 2 ? -1 : console);
 #else
   return Smi::from(-1);
 #endif
 }
 
-// Sets the provisioned console/control UART in the anchor record (0/1/2,
-// or 0xff to disable the redirect). Takes effect on the NEXT boot — the
-// base reads the byte before its first print. Preserves boot state and
-// table; brackets the flash write in program mode like the dispatcher.
+// Attaches a console/control UART to the freshly staged OTA (0/1/2, or
+// 0xff to disable the redirect). Takes effect when that trial boots and is
+// promoted or discarded with it. Rejected unless a NEW trial exists.
 PRIMITIVE(console_uart_set) {
   ARGS(int, console);
   if (console != 0xff && (console < 0 || console > 2)) FAIL(INVALID_ARGUMENT);
   fotaNvmNfsPeInit(1);
-  bool ok = anchor_set_console((uint8_t)console);
+  bool ok = anchor_set_pending_console((uint8_t)console);
   fotaNvmNfsPeInit(0);
   if (!ok) FAIL(ERROR);
   return process->null_object();
@@ -130,7 +129,7 @@ PRIMITIVE(console_uart_set) {
 // primitives let a Toit container receive a new VM image, write it
 // into whichever slot isn't currently active, and atomically switch.
 
-// The ACTIVE partition table, read from the anchor record on first use.
+// The booted image's partition table, read from the anchor on first use.
 // The dispatcher refuses to boot without a valid table, so the zero-count
 // case cannot happen in practice; it just makes every geometry lookup
 // (and with it every bounds check) fail closed.
@@ -142,7 +141,8 @@ static int vm_table_count = -1;
 // data, and the count is published after the entries.
 static const partition_entry* slot_entry(uint8_t slot) {
   if (vm_table_count < 0) {
-    int count = anchor_table(vm_table, ANCHOR_MAX_ENTRIES);
+    int count = anchor_table_for_slot(
+        toit_booted_slot, vm_table, ANCHOR_MAX_ENTRIES);
     vm_table_count = count;  // Published after the entries.
   }
   int seen = 0;
@@ -154,13 +154,13 @@ static const partition_entry* slot_entry(uint8_t slot) {
   return null;
 }
 
-// XIP base address of slot `slot` per the active table.
+// XIP base address of slot `slot` per the booted image's table.
 static uint32_t slot_base_xip(uint8_t slot) {
   const partition_entry* entry = slot_entry(slot);
   return entry ? (entry->offset + AP_FLASH_XIP_ADDR) : 0;
 }
 
-// Size of one VM slot per the active table (both slots share one size).
+// Size of one VM slot per the booted image's table (both slots share one size).
 // Every erase/write below is bounds-checked against it so a buggy Toit
 // caller can't run off the end of a slot into neighboring regions.
 static uint32_t slot_size() {
@@ -492,7 +492,7 @@ PRIMITIVE(slot_inactive_write) {
 // flash primitives above). Returns only if the marker write fails.
 PRIMITIVE(slot_stage_and_reset) {
   PRIVILEGED;
-  if (!anchor_write(toit_booted_slot, inactive_slot(), SLOT_STATE_NEW)) {
+  if (!anchor_stage(toit_booted_slot, inactive_slot())) {
     printf("[toit] ERROR: slot stage (marker write) failed\n");
     FAIL(QUOTA_EXCEEDED);
   }
@@ -506,7 +506,7 @@ PRIMITIVE(slot_stage_and_reset) {
 // slot_stage_and_reset, minus the reset. Returns normally.
 PRIMITIVE(slot_stage) {
   PRIVILEGED;
-  if (!anchor_write(toit_booted_slot, inactive_slot(), SLOT_STATE_NEW)) {
+  if (!anchor_stage(toit_booted_slot, inactive_slot())) {
     printf("[toit] ERROR: slot stage (marker write) failed\n");
     FAIL(QUOTA_EXCEEDED);
   }
@@ -521,7 +521,7 @@ PRIMITIVE(slot_stage) {
 PRIMITIVE(slot_mark_valid) {
   PRIVILEGED;
   fotaNvmNfsPeInit(1);
-  bool ok = anchor_write(toit_booted_slot, 0, SLOT_STATE_NONE);
+  bool ok = anchor_validate(toit_booted_slot);
   fotaNvmNfsPeInit(0);
   if (!ok) {
     printf("[toit] ERROR: slot validate (marker write) failed\n");
@@ -531,21 +531,17 @@ PRIMITIVE(slot_mark_valid) {
   return process->null_object();
 }
 
-// Reject the slot we are running from and reset back to the known-good
-// slot (esp-idf's mark_app_invalid_rollback_and_reboot). Reads the record
-// to learn which slot is the known-good `active` to fall back to. Returns
-// only if the marker write fails.
+// Reject the pending trial and reset back to the known-good slot/config.
+// Rejected when the running image is not the pending trial.
 PRIMITIVE(slot_mark_invalid_and_reset) {
   PRIVILEGED;
   slot_record rec;
   anchor_read(&rec);
-  // If we are the pending trial, fall back to the record's active; otherwise
-  // (already the active slot) there is nothing to roll back to but the
-  // other slot, so target it.
-  uint8_t fallback = (rec.pending == toit_booted_slot) ? rec.active : inactive_slot();
+  if (rec.pending != toit_booted_slot) FAIL(INVALID_ARGUMENT);
+  uint8_t fallback = rec.active;
 
   fotaNvmNfsPeInit(1);
-  bool ok = anchor_write(fallback, 0, SLOT_STATE_NONE);
+  bool ok = anchor_rollback();
   fotaNvmNfsPeInit(0);
   if (!ok) {
     printf("[toit] ERROR: slot invalidate (marker write) failed\n");

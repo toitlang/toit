@@ -79,9 +79,10 @@ build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit run \
     --port-board1 <ec618-console> tests/hw/ec618/<name>-ec618.toit
 ```
 
-Pass an argument to a test with `--arg <value>` (reaches the container's `args`).
-Example — flip the console UART then let the watchdog reboot into it:
-`... run --arg 1 tests/hw/ec618/console-set-ec618.toit`.
+Pass an argument to a test with `--arg <value>` (reaches the container's
+`args`). `tests/hw/ec618/console-set-ec618.toit` is only for the narrow window
+after an OTA has been staged and before it is rebooted on trial; a standalone
+console change is deliberately rejected.
 
 ## OTA (both rigs, over the console UART)
 
@@ -94,6 +95,12 @@ build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit firmware-update \
 Streams the image to the inactive slot, reboots on trial, smoke-tests, and
 validates (permanent) unless `--no-validate`. This is the fast inner loop for
 slot-side changes — no full flash needed.
+
+Pass `--console-uart=<id>` to attach a new console to the staged image between
+commit and reboot. The tester runs the same transactional setter as
+`console-set-ec618.toit`; validation promotes the console with the image and
+rollback restores the known-good console. `firmware-validate-ec618.toit` is a
+manual rig utility for promoting a trial deliberately left unvalidated.
 
 ### Running a test larger than the 64 KiB flash registry
 

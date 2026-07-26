@@ -35,6 +35,7 @@
 #include "luat_rtos.h"
 #include "mem_map.h"    // AP_FLASH_XIP_ADDR.
 #include "anchor.h"
+#include "reset.h"
 
 // From the SDK FOTA layer: opens the protected AP-image region for
 // program/erase. Required around any anchor write (the anchor lives in
@@ -59,12 +60,10 @@ typedef void (*toit_start_fn)(void);
 
 static luat_rtos_task_handle toit_task_handle;
 
-// The ACTIVE partition table, read from the anchor record once at boot.
-// The dispatcher boots from ITS slot entries — this is what makes the
-// layout follow the record instead of the link: the first `slot` entry
-// is 'A', the second is 'B'. There is NO compiled-in fallback: the record
-// is written at provisioning time, and a device without a valid one
-// cannot boot (see load_boot_table).
+// The partition table attached to the slot selected for this boot. During
+// a trial this is the pending table; after rollback it is the known-good
+// table. The dispatcher boots from ITS slot entries, making layout and
+// image switch atomically. There is NO compiled-in fallback.
 static partition_entry boot_table[ANCHOR_MAX_ENTRIES];
 static int boot_table_count;
 
@@ -80,7 +79,7 @@ static const partition_entry* slot_entry(uint8_t slot) {
   return NULL;
 }
 
-// Returns the XIP base of slot `slot` ('A'/'B') per the active table.
+// Returns the XIP base of slot `slot` ('A'/'B') per this boot's table.
 static const uint32_t* slot_base(uint8_t slot) {
   return (const uint32_t*)(uintptr_t)(slot_entry(slot)->offset + AP_FLASH_XIP_ADDR);
 }
@@ -96,14 +95,15 @@ static bool slot_entry_ok(uint8_t slot) {
   return (entry & 1u) && entry >= lo && entry < lo + slot_entry(slot)->size;
 }
 
-// Loads the active table. A device whose anchor record is missing,
+// Loads the table attached to `slot`. A device whose anchor record is missing,
 // corrupt, or has no two bootable slots CANNOT boot — halt loudly
 // (periodic print so a console shows why) instead of jumping into
 // garbage. Reaching this state means provisioning never ran or the
 // anchor sectors were destroyed; the ping-ponged record makes power
 // loss unable to cause it.
-static void load_boot_table(void) {
-  boot_table_count = anchor_table(boot_table, ANCHOR_MAX_ENTRIES);
+static void load_boot_table(uint8_t slot) {
+  boot_table_count =
+      anchor_table_for_slot(slot, boot_table, ANCHOR_MAX_ENTRIES);
   while (boot_table_count == 0 || slot_entry('A') == NULL || slot_entry('B') == NULL) {
     printf("[toit] ERROR: no valid partition table at the anchor — cannot boot. "
            "Reflash the device (provisioning writes the table).\n");
@@ -111,13 +111,29 @@ static void load_boot_table(void) {
   }
 }
 
-// Persists an anchor transition, bracketed by program/erase mode (the
-// marker is in the protected AP image). Returns anchor_write's result.
-static bool dispatcher_commit(uint8_t active, uint8_t pending, uint8_t state) {
+// Consumes a NEW trial, bracketed by program/erase mode.
+static bool dispatcher_consume(uint8_t active, uint8_t pending) {
   fotaNvmNfsPeInit(1);
-  bool ok = anchor_write(active, pending, state);
+  bool ok = anchor_consume_trial(active, pending);
   fotaNvmNfsPeInit(0);
   return ok;
+}
+
+// Discards a failed trial, bracketed by program/erase mode.
+static bool dispatcher_rollback(void) {
+  fotaNvmNfsPeInit(1);
+  bool ok = anchor_rollback();
+  fotaNvmNfsPeInit(0);
+  return ok;
+}
+
+// A NEW record selects the trial console before this task starts. If we then
+// cannot arm or boot that trial, reset instead of running the known-good image
+// through a controller initialized for the wrong configuration. A
+// PENDING_VERIFY record selects the known-good console on the next boot.
+static __attribute__((noreturn)) void dispatcher_reset(void) {
+  ResetECSystemReset();
+  while (1) { /* unreachable */ }
 }
 
 // Runs the trial/rollback state machine and returns the slot to boot.
@@ -130,18 +146,18 @@ static uint8_t choose_boot_slot(void) {
       // Consume the trial before running the VM. If we cannot persist that
       // fact, fail safe to the known-good slot rather than risk an
       // un-rollback-able crash loop on the pending slot.
-      if (dispatcher_commit(rec.active, rec.pending, SLOT_STATE_PENDING_VERIFY)) {
+      if (dispatcher_consume(rec.active, rec.pending)) {
         printf("[toit] INFO: trial boot of slot %c (was %c)\n", rec.pending, rec.active);
         return rec.pending;
       }
-      printf("[toit] ERROR: could not arm trial of slot %c; booting %c\n",
-             rec.pending, rec.active);
-      return rec.active;
+      printf("[toit] ERROR: could not arm trial of slot %c; resetting safely\n",
+             rec.pending);
+      dispatcher_reset();
     }
     // PENDING_VERIFY: a prior trial boot never confirmed itself -> abort it.
     // Booting `active` is correct even if the clear-write fails (the next
     // boot just retries the same rollback).
-    dispatcher_commit(rec.active, 0, SLOT_STATE_NONE);
+    dispatcher_rollback();
     printf("[toit] INFO: rollback to slot %c (trial of %c not confirmed)\n",
            rec.active, rec.pending);
     return rec.active;
@@ -152,13 +168,21 @@ static uint8_t choose_boot_slot(void) {
 
 static void toit_task(void *param) {
   printf("[toit] INFO: dispatcher starting\n");
-  load_boot_table();
-  printf("[toit] INFO: anchor table: %d entries\n", boot_table_count);
   uint8_t slot = choose_boot_slot();
+  load_boot_table(slot);
+  printf("[toit] INFO: anchor table for slot %c: %d entries\n",
+         slot, boot_table_count);
 
   // Refuse to jump into a slot whose entry pointer looks broken; prefer the
   // other slot if it looks good.
   if (!slot_entry_ok(slot)) {
+    slot_record rec;
+    anchor_read(&rec);
+    if (rec.pending == slot) {
+      printf("[toit] ERROR: trial slot %c entry invalid; rolling back\n", slot);
+      dispatcher_rollback();
+      dispatcher_reset();
+    }
     uint8_t other = (slot == 'B') ? 'A' : 'B';
     printf("[toit] WARN: slot %c entry invalid\n", slot);
     if (slot_entry_ok(other)) slot = other;

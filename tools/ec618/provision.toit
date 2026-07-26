@@ -4,8 +4,9 @@
 // descriptor — the "firmware and partition table are independent
 // artifacts" contract:
 //
-//   1. finds the image's current anchor record (its table names where
-//      slot A and the base live — no layout constants here);
+//   1. reads the partition table embedded in the input AP image's anchor
+//      record (that table names where slot A and the base currently live;
+//      there is no separate user-managed "source record");
 //   2. lifts the whole slot-A reservation, un-relocates the VM body back
 //      to the canonical (link-base) domain using the merged relocation
 //      table at the slot's tail, and re-relocates it to the target
@@ -44,9 +45,11 @@ ZONE-HEADER-SIZE ::= 364
 main args:
   cmd := cli.Command "provision"
       --help="""
-        Retargets a provisioned AP image (slots + anchor record) to a
-        different partition descriptor. The output AP zone is normalized
-        through the end of the descriptor's last slot reservation.
+        Retargets a provisioned AP image to a different partition
+        descriptor. The input layout comes from the anchor record already
+        embedded in --image; --partitions selects the output layout. The
+        output AP zone is normalized through the end of the selected
+        descriptor's last slot reservation.
         """
       --options=[
         cli.Option "image"
@@ -117,15 +120,15 @@ Retargets the raw AP $image (its slots and anchor record) to the $target
   descriptor and returns the new image.
 */
 retarget image/ByteArray target/Partitions --ui/cli.Ui --console/int?=null -> ByteArray:
-  source-entries := find-anchor-table image
-  if source-entries == null:
+  input-entries := find-anchor-table image
+  if input-entries == null:
     ui.abort "no anchor record in the AP image — provision the default layout first (gen-anchor.toit)"
 
-  source-base := first-of source-entries "base"
-  source-slot := first-of source-entries "slot"
-  source-anchor := first-of source-entries "anchor"
-  if source-base == null or source-slot == null or source-anchor == null:
-    ui.abort "source table lacks base/slot/anchor entries"
+  input-base := first-of input-entries "base"
+  input-slot := first-of input-entries "slot"
+  input-anchor := first-of input-entries "anchor"
+  if input-base == null or input-slot == null or input-anchor == null:
+    ui.abort "the table embedded in the input image lacks base/slot/anchor entries"
 
   target-base := first-of target.entries "base"
   target-slot := first-of target.entries "slot"
@@ -134,13 +137,13 @@ retarget image/ByteArray target/Partitions --ui/cli.Ui --console/int?=null -> By
   // Guardrails: the frozen territory must not move, slot sizes must
   // match (the image is built for its reservation), and data partitions
   // must not move relative to the source (they may hold live bytes).
-  if target-base.offset != source-base.offset or target-base.size != source-base.size:
+  if target-base.offset != input-base.offset or target-base.size != input-base.size:
     ui.abort "the base partition cannot move (frozen contract)"
-  if (target["anchor"].offset) != source-anchor.offset:
+  if (target["anchor"].offset) != input-anchor.offset:
     ui.abort "the anchor cannot move without a base bump (it is the findable spot)"
-  if target-slot.size != source-slot.size:
-    ui.abort "slot size 0x$(%x target-slot.size) != image's 0x$(%x source-slot.size) — rebuild, don't retarget"
-  source-entries.do: | p/Partition |
+  if target-slot.size != input-slot.size:
+    ui.abort "slot size 0x$(%x target-slot.size) != image's 0x$(%x input-slot.size) — rebuild, don't retarget"
+  input-entries.do: | p/Partition |
     if p.type == "data":
       t := target.entries.filter: it.name == p.name
       if t.is-empty or t[0].offset != p.offset or t[0].size != p.size:
@@ -148,8 +151,8 @@ retarget image/ByteArray target/Partitions --ui/cli.Ui --console/int?=null -> By
 
   // Lift the slot-A reservation and read the merged relocation table at
   // its tail: [ table ][ size : last u32 ].
-  src-file := source-slot.offset - source-base.offset
-  slot-size := source-slot.size
+  src-file := input-slot.offset - input-base.offset
+  slot-size := input-slot.size
   if src-file + slot-size > image.size:
     ui.abort "image ($image.size bytes) does not span the source slot reservation"
   slot-bytes := image.copy src-file (src-file + slot-size)
@@ -161,7 +164,7 @@ retarget image/ByteArray target/Partitions --ui/cli.Ui --console/int?=null -> By
   // Un-relocate the body to canonical, re-relocate to the target slot.
   // The .data init and the tail trailer are position-independent and ride
   // along verbatim.
-  src-xip := source-slot.offset + target.xip-offset
+  src-xip := input-slot.offset + target.xip-offset
   tgt-xip := target-slot.offset + target.xip-offset
   body := slot-bytes[.. merged.body-size]
   merged.apply body --base=0 --delta=(src-xip - merged.link-base) --direction=TO-CANONICAL
@@ -184,11 +187,11 @@ retarget image/ByteArray target/Partitions --ui/cli.Ui --console/int?=null -> By
   out.fill --from=src-file --to=(src-file + slot-size) 0xff
   tgt-file := target-slot.offset - target-base.offset
   out.replace tgt-file slot-bytes
-  anchor-file := source-anchor.offset - source-base.offset
-  // Console byte: explicit override, else preserved from the source
-  // record (per-device provisioning survives a retarget).
+  anchor-file := input-anchor.offset - input-base.offset
+  // Known-good console: explicit override, else preserved from the input
+  // image. This is static provisioning, not a live-device OTA transaction.
   effective-console := console or (find-anchor-console image) or 0
   out.replace anchor-file (encode-anchor-region target --console=effective-console)
 
-  print "provision: slot A 0x$(%x source-slot.offset) -> 0x$(%x target-slot.offset)"
+  print "provision: slot A 0x$(%x input-slot.offset) -> 0x$(%x target-slot.offset)"
   return out + (sha256 out)

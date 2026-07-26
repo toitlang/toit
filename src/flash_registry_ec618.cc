@@ -23,12 +23,13 @@ extern "C" {
   #include "anchor.h"
   #include "flash_rt.h"
   #include "mem_map.h"
+  extern uint8_t toit_booted_slot;
 }
 
 namespace toit {
 
-// The flash registry lives in the `registry` partition of the ACTIVE
-// table (the anchor record) — historically the SDK's FDB region, which is
+// The flash registry lives in the `registry` partition of the booted
+// image's table — historically the SDK's FDB region, which is
 // outside the AP image area and not protected by sysROSpaceCheck. Located
 // at runtime in set_up(); the zero fallback cannot happen in practice
 // (the dispatcher refuses to boot without a valid table) and just makes
@@ -38,7 +39,8 @@ static int registry_size = 0;
 
 static void locate_registry() {
   partition_entry table[ANCHOR_MAX_ENTRIES];
-  int count = anchor_table(table, ANCHOR_MAX_ENTRIES);
+  int count =
+      anchor_table_for_slot(toit_booted_slot, table, ANCHOR_MAX_ENTRIES);
   for (int i = 0; i < count; i++) {
     if (table[i].type == PARTITION_TYPE_DATA && strncmp(table[i].name, "registry", sizeof(table[i].name)) == 0) {
       registry_offset = table[i].offset;

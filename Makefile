@@ -322,14 +322,14 @@ ec618: check-env host-tools
 		--slot-bin=$(BUILD)/ec618/slot-b.slotbin \
 		--slot-address=0x$$($(EC618_GCC_PATH)/bin/arm-none-eabi-nm $(EC618_BASE_DIR)/base.elf | awk '$$3=="__vm_b_start"{print $$1}') \
 		--out=$(BUILD)/ec618/ap-slot-b.bin
-	# Prove the anchor record module (boot state + partition table, the
-	# power-fail rules) on the host against a fault-injecting flash emulator.
+	# Prove the anchor record module (boot state + known-good/trial
+	# configurations and power-fail rules) against a flash emulator.
 	$(CC) -Wall -Wextra -O2 -I tools/anchor_test -I toolchains/ec618/project/inc \
 		tools/anchor_test/test.c toolchains/ec618/project/src/anchor.c -o $(BUILD)/ec618/anchor_test
 	$(BUILD)/ec618/anchor_test
-	# Provision the anchor record (boot state + the ACTIVE partition table)
-	# into both AP images — a fresh flash without it refuses to boot, by
-	# design — and validate the region bytes through the REAL device reader.
+	# Provision the anchor record (boot state + initial known-good table and
+	# console) into both AP images — a fresh flash without it refuses to boot,
+	# by design — and validate the bytes through the REAL device reader.
 	$(TOIT_BIN) run --project-root tools tools/ec618/gen-anchor.toit -- \
 		--out=$(BUILD)/ec618/anchor-region.bin \
 		--splice=$(BUILD)/ec618/ap-slot-a.bin --splice=$(BUILD)/ec618/ap-slot-b.bin

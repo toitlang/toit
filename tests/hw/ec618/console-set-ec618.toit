@@ -5,20 +5,18 @@
 import ec618
 
 /**
-Sets the console byte in the anchor record (rig utility, not a test).
+Sets the freshly staged OTA's console (rig utility, not a test).
 
 The target UART id comes in as the test argument.
 
-The change takes effect at the NEXT boot: the running agent keeps its
-  current control UART, and on a rig the mini-jag general watchdog reboots
-  the device ~60 s after the host goes quiet — so simply stop talking and
-  the new console comes up on its own. The way back is the same helper via
-  whichever lane still reaches the agent (worst case the UART2 rescue lane,
-  which arms 45 s into any un-contacted boot when the console is not 2).
+The device must already carry a NEW trial staged by an OTA commit. The
+  change takes effect when that trial boots; validation promotes it and
+  rollback restores the known-good image's console. Calling this utility
+  without a staged trial is expected to fail.
 */
 
 main args:
   target := int.parse args[0]
   before := ec618.console-uart-id
   ec618.set-console-uart target
-  print "console-set: anchor console byte $before -> $target (takes effect at next boot)"
+  print "console-set: staged console $before -> $target (takes effect with the trial)"

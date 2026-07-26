@@ -388,11 +388,16 @@ extern void rngGenRandom(void);
 extern void round(void);
 extern void sin(void);
 extern void sinh(void);
-extern void anchor_console(void);
+extern void anchor_boot_console(void);
+extern void anchor_console_for_slot(void);
+extern void anchor_consume_trial(void);
 extern void anchor_read(void);
-extern void anchor_set_console(void);
-extern void anchor_table(void);
-extern void anchor_write(void);
+extern void anchor_rollback(void);
+extern void anchor_set_pending_console(void);
+extern void anchor_stage(void);
+extern void anchor_stage_table(void);
+extern void anchor_table_for_slot(void);
+extern void anchor_validate(void);
 extern void anchor_write_table(void);
 extern void slpManAONIOLatchEn(void);
 // The RTC-backed libc time shims (--wrap=time & friends): only slot code
@@ -885,11 +890,16 @@ const void* const toit_plat_keep[] = {
   (const void*)&round,
   (const void*)&sin,
   (const void*)&sinh,
-  (const void*)&anchor_console,
+  (const void*)&anchor_boot_console,
+  (const void*)&anchor_console_for_slot,
+  (const void*)&anchor_consume_trial,
   (const void*)&anchor_read,
-  (const void*)&anchor_set_console,
-  (const void*)&anchor_table,
-  (const void*)&anchor_write,
+  (const void*)&anchor_rollback,
+  (const void*)&anchor_set_pending_console,
+  (const void*)&anchor_stage,
+  (const void*)&anchor_stage_table,
+  (const void*)&anchor_table_for_slot,
+  (const void*)&anchor_validate,
   (const void*)&anchor_write_table,
   (const void*)&slpManAONIOLatchEn,
   (const void*)&__wrap_time,

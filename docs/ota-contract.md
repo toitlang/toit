@@ -23,9 +23,9 @@ template, the anchor partition record, and the SRL3 framing implemented by
 ## 1. Flash layout (base-specific)
 
 The base ELF and anchor record define the immutable base regions, anchor
-location, and the active partition table. A slot is linked once at
-`TOIT_VM_LINK_BASE` and relocated into the selected table's slot A or B.
-SRL3 carries the link base, slot size, and exact base ID.
+location, and the partition table attached to the booted image. A slot is
+linked once at `TOIT_VM_LINK_BASE` and relocated into the selected table's
+slot A or B. SRL3 carries the link base, slot size, and exact base ID.
 
 A slot can run only when:
 

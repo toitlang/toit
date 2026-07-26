@@ -263,7 +263,8 @@ static const char* last_reset_name(LastResetState_e s) {
 // booted device (the dispatcher refuses to boot without one).
 static bool booted_slot_geometry(uint32_t* base, uint32_t* size) {
   partition_entry table[ANCHOR_MAX_ENTRIES];
-  int count = anchor_table(table, ANCHOR_MAX_ENTRIES);
+  int count =
+      anchor_table_for_slot(toit_booted_slot, table, ANCHOR_MAX_ENTRIES);
   int seen = 0;
   for (int i = 0; i < count; i++) {
     if (table[i].type != PARTITION_TYPE_SLOT) continue;

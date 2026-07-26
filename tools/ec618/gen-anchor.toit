@@ -2,8 +2,10 @@
 
 // Emits the anchor record region (two flash sectors) from the partition
 // descriptor: sector 0 carries the provisioning record — boot state
-// { active='A', pending=0, state=NONE, seq=1 } plus the full partition
-// table — and sector 1 is left erased (0xff, the ping-pong partner).
+// { active='A', pending=0, state=NONE, seq=1 } plus the known-good
+// partition table and console — and sector 1 is left erased (0xff, the
+// ping-pong partner). The trial configuration is created only when an OTA
+// is staged.
 // Spliced into the flashable AP image (Makefile), this is what makes a
 // fresh flash bootable: the dispatcher refuses to boot without a valid
 // record. The on-flash

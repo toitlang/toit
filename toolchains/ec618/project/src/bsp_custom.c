@@ -26,10 +26,10 @@ extern ARM_DRIVER_USART Driver_USART2;
 
 #if CONFIG_TOIT_EC618_PRINT_UART
 
-// The console UART is RUNTIME state from the anchor record (per-device
-// provisioning, gen-anchor --console-uart), so ONE base image serves
-// every rig — a compile-time id would fork the base fingerprint per
-// debug wire. UART1 carries a complete "^boot.rom..." banner at every
+// The console UART belongs to the image configuration selected for this
+// boot. One base image therefore serves every rig, while an OTA rollback
+// also restores the previous image's console. UART1 carries a complete
+// "^boot.rom..." banner at every
 // reset. The mask ROM emits it before this code runs, so neither the
 // CMSIS initialization below nor application software can suppress it.
 static ARM_DRIVER_USART* const print_uart_drivers[3] = {
@@ -63,7 +63,7 @@ int _write(int file, char *ptr, int len) {
 }
 
 static void SetPrintUart(void) {
-    uint8_t console = anchor_console();
+    uint8_t console = anchor_boot_console();
     if (console > 2) return;  // ANCHOR_CONSOLE_OFF: no redirect.
     ARM_DRIVER_USART* driver = print_uart_drivers[console];
 

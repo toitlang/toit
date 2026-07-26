@@ -187,6 +187,8 @@ main args:
         cli.OptionInt "fast-baud"
             --help="Hop the control UART to this baud after each handshake (115200 disables)"
             --default=921600,
+        cli.OptionInt "console-uart"
+            --help="After commit, attach this console UART (0/1/2 or 255) to the NEW trial before rebooting.",
       ]
       --run=:: | invocation/cli.Invocation |
         firmware-update invocation
@@ -922,6 +924,7 @@ firmware-update invocation/cli.Invocation:
   port-path := invocation["port"]
   envelope-path := invocation["envelope"]
   do-validate := invocation["validate"]
+  pending-console/int? := invocation["console-uart"]
 
   with-tmp-dir: | dir/string |
     log "Building the canonical OTA image from $envelope-path (with mini-jag)"
@@ -939,6 +942,17 @@ firmware-update invocation/cli.Invocation:
       link.fw-begin image.size
       link.fw-write-all image
       link.fw-commit checksum
+      if pending-console != null:
+        log "Attaching console UART $pending-console to the staged trial"
+        console-source := fs.join dir "set-trial-console.toit"
+        file.write-contents
+            --path=console-source
+            "import ec618\n\nmain args:\n  ec618.set-console-uart (int.parse args[0])\n"
+        console-image := compile-test-image toit-exe console-source --tmp-dir=dir --ui=ui
+        link.send-arg "$pending-console"
+        link.install-container console-image
+        if not (link.run --timeout-ms=30_000):
+          throw "could not attach console UART $pending-console to the staged trial"
       log "Committed; rebooting into the trial slot"
       link.fw-upgrade
 

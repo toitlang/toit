@@ -20,10 +20,11 @@ The VM boots, runs, and does dual-slot OTA on the EC618. All the core
 peripherals are HW-proven (UART ×3 with DMA both directions, GPIO incl. AON
 pads, PWM incl. AON timers, I2C0/I2C1, async SPI, ADC, deep sleep + pad wake,
 watchdog). The firmware is a **frozen universal base** (the current source is
-base-v3, fingerprint `f3f2cc332adbef676d88c1c75c492163`) plus **per-slot VM
-images** delivered by OTA; the active partition table and the console-UART
-selection live in an **anchor record** on flash, so one base image serves every
-rig. The remaining work is not bring-up — it is the first base-image release
+base-v3, fingerprint `a898e77ac178a5053d381f24f7243b06`) plus **per-slot VM
+images** delivered by OTA; their transactional partition-table and console-UART
+configurations live in an **anchor record** on flash, so one base image serves
+every rig and rollback restores the complete previous configuration. The
+remaining work is not bring-up — it is the first base-image release
 dispatch after the EC618 workflow reaches the default branch, plus a handful
 of polish arcs (see the todo).
 
@@ -98,14 +99,15 @@ build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit firmware-update \
   Prime remaining suspect: the console-dongle path (a wedge cured by USB
   replug). Known-issues **#14** has an ordered next-occurrence protocol
   (crucially: **USB-replug LAST**, it destroys the evidence).
-- **Console in the anchor record** (`76b1d0a2`) — one universal base for every
-  rig; the console UART is a byte in the anchor record, chosen at runtime by
-  `bsp_custom` from `anchor_console()`. Set it with `ec618.set-console-uart` +
-  reboot. **This supersedes the `CONFIG_TOIT_EC618_PRINT_UART_ID` build knob**
-  (deleted) and the stale "one config line + rebuild" note in the hw-tests doc.
+- **Transactional console/layout configuration** — one universal base for
+  every rig. Provisioning chooses the initial console. An OTA stage clones the
+  known-good table+console; `ec618.set-console-uart` may edit only that NEW
+  trial before reboot. Validation promotes image+table+console atomically and
+  rollback restores all three. **This supersedes the
+  `CONFIG_TOIT_EC618_PRINT_UART_ID` build knob** (deleted).
 - **Partition table / anchor record** (arc closed) — firmware is independent of
-  the partition table; the ACTIVE table lives in the anchor record (two
-  ping-ponged 4 KB sectors right after the base-id page). Slot-move acceptance
+  the partition table; known-good and trial configurations live together in
+  the anchor record (two ping-ponged 4 KB sectors). Slot-move acceptance
   passed on hardware (an 18-entry shifted table boots + OTAs). `tools/ec618/`
   holds the codec, generator, provisioner, base-id anti-drift gate.
 - **The rig doctor** (`9c1f8ec7`) — `tools/ec618/doctor.toit` (host: descriptor,
@@ -126,11 +128,13 @@ build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit firmware-update \
 - **VM slots** (per-slot, OTA target): the Toit VM + its `.data`, relocate-on-
   write. Two slots (A/B); the anchor record says which is active.
 - **Anchor record**: `toolchains/ec618/project/{inc/anchor.h,src/anchor.c}`
-  (format v2 = 16 B header incl. console byte @11 + N×32 B entries + CRC32
-  trailer). The dispatcher `toolchains/ec618/project/src/toit_main.c` reads it to
-  find the boot slot and **halts loudly** if it is garbage (no default fallback).
+  (format v3 = 16 B header + known-good and trial table entries + CRC32
+  trailer; each configuration also carries its console). The dispatcher
+  `toolchains/ec618/project/src/toit_main.c` reads it to find the boot slot and
+  **halts loudly** if it is garbage (no default fallback).
 - **Console selection**: `toolchains/ec618/project/src/bsp_custom.c` reads
-  `anchor_console()` at boot.
+  `anchor_boot_console()` before the dispatcher runs; VM consumers resolve the
+  console attached to `toit_booted_slot`.
 - **I2C driver**: `src/resources/i2c_ec618.cc` (on the fork-completed CMSIS
   `bsp_i2c.c` IRQ engine).
 - **Toit-side lib**: `lib/ec618/ec618.toit` (`Ec618.uart0/1/2`, `.i2c0/i2c1`,
