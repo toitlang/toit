@@ -728,15 +728,21 @@ class Ec618Link:
       // The device reboots straight into the agent if the watchdog fires, so a
       // fresh ready banner mid-run means the test hung or crashed the device and
       // the watchdog recovered it — a failure, but the device is back on its own.
-      if collected.contains MINI-JAG-EC618-READY:
-        if expected-reboot-wake:
-          if collected.contains " wake=$expected-reboot-wake ":
-            log "$name_: deliberate reboot woke from $expected-reboot-wake as expected"
-            return true
-          log "$name_: deliberate reboot had the wrong wake cause (expected $expected-reboot-wake)"
+      ready-index := collected.index-of MINI-JAG-EC618-READY
+      if ready-index >= 0:
+        // Serial reads may split the status line anywhere. Do not classify a
+        // deliberate reboot from a prefix such as "... ready reset=pow":
+        // the later part of that same line carries the decisive wake field.
+        ready-rest := collected[ready-index ..]
+        if ready-rest.contains "\n":
+          if expected-reboot-wake:
+            if ready-rest.contains " wake=$expected-reboot-wake ":
+              log "$name_: deliberate reboot woke from $expected-reboot-wake as expected"
+              return true
+            log "$name_: deliberate reboot had the wrong wake cause (expected $expected-reboot-wake)"
+            return false
+          log "$name_: the watchdog reset the device during the test (recovered, no external reset)"
           return false
-        log "$name_: the watchdog reset the device during the test (recovered, no external reset)"
-        return false
     // On a fast-baud link a rebooted device (back at 115200) prints its
     // ready banner as garbage, so the recovery check above can't see it.
     // Probe at 115200 before declaring a plain timeout.
