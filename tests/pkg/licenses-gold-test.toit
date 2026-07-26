@@ -51,9 +51,12 @@ test tester/GoldTester:
       """
       overrides:
         - url: localhost:$tester.port/pkg/missing
+          version: 1.0.0
+          path: overrides/missing.LICENSE
+        - url: localhost:$tester.port/pkg/missing
           version: 2.0.0
           path: overrides/missing.LICENSE
       """
-  tester.gold "40-stale-license-override" [
+  tester.gold "40-unused-license-override" [
     ["pkg", "licenses", "--no-include-sdk", "--output=THIRD_PARTY_LICENSES"],
   ]

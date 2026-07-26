@@ -32,7 +32,6 @@ class LicenseOverride_:
   url/string
   version/string
   path/string
-  used/bool := false
 
   constructor --.url --.version --.path:
 
@@ -133,12 +132,6 @@ class LicensesCommand extends PkgProjectCommand:
           --version=null
           --revision=null
 
-    overrides.do: | override/LicenseOverride_ |
-      if not override.used:
-        ui.abort """
-            License override for '$override.url@$override.version' does not match
-              any package in package.lock."""
-
     dependency-entries.sort --in-place: | a/LicenseEntry_ b/LicenseEntry_ |
       a.compare-to b
     entries.add-all dependency-entries
@@ -198,7 +191,6 @@ class LicensesCommand extends PkgProjectCommand:
   find-override_ overrides/List url/string version/string -> LicenseOverride_?:
     overrides.do: | override/LicenseOverride_ |
       if override.url == url and override.version == version:
-        override.used = true
         return override
     return null
 
