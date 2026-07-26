@@ -10,10 +10,7 @@ import .uart-rig as rig
 /**
 EC618 half of the alternate-pad GPIO output test.
 
-GPIO14 and GPIO15 have primary ALT0 pads 29/30 and alternate ALT4 pads 13/14.
-  The alternate pads are wired to ESP32 IO17/18 on the rig. A framed UART1
-  exchange makes the helper sample every two-bit output pattern, proving both
-  physical-pad identities without timing windows.
+GPIO14 and GPIO15 have primary ALT0 pads 29/30 and alternate ALT4 pads 13/14. The alternate pads are wired to ESP32 IO17/18 on the rig. A framed UART1 exchange makes the helper sample every two-bit output pattern, proving both physical-pad identities without timing windows.
 */
 
 main:

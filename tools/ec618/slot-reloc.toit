@@ -19,12 +19,7 @@ MAGIC ::= #['S', 'R', 'L', '3']
 /**
 A parsed EC618 slot relocation table.
 
-Holds the slot geometry and the slot-relative offsets of the relocation
-  kinds: $abs32-offsets (4-byte absolute pointers into the slot),
-  $thmbl-offsets (Thumb branches that escape the slot to a fixed address) and
-  $straddle-entries (branch sites that straddle a 4 KB flash sector, carried
-  with their canonical bytes so the device's sector-chunked relocate-on-write
-  can patch them without seeing the neighbouring chunk).
+Holds the slot geometry and the slot-relative offsets of the relocation kinds: $abs32-offsets (4-byte absolute pointers into the slot), $thmbl-offsets (Thumb branches that escape the slot to a fixed address) and $straddle-entries (branch sites that straddle a 4 KB flash sector, carried with their canonical bytes so the device's sector-chunked relocate-on-write can patch them without seeing the neighbouring chunk).
 */
 class SlotRelocTable:
   link-base/int
@@ -90,9 +85,7 @@ class SlotRelocTable:
   /**
   Relocates the slot content in $bytes in place by $delta.
 
-  $base is the file offset of the slot's first byte within $bytes; the stored
-    offsets are slot-relative. $direction selects relocate ($TO-SLOT) vs
-    un-relocate ($TO-CANONICAL). A no-op when $delta is 0.
+  $base is the file offset of the slot's first byte within $bytes; the stored offsets are slot-relative. $direction selects relocate ($TO-SLOT) vs un-relocate ($TO-CANONICAL). A no-op when $delta is 0.
   */
   apply bytes/ByteArray --base/int --delta/int --direction/int -> none:
     if delta == 0: return
@@ -118,15 +111,9 @@ class SlotRelocTable:
       bytes.replace p site
 
   /**
-  Serializes this table to the "SRL3" wire format (the inverse of
-    $SlotRelocTable.parse).
+  Serializes this table to the "SRL3" wire format (the inverse of $SlotRelocTable.parse).
 
-  The header is $MAGIC followed by $link-base, $slot-size, $body-size, the
-    three counts and $data-size (all little-endian uint32); the
-    $abs32-offsets and $thmbl-offsets lists (slot-relative, ascending) follow
-    as delta-encoded unsigned LEB128 varints, then the $straddle-entries
-    stream (delta-varint offset + 4 canonical site bytes per entry). Mirrors
-    `encode-table` in tools/ec618/gen-slot-reloc.toit.
+  The header is $MAGIC followed by $link-base, $slot-size, $body-size, the three counts and $data-size (all little-endian uint32); the $abs32-offsets and $thmbl-offsets lists (slot-relative, ascending) follow as delta-encoded unsigned LEB128 varints, then the $straddle-entries stream (delta-varint offset + 4 canonical site bytes per entry). Mirrors `encode-table` in tools/ec618/gen-slot-reloc.toit.
   */
   to-bytes -> ByteArray:
     buffer := Buffer
@@ -154,17 +141,9 @@ class SlotRelocTable:
   /**
   Returns a copy of this table extended with the in-slot extension pointers.
 
-  The bundled extension (container images, the image table, the patched
-    `DromData.extension`) is laid out inside the slot after the VM body, so its
-    absolute pointers move with the slot exactly like the VM body's ABS32
-    pointers. $extra-abs32 holds their slot-relative offsets; they are merged
-    into $abs32-offsets (sorted, de-duplicated) so the device's single
-    relocate-on-write / un-relocate-on-read pass fixes the whole slot uniformly.
+  The bundled extension (container images, the image table, the patched `DromData.extension`) is laid out inside the slot after the VM body, so its absolute pointers move with the slot exactly like the VM body's ABS32 pointers. $extra-abs32 holds their slot-relative offsets; they are merged into $abs32-offsets (sorted, de-duplicated) so the device's single relocate-on-write / un-relocate-on-read pass fixes the whole slot uniformly.
 
-  $populated-size becomes the new $body-size: the populated front of the slot
-    (VM body + extension), i.e. where the free region and tail trailer begin.
-    The branch ($thmbl-offsets) set is unchanged — the extension has no
-    slot-escaping branches, only data pointers.
+  $populated-size becomes the new $body-size: the populated front of the slot (VM body + extension), i.e. where the free region and tail trailer begin. The branch ($thmbl-offsets) set is unchanged — the extension has no slot-escaping branches, only data pointers.
   */
   merge-extension --extra-abs32/List --populated-size/int -> SlotRelocTable:
     merged := abs32-offsets + extra-abs32

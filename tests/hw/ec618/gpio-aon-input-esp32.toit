@@ -11,8 +11,7 @@ import .wiring as wiring
 /**
 ESP32 driver for the EC618 AON-pad GPIO-input regression.
 
-The two test pins remain high impedance until the EC618 reports that its inputs
-  are ready. Each requested output pattern is acknowledged after it is driven.
+The two test pins remain high impedance until the EC618 reports that its inputs are ready. Each requested output pattern is acknowledged after it is driven.
 */
 
 main:

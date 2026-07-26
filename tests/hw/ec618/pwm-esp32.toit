@@ -14,18 +14,9 @@ ESP32 half of the PWM test — a dumb measurement server.
 
 Listens on the command lane (UART2 of the EC618) and answers:
 
-  "F <io>" -> "F <rising-edges> <elapsed-us>"   (pulse counter, ~2 s window)
-  "D <io>" -> "D <high-permille>"               (polled duty, ~2 s of samples)
-  "L <io>" -> "L <level> <transitions>"         (level probe, ~0.5 s)
-  "A <io>" -> "A READY", then
-              "A <timed-out> <level> <signals> <low-signals> <shortest-low-ns>"
-                                                  (armed 20 MHz RMT capture)
-  "Q"      -> quits.
+"F <io>" -> "F <rising-edges> <elapsed-us>"   (pulse counter, ~2 s window) "D <io>" -> "D <high-permille>"               (polled duty, ~2 s of samples) "L <io>" -> "L <level> <transitions>"         (level probe, ~0.5 s) "A <io>" -> "A READY", then "A <timed-out> <level> <signals> <low-signals> <shortest-low-ns>" (armed 20 MHz RMT capture) "Q"      -> quits.
 
-All pass/fail logic lives on the EC618 side (pwm-ec618.toit). Pins are
-  opened with a pull-down per measurement so a released (high-Z) EC618 pad
-  reads as a steady 0.
-
+All pass/fail logic lives on the EC618 side (pwm-ec618.toit). Pins are opened with a pull-down per measurement so a released (high-Z) EC618 pad reads as a steady 0.
 */
 
 main:

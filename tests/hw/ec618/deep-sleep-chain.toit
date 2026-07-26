@@ -5,11 +5,7 @@
 /**
 Exercises EC618 deep-sleep chaining.
 
-Build the firmware with a short
-  `CONFIG_TOIT_EC618_DEEP_SLEEP_MAX_MS` (for example 3000), then run this
-  through the mini-jag rig with an interval longer than two chunks. The VM
-  must not print another mini-jag ready banner until the complete requested
-  interval has elapsed.
+Build the firmware with a short `CONFIG_TOIT_EC618_DEEP_SLEEP_MAX_MS` (for example 3000), then run this through the mini-jag rig with an interval longer than two chunks. The VM must not print another mini-jag ready banner until the complete requested interval has elapsed.
 */
 
 import ec618

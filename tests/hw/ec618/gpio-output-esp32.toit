@@ -9,9 +9,7 @@ import .wiring as wiring
 /**
 ESP32 half of the GPIO-output HW test.
 
-Reads the pin that the EC618 half (gpio-output-ec618.toit) toggles and confirms
-  it sees a square wave: it waits for the first edge (the EC618 side starts a
-  little after us), then counts edges over a short window.
+Reads the pin that the EC618 half (gpio-output-ec618.toit) toggles and confirms it sees a square wave: it waits for the first edge (the EC618 side starts a little after us), then counts edges over a short window.
 
 Prints a single "gpio-output-esp32: PASS ..." / "... FAIL ..." verdict line.
 */

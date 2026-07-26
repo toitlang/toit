@@ -8,17 +8,9 @@ import uart
 /**
 EC618 half of the UART2 HW test (device under test).
 
-Sends a known, self-describing token line ("EC618-UART2 <baud> <n>") repeatedly
-  on UART2 TX at the baud rate given as the test argument, so the ESP32 half
-  (uart2-esp32.toit, reading RX-only on IO27 at the same baud) can confirm it
-  receives cleanly-framed data at that baud. The harness runs this pair once per
-  baud to sweep the supported range (an "exhaustive" baud check rather than a
-  single does-it-work check).
+Sends a known, self-describing token line ("EC618-UART2 <baud> <n>") repeatedly on UART2 TX at the baud rate given as the test argument, so the ESP32 half (uart2-esp32.toit, reading RX-only on IO27 at the same baud) can confirm it receives cleanly-framed data at that baud. The harness runs this pair once per baud to sweep the supported range (an "exhaustive" baud check rather than a single does-it-work check).
 
-UART2 is opened TX-only
-  (--rx-disabled), so only the EC618 drives the line and the ESP32 RX is high-
-  impedance — no contention, no short risk on the direct wiring.
-
+UART2 is opened TX-only (--rx-disabled), so only the EC618 drives the line and the ESP32 RX is high- impedance — no contention, no short risk on the direct wiring.
 */
 
 TOKEN ::= "EC618-UART2"

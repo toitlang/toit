@@ -11,27 +11,16 @@ import .wiring as wiring
 /**
 EC618 half of the PWM test (device under test).
 
-Drives PWM and asks the ESP32 helper to measure it, over UART2 as a
-  command/response lane (UART2 is free: the PWM outputs live on other pads).
-  Phases:
+Drives PWM and asks the ESP32 helper to measure it, over UART2 as a command/response lane (UART2 is free: the PWM outputs live on other pads). Phases:
 
-1. Frequency: 1 kHz, duty 0.5 on PAD33 (TIMER4) — the ESP32 counts rising
-   edges over ~2 s.
-2. Duty: 10 Hz; duty factors 0.25/0.5/0.75 sampled by polling, plus the
-   exact static 0.0 and 1.0 endpoints.
-3. Endpoint waveform: a 20 MHz ESP32 RMT capture distinguishes exact static
-   levels from the short periodic notch formerly emitted for 1.0.
+1. Frequency: 1 kHz, duty 0.5 on PAD33 (TIMER4) — the ESP32 counts rising edges over ~2 s.
+2. Duty: 10 Hz; duty factors 0.25/0.5/0.75 sampled by polling, plus the exact static 0.0 and 1.0 endpoints.
+3. Endpoint waveform: a 20 MHz ESP32 RMT capture distinguishes exact static levels from the short periodic notch formerly emitted for 1.0.
 4. set-frequency: one generator moved 1 kHz -> 2 kHz, re-measured.
-5. Two channels: TIMER4/PAD33 and TIMER0/PAD16 from one generator, both
-   measured; closing one channel silences it while the other keeps going.
-   (PAD16 is the pad behind the board's "GPIO01/PWM10" pin -> ESP32 IO23;
-   this phase doubles as the experimental confirmation of that wire.)
-6. Running with the argument `leak` exits with TIMER4/PAD33 active. A
-   following normal run first verifies that forced container teardown stopped
-   the output and returned the timer lease.
+5. Two channels: TIMER4/PAD33 and TIMER0/PAD16 from one generator, both measured; closing one channel silences it while the other keeps going. (PAD16 is the pad behind the board's "GPIO01/PWM10" pin -> ESP32 IO23; this phase doubles as the experimental confirmation of that wire.)
+6. Running with the argument `leak` exits with TIMER4/PAD33 active. A following normal run first verifies that forced container teardown stopped the output and returned the timer lease.
 
 All assertions happen here; the helper only measures.
-
 */
 
 failures := []

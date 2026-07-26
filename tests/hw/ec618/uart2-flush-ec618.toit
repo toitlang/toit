@@ -8,24 +8,11 @@ import uart
 /**
 UART2 flush test (EC618 only — no helper board needed).
 
-The $uart.Port `out.flush` (and `write --flush`) must block until the last
-  bit has physically left the TX line, at every baud. The pass condition is pure
-  timing: flushing PAYLOAD bytes cannot return faster than their wire time,
-  and must not take much longer either. Nobody needs to receive the data
-  (UART2 has no flow control; the bytes drain unconditionally).
+The $uart.Port `out.flush` (and `write --flush`) must block until the last bit has physically left the TX line, at every baud. The pass condition is pure timing: flushing PAYLOAD bytes cannot return faster than their wire time, and must not take much longer either. Nobody needs to receive the data (UART2 has no flow control; the bytes drain unconditionally).
 
-The CMSIS driver's SEND_COMPLETE event means the DMA/FIFO is drained, but the
-  final frame can still be in the shift register. A flush implementation that
-  treats that event as physical completion returns early; one that waits
-  without arranging a later line-idle event hangs. The timing window catches
-  either. Each flush is guarded by a timeout so a hang fails instead of
-  tripping the tester watchdog.
+The CMSIS driver's SEND_COMPLETE event means the DMA/FIFO is drained, but the final frame can still be in the shift register. A flush implementation that treats that event as physical completion returns early; one that waits without arranging a later line-idle event hangs. The timing window catches either. Each flush is guarded by a timeout so a hang fails instead of tripping the tester watchdog.
 
-Also asserts a freshly opened UART2 is quiet (no garbage byte on open; the
-  RX pad is pulled up, so an unconnected/idle wire reads as a clean line),
-  and that `write --break-length` is rejected (the PLAT driver has no break
-  API; silently sending without the break would be worse).
-
+Also asserts a freshly opened UART2 is quiet (no garbage byte on open; the RX pad is pulled up, so an unconnected/idle wire reads as a clean line), and that `write --break-length` is rejected (the PLAT driver has no break API; silently sending without the break would be worse).
 */
 
 BAUDS ::= [9600, 115200, 921600]

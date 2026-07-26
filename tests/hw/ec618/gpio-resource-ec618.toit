@@ -7,8 +7,7 @@ import gpio
 /**
 Exercises every common GPIO primitive through the pin resource.
 
-PAD34 is otherwise unused on the test rig. Its internal pull-up gives the
-  input read a deterministic level without another board.
+PAD34 is otherwise unused on the test rig. Its internal pull-up gives the input read a deterministic level without another board.
 */
 
 main:

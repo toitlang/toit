@@ -24,41 +24,29 @@ EC618 chip-specific helpers.
 
 # Addressing model
 
-On the EC618, $Pin numbers are physical pad indices from 1 through 48, not
-  logical GPIO numbers. Pads are unambiguous: each one is a single physical
-  pin on the chip. A few pads share a GPIO controller bit, so addressing by
-  GPIO number alone is ambiguous in those cases.
+On the EC618, $Pin numbers are physical pad indices from 1 through 48, not logical GPIO numbers. Pads are unambiguous: each one is a single physical pin on the chip. A few pads share a GPIO controller bit, so addressing by GPIO number alone is ambiguous in those cases.
 
 Most user code should use the helpers on $Ec618:
 
 - $Ec618.gpio returns the primary pad of a logical GPIO.
 - $Ec618.gpio with `--alt` returns the alternate pad where one exists.
 - $Ec618.pad addresses a physical pad directly.
-- $Ec618.uart0, $Ec618.uart1, and $Ec618.uart2 return configured $uart.Port
-  instances.
+- $Ec618.uart0, $Ec618.uart1, and $Ec618.uart2 return configured $uart.Port instances.
 - $Ec618.adc0 and $Ec618.adc1 return the two analog ADC inputs.
 */
 
 /**
-Enters deep sleep for the specified $duration and does not return.
-  Exiting deep sleep causes the device to start over from main.
+Enters deep sleep for the specified $duration and does not return. Exiting deep sleep causes the device to start over from main.
 
-Durations longer than one hardware-timer interval are split across hibernate
-  cycles. Intermediate timer wakes re-enter hibernate without starting the
-  Toit VM, and configured wakeup pads remain armed. A non-timer wake cancels
-  the remaining duration and starts the device normally.
+Durations longer than one hardware-timer interval are split across hibernate cycles. Intermediate timer wakes re-enter hibernate without starting the Toit VM, and configured wakeup pads remain armed. A non-timer wake cancels the remaining duration and starts the device normally.
 */
 deep-sleep duration/Duration -> none:
   __deep-sleep__ duration.in-ms
 
 /**
-Returns the UART id (0/1/2) that the firmware redirects `print` output
-  to, or -1 if the print redirect was disabled at build time
-  (CONFIG_TOIT_EC618_PRINT_UART=0).
+Returns the UART id (0/1/2) that the firmware redirects `print` output to, or -1 if the print redirect was disabled at build time (CONFIG_TOIT_EC618_PRINT_UART=0).
 
-Use this to adapt to the console selected in the running firmware. Opening the
-  selected print UART through $Ec618 fails with `ALREADY_IN_USE`, unless the
-  firmware permits the port to adopt the console.
+Use this to adapt to the console selected in the running firmware. Opening the selected print UART through $Ec618 fails with `ALREADY_IN_USE`, unless the firmware permits the port to adopt the console.
 */
 console-uart-id -> int:
   #primitive.ec618.console-uart-id
@@ -66,9 +54,7 @@ console-uart-id -> int:
 /**
 Returns the live levels of the AON wakeup inputs as a bitmask.
 
-Bits 3, 4, and 5 are PAD40, PAD41, and PAD42 respectively (EC618 GPIO20,
-  GPIO21, and GPIO22). Bits 0 through 2 are the dedicated package wake inputs,
-  which do not have ordinary $Pin identities.
+Bits 3, 4, and 5 are PAD40, PAD41, and PAD42 respectively (EC618 GPIO20, GPIO21, and GPIO22). Bits 0 through 2 are the dedicated package wake inputs, which do not have ordinary $Pin identities.
 */
 wakeup-pin-values -> int:
   #primitive.ec618.wakeup-pin-values
@@ -82,14 +68,9 @@ The $pin must identify one of the three ordinary GPIO wake pads:
 - PAD41 / `Ec618.gpio 21` / wakeup input 4.
 - PAD42 / `Ec618.gpio 22` / wakeup input 5.
 
-Other pins are rejected. The dedicated package wake inputs 0 through 2 do not
-  have ordinary $Pin identities and are not supported by this API.
+Other pins are rejected. The dedicated package wake inputs 0 through 2 do not have ordinary $Pin identities and are not supported by this API.
 
-The configuration only takes effect at the next $deep-sleep: an edge of
-  the enabled polarity ($pos-edge / $neg-edge, at least one required)
-  then ends the hibernate early. The wake is a reboot; $wakeup-cause
-  reports $WAKEUP-PAD on the boot it causes. $pull-up / $pull-down
-  select the pad's internal pull while asleep.
+The configuration only takes effect at the next $deep-sleep: an edge of the enabled polarity ($pos-edge / $neg-edge, at least one required) then ends the hibernate early. The wake is a reboot; $wakeup-cause reports $WAKEUP-PAD on the boot it causes. $pull-up / $pull-down select the pad's internal pull while asleep.
 */
 configure-wakeup-pad pin/Pin
     --pos-edge/bool=false
@@ -107,8 +88,7 @@ disable-wakeup-pad pin/Pin -> none:
   wakeup-pad-configure_ pin.num false false false false false
 
 /**
-Returns the flashed base's identity ("base-v<N>+<fingerprint>"), or
-  "base-unknown" for a base without an id record.
+Returns the flashed base's identity ("base-v<N>+<fingerprint>"), or "base-unknown" for a base without an id record.
 
 The device never activates a slot linked against a different base.
 */
@@ -128,17 +108,13 @@ RESET-ASSERT ::= 4
 /**
 Reset attributed to a watchdog via a software-recorded reason.
 
-Note: the application watchdog in the `ec618.watchdog` library does NOT produce
-  this. Its reset is an autonomous hardware reset that the chip reports as
-  $RESET-POWER-ON.
+Note: the application watchdog in the `ec618.watchdog` library does NOT produce this. Its reset is an autonomous hardware reset that the chip reports as $RESET-POWER-ON.
 */
 RESET-WATCHDOG-SOFTWARE ::= 5
 /**
 Reset attributed to a hardware watchdog.
 
-Note: the application watchdog in the `ec618.watchdog` library does NOT produce
-  this. Its reset is an autonomous hardware reset that the chip reports as
-  $RESET-POWER-ON.
+Note: the application watchdog in the `ec618.watchdog` library does NOT produce this. Its reset is an autonomous hardware reset that the chip reports as $RESET-POWER-ON.
 */
 RESET-WATCHDOG-HARDWARE ::= 6
 /** Reset after the CPU locked up. */
@@ -178,9 +154,7 @@ RESET-REASON-NAMES_/List ::= [
 /**
 Returns the reason for the most recent reset of the application processor.
 
-The result is one of the RESET-* constants ($RESET-POWER-ON,
-  $RESET-WATCHDOG-HARDWARE, ...). Use $reset-reason-name to turn it into a
-  human-readable string.
+The result is one of the RESET-* constants ($RESET-POWER-ON, $RESET-WATCHDOG-HARDWARE, ...). Use $reset-reason-name to turn it into a human-readable string.
 */
 reset-reason -> int:
   #primitive.ec618.reset-reason
@@ -188,8 +162,7 @@ reset-reason -> int:
 /**
 Returns a human-readable name for the given reset $reason.
 
-The $reason should be one of the RESET-* constants, typically the result of
-  $reset-reason. Unrecognized values are formatted as "reset-<n>".
+The $reason should be one of the RESET-* constants, typically the result of $reset-reason. Unrecognized values are formatted as "reset-<n>".
 */
 reset-reason-name reason/int -> string:
   if 0 <= reason < RESET-REASON-NAMES_.size:
@@ -226,13 +199,9 @@ WAKEUP-CAUSE-NAMES_/List ::= [
 /**
 Returns what woke the chip at the most recent boot.
 
-The result is one of the WAKEUP-* constants ($WAKEUP-POWER-ON,
-  $WAKEUP-RTC, ...). Use $wakeup-cause-name to turn it into a
-  human-readable string.
+The result is one of the WAKEUP-* constants ($WAKEUP-POWER-ON, $WAKEUP-RTC, ...). Use $wakeup-cause-name to turn it into a human-readable string.
 
-The EC618 reports $reset-reason as $RESET-POWER-ON even after a wake
-  from deep sleep, so this is the call that tells a deep-sleep wake
-  (by timer or wakeup pad) apart from a cold boot.
+The EC618 reports $reset-reason as $RESET-POWER-ON even after a wake from deep sleep, so this is the call that tells a deep-sleep wake (by timer or wakeup pad) apart from a cold boot.
 */
 wakeup-cause -> int:
   #primitive.ec618.wakeup-cause
@@ -240,8 +209,7 @@ wakeup-cause -> int:
 /**
 Returns a human-readable name for the given wakeup $cause.
 
-The $cause should be one of the WAKEUP-* constants, typically the result
-  of $wakeup-cause. Unrecognized values are formatted as "wakeup-<n>".
+The $cause should be one of the WAKEUP-* constants, typically the result of $wakeup-cause. Unrecognized values are formatted as "wakeup-<n>".
 */
 wakeup-cause-name cause/int -> string:
   if 0 <= cause < WAKEUP-CAUSE-NAMES_.size:
@@ -251,9 +219,7 @@ wakeup-cause-name cause/int -> string:
 /**
 Helpers for EC618 pin addressing and peripheral construction.
 
-All pin indices used by Toit on the EC618 are physical pad numbers.
-  Silkscreens and datasheets often use logical GPIO numbers, for which $gpio
-  provides a convenience conversion.
+All pin indices used by Toit on the EC618 are physical pad numbers. Silkscreens and datasheets often use logical GPIO numbers, for which $gpio provides a convenience conversion.
 */
 class Ec618:
   static NO-PAD_ ::= 0xff
@@ -299,9 +265,7 @@ class Ec618:
   /**
   Returns a $Pin addressing the physical PAD with the given $num.
 
-  Use this when the chip's PAD index is what you have. For most boards
-    silkscreens don't label PADs directly; in that case prefer $gpio.
-  The configuration options have the same meaning as on $(Pin.constructor num).
+  Use this when the chip's PAD index is what you have. For most boards silkscreens don't label PADs directly; in that case prefer $gpio. The configuration options have the same meaning as on $(Pin.constructor num).
   */
   static pad num/int -> Pin
       --input/bool=false
@@ -321,10 +285,7 @@ class Ec618:
   /**
   Returns a $Pin for the EC618 logical GPIO with the given $num.
 
-  Defaults to the primary ALT0 pad of that GPIO. Pass $alt to address its
-    alternate ALT4 pad where one exists. The returned $Pin still uses the
-    physical PAD number as its unique identity.
-  The configuration options have the same meaning as on $(Pin.constructor num).
+  Defaults to the primary ALT0 pad of that GPIO. Pass $alt to address its alternate ALT4 pad where one exists. The returned $Pin still uses the physical PAD number as its unique identity. The configuration options have the same meaning as on $(Pin.constructor num).
   */
   static gpio num/int -> Pin
       --alt/bool=false
@@ -348,29 +309,15 @@ class Ec618:
   /**
   Opens UART0 (EC618 controller 0).
 
-  Default $mapping (0): TX=PAD30, RX=PAD29 (the chip's debug /
-    firmware-download UART on most modules; data on these pads also
-    travels through the bootloader at chip reset; the pads have no GPIO
-    function). With $rts-enabled or
-    $cts-enabled, RTS=GPIO12 and CTS=GPIO13.
+  Default $mapping (0): TX=PAD30, RX=PAD29 (the chip's debug / firmware-download UART on most modules; data on these pads also travels through the bootloader at chip reset; the pads have no GPIO function). With $rts-enabled or $cts-enabled, RTS=GPIO12 and CTS=GPIO13.
 
-  Alternate $mapping (1): TX=GPIO17, RX=GPIO16. No hardware flow
-    control on this mapping.
+  Alternate $mapping (1): TX=GPIO17, RX=GPIO16. No hardware flow control on this mapping.
 
-  Set $tx-disabled or $rx-disabled to leave the corresponding pad free
-    for general-purpose IO; address it via $gpio with the appropriate
-    GPIO number.
+  Set $tx-disabled or $rx-disabled to leave the corresponding pad free for general-purpose IO; address it via $gpio with the appropriate GPIO number.
 
-  Note: UART0 is normally the print/console UART of the Toit firmware.
-    Constructing this then fails with "ALREADY_IN_USE", unless the
-    firmware was built with CONFIG_TOIT_EC618_ALLOW_PRINT_UART_REUSE
-    (then the port adopts the console: reads/writes share the wire with
-    `print` output — this is how the HW-test agent serves its control
-    protocol), with CONFIG_TOIT_EC618_PRINT_UART=0, or with the redirect
-    pointed elsewhere via the anchor record's console byte.
+  Note: UART0 is normally the print/console UART of the Toit firmware. Constructing this then fails with "ALREADY_IN_USE", unless the firmware was built with CONFIG_TOIT_EC618_ALLOW_PRINT_UART_REUSE (then the port adopts the console: reads/writes share the wire with `print` output — this is how the HW-test agent serves its control protocol), with CONFIG_TOIT_EC618_PRINT_UART=0, or with the redirect pointed elsewhere via the anchor record's console byte.
 
-  With $mode equal to $uart.Port.MODE-RS485-HALF-DUPLEX, pass the RS485
-    direction (DE) pin as $rs485-de; any GPIO-capable pad works.
+  With $mode equal to $uart.Port.MODE-RS485-HALF-DUPLEX, pass the RS485 direction (DE) pin as $rs485-de; any GPIO-capable pad works.
   */
   static uart0 -> uart.Port
       --mapping/int=0
@@ -401,18 +348,11 @@ class Ec618:
         --large-buffers=large-buffers
 
   /**
-  Opens UART1 (EC618 controller 1, the only one that can wake the chip
-    from deep sleep at low baud rates).
+  Opens UART1 (EC618 controller 1, the only one that can wake the chip from deep sleep at low baud rates).
 
-  TX=GPIO19 and RX=GPIO18 on both mappings. Mapping 0 provides RTS=GPIO16
-    and CTS=GPIO17. Mapping 1 has no RTS and selects the alternate CTS pad
-    on GPIO11; use it when your module only exposes that CTS route.
+  TX=GPIO19 and RX=GPIO18 on both mappings. Mapping 0 provides RTS=GPIO16 and CTS=GPIO17. Mapping 1 has no RTS and selects the alternate CTS pad on GPIO11; use it when your module only exposes that CTS route.
 
-  Note on UART1: the chip's mask ROM emits a complete "^boot.rom..."
-    banner on UART1 at every reset, before application software runs.
-    The banner has no trailing newline and cannot be suppressed, so a
-    line-oriented receiver should discard it before accepting application
-    traffic.
+  Note on UART1: the chip's mask ROM emits a complete "^boot.rom..." banner on UART1 at every reset, before application software runs. The banner has no trailing newline and cannot be suppressed, so a line-oriented receiver should discard it before accepting application traffic.
   */
   static uart1 -> uart.Port
       --mapping/int=0
@@ -447,16 +387,9 @@ class Ec618:
 
   Mapping selector $mapping picks between pin layouts:
   - 0 (default): TX=GPIO11, RX=GPIO10.
-  - 1:           TX=GPIO13, RX=GPIO12 (the layout Air780EG/EUG modules
-                 use, because GPIO10/11 are taken by their GNSS subsystem).
+  - 1:           TX=GPIO13, RX=GPIO12 (the layout Air780EG/EUG modules use, because GPIO10/11 are taken by their GNSS subsystem).
 
-  With $mode equal to $uart.Port.MODE-RS485-HALF-DUPLEX, $rs485-de is the
-    RS485 direction (DE) pin: the driver raises it just before a
-    transmission starts and drops it once the last bit has left the shift
-    register. Unlike the fixed RTS/CTS routings, ANY GPIO-capable pad can
-    serve as DE (it is driven as a plain GPIO), so it is passed as a $Pin
-    (use $Ec618.gpio or $Ec618.pad). Required in RS485 mode; rejected
-    otherwise.
+  With $mode equal to $uart.Port.MODE-RS485-HALF-DUPLEX, $rs485-de is the RS485 direction (DE) pin: the driver raises it just before a transmission starts and drops it once the last bit has left the shift register. Unlike the fixed RTS/CTS routings, ANY GPIO-capable pad can serve as DE (it is driven as a plain GPIO), so it is passed as a $Pin (use $Ec618.gpio or $Ec618.pad). Required in RS485 mode; rejected otherwise.
   */
   static uart2 -> uart.Port
       --mapping/int=0
@@ -487,16 +420,11 @@ class Ec618:
   /**
   Opens the I2C0 bus.
 
-  SDA=PAD14, SCL=PAD13 — the module pins labelled I2C0_SDA/I2C0_SCL
-    (peripheral-routed at iomux function 2; as GPIOs the same pads are
-    GPIO15/GPIO14 at function 4).
+  SDA=PAD14, SCL=PAD13 — the module pins labelled I2C0_SDA/I2C0_SCL (peripheral-routed at iomux function 2; as GPIOs the same pads are GPIO15/GPIO14 at function 4).
 
-  If $pull-up is true, the pads' internal pull-ups are enabled. Most
-    sensor breakouts carry their own bus pull-ups.
+  If $pull-up is true, the pads' internal pull-ups are enabled. Most sensor breakouts carry their own bus pull-ups.
 
-  $frequency is an upper bound. Values below about 49kHz are rejected.
-    The EC618's measured-safe ceiling is about 363kHz; requests of 400kHz
-    or more use that ceiling.
+  $frequency is an upper bound. Values below about 49kHz are rejected. The EC618's measured-safe ceiling is about 363kHz; requests of 400kHz or more use that ceiling.
   */
   static i2c0 --frequency/int=100_000 --pull-up/bool=false -> i2c.Bus:
     return open-i2c_ 14 13 --frequency=frequency --pull-up=pull-up
@@ -504,14 +432,11 @@ class Ec618:
   /**
   Opens the I2C1 bus.
 
-  SDA=PAD23, SCL=PAD24 (GPIO8/GPIO9) — the module's I2C1/SPI0 pins; one
-    peripheral at a time.
+  SDA=PAD23, SCL=PAD24 (GPIO8/GPIO9) — the module's I2C1/SPI0 pins; one peripheral at a time.
 
   If $pull-up is true, the pads' internal pull-ups are enabled.
 
-  $frequency is an upper bound. Values below about 49kHz are rejected.
-    The EC618's measured-safe ceiling is about 363kHz; requests of 400kHz
-    or more use that ceiling.
+  $frequency is an upper bound. Values below about 49kHz are rejected. The EC618's measured-safe ceiling is about 363kHz; requests of 400kHz or more use that ceiling.
   */
   static i2c1 --frequency/int=100_000 --pull-up/bool=false -> i2c.Bus:
     return open-i2c_ 23 24 --frequency=frequency --pull-up=pull-up
@@ -519,9 +444,7 @@ class Ec618:
   /**
   Opens the SPI0 bus (master).
 
-  MOSI=PAD24, MISO=PAD25, CLK=PAD26 — shared with I2C1 and UART2; one
-    peripheral at a time. Chip-select is a plain GPIO passed per device
-    (see $spi.Bus.device).
+  MOSI=PAD24, MISO=PAD25, CLK=PAD26 — shared with I2C1 and UART2; one peripheral at a time. Chip-select is a plain GPIO passed per device (see $spi.Bus.device).
   */
   static spi0 -> spi.Bus:
     return open-spi_ 24 25 26
@@ -529,8 +452,7 @@ class Ec618:
   /**
   Opens the SPI1 bus (master).
 
-  MOSI=PAD28, MISO=PAD29, CLK=PAD30 — shared with UART0, so this is
-    unusable while UART0 is the console. Accepted but untested.
+  MOSI=PAD28, MISO=PAD29, CLK=PAD30 — shared with UART0, so this is unusable while UART0 is the console. Accepted but untested.
   */
   static spi1 -> spi.Bus:
     return open-spi_ 28 29 30
@@ -642,10 +564,7 @@ class Ec618:
   /**
   Opens ADC channel 0 — the EC618's AIO3 input (the board's "ADC0").
 
-  The EC618's application ADC inputs are dedicated analog channels (AIO3/AIO4),
-    not GPIO pads, so they are addressed by channel rather than by a $Pin (see
-    $adc.Adc.channel). $max-voltage selects the smallest internal range that
-    covers it (up to 3.8 V) for the best resolution; null uses the widest range.
+  The EC618's application ADC inputs are dedicated analog channels (AIO3/AIO4), not GPIO pads, so they are addressed by channel rather than by a $Pin (see $adc.Adc.channel). $max-voltage selects the smallest internal range that covers it (up to 3.8 V) for the best resolution; null uses the widest range.
   */
   static adc0 --max-voltage/float?=null -> adc.Adc:
     return adc.Adc.channel 0 --max-voltage=max-voltage
@@ -722,11 +641,7 @@ class Ec618UartPort_ extends uart.Port:
 /**
 Attaches a console/control UART to the freshly staged OTA.
 
-The $id selects UART 0, 1 or 2; 0xff disables the redirect. This function
-  must be called after the new image has been committed and before it is
-  rebooted on trial; otherwise it throws. The change takes effect when the
-  trial boots. Validation promotes the new console with the image, while
-  rollback restores the previous image's console.
+The $id selects UART 0, 1 or 2; 0xff disables the redirect. This function must be called after the new image has been committed and before it is rebooted on trial; otherwise it throws. The change takes effect when the trial boots. Validation promotes the new console with the image, while rollback restores the previous image's console.
 */
 set-console-uart id/int -> none:
   #primitive.ec618.console-uart-set

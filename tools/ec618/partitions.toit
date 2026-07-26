@@ -41,9 +41,7 @@ TYPE-CODES ::= {
 MAX-NAME-SIZE ::= 15
 
 /**
-Returns the shared --partitions option for host tools that read the
-  descriptor. The default path is relative to the repository root, where
-  the Makefile runs the tools.
+Returns the shared --partitions option for host tools that read the descriptor. The default path is relative to the repository root, where the Makefile runs the tools.
 */
 partitions-option -> cli.Option:
   return cli.Option "partitions"
@@ -66,8 +64,7 @@ class Partitions:
   /**
   Loads and validates the descriptor at $path.
 
-  Throws with a readable message on a missing file, a gap/overlap, a
-    misaligned entry, or incomplete coverage of the flash.
+  Throws with a readable message on a missing file, a gap/overlap, a misaligned entry, or incomplete coverage of the flash.
   */
   constructor.load path/string=DEFAULT-DESCRIPTOR-PATH:
     if not file.is-file path:
@@ -137,12 +134,9 @@ anchor-crc_ bytes/ByteArray -> int:
 ANCHOR-CONSOLE-OFF ::= 0xff
 
 /**
-Encodes the provisioning anchor record for $parts: boot state
-  { active='A', pending=0, state=NONE, seq=1 } plus the known-good
-  configuration. The trial configuration is empty until an OTA is staged.
+Encodes the provisioning anchor record for $parts: boot state { active='A', pending=0, state=NONE, seq=1 } plus the known-good configuration. The trial configuration is empty until an OTA is staged.
 
-The $console byte selects the console/control UART (0/1/2, or
-  $ANCHOR-CONSOLE-OFF) attached to the initially known-good image.
+The $console byte selects the console/control UART (0/1/2, or $ANCHOR-CONSOLE-OFF) attached to the initially known-good image.
 */
 encode-anchor-record parts/Partitions --console/int=0 -> ByteArray:
   entries := parts.entries
@@ -177,8 +171,7 @@ encode-anchor-record parts/Partitions --console/int=0 -> ByteArray:
   return buffer.bytes
 
 /**
-Encodes the full anchor region for $parts: sector 0 carries the
-  provisioning record, sector 1 stays erased (the ping-pong partner).
+Encodes the full anchor region for $parts: sector 0 carries the provisioning record, sector 1 stays erased (the ping-pong partner).
 */
 encode-anchor-region parts/Partitions --console/int=0 -> ByteArray:
   region := ByteArray (2 * ANCHOR-SECTOR) --initial=0xff
@@ -186,16 +179,14 @@ encode-anchor-region parts/Partitions --console/int=0 -> ByteArray:
   return region
 
 /**
-Returns the known-good console byte of the anchor record found in the AP
-  $image, or null when the image carries no valid record.
+Returns the known-good console byte of the anchor record found in the AP $image, or null when the image carries no valid record.
 */
 find-anchor-console image/ByteArray -> int?:
   offset := find-anchor-offset_ image
   return offset == null ? null : image[offset + 12]
 
 /**
-Finds the anchor record in the AP $image (4 KiB-aligned scan for magic +
-  a valid CRC) and returns its table as a list of $Partition.
+Finds the anchor record in the AP $image (4 KiB-aligned scan for magic + a valid CRC) and returns its table as a list of $Partition.
 
 Returns null when the image carries no valid record.
 */

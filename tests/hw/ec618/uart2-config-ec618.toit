@@ -8,17 +8,7 @@ import uart
 /**
 EC618 half of the UART2 configuration-matrix test (device under test).
 
-Round-trips a token through the ESP32 echo helper at EVERY combination of
-  data bits (5..8), parity (none/even/odd) and stop bits (1/2) at two bauds,
-  reopening the EC618 UART2 with the matching configuration each time. A final
-  phase deliberately MISMATCHES parity (EC618 even vs ESP32 odd) and checks that
-  the driver's error counter reacts; the observed delivery behavior is printed
-  either way (we record reality, we don't assume it). The helper then transmits
-  a break and the EC618 verifies that it wakes $uart.Port.wait-for-break without
-  incrementing the error counter. Exact round trips around the 512-byte receive
-  chunk and the normal/large TX staging-buffer boundaries catch one-off chunking
-  errors.
-
+Round-trips a token through the ESP32 echo helper at EVERY combination of data bits (5..8), parity (none/even/odd) and stop bits (1/2) at two bauds, reopening the EC618 UART2 with the matching configuration each time. A final phase deliberately MISMATCHES parity (EC618 even vs ESP32 odd) and checks that the driver's error counter reacts; the observed delivery behavior is printed either way (we record reality, we don't assume it). The helper then transmits a break and the EC618 verifies that it wakes $uart.Port.wait-for-break without incrementing the error counter. Exact round trips around the 512-byte receive chunk and the normal/large TX staging-buffer boundaries catch one-off chunking errors.
 */
 
 CONTROL-BAUD ::= 115200

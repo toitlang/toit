@@ -11,12 +11,9 @@ import .wiring as wiring
 /**
 EC618 half of the concurrent GPIO-output regression.
 
-Pair with gpio-multi-esp32.toit. Three physically observed pads remain open
-  while several simultaneous output patterns are checked. Closing the middle
-  pad must release only that wire; both surviving outputs must keep driving.
+Pair with gpio-multi-esp32.toit. Three physically observed pads remain open while several simultaneous output patterns are checked. Closing the middle pad must release only that wire; both surviving outputs must keep driving.
 
-Running with argument `leak` exits with PAD26 open. A following normal run
-  verifies that forced container teardown returned its reservations.
+Running with argument `leak` exits with PAD26 open. A following normal run verifies that forced container teardown returned its reservations.
 */
 
 CONTROL-BAUD ::= 115200

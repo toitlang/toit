@@ -8,11 +8,7 @@ import i2c
 /**
 EC618 I2C ownership and argument-contract regression.
 
-This test needs no slave. Internal pull-ups keep the empty buses idle-high.
-  It checks controller exclusivity across alternate pad routings, the
-  documented frequency floor, and release/reacquisition. Running with the
-  argument `leak` exits while I2C0 is open; a following normal run verifies
-  forced container teardown.
+This test needs no slave. Internal pull-ups keep the empty buses idle-high. It checks controller exclusivity across alternate pad routings, the documented frequency floor, and release/reacquisition. Running with the argument `leak` exits while I2C0 is open; a following normal run verifies forced container teardown.
 */
 
 expect-throws expected/string [block] -> none:

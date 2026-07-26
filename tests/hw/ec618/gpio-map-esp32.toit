@@ -12,10 +12,7 @@ import .wiring as wiring
 /**
 ESP32 half of the consolidated dev-board GPIO test.
 
-Every phase is commanded by the EC618 over a UART and acknowledged before
-  either side changes a pin's direction. UART1 is used while UART2's pads are
-  tested; the `SWITCH 2` handshake closes the old observers/control pins on
-  both boards before UART2 opens and UART1's pads become test GPIOs.
+Every phase is commanded by the EC618 over a UART and acknowledged before either side changes a pin's direction. UART1 is used while UART2's pads are tested; the `SWITCH 2` handshake closes the old observers/control pins on both boards before UART2 opens and UART1's pads become test GPIOs.
 */
 
 CONTROL-BAUD ::= 9600

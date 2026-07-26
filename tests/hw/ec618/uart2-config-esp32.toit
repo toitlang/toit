@@ -10,12 +10,7 @@ import .wiring as wiring
 /**
 ESP32 half of the UART2 configuration-matrix test.
 
-Listens on the CONTROL lane (the EC618's UART1 TX on IO4) for newline lines of
-  the form "<baud> <data-bits> <parity> <stop-code>" (parity 1=none 2=even 3=odd;
-  stop-code 1=1 2=1.5 3=2, matching Toit's uart constants), reopens the TEST UART
-  with that exact configuration, and echoes everything it receives. "B"
-  transmits one byte followed by a 12-bit break; "Q" quits.
-
+Listens on the CONTROL lane (the EC618's UART1 TX on IO4) for newline lines of the form "<baud> <data-bits> <parity> <stop-code>" (parity 1=none 2=even 3=odd; stop-code 1=1 2=1.5 3=2, matching Toit's uart constants), reopens the TEST UART with that exact configuration, and echoes everything it receives. "B" transmits one byte followed by a 12-bit break; "Q" quits.
 */
 
 CONTROL-BAUD ::= 115200

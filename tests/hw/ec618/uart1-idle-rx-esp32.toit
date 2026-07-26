@@ -8,11 +8,7 @@ import uart
 import .wiring as wiring
 
 /**
-ESP32 half of the UART1 idle-RX test: sends a small marker into the
-  EC618's UART1 RX every 5 s for ~200 s (outlasting the EC618 half's
-  5 x 30 s window), then reports. No reading, no line parsing — the EC618
-  boot banner on our RX is ignored by construction.
-
+ESP32 half of the UART1 idle-RX test: sends a small marker into the EC618's UART1 RX every 5 s for ~200 s (outlasting the EC618 half's 5 x 30 s window), then reports. No reading, no line parsing — the EC618 boot banner on our RX is ignored by construction.
 */
 
 MARKS ::= 40

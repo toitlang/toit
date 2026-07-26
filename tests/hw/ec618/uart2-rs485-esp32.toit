@@ -10,21 +10,13 @@ import .wiring as wiring
 /**
 ESP32 half of the UART2 RS485-half-duplex test.
 
-Acts as the bus peer: receives each message on the test UART, verifies its
-  content, and echoes it back — while a background task counts rising edges
-  on the EC618's DE (direction) line at IO16. Per message it checks that
+Acts as the bus peer: receives each message on the test UART, verifies its content, and echoes it back — while a background task counts rising edges on the EC618's DE (direction) line at IO16. Per message it checks that
 
-- exactly ONE DE pulse covered the message (a mid-message drop — e.g. the
-  driver releasing the line between internal TX chunks — would show up as
-  extra rises, and on a real bus as garbage);
+- exactly ONE DE pulse covered the message (a mid-message drop — e.g. the driver releasing the line between internal TX chunks — would show up as extra rises, and on a real bus as garbage);
 - DE has dropped by shortly after the last byte;
 - DE is low while THIS side transmits (the EC618 must be listening).
 
-The plan (bauds, sizes, counts) is fixed and mirrored in
-  uart2-rs485-ec618.toit; there is no control lane. The big message is
-  acknowledged with a single 'K' so the EC618 knows the DE checks are done
-  before switching baud.
-
+The plan (bauds, sizes, counts) is fixed and mirrored in uart2-rs485-ec618.toit; there is no control lane. The big message is acknowledged with a single 'K' so the EC618 knows the DE checks are done before switching baud.
 */
 
 BAUDS ::= [9600, 115200, 921600]

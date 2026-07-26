@@ -11,9 +11,7 @@ import .wiring as wiring
 /**
 ESP32 half of the alternate-pad GPIO output test.
 
-EC618 PAD13 / GPIO14 ALT4 is wired to IO17, and PAD14 / GPIO15 ALT4 to IO18.
-  A framed UART1 command names the pattern that this side must read on the two
-  wires. The acknowledgement includes the observed pattern.
+EC618 PAD13 / GPIO14 ALT4 is wired to IO17, and PAD14 / GPIO15 ALT4 to IO18. A framed UART1 command names the pattern that this side must read on the two wires. The acknowledgement includes the observed pattern.
 */
 
 main:

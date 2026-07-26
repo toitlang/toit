@@ -93,13 +93,9 @@ run invocation/cli.Invocation -> none:
   print "gen-data-reloc: wrote $addresses.size .data slot-pointer addresses -> $out-path"
 
 /**
-Returns the sorted RAM addresses of the writable-.data words that hold a
-  pointer into the VM slot (`.vm_a`).
+Returns the sorted RAM addresses of the writable-.data words that hold a pointer into the VM slot (`.vm_a`).
 
-Parses `readelf -rW`: in `.rel.vm_dram_data`, every `R_ARM_ABS32`
-  whose target symbol resolves into `.vm_a` is such a word. For a linked
-  EXECUTABLE the relocation Offset is already the absolute virtual (RAM)
-  address, so it is used directly.
+Parses `readelf -rW`: in `.rel.vm_dram_data`, every `R_ARM_ABS32` whose target symbol resolves into `.vm_a` is such a word. For a linked EXECUTABLE the relocation Offset is already the absolute virtual (RAM) address, so it is used directly.
 
 The parsed header and record lines look like:
 
@@ -150,8 +146,7 @@ vm-a-range readelf/string elf/string -> List:
   throw "no .vm_a section in $elf"
 
 /**
-Returns the section a `.rel.<section>` patches, from a `readelf` "Relocation
-  section '...'" header $line — i.e. `.rel.load_dram_shared` -> `.load_dram_shared`.
+Returns the section a `.rel.<section>` patches, from a `readelf` "Relocation section '...'" header $line — i.e. `.rel.load_dram_shared` -> `.load_dram_shared`.
 */
 relocation-target-section line/string -> string?:
   start := line.index-of "'"

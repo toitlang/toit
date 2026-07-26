@@ -9,17 +9,11 @@ import .wiring as wiring
 /**
 EC618 half of the PAD42 deep-sleep wake regression.
 
-Run with `enabled`, then with `disabled`, while
-  wakeup-pad42-esp32.toit stays running on the ESP32 helper.
+Run with `enabled`, then with `disabled`, while wakeup-pad42-esp32.toit stays running on the ESP32 helper.
 
-The first run arms physical PAD42 and must reboot from the helper's rising
-  edge. The second run requires that preceding pad wake, explicitly disables
-  PAD42, and must ignore the same pulse until the RTC timer wakes it. This
-  proves that a wake configuration does not leak into the next deep sleep.
+The first run arms physical PAD42 and must reboot from the helper's rising edge. The second run requires that preceding pad wake, explicitly disables PAD42, and must ignore the same pulse until the RTC timer wakes it. This proves that a wake configuration does not leak into the next deep sleep.
 
-ESP32 IO13 also controls the BMP280 supply on this rig. The sensor may remain
-  connected: the helper deliberately holds that supply/net low between the
-  short wake pulses, and no I2C transaction runs concurrently.
+ESP32 IO13 also controls the BMP280 supply on this rig. The sensor may remain connected: the helper deliberately holds that supply/net low between the short wake pulses, and no I2C transaction runs concurrently.
 */
 
 CONTROL-BAUD ::= 115200

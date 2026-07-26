@@ -11,11 +11,7 @@ import .wiring as wiring
 /**
 EC618 half of the exhaustive UART1/UART2 round-trip test.
 
-UART1 initially carries the framed control protocol while UART2 is swept. The
-  boards then handshake a control-lane switch to UART2 and sweep UART1. Each
-  controller is tested in two modes: reopening at every baud, and changing the
-  baud on one open port. The ESP32 acknowledges every port transition before
-  test data is sent, so the test contains no timing sleeps.
+UART1 initially carries the framed control protocol while UART2 is swept. The boards then handshake a control-lane switch to UART2 and sweep UART1. Each controller is tested in two modes: reopening at every baud, and changing the baud on one open port. The ESP32 acknowledges every port transition before test data is sent, so the test contains no timing sleeps.
 */
 
 CONTROL-BAUD ::= 115200

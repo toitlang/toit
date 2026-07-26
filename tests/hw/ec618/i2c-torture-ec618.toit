@@ -12,21 +12,16 @@ EC618 I2C shape-change regression test on the CMSIS IRQ-mode engine.
 
 The engine runs without any per-transfer reset.
 
-The closed soc_i2c engine silently swallowed a transfer whose shape
-  differed from the previous one (instant fake success, untouched buffer),
-  which forced a GPR module reset before EVERY transfer. The open bsp_i2c.c
-  engine must not need that: this test hammers shape-changing transfers
-  against a real BMP280 at 100 kHz and 400 kHz, validating every byte read.
+The closed soc_i2c engine silently swallowed a transfer whose shape differed from the previous one (instant fake success, untouched buffer), which forced a GPR module reset before EVERY transfer. The open bsp_i2c.c engine must not need that: this test hammers shape-changing transfers against a real BMP280 at 100 kHz and 400 kHz, validating every byte read.
 
 Per round (every consecutive pair differs in shape and direction):
-  - 1-byte register read (chip-id, value-checked 0x58),
-  - 24-byte register read (full calibration block, dig_T1 cross-checked),
-  - 1-byte plain write (control-meas: forced measurement),
-  - 2-byte register read (dig_T1, must match the block read),
-  - 6-byte register read (measurement burst, plausibility-checked),
-  - 1-byte read with NO register write (SMBus receive-byte),
-  - probe of an empty address (NACK path between data transfers).
-
+- 1-byte register read (chip-id, value-checked 0x58),
+- 24-byte register read (full calibration block, dig_T1 cross-checked),
+- 1-byte plain write (control-meas: forced measurement),
+- 2-byte register read (dig_T1, must match the block read),
+- 6-byte register read (measurement burst, plausibility-checked),
+- 1-byte read with NO register write (SMBus receive-byte),
+- probe of an empty address (NACK path between data transfers).
 */
 
 ADDRESS ::= 0x76

@@ -11,8 +11,7 @@ import .wiring as wiring
 /**
 ESP32 half of the EC618 I2C pull-up matrix.
 
-The I2C0 wires remain inputs throughout. Commands over the framed UART2
-  control channel select whether the ESP32 supplies internal pull-ups:
+The I2C0 wires remain inputs throughout. Commands over the framed UART2 control channel select whether the ESP32 supplies internal pull-ups:
 
 ```
 P 0  // Inputs without pull-ups.
@@ -21,12 +20,7 @@ L    // Report SCL and SDA levels.
 Q    // Quit.
 ```
 
-On a minimal rig without the UART2 control wires, launch
-  `i2c-pull-standalone-matrix-esp32.toit`. Each EC618 phase ends with a
-  two-level marker on SDA/SCL. The helper uses those markers to advance from
-  no pulls, to ESP32 pull-ups, to passive observation of the EC618 pull-ups.
-  It acknowledges the final observation on the same two wires after the
-  EC618 closes its I2C bus.
+On a minimal rig without the UART2 control wires, launch `i2c-pull-standalone-matrix-esp32.toit`. Each EC618 phase ends with a two-level marker on SDA/SCL. The helper uses those markers to advance from no pulls, to ESP32 pull-ups, to passive observation of the EC618 pull-ups. It acknowledges the final observation on the same two wires after the EC618 closes its I2C bus.
 */
 
 OBSERVER-TIMEOUT ::= Duration --s=120

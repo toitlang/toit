@@ -11,10 +11,7 @@ import .uart-stream as stream
 /**
 EC618 half of the UART2 sustained-throughput and leak test.
 
-Each direction carries an independently generated deterministic stream, so
-  the test does not depend on the peer echoing at full rate. A framed UART1
-  control channel acknowledges every UART2 transition and reports the ESP32's
-  byte count and CRC.
+Each direction carries an independently generated deterministic stream, so the test does not depend on the peer echoing at full rate. A framed UART1 control channel acknowledges every UART2 transition and reports the ESP32's byte count and CRC.
 */
 
 BAUDS ::= [921600, 1500000, 2000000, 3000000, 4000000]

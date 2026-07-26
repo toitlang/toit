@@ -5,10 +5,7 @@
 /**
 EC618 firmware-writer lifecycle regression.
 
-The relocation and flash-programming state is system-wide, so only one
-  firmware writer may be open. Running with the argument `leak` exits without
-  closing its writer; a following normal run verifies that forced container
-  teardown closed the service resource and released the writer ownership.
+The relocation and flash-programming state is system-wide, so only one firmware writer may be open. Running with the argument `leak` exits without closing its writer; a following normal run verifies that forced container teardown closed the service resource and released the writer ownership.
 */
 
 import system.firmware

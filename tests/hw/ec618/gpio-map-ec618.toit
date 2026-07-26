@@ -11,26 +11,16 @@ import .wiring as wiring
 /**
 EC618 half of the consolidated dev-board GPIO test.
 
-The ESP32 helper and this program coordinate every phase over a UART. UART1 is
-  the initial control lane, so UART2's pads can be tested as GPIO; both sides
-  then move to UART2 before testing UART1's pads.
+The ESP32 helper and this program coordinate every phase over a UART. UART1 is the initial control lane, so UART2's pads can be tested as GPIO; both sides then move to UART2 before testing UART1's pads.
 
 For every ordinary dev-board GPIO net, this program:
 
 1. Drives a pulse train while the ESP32 observes every safe connected input.
 2. Configures the EC618 pad as input before asking the ESP32 to drive low/high.
 
-PAD42's ESP32 connection controls the loaded sensor-power path and is not
-  bidirectionally observable as logic. Its input direction is covered here; its
-  output direction is covered by `gpio-aon-output-ec618.toit`, which proves that
-  it powers the BMP280 across two cycles. After the PAD42 input phase, this test
-  holds the sensor rail high so GPIO tests on its SDA/SCL wires cannot
-  parasitically power the sensor and appear as false cross-net edges.
+PAD42's ESP32 connection controls the loaded sensor-power path and is not bidirectionally observable as logic. Its input direction is covered here; its output direction is covered by `gpio-aon-output-ec618.toit`, which proves that it powers the BMP280 across two cycles. After the PAD42 input phase, this test holds the sensor rail high so GPIO tests on its SDA/SCL wires cannot parasitically power the sensor and appear as false cross-net edges.
 
-Dedicated pads verify the two supported pull paths after the ESP32 has driven
-  the opposite level and acknowledged its release: wake-domain PAD42 for
-  pull-down and regular PAD34 for pull-up. No phase relies on synchronized time
-  slots, floating-line reads, or simultaneous push-pull outputs.
+Dedicated pads verify the two supported pull paths after the ESP32 has driven the opposite level and acknowledged its release: wake-domain PAD42 for pull-down and regular PAD34 for pull-up. No phase relies on synchronized time slots, floating-line reads, or simultaneous push-pull outputs.
 */
 
 CONTROL-BAUD ::= 9600

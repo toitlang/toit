@@ -11,8 +11,7 @@ import .wiring as wiring
 /**
 ESP32 observer for the EC618 concurrent GPIO-output regression.
 
-The three inputs have pull-downs, so a released EC618 pad reads low while the
-  other two wires remain independently observable.
+The three inputs have pull-downs, so a released EC618 pad reads low while the other two wires remain independently observable.
 */
 
 CONTROL-BAUD ::= 115200

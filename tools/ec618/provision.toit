@@ -87,8 +87,7 @@ run invocation/cli.Invocation -> none:
 /**
 Retargets the AP image in $input and returns the same container type.
 
-The AP image may be raw or embedded in a binpkg. Every other binpkg zone is
-  preserved byte for byte.
+The AP image may be raw or embedded in a binpkg. Every other binpkg zone is preserved byte for byte.
 */
 retarget-container input/ByteArray target/Partitions --ui/cli.Ui --console/int?=null -> ByteArray:
   // A binpkg starts with its zero-filled 52-byte file header; a raw AP
@@ -116,8 +115,7 @@ retarget-container input/ByteArray target/Partitions --ui/cli.Ui --console/int?=
   return out
 
 /**
-Retargets the raw AP $image (its slots and anchor record) to the $target
-  descriptor and returns the new image.
+Retargets the raw AP $image (its slots and anchor record) to the $target descriptor and returns the new image.
 */
 retarget image/ByteArray target/Partitions --ui/cli.Ui --console/int?=null -> ByteArray:
   input-entries := find-anchor-table image

@@ -8,27 +8,14 @@ import uart
 /**
 EC618 half of the UART gap-free-TX test (device under test).
 
-A normal UART is allowed to pause between bytes — but when the UART is
-  (ab)used as a waveform generator for LED strips, ANY pause on the wire
-  corrupts the protocol (an idle line reads as a long high / latch). This
-  test asserts the TX path emits a multi-chunk burst with NO pause the
-  detector can see, at every tested baud.
+A normal UART is allowed to pause between bytes — but when the UART is (ab)used as a waveform generator for LED strips, ANY pause on the wire corrupts the protocol (an idle line reads as a long high / latch). This test asserts the TX path emits a multi-chunk burst with NO pause the detector can see, at every tested baud.
 
-Method (see uart2-gapfree-esp32.toit for the detector math): the payload
-  is all-0x00 bytes, so a gap-free stream never holds the wire high longer
-  than one stop bit; the ESP32's glitch-filtered pulse counter then counts
-  rising edges = pauses + 1 (trailing idle).
-  Each baud runs two phases:
+Method (see uart2-gapfree-esp32.toit for the detector math): the payload is all-0x00 bytes, so a gap-free stream never holds the wire high longer than one stop bit; the ESP32's glitch-filtered pulse counter then counts rising edges = pauses + 1 (trailing idle). Each baud runs two phases:
 
-1. Positive control: the same payload written as two halves with a 20 ms
-   sleep between them — the detector MUST count >= 2 (proves it is armed
-   and sensitive before we trust any zero).
-2. Gap-free: one 32 KiB write --flush (crossing many TX-DMA staging-chunk
-   seams — the place a pause would live) — the count MUST be exactly 1.
+1. Positive control: the same payload written as two halves with a 20 ms sleep between them — the detector MUST count >= 2 (proves it is armed and sensitive before we trust any zero).
+2. Gap-free: one 32 KiB write --flush (crossing many TX-DMA staging-chunk seams — the place a pause would live) — the count MUST be exactly 1.
 
-The wall-clock of the flush is also checked against the wire time (a
-  coarse, filter-independent bound, same idea as uart2-flush).
-
+The wall-clock of the flush is also checked against the wire time (a coarse, filter-independent bound, same idea as uart2-flush).
 */
 
 // The SUPPORTED gap-free contract (Florian, 2026-07-16): any length up

@@ -20,9 +20,7 @@ The wire format is:
 0xa5 0x5a <one-byte payload length> <payload> <CRC-16/XMODEM, big endian>
 ```
 
-The checksum covers the length byte and payload. The two-byte marker lets the
-  decoder discard UART boot output or an incomplete frame and find the next
-  valid message.
+The checksum covers the length byte and payload. The two-byte marker lets the decoder discard UART boot output or an incomplete frame and find the next valid message.
 */
 encode-frame payload/string -> ByteArray:
   bytes := payload.to-byte-array
@@ -49,8 +47,7 @@ class FrameDecoder:
   /**
   Returns the next valid payload, or null if more input is required.
 
-  Junk and checksum-invalid candidates are skipped while retaining a possible
-    leading marker byte for the next input chunk.
+  Junk and checksum-invalid candidates are skipped while retaining a possible leading marker byte for the next input chunk.
   */
   take -> string?:
     while true:

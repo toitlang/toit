@@ -12,15 +12,9 @@ ESP32 half of the GPIO open-drain test: the second bus master.
 
 Holds IO16 (the shared wire) and acts on commands:
 
-  "B"     -> (re)configure IO16 as input with pull-up; reply "B <level>".
-  "R"     -> read the wire; reply "R <level>".
-  "O <v>" -> reconfigure IO16 as a REAL open-drain output (pull-up kept)
-             driving v; reply "O".
-  "C"     -> back to input + pull-up; reply "C".
-  "Q"     -> quit.
+"B"     -> (re)configure IO16 as input with pull-up; reply "B <level>". "R"     -> read the wire; reply "R <level>". "O <v>" -> reconfigure IO16 as a REAL open-drain output (pull-up kept) driving v; reply "O". "C"     -> back to input + pull-up; reply "C". "Q"     -> quit.
 
 All assertions run on the EC618 (gpio-opendrain-ec618.toit).
-
 */
 
 main:

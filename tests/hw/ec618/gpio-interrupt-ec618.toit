@@ -11,17 +11,13 @@ import .wiring as wiring
 /**
 EC618 half of the GPIO-interrupt test (device under test).
 
-The ESP32 drives pulse trains into PAD26 (its IO27); this side counts them
-  with $gpio.Pin.wait-for — the interrupt path, not polling. Checks:
+The ESP32 drives pulse trains into PAD26 (its IO27); this side counts them with $gpio.Pin.wait-for — the interrupt path, not polling. Checks:
 
-1. 50 pulses at 50 Hz (10 ms per phase) are counted EXACTLY — level
-   interrupts plus the waiter must not miss or double-count edges.
+1. 50 pulses at 50 Hz (10 ms per phase) are counted EXACTLY — level interrupts plus the waiter must not miss or double-count edges.
 2. A quiet line produces no wakeups (wait-for times out).
-3. 50 pulses at 250 Hz (2 ms per phase) — the wait-for loop must turn
-   around faster than a phase; this guards the interrupt dispatch latency.
+3. 50 pulses at 250 Hz (2 ms per phase) — the wait-for loop must turn around faster than a phase; this guards the interrupt dispatch latency.
 
 Commands and acknowledgements use the framed UART1 control channel.
-
 */
 
 PULSES ::= 50

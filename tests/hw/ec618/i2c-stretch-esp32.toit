@@ -11,18 +11,9 @@ import .wiring as wiring
 /**
 ESP32 half of the EC618 I2C clock-stretch test: power switch + SCL squatter.
 
-Extends the bmp280-esp32 power helper with a stretch command: the ESP32
-  plays the stretching slave by holding the SCL net low, OPEN-DRAIN ONLY
-  (drive low / release to high-Z — never push high, so there is no
-  contention with the master; this is electrically exactly what a real
-  clock-stretching slave does).
+Extends the bmp280-esp32 power helper with a stretch command: the ESP32 plays the stretching slave by holding the SCL net low, OPEN-DRAIN ONLY (drive low / release to high-Z — never push high, so there is no contention with the master; this is electrically exactly what a real clock-stretching slave does).
 
-Commands over the framed UART2 control channel:
-  "P 1" / "P 0"      -> sensor power on/off (replies "P <v>")
-  "H <delay> <hold>" -> reply "H ok" immediately, then after <delay> ms
-                        hold SCL low for <hold> ms and release.
-  "Q"                -> power off + quit.
-
+Commands over the framed UART2 control channel: "P 1" / "P 0"      -> sensor power on/off (replies "P <v>") "H <delay> <hold>" -> reply "H ok" immediately, then after <delay> ms hold SCL low for <hold> ms and release. "Q"                -> power off + quit.
 */
 
 main:

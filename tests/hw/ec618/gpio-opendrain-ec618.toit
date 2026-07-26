@@ -11,22 +11,15 @@ import .wiring as wiring
 /**
 EC618 half of the GPIO open-drain test (device under test).
 
-The EC618 has no native open-drain; the driver emulates it by making the
-  pin direction track the value (output-low for 0, high-Z for 1). This test
-  puts that emulation on a real two-master bus: EC618 PAD33 and ESP32 IO16
-  share the wire, both open-drain, pull-ups on both sides. Checks:
+The EC618 has no native open-drain; the driver emulates it by making the pin direction track the value (output-low for 0, high-Z for 1). This test puts that emulation on a real two-master bus: EC618 PAD33 and ESP32 IO16 share the wire, both open-drain, pull-ups on both sides. Checks:
 
 - driving 0 pulls the wire low; releasing lets the pull-up raise it;
-- `get` reads the WIRE, not the latch: with the EC618 released and the
-  ESP32 pulling low, the EC618 reads 0 (the wired-AND property);
+- `get` reads the WIRE, not the latch: with the EC618 released and the ESP32 pulling low, the EC618 reads 0 (the wired-AND property);
 - repeated set 0/1 toggling;
 - `set-open-drain` flips between emulated open-drain and push-pull live;
-- open-drain WITHOUT the internal pull-up (external pull-up only — the
-  classic configuration), including a high-Z proof: a released pin loses
-  against the peer's weak pull-down, which a push-pull high would win.
+- open-drain WITHOUT the internal pull-up (external pull-up only — the classic configuration), including a high-Z proof: a released pin loses against the peer's weak pull-down, which a push-pull high would win.
 
 The ESP32 measures/acts on command over UART2; all assertions run here.
-
 */
 
 failures := []

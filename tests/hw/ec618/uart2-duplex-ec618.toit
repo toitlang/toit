@@ -11,10 +11,7 @@ import .uart-stream as stream
 /**
 EC618 UART2 full-duplex stress test.
 
-Both peers start receiving before an acknowledged go command releases their
-  simultaneous deterministic streams. The ESP32 returns its byte count and
-  checksum over the framed UART1 control lane, so one test verdict covers both
-  sides rather than relying on a separately inspected console.
+Both peers start receiving before an acknowledged go command releases their simultaneous deterministic streams. The ESP32 returns its byte count and checksum over the framed UART1 control lane, so one test verdict covers both sides rather than relying on a separately inspected console.
 */
 
 BAUDS ::= [921600, 2000000, 3000000]

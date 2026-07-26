@@ -9,10 +9,7 @@ import .uart-stream as stream
 /**
 EC618 UART2 RX-ring contract test.
 
-The ESP32 sends acknowledged bursts while this application deliberately reads
-  only the separate UART1 control lane. Fitting bursts survive completely; an
-  overflowing burst keeps an exact prefix, counts dropped newest bytes in
-  `Port.errors`, and must not wedge the next receive.
+The ESP32 sends acknowledged bursts while this application deliberately reads only the separate UART1 control lane. Fitting bursts survive completely; an overflowing burst keeps an exact prefix, counts dropped newest bytes in `Port.errors`, and must not wedge the next receive.
 */
 
 CONTROL-BAUD ::= 115200

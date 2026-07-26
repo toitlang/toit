@@ -12,22 +12,13 @@ import ..shared.rc522 as rc522
 /**
 EC618 SPI bring-up test against a real MFRC522 (RC522) RFID reader.
 
-Standalone (no ESP32 helper: SPI0's CLK/MISO pads ARE the UART2 control
-  lane, so no lane is available — and none is needed). The reader hangs on
-  SPI0 with its RST on PAD16 (pulled down externally, so it sits in hard
-  power-down except while this test runs). Checks:
+Standalone (no ESP32 helper: SPI0's CLK/MISO pads ARE the UART2 control lane, so no lane is available — and none is needed). The reader hangs on SPI0 with its RST on PAD16 (pulled down externally, so it sits in hard power-down except while this test runs). Checks:
 
 - version register reads an MFRC522 id (0x91/0x92; this unit: 0x92);
-- FIFO write/read-back loopback, 64 bytes (the FIFO depth), several
-  patterns — exercises MOSI and MISO with real data both ways;
-- the same loopback as BURST transfers: one 65-byte transfer per
-  direction, which crosses the library's >=64-byte threshold and takes
-  the asynchronous DMA path (transfer-start/finish, completion by event)
-  on both a write and a full-duplex read;
+- FIFO write/read-back loopback, 64 bytes (the FIFO depth), several patterns — exercises MOSI and MISO with real data both ways;
+- the same loopback as BURST transfers: one 65-byte transfer per direction, which crosses the library's >=64-byte threshold and takes the asynchronous DMA path (transfer-start/finish, completion by event) on both a write and a full-duplex read;
 - soft power-down bit sets and clears on wake;
-- the reader is left in hard power-down (RST low) so it cannot disturb
-  the I2C1/UART2 tests that share these nets.
-
+- the reader is left in hard power-down (RST low) so it cannot disturb the I2C1/UART2 tests that share these nets.
 */
 
 POWER-DOWN-BIT ::= 0b0001_0000
