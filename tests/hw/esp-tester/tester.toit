@@ -759,7 +759,17 @@ class Ec618Link:
           if (read-ack --timeout-ms=1500) == ACK-PONG:
             log "$name_: the watchdog reset the device during the test (recovered at 115200)"
             return false
-    log "$name_: timed out waiting for the test to finish"
+    // Do not abandon the device process. Ask the resident agent to stop it:
+    // Container.stop runs Toit finally blocks and native resource destructors,
+    // so a timed-out peripheral operation releases its controller and pads.
+    // The acknowledgement is written before the potentially blocking teardown.
+    cancel-error := catch:
+      send CMD-CANCEL
+      expect "CANCEL" ACK-OK --timeout-ms=3000
+    if cancel-error:
+      log "$name_: timed out; could not request test cancellation: $cancel-error"
+    else:
+      log "$name_: timed out; requested in-device test cancellation"
     return false
 
   // --- firmware OTA (canonical FirmwareWriter path) -------------------------

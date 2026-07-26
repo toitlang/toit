@@ -239,6 +239,7 @@ serve port/uart.Port --primary/bool=true -> none:
   while true:
     command := reader.read-byte
     if primary: primary-contact_ = true
+    last-host-contact-us_ = Time.monotonic-us
     watchdog.watchdog-feed  // The host is talking to us; we are alive.
     if command == CMD-PING:
       if not test-running_: out.write #[ACK-PONG]  // Silent during a test (keep-alive ping).
@@ -266,6 +267,15 @@ serve port/uart.Port --primary/bool=true -> none:
       run-installed arg out
     else if command == CMD-RUN-EMBEDDED:
       run-installed arg out --embedded
+    else if command == CMD-CANCEL:
+      // Acknowledge before stopping: Container.stop waits for process teardown,
+      // and the host must know that cancellation reached the agent even if a
+      // broken resource destructor then takes too long. Closing the host link
+      // after this also stops watchdog feeds, so teardown still has a bounded
+      // last-resort recovery path.
+      out.write #[ACK-OK]
+      out.flush
+      cancel-running-test out
     else if command == CMD-FW-BEGIN:
       size := reader.little-endian.read-int32
       error := catch: writer = firmware.FirmwareWriter 0 size
@@ -357,11 +367,23 @@ install-container reader/io.Reader out/io.Writer port/uart.Port -> bool:
 // external reset. The one-minute recovery window also gives a newly OTA'd
 // agent time for the host to reconnect.
 WATCHDOG-TIMEOUT ::= Duration --s=60
+// A live runner pings every 3 s. If it disappears, stop its test while the VM
+// is still healthy enough to unwind resources; the watchdog remains the
+// fallback only when this lease task itself cannot run.
+TEST-HOST-LEASE ::= Duration --s=15
 
 // True while a test container runs in the background. While set, a CMD-PING is
 // fed but NOT acked, so the host's keep-alive pings don't interleave ack bytes
 // into the test's output stream.
 test-running_/bool := false
+
+// The running container is kept here so the command loop can stop it. Stopping
+// the process is important: it executes Toit finally blocks and native resource
+// destructors, unlike abandoning the host UART while the process keeps running.
+running-container_/containers.Container? := null
+cancel-running-test-in-progress_/bool := false
+last-host-contact-us_/int := Time.monotonic-us
+test-run-sequence_/int := 0
 
 // Whether a host command ever arrived on the PRIMARY control UART — gates
 // (and releases) the UART2 rescue listener in main-ec618.
@@ -374,6 +396,9 @@ Reports its exit through a status line so the command loop keeps reading, and
   the host's pings keep feeding the watchdog, while the test runs.
 */
 run-installed arg/string out/io.Writer --embedded/bool=false -> none:
+  if test-running_:
+    status out "run: a test is already running"
+    return
   test-image/containers.ContainerImage? := null
   containers.images.do: | image/containers.ContainerImage |
     if not test-image and image.id != containers.current and image.name != SLEEPER-NAME:
@@ -383,16 +408,33 @@ run-installed arg/string out/io.Writer --embedded/bool=false -> none:
     status out "run: no container installed"
     return
   status out "run: starting test"
+  start-error := catch --trace:
+    running-container_ = containers.start test-image.id [arg]
+  if start-error:
+    running-container_ = null
+    status out "run: test start failed error=$start-error"
+    return
   test-running_ = true
+  test-run-sequence_++
+  sequence := test-run-sequence_
+  task --background::
+    while test-running_ and test-run-sequence_ == sequence:
+      sleep --ms=1_000
+      if Time.monotonic-us - last-host-contact-us_ > TEST-HOST-LEASE.in-us:
+        status out "run: host lease expired; canceling test"
+        cancel-running-test out
+        break
   task::
     // The agent must survive anything the test (or the wait machinery)
     // throws: an unhandled exception here kills the whole agent process and
     // the device sits unresponsive until the watchdog resets it.
     code/int? := null
-    error := catch --trace: code = (containers.start test-image.id [arg]).wait
+    container := running-container_
+    error := catch --trace: code = container.wait
     cleanup-error/any? := null
     if not embedded:
       cleanup-error = catch: containers.uninstall test-image.id
+    running-container_ = null
     test-running_ = false
     if error:
       status out "run: test wait failed error=$error"
@@ -400,6 +442,23 @@ run-installed arg/string out/io.Writer --embedded/bool=false -> none:
       status out "run: test cleanup failed error=$cleanup-error"
     else:
       status out "run: test exited code=$code"
+
+/**
+Stops the running test through the container service.
+
+This is deliberately process cancellation rather than a protocol disconnect:
+  process teardown unwinds Toit code and destroys every native resource.
+*/
+cancel-running-test out/io.Writer -> none:
+  if cancel-running-test-in-progress_: return
+  container := running-container_
+  if not container:
+    status out "cancel: no running test"
+    return
+  cancel-running-test-in-progress_ = true
+  error := catch --trace: container.stop
+  cancel-running-test-in-progress_ = false
+  status out "cancel: $(error ? "failed error=$error" : "requested")"
 
 /**
 Reads one OTA chunk and feeds it to the firmware $writer.
