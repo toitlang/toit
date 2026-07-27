@@ -178,6 +178,15 @@ LuatOS-style timing word on 26 MHz and measures **~363 kHz** (1.25 us high +
 1.50 us low) at the fastest bounded SCLH=SCLL=30 setting. SCLx=28 can make NACK
 traffic free-run.
 
+Combined-transfer result (2026-07-27): the ESP-IDF slave fixture in
+`tests/hw/ec618/esp-idf-i2c-slave` uses the ESP32 pulse counter to count SDA
+falling edges only while SCL is high, and snapshots the count at STOP.
+`i2c-long-transfer-ec618.toit` passed exact 1,025-byte write, read, and
+write-read data and observed exactly two STARTs and one STOP for the combined
+operation. On the current rig the EC618 console is `/dev/ttyUSB0` and the
+ESP32 fixture is `/dev/ttyUSB3`; rediscover device names rather than assuming
+they are stable.
+
 ## Rig gotchas (each of these cost real time)
 
 - **The bare envelope is agentless.** `make ec618` builds a BARE envelope (333

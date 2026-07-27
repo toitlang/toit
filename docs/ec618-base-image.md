@@ -59,18 +59,17 @@ that `build/ec618-base/base.elf` exists. After base-side edits, run
 - New primitives, new drivers, mbedtls changes — slot-side, OTA-able.
 - The slot's own C++ runtime helpers (libgcc/libstdc++): pulled from the
   slot toolchain, land in-slot.
-- Slot compiler upgrades: HW-proven (a GCC-16 slot validated on a base
-  deployed from GCC-14-era builds).
+- Slot compiler upgrades remain possible, but are pre-release qualification
+  work rather than part of the initial toolchain contract.
 
 ## Toolchains
 
 - Base: the xmake-pinned arm-none-eabi GCC 10.3 (`EC618_GCC_PATH`) — the
   base's bytes do not depend on the PATH compiler at all.
-- Slot: the system arm-none-eabi compiler (GCC 16 at the time of
-  writing). Slots are self-contained (they carry their own compiler
-  runtime), and the mixed-compiler acceptance is HW-proven: slots from
-  different GCC versions run on the same base. Compiler upgrades are
-  slot-only events; the base-id gate catches any genuine mismatch.
+- Slot: the same xmake-pinned arm-none-eabi GCC 10.3 selected by
+  `EC618_GCC_PATH`. The build passes that explicit toolchain root through
+  xmake, CMake, the slot link, and ELF utilities. A newer GCC or Clang needs
+  separate ABI, runtime, linker, relocation, and hardware qualification.
 
 ## Fingerprints and per-rig state
 

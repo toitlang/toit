@@ -5,7 +5,9 @@ This document tracks Florian's pending review comments on
 on each comment's preserved `original_commit_id`, not GitHub's mutable current
 `commit_id`.
 
-Review baseline: local `floitsch/ec618` at `ce3dd02c`.
+Review baseline: authenticated GitHub snapshot and local/remote
+`floitsch/ec618` at `3babe6e8` (2026-07-27). Later worktree results are called
+out explicitly; they are not part of that committed baseline.
 
 ## Status legend
 
@@ -35,6 +37,67 @@ For every comment:
    genuinely gone. Moving, renaming, or reimplementing it does not qualify.
 6. Record explicit discussion requests and unresolved assumptions before
    finalizing the work plan.
+
+## Response and duplicate-work audit
+
+The authenticated GitHub snapshot contains 1,038 inline review-comment
+records: 377 root comments and 661 replies. All replies were posted by
+`floitsch`. The distribution by root comment is:
+
+- 100 roots have one reply;
+- 258 roots have two replies;
+- 15 roots have three replies; and
+- 4 roots have no reply.
+
+Thus 273 of 377 threads have duplicate replies. GitHub still marks all 377
+threads unresolved (334 are outdated); a reply beginning `done.` did not
+resolve the thread in the GitHub UI.
+
+The duplicate replies came from multiple response passes, but the repository
+does not contain a duplicated implementation pass. Between the old tracker
+baseline `ce3dd02c` and the authenticated PR head `3babe6e8` there are 165
+single-parent commits, no merge commits, and no duplicate stable patch IDs.
+The later replies usually restate the result already present in that linear
+history. Where a later pass found the earlier result incomplete, it extended
+or corrected it in a later commit rather than retaining two implementations:
+
+- [r3299892126](https://github.com/toitlang/toit/pull/3075#discussion_r3299892126)
+  first received an answer that kept raw GPIO numbers, then a correction to
+  mode-aware ownership, and finally the actual requested resource-based
+  primitive boundary in `49012c46`. The last reply supersedes the first two.
+- [r3408317714](https://github.com/toitlang/toit/pull/3075#discussion_r3408317714)
+  first removed the speculative jump table; the final reply records the
+  separate keep-list audit in `3babe6e8`, which removed 286 unused exports.
+- The repeated Toitdoc replies correspond to successive whole-tree audits and
+  follow-up fixes. They are redundant as replies, but the later commits repair
+  omissions rather than duplicate the same source change.
+- The third replies on the UART boot-banner/AON-watchdog threads add the final
+  hardware distinction and do not introduce a second driver path.
+
+The short-lived worktree pad-lease draft was not a duplicate implementation,
+but it was also not compatible with the current API: the required `gpio.Pin`
+already owns the pad, so a native PWM resource cannot reserve the same pad a
+second time. That draft has been removed. For the current stack, tests that
+let a peripheral outlive local setup retain the carrier `Pin`; the PWM
+container-teardown test now does so explicitly and carries a TODO. Native
+peripheral pad leases are deferred to the integer-GPIO rebase, when EC618
+peripherals will receive GPIO numbers rather than `gpio.Pin` objects and can
+reserve pads in C++ without double-owning them.
+
+The four roots without a reply are intentionally not hidden by the aggregate
+counts:
+
+- [r3516504729](https://github.com/toitlang/toit/pull/3075#discussion_r3516504729)
+  and
+  [r3516664910](https://github.com/toitlang/toit/pull/3075#discussion_r3516664910)
+  both lead to the SPI1/UART0-pad question. The driver now selects the
+  documented SPI1 ALT1 route directly, but SPI1 still needs the agreed
+  hardware rewire and proof.
+- [r3516626970](https://github.com/toitlang/toit/pull/3075#discussion_r3516626970)
+  and
+  [r3516651588](https://github.com/toitlang/toit/pull/3075#discussion_r3516651588)
+  explicitly defer the common integer-GPIO API transition until the rebase.
+  They remain rebase work, not resolved current-stack work.
 
 ## Questions and design discussions
 
@@ -77,6 +140,14 @@ before the first release. Platform-wide hardware fixes and stable exported-ABI
 changes that genuinely belong below every slot should still be made there.
 Slot-owned driver behavior should remain replaceable by OTA and should not be
 moved into the base merely because changing the unreleased base is possible.
+
+The base keep-list was audited against the final slot link rather than carrying
+forward the old jump-table prefix policy. Of 495 guaranteed symbols, 209 are
+used by the current slot; the other 286 speculative exports were removed.
+Adding a new base dependency must now fail the slot link and be reviewed
+explicitly. The narrowed base and both slot variants pass the complete
+relocation/byte-identity, device-relocator, envelope, and partition-retargeting
+suite.
 
 ### 2. Is console/partition configuration device state or OTA-image state?
 
@@ -156,33 +227,48 @@ This was two separate comments:
    warns against reclaiming the debug UART; it also explicitly says CSDK can
    adjust the mux.
 
-   There is a real current-tree inconsistency to fix before rewiring:
-   `Ec618.spi1` and `spi_ec618.cc` accept PAD28/29/30, while this project's
-   `RTE_Device.h` initializes SPI1 on the alternative valid ALT3 mapping
-   SSN=PAD13, MOSI=PAD14, MISO=PAD15, CLK=PAD16. The CMSIS SPI driver consumes
-   those RTE definitions, so the advertised PAD28/29/30 API has not actually
-   selected the pins it claims.
+   The audit found a real inconsistency: `Ec618.spi1` and `spi_ec618.cc`
+   accepted PAD28/29/30, while this project's `RTE_Device.h` initialized SPI1
+   on the alternative valid ALT3 mapping SSN=PAD13, MOSI=PAD14, MISO=PAD15,
+   CLK=PAD16. That inconsistency is now fixed: the rewritten core-SPI driver
+   selects the advertised ALT1 route itself and does not consume the CMSIS RTE
+   SPI pin table.
 
    Choose one mapping consistently. PAD28/29/30 is the preferred hardware-test
    mapping because it is the documented default and is exposed as the UART0
-   cluster on `modest-affair`. After correcting `RTE_Device.h` and auditing
-   the driver's hardware-SSN behavior, the test setup is:
+   cluster on `modest-affair`. The rewritten driver now selects this ALT1
+   route directly instead of depending on the unrelated CMSIS RTE table.
+   The test setup is:
 
    - transactionally select UART1 as the console;
    - move the USB UART adapter to UART1 TX/RX (PAD34/PAD33);
-   - wire the former UART0 pins PAD28/PAD29/PAD30, plus a GPIO CS, to the
-     ESP32 and use those physical wires as SPI1;
-   - run an ESP32 SPI peer/checker and exercise the same transfer shapes and
-     cleanup cases as SPI0.
+   - move the RC522's SPI0 nets to SPI1 PAD27/PAD28/PAD29/PAD30 while leaving
+     its reset on PAD16;
+   - run the same RC522 register, FIFO, DMA, cancellation, packed-prefix, and
+     cleanup checks as SPI0. The ESP32 probe may share these nets, but is not
+     itself the SPI slave.
+
+   The spare 32-pin Air780E development board exposes only PAD29/PAD30 on edge
+   contacts 24/25. Its official schematic routes the other two primary SPI1
+   nets through the camera connector instead: PAD27/CAM_ISDA is J14 pin 3 and
+   PAD28/CAM_ISCL is J14 pin 5. A separate SPI1 rig can therefore avoid
+   changing `modest-affair`, provided those fine-pitch J14 contacts are
+   practical to break out. The official PCB source identifies J14 as a
+   bottom-contact Hirose `FH12-24S-0.5SH`: 24 contacts, 0.5 mm pitch, for a
+   0.3 mm FFC. Use a bottom-contact 24-pin breakout and a 24-way 0.5 mm
+   same-side cable. The UART1 control lane is edge contact 30/PAD34 to ESP32
+   IO4 and edge contact 31/PAD33 from ESP32 IO16, with common ground.
 
    “Connect UART0 to the ESP32” therefore means connecting the physical UART0
    pad cluster and remuxing it as SPI1; UART0 is not also used as a control
-   UART during the test. Do not rewire until the software mapping is fixed.
+   UART during the test. The software mapping is fixed; rewire and hardware
+   proof are the remaining steps.
 
 2. [r3634553044](https://github.com/toitlang/toit/pull/3075#discussion_r3634553044)
-   requests an I2C electrical/failure matrix. The existing I2C0 wires already
-   connect PAD13/PAD14 to ESP32 IO17/IO18, so this should not require a manual
-   rewire. The ESP32 can command three states over the control UART:
+   requested an I2C electrical/failure matrix. **Resolved and hardware
+   verified.** The full rig retains its framed-UART version. The smaller
+   SDA/SCL/GND-only rig runs the same matrix through an autonomous ESP32
+   helper whose phase markers and final acknowledgement share the I2C wires:
 
    - both sides' pulls disabled: an I2C operation must fail/return promptly,
      not hang, and the next operation must recover;
@@ -191,22 +277,24 @@ This was two separate comments:
    - EC618 pulls disabled, ESP32 input pull-ups enabled: the same operations
      complete using only the external peer's pulls.
 
-   This can use an absent address, so it does not require an ESP32 I2C-client
-   implementation or the sensor breakout. Confirm that this matches the
-   requested test.
+   All three phases passed against absent address `0x42`; both pulled phases
+   were idle-high, and the ESP32 explicitly acknowledged observing the EC618
+   internal pull-ups. Final doctor passed with the unchanged base ID, slot B,
+   and UART0 console.
 
 ### 5. Is Clang support a requirement for this PR?
 
 [r3609295035](https://github.com/toitlang/toit/pull/3075#discussion_r3609295035)
 asks whether the EC618 toolchain can use Clang. The frozen vendor base is tied
-to the xmake-pinned GCC 10.3 toolchain, while slot code currently uses
-Arm GNU 16. Supporting Clang is possible only after verifying ABI, linker,
-builtins, and relocation compatibility with that frozen base.
+to the xmake-pinned GCC 10.3 toolchain, and the slot now uses that same
+explicit toolchain. Supporting Clang is possible only after verifying ABI,
+linker, builtins, and relocation compatibility with that frozen base.
 
-**Decision:** start by using the SDK-pinned Arm GNU 10.3 toolchain consistently
-for the base, VM compilation, slot link, and ELF utilities. The current stack
-is less clean: xmake pins GNU 10.3, while CMake and the final slot link use
-whichever `arm-none-eabi-g++` is on `PATH`.
+**Decision:** use the SDK-pinned Arm GNU 10.3 toolchain consistently for the
+base, VM compilation, slot link, and ELF utilities. The build and CI now pass
+one explicit `EC618_GCC_PATH` through xmake, CMake, the final slot link, and
+the ELF tools. The living base-image documentation has been corrected to
+match.
 
 Clang can target Cortex-M3, but this SDK uses GCC's FreeRTOS port, GNU linker
 scripts, GNU-named prebuilt libraries, newlib/libstdc++, libgcc helpers, and
@@ -231,6 +319,10 @@ partition descriptor carries its schema ID.
 `https://toit.io/schemas/ec618/partition-table/v1.json`. “Partition table”
 describes the complete document more accurately than singular “partition”.
 Keep a matching repository copy for tests. The proposed path name is accepted.
+The repository copy and descriptor annotations exist. An exact copy has now
+been added to `web-toit.io/static/schemas/ec618/partition-table/v1.json` and
+committed there as `dbdfe99`; deployment of that web commit is the remaining
+step before the canonical URL serves it.
 
 ### 7. Is `self-linux` intentional for the base release?
 
@@ -284,6 +376,63 @@ coherent change.
   has the ESP32 observe the physical wires over the framed control protocol;
   closing the middle pad must leave both survivors driving.
 
+## Post-audit hardware closure
+
+The cleaned SDK base was full-flashed on 2026-07-27 and reports
+`base-v3+9b21b073c2004820472d66c7a821ddf5`. On that exact base and final
+slot-owned I2C implementation, the fully wired EC618/ESP32 rig passed:
+
+- exact 1,025-byte write, read, and combined write-read data;
+- the ESP32 hardware counter's repeated-START verdict of exactly two STARTs
+  and one STOP;
+- forced container teardown while I2C0 remained open, followed immediately by
+  controller release/reacquisition and the ownership/frequency contract test;
+  and
+- a final device doctor without a reset: slot A, UART0, healthy base identity.
+
+This closes the uncertainty introduced by removing the unused transfer engine
+from the SDK submodule: the source-owned engine is hardware-proven against the
+cleaned base, not merely link-tested against it.
+
+## Remaining work at the audited head
+
+The remaining work is not the 273 duplicate reply records. It is the following
+code, evidence, integration, and documentation work:
+
+1. **Keep current-stack carrier pins alive where tests deliberately abandon
+   peripheral objects.** Do not add a second native lease while `gpio.Pin`
+   owns the pad. The PWM container-teardown test now retains its pin and
+   records the rebase TODO; audit analogous test-only lifetime patterns as
+   they are encountered.
+2. **Finish SPI evidence.** Rewire and hardware-test SPI1 on the documented
+   PAD27/PAD28/PAD29/PAD30 ALT1 route. Driver-owned whole-transfer copying may
+   remain for the first version only with the current documented limitation;
+   a streaming/token implementation is follow-up work if a safe progress signal
+   can be exposed. The required camera-connector breakout has been ordered but
+   has not arrived, so the SPI1 hardware proof is presently blocked.
+3. **Complete the rebase-only API and ownership work.** After Florian reviews
+   the current changes and the history is squash-rebased, rebase onto
+   `github.com/toitlang/toit` master. Consume the integer-GPIO peripheral APIs
+   and the separately upstreamed generic UART/FreeRTOS fixes. EC618 will not
+   support the deprecated `gpio.Pin` compatibility form; its native
+   peripherals must reserve integer-selected pads in C++. Re-audit all 377
+   original comments after the rewrite/rebase.
+4. **Finish the broad audits.** Complete the generic catch/CLI pass, the
+   envelope/firmware-tool separation audit, remaining partition-record/helper
+   semantics, compatibility qualification of the mixed GCC 10.2.1/10.3.1
+   vendor archives, and deployment of web commit `dbdfe99`. Jaguar still needs
+   the host-side base-ID preflight for an OTA extracted from an envelope; the
+   on-device rejection is already present.
+5. **Finish the remaining living-document audit.** The I2C, pad-lifetime,
+   schema, and immediate handover status are updated here and in their focused
+   documents. The broader stale-document findings already recorded in this
+   tracker still need their own review pass, particularly partition design,
+   UART historical issues, and the base/envelope release contract.
+6. **Release only after the above review gates.** No base has been released.
+   Once the current-stack fixes are accepted, prepare the coherent history,
+   rebase it, repeat the audit/build/hardware matrix, then publish the first
+   self-contained base/envelope pair.
+
 ## Implementation plan
 
 The decisions above change a few details, but the following workstreams are
@@ -296,15 +445,15 @@ already clear from the complete comment pass.
    Toitdoc sweep or shared resource ownership may be one logically atomic
    commit, but must not be mixed with unrelated cleanup.
 
-2. **Build one shared EC618 ownership model.**
-   Add locked pools for pads, GPIO controller bits, UART/I2C/SPI controllers,
-   PWM timers, and ADC channels. A peripheral acquisition must reserve all of
-   its resources atomically, release them on every allocation/hardware failure,
-   and release/return pads to a safe state when a container dies. Bus-clear
-   may temporarily use a reserved pad's GPIO controller only while holding the
-   same pool lock, so no other container can observe a transient free resource.
-   Apply this model to all peripheral files, not only the GPIO and I2C lines
-   on which it was requested.
+2. **Complete ownership in two API phases.**
+   On the current stack, `gpio.Pin` owns the physical pad; code and tests that
+   retain a peripheral must retain those carrier pins too. Keep the existing
+   locked pools for controllers, PWM timers, ADC channels, GPIO controller
+   bits, and pin resources, but do not double-reserve a pin inside a native
+   peripheral. During the integer-GPIO rebase, remove EC618's deprecated
+   `gpio.Pin` compatibility path and make each native UART/I2C/SPI/PWM
+   acquisition atomically reserve all integer-selected pads. Temporary I2C
+   bus-clear GPIO use must stay under the same native ownership.
 
 3. **Finish asynchronous operation and cancellation contracts.**
    Remove library-internal arbitrary timeouts from I2C and SPI. Make external
@@ -319,7 +468,7 @@ already clear from the complete comment pass.
 4. **Repair lifecycle bugs before extending features.**
    Register ADC resources, serialize conversion/trim initialization, and
    decide whether conversion latency warrants an event-driven primitive.
-   Move PWM cleanup and timer/pad ownership to the channel resource, verify a
+   Keep PWM cleanup and timer ownership in the channel resource, verify a
    true 100% duty implementation or document a supported limitation, and
    switch off the AON IO supply only when no retained user remains. Make the
    modem connection resource's one-connection/lifecycle contract explicit.
@@ -425,30 +574,31 @@ specific behavior named; a related general-audit item can remain open.
 | Area | Status | Current finding |
 | --- | --- | --- |
 | Original commit mapping | **Resolved** | All 377 comments retain `original_commit_id`; 140 distinct reviewed commits are recoverable. |
+| GitHub response coverage | **Audit** | Authenticated snapshot: 661 replies cover 373 roots; 273 roots have duplicate replies and four have none. All 377 threads remain unresolved in GitHub, so thread resolution must follow the final code/evidence audit rather than reply count. |
 | Copyright/name cleanup | **Resolved** | The three explicitly commented files use the requested 2026 contributor header, and the former chip codename no longer appears in the current tree. |
 | MbedTLS include order | **Resolved** | MbedTLS configuration is selected per target by the build-wide `MBEDTLS_CONFIG_FILE`, as it is for ESP32. Every Toit header that can do so includes MbedTLS before `top.h`, preserving `top.h`'s macro cleanup; source files follow the same order unless `top.h` is required to select the platform-specific include/gating path. |
 | Toitdoc/conventions | **Resolved** | Audited every PR-added Toitdoc, not just the attached lines: library comments follow imports, continuation paragraphs are indented, examples use fenced code blocks, EC618 UART mappings and restrictions live in `lib/ec618` with a signpost from the generic UART constructor, the unambiguous public console query is named `console-uart-id`, function comments in `mini-jag` are Toitdocs, and all edited sources pass `toit analyze` plus documentation generation. |
 | Generic catch/CLI guidance | **Audit** | Catch-alls that can mask unexpected failures and hand-written print/exit/fail paths remain in tests and tools. |
-| GPIO/pad ownership | **Open** | Every `gpio.Pin` reserves its physical EC618 pad under the VM global lock; configuring it as GPIO separately claims the controller bit, rejecting a sibling only when both pads would actually use the shared GPIO registers. Peripheral-muxed siblings may coexist (required for I2C0 PAD14 beside UART0 PAD30). Both identities are released through the resource-group teardown hook on explicit close or container death. The authoritative chip mapping is the official CSDK's complete `allGpioMap` example table plus its `GPIO_ToPadEC618` helper; CSDK peripheral tables supply mux roles, while the rig's measured wiring table separately records Air780E connector aliases and mirrored nets. The public primary/alternate lookup tables are flash-resident byte arrays using `0xff` as the missing-pad sentinel, and `Ec618.gpio`/`pad` forward the portable input/output/pull/open-drain/initial-value constructor options. Regular explicit pulls use the pad PCR configuration, while PAD40–42 use the wake-pad block; the rig validates PAD34 pull-up and PAD42 pull-down. Rig smoke tests cover every lookup plus those construction modes. Hardware coverage also checks duplicate/active-alias rejection, explicit and forced release/reacquisition, peripheral sibling coexistence, and invalid values. Remaining: make direct mux transitions and temporary GPIO use inside I2C/SPI/UART explicit participants in this mode-aware ownership model, and ref-count AON-pad power. |
+| GPIO/pad ownership | **Open (rebase)** | Every current-stack `gpio.Pin` reserves its physical EC618 pad and configured GPIO-controller bit through resource teardown. Because common peripheral APIs still require these `Pin` objects, a native PWM/I2C/SPI/UART resource cannot reserve the same physical pad again. The abandoned native PWM lease draft was removed rather than creating double ownership; test paths that deliberately abandon a peripheral retain their carrier pins, with a TODO in the PWM teardown test. After rebasing onto the upstream integer-GPIO APIs, EC618 will accept integers only and each native peripheral must reserve and release its pads in C++, including temporary I2C bus-recovery mux changes. |
 | ADC | **Resolved** | The two application channels use a globally locked ownership pool, may coexist with each other, and reject a second owner of the same AIO input. `SimpleResource` already registered the resource automatically; its EC618 destructor deinitializes and releases the channel on explicit close or forced container teardown. Trim/configuration initialization is serialized, and the vendor driver serializes cross-channel conversions through its IRQ-safe request queue. EC618 conversion primitives only start or harvest the per-resource request; while it is pending, the public `Adc` method sleeps/yields in Toit under a per-instance monitor instead of busy-polling inside a primitive. The rig passed forced-container cleanup followed by exclusivity, explicit close/reacquisition, and scheduler-progress coverage. |
-| PWM | **Open** | Each channel owns its teardown and returns its timer through the locked global resource pool, including forced container teardown. Exact 0% and 100% use static GPIO levels; fractional factors remux and restart timer PWM, avoiding both the constant-low update trap and the former high-level notch. Physical pads are still not independently leased by the PWM channel. |
-| I2C | **Open** | Async IRQ operation has unconditional cancellation cleanup and no arbitrary library deadline. Controller acquisition is locked; devices explicitly retain their bus; construction and transfer buffers are allocated before hardware activity with `Defer` rollback; unsupported modes are rejected; frequency is an honest upper bound with the EC618 floor/ceiling documented. EC618 always takes the asynchronous path; the common synchronous primitive entries are explicit unreachable stubs rather than a second blocking implementation. The transfer engine is slot-owned and task/IRQ driven: transfers through 512 bytes use the automatic hardware-length mode, while longer transfers use dedicated FIFO refill/drain without inserting chunk boundaries. After installing the exact final slot, the rig passed exact 1,025-byte write, read, and combined-API data checks; rerunning requires an out-of-band ESP32 fixture reset because ESP-IDF's v2 classic-ESP32 slave driver retains prefetched TX bytes. The rig also covers clock stretching, cancellation while SCL is held low, a deliberately late SCL release, and reuse of the same device after cancellation. Remaining: the common API promises a repeated START for write-read, but every viable EC618 chain currently emits STOP then START. The documented `RESTART` command and attempts to issue `START` while busy either made no progress or wedged the peripheral in hardware experiments, and the vendor CMSIS layer records `xfer_pending` without implementing it. Do not claim this semantic point is resolved until there is a proven wire-level implementation. Alternate-pad bus-clear ownership also remains open. |
+| PWM | **Resolved (current stack)** | Each channel owns teardown and returns its timer through the locked global resource pool, including forced container teardown. Exact 0% and 100% use static GPIO levels; fractional factors remux and restart timer PWM. The container-teardown regression now retains the carrier `gpio.Pin`, preventing GC from deinitializing the pad while the leaked PWM resource is under test. Native pad ownership is intentionally deferred to the integer-GPIO rebase. |
+| I2C | **Resolved (current stack)** | The OTA-slot source owns the transfer engine and IRQs; the SDK submodule now retains only its stable CMSIS lifecycle plus the two required IRQ-name corrections. Transfers through 512 bytes use hardware-length FIFO mode and longer transfers use source-owned unknown-length FIFO refill/drain. Combined write-read holds the bus after the command byte and issues `START|RESTART` for the read address. The ESP32 fixture uses a hardware pulse counter gated by SCL and proved the combined operation has exactly two STARTs and one STOP; the same run passed exact 1,025-byte write, read, and combined read data. Transfer-buffer rollback is allocation-free and therefore safe with the embedded non-allocating `std::function` implementation. Existing cancellation, clock-stretch, recovery, and reuse coverage still applies. Native ownership of integer-selected pads and temporary bus-clear muxing remains rebase work, not an unresolved I2C protocol defect. |
 | TCP/lwIP | **Resolved** | The EC618 vendor archive contains and schedules the normal 250 ms TCP timer; the historical “broken Nagle timers” claim was incorrect. The shared raw-lwIP writer now follows the documented contract by calling `tcp_output` after every successful `tcp_write`; lwIP itself applies Nagle. EC618 no longer silently forces `TCP_NODELAY`. Deterministic hardware loopback coverage asserts the default on both connected and accepted sockets and sends small payloads in both directions; the cellular HTTP test carries the same default assertion when a network is registered. |
 | SPI | **Open** | A globally locked lease makes each controller exclusive across containers and is returned by explicit or forced teardown. Teardown unconditionally stops the engine, detaches its callback, frees DMA memory only afterward, and releases bus/CS/DC pads to high impedance. The asynchronous library path has no arbitrary internal deadline; an outer cancellation runs unconditional `finally` cleanup that marks callbacks stale, stops DMA, deselects CS, and only then frees the native buffer. Read copy-back honors nonzero transfer offsets. The rig promptly cancels a 32 KiB DMA transfer that would otherwise take over 250 ms, then reuses the same controller/device. Command/address phases are packed under one CS assertion when their combined width is byte-aligned (each may be narrower); totals the 8-bit EC618 core cannot represent exactly are rejected. RC522 hardware covers a 4-bit command plus 4-bit address, including a zero-valued command. The current rewrite uses the LuatOS core SPI driver and explicitly muxes the selected bus pads itself, so its documented PAD28/29/30 SPI1 ALT1 route does not depend on the unrelated CMSIS RTE pin table. Remaining: replace whole-transfer copying with a signaled streaming/chunked design if the driver can expose progress, finish cross-peripheral pad ownership, and prove SPI1 on hardware after rewiring. |
 | UART | **Resolved** | Heap rings, DMA TX/RX, acquire/release SPSC indices, two-piece ring copies, scoped PRIMASK guards, and teardown concerns are addressed. Controller acquisition and release use the globally locked resource pool shared with the ESP32 UART design. The public routing matrix is one flat flash-resident byte array, both UART2 mappings open on the rig, native route resolution fails eagerly when flow-control pads do not match the uniquely selected TX/RX mapping, and RS485 rejects a non-GPIO DE pad before the assertion-backed configuration path. The complete newline-less `^boot.rom...` banner on UART1 is mask-ROM output at every reset, not CMSIS-init residue; it cannot be suppressed, and the unsupported abort-send call is gone. Mini-jag now owns the explicit TX/RX `Pin` objects for both its primary and rescue ports and closes them deterministically with the port, so stopping the rescue listener releases PAD25/PAD26 before a test uses them as GPIO. Final SEND_COMPLETE queues a UART drain worker that waits for TEMT in task context, releases RS485 DE, and posts the true line-idle event; `wait_tx` is a non-blocking state check. Repeated errors retain exact counters but share one queued notification per UART, preventing an error storm from filling the shared event queue. CMSIS receive-break has its own state bit and wakes the portable `wait-for-break` API without counting the framing/parity bits the low line induces. Print-UART close is non-blocking and defers final buffer/controller release to that drain worker, so DMA never retains freed staging memory; hardware verified both explicit close and forced container teardown with 2,048 bytes in flight, followed by controller reacquisition without a reset. After installing the exact final slot, the hardware regression passed all 50 framing/baud configurations, detected receive break with no error increment, counted all 256 deliberately induced parity errors, and round-tripped exact data at 1/2, 511/512/513, 1023/1024/1025, 2047–2059, and 4095–4107 bytes across the receive and both TX staging boundaries. Flush timing, gap-free TX, RS485 direction timing, and the complete reopen/set-baud sweep also pass on hardware. |
 | Container wait lifecycle | **Resolved** | A container blocked in `wait` is retained in the strong `waited-on_` set until its exit notification arrives, preventing the weak service-proxy map and GC from closing it spuriously. Container identity hashes use the requested monotonic post-increment counter; the host container suite passes. |
 | Cellular | **Resolved** | Public network clients share one module, and the native layer now enforces the corresponding system-wide one-connection contract. The owning event resource powers the modem down on explicit disconnect, group close, and forced container teardown; a later resource group cannot disrupt it during initialization. Hardware coverage checks cross-group rejection, disconnect/reacquisition, and killed-container cleanup without requiring network attachment. |
 | Storage | **Resolved** | EC618 and host now share the complete flash-allocation-registry bucket/resource implementation under `system/extensions/shared`; only service naming and scheme dispatch stay platform-local. ESP32 deliberately keeps its small NVS/`flash-kv` implementation because it has a different persistence backend. |
-| OTA/slot relocation | **Open** | The rewritten writer is a service resource, the provider admits only one writer, and explicit close or killed-client teardown ends relocation/program mode and releases ownership. The native write state remains process-global because program mode and the inactive slot are device-global; its privileged entry points are owned exclusively by that resource. Hardware lifecycle coverage exercises exclusivity and both cleanup paths. The separate active-firmware view owns no mapping handle or memory: EC618 XIP is permanent, the active slot is immutable until reset, and multiple mapping ranges read the same borrowed canonical view. OTA no longer turns the modem off: the old `appSetCFUN(0)` workaround was only masking a mismatched CP image and its OTA-specific primitive is gone. The separate SDK firmware-sector program/erase mode remains required around writes to the protected AP-image region. Firmware and relocation stream one sector at a time; the primitive enforces the 4 KiB maximum, so its scratch copy is bounded rather than scaling with an arbitrary caller blob. The inactive-slot writer normalizes its blob length to the same unsigned type as the slot geometry, and its subtraction-based bounds check cannot overflow. The streamed table length is bounded by the descriptor-derived slot size before the header buffer can grow, and the provisioner applies the same chained trailer bound. Public slot documentation reflects the neutral link base and table-provided slot addresses: both slots are relocated. The OTA compatibility gate and public base-ID query share one record validator/decoder. The relocation module follows the project null convention, uses standard memory operations for fixed byte regions, and names its window/stream state descriptively throughout the rewritten implementation. The shared reset helper drains the console and calls the vendor's safer `ResetECSystemReset` API rather than writing the AIRCR register directly. The VM run loop delegates the pre-teardown staged-slot reset decision to a dedicated helper, and all surviving segment/sector rounding in the EC618 primitive uses the shared `Utils` helpers. The contract is settled: no OTA base update; never activate a base-mismatched slot; reject partition-geometry changes initially; retain tested transactional migration machinery for future explicit use. |
+| OTA/slot relocation | **Resolved** | The rewritten writer is a service resource, the provider admits only one writer, and explicit close or killed-client teardown ends relocation/program mode and releases ownership. The native write state remains process-global because program mode and the inactive slot are device-global; its privileged entry points are owned exclusively by that resource. Hardware lifecycle coverage exercises exclusivity and both cleanup paths. The separate active-firmware view owns no mapping handle or memory: EC618 XIP is permanent, the active slot is immutable until reset, and multiple mapping ranges read the same borrowed canonical view. OTA no longer turns the modem off: the old `appSetCFUN(0)` workaround was only masking a mismatched CP image and its OTA-specific primitive is gone. The separate SDK firmware-sector program/erase mode remains required around writes to the protected AP-image region. Firmware and relocation stream one sector at a time; the primitive enforces the 4 KiB maximum, so its scratch copy is bounded rather than scaling with an arbitrary caller blob. The inactive-slot writer normalizes its blob length to the same unsigned type as the slot geometry, and its subtraction-based bounds check cannot overflow. The streamed table length is bounded by the descriptor-derived slot size before the header buffer can grow, and the provisioner applies the same chained trailer bound. Public slot documentation reflects the neutral link base and table-provided slot addresses: both slots are relocated. The OTA compatibility gate and public base-ID query share one record validator/decoder. The relocation module follows the project null convention, uses standard memory operations for fixed byte regions, and names its window/stream state descriptively throughout the rewritten implementation. The shared reset helper drains the console and calls the vendor's safer `ResetECSystemReset` API rather than writing the AIRCR register directly. The VM run loop delegates the pre-teardown staged-slot reset decision to a dedicated helper, and all surviving segment/sector rounding in the EC618 primitive uses the shared `Utils` helpers. The device-side contract is settled and implemented: no OTA base update; never activate a base-mismatched slot; reject partition-geometry changes initially; retain tested transactional migration machinery for future explicit use. Jaguar's envelope-to-device base-ID preflight remains a separate host-tool integration item. |
 | RTC memory | **Resolved** | It uses the SDK-managed hibernation backup application sector rather than inventing a second flash reservation. The SDK rotates the backing store, and 16 consecutive hardware hibernation cycles preserved the checksum and user bytes. |
-| FreeRTOS/runtime | **Open** | Hardware RNG is used, and the shared entropy mixer is initialized during single-threaded VM startup after OS/mbedTLS threading setup rather than racing on first use. The unused program-memory mutex and its racy EC618 lazy initialization are removed. The hardware sub-tick clock repairs tick precision, and the common FreeRTOS condition-variable path includes the late-notification fix. Deep sleeps longer than the EC618 timer limit are persisted as RTC-backed chunks; intermediate RTC wakes restore wake-pad settings and re-enter hibernate without starting the VM, while other wake sources cancel the chain. The unavoidable EC618 task map is build-configurable and uses a checked one-entry cache. The EC618 deadline task plus normal-WDT busy-lockup backstop remain necessary because the WDT clock stops during tickless idle; the task's timed wait is capped by the remaining application deadline, so shorter sleeps reduce it and longer idle is interrupted at expiry. The subsystem lives in `watchdog_ec618.cc` rather than `primitive_ec618.cc`. Its fatal scope marker is disabled by default and only drives the physical PAD selected by `CONFIG_TOIT_EC618_WATCHDOG_FATAL_PAD`. A persisted three-stage rig test validates feeding and no-feed expiry during both application sleep and busy execution. |
+| FreeRTOS/runtime | **Resolved** | Hardware RNG is used, and the shared entropy mixer is initialized during single-threaded VM startup after OS/mbedTLS threading setup rather than racing on first use. The unused program-memory mutex and its racy EC618 lazy initialization are removed. The hardware sub-tick clock repairs tick precision, and the common FreeRTOS condition-variable path includes the late-notification fix. Deep sleeps longer than the EC618 timer limit are persisted as RTC-backed chunks; intermediate RTC wakes restore wake-pad settings and re-enter hibernate without starting the VM, while other wake sources cancel the chain. The unavoidable EC618 task map is build-configurable and uses a checked one-entry cache. The EC618 deadline task plus normal-WDT busy-lockup backstop remain necessary because the WDT clock stops during tickless idle; the task's timed wait is capped by the remaining application deadline, so shorter sleeps reduce it and longer idle is interrupted at expiry. The subsystem lives in `watchdog_ec618.cc` rather than `primitive_ec618.cc`. Its fatal scope marker is disabled by default and only drives the physical PAD selected by `CONFIG_TOIT_EC618_WATCHDOG_FATAL_PAD`. A persisted three-stage rig test validates feeding and no-feed expiry during both application sleep and busy execution. |
 | Envelopes/firmware tool | **Audit** | Platform subcommands and separate format constants exist. EC618 binary construction, slot relocation, and part parsing now live in a separate platform library behind a small generic container interface; the image-details marker scanner is shared with ESP32. The unreleased out-of-slot fallback is removed: EC618 creation requires a matching CP and SRL3 table, validates the carried `.data` image against that table, and extraction rejects an envelope missing SRL3. Current `binary`, `image`, and `ubjson` output remains byte-identical. Both ESP32 and EC618 flashing resolve their external tool before building images or creating temporary files. |
-| Partition/base tools | **Open** | The anchor rename is complete. The surviving anchor/provision/splice/base-ID/slot-link tools use `cli.ui` for the reviewed user errors, sequential `Buffer`/little-endian partition encoding, the library CRC implementation, clear embedded-console terminology, and the standard prefix-aware `int.parse`; the original string-building generator and duplicate integer parsers are gone. The ELF readers share one whitespace parser that handles nullable runes, use chained range tests and descriptive multi-line signatures, and document a representative `nm`/`readelf` input line at each parsing function. The fixed-region reference guard has no built-in exception list: the formerly exempt nothrow allocator is now base-owned, and moving it back into a slot makes the build fail. The pinned CLI 2.7.1 and host 1.17.0 packages do not yet provide the suggested file-option/JSON-file conveniences, so those remain ordinary string options plus `json.encode`/`file.write-contents` rather than adding local substitutes. The unprovisioned base carries a 16-byte locator sentinel at the anchor start, and `gen-anchor` verifies it before replacing the region, so a stale descriptor cannot silently overwrite an arbitrary AP range. The accepted `https://toit.io/schemas/ec618/partition-table/v1.json` schema has a checked-in repository copy; the default and shifted-test descriptors carry that ID and validate against it. The sizing contract is explicit and checked during every EC618 build: `firmware extract` emits a compact binpkg ending after populated slot A; provisioning normalizes its AP zone through the last target slot and adds exactly one erased slot for the default layout. Normalization is idempotent, compact and normalized inputs produce the same shifted image, and normalized default → shifted → default round-trips byte-for-byte. Remaining: complete descriptor/record semantics, keep partition-size changes unavailable, and finish the broader CLI/helper audit. |
+| Partition/base tools | **Open** | The anchor/provision/splice/base-ID/slot-link tools and schema validation are implemented as described in the audited result. The accepted schema remains checked in at `tools/schemas/ec618/partition-table/v1.json`; an exact web copy is committed at `web-toit.io/static/schemas/ec618/partition-table/v1.json` in `dbdfe99`. Remaining: deploy that web commit, complete descriptor/record semantics and the broader CLI/helper audit, and keep partition-size changes unavailable in the initial OTA API. |
 | Build setup | **Open** | The shared action now initializes the two top-level build submodules, fetches only mbedTLS's nested source for host builds, and recurses through ESP-IDF only for ESP32 builds. The Toit-owned EC618 mbedTLS configuration lives beside the host configuration under `mbedtls/include`, rather than under `third_party`. Local rig, agent, and xmake directories are not committed and no longer impose project-wide `.gitignore` policy. The EC618 CI runs on `ubuntu-latest`, Intel macOS, and `windows-latest`; all three install the exact SDK-pinned GNU Arm 10.3-2021.10 archive with a checked SHA-256 and pass the same absolute toolchain root to xmake, CMake, the slot linker, and ELF utilities. The isolated parity run proved the complete SDK, base, relocation/guard, byte-identity, and envelope build on both non-Linux runners. The base-release workflow remains on `ubuntu-latest`. Remaining: prebuilt vendor archives contain both GCC 10.2.1 and 10.3.1 objects, which must be covered by compatibility validation. |
 | Hardware tests | **Open** | Many later tests are better, but swallowed exceptions, bring-up files, and incomplete contention/cancellation cases remain across the suite. Host-specific launch commands, volatile serial names, and a stale test-status inventory are removed from the test README and test sources; the rig guide is the single operator reference, while the hardware plan owns wiring and coverage. Executable rig assignments now live in one function-keyed `wiring.toit`; paired tests import those assignments instead of owning test-local pin constants or duplicate wiring blocks. The EC618 and ESP32 RC522 tests share one register/FIFO implementation, including the correct `0x80` FIFO-flush bit; the ESP32 probe now closes every resource and turns a failed hardware verdict into a failing program. The paired-test control protocol is self-synchronizing, one-byte length-delimited, and protected by CRC-16; its host regression covers split frames, leading junk, and checksum rejection. The UART sweep and GPIO map use it for acknowledged transitions instead of sleeps, floating reads, or duplicate lines. The sustained UART, ring, and duplex tests now use the same framed control channel and shared stream/rig libraries, catch only expected deadlines, and carry every verdict over the control lane. Hardware proves 256 KiB TX plus continuous 1 MiB RX at every baud through 4 MBd, exact counted drop-newest behavior and recovery at the 32767-byte ring boundary, and simultaneous exact 256 KiB streams in both directions through 3 MBd. Mini-jag cleanup explicitly preserves both its current image and the named sleeper while removing only anonymous installed tests. The sleeper—not a platform reset-on-VM-exit policy—keeps the test VM alive if the agent container fails, so normal finished-program behavior remains unchanged. Successful tester flows restore the agent UART to 115200 before disconnecting, allowing immediate consecutive runs rather than corrupting a fast-baud agent and waiting for its watchdog. The obsolete AON register-poke and oscilloscope programs plus the PAD26 scope helper are removed; the AON output check is retained as a deterministic, rig-scoped regression, GPIO11 explicitly checks PAD26 plus rejection of a nonexistent chip alternate, and simultaneous AON PWM now measures both channel frequencies instead of masking cross-channel pulses with duty-only sampling. The consolidated GPIO test covers every rig GPIO net in both directions, models mirrored and sensor-coupled observers, handshakes its UART1-to-UART2 control-lane switch before testing UART1 pads, and validates PAD42 pull-down plus PAD34 pull-up after acknowledged peer release. |
 | OS clock | **Resolved** | EC618 monotonic/system time combines the 1 kHz kernel tick with the hardware SysTick sub-count, extends the 32-bit kernel-tick wrap, and preserves accumulated deep-sleep time. The clock hardware test requires sub-millisecond progress and checks a timed wait. Condition-variable deadlines still round up to the 1 kHz RTOS tick, so their scheduling error is bounded to one millisecond. |
 | Platform boundaries | **Resolved** | Shared source selects supported targets explicitly: the EC618 DROM section has an explicit branch and fatal fallback, the POSIX/ESP32 file implementation names exactly those consumers, and ESP32 firmware mapping documents its partition-relative zero offset. Firmware mapping uses the common core primitives, while ESP32 and EC618 share an embedded provider base for configuration and content fallback; their write engines stay platform-specific because IDF OTA and EC618 canonical SRL3 relocation have different transaction mechanics. EC618 entropy comes from the SDK's health-checked MP_TRNG peripheral; ESP32 independently uses `esp_fill_random`. The genuinely common FreeRTOS condition-variable mechanism is shared; each wait uses its own stack-backed static semaphore, preventing a late notification from satisfying a later wait. Thread identity and creation remain platform-specific because EC618's prebuilt FreeRTOS has no TLS slots while ESP32 has TLS and core affinity. EC618 UART uses the common UART primitive module and resource tags; obsolete platform-specific tag/unpacking entries are removed. Non-EC618 builds need concrete EC618 primitive stubs because the module table stores every function address; the stubs are generated directly from `MODULE_EC618` rather than duplicated by hand. |
-| Historical comments/docs | **Resolved** | Production and test comments no longer rely on historical phase numbers, issue numbers, temporary document paths, or discarded investigation results. The orphaned generated `plat_jt.h` is removed; current source, READMEs, hardware notes, and OTA/partition documents now describe direct `--just-symbols` linking, SRL3 escaping-branch relocation, and the base-id gate. The original dual-slot proposal is explicitly labeled historical, the TODO contains only the still-pending first base/envelope release, and the unrelated libc time wrappers remain. |
+| Historical comments/docs | **Open** | Production comments no longer depend on phase numbers or the deleted jump table. The focused pass now records active-UART teardown as resolved, retires the unreproduced cold-boot RX-deafness item with its evidence preserved, describes the source-owned I2C engine and repeated-START proof, removes the obsolete blob experiment, and documents GCC 10.3 for both base and slot. Remaining documentation work is narrower but real: reconcile the implemented partition design's old questions and `slot_marker` references, then review the base/envelope release contract and other historical sections against the replacement code. |
 
 ## Rewrite follow-through
 
@@ -480,10 +630,11 @@ Disposition exceptions:
 - **Decision recorded:** r3609289997, r3647488497, r3626188228,
   r3626200014, r3626217943, r3647379232, r3609295035, r3617677392, and
   r3609284626.
-- **Discuss:** r3634553044's I2C electrical test matrix still needs
-  confirmation. r3516664910 no longer needs a wiring-policy choice, but the
-  newly found mismatch between the advertised and compiled SPI1 mappings must
-  be fixed before the agreed rewire/test.
+- **Discuss/evidence:** r3516504729 and r3516664910 no longer need a
+  wiring-policy choice, and the advertised/compiled SPI1 mapping mismatch is
+  fixed by direct ALT1 mux selection. They still need the agreed
+  PAD27/PAD28/PAD29/PAD30 rewire and hardware proof before receiving a
+  `done.` reply.
 - **Resolved behavior:** precise tick rounding, EC618 hardware entropy,
   initial GPIO output level, resource-destructor cleanup, heap UART rings,
   UART-id event routing, contiguous ring copies, async UART TX, SDK-managed
@@ -493,8 +644,10 @@ Disposition exceptions:
   board labels imply two independent chip pads. The multimeter result in
   r3647233513 shows a mirrored board net; alternate-pad support remains
   required for GPIOs that actually have alternate pads.
-- **Upstream:** r3609449338’s generic UART library fix belongs on master and
-  must be consumed by the rebase rather than carried as an EC618-only change.
+- **Upstream/rebase:** r3516626970 and r3516651588 defer the common
+  integer-GPIO API until the rebase. r3609449338’s generic UART library fix
+  belongs on master. Consume those upstream results rather than carrying
+  current-stack compatibility code as the final solution.
 - **Deleted/replaced file:** deletion is not a disposition. Comments on the
   retired slot/partition/Python tools are assigned to their replacements in
   “Rewrite follow-through”.

@@ -200,12 +200,20 @@ suitable board appears.
 |-----------|--------|-------|
 | GPIO | ✅ implemented, HW-tested | `gpio_ec618.cc`. Regular-pad pulls use the pad PCR configuration; wake-domain PAD40–42 pulls use the PMU wake-pad block. Pull-down is HW-validated on PAD42 and pull-up on PAD34. Input buffers and emulated open-drain are HW-tested. |
 | UART | ✅ implemented | `uart_ec618.cc` (UART0/1/2). |
-| I2C | ✅ implemented, HW-tested | `i2c_ec618.cc`; both controllers, clock stretching, cancellation recovery, long FIFO refill, and internal/external/no-pull electrical behavior are covered. |
+| I2C | ✅ implemented, HW-tested | `i2c_ec618.cc`; the transfer engine and IRQs are slot-owned. Both controllers, clock stretching, cancellation recovery, >512-byte FIFO refill/drain, internal/external/no-pull electrical behavior, and wire-level repeated START are covered. The 1,025-byte write/read/write-read regression proves exact payloads and exactly two STARTs/one STOP for the combined operation. |
 | Cellular | ✅ implemented | `cellular_ec618.cc`. |
 | **ADC** | ✅ implemented, **HW-tested exact-value (both channels)** | `adc_ec618.cc`; `gpio.adc` channel ctor (0→AIO3, 1→AIO4). Self-calibrating ±60 mV. |
 | DAC | ❌ n/a | EC618 needs no DAC for these tests (the ESP32 provides DAC). |
 | PWM | ✅ implemented, HW-tested | `pwm_ec618.cc` on TIMER0/1/2/4 (ALT5, all three mux groups incl. the AON pads 43/44/45/47). TIMER0 (PAD16), TIMER1 (PAD44) + TIMER4 (PAD33/47) HW-measured; TIMER2's pads (31/36/45) reach no ESP32 wire. |
 | SPI | ✅ implemented, HW-tested (sync + **async DMA**) | `spi_ec618.cc`; ≥64-byte transfers ride SPI_TransferEx DMA + event completion (2026-07-02, rc522 burst rounds). |
+
+Cleaned-base closure (2026-07-27): after full-flashing
+`base-v3+9b21b073c2004820472d66c7a821ddf5`, the I2C long-transfer fixture again
+passed exact 1,025-byte write/read/write-read plus its hardware-counted
+two-START/one-STOP assertion. A deliberately leaked I2C0 container was then
+torn down and the next container immediately reacquired and released both the
+primary and alternate I2C0 routes. The final device doctor passed without a
+reset.
 
 Design decision: bind the **PLAT driver/HAL directly**, do **not** use the
 LuatOS `luat_*` interface layer. A `TODO(toit)` in
@@ -545,9 +553,9 @@ rule no longer applies:
       watchdog), and the run loop re-probes at 115200 before declaring a
       timeout. OTA: 9.3 -> 32 KB/s, ~62 s -> ~24 s; the bottleneck is now
       per-chunk acks + flash writes, not the wire.
-- [ ] Experimentally find why the blob's no-block I2C engine tolerates
-      400 kHz but swallows shape-changing transfers at 100 kHz (known-issues
-      #6) — academic once the CMSIS I2C rewrite lands.
+- [x] Retire the blob no-block I2C investigation: the source-owned transfer
+      engine replaces that path and is hardware-covered at nominal 100 and
+      400 kHz (known-issues #6).
 - [x] Implement + test **PWM** (EC618 drives, ESP32 measures frequency/duty;
       pwm_ec618.cc on TIMER0/1/2/4, generic `gpio.pwm` API).
 - [x] **UART2** round-trip: echo sweep 9600..4 MHz (both modes) + bigdata

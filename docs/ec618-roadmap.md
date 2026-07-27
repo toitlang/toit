@@ -135,8 +135,9 @@ build/host/sdk/bin/toit tests/hw/esp-tester/tester.toit firmware-update \
 - **Console selection**: `toolchains/ec618/project/src/bsp_custom.c` reads
   `anchor_boot_console()` before the dispatcher runs; VM consumers resolve the
   console attached to `toit_booted_slot`.
-- **I2C driver**: `src/resources/i2c_ec618.cc` (on the fork-completed CMSIS
-  `bsp_i2c.c` IRQ engine).
+- **I2C driver**: `src/resources/i2c_ec618.cc`; the OTA slot owns the transfer
+  engine and IRQ handlers. The SDK `bsp_i2c.c` supplies only stable lifecycle
+  setup, with two EC618 IRQ-name corrections retained as the minimal patch.
 - **Toit-side lib**: `lib/ec618/ec618.toit` (`Ec618.uart0/1/2`, `.i2c0/i2c1`,
   `.spi0`, `console-uart-id`, `set-console-uart`, watchdog, deep sleep, wake
   config, base-id, slot info).

@@ -5,9 +5,14 @@ building the hardware test suite, each with a reproduction. This is distinct fro
 [ec618-hw-tests.md](ec618-hw-tests.md), which tracks the tests themselves. Do not
 paper these over in test code — the VM/firmware should handle them.
 
-## 1. Closing an ACTIVE UART hangs container teardown → agent wedge
+## 1. Closing an ACTIVE UART hangs container teardown → agent wedge — RESOLVED
 
-**Status:** root cause identified (high confidence); runtime pinpoint + fix TODO.
+**Status:** RESOLVED and HW-verified 2026-07-26. Final send completion is
+handled by a task-context drain worker that waits for line idle before
+releasing DMA buffers, RS485 direction, and the controller. Both explicit
+close and forced container teardown passed with 2,048 bytes in flight, then
+the controller was reacquired without reset. The remainder of this section is
+the historical diagnosis that led to that fix.
 
 **Symptom.** A test container that holds a UART with in-flight TX/RX and then ends
 (crash *or* explicit `close`) never finishes tearing down:
@@ -195,13 +200,14 @@ idle bus, and every transfer is the engine's first. (Tried and
 insufficient: the reference's error-only GPR reset, per-transfer
 `I2C_ChangeBR`, polling-mode reassertion alone.)
 
-**Real fix (SHIPPED, 2026-06-12).** I2C moved off the closed blob onto the
-open CMSIS driver — in IRQ mode, which our submodule fork had to IMPLEMENT
-(the upstream per-byte path shipped #if 0'd with nonexistent register and
-IRQn names; even LuatOS production uses the blob — bsp_i2c.c never shipped
-anywhere). The per-transfer GPR reset is gone; the engine is command-based
-(SCR carries the byte count, hardware runs the transfer, the IRQ handler
-feeds/drains the 16-deep FIFO), consumes no DMA channels, and reports
+**Real fix (SHIPPED, 2026-06-12; source ownership completed 2026-07-27).**
+I2C moved off the closed blob. Stable initialization, power, clock, and setup
+still use the CMSIS lifecycle, but the OTA-slot driver in
+`src/resources/i2c_ec618.cc` now owns the transfer state machine and IRQ
+handlers. The SDK patch retains only the two required IRQ-name corrections;
+new transfer behavior no longer lives under `third_party`. The per-transfer
+GPR reset is gone; the source-owned engine is command-based, feeds/drains the
+16-deep FIFO, consumes no DMA channels, and reports
 NACK/bus-error/arbitration-lost as real events. HW-validated:
 i2c-torture-ec618 hammers 175 shape-changing, value-checked transfers per
 speed with zero swallows; i2c-stretch-ec618 proves >16-byte FIFO
@@ -234,13 +240,15 @@ transfer's pace (sticky), else 50 kHz. The pad-GPIO bus-clear/peek tricks now
 refuse to commandeer a GPIO bit whose number
 is reachable from an ALTERNATE pad (reconfiguring the shared bit would
 hijack the user's other pin — today's pad table is 1:1 so the guard is
-dormant, but it fences the day alternates appear). The command length field is 9-bit
-(512-byte transfer cap, longer rejected). The closed
-`soc_i2c` stack is deliberately absent from the frozen base's exported
-surface: the two stacks must never be mixed. Remaining
-documented limitation: a clock stretch landing in the microsecond gap
-between the two legs of a chained write-then-read aborts that transfer
-cleanly (bounded chain wait) — retry-able, never corrupting.
+dormant, but it fences the day alternates appear). The hardware command length
+field is 9-bit, but source-owned unknown-length FIFO refill/drain now handles
+larger transfers without adding wire boundaries. The combined path holds the
+bus after its command byte and issues `START|RESTART` for the read address.
+The ESP32 fixture's SCL-gated hardware counter proved exact 1,025-byte
+write/read/write-read data and exactly two STARTs plus one STOP for the
+combined operation. The closed `soc_i2c` transfer stack is deliberately
+absent from the frozen base's exported surface: the two stacks must never be
+mixed.
 
 ## 7. CMSIS UART DMA-RX engine corrupts the heap under flood — AVOIDED (IRQ mode)
 
@@ -637,9 +645,14 @@ the line needs an external NOT gate — the EC618 cannot invert TX) that is
 the drained-FIFO SEND_COMPLETE semantics (no trigger boost): the DE drop
 needs it, and half-duplex messaging gains nothing from chaining.
 
-## 14. quirky-plenty cold-boot RX deafness — OPEN (software path exonerated 2026-07-17)
+## 14. quirky-plenty cold-boot RX deafness — RETIRED (not reproducing)
 
-**Status:** OPEN — but the field of suspects narrowed sharply.
+**Status:** RETIRED from the active firmware list. The behavior did not
+reproduce in three cold-boot campaigns on the same image, while USB-replugging
+the CH340 was the only relevant environmental change. The evidence points to
+the dongle path rather than an EC618 software defect. The historical
+next-occurrence protocol remains below so a recurrence can be classified
+without destroying evidence.
 
 **Symptom.** On `quirky-plenty` (the small EC618 module, shared
 console+control on UART1 through its CH340 dongle) the agent answers
