@@ -28,8 +28,11 @@ failures := []
 main args:
   if not args.is-empty and args[0] == "leak":
     leaked := Pwm --frequency=1000
-    leaked.start (Ec618.pad wiring.EC618-TIMER4-PAD) --duty-factor=0.5
-    print "pwm-ec618: leaving TIMER4 active for container-teardown coverage"
+    // TODO: After the integer-GPIO rebase, the native PWM resource must own
+    // the pad lease. Until then, keep the carrier Pin alive in the test.
+    leaked-pin := Ec618.pad wiring.EC618-TIMER4-PAD
+    leaked-channel := leaked.start leaked-pin --duty-factor=0.5
+    print "pwm-ec618: leaving TIMER4/PAD$(leaked-pin.num) active for container-teardown coverage ($leaked-channel)"
     return
 
   control := Ec618.uart2 --baud-rate=115200
