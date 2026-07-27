@@ -8,11 +8,15 @@
 #include <string.h>
 
 #include "driver/i2c_slave.h"
+#include "driver/gpio.h"
+#include "driver/pcnt.h"
 #include "esp_check.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "soc/gpio_struct.h"
+#include "soc/pcnt_struct.h"
 
 enum {
   I2C_PORT = 0,
@@ -21,6 +25,7 @@ enum {
   I2C_SCL_GPIO = 17,
   LONG_TRANSFER_LENGTH = 1025,
   STATUS_LENGTH = 8,
+  CAPTURE_STATUS_LENGTH = 5,
   EVENT_QUEUE_LENGTH = 16,
 };
 
@@ -28,6 +33,7 @@ enum {
   COMMAND_READ_PATTERN = 0xa1,
   COMMAND_WRITE_PATTERN = 0xa2,
   COMMAND_READ_STATUS = 0xa3,
+  COMMAND_READ_CAPTURE = 0xa4,
   COMMAND_USE_PREPARED_RESPONSE = 0xaf,
 };
 
@@ -42,6 +48,7 @@ typedef struct {
 typedef enum {
   RESPONSE_STATUS,
   RESPONSE_PATTERN,
+  RESPONSE_CAPTURE,
 } response_type_t;
 
 typedef struct {
@@ -50,6 +57,11 @@ typedef struct {
   response_type_t response;
   uint8_t read_pattern[LONG_TRANSFER_LENGTH];
   uint8_t status[STATUS_LENGTH];
+  uint8_t capture_status[CAPTURE_STATUS_LENGTH];
+  volatile bool capture_armed;
+  volatile bool capture_done;
+  volatile uint8_t capture_starts;
+  volatile uint8_t capture_stops;
 } context_t;
 
 static const char *TAG = "ec618-i2c-slave";
@@ -60,6 +72,54 @@ static uint8_t read_pattern_byte(uint32_t index) {
 
 static uint8_t write_pattern_byte(uint32_t index) {
   return (uint8_t)((index * 17 + 3) & 0xff);
+}
+
+static void IRAM_ATTR sda_edge_handler(void *user_data) {
+  context_t *context = user_data;
+  uint32_t levels = GPIO.in;
+  if (!context->capture_armed ||
+      !(levels & (1u << I2C_SCL_GPIO))) return;
+
+  if (levels & (1u << I2C_SDA_GPIO)) {
+    context->capture_starts = PCNT.cnt_unit[PCNT_UNIT_0].cnt_val;
+    // This ISR is the rising SDA edge while SCL is high: the STOP itself.
+    // PCNT can commit that same edge after the ISR has begun, so record the
+    // observed STOP directly instead of racing its counter update.
+    context->capture_stops = 1;
+    context->capture_armed = false;
+    context->capture_done = true;
+  }
+}
+
+static void configure_capture_counter(
+    pcnt_unit_t unit,
+    pcnt_count_mode_t positive,
+    pcnt_count_mode_t negative) {
+  const pcnt_config_t configuration = {
+      .pulse_gpio_num = I2C_SDA_GPIO,
+      .ctrl_gpio_num = I2C_SCL_GPIO,
+      .lctrl_mode = PCNT_MODE_DISABLE,
+      .hctrl_mode = PCNT_MODE_KEEP,
+      .pos_mode = positive,
+      .neg_mode = negative,
+      .counter_h_lim = INT16_MAX,
+      .counter_l_lim = 0,
+      .unit = unit,
+      .channel = PCNT_CHANNEL_0,
+  };
+  ESP_ERROR_CHECK(pcnt_unit_config(&configuration));
+  ESP_ERROR_CHECK(pcnt_counter_pause(unit));
+  ESP_ERROR_CHECK(pcnt_counter_clear(unit));
+}
+
+static void arm_capture(context_t *context) {
+  ESP_ERROR_CHECK(pcnt_counter_pause(PCNT_UNIT_0));
+  ESP_ERROR_CHECK(pcnt_counter_clear(PCNT_UNIT_0));
+  context->capture_starts = 0;
+  context->capture_stops = 0;
+  context->capture_done = false;
+  context->capture_armed = true;
+  ESP_ERROR_CHECK(pcnt_counter_resume(PCNT_UNIT_0));
 }
 
 static bool receive_callback(
@@ -111,6 +171,9 @@ static void send_response(context_t *context) {
   if (context->response == RESPONSE_PATTERN) {
     data = context->read_pattern;
     length = sizeof(context->read_pattern);
+  } else if (context->response == RESPONSE_CAPTURE) {
+    data = context->capture_status;
+    length = sizeof(context->capture_status);
   } else {
     data = context->status;
     length = sizeof(context->status);
@@ -151,6 +214,9 @@ static void slave_task(void *user_data) {
       case COMMAND_READ_PATTERN:
         context->response = RESPONSE_PATTERN;
         send_response(context);
+        // This task runs after the command's STOP, so the next transaction's
+        // first high-SCL SDA edge is its START rather than the arming STOP.
+        arm_capture(context);
         ESP_LOGI(TAG, "long-pattern response selected");
         break;
       case COMMAND_READ_STATUS:
@@ -166,6 +232,21 @@ static void slave_task(void *user_data) {
             event.length,
             event.error_count,
             event.overflow);
+        break;
+      case COMMAND_READ_CAPTURE:
+        context->capture_status[0] = 'C';
+        context->capture_status[1] = 'P';
+        context->capture_status[2] = context->capture_done;
+        context->capture_status[3] = context->capture_starts;
+        context->capture_status[4] = context->capture_stops;
+        context->response = RESPONSE_CAPTURE;
+        send_response(context);
+        ESP_LOGI(
+            TAG,
+            "capture done=%d starts=%u stops=%u",
+            context->capture_done,
+            context->capture_starts,
+            context->capture_stops);
         break;
       case COMMAND_USE_PREPARED_RESPONSE:
         // Deliberately leave the already queued response untouched. Calling
@@ -207,6 +288,8 @@ void app_main(void) {
       .addr_bit_len = I2C_ADDR_BIT_LEN_7,
       .flags.enable_internal_pullup = true,
   };
+  configure_capture_counter(
+      PCNT_UNIT_0, PCNT_COUNT_DIS, PCNT_COUNT_INC);
   ESP_ERROR_CHECK(i2c_new_slave_device(&configuration, &context.slave));
 
   const i2c_slave_event_callbacks_t callbacks = {
@@ -214,6 +297,12 @@ void app_main(void) {
   };
   ESP_ERROR_CHECK(
       i2c_slave_register_event_callbacks(context.slave, &callbacks, &context));
+
+  ESP_ERROR_CHECK(gpio_install_isr_service(ESP_INTR_FLAG_IRAM));
+  ESP_ERROR_CHECK(
+      gpio_set_intr_type(I2C_SDA_GPIO, GPIO_INTR_ANYEDGE));
+  ESP_ERROR_CHECK(
+      gpio_isr_handler_add(I2C_SDA_GPIO, sda_edge_handler, &context));
 
   BaseType_t task_created = xTaskCreate(
       slave_task,

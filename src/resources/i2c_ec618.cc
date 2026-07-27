@@ -137,7 +137,6 @@ static int32_t start_receive(int controller);
 
 enum class I2cTaskAction : uint8_t {
   COMPLETE,
-  START_READ,
 };
 
 struct I2cTaskRequest {
@@ -209,33 +208,15 @@ static void i2c_chain_task(void*) {
     taskENTER_CRITICAL();
     bool current =
         state->transfer_active && state->seq == request.seq;
-    int32_t rc = ARM_DRIVER_OK;
-    bool notify_failure = false;
     bool notify_completion = false;
-    word failure_data = 0;
-    if (current && request.action == I2cTaskAction::START_READ &&
-        state->stage == I2cStage::WRITE_PENDING_READ) {
-      state->hardware_busy = false;
-      state->stage = I2cStage::READING;
-      rc = start_receive(id);
-      if (rc != ARM_DRIVER_OK) {
-        uint32_t event =
-            ARM_I2C_EVENT_BUS_ERROR | ARM_I2C_EVENT_TRANSFER_INCOMPLETE;
-        state->last_event = event;
-        notify_failure = state->notify_toit;
-        failure_data =
-            event | (static_cast<uint32_t>(request.seq) << 16);
-      }
-    } else if (current && request.action == I2cTaskAction::COMPLETE) {
+    if (current && request.action == I2cTaskAction::COMPLETE) {
       state->hardware_busy = false;
       state->last_event = ARM_I2C_EVENT_TRANSFER_DONE;
       notify_completion = state->notify_toit;
     }
     taskEXIT_CRITICAL();
 
-    if (notify_failure) {
-      Ec618EventSource::send_event(Event::i2c_type(id), failure_data);
-    } else if (notify_completion) {
+    if (notify_completion) {
       word data = ARM_I2C_EVENT_TRANSFER_DONE |
           (static_cast<uint32_t>(request.seq) << 16);
       Ec618EventSource::send_event(Event::i2c_type(id), data);
@@ -257,25 +238,11 @@ static bool ensure_i2c_chain_task() {
   return true;
 }
 
-// Completion callback registered at Initialize. A write+read transfer queues
-// its second leg for task context, so clock stretching never spins in an IRQ.
+// Completion callback registered at Initialize. Combined write/read transfers
+// use the slot-owned dedicated engine below and never complete between legs.
 static void i2c_cmsis_event(int id, uint32_t event) {
   I2cState* state = &i2c_states[id];
   if (!state->transfer_active) return;  // Stale (aborted under us).
-  if (state->stage == I2cStage::WRITE_PENDING_READ &&
-      event == ARM_I2C_EVENT_TRANSFER_DONE) {
-    I2cTaskRequest request = {
-      static_cast<uint8_t>(id),
-      state->seq,
-      I2cTaskAction::START_READ,
-    };
-    BaseType_t woken = pdFALSE;
-    if (xQueueSendFromISR(i2c_chain_queue, &request, &woken) == pdTRUE) {
-      portYIELD_FROM_ISR(woken);
-      return;
-    }
-    event = ARM_I2C_EVENT_TRANSFER_INCOMPLETE;
-  }
   send_i2c_completion(id, state, event, true);
 }
 
@@ -299,6 +266,24 @@ static uint32_t transfer_length(const I2cState* state) {
   return is_transmit(state) ? state->tx_len : state->rx_len;
 }
 
+static void start_repeated_receive(I2cState* state, I2C_TypeDef* regs) {
+  state->stage = I2cStage::READING;
+  state->count = 0;
+  regs->IER =
+      I2C_IER_DETECT_STOP_Msk |
+      I2C_IER_ARBITRATATION_LOST_Msk |
+      I2C_IER_BUS_ERROR_Msk |
+      I2C_IER_RX_NACK_Msk |
+      I2C_IER_RX_ONE_DATA_Msk;
+  // Dedicated mode is still holding the bus after the write byte. RESTART
+  // queues SLA+R without releasing SDA high while SCL is high.
+  regs->SCR =
+      ((state->address << 1) & I2C_SCR_TARGET_SLAVE_ADDR_Msk) |
+      I2C_SCR_TARGET_RWN_Msk |
+      I2C_SCR_START_Msk |
+      I2C_SCR_RESTART_Msk;
+}
+
 static void i2c_irq(int controller) {
   I2cState* state = &i2c_states[controller];
   I2C_TypeDef* regs = kI2cRegs[controller];
@@ -312,31 +297,38 @@ static void i2c_irq(int controller) {
   bool transmit = is_transmit(state);
   bool receive = is_receive(state);
   uint32_t length = transfer_length(state);
+  bool dedicated = state->dedicated_mode;
   bool unknown_length = length > kKnownLengthMax;
   bool stop_detected = (status & I2C_ISR_DETECT_STOP_Msk) != 0;
   uint32_t count_before = state->count;
   uint32_t event = 0;
   bool dedicated_done = false;
 
-  if (unknown_length && transmit &&
+  if (dedicated && transmit &&
       (status & I2C_ISR_TX_ONE_DATA_Msk)) {
     if (state->count < length) {
       regs->TDR = state->tx[state->count++];
       if (state->count >= length) {
-        __DSB();
-        static_cast<void>(regs->FSR);
         regs->IER &= ~I2C_IER_TX_ONE_DATA_Msk;
-        regs->SCR = I2C_SCR_STOP_Msk;
-        dedicated_done = true;
+        if (state->stage == I2cStage::WRITE_PENDING_READ) {
+          start_repeated_receive(state, regs);
+        } else {
+          regs->SCR = I2C_SCR_STOP_Msk;
+          dedicated_done = true;
+        }
       }
     } else {
       regs->IER &= ~I2C_IER_TX_ONE_DATA_Msk;
-      regs->SCR = I2C_SCR_STOP_Msk;
-      dedicated_done = true;
+      if (state->stage == I2cStage::WRITE_PENDING_READ) {
+        start_repeated_receive(state, regs);
+      } else {
+        regs->SCR = I2C_SCR_STOP_Msk;
+        dedicated_done = true;
+      }
     }
   }
 
-  if (unknown_length && receive &&
+  if (dedicated && receive &&
       (status & I2C_ISR_RX_ONE_DATA_Msk)) {
     state->rx[state->count++] = regs->RDR;
     if (state->count < length) {
@@ -349,15 +341,21 @@ static void i2c_irq(int controller) {
     }
   }
 
-  if (receive && !unknown_length) {
+  if (receive && !dedicated) {
     uint32_t available =
         EIGEN_FLD2VAL(I2C_FSR_RX_FIFO_DATA_NUM, regs->FSR);
     while (available-- > 0 && state->count < length) {
       state->rx[state->count++] = regs->RDR;
     }
+    if (unknown_length && !stop_detected && state->count >= length) {
+      regs->IER &=
+          ~(I2C_IER_RX_FIFO_FULL_Msk | I2C_IER_WAIT_RX_FIFO_Msk);
+      regs->SCR = I2C_SCR_STOP_Msk;
+      dedicated_done = true;
+    }
   }
 
-  if (transmit && !unknown_length) {
+  if (transmit && !dedicated) {
     uint32_t free =
         EIGEN_FLD2VAL(I2C_FSR_TX_FIFO_FREE_NUM, regs->FSR);
     while (free-- > 0 && state->count < length) {
@@ -366,6 +364,10 @@ static void i2c_irq(int controller) {
     if (state->count >= length) {
       regs->IER &=
           ~(I2C_IER_TX_FIFO_EMPTY_Msk | I2C_IER_WAIT_TX_FIFO_Msk);
+      if (unknown_length && !stop_detected) {
+        regs->SCR = I2C_SCR_STOP_Msk;
+        dedicated_done = true;
+      }
     }
   }
 
@@ -402,7 +404,8 @@ static void i2c_irq(int controller) {
       event |= ARM_I2C_EVENT_TRANSFER_INCOMPLETE;
     }
   }
-  if (stop_detected && unknown_length && state->count >= length) {
+  if (stop_detected && (dedicated || unknown_length) &&
+      state->count >= length) {
     event |= ARM_I2C_EVENT_TRANSFER_DONE;
   }
 
@@ -411,9 +414,7 @@ static void i2c_irq(int controller) {
     I2cTaskRequest request = {
       static_cast<uint8_t>(controller),
       state->seq,
-      state->stage == I2cStage::WRITE_PENDING_READ
-          ? I2cTaskAction::START_READ
-          : I2cTaskAction::COMPLETE,
+      I2cTaskAction::COMPLETE,
     };
     BaseType_t woken = pdFALSE;
     if (xQueueSendFromISR(i2c_chain_queue, &request, &woken) == pdTRUE) {
@@ -455,15 +456,14 @@ static int32_t start_transmit(int controller) {
 
   state->count = 0;
   state->hardware_busy = true;
-  bool unknown_length = length > kKnownLengthMax;
-  if (unknown_length) {
+  bool dedicated = state->stage == I2cStage::WRITE_PENDING_READ;
+  if (dedicated) {
     regs->MCR = 0;
     regs->MCR = I2C_MCR_I2C_EN_Msk;
     state->dedicated_mode = true;
     regs->ISR = regs->ISR;
     regs->TDR = state->tx[state->count++];
     regs->IER =
-        I2C_IER_TRANSFER_DONE_Msk |
         I2C_IER_DETECT_STOP_Msk |
         I2C_IER_ARBITRATATION_LOST_Msk |
         I2C_IER_BUS_ERROR_Msk |
@@ -484,7 +484,9 @@ static int32_t start_transmit(int controller) {
   regs->ISR = regs->ISR;
   regs->SCR =
       ((state->address << 1) & I2C_SCR_TARGET_SLAVE_ADDR_Msk) |
-      ((length - 1) << I2C_SCR_BYTE_NUM_Pos) |
+      (length > kKnownLengthMax
+          ? I2C_SCR_BYTE_NUM_UNKNOWN_Msk
+          : ((length - 1) << I2C_SCR_BYTE_NUM_Pos)) |
       I2C_SCR_START_Msk;
 
   uint32_t free =
@@ -499,6 +501,7 @@ static int32_t start_transmit(int controller) {
       I2C_IER_RX_NACK_Msk |
       I2C_IER_TX_FIFO_UNDERRUN_Msk |
       I2C_IER_TX_FIFO_OVERFLOW_Msk |
+      (length > kKnownLengthMax ? I2C_IER_DETECT_STOP_Msk : 0) |
       (state->count < length
           ? I2C_IER_TX_FIFO_EMPTY_Msk | I2C_IER_WAIT_TX_FIFO_Msk
           : 0);
@@ -515,29 +518,12 @@ static int32_t start_receive(int controller) {
 
   state->count = 0;
   state->hardware_busy = true;
-  bool unknown_length = length > kKnownLengthMax;
-  if (unknown_length) {
-    regs->MCR = 0;
-    regs->MCR = I2C_MCR_I2C_EN_Msk;
-    state->dedicated_mode = true;
-    regs->ISR = regs->ISR;
-    regs->IER =
-        I2C_IER_TRANSFER_DONE_Msk |
-        I2C_IER_DETECT_STOP_Msk |
-        I2C_IER_ARBITRATATION_LOST_Msk |
-        I2C_IER_BUS_ERROR_Msk |
-        I2C_IER_RX_NACK_Msk |
-        I2C_IER_RX_ONE_DATA_Msk;
-    regs->SCR =
-        ((state->address << 1) & I2C_SCR_TARGET_SLAVE_ADDR_Msk) |
-        I2C_SCR_TARGET_RWN_Msk |
-        I2C_SCR_START_Msk;
-    return ARM_DRIVER_OK;
-  }
   if (state->dedicated_mode) regs->MCR = 0;
+  bool unknown_length = length > kKnownLengthMax;
   regs->MCR =
       EIGEN_VAL2FLD(I2C_MCR_TX_FIFO_THRESHOLD, 8) |
-      EIGEN_VAL2FLD(I2C_MCR_RX_FIFO_THRESHOLD, 8) |
+      EIGEN_VAL2FLD(
+          I2C_MCR_RX_FIFO_THRESHOLD, unknown_length ? 1 : 8) |
       I2C_MCR_CONTROL_MODE_Msk |
       I2C_MCR_I2C_EN_Msk;
   state->dedicated_mode = false;
@@ -548,6 +534,7 @@ static int32_t start_receive(int controller) {
       I2C_IER_BUS_ERROR_Msk |
       I2C_IER_RX_NACK_Msk |
       I2C_IER_RX_FIFO_OVERFLOW_Msk |
+      (unknown_length ? I2C_IER_DETECT_STOP_Msk : 0) |
       I2C_IER_RX_FIFO_FULL_Msk |
       I2C_IER_WAIT_RX_FIFO_Msk;
   regs->SCR =
@@ -884,6 +871,21 @@ class I2cResourceGroup : public ResourceGroup {
   }
 };
 
+struct PendingI2cBuffers {
+  uint8_t* tx;
+  uint8_t* rx;
+  bool handed_to_state;
+
+  PendingI2cBuffers() : tx(null), rx(null), handed_to_state(false) {}
+
+  ~PendingI2cBuffers() {
+    if (!handed_to_state) {
+      free(tx);
+      free(rx);
+    }
+  }
+};
+
 // Maps the recorded completion event to the primitive result code
 // (0 = clean; the library turns nonzero into HARDWARE_ERROR).
 static I2cResult event_to_result(uint32_t event) {
@@ -1132,25 +1134,15 @@ PRIMITIVE(device_transfer_start) {
   I2cState* state = device->bus()->state();
   if (state->transfer_active) FAIL(ALREADY_IN_USE);
 
-  uint8_t* tx_copy = null;
-  uint8_t* rx_buffer = null;
-  bool buffers_handed_to_state = false;
-  Defer free_buffers {
-    [&] {
-      if (!buffers_handed_to_state) {
-        free(tx_copy);
-        free(rx_buffer);
-      }
-    }
-  };
+  PendingI2cBuffers buffers;
   if (tx.length() > 0) {
-    tx_copy = unvoid_cast<uint8_t*>(malloc(tx.length()));
-    if (tx_copy == null) FAIL(MALLOC_FAILED);
-    memcpy(tx_copy, tx.address(), tx.length());
+    buffers.tx = unvoid_cast<uint8_t*>(malloc(tx.length()));
+    if (buffers.tx == null) FAIL(MALLOC_FAILED);
+    memcpy(buffers.tx, tx.address(), tx.length());
   }
   if (rx_length > 0) {
-    rx_buffer = unvoid_cast<uint8_t*>(malloc(rx_length));
-    if (rx_buffer == null) FAIL(MALLOC_FAILED);
+    buffers.rx = unvoid_cast<uint8_t*>(malloc(rx_length));
+    if (buffers.rx == null) FAIL(MALLOC_FAILED);
   }
 
   // All fallible allocation is complete before bus recovery, clock changes,
@@ -1164,13 +1156,13 @@ PRIMITIVE(device_transfer_start) {
   state->seq++;
   state->notify_toit = true;
   state->owns_buffers = true;
-  state->tx = tx_copy;
+  state->tx = buffers.tx;
   state->tx_len = tx.length();
-  state->rx = rx_buffer;
+  state->rx = buffers.rx;
   state->rx_len = rx_length;
   state->last_event = 0;
   state->transfer_active = true;
-  buffers_handed_to_state = true;
+  buffers.handed_to_state = true;
 
   if (!start_legs(state, device->controller())) FAIL(HARDWARE_ERROR);
   return process->true_object();

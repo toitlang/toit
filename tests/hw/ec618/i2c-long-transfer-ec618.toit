@@ -7,10 +7,12 @@ import ec618 show Ec618
 SLAVE-ADDRESS ::= 0x42
 LONG-TRANSFER-LENGTH ::= 1025
 STATUS-LENGTH ::= 8
+CAPTURE-STATUS-LENGTH ::= 5
 
 COMMAND-READ-PATTERN ::= 0xa1
 COMMAND-WRITE-PATTERN ::= 0xa2
 COMMAND-READ-STATUS ::= 0xa3
+COMMAND-READ-CAPTURE ::= 0xa4
 COMMAND-USE-PREPARED-RESPONSE ::= 0xaf
 
 main:
@@ -64,7 +66,14 @@ main:
       device.write-read #[COMMAND-USE-PREPARED-RESPONSE] LONG-TRANSFER-LENGTH
     check-pattern "combined write-read" combined-read
 
-    print "i2c-long-transfer-ec618: PASS 1,025-byte write/read/write-read"
+    with-timeout --ms=5_000:
+      device.write #[COMMAND-READ-CAPTURE]
+    sleep --ms=20
+    capture := with-timeout --ms=5_000:
+      device.read CAPTURE-STATUS-LENGTH
+    check-capture capture
+
+    print "i2c-long-transfer-ec618: PASS 1,025-byte write/read/write-read with repeated START"
   finally:
     device.close
     bus.close
@@ -94,3 +103,13 @@ check-pattern label/string bytes/ByteArray -> none:
     expected := read-pattern-byte i
     if bytes[i] != expected:
       throw "$label: byte $i is $(bytes[i]), expected $expected"
+
+check-capture capture/ByteArray -> none:
+  if capture.size != CAPTURE-STATUS-LENGTH:
+    throw "bad capture length: $(capture.size)"
+  if capture[0] != 'C' or capture[1] != 'P':
+    throw "bad capture magic: $capture"
+  if capture[2] != 1:
+    throw "wire capture did not complete"
+  if capture[3] != 2 or capture[4] != 1:
+    throw "write-read used $(capture[3]) STARTs and $(capture[4]) STOPs; expected two STARTs and one STOP"
