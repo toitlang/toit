@@ -216,15 +216,35 @@ static bool equiv_call(Call* a, Call* b) {
   return equiv_list(a->arguments(), b->arguments());
 }
 
-// Receiver positions are the one place where a Parenthesis wrapper is
-// semantic without being structural: `Foo.bar` (static / named-
-// constructor lookup) and `(Foo).bar` (member access on the class
-// object) resolve differently. The general `equiv` peels Parenthesis,
-// so it would miss a formatter bug that adds or drops receiver parens.
-// Compare the wrapper itself here, then the unwrapped contents.
+// Mirrors the formatter's conservative syntactic approximation of receiver
+// paths that the resolver may interpret as a class/static/constructor name.
+static bool is_static_receiver_candidate(Expression* e) {
+  int identifiers = 0;
+  while (e != null && e->is_Dot()) {
+    identifiers++;
+    e = e->as_Dot()->receiver();
+  }
+  if (e == null || !e->is_Identifier()) return false;
+  identifiers++;
+  return identifiers <= 3;
+}
+
+static bool has_semantic_receiver_parens(Expression* e) {
+  if (e == null || !e->is_Parenthesis()) return false;
+  e = e->as_Parenthesis()->expression();
+  while (e != null && e->is_Parenthesis()) {
+    e = e->as_Parenthesis()->expression();
+  }
+  return is_static_receiver_candidate(e);
+}
+
+// Parentheses around an identifier path in receiver position are semantic:
+// `Foo.bar` is a static lookup, while `(Foo).bar` is a member lookup on the
+// class object. Other receiver parentheses are ordinary grammar and may be
+// reconstructed canonically by the formatter.
 static bool equiv_receiver(Expression* a, Expression* b) {
-  bool a_parens = a != null && a->is_Parenthesis();
-  bool b_parens = b != null && b->is_Parenthesis();
+  bool a_parens = has_semantic_receiver_parens(a);
+  bool b_parens = has_semantic_receiver_parens(b);
   if (a_parens != b_parens) return false;
   return equiv(a, b);
 }
