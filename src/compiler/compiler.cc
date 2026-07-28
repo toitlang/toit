@@ -35,6 +35,9 @@
 #include "filesystem_hybrid.h"
 #include "filesystem_local.h"
 #include "filesystem_lsp.h"
+#include "ast_equivalence.h"
+#include "format.h"
+#include "../file_writer.h"
 #include "lambda.h"
 #include "list.h"
 #include "lsp/lsp.h"
@@ -960,6 +963,191 @@ SnapshotBundle Compiler::compile(const char* source_path,
   //   the pipeline data.
   pipeline_main_result.free_all();
   return result;
+}
+
+void Compiler::format(const char* source_path,
+                      const char* out_path) {
+  FilesystemHybrid fs(source_path);
+  SourceManager source_manager(&fs);
+  PathBuilder builder(&fs);
+  if (fs.is_absolute(source_path)) {
+    builder.join(source_path);
+  } else {
+    builder.join(fs.relative_anchor(source_path));
+    builder.join(source_path);
+  }
+  builder.canonicalize();
+
+  bool show_package_warnings;
+  bool print_diagnostics_on_stdout;
+  AnalysisDiagnostics diagnostics(&source_manager,
+                                  show_package_warnings=false,
+                                  print_diagnostics_on_stdout=true);
+
+  auto load_result = source_manager.load_file(builder.buffer(), Package::invalid());
+  if (load_result.status != SourceManager::LoadResult::OK) {
+    load_result.report_error(&diagnostics);
+    exit(1);
+  }
+  Source* source = load_result.source;
+
+  SymbolCanonicalizer symbols;
+  Scanner scanner(source, &symbols, &diagnostics);
+  Parser parser(source, &scanner, &diagnostics);
+  ast::Unit* unit = parser.parse_unit();
+  bool original_had_error = diagnostics.encountered_error();
+  if (original_had_error) {
+    // Formatting reshapes code purely from the AST; an AST with error
+    // nodes would lose the unparsable parts.
+    fprintf(stderr, "toit format: %s has parse errors; not formatting\n",
+            source_path);
+    exit(1);
+  }
+  int formatted_size;
+  bool all_trivia_emitted;
+  uint8* formatted = format_unit(unit,
+                                 scanner.comments(),
+                                 &formatted_size,
+                                 &all_trivia_emitted);
+  if (!all_trivia_emitted) {
+    fprintf(stderr,
+            "toit format: formatter could not place every comment; refusing to write %s\n",
+            out_path);
+    free(formatted);
+    exit(1);
+  }
+
+  // Re-parse the formatted output and check that it's semantically
+  // equivalent and that no comment was lost. This is the safety net
+  // against a formatter bug silently changing meaning: AST equivalence
+  // catches token-level changes, the comment compare catches dropped
+  // trivia (which the AST cannot see).
+  //
+  // Disable with TOIT_FORMAT_NO_VERIFY=1 for debugging bad output.
+  const char* no_verify = getenv("TOIT_FORMAT_NO_VERIFY");
+  if (no_verify == null || strcmp(no_verify, "1") != 0) {
+    Source* verify_source = source_manager.load_from_memory(
+        std::string(source_path) + "<formatted>",
+        formatted,
+        formatted_size);
+    AnalysisDiagnostics verify_diag(&source_manager,
+                                    show_package_warnings=false,
+                                    print_diagnostics_on_stdout=false);
+    SymbolCanonicalizer verify_symbols;
+    Scanner verify_scanner(verify_source, &verify_symbols, &verify_diag);
+    Parser verify_parser(verify_source, &verify_scanner, &verify_diag);
+    ast::Unit* verify_unit = verify_parser.parse_unit();
+    if (verify_diag.encountered_error()) {
+      fprintf(stderr, "toit format: formatter produced output with parse errors; refusing to write %s\n",
+              out_path);
+      free(formatted);
+      exit(1);
+    }
+    ast::Node* mismatch_original = null;
+    ast::Node* mismatch_formatted = null;
+    if (!ast_equivalent(unit, verify_unit, &mismatch_original, &mismatch_formatted)) {
+      fprintf(stderr, "toit format: formatter changed meaning; refusing to write %s\n",
+              out_path);
+      auto print_excerpt = [](const char* label, Source* src, ast::Node* node) {
+        if (node == null) {
+          fprintf(stderr, "  %s: <missing node>\n", label);
+          return;
+        }
+        int from = src->offset_in_source(node->full_range().from());
+        int to = src->offset_in_source(node->full_range().to());
+        int length = to - from;
+        if (length > 200) length = 200;
+        fprintf(stderr, "  %s (offset %d): %.*s\n",
+                label, from, length, char_cast(src->text()) + from);
+      };
+      print_excerpt("original ", source, mismatch_original);
+      print_excerpt("formatted", verify_source, mismatch_formatted);
+      free(formatted);
+      exit(1);
+    }
+    // Comments must survive with their text intact (modulo the
+    // surrounding whitespace the formatter owns: line-spanning
+    // comments get their interior lines re-indented, so leading
+    // whitespace is normalized away before comparing).
+    struct CommentFingerprint {
+      std::string text;
+      bool has_code_before_on_line;
+
+      bool operator==(const CommentFingerprint& other) const {
+        return text == other.text
+            && has_code_before_on_line == other.has_code_before_on_line;
+      }
+    };
+    auto comment_fingerprints = [](Scanner* s, Source* src) {
+      std::vector<CommentFingerprint> result;
+      for (auto comment : s->comments()) {
+        if (!comment.is_valid()) continue;
+        int from = src->offset_in_source(comment.range().from());
+        int to = src->offset_in_source(comment.range().to());
+        std::string text(char_cast(src->text()) + from, to - from);
+        std::string normalized;
+        bool at_line_start = false;
+        for (char c : text) {
+          if (at_line_start && (c == ' ' || c == '\t')) continue;
+          at_line_start = c == '\n';
+          normalized.push_back(c);
+        }
+        bool has_code_before_on_line = false;
+        for (int i = from - 1;
+             i >= 0 && src->text()[i] != '\n';
+             i--) {
+          if (src->text()[i] != ' ' && src->text()[i] != '\t') {
+            has_code_before_on_line = true;
+            break;
+          }
+        }
+        result.push_back(
+            {std::move(normalized), has_code_before_on_line});
+      }
+      return result;
+    };
+    auto original_comments = comment_fingerprints(&scanner, source);
+    auto formatted_comments =
+        comment_fingerprints(&verify_scanner, verify_source);
+    if (original_comments != formatted_comments) {
+      fprintf(stderr, "toit format: formatter dropped or changed a comment; refusing to write %s\n",
+              out_path);
+      size_t common = 0;
+      while (common < original_comments.size()
+             && common < formatted_comments.size()
+             && original_comments[common] == formatted_comments[common]) {
+        common++;
+      }
+      if (common < original_comments.size()) {
+        fprintf(stderr, "  original : %s (%s)\n",
+                original_comments[common].text.c_str(),
+                original_comments[common].has_code_before_on_line
+                    ? "end-of-line"
+                    : "own-line");
+      }
+      if (common < formatted_comments.size()) {
+        fprintf(stderr, "  formatted: %s (%s)\n",
+                formatted_comments[common].text.c_str(),
+                formatted_comments[common].has_code_before_on_line
+                    ? "end-of-line"
+                    : "own-line");
+      }
+      free(formatted);
+      exit(1);
+    }
+  }
+
+  bool content_changed = formatted_size != unit->source()->size()
+      || memcmp(formatted, unit->source()->text(), formatted_size) != 0;
+  if (strcmp(source_path, out_path) != 0 || content_changed) {
+    if (!write_file_atomically(out_path, formatted, formatted_size)) {
+      fprintf(stderr, "toit format: unable to atomically write %s: %s\n",
+              out_path, strerror(errno));
+      free(formatted);
+      exit(1);
+    }
+  }
+  free(formatted);
 }
 
 /// Returns the offset in the source for the given line and column number.
@@ -2121,10 +2309,19 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
       case Compiler::DepFormat::none:
         UNREACHABLE();
     }
-    chosen_writer->write_deps_to_file_if_different(configuration_.dep_file,
-                                                   configuration_.out_path,
-                                                   units,
-                                                   CORE_UNIT_INDEX);
+    bool dependencies_written =
+        chosen_writer->write_deps_to_file_if_different(
+            configuration_.dep_file,
+            configuration_.out_path,
+            units,
+            CORE_UNIT_INDEX);
+    if (!dependencies_written) {
+      diagnostics()->report_error(
+          "Unable to atomically write dependency file '%s': %s",
+          configuration_.dep_file,
+          strerror(errno));
+      return Result::invalid();
+    }
     if (configuration_.is_for_dependencies) {
       return Result::invalid();
     }
