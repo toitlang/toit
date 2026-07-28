@@ -16,6 +16,7 @@
 #pragma once
 
 #include <functional>
+#include <string>
 
 #include "top.h"
 
@@ -136,7 +137,7 @@ class MemoryBuilder {
   int size_ = 0;
 };
 
-/// Builds an Ar archive, writing it directly to a file.
+/// Builds an Ar archive and atomically installs it at the destination.
 class FileBuilder {
  public:
   /// Opens the file.
@@ -156,7 +157,10 @@ class FileBuilder {
   int add(File ar_file);
 
  private:
-  FILE* file_ = NULL;
+  MemoryBuilder builder_;
+  std::string archive_path_;
+  bool opened_ = false;
+  bool failed_ = false;
 };
 
 class MemoryReader {
