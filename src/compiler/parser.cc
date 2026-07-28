@@ -707,7 +707,12 @@ Import* Parser::parse_import() {
     }
     skip_to_end_of_multiline_construct();
     // Make the import relative, so we don't need the prefix.
-    result = NEW_NODE(Import(true, 0, List<ast::Identifier*>(), null, List<ast::Identifier*>(), false),
+    result = NEW_NODE(Import(true,
+                             0,
+                             List<ast::Identifier*>(),
+                             null,
+                             List<ast::Identifier*>(),
+                             false),
                       range);
   } else {
     Identifier* prefix = null;
@@ -742,7 +747,12 @@ Import* Parser::parse_import() {
         skip_to_end_of_multiline_construct();
       }
     }
-    result = NEW_NODE(Import(is_relative, dot_outs, identifiers.build(), prefix, show_identifiers, show_all),
+    result = NEW_NODE(Import(is_relative,
+                             dot_outs,
+                             identifiers.build(),
+                             prefix,
+                             show_identifiers,
+                             show_all),
                       range);
   }
   end_multiline_construct(IndentationStack::IMPORT, true);
@@ -2847,7 +2857,7 @@ Source::Range Parser::peek_range() {
     }
     return source_->range(state.scanner_state.from, shortened_to);
   }
-  return current_range();
+  return source_->range(state.scanner_state.from, state.scanner_state.to);
 }
 
 Source::Range Parser::current_range_safe() {
