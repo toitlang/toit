@@ -1,0 +1,22 @@
+// Determinism for Field declarations. Rendered from AST with single
+// canonical spacing. Source whitespace inside the field declaration
+// (column-alignment hacks etc.) is normalised away.
+//
+// Form: [static] [abstract] name [/Type] [(:= | ::=) initializer]
+//   - `:=`  for mutable (DEFINE)
+//   - `::=` for final (DEFINE_FINAL); also for type-only declarations
+//     `name/Type` (no initializer needed when type is given).
+//
+// Type rendering goes through emit_expr_flat, so Nullable types
+// like `io.Writer?` render correctly (byte-copying `Nullable` only
+// gets `?` since Nullable doesn't override full_range).
+
+class Foo:
+  field-untyped     ::= 1
+  field-typed/int   := 0
+  static const      ::= "hello"
+  decl-only/int
+
+  // Nullable types.
+  buffer/string?
+  buffer-init/string? := null

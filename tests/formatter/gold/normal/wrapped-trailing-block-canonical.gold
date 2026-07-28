@@ -1,0 +1,27 @@
+// Determinism for wrapped Calls with trailing block-arg:
+// `return list.do: body`, `x := catch: body`, `decl := list.do: body`.
+// Same INLINE_CONTROL_FLOW_WIDTH = 60 budget as bare Call case.
+
+main:
+  // return-wrapped, source-broken: collapses to inline.
+  /* if-rewrite */
+  return-test_
+
+  // x := wrapped, source-broken: collapses to inline.
+  x := catch: foo
+  // x := wrapped, source-inline: stays inline.
+  y := catch: foo
+
+  // DeclLocal-wrapped, source-broken: collapses to inline.
+  z := list.do: print 1
+
+  // Lambda variant.
+  l := task:: print 2
+
+return-test_:
+  return list.do: print 3
+
+list := null
+foo: return null
+print msg: return msg
+task body/Lambda: return null

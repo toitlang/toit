@@ -1,0 +1,27 @@
+// When a Call-arg Parenthesis-wrapped inner Call doesn't fit flat,
+// the parens are dropped — each continuation line of the outer Call
+// IS one arg, so `foo (bar ...)` is just `foo` with one arg, which
+// is exactly what the continuation shape represents anyway.
+//
+// The parens are only structurally necessary when the inner Call sits
+// inside a Binary operand (`x + (bar ...)`) — greedy Call would
+// otherwise absorb trailing tokens into the inner's arg list.
+
+foo x: return x
+bar a b c d: return a + b + c + d
+one := 1
+
+test-call-arg:
+  foo (bar really-long-arg-name-one really-long-arg-name-two really-long-arg-name-three and-one-more-arg)
+
+test-binary-operand:
+  // Here the outer expression is Binary(+, one, Paren(Call(bar ...))).
+  // Dropping the parens would let greedy Call absorb into `one +`.
+  // The Binary force-break keeps the parens verbatim.
+  x := one + (bar really-long-arg-name-one really-long-arg-name-two really-long-arg-name-three last-arg)
+
+really-long-arg-name-one := 0
+really-long-arg-name-two := 0
+really-long-arg-name-three := 0
+and-one-more-arg := 0
+last-arg := 0

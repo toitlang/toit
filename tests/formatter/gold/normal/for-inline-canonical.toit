@@ -1,0 +1,26 @@
+// Determinism for For loops with single-stmt body. Same inline-vs-broken
+// rule as Method bodies: width <= INLINE_CONTROL_FLOW_WIDTH (60) →
+// inline `for ...: body`; otherwise broken `for ...:\n  body`.
+//
+// The header is byte-copied verbatim (init / cond / update vary too
+// much to render from AST), so the colon-finder skips `:=`, `::`, and
+// `::=` to avoid stopping on `i := 0` etc.
+
+main:
+  list := [1, 2, 3, 4, 5]
+
+  // Source-broken short for: collapsed to inline.
+  for i := 0; i < list.size; i++:
+    list[i] = 0
+
+  // Source-inline short for: stays inline.
+  for j := 0; j < list.size; j++: list[j] = 0
+
+  // Inline form too wide: stays / becomes broken.
+  for k := 0; k < list.size; k++:
+    very-long-call-name list[k] another-arg yet-another-arg
+  for m := 0; m < list.size; m++: very-long-call-name list[m] another-arg yet-another-arg
+
+very-long-call-name a b c -> any: return 0
+another-arg := 0
+yet-another-arg := 0

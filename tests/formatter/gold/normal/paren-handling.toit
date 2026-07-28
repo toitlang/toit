@@ -1,0 +1,25 @@
+main:
+  // Parentheses required by precedence are reconstructed canonically.
+  x := (a + b) * c
+  // Parenthesis around a trivial leaf is redundant and drops.
+  y := (z)
+  // Bitwise-clarity: whenever a bitwise operator (`<<`, `>>`, `>>>`,
+  // `&`, `|`, `^`) meets a different operator across a Binary/Binary
+  // boundary, the child gets parens — readers typically don't trust the
+  // precedence table beyond `+`/`-`/`*`/`/`, so make the grouping
+  // explicit even if it wasn't in the source.
+  mask := byte >> 4 & 0xf
+  w := offset + count << 2
+  // Same operator on both sides of the boundary reads unambiguously as a
+  // chain: no clarifying parens.
+  chain := a & b & c
+  // Source parentheses do not suppress the same canonical clarity rule.
+  explicit := (byte >> 4) & 0xf
+
+a := 0
+b := 0
+c := 0
+z := 0
+byte := 0
+offset := 0
+count := 0

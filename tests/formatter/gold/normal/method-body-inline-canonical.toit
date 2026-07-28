@@ -1,0 +1,31 @@
+// Determinism for Method bodies. A single-stmt body's inline-vs-broken
+// shape is decided by AST + width, not source layout. The header (up
+// to and including `:`) is taken from source bytes; the body is
+// rendered from AST. Total width <= INLINE_CONTROL_FLOW_WIDTH (60)
+// → inline `header: body`; otherwise broken `header:\n  body`.
+
+class Foo:
+  // Source-broken short getter: collapsed to inline.
+  bar:
+    return 42
+
+  // Source-inline short getter: stays inline.
+  baz: return 99
+
+  // Multi-stmt body: stays broken regardless of width.
+  multi:
+    a := 1
+    return a + 1
+
+  // Body with a Call body that fits: inline.
+  forward x:
+    return x + 1
+
+  // Wrapper with return type:
+  with-type -> int:
+    return 7
+
+// Top-level methods follow the same rule.
+top-getter: return 0
+top-too-long-to-inline x y z -> int: return some-fairly-long-expression-here
+some-fairly-long-expression-here := 0
