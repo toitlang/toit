@@ -1,0 +1,4 @@
+main:
+    consume Constructor  // @no-warn
+        --first=1
+        --second=2

@@ -1,0 +1,7 @@
+main:
+    values := {
+      "before" /* Before the colon. */ : 1,
+      "after": /* After the colon. */ 2,
+      "both" /* Before. */ : /* After. */ 3,
+    }
+    print values

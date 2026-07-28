@@ -1,0 +1,29 @@
+// Determinism for broken Calls. When the inline form doesn't fit, the
+// formatter ignores how the source distributed args across lines and
+// emits every arg on its own continuation line at indent +
+// CALL_CONTINUATION_STEP.
+//
+// Note: Toit's parser groups continuation-line positional args into a
+// nested Call (`f a b\n  c d` parses as `Call(f, [a, b, Call(c, [d])])`),
+// so source-broken positional args don't share the same AST as a
+// single-line variant. Named-arg continuations don't have this issue —
+// they always parse as a NamedArgument of the outer Call regardless of
+// position. So the test cases here use long names + a few named args.
+
+main:
+  // Source has the first positional arg on the target's line, named
+  // args on continuation lines.
+  http-client.post-request-bytes encoded
+      --host=server-config-host
+      --port=server-config-port
+      --path=server-config-path
+
+  // Source-flat with the same AST: too wide for flat, so canonical
+  // breaks per-arg.
+  http-client.post-request-bytes encoded --host=server-config-host --port=server-config-port --path=server-config-path
+
+http-client := null
+encoded := null
+server-config-host := null
+server-config-port := null
+server-config-path := null

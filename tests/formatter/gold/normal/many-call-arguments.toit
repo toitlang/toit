@@ -1,0 +1,22 @@
+main:
+  consume
+      arg01
+      arg02
+      arg03
+      arg04
+      arg05
+      arg06
+      arg07
+      arg08
+      arg09
+      arg10
+      arg11
+      arg12
+      arg13
+      arg14
+      arg15
+      arg16
+      arg17
+      arg18
+      arg19
+      arg20

@@ -38,6 +38,9 @@ add_custom_target(
 set(SKIP_PREFIXES
     "${TOIT_SDK_SOURCE_DIR}/tests/negative/"
     "${TOIT_SDK_SOURCE_DIR}/tests/pkg/assets/"
+    # Formatter gold fixtures contain intentionally terse/malformed snippets
+    # chosen to exercise one layout rule; they aren't meant to compile.
+    "${TOIT_SDK_SOURCE_DIR}/tests/formatter/gold/"
     "${TOIT_SDK_SOURCE_DIR}/tools/tpkg/tests/"
     "${TOIT_SDK_SOURCE_DIR}/.git/"
     # Don't go into the top-level external/ directory which is covered by

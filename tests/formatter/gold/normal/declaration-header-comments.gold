@@ -1,0 +1,18 @@
+// Copyright (C) 2026 Toit contributors.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
+
+typed -> /* Describes the return type. */ any:
+  return null
+
+empty:  // Intentionally empty.
+
+next: print 1
+
+class Child
+    extends /* Describes the base type. */ Base:
+  run: print 1
+
+class Other /* Describes the inheritance. */
+    extends Base:
+  run: print 2
