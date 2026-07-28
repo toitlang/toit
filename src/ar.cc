@@ -17,6 +17,7 @@
 #include <stdio.h>
 
 #include "ar.h"
+#include "file_writer.h"
 #include "utils.h"
 
 namespace toit {
@@ -36,7 +37,6 @@ static const int FILE_ENDING_CHARS_OFFSET = 58;
 static const int FILE_HEADER_SIZE = 60;
 
 static const char PADDING_CHAR = '\x0A';
-static const char* PADDING_STRING = "\x0A";
 
 static const int FILE_NAME_SIZE = FILE_TIMESTAMP_OFFSET - FILE_NAME_OFFSET;
 static const int FILE_TIMESTAMP_SIZE = FILE_OWNER_ID_OFFSET - FILE_TIMESTAMP_OFFSET;
@@ -137,8 +137,9 @@ int MemoryBuilder::add(File file) {
   word needed_size = FILE_HEADER_SIZE + file.byte_size;
   if (needs_padding(file.byte_size)) needed_size++;
   word new_size = size_ + needed_size;
-  buffer_ = unvoid_cast<uint8*>(realloc(buffer_, new_size));
-  if (buffer_ == null) return AR_OUT_OF_MEMORY;
+  uint8* new_buffer = unvoid_cast<uint8*>(realloc(buffer_, new_size));
+  if (new_buffer == null) return AR_OUT_OF_MEMORY;
+  buffer_ = new_buffer;
   word offset = size_;
   write_ar_file_header(&buffer_[offset], file);
   offset += FILE_HEADER_SIZE;
@@ -152,32 +153,57 @@ int MemoryBuilder::add(File file) {
 }
 
 int FileBuilder::open(const char* archive_path) {
-  file_ = fopen(archive_path, "wb");
-  if (file_ == NULL) return AR_ERRNO_ERROR;
-  word written = fwrite(AR_HEADER, 1, AR_HEADER_SIZE, file_);
-  if (written != AR_HEADER_SIZE) return AR_ERRNO_ERROR;
+  if (archive_path == null || archive_path[0] == '\0') {
+    errno = EINVAL;
+    return AR_ERRNO_ERROR;
+  }
+  if (opened_) {
+    errno = EBUSY;
+    return AR_ERRNO_ERROR;
+  }
+  int status = builder_.open();
+  if (status != 0) {
+    errno = ENOMEM;
+    return AR_ERRNO_ERROR;
+  }
+  archive_path_ = archive_path;
+  opened_ = true;
+  failed_ = false;
   return 0;
 }
 
 int FileBuilder::close() {
-  if (file_ != NULL) {
-    int status = fclose(file_);
-    if (status != 0) return AR_ERRNO_ERROR;
-    return 0;
+  if (!opened_) return 0;
+  uint8* buffer;
+  int size;
+  builder_.close(&buffer, &size);
+  opened_ = false;
+  bool succeeded = !failed_
+      && write_file_atomically(archive_path_.c_str(), buffer, size);
+  free(buffer);
+  archive_path_.clear();
+  if (!succeeded) {
+    if (failed_) errno = ENOMEM;
+    failed_ = false;
+    return AR_ERRNO_ERROR;
   }
   return 0;
 }
 
 int FileBuilder::add(File file) {
-  uint8 buffer[FILE_HEADER_SIZE];
-  write_ar_file_header(buffer, file);
-  word written = fwrite(buffer, 1, FILE_HEADER_SIZE, file_);
-  if (written != FILE_HEADER_SIZE) return AR_ERRNO_ERROR;
-  written = fwrite(file.content(), 1, file.byte_size, file_);
-  if (written != file.byte_size) return AR_ERRNO_ERROR;
-  if (needs_padding(file.byte_size)) {
-    written = fwrite(PADDING_STRING, 1, 1, file_);
-    if (written != 1) return AR_ERRNO_ERROR;
+  if (!opened_) {
+    errno = EBADF;
+    return AR_ERRNO_ERROR;
+  }
+  if (failed_) {
+    errno = ENOMEM;
+    return AR_ERRNO_ERROR;
+  }
+  int status = builder_.add(file);
+  if (status != 0) {
+    failed_ = true;
+    errno = ENOMEM;
+    return AR_ERRNO_ERROR;
   }
   return 0;
 }

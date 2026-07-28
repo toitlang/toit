@@ -27,6 +27,7 @@ extern "C" char** environ;
 #endif
 
 #include "../top.h"
+#include "../file_writer.h"
 #include "../snapshot_bundle.h"
 #include "../vessel/token.h"
 #include "executable.h"
@@ -170,10 +171,12 @@ int create_executable(const char* out_path,
     return -1;
   }
   bool replaced_vessel_content = false;
-  for (size_t i = 0; i < size - sizeof(VESSEL_TOKEN); i++) {
+  size_t vessel_size = static_cast<size_t>(size);
+  size_t marker_size = sizeof(VESSEL_TOKEN) * 2;
+  for (size_t i = 0; i + marker_size <= vessel_size; i++) {
     bool found_token = true;
     // We must find two copies of the token next to each other.
-    for (size_t j = 0; j < sizeof(VESSEL_TOKEN) * 2; j++) {
+    for (size_t j = 0; j < marker_size; j++) {
       if (vessel_content[i + j] != VESSEL_TOKEN[j % sizeof(VESSEL_TOKEN)]) {
         found_token = false;
         break;
@@ -191,22 +194,16 @@ int create_executable(const char* out_path,
 
   if (!replaced_vessel_content) {
     fprintf(stderr, "Invalid vessel file. Token not found\n");
+    free(vessel_content);
     return -1;
   }
 
-  // Use 'open', so we can give executable permissions.
-  int fd = open(out_path, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0777);
-  FILE* file_out = fdopen(fd, "wb");
-  if (file_out == NULL) {
+  if (!write_file_atomically(out_path, vessel_content, size, 0777)) {
     perror("create_executable");
+    free(vessel_content);
     return -1;
   }
-  int written = fwrite(vessel_content, 1, size, file_out);
-  if (written != size) {
-    perror("create_executable");
-    return -1;
-  }
-  fclose(file_out);
+  free(vessel_content);
   if (sign_if_necessary(out_path, os) != 0) {
     fprintf(stderr, "Error while signing the generated executable '%s'. The program might still work.\n", out_path);
   }

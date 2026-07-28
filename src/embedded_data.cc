@@ -15,6 +15,7 @@
 
 #include "embedded_data.h"
 #include "entropy_mixer.h"
+#include "file_writer.h"
 #include "uuid.h"
 
 namespace toit {
@@ -129,14 +130,9 @@ const uint8* EmbeddedData::uuid() {
   }
 
   EntropyMixer::instance()->get_entropy(uuid, UUID_SIZE);
-  file = fopen(path, "w");
-  if (file == null) {
-    perror("OS::image_uuid/fopen");
+  if (!write_file_atomically(path, uuid, UUID_SIZE)) {
+    fprintf(stderr, "OS::image_uuid/write failed: %s\n", strerror(errno));
   }
-  if (fwrite(uuid, UUID_SIZE, 1, file) != 1) {
-    fprintf(stderr, "OS::image_uuid/fwrite failed: %s\n", strerror(ferror(file)));
-  }
-  fclose(file);
   return uuid;
 }
 
