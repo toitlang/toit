@@ -3,6 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import encoding.json
+import encoding.yaml
 import expect show *
 import host.directory
 import host.file
@@ -34,6 +35,15 @@ test tester/GoldTester:
     ["pkg", "install"],
     ["package.lock"],
   ]
+
+  lock/Map := yaml.decode (file.read-contents "$tester.working-dir/package.lock")
+  target-id/string := lock["prefixes"]["target"]
+  target-sub-id/string := lock["packages"][target-id]["prefixes"]["sub"]
+  bar-id/string := lock["prefixes"]["bar"]
+  bar-sub-id/string := lock["packages"][bar-id]["prefixes"]["sub"]
+  expect (target-sub-id.ends-with "/pkg/sub-2")
+  expect (bar-sub-id.ends-with "/pkg/sub-3")
+  expect-not-equals target-sub-id bar-sub-id
 
   foo-version := "1.2.3"
   foo-path := tester.package-cache-path "pkg/foo" --version=foo-version

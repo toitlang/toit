@@ -256,6 +256,8 @@ class LockFileBuilder:
 
     used := {}
     url-id-prefixes-map_ = solution_.packages.map: | url/string _ |
+      // Different URLs can normalize to the same lock-file ID prefix. Add a
+      // collision suffix before the major-version suffix is added below.
       candidate := to-valid-package-id_ url
       counter := 2
       id := candidate
@@ -298,7 +300,9 @@ class LockFileBuilder:
         name := specification.name
         hash := project_.hash-for --url=url --version=version --registries=registries
         id-prefix := url-id-prefixes-map_[url]
-        // We simply use the url + major version as key.
+        // Major versions are separate solver packages and may coexist in one
+        // lock file. Always include the major so an ID remains stable if a
+        // second major version is introduced later.
         id := "$id-prefix-$version.major"
         used-ids.add id
 
@@ -316,6 +320,8 @@ class LockFileBuilder:
 
     compute-local-id := : | path/string |
       local-ids.get path --init=:
+        // Local packages have no version to distinguish them. Use their
+        // basename and add a suffix when it collides with another package ID.
         id := (fs.split path).last
         counter := 2
         while used-ids.contains id:
