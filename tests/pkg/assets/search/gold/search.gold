@@ -108,6 +108,12 @@ OK
 [pkg, search, sub]
 sub - 3.1.4
 ==================
+// Structured output uses the same package representation as pkg list.
+==================
+OK
+[pkg, search, foo, --output-format=json]
+[{"foo":{"description":"Description of foo.","version":"5.0.3","license":"MIT","url":"localhost:<[*PORT*]>/pkg/foo","hash":22222222222}}]
+==================
 // Find all packages:
 ==================
 OK

@@ -233,7 +233,9 @@ class GoldTester:
         if (pkg-args.any: it == "--verbose"):
           ui-level = Ui.VERBOSE-LEVEL
           pkg-args.remove "--verbose"
-        test-ui := TestUi --quiet=false --level=ui-level
+        json-output := pkg-args.contains "--output-format=json"
+        if json-output: pkg-args.remove "--output-format=json"
+        test-ui := TestUi --quiet=false --level=ui-level --json=json-output
         log.set-default test-ui.logger
         cli := Cli "pkg" --ui=test-ui
         e := catch --trace=(: it is not TestAbort):
@@ -242,7 +244,9 @@ class GoldTester:
         if e and e is not TestAbort:
           print-on-stderr_ "Command failed: $e"
           expect e is TestAbort
+        if json-output: json.decode test-ui.stdout.to-byte-array
         full-output := test-ui.stdout + test-ui.stderr
+        if json-output and not full-output.ends-with "\n": full-output += "\n"
         outputs.add "$exit-status\n$command-line\n$full-output"
       else:
         throw "Unknown command: $command"

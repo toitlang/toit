@@ -40,6 +40,8 @@ test tester/GoldTester:
     ["// The bar and sub package didn't change"],
     ["pkg", "search", "bar"],
     ["pkg", "search", "sub"],
+    ["// Structured output uses the same package representation as pkg list."],
+    ["pkg", "search", "foo", "--output-format=json"],
     ["// Find all packages:"],
     ["pkg", "search", ""],
   ]
