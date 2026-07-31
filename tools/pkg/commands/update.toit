@@ -26,13 +26,17 @@ import .utils_
 
 class UpdateCommand extends PkgProjectCommand:
   prefixes/List
+  major/bool
 
   constructor invocation/cli.Invocation:
     prefixes = invocation[PREFIX]
+    major = invocation[MAJOR]
+    if major and prefixes.is-empty:
+      invocation.cli.ui.abort "The '--major' flag requires at least one package prefix."
     super invocation
 
   execute:
-    project.update prefixes --registries=registries
+    project.update prefixes --major=major --registries=registries
 
   static CLI-COMMAND ::=
       cli.Command "update"
@@ -44,10 +48,18 @@ class UpdateCommand extends PkgProjectCommand:
                 required by the selected versions.
 
               If no prefixes are given, updates all packages.
+              Use '--major' with one or more prefixes to allow incompatible
+                updates. A prefix can be followed by a major version, such as
+                'foo@2', to select the newest version in that major.
               """
+          --options=[
+              cli.Flag MAJOR
+                  --help="Allow selected packages to change major version."
+                  --default=false
+          ]
           --rest=[
               cli.Option PREFIX
-                  --help="The prefix of a package to update."
+                  --help="The prefix of a package to update, optionally followed by '@major'."
                   --type="prefix"
                   --multi
                   --completion=:: complete-dependency-prefixes it --project-root-option=OPTION-PROJECT-ROOT
@@ -55,3 +67,4 @@ class UpdateCommand extends PkgProjectCommand:
           --run=:: (UpdateCommand it).execute
 
   static PREFIX ::= "prefix"
+  static MAJOR ::= "major"

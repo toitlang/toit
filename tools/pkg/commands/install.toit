@@ -86,16 +86,14 @@ class InstallCommand extends PkgProjectCommand:
     prefixes := []
     version-constraints := []
     packages.do: | package-string/string |
-      package-name := package-string
-      version-constraint/Constraint? := null
-      if package-string.contains "@":
-        parts := package-string.split "@"
-        if parts.size != 2:
-          error "Invalid package name '$package-string'. Must be of the form 'name@version'."
-        package-name = parts[0]
-        version-constraint-str := parts[1]
-        if version-constraint-str == "":
+      selector := parse-package-selector package-string --on-error=: | missing-version/bool |
+        if missing-version:
           error "Missing version after '@' in '$package-string'."
+        error "Invalid package name '$package-string'. Must be of the form 'name@version'."
+
+      package-name := selector.name
+      version-constraint/Constraint? := null
+      if version-constraint-str := selector.version:
         e := catch: version-constraint = Constraint.parse-range version-constraint-str
         if e:
           error "Invalid version constraint '$version-constraint-str' in '$package-string': $e"

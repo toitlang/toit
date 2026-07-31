@@ -55,6 +55,7 @@ test-reg (http://localhost:<[*PORT*]>/registry/git-pkgs (git))
   pkg4 - 4.9.9
 test-reg3 (http://localhost:<[*PORT*]>/registry/git-pkgs-newer-versions (git))
   pkg2 - 2.4.3
+  pkg2 - 3.0.0
   pkg3 - 3.1.3
 test-reg2 (<[*WORKING-DIR*]>/registry (local))
   bar - 2.0.1

@@ -210,9 +210,29 @@ class Project:
     lock-file.update --remove-prefix=prefix
     save
 
-  update prefixes/List --registries/Registries -> none:
+  update prefixes/List --major/bool=false --registries/Registries -> none:
+    if major and prefixes.is-empty:
+      ui_.abort "The '--major' flag requires at least one package prefix."
+
     urls-to-update := {}
-    prefixes.do: | prefix/string |
+    major-requests := {:}
+    prefixes.do: | selector/string |
+      prefix := selector
+      requested-major := -1
+      if major:
+        parsed-selector := parse-package-selector selector --on-error=: | _ |
+          ui_.abort "Invalid package selector '$selector'. Expected 'prefix' or 'prefix@major'."
+        prefix = parsed-selector.name
+        if version := parsed-selector.version:
+          parsed-major/int? := int.parse version --if-error=: null
+          if parsed-major == null or parsed-major < 0:
+            ui_.abort "Invalid package selector '$selector'. Expected 'prefix' or 'prefix@major'."
+          requested-major = parsed-major
+
+        if major-requests.contains prefix:
+          ui_.abort "Package prefix '$prefix' was specified more than once."
+        major-requests[prefix] = requested-major
+
       dependency/Map? := specification.dependencies.get prefix
       if not dependency:
         ui_.abort "No package with prefix '$prefix'."
@@ -221,12 +241,37 @@ class Project:
       urls-to-update.add dependency[Specification.URL-KEY_]
 
     with-package-cache-lock_: | fs-lock-token |
+      if major:
+        major-requests.do: | prefix/string requested-major/int |
+          dependency/Map := specification.dependencies[prefix]
+          dependency[Specification.VERSION-KEY_] = requested-major == -1
+              ? ">=0.0.0"
+              : "^$requested-major.0.0"
+
       solution := solve-and-download_
           --update-everything=prefixes.is-empty
           --urls-to-update=urls-to-update
           --registries=registries
           --fs-lock-token=fs-lock-token
+
+      major-versions := {:}
+      if major:
+        major-requests.do: | prefix/string _ |
+          dependency/Map := specification.dependencies[prefix]
+          url/string := dependency[Specification.URL-KEY_]
+          constraint := Constraint.parse dependency[Specification.VERSION-KEY_]
+          picked-version/SemanticVersion? := null
+          solution.packages[url].do: | version/SemanticVersion |
+            if constraint.satisfies version and
+                (not picked-version or version > picked-version):
+              picked-version = version
+          assert: picked-version != null
+          major-versions[prefix] = picked-version
+
       specification.update-remote-dependencies solution
+      major-versions.do: | prefix/string version/SemanticVersion |
+        dependency/Map := specification.dependencies[prefix]
+        dependency[Specification.VERSION-KEY_] = "^$version"
       save
 
   reusable-lock-file_ --recompute/bool -> LockFile?:
