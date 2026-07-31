@@ -21,22 +21,37 @@ import ..pkg
 import ..project
 
 import .base_
+import .completions_
 import .utils_
 
 class UpdateCommand extends PkgProjectCommand:
+  prefixes/List
+
   constructor invocation/cli.Invocation:
+    prefixes = invocation[PREFIX]
     super invocation
 
   execute:
-    project.update --registries=registries
+    project.update prefixes --registries=registries
 
   static CLI-COMMAND ::=
       cli.Command "update"
           --help="""
-              Updates all packages to their newest compatible version.
+              Updates packages to their newest compatible version.
 
               Uses semantic versioning to find the highest compatible version
-                of each imported package (and their transitive dependencies).
-                It then updates all packages to these versions.
+                of each selected package. Dependencies are also updated when
+                required by the selected versions.
+
+              If no prefixes are given, updates all packages.
               """
+          --rest=[
+              cli.Option PREFIX
+                  --help="The prefix of a package to update."
+                  --type="prefix"
+                  --multi
+                  --completion=:: complete-dependency-prefixes it --project-root-option=OPTION-PROJECT-ROOT
+          ]
           --run=:: (UpdateCommand it).execute
+
+  static PREFIX ::= "prefix"

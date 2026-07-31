@@ -54,6 +54,8 @@ test tester/GoldTester:
     ["pkg", "install", "--prefix=other", "pkg3"],
     ["// Uninstall completes the prefixes of the installed packages."],
     ["complete", "uninstall", ""],
+    ["// Update completes the prefixes of the installed packages."],
+    ["complete", "update", ""],
   ]
 
   tester.gold "50-misc" [

@@ -67,9 +67,45 @@ test-reg2 (http://localhost:<[*PORT*]>/registry/git-pkgs-newer-versions (git))
   pkg3 - 3.1.3
 ==================
 OK
+[pkg, update, pkg2]
+==================
+// Only pkg2 changes; its compatible transitive dependency stays preferred.
+==================
+== package.lock
+prefixes:
+  pkg1: localhost_<[*PORT*]>/pkg/pkg1-1
+  pkg2: localhost_<[*PORT*]>/pkg/pkg2-2
+packages:
+  localhost_<[*PORT*]>/pkg/pkg1-1:
+    hash: <[*HASH*]>
+    prefixes:
+      pkg2: localhost_<[*PORT*]>/pkg/pkg2-2
+    url: localhost:<[*PORT*]>/pkg/pkg1
+    version: 1.0.0
+  localhost_<[*PORT*]>/pkg/pkg2-2:
+    hash: <[*HASH*]>
+    prefixes:
+      pre: localhost_<[*PORT*]>/pkg/pkg3-3
+    url: localhost:<[*PORT*]>/pkg/pkg2
+    version: 2.4.3
+  localhost_<[*PORT*]>/pkg/pkg3-3:
+    hash: <[*HASH*]>
+    url: localhost:<[*PORT*]>/pkg/pkg3
+    version: 3.1.2
+==================
+== package.yaml
+dependencies:
+  pkg1:
+    url: localhost:<[*PORT*]>/pkg/pkg1
+    version: ^1.0.0
+  pkg2:
+    url: localhost:<[*PORT*]>/pkg/pkg2
+    version: ^2.4.3
+==================
+OK
 [pkg, update]
 ==================
-// Now we have new versions (pkg2-2.4.3, pkg3-3.1.3).
+// Updating everything also updates pkg3.
 ==================
 == package.lock
 prefixes:
@@ -101,3 +137,15 @@ dependencies:
   pkg2:
     url: localhost:<[*PORT*]>/pkg/pkg2
     version: ^2.4.3
+==================
+Aborted
+[pkg, update, missing]
+Error: No package with prefix 'missing'.
+==================
+OK
+[pkg, install, --local, local]
+Package 'local' installed with prefix 'local'.
+==================
+Aborted
+[pkg, update, local]
+Error: Package with prefix 'local' is local and cannot be updated.
