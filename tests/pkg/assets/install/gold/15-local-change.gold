@@ -1,0 +1,35 @@
+// Target should now use sub-2, while bar should continue to use sub-3.
+==================
+OK
+[pkg, install]
+==================
+== package.lock
+sdk: ^0.1.30
+prefixes:
+  bar: localhost_<[*PORT*]>/pkg/bar-2
+  foo: localhost_<[*PORT*]>/pkg/foo-1
+  target: target
+packages:
+  localhost_<[*PORT*]>/pkg/bar-2:
+    hash: <[*HASH*]>
+    prefixes:
+      foo: localhost_<[*PORT*]>/pkg/foo-1
+      sub: localhost_<[*PORT*]>/pkg/sub-3
+    url: localhost:<[*PORT*]>/pkg/bar
+    version: 2.0.1
+  localhost_<[*PORT*]>/pkg/foo-1:
+    hash: <[*HASH*]>
+    url: localhost:<[*PORT*]>/pkg/foo
+    version: 1.2.3
+  localhost_<[*PORT*]>/pkg/sub-2:
+    hash: <[*HASH*]>
+    url: localhost:<[*PORT*]>/pkg/sub
+    version: 2.0.0
+  localhost_<[*PORT*]>/pkg/sub-3:
+    hash: <[*HASH*]>
+    url: localhost:<[*PORT*]>/pkg/sub
+    version: 3.1.4
+  target:
+    path: target
+    prefixes:
+      sub: localhost_<[*PORT*]>/pkg/sub-2

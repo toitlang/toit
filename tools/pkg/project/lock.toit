@@ -206,6 +206,9 @@ class LockFile:
     return repository-packages.every: | package/RepositoryPackage |
       package.is-downloaded
 
+  has-local-packages -> bool:
+    return packages.any: it is LocalPackage
+
   install --fs-lock-token/Object:
     (packages.filter : it is RepositoryPackage).do: | package/RepositoryPackage |
       package.ensure-downloaded --fs-lock-token=fs-lock-token

@@ -219,13 +219,18 @@ class Project:
       specification.update-remote-dependencies solution
       save
 
+  reusable-lock-file_ --recompute/bool -> LockFile?:
+    candidate := lock-file
+    if recompute or not candidate or candidate.has-local-packages: return null
+    return candidate
+
   install --recompute/bool --registries/Registries -> none:
-    if not recompute and lock-file and lock-file.is-downloaded:
-      return
+    reusable-lock-file := reusable-lock-file_ --recompute=recompute
+    if reusable-lock-file and reusable-lock-file.is-downloaded: return
 
     with-package-cache-lock_: | fs-lock-token |
-      if not recompute and lock-file:
-        lock-file.install --fs-lock-token=fs-lock-token
+      if reusable-lock-file:
+        reusable-lock-file.install --fs-lock-token=fs-lock-token
         return
 
       solution := solve-and-download_
