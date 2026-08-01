@@ -28,8 +28,8 @@ IO2, IO4, and IO16 must stay unconnected.
 
 Connect board 1 to board 2 as follows:
 - GND - GND
-- IO22 - IO23
-- IO23 - IO22
+- IO22 - IO22
+- IO23 - IO23
 
 On board2:
 - IO19 -> HC-SR04 Echo
