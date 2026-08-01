@@ -15,6 +15,7 @@ main args:
         DATA-PIN
         --memory-blocks=RMT-MEMORY-BLOCKS
         --resolution=RESOLUTION
+        --dma=rmt.DMA-SUPPORTED
     ready := gpio.Pin READY-PIN --output
 
     try:

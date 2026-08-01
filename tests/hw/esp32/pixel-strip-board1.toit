@@ -29,7 +29,7 @@ main args:
         strip.output RED GREEN BLUE
         // UART output is buffered. Give it time to reach the wire before the
         //   next frame or close tears down the peripheral.
-        sleep --ms=1
+        sleep --ms=10
         ready.wait-for 0
     finally:
       strip.close

@@ -23,6 +23,9 @@ The ESP32P4, ESP32S2 and ESP32S3 each have 4 TX and 4 RX channels.
 The number of bytes per memory block is 256 on the ESP32 and ESP32S2. It is
   192 on the ESP32C3, ESP32C6, ESP32P4, and ESP32S3.
 
+RMT DMA is available on the ESP32P4 and ESP32S3. DMA-capable channels consume
+  an internal DMA channel and internal RAM, so DMA is disabled by default.
+
 # Examples
 
 ## Pulse
@@ -701,6 +704,9 @@ On the ESP32C3, ESP32C6, ESP32P4, and ESP32S3 it is 192.
 */
 BYTES-PER-MEMORY-BLOCK/int ::= rmt-bytes-per-memory-block_
 
+/** Whether this ESP32 variant supports RMT channels backed by DMA. */
+DMA-SUPPORTED/bool ::= rmt-supports-dma_
+
 /**
 An RMT channel.
 */
@@ -773,6 +779,9 @@ class In extends Channel_:
   /** The number of memory-blocks. */
   memory-blocks_/int
 
+  /** Whether this channel uses DMA. */
+  dma/bool
+
   /**
   Constructs an input channel on the given $pin.
 
@@ -782,13 +791,15 @@ class In extends Channel_:
   The $resolution is the frequency of the clock that the RMT controller uses to
     sample the input signal. It ranges from 312500Hz (312.5KHz) to 80000000Hz (80MHz).
 
-  The $memory-blocks parameter specifies how many RMT memory blocks are assigned to this channel.
-    Each memory-block has $BYTES-PER-MEMORY-BLOCK bytes. They are in continuous memory and
-    there are only a limited number of them. Since each signal is 2 bytes long, the number of
-    signals that can be received is $memory-blocks * $BYTES-PER-MEMORY-BLOCK / 2.
+  The $memory-blocks parameter specifies the receive capacity in units of RMT
+    memory blocks. Each unit has $BYTES-PER-MEMORY-BLOCK bytes. Since each signal
+    is 2 bytes long, the number of signals that can be received is
+    $memory-blocks * $BYTES-PER-MEMORY-BLOCK / 2.
 
-  Input channels can only receive as many signals (in one sequence) as there is space
-    in the memory blocks.
+  If $dma is false, these are dedicated hardware memory blocks and only a small
+    number are available. If $dma is true, $memory-blocks instead sizes an
+    internal-RAM DMA buffer and can be much larger. DMA is only supported on
+    some chips, including the ESP32P4 and ESP32S3.
 
   Passing a $gpio.Pin as $pin is deprecated; provide the integer GPIO number
     instead. The $gpio.Pin form will be removed in a future release.
@@ -797,14 +808,22 @@ class In extends Channel_:
   // __TYPE-MIGRATION__ pin: int
   constructor pin/any
       --resolution/int
-      --memory-blocks/int=1:
+      --memory-blocks/int=1
+      --.dma/bool=false:
     if not 1 <= memory-blocks: throw "INVALID_ARGUMENT"
 
     this.resolution = resolution
     memory-blocks_ = memory-blocks
     // Each hw symbol is 4 bytes (2 signals).
     hw-symbols := (memory-blocks * BYTES-PER-MEMORY-BLOCK) >> 2
-    resource := rmt-channel-new_ resource-group_ (gpio.to-pin-num_ pin) resolution hw-symbols Channel_.CHANNEL-KIND-INPUT_ false
+    resource := rmt-channel-new_
+        resource-group_
+        (gpio.to-pin-num_ pin)
+        resolution
+        hw-symbols
+        Channel_.CHANNEL-KIND-INPUT_
+        false
+        dma
     super.from-sub_ resource
 
   /** Closes the channel. */
@@ -902,12 +921,16 @@ class Out extends Channel_:
     emit the output signal. It ranges from 312500Hz (312.5KHz) to 80000000Hz (80MHz). Signals
     are specified in ticks of this frequency.
 
-  The $memory-blocks parameter specifies how many RMT memory blocks are assigned to this channel.
-    Each memory-block has $BYTES-PER-MEMORY-BLOCK bytes. They are in continuous memory and
-    there are only a limited number of them. Since each signal is 2 bytes long, the number of
-    signals that can be stored in each block is $memory-blocks * $BYTES-PER-MEMORY-BLOCK / 2.
+  The $memory-blocks parameter specifies the channel buffer capacity in units of
+    RMT memory blocks. Each unit has $BYTES-PER-MEMORY-BLOCK bytes. Since each
+    signal is 2 bytes long, the number of signals that can be stored in each
+    block is $memory-blocks * $BYTES-PER-MEMORY-BLOCK / 2.
   Generally, output channels don't need extra blocks as interrupts will copy data into
     the buffer when necessary.
+
+  If $dma is true, $memory-blocks sizes an internal-RAM DMA buffer instead of
+    allocating dedicated RMT memory blocks. DMA is only supported on some chips,
+    including the ESP32P4 and ESP32S3, and consumes an internal DMA channel.
 
   If $open-drain is set and $pull-up is true, the internal pull-up resistor is enabled.
 
@@ -923,13 +946,21 @@ class Out extends Channel_:
       --resolution/int
       --memory-blocks/int=1
       --open-drain/bool=false
-      --pull-up/bool=false:
+      --pull-up/bool=false
+      --dma/bool=false:
     if not 1 <= memory-blocks: throw "INVALID_ARGUMENT"
 
     // Each hw symbol is 4 bytes (2 signals).
     hw-symbols := (memory-blocks * BYTES-PER-MEMORY-BLOCK) >> 2
     kind := open-drain ? Channel_.CHANNEL-KIND-OUTPUT-OPEN-DRAIN_ : Channel_.CHANNEL-KIND-OUTPUT_
-    resource := rmt-channel-new_ resource-group_ (gpio.to-pin-num_ pin) resolution hw-symbols kind pull-up
+    resource := rmt-channel-new_
+        resource-group_
+        (gpio.to-pin-num_ pin)
+        resolution
+        hw-symbols
+        kind
+        pull-up
+        dma
     // For the new (integer) API the primitive applies the pull when it owns the
     // pin. For a deprecated $gpio.Pin the pin owns its own configuration.
     if open-drain and pin is gpio.Pin:
@@ -1311,10 +1342,13 @@ resource-group_ ::= rmt-init_
 rmt-bytes-per-memory-block_:
   #primitive.rmt.bytes-per-memory-block
 
+rmt-supports-dma_:
+  #primitive.rmt.supports-dma
+
 rmt-init_:
   #primitive.rmt.init
 
-rmt-channel-new_ resource-group pin-num/int resolution/int symbols/int kind/int pull-up/bool:
+rmt-channel-new_ resource-group pin-num/int resolution/int symbols/int kind/int pull-up/bool with-dma/bool:
   #primitive.rmt.channel-new
 
 rmt-channel-delete_ resource-group resource:

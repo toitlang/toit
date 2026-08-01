@@ -167,17 +167,20 @@ class RmtResource : public EventQueueResource {
   RmtResource(RmtResourceGroup* group,
               rmt_channel_handle_t handle,
               bool is_tx,
+              bool with_dma,
               RmtInOut* in_out,
               QueueHandle_t queue)
       : EventQueueResource(group, queue)
       , handle_(handle)
       , is_tx_(is_tx)
+      , with_dma_(with_dma)
       , in_out_(in_out) {}
 
   ~RmtResource() override;
 
   rmt_channel_handle_t handle() const { return handle_; }
   bool is_tx() const { return is_tx_; }
+  bool with_dma() const { return with_dma_; }
 
   GpioPins& owned_pins() { return owned_pins_; }
 
@@ -202,6 +205,7 @@ class RmtResource : public EventQueueResource {
   rmt_channel_handle_t handle_;
   State state_ = DISABLED;
   bool is_tx_;
+  bool with_dma_;
   RmtInOut* in_out_;
   // GPIO pins reserved by this channel. Empty when the pin was provided as a
   // (deprecated) gpio.Pin that owns its own reservation.
@@ -643,6 +647,14 @@ PRIMITIVE(bytes_per_memory_block) {
   return Smi::from(SOC_RMT_MEM_WORDS_PER_CHANNEL * sizeof(word));
 }
 
+PRIMITIVE(supports_dma) {
+#ifdef SOC_RMT_SUPPORT_DMA
+  return BOOL(SOC_RMT_SUPPORT_DMA);
+#else
+  return process->false_object();
+#endif
+}
+
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
@@ -655,7 +667,7 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(channel_new) {
-  ARGS(RmtResourceGroup, resource_group, int, pin_num, uint32, resolution, uint32, block_symbols, int, kind, bool, pull_up)
+  ARGS(RmtResourceGroup, resource_group, int, pin_num, uint32, resolution, uint32, block_symbols, int, kind, bool, pull_up, bool, with_dma)
 
   if (block_symbols == 0) FAIL(INVALID_ARGUMENT);
 
@@ -709,7 +721,7 @@ PRIMITIVE(channel_new) {
       .intr_priority = 0,
       .flags = {
         .invert_out = false,
-        .with_dma = false,
+        .with_dma = with_dma,
         .io_loop_back = true,
         .io_od_mode = open_drain,
         .allow_pd = false,
@@ -726,7 +738,7 @@ PRIMITIVE(channel_new) {
       .intr_priority = 0,
       .flags = {
         .invert_in = false,
-        .with_dma = false,
+        .with_dma = with_dma,
         .io_loop_back = false,
         .allow_pd = false,
       },
@@ -738,7 +750,7 @@ PRIMITIVE(channel_new) {
   if (err != ESP_OK) return Primitive::os_error(err, process);
   Defer delete_channel { [&] { if (!handed_to_resource) rmt_del_channel(handle); } };
 
-  RmtResource* resource = new (resource_memory) RmtResource(resource_group, handle, is_tx, in_out, queue);
+  RmtResource* resource = new (resource_memory) RmtResource(resource_group, handle, is_tx, with_dma, in_out, queue);
   handed_to_resource = true;
 
   if (is_tx) {
@@ -939,8 +951,16 @@ PRIMITIVE(start_receive) {
 
   bool successful_return = false;
 
-  const int caps_flags = RMT_MEM_ALLOC_CAPS;
-  uint8* buffer = unvoid_cast<uint8*>(heap_caps_malloc(max_size, caps_flags));
+  int caps_flags = RMT_MEM_ALLOC_CAPS;
+  uint8* buffer;
+  if (resource->with_dma()) {
+    caps_flags |= MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA;
+    // The DMA alignment requirement is chip-specific. The supported RMT DMA
+    // chips require at most a 64-byte aligned internal buffer.
+    buffer = unvoid_cast<uint8*>(heap_caps_aligned_alloc(64, max_size, caps_flags));
+  } else {
+    buffer = unvoid_cast<uint8*>(heap_caps_malloc(max_size, caps_flags));
+  }
   if (buffer == null) FAIL(MALLOC_FAILED);
   in->set_buffer(buffer);
   in->set_received(-1);
