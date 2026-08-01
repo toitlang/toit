@@ -281,6 +281,9 @@ PRIMITIVE(create) {
   i2s_role_t role = is_master ? I2S_ROLE_MASTER : I2S_ROLE_SLAVE;
 
   i2s_chan_config_t channel_config = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, role);
+  // The DMA descriptors form a ring. Clear a transmitted buffer before the
+  // callback wakes a writer, so underruns emit silence without racing refill.
+  channel_config.auto_clear_before_cb = true;
   i2s_chan_handle_t tx_handle = null;
   i2s_chan_handle_t rx_handle = null;
   if (tx_num != -1 && rx_num != -1) {
