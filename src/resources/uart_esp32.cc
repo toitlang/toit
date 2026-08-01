@@ -486,6 +486,12 @@ PRIMITIVE(create) {
   err = uart_set_pin(port, tx, rx, rts, cts);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
+  uint32_t inverse_mask = 0;
+  if ((options & 1) != 0) inverse_mask |= UART_SIGNAL_TXD_INV;
+  if ((options & 2) != 0) inverse_mask |= UART_SIGNAL_RXD_INV;
+  err = uart_set_line_inverse(port, inverse_mask);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
   // Newer ESP-IDF's `uart_set_pin` no longer enables an internal pull-up on the
   // RX pin (older versions did `GPIO_PULLUP_ONLY`). Without it the RX line
   // floats while the peer isn't driving and dips below the logic threshold,
