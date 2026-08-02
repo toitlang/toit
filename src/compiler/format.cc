@@ -424,7 +424,7 @@ class Lowering {
   // `outer` is the precedence of the enclosing operator
   // (PRECEDENCE_NONE at statement level and at other positions the
   // parser treats as full-expression boundaries).
-  Layout* expr(Expression* e, int outer) {
+  Layout* expr(Expression* e, int outer, bool trailing_logical = false) {
     if (trivia_.is_frozen(e)) return verbatim_node(e);
     // Source parentheses are input syntax, not a formatting preference. Strip
     // them here; the expression-specific lowering below recreates every pair
@@ -436,7 +436,9 @@ class Lowering {
       if (outer != PRECEDENCE_NONE) return paren_block(e);
       return block_suite(e);
     }
-    if (e->is_Binary()) return binary(e->as_Binary(), outer);
+    if (e->is_Binary()) {
+      return binary(e->as_Binary(), outer, trailing_logical, false);
+    }
     if (e->is_Unary()) return unary(e->as_Unary(), outer);
     if (e->is_Dot()) {
       Dot* dot = e->as_Dot();
@@ -543,16 +545,16 @@ class Lowering {
     if (inner_value->is_LiteralUndefined()) {
       layouts.push_back(b_.text("?"));
     } else {
-      // A suite-bearing initializer with a boundary comment must break before
-      // formatting can let the suite absorb that comment on the next parse.
+      // The RHS of an assignment-precedence operator is a statement-level
+      // boundary. A suite-bearing initializer in a control-flow condition is
+      // parenthesized separately so the declaration itself stays a
+      // DeclarationLocal rather than reparsing as a Binary assignment.
       bool force_binary_break = inner_value->is_Binary()
           && contains_suite(inner_value)
           && has_comments(declaration);
       Layout* value_layout = force_binary_break
-          ? binary(inner_value->as_Binary(), PRECEDENCE_NONE, true)
+          ? binary(inner_value->as_Binary(), PRECEDENCE_NONE, false, true)
           : expr(inner_value, PRECEDENCE_NONE);
-      // Parenthesize the initializer, not the declaration: `(x := value)`
-      // reparses as a Binary assignment instead of a DeclarationLocal.
       if (protect_suite_colon && contains_suite(inner_value)) {
         value_layout = b_.concat({b_.unmeasured_text("("),
                                   value_layout,
@@ -642,7 +644,10 @@ class Lowering {
   }
 
   // A Binary operand, with the bitwise-clarity override.
-  Layout* binary_operand(Expression* child, int operand_prec, Token::Kind parent_kind) {
+  Layout* binary_operand(Expression* child,
+                         int operand_prec,
+                         Token::Kind parent_kind,
+                         bool trailing_logical = false) {
     Expression* inner = peel_parens(child);
     if (inner != null && inner->is_Binary()) {
       Token::Kind child_kind = inner->as_Binary()->kind();
@@ -652,7 +657,7 @@ class Lowering {
                           b_.unmeasured_text(")")});
       }
     }
-    return expr(child, operand_prec);
+    return expr(child, operand_prec, trailing_logical);
   }
 
   // Collects the operands of a same-operator chain in left-to-right
@@ -680,7 +685,10 @@ class Lowering {
     }
   }
 
-  Layout* binary(Binary* binary, int outer, bool force_break = false) {
+  Layout* binary(Binary* binary,
+                 int outer,
+                 bool trailing_logical,
+                 bool force_break) {
     Token::Kind kind = binary->kind();
     int precedence = Token::precedence(kind);
     bool parens = precedence <= outer && outer != PRECEDENCE_NONE;
@@ -704,28 +712,34 @@ class Lowering {
     if (precedence == PRECEDENCE_ASSIGNMENT) {
       std::vector<Layout*> layouts;
       if (parens) layouts.push_back(b_.unmeasured_text("("));
-      layouts.push_back(binary_operand(binary->left(), left_prec, kind));
+      layouts.push_back(binary_operand(
+          binary->left(), left_prec, kind, trailing_logical));
       bool suite_value = binary->right()->is_Block()
           || binary->right()->is_Lambda();
       layouts.push_back(b_.text(
           std::string(" ")
               + Token::symbol(kind).c_str()
               + (suite_value ? "" : " ")));
-      layouts.push_back(binary_operand(binary->right(), right_prec, kind));
+      layouts.push_back(binary_operand(
+          binary->right(), right_prec, kind, trailing_logical));
       if (parens) layouts.push_back(b_.unmeasured_text(")"));
       return b_.concat(std::move(layouts));
     }
 
-    // A same-operator chain is one break unit: flat
-    // `a + b + c`, or broken with the operator leading each
-    // continuation line. Leading operators keep the re-parsed nesting
-    // identical for left-assoc chains (an at-newline RHS would parse
-    // as a full expression and right-nest); trailing operators are
-    // only safe for right-assoc ones, so leading is used uniformly.
+    // A same-operator chain is one break unit. In an `if` condition, logical
+    // operators are right-associative and may safely trail the previous line;
+    // this keeps the relationship visible while the following operand starts
+    // at a fixed +4 continuation. Other contexts retain leading operators:
+    // the parser cannot yet accept a trailing logical operator uniformly in
+    // inline suites, calls, and ternaries. Non-logical operators also lead
+    // continuation lines so left-associative chains reparse with the same
+    // nesting.
     std::vector<Expression*> operands;
     flatten_chain(binary, kind, &operands);
 
     std::vector<Layout*> chain;
+    bool logical = trailing_logical
+        && (precedence == PRECEDENCE_OR || precedence == PRECEDENCE_AND);
     int edge_prec = right_assoc ? right_prec : left_prec;
     int interior_prec = precedence;  // Chain-interior operands.
     for (size_t i = 0; i < operands.size(); i++) {
@@ -737,11 +751,16 @@ class Lowering {
       } else {
         operand_prec = first ? edge_prec : (last ? right_prec : interior_prec);
       }
-      if (!first) {
+      if (!first && !logical) {
         chain.push_back(b_.line());
         chain.push_back(b_.text(std::string(Token::symbol(kind).c_str()) + " "));
       }
-      chain.push_back(chain_operand(operands[i], operand_prec, kind));
+      chain.push_back(chain_operand(
+          operands[i], operand_prec, kind, trailing_logical));
+      if (!last && logical) {
+        chain.push_back(b_.text(" " + std::string(Token::symbol(kind).c_str())));
+        chain.push_back(b_.line());
+      }
     }
 
     Layout* chain_layout;
@@ -771,20 +790,25 @@ class Lowering {
   // The outer chain's break points are tried first (the nested group re-fits
   // after the outer breaks), so optional parens only appear when the nested
   // chain alone is too wide.
-  Layout* chain_operand(Expression* operand, int operand_prec, Token::Kind chain_kind) {
+  Layout* chain_operand(Expression* operand,
+                        int operand_prec,
+                        Token::Kind chain_kind,
+                        bool trailing_logical) {
     int chain_prec = Token::precedence(chain_kind);
     bool logical_chain = chain_prec == PRECEDENCE_OR || chain_prec == PRECEDENCE_AND;
     Expression* inner = peel_parens(operand);
     // A suite consumes the remainder of its line. Keep a suite-bearing call
-    // grouped when it is only one operand of a logical chain.
+    // grouped when it is only one operand of a logical chain, or the following
+    // operator and operand become part of the suite body.
     if (logical_chain && inner != null && inner->is_Call()
         && contains_suite(inner)) {
       return b_.concat({b_.unmeasured_text("("),
-                        expr(inner, PRECEDENCE_NONE),
+                        expr(inner, PRECEDENCE_NONE, trailing_logical),
                         b_.unmeasured_text(")")});
     }
     // Without parentheses, `a and (b ? c : d)` reparses as
-    // `(a and b) ? c : d`.
+    // `(a and b) ? c : d`: the conditional operator consumes the complete
+    // logical expression to its left.
     if (logical_chain && inner != null && inner->is_If()) {
       return b_.concat({b_.unmeasured_text("("),
                         expr(inner, PRECEDENCE_NONE),
@@ -795,25 +819,37 @@ class Lowering {
       if (operand_op_prec == PRECEDENCE_OR || operand_op_prec == PRECEDENCE_AND) {
         bool parens_required = chain_prec == PRECEDENCE_AND
             && operand_op_prec == PRECEDENCE_OR;
-        return nested_logical_chain(inner->as_Binary(), parens_required);
+        return nested_logical_chain(
+            inner->as_Binary(), trailing_logical, parens_required);
       }
     }
-    return binary_operand(operand, operand_prec, chain_kind);
+    return binary_operand(
+        operand, operand_prec, chain_kind, trailing_logical);
   }
 
-  Layout* nested_logical_chain(Binary* binary_node, bool parens_required) {
+  Layout* nested_logical_chain(Binary* binary_node,
+                               bool trailing_logical,
+                               bool parens_required) {
     Token::Kind kind = binary_node->kind();
     std::vector<Expression*> operands;
     flatten_chain(binary_node, kind, &operands);
     std::vector<Layout*> chain;
     for (size_t i = 0; i < operands.size(); i++) {
-      if (i > 0) {
-        chain.push_back(b_.line());
-        chain.push_back(b_.text(std::string(Token::symbol(kind).c_str()) + " "));
-      }
       // Both operand positions of `and` / `or` are statement-level
       // boundaries.
-      chain.push_back(chain_operand(operands[i], PRECEDENCE_NONE, kind));
+      chain.push_back(chain_operand(
+          operands[i], PRECEDENCE_NONE, kind, trailing_logical));
+      if (i + 1 < operands.size()) {
+        if (trailing_logical) {
+          chain.push_back(b_.text(
+              " " + std::string(Token::symbol(kind).c_str())));
+          chain.push_back(b_.line());
+        } else {
+          chain.push_back(b_.line());
+          chain.push_back(b_.text(
+              std::string(Token::symbol(kind).c_str()) + " "));
+        }
+      }
     }
     Layout* open_paren = parens_required
         ? b_.unmeasured_text("(")
@@ -1513,12 +1549,14 @@ class Lowering {
   // A suite-bearing call in a control-flow condition needs parentheses to
   // distinguish its suite colon from the statement's colon. Reconstruct them
   // from the AST rather than retaining arbitrary source parentheses.
-  Layout* control_flow_condition(Expression* condition) {
+  Layout* control_flow_condition(Expression* condition,
+                                 bool trailing_logical) {
     Expression* inner = peel_parens(condition);
     if (inner != null && inner->is_DeclarationLocal()) {
       return declaration_local(inner->as_DeclarationLocal(), true);
     }
-    Layout* condition_layout = expr(condition, PRECEDENCE_NONE);
+    Layout* condition_layout = expr(
+        condition, PRECEDENCE_NONE, trailing_logical);
     // Nested calls are already parenthesized by their enclosing operator.
     // Only a call that is itself the complete condition needs protection here.
     if (inner == null || !inner->is_Call() || !contains_suite(inner)) {
@@ -1537,7 +1575,7 @@ class Lowering {
     while (true) {
       Sequence* yes = branch_sequence(current->yes());
       layouts.push_back(b_.text(keyword));
-      layouts.push_back(control_flow_condition(current->expression()));
+      layouts.push_back(control_flow_condition(current->expression(), true));
       layouts.push_back(b_.text(":"));
       if (yes != null) layouts.push_back(trailing_trivia(yes));
       layouts.push_back(suite_body(yes, !has_else && current->no() == null));
@@ -1564,7 +1602,8 @@ class Lowering {
   Layout* while_statement(While* while_node) {
     Sequence* body = branch_sequence(while_node->body());
     return b_.group(b_.concat({b_.text("while "),
-                               control_flow_condition(while_node->condition()),
+                               control_flow_condition(
+                                   while_node->condition(), false),
                                b_.text(":"),
                                body != null ? trailing_trivia(body) : b_.nil(),
                                suite_body(body, true)}),
