@@ -100,6 +100,13 @@ Layout *LayoutBuilder::if_broken(Layout *broken, Layout *flat) {
   return layout;
 }
 
+Layout *LayoutBuilder::choice(Layout *preferred, Layout *fallback) {
+  Layout *layout = make(Layout::CHOICE);
+  layout->children_.push_back(preferred);
+  layout->children_.push_back(fallback);
+  return layout;
+}
+
 Layout *LayoutBuilder::nil() { return text(""); }
 
 Layout *LayoutBuilder::track(Layout *layout, std::vector<int> emission_ids) {
@@ -160,6 +167,9 @@ int LayoutBuilder::measure_flat(const Layout *layout) {
     break;
   case Layout::IF_BROKEN:
     width = measure_flat(layout->flat_alternative());
+    break;
+  case Layout::CHOICE:
+    width = measure_flat(layout->preferred_alternative());
     break;
   }
   layout->flat_width_ = width;
@@ -228,6 +238,9 @@ public:
       print(flat ? layout->flat_alternative() : layout->broken_alternative(),
             indent, flat);
       break;
+    case Layout::CHOICE:
+      print(choose(layout, indent, flat), indent, flat);
+      break;
     }
   }
 
@@ -240,6 +253,46 @@ private:
   // free of trailing whitespace.
   int pending_indent_;
   std::vector<int> *emitted_ids_;
+
+  const Layout *choose(const Layout *layout, int indent, bool flat) {
+    int preferred_cost = rendered_cost(
+        layout->preferred_alternative(), indent, flat);
+    int fallback_cost = rendered_cost(
+        layout->fallback_alternative(), indent, flat);
+    return preferred_cost <= fallback_cost
+        ? layout->preferred_alternative()
+        : layout->fallback_alternative();
+  }
+
+  // Compare complete rendered alternatives. Previewing is side-effect free:
+  // emitted comment ids are disabled in the copy. Overflow dominates line
+  // count, and line count dominates output size; ties prefer the first shape.
+  int rendered_cost(const Layout *layout, int indent, bool flat) {
+    LayoutPrinter preview = *this;
+    preview.emitted_ids_ = null;
+    size_t original_size = preview.out_.size();
+    preview.print(layout, indent, flat);
+
+    int lines = 0;
+    int overflow = 0;
+    int column = 0;
+    for (char c : preview.out_) {
+      if (c == '\n') {
+        lines++;
+        if (column > style_.preferred_extent) {
+          overflow += column - style_.preferred_extent;
+        }
+        column = 0;
+      } else {
+        column++;
+      }
+    }
+    if (column > style_.preferred_extent) {
+      overflow += column - style_.preferred_extent;
+    }
+    int added_size = static_cast<int>(preview.out_.size() - original_size);
+    return overflow * 10000 + lines * 100 + added_size;
+  }
 
   // Whether `layout` fits as a flat group. For example, a 100-column group at
   // indentation 8 gets two columns of pressure with the default divisor 4.
@@ -333,33 +386,6 @@ private:
     column_ = utf8_code_point_count(last_line);
   }
 };
-
-bool layout_has_breakpoints(const Layout *layout) {
-  switch (layout->kind()) {
-  case Layout::TEXT:
-    return false;
-  case Layout::VERBATIM:
-    return layout->text().find('\n') != std::string::npos;
-  case Layout::CONCAT:
-    for (auto child : layout->children()) {
-      if (layout_has_breakpoints(child))
-        return true;
-    }
-    return false;
-  case Layout::GROUP:
-  case Layout::INDENT:
-    return layout_has_breakpoints(layout->child());
-  case Layout::LINE:
-  case Layout::SOFTLINE:
-  case Layout::HARDLINE:
-  case Layout::BREAK_PARENT:
-    return true;
-  case Layout::IF_BROKEN:
-    return layout_has_breakpoints(layout->broken_alternative()) ||
-           layout_has_breakpoints(layout->flat_alternative());
-  }
-  return true;
-}
 
 std::string render_layout(const Layout *layout, int base_indent,
                           const FormatStyle &style,
