@@ -2,8 +2,21 @@ main:
   // Mixed and/or, fits flat: the parse is unambiguous, no parens.
   if foo and bar or gee: print "x"
 
-  // Breaks at the top-level operator: the line structure carries the
-  // nesting, no parens needed.
+  // The opposite nesting needs parens even when it fits flat.
+  if foo and (bar or gee): print "grouped"
+
+  // `not` only consumes a call-level operand.
+  if not (foo or bar): print "negated chain"
+
+  // A suite-bearing condition needs parens to separate its colon from the
+  // control-flow colon.
+  if (repeat --at-least-one: l-document-suffix): print "suite condition"
+
+  // A suite-bearing logical operand must not consume the rest of the chain.
+  if (repeat --at-least-one: l-directive) and foo: print "suite operand"
+
+  // Prefer the top-level `or` break and leave it on the preceding line. The
+  // following operand uses a fixed four-space continuation.
   if first-long-condition and second-long-condition or third-long-condition and fourth-long-condition-extended:
     print "y"
 
