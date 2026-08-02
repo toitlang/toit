@@ -92,12 +92,12 @@ bool needs_bitwise_clarity(Token::Kind parent_kind, Token::Kind child_kind) {
 // (`--if-absent=: body`). These render after the regular arguments,
 // with the suite's body on indented lines.
 bool is_blockish(Expression* argument) {
-  if (argument->is_Block() || argument->is_Lambda()) return true;
+  Expression* value = argument;
   if (argument->is_NamedArgument()) {
-    Expression* value = argument->as_NamedArgument()->expression();
-    return value != null && (value->is_Block() || value->is_Lambda());
+    value = argument->as_NamedArgument()->expression();
   }
-  return false;
+  value = peel_parens(value);
+  return value != null && (value->is_Block() || value->is_Lambda());
 }
 
 bool is_control_flow(Expression* e) {
@@ -348,9 +348,10 @@ class Lowering {
     return b_.track(result, {comment.id});
   }
 
-  // Trailing (end-of-line) comments of a node, rendered after it.
-  // `//` comments end their line, so the surrounding list must render
-  // broken.
+  // Trailing comments remain attached to the preceding node. Their spacing is
+  // canonicalized, but their line membership is not: BREAK_PARENT forces the
+  // surrounding list to put every following token on a later line after `//`
+  // or a line-spanning block comment.
   Layout* trailing_trivia(Node* node) {
     const NodeTrivia* trivia = trivia_.find(node);
     if (trivia == null || trivia->trailing.empty()) return b_.nil();
@@ -433,9 +434,7 @@ class Lowering {
     e = peel_parens(e);
     if (e->is_Block() || e->is_Lambda()) {
       if (outer != PRECEDENCE_NONE) return paren_block(e);
-      return block_suite(
-          b_.text(e->is_Block() ? ":" : "::"),
-          e);
+      return block_suite(e);
     }
     if (e->is_Binary()) return binary(e->as_Binary(), outer);
     if (e->is_Unary()) return unary(e->as_Unary(), outer);
@@ -497,30 +496,7 @@ class Lowering {
       return b_.concat(std::move(layouts));
     }
     if (e->is_DeclarationLocal()) {
-      DeclarationLocal* declaration = e->as_DeclarationLocal();
-      std::vector<Layout*> layouts;
-      layouts.push_back(node_text(declaration->name()));
-      if (declaration->type() != null) {
-        layouts.push_back(b_.text("/"));
-        layouts.push_back(expr(declaration->type(), PRECEDENCE_POSTFIX));
-      }
-      if (declaration->value() != null) {
-        bool suite_value = declaration->value()->is_Block()
-            || declaration->value()->is_Lambda();
-        layouts.push_back(b_.text(
-            std::string(" ")
-                + Token::symbol(declaration->kind()).c_str()
-                + (suite_value ? "" : " ")));
-        // `x := ?` declares without initializing.
-        if (declaration->value()->is_LiteralUndefined()) {
-          layouts.push_back(b_.text("?"));
-        } else {
-          // The RHS of an assignment-precedence operator is a
-          // statement-level boundary.
-          layouts.push_back(expr(declaration->value(), PRECEDENCE_NONE));
-        }
-      }
-      return b_.concat(std::move(layouts));
+      return declaration_local(e->as_DeclarationLocal(), false);
     }
     if (e->is_LiteralList()) {
       return collection(e->as_LiteralList()->elements(), "[", "]", e);
@@ -544,6 +520,47 @@ class Lowering {
     return b_.track(
         node_text(e),
         trivia_.comment_ids_in_range(start(e), end(e)));
+  }
+
+  Layout* declaration_local(DeclarationLocal* declaration,
+                            bool protect_suite_colon) {
+    std::vector<Layout*> layouts;
+    layouts.push_back(node_text(declaration->name()));
+    if (declaration->type() != null) {
+      layouts.push_back(b_.text("/"));
+      layouts.push_back(expr(declaration->type(), PRECEDENCE_POSTFIX));
+    }
+    Expression* value = declaration->value();
+    if (value == null) return b_.concat(std::move(layouts));
+    Expression* inner_value = peel_parens(value);
+    bool suite_value = inner_value != null
+        && (inner_value->is_Block() || inner_value->is_Lambda());
+    layouts.push_back(b_.text(
+        std::string(" ")
+            + Token::symbol(declaration->kind()).c_str()
+            + (suite_value ? "" : " ")));
+    // `x := ?` declares without initializing.
+    if (inner_value->is_LiteralUndefined()) {
+      layouts.push_back(b_.text("?"));
+    } else {
+      // A suite-bearing initializer with a boundary comment must break before
+      // formatting can let the suite absorb that comment on the next parse.
+      bool force_binary_break = inner_value->is_Binary()
+          && contains_suite(inner_value)
+          && has_comments(declaration);
+      Layout* value_layout = force_binary_break
+          ? binary(inner_value->as_Binary(), PRECEDENCE_NONE, true)
+          : expr(inner_value, PRECEDENCE_NONE);
+      // Parenthesize the initializer, not the declaration: `(x := value)`
+      // reparses as a Binary assignment instead of a DeclarationLocal.
+      if (protect_suite_colon && contains_suite(inner_value)) {
+        value_layout = b_.concat({b_.unmeasured_text("("),
+                                  value_layout,
+                                  b_.unmeasured_text(")")});
+      }
+      layouts.push_back(value_layout);
+    }
+    return b_.concat(std::move(layouts));
   }
 
   // The conditional operator. The parser builds it as an If whose
@@ -597,7 +614,7 @@ class Lowering {
     // Only the keyword `not` needs defensive parens in a non-NONE
     // context (`foo not x` is a parse error; `foo (not x)` is fine).
     // Punctuation unaries bind tightly. `not`'s operand is parsed via
-    // parse_call directly, so it sits at a statement-level boundary.
+    // parse_call directly, so a binary operand needs explicit parentheses.
     bool parens = u->kind() == Token::NOT && outer != PRECEDENCE_NONE;
     std::vector<Layout*> layouts;
     if (parens) layouts.push_back(b_.unmeasured_text("("));
@@ -605,9 +622,17 @@ class Lowering {
     if (u->prefix()) {
       layouts.push_back(b_.text(op));
       if (u->kind() == Token::NOT) layouts.push_back(b_.text(" "));
-      int operand_prec = u->kind() == Token::NOT ? PRECEDENCE_NONE
-                                                 : PRECEDENCE_POSTFIX;
-      layouts.push_back(expr(u->expression(), operand_prec));
+      Expression* operand = peel_parens(u->expression());
+      bool binary_not_operand = u->kind() == Token::NOT
+          && operand != null
+          && operand->is_Binary();
+      if (binary_not_operand) {
+        layouts.push_back(b_.concat({b_.unmeasured_text("("),
+                                     expr(operand, PRECEDENCE_NONE),
+                                     b_.unmeasured_text(")")}));
+      } else {
+        layouts.push_back(expr(operand, PRECEDENCE_POSTFIX));
+      }
     } else {
       layouts.push_back(expr(u->expression(), PRECEDENCE_POSTFIX));
       layouts.push_back(b_.text(op));
@@ -655,7 +680,7 @@ class Lowering {
     }
   }
 
-  Layout* binary(Binary* binary, int outer) {
+  Layout* binary(Binary* binary, int outer, bool force_break = false) {
     Token::Kind kind = binary->kind();
     int precedence = Token::precedence(kind);
     bool parens = precedence <= outer && outer != PRECEDENCE_NONE;
@@ -719,40 +744,64 @@ class Lowering {
       chain.push_back(chain_operand(operands[i], operand_prec, kind));
     }
 
-    Layout* chain_layout = chain.size() == 1
-        ? chain[0]
-        : b_.group(b_.concat({chain[0],
-                              b_.indent(style_.continuation_step,
-                                        b_.concat(std::vector<Layout*>(
-                                            chain.begin() + 1, chain.end())))}));
+    Layout* chain_layout;
+    if (chain.size() == 1) {
+      chain_layout = chain[0];
+    } else {
+      std::vector<Layout*> chain_group;
+      if (force_break) chain_group.push_back(b_.break_parent());
+      chain_group.push_back(chain[0]);
+      chain_group.push_back(
+          b_.indent(style_.continuation_step,
+                    b_.concat(std::vector<Layout*>(
+                        chain.begin() + 1, chain.end()))));
+      chain_layout = b_.group(b_.concat(std::move(chain_group)));
+    }
     if (!parens) return chain_layout;
     return b_.concat({b_.unmeasured_text("("),
                       chain_layout,
                       b_.unmeasured_text(")")});
   }
 
-  // A chain operand. In a mixed `and`/`or` chain, a nested logical
-  // chain stays bare while it renders on one line (the parse is
-  // unambiguous and `foo and bar or gee` reads fine), but gets parens
-  // the moment it breaks: its continuation lines would sit at the same
-  // indent as the outer chain's, hiding the nesting from the reader.
-  // The outer chain's break points are tried first (the nested group
-  // re-fits after the outer breaks), so the parenthesised form only
-  // appears when the nested chain alone is too wide.
+  // A chain operand. In a mixed `and`/`or` chain, precedence lets an `and`
+  // nested inside an `or` stay bare while it renders on one line. If it
+  // breaks, though, its continuation lines would sit at the same indent as
+  // the outer chain's, hiding the nesting from the reader, so add parens.
+  // An `or` nested inside an `and` always needs parens to preserve meaning.
+  // The outer chain's break points are tried first (the nested group re-fits
+  // after the outer breaks), so optional parens only appear when the nested
+  // chain alone is too wide.
   Layout* chain_operand(Expression* operand, int operand_prec, Token::Kind chain_kind) {
     int chain_prec = Token::precedence(chain_kind);
     bool logical_chain = chain_prec == PRECEDENCE_OR || chain_prec == PRECEDENCE_AND;
     Expression* inner = peel_parens(operand);
+    // A suite consumes the remainder of its line. Keep a suite-bearing call
+    // grouped when it is only one operand of a logical chain.
+    if (logical_chain && inner != null && inner->is_Call()
+        && contains_suite(inner)) {
+      return b_.concat({b_.unmeasured_text("("),
+                        expr(inner, PRECEDENCE_NONE),
+                        b_.unmeasured_text(")")});
+    }
+    // Without parentheses, `a and (b ? c : d)` reparses as
+    // `(a and b) ? c : d`.
+    if (logical_chain && inner != null && inner->is_If()) {
+      return b_.concat({b_.unmeasured_text("("),
+                        expr(inner, PRECEDENCE_NONE),
+                        b_.unmeasured_text(")")});
+    }
     if (logical_chain && inner != null && inner->is_Binary()) {
       int operand_op_prec = Token::precedence(inner->as_Binary()->kind());
       if (operand_op_prec == PRECEDENCE_OR || operand_op_prec == PRECEDENCE_AND) {
-        return nested_logical_chain(inner->as_Binary());
+        bool parens_required = chain_prec == PRECEDENCE_AND
+            && operand_op_prec == PRECEDENCE_OR;
+        return nested_logical_chain(inner->as_Binary(), parens_required);
       }
     }
     return binary_operand(operand, operand_prec, chain_kind);
   }
 
-  Layout* nested_logical_chain(Binary* binary_node) {
+  Layout* nested_logical_chain(Binary* binary_node, bool parens_required) {
     Token::Kind kind = binary_node->kind();
     std::vector<Expression*> operands;
     flatten_chain(binary_node, kind, &operands);
@@ -766,40 +815,35 @@ class Lowering {
       // boundaries.
       chain.push_back(chain_operand(operands[i], PRECEDENCE_NONE, kind));
     }
-    return b_.group(b_.concat({b_.if_broken(b_.unmeasured_text("("), b_.nil()),
+    Layout* open_paren = parens_required
+        ? b_.unmeasured_text("(")
+        : b_.if_broken(b_.unmeasured_text("("), b_.nil());
+    Layout* close_paren = parens_required
+        ? b_.unmeasured_text(")")
+        : b_.if_broken(b_.unmeasured_text(")"), b_.nil());
+    return b_.group(b_.concat({open_paren,
                                chain[0],
                                b_.indent(style_.continuation_step,
                                          b_.concat(std::vector<Layout*>(
                                              chain.begin() + 1, chain.end()))),
-                               b_.if_broken(b_.unmeasured_text(")"), b_.nil())}));
+                               close_paren}));
   }
 
-  Layout* named_argument(NamedArgument* argument,
-                         bool full_expression_context) {
+  Layout* named_argument_prefix(NamedArgument* argument,
+                                const char* suffix = "") {
     std::vector<Layout*> layouts;
     layouts.push_back(b_.text(argument->inverted() ? "--no-" : "--"));
     layouts.push_back(node_text(argument->name()));
-    Expression* value = argument->expression();
-    if (value != null) {
-      layouts.push_back(b_.text("="));
-      // A continuation line gives the value a full-expression boundary. On a
-      // shared call line it must obey the same restrictions as any other call
-      // argument.
-      layouts.push_back(expr(value, full_expression_context
-                                    ? PRECEDENCE_NONE
-                                    : PRECEDENCE_POSTFIX));
-    }
+    layouts.push_back(b_.text(suffix));
     return b_.concat(std::move(layouts));
   }
 
-  // A call argument sharing a line with other call tokens. Parsed at
-  // assignment precedence; Toit's greedy Call makes inner calls and
-  // multi-arg binaries ambiguous, so those get parens.
-  Layout* call_argument_flat(Expression* argument) {
-    if (argument->is_NamedArgument()) {
-      return named_argument(argument->as_NamedArgument(), false);
-    }
-    Expression* inner = peel_parens(argument);
+  // An argument value sharing a line with other call tokens. Toit's greedy
+  // Call makes inner calls and multi-argument binaries ambiguous, so those get
+  // parentheses. This is independent of whether the caller adds a `--name=`
+  // prefix around the value.
+  Layout* call_argument_value_flat(Expression* value) {
+    Expression* inner = peel_parens(value);
     if (inner != null && inner->is_Binary()
         && Token::precedence(inner->as_Binary()->kind()) != PRECEDENCE_ASSIGNMENT) {
       return b_.concat({b_.unmeasured_text("("),
@@ -812,7 +856,24 @@ class Lowering {
                         expr(inner, PRECEDENCE_NONE),
                         b_.unmeasured_text(")")});
     }
-    return expr(argument, PRECEDENCE_POSTFIX);
+    return expr(value, PRECEDENCE_POSTFIX);
+  }
+
+  Layout* named_argument(NamedArgument* argument,
+                         bool full_expression_context) {
+    Expression* value = argument->expression();
+    if (value == null) return named_argument_prefix(argument);
+    Layout* value_layout = full_expression_context
+        ? expr(value, PRECEDENCE_NONE)
+        : call_argument_value_flat(value);
+    return b_.concat({named_argument_prefix(argument, "="), value_layout});
+  }
+
+  Layout* call_argument_flat(Expression* argument) {
+    if (argument->is_NamedArgument()) {
+      return named_argument(argument->as_NamedArgument(), false);
+    }
+    return call_argument_value_flat(argument);
   }
 
   // A regular (non-suite) call argument in a breakable position. The
@@ -846,29 +907,53 @@ class Lowering {
   // Block parameters: ` | x y/int |`.
   Layout* block_parameters(List<Parameter*> parameters) {
     if (parameters.is_empty()) return b_.nil();
-    std::vector<Layout*> layouts;
-    layouts.push_back(b_.text(" |"));
+    std::vector<Layout*> parameter_layouts;
     for (auto p : parameters) {
-      layouts.push_back(b_.text(" "));
-      layouts.push_back(parameter(p));
+      parameter_layouts.push_back(b_.line());
+      parameter_layouts.push_back(parameter(p));
     }
-    layouts.push_back(b_.text(" |"));
-    return b_.concat(std::move(layouts));
+    return b_.group(
+        b_.concat({b_.text(" |"),
+                   b_.indent(style_.continuation_step,
+                             b_.concat(std::move(parameter_layouts))),
+                   b_.line(),
+                   b_.text("|")}),
+        -1,
+        parameters.length() + 1);
+  }
+
+  Expression* blockish_value(Expression* argument) {
+    Expression* value = argument->is_NamedArgument()
+        ? argument->as_NamedArgument()->expression()
+        : argument;
+    return peel_parens(value);
+  }
+
+  // The optional named-argument prefix is the only distinction between named
+  // and positional block/lambda arguments. Their parameters and bodies use
+  // the same lowering below.
+  Layout* blockish_intro(Expression* argument) {
+    Expression* value = blockish_value(argument);
+    const char* marker = value->is_Block() ? ":" : "::";
+    if (!argument->is_NamedArgument()) return b_.text(marker);
+    return named_argument_prefix(
+        argument->as_NamedArgument(),
+        value->is_Block() ? "=:" : "=::");
   }
 
   // The suite of a Block / Lambda argument: `: body` inline (single
-  // statement, fits) or the body on indented lines. `intro` is `:` or
-  // `::`, possibly preceded by `--name=`.
-  Layout* block_suite(Layout* intro, Expression* blockish) {
-    Expression* value = blockish;
-    if (value->is_NamedArgument()) value = value->as_NamedArgument()->expression();
+  // statement, fits) or the body on indented lines.
+  Layout* block_suite(Expression* argument, bool allow_inline = true) {
+    Expression* value = blockish_value(argument);
     Sequence* body = value->is_Block() ? value->as_Block()->body()
                                        : value->as_Lambda()->body();
     Layout* params = block_parameters(value->is_Block()
                                        ? value->as_Block()->parameters()
                                        : value->as_Lambda()->parameters());
-    return b_.concat({intro, params, trailing_trivia(body),
-                      suite_body(body, true)});
+    return b_.concat({blockish_intro(argument),
+                      params,
+                      trailing_trivia(body),
+                      suite_body(body, allow_inline)});
   }
 
   // A parenthesized block/lambda, `(: body)` — a block in argument
@@ -894,16 +979,17 @@ class Lowering {
                     style_.inline_suite_width);
   }
 
-  Layout* block_suite_broken(Layout* intro, Expression* blockish) {
-    Expression* value = blockish;
-    if (value->is_NamedArgument()) value = value->as_NamedArgument()->expression();
-    Sequence* body = value->is_Block() ? value->as_Block()->body()
-                                       : value->as_Lambda()->body();
-    Layout* params = block_parameters(value->is_Block()
-                                       ? value->as_Block()->parameters()
-                                       : value->as_Lambda()->parameters());
-    return b_.concat({intro, params, trailing_trivia(body),
-                      suite_body(body, false)});
+  // A suite argument followed by another argument needs an explicit closing
+  // delimiter; otherwise the following argument may become part of its body
+  // when that body breaks. Named and positional suites use the same
+  // parenthesized value, with only the optional `--name=` prefix added here.
+  Layout* delimited_blockish_argument(Expression* argument) {
+    Expression* value = blockish_value(argument);
+    Layout* value_layout = paren_block(value);
+    if (!argument->is_NamedArgument()) return value_layout;
+    return b_.concat({named_argument_prefix(
+                          argument->as_NamedArgument(), "="),
+                      value_layout});
   }
 
   // A suite body after its `:`: ` stmt` when the enclosing group is
@@ -977,29 +1063,14 @@ class Lowering {
         && arguments[first_blockish]->is_NamedArgument();
     int head_args = named_suite_in_head ? arguments.length() : first_blockish;
 
-    // The leading run of unbreakable positional arguments; used to
-    // decide whether a final collection literal may hug the call.
-    int glued_args = 0;
-    std::vector<Layout*> glued_layouts;
-    while (glued_args < head_args
-           && !arguments[glued_args]->is_NamedArgument()
-           && !is_blockish(arguments[glued_args])
-           && !has_comments(arguments[glued_args])) {
-      Layout* layout = call_argument_flat(arguments[glued_args]);
-      if (layout_has_breakpoints(layout)) break;
-      glued_layouts.push_back(layout);
-      glued_args++;
-    }
-
-    // A final collection literal hugs the call (`send-request_ CMD {`
-    // and `client_.rest.select "roles" --filters=[` with the elements
-    // breaking internally — brackets are delimited constructs, so the
-    // call's indentation rules are suspended inside). Only when
-    // everything before it is glued: a hug after a broken argument
-    // list does not re-parse as the same call.
+    // A final collection literal may hug the call (`send-request_ CMD {`)
+    // when every preceding argument has a finite same-line form. This only
+    // establishes that both shapes are legal; the layout choice below is made
+    // after both complete alternatives have been constructed.
     Expression* hugged = null;
-    if (!named_suite_in_head && glued_args == head_args - 1
-        && tail_count == 0) {
+    std::vector<Layout*> hugged_prefix_layouts;
+    if (!named_suite_in_head && head_args > 0 && tail_count == 0
+        && !has_boundary_comments(c->target())) {
       Expression* last_argument = arguments[head_args - 1];
       Expression* collection = last_argument;
       if (last_argument->is_NamedArgument()) {
@@ -1009,8 +1080,22 @@ class Lowering {
           && (collection->is_LiteralList() || collection->is_LiteralMap()
               || collection->is_LiteralSet() || collection->is_LiteralByteArray())
           && !has_boundary_comments(last_argument)) {
-        hugged = last_argument;
-        head_args--;
+        bool prefix_can_hug = true;
+        for (int i = 0; i < head_args - 1; i++) {
+          Expression* argument = arguments[i];
+          if (argument->is_NamedArgument() || is_blockish(argument)
+              || has_comments(argument)) {
+            prefix_can_hug = false;
+            break;
+          }
+          Layout* layout = call_argument_flat(argument);
+          if (!LayoutBuilder::has_finite_flat(layout)) {
+            prefix_can_hug = false;
+            break;
+          }
+          hugged_prefix_layouts.push_back(layout);
+        }
+        if (prefix_can_hug) hugged = last_argument;
       }
     }
 
@@ -1018,72 +1103,59 @@ class Lowering {
     head.push_back(expr(c->target(), PRECEDENCE_POSTFIX));
     head.push_back(trailing_trivia(c->target()));
     std::vector<Layout*> argument_layouts;
-    if (hugged != null) {
-      // All preceding arguments are unbreakable; render them glued.
-      for (auto layout : glued_layouts) {
-        head.push_back(b_.text(" "));
-        head.push_back(layout);
-      }
-    } else {
-      // Runs of positional arguments form a nested group: when the
-      // call breaks, the run stays on the target's line (corpus shape:
-      // `client_.post encoded` + named args on continuation lines) and
-      // only breaks per-argument when the run itself is too wide.
-      int i = 0;
-      while (i < head_args) {
-        Expression* argument = arguments[i];
-        // Only the leading run glues to the target; a positional after
-        // a named argument must take its own line (sharing the named
-        // argument's line would parse into its value).
-        bool positional_run = i == 0
-            && !argument->is_NamedArgument()
-            && !(named_suite_in_head && i == arguments.length() - 1);
-        if (positional_run) {
-          int run_start = i;
-          std::vector<Layout*> run;
-          while (i < head_args && !arguments[i]->is_NamedArgument()
-                 && !(named_suite_in_head && i == arguments.length() - 1)) {
-            Expression* run_argument = arguments[i];
-            const NodeTrivia* trivia = trivia_.find(run_argument);
-            run.push_back(b_.line());
-            if (trivia != null) {
-              for (auto& comment : trivia->leading) {
-                run.push_back(comment_layout(comment));
-                run.push_back(b_.hardline());
-              }
+    // Runs of positional arguments form a nested group: when the call breaks,
+    // the run stays on the target's line (corpus shape: `client_.post encoded`
+    // plus named arguments on continuation lines) and only breaks per-argument
+    // when the run itself is too wide.
+    int i = 0;
+    while (i < head_args) {
+      Expression* argument = arguments[i];
+      // Only the leading run glues to the target; a positional after
+      // a named argument must take its own line (sharing the named
+      // argument's line would parse into its value).
+      bool positional_run = i == 0
+          && !argument->is_NamedArgument()
+          && !(named_suite_in_head && i == arguments.length() - 1);
+      if (positional_run) {
+        int run_start = i;
+        std::vector<Layout*> run;
+        while (i < head_args && !arguments[i]->is_NamedArgument()
+               && !(named_suite_in_head && i == arguments.length() - 1)) {
+          Expression* run_argument = arguments[i];
+          const NodeTrivia* trivia = trivia_.find(run_argument);
+          run.push_back(b_.line());
+          if (trivia != null) {
+            for (auto& comment : trivia->leading) {
+              run.push_back(comment_layout(comment));
+              run.push_back(b_.hardline());
             }
-            run.push_back(call_argument(run_argument));
-            run.push_back(trailing_trivia(run_argument));
-            i++;
           }
-          argument_layouts.push_back(
-              b_.group(b_.concat(std::move(run)),
-                       -1,
-                       i - run_start));
-          continue;
+          run.push_back(call_argument(run_argument));
+          run.push_back(trailing_trivia(run_argument));
+          i++;
         }
-        const NodeTrivia* trivia = trivia_.find(argument);
-        argument_layouts.push_back(b_.line());
-        if (trivia != null) {
-          for (auto& comment : trivia->leading) {
-            argument_layouts.push_back(comment_layout(comment));
-            argument_layouts.push_back(b_.hardline());
-          }
-        }
-        if (named_suite_in_head && i == arguments.length() - 1) {
-          NamedArgument* named = argument->as_NamedArgument();
-          Expression* value = named->expression();
-          Layout* intro = b_.concat({b_.text(named->inverted() ? "--no-" : "--"),
-                                  node_text(named->name()),
-                                  b_.text(value->is_Block() ? "=:" : "=::")});
-          argument_layouts.push_back(b_.group(block_suite(intro, argument),
-                                           style_.inline_suite_width));
-        } else {
-          argument_layouts.push_back(call_argument(argument));
-        }
-        argument_layouts.push_back(trailing_trivia(argument));
-        i++;
+        argument_layouts.push_back(
+            b_.group(b_.concat(std::move(run)),
+                     -1,
+                     i - run_start));
+        continue;
       }
+      const NodeTrivia* trivia = trivia_.find(argument);
+      argument_layouts.push_back(b_.line());
+      if (trivia != null) {
+        for (auto& comment : trivia->leading) {
+          argument_layouts.push_back(comment_layout(comment));
+          argument_layouts.push_back(b_.hardline());
+        }
+      }
+      if (named_suite_in_head && i == arguments.length() - 1) {
+        argument_layouts.push_back(b_.group(block_suite(argument),
+                                           style_.inline_suite_width));
+      } else {
+        argument_layouts.push_back(call_argument(argument));
+      }
+      argument_layouts.push_back(trailing_trivia(argument));
+      i++;
     }
     bool has_argument_alternatives = !argument_layouts.empty();
     if (has_argument_alternatives) {
@@ -1094,20 +1166,23 @@ class Lowering {
         ? b_.group(b_.concat(std::move(head)), -1, head_args)
         : b_.concat(std::move(head));
 
+    if (hugged != null) {
+      std::vector<Layout*> hugged_layouts = {
+        expr(c->target(), PRECEDENCE_POSTFIX),
+        trailing_trivia(c->target()),
+      };
+      for (auto layout : hugged_prefix_layouts) {
+        hugged_layouts.push_back(b_.text(" "));
+        hugged_layouts.push_back(layout);
+      }
+      hugged_layouts.push_back(b_.text(" "));
+      hugged_layouts.push_back(call_argument_flat(hugged));
+      head_layout = b_.choice(b_.concat(std::move(hugged_layouts)),
+                              head_layout);
+    }
+
     std::vector<Layout*> layouts;
     layouts.push_back(head_layout);
-    if (hugged != null) {
-      layouts.push_back(b_.text(" "));
-      if (hugged->is_NamedArgument()) {
-        NamedArgument* named = hugged->as_NamedArgument();
-        layouts.push_back(b_.text(named->inverted() ? "--no-" : "--"));
-        layouts.push_back(node_text(named->name()));
-        layouts.push_back(b_.text("="));
-        layouts.push_back(expr(named->expression(), PRECEDENCE_NONE));
-      } else {
-        layouts.push_back(expr(hugged, PRECEDENCE_NONE));
-      }
-    }
     if (named_suite_in_head) {
       // Already rendered in the head.
     } else if (tail_count == 1 && is_blockish(arguments[first_blockish])) {
@@ -1116,8 +1191,7 @@ class Lowering {
       // *statement's* group so the whole line is judged against the
       // inline-suite budget.
       Expression* argument = arguments[first_blockish];
-      Layout* intro = b_.text(argument->is_Block() ? ":" : "::");
-      layouts.push_back(block_suite(intro, argument));
+      layouts.push_back(block_suite(argument));
     } else if (tail_count > 1) {
       // From the first suite argument on, every argument goes on its
       // own continuation line: suites would swallow same-line
@@ -1127,17 +1201,9 @@ class Lowering {
         Expression* argument = arguments[i];
         Layout* line_layout;
         if (is_blockish(argument)) {
-          Layout* intro;
-          if (argument->is_NamedArgument()) {
-            NamedArgument* named = argument->as_NamedArgument();
-            Expression* value = named->expression();
-            intro = b_.concat({b_.text(named->inverted() ? "--no-" : "--"),
-                               node_text(named->name()),
-                               b_.text(value->is_Block() ? "=:" : "=::")});
-          } else {
-            intro = b_.text(argument->is_Block() ? ":" : "::");
-          }
-          line_layout = block_suite(intro, argument);
+          line_layout = i + 1 < arguments.length()
+              ? delimited_blockish_argument(argument)
+              : block_suite(argument);
         } else if (argument->is_NamedArgument()) {
           line_layout = named_argument(argument->as_NamedArgument(), true);
         } else {
@@ -1444,6 +1510,25 @@ class Lowering {
     return null;
   }
 
+  // A suite-bearing call in a control-flow condition needs parentheses to
+  // distinguish its suite colon from the statement's colon. Reconstruct them
+  // from the AST rather than retaining arbitrary source parentheses.
+  Layout* control_flow_condition(Expression* condition) {
+    Expression* inner = peel_parens(condition);
+    if (inner != null && inner->is_DeclarationLocal()) {
+      return declaration_local(inner->as_DeclarationLocal(), true);
+    }
+    Layout* condition_layout = expr(condition, PRECEDENCE_NONE);
+    // Nested calls are already parenthesized by their enclosing operator.
+    // Only a call that is itself the complete condition needs protection here.
+    if (inner == null || !inner->is_Call() || !contains_suite(inner)) {
+      return condition_layout;
+    }
+    return b_.concat({b_.unmeasured_text("("),
+                      condition_layout,
+                      b_.unmeasured_text(")")});
+  }
+
   Layout* if_statement(If* if_node) {
     std::vector<Layout*> layouts;
     const char* keyword = "if ";
@@ -1452,7 +1537,7 @@ class Lowering {
     while (true) {
       Sequence* yes = branch_sequence(current->yes());
       layouts.push_back(b_.text(keyword));
-      layouts.push_back(expr(current->expression(), PRECEDENCE_NONE));
+      layouts.push_back(control_flow_condition(current->expression()));
       layouts.push_back(b_.text(":"));
       if (yes != null) layouts.push_back(trailing_trivia(yes));
       layouts.push_back(suite_body(yes, !has_else && current->no() == null));
@@ -1479,7 +1564,7 @@ class Lowering {
   Layout* while_statement(While* while_node) {
     Sequence* body = branch_sequence(while_node->body());
     return b_.group(b_.concat({b_.text("while "),
-                               expr(while_node->condition(), PRECEDENCE_NONE),
+                               control_flow_condition(while_node->condition()),
                                b_.text(":"),
                                body != null ? trailing_trivia(body) : b_.nil(),
                                suite_body(body, true)}),

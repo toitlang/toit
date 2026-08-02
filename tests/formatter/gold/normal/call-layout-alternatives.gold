@@ -1,0 +1,44 @@
+// Copyright (C) 2026 Toit contributors.
+
+main:
+  // The long prefix makes the continuation-line collection cheaper than a hug.
+  send
+      "a-prefix-that-is-deliberately-long-enough-to-make-the-hugged-alternative-overflow-the-preferred-extent"
+      [
+        aaaaaaaaaaa, bbbbbbbbbbb, ccccccccccc, ddddddddddd,
+        eeeeeeeeeee, fffffffffff, ggggggggggg, hhhhhhhh,
+      ]
+
+  // A named collection uses the same deferred choice and can hug when it wins.
+  send short --items=[
+    aaaaaaaaaaa, bbbbbbbbbbb, ccccccccccc, ddddddddddd,
+    eeeeeeeeeee, fffffffffff, ggggggggggg, hhhhhhhh,
+  ]
+
+  // Block parameters can break independently of whether the suite is named.
+  run: |
+      first-parameter-with-a-long-name
+      second-parameter-with-a-long-name
+      third-parameter-with-a-long-name
+  |
+    print first-parameter-with-a-long-name
+  run
+      --body=: |
+          first-parameter-with-a-long-name
+          second-parameter-with-a-long-name
+          third-parameter-with-a-long-name
+      |
+        print first-parameter-with-a-long-name
+
+send args: return args
+run [body]: body.call
+
+short := 0
+aaaaaaaaaaa := 0
+bbbbbbbbbbb := 0
+ccccccccccc := 0
+ddddddddddd := 0
+eeeeeeeeeee := 0
+fffffffffff := 0
+ggggggggggg := 0
+hhhhhhhh := 0
