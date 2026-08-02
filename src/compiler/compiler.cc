@@ -35,8 +35,8 @@
 #include "filesystem_hybrid.h"
 #include "filesystem_local.h"
 #include "filesystem_lsp.h"
-#include "ast_equivalence.h"
 #include "format.h"
+#include "format_verifier.h"
 #include "../file_writer.h"
 #include "lambda.h"
 #include "list.h"
@@ -1017,124 +1017,18 @@ void Compiler::format(const char* source_path,
     exit(1);
   }
 
-  // Re-parse the formatted output and check that it's semantically
-  // equivalent and that no comment was lost. This is the safety net
-  // against a formatter bug silently changing meaning: AST equivalence
-  // catches token-level changes, the comment compare catches dropped
-  // trivia (which the AST cannot see).
-  //
   // Disable with TOIT_FORMAT_NO_VERIFY=1 for debugging bad output.
   const char* no_verify = getenv("TOIT_FORMAT_NO_VERIFY");
-  if (no_verify == null || strcmp(no_verify, "1") != 0) {
-    Source* verify_source = source_manager.load_from_memory(
-        std::string(source_path) + "<formatted>",
-        formatted,
-        formatted_size);
-    AnalysisDiagnostics verify_diag(&source_manager,
-                                    show_package_warnings=false,
-                                    print_diagnostics_on_stdout=false);
-    SymbolCanonicalizer verify_symbols;
-    Scanner verify_scanner(verify_source, &verify_symbols, &verify_diag);
-    Parser verify_parser(verify_source, &verify_scanner, &verify_diag);
-    ast::Unit* verify_unit = verify_parser.parse_unit();
-    if (verify_diag.encountered_error()) {
-      fprintf(stderr, "toit format: formatter produced output with parse errors; refusing to write %s\n",
-              out_path);
-      free(formatted);
-      exit(1);
-    }
-    ast::Node* mismatch_original = null;
-    ast::Node* mismatch_formatted = null;
-    if (!ast_equivalent(unit, verify_unit, &mismatch_original, &mismatch_formatted)) {
-      fprintf(stderr, "toit format: formatter changed meaning; refusing to write %s\n",
-              out_path);
-      auto print_excerpt = [](const char* label, Source* src, ast::Node* node) {
-        if (node == null) {
-          fprintf(stderr, "  %s: <missing node>\n", label);
-          return;
-        }
-        int from = src->offset_in_source(node->full_range().from());
-        int to = src->offset_in_source(node->full_range().to());
-        int length = to - from;
-        if (length > 200) length = 200;
-        fprintf(stderr, "  %s (offset %d): %.*s\n",
-                label, from, length, char_cast(src->text()) + from);
-      };
-      print_excerpt("original ", source, mismatch_original);
-      print_excerpt("formatted", verify_source, mismatch_formatted);
-      free(formatted);
-      exit(1);
-    }
-    // Comments must survive with their text intact (modulo the
-    // surrounding whitespace the formatter owns: line-spanning
-    // comments get their interior lines re-indented, so leading
-    // whitespace is normalized away before comparing).
-    struct CommentFingerprint {
-      std::string text;
-      bool has_code_before_on_line;
-
-      bool operator==(const CommentFingerprint& other) const {
-        return text == other.text
-            && has_code_before_on_line == other.has_code_before_on_line;
-      }
-    };
-    auto comment_fingerprints = [](Scanner* s, Source* src) {
-      std::vector<CommentFingerprint> result;
-      for (auto comment : s->comments()) {
-        if (!comment.is_valid()) continue;
-        int from = src->offset_in_source(comment.range().from());
-        int to = src->offset_in_source(comment.range().to());
-        std::string text(char_cast(src->text()) + from, to - from);
-        std::string normalized;
-        bool at_line_start = false;
-        for (char c : text) {
-          if (at_line_start && (c == ' ' || c == '\t')) continue;
-          at_line_start = c == '\n';
-          normalized.push_back(c);
-        }
-        bool has_code_before_on_line = false;
-        for (int i = from - 1;
-             i >= 0 && src->text()[i] != '\n';
-             i--) {
-          if (src->text()[i] != ' ' && src->text()[i] != '\t') {
-            has_code_before_on_line = true;
-            break;
-          }
-        }
-        result.push_back(
-            {std::move(normalized), has_code_before_on_line});
-      }
-      return result;
-    };
-    auto original_comments = comment_fingerprints(&scanner, source);
-    auto formatted_comments =
-        comment_fingerprints(&verify_scanner, verify_source);
-    if (original_comments != formatted_comments) {
-      fprintf(stderr, "toit format: formatter dropped or changed a comment; refusing to write %s\n",
-              out_path);
-      size_t common = 0;
-      while (common < original_comments.size()
-             && common < formatted_comments.size()
-             && original_comments[common] == formatted_comments[common]) {
-        common++;
-      }
-      if (common < original_comments.size()) {
-        fprintf(stderr, "  original : %s (%s)\n",
-                original_comments[common].text.c_str(),
-                original_comments[common].has_code_before_on_line
-                    ? "end-of-line"
-                    : "own-line");
-      }
-      if (common < formatted_comments.size()) {
-        fprintf(stderr, "  formatted: %s (%s)\n",
-                formatted_comments[common].text.c_str(),
-                formatted_comments[common].has_code_before_on_line
-                    ? "end-of-line"
-                    : "own-line");
-      }
-      free(formatted);
-      exit(1);
-    }
+  if ((no_verify == null || strcmp(no_verify, "1") != 0)
+      && !verify_formatted_output(&source_manager,
+                                  source,
+                                  &scanner,
+                                  unit,
+                                  formatted,
+                                  formatted_size,
+                                  out_path)) {
+    free(formatted);
+    exit(1);
   }
 
   bool content_changed = formatted_size != unit->source()->size()
