@@ -107,6 +107,12 @@ public:
     // different tokens per mode (e.g. parens around call arguments,
     // trailing commas).
     IF_BROKEN,
+    // Chooses between two complete, independently rendered layouts. Unlike
+    // GROUP, selecting an alternative does not force nested groups flat. This
+    // is used when both shapes are grammatically valid but have different
+    // nesting, such as a collection literal hugged to a call or placed on a
+    // continuation line.
+    CHOICE,
   };
 
   Kind kind() const { return kind_; }
@@ -116,6 +122,8 @@ public:
   Layout *child() const { return children_[0]; }
   Layout *broken_alternative() const { return children_[0]; }
   Layout *flat_alternative() const { return children_[1]; }
+  Layout *preferred_alternative() const { return children_[0]; }
+  Layout *fallback_alternative() const { return children_[1]; }
   int indent_delta() const { return indent_delta_; }
   // Width budget override for GROUP; -1 means
   // FormatStyle::preferred_extent.
@@ -135,7 +143,7 @@ private:
   // the storage uniform makes allocation and traversal simple; the accessors
   // above expose the kind-specific interpretation.
   std::string text_;               // TEXT, VERBATIM, LINE (separator).
-  std::vector<Layout *> children_; // CONCAT, GROUP, INDENT, IF_BROKEN.
+  std::vector<Layout *> children_; // CONCAT, GROUP, INDENT, IF_BROKEN, CHOICE.
   int indent_delta_ = 0;           // INDENT.
   int budget_ = -1;                // GROUP.
   int alternative_lines_ = 0;      // GROUP.
@@ -178,6 +186,7 @@ public:
   Layout *break_parent();
   Layout *blank_lines(int count); // `count` blank lines (count+1 hardlines).
   Layout *if_broken(Layout *broken, Layout *flat);
+  Layout *choice(Layout *preferred, Layout *fallback);
   Layout *nil(); // Empty text.
   Layout *track(Layout *layout, std::vector<int> emission_ids);
 
@@ -191,11 +200,6 @@ private:
 
   std::vector<Layout *> all_;
 };
-
-// Whether the layout contains any potential line break (LINE, SOFTLINE,
-// HARDLINE, BREAK_PARENT, or multi-line VERBATIM). Used by lowering to
-// decide which call arguments may be glued to the target's line.
-bool layout_has_breakpoints(const Layout *layout);
 
 // Renders `layout` starting at indentation `base_indent`. The result's
 // first line is not indented (the caller has already emitted any
