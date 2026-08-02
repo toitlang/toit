@@ -15,14 +15,12 @@ main args:
   run-test:
     expect-equals "rmt" args[0]
 
-    data := gpio.Pin.out DATA-PIN
     ready := gpio.Pin READY-PIN --input --pull-down
-    strip := PixelStrip.rmt PIXELS --pin=data
+    strip := PixelStrip.rmt PIXELS --pin=DATA-PIN
 
     try:
       ready.wait-for 1
       strip.output RED GREEN BLUE
     finally:
       strip.close
-      data.close
       ready.close

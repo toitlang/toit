@@ -16,4 +16,4 @@ dependencies:
     version: ^2.2.0
   pixel_strip:
     url: github.com/toitware/toit-pixel-strip
-    version: ^1.3.0
+    version: ^1.4.0
