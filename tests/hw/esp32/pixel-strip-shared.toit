@@ -8,30 +8,40 @@ import rmt
 import .variants
 
 BYTES-PER-PIXEL ::= 3
+FRAME-COUNT ::= 8
 RESOLUTION ::= 20_000_000
 TIMING-SLACK-TICKS ::= 3
 
 DATA-PIN ::= Variant.CURRENT.pixel-strip-data-pin
 READY-PIN ::= Variant.CURRENT.pixel-strip-ready-pin
-BASE-RED ::= #[0x00, 0xff, 0x80, 0x01, 0xaa, 0x55, 0x96]
-BASE-GREEN ::= #[0xff, 0x00, 0x7f, 0xfe, 0x55, 0xaa, 0x69]
-BASE-BLUE ::= #[0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde]
 
 // Classic ESP32 RMT input has no DMA. Keep its test within dedicated RMT
-//   memory, while DMA-capable variants exercise a frame that requires
-//   peripheral rebuffering in every pixel-strip backend.
-PIXELS ::= rmt.DMA-SUPPORTED ? 200 : BASE-RED.size
+//   memory, while DMA-capable variants exercise a 1,000-pixel frame that
+//   requires peripheral rebuffering in every pixel-strip backend.
+PIXELS ::= rmt.DMA-SUPPORTED ? 1_000 : 7
 
-RED ::= ByteArray PIXELS: BASE-RED[it % BASE-RED.size]
-GREEN ::= ByteArray PIXELS: BASE-GREEN[it % BASE-GREEN.size]
-BLUE ::= ByteArray PIXELS: BASE-BLUE[it % BASE-BLUE.size]
+red-value pixel/int frame/int -> int:
+  return (pixel * 17 + frame * 29 + 1) & 0xff
 
-EXPECTED-GRB ::= ByteArray PIXELS * BYTES-PER-PIXEL:
-  pixel-index := it / BYTES-PER-PIXEL
-  component := it % BYTES-PER-PIXEL
-  component == 0
-      ? GREEN[pixel-index]
-      : component == 1 ? RED[pixel-index] : BLUE[pixel-index]
+green-value pixel/int frame/int -> int:
+  return (pixel * 31 + frame * 13 + 0x55) & 0xff
+
+blue-value pixel/int frame/int -> int:
+  return (pixel * 7 + frame * 47 + 0xaa) & 0xff
+
+fill-frame frame/int red/ByteArray green/ByteArray blue/ByteArray -> none:
+  PIXELS.repeat: | pixel |
+    red[pixel] = red-value pixel frame
+    green[pixel] = green-value pixel frame
+    blue[pixel] = blue-value pixel frame
+
+expected-grb frame/int -> ByteArray:
+  return ByteArray PIXELS * BYTES-PER-PIXEL:
+    pixel := it / BYTES-PER-PIXEL
+    component := it % BYTES-PER-PIXEL
+    component == 0
+        ? green-value pixel frame
+        : component == 1 ? red-value pixel frame : blue-value pixel frame
 
 // The final low period turns into the RMT end marker because the line never
 //   transitions high again after the frame.
@@ -43,7 +53,7 @@ expect-close-to expected/int actual/int --transition/int:
   expect (expected - actual).abs <= TIMING-SLACK-TICKS
       --message="Transition $transition: expected $expected ticks, got $actual ticks"
 
-validate-capture signals/rmt.Signals backend/string:
+validate-capture signals/rmt.Signals backend/string frame/int:
   transition-count := signals.size
   while transition-count > 0 and (signals.period (transition-count - 1)) == 0:
     transition-count--
@@ -58,7 +68,8 @@ validate-capture signals/rmt.Signals backend/string:
       --message="Expected at least $EXPECTED-BIT-COUNT bits, got $bit-count"
   extra-bit-count := bit-count - EXPECTED-BIT-COUNT
 
-  decoded := ByteArray EXPECTED-GRB.size
+  expected := expected-grb frame
+  decoded := ByteArray expected.size
   bit-count.repeat: | bit-index |
     high-index := bit-index * 2
     low-index := high-index + 1
@@ -85,7 +96,7 @@ validate-capture signals/rmt.Signals backend/string:
       bit-offset := 7 - expected-bit-index % 8
       decoded[byte-index] |= bit << bit-offset
 
-  expect-bytes-equal EXPECTED-GRB decoded
+  expect-bytes-equal expected decoded
 
   signals.size.repeat: | index |
     if index >= transition-count:

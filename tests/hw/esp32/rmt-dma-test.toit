@@ -10,11 +10,12 @@ import .variants
 
 RESOLUTION ::= 20_000_000
 PERIOD ::= 10
+PIXELS ::= 1_000
 
-// This is the number of transitions required for a 200-pixel RGBW frame. The
+// This is the number of transitions required for a 1,000-pixel RGBW frame. The
 //   odd count ensures that the transmitter finishes high, creating a final
 //   falling edge before the RMT end marker.
-SIGNAL-COUNT ::= 200 * 4 * 8 * 2 - 1
+SIGNAL-COUNT ::= PIXELS * 4 * 8 * 2 - 1
 CAPTURE-SIGNAL-COUNT ::= SIGNAL-COUNT + 1
 CAPTURE-BYTES ::= CAPTURE-SIGNAL-COUNT * rmt.Signals.BYTES-PER-SIGNAL
 RX-MEMORY-BLOCKS ::= (CAPTURE-BYTES + rmt.BYTES-PER-MEMORY-BLOCK - 1) / rmt.BYTES-PER-MEMORY-BLOCK
