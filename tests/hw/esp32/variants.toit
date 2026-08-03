@@ -177,6 +177,12 @@ abstract class Variant:
   abstract board-connection-pin5 -> int
   abstract board-connection-pin6 -> int
 
+  /** The cross-board data pin used by the pixel-strip tests. */
+  pixel-strip-data-pin -> int: return board-connection-pin1
+
+  /** The cross-board synchronization pin used by the pixel-strip tests. */
+  pixel-strip-ready-pin -> int: return board-connection-pin2
+
   /**
   The cross-board pins used by the two-board i2s tests.
 
@@ -424,8 +430,8 @@ IO2, IO4, and IO16 must stay unconnected.
 
 Connect the two boards.
 - GND (board1) - GND (board2)
-- IO22 (board1) - IO23 (board2)
-- IO23 (board1) - IO22 (board2)
+- IO22 (board1) - IO22 (board2)
+- IO23 (board1) - IO23 (board2)
 - IO16 (board1) - IO16 (board2)
 - IO27 (board1) - IO27 (board2)
 - IO17 (board1) - IO17 (board2)
@@ -541,8 +547,8 @@ IO6, IO7, and IO8 must stay unconnected.
 
 Connect the two boards.
 - GND (board1) - GND (board2)
-- IO04 (board1) - IO05 (board2)
-- IO05 (board1) - IO04 (board2)
+- IO04 (board1) - IO04 (board2)
+- IO05 (board1) - IO05 (board2)
 - IO21 (board1) - IO21 (board2)
 - IO17 (board1) - IO17 (board2)
 - IO47 (board1) - IO47 (board2)

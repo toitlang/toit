@@ -14,3 +14,6 @@ dependencies:
   hc_sr04:
     url: github.com/lask/toit-hc-sr04
     version: ^2.2.0
+  pixel_strip:
+    url: github.com/toitware/toit-pixel-strip
+    version: ^1.4.0

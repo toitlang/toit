@@ -1,10 +1,11 @@
-sdk: ^2.0.0-alpha.180
+sdk: ^2.0.0-alpha.181
 prefixes:
   bme280: bme280-driver
   bmp280: bmp280-driver
   dhtxx: toit-dhtxx
   ds18b20: toit-ds18b20
   hc_sr04: toit-hc-sr04
+  pixel_strip: toit-pixel-strip
 packages:
   bme280-driver:
     url: github.com/toitware/bme280-driver
@@ -40,6 +41,11 @@ packages:
     name: hc-sr04
     version: 2.2.0
     hash: b0cfb0df9e657a699f909e0aa5d37979b9e96fa2
+  toit-pixel-strip:
+    url: github.com/toitware/toit-pixel-strip
+    name: pixel_strip
+    version: 1.4.0
+    hash: e7b0942f6cdc8f5575a3d7e78b74fef1544117c5
   toit-sensors:
     url: github.com/toitware/toit-sensors
     name: sensors
