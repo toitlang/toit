@@ -481,8 +481,9 @@ namespace toit {
 
 #define MODULE_RMT(PRIMITIVE)                \
   PRIMITIVE(bytes_per_memory_block, 0)       \
+  PRIMITIVE(supports_dma, 0)                 \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(channel_new, 6)                  \
+  PRIMITIVE(channel_new, 7)                  \
   PRIMITIVE(channel_delete, 2)               \
   PRIMITIVE(enable, 1)                       \
   PRIMITIVE(disable, 1)                      \

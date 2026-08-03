@@ -21,6 +21,7 @@ namespace compiler {
 MODULE_TYPES(rmt, MODULE_RMT)
 
 TYPE_PRIMITIVE_INT(bytes_per_memory_block)
+TYPE_PRIMITIVE_BOOL(supports_dma)
 TYPE_PRIMITIVE_ANY(init)
 TYPE_PRIMITIVE_ANY(channel_new)
 TYPE_PRIMITIVE_ANY(channel_delete)

@@ -7,32 +7,37 @@ import rmt
 
 import .variants
 
-PIXELS ::= 7
 BYTES-PER-PIXEL ::= 3
 RESOLUTION ::= 20_000_000
 TIMING-SLACK-TICKS ::= 3
 
 DATA-PIN ::= Variant.CURRENT.pixel-strip-data-pin
 READY-PIN ::= Variant.CURRENT.pixel-strip-ready-pin
-RMT-MEMORY-BLOCKS ::= Variant.CURRENT.rmt-in-channel-count
+BASE-RED ::= #[0x00, 0xff, 0x80, 0x01, 0xaa, 0x55, 0x96]
+BASE-GREEN ::= #[0xff, 0x00, 0x7f, 0xfe, 0x55, 0xaa, 0x69]
+BASE-BLUE ::= #[0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde]
 
-RED ::= #[0x00, 0xff, 0x80, 0x01, 0xaa, 0x55, 0x96]
-GREEN ::= #[0xff, 0x00, 0x7f, 0xfe, 0x55, 0xaa, 0x69]
-BLUE ::= #[0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde]
+// Classic ESP32 RMT input has no DMA. Keep its test within dedicated RMT
+//   memory, while DMA-capable variants exercise a frame that requires
+//   peripheral rebuffering in every pixel-strip backend.
+PIXELS ::= rmt.DMA-SUPPORTED ? 200 : BASE-RED.size
 
-EXPECTED-GRB ::= #[
-  0xff, 0x00, 0x12,
-  0x00, 0xff, 0x34,
-  0x7f, 0x80, 0x56,
-  0xfe, 0x01, 0x78,
-  0x55, 0xaa, 0x9a,
-  0xaa, 0x55, 0xbc,
-  0x69, 0x96, 0xde,
-]
+RED ::= ByteArray PIXELS: BASE-RED[it % BASE-RED.size]
+GREEN ::= ByteArray PIXELS: BASE-GREEN[it % BASE-GREEN.size]
+BLUE ::= ByteArray PIXELS: BASE-BLUE[it % BASE-BLUE.size]
+
+EXPECTED-GRB ::= ByteArray PIXELS * BYTES-PER-PIXEL:
+  pixel-index := it / BYTES-PER-PIXEL
+  component := it % BYTES-PER-PIXEL
+  component == 0
+      ? GREEN[pixel-index]
+      : component == 1 ? RED[pixel-index] : BLUE[pixel-index]
 
 // The final low period turns into the RMT end marker because the line never
 //   transitions high again after the frame.
 EXPECTED-BIT-COUNT ::= PIXELS * BYTES-PER-PIXEL * 8
+RMT-CAPTURE-BYTES ::= EXPECTED-BIT-COUNT * 2 * rmt.Signals.BYTES-PER-SIGNAL
+RMT-MEMORY-BLOCKS ::= (RMT-CAPTURE-BYTES + rmt.BYTES-PER-MEMORY-BLOCK - 1) / rmt.BYTES-PER-MEMORY-BLOCK
 
 expect-close-to expected/int actual/int --transition/int:
   expect (expected - actual).abs <= TIMING-SLACK-TICKS
@@ -46,11 +51,11 @@ validate-capture signals/rmt.Signals backend/string:
   expect signals.size > transition-count
       --message="RMT capture has no end marker"
   expect transition-count % 2 == 1
-      --message="Pixel stream ended midway through a bit: $signals"
+      --message="Pixel stream ended midway through a bit"
 
   bit-count := (transition-count + 1) / 2
   expect bit-count >= EXPECTED-BIT-COUNT
-      --message="Expected at least $EXPECTED-BIT-COUNT bits, got $bit-count: $signals"
+      --message="Expected at least $EXPECTED-BIT-COUNT bits, got $bit-count"
   extra-bit-count := bit-count - EXPECTED-BIT-COUNT
 
   decoded := ByteArray EXPECTED-GRB.size
