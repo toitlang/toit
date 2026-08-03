@@ -23,10 +23,14 @@ main args:
     else:
       strip = PixelStrip.uart PIXELS --pin=DATA-PIN
 
+    red := ByteArray PIXELS
+    green := ByteArray PIXELS
+    blue := ByteArray PIXELS
     try:
-      3.repeat:
+      FRAME-COUNT.repeat: | frame |
         ready.wait-for 1
-        strip.output RED GREEN BLUE
+        fill-frame frame red green blue
+        strip.output red green blue
         // UART output is buffered. Give it time to reach the wire before the
         //   next frame or close tears down the peripheral.
         sleep --ms=10
