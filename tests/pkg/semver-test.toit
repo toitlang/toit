@@ -32,6 +32,24 @@ main:
   expect-equals true (is-less-than "2.0.0-alpha.79" "2.0.0-alpha.121.31+pgk-in-toit.95591318")
   expect-equals true (is-less-than "2.0.0-alpha.121.31+pgk-in-toit.95591318" "3.0.0")
 
+  precedence := [
+    "1.0.0-alpha",
+    "1.0.0-alpha.1",
+    "1.0.0-alpha.beta",
+    "1.0.0-beta",
+    "1.0.0-beta.2",
+    "1.0.0-beta.11",
+    "1.0.0-rc.1",
+    "1.0.0",
+  ]
+  (precedence.size - 1).repeat:
+    expect (is-less-than precedence[it] precedence[it + 1])
+
+  sdk-version := "2.0.0-alpha.196.7+floitsch-enable-external.63b0016a"
+  minimum-sdk-version := "2.0.0-alpha.196"
+  expect (is-less-than minimum-sdk-version sdk-version)
+  expect-not (is-less-than sdk-version minimum-sdk-version)
+
   expect-throw "Parse error: expected a numeric value at position 0": SemanticVersion.parse "."
   expect-throw "Parse error: expected a numeric value at position 4": SemanticVersion.parse "1.1."
   expect-throw "Parse error: not all input was consumed": SemanticVersion.parse "1.1.02"
