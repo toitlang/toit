@@ -46,35 +46,52 @@ class SemanticVersion:
 
   static compare-lists_ l1/List l2/List [--if-equal]-> int:
     l1.size.repeat:
-      if l2.size <= it: return -1
-      if l1[it] < l2[it]: return -1
-      if l1[it] > l2[it]: return 1
+      if l2.size <= it: return 1
+      comparison := l1[it].compare-to l2[it]
+      if comparison != 0: return comparison
+    if l1.size < l2.size: return -1
+    return if-equal.call
+
+  static compare-pre-release-identifiers_ id1 id2 -> int:
+    if id1 is int:
+      if id2 is not int: return -1
+    else if id2 is int:
+      return 1
+    return id1.compare-to id2
+
+  static compare-pre-releases_ l1/List l2/List [--if-equal] -> int:
+    if l1.is-empty:
+      return l2.is-empty ? if-equal.call : 1
+    if l2.is-empty: return -1
+
+    l1.size.repeat:
+      if l2.size <= it: return 1
+      comparison := compare-pre-release-identifiers_ l1[it] l2[it]
+      if comparison != 0: return comparison
+    if l1.size < l2.size: return -1
     return if-equal.call
 
   operator < other/SemanticVersion -> bool:
-    comp := compare-lists_ triplet other.triplet --if-equal=:
-      compare-lists_ pre-releases other.pre-releases --if-equal=: 0
-    return comp < 0
+    return (compare-to other) < 0
 
   operator == other/SemanticVersion -> bool:
     return triplet == other.triplet and pre-releases == other.pre-releases
 
   operator >= other/SemanticVersion:
-    return not this < other
+    return (compare-to other) >= 0
 
   operator <= other/SemanticVersion -> bool:
-    return this < other or this == other
+    return (compare-to other) <= 0
 
   operator > other/SemanticVersion -> bool:
-    return not this <= other
+    return (compare-to other) > 0
 
   compare-to other/SemanticVersion -> int:
     return compare-to other --if-equal=: 0
 
   compare-to other/SemanticVersion [--if-equal] -> int:
-    if this < other: return -1
-    if this == other: return if-equal.call
-    return 1
+    return compare-lists_ triplet other.triplet --if-equal=:
+      compare-pre-releases_ pre-releases other.pre-releases --if-equal=if-equal
 
   to-string -> string:
     str := "$major.$minor.$patch"
@@ -89,5 +106,4 @@ class SemanticVersion:
 
   hash-code:
     return major + 1000 * minor + 1000000 * patch
-
 

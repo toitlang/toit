@@ -30,6 +30,7 @@ main:
   test-uniq-error-message
   test-min-sdk
   test-sdk-version
+  test-prerelease-sdk-version
   test-fail-sdk-version
 
 make-pkg -> Description
@@ -262,6 +263,16 @@ test-sdk-version:
 
   solution = find-solution a170 registries --sdk-version=v115
   check-solution solution [a170, b140]
+
+test-prerelease-sdk-version:
+  minimum-sdk-version := SemanticVersion.parse "2.0.0-alpha.196"
+  sdk-version := SemanticVersion.parse "2.0.0-alpha.196.7+floitsch-enable-external.63b0016a"
+  a170 := make-pkg "a-1.7.0" --min-sdk=minimum-sdk-version
+  registries := make-registries [a170]
+
+  solution := find-solution a170 registries --sdk-version=sdk-version
+  check-solution solution [a170]
+  expect test-ui.stdout-messages.is-empty
 
 test-fail-sdk-version:
   v105 := SemanticVersion.parse "1.0.5"
