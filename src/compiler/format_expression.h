@@ -23,6 +23,7 @@ namespace toit {
 namespace compiler {
 
 class Source;
+class TriviaLowering;
 
 namespace ast {
 class Expression;
@@ -40,12 +41,14 @@ struct LoweredExpression {
 //
 // This first slice supports atoms, unary/binary expressions, and ordinary
 // calls. Keeping the entry point narrow makes the architectural invariant
-// reviewable before suites, collections, and trivia add more layout shapes.
-LoweredExpression lower_expression(ast::Expression* expression, Source* source,
+// reviewable before suites and collections add more layout shapes.
+LoweredExpression lower_expression(ast::Expression* expression,
+                                   Source* source,
                                    LayoutBuilder* layouts,
                                    LogicalOperatorBindings* bindings,
                                    SyntaxProtection* syntax,
-                                   const FormatStyle& style = FormatStyle());
+                                   const FormatStyle& style = FormatStyle(),
+                                   TriviaLowering* trivia = nullptr);
 
 } // namespace compiler
 } // namespace toit

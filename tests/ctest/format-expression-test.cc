@@ -12,6 +12,7 @@
 #include "../../src/compiler/diagnostic.h"
 #include "../../src/compiler/filesystem_local.h"
 #include "../../src/compiler/format_expression.h"
+#include "../../src/compiler/format_trivia.h"
 #include "../../src/compiler/parser.h"
 #include "../../src/compiler/scanner.h"
 #include "../../src/compiler/symbol_canonicalizer.h"
@@ -24,6 +25,7 @@ namespace compiler {
 struct ParsedExpression {
   std::unique_ptr<FormatTestSource> source;
   std::unique_ptr<SymbolCanonicalizer> symbols;
+  std::unique_ptr<FormatTrivia> trivia;
   ast::Expression* expression;
 };
 
@@ -47,6 +49,8 @@ static ParsedExpression parse_expression(const std::string& expression,
       || unit->declarations().length() != 1) exit(1);
   ast::Method* method = unit->declarations()[0]->as_Method();
   if (method == null || method->body()->expressions().length() != 1) exit(1);
+  result.trivia.reset(
+      new FormatTrivia(result.source.get(), scanner.comments()));
   result.expression = method->body()->expressions()[0];
   return result;
 }
@@ -143,13 +147,17 @@ static void expect(const char* expected, const std::string& actual) {
 }
 
 static std::string render_expression(ast::Expression* expression,
-                                     Source* source, int preferred_width,
-                                     bool apply_repairs = true) {
+                                     Source* source,
+                                     int preferred_width,
+                                     bool apply_repairs = true,
+                                     const FormatTrivia* trivia = null) {
   LayoutBuilder layouts;
   LogicalOperatorBindings bindings;
   SyntaxProtection syntax;
+  TriviaLowering trivia_lowering(trivia, &layouts);
   LoweredExpression lowered =
-      lower_expression(expression, source, &layouts, &bindings, &syntax);
+      lower_expression(expression, source, &layouts, &bindings, &syntax,
+                       FormatStyle(), trivia == null ? null : &trivia_lowering);
   SelectedPlan selected = select_layout(lowered.layout, preferred_width);
   if (apply_repairs) {
     WhitespaceEdits edits = FormatRepairs::propose(bindings, selected);
@@ -186,12 +194,18 @@ static void test_conflicting_repairs_are_rejected_atomically() {
 
 static void test_parsed_expressions(Source* source,
                                     ast::Unit* unit,
-                                    SourceManager* sources) {
-  ASSERT(unit->declarations().length() == 4);
+                                    SourceManager* sources,
+                                    const FormatTrivia* trivia) {
+  ASSERT(unit->declarations().length() == 5);
   ast::Method* sample = unit->declarations()[2]->as_Method();
   ASSERT(sample != null);
   List<ast::Expression*> expressions = sample->body()->expressions();
   ASSERT(expressions.length() == 5);
+  ast::Method* trivia_sample = unit->declarations()[3]->as_Method();
+  ASSERT(trivia_sample != null);
+  List<ast::Expression*> trivia_expressions =
+      trivia_sample->body()->expressions();
+  ASSERT(trivia_expressions.length() == 3);
 
   // Source parentheses disappear from the logical layout. They return only
   // when the selected topology needs them to keep the nested call together.
@@ -224,6 +238,23 @@ static void test_parsed_expressions(Source* source,
   // the canonical flat form, selection joins it again.
   expect("alpha or beta", render_expression(expressions[4], source, 100));
 
+  // A line containing `//` is an indentation-adjustable verbatim island. The
+  // generic binary formatter and the mixed-logical repair never see its
+  // interior gaps, so even deliberately noncanonical spacing is retained.
+  expect("foo  +   bar  // Keep   every byte.",
+         render_expression(trivia_expressions[0], source, 5, true, trivia));
+
+  // A same-line block comment is blindly concatenated to the atom it touches.
+  // It remains ordinary logical text and needs no rendering-time trivia pass.
+  expect("foo/*attached*/",
+         render_expression(trivia_expressions[1], source, 5, true, trivia));
+
+  // The attachment belongs to the parenthesized semantic operand, not to its
+  // final token. Syntax protection may reconstruct parentheses around that
+  // operand, but it must leave the attached comment outside them.
+  expect("(foo + bar)/*attached-to-group*/ * 2",
+         render_expression(trivia_expressions[2], source, 100, true, trivia));
+
   // Reparse representative flat and broken results, compare their trees, and
   // format the reparsed trees again. This catches both semantic changes and
   // non-idempotent layout decisions without counting source parens as nodes.
@@ -235,9 +266,18 @@ static void test_parsed_expressions(Source* source,
     ParsedExpression reparsed = parse_expression(rendered, sources);
     if (!equivalent_expression(original, reparsed.expression)) exit(1);
     expect(rendered.c_str(),
-           render_expression(reparsed.expression,
-                             reparsed.source.get(),
+           render_expression(reparsed.expression, reparsed.source.get(),
                              widths[i]));
+  }
+
+  for (int i = 0; i < trivia_expressions.length(); i++) {
+    ast::Expression* original = trivia_expressions[i];
+    std::string rendered = render_expression(original, source, 5, true, trivia);
+    ParsedExpression reparsed = parse_expression(rendered, sources);
+    if (!equivalent_expression(original, reparsed.expression)) exit(1);
+    expect(rendered.c_str(),
+           render_expression(reparsed.expression, reparsed.source.get(), 5,
+                             true, reparsed.trivia.get()));
   }
 }
 
@@ -260,8 +300,10 @@ int main(int argc, char** argv) {
   toit::compiler::Parser parser(loaded.source, &scanner, &diagnostics);
   toit::compiler::ast::Unit* unit = parser.parse_unit();
   ASSERT(!diagnostics.encountered_error());
+  toit::compiler::FormatTrivia trivia(loaded.source, scanner.comments());
 
   toit::compiler::test_conflicting_repairs_are_rejected_atomically();
-  toit::compiler::test_parsed_expressions(loaded.source, unit, &sources);
+  toit::compiler::test_parsed_expressions(loaded.source, unit, &sources,
+                                          &trivia);
   return 0;
 }

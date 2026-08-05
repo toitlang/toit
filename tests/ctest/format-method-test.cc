@@ -12,6 +12,7 @@
 #include "../../src/compiler/diagnostic.h"
 #include "../../src/compiler/filesystem_local.h"
 #include "../../src/compiler/format_method.h"
+#include "../../src/compiler/format_trivia.h"
 #include "../../src/compiler/parser.h"
 #include "../../src/compiler/scanner.h"
 #include "../../src/compiler/symbol_canonicalizer.h"
@@ -24,12 +25,13 @@ namespace compiler {
 struct ParsedMethod {
   std::unique_ptr<FormatTestSource> source;
   std::unique_ptr<SymbolCanonicalizer> symbols;
+  std::unique_ptr<FormatTrivia> trivia;
   ast::Method* method;
 };
 
 static ParsedMethod parse_header(const std::string& header,
                                  SourceManager* sources) {
-  if (header.empty() || header.back() != ':') exit(1);
+  if (header.empty()) exit(1);
   ParsedMethod result;
   result.source.reset(new FormatTestSource(header + "\n  null\n"));
   result.symbols.reset(new SymbolCanonicalizer());
@@ -42,6 +44,8 @@ static ParsedMethod parse_header(const std::string& header,
   }
   result.method = unit->declarations()[0]->as_Method();
   if (result.method == null) exit(1);
+  result.trivia.reset(
+      new FormatTrivia(result.source.get(), scanner.comments()));
   return result;
 }
 
@@ -69,6 +73,10 @@ static bool equivalent_header_expression(ast::Expression* left,
   if (left->is_LiteralInteger() && right->is_LiteralInteger()) {
     return same_symbol(left->as_LiteralInteger()->data(),
                        right->as_LiteralInteger()->data());
+  }
+  if (left->is_LiteralString() && right->is_LiteralString()) {
+    return same_symbol(left->as_LiteralString()->data(),
+                       right->as_LiteralString()->data());
   }
   return false;
 }
@@ -110,13 +118,17 @@ static void expect(const char* expected, const std::string& actual) {
   exit(1);
 }
 
-static std::string render_header(ast::Method* method, Source* source,
-                                 int preferred_width) {
+static std::string render_header(ast::Method* method,
+                                 Source* source,
+                                 int preferred_width,
+                                 const FormatTrivia* trivia = null) {
   LayoutBuilder layouts;
   LogicalOperatorBindings bindings;
   SyntaxProtection syntax;
-  LoweredMethodHeader lowered =
-      lower_method_header(method, source, &layouts, &bindings, &syntax);
+  TriviaLowering trivia_lowering(trivia, &layouts);
+  LoweredMethodHeader lowered = lower_method_header(
+      method, source, &layouts, &bindings, &syntax, FormatStyle(),
+      trivia == null ? null : &trivia_lowering);
 
   // Return-type placement is deliberately the only selection entry point that
   // may choose a different token order. Everything after it is whitespace-only
@@ -130,8 +142,9 @@ static std::string render_header(ast::Method* method, Source* source,
 
 static void test_parsed_method_headers(Source* source,
                                        ast::Unit* unit,
-                                       SourceManager* sources) {
-  ASSERT(unit->declarations().length() == 8);
+                                       SourceManager* sources,
+                                       const FormatTrivia* trivia) {
+  ASSERT(unit->declarations().length() == 11);
   ast::Method* flat = unit->declarations()[0]->as_Method();
   ast::Method* source_split = unit->declarations()[1]->as_Method();
   ast::Method* plain = unit->declarations()[2]->as_Method();
@@ -144,6 +157,9 @@ static void test_parsed_method_headers(Source* source,
   ASSERT(fields != null && fields->members().length() == 3);
   ast::Method* constructor = fields->members()[2]->as_Method();
   ast::Method* operator_name = unit->declarations()[6]->as_Method();
+  ast::Method* attached = unit->declarations()[7]->as_Method();
+  ast::Method* colon_comment = unit->declarations()[8]->as_Method();
+  ast::Method* frozen = unit->declarations()[9]->as_Method();
 
   expect("flat first second -> int:", render_header(flat, source, 100));
   expect("flat -> int\n    first\n    second\n:",
@@ -183,21 +199,57 @@ static void test_parsed_method_headers(Source* source,
   expect("operator-name -> int:",
          render_header(operator_name, source, 100));
 
+  // Blind concatenation makes comments ordinary parts of the semantic header
+  // pieces. The exceptional pass moves those complete pieces and has no
+  // comment-specific branch.
+  expect("attached value/List/*<int>*/ --marker=\"->\" -> "
+         "/* Describes result. */ bool:",
+         render_header(attached, source, 100, trivia));
+  expect("attached -> /* Describes result. */ bool\n"
+         "    value/List/*<int>*/\n"
+         "    --marker=\"->\"\n"
+         ":",
+         render_header(attached, source, 24, trivia));
+
+  // Punctuation is itself a semantic header piece. A blindly concatenated
+  // block comment after `:` therefore remains after `:` in either token order.
+  expect("colon-comment value -> int: /* Describes body. */",
+         render_header(colon_comment, source, 100, trivia));
+  expect("colon-comment -> int\n"
+         "    value\n"
+         ": /* Describes body. */",
+         render_header(colon_comment, source, 24, trivia));
+
+  // The line comment is a source-order barrier. The current header slice uses
+  // the complete header as its conservative replacement unit, so no token can
+  // cross the frozen line while only its outer indentation remains variable.
+  expect("frozen  first  second  // Keep   every byte.\n"
+         "    -> int\n"
+         ":",
+         render_header(frozen, source, 10, trivia));
+
   // Return placement is the one formatter phase allowed to change token
   // order, so exact strings are not enough. Reparse both ordinary and
   // reordered headers, compare their semantic header trees, and format them a
   // second time to verify idempotence.
   ast::Method* methods[] = {
-      flat, flat, source_split, source_split, plain,
-      shapes, declaration, index, constructor, operator_name,
+      flat,     flat,        source_split,  source_split,  plain,
+      shapes,   declaration, index,         constructor,   operator_name,
+      attached, attached,    colon_comment, colon_comment, frozen,
   };
-  int widths[] = {100, 20, 100, 24, 12, 30, 24, 100, 100, 100};
-  for (int i = 0; i < 10; i++) {
-    std::string rendered = render_header(methods[i], source, widths[i]);
+  int widths[] = {
+      100, 20, 100, 24, 12, 30, 24, 100, 100, 100, 100, 24, 100, 24, 10,
+  };
+  for (int i = 0; i < 15; i++) {
+    bool has_trivia = methods[i] == attached || methods[i] == colon_comment ||
+                      methods[i] == frozen;
+    std::string rendered = render_header(methods[i], source, widths[i],
+                                         has_trivia ? trivia : null);
     ParsedMethod reparsed = parse_header(rendered, sources);
     if (!equivalent_header(methods[i], reparsed.method)) exit(1);
     expect(rendered.c_str(),
-           render_header(reparsed.method, reparsed.source.get(), widths[i]));
+           render_header(reparsed.method, reparsed.source.get(), widths[i],
+                         reparsed.trivia.get()));
   }
 }
 
@@ -220,7 +272,9 @@ int main(int argc, char** argv) {
   toit::compiler::Parser parser(loaded.source, &scanner, &diagnostics);
   toit::compiler::ast::Unit* unit = parser.parse_unit();
   ASSERT(!diagnostics.encountered_error());
+  toit::compiler::FormatTrivia trivia(loaded.source, scanner.comments());
 
-  toit::compiler::test_parsed_method_headers(loaded.source, unit, &sources);
+  toit::compiler::test_parsed_method_headers(loaded.source, unit, &sources,
+                                             &trivia);
   return 0;
 }

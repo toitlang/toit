@@ -35,5 +35,16 @@ class Fields:
 operator-name -> int:
   return 0
 
+attached value/List/*<int>*/ --marker="->" -> /* Describes result. */ bool:
+  return false
+
+colon-comment value -> int: /* Describes body. */
+  return value
+
+frozen  first  second  // Keep   every byte.
+    -> int
+:
+  return 0
+
 main:
   null
