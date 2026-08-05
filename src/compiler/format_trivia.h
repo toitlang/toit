@@ -34,12 +34,11 @@ class FormatTrivia {
   struct Comment {
     int from;
     int to;
-    int line_start;
-    int line_end;
     int original_column;
     bool is_line_comment;
     bool spans_lines;
     bool has_code_before;
+    bool has_code_after;
     std::string text;
   };
 
@@ -66,6 +65,10 @@ class TriviaLowering {
   // that unit and shifts its lines by the unit's original base indentation.
   int first_line_comment(int from, int to, bool include_trailing_line) const;
   const FormatTrivia::Comment& comment(int id) const;
+  // Returns source-ordered comment ids fully contained in [from, to).
+  std::vector<int> comments_in(int from,
+                               int to,
+                               bool only_unconsumed = true) const;
   int find_syntax(int from, int to, const char* syntax) const;
   Layout* verbatim_region(int from, int to);
 
@@ -80,7 +83,7 @@ class TriviaLowering {
   // belongs to the containing statement/argument/element list.
   Layout* take_own_line_block(int id);
 
-  bool all_comments_consumed() const;
+  bool all_comments_consumed(int from, int to) const;
 
  private:
   const FormatTrivia* trivia_;

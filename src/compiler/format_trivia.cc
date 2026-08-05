@@ -47,6 +47,13 @@ bool has_code_before(const uint8* text, int line_start, int comment_start) {
   return false;
 }
 
+bool has_code_after(const uint8* text, int comment_end, int line_end) {
+  for (int i = comment_end; i < line_end; i++) {
+    if (text[i] != ' ' && text[i] != '\t') return true;
+  }
+  return false;
+}
+
 } // namespace
 
 FormatTrivia::FormatTrivia(Source* source, List<Scanner::Comment> comments)
@@ -64,13 +71,12 @@ FormatTrivia::FormatTrivia(Source* source, List<Scanner::Comment> comments)
     comments_.push_back({
         from,
         to,
-        start,
-        end,
         from - start,
         !scanner_comment.is_multiline(),
         raw.find('\n') != std::string::npos ||
             raw.find('\r') != std::string::npos,
         has_code_before(text, start, from),
+        has_code_after(text, to, end),
         std::move(raw),
     });
   }
@@ -119,6 +125,28 @@ const FormatTrivia::Comment& TriviaLowering::comment(int id) const {
   ASSERT(trivia_ != null);
   ASSERT(0 <= id && id < static_cast<int>(trivia_->comments().size()));
   return trivia_->comments()[id];
+}
+
+std::vector<int> TriviaLowering::comments_in(int from,
+                                             int to,
+                                             bool only_unconsumed) const {
+  std::vector<int> result;
+  if (trivia_ == null) return result;
+  const std::vector<FormatTrivia::Comment>& comments = trivia_->comments();
+  auto first = std::lower_bound(
+      comments.begin(), comments.end(), from,
+      [](const FormatTrivia::Comment& comment, int position) {
+        return comment.from < position;
+      });
+  int id = static_cast<int>(first - comments.begin());
+  for (; id < static_cast<int>(comments.size()); id++) {
+    const FormatTrivia::Comment& comment = comments[id];
+    if (comment.from >= to) break;
+    if (comment.to > to) continue;
+    if (only_unconsumed && consumed_[id]) continue;
+    result.push_back(id);
+  }
+  return result;
 }
 
 int TriviaLowering::find_syntax(int from, int to, const char* syntax) const {
@@ -179,11 +207,10 @@ Layout* TriviaLowering::verbatim_region(int from, int to) {
   FormatTrivia::Comment region = {
       from,
       to,
-      base_start,
-      to,
       base_column,
       false,
       raw.find('\n') != std::string::npos,
+      false,
       false,
       std::move(raw),
   };
@@ -277,9 +304,12 @@ Layout* TriviaLowering::take_own_line_block(int id) {
   return exact_multiline_text(comment, comment.original_column);
 }
 
-bool TriviaLowering::all_comments_consumed() const {
-  for (bool consumed : consumed_) {
-    if (!consumed) return false;
+bool TriviaLowering::all_comments_consumed(int from, int to) const {
+  if (trivia_ == null) return true;
+  for (int id = 0; id < static_cast<int>(trivia_->comments().size()); id++) {
+    const FormatTrivia::Comment& comment = trivia_->comments()[id];
+    if (comment.from < from || comment.to > to) continue;
+    if (!consumed_[id]) return false;
   }
   return true;
 }
