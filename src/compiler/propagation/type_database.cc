@@ -120,13 +120,15 @@ void TypeDatabase::check_method_entry(Method method, Object** sp) const {
   }
 }
 
-TypeDatabase* TypeDatabase::compute(Program* program) {
+TypeDatabase* TypeDatabase::compute(
+    Program* program,
+    const MethodSelectorOffsets* method_selector_offsets) {
   auto probe = cache_.find(program);
   if (probe != cache_.end()) return probe->second;
 
   AllowThrowingNew allow;
   uint64 start = OS::get_monotonic_time();
-  TypePropagator propagator(program);
+  TypePropagator propagator(program, method_selector_offsets);
   TypeDatabase* types = new TypeDatabase(program, propagator.words_per_type());
   propagator.propagate(types);
   uint64 elapsed = OS::get_monotonic_time() - start;

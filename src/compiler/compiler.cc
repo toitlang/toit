@@ -1941,7 +1941,8 @@ toit::Program* construct_program(ir::Program* ir_program,
                                  SourceMapper* source_mapper,
                                  TypeOracle* oracle,
                                  TypeDatabase* propagated_types,
-                                 bool run_optimizations) {
+                                 bool run_optimizations,
+                                 MethodSelectorOffsets* method_selector_offsets) {
   source_mapper->register_selectors(ir_program->classes());
 
   drop_abstract_methods(ir_program);
@@ -1976,7 +1977,7 @@ toit::Program* construct_program(ir::Program* ir_program,
   assign_global_ids(ir_program->globals());
 
   Backend backend(source_mapper->manager(), source_mapper);
-  auto program = backend.emit(ir_program);
+  auto program = backend.emit(ir_program, method_selector_offsets);
   return program;
 }
 
@@ -2176,7 +2177,13 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   SourceMapper unoptimized_source_mapper(source_manager());
   auto source_mapper = &unoptimized_source_mapper;
   TypeOracle oracle(source_mapper);
-  auto program = construct_program(ir_program, source_mapper, &oracle, null, run_optimizations);
+  MethodSelectorOffsets method_selector_offsets;
+  auto program = construct_program(ir_program,
+                                   source_mapper,
+                                   &oracle,
+                                   null,
+                                   run_optimizations,
+                                   &method_selector_offsets);
 
   SourceMapper optimized_source_mapper(source_manager());
   if (run_optimizations && configuration_.optimization_level >= 2) {
@@ -2191,14 +2198,20 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
     // to behave the same way for the output to be correct.
     check_types_and_deprecations(ir_program, quiet);
     ASSERT(!diagnostics()->encountered_error());
-    TypeDatabase* types = TypeDatabase::compute(program);
+    TypeDatabase* types = TypeDatabase::compute(program, &method_selector_offsets);
     source_mapper = &optimized_source_mapper;
-    program = construct_program(ir_program, source_mapper, &oracle, types, true);
+    method_selector_offsets.clear();
+    program = construct_program(ir_program,
+                                source_mapper,
+                                &oracle,
+                                types,
+                                true,
+                                &method_selector_offsets);
     delete types;
   }
 
   if (propagate) {
-    TypeDatabase* types = TypeDatabase::compute(program);
+    TypeDatabase* types = TypeDatabase::compute(program, &method_selector_offsets);
     auto json = types->as_json();
     printf("%s", json.c_str());
     delete types;

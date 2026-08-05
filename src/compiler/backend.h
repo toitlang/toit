@@ -17,6 +17,7 @@
 
 #include "byte_gen.h"
 #include "ir.h"
+#include "method_selector_offsets.h"
 #include "sources.h"
 
 namespace toit {
@@ -36,7 +37,7 @@ class Backend {
       , source_mapper_(source_mapper) {}
 
   // As a side-effect fills in the source-mapper.
-  Program* emit(ir::Program* program);
+  Program* emit(ir::Program* program, MethodSelectorOffsets* method_selector_offsets);
 
  private:
   SourceManager* source_manager_;

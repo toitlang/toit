@@ -154,7 +154,7 @@ static List<uint16> encode_typecheck_interface_list(const List<ir::Class*> inter
     auto call_selector = interfaces[i]->typecheck_selector();
     ASSERT(call_selector.is_valid());
     Selector<PlainShape> selector(call_selector.name(), call_selector.shape().to_plain_shape());
-    int16 offset = dispatch_table.dispatch_offset_for(selector);
+    int offset = dispatch_table.dispatch_offset_for(selector);
     // We would have already replaced the interface call with a literal false if there
     //  wasn't any class implementing the interface.
     ASSERT(offset >= 0);
@@ -163,7 +163,8 @@ static List<uint16> encode_typecheck_interface_list(const List<ir::Class*> inter
   return result;
 }
 
-Program* Backend::emit(ir::Program* ir_program) {
+Program* Backend::emit(ir::Program* ir_program,
+                       MethodSelectorOffsets* method_selector_offsets) {
   // Compile everything.
 
   auto classes = ir_program->classes();
@@ -178,7 +179,7 @@ Program* Backend::emit(ir::Program* ir_program) {
   });
 
   auto program = _new Program(null, 0);
-  ProgramBuilder program_builder(program);
+  ProgramBuilder program_builder(program, method_selector_offsets);
   program_builder.create_dispatch_table(dispatch_table.length());
 
   // Find the classes and interfaces for which we have a shortcut when doing as-checks.
