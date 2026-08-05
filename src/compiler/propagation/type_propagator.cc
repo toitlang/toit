@@ -77,7 +77,10 @@ TypePropagator::TypePropagator(
 }
 
 int TypePropagator::selector_offset(Method method) const {
-  if (method_selector_offsets_ == null) return method.selector_offset();
+  if (method_selector_offsets_ == null ||
+      (!method.is_normal_method() && !method.is_field_accessor())) {
+    return method.selector_offset();
+  }
   int method_id = program_->absolute_bci_from_bcp(method.header_bcp());
   auto probe = method_selector_offsets_->find(method_id);
   ASSERT(probe != method_selector_offsets_->end());
