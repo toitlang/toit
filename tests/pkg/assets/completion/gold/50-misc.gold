@@ -12,7 +12,7 @@ registry	Manages registries.
 search	Searches for the given name in all packages.
 sync	Synchronizes all registries.
 uninstall	Uninstalls the package with the given name.
-update	Updates all packages to their newest compatible version.
+update	Updates packages to their newest compatible version.
 version	Prints the version of the package manager
 completion	Generate shell completion scripts.
 help	Show help for a command.

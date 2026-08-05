@@ -210,10 +210,20 @@ class Project:
     lock-file.update --remove-prefix=prefix
     save
 
-  update --registries/Registries -> none:
+  update prefixes/List --registries/Registries -> none:
+    urls-to-update := {}
+    prefixes.do: | prefix/string |
+      dependency/Map? := specification.dependencies.get prefix
+      if not dependency:
+        ui_.abort "No package with prefix '$prefix'."
+      if dependency.contains Specification.PATH-KEY_:
+        ui_.abort "Package with prefix '$prefix' is local and cannot be updated."
+      urls-to-update.add dependency[Specification.URL-KEY_]
+
     with-package-cache-lock_: | fs-lock-token |
       solution := solve-and-download_
-          --update-everything
+          --update-everything=prefixes.is-empty
+          --urls-to-update=urls-to-update
           --registries=registries
           --fs-lock-token=fs-lock-token
       specification.update-remote-dependencies solution
@@ -330,6 +340,7 @@ class Project:
   */
   solve-and-download_ -> Solution
       --update-everything/bool
+      --urls-to-update/Set={}
       --registries/Registries
       --fs-lock-token/Object:
     dependencies := specification.collect-registry-dependencies
@@ -339,6 +350,7 @@ class Project:
       lock-file.packages.do: | package/Package |
         if package is RepositoryPackage:
           repository-package := package as RepositoryPackage
+          if urls-to-update.contains repository-package.url: continue.do
           solver.set-preferred repository-package.url repository-package.version
     solution := solver.solve dependencies --min-sdk-version=min-sdk
     if not solution:

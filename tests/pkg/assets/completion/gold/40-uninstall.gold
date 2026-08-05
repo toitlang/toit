@@ -16,3 +16,11 @@ pkg1	localhost:<[*PORT*]>/pkg/pkg1
 other	localhost:<[*PORT*]>/pkg/pkg3
 :1
 Exit Code: 0
+==================
+// Update completes the prefixes of the installed packages.
+==================
+[complete, update, ]
+pkg1	localhost:<[*PORT*]>/pkg/pkg1
+other	localhost:<[*PORT*]>/pkg/pkg3
+:1
+Exit Code: 0
