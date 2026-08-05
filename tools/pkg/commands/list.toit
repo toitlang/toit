@@ -92,7 +92,7 @@ class ListCommand extends PkgCommand:
           a.ref-hash.compare-to b.ref-hash
 
     if ui.wants-structured:
-      ui.emit-list --result descriptions
+      ui.emit-list --result (descriptions.map: verbose-description it)
       return
 
     if ui.wants-human and descriptions.is-empty:
