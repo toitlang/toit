@@ -246,10 +246,9 @@ class TestDevice:
   // Offset into $collected-output up to which UART baud-rate requests have
   // been answered.
   uart-baud-rate-handled_/int := 0
-  // One permit per $CHUNK-REQUEST the device has printed. The install
-  // paces its writes on these, so the device is never sent data it
-  // hasn't asked for (the serial transport has no flow control).
-  chunk-requests_/monitor.Semaphore := monitor.Semaphore
+  // One offset per $CHUNK-REQUEST the device has printed. The install paces its
+  // writes on these, so the device is never sent data it hasn't asked for.
+  chunk-requests_/monitor.Channel := monitor.Channel 2
   // Offset into $collected-output up to which chunk requests have been
   // counted.
   chunk-requests-handled_/int := 0
@@ -258,6 +257,7 @@ class TestDevice:
   running-container/monitor.Latch := monitor.Latch
   all-tests-done/monitor.Latch := monitor.Latch
   image-bytes-sent_/int := 0
+  baud-sync-task_/Task? := null
   ui/cli.Ui
   tmp-dir/string
 
@@ -299,7 +299,7 @@ class TestDevice:
     handle-state-markers_
     handle-uart-input-requests_ at-new-line
     handle-baud-rate-requests_ at-new-line
-    handle-chunk-requests_
+    handle-chunk-requests_ at-new-line
     handle-decode-request_ at-new-line
     return at-new-line
 
@@ -309,7 +309,9 @@ class TestDevice:
     pipe.stdout.out.write stdout-text
 
   handle-state-markers_:
-    set-latch-if-seen_ MINI-JAG-LISTENING ready-latch
+    if collected-output.contains MINI-JAG-LISTENING:
+      set-latch_ ready-latch
+      stop-baud-sync_
     set-latch-if-seen_ ALL-TESTS-DONE all-tests-done
     if output-contains-line_ UART-TRANSFER-ERROR:
       if not installed-container.has-value:
@@ -341,14 +343,27 @@ class TestDevice:
       // hardware has emitted the final bytes at the old rate.
       sleep --ms=UART-HOST-BAUD-RATE-SWITCH-DELAY-MS
       port.baud-rate = rate
+      start-baud-sync_
 
-  handle-chunk-requests_:
-    // Grant one send permit per chunk request.
-    while true:
-      next-offset := next-output-marker_ "\n$CHUNK-REQUEST" chunk-requests-handled_
-      if next-offset < 0: break
-      chunk-requests-handled_ = next-offset
-      chunk-requests_.up
+  start-baud-sync_:
+    baud-sync-task_ = task --background::
+      sleep --ms=UART-BAUD-RATE-SYNC-DELAY-MS
+      while not ready-latch.has-value:
+        port.out.write "$UART-BAUD-RATE-SYNC\n" --flush
+        sleep --ms=UART-BAUD-RATE-SYNC-RETRY-MS
+
+  stop-baud-sync_:
+    if not baud-sync-task_: return
+    baud-sync-task_.cancel
+    baud-sync-task_ = null
+
+  handle-chunk-requests_ at-new-line/bool:
+    // Publish the expected offset from each complete chunk request.
+    while line/OutputLine? := next-output-line_ "\n$CHUNK-REQUEST" chunk-requests-handled_ at-new-line:
+      offset := int.parse line.payload
+      chunk-requests-handled_ = line.end-offset
+      if not chunk-requests_.try-send offset:
+        installed-container.set --exception UART-TRANSFER-ERROR
 
   handle-decode-request_ at-new-line/bool:
     if not collected-output.contains JAG-DECODE: return
@@ -374,11 +389,6 @@ class TestDevice:
       line-end = collected-output.size
     payload := collected-output[payload-start..line-end].trim
     return OutputLine payload line-end
-
-  next-output-marker_ marker/string offset/int -> int:
-    marker-index := collected-output.index-of marker offset
-    if marker-index < 0: return -1
-    return marker-index + marker.size
 
   set-latch_ latch/monitor.Latch:
     if latch.has-value: return
@@ -407,6 +417,7 @@ class TestDevice:
     if error: throw error
 
   close:
+    stop-baud-sync_
     if read-task:
       read-task.cancel
       // Task.cancel is asynchronous.  Wait for the reader's finally block to
@@ -515,8 +526,14 @@ class TestDevice:
     while sent < image.size:
       chunk-end := min (sent + CHUNK-SIZE) image.size
       wait-for-control_ "container chunk at offset $sent" CONTAINER-CHUNK-TIMEOUT-MS:
-        chunk-requests_.down
+        requested-offset/int := chunk-requests_.receive
+        if requested-offset != sent:
+          log "$name requested chunk $requested-offset while host expected $sent"
+          throw UART-TRANSFER-ERROR
+        out.little-endian.write-int32 sent
+        out.little-endian.write-int32 chunk-end - sent
         out.write image[sent..chunk-end]
+        out.flush
       sent = chunk-end
       image-bytes-sent_ = sent
 
