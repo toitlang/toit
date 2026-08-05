@@ -808,7 +808,10 @@ class Method {
 
   int arity() const { return bytes_[ARITY_OFFSET]; }
   int captured_count() const { return value_(); }
-  int selector_offset() const { return value_(); }
+  int selector_offset() const {
+    int value = value_();
+    return value == UINT16_MAX ? -1 : value;
+  }
   uint8* entry() const { return &bytes_[ENTRY_OFFSET]; }
   int max_height() const { return (bytes_[KIND_HEIGHT_OFFSET] >> KIND_BITS) * 4; }
 
@@ -832,14 +835,16 @@ class Method {
     ASSERT(this->captured_count() == captured_count);
   }
 
-  void _initialize_method(int selector_offset, bool is_field_accessor, int arity, List<uint8> bytecodes, int max_height) {
-    // The runtime only needs to distinguish non-virtual methods. The compiler
-    // keeps the exact negative selector offset in separate metadata.
-    if (selector_offset < 0) selector_offset = -1;
+  void _initialize_method(word selector_offset, bool is_field_accessor, int arity, List<uint8> bytecodes, int max_height) {
+    // The runtime uses UINT16_MAX to identify non-virtual methods. The compiler
+    // keeps their exact negative selector offsets in separate metadata.
+    if (selector_offset >= UINT16_MAX) {
+      FATAL("Selector offset too big: %" PRIdPTR, selector_offset);
+    }
+    if (selector_offset < 0) selector_offset = UINT16_MAX;
     Kind kind = is_field_accessor ? FIELD_ACCESSOR : METHOD;
     _initialize(kind, selector_offset, arity, bytecodes, max_height);
     ASSERT(this->arity() == arity);
-    ASSERT(this->selector_offset() == selector_offset);
   }
 
   friend class compiler::ProgramBuilder;
@@ -883,16 +888,13 @@ class Method {
     memcpy(&bytes_[offset], &source, 2);
   }
 
-  int value_() const {
-    uint16 value = _uint16_at(VALUE_OFFSET);
-    return value == UINT16_MAX ? -1 : value;
-  }
+  int value_() const { return _uint16_at(VALUE_OFFSET); }
 
   void _set_value(int value) {
-    if (value < -1 || value >= UINT16_MAX) {
+    if (value < 0 || value > UINT16_MAX) {
       FATAL("Method value out of range: %d", value);
     }
-    _set_uint16_at(VALUE_OFFSET, value < 0 ? UINT16_MAX : value);
+    _set_uint16_at(VALUE_OFFSET, value);
   }
 
   void _set_arity(int arity) {
@@ -911,8 +913,6 @@ class Method {
     int encoded_height = scaled_height << KIND_BITS;
     bytes_[KIND_HEIGHT_OFFSET] = kind | encoded_height;
   }
-  void _set_captured_count(int value) { _set_value(value); }
-  void _set_selector_offset(int value) { _set_value(value); }
   void _set_bytecodes(List<uint8> bytecodes) {
     if (bytecodes.length() > 0) {
       memcpy(&bytes_[ENTRY_OFFSET], bytecodes.data(), bytecodes.length());

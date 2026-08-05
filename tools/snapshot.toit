@@ -511,8 +511,7 @@ class ToitMethod:
     kind-height := all-bytecodes[at++]
     kind       = kind-height & 0x3
     max-height = (kind-height >> 2) * 4
-    encoded-value := LITTLE-ENDIAN.uint16 all-bytecodes at
-    value = encoded-value == 0xffff ? -1 : encoded-value
+    value = LITTLE-ENDIAN.uint16 all-bytecodes at
     at += 2
     assert: at - id == HEADER-SIZE
     bytecodes = all-bytecodes.copy at (at + bytecode-size)
@@ -526,7 +525,7 @@ class ToitMethod:
     return HEADER-SIZE + bytecodes.size
 
   selector-offset:
-    return value
+    return value == 0xffff ? -1 : value
 
   absolute-entry-bci -> int:
     return id + HEADER-SIZE
