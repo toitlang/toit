@@ -118,8 +118,9 @@ static std::string render_header(ast::Method* method, Source* source,
   LoweredMethodHeader lowered =
       lower_method_header(method, source, &layouts, &bindings, &syntax);
 
-  // Method lowering feeds the same selection, whitespace-repair, freezing,
-  // and syntax-insertion pipeline as expressions.
+  // Return-type placement is deliberately the only selection entry point that
+  // may choose a different token order. Everything after it is whitespace-only
+  // repair, freezing, and syntax insertion, just as for expressions.
   SelectedPlan selected = select_method_header(lowered, preferred_width);
   WhitespaceEdits edits = FormatRepairs::propose(bindings, selected);
   if (!selected.apply(edits)) exit(1);
@@ -145,14 +146,14 @@ static void test_parsed_method_headers(Source* source,
   ast::Method* operator_name = unit->declarations()[6]->as_Method();
 
   expect("flat first second -> int:", render_header(flat, source, 100));
-  expect("flat\n    first\n    second -> int:",
+  expect("flat -> int\n    first\n    second\n:",
          render_header(flat, source, 20));
 
   // Input newlines and the input position of `->` do not become preferences.
   // Both ASTs receive the same canonical token order for the selected shape.
   expect("source-split first second -> int:",
          render_header(source_split, source, 100));
-  expect("source-split\n    first\n    second -> int:",
+  expect("source-split -> int\n    first\n    second\n:",
          render_header(source_split, source, 24));
 
   // Without a return type there is no structural exception. Generic selection
@@ -163,15 +164,16 @@ static void test_parsed_method_headers(Source* source,
   // components. Their spelling does not create separate layout policies.
   expect("shapes value/string? --named=1 [block] -> int?:",
          render_header(shapes, source, 100));
-  expect("shapes\n"
+  expect("shapes -> int?\n"
          "    value/string?\n"
          "    --named=1\n"
-         "    [block] -> int?:",
+         "    [block]\n"
+         ":",
          render_header(shapes, source, 30));
 
   expect("static declaration value -> int:",
          render_header(declaration, source, 100));
-  expect("static declaration\n    value -> int:",
+  expect("static declaration -> int\n    value\n:",
          render_header(declaration, source, 24));
 
   expect("operator [] index -> int:",
@@ -181,9 +183,10 @@ static void test_parsed_method_headers(Source* source,
   expect("operator-name -> int:",
          render_header(operator_name, source, 100));
 
-  // Exact strings are not enough: reparse both flat and broken headers,
-  // compare their semantic header trees, and format them a second time to
-  // verify idempotence.
+  // Return placement is the one formatter phase allowed to change token
+  // order, so exact strings are not enough. Reparse both ordinary and
+  // reordered headers, compare their semantic header trees, and format them a
+  // second time to verify idempotence.
   ast::Method* methods[] = {
       flat, flat, source_split, source_split, plain,
       shapes, declaration, index, constructor, operator_name,

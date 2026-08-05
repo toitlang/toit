@@ -206,10 +206,5 @@ LoweredMethodHeader lower_method_header(
       .lower(method);
 }
 
-SelectedPlan select_method_header(const LoweredMethodHeader& header,
-                                  int preferred_width) {
-  return select_layout(header.source_order_, preferred_width);
-}
-
 } // namespace compiler
 } // namespace toit
