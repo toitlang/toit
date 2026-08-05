@@ -20,6 +20,17 @@ import .shared
 ALL-TESTS-DONE ::= "All tests done"
 JAG-DECODE ::= "jag decode"
 
+SERIAL-CONTROL-TIMEOUT ::= "SERIAL_CONTROL_TIMEOUT"
+TEST-COMPLETION-TIMEOUT ::= "TEST_COMPLETION_TIMEOUT"
+
+DEVICE-READY-TIMEOUT-MS ::= 15_000
+CONTAINER-HEADER-TIMEOUT-MS ::= 10_000
+CONTAINER-CHUNK-TIMEOUT-MS ::= 10_000
+CONTAINER-INSTALL-TIMEOUT-MS ::= 30_000
+CONTAINER-START-TIMEOUT-MS ::= 15_000
+TEST-TIMEOUT-MS ::= 100_000
+FLAKY-TEST-TIMEOUT-MS ::= 130_000
+
 start-time-us/int := ?
 
 log message/string:
@@ -129,6 +140,7 @@ run-test invocation/cli.Invocation:
   arg := invocation["arg"]
   flaky := invocation["flaky"]
   use-network := invocation["control"] == "network"
+  test-timeout-ms := flaky ? FLAKY-TEST-TIMEOUT-MS : TEST-TIMEOUT-MS
 
   already-installed := false
   attempts := flaky ? 3 : 1
@@ -182,15 +194,16 @@ run-test invocation/cli.Invocation:
           already-installed = true
 
           board1.run-test
+          board1.wait-until-running
           if port-board2:
-            board1.running-container.get
             board2.run-test
+            board2.wait-until-running
 
           ui.emit --verbose "Waiting for all tests to be done."
-          board1.all-tests-done.get
+          board1.wait-until-done test-timeout-ms
           log "Board1 done"
           if board2:
-            board2.all-tests-done.get
+            board2.wait-until-done test-timeout-ms
             log "Board2 done"
 
           // Success. No need to run another attempt.
@@ -199,9 +212,9 @@ run-test invocation/cli.Invocation:
           board1.close
           if board2: board2.close
 
-      if error == UART-TRANSFER-ERROR and transfer-attempt == 0:
+      if (error == UART-TRANSFER-ERROR or error == SERIAL-CONTROL-TIMEOUT) and transfer-attempt == 0:
         transfer-attempt++
-        log "Retrying after a UART transfer error"
+        log "Retrying after a serial control failure"
         continue
       // If we didn't manage to install the test something went wrong.
       if not already-installed or attempt == attempts - 1: throw error
@@ -238,6 +251,7 @@ class TestDevice:
   installed-container/monitor.Latch := monitor.Latch
   running-container/monitor.Latch := monitor.Latch
   all-tests-done/monitor.Latch := monitor.Latch
+  image-bytes-sent_/int := 0
   ui/cli.Ui
   tmp-dir/string
 
@@ -337,6 +351,28 @@ class TestDevice:
     if latch.has-value: return
     latch.set true
 
+  wait-for-control_ phase/string timeout-ms/int [block]:
+    error := catch:
+      with-timeout --ms=timeout-ms: block.call
+    if error == DEADLINE-EXCEEDED-ERROR:
+      lines := collected-output.split "\n"
+      last-line := lines.last.trim
+      message := "$name timed out during $phase after $(timeout-ms)ms; sent=$image-bytes-sent_ bytes; last output='$last-line'"
+      log message
+      throw SERIAL-CONTROL-TIMEOUT
+    if error: throw error
+
+  wait-for-test_ phase/string timeout-ms/int [block]:
+    error := catch:
+      with-timeout --ms=timeout-ms: block.call
+    if error == DEADLINE-EXCEEDED-ERROR:
+      lines := collected-output.split "\n"
+      last-line := lines.last.trim
+      message := "$name timed out during $phase after $(timeout-ms)ms; last output='$last-line'"
+      log message
+      throw TEST-COMPLETION-TIMEOUT
+    if error: throw error
+
   close:
     if read-task:
       read-task.cancel
@@ -363,7 +399,7 @@ class TestDevice:
     port.set-control-flag uart.HostPort.CONTROL-FLAG-RTS false
 
     ui.emit --verbose "Waiting for $name to be ready."
-    ready-latch.get
+    wait-for-control_ "device readiness" DEVICE-READY-TIMEOUT-MS: ready-latch.get
     ui.emit --verbose "Device $name is ready."
 
     if not use-network: return
@@ -417,37 +453,43 @@ class TestDevice:
   install-test image/ByteArray arg/string -> none:
     log "Sending test to device $name"
     out := control-out
-    out.little-endian.write-int32 arg.size
-    out.write arg
+    wait-for-control_ "container header" CONTAINER-HEADER-TIMEOUT-MS:
+      out.little-endian.write-int32 arg.size
+      out.write arg
     if already-installed:
       log "Sending already installed signal"
-      out.little-endian.write-int32 -1
+      wait-for-control_ "installed-container signal" CONTAINER-HEADER-TIMEOUT-MS:
+        out.little-endian.write-int32 -1
+        out.flush
       log "set"
       installed-container.set true
       log "return"
       return
 
-    out.little-endian.write-int32 image.size
-
     summer := crc.Crc32
     summer.add image
-    out.write summer.get
-    // Send the header before waiting for the device to request image data.
-    // This is necessary for the serial transport, whose writer may buffer the
-    // small header at high baud rates.
-    out.flush
+    wait-for-control_ "container header" CONTAINER-HEADER-TIMEOUT-MS:
+      out.little-endian.write-int32 image.size
+      out.write summer.get
+      // Send the header before waiting for the device to request image data.
+      // This is necessary for the serial transport, whose writer may buffer the
+      // small header at high baud rates.
+      out.flush
     // The device pulls the image chunk by chunk: it prints a request
     // whenever it is ready for more. Never send more than requested, since
     // the serial transport has no flow control.
     sent := 0
     while sent < image.size:
-      chunk-requests_.down
       chunk-end := min (sent + CHUNK-SIZE) image.size
-      out.write image[sent..chunk-end]
+      wait-for-control_ "container chunk at offset $sent" CONTAINER-CHUNK-TIMEOUT-MS:
+        chunk-requests_.down
+        out.write image[sent..chunk-end]
       sent = chunk-end
+      image-bytes-sent_ = sent
 
     log "Waiting for test to be fully installed"
-    installed-container.get
+    wait-for-control_ "container installation" CONTAINER-INSTALL-TIMEOUT-MS:
+      installed-container.get
 
   run-test -> none:
     log "Running test on device $name"
@@ -460,6 +502,14 @@ class TestDevice:
     // default rate, which lets console tests negotiate their own rate.
     sleep --ms=UART-HOST-BAUD-RATE-SWITCH-DELAY-MS
     port.baud-rate = CONSOLE-BAUD-RATE
+
+  wait-until-running:
+    wait-for-control_ "container start" CONTAINER-START-TIMEOUT-MS:
+      running-container.get
+
+  wait-until-done timeout-ms/int:
+    wait-for-test_ "test completion" timeout-ms:
+      all-tests-done.get
 
 setup-tester invocation/cli.Invocation:
   if os.env.get "TOIT_SKIP_SETUP": return
