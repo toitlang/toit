@@ -1199,12 +1199,17 @@ flash invocation/cli.Invocation -> none:
           // Verify that the device's flash is big enough for the partition
           // table. 'build-esp32-image' derived the required flash size from the
           // partition table and stored it in the flashing settings.
-          required-flash-size := parse-flash-size_ flashing["flash_settings"]["flash_size"] --ui=ui
-          detected-flash-size := detect-flash-size_ esptool --port=port --chip=chip
-          if detected-flash-size and detected-flash-size < required-flash-size:
-            ui.abort "The partition table needs $(required-flash-size / 0x100000)MB of flash, but the device only has $(detected-flash-size / 0x100000)MB."
-          if not detected-flash-size:
-            ui.emit --warning "Could not determine the device's flash size; skipping the flash-size check."
+          // Any serial interaction with an ESP32-S2 using its integrated USB
+          // peripheral takes it out of manually entered download mode. Running
+          // 'flash-id' here would therefore make the port disappear before the
+          // actual 'write-flash' command gets a chance to open it.
+          if chip != "esp32s2":
+            required-flash-size := parse-flash-size_ flashing["flash_settings"]["flash_size"] --ui=ui
+            detected-flash-size := detect-flash-size_ esptool --port=port --chip=chip
+            if detected-flash-size and detected-flash-size < required-flash-size:
+              ui.abort "The partition table needs $(required-flash-size / 0x100000)MB of flash, but the device only has $(detected-flash-size / 0x100000)MB."
+            if not detected-flash-size:
+              ui.emit --warning "Could not determine the device's flash size; skipping the flash-size check."
 
           // The new esptool has deprecated underscores in some arguments.
           // TODO(floitsch): remove these replacements when the esp-idf has been updated
