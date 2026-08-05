@@ -34,6 +34,7 @@
 #include "../utils.h"
 
 #include "gpio_esp32.h"
+#include "uart_console_esp32.h"
 
 #ifndef FORCE_INLINE
 #error "FORCE_INLINE not defined"
@@ -111,6 +112,12 @@ public:
       , port_(port)
       , tx_buffer_size_(tx_buffer_size) {}
 
+  UartResource(ResourceGroup* group, uart_port_t port, int tx_buffer_size, QueueHandle_t queue, bool is_console)
+      : EventQueueResource(group, queue)
+      , port_(port)
+      , tx_buffer_size_(tx_buffer_size)
+      , is_console_(is_console) {}
+
   ~UartResource() override;
 
   uart_port_t port() const { return port_; }
@@ -118,6 +125,8 @@ public:
   int errors() const { return errors_; }
 
   int tx_buffer_size() const { return tx_buffer_size_; }
+
+  bool is_console() const { return is_console_; }
 
   // GPIO pins reserved by this port (tx/rx/rts/cts).
   GpioPins& owned_pins() { return owned_pins_; }
@@ -133,6 +142,7 @@ public:
  private:
   const uart_port_t port_;
   const int tx_buffer_size_;
+  const bool is_console_ = false;
   int64 errors_ = 0;
   GpioPins owned_pins_;
 
@@ -163,7 +173,7 @@ class UartResourceGroup : public ResourceGroup {
   void on_unregister_resource(Resource* r) override {
     auto uart_res = reinterpret_cast<UartResource*>(r);
 #ifdef CONFIG_ESP_CONSOLE_UART
-    if (uart_res->port() == CONFIG_ESP_CONSOLE_UART_NUM) {
+    if (uart_res->is_console()) {
       console_uart_port.put(uart_res->port());
       return;
     }
@@ -175,10 +185,17 @@ class UartResourceGroup : public ResourceGroup {
 };
 
 UartResource::~UartResource() {
-  esp_err_t err = uart_driver_delete(port_);
-  if (err != ESP_OK) {
-    esp_rom_printf("[uart] error: failed to delete UART driver\n");
-    ESP_ERROR_CHECK(err);
+#ifdef CONFIG_ESP_CONSOLE_UART
+  if (is_console_) {
+    console_uart_release();
+  } else
+#endif
+  {
+    esp_err_t err = uart_driver_delete(port_);
+    if (err != ESP_OK) {
+      esp_rom_printf("[uart] error: failed to delete UART driver\n");
+      ESP_ERROR_CHECK(err);
+    }
   }
   // Release any GPIO pins this port reserved.
   owned_pins_.release();
@@ -244,6 +261,71 @@ uint32 UartResourceGroup::on_event(Resource* r, word data, uint32 state) {
 }
 
 MODULE_IMPLEMENTATION(uart, MODULE_UART)
+
+#ifdef CONFIG_ESP_CONSOLE_UART
+static int console_uart_users = 0;
+static QueueHandle_t console_uart_queue = null;
+
+esp_err_t console_uart_acquire(int rx_buffer_size, int tx_buffer_size, QueueHandle_t* queue) {
+  Locker locker(OS::global_mutex());
+  if (console_uart_users > 0) {
+    console_uart_users++;
+    *queue = console_uart_queue;
+    return ESP_OK;
+  }
+
+  struct {
+    uart_port_t port;
+    int rx_buffer_size;
+    int tx_buffer_size;
+    esp_err_t result;
+  } args = {
+    .port = static_cast<uart_port_t>(CONFIG_ESP_CONSOLE_UART_NUM),
+    .rx_buffer_size = rx_buffer_size,
+    .tx_buffer_size = tx_buffer_size,
+    .result = ESP_FAIL,
+  };
+  SystemEventSource::instance()->run([&args]() -> void {
+    args.result = uart_driver_install(args.port,
+                                      args.rx_buffer_size,
+                                      args.tx_buffer_size,
+                                      UART_QUEUE_SIZE,
+                                      &console_uart_queue,
+                                      ESP_INTR_FLAG_SHARED | ESP_INTR_FLAG_LEVEL2 | ESP_INTR_FLAG_LEVEL1);
+  });
+  if (args.result != ESP_OK) return args.result;
+
+  esp_err_t err = uart_flush_input(args.port);
+  if (err != ESP_OK) {
+    SystemEventSource::instance()->run([&args]() -> void {
+      uart_driver_delete(args.port);
+    });
+    console_uart_queue = null;
+    return err;
+  }
+
+  console_uart_users = 1;
+  *queue = console_uart_queue;
+  return ESP_OK;
+}
+
+void console_uart_release() {
+  Locker locker(OS::global_mutex());
+  ASSERT(console_uart_users > 0);
+  if (--console_uart_users != 0) return;
+
+  uart_port_t port = static_cast<uart_port_t>(CONFIG_ESP_CONSOLE_UART_NUM);
+  esp_err_t err = ESP_FAIL;
+  SystemEventSource::instance()->run([&]() -> void {
+    err = uart_driver_delete(port);
+  });
+  console_uart_queue = null;
+  if (err != ESP_OK) {
+    esp_rom_printf("[uart] error: failed to delete console UART driver\n");
+    ESP_ERROR_CHECK(err);
+  }
+}
+#endif
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -546,38 +628,19 @@ PRIMITIVE(create_console) {
   // The console UART keeps the configuration (baud rate, pins, ...) it was
   // given during boot; only the driver is installed, which makes RX
   // interrupt driven. System output (logging, `print`) keeps going through
-  // the polling VFS path and thus doesn't need the driver.
+  // whichever UART VFS mode is active.
 
   esp_err_t err;
   QueueHandle_t queue;
-  DriverArgs args = {
-    .port = port,
-    .rx_buffer_size = static_cast<uint16_t>(rx_buffer_size),
-    .tx_buffer_size = static_cast<uint16_t>(tx_buffer_size),
-    // Level 3 interrupts are problematic on some chips (see `create`), so
-    // stick to the levels that are safe everywhere.
-    .interrupt_flags = ESP_INTR_FLAG_SHARED | ESP_INTR_FLAG_LEVEL2 | ESP_INTR_FLAG_LEVEL1,
-    .queue = &queue,
-    .queue_size = UART_QUEUE_SIZE,
-  };
-  // Install the ISR on the SystemEventSource's main thread that runs on core 0,
-  // to allocate the interrupts on core 0.
-  SystemEventSource::instance()->run([&]() -> void {
-    err = uart_driver_install(args.port,
-                              args.rx_buffer_size,
-                              args.tx_buffer_size,
-                              args.queue_size,
-                              args.queue,
-                              args.interrupt_flags);
-  });
+  err = console_uart_acquire(rx_buffer_size, tx_buffer_size, &queue);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  Defer uninstall_driver { [&] { if (!handed_to_resource) uart_driver_delete(port); } };
+  Defer uninstall_driver { [&] { if (!handed_to_resource) console_uart_release(); } };
 
   // Discard anything that was received before the port was opened.
   err = uart_flush_input(port);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  auto resource = _new UartResource(group, port, tx_buffer_size, queue);
+  auto resource = _new UartResource(group, port, tx_buffer_size, queue, true);
   if (!resource) FAIL(MALLOC_FAILED);
   handed_to_resource = true;
 

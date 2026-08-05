@@ -27,7 +27,7 @@
 
 // The max queue set size is the maximum number of events in the queue. This is used for the gpio queue,
 // up to two UART queues and the stop semaphore.
-#define MAX_QUEUE_SET_SIZE (GPIO_QUEUE_SIZE + 2 * UART_QUEUE_SIZE + 1)
+#define MAX_QUEUE_SET_SIZE (GPIO_QUEUE_SIZE + 2 * UART_QUEUE_SIZE + STDIN_QUEUE_SIZE + 1)
 
 namespace toit {
 
@@ -100,13 +100,22 @@ void EventQueueEventSource::entry() {
         }
       }
     } else {
-      // Then loop through other queues.
-      for (auto r: resources()) {
+      // Then loop through other queues. Multiple resources may subscribe to
+      // the same queue. Receive the event once and dispatch it to all of them.
+      EventQueueResource* receiver = null;
+      for (auto r : resources()) {
         auto resource = static_cast<EventQueueResource*>(r);
         if (resource->queue() == handle) {
-          word data;
-          if (resource->receive_event(&data)) {
-            dispatch(locker, r, data);
+          receiver = resource;
+          break;
+        }
+      }
+      if (receiver != null) {
+        word data;
+        if (receiver->receive_event(&data)) {
+          for (auto r : resources()) {
+            auto resource = static_cast<EventQueueResource*>(r);
+            if (resource->queue() == handle) dispatch(locker, r, data);
           }
         }
       }
@@ -118,6 +127,11 @@ void EventQueueEventSource::on_register_resource(Locker& locker, Resource* r) {
   auto resource = static_cast<EventQueueResource*>(r);
   QueueHandle_t queue = resource->queue();
   if (queue == null) return;
+  for (auto existing : resources()) {
+    if (existing == r) continue;
+    auto existing_resource = static_cast<EventQueueResource*>(existing);
+    if (existing_resource->queue() == queue) return;
+  }
   // We can only add to the queue set when the queue is empty, so we
   // repeatedly try to drain the queue before adding it to the set.
   int attempts = 0;
@@ -134,6 +148,10 @@ void EventQueueEventSource::on_unregister_resource(Locker& locker, Resource* r) 
   auto resource = static_cast<EventQueueResource*>(r);
   QueueHandle_t queue = resource->queue();
   if (queue == null) return;
+  for (auto existing : resources()) {
+    auto existing_resource = static_cast<EventQueueResource*>(existing);
+    if (existing_resource->queue() == queue) return;
+  }
   // We can only remove from the queue set when the queue is empty, so we
   // repeatedly try to drain the queue before removing it from the set.
   int attempts = 0;

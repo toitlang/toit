@@ -6,6 +6,7 @@ import .buffer
 import .byte-order
 import .data
 import .reader
+import .stdio
 import .writer
 
 export *
