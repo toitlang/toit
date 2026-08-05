@@ -17,8 +17,11 @@
 
 #include "../top.h"
 #include "ast.h"
+#include "format_trivia.h"
 #include "sources.h"
 #include "token.h"
+
+#include <algorithm>
 
 namespace toit {
 namespace compiler {
@@ -47,18 +50,48 @@ bool is_logical(Token::Kind kind) {
 
 class ExpressionLowering {
  public:
-  ExpressionLowering(Source* source, LayoutBuilder* layouts,
+  ExpressionLowering(Source* source,
+                     LayoutBuilder* layouts,
                      LogicalOperatorBindings* bindings,
                      SyntaxProtection* syntax,
-                     const FormatStyle& style)
+                     const FormatStyle& style,
+                     TriviaLowering* trivia)
       : source_(source)
       , layouts_(layouts)
       , bindings_(bindings)
       , syntax_(syntax)
-      , style_(style) {}
+      , style_(style)
+      , trivia_(trivia) {}
 
   LoweredExpression lower(Expression* expression, int outer_precedence) {
     ASSERT(expression != null);
+
+    // A real line comment makes its source line an immutable formatting
+    // island. The current expression slice conservatively preserves the
+    // complete expression when that line is inside it; this keeps every byte
+    // on the frozen line unchanged and, importantly, prevents a repair or
+    // parenthesis rule from moving syntax across it.
+    Expression* source_expression = expression;
+    if (trivia_ != null) {
+      Source::Range source_range = source_expression->full_range();
+      int source_from = source_->offset_in_source(source_range.from());
+      int source_to = source_->offset_in_source(source_range.to());
+      int line_comment =
+          trivia_->first_line_comment(source_from, source_to, true);
+      if (line_comment >= 0) {
+        source_to = std::max(source_to, trivia_->comment(line_comment).to);
+        LayoutMarker start = layouts_->marker();
+        LayoutMarker end = layouts_->marker();
+        return {
+            layouts_->concat({
+                layouts_->mark(start),
+                trivia_->verbatim_region(source_from, source_to),
+                layouts_->mark(end),
+            }),
+            {start, end},
+        };
+      }
+    }
 
     // Parenthesis nodes describe how the input happened to spell the tree.
     // Precedence and line topology below describe how the output must spell
@@ -69,9 +102,20 @@ class ExpressionLowering {
     LayoutMarker start = layouts_->marker();
     LayoutMarker end = layouts_->marker();
     Layout* contents = lower_contents(expression, outer_precedence);
+    Layout* semantic = layouts_->concat(
+        {layouts_->mark(start), contents, layouts_->mark(end)});
+    if (trivia_ != null) {
+      int source_to =
+          source_->offset_in_source(source_expression->full_range().to());
+      int line_end = source_to;
+      while (line_end < source_->size() && source_->text()[line_end] != '\n' &&
+             source_->text()[line_end] != '\r') {
+        line_end++;
+      }
+      semantic = trivia_->take_inline_suffix(semantic, source_to, line_end);
+    }
     LoweredExpression result = {
-        layouts_->concat(
-            {layouts_->mark(start), contents, layouts_->mark(end)}),
+        semantic,
         {start, end},
     };
     if (requires_parentheses_in(expression, outer_precedence)) {
@@ -86,6 +130,7 @@ class ExpressionLowering {
   LogicalOperatorBindings* bindings_;
   SyntaxProtection* syntax_;
   const FormatStyle& style_;
+  TriviaLowering* trivia_;
 
   bool requires_parentheses_in(Expression* expression,
                                int outer_precedence) const {
@@ -261,16 +306,18 @@ class ExpressionLowering {
 
 } // namespace
 
-LoweredExpression lower_expression(Expression* expression, Source* source,
+LoweredExpression lower_expression(Expression* expression,
+                                   Source* source,
                                    LayoutBuilder* layouts,
                                    LogicalOperatorBindings* bindings,
                                    SyntaxProtection* syntax,
-                                   const FormatStyle& style) {
+                                   const FormatStyle& style,
+                                   TriviaLowering* trivia) {
   ASSERT(source != null);
   ASSERT(layouts != null);
   ASSERT(bindings != null);
   ASSERT(syntax != null);
-  return ExpressionLowering(source, layouts, bindings, syntax, style)
+  return ExpressionLowering(source, layouts, bindings, syntax, style, trivia)
       .lower(expression, PRECEDENCE_NONE);
 }
 

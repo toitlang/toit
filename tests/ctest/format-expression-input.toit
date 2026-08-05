@@ -13,5 +13,10 @@ sample a b c foo bar gee alpha beta:
   alpha or
       beta
 
+trivia-sample foo bar:
+  foo  +   bar  // Keep   every byte.
+  foo/*attached*/
+  (foo + bar)/*attached-to-group*/ * 2
+
 main:
   sample 1 2 3 true false true false true

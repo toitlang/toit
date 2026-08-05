@@ -55,9 +55,9 @@ SelectedPlan select_method_header(const LoweredMethodHeader& header,
       header.return_type_,
       parameter_lines,
   };
-  if (header.has_colon_) {
+  if (header.colon_ != null) {
     reordered.push_back(header.layouts_->hardline());
-    reordered.push_back(header.layouts_->text(":"));
+    reordered.push_back(header.colon_);
   }
   return select_layout(header.layouts_->concat(std::move(reordered)),
                        preferred_width);

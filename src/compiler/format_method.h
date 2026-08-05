@@ -40,7 +40,7 @@ class LoweredMethodHeader {
                       Layout* name,
                       std::vector<Layout*> parameters,
                       Layout* return_type,
-                      bool has_colon,
+                      Layout* colon,
                       LayoutMarker parameters_start,
                       LayoutMarker parameters_end,
                       int continuation_step)
@@ -49,7 +49,7 @@ class LoweredMethodHeader {
       , name_(name)
       , parameters_(std::move(parameters))
       , return_type_(return_type)
-      , has_colon_(has_colon)
+      , colon_(colon)
       , parameters_start_(parameters_start)
       , parameters_end_(parameters_end)
       , continuation_step_(continuation_step) {}
@@ -59,7 +59,7 @@ class LoweredMethodHeader {
   Layout* name_;
   std::vector<Layout*> parameters_;
   Layout* return_type_;
-  bool has_colon_;
+  Layout* colon_;
   LayoutMarker parameters_start_;
   LayoutMarker parameters_end_;
   int continuation_step_;
@@ -76,16 +76,18 @@ class LoweredMethodHeader {
 //         first
 //         second -> ReturnType:
 //
-// Trivia is not part of this prototype slice yet. When it is added, trivia
-// around `->` must belong to semantic header pieces rather than source gaps so
-// the dedicated placement pass can carry comments without changing them.
+// Trivia is consumed while these semantic pieces are built. Attached block
+// comments are part of the piece they decorate, so the dedicated placement
+// pass carries them without any comment-specific behavior. A header touched by
+// a frozen `//` line exposes no reorderable return-type piece.
 LoweredMethodHeader lower_method_header(
     ast::Method* method,
     Source* source,
     LayoutBuilder* layouts,
     LogicalOperatorBindings* bindings,
     SyntaxProtection* syntax,
-    const FormatStyle& style = FormatStyle());
+    const FormatStyle& style = FormatStyle(),
+    TriviaLowering* trivia = nullptr);
 
 // Selects the complete method header, including the specialized return-type
 // placement policy when parameters break. Low-level Layout selection remains
