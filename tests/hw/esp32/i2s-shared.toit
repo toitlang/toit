@@ -121,6 +121,8 @@ test args/List
     // The mclk has a multiplier of MCLK-MULTIPLIER which is based on the sample-rate.
     mclk-frequency = sample-rate * MCLK-MULTIPLIER
 
+  details := "arg=$arg board=$(board1 ? 1 : 2) master=$master writer=$is-writer"
+
   // Writers never fail. It's the reader that has to confirm that the test succeeded.
   // The only exception is the fast test, where we look at the error count.
   run-test --background=(is-writer and not is-fast-test):
@@ -155,12 +157,13 @@ test args/List
           preloaded := generator.do: channel.preload it
           if preloaded == 0: break
 
-      channel.start
+      with-i2s-progress-timeout "output start" details: channel.start
 
       printed-done := false
       while true:
         expect-equals 0 channel.errors
-        generator.do: channel.write it
+        with-i2s-progress-timeout "output write" details:
+          generator.do: channel.write it
 
         if is-fast-test:
           // We need to stop the test ourselves, since we are not background.
@@ -187,7 +190,7 @@ test args/List
           --mclk-external-frequency=use-mclk ? mclk-frequency : null
           --slots=stereo-in
 
-      channel.start
+      with-i2s-progress-timeout "input start" details: channel.start
 
       required-size := is-fast-test
           ? FAST-DATA-SIZE
@@ -197,19 +200,21 @@ test args/List
       all-read := 0
       last-channel-errors := 0
       while true:
-        chunk/ByteArray := ?
-        if is-fast-test:
-          chunk-size := channel.read in-buffer
-          chunk = in-buffer[..chunk-size]
-        else:
-          chunk = channel.read
+        chunk/ByteArray? := null
+        with-i2s-progress-timeout "input read" details:
+          if is-fast-test:
+            chunk-size := channel.read in-buffer
+            chunk = in-buffer[..chunk-size]
+          else:
+            chunk = channel.read
         current-errors := channel.errors
         if current-errors != last-channel-errors:
           print "Errors: $current-errors"
           last-channel-errors = current-errors
           generator.increment-error
-        all-read += chunk.size
-        generator.verify chunk
+        read-chunk := chunk as ByteArray
+        all-read += read-chunk.size
+        generator.verify read-chunk
         if generator.verified > required-size:
           // Don't stop consuming.
           if not printed-done:

@@ -23,15 +23,16 @@ test:
   pin-in := gpio.Pin PIN-IN1 --input --pull-down
   pin-out := gpio.Pin PIN-OUT1 --output
 
-  ITERATIONS.repeat: | counter |
-    if counter % 1000 == 0: print "Iteration: $counter"
-    for i := 0; i < (counter % 200); i++:
-      null
-    // In this mode the pin stays high as long as we don't get any response.
-    pin-out.set 1
-    while pin-in.get != 1: null
-    pin-out.set 0
-    while pin-in.get != 0: null
+  with-peer-progress-timeout "initial $(ITERATIONS)-iteration handshake" 60_000:
+    ITERATIONS.repeat: | counter |
+      if counter % 1000 == 0: print "Iteration: $counter"
+      for i := 0; i < (counter % 200); i++:
+        null
+      // In this mode the pin stays high as long as we don't get any response.
+      pin-out.set 1
+      while pin-in.get != 1: null
+      pin-out.set 0
+      while pin-in.get != 0: null
 
   sleep --ms=500
 
@@ -42,9 +43,11 @@ test:
     sleep --ms=MEDIUM-PULSE-DURATION-MS
     pin-out.set 0
   print "medium pulses done"
-  pin-in.wait-for 1
+  with-peer-progress-timeout "medium-pulse acknowledgement high" 10_000:
+    pin-in.wait-for 1
 
-  pin-in.wait-for 0
+  with-peer-progress-timeout "medium-pulse acknowledgement low" 10_000:
+    pin-in.wait-for 0
   print "sending short pulses"
   sleep --ms=300
   SHORT-PULSE-ITERATIONS.repeat:
@@ -53,7 +56,8 @@ test:
     pin-out.set 0
 
   print "short pulses done"
-  pin-in.wait-for 1
+  with-peer-progress-timeout "short-pulse acknowledgement" 10_000:
+    pin-in.wait-for 1
 
   print "sending ultra short pulses"
 

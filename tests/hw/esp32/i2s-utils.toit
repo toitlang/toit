@@ -7,6 +7,17 @@ import expect show *
 import i2s
 import system
 
+I2S-PROGRESS-TIMEOUT-MS ::= 10_000
+I2S-PROGRESS-TIMEOUT ::= "I2S_PROGRESS_TIMEOUT"
+
+with-i2s-progress-timeout operation/string details/string [block]:
+  error := catch:
+    with-timeout --ms=I2S-PROGRESS-TIMEOUT-MS: block.call
+  if error == DEADLINE-EXCEEDED-ERROR:
+    print "I2S $operation made no progress for $(I2S-PROGRESS-TIMEOUT-MS)ms: $details"
+    throw I2S-PROGRESS-TIMEOUT
+  if error: throw error
+
 interface DataGenerator:
   do [block] -> int
   verify chunk/ByteArray
