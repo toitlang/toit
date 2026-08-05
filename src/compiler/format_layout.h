@@ -40,6 +40,8 @@ struct FormatStyle {
 // access token events. Freezing makes the result immutable; syntax protection
 // then responds to its line topology without feeding punctuation back into
 // width selection.
+// Method return-type placement is the sole token-order exception and is owned
+// by format_return_type.cc before repairs run.
 
 // A zero-width position in a layout. Expression lowering records markers at
 // syntax boundaries; later phases can then reason about selected newlines

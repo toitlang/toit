@@ -31,7 +31,8 @@ class MethodHeaderLowering;
 // Logical pieces of a parsed method header plus its regular source-order
 // layout. The pieces are private so callers cannot assemble or select an
 // alternate token order themselves. `select_method_header` is the one normal
-// entry point for selecting the regular source-order layout.
+// entry point; its implementation in format_return_type.cc owns the sole
+// formatter exception that may choose a different token order.
 class LoweredMethodHeader {
  private:
   LoweredMethodHeader(LayoutBuilder* layouts,
@@ -75,8 +76,9 @@ class LoweredMethodHeader {
 //         first
 //         second -> ReturnType:
 //
-// Trivia is not part of this prototype slice yet. Keeping the parsed pieces
-// separate makes their ownership explicit when trivia is added later.
+// Trivia is not part of this prototype slice yet. When it is added, trivia
+// around `->` must belong to semantic header pieces rather than source gaps so
+// the dedicated placement pass can carry comments without changing them.
 LoweredMethodHeader lower_method_header(
     ast::Method* method,
     Source* source,
@@ -85,9 +87,10 @@ LoweredMethodHeader lower_method_header(
     SyntaxProtection* syntax,
     const FormatStyle& style = FormatStyle());
 
-// Selects the complete method header in source order. Low-level Layout
-// selection remains public for focused phase tests, but callers cannot bypass
-// this entry point through LoweredMethodHeader.
+// Selects the complete method header, including the specialized return-type
+// placement policy when parameters break. Low-level Layout selection remains
+// public for focused phase tests, but callers cannot access either header
+// candidate through LoweredMethodHeader.
 SelectedPlan select_method_header(const LoweredMethodHeader& header,
                                   int preferred_width);
 
