@@ -51,7 +51,7 @@ class TypePropagator {
 
   Program* program() const { return program_; }
   int words_per_type() const { return words_per_type_; }
-  int selector_offset(Method method) const;
+  word selector_offset(Method method) const;
 
   void propagate(TypeDatabase* types);
 

@@ -154,7 +154,7 @@ static List<uint16> encode_typecheck_interface_list(const List<ir::Class*> inter
     auto call_selector = interfaces[i]->typecheck_selector();
     ASSERT(call_selector.is_valid());
     Selector<PlainShape> selector(call_selector.name(), call_selector.shape().to_plain_shape());
-    int16 offset = dispatch_table.dispatch_offset_for(selector);
+    int offset = dispatch_table.dispatch_offset_for(selector);
     // We would have already replaced the interface call with a literal false if there
     //  wasn't any class implementing the interface.
     ASSERT(offset >= 0);

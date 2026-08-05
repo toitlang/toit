@@ -872,21 +872,10 @@ class Method {
     ASSERT(this->value_() == value);
   }
 
-  int _int16_at(word offset) const {
-    int16 result;
-    memcpy(&result, &bytes_[offset], 2);
-    return result;
-  }
-
   uint16 _uint16_at(word offset) const {
     uint16 result;
     memcpy(&result, &bytes_[offset], 2);
     return result;
-  }
-
-  void _set_int16_at(word offset, int value) {
-    int16 source = value;
-    memcpy(&bytes_[offset], &source, 2);
   }
 
   void _set_uint16_at(word offset, int value) {
@@ -895,28 +884,15 @@ class Method {
   }
 
   int value_() const {
-#ifndef TOIT_FREERTOS
-    if (is_normal_method() || is_field_accessor()) {
-      uint16 value = _uint16_at(VALUE_OFFSET);
-      return value == UINT16_MAX ? -1 : value;
-    }
-#endif
-    return _int16_at(VALUE_OFFSET);
+    uint16 value = _uint16_at(VALUE_OFFSET);
+    return value == UINT16_MAX ? -1 : value;
   }
 
   void _set_value(int value) {
-    bool is_method = is_normal_method() || is_field_accessor();
-#ifndef TOIT_FREERTOS
-    if (is_method) {
-      if (value >= UINT16_MAX) FATAL("Selector offset too big: %d", value);
-      _set_uint16_at(VALUE_OFFSET, value < 0 ? UINT16_MAX : value);
-      return;
-    }
-#endif
-    if (value < INT16_MIN || value > INT16_MAX) {
+    if (value < -1 || value >= UINT16_MAX) {
       FATAL("Method value out of range: %d", value);
     }
-    _set_int16_at(VALUE_OFFSET, value);
+    _set_uint16_at(VALUE_OFFSET, value < 0 ? UINT16_MAX : value);
   }
 
   void _set_arity(int arity) {

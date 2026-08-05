@@ -76,7 +76,7 @@ TypePropagator::TypePropagator(
   TypePrimitive::set_up();
 }
 
-int TypePropagator::selector_offset(Method method) const {
+word TypePropagator::selector_offset(Method method) const {
   if (method_selector_offsets_ == null ||
       (!method.is_normal_method() && !method.is_field_accessor())) {
     return method.selector_offset();
@@ -1602,7 +1602,7 @@ void MethodTemplate::propagate() {
   // concrete receiver type; not any.
   bool is_normal = method_.is_normal_method() ||
       method_.is_field_accessor();
-  int selector_offset = propagator_->selector_offset(method_);
+  word selector_offset = propagator_->selector_offset(method_);
   bool is_virtual = is_normal && selector_offset >= 0;
   if (is_virtual) {
     ASSERT(arguments_.size() >= 1);

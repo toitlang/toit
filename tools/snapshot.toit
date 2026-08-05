@@ -511,10 +511,8 @@ class ToitMethod:
     kind-height := all-bytecodes[at++]
     kind       = kind-height & 0x3
     max-height = (kind-height >> 2) * 4
-    value = LITTLE-ENDIAN.int16 all-bytecodes at
-    if kind == METHOD or kind == FIELD-ACCESSOR:
-      encoded-value := LITTLE-ENDIAN.uint16 all-bytecodes at
-      value = encoded-value == 0xffff ? -1 : encoded-value
+    encoded-value := LITTLE-ENDIAN.uint16 all-bytecodes at
+    value = encoded-value == 0xffff ? -1 : encoded-value
     at += 2
     assert: at - id == HEADER-SIZE
     bytecodes = all-bytecodes.copy at (at + bytecode-size)
