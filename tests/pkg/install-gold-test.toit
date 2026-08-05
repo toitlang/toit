@@ -20,6 +20,21 @@ test tester/GoldTester:
     ["exec", "main.toit"],
   ]
 
+  file.write-contents --path="$tester.working-dir/target/package.yaml" """
+      name: target
+      description: desc
+      dependencies:
+        sub:
+          url: localhost:$tester.port/pkg/sub
+          version: ^2.0.0
+      """
+
+  tester.gold "15-local-change" [
+    ["// Target should now use sub-2, while bar should continue to use sub-3."],
+    ["pkg", "install"],
+    ["package.lock"],
+  ]
+
   foo-version := "1.2.3"
   foo-path := tester.package-cache-path "pkg/foo" --version=foo-version
   expect (file.is-directory foo-path)
