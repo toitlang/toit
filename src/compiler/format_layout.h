@@ -26,6 +26,7 @@ namespace toit {
 namespace compiler {
 
 struct FormatStyle {
+  int indentation_step = 2;
   int continuation_step = 4;
 };
 
