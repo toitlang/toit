@@ -19,6 +19,27 @@ import host.directory
 import fs
 import system
 
+class PackageSelector:
+  name/string
+  version/string?
+
+  constructor .name .version:
+
+/**
+Parses a package $selector consisting of a name and an optional version.
+
+Calls $on-error with whether the selector has a missing version.
+*/
+parse-package-selector selector/string [--on-error] -> PackageSelector:
+  parts := selector.split "@"
+  if parts.size > 2 or parts[0].is-empty:
+    on-error.call false
+    unreachable
+  if parts.size == 2 and parts[1].is-empty:
+    on-error.call true
+    unreachable
+  return PackageSelector parts[0] (parts.size == 2 ? parts[1] : null)
+
 flatten-list input/List -> List:
   list := List
   input.do:
