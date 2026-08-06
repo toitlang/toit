@@ -404,6 +404,12 @@ word SpiBufferTargetResource::dropped_receive_count() const {
 void SpiBufferTargetResource::complete_from_isr() {
   size_t received = (transaction_.trans_len + 7) / 8;
   if (received > buffer_size_) received = buffer_size_;
+#if CONFIG_IDF_TARGET_ESP32
+  // Classic ESP32 target DMA only commits complete words to its receive
+  // buffer. ESP-IDF documents that a controller's trailing bytes are
+  // discarded when its transaction length is not a multiple of four.
+  if (dma_) received &= ~static_cast<size_t>(3);
+#endif
   bool enqueued = false;
 
   portENTER_CRITICAL_ISR(&spinlock_);

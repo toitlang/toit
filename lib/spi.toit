@@ -290,6 +290,10 @@ SPI does not define a register-address protocol. The response is therefore a
 Complete MOSI transactions are copied into a bounded native queue. This is not
   a streaming API: the controller must release CS at each buffer boundary.
 
+On the classic ESP32 with DMA enabled, only complete four-byte words received
+  on MOSI are queued. A trailing one to three bytes are discarded, matching
+  the ESP-IDF target DMA restriction.
+
 The peripheral is continuously armed. On configurations where ESP-IDF copies
   the response into hardware registers while arming, a response update can be
   too late for the next transaction. An update is guaranteed to be visible in
