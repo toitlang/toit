@@ -108,6 +108,11 @@ class Target:
     non-DMA transactions of at most $TARGET-NON-DMA-MAX-TRANSFER-SIZE bytes,
     or configure only one data direction. These restrictions do not apply to
     newer ESP32 variants.
+
+  Classic ESP32 target DMA commits received MOSI data in complete four-byte
+    words. If the controller ends a transaction at another byte boundary, the
+    trailing one to three bytes are discarded and are not returned by
+    $exchange.
   */
   constructor
       --mosi/any=null

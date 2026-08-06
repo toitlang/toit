@@ -231,6 +231,9 @@ test-board1:
     expected-size := current.receive-size < expected-target.size
         ? current.receive-size
         : expected-target.size
+    // ESP-IDF documents that classic ESP32 target DMA only commits complete
+    // words and discards a controller transaction's trailing bytes.
+    if is-classic-esp32 and current.dma: expected-size &= ~3
     expected-target = expected-target.copy 0 expected-size
     expect-equals expected-target target-result
 

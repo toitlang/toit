@@ -253,7 +253,7 @@ PRIMITIVE(target_create) {
   if (event_queue == null) FAIL(MALLOC_FAILED);
 
   auto resource = _new SpiTargetResource(
-      group, host_device, event_queue, max_transfer_size, buffer_alignment);
+      group, host_device, event_queue, max_transfer_size, buffer_alignment, dma);
   if (resource == null) {
     vQueueDeleteWithCaps(event_queue);
     FAIL(MALLOC_FAILED);
@@ -377,6 +377,12 @@ PRIMITIVE(target_transfer_finish) {
 
   size_t transferred_bytes = (resource->transferred_bits() + 7) / 8;
   size_t result_size = Utils::min(transferred_bytes, resource->receive_size());
+#if CONFIG_IDF_TARGET_ESP32
+  // Classic ESP32 target DMA only commits complete words to its receive
+  // buffer. ESP-IDF documents that a controller's trailing bytes are
+  // discarded when its transaction length is not a multiple of four.
+  if (resource->dma()) result_size &= ~static_cast<size_t>(3);
+#endif
   if (result_size != 0) {
     memcpy(receive_buffer.address(), resource->receive_buffer(), result_size);
   }
