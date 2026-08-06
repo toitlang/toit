@@ -22,8 +22,10 @@ JAG-DECODE ::= "jag decode"
 
 SERIAL-CONTROL-TIMEOUT ::= "SERIAL_CONTROL_TIMEOUT"
 TEST-COMPLETION-TIMEOUT ::= "TEST_COMPLETION_TIMEOUT"
+RIG-PREFLIGHT-FAILED ::= "RIG_PREFLIGHT_FAILED"
 
 DEVICE-READY-TIMEOUT-MS ::= 15_000
+RIG-PREFLIGHT-TIMEOUT-MS ::= 5_000
 CONTAINER-HEADER-TIMEOUT-MS ::= 10_000
 CONTAINER-CHUNK-TIMEOUT-MS ::= 10_000
 CONTAINER-INSTALL-TIMEOUT-MS ::= 30_000
@@ -81,6 +83,26 @@ main args:
 
   root-cmd.add setup-cmd
 
+  preflight-cmd := cli.Command "preflight"
+      --help="Verify the rig's serial paths and chip identities"
+      --options=[
+        cli.Option "port-board1"
+            --help="The path to the UART port of board 1"
+            --type="path"
+            --required,
+        cli.Option "port-board2"
+            --help="The path to the UART port of board 2"
+            --type="path"
+            --required,
+        cli.OptionEnum "chip" ["esp32", "esp32s3"]
+            --help="The expected chip family"
+            --required,
+      ]
+      --run=:: | invocation/cli.Invocation |
+        preflight-rig invocation
+
+  root-cmd.add preflight-cmd
+
   run-cmd := cli.Command "run"
       --help="Run a test on the ESP"
       --options=[
@@ -116,6 +138,38 @@ main args:
   root-cmd.add run-cmd
 
   root-cmd.run args
+
+preflight-rig invocation/cli.Invocation:
+  chip/string := invocation["chip"]
+  expected-marker := chip == "esp32"
+      ? "ets Jun  8 2016"
+      : "ESP-ROM:esp32s3"
+  Task.group [
+    :: preflight-port "board1" invocation["port-board1"] chip expected-marker,
+    :: preflight-port "board2" invocation["port-board2"] chip expected-marker,
+  ]
+
+preflight-port name/string path/string chip/string expected-marker/string:
+  output := ""
+  error := catch:
+    port := uart.HostPort path --baud-rate=CONSOLE-BAUD-RATE
+    try:
+      port.set-control-flag uart.HostPort.CONTROL-FLAG-DTR false
+      port.set-control-flag uart.HostPort.CONTROL-FLAG-RTS true
+      sleep --ms=500
+      port.set-control-flag uart.HostPort.CONTROL-FLAG-RTS false
+      with-timeout --ms=RIG-PREFLIGHT-TIMEOUT-MS:
+        while not output.contains expected-marker:
+          data := port.in.read
+          if not data: throw "Serial port closed"
+          output += data.to-string-non-throwing
+    finally:
+      port.close
+  if error:
+    if output.size > 300: output = output[output.size - 300..]
+    print "Rig preflight failed for $name: expected $chip on $path; error: $error; last serial output: $(output.trim)"
+    throw RIG-PREFLIGHT-FAILED
+  print "Rig preflight $name: identified $chip on $path"
 
 with-tmp-dir [block]:
   dir := directory.mkdtemp "/tmp/esp-tester"
