@@ -51,10 +51,12 @@ make_image() {
   local fixture="$1"
   local envelope="$2"
   local name="$3"
+  local source="${TEMP_DIR}/${fixture}"
 
+  cp "${ROOT_DIR}/tests/qemu/${fixture}" "${source}"
   "${TOIT}" compile --snapshot --project-root "${TEMP_DIR}" \
     -o "${TEMP_DIR}/${name}.snapshot" \
-    "${ROOT_DIR}/tests/qemu/${fixture}"
+    "${source}"
   "${TOIT}" tool firmware --envelope="${envelope}" container install \
     -o "${TEMP_DIR}/${name}.envelope" \
     "${name}" "${TEMP_DIR}/${name}.snapshot"
