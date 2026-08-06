@@ -108,11 +108,13 @@ class SpiTargetResource : public EventQueueResource {
                     spi_host_device_t host_device,
                     QueueHandle_t event_queue,
                     size_t max_transfer_size,
-                    size_t buffer_alignment)
+                    size_t buffer_alignment,
+                    bool dma)
       : EventQueueResource(group, event_queue)
       , host_device_(host_device)
       , max_transfer_size_(max_transfer_size)
-      , buffer_alignment_(buffer_alignment) {
+      , buffer_alignment_(buffer_alignment)
+      , dma_(dma) {
     spinlock_initialize(&spinlock_);
   }
 
@@ -138,6 +140,7 @@ class SpiTargetResource : public EventQueueResource {
   uint8_t* receive_buffer() const { return rx_buffer_; }
   size_t receive_size() const { return receive_size_; }
   size_t transferred_bits() const { return transaction_.trans_len; }
+  bool dma() const { return dma_; }
 
   IRAM_ATTR void ready_from_isr() { signal_from_isr(kSpiTargetReadyState); }
   IRAM_ATTR void complete_from_isr() { signal_from_isr(kSpiTargetDoneState); }
@@ -165,6 +168,7 @@ class SpiTargetResource : public EventQueueResource {
   spi_host_device_t host_device_;
   const size_t max_transfer_size_;
   const size_t buffer_alignment_;
+  const bool dma_;
   bool initialized_ = false;
   bool operation_in_flight_ = false;
   spi_slave_transaction_t transaction_ = {};
