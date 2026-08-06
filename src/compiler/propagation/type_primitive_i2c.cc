@@ -21,6 +21,13 @@ namespace compiler {
 MODULE_TYPES(i2c, MODULE_I2C)
 
 TYPE_PRIMITIVE_ANY(init)
+TYPE_PRIMITIVE_ANY(target_init)
+TYPE_PRIMITIVE_ANY(target_create)
+TYPE_PRIMITIVE_ANY(target_close)
+TYPE_PRIMITIVE_ANY(target_receive)
+TYPE_PRIMITIVE_ANY(target_write)
+TYPE_PRIMITIVE_ANY(target_take_request_count)
+TYPE_PRIMITIVE_ANY(target_dropped_receive_count)
 TYPE_PRIMITIVE_ANY(bus_create)
 TYPE_PRIMITIVE_ANY(bus_close)
 TYPE_PRIMITIVE_ANY(bus_probe)

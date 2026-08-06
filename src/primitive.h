@@ -428,6 +428,13 @@ namespace toit {
 
 #define MODULE_I2C(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
+  PRIMITIVE(target_init, 0)                  \
+  PRIMITIVE(target_create, 10)               \
+  PRIMITIVE(target_close, 2)                 \
+  PRIMITIVE(target_receive, 1)               \
+  PRIMITIVE(target_write, 3)                 \
+  PRIMITIVE(target_take_request_count, 1)    \
+  PRIMITIVE(target_dropped_receive_count, 1) \
   PRIMITIVE(bus_create, 4)                   \
   PRIMITIVE(bus_close, 1)                    \
   PRIMITIVE(bus_probe, 3)                    \
@@ -1117,6 +1124,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_GpioResourceGroup(N, name)   MAKE_UNPACKING_MACRO(GpioResourceGroup, N, name)
 #define _A_T_TouchResourceGroup(N, name)  MAKE_UNPACKING_MACRO(TouchResourceGroup, N, name)
 #define _A_T_I2cResourceGroup(N, name)    MAKE_UNPACKING_MACRO(I2cResourceGroup, N, name)
+#define _A_T_I2cTargetResourceGroup(N, name) MAKE_UNPACKING_MACRO(I2cTargetResourceGroup, N, name)
 #define _A_T_I2sResourceGroup(N, name)    MAKE_UNPACKING_MACRO(I2sResourceGroup, N, name)
 #define _A_T_PersistentResourceGroup(N, name) MAKE_UNPACKING_MACRO(PersistentResourceGroup, N, name)
 #define _A_T_PipeResourceGroup(N, name)   MAKE_UNPACKING_MACRO(PipeResourceGroup, N, name)
@@ -1151,6 +1159,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_ImageOutputStream(N, name)   MAKE_UNPACKING_MACRO(ImageOutputStream, N, name)
 #define _A_T_I2cBusResource(N, name)      MAKE_UNPACKING_MACRO(I2cBusResource, N, name)
 #define _A_T_I2cDeviceResource(N, name)   MAKE_UNPACKING_MACRO(I2cDeviceResource, N, name)
+#define _A_T_I2cTargetResource(N, name)   MAKE_UNPACKING_MACRO(I2cTargetResource, N, name)
 #define _A_T_IntResource(N, name)         MAKE_UNPACKING_MACRO(IntResource, N, name)
 #define _A_T_LookupResult(N, name)        MAKE_UNPACKING_MACRO(LookupResult, N, name)
 #define _A_T_LwipSocket(N, name)          MAKE_UNPACKING_MACRO(LwipSocket, N, name)
