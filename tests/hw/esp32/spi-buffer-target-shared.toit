@@ -3,6 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import monitor
 import spi
 import system
 import uart
@@ -125,6 +126,47 @@ test-board1:
   expect-equals 0 (dropped port)
   16.repeat: | index/int |
     expect-equals (pattern 16 (0x70 + index)) (take-received port)
+
+  print "SPI controller: asynchronous transfer and bus acquisition"
+  close-target port
+  device.close
+  create-target port
+      --mode=0
+      --buffer-size=64
+      --queue-depth=2
+      --fill-byte=0x6d
+      --initial=#[ ]
+      --use-mosi
+      --use-miso=false
+      --dma=false
+  device = create-device bus --mode=0 --frequency=50_000
+  large-write := pattern 64 0x37
+  ran-while-waiting := monitor.Latch
+  task::
+    sleep --ms=2
+    ran-while-waiting.set true
+  device.write large-write
+  // At 50kHz this transaction takes over 10ms. The other Toit task can only
+  // run before completion if the native transfer primitive returns immediately.
+  expect ran-while-waiting.has-value
+  expect-equals large-write (take-received port)
+
+  // Try-acquire must not leave a pending bus-lock request when a background
+  // transfer owns the peripheral. Repeated contention also checks that every
+  // failed attempt is rolled back before the next one.
+  3.repeat:
+    transfer-started := monitor.Latch
+    transfer-done := monitor.Latch
+    task::
+      transfer-started.set true
+      device.write large-write
+      transfer-done.set true
+    transfer-started.get
+    sleep --ms=2
+    device.with-reserved-bus:
+      null
+    transfer-done.get
+    expect-equals large-write (take-received port)
 
   print "SPI buffer target: DMA directions and maximum size"
   close-target port
