@@ -30,6 +30,7 @@ namespace toit {
   fn(EthernetIpEvents)                  \
   fn(SpiDevice)                         \
   fn(SpiTargetResource)                 \
+  fn(SpiBufferTargetResource)           \
   fn(X509Certificate)                   \
   fn(AesContext)                        \
   fn(FlashRegion)                       \

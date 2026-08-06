@@ -476,6 +476,14 @@ namespace toit {
   PRIMITIVE(target_close, 2)                 \
   PRIMITIVE(target_transfer_start, 4)        \
   PRIMITIVE(target_transfer_finish, 3)       \
+  PRIMITIVE(buffer_target_create, 11)        \
+  PRIMITIVE(buffer_target_close, 2)          \
+  PRIMITIVE(buffer_target_get, 2)            \
+  PRIMITIVE(buffer_target_set, 3)            \
+  PRIMITIVE(buffer_target_read, 3)           \
+  PRIMITIVE(buffer_target_write, 3)          \
+  PRIMITIVE(buffer_target_receive, 2)        \
+  PRIMITIVE(buffer_target_dropped_receive_count, 1) \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(device, 9)                       \
   PRIMITIVE(device_close, 2)                 \
@@ -1217,6 +1225,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_I2sResource(N, name)         MAKE_UNPACKING_MACRO(I2sResource, N, name)
 #define _A_T_SpiResource(N, name)         MAKE_UNPACKING_MACRO(SpiResource, N, name)
 #define _A_T_SpiTargetResource(N, name)   MAKE_UNPACKING_MACRO(SpiTargetResource, N, name)
+#define _A_T_SpiBufferTargetResource(N, name) MAKE_UNPACKING_MACRO(SpiBufferTargetResource, N, name)
 #define _A_T_AdcResource(N, name)         MAKE_UNPACKING_MACRO(AdcResource, N, name)
 #define _A_T_DacResource(N, name)         MAKE_UNPACKING_MACRO(DacResource, N, name)
 #define _A_T_PmLockResource(N, name)      MAKE_UNPACKING_MACRO(PmLockResource, N, name)
