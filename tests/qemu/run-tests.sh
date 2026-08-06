@@ -52,7 +52,7 @@ make_image() {
   local envelope="$2"
   local name="$3"
 
-  "${TOIT}" compile --snapshot --project-root "${ROOT_DIR}/tests/qemu" \
+  "${TOIT}" compile --snapshot --project-root "${TEMP_DIR}" \
     -o "${TEMP_DIR}/${name}.snapshot" \
     "${ROOT_DIR}/tests/qemu/${fixture}"
   "${TOIT}" tool firmware --envelope="${envelope}" container install \
