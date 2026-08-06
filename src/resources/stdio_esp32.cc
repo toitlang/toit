@@ -37,10 +37,9 @@ static const word STDIN_READ_EVENT = 1 << 0;
 static const int STDIN_BUFFER_SIZE = 1024;
 static const int UART_STDIN_RX_BUFFER_SIZE = 4096;
 
-enum StdinBackend {
-  STDIN_BACKEND_UART,
-  STDIN_BACKEND_USB_SERIAL_JTAG,
-};
+// ESP-IDF selects exactly one primary console. In particular,
+// CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG_ENABLED may additionally enable USB
+// Serial/JTAG output, but it does not select it as the standard streams.
 
 #ifdef CONFIG_ESP_CONSOLE_UART
 static int console_uart_stdin_users = 0;
@@ -161,50 +160,31 @@ class StdinResource : public EventQueueResource {
  public:
   TAG(StdinResource);
 
-  StdinResource(ResourceGroup* group, QueueHandle_t queue, StdinBackend backend)
-      : EventQueueResource(group, queue)
-      , backend_(backend) {}
+  StdinResource(ResourceGroup* group, QueueHandle_t queue)
+      : EventQueueResource(group, queue) {}
 
   ~StdinResource() override {
-    switch (backend_) {
 #ifdef CONFIG_ESP_CONSOLE_UART
-      case STDIN_BACKEND_UART:
-        release_uart_stdin();
-        return;
+    release_uart_stdin();
+#elif defined(CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG)
+    release_usb_serial_jtag_stdin();
+#else
+    UNREACHABLE();
 #endif
-#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
-      case STDIN_BACKEND_USB_SERIAL_JTAG:
-        release_usb_serial_jtag_stdin();
-        return;
-#endif
-      default:
-        UNREACHABLE();
-    }
   }
 
   bool receive_event(word* data) override {
-    switch (backend_) {
 #ifdef CONFIG_ESP_CONSOLE_UART
-      case STDIN_BACKEND_UART: {
-        uart_event_t event;
-        if (!xQueueReceive(queue(), &event, 0)) return false;
-        *data = event.type;
-        return true;
-      }
+    uart_event_t event;
+    if (!xQueueReceive(queue(), &event, 0)) return false;
+    *data = event.type;
+    return true;
+#elif defined(CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG)
+    return xQueueReceive(queue(), data, 0);
+#else
+    UNREACHABLE();
 #endif
-#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
-      case STDIN_BACKEND_USB_SERIAL_JTAG:
-        return xQueueReceive(queue(), data, 0);
-#endif
-      default:
-        UNREACHABLE();
-    }
   }
-
-  StdinBackend backend() const { return backend_; }
-
- private:
-  const StdinBackend backend_;
 };
 
 class StdinResourceGroup : public ResourceGroup {
@@ -215,15 +195,12 @@ class StdinResourceGroup : public ResourceGroup {
       : ResourceGroup(process, event_source) {}
 
   uint32_t on_event(Resource* resource, word data, uint32_t state) override {
-#ifdef CONFIG_ESP_CONSOLE_UART
-    auto stdin_resource = static_cast<StdinResource*>(resource);
-    if (stdin_resource->backend() == STDIN_BACKEND_UART) {
-      // Error events do not carry data, but must still wake a pending read so
-      // it can retry instead of waiting indefinitely.
-      return state | STDIN_READ_EVENT;
-    }
-#else
     USE(resource);
+#ifdef CONFIG_ESP_CONSOLE_UART
+    USE(data);
+    // Error events do not carry data, but must still wake a pending read so it
+    // can retry instead of waiting indefinitely.
+    return state | STDIN_READ_EVENT;
 #endif
     return state | static_cast<uint32_t>(data);
   }
@@ -252,13 +229,10 @@ PRIMITIVE(stdin_open) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   QueueHandle_t queue = null;
-  StdinBackend backend;
   esp_err_t err;
 #ifdef CONFIG_ESP_CONSOLE_UART
-  backend = STDIN_BACKEND_UART;
   err = acquire_uart_stdin(&queue);
 #else
-  backend = STDIN_BACKEND_USB_SERIAL_JTAG;
   err = acquire_usb_serial_jtag_stdin(&queue);
 #endif
   if (err != ESP_OK) return Primitive::os_error(err, process);
@@ -273,7 +247,7 @@ PRIMITIVE(stdin_open) {
 #endif
   } };
 
-  auto resource = _new StdinResource(group, queue, backend);
+  auto resource = _new StdinResource(group, queue);
   if (resource == null) FAIL(MALLOC_FAILED);
   handed_to_resource = true;
   group->register_resource(resource);

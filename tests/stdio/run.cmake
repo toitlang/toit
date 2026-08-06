@@ -8,9 +8,12 @@ execute_process(
   OUTPUT_VARIABLE ACTUAL_STDOUT
   ERROR_VARIABLE ACTUAL_STDERR
   RESULT_VARIABLE RESULT
+  TIMEOUT 30
   )
 
-if(NOT RESULT EQUAL 0)
+if(RESULT MATCHES "[Tt]imeout")
+  message(FATAL_ERROR "stdio test timed out:\n${ACTUAL_STDERR}")
+elseif(NOT RESULT EQUAL 0)
   message(FATAL_ERROR "stdio test failed with exit code ${RESULT}:\n${ACTUAL_STDERR}")
 endif()
 

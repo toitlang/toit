@@ -154,6 +154,8 @@ static Object* write_on_std(const uint8* bytes, size_t length, bool is_stdout, b
 
 #endif
 
+// These primitives are deliberately synchronous. They are shared by print_
+// and io.stdout/io.stderr and retain the platform's printf-like behavior.
 PRIMITIVE(write_on_stdout) {
   ARGS(Blob, message, bool, add_newline);
   bool is_stdout;

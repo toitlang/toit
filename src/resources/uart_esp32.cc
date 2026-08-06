@@ -269,6 +269,10 @@ static QueueHandle_t console_uart_queue = null;
 esp_err_t console_uart_acquire(int rx_buffer_size, int tx_buffer_size, QueueHandle_t* queue) {
   Locker locker(OS::global_mutex());
   if (console_uart_users > 0) {
+    // Buffer sizes only affect the first driver installation. Stdin requests
+    // the largest sizes exposed by Port.console. If Port.console installs its
+    // smaller default receive buffer first, stdin still works and makes no
+    // public buffer-size guarantee.
     console_uart_users++;
     *queue = console_uart_queue;
     return ESP_OK;

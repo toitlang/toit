@@ -8,6 +8,15 @@ import .data
 import .reader
 import .writer
 
+/**
+Provides direct access to the platform's standard input, output, and error
+  streams.
+
+On host platforms, the `host` package provides closeable, terminal-aware
+  versions of the same streams. Both packages access the same underlying
+  platform streams.
+*/
+
 STDIN-READ-STATE_ ::= 1 << 0
 
 stdin-group_ ::= stdin-init_
@@ -24,6 +33,9 @@ On ESP32, input is supported when ESP-IDF's primary console is a UART or USB
 The stream cannot be closed. It shares the platform input with other standard
   input APIs. If multiple readers or containers read concurrently, the first
   reader to consume available data receives it.
+
+On host platforms, use `host.stdin` when closing the stream or querying whether
+  it is a terminal is required.
 */
 stdin -> Reader:
   return stdin-instance_
@@ -32,7 +44,11 @@ stdin -> Reader:
 Returns the standard output stream.
 
 Writes go directly to the platform's standard output and do not pass through
-  the print service. The stream cannot be closed.
+  the print service. A write is synchronous and may block in the underlying
+  platform operation. The stream cannot be closed.
+
+On host platforms, use `host.stdout` when closing the stream or querying
+  whether it is a terminal is required.
 */
 stdout -> Writer:
   return stdout-instance_
@@ -41,7 +57,11 @@ stdout -> Writer:
 Returns the standard error stream.
 
 Writes go directly to the platform's standard error and do not pass through
-  the print service. The stream cannot be closed.
+  the print service. A write is synchronous and may block in the underlying
+  platform operation. The stream cannot be closed.
+
+On host platforms, use `host.stderr` when closing the stream or querying
+  whether it is a terminal is required.
 */
 stderr -> Writer:
   return stderr-instance_
@@ -69,6 +89,8 @@ class StandardWriter_ extends Writer:
   try-write_ data/Data from/int to/int -> int:
     if from == to: return 0
     bytes := ByteArray.from data from to
+    // Deliberately use the synchronous primitives also used by 'print_'. This
+    // gives direct standard-stream writes the same printf-like semantics.
     if is-stdout_:
       write-on-stdout_ bytes false
     else:
