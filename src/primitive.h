@@ -488,7 +488,8 @@ namespace toit {
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(device, 9)                       \
   PRIMITIVE(device_close, 2)                 \
-  PRIMITIVE(transfer, 9)                     \
+  PRIMITIVE(transfer_start, 9)               \
+  PRIMITIVE(transfer_finish, 4)              \
   PRIMITIVE(acquire_bus, 1)                  \
   PRIMITIVE(release_bus, 1)                  \
 

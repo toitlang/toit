@@ -493,9 +493,9 @@ class Bus:
   Mutex to serialize reservation attempts of multiple devices.
   See $Device.with-reserved-bus.
 
-  When trying to acquire the bus, the ESP-IDF currently (as of 2022-07-19) does not allow to set a timeout.
-    This means that the program would be stuck in the primitive. We thus use this mutex to avoid that
-    situation.
+  ESP-IDF's blocking acquisition API does not support a finite timeout. Toit
+    instead tries without waiting and yields between attempts; this mutex keeps
+    those attempts serialized across devices on the bus.
   */
   reservation-mutex_/monitor.Mutex ::= monitor.Mutex
 
@@ -738,22 +738,34 @@ abstract class DeviceBase_ implements Device:
 
 /** Device connected to an SPI bus. */
 class Device_ extends DeviceBase_:
+  static TRANSFER-DONE_ ::= 1 << 0
+
   spi_/Bus := ?
   device_ := ?
+  state_/monitor.ResourceState_ ::= ?
+  transfer-mutex_/monitor.Mutex ::= monitor.Mutex
   owning-bus_/bool := false
 
   registers_/Registers? := null
 
   /** Deprecated. Use $Bus.device. */
   constructor .spi_ .device_:
+    state_ = monitor.ResourceState_ spi_.spi_ device_
+    add-finalizer this:: close
 
   constructor.init_ .spi_ .device_:
+    state_ = monitor.ResourceState_ spi_.spi_ device_
+    add-finalizer this:: close
 
   /** See $Device.close. */
   close:
-    if device_:
-      spi-device-close_ spi_.spi_ device_
-      device_ = null
+    transfer-mutex_.do:
+      if not device_: return
+      critical-do:
+        state_.dispose
+        spi-device-close_ spi_.spi_ device_
+        device_ = null
+        remove-finalizer this
 
   /** See $Device.transfer. */
   transfer
@@ -766,12 +778,23 @@ class Device_ extends DeviceBase_:
       --address/int=0
       --keep-cs-active/bool=false:
     if keep-cs-active and not owning-bus_: throw "INVALID_STATE"
-    return spi-transfer_ device_ data command address from to read dc keep-cs-active
+    transfer-mutex_.do:
+      if not device_: throw "CLOSED"
+      // Once queued, the ESP-IDF transaction cannot be canceled. Always wait
+      // for completion and release its native buffers.
+      critical-do --no-respect-deadline:
+        state_.clear-state TRANSFER-DONE_
+        spi-transfer-start_ device_ data command address from to read dc keep-cs-active
+        state_.wait-for-state TRANSFER-DONE_
+        // The post callback wakes this task slightly before ESP-IDF retires
+        // the descriptor. Poll with a zero timeout until its return queue is
+        // ready; no primitive waits for the driver.
+        while not spi-transfer-finish_ device_ data from read: yield
 
   /** See $Device.with-reserved-bus. */
   with-reserved-bus [block]:
     spi_.reservation-mutex_.do:
-      spi-acquire-bus_ device_
+      while not spi-acquire-bus_ device_: yield
       owning-bus_ = true
       try:
         block.call
@@ -992,8 +1015,11 @@ spi-device_ spi cs/int dc/int command-bits/int address-bits/int frequency/int mo
 spi-device-close_ spi device:
   #primitive.spi.device-close
 
-spi-transfer_ device data/ByteArray command/int address/int from to read/bool dc/int keep-cs-active/bool:
-  #primitive.spi.transfer
+spi-transfer-start_ device data/ByteArray command/int address/int from to read/bool dc/int keep-cs-active/bool:
+  #primitive.spi.transfer-start
+
+spi-transfer-finish_ device data/ByteArray from/int read/bool:
+  #primitive.spi.transfer-finish
 
 spi-acquire-bus_ device:
   #primitive.spi.acquire-bus

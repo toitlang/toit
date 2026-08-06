@@ -24,6 +24,7 @@
 #include "../os.h"
 #include "../objects.h"
 #include "../resource.h"
+#include "../event_sources/ev_queue_esp32.h"
 
 #include "gpio_esp32.h"
 
@@ -35,6 +36,10 @@ class SpiResourceGroup : public ResourceGroup {
   SpiResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device);
   ~SpiResourceGroup() override;
 
+  uint32_t on_event(Resource* resource, word data, uint32_t state) override {
+    return state | data;
+  }
+
   spi_host_device_t host_device() { return host_device_; }
 
   // GPIO pins reserved by this bus (mosi/miso/clock).
@@ -45,40 +50,58 @@ class SpiResourceGroup : public ResourceGroup {
   GpioPins owned_pins_;
 };
 
-class SpiDevice : public Resource {
- public:
-  static const int BUFFER_SIZE = 16;
+const word kSpiControllerDoneState = 1 << 0;
 
+class SpiDevice : public EventQueueResource {
+ public:
   TAG(SpiDevice);
-  SpiDevice(ResourceGroup* group, spi_device_handle_t handle, int dc)
-    : Resource(group)
+  static const size_t INLINE_TX_SIZE = 4;
+  SpiDevice(ResourceGroup* group,
+            spi_device_handle_t handle,
+            QueueHandle_t event_queue,
+            int dc)
+    : EventQueueResource(group, event_queue)
     , handle_(handle)
     , dc_(dc) {}
 
-  ~SpiDevice() {
-    spi_bus_remove_device(handle_);
-    // Release any GPIO pins this device reserved (cs/dc).
-    owned_pins_.release();
-  }
+  ~SpiDevice() override;
 
   spi_device_handle_t handle() { return handle_; }
 
   int dc() { return dc_; }
+  int dc_value() const { return dc_value_; }
+
+  bool operation_in_flight() const { return operation_in_flight_; }
+  spi_transaction_t* transaction() { return &transaction_; }
+  size_t transfer_size() const { return transfer_size_; }
+  uint8_t* receive_buffer() const { return rx_buffer_; }
+
+  void prepare_operation(const uint8_t* tx_data,
+                         uint8_t* tx_buffer,
+                         uint8_t* rx_buffer,
+                         size_t transfer_size,
+                         uint32_t flags,
+                         uint16_t command,
+                         uint64_t address,
+                         int dc_value);
+  void finish_operation();
+
+  IRAM_ATTR void complete_from_isr();
+  bool receive_event(word* data) override;
 
   // GPIO pins reserved by this device (cs/dc).
   GpioPins& owned_pins() { return owned_pins_; }
-
-  uint8_t* buffer() {
-    return buffer_;
-  }
 
  private:
   spi_device_handle_t handle_;
   int dc_;
   GpioPins owned_pins_;
-
-  // Pre-allocated buffer for small transfers. Must be 4-byte aligned.
-  alignas(4) uint8_t buffer_[BUFFER_SIZE];
+  bool operation_in_flight_ = false;
+  spi_transaction_t transaction_ = {};
+  uint8_t* tx_buffer_ = null;
+  uint8_t* rx_buffer_ = null;
+  size_t transfer_size_ = 0;
+  int dc_value_ = 0;
 };
 
 } // namespace toit
