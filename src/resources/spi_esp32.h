@@ -20,12 +20,16 @@
 #ifdef TOIT_FREERTOS
 
 #include <driver/spi_master.h>
+#include <driver/spi_slave.h>
+#include <freertos/queue.h>
 
 #include "../os.h"
 #include "../objects.h"
 #include "../resource.h"
 
 #include "gpio_esp32.h"
+
+#include "../event_sources/ev_queue_esp32.h"
 
 namespace toit {
 
@@ -79,6 +83,97 @@ class SpiDevice : public Resource {
 
   // Pre-allocated buffer for small transfers. Must be 4-byte aligned.
   alignas(4) uint8_t buffer_[BUFFER_SIZE];
+};
+
+const word kSpiTargetReadyState = 1 << 0;
+const word kSpiTargetDoneState = 1 << 1;
+
+class SpiTargetResourceGroup : public ResourceGroup {
+ public:
+  TAG(SpiTargetResourceGroup);
+
+  SpiTargetResourceGroup(Process* process, EventSource* event_source)
+      : ResourceGroup(process, event_source) {}
+
+  uint32_t on_event(Resource* resource, word data, uint32_t state) override {
+    return state | data;
+  }
+};
+
+class SpiTargetResource : public EventQueueResource {
+ public:
+  TAG(SpiTargetResource);
+
+  SpiTargetResource(SpiTargetResourceGroup* group,
+                    spi_host_device_t host_device,
+                    QueueHandle_t event_queue,
+                    size_t max_transfer_size,
+                    size_t buffer_alignment)
+      : EventQueueResource(group, event_queue)
+      , host_device_(host_device)
+      , max_transfer_size_(max_transfer_size)
+      , buffer_alignment_(buffer_alignment) {
+    spinlock_initialize(&spinlock_);
+  }
+
+  ~SpiTargetResource() override;
+
+  spi_host_device_t host_device() const { return host_device_; }
+  size_t max_transfer_size() const { return max_transfer_size_; }
+  size_t buffer_alignment() const { return buffer_alignment_; }
+  GpioPins& owned_pins() { return owned_pins_; }
+
+  bool initialized() const { return initialized_; }
+  void set_initialized() { initialized_ = true; }
+
+  bool operation_in_flight() const { return operation_in_flight_; }
+  spi_slave_transaction_t* transaction() { return &transaction_; }
+
+  void prepare_operation(uint8_t* tx_buffer,
+                         uint8_t* rx_buffer,
+                         size_t receive_size,
+                         size_t transfer_size);
+  void finish_operation();
+
+  uint8_t* receive_buffer() const { return rx_buffer_; }
+  size_t receive_size() const { return receive_size_; }
+  size_t transferred_bits() const { return transaction_.trans_len; }
+
+  IRAM_ATTR void ready_from_isr() { signal_from_isr(kSpiTargetReadyState); }
+  IRAM_ATTR void complete_from_isr() { signal_from_isr(kSpiTargetDoneState); }
+
+  bool receive_event(word* data) override {
+    word unused;
+    if (xQueueReceive(queue(), &unused, 0) != pdTRUE) return false;
+    portENTER_CRITICAL(&spinlock_);
+    *data = pending_event_;
+    pending_event_ = 0;
+    portEXIT_CRITICAL(&spinlock_);
+    return true;
+  }
+
+ private:
+  IRAM_ATTR void signal_from_isr(word event) {
+    BaseType_t higher_was_woken = pdFALSE;
+    portENTER_CRITICAL_ISR(&spinlock_);
+    pending_event_ |= event;
+    portEXIT_CRITICAL_ISR(&spinlock_);
+    word payload = 0;
+    xQueueSendFromISR(queue(), &payload, &higher_was_woken);
+  }
+
+  spi_host_device_t host_device_;
+  const size_t max_transfer_size_;
+  const size_t buffer_alignment_;
+  bool initialized_ = false;
+  bool operation_in_flight_ = false;
+  spi_slave_transaction_t transaction_ = {};
+  uint8_t* tx_buffer_ = null;
+  uint8_t* rx_buffer_ = null;
+  size_t receive_size_ = 0;
+  spinlock_t spinlock_;
+  word pending_event_ = 0;
+  GpioPins owned_pins_;
 };
 
 } // namespace toit

@@ -6,6 +6,13 @@ import gpio
 import io
 import serial
 import monitor
+import system
+
+/** Default maximum transaction size for an SPI target. */
+DEFAULT-TARGET-MAX-TRANSFER-SIZE ::= 4_092
+
+/** Maximum transaction size for an SPI target without DMA. */
+TARGET-NON-DMA-MAX-TRANSFER-SIZE ::= 64
 
 /**
 SPI is a serial communication bus able to address multiple devices along a main
@@ -54,6 +61,198 @@ main:
   device.close
 ```
 */
+
+/**
+An ESP32 SPI target that exchanges one transaction at a time with a controller.
+
+The $exchange method arms the peripheral before suspending the calling Toit
+  task. Its native primitive calls never wait for the controller or for queue
+  space.
+
+SPI does not define a standard register protocol. Protocols that interpret the
+  first received bytes as commands or addresses should be built on top of this
+  transaction API.
+
+The ordinary ESP32 SPI target peripheral does not provide progress watermarks
+  within one transaction. Large continuously clocked streams therefore need a
+  separate chunked protocol in which the controller pauses between chunks or
+  observes a ready signal.
+*/
+class Target:
+  static READY-STATE_ ::= 1 << 0
+  static DONE-STATE_ ::= 1 << 1
+
+  resource_ := ?
+  state_/monitor.ResourceState_ ::= ?
+  mutex_/monitor.Mutex ::= monitor.Mutex
+  max-transfer-size/int ::= ?
+  exchange-in-flight_/bool := false
+
+  /**
+  Constructs an SPI target.
+
+  The $clock and $cs GPIOs are required. At least one of $mosi and $miso must
+    be provided; pass null for an unused data direction. All pins are reserved
+    until $close is called.
+
+  $mode selects clock polarity and phase in the range 0 through 3.
+  $transmit-lsb-first and $receive-lsb-first independently select the bit order
+    used on MISO and MOSI, respectively.
+
+  With $dma enabled, transactions use preallocated DMA-capable buffers and can
+    be as large as $max-transfer-size. Without DMA, the ESP32 peripheral limits
+    transactions to $TARGET-NON-DMA-MAX-TRANSFER-SIZE bytes.
+
+  On the classic ESP32, target DMA cannot reliably receive and transmit at the
+    same time. DMA reception is also unavailable in modes 1 and 3. Use
+    non-DMA transactions of at most $TARGET-NON-DMA-MAX-TRANSFER-SIZE bytes,
+    or configure only one data direction. These restrictions do not apply to
+    newer ESP32 variants.
+  */
+  constructor
+      --mosi/any=null
+      --miso/any=null
+      --clock/any
+      --cs/any
+      --mode/int=0
+      --transmit-lsb-first/bool=false
+      --receive-lsb-first/bool=false
+      --.max-transfer-size/int=DEFAULT-TARGET-MAX-TRANSFER-SIZE
+      --dma/bool=true:
+    if mode < 0 or mode > 3: throw "INVALID_ARGUMENT"
+    if mosi == null and miso == null: throw "INVALID_ARGUMENT"
+    if max-transfer-size <= 0: throw "INVALID_ARGUMENT"
+    if not dma and max-transfer-size > TARGET-NON-DMA-MAX-TRANSFER-SIZE:
+      throw "INVALID_ARGUMENT"
+    if dma
+        and mosi != null
+        and system.architecture == system.ARCHITECTURE-ESP32:
+      if miso != null or (mode & 1) != 0: throw "INVALID_ARGUMENT"
+
+    resource_ = spi-target-create_
+        spi-target-resource-group_
+        (gpio.to-pin-num_ mosi)
+        (gpio.to-pin-num_ miso)
+        (gpio.to-pin-num_ clock)
+        (gpio.to-pin-num_ cs)
+        mode
+        transmit-lsb-first
+        receive-lsb-first
+        max-transfer-size
+        dma
+    state_ = monitor.ResourceState_ spi-target-resource-group_ resource_
+    add-finalizer this:: finalize_
+
+  /**
+  Arms and waits for one full-duplex SPI transaction.
+
+  Up to $receive-size bytes received on MOSI are returned. If the controller
+    ends the transaction earlier, the returned array is correspondingly
+    shorter. The target sends $transmit on MISO and uses $fill-byte for any
+    remaining clocks. The maximum of the transmit and receive sizes is the
+    maximum number of bytes accepted for this transaction.
+
+  Waiting suspends only the calling Toit task. The exchange cannot be canceled
+    after it has armed the peripheral.
+  */
+  exchange
+      transmit/ByteArray=#[ ]
+      --receive-size/int=transmit.size
+      --fill-byte/int=0xff
+      -> ByteArray:
+    pending := start-exchange transmit
+        --receive-size=receive-size
+        --fill-byte=fill-byte
+    return pending.wait
+
+  /**
+  Arms one full-duplex transaction and returns once the peripheral is ready.
+
+  The returned $PendingExchange can be used to wait for completion. Splitting
+    arming from completion lets a target assert an application-level ready
+    signal before a controller starts generating clocks.
+  */
+  start-exchange
+      transmit/ByteArray=#[ ]
+      --receive-size/int=transmit.size
+      --fill-byte/int=0xff
+      -> PendingExchange:
+    if receive-size < 0: throw "OUT_OF_RANGE"
+    if not 0 <= fill-byte <= 0xff: throw "OUT_OF_RANGE"
+    transfer-size := transmit.size > receive-size ? transmit.size : receive-size
+    if transfer-size <= 0 or transfer-size > max-transfer-size: throw "OUT_OF_RANGE"
+
+    return mutex_.do:
+      if not resource_: throw "CLOSED"
+      if exchange-in-flight_: throw "INVALID_STATE"
+
+      // Allocate everything managed by the Toit heap before the native
+      // transaction owns DMA buffers and can complete asynchronously.
+      receive-buffer := ByteArray receive-size
+      pending := PendingExchange_ this receive-buffer
+
+      exchange-in-flight_ = true
+      successfully-armed := false
+      try:
+        state_.clear-state READY-STATE_ | DONE-STATE_
+        spi-target-transfer-start_ resource_ transmit receive-size fill-byte
+        // The native driver cannot disarm a transaction safely. Always wait
+        // until it is mounted before returning the pending exchange.
+        critical-do --no-respect-deadline:
+          state_.wait-for-state READY-STATE_
+        successfully-armed = true
+        return pending
+      finally:
+        if not successfully-armed: exchange-in-flight_ = false
+
+  /** Closes the target and releases its peripheral, pins, and native buffers. */
+  close -> none:
+    mutex_.do:
+      if not resource_: return
+      if exchange-in-flight_: throw "INVALID_STATE"
+      critical-do:
+        state_.dispose
+        spi-target-close_ spi-target-resource-group_ resource_
+        resource_ = null
+        remove-finalizer this
+
+  finish-exchange_ pending/PendingExchange_ -> ByteArray:
+    return mutex_.do:
+      if not resource_: throw "CLOSED"
+      if not exchange-in-flight_: throw "INVALID_STATE"
+      critical-do --no-respect-deadline:
+        state_.wait-for-state DONE-STATE_
+        size := spi-target-transfer-finish_ resource_ pending.receive-buffer_
+        exchange-in-flight_ = false
+        return pending.receive-buffer_.copy 0 size
+
+  finalize_ -> none:
+    // An armed ESP-IDF transaction cannot be canceled. Leave the native
+    // resource registered so process teardown can release it safely.
+    if exchange-in-flight_: return
+    close
+
+/** A transaction armed by $(Target.start-exchange). */
+interface PendingExchange:
+  /**
+  Waits for the controller transaction and returns the bytes received.
+
+  Every pending exchange must eventually be waited for. Until then its target
+    remains busy and cannot be closed.
+  */
+  wait -> ByteArray
+
+class PendingExchange_ implements PendingExchange:
+  target_/Target
+  receive-buffer_/ByteArray
+  consumed_/bool := false
+
+  constructor .target_ .receive-buffer_:
+
+  wait -> ByteArray:
+    if consumed_: throw "INVALID_STATE"
+    consumed_ = true
+    return target_.finish-exchange_ this
 
 /**
 Bus for communicating using SPI.
@@ -128,6 +327,12 @@ class Bus:
 
   Passing a $gpio.Pin as $cs or $dc is deprecated; provide the integer GPIO
     number instead. The $gpio.Pin form will be removed in a future release.
+
+  $cs-setup-cycles requests that CS be active for the given number of SPI clock
+    cycles before the first clock edge. ESP-IDF only supports this option for
+    half-duplex transactions, except for a limited one-cycle case on the
+    classic ESP32. $cs-hold-cycles keeps CS active after the last clock edge.
+    Both values must be between 0 and 16.
   */
   // __TYPE-MIGRATION__ cs: gpio.Pin. Deprecated. Provide an integer instead.
   // __TYPE-MIGRATION__ cs: int?
@@ -140,15 +345,19 @@ class Bus:
       --mode/int=0
       --command-bits/int=0
       --address-bits/int=0
+      --cs-setup-cycles/int=0
+      --cs-hold-cycles/int=0
       -> Device:
     if mode < 0 or mode > 3: throw "Argument Error"
+    if not 0 <= cs-setup-cycles <= 16: throw "OUT_OF_RANGE"
+    if not 0 <= cs-hold-cycles <= 16: throw "OUT_OF_RANGE"
     cs-num := gpio.to-pin-num_ cs
     dc-num := gpio.to-pin-num_ dc
     // For a deprecated gpio.Pin the dc pin is configured here; for the new
     // integer API the primitive configures it as output.
     if dc is gpio.Pin: dc.configure --output
 
-    d := spi-device_ spi_ cs-num dc-num command-bits address-bits frequency mode
+    d := spi-device_ spi_ cs-num dc-num command-bits address-bits frequency mode cs-setup-cycles cs-hold-cycles
     return Device_.init_ this d
 
 /**
@@ -478,10 +687,41 @@ class Registers extends serial.Registers:
 spi-init_ mosi/int miso/int clock/int:
   #primitive.spi.init
 
+spi-target-resource-group_ ::= spi-target-init_
+
+spi-target-init_:
+  #primitive.spi.target-init
+
+spi-target-create_
+    group
+    mosi/int
+    miso/int
+    clock/int
+    cs/int
+    mode/int
+    transmit-lsb-first/bool
+    receive-lsb-first/bool
+    max-transfer-size/int
+    dma/bool:
+  #primitive.spi.target-create
+
+spi-target-close_ group target:
+  #primitive.spi.target-close
+
+spi-target-transfer-start_
+    target
+    transmit/ByteArray
+    receive-size/int
+    fill-byte/int:
+  #primitive.spi.target-transfer-start
+
+spi-target-transfer-finish_ target receive-buffer/ByteArray:
+  #primitive.spi.target-transfer-finish
+
 spi-close_ spi:
   #primitive.spi.close
 
-spi-device_ spi cs/int dc/int frequency/int mode/int command-bits/int address-bits/int:
+spi-device_ spi cs/int dc/int command-bits/int address-bits/int frequency/int mode/int cs-setup-cycles/int cs-hold-cycles/int:
   #primitive.spi.device
 
 spi-device-close_ spi device:
