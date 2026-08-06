@@ -41,16 +41,18 @@ namespace toit {
 static_assert(SOC_I2C_NUM <= I2C_EVENT_QUEUE_SIZE,
               "Increase I2C_EVENT_QUEUE_SIZE");
 
-// Should be lower than PROCESS_MAX_RUNTIME_US of scheduler.cc.
-// Synchronous operations should never take that long anyway.
-const int TOIT_I2C_SYNCHRONOUS_TIMEOUT_MS = 1000;
-
 class I2cResourceGroup : public ResourceGroup {
  public:
   TAG(I2cResourceGroup);
-  explicit I2cResourceGroup(Process* process)
-    : ResourceGroup(process) {}
+  I2cResourceGroup(Process* process, EventSource* event_source)
+      : ResourceGroup(process, event_source) {}
+
+  uint32_t on_event(Resource* resource, word data, uint32_t state) override {
+    return state | data;
+  }
 };
+
+const word kControllerDoneState = 1 << 0;
 
 const word kTargetReceiveState = 1 << 0;
 const word kTargetRequestState = 1 << 1;
@@ -170,7 +172,7 @@ class I2cTargetResource : public EventQueueResource {
   GpioPins owned_pins_;
 };
 
-class I2cRegisterTargetResource : public Resource {
+class I2cRegisterTargetResource : public EventQueueResource {
  public:
   TAG(I2cRegisterTargetResource);
 
@@ -179,7 +181,7 @@ class I2cRegisterTargetResource : public Resource {
                             uint8_t* registers,
                             uint32_t register_count,
                             uint32_t register_address_size)
-      : Resource(group)
+      : EventQueueResource(group, null)
       , handle_(handle)
       , registers_(registers)
       , register_count_(register_count)
@@ -272,19 +274,20 @@ class I2cBusResource;
 class I2cDeviceResource;
 typedef DoubleLinkedList<I2cDeviceResource, 99> DeviceList;
 
-class I2cDeviceResource : public Resource, public DeviceList::Element {
+class I2cDeviceResource : public EventQueueResource, public DeviceList::Element {
  public:
   TAG(I2cDeviceResource);
   I2cDeviceResource(I2cResourceGroup* group,
-                    I2cBusResource* bus,
-                    i2c_master_dev_handle_t handle)
-      : Resource(group)
+                    I2cBusResource* bus)
+      : EventQueueResource(group, null)
       , bus_(bus)
-      , handle_(handle) {}
+      , handle_(null) {}
 
   ~I2cDeviceResource() override;
 
   i2c_master_dev_handle_t handle() const { return handle_; }
+  I2cBusResource* bus() const { return bus_; }
+  void set_handle(i2c_master_dev_handle_t handle) { handle_ = handle; }
 
  private:
   friend class I2cBusResource;
@@ -292,19 +295,64 @@ class I2cDeviceResource : public Resource, public DeviceList::Element {
   i2c_master_dev_handle_t handle_;
 };
 
-class I2cBusResource : public Resource, public DeviceList {
+class I2cBusResource : public EventQueueResource, public DeviceList {
  public:
   TAG(I2cBusResource);
-  I2cBusResource(I2cResourceGroup* group, i2c_master_bus_handle_t handle)
-      : Resource(group)
-      , handle_(handle) {}
+  I2cBusResource(I2cResourceGroup* group, QueueHandle_t queue)
+      : EventQueueResource(group, queue)
+      , handle_(null) {}
 
   ~I2cBusResource() override;
 
   i2c_master_bus_handle_t handle() const { return handle_; }
+  void set_handle(i2c_master_bus_handle_t handle) { handle_ = handle; }
 
   void add_device(I2cDeviceResource* device);
   void remove_device(I2cDeviceResource* device);
+
+  IRAM_ATTR bool complete_from_isr(i2c_master_event_t event) {
+    completion_event_ = event;
+    BaseType_t higher_was_woken = pdFALSE;
+    word payload = kControllerDoneState;
+    xQueueSendFromISR(queue(), &payload, &higher_was_woken);
+    return higher_was_woken == pdTRUE;
+  }
+
+  bool receive_event(word* data) override {
+    return xQueueReceive(queue(), data, 0) == pdTRUE;
+  }
+
+  bool operation_in_flight() const { return operation_in_flight_; }
+
+  void prepare_operation(uint8_t* tx_buffer,
+                         uint8_t* rx_buffer,
+                         size_t rx_length,
+                         i2c_master_dev_handle_t probe_handle = null) {
+    ASSERT(!operation_in_flight_);
+    tx_buffer_ = tx_buffer;
+    rx_buffer_ = rx_buffer;
+    rx_length_ = rx_length;
+    probe_handle_ = probe_handle;
+    completion_event_ = I2C_EVENT_ALIVE;
+    operation_in_flight_ = true;
+  }
+
+  void cancel_prepared_operation() {
+    ASSERT(operation_in_flight_);
+    operation_in_flight_ = false;
+    tx_buffer_ = null;
+    rx_buffer_ = null;
+    rx_length_ = 0;
+    probe_handle_ = null;
+    completion_event_ = I2C_EVENT_ALIVE;
+  }
+
+  i2c_master_event_t completion_event() const { return completion_event_; }
+  uint8_t* tx_buffer() const { return tx_buffer_; }
+  uint8_t* rx_buffer() const { return rx_buffer_; }
+  size_t rx_length() const { return rx_length_; }
+
+  void finish_operation();
 
   GpioPins& owned_pins() { return owned_pins_; }
 
@@ -314,24 +362,36 @@ class I2cBusResource : public Resource, public DeviceList {
 
  private:
   i2c_master_bus_handle_t handle_;
+  volatile i2c_master_event_t completion_event_ = I2C_EVENT_ALIVE;
+  bool operation_in_flight_ = false;
+  uint8_t* tx_buffer_ = null;
+  uint8_t* rx_buffer_ = null;
+  size_t rx_length_ = 0;
+  i2c_master_dev_handle_t probe_handle_ = null;
   // GPIO pins reserved by this bus.
   GpioPins owned_pins_;
 };
 
 I2cDeviceResource::~I2cDeviceResource() {
-  if (bus_ != null) {
+  if (bus_ != null && handle_ != null) {
     bus_->remove_device(this);
   }
 }
 
 I2cBusResource::~I2cBusResource() {
+  // Controller operations run in a non-cancelable critical region until the
+  // completion primitive has released the callback context and native buffers.
+  // In particular, teardown must never try to abort an operation through
+  // i2c_master_bus_reset: that API can perform a synchronous bus clear.
+  ASSERT(!operation_in_flight_);
   while (!DeviceList::is_empty()) {
     // Removing the device doesn't delete the `I2cDeviceResource`, but only modifies
     // it so it doesn't have any handle anymore. The `I2cDeviceResource` still needs to
     // be deleted.
     remove_device(DeviceList::first());
   }
-  ESP_ERROR_CHECK(i2c_del_master_bus(handle()));
+  if (handle_ != null) ESP_ERROR_CHECK(i2c_del_master_bus(handle()));
+  vQueueDeleteWithCaps(queue());
   // Release any GPIO pins this bus reserved.
   owned_pins_.release();
 }
@@ -342,10 +402,24 @@ void I2cBusResource::add_device(I2cDeviceResource* device) {
 
 void I2cBusResource::remove_device(I2cDeviceResource* device) {
   ASSERT(device->bus_ == this);
+  i2c_master_event_callbacks_t callbacks = {};
+  i2c_master_register_event_callbacks(device->handle(), &callbacks, null);
   i2c_master_bus_rm_device(device->handle());
   device->bus_ = null;
   device->handle_ = null;
   DeviceList::unlink(device);
+}
+
+void I2cBusResource::finish_operation() {
+  ASSERT(operation_in_flight_);
+  if (probe_handle_ != null) {
+    i2c_master_event_callbacks_t callbacks = {};
+    i2c_master_register_event_callbacks(probe_handle_, &callbacks, null);
+    i2c_master_bus_rm_device(probe_handle_);
+  }
+  free(tx_buffer_);
+  free(rx_buffer_);
+  cancel_prepared_operation();
 }
 
 
@@ -355,7 +429,7 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  I2cResourceGroup* i2c = _new I2cResourceGroup(process);
+  I2cResourceGroup* i2c = _new I2cResourceGroup(process, EventQueueEventSource::instance());
   if (!i2c) {
     FAIL(MALLOC_FAILED);
   }
@@ -736,7 +810,17 @@ PRIMITIVE(bus_create) {
   int scl_num = reserver.decode_and_take(scl, &reserve_ok);
   if (!reserve_ok) FAIL(ALREADY_IN_USE);
 
-  bool handed_to_proxy = false;
+  QueueHandle_t event_queue = xQueueCreateWithCaps(
+      1, sizeof(word), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  if (event_queue == null) FAIL(MALLOC_FAILED);
+
+  auto resource = _new I2cBusResource(group, event_queue);
+  if (resource == null) {
+    vQueueDeleteWithCaps(event_queue);
+    FAIL(MALLOC_FAILED);
+  }
+  bool registered = false;
+  Defer delete_resource { [&] { if (!registered) delete resource; } };
 
   i2c_master_bus_config_t config = {
     .i2c_port = -1,  // Auto select.
@@ -745,7 +829,10 @@ PRIMITIVE(bus_create) {
     .clk_source = I2C_CLK_SRC_DEFAULT,
     .glitch_ignore_cnt = 7,
     .intr_priority = 0,
-    .trans_queue_depth = 0,
+    // Toit serializes operations before entering ESP-IDF, so the driver's
+    // queue is only used to enable completion callbacks. Keeping its depth at
+    // one also prevents calls from entering the driver's blocking queue path.
+    .trans_queue_depth = 1,
     .flags = {
       .enable_internal_pullup = pullup,
       .allow_pd = false,
@@ -755,10 +842,7 @@ PRIMITIVE(bus_create) {
   esp_err_t err = i2c_new_master_bus(&config, &handle);
   if (err == ESP_ERR_NOT_FOUND) FAIL(ALREADY_IN_USE);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  Defer del_bus { [&] { if (!handed_to_proxy) i2c_del_master_bus(handle); } };
-
-  auto resource = _new I2cBusResource(group, handle);
-  if (resource == null) FAIL(MALLOC_FAILED);
+  resource->set_handle(handle);
 
   // The reservation now belongs to the resource and is released on close.
   resource->owned_pins().adopt(reserver);
@@ -766,9 +850,18 @@ PRIMITIVE(bus_create) {
 
   group->register_resource(resource);
   proxy->set_external_address(resource);
-  handed_to_proxy = true;
+  registered = true;
 
   return proxy;
+}
+
+IRAM_ATTR static bool controller_done_handler(
+    i2c_master_dev_handle_t handle,
+    const i2c_master_event_data_t* event,
+    void* context) {
+  USE(handle);
+  auto bus = static_cast<I2cBusResource*>(context);
+  return bus->complete_from_isr(event->event);
 }
 
 PRIMITIVE(bus_close) {
@@ -780,17 +873,86 @@ PRIMITIVE(bus_close) {
 
 PRIMITIVE(bus_probe) {
   ARGS(I2cBusResource, resource, uint16, address, int, timeout_ms);
+  if (address > 0x7f || timeout_ms < 0) FAIL(INVALID_ARGUMENT);
+  if (resource->operation_in_flight()) FAIL(INVALID_STATE);
 
-  esp_err_t err = i2c_master_probe(resource->handle(), address, timeout_ms);
-  return BOOL(err == ESP_OK);
+  // Keep the explicit address byte alive until the asynchronous transaction
+  // completes.  Allocating it first also leaves all later error paths free to
+  // report ESP_ERR_NO_MEM synchronously and retry the primitive safely.
+  uint8_t* address_buffer = static_cast<uint8_t*>(heap_caps_malloc(
+      1, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  if (address_buffer == null) return Primitive::os_error(ESP_ERR_NO_MEM, process);
+  address_buffer[0] = address << 1;
+  bool prepared = false;
+  Defer free_address {
+    [&] { if (!prepared) free(address_buffer); }
+  };
+
+  uint64_t timeout_us = static_cast<uint64_t>(timeout_ms) * 1000;
+  if (timeout_us > UINT32_MAX) FAIL(INVALID_ARGUMENT);
+  i2c_device_config_t config = {
+    .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+    // The address is emitted explicitly below so its WRITE command can check
+    // the ACK.  A START/address/STOP transaction generated by the regular
+    // device path does not attach ACK checking to the address-only transfer.
+    .device_address = I2C_DEVICE_ADDRESS_NOT_USED,
+    .scl_speed_hz = 100000,
+    .scl_wait_us = static_cast<uint32_t>(timeout_us),
+    .flags = {
+      .disable_ack_check = false,
+    },
+  };
+
+  i2c_master_dev_handle_t handle;
+  esp_err_t err = i2c_master_bus_add_device(resource->handle(), &config, &handle);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  Defer remove_device {
+    [&] { if (!prepared) i2c_master_bus_rm_device(handle); }
+  };
+
+  i2c_master_event_callbacks_t callbacks = {
+    .on_trans_done = controller_done_handler,
+  };
+  err = i2c_master_register_event_callbacks(handle, &callbacks, resource);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
+  resource->prepare_operation(address_buffer, null, 0, handle);
+  prepared = true;
+  bool dispatched = false;
+  Defer cancel_operation {
+    [&] { if (!dispatched) resource->finish_operation(); }
+  };
+
+  i2c_operation_job_t operations[3] = {};
+  operations[0].command = I2C_MASTER_CMD_START;
+  operations[1].command = I2C_MASTER_CMD_WRITE;
+  operations[1].write.ack_check = true;
+  operations[1].write.data = resource->tx_buffer();
+  operations[1].write.total_bytes = 1;
+  operations[2].command = I2C_MASTER_CMD_STOP;
+  err = i2c_master_execute_defined_operations(
+      handle, operations, ARRAY_SIZE(operations), timeout_ms);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  dispatched = true;
+  return process->null_object();
 }
 
-PRIMITIVE(bus_reset) {
-  ARGS(I2cBusResource, resource);
+static int controller_result(i2c_master_event_t event) {
+  switch (event) {
+    case I2C_EVENT_DONE: return 0;
+    case I2C_EVENT_NACK: return 1;
+    case I2C_EVENT_TIMEOUT: return 2;
+    default: return 3;
+  }
+}
 
-  esp_err_t err = i2c_master_bus_reset(resource->handle());
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->null_object();
+PRIMITIVE(bus_probe_finish) {
+  ARGS(I2cBusResource, resource);
+  if (!resource->operation_in_flight()) FAIL(INVALID_STATE);
+  int result = controller_result(resource->completion_event());
+  resource->finish_operation();
+  if (result == 3) FAIL(INVALID_STATE);
+  return BOOL(result == 0);
 }
 
 PRIMITIVE(device_create) {
@@ -815,7 +977,10 @@ PRIMITIVE(device_create) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  bool handed_to_proxy = false;
+  auto resource = _new I2cDeviceResource(bus->resource_group(), bus);
+  if (resource == null) FAIL(MALLOC_FAILED);
+  bool registered = false;
+  Defer delete_resource { [&] { if (!registered) delete resource; } };
 
   i2c_device_config_t config = {
     .dev_addr_length = dev_addr_length,
@@ -829,16 +994,18 @@ PRIMITIVE(device_create) {
   i2c_master_dev_handle_t handle;
   esp_err_t err = i2c_master_bus_add_device(bus->handle(), &config, &handle);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  Defer remove_device { [&] { if (!handed_to_proxy) i2c_master_bus_rm_device(handle); } };
+  resource->set_handle(handle);
+  bus->add_device(resource);
 
-  auto resource = _new I2cDeviceResource(bus->resource_group(),
-                                         bus,
-                                         handle);
-  if (resource == null) FAIL(MALLOC_FAILED);
+  i2c_master_event_callbacks_t callbacks = {
+    .on_trans_done = controller_done_handler,
+  };
+  err = i2c_master_register_event_callbacks(handle, &callbacks, bus);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
 
   bus->resource_group()->register_resource(resource);
   proxy->set_external_address(resource);
-  handed_to_proxy = true;
+  registered = true;
 
   return proxy;
 }
@@ -851,42 +1018,129 @@ PRIMITIVE(device_close) {
   return process->null_object();
 }
 
+static esp_err_t prepare_controller_operation(I2cBusResource* bus,
+                                              const uint8_t* tx,
+                                              size_t tx_length,
+                                              size_t rx_length) {
+  if (bus->operation_in_flight()) return ESP_ERR_INVALID_STATE;
+
+  uint8_t* tx_buffer = null;
+  if (tx_length > 0) {
+    tx_buffer = static_cast<uint8_t*>(heap_caps_malloc(
+        tx_length, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    if (tx_buffer == null) return ESP_ERR_NO_MEM;
+    memcpy(tx_buffer, tx, tx_length);
+  }
+
+  uint8_t* rx_buffer = null;
+  if (rx_length > 0) {
+    rx_buffer = static_cast<uint8_t*>(heap_caps_malloc(
+        rx_length, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    if (rx_buffer == null) {
+      free(tx_buffer);
+      return ESP_ERR_NO_MEM;
+    }
+  }
+
+  bus->prepare_operation(tx_buffer, rx_buffer, rx_length);
+  return ESP_OK;
+}
+
+static Object* finish_controller_operation(I2cBusResource* bus,
+                                           uint8_t* destination,
+                                           size_t destination_length,
+                                           Process* process) {
+  if (!bus->operation_in_flight()) FAIL(INVALID_STATE);
+  int result = controller_result(bus->completion_event());
+  bool destination_too_small = bus->rx_length() > destination_length;
+  if (result == 0 && bus->rx_length() > 0) {
+    if (!destination_too_small) {
+      memcpy(destination, bus->rx_buffer(), bus->rx_length());
+    }
+  }
+  bus->finish_operation();
+  if (result == 3) FAIL(INVALID_STATE);
+  if (destination_too_small) FAIL(OUT_OF_BOUNDS);
+  return Smi::from(result);
+}
+
 PRIMITIVE(device_write) {
   ARGS(I2cDeviceResource, resource, Blob, buffer);
   if (resource->handle() == null) FAIL(ALREADY_CLOSED);
 
-  int timeout = TOIT_I2C_SYNCHRONOUS_TIMEOUT_MS;
-  esp_err_t err = i2c_master_transmit(resource->handle(), buffer.address(), buffer.length(), timeout);
+  auto bus = resource->bus();
+  esp_err_t err = prepare_controller_operation(
+      bus, buffer.address(), buffer.length(), 0);
   if (err != ESP_OK) return Primitive::os_error(err, process);
+  bool dispatched = false;
+  Defer cancel_operation { [&] { if (!dispatched) bus->finish_operation(); } };
+
+  err = i2c_master_transmit(resource->handle(),
+                            bus->tx_buffer(),
+                            buffer.length(),
+                            0);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  dispatched = true;
   return process->null_object();
+}
+
+PRIMITIVE(device_write_finish) {
+  ARGS(I2cDeviceResource, resource);
+  return finish_controller_operation(resource->bus(), null, 0, process);
 }
 
 PRIMITIVE(device_read) {
   ARGS(I2cDeviceResource, resource, MutableBlob, buffer, int, length);
   if (resource->handle() == null) FAIL(ALREADY_CLOSED);
-  if (length > buffer.length()) FAIL(OUT_OF_BOUNDS);
+  if (length < 0 || length > buffer.length()) FAIL(OUT_OF_BOUNDS);
 
-  int timeout = TOIT_I2C_SYNCHRONOUS_TIMEOUT_MS;
-  esp_err_t err = i2c_master_receive(resource->handle(), buffer.address(), length, timeout);
+  auto bus = resource->bus();
+  esp_err_t err = prepare_controller_operation(bus, null, 0, length);
   if (err != ESP_OK) return Primitive::os_error(err, process);
+  bool dispatched = false;
+  Defer cancel_operation { [&] { if (!dispatched) bus->finish_operation(); } };
+
+  err = i2c_master_receive(resource->handle(), bus->rx_buffer(), length, 0);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  dispatched = true;
   return process->null_object();
 }
 
+PRIMITIVE(device_read_finish) {
+  ARGS(I2cDeviceResource, resource, MutableBlob, buffer, int, length);
+  if (length < 0 || length > buffer.length()) FAIL(OUT_OF_BOUNDS);
+  return finish_controller_operation(
+      resource->bus(), buffer.address(), length, process);
+}
 
 PRIMITIVE(device_write_read) {
   ARGS(I2cDeviceResource, resource, Blob, tx_buffer, MutableBlob, rx_buffer, int, length)
   if (resource->handle() == null) FAIL(ALREADY_CLOSED);
-  if (length > rx_buffer.length()) FAIL(OUT_OF_BOUNDS);
+  if (length < 0 || length > rx_buffer.length()) FAIL(OUT_OF_BOUNDS);
 
-  int timeout = TOIT_I2C_SYNCHRONOUS_TIMEOUT_MS;
-  esp_err_t err = i2c_master_transmit_receive(resource->handle(),
-                                              tx_buffer.address(),
-                                              tx_buffer.length(),
-                                              rx_buffer.address(),
-                                              length,
-                                              timeout);
+  auto bus = resource->bus();
+  esp_err_t err = prepare_controller_operation(
+      bus, tx_buffer.address(), tx_buffer.length(), length);
   if (err != ESP_OK) return Primitive::os_error(err, process);
+  bool dispatched = false;
+  Defer cancel_operation { [&] { if (!dispatched) bus->finish_operation(); } };
+
+  err = i2c_master_transmit_receive(resource->handle(),
+                                    bus->tx_buffer(),
+                                    tx_buffer.length(),
+                                    bus->rx_buffer(),
+                                    length,
+                                    0);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  dispatched = true;
   return process->null_object();
+}
+
+PRIMITIVE(device_write_read_finish) {
+  ARGS(I2cDeviceResource, resource, MutableBlob, buffer, int, length);
+  if (length < 0 || length > buffer.length()) FAIL(OUT_OF_BOUNDS);
+  return finish_controller_operation(
+      resource->bus(), buffer.address(), length, process);
 }
 
 } // namespace toit
