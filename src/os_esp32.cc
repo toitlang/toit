@@ -22,6 +22,7 @@
 #include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <esp_sleep.h>
+#include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
@@ -131,6 +132,14 @@ void OS::close(int fd) {
 // can only cause a conventional spurious wakeup on its owning thread.
 __thread SemaphoreHandle_t condition_wake_semaphore_ = null;
 
+struct ConditionWaitTimer {
+  SemaphoreHandle_t wake;
+  SemaphoreHandle_t callback_complete;
+  esp_timer_handle_t timer;
+};
+
+__thread ConditionWaitTimer condition_wait_timer_{};
+
 static SemaphoreHandle_t current_condition_wake_semaphore() {
   if (condition_wake_semaphore_ == null) {
     condition_wake_semaphore_ = xSemaphoreCreateBinary();
@@ -138,10 +147,40 @@ static SemaphoreHandle_t current_condition_wake_semaphore() {
   return condition_wake_semaphore_;
 }
 
+static void condition_wait_timeout(void* arg) {
+  auto timer = reinterpret_cast<ConditionWaitTimer*>(arg);
+  // The condition may have been signaled at the same time as the timeout. In
+  // that case the binary wake semaphore is already full, which is fine.
+  xSemaphoreGive(timer->wake);
+  if (xSemaphoreGive(timer->callback_complete) != pdTRUE) {
+    FATAL("condition-variable timer callback completed twice");
+  }
+}
+
+static ConditionWaitTimer* current_condition_wait_timer() {
+  ConditionWaitTimer* result = &condition_wait_timer_;
+  if (result->timer == null) {
+    result->wake = current_condition_wake_semaphore();
+    result->callback_complete = xSemaphoreCreateBinary();
+    if (result->wake == null || result->callback_complete == null) {
+      FATAL("unable to allocate condition wait timer semaphores");
+    }
+    esp_timer_create_args_t args{};
+    args.callback = condition_wait_timeout;
+    args.arg = result;
+    args.name = "toit condition wait";
+    if (esp_timer_create(&args, &result->timer) != ESP_OK) {
+      FATAL("unable to allocate condition wait timer");
+    }
+  }
+  return result;
+}
+
 // Inspired by pthread_cond_t impl on esp32-idf.
 struct ConditionVariableWaiter {
   SemaphoreHandle_t wake;
   bool signaled;
+  bool uses_timer;
   // Link to next semaphore to be notified.
   TAILQ_ENTRY(ConditionVariableWaiter) link;
 };
@@ -162,11 +201,56 @@ class ConditionVariable {
   bool wait_us(int64 us) {
     if (us <= 0LL) return false;
 
-    // Use ceiling divisions to avoid rounding the ticks down and thus
-    // not waiting long enough.
-    uint32 ms = 1 + static_cast<uint32>((us - 1) / 1000LL);
-    uint32 ticks = (ms + portTICK_PERIOD_MS - 1) / portTICK_PERIOD_MS;
-    return wait_ticks(ticks);
+    if (!mutex_->is_locked()) {
+      FATAL("wait on unlocked mutex");
+    }
+
+    ConditionWaitTimer* timer = current_condition_wait_timer();
+    // Every timed wait finishes or cancels its callback before returning, so
+    // both semaphores must be empty here.
+    if (xSemaphoreTake(timer->wake, 0) == pdTRUE ||
+        xSemaphoreTake(timer->callback_complete, 0) == pdTRUE) {
+      FATAL("stale condition-variable timer wakeup");
+    }
+
+    ConditionVariableWaiter w{};
+    w.wake = timer->wake;
+    w.uses_timer = true;
+    TAILQ_INSERT_TAIL(&waiter_list_, &w, link);
+
+    if (esp_timer_start_once(timer->timer, us) != ESP_OK) {
+      FATAL("unable to start condition wait timer");
+    }
+
+    mutex_->unlock();
+
+    if (xSemaphoreTake(w.wake, portMAX_DELAY) != pdTRUE) {
+      FATAL("condition-variable timer wait failed");
+    }
+
+    mutex_->lock();
+
+    esp_err_t stop_result = esp_timer_stop(timer->timer);
+    if (stop_result == ESP_ERR_INVALID_STATE) {
+      // The timer is removed from the timer queue before its callback runs.
+      // Wait for the callback so it cannot leave a wakeup behind for the next
+      // condition-variable wait on this thread.
+      if (xSemaphoreTake(timer->callback_complete, portMAX_DELAY) != pdTRUE) {
+        FATAL("condition-variable timer callback wait failed");
+      }
+    } else if (stop_result != ESP_OK) {
+      FATAL("unable to stop condition wait timer");
+    }
+
+    if (w.signaled) {
+      // A simultaneous timer expiry and condition signal can each give the
+      // binary semaphore. Consume the second wakeup before reusing it.
+      xSemaphoreTake(w.wake, 0);
+    } else {
+      TAILQ_REMOVE(&waiter_list_, &w, link);
+    }
+
+    return w.signaled;
   }
 
   bool wait_ticks(uint32 ticks) {
@@ -209,7 +293,7 @@ class ConditionVariable {
     if (entry) {
       TAILQ_REMOVE(&waiter_list_, entry, link);
       entry->signaled = true;
-      if (xSemaphoreGive(entry->wake) != pdTRUE) {
+      if (xSemaphoreGive(entry->wake) != pdTRUE && !entry->uses_timer) {
         FATAL("unable to signal condition variable");
       }
     }
@@ -222,7 +306,7 @@ class ConditionVariable {
     while (ConditionVariableWaiter* entry = TAILQ_FIRST(&waiter_list_)) {
       TAILQ_REMOVE(&waiter_list_, entry, link);
       entry->signaled = true;
-      if (xSemaphoreGive(entry->wake) != pdTRUE) {
+      if (xSemaphoreGive(entry->wake) != pdTRUE && !entry->uses_timer) {
         FATAL("unable to signal condition variable");
       }
     }
@@ -269,6 +353,14 @@ void Thread::_boot() {
   ASSERT(current() == this);
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + OTHER_THREADS_MALLOC_TAG);
   entry();
+  if (condition_wait_timer_.timer != null) {
+    if (esp_timer_delete(condition_wait_timer_.timer) != ESP_OK) {
+      FATAL("unable to delete condition wait timer");
+    }
+    condition_wait_timer_.timer = null;
+    vSemaphoreDelete(condition_wait_timer_.callback_complete);
+    condition_wait_timer_.callback_complete = null;
+  }
   if (condition_wake_semaphore_ != null) {
     vSemaphoreDelete(condition_wake_semaphore_);
     condition_wake_semaphore_ = null;
