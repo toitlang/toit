@@ -195,6 +195,11 @@ static void start() {
 } // namespace toit
 
 extern "C" void toit_start() {
+#if defined(CONFIG_IDF_TARGET_ESP32S2) && defined(CONFIG_ESP_CONSOLE_USB_CDC)
+  // Let the ROM USB CDC driver handle the initial enumeration before the VM
+  // starts. Without this yield the ESP32-S2 can stall on descriptor requests.
+  vTaskDelay(1);
+#endif
   toit::start();
 }
 
