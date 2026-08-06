@@ -50,6 +50,7 @@ namespace toit {
   fn(GpioChipResource)                  \
   fn(I2cBusResource)                    \
   fn(I2cDeviceResource)                 \
+  fn(I2cRegisterTargetResource)         \
   fn(I2cTargetResource)                 \
   fn(I2sResource)                       \
   fn(SpiResource)                       \
