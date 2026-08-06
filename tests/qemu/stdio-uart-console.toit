@@ -9,11 +9,11 @@ main:
   port := uart.Port.console
 
   io.stdout.write "IO-READY\n"
-  data := io.stdin.read
+  data := io.stdin.read-line --keep-newline
   io.stdout.write "IO:"
   if data: io.stdout.write data
 
   io.stdout.write "UART-READY\n"
-  data = port.in.read
+  data = port.in.read-line --keep-newline
   io.stdout.write "UART:"
   if data: io.stdout.write data

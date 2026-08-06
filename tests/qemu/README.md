@@ -1,25 +1,40 @@
 # Running ESP32 stdio tests with QEMU
 
 These notes describe the workflow verified in August 2026 with the
-[`toitlang/qemu` v9.2.2-toitlang.1 release](https://github.com/toitlang/qemu/releases/tag/v9.2.2-toitlang.1).
+[`toitlang/qemu` v9.2.2-toitlang.2 release](https://github.com/toitlang/qemu/releases/tag/v9.2.2-toitlang.2).
 
 ## Install QEMU
 
 For an x86-64 Linux host:
 
 ```sh
-QEMU_VERSION=v9.2.2-toitlang.1
+QEMU_VERSION=v9.2.2-toitlang.2
+QEMU_ARCHIVE=qemu-toit-$QEMU_VERSION-linux-x86_64.tar.gz
+QEMU_SHA256=103a3a52ab0639afffc0a82c10cb92294d0f5c8a00ee631ce98cb190e7d5a17d
 curl -L --fail \
-  "https://github.com/toitlang/qemu/releases/download/$QEMU_VERSION/qemu-toit-$QEMU_VERSION-linux-x86_64.tar.gz" \
-  -o "/tmp/qemu-toit-$QEMU_VERSION-linux-x86_64.tar.gz"
-sha256sum "/tmp/qemu-toit-$QEMU_VERSION-linux-x86_64.tar.gz"
-tar -xf "/tmp/qemu-toit-$QEMU_VERSION-linux-x86_64.tar.gz" -C /tmp
+  "https://github.com/toitlang/qemu/releases/download/$QEMU_VERSION/$QEMU_ARCHIVE" \
+  -o "/tmp/$QEMU_ARCHIVE"
+printf '%s  %s\n' "$QEMU_SHA256" "/tmp/$QEMU_ARCHIVE" | sha256sum --check
+tar -xf "/tmp/$QEMU_ARCHIVE" -C /tmp
 QEMU=/tmp/qemu-toit-$QEMU_VERSION-linux-x86_64/bin/qemu-system-xtensa
 ```
 
-The expected SHA-256 for this archive is
-`7f064715d32629e34edc3c54c85d5c132c32e40e4d7d5564822258150f3c8fe0`.
 Release archives for other hosts are available on the same release page.
+
+## Run the automated tests
+
+After building the regular ESP32 firmware, build a separate S3 envelope whose
+primary console is USB Serial/JTAG and run all standard-stream fixtures:
+
+```sh
+tests/qemu/build-s3-usb-envelope.sh
+QEMU_SYSTEM_XTENSA=$QEMU tests/qemu/run-tests.sh
+```
+
+The runner tests stdin, stdout, and stderr through both an ESP32 UART and the
+ESP32-S3 USB Serial/JTAG device. It also verifies that `io.stdin` and
+`uart.Port.console` can share the console UART. Each input is sent only after
+the corresponding readiness marker appears, and every wait has a timeout.
 
 ## Build and create a flash image
 
@@ -85,47 +100,32 @@ Repeat the envelope commands with `build/esp32s3`, then run QEMU with
 `-M esp32s3`. The tested QEMU release prints a PSRAM-detection error during
 boot; this did not prevent the Toit runtime or UART stdio test from running.
 
-The USB Serial/JTAG backend can be compile-tested by building the S3 with
-`CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y` as the primary console and
-`CONFIG_ESP_CONSOLE_SECONDARY_NONE=y`. Use a temporary `SDKCONFIG` and a
-separate build directory so the checked-in configuration stays unchanged.
-
-The following is the non-interactive configuration used for this test:
+Build the S3 USB Serial/JTAG envelope with the provided helper. It uses a
+generated `SDKCONFIG` and a separate build directory, leaving the checked-in
+configuration unchanged:
 
 ```sh
-mkdir -p /tmp/toit-s3-usj
-cp toolchains/esp32s3/sdkconfig /tmp/toit-s3-usj/sdkconfig
-sed -i \
-  -e 's/^CONFIG_ESP_CONSOLE_UART_DEFAULT=y$/# CONFIG_ESP_CONSOLE_UART_DEFAULT is not set/' \
-  -e 's/^# CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG is not set$/CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y/' \
-  -e 's/^# CONFIG_ESP_CONSOLE_SECONDARY_NONE is not set$/CONFIG_ESP_CONSOLE_SECONDARY_NONE=y/' \
-  -e 's/^CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y$/# CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG is not set/' \
-  -e 's/^CONFIG_ESP_CONSOLE_UART=y$/# CONFIG_ESP_CONSOLE_UART is not set/' \
-  -e 's/^CONFIG_CONSOLE_UART_DEFAULT=y$/# CONFIG_CONSOLE_UART_DEFAULT is not set/' \
-  -e 's/^CONFIG_CONSOLE_UART=y$/# CONFIG_CONSOLE_UART is not set/' \
-  /tmp/toit-s3-usj/sdkconfig
-
-source third_party/esp-idf/export.sh
-IDF_TARGET=esp32s3 IDF_CCACHE_ENABLE=1 CCACHE_DIR=/tmp/toit-ccache \
-  python third_party/esp-idf/tools/idf.py \
-    -C toolchains/esp32s3 \
-    -B build/esp32s3-usj \
-    -D SDKCONFIG=/tmp/toit-s3-usj/sdkconfig \
-    build
+CCACHE_DIR=/tmp/toit-ccache tests/qemu/build-s3-usb-envelope.sh
 ```
 
-After configuration, verify that
-`build/esp32s3-usj/config/sdkconfig.h` defines
-`CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG` and does not define
-`CONFIG_ESP_CONSOLE_UART`.
+Connect QEMU's emulated device to a character backend using the structured
+`-global` form. The device type contains dots, so the shorthand form cannot
+address it:
 
-It cannot currently be tested end-to-end with this QEMU release. The emulated
-USB Serial/JTAG device in
-[`hw/misc/esp32c3_jtag.c`](https://github.com/toitlang/qemu/blob/v9.2.2-toitlang.1/hw/misc/esp32c3_jtag.c)
-returns zero for every register read, ignores every write, has no interrupt,
-and exposes no character-device connection. The S3 machine maps that stub,
-so an application using USB Serial/JTAG receives no input and its output is
-not visible. This is a QEMU limitation, not a usable USB test setup.
+```sh
+$QEMU \
+  -M esp32s3 \
+  -accel tcg,thread=single \
+  -display none \
+  -monitor none \
+  -serial null \
+  -chardev stdio,id=usb \
+  -global driver=misc.esp32c3.usb_serial_jtag,property=chardev,value=usb \
+  -drive file=build/esp32s3-usj/qemu-stdio.bin,format=raw,if=mtd \
+  -no-reboot
+```
+
+The automated runner creates the flash image and supplies these options.
 
 ESP32-S2 USB CDC is intentionally outside this test and the current stdio
 implementation.

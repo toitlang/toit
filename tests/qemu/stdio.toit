@@ -6,7 +6,7 @@ import io
 
 main:
   io.stdout.write "STDIO-READY\n"
-  data := io.stdin.read
+  data := io.stdin.read-line --keep-newline
   io.stdout.write "STDOUT:"
   if data: io.stdout.write data
   io.stderr.write "STDERR:"

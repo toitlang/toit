@@ -652,6 +652,27 @@ jobs:
           make ESP32_CHIP=esp32s3 esp32
           ccache -s
 
+      - name: Build ESP32-S3 USB Serial/JTAG console firmware
+        run: tests/qemu/build-s3-usb-envelope.sh
+
+      - name: Install latest Toit QEMU release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          QEMU_VERSION="$(gh release view --repo toitlang/qemu --json tagName --jq .tagName)"
+          QEMU_ARCHIVE="qemu-toit-${QEMU_VERSION}-linux-x86_64.tar.gz"
+          QEMU_DIR="${RUNNER_TEMP}/toit-qemu"
+          mkdir -p "${QEMU_DIR}"
+          gh release download "${QEMU_VERSION}" --repo toitlang/qemu \
+            --pattern "${QEMU_ARCHIVE}" --pattern SHA256SUMS --dir "${QEMU_DIR}"
+          cd "${QEMU_DIR}"
+          grep " ${QEMU_ARCHIVE}$" SHA256SUMS | sha256sum --check
+          tar -xf "${QEMU_ARCHIVE}"
+          echo "QEMU_SYSTEM_XTENSA=${QEMU_DIR}/qemu-toit-${QEMU_VERSION}-linux-x86_64/bin/qemu-system-xtensa" >> "${GITHUB_ENV}"
+
+      - name: Test ESP32 standard streams in QEMU
+        run: tests/qemu/run-tests.sh
+
       - name: Pack firmware artifacts
         shell: bash
         run: |
