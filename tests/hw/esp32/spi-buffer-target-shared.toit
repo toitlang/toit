@@ -137,6 +137,12 @@ test-board1:
         --use-miso=false
         --dma=true
     device = create-device bus --mode=0 --frequency=5_000_000
+    // Classic ESP32 target DMA only commits complete four-byte receive words.
+    // An external controller can still release CS on any byte boundary, so
+    // verify that the API omits the discarded trailing byte.
+    partial-rx := pattern 17 0x17
+    transfer device partial-rx
+    expect-equals (partial-rx.copy 0 16) (take-received port)
     large-rx := pattern 4_092 0x19
     transfer device large-rx
     expect-equals large-rx (take-received port)
