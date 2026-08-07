@@ -6,10 +6,17 @@ import expect show *
 
 import .test
 
+PARALLEL-TASKS ::= 40
+SLEEPS-PER-TASK ::= 20
+
 main:
   run-test: test
 
 test:
+  test-single
+  test-parallel
+
+test-single:
   // Warm up the reusable native timer so its one-time allocation is not part
   // of the latency measurement.
   sleep --ms=1
@@ -26,3 +33,17 @@ test:
   // at least one 10ms tick. Allow ample scheduling jitter, but require at least
   // one sample that clearly did not wait for such a tick.
   expect minimum-us < 6_000
+
+test-parallel:
+  workers := List PARALLEL-TASKS: |index/int|
+    :: run-sleeper index
+  results := Task.group workers
+  expect-equals PARALLEL-TASKS results.size
+
+run-sleeper index/int -> none:
+  requested-ms := 1 + index % 5
+  SLEEPS-PER-TASK.repeat:
+    before := Time.monotonic-us
+    sleep --ms=requested-ms
+    elapsed-us := Time.monotonic-us - before
+    expect elapsed-us >= requested-ms * 1_000

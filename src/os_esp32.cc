@@ -138,6 +138,9 @@ struct ConditionWaitTimer {
   esp_timer_handle_t timer;
 };
 
+// A native thread can only wait on one condition variable at a time, so one
+// timer per thread is sufficient. Toit task timers are multiplexed separately
+// by TimerEventSource; they do not each block a native thread.
 __thread ConditionWaitTimer condition_wait_timer_{};
 
 static SemaphoreHandle_t current_condition_wake_semaphore() {
@@ -353,6 +356,8 @@ void Thread::_boot() {
   ASSERT(current() == this);
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + OTHER_THREADS_MALLOC_TAG);
   entry();
+  // Timed waits always cancel or finish their callback before returning, so
+  // no callback can use these semaphores after the native thread exits.
   if (condition_wait_timer_.timer != null) {
     if (esp_timer_delete(condition_wait_timer_.timer) != ESP_OK) {
       FATAL("unable to delete condition wait timer");
