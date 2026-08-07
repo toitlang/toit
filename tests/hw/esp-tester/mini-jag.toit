@@ -74,6 +74,7 @@ switch-console-baud-rate port/uart.Port:
   port.baud-rate = CONTROL-BAUD-RATE
   sync := port.in.read-string UART-BAUD-RATE-SYNC.size + 1
   if sync != "$UART-BAUD-RATE-SYNC\n": throw "BAUD-RATE-SYNC MISMATCH"
+  print UART-BAUD-RATE-SYNCED
 with-client [block]:
   network/net.Client? := null
   for i := 0; i < NETWORK-RETRIES; i++:

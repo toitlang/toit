@@ -220,11 +220,16 @@ run-test invocation/cli.Invocation:
       if not already-installed or attempt == attempts - 1: throw error
       break
 
-class OutputLine:
-  payload/string
-  end-offset/int
+class LoggingReader extends io.Reader:
+  wrapped_/io.Reader
+  on-data_/Lambda
 
-  constructor .payload .end-offset:
+  constructor .wrapped_ .on-data_:
+
+  read_ -> ByteArray?:
+    data := wrapped_.read
+    if data: on-data_.call data
+    return data
 
 class TestDevice:
   static SNAPSHOT-NAME ::= "test.snap"
@@ -240,24 +245,15 @@ class TestDevice:
   read-task/Task? := null
   is-active/bool := false
   collected-output/string := ""
-  // Offset into $collected-output up to which UART input requests have
-  // been answered.
-  uart-input-handled_/int := 0
-  // Offset into $collected-output up to which UART baud-rate requests have
-  // been answered.
-  uart-baud-rate-handled_/int := 0
+  output-at-new-line_/bool := true
   // One offset per $CHUNK-REQUEST the device has printed. The install paces its
   // writes on these, so the device is never sent data it hasn't asked for.
   chunk-requests_/monitor.Channel := monitor.Channel 2
-  // Offset into $collected-output up to which chunk requests have been
-  // counted.
-  chunk-requests-handled_/int := 0
-  ready-latch/monitor.Latch := monitor.Latch
+  device-ready-latch/monitor.Latch := monitor.Latch
   installed-container/monitor.Latch := monitor.Latch
   running-container/monitor.Latch := monitor.Latch
   all-tests-done/monitor.Latch := monitor.Latch
   image-bytes-sent_/int := 0
-  baud-sync-task_/Task? := null
   ui/cli.Ui
   tmp-dir/string
 
@@ -271,11 +267,10 @@ class TestDevice:
 
   read-output_:
     try:
-      reader := port.in
-      at-new-line := true
-      while data/ByteArray? := reader.read:
+      reader := LoggingReader port.in (:: | data/ByteArray | record-output_ data)
+      while line/string? := read-output-line_ reader:
         if not is-active: continue
-        at-new-line = handle-output-chunk_ data at-new-line
+        dispatch-output-line_ reader line.trim
     finally:
       if port:
         port.close
@@ -285,110 +280,109 @@ class TestDevice:
       // the same host serial device.
       read-task = null
 
-  handle-output-chunk_ data/ByteArray at-new-line/bool -> bool:
+  record-output_ data/ByteArray:
+    if not is-active: return
     data-str := data.to-string-non-throwing
-    if at-new-line: data-str = "\n$data-str"
+    if output-at-new-line_: data-str = "\n$data-str"
     if data-str.ends-with "\n":
-      at-new-line = true
+      output-at-new-line_ = true
       data-str = data-str[.. data-str.size - 1]
     else:
-      at-new-line = false
+      output-at-new-line_ = false
 
     write-output_ data-str
     collected-output += data-str
-    handle-state-markers_
-    handle-uart-input-requests_ at-new-line
-    handle-baud-rate-requests_ at-new-line
-    handle-chunk-requests_ at-new-line
-    handle-decode-request_ at-new-line
-    return at-new-line
 
   write-output_ data/string:
     timestamp := Duration --us=(Time.monotonic-us - start-time-us)
     stdout-text := data.replace --all "\n" "\n$(%06d timestamp.in-ms)-$name: "
     pipe.stdout.out.write stdout-text
 
-  handle-state-markers_:
-    if collected-output.contains MINI-JAG-LISTENING:
-      set-latch_ ready-latch
-      stop-baud-sync_
-    set-latch-if-seen_ ALL-TESTS-DONE all-tests-done
-    if output-contains-line_ UART-TRANSFER-ERROR:
+  read-output-line_ reader/io.Reader -> string?:
+    newline-index := reader.index-of '\n'
+    if newline-index < 0:
+      remaining := reader.buffered-size
+      if remaining == 0: return null
+      return (reader.read-bytes remaining).to-string-non-throwing
+    data := reader.read-bytes newline-index
+    reader.skip 1
+    return data.to-string-non-throwing
+
+  dispatch-output-line_ reader/io.Reader line/string:
+    if line.contains MINI-JAG-LISTENING:
+      set-latch_ device-ready-latch
+      return
+    if line.starts-with ALL-TESTS-DONE:
+      set-latch_ all-tests-done
+      return
+    if line.starts-with UART-TRANSFER-ERROR:
       if not installed-container.has-value:
         installed-container.set --exception UART-TRANSFER-ERROR
-    set-latch-if-seen_ INSTALLED-CONTAINER installed-container
-    set-latch-if-seen_ RUNNING-CONTAINER running-container
+      return
+    if line.starts-with INSTALLED-CONTAINER:
+      set-latch_ installed-container
+      return
+    if line.starts-with RUNNING-CONTAINER:
+      set-latch_ running-container
+      return
+    if line.starts-with UART-INPUT-REQUEST:
+      payload := line[UART-INPUT-REQUEST.size..].trim
+      port.out.write "$payload\n" --flush
+      return
+    if line.starts-with UART-BAUD-RATE-REQUEST:
+      payload := line[UART-BAUD-RATE-REQUEST.size..].trim
+      handle-baud-rate-request_ reader payload
+      return
+    if line.starts-with CHUNK-REQUEST:
+      handle-chunk-request_ line[CHUNK-REQUEST.size..].trim
+      return
+    decode-index := line.index-of JAG-DECODE
+    if decode-index >= 0:
+      handle-decode-request_ line[decode-index + JAG-DECODE.size..].trim
 
-  set-latch-if-seen_ marker/string latch/monitor.Latch:
-    if output-contains-line_ marker: set-latch_ latch
-
-  output-contains-line_ marker/string -> bool:
-    return collected-output.contains "\n$marker"
-
-  handle-uart-input-requests_ at-new-line/bool:
-    // When the device prints a marker line, write the payload back to it over
-    // the serial connection.
-    while line/OutputLine? := next-output-line_ "\n$UART-INPUT-REQUEST" uart-input-handled_ at-new-line:
-      uart-input-handled_ = line.end-offset
-      port.out.write "$(line.payload)\n" --flush
-
-  handle-baud-rate-requests_ at-new-line/bool:
+  handle-baud-rate-request_ reader/io.Reader payload/string:
     // Acknowledge at the current rate before both sides switch to the
     // requested rate.
-    while line/OutputLine? := next-output-line_ "\n$UART-BAUD-RATE-REQUEST" uart-baud-rate-handled_ at-new-line:
-      rate := int.parse line.payload
-      uart-baud-rate-handled_ = line.end-offset
-      port.out.write "$UART-BAUD-RATE-ACK\n" --flush
-      // Some USB-UART adapters report an empty host queue before their
-      // hardware has emitted the final bytes at the old rate.
-      sleep --ms=UART-HOST-BAUD-RATE-SWITCH-DELAY-MS
-      port.baud-rate = rate
-      start-baud-sync_
+    rate := int.parse payload
+    port.out.write "$UART-BAUD-RATE-ACK\n" --flush
+    // Some USB-UART adapters report an empty host queue before their hardware
+    // has emitted the final bytes at the old rate.
+    sleep --ms=UART-HOST-BAUD-RATE-SWITCH-DELAY-MS
+    port.baud-rate = rate
+    // The testee switches later than the host. Send the synchronization marker
+    // only once both sides are expected to be listening at the new rate.
+    sleep --ms=UART-BAUD-RATE-SYNC-DELAY-MS
+    synced := false
+    attempts := 0
+    while not synced and attempts < UART-BAUD-RATE-SYNC-ATTEMPTS:
+      attempts++
+      port.out.write "$UART-BAUD-RATE-SYNC\n" --flush
+      error := catch:
+        with-timeout --ms=UART-BAUD-RATE-SYNC-TIMEOUT-MS:
+          while response/string? := read-output-line_ reader:
+            if response.trim == UART-BAUD-RATE-SYNCED:
+              synced = true
+              break
+            dispatch-output-line_ reader response.trim
+      if error and error != DEADLINE-EXCEEDED-ERROR: throw error
+    if not synced:
+      log "$name timed out synchronizing baud rate $rate"
+      throw SERIAL-CONTROL-TIMEOUT
 
-  start-baud-sync_:
-    baud-sync-task_ = task --background::
-      sleep --ms=UART-BAUD-RATE-SYNC-DELAY-MS
-      while not ready-latch.has-value:
-        port.out.write "$UART-BAUD-RATE-SYNC\n" --flush
-        sleep --ms=UART-BAUD-RATE-SYNC-RETRY-MS
+  handle-chunk-request_ payload/string:
+    // Publish the expected offset from the complete chunk request.
+    offset := int.parse payload
+    if not chunk-requests_.try-send offset:
+      installed-container.set --exception UART-TRANSFER-ERROR
 
-  stop-baud-sync_:
-    if not baud-sync-task_: return
-    baud-sync-task_.cancel
-    baud-sync-task_ = null
-
-  handle-chunk-requests_ at-new-line/bool:
-    // Publish the expected offset from each complete chunk request.
-    while line/OutputLine? := next-output-line_ "\n$CHUNK-REQUEST" chunk-requests-handled_ at-new-line:
-      offset := int.parse line.payload
-      chunk-requests-handled_ = line.end-offset
-      if not chunk-requests_.try-send offset:
-        installed-container.set --exception UART-TRANSFER-ERROR
-
-  handle-decode-request_ at-new-line/bool:
-    if not collected-output.contains JAG-DECODE: return
+  handle-decode-request_ payload/string:
     if not file.is-file "$tmp-dir/$SNAPSHOT-NAME":
       // Without a snapshot this is probably an error during setup.
       all-tests-done.set --exception "Error detected"
       return
-    line := next-output-line_ JAG-DECODE 0 at-new-line --require-newline
-    if not line: return  // Wait for the rest of the line.
     snapshot-path := "$tmp-dir/$SNAPSHOT-NAME"
-    toit_ ["decode", "-s", snapshot-path, line.payload]
+    toit_ ["decode", "-s", snapshot-path, payload]
     all-tests-done.set --exception "Error detected"
-
-  next-output-line_ marker/string offset/int at-new-line/bool --require-newline/bool=false -> OutputLine?:
-    marker-index := collected-output.index-of marker offset
-    if marker-index < 0: return null
-    payload-start := marker-index + marker.size
-    line-end := collected-output.index-of "\n" payload-start
-    if line-end < 0:
-      // The trailing newline of a chunk is stripped and only added back with
-      // the next chunk, so a completed chunk means a completed line.
-      if require-newline or not at-new-line: return null
-      line-end = collected-output.size
-    payload := collected-output[payload-start..line-end].trim
-    return OutputLine payload line-end
 
   set-latch_ latch/monitor.Latch:
     if latch.has-value: return
@@ -417,7 +411,6 @@ class TestDevice:
     if error: throw error
 
   close:
-    stop-baud-sync_
     if read-task:
       read-task.cancel
       // Task.cancel is asynchronous.  Wait for the reader's finally block to
@@ -443,7 +436,7 @@ class TestDevice:
     port.set-control-flag uart.HostPort.CONTROL-FLAG-RTS false
 
     ui.emit --verbose "Waiting for $name to be ready."
-    wait-for-control_ "device readiness" DEVICE-READY-TIMEOUT-MS: ready-latch.get
+    wait-for-control_ "device readiness" DEVICE-READY-TIMEOUT-MS: device-ready-latch.get
     ui.emit --verbose "Device $name is ready."
 
     if not use-network: return

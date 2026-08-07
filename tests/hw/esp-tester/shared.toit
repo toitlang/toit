@@ -14,7 +14,10 @@ UART-INPUT-REQUEST ::= "UART-INPUT-REQUEST: "
 // acknowledge at the current rate and then switch the serial connection.
 UART-BAUD-RATE-REQUEST ::= "UART-BAUD-RATE-REQUEST: "
 UART-BAUD-RATE-ACK ::= "UART-BAUD-RATE-ACK"
+// At the new rate the host sends SYNC and the testee answers SYNCED, proving
+// that the serial connection works in both directions before either proceeds.
 UART-BAUD-RATE-SYNC ::= "UART-BAUD-RATE-SYNC"
+UART-BAUD-RATE-SYNCED ::= "UART-BAUD-RATE-SYNCED"
 UART-TRANSFER-ERROR ::= "UART TRANSFER ERROR"
 // Gives the host time to apply the requested rate before the device transmits
 // at that rate.
@@ -22,10 +25,12 @@ UART-BAUD-RATE-SWITCH-DELAY-MS ::= 50
 // Gives USB-UART adapters time to transmit at the old rate before the host
 // changes rate. This must be shorter than $UART-BAUD-RATE-SWITCH-DELAY-MS.
 UART-HOST-BAUD-RATE-SWITCH-DELAY-MS ::= 5
-// The host starts synchronization after mini-jag has switched to the new rate.
+// The host starts synchronization after the testee has switched to the new rate.
 UART-BAUD-RATE-SYNC-DELAY-MS ::= 60
-// Synchronization requests are repeated until mini-jag responds.
-UART-BAUD-RATE-SYNC-RETRY-MS ::= 20
+// Bounds the confirmation that both sides can communicate at the new rate.
+UART-BAUD-RATE-SYNC-TIMEOUT-MS ::= 1_000
+// Retry a synchronization marker that was sent before the testee had switched.
+UART-BAUD-RATE-SYNC-ATTEMPTS ::= 3
 
 // The asset that selects mini-jag's control transport.
 CONTROL-ASSET ::= "control"
