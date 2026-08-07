@@ -39,11 +39,20 @@ test-parallel:
     :: run-sleeper index
   results := Task.group workers
   expect-equals PARALLEL-TASKS results.size
+  maximum-minimum-lateness-us := results.values.reduce --initial=0: |maximum-us minimum-us|
+    max maximum-us minimum-us
+  // Every worker gets several chances to wake with little scheduling jitter.
+  // Requiring all of them to do so makes the parallel test fail if concurrent
+  // short sleeps regress to the 10ms FreeRTOS tick.
+  expect maximum-minimum-lateness-us < 4_000
 
-run-sleeper index/int -> none:
+run-sleeper index/int -> int:
   requested-ms := 1 + index % 5
+  minimum-lateness-us := 1 << 60
   SLEEPS-PER-TASK.repeat:
     before := Time.monotonic-us
     sleep --ms=requested-ms
     elapsed-us := Time.monotonic-us - before
     expect elapsed-us >= requested-ms * 1_000
+    minimum-lateness-us = min minimum-lateness-us (elapsed-us - requested-ms * 1_000)
+  return minimum-lateness-us
