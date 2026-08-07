@@ -25,6 +25,7 @@
 
 #define GPIO_QUEUE_SIZE 32
 #define UART_QUEUE_SIZE 32
+#define STDIN_QUEUE_SIZE 4
 
 namespace toit {
 

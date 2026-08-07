@@ -21,6 +21,7 @@
 #include "vm.h"
 
 #include "event_sources/kqueue_bsd.h"
+#include "event_sources/stdio_host.h"
 #include "event_sources/lwip_esp32.h"
 #include "event_sources/subprocess.h"
 #include "event_sources/timer.h"
@@ -35,6 +36,7 @@ void VM::load_platform_event_sources() {
   event_manager()->add_event_source(_new SubprocessEventSource());
   event_manager()->add_event_source(_new TlsEventSource());
   event_manager()->add_event_source(_new HostBleEventSource());
+  event_manager()->add_event_source(_new StdinEventSource());
 }
 
 } // namespace toit
