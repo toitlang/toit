@@ -655,6 +655,9 @@ jobs:
       - name: Build ESP32-S3 USB Serial/JTAG console firmware
         run: tests/qemu/build-s3-usb-envelope.sh
 
+      - name: Install bundled esptool
+        run: make install-esptool
+
       - name: Install latest Toit QEMU release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -670,7 +673,7 @@ jobs:
           tar -xf "${QEMU_ARCHIVE}"
           echo "QEMU_SYSTEM_XTENSA=${QEMU_DIR}/qemu-toit-${QEMU_VERSION}-linux-x86_64/bin/qemu-system-xtensa" >> "${GITHUB_ENV}"
 
-      - name: Test ESP32 standard streams in QEMU
+      - name: Test ESP32 flashing and standard streams in QEMU
         run: tests/qemu/run-tests.sh
 
       - name: Pack firmware artifacts

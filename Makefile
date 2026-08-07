@@ -81,6 +81,10 @@ debug:
 .PHONY: sdk
 sdk: tools version-file
 
+.PHONY: install-esptool
+install-esptool: sdk
+	tools/install-esptool.sh $(BUILD)/$(HOST)/sdk
+
 # Rebuilds the SDK using only Ninja, without rebuilding the
 # Ninja files with Cmake.
 .PHONY: sdk-no-cmake

@@ -34,6 +34,7 @@ import host.file
 import host.os
 import host.pipe
 import partition-table show *
+import semver
 import tar
 
 import ..system.extensions.host.run-image-boot-sh
@@ -929,6 +930,23 @@ detect-flash-size_ esptool/List --port/string --chip/string -> int?:
   mb := int.parse rest[..mb-index].trim --if-error=: return null
   return mb * 0x100000
 
+/**
+Returns the major version reported by 'esptool version'.
+
+Esptool 4 prints both "esptool.py v4.x.y" and "4.x.y", while esptool 5
+  similarly uses "esptool v5.x.y". Scan every whitespace-separated word so
+  this keeps working with either form.
+*/
+esptool-major-version_ esptool/List -> int?:
+  output := pipe.backticks (esptool + ["version"])
+  (output.split "\n").do: | line/string |
+    (line.trim.split " ").do: | word/string |
+      candidate := word
+      if candidate.starts-with "v": candidate = candidate[1..]
+      version := semver.SemanticVersion.parse candidate --if-error=: null
+      if version: return version.major
+  return null
+
 write-partitions_ output-path/string partitions/Map --flashing/Map --ui/cli.Ui:
   flash-size := parse-flash-size_ flashing["flash_settings"]["flash_size"] --ui=ui
 
@@ -1053,20 +1071,9 @@ find-esptool_ -> List:
       return ["python3$bin-extension", esptool-path]
     return [esptool-path]
 
-  if jag-toit-repo-path := os.env.get "JAG_TOIT_REPO_PATH":
-    return [
-      "python3$bin-extension",
-      "$jag-toit-repo-path/third_party/esp-idf/components/esptool_py/esptool/esptool.py"
-    ]
-
   list := bin-name.split "/"
   dir := list[..list.size - 1].join "/"
-  if bin-name.ends-with ".toit":
-    if dir == "": dir = "."
-    esptool-py := "$dir/../third_party/esp-idf/components/esptool_py/esptool/esptool.py"
-    if file.is-file esptool-py:
-      return ["python3$bin-extension", esptool-py]
-  else if dir != "":
+  if not bin-name.ends-with ".toit" and dir != "":
     // This executable is supposed to live in 'bin', whereas the esptool is in 'lib/toit/bin'.
     esptool := "$dir/../lib/toit/bin/esptool$bin-extension"
     if file.is-file esptool:
@@ -1195,6 +1202,11 @@ flash invocation/cli.Invocation -> none:
             partition-args.add tmp-file
 
           esptool := find-esptool_
+          esptool-major := esptool-major-version_ esptool
+          if not esptool-major:
+            ui.abort "Could not determine the esptool version."
+          if esptool-major < 5:
+            ui.abort "Esptool 5 or newer is required, but found version $esptool-major."
 
           // Verify that the device's flash is big enough for the partition
           // table. 'build-esp32-image' derived the required flash size from the
@@ -1211,9 +1223,6 @@ flash invocation/cli.Invocation -> none:
             if not detected-flash-size:
               ui.emit --warning "Could not determine the device's flash size; skipping the flash-size check."
 
-          // The new esptool has deprecated underscores in some arguments.
-          // TODO(floitsch): remove these replacements when the esp-idf has been updated
-          //   to a version that uses the new arguments.
           before-args := flashing["extra_esptool_args"]["before"]
           after-args := flashing["extra_esptool_args"]["after"]
           write-flash-args := flashing["write_flash_args"]
@@ -1233,7 +1242,7 @@ flash invocation/cli.Invocation -> none:
             "--chip", chip,
             "--before", before-args,
             "--after", after-args
-          ] + [ "write-flash" ] + write-flash-args + partition-args
+          ] + ["write-flash"] + write-flash-args + partition-args
           if code != 0: exit 1
         finally:
           directory.rmdir --recursive tmp
