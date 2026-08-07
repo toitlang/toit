@@ -220,6 +220,12 @@ run-test invocation/cli.Invocation:
       if not already-installed or attempt == attempts - 1: throw error
       break
 
+class OutputLine:
+  payload/string
+  end-offset/int
+
+  constructor .payload .end-offset:
+
 class TestDevice:
   static SNAPSHOT-NAME ::= "test.snap"
   name/string
@@ -261,91 +267,118 @@ class TestDevice:
   constructor --.name --.toit-exe --port-path/string --.ui --.already-installed --.use-network:
     port = uart.HostPort port-path --baud-rate=CONSOLE-BAUD-RATE
     tmp-dir = directory.mkdtemp "/tmp/esp-tester"
-    read-task = task --background::
-      try:
-        reader := port.in
-        stdout := pipe.stdout
-        at-new-line := true
-        while data/ByteArray? := reader.read:
-          if not is-active: continue
-          data-str := data.to-string-non-throwing
-          if at-new-line: data-str = "\n$data-str"
-          if data-str.ends-with "\n":
-            at-new-line = true
-            data-str = data-str[.. data-str.size - 1]
-          else:
-            at-new-line = false
-          timestamp := Duration --us=(Time.monotonic-us - start-time-us)
-          stdout-text := data-str.replace --all "\n" "\n$(%06d timestamp.in-ms)-$name: "
-          stdout.out.write stdout-text
-          collected-output += data-str
-          if collected-output.contains "\n$MINI-JAG-LISTENING": set-latch_ ready-latch
-          if collected-output.contains "\n$ALL-TESTS-DONE": set-latch_ all-tests-done
-          if collected-output.contains "\n$UART-TRANSFER-ERROR":
-            if not installed-container.has-value:
-              installed-container.set --exception UART-TRANSFER-ERROR
-          if collected-output.contains "\n$INSTALLED-CONTAINER": set-latch_ installed-container
-          if collected-output.contains "\n$RUNNING-CONTAINER": set-latch_ running-container
-          // Serve UART input requests: when the device prints a marker line,
-          // write the payload back to it over the serial connection.
-          while true:
-            request-index := collected-output.index-of "\n$UART-INPUT-REQUEST" uart-input-handled_
-            if request-index < 0: break
-            payload-start := request-index + 1 + UART-INPUT-REQUEST.size
-            request-end := collected-output.index-of "\n" payload-start
-            if request-end < 0:
-              // The trailing newline of a chunk is stripped and only added
-              // back with the next chunk, so a completed chunk means a
-              // completed line.
-              if not at-new-line: break  // Wait for the rest of the line.
-              request-end = collected-output.size
-            payload := collected-output[payload-start..request-end].trim
-            uart-input-handled_ = request-end
-            port.out.write "$payload\n" --flush
-          // Acknowledge baud-rate requests at the current rate before both
-          // sides switch to the requested rate.
-          while true:
-            request-index := collected-output.index-of "\n$UART-BAUD-RATE-REQUEST" uart-baud-rate-handled_
-            if request-index < 0: break
-            rate-start := request-index + 1 + UART-BAUD-RATE-REQUEST.size
-            request-end := collected-output.index-of "\n" rate-start
-            if request-end < 0:
-              if not at-new-line: break  // Wait for the rest of the line.
-              request-end = collected-output.size
-            rate := int.parse collected-output[rate-start..request-end].trim
-            uart-baud-rate-handled_ = request-end
-            port.out.write "$UART-BAUD-RATE-ACK\n" --flush
-            // Some USB-UART adapters report an empty host queue before their
-            // hardware has emitted the final bytes at the old rate.
-            sleep --ms=UART-HOST-BAUD-RATE-SWITCH-DELAY-MS
-            port.baud-rate = rate
-          // Grant one send permit per chunk request.
-          while true:
-            request-index := collected-output.index-of "\n$CHUNK-REQUEST" chunk-requests-handled_
-            if request-index < 0: break
-            chunk-requests-handled_ = request-index + 1 + CHUNK-REQUEST.size
-            chunk-requests_.up
-          if collected-output.contains JAG-DECODE:
-            if file.is-file "$tmp-dir/$SNAPSHOT-NAME":
-              // Otherwise it's probably an error during setup.
-              index := collected-output.index-of JAG-DECODE
-              new-line := collected-output.index-of "\n" index
-              if new-line < 0:
-                // Wait for more data.
-                continue
-              line := collected-output[index + JAG-DECODE.size..new-line].trim
-              snapshot-path := "$tmp-dir/$SNAPSHOT-NAME"
-              toit_ ["decode", "-s", snapshot-path, line]
-            all-tests-done.set --exception "Error detected"
+    read-task = task --background:: read-output_
 
-      finally:
-        if port:
-          port.close
-          port = null
-        // Publish termination only after the port has been released.  A UART
-        // transfer retry may otherwise race with this cleanup when reopening
-        // the same host serial device.
-        read-task = null
+  read-output_:
+    try:
+      reader := port.in
+      at-new-line := true
+      while data/ByteArray? := reader.read:
+        if not is-active: continue
+        at-new-line = handle-output-chunk_ data at-new-line
+    finally:
+      if port:
+        port.close
+        port = null
+      // Publish termination only after the port has been released.  A UART
+      // transfer retry may otherwise race with this cleanup when reopening
+      // the same host serial device.
+      read-task = null
+
+  handle-output-chunk_ data/ByteArray at-new-line/bool -> bool:
+    data-str := data.to-string-non-throwing
+    if at-new-line: data-str = "\n$data-str"
+    if data-str.ends-with "\n":
+      at-new-line = true
+      data-str = data-str[.. data-str.size - 1]
+    else:
+      at-new-line = false
+
+    write-output_ data-str
+    collected-output += data-str
+    handle-state-markers_
+    handle-uart-input-requests_ at-new-line
+    handle-baud-rate-requests_ at-new-line
+    handle-chunk-requests_
+    handle-decode-request_ at-new-line
+    return at-new-line
+
+  write-output_ data/string:
+    timestamp := Duration --us=(Time.monotonic-us - start-time-us)
+    stdout-text := data.replace --all "\n" "\n$(%06d timestamp.in-ms)-$name: "
+    pipe.stdout.out.write stdout-text
+
+  handle-state-markers_:
+    set-latch-if-seen_ MINI-JAG-LISTENING ready-latch
+    set-latch-if-seen_ ALL-TESTS-DONE all-tests-done
+    if output-contains-line_ UART-TRANSFER-ERROR:
+      if not installed-container.has-value:
+        installed-container.set --exception UART-TRANSFER-ERROR
+    set-latch-if-seen_ INSTALLED-CONTAINER installed-container
+    set-latch-if-seen_ RUNNING-CONTAINER running-container
+
+  set-latch-if-seen_ marker/string latch/monitor.Latch:
+    if output-contains-line_ marker: set-latch_ latch
+
+  output-contains-line_ marker/string -> bool:
+    return collected-output.contains "\n$marker"
+
+  handle-uart-input-requests_ at-new-line/bool:
+    // When the device prints a marker line, write the payload back to it over
+    // the serial connection.
+    while line/OutputLine? := next-output-line_ "\n$UART-INPUT-REQUEST" uart-input-handled_ at-new-line:
+      uart-input-handled_ = line.end-offset
+      port.out.write "$(line.payload)\n" --flush
+
+  handle-baud-rate-requests_ at-new-line/bool:
+    // Acknowledge at the current rate before both sides switch to the
+    // requested rate.
+    while line/OutputLine? := next-output-line_ "\n$UART-BAUD-RATE-REQUEST" uart-baud-rate-handled_ at-new-line:
+      rate := int.parse line.payload
+      uart-baud-rate-handled_ = line.end-offset
+      port.out.write "$UART-BAUD-RATE-ACK\n" --flush
+      // Some USB-UART adapters report an empty host queue before their
+      // hardware has emitted the final bytes at the old rate.
+      sleep --ms=UART-HOST-BAUD-RATE-SWITCH-DELAY-MS
+      port.baud-rate = rate
+
+  handle-chunk-requests_:
+    // Grant one send permit per chunk request.
+    while true:
+      next-offset := next-output-marker_ "\n$CHUNK-REQUEST" chunk-requests-handled_
+      if next-offset < 0: break
+      chunk-requests-handled_ = next-offset
+      chunk-requests_.up
+
+  handle-decode-request_ at-new-line/bool:
+    if not collected-output.contains JAG-DECODE: return
+    if not file.is-file "$tmp-dir/$SNAPSHOT-NAME":
+      // Without a snapshot this is probably an error during setup.
+      all-tests-done.set --exception "Error detected"
+      return
+    line := next-output-line_ JAG-DECODE 0 at-new-line --require-newline
+    if not line: return  // Wait for the rest of the line.
+    snapshot-path := "$tmp-dir/$SNAPSHOT-NAME"
+    toit_ ["decode", "-s", snapshot-path, line.payload]
+    all-tests-done.set --exception "Error detected"
+
+  next-output-line_ marker/string offset/int at-new-line/bool --require-newline/bool=false -> OutputLine?:
+    marker-index := collected-output.index-of marker offset
+    if marker-index < 0: return null
+    payload-start := marker-index + marker.size
+    line-end := collected-output.index-of "\n" payload-start
+    if line-end < 0:
+      // The trailing newline of a chunk is stripped and only added back with
+      // the next chunk, so a completed chunk means a completed line.
+      if require-newline or not at-new-line: return null
+      line-end = collected-output.size
+    payload := collected-output[payload-start..line-end].trim
+    return OutputLine payload line-end
+
+  next-output-marker_ marker/string offset/int -> int:
+    marker-index := collected-output.index-of marker offset
+    if marker-index < 0: return -1
+    return marker-index + marker.size
 
   set-latch_ latch/monitor.Latch:
     if latch.has-value: return
