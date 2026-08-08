@@ -245,6 +245,9 @@ class TestDevice:
   read-task/Task? := null
   is-active/bool := false
   collected-output/string := ""
+  // Consecutive UART chunks may belong to the same output line. Avoid adding
+  // another timestamp when continuing such a line. This assumes that nothing
+  // else writes to stdout between chunks of a partial UART line.
   output-at-new-line_/bool := true
   // One offset per $CHUNK-REQUEST the device has printed. The install paces its
   // writes on these, so the device is never sent data it hasn't asked for.
@@ -299,6 +302,9 @@ class TestDevice:
     pipe.stdout.out.write stdout-text
 
   read-output-line_ reader/io.Reader -> string?:
+    // $io.Reader.read-line decodes strict UTF-8, but bytes corrupted around a
+    // baud-rate transition must be treated as garbage rather than terminating
+    // the output reader. Split on the byte delimiter and decode non-throwing.
     newline-index := reader.index-of '\n'
     if newline-index < 0:
       remaining := reader.buffered-size
@@ -357,14 +363,13 @@ class TestDevice:
     while not synced and attempts < UART-BAUD-RATE-SYNC-ATTEMPTS:
       attempts++
       port.out.write "$UART-BAUD-RATE-SYNC\n" --flush
-      error := catch:
+      catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
         with-timeout --ms=UART-BAUD-RATE-SYNC-TIMEOUT-MS:
           while response/string? := read-output-line_ reader:
             if response.trim == UART-BAUD-RATE-SYNCED:
               synced = true
               break
             dispatch-output-line_ reader response.trim
-      if error and error != DEADLINE-EXCEEDED-ERROR: throw error
     if not synced:
       log "$name timed out synchronizing baud rate $rate"
       throw SERIAL-CONTROL-TIMEOUT
