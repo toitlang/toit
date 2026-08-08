@@ -27,9 +27,8 @@ ULTRA-SHORT-PULSE-ITERATIONS ::= 50
 WAIT-FOR-PROGRESS-TIMEOUT ::= "WAIT_FOR_PROGRESS_TIMEOUT"
 
 with-peer-progress-timeout phase/string timeout-ms/int [block]:
-  error := catch:
+  error := catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
     with-timeout --ms=timeout-ms: block.call
-  if error == DEADLINE-EXCEEDED-ERROR:
+  if error:
     print "Peer GPIO made no progress during '$phase' for $(timeout-ms)ms; pins board1-in=$PIN-IN1 board1-out=$PIN-OUT1 board2-in=$PIN-IN2 board2-out=$PIN-OUT2"
     throw WAIT-FOR-PROGRESS-TIMEOUT
-  if error: throw error
