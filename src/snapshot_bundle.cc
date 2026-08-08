@@ -26,6 +26,7 @@
 
 #include "snapshot_bundle.h"
 #include "ar.h"
+#include "file_writer.h"
 
 namespace toit {
 
@@ -207,15 +208,13 @@ SnapshotBundle SnapshotBundle::read_from_file(const char* bundle_filename, bool 
 }
 
 bool SnapshotBundle::write_to_file(const char* bundle_filename, bool silent) {
-  FILE* file = fopen(bundle_filename, "wb");
-  if (!file) {
+  if (!write_file_atomically(bundle_filename, buffer(), size())) {
     if (!silent) {
-      fprintf(stderr, "Unable to open snapshot file %s\n", bundle_filename);
+      fprintf(stderr, "Unable to write snapshot file %s: %s\n",
+              bundle_filename, strerror(errno));
     }
     return false;
   }
-  fwrite(buffer(), size(), 1, file);
-  fclose(file);
   return true;
 }
 

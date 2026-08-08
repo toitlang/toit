@@ -19,15 +19,17 @@
 #include <string.h>
 
 #include "../top.h"
+#include "../file_writer.h"
 #include "../utils.h"
 
 namespace toit {
 namespace compiler {
 
-void DepWriter::write_deps_to_file_if_different(const char* dep_path,
-                                                const char* out_path,
-                                                std::vector<ast::Unit*> units,
-                                                int core_unit_index) {
+bool DepWriter::write_deps_to_file_if_different(
+    const char* dep_path,
+    const char* out_path,
+    std::vector<ast::Unit*> units,
+    int core_unit_index) {
   for (size_t i = 0; i < units.size(); i++) {
     auto unit = units[i];
     // Modules with empty paths can be ignored, as they are synthetic because we
@@ -58,7 +60,7 @@ void DepWriter::write_deps_to_file_if_different(const char* dep_path,
 
   if (strcmp(dep_path, "-") == 0) {
     printf("%s%s%s", header_buffer.c_str(), dep_buffer.c_str(), footer_buffer.c_str());
-    return;
+    return true;
   }
 
   std::string new_deps = header_buffer + dep_buffer + footer_buffer;
@@ -81,11 +83,15 @@ void DepWriter::write_deps_to_file_if_different(const char* dep_path,
   }
 
   if (old_deps == null || new_deps != old_deps) {
-    file = fopen(dep_path, "w");
-    fwrite(new_deps.c_str(), 1, new_deps.size(), file);
-    fclose(file);
+    bool succeeded = write_file_atomically(
+        dep_path,
+        reinterpret_cast<const uint8*>(new_deps.data()),
+        new_deps.size());
+    if (old_deps != null) free(old_deps);
+    return succeeded;
   }
   if (old_deps != null) free(old_deps);
+  return true;
 }
 
 void DepWriter::write(const char* data) {
@@ -154,4 +160,3 @@ void ListDepWriter::generate_footer() {}
 
 } // namespace toit::compiler
 } // namespace toit
-
