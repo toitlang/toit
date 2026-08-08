@@ -16,10 +16,9 @@ RIG-PEER-TIMEOUT-MS ::= 5_000
 RIG-PEER-LINK-FAILED ::= "RIG_PEER_LINK_FAILED"
 
 wait-for-rig-level pin/gpio.Pin pin-number/int level/int board/string phase/string:
-  error := catch:
+  error := catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
     with-timeout --ms=RIG-PEER-TIMEOUT-MS:
       while pin.get != level: sleep --ms=1
-  if error == DEADLINE-EXCEEDED-ERROR:
+  if error:
     print "Rig health failed on $board during $phase: pin $pin-number did not reach level $level in $(RIG-PEER-TIMEOUT-MS)ms"
     throw RIG-PEER-LINK-FAILED
-  if error: throw error

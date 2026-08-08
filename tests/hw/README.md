@@ -80,10 +80,9 @@ ctest --verbose --test-dir build/hw -C esp32 -R "uart-"
 
 For the complete matrix, prefer `make test-hw` (or the `check_hw` Ninja
 target). It first opens and identifies all configured serial devices, flashes
-the tester firmware, runs a board-to-board GPIO sentinel, and checks one
-representative ESP32-S3 I2S transfer. A failed preflight stops the matrix, so a
-disconnected or miswired rig produces a few focused failures instead of a long
-list of dependent tests that were never run.
+the tester firmware, and runs a board-to-board GPIO sentinel. A failed preflight
+stops the matrix, so a disconnected or miswired rig produces a few focused
+failures instead of a long list of dependent tests that were never run.
 
 Notes:
 - `-R <regex>` matches test names. Append `$` to avoid matching the `-esp32s3`

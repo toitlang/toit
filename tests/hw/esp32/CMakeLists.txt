@@ -38,7 +38,7 @@ add_custom_target(
       -R "^rig-preflight-esp32s3$"
   COMMAND ${CMAKE_CTEST_COMMAND} -j2 -C esp32s3 --output-on-failure
       -FA "^rig-preflight-"
-      -R "^(rig-health-board1\\.toit-esp32s3|i2s-board1\\.toit-esp32s3-philips16)$"
+      -R "^rig-health-board1\\.toit-esp32s3$"
   COMMAND ${CMAKE_CTEST_COMMAND} -j2 -T test -C esp32s3 --output-on-failure
       -FA "^(rig-preflight-|setup-boards-)"
       -E "^(rig-preflight-|rig-health-|setup-board)"

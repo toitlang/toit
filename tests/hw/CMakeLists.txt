@@ -23,11 +23,11 @@ add_custom_target(
   # wrong chip family. The later commands are only run when this succeeds.
   COMMAND ${CMAKE_CTEST_COMMAND} -j2 -C hw --output-on-failure
       -R "^rig-preflight-"
-  # Flash mini-jag, verify the board-to-board GPIO link, and exercise one
-  # representative S3 I2S clock/data transfer before starting the matrix.
+  # Flash mini-jag and verify the board-to-board GPIO link before starting the
+  # matrix.
   COMMAND ${CMAKE_CTEST_COMMAND} -j2 -C hw --output-on-failure
       -FA "^rig-preflight-"
-      -R "^(rig-health-board1\\.toit-(esp32|esp32s3)|i2s-board1\\.toit-esp32s3-philips16)$"
+      -R "^rig-health-board1\\.toit-(esp32|esp32s3)$"
   # The current Raspberry Pi can't run more than 2 tests in parallel.
   COMMAND ${CMAKE_CTEST_COMMAND} -j2 -T test -C hw --output-on-failure
       -FA "^(rig-preflight-|setup-boards-)"
