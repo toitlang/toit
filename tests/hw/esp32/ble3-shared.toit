@@ -114,12 +114,11 @@ main-central:
   run-test: test-central
 
 with-ble-phase-timeout iteration/int phase/string [block]:
-  error := catch:
+  error := catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
     with-timeout --ms=BLE-PHASE-TIMEOUT-MS: block.call
-  if error == DEADLINE-EXCEEDED-ERROR:
+  if error:
     print "BLE phase timeout: iteration=$iteration phase=$phase elapsed-ms=$BLE-PHASE-TIMEOUT-MS"
     throw BLE-PHASE-TIMEOUT
-  if error: throw error
 
 test-central:
   done := false
