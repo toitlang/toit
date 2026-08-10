@@ -9,6 +9,7 @@ import .test
 PARALLEL-TASKS ::= 40
 SLEEPS-PER-TASK ::= 20
 PARALLEL-LATENCY-LIMIT-US ::= 10_000
+MAX-PARALLEL-WORKERS-ABOVE-LIMIT ::= PARALLEL-TASKS / 10
 
 main:
   run-test: test
@@ -46,10 +47,12 @@ test-parallel:
   // Under load, this also measures the time it takes the scheduler to run a
   // woken task. Use the old 10ms tick as the limit rather than requiring the
   // same absolute latency from sleeps whose requested durations vary from 1
-  // to 5ms.
+  // to 5ms. Allow a small scheduler tail, but require 90% of the workers to
+  // beat the old tick.
   message := "Only $low-latency-workers/$PARALLEL-TASKS workers slept for less than "
   message += "$(PARALLEL-LATENCY-LIMIT-US)us: $(results.values)"
-  expect low-latency-workers >= PARALLEL-TASKS * 3 / 4 --message=message
+  expect low-latency-workers >= PARALLEL-TASKS - MAX-PARALLEL-WORKERS-ABOVE-LIMIT
+      --message=message
 
 run-sleeper index/int -> int:
   requested-ms := 1 + index % 5
