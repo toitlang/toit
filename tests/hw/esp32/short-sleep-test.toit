@@ -8,6 +8,8 @@ import .test
 
 PARALLEL-TASKS ::= 40
 SLEEPS-PER-TASK ::= 20
+PARALLEL-LATENCY-LIMIT-US ::= 10_000
+MAX-PARALLEL-WORKERS-ABOVE-LIMIT ::= PARALLEL-TASKS / 10
 
 main:
   run-test: test
@@ -41,11 +43,16 @@ test-parallel:
   expect-equals PARALLEL-TASKS results.size
   low-latency-workers := 0
   results.values.do: |minimum-us/int|
-    if minimum-us < 6_000: low-latency-workers++
-  // The 10ms FreeRTOS tick would keep every worker above this limit. Allow
-  // some workers to suffer scheduling jitter while requiring concurrent
-  // short sleeps to consistently avoid tick quantization.
-  expect low-latency-workers >= PARALLEL-TASKS * 3 / 4
+    if minimum-us < PARALLEL-LATENCY-LIMIT-US: low-latency-workers++
+  // Under load, this also measures the time it takes the scheduler to run a
+  // woken task. Use the old 10ms tick as the limit rather than requiring the
+  // same absolute latency from sleeps whose requested durations vary from 1
+  // to 5ms. Allow a small scheduler tail, but require 90% of the workers to
+  // beat the old tick.
+  message := "Only $low-latency-workers/$PARALLEL-TASKS workers slept for less than "
+  message += "$(PARALLEL-LATENCY-LIMIT-US)us: $(results.values)"
+  expect low-latency-workers >= PARALLEL-TASKS - MAX-PARALLEL-WORKERS-ABOVE-LIMIT
+      --message=message
 
 run-sleeper index/int -> int:
   requested-ms := 1 + index % 5
