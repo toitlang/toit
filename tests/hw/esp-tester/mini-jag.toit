@@ -72,6 +72,9 @@ switch-console-baud-rate port/uart.Port:
   if ack != "$UART-BAUD-RATE-ACK\n": throw "BAUD-RATE-ACK MISMATCH"
   sleep --ms=UART-BAUD-RATE-SWITCH-DELAY-MS
   port.baud-rate = CONTROL-BAUD-RATE
+  sync := port.in.read-string UART-BAUD-RATE-SYNC.size + 1
+  if sync != "$UART-BAUD-RATE-SYNC\n": throw "BAUD-RATE-SYNC MISMATCH"
+  print UART-BAUD-RATE-SYNCED
 with-client [block]:
   network/net.Client? := null
   for i := 0; i < NETWORK-RETRIES; i++:
@@ -120,13 +123,15 @@ install-new-test reader/io.Reader:
   // receive buffer.
   writer := containers.ContainerImageWriter size
   written-size := 0
-  requested := 0
   while written-size < size:
-    // Keep two requested chunks outstanding while writing to flash.
-    while requested < size and requested - written-size < 2 * CHUNK-SIZE:
-      print CHUNK-REQUEST
-      requested += min CHUNK-SIZE (size - requested)
+    // The next request acknowledges the previous chunk and includes the
+    // expected offset, making a lost or duplicated request diagnosable.
+    print "$CHUNK-REQUEST$written-size"
     chunk-size := min CHUNK-SIZE (size - written-size)
+    offset := reader.little-endian.read-int32
+    announced-size := reader.little-endian.read-int32
+    if offset != written-size: throw "CHUNK OFFSET MISMATCH"
+    if announced-size != chunk-size: throw "CHUNK SIZE MISMATCH"
     data := reader.read-bytes chunk-size
     summer.add data
     writer.write data

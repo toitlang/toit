@@ -17,6 +17,8 @@ import uart
 
 import ..esp-tester.shared show UART-BAUD-RATE-ACK
                                 UART-BAUD-RATE-REQUEST
+                                UART-BAUD-RATE-SYNC
+                                UART-BAUD-RATE-SYNCED
                                 UART-BAUD-RATE-SWITCH-DELAY-MS
                                 UART-INPUT-REQUEST
 import .test
@@ -49,6 +51,8 @@ change-baud-rate port/uart.Port rate/int:
   expect-baud rate port.baud-rate
   // Give the tester a short scheduling margin to apply the new rate.
   sleep --ms=UART-BAUD-RATE-SWITCH-DELAY-MS
+  expect-input port "$UART-BAUD-RATE-SYNC\n"
+  port.out.write "$UART-BAUD-RATE-SYNCED\n" --flush
 
 main:
   run-test: test
