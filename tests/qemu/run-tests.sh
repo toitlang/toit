@@ -31,9 +31,10 @@ done
 TEMP_DIR="$(mktemp -d)"
 QEMU_PID=""
 QEMU_LOG=""
+SERIAL_PORT=""
 
 stop_qemu() {
-  exec 3>&- 2>/dev/null || true
+  exec 3>&- || true
   if [[ -n "${QEMU_PID}" ]]; then
     kill "${QEMU_PID}" 2>/dev/null || true
     wait "${QEMU_PID}" 2>/dev/null || true
@@ -97,6 +98,41 @@ start_qemu() {
   QEMU_PID="$!"
 }
 
+start_qemu_download_mode() {
+  local image="$1"
+  QEMU_LOG="${TEMP_DIR}/${image}-download.log"
+
+  "${QEMU_SYSTEM_XTENSA}" \
+    -M esp32 \
+    -accel tcg,thread=single \
+    -global driver=esp32.gpio,property=strap_mode,value=15 \
+    -display none \
+    -monitor none \
+    -no-reboot \
+    -serial pty \
+    -drive "file=${TEMP_DIR}/${image}.bin,if=mtd,format=raw" \
+    >"${QEMU_LOG}" 2>&1 &
+  QEMU_PID="$!"
+}
+
+wait_for_serial_port() {
+  SERIAL_PORT=""
+  for ((tick = 0; tick < QEMU_TIMEOUT_TICKS; tick++)); do
+    SERIAL_PORT="$(awk '/char device redirected to/ { print $5; exit }' "${QEMU_LOG}")"
+    if [[ -n "${SERIAL_PORT}" ]]; then
+      return 0
+    fi
+    if ! kill -0 "${QEMU_PID}" 2>/dev/null; then
+      break
+    fi
+    sleep 0.1
+  done
+
+  echo "Timed out waiting for QEMU's serial port." >&2
+  cat "${QEMU_LOG}" >&2
+  return 1
+}
+
 wait_for() {
   local marker="$1"
   for ((tick = 0; tick < QEMU_TIMEOUT_TICKS; tick++)); do
@@ -128,6 +164,28 @@ run_stdio_test() {
   echo "PASS: ${machine} ${console} stdin/stdout/stderr"
 }
 
+run_esptool_flash_test() {
+  local image=esptool-flashed
+  local image_size
+  image_size="$(stat --format=%s "${TEMP_DIR}/stdio-uart.bin")"
+  truncate --size="${image_size}" "${TEMP_DIR}/${image}.bin"
+
+  start_qemu_download_mode "${image}"
+  wait_for_serial_port
+  "${TOIT}" tool firmware \
+    --envelope="${TEMP_DIR}/stdio-uart.envelope" \
+    flash --port="${SERIAL_PORT}"
+  stop_qemu
+
+  start_qemu esp32 "${image}" uart
+  wait_for STDIO-READY
+  printf 'hello-flashed-qemu\n' >&3
+  wait_for STDOUT:hello-flashed-qemu
+  wait_for STDERR:hello-flashed-qemu
+  stop_qemu
+  echo "PASS: bundled esptool flashed and booted an ESP32 in QEMU"
+}
+
 run_uart_sharing_test() {
   start_qemu esp32 uart-share uart
   wait_for IO-READY
@@ -144,6 +202,7 @@ make_image stdio.toit "${UART_ENVELOPE}" stdio-uart
 make_image stdio-uart-console.toit "${UART_ENVELOPE}" uart-share
 make_image stdio.toit "${USB_ENVELOPE}" stdio-usb
 
+run_esptool_flash_test
 run_stdio_test esp32 stdio-uart uart
 run_uart_sharing_test
 run_stdio_test esp32s3 stdio-usb usb-serial-jtag
