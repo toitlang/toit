@@ -146,7 +146,7 @@ class ProjectSpecification extends Specification:
       if fs.is-relative human-path:
         // Clean the relative path, so we don't have unnecessary '../foo/bar' if we are
         // in a folder 'foo'. It should just be "bar".
-        human-path = fs.to-relative --base=entry-dir human-path
+        human-path = fs.to-relative --base=entry-dir absolute-path
 
       dep-specification-path/string := fs.join absolute-path Specification.FILE-NAME
       // Local packages are allowed not to have a package file.
@@ -443,5 +443,4 @@ class PackageDependency:
     return url == other.url and hash-code == other.hash-code and constraint == other.constraint
 
   stringify: return "$url:$constraint"
-
 
