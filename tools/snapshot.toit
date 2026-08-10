@@ -528,7 +528,7 @@ class ToitMethod:
     return HEADER-SIZE + bytecodes.size
 
   selector-offset:
-    if is-statically-resolved-instance-method: return value - 0x1_0000
+    if is-statically-resolved-instance-method: return -value
     if value == 0xffff: return -1
     return value
 

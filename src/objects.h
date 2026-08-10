@@ -806,14 +806,14 @@ class Method {
   bool is_lambda_method() const { return kind_() == LAMBDA; }
   bool is_block_method() const { return  kind_() == BLOCK; }
 
-  int arity() const { return bytes_[ARITY_OFFSET] & ARITY_MASK; }
+  int arity() const { return bytes_[ARITY_AND_FLAGS_OFFSET] & ARITY_MASK; }
   int captured_count() const { return value_(); }
   int selector_offset() const {
     int value = value_();
-    if (value == NO_SELECTOR) return -1;
-    if ((bytes_[ARITY_OFFSET] & STATICALLY_RESOLVED_INSTANCE_BIT) != 0) {
-      return value - (UINT16_MAX + 1);
+    if ((bytes_[ARITY_AND_FLAGS_OFFSET] & STATICALLY_RESOLVED_INSTANCE_BIT) != 0) {
+      return -value;
     }
+    if (value == NO_SELECTOR) return -1;
     return value;
   }
   uint8* entry() const { return &bytes_[ENTRY_OFFSET]; }
@@ -841,16 +841,16 @@ class Method {
 
   void _initialize_method(word selector_offset, bool is_field_accessor, int arity, List<uint8> bytecodes, int max_height) {
     // Statically resolved instance methods use negative selector offsets to
-    // encode a class-check-table index. Preserve the signed 16-bit value in
-    // the value field and mark it with the high bit of the arity field. This
-    // keeps it distinct from positive selector offsets.
+    // encode a class-check-table index. Store the magnitude in the value field
+    // and mark it with the high bit of the arity field. This keeps it distinct
+    // from positive selector offsets.
     bool is_statically_resolved_instance = selector_offset < -1;
     word encoded_selector_offset = selector_offset;
     if (is_statically_resolved_instance) {
-      if (selector_offset < INT16_MIN) {
+      if (selector_offset < -static_cast<word>(UINT16_MAX)) {
         FATAL("Selector offset too small: %" PRIdPTR, selector_offset);
       }
-      encoded_selector_offset += UINT16_MAX + 1;
+      encoded_selector_offset = -selector_offset;
     } else if (selector_offset == -1) {
       encoded_selector_offset = NO_SELECTOR;
     } else if (selector_offset >= NO_SELECTOR) {
@@ -859,7 +859,7 @@ class Method {
     Kind kind = is_field_accessor ? FIELD_ACCESSOR : METHOD;
     _initialize(kind, encoded_selector_offset, arity, bytecodes, max_height);
     if (is_statically_resolved_instance) {
-      bytes_[ARITY_OFFSET] |= STATICALLY_RESOLVED_INSTANCE_BIT;
+      bytes_[ARITY_AND_FLAGS_OFFSET] |= STATICALLY_RESOLVED_INSTANCE_BIT;
     }
     ASSERT(this->arity() == arity);
     ASSERT(this->selector_offset() == selector_offset);
@@ -868,8 +868,8 @@ class Method {
   friend class compiler::ProgramBuilder;
 
  private:
-  static const word ARITY_OFFSET = 0;
-  static const word KIND_HEIGHT_OFFSET = ARITY_OFFSET + BYTE_SIZE;
+  static const word ARITY_AND_FLAGS_OFFSET = 0;
+  static const word KIND_HEIGHT_OFFSET = ARITY_AND_FLAGS_OFFSET + BYTE_SIZE;
   static const word KIND_BITS = 2;
   static const word KIND_MASK = (1 << KIND_BITS) - 1;
   static const word HEIGHT_BITS = 8 - KIND_BITS;
@@ -922,7 +922,7 @@ class Method {
     if (arity < 0 || arity > ARITY_MASK) {
       FATAL("Method arity out of range: %d", arity);
     }
-    bytes_[ARITY_OFFSET] = arity;
+    bytes_[ARITY_AND_FLAGS_OFFSET] = arity;
   }
   void _set_kind_height(Kind kind, int max_height) {
     // We need two bits for the kind.
