@@ -29,7 +29,8 @@ SSID ::= "test-wifi-scan"
 PORT ::= 7017
 
 MAX-RETRIES ::= 4
-RETRY-WAIT ::= 300
+RETRY-WAIT ::= 500
+AP-SETTLE-TIME-MS ::= 500
 
 // TODO(florian): don't use hardcoded IP.
 SOFTAP-ADDRESS ::= "200.200.200.1"
@@ -63,6 +64,14 @@ main-board1:
 contains-ssid access-points/List ssid/string:
   return access-points.any: | ap/wifi.AccessPoint | ap.ssid == ssid
 
+describe-test-access-points access-points/List -> string:
+  test-access-points := access-points.filter: | ap/wifi.AccessPoint |
+    ap.ssid.starts-with SSID
+  if test-access-points.is-empty: return "none"
+  return (test-access-points.map: | ap/wifi.AccessPoint |
+    "$(ap.ssid) channel=$(ap.channel) rssi=$(ap.rssi)"
+  ).join ", "
+
 test-board1:
   port := uart.Port --tx=TX1 --rx=RX1 --baud-rate=BAUD-RATE
   CONFIGS-TO-TEST.do: | config/Config |
@@ -71,6 +80,7 @@ test-board1:
 
     for i := 0; i < MAX-RETRIES; i++:
       scanned := wifi.scan #[config.channel]
+      print "Scan $(i + 1)/$MAX-RETRIES for $(config.ssid) on channel $(config.channel): $(describe-test-access-points scanned)"
       if i < MAX-RETRIES - 1 and not contains-ssid scanned config.ssid:
         print "Waiting for WiFi access point $config.ssid"
         sleep --ms=RETRY-WAIT
@@ -78,6 +88,7 @@ test-board1:
       expect (contains-ssid scanned config.ssid)
       other-channel := config.channel == 1 ? 5 : 1
       scanned = wifi.scan #[other-channel]
+      print "Opposite-channel scan on $other-channel: $(describe-test-access-points scanned)"
       expect-not (contains-ssid scanned config.ssid)
 
     // Connect to the other board.
@@ -109,6 +120,8 @@ test-board2:
         --channel=config.channel
     print "established"
     server-socket := network-ap.tcp-listen PORT
+    // Give the AP time to emit beacons before asking the other board to scan.
+    sleep --ms=AP-SETTLE-TIME-MS
     port.out.write "x" --flush  // Ready to receive.
     socket := server-socket.accept
     received := socket.in.read
@@ -117,4 +130,3 @@ test-board2:
     socket.close
     server-socket.close
     network-ap.close
-

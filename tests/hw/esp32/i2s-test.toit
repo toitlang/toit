@@ -54,28 +54,32 @@ test
   out-started := monitor.Latch
 
   done := false
+  details := "bits=$bits-per-sample start-in-first=$start-in-first preload=$preload"
   task::
     if not start-in-first: out-started.get
-    in.start
+    with-i2s-progress-timeout "input start" details: in.start
     in-started.set true
     while true:
-      chunk := in.read
+      chunk/ByteArray? := null
+      with-i2s-progress-timeout "input read" details: chunk = in.read
       if in.errors != 0: print "Errors: $in.errors"
-      generator.verify chunk
+      generator.verify chunk as ByteArray
       if generator.verified > 10 * 1024:
         done = true
         break
     expect-equals 0 in.errors
 
   if start-in-first: in-started.get
-  if in != out: out.start
+  if in != out:
+    with-i2s-progress-timeout "output start" details: out.start
   out-started.set true
 
   while not done:
     if out.errors != 0:
       print "Out errors: $out.errors"
       break
-    written := generator.do: out.write it
+    with-i2s-progress-timeout "output write" details:
+      generator.do: out.write it
   print "Wrote $generator.written in total"
   expect-equals 0 out.errors
 

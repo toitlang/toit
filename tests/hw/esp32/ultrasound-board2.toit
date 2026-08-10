@@ -19,10 +19,12 @@ test:
   // Give the sensor time to settle.
   sleep --ms=200
 
-  5.repeat:
+  5.repeat: | measurement |
     distance := driver.read-distance
-    print distance
+    print "Ultrasound measurement $measurement: $distance mm"
     // Requires the board to be pointing towards a wall with at most 1m distance.
-    expect-not-null distance
+    if not distance:
+      print "No echo on pin $(Variant.CURRENT.board2-hc-sr04-echo-pin) after triggering pin $(Variant.CURRENT.board2-hc-sr04-trigger-pin)"
+      throw "ULTRASOUND_NO_ECHO"
     expect 0 < distance < 1000
     sleep --ms=200

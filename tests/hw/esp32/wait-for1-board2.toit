@@ -23,7 +23,7 @@ test:
   ITERATIONS.repeat: | iteration |
     if iteration % 1000 == 0: print "Iteration: $iteration"
     before := pin-in.get
-    exception := catch: with-timeout --ms=2_000:
+    exception := catch: with-peer-progress-timeout "initial handshake iteration $iteration" 2_000:
       pin-in.wait-for 1
     if exception:
       print "Iteration: $iteration"
@@ -35,7 +35,7 @@ test:
     pin-out.set 0
 
   print "Looking for medium pulses"
-  with-timeout --ms=(500 + 300 * MEDIUM-PULSE-ITERATIONS):
+  with-peer-progress-timeout "receiving medium pulses" (500 + 300 * MEDIUM-PULSE-ITERATIONS):
     MEDIUM-PULSE-ITERATIONS.repeat: | iteration |
       pin-in.wait-for 1
       pin-in.wait-for 0
@@ -45,7 +45,7 @@ test:
 
   print "Looking for short pulses"
   pin-out.set 0
-  with-timeout --ms=(500 + 300 * SHORT-PULSE-ITERATIONS):
+  with-peer-progress-timeout "receiving short pulses" (500 + 300 * SHORT-PULSE-ITERATIONS):
     SHORT-PULSE-ITERATIONS.repeat:
       pin-in.wait-for 1
       pin-in.wait-for 0
@@ -58,7 +58,7 @@ test:
   count := 0
   pin-out.set 0
   exception := catch:
-    with-timeout --ms=(500 + 30 * ULTRA-SHORT-PULSE-ITERATIONS):
+    with-peer-progress-timeout "receiving ultra-short pulses" (500 + 30 * ULTRA-SHORT-PULSE-ITERATIONS):
       ULTRA-SHORT-PULSE-ITERATIONS.repeat:
         pin-in.wait-for 1
         pin-in.wait-for 0
