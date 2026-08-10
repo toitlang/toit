@@ -184,7 +184,9 @@ foreach(esp_variant ${VARIANTS})
 
       set (timeout 120)
       if (${flaky})
-        set(timeout 360)
+        # A normal flaky attempt may take 130s. Leave room for all three
+        # attempts plus setup and cleanup.
+        set(timeout 420)
       endif()
       set_tests_properties(${test_name} PROPERTIES TIMEOUT ${timeout})
       set_tests_properties(${test_name} PROPERTIES FIXTURES_REQUIRED "setup-boards-${esp_variant}")
@@ -250,7 +252,9 @@ foreach(esp_variant ${VARIANTS})
 
       set (timeout 120)
       if (${flaky})
-        set(timeout 360)
+        # A normal flaky attempt may take 130s. Leave room for all three
+        # attempts plus setup and cleanup.
+        set(timeout 420)
       endif()
       set_tests_properties("${test_name}" PROPERTIES TIMEOUT ${timeout})
       set_tests_properties("${test_name}" PROPERTIES FIXTURES_REQUIRED "setup-boards-${esp_variant}")
