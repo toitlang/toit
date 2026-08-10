@@ -19,8 +19,20 @@ project(hw NONE)  # No need for compilers.
 
 add_custom_target(
   check_hw
+  # Fail quickly and clearly when serial paths are absent or point at the
+  # wrong chip family. The later commands are only run when this succeeds.
+  COMMAND ${CMAKE_CTEST_COMMAND} -j2 -C hw --output-on-failure
+      -R "^rig-preflight-"
+  # Flash mini-jag and verify the board-to-board GPIO link before starting the
+  # matrix.
+  COMMAND ${CMAKE_CTEST_COMMAND} -j2 -C hw --output-on-failure
+      -FA "^rig-preflight-"
+      -R "^rig-health-board1\\.toit-(esp32|esp32s3)$"
   # The current Raspberry Pi can't run more than 2 tests in parallel.
   COMMAND ${CMAKE_CTEST_COMMAND} -j2 -T test -C hw --output-on-failure
+      -FA "^(rig-preflight-|setup-boards-)"
+      -E "^(rig-preflight-|rig-health-|setup-board)"
+  VERBATIM
   USES_TERMINAL
   )
 

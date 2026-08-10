@@ -20,13 +20,29 @@ set(TESTER ${CMAKE_CURRENT_SOURCE_DIR}/../esp-tester/tester.toit)
 
 add_custom_target(
   check_esp32
+  COMMAND ${CMAKE_CTEST_COMMAND} -j2 -C esp32 --output-on-failure
+      -R "^rig-preflight-esp32$"
+  COMMAND ${CMAKE_CTEST_COMMAND} -j2 -C esp32 --output-on-failure
+      -FA "^rig-preflight-"
+      -R "^rig-health-board1\\.toit-esp32$"
   COMMAND ${CMAKE_CTEST_COMMAND} -j2 -T test -C esp32 --output-on-failure
+      -FA "^(rig-preflight-|setup-boards-)"
+      -E "^(rig-preflight-|rig-health-|setup-board)"
+  VERBATIM
   USES_TERMINAL
   )
 
 add_custom_target(
   check_esp32s3
+  COMMAND ${CMAKE_CTEST_COMMAND} -j2 -C esp32s3 --output-on-failure
+      -R "^rig-preflight-esp32s3$"
+  COMMAND ${CMAKE_CTEST_COMMAND} -j2 -C esp32s3 --output-on-failure
+      -FA "^rig-preflight-"
+      -R "^rig-health-board1\\.toit-esp32s3$"
   COMMAND ${CMAKE_CTEST_COMMAND} -j2 -T test -C esp32s3 --output-on-failure
+      -FA "^(rig-preflight-|setup-boards-)"
+      -E "^(rig-preflight-|rig-health-|setup-board)"
+  VERBATIM
   USES_TERMINAL
 )
 
@@ -39,6 +55,23 @@ set(VARIANTS
 
 foreach(esp_variant ${VARIANTS})
   string(TOUPPER ${esp_variant} ESP_VARIANT)
+
+  set(preflight_name "rig-preflight-${esp_variant}")
+  add_test(
+    NAME ${preflight_name}
+    COMMAND "${TOIT_EXE_HW}" "${TESTER}"
+        --toit-exe "${TOIT_EXE_HW}"
+        preflight
+        --chip "${esp_variant}"
+        --port-board1 "$ENV{${ESP_VARIANT}_BOARD1_PORT}"
+        --port-board2 "$ENV{${ESP_VARIANT}_BOARD2_PORT}"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    CONFIGURATIONS ${esp_variant} hw
+    )
+  set_tests_properties(${preflight_name} PROPERTIES
+      TIMEOUT 10
+      FIXTURES_SETUP "rig-preflight-${esp_variant}"
+      RESOURCE_LOCK ${esp_variant})
 
   # The control channel rides on the serial connection: all boards on the
   # rig are connected through USB-UART bridges, so the console UART works
@@ -73,6 +106,7 @@ foreach(esp_variant ${VARIANTS})
     # give it a generous margin.
     set_tests_properties("${test_name}" PROPERTIES TIMEOUT 150)
     set_tests_properties("${test_name}" PROPERTIES FIXTURES_SETUP "setup-boards-${esp_variant}")
+    set_tests_properties("${test_name}" PROPERTIES FIXTURES_REQUIRED "rig-preflight-${esp_variant}")
   endforeach()
 endforeach()
 

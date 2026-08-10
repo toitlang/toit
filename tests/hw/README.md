@@ -78,6 +78,12 @@ Run a category:
 ctest --verbose --test-dir build/hw -C esp32 -R "uart-"
 ```
 
+For the complete matrix, prefer `make test-hw` (or the `check_hw` Ninja
+target). It first opens and identifies all configured serial devices, flashes
+the tester firmware, and runs a board-to-board GPIO sentinel. A failed preflight
+stops the matrix, so a disconnected or miswired rig produces a few focused
+failures instead of a long list of dependent tests that were never run.
+
 Notes:
 - `-R <regex>` matches test names. Append `$` to avoid matching the `-esp32s3`
   variant when you want only esp32.
@@ -96,6 +102,12 @@ Notes:
   Either build it (`make esp32s3`) or run with `-C esp32` to skip.
 - **Setup `Timeout` on board1/board2** → board not responding on its USB port.
   Re-plug, check `ls -l /dev/ttyEsp32*`, or look at `dmesg | tail`.
+- **`RIG_PREFLIGHT_FAILED`** → a configured serial path could not be opened or
+  did not emit the boot marker for its expected ESP32 family. The error includes
+  the path, open/read error, and recent serial output.
+- **`RIG_PEER_LINK_FAILED`** → the short cross-board GPIO handshake did not
+  observe an expected level. Check rig power, common ground, and the two board
+  connection wires before debugging the named test matrix.
 - **Test runs but throws on the board** (e.g. `INVALID_CHIP`, `wifi connect`,
   etc.) → that's the actual hardware test failing. The tester prints the
   on-board exception trace and a `jag decode …` line you can run to
