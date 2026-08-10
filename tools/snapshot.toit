@@ -504,14 +504,17 @@ class ToitMethod:
   max-height ::= 0
   value  ::= 0
   bytecodes / ByteArray := ?
+  is-statically-resolved-instance-method / bool := false
 
   constructor all-bytecodes/ByteArray at/int bytecode-size/int:
     id = at
-    arity = all-bytecodes[at++]
+    encoded-arity := all-bytecodes[at++]
     kind-height := all-bytecodes[at++]
     kind       = kind-height & 0x3
     max-height = (kind-height >> 2) * 4
     value = LITTLE-ENDIAN.uint16 all-bytecodes at
+    is-statically-resolved-instance-method = (encoded-arity & 0x80) != 0
+    arity = encoded-arity & 0x7f
     at += 2
     assert: at - id == HEADER-SIZE
     bytecodes = all-bytecodes.copy at (at + bytecode-size)
@@ -525,7 +528,9 @@ class ToitMethod:
     return HEADER-SIZE + bytecodes.size
 
   selector-offset:
-    return value == 0xffff ? -1 : value
+    if is-statically-resolved-instance-method: return value - 0x1_0000
+    if value == 0xffff: return -1
+    return value
 
   absolute-entry-bci -> int:
     return id + HEADER-SIZE

@@ -23,7 +23,8 @@ namespace toit {
 namespace compiler {
 
 // Maps runtime method IDs to the full selector offsets used during compilation.
-// Negative offsets encode class-check indexes and are not needed at runtime.
+// The compiler-side type propagator uses this copy for newly emitted programs;
+// runtime method headers also retain the offsets needed by runtime propagation.
 using MethodSelectorOffsets = std::unordered_map<int, word>;
 
 } // namespace toit::compiler
