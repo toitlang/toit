@@ -88,12 +88,19 @@ static const uword kDeletedToken = std::numeric_limits<uword>::max();
 /// that have already been deleted. As such, we can't use pointers to our
 /// objects as callback arguments. Instead we create tokens that we then
 /// convert back to the actual BleResources (assuming they are still alive).
+///
+/// Resource destruction compacts this map without holding the BLE mutex while
+/// the NimBLE thread may still look up a late callback. The map therefore needs
+/// its own mutex instead of relying on the BLE mutex.
 class TokenResourceMap {
  public:
+  explicit TokenResourceMap(Mutex* mutex) : mutex_(mutex) {}
+
   ~TokenResourceMap() {
     if (capacity != -1) {
       free(entries);
     }
+    OS::dispose(mutex_);
   }
 
   // Returns false if there was a malloc error.
@@ -111,11 +118,14 @@ class TokenResourceMap {
   void compact(bool in_preparation_for_adding=false);
 
  private:
+  Mutex* const mutex_;
   static const int kInitialLength = 4;
   uword sequence_counter = 0;
 
   int find(word token) const;
   bool resize(int new_capacity);
+  bool reserve_space(const Locker& locker);
+  void compact(const Locker& locker, bool in_preparation_for_adding);
 
   struct TokenResourceEntry {
     uword token;
@@ -129,7 +139,8 @@ class TokenResourceMap {
 
 // Returns false if there was a malloc error.
 bool TokenResourceMap::add(BleResource* resource, uword* result) {
-  if (!reserve_space()) return false;
+  Locker locker(mutex_);
+  if (!reserve_space(locker)) return false;
   if (sequence_counter == kInvalidToken) FATAL("TokenResourceMap overflow");
   uword token = sequence_counter++;
   *result = token;
@@ -139,6 +150,12 @@ bool TokenResourceMap::add(BleResource* resource, uword* result) {
 }
 
 bool TokenResourceMap::reserve_space() {
+  Locker locker(mutex_);
+  return reserve_space(locker);
+}
+
+bool TokenResourceMap::reserve_space(const Locker& locker) {
+  ASSERT(locker.mutex() == mutex_);
   if (capacity == -1) {
     entries = unvoid_cast<TokenResourceEntry*>(malloc(kInitialLength * sizeof(TokenResourceEntry)));
     if (!entries) return false;
@@ -146,7 +163,7 @@ bool TokenResourceMap::reserve_space() {
     length = 0;
   } else if (length == capacity) {
     // Try to purge deleted entries first.
-    compact(true);
+    compact(locker, true);
     // Only if that didn't work grow.
     if (length == capacity) {
       bool succeeded = resize(2 * capacity);
@@ -157,6 +174,7 @@ bool TokenResourceMap::reserve_space() {
 }
 
 BleResource* TokenResourceMap::get(uword token) {
+  Locker locker(mutex_);
   int index = find(token);
   if (index == -1) return null;
   // Note that the resource could also be null.
@@ -164,6 +182,7 @@ BleResource* TokenResourceMap::get(uword token) {
 }
 
 void TokenResourceMap::remove(uword token) {
+  Locker locker(mutex_);
   int index = find(token);
   if (index == -1) return;
   // Just mark the entry as removed.
@@ -174,6 +193,12 @@ void TokenResourceMap::remove(uword token) {
 /// This operation should be done at opportune moments (at the end of
 /// deleting a Device object, for example).
 void TokenResourceMap::compact(bool in_preparation_for_adding) {
+  Locker locker(mutex_);
+  compact(locker, in_preparation_for_adding);
+}
+
+void TokenResourceMap::compact(const Locker& locker, bool in_preparation_for_adding) {
+  ASSERT(locker.mutex() == mutex_);
   // Drop empty entries.
   int current = 0;
   for (int i = 0; i < length; i++) {
@@ -223,8 +248,9 @@ bool TokenResourceMap::resize(int new_capacity) {
 class BleResourceGroup : public ResourceGroup {
  public:
   TAG(BleResourceGroup);
-  BleResourceGroup(Process* process, BleEventSource* event_source, Mutex* mutex)
+  BleResourceGroup(Process* process, BleEventSource* event_source, Mutex* mutex, Mutex* token_map_mutex)
       : ResourceGroup(process, event_source)
+      , token_resource_map(token_map_mutex)
       , mutex_(mutex) {}
 
   ~BleResourceGroup() override {
@@ -2326,8 +2352,17 @@ PRIMITIVE(init) {
   Mutex* mutex = OS::allocate_mutex(0, "BLE");
   if (!mutex) FAIL(MALLOC_FAILED);
 
-  BleResourceGroup* group = _new BleResourceGroup(process, event_source, mutex);
+  // The token map can be accessed while holding the BLE mutex. Its lock level
+  // must therefore be higher than the BLE mutex and the resource mutex.
+  Mutex* token_map_mutex = OS::allocate_mutex(100, "BLE token map");
+  if (!token_map_mutex) {
+    OS::dispose(mutex);
+    FAIL(MALLOC_FAILED);
+  }
+
+  BleResourceGroup* group = _new BleResourceGroup(process, event_source, mutex, token_map_mutex);
   if (!group) {
+    OS::dispose(token_map_mutex);
     OS::dispose(mutex);
     FAIL(MALLOC_FAILED);
   }
