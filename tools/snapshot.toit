@@ -508,13 +508,13 @@ class ToitMethod:
 
   constructor all-bytecodes/ByteArray at/int bytecode-size/int:
     id = at
-    encoded-arity := all-bytecodes[at++]
+    arity-and-flags := all-bytecodes[at++]
     kind-height := all-bytecodes[at++]
     kind       = kind-height & 0x3
     max-height = (kind-height >> 2) * 4
     value = LITTLE-ENDIAN.uint16 all-bytecodes at
-    is-statically-resolved-instance-method = (encoded-arity & 0x80) != 0
-    arity = encoded-arity & 0x7f
+    is-statically-resolved-instance-method = (arity-and-flags & 0x80) != 0
+    arity = arity-and-flags & 0x7f
     at += 2
     assert: at - id == HEADER-SIZE
     bytecodes = all-bytecodes.copy at (at + bytecode-size)
