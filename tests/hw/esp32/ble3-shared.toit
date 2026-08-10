@@ -19,12 +19,16 @@ As of 2024-04-24 the test is still somewhat flaky. Board2 sometimes gets
 import ble show *
 import expect show *
 import monitor
+import system
 
 import .ble-util
 import .test
 import .variants
 
 ITERATIONS ::= 100
+BLE-PHASE-TIMEOUT-MS ::= 15_000
+BLE-WATCHDOG-THRESHOLD-MS ::= 10_000
+BLE-PHASE-TIMEOUT ::= "BLE_PHASE_TIMEOUT"
 
 UUIDS ::= [
   Variant.CURRENT.ble3-first-service,
@@ -109,8 +113,18 @@ test-peripheral:
 main-central:
   run-test: test-central
 
+with-ble-phase-timeout iteration/int phase/string [block]:
+  error := catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
+    with-timeout --ms=BLE-PHASE-TIMEOUT-MS: block.call
+  if error:
+    print "BLE phase timeout: iteration=$iteration phase=$phase elapsed-ms=$BLE-PHASE-TIMEOUT-MS"
+    throw BLE-PHASE-TIMEOUT
+
 test-central:
   done := false
+  phase := "initializing"
+  phase-iteration := -1
+  phase-start-us := Time.monotonic-us
 
   keep-alive := List 100
   task::
@@ -121,35 +135,79 @@ test-central:
       ByteArray 10
       yield
 
+  // If a phase stalls but the Toit scheduler is still alive, leave that fact
+  // in the serial log. If this watchdog also stops, the problem is below the
+  // task that is running the BLE operation.
+  task::
+    while not done:
+      sleep --ms=5_000
+      elapsed-ms := (Time.monotonic-us - phase-start-us) / 1_000
+      if not done and elapsed-ms >= BLE-WATCHDOG-THRESHOLD-MS:
+        print "BLE watchdog alive: iteration=$phase-iteration phase=$phase elapsed-ms=$elapsed-ms"
+
   adapter := Adapter
-  central := adapter.central
+  error := catch:
+    central := adapter.central
+    first-uuid := BleUuid UUIDS.first
+    address := find-device-with-service central first-uuid
 
-  first-uuid := BleUuid UUIDS.first
-  address := find-device-with-service central first-uuid
+    ITERATIONS.repeat: | i/int |
+      print "iteration $i"
+      remote-device/RemoteDevice? := null
+      try:
+        phase = "connect"
+        phase-iteration = i
+        phase-start-us = Time.monotonic-us
+        with-ble-phase-timeout i phase:
+          remote-device = central.connect address
+        print "connected"
 
-  ITERATIONS.repeat: | i/int |
-    print "iteration $i"
-    remote-device := central.connect address
-    print "connected"
+        device := remote-device as RemoteDevice
+        phase = "discover services"
+        phase-start-us = Time.monotonic-us
+        with-ble-phase-timeout i phase:
+          device.discover-services
+        services := device.discovered-services
+        print "got $services.size services"
 
-    remote-device.discover-services
-    services := remote-device.discovered-services
-    print "got $services.size services"
+        if i == ITERATIONS - 1:
+          services.do: | service/RemoteService |
+            if service.uuid == first-uuid:
+              phase = "discover characteristics"
+              phase-start-us = Time.monotonic-us
+              characteristics/List? := null
+              with-ble-phase-timeout i phase:
+                characteristics = service.discover-characteristics
+              (characteristics as List).do: | characteristic/RemoteCharacteristic |
+                if characteristic.uuid == (BleUuid DONE-CHARACTERISTIC-UUID):
+                  print "Sending done"
+                  phase = "write done"
+                  phase-start-us = Time.monotonic-us
+                  with-ble-phase-timeout i phase:
+                    characteristic.write "done".to-byte-array
 
-    if i == ITERATIONS - 1:
-      services.do: | service/RemoteService |
-        if service.uuid == first-uuid:
-          characteristics := service.discover-characteristics
-          characteristics.do: | characteristic/RemoteCharacteristic |
-            if characteristic.uuid == (BleUuid DONE-CHARACTERISTIC-UUID):
-              print "Sending done"
-              characteristic.write "done".to-byte-array
+        print "closing device"
+        phase = "close"
+        phase-start-us = Time.monotonic-us
+        with-ble-phase-timeout i phase:
+          device.close
+        print "closed"
+      finally:
+        if remote-device and not remote-device.is-closed:
+          cleanup-error := catch:
+            with-ble-phase-timeout i "forced cleanup":
+              remote-device.close --force
+          if cleanup-error:
+            print "BLE forced cleanup failed: iteration=$i error=$cleanup-error"
 
-    print "closing device"
-    remote-device.close
-    print "closed"
-    // TODO(florian): why is this sleep necessary?
-    sleep --ms=200
+      // TODO(florian): why is this sleep necessary?
+      phase = "post-close pause"
+      phase-start-us = Time.monotonic-us
+      with-ble-phase-timeout i phase:
+        sleep --ms=200
 
-  adapter.close
   done = true
+  cleanup-error := catch:
+    with-ble-phase-timeout ITERATIONS "adapter close": adapter.close
+  if error: throw error
+  if cleanup-error: throw cleanup-error
