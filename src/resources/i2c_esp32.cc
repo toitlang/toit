@@ -38,6 +38,9 @@
 
 namespace toit {
 
+static_assert(SOC_I2C_NUM <= I2C_EVENT_QUEUE_SIZE,
+              "Increase I2C_EVENT_QUEUE_SIZE");
+
 // Should be lower than PROCESS_MAX_RUNTIME_US of scheduler.cc.
 // Synchronous operations should never take that long anyway.
 const int TOIT_I2C_SYNCHRONOUS_TIMEOUT_MS = 1000;
@@ -425,7 +428,6 @@ PRIMITIVE(target_write) {
   uint32_t written = 0;
   esp_err_t err = i2c_slave_write(
       target->handle(), buffer.address() + offset, length, &written, 0);
-  if (err == ESP_ERR_TIMEOUT) return Smi::from(-1);
   if (err != ESP_OK) {
     return Primitive::os_error(err, process);
   }

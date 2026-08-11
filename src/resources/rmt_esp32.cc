@@ -45,6 +45,9 @@
 
 namespace toit {
 
+static_assert(SOC_RMT_GROUPS * SOC_RMT_CHANNELS_PER_GROUP <= RMT_EVENT_QUEUE_SIZE,
+              "Increase RMT_EVENT_QUEUE_SIZE");
+
 const int kReadState = 1 << 0;
 const int kWriteState = 1 << 1;
 
