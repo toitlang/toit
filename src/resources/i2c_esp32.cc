@@ -356,7 +356,7 @@ class I2cBusResource : public EventQueueResource, public DeviceList {
   void add_device(I2cDeviceResource* device);
   void remove_device(I2cDeviceResource* device);
 
-  IRAM_ATTR bool complete_from_isr(i2c_master_event_t event) {
+  I2C_IRAM_ATTR bool complete_from_isr(i2c_master_event_t event) {
     completion_event_ = event;
     BaseType_t higher_was_woken = pdFALSE;
     word payload = kControllerDoneState;
@@ -369,6 +369,13 @@ class I2cBusResource : public EventQueueResource, public DeviceList {
   }
 
   bool operation_in_flight() const { return operation_in_flight_; }
+
+  void discard_completion() {
+    word payload;
+    while (xQueueReceive(queue(), &payload, 0) == pdTRUE) {}
+    resource_group()->event_source()->set_state(this, 0);
+    completion_event_ = I2C_EVENT_ALIVE;
+  }
 
   void prepare_operation(uint8_t* tx_buffer,
                          uint8_t* rx_buffer,
@@ -425,10 +432,8 @@ I2cDeviceResource::~I2cDeviceResource() {
 }
 
 I2cBusResource::~I2cBusResource() {
-  // Controller operations run in a non-cancelable critical region until the
-  // completion primitive has released the callback context and native buffers.
-  // In particular, teardown must never try to abort an operation through
-  // i2c_master_bus_reset: that API can perform a synchronous bus clear.
+  // Bus.close is serialized with controller operations. Any canceled operation
+  // has been aborted and its native buffers released before teardown gets here.
   ASSERT(!operation_in_flight_);
   while (!DeviceList::is_empty()) {
     // Removing the device doesn't delete the `I2cDeviceResource`, but only modifies
@@ -495,17 +500,19 @@ PRIMITIVE(target_init) {
   return proxy;
 }
 
-I2C_IRAM_ATTR static bool target_receive_handler(i2c_slave_dev_handle_t handle,
-                                              const i2c_slave_rx_done_event_data_t* event,
-                                              void* context) {
+I2C_IRAM_ATTR static bool target_receive_handler(
+    i2c_slave_dev_handle_t handle,
+    const i2c_slave_rx_done_event_data_t* event,
+    void* context) {
   auto resource = static_cast<I2cTargetResource*>(context);
   if (event->overflow) return resource->receive_overflow_from_isr();
   return resource->receive_from_isr(event->buffer, event->length);
 }
 
-I2C_IRAM_ATTR static bool target_request_handler(i2c_slave_dev_handle_t handle,
-                                              const i2c_slave_request_event_data_t* event,
-                                              void* context) {
+I2C_IRAM_ATTR static bool target_request_handler(
+    i2c_slave_dev_handle_t handle,
+    const i2c_slave_request_event_data_t* event,
+    void* context) {
   auto resource = static_cast<I2cTargetResource*>(context);
   return resource->request_from_isr();
 }
@@ -930,7 +937,7 @@ PRIMITIVE(bus_create) {
   return proxy;
 }
 
-IRAM_ATTR static bool controller_done_handler(
+I2C_IRAM_ATTR static bool controller_done_handler(
     i2c_master_dev_handle_t handle,
     const i2c_master_event_data_t* event,
     void* context) {
@@ -1028,6 +1035,21 @@ PRIMITIVE(bus_probe_finish) {
   resource->finish_operation();
   if (result == 3) FAIL(INVALID_STATE);
   return BOOL(result == 0);
+}
+
+PRIMITIVE(bus_abort_controller_operation) {
+  ARGS(I2cBusResource, resource);
+  if (!resource->operation_in_flight()) return process->null_object();
+
+  // ESP_ERR_INVALID_STATE means that completion won the race. The abort API
+  // still synchronized with the ISR before reporting that there was no active
+  // transaction. A bus-clear failure also leaves the transaction retired and
+  // its buffers safe to release; a later operation will report if the physical
+  // bus remains unusable.
+  i2c_master_bus_abort_transaction(resource->handle());
+  resource->discard_completion();
+  resource->finish_operation();
+  return process->null_object();
 }
 
 PRIMITIVE(device_create) {
