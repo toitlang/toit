@@ -23,11 +23,22 @@
 #include "../os.h"
 #include "../utils.h"
 
-#define GPIO_QUEUE_SIZE 32
-#define UART_QUEUE_SIZE 32
-#define STDIN_QUEUE_SIZE 4
-
 namespace toit {
+
+constexpr int GPIO_QUEUE_SIZE = 32;
+constexpr int UART_QUEUE_SIZE = 32;
+constexpr int STDIN_QUEUE_SIZE = 4;
+
+// Queue-set entries reserved for queues owned by each peripheral subsystem.
+// Each subsystem has a static_assert next to its resource implementation so a
+// new chip with more peripherals points at the reservation that must grow. A
+// new EventQueueResource subsystem must add its own reservation here and to
+// MAX_QUEUE_SET_SIZE.
+constexpr int UART_EVENT_QUEUE_SIZE = 5 * UART_QUEUE_SIZE;
+constexpr int I2C_EVENT_QUEUE_SIZE = 3;
+constexpr int I2S_EVENT_QUEUE_SIZE = 6;
+constexpr int RMT_EVENT_QUEUE_SIZE = 8;
+constexpr int ESPNOW_EVENT_QUEUE_SIZE = 3;
 
 struct GpioEvent {
   word pin;
@@ -36,6 +47,8 @@ struct GpioEvent {
 
 class EventQueueResource : public Resource {
 public:
+  // A subclass with non-null queues must account for their lengths in the
+  // queue-set reservations above.
   EventQueueResource(ResourceGroup* group, QueueHandle_t queue, QueueHandle_t secondary_queue = null)
       : Resource(group)
       , queue_(queue)

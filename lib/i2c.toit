@@ -135,8 +135,7 @@ class Target:
   */
   try-write bytes/ByteArray -> int:
     if not resource_: throw "CLOSED"
-    written := i2c-target-write_ resource_ bytes 0
-    return written < 0 ? 0 : written
+    return i2c-target-write_ resource_ bytes 0
 
   /**
   Queues all $bytes for controller reads.
@@ -152,9 +151,6 @@ class Target:
       state_.clear-state REQUEST-STATE_
 
       written := i2c-target-write_ resource_ bytes offset
-      if written < 0:
-        yield
-        continue
       offset += written
       if offset == bytes.size: return
       state_.wait-for-state REQUEST-STATE_
