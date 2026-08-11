@@ -25,16 +25,19 @@
 #include "system_esp32.h"
 #include "ev_queue_esp32.h"
 
-// The max queue set size is the maximum number of events in the queue. This is used for the gpio queue,
-// up to two UART queues and the stop semaphore.
-// Leave room for the length-one queues owned by peripherals such as I2S and
-// I2C targets. FreeRTOS requires a queue set to be sized for the sum of all
-// member queue lengths.
-#define PERIPHERAL_EVENT_QUEUE_COUNT 16
-#define MAX_QUEUE_SET_SIZE \
-  (GPIO_QUEUE_SIZE + 2 * UART_QUEUE_SIZE + STDIN_QUEUE_SIZE + PERIPHERAL_EVENT_QUEUE_COUNT + 1)
-
 namespace toit {
+
+// FreeRTOS requires a queue set to be sized for the sum of all member queue
+// lengths. The stop semaphore contributes one entry.
+constexpr int MAX_QUEUE_SET_SIZE =
+    GPIO_QUEUE_SIZE +
+    UART_EVENT_QUEUE_SIZE +
+    STDIN_QUEUE_SIZE +
+    I2C_EVENT_QUEUE_SIZE +
+    I2S_EVENT_QUEUE_SIZE +
+    RMT_EVENT_QUEUE_SIZE +
+    ESPNOW_EVENT_QUEUE_SIZE +
+    1;
 
 EventQueueEventSource* EventQueueEventSource::instance_ = null;
 

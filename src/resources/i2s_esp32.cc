@@ -35,6 +35,11 @@
 
 namespace toit {
 
+// Each I2S controller can have one TX and one RX resource, each with a
+// length-one event queue. A duplex resource uses only one of those entries.
+static_assert(2 * SOC_I2S_NUM <= I2S_EVENT_QUEUE_SIZE,
+              "Increase I2S_EVENT_QUEUE_SIZE");
+
 const int kReadState = 1 << 0;
 const int kWriteState = 1 << 1;
 const int kErrorState = 1 << 2;

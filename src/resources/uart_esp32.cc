@@ -60,6 +60,9 @@
 
 namespace toit {
 
+static_assert(SOC_UART_HP_NUM * UART_QUEUE_SIZE <= UART_EVENT_QUEUE_SIZE,
+              "Increase UART_EVENT_QUEUE_SIZE");
+
 class UartResource;
 
 const uart_port_t kInvalidUartPort = static_cast<uart_port_t>(-1);
