@@ -202,21 +202,22 @@ class I2cRegisterTargetResource : public Resource {
     for (uint32_t i = 0; i < register_address_size_; i++) {
       pointer = (pointer << 8) | data[i];
     }
-    register_pointer_ = pointer % register_count_;
-    transmit_pointer_ = register_pointer_;
+    pointer %= register_count_;
     for (size_t i = register_address_size_; i < length; i++) {
-      registers_[register_pointer_] = data[i];
-      register_pointer_++;
-      if (register_pointer_ == register_count_) register_pointer_ = 0;
+      registers_[pointer] = data[i];
+      pointer++;
+      if (pointer == register_count_) pointer = 0;
     }
+    register_pointer_ = pointer;
+    prefetch_pointer_ = pointer;
   }
 
   IRAM_ATTR const uint8_t* transmit_from_isr(size_t capacity, size_t* length) {
-    size_t remaining = register_count_ - transmit_pointer_;
+    size_t remaining = register_count_ - prefetch_pointer_;
     size_t result_length = capacity < remaining ? capacity : remaining;
-    const uint8_t* result = registers_ + transmit_pointer_;
-    transmit_pointer_ += result_length;
-    if (transmit_pointer_ == register_count_) transmit_pointer_ = 0;
+    const uint8_t* result = registers_ + prefetch_pointer_;
+    prefetch_pointer_ += result_length;
+    if (prefetch_pointer_ == register_count_) prefetch_pointer_ = 0;
     *length = result_length;
     return result;
   }
@@ -226,7 +227,7 @@ class I2cRegisterTargetResource : public Resource {
     register_pointer_ = advance < register_count_ - register_pointer_
         ? register_pointer_ + advance
         : advance - (register_count_ - register_pointer_);
-    transmit_pointer_ = register_pointer_;
+    prefetch_pointer_ = register_pointer_;
   }
 
   int get(uint32_t index) const { return registers_[index]; }
@@ -252,7 +253,7 @@ class I2cRegisterTargetResource : public Resource {
   uint32_t register_count_;
   uint32_t register_address_size_;
   uint32_t register_pointer_ = 0;
-  uint32_t transmit_pointer_ = 0;
+  uint32_t prefetch_pointer_ = 0;
   word dropped_write_count_ = 0;
   GpioPins owned_pins_;
 };
