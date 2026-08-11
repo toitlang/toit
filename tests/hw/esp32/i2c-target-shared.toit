@@ -251,8 +251,7 @@ make-target config/int -> i2c.Target:
         --address=ADDRESS
         --send-buffer-size=8
         --receive-buffer-size=32
-        --pull-up=false
-        --allow-power-down
+        --no-pull-up
   if config == BROADCAST-CONFIG:
     return i2c.Target
         --sda=I2C-SDA

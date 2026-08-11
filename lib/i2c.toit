@@ -42,9 +42,7 @@ DEFAULT-TARGET-BUFFER-SIZE ::= 256
 An addressable I2C target.
 
 A target receives complete controller write transactions with $read and queues
-  bytes for controller read transactions with $write. Native primitives never
-  wait for bus traffic or buffer space; blocking in this API only suspends the
-  calling Toit task.
+  bytes for controller read transactions with $write.
 */
 class Target:
   static RECEIVE-STATE_ ::= 1 << 0
@@ -73,19 +71,16 @@ class Target:
     supported by every ESP32 variant and cannot be combined with a 10-bit
     address.
 
-  $allow-power-down allows ESP-IDF to power down the peripheral during light
-    sleep on chips that support peripheral retention.
   */
   constructor
-      --sda/any
-      --scl/any
+      --sda/int
+      --scl/int
       --address/int
       --address-size/int=7
       --send-buffer-size/int=DEFAULT-TARGET-BUFFER-SIZE
       --receive-buffer-size/int=DEFAULT-TARGET-BUFFER-SIZE
       --pull-up/bool=false
-      --broadcast/bool=false
-      --allow-power-down/bool=false:
+      --broadcast/bool=false:
     if address-size != 7 and address-size != 10: throw "INVALID_ARGUMENT"
     limit := (1 << address-size) - 1
     if not 0 <= address <= limit: throw "INVALID_ARGUMENT"
@@ -94,14 +89,14 @@ class Target:
 
     resource_ = i2c-target-create_
         target-resource-group_
-        (gpio.to-pin-num_ sda)
-        (gpio.to-pin-num_ scl)
+        sda
+        scl
         address-size
         address
         send-buffer-size
         receive-buffer-size
         pull-up
-        allow-power-down
+        false
         broadcast
     state_ = ResourceState_ target-resource-group_ resource_
     add-finalizer this:: close
@@ -131,13 +126,6 @@ class Target:
       check-receive-overflow_
       result := i2c-target-receive_ resource_
       if result: return result
-
-      // Close the race between clearing the state and reading the native
-      // message queue before going to sleep.
-      check-receive-overflow_
-      result = i2c-target-receive_ resource_
-      if result: return result
-
       state_.wait-for-state RECEIVE-STATE_ | OVERFLOW-STATE_
 
   /**
@@ -169,16 +157,6 @@ class Target:
         continue
       offset += written
       if offset == bytes.size: return
-
-      // Retry before waiting so a controller read that raced with the first
-      // attempt cannot leave this task asleep with available buffer space.
-      written = i2c-target-write_ resource_ bytes offset
-      if written < 0:
-        yield
-        continue
-      offset += written
-      if offset == bytes.size: return
-
       state_.wait-for-state REQUEST-STATE_
 
   /**
@@ -195,8 +173,6 @@ class Target:
       if not resource_: throw "CLOSED"
       state_.clear-state REQUEST-STATE_
       count := i2c-target-take-request-count_ resource_
-      if count != 0: return count
-      count = i2c-target-take-request-count_ resource_
       if count != 0: return count
       state_.wait-for-state REQUEST-STATE_
 
