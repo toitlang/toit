@@ -79,6 +79,12 @@ test-board1:
   expect-after port 0 initial:
     registers.write-bytes 250 controller-write
 
+  // A data-bearing write leaves the current address immediately after the
+  // written bytes, just like an address-only write selects its address.
+  after-write := (250 + controller-write.size) % initial.size
+  expect-equals (wrapped initial after-write 3) (device.read 3)
+  expect-equals (wrapped initial (after-write + 3) 2) (device.read 2)
+
   // A Toit-side update is visible to the next transaction without any task
   // having to run at address match.
   live := make-data 19 0x91
