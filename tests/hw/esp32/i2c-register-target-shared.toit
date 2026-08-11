@@ -5,6 +5,7 @@
 import expect show *
 import gpio
 import i2c
+import monitor
 import rmt
 import system
 import uart
@@ -34,6 +35,7 @@ EXPECT-AFTER ::= 2
 RECONFIGURE ::= 3
 EXPECT-DROPPED-AFTER ::= 4
 CLOSE ::= 5
+EXPECT-DURING-WRITES ::= 6
 
 DEFAULT-CONFIG ::= 0
 WIDE-CONFIG ::= 1
@@ -57,6 +59,11 @@ test-board1:
   bus := i2c.Bus --sda=I2C-SDA --scl=I2C-SCL --frequency=FREQUENCY --pull-up
   device := bus.device ADDRESS
   registers := device.registers
+
+  expect-throw "OUT_OF_RANGE": registers.read-bytes -1 1
+  expect-throw "OUT_OF_RANGE": registers.read-bytes 256 1
+  expect-throw "OUT_OF_RANGE": registers.write-bytes -1 #[]
+  expect-throw "OUT_OF_RANGE": registers.write-bytes 256 #[]
 
   initial := make-data 256 0x31
   set-registers port 0 initial
@@ -91,6 +98,16 @@ test-board1:
   set-registers port 73 live
   initial = wrapped-write initial 73 live
   expect-equals live (registers.read-bytes 73 live.size)
+
+  // Bulk Toit-side writes may be observed one byte at a time by the ISR, but
+  // each byte must come from one of the two patterns being written.
+  concurrent-a := make-data 64 0x28
+  concurrent-b := make-data 64 0xb7
+  expect-during-writes port 128 concurrent-a concurrent-b:
+    20.repeat:
+      observed := registers.read-bytes 128 concurrent-a.size
+      observed.size.repeat: | i/int |
+        expect (observed[i] == concurrent-a[i] or observed[i] == concurrent-b[i])
 
   if system.architecture != system.ARCHITECTURE-ESP32:
     // The resistor-coupled neighboring pin probes SCL without loading it.
@@ -207,6 +224,23 @@ test-board2:
       expect-equals parts[1] (target.read start parts[1].size)
       expect-equals 1 target.dropped-write-count
       send-byte port OK
+    else if command == EXPECT-DURING-WRITES:
+      running := true
+      started := monitor.Latch
+      finished := monitor.Latch
+      target.write start parts[1]
+      task::
+        started.set null
+        while running:
+          target.write start parts[1]
+          target.write start parts[2]
+        finished.set null
+      started.get
+      send-byte port READY
+      expect-equals FINISH port.in.read-byte
+      running = false
+      finished.get
+      send-byte port OK
     else:
       throw "Unknown command: $command"
 
@@ -284,6 +318,12 @@ expect-after port/uart.Port start/int expected/ByteArray [operation] -> none:
 
 expect-dropped-after port/uart.Port start/int expected/ByteArray [operation] -> none:
   send-command port EXPECT-DROPPED-AFTER [encode-index start, expected]
+  operation.call
+  send-byte port FINISH
+  expect-equals OK port.in.read-byte
+
+expect-during-writes port/uart.Port start/int a/ByteArray b/ByteArray [operation] -> none:
+  send-command port EXPECT-DURING-WRITES [encode-index start, a, b]
   operation.call
   send-byte port FINISH
   expect-equals OK port.in.read-byte

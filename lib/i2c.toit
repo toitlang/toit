@@ -228,6 +228,8 @@ An I2C target backed by a native register array.
 Controller writes start with a one- or two-byte, big-endian register address.
   Any following bytes update consecutive registers. A write containing only
   the address selects the first register for a subsequent controller read.
+  A write containing data leaves the selected register immediately after the
+  last byte written.
   Controller reads are answered directly from native memory without waiting
   for a Toit task, and advance the selected register by the number of bytes
   actually read. Controller accesses wrap at the end of the register array.
@@ -719,6 +721,7 @@ class Registers extends serial.Registers:
   /** See $super. */
   read-bytes reg/int count/int -> ByteArray:
     register-size := byte-size_
+    if not 0 <= reg < (1 << (register-size * 8)): throw "OUT_OF_RANGE"
     address := ByteArray register-size
     byte-order_.put-uint address register-size 0 reg
     return device_.read-address address count
@@ -726,6 +729,7 @@ class Registers extends serial.Registers:
   /** See $super. */
   write-bytes reg/int bytes/ByteArray:
     register-size := byte-size_
+    if not 0 <= reg < (1 << (register-size * 8)): throw "OUT_OF_RANGE"
     data := ByteArray bytes.size + register-size
     byte-order_.put-uint data register-size 0 reg
     data.replace register-size bytes

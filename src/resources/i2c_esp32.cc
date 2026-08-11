@@ -183,7 +183,9 @@ class I2cRegisterTargetResource : public Resource {
       , handle_(handle)
       , registers_(registers)
       , register_count_(register_count)
-      , register_address_size_(register_address_size) {}
+      , register_address_size_(register_address_size) {
+    spinlock_initialize(&spinlock_);
+  }
 
   ~I2cRegisterTargetResource() override {
     ESP_ERROR_CHECK(i2c_del_slave_device(handle_));
@@ -193,7 +195,9 @@ class I2cRegisterTargetResource : public Resource {
 
   IRAM_ATTR void receive_from_isr(const uint8_t* data, size_t length, bool overflow) {
     if (overflow) {
+      portENTER_CRITICAL_ISR(&spinlock_);
       if (dropped_write_count_ != Smi::MAX_SMI_VALUE) dropped_write_count_++;
+      portEXIT_CRITICAL_ISR(&spinlock_);
       return;
     }
     if (length < register_address_size_) return;
@@ -242,7 +246,12 @@ class I2cRegisterTargetResource : public Resource {
     memcpy(registers_ + index, source, length);
   }
 
-  word dropped_write_count() const { return dropped_write_count_; }
+  word dropped_write_count() const {
+    portENTER_CRITICAL(&spinlock_);
+    word result = dropped_write_count_;
+    portEXIT_CRITICAL(&spinlock_);
+    return result;
+  }
 
   uint32_t register_count() const { return register_count_; }
   GpioPins& owned_pins() { return owned_pins_; }
@@ -254,6 +263,7 @@ class I2cRegisterTargetResource : public Resource {
   uint32_t register_address_size_;
   uint32_t register_pointer_ = 0;
   uint32_t prefetch_pointer_ = 0;
+  mutable spinlock_t spinlock_;
   word dropped_write_count_ = 0;
   GpioPins owned_pins_;
 };
@@ -565,6 +575,10 @@ RTC_IRAM_ATTR static bool register_target_transmit_done_handler(
 }
 
 PRIMITIVE(register_target_create) {
+  #if !SOC_I2C_SLAVE_CAN_GET_STRETCH_CAUSE
+  FAIL(UNSUPPORTED);
+  #endif
+
   ARGS(I2cResourceGroup, group,
        int, sda,
        int, scl,
@@ -595,10 +609,6 @@ PRIMITIVE(register_target_create) {
 
   #if !SOC_I2C_SLAVE_SUPPORT_BROADCAST
   if (broadcast) FAIL(UNSUPPORTED);
-  #endif
-
-  #if !SOC_I2C_SLAVE_CAN_GET_STRETCH_CAUSE
-  FAIL(UNSUPPORTED);
   #endif
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
