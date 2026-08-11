@@ -179,6 +179,17 @@ test-board1:
     expect-equals OK port.in.read-byte
     stretched.close
 
+    // A task deadline aborts the native transaction even when every
+    // individual stretch is shorter than the device's SCL timeout. The bus
+    // must be reusable after the target releases the clock.
+    abortable := bus.device ADDRESS --timeout-us=100_000
+    send-command port DYNAMIC-READ [#[0x5a], encode-u16 20]
+    expect-throw DEADLINE-EXCEEDED-ERROR:
+      with-timeout --ms=2: abortable.read 1
+    expect-equals OK port.in.read-byte
+    expect (bus.test ADDRESS)
+    abortable.close
+
     // Exercise the controller pull-up configuration and resource reuse after
     // a large number of asynchronous transactions and errors.
     bus.close

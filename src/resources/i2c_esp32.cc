@@ -36,6 +36,12 @@
 
 #include "../event_sources/ev_queue_esp32.h"
 
+#if CONFIG_I2C_ISR_IRAM_SAFE
+#define I2C_IRAM_ATTR IRAM_ATTR
+#else
+#define I2C_IRAM_ATTR
+#endif
+
 namespace toit {
 
 static_assert(SOC_I2C_NUM <= I2C_EVENT_QUEUE_SIZE,
@@ -95,7 +101,7 @@ class I2cTargetResource : public EventQueueResource {
   MessageBufferHandle_t receive_buffer() const { return receive_buffer_; }
   GpioPins& owned_pins() { return owned_pins_; }
 
-  IRAM_ATTR bool receive_from_isr(const uint8_t* data, size_t length) {
+  I2C_IRAM_ATTR bool receive_from_isr(const uint8_t* data, size_t length) {
     BaseType_t higher_was_woken = pdFALSE;
     size_t sent = xMessageBufferSendFromISR(receive_buffer_, data, length, &higher_was_woken);
     signal_from_isr(sent == length ? kTargetReceiveState : kTargetOverflowState,
@@ -108,7 +114,7 @@ class I2cTargetResource : public EventQueueResource {
     return higher_was_woken == pdTRUE;
   }
 
-  IRAM_ATTR bool receive_overflow_from_isr() {
+  I2C_IRAM_ATTR bool receive_overflow_from_isr() {
     BaseType_t higher_was_woken = pdFALSE;
     portENTER_CRITICAL_ISR(&spinlock_);
     if (dropped_receive_count_ != Smi::MAX_SMI_VALUE) dropped_receive_count_++;
@@ -117,7 +123,7 @@ class I2cTargetResource : public EventQueueResource {
     return higher_was_woken == pdTRUE;
   }
 
-  IRAM_ATTR bool request_from_isr() {
+  I2C_IRAM_ATTR bool request_from_isr() {
     BaseType_t higher_was_woken = pdFALSE;
     portENTER_CRITICAL_ISR(&spinlock_);
     if (request_count_ != Smi::MAX_SMI_VALUE) request_count_++;
@@ -152,7 +158,7 @@ class I2cTargetResource : public EventQueueResource {
   }
 
  private:
-  IRAM_ATTR void signal_from_isr(word event, BaseType_t* higher_was_woken) {
+  I2C_IRAM_ATTR void signal_from_isr(word event, BaseType_t* higher_was_woken) {
     portENTER_CRITICAL_ISR(&spinlock_);
     pending_event_ |= event;
     portEXIT_CRITICAL_ISR(&spinlock_);
@@ -195,7 +201,7 @@ class I2cRegisterTargetResource : public EventQueueResource {
     owned_pins_.release();
   }
 
-  IRAM_ATTR void receive_from_isr(const uint8_t* data, size_t length, bool overflow) {
+  I2C_IRAM_ATTR void receive_from_isr(const uint8_t* data, size_t length, bool overflow) {
     if (overflow) {
       portENTER_CRITICAL_ISR(&spinlock_);
       if (dropped_write_count_ != Smi::MAX_SMI_VALUE) dropped_write_count_++;
@@ -218,7 +224,7 @@ class I2cRegisterTargetResource : public EventQueueResource {
     prefetch_pointer_ = pointer;
   }
 
-  IRAM_ATTR const uint8_t* transmit_from_isr(size_t capacity, size_t* length) {
+  I2C_IRAM_ATTR const uint8_t* transmit_from_isr(size_t capacity, size_t* length) {
     size_t remaining = register_count_ - prefetch_pointer_;
     size_t result_length = capacity < remaining ? capacity : remaining;
     const uint8_t* result = registers_ + prefetch_pointer_;
@@ -228,7 +234,7 @@ class I2cRegisterTargetResource : public EventQueueResource {
     return result;
   }
 
-  IRAM_ATTR void transmit_done_from_isr(size_t length) {
+  I2C_IRAM_ATTR void transmit_done_from_isr(size_t length) {
     uint32_t advance = length % register_count_;
     register_pointer_ = advance < register_count_ - register_pointer_
         ? register_pointer_ + advance
@@ -310,7 +316,7 @@ class I2cBusResource : public EventQueueResource, public DeviceList {
   void add_device(I2cDeviceResource* device);
   void remove_device(I2cDeviceResource* device);
 
-  IRAM_ATTR bool complete_from_isr(i2c_master_event_t event) {
+  I2C_IRAM_ATTR bool complete_from_isr(i2c_master_event_t event) {
     completion_event_ = event;
     BaseType_t higher_was_woken = pdFALSE;
     word payload = kControllerDoneState;
@@ -323,6 +329,13 @@ class I2cBusResource : public EventQueueResource, public DeviceList {
   }
 
   bool operation_in_flight() const { return operation_in_flight_; }
+
+  void discard_completion() {
+    word payload;
+    while (xQueueReceive(queue(), &payload, 0) == pdTRUE) {}
+    resource_group()->event_source()->set_state(this, 0);
+    completion_event_ = I2C_EVENT_ALIVE;
+  }
 
   void prepare_operation(uint8_t* tx_buffer,
                          uint8_t* rx_buffer,
@@ -379,10 +392,8 @@ I2cDeviceResource::~I2cDeviceResource() {
 }
 
 I2cBusResource::~I2cBusResource() {
-  // Controller operations run in a non-cancelable critical region until the
-  // completion primitive has released the callback context and native buffers.
-  // In particular, teardown must never try to abort an operation through
-  // i2c_master_bus_reset: that API can perform a synchronous bus clear.
+  // Bus.close is serialized with controller operations. Any canceled operation
+  // has been aborted and its native buffers released before teardown gets here.
   ASSERT(!operation_in_flight_);
   while (!DeviceList::is_empty()) {
     // Removing the device doesn't delete the `I2cDeviceResource`, but only modifies
@@ -449,17 +460,19 @@ PRIMITIVE(target_init) {
   return proxy;
 }
 
-IRAM_ATTR static bool target_receive_handler(i2c_slave_dev_handle_t handle,
-                                              const i2c_slave_rx_done_event_data_t* event,
-                                              void* context) {
+I2C_IRAM_ATTR static bool target_receive_handler(
+    i2c_slave_dev_handle_t handle,
+    const i2c_slave_rx_done_event_data_t* event,
+    void* context) {
   auto resource = static_cast<I2cTargetResource*>(context);
   if (event->overflow) return resource->receive_overflow_from_isr();
   return resource->receive_from_isr(event->buffer, event->length);
 }
 
-IRAM_ATTR static bool target_request_handler(i2c_slave_dev_handle_t handle,
-                                              const i2c_slave_request_event_data_t* event,
-                                              void* context) {
+I2C_IRAM_ATTR static bool target_request_handler(
+    i2c_slave_dev_handle_t handle,
+    const i2c_slave_request_event_data_t* event,
+    void* context) {
   auto resource = static_cast<I2cTargetResource*>(context);
   return resource->request_from_isr();
 }
@@ -619,7 +632,7 @@ PRIMITIVE(target_dropped_receive_count) {
   return Smi::from(target->dropped_receive_count());
 }
 
-RTC_IRAM_ATTR static bool register_target_receive_handler(
+I2C_IRAM_ATTR static bool register_target_receive_handler(
     i2c_slave_dev_handle_t handle,
     const i2c_slave_rx_done_event_data_t* event,
     void* context) {
@@ -628,7 +641,7 @@ RTC_IRAM_ATTR static bool register_target_receive_handler(
   return false;
 }
 
-RTC_IRAM_ATTR static bool register_target_transmit_handler(
+I2C_IRAM_ATTR static bool register_target_transmit_handler(
     i2c_slave_dev_handle_t handle,
     i2c_slave_transmit_event_data_t* event,
     void* context) {
@@ -639,7 +652,7 @@ RTC_IRAM_ATTR static bool register_target_transmit_handler(
   return false;
 }
 
-RTC_IRAM_ATTR static bool register_target_transmit_done_handler(
+I2C_IRAM_ATTR static bool register_target_transmit_done_handler(
     i2c_slave_dev_handle_t handle,
     const i2c_slave_transmit_done_event_data_t* event,
     void* context) {
@@ -855,7 +868,7 @@ PRIMITIVE(bus_create) {
   return proxy;
 }
 
-IRAM_ATTR static bool controller_done_handler(
+I2C_IRAM_ATTR static bool controller_done_handler(
     i2c_master_dev_handle_t handle,
     const i2c_master_event_data_t* event,
     void* context) {
@@ -953,6 +966,21 @@ PRIMITIVE(bus_probe_finish) {
   resource->finish_operation();
   if (result == 3) FAIL(INVALID_STATE);
   return BOOL(result == 0);
+}
+
+PRIMITIVE(bus_abort_controller_operation) {
+  ARGS(I2cBusResource, resource);
+  if (!resource->operation_in_flight()) return process->null_object();
+
+  // ESP_ERR_INVALID_STATE means that completion won the race. The abort API
+  // still synchronized with the ISR before reporting that there was no active
+  // transaction. A bus-clear failure also leaves the transaction retired and
+  // its buffers safe to release; a later operation will report if the physical
+  // bus remains unusable.
+  i2c_master_bus_abort_transaction(resource->handle());
+  resource->discard_completion();
+  resource->finish_operation();
+  return process->null_object();
 }
 
 PRIMITIVE(device_create) {

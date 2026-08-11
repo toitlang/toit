@@ -416,12 +416,22 @@ class Bus:
     return mutex_.do:
       if not resource_: throw "CLOSED"
       result := null
-      // Once dispatched, the native buffers must remain alive until finish.
-      critical-do --no-respect-deadline:
+      finished := false
+      try:
         state_.clear-state CONTROLLER-DONE-STATE_
         start.call
         state_.wait-for-state CONTROLLER-DONE-STATE_
         result = finish.call
+        finished = true
+      finally:
+        if not finished:
+          // This is a no-op if start failed or finish already released the
+          // operation. Otherwise it synchronously retires the native
+          // transaction before releasing its buffers.
+          i2c-bus-abort-controller-operation_ resource_
+          // A completion that raced with the deadline must not satisfy the
+          // next controller operation.
+          state_.clear-state CONTROLLER-DONE-STATE_
       return result
 
   /**
@@ -899,6 +909,9 @@ i2c-bus-probe_ resource address/int timeout-ms/int:
 
 i2c-bus-probe-finish_ resource:
   #primitive.i2c.bus-probe-finish
+
+i2c-bus-abort-controller-operation_ resource:
+  #primitive.i2c.bus-abort-controller-operation
 
 i2c-device-create_ bus address-length/int address/int frequency/int timeout-us/int disable-ack-check/bool:
   #primitive.i2c.device-create
