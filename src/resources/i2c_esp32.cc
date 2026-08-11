@@ -575,10 +575,6 @@ RTC_IRAM_ATTR static bool register_target_transmit_done_handler(
 }
 
 PRIMITIVE(register_target_create) {
-  #if !SOC_I2C_SLAVE_CAN_GET_STRETCH_CAUSE
-  FAIL(UNSUPPORTED);
-  #endif
-
   ARGS(I2cResourceGroup, group,
        int, sda,
        int, scl,
@@ -609,6 +605,10 @@ PRIMITIVE(register_target_create) {
 
   #if !SOC_I2C_SLAVE_SUPPORT_BROADCAST
   if (broadcast) FAIL(UNSUPPORTED);
+  #endif
+
+  #if !SOC_I2C_SLAVE_CAN_GET_STRETCH_CAUSE
+  FAIL(UNSUPPORTED);
   #endif
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
