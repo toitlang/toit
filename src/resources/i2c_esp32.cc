@@ -464,7 +464,7 @@ I2C_IRAM_ATTR static bool target_receive_handler(
     i2c_slave_dev_handle_t handle,
     const i2c_slave_rx_done_event_data_t* event,
     void* context) {
-  auto resource = static_cast<I2cTargetResource*>(context);
+  auto resource = unvoid_cast<I2cTargetResource*>(context);
   if (event->overflow) return resource->receive_overflow_from_isr();
   return resource->receive_from_isr(event->buffer, event->length);
 }
@@ -473,7 +473,7 @@ I2C_IRAM_ATTR static bool target_request_handler(
     i2c_slave_dev_handle_t handle,
     const i2c_slave_request_event_data_t* event,
     void* context) {
-  auto resource = static_cast<I2cTargetResource*>(context);
+  auto resource = unvoid_cast<I2cTargetResource*>(context);
   return resource->request_from_isr();
 }
 
@@ -636,7 +636,7 @@ I2C_IRAM_ATTR static bool register_target_receive_handler(
     i2c_slave_dev_handle_t handle,
     const i2c_slave_rx_done_event_data_t* event,
     void* context) {
-  auto resource = static_cast<I2cRegisterTargetResource*>(context);
+  auto resource = unvoid_cast<I2cRegisterTargetResource*>(context);
   resource->receive_from_isr(event->buffer, event->length, event->overflow);
   return false;
 }
@@ -645,7 +645,7 @@ I2C_IRAM_ATTR static bool register_target_transmit_handler(
     i2c_slave_dev_handle_t handle,
     i2c_slave_transmit_event_data_t* event,
     void* context) {
-  auto resource = static_cast<I2cRegisterTargetResource*>(context);
+  auto resource = unvoid_cast<I2cRegisterTargetResource*>(context);
   size_t length = 0;
   event->buffer = resource->transmit_from_isr(event->buffer_size, &length);
   event->length = length;
@@ -656,7 +656,7 @@ I2C_IRAM_ATTR static bool register_target_transmit_done_handler(
     i2c_slave_dev_handle_t handle,
     const i2c_slave_transmit_done_event_data_t* event,
     void* context) {
-  auto resource = static_cast<I2cRegisterTargetResource*>(context);
+  auto resource = unvoid_cast<I2cRegisterTargetResource*>(context);
   resource->transmit_done_from_isr(event->length);
   return false;
 }
@@ -702,7 +702,7 @@ PRIMITIVE(register_target_create) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  uint8_t* registers = static_cast<uint8_t*>(heap_caps_calloc(
+  uint8_t* registers = unvoid_cast<uint8_t*>(heap_caps_calloc(
       register_count, sizeof(uint8_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
   if (registers == null) FAIL(MALLOC_FAILED);
   bool handed_to_resource = false;
@@ -873,7 +873,7 @@ I2C_IRAM_ATTR static bool controller_done_handler(
     const i2c_master_event_data_t* event,
     void* context) {
   USE(handle);
-  auto bus = static_cast<I2cBusResource*>(context);
+  auto bus = unvoid_cast<I2cBusResource*>(context);
   return bus->complete_from_isr(event->event);
 }
 
@@ -892,7 +892,7 @@ PRIMITIVE(bus_probe) {
   // Keep the explicit address byte alive until the asynchronous transaction
   // completes.  Allocating it first also leaves all later error paths free to
   // report ESP_ERR_NO_MEM synchronously and retry the primitive safely.
-  uint8_t* address_buffer = static_cast<uint8_t*>(heap_caps_malloc(
+  uint8_t* address_buffer = unvoid_cast<uint8_t*>(heap_caps_malloc(
       1, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
   if (address_buffer == null) return Primitive::os_error(ESP_ERR_NO_MEM, process);
   address_buffer[0] = address << 1;
@@ -950,22 +950,31 @@ PRIMITIVE(bus_probe) {
   return process->null_object();
 }
 
-static int controller_result(i2c_master_event_t event) {
+// The first three values must be synchronized with the CONTROLLER-RESULT-*
+// constants in lib/i2c.toit.
+enum ControllerResult {
+  CONTROLLER_RESULT_OK = 0,
+  CONTROLLER_RESULT_NACK = 1,
+  CONTROLLER_RESULT_TIMEOUT = 2,
+  CONTROLLER_RESULT_INVALID = 3,
+};
+
+static ControllerResult controller_result(i2c_master_event_t event) {
   switch (event) {
-    case I2C_EVENT_DONE: return 0;
-    case I2C_EVENT_NACK: return 1;
-    case I2C_EVENT_TIMEOUT: return 2;
-    default: return 3;
+    case I2C_EVENT_DONE: return CONTROLLER_RESULT_OK;
+    case I2C_EVENT_NACK: return CONTROLLER_RESULT_NACK;
+    case I2C_EVENT_TIMEOUT: return CONTROLLER_RESULT_TIMEOUT;
+    default: return CONTROLLER_RESULT_INVALID;
   }
 }
 
 PRIMITIVE(bus_probe_finish) {
   ARGS(I2cBusResource, resource);
   if (!resource->operation_in_flight()) FAIL(INVALID_STATE);
-  int result = controller_result(resource->completion_event());
+  ControllerResult result = controller_result(resource->completion_event());
   resource->finish_operation();
-  if (result == 3) FAIL(INVALID_STATE);
-  return BOOL(result == 0);
+  if (result == CONTROLLER_RESULT_INVALID) FAIL(INVALID_STATE);
+  return BOOL(result == CONTROLLER_RESULT_OK);
 }
 
 PRIMITIVE(bus_abort_controller_operation) {
@@ -1054,7 +1063,7 @@ static esp_err_t prepare_controller_operation(I2cBusResource* bus,
 
   uint8_t* tx_buffer = null;
   if (tx_length > 0) {
-    tx_buffer = static_cast<uint8_t*>(heap_caps_malloc(
+    tx_buffer = unvoid_cast<uint8_t*>(heap_caps_malloc(
         tx_length, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
     if (tx_buffer == null) return ESP_ERR_NO_MEM;
     memcpy(tx_buffer, tx, tx_length);
@@ -1062,7 +1071,7 @@ static esp_err_t prepare_controller_operation(I2cBusResource* bus,
 
   uint8_t* rx_buffer = null;
   if (rx_length > 0) {
-    rx_buffer = static_cast<uint8_t*>(heap_caps_malloc(
+    rx_buffer = unvoid_cast<uint8_t*>(heap_caps_malloc(
         rx_length, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
     if (rx_buffer == null) {
       free(tx_buffer);
@@ -1079,17 +1088,17 @@ static Object* finish_controller_operation(I2cBusResource* bus,
                                            size_t destination_length,
                                            Process* process) {
   if (!bus->operation_in_flight()) FAIL(INVALID_STATE);
-  int result = controller_result(bus->completion_event());
+  ControllerResult result = controller_result(bus->completion_event());
   bool destination_too_small = bus->rx_length() > destination_length;
-  if (result == 0 && bus->rx_length() > 0) {
+  if (result == CONTROLLER_RESULT_OK && bus->rx_length() > 0) {
     if (!destination_too_small) {
       memcpy(destination, bus->rx_buffer(), bus->rx_length());
     }
   }
   bus->finish_operation();
-  if (result == 3) FAIL(INVALID_STATE);
+  if (result == CONTROLLER_RESULT_INVALID) FAIL(INVALID_STATE);
   if (destination_too_small) FAIL(OUT_OF_BOUNDS);
-  return Smi::from(result);
+  return Smi::from(static_cast<int>(result));
 }
 
 PRIMITIVE(device_write) {
