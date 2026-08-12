@@ -59,6 +59,10 @@ MAX-DEFAULT-RESPONSE-SIZE ::= 32
 /** Default maximum time for producing a stretched target response. */
 DEFAULT-TARGET-RESPONSE-TIMEOUT-US ::= 50_000
 
+CONTROLLER-RESULT-OK_ ::= 0
+CONTROLLER-RESULT-NACK_ ::= 1
+CONTROLLER-RESULT-TIMEOUT_ ::= 2
+
 /**
 An addressable I2C target.
 
@@ -571,12 +575,11 @@ class Bus:
   It is an error to connect a device on an address already in use.
     A device can be released with $Device.close.
   */
-  device i2c-address/int
+  device i2c-address/int -> Device
       --frequency/int
       --address-bit-size/int=7
       --timeout-us/int=100_000
-      --disable-ack-check/bool=false
-      -> Device:
+      --disable-ack-check/bool=false:
     if address-bit-size != 7 and address-bit-size != 10: throw "INVALID_ARGUMENT"
     if frequency <= 0 or timeout-us < 0: throw "INVALID_ARGUMENT"
     limit := (1 << address-bit-size) - 1
@@ -594,11 +597,10 @@ class Bus:
   Variant of $(device i2c-address --frequency --address-bit-size) that uses the
     default frequency given to the bus at construction.
   */
-  device i2c-address/int
+  device i2c-address/int -> Device
       --address-bit-size/int=7
       --timeout-us/int=100_000
-      --disable-ack-check/bool=false
-      -> Device:
+      --disable-ack-check/bool=false:
     return device i2c-address
         --frequency=frequency_
         --address-bit-size=address-bit-size
@@ -641,9 +643,9 @@ class Device implements serial.Device:
     add-finalizer this:: close
 
   check-controller-result_ result/int -> none:
-    if result == 0: return
-    if result == 1: throw "I2C_NACK"
-    if result == 2: throw "I2C_TIMEOUT"
+    if result == CONTROLLER-RESULT-OK_: return
+    if result == CONTROLLER-RESULT-NACK_: throw "I2C_NACK"
+    if result == CONTROLLER-RESULT-TIMEOUT_: throw "I2C_TIMEOUT"
     throw "I2C_ERROR"
 
   /**
