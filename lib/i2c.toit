@@ -331,9 +331,7 @@ class RegisterTarget:
 /**
 Bus for communicating using I2C.
 
-Controller operations suspend only the calling Toit task. They are dispatched
-  asynchronously by the native driver, and operations from multiple tasks are
-  serialized on this bus.
+Controller operations from multiple tasks are serialized on this bus.
 */
 class Bus:
   static CONTROLLER-DONE-STATE_ ::= 1 << 0
