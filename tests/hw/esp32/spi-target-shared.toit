@@ -297,12 +297,12 @@ test-board2:
         --max-transfer-size=max-transfer-size
         --dma=dma
 
-    pending := target.start-exchange transmit
+    result := target.exchange transmit
         --receive-size=receive-size
         --fill-byte=fill-byte
-    port.out.write #[READY] --flush
+        --when-armed=:
+          port.out.write #[READY] --flush
 
-    result := pending.wait
     port.out.write #[DONE] --flush
     port.out.little-endian.write-uint32 result.size
     port.out.write result --flush
