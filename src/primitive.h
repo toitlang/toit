@@ -475,7 +475,7 @@ namespace toit {
   PRIMITIVE(target_create, 10)               \
   PRIMITIVE(target_close, 2)                 \
   PRIMITIVE(target_transfer_start, 4)        \
-  PRIMITIVE(target_transfer_finish, 2)       \
+  PRIMITIVE(target_transfer_finish, 3)       \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(device, 9)                       \
   PRIMITIVE(device_close, 2)                 \
