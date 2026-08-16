@@ -257,13 +257,11 @@ void SpiDevice::prepare_operation(const uint8_t* tx_data,
                                   size_t transfer_size,
                                   uint32_t flags,
                                   uint16_t command,
-                                  uint64_t address,
-                                  int dc_value) {
+                                  uint64_t address) {
   ASSERT(!operation_in_flight_);
   tx_buffer_ = tx_buffer;
   rx_buffer_ = rx_buffer;
   transfer_size_ = transfer_size;
-  dc_value_ = dc_value;
   transaction_ = {
     .flags = flags,
     .cmd = command,
@@ -289,7 +287,6 @@ void SpiDevice::finish_operation() {
   tx_buffer_ = null;
   rx_buffer_ = null;
   transfer_size_ = 0;
-  dc_value_ = 0;
   transaction_ = {};
   operation_in_flight_ = false;
 }
@@ -298,6 +295,7 @@ void SpiDevice::complete_from_isr() {
   BaseType_t higher_was_woken = pdFALSE;
   word event = kSpiControllerDoneState;
   xQueueSendFromISR(queue(), &event, &higher_was_woken);
+  if (higher_was_woken == pdTRUE) portYIELD_FROM_ISR();
 }
 
 bool SpiDevice::receive_event(word* data) {
@@ -1234,7 +1232,7 @@ PRIMITIVE(close) {
   return process->null_object();
 }
 
-IRAM_ATTR static void spi_post_transfer_callback(spi_transaction_t* t) {
+SPI_CONTROLLER_ISR_ATTR static void spi_post_transfer_callback(spi_transaction_t* t) {
   auto resource = static_cast<SpiDevice*>(t->user);
   resource->complete_from_isr();
 }
@@ -1381,8 +1379,7 @@ PRIMITIVE(transfer_start) {
       length,
       flags,
       static_cast<uint16_t>(command),
-      static_cast<uint64_t>(address),
-      dc);
+      static_cast<uint64_t>(address));
   buffers_handed_to_resource = true;
   bool queued = false;
   Defer cancel_operation { [&] {

@@ -52,6 +52,12 @@ class SpiResourceGroup : public ResourceGroup {
 
 const word kSpiControllerDoneState = 1 << 0;
 
+#if CONFIG_SPI_MASTER_ISR_IN_IRAM
+#define SPI_CONTROLLER_ISR_ATTR IRAM_ATTR
+#else
+#define SPI_CONTROLLER_ISR_ATTR
+#endif
+
 class SpiDevice : public EventQueueResource {
  public:
   TAG(SpiDevice);
@@ -69,8 +75,6 @@ class SpiDevice : public EventQueueResource {
   spi_device_handle_t handle() { return handle_; }
 
   int dc() { return dc_; }
-  int dc_value() const { return dc_value_; }
-
   bool operation_in_flight() const { return operation_in_flight_; }
   spi_transaction_t* transaction() { return &transaction_; }
   size_t transfer_size() const { return transfer_size_; }
@@ -82,11 +86,10 @@ class SpiDevice : public EventQueueResource {
                          size_t transfer_size,
                          uint32_t flags,
                          uint16_t command,
-                         uint64_t address,
-                         int dc_value);
+                         uint64_t address);
   void finish_operation();
 
-  IRAM_ATTR void complete_from_isr();
+  SPI_CONTROLLER_ISR_ATTR void complete_from_isr();
   bool receive_event(word* data) override;
 
   // GPIO pins reserved by this device (cs/dc).
@@ -101,7 +104,6 @@ class SpiDevice : public EventQueueResource {
   uint8_t* tx_buffer_ = null;
   uint8_t* rx_buffer_ = null;
   size_t transfer_size_ = 0;
-  int dc_value_ = 0;
 };
 
 } // namespace toit
