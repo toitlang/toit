@@ -38,6 +38,9 @@
 
 namespace toit {
 
+static_assert(SOC_SPI_PERIPH_NUM - 1 <= SPI_EVENT_QUEUE_SIZE,
+              "Increase SPI_EVENT_QUEUE_SIZE");
+
 const spi_host_device_t kInvalidHostDevice = spi_host_device_t(-1);
 
 static ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
@@ -47,6 +50,101 @@ static ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
   , SPI3_HOST
 #endif
 );
+
+const word kSpiTargetReadyState = 1 << 0;
+const word kSpiTargetDoneState = 1 << 1;
+
+class SpiTargetResourceGroup : public ResourceGroup {
+ public:
+  TAG(SpiTargetResourceGroup);
+
+  SpiTargetResourceGroup(Process* process, EventSource* event_source)
+      : ResourceGroup(process, event_source) {}
+
+  uint32_t on_event(Resource* resource, word data, uint32_t state) override {
+    return state | data;
+  }
+};
+
+class SpiTargetResource : public EventQueueResource {
+ public:
+  TAG(SpiTargetResource);
+
+  SpiTargetResource(SpiTargetResourceGroup* group,
+                    spi_host_device_t host_device,
+                    QueueHandle_t event_queue,
+                    size_t max_transfer_size,
+                    size_t buffer_alignment,
+                    bool dma)
+      : EventQueueResource(group, event_queue)
+      , host_device_(host_device)
+      , max_transfer_size_(max_transfer_size)
+      , buffer_alignment_(buffer_alignment)
+      , dma_(dma) {
+    spinlock_initialize(&spinlock_);
+  }
+
+  ~SpiTargetResource() override;
+
+  spi_host_device_t host_device() const { return host_device_; }
+  size_t max_transfer_size() const { return max_transfer_size_; }
+  size_t buffer_alignment() const { return buffer_alignment_; }
+  GpioPins& owned_pins() { return owned_pins_; }
+
+  void set_initialized() { initialized_ = true; }
+
+  bool operation_in_flight() const { return operation_in_flight_; }
+  spi_slave_transaction_t* transaction() { return &transaction_; }
+
+  void prepare_operation(uint8_t* tx_buffer,
+                         uint8_t* rx_buffer,
+                         size_t receive_size,
+                         size_t transfer_size);
+  void finish_operation();
+
+  uint8_t* receive_buffer() const { return rx_buffer_; }
+  size_t receive_size() const { return receive_size_; }
+  size_t transferred_bits() const { return transaction_.trans_len; }
+  bool dma() const { return dma_; }
+
+  IRAM_ATTR void ready_from_isr() { signal_from_isr(kSpiTargetReadyState); }
+  IRAM_ATTR void complete_from_isr() { signal_from_isr(kSpiTargetDoneState); }
+
+  bool receive_event(word* data) override {
+    word unused;
+    if (xQueueReceive(queue(), &unused, 0) != pdTRUE) return false;
+    portENTER_CRITICAL(&spinlock_);
+    *data = pending_event_;
+    pending_event_ = 0;
+    portEXIT_CRITICAL(&spinlock_);
+    return true;
+  }
+
+ private:
+  IRAM_ATTR void signal_from_isr(word event) {
+    BaseType_t higher_was_woken = pdFALSE;
+    portENTER_CRITICAL_ISR(&spinlock_);
+    pending_event_ |= event;
+    portEXIT_CRITICAL_ISR(&spinlock_);
+    word payload = 0;
+    xQueueSendFromISR(queue(), &payload, &higher_was_woken);
+    if (higher_was_woken == pdTRUE) portYIELD_FROM_ISR();
+  }
+
+  spi_host_device_t host_device_;
+  const size_t max_transfer_size_;
+  const size_t buffer_alignment_;
+  const bool dma_;
+  bool initialized_ = false;
+  bool operation_in_flight_ = false;
+  spi_slave_transaction_t transaction_ = {};
+  uint8_t* tx_buffer_ = null;
+  uint8_t* rx_buffer_ = null;
+  size_t receive_size_ = 0;
+  spinlock_t spinlock_;
+  word pending_event_ = 0;
+  GpioPins owned_pins_;
+};
 
 SpiResourceGroup::SpiResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device)
     : ResourceGroup(process, event_source)
@@ -64,7 +162,7 @@ SpiResourceGroup::~SpiResourceGroup() {
 SpiTargetResource::~SpiTargetResource() {
   // Uninstall the driver before releasing buffers that may still be referenced
   // by a queued transaction. This also makes process teardown safe when Toit
-  // code abandoned a PendingExchange that ESP-IDF cannot cancel explicitly.
+  // code abandoned an exchange that ESP-IDF cannot cancel explicitly.
   if (initialized_) FATAL_IF_NOT_ESP_OK(spi_slave_free(host_device_));
   if (operation_in_flight_) finish_operation();
   vQueueDeleteWithCaps(queue());
@@ -228,6 +326,7 @@ PRIMITIVE(target_create) {
 
   GpioPinReserver reserver;
   bool reserve_ok = true;
+  if (mosi < -1 || miso < -1 || clock < 0 || cs < 0) FAIL(INVALID_ARGUMENT);
   int mosi_num = reserver.decode_and_take(mosi, &reserve_ok);
   int miso_num = reserver.decode_and_take(miso, &reserve_ok);
   int clock_num = reserver.decode_and_take(clock, &reserve_ok);
@@ -241,7 +340,7 @@ PRIMITIVE(target_create) {
   }
 #endif
 
-  spi_host_device_t host_device = spi_host_devices.preferred(kInvalidHostDevice);
+  spi_host_device_t host_device = spi_host_devices.any();
   if (host_device == kInvalidHostDevice) FAIL(ALREADY_IN_USE);
   bool host_owned = true;
   Defer release_host { [&] {
@@ -376,13 +475,13 @@ PRIMITIVE(target_transfer_finish) {
   if (receive_buffer.length() < resource->receive_size()) FAIL(OUT_OF_BOUNDS);
 
   size_t transferred_bytes = (resource->transferred_bits() + 7) / 8;
-  size_t result_size = Utils::min(transferred_bytes, resource->receive_size());
 #if CONFIG_IDF_TARGET_ESP32
   // Classic ESP32 target DMA only commits complete words to its receive
   // buffer. ESP-IDF documents that a controller's trailing bytes are
   // discarded when its transaction length is not a multiple of four.
-  if (resource->dma()) result_size &= ~static_cast<size_t>(3);
+  if (resource->dma()) transferred_bytes &= ~static_cast<size_t>(3);
 #endif
+  size_t result_size = Utils::min(transferred_bytes, resource->receive_size());
   if (result_size != 0) {
     memcpy(receive_buffer.address(), resource->receive_buffer(), result_size);
   }
