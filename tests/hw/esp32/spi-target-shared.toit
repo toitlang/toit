@@ -22,9 +22,13 @@ MOSI ::= Variant.CURRENT.board-connection-pin5
 MISO ::= Variant.CURRENT.board-connection-pin6
 
 PREPARE ::= 0x31
+ABORT-IDLE ::= 0x32
+ABORT-ACTIVE ::= 0x33
+RESUME ::= 0x34
 SYNC ::= 0xa0
 READY ::= 0xa1
 DONE ::= 0xa2
+ABORTED ::= 0xa3
 
 FLAG-TRANSMIT-LSB-FIRST ::= 1 << 0
 FLAG-RECEIVE-LSB-FIRST ::= 1 << 1
@@ -247,6 +251,10 @@ test-board1:
       if current.transmit-lsb-first: reverse-bits-in-place expected-controller
       expect-equals expected-controller controller-result
 
+  [false, true].do: | dma/bool |
+    test-abort port bus ABORT-IDLE dma
+    test-abort port bus ABORT-ACTIVE dma
+
   bus.close
   if is-classic-esp32:
     [1, 3].do: | mode/int |
@@ -275,6 +283,9 @@ test-board2:
   port.out.write #[SYNC] --flush
   while true:
     command := port.in.read-byte
+    if command == ABORT-IDLE or command == ABORT-ACTIVE:
+      test-abort-target port command
+      continue
     if command != PREPARE: throw "Unknown command: $command"
 
     mode := port.in.read-byte
@@ -307,6 +318,76 @@ test-board2:
     port.out.little-endian.write-uint32 result.size
     port.out.write result --flush
     target.close
+
+test-abort port/uart.Port bus/spi.Bus command/int dma/bool -> none:
+  active := command == ABORT-ACTIVE
+  kind := active ? "active" : "idle"
+  suffix := dma ? "dma" : "no-dma"
+  print "SPI target: abort-$kind-$suffix"
+
+  device := bus.device
+      --cs=CS
+      --frequency=(dma ? 400_000 : 100_000)
+      --mode=0
+      --cs-setup-cycles=1
+  port.out.write #[command, dma ? 1 : 0] --flush
+  expect-equals READY port.in.read-byte
+
+  if active:
+    // Leave CS asserted after a partial transaction. The target must abort
+    // without waiting for the controller to deassert it.
+    device.with-reserved-bus:
+      device.transfer #[0x5a] --keep-cs-active
+      expect-equals ABORTED port.in.read-byte
+      // End the controller-side transaction while the target CS input is
+      // disconnected. Board 2 does not re-arm until RESUME is sent below.
+      device.transfer #[0]
+  else:
+    expect-equals ABORTED port.in.read-byte
+
+  port.out.write #[RESUME] --flush
+  expect-equals READY port.in.read-byte
+  2.repeat: | index |
+    expected := pattern 8 ((active ? 0xb4 : 0x4b) + index)
+    controller-data := expected.copy
+    device.transfer controller-data
+    received := read-target-result port
+    expect-equals expected received
+    if index == 0:
+      port.out.write #[RESUME] --flush
+      expect-equals READY port.in.read-byte
+  device.close
+
+test-abort-target port/uart.Port command/int -> none:
+  dma := port.in.read-byte != 0
+  target := spi.Target
+      --mosi=MOSI
+      --clock=SCLK
+      --cs=CS
+      --max-transfer-size=64
+      --dma=dma
+
+  timeout-ms := command == ABORT-ACTIVE ? 200 : 20
+  expect-throws DEADLINE-EXCEEDED-ERROR:
+    with-timeout --ms=timeout-ms:
+      target.exchange #[ ]
+          --receive-size=64
+          --when-armed=:
+            port.out.write #[READY] --flush
+
+  port.out.write #[ABORTED] --flush
+  expect-equals RESUME port.in.read-byte
+
+  2.repeat: | index |
+    result := target.exchange #[ ]
+        --receive-size=8
+        --when-armed=:
+          port.out.write #[READY] --flush
+    port.out.write #[DONE] --flush
+    port.out.little-endian.write-uint32 result.size
+    port.out.write result --flush
+    if index == 0: expect-equals RESUME port.in.read-byte
+  target.close
 
 prepare-target port/uart.Port current/Case:
   flags := 0
