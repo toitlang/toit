@@ -66,8 +66,7 @@ main:
 An ESP32 SPI target that exchanges one transaction at a time with a controller.
 
 The $exchange method arms the peripheral before suspending the calling Toit
-  task. Its native primitive calls never wait for the controller or for queue
-  space.
+  task.
 
 SPI does not define a standard register protocol. Protocols that interpret the
   first received bytes as commands or addresses should be built on top of this
@@ -115,31 +114,31 @@ class Target:
     $exchange.
   */
   constructor
-      --mosi/any=null
-      --miso/any=null
-      --clock/any
-      --cs/any
+      --mosi/int?=null
+      --miso/int?=null
+      --clock/int
+      --cs/int
       --mode/int=0
       --transmit-lsb-first/bool=false
       --receive-lsb-first/bool=false
       --.max-transfer-size/int=DEFAULT-TARGET-MAX-TRANSFER-SIZE
       --dma/bool=true:
-    if mode < 0 or mode > 3: throw "INVALID_ARGUMENT"
-    if mosi == null and miso == null: throw "INVALID_ARGUMENT"
+    if not 0 <= mode <= 3: throw "INVALID_ARGUMENT"
+    if not mosi and not miso: throw "INVALID_ARGUMENT"
     if max-transfer-size <= 0: throw "INVALID_ARGUMENT"
     if not dma and max-transfer-size > TARGET-NON-DMA-MAX-TRANSFER-SIZE:
       throw "INVALID_ARGUMENT"
     if dma
-        and mosi != null
+        and mosi
         and system.architecture == system.ARCHITECTURE-ESP32:
-      if miso != null or (mode & 1) != 0: throw "INVALID_ARGUMENT"
+      if miso or (mode & 1) != 0: throw "INVALID_ARGUMENT"
 
     resource_ = spi-target-create_
         spi-target-resource-group_
-        (gpio.to-pin-num_ mosi)
-        (gpio.to-pin-num_ miso)
-        (gpio.to-pin-num_ clock)
-        (gpio.to-pin-num_ cs)
+        (mosi or -1)
+        (miso or -1)
+        clock
+        cs
         mode
         transmit-lsb-first
         receive-lsb-first
@@ -152,40 +151,38 @@ class Target:
   Arms and waits for one full-duplex SPI transaction.
 
   Up to $receive-size bytes received on MOSI are returned. If the controller
-    ends the transaction earlier, the returned array is correspondingly
-    shorter. The target sends $transmit on MISO and uses $fill-byte for any
-    remaining clocks. The maximum of the transmit and receive sizes is the
-    maximum number of bytes accepted for this transaction.
+    deasserts CS before clocking all requested bytes, the returned array is
+    correspondingly shorter. The target sends $transmit on MISO and uses
+    $fill-byte for any remaining clocks. The maximum of the transmit and
+    receive sizes is the maximum number of bytes accepted for this transaction.
 
   Waiting suspends only the calling Toit task. The exchange cannot be canceled
     after it has armed the peripheral.
   */
-  exchange
-      transmit/ByteArray=#[ ]
+  exchange transmit/ByteArray=#[ ] -> ByteArray
       --receive-size/int=transmit.size
-      --fill-byte/int=0xff
-      -> ByteArray:
-    pending := start-exchange transmit
+      --fill-byte/int=0xff:
+    return exchange transmit
         --receive-size=receive-size
         --fill-byte=fill-byte
-    return pending.wait
+        --when-armed=: null
 
   /**
-  Arms one full-duplex transaction and returns once the peripheral is ready.
+  Variant of $(exchange transmit) that calls $when-armed once the peripheral
+    is armed.
 
-  The returned $PendingExchange can be used to wait for completion. Splitting
-    arming from completion lets a target assert an application-level ready
-    signal before a controller starts generating clocks.
+  The $when-armed block runs before this method starts waiting for the
+    controller. It can assert an application-level ready signal to tell the
+    controller that it may start generating clocks.
   */
-  start-exchange
-      transmit/ByteArray=#[ ]
+  exchange transmit/ByteArray=#[ ] -> ByteArray
       --receive-size/int=transmit.size
       --fill-byte/int=0xff
-      -> PendingExchange:
+      [--when-armed]:
     if receive-size < 0: throw "OUT_OF_RANGE"
     if not 0 <= fill-byte <= 0xff: throw "OUT_OF_RANGE"
     transfer-size := transmit.size > receive-size ? transmit.size : receive-size
-    if transfer-size <= 0 or transfer-size > max-transfer-size: throw "OUT_OF_RANGE"
+    if not 0 < transfer-size <= max-transfer-size: throw "OUT_OF_RANGE"
 
     return mutex_.do:
       if not resource_: throw "CLOSED"
@@ -194,7 +191,6 @@ class Target:
       // Allocate everything managed by the Toit heap before the native
       // transaction owns DMA buffers and can complete asynchronously.
       receive-buffer := ByteArray receive-size
-      pending := PendingExchange_ this receive-buffer
 
       exchange-in-flight_ = true
       successfully-armed := false
@@ -206,7 +202,12 @@ class Target:
         critical-do --no-respect-deadline:
           state_.wait-for-state READY-STATE_
         successfully-armed = true
-        return pending
+        when-armed.call
+        critical-do --no-respect-deadline:
+          state_.wait-for-state DONE-STATE_
+          size := spi-target-transfer-finish_ resource_ receive-buffer
+          exchange-in-flight_ = false
+          return receive-buffer.copy 0 size
       finally:
         if not successfully-armed: exchange-in-flight_ = false
 
@@ -221,43 +222,11 @@ class Target:
         resource_ = null
         remove-finalizer this
 
-  finish-exchange_ pending/PendingExchange_ -> ByteArray:
-    return mutex_.do:
-      if not resource_: throw "CLOSED"
-      if not exchange-in-flight_: throw "INVALID_STATE"
-      critical-do --no-respect-deadline:
-        state_.wait-for-state DONE-STATE_
-        size := spi-target-transfer-finish_ resource_ pending.receive-buffer_
-        exchange-in-flight_ = false
-        return pending.receive-buffer_.copy 0 size
-
   finalize_ -> none:
     // An armed ESP-IDF transaction cannot be canceled. Leave the native
     // resource registered so process teardown can release it safely.
     if exchange-in-flight_: return
     close
-
-/** A transaction armed by $(Target.start-exchange). */
-interface PendingExchange:
-  /**
-  Waits for the controller transaction and returns the bytes received.
-
-  Every pending exchange must eventually be waited for. Until then its target
-    remains busy and cannot be closed.
-  */
-  wait -> ByteArray
-
-class PendingExchange_ implements PendingExchange:
-  target_/Target
-  receive-buffer_/ByteArray
-  consumed_/bool := false
-
-  constructor .target_ .receive-buffer_:
-
-  wait -> ByteArray:
-    if consumed_: throw "INVALID_STATE"
-    consumed_ = true
-    return target_.finish-exchange_ this
 
 /**
 Bus for communicating using SPI.
