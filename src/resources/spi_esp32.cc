@@ -55,6 +55,8 @@ static ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
 const word kSpiTargetReadyState = 1 << 0;
 const word kSpiTargetDoneState = 1 << 1;
 const word kSpiBufferTargetReceivedState = 1 << 2;
+const word kSpiBufferTargetStoppedState = 1 << 3;
+const word kSpiBufferTargetArmedState = 1 << 4;
 
 static size_t spi_dma_buffer_alignment(bool dma) {
   if (!dma) return 4;
@@ -189,13 +191,15 @@ class SpiBufferTargetResource : public EventQueueResource {
   // the native transaction could not be re-armed.
   int take_receive(uint8_t* destination);
   word dropped_receive_count() const;
+  void request_abort();
 
-  IRAM_ATTR void complete_from_isr();
+  SPI_TARGET_ISR_ATTR void armed_from_isr();
+  SPI_TARGET_ISR_ATTR void complete_from_isr();
 
   bool receive_event(word* data) override;
 
  private:
-  IRAM_ATTR void signal_from_isr(word event);
+  SPI_TARGET_ISR_ATTR void signal_from_isr(word event);
 
   spi_host_device_t host_device_;
   uint8_t* response_buffer_;
@@ -213,6 +217,8 @@ class SpiBufferTargetResource : public EventQueueResource {
   uint32_t receive_count_ = 0;
   word dropped_receive_count_ = 0;
   bool requeue_failed_ = false;
+  bool stopping_ = false;
+  bool initially_armed_ = false;
   word pending_event_ = 0;
   GpioPins owned_pins_;
 };
@@ -401,6 +407,27 @@ word SpiBufferTargetResource::dropped_receive_count() const {
   return result;
 }
 
+void SpiBufferTargetResource::request_abort() {
+  portENTER_CRITICAL(&spinlock_);
+  ASSERT(!stopping_);
+  stopping_ = true;
+  portEXIT_CRITICAL(&spinlock_);
+
+  esp_err_t err = spi_slave_abort_transaction(host_device_, &transaction_);
+  // ESP_ERR_INVALID_STATE means that natural completion won the race. The
+  // callback observes stopping_ and signals kSpiBufferTargetStoppedState
+  // without re-arming the descriptor.
+  if (err != ESP_ERR_INVALID_STATE) FATAL_IF_NOT_ESP_OK(err);
+}
+
+void SpiBufferTargetResource::armed_from_isr() {
+  portENTER_CRITICAL_ISR(&spinlock_);
+  bool signal = !initially_armed_;
+  initially_armed_ = true;
+  portEXIT_CRITICAL_ISR(&spinlock_);
+  if (signal) signal_from_isr(kSpiBufferTargetArmedState);
+}
+
 void SpiBufferTargetResource::complete_from_isr() {
   size_t received = (transaction_.trans_len + 7) / 8;
   if (received > buffer_size_) received = buffer_size_;
@@ -411,8 +438,14 @@ void SpiBufferTargetResource::complete_from_isr() {
   if (dma_) received &= ~static_cast<size_t>(3);
 #endif
   bool enqueued = false;
+  bool failed = false;
 
   portENTER_CRITICAL_ISR(&spinlock_);
+  if (stopping_) {
+    portEXIT_CRITICAL_ISR(&spinlock_);
+    signal_from_isr(kSpiBufferTargetStoppedState);
+    return;
+  }
   // A floating or newly configured CS line can produce an interrupt without
   // any clock edges. It carries no transaction data, so don't consume receive
   // queue capacity or wake a receiver for it.
@@ -429,19 +462,12 @@ void SpiBufferTargetResource::complete_from_isr() {
       dropped_receive_count_++;
     }
   }
-  portEXIT_CRITICAL_ISR(&spinlock_);
-
 #if SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
-  bool failed = false;
   if (dma_ && response_buffer_ != null) {
-    portENTER_CRITICAL_ISR(&spinlock_);
     esp_err_t err = esp_cache_msync(
         response_buffer_, driver_buffer_size_, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-    portEXIT_CRITICAL_ISR(&spinlock_);
     if (err != ESP_OK) failed = true;
   }
-#else
-  bool failed = false;
 #endif
   transaction_.trans_len = 0;
   if (!failed) {
@@ -449,10 +475,12 @@ void SpiBufferTargetResource::complete_from_isr() {
     if (err != ESP_OK) failed = true;
   }
   if (failed) {
-    portENTER_CRITICAL_ISR(&spinlock_);
     requeue_failed_ = true;
-    portEXIT_CRITICAL_ISR(&spinlock_);
   }
+  // Keep the decision to re-arm atomic with request_abort. If close sets
+  // stopping_ first, this callback does not re-arm. If this callback wins, it
+  // queues the descriptor before close can ask ESP-IDF to abort it.
+  portEXIT_CRITICAL_ISR(&spinlock_);
 
   if (enqueued || failed) signal_from_isr(kSpiBufferTargetReceivedState);
 }
@@ -711,10 +739,16 @@ static uint8_t* allocate_dma_buffer(size_t size, size_t alignment) {
       MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT));
 }
 
-IRAM_ATTR static void spi_buffer_target_done_callback(
+SPI_TARGET_ISR_ATTR static void spi_buffer_target_done_callback(
     spi_slave_transaction_t* transaction) {
   auto resource = static_cast<SpiBufferTargetResource*>(transaction->user);
   resource->complete_from_isr();
+}
+
+SPI_TARGET_ISR_ATTR static void spi_buffer_target_armed_callback(
+    spi_slave_transaction_t* transaction) {
+  auto resource = static_cast<SpiBufferTargetResource*>(transaction->user);
+  resource->armed_from_isr();
 }
 
 PRIMITIVE(buffer_target_create) {
@@ -841,7 +875,11 @@ PRIMITIVE(buffer_target_create) {
   bus_config.quadhd_io_num = -1;
   bus_config.max_transfer_sz = driver_buffer_size;
   bus_config.flags = 0;
+#if CONFIG_SPI_SLAVE_ISR_IN_IRAM
   bus_config.intr_flags = ESP_INTR_FLAG_IRAM;
+#else
+  bus_config.intr_flags = 0;
+#endif
 
   uint32_t flags = SPI_SLAVE_NO_RETURN_RESULT;
   if (transmit_lsb_first) flags |= SPI_SLAVE_TXBIT_LSBFIRST;
@@ -851,7 +889,7 @@ PRIMITIVE(buffer_target_create) {
     .flags = flags,
     .queue_size = 1,
     .mode = static_cast<uint8_t>(mode),
-    .post_setup_cb = null,
+    .post_setup_cb = spi_buffer_target_armed_callback,
     .post_trans_cb = spi_buffer_target_done_callback,
   };
 
@@ -882,7 +920,11 @@ PRIMITIVE(buffer_target_create) {
 }
 
 PRIMITIVE(buffer_target_close) {
-  ARGS(SpiTargetResourceGroup, group, SpiBufferTargetResource, target);
+  ARGS(SpiTargetResourceGroup, group, SpiBufferTargetResource, target, bool, abort);
+  if (abort) {
+    target->request_abort();
+    return process->null_object();
+  }
   group->unregister_resource(target);
   target_proxy->clear_external_address();
   return process->null_object();

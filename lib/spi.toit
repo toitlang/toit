@@ -302,9 +302,12 @@ The peripheral is continuously armed. On configurations where ESP-IDF copies
 */
 class BufferTarget:
   static RECEIVED-STATE_ ::= 1 << 2
+  static STOPPED-STATE_ ::= 1 << 3
+  static ARMED-STATE_ ::= 1 << 4
 
   resource_ := ?
   state_/monitor.ResourceState_ ::= ?
+  close-mutex_/monitor.Mutex ::= monitor.Mutex
   receive-mutex_/monitor.Mutex ::= monitor.Mutex
   size/int ::= ?
   can-receive_/bool ::= ?
@@ -370,6 +373,8 @@ class BufferTarget:
         response
         dma
     state_ = monitor.ResourceState_ spi-target-resource-group_ resource_
+    critical-do --no-respect-deadline:
+      state_.wait-for-state ARMED-STATE_
     add-finalizer this:: close
 
   /** Returns the response byte stored at $index. */
@@ -439,12 +444,15 @@ class BufferTarget:
 
   /** Stops the target and releases its peripheral, pins, and native buffers. */
   close -> none:
-    if not resource_: return
-    critical-do:
-      state_.dispose
-      spi-buffer-target-close_ spi-target-resource-group_ resource_
-      resource_ = null
-      remove-finalizer this
+    close-mutex_.do:
+      if not resource_: return
+      critical-do --no-respect-deadline:
+        spi-buffer-target-close_ spi-target-resource-group_ resource_ true
+        state_.wait-for-state STOPPED-STATE_
+        state_.dispose
+        spi-buffer-target-close_ spi-target-resource-group_ resource_ false
+        resource_ = null
+        remove-finalizer this
 
 /**
 Bus for communicating using SPI.
@@ -924,7 +932,7 @@ spi-buffer-target-create_
     dma/bool:
   #primitive.spi.buffer-target-create
 
-spi-buffer-target-close_ group target:
+spi-buffer-target-close_ group target abort/bool:
   #primitive.spi.buffer-target-close
 
 spi-buffer-target-get_ target index/int:

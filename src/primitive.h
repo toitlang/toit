@@ -477,7 +477,7 @@ namespace toit {
   PRIMITIVE(target_transfer_start, 4)        \
   PRIMITIVE(target_transfer_finish, 3)       \
   PRIMITIVE(buffer_target_create, 11)        \
-  PRIMITIVE(buffer_target_close, 2)          \
+  PRIMITIVE(buffer_target_close, 3)          \
   PRIMITIVE(buffer_target_get, 2)            \
   PRIMITIVE(buffer_target_set, 3)            \
   PRIMITIVE(buffer_target_read, 3)           \
