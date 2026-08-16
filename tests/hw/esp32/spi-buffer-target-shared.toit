@@ -179,6 +179,50 @@ test-board1:
 
   close-target port
   device.close
+
+  [false, true].do: | dma/bool |
+    suffix := dma ? "dma" : "no-dma"
+    print "SPI buffer target: active close-$suffix"
+    create-target port
+        --mode=0
+        --buffer-size=64
+        --queue-depth=2
+        --fill-byte=0xff
+        --initial=#[ ]
+        --use-mosi
+        --use-miso=false
+        --dma=dma
+    device = create-device bus
+        --mode=0
+        --frequency=(dma ? 400_000 : 100_000)
+    device.with-reserved-bus:
+      device.transfer #[0x5a] --keep-cs-active
+      // Closing must not wait for CS to be released by the controller.
+      close-target port
+      // The target has disconnected its CS input, so this only terminates the
+      // controller-side reservation.
+      device.transfer #[0]
+    device.close
+
+    // Closing must also release the peripheral and pins for a new target.
+    create-target port
+        --mode=0
+        --buffer-size=8
+        --queue-depth=2
+        --fill-byte=0xff
+        --initial=#[ ]
+        --use-mosi
+        --use-miso=false
+        --dma=dma
+    device = create-device bus
+        --mode=0
+        --frequency=(dma ? 400_000 : 100_000)
+    recovery := pattern 8 (dma ? 0xd1 : 0x1d)
+    transfer device recovery
+    expect-equals recovery (take-received port)
+    close-target port
+    device.close
+
   bus.close
   port.close
 
