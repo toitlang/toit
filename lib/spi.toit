@@ -156,8 +156,10 @@ class Target:
     $fill-byte for any remaining clocks. The maximum of the transmit and
     receive sizes is the maximum number of bytes accepted for this transaction.
 
-  Waiting suspends only the calling Toit task. The exchange cannot be canceled
-    after it has armed the peripheral.
+  Waiting suspends only the calling Toit task. If the task is interrupted or
+    reaches its deadline after the peripheral is armed, the transaction is
+    aborted and its native buffers are released before the exception is
+    propagated.
   */
   exchange transmit/ByteArray=#[ ] -> ByteArray
       --receive-size/int=transmit.size
@@ -193,23 +195,35 @@ class Target:
       receive-buffer := ByteArray receive-size
 
       exchange-in-flight_ = true
-      successfully-armed := false
+      started := false
+      finished := false
       try:
         state_.clear-state READY-STATE_ | DONE-STATE_
         spi-target-transfer-start_ resource_ transmit receive-size fill-byte
-        // The native driver cannot disarm a transaction safely. Always wait
-        // until it is mounted before returning the pending exchange.
+        started = true
+        // The abort API operates on the mounted transaction. Mounting is
+        // bounded and does not depend on controller clocks.
         critical-do --no-respect-deadline:
           state_.wait-for-state READY-STATE_
-        successfully-armed = true
         when-armed.call
-        critical-do --no-respect-deadline:
-          state_.wait-for-state DONE-STATE_
-          size := spi-target-transfer-finish_ resource_ receive-buffer
-          exchange-in-flight_ = false
-          return receive-buffer.copy 0 size
+        state_.wait-for-state DONE-STATE_
+        size := spi-target-transfer-finish_ resource_ receive-buffer false
+        finished = true
+        exchange-in-flight_ = false
+        return receive-buffer.copy 0 size
       finally:
-        if not successfully-armed: exchange-in-flight_ = false
+        if not finished:
+          critical-do --no-respect-deadline:
+            if started:
+              // If natural completion won the race, abort returns false only
+              // after its callback has finished. In either case, waiting for
+              // DONE also drains a callback event that has not yet reached
+              // ResourceState_.
+              spi-target-transfer-finish_ resource_ receive-buffer true
+              state_.wait-for-state DONE-STATE_
+              spi-target-transfer-finish_ resource_ receive-buffer false
+              state_.clear-state READY-STATE_ | DONE-STATE_
+            exchange-in-flight_ = false
 
   /** Closes the target and releases its peripheral, pins, and native buffers. */
   close -> none:
@@ -223,9 +237,6 @@ class Target:
         remove-finalizer this
 
   finalize_ -> none:
-    // An armed ESP-IDF transaction cannot be canceled. Leave the native
-    // resource registered so process teardown can release it safely.
-    if exchange-in-flight_: return
     close
 
 /**
@@ -689,7 +700,7 @@ spi-target-transfer-start_
     fill-byte/int:
   #primitive.spi.target-transfer-start
 
-spi-target-transfer-finish_ target receive-buffer/ByteArray:
+spi-target-transfer-finish_ target receive-buffer/ByteArray abort/bool:
   #primitive.spi.target-transfer-finish
 
 spi-close_ spi:

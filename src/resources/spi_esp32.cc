@@ -21,6 +21,7 @@
 #include <driver/spi_master.h>
 #include <driver/spi_slave.h>
 #include <esp_heap_caps.h>
+#include <esp_private/spi_slave_internal.h>
 #if SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
 #include <esp_private/esp_cache_private.h>
 #endif
@@ -54,6 +55,12 @@ static ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
 const word kSpiTargetReadyState = 1 << 0;
 const word kSpiTargetDoneState = 1 << 1;
 
+#if CONFIG_SPI_SLAVE_ISR_IN_IRAM
+#define SPI_TARGET_ISR_ATTR IRAM_ATTR
+#else
+#define SPI_TARGET_ISR_ATTR
+#endif
+
 class SpiTargetResourceGroup : public ResourceGroup {
  public:
   TAG(SpiTargetResourceGroup);
@@ -75,14 +82,14 @@ class SpiTargetResource : public EventQueueResource {
                     QueueHandle_t event_queue,
                     size_t max_transfer_size,
                     size_t buffer_alignment,
-                    bool dma)
+                    bool dma,
+                    bool transmit_enabled)
       : EventQueueResource(group, event_queue)
       , host_device_(host_device)
       , max_transfer_size_(max_transfer_size)
       , buffer_alignment_(buffer_alignment)
-      , dma_(dma) {
-    spinlock_initialize(&spinlock_);
-  }
+      , dma_(dma)
+      , transmit_enabled_(transmit_enabled) {}
 
   ~SpiTargetResource() override;
 
@@ -106,28 +113,19 @@ class SpiTargetResource : public EventQueueResource {
   size_t receive_size() const { return receive_size_; }
   size_t transferred_bits() const { return transaction_.trans_len; }
   bool dma() const { return dma_; }
+  bool transmit_enabled() const { return transmit_enabled_; }
 
-  IRAM_ATTR void ready_from_isr() { signal_from_isr(kSpiTargetReadyState); }
-  IRAM_ATTR void complete_from_isr() { signal_from_isr(kSpiTargetDoneState); }
+  SPI_TARGET_ISR_ATTR void ready_from_isr() { signal_from_isr(kSpiTargetReadyState); }
+  SPI_TARGET_ISR_ATTR void complete_from_isr() { signal_from_isr(kSpiTargetDoneState); }
 
   bool receive_event(word* data) override {
-    word unused;
-    if (xQueueReceive(queue(), &unused, 0) != pdTRUE) return false;
-    portENTER_CRITICAL(&spinlock_);
-    *data = pending_event_;
-    pending_event_ = 0;
-    portEXIT_CRITICAL(&spinlock_);
-    return true;
+    return xQueueReceive(queue(), data, 0) == pdTRUE;
   }
 
  private:
-  IRAM_ATTR void signal_from_isr(word event) {
+  SPI_TARGET_ISR_ATTR void signal_from_isr(word event) {
     BaseType_t higher_was_woken = pdFALSE;
-    portENTER_CRITICAL_ISR(&spinlock_);
-    pending_event_ |= event;
-    portEXIT_CRITICAL_ISR(&spinlock_);
-    word payload = 0;
-    xQueueSendFromISR(queue(), &payload, &higher_was_woken);
+    xQueueSendFromISR(queue(), &event, &higher_was_woken);
     if (higher_was_woken == pdTRUE) portYIELD_FROM_ISR();
   }
 
@@ -135,14 +133,13 @@ class SpiTargetResource : public EventQueueResource {
   const size_t max_transfer_size_;
   const size_t buffer_alignment_;
   const bool dma_;
+  const bool transmit_enabled_;
   bool initialized_ = false;
   bool operation_in_flight_ = false;
   spi_slave_transaction_t transaction_ = {};
   uint8_t* tx_buffer_ = null;
   uint8_t* rx_buffer_ = null;
   size_t receive_size_ = 0;
-  spinlock_t spinlock_;
-  word pending_event_ = 0;
   GpioPins owned_pins_;
 };
 
@@ -160,9 +157,8 @@ SpiResourceGroup::~SpiResourceGroup() {
 }
 
 SpiTargetResource::~SpiTargetResource() {
-  // Uninstall the driver before releasing buffers that may still be referenced
-  // by a queued transaction. This also makes process teardown safe when Toit
-  // code abandoned an exchange that ESP-IDF cannot cancel explicitly.
+  // Normal Toit cleanup waits for an abort callback before releasing these
+  // buffers. Uninstall first as a final process-teardown safeguard.
   if (initialized_) FATAL_IF_NOT_ESP_OK(spi_slave_free(host_device_));
   if (operation_in_flight_) finish_operation();
   vQueueDeleteWithCaps(queue());
@@ -282,12 +278,12 @@ PRIMITIVE(target_init) {
   return proxy;
 }
 
-IRAM_ATTR static void spi_target_done_callback(spi_slave_transaction_t* transaction) {
+SPI_TARGET_ISR_ATTR static void spi_target_done_callback(spi_slave_transaction_t* transaction) {
   auto resource = static_cast<SpiTargetResource*>(transaction->user);
   resource->complete_from_isr();
 }
 
-IRAM_ATTR static void spi_target_ready_callback(spi_slave_transaction_t* transaction) {
+SPI_TARGET_ISR_ATTR static void spi_target_ready_callback(spi_slave_transaction_t* transaction) {
   auto resource = static_cast<SpiTargetResource*>(transaction->user);
   resource->ready_from_isr();
 }
@@ -348,11 +344,17 @@ PRIMITIVE(target_create) {
   } };
 
   QueueHandle_t event_queue = xQueueCreateWithCaps(
-      1, sizeof(word), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+      2, sizeof(word), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   if (event_queue == null) FAIL(MALLOC_FAILED);
 
   auto resource = _new SpiTargetResource(
-      group, host_device, event_queue, max_transfer_size, buffer_alignment, dma);
+      group,
+      host_device,
+      event_queue,
+      max_transfer_size,
+      buffer_alignment,
+      dma,
+      miso_num >= 0);
   if (resource == null) {
     vQueueDeleteWithCaps(event_queue);
     FAIL(MALLOC_FAILED);
@@ -369,7 +371,11 @@ PRIMITIVE(target_create) {
   bus_config.quadhd_io_num = -1;
   bus_config.max_transfer_sz = driver_max_transfer_size;
   bus_config.flags = 0;
+#if CONFIG_SPI_SLAVE_ISR_IN_IRAM
   bus_config.intr_flags = ESP_INTR_FLAG_IRAM;
+#else
+  bus_config.intr_flags = 0;
+#endif
 
   uint32_t flags = SPI_SLAVE_NO_RETURN_RESULT;
   if (transmit_lsb_first) flags |= SPI_SLAVE_TXBIT_LSBFIRST;
@@ -434,14 +440,20 @@ PRIMITIVE(target_transfer_start) {
       (transfer_size + alignment - 1) & ~(alignment - 1);
   ASSERT(driver_transfer_size >= transfer_size);
 
-  uint8_t* tx_buffer = allocate_dma_buffer(driver_transfer_size, alignment);
-  if (tx_buffer == null) return Primitive::os_error(ESP_ERR_NO_MEM, process);
+  uint8_t* tx_buffer = resource->transmit_enabled()
+      ? allocate_dma_buffer(driver_transfer_size, alignment)
+      : null;
+  if (resource->transmit_enabled() && tx_buffer == null) {
+    return Primitive::os_error(ESP_ERR_NO_MEM, process);
+  }
   bool buffers_handed_to_resource = false;
   Defer free_buffers { [&] {
     if (!buffers_handed_to_resource) free(tx_buffer);
   } };
-  memset(tx_buffer, fill_byte, driver_transfer_size);
-  memcpy(tx_buffer, transmit.address(), transmit_size);
+  if (tx_buffer != null) {
+    memset(tx_buffer, fill_byte, driver_transfer_size);
+    memcpy(tx_buffer, transmit.address(), transmit_size);
+  }
 
   // The driver programs one length for both directions. Even when the caller
   // only wants a prefix of the received data, DMA may write the full transfer.
@@ -470,8 +482,23 @@ PRIMITIVE(target_transfer_start) {
 }
 
 PRIMITIVE(target_transfer_finish) {
-  ARGS(SpiTargetResource, resource, MutableBlob, receive_buffer);
+  ARGS(SpiTargetResource, resource, MutableBlob, receive_buffer, bool, abort);
   if (!resource->operation_in_flight()) FAIL(INVALID_STATE);
+
+  if (abort) {
+    esp_err_t err = spi_slave_abort_transaction(
+        resource->host_device(), resource->transaction());
+    if (err == ESP_ERR_INVALID_STATE) {
+      // Natural completion won the race. Its callback supplies the DONE event
+      // that lets the Toit cleanup path synchronize before freeing buffers.
+      return process->false_object();
+    }
+    // A target always has a CS pin, and the transaction has been mounted before
+    // Toit can request an abort. Other errors indicate a driver invariant broke.
+    FATAL_IF_NOT_ESP_OK(err);
+    return process->true_object();
+  }
+
   if (receive_buffer.length() < resource->receive_size()) FAIL(OUT_OF_BOUNDS);
 
   size_t transferred_bytes = (resource->transferred_bits() + 7) / 8;
@@ -494,14 +521,6 @@ PRIMITIVE(close) {
   spi->tear_down();
   spi_proxy->clear_external_address();
   return process->null_object();
-}
-
-IRAM_ATTR static void spi_pre_transfer_callback(spi_transaction_t* t) {
-  if (t->user != 0) {
-    int dc = (int)t->user >> 8;
-    int value = (int)t->user & 1;
-    gpio_set_level((gpio_num_t)dc, value);
-  }
 }
 
 PRIMITIVE(device) {
@@ -563,10 +582,6 @@ PRIMITIVE(device) {
     .pre_cb           = null,
     .post_cb          = null,
   };
-  if (dc_num != -1) {
-    conf.pre_cb = spi_pre_transfer_callback;
-  }
-
   spi_device_handle_t device;
   esp_err_t err = spi_bus_add_device(spi->host_device(), &conf, &device);
   if (err != ESP_OK) {
@@ -627,7 +642,7 @@ PRIMITIVE(transfer) {
   }
 
   if (device->dc() != -1) {
-    trans.user = (void*)((device->dc() << 8) | dc);
+    gpio_set_level(static_cast<gpio_num_t>(device->dc()), dc);
   }
 
   esp_err_t err = spi_device_polling_transmit(device->handle(), &trans);
