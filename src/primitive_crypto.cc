@@ -740,11 +740,13 @@ PRIMITIVE(aes_ecb_crypt) {
 
   ByteArray::Bytes output_bytes(result);
 
-  mbedtls_aes_crypt_ecb(
-      &context->context_,
-      encrypt ? MBEDTLS_AES_ENCRYPT : MBEDTLS_AES_DECRYPT,
-      input.address(),
-      output_bytes.address());
+  for (word offset = 0; offset < input.length(); offset += AesContext::AES_BLOCK_SIZE) {
+    mbedtls_aes_crypt_ecb(
+        &context->context_,
+        encrypt ? MBEDTLS_AES_ENCRYPT : MBEDTLS_AES_DECRYPT,
+        input.address() + offset,
+        output_bytes.address() + offset);
+  }
 
   return result;
 }

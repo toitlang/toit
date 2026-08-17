@@ -98,6 +98,15 @@ test-aes-ecb:
   expect.expect-bytes-equal
       PLAINTEXT
       (decryptor.decrypt ECB-CIPHERTEXT32)
+
+  plaintext := ByteArray 32
+  plaintext.replace 0 PLAINTEXT
+  plaintext.replace 16 PLAINTEXT
+  expected := ByteArray 32
+  expected.replace 0 ECB-CIPHERTEXT32
+  expected.replace 16 ECB-CIPHERTEXT32
+  expect.expect-bytes-equal expected (encryptor.encrypt plaintext)
+  expect.expect-bytes-equal plaintext (decryptor.decrypt expected)
   
   // Repeat with 192 bit key.
   encryptor = aes.AesEcb.encryptor
