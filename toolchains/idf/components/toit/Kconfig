@@ -100,6 +100,40 @@ menu "Toit"
             get access to a zlib-compatible encoder that does only run-length
             encoding. This requires the TOIT_ZLIB_RLE option to be selected.
 
+    config TOIT_AUDIO
+        bool "Include common packed-PCM audio primitives"
+        default "n"
+        help
+            If selected, embedded platforms include compact native primitives
+            for packed PCM conversion, channel extraction and decimation,
+            mixing, reductions, and framed energy extraction.
+
+            Disable this option when the firmware does not process audio to
+            save flash space.
+
+    config TOIT_AUDIO_EXTRA
+        bool "Include audio DSP primitives"
+        default "n"
+        depends on TOIT_AUDIO
+        help
+            If selected, embedded platforms also include Q15 real FFT and
+            GCC-PHAT delay estimation, normalized sliding correlation,
+            Goertzel-bank, FIR and biquad filters, and linear-resampling
+            primitives. These are useful for spectral analysis and streaming
+            DSP, but are less commonly needed than the basic packed-PCM
+            operations.
+
+    config TOIT_AUDIO_FLOAT_FFT
+        bool "Include float32 complex FFT primitives"
+        default "n"
+        depends on TOIT_AUDIO_EXTRA
+        help
+            If selected, embedded platforms also include complex float32 FFT,
+            multiplication, magnitude, and power primitives. Float32 provides
+            convenient scaling and precision for convolution and spectral
+            processing, but requires more flash, RAM, and CPU on targets
+            without a floating-point unit.
+
     config TOIT_REPORT_UART_DATA_LOSS
         bool "Report when UART data is lost"
         default "y"
