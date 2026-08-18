@@ -2,3 +2,30 @@ Aborted
 [pkg, install, pkg3]
 Warning: The following prefixes are only in package.yaml: pkg2
 Error: The package.yaml file and package.lock file are not in sync.
+==================
+// --recompute should add the missing package to the lock file.
+==================
+OK
+[pkg, install, --recompute]
+==================
+== package.lock
+prefixes:
+  pkg1: localhost_<[*PORT*]>/pkg/pkg1-1
+  pkg2: localhost_<[*PORT*]>/pkg/pkg2-2
+packages:
+  localhost_<[*PORT*]>/pkg/pkg1-1:
+    hash: <[*HASH*]>
+    prefixes:
+      pkg2: localhost_<[*PORT*]>/pkg/pkg2-2
+    url: localhost:<[*PORT*]>/pkg/pkg1
+    version: 1.0.0
+  localhost_<[*PORT*]>/pkg/pkg2-2:
+    hash: <[*HASH*]>
+    prefixes:
+      pre: localhost_<[*PORT*]>/pkg/pkg3-3
+    url: localhost:<[*PORT*]>/pkg/pkg2
+    version: 2.4.2
+  localhost_<[*PORT*]>/pkg/pkg3-3:
+    hash: <[*HASH*]>
+    url: localhost:<[*PORT*]>/pkg/pkg3
+    version: 3.1.2

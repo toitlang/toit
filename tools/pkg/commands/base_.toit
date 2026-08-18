@@ -46,8 +46,10 @@ class PkgCommand:
 class PkgProjectCommand extends PkgCommand:
   project/Project
 
-  constructor invocation/cli.Invocation:
+  constructor invocation/cli.Invocation --allow-lock-file-mismatch/bool=false:
     config := project-configuration-from-cli invocation
     config.verify
-    project = Project config --ui=invocation.cli.ui
+    project = Project config
+        --ui=invocation.cli.ui
+        --allow-lock-file-mismatch=allow-lock-file-mismatch
     super invocation

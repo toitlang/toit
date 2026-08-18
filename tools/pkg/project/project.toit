@@ -77,6 +77,7 @@ class Project:
 
   constructor .config/ProjectConfiguration
       --empty-lock-file/bool=false
+      --allow-lock-file-mismatch/bool=false
       --ui/cli.Ui:
     ui_ = ui
 
@@ -93,7 +94,7 @@ class Project:
     else if empty-lock-file:
       lock-file = LockFile specification
 
-    if config.lock-file-exists:
+    if config.lock-file-exists and not allow-lock-file-mismatch:
       assert: config.specification-file-exists
       // Check that the two files are (mostly) in sync.
       only-in-lock-file := []
