@@ -26,6 +26,7 @@ set(TOIT_REPOS
     https://github.com/nilwes/bno055
     https://github.com/nilwes/HD44780
     https://github.com/nilwes/LIS3DH
+    https://github.com/toit-pkg/toit-audio
     https://github.com/toitlang/jaguar
     https://github.com/toitlang/pkg-ar
     https://github.com/toitlang/pkg-dns-simple-server
