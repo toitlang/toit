@@ -77,7 +77,7 @@ info-sdk invocation/cli.Invocation --sdk-dir-from-args/Lambda:
   result := {
     "version": system.vm-sdk-version,
     "path": sdk-dir,
-    "lib-path": fs.join sdk-dir "lib",
+    "lib-path": fs.join sdk-dir "lib" "toit" "lib",
     "bin-path": fs.join sdk-dir "bin",
     "platform": system.platform,
   }

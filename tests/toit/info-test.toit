@@ -4,6 +4,7 @@
 
 import encoding.json
 import expect show *
+import fs
 import host.file
 import system
 
@@ -28,7 +29,9 @@ test-info-sdk toit-exe/ToitExecutable:
   parsed := json.parse json-output
   expect-equals system.vm-sdk-version parsed["version"]
   expect (parsed.contains "path")
-  expect (parsed.contains "lib-path")
+  expect-equals
+      (fs.join parsed["path"] "lib" "toit" "lib")
+      parsed["lib-path"]
   expect (parsed.contains "bin-path")
   expect (parsed.contains "platform")
   expect-equals system.platform parsed["platform"]
