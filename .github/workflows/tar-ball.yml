@@ -179,8 +179,11 @@ jobs:
           cd toit
           version=${{ needs.build-and-upload.outputs.version }}
           # Remove the leading 'v' from the version if it exists.
-          version_without_v=${version:1}
-          sed -i "s/VERSION/$version_without_v/" debian/changelog
+          version_without_v=${version#v}
+          # Debian uses '~' to sort prereleases before the final release.
+          debian_version=${version_without_v/-alpha./~alpha.}
+          sed -i "s/VERSION/$debian_version/" debian/changelog
+          sed -i "s/RELEASE_DATE/$(date --rfc-email)/" debian/changelog
           sudo apt-get update
           sudo apt-get install -y devscripts debhelper dh-cmake
           # Install the dependencies for the Toit package.
@@ -201,9 +204,10 @@ jobs:
           # Check that the Toit version is correct.
           expected_version=${{ needs.build-and-upload.outputs.version }}
           pkg_version=$(dpkg -s toit | grep Version | cut -d ' ' -f 2)
-          # Add the '-1' suffix that Debian packages have, and deal with the missing 'v' prefix.
-          if [ "v$pkg_version" != "$expected_version-1" ]; then
-            echo "Expected pkg version $expected_version-1 but got v$pkg_version"
+          expected_pkg_version=${expected_version#v}
+          expected_pkg_version=${expected_pkg_version/-alpha./~alpha.}-1
+          if [ "$pkg_version" != "$expected_pkg_version" ]; then
+            echo "Expected pkg version $expected_pkg_version but got $pkg_version"
             exit 1
           fi
           toit_version=$(toit version)
