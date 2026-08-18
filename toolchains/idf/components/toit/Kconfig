@@ -123,6 +123,17 @@ menu "Toit"
             DSP, but are less commonly needed than the basic packed-PCM
             operations.
 
+    config TOIT_AUDIO_FLOAT_FFT
+        bool "Include float32 complex FFT primitives"
+        default "n"
+        depends on TOIT_AUDIO_EXTRA
+        help
+            If selected, embedded platforms also include complex float32 FFT,
+            multiplication, magnitude, and power primitives. Float32 provides
+            convenient scaling and precision for convolution and spectral
+            processing, but requires more flash, RAM, and CPU on targets
+            without a floating-point unit.
+
     config TOIT_REPORT_UART_DATA_LOSS
         bool "Report when UART data is lost"
         default "y"

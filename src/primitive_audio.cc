@@ -193,6 +193,12 @@ static int16 saturate_q15(int32 sample) {
   return static_cast<int16>(sample);
 }
 
+static int16 saturate_q15(int64 sample) {
+  if (sample > INT16_MAX) return INT16_MAX;
+  if (sample < INT16_MIN) return INT16_MIN;
+  return static_cast<int16>(sample);
+}
+
 static int32 normalized_to_q31(float sample) {
   if (std::isnan(sample)) return 0;
   if (sample >= 1.0f) return INT32_MAX;
@@ -565,6 +571,70 @@ static void fft_q15(uint8* scratch,
 
 #endif  // CONFIG_TOIT_AUDIO && CONFIG_TOIT_AUDIO_EXTRA.
 
+#if defined(CONFIG_TOIT_AUDIO) && CONFIG_TOIT_AUDIO && \
+    defined(CONFIG_TOIT_AUDIO_EXTRA) && CONFIG_TOIT_AUDIO_EXTRA && \
+    defined(CONFIG_TOIT_AUDIO_FLOAT_FFT) && CONFIG_TOIT_AUDIO_FLOAT_FFT
+
+static void fft_float32(uint8* values,
+                        const uint8* twiddles,
+                        int size,
+                        bool inverse) {
+  int reversed = 0;
+  for (int i = 1; i < size; i++) {
+    int bit = size >> 1;
+    while ((reversed & bit) != 0) {
+      reversed ^= bit;
+      bit >>= 1;
+    }
+    reversed ^= bit;
+    if (i < reversed) {
+      uint8* first = values + i * 8;
+      uint8* second = values + reversed * 8;
+      uint8 saved[8];
+      memcpy(saved, first, 8);
+      memcpy(first, second, 8);
+      memcpy(second, saved, 8);
+    }
+  }
+
+  for (int width = 2; width <= size; width <<= 1) {
+    int half = width >> 1;
+    int twiddle_step = size / width;
+    for (int start = 0; start < size; start += width) {
+      for (int j = 0; j < half; j++) {
+        int twiddle = j * twiddle_step;
+        float wr = read_float32_le(twiddles + twiddle * 8);
+        float wi = read_float32_le(twiddles + twiddle * 8 + 4);
+        if (inverse) wi = -wi;
+        uint8* even = values + (start + j) * 8;
+        uint8* odd = values + (start + j + half) * 8;
+        float odd_real = read_float32_le(odd);
+        float odd_imaginary = read_float32_le(odd + 4);
+        float product_real = wr * odd_real - wi * odd_imaginary;
+        float product_imaginary = wr * odd_imaginary + wi * odd_real;
+        float even_real = read_float32_le(even);
+        float even_imaginary = read_float32_le(even + 4);
+        put_float32_le(even, even_real + product_real);
+        put_float32_le(even + 4, even_imaginary + product_imaginary);
+        put_float32_le(odd, even_real - product_real);
+        put_float32_le(odd + 4, even_imaginary - product_imaginary);
+      }
+    }
+  }
+
+  if (inverse) {
+    float scale = 1.0f / size;
+    for (int i = 0; i < size; i++) {
+      uint8* value = values + i * 8;
+      put_float32_le(value, read_float32_le(value) * scale);
+      put_float32_le(value + 4, read_float32_le(value + 4) * scale);
+    }
+  }
+}
+
+#endif  // CONFIG_TOIT_AUDIO && CONFIG_TOIT_AUDIO_EXTRA &&
+        // CONFIG_TOIT_AUDIO_FLOAT_FFT.
+
 PRIMITIVE(real_fft_q15) {
 #if !defined(CONFIG_TOIT_AUDIO) || !CONFIG_TOIT_AUDIO || \
     !defined(CONFIG_TOIT_AUDIO_EXTRA) || !CONFIG_TOIT_AUDIO_EXTRA
@@ -607,6 +677,154 @@ PRIMITIVE(real_fft_q15) {
     memcpy(destination.address(), scratch.address(), destination_bytes);
   }
   return Smi::from(bin_count);
+#endif
+}
+
+PRIMITIVE(complex_fft_q15) {
+#if !defined(CONFIG_TOIT_AUDIO) || !CONFIG_TOIT_AUDIO || \
+    !defined(CONFIG_TOIT_AUDIO_EXTRA) || !CONFIG_TOIT_AUDIO_EXTRA
+  FAIL(UNIMPLEMENTED);
+#else
+  ARGS(Blob, source, MutableBlob, destination, Blob, twiddles,
+       int, size, bool, inverse);
+  if (size < 2 || size > 4096 || !Utils::is_power_of_two(size)) {
+    FAIL(INVALID_ARGUMENT);
+  }
+  word byte_size = size * 4;
+  if (source.length() < byte_size || destination.length() < byte_size ||
+      twiddles.length() != size * 2) {
+    FAIL(INVALID_ARGUMENT);
+  }
+  if (source.address() != destination.address()) {
+    memmove(destination.address(), source.address(), byte_size);
+  }
+  fft_q15(destination.address(), twiddles.address(), size, inverse);
+  return Smi::from(size);
+#endif
+}
+
+PRIMITIVE(complex_fft_float32) {
+#if !defined(CONFIG_TOIT_AUDIO) || !CONFIG_TOIT_AUDIO || \
+    !defined(CONFIG_TOIT_AUDIO_EXTRA) || !CONFIG_TOIT_AUDIO_EXTRA || \
+    !defined(CONFIG_TOIT_AUDIO_FLOAT_FFT) || !CONFIG_TOIT_AUDIO_FLOAT_FFT
+  FAIL(UNIMPLEMENTED);
+#else
+  ARGS(Blob, source, MutableBlob, destination, Blob, twiddles,
+       int, size, bool, inverse);
+  if (size < 2 || size > 4096 || !Utils::is_power_of_two(size)) {
+    FAIL(INVALID_ARGUMENT);
+  }
+  word byte_size = size * 8;
+  if (source.length() < byte_size || destination.length() < byte_size ||
+      twiddles.length() != size * 4) {
+    FAIL(INVALID_ARGUMENT);
+  }
+  if (source.address() != destination.address()) {
+    memmove(destination.address(), source.address(), byte_size);
+  }
+  fft_float32(destination.address(), twiddles.address(), size, inverse);
+  return Smi::from(size);
+#endif
+}
+
+PRIMITIVE(complex_multiply) {
+#if !defined(CONFIG_TOIT_AUDIO) || !CONFIG_TOIT_AUDIO || \
+    !defined(CONFIG_TOIT_AUDIO_EXTRA) || !CONFIG_TOIT_AUDIO_EXTRA
+  FAIL(UNIMPLEMENTED);
+#else
+  ARGS(Blob, first, Blob, second, MutableBlob, destination,
+       int, representation, bool, conjugate_second, int, shift);
+  if (representation == 0) {
+    if (shift < -31 || shift > 31) FAIL(INVALID_ARGUMENT);
+    word count = Utils::min(first.length(), second.length()) / 4;
+    count = Utils::min(count, destination.length() / 4);
+    for (word i = 0; i < count; i++) {
+      const uint8* first_value = first.address() + i * 4;
+      const uint8* second_value = second.address() + i * 4;
+      int64 ar = read_int16_le(first_value);
+      int64 ai = read_int16_le(first_value + 2);
+      int64 br = read_int16_le(second_value);
+      int64 bi = read_int16_le(second_value + 2);
+      int64 real = conjugate_second ? ar * br + ai * bi
+                                    : ar * br - ai * bi;
+      int64 imaginary = conjugate_second ? ai * br - ar * bi
+                                         : ar * bi + ai * br;
+      if (shift >= 0) {
+        real >>= shift;
+        imaginary >>= shift;
+      } else {
+        int64 factor = static_cast<int64>(1) << -shift;
+        real *= factor;
+        imaginary *= factor;
+      }
+      uint8* output = destination.address() + i * 4;
+      put_int16_le(output, saturate_q15(real));
+      put_int16_le(output + 2, saturate_q15(imaginary));
+    }
+    return Smi::from(count);
+  }
+  if (representation != 1) FAIL(INVALID_ARGUMENT);
+#if !defined(CONFIG_TOIT_AUDIO_FLOAT_FFT) || !CONFIG_TOIT_AUDIO_FLOAT_FFT
+  FAIL(UNIMPLEMENTED);
+#else
+  word count = Utils::min(first.length(), second.length()) / 8;
+  count = Utils::min(count, destination.length() / 8);
+  for (word i = 0; i < count; i++) {
+    const uint8* first_value = first.address() + i * 8;
+    const uint8* second_value = second.address() + i * 8;
+    float ar = read_float32_le(first_value);
+    float ai = read_float32_le(first_value + 4);
+    float br = read_float32_le(second_value);
+    float bi = read_float32_le(second_value + 4);
+    float real = conjugate_second ? ar * br + ai * bi
+                                  : ar * br - ai * bi;
+    float imaginary = conjugate_second ? ai * br - ar * bi
+                                       : ar * bi + ai * br;
+    uint8* output = destination.address() + i * 8;
+    put_float32_le(output, real);
+    put_float32_le(output + 4, imaginary);
+  }
+  return Smi::from(count);
+#endif
+#endif
+}
+
+PRIMITIVE(complex_magnitude) {
+#if !defined(CONFIG_TOIT_AUDIO) || !CONFIG_TOIT_AUDIO || \
+    !defined(CONFIG_TOIT_AUDIO_EXTRA) || !CONFIG_TOIT_AUDIO_EXTRA
+  FAIL(UNIMPLEMENTED);
+#else
+  ARGS(Blob, source, MutableBlob, destination,
+       int, representation, bool, squared);
+  int value_bytes = representation == 0 ? 4 : representation == 1 ? 8 : 0;
+  if (value_bytes == 0) FAIL(INVALID_ARGUMENT);
+  if (representation == 1) {
+#if !defined(CONFIG_TOIT_AUDIO_FLOAT_FFT) || !CONFIG_TOIT_AUDIO_FLOAT_FFT
+    FAIL(UNIMPLEMENTED);
+#endif
+  }
+  word count = Utils::min(source.length() / value_bytes,
+                          destination.length() / 4);
+  for (word i = 0; i < count; i++) {
+    const uint8* value = source.address() + i * value_bytes;
+    float real;
+    float imaginary;
+    if (representation == 0) {
+      real = static_cast<float>(read_int16_le(value)) / 32768.0f;
+      imaginary = static_cast<float>(read_int16_le(value + 2)) / 32768.0f;
+    } else {
+#if defined(CONFIG_TOIT_AUDIO_FLOAT_FFT) && CONFIG_TOIT_AUDIO_FLOAT_FFT
+      real = read_float32_le(value);
+      imaginary = read_float32_le(value + 4);
+#else
+      UNREACHABLE();
+#endif
+    }
+    float power = real * real + imaginary * imaginary;
+    put_float32_le(destination.address() + i * 4,
+                   squared ? power : std::sqrt(power));
+  }
+  return Smi::from(count);
 #endif
 }
 

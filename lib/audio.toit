@@ -38,6 +38,9 @@ FRAME-SUM-OF-SQUARES_ ::= 0
 FRAME-MEAN-ABSOLUTE_ ::= 1
 FRAME-DIFFERENCE-ENERGY_ ::= 2
 
+COMPLEX-Q15_ ::= 0
+COMPLEX-FLOAT32_ ::= 1
+
 /**
 Converts packed PCM samples from $from to $to.
 
@@ -350,9 +353,152 @@ q15-twiddles_ size/int -> ByteArray:
         q15-coefficient_ (math.sin angle)
   return result
 
+float32-twiddles_ size/int -> ByteArray:
+  result := ByteArray (size * 4)
+  (size / 2).repeat: | i |
+    angle := -2.0 * math.PI * i / size
+    io.LITTLE-ENDIAN.put-float32 result (i * 8) (math.cos angle)
+    io.LITTLE-ENDIAN.put-float32 result (i * 8 + 4) (math.sin angle)
+  return result
+
 real-fft-q15_ source/ByteArray twiddles/ByteArray window/ByteArray
     scratch/ByteArray destination/ByteArray format/int size/int power/bool -> int:
   #primitive.audio.real-fft-q15
+
+/**
+A reusable in-place-capable complex Q15 FFT.
+
+Complex values are interleaved little-endian signed 16-bit real and imaginary
+  components.  Every transform divides by two at each stage.  A forward
+  transform is therefore scaled by `1 / size`; an inverse transform has the
+  conventional `1 / size` inverse scaling.  A forward/inverse round trip is
+  scaled by `1 / size`.
+
+Native complex Q15 FFT support requires the `TOIT_AUDIO_EXTRA` firmware option.
+*/
+class ComplexFftQ15Plan:
+  /** Number of complex values transformed. */
+  size/int
+
+  twiddles_/ByteArray
+
+  /** Constructs a power-of-two complex Q15 FFT plan. */
+  constructor .size:
+    if size < 2 or size > 4_096 or not size.is-power-of-two:
+      throw "INVALID_ARGUMENT"
+    twiddles_ = q15-twiddles_ size
+
+  /** Number of bytes required for an input or output buffer. */
+  byte-size -> int:
+    return size * 4
+
+  /**
+  Transforms $source into $destination and returns $size.
+
+  Source and destination may be the same runtime-created byte array.  Set
+    $inverse for an inverse transform.
+  */
+  transform source/ByteArray --destination/ByteArray --inverse/bool=false -> int:
+    if source.size < byte-size or destination.size < byte-size:
+      throw "OUT_OF_RANGE"
+    return complex-fft-q15_ source destination twiddles_ size inverse
+
+complex-fft-q15_ source/ByteArray destination/ByteArray twiddles/ByteArray
+    size/int inverse/bool -> int:
+  #primitive.audio.complex-fft-q15
+
+/**
+A reusable in-place-capable complex float32 FFT.
+
+Complex values are interleaved little-endian float32 real and imaginary
+  components.  Forward transforms are unscaled and inverse transforms divide
+  by $size, so a forward/inverse round trip restores the original values.
+
+Native complex float32 FFT support requires the `TOIT_AUDIO_FLOAT_FFT`
+  firmware option.
+*/
+class ComplexFftFloat32Plan:
+  /** Number of complex values transformed. */
+  size/int
+
+  twiddles_/ByteArray
+
+  /** Constructs a power-of-two complex float32 FFT plan. */
+  constructor .size:
+    if size < 2 or size > 4_096 or not size.is-power-of-two:
+      throw "INVALID_ARGUMENT"
+    twiddles_ = float32-twiddles_ size
+
+  /** Number of bytes required for an input or output buffer. */
+  byte-size -> int:
+    return size * 8
+
+  /**
+  Transforms $source into $destination and returns $size.
+
+  Source and destination may be the same runtime-created byte array.  Set
+    $inverse for an inverse transform.
+  */
+  transform source/ByteArray --destination/ByteArray --inverse/bool=false -> int:
+    if source.size < byte-size or destination.size < byte-size:
+      throw "OUT_OF_RANGE"
+    return complex-fft-float32_ source destination twiddles_ size inverse
+
+complex-fft-float32_ source/ByteArray destination/ByteArray twiddles/ByteArray
+    size/int inverse/bool -> int:
+  #primitive.audio.complex-fft-float32
+
+/**
+Multiplies interleaved complex Q15 values.
+
+The shortest input or destination determines the number of values written.
+  Set $conjugate-second to conjugate the second operand.  The signed $shift is
+  applied to the Q30 products before saturation; `15` preserves Q15 scaling,
+  while smaller values amplify and larger values attenuate.  Negative shifts
+  shift left.  Returns the number of complex values written.
+*/
+complex-multiply-q15 first/ByteArray --second/ByteArray
+    --destination/ByteArray --conjugate-second/bool=false --shift/int=15 -> int:
+  return complex-multiply_ first second destination COMPLEX-Q15_
+      conjugate-second
+      shift
+
+/**
+Multiplies interleaved complex float32 values.
+
+The shortest input or destination determines the number of values written.
+  Set $conjugate-second to conjugate the second operand.  Returns the number of
+  complex values written.
+*/
+complex-multiply-float32 first/ByteArray --second/ByteArray
+    --destination/ByteArray --conjugate-second/bool=false -> int:
+  return complex-multiply_ first second destination COMPLEX-FLOAT32_
+      conjugate-second
+      0
+
+complex-multiply_ first/ByteArray second/ByteArray destination/ByteArray
+    representation/int conjugate-second/bool shift/int -> int:
+  #primitive.audio.complex-multiply
+
+/** Writes float32 magnitudes of interleaved complex Q15 values. */
+complex-magnitude-q15 source/ByteArray --destination/ByteArray -> int:
+  return complex-magnitude_ source destination COMPLEX-Q15_ false
+
+/** Writes float32 powers of interleaved complex Q15 values. */
+complex-power-q15 source/ByteArray --destination/ByteArray -> int:
+  return complex-magnitude_ source destination COMPLEX-Q15_ true
+
+/** Writes float32 magnitudes of interleaved complex float32 values. */
+complex-magnitude-float32 source/ByteArray --destination/ByteArray -> int:
+  return complex-magnitude_ source destination COMPLEX-FLOAT32_ false
+
+/** Writes float32 powers of interleaved complex float32 values. */
+complex-power-float32 source/ByteArray --destination/ByteArray -> int:
+  return complex-magnitude_ source destination COMPLEX-FLOAT32_ true
+
+complex-magnitude_ source/ByteArray destination/ByteArray
+    representation/int squared/bool -> int:
+  #primitive.audio.complex-magnitude
 
 /**
 A reusable GCC-PHAT delay estimator using Q15 FFTs.

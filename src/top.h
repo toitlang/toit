@@ -116,6 +116,9 @@
 #ifndef CONFIG_TOIT_AUDIO_EXTRA
 #define CONFIG_TOIT_AUDIO_EXTRA 1
 #endif
+#ifndef CONFIG_TOIT_AUDIO_FLOAT_FFT
+#define CONFIG_TOIT_AUDIO_FLOAT_FFT 1
+#endif
 #endif
 
 typedef intptr_t word;

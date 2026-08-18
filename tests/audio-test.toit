@@ -15,6 +15,9 @@ main:
   test-correlation
   test-goertzel
   test-fft
+  test-complex-q15
+  test-complex-float32
+  test-complex-convolution
   test-gcc-phat
   test-fir
   test-biquad
@@ -25,6 +28,18 @@ pcm16 values/List -> ByteArray:
   result := ByteArray (values.size * 2)
   values.size.repeat:
     io.LITTLE-ENDIAN.put-int16 result (it * 2) values[it]
+  return result
+
+complex-q15 values/List -> ByteArray:
+  result := ByteArray (values.size * 2)
+  values.size.repeat:
+    io.LITTLE-ENDIAN.put-int16 result (it * 2) values[it]
+  return result
+
+complex-float32 values/List -> ByteArray:
+  result := ByteArray (values.size * 4)
+  values.size.repeat:
+    io.LITTLE-ENDIAN.put-float32 result (it * 4) values[it]
   return result
 
 expect-pcm16 expected/List actual/ByteArray:
@@ -217,6 +232,118 @@ test-fft:
   muted.bin-count.repeat:
     expect-equals 0.0 (io.LITTLE-ENDIAN.float32 power (it * 4))
 
+test-complex-q15:
+  plan := audio.ComplexFftQ15Plan 8
+  source := complex-q15 [
+    16_384, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+  ]
+  spectrum := ByteArray plan.byte-size
+  expect-equals plan.size (plan.transform source --destination=spectrum)
+  plan.size.repeat: | i |
+    expect-equals 2_048 (io.LITTLE-ENDIAN.int16 spectrum (i * 4))
+    expect-equals 0 (io.LITTLE-ENDIAN.int16 spectrum (i * 4 + 2))
+
+  restored := ByteArray plan.byte-size
+  expect-equals plan.size (plan.transform spectrum
+      --destination=restored
+      --inverse)
+  expect-near 2_048 (io.LITTLE-ENDIAN.int16 restored 0) --epsilon=4.0
+  (plan.size - 1).repeat: | i |
+    expect-near 0 (io.LITTLE-ENDIAN.int16 restored ((i + 1) * 4))
+        --epsilon=4.0
+
+  // A runtime-created buffer exercises the native in-place path.
+  in-place := complex-q15 [
+    16_384, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+  ]
+  expect-equals plan.size (plan.transform in-place --destination=in-place)
+  expect-bytes-equal spectrum in-place
+
+  first := complex-q15 [16_384, 8_192]
+  second := complex-q15 [8_192, -16_384]
+  product := ByteArray 4
+  expect-equals 1 (audio.complex-multiply-q15 first
+      --second=second
+      --destination=product)
+  expect-equals 8_192 (io.LITTLE-ENDIAN.int16 product 0)
+  expect-equals -6_144 (io.LITTLE-ENDIAN.int16 product 2)
+  expect-equals 1 (audio.complex-multiply-q15 first
+      --second=second
+      --destination=product
+      --conjugate-second)
+  expect-equals 0 (io.LITTLE-ENDIAN.int16 product 0)
+  expect-equals 10_240 (io.LITTLE-ENDIAN.int16 product 2)
+
+  scalar := ByteArray 4
+  expect-equals 1 (audio.complex-power-q15 first --destination=scalar)
+  expect-near 0.3125 (io.LITTLE-ENDIAN.float32 scalar 0)
+  expect-equals 1 (audio.complex-magnitude-q15 first --destination=scalar)
+  expect-near 0.559017 (io.LITTLE-ENDIAN.float32 scalar 0)
+
+test-complex-float32:
+  plan := audio.ComplexFftFloat32Plan 8
+  source := complex-float32 [
+    1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+  ]
+  spectrum := ByteArray plan.byte-size
+  expect-equals plan.size (plan.transform source --destination=spectrum)
+  plan.size.repeat: | i |
+    expect-near 1.0 (io.LITTLE-ENDIAN.float32 spectrum (i * 8))
+    expect-near 0.0 (io.LITTLE-ENDIAN.float32 spectrum (i * 8 + 4))
+
+  expect-equals plan.size (plan.transform spectrum
+      --destination=spectrum
+      --inverse)
+  expect-near 1.0 (io.LITTLE-ENDIAN.float32 spectrum 0)
+  (plan.size - 1).repeat: | i |
+    expect-near 0.0 (io.LITTLE-ENDIAN.float32 spectrum ((i + 1) * 8))
+
+  first := complex-float32 [0.5, 0.25]
+  second := complex-float32 [0.25, -0.5]
+  product := ByteArray 8
+  expect-equals 1 (audio.complex-multiply-float32 first
+      --second=second
+      --destination=product)
+  expect-near 0.25 (io.LITTLE-ENDIAN.float32 product 0)
+  expect-near -0.1875 (io.LITTLE-ENDIAN.float32 product 4)
+  expect-equals 1 (audio.complex-multiply-float32 first
+      --second=second
+      --destination=product
+      --conjugate-second)
+  expect-near 0.0 (io.LITTLE-ENDIAN.float32 product 0)
+  expect-near 0.3125 (io.LITTLE-ENDIAN.float32 product 4)
+
+  scalar := ByteArray 4
+  expect-equals 1 (audio.complex-power-float32 first --destination=scalar)
+  expect-near 0.3125 (io.LITTLE-ENDIAN.float32 scalar 0)
+  expect-equals 1 (audio.complex-magnitude-float32 first --destination=scalar)
+  expect-near 0.559017 (io.LITTLE-ENDIAN.float32 scalar 0)
+
+test-complex-convolution:
+  plan := audio.ComplexFftFloat32Plan 8
+  first := complex-float32 [
+    1.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+  ]
+  second := complex-float32 [
+    3.0, 0.0, 4.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+  ]
+  expect-equals plan.size (plan.transform first --destination=first)
+  expect-equals plan.size (plan.transform second --destination=second)
+  expect-equals plan.size (audio.complex-multiply-float32 first
+      --second=second
+      --destination=first)
+  expect-equals plan.size (plan.transform first --destination=first --inverse)
+  expect-near 3.0 (io.LITTLE-ENDIAN.float32 first 0)
+  expect-near 10.0 (io.LITTLE-ENDIAN.float32 first 8)
+  expect-near 8.0 (io.LITTLE-ENDIAN.float32 first 16)
+  5.repeat: | i |
+    expect-near 0.0 (io.LITTLE-ENDIAN.float32 first ((i + 3) * 8))
+
 test-gcc-phat:
   plan := audio.GccPhatQ15Plan 8 --max-delay=3
   first := pcm16 [0, 20_000, 0, 0, 0, 0, 0, 0]
@@ -334,11 +461,20 @@ test-errors:
   expect-throw "INVALID_ARGUMENT":
     audio.RealFftQ15Plan 7
   expect-throw "INVALID_ARGUMENT":
+    audio.ComplexFftQ15Plan 7
+  expect-throw "INVALID_ARGUMENT":
+    audio.ComplexFftFloat32Plan 8_192
+  expect-throw "INVALID_ARGUMENT":
     audio.RealFftQ15Plan 8 --window=[1]
   fft := audio.RealFftQ15Plan 8
   expect-throw "OUT_OF_RANGE":
     fft.transform (pcm16 [0, 0, 0, 0, 0, 0, 0, 0]) --destination=#[]
         --format=audio.PCM-S16-LE
+  complex-plan := audio.ComplexFftQ15Plan 8
+  expect-throw "OUT_OF_RANGE":
+    complex-plan.transform #[] --destination=#[]
+  expect-throw "INVALID_ARGUMENT":
+    audio.complex-multiply-q15 #[] --second=#[] --destination=#[] --shift=32
   expect-throw "INVALID_ARGUMENT":
     audio.BiquadCascade [1, 0]
   expect-throw "INVALID_ARGUMENT":

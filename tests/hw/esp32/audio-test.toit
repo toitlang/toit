@@ -34,10 +34,16 @@ test:
     return
 
   test-fft
+  test-complex-q15
   test-gcc-phat
   test-fir
   test-biquad
   test-resampler
+
+  if is-float-audio-enabled:
+    test-complex-float32
+  else:
+    print "Float32 audio FFT primitives are disabled in this envelope."
 
 is-common-audio-enabled -> bool:
   exception := catch:
@@ -56,11 +62,24 @@ is-extra-audio-enabled -> bool:
   if exception == "UNIMPLEMENTED": return false
   throw exception
 
+is-float-audio-enabled -> bool:
+  plan := audio.ComplexFftFloat32Plan 2
+  data := ByteArray plan.byte-size
+  exception := catch:
+    plan.transform data --destination=data
+  if not exception: return true
+  if exception == "UNIMPLEMENTED": return false
+  throw exception
+
 pcm16 values/List -> ByteArray:
   result := ByteArray (values.size * 2)
   values.size.repeat:
     io.LITTLE-ENDIAN.put-int16 result (it * 2) values[it]
   return result
+
+expect-near expected/num actual/num --epsilon/float=0.0001:
+  difference := (expected - actual).abs
+  expect difference <= epsilon --message="Expected $actual to be within $epsilon of $expected"
 
 expect-pcm16 expected/List actual/ByteArray:
   expect-equals (expected.size * 2) actual.size
@@ -109,6 +128,55 @@ test-fft:
   expect-equals FFT-BIN peak-index
   expect peak-power > 0.20
   expect peak-power < 0.22
+
+test-complex-q15:
+  plan := audio.ComplexFftQ15Plan FFT-SIZE
+  values := ByteArray plan.byte-size
+  10.repeat:
+    values.fill 0
+    io.LITTLE-ENDIAN.put-int16 values 0 16_384
+    expect-equals plan.size (plan.transform values --destination=values)
+    expect-near 64 (io.LITTLE-ENDIAN.int16 values (FFT-BIN * 4)) --epsilon=2.0
+    expect-equals 0 (io.LITTLE-ENDIAN.int16 values (FFT-BIN * 4 + 2))
+    expect-equals plan.size (plan.transform values
+        --destination=values
+        --inverse)
+    expect-near 64 (io.LITTLE-ENDIAN.int16 values 0) --epsilon=12.0
+    expect-near 0 (io.LITTLE-ENDIAN.int16 values 2) --epsilon=4.0
+    expect-near 0 (io.LITTLE-ENDIAN.int16 values 4) --epsilon=4.0
+
+  first := ByteArray 4
+  second := ByteArray 4
+  product := ByteArray 4
+  io.LITTLE-ENDIAN.put-int16 first 0 16_384
+  io.LITTLE-ENDIAN.put-int16 first 2 8_192
+  io.LITTLE-ENDIAN.put-int16 second 0 8_192
+  io.LITTLE-ENDIAN.put-int16 second 2 -16_384
+  expect-equals 1 (audio.complex-multiply-q15 first
+      --second=second
+      --destination=product)
+  expect-equals 8_192 (io.LITTLE-ENDIAN.int16 product 0)
+  expect-equals -6_144 (io.LITTLE-ENDIAN.int16 product 2)
+
+test-complex-float32:
+  plan := audio.ComplexFftFloat32Plan FFT-SIZE
+  first := ByteArray plan.byte-size
+  second := ByteArray plan.byte-size
+  io.LITTLE-ENDIAN.put-float32 first 0 1.0
+  io.LITTLE-ENDIAN.put-float32 first 8 2.0
+  io.LITTLE-ENDIAN.put-float32 second 0 3.0
+  io.LITTLE-ENDIAN.put-float32 second 8 4.0
+  expect-equals plan.size (plan.transform first --destination=first)
+  expect-equals plan.size (plan.transform second --destination=second)
+  expect-equals plan.size (audio.complex-multiply-float32 first
+      --second=second
+      --destination=first)
+  expect-equals plan.size (plan.transform first --destination=first --inverse)
+  expect-near 3.0 (io.LITTLE-ENDIAN.float32 first 0)
+  expect-near 10.0 (io.LITTLE-ENDIAN.float32 first 8)
+  expect-near 8.0 (io.LITTLE-ENDIAN.float32 first 16)
+  5.repeat: | i |
+    expect-near 0.0 (io.LITTLE-ENDIAN.float32 first ((i + 3) * 8))
 
 test-gcc-phat:
   plan := audio.GccPhatQ15Plan 256 --max-delay=32

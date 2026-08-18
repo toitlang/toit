@@ -595,6 +595,10 @@ namespace toit {
   PRIMITIVE(normalized_correlation, 4)       \
   PRIMITIVE(goertzel, 4)                     \
   PRIMITIVE(real_fft_q15, 8)                 \
+  PRIMITIVE(complex_fft_q15, 5)              \
+  PRIMITIVE(complex_fft_float32, 5)          \
+  PRIMITIVE(complex_multiply, 6)             \
+  PRIMITIVE(complex_magnitude, 4)            \
   PRIMITIVE(gcc_phat_delay, 7)               \
   PRIMITIVE(fir, 6)                          \
   PRIMITIVE(biquad, 6)                       \
