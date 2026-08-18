@@ -456,6 +456,8 @@ The shortest input or destination determines the number of values written.
   applied to the Q30 products before saturation; `15` preserves Q15 scaling,
   while smaller values amplify and larger values attenuate.  Negative shifts
   shift left.  Returns the number of complex values written.
+
+This operation requires the `TOIT_AUDIO_EXTRA` firmware option.
 */
 complex-multiply-q15 first/ByteArray --second/ByteArray
     --destination/ByteArray --conjugate-second/bool=false --shift/int=15 -> int:
@@ -469,6 +471,9 @@ Multiplies interleaved complex float32 values.
 The shortest input or destination determines the number of values written.
   Set $conjugate-second to conjugate the second operand.  Returns the number of
   complex values written.
+
+This operation requires the `TOIT_AUDIO_EXTRA` and `TOIT_AUDIO_FLOAT_FFT`
+  firmware options.
 */
 complex-multiply-float32 first/ByteArray --second/ByteArray
     --destination/ByteArray --conjugate-second/bool=false -> int:
@@ -480,19 +485,37 @@ complex-multiply_ first/ByteArray second/ByteArray destination/ByteArray
     representation/int conjugate-second/bool shift/int -> int:
   #primitive.audio.complex-multiply
 
-/** Writes float32 magnitudes of interleaved complex Q15 values. */
+/**
+Writes float32 magnitudes of interleaved complex Q15 values.
+
+This operation requires the `TOIT_AUDIO_EXTRA` firmware option.
+*/
 complex-magnitude-q15 source/ByteArray --destination/ByteArray -> int:
   return complex-magnitude_ source destination COMPLEX-Q15_ false
 
-/** Writes float32 powers of interleaved complex Q15 values. */
+/**
+Writes float32 powers of interleaved complex Q15 values.
+
+This operation requires the `TOIT_AUDIO_EXTRA` firmware option.
+*/
 complex-power-q15 source/ByteArray --destination/ByteArray -> int:
   return complex-magnitude_ source destination COMPLEX-Q15_ true
 
-/** Writes float32 magnitudes of interleaved complex float32 values. */
+/**
+Writes float32 magnitudes of interleaved complex float32 values.
+
+This operation requires the `TOIT_AUDIO_EXTRA` and `TOIT_AUDIO_FLOAT_FFT`
+  firmware options.
+*/
 complex-magnitude-float32 source/ByteArray --destination/ByteArray -> int:
   return complex-magnitude_ source destination COMPLEX-FLOAT32_ false
 
-/** Writes float32 powers of interleaved complex float32 values. */
+/**
+Writes float32 powers of interleaved complex float32 values.
+
+This operation requires the `TOIT_AUDIO_EXTRA` and `TOIT_AUDIO_FLOAT_FFT`
+  firmware options.
+*/
 complex-power-float32 source/ByteArray --destination/ByteArray -> int:
   return complex-magnitude_ source destination COMPLEX-FLOAT32_ true
 

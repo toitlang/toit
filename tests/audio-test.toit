@@ -197,6 +197,14 @@ test-correlation:
   3.repeat:
     expect-equals 0.0 (io.LITTLE-ENDIAN.float32 output (it * 4))
 
+  biased := pcm16 [30_000, 30_001, 30_002, 30_003]
+  biased-output := ByteArray 4
+  expect-equals 1 (audio.normalized-correlation biased
+      --pattern=biased
+      --destination=biased-output
+      --format=audio.PCM-S16-LE)
+  expect-near 1.0 (io.LITTLE-ENDIAN.float32 biased-output 0)
+
 test-goertzel:
   source := pcm16 [0, 23_170, 32_767, 23_170, 0, -23_170, -32_768, -23_170]
   plan := audio.GoertzelPlan [1, 2] --sample-rate=8
