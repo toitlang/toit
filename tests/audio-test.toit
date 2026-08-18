@@ -70,7 +70,11 @@ test-conversion:
   expect-bytes-equal source round-trip
 
   // Expanding conversion is safe in place.
-  in-place := #[0x80, 0xc0, 0x00, 0x40, 0, 0, 0, 0]
+  in-place := ByteArray 8
+  in-place[0] = 0x80
+  in-place[1] = 0xc0
+  in-place[2] = 0x00
+  in-place[3] = 0x40
   expect-equals 4 (audio.pcm-convert in-place --destination=in-place
       --from=audio.PCM-S8
       --to=audio.PCM-S16-LE)

@@ -455,21 +455,19 @@ PRIMITIVE(normalized_correlation) {
 
   for (word offset = 0; offset < count; offset++) {
     float signal_sum = 0.0f;
-    for (word i = 0; i < pattern_count; i++) {
-      signal_sum += normalized(read_q31(
-          signal.address() + (offset + i) * sample_bytes, format));
-    }
-    float signal_mean = signal_sum / pattern_count;
-    float signal_energy = 0.0f;
+    float signal_sum_of_squares = 0.0f;
     float covariance = 0.0f;
     for (word i = 0; i < pattern_count; i++) {
-      float signal_centered = normalized(read_q31(
-          signal.address() + (offset + i) * sample_bytes, format)) - signal_mean;
+      float sample = normalized(read_q31(
+          signal.address() + (offset + i) * sample_bytes, format));
       float pattern_centered = normalized(read_q31(
           pattern.address() + i * sample_bytes, format)) - pattern_mean;
-      signal_energy += signal_centered * signal_centered;
-      covariance += signal_centered * pattern_centered;
+      signal_sum += sample;
+      signal_sum_of_squares += sample * sample;
+      covariance += sample * pattern_centered;
     }
+    float signal_energy = signal_sum_of_squares -
+                          signal_sum * signal_sum / pattern_count;
     float denominator = signal_energy * pattern_energy;
     float correlation = denominator <= 0.0f
         ? 0.0f

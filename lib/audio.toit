@@ -295,15 +295,9 @@ class RealFftQ15Plan:
       throw "INVALID_ARGUMENT"
     if window and window.size != size: throw "INVALID_ARGUMENT"
     bin-count = size / 2 + 1
-    twiddles_ = ByteArray (size * 2)
+    twiddles_ = q15-twiddles_ size
     scratch_ = ByteArray (size * 4)
     window_ = window ? ByteArray (size * 2) : #[]
-    (size / 2).repeat: | i |
-      angle := -2.0 * math.PI * i / size
-      io.LITTLE-ENDIAN.put-int16 twiddles_ (i * 4)
-          q15-coefficient_ (math.cos angle)
-      io.LITTLE-ENDIAN.put-int16 twiddles_ (i * 4 + 2)
-          q15-coefficient_ (math.sin angle)
     if window:
       size.repeat: | i |
         coefficient/num := window[i]
@@ -346,6 +340,16 @@ q15-coefficient_ value/num -> int:
   scaled := (value.to-float * 32_768).round
   return max -32_768 (min 32_767 scaled)
 
+q15-twiddles_ size/int -> ByteArray:
+  result := ByteArray (size * 2)
+  (size / 2).repeat: | i |
+    angle := -2.0 * math.PI * i / size
+    io.LITTLE-ENDIAN.put-int16 result (i * 4)
+        q15-coefficient_ (math.cos angle)
+    io.LITTLE-ENDIAN.put-int16 result (i * 4 + 2)
+        q15-coefficient_ (math.sin angle)
+  return result
+
 real-fft-q15_ source/ByteArray twiddles/ByteArray window/ByteArray
     scratch/ByteArray destination/ByteArray format/int size/int power/bool -> int:
   #primitive.audio.real-fft-q15
@@ -372,14 +376,8 @@ class GccPhatQ15Plan:
     if size < 2 or size > 4_096 or not size.is-power-of-two or
         max-delay < 0 or max-delay > size / 2:
       throw "INVALID_ARGUMENT"
-    twiddles_ = ByteArray (size * 2)
+    twiddles_ = q15-twiddles_ size
     scratch_ = ByteArray (size * 8)
-    (size / 2).repeat: | i |
-      angle := -2.0 * math.PI * i / size
-      io.LITTLE-ENDIAN.put-int16 twiddles_ (i * 4)
-          q15-coefficient_ (math.cos angle)
-      io.LITTLE-ENDIAN.put-int16 twiddles_ (i * 4 + 2)
-          q15-coefficient_ (math.sin angle)
 
   /**
   Returns the estimated whole-sample delay in `[-max-delay, max-delay]`.
