@@ -49,6 +49,7 @@ namespace toit {
   M(encoding,MODULE_ENCODING)                \
   M(font,    MODULE_FONT)                    \
   M(bitmap,  MODULE_BITMAP)                  \
+  M(audio,   MODULE_AUDIO)                   \
   M(events,  MODULE_EVENTS)                  \
   M(wifi,    MODULE_WIFI)                    \
   M(ethernet,MODULE_ETHERNET)                \
@@ -583,6 +584,21 @@ namespace toit {
   PRIMITIVE(byte_rectangle, 7)               \
   PRIMITIVE(composit, 6)                     \
   PRIMITIVE(bytemap_blur, 4)                 \
+
+#define MODULE_AUDIO(PRIMITIVE)              \
+  PRIMITIVE(pcm_convert, 4)                  \
+  PRIMITIVE(pcm_extract, 6)                  \
+  PRIMITIVE(pcm_mix, 9)                      \
+  PRIMITIVE(dot_product, 3)                  \
+  PRIMITIVE(reduce, 3)                       \
+  PRIMITIVE(framed_energy, 6)                \
+  PRIMITIVE(normalized_correlation, 4)       \
+  PRIMITIVE(goertzel, 4)                     \
+  PRIMITIVE(real_fft_q15, 8)                 \
+  PRIMITIVE(gcc_phat_delay, 7)               \
+  PRIMITIVE(fir, 6)                          \
+  PRIMITIVE(biquad, 6)                       \
+  PRIMITIVE(resample_linear, 8)              \
 
 #define MODULE_EVENTS(PRIMITIVE)             \
   PRIMITIVE(read_state, 2)                   \

@@ -110,6 +110,12 @@
 #define CONFIG_TOIT_FONT 1
 #define CONFIG_TOIT_FULL_ZLIB 1
 #define CONFIG_TOIT_ZLIB_RLE 1
+#ifndef CONFIG_TOIT_AUDIO
+#define CONFIG_TOIT_AUDIO 1
+#endif
+#ifndef CONFIG_TOIT_AUDIO_EXTRA
+#define CONFIG_TOIT_AUDIO_EXTRA 1
+#endif
 #endif
 
 typedef intptr_t word;
