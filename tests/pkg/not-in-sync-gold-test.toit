@@ -25,6 +25,9 @@ test tester/GoldTester:
   tester.gold "10-more-lock" [
     ["// Should error, as the lock file has more entries"],
     ["pkg", "install", "pkg3"],
+    ["// --recompute should replace the stale lock file."],
+    ["pkg", "install", "--recompute"],
+    ["package.lock"],
   ]
 
   file.delete package-path
@@ -46,4 +49,7 @@ test tester/GoldTester:
 
   tester.gold "20-more-package" [
     ["pkg", "install", "pkg3"],
+    ["// --recompute should add the missing package to the lock file."],
+    ["pkg", "install", "--recompute"],
+    ["package.lock"],
   ]

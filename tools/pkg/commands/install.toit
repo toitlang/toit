@@ -69,7 +69,7 @@ class InstallCommand extends PkgProjectCommand:
     config := project-configuration-from-cli invocation
     config.verify
 
-    super invocation
+    super invocation --allow-lock-file-mismatch=recompute
 
   execute:
     if packages.is-empty:
