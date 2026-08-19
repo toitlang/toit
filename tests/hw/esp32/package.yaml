@@ -1,4 +1,7 @@
 dependencies:
+  audio:
+    url: github.com/toit-pkg/toit-audio
+    version: ^1.0.0
   bme280:
     url: github.com/toitware/bme280-driver
     version: ^1.1.0

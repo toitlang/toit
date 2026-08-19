@@ -1,5 +1,6 @@
-sdk: ^2.0.0-alpha.181
+sdk: ^2.0.0-alpha.198
 prefixes:
+  audio: toit-audio
   bme280: bme280-driver
   bmp280: bmp280-driver
   dhtxx: toit-dhtxx
@@ -22,6 +23,11 @@ packages:
     name: one_wire
     version: 2.5.0
     hash: 75a63dda6edd75ad3f76b399aa21ca61795896e3
+  toit-audio:
+    url: github.com/toit-pkg/toit-audio
+    name: audio
+    version: 1.0.0
+    hash: 3f4267ec82f923516b8194858904f400d5ac8703
   toit-dhtxx:
     url: github.com/toitware/toit-dhtxx
     name: dhtxx
