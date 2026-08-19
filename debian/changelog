@@ -1,5 +1,119 @@
 toit (VERSION-1) unstable; urgency=medium
 
-  * Initial release. (Closes: #XXXXXX) <---- TODO: Reference ITP bug if you file one
+  * New upstream release.
+
+ -- Florian Loitsch <florian@toit.io>  RELEASE_DATE
+
+toit (2.0.0~alpha.198-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Florian Loitsch <florian@toit.io>  Wed, 19 Aug 2026 00:52:17 +0200
+
+toit (2.0.0~alpha.197-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Florian Loitsch <florian@toit.io>  Wed, 5 Aug 2026 23:37:07 +0200
+
+toit (2.0.0~alpha.196-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Florian Loitsch <florian@toit.io>  Sun, 26 Jul 2026 20:53:47 +0200
+
+toit (2.0.0~alpha.195-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Florian Loitsch <florian@toit.io>  Thu, 2 Jul 2026 18:49:50 +0200
+
+toit (2.0.0~alpha.194-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Florian Loitsch <florian@toit.io>  Tue, 19 May 2026 08:52:13 -0700
+
+toit (2.0.0~alpha.193-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Florian Loitsch <florian@toit.io>  Sat, 2 May 2026 16:32:22 +0200
+
+toit (2.0.0~alpha.192-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Florian Loitsch <florian@toit.io>  Wed, 15 Apr 2026 23:23:40 +0200
+
+toit (2.0.0~alpha.191-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Florian Loitsch <florian@toit.io>  Tue, 31 Mar 2026 12:25:28 +0200
+
+toit (2.0.0~alpha.190-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Florian Loitsch <florian@toit.io>  Sun, 15 Feb 2026 20:47:33 +0100
+
+toit (2.0.0~alpha.189-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Florian Loitsch <florian@toit.io>  Tue, 28 Oct 2025 12:18:29 +0100
+
+toit (2.0.0~alpha.188-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Florian Loitsch <florian@toit.io>  Sun, 17 Aug 2025 12:24:46 +0200
+
+toit (2.0.0~alpha.187-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Florian Loitsch <florian@toit.io>  Tue, 12 Aug 2025 19:11:24 +0200
+
+toit (2.0.0~alpha.186-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Florian Loitsch <florian@toit.io>  Thu, 3 Jul 2025 08:58:36 +0200
+
+toit (2.0.0~alpha.185-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Florian Loitsch <florian@toit.io>  Tue, 17 Jun 2025 14:18:13 +0200
+
+toit (2.0.0~alpha.184-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Florian Loitsch <florian@toit.io>  Mon, 2 Jun 2025 12:54:23 +0200
+
+toit (2.0.0~alpha.183-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Florian Loitsch <florian@toit.io>  Wed, 28 May 2025 13:50:28 +0200
+
+toit (2.0.0~alpha.182-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Florian Loitsch <florian@toit.io>  Mon, 26 May 2025 16:42:32 +0200
+
+toit (2.0.0~alpha.181-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Florian Loitsch <florian@toit.io>  Mon, 26 May 2025 14:35:31 +0200
+
+toit (2.0.0~alpha.180-1) unstable; urgency=medium
+
+  * Initial release.
 
  -- Florian Loitsch <florian@toit.io>  Thu, 22 May 2025 11:58:00 +0200
