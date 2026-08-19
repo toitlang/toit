@@ -5,8 +5,11 @@
 import io
 
 main:
+  // Initialize stdin before announcing readiness.
+  // The ESP32 UART driver flushes pending input when installed.
+  input := io.stdin
   io.stdout.write "STDIO-READY\n"
-  data := io.stdin.read-line --keep-newline
+  data := input.read-line --keep-newline
   io.stdout.write "STDOUT:"
   if data: io.stdout.write data
   io.stderr.write "STDERR:"
