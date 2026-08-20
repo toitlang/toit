@@ -1,9 +1,6 @@
 dependencies:
-  bme280:
-    url: github.com/toitware/bme280-driver
-    version: ^1.1.0
-  bmp280:
-    url: github.com/harshkc03/bmp280-driver
+  bmx280:
+    url: github.com/toit-pkg/toit-bmx280
     version: ^1.0.0
   dhtxx:
     url: github.com/toitware/toit-dhtxx
