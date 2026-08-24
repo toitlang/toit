@@ -13,8 +13,9 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-#include <string>
+#include <deque>
 #include <limits.h>
+#include <string>
 
 #include "third_party/libyaml/include/yaml.h"
 #include "third_party/nlohmann/json.hpp"
@@ -224,6 +225,78 @@ namespace {  // Anonymous.
       };
     }
   };
+
+  struct ImportPath {
+    int depth;
+    std::string path;
+  };
+}
+
+static bool is_better_import_path(const ImportPath& candidate,
+                                  const ImportPath& current) {
+  if (candidate.depth != current.depth) return candidate.depth < current.depth;
+  if (candidate.path.size() != current.path.size()) {
+    return candidate.path.size() < current.path.size();
+  }
+  return candidate.path < current.path;
+}
+
+// Finds the shortest prefix path from the entry package to each dependency.
+// Prefer shorter spellings and then lexical order when several paths have the
+// same number of imports, so diagnostic paths are deterministic.
+static Map<std::string, std::string> build_diagnostic_package_ids(
+    const LockFileContent& lock_content) {
+  Map<std::string, ImportPath> shortest_paths;
+  std::deque<std::string> worklist;
+
+  shortest_paths[Package::ENTRY_PACKAGE_ID] = { 0, "" };
+  worklist.push_back(Package::ENTRY_PACKAGE_ID);
+
+  while (!worklist.empty()) {
+    auto owner = worklist.front();
+    worklist.pop_front();
+    auto owner_path = shortest_paths.at(owner);
+
+    auto prefixes_probe = lock_content.prefixes.find(owner);
+    if (prefixes_probe == lock_content.prefixes.end()) continue;
+    const auto& prefixes = prefixes_probe->second;
+    for (auto prefix : prefixes.keys()) {
+      auto target = prefixes.at(prefix);
+      if (!lock_content.packages.contains_key(target)) continue;
+
+      auto path = owner_path.path.empty()
+          ? prefix
+          : owner_path.path + "/" + prefix;
+      ImportPath candidate = { owner_path.depth + 1, path };
+      auto current_probe = shortest_paths.find(target);
+      if (current_probe != shortest_paths.end() &&
+          !is_better_import_path(candidate, current_probe->second)) {
+        continue;
+      }
+      shortest_paths[target] = candidate;
+      worklist.push_back(target);
+    }
+  }
+
+  Map<std::string, int> name_counts;
+  for (auto package_id : lock_content.packages.keys()) {
+    auto name = lock_content.packages.at(package_id).name;
+    if (!name.empty()) name_counts[name]++;
+  }
+
+  Map<std::string, std::string> result;
+  for (auto package_id : lock_content.packages.keys()) {
+    auto path_probe = shortest_paths.find(package_id);
+    if (path_probe != shortest_paths.end()) {
+      result[package_id] = path_probe->second.path;
+      continue;
+    }
+    auto name = lock_content.packages.at(package_id).name;
+    result[package_id] = !name.empty() && name_counts.at(name) == 1
+        ? name
+        : package_id;
+  }
+  return result;
 }
 
 static bool is_valid_package_id(const std::string& package_id) {
@@ -1120,6 +1193,11 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
     }
     packages[package_id] = package;
   }
+  auto diagnostic_package_ids = build_diagnostic_package_ids(lock_content);
+  for (auto package_id : lock_content.packages.keys()) {
+    packages[package_id].diagnostic_id_ = diagnostic_package_ids.at(package_id);
+  }
+
   return PackageLock(lock_content.source,
                      lock_content.sdk_constraint,
                      packages,

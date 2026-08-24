@@ -109,6 +109,7 @@ class Package {
           bool is_path_package)
       : id_(id)
       , name_(name)
+      , diagnostic_id_(id)
       , absolute_path_(absolute_path)
       , absolute_error_path_(absolute_error_path)
       , relative_error_path_(relative_error_path)
@@ -118,6 +119,9 @@ class Package {
 
   std::string id_ = std::string(INVALID_PACKAGE_ID);
   std::string name_ = std::string("");
+  // A user-facing identifier for diagnostics. For packages reachable from the
+  // entry package this is their shortest import path.
+  std::string diagnostic_id_ = std::string(INVALID_PACKAGE_ID);
   std::string absolute_path_ = std::string("");
   // The absolute location of the relative error path.
   // Usually the same as the absolute_path. Can be different for the entry package.
