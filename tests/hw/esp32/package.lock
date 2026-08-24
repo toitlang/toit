@@ -1,53 +1,42 @@
-sdk: ^2.0.0-alpha.181
+sdk: ^2.0.0-alpha.196
 prefixes:
-  bme280: bme280-driver
-  bmp280: bmp280-driver
-  dhtxx: toit-dhtxx
-  ds18b20: toit-ds18b20
-  hc_sr04: toit-hc-sr04
-  pixel_strip: toit-pixel-strip
+  bmx280: github.com/toit-pkg/toit-bmx280-1
+  dhtxx: github.com/toitware/toit-dhtxx-1
+  ds18b20: github.com/toitware/toit-ds18b20-2
+  hc_sr04: github.com/lask/toit-hc-sr04-2
+  pixel_strip: github.com/toitware/toit-pixel-strip-1
 packages:
-  bme280-driver:
-    url: github.com/toitware/bme280-driver
-    name: bme280
-    version: 1.1.0
-    hash: e2220d286aad8bbb78e27ffcbf558cbec0e1c687
-  bmp280-driver:
-    url: github.com/harshkc03/bmp280-driver
-    name: bmp280
+  github.com/lask/toit-hc-sr04-2:
+    hash: b0cfb0df9e657a699f909e0aa5d37979b9e96fa2
+    url: github.com/lask/toit-hc-sr04
+    version: 2.2.0
+  github.com/toit-pkg/toit-bmx280-1:
+    hash: d1de0a840c125769f28b6ddaa8d446a1dc4b1f22
+    prefixes:
+      sensors: github.com/toitware/toit-sensors-1
+    url: github.com/toit-pkg/toit-bmx280
     version: 1.0.0
-    hash: 17824b46f0fd5b9355e616de4bb5603dd6e9f6eb
-  toit-1-wire:
-    url: github.com/toitware/toit-1-wire
-    name: one_wire
-    version: 2.5.0
+  github.com/toitware/toit-1-wire-2:
     hash: 75a63dda6edd75ad3f76b399aa21ca61795896e3
-  toit-dhtxx:
-    url: github.com/toitware/toit-dhtxx
-    name: dhtxx
-    version: 1.10.0
+    url: github.com/toitware/toit-1-wire
+    version: 2.5.0
+  github.com/toitware/toit-dhtxx-1:
     hash: 416e42b0db6c39175fda9dcd868c892bf50f5e2a
     prefixes:
-      sensors: toit-sensors
-  toit-ds18b20:
-    url: github.com/toitware/toit-ds18b20
-    name: ds18b20
-    version: 2.1.0
+      sensors: github.com/toitware/toit-sensors-1
+    url: github.com/toitware/toit-dhtxx
+    version: 1.10.0
+  github.com/toitware/toit-ds18b20-2:
     hash: 09534f8f474d595620531df23b61e9707e1f5483
     prefixes:
-      one_wire: toit-1-wire
-  toit-hc-sr04:
-    url: github.com/lask/toit-hc-sr04
-    name: hc-sr04
-    version: 2.2.0
-    hash: b0cfb0df9e657a699f909e0aa5d37979b9e96fa2
-  toit-pixel-strip:
-    url: github.com/toitware/toit-pixel-strip
-    name: pixel_strip
-    version: 1.4.0
+      one_wire: github.com/toitware/toit-1-wire-2
+    url: github.com/toitware/toit-ds18b20
+    version: 2.1.0
+  github.com/toitware/toit-pixel-strip-1:
     hash: e7b0942f6cdc8f5575a3d7e78b74fef1544117c5
-  toit-sensors:
-    url: github.com/toitware/toit-sensors
-    name: sensors
-    version: 1.0.0
+    url: github.com/toitware/toit-pixel-strip
+    version: 1.4.0
+  github.com/toitware/toit-sensors-1:
     hash: f9f5662a0f21016259ff6907419e54d00223714a
+    url: github.com/toitware/toit-sensors
+    version: 1.0.0
