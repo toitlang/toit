@@ -17,6 +17,8 @@ test tester/GoldTester:
     ["pkg", "init"],
   ]
 
+  // pkg3@3.1.2 is a legacy published package without the metadata that is
+  // required for new publications.
   tester.gold "20-test" [
     ["pkg", "registry", "add", "test-reg", registry1],
     ["pkg", "list"],

@@ -297,7 +297,6 @@ class LockFileBuilder:
       versions.do: | version/SemanticVersion |
         specification := project_.load-package-specification url version
         update-sdk-version.call specification.sdk-version
-        name := specification.name
         hash := project_.hash-for --url=url --version=version --registries=registries
         id-prefix := url-id-prefixes-map_[url]
         // Major versions are separate solver packages and may coexist in one
