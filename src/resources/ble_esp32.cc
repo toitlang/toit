@@ -365,6 +365,7 @@ class ToitCallback {
       , condition_(condition) {}
 
   ~ToitCallback() {
+    free(value_);
     OS::dispose(mutex_);
     OS::dispose(condition_);
   }
@@ -374,7 +375,6 @@ class ToitCallback {
   int timeout_ms() const { return timeout_ms_; }
 
   bool needs_value() const { return state_ == WAITING_FOR_VALUE; }
-  os_mbuf* value() const { return value_; }
 
   int call_toit(BleCallbackScope& scope,
                 BleReadWriteElement* element,
@@ -383,7 +383,7 @@ class ToitCallback {
 
   /// The Toit code has produced a value.
   /// Make it available to the NimBLE thread.
-  void handle_reply(os_mbuf* new_value);
+  void handle_reply(uint8* new_value, uint16 new_value_length);
 
   void delete_or_mark_for_deletion();
 
@@ -402,7 +402,8 @@ class ToitCallback {
 
   State state_ = NO_CALLBACK;
   bool pending_deletion_ = false;
-  os_mbuf* value_ = null;
+  uint8* value_ = null;
+  uint16 value_length_ = 0;
   int timeout_ms_;
   Mutex* mutex_;
   ConditionVariable* condition_;
@@ -419,13 +420,14 @@ class BleReadWriteElement : public BleCallbackResource {
       , uuid_(uuid)
       , handle_(handle)
       , mbuf_received_(null)
-      , mbuf_to_send_(null)
+      , value_to_send_(null)
+      , value_to_send_length_(0)
       , read_handler_(null)
       , write_handler_(null) {}
 
   ~BleReadWriteElement() override {
     if (mbuf_received_) os_mbuf_free_chain(mbuf_received_);
-    if (mbuf_to_send_) os_mbuf_free(mbuf_to_send_);
+    free(value_to_send_);
     toit_callback_deinit(true);
     toit_callback_deinit(false);
   }
@@ -453,13 +455,18 @@ class BleReadWriteElement : public BleCallbackResource {
     return mbuf_received_;
   }
 
-  os_mbuf* mbuf_to_send() {
-    return mbuf_to_send_;
+  const uint8* value_to_send() const {
+    return value_to_send_;
   }
 
-  void set_mbuf_to_send(os_mbuf* mbuf) {
-    if (mbuf_to_send_ != null) os_mbuf_free(mbuf_to_send_);
-    mbuf_to_send_ = mbuf;
+  uint16 value_to_send_length() const {
+    return value_to_send_length_;
+  }
+
+  void set_value_to_send(uint8* value, uint16 length) {
+    free(value_to_send_);
+    value_to_send_ = value;
+    value_to_send_length_ = length;
   }
 
   // Callback for when we receive a response from a remote device.
@@ -489,20 +496,10 @@ class BleReadWriteElement : public BleCallbackResource {
     return static_cast<BleReadWriteElement*>(resource)->_on_access(scope, ctxt);
   }
 
-  static uint16_t mbuf_total_len(os_mbuf* om) {
-    if (!om) return 0;
-    uint16_t total_len = 0;
-    while (om) {
-      total_len += om->om_len;
-      om = SLIST_NEXT(om, om_next);
-    }
-    return total_len;
-  }
-
   bool toit_callback_needs_value(bool for_read) const;
   bool toit_callback_init(int timeout_ms, bool for_read);
   void toit_callback_deinit(bool for_read);
-  void toit_callback_handle_reply(os_mbuf* mbuf, bool for_read);
+  void toit_callback_handle_reply(uint8* value, uint16 value_length, bool for_read);
   bool toit_callback_is_setup(bool for_read) const;
 
  protected:
@@ -515,7 +512,8 @@ class BleReadWriteElement : public BleCallbackResource {
   ble_uuid_any_t uuid_;
   uint16 handle_;
   os_mbuf* mbuf_received_;
-  os_mbuf* mbuf_to_send_;
+  uint8* value_to_send_;
+  uint16 value_to_send_length_;
   ToitCallback* read_handler_;
   ToitCallback* write_handler_;
 };
@@ -1959,12 +1957,11 @@ int ToitCallback::call_toit(BleCallbackScope& scope,
       break;
     case VALUE_PENDING:
       if (value_ != null) {
-        result = os_mbuf_appendfrom(ctxt->om,
-                                    value_,
-                                    0,
-                                    BleReadWriteElement::mbuf_total_len(value_));
-        os_mbuf_free(value_);
+        int rc = os_mbuf_append(ctxt->om, value_, value_length_);
+        result = rc == 0 ? BLE_ERR_SUCCESS : BLE_ATT_ERR_INSUFFICIENT_RES;
+        free(value_);
         value_ = null;
+        value_length_ = 0;
       } else {
         // Empty response. Do nothing (but return with BLE_ERR_SUCCESS).
       }
@@ -2003,10 +2000,11 @@ void ToitCallback::delete_or_mark_for_deletion() {
   }
 }
 
-void ToitCallback::handle_reply(os_mbuf* new_value) {
+void ToitCallback::handle_reply(uint8* new_value, uint16 new_value_length) {
   ASSERT(value_ == null);
   ASSERT(needs_value());
   value_ = new_value;
+  value_length_ = new_value_length;
   state_ = VALUE_PENDING;
   Locker callback_locker(mutex_);
   OS::signal_all(condition_);
@@ -2055,9 +2053,9 @@ void BleReadWriteElement::toit_callback_deinit(bool for_read) {
 
 /// The Toit code gave us a value for the request.
 /// Signal the NimBLE thread that it should use it.
-void BleReadWriteElement::toit_callback_handle_reply(os_mbuf* mbuf, bool for_read) {
+void BleReadWriteElement::toit_callback_handle_reply(uint8* value, uint16 value_length, bool for_read) {
   auto handler = for_read ? read_handler_ : write_handler_;
-  handler->handle_reply(mbuf);
+  handler->handle_reply(value, value_length);
 }
 
 bool BleReadWriteElement::toit_callback_is_setup(bool for_read) const {
@@ -2073,10 +2071,10 @@ void BleReadWriteElement::_on_attribute_read(const BleCallbackScope& scope,
       set_mbuf_received(attr->om);
       // Take ownership of the buffer.
       attr->om = null;
-      BleEventSource::instance()->on_event(this, kBleValueDataReady);
       break;
     }
     case BLE_HS_EDONE: // No more data can be read.
+      BleEventSource::instance()->on_event(this, kBleValueDataReady);
       break;
 
     default:
@@ -2092,8 +2090,9 @@ int BleReadWriteElement::_on_access(BleCallbackScope& scope, ble_gatt_access_ctx
     case BLE_GATT_ACCESS_OP_READ_DSC: {
       auto callback = read_handler_;
       if (callback == null) {
-        if (mbuf_to_send() != null) {
-          return os_mbuf_appendfrom(ctxt->om, mbuf_to_send(), 0, mbuf_total_len(mbuf_to_send_));
+        if (value_to_send() != null) {
+          int rc = os_mbuf_append(ctxt->om, value_to_send(), value_to_send_length());
+          return rc == 0 ? BLE_ERR_SUCCESS : BLE_ATT_ERR_INSUFFICIENT_RES;
         } else {
           // Complete without data.
           return BLE_ERR_SUCCESS;
@@ -2327,6 +2326,24 @@ static Object* object_to_mbuf(Process* process, Object* object, os_mbuf** result
   Blob bytes;
   if (!object->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_BYTES_TYPE);
   return blob_to_mbuf(process, bytes, result);
+}
+
+// Values retained by Toit must not occupy NimBLE's fixed-size mbuf pools.
+// They are copied into an mbuf only while NimBLE is producing the ATT response.
+static Object* object_to_malloced_buffer(Process* process, Object* object, uint8** result, uint16* length) {
+  *result = null;
+  *length = 0;
+  if (object == process->null_object()) return null;
+  Blob bytes;
+  if (!object->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_BYTES_TYPE);
+  if (bytes.length() > std::numeric_limits<uint16>::max()) FAIL(OUT_OF_RANGE);
+  if (bytes.length() == 0) return null;
+  uint8* buffer = unvoid_cast<uint8*>(malloc(bytes.length()));
+  if (!buffer) FAIL(MALLOC_FAILED);
+  memcpy(buffer, bytes.address(), bytes.length());
+  *result = buffer;
+  *length = bytes.length();
+  return null;
 }
 
 void BleAdapterResource::on_sync() {
@@ -3103,20 +3120,19 @@ PRIMITIVE(add_characteristic) {
     flags |= BLE_GATT_CHR_F_WRITE_ENC;  // _ENC = Encrypted.
   }
 
-  os_mbuf* om = null;
-  Object* error = object_to_mbuf(process, value, &om);
+  uint8* value_buffer = null;
+  uint16 value_length = 0;
+  Object* error = object_to_malloced_buffer(process, value, &value_buffer, &value_length);
   if (error) return error;
 
   BleCharacteristicResource* characteristic = service_resource->create_characteristic(null, ble_uuid, flags, 0, 0);
 
   if (!characteristic) {
-    if (om != null) os_mbuf_free(om);
+    free(value_buffer);
     FAIL(MALLOC_FAILED);
   }
 
-  if (om != null) {
-    characteristic->set_mbuf_to_send(om);
-  }
+  characteristic->set_value_to_send(value_buffer, value_length);
   // On the peripheral side, setting the "returned" value isn't strictly necessary,
   // as all characteristics are automatically returned. It is more consistent this way, though.
   characteristic->set_returned(true);
@@ -3141,8 +3157,9 @@ PRIMITIVE(add_descriptor) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  os_mbuf* om = null;
-  Object* error = object_to_mbuf(process, value, &om);
+  uint8* value_buffer = null;
+  uint16 value_length = 0;
+  Object* error = object_to_malloced_buffer(process, value, &value_buffer, &value_length);
   if (error) return error;
 
   uint8 flags = 0;
@@ -3154,11 +3171,11 @@ PRIMITIVE(add_descriptor) {
   BleDescriptorResource* descriptor =
       characteristic->get_or_create_descriptor(null, ble_uuid, 0, flags);
   if (!descriptor) {
-    if (om != null) os_mbuf_free(om);
+    free(value_buffer);
     FAIL(MALLOC_FAILED);
   }
 
-  if (om != null) descriptor->set_mbuf_to_send(om);
+  descriptor->set_value_to_send(value_buffer, value_length);
 
   // On the peripheral side, setting the "returned" value isn't strictly necessary,
   // as all descriptors are automatically returned. It is more consistent this way, though.
@@ -3280,11 +3297,12 @@ PRIMITIVE(set_value) {
 
   if (!element->service()->peripheral_manager()) FAIL(INVALID_ARGUMENT);
 
-  os_mbuf* om = null;
-  Object* error = object_to_mbuf(process, value, &om);
+  uint8* value_buffer = null;
+  uint16 value_length = 0;
+  Object* error = object_to_malloced_buffer(process, value, &value_buffer, &value_length);
   if (error) return error;
 
-  element->set_mbuf_to_send(om);
+  element->set_value_to_send(value_buffer, value_length);
 
   return process->null_object();
 }
@@ -3454,11 +3472,12 @@ PRIMITIVE(toit_callback_reply) {
 
   if (!for_read && value != process->null_object()) FAIL(INVALID_ARGUMENT);
 
-  os_mbuf* mbuf = null;
-  Object* error = object_to_mbuf(process, value, &mbuf);
+  uint8* value_buffer = null;
+  uint16 value_length = 0;
+  Object* error = object_to_malloced_buffer(process, value, &value_buffer, &value_length);
   if (error) return error;
 
-  characteristic->toit_callback_handle_reply(mbuf, for_read);
+  characteristic->toit_callback_handle_reply(value_buffer, value_length, for_read);
 
   return process->null_object();
 }

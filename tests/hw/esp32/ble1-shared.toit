@@ -29,8 +29,19 @@ CHARACTERISTIC-INDICATE2 ::= BleUuid "75ecbe49-5454-48b7-975e-21c1a07bcca9"
 CHARACTERISTIC-WRITE-ONLY ::= BleUuid "1a1bb179-c006-4217-a57b-342e24eca694"
 CHARACTERISTIC-WRITE-ONLY-WITH-RESPONSE ::= BleUuid "8e00e1c7-1b90-4f23-8dc9-384134606fc2"
 
+STORED-VALUE-COUNT ::= 16
+STORED-VALUE-UPDATE-COUNT ::= 16
+
 VALUE-BYTES ::= #[0x70, 0x17]
 VALUE-STRING ::= "7017"
+
+stored-value-uuid index/int -> BleUuid:
+  return BleUuid "d973$(%04x (0xb00 + index))-1b2c-4f8a-8c7d-9a1b2c3d4e5f"
+
+callback-value iteration/int counter/int -> ByteArray:
+  return iteration == 0
+      ? #[counter]
+      : ByteArray 512 --initial=counter
 
 main-peripheral:
   run-test:
@@ -58,8 +69,15 @@ run-peripheral-test --iteration/int:
   task --background=is-background::
     counter := 0
     read-only-callback.handle-read-request:
-      #[counter++]
+      callback-value iteration counter++
     callback-task-done.set null
+
+  stored-values := List STORED-VALUE-COUNT:
+    service1.add-read-only-characteristic (stored-value-uuid it) --value=#[it]
+  STORED-VALUE-COUNT.repeat:
+    stored-values[it].set-value #[it + 1]
+  STORED-VALUE-UPDATE-COUNT.repeat:
+    stored-values[0].set-value (ByteArray 512 --initial=it)
 
   notify := service1.add-notification-characteristic CHARACTERISTIC-NOTIFY
   notify2 := service1.add-characteristic CHARACTERISTIC-NOTIFY2
@@ -204,6 +222,7 @@ run-central-test --iteration/int:
   indicate2/RemoteCharacteristic? := null
   write-only/RemoteCharacteristic? := null
   write-only-with-response/RemoteCharacteristic? := null
+  stored-values := List STORED-VALUE-COUNT
 
   services.do: | service/RemoteService |
     characteristics := service.discover-characteristics
@@ -216,6 +235,8 @@ run-central-test --iteration/int:
       if characteristic.uuid == CHARACTERISTIC-INDICATE2: indicate2 = characteristic
       if characteristic.uuid == CHARACTERISTIC-WRITE-ONLY: write-only = characteristic
       if characteristic.uuid == CHARACTERISTIC-WRITE-ONLY-WITH-RESPONSE: write-only-with-response = characteristic
+      STORED-VALUE-COUNT.repeat:
+        if characteristic.uuid == (stored-value-uuid it): stored-values[it] = characteristic
 
   // Read the handles and make sure they are all different.
   seen-handles := {}
@@ -244,7 +265,13 @@ run-central-test --iteration/int:
   expect-equals value read-only.read
 
   5.repeat:
-    expect-equals #[it] read-only-callback.read
+    expect-equals (callback-value iteration it) read-only-callback.read
+
+  STORED-VALUE-COUNT.repeat:
+    expected := it == 0
+        ? ByteArray 512 --initial=STORED-VALUE-UPDATE-COUNT - 1
+        : #[it + 1]
+    expect-equals expected stored-values[it].read
 
   5.repeat:
     write-only.write #[it]
