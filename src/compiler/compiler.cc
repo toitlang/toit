@@ -704,7 +704,7 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
     }
     auto source_paths = ListBuilder<const char*>::allocate(path_count);
     for (int i = 0; i < path_count; i++) {
-      source_paths[i] = strdup(reader.next("path"));
+      source_paths[i] = reader.next("path");
     }
     LanguageServerAnalysisDiagnostics diagnostics(&source_manager, &lsp);
     configuration.diagnostics = &diagnostics;
@@ -717,7 +717,7 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
     }
     auto source_paths = ListBuilder<const char*>::allocate(path_count);
     for (int i = 0; i < path_count; i++) {
-      source_paths[i] = strdup(reader.next("path"));
+      source_paths[i] = reader.next("path");
     }
 
     NullDiagnostics diagnostics(&source_manager);

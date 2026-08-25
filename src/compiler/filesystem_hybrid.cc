@@ -99,7 +99,7 @@ const char* FilesystemHybrid::getcwd(char* buffer, int buffer_size) {
 }
 
 void FilesystemHybrid::list_directory_entries(const char* path,
-                                              const std::function<bool (const char*)> callback) {
+                                              const std::function<bool (const char*)>& callback) {
   auto f = [&](const char* path, Filesystem* fs) {
     return fs->list_directory_entries(path, callback);
   };
@@ -107,14 +107,14 @@ void FilesystemHybrid::list_directory_entries(const char* path,
 }
 
 template<typename T>
-T FilesystemHybrid::do_with_active_fs(const std::function<T (Filesystem* fs)> callback) {
+T FilesystemHybrid::do_with_active_fs(const std::function<T (Filesystem* fs)>& callback) {
   if (use_fs_archive_) return callback(&fs_archive_);
   return callback(&fs_local_);
 }
 
 template<typename T>
 T FilesystemHybrid::do_with_active_fs(const char* path,
-                                      const std::function<T (const char* path, Filesystem* fs)> callback) {
+                                      const std::function<T (const char* path, Filesystem* fs)>& callback) {
   if (use_fs_archive_) {
     if (path == null || fs_archive_.contains_sdk()) {
       return callback(path, &fs_archive_);

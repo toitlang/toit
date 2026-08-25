@@ -44,12 +44,12 @@ template<typename K, typename V> class Map {
     }
   }
 
-  V at(const K& key) { return map_.at(key); }
-  const V at(const K& key) const { return map_.at(key); }
+  V& at(const K& key) { return map_.at(key); }
+  const V& at(const K& key) const { return map_.at(key); }
 
   template<typename F>
   void for_each(const F& callback) {
-    for (auto key : vector_) {
+    for (const auto& key : vector_) {
       callback(key, map_[key]);
     }
   }
@@ -99,10 +99,11 @@ template<typename K, typename V> class Map<K, V*> {
   }
 
   V* at(const K& key) { return map_.at(key); }
+  V* at(const K& key) const { return map_.at(key); }
 
   template<typename F>
   void for_each(const F& callback) {
-    for (auto key : vector_) {
+    for (const auto& key : vector_) {
       callback(key, map_[key]);
     }
   }

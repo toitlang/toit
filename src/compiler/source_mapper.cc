@@ -65,7 +65,7 @@ class SourceInfoCollector {
 
 void StringTable::visit(SourceInfoCollector* collector) {
   collector->write_int(table.size());
-  for (auto string : table) collector->write_string_content(string.c_str());
+  for (const auto& string : table) collector->write_string_content(string.c_str());
 }
 
 class SourceInfoAllocator: public SourceInfoCollector {
@@ -147,11 +147,11 @@ void SourceMapper::visit_selectors(SourceInfoCollector* collector) {
   collector->write_int(selectors_.size());
   for (auto location_id : selectors_.keys()) {
     collector->write_int(location_id);
-    auto selector_class_entry = selectors_.at(location_id);
+    const auto& selector_class_entry = selectors_.at(location_id);
     int encoded_super_id = selector_class_entry.super_location_id + 1;
     collector->write_int(encoded_super_id);
     collector->write_int(selector_class_entry.selectors.size());
-    for (auto selector : selector_class_entry.selectors) {
+    for (const auto& selector : selector_class_entry.selectors) {
       collector->write_string(selector.c_str());
     }
   }
@@ -159,7 +159,7 @@ void SourceMapper::visit_selectors(SourceInfoCollector* collector) {
 
 void SourceMapper::visit_method_info(SourceInfoCollector* collector) {
   collector->write_int(source_information_.size());
-  for (auto entry : source_information_) {
+  for (const auto& entry : source_information_) {
     collector->write_int(entry.id);
     collector->write_int(entry.bytecode_size);
     collector->write_byte(static_cast<uint8>(entry.type));
@@ -182,13 +182,13 @@ void SourceMapper::visit_method_info(SourceInfoCollector* collector) {
     collector->write_int(entry.position.line);
     collector->write_int(entry.position.column);
     collector->write_int(entry.bytecode_positions.size());
-    for (auto pair : entry.bytecode_positions) {
+    for (const auto& pair : entry.bytecode_positions) {
       collector->write_int(pair.first);
       collector->write_int(pair.second.line);
       collector->write_int(pair.second.column);
     }
     collector->write_int(entry.as_class_names.size());
-    for (auto pair : entry.as_class_names) {
+    for (const auto& pair : entry.as_class_names) {
       collector->write_int(pair.first);
       collector->write_string(pair.second);
     }
@@ -201,7 +201,7 @@ void SourceMapper::visit_class_info(SourceInfoCollector* collector) {
   for (auto klass : class_information_.keys()) {
     // We don't need to encode the id, as it's given by the index in the class-table.
     ASSERT(klass->id() == id++);
-    auto entry = class_information_[klass];
+    const auto& entry = class_information_[klass];
     int encoded_super = entry.super + 1;
     collector->write_int(encoded_super);
     collector->write_int(entry.location_id);
@@ -232,7 +232,7 @@ void SourceMapper::visit_primitive_info(SourceInfoCollector* collector) {
 
 void SourceMapper::visit_selector_offset_info(SourceInfoCollector* collector) {
   collector->write_int(selector_offsets_.size());
-  for (auto p : selector_offsets_) {
+  for (const auto& p : selector_offsets_) {
     collector->write_int(p.first);
     collector->write_string(p.second);
   }
@@ -240,7 +240,7 @@ void SourceMapper::visit_selector_offset_info(SourceInfoCollector* collector) {
 
 void SourceMapper::visit_global_info(SourceInfoCollector* collector) {
   collector->write_int(global_information_.size());
-  for (auto info : global_information_) {
+  for (const auto& info : global_information_) {
     collector->write_string(info.name);
     collector->write_string(info.holder_name);
     int encoded_holder_class_id = info.holder_class_id + 1;

@@ -18,6 +18,7 @@
 #include "../top.h"
 
 #include <vector>
+#include <utility>
 
 #include "../utils.h"
 
@@ -36,8 +37,12 @@ class ListBuilder {
     data_.clear();
   }
 
-  void add(T element) {
+  void add(const T& element) {
     data_.push_back(element);
+  }
+
+  void add(T&& element) {
+    data_.push_back(std::move(element));
   }
 
   void add(List<T> elements) {
@@ -83,28 +88,28 @@ class ListBuilder {
   static List<T> build(T element) {
     int len = 1;
     List<T> result = allocate(len);
-    *result.data() = element;
+    *result.data() = std::move(element);
     return result;
   }
 
   static List<T> build(T element1, T element2) {
     int len = 2;
     List<T> result = allocate(len);
-    result[0] = element1;
-    result[1] = element2;
+    result[0] = std::move(element1);
+    result[1] = std::move(element2);
     return result;
   }
 
   static List<T> build(T element1, T element2, T element3) {
     int len = 3;
     List<T> result = allocate(len);
-    result[0] = element1;
-    result[1] = element2;
-    result[2] = element3;
+    result[0] = std::move(element1);
+    result[1] = std::move(element2);
+    result[2] = std::move(element3);
     return result;
   }
 
-  static List<T> build_from_vector(const std::vector<T> vector) {
+  static List<T> build_from_vector(const std::vector<T>& vector) {
     int len = vector.size();
     List<T> result = allocate(len);
     for (int i = 0; i < len; i++) {

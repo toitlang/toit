@@ -40,7 +40,7 @@ List<const char*> LspFsProtocol::package_cache_paths() {
 }
 
 void LspFsProtocol::list_directory_entries(const char* path,
-                                           const std::function<bool (const char*)> callback) {
+                                           const std::function<bool (const char*)>& callback) {
   connection_->putline("LIST DIRECTORY");
   connection_->putline(path);
 

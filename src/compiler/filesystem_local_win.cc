@@ -71,12 +71,17 @@ static int root_prefix_length(const char* path) {
 const char* FilesystemLocal::relative_anchor(const char* path) {
   ASSERT(!is_absolute(path));
   if (path[0] == '/') {  // Safe to access even for empty strings.
-    // TODO(florian): error checking.
     DWORD result_length = GetFullPathName("/", 0, NULL, NULL);
-    char* result = unvoid_cast<char*>(malloc(result_length));
+    if (result_length == 0) FATAL("Couldn't resolve the current drive root");
+    char* result = unvoid_cast<char*>(malloc(result_length + 1));
+    if (result == null) FATAL("Couldn't allocate the current drive root");
 
-    GetFullPathName("/", result_length, result, NULL);
-    result[result_length] = '\0';
+    DWORD written = GetFullPathName("/", result_length, result, NULL);
+    if (written == 0 || written >= result_length) {
+      free(result);
+      FATAL("Couldn't resolve the current drive root");
+    }
+    result[written] = '\0';
     return result;
   }
   return cwd();

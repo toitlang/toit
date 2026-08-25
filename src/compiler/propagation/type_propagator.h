@@ -48,6 +48,7 @@ class TypePropagator {
   TypePropagator(
       Program* program,
       const MethodSelectorOffsets* method_selector_offsets = null);
+  ~TypePropagator();
 
   Program* program() const { return program_; }
   int words_per_type() const { return words_per_type_; }
@@ -114,13 +115,13 @@ class TypePropagator {
                        int arity,
                        std::vector<Worklist*>& worklists);
 
-  MethodTemplate* find_method(Method target, std::vector<ConcreteType> arguments);
+  MethodTemplate* find_method(Method target, const std::vector<ConcreteType>& arguments);
   BlockTemplate* find_block(MethodTemplate* origin, Method method, int level, int sp);
 };
 
 class MethodTemplate {
  public:
-  MethodTemplate(MethodTemplate* next, TypePropagator* propagator, Method method, std::vector<ConcreteType> arguments)
+  MethodTemplate(MethodTemplate* next, TypePropagator* propagator, Method method, const std::vector<ConcreteType>& arguments)
       : next_(next)
       , propagator_(propagator)
       , method_(method)
@@ -140,7 +141,7 @@ class MethodTemplate {
   Method method() const { return method_; }
   int method_id() const;
 
-  bool matches(Method target, std::vector<ConcreteType>& arguments) const;
+  bool matches(Method target, const std::vector<ConcreteType>& arguments) const;
 
   bool analyzed() const { return analyzed_; }
   bool enqueued() const { return enqueued_; }

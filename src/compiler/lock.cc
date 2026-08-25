@@ -101,7 +101,7 @@ Package PackageLock::package_for(const std::string& path, Filesystem* fs) const 
       auto probe = path_to_package_cache_.find(sub);
       if (probe != path_to_package_cache_.end()) {
         path_to_package_cache_[path] = probe->second;
-        for (auto p : to_cache) {
+        for (const auto& p : to_cache) {
           path_to_package_cache_[p] = probe->second;
         }
         return packages_.at(probe->second);
@@ -176,7 +176,7 @@ static std::string build_canonical_sdk_dir(Filesystem* fs) {
 }
 
 void PackageLock::list_sdk_prefixes(const std::function<void (const std::string& candidate)>& callback) const {
-  for (auto sdk_prefix : sdk_prefixes_) {
+  for (const auto& sdk_prefix : sdk_prefixes_) {
     callback(sdk_prefix);
   }
 }
@@ -191,7 +191,7 @@ PackageLock::PackageLock(Source* lock_source,
     , sdk_prefixes_(sdk_prefixes)
     , packages_(packages)
     , sdk_constraint_(sdk_constraint) {
-  for (auto id : packages.keys()) {
+  for (const auto& id : packages.keys()) {
     auto package = packages.at(id);
     if (!package.has_valid_path()) continue;
     path_to_package_cache_[package.absolute_path()] = id;
@@ -260,7 +260,7 @@ static Map<std::string, std::string> build_diagnostic_package_ids(
     auto prefixes_probe = lock_content.prefixes.find(owner);
     if (prefixes_probe == lock_content.prefixes.end()) continue;
     const auto& prefixes = prefixes_probe->second;
-    for (auto prefix : prefixes.keys()) {
+    for (const auto& prefix : prefixes.keys()) {
       auto target = prefixes.at(prefix);
       if (!lock_content.packages.contains_key(target)) continue;
 
@@ -279,13 +279,13 @@ static Map<std::string, std::string> build_diagnostic_package_ids(
   }
 
   Map<std::string, int> name_counts;
-  for (auto package_id : lock_content.packages.keys()) {
+  for (const auto& package_id : lock_content.packages.keys()) {
     auto name = lock_content.packages.at(package_id).name;
     if (!name.empty()) name_counts[name]++;
   }
 
   Map<std::string, std::string> result;
-  for (auto package_id : lock_content.packages.keys()) {
+  for (const auto& package_id : lock_content.packages.keys()) {
     auto path_probe = shortest_paths.find(package_id);
     if (path_probe != shortest_paths.end()) {
       result[package_id] = path_probe->second.path;
@@ -1017,7 +1017,9 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
   }
 
   ASSERT(!is_valid_package_id(Package::ENTRY_PACKAGE_ID));
-  std::string root(fs->root(entry_path));
+  char* root_buffer = fs->root(entry_path);
+  std::string root(root_buffer);
+  delete[] root_buffer;
   std::string absolute_error_path = root;
   std::string relative_error_path = root;
   if (!entry_is_absolute) {
@@ -1064,7 +1066,7 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
   fill_package_mappings(&mappings, package_dirs, fs);
 
   Map<std::string, std::string> path_to_package;
-  for (auto package_id : lock_content.packages.keys()) {
+  for (const auto& package_id : lock_content.packages.keys()) {
     auto entry = lock_content.packages.at(package_id);
 
     auto locate_package = [&](std::string path, const std::string& error_path, bool is_path_package) -> Package {
@@ -1194,7 +1196,7 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
     packages[package_id] = package;
   }
   auto diagnostic_package_ids = build_diagnostic_package_ids(lock_content);
-  for (auto package_id : lock_content.packages.keys()) {
+  for (const auto& package_id : lock_content.packages.keys()) {
     packages[package_id].diagnostic_id_ = diagnostic_package_ids.at(package_id);
   }
 

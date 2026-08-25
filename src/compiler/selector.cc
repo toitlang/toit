@@ -149,7 +149,7 @@ void CallBuilder::sort_arguments(std::vector<Arg>* args) {
 // The given [fun] function may freely reorder all arguments without
 // worrying about evaluation order.
 ir::Expression* CallBuilder::with_hoisted_args(ir::Expression* target,
-                                               std::function<ir::Expression* (ir::Expression*)> fun) {
+                                               const std::function<ir::Expression* (ir::Expression*)>& fun) {
 
   // Just a few shortcuts.
   if (target == null || !target->is_block()) {
@@ -198,7 +198,7 @@ ir::Expression* CallBuilder::with_hoisted_args(ir::Expression* target,
 
 ir::Expression* CallBuilder::do_call_static(ResolutionShape shape,
                                             bool has_implicit_this,
-                                            std::function<ir::Call* (CallShape shape, List<ir::Expression*>)> create_call) {
+                                            const std::function<ir::Call* (CallShape shape, List<ir::Expression*>)>& create_call) {
   return with_hoisted_args(null, [&](ir::Expression* _) {
     // For simplicity, remove the implicit this from the shape if necessary.
     if (has_implicit_this) shape = shape.without_implicit_this();
@@ -277,7 +277,7 @@ ir::Expression* CallBuilder::do_call_static(ResolutionShape shape,
 }
 
 ir::Expression* CallBuilder::do_call_instance(ir::Dot* dot,
-                                              std::function<ir::Call* (ir::Dot* dot, CallShape shape, List<ir::Expression*>)> create_call) {
+                                              const std::function<ir::Call* (ir::Dot* dot, CallShape shape, List<ir::Expression*>)>& create_call) {
   return with_hoisted_args(dot->receiver(), [&](ir::Expression* new_receiver) {
     dot->replace_receiver(new_receiver);
     int arity = args_.size();
@@ -307,7 +307,7 @@ ir::Expression* CallBuilder::do_call_instance(ir::Dot* dot,
 }
 
 ir::Expression* CallBuilder::do_block_call(ir::Expression* block,
-                                           std::function<ir::Call* (ir::Expression* block, CallShape shape, List<ir::Expression*>)> create_call) {
+                                           const std::function<ir::Call* (ir::Expression* block, CallShape shape, List<ir::Expression*>)>& create_call) {
   return with_hoisted_args(block, [&](ir::Expression* new_block) {
     int arity = args_.size();
     auto ir_arguments = ListBuilder<ir::Expression*>::allocate(arity);
@@ -319,7 +319,7 @@ ir::Expression* CallBuilder::do_block_call(ir::Expression* block,
 
 void CallBuilder::match_arguments_with_parameters(CallShape call_shape,
                                                   ResolutionShape resolution_shape,
-                                                  const std::function<void (int argument_index, int parameter_index)> callback) {
+                                                  const std::function<void (int argument_index, int parameter_index)>& callback) {
   ASSERT(resolution_shape.accepts(call_shape));
   int arg_index = 0;
   int parameter_index = 0;
@@ -347,4 +347,3 @@ void CallBuilder::match_arguments_with_parameters(CallShape call_shape,
 
 } // namespace toit::compiler
 } // namespace toit
-

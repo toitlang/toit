@@ -33,6 +33,7 @@ class FilesystemArchive : public Filesystem {
  public:
   FilesystemArchive(const char* path)
       : path_(path) {}
+  ~FilesystemArchive();
 
   /// Loads the given archive, caching the contained files.
   void initialize(Diagnostics* diagnostics);
@@ -73,7 +74,7 @@ class FilesystemArchive : public Filesystem {
 
   const char* getcwd(char* buffer, int buffer_size) { return cwd_path_; }
   void list_directory_entries(const char* path,
-                              const std::function<bool (const char*)> callback);
+                              const std::function<bool (const char*)>& callback);
 
  private:
   struct FileEntry {
@@ -92,6 +93,7 @@ class FilesystemArchive : public Filesystem {
 
   // These entries are overwritten in the initialize function.
   const char* entry_path_ = "/";
+  std::string entry_path_storage_;
   const char* sdk_path_ = "/";
   List<const char*> package_cache_paths_;
   const char* cwd_path_ = "/";

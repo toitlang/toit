@@ -17,7 +17,14 @@
 
 #include <stdio.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <sys/stat.h>
+
+#ifdef TOIT_WINDOWS
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 
 #ifdef TOIT_DARWIN
 // For spawning codesign.
@@ -90,7 +97,8 @@ int create_executable(const char* out_path,
   if (vessel_root != null) {
     builder.add(vessel_root);
   } else {
-    builder.add(fs.vessel_root());
+    vessel_root = fs.vessel_root();
+    builder.add(vessel_root);
   }
   if (os != null) {
     builder.join(os);
@@ -119,18 +127,18 @@ int create_executable(const char* out_path,
   builder.canonicalize();
   int length_without_extension = builder.length();
   FILE* file = null;
-  const char* vessel_path = strdup(builder.c_str());
+  std::string vessel_path;
   for (unsigned int i = 0; i < ARRAY_SIZE(EXECUTABLE_SUFFIXES); i++) {
     builder.reset_to(length_without_extension);
     builder.add(EXECUTABLE_SUFFIXES[i]);
-    vessel_path = strdup(builder.c_str());
+    vessel_path = builder.c_str();
     struct stat buffer;
-    if (stat(vessel_path, &buffer) != 0) {
+    if (stat(vessel_path.c_str(), &buffer) != 0) {
       continue;
     }
-    file = fopen(vessel_path, "rb");
+    file = fopen(vessel_path.c_str(), "rb");
     if (file == null) {
-      fprintf(stderr, "Unable to open vessel file %s\n", vessel_path);
+      fprintf(stderr, "Unable to open vessel file %s\n", vessel_path.c_str());
       return -1;
     }
     break;
@@ -143,6 +151,7 @@ int create_executable(const char* out_path,
     }
     return -1;
   }
+  Defer close_file { [&] { if (file != null) fclose(file); } };
   // Find content size of file.
   int status = fseek(file, 0, SEEK_END);
   if (status != 0) {
@@ -150,13 +159,18 @@ int create_executable(const char* out_path,
     return -1;
   }
   long fsize = ftell(file);
+  if (fsize < 0 || fsize > INT_MAX) {
+    fprintf(stderr, "Invalid vessel size for '%s'\n", vessel_path.c_str());
+    return -1;
+  }
   int size = fsize;
   // Read entire content.
   uint8* vessel_content = unvoid_cast<uint8*>(malloc(size));
   if (vessel_content == null) {
-    fprintf(stderr, "Unable to allocate buffer for vessel %s\n", vessel_path);
+    fprintf(stderr, "Unable to allocate buffer for vessel %s\n", vessel_path.c_str());
     return -1;
   }
+  Defer free_vessel_content { [&] { free(vessel_content); } };
   status = fseek(file, 0, SEEK_SET);
   if (status != 0) {
     perror("create_executable");
@@ -164,13 +178,14 @@ int create_executable(const char* out_path,
   }
   int read_count = fread(vessel_content, fsize, 1, file);
   fclose(file);
+  file = null;
   if (read_count != 1) {
-    free(vessel_content);
-    fprintf(stderr, "Unable to read vessel '%s'\n", vessel_path);
+    fprintf(stderr, "Unable to read vessel '%s'\n", vessel_path.c_str());
     return -1;
   }
   bool replaced_vessel_content = false;
-  for (size_t i = 0; i < size - sizeof(VESSEL_TOKEN); i++) {
+  size_t vessel_size = static_cast<size_t>(size);
+  for (size_t i = 0; i + 2 * sizeof(VESSEL_TOKEN) <= vessel_size; i++) {
     bool found_token = true;
     // We must find two copies of the token next to each other.
     for (size_t j = 0; j < sizeof(VESSEL_TOKEN) * 2; j++) {
@@ -180,12 +195,15 @@ int create_executable(const char* out_path,
       }
     }
     if (found_token) {
-      *reinterpret_cast<uint32*>(&vessel_content[i]) = bundle.size();
-      memcpy(&vessel_content[i + 4], bundle.buffer(), bundle.size());
+      size_t bundle_size = static_cast<size_t>(bundle.size());
+      if (i + sizeof(uint32) + bundle_size > vessel_size) continue;
+      uint32 encoded_size = bundle.size();
+      memcpy(&vessel_content[i], &encoded_size, sizeof(encoded_size));
+      memcpy(&vessel_content[i + sizeof(encoded_size)], bundle.buffer(), bundle_size);
       replaced_vessel_content = true;
       // Some architectures (macos fat binaries) have multiple executables
       // in the same file, so we need to replace all occurrences of the token.
-      i += bundle.size();
+      i += bundle_size;
     }
   }
 
@@ -196,17 +214,32 @@ int create_executable(const char* out_path,
 
   // Use 'open', so we can give executable permissions.
   int fd = open(out_path, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0777);
-  FILE* file_out = fdopen(fd, "wb");
-  if (file_out == NULL) {
+  if (fd < 0) {
     perror("create_executable");
     return -1;
   }
+  FILE* file_out = fdopen(fd, "wb");
+  if (file_out == NULL) {
+#ifdef TOIT_WINDOWS
+    _close(fd);
+#else
+    close(fd);
+#endif
+    perror("create_executable");
+    return -1;
+  }
+  Defer close_output { [&] { if (file_out != null) fclose(file_out); } };
   int written = fwrite(vessel_content, 1, size, file_out);
   if (written != size) {
     perror("create_executable");
     return -1;
   }
-  fclose(file_out);
+  if (fclose(file_out) != 0) {
+    file_out = null;
+    perror("create_executable");
+    return -1;
+  }
+  file_out = null;
   if (sign_if_necessary(out_path, os) != 0) {
     fprintf(stderr, "Error while signing the generated executable '%s'. The program might still work.\n", out_path);
   }

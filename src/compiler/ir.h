@@ -1677,7 +1677,7 @@ class Lambda : public CallStatic {
          Map<Local*, int> captured_depths,
          Source::Range range)
       : CallStatic(method, shape, arguments, range)
-      , captured_depths_(captured_depths) {}
+      , captured_depths_(std::move(captured_depths)) {}
   IMPLEMENTS(Lambda)
 
   Code* code() const { return arguments()[0]->as_Code(); }

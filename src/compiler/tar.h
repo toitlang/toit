@@ -32,6 +32,7 @@ enum class UntarCode {
 };
 
 /// If `path` is equal to `-` uses `stdin`.
+/// The callback takes ownership of `name` and `source`, both allocated with `malloc`.
 UntarCode untar(const char* path,
                 const std::function<void (const char* name,
                                           char* source,

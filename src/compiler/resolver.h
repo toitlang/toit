@@ -145,16 +145,16 @@ class Resolver {
   void build_module_scopes(std::vector<Module*>& modules);
 
   void check_clashing_or_conflicting(Symbol name, List<ir::Node*> declarations);
-  void check_clashing_or_conflicting(std::vector<Module*> modules);
-  void check_future_reserved_globals(std::vector<Module*> modules);
+  void check_clashing_or_conflicting(const std::vector<Module*>& modules);
+  void check_future_reserved_globals(const std::vector<Module*>& modules);
 
   void mark_runtime(Module* core_module);
   void mark_non_returning(Module* core_module);
 
-  void setup_inheritance(std::vector<Module*> modules, int core_module_index);
-  void report_abstract_classes(std::vector<Module*> modules);
-  void check_interface_implementations_and_flatten(std::vector<Module*> modules);
-  void flatten_mixins(std::vector<Module*> modules);
+  void setup_inheritance(const std::vector<Module*>& modules, int core_module_index);
+  void report_abstract_classes(const std::vector<Module*>& modules);
+  void check_interface_implementations_and_flatten(const std::vector<Module*>& modules);
+  void flatten_mixins(const std::vector<Module*>& modules);
   List<ir::Class*> find_tree_roots(Module* core_module);
   List<ir::Method*> find_entry_points(Module* core_module);
   List<ir::Type> find_literal_types(Module* core_module);
@@ -164,7 +164,7 @@ class Resolver {
                     bool allow_future_reserved);
   void check_field(ast::Field* method, ir::Class* holder);
   void check_class(ast::Class* klass);
-  void fill_classes_with_skeletons(std::vector<Module*> modules);
+  void fill_classes_with_skeletons(const std::vector<Module*>& modules);
   void resolve_fill_module(Module* module,
                            Module* entry_module,
                            Module* core_module);

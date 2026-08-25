@@ -75,8 +75,7 @@ class TypeSet {
     uword* const end_;
   };
 
-  TypeSet(const TypeSet& other)
-      : bits_(other.bits_) {}
+  TypeSet(const TypeSet& other) = default;
 
   static TypeSet invalid() {
     return TypeSet(null);

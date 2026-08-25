@@ -16,6 +16,7 @@
 #pragma once
 
 #include <string>
+#include <utility>
 #include <functional>
 
 #include "../top.h"
@@ -114,7 +115,7 @@ class Package {
       , absolute_error_path_(absolute_error_path)
       , relative_error_path_(relative_error_path)
       , error_state_(state)
-      , prefixes_(prefixes)
+      , prefixes_(std::move(prefixes))
       , is_path_package_(is_path_package) {}
 
   std::string id_ = std::string(INVALID_PACKAGE_ID);

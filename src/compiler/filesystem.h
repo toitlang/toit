@@ -30,7 +30,11 @@ class Diagnostics;
 
 class Filesystem {
  public:
-  virtual ~Filesystem() { free(const_cast<char*>(cwd_)); }
+  virtual ~Filesystem() {
+    free(const_cast<char*>(library_root_));
+    free(const_cast<char*>(vessel_root_));
+    free(const_cast<char*>(cwd_));
+  }
 
   /// Can be called multiple times.
   /// Subclasses must ensure that multiple calls don't lead to problems.
@@ -80,7 +84,7 @@ class Filesystem {
   // If the callback returns 'false', the operation is aborted and no further calls to
   // the callback are done.
   void list_toit_directory_entries(const char* path,
-                                   const std::function<bool (const char*, bool is_directory)> callback);
+                                   const std::function<bool (const char*, bool is_directory)>& callback);
 
   const char* cwd();
 
@@ -112,7 +116,7 @@ class Filesystem {
 
   virtual const char* getcwd(char* buffer, int buffer_size) = 0;
   virtual void list_directory_entries(const char* path,
-                                      const std::function<bool (const char*)> callback) = 0;
+                                      const std::function<bool (const char*)>& callback) = 0;
 
   friend class FilesystemHybrid;
 
