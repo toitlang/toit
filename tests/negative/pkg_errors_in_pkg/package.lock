@@ -2,5 +2,9 @@ prefixes:
   target: target-1.0
 
 packages:
+  dependency-1.0:
+    path: dependency
   target-1.0:
     path: target
+    prefixes:
+      dependency: dependency-1.0

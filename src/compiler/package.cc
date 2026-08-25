@@ -41,9 +41,10 @@ std::string Package::build_error_path(Filesystem* fs, const std::string& path) c
     builder.join("<sdk>", relative);
     return builder.buffer();
   }
-  // For normal packages we prefix the relative path with the package id.
+  // For normal packages we prefix the relative path with the user-facing
+  // package id.
   PathBuilder builder(fs);
-  builder.join("<pkg:" + id() + ">", relative);
+  builder.join("<pkg:" + diagnostic_id_ + ">", relative);
   return builder.buffer();
 }
 

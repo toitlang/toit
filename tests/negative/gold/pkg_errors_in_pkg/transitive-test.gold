@@ -1,0 +1,4 @@
+<pkg:target/dependency>/foo.toit:6:3: error: Can't call result of evaluating expression
+  "it's" "an error to use a string as target"
+  ^~~~~~
+Compilation failed
