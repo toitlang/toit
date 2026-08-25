@@ -112,72 +112,7 @@ interface Task:
   */
   static group lambdas/List -> Map
       --required/int=lambdas.size:
-    count ::= lambdas.size
-    tasks ::= Array_ count
-    results ::= {:}
-    if not (0 <= required <= count):
-      throw "Bad Argument"
-
-    if required == 0: return results
-
-    is-stopping/bool := false
-    is-canceled/bool := false
-    caught/Exception_? := null
-
-    terminated := 0
-    signal ::= monitor.Signal
-    for index := 0; index < count; index++:
-      tasks[index] = task::
-        while true:
-          try:
-            results[index] = lambdas[index].call
-          finally: | is-exception exception |
-            if Task.current.is-canceled:
-              // If we get canceled after we decided to stop, we
-              // avoid propagating the cancelation to the task
-              // that invoked Task.group.
-              if not is-stopping:
-                is-canceled = true
-                is-stopping = true
-            else if is-exception:
-              // We prefer the first exception and that is the
-              // one we propagate to the caller of Task.group.
-              if not caught: caught = exception
-              is-stopping = true
-            tasks[index] = null
-            terminated++
-            critical-do: signal.raise
-            break  // Stop the unwinding.
-
-      // We prefer giving the new tasks a chance to run eagerly,
-      // so we yield here to start it up. In return, this makes
-      // it possible that we get stopped before creating all the
-      // tasks, so we deal with that by leaving the loop.
-      yield
-      if is-stopping:
-        // Count remaining tasks as eagerly terminated.
-        terminated += count - index - 1
-        break
-
-    try:
-      signal.wait: is-stopping or terminated >= required
-    finally:
-      if terminated < count:
-        // We're either stopping or we got the required results.
-        // Make sure we're marked as stopping and cancel all
-        // the tasks that are still live.
-        is-stopping = true
-        tasks.do: if it: it.cancel
-        // Wait until all tasks have terminated.
-        critical-do --no-respect-deadline:
-          // TODO(kasper): Consider letting the user control the timeout.
-          with-timeout --ms=1_000: signal.wait: terminated == count
-
-    if caught:
-      rethrow caught.value caught.trace
-    else if is-canceled:
-      Task.current.cancel
-    return results
+    return (TaskGroup_ lambdas).run --required=required
 
   /**
   Cancels the task.
@@ -198,6 +133,82 @@ interface Task:
   Returns null if the task has no deadline.
   */
   deadline -> int?
+
+class TaskGroup_:
+  lambdas_/List
+  tasks_/Array_
+  results_/Map
+  signal_/monitor.Signal
+  is-stopping_/bool := false
+  is-canceled_/bool := false
+  caught_/Exception_? := null
+  terminated_/int := 0
+
+  constructor .lambdas_:
+    tasks_ = Array_ lambdas_.size
+    results_ = {:}
+    signal_ = monitor.Signal
+
+  run --required/int -> Map:
+    count ::= lambdas_.size
+    if not (0 <= required <= count):
+      throw "Bad Argument"
+
+    if required == 0: return results_
+
+    for index := 0; index < count; index++:
+      tasks_[index] = task:: run-one_ index
+
+      // We prefer giving the new tasks a chance to run eagerly,
+      // so we yield here to start it up. In return, this makes
+      // it possible that we get stopped before creating all the
+      // tasks, so we deal with that by leaving the loop.
+      yield
+      if is-stopping_:
+        // Count remaining tasks as eagerly terminated.
+        terminated_ += count - index - 1
+        break
+
+    try:
+      signal_.wait: is-stopping_ or terminated_ >= required
+    finally:
+      if terminated_ < count:
+        // We're either stopping or we got the required results.
+        // Make sure we're marked as stopping and cancel all
+        // the tasks that are still live.
+        is-stopping_ = true
+        tasks_.do: if it: it.cancel
+        // Wait until all tasks have terminated.
+        critical-do --no-respect-deadline:
+          // TODO(kasper): Consider letting the user control the timeout.
+          with-timeout --ms=1_000: signal_.wait: terminated_ == count
+
+    if caught_:
+      rethrow caught_.value caught_.trace
+    else if is-canceled_:
+      Task.current.cancel
+    return results_
+
+  run-one_ index/int -> none:
+    try:
+      results_[index] = lambdas_[index].call
+    finally: | is-exception exception |
+      if Task.current.is-canceled:
+        // If we get canceled after we decided to stop, we
+        // avoid propagating the cancelation to the task
+        // that invoked Task.group.
+        if not is-stopping_:
+          is-canceled_ = true
+          is-stopping_ = true
+      else if is-exception:
+        // We prefer the first exception and that is the
+        // one we propagate to the caller of Task.group.
+        if not caught_: caught_ = exception
+        is-stopping_ = true
+      tasks_[index] = null
+      terminated_++
+      critical-do: signal_.raise
+      return  // Stop the unwinding.
 
 class Task_ implements Task:
   /**
