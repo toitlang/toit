@@ -108,6 +108,27 @@ int64 OS::get_system_time() {
   return us;
 }
 
+bool OS::get_process_cpu_times(int64* user_us, int64* system_us) {
+  FILETIME creation_time;
+  FILETIME exit_time;
+  FILETIME kernel_time;
+  FILETIME user_time;
+  if (!GetProcessTimes(GetCurrentProcess(),
+                       &creation_time,
+                       &exit_time,
+                       &kernel_time,
+                       &user_time)) {
+    return false;
+  }
+  uint64 kernel_ticks = (static_cast<uint64>(kernel_time.dwHighDateTime) << 32) |
+      kernel_time.dwLowDateTime;
+  uint64 user_ticks = (static_cast<uint64>(user_time.dwHighDateTime) << 32) |
+      user_time.dwLowDateTime;
+  *user_us = user_ticks / 10;
+  *system_us = kernel_ticks / 10;
+  return true;
+}
+
 class ConditionVariable {
  public:
   explicit ConditionVariable(Mutex* mutex)

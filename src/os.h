@@ -114,6 +114,9 @@ class OS {
   static int64 get_monotonic_time();
   static void reset_monotonic_time();
 
+  // Returns user and system CPU time consumed by the current process.
+  static bool get_process_cpu_times(int64* user_us, int64* system_us);
+
   /// Computes the executable path.
   ///
   /// Returns a malloced data structure that should be freed

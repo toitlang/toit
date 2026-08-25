@@ -367,6 +367,7 @@ int main(int argc, char **argv) {
       // running the language-server, in which case the diagnostics must be on stdout.
       .print_diagnostics_on_stdout = for_analysis || generating_bundle,
       .optimization_level = optimization_level,
+      .verbosity = 0,
     };
 
     if (for_language_server) {

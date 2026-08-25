@@ -26,6 +26,7 @@
 
 #include <errno.h>
 #include <pthread.h>
+#include <sys/resource.h>
 #include <sys/time.h>
 #include <unistd.h>
 #include <sys/mman.h>
@@ -42,6 +43,14 @@ int64 OS::get_system_time() {
     FATAL("failed getting system time");
   }
   return us;
+}
+
+bool OS::get_process_cpu_times(int64* user_us, int64* system_us) {
+  struct rusage usage;
+  if (getrusage(RUSAGE_SELF, &usage) != 0) return false;
+  *user_us = usage.ru_utime.tv_sec * 1000000LL + usage.ru_utime.tv_usec;
+  *system_us = usage.ru_stime.tv_sec * 1000000LL + usage.ru_stime.tv_usec;
+  return true;
 }
 
 class ConditionVariable {

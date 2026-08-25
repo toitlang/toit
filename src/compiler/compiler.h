@@ -70,6 +70,9 @@ class Compiler {
     bool print_diagnostics_on_stdout;
     /// Optimization level.
     int optimization_level;
+    /// Controls compiler statistics: 0 disables them, 1 prints timings,
+    /// and 2 also prints compilation and output metrics.
+    int verbosity;
   };
 
   Compiler();

@@ -52,6 +52,7 @@ int main(int argc, char **argv) {
       .show_package_warnings = false,
       .print_diagnostics_on_stdout = true,
       .optimization_level = DEFAULT_OPTIMIZATION_LEVEL,
+      .verbosity = 0,
     };
     compiler::Compiler compiler;
     compiler.language_server(compiler_config);

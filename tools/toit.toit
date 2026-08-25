@@ -410,6 +410,13 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
 
   args := []
 
+  if command != "run":
+    if ui.level == Ui.DEBUG-LEVEL:
+      args.add "--verbosity-level"
+      args.add "debug"
+    else if ui.level >= Ui.VERBOSE-LEVEL:
+      args.add "--verbose"
+
   xflags := invocation["X"]
   if not xflags.is-empty:
     xflags.do:

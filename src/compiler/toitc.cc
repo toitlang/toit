@@ -43,6 +43,9 @@ static void print_usage(int exit_code) {
   printf("  [--os <system>]                          // Cross-compilation system target.\n");
   printf("  [--arch <architecture>]                  // Cross-compilation architecture target.\n");
   printf("  [--strip]                                // Strip the output of debug information.\n");
+  printf("  [--verbose]                              // Print compiler phase timings.\n");
+  printf("  [--verbosity-level {debug|info|verbose|quiet|silent}]\n");
+  printf("                                            // Set compiler statistics verbosity.\n");
   printf("  { -o <executable> <toitfile|snapshot> |  // Write executable.\n");
   printf("    -w <snapshot> <toitfile|snapshot> |    // Write snapshot file.\n");
   printf("    --analyze <toitfiles>...               // Analyze Toit files.\n");
@@ -110,6 +113,7 @@ int main(int argc, char **argv) {
   const char* cross_arch = null;
   int optimization_level = DEFAULT_OPTIMIZATION_LEVEL;
   bool should_strip = false;
+  int verbosity = 0;
 
   int processed_args = 1;  // The executable name has already been processed.
 
@@ -252,6 +256,28 @@ int main(int argc, char **argv) {
     } else if (strcmp(argv[processed_args], "--strip") == 0) {
       should_strip = true;
       processed_args++;
+    } else if (strcmp(argv[processed_args], "--verbose") == 0) {
+      verbosity = 1;
+      processed_args++;
+    } else if (strcmp(argv[processed_args], "--verbosity-level") == 0) {
+      processed_args++;
+      if (processed_args == argc) {
+        fprintf(stderr, "Missing argument to '--verbosity-level'\n");
+        print_usage(1);
+      }
+      const char* level = argv[processed_args++];
+      if (strcmp(level, "debug") == 0) {
+        verbosity = 2;
+      } else if (strcmp(level, "verbose") == 0) {
+        verbosity = 1;
+      } else if (strcmp(level, "info") == 0 ||
+                 strcmp(level, "quiet") == 0 ||
+                 strcmp(level, "silent") == 0) {
+        verbosity = 0;
+      } else {
+        fprintf(stderr, "Unknown verbosity level '%s'\n", level);
+        print_usage(1);
+      }
     } else if (argv[processed_args][0] == '-' &&
                 strcmp(argv[processed_args], "--") != 0) {
       fprintf(stderr, "Unknown flag '%s'\n", argv[processed_args]);
@@ -353,6 +379,7 @@ int main(int argc, char **argv) {
     .show_package_warnings = show_package_warnings,
     .print_diagnostics_on_stdout = true,
     .optimization_level = optimization_level,
+    .verbosity = for_language_server ? 0 : verbosity,
   };
 
   if (for_language_server) {

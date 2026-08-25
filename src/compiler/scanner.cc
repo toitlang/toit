@@ -57,6 +57,7 @@ Symbol Scanner::make_utf8_string(int begin, int end) {
 }
 
 Scanner::State Scanner::create_state(Token::Kind token) {
+  token_count_++;
   bool is_attached = (last_ - begin_) == 0;
   return {
     .from = last_,
