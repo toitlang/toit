@@ -30,10 +30,27 @@ if (DEFINED EXECUTING_SCRIPT)
       message(FATAL_ERROR "Missing HOST_TOIT")
     endif()
 
-    execute_process(
-      COMMAND "${HOST_TOIT}" pkg install --no-auto-sync "--project-root=${TOIT_PROJECT}"
-      COMMAND_ERROR_IS_FATAL ANY
-    )
+    # Parallel builds can race while populating the shared package cache.
+    set(PACKAGE_INSTALL_ATTEMPTS 3)
+    foreach(PACKAGE_INSTALL_ATTEMPT RANGE 1 ${PACKAGE_INSTALL_ATTEMPTS})
+      execute_process(
+        COMMAND "${HOST_TOIT}" pkg install --no-auto-sync "--project-root=${TOIT_PROJECT}"
+        RESULT_VARIABLE PACKAGE_INSTALL_RESULT
+      )
+      if("${PACKAGE_INSTALL_RESULT}" STREQUAL "0")
+        break()
+      endif()
+      if(PACKAGE_INSTALL_ATTEMPT LESS PACKAGE_INSTALL_ATTEMPTS)
+        message(STATUS
+          "Package installation failed for ${TOIT_PROJECT}; retrying "
+          "(${PACKAGE_INSTALL_ATTEMPT}/${PACKAGE_INSTALL_ATTEMPTS})")
+      endif()
+    endforeach()
+    if(NOT "${PACKAGE_INSTALL_RESULT}" STREQUAL "0")
+      message(FATAL_ERROR
+        "Package installation failed for ${TOIT_PROJECT} after "
+        "${PACKAGE_INSTALL_ATTEMPTS} attempts")
+    endif()
     set(PACKAGE_TIMESTAMP "${TOIT_PROJECT}/.packages/package-timestamp")
     file(REMOVE "${PACKAGE_TIMESTAMP}")
     if (EXISTS "${TOIT_PROJECT}/package.yaml")

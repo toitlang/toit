@@ -1,0 +1,12 @@
+bme280-driver/service/main.toit:8:1: warning: Importing deprecated library. Use the `bmx280` package instead
+import bme280 show I2C-ADDRESS I2C-ADDRESS-ALT
+^~~~~~~~~~~~~
+bme280-driver/service/main.toit:7:1: warning: Importing deprecated library. Use the `bmx280` package instead
+import bme280.provider
+^~~~~~~~~~~~~~~~~~~~~~
+<pkg:bme280>/provider.toit:8:1: warning: Importing deprecated library. Use the `bmx280` package instead
+import .driver as bme280
+^~~~~~~~~~~~~~
+<pkg:bme280>/bme280.toit:4:1: warning: Importing deprecated library. Use the `bmx280` package instead
+import .driver
+^~~~~~~~~~~~~~

@@ -62,7 +62,7 @@ run-tests:
     "elpriser.nu",
     "coinbase.com",
     "helsinki.fi",
-    "lund.se",
+    "valid.r3.roots.globalsign.com",
     "web.whatsapp.com",
     "digimedia.com",
   ]

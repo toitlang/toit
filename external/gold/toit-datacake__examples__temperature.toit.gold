@@ -1,3 +1,0 @@
-<pkg:..>/datacake.toit:34:55: warning: Deprecated 'float.stringify'. Use 'to-string --precision' instead
-    _client_.publish client.handle_ identifier (value.stringify precision)
-                                                      ^~~~~~~~~
