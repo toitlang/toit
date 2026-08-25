@@ -27,39 +27,6 @@ using namespace ir;
 
 namespace {
 
-class Holes {
- public:
-  struct Hole {
-    int size;
-    int at;
-  };
-
-  Hole pop_hole_of_size(int size) {
-    if (!holes_.empty() && holes_[0].size >= size) {
-      auto result = holes_[0];
-      std::pop_heap(holes_.begin(), holes_.end(), [](Hole a, Hole b) { return a.size < b.size; });
-      holes_.pop_back();
-      return result;
-    }
-    return {
-      .size = 0,
-      .at = -1
-    };
-  }
-
-  void insert(Hole hole) {
-    holes_.push_back(hole);
-    std::push_heap(holes_.begin(), holes_.end(), [](Hole a, Hole b) { return a.size < b.size; });
-  }
-
-  bool is_empty() const {
-    return holes_.empty();
-  }
-
- private:
-  std::vector<Hole> holes_;
-};
-
 class SelectorRow {
  public:
   explicit SelectorRow(const DispatchSelector& selector)
@@ -72,6 +39,8 @@ class SelectorRow {
   int begin() const { return begin_; }
   int end() const { return end_; }
   int size() const { return end_ - begin_; }
+  int occupancy() const { return occupied_.size(); }
+  int first() const { return begin_ + occupied_[0]; }
 
   void define(Class* holder, Method* member) {
     ASSERT(holder == member->holder());
@@ -92,9 +61,18 @@ class SelectorRow {
       if (begin < begin_) begin_ = begin;
       if (end > end_) end_ = end;
     }
+
+    // Materialize the row independently of the dispatch table. Entries from
+    // other selectors are allowed in the unused cells when the row is placed.
+    entries_.resize(size());
+    fill(&entries_, -begin_);
+    for (int i = 0; i < size(); i++) {
+      if (entries_[i] != null) occupied_.push_back(i);
+    }
+    ASSERT(!occupied_.empty());
   }
 
-  static bool _sorted_specialized_first(const std::vector<Class*> holders) {
+  static bool _sorted_specialized_first(const std::vector<Class*>& holders) {
     for (size_t i = 1; i < holders.size(); i++) {
       if (holders[i - 1]->start_id() < holders[i]->start_id()) return false;
       if (holders[i - 1]->start_id() == holders[i]->start_id() &&
@@ -108,7 +86,7 @@ class SelectorRow {
   void fill(std::vector<Method*>* table, int offset) {
     // Check that the holders are sorted such that the more specialized entries are first.
     ASSERT(_sorted_specialized_first(holders_));
-    // The amount we can skip once we found an entry
+    // The amount we can skip once we found an entry.
     std::vector<int> skip_stack;
     for (unsigned i = 0; i < holders_.size(); i++) {
       Class* holder = holders_[i];
@@ -140,6 +118,24 @@ class SelectorRow {
     }
   }
 
+  bool fits(const std::vector<Method*>& table, int offset) const {
+    for (auto i : occupied_) {
+      if (offset + begin_ + i < static_cast<int>(table.size()) &&
+          table[offset + begin_ + i] != null) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  void copy_to(std::vector<Method*>* table, int offset) const {
+    for (auto i : occupied_) {
+      int index = offset + begin_ + i;
+      ASSERT((*table)[index] == null);
+      (*table)[index] = entries_[i];
+    }
+  }
+
   static bool compare(SelectorRow* a, SelectorRow* b) {
     auto a_selector = a->selector();
     auto b_selector = b->selector();
@@ -152,9 +148,12 @@ class SelectorRow {
                                  b_selector.shape() == CallShape(1).with_implicit_this().to_plain_shape());
     if (a_is_equals_operator && !b_is_equals_operator) return false;
     if (b_is_equals_operator && !a_is_equals_operator) return true;
-    // Sort by decreasing sizes (first) and decreasing begin index.
+    // Sort by decreasing occupancy (first) and decreasing span.
     // According to the literature, this leads to fewer holes and
     // faster row offset computation.
+    int a_occupancy = a->occupancy();
+    int b_occupancy = b->occupancy();
+    if (a_occupancy != b_occupancy) return a_occupancy > b_occupancy;
     int a_size = a->size();
     int b_size = b->size();
     return (a_size == b_size) ? a->begin() > b->begin() : a_size > b_size;
@@ -170,6 +169,8 @@ class SelectorRow {
   // Unique member definitions ordered with the most specific ones first.
   std::vector<Class*> holders_;
   std::vector<Method*> members_;
+  std::vector<Method*> entries_;
+  std::vector<int> occupied_;
 };
 
 class RowFitter {
@@ -199,64 +200,20 @@ class RowFitter {
     return rows;
   }
 
-  int fit_and_fill(std::vector<Method*>* table, SelectorRow* row, List<Class*> classes) {
-    int row_size = row->size();
-    int offset;
-    int start;
-    std::vector<Holes::Hole> unused_holes;
+  int fit_and_fill(std::vector<Method*>* table, SelectorRow* row) {
+    int offset = 0;
     while (true) {
-      auto hole = holes_.pop_hole_of_size(row_size);
-      bool in_hole;
-      if (hole.size >= row_size) {
-        start = hole.at;
-        in_hole = true;
-      } else {
-        // Append at the end of the table.
-        start = table->size();
-        in_hole = false;
-      }
-      offset = start - row->begin();
-
-      if (in_hole &&
-          (offset < 0 || used_offsets_.contains(offset))) {
-        // We could try to see if the hole is bigger than needed and whether we
-        // can fit into the hole by shifting to the right. It's rare enough that
-        // we don't bother. Just give up with this hole and try the next one.
-        unused_holes.push_back(hole);
-        continue;
-      }
-
-      // We are now certain to keep the hole.
-      // If the hole wasn't the correct size push back the remaining size.
-      if (hole.size > row_size) {
-        holes_.insert({ .size = hole.size - row_size, .at = hole.at + row_size });
-      }
-
-      // Pad to avoid negative offsets. This can only happen when we are not in
-      // a hole.
-      if (offset < 0) {
-        ASSERT(!in_hole);
-        start += -offset;
-        offset = 0;
-      }
-
-      // Pad to guarantee unique offsets. This can only happen when we are not
-      // in a hole.
-      int original_offset = offset;
-      while (used_offsets_.contains(offset)) {
-        ASSERT(!in_hole);
-        start++;
+      // Anchor the search at the row's first occupied cell. This skips over
+      // candidates that are known to collide without inspecting the rest of
+      // the sparse row.
+      int first = offset + row->first();
+      while (first < static_cast<int>(table->size()) && (*table)[first] != null) {
         offset++;
+        first++;
       }
-      if (offset != original_offset) {
-        int hole_size = offset - original_offset;
-        int at = start - hole_size;
-        holes_.insert({ .size = hole_size, .at = at });
-      }
-      break;
+      if (!used_offsets_.contains(offset) && row->fits(*table, offset)) break;
+      offset++;
     }
-    // Return all the unused holes.
-    for (auto hole : unused_holes) holes_.insert(hole);
     used_offsets_.insert(offset);
 
     // Keep track of the highest used offset.
@@ -264,36 +221,18 @@ class RowFitter {
 
     // Allocate the necessary space.
     if (static_cast<int>(table->size()) < offset + row->end()) {
-      // Can only happen when we are not in a hole.
       table->resize(offset + row->end());
     }
 
-    row->fill(table, offset);
+    row->copy_to(table, offset);
     ASSERT((*table)[offset + row->end() - 1] != null);
-    for (int i = offset + row->begin(); i < offset + row->end(); i++) {
-      if ((*table)[i] == null) {
-        int hole_begin = i;
-        while ((*table)[i] == null) i++;
-        holes_.insert({ .size = i - hole_begin, .at = hole_begin });
-      }
-    }
     return offset;
-  }
-
-  /// Returns the total size of the unused holes.
-  int pop_all_holes() {
-    int result = 0;
-    while (!holes_.is_empty()) {
-      result += holes_.pop_hole_of_size(1).size;
-    }
-    return result;
   }
 
  private:
   Map<DispatchSelector, SelectorRow*> selectors_;
   UnorderedSet<int> used_offsets_;
   int limit_;
-  Holes holes_;
 };
 } // namespace toit::compiler::<anynomous>
 
@@ -415,10 +354,18 @@ void DispatchTableBuilder::handle_classes(List<Class*> classes, int static_metho
   // Compute the table.
   std::vector<SelectorRow*> rows = fitter.sorted_rows();
   for (auto row : rows) {
-    selector_offsets_[row->selector()] = fitter.fit_and_fill(&result, row, classes);
+    selector_offsets_[row->selector()] = fitter.fit_and_fill(&result, row);
   }
 
-  int unused_slots = fitter.pop_all_holes();
+  // Lookups must be in bounds for every instantiated class, including misses
+  // that land on an entry belonging to another selector.
+  int final_size = fitter.limit() + instantiated_count;
+  ASSERT(static_cast<int>(result.size()) <= final_size);
+  result.resize(final_size);
+  int unused_slots = 0;
+  for (auto entry : result) {
+    if (entry == null) unused_slots++;
+  }
 
   // Make sure that all methods are in the table.
   // Classes that aren't instantiated might have methods that are completely
@@ -471,7 +418,7 @@ void DispatchTableBuilder::handle_classes(List<Class*> classes, int static_metho
     extra_method_count -= unused_slots;
     unused_slots = 0;
   }
-  int final_size = fitter.limit() + instantiated_count + extra_method_count;
+  final_size += extra_method_count;
   if (static_method_count > unused_slots) {
     final_size += static_method_count - unused_slots;
   }
