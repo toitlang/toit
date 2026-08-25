@@ -19,7 +19,8 @@ set(TOIT_REPOS
     https://github.com/floitsch/toit-telegram
     https://github.com/floitsch/toit-discord
     https://github.com/floitsch/toit-device-bot
-    https://github.com/kasperl/toit-datacake
+    # Disabled until its lock-only examples project has a package specification.
+    # https://github.com/kasperl/toit-datacake
     https://github.com/kasperl/toit-qubitro
     https://github.com/kasperl/toit-zygote
     https://github.com/lask/toit-hc-sr04

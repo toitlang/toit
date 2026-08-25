@@ -74,7 +74,7 @@ run-tests:
     "elpriser.nu",
     "coinbase.com",
     "helsinki.fi",
-    "lund.se",
+    "valid.r3.roots.globalsign.com",
     "web.whatsapp.com",
     "digimedia.com",
     "signal.org",
@@ -192,7 +192,7 @@ add-global-certs -> none:
   tls.add-global-root-certificate_ DIGICERT-GLOBAL-ROOT-CA-BYTES
   // Test roots that are RootCertificate objects.
   GLOBALSIGN-ROOT-CA-BYTES.install  // Needed for pravda.ru.
-  GLOBALSIGN-ROOT-CA-R3-BYTES.install  // Needed for lund.se.
+  GLOBALSIGN-ROOT-CA-R3-BYTES.install  // Needed for valid.r3.roots.globalsign.com.
   COMODO-RSA-CERTIFICATION-AUTHORITY-BYTES.install  // Needed for elpriser.nu.
   BALTIMORE-CYBERTRUST-ROOT-BYTES.install  // Needed for coinbase.com.
   // Test a binary root that is a modified copy-on-write byte array.
