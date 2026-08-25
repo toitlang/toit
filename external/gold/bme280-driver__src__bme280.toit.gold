@@ -1,0 +1,3 @@
+bme280-driver/src/bme280.toit:4:1: warning: Importing deprecated library. Use the `bmx280` package instead
+import .driver
+^~~~~~~~~~~~~~

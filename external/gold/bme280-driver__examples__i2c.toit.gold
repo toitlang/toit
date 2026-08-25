@@ -1,0 +1,6 @@
+bme280-driver/examples/i2c.toit:6:1: warning: Importing deprecated library. Use the `bmx280` package instead
+import bme280
+^~~~~~~~~~~~~
+<pkg:bme280>/bme280.toit:4:1: warning: Importing deprecated library. Use the `bmx280` package instead
+import .driver
+^~~~~~~~~~~~~~
