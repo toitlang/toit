@@ -21,6 +21,7 @@
 #include <sys/wait.h>
 #endif
 #include <string>
+#include <type_traits>
 #include <ctype.h>
 #include <limits.h>
 #include <unistd.h>
@@ -64,6 +65,7 @@
 #include "util.h"
 
 #include "../objects_inline.h"
+#include "../os.h"
 #include "../snapshot.h"
 #include "../flags.h"
 #include "../utils.h"
@@ -97,7 +99,185 @@ struct PipelineConfiguration {
   bool is_for_dependencies;
   /// Optimization level.
   int optimization_level;
+  /// Controls compiler timing and statistics output.
+  int verbosity;
 };
+
+class PipelineStatistics {
+ public:
+  enum Phase {
+    SETUP,
+    PARSING,
+    DEPENDENCIES,
+    RESOLUTION,
+    TYPE_CHECKS,
+    CODE_GENERATION,
+    OPTIMIZATION,
+    TYPE_PROPAGATION,
+    SNAPSHOT_GENERATION,
+    PHASE_COUNT,
+  };
+
+  enum Metric {
+    SOURCE_FILES,
+    SOURCE_BYTES,
+    TOKENS,
+    CLASSES,
+    INSTANTIATED_CLASSES,
+    METHODS,
+    GLOBALS,
+    BYTECODE_BYTES,
+    LITERALS,
+    PROGRAM_OBJECT_BYTES,
+    DISPATCH_TABLE_ENTRIES,
+    UNUSED_DISPATCH_TABLE_ENTRIES,
+    SNAPSHOT_BYTES,
+    SOURCE_MAP_BYTES,
+    BUNDLE_BYTES,
+    METRIC_COUNT,
+  };
+
+  PipelineStatistics() { initialize(0); }
+  explicit PipelineStatistics(int verbosity) { initialize(verbosity); }
+
+  void switch_phase(Phase phase) {
+    if (verbosity_ == 0) return;
+    int64 now = OS::get_monotonic_time();
+    finish_phase(now);
+    current_phase_ = phase;
+    phase_start_us_ = now;
+  }
+
+  void set(Metric metric, int64 value) {
+    if (verbosity_ >= 2) metrics_[metric] = value;
+  }
+
+  void finish() {
+    if (total_start_us_ < 0) return;
+    int64 now = OS::get_monotonic_time();
+    finish_phase(now);
+    total_us_ = now - total_start_us_;
+    int64 user_cpu_end;
+    int64 system_cpu_end;
+    if (user_cpu_start_us_ >= 0 &&
+        OS::get_process_cpu_times(&user_cpu_end, &system_cpu_end)) {
+      user_cpu_us_ = user_cpu_end - user_cpu_start_us_;
+      system_cpu_us_ = system_cpu_end - system_cpu_start_us_;
+    }
+  }
+
+  void print() const {
+    if (verbosity_ == 0) return;
+
+    fprintf(stderr, "Compiler timings:\n");
+    for (int i = 0; i < PHASE_COUNT; i++) {
+      print_duration(phase_name(static_cast<Phase>(i)), phase_times_us_[i]);
+    }
+    if (verbosity_ >= 2 && user_cpu_us_ >= 0) {
+      fprintf(stderr,
+              "  %-20s %9.3f ms (user %.3f ms, system %.3f ms)\n",
+              "Total",
+              total_us_ / 1000.0,
+              user_cpu_us_ / 1000.0,
+              system_cpu_us_ / 1000.0);
+    } else {
+      print_duration("Total", total_us_);
+    }
+
+    if (verbosity_ < 2) return;
+    fprintf(stderr, "Compiler statistics:\n");
+    for (int i = 0; i < METRIC_COUNT; i++) {
+      if (metrics_[i] < 0) continue;
+      fprintf(stderr,
+              "  %-32s %lld\n",
+              metric_name(static_cast<Metric>(i)),
+              static_cast<long long>(metrics_[i]));
+    }
+  }
+
+ private:
+  void initialize(int verbosity) {
+    verbosity_ = verbosity;
+    for (int i = 0; i < PHASE_COUNT; i++) phase_times_us_[i] = -1;
+    for (int i = 0; i < METRIC_COUNT; i++) metrics_[i] = -1;
+    current_phase_ = PHASE_COUNT;
+    phase_start_us_ = -1;
+    total_start_us_ = verbosity > 0 ? OS::get_monotonic_time() : -1;
+    total_us_ = -1;
+    user_cpu_start_us_ = -1;
+    system_cpu_start_us_ = -1;
+    user_cpu_us_ = -1;
+    system_cpu_us_ = -1;
+    if (verbosity >= 2) {
+      OS::get_process_cpu_times(&user_cpu_start_us_, &system_cpu_start_us_);
+    }
+  }
+
+  void finish_phase(int64 now) {
+    if (current_phase_ == PHASE_COUNT) return;
+    phase_times_us_[current_phase_] = now - phase_start_us_;
+    current_phase_ = PHASE_COUNT;
+    phase_start_us_ = -1;
+  }
+
+  static const char* phase_name(Phase phase) {
+    switch (phase) {
+      case SETUP: return "Setup";
+      case PARSING: return "Parsing";
+      case DEPENDENCIES: return "Dependencies";
+      case RESOLUTION: return "Resolution";
+      case TYPE_CHECKS: return "Type checks";
+      case CODE_GENERATION: return "Code generation";
+      case OPTIMIZATION: return "Optimization";
+      case TYPE_PROPAGATION: return "Type propagation";
+      case SNAPSHOT_GENERATION: return "Snapshot generation";
+      case PHASE_COUNT: UNREACHABLE();
+    }
+    UNREACHABLE();
+  }
+
+  static const char* metric_name(Metric metric) {
+    switch (metric) {
+      case SOURCE_FILES: return "Source files";
+      case SOURCE_BYTES: return "Source bytes";
+      case TOKENS: return "Tokens";
+      case CLASSES: return "Classes";
+      case INSTANTIATED_CLASSES: return "Instantiated classes";
+      case METHODS: return "Methods";
+      case GLOBALS: return "Globals";
+      case BYTECODE_BYTES: return "Bytecode bytes";
+      case LITERALS: return "Literals";
+      case PROGRAM_OBJECT_BYTES: return "Program object bytes";
+      case DISPATCH_TABLE_ENTRIES: return "Dispatch table entries";
+      case UNUSED_DISPATCH_TABLE_ENTRIES: return "Unused dispatch table entries";
+      case SNAPSHOT_BYTES: return "Snapshot bytes";
+      case SOURCE_MAP_BYTES: return "Source map bytes";
+      case BUNDLE_BYTES: return "Bundle bytes";
+      case METRIC_COUNT: UNREACHABLE();
+    }
+    UNREACHABLE();
+  }
+
+  static void print_duration(const char* name, int64 microseconds) {
+    if (microseconds < 0) return;
+    fprintf(stderr, "  %-20s %9.3f ms\n", name, microseconds / 1000.0);
+  }
+
+  int verbosity_;
+  int64 phase_times_us_[PHASE_COUNT];
+  int64 metrics_[METRIC_COUNT];
+  Phase current_phase_;
+  int64 phase_start_us_;
+  int64 total_start_us_;
+  int64 total_us_;
+  int64 user_cpu_start_us_;
+  int64 system_cpu_start_us_;
+  int64 user_cpu_us_;
+  int64 system_cpu_us_;
+};
+
+static_assert(std::is_trivially_copyable<PipelineStatistics>::value,
+              "Pipeline statistics must be transferable between compiler processes");
 
 class Pipeline {
  public:
@@ -106,6 +286,7 @@ class Pipeline {
     int snapshot_size;
     uint8* source_map_data;
     int source_map_size;
+    PipelineStatistics statistics;
 
     bool is_valid() const { return snapshot != null; }
 
@@ -122,6 +303,7 @@ class Pipeline {
         .snapshot_size = 0,
         .source_map_data = null,
         .source_map_size = 0,
+        .statistics = PipelineStatistics(),
       };
     }
   };
@@ -159,6 +341,7 @@ class Pipeline {
   PipelineConfiguration configuration_;
   SymbolCanonicalizer symbols_;
   ToitdocRegistry toitdoc_registry_;
+  int token_count_ = 0;
 
   ast::Unit* _parse_source(Source* source);
 
@@ -511,6 +694,7 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
     .is_for_analysis = true,
     .is_for_dependencies = false,
     .optimization_level = compiler_config.optimization_level,
+    .verbosity = compiler_config.verbosity,
   };
 
   if (strcmp("ANALYZE", mode) == 0) {
@@ -770,6 +954,7 @@ void Compiler::analyze(List<const char*> source_paths,
     .is_for_analysis = !for_dependencies,
     .is_for_dependencies = for_dependencies,
     .optimization_level = compiler_config.optimization_level,
+    .verbosity = compiler_config.verbosity,
   };
   Pipeline pipeline(configuration);
   pipeline.run(source_paths, false);
@@ -782,8 +967,10 @@ static Pipeline::Result receive_pipeline_result(int read_fd) {
   uint8* snapshot = null;
   int source_map_size = -1;
   uint8* source_map_data = null;
+  PipelineStatistics statistics;
 
   if (!read_from_pipe(read_fd, &snapshot_size, sizeof(int))) return Pipeline::Result::invalid();
+  if (!read_from_pipe(read_fd, &statistics, sizeof(statistics))) FATAL("Incomplete data");
   snapshot = unvoid_cast<uint8*>(malloc(snapshot_size));
   if (!read_from_pipe(read_fd, snapshot, snapshot_size)) FATAL("Incomplete data");
   if (!read_from_pipe(read_fd, &source_map_size, sizeof(int))) FATAL("Incomplete data");
@@ -797,6 +984,7 @@ static Pipeline::Result receive_pipeline_result(int read_fd) {
     .snapshot_size = snapshot_size,
     .source_map_data = source_map_data,
     .source_map_size = source_map_size,
+    .statistics = statistics,
   };
 }
 
@@ -814,6 +1002,7 @@ static void send_pipeline_result(int write_fd, const Pipeline::Result& pipeline_
   };
 
   write_to_fd(&pipeline_result.snapshot_size, sizeof(int));
+  write_to_fd(&pipeline_result.statistics, sizeof(pipeline_result.statistics));
   write_to_fd(pipeline_result.snapshot, pipeline_result.snapshot_size);
   write_to_fd(&pipeline_result.source_map_size, sizeof(int));
   write_to_fd(pipeline_result.source_map_data, pipeline_result.source_map_size);
@@ -899,6 +1088,7 @@ SnapshotBundle Compiler::compile(const char* source_path,
     .is_for_analysis = false,
     .is_for_dependencies = false,
     .optimization_level = compiler_config.optimization_level,
+    .verbosity = compiler_config.verbosity,
   };
 
   return compile(source_path, configuration);
@@ -956,6 +1146,8 @@ SnapshotBundle Compiler::compile(const char* source_path,
                                     pipeline_main_result.snapshot_size),
                         List<uint8>(pipeline_main_result.source_map_data,
                                     pipeline_main_result.source_map_size));
+  pipeline_main_result.statistics.set(PipelineStatistics::BUNDLE_BYTES, result.size());
+  pipeline_main_result.statistics.print();
   // The snapshot bundle copies all given data. It's thus safe to free
   //   the pipeline data.
   pipeline_main_result.free_all();
@@ -1012,7 +1204,9 @@ static int compute_source_offset(const uint8* source, int line_number, int utf16
 ast::Unit* Pipeline::parse(Source* source) {
   Scanner scanner(source, symbol_canonicalizer(), diagnostics());
   Parser parser(source, &scanner, diagnostics());
-  return parser.parse_unit();
+  auto result = parser.parse_unit();
+  token_count_ += scanner.token_count();
+  return result;
 }
 
 void Pipeline::setup_lsp_selection_handler() {
@@ -2070,6 +2264,9 @@ static void sort_classes(List<ir::Class*> classes) {
 }
 
 Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
+  PipelineStatistics statistics(configuration_.verbosity);
+  statistics.switch_phase(PipelineStatistics::SETUP);
+
   // TODO(florian): this is hackish. We want to analyze asserts also in release mode,
   // but then remove the code when we generate code.
   // For now just enable asserts when we are analyzing.
@@ -2101,9 +2298,21 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
     }
   }
 
+  statistics.switch_phase(PipelineStatistics::PARSING);
   auto units = _parse_units(source_paths, package_lock);
+  int source_count = 0;
+  int source_bytes = 0;
+  for (auto unit : units) {
+    if (unit->source() == null) continue;
+    source_count++;
+    source_bytes += unit->source()->size();
+  }
+  statistics.set(PipelineStatistics::SOURCE_FILES, source_count);
+  statistics.set(PipelineStatistics::SOURCE_BYTES, source_bytes);
+  statistics.set(PipelineStatistics::TOKENS, token_count_);
 
   if (configuration_.dep_file != null) {
+    statistics.switch_phase(PipelineStatistics::DEPENDENCIES);
     ASSERT(configuration_.dep_format != Compiler::DepFormat::none);
     PlainDepWriter plain_writer;
     NinjaDepWriter ninja_writer;
@@ -2127,15 +2336,22 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
                                                    units,
                                                    CORE_UNIT_INDEX);
     if (configuration_.is_for_dependencies) {
+      statistics.finish();
+      statistics.print();
       return Result::invalid();
     }
   }
 
-  if (configuration_.parse_only) return Result::invalid();
+  if (configuration_.parse_only) {
+    statistics.finish();
+    statistics.print();
+    return Result::invalid();
+  }
 
   // Give subclasses a chance to handle parse-only requests (e.g. selection ranges).
   parsed_units(units);
 
+  statistics.switch_phase(PipelineStatistics::RESOLUTION);
   ir::Program* ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX);
   sort_classes(ir_program->classes());
 
@@ -2143,6 +2359,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
 
   if (Flags::print_ir_tree) ir_program->print(true);
 
+  statistics.switch_phase(PipelineStatistics::TYPE_CHECKS);
   check_types_and_deprecations(ir_program);
   post_type_check();
   check_definite_assignments_returns(ir_program, diagnostics());
@@ -2154,6 +2371,18 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
 
   if (configuration_.is_for_analysis) {
     if (encountered_error) exit(1);
+    int instantiated_class_count = 0;
+    int method_count = ir_program->methods().length();
+    for (auto klass : ir_program->classes()) {
+      if (klass->is_instantiated()) instantiated_class_count++;
+      method_count += klass->methods().length();
+    }
+    statistics.set(PipelineStatistics::CLASSES, ir_program->classes().length());
+    statistics.set(PipelineStatistics::INSTANTIATED_CLASSES, instantiated_class_count);
+    statistics.set(PipelineStatistics::METHODS, method_count);
+    statistics.set(PipelineStatistics::GLOBALS, ir_program->globals().length());
+    statistics.finish();
+    statistics.print();
     return Result::invalid();
   }
 
@@ -2178,6 +2407,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   auto source_mapper = &unoptimized_source_mapper;
   TypeOracle oracle(source_mapper);
   MethodSelectorOffsets method_selector_offsets;
+  statistics.switch_phase(PipelineStatistics::CODE_GENERATION);
   auto program = construct_program(ir_program,
                                    source_mapper,
                                    &oracle,
@@ -2187,6 +2417,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
 
   SourceMapper optimized_source_mapper(source_manager());
   if (run_optimizations && configuration_.optimization_level >= 2) {
+    statistics.switch_phase(PipelineStatistics::OPTIMIZATION);
     bool quiet = true;
     ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX, quiet);
     sort_classes(ir_program->classes());
@@ -2211,23 +2442,46 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   }
 
   if (propagate) {
+    statistics.switch_phase(PipelineStatistics::TYPE_PROPAGATION);
     TypeDatabase* types = TypeDatabase::compute(program, &method_selector_offsets);
     auto json = types->as_json();
     printf("%s", json.c_str());
     delete types;
   }
 
+  int method_count = ir_program->methods().length();
+  for (auto klass : ir_program->classes()) {
+    method_count += klass->methods().length();
+  }
+  statistics.set(PipelineStatistics::CLASSES, ir_program->classes().length());
+  statistics.set(PipelineStatistics::INSTANTIATED_CLASSES, program->class_bits.length());
+  statistics.set(PipelineStatistics::METHODS, method_count);
+  statistics.set(PipelineStatistics::GLOBALS, program->global_variables.length());
+  statistics.set(PipelineStatistics::BYTECODE_BYTES, program->bytecodes.length());
+  statistics.set(PipelineStatistics::LITERALS, program->literals.length());
+  statistics.set(PipelineStatistics::PROGRAM_OBJECT_BYTES, program->object_size());
+  statistics.set(PipelineStatistics::DISPATCH_TABLE_ENTRIES, program->dispatch_table.length());
+  statistics.set(PipelineStatistics::UNUSED_DISPATCH_TABLE_ENTRIES,
+                 program->number_of_unused_dispatch_table_entries());
+
+  int source_map_size;
+  uint8* source_map_data;
+  int snapshot_size;
+  uint8* snapshot;
+  statistics.switch_phase(PipelineStatistics::SNAPSHOT_GENERATION);
   SnapshotGenerator generator(program);
   generator.generate(program);
-  int source_map_size;
-  uint8* source_map_data = source_mapper->cook(&source_map_size);
-  int snapshot_size;
-  uint8* snapshot = generator.take_buffer(&snapshot_size);
+  source_map_data = source_mapper->cook(&source_map_size);
+  snapshot = generator.take_buffer(&snapshot_size);
+  statistics.set(PipelineStatistics::SNAPSHOT_BYTES, snapshot_size);
+  statistics.set(PipelineStatistics::SOURCE_MAP_BYTES, source_map_size);
+  statistics.finish();
   return {
     .snapshot = snapshot,
     .snapshot_size = snapshot_size,
     .source_map_data = source_map_data,
     .source_map_size = source_map_size,
+    .statistics = statistics,
   };
 }
 

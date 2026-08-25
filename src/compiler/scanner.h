@@ -353,6 +353,7 @@ class Scanner {
 
   Source* source() const { return source_; }
   SymbolCanonicalizer* symbol_canonicalizer() const { return symbols_; }
+  int token_count() const { return token_count_; }
 
   static bool is_identifier_start(int c);
 
@@ -404,6 +405,7 @@ class Scanner {
 
   int begin_ = -1;
   int last_ = -1;
+  int token_count_ = 0;
 
   ListBuilder<Comment> comments_;
 
