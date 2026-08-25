@@ -41,6 +41,7 @@ import ..system.extensions.host.run-image-boot-sh
 import .image
 import .snapshot
 import .snapshot-to-image
+import .device-inspector.description as inspector-description
 
 ENVELOPE-FORMAT-VERSION ::= 8
 
@@ -62,6 +63,7 @@ AR-ENTRY-ESP32-BOOTLOADER-BIN ::= "\$bootloader.bin"
 AR-ENTRY-ESP32-PARTITIONS-BIN ::= "\$partitions.bin"
 AR-ENTRY-ESP32-OTADATA-BIN    ::= "\$otadata.bin"
 AR-ENTRY-ESP32-FLASHING-JSON  ::= "\$flashing.json"
+AR-ENTRY-INSPECTOR-DESCRIPTION ::= inspector-description.ENVELOPE-ENTRY
 
 AR-ENTRY-ESP32-FILE-MAP ::= {
   "firmware.bin"    : AR-ENTRY-ESP32-FIRMWARE-BIN,
@@ -70,6 +72,7 @@ AR-ENTRY-ESP32-FILE-MAP ::= {
   "partitions.bin"  : AR-ENTRY-ESP32-PARTITIONS-BIN,
   "otadata.bin"     : AR-ENTRY-ESP32-OTADATA-BIN,
   "flashing.json"   : AR-ENTRY-ESP32-FLASHING-JSON,
+  "inspector.json"  : AR-ENTRY-INSPECTOR-DESCRIPTION,
 }
 
 // Host AR entries.
@@ -211,6 +214,16 @@ create-envelope-esp32 invocation/cli.Invocation -> none:
     if key == "firmware.bin": continue.do
     filename := invocation.parameters[key]
     if filename: entries[value] = read-file filename --ui=ui
+
+  inspector-content/ByteArray? := entries.get AR-ENTRY-INSPECTOR-DESCRIPTION
+  if inspector-content:
+    elf/ByteArray? := entries.get AR-ENTRY-ESP32-FIRMWARE-ELF
+    if not elf: ui.abort "An inspector description requires the exact firmware ELF."
+    exception := catch:
+      inspector-description.validate-for-elf
+          (json.decode inspector-content)
+          elf
+    if exception: ui.abort "Invalid inspector description: $exception"
 
   envelope := Envelope.create entries
       --sdk-version=system-snapshot.sdk-version

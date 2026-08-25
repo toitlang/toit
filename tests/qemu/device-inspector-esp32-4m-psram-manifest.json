@@ -1,0 +1,115 @@
+{
+  "target": {
+    "chip": "esp32",
+    "architecture": "xtensa",
+    "word-size": 4,
+    "endianness": "little"
+  },
+  "completeness": {
+    "state": "partial",
+    "missing-regions": [
+      "registers",
+      "mmio"
+    ],
+    "stopped-cpus": 2,
+    "capture-mode": "asynchronous",
+    "semantic-coherence": false,
+    "note": "CPU-visible internal RAM, 4 MiB QEMU PSRAM, RTC RAM, and flash-data spans for the classic ESP32 QEMU machine; physical aliases may exist."
+  },
+  "provenance": {
+    "acquisition": "qemu-qmp-memsave+gdb-remote",
+    "capture-mode": "asynchronous",
+    "semantic-coherence": false,
+    "fixture": "tests/qemu/device-inspector-fixture.toit",
+    "qemu-psram-size": "4M"
+  },
+  "runtime-layout": {
+    "file": "runtime-layout.json",
+    "elf-attachment-id": "firmware-elf"
+  },
+  "program-layouts": [
+    {
+      "file": "program-layout.json",
+      "snapshot-attachment-id": "fixture-snapshot"
+    }
+  ],
+  "attachments": [
+    {
+      "id": "firmware-elf",
+      "kind": "firmware-elf",
+      "name": "firmware.elf",
+      "file": "firmware.elf"
+    },
+    {
+      "id": "firmware-envelope",
+      "kind": "firmware-envelope",
+      "name": "device-inspector.envelope",
+      "file": "device-inspector.envelope"
+    },
+    {
+      "id": "fixture-snapshot",
+      "kind": "toit-snapshot",
+      "name": "device-inspector.snapshot",
+      "file": "device-inspector.snapshot",
+      "metadata": {
+        "container": "inspector"
+      }
+    }
+  ],
+  "regions": [
+    {
+      "id": "dram",
+      "name": "CPU-visible data RAM",
+      "address": "0x3ffae000",
+      "size": 335872,
+      "kind": "ram",
+      "permissions": "rw",
+      "file": "esp32-dram.bin"
+    },
+    {
+      "id": "iram",
+      "name": "CPU-visible instruction RAM",
+      "address": "0x40070000",
+      "size": 196608,
+      "kind": "ram",
+      "permissions": "rx",
+      "file": "esp32-iram.bin"
+    },
+    {
+      "id": "drom",
+      "name": "CPU-visible flash data window",
+      "address": "0x3f400000",
+      "size": 4194304,
+      "kind": "flash-mapped-data",
+      "permissions": "r",
+      "file": "esp32-drom.bin"
+    },
+    {
+      "id": "psram",
+      "name": "CPU-visible QEMU PSRAM",
+      "address": "0x3f800000",
+      "size": 4194304,
+      "kind": "external-ram",
+      "permissions": "rw",
+      "file": "esp32-psram.bin"
+    },
+    {
+      "id": "rtc-fast",
+      "name": "RTC fast memory",
+      "address": "0x3ff80000",
+      "size": 8192,
+      "kind": "rtc-ram",
+      "permissions": "rw",
+      "file": "esp32-rtc-fast.bin"
+    },
+    {
+      "id": "rtc-slow",
+      "name": "RTC slow memory",
+      "address": "0x50000000",
+      "size": 8192,
+      "kind": "rtc-ram",
+      "permissions": "rw",
+      "file": "esp32-rtc-slow.bin"
+    }
+  ]
+}

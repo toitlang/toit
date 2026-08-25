@@ -97,8 +97,30 @@ CCACHE_DIR=/tmp/toit-ccache make -j4 esp32s3
 ```
 
 Repeat the envelope commands with `build/esp32s3`, then run QEMU with
-`-M esp32s3`. The tested QEMU release prints a PSRAM-detection error during
-boot; this did not prevent the Toit runtime or UART stdio test from running.
+`-M esp32s3`. QEMU's default S3 PSRAM model is quad SPI. The normal SDK
+configuration tries quad PSRAM and tolerates detection failure, so the runtime
+can fall back to internal RAM.
+
+For a checked, PSRAM-backed inspector fixture, build a separate octal image:
+
+```sh
+CCACHE_DIR=/tmp/toit-ccache tests/qemu/build-s3-psram-inspector.sh
+```
+
+The helper enables runtime checkpoints, selects octal PSRAM, and disables the
+"PSRAM not found" fallback. Run it with QEMU's matching model:
+
+```sh
+$QEMU \
+  -M esp32s3 -m 4M \
+  -global driver=ssi_psram,property=is_octal,value=true \
+  -display none -monitor none -serial stdio \
+  -drive file=build/esp32s3-qemu-psram/device-inspector.bin,format=raw,if=mtd \
+  -no-reboot
+```
+
+A successful boot logs `using SPIRAM for heap metadata and heap` before
+`DEVICE-INSPECTOR-READY`.
 
 Build the S3 USB Serial/JTAG envelope with the provided helper. It uses a
 generated `SDKCONFIG` and a separate build directory, leaving the checked-in
@@ -129,3 +151,38 @@ The automated runner creates the flash image and supplies these options.
 
 ESP32-S2 USB CDC is intentionally outside this test and the current stdio
 implementation.
+
+## Device-inspector reference capture
+
+`device-inspector-fixture.toit` keeps recognizable objects live for a memory
+capture. `capture-device-inspector.sh` stops QEMU through QMP after the
+readiness marker, validates HMP `memsave` output for manifest-selected CPU
+virtual regions, captures every core's raw registers and exact target
+description through GDB remote when supported, and otherwise parses and retains
+the official QEMU release's named HMP register output. It imports the evidence
+into a versioned `.toitdump` artifact. See
+`tools/device-inspector/README.md` for the manifest, exact command, API, and
+current limitations. QMP, GDB RSP, and acquisition are implemented in Toit;
+the reusable protocol client lives in `tools/gdb`.
+
+Passing a sixth argument selects an instrumented runtime checkpoint instead of
+waiting for the readiness marker. Build that firmware with
+`TOIT_VM_STATE_CHECKPOINTS=1 make esp32`, generate `checkpoint-layout.json`
+with `tools/device-inspector/extract-checkpoint-layout.toit`, and keep it next
+to the manifest. Every checkpoint capture must use a fresh QEMU process; the
+script supplies `-S`, arms the requested checkpoint through GDB, and verifies
+QEMU's debugger-stopped state before reading memory.
+
+A seventh argument selects one process-group/container ID. The stopped-target
+planner keeps only the selected program heap, globals, object-heap chunks, and
+the shared metadata spine required by the decoder. The resulting artifact
+records omitted groups and unresolved external/native memory explicitly.
+
+Set `QEMU_PSRAM_SIZE=4M` and use
+`device-inspector-esp32-4m-psram-manifest.json` to include classic ESP32
+QEMU's modeled PSRAM aperture in a full capture. The normal ESP32 firmware has
+SPIRAM disabled, so this validates raw acquisition only; testing Toit-owned
+objects in PSRAM requires a SPIRAM-enabled firmware build. For the semantic S3
+case, use `device-inspector-esp32s3-4m-octal-psram-manifest.json` and set both
+`QEMU_PSRAM_SIZE=4M` and `QEMU_PSRAM_MODE=octal`. Its PSRAM address is tied to
+the exact inspector firmware layout produced by the helper.

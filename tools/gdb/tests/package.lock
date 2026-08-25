@@ -1,0 +1,6 @@
+sdk: ^2.0.0-alpha.190
+prefixes:
+  gdb: gdb
+packages:
+  gdb:
+    path: ..

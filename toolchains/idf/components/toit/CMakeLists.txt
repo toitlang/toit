@@ -87,6 +87,19 @@ function(toit_postprocess)
 
     idf_build_get_property(EXECUTABLE_NAME EXECUTABLE_NAME)
 
+    get_filename_component(TOIT_C_COMPILER_NAME "${CMAKE_C_COMPILER}" NAME)
+    string(REGEX REPLACE "-gcc$" "-gdb" TOIT_GDB_NAME "${TOIT_C_COMPILER_NAME}")
+    if(DEFINED ENV{TOIT_GDB} AND NOT "$ENV{TOIT_GDB}" STREQUAL "")
+        set(TOIT_GDB_EXECUTABLE "$ENV{TOIT_GDB}")
+    else()
+        find_program(TOIT_GDB_EXECUTABLE NAMES "${TOIT_GDB_NAME}")
+    endif()
+    if(NOT TOIT_GDB_EXECUTABLE)
+        message(FATAL_ERROR
+                "The Toit inspector description requires ${TOIT_GDB_NAME}. "
+                "Install the ESP-IDF debugger tools or set TOIT_GDB.")
+    endif()
+
     add_custom_target(firmware ALL DEPENDS bootloader partition_table_bin gen_project_binary)
     add_dependencies(flash firmware)
     resolve_file(BOOT ${CONFIG_TOIT_SYSTEM_SOURCE} ${TOIT_BASE_DIR} "system toit")
@@ -107,6 +120,14 @@ function(toit_postprocess)
     add_custom_command(
             TARGET firmware
             POST_BUILD
+            COMMAND "${TOIT}" run
+                    "--project-root=${TOIT_BASE_DIR}/tools"
+                    "${TOIT_BASE_DIR}/tools/device-inspector/extract-description.toit"
+                    --
+                    "${TOIT_GDB_EXECUTABLE}"
+                    "${EXECUTABLE_NAME}.elf"
+                    "inspector.json"
+            COMMAND echo inspector-description: created
             COMMAND rm -f firmware.envelope
             COMMAND "${TOIT}" tool firmware
                     "--envelope=firmware.envelope"
@@ -117,6 +138,7 @@ function(toit_postprocess)
                     "--partitions.bin=partition_table/partition-table.bin"
                     "--otadata.bin=ota_data_initial.bin"
                     "--flashing.json=flasher_args.json"
+                    "--inspector.json=inspector.json"
                     "--system.snapshot=${SYSTEM_SNAPSHOT}"
             COMMAND echo envelope: created
     )

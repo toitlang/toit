@@ -1,0 +1,5 @@
+name: gdb-tests
+description: Tests for the GDB RSP package.
+dependencies:
+  gdb:
+    path: ..

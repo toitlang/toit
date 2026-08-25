@@ -1,0 +1,5 @@
+name: gdb
+description: GDB Remote Serial Protocol client for Toit.
+environment:
+  sdk: ^2.0.0-alpha.190
+license: MIT
