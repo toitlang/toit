@@ -37,6 +37,12 @@ static const char* const CWD_PATH_PATH = "/<cwd>";
 static const char* const COMPILER_INPUT_PATH = "/<compiler-input>";
 static const char* const INFO_PATH = "/<info>";
 
+FilesystemArchive::~FilesystemArchive() {
+  for (auto& entry : archive_files_.underlying_map()) {
+    free(const_cast<char*>(entry.second.content));
+  }
+}
+
 void FilesystemArchive::initialize(Diagnostics* diagnostics) {
   if (is_initialized_) return;
   is_initialized_ = true;
@@ -45,6 +51,8 @@ void FilesystemArchive::initialize(Diagnostics* diagnostics) {
   auto code = untar(path_, [&](const char* name,
                                char* content,
                                int size) {
+    Defer free_name { [&] { free(const_cast<char*>(name)); } };
+    std::string archive_name;
     if (name[0] != '/') {
       // Not an absolute file.
       // Assume it's relative to the current working directory.
@@ -59,9 +67,15 @@ void FilesystemArchive::initialize(Diagnostics* diagnostics) {
       }
       PathBuilder builder(this);
       builder.join(current_working_dir, name);
-      name = builder.strdup();
+      archive_name = builder.buffer();
+    } else {
+      archive_name = name;
     }
-    archive_files_[std::string(name)] = {
+    auto existing = archive_files_.find(archive_name);
+    if (existing != archive_files_.end()) {
+      free(const_cast<char*>(existing->second.content));
+    }
+    archive_files_[archive_name] = {
       .content = content,
       .size = size,
     };
@@ -92,7 +106,7 @@ void FilesystemArchive::initialize(Diagnostics* diagnostics) {
     diagnostics->report_error("Missing package-cache-paths file in '%s'", path_);
     return;
   }
-  package_cache_paths_ = string_split(package_cache_paths_probe->second.content, "\n");
+  package_cache_paths_ = string_split(const_cast<char*>(package_cache_paths_probe->second.content), "\n");
 
   // Check whether the archive contains the SDK.
   // If there is a file with the same prefix, we consider it to be there.
@@ -158,7 +172,8 @@ void FilesystemArchive::initialize(Diagnostics* diagnostics) {
       if (!entry_path_list[0].is_string()) {
         goto bad_meta;
       }
-      entry_path_ = strdup(entry_path_list[0].get<std::string>().c_str());
+      entry_path_storage_ = entry_path_list[0].get<std::string>();
+      entry_path_ = entry_path_storage_.c_str();
     } else {
       // This path is deprecated.
       entry_path_ = compiler_input.content;
@@ -253,7 +268,7 @@ const uint8* FilesystemArchive::do_read_content(const char* path, int* size) {
 }
 
 void FilesystemArchive::list_directory_entries(const char* path,
-                                               const std::function<bool (const char*)> callback) {
+                                               const std::function<bool (const char*)>& callback) {
   auto probe = directory_listings_.find(std::string(path));
   if (probe == directory_listings_.end()) return;
   for (auto& entry : probe->second) {

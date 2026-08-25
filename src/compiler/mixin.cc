@@ -414,7 +414,7 @@ static Map<ir::Field*, ir::Field*> apply_mixins(ir::Class* klass) {
 /// invoked.
 class ConstructorVisitor : protected SuperCallVisitor {
  public:
-  ConstructorVisitor(ir::Class* holder, Map<ir::Field*, ir::Field*> field_map)
+  ConstructorVisitor(ir::Class* holder, const Map<ir::Field*, ir::Field*>& field_map)
       : SuperCallVisitor(holder)
       , mixins_(holder->mixins())
       , field_map_(field_map) {}
@@ -606,12 +606,12 @@ class ConstructorVisitor : protected SuperCallVisitor {
 
  private:
   List<ir::Class*> mixins_;
-  Map<ir::Field*, ir::Field*> field_map_;
+  const Map<ir::Field*, ir::Field*>& field_map_;
   ir::Parameter* outer_this_param_;
 };
 
 /// Changes super calls so that they call mixin constructors as well.
-void adjust_super_calls(ir::Class* klass, Map<ir::Field*, ir::Field*> field_map) {
+void adjust_super_calls(ir::Class* klass, const Map<ir::Field*, ir::Field*>& field_map) {
   ConstructorVisitor visitor(klass, field_map);
   for (auto constructor : klass->unnamed_constructors()) {
     visitor.visit(constructor);

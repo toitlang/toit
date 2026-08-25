@@ -210,7 +210,7 @@ class FilteredIterableScope : public IterableScope {
   FilteredIterableScope(IterableScope* wrapped,
                         std::function<bool (Symbol, const ResolutionEntry&)> predicate)
       : wrapped_(wrapped)
-      , predicate_(predicate) {}
+      , predicate_(std::move(predicate)) {}
 
   void for_each(const std::function<void (Symbol, const ResolutionEntry&)>& callback) {
     wrapped_->for_each([&] (Symbol symbol, const ResolutionEntry& entry) {
@@ -627,7 +627,7 @@ class ModuleScope : public Scope {
   ResolutionEntryMap exported_identifiers_map() const { return exported_identifiers_map_; }
 
   void set_exported_identifiers_map(ResolutionEntryMap exported_identifiers_map) {
-    exported_identifiers_map_ = exported_identifiers_map;
+    exported_identifiers_map_ = std::move(exported_identifiers_map);
     exported_identifiers_map_has_been_set_ = true;
   }
 

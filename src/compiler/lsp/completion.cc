@@ -89,7 +89,7 @@ void CompletionHandler::type(ast::Node* node,
     important_core_types.insert("Set");
   }
 
-  for (auto core_type : important_core_types) {
+  for (const auto& core_type : important_core_types) {
     complete(core_type, CompletionKind::CLASS);
   }
   scope->for_each([&](Symbol name, const ResolutionEntry& entry) {

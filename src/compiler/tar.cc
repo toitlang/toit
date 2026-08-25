@@ -14,6 +14,8 @@
 // directory of this repository.
 
 #include <string.h>
+#include <errno.h>
+#include <limits.h>
 
 #include "tar.h"
 
@@ -50,6 +52,7 @@ UntarCode untar(FILE* file,
   // - the first one gives the name (as contents), and
   // - the second contains the actual content of the file.
   const char* long_name = null;
+  Defer free_pending_long_name { [&] { free(const_cast<char*>(long_name)); } };
   bool encountered_zero_header = false;
   while (true) {
     char header[HEADER_SIZE];
@@ -71,19 +74,22 @@ UntarCode untar(FILE* file,
     }
 
     char* file_name_suffix = &header[0];
-    int size_in_bytes = strtol(&header[124], null, 8);
+    // Tar strings are fixed-width and aren't necessarily terminated.
+    header[136] = '\0';  // Immediately after the 12-byte size field.
+    errno = 0;
+    char* size_end = null;
+    long parsed_size = strtol(&header[124], &size_end, 8);
+    if (errno != 0 || size_end == &header[124] || parsed_size < 0 || parsed_size > INT_MAX) {
+      return UntarCode::other;
+    }
+    int size_in_bytes = static_cast<int>(parsed_size);
     char file_type = header[156];
     char* ustar = &header[257];
-    const char* file_name_prefix = &header[345];
+    char* file_name_prefix = &header[345];
 
-    // Trim the ustar string.
-    int ustar_len = strlen(ustar);
-    for (int i = ustar_len - 1; i >= 0; i--) {
-      if (ustar[i] != ' ') {
-        ustar[i + 1] = '\0';
-        break;
-      }
-    }
+    file_name_suffix[100] = '\0';
+    ustar[5] = '\0';
+    file_name_prefix[155] = '\0';
     if (strcmp("ustar", ustar) != 0) return UntarCode::not_ustar;
 
     const char* file_name;
@@ -91,35 +97,47 @@ UntarCode untar(FILE* file,
       file_name = long_name;
       long_name = null;
     } else if (file_name_prefix[0] != '\0') {
-      // Reuse the header.
       int prefix_len = strlen(file_name_prefix);
       int suffix_len = strlen(file_name_suffix);
-      memmove(&header[prefix_len], &header[0], suffix_len);
-      memmove(&header[0], file_name_prefix, prefix_len);
-      header[prefix_len + suffix_len] = '\0';
-      // The header is stack-allocated and the file name must be copied to the heap.
-      file_name = strdup(&header[0]);
+      char* combined_name = unvoid_cast<char*>(malloc(prefix_len + 1 + suffix_len + 1));
+      if (combined_name == null) return UntarCode::other;
+      memcpy(combined_name, file_name_prefix, prefix_len);
+      combined_name[prefix_len] = '/';
+      memcpy(&combined_name[prefix_len + 1], file_name_suffix, suffix_len + 1);
+      file_name = combined_name;
     } else {
-      file_name_suffix[100] = '\0';  // In case the file was exactly 100 characters long.
       // The header is stack-allocated and the file name must be copied to the heap.
       file_name = strdup(file_name_suffix);
     }
-    char* content = unvoid_cast<char*>(malloc(size_in_bytes + 1));
+    if (file_name == null) return UntarCode::other;
+    char* content = unvoid_cast<char*>(malloc(static_cast<size_t>(size_in_bytes) + 1));
+    if (content == null) {
+      free(const_cast<char*>(file_name));
+      return UntarCode::other;
+    }
     read_count = fread(content, 1, size_in_bytes, file);
-    if (read_count != size_in_bytes) return UntarCode::other;
+    if (read_count != size_in_bytes) {
+      free(const_cast<char*>(file_name));
+      free(content);
+      return UntarCode::other;
+    }
 
     content[size_in_bytes] = '\0';  // Terminate with '\0'.
-    if (file_type == '0') {
+    if (file_type == '0' || file_type == '\0') {
       callback(file_name, content, size_in_bytes);
     } else if (file_type == 'L') {
       // Gnu's long-link format.
       ASSERT(strcmp("././@LongLink", file_name) == 0);
       long_name = content;  // Content was heap-allocated and can be reused in the next iteration.
+      free(const_cast<char*>(file_name));
+    } else {
+      free(const_cast<char*>(file_name));
+      free(content);
     }
 
     // Skip over the padded section.
     // Round up to the next 512 boundary.
-    int rounded_up = ((size_in_bytes + 0x1FF) & (~0x1FF));
+    size_t rounded_up = (static_cast<size_t>(size_in_bytes) + 0x1FF) & (~static_cast<size_t>(0x1FF));
     int to_read = rounded_up - size_in_bytes;
     ASSERT(to_read <= HEADER_SIZE);
     // Reuse the header, which isn't needed anymore.

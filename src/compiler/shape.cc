@@ -163,8 +163,8 @@ bool ResolutionShape::overlaps_with(const ResolutionShape& other) {
 /// All shapes of the [overrider_iterators] must overlap with the shape.
 /// All shapes of the [overrider_iterators] must accept the [taken_names].
 static bool is_fully_shadowed_positional_phase(const NameIterator& shape_iterator,
-                                               const std::vector<NameIterator> overrider_iterators,
-                                               const std::vector<Symbol> taken_names,
+                                               const std::vector<NameIterator>& overrider_iterators,
+                                               const std::vector<Symbol>& taken_names,
                                                CallShape* see_through) {
   auto shape = shape_iterator.shape();
   // We only care for the non-block parameters, as the block ones must match.
@@ -173,7 +173,7 @@ static bool is_fully_shadowed_positional_phase(const NameIterator& shape_iterato
 
   std::vector<bool> positionals(max_positional - min_positional + 1);
 
-  for (auto overrider_iterator : overrider_iterators) {
+  for (const auto& overrider_iterator : overrider_iterators) {
     // For each overrider mark the positional parameters that are covered by the
     // by the overrider.
     auto overrider = overrider_iterator.shape();
@@ -293,14 +293,14 @@ static bool is_fully_shadowed_names_phase(NameIterator shape,
   return is_fully_shadowed_positional_phase(shape, *overriders, taken_names, see_through);
 }
 
-bool ResolutionShape::is_fully_shadowed_by(const std::vector<ResolutionShape> overriders,
+bool ResolutionShape::is_fully_shadowed_by(const std::vector<ResolutionShape>& overriders,
                                            CallShape* see_through) {
   *see_through = CallShape::invalid();
 
   // Start by filtering the overriders that clearly can't have any influence on
   // the result.
   std::vector<ResolutionShape> overlapping;
-  for (auto shape : overriders) {
+  for (const auto& shape : overriders) {
     if (overlaps_with(shape)) overlapping.push_back(shape);
   }
 
@@ -312,7 +312,7 @@ bool ResolutionShape::is_fully_shadowed_by(const std::vector<ResolutionShape> ov
 
   std::vector<NameIterator> overrider_iterators;
   overrider_iterators.reserve(overlapping.size());
-  for (auto shape : overlapping) {
+  for (const auto& shape : overlapping) {
     overrider_iterators.push_back(NameIterator(shape));
   }
   NameIterator this_iterator(*this);
@@ -454,4 +454,3 @@ PlainShape CallShape::to_plain_shape() const {
 
 } // namespace toit::compiler
 } // namespace toit
-

@@ -27,7 +27,7 @@ class DepWriter {
  public:
   void write_deps_to_file_if_different(const char* dep_path,
                                        const char* out_path,
-                                       std::vector<ast::Unit*> units,
+                                       const std::vector<ast::Unit*>& units,
                                        int core_unit_index);
 
  protected:

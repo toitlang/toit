@@ -26,7 +26,7 @@ namespace compiler {
 
 void DepWriter::write_deps_to_file_if_different(const char* dep_path,
                                                 const char* out_path,
-                                                std::vector<ast::Unit*> units,
+                                                const std::vector<ast::Unit*>& units,
                                                 int core_unit_index) {
   for (size_t i = 0; i < units.size(); i++) {
     auto unit = units[i];
@@ -66,24 +66,32 @@ void DepWriter::write_deps_to_file_if_different(const char* dep_path,
   char* old_deps = null;
   FILE* file = fopen(dep_path, "r");
   if (file != null) {
-    fseek(file, 0, SEEK_END);
-    long file_size = ftell(file);
-    rewind(file);
-    char* buffer = unvoid_cast<char*>(malloc(file_size + 1));
-    auto read_bytes = fread(buffer, 1, file_size, file);
-    if (read_bytes == 0) {
-      free(buffer);
-    } else {
-      buffer[file_size] = '\0';
-      old_deps = buffer;
+    if (fseek(file, 0, SEEK_END) == 0) {
+      long file_size = ftell(file);
+      if (file_size >= 0) {
+        rewind(file);
+        char* buffer = unvoid_cast<char*>(malloc(file_size + 1));
+        if (buffer != null) {
+          auto read_bytes = fread(buffer, 1, file_size, file);
+          if (read_bytes == static_cast<size_t>(file_size)) {
+            buffer[file_size] = '\0';
+            old_deps = buffer;
+          } else {
+            free(buffer);
+          }
+        }
+      }
     }
     fclose(file);
   }
 
   if (old_deps == null || new_deps != old_deps) {
     file = fopen(dep_path, "w");
-    fwrite(new_deps.c_str(), 1, new_deps.size(), file);
-    fclose(file);
+    if (file == null) FATAL("Couldn't open dependency file for writing");
+    size_t written = fwrite(new_deps.c_str(), 1, new_deps.size(), file);
+    if (written != new_deps.size() || fclose(file) != 0) {
+      FATAL("Couldn't write dependency file");
+    }
   }
   if (old_deps != null) free(old_deps);
 }
@@ -154,4 +162,3 @@ void ListDepWriter::generate_footer() {}
 
 } // namespace toit::compiler
 } // namespace toit
-

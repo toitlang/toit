@@ -76,6 +76,19 @@ TypePropagator::TypePropagator(
   TypePrimitive::set_up();
 }
 
+TypePropagator::~TypePropagator() {
+  for (auto& entry : methods_) delete entry.second;
+  for (auto& entry : blocks_) delete entry.second;
+  for (auto& entry : globals_) delete entry.second;
+  for (auto& type_entry : fields_) {
+    for (auto& field_entry : type_entry.second) delete field_entry.second;
+  }
+  for (auto& entry : outers_) delete entry.second;
+  for (auto& entry : input_.underlying_map()) {
+    for (auto variable : entry.second) delete variable;
+  }
+}
+
 word TypePropagator::selector_offset(Method method) const {
   if (method_selector_offsets_ == null ||
       (!method.is_normal_method() && !method.is_field_accessor())) {
@@ -800,7 +813,7 @@ void TypePropagator::add_output(uint8* site, TypeVariable* output) {
   output_[site].insert(output);
 }
 
-MethodTemplate* TypePropagator::find_method(Method target, std::vector<ConcreteType> arguments) {
+MethodTemplate* TypePropagator::find_method(Method target, const std::vector<ConcreteType>& arguments) {
   uint32 key = ConcreteType::hash(target, arguments, false);
   auto it = methods_.find(key);
   MethodTemplate* head = (it != methods_.end()) ? it->second : null;
@@ -1557,7 +1570,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 }
 
-bool MethodTemplate::matches(Method target, std::vector<ConcreteType>& arguments) const {
+bool MethodTemplate::matches(Method target, const std::vector<ConcreteType>& arguments) const {
   if (target.entry() != method_.entry()) return false;
   return ConcreteType::equals(arguments_, arguments, false);
 }

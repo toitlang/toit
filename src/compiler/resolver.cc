@@ -425,7 +425,7 @@ void Resolver::check_clashing_or_conflicting(Symbol name, List<ir::Node*> declar
       }
     }
 
-    for (auto key : declarations_per_selector.keys()) {
+    for (const auto& key : declarations_per_selector.keys()) {
       auto declarations = declarations_per_selector[key];
       if (declarations.size() != 1) {
         // If we have duplicate fields we don't want to report setter and getter
@@ -590,7 +590,7 @@ void Resolver::check_clashing_or_conflicting(Symbol name, List<ir::Node*> declar
   }
 }
 
-void Resolver::check_clashing_or_conflicting(std::vector<Module*> modules) {
+void Resolver::check_clashing_or_conflicting(const std::vector<Module*>& modules) {
   for (auto module : modules) {
     // Check the top-level entries first.
     auto module_entries = module->scope()->entries();
@@ -630,7 +630,7 @@ void Resolver::check_clashing_or_conflicting(std::vector<Module*> modules) {
   }
 }
 
-void Resolver::check_future_reserved_globals(std::vector<Module*> modules) {
+void Resolver::check_future_reserved_globals(const std::vector<Module*>& modules) {
   // We have checked already all identifiers except for globals. This is,
   // because we didn't know yet which methods were from the core libraries.
   // This information is present now.
@@ -687,7 +687,7 @@ static void report_unresolved_show(Module::PrefixedModule& prefixed_module,
   diagnostics->report_error(ast_identifier, "Unresolved show '%s'", name.c_str());
 }
 
-static void report_cyclic_export(std::vector<Module*> cyclic_modules,
+static void report_cyclic_export(const std::vector<Module*>& cyclic_modules,
                                  Symbol name,
                                  UnorderedSet<Module*>* already_reported_modules,
                                  Diagnostics* diagnostics) {
@@ -1232,7 +1232,7 @@ ir::Class* Resolver::resolve_class_interface_or_mixin(ast::Expression* ast_node,
 /// - the supers of classes exist.
 /// - the class hierarchy isn't cyclic.
 /// - there aren't any mismatches (classes extending interfaces, ...)
-void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_index) {
+void Resolver::setup_inheritance(const std::vector<Module*>& modules, int core_module_index) {
   Module* core_module = modules[core_module_index];
   auto core_scope = core_module->scope();
   ir::Class* top = core_scope->lookup_shallow(Symbols::Object).klass();
@@ -1752,7 +1752,7 @@ void Resolver::check_class(ast::Class* klass) {
 /// Fills in skeleton information of classes.
 ///
 /// Fills in all members.
-void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
+void Resolver::fill_classes_with_skeletons(const std::vector<Module*>& modules) {
   for (auto module : modules) {
     // Fill in all members.
     for (auto ir_class : module->classes()) {
@@ -1971,7 +1971,7 @@ static void fill_abstract_methods_map(ir::Class* ir_class,
   }
 
   Map<Selector<ResolutionShape>, ir::Method*> class_abstracts;
-  for (auto selector : super_abstracts.keys()) {
+  for (const auto& selector : super_abstracts.keys()) {
     ir::Method* method = super_abstracts.at(selector);
     if (method->is_abstract()) {
       class_abstracts[selector] = method;
@@ -1980,7 +1980,7 @@ static void fill_abstract_methods_map(ir::Class* ir_class,
   for (auto mixin : ir_class->mixins()) {
     fill_abstract_methods_map(mixin, abstract_methods, diagnostics);
     auto mixin_abstracts = abstract_methods->at(mixin);
-    for (auto selector : mixin_abstracts.keys()) {
+    for (const auto& selector : mixin_abstracts.keys()) {
       ir::Method* method = mixin_abstracts.at(selector);
       class_abstracts[selector] = method;
     }
@@ -2010,7 +2010,7 @@ static void fill_abstract_methods_map(ir::Class* ir_class,
 
 /// Checks that the klass has its mixins flattened.
 /// Only does a conservative check.
-static bool mixins_are_flattened(std::vector<Module*> modules) {
+static bool mixins_are_flattened(const std::vector<Module*>& modules) {
   for (auto module : modules) {
     for (auto klass : module->classes()) {
       if (klass->mixins().is_empty()) continue;
@@ -2040,16 +2040,16 @@ static bool mixins_are_flattened(std::vector<Module*> modules) {
   return true;
 }
 
-void Resolver::report_abstract_classes(std::vector<Module*> modules) {
+void Resolver::report_abstract_classes(const std::vector<Module*>& modules) {
   ASSERT(mixins_are_flattened(modules));
   UnorderedMap<ir::Class*, Map<Selector<ResolutionShape>, ir::Method*>> abstract_methods;
 
   Map<ir::Class*, Map<Symbol, std::vector<ResolutionShape>>> all_method_shapes;
   // Lazily fill the method shapes.
-  auto method_shapes_for = [&](ir::Class* klass) {
+  auto method_shapes_for = [&](ir::Class* klass) -> const Map<Symbol, std::vector<ResolutionShape>>& {
     auto probe = all_method_shapes.find(klass);
     if (probe != all_method_shapes.end()) return probe->second;
-    Map<Symbol, std::vector<ResolutionShape>> result;
+    auto& result = all_method_shapes[klass];
     for (auto method : klass->methods()) {
       if (method->is_abstract()) continue;
       auto name = method->name();
@@ -2095,7 +2095,7 @@ void Resolver::report_abstract_classes(std::vector<Module*> modules) {
       auto class_abstracts = abstract_methods.at(ir_class);
       if (class_abstracts.empty()) continue;
       bool has_abstract_method = false;
-      for (auto selector : class_abstracts.keys()) {
+      for (const auto& selector : class_abstracts.keys()) {
         if (class_abstracts[selector]->is_abstract()) {
           has_abstract_method = true;
           break;
@@ -2108,7 +2108,7 @@ void Resolver::report_abstract_classes(std::vector<Module*> modules) {
       // We might have a non-implemented abstract method.
       // Do a more thorough check that handles optional arguments as well.
       // We also look at super classes of the abstract class now.
-      for (auto selector : class_abstracts.keys()) {
+      for (const auto& selector : class_abstracts.keys()) {
         auto method = class_abstracts[selector];
         if (method->is_abstract()) {
           auto shape = method->resolution_shape();
@@ -2119,10 +2119,10 @@ void Resolver::report_abstract_classes(std::vector<Module*> modules) {
           auto contributing_classes = contributing_for(ir_class);
 
           for (auto contributing : contributing_classes) {
-            auto shapes = method_shapes_for(contributing);
+            const auto& shapes = method_shapes_for(contributing);
             auto probe = shapes.find(name);
             if (probe != shapes.end()) {
-              for (auto shape : probe->second) {
+              for (const auto& shape : probe->second) {
                 potentially_implementing.push_back(shape);
               }
             }
@@ -2163,7 +2163,7 @@ void Resolver::report_abstract_classes(std::vector<Module*> modules) {
   }
 }
 
-void Resolver::check_interface_implementations_and_flatten(std::vector<Module*> modules) {
+void Resolver::check_interface_implementations_and_flatten(const std::vector<Module*>& modules) {
   ASSERT(mixins_are_flattened(modules));
   // For each interface, the set it represents.
   UnorderedMap<ir::Class*, Set<ir::Class*>> flattened_interfaces;
@@ -2236,7 +2236,7 @@ void Resolver::check_interface_implementations_and_flatten(std::vector<Module*> 
         // Do a more expensive check.
         UnorderedMap<Selector<ResolutionShape>, CallShape> really_missing_methods;
 
-        for (auto method_selector : maybe_missing_methods.underlying_set())  {
+        for (const auto& method_selector : maybe_missing_methods.underlying_set())  {
           auto name = method_selector.name();
           auto shape = method_selector.shape();
           auto probe = all_existing_shapes.find(name);
@@ -2276,7 +2276,7 @@ void Resolver::check_interface_implementations_and_flatten(std::vector<Module*> 
   }
 }
 
-void Resolver::flatten_mixins(std::vector<Module*> modules) {
+void Resolver::flatten_mixins(const std::vector<Module*>& modules) {
   // For each mixin, the flatten list of mixins it represents.
   // For example:
   //     mixin Mix1:

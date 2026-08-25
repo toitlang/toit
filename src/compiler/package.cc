@@ -49,7 +49,7 @@ std::string Package::build_error_path(Filesystem* fs, const std::string& path) c
 }
 
 void Package::list_prefixes(const std::function<void (const std::string& candidate)>& callback) const{
-  for (auto prefix : prefixes_.keys()) {
+  for (const auto& prefix : prefixes_.keys()) {
     callback(prefix);
   }
 }

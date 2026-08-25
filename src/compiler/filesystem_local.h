@@ -25,6 +25,15 @@ namespace compiler {
 
 class FilesystemLocal : public Filesystem {
  public:
+  ~FilesystemLocal() {
+#ifdef TOIT_WINDOWS
+    free(const_cast<char*>(sdk_path_));
+#else
+    delete[] sdk_path_;
+#endif
+    free(package_cache_paths_buffer_);
+  }
+
   void initialize(Diagnostics* diagnostics) {}
 
   const char* entry_path() { return null; }
@@ -56,10 +65,11 @@ class FilesystemLocal : public Filesystem {
 
   const char* getcwd(char* buffer, int buffer_size);
   void list_directory_entries(const char* path,
-                              const std::function<bool (const char*)> callback);
+                              const std::function<bool (const char*)>& callback);
 
  private:
   const char* sdk_path_ = null;
+  char* package_cache_paths_buffer_ = null;
   List<const char*> package_cache_paths_;
   bool has_computed_cache_paths_ = false;
 };

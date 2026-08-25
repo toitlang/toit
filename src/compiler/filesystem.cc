@@ -35,6 +35,7 @@ const char* Filesystem::cwd() {
   if (cwd_ == null) {
     char buffer[PATH_MAX];
     auto result = getcwd(buffer, PATH_MAX);
+    if (result == null) FATAL("Couldn't get current working directory");
     cwd_ = strdup(result);
   }
   return cwd_;
@@ -221,7 +222,7 @@ void Filesystem::register_intercepted(const std::string& path, const uint8* cont
 }
 
 void Filesystem::list_toit_directory_entries(const char* path,
-                                             const std::function<bool (const char*, bool is_directory)> callback) {
+                                             const std::function<bool (const char*, bool is_directory)>& callback) {
   list_directory_entries(path, [&](const char* entry) {
     // TODO(florian): We would like to check here, whether the `full_path` is a directory
     // or not. However, we are not allowed to do another filesystem request

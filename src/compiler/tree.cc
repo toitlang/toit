@@ -50,9 +50,9 @@ class TypedSelectorSet {
   /// Ignores all methods that are in the 'ignored_methods' set.
   /// Ignores all selectors that are in the 'ignored_selectors' set.
   void insert_all(TypedSelectorSet& other,
-                  const Set<Method*> ignored_methods,
-                  const Set<CallSelector> ignored_selectors) {
-    other.selectors_.for_each([&](const CallSelector& selector, const UnorderedSet<Method*> methods) {
+                  const Set<Method*>& ignored_methods,
+                  const Set<CallSelector>& ignored_selectors) {
+    other.selectors_.for_each([&](const CallSelector& selector, const UnorderedSet<Method*>& methods) {
       if (ignored_selectors.contains(selector)) return;
       for (auto method : methods.underlying_set()) {
         if (ignored_methods.contains(method)) continue;
@@ -177,9 +177,9 @@ class TreeLogger {
   virtual void root(Method* method) {}
   virtual void root(Class* klass) {}
   virtual void add(Method* method,
-                   Set<Class*> classes,
-                   Set<Method*> methods,
-                   Set<CallSelector> selectors) {}
+                   const Set<Class*>& classes,
+                   const Set<Method*>& methods,
+                   const Set<CallSelector>& selectors) {}
   virtual void add_method_with_selector(CallSelector selector, Method* method) {}
 
   virtual void print() {}
@@ -192,9 +192,9 @@ class GraphvizTreeLogger : public TreeLogger {
   void root(Method* method) { root_methods_.push_back(method); }
   void root(Class* klass) { root_classes_.push_back(klass); }
   void add(Method* method,
-           Set<Class*> classes,
-           Set<Method*> methods,
-           Set<CallSelector> selectors) {
+           const Set<Class*>& classes,
+           const Set<Method*>& methods,
+           const Set<CallSelector>& selectors) {
     auto& class_vector = method_to_classes_[method];
     class_vector.insert(class_vector.end(), classes.begin(), classes.end());
     auto& method_vector = method_to_methods_[method];
@@ -337,9 +337,9 @@ class TreeGrower {
  public:
   void grow(Program* program);
 
-  Set<Class*> grown_classes() const { return grown_classes_; }
+  const Set<Class*>& grown_classes() const { return grown_classes_; }
   // Includes globals, static functions and instance functions.
-  Set<Method*> grown_methods() const { return grown_methods_; }
+  const Set<Method*>& grown_methods() const { return grown_methods_; }
 
  private:
   Set<Class*> grown_classes_;
@@ -477,8 +477,8 @@ void TreeGrower::grow(Program* program) {
 
 class Fixup : public ReplacingVisitor {
  public:
-  explicit Fixup(Set<Class*>& grown_classes,
-                 Set<Method*>& grown_methods,
+  explicit Fixup(const Set<Class*>& grown_classes,
+                 const Set<Method*>& grown_methods,
                  Type null_type,
                  Method* as_check_failure)
       : null_type_(null_type)
@@ -592,7 +592,7 @@ class Fixup : public ReplacingVisitor {
  private:
   Type null_type_;
   Set<Class*> valid_check_targets_;
-  Set<Method*> grown_methods_;
+  const Set<Method*>& grown_methods_;
   Method* as_check_failure_;
 };
 
@@ -608,7 +608,7 @@ static List<T*> shake_methods(List<T*> methods,
   return remaining_methods.build();
 }
 
-static std::vector<Method*> shake_methods(std::vector<Method*> methods,
+static std::vector<Method*> shake_methods(const std::vector<Method*>& methods,
                                           const Set<Method*>& grown_methods) {
   std::vector<Method*> remaining_methods;
   for (auto method : methods) {
@@ -620,8 +620,8 @@ static std::vector<Method*> shake_methods(std::vector<Method*> methods,
 }
 
 static void shake(Program* program,
-                  Set<Class*> grown_classes,
-                  Set<Method*> grown_methods) {
+                  const Set<Class*>& grown_classes,
+                  const Set<Method*>& grown_methods) {
   auto null_type = Type::invalid();
   for (auto type : program->literal_types()) {
     if (type.klass()->name() == Symbols::Null_) {

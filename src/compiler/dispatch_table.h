@@ -64,7 +64,7 @@ class DispatchTable {
   }
   int id_for(const ir::Class* klass) const { return klass->start_id(); }
 
-  void for_each_selector_offset(std::function<void (DispatchSelector, word)> callback) {
+  void for_each_selector_offset(const std::function<void (DispatchSelector, word)>& callback) {
     selector_offsets_.for_each(callback);
   }
 

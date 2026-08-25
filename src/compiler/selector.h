@@ -16,6 +16,7 @@
 #pragma once
 
 #include <functional>
+#include <utility>
 #include <vector>
 
 #include "list.h"
@@ -47,7 +48,7 @@ namespace ast {
 template<typename Shape>
 class Selector {
  public:
-  Selector(Symbol name, Shape shape) : name_(name), shape_(shape) {}
+  Selector(Symbol name, Shape shape) : name_(name), shape_(std::move(shape)) {}
 
   Symbol name() const { return name_; }
 
@@ -114,7 +115,7 @@ class CallBuilder {
 
   static void match_arguments_with_parameters(CallShape call_shape,
                                               ResolutionShape resolution_shape,
-                                              const std::function<void (int argument_index, int parameter_index)> callback);
+                                              const std::function<void (int argument_index, int parameter_index)>& callback);
  private:
   struct Arg {
     Arg() : expression(null), is_block(false), name(Symbol::invalid()) {}
@@ -143,15 +144,15 @@ class CallBuilder {
   // The given [fun] function may freely reorder all arguments without
   // worrying about evaluation order.
   ir::Expression* with_hoisted_args(ir::Expression* target,
-                                    std::function<ir::Expression* (ir::Expression*)> fun);
+                                    const std::function<ir::Expression* (ir::Expression*)>& fun);
 
   ir::Expression* do_call_static(ResolutionShape shape,
                                  bool has_implicit_this,
-                                 std::function<ir::Call* (CallShape shape, List<ir::Expression*>)> create_call);
+                                 const std::function<ir::Call* (CallShape shape, List<ir::Expression*>)>& create_call);
   ir::Expression* do_call_instance(ir::Dot* dot,
-                                   std::function<ir::Call* (ir::Dot* dot, CallShape shape, List<ir::Expression*>)> create_call);
+                                   const std::function<ir::Call* (ir::Dot* dot, CallShape shape, List<ir::Expression*>)>& create_call);
   ir::Expression* do_block_call(ir::Expression* block,
-                                std::function<ir::Call* (ir::Expression* block, CallShape shape, List<ir::Expression*>)> create_call);
+                                const std::function<ir::Call* (ir::Expression* block, CallShape shape, List<ir::Expression*>)>& create_call);
 };
 
 } // namespace toit::compiler

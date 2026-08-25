@@ -50,7 +50,7 @@ class CycleDetector {
   ///    in a cycle yet, calls the cycle_callback with the vector. Otherwise just returns true.
   ///  * Returns true.
   bool check_cycle(const T& entry,
-                   const std::function<void (const std::vector<T>& cycle)> cycle_callback) {
+                   const std::function<void (const std::vector<T>& cycle)>& cycle_callback) {
     auto probe = in_progress_map_.find(entry);
     if (probe == in_progress_map_.end()) return false;
     // We are in a cycle.

@@ -26,7 +26,7 @@ namespace compiler {
 
 template<typename T> class Set {
  public:
-  bool insert(T x) {
+  bool insert(const T& x) {
     auto p = set_.insert(x);
     if (!p.second) return false;
     vector_.push_back(x);
@@ -63,7 +63,7 @@ template<typename T> class Set {
     }
   }
 
-  void erase_last(T x) {
+  void erase_last(const T& x) {
     ASSERT(vector_.back() == x);
     set_.erase(x);
     vector_.pop_back();
@@ -74,7 +74,7 @@ template<typename T> class Set {
   typename std::vector<T>::const_iterator begin() const { return vector_.begin(); }
   typename std::vector<T>::const_iterator end() const { return vector_.end(); }
 
-  bool contains(T x) const { return set_.find(x) != set_.end(); }
+  bool contains(const T& x) const { return set_.find(x) != set_.end(); }
   bool empty() const { return set_.empty(); }
   void clear() { set_.clear(); vector_.clear(); }
   int size() const { return static_cast<int>(set_.size()); }
@@ -91,7 +91,7 @@ template<typename T> class Set {
 /// how we use it.
 template<typename T> class UnorderedSet {
  public:
-  void insert(T x) { set_.insert(x); }
+  void insert(const T& x) { set_.insert(x); }
   template<class InputIt> void insert(InputIt begin, InputIt end) { set_.insert(begin, end); }
   void insert_all(const UnorderedSet<T>& other_set) {
     set_.insert(other_set.set_.begin(), other_set.set_.end());
@@ -99,7 +99,7 @@ template<typename T> class UnorderedSet {
   void insert_all(const Set<T>& other_set) {
     set_.insert(other_set.begin(), other_set.end());
   }
-  bool erase(T x) { return set_.erase(x) > 0; }
+  bool erase(const T& x) { return set_.erase(x) > 0; }
 
   template<typename F>
   void erase_if(const F& callback) {
@@ -125,7 +125,7 @@ template<typename T> class UnorderedSet {
     set_.erase(other_set.set_.begin(), other_set.set_.end());
   }
 
-  bool contains(T x) const { return set_.find(x) != set_.end(); }
+  bool contains(const T& x) const { return set_.find(x) != set_.end(); }
   bool empty() const { return set_.empty(); }
   void clear() { set_.clear(); }
   int size() const { return static_cast<int>(set_.size()); }

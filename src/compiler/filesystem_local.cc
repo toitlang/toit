@@ -101,7 +101,8 @@ List<const char*> FilesystemLocal::package_cache_paths() {
       if (is_windows) {
         separator = ";";
       }
-      package_cache_paths_ = string_split(strdup(cache_paths), separator);
+      package_cache_paths_buffer_ = strdup(cache_paths);
+      package_cache_paths_ = string_split(package_cache_paths_buffer_, separator);
     } else {
       char* home_path;
       if (is_windows) {
@@ -114,8 +115,8 @@ List<const char*> FilesystemLocal::package_cache_paths() {
         // However, the LSP server currently only looks at the env var.
         FATAL("Couldn't determine home");
       }
-      package_cache_paths_ = ListBuilder<const char*>::build(
-        compute_package_cache_path_from_home(home_path, this));
+      package_cache_paths_buffer_ = const_cast<char*>(compute_package_cache_path_from_home(home_path, this));
+      package_cache_paths_ = ListBuilder<const char*>::build(package_cache_paths_buffer_);
     }
   }
   return package_cache_paths_;
@@ -139,15 +140,25 @@ const uint8* FilesystemLocal::do_read_content(const char* path, int* size) {
     fclose(file);
     return null;
   }
-  int byte_count = ftell(file);
+  long file_size = ftell(file);
+  if (file_size < 0 || file_size > INT_MAX) {
+    fclose(file);
+    return null;
+  }
+  int byte_count = static_cast<int>(file_size);
   rewind(file);
 
   // Read in the entire file.
   uint8* buffer = unvoid_cast<uint8*>(malloc(byte_count + 1));
+  if (buffer == null) {
+    fclose(file);
+    return null;
+  }
   int result = fread(buffer, 1, byte_count, file);
   fclose(file);
   if (result != byte_count) {
     fprintf(stderr, "ERROR: Unable to read entire file '%s'\n", path);
+    free(buffer);
     return null;
   }
   buffer[byte_count] = '\0';
@@ -156,7 +167,7 @@ const uint8* FilesystemLocal::do_read_content(const char* path, int* size) {
 }
 
 void FilesystemLocal::list_directory_entries(const char* path,
-                                             const std::function<bool (const char*)> callback) {
+                                             const std::function<bool (const char*)>& callback) {
   if (!is_directory(path)) return;
   DIR* dir = opendir(path);
   if (dir == null) return;

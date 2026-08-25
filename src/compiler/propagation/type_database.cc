@@ -39,9 +39,11 @@ TypeDatabase::TypeDatabase(Program* program, int words_per_type)
 }
 
 TypeDatabase::~TypeDatabase() {
-  for (auto it : types_) {
-    delete it;
-  }
+  auto probe = cache_.find(program_);
+  if (probe != cache_.end() && probe->second == this) cache_.erase(probe);
+  for (auto& entry : methods_) delete entry.second;
+  for (auto& entry : input_) delete entry.second;
+  for (auto stack : types_) delete stack;
 }
 
 void TypeDatabase::check_top(uint8* bcp, Object* value) const {
@@ -212,7 +214,7 @@ std::string TypeDatabase::as_json() const {
   out << "[\n";
 
   bool first = true;
-  for (auto it : output_) {
+  for (const auto& it : output_) {
     if (first) {
       first = false;
     } else {
@@ -238,7 +240,7 @@ std::string TypeDatabase::as_json() const {
     out << ", \"output\": " << output_string << "}";
   }
 
-  for (auto it : methods_) {
+  for (const auto& it : methods_) {
     if (first) {
       first = false;
     } else {

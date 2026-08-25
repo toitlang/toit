@@ -51,7 +51,7 @@ class FilesystemHybrid : public Filesystem {
 
   const char* getcwd(char* buffer, int buffer_size);
   void list_directory_entries(const char* path,
-                              const std::function<bool (const char*)> callback);
+                              const std::function<bool (const char*)>& callback);
 
  private:
   bool use_fs_archive_;
@@ -59,11 +59,11 @@ class FilesystemHybrid : public Filesystem {
   FilesystemArchive fs_archive_;
 
   template<typename T>
-  T do_with_active_fs(const std::function<T (Filesystem* fs)> callback);
+  T do_with_active_fs(const std::function<T (Filesystem* fs)>& callback);
 
   template<typename T>
   T do_with_active_fs(const char* path,
-                      const std::function<T (const char* path, Filesystem* fs)> callback);
+                      const std::function<T (const char* path, Filesystem* fs)>& callback);
 };
 
 } // namespace compiler

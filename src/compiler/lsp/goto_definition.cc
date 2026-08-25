@@ -160,7 +160,7 @@ void GotoDefinitionHandler::call_virtual(ir::CallVirtual* node,
   }
 
   // Apparently we didn't find a full match. Propose the candidates instead.
-  for (auto shape : candidates.keys()) {
+  for (const auto& shape : candidates.keys()) {
     _print_range(candidates[shape]->range());
   }
 }
@@ -328,4 +328,3 @@ void GotoDefinitionHandler::import_path(const char* path,
 
 } // namespace toit::compiler
 } // namespace toit
-

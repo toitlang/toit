@@ -383,7 +383,7 @@ class ResolutionShape {
   /// [see_through] shape with an example of a call-shape that would not be
   /// intercepted by the overriders.
   /// If it is not shadowed at all, then the [see_through] shape is invalid.
-  bool is_fully_shadowed_by(const std::vector<ResolutionShape> overriders, CallShape* see_through);
+  bool is_fully_shadowed_by(const std::vector<ResolutionShape>& overriders, CallShape* see_through);
 
   size_t hash() const {
     return call_shape_.hash()

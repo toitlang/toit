@@ -199,7 +199,7 @@ class ToitdocWriter : public toitdoc::Visitor {
   LspWriter* lsp_writer_;
 
   template<typename T, typename T2>
-  void print_list(T elements, void (ToitdocWriter::*callback)(T2)) {
+  void print_list(const T& elements, void (ToitdocWriter::*callback)(T2)) {
     this->printf("%d\n", length_of(elements));
     for (auto element : elements) { (this->*callback)(element); }
   }
@@ -329,25 +329,25 @@ class Writer {
 
 
   template<typename T, typename T2>
-  void print_list(T elements, void (Writer::*callback)(T2)) {
+  void print_list(const T& elements, void (Writer::*callback)(T2)) {
     this->printf("%d\n", length_of(elements));
     for (auto element : elements) { (this->*callback)(element); }
   }
 
   template<typename T, typename F>
-  void print_list(T elements, F callback) {
+  void print_list(const T& elements, F callback) {
     this->printf("%d\n", length_of(elements));
     for (auto element : elements) { callback(element); }
   }
 
   template<typename T, typename T2>
-  void print_list_external(T elements, void (Writer::*callback)(T2)) {
+  void print_list_external(const T& elements, void (Writer::*callback)(T2)) {
     this->printf_external("%d\n", length_of(elements));
     for (auto element : elements) { (this->*callback)(element); }
   }
 
   template<typename T, typename F>
-  void print_list_external(T elements, F callback) {
+  void print_list_external(const T& elements, F callback) {
     this->printf_external("%d\n", length_of(elements));
     for (auto element : elements) { callback(element); }
   }
@@ -765,7 +765,7 @@ class ToitdocPathMappingCreator {
   UnorderedMap<ir::Node*, ToitdocPath> mapping_;
 
   template<typename Container>
-  void visit_container(ToitdocPath::Kind kind, Module* module, ir::Class* klass, Container list) {
+  void visit_container(ToitdocPath::Kind kind, Module* module, ir::Class* klass, const Container& list) {
     for (auto element : list) {
       if (ref_targets_.contains(element)) {
         mapping_[element] = {

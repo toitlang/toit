@@ -78,14 +78,14 @@ class OptimizationVisitor : public ReplacingVisitor {
  public:
   OptimizationVisitor(TypeOracle* oracle,
                       List<ir::Type> literal_types,
-                      const UnorderedMap<Class*, QueryableClass> queryables,
-                      const UnorderedSet<Symbol>& field_names)
+                      UnorderedMap<Class*, QueryableClass> queryables,
+                      UnorderedSet<Symbol> field_names)
       : oracle_(oracle)
       , holder_(null)
       , method_(null)
       , literal_types_(literal_types)
-      , queryables_(queryables)
-      , field_names_(field_names) {}
+      , queryables_(std::move(queryables))
+      , field_names_(std::move(field_names)) {}
 
   Node* visit_Method(Method* node) {
     if (node->is_dead()) return node;
@@ -175,7 +175,10 @@ void optimize(Program* program, TypeOracle* oracle) {
     }
   }
 
-  OptimizationVisitor visitor(oracle, program->literal_types(), direct_queryables, field_names);
+  OptimizationVisitor visitor(oracle,
+                              program->literal_types(),
+                              std::move(direct_queryables),
+                              std::move(field_names));
 
   for (auto klass : classes) {
     visitor.set_class(klass);
