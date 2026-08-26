@@ -60,6 +60,7 @@ class FormatSource {
 
   int line_index_at(int offset) const;
   std::string text(int from, int to) const;
+  std::vector<int> comments_in(int from, int to) const;
 
   // Reproduces a physical line exactly, except for replacing its leading
   // indentation with $new_indentation spaces.
@@ -71,6 +72,12 @@ class FormatSource {
   std::string shift_multiline_comment(int comment_id,
                                       int new_start_column) const;
 
+  // Reproduces complete physical lines while shifting every line by the same
+  // indentation delta.
+  std::string reindent_region(int first_line,
+                              int last_line,
+                              int new_first_indentation) const;
+
  private:
   void build_lines();
   void build_comments(List<Scanner::Comment> comments);
@@ -78,6 +85,37 @@ class FormatSource {
   Source* source_;
   std::vector<FormatLine> lines_;
   std::vector<FormatComment> comments_;
+};
+
+// Shared exactly-once consumption state for one formatting run.
+class FormatCommentState {
+ public:
+  explicit FormatCommentState(const FormatSource* source);
+
+  const FormatSource* source() const { return source_; }
+  bool consumed(int id) const { return consumed_[id]; }
+  void consume(int id);
+
+  std::vector<int> unconsumed_in(int from, int to) const;
+  bool has_unconsumed_in(int from, int to) const;
+  bool all_consumed() const;
+
+  // Renders own-line comments in source order, shifting their original
+  // columns by $indentation_delta. Inline comments belong to their syntax and
+  // make this operation fail.
+  bool render_own_line(int from,
+                       int to,
+                       int indentation_delta,
+                       std::string* result);
+
+  // Reproduces and consumes a closed physical-line region.
+  std::string render_verbatim(int first_line,
+                              int last_line,
+                              int new_first_indentation);
+
+ private:
+  const FormatSource* source_;
+  std::vector<bool> consumed_;
 };
 
 } // namespace compiler
