@@ -52,6 +52,7 @@ class Program:
 
   // Debugging information.
   method-table_  / Map      ::= ?       // Map of MethodInfo
+  frame-debug-table_ / Map  ::= ?       // Map of FrameDebugInfo.
 
   // Note that the class_table can have more entries than the `class bits` list, as
   //   the debug-information could refer to classes that aren't instantiated, but for
@@ -88,6 +89,8 @@ class Program:
     all-bytecodes             = snapshot.program-snapshot.program-segment.bytecodes_
     global-max-stack-height   = snapshot.program-snapshot.program-segment.global-max-stack-height_
     method-table_             = snapshot.source-map.method-segment.content
+    frame-debug-segment := snapshot.source-map.frame-debug-segment
+    frame-debug-table_ = frame-debug-segment ? frame-debug-segment.content : {:}
     class-table_              = snapshot.source-map.class-segment.content
     primitive-table           = snapshot.source-map.primitive-segment.content
     selector-names_           = snapshot.source-map.selector-names-segment.content
@@ -119,6 +122,12 @@ class Program:
     return (method-info-for id).name
 
   method-info-size -> int: return method-table_.size
+
+  frame-debug-info-for id/int -> FrameDebugInfo:
+    return frame-debug-info-for id: throw "Unknown frame debug info"
+
+  frame-debug-info-for id/int [failure]:
+    return frame-debug-table_.get id --if-absent=(: failure.call id)
 
   class-info-for id/int -> ClassInfo:
     return class-table_[id]
@@ -269,6 +278,7 @@ class SourceMap:
   global-segment    / GlobalSegment    ::= ?
   selector-names-segment / SelectorNamesSegment ::= ?
   selectors-segment / SelectorsSegment ::= ?
+  frame-debug-segment / FrameDebugSegment?
   string-segment    / StringSegment    ::= ?
 
   constructor byte-array/ByteArray from/int to/int:
@@ -281,6 +291,7 @@ class SourceMap:
     global-segment-local    / GlobalSegment?    := null
     selector-names-segment-local / SelectorNamesSegment? := null
     selectors-segment-local / SelectorsSegment? := null
+    frame-debug-segment-local / FrameDebugSegment? := null
     string-segment-local    / StringSegment?    := null
     while pos < to:
       header := SegmentHeader byte-array pos
@@ -300,6 +311,8 @@ class SourceMap:
         selector-names-segment-local = SelectorNamesSegment byte-array pos (pos + header.content-size) string-segment-local
       else if header.is-selectors-segment:
         selectors-segment-local = SelectorsSegment byte-array pos (pos + header.content-size) string-segment-local
+      else if header.is-frame-debug-segment:
+        frame-debug-segment-local = FrameDebugSegment byte-array pos (pos + header.content-size) string-segment-local
       pos += header.content-size
 
     method-segment    = method-segment-local
@@ -308,6 +321,7 @@ class SourceMap:
     global-segment    = global-segment-local
     selector-names-segment = selector-names-segment-local
     selectors-segment = selectors-segment-local
+    frame-debug-segment = frame-debug-segment-local
     string-segment    = string-segment-local
 
   stringify -> string:
@@ -340,6 +354,7 @@ class SegmentHeader:
   is-selector-names-segment: return tag_ == 70177022
   is-global-names-segment:   return tag_ == 70177023
   is-selectors-segment: return tag_ == 70177024
+  is-frame-debug-segment: return tag_ == 70177025
 
   stringify:
     return "$tag_:$content-size"
@@ -1317,6 +1332,30 @@ class MethodInfo:
   stringify:
     return "$error-path:$position: method $name $outer"
 
+class ParameterDebugInfo:
+  index/int
+  name/string
+  kind/string
+  position/Position?
+
+  constructor .index .name .kind .position:
+
+class LocalDebugInfo:
+  stack-height/int
+  start-bci/int
+  end-bci/int
+  name/string
+  position/Position
+
+  constructor .stack-height .start-bci .end-bci .name .position:
+
+class FrameDebugInfo:
+  method-id/int
+  parameters/List
+  locals/List
+
+  constructor .method-id .parameters .locals:
+
 class ClassInfo:
   id            / int
   super-id      / int?
@@ -1451,6 +1490,40 @@ class MethodSegment extends MapSegment:
 
   stringify -> string:
     return "method_table: $super"
+
+// Source-level parameters and local-variable stack-slot lifetimes.
+class FrameDebugSegment extends MapSegment:
+  constructor byte-array begin end strings:
+    super byte-array begin end strings
+
+  read-element_ -> List:
+    method-id := read-cardinal_
+    parameters := List read-cardinal_:
+      index := read-cardinal_
+      name := read-string_
+      kind-code := read-byte_
+      line := read-cardinal_
+      column := read-cardinal_
+      kind := kind-code == 0
+          ? "explicit"
+          : kind-code == 1
+              ? "receiver"
+              : kind-code == 2
+                  ? "block-argument"
+                  : "implicit"
+      position := line == 0 ? null : Position line column
+      ParameterDebugInfo index name kind position
+    locals := List read-cardinal_:
+      stack-height := read-cardinal_
+      start-bci := read-cardinal_
+      end-bci := read-cardinal_
+      name := read-string_
+      position := read-position_
+      LocalDebugInfo stack-height start-bci end-bci name position
+    return [method-id, FrameDebugInfo method-id parameters locals]
+
+  stringify -> string:
+    return "frame_debug_table: $super"
 
 
 // List of all classes present in the program after tree shaking.

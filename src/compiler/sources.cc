@@ -15,6 +15,7 @@
 
 #include "sources.h"
 
+#include <algorithm>
 #include <stdio.h>
 #include <stdarg.h>
 #include <limits.h>
@@ -42,7 +43,12 @@ class SourceManagerSource : public Source {
       , error_path_(error_path)
       , text_(text)
       , size_(size),
-      offset_(offset) {}
+      offset_(offset) {
+    line_starts_.push_back(0);
+    for (int i = 0; i < size_; i++) {
+      if (text_[i] == '\n') line_starts_.push_back(i + 1);
+    }
+  }
 
   static SourceManagerSource invalid() {
     return SourceManagerSource(null, Package::invalid(), "", null, 0, 0);
@@ -103,6 +109,21 @@ class SourceManagerSource : public Source {
 
   int offset() const { return offset_; }
 
+  Location compute_location(Position position) {
+    int offset_in_source = position.token() - offset_;
+    ASSERT(0 <= offset_in_source && offset_in_source <= size_);
+    auto next_line = std::upper_bound(line_starts_.begin(),
+                                      line_starts_.end(),
+                                      offset_in_source);
+    int line_index = static_cast<int>(next_line - line_starts_.begin()) - 1;
+    int line_start = line_starts_[line_index];
+    return Location(this,
+                    offset_in_source,
+                    offset_in_source - line_start,
+                    line_index + 1,
+                    line_start);
+  }
+
  private:
   const char* absolute_path_;
   Package package_;
@@ -110,6 +131,7 @@ class SourceManagerSource : public Source {
   const uint8* text_;
   int size_;
   int offset_;
+  std::vector<int> line_starts_;
 };
 
 const char* error_message_for_load_error(SourceManager::LoadResult::Status status) {
@@ -255,43 +277,16 @@ Source::Location SourceManager::compute_location(Source::Position position) cons
 
   SourceManagerSource* entry = null;
 
-  int start_offset = 0;  // The starting offset to search for.
-  int line = 1;  // The line number.
-  int line_start = 0;  // The start of the line.
-
   if (cached_offset_ >= 0 &&
       cached_source_entry_->offset() <= absolute_offset &&
       absolute_offset <= cached_source_entry_->offset() + cached_source_entry_->size()) {
     entry = cached_source_entry_;
-    if (cached_offset_ < absolute_offset) {
-      if (cached_location_.is_valid()) {
-        start_offset = cached_offset_ - entry->offset();
-        line = cached_location_.line_number;
-        line_start = cached_location_.line_offset;
-      }
-    }
   }
   if (entry == null) {
     entry = static_cast<SourceManagerSource*>(source_for_position(position));
   }
   ASSERT(entry != null);
-  const uint8* text = entry->text();
-  int offset_in_source = absolute_offset - entry->offset();
-
-  for (int i = start_offset; i < offset_in_source; i++) {
-    int c = text[i];
-    if (c == '\r' && text[i + 1] == '\n') {
-      i++;
-      c = '\n';
-    }
-    if (c == '\n') {
-      line_start = i + 1;
-      line++;
-    }
-  }
-
-  int offset_in_line = offset_in_source - line_start;
-  Source::Location result(entry, offset_in_source, offset_in_line, line, line_start);
+  Source::Location result = entry->compute_location(position);
 
   cached_offset_ = absolute_offset;
   cached_source_entry_ = entry;
