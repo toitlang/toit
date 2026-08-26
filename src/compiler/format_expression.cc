@@ -201,6 +201,18 @@ class ExpressionPrinter {
     return result;
   }
 
+  std::string flat_local(DeclarationLocal* declaration) {
+    std::string result = flat(declaration->name(), PRECEDENCE_NONE);
+    if (declaration->type() != null) {
+      result += "/" + flat(declaration->type(), PRECEDENCE_NONE);
+    }
+    result += " " + std::string(Token::symbol(declaration->kind()).c_str());
+    if (declaration->value() != null) {
+      result += " " + flat(declaration->value(), PRECEDENCE_NONE);
+    }
+    return result;
+  }
+
   Expression* suite_value(Expression* argument) {
     if (argument->is_Block() || argument->is_Lambda()) return argument;
     if (!argument->is_NamedArgument()) return null;
@@ -355,6 +367,9 @@ class ExpressionPrinter {
     }
     if (expression->is_NamedArgument()) {
       return flat_named_argument(expression->as_NamedArgument());
+    }
+    if (expression->is_DeclarationLocal()) {
+      return flat_local(expression->as_DeclarationLocal());
     }
     if (expression->is_Block() || expression->is_Lambda()) {
       return flat_suite(expression);

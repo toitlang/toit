@@ -18,6 +18,8 @@ main:
     multi-lambda := task::
       prepare
       execute
+    while item/List? := next:
+      print item
 
 a := 1
 b := 2
