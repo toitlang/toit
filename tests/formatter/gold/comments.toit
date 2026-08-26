@@ -17,6 +17,9 @@ main:
       first
     else:  // Keep the else header.
       second
+    if grouped:
+      // Keep this control subtree together.
+      first
 
 class C:
     abstract read -> List  // Keep abstract header.
