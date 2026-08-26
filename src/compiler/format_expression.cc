@@ -191,7 +191,10 @@ class ExpressionPrinter {
     if (argument->expression() != null) {
       Expression* value = argument->expression();
       Expression* inner = peel_parentheses(value);
-      std::string value_text = flat(inner, PRECEDENCE_NONE);
+      std::string value_text = value->is_Parenthesis() &&
+              (inner->is_Block() || inner->is_Lambda())
+          ? flat_parenthesized_suite(inner)
+          : flat(inner, PRECEDENCE_NONE);
       if (value->is_Parenthesis() ||
           needs_call_argument_parentheses(inner)) {
         value_text = "(" + value_text + ")";
@@ -292,6 +295,28 @@ class ExpressionPrinter {
     }
     std::string result = suite_introduction(expression);
     if (!body_text.empty()) result += " " + body_text;
+    return result;
+  }
+
+  std::string flat_parenthesized_suite(Expression* expression) {
+    bool is_block = expression->is_Block();
+    Sequence* body = is_block
+        ? expression->as_Block()->body()
+        : expression->as_Lambda()->body();
+    std::string result = suite_introduction(expression);
+    for (int i = 0; i < body->expressions().length(); i++) {
+      Expression* statement = body->expressions()[i];
+      if (statement->is_Return() || statement->is_BreakContinue() ||
+          statement->is_While() || statement->is_For() ||
+          statement->is_TryFinally() ||
+          (statement->is_If() && statement->as_If()->yes() != null &&
+           statement->as_If()->yes()->is_Sequence())) {
+        supported_ = false;
+        return std::string();
+      }
+      result += (i == 0 ? " " : "; ") +
+          flat(statement, PRECEDENCE_NONE);
+    }
     return result;
   }
 
