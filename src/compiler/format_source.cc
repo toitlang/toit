@@ -234,26 +234,39 @@ bool FormatCommentState::all_consumed() const {
 bool FormatCommentState::render_own_line(int from,
                                          int to,
                                          int indentation_delta,
-                                         std::string* result) {
+                                         std::string* result,
+                                         int max_blank_lines) {
   ASSERT(result != null);
-  std::vector<std::string> rendered;
-  for (int id : unconsumed_in(from, to)) {
+  ASSERT(max_blank_lines >= 0);
+  std::vector<int> comments = unconsumed_in(from, to);
+  result->clear();
+  int previous_end_line = -1;
+  for (int id : comments) {
     const FormatComment& comment = source_->comments()[id];
     if (comment.follows_code) return false;
-    int column = std::max(0, comment.start_column + indentation_delta);
-    std::string text = std::string(column, ' ');
-    if (comment.spans_lines) {
-      text += source_->shift_multiline_comment(id, column);
-    } else {
-      text += comment.text;
+    if (previous_end_line >= 0) {
+      int blank_lines = std::min(
+          max_blank_lines,
+          std::max(0, comment.start_line - previous_end_line - 1));
+      result->append(1 + blank_lines, '\n');
     }
-    rendered.push_back(std::move(text));
+    int column = std::max(0, comment.start_column + indentation_delta);
+    *result += std::string(column, ' ');
+    if (comment.spans_lines) {
+      *result += source_->shift_multiline_comment(id, column);
+    } else {
+      *result += comment.text;
+    }
     consume(id);
+    previous_end_line = comment.end_line;
   }
-  result->clear();
-  for (const auto& text : rendered) {
-    if (!result->empty()) *result += "\n";
-    *result += text;
+
+  if (previous_end_line >= 0 && to < source_->source()->size()) {
+    int target_line = source_->line_index_at(to);
+    int blank_lines = std::min(
+        max_blank_lines,
+        std::max(0, target_line - previous_end_line - 1));
+    result->append(blank_lines, '\n');
   }
   return true;
 }

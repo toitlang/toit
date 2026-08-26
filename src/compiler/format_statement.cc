@@ -47,7 +47,8 @@ class StatementPrinter {
             cursor,
             expression_start,
             indentation - original_indentation,
-            &leading)) return false;
+            &leading,
+            style_.max_blank_lines)) return false;
         if (!leading.empty()) statements.push_back(std::move(leading));
       }
       std::string text;
