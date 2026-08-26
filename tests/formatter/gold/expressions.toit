@@ -39,6 +39,8 @@ main:
       : second
     if (catch: decode value):
       recover
+    if anchor := (try-parse: match alias and anchor-name):
+      consume anchor
     lookup := table.get key
         --initial=: result
         --compare=: | found | found == result
