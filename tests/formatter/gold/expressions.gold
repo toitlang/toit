@@ -57,21 +57,13 @@ main:
         """
 
 a := 1
-
 b := 2
-
 c := 3
-
 foo := true
-
 bar := false
-
 gee := true
-
 byte := 16
-
 x := 1
-
 y := 2
 
 consume value:

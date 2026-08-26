@@ -64,13 +64,21 @@ class UnitPrinter {
     }
     if (!directives.empty()) sections.push_back(join(directives, "\n"));
 
+    Node* previous_declaration = null;
     for (auto node : unit->declarations()) {
       std::string text;
       std::string prefix;
       if (!leading(node, 0, cursor, &prefix)) return false;
       if (!declaration(node, 0, &text)) return false;
       if (!prefix.empty()) text = prefix + "\n" + text;
-      sections.push_back(std::move(text));
+      if (previous_declaration != null &&
+          previous_declaration->is_Field() && node->is_Field()) {
+        ASSERT(!sections.empty());
+        sections.back() += "\n" + text;
+      } else {
+        sections.push_back(std::move(text));
+      }
+      previous_declaration = node;
       cursor = end(node);
     }
     std::string trailing;
@@ -343,6 +351,7 @@ class UnitPrinter {
 
     std::vector<std::string> members;
     int cursor = facts()->lines()[facts()->line_index_at(start(klass))].to;
+    Node* previous_member = null;
     for (auto member : klass->members()) {
       std::string text;
       std::string prefix;
@@ -353,7 +362,14 @@ class UnitPrinter {
       if (!declaration(
           member, indentation + style_.indentation_step, &text)) return false;
       if (!prefix.empty()) text = prefix + "\n" + text;
-      members.push_back(std::move(text));
+      if (previous_member != null &&
+          previous_member->is_Field() && member->is_Field()) {
+        ASSERT(!members.empty());
+        members.back() += "\n" + text;
+      } else {
+        members.push_back(std::move(text));
+      }
+      previous_member = member;
       cursor = end(member);
     }
     *result = header;
