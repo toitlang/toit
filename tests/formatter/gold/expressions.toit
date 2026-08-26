@@ -1,7 +1,9 @@
 main:
     precedence := ((a + b)) * c
     logical := foo and (bar or gee)
+    logical-layout := alpha-identifier-that-is-deliberately-very-long and beta-identifier-that-is-deliberately-very-long and gamma-identifier-that-is-deliberately-very-long
     bits := byte >> 4 & 0xf
+    resolver-sensitive := (Foo).bar
     call := consume  (build x y)
     bytes := #[1,2,  3]
     mapping := {one:1,two: 2}
