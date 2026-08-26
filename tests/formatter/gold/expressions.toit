@@ -20,6 +20,13 @@ main:
       execute
     while item/List? := next:
       print item
+    nested-calls := Schedule
+      parse-field fields[0] 0 59
+      parse-field fields[1] 0 59
+    block-before-last := put-list values.size (: values[it]) converter
+    lookup := table.get key
+        --initial=: result
+        --compare=: | found | found == result
 
 a := 1
 b := 2
