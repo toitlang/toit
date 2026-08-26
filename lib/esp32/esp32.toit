@@ -253,6 +253,27 @@ memory-page-report_ -> ByteArray:
   #primitive.esp32.memory-page-report
 
 /**
+Dumps the readable memory regions to the console UART and restarts the device.
+
+The dump is a terminal operation and this method does not return. It is only
+  available to the privileged system process. The binary stream is not mixed
+  with the normal console protocol and contains sensitive data from every
+  container on the device.
+
+The optional $baud-rate changes the console UART immediately before the
+  terminal dump starts. A value of zero keeps the configured console rate.
+
+This experimental API requires a UART console. Native USB consoles are not
+  currently supported. The firmware must be built with the terminal
+  device-memory dump option enabled.
+*/
+dump-memory --baud-rate/int=0 -> none:
+  dump-memory_ baud-rate
+
+dump-memory_ baud-rate/int -> none:
+  #primitive.esp32.dump-memory
+
+/**
 Sends (as a system message) a detailed report over the usage of memory at the OS level.
 */
 dump-heap -> none:
@@ -385,4 +406,3 @@ pm-lock-acquire_ resource/ByteArray:
 
 pm-lock-release_ resource/ByteArray:
   #primitive.esp32.pm-lock-release
-

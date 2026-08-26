@@ -641,6 +641,13 @@ class HeapPage extends Mirror:
   //   F 6 - free or heap overhead (header)
   //   W 7 - LwIP
   //   H 8 - Malloc heap overhead
+  //   ? 9 - Unknown
+  //   E 10 - Event source
+  //   O 11 - Other thread
+  //   P 12 - Spawned thread
+  //   ? 13 - Untagged
+  //   W 14 - Wi-Fi
+  //   L 15 - Bluetooth
 
   static GRANULARITY_ ::= 8
   static HEADER_ ::= 8
@@ -666,7 +673,7 @@ class HeapPage extends Mirror:
         offset += HEADER_
       repetitions := extra + (((byte >> 4) & 0b11) + 1) * GRANULARITY_
       use := byte & 0b1111
-      usage-char := "?ABSTUFWH?EOP?W "[use]
+      usage-char := "?ABSTUFWH?EOP?WL"[use]
       block.call offset repetitions usage-char (offset + repetitions == PAGE_)
       offset += repetitions
     if offset < PAGE_:

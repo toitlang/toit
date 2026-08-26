@@ -410,6 +410,7 @@ namespace toit {
   PRIMITIVE(total_deep_sleep_time, 0)        \
   PRIMITIVE(get_mac_address, 0)              \
   PRIMITIVE(memory_page_report, 0)           \
+  PRIMITIVE(dump_memory, 1)                  \
   PRIMITIVE(watchdog_init, 1)                \
   PRIMITIVE(watchdog_reset, 0)               \
   PRIMITIVE(watchdog_deinit, 0)              \
@@ -815,6 +816,7 @@ namespace toit {
 
 #define MODULE_DEBUG(PRIMITIVE)              \
   PRIMITIVE(object_histogram, 2)             \
+  PRIMITIVE(vm_state_checkpoint_arm, 0)     \
 
 #define MODULE_ESPNOW(PRIMITIVE)             \
   PRIMITIVE(init, 0)                         \

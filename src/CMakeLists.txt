@@ -113,6 +113,10 @@ add_library(
   ${toit_core_SRC}
   )
 
+if (TOIT_VM_STATE_CHECKPOINTS)
+  target_compile_definitions(toit_vm PRIVATE TOIT_VM_STATE_CHECKPOINTS)
+endif()
+
 add_library(
   toit_porting
   ${porting_sources_SRC}
