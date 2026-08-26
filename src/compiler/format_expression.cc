@@ -80,6 +80,14 @@ class ExpressionPrinter {
     return format(expression, PRECEDENCE_NONE, result);
   }
 
+  bool run_flat(Expression* expression, std::string* result) {
+    ASSERT(expression != null && result != null);
+    std::string text = flat(expression, PRECEDENCE_NONE);
+    if (!supported_) return false;
+    *result = text;
+    return true;
+  }
+
  private:
   Source* source_;
   int base_indentation_;
@@ -404,6 +412,15 @@ class ExpressionPrinter {
 };
 
 } // namespace
+
+bool format_expression_flat(Expression* expression,
+                            Source* source,
+                            std::string* result,
+                            const FormatExpressionOptions& options) {
+  ASSERT(source != null);
+  ExpressionPrinter printer(source, 0, FormatStyle(), options);
+  return printer.run_flat(expression, result);
+}
 
 bool format_expression(Expression* expression,
                        Source* source,
