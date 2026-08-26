@@ -9,6 +9,15 @@ main:
     call-layout := send first-argument-that-is-moderately-long second-argument-that-is-moderately-long third-argument-that-is-moderately-long
     many-arguments := consume arg01 arg02 arg03 arg04 arg05 arg06 arg07 arg08 arg09 arg10 arg11 arg12 arg13 arg14 arg15
     collection-layout := [aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb, cccccccccccccccccccccccccccccccccccccccc, dddddddddddddddddddddddddddddddddddddddd]
+    block-result := values.map: | value/int | value * 2
+    lambda-result := task:: run-background
+    named-block := parse value --if-error=: throw it
+    multi-block := values.do:
+      print it
+      total += it
+    multi-lambda := task::
+      prepare
+      execute
 
 a := 1
 b := 2

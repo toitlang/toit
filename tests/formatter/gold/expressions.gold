@@ -15,6 +15,15 @@ main:
     aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,
     cccccccccccccccccccccccccccccccccccccccc, dddddddddddddddddddddddddddddddddddddddd,
   ]
+  block-result := values.map: | value/int | value * 2
+  lambda-result := task:: run-background
+  named-block := parse value --if-error=: throw it
+  multi-block := values.do:
+    print it
+    total += it
+  multi-lambda := task::
+    prepare
+    execute
 
 a := 1
 
