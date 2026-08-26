@@ -131,6 +131,28 @@ static void test_format_expression(SourceManager* sources) {
   ASSERT(format(sources, "1 + (compute x)") == "1 + (compute x)");
   ASSERT(format(sources, "configure --no-cache") ==
       "configure --no-cache");
+
+  ASSERT(format(sources, "[]") == "[]");
+  ASSERT(format(sources, "{}") == "{}");
+  ASSERT(format(sources, "{:}") == "{:}");
+  ASSERT(format(sources, "#[1,2,  3]") == "#[1, 2, 3]");
+  ASSERT(format(sources, "{one:1,two: 2}") == "{one: 1, two: 2}");
+  ASSERT(format(
+      sources,
+      "[aaaaaaaaaa, bbbbbbbbbb, cccccccccc, dddddddddd]",
+      24) ==
+      "[\n"
+      "  aaaaaaaaaa, bbbbbbbbbb,\n"
+      "  cccccccccc, dddddddddd,\n"
+      "]");
+  ASSERT(format(
+      sources,
+      "{first-long: one-long, second-long: two-long}",
+      24) ==
+      "{\n"
+      "  first-long: one-long,\n"
+      "  second-long: two-long,\n"
+      "}");
 }
 
 } // namespace compiler

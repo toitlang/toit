@@ -203,6 +203,29 @@ class ExpressionPrinter {
         : "(" + result + ")";
   }
 
+  template<typename T>
+  std::string flat_elements(const char* opening,
+                            const char* closing,
+                            T elements) {
+    std::string result = opening;
+    for (int i = 0; i < elements.length(); i++) {
+      if (i > 0) result += ", ";
+      result += flat(elements[i], PRECEDENCE_NONE);
+    }
+    return result + closing;
+  }
+
+  std::string flat_map(LiteralMap* map) {
+    if (map->keys().is_empty()) return "{:}";
+    std::string result = "{";
+    for (int i = 0; i < map->keys().length(); i++) {
+      if (i > 0) result += ", ";
+      result += flat(map->keys()[i], PRECEDENCE_NONE) + ": " +
+          flat(map->values()[i], PRECEDENCE_NONE);
+    }
+    return result + "}";
+  }
+
   bool needs_bitwise_parentheses(Token::Kind parent,
                                  Token::Kind child) const {
     if (!options_.parenthesize_mixed_bitwise) return false;
@@ -263,6 +286,21 @@ class ExpressionPrinter {
     }
     if (expression->is_NamedArgument()) {
       return flat_named_argument(expression->as_NamedArgument());
+    }
+    if (expression->is_LiteralList()) {
+      return flat_elements(
+          "[", "]", expression->as_LiteralList()->elements());
+    }
+    if (expression->is_LiteralByteArray()) {
+      return flat_elements(
+          "#[", "]", expression->as_LiteralByteArray()->elements());
+    }
+    if (expression->is_LiteralSet()) {
+      return flat_elements(
+          "{", "}", expression->as_LiteralSet()->elements());
+    }
+    if (expression->is_LiteralMap()) {
+      return flat_map(expression->as_LiteralMap());
     }
     if (expression->is_Unary()) {
       Unary* unary = expression->as_Unary();
@@ -482,6 +520,105 @@ class ExpressionPrinter {
         : -1;
   }
 
+  FormatOutput broken_collection(const std::string& opening,
+                                 const std::string& closing,
+                                 const std::vector<std::string>& items) {
+    FormatOutput result = FormatOutput::single_line(opening);
+    std::string row;
+    int available = preferred_extent_at(base_indentation_, style_) -
+        style_.indentation_step;
+    for (const auto& item : items) {
+      std::string addition = item + ",";
+      int addition_width = utf8_code_point_width(addition);
+      int row_width = utf8_code_point_width(row);
+      if (!row.empty() && row_width + 1 + addition_width > available) {
+        result.add_line(style_.indentation_step, row);
+        row.clear();
+      }
+      if (!row.empty()) row += " ";
+      row += addition;
+    }
+    if (!row.empty()) result.add_line(style_.indentation_step, row);
+    result.add_line(0, closing);
+    return result;
+  }
+
+  std::vector<std::string> collection_items(Expression* expression) {
+    std::vector<std::string> result;
+    if (expression->is_LiteralList()) {
+      for (auto element : expression->as_LiteralList()->elements()) {
+        result.push_back(flat(element, PRECEDENCE_NONE));
+      }
+    } else if (expression->is_LiteralByteArray()) {
+      for (auto element : expression->as_LiteralByteArray()->elements()) {
+        result.push_back(flat(element, PRECEDENCE_NONE));
+      }
+    } else if (expression->is_LiteralSet()) {
+      for (auto element : expression->as_LiteralSet()->elements()) {
+        result.push_back(flat(element, PRECEDENCE_NONE));
+      }
+    } else {
+      LiteralMap* map = expression->as_LiteralMap();
+      for (int i = 0; i < map->keys().length(); i++) {
+        result.push_back(flat(map->keys()[i], PRECEDENCE_NONE) + ": " +
+            flat(map->values()[i], PRECEDENCE_NONE));
+      }
+    }
+    return result;
+  }
+
+  std::vector<int> collection_item_widths(Expression* expression) {
+    std::vector<int> result;
+    if (expression->is_LiteralList()) {
+      for (auto element : expression->as_LiteralList()->elements()) {
+        result.push_back(estimated_flat_width(element));
+      }
+    } else if (expression->is_LiteralByteArray()) {
+      for (auto element : expression->as_LiteralByteArray()->elements()) {
+        result.push_back(estimated_flat_width(element));
+      }
+    } else if (expression->is_LiteralSet()) {
+      for (auto element : expression->as_LiteralSet()->elements()) {
+        result.push_back(estimated_flat_width(element));
+      }
+    } else {
+      LiteralMap* map = expression->as_LiteralMap();
+      for (int i = 0; i < map->keys().length(); i++) {
+        int key = estimated_flat_width(map->keys()[i]);
+        int value = estimated_flat_width(map->values()[i]);
+        result.push_back(key < 0 || value < 0 ? -1 : key + 2 + value);
+      }
+    }
+    return result;
+  }
+
+  int estimated_collection_rows(const std::vector<int>& widths) {
+    int available = preferred_extent_at(base_indentation_, style_) -
+        style_.indentation_step;
+    int rows = 0;
+    int row_width = 0;
+    for (int width : widths) {
+      if (width < 0) return widths.size();
+      int addition = width + 1;
+      if (row_width > 0 && row_width + 1 + addition > available) {
+        rows++;
+        row_width = 0;
+      }
+      row_width += (row_width == 0 ? 0 : 1) + addition;
+    }
+    return rows + (row_width == 0 ? 0 : 1);
+  }
+
+  int estimated_collection_width(Expression* expression,
+                                 const std::vector<int>& widths) {
+    int result = expression->is_LiteralByteArray() ? 3 : 2;
+    for (int i = 0; i < static_cast<int>(widths.size()); i++) {
+      if (widths[i] < 0) return -1;
+      result += widths[i] + (i == 0 ? 0 : 2);
+    }
+    return result;
+  }
+
   bool render_flat(Expression* expression,
                    int outer_precedence,
                    FormatOutput* result) {
@@ -550,6 +687,32 @@ class ExpressionPrinter {
           } else {
             *result = broken_call(call);
           }
+          return supported_;
+        }
+      }
+    } else if (inner->is_LiteralList() ||
+               inner->is_LiteralByteArray() ||
+               inner->is_LiteralSet() ||
+               inner->is_LiteralMap()) {
+      std::vector<int> widths = collection_item_widths(inner);
+      if (!widths.empty()) {
+        int collection_width = estimated_collection_width(inner, widths);
+        int rows = estimated_collection_rows(widths);
+        if (!is_flat_acceptable(collection_width,
+                                base_indentation_,
+                                rows + 1,
+                                widths.size(),
+                                0,
+                                style_)) {
+          std::vector<std::string> items = collection_items(inner);
+          std::string opening = inner->is_LiteralList()
+              ? "["
+              : inner->is_LiteralByteArray() ? "#[" : "{";
+          std::string closing = inner->is_LiteralList() ||
+                  inner->is_LiteralByteArray()
+              ? "]"
+              : "}";
+          *result = broken_collection(opening, closing, items);
           return supported_;
         }
       }
