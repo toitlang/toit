@@ -66,6 +66,11 @@ bool is_static_receiver_candidate(Expression* expression) {
   return ++identifiers <= 3;
 }
 
+bool needs_call_argument_parentheses(Expression* expression) {
+  return expression->is_Call() || expression->is_Binary() ||
+      expression->is_If() || expression->is_DeclarationLocal();
+}
+
 class ExpressionPrinter {
  public:
   ExpressionPrinter(Source* source,
@@ -196,7 +201,12 @@ class ExpressionPrinter {
       result += "/" + flat(parameter->type(), PRECEDENCE_NONE);
     }
     if (parameter->default_value() != null) {
-      result += "=" + flat(parameter->default_value(), PRECEDENCE_NONE);
+      Expression* value = parameter->default_value();
+      bool preserve_parentheses = value->is_Parenthesis();
+      std::string value_text = flat(value, PRECEDENCE_NONE);
+      result += "=" + (preserve_parentheses
+          ? "(" + value_text + ")"
+          : value_text);
     }
     return result;
   }
@@ -277,7 +287,7 @@ class ExpressionPrinter {
         result += " (" + flat_suite(inner) + ")";
       } else if (argument->is_Block() || argument->is_Lambda()) {
         result += flat_suite(argument);
-      } else if (inner->is_Call()) {
+      } else if (needs_call_argument_parentheses(inner)) {
         result += " (" + flat(inner, PRECEDENCE_NONE) + ")";
       } else {
         result += " " + flat(argument, PRECEDENCE_NONE);
@@ -525,7 +535,7 @@ class ExpressionPrinter {
         (inner->is_Block() || inner->is_Lambda())) {
       return "(" + flat_suite(inner) + ")";
     }
-    if (inner->is_Call()) {
+    if (needs_call_argument_parentheses(inner)) {
       return "(" + flat(inner, PRECEDENCE_NONE) + ")";
     }
     return flat(argument, PRECEDENCE_NONE);
@@ -550,6 +560,17 @@ class ExpressionPrinter {
           : suite->as_Lambda()->body();
       if (body->expressions().length() != 1 ||
           i + 1 != call->arguments().length()) return true;
+      std::string body_text;
+      if (!format_sequence(body,
+                           source_,
+                           0,
+                           &body_text,
+                           style_,
+                           options_)) {
+        supported_ = false;
+        return true;
+      }
+      if (body_text.find('\n') != std::string::npos) return true;
     }
     return false;
   }

@@ -56,8 +56,13 @@ class StatementPrinter {
         int first_line = facts()->line_index_at(expression_start);
         int last_line = facts()->line_index_at(
             std::max(expression_start, end(expression) - 1));
-        text = comments_->render_verbatim(
-            first_line, last_line, indentation);
+        if (contains_multiline_string(expression)) {
+          text = comments_->render_verbatim_preserving_continuations(
+              first_line, last_line, indentation);
+        } else {
+          text = comments_->render_verbatim(
+              first_line, last_line, indentation);
+        }
       } else if (!statement(expression, indentation, &text)) {
         return false;
       }
@@ -97,14 +102,27 @@ class StatementPrinter {
         expression->is_TryFinally();
   }
 
+  bool contains_multiline_string(Expression* expression) const {
+    int from = start(expression);
+    int to = end(expression);
+    const uint8* bytes = source_->text();
+    for (int offset = from; offset + 2 < to; offset++) {
+      if (bytes[offset] == '"' && bytes[offset + 1] == '"' &&
+          bytes[offset + 2] == '"') return true;
+    }
+    return false;
+  }
+
   bool should_render_verbatim(Expression* expression) const {
     int from = start(expression);
+    int to = end(expression);
+    if (contains_multiline_string(expression)) return true;
     int first_line = facts()->line_index_at(from);
     int header_to = facts()->lines()[first_line].to;
     if (comments_->has_unconsumed_in(from, header_to)) return true;
     if (is_control(expression)) return false;
     int last_line = facts()->line_index_at(
-        std::max(from, end(expression) - 1));
+        std::max(from, to - 1));
     return comments_->has_unconsumed_in(
         facts()->lines()[first_line].from,
         facts()->lines()[last_line].to);

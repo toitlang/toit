@@ -24,9 +24,17 @@ main:
       parse-field fields[0] 0 59
       parse-field fields[1] 0 59
     block-before-last := put-list values.size (: values[it]) converter
+    conditional-argument := consume (byte == 0 ? 0 : 1)
     lookup := table.get key
         --initial=: result
         --compare=: | found | found == result
+    primitive: | error |
+      retry error: | value |
+        consume value
+    description := """
+        Keep this
+          relative indentation.
+        """
 
 a := 1
 b := 2

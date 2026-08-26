@@ -288,5 +288,26 @@ std::string FormatCommentState::render_verbatim(
   return result;
 }
 
+std::string FormatCommentState::render_verbatim_preserving_continuations(
+    int first_line, int last_line, int new_first_indentation) {
+  const auto& lines = source_->lines();
+  ASSERT(first_line >= 0 && first_line <= last_line &&
+         last_line < static_cast<int>(lines.size()));
+  int from = lines[first_line].from;
+  int to = lines[last_line].to;
+  for (int id : unconsumed_in(from, to)) consume(id);
+
+  std::string result = source_->reindent_line(
+      first_line, new_first_indentation);
+  if (first_line < last_line) {
+    result += source_->text(lines[first_line + 1].from, to);
+  }
+  while (!result.empty() &&
+         (result.back() == '\n' || result.back() == '\r')) {
+    result.pop_back();
+  }
+  return result;
+}
+
 } // namespace compiler
 } // namespace toit
