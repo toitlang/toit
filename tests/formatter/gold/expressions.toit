@@ -29,6 +29,7 @@ main:
     named-not := configure --hidden=(not foo)
     named-parenthesized-block := parse --if-error=(: null) value
     named-semicolon-block := parse --if-error=(: valid = false; null) value
+    named-return-block := parse --if-error=(:return false) value
     lambda-value := ::
       prepare
       execute
