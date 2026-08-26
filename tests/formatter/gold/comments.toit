@@ -13,8 +13,13 @@ main:
 
 
     grouped := 2
+    if value:
+      first
+    else:  // Keep the else header.
+      second
 
 class C:
+    abstract read -> List  // Keep abstract header.
     configure
         --x/int
         -> bool:  // Keep header placement.

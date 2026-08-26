@@ -124,6 +124,9 @@ class StatementPrinter {
     int from = start(expression);
     int to = end(expression);
     if (contains_multiline_string(expression)) return true;
+    for (int id : comments_->unconsumed_in(from, to)) {
+      if (facts()->comments()[id].follows_code) return true;
+    }
     int first_line = facts()->line_index_at(from);
     int header_to = facts()->lines()[first_line].to;
     if (comments_->has_unconsumed_in(from, header_to)) return true;
