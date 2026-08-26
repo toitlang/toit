@@ -68,7 +68,9 @@ bool is_static_receiver_candidate(Expression* expression) {
 
 bool needs_call_argument_parentheses(Expression* expression) {
   return expression->is_Call() || expression->is_Binary() ||
-      expression->is_If() || expression->is_DeclarationLocal();
+      expression->is_If() || expression->is_DeclarationLocal() ||
+      (expression->is_Unary() &&
+       expression->as_Unary()->kind() == Token::NOT);
 }
 
 class ExpressionPrinter {
@@ -187,7 +189,14 @@ class ExpressionPrinter {
     if (argument->inverted()) result += "no-";
     result += source_text(argument->name());
     if (argument->expression() != null) {
-      result += "=" + flat(argument->expression(), PRECEDENCE_NONE);
+      Expression* value = argument->expression();
+      Expression* inner = peel_parentheses(value);
+      std::string value_text = flat(inner, PRECEDENCE_NONE);
+      if (value->is_Parenthesis() ||
+          needs_call_argument_parentheses(inner)) {
+        value_text = "(" + value_text + ")";
+      }
+      result += "=" + value_text;
     }
     return result;
   }

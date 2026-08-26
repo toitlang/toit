@@ -25,6 +25,9 @@ main:
       parse-field fields[1] 0 59
     block-before-last := put-list values.size (: values[it]) converter
     conditional-argument := consume (byte == 0 ? 0 : 1)
+    named-binary := configure --enabled=(foo or bar)
+    named-not := configure --hidden=(not foo)
+    named-parenthesized-block := parse --if-error=(: null) value
     lookup := table.get key
         --initial=: result
         --compare=: | found | found == result
