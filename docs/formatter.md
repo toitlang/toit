@@ -63,7 +63,7 @@ score considers:
 * the number of additional physical lines;
 * the number of items split across lines;
 * construct-specific readability costs; and
-* optional, slight pressure from the current indentation.
+* slight pressure from the enclosing indentation.
 
 An indented construct may extend farther right than a top-level construct.
 Indentation may nevertheless move the soft breaking point slightly left
@@ -83,9 +83,35 @@ Initial canonical choices are:
 * at most two preserved blank lines; and
 * two spaces before a trailing comment unless it is lexically attached.
 
-Collection and call shapes deliberately remain scoring experiments.  Internal
-style switches may compare alternatives during development, but the released
-formatter will expose one canonical style rather than user configuration.
+Consecutive fields form a compact group with one field per line.  Methods,
+classes, and transitions between declaration kinds retain a blank separator.
+
+Call, method-header, binary, and collection layouts are adaptive rather than
+global modes.  Each AST node contributes its legal candidates, and the common
+score chooses among flat, partially broken, fully broken, packed-row, and
+backslash forms according to both extent and item count.  There are no
+user-facing or development style switches in the command.
+
+## Calibration
+
+The initial canonical output was measured over all 269 Toit files under
+`lib`, `tools`, and `examples`.  The final policy formats every file and
+changes 257 of them (8,160 inserted and 11,124 removed lines), so the first
+application is intentionally a broad normalization rather than a small
+whitespace cleanup.
+
+Disabling clarity parentheses between unlike bitwise operators changed 43
+files and repeatedly hid useful grouping, so those parentheses are canonical
+and the experimental switch was removed.  Disabling indentation pressure
+changed 10 files.  Counting only enclosing indentation, rather than counting
+continuation indentation a second time, changes four files relative to the
+original scoring and retains the desired slight pressure to break earlier.
+
+The corpus and gold cases also exercise the adaptive outcomes: many compact
+arguments may remain on one long line, a backslash may avoid a line per
+argument, named suffixes may split independently, and collections may pack
+several items per row.  These are outcomes of one score, not formatter modes
+or user preferences.
 
 ## Grammar constraints
 
@@ -170,10 +196,11 @@ be one commit and may be submitted as one PR in a stacked review.
 12. **Integrate `toit format`.** Add the hidden CLI command, verifier gate,
     atomic in-place writes, golden tests, idempotence tests, and corpus-level
     formatting over `lib`, `tools`, and `examples`.
-13. **Calibrate canonical choices.** Run experimental call, collection,
-    binary-argument, and indentation-pressure modes over representative Toit
-    repositories.  Record churn and shape counts, choose one mode for each,
-    and remove the development switches before enabling the command.
+13. **Calibrate canonical choices.** Compare call, collection,
+    binary-argument, bitwise-grouping, and indentation-pressure alternatives
+    over representative Toit repositories.  Record the churn and selected
+    shapes, retain one adaptive scoring policy, and remove the development
+    switches before enabling the command.
 
 The golden corpus is specification data.  Each case checks exact output,
 idempotence, reparsing, AST equivalence, and comment preservation.  Corpus
