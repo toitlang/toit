@@ -30,11 +30,9 @@ class StatementPrinter {
  public:
   StatementPrinter(Source* source,
                    const FormatStyle& style,
-                   const FormatExpressionOptions& expression_options,
                    FormatCommentState* comments)
       : source_(source)
       , style_(style)
-      , expression_options_(expression_options)
       , comments_(comments) {}
 
   bool sequence(Sequence* sequence, int indentation, std::string* result) {
@@ -83,7 +81,6 @@ class StatementPrinter {
  private:
   Source* source_;
   const FormatStyle& style_;
-  const FormatExpressionOptions& expression_options_;
   FormatCommentState* comments_;
 
   FormatSource* facts() const {
@@ -150,8 +147,7 @@ class StatementPrinter {
   }
 
   bool flat(Expression* expression, std::string* result) {
-    return format_expression_flat(
-        expression, source_, result, expression_options_);
+    return format_expression_flat(expression, source_, result);
   }
 
   bool condition(Expression* expression, std::string* result) {
@@ -170,8 +166,7 @@ class StatementPrinter {
                              source_,
                              indentation,
                              result,
-                             style_,
-                             expression_options_);
+                             style_);
   }
 
   static std::string indent(int indentation) {
@@ -401,11 +396,10 @@ bool format_sequence(Sequence* sequence,
                      int indentation,
                      std::string* result,
                      const FormatStyle& style,
-                     const FormatExpressionOptions& expression_options,
                      FormatCommentState* comments) {
   ASSERT(source != null && result != null);
   ASSERT(indentation >= 0);
-  StatementPrinter printer(source, style, expression_options, comments);
+  StatementPrinter printer(source, style, comments);
   return printer.sequence(sequence, indentation, result);
 }
 

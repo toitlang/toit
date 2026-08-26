@@ -25,11 +25,9 @@ class UnitPrinter {
  public:
   UnitPrinter(Source* source,
               const FormatStyle& style,
-              const FormatExpressionOptions& expression_options,
               FormatCommentState* comments)
       : source_(source)
       , style_(style)
-      , expression_options_(expression_options)
       , comments_(comments) {}
 
   bool run(Unit* unit, std::string* result) {
@@ -91,7 +89,6 @@ class UnitPrinter {
  private:
   Source* source_;
   const FormatStyle& style_;
-  const FormatExpressionOptions& expression_options_;
   FormatCommentState* comments_;
 
   const FormatSource* facts() const { return comments_->source(); }
@@ -184,8 +181,7 @@ class UnitPrinter {
   }
 
   bool flat(Expression* expression, std::string* result) {
-    return format_expression_flat(
-        expression, source_, result, expression_options_);
+    return format_expression_flat(expression, source_, result);
   }
 
   bool format_import(Import* import, std::string* result) {
@@ -268,8 +264,7 @@ class UnitPrinter {
                            source_,
                            indentation,
                            &initializer,
-                           style_,
-                           expression_options_)) return false;
+                           style_)) return false;
     prefix += field->is_final() ? " ::= " : " := ";
     ASSERT(!initializer.lines().empty());
     *result = prefix + initializer.lines()[0].text;
@@ -292,8 +287,7 @@ class UnitPrinter {
                               source_,
                               indentation,
                               &header,
-                              style_,
-                              expression_options_)) return false;
+                              style_)) return false;
     *result = header.render(indentation);
     if (method->body() != null) {
       std::string body;
@@ -302,7 +296,6 @@ class UnitPrinter {
                            indentation + style_.indentation_step,
                            &body,
                            style_,
-                           expression_options_,
                            comments_)) return false;
       if (!body.empty()) *result += "\n" + body;
     }
@@ -382,12 +375,11 @@ bool format_unit(Unit* unit,
                  Source* source,
                  List<Scanner::Comment> comments,
                  std::string* result,
-                 const FormatStyle& style,
-                 const FormatExpressionOptions& expression_options) {
+                 const FormatStyle& style) {
   ASSERT(unit != null && source != null && result != null);
   FormatSource facts(source, comments);
   FormatCommentState comment_state(&facts);
-  UnitPrinter printer(source, style, expression_options, &comment_state);
+  UnitPrinter printer(source, style, &comment_state);
   if (!printer.run(unit, result)) return false;
   return comment_state.all_consumed();
 }
