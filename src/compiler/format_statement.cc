@@ -19,6 +19,13 @@ using namespace ast;
 
 namespace {
 
+Expression* peel_parentheses(Expression* expression) {
+  while (expression != null && expression->is_Parenthesis()) {
+    expression = expression->as_Parenthesis()->expression();
+  }
+  return expression;
+}
+
 class StatementPrinter {
  public:
   StatementPrinter(Source* source,
@@ -143,6 +150,15 @@ class StatementPrinter {
         expression, source_, result, expression_options_);
   }
 
+  bool condition(Expression* expression, std::string* result) {
+    if (!flat(expression, result)) return false;
+    if (expression->is_Parenthesis() &&
+        peel_parentheses(expression)->is_Call()) {
+      *result = "(" + *result + ")";
+    }
+    return true;
+  }
+
   bool formatted(Expression* expression,
                  int indentation,
                  FormatOutput* result) {
@@ -201,7 +217,7 @@ class StatementPrinter {
                   const std::string& keyword,
                   std::string* result) {
     std::string condition;
-    if (!flat(conditional->expression(), &condition)) return false;
+    if (!this->condition(conditional->expression(), &condition)) return false;
     std::string body;
     if (!suite(conditional->yes(),
                indentation + style_.indentation_step,
@@ -264,6 +280,19 @@ class StatementPrinter {
       *result = render_prefixed(prefix + " ", value, indentation);
       return true;
     }
+    if (expression->is_Binary() &&
+        Token::precedence(expression->as_Binary()->kind()) ==
+            PRECEDENCE_ASSIGNMENT) {
+      Binary* assignment = expression->as_Binary();
+      std::string left;
+      if (!flat(assignment->left(), &left)) return false;
+      FormatOutput value;
+      if (!formatted(assignment->right(), indentation, &value)) return false;
+      std::string operation = Token::symbol(assignment->kind()).c_str();
+      *result = render_prefixed(
+          left + " " + operation + " ", value, indentation);
+      return true;
+    }
     if (expression->is_BreakContinue()) {
       BreakContinue* jump = expression->as_BreakContinue();
       std::string text = jump->is_break() ? "break" : "continue";
@@ -289,7 +318,7 @@ class StatementPrinter {
     if (expression->is_While()) {
       While* loop = expression->as_While();
       std::string condition;
-      if (!flat(loop->condition(), &condition)) return false;
+      if (!this->condition(loop->condition(), &condition)) return false;
       std::string body;
       if (!suite(loop->body(),
                  indentation + style_.indentation_step,

@@ -266,13 +266,20 @@ class ExpressionPrinter {
       supported_ = false;
       return std::string();
     }
+    Expression* only = body->expressions().first();
     std::string body_text;
-    if (!format_sequence(body,
-                         source_,
-                         0,
-                         &body_text,
-                         style_,
-                         options_)) {
+    if (!only->is_Return() && !only->is_BreakContinue() &&
+        !only->is_While() && !only->is_For() &&
+        !only->is_TryFinally() &&
+        !(only->is_If() && only->as_If()->yes() != null &&
+          only->as_If()->yes()->is_Sequence())) {
+      body_text = flat(only, PRECEDENCE_NONE);
+    } else if (!format_sequence(body,
+                                source_,
+                                0,
+                                &body_text,
+                                style_,
+                                options_)) {
       supported_ = false;
       return std::string();
     }
@@ -635,7 +642,6 @@ class ExpressionPrinter {
         result->add_line(style_.continuation_step, call_argument(argument));
         continue;
       }
-      if (!argument->is_NamedArgument()) return false;
       Sequence* body = suite->is_Block()
           ? suite->as_Block()->body()
           : suite->as_Lambda()->body();
@@ -650,8 +656,9 @@ class ExpressionPrinter {
           result,
           style_.continuation_step,
           style_.continuation_step + style_.indentation_step,
-          named_suite_prefix(argument->as_NamedArgument()) +
-              suite_introduction(suite),
+          (argument->is_NamedArgument()
+              ? named_suite_prefix(argument->as_NamedArgument())
+              : std::string()) + suite_introduction(suite),
           body_text);
     }
     return true;
@@ -896,6 +903,42 @@ class ExpressionPrinter {
               int outer_precedence,
               FormatOutput* result) {
     Expression* inner = peel_parentheses(expression);
+    if ((inner->is_Block() || inner->is_Lambda()) &&
+        outer_precedence == PRECEDENCE_NONE) {
+      Sequence* body = inner->is_Block()
+          ? inner->as_Block()->body()
+          : inner->as_Lambda()->body();
+      std::string body_text;
+      if (!format_sequence(body,
+                           source_,
+                           0,
+                           &body_text,
+                           style_,
+                           options_)) {
+        supported_ = false;
+        return false;
+      }
+      if (body_text.find('\n') != std::string::npos) {
+        FormatOutput suite_output = FormatOutput::single_line(
+            suite_introduction(inner));
+        size_t line_start = 0;
+        while (line_start < body_text.size()) {
+          size_t line_end = body_text.find('\n', line_start);
+          if (line_end == std::string::npos) line_end = body_text.size();
+          size_t non_space = line_start;
+          while (non_space < line_end && body_text[non_space] == ' ') {
+            non_space++;
+          }
+          suite_output.add_line(
+              style_.indentation_step +
+                  static_cast<int>(non_space - line_start),
+              body_text.substr(non_space, line_end - non_space));
+          line_start = line_end + 1;
+        }
+        *result = std::move(suite_output);
+        return true;
+      }
+    }
     if (inner->is_Call() && outer_precedence == PRECEDENCE_NONE &&
         call_requires_suite_shape(inner->as_Call())) {
       FormatOutput suite_output;

@@ -28,6 +28,17 @@ main:
     named-binary := configure --enabled=(foo or bar)
     named-not := configure --hidden=(not foo)
     named-parenthesized-block := parse --if-error=(: null) value
+    lambda-value := ::
+      prepare
+      execute
+    assigned = values.map:
+      prepare
+      execute
+    dispatch value
+      : first
+      : second
+    if (catch: decode value):
+      recover
     lookup := table.get key
         --initial=: result
         --compare=: | found | found == result
