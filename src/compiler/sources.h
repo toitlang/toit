@@ -267,6 +267,14 @@ class SourceManager {
   bool is_loaded(const char* path);
   bool is_loaded(const std::string& path);
 
+  /// Registers an in-memory source under $virtual_path.
+  ///
+  /// The source manager copies $bytes and owns the resulting buffer. This is
+  /// useful for parsing generated output without first writing it to disk.
+  Source* load_from_memory(const std::string& virtual_path,
+                           const uint8* bytes,
+                           int size);
+
  private:
   Filesystem* filesystem_;
 
