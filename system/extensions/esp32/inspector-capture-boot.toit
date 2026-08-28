@@ -38,7 +38,7 @@ class SystemImage extends ContainerImage:
 main:
   task::
     sleep --ms=15_000
-    esp32.dump-memory
+    esp32.dump-memory --baud-rate=460_800
 
   registry ::= FlashRegistry.scan
   service-manager ::= SystemServiceManager

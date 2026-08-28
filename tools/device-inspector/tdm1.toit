@@ -529,7 +529,10 @@ find-sync bytes/ByteArray from/int -> int:
   while position + 4 <= bytes.size:
     position = bytes.index-of 'T' --from=position
     if position < 0: return -1
-    if bytes[position..position + 4].to-string == SYNC: return position
+    if bytes[position + 1] == 'D' and
+        bytes[position + 2] == 'M' and
+        bytes[position + 3] == '1':
+      return position
     position++
   return -1
 

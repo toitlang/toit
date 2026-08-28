@@ -19,6 +19,7 @@ main:
   test-golden-frame
   with-tmp-directory: | tmp/string |
     test-complete-with-prefix-noise tmp
+    test-binary-prefix-noise tmp
     test-crc-loss-is-explicitly-partial tmp
     test-missing-end-is-partial tmp
     test-broken-region-continuity-is-rejected tmp
@@ -74,6 +75,22 @@ test-complete-with-prefix-noise tmp/string:
   expect-equals 1 provenance["transport"]["diagnostics"]["trailing-candidate-errors"]
   expect-equals
       13 + false-sync.size
+      provenance["transport"]["diagnostics"]["prefix-noise-bytes"]
+
+test-binary-prefix-noise tmp/string:
+  // UART baud-rate transitions can produce arbitrary bytes. A stray 'T'
+  // must not make the sync scanner interpret the following bytes as UTF-8.
+  noise := #['T', 0xff, 0xfe, 0xfd]
+  info := info-frame --expected-regions=1 --capture-flags=0
+  region := frame tdm1.TYPE-REGION 1 3 1 0 0x3ffb_0000 #[42]
+  capture := tdm1.import-bytes
+      (noise + info + region + (end-frame 2 1 1 1))
+      "$tmp/binary-prefix-noise.toitdump"
+  expect-equals "complete" capture.metadata["completeness"]["state"]
+  expect-equals #[42] (capture.read 0x3ffb_0000 1)
+  provenance/Map := capture.metadata["provenance"]
+  expect-equals
+      noise.size
       provenance["transport"]["diagnostics"]["prefix-noise-bytes"]
 
 test-crc-loss-is-explicitly-partial tmp/string:
