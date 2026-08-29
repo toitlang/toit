@@ -64,7 +64,10 @@ PRIMITIVE(init) {
 PRIMITIVE(wait_for) {
   ARGS(IntResource, subprocess);
   if (subprocess->resource_group()->event_source() != SubprocessEventSource::instance()) FAIL(WRONG_OBJECT_TYPE);
-  subprocess->resource_group()->register_resource(subprocess);
+  ResourceGroup* group = subprocess->resource_group();
+  // A wait can be interrupted and retried. Registering the same intrusive-list
+  // node twice corrupts both the resource group and subprocess event source.
+  if (!group->is_resource_registered(subprocess)) group->register_resource(subprocess);
   return process->null_object();
 }
 
@@ -81,7 +84,10 @@ PRIMITIVE(dont_wait_for) {
 PRIMITIVE(kill) {
   ARGS(IntResource, subprocess, int, signal);
   if (subprocess->resource_group()->event_source() != SubprocessEventSource::instance()) FAIL(WRONG_OBJECT_TYPE);
-  kill(subprocess->id(), signal);
+  if (::kill(subprocess->id(), signal) != 0) {
+    if (errno == EINVAL) FAIL(INVALID_ARGUMENT);
+    return Primitive::os_error(errno, process);
+  }
   return process->null_object();
 }
 

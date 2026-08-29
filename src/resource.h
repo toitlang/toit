@@ -108,6 +108,9 @@ class ResourceGroup : public ResourceGroupListFromProcess::Element {
 
   IntResource* register_id(word id);
   void register_resource(Resource* resource);
+  bool is_resource_registered(Resource* resource) const {
+    return resources_.is_linked(resource);
+  }
 
   void unregister_id(word id);
   void unregister_resource(Resource* resource);
