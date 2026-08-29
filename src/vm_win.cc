@@ -24,7 +24,7 @@
 #include "event_sources/tls.h"
 #include "event_sources/event_win.h"
 #include "event_sources/stdio_host.h"
-#include "event_sources/terminal.h"
+#include "event_sources/terminal_win.h"
 
 namespace toit {
 

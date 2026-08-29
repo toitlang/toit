@@ -26,7 +26,7 @@
 #include "event_sources/spi_linux.h"
 #include "event_sources/stdio_host.h"
 #include "event_sources/subprocess.h"
-#include "event_sources/terminal.h"
+#include "event_sources/terminal_posix.h"
 #include "event_sources/timer.h"
 #include "event_sources/tls.h"
 

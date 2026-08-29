@@ -4,20 +4,13 @@
 
 #include "../top.h"
 
-#if !defined(TOIT_FREERTOS)
+#ifdef TOIT_POSIX
 
-#ifdef TOIT_WINDOWS
-#include <io.h>
-#include <windows.h>
-
-#include "../error_win.h"
-#else
 #include <errno.h>
 #include <termios.h>
 #include <unistd.h>
-#endif
 
-#include "../event_sources/terminal.h"
+#include "../event_sources/terminal_posix.h"
 #include "../objects_inline.h"
 #include "../primitive.h"
 #include "../process.h"
@@ -29,43 +22,56 @@ class TerminalModeResource : public Resource {
  public:
   TAG(TerminalModeResource);
 
-#ifdef TOIT_WINDOWS
-  TerminalModeResource(ResourceGroup* group, HANDLE handle, DWORD original_mode)
-      : Resource(group)
-      , handle_(handle)
-      , original_mode_(original_mode)
-      , active_(true) {}
-#else
+  static bool is_claimed(int fd) {
+    for (TerminalModeResource* current = claimed_; current != null; current = current->next_) {
+      if (current->fd_ == fd) return true;
+    }
+    return false;
+  }
+
   TerminalModeResource(ResourceGroup* group, int fd, const termios& original_mode)
       : Resource(group)
       , fd_(fd)
       , original_mode_(original_mode)
-      , active_(true) {}
-#endif
+      , next_(claimed_) {
+    claimed_ = this;
+  }
 
-  ~TerminalModeResource() override { restore(); }
+  ~TerminalModeResource() override {
+    Locker locker(OS::global_mutex());
+    if (!active_) return;
+    tcsetattr(fd_, TCSAFLUSH, &original_mode_);
+    release_claim_();
+  }
 
   int restore() {
+    Locker locker(OS::global_mutex());
     if (!active_) return 0;
-#ifdef TOIT_WINDOWS
-    if (!SetConsoleMode(handle_, original_mode_)) return GetLastError();
-#else
     if (tcsetattr(fd_, TCSAFLUSH, &original_mode_) != 0) return errno;
-#endif
-    active_ = false;
+    release_claim_();
     return 0;
   }
 
  private:
-#ifdef TOIT_WINDOWS
-  HANDLE handle_;
-  DWORD original_mode_;
-#else
+  void release_claim_() {
+    TerminalModeResource** link = &claimed_;
+    while (*link != this) {
+      ASSERT(*link != null);
+      link = &(*link)->next_;
+    }
+    *link = next_;
+    active_ = false;
+  }
+
+  static TerminalModeResource* claimed_;
+
   int fd_;
   termios original_mode_;
-#endif
-  bool active_;
+  TerminalModeResource* next_;
+  bool active_ = true;
 };
+
+TerminalModeResource* TerminalModeResource::claimed_ = null;
 
 class TerminalResizeResourceGroup : public ResourceGroup {
  public:
@@ -95,12 +101,7 @@ PRIMITIVE(init) {
 
 PRIMITIVE(is_terminal) {
   ARGS(int, fd);
-
-#ifdef TOIT_WINDOWS
-  return _isatty(fd) ? process->true_object() : process->false_object();
-#else
-  return isatty(fd) ? process->true_object() : process->false_object();
-#endif
+  return BOOL(isatty(fd));
 }
 
 PRIMITIVE(enter_raw) {
@@ -109,41 +110,31 @@ PRIMITIVE(enter_raw) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-#ifdef TOIT_WINDOWS
-  intptr_t os_handle = _get_osfhandle(fd);
-  if (os_handle == -1) return windows_error(process, ERROR_INVALID_HANDLE);
-  HANDLE handle = reinterpret_cast<HANDLE>(os_handle);
-
-  DWORD original_mode;
-  if (!GetConsoleMode(handle, &original_mode)) return windows_error(process);
-
-  DWORD raw_mode = original_mode;
-  raw_mode &= ~(ENABLE_ECHO_INPUT |
-                ENABLE_LINE_INPUT |
-                ENABLE_PROCESSED_INPUT |
-                ENABLE_QUICK_EDIT_MODE);
-  raw_mode |= ENABLE_EXTENDED_FLAGS | ENABLE_VIRTUAL_TERMINAL_INPUT;
-  if (!SetConsoleMode(handle, raw_mode)) return windows_error(process);
-
-  auto resource = _new TerminalModeResource(group, handle, original_mode);
-  if (resource == null) {
-    SetConsoleMode(handle, original_mode);
-    FAIL(MALLOC_FAILED);
+  TerminalModeResource* resource = null;
+  int error = 0;
+  bool already_in_use = false;
+  {
+    Locker locker(OS::global_mutex());
+    already_in_use = TerminalModeResource::is_claimed(fd);
+    if (!already_in_use) {
+      termios original_mode;
+      if (tcgetattr(fd, &original_mode) != 0) {
+        error = errno;
+      } else {
+        termios raw_mode = original_mode;
+        cfmakeraw(&raw_mode);
+        if (tcsetattr(fd, TCSAFLUSH, &raw_mode) != 0) {
+          error = errno;
+        } else {
+          resource = _new TerminalModeResource(group, fd, original_mode);
+          if (resource == null) tcsetattr(fd, TCSAFLUSH, &original_mode);
+        }
+      }
+    }
   }
-#else
-  termios original_mode;
-  if (tcgetattr(fd, &original_mode) != 0) return Primitive::os_error(errno, process);
-
-  termios raw_mode = original_mode;
-  cfmakeraw(&raw_mode);
-  if (tcsetattr(fd, TCSAFLUSH, &raw_mode) != 0) return Primitive::os_error(errno, process);
-
-  auto resource = _new TerminalModeResource(group, fd, original_mode);
-  if (resource == null) {
-    tcsetattr(fd, TCSAFLUSH, &original_mode);
-    FAIL(MALLOC_FAILED);
-  }
-#endif
+  if (already_in_use) FAIL(ALREADY_IN_USE);
+  if (error != 0) return Primitive::os_error(error, process);
+  if (resource == null) FAIL(MALLOC_FAILED);
 
   group->register_resource(resource);
   proxy->set_external_address(resource);
@@ -155,13 +146,7 @@ PRIMITIVE(restore) {
   if (resource->resource_group() != group) FAIL(WRONG_OBJECT_TYPE);
 
   int error = resource->restore();
-  if (error != 0) {
-#ifdef TOIT_WINDOWS
-    return windows_error(process, error);
-#else
-    return Primitive::os_error(error, process);
-#endif
-  }
+  if (error != 0) return Primitive::os_error(error, process);
 
   group->unregister_resource(resource);
   resource_proxy->clear_external_address();
@@ -173,13 +158,7 @@ PRIMITIVE(size) {
 
   TerminalDimensions dimensions;
   int error = read_terminal_dimensions(fd, &dimensions);
-  if (error != 0) {
-#ifdef TOIT_WINDOWS
-    return windows_error(process, error);
-#else
-    return Primitive::os_error(error, process);
-#endif
-  }
+  if (error != 0) return Primitive::os_error(error, process);
 
   Array* result = process->object_heap()->allocate_array(4, Smi::zero());
   if (result == null) FAIL(ALLOCATION_FAILED);
@@ -212,13 +191,7 @@ PRIMITIVE(resize_watch) {
 
   TerminalDimensions dimensions;
   int error = read_terminal_dimensions(fd, &dimensions);
-  if (error != 0) {
-#ifdef TOIT_WINDOWS
-    return windows_error(process, error);
-#else
-    return Primitive::os_error(error, process);
-#endif
-  }
+  if (error != 0) return Primitive::os_error(error, process);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
@@ -245,23 +218,4 @@ PRIMITIVE(resize_unwatch) {
 
 }  // namespace toit
 
-#else
-
-#include "../primitive.h"
-
-namespace toit {
-
-MODULE_IMPLEMENTATION(terminal, MODULE_TERMINAL)
-
-PRIMITIVE(init) { FAIL(UNSUPPORTED); }
-PRIMITIVE(is_terminal) { FAIL(UNSUPPORTED); }
-PRIMITIVE(enter_raw) { FAIL(UNSUPPORTED); }
-PRIMITIVE(restore) { FAIL(UNSUPPORTED); }
-PRIMITIVE(size) { FAIL(UNSUPPORTED); }
-PRIMITIVE(resize_init) { FAIL(UNSUPPORTED); }
-PRIMITIVE(resize_watch) { FAIL(UNSUPPORTED); }
-PRIMITIVE(resize_unwatch) { FAIL(UNSUPPORTED); }
-
-}  // namespace toit
-
-#endif
+#endif  // TOIT_POSIX

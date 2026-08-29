@@ -3,11 +3,16 @@
 # found in the lib/LICENSE file.
 
 if(UNIX)
-  add_executable(terminal-test-runner terminal-test-runner.cc)
+  add_executable(terminal-test-runner terminal-test-runner-posix.cc)
   find_library(TERMINAL_UTIL_LIBRARY util)
   if(TERMINAL_UTIL_LIBRARY)
     target_link_libraries(terminal-test-runner PRIVATE ${TERMINAL_UTIL_LIBRARY})
   endif()
+elseif(WIN32)
+  add_executable(terminal-test-runner terminal-test-runner-win.cc)
+endif()
+
+if(TARGET terminal-test-runner)
   add_dependencies(build_test_assets terminal-test-runner)
 
   add_test(

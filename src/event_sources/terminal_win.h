@@ -6,7 +6,7 @@
 
 #include "../top.h"
 
-#if !defined(TOIT_FREERTOS)
+#ifdef TOIT_WINDOWS
 
 #include "../os.h"
 #include "../resource.h"
@@ -27,7 +27,7 @@ struct TerminalDimensions {
   }
 };
 
-// Returns zero on success and an OS error code otherwise.
+// Returns zero on success and a Windows error code otherwise.
 int read_terminal_dimensions(int fd, TerminalDimensions* dimensions);
 
 class TerminalResizeResource : public Resource {
@@ -69,14 +69,10 @@ class TerminalResizeEventSource : public LazyEventSource, public Thread {
 
   static TerminalResizeEventSource* instance_;
 
-#ifdef TOIT_WINDOWS
   ConditionVariable* changed_;
-#else
-  int wake_pipe_[2] = { -1, -1 };
-#endif
   bool stopping_ = false;
 };
 
 }  // namespace toit
 
-#endif  // !defined(TOIT_FREERTOS)
+#endif  // TOIT_WINDOWS

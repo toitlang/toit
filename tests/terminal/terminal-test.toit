@@ -10,28 +10,34 @@ RESIZE-EVENT ::= 1 << 0
 main:
   assert: terminal-is-terminal_ 0
   assert: not (terminal-is-terminal_ -1)
-  assert-size_ 80 24
+  assert-size_ 1 80 24
 
   mode-group := terminal-init_
   mode-resource := terminal-enter-raw_ mode-group 0
   print "RAW"
   input := io.stdin.read
   assert: input and input.size == 1 and input[0] == 'x'
+
+  second-mode-group := terminal-init_
+  assert: (catch: terminal-enter-raw_ second-mode-group 0) == "ALREADY_IN_USE"
   terminal-restore_ mode-resource mode-group
+
+  second-mode-resource := terminal-enter-raw_ second-mode-group 0
+  terminal-restore_ second-mode-resource second-mode-group
   print "RESTORED"
 
   resize-group := terminal-resize-init_
-  resize-resource := terminal-resize-watch_ resize-group 0
+  resize-resource := terminal-resize-watch_ resize-group 1
   resize-state := monitor.ResourceState_ resize-group resize-resource
   print "WATCHING"
   assert: resize-state.wait-for-state RESIZE-EVENT == RESIZE-EVENT
-  assert-size_ 100 30
+  assert-size_ 1 100 30
   resize-state.dispose
   terminal-resize-unwatch_ resize-resource resize-group
   print "DONE"
 
-assert-size_ expected-columns/int expected-rows/int -> none:
-  size := terminal-size_ 0
+assert-size_ fd/int expected-columns/int expected-rows/int -> none:
+  size := terminal-size_ fd
   assert: size.size == 4
   assert: size[0] == expected-columns
   assert: size[1] == expected-rows
