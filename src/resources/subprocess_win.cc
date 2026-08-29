@@ -95,8 +95,8 @@ PRIMITIVE(kill) {
   ARGS(SubprocessResource, subprocess, int, signal);
   if (signal != 9) FAIL(INVALID_ARGUMENT);
 
+  if (!TerminateProcess(subprocess->handle(), signal)) WINDOWS_ERROR;
   subprocess->set_killed();
-  TerminateProcess(subprocess->handle(), signal);
   return process->null_object();
 }
 
