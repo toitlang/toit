@@ -84,7 +84,10 @@ PRIMITIVE(dont_wait_for) {
 PRIMITIVE(kill) {
   ARGS(IntResource, subprocess, int, signal);
   if (subprocess->resource_group()->event_source() != SubprocessEventSource::instance()) FAIL(WRONG_OBJECT_TYPE);
-  if (::kill(subprocess->id(), signal) != 0) return Primitive::os_error(errno, process);
+  if (::kill(subprocess->id(), signal) != 0) {
+    if (errno == EINVAL) FAIL(INVALID_ARGUMENT);
+    return Primitive::os_error(errno, process);
+  }
   return process->null_object();
 }
 

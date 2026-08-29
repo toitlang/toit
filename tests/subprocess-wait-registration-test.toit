@@ -18,7 +18,7 @@ main:
     // Native signaling failures must reach the caller. Signal 999 is outside
     // the supported range and cannot be delivered on any host platform.
     error := catch: pipe.kill_ process.pid 999
-    expect-not-null error
+    expect-equals "INVALID_ARGUMENT" error
 
     // This is what a retry after an interrupted wait does at the native
     // boundary. It must not link the subprocess resource more than once.
