@@ -55,10 +55,151 @@ void close_keep_errno(int fd) {
   errno = err;
 }
 
+static bool tcp_read_debugging_enabled() {
+  static bool enabled = []() {
+    char* value = OS::getenv("TOIT_DEBUG_TCP_READ");
+    bool result = value != null && value[0] != '\0' && strcmp(value, "0") != 0;
+    free(value);
+    return result;
+  }();
+  return enabled;
+}
+
+class TcpResource : public IntResource {
+ public:
+  TcpResource(ResourceGroup* group, word id, int process_id, bool debug_reads)
+      : IntResource(group, id)
+      , process_id_(process_id)
+      , debug_reads_(debug_reads)
+      , read_ready_time_us_(0)
+      , receive_buffer_(-1) {}
+
+  void mark_read_ready() {
+    if (!debug_reads_) return;
+
+    int64 now = OS::get_system_time();
+    int64 expected = 0;
+    read_ready_time_us_.compare_exchange_strong(expected, now);
+
+    int receive_buffer = -1;
+    socklen_t size = sizeof(receive_buffer);
+    if (getsockopt(id(), SOL_SOCKET, SO_RCVBUF, &receive_buffer, &size) != 0) return;
+    int previous = receive_buffer_.exchange(receive_buffer);
+    if (previous != receive_buffer) {
+      fprintf(stderr,
+          "TOIT_TCP_READ event=receive-buffer-change timestamp_us=%" PRId64
+          " os_pid=%d process=%d fd=%" PRIdPTR " previous=%d current=%d\n",
+          now,
+          getpid(),
+          process_id_,
+          id(),
+          previous,
+          receive_buffer);
+      fflush(stderr);
+    }
+  }
+
+  int64 take_read_ready_time() {
+    return debug_reads_ ? read_ready_time_us_.exchange(0) : 0;
+  }
+
+  bool debug_reads() const { return debug_reads_; }
+
+  bool has_allocation_failure() const { return allocation_failure_time_us_ != 0; }
+  int64 allocation_failure_time_us() const { return allocation_failure_time_us_; }
+  int allocation_failure_gc_count() const { return allocation_failure_gc_count_; }
+  int allocation_failure_full_gc_count() const { return allocation_failure_full_gc_count_; }
+
+  void record_allocation_failure(Process* process, int64 time_us) {
+    allocation_failure_time_us_ = time_us;
+    allocation_failure_gc_count_ = process->gc_count(NEW_SPACE_GC);
+    allocation_failure_full_gc_count_ = process->gc_count(FULL_GC);
+  }
+
+  void clear_allocation_failure() { allocation_failure_time_us_ = 0; }
+
+ private:
+  int process_id_;
+  bool debug_reads_;
+  std::atomic<int64> read_ready_time_us_;
+  std::atomic<int> receive_buffer_;
+  int64 allocation_failure_time_us_ = 0;
+  int allocation_failure_gc_count_ = 0;
+  int allocation_failure_full_gc_count_ = 0;
+};
+
+static int debug_socket_port(int fd, bool peer) {
+  sockaddr_in address;
+  socklen_t size = sizeof(address);
+  int result = peer
+      ? getpeername(fd, reinterpret_cast<sockaddr*>(&address), &size)
+      : getsockname(fd, reinterpret_cast<sockaddr*>(&address), &size);
+  return result == 0 ? ntohs(address.sin_port) : -1;
+}
+
+static int debug_socket_option(int fd, int option) {
+  int value = -1;
+  socklen_t size = sizeof(value);
+  if (getsockopt(fd, SOL_SOCKET, option, &value, &size) != 0) return -1;
+  return value;
+}
+
+static void print_tcp_read_debug(
+    const char* event,
+    Process* process,
+    TcpResource* resource,
+    word bytes_available,
+    word requested_size,
+    int64 event_delay_us,
+    int64 retry_delay_us = 0) {
+  int fd = resource->id();
+  ObjectHeap* heap = process->object_heap();
+  fprintf(stderr,
+      "TOIT_TCP_READ event=%s timestamp_us=%" PRId64
+      " os_pid=%d process=%d fd=%d local_port=%d peer_port=%d"
+      " fionread=%" PRIdPTR " requested=%" PRIdPTR
+      " event_delay_us=%" PRId64 " retry_delay_us=%" PRId64
+      " rcvbuf=%d rcvlowat=%d gc=%d full_gc=%d compacting_gc=%d"
+      " heap_allocated=%" PRId64 " heap_reserved=%" PRId64
+      " heap_external=%" PRIuPTR " heap_limit=%" PRIuPTR
+      " max_external_allocation=%" PRIdPTR " system_refused_memory=%d\n",
+      event,
+      OS::get_system_time(),
+      getpid(),
+      process->id(),
+      fd,
+      debug_socket_port(fd, false),
+      debug_socket_port(fd, true),
+      bytes_available,
+      requested_size,
+      event_delay_us,
+      retry_delay_us,
+      debug_socket_option(fd, SO_RCVBUF),
+      debug_socket_option(fd, SO_RCVLOWAT),
+      process->gc_count(NEW_SPACE_GC),
+      process->gc_count(FULL_GC),
+      process->gc_count(COMPACTING_GC),
+      heap->bytes_allocated(),
+      heap->bytes_reserved(),
+      heap->external_memory(),
+      heap->limit(),
+      heap->max_external_allocation(),
+      process->system_refused_memory());
+  fflush(stderr);
+}
+
 class SocketResourceGroup : public ResourceGroup {
  public:
   TAG(SocketResourceGroup);
-  SocketResourceGroup(Process* process, EventSource* event_source) : ResourceGroup(process, event_source) {}
+  SocketResourceGroup(Process* process, EventSource* event_source)
+      : ResourceGroup(process, event_source)
+      , debug_reads_(tcp_read_debugging_enabled()) {}
+
+  TcpResource* register_socket(word id) {
+    TcpResource* resource = _new TcpResource(this, id, process()->id(), debug_reads_);
+    if (resource) register_resource(resource);
+    return resource;
+  }
 
   int create_socket() {
     // TODO: Get domain from address.
@@ -96,6 +237,7 @@ class SocketResourceGroup : public ResourceGroup {
 
  private:
   uint32_t on_event(Resource* resource, word data, uint32_t state) {
+    if (data & EPOLLIN) static_cast<TcpResource*>(resource)->mark_read_ready();
     return static_on_event(data, state);
   }
 
@@ -106,6 +248,8 @@ class SocketResourceGroup : public ResourceGroup {
     if (data & EPOLLERR) state |= TCP_ERROR;
     return state;
   }
+
+  bool debug_reads_;
 };
 
 int bind_socket(int fd, const char* address, int port) {
@@ -187,7 +331,7 @@ PRIMITIVE(connect) {
     return Primitive::os_error(errno, process);
   }
 
-  IntResource* resource = resource_group->register_id(id);
+  TcpResource* resource = resource_group->register_socket(id);
   if (!resource) {
     close(id);
     FAIL(MALLOC_FAILED);
@@ -213,7 +357,7 @@ PRIMITIVE(accept) {
     return Primitive::os_error(errno, process);
   }
 
-  IntResource* resource = resource_group->register_id(fd);
+  TcpResource* resource = resource_group->register_socket(fd);
   if (!resource) {
     close(fd);
     FAIL(MALLOC_FAILED);
@@ -250,7 +394,7 @@ PRIMITIVE(listen) {
     return Primitive::os_error(errno, process);
   }
 
-  IntResource* resource = resource_group->register_id(id);
+  TcpResource* resource = resource_group->register_socket(id);
   if (!resource) {
     close(id);
     FAIL(MALLOC_FAILED);
@@ -280,17 +424,73 @@ PRIMITIVE(read)  {
   ARGS(ByteArray, proxy, IntResource, fd_resource);
   USE(proxy);
   int fd = fd_resource->id();
+  TcpResource* resource = static_cast<TcpResource*>(fd_resource);
+  int64 now = resource->debug_reads() ? OS::get_system_time() : 0;
+  int64 ready_time_us = resource->take_read_ready_time();
+  int64 event_delay_us = ready_time_us == 0 ? 0 : now - ready_time_us;
 
-  word available = 0;
-  if (ioctl(fd, FIONREAD, &available) == -1) {
+  word bytes_available = 0;
+  if (ioctl(fd, FIONREAD, &bytes_available) == -1) {
     return Primitive::os_error(errno, process);
   }
 
+  bool allocation_retry = resource->has_allocation_failure();
+  int64 retry_delay_us = allocation_retry ? now - resource->allocation_failure_time_us() : 0;
+  int failure_gc_count = resource->allocation_failure_gc_count();
+  int failure_full_gc_count = resource->allocation_failure_full_gc_count();
+  resource->clear_allocation_failure();
+
+  word available = bytes_available;
   available = Utils::max(available, ByteArray::MIN_IO_BUFFER_SIZE);
   available = Utils::min(available, ByteArray::PREFERRED_IO_BUFFER_SIZE);
 
   ByteArray* array = process->allocate_byte_array(available, /*force_external*/ true);
-  if (array == null) FAIL(ALLOCATION_FAILED);
+  if (array == null) {
+    if (resource->debug_reads()) {
+      print_tcp_read_debug(
+          "allocation-failed",
+          process,
+          resource,
+          bytes_available,
+          available,
+          event_delay_us,
+          retry_delay_us);
+      resource->record_allocation_failure(process, OS::get_system_time());
+    }
+    FAIL(ALLOCATION_FAILED);
+  }
+
+  if (allocation_retry && resource->debug_reads()) {
+    print_tcp_read_debug(
+        "allocation-retry",
+        process,
+        resource,
+        bytes_available,
+        available,
+        event_delay_us,
+        retry_delay_us);
+    fprintf(stderr,
+        "TOIT_TCP_READ event=allocation-retry-gc-delta os_pid=%d process=%d fd=%d"
+        " gc=%d->%d full_gc=%d->%d\n",
+        getpid(),
+        process->id(),
+        fd,
+        failure_gc_count,
+        process->gc_count(NEW_SPACE_GC),
+        failure_full_gc_count,
+        process->gc_count(FULL_GC));
+    fflush(stderr);
+  } else if (resource->debug_reads() &&
+      bytes_available > 0 &&
+      event_delay_us >= 5 * 1000) {
+    print_tcp_read_debug(
+        "read-ready-delay",
+        process,
+        resource,
+        bytes_available,
+        available,
+        event_delay_us);
+  }
 
   int read = recv(fd, ByteArray::Bytes(array).address(), available, 0);
   if (read == -1) {

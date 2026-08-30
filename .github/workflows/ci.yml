@@ -24,6 +24,7 @@ on:
     - cron: '00 2 * * *' # 02:00 UTC
   push:
     branches-ignore:
+      - "floitsch/http-slowdown-debug"
       - "wip/**"
       - "wip-**"
       - "*/wip-**"
