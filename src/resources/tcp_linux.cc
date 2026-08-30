@@ -78,7 +78,9 @@ static void print_tcp_kernel_debug_suffix(int fd) {
     int entries = memory_size / sizeof(memory[0]);
     if (entries > SK_MEMINFO_RMEM_ALLOC) socket_rmem = memory[SK_MEMINFO_RMEM_ALLOC];
     if (entries > SK_MEMINFO_RCVBUF) socket_rcvbuf = memory[SK_MEMINFO_RCVBUF];
-    if (entries > SK_MEMINFO_FWD_ALLOC) socket_forward_alloc = memory[SK_MEMINFO_FWD_ALLOC];
+    if (entries > SK_MEMINFO_FWD_ALLOC) {
+      socket_forward_alloc = static_cast<int32_t>(memory[SK_MEMINFO_FWD_ALLOC]);
+    }
     if (entries > SK_MEMINFO_BACKLOG) socket_backlog = memory[SK_MEMINFO_BACKLOG];
     if (entries > SK_MEMINFO_DROPS) socket_drops = memory[SK_MEMINFO_DROPS];
   }
@@ -87,6 +89,7 @@ static void print_tcp_kernel_debug_suffix(int fd) {
   int64 receive_space = -1;
   int64 receive_rtt = -1;
   int64 total_retransmissions = -1;
+  int64 receive_window_clamp = -1;
   struct tcp_info info = {};
   socklen_t info_size = sizeof(info);
   if (getsockopt(fd, IPPROTO_TCP, TCP_INFO, &info, &info_size) == 0) {
@@ -95,13 +98,18 @@ static void print_tcp_kernel_debug_suffix(int fd) {
     receive_rtt = info.tcpi_rcv_rtt;
     total_retransmissions = info.tcpi_total_retrans;
   }
+  int window_clamp = -1;
+  socklen_t window_clamp_size = sizeof(window_clamp);
+  if (getsockopt(fd, IPPROTO_TCP, TCP_WINDOW_CLAMP, &window_clamp, &window_clamp_size) == 0) {
+    receive_window_clamp = window_clamp;
+  }
 
   fprintf(stderr,
       " socket_rmem=%" PRId64 " socket_rcvbuf=%" PRId64
       " socket_forward_alloc=%" PRId64 " socket_backlog=%" PRId64
       " socket_drops=%" PRId64 " tcp_rcv_ssthresh=%" PRId64
       " tcp_rcv_space=%" PRId64 " tcp_rcv_rtt_us=%" PRId64
-      " tcp_total_retrans=%" PRId64,
+      " tcp_total_retrans=%" PRId64 " tcp_window_clamp=%" PRId64,
       socket_rmem,
       socket_rcvbuf,
       socket_forward_alloc,
@@ -110,7 +118,8 @@ static void print_tcp_kernel_debug_suffix(int fd) {
       receive_ssthresh,
       receive_space,
       receive_rtt,
-      total_retransmissions);
+      total_retransmissions,
+      receive_window_clamp);
 }
 
 class TcpResource : public IntResource {

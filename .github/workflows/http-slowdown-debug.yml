@@ -26,6 +26,11 @@ on:
         required: false
         type: number
         default: 100
+      raw-attempts:
+        description: "Maximum number of minimal raw TCP attempts"
+        required: false
+        type: number
+        default: 200
       timeout:
         description: "Timeout in seconds for each attempt"
         required: false
@@ -62,6 +67,35 @@ jobs:
 
       - name: Build instrumented SDK
         run: make sdk
+
+      - name: Exercise minimal raw TCP reproducer
+        id: raw-reproduce
+        shell: bash
+        env:
+          TOIT_DEBUG_TCP_READ: "1"
+          RAW_ATTEMPTS: ${{ inputs.raw-attempts || 200 }}
+        run: |
+          mkdir -p http-debug
+          result=0
+          set +e
+          for attempt in $(seq 1 "$RAW_ATTEMPTS"); do
+            echo "Raw TCP attempt $attempt/$RAW_ATTEMPTS" \
+                | tee -a http-debug/raw-reproducer.log
+            timeout 10s build/host/sdk/bin/toit run \
+                tests/tcp-receive-buffer-clamp-repro.toit \
+                2>&1 | grep --line-buffered -E \
+                'TOIT_TCP_READ|TCP_CLAMP_REPRO|[Ee]xception|[Ee]rror' \
+                | tee -a http-debug/raw-reproducer.log
+            attempt_result=${PIPESTATUS[0]}
+            if [[ "$attempt_result" -ne 0 ]]; then
+              result="$attempt_result"
+              echo "Raw TCP reproducer failed on attempt $attempt with status $result" \
+                  | tee -a http-debug/raw-reproducer.log
+              break
+            fi
+          done
+          set -e
+          echo "$result" > http-debug/raw-result
 
       - name: Check out Artemis reproducer
         uses: actions/checkout@v7
@@ -190,8 +224,13 @@ jobs:
         shell: bash
         run: |
           result=$(cat http-debug/result 2>/dev/null || echo 1)
+          raw_result=$(cat http-debug/raw-result 2>/dev/null || echo 1)
+          if [[ "$raw_result" -ne 0 ]]; then
+            echo "The minimal raw TCP slowdown/failure reproduced; inspect the uploaded timeline."
+            exit "$raw_result"
+          fi
           if [[ "$result" -ne 0 ]]; then
-            echo "The HTTP slowdown/failure reproduced; inspect the uploaded timeline."
+            echo "The Artemis HTTP slowdown/failure reproduced; inspect the uploaded timeline."
             exit "$result"
           fi
-          echo "All focused attempts passed."
+          echo "All raw TCP and focused Artemis attempts passed."
