@@ -18,6 +18,8 @@ TRANSFER-SIZES ::= [
   23_417_108,
 ]
 
+REQUEST-HEADER-SIZE ::= 256
+
 TRANSFER-DELAYS-MS ::= [
   0,
   150,
@@ -49,12 +51,16 @@ run-server network/net.Client port/int:
   socket := server.accept
   retained := [ByteArray 52_000_000]
   TRANSFER-SIZES.size.repeat: | index |
+    read-exactly socket REQUEST-HEADER-SIZE
     started := Time.monotonic-us
     body := read-exactly socket TRANSFER-SIZES[index]
     retained.add body
     elapsed := Time.monotonic-us - started
     print "TCP_CLAMP_REPRO transfer=$index size=$body.size elapsed_us=$elapsed window_size=$(socket.window-size)"
-    socket.out.write (ByteArray 42)
+    socket.no-delay = false
+    socket.out.write (ByteArray 32)
+    socket.out.write (ByteArray 10)
+    socket.no-delay = true
 
   socket.close
   server.close
@@ -65,6 +71,9 @@ run-client network/net.Client port/int:
   TRANSFER-SIZES.size.repeat: | index |
     delay := TRANSFER-DELAYS-MS[index]
     if delay: sleep --ms=delay
+    socket.no-delay = false
+    socket.out.write (ByteArray REQUEST-HEADER-SIZE)
+    socket.no-delay = true
     socket.out.write (ByteArray TRANSFER-SIZES[index])
     read-exactly socket 42
   socket.out.close
@@ -74,7 +83,7 @@ read-exactly socket size/int -> ByteArray:
   result := ByteArray size
   offset := 0
   while offset < size:
-    chunk := socket.in.read
+    chunk := socket.in.read --max-size=(size - offset)
     if chunk == null: throw "UNEXPECTED_END_OF_STREAM"
     if offset + chunk.size > size: throw "UNEXPECTED_EXTRA_DATA"
     result.replace offset chunk
