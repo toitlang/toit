@@ -66,6 +66,16 @@ static bool tcp_read_debugging_enabled() {
   return enabled;
 }
 
+static int tcp_accepted_receive_buffer_override() {
+  static int receive_buffer = []() {
+    char* value = OS::getenv("TOIT_TCP_ACCEPT_RCVBUF");
+    int result = value == null ? 0 : atoi(value);
+    free(value);
+    return result > 0 ? result : 0;
+  }();
+  return receive_buffer;
+}
+
 static void print_tcp_kernel_debug_suffix(int fd) {
   int64 socket_rmem = -1;
   int64 socket_rcvbuf = -1;
@@ -420,6 +430,31 @@ PRIMITIVE(accept) {
       return process->null_object();
     }
     return Primitive::os_error(errno, process);
+  }
+
+  int receive_buffer_override = tcp_accepted_receive_buffer_override();
+  if (receive_buffer_override != 0 &&
+      setsockopt(
+          fd,
+          SOL_SOCKET,
+          SO_RCVBUF,
+          &receive_buffer_override,
+          sizeof(receive_buffer_override)) == -1) {
+    close_keep_errno(fd);
+    return Primitive::os_error(errno, process);
+  }
+  if (receive_buffer_override != 0 && tcp_read_debugging_enabled()) {
+    int actual_receive_buffer = -1;
+    socklen_t option_size = sizeof(actual_receive_buffer);
+    getsockopt(fd, SOL_SOCKET, SO_RCVBUF, &actual_receive_buffer, &option_size);
+    fprintf(stderr,
+        "TOIT_TCP_READ event=accepted-receive-buffer-override"
+        " os_pid=%d process=%d fd=%d requested=%d actual=%d\n",
+        getpid(),
+        process->id(),
+        fd,
+        receive_buffer_override,
+        actual_receive_buffer);
   }
 
   TcpResource* resource = resource_group->register_socket(fd);

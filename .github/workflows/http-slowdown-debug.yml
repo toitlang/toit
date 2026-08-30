@@ -36,6 +36,11 @@ on:
         required: false
         type: number
         default: 180
+      accepted_rcvbuf:
+        description: "Requested SO_RCVBUF for accepted sockets; 0 keeps autotuning"
+        required: false
+        type: number
+        default: 0
       artemis-ref:
         description: "Artemis branch containing the reproducer"
         required: false
@@ -181,6 +186,7 @@ jobs:
         working-directory: artemis
         env:
           TOIT_DEBUG_TCP_READ: "1"
+          TOIT_TCP_ACCEPT_RCVBUF: ${{ inputs.accepted_rcvbuf || 0 }}
           ATTEMPTS: ${{ inputs.attempts || 100 }}
         run: |
           mkdir -p ../http-debug
