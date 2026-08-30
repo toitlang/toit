@@ -46,6 +46,14 @@ on:
         required: false
         type: number
         default: 0
+      runner:
+        description: "GitHub-hosted runner image"
+        required: false
+        type: choice
+        options:
+          - ubuntu-latest
+          - ubuntu-22.04
+        default: ubuntu-latest
       artemis-ref:
         description: "Artemis branch containing the reproducer"
         required: false
@@ -61,7 +69,7 @@ permissions:
 
 jobs:
   reproduce:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     timeout-minutes: 60
 
     steps:
