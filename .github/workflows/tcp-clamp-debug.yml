@@ -26,6 +26,14 @@ on:
         required: false
         type: number
         default: 1
+      profile:
+        description: "Transport profile: stream or http-boundaries"
+        required: false
+        type: choice
+        options:
+          - stream
+          - http-boundaries
+        default: stream
 
 concurrency:
   group: tcp-clamp-${{ github.ref }}
@@ -57,6 +65,7 @@ jobs:
         shell: bash
         env:
           ATTEMPTS: ${{ inputs.attempts || 1 }}
+          PROFILE: ${{ inputs.profile || 'stream' }}
           TOIT_DEBUG_TCP_READ: "1"
         run: |
           mkdir -p tcp-debug
@@ -66,13 +75,13 @@ jobs:
           set +e
           for attempt in $(seq 1 "$ATTEMPTS"); do
             port=$((30000 + attempt))
-            echo "Raw TCP attempt $attempt/$ATTEMPTS port=$port" \
+            echo "Raw TCP attempt $attempt/$ATTEMPTS port=$port profile=$PROFILE" \
                 | tee -a tcp-debug/reproducer.log
             : > "$server_log"
             : > "$client_log"
             timeout 10s build/host/sdk/bin/toit run \
                 --project-root=/tmp -- \
-                .github/debug/tcp-receive-buffer-clamp-repro.toit server "$port" \
+                .github/debug/tcp-receive-buffer-clamp-repro.toit server "$port" "$PROFILE" \
                 > "$server_log" 2>&1 &
             server_pid=$!
 
@@ -90,7 +99,7 @@ jobs:
             if [[ "$ready" -eq 1 ]]; then
               timeout 10s build/host/sdk/bin/toit run \
                   --project-root=/tmp -- \
-                  .github/debug/tcp-receive-buffer-clamp-repro.toit client "$port" \
+                  .github/debug/tcp-receive-buffer-clamp-repro.toit client "$port" "$PROFILE" \
                   > "$client_log" 2>&1
               client_result=$?
             fi
