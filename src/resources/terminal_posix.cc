@@ -15,63 +15,45 @@
 #include "../primitive.h"
 #include "../process.h"
 #include "../resource.h"
+#include "../resource_pool.h"
 
 namespace toit {
+
+static const int TERMINAL_MODE_TOKEN = 0;
+static ResourcePool<int, -1> terminal_mode_pool(TERMINAL_MODE_TOKEN);
 
 class TerminalModeResource : public Resource {
  public:
   TAG(TerminalModeResource);
 
-  static bool is_claimed(int fd) {
-    for (TerminalModeResource* current = claimed_; current != null; current = current->next_) {
-      if (current->fd_ == fd) return true;
-    }
-    return false;
-  }
-
   TerminalModeResource(ResourceGroup* group, int fd, const termios& original_mode)
       : Resource(group)
       , fd_(fd)
-      , original_mode_(original_mode)
-      , next_(claimed_) {
-    claimed_ = this;
-  }
+      , original_mode_(original_mode) {}
 
   ~TerminalModeResource() override {
-    Locker locker(OS::global_mutex());
     if (!active_) return;
     tcsetattr(fd_, TCSAFLUSH, &original_mode_);
-    release_claim_();
+    release_();
   }
 
   int restore() {
-    Locker locker(OS::global_mutex());
     if (!active_) return 0;
     if (tcsetattr(fd_, TCSAFLUSH, &original_mode_) != 0) return errno;
-    release_claim_();
+    release_();
     return 0;
   }
 
  private:
-  void release_claim_() {
-    TerminalModeResource** link = &claimed_;
-    while (*link != this) {
-      ASSERT(*link != null);
-      link = &(*link)->next_;
-    }
-    *link = next_;
+  void release_() {
+    terminal_mode_pool.put(TERMINAL_MODE_TOKEN);
     active_ = false;
   }
 
-  static TerminalModeResource* claimed_;
-
   int fd_;
   termios original_mode_;
-  TerminalModeResource* next_;
   bool active_ = true;
 };
-
-TerminalModeResource* TerminalModeResource::claimed_ = null;
 
 class TerminalResizeResourceGroup : public ResourceGroup {
  public:
@@ -110,31 +92,25 @@ PRIMITIVE(enter_raw) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  TerminalModeResource* resource = null;
-  int error = 0;
-  bool already_in_use = false;
-  {
-    Locker locker(OS::global_mutex());
-    already_in_use = TerminalModeResource::is_claimed(fd);
-    if (!already_in_use) {
-      termios original_mode;
-      if (tcgetattr(fd, &original_mode) != 0) {
-        error = errno;
-      } else {
-        termios raw_mode = original_mode;
-        cfmakeraw(&raw_mode);
-        if (tcsetattr(fd, TCSAFLUSH, &raw_mode) != 0) {
-          error = errno;
-        } else {
-          resource = _new TerminalModeResource(group, fd, original_mode);
-          if (resource == null) tcsetattr(fd, TCSAFLUSH, &original_mode);
-        }
-      }
-    }
+  if (!terminal_mode_pool.take(TERMINAL_MODE_TOKEN)) FAIL(ALREADY_IN_USE);
+  bool handed_to_resource = false;
+  Defer release_token { [&] {
+    if (!handed_to_resource) terminal_mode_pool.put(TERMINAL_MODE_TOKEN);
+  } };
+
+  termios original_mode;
+  if (tcgetattr(fd, &original_mode) != 0) return Primitive::os_error(errno, process);
+
+  termios raw_mode = original_mode;
+  cfmakeraw(&raw_mode);
+  if (tcsetattr(fd, TCSAFLUSH, &raw_mode) != 0) return Primitive::os_error(errno, process);
+
+  auto resource = _new TerminalModeResource(group, fd, original_mode);
+  if (resource == null) {
+    tcsetattr(fd, TCSAFLUSH, &original_mode);
+    FAIL(MALLOC_FAILED);
   }
-  if (already_in_use) FAIL(ALREADY_IN_USE);
-  if (error != 0) return Primitive::os_error(error, process);
-  if (resource == null) FAIL(MALLOC_FAILED);
+  handed_to_resource = true;
 
   group->register_resource(resource);
   proxy->set_external_address(resource);

@@ -15,63 +15,45 @@
 #include "../primitive.h"
 #include "../process.h"
 #include "../resource.h"
+#include "../resource_pool.h"
 
 namespace toit {
+
+static const int TERMINAL_MODE_TOKEN = 0;
+static ResourcePool<int, -1> terminal_mode_pool(TERMINAL_MODE_TOKEN);
 
 class TerminalModeResource : public Resource {
  public:
   TAG(TerminalModeResource);
 
-  static bool is_claimed(HANDLE handle) {
-    for (TerminalModeResource* current = claimed_; current != null; current = current->next_) {
-      if (current->handle_ == handle) return true;
-    }
-    return false;
-  }
-
   TerminalModeResource(ResourceGroup* group, HANDLE handle, DWORD original_mode)
       : Resource(group)
       , handle_(handle)
-      , original_mode_(original_mode)
-      , next_(claimed_) {
-    claimed_ = this;
-  }
+      , original_mode_(original_mode) {}
 
   ~TerminalModeResource() override {
-    Locker locker(OS::global_mutex());
     if (!active_) return;
     SetConsoleMode(handle_, original_mode_);
-    release_claim_();
+    release_();
   }
 
   int restore() {
-    Locker locker(OS::global_mutex());
     if (!active_) return 0;
     if (!SetConsoleMode(handle_, original_mode_)) return GetLastError();
-    release_claim_();
+    release_();
     return 0;
   }
 
  private:
-  void release_claim_() {
-    TerminalModeResource** link = &claimed_;
-    while (*link != this) {
-      ASSERT(*link != null);
-      link = &(*link)->next_;
-    }
-    *link = next_;
+  void release_() {
+    terminal_mode_pool.put(TERMINAL_MODE_TOKEN);
     active_ = false;
   }
 
-  static TerminalModeResource* claimed_;
-
   HANDLE handle_;
   DWORD original_mode_;
-  TerminalModeResource* next_;
   bool active_ = true;
 };
-
-TerminalModeResource* TerminalModeResource::claimed_ = null;
 
 class TerminalResizeResourceGroup : public ResourceGroup {
  public:
@@ -114,35 +96,29 @@ PRIMITIVE(enter_raw) {
   if (os_handle == -1) return windows_error(process, ERROR_INVALID_HANDLE);
   HANDLE handle = reinterpret_cast<HANDLE>(os_handle);
 
-  TerminalModeResource* resource = null;
-  DWORD error = ERROR_SUCCESS;
-  bool already_in_use = false;
-  {
-    Locker locker(OS::global_mutex());
-    already_in_use = TerminalModeResource::is_claimed(handle);
-    if (!already_in_use) {
-      DWORD original_mode;
-      if (!GetConsoleMode(handle, &original_mode)) {
-        error = GetLastError();
-      } else {
-        DWORD raw_mode = original_mode;
-        raw_mode &= ~(ENABLE_ECHO_INPUT |
-                      ENABLE_LINE_INPUT |
-                      ENABLE_PROCESSED_INPUT |
-                      ENABLE_QUICK_EDIT_MODE);
-        raw_mode |= ENABLE_EXTENDED_FLAGS | ENABLE_VIRTUAL_TERMINAL_INPUT;
-        if (!SetConsoleMode(handle, raw_mode)) {
-          error = GetLastError();
-        } else {
-          resource = _new TerminalModeResource(group, handle, original_mode);
-          if (resource == null) SetConsoleMode(handle, original_mode);
-        }
-      }
-    }
+  if (!terminal_mode_pool.take(TERMINAL_MODE_TOKEN)) FAIL(ALREADY_IN_USE);
+  bool handed_to_resource = false;
+  Defer release_token { [&] {
+    if (!handed_to_resource) terminal_mode_pool.put(TERMINAL_MODE_TOKEN);
+  } };
+
+  DWORD original_mode;
+  if (!GetConsoleMode(handle, &original_mode)) return windows_error(process);
+
+  DWORD raw_mode = original_mode;
+  raw_mode &= ~(ENABLE_ECHO_INPUT |
+                ENABLE_LINE_INPUT |
+                ENABLE_PROCESSED_INPUT |
+                ENABLE_QUICK_EDIT_MODE);
+  raw_mode |= ENABLE_EXTENDED_FLAGS | ENABLE_VIRTUAL_TERMINAL_INPUT;
+  if (!SetConsoleMode(handle, raw_mode)) return windows_error(process);
+
+  auto resource = _new TerminalModeResource(group, handle, original_mode);
+  if (resource == null) {
+    SetConsoleMode(handle, original_mode);
+    FAIL(MALLOC_FAILED);
   }
-  if (already_in_use) FAIL(ALREADY_IN_USE);
-  if (error != ERROR_SUCCESS) return windows_error(process, error);
-  if (resource == null) FAIL(MALLOC_FAILED);
+  handed_to_resource = true;
 
   group->register_resource(resource);
   proxy->set_external_address(resource);
