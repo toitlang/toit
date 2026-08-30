@@ -42,6 +42,8 @@ jobs:
     steps:
       - name: Check out instrumented SDK
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up SDK build
         uses: ./actions/setup-build
