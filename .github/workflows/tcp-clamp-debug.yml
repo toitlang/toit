@@ -72,7 +72,7 @@ jobs:
             : > "$client_log"
             timeout 10s build/host/sdk/bin/toit run \
                 --project-root=/tmp -- \
-                tests/tcp-receive-buffer-clamp-repro.toit server "$port" \
+                .github/debug/tcp-receive-buffer-clamp-repro.toit server "$port" \
                 > "$server_log" 2>&1 &
             server_pid=$!
 
@@ -90,7 +90,7 @@ jobs:
             if [[ "$ready" -eq 1 ]]; then
               timeout 10s build/host/sdk/bin/toit run \
                   --project-root=/tmp -- \
-                  tests/tcp-receive-buffer-clamp-repro.toit client "$port" \
+                  .github/debug/tcp-receive-buffer-clamp-repro.toit client "$port" \
                   > "$client_log" 2>&1
               client_result=$?
             fi
