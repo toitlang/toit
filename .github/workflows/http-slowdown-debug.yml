@@ -25,12 +25,12 @@ on:
         description: "Maximum number of focused Artemis test attempts"
         required: false
         type: number
-        default: 100
+        default: 30
       raw_attempts:
-        description: "Maximum number of minimal raw TCP attempts"
+        description: "Optional minimal TCP attempts (covered by the raw debug workflow)"
         required: false
         type: number
-        default: 200
+        default: 0
       timeout:
         description: "Timeout in seconds for each attempt"
         required: false
@@ -38,6 +38,11 @@ on:
         default: 180
       accepted_rcvbuf:
         description: "Requested SO_RCVBUF for accepted sockets; 0 keeps autotuning"
+        required: false
+        type: number
+        default: 0
+      read_chunk_size:
+        description: "Maximum Linux TCP primitive read size; 0 keeps the 1520-byte default"
         required: false
         type: number
         default: 0
@@ -78,12 +83,10 @@ jobs:
         shell: bash
         env:
           TOIT_DEBUG_TCP_READ: "1"
-          RAW_ATTEMPTS: ${{ inputs.raw_attempts || 200 }}
+          RAW_ATTEMPTS: ${{ inputs.raw_attempts || 0 }}
         run: |
           mkdir -p http-debug
-          if [[ -z "$RAW_ATTEMPTS" || "$RAW_ATTEMPTS" -lt 1 ]]; then
-            RAW_ATTEMPTS=200
-          fi
+          if [[ -z "$RAW_ATTEMPTS" ]]; then RAW_ATTEMPTS=0; fi
           server_log=$(mktemp)
           client_log=$(mktemp)
           result=0
@@ -187,7 +190,8 @@ jobs:
         env:
           TOIT_DEBUG_TCP_READ: "1"
           TOIT_TCP_ACCEPT_RCVBUF: ${{ inputs.accepted_rcvbuf || 0 }}
-          ATTEMPTS: ${{ inputs.attempts || 100 }}
+          TOIT_TCP_READ_CHUNK_SIZE: ${{ inputs.read_chunk_size || 0 }}
+          ATTEMPTS: ${{ inputs.attempts || 30 }}
         run: |
           mkdir -p ../http-debug
 

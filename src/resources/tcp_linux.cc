@@ -76,6 +76,16 @@ static int tcp_accepted_receive_buffer_override() {
   return receive_buffer;
 }
 
+static int tcp_read_chunk_size_override() {
+  static int chunk_size = []() {
+    char* value = OS::getenv("TOIT_TCP_READ_CHUNK_SIZE");
+    int result = value == null ? 0 : atoi(value);
+    free(value);
+    return result > 0 ? result : 0;
+  }();
+  return chunk_size;
+}
+
 static void print_tcp_kernel_debug_suffix(int fd) {
   int64 socket_rmem = -1;
   int64 socket_rcvbuf = -1;
@@ -542,7 +552,11 @@ PRIMITIVE(read)  {
 
   word available = bytes_available;
   available = Utils::max(available, ByteArray::MIN_IO_BUFFER_SIZE);
-  available = Utils::min(available, ByteArray::PREFERRED_IO_BUFFER_SIZE);
+  int chunk_size_override = tcp_read_chunk_size_override();
+  word maximum_read_size = chunk_size_override == 0
+      ? ByteArray::PREFERRED_IO_BUFFER_SIZE
+      : chunk_size_override;
+  available = Utils::min(available, maximum_read_size);
 
   ByteArray* array = process->allocate_byte_array(available, /*force_external*/ true);
   if (array == null) {
