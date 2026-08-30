@@ -1,0 +1,196 @@
+# Zero-Clause BSD License
+
+# Copyright (C) 2026 Toit contributors.
+
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted.
+
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+# REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+# AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+# INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+# LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+
+name: HTTP slowdown debug
+
+on:
+  push:
+    branches:
+      - "floitsch/http-slowdown-debug"
+  workflow_dispatch:
+    inputs:
+      attempts:
+        description: "Maximum number of focused Artemis test attempts"
+        required: false
+        type: number
+        default: 20
+      timeout:
+        description: "Timeout in seconds for each attempt"
+        required: false
+        type: number
+        default: 180
+      artemis-ref:
+        description: "Artemis branch containing the reproducer"
+        required: false
+        type: string
+        default: "floitsch/build-artemis-service.s-new.190"
+
+concurrency:
+  group: http-slowdown-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out instrumented SDK
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up SDK build
+        uses: ./actions/setup-build
+        with:
+          toit-dir: .
+
+      - name: Build instrumented SDK
+        run: make sdk
+
+      - name: Check out Artemis reproducer
+        uses: actions/checkout@v7
+        with:
+          repository: toitware/artemis
+          ref: ${{ inputs.artemis-ref || 'floitsch/build-artemis-service.s-new.190' }}
+          path: artemis
+          submodules: true
+
+      - name: Build focused Artemis test
+        shell: bash
+        working-directory: artemis
+        env:
+          TOIT: ${{ github.workspace }}/build/host/sdk/bin/toit
+          ARTEMIS_CONFIG: ${{ runner.temp }}/artemis-http-debug-config
+        run: |
+          make rebuild-cmake
+          cmake \
+              -DTOIT="$TOIT" \
+              -DSLOW_TEST_TIMEOUT=${{ inputs.timeout || 180 }} \
+              -DWITH_LOCAL_SUPABASE=OFF \
+              -DWITH_QEMU=OFF \
+              build
+          make
+          make download-sdk
+
+      - name: Record runner TCP configuration
+        shell: bash
+        run: |
+          mkdir -p http-debug
+          {
+            uname -a
+            sysctl \
+                net.core.rmem_default \
+                net.core.rmem_max \
+                net.ipv4.tcp_rmem \
+                net.ipv4.tcp_moderate_rcvbuf \
+                net.ipv4.tcp_adv_win_scale \
+                net.ipv4.tcp_app_win || true
+            nstat -asz | grep -E \
+                'TcpExt(PruneCalled|RcvPruned|OfoPruned|TCPRcvCollapsed|TCPMemoryPressures|TCPRcvCoalesce|TCPFromZeroWindowAdv|TCPToZeroWindowAdv|TCPWantZeroWindowAdv|TCPZeroWindowDrop)' || true
+          } > http-debug/runner-tcp-config.log 2>&1
+
+      - name: Reproduce HTTP slowdown
+        id: reproduce
+        shell: bash
+        working-directory: artemis
+        env:
+          TOIT_DEBUG_TCP_READ: "1"
+          ATTEMPTS: ${{ inputs.attempts || 20 }}
+        run: |
+          mkdir -p ../http-debug
+
+          while true; do
+            date --iso-8601=ns
+            ss -Htinmp state established
+            sleep 0.1
+          done > ../http-debug/sockets.log 2>&1 &
+          socket_monitor_pid=$!
+
+          while true; do
+            date --iso-8601=ns
+            nstat -asz | grep -E \
+                'TcpExt(PruneCalled|RcvPruned|OfoPruned|TCPRcvCollapsed|TCPMemoryPressures|TCPRcvCoalesce|TCPFromZeroWindowAdv|TCPToZeroWindowAdv|TCPWantZeroWindowAdv|TCPZeroWindowDrop)' || true
+            sleep 0.1
+          done > ../http-debug/kernel-tcp.log 2>&1 &
+          kernel_monitor_pid=$!
+
+          while true; do
+            date --iso-8601=ns
+            cat /sys/fs/cgroup/cpu.stat
+            cat /proc/pressure/cpu /proc/pressure/io /proc/pressure/memory
+            ps -eLo pid,ppid,tid,stat,psr,pcpu,wchan:32,comm
+            sleep 1
+          done > ../http-debug/system.log 2>&1 &
+          system_monitor_pid=$!
+
+          stop_monitors() {
+            kill "$socket_monitor_pid" "$kernel_monitor_pid" "$system_monitor_pid" 2>/dev/null || true
+            wait "$socket_monitor_pid" "$kernel_monitor_pid" "$system_monitor_pid" 2>/dev/null || true
+          }
+          trap stop_monitors EXIT
+
+          result=0
+          set +e
+          for attempt in $(seq 1 "$ATTEMPTS"); do
+            echo "Focused HTTP test attempt $attempt/$ATTEMPTS"
+            ctest --test-dir build/tests -C default \
+                --no-tests=error \
+                --verbose \
+                -R '^/tests/cmd-pod-list-test-slow\.toit --http-server --http-toit-broker$' \
+                2>&1 | grep --line-buffered -E \
+                'TOIT_TCP_READ|HTTP (server|client)|Start [0-9]+:|Test +#[0-9]+:|Test command:|Test timeout|Timeout|FAILED|Passed|[Ee]xception|[Ee]rror' \
+                | tee -a ../http-debug/reproducer.log
+            result=${PIPESTATUS[0]}
+            if [[ "$result" -ne 0 ]]; then
+              echo "Focused HTTP test failed on attempt $attempt with status $result"
+              break
+            fi
+          done
+          set -e
+
+          echo "$result" > ../http-debug/result
+          stop_monitors
+          trap - EXIT
+
+      - name: Extract sanitized CTest timeline
+        if: always()
+        shell: bash
+        run: |
+          grep -R -h 'TOIT_TCP_READ\|HTTP server\|HTTP client' \
+              artemis/build/tests/Testing/Temporary \
+              > http-debug/timeline.log 2>/dev/null || true
+
+      - name: Upload HTTP diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: http-slowdown-${{ github.run_id }}-${{ github.run_attempt }}
+          path: http-debug
+          if-no-files-found: error
+
+      - name: Report reproduced failure
+        if: always()
+        shell: bash
+        run: |
+          result=$(cat http-debug/result 2>/dev/null || echo 1)
+          if [[ "$result" -ne 0 ]]; then
+            echo "The HTTP slowdown/failure reproduced; inspect the uploaded timeline."
+            exit "$result"
+          fi
+          echo "All focused attempts passed."
