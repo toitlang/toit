@@ -26,7 +26,7 @@ on:
         required: false
         type: number
         default: 100
-      raw-attempts:
+      raw_attempts:
         description: "Maximum number of minimal raw TCP attempts"
         required: false
         type: number
@@ -73,20 +73,56 @@ jobs:
         shell: bash
         env:
           TOIT_DEBUG_TCP_READ: "1"
-          RAW_ATTEMPTS: ${{ inputs.raw-attempts || 200 }}
+          RAW_ATTEMPTS: ${{ inputs.raw_attempts || 200 }}
         run: |
           mkdir -p http-debug
+          if [[ -z "$RAW_ATTEMPTS" || "$RAW_ATTEMPTS" -lt 1 ]]; then
+            RAW_ATTEMPTS=200
+          fi
+          server_log=$(mktemp)
+          client_log=$(mktemp)
           result=0
           set +e
           for attempt in $(seq 1 "$RAW_ATTEMPTS"); do
             echo "Raw TCP attempt $attempt/$RAW_ATTEMPTS" \
                 | tee -a http-debug/raw-reproducer.log
-            timeout 10s build/host/sdk/bin/toit run \
-                tests/tcp-receive-buffer-clamp-repro.toit \
-                2>&1 | grep --line-buffered -E \
+            port=$((30000 + attempt))
+            : > "$server_log"
+            : > "$client_log"
+            TOIT_DEBUG_TCP_READ=1 timeout 10s build/host/sdk/bin/toit run \
+                --project-root=/tmp -- \
+                tests/tcp-receive-buffer-clamp-repro.toit server "$port" \
+                > "$server_log" 2>&1 &
+            server_pid=$!
+
+            ready=0
+            for _ in $(seq 1 100); do
+              if grep -q 'TCP_CLAMP_REPRO ready' "$server_log"; then
+                ready=1
+                break
+              fi
+              if ! kill -0 "$server_pid" 2>/dev/null; then break; fi
+              sleep 0.01
+            done
+
+            client_result=1
+            if [[ "$ready" -eq 1 ]]; then
+              TOIT_DEBUG_TCP_READ=1 timeout 10s build/host/sdk/bin/toit run \
+                  --project-root=/tmp -- \
+                  tests/tcp-receive-buffer-clamp-repro.toit client "$port" \
+                  > "$client_log" 2>&1
+              client_result=$?
+            fi
+            wait "$server_pid"
+            server_result=$?
+
+            grep -h -E \
                 'TOIT_TCP_READ|TCP_CLAMP_REPRO|[Ee]xception|[Ee]rror' \
-                | tee -a http-debug/raw-reproducer.log
-            attempt_result=${PIPESTATUS[0]}
+                "$server_log" "$client_log" \
+                | tee -a http-debug/raw-reproducer.log || true
+
+            attempt_result="$server_result"
+            if [[ "$client_result" -ne 0 ]]; then attempt_result="$client_result"; fi
             if [[ "$attempt_result" -ne 0 ]]; then
               result="$attempt_result"
               echo "Raw TCP reproducer failed on attempt $attempt with status $result" \

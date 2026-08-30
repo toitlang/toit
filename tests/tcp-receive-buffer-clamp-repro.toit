@@ -4,7 +4,6 @@
 
 import net
 import net.modules.tcp
-import monitor show Channel
 import system
 
 TRANSFER-SIZES ::= [
@@ -31,13 +30,21 @@ TRANSFER-DELAYS-MS ::= [
   0,
 ]
 
-main:
+main args:
+  if args.size != 2: throw "EXPECTED_MODE_AND_PORT"
+  port := int.parse args[1]
   network := net.open
-  server := tcp.TcpServerSocket network
-  server.listen "127.0.0.1" 0
+  if args[0] == "server":
+    run-server network port
+  else if args[0] == "client":
+    run-client network port
+  else:
+    throw "UNKNOWN_MODE"
 
-  completed := Channel 1
-  task:: run-client network server.local-address.port completed
+run-server network/net.Client port/int:
+  server := tcp.TcpServerSocket network
+  server.listen "127.0.0.1" port
+  print "TCP_CLAMP_REPRO ready port=$port"
 
   socket := server.accept
   retained := [ByteArray 52_000_000]
@@ -49,11 +56,10 @@ main:
     print "TCP_CLAMP_REPRO transfer=$index size=$body.size elapsed_us=$elapsed window_size=$(socket.window-size)"
     socket.out.write (ByteArray 42)
 
-  completed.receive
   socket.close
   server.close
 
-run-client network/net.Client port/int completed/Channel:
+run-client network/net.Client port/int:
   socket := tcp.TcpSocket network
   socket.connect "127.0.0.1" port
   TRANSFER-SIZES.size.repeat: | index |
@@ -61,7 +67,6 @@ run-client network/net.Client port/int completed/Channel:
     if delay: sleep --ms=delay
     socket.out.write (ByteArray TRANSFER-SIZES[index])
     read-exactly socket 42
-  completed.send null
   socket.out.close
   socket.close
 
