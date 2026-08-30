@@ -18,14 +18,14 @@ name: HTTP slowdown debug
 on:
   push:
     branches:
-      - "floitsch/http-slowdown-debug"
+      - "floitsch/http-slowdown-debug-alpha190"
   workflow_dispatch:
     inputs:
       attempts:
         description: "Maximum number of focused Artemis test attempts"
         required: false
         type: number
-        default: 20
+        default: 50
       timeout:
         description: "Timeout in seconds for each attempt"
         required: false
@@ -111,7 +111,7 @@ jobs:
         working-directory: artemis
         env:
           TOIT_DEBUG_TCP_READ: "1"
-          ATTEMPTS: ${{ inputs.attempts || 20 }}
+          ATTEMPTS: ${{ inputs.attempts || 50 }}
         run: |
           mkdir -p ../http-debug
 
@@ -148,7 +148,8 @@ jobs:
           result=0
           set +e
           for attempt in $(seq 1 "$ATTEMPTS"); do
-            echo "Focused HTTP test attempt $attempt/$ATTEMPTS"
+            echo "Focused HTTP test attempt $attempt/$ATTEMPTS" \
+                | tee -a ../http-debug/reproducer.log
             ctest --test-dir build/tests -C default \
                 --no-tests=error \
                 --verbose \
