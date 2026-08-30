@@ -8,6 +8,8 @@
 
 #ifdef TOIT_WINDOWS
 
+#include <windows.h>
+
 #include "../os.h"
 #include "../resource.h"
 
@@ -26,6 +28,11 @@ struct TerminalDimensions {
         pixel_height != other.pixel_height;
   }
 };
+
+// Resolves the standard descriptor numbers through the Win32 standard-handle
+// table. This is required for pseudoconsoles, whose handles aren't necessarily
+// mirrored in the C runtime descriptor table.
+HANDLE terminal_handle(int fd);
 
 // Returns zero on success and a Windows error code otherwise.
 int read_terminal_dimensions(int fd, TerminalDimensions* dimensions);

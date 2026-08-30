@@ -83,7 +83,13 @@ PRIMITIVE(init) {
 
 PRIMITIVE(is_terminal) {
   ARGS(int, fd);
-  return BOOL(_isatty(fd));
+
+  HANDLE handle = terminal_handle(fd);
+  DWORD mode;
+  return BOOL(
+      handle != NULL &&
+      handle != INVALID_HANDLE_VALUE &&
+      GetConsoleMode(handle, &mode));
 }
 
 PRIMITIVE(enter_raw) {
@@ -92,9 +98,10 @@ PRIMITIVE(enter_raw) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  intptr_t os_handle = _get_osfhandle(fd);
-  if (os_handle == -1) return windows_error(process, ERROR_INVALID_HANDLE);
-  HANDLE handle = reinterpret_cast<HANDLE>(os_handle);
+  HANDLE handle = terminal_handle(fd);
+  if (handle == NULL || handle == INVALID_HANDLE_VALUE) {
+    return windows_error(process, ERROR_INVALID_HANDLE);
+  }
 
   if (!terminal_mode_pool.take(TERMINAL_MODE_TOKEN)) FAIL(ALREADY_IN_USE);
   bool handed_to_resource = false;

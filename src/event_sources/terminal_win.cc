@@ -17,10 +17,21 @@ static const word TERMINAL_RESIZE_EVENT = 1 << 0;
 
 TerminalResizeEventSource* TerminalResizeEventSource::instance_ = null;
 
-int read_terminal_dimensions(int fd, TerminalDimensions* dimensions) {
+HANDLE terminal_handle(int fd) {
+  switch (fd) {
+    case 0: return GetStdHandle(STD_INPUT_HANDLE);
+    case 1: return GetStdHandle(STD_OUTPUT_HANDLE);
+    case 2: return GetStdHandle(STD_ERROR_HANDLE);
+  }
+
   intptr_t os_handle = _get_osfhandle(fd);
-  if (os_handle == -1) return ERROR_INVALID_HANDLE;
-  HANDLE handle = reinterpret_cast<HANDLE>(os_handle);
+  if (os_handle == -1 || os_handle == -2) return INVALID_HANDLE_VALUE;
+  return reinterpret_cast<HANDLE>(os_handle);
+}
+
+int read_terminal_dimensions(int fd, TerminalDimensions* dimensions) {
+  HANDLE handle = terminal_handle(fd);
+  if (handle == NULL || handle == INVALID_HANDLE_VALUE) return ERROR_INVALID_HANDLE;
 
   CONSOLE_SCREEN_BUFFER_INFO info;
   if (!GetConsoleScreenBufferInfo(handle, &info)) return GetLastError();
