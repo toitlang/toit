@@ -22,6 +22,7 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <linux/sock_diag.h>
 #include <sys/epoll.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -65,6 +66,53 @@ static bool tcp_read_debugging_enabled() {
   return enabled;
 }
 
+static void print_tcp_kernel_debug_suffix(int fd) {
+  int64 socket_rmem = -1;
+  int64 socket_rcvbuf = -1;
+  int64 socket_forward_alloc = -1;
+  int64 socket_backlog = -1;
+  int64 socket_drops = -1;
+  uint32_t memory[SK_MEMINFO_VARS] = {};
+  socklen_t memory_size = sizeof(memory);
+  if (getsockopt(fd, SOL_SOCKET, SO_MEMINFO, memory, &memory_size) == 0) {
+    int entries = memory_size / sizeof(memory[0]);
+    if (entries > SK_MEMINFO_RMEM_ALLOC) socket_rmem = memory[SK_MEMINFO_RMEM_ALLOC];
+    if (entries > SK_MEMINFO_RCVBUF) socket_rcvbuf = memory[SK_MEMINFO_RCVBUF];
+    if (entries > SK_MEMINFO_FWD_ALLOC) socket_forward_alloc = memory[SK_MEMINFO_FWD_ALLOC];
+    if (entries > SK_MEMINFO_BACKLOG) socket_backlog = memory[SK_MEMINFO_BACKLOG];
+    if (entries > SK_MEMINFO_DROPS) socket_drops = memory[SK_MEMINFO_DROPS];
+  }
+
+  int64 receive_ssthresh = -1;
+  int64 receive_space = -1;
+  int64 receive_rtt = -1;
+  int64 total_retransmissions = -1;
+  struct tcp_info info = {};
+  socklen_t info_size = sizeof(info);
+  if (getsockopt(fd, IPPROTO_TCP, TCP_INFO, &info, &info_size) == 0) {
+    receive_ssthresh = info.tcpi_rcv_ssthresh;
+    receive_space = info.tcpi_rcv_space;
+    receive_rtt = info.tcpi_rcv_rtt;
+    total_retransmissions = info.tcpi_total_retrans;
+  }
+
+  fprintf(stderr,
+      " socket_rmem=%" PRId64 " socket_rcvbuf=%" PRId64
+      " socket_forward_alloc=%" PRId64 " socket_backlog=%" PRId64
+      " socket_drops=%" PRId64 " tcp_rcv_ssthresh=%" PRId64
+      " tcp_rcv_space=%" PRId64 " tcp_rcv_rtt_us=%" PRId64
+      " tcp_total_retrans=%" PRId64,
+      socket_rmem,
+      socket_rcvbuf,
+      socket_forward_alloc,
+      socket_backlog,
+      socket_drops,
+      receive_ssthresh,
+      receive_space,
+      receive_rtt,
+      total_retransmissions);
+}
+
 class TcpResource : public IntResource {
  public:
   TcpResource(ResourceGroup* group, word id, int process_id, bool debug_reads)
@@ -86,16 +134,20 @@ class TcpResource : public IntResource {
     if (getsockopt(id(), SOL_SOCKET, SO_RCVBUF, &receive_buffer, &size) != 0) return;
     int previous = receive_buffer_.exchange(receive_buffer);
     if (previous != receive_buffer) {
+      flockfile(stderr);
       fprintf(stderr,
           "TOIT_TCP_READ event=receive-buffer-change timestamp_us=%" PRId64
-          " os_pid=%d process=%d fd=%" PRIdPTR " previous=%d current=%d\n",
+          " os_pid=%d process=%d fd=%" PRIdPTR " previous=%d current=%d",
           now,
           getpid(),
           process_id_,
           id(),
           previous,
           receive_buffer);
+      print_tcp_kernel_debug_suffix(id());
+      fputc('\n', stderr);
       fflush(stderr);
+      funlockfile(stderr);
     }
   }
 
@@ -154,6 +206,7 @@ static void print_tcp_read_debug(
     int64 retry_delay_us = 0) {
   int fd = resource->id();
   ObjectHeap* heap = process->object_heap();
+  flockfile(stderr);
   fprintf(stderr,
       "TOIT_TCP_READ event=%s timestamp_us=%" PRId64
       " os_pid=%d process=%d fd=%d local_port=%d peer_port=%d"
@@ -162,7 +215,7 @@ static void print_tcp_read_debug(
       " rcvbuf=%d rcvlowat=%d gc=%d full_gc=%d compacting_gc=%d"
       " heap_allocated=%" PRId64 " heap_reserved=%" PRId64
       " heap_external=%" PRIuPTR " heap_limit=%" PRIuPTR
-      " max_external_allocation=%" PRIdPTR " system_refused_memory=%d\n",
+      " max_external_allocation=%" PRIdPTR " system_refused_memory=%d",
       event,
       OS::get_system_time(),
       getpid(),
@@ -185,7 +238,10 @@ static void print_tcp_read_debug(
       heap->limit(),
       heap->max_external_allocation(),
       process->system_refused_memory());
+  print_tcp_kernel_debug_suffix(fd);
+  fputc('\n', stderr);
   fflush(stderr);
+  funlockfile(stderr);
 }
 
 class SocketResourceGroup : public ResourceGroup {
