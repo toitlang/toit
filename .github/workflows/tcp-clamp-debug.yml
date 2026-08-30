@@ -1,0 +1,118 @@
+# Zero-Clause BSD License
+
+# Copyright (C) 2026 Toit contributors.
+
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted.
+
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+# REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+# AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+# INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+# LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+
+name: TCP receive clamp debug
+
+on:
+  push:
+    branches:
+      - "floitsch/http-slowdown-debug-raw"
+  workflow_dispatch:
+    inputs:
+      attempts:
+        description: "Number of cross-process raw TCP attempts"
+        required: false
+        type: number
+        default: 1
+
+concurrency:
+  group: tcp-clamp-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out instrumented SDK
+        uses: actions/checkout@v7
+
+      - name: Set up SDK build
+        uses: ./actions/setup-build
+        with:
+          toit-dir: .
+
+      - name: Build instrumented SDK
+        run: make sdk
+
+      - name: Exercise cross-process raw TCP reproducer
+        shell: bash
+        env:
+          ATTEMPTS: ${{ inputs.attempts || 1 }}
+          TOIT_DEBUG_TCP_READ: "1"
+        run: |
+          mkdir -p tcp-debug
+          server_log=$(mktemp)
+          client_log=$(mktemp)
+          result=0
+          set +e
+          for attempt in $(seq 1 "$ATTEMPTS"); do
+            port=$((30000 + attempt))
+            echo "Raw TCP attempt $attempt/$ATTEMPTS port=$port" \
+                | tee -a tcp-debug/reproducer.log
+            : > "$server_log"
+            : > "$client_log"
+            timeout 10s build/host/sdk/bin/toit run \
+                --project-root=/tmp -- \
+                tests/tcp-receive-buffer-clamp-repro.toit server "$port" \
+                > "$server_log" 2>&1 &
+            server_pid=$!
+
+            ready=0
+            for _ in $(seq 1 100); do
+              if grep -q 'TCP_CLAMP_REPRO ready' "$server_log"; then
+                ready=1
+                break
+              fi
+              if ! kill -0 "$server_pid" 2>/dev/null; then break; fi
+              sleep 0.01
+            done
+
+            client_result=1
+            if [[ "$ready" -eq 1 ]]; then
+              timeout 10s build/host/sdk/bin/toit run \
+                  --project-root=/tmp -- \
+                  tests/tcp-receive-buffer-clamp-repro.toit client "$port" \
+                  > "$client_log" 2>&1
+              client_result=$?
+            fi
+            wait "$server_pid"
+            server_result=$?
+
+            cat "$server_log" "$client_log" | tee -a tcp-debug/reproducer.log
+            echo "ready=$ready server_result=$server_result client_result=$client_result" \
+                | tee -a tcp-debug/reproducer.log
+
+            attempt_result="$server_result"
+            if [[ "$client_result" -ne 0 ]]; then attempt_result="$client_result"; fi
+            if [[ "$attempt_result" -ne 0 ]]; then
+              result="$attempt_result"
+              break
+            fi
+          done
+          echo "$result" > tcp-debug/result
+          exit "$result"
+
+      - name: Upload TCP diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tcp-clamp-${{ github.run_id }}-${{ github.run_attempt }}
+          path: tcp-debug
+          if-no-files-found: error
