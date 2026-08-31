@@ -58,6 +58,11 @@ review or correct a commit that was itself written in response to an earlier
 comment. “Resolved later” below therefore means a later branch commit already
 addresses this *new* comment; it does not refer to the submitted first round.
 
+The authenticated review snapshot was taken at PR head `32c34a81`. The
+second-round implementation series described by the outcome table below runs
+through `446de082`; the individual detailed entries preserve the initial
+investigation and proposed response so the reasoning remains reviewable.
+
 ### Commit and comment order
 
 | Branch order | Reviewed commit | Authored | Subject | New comments |
@@ -111,6 +116,77 @@ it is not lost between this fix round and the final rebase:
 - **Commit-stack recreation:** do not rewrite the stack during this fix round.
   First publish focused fix commits for review; squash/reorder into fewer,
   targeted commits only after that review, immediately before the rebase.
+
+### Second-round implementation outcomes
+
+This table is the authoritative current status. The detailed entries below
+retain the context needed to review each answer without reopening GitHub.
+
+| Comment | Outcome | Fix or prerequisite |
+|---:|---|---|
+| 1 | Deferred | Remove review archaeology during landing cleanup, after this review and stack recreation. |
+| 2 | Resolved | `6ff640bf` spells out `offset`. |
+| 3 | Resolved | `6ff640bf` states the alignment and sector-boundary assumptions in the example. |
+| 4 | Resolved | `d622eaf3` removes raw mutation from the public slot API and keeps mutating primitives privileged. |
+| 5 | Deferred | Remove the scope repro and resolved known-issue history during landing cleanup. |
+| 6 | Explanation | The condition variable blocks scheduler/event workers, not a running Toit primitive; it matches the ESP32 abstraction. |
+| 7 | Resolved | `2659f1f4` adds orderly explicit reset plus lazy public minimum-duration constants; `446de082` tests reset and zero-duration deep-sleep causes on both platforms. |
+| 8 | Resolved | `9fcd99bc` moves EC618 GPIO pad and controller-bit ownership to `ResourcePool`. |
+| 9 | Resolved | `9fcd99bc` unifies hardware teardown and lease return in one atomic path. |
+| 10 | Resolved | `9fcd99bc` configures output state before mux connection and adds opposite-edge capture for both initial levels. |
+| 11 | Rebase | Current GPIO ownership uses pools; after the integer-pin rebase every native peripheral constructor must reserve both pad and aliased controller bit. |
+| 12 | Resolved | `9fcd99bc` disconnects the released alias while preserving the shared controller until its final owner closes. |
+| 13 | Deferred | Land the current async I2C/SPI stack, adapt it to the recorded hybrid bus-owned/generic-transfer contract, then add EC618. |
+| 14 | Resolved | `6ff640bf` collapses the I2C rollback `Defer`. |
+| 15 | Resolved | `446de082` proves that `Bus.close` invalidates live children before native bus close. |
+| 16 | Resolved | Duplicate of comment 15; covered by the same lifecycle test. |
+| 17 | Superseded | `bbbd81cb` replaced the allocating capture with the non-allocating `PendingI2cBuffers` owner. |
+| 18 | Resolved | `6ff640bf` uses the repository `expect-throw` helper. |
+| 19 | Resolved for this stack | `6ff640bf` explains that the alternate route tests controller rather than pin contention; express it through the final common API after comment 13. |
+| 20 | Resolved | `6ff640bf` collapses the UART rollback `Defer`. |
+| 21 | Rebase | Replace the EC618-specific console query with common `Port.console` during the integer-pin/common-UART rebase. |
+| 22 | Resolved | `6ff640bf` removes unnecessary capitalized prose across the affected EC618 code. |
+| 23 | Resolved | `6ff640bf` collapses the ADC rollback `Defer`. |
+| 24 | Resolved | `6ff640bf` uses truthiness in ADC `get`. |
+| 25 | Resolved | `6ff640bf` applies the same truthiness fix in ADC `raw`. |
+| 26 | Resolved | `6ff640bf` records the event-driven ADC follow-up without claiming polling is required. |
+| 27 | Resolved | `6ff640bf` renames the shared physical nets independently of their UART use. |
+| 28 | Explanation | Retain the UART task: physical line-idle completion is required for flush, close, and RS485 correctness. |
+| 29 | Resolved | `9fcd99bc` uses a two-entry `ResourcePool` for SPI controller ownership. |
+| 30 | Resolved earlier | `70e8fefe` already limits the claim to AON supply ownership and separates the wake domain. |
+| 31 | Resolved | `35e98fbc` exposes all six physical wake inputs with identities and electrical/function-conflict documentation. |
+| 32 | Resolved | `35e98fbc` makes native wake configuration source-index based and retains a checked pad convenience mapping. |
+| 33 | Explanation | Retain the I2C task: long/chained completion and latched-BUSY recovery cannot safely execute in IRQ context. |
+| 34 | Resolved | `9fcd99bc` passes the held locker through GPIO helpers and pool operations. |
+| 35 | Resolved | `6ff640bf` assigns preflight checks to any OTA server/client while retaining authoritative device validation. |
+| 36 | Resolved | `ae5d45da` generates the relocation table in the build through provisional link, final link, and fixed-point check. |
+| 37 | Rebase | `6ff640bf` records removal of the temporary I2C carrier-pin helper after the integer-pin rebase. |
+| 38 | Rebase | The same `6ff640bf` TODO covers SPI and analogous UART carrier-pin helpers, not only the attached location. |
+| 39 | Resolved | `4e895044` reverts the broken slot Toitdoc normalization; comments 2–4 were reapplied separately. |
+| 40 | Resolved | `4e895044` restores the relocation generator's intended Toitdoc paragraphs. |
+| 41 | Resolved | `4e895044` restores both firmware service Toitdocs. |
+| 42 | Resolved | `8293d4f4` reverts the broad mechanical reflow; `4e895044` completes the targeted reversions. |
+| 43 | Resolved | `49994e73` keeps the mini-jag Toitdocs and wraps continuation lines correctly. |
+| 44 | Resolved | `49994e73` restores idiomatic truthy null checks in the relocation generator. |
+| 45 | Resolved | `49994e73` audits and wraps the protocol Toitdocs while preserving fenced examples. |
+| 46 | Resolved, reviewer concern accepted | `813e402e` restores the 495-entry reviewed future-slot surface. The isolated cost is 7,344 bytes of flash and 456 bytes of RAM, too small to justify losing OTA capability. |
+| 47 | Resolved | `6ff640bf` documents that ESP-IDF hardware I2C transfers data; GPIO/PCNT only observe bus framing and never drive it. |
+
+### Fix commits in review order
+
+| Order | Commit | Purpose |
+|---:|---|---|
+| 1 | `8293d4f4` | Revert the broad broken Toitdoc reflow. |
+| 2 | `4e895044` | Revert the remaining single-file/service Toitdoc normalizations. |
+| 3 | `49994e73` | Correct the remaining mini-jag, protocol, and null-check documentation nits. |
+| 4 | `6ff640bf` | Address the small code, test, naming, and documentation comments together. |
+| 5 | `2659f1f4` | Add the orderly cross-platform reset API and deep-sleep minimum contract. |
+| 6 | `9fcd99bc` | Move GPIO and SPI ownership to resource pools and harden GPIO transitions. |
+| 7 | `35e98fbc` | Expose all physical EC618 wake inputs. |
+| 8 | `d622eaf3` | Restrict public slot APIs to read-only state. |
+| 9 | `ae5d45da` | Generate the slot data-relocation table during the build. |
+| 10 | `813e402e` | Restore and document the reviewed future-slot symbol surface. |
+| 11 | `446de082` | Add reset/deep-sleep and I2C parent-close contract tests. |
 
 #### 1. Pending comment `3805769238` — remove review archaeology
 
@@ -764,21 +840,21 @@ it is not lost between this fix round and the final rebase:
   set from 495 to the 209 used by the present slot, removing 286 possible
   future dependencies. A future missing symbol requires a new base/full flash,
   so this is a capability decision, not merely dead-code cleanup.
-- **Finding:** **Open; the current justification is insufficient.** The table
-  itself saves exactly 286 pointers = 1,144 bytes. Removing references may
-  also let archive sections disappear, but the available pre/post artifacts
-  are from different base revisions and do not isolate this commit: their ELF
-  text differs by only about 5.8 KiB amid other changes, while sparse `base.bin`
-  lengths are dominated by changed geometry. The docs are also inconsistent:
-  `ota-contract.md` still promises a generous future surface while
-  `plat_keep.c` says exact-current-slot only.
-- **Planned response/action:** Before deciding, make an isolated A/B build of
-  the same source/toolchain with only the keep list changed and report flash,
-  RAM, and pulled object sections. Define the intended base compatibility
-  policy and a reviewed allowlist by subsystem. Unless the measured saving is
-  material enough to justify lost OTA capability, restore the foreseeable
-  PLAT/libc/peripheral surface; remove only dangerous/private or demonstrably
-  unreasonable exports. Make every design document state the same policy.
+- **Finding/outcome:** **Resolved by restoring the reviewed surface.** An
+  isolated A/B build used the same current source, GNU Arm 10.3 toolchain, and
+  base-link inputs; only `plat_keep.c` changed. The 209-entry list linked with
+  1,424,300 bytes of text and 574,902 bytes of BSS. The restored 495-entry
+  list linked with 1,431,644 bytes of text and 575,358 bytes of BSS: a cost of
+  7,344 bytes of flash text and 456 bytes of RAM. `.data` and AP image geometry
+  were unchanged. That cost is not material enough to force future full
+  reflashes for the 286 removed capabilities.
+- **Response/action:** `813e402e` restores the explicit 495-entry surface and
+  documents its reviewed driver, low-power, platform-service, networking,
+  RTOS, libc/libm, and limited runtime scope. It is not generated from every
+  SDK symbol; future additions still require base-contract review. Low-level
+  native link capability does not make a public Toit API or bypass the
+  privilege audit on Toit-facing mutation primitives. Both base documents now
+  state the same compatibility policy and measurement.
 
 #### 47. Pending comment `3897601645` — is the ESP32 slave bit-banging I2C?
 
@@ -825,8 +901,10 @@ or corrected it in a later commit rather than retaining two implementations:
   mode-aware ownership, and finally the actual requested resource-based
   primitive boundary in `49012c46`. The last reply supersedes the first two.
 - [r3408317714](https://github.com/toitlang/toit/pull/3075#discussion_r3408317714)
-  first removed the speculative jump table; the final reply records the
-  separate keep-list audit in `3babe6e8`, which removed 286 unused exports.
+  first removed the speculative jump table; a later keep-list audit in
+  `3babe6e8` removed 286 exports. Comment 46 prompted an isolated measurement,
+  and `813e402e` restores them because the 7,344-byte flash and 456-byte RAM
+  saving did not justify losing future OTA capability.
 - The repeated Toitdoc replies correspond to successive whole-tree audits and
   follow-up fixes. They are redundant as replies, but the later commits repair
   omissions rather than duplicate the same source change.
@@ -900,13 +978,14 @@ changes that genuinely belong below every slot should still be made there.
 Slot-owned driver behavior should remain replaceable by OTA and should not be
 moved into the base merely because changing the unreleased base is possible.
 
-The base keep-list was audited against the final slot link rather than carrying
-forward the old jump-table prefix policy. Of 495 guaranteed symbols, 209 are
-used by the current slot; the other 286 speculative exports were removed.
-Adding a new base dependency must now fail the slot link and be reviewed
-explicitly. The narrowed base and both slot variants pass the complete
-relocation/byte-identity, device-relocator, envelope, and partition-retargeting
-suite.
+The base keep-list is an explicit reviewed compatibility surface rather than
+the old jump-table prefix or an automatic export of every SDK symbol. Of its
+495 entries, 209 are used by the current slot and 286 preserve foreseeable
+future driver, low-power, platform-service, networking, RTOS, libc/libm, and
+limited runtime capabilities. An isolated same-source build measured those
+future entries at 7,344 bytes of flash text and 456 bytes of RAM, so they are
+retained. A dependency outside the reviewed surface still fails the slot link
+and requires an explicit base-contract change.
 
 ### 2. Is console/partition configuration device state or OTA-image state?
 
