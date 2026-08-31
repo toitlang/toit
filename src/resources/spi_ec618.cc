@@ -24,6 +24,7 @@
 #include "../primitive.h"
 #include "../process.h"
 #include "../resource.h"
+#include "../resource_pool.h"
 #include "../event_sources/uart_ec618.h"  // Ec618EventSource (shared).
 #include "pad_table_ec618.h"
 
@@ -64,21 +65,8 @@ static int pads_to_controller(int mosi, int miso, int clock) {
   return -1;
 }
 
-static bool controllers_in_use[2] = {};
+static ResourcePool<int, -1> spi_controllers(0, 1);
 static SPI_TypeDef* const kSpiRegs[2] = {SPI0, SPI1};
-
-static bool reserve_controller(int controller) {
-  Locker locker(OS::global_mutex());
-  if (controllers_in_use[controller]) return false;
-  controllers_in_use[controller] = true;
-  return true;
-}
-
-static void release_controller(int controller) {
-  Locker locker(OS::global_mutex());
-  ASSERT(controllers_in_use[controller]);
-  controllers_in_use[controller] = false;
-}
 
 static void pad_set(int pad, int level);
 
@@ -180,7 +168,7 @@ class SpiResourceGroup : public ResourceGroup {
     pad_release(mosi_);
     pad_release(miso_);
     pad_release(clock_);
-    release_controller(controller_);
+    spi_controllers.put(controller_);
   }
 
   // Completion dispatch: only the CURRENT transfer's callback may set the
@@ -275,13 +263,13 @@ PRIMITIVE(init) {
 
   Ec618EventSource* event_source = Ec618EventSource::instance();
   if (event_source == null) FAIL(ALREADY_CLOSED);
-  if (!reserve_controller(controller)) FAIL(ALREADY_IN_USE);
+  if (!spi_controllers.take(controller)) FAIL(ALREADY_IN_USE);
 
   SpiResourceGroup* group = _new SpiResourceGroup(process, event_source,
                                                   controller,
                                                   mosi, miso, clock);
   if (group == null) {
-    release_controller(controller);
+    spi_controllers.put(controller);
     FAIL(MALLOC_FAILED);
   }
 

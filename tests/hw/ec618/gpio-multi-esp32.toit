@@ -3,6 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import gpio
+import monitor
 
 import .framed-control show FramedChannel
 import .uart-rig as rig
@@ -13,11 +14,35 @@ ESP32 observer for the EC618 concurrent GPIO-output regression.
 
 The three inputs have pull-downs, so a released EC618 pad reads low while the
   other two wires remain independently observable.
+
+The same helper also watches the GPIO11 wire for a pulse opposite to each
+  requested initial output level. Its pull points toward that requested level,
+  so a mux/configuration glitch cannot be hidden by a mismatched idle state.
 */
 
 CONTROL-BAUD ::= 115200
 STARTUP-TIMEOUT-MS ::= 120_000
 CONTROL-TIMEOUT-MS ::= 15_000
+GLITCH-WINDOW-MS ::= 200
+
+capture-open-glitch control/FramedChannel pin/gpio.Pin level/int -> none:
+  pin.configure
+      --input
+      --pull-up=(level == 1)
+      --pull-down=(level == 0)
+  result := monitor.Channel 1
+  if pin.get != level:
+    throw "GPIO11 did not settle to requested idle level $level"
+  task::
+    error := catch:
+      with-timeout --ms=GLITCH-WINDOW-MS:
+        pin.wait-for (1 - level)
+    result.send error == null
+  control.send "ARMED $level"
+  control.expect "DONE" --timeout-ms=CONTROL-TIMEOUT-MS
+  if result.receive:
+    throw "opposite-level pulse observed while opening output at $level"
+  control.send "CLEAN $level"
 
 main:
   control-owner := rig.esp32-uart 1 CONTROL-BAUD
@@ -37,6 +62,10 @@ main:
       if message == "HELLO":
         connected = true
         control.send "READY"
+      else if parts.size == 2 and parts[0] == "GLITCH":
+        level := int.parse parts[1]
+        if level != 0 and level != 1: throw "invalid glitch level '$level'"
+        capture-open-glitch control pins[0] level
       else if parts.size == 2 and parts[0] == "CHECK":
         expected := parts[1]
         if expected.size != pins.size: throw "invalid pattern '$expected'"
