@@ -130,7 +130,10 @@ run-test:
 /**
 EC618 resident-agent control channel.
 
-The agent owns the print UART selected by the firmware and serves the shared request/ack protocol. It never reboots itself: a test runs as a child container whose `print` output streams back on the same wire, and once it exits the agent listens for the next test or firmware update.
+The agent owns the print UART selected by the firmware and serves the shared
+  request/ack protocol. It never reboots itself: a test runs as a child
+  container whose `print` output streams back on the same wire, and once it
+  exits the agent listens for the next test or firmware update.
 */
 class Ec618Control:
   port/uart.Port
