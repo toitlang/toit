@@ -11,15 +11,23 @@ import uart
 /**
 EC618 I2C bring-up test against a real BMP280 (device under test).
 
-The sensor (SDO grounded -> address 0x76) hangs on the EC618's I2C1 bus (SDA=PAD23, SCL=PAD24 — the module's I2C1 pins, board pins 10/13; the module's "I2C0" board pins turned out to be unreachable); the ESP32 only switches its power. Checks, all on this side:
+The sensor (SDO grounded -> address 0x76) hangs on the EC618's I2C1 bus
+  (SDA=PAD23, SCL=PAD24 — the module's I2C1 pins, board pins 10/13; the
+  module's "I2C0" board pins turned out to be unreachable); the ESP32 only
+  switches its power. Checks, all on this side:
 
-- $i2c.Bus.scan finds exactly the sensor (this exercises the probe primitive — scanning previously failed on the EC618);
+- $i2c.Bus.scan finds exactly the sensor (this exercises the probe
+  primitive — scanning previously failed on the EC618);
 - probing an empty address says no;
 - chip-id register reads 0x58 (BMP280);
-- a forced measurement: calibration registers + raw readout + the datasheet temperature compensation give a plausible room temperature;
-- the `bmp280` package driver works on top of the same device (plausible temperature and pressure).
+- a forced measurement: calibration registers + raw readout + the
+  datasheet temperature compensation give a plausible room temperature;
+- the `bmp280` package driver works on top of the same device (plausible
+  temperature and pressure).
 
-The powered-off behavior is PRINTED, not asserted: with power off the sensor may stay half-alive through its breakout pull-ups (back-powering).
+The powered-off behavior is PRINTED, not asserted: with power off the
+  sensor may stay half-alive through its breakout pull-ups (back-powering).
+
 */
 
 ADDRESS ::= 0x76

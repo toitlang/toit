@@ -20,7 +20,9 @@ import encoding.ubjson
 /**
 Shared provider behavior for embedded firmware services.
 
-Platform providers supply validation, rollback, upgrade, URI, and writer mechanics. Embedded configuration and firmware-content fallback have the same contract on ESP32 and EC618.
+Platform providers supply validation, rollback, upgrade, URI, and writer
+mechanics. Embedded configuration and firmware-content fallback have the
+same contract on ESP32 and EC618.
 */
 abstract class EmbeddedFirmwareServiceProviderBase
     extends FirmwareServiceProviderBase:

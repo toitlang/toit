@@ -7,7 +7,10 @@ import gpio.adc show Adc
 /**
 EC618 ADC channel-resource lifecycle regression.
 
-Both AIO channels may be open at once, but each channel has exactly one system-wide owner. Running with the argument `leak` exits with both channels open; a following normal run verifies that forced resource-group teardown deinitialized and released them.
+Both AIO channels may be open at once, but each channel has exactly one
+  system-wide owner. Running with the argument `leak` exits with both channels
+  open; a following normal run verifies that forced resource-group teardown
+  deinitialized and released them.
 */
 
 expect-throws expected/string [block] -> none:

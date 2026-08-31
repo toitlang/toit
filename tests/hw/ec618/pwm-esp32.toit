@@ -24,7 +24,9 @@ Listens on the command lane (UART2 of the EC618) and answers:
 "Q"      -> quits
 ```
 
-All pass/fail logic lives on the EC618 side (pwm-ec618.toit). Pins are opened with a pull-down per measurement so a released (high-Z) EC618 pad reads as a steady 0.
+All pass/fail logic lives on the EC618 side (pwm-ec618.toit). Pins are
+  opened with a pull-down per measurement so a released (high-Z) EC618 pad
+  reads as a steady 0.
 */
 
 main:

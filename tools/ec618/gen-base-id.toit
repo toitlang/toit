@@ -105,7 +105,8 @@ run invocation/cli.Invocation -> none:
     print "manifest -> $manifest-path"
 
 /**
-Reads the base geometry symbols the slot link derives its script from (see tools/ec618/gen-slot-ld.toit) plus the dram-reserve end.
+Reads the base geometry symbols the slot link derives its script from
+  (see tools/ec618/gen-slot-ld.toit) plus the dram-reserve end.
 */
 GEOMETRY-SYMBOLS ::= {
   "__vm_link_base", "__vm_a_start", "__vm_b_start",
@@ -132,9 +133,11 @@ read-geometry nm/string elf/string -> Map:
   return result
 
 /**
-Asserts that the base's linker $symbol (from $geometry) sits at the $expected XIP address from the partition descriptor.
+Asserts that the base's linker $symbol (from $geometry) sits at the
+  $expected XIP address from the partition descriptor.
 
-Aborts with an error when the symbol is missing or disagrees — a base whose layout drifted from the descriptor must not be stamped.
+Aborts with an error when the symbol is missing or disagrees — a base
+  whose layout drifted from the descriptor must not be stamped.
 */
 check-symbol geometry/Map symbol/string expected/int --ui/cli.Ui -> none:
   value := geometry.get symbol

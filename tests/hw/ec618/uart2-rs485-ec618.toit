@@ -10,9 +10,19 @@ import .wiring as wiring
 /**
 EC618 half of the UART2 RS485-half-duplex test (device under test).
 
-Opens UART2 in $uart.Port.MODE-RS485-HALF-DUPLEX with the direction (DE) line on PAD33 (= GPIO18, ESP32 IO16 — free because the control-lane tests only ever use UART1's TX pad). The driver must raise DE just before each transmission and drop it once the last bit has left the shift register; the ESP32 helper watches the DE line and verifies exactly one clean pulse per message while this side verifies the data round-trip (echo received with DE low, i.e. RX works in RS485 mode).
+Opens UART2 in $uart.Port.MODE-RS485-HALF-DUPLEX with the direction (DE)
+  line on PAD33 (= GPIO18, ESP32 IO16 — free because the control-lane tests
+  only ever use UART1's TX pad). The driver must raise DE just before each
+  transmission and drop it once the last bit has left the shift register;
+  the ESP32 helper watches the DE line and verifies exactly one clean pulse
+  per message while this side verifies the data round-trip (echo received
+  with DE low, i.e. RX works in RS485 mode).
 
-Plan (fixed on both sides, no control lane): for each baud, ITERATIONS token round-trips, then one BIG-SIZE message — long enough that a DE drop between internal TX chunks would be visible — acknowledged by the helper with a single 'K' after it checked the DE pulse.
+Plan (fixed on both sides, no control lane): for each baud, ITERATIONS
+  token round-trips, then one BIG-SIZE message — long enough that a DE drop
+  between internal TX chunks would be visible — acknowledged by the helper
+  with a single 'K' after it checked the DE pulse.
+
 */
 
 BAUDS ::= [9600, 115200, 921600]

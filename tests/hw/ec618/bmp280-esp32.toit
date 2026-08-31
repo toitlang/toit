@@ -10,7 +10,9 @@ import .wiring as wiring
 /**
 ESP32 half of the EC618 I2C/BMP280 test: the power switch.
 
-The BMP280 on the breadboard is powered from IO13. This helper switches it on command and otherwise stays OFF the I2C nets (IO17/IO18 remain unconfigured/high-Z so the EC618 owns the bus). Commands over UART2:
+The BMP280 on the breadboard is powered from IO13. This helper switches it
+  on command and otherwise stays OFF the I2C nets (IO17/IO18 remain
+  unconfigured/high-Z so the EC618 owns the bus). Commands over UART2:
 
 ```
 "P 1" -> sensor power on  (replies "P 1")

@@ -86,9 +86,16 @@ The stream is the standard CANONICAL firmware image, table-first:
 [ table-size : u32 ][ SRL3 reloc table ][ VM body + extension ]
 ```
 
-The writer accumulates the leading `[ size ][ table ]` and arms relocation ($slot.reloc-begin, which also lays the slot's self-locating tail trailer), then streams the body+extension into the slot — the VM relocates each chunk onto the destination slot transparently, so this code never sees slot addresses. $commit verifies the canonical SHA-256 and stages the slot as a trial; `firmware.upgrade` reboots into it, and the new image must `firmware.validate` or the next reset rolls back.
+The writer accumulates the leading `[ size ][ table ]` and arms relocation
+($slot.reloc-begin, which also lays the slot's self-locating tail trailer),
+then streams the body+extension into the slot — the VM relocates each chunk
+onto the destination slot transparently, so this code never sees slot
+addresses. $commit verifies the canonical SHA-256 and stages the slot as a
+trial; `firmware.upgrade` reboots into it, and the new image must
+`firmware.validate` or the next reset rolls back.
 
-Runs in the system (firmware service) process, so it may call the PRIVILEGED slot primitives.
+Runs in the system (firmware service) process, so it may call the PRIVILEGED
+slot primitives.
 */
 class FirmwareWriter_ extends ServiceResource implements FirmwareWriter:
   static SECTOR ::= slot.SECTOR-SIZE  // 4 KB erase unit.

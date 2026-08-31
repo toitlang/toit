@@ -11,7 +11,10 @@ import .wiring as wiring
 /**
 ESP32 half of the GPIO-interrupt test: a pulse generator.
 
-Listens on the framed control lane for "P <count> <phase-ms>" and then drives that many clean pulses on IO27. "Q" quits. All assertions run on the EC618.
+Listens on the framed control lane for "P <count> <phase-ms>" and then
+  drives that many clean pulses on IO27. "Q" quits. All assertions run
+  on the EC618.
+
 */
 
 main:

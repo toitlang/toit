@@ -5,7 +5,9 @@
 /**
 Physical wiring of the `modest-affair` EC618/ESP32 hardware-test rig.
 
-Constants are named by hardware signal, not by the test that happens to use them. EC618 digital pin values are physical PAD indices; ESP32 values are GPIO numbers.
+Constants are named by hardware signal, not by the test that happens to use
+  them. EC618 digital pin values are physical PAD indices; ESP32 values are
+  GPIO numbers.
 */
 
 // Analog staircase: each ESP32 DAC reaches one dedicated EC618 AIO input

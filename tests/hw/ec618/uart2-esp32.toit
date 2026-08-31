@@ -10,7 +10,12 @@ import .wiring as wiring
 /**
 ESP32 half of the UART2 HW test.
 
-Opens a UART RX-only on IO27 (where the EC618's UART2 TX is wired) at the baud given as the program argument, and confirms it receives several cleanly-framed lines carrying that exact baud value ("EC618-UART2 <baud> <n>"). Counting newline-delimited lines that contain the exact expected prefix verifies framing AND content at that baud — at a wrong baud the bytes would be garbage and never match. RX-only (no TX pin), so the ESP32 drives nothing on the shared wire.
+Opens a UART RX-only on IO27 (where the EC618's UART2 TX is wired) at the baud
+  given as the program argument, and confirms it receives several cleanly-framed
+  lines carrying that exact baud value ("EC618-UART2 <baud> <n>"). Counting
+  newline-delimited lines that contain the exact expected prefix verifies framing
+  AND content at that baud — at a wrong baud the bytes would be garbage and never
+  match. RX-only (no TX pin), so the ESP32 drives nothing on the shared wire.
 
 Produces a single "uart2-esp32: PASS ..." / "... FAIL ..." verdict line.
 */

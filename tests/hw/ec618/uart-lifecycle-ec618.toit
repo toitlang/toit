@@ -5,7 +5,11 @@
 /**
 EC618 UART controller-resource lifecycle regression.
 
-The UART controllers are system-wide resources. Running with the argument `leak` exits with UART2 transmitting; a following normal run verifies that forced resource-group teardown retained DMA-owned memory until line idle and released the controller. The normal run also closes during an active transmission before reopening.
+The UART controllers are system-wide resources. Running with the argument
+  `leak` exits with UART2 transmitting; a following normal run verifies that
+  forced resource-group teardown retained DMA-owned memory until line idle and
+  released the controller.
+  The normal run also closes during an active transmission before reopening.
 */
 
 import gpio show Pin

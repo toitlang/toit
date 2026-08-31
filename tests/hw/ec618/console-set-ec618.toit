@@ -9,7 +9,10 @@ Sets the freshly staged OTA's console (rig utility, not a test).
 
 The target UART id comes in as the test argument.
 
-The device must already carry a NEW trial staged by an OTA commit. The change takes effect when that trial boots; validation promotes it and rollback restores the known-good image's console. Calling this utility without a staged trial is expected to fail.
+The device must already carry a NEW trial staged by an OTA commit. The
+  change takes effect when that trial boots; validation promotes it and
+  rollback restores the known-good image's console. Calling this utility
+  without a staged trial is expected to fail.
 */
 
 main args:

@@ -8,13 +8,23 @@ import gpio.dac show Dac
 import .wiring as wiring
 
 /**
-ESP32 half of the ADC HW test: drives the EC618 ADC inputs with a known staircase.
+ESP32 half of the ADC HW test: drives the EC618 ADC inputs with a known
+  staircase.
 
-Steps both DACs through a fixed list of voltages ($LEVELS), holding each for $HOLD, and loops for $DURATION. The EC618 half (adc-ec618.toit) samples the resulting waveform, self-calibrates the board-to-board divider from the two extreme levels, and then checks that every intermediate level lands at the expected voltage (see that file).
+Steps both DACs through a fixed list of voltages ($LEVELS), holding each for
+  $HOLD, and loops for $DURATION. The EC618 half (adc-ec618.toit) samples the
+  resulting waveform, self-calibrates the board-to-board divider from the two
+  extreme levels, and then checks that every intermediate level lands at the
+  expected voltage (see that file).
 
 Two resistor dividers sit between the ESP32 DAC and what the EC618 reads:
-- an EXTERNAL ~2:1 divider on the rig wiring (these resistors, between the boards) — the EC618 ADC pin sees roughly DAC/2; the EC618 test derives the exact ratio empirically per channel.
-- the EC618's INTERNAL ADC range divider (inside the chip) — already compensated by the EC618 ADC driver, so adc.get returns the true pin volts. So a 1.0 V DAC step shows up as ~0.5 V at the EC618; the test verifies that.
+  - an EXTERNAL ~2:1 divider on the rig wiring (these resistors, between the
+    boards) — the EC618 ADC pin sees roughly DAC/2; the EC618 test derives the
+    exact ratio empirically per channel.
+  - the EC618's INTERNAL ADC range divider (inside the chip) — already
+    compensated by the EC618 ADC driver, so adc.get returns the true pin volts.
+  So a 1.0 V DAC step shows up as ~0.5 V at the EC618; the test verifies that.
+
 */
 
 // A clean 0.5 V staircase. 0.0 and 3.0 V are the calibration endpoints; the

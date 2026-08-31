@@ -7,15 +7,28 @@ import gpio.adc show Adc
 import .wiring as wiring
 
 /**
-EC618 half of the ADC HW test (device under test): verifies the ADC reads the ESP32 DAC's exact voltages, within a delta.
+EC618 half of the ADC HW test (device under test): verifies the ADC reads the
+  ESP32 DAC's exact voltages, within a delta.
 
-The ESP32 (adc-esp32.toit) drives both ADC inputs with a known staircase ($DAC-LEVELS volts). For each channel this test samples the resulting waveform and:
-1. self-calibrates the rig's board-to-board divider from the two extreme DAC levels (a 2-point fit: pin = offset + ratio * dac), and
-2. checks every intermediate DAC level lands at the predicted pin voltage, within $MATCH-DELTA volts.
+The ESP32 (adc-esp32.toit) drives both ADC inputs with a known staircase
+  ($DAC-LEVELS volts). For each channel this test samples the resulting waveform
+  and:
+  1. self-calibrates the rig's board-to-board divider from the two extreme DAC
+     levels (a 2-point fit: pin = offset + ratio * dac), and
+  2. checks every intermediate DAC level lands at the predicted pin voltage,
+     within $MATCH-DELTA volts.
 
-Why calibrate instead of assuming a ratio: two resistor dividers are in play. The EC618's *internal* ADC range divider (inside the chip) is already compensated by the ADC driver, so adc.get returns the true *pin* voltage. But the rig's *external* divider (resistors on the wire between the two boards) is not — and it differs per channel — so the EC618 sees DAC * ratio with an unknown, per-channel ratio. The 2-point fit recovers that ratio (and any ADC offset/gain), turning "does it swing" into "does it read the right value".
+Why calibrate instead of assuming a ratio: two resistor dividers are in play.
+  The EC618's *internal* ADC range divider (inside the chip) is already
+  compensated by the ADC driver, so adc.get returns the true *pin* voltage. But
+  the rig's *external* divider (resistors on the wire between the two boards) is
+  not — and it differs per channel — so the EC618 sees DAC * ratio with an
+  unknown, per-channel ratio. The 2-point fit recovers that ratio (and any ADC
+  offset/gain), turning "does it swing" into "does it read the right value".
 
-Both channels must read accurately: a channel that does not swing ($LIVE-SPREAD-MIN), or whose readings are off by more than $MATCH-DELTA, fails.
+Both channels must read accurately: a channel that does not swing
+  ($LIVE-SPREAD-MIN), or whose readings are off by more than $MATCH-DELTA, fails.
+
 */
 
 CHANNELS ::= [wiring.EC618-ADC0-CHANNEL, wiring.EC618-ADC1-CHANNEL]

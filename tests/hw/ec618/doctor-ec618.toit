@@ -6,7 +6,9 @@ import ec618
 import ec618.slot
 
 /**
-Device-side doctor: dumps the identity and layout state a healthy EC618 should be able to report, so rig triage starts from facts instead of silence.
+Device-side doctor: dumps the identity and layout state a healthy EC618
+  should be able to report, so rig triage starts from facts instead of
+  silence.
 */
 
 main:

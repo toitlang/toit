@@ -7,7 +7,10 @@ import ec618 show Ec618
 /**
 EC618 UART open/close stress (device under test, no ESP32 needed).
 
-Opens and closes UART2 repeatedly at a fixed baud to check that re-opening a UART controller works (it surfaced as an INVALID_ARGUMENT on a later open during the baud sweep). Isolates "re-open" from "baud value": all opens use the same baud.
+Opens and closes UART2 repeatedly at a fixed baud to check that re-opening a UART
+  controller works (it surfaced as an INVALID_ARGUMENT on a later open during the
+  baud sweep). Isolates "re-open" from "baud value": all opens use the same baud.
+
 */
 
 // 460800 first (direct open), then a sweep that revisits it: isolates whether

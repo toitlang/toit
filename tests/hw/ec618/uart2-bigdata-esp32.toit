@@ -11,7 +11,8 @@ import .uart-stream as stream
 /**
 ESP32 command server for UART2 sustained, ring, and duplex tests.
 
-The bidirectional UART1 control lane is length-delimited and CRC-protected. Raw UART2 data only starts after both peers acknowledge the phase.
+The bidirectional UART1 control lane is length-delimited and CRC-protected.
+  Raw UART2 data only starts after both peers acknowledge the phase.
 */
 
 CONTROL-BAUD ::= 115200

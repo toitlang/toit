@@ -3,7 +3,8 @@
 /**
 Splits $str on runs of whitespace, dropping empty tokens.
 
-Invalid Unicode runes are ignored. ELF tools emit ASCII, but their output is external input and should not make a parser fail with a nullable-rune error.
+Invalid Unicode runes are ignored. ELF tools emit ASCII, but their output is
+  external input and should not make a parser fail with a nullable-rune error.
 */
 split-whitespace str/string -> List:
   result := []

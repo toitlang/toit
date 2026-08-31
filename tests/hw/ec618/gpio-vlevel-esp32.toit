@@ -10,7 +10,14 @@ import .wiring as wiring
 /**
 ESP32 half of the IO-voltage characterization.
 
-Measures the EC618's GPIO10 output-high level on the ESP32 ADC, to confirm the dev-board's 3.3 V IO rail and catch a regression toward 1.8 V (see gpio-vlevel-ec618.toit). IO32 is on ADC1 (usable while Wi-Fi is up); IO14 is on ADC2 (often unavailable while Wi-Fi is connected — reported as an error if so). The 11 dB attenuation (max-voltage 3.3) reads up to ~3.1 V, so ~1.8 V vs a saturated ~3.0+ V is clearly distinguishable.
+Measures the EC618's GPIO10 output-high level on the ESP32 ADC, to confirm the
+  dev-board's 3.3 V IO rail and catch a regression toward 1.8 V
+  (see gpio-vlevel-ec618.toit). IO32 is
+  on ADC1 (usable while Wi-Fi is up); IO14 is on ADC2 (often unavailable while
+  Wi-Fi is connected — reported as an error if so). The 11 dB attenuation
+  (max-voltage 3.3) reads up to ~3.1 V, so ~1.8 V vs a saturated ~3.0+ V is clearly
+  distinguishable.
+
 */
 
 DURATION ::= Duration --s=35

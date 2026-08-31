@@ -10,7 +10,12 @@ import .wiring as wiring
 /**
 EC618 half of the GPIO-output HW test.
 
-Drives EC618 GPIO11 as a square wave so the ESP32 half (gpio-output-esp32.toit) can confirm it sees the toggles. GPIO11's EC618 pad is PAD26 (board pin 5, "uart2_txd"). The dev board mirrors that module net at board pin 14; this is board wiring, not a second EC618 GPIO11 pad, so `Ec618.gpio 11 --alt` must be rejected.
+Drives EC618 GPIO11 as a square wave so the ESP32 half
+  (gpio-output-esp32.toit) can confirm it sees the toggles. GPIO11's EC618 pad is
+  PAD26 (board pin 5, "uart2_txd"). The dev board mirrors that module net at
+  board pin 14; this is board wiring, not a second EC618 GPIO11 pad, so
+  `Ec618.gpio 11 --alt` must be rejected.
+
 */
 
 HALF-PERIOD ::= Duration --ms=50    // 10 Hz square wave.

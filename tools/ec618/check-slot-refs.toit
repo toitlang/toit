@@ -96,7 +96,9 @@ run invocation/cli.Invocation -> none:
 /**
 Returns the populated VM slot range as a two-element list `[lo, hi]`.
 
-Prefers `__vm_link_base`/`__vm_link_end` (the link-domain VMA the slot-A image's code lives at); falls back to `__vm_b_start`/`__vm_b_end` (the slot-B oracle link). Reads hex addresses from `$nm $elf`, whose relevant lines look like:
+Prefers `__vm_link_base`/`__vm_link_end` (the link-domain VMA the slot-A image's
+  code lives at); falls back to `__vm_b_start`/`__vm_b_end` (the slot-B oracle
+  link). Reads hex addresses from `$nm $elf`, whose relevant lines look like:
 
 ```
 00d00000 ? __vm_link_base
@@ -157,9 +159,12 @@ is-flags-token token/string -> bool:
   return true
 
 /**
-Returns the fixed-region -> slot references in $elf as a list of "section -> symbol" strings (one per offending relocation, duplicates kept).
+Returns the fixed-region -> slot references in $elf as a list of
+  "section -> symbol" strings (one per offending relocation, duplicates kept).
 
-A reference offends when the patched section is allocated (in $alloc) but NOT a relocated section ($RELOCATED-SECTIONS), and the relocation's target value lands in `[$lo, $hi)`.
+A reference offends when the patched section is allocated (in $alloc) but NOT a
+  relocated section ($RELOCATED-SECTIONS), and the relocation's target value
+  lands in `[$lo, $hi)`.
 
 The parsed `readelf -rW` header and record lines look like:
 
@@ -191,7 +196,9 @@ find-references readelf/string elf/string lo/int hi/int alloc/Set -> List:
   return references
 
 /**
-Returns the section a `.rel.<section>`/`.rela.<section>` patches from a `readelf` header $line, or null. For example, "Relocation section '.rel.vm_a' at offset ..." yields ".vm_a".
+Returns the section a `.rel.<section>`/`.rela.<section>` patches from a `readelf`
+  header $line, or null. For example, "Relocation section '.rel.vm_a' at
+  offset ..." yields ".vm_a".
 */
 relocation-target-section line/string -> string?:
   start := line.index-of "'"

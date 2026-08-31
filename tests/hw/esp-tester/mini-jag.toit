@@ -156,7 +156,11 @@ class Ec618Control:
 /**
 Opens the UART to which the firmware redirects `print`.
 
-The agent's control channel and the test's print output share that wire. The controller follows the anchor record's console byte through $ec618.console-uart-id, so changing the provisioned console does not require a change to this agent. The returned owner closes both the UART controller and its internally created pad objects.
+The agent's control channel and the test's print output share that wire. The
+  controller follows the anchor record's console byte through
+  $ec618.console-uart-id, so changing the provisioned console does not require a
+  change to this agent. The returned owner closes both the UART controller and
+  its internally created pad objects.
 */
 open-control-uart -> Ec618Control:
   id := ec618.console-uart-id
@@ -302,7 +306,9 @@ serve port/uart.Port --primary/bool=true -> none:
 /**
 Writes one `[mini-jag] ...` status line to the host.
 
-The agent uses these for all of its own chatter. The host prints them and otherwise ignores any line starting with `[`, which distinguishes status text from a single acknowledgement byte.
+The agent uses these for all of its own chatter. The host prints them and
+  otherwise ignores any line starting with `[`, which distinguishes status
+  text from a single acknowledgement byte.
 */
 status out/io.Writer message/string -> none:
   out.write "$MINI-JAG-TAG $message\n"
@@ -310,9 +316,13 @@ status out/io.Writer message/string -> none:
 /**
 Receives and installs a container image after clearing any prior test.
 
-Returns whether installation succeeded; the caller writes the final acknowledgement from the result.
+Returns whether installation succeeded; the caller writes the final
+  acknowledgement from the result.
 
-The wire format starts with `<size:4 LE><crc32:4>`. After ACK-READY, it carries a sequence of `<len:4 BE><bytes>` chunks, each acknowledged with ACK-OK. The per-chunk acknowledgement flow-controls the transfer because the shared UART has no hardware flow control.
+The wire format starts with `<size:4 LE><crc32:4>`. After ACK-READY, it carries
+  a sequence of `<len:4 BE><bytes>` chunks, each acknowledged with ACK-OK. The
+  per-chunk acknowledgement flow-controls the transfer because the shared UART
+  has no hardware flow control.
 */
 install-container reader/io.Reader out/io.Writer port/uart.Port -> bool:
   size := reader.little-endian.read-int32
@@ -377,7 +387,8 @@ primary-contact_/bool := false
 /**
 Starts the installed test container in the background.
 
-Reports its exit through a status line so the command loop keeps reading, and the host's pings keep feeding the watchdog, while the test runs.
+Reports its exit through a status line so the command loop keeps reading, and
+  the host's pings keep feeding the watchdog, while the test runs.
 */
 run-installed arg/string out/io.Writer --embedded/bool=false -> none:
   if test-running_:
@@ -430,7 +441,8 @@ run-installed arg/string out/io.Writer --embedded/bool=false -> none:
 /**
 Stops the running test through the container service.
 
-This is deliberately process cancellation rather than a protocol disconnect: process teardown unwinds Toit code and destroys every native resource.
+This is deliberately process cancellation rather than a protocol disconnect:
+  process teardown unwinds Toit code and destroys every native resource.
 */
 cancel-running-test out/io.Writer -> none:
   if cancel-running-test-in-progress_: return
@@ -446,7 +458,8 @@ cancel-running-test out/io.Writer -> none:
 /**
 Reads one OTA chunk and feeds it to the firmware $writer.
 
-Each chunk is encoded as `<len:4 BE><bytes>`. Acknowledges readiness before the payload so the host paces the transfer.
+Each chunk is encoded as `<len:4 BE><bytes>`. Acknowledges readiness before the
+  payload so the host paces the transfer.
 */
 fw-write reader/io.Reader writer/firmware.FirmwareWriter? out/io.Writer -> bool:
   length := reader.big-endian.read-uint32

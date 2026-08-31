@@ -11,7 +11,10 @@ import .wiring as wiring
 /**
 ESP32 half of the exhaustive UART1/UART2 round-trip test.
 
-Commands arrive through a length-delimited, CRC-protected channel. The helper acknowledges each open or baud transition before receiving one framed test payload and echoing it. It switches the control lane from UART1 to UART2 before UART1 becomes the test controller.
+Commands arrive through a length-delimited, CRC-protected channel. The helper
+  acknowledges each open or baud transition before receiving one framed test
+  payload and echoing it. It switches the control lane from UART1 to UART2
+  before UART1 becomes the test controller.
 */
 
 CONTROL-BAUD ::= 115200

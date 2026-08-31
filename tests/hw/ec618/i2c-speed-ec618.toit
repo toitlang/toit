@@ -6,11 +6,26 @@ import ec618 show Ec618
 import i2c
 
 /**
-EC618 I2C wire-pace regression: requested device frequencies must change the wire speed (the calibrated TPR model in i2c_ec618.cc).
+EC618 I2C wire-pace regression: requested device frequencies must change
+  the wire speed (the calibrated TPR model in i2c_ec618.cc).
 
-Runs on the EMPTY I2C0 bus (pads 14/13, internal pull-ups) — no slave needed: each probe of an absent address clocks ~11 SCL cycles before the NACK, so batch duration tracks the wire pace. A device transfer first makes its frequency the bus's sticky probe pace; the batches then use $i2c.Bus.test — the tight synchronous spin path (~350 us/probe) — so the wire component dominates. Software overhead is identical across batches and cancels in the deltas; the platform clock ticks in 1 ms steps, hence batches instead of per-probe timing.
+Runs on the EMPTY I2C0 bus (pads 14/13, internal pull-ups) — no slave
+  needed: each probe of an absent address clocks ~11 SCL cycles before the
+  NACK, so batch duration tracks the wire pace. A device transfer first
+  makes its frequency the bus's sticky probe pace; the batches then use
+  $i2c.Bus.test — the tight synchronous spin path (~350 us/probe) — so the
+  wire component dominates. Software overhead is identical across batches
+  and cancels in the deltas; the platform clock ticks in 1 ms steps, hence
+  batches instead of per-probe timing.
 
-Model (HW-calibrated 2026-07-18 with ESP32 RMT): the bounded linear region has period `2*SCLx+20` functional-clock ticks. The 26 MHz source covers through ~206 kHz and the gate-enabled 51.2 MHz source handles intermediate fast requests. At 400 kHz the driver switches to the LuatOS-style full timing word on 26 MHz; the fastest bounded SCLx=30 variant measures ~363 kHz. SCLx=28 free-runs an address-NACK command. Higher requests clamp to the safe setting. The final 50 kHz batch re-crosses the source boundary downward.
+Model (HW-calibrated 2026-07-18 with ESP32 RMT): the bounded linear region
+  has period `2*SCLx+20` functional-clock ticks. The 26 MHz source covers
+  through ~206 kHz and the gate-enabled 51.2 MHz source handles intermediate
+  fast requests. At 400 kHz the driver switches to the LuatOS-style full timing
+  word on 26 MHz; the fastest bounded SCLx=30 variant measures ~363 kHz. SCLx=28
+  free-runs an address-NACK command. Higher requests clamp to the safe setting.
+  The final 50 kHz batch re-crosses the source boundary downward.
+
 */
 
 EMPTY-ADDRESS ::= 0x40

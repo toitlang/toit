@@ -5,7 +5,10 @@
 /**
 EC618 native cellular connection lifecycle regression.
 
-This test needs no working SIM or network attachment. It checks that the system-wide modem has only one native event resource and that disconnect releases it. Running with the argument `leak` exits with the connection open; a following normal run verifies forced container teardown.
+This test needs no working SIM or network attachment. It checks that the
+  system-wide modem has only one native event resource and that disconnect
+  releases it. Running with the argument `leak` exits with the connection
+  open; a following normal run verifies forced container teardown.
 */
 
 expect-throws expected/string [block] -> none:

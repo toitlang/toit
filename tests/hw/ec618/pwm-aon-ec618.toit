@@ -11,13 +11,22 @@ import .wiring as wiring
 /**
 EC618 half of the AON-pad PWM test (device under test).
 
-The module's "PWM01"/"PWM04" silkscreen pins are real AP-timer PWM routes: the SDK's luat_pwm_ec618.c maps PWM channel 1 (TIMER1) to PAD44 and channel 4 (TIMER4) to PAD47 (RTE_PWM1/RTE_PWM4 in the SDK project configs), iomux ALT5 like every other PWM pad — the pads just live in the AON domain, so the driver powers the AON IO LDO first.
+The module's "PWM01"/"PWM04" silkscreen pins are real AP-timer PWM
+  routes: the SDK's luat_pwm_ec618.c maps PWM channel 1 (TIMER1) to PAD44
+  and channel 4 (TIMER4) to PAD47 (RTE_PWM1/RTE_PWM4 in the SDK project
+  configs), iomux ALT5 like every other PWM pad — the pads just live in
+  the AON domain, so the driver powers the AON IO LDO first.
 
-This is also the first HW exercise of TIMER1's PWM (the base pwm test could only reach TIMER0/TIMER4 wires). Phases:
+This is also the first HW exercise of TIMER1's PWM (the base pwm test
+  could only reach TIMER0/TIMER4 wires). Phases:
 
 1. PAD44 (TIMER1) alone: 1 kHz frequency + duty 0.25/0.75 at 10 Hz.
 2. PAD47 (TIMER4) alone: 1 kHz frequency.
-3. Both simultaneously — from TWO generators at different rates — then measuring both frequencies independently, then closing PAD44's channel silences it while PAD47 keeps running. This is a regression for cross-channel pulses on the shared AON supply.
+3. Both simultaneously — from TWO generators at different rates — then
+   measuring both frequencies independently, then closing PAD44's channel
+   silences it while PAD47 keeps running. This is a regression for
+   cross-channel pulses on the shared AON supply.
+
 */
 
 failures := []

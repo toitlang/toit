@@ -11,13 +11,22 @@ import .wiring as wiring
 /**
 Regression test for AGPIOWU output voltage on the modest-affair rig.
 
-PAD42 (GPIO22, board pin 9) drives the BMP280's VCC on this rig. For a usable high level, the AON IO LDO must be powered and set to 3.3 V. The GPIO driver does both when it opens an AON pad.
+PAD42 (GPIO22, board pin 9) drives the BMP280's VCC on this rig. For a
+  usable high level, the AON IO LDO must be powered and set to 3.3 V.
+  The GPIO driver does both when it opens an AON pad.
 
-Driving pin 9 high must power the sensor so its chip-id answers over I2C. The test repeats this across a power toggle.
+Driving pin 9 high must power the sensor so its chip-id answers over I2C.
+  The test repeats this across a power toggle.
 
-It deliberately does NOT assert "bus dead while the rail is low": with the I2C bus open, the BMP280 survives on parasitic supply through its SDA/SCL clamp diodes, and its storage caps hold the ~0.1 uA sleep current for many seconds, so the sensor can answer long after VCC is removed.
+It deliberately does NOT assert "bus dead while the rail is low": with
+  the I2C bus open, the BMP280 survives on parasitic supply through its
+  SDA/SCL clamp diodes, and its storage caps hold the ~0.1 uA sleep
+  current for many seconds, so the sensor can answer long after VCC is
+  removed.
 
-This wiring is present on modest-affair, not quirky-plenty. Standalone (no ESP32 helper); don't run bmp280-esp32.toit concurrently.
+This wiring is present on modest-affair, not quirky-plenty. Standalone
+  (no ESP32 helper); don't run bmp280-esp32.toit concurrently.
+
 */
 
 ADDRESS ::= 0x76

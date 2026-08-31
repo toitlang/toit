@@ -274,7 +274,8 @@ run invocation/cli.Invocation -> none:
 /**
 Reads the relocation records of $section from `$readelf -r $elf`.
 
-Returns a list of $Reloc. Only data lines (whose type starts with `R_ARM`) are kept, so the column header and blank lines are skipped automatically.
+Returns a list of $Reloc. Only data lines (whose type starts with `R_ARM`) are
+kept, so the column header and blank lines are skipped automatically.
 
 For example:
 
@@ -337,7 +338,15 @@ slot-symbols nm/string elf/string -> Map:
 /**
 Encodes the reloc-table artifact.
 
-The header is `MAGIC` followed by $link-base, $slot-size, $body-size, the three counts and $data-size (all little-endian uint32). The $abs32 and $thmbl offset lists (slot-relative, ascending) follow as delta-encoded unsigned LEB128 varints; the $straddle stream follows as a delta-varint offset plus the site's 4 canonical bytes per entry (elements of $straddle are `[offset, site-bytes]` pairs, ascending). $data-size is the verbatim VM .data init image that rides after the body (0 when no .data region is carried). Mirrors `SlotRelocTable.to-bytes` in tools/ec618/slot-reloc.toit and `slot_reloc_parse` in src/slot_reloc_ec618.cc.
+The header is `MAGIC` followed by $link-base, $slot-size, $body-size, the
+three counts and $data-size (all little-endian uint32). The $abs32 and
+$thmbl offset lists (slot-relative, ascending) follow as delta-encoded
+unsigned LEB128 varints; the $straddle stream follows as a delta-varint
+offset plus the site's 4 canonical bytes per entry (elements of $straddle
+are `[offset, site-bytes]` pairs, ascending). $data-size is the verbatim VM
+.data init image that rides after the body (0 when no .data region is
+carried). Mirrors `SlotRelocTable.to-bytes` in tools/ec618/slot-reloc.toit
+and `slot_reloc_parse` in src/slot_reloc_ec618.cc.
 */
 encode-table -> ByteArray
     --base-version/int
@@ -392,7 +401,10 @@ write-varint buffer/Buffer value/int -> none:
 /**
 Relocates the slot content of $bytes in place by $delta.
 
-$base is the file offset of the slot's first byte within $bytes; the $abs32 and $thmbl offsets are slot-relative. Each ABS32 word gains $delta; each escaping branch immediate loses $delta (its source moved by $delta but its fixed target did not).
+$base is the file offset of the slot's first byte within $bytes; the $abs32 and
+$thmbl offsets are slot-relative. Each ABS32 word gains $delta; each escaping
+branch immediate loses $delta (its source moved by $delta but its fixed
+target did not).
 */
 apply-reloc bytes/ByteArray base/int abs32/List thmbl/List delta/int -> none:
   abs32.do: | offset/int |
@@ -407,7 +419,8 @@ apply-reloc bytes/ByteArray base/int abs32/List thmbl/List delta/int -> none:
 /**
 Relocates the slot-A image to slot B and checks byte-identity with $ap-b.
 
-Returns whether the relocated slot-A content equals the slot-B link's content over $body-size bytes. Reports the first mismatch to stderr on failure.
+Returns whether the relocated slot-A content equals the slot-B link's content
+over $body-size bytes. Reports the first mismatch to stderr on failure.
 */
 verify -> bool
     --ui/cli.Ui
@@ -430,7 +443,8 @@ verify -> bool
 /**
 Decodes the signed branch immediate of a Thumb-2 BL/B.W at $offset in $bytes.
 
-The 4-byte instruction is two little-endian halfwords. The immediate is the PC-relative offset (relative to the instruction address + 4).
+The 4-byte instruction is two little-endian halfwords. The immediate is the
+PC-relative offset (relative to the instruction address + 4).
 */
 thumb-branch-imm bytes/ByteArray offset/int -> int:
   lo := LITTLE-ENDIAN.uint16 bytes offset

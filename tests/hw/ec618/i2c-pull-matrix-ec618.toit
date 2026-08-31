@@ -13,9 +13,16 @@ import .wiring as wiring
 /**
 Checks I2C0 with no pull-ups, EC618 pull-ups, and ESP32 pull-ups.
 
-The I2C address is deliberately absent. Each probe must return false promptly, and the two pulled-up phases must report idle-high wires. Running the no-pull phase first and then both working phases also verifies that a dead bus does not wedge the controller.
+The I2C address is deliberately absent. Each probe must return false promptly,
+  and the two pulled-up phases must report idle-high wires. Running the
+  no-pull phase first and then both working phases also verifies that a dead
+  bus does not wedge the controller.
 
-With one of `no-pulls`, `esp32-pulls`, or `ec618-pulls` as the program argument, runs only that phase without using the UART2 control lane. This lets a host orchestrate the same matrix on a minimal SDA/SCL/GND rig. The first two phases signal their completion on SDA/SCL so one ESP32 helper can advance through all three pull configurations.
+With one of `no-pulls`, `esp32-pulls`, or `ec618-pulls` as the program
+  argument, runs only that phase without using the UART2 control lane. This
+  lets a host orchestrate the same matrix on a minimal SDA/SCL/GND rig. The
+  first two phases signal their completion on SDA/SCL so one ESP32 helper can
+  advance through all three pull configurations.
 */
 
 ABSENT-ADDRESS ::= 0x42

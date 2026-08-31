@@ -40,7 +40,9 @@ send-stream port/uart.Port n/int -> none:
 /**
 Reads up to $n deterministic stream bytes.
 
-Returns `[crc, count, largest-read, first-bad-offset]`. A deadline is a normal end condition for tests that intentionally overflow the receiver; every other read exception propagates.
+Returns `[crc, count, largest-read, first-bad-offset]`. A deadline is a normal
+  end condition for tests that intentionally overflow the receiver; every
+  other read exception propagates.
 */
 recv-stream port/uart.Port n/int --timeout-ms/int=30_000 -> List:
   crc := Crc32

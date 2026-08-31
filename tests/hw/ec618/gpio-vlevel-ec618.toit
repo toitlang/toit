@@ -10,9 +10,13 @@ import .wiring as wiring
 /**
 EC618 half of the IO-voltage characterization.
 
-Drives GPIO10 (PAD25) HIGH and holds it, so the ESP32 half (gpio-vlevel-esp32.toit) can measure the EC618's output-high voltage on its ADC and confirm the dev-board's 3.3 V IO rail. A reading near 1.8 V is a regression.
+Drives GPIO10 (PAD25) HIGH and holds it, so the ESP32 half
+  (gpio-vlevel-esp32.toit) can measure the EC618's output-high voltage on its ADC
+  and confirm the dev-board's 3.3 V IO rail. A reading near 1.8 V is a
+  regression.
 
 EC618 drives, ESP32 reads -> safe regardless of the rail.
+
 */
 
 HOLD ::= Duration --s=40

@@ -9,9 +9,15 @@ import .wiring as wiring
 import ..shared.rc522 as rc522
 
 /**
-ESP32-side RC522 wiring probe — validates the breadboard hookup before the EC618 SPI bring-up uses the reader.
+ESP32-side RC522 wiring probe — validates the breadboard hookup before
+  the EC618 SPI bring-up uses the reader.
 
-Wakes the RC522 out of hard power-down (RST on the PAD16/IO23 net), reads the version register (0x37: 0x91 = v1, 0x92 = v2, others are usually clones — report, don't judge) and runs a FIFO write/read-back loopback, exercising MOSI and MISO with real data. Then drops RST so the reader goes back to its quiet power-down state.
+Wakes the RC522 out of hard power-down (RST on the PAD16/IO23 net),
+  reads the version register (0x37: 0x91 = v1, 0x92 = v2, others are
+  usually clones — report, don't judge) and runs a FIFO write/read-back
+  loopback, exercising MOSI and MISO with real data. Then drops RST so
+  the reader goes back to its quiet power-down state.
+
 */
 
 main:

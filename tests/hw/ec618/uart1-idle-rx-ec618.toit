@@ -10,9 +10,18 @@ import .wiring as wiring
 /**
 EC618 half of the UART1 idle-RX test (device under test).
 
-Hunts the "agent goes deaf" symptom seen on the quirky-plenty rig (its control lane is UART1): RX works right after boot and stops answering later. This reproduces the conditions on the modest-affair rig without any of quirky's confounds (relay power glitches, cold-boot ROM state): open UART1, let the ESP32 send a small marker every 5 s, and report the received-byte count once per 30 s phase. A healthy RX gains ~50+ bytes every phase; the failure signature is early phases gaining and a later phase flatlining. The UART0 agent (mini-jag) is the liveness control — the test keeps printing either way.
+Hunts the "agent goes deaf" symptom seen on the quirky-plenty rig (its
+  control lane is UART1): RX works right after boot and stops answering
+  later. This reproduces the conditions on the modest-affair rig without
+  any of quirky's confounds (relay power glitches, cold-boot ROM state):
+  open UART1, let the ESP32 send a small marker every 5 s, and report the
+  received-byte count once per 30 s phase. A healthy RX gains ~50+ bytes
+  every phase; the failure signature is early phases gaining and a later
+  phase flatlining. The UART0 agent (mini-jag) is the liveness control —
+  the test keeps printing either way.
 
-The ESP32 half sends markers for ~200 s, longer than this test's 5 x 30 s window.
+The ESP32 half sends markers for ~200 s, longer than this test's 5 x 30 s
+  window.
 */
 
 PHASES ::= 5

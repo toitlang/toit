@@ -10,9 +10,15 @@ import .wiring as wiring
 /**
 EC618 half of the GPIO-input HW test (device under test).
 
-The reverse of gpio-output: the ESP32 (gpio-input-esp32.toit) drives a square wave and the EC618 reads it as a GPIO input. This validates the receive direction (ESP32 -> EC618), which is safe because the measured EC618 IO rail is 3.3 V. The EC618 configures GPIO11 (PAD26) as input only — it never drives the line, so there is no contention with the ESP32 output.
+The reverse of gpio-output: the ESP32 (gpio-input-esp32.toit) drives a square
+  wave and the EC618 reads it as a GPIO input. This validates the receive
+  direction (ESP32 -> EC618), which is safe because the measured EC618 IO rail
+  is 3.3 V. The EC618 configures GPIO11
+  (PAD26) as input only — it never drives the line, so there is no contention with
+  the ESP32 output.
 
 Passes if the EC618 sees the square wave: both levels and enough edges.
+
 */
 
 SAMPLE ::= Duration --ms=2      // Poll fast enough to catch a 10 Hz square wave.

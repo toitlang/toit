@@ -13,11 +13,25 @@ EC618 I2C long-transfer + clock-stretch validation (device under test).
 
 Validates the paths the bmp280/torture tests cannot reach:
 
-1. TX FIFO REFILL: a 25-byte register-pair stream write (reg,val,reg,val, ... — the BMP280 ACKs arbitrary pair streams) exceeds the 16-deep TX FIFO, so the engine's refill interrupt must feed the tail. Verified by reading the registers back.
-2. CLOCK STRETCHING: the ESP32 holds the SCL net low (open-drain, like a real stretching slave) in the middle of a long transfer. The master must pause and complete correctly after the release — same data, no errors, elapsed time >= the hold.
-3. CANCELLATION + LATE RELEASE: a transfer is cancelled while the ESP32 holds SCL low. The helper releases SCL after the cancelled task has unwound, and the same device must transfer successfully again.
+1. TX FIFO REFILL: a 25-byte register-pair stream write (reg,val,reg,val,
+   ... — the BMP280 ACKs arbitrary pair streams) exceeds the 16-deep TX
+   FIFO, so the engine's refill interrupt must feed the tail. Verified by
+   reading the registers back.
+2. CLOCK STRETCHING: the ESP32 holds the SCL net low (open-drain, like a
+   real stretching slave) in the middle of a long transfer. The master
+   must pause and complete correctly after the release — same data, no
+   errors, elapsed time >= the hold.
+3. CANCELLATION + LATE RELEASE: a transfer is cancelled while the ESP32
+   holds SCL low. The helper releases SCL after the cancelled task has
+   unwound, and the same device must transfer successfully again.
 
-Stretched operations are SINGLE-LEG transfers (one MasterReceive or one MasterTransmit) at 51 kHz (the arbitrary-TPR path), so the hold lands deterministically inside the transfer. A stretch landing exactly in the microsecond gap between the two legs of a chained write-then-read would abort that transfer cleanly (bounded chain wait) — a documented limitation, not exercised here.
+Stretched operations are SINGLE-LEG transfers (one MasterReceive or one
+  MasterTransmit) at 51 kHz (the arbitrary-TPR path), so the hold lands
+  deterministically inside the transfer. A stretch landing exactly in the
+  microsecond gap between the two legs of a chained write-then-read would
+  abort that transfer cleanly (bounded chain wait) — a documented
+  limitation, not exercised here.
+
 */
 
 ADDRESS ::= 0x76

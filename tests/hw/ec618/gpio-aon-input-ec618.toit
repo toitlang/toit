@@ -11,7 +11,9 @@ import .wiring as wiring
 /**
 EC618 half of the AON-pad GPIO-input regression.
 
-The ESP32 drives PAD44 and PAD47 through every two-bit pattern. A framed UART1 exchange acknowledges each transition before this side samples both inputs, so the test has no timing window or inferred wire identity.
+The ESP32 drives PAD44 and PAD47 through every two-bit pattern. A framed UART1
+  exchange acknowledges each transition before this side samples both inputs,
+  so the test has no timing window or inferred wire identity.
 */
 
 CONTROL-TIMEOUT-MS ::= 15_000

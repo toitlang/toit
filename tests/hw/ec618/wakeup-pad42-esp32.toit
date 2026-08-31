@@ -9,9 +9,13 @@ import .wiring as wiring
 /**
 ESP32 command server for the EC618 PAD42 wake regression.
 
-UART1 synchronizes each phase. IO13 is held low while the EC618 prepares and receives one short rising-edge pulse only after it acknowledges that it is about to enter deep sleep. This removes the old 60-second blind delay and repeated pulse window.
+UART1 synchronizes each phase. IO13 is held low while the EC618 prepares and
+  receives one short rising-edge pulse only after it acknowledges that it is
+  about to enter deep sleep. This removes the old 60-second blind delay and
+  repeated pulse window.
 
-IO13 also supplies the rig's BMP280. The sensor remains connected but powered down between pulses; the wake test does not use its I2C bus.
+IO13 also supplies the rig's BMP280. The sensor remains connected but powered
+  down between pulses; the wake test does not use its I2C bus.
 */
 
 CONTROL-BAUD ::= 115200
