@@ -63,6 +63,9 @@ int main(int argc, char** argv) {
 
   STARTUPINFOEXA startup = {};
   startup.StartupInfo.cb = sizeof(startup);
+  // Prevent Windows from copying the parent's redirected standard handles.
+  // The pseudoconsole supplies its own handles during process attachment.
+  startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
   startup.lpAttributeList = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(
       attribute_storage.data());
   if (!InitializeProcThreadAttributeList(

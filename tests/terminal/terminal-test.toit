@@ -9,6 +9,7 @@ RESIZE-EVENT ::= 1 << 0
 
 main:
   assert: terminal-is-terminal_ 0
+  assert: terminal-is-terminal_ 1
   assert: not (terminal-is-terminal_ -1)
   assert-size_ 1 80 24
 
