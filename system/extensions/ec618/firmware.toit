@@ -24,6 +24,32 @@ import io show Buffer LITTLE-ENDIAN
 
 import ..shared.firmware show EmbeddedFirmwareServiceProviderBase
 
+SECTOR-SIZE_ ::= 0x1000
+
+slot-program-mode_ on/int -> none:
+  #primitive.ec618.slot-program-mode
+
+slot-mark-valid_ -> none:
+  #primitive.ec618.slot-mark-valid
+
+slot-mark-invalid-and-reset_ -> none:
+  #primitive.ec618.slot-mark-invalid-and-reset
+
+slot-reloc-begin_ table/ByteArray -> none:
+  #primitive.ec618.slot-reloc-begin
+
+slot-reloc-end_ -> none:
+  #primitive.ec618.slot-reloc-end
+
+slot-erase-inactive-sector_ offset/int -> none:
+  #primitive.ec618.slot-inactive-erase
+
+slot-write-inactive_ offset/int bytes/ByteArray -> none:
+  #primitive.ec618.slot-inactive-write
+
+slot-stage_ -> none:
+  #primitive.ec618.slot-stage
+
 class FirmwareServiceProvider extends EmbeddedFirmwareServiceProviderBase:
   writer_/FirmwareWriter_? := null
 
@@ -43,11 +69,11 @@ class FirmwareServiceProvider extends EmbeddedFirmwareServiceProviderBase:
     return slot.trial
 
   validate -> bool:
-    slot.validate
+    slot-mark-valid_
     return true
 
   rollback -> none:
-    slot.mark-invalid-and-reset  // Does not return — resets to the good slot.
+    slot-mark-invalid-and-reset_  // Does not return — resets to the good slot.
 
   upgrade -> none:
     // The new slot was staged by FirmwareWriter_.commit; reboot into it.
@@ -64,7 +90,7 @@ class FirmwareServiceProvider extends EmbeddedFirmwareServiceProviderBase:
     // program mode before publishing the resource and unwind it if resource
     // construction/registration fails. The modem stays on: with a matched CP
     // the flash is CP-safe, and a cellular OTA needs the link up.
-    slot.program-mode 1
+    slot-program-mode_ 1
     opened := false
     try:
       writer := FirmwareWriter_ this client from to
@@ -72,7 +98,7 @@ class FirmwareServiceProvider extends EmbeddedFirmwareServiceProviderBase:
       opened = true
       return writer
     finally:
-      if not opened: slot.program-mode 0
+      if not opened: slot-program-mode_ 0
 
   on-writer-closed_ writer/FirmwareWriter_ -> none:
     if writer_ == writer: writer_ = null
@@ -87,7 +113,7 @@ The stream is the standard CANONICAL firmware image, table-first:
 ```
 
 The writer accumulates the leading `[ size ][ table ]` and arms relocation
-  ($slot.reloc-begin, which also lays the slot's self-locating tail trailer),
+  (the relocation setup also lays the slot's self-locating tail trailer),
   then streams the body+extension into the slot — the VM relocates each chunk
   onto the destination slot transparently, so this code never sees slot
   addresses. $commit verifies the canonical SHA-256 and stages the slot as a
@@ -98,7 +124,7 @@ Runs in the system (firmware service) process, so it may call the PRIVILEGED
   slot primitives.
 */
 class FirmwareWriter_ extends ServiceResource implements FirmwareWriter:
-  static SECTOR ::= slot.SECTOR-SIZE  // 4 KB erase unit.
+  static SECTOR ::= SECTOR-SIZE_  // 4 KB erase unit.
   static SEGMENT ::= 16               // Flash write granularity.
 
   // Header phase: accumulate [ size:4 ][ table:N ] before arming relocation.
@@ -149,7 +175,7 @@ class FirmwareWriter_ extends ServiceResource implements FirmwareWriter:
           throw "firmware: invalid relocation table size"
       else if table-length_ >= 0 and header-length_ == 4 + table-length_:
         full := header_.bytes
-        slot.reloc-begin full[4 .. 4 + table-length_]
+        slot-reloc-begin_ full[4 .. 4 + table-length_]
         armed_ = true
         header_ = null
     if from < to: write-body_ bytes from to
@@ -166,14 +192,14 @@ class FirmwareWriter_ extends ServiceResource implements FirmwareWriter:
   // guarantees no relocation site straddles the write window.
   flush-full-sector_ -> none:
     ensure-erased_ (slot-offset_ + SECTOR)
-    slot.write-inactive slot-offset_ body_
+    slot-write-inactive_ slot-offset_ body_
     slot-offset_ += SECTOR
     fullness_ = 0
 
   ensure-erased_ end/int -> none:
     target := round-up end SECTOR
     while erased-until_ < target:
-      slot.erase-inactive-sector erased-until_
+      slot-erase-inactive-sector_ erased-until_
       erased-until_ += SECTOR
 
   // Only full sectors are written eagerly; the sub-sector remainder is held and
@@ -190,22 +216,22 @@ class FirmwareWriter_ extends ServiceResource implements FirmwareWriter:
       padded := round-up fullness_ SEGMENT
       body_.fill --from=fullness_ --to=padded 0
       ensure-erased_ (slot-offset_ + padded)
-      slot.write-inactive slot-offset_ body_[..padded]
+      slot-write-inactive_ slot-offset_ body_[..padded]
       slot-offset_ += fullness_
       fullness_ = 0
     digest := sha_.get
     if checksum and checksum != digest:
-      slot.reloc-end
+      slot-reloc-end_
       throw "firmware: checksum mismatch"
-    slot.reloc-end
-    slot.stage  // Stage as a trial; firmware.upgrade reboots into it.
+    slot-reloc-end_
+    slot-stage_  // Stage as a trial; firmware.upgrade reboots into it.
     staged_ = true
 
   on-closed -> none:
     try:
-      if not staged_: slot.reloc-end
+      if not staged_: slot-reloc-end_
     finally:
       try:
-        slot.program-mode 0
+        slot-program-mode_ 0
       finally:
         service_.on-writer-closed_ this
