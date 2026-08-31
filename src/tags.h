@@ -43,6 +43,8 @@ namespace toit {
   fn(Zlib)                              \
   fn(UartResource)                      \
   fn(StdinResource)                     \
+  fn(TerminalModeResource)              \
+  fn(TerminalResizeResource)            \
   fn(GpioResource)                      \
   fn(GpioPinResource)                   \
   fn(GpioChipResource)                  \
@@ -104,6 +106,7 @@ namespace toit {
   fn(UdpResourceGroup)                  \
   fn(UartResourceGroup)                 \
   fn(StdinResourceGroup)                \
+  fn(TerminalResizeResourceGroup)       \
   fn(RmtResourceGroup)                  \
   fn(WifiResourceGroup)                 \
   fn(EthernetResourceGroup)             \

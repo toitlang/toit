@@ -26,6 +26,7 @@
 #include "event_sources/spi_linux.h"
 #include "event_sources/stdio_host.h"
 #include "event_sources/subprocess.h"
+#include "event_sources/terminal_posix.h"
 #include "event_sources/timer.h"
 #include "event_sources/tls.h"
 
@@ -43,6 +44,7 @@ void VM::load_platform_event_sources() {
   event_manager()->add_event_source(_new GpioEventSource());
   event_manager()->add_event_source(_new SpiEventSource());
   event_manager()->add_event_source(_new StdinEventSource());
+  event_manager()->add_event_source(_new TerminalResizeEventSource());
 }
 
 } // namespace toit

@@ -177,6 +177,7 @@ add_subdirectory(envelope)
 add_subdirectory(toitdoc)
 add_subdirectory(dependencies)
 add_subdirectory(stdio)
+add_subdirectory(terminal)
 
 # Add the pi-tests so that its packages are downloaded.
 # This is only necessary for the health tests, since the tests themselves

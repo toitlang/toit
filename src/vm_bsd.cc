@@ -24,6 +24,7 @@
 #include "event_sources/stdio_host.h"
 #include "event_sources/lwip_esp32.h"
 #include "event_sources/subprocess.h"
+#include "event_sources/terminal_posix.h"
 #include "event_sources/timer.h"
 #include "event_sources/tls.h"
 #include "event_sources/ble_host.h"
@@ -37,6 +38,7 @@ void VM::load_platform_event_sources() {
   event_manager()->add_event_source(_new TlsEventSource());
   event_manager()->add_event_source(_new HostBleEventSource());
   event_manager()->add_event_source(_new StdinEventSource());
+  event_manager()->add_event_source(_new TerminalResizeEventSource());
 }
 
 } // namespace toit

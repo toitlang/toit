@@ -24,6 +24,7 @@
 #include "event_sources/tls.h"
 #include "event_sources/event_win.h"
 #include "event_sources/stdio_host.h"
+#include "event_sources/terminal_win.h"
 
 namespace toit {
 
@@ -36,6 +37,7 @@ void VM::load_platform_event_sources() {
   event_manager()->add_event_source(_new TlsEventSource());
   event_manager()->add_event_source(_new WindowsEventSource());
   event_manager()->add_event_source(_new StdinEventSource());
+  event_manager()->add_event_source(_new TerminalResizeEventSource());
 }
 
 } // namespace toit

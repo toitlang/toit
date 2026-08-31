@@ -230,7 +230,11 @@ void Thread::run() {
 
 void Thread::cancel() {
   ASSERT(handle_ != null);
-  pthread_cancel(pthread_from_handle(handle_));
+  pthread_t thread = pthread_from_handle(handle_);
+  pthread_cancel(thread);
+  // winpthreads cancellation doesn't interrupt synchronous Win32 I/O. Wake
+  // threads blocked in calls such as ReadFile so they can observe shutdown.
+  CancelSynchronousIo(reinterpret_cast<HANDLE>(pthread_gethandle(thread)));
 }
 
 void Thread::join() {
