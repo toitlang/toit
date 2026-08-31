@@ -44,7 +44,7 @@ The task also keeps the WDT module armed as a hardware backstop: a hang so
   interrupt storm) accumulates CPU-active time on the unfed WDT and triggers
   a hardware reset within roughly 10-20 s.
 
-A Toit `sleep` does NOT stop the watchdog. If you sleep past the timeout
+A Toit `sleep` does not stop the watchdog. If you sleep past the timeout
   without feeding, the device resets — feed around long waits, or stop the
   watchdog first. (Deep sleep is different: entering hibernate tears the VM
   down, and waking from it is a fresh boot.)

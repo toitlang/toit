@@ -951,11 +951,7 @@ PRIMITIVE(bus_create) {
     FAIL(MALLOC_FAILED);
   }
   bool handed_to_proxy = false;
-  Defer delete_bus {
-    [&] {
-      if (!handed_to_proxy) delete bus;
-    }
-  };
+  Defer delete_bus { [&] { if (!handed_to_proxy) delete bus; } };
 
   I2cState* state = &i2c_states[controller];
 
@@ -968,7 +964,7 @@ PRIMITIVE(bus_create) {
     FAIL(HARDWARE_ERROR);
   }
   state->initialized = true;
-  // Pin the functional clock to the always-running 26 MHz source BEFORE
+  // Pin the functional clock to the always-running 26 MHz source before
   // the block gets clocked (PowerControl FULL): an unpinned selection can
   // float to the 51.2 MHz root while that root is gated and stall transfers.
   // ensure_setup elevates to the 51.2 MHz source when a device's pace

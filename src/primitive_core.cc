@@ -2668,7 +2668,7 @@ PRIMITIVE(firmware_map) {
   }
 
   // On EC618 the firmware is the active VM slot. firmware.map presents it as its
-  // CANONICAL image — table-first and un-relocated — so the SHA and delta-OTA
+  // canonical image — table-first and un-relocated — so the SHA and delta-OTA
   // are the same regardless of which slot is live; the dual-slot relocation is
   // hidden in SlotFirmware (primitive_ec618.cc / slot_reloc_ec618.*). The proxy
   // carries the slot's XIP base as a valid-but-unread external address; the

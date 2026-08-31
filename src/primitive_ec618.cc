@@ -181,7 +181,7 @@ PRIMITIVE(slot_size) {
   return Smi::from(slot_size());
 }
 
-// The slot that is NOT the one we are running from (the OTA target).
+// The slot that is not the one we are running from (the OTA target).
 static uint8_t inactive_slot() {
   return (toit_booted_slot == 'B') ? 'A' : 'B';
 }
@@ -198,7 +198,7 @@ static uint32_t active_slot_base() {
 }
 
 // Active-slot canonical firmware view (convergence #3 read path). firmware.map
-// presents the running slot as its CANONICAL image (table-first, un-relocated)
+// presents the running slot as its canonical image (table-first, un-relocated)
 // through SlotFirmware, so the integrity SHA and delta-OTA see the same bytes
 // regardless of which slot is live. The helpers below back the firmware_map /
 // firmware_mapping_at / firmware_mapping_copy core primitives
@@ -240,7 +240,7 @@ bool ec618_active_firmware_copy(uint32_t from, uint32_t to, uint8_t* dest) {
 // PRIVILEGED, the provider rejects a second writer, and resource teardown on
 // explicit close or client death calls slot_reloc_end and leaves program mode.
 //
-// The OTA receiver streams the CANONICAL
+// The OTA receiver streams the canonical
 // (link-base) image; slot_reloc_begin arms relocation with that image's reloc
 // table (the "SRL3" artifact, see src/slot_reloc_ec618.h), and
 // slot_inactive_write relocates each chunk onto the destination slot before
@@ -272,11 +272,11 @@ static void slot_reloc_clear() {
 // goes at the very tail so the image, once it boots as the active slot, can
 // recover its own table to un-relocate reads. The caller must be holding
 // program mode (same as slot_inactive_write); the trailer's tail sectors are
-// erased here, so the caller does NOT erase them.
+// erased here, so the caller does not erase them.
 //
-// OTA write ordering: the body is written front-to-back AFTER this call, with a
+// OTA write ordering: the body is written front-to-back after this call, with a
 // lazy per-sector erase. To keep that erase from clobbering the trailer, the
-// body and the trailer must live in DISJOINT flash sectors — enforced below.
+// body and the trailer must live in disjoint flash sectors — enforced below.
 PRIMITIVE(slot_reloc_begin) {
   PRIVILEGED;
   ARGS(Blob, table);

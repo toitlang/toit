@@ -128,7 +128,7 @@ RESET-ASSERT ::= 4
 /**
 Reset attributed to a watchdog via a software-recorded reason.
 
-Note: the application watchdog in the `ec618.watchdog` library does NOT produce
+Note: the application watchdog in the `ec618.watchdog` library does not produce
   this. Its reset is an autonomous hardware reset that the chip reports as
   $RESET-POWER-ON.
 */
@@ -136,7 +136,7 @@ RESET-WATCHDOG-SOFTWARE ::= 5
 /**
 Reset attributed to a hardware watchdog.
 
-Note: the application watchdog in the `ec618.watchdog` library does NOT produce
+Note: the application watchdog in the `ec618.watchdog` library does not produce
   this. Its reset is an autonomous hardware reset that the chip reports as
   $RESET-POWER-ON.
 */
@@ -535,6 +535,8 @@ class Ec618:
   static spi1 -> spi.Bus:
     return open-spi_ 28 29 30
 
+  // TODO: Remove these carrier-Pin helpers after rebasing onto the common
+  // integer-pin peripheral API. Native resources must then own their pads.
   static open-i2c_ sda-pad/int scl-pad/int
       --frequency/int
       --pull-up/bool

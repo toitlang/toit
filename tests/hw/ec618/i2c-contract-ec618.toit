@@ -3,6 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import ec618 show Ec618
+import expect show expect-throw
 import i2c
 
 /**
@@ -14,13 +15,6 @@ This test needs no slave. Internal pull-ups keep the empty buses idle-high.
   argument `leak` exits while I2C0 is open; a following normal run verifies
   forced container teardown.
 */
-
-expect-throws expected/string [block] -> none:
-  caught := catch: block.call
-  if caught == null:
-    throw "expected '$expected' to be thrown, nothing was"
-  if caught is string and caught.contains expected: return
-  throw "expected '$expected', got: $caught"
 
 open-alternate-i2c0 -> i2c.Bus:
   return i2c.Bus
@@ -40,7 +34,10 @@ main args:
   alternate-sda := Ec618.pad 27
   alternate-scl := Ec618.pad 28
   try:
-    expect-throws "ALREADY_IN_USE":
+    // The alternate pads still route to I2C0. Constructing the bus directly
+    // proves that controller ownership is independent of the convenience
+    // route and its particular pins.
+    expect-throw "ALREADY_IN_USE":
       i2c.Bus
           --sda=alternate-sda
           --scl=alternate-scl
@@ -50,7 +47,7 @@ main args:
     alternate-sda.close
     alternate-scl.close
 
-  expect-throws "INVALID_ARGUMENT":
+  expect-throw "INVALID_ARGUMENT":
     bus.device 0x40 --frequency=49_000
 
   slowest-round := bus.device 0x40 --frequency=50_000

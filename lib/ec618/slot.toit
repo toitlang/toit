@@ -27,14 +27,15 @@ A newly written slot is *staged* as a trial rather than activated outright. On
   good slot. The typical OTA flow is:
 
 ```
-off := 0
-while off < slot.SLOT-SIZE:
-  slot.erase-inactive-sector off
-  off += slot.SECTOR-SIZE
-off = 0
+offset := 0
+while offset < slot.SLOT-SIZE:
+  slot.erase-inactive-sector offset
+  offset += slot.SECTOR-SIZE
+offset = 0
 while bytes := read-next-chunk:
-  slot.write-inactive off bytes
-  off += bytes.size
+  // Each chunk is 16-byte aligned and does not cross a sector boundary.
+  slot.write-inactive offset bytes
+  offset += bytes.size
 slot.stage-and-reset
 ```
 
@@ -103,7 +104,7 @@ Arms relocate-on-write with the new image's SRL3 relocation $table and writes
 
 The firmware is one position-independent image linked at a neutral base that
   is distinct from both slots. While armed, $write-inactive relocates the
-  CANONICAL bytes it is given onto the destination slot (the VM does the
+  canonical bytes it is given onto the destination slot (the VM does the
   byte-level relocation in C++), so the caller only ever streams canonical
   image bytes — relocation is invisible. Both slots are localized by the
   difference between their table-provided XIP address and the neutral link
@@ -111,7 +112,7 @@ The firmware is one position-independent image linked at a neutral base that
 
 The table is also stored at the slot's tail (with its size as the slot's last
   word) so that, once this image boots as the active slot, the VM can recover
-  its own table to un-relocate firmware reads. Call this AFTER erasing the slot
+  its own table to un-relocate firmware reads. Call this after erasing the slot
   and while holding $program-mode (the trailer is written immediately). Call
   $reloc-end when the write completes. Chunks passed to $write-inactive are
   limited to one sector; full chunks are sector-aligned, and only the final

@@ -28,8 +28,8 @@ EC618-UART2-TX-PAD ::= 26
 EC618-UART2-RX-PAD ::= 25
 ESP32-UART2-RX-PIN ::= 27
 ESP32-UART2-TX-PIN ::= 14
-ESP32-UART2-RX-NET-PINS ::= [27, 21]
-ESP32-UART2-TX-NET-PINS ::= [14, 32]
+ESP32-EC618-PAD26-NET-PINS ::= [27, 21]
+ESP32-EC618-PAD25-NET-PINS ::= [14, 32]
 
 // UART2 RS485 direction and the open-drain regression share the PAD33 wire.
 EC618-UART2-DIRECTION-PAD ::= 33
@@ -98,8 +98,8 @@ ESP32-GPIO-OBSERVATION-PINS ::= [27, 21, 14, 16, 4, 13, 33, 32, 23, 22, 19, 18, 
 // element on PAD23/PAD24 records that observed cluster without claiming extra
 // direct wires.
 GPIO-TEST-WIRES ::= [
-  [26, ESP32-UART2-RX-NET-PINS],
-  [25, ESP32-UART2-TX-NET-PINS],
+  [26, ESP32-EC618-PAD26-NET-PINS],
+  [25, ESP32-EC618-PAD25-NET-PINS],
   [42, [13]],
   [23, [33], [13, 33, 22]],
   [16, [23]],

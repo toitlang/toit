@@ -130,9 +130,11 @@ class Adc:
     return result
 
   get-chunk_ samples/int -> float:
+    // TODO: Signal conversion completion through a ResourceState instead of
+    // polling when the platform provides an asynchronous ADC callback.
     while true:
       result := adc-get_ resource_ samples
-      if result != null: return result
+      if result: return result
       sleep --ms=1
 
   /**
@@ -151,9 +153,11 @@ class Adc:
 
   get-raw-locked_ raw/bool -> int:
     if not raw: throw "INVALID_ARGUMENT"
+    // TODO: Signal conversion completion through a ResourceState instead of
+    // polling when the platform provides an asynchronous ADC callback.
     while true:
       result := adc-get-raw_ resource_
-      if result != null: return result
+      if result: return result
       sleep --ms=1
 
   /**

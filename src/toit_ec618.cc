@@ -77,7 +77,7 @@ extern "C" {
   extern uint8_t __vm_data_end[];
 
   // The VM's .bss (the reserved .vm_dram_zi section). PLAT's startup ZI loop
-  // does NOT cover it — the VM zeroes it itself at entry, in
+  // does not cover it — the VM zeroes it itself at entry, in
   // load_active_slot_vm_data(), before anything reads a VM static.
   extern uint8_t __vm_zi_start[];
   extern uint8_t __vm_zi_end[];
@@ -283,7 +283,7 @@ static bool booted_slot_geometry(uint32_t* base, uint32_t* size) {
 // The two-stage base has no VM .data LMA. Each slot carries its own image
 // verbatim after its body+extension (slot offset == body_size, as recorded in
 // the relocation trailer). Copy the booted slot's image into
-// [__vm_data_start, __vm_data_end) BEFORE relocate_data_slot_pointers() shifts
+// [__vm_data_start, __vm_data_end) before relocate_data_slot_pointers() shifts
 // its still-link-base slot pointers.
 static void load_active_slot_vm_data() {
   // Zero the VM's .bss first: it lives in the reserved .vm_dram_zi section,
@@ -480,8 +480,8 @@ static uint32 prepare_deep_sleep(int64 sleep_ms) {
 }
 
 static void start() {
-  // Load the booted slot's OWN VM .data init image, THEN fix that .data's
-  // VM-slot pointers for the booted slot — both BEFORE anything (static
+  // Load the booted slot's own VM .data init image, then fix that .data's
+  // VM-slot pointers for the booted slot — both before anything (static
   // constructors, the interpreter) reads .data. The two-stage base carries no
   // VM .data init image of its own.
   load_active_slot_vm_data();

@@ -192,14 +192,15 @@ static bool claim_gpio_bit(int pad, int gpio_bit) {
   return true;
 }
 
-static bool gpio_owned_by_other_pad_locked(int gpio_bit, int pad) {
+static bool gpio_owned_by_other_pad_locked(const Locker&, int gpio_bit,
+                                           int pad) {
   uint8_t owner = gpio_bit_owners[gpio_bit];
   return owner != 0 && owner != pad + 1;
 }
 
 static bool gpio_owned_by_other_pad(int gpio_bit, int pad) {
   Locker locker(OS::global_mutex());
-  return gpio_owned_by_other_pad_locked(gpio_bit, pad);
+  return gpio_owned_by_other_pad_locked(locker, gpio_bit, pad);
 }
 
 PadGpioLock::PadGpioLock(int first_pad, int second_pad)
@@ -308,7 +309,7 @@ void pad_release(int pad) {
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit >= 0) {
     // Do not disturb a sibling that currently owns the shared GPIO bit.
-    if (!gpio_owned_by_other_pad_locked(gpio_bit, pad)) {
+    if (!gpio_owned_by_other_pad_locked(locker, gpio_bit, pad)) {
       GPIO_interruptConfig(to_port(gpio_bit), to_pin_index(gpio_bit),
                            GPIO_INTERRUPT_DISABLED);
       GpioPinConfig_t config;
@@ -492,7 +493,7 @@ PRIMITIVE(config_interrupt) {
   if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
   if (value != 0 && value != 1) FAIL(INVALID_ARGUMENT);
   if (!claim_gpio_bit(resource->pad(), gpio_bit)) FAIL(ALREADY_IN_USE);
-  // Capture the trigger sequence BEFORE arming: an interrupt firing
+  // Capture the trigger sequence before arming: an interrupt firing
   // between the arming and the return then still reads as "after".
   uint32_t seq = edge_sequence;
   if (enable) {

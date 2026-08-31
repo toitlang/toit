@@ -189,11 +189,9 @@ PRIMITIVE(init) {
 
   if (!adc_channels.take(channel)) FAIL(ALREADY_IN_USE);
   bool channel_handed_to_resource = false;
-  Defer release_channel {
-    [&] {
-      if (!channel_handed_to_resource) adc_channels.put(channel);
-    }
-  };
+  Defer release_channel { [&] {
+    if (!channel_handed_to_resource) adc_channels.put(channel);
+  } };
 
   const AioRange* range = select_range(max);
 

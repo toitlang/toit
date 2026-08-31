@@ -66,7 +66,7 @@ static uint8_t current_console() {
 // Per-controller CMSIS transfer state (heap-allocated at open). The driver
 // uses the two TX staging buffers asynchronously and DMAs each
 // armed transfer into `chunk`; the event callback copies it into `ring`.
-// RX_TIMEOUT does NOT end the armed transfer on this driver — bsp_usart.c
+// RX_TIMEOUT does not end the armed transfer on this driver — bsp_usart.c
 // reloads the descriptor and keeps streaming into the same buffer — so the
 // callback tracks how much of `chunk` it has already pushed (`seen`) and
 // re-arms only on RECEIVE_COMPLETE. Between transfers the driver's own
@@ -509,7 +509,7 @@ static void cmsis_uart_event(int id, uint32_t event) {
       // register is still draining, so a fast re-kick keeps the wire
       // gapless (uart2-gapfree — a task-level re-stage costs ~0.5 ms of
       // idle line per chunk boundary). bsp_usart clears send_active
-      // BEFORE invoking this callback, so the re-entrant Send is
+      // before invoking this callback, so the re-entrant Send is
       // accepted. On the should-never-happen error path fall through to
       // the idle handling so the writer wakes and can act, rather than
       // waiting for a completion that will not come (the pending bytes
@@ -811,11 +811,9 @@ PRIMITIVE(create) {
 
   if (!uart_controllers.take(id)) FAIL(ALREADY_IN_USE);
   bool controller_handed_to_resource = false;
-  Defer return_controller {
-    [&] {
-      if (!controller_handed_to_resource) uart_controllers.put(id);
-    }
-  };
+  Defer return_controller { [&] {
+    if (!controller_handed_to_resource) uart_controllers.put(id);
+  } };
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
@@ -855,7 +853,7 @@ PRIMITIVE(create) {
     transfer->control = cmsis_control_word(data_bits, parity, stop_bits);
     uart_states[id].transfer = transfer;  // Set before the first event can fire.
     ARM_DRIVER_USART* driver = kDrivers[id];
-    // Uninitialize first — but ONLY if the driver is genuinely
+    // Uninitialize first — but only if the driver is genuinely
     // initialized: Initialize() is a no-op on an INITIALIZED driver (the
     // console controller is initialized at boot by the print path, so our
     // event callback would silently never install), while Uninitialize()
@@ -871,7 +869,7 @@ PRIMITIVE(create) {
     driver->Initialize(kUartCallbacks[id]);
     cmsis_initialized[id] = true;
     // FULL -> OFF -> FULL: the OFF in the middle GPR-resets the UART block.
-    // Every close does this reset, but the FIRST open since boot starts
+    // Every close does this reset, but the first open since boot starts
     // from whatever state the ROM left the controller in — that first
     // session was consistently dead on the wire (echo 9600/reopen cell,
     // duplex round 1) until a close/reopen cycle had reset the block once.

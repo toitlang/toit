@@ -127,9 +127,9 @@ the current base; another base is added when there is a concrete user need.
 Old bases are not accumulated inside one envelope.
 
 An OTA extracted from an envelope contains only its canonical slot image.
-Jaguar should compare its carried base identity with the target before
-transfer. Independently, the on-device OTA path rejects the slot before
-activation if it does not match the installed base. Updating the base by OTA
-is unsupported.
+OTA update servers and clients should compare the carried base identity with
+the target before transfer. Independently, the on-device OTA path rejects the
+slot before activation if it does not match the installed base. Updating the
+base by OTA is unsupported.
 
 The CI job (`ci-ec618.yml`) builds base + slot + guards on every push.

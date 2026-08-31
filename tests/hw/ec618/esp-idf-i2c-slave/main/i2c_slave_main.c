@@ -74,6 +74,9 @@ static uint8_t write_pattern_byte(uint32_t index) {
   return (uint8_t)((index * 17 + 3) & 0xff);
 }
 
+// The ESP-IDF hardware slave owns all I2C transfers and drives SDA/SCL. This
+// GPIO/PCNT path is passive instrumentation: it only observes SDA edges while
+// SCL is high so the test can count START/repeated-START/STOP conditions.
 static void IRAM_ATTR sda_edge_handler(void *user_data) {
   context_t *context = user_data;
   uint32_t levels = GPIO.in;

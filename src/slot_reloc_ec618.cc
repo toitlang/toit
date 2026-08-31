@@ -180,7 +180,7 @@ static bool apply_stream(const uint8_t* p, const uint8_t* end, uint32_t count,
 }
 
 // Applies the straddle stream to the window: entries carry the site's 4
-// CANONICAL bytes, so the full target site is computed chunk-locally — for
+// canonical bytes, so the full target site is computed chunk-locally — for
 // TO_SLOT the canonical immediate is re-encoded with `branch_delta`, for
 // TO_CANONICAL the canonical bytes ARE the target — and whichever part of the
 // site overlaps [window_off, window_end) is written. Stateless for any window
@@ -281,7 +281,7 @@ void SlotFirmware::unrelocate_window(
   }
 
   // Thumb-branch sites: 4 bytes at 2-aligned offsets, so they can straddle the
-  // window bounds. Re-encode each from the FULL site in the slot and copy only
+  // window bounds. Re-encode each from the full site in the slot and copy only
   // the bytes that fall inside the window.
   cursor = table_.thmbl_varints;
   reloc_offset = 0;
