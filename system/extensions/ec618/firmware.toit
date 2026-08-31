@@ -51,9 +51,9 @@ class FirmwareServiceProvider extends EmbeddedFirmwareServiceProviderBase:
 
   upgrade -> none:
     // The new slot was staged by FirmwareWriter_.commit; reboot into it.
-    // firmware.upgrade exits the VM via deep sleep; the EC618 run loop
-    // (toit_ec618.cc) then hard-resets into the staged slot.
-    ec618.deep-sleep (Duration --ms=10)
+    // firmware.upgrade exits the VM cleanly; the EC618 run loop then
+    // hard-resets into the staged slot.
+    ec618.reset
 
   uri -> string?:
     return "flash:ec618"

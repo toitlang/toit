@@ -746,6 +746,12 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
       terminate_execution(locker, exit);
       break;
     }
+
+    case Interpreter::Result::RESET: {
+      ExitState exit(EXIT_RESET);
+      terminate_execution(locker, exit);
+      break;
+    }
   }
 }
 

@@ -39,9 +39,15 @@ Most user code should use the helpers on $Ec618:
 - $Ec618.adc0 and $Ec618.adc1 return the two analog ADC inputs.
 */
 
+/** The shortest duration supported by $deep-sleep. */
+DEEP-SLEEP-MIN-DURATION ::= Duration --s=1
+
 /**
 Enters deep sleep for the specified $duration and does not return.
   Exiting deep sleep causes the device to start over from main.
+
+Durations shorter than $DEEP-SLEEP-MIN-DURATION are increased to that
+  duration. Use $reset instead when no sleep is intended.
 
 Durations longer than one hardware-timer interval are split across hibernate
   cycles. Intermediate timer wakes re-enter hibernate without starting the
@@ -50,6 +56,15 @@ Durations longer than one hardware-timer interval are split across hibernate
 */
 deep-sleep duration/Duration -> none:
   __deep-sleep__ duration.in-ms
+
+/**
+Resets the EC618 and does not return.
+
+After restarting, $reset-reason is $RESET-SOFTWARE and $wakeup-cause is
+  $WAKEUP-POWER-ON.
+*/
+reset -> none:
+  __reset__
 
 /**
 Returns the UART id (0/1/2) that the firmware redirects `print` output

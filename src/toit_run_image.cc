@@ -56,6 +56,9 @@ static int run_program(Program* program, char** argv) {
       case Scheduler::EXIT_ERROR:
         return exit.value;
 
+      case Scheduler::EXIT_RESET:
+        break;
+
       case Scheduler::EXIT_DEEP_SLEEP: {
         struct timespec sleep_time;
         sleep_time.tv_sec = exit.value / 1000;

@@ -38,9 +38,7 @@ class FirmwareServiceProvider extends EmbeddedFirmwareServiceProviderBase:
 
   upgrade -> none:
     // TODO(kasper): Verify that we have a new firmware installed?
-    // TODO(kasper): Don't just reboot from here. Shut down the
-    // system properly instead.
-    esp32.deep-sleep (Duration --ms=10)
+    esp32.reset
 
   uri -> string?:
     return "partition:$ota-current-partition-name_"

@@ -46,7 +46,7 @@ main:
     with-client: | socket/tcp.Socket |
       install-new-test socket.in
       wait-for-run-signal socket.in
-    esp32.deep-sleep Duration.ZERO
+    esp32.reset
   run-test
 
 with-client [block]:

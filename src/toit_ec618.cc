@@ -596,6 +596,11 @@ static void start() {
   FlashRegistry::tear_down();
 
   switch (exit_state.reason) {
+    case Scheduler::EXIT_RESET: {
+      printf("[toit] INFO: resetting chip\n");
+      ec618_system_reset();
+    }
+
     case Scheduler::EXIT_DEEP_SLEEP: {
       const int64 MIN_MS = 1000;  // Deep-sleep timer minimum is ~1s on EC618.
       int64 ms = exit_state.value;

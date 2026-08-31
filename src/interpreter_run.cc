@@ -1401,8 +1401,7 @@ Interpreter::Result Interpreter::run() {
       store_stack(sp);
       if (Flags::trace) printf("[exit interpretation exit_value=%d]\n", exit_value);
       return Result(exit_value);
-    } else {
-      ASSERT(return_code == 2);
+    } else if (return_code == 2) {
       Object* duration = POP();
       int64 value = 0;
       if (is_smi(duration)) {
@@ -1418,6 +1417,14 @@ Interpreter::Result Interpreter::run() {
       store_stack(sp);
       if (Flags::trace) printf("[exit interpretation]\n");
       return Result(Result::DEEP_SLEEP, value);
+    } else {
+      ASSERT(return_code == 3);
+      static_assert(FRAME_SIZE == 2, "Unexpected frame size");
+      PUSH(reinterpret_cast<Object*>(bcp + HALT_LENGTH));
+      PUSH(program->frame_marker());
+      store_stack(sp);
+      if (Flags::trace) printf("[reset interpretation]\n");
+      return Result(Result::RESET);
     }
   OPCODE_END();
 
