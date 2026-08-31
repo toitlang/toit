@@ -82,8 +82,8 @@ extern "C" {
   extern uint8_t __vm_zi_start[];
   extern uint8_t __vm_zi_end[];
 
-  // Generated table (toit_data_reloc.c): RAM addresses of the writable .data
-  // words that hold VM-slot pointers, fixed up per-slot in start().
+  // Build-generated table: RAM addresses of writable .data words that hold
+  // VM-slot pointers, fixed up per-slot in start().
   extern const uint32_t toit_data_reloc[];
   extern const uint32_t toit_data_reloc_count;
 }
@@ -251,7 +251,8 @@ static const char* last_reset_name(LastResetState_e s) {
 // __vm_link_base. load_active_slot_vm_data() copies it into shared RAM, but
 // SRL3 only relocates bytes in flash. Therefore every VM-slot pointer in .data
 // — the interpreter's computed-goto dispatch_table and the per-module
-// *_primitives_ tables (see toit_data_reloc.c) — still points at the link base.
+// *_primitives_ tables (see the generated data-relocation table) — still
+// point at the link base.
 // Shift those words by the booted slot's displacement before any static
 // initializer or the interpreter reads them. Because the link base is neither
 // slot, the delta is non-zero for both slot A and slot B. This function itself

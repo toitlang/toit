@@ -307,6 +307,35 @@ ec618: check-env host-tools
 		$(EC618_GCC_PATH)/bin/arm-none-eabi-objcopy -O binary \
 			$(BUILD)/ec618/toit-slot-$$s.elf $(BUILD)/ec618/slot-$$s.slotbin || exit 1; \
 	done
+	# The shared-.data relocation table contains RAM addresses extracted from
+	# the linked slot. Generate it from the provisional slot-A link, rebuild the
+	# VM archive, then link both final slots. The check after the final link is
+	# the fixed-point guard: generation must not change its own addresses.
+	$(TOIT_BIN) run --project-root tools tools/ec618/gen-data-reloc.toit -- \
+		--readelf=$(EC618_GCC_PATH)/bin/arm-none-eabi-readelf \
+		--elf=$(BUILD)/ec618/toit-slot-a.elf \
+		--out=$(BUILD)/ec618/generated/toit_data_reloc.c
+	(cd $(BUILD)/ec618 && ninja toit_vm)
+	for s in a b; do \
+		$(EC618_GCC_PATH)/bin/arm-none-eabi-g++ -mcpu=cortex-m3 -mthumb -nostartfiles --specs=nano.specs \
+			-T $(BUILD)/ec618/slot-$$s.ld \
+			-Wl,--just-symbols=$(EC618_BASE_DIR)/base.elf \
+			-Wl,--emit-relocs -Wl,--gc-sections -Wl,-e,toit_start \
+			-Wl,--wrap=time -Wl,--wrap=clock -Wl,--wrap=localtime -Wl,--wrap=gmtime \
+			-Wl,--whole-archive -Wl,--start-group \
+				$(BUILD)/ec618/src/libtoit_vm.a \
+				$(BUILD)/ec618/mbedtls/library/libmbedtls.a \
+				$(BUILD)/ec618/mbedtls/library/libmbedx509.a \
+				$(BUILD)/ec618/mbedtls/library/libmbedcrypto.a \
+			-Wl,--end-group -Wl,--no-whole-archive \
+			-o $(BUILD)/ec618/toit-slot-$$s.elf || exit 1; \
+		$(EC618_GCC_PATH)/bin/arm-none-eabi-objcopy -O binary \
+			$(BUILD)/ec618/toit-slot-$$s.elf $(BUILD)/ec618/slot-$$s.slotbin || exit 1; \
+	done
+	$(TOIT_BIN) run --project-root tools tools/ec618/gen-data-reloc.toit -- \
+		--readelf=$(EC618_GCC_PATH)/bin/arm-none-eabi-readelf \
+		--elf=$(BUILD)/ec618/toit-slot-a.elf \
+		--out=$(BUILD)/ec618/generated/toit_data_reloc.c --check
 	# Assemble the full AP images: overlay each slot link onto the base image.
 	# The slot links confine all loadable bytes to the slot region (the .data
 	# init LMA rides in-slot, after the body), so this touches no base byte —
@@ -342,14 +371,6 @@ ec618: check-env host-tools
 		--readelf=$(EC618_GCC_PATH)/bin/arm-none-eabi-readelf \
 		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm \
 		$(BUILD)/ec618/toit-slot-a.elf
-	# Verify the checked-in shared-.data slot-pointer table (compiled into the
-	# VM as src/toit_data_reloc.c, applied at boot by relocate_data_slot_pointers)
-	# still matches the linker's .rel.vm_dram_data -> slot records. Regenerate
-	# with `gen-data-reloc.toit --elf=... --out=src/toit_data_reloc.c` if stale.
-	$(TOIT_BIN) run --project-root tools tools/ec618/gen-data-reloc.toit -- \
-		--readelf=$(EC618_GCC_PATH)/bin/arm-none-eabi-readelf \
-		--elf=$(BUILD)/ec618/toit-slot-a.elf \
-		--out=$(CURDIR)/src/toit_data_reloc.c --check
 	# Build + verify the dual-slot relocation table. gen-slot-reloc relocates
 	# the slot-A image to slot B and proves byte-identity with the slot-B link
 	# — the guard that no --emit-relocs relocation was dropped. Runs BEFORE the

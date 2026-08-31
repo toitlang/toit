@@ -47,6 +47,22 @@ file(GLOB toit_core_SRC
   "*.cc"
   )
 
+# The EC618 writable-.data relocation table depends on the linked slot ELF, so
+# it cannot be a source-tree input. Start a clean build with an empty table;
+# the top-level EC618 build links provisionally, generates the real
+# table here, rebuilds this archive, and then links/checks the fixed point.
+if (DEFINED EC618_GCC_PATH)
+  set(TOIT_DATA_RELOC_SOURCE "${PROJECT_BINARY_DIR}/generated/toit_data_reloc.c")
+  if (NOT EXISTS "${TOIT_DATA_RELOC_SOURCE}")
+    file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/generated")
+    file(WRITE "${TOIT_DATA_RELOC_SOURCE}"
+      "#include <stdint.h>\n"
+      "const uint32_t toit_data_reloc_count = 0;\n"
+      "const uint32_t toit_data_reloc[1] = {0};\n")
+  endif()
+  list(APPEND toit_core_SRC "${TOIT_DATA_RELOC_SOURCE}")
+endif()
+
 # Sources that are only needed to run a program.
 file(GLOB run_SRC
   "run.cc"

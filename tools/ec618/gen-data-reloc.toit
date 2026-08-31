@@ -14,10 +14,9 @@
 // array of the RAM addresses of those words. toit_ec618.cc's
 // relocate_data_slot_pointers() adds the slot displacement to each at boot.
 //
-//   --emit   writes the C source (src/toit_data_reloc.c).
-//   --check  re-extracts from the elf and asserts the committed C source still
-//            matches — a guard against the .data layout drifting (regenerate
-//            with --emit if it fails).
+// By default the tool writes the build-directory C source. `--check`
+// re-extracts from the final ELF and asserts that source still matches, which
+// is the fixed-point guard against the generated table moving its own targets.
 
 import cli
 import host.file
@@ -56,7 +55,7 @@ main args:
             --help="The linked toit.elf (with --emit-relocs)."
             --required,
         cli.Option "out"
-            --help="The C source path to emit / check (src/toit_data_reloc.c)."
+            --help="The generated C source path to emit or check."
             --required,
         cli.Flag "check"
             --help="Verify --out matches the elf instead of writing it."
@@ -84,8 +83,8 @@ run invocation/cli.Invocation -> none:
     if existing != source:
       ui.abort """
         $out-path is STALE ($addresses.size .data slot pointers in $elf).
-        The VM .data layout changed; regenerate with:
-          $TOOL-NAME --elf=<toit.elf> --out=$out-path"""
+        The generated table changed its own layout. Re-run the provisional
+        link/generate/final-link sequence."""
     print "gen-data-reloc: $out-path matches the elf ($addresses.size pointers)."
     return
 

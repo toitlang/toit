@@ -140,7 +140,8 @@ bool slot_reloc_apply(const SlotRelocTable* table,
 // The VM .data init image (`data_size` bytes) rides verbatim right after the
 // body in BOTH framings; it is never relocated (it holds no slot pointers that
 // the SRL3 table covers — those are fixed up in RAM at boot, see
-// toit_data_reloc.c), so the body-window machinery streams it through unchanged.
+// the generated data-relocation table), so the body-window machinery streams
+// it through unchanged.
 //
 // SlotFirmware maps a canonical offset to its physical source and applies
 // `slot_reloc_apply(..., TO_CANONICAL)` to the body, so every reader (the
