@@ -11,9 +11,9 @@ EC618 I2C ownership and argument-contract regression.
 
 This test needs no slave. Internal pull-ups keep the empty buses idle-high.
   It checks controller exclusivity across alternate pad routings, the
-  documented frequency floor, and release/reacquisition. Running with the
-  argument `leak` exits while I2C0 is open; a following normal run verifies
-  forced container teardown.
+  documented frequency floor, parent-closes-child lifecycle, and
+  release/reacquisition. Running with the argument `leak` exits while I2C0 is
+  open; a following normal run verifies forced container teardown.
 */
 
 open-alternate-i2c0 -> i2c.Bus:
@@ -52,10 +52,16 @@ main args:
 
   slowest-round := bus.device 0x40 --frequency=50_000
   slowest-round.close
+
+  // Bus.close owns its child lifecycle. It closes registered devices before
+  // the native bus resource, so callers do not need to close each child.
+  child := bus.device 0x41 --frequency=100_000
   bus.close
+  expect-throw "CLOSED": child.write #[]
+  child.close  // Closing an already-invalidated child remains idempotent.
 
   // The controller reservation, not a particular routing, was released.
   alternate := open-alternate-i2c0
   alternate.close
 
-  print "i2c-contract: PASS ownership, teardown, and frequency validation"
+  print "i2c-contract: PASS ownership, parent teardown, and frequency validation"
