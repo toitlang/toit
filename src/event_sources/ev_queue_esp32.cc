@@ -26,8 +26,8 @@
 #include "ev_queue_esp32.h"
 
 // The max queue set size is the maximum number of events in the queue. This is used for the gpio queue,
-// up to two UART queues and the stop semaphore.
-#define MAX_QUEUE_SET_SIZE (GPIO_QUEUE_SIZE + 2 * UART_QUEUE_SIZE + STDIN_QUEUE_SIZE + 1)
+// up to three UART queues, the USB stdin queue, and the stop semaphore.
+#define MAX_QUEUE_SET_SIZE (GPIO_QUEUE_SIZE + 3 * UART_QUEUE_SIZE + STDIN_QUEUE_SIZE + 1)
 
 namespace toit {
 
@@ -105,17 +105,17 @@ void EventQueueEventSource::entry() {
       EventQueueResource* receiver = null;
       for (auto r : resources()) {
         auto resource = static_cast<EventQueueResource*>(r);
-        if (resource->queue() == handle) {
+        if (resource->handles_queue(handle)) {
           receiver = resource;
           break;
         }
       }
       if (receiver != null) {
         word data;
-        if (receiver->receive_event(&data)) {
+        if (receiver->receive_event(handle, &data)) {
           for (auto r : resources()) {
             auto resource = static_cast<EventQueueResource*>(r);
-            if (resource->queue() == handle) dispatch(locker, r, data);
+            if (resource->handles_queue(handle)) dispatch(locker, r, data);
           }
         }
       }
@@ -125,43 +125,59 @@ void EventQueueEventSource::entry() {
 
 void EventQueueEventSource::on_register_resource(Locker& locker, Resource* r) {
   auto resource = static_cast<EventQueueResource*>(r);
-  QueueHandle_t queue = resource->queue();
-  if (queue == null) return;
-  for (auto existing : resources()) {
-    if (existing == r) continue;
-    auto existing_resource = static_cast<EventQueueResource*>(existing);
-    if (existing_resource->queue() == queue) return;
-  }
-  // We can only add to the queue set when the queue is empty, so we
-  // repeatedly try to drain the queue before adding it to the set.
-  int attempts = 0;
-  do {
-    if (attempts++ > 16) FATAL("couldn't register event resource");
-    word data;
-    while (resource->receive_event(&data)) {
-      dispatch(locker, r, data);
+  QueueHandle_t queues[] = { resource->queue(), resource->secondary_queue() };
+  for (int i = 0; i < 2; i++) {
+    QueueHandle_t queue = queues[i];
+    if (queue == null || (i == 1 && queue == queues[0])) continue;
+    bool already_registered = false;
+    for (auto existing : resources()) {
+      if (existing == r) continue;
+      auto existing_resource = static_cast<EventQueueResource*>(existing);
+      if (existing_resource->handles_queue(queue)) {
+        already_registered = true;
+        break;
+      }
     }
-  } while (xQueueAddToSet(queue, queue_set_) != pdPASS);
+    if (already_registered) continue;
+    // We can only add to the queue set when the queue is empty, so we
+    // repeatedly try to drain the queue before adding it to the set.
+    int attempts = 0;
+    do {
+      if (attempts++ > 16) FATAL("couldn't register event resource");
+      word data;
+      while (resource->receive_event(queue, &data)) {
+        dispatch(locker, r, data);
+      }
+    } while (xQueueAddToSet(queue, queue_set_) != pdPASS);
+  }
 }
 
 void EventQueueEventSource::on_unregister_resource(Locker& locker, Resource* r) {
   auto resource = static_cast<EventQueueResource*>(r);
-  QueueHandle_t queue = resource->queue();
-  if (queue == null) return;
-  for (auto existing : resources()) {
-    auto existing_resource = static_cast<EventQueueResource*>(existing);
-    if (existing_resource->queue() == queue) return;
-  }
-  // We can only remove from the queue set when the queue is empty, so we
-  // repeatedly try to drain the queue before removing it from the set.
-  int attempts = 0;
-  do {
-    if (attempts++ > 16) FATAL("couldn't unregister event resource");
-    word data;
-    while (resource->receive_event(&data)) {
-      // Don't dispatch while unregistering.
+  QueueHandle_t queues[] = { resource->queue(), resource->secondary_queue() };
+  for (int i = 0; i < 2; i++) {
+    QueueHandle_t queue = queues[i];
+    if (queue == null || (i == 1 && queue == queues[0])) continue;
+    bool still_registered = false;
+    for (auto existing : resources()) {
+      auto existing_resource = static_cast<EventQueueResource*>(existing);
+      if (existing_resource->handles_queue(queue)) {
+        still_registered = true;
+        break;
+      }
     }
-  } while (xQueueRemoveFromSet(queue, queue_set_) != pdPASS);
+    if (still_registered) continue;
+    // We can only remove from the queue set when the queue is empty, so we
+    // repeatedly try to drain the queue before removing it from the set.
+    int attempts = 0;
+    do {
+      if (attempts++ > 16) FATAL("couldn't unregister event resource");
+      word data;
+      while (resource->receive_event(queue, &data)) {
+        // Don't dispatch while unregistering.
+      }
+    } while (xQueueRemoveFromSet(queue, queue_set_) != pdPASS);
+  }
 }
 
 } // namespace toit

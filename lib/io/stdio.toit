@@ -27,8 +27,9 @@ stderr-instance_ ::= StandardWriter_ false
 /**
 Returns the standard input stream.
 
-On ESP32, input is supported when ESP-IDF's primary console is a UART or USB
-  Serial/JTAG. Other console backends are unsupported.
+On ESP32, input merges the primary console UART and USB Serial/JTAG when they
+  are configured as console backends. The ESP32-S2 USB CDC console and other
+  console backends are unsupported.
 
 The stream cannot be closed. It shares the platform input with other standard
   input APIs. If multiple readers or containers read concurrently, the first

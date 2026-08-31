@@ -36,19 +36,28 @@ struct GpioEvent {
 
 class EventQueueResource : public Resource {
 public:
-  EventQueueResource(ResourceGroup* group, QueueHandle_t queue)
+  EventQueueResource(ResourceGroup* group, QueueHandle_t queue, QueueHandle_t secondary_queue = null)
       : Resource(group)
-      , queue_(queue){}
+      , queue_(queue)
+      , secondary_queue_(secondary_queue) {}
 
   virtual ~EventQueueResource() {};
 
   // Might be accessed from interrupt handlers. On the ESP32 it thus needs to be
   // in IRAM, or be marked as inline.
   FORCE_INLINE QueueHandle_t queue() const { return queue_; }
+  FORCE_INLINE QueueHandle_t secondary_queue() const { return secondary_queue_; }
+  FORCE_INLINE bool handles_queue(QueueHandle_t queue) const {
+    return queue_ == queue || secondary_queue_ == queue;
+  }
 
   // Receives one event with a zero timeout.  Provides the data argument for the
   // dispatch call on the event source.  Returns whether an event was available.
   virtual bool receive_event(word* data) { return false; }
+  virtual bool receive_event(QueueHandle_t queue, word* data) {
+    ASSERT(queue == queue_);
+    return receive_event(data);
+  }
 
   // Checks if the pin number matches the resource it dispatches with the new
   // value.
@@ -58,6 +67,7 @@ public:
 
 private:
   QueueHandle_t queue_; // Note: The queue is freed from the driver uninstall.
+  QueueHandle_t secondary_queue_;
 };
 
 class EventQueueEventSource : public EventSource, public Thread {

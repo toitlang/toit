@@ -13,12 +13,19 @@
 #include "sdkconfig.h"
 
 #ifdef CONFIG_ESP_CONSOLE_UART
+#define TOIT_STDIN_UART
+#endif
+#if defined(CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG) || defined(CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG)
+#define TOIT_STDIN_USB_SERIAL_JTAG
+#endif
+
+#ifdef TOIT_STDIN_UART
 #include "driver/uart.h"
 #include "driver/uart_vfs.h"
 #include "uart_console_esp32.h"
 #endif
 
-#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+#ifdef TOIT_STDIN_USB_SERIAL_JTAG
 #include "driver/usb_serial_jtag.h"
 #include "driver/usb_serial_jtag_select.h"
 #include "driver/usb_serial_jtag_vfs.h"
@@ -35,13 +42,15 @@ namespace toit {
 
 static const word STDIN_READ_EVENT = 1 << 0;
 static const int STDIN_BUFFER_SIZE = 1024;
+#ifdef TOIT_STDIN_UART
 static const int UART_STDIN_RX_BUFFER_SIZE = 4096;
+#endif
 
-// ESP-IDF selects exactly one primary console. In particular,
-// CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG_ENABLED may additionally enable USB
-// Serial/JTAG output, but it does not select it as the standard streams.
+// ESP-IDF's console VFS only reads from the primary console. Subscribe to both
+// drivers directly so stdin can merge the configured UART and USB Serial/JTAG
+// input streams.
 
-#ifdef CONFIG_ESP_CONSOLE_UART
+#ifdef TOIT_STDIN_UART
 static int console_uart_stdin_users = 0;
 
 static esp_err_t acquire_uart_stdin(QueueHandle_t* queue) {
@@ -82,7 +91,7 @@ static void release_uart_stdin() {
 }
 #endif
 
-#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+#ifdef TOIT_STDIN_USB_SERIAL_JTAG
 static int usb_serial_jtag_stdin_users = 0;
 static QueueHandle_t usb_serial_jtag_stdin_queue = null;
 
@@ -115,17 +124,6 @@ static esp_err_t acquire_usb_serial_jtag_stdin(QueueHandle_t* queue) {
   }
 
   usb_serial_jtag_vfs_use_driver();
-  int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
-  if (flags < 0 || fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK) < 0) {
-    usb_serial_jtag_vfs_use_nonblocking();
-    SystemEventSource::instance()->run([&]() -> void {
-      err = usb_serial_jtag_driver_uninstall();
-    });
-    vQueueDelete(usb_serial_jtag_stdin_queue);
-    usb_serial_jtag_stdin_queue = null;
-    return ESP_FAIL;
-  }
-
   usb_serial_jtag_set_select_notif_callback(usb_serial_jtag_notify);
   if (usb_serial_jtag_read_ready()) {
     word event = STDIN_READ_EVENT;
@@ -160,31 +158,48 @@ class StdinResource : public EventQueueResource {
  public:
   TAG(StdinResource);
 
-  StdinResource(ResourceGroup* group, QueueHandle_t queue)
-      : EventQueueResource(group, queue) {}
+  StdinResource(ResourceGroup* group, QueueHandle_t uart_queue, QueueHandle_t usb_queue)
+      : EventQueueResource(group,
+                           uart_queue != null ? uart_queue : usb_queue,
+                           uart_queue != null ? usb_queue : null)
+      , uart_queue_(uart_queue)
+      , usb_queue_(usb_queue) {}
 
   ~StdinResource() override {
-#ifdef CONFIG_ESP_CONSOLE_UART
+#ifdef TOIT_STDIN_UART
     release_uart_stdin();
-#elif defined(CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG)
+#endif
+#ifdef TOIT_STDIN_USB_SERIAL_JTAG
     release_usb_serial_jtag_stdin();
+#endif
+  }
+
+  bool receive_event(QueueHandle_t queue, word* data) override {
+#ifdef TOIT_STDIN_UART
+    if (queue == uart_queue_) {
+      uart_event_t event;
+      if (!xQueueReceive(queue, &event, 0)) return false;
+      // Preserve the UART event type because Port.console may share this
+      // queue and receives the same dispatched event.
+      *data = event.type;
+      return true;
+    }
+#endif
+#ifdef TOIT_STDIN_USB_SERIAL_JTAG
+    ASSERT(queue == usb_queue_);
+    return xQueueReceive(queue, data, 0);
 #else
     UNREACHABLE();
 #endif
   }
 
-  bool receive_event(word* data) override {
-#ifdef CONFIG_ESP_CONSOLE_UART
-    uart_event_t event;
-    if (!xQueueReceive(queue(), &event, 0)) return false;
-    *data = event.type;
-    return true;
-#elif defined(CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG)
-    return xQueueReceive(queue(), data, 0);
-#else
-    UNREACHABLE();
-#endif
-  }
+  bool read_uart_first() const { return read_uart_first_; }
+  void alternate_read_order() { read_uart_first_ = !read_uart_first_; }
+
+ private:
+  const QueueHandle_t uart_queue_;
+  const QueueHandle_t usb_queue_;
+  bool read_uart_first_ = true;
 };
 
 class StdinResourceGroup : public ResourceGroup {
@@ -196,13 +211,10 @@ class StdinResourceGroup : public ResourceGroup {
 
   uint32_t on_event(Resource* resource, word data, uint32_t state) override {
     USE(resource);
-#ifdef CONFIG_ESP_CONSOLE_UART
     USE(data);
     // Error events do not carry data, but must still wake a pending read so it
     // can retry instead of waiting indefinitely.
     return state | STDIN_READ_EVENT;
-#endif
-    return state | static_cast<uint32_t>(data);
   }
 };
 
@@ -222,32 +234,40 @@ PRIMITIVE(stdin_init) {
 PRIMITIVE(stdin_open) {
   ARGS(StdinResourceGroup, group)
 
-#if !defined(CONFIG_ESP_CONSOLE_UART) && !defined(CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG)
+#if !defined(TOIT_STDIN_UART) && !defined(TOIT_STDIN_USB_SERIAL_JTAG)
   FAIL(UNSUPPORTED);
 #else
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  QueueHandle_t queue = null;
-  esp_err_t err;
-#ifdef CONFIG_ESP_CONSOLE_UART
-  err = acquire_uart_stdin(&queue);
-#else
-  err = acquire_usb_serial_jtag_stdin(&queue);
-#endif
+  QueueHandle_t uart_queue = null;
+  QueueHandle_t usb_queue = null;
+#ifdef TOIT_STDIN_UART
+  esp_err_t err = acquire_uart_stdin(&uart_queue);
   if (err != ESP_OK) return Primitive::os_error(err, process);
+#endif
+#ifdef TOIT_STDIN_USB_SERIAL_JTAG
+  esp_err_t usb_err = acquire_usb_serial_jtag_stdin(&usb_queue);
+  if (usb_err != ESP_OK) {
+#ifdef TOIT_STDIN_UART
+    release_uart_stdin();
+#endif
+    return Primitive::os_error(usb_err, process);
+  }
+#endif
 
   bool handed_to_resource = false;
   Defer release_backend { [&] {
     if (handed_to_resource) return;
-#ifdef CONFIG_ESP_CONSOLE_UART
+#ifdef TOIT_STDIN_UART
     release_uart_stdin();
-#else
+#endif
+#ifdef TOIT_STDIN_USB_SERIAL_JTAG
     release_usb_serial_jtag_stdin();
 #endif
   } };
 
-  auto resource = _new StdinResource(group, queue);
+  auto resource = _new StdinResource(group, uart_queue, usb_queue);
   if (resource == null) FAIL(MALLOC_FAILED);
   handed_to_resource = true;
   group->register_resource(resource);
@@ -260,19 +280,58 @@ PRIMITIVE(stdin_read) {
   ARGS(StdinResource, resource)
   USE(resource);
 
-#if !defined(CONFIG_ESP_CONSOLE_UART) && !defined(CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG)
+#if !defined(TOIT_STDIN_UART) && !defined(TOIT_STDIN_USB_SERIAL_JTAG)
   FAIL(UNSUPPORTED);
 #else
   ByteArray* result = process->allocate_byte_array(STDIN_BUFFER_SIZE, true);
   if (result == null) FAIL(ALLOCATION_FAILED);
 
   ByteArray::Bytes bytes(result);
-  int read_count = ::read(STDIN_FILENO, bytes.address(), STDIN_BUFFER_SIZE);
-  if (read_count < 0) {
-    if (errno == EAGAIN || errno == EWOULDBLOCK) return Smi::from(-1);
-    return Primitive::os_error(errno, process);
+  int read_count = 0;
+  int read_error = 0;
+  bool uart_eof = false;
+#ifdef TOIT_STDIN_UART
+  auto read_uart = [&]() -> int {
+    int count = ::read(STDIN_FILENO, bytes.address(), STDIN_BUFFER_SIZE);
+    if (count < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
+      read_error = errno;
+      return -1;
+    }
+    if (count == 0) uart_eof = true;
+    return count;
+  };
+#endif
+#ifdef TOIT_STDIN_USB_SERIAL_JTAG
+  auto read_usb = [&]() -> int {
+    return usb_serial_jtag_read_bytes(bytes.address(), STDIN_BUFFER_SIZE, 0);
+  };
+#endif
+
+#if defined(TOIT_STDIN_UART) && defined(TOIT_STDIN_USB_SERIAL_JTAG)
+  if (resource->read_uart_first()) {
+    read_count = read_uart();
+    if (read_count == 0) read_count = read_usb();
+  } else {
+    read_count = read_usb();
+    if (read_count == 0) read_count = read_uart();
   }
-  if (read_count == 0) return process->null_object();
+  if (read_count > 0) resource->alternate_read_order();
+#elif defined(TOIT_STDIN_UART)
+  read_count = read_uart();
+#else
+  read_count = read_usb();
+#endif
+
+  if (read_count < 0) return Primitive::os_error(read_error, process);
+  if (read_count == 0) {
+#if defined(TOIT_STDIN_UART) && !defined(TOIT_STDIN_USB_SERIAL_JTAG)
+    if (uart_eof) return process->null_object();
+#else
+    USE(uart_eof);
+#endif
+    return Smi::from(-1);
+  }
   if (read_count < STDIN_BUFFER_SIZE) result->resize_external(process, read_count);
   return result;
 #endif
