@@ -82,11 +82,61 @@ console-uart-id -> int:
 Returns the live levels of the AON wakeup inputs as a bitmask.
 
 Bits 3, 4, and 5 are PAD40, PAD41, and PAD42 respectively (EC618 GPIO20,
-  GPIO21, and GPIO22). Bits 0 through 2 are the dedicated package wake inputs,
-  which do not have ordinary $Pin identities.
+  GPIO21, and GPIO22). Bits 0, 1, and 2 are WAKEUP0 (module pin 101),
+  VBUS/WAKEUP1 (module pin 61), and USIM_DET/WAKEUP2 (module pin 79).
 */
 wakeup-pin-values -> int:
   #primitive.ec618.wakeup-pin-values
+
+/**
+Identifies one of the EC618's six physical, input-only wake sources.
+
+Wake sources use the always-on approximately 2 V input domain, not the 3.3 V
+  GPIO domain. Follow the module's external-drive limits. In particular,
+  $WAKEUP-INPUT-1 and $WAKEUP-INPUT-2 share the VBUS and USIM_DET package
+  functions respectively, so configuring them can conflict with those uses.
+*/
+class WakeupInput:
+  index_/int
+
+  constructor.private_ .index_:
+
+  /** The hardware wake-input index, from 0 through 5. */
+  index -> int: return index_
+
+/** WAKEUP0, Air780E module pin 101. */
+WAKEUP-INPUT-0 ::= WakeupInput.private_ 0
+/** WAKEUP1 on the VBUS function, Air780E module pin 61. */
+WAKEUP-INPUT-1 ::= WakeupInput.private_ 1
+/** WAKEUP2 on the USIM_DET function, Air780E module pin 79. */
+WAKEUP-INPUT-2 ::= WakeupInput.private_ 2
+/** WAKEUP3 on PAD40 / GPIO20. */
+WAKEUP-INPUT-3 ::= WakeupInput.private_ 3
+/** WAKEUP4 on PAD41 / GPIO21. */
+WAKEUP-INPUT-4 ::= WakeupInput.private_ 4
+/** WAKEUP5 on PAD42 / GPIO22. */
+WAKEUP-INPUT-5 ::= WakeupInput.private_ 5
+
+/**
+Configures a physical wake $input as a deep-sleep wake source.
+
+At least one of $pos-edge and $neg-edge must be set. The configuration takes
+  effect at the next $deep-sleep. The wake is a reboot, and $wakeup-cause
+  reports $WAKEUP-PAD on the boot it causes.
+
+The pulls belong to the approximately 2 V wake-input domain. They are
+  independent of ordinary GPIO pulls and the AON GPIO supply.
+*/
+configure-wakeup-input input/WakeupInput
+    --pos-edge/bool=false
+    --neg-edge/bool=false
+    --pull-up/bool=false
+    --pull-down/bool=false -> none:
+  wakeup-input-configure_ input.index true pos-edge neg-edge pull-up pull-down
+
+/** Disables the physical wake $input as a deep-sleep wake source. */
+disable-wakeup-input input/WakeupInput -> none:
+  wakeup-input-configure_ input.index false false false false false
 
 /**
 Configures an AON wakeup pad as a deep-sleep wake source.
@@ -97,8 +147,8 @@ The $pin must identify one of the three ordinary GPIO wake pads:
 - PAD41 / `Ec618.gpio 21` / wakeup input 4.
 - PAD42 / `Ec618.gpio 22` / wakeup input 5.
 
-Other pins are rejected. The dedicated package wake inputs 0 through 2 do not
-  have ordinary $Pin identities and are not supported by this API.
+Other pins are rejected. Use $configure-wakeup-input for the dedicated
+  $WAKEUP-INPUT-0 through $WAKEUP-INPUT-2 package functions.
 
 The configuration only takes effect at the next $deep-sleep: an edge of
   the enabled polarity ($pos-edge / $neg-edge, at least one required)
@@ -111,7 +161,12 @@ configure-wakeup-pad pin/Pin
     --neg-edge/bool=false
     --pull-up/bool=false
     --pull-down/bool=false -> none:
-  wakeup-pad-configure_ pin.num true pos-edge neg-edge pull-up pull-down
+  input := wakeup-input-for-pad_ pin.num
+  configure-wakeup-input input
+      --pos-edge=pos-edge
+      --neg-edge=neg-edge
+      --pull-up=pull-up
+      --pull-down=pull-down
 
 /**
 Disables $pin as a deep-sleep wake source.
@@ -119,7 +174,7 @@ Disables $pin as a deep-sleep wake source.
 The supported pins are the same as for $configure-wakeup-pad.
 */
 disable-wakeup-pad pin/Pin -> none:
-  wakeup-pad-configure_ pin.num false false false false false
+  disable-wakeup-input (wakeup-input-for-pad_ pin.num)
 
 /**
 Returns the flashed base's identity ("base-v<N>+<fingerprint>"), or
@@ -748,5 +803,11 @@ The $id selects UART 0, 1 or 2; 0xff disables the redirect. This function
 set-console-uart id/int -> none:
   #primitive.ec618.console-uart-set
 
-wakeup-pad-configure_ pad enabled pos-edge neg-edge pull-up pull-down -> none:
+wakeup-input-for-pad_ pad/int -> WakeupInput:
+  if pad == 40: return WAKEUP-INPUT-3
+  if pad == 41: return WAKEUP-INPUT-4
+  if pad == 42: return WAKEUP-INPUT-5
+  throw "INVALID_ARGUMENT"
+
+wakeup-input-configure_ input enabled pos-edge neg-edge pull-up pull-down -> none:
   #primitive.ec618.wakeup-pad-configure

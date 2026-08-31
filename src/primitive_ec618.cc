@@ -620,8 +620,8 @@ PRIMITIVE(wakeup_cause) {
 // statics live in .bss, so this state is OTA-slot-safe. The deep-sleep chain
 // stores and restores them across intermediate timer wakes.
 //
-// Packed per-pad config: bit 0 enabled, bit 1 posEdge, bit 2 negEdge,
-// bit 3 pullUp, bit 4 pullDown.
+// Packed per-input config: bit 0 enabled, bit 1 posEdge, bit 2 negEdge,
+// bit 3 pullUp, bit 4 pullDown, bit 5 explicitly managed by Toit.
 static uint8_t wakeup_pad_configs_[kWakeupPadCount];
 
 extern "C" int toit_wakeup_pad_config(int pad) {
@@ -634,13 +634,12 @@ extern "C" void toit_restore_wakeup_config(const uint8_t* configs) {
 }
 
 PRIMITIVE(wakeup_pad_configure) {
-  ARGS(int, pad, bool, enabled, bool, pos_edge, bool, neg_edge,
+  ARGS(int, index, bool, enabled, bool, pos_edge, bool, neg_edge,
        bool, pull_up, bool, pull_down);
-  int index = wakeup_index_for_pad(pad);
-  if (index < 0) FAIL(INVALID_ARGUMENT);
+  if (!is_valid_wakeup_index(index)) FAIL(INVALID_ARGUMENT);
   if (enabled && !pos_edge && !neg_edge) FAIL(INVALID_ARGUMENT);
   if (pull_up && pull_down) FAIL(INVALID_ARGUMENT);
-  uint8_t packed = 0;
+  uint8_t packed = kWakeupManaged;
   if (enabled) packed |= kWakeupEnabled;
   if (pos_edge) packed |= kWakeupPositiveEdge;
   if (neg_edge) packed |= kWakeupNegativeEdge;

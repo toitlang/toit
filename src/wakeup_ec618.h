@@ -21,9 +21,9 @@
 
 namespace toit {
 
-// The PMU has six wakeup inputs. Only inputs 3..5 have ordinary EC618 pad
-// identities: PAD40..42 / GPIO20..22. Dedicated package wake inputs 0..2
-// remain available to the platform but are not exposed as gpio.Pin objects.
+// The PMU has six physical, input-only wake sources. Inputs 0..2 are module
+// WAKEUP0, VBUS/WAKEUP1, and USIM_DET/WAKEUP2. Inputs 3..5 also have ordinary
+// EC618 pad identities: PAD40..42 / GPIO20..22.
 static const int kWakeupPadCount = 6;
 static const int kFirstGpioWakeupPad = 40;
 static const int kLastGpioWakeupPad = 42;
@@ -34,12 +34,19 @@ static inline int wakeup_index_for_pad(int pad) {
   return kFirstGpioWakeupIndex + pad - kFirstGpioWakeupPad;
 }
 
+static inline bool is_valid_wakeup_index(int index) {
+  return 0 <= index && index < kWakeupPadCount;
+}
+
 enum WakeupPadConfig {
   kWakeupEnabled = 1 << 0,
   kWakeupPositiveEdge = 1 << 1,
   kWakeupNegativeEdge = 1 << 2,
   kWakeupPullUp = 1 << 3,
   kWakeupPullDown = 1 << 4,
+  // Inputs 0..2 also have platform functions. Leave them untouched until the
+  // application explicitly configures or disables them.
+  kWakeupManaged = 1 << 5,
 };
 
 extern "C" int toit_capture_boot_wakeup_src();

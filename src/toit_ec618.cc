@@ -345,10 +345,13 @@ static void relocate_data_slot_pointers() {
 //
 static bool arm_wakeup_pads() {
   bool any = false;
-  for (int index = kFirstGpioWakeupIndex;
+  for (int index = 0;
        index < WAKEUP_PAD_MAX && index < kWakeupPadCount;
        index++) {
     int packed = toit_wakeup_pad_config(index);
+    if (index < kFirstGpioWakeupIndex && (packed & kWakeupManaged) == 0) {
+      continue;
+    }
     if ((packed & kWakeupEnabled) == 0) {
       // An earlier sleep may have armed this input. Explicitly return it to
       // AON-IO mode and clear the NVIC state; skipping it is not sufficient
