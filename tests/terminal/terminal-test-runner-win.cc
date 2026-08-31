@@ -147,6 +147,10 @@ int main(int argc, char** argv) {
   }
 
   if (!saw_done) fail("terminal test timed out", output);
+  // Signal end-of-input so the runtime's stdin reader can finish while the
+  // process tears down its event sources.
+  close_if_valid(input_write);
+  input_write = NULL;
   if (WaitForSingleObject(process.hProcess, 5 * 1000) != WAIT_OBJECT_0) {
     fail("terminal test did not exit", output);
   }
