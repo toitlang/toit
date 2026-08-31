@@ -42,7 +42,17 @@ Any change to a base-side input:
 - the PLAT toolchain (the pinned xmake GCC 10.3)
 - a slot failing to link with `undefined reference to <PLAT symbol>` —
   that is the keep-list telling you the base does not export something the
-  slot now needs. Add it to `plat_keep.c` → that is a base change.
+  slot now needs. Add it to `plat_keep.c` only after reviewing whether it is a
+  foreseeable native slot dependency → that is a base change.
+
+The keep-list is intentionally broader than the current slot, but it is not an
+automatic export of the entire SDK. Its 495 reviewed entries preserve the
+driver, low-power, platform-service, networking, RTOS, libc/libm, and limited
+runtime surface already available during frozen-base development. An isolated
+comparison against the 209 entries used by the current slot measured a cost of
+7,344 bytes of flash text and 456 bytes of base RAM, with unchanged AP image
+geometry. That cost is accepted to avoid forcing deployed devices through a
+full reflash for foreseeable future slot work.
 
 `make ec618` does **not** rebuild the base automatically — it only checks
 that `build/ec618-base/base.elf` exists. After base-side edits, run

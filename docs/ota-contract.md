@@ -56,10 +56,19 @@ SRL3, and relocate-on-write adjusts its immediate by the slot displacement.
 The slot-B byte-identity oracle verifies that the recorded ABS32 and branch
 sites are complete.
 
-`plat_keep.c` retains a generous base symbol surface for future slots. A slot
+`plat_keep.c` retains an explicit, reviewed base symbol surface for future
+slots. It covers the existing driver, low-power, platform-service, networking,
+RTOS, libc/libm, and limited runtime capabilities; it is deliberately broader
+than the current slot without automatically exporting every SDK symbol. A slot
 that needs an unexported PLAT symbol fails to link and requires a new base
 release. The base-ID gate makes symbol-address compatibility exact rather than
 an assumed ABI.
+
+An isolated build compared the 495-entry reviewed surface with a 209-entry
+current-slot-only surface. The broader surface added 7,344 bytes of flash text
+and 456 bytes of base RAM; the AP image geometry was unchanged. That small
+cost is accepted because each removed symbol can turn an otherwise compatible
+slot OTA into a full device reflash.
 
 ---
 
