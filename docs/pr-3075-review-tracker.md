@@ -21,6 +21,10 @@ out explicitly; they are not part of that committed baseline.
   so the original request no longer applies.
 - **Upstream** — the request belongs in a separate upstream change rather than
   this EC618 pull request.
+- **Explanation** — the reviewed behavior is intentional; the response should
+  supply missing context rather than claim a source fix.
+- **Rebase** — the requested final shape depends on post-branch common APIs and
+  must be completed while rebasing, not papered over on the old API.
 
 ## Review method
 
@@ -37,6 +41,761 @@ For every comment:
    genuinely gone. Moving, renaming, or reimplementing it does not qualify.
 6. Record explicit discussion requests and unresolved assumptions before
    finalizing the work plan.
+
+## Unpublished second-round review (2026-08-18 through 2026-08-31)
+
+This is a separate review round from the submitted comments summarized below.
+The authenticated snapshot contains one pending review
+(`PRR_kwDOGXd5Hs8AAAABJ9Mxtg`) with **47 unpublished root comments**, all by
+Florian. All 47 belong to this round and must be answered. The pending review
+is attached to `c05614aa`, but each comment's `original_commit_id` is used
+below to recover the code that was actually reviewed. The current PR head and
+local branch are both `32c34a81`.
+
+The entries are numbered by GitHub creation time. This matters because the
+comments were written one at a time over several weeks: a later comment can
+review or correct a commit that was itself written in response to an earlier
+comment. “Resolved later” below therefore means a later branch commit already
+addresses this *new* comment; it does not refer to the submitted first round.
+
+### Commit and comment order
+
+| Branch order | Reviewed commit | Authored | Subject | New comments |
+|---:|---|---|---|---:|
+| 1 | `c05614aa` | 2026-07-24 22:31 | EC618: track PR 3075 review follow-up | 1 |
+| 2 | `78c45c50` | 2026-07-24 22:48 | EC618: normalize Toit documentation | 2–4 |
+| 3 | `1358b745` | 2026-07-25 00:26 | FreeRTOS: share condition variables | 6 |
+| 4 | `be687dab` | 2026-07-25 00:43 | EC618: continue long deep sleeps | 7 |
+| 5 | `5ccc5a15` | 2026-07-25 01:06 | EC618: enforce GPIO pad ownership | 5, 8–10 |
+| 6 | `3f1f44b5` | 2026-07-25 01:20 | EC618: make GPIO alias ownership mode-aware | 11–12 |
+| 7 | `f5be8964` | 2026-07-25 01:21 | EC618: harden I2C lifecycle contracts | 13–19 |
+| 8 | `fdbc5191` | 2026-07-25 03:13 | EC618: lock UART controller allocation | 20 |
+| 9 | `ad0e05f1` | 2026-07-25 03:22 | EC618: clarify console UART query name | 21 |
+| 10 | `144df807` | 2026-07-25 04:41 | EC618: describe table-driven slot data loading | 22 |
+| 11 | `58125517` | 2026-07-25 04:49 | EC618 ADC: own channels across containers | 23 |
+| 12 | `24506734` | 2026-07-25 04:55 | EC618 ADC: yield while conversions run | 24–26 |
+| 13 | `44b84e54` | 2026-07-25 13:17 | EC618 tests: make GPIO coordination deterministic | 27 |
+| 14 | `0fb886b1` | 2026-07-25 14:48 | EC618 UART: signal physical TX completion | 28 |
+| 15 | `2507ddda` | 2026-07-25 16:51 | EC618 SPI: own controllers across containers | 29 |
+| 16 | `fba7dfa2` | 2026-07-25 20:28 | EC618 GPIO: document authoritative pad mapping | 30 |
+| 17 | `e659bf0e` | 2026-07-26 00:49 | EC618 wake: use physical pad identities | 31–32 |
+| 18 | `6c5fdeef` | 2026-07-26 01:39 | EC618 I2C: defer chained reads from IRQ context | 33 |
+| 19 | `a4e8d8b6` | 2026-07-26 01:54 | EC618 GPIO: lock shared-bit cleanup | 34 |
+| 20 | `91735f0c` | 2026-07-26 11:47 | EC618 envelopes: enforce self-contained bases | 35 |
+| 21 | `90396c92` | 2026-07-26 13:02 | EC618 OTA: make image configuration transactional | 36 |
+| 22 | `62e009b0` | 2026-07-26 13:15 | EC618 I2C: verify pull-up failure matrix | 37 |
+| 23 | `6a0bfe68` | 2026-07-26 13:19 | EC618 helpers: own convenience peripheral pins | 38 |
+| 24 | `ec93a6bc` | 2026-07-26 22:57 | EC618 slot: normalize Toit documentation | 39 |
+| 25 | `1d9917ef` | 2026-07-26 23:00 | EC618 tooling: normalize relocation generator style | 40 |
+| 26 | `1310e904` | 2026-07-26 23:02 | Firmware services: normalize Toit documentation | 41 |
+| 27 | `58133c3e` | 2026-07-26 23:13 | EC618: reflow Toit documentation paragraphs | 42 |
+| 28 | `b852411b` | 2026-07-26 23:20 | EC618 tools: finish documentation review nits | 43–44 |
+| 29 | `ec262ab6` | 2026-07-26 23:30 | EC618 tests: fence protocol examples in Toitdocs | 45 |
+| 30 | `3babe6e8` | 2026-07-26 23:54 | EC618 base: narrow exported slot API | 46 |
+| 31 | `bbbd81cb` | 2026-07-27 21:26 | EC618 I2C: own transfers in OTA slot | 47 |
+
+### Detailed responses
+
+The following work is intentionally deferred, with an explicit prerequisite so
+it is not lost between this fix round and the final rebase:
+
+- **I2C common async contract (comment 13):** land the current async I2C/SPI
+  stack, adapt that stack to the hybrid bus-owned/generic-transfer design, then
+  put the EC618 implementation on top.
+- **Integer-pin rebase (comments 11, 21, 37, and 38):** after rebasing onto the
+  common integer-pin peripheral API, make native resources own pads, use the
+  common console UART API, and remove the temporary carrier-`Pin` helpers.
+- **Landing-only documentation cleanup (comments 1 and 5):** retain this
+  tracker through the next review and stack recreation, then remove review
+  archaeology and resolved bring-up history before landing.
+- **Commit-stack recreation:** do not rewrite the stack during this fix round.
+  First publish focused fix commits for review; squash/reorder into fewer,
+  targeted commits only after that review, immediately before the rebase.
+
+#### 1. Pending comment `3805769238` — remove review archaeology
+
+- **Created/anchor:** 2026-08-18 15:58 UTC, `c05614aa`,
+  `docs/pr-3075-review-tracker.md`.
+- **Context:** The tracker and known-issues documents currently preserve a
+  great deal of first-round reasoning, stale failures, and descriptions of
+  implementation details that are already apparent from the code.
+- **Finding:** **Open, landing cleanup.** The tracker is still useful while
+  this second round is active, including for distinguishing the 47 pending
+  comments from the submitted review. It should not ship as product
+  documentation in its present form.
+- **Planned response/action:** Keep this tracker until the review and rebase
+  are closed. Before landing, remove the tracker/handover/review archaeology,
+  delete stale failures and “how the code works” narratives, and move only
+  durable material into the appropriate docs: hardware provenance, verified
+  pin mappings, externally imposed constraints, and non-obvious maintenance
+  rules.
+
+#### 2. Pending comment `3806044892` — spell out `offset`
+
+- **Created/anchor:** 2026-08-18 16:34 UTC, `78c45c50`,
+  `lib/ec618/slot.toit`.
+- **Context:** The public inactive-slot streaming example advances a local
+  variable named `off` after each chunk.
+- **Finding:** **Open.** The current tree still uses `off`.
+- **Planned response/action:** Rename it to `offset`; this is an example, so
+  clarity is more useful than abbreviation.
+
+#### 3. Pending comment `3806048627` — state write alignment in the example
+
+- **Created/anchor:** 2026-08-18 16:35 UTC (edited 16:38), `78c45c50`,
+  `lib/ec618/slot.toit`.
+- **Context:** `write-inactive-sector` accepts writes starting on a 16-byte
+  boundary and confines a call to one 4 KiB sector. Sector-aligned writes are
+  not required, but the example's fixed-size chunks hide that contract; the
+  detailed method documentation appears only later.
+- **Finding:** **Open.** The API documentation has the rule, but the example
+  does not state the assumption on its chunk size and offsets.
+- **Planned response/action:** Add a short comment next to the loop saying
+  that each offset and non-final chunk is 16-byte aligned and that no call
+  crosses a sector. Keep the complete contract on the method itself.
+
+#### 4. Pending comment `3806063313` — public/privileged sector erase
+
+- **Created/anchor:** 2026-08-18 16:37 UTC, `78c45c50`,
+  `lib/ec618/slot.toit`.
+- **Context:** The public `erase-inactive-sector` helper reaches a primitive
+  that erases part of the inactive firmware slot. The higher-level firmware
+  service is intended to be the ownership and policy boundary.
+- **Finding:** **Open, API/security audit.** Range checks prevent erasing
+  outside the inactive slot, but they do not make raw firmware mutation an
+  appropriate unprivileged public API. This must be audited at the operation,
+  not fixed merely by hiding this one declaration.
+- **Planned response/action:** Make raw slot erase/write implementation-only
+  and expose mutation through the privileged firmware service/resource. Mark
+  every primitive that can change firmware state privileged (or remove the
+  direct primitive boundary if the service extension can own it). Retain a
+  public read-only slot view where useful.
+
+#### 5. Pending comment `3806178934` — remove the scope repro and clean known issues
+
+- **Created/anchor:** 2026-08-18 16:54 UTC, `5ccc5a15`,
+  `tests/hw/ec618/aon-wu-scope-ec618.toit`.
+- **Context:** The scope program and the long known-issues entry record the
+  investigation that established the AON/wakeup behavior. Deterministic rig
+  tests now cover the resulting behavior.
+- **Finding:** **Open, landing cleanup.** Both files still exist.
+- **Planned response/action:** Remove the oscilloscope/repro program. Audit
+  `docs/ec618-known-issues.md` as part of comment 1: delete resolved debugging
+  history and retain only current limitations plus concise hardware
+  provenance that is not encoded in tests or public API documentation.
+
+#### 6. Pending comment `3813895555` — does `ConditionVariable.wait` block a primitive?
+
+- **Created/anchor:** 2026-08-19 14:29 UTC, `1358b745`,
+  `src/os_freertos.h`.
+- **Context:** The shared FreeRTOS condition variable waits on a native
+  semaphore. The name can look like a primitive implementation blocking the
+  VM task.
+- **Finding:** **Explanation; no primitive blocks here.** It is used by the
+  scheduler/event infrastructure through `OS::wait`/`OS::wait_us`, including
+  scheduler idle waits and timer/event sources. It blocks the native worker
+  that is supposed to wait, not an executing Toit primitive, and is the same
+  abstraction used by the ESP32 port.
+- **Planned response/action:** Reply with those call sites and keep the
+  implementation. Add a concise abstraction-level comment only if the name
+  remains misleading after the rebase.
+
+#### 7. Pending comment `3814004613` — zero-duration deep sleep
+
+- **Created/anchor:** 2026-08-19 14:42 UTC, `be687dab`,
+  `src/toit_ec618.cc`.
+- **Context:** EC618 cannot program a sub-second hibernate, so the current code
+  clamps every duration below one second—including zero—to one second. Using
+  `deep-sleep --ms=0` can be a convenient reboot idiom, but it still invokes
+  the deep-sleep API and its observable wake contract matters.
+- **Finding:** **Current behavior is consistent with ESP32.** ESP32 clamps zero
+  to its 50 ms minimum, enters real timer-backed deep sleep, and subsequently
+  reports `RESET-DEEPSLEEP` plus `WAKEUP-TIMER`. EC618 similarly clamps zero to
+  its approximately one-second hardware minimum, really hibernates, and
+  reports an RTC/deep-sleep wake through its platform wake API. Special-casing
+  EC618 zero as a software reset would make the call faster but would change
+  both its meaning and its wake/reset observations. Neither platform currently
+  exposes a general application reset; firmware upgrade and several tests use
+  a short/zero deep sleep as a reboot substitute.
+- **Planned response/action:** Keep real deep-sleep semantics and expose an
+  explicit reset operation with the same public contract on ESP32 and EC618,
+  reporting a software reset rather than a deep-sleep wake. Replace reboot-only
+  uses such as both firmware extensions and mini-jag with that operation; keep
+  zero-duration calls that genuinely test deep sleep. Publish each platform's
+  minimum as a lazily initialized public constant named
+  `DEEP-SLEEP-MIN-DURATION` (`Duration --ms=50` on ESP32 and approximately one
+  second on EC618) and document that shorter requested durations are rounded
+  up to it. Add separate contract tests for explicit reset and for
+  minimum-duration deep sleep, including the resulting reset/wakeup causes.
+  The reset implementation should use an orderly runtime exit/reset path
+  rather than exposing an arbitrary immediate native primitive that can bypass
+  required shutdown work.
+
+#### 8. Pending comment `3814596035` — use `ResourcePool` for GPIO ownership
+
+- **Created/anchor:** 2026-08-19 15:56 UTC, `5ccc5a15`,
+  `src/resources/gpio_ec618.cc`.
+- **Context:** EC618 currently maintains `pads_in_use` and shared GPIO-bit
+  ownership arrays manually. ESP32 expresses controller/pin availability with
+  `ResourcePool` and can use an already-held outer locker for atomic compound
+  changes.
+- **Finding:** **Open, broad ownership refactor.** The later mode-aware changes
+  make the arrays more correct but do not address the requested abstraction.
+- **Planned response/action:** Replace the manual pad/controller availability
+  bookkeeping with resource pools. Use the pool overload that accepts the
+  outer reentrant locker so pad and shared-bit reservations remain one atomic
+  operation. Audit all GPIO, PWM, UART, SPI, and I2C pad acquisition paths;
+  this is not a one-line substitution at the attached location.
+
+#### 9. Pending comment `3814630594` — dangerous `pad_release`/`release_pad` split
+
+- **Created/anchor:** 2026-08-19 16:01 UTC, `5ccc5a15`,
+  `src/resources/gpio_ec618.cc`.
+- **Context:** `release_pad` updates ownership bookkeeping while `pad_release`
+  changes mux/hardware state. Their similar names make it easy to invoke one
+  without the other or in the wrong order.
+- **Finding:** **Open; covered by comment 8's refactor.** The later locking fix
+  reduces races but leaves the split lifecycle and naming hazard.
+- **Planned response/action:** Make one resource teardown path own both the
+  lease and hardware cleanup. Keep low-level hardware reset private and name
+  it accordingly. Ensure container teardown and explicit close both exercise
+  the same path.
+
+#### 10. Pending comment `3814677073` — catch GPIO startup glitches
+
+- **Created/anchor:** 2026-08-19 16:06 UTC, `5ccc5a15`,
+  `tests/hw/ec618/gpio-multi-ec618.toit`.
+- **Context:** The paired ESP32 test samples the eventual initial value after
+  handshaking. That cannot detect a short opposite-level pulse while the
+  EC618 pad is being muxed/configured, and its peer pull is not consistently
+  in the expected output direction.
+- **Finding:** **Open.** The ESP32 side checks steady state, not the transition
+  the comment asks about.
+- **Planned response/action:** Add a synchronized peer-side edge/pulse capture
+  around `Pin --output --value=...`, with the peer pull in the same direction
+  as the requested initial value. Run both initial-low and initial-high cases
+  and fail on any opposite edge, not merely on the final sampled level.
+
+#### 11. Pending comment `3824493550` — reserve the controller bit after integer-pin rebase
+
+- **Created/anchor:** 2026-08-20 18:58 UTC (edited 19:15), `3f1f44b5`,
+  `src/resources/gpio_ec618.cc`.
+- **Context:** On this branch, constructing `gpio.Pin` already owns the pad.
+  Master has since removed `gpio.Pin` peripheral arguments; after that rebase,
+  constructing a pin/resource must reserve both the physical pad and aliased
+  GPIO-controller bit itself.
+- **Finding:** **Rebase work.** No explicit TODO currently preserves this
+  requirement.
+- **Planned response/action:** Add the TODO now, then implement it rather than
+  carrying the TODO past the integer-pin rebase. The resource-pool refactor in
+  comment 8 must reserve the pad and controller bit atomically for every
+  integer-pin consumer.
+
+#### 12. Pending comment `3824619315` — releasing one of two pads sharing a GPIO bit
+
+- **Created/anchor:** 2026-08-20 19:16 UTC, `3f1f44b5`,
+  `src/resources/gpio_ec618.cc`.
+- **Context:** Two physical pads can alias one GPIO controller bit. Releasing
+  one must disconnect that pad without deinitializing the bit still used by
+  its sibling.
+- **Finding:** **Behavior currently handled, structure still open.** The
+  current mode-aware path disconnects the released pad's mux, skips shared
+  GPIO-register deinitialization while a sibling owns the bit, and performs
+  controller cleanup when the last owner closes. Thus the released pad does
+  not remain an active output. Comments 8–9 are still needed to make this
+  lifecycle difficult to misuse.
+- **Planned response/action:** Reply with that exact teardown sequence, add a
+  two-alias release regression if not already covered, and preserve the
+  defer-controller-cleanup rule in the resource-pool implementation.
+
+#### 13. Pending comment `3824946455` — relationship to PR #3156
+
+- **Created/anchor:** 2026-08-20 20:04 UTC, `f5be8964`, `lib/i2c.toit`.
+- **Context:** This branch added an EC618-driven common-library
+  start/finish transfer path. [PR #3156](https://github.com/toitlang/toit/pull/3156)
+  independently migrates common I2C controller operations to a broader async
+  API, including serialization, cancellation/abort, and normalized results.
+- **Finding:** **Rebase/integration work; neither version should be accepted
+  unchanged.** #3156 is still open and stacked on another I2C branch, so it is
+  design input rather than an authoritative API. Its stronger part is the
+  ownership model: the one in-flight controller operation, mutex,
+  `ResourceState_`, explicit abort, probe, close, and child-device lifecycle
+  all live on the `Bus`. It also exposes useful generic results such as NACK
+  and timeout. That is more accurate than #3075's per-`Device` completion
+  state, synchronous spinning probe, unlocked close paths, collapsed
+  `HARDWARE_ERROR`, and overloaded “finish also means abort” contract.
+
+  #3075 has the more generic device-transfer shape: one start operation taking
+  `(device, tx, rx-length)` naturally represents write, read, and write-read.
+  #3156 duplicates that mechanism across three start/finish primitive pairs.
+  Conversely, #3075's Boolean “async supported” return and synchronous fallback
+  make non-blocking behavior a runtime platform accident rather than a common
+  contract.
+- **Planned response/action:** Use a hybrid common design:
+
+  1. Put serialization, completion state, current operation, and lifecycle
+     locking on `Bus`.
+  2. Keep one generic asynchronous device-transfer start/finish pair for
+     write, read, and write-read.
+  3. Give bus probe its own asynchronous start/finish pair because it has no
+     persistent `Device` and returns presence rather than transfer data.
+  4. Use a separate idempotent bus-level abort operation; do not overload
+     finish with cancellation. Preserve #3075's operation-generation token so
+     a completion racing with abort cannot satisfy the next transaction.
+  5. Normalize portable results (`OK`, `NACK`, `TIMEOUT`, generic I2C error)
+     while retaining platform details only where the public API deliberately
+     exposes them.
+  6. Require both ESP32 and EC618 controller backends to implement this async
+     contract instead of dynamically falling back to a VM-blocking primitive.
+  7. Close buses/devices under the same mutex so close, cancellation, and
+     completion cannot free one another's resources.
+
+  Land the current async I2C/SPI stack first, adapt it to this hybrid contract,
+  and only then rebase/add the EC618 implementation. Preserve #3156's
+  contention/cancellation/error tests and #3075's EC618 long-transfer,
+  recovery, and hardware lifecycle tests.
+
+#### 14. Pending comment `3825188523` — five-line I2C `Defer`
+
+- **Created/anchor:** 2026-08-20 20:41 UTC, `f5be8964`,
+  `src/resources/i2c_ec618.cc`.
+- **Context:** Bus-creation rollback uses a multi-line `Defer` for one short
+  conditional cleanup.
+- **Finding:** **Open.** It remains needlessly expanded in the current tree.
+- **Planned response/action:** Collapse it to the normal one-line `Defer`
+  form used elsewhere in the repository.
+
+#### 15. Pending comment `3825213640` — closing a bus with live devices
+
+- **Created/anchor:** 2026-08-20 20:45 UTC, `f5be8964`,
+  `src/resources/i2c_ec618.cc`.
+- **Context:** The EC618 native close defensively rejects a bus with a nonzero
+  device count, which makes it look as if callers must close devices manually.
+- **Finding:** **Already covered by the common contract.** `Bus.close` closes
+  every registered device, clears the device map, and only then invokes native
+  bus close. ESP32 and PR #3156 follow the same parent-closes-children model;
+  the native check is a last-line invariant guard, not public behavior.
+- **Planned response/action:** Reply with that sequence and add/retain a
+  contract test proving parent close invalidates its devices. Keep a debug
+  assertion/defensive error in native code unless #3156 centralizes the
+  invariant more cleanly.
+
+#### 16. Pending comment `3825218588` — duplicate bus-close comment
+
+- **Created/anchor:** 2026-08-20 20:46 UTC, `f5be8964`,
+  `src/resources/i2c_ec618.cc`.
+- **Context/finding:** This is an exact duplicate of comment 15 on the same
+  diff.
+- **Planned response/action:** Give the same answer and implementation/test
+  reference as comment 15; do not create a second code change.
+
+#### 17. Pending comment `3825223599` — five-line I2C buffer cleanup
+
+- **Created/anchor:** 2026-08-20 20:46 UTC, `f5be8964`,
+  `src/resources/i2c_ec618.cc`.
+- **Context:** The reviewed code used a multi-line capturing `Defer` to free
+  transfer buffers.
+- **Finding:** **Superseded later by `bbbd81cb`.** That capture exceeded the
+  embedded `std::function` storage and could allocate/fail. The current code
+  uses the explicit `PendingI2cBuffers` RAII owner instead, so the five-line
+  `Defer` no longer exists.
+- **Planned response/action:** Reply that the later RAII fix removes the
+  reviewed construct and keep the non-allocating owner.
+
+#### 18. Pending comment `3825234212` — use `expect-throw`
+
+- **Created/anchor:** 2026-08-20 20:48 UTC, `f5be8964`,
+  `tests/hw/ec618/i2c-contract-ec618.toit`.
+- **Context:** The test carries a custom substring-matching `expect-throws`
+  helper even though the expected errors have stable exact values.
+- **Finding:** **Open.** The helper remains.
+- **Planned response/action:** Import and use `expect-throw` from `expect` for
+  the exact `ALREADY_IN_USE`/`INVALID_ARGUMENT` results. Retain a custom helper
+  only if a case genuinely needs structured inspection that `expect-throw`
+  cannot express.
+
+#### 19. Pending comment `3825241339` — direct `Bus` versus `Ec618.i2c0`
+
+- **Created/anchor:** 2026-08-20 20:49 UTC, `f5be8964`,
+  `tests/hw/ec618/i2c-contract-ec618.toit`.
+- **Context:** The test opens the primary route through `Ec618.i2c0`, then
+  constructs a direct `Bus` on alternate pads.
+- **Finding:** **Intentional coverage, insufficiently explained.** The helper
+  path tests the public convenience/lifecycle API; the direct construction
+  supplies a second physical route to prove that controller ownership, not
+  merely pin ownership, prevents two users of I2C0.
+- **Planned response/action:** Keep both until the integer-pin/#3156 rebase,
+  document that distinction in the test, then express the same two-route
+  contention through the final common API.
+
+#### 20. Pending comment `3825509082` — five-line UART `Defer`
+
+- **Created/anchor:** 2026-08-20 21:30 UTC, `fdbc5191`,
+  `src/resources/uart_ec618.cc`.
+- **Context/finding:** **Open.** Controller-allocation rollback is a short
+  conditional cleanup still written as a five-line `Defer`.
+- **Planned response/action:** Collapse it to the repository's one-line form.
+
+#### 21. Pending comment `3829458579` — use the post-rebase console UART API
+
+- **Created/anchor:** 2026-08-21 10:26 UTC (edited 10:28), `ad0e05f1`,
+  `docs/ec618-hw-tests.md`.
+- **Context:** This branch introduced an EC618-specific `console-uart-id`.
+  Master now maps stdin to the default UART and exposes the common
+  `Port.console` concept.
+- **Finding:** **Rebase work.** Keeping a parallel EC618 query would duplicate
+  the common API.
+- **Planned response/action:** On rebase, map EC618 stdin/default UART and use
+  `Port.console`; remove or reduce `console-uart-id` to private boot plumbing.
+  Update tests/docs to use the common API.
+
+#### 22. Pending comment `3831152175` — unnecessary CAPITALIZED prose
+
+- **Created/anchor:** 2026-08-21 14:42 UTC, `144df807`,
+  `src/toit_ec618.cc`.
+- **Context:** Comments emphasize sequencing with words such as “OWN”, “THEN”,
+  and “BEFORE”. Similar emphasis was added in other EC618 implementation docs.
+- **Finding:** **Open, prose audit.** Uppercase identifiers and real acronyms
+  are fine; uppercase ordinary words are noisy and remain in the tree.
+- **Planned response/action:** Rewrite the attached explanation in normal
+  prose and audit the EC618 commits for the same style, preserving only actual
+  names/acronyms and warnings whose formatting carries useful meaning.
+
+#### 23. Pending comment `3831205148` — five-line ADC `Defer`
+
+- **Created/anchor:** 2026-08-21 14:49 UTC, `58125517`,
+  `src/resources/adc_ec618.cc`.
+- **Context/finding:** **Open.** Channel-allocation rollback is still an
+  expanded five-line `Defer` for one conditional call.
+- **Planned response/action:** Collapse it to one line.
+
+#### 24. Pending comment `3831748558` — idiomatic truthiness in ADC `get`
+
+- **Created/anchor:** 2026-08-21 16:01 UTC, `24506734`,
+  `lib/gpio/adc.toit`.
+- **Context:** The polling path tests `result != null` before returning a
+  conversion result. Numeric zero is truthy in Toit, so the comparison adds
+  no useful distinction.
+- **Finding:** **Open.** The current code still uses the explicit comparison.
+- **Planned response/action:** Change it to `if result: return result`.
+
+#### 25. Pending comment `3831751059` — same truthiness fix in ADC `raw`
+
+- **Created/anchor:** 2026-08-21 16:01 UTC, `24506734`,
+  `lib/gpio/adc.toit`.
+- **Context/finding:** **Open.** This is the equivalent polling loop for the
+  raw conversion result.
+- **Planned response/action:** Apply the same idiomatic `if result` change;
+  audit both paths together.
+
+#### 26. Pending comment `3831756789` — record event-driven ADC follow-up
+
+- **Created/anchor:** 2026-08-21 16:02 UTC, `24506734`,
+  `lib/gpio/adc.toit`.
+- **Context:** The implementation yields with a 1 ms sleep while the hardware
+  conversion is pending. An ADC completion callback/event source could wake
+  the task instead.
+- **Finding:** **Open.** Polling is acceptable for this round, but there is no
+  TODO and event-driven completion is technically possible.
+- **Planned response/action:** Add a specific TODO to replace polling with a
+  resource signal/event-source completion path; do not imply that polling is
+  an unavoidable hardware constraint.
+
+#### 27. Pending comment `3896057195` — UART-named constants in GPIO wiring
+
+- **Created/anchor:** 2026-08-31 15:48 UTC, `44b84e54`,
+  `tests/hw/ec618/wiring.toit`.
+- **Context:** GPIO tests reuse physical nets whose constants are named
+  `ESP32-UART2-RX-NET-PINS`/`TX`, even when UART is irrelevant.
+- **Finding:** **Open.** The sharing is intentional, but the names incorrectly
+  make UART the identity of a physical wire.
+- **Planned response/action:** Rename the constants after the physical
+  EC618/ESP32 pads or rig net, then derive UART and GPIO uses from those neutral
+  names. Update every consumer, not just the attached GPIO table.
+
+#### 28. Pending comment `3896175191` — UART worker/task cost
+
+- **Created/anchor:** 2026-08-31 16:03 UTC, `0fb886b1`,
+  `src/resources/uart_ec618.cc`.
+- **Context:** CMSIS “send complete” means data reached the peripheral, not
+  that the final stop bit left the wire. The added worker polls TEMT to make
+  flush/close/RS485 completion correct. The same change also carries
+  double-buffer/IRQ-chaining work for gap-free high-throughput output.
+- **Finding:** **Keep the worker.** The task is not merely a pause-free-output
+  optimization: it turns the controller's early “buffer accepted” callback
+  into the physical line-idle completion required by flush, close, and RS485
+  direction changes. Making that correctness depend on a performance flag
+  would give the same API two meanings. One small shared task/queue is a
+  reasonable fixed cost for correct UART semantics.
+- **Planned response/action:** Retain the completion task in all modes and
+  answer that it is correctness infrastructure. The existing large-buffer
+  configuration may continue to control memory-heavy ring sizes, but do not
+  gate the physical-drain completion path or add a second lean behavior that
+  needs separate semantic tests.
+
+#### 29. Pending comment `3896412790` — use `ResourcePool` for SPI controllers
+
+- **Created/anchor:** 2026-08-31 16:36 UTC, `2507ddda`,
+  `src/resources/spi_ec618.cc`.
+- **Context:** EC618 has two SPI controllers and tracks them with a boolean
+  array plus a mutex; ESP32 uses `ResourcePool` for the same exclusive lease.
+- **Finding:** **Open.** The boolean lease remains in the current tree.
+- **Planned response/action:** Replace it with a two-entry `ResourcePool` and
+  route explicit close, construction rollback, and container teardown through
+  the same take/put lifecycle.
+
+#### 30. Pending comment `3896502938` — claim that AON GPIO keeps working asleep
+
+- **Created/anchor:** 2026-08-31 16:48 UTC, `fba7dfa2`,
+  `lib/ec618/ec618.toit`.
+- **Context:** The reviewed documentation said AON GPIO pads “keep working in
+  sleep modes,” which was broader than the implementation and conflated AON
+  GPIO output supply with the separate wake-input domain.
+- **Finding:** **Resolved later by `70e8fefe`.** Current documentation says the
+  shared AON-I/O LDO is powered while GPIO/PWM owns it and distinguishes the
+  separate deep-sleep wake rail. It no longer promises arbitrary GPIO
+  operation during sleep.
+- **Planned response/action:** Point to the later correction. Ensure the
+  Toitdoc reverts in comments 39–42 do not resurrect the old claim.
+
+#### 31. Pending comment `3896737497` — physical identities for wake inputs 0–2
+
+- **Created/anchor:** 2026-08-31 17:19 UTC, `e659bf0e`,
+  `lib/ec618/ec618.toit`.
+- **Context:** The docs say wake inputs 0–2 have no pin identities. They do not
+  have ordinary `gpio.Pin` identities, but the Air780E module pinout still
+  identifies them: WAKEUP0 is module pin 101, wake input 1 is the VBUS/module
+  pin 61 function, and wake input 2 is USIM_DET/module pin 79. Inputs 3–5 are
+  the GPIO20/21/22 wake-capable route used by PAD40–42. The official GPIO guide
+  also states that all six wake inputs are input-only, use the approximately
+  2 V wake domain, and have special external-drive constraints.
+- **Finding:** **Open; the reviewer is right.** “No ordinary `Pin`” was turned
+  into the incorrect stronger claim “no physical identity.”
+- **Planned response/action:** Correct the documentation and provenance using
+  the [official Air780E GPIO guide](https://docs.openluat.com/air780e/luatos/hardware/design/gpio/)
+  and [reference design pinout](https://docs.openluat.com/air780e/luatos/hardware/design/file/Air780E_LuatOS_Reference_Design_V20241021.pdf).
+  Represent wake inputs as explicit wake-source constants/type for all six,
+  with `gpio.Pin` convenience mapping only for GPIO20–22. Treat VBUS and
+  USIM_DET as dedicated functions with documented conflicts rather than
+  pretending they are general GPIOs.
+
+#### 32. Pending comment `3896762173` — same wake-input identity claim in C++
+
+- **Created/anchor:** 2026-08-31 17:23 UTC, `e659bf0e`,
+  `src/wakeup_ec618.h`.
+- **Context/finding:** **Open; companion to comment 31.** The internal header
+  repeats the same incorrect wording and its helper accepts only a physical
+  GPIO pad, making inputs 0–2 impossible to select through the public API.
+- **Planned response/action:** Correct the comment and refactor configuration
+  around wake-source indices 0–5. Keep a checked GPIO-pad-to-source mapping
+  for PAD40–42 rather than making it the only entry point.
+
+#### 33. Pending comment `3896851681` — I2C task cost
+
+- **Created/anchor:** 2026-08-31 17:35 UTC, `6c5fdeef`,
+  `src/resources/i2c_ec618.cc`.
+- **Context:** A per-bus task defers long/chained transfer completion out of
+  IRQ context and handles the hardware case where STOP leaves BUSY latched.
+  Short transfers do not need that path, but the task is currently created for
+  every bus.
+- **Finding:** **Keep the worker.** It is part of correctness for supported
+  long/dedicated transfers: work that cannot safely run in IRQ context waits
+  for STOP, clears a latched BUSY engine when necessary, and only then
+  publishes completion. A per-bus task with a small bounded stack is worth the
+  cost and must not depend on a high-performance flag.
+- **Planned response/action:** Retain the task and answer with its correctness
+  role. Do not introduce a flag-dependent I2C transfer contract. The later
+  common async-stack/hybrid work may change which shared event infrastructure
+  runs it, but it must preserve the same completion and recovery guarantee.
+
+#### 34. Pending comment `3897195539` — pass the held locker
+
+- **Created/anchor:** 2026-08-31 18:24 UTC, `a4e8d8b6`,
+  `src/resources/gpio_ec618.cc`.
+- **Context:** `gpio_owned_by_other_pad_locked` relies on its caller already
+  holding the GPIO locker but takes no parameter that demonstrates the
+  precondition.
+- **Finding:** **Open.** Repository resource code commonly passes the held
+  `Locker` into helpers and pool operations.
+- **Planned response/action:** Take `const Locker&` (or the repository's
+  corresponding held-lock type) and pass it through. The resource-pool work in
+  comment 8 should retain this explicit lock proof.
+
+#### 35. Pending comment `3897245121` — Jaguar is not the only updater
+
+- **Created/anchor:** 2026-08-31 18:31 UTC, `91735f0c`,
+  `docs/ec618-base-image.md`.
+- **Context:** The document assigns pre-transfer base-ID checking specifically
+  to Jaguar, although any service/client that sends an OTA can perform it.
+- **Finding:** **Open documentation wording.** On-device rejection remains the
+  authoritative safety check regardless of client.
+- **Planned response/action:** Say “OTA update servers/clients should compare
+  the carried base identity with the target before transfer,” with Jaguar only
+  as an example if useful. Keep the independent on-device validation.
+
+#### 36. Pending comment `3897300641` — build generated relocation C instead of checking it in
+
+- **Created/anchor:** 2026-08-31 18:39 UTC, `90396c92`,
+  `src/toit_data_reloc.c`.
+- **Context:** The file is explicitly generated by
+  `tools/ec618/gen-data-reloc.toit`, but the build only checks that the tracked
+  copy matches the linked slot and tells developers to regenerate manually.
+- **Finding:** **Open build-system work.** It is generated data and should not
+  be a reviewed source artifact. Generation depends on slot ELF addresses, so
+  integrating it requires an explicit provisional-link/generate/final-link
+  sequence rather than a naive pre-compile rule.
+- **Planned response/action:** Remove the file from source control. Generate
+  it into the build directory after the provisional slot link, compile it into
+  the final link, and repeat/check to a fixed point so a changed relocation
+  table cannot silently invalidate its own addresses. Keep `--check` as CI
+  validation of the generated build artifact, not of a tracked C file.
+
+#### 37. Pending comment `3897375423` — temporary I2C convenience helper
+
+- **Created/anchor:** 2026-08-31 18:49 UTC (edited 18:51), `62e009b0`,
+  `lib/ec618/ec618.toit`.
+- **Context:** The helper constructs and retains `gpio.Pin` carriers because
+  the pre-rebase peripheral API takes pins. Master now uses integer pins and
+  native peripheral resources should own pad reservations.
+- **Finding:** **Rebase work.** The compatibility layer has no TODO and can
+  otherwise become permanent.
+- **Planned response/action:** Mark the shared compatibility layer temporary,
+  then remove it during the integer-pin rebase. Let the native I2C resource
+  reserve/release pads; preserve only genuinely EC618-specific route
+  selection.
+
+#### 38. Pending comment `3897391311` — temporary SPI convenience helper
+
+- **Created/anchor:** 2026-08-31 18:50 UTC (edited 18:52), `6a0bfe68`,
+  `lib/ec618/ec618.toit`.
+- **Context/finding:** **Rebase work; same issue as comment 37.** SPI wraps
+  carrier `Pin` objects solely for the old API.
+- **Planned response/action:** Use one TODO/audit covering I2C, SPI, and the
+  analogous UART helpers, then remove all carrier-pin ownership when rebasing
+  to integer pins. Do not fix only the attached SPI helper.
+
+#### 39. Pending comment `3897500081` — broken slot Toitdocs
+
+- **Created/anchor:** 2026-08-31 19:04 UTC, `ec93a6bc`,
+  `lib/ec618/slot.toit`.
+- **Context:** In Toitdoc, an unindented continuation begins a new paragraph;
+  wrapped lines in the same paragraph must be indented. The “normalization”
+  commit changed intentional paragraph/continuation structure and produced
+  incorrect rendering.
+- **Finding:** **Open; reviewer is correct.** `ec93a6bc` changes only this file
+  and is not a useful semantic change.
+- **Planned response/action:** Revert the entire commit. Apply comments 2–4
+  separately on top of the previously correct documentation structure.
+
+#### 40. Pending comment `3897521555` — broken relocation-generator Toitdocs
+
+- **Created/anchor:** 2026-08-31 19:07 UTC, `1d9917ef`,
+  `tools/ec618/gen-slot-reloc.toit`.
+- **Context/finding:** **Open; same Toitdoc rule.** This single-file style
+  commit breaks intended paragraphs/continuations without adding behavior.
+- **Planned response/action:** Revert the entire commit.
+
+#### 41. Pending comment `3897526684` — broken firmware-service Toitdocs
+
+- **Created/anchor:** 2026-08-31 19:08 UTC, `1310e904`,
+  `system/extensions/ec618/firmware.toit`.
+- **Context/finding:** **Open.** The commit changes the two firmware service
+  files and mistakes intentional Toitdoc paragraphs for malformed wrapping.
+- **Planned response/action:** Revert the entire commit and retain the original
+  paragraph structure.
+
+#### 42. Pending comment `3897537603` — broad broken Toitdoc reflow
+
+- **Created/anchor:** 2026-08-31 19:09 UTC, `58133c3e`,
+  `lib/ec618/ec618.toit`.
+- **Context:** This is not local to the attached line. The commit mechanically
+  reflows Toitdocs across EC618 libraries, firmware services, tools, mini-jag,
+  and many hardware tests, often into overlong lines or incorrect paragraph
+  boundaries.
+- **Finding:** **Open, whole-commit scope.** Sampling the changed files confirms
+  the rule was applied backwards; no independent behavior needs preserving.
+- **Planned response/action:** Revert `58133c3e` wholesale, then run a focused
+  Toitdoc/style audit on the remaining documentation commits. Reapply only
+  demonstrably correct fixes with indented continuations and intentional blank
+  paragraphs.
+
+#### 43. Pending comment `3897547809` — mini-jag docs are useful but overlong
+
+- **Created/anchor:** 2026-08-31 19:11 UTC, `b852411b`,
+  `tests/hw/esp-tester/mini-jag.toit`.
+- **Context:** Converting the public-facing mini-jag comments to Toitdocs is
+  appropriate, but the replacement uses long single lines rather than normal
+  Toitdoc continuation indentation.
+- **Finding:** **Open; selectively fix rather than revert all of `b852411b`.**
+- **Planned response/action:** Retain the Toitdoc conversion, wrap it at normal
+  width, and indent continuation lines so they remain one paragraph. Audit the
+  other mini-jag documentation changed by the same commit.
+
+#### 44. Pending comment `3897554724` — restore idiomatic null checks
+
+- **Created/anchor:** 2026-08-31 19:12 UTC, `b852411b`,
+  `tools/ec618/gen-slot-reloc.toit`.
+- **Context:** The commit changed `if not vm-data-start`-style checks to
+  explicit `== null`. These variables can only be integers or null; integer
+  zero is truthy in Toit and is not a valid linked address here.
+- **Finding:** **Open; the original is idiomatic and unambiguous.**
+- **Planned response/action:** Revert the explicit null comparisons to `if
+  not ...` for all equivalent relocation variables, not just the attached
+  one.
+
+#### 45. Pending comment `3897564134` — overlong protocol Toitdoc
+
+- **Created/anchor:** 2026-08-31 19:13 UTC, `ec262ab6`,
+  `tests/hw/ec618/uart2-gapfree-esp32.toit`.
+- **Context:** Fencing protocol examples is useful, but the prose around the
+  fence was collapsed into an overlong Toitdoc line. The commit applies the
+  same pattern in five ESP32-side hardware tests.
+- **Finding:** **Open, commit-wide style audit.** The fences should remain;
+  the surrounding prose should follow normal Toitdoc wrapping.
+- **Planned response/action:** Wrap the attached paragraph with indented
+  continuation lines and audit all five files in `ec262ab6` for the same issue.
+
+#### 46. Pending comment `3897577809` — removed 286 future base symbols
+
+- **Created/anchor:** 2026-08-31 19:15 UTC (edited 19:15), `3babe6e8`,
+  `toolchains/ec618/project/src/plat_keep.c`.
+- **Context:** A frozen base can satisfy future OTA slots only with symbols
+  linked into that already-deployed base. The commit reduced the guaranteed
+  set from 495 to the 209 used by the present slot, removing 286 possible
+  future dependencies. A future missing symbol requires a new base/full flash,
+  so this is a capability decision, not merely dead-code cleanup.
+- **Finding:** **Open; the current justification is insufficient.** The table
+  itself saves exactly 286 pointers = 1,144 bytes. Removing references may
+  also let archive sections disappear, but the available pre/post artifacts
+  are from different base revisions and do not isolate this commit: their ELF
+  text differs by only about 5.8 KiB amid other changes, while sparse `base.bin`
+  lengths are dominated by changed geometry. The docs are also inconsistent:
+  `ota-contract.md` still promises a generous future surface while
+  `plat_keep.c` says exact-current-slot only.
+- **Planned response/action:** Before deciding, make an isolated A/B build of
+  the same source/toolchain with only the keep list changed and report flash,
+  RAM, and pulled object sections. Define the intended base compatibility
+  policy and a reviewed allowlist by subsystem. Unless the measured saving is
+  material enough to justify lost OTA capability, restore the foreseeable
+  PLAT/libc/peripheral surface; remove only dangerous/private or demonstrably
+  unreasonable exports. Make every design document state the same policy.
+
+#### 47. Pending comment `3897601645` — is the ESP32 slave bit-banging I2C?
+
+- **Created/anchor:** 2026-08-31 19:18 UTC, `bbbd81cb`,
+  `tests/hw/ec618/esp-idf-i2c-slave/main/i2c_slave_main.c`.
+- **Context:** The peer includes a GPIO SDA-edge ISR and a PCNT counter, which
+  can look like a software I2C implementation.
+- **Finding:** **Explanation/documentation fix.** Data transfer is handled by
+  ESP-IDF's hardware `i2c_slave` driver (`i2c_new_slave_device`, callbacks,
+  and `i2c_slave_write`). GPIO/PCNT are passive instrumentation only: they
+  observe SDA edges while SCL is high to distinguish START/repeated-START/STOP
+  because the slave-driver callback does not expose that bus-level assertion.
+  The ISR never drives SDA or SCL.
+- **Planned response/action:** Keep hardware I2C, add a concise comment at the
+  capture setup/handler stating that it is passive protocol instrumentation,
+  and rename capture helpers if necessary so nobody mistakes them for the
+  slave implementation.
 
 ## Response and duplicate-work audit
 
