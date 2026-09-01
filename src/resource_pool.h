@@ -42,10 +42,35 @@ class ResourcePool {
     return any(locker);
   }
 
+  // Get any resource while the caller holds the global system lock.
+  T any(const Locker&) {
+    for (int i = 0; i < size_; i++) {
+      Element* element = &elements_[i];
+      if (!element->taken) {
+        element->taken = true;
+        return element->value;
+      }
+    }
+    return Invalid;
+  }
+
   // Take a given resource from the pool. Returns false if it's not available.
   bool take(T value) {
     Locker locker(OS::global_mutex());
     return take(locker, value);
+  }
+
+  // Take a resource while the caller holds the global system lock.
+  bool take(const Locker&, T value) {
+    for (int i = 0; i < size_; i++) {
+      Element* element = &elements_[i];
+      if (element->value == value) {
+        if (element->taken) return false;
+        element->taken = true;
+        return true;
+      }
+    }
+    return false;
   }
 
   // Take a given resource from the pool if available, otherwise take any.
@@ -57,6 +82,11 @@ class ResourcePool {
   // Put a resource back in the pool.
   void put(T value) {
     Locker locker(OS::global_mutex());
+    put(locker, value);
+  }
+
+  // Put a resource back while the caller holds the global system lock.
+  void put(const Locker&, T value) {
     for (int i = 0; i < size_; i++) {
       Element* element = &elements_[i];
       if (element->value == value) {
@@ -66,6 +96,15 @@ class ResourcePool {
       }
     }
     FATAL("cannot add unknown resource");
+  }
+
+  // Test whether a resource is taken while the caller holds the global lock.
+  bool is_taken(const Locker&, T value) const {
+    for (int i = 0; i < size_; i++) {
+      const Element* element = &elements_[i];
+      if (element->value == value) return element->taken;
+    }
+    FATAL("cannot query unknown resource");
   }
 
  private:
@@ -91,29 +130,6 @@ class ResourcePool {
   static void fill(Element* elements, int index, T value, Ts... rest) {
     elements[index] = { .value = value, .taken = false };
     fill(elements, index + 1, rest...);
-  }
-
-  bool take(Locker& locker, T value) {
-    for (int i = 0; i < size_; i++) {
-      Element* element = &elements_[i];
-      if (element->value == value) {
-        if (element->taken) return false;
-        element->taken = true;
-        return true;
-      }
-    }
-    return false;
-  }
-
-  T any(Locker& locker) {
-    for (int i = 0; i < size_; i++) {
-      Element* element = &elements_[i];
-      if (!element->taken) {
-        element->taken = true;
-        return element->value;
-      }
-    }
-    return Invalid;
   }
 
   const int size_;

@@ -92,7 +92,7 @@ PRIMITIVE(kill) {
 }
 
 PRIMITIVE(bundled_images) {
-#ifdef TOIT_ESP32
+#ifdef TOIT_FREERTOS
   const EmbeddedDataExtension* extension = EmbeddedData::extension();
   word length = extension->images();
   Array* result = process->object_heap()->allocate_array(length * 2, Smi::from(0));
@@ -110,8 +110,6 @@ PRIMITIVE(bundled_images) {
     result->at_put(i * 2 + 1, Smi::from(image.size));
   }
   return result;
-#elif defined(TOIT_FREERTOS)
-  FAIL(UNIMPLEMENTED);
 #else
   return process->program()->empty_array();
 #endif
@@ -133,14 +131,12 @@ PRIMITIVE(assets) {
 
 PRIMITIVE(config) {
   PRIVILEGED;
-#ifdef TOIT_ESP32
+#if defined(TOIT_ESP32) || defined(TOIT_EC618)
   const EmbeddedDataExtension* extension = EmbeddedData::extension();
   List<uint8> config = extension->config();
   Object* result = config.is_empty()
       ? process->object_heap()->allocate_internal_byte_array(0)
       : process->object_heap()->allocate_external_byte_array(config.length(), config.data(), false, false);
-#elif defined(TOIT_FREERTOS)
-  FAIL(UNIMPLEMENTED);
 #else
   Object* result = process->object_heap()->allocate_internal_byte_array(0);
 #endif

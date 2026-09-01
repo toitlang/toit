@@ -328,10 +328,27 @@ int Process::message_count() {
   return count;
 }
 
+#ifdef TOIT_EC618
+extern "C" int32_t rngGenRandom(uint8_t rand[24]);
+#endif
+
 void Process::_ensure_random_seeded() {
   if (random_seeded_) return;
   uint8 seed[16];
+#ifdef TOIT_EC618
+  // On EC618, the EntropyMixer static instance may not be safely initialized
+  // (its constructor needs FreeRTOS which may not be up during static init).
+  // Seed directly from the hardware RNG.
+  uint8_t rand_buf[24];
+  if (rngGenRandom(rand_buf) == 0) {
+    memcpy(seed, rand_buf, sizeof(seed));
+  } else {
+    // Fallback: constant seed. Not ideal but prevents a crash.
+    memset(seed, 0x42, sizeof(seed));
+  }
+#else
   EntropyMixer::instance()->get_entropy(seed, sizeof(seed));
+#endif
   random_seed(seed, sizeof(seed));
   random_seeded_ = true;
 }
