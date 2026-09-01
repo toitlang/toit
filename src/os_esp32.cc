@@ -36,7 +36,6 @@
 #include "heap_report.h"
 #include "memory.h"
 #include "os.h"
-#include "os_freertos.h"
 #include "rtc_memory_esp32.h"
 #include "scheduler.h"
 #include "utils.h"
