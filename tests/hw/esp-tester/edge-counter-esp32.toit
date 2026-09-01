@@ -30,7 +30,8 @@ TOTAL-MS ::= 240_000
 
 main:
   pin := gpio.Pin PIN --input
-  unit := pulse-counter.Unit pin --glitch-filter-ns=1_000
+  pin.close
+  unit := pulse-counter.Unit PIN --glitch-filter-ns=1_000
   print "edge-counter: counting rising edges on IO$PIN for $(TOTAL-MS / 1000)s"
   last := 0
   (TOTAL-MS / REPORT-MS).repeat:

@@ -47,9 +47,10 @@ main:
 
   first := true
   BAUDS.do: | baud/int |
-    rx := gpio.Pin wiring.ESP32-UART2-RX-PIN
-    tx := gpio.Pin wiring.ESP32-UART2-TX-PIN
-    port := uart.Port --rx=rx --tx=tx --baud-rate=baud
+    port := uart.Port
+        --rx=wiring.ESP32-UART2-RX-PIN
+        --tx=wiring.ESP32-UART2-TX-PIN
+        --baud-rate=baud
 
     ITERATIONS.repeat: | i/int |
       expected := ByteArray TOKEN-SIZE: (it * 31 + 7 + i) & 0xff
@@ -80,8 +81,6 @@ main:
     // Let the 'K' leave the wire before tearing the port down.
     sleep --ms=200
     port.close
-    rx.close
-    tx.close
 
   if failures.is-empty:
     print "uart2-rs485-esp32: PASS"

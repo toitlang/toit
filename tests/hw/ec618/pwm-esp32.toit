@@ -31,8 +31,8 @@ All pass/fail logic lives on the EC618 side (pwm-ec618.toit). Pins are
 
 main:
   port := uart.Port
-      --rx=(gpio.Pin wiring.ESP32-UART2-RX-PIN)
-      --tx=(gpio.Pin wiring.ESP32-UART2-TX-PIN)
+      --rx=wiring.ESP32-UART2-RX-PIN
+      --tx=wiring.ESP32-UART2-TX-PIN
       --baud-rate=115200
   print "pwm-esp32: ready (control IO$(wiring.ESP32-UART2-RX-PIN) in / IO$(wiring.ESP32-UART2-TX-PIN) out)"
 
@@ -68,16 +68,16 @@ main:
 
 handle-frequency port/uart.Port io/int -> none:
   pin := gpio.Pin io --input --pull-down
+  pin.close
   // Glitch filter: the AON-pad wires (IO19/IO2) ring enough to
   // double-count edges without it; the max ~12.8 us filter is still
   // 40x shorter than a half-period at the fastest tested PWM (2 kHz).
-  unit := pulse-counter.Unit pin --glitch-filter-ns=12_000
+  unit := pulse-counter.Unit io --glitch-filter-ns=12_000
   start := Time.monotonic-us
   sleep --ms=2000
   edges := unit.value
   elapsed := Time.monotonic-us - start
   unit.close
-  pin.close
   port.out.write "F $edges $elapsed\n"
   print "pwm-esp32: F io$io -> $edges edges in $elapsed us"
 
@@ -116,7 +116,8 @@ handle-level port/uart.Port io/int -> none:
 
 handle-rmt-transition port/uart.Port io/int -> none:
   pin := gpio.Pin io --input --pull-down
-  input := rmt.In pin --resolution=20_000_000 --memory-blocks=2
+  pin.close
+  input := rmt.In io --resolution=20_000_000 --memory-blocks=2
   input.start-reading --max-ns=1_500_000
   port.out.write "A READY\n"
 
@@ -124,8 +125,9 @@ handle-rmt-transition port/uart.Port io/int -> none:
   error := catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
     signals = with-timeout --ms=100: input.wait-for-data
   timed-out := error != null
-  level := pin.get
   input.close
+  pin = gpio.Pin io --input --pull-down
+  level := pin.get
   pin.close
 
   low-signals := 0

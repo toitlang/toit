@@ -2,7 +2,6 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import gpio
 import gpio.dac show Dac
 
 import .wiring as wiring
@@ -37,8 +36,8 @@ HOLD ::= Duration --ms=1200
 DURATION ::= Duration --s=180
 
 main:
-  dac1 := Dac (gpio.Pin wiring.ESP32-ADC0-DAC-PIN)
-  dac2 := Dac (gpio.Pin wiring.ESP32-ADC1-DAC-PIN)
+  dac1 := Dac wiring.ESP32-ADC0-DAC-PIN
+  dac2 := Dac wiring.ESP32-ADC1-DAC-PIN
   print "adc-esp32: staircase $LEVELS V on IO$(wiring.ESP32-ADC0-DAC-PIN)+IO$(wiring.ESP32-ADC1-DAC-PIN), $(HOLD.in-ms)ms/step, for $(DURATION.in-s)s"
   deadline := Time.monotonic-us + DURATION.in-us
   i := 0

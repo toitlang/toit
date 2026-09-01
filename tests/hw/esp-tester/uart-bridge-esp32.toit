@@ -2,7 +2,6 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import gpio
 import monitor
 import net
 import uart
@@ -37,7 +36,7 @@ BAUD ::= 115200
 PORT ::= 18555
 
 main:
-  port := uart.Port --rx=(gpio.Pin RX) --tx=(gpio.Pin TX) --baud-rate=BAUD
+  port := uart.Port --rx=RX --tx=TX --baud-rate=BAUD
   network := net.open
   server := network.tcp-listen PORT
   print "uart-bridge-esp32: $network.address:$PORT <-> uart $BAUD (rx IO$RX / tx IO$TX)"

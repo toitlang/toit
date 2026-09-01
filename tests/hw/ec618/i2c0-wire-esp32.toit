@@ -35,11 +35,11 @@ MIN-SDA-EDGES ::= 150          // Address bits + start/stop, far fewer than SCL.
 
 count pin-num/int window/Duration -> int:
   pin := gpio.Pin pin-num --input --pull-up
-  unit := pulse-counter.Unit pin
+  pin.close
+  unit := pulse-counter.Unit pin-num
   sleep window
   edges := unit.value
   unit.close
-  pin.close
   return edges
 
 main:
@@ -52,15 +52,15 @@ main:
   // The counters watch sequentially-opened units on both pins at once.
   scl-pin := gpio.Pin wiring.ESP32-I2C0-SCL-PIN --input --pull-up
   sda-pin := gpio.Pin wiring.ESP32-I2C0-SDA-PIN --input --pull-up
-  scl-unit := pulse-counter.Unit scl-pin
-  sda-unit := pulse-counter.Unit sda-pin
+  scl-pin.close
+  sda-pin.close
+  scl-unit := pulse-counter.Unit wiring.ESP32-I2C0-SCL-PIN
+  sda-unit := pulse-counter.Unit wiring.ESP32-I2C0-SDA-PIN
   sleep WINDOW
   scl-edges := scl-unit.value
   sda-edges := sda-unit.value
   scl-unit.close
   sda-unit.close
-  scl-pin.close
-  sda-pin.close
   print "i2c0-wire-esp32: scl=$scl-edges sda=$sda-edges"
 
   failures := []
