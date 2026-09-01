@@ -48,13 +48,7 @@
 #define UART_NUM_2             (static_cast<uart_port_t>(2)) /*!< UART port 2 */
 #endif
 #if SOC_UART_HP_NUM > 3
-#define UART_NUM_3             (static_cast<uart_port_t>(3)) /*!< UART port 3 */
-#endif
-#if SOC_UART_HP_NUM > 4
-#define UART_NUM_4             (static_cast<uart_port_t>(4)) /*!< UART port 4 */
-#endif
-#if SOC_UART_HP_NUM > 5
-#error "SOC_UART_HP_NUM > 5"
+#error "SOC_UART_HP_NUM > 3"
 #endif
 #define UART_NUM_MAX           (SOC_UART_HP_NUM) /*!< UART port max */
 
@@ -84,12 +78,6 @@ static ResourcePool<uart_port_t, kInvalidUartPort> uart_ports(
 #endif
 #if SOC_UART_HP_NUM > 2
   , UART_NUM_2
-#endif
-#if SOC_UART_HP_NUM > 3
-  , UART_NUM_3
-#endif
-#if SOC_UART_HP_NUM > 4
-  , UART_NUM_4
 #endif
 );
 
