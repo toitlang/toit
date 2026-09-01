@@ -473,8 +473,9 @@ class TypeChecker : public ReturningVisitor<Type> {
         return Type::any();
 
       case Builtin::YIELD:
+      case Builtin::RESET:
       case Builtin::DEEP_SLEEP:
-        // The result of yield and sleep should not be used.
+        // The result of runtime-control builtins should not be used.
         return Type::none();
 
       case Builtin::STORE_GLOBAL:
