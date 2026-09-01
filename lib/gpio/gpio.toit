@@ -54,17 +54,6 @@ Pins 0-7 are RTC pins and can be used in deep-sleep.
 For chip variants without an in-package flash, GPIO14 is not led out to any
   chip pins.
 
-# ESP32P4
-The ESP32P4 has 55 physical pins (0-54). Each pin can be used as
-  a general-purpose pin, or be connected to a peripheral.
-
-Pins 34-38 are strapping pins.
-Pins 24-25 are JTAG pins, and should not be used if JTAG support is needed.
-Pins 16-23, 49-54 are ADC pins of channel 1.
-Pins 51-54 are analog comparator pins.
-Pins 0-15 are RTC pins and can be used in deep-sleep.
-Pins 2-15 can be used as touch sensor pins.
-
 # ESP32S2
 The ESP32S2 has 43 physical pins (0-21, 26-46). Each pin can be used as
   a general-purpose pin, or be connected to a peripheral.
@@ -557,19 +546,19 @@ class Pin_ extends PinBase:
       --open-drain/bool
       --value/int?:
     if not value: value = -1
-    gpio-config_ num pull-up pull-down input output open-drain value
+    gpio-config_ resource_ pull-up pull-down input output open-drain value
 
   /**
   See $Pin.get.
   */
   get -> int:
-    return gpio-get_ num
+    return gpio-get_ resource_
 
   /**
   See Pin.set.
   */
   set value/int:
-    gpio-set_ num value
+    gpio-set_ resource_ value
 
   /**
   See $Pin.wait-for.
@@ -577,7 +566,7 @@ class Pin_ extends PinBase:
   wait-for value -> none:
     if get == value: return
     state_.clear-state GPIO-STATE-EDGE-TRIGGERED_
-    config-timestamp := gpio-config-interrupt_ resource_ true
+    config-timestamp := gpio-config-interrupt_ resource_ true value
     try:
       // Make sure the pin didn't change to the expected value while we
       // were setting up the interrupt.
@@ -605,13 +594,13 @@ class Pin_ extends PinBase:
         if get == value: return
     finally:
       if resource_:
-        gpio-config-interrupt_ resource_ false
+        gpio-config-interrupt_ resource_ false 0
 
   /**
   See $Pin.set-open-drain.
   */
   set-open-drain value/bool:
-    gpio-set-open-drain_ num value
+    gpio-set-open-drain_ resource_ value
 
   /**
   See $Pin.set-pull.
@@ -624,7 +613,7 @@ class Pin_ extends PinBase:
     value := 0
     if up: value = 1
     if down: value = -1
-    gpio-set-pull_ num value
+    gpio-set-pull_ resource_ value
 
 
 /**
@@ -963,25 +952,25 @@ gpio-use_ resource-group num allow-restricted:
 gpio-unuse_ resource-group num:
   #primitive.gpio.unuse
 
-gpio-config_ num pull-up pull-down input output open-drain value:
+gpio-config_ resource pull-up pull-down input output open-drain value:
   #primitive.gpio.config
 
-gpio-get_ num:
+gpio-get_ resource:
   #primitive.gpio.get
 
-gpio-set_ num value:
+gpio-set_ resource value:
   #primitive.gpio.set
 
-gpio-config-interrupt_ resource enabled/bool:
+gpio-config-interrupt_ resource enabled/bool value/int:
   #primitive.gpio.config-interrupt
 
 gpio-last-edge-trigger-timestamp_ resource:
   #primitive.gpio.last-edge-trigger-timestamp
 
-gpio-set-open-drain_ num value/bool:
+gpio-set-open-drain_ resource value/bool:
   #primitive.gpio.set-open-drain
 
-gpio-set-pull_ num value/int:
+gpio-set-pull_ resource value/int:
   #primitive.gpio.set-pull
 
 gpio-linux-list-chips_ -> List:
