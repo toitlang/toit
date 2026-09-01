@@ -74,6 +74,22 @@ class Bus:
   reservation-mutex_/monitor.Mutex ::= monitor.Mutex
 
   /**
+  Mutex serializing transfers on the bus.
+
+  A synchronous transfer blocks the whole VM inside its primitive, which
+    serialized concurrent transfers by construction. An asynchronous
+    transfer (see $Device_.transfer-async_) yields while the DMA runs, so
+    without this mutex a second task could kick the controller mid-flight.
+  */
+  transfer-mutex_/monitor.Mutex ::= monitor.Mutex
+
+  // The bus borrows its pins from the caller. Keep them reachable: if the
+  // caller's Pin objects are temporaries, the garbage collector would
+  // otherwise finalize them while the bus is live — and a finalized Pin
+  // releases its pad, unhooking the bus from the wires.
+  pins_/List ::= ?
+
+  /**
   Constructs a new SPI bus using the given $mosi, $miso, and $clock pins.
 
   The $mosi, $miso, and $clock are GPIO numbers. The bus reserves the pins and
@@ -89,6 +105,7 @@ class Bus:
   // __TYPE-MIGRATION__ clock: gpio.Pin. Deprecated. Provide an integer instead.
   // __TYPE-MIGRATION__ clock: int
   constructor --mosi/any=null --miso/any=null --clock/any:
+    pins_ = [mosi, miso, clock]
     spi_ = spi-init_
       gpio.to-pin-num_ mosi
       gpio.to-pin-num_ miso
@@ -149,7 +166,12 @@ class Bus:
     if dc is gpio.Pin: dc.configure --output
 
     d := spi-device_ spi_ cs-num dc-num command-bits address-bits frequency mode
-    return Device_.init_ this d
+    device := Device_.init_ this d
+        --has-prefix=(command-bits != 0 or address-bits != 0)
+    // Same lifetime rule as the bus pins: the device borrows cs/dc, so it
+    // must keep them reachable for as long as it lives.
+    device.pins_ = [cs, dc]
+    return device
 
 /**
 A device connected with SPI.
@@ -305,13 +327,29 @@ class Device_ extends DeviceBase_:
   spi_/Bus := ?
   device_ := ?
   owning-bus_/bool := false
+  pins_/List := []
+  has-prefix_/bool := false
+  state_/monitor.ResourceState_? := null
 
   registers_/Registers? := null
+
+  // The transfer-done state bit set by the platform's event path.
+  static TRANSFER-DONE-STATE_ ::= 1
+
+  /**
+  Minimum transfer size (in bytes) for the asynchronous path.
+
+  SPI is fast: at typical MHz clocks a small transfer finishes in less
+    time than a round-trip through the scheduler costs, so small
+    transfers stay on the synchronous primitive.
+  */
+  static ASYNC-THRESHOLD_ ::= 64
 
   /** Deprecated. Use $Bus.device. */
   constructor .spi_ .device_:
 
-  constructor.init_ .spi_ .device_:
+  constructor.init_ .spi_ .device_ --has-prefix/bool:
+    has-prefix_ = has-prefix
 
   /** See $Device.close. */
   close:
@@ -330,7 +368,37 @@ class Device_ extends DeviceBase_:
       --address/int=0
       --keep-cs-active/bool=false:
     if keep-cs-active and not owning-bus_: throw "INVALID_STATE"
-    return spi-transfer_ device_ data command address from to read dc keep-cs-active
+    spi_.transfer-mutex_.do:
+      if not has-prefix_ and to - from >= ASYNC-THRESHOLD_:
+        if transfer-async_ data from to read dc keep-cs-active: return
+      spi-transfer_ device_ data command address from to read dc keep-cs-active
+
+  /**
+  Runs the transfer on the platform's asynchronous driver, if it has one:
+    the bytes move by DMA while this task waits on the resource state, so
+    the VM keeps scheduling other tasks. Returns false on platforms with
+    only synchronous transfers.
+
+  Must be called with the bus's transfer mutex held.
+  */
+  transfer-async_ data/ByteArray from/int to/int read/bool dc/int keep-cs-active/bool -> bool:
+    if not state_: state_ = monitor.ResourceState_ spi_.spi_ device_
+    state_.clear-state TRANSFER-DONE-STATE_
+    if not spi-device-transfer-start_ device_ data from to read dc keep-cs-active:
+      return false
+    finished := false
+    result := 0
+    try:
+      state_.wait-for-state TRANSFER-DONE-STATE_
+      result = spi-device-transfer-finish_ device_ (read ? data : #[])
+      finished = true
+    finally:
+      if not finished:
+        // Cancellation or another exceptional exit must stop the engine
+        // and release the native transfer buffer.
+        catch: spi-device-transfer-finish_ device_ #[]
+    if result != 0: throw "HARDWARE_ERROR"
+    return true
 
   /** See $Device.with-reserved-bus. */
   with-reserved-bus [block]:
@@ -481,7 +549,7 @@ spi-init_ mosi/int miso/int clock/int:
 spi-close_ spi:
   #primitive.spi.close
 
-spi-device_ spi cs/int dc/int frequency/int mode/int command-bits/int address-bits/int:
+spi-device_ spi cs/int dc/int command-bits/int address-bits/int frequency/int mode/int:
   #primitive.spi.device
 
 spi-device-close_ spi device:
@@ -489,6 +557,19 @@ spi-device-close_ spi device:
 
 spi-transfer_ device data/ByteArray command/int address/int from to read/bool dc/int keep-cs-active/bool:
   #primitive.spi.transfer
+
+// Starts an asynchronous transfer. Returns true when started (completion
+// arrives through the resource state; collect with
+// $spi-device-transfer-finish_), or false when the platform only has
+// synchronous transfers.
+spi-device-transfer-start_ device data/ByteArray from/int to/int read/bool dc/int keep-cs-active/bool:
+  #primitive.spi.device-transfer-start
+
+// Collects a finished transfer: copies received bytes into $rx-out and
+// returns the driver result (0 = success). Aborts the transfer if it is
+// still running.
+spi-device-transfer-finish_ device rx-out/ByteArray:
+  #primitive.spi.device-transfer-finish
 
 spi-acquire-bus_ device:
   #primitive.spi.acquire-bus
