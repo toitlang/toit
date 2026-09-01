@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2026 Toit contributors.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -13,26 +13,21 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-#pragma once
+#include "type_primitive.h"
 
 namespace toit {
+namespace compiler {
 
-enum UdpState {
-  UDP_READ  = 1 << 0,
-  UDP_WRITE = 1 << 1,
-  UDP_ERROR = 1 << 2,
-  UDP_NEEDS_GC = 1 << 3,
-};
+MODULE_TYPES(cellular, MODULE_CELLULAR)
 
-enum UdpOption {
-  UDP_PORT                 = 1,
-  UDP_ADDRESS              = 2,
-  UDP_BROADCAST            = 3,
-  UDP_MULTICAST_MEMBERSHIP = 4,
-  UDP_MULTICAST_LOOPBACK   = 5,
-  UDP_MULTICAST_TTL        = 6,
-  UDP_REUSE_ADDRESS        = 7,
-  UDP_REUSE_PORT           = 8,
-};
+TYPE_PRIMITIVE_ANY(init)
+TYPE_PRIMITIVE_ANY(close)
+TYPE_PRIMITIVE_ANY(configure)
+TYPE_PRIMITIVE_ANY(connect)
+TYPE_PRIMITIVE_ANY(disconnect)
+TYPE_PRIMITIVE_ANY(disconnect_reason)
+TYPE_PRIMITIVE_ANY(get_ip)
+TYPE_PRIMITIVE_ANY(get_cell_info)
 
-} // namespace toit
+}  // namespace compiler
+}  // namespace toit

@@ -19,7 +19,7 @@
 #include <esp_wifi.h>
 #endif
 
-#if defined(TOIT_ESP32) && defined(CONFIG_TOIT_ENABLE_IP) || defined(TOIT_USE_LWIP)
+#if defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_IP) || defined(TOIT_USE_LWIP)
 #include <lwip/ip_addr.h>
 
 #include "../resource.h"
@@ -460,11 +460,16 @@ PRIMITIVE(write) {
     int to = Utils::min<int>(tcp_sndbuf(capture.socket->tpcb()), capture.to);
     if (to == 0) return Smi::from(-1);
 
+#ifdef TOIT_EC618
+    // EC618's lwIP has extra parameters: RAI, exception data, sequence number.
+    err_t err = tcp_write(capture.socket->tpcb(), capture.content, to, TCP_WRITE_FLAG_COPY, 0, 0, 0);
+#else
     err_t err = tcp_write(capture.socket->tpcb(), capture.content, to, TCP_WRITE_FLAG_COPY);
+#endif
     if (err == ERR_OK) {
-      if (tcp_nagle_disabled(capture.socket->tpcb())) {
-        tcp_output(capture.socket->tpcb());
-      }
+      // tcp_write only queues data. tcp_output applies Nagle and sends
+      // whatever the current window and algorithm permit.
+      tcp_output(capture.socket->tpcb());
 
       capture.socket->set_send_pending(capture.socket->send_pending() + to);
       tcp_sent(capture.socket->tpcb(), LwipSocket::on_wrote);
@@ -598,7 +603,6 @@ PRIMITIVE(set_option) {
       case TCP_NO_DELAY:
         if (capture.raw == process->true_object()) {
           tcp_nagle_disable(capture.socket->tpcb());
-          // Flush when disabling Nagle.
           tcp_output(capture.socket->tpcb());
         } else if (capture.raw == process->false_object()) {
           tcp_nagle_enable(capture.socket->tpcb());
@@ -632,4 +636,4 @@ PRIMITIVE(gc) {
 
 } // namespace toit
 
-#endif // defined(TOIT_ESP32) && defined(CONFIG_TOIT_ENABLE_IP) || defined(TOIT_USE_LWIP)
+#endif // defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_IP) || defined(TOIT_USE_LWIP)

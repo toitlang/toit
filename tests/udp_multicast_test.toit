@@ -4,29 +4,26 @@
 
 import net
 import net.udp
+import net.modules.udp as impl
 import expect show *
 
-MULTICAST-ADDRESS ::= net.IpAddress.parse "239.1.2.3"
-RECEIVE-TIMEOUT-MS ::= 5_000
+MULTICAST-ADDRESS := net.IpAddress.parse "239.1.2.3"
+PORT := 12345
 
 main:
   network := net.open
-  try:
-    test-multicast network
-  finally:
-    network.close
-
-test-multicast network/net.Client:
-  // Create a listening socket for multicast using the new API.
-  socket := network.udp-open-multicast
-      --port=0
+  
+  // Create a listening socket for multicast.
+  // We use the implementation class directly for the multicast constructor.
+  socket := impl.Socket.multicast network
+      MULTICAST-ADDRESS
+      PORT
       --loopback
       --ttl=1
       --reuse-address
-  socket.multicast-add-membership MULTICAST-ADDRESS
+      --reuse-port
 
-  port := socket.local-address.port
-  expect port > 0
+  print "Socket created and bound to $PORT, joined $MULTICAST-ADDRESS"
 
   // Create a sender socket (normal socket).
   sender := network.udp-open
@@ -34,12 +31,19 @@ test-multicast network/net.Client:
   msg := "Hello Multicast"
   datagram := udp.Datagram
       msg.to-byte-array
-      net.SocketAddress MULTICAST-ADDRESS port
+      net.SocketAddress MULTICAST-ADDRESS PORT
 
+  print "Sending message: $msg"
   sender.send datagram
 
-  received := with-timeout --ms=RECEIVE-TIMEOUT-MS: socket.receive
+  print "Waiting to receive..."
+  received := socket.receive
+  print "Received: $(received.data.to-string)"
+  
   expect-equals msg received.data.to-string
+  
+  // received.address is the SENDER address.
+  print "Received from port: $(received.address.port)"
 
-  sender.close
   socket.close
+  sender.close
