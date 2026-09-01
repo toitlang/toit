@@ -47,6 +47,9 @@ class EmbeddedDataExtension {
   uword offset(const Program* program) const;
   const Program* program(uword offset) const;
 
+  // Total size of the extension (used + free areas).
+  uword total_size() const;
+
   static const EmbeddedDataExtension* cast(const void* pointer);
 
  private:

@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://toit.io/schemas/ec618/partition-table/v1.json",
+  "title": "EC618 partition table",
+  "description": "The flash-layout descriptor used to provision an EC618 firmware image.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "const": "https://toit.io/schemas/ec618/partition-table/v1.json",
+      "description": "The JSON schema of the partition-table descriptor."
+    },
+    "xip-offset": {
+      "type": "integer",
+      "minimum": 0,
+      "multipleOf": 4096,
+      "description": "The address added to a raw flash offset to obtain its XIP address."
+    },
+    "partitions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "$ref": "#/$defs/partition"
+      },
+      "description": "The partitions in ascending, contiguous flash order."
+    }
+  },
+  "required": [
+    "$schema",
+    "xip-offset",
+    "partitions"
+  ],
+  "$defs": {
+    "partition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 15,
+          "description": "The unique name stored in the anchor table."
+        },
+        "type": {
+          "enum": [
+            "locked",
+            "base",
+            "base-id",
+            "anchor",
+            "slot",
+            "data",
+            "free"
+          ],
+          "description": "The partition role stored in the anchor table."
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4194304,
+          "multipleOf": 4096,
+          "description": "An optional externally constrained raw-flash offset. Omitted offsets are derived from the preceding partition."
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 4096,
+          "maximum": 4194304,
+          "multipleOf": 4096,
+          "description": "The partition size in bytes."
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "size"
+      ]
+    }
+  }
+}
