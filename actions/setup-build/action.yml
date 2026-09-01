@@ -32,36 +32,34 @@ runs:
       shell: bash
       run: |
         cd ${{inputs.toit-dir}}
-        attempts=3
-        for i in $(seq 1 $attempts); do
-          if git fetch --tags --recurse-submodules=no; then
-            exit 0
-          fi
-          if [ "$i" -lt "$attempts" ]; then
-            sleep_for=$((i * 5))
-            echo "git fetch --tags attempt $i failed; retrying in ${sleep_for}s..." >&2
-            sleep "$sleep_for"
-          fi
-        done
-        echo "git fetch --tags failed after $attempts attempts." >&2
-        exit 1
+        git fetch --tags --recurse-submodules=no
 
-      # We only need the mbedtls submodule for building.
-    - name: Initialize mbedtls submodule
+    - name: Initialize top-level build submodules
+      shell: bash
+      run: |
+        cd ${{inputs.toit-dir}}
+        git submodule sync -- third_party/esp-idf third_party/luatos-soc-ec618
+        git submodule update --init --jobs 2 -- \
+          third_party/esp-idf \
+          third_party/luatos-soc-ec618
+
+    # Host builds only need mbedTLS from ESP-IDF. Initializing every ESP-IDF
+    # component is substantially slower.
+    - name: Initialize mbedTLS submodule
       if: inputs.esp32 == 'false'
       shell: bash
       run: |
         cd ${{inputs.toit-dir}}/third_party/esp-idf
-        git submodule update --init .
-        git submodule update --init components/mbedtls
+        git submodule sync -- components/mbedtls/mbedtls
+        git submodule update --init -- components/mbedtls/mbedtls
 
-    - name: Initialize all submodules
+    - name: Initialize ESP32 submodules
       if: inputs.esp32 == 'true'
       shell: bash
       run: |
-        cd ${{inputs.toit-dir}}
+        cd ${{inputs.toit-dir}}/third_party/esp-idf
         git submodule sync --recursive
-        git submodule update --init --recursive -j 16
+        git submodule update --init --recursive --jobs 16
 
     - name: Setup Go
       uses: actions/setup-go@v7
