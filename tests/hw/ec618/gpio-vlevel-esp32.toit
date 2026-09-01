@@ -26,7 +26,7 @@ main:
   print "gpio-vlevel-esp32: measuring EC618 GPIO10 high level on IO$(wiring.ESP32-GPIO10-ADC-PINS) for $(DURATION.in-s)s"
   adcs := {:}
   wiring.ESP32-GPIO10-ADC-PINS.do: | n/int |
-    error := catch: adcs[n] = Adc (gpio.Pin n) --max-voltage=3.3
+    error := catch: adcs[n] = Adc n --max-voltage=3.3
     if error: print "gpio-vlevel-esp32: IO$n ADC init error: $error"
   end := Time.monotonic-us + DURATION.in-us
   while Time.monotonic-us < end:

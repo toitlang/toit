@@ -2,7 +2,6 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import gpio
 import monitor
 import net
 import uart
@@ -47,7 +46,7 @@ main:
   task:: serve-lane network "uart1" --rx=4 --tx=16 --port=18556
 
 serve-lane network name/string --rx/int --tx/int --port/int:
-  uart-port := uart.Port --rx=(gpio.Pin rx) --tx=(gpio.Pin tx) --baud-rate=BAUD
+  uart-port := uart.Port --rx=rx --tx=tx --baud-rate=BAUD
   server := network.tcp-listen port
   print "dual-bridge-esp32: $name :$port <-> uart $BAUD (rx IO$rx / tx IO$tx)"
   while true:

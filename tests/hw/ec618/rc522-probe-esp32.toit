@@ -25,10 +25,10 @@ main:
   sleep --ms=50  // Oscillator start-up out of hard power-down.
 
   bus := spi.Bus
-      --clock=(gpio.Pin wiring.ESP32-SPI0-CLK-PIN)
-      --mosi=(gpio.Pin wiring.ESP32-SPI0-MOSI-PIN)
-      --miso=(gpio.Pin wiring.ESP32-SPI0-MISO-PIN)
-  device := bus.device --cs=(gpio.Pin wiring.ESP32-SPI0-CS-PIN) --frequency=1_000_000
+      --clock=wiring.ESP32-SPI0-CLK-PIN
+      --mosi=wiring.ESP32-SPI0-MOSI-PIN
+      --miso=wiring.ESP32-SPI0-MISO-PIN
+  device := bus.device --cs=wiring.ESP32-SPI0-CS-PIN --frequency=1_000_000
 
   passed := false
   try:

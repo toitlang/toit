@@ -23,8 +23,8 @@ The BMP280 on the breadboard is powered from IO13. This helper switches it
 
 main:
   port := uart.Port
-      --rx=(gpio.Pin wiring.ESP32-UART2-RX-PIN)
-      --tx=(gpio.Pin wiring.ESP32-UART2-TX-PIN)
+      --rx=wiring.ESP32-UART2-RX-PIN
+      --tx=wiring.ESP32-UART2-TX-PIN
       --baud-rate=115200
   power := gpio.Pin wiring.ESP32-SENSOR-POWER-PIN --output --value=0
   print "bmp280-esp32: ready (power IO$(wiring.ESP32-SENSOR-POWER-PIN))"

@@ -2,7 +2,6 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import gpio
 import uart
 
 import .wiring as wiring
@@ -20,8 +19,8 @@ INTERVAL-MS ::= 5_000
 
 main:
   port := uart.Port
-      --tx=(gpio.Pin wiring.ESP32-UART1-TX-PIN)
-      --rx=(gpio.Pin wiring.ESP32-UART1-RX-PIN)
+      --tx=wiring.ESP32-UART1-TX-PIN
+      --rx=wiring.ESP32-UART1-RX-PIN
       --baud-rate=115200
   print "uart1-idle-rx-esp32: sending $MARKS marks, one per $(INTERVAL-MS)ms"
   MARKS.repeat: | i/int |

@@ -2,7 +2,6 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import gpio
 import uart
 
 import .framed-control show FramedChannel
@@ -24,21 +23,15 @@ ECHO-TIMEOUT-MS ::= 5_000
 
 class OwnedPort:
   id/int
-  tx/gpio.Pin
-  rx/gpio.Pin
   port/uart.Port
 
   constructor .id baud/int:
     tx-num := id == 1 ? wiring.ESP32-UART1-TX-PIN : wiring.ESP32-UART2-TX-PIN
     rx-num := id == 1 ? wiring.ESP32-UART1-RX-PIN : wiring.ESP32-UART2-RX-PIN
-    tx = gpio.Pin tx-num
-    rx = gpio.Pin rx-num
-    port = uart.Port --tx=tx --rx=rx --baud-rate=baud
+    port = uart.Port --tx=tx-num --rx=rx-num --baud-rate=baud
 
   close -> none:
     port.close
-    rx.close
-    tx.close
 
 class Control:
   owned/OwnedPort

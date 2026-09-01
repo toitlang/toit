@@ -26,17 +26,13 @@ MIN-EDGES ::= 8
 
 class Control:
   id/int
-  tx/gpio.Pin
-  rx/gpio.Pin
   port/uart.Port
   channel/FramedChannel
 
   constructor .id:
     tx-num := id == 1 ? wiring.ESP32-UART1-TX-PIN : wiring.ESP32-UART2-TX-PIN
     rx-num := id == 1 ? wiring.ESP32-UART1-RX-PIN : wiring.ESP32-UART2-RX-PIN
-    tx = gpio.Pin tx-num
-    rx = gpio.Pin rx-num
-    port = uart.Port --tx=tx --rx=rx --baud-rate=CONTROL-BAUD
+    port = uart.Port --tx=tx-num --rx=rx-num --baud-rate=CONTROL-BAUD
     channel = FramedChannel port
 
   send line/string -> none:
@@ -47,8 +43,6 @@ class Control:
 
   close -> none:
     port.close
-    rx.close
-    tx.close
 
 main:
   control := Control 1

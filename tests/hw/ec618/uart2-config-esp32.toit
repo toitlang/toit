@@ -2,7 +2,6 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import gpio
 import uart
 
 import .wiring as wiring
@@ -26,7 +25,7 @@ stop-bits-of code/int -> uart.StopBits:
   return uart.Port.STOP-BITS-1
 
 main:
-  control := uart.Port --tx=null --rx=(gpio.Pin wiring.ESP32-UART1-RX-PIN) --baud-rate=CONTROL-BAUD
+  control := uart.Port --tx=null --rx=wiring.ESP32-UART1-RX-PIN --baud-rate=CONTROL-BAUD
   print "uart2-config-esp32: ready (control IO$(wiring.ESP32-UART1-RX-PIN); test IO$(wiring.ESP32-UART2-RX-PIN) in / IO$(wiring.ESP32-UART2-TX-PIN) out)"
 
   pending/List? := null            // A newly-requested [baud, data, parity, stop].
@@ -69,18 +68,14 @@ main:
         if config: pending = config
 
   test/uart.Port? := null
-  rx/gpio.Pin? := null
-  tx/gpio.Pin? := null
   while not done:
     if pending != null:
       config := pending
       pending = null
       if test: test.close
-      if rx: rx.close
-      if tx: tx.close
-      rx = gpio.Pin wiring.ESP32-UART2-RX-PIN
-      tx = gpio.Pin wiring.ESP32-UART2-TX-PIN
-      test = uart.Port --rx=rx --tx=tx
+      test = uart.Port
+          --rx=wiring.ESP32-UART2-RX-PIN
+          --tx=wiring.ESP32-UART2-TX-PIN
           --baud-rate=config[0]
           --data-bits=config[1]
           --parity=config[2]
