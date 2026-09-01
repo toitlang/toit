@@ -1090,6 +1090,7 @@ class Builtin : public Node {
     EXIT,
     INVOKE_LAMBDA,
     YIELD,
+    RESET,
     DEEP_SLEEP,
     STORE_GLOBAL,
     LOAD_GLOBAL,
@@ -1110,6 +1111,8 @@ class Builtin : public Node {
       return _new Builtin(INVOKE_LAMBDA);
     } else if (id == Symbols::__yield__) {
       return _new Builtin(YIELD);
+    } else if (id == Symbols::__reset__) {
+      return _new Builtin(RESET);
     } else if (id == Symbols::__deep_sleep__) {
       return _new Builtin(DEEP_SLEEP);
     } else if (id == Symbols::__store_global_with_id__) {
@@ -1142,6 +1145,7 @@ class Builtin : public Node {
         return 1;
 
       case YIELD:
+      case RESET:
         return 0;
     }
     UNREACHABLE();

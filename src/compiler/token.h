@@ -158,6 +158,7 @@ enum Precedence {
   I(__throw__)                                                           \
   I(__exit__)                                                            \
   I(__yield__)                                                           \
+  I(__reset__)                                                           \
   IN(__deep_sleep__, "__deep-sleep__")                                   \
   IN(__invoke_lambda__, "__invoke-lambda__")                             \
   IN(__invoke_initializer__, "__invoke-initializer__")                   \
