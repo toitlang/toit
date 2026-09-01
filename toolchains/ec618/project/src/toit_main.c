@@ -1,0 +1,215 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// Entry point and slot dispatcher for the Toit runtime on EC618.
+//
+// This is the EC618 analogue of esp-idf's bootloader rollback logic. It
+// reads the power-fail-safe active-slot record (.toit_anchor, two sectors,
+// see anchor.c), decides which VM slot to boot, and implements the
+// trial/rollback state machine:
+//
+//   - No trial pending  -> boot the known-good `active` slot.
+//   - Trial pending, NEW -> "consume" the trial by persisting
+//     PENDING_VERIFY *before* running the (maybe-broken) VM, then boot the
+//     pending slot. The running VM must call slot_mark_valid to confirm.
+//   - Trial pending, PENDING_VERIFY -> the previous trial boot never
+//     confirmed itself -> roll back to `active`.
+//
+// Because the consume step is persisted before the VM runs, a crash loop
+// cannot retry a bad slot forever — the next boot sees PENDING_VERIFY and
+// rolls back. Flash writes happen here only while a trial is in progress;
+// steady-state boots are pure reads.
+//
+// Each VM slot's first word is a function pointer to its own toit_start
+// (.vm_entry); the dispatcher tail-calls through it, which is what makes
+// dual-linked A/B slots work without a fixed-offset entry symbol.
+
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+#include "common_api.h"
+// TODO(toit): drop the LuatOS `luat_*` interface layer from the EC618 glue.
+// The Toit VM resources (gpio/i2c/uart/adc/...) bind the PLAT driver/HAL
+// directly; the glue should too, so we don't depend on the LuatOS interface
+// layer at all. This file still uses luat_rtos_task_*; replace it with the
+// FreeRTOS task API directly.
+#include "luat_rtos.h"
+#include "mem_map.h"    // AP_FLASH_XIP_ADDR.
+#include "anchor.h"
+#include "reset.h"
+
+// From the SDK FOTA layer: opens the protected AP-image region for
+// program/erase. Required around any anchor write (the anchor lives in
+// that region). Non-nested enable -> write -> disable, like the SDK FOTA.
+extern void fotaNvmNfsPeInit(unsigned char isSmall);
+
+// Pins the .toit_anchor output section so it is emitted as real bytes.
+// gen-anchor verifies this locator sentinel before replacing the two
+// reserved sectors with the provisioning record. Without provisioning,
+// the sentinel is not a valid record and the device refuses to boot
+// (load_boot_table).
+__attribute__((section(".toit_anchor"), used))
+const uint8_t toit_anchor_sentinel[ANCHOR_SENTINEL_SIZE] = ANCHOR_SENTINEL_BYTES;
+
+// The slot the dispatcher actually booted ('A'/'B'). RAM global, set once
+// below before the VM runs. The VM primitives read this as "the slot I am
+// running from" — after a NEW->PENDING_VERIFY consume it is the pending
+// slot, not the record's `active`, so the raw record is not authoritative.
+uint8_t toit_booted_slot = 'A';
+
+typedef void (*toit_start_fn)(void);
+
+static luat_rtos_task_handle toit_task_handle;
+
+// The partition table attached to the slot selected for this boot. During
+// a trial this is the pending table; after rollback it is the known-good
+// table. The dispatcher boots from ITS slot entries, making layout and
+// image switch atomically. There is NO compiled-in fallback.
+static partition_entry boot_table[ANCHOR_MAX_ENTRIES];
+static int boot_table_count;
+
+// Returns the table entry of slot `slot` ('A'/'B'), or NULL if the table
+// does not carry two slot entries.
+static const partition_entry* slot_entry(uint8_t slot) {
+  int seen = 0;
+  for (int i = 0; i < boot_table_count; i++) {
+    if (boot_table[i].type != PARTITION_TYPE_SLOT) continue;
+    if (seen == (slot == 'B' ? 1 : 0)) return &boot_table[i];
+    seen++;
+  }
+  return NULL;
+}
+
+// Returns the XIP base of slot `slot` ('A'/'B') per this boot's table.
+static const uint32_t* slot_base(uint8_t slot) {
+  return (const uint32_t*)(uintptr_t)(slot_entry(slot)->offset + AP_FLASH_XIP_ADDR);
+}
+
+// Sanity-checks that slot `slot` holds a plausible image: its first word
+// (.vm_entry) must be a Thumb pointer (odd) inside the slot's own range.
+// Cheap defense against booting a never-written / half-erased slot; the
+// strong SHA check is a stage-time gate, too slow to repeat every boot.
+static bool slot_entry_ok(uint8_t slot) {
+  const uint32_t* base = slot_base(slot);
+  uint32_t entry = base[0];
+  uint32_t lo = (uint32_t)(uintptr_t)base;
+  return (entry & 1u) && entry >= lo && entry < lo + slot_entry(slot)->size;
+}
+
+// Loads the table attached to `slot`. A device whose anchor record is missing,
+// corrupt, or has no two bootable slots CANNOT boot — halt loudly
+// (periodic print so a console shows why) instead of jumping into
+// garbage. Reaching this state means provisioning never ran or the
+// anchor sectors were destroyed; the ping-ponged record makes power
+// loss unable to cause it.
+static void load_boot_table(uint8_t slot) {
+  boot_table_count =
+      anchor_table_for_slot(slot, boot_table, ANCHOR_MAX_ENTRIES);
+  while (boot_table_count == 0 || slot_entry('A') == NULL || slot_entry('B') == NULL) {
+    printf("[toit] ERROR: no valid partition table at the anchor — cannot boot. "
+           "Reflash the device (provisioning writes the table).\n");
+    luat_rtos_task_sleep(5000);
+  }
+}
+
+// Consumes a NEW trial, bracketed by program/erase mode.
+static bool dispatcher_consume(uint8_t active, uint8_t pending) {
+  fotaNvmNfsPeInit(1);
+  bool ok = anchor_consume_trial(active, pending);
+  fotaNvmNfsPeInit(0);
+  return ok;
+}
+
+// Discards a failed trial, bracketed by program/erase mode.
+static bool dispatcher_rollback(void) {
+  fotaNvmNfsPeInit(1);
+  bool ok = anchor_rollback();
+  fotaNvmNfsPeInit(0);
+  return ok;
+}
+
+// A NEW record selects the trial console before this task starts. If we then
+// cannot arm or boot that trial, reset instead of running the known-good image
+// through a controller initialized for the wrong configuration. A
+// PENDING_VERIFY record selects the known-good console on the next boot.
+static __attribute__((noreturn)) void dispatcher_reset(void) {
+  ResetECSystemReset();
+  while (1) { /* unreachable */ }
+}
+
+// Runs the trial/rollback state machine and returns the slot to boot.
+static uint8_t choose_boot_slot(void) {
+  slot_record rec;
+  anchor_read(&rec);
+
+  if (rec.pending != 0) {
+    if (rec.state == SLOT_STATE_NEW) {
+      // Consume the trial before running the VM. If we cannot persist that
+      // fact, fail safe to the known-good slot rather than risk an
+      // un-rollback-able crash loop on the pending slot.
+      if (dispatcher_consume(rec.active, rec.pending)) {
+        printf("[toit] INFO: trial boot of slot %c (was %c)\n", rec.pending, rec.active);
+        return rec.pending;
+      }
+      printf("[toit] ERROR: could not arm trial of slot %c; resetting safely\n",
+             rec.pending);
+      dispatcher_reset();
+    }
+    // PENDING_VERIFY: a prior trial boot never confirmed itself -> abort it.
+    // Booting `active` is correct even if the clear-write fails (the next
+    // boot just retries the same rollback).
+    dispatcher_rollback();
+    printf("[toit] INFO: rollback to slot %c (trial of %c not confirmed)\n",
+           rec.active, rec.pending);
+    return rec.active;
+  }
+
+  return rec.active;
+}
+
+static void toit_task(void *param) {
+  printf("[toit] INFO: dispatcher starting\n");
+  uint8_t slot = choose_boot_slot();
+  load_boot_table(slot);
+  printf("[toit] INFO: anchor table for slot %c: %d entries\n",
+         slot, boot_table_count);
+
+  // Refuse to jump into a slot whose entry pointer looks broken; prefer the
+  // other slot if it looks good.
+  if (!slot_entry_ok(slot)) {
+    slot_record rec;
+    anchor_read(&rec);
+    if (rec.pending == slot) {
+      printf("[toit] ERROR: trial slot %c entry invalid; rolling back\n", slot);
+      dispatcher_rollback();
+      dispatcher_reset();
+    }
+    uint8_t other = (slot == 'B') ? 'A' : 'B';
+    printf("[toit] WARN: slot %c entry invalid\n", slot);
+    if (slot_entry_ok(other)) slot = other;
+  }
+
+  toit_booted_slot = slot;
+  printf("[toit] INFO: booting VM slot %c\n", slot);
+
+  // The slot's first word is a function pointer (.vm_entry, written by the
+  // VM build). The Thumb bit is already set, so a plain indirect call lands
+  // in toit_start.
+  toit_start_fn entry = (toit_start_fn)slot_base(slot)[0];
+  entry();
+
+  // toit_start() does not return in normal operation (enters deep sleep).
+  // If it does return, halt.
+  while (1) {
+    luat_rtos_task_sleep(10000);
+  }
+}
+
+static void toit_task_init(void) {
+  // 8KB stack for the Toit main task.
+  luat_rtos_task_create(&toit_task_handle, 8 * 1024, 20, "toit", toit_task, NULL, 0);
+}
+
+// INIT_TASK_EXPORT stores this function pointer in `.task_fun_array.1`.
+// The EC618 platform startup walks that linker array after hardware and driver
+// initialization; calling this entry creates the FreeRTOS task above.
+INIT_TASK_EXPORT(toit_task_init, "1");
