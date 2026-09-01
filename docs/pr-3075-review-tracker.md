@@ -42,15 +42,15 @@ For every comment:
 6. Record explicit discussion requests and unresolved assumptions before
    finalizing the work plan.
 
-## Unpublished second-round review (2026-08-18 through 2026-08-31)
+## Unpublished second-round review (2026-08-18 through 2026-09-01)
 
 This is a separate review round from the submitted comments summarized below.
 The authenticated snapshot contains one pending review
-(`PRR_kwDOGXd5Hs8AAAABJ9Mxtg`) with **47 unpublished root comments**, all by
-Florian. All 47 belong to this round and must be answered. The pending review
+(`PRR_kwDOGXd5Hs8AAAABJ9Mxtg`) with **50 unpublished root comments**, all by
+Florian. All 50 belong to this round and must be answered. The pending review
 is attached to `c05614aa`, but each comment's `original_commit_id` is used
-below to recover the code that was actually reviewed. The current PR head and
-local branch are both `32c34a81`.
+below to recover the code that was actually reviewed. Comments 48–50 were
+added after the first fix series was pushed at `95f5419c`.
 
 The entries are numbered by GitHub creation time. This matters because the
 comments were written one at a time over several weeks: a later comment can
@@ -98,6 +98,8 @@ investigation and proposed response so the reasoning remains reviewable.
 | 29 | `ec262ab6` | 2026-07-26 23:30 | EC618 tests: fence protocol examples in Toitdocs | 45 |
 | 30 | `3babe6e8` | 2026-07-26 23:54 | EC618 base: narrow exported slot API | 46 |
 | 31 | `bbbd81cb` | 2026-07-27 21:26 | EC618 I2C: own transfers in OTA slot | 47 |
+| 32 | `2659f1f4` | 2026-08-31 23:02 | runtime: add explicit platform reset API | 48 |
+| 33 | `9fcd99bc` | 2026-08-31 23:16 | EC618: use resource pools for GPIO and SPI | 49–50 |
 
 ### Detailed responses
 
@@ -107,12 +109,17 @@ it is not lost between this fix round and the final rebase:
 - **I2C common async contract (comment 13):** land the current async I2C/SPI
   stack, adapt that stack to the hybrid bus-owned/generic-transfer design, then
   put the EC618 implementation on top.
-- **Integer-pin rebase (comments 11, 21, 37, and 38):** after rebasing onto the
-  common integer-pin peripheral API, make native resources own pads, use the
-  common console UART API, and remove the temporary carrier-`Pin` helpers.
+- **Integer-pin rebase (comments 11, 21, 37–38, and 49–50):** after rebasing
+  onto the common integer-pin peripheral API, make native resources own pads
+  and GPIO-controller bits atomically, use the common console UART API, and
+  remove the temporary carrier-`Pin` helpers and split-lease state.
 - **Landing-only documentation cleanup (comments 1 and 5):** retain this
   tracker through the next review and stack recreation, then remove review
   archaeology and resolved bring-up history before landing.
+- **Orderly system shutdown (comment 48):** retain the TODO on both embedded
+  firmware-upgrade providers. The current reset terminates the VM but does not
+  orchestrate graceful container and system-service/network shutdown; that is
+  common lifecycle work and is not implemented in this fix round.
 - **Commit-stack recreation:** do not rewrite the stack during this fix round.
   First publish focused fix commits for review; squash/reorder into fewer,
   targeted commits only after that review, immediately before the rebase.
@@ -130,7 +137,7 @@ retain the context needed to review each answer without reopening GitHub.
 | 4 | Resolved | `d622eaf3` removes raw mutation from the public slot API and keeps mutating primitives privileged. |
 | 5 | Deferred | Remove the scope repro and resolved known-issue history during landing cleanup. |
 | 6 | Explanation | The condition variable blocks scheduler/event workers, not a running Toit primitive; it matches the ESP32 abstraction. |
-| 7 | Resolved | `2659f1f4` adds orderly explicit reset plus lazy public minimum-duration constants; `446de082` tests reset and zero-duration deep-sleep causes on both platforms. |
+| 7 | Resolved | `2659f1f4` adds explicit reset plus lazy public minimum-duration constants; `446de082` tests reset and zero-duration deep-sleep causes on both platforms. |
 | 8 | Resolved | `9fcd99bc` moves EC618 GPIO pad and controller-bit ownership to `ResourcePool`. |
 | 9 | Resolved | `9fcd99bc` unifies hardware teardown and lease return in one atomic path. |
 | 10 | Resolved | `9fcd99bc` configures output state before mux connection and adds opposite-edge capture for both initial levels. |
@@ -171,6 +178,9 @@ retain the context needed to review each answer without reopening GitHub.
 | 45 | Resolved | `49994e73` audits and wraps the protocol Toitdocs while preserving fenced examples. |
 | 46 | Resolved, reviewer concern accepted | `813e402e` restores the 495-entry reviewed future-slot surface. The isolated cost is 7,344 bytes of flash and 456 bytes of RAM, too small to justify losing OTA capability. |
 | 47 | Resolved | `6ff640bf` documents that ESP-IDF hardware I2C transfers data; GPIO/PCNT only observe bus framing and never drive it. |
+| 48 | Resolved, TODO retained | `cce2a451` restores the orderly-shutdown TODO on ESP32, mirrors it on EC618, and removes the claim that the EC618 reset path already shuts down cleanly. Shutdown orchestration remains future common lifecycle work. |
+| 49 | Rebase TODO | No current-stack change. The carrier-`Pin` API prevents atomic pad/bit acquisition; after the integer-pin rebase, native GPIO creation must take both pools under one held locker. |
+| 50 | Rebase TODO | No current-stack change. `owns_gpio_bit` represents the temporary split lease required by carrier pins; simplify or remove it when native GPIO creation owns pad and bit together. |
 
 ### Fix commits in review order
 
@@ -180,13 +190,14 @@ retain the context needed to review each answer without reopening GitHub.
 | 2 | `4e895044` | Revert the remaining single-file/service Toitdoc normalizations. |
 | 3 | `49994e73` | Correct the remaining mini-jag, protocol, and null-check documentation nits. |
 | 4 | `6ff640bf` | Address the small code, test, naming, and documentation comments together. |
-| 5 | `2659f1f4` | Add the orderly cross-platform reset API and deep-sleep minimum contract. |
+| 5 | `2659f1f4` | Add the explicit cross-platform reset API and deep-sleep minimum contract. |
 | 6 | `9fcd99bc` | Move GPIO and SPI ownership to resource pools and harden GPIO transitions. |
 | 7 | `35e98fbc` | Expose all physical EC618 wake inputs. |
 | 8 | `d622eaf3` | Restrict public slot APIs to read-only state. |
 | 9 | `ae5d45da` | Generate the slot data-relocation table during the build. |
 | 10 | `813e402e` | Restore and document the reviewed future-slot symbol surface. |
 | 11 | `446de082` | Add reset/deep-sleep and I2C parent-close contract tests. |
+| 12 | `cce2a451` | Retain the deferred orderly-shutdown TODO on both firmware providers. |
 
 #### 1. Pending comment `3805769238` — remove review archaeology
 
@@ -303,9 +314,9 @@ retain the context needed to review each answer without reopening GitHub.
   second on EC618) and document that shorter requested durations are rounded
   up to it. Add separate contract tests for explicit reset and for
   minimum-duration deep sleep, including the resulting reset/wakeup causes.
-  The reset implementation should use an orderly runtime exit/reset path
-  rather than exposing an arbitrary immediate native primitive that can bypass
-  required shutdown work.
+  The reset implementation should use a runtime-mediated exit/reset path. The
+  separate TODO for gracefully stopping containers and services remains until
+  common lifecycle support exists.
 
 #### 8. Pending comment `3814596035` — use `ResourcePool` for GPIO ownership
 
@@ -872,6 +883,71 @@ retain the context needed to review each answer without reopening GitHub.
   capture setup/handler stating that it is passive protocol instrumentation,
   and rename capture helpers if necessary so nobody mistakes them for the
   slave implementation.
+
+#### 48. Pending comment `3903672511` — retain orderly-shutdown TODO
+
+- **Created/anchor:** 2026-09-01 11:34 UTC, `2659f1f4`,
+  `system/extensions/esp32/firmware.toit`.
+- **Context:** Replacing the firmware-upgrade deep-sleep workaround with the
+  explicit reset also removed an older TODO to shut the system down properly.
+  The new reset result makes the scheduler kill all processes, after which the
+  ESP32 run loop destroys the VM and native resource groups before calling
+  `esp_restart`. That is orderly at the native runtime level, but it does not
+  ask other application containers to stop cooperatively or let system
+  services close network connections first. The EC618 staged-slot path may
+  intentionally reset even earlier to avoid a blocked native teardown.
+- **Finding:** **The reviewer is correct; retain the TODO, do not implement it
+  in this round.** The explicit reset fixes the observable reset/deep-sleep
+  contract but does not solve graceful whole-system shutdown.
+- **Response/action:** `cce2a451` restores the TODO on the ESP32 firmware
+  provider and adds the same TODO to the EC618 provider. It also corrects the
+  EC618 run-loop wording that called the reset path clean beyond what it
+  guarantees. The reset implementation is unchanged. A future common
+  lifecycle change must stop application containers and system services before
+  invoking the terminal reset, with platform-specific hard reset remaining the
+  final step.
+
+#### 49. Pending comment `3903686697` — explain GPIO outer mutex and pool pair
+
+- **Created/anchor:** 2026-09-01 11:36 UTC, `9fcd99bc`,
+  `src/resources/gpio_ec618.cc`.
+- **Context:** `claim_gpio_bit` holds the global mutex while taking the GPIO
+  bit from its `ResourcePool` and recording that lease on the resource. The
+  same mutex also spans teardown's controller-register reset, pad disconnect,
+  pool returns, and `PadGpioLock` checks across one or two shared bits.
+- **Finding:** **Rebase TODO; no current-stack change.** A physical pad is
+  reserved when the temporary `gpio.Pin` carrier is constructed; its
+  GPIO-controller bit is claimed only if that resource is actually
+  configured/used as GPIO. This split is unavoidable before the integer-pin
+  rebase because peripherals currently receive carrier pins. Two pads that
+  alias one GPIO bit may still be used simultaneously by unrelated peripheral
+  mux functions, such as I2C0 on PAD14 and UART0 on PAD30, so taking both at
+  `Pin` construction would reject a valid combination.
+- **Planned response/action:** Treat the comment as a requirement for the
+  integer-pin rebase. Native GPIO creation must then take the physical pad and
+  GPIO-controller bit under one held locker; native peripheral constructors
+  must take their own pads directly, without constructing carrier `Pin`
+  resources. Do not change the transitional current-stack locking.
+
+#### 50. Pending comment `3903809273` — when a GPIO resource lacks the bit lease
+
+- **Created/anchor:** 2026-09-01 11:52 UTC, `9fcd99bc`,
+  `src/resources/gpio_ec618.cc`.
+- **Context:** Teardown passes `resource->owns_gpio_bit()` to decide whether it
+  may reset and return the shared controller bit. A resource always owns its
+  physical pad, but the controller-bit lease follows the split lifecycle from
+  comment 49.
+- **Finding:** **Rebase TODO; no current-stack change.** The flag is false
+  between `Pin` construction and the first mutating GPIO operation, after an
+  attempted claim fails because an alias owns the bit, and for carrier-only
+  pads handed to a peripheral (including pads with no GPIO function). Once a
+  GPIO operation successfully claims the bit, it remains true until close.
+  This state exists because the old peripheral API forces pad ownership and
+  GPIO-bit ownership to have different lifetimes.
+- **Planned response/action:** Keep the transitional flag unchanged. During
+  the integer-pin rebase, make native GPIO construction acquire both leases
+  atomically, then simplify or remove `owns_gpio_bit` and its conditional
+  teardown paths.
 
 ## Response and duplicate-work audit
 
