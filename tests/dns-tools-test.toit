@@ -3,6 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import io
 import net
 import net.modules.dns
 
@@ -12,18 +13,19 @@ main:
   cname-test network
   parse-numeric-test
   encode-decode-packets-test
+  mdns-query-ignores-ad-bit-test
 
 txt-test network/net.Client:
   client := dns.DnsClient [
       "8.8.8.8",    // Google DNS.
       ]
-  texts := client.get --record-type=dns.RECORD-TXT --network=network "toit.io"
+  texts := client.get --record-types=[dns.RECORD-TXT] --network=network "toit.io"
   expect
       texts.size == 2
-  ptr := client.get --record-type=dns.RECORD-PTR --network=network "toit.io"
+  ptr := client.get --record-types=[dns.RECORD-PTR] --network=network "toit.io"
   expect
       ptr.size == 0
-  srv := client.get --record-type=dns.RECORD-SRV --network=network "toit.io"
+  srv := client.get --record-types=[dns.RECORD-SRV] --network=network "toit.io"
   expect
       srv.size == 0
 
@@ -33,7 +35,7 @@ cname-test network/net.Client:
       ]
   // Normally CNAME results are just consumed internally in our DNS code, but
   // we can explicitly ask for them.
-  cname := client.get --record-type=dns.RECORD-CNAME --network=network "www.yahoo.com"
+  cname := client.get --record-types=[dns.RECORD-CNAME] --network=network "www.yahoo.com"
   expect
       cname.size > 0
   cname.do: | name |
@@ -126,3 +128,24 @@ encode-decode-packets-test:
   second-l := packet[first-l + 1..].index-of 'l'
   expect second-l < 0  // Not found.
 
+mdns-query-ignores-ad-bit-test:
+  packet := io.Buffer
+  packet.big-endian.write-int16 0x1234
+  packet.big-endian.write-int16 0x0120
+  packet.big-endian.write-int16 1
+  packet.big-endian.write-int16 0
+  packet.big-endian.write-int16 0
+  packet.big-endian.write-int16 0
+  packet.write-byte 7; packet.write "service"
+  packet.write-byte 5; packet.write "local"
+  packet.write-byte 0
+  packet.big-endian.write-int16 dns.RECORD-PTR
+  packet.big-endian.write-int16 1
+
+  decoded := dns.decode-packet packet.bytes --mdns
+
+  expect-equals 0x1234 decoded.id
+  expect-not decoded.is-response
+  expect-equals 0x0100 decoded.status-bits
+  expect-equals 1 decoded.questions.size
+  expect-equals "service.local" decoded.questions[0].name

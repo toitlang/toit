@@ -444,6 +444,10 @@ esp32c3:
 esp32c6:
 	$(MAKE) IDF_TARGET=esp32c6 ESP32_CHIP=esp32c6 esp32
 
+.PHONY: esp32p4
+esp32p4:
+	$(MAKE) IDF_TARGET=esp32p4 ESP32_CHIP=esp32p4 esp32
+
 .PHONY: esp32s2
 esp32s2:
 	$(MAKE) IDF_TARGET=esp32s2 ESP32_CHIP=esp32s2 esp32
@@ -489,12 +493,22 @@ clean:
 
 INSTALL_SRC_ARCH := $(TARGET)
 
-.PHONY: install-sdk install
+.PHONY: install-sdk install-completions install
 install-sdk:
 	# The DESTDIR is passed as environment variable and picked up by cmake.
 	cmake --install "$(BUILD)/$(TARGET)" --prefix "$(prefix)"
 
-install: install-sdk
+install-completions:
+	mkdir -p "$(DESTDIR)$(prefix)/share/bash-completion/completions"
+	"$(BUILD)/$(HOST)/sdk/bin/toit" completion --executable-name=toit bash > "$(DESTDIR)$(prefix)/share/bash-completion/completions/toit"
+	mkdir -p "$(DESTDIR)$(prefix)/share/zsh/site-functions"
+	"$(BUILD)/$(HOST)/sdk/bin/toit" completion --executable-name=toit zsh > "$(DESTDIR)$(prefix)/share/zsh/site-functions/_toit"
+	mkdir -p "$(DESTDIR)$(prefix)/share/fish/vendor_completions.d"
+	"$(BUILD)/$(HOST)/sdk/bin/toit" completion --executable-name=toit fish > "$(DESTDIR)$(prefix)/share/fish/vendor_completions.d/toit.fish"
+	mkdir -p "$(DESTDIR)$(prefix)/share/powershell/completions"
+	"$(BUILD)/$(HOST)/sdk/bin/toit" completion --executable-name=toit powershell > "$(DESTDIR)$(prefix)/share/powershell/completions/toit.ps1"
+
+install: install-sdk install-completions
 
 
 # TESTS (host)

@@ -32,7 +32,19 @@ runs:
       shell: bash
       run: |
         cd ${{inputs.toit-dir}}
-        git fetch --tags --recurse-submodules=no
+        attempts=3
+        for i in $(seq 1 $attempts); do
+          if git fetch --tags --recurse-submodules=no; then
+            break
+          fi
+          if [ "$i" -eq "$attempts" ]; then
+            echo "git fetch --tags failed after $attempts attempts." >&2
+            exit 1
+          fi
+          sleep_for=$((i * 5))
+          echo "git fetch --tags attempt $i failed; retrying in ${sleep_for}s..." >&2
+          sleep "$sleep_for"
+        done
 
     - name: Initialize top-level build submodules
       shell: bash

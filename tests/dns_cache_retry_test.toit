@@ -17,7 +17,7 @@ test-mdns-mixed-caching:
   network := net.open
   server := network.udp-open --port=0
   port := server.local-address.port
-  
+
   client := dns.MdnsDnsClient
       --address=(net.IpAddress.parse "127.0.0.1")
       --port=port
@@ -33,7 +33,7 @@ test-mdns-mixed-caching:
   // 4. Client should have cached both types.
   // 5. Verify caching by verifying looking up one type doesn't trigger a network request
   //    (we stop the server to prove this).
-  
+
   task::
     msg := server.receive
     // Respond with ID 0 (Unsolicited).
@@ -47,7 +47,7 @@ test-mdns-mixed-caching:
 
   print "  Step 1: Querying for A and AAAA (IPv6)"
   // dns.dns-lookup-multi calls client.get_ with {A, AAAA} if configured.
-  
+
   task::
     // Server logic again for the A/AAAA test.
     msg := server.receive
@@ -68,14 +68,14 @@ test-mdns-mixed-caching:
 
   expect (results.contains (net.IpAddress.parse "1.2.3.4"))
   expect (results.contains (net.IpAddress #[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]))
-  
+
   print "  Step 2: verifying cache"
   // Now close server.
   server.close
-  
+
   // Ask again. Should be cached.
   // The client instance `client` has the cache. We reuse it.
-  
+
   // Verify A record is cached
   print "  Step 2a: verify A record cache"
   results_a := dns.dns-lookup-multi "mixed.local"
@@ -83,7 +83,7 @@ test-mdns-mixed-caching:
       --accept-ipv4
       --no-accept-ipv6
       --network=network
-  
+
   expect (results_a.contains (net.IpAddress.parse "1.2.3.4"))
 
   // Verify AAAA record is cached
@@ -95,26 +95,26 @@ test-mdns-mixed-caching:
       --network=network
 
   expect (results_aaaa.contains (net.IpAddress #[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]))
-  
+
   print "mDNS Mixed Caching: OK"
 
 test-standard-dns-retry:
   print "Test: Standard DNS Retry/Fallback (Bug Fix)"
   network := net.open
-  
+
   // Setup 2 servers.
   // 1. Silent (Mock UDP that reads but never replies).
   // 2. Responsive (Mock UDP that replies).
-  
+
   s1 := network.udp-open --port=0
   s2 := network.udp-open --port=0
-  
+
   ip_s1 := net.IpAddress.parse "127.0.0.1"
   port_s1 := s1.local-address.port
-  
+
   ip_s2 := net.IpAddress.parse "127.0.0.1"
   port_s2 := s2.local-address.port
-  
+
   // Silent server logic.
   task::
     e := catch:
@@ -146,13 +146,13 @@ test-standard-dns-retry:
 
   print "  Querying... (should timeout on first server then succeed on second)"
   // This should take about DNS-RETRY-TIMEOUT (600ms) to fail first, then succeed.
-  
-  results := client.get "retry.local" --record-type=dns.RECORD-A --network=network
-  
+
+  results := client.get "retry.local" --record-types=[dns.RECORD-A] --network=network
+
   expect-equals 1 results.size
   expect-equals (net.IpAddress.parse "5.6.7.8") results[0]
-  
+
   print "Standard DNS Retry: OK"
-  
+
   s1.close
   s2.close
