@@ -751,6 +751,10 @@ void ByteGen::visit_CallBuiltin(CallBuiltin* node) {
       if (is_for_effect()) __ pop(1);
       break;
 
+    case Builtin::RESET:
+      __ halt(3);
+      break;
+
     case Builtin::EXIT:
       visit_for_value(node->arguments()[0]);
       __ halt(1);

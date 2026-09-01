@@ -952,7 +952,7 @@ extract-host invocation/cli.Invocation envelope/Envelope --config-encoded/ByteAr
 
   // For the "tar" output create a tarball.
   tar-bytes := io.Buffer
-  tar-writer := tar.Tar tar-bytes
+  tar-writer := tar.Writer tar-bytes
   tar-writer.add "boot.sh" BOOT-SH --permissions=EXECUTABLE-PERMISSIONS
   tar-writer.add "ota0/validated" ""
   tar-writer.add "ota0/run-image" run-image --permissions=EXECUTABLE-PERMISSIONS
@@ -964,7 +964,7 @@ extract-host invocation/cli.Invocation envelope/Envelope --config-encoded/ByteAr
   bundled-images.do: | name/string image/ByteArray |
     uuid := name-to-uuid-mapping[name]
     tar-writer.add "ota0/bundled-images/$uuid" image
-  tar-writer.close --close-writer
+  tar-writer.close
 
   write-file output-path --ui=ui: it.write tar-bytes.bytes
 
@@ -1471,7 +1471,6 @@ flash invocation/cli.Invocation -> none:
             partition-args.add "0x$(%x offset)"
             partition-args.add tmp-file
 
-          esptool := find-esptool_
           esptool-major := esptool-major-version_ esptool
           if not esptool-major:
             ui.abort "Could not determine the esptool version."
