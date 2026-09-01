@@ -239,7 +239,9 @@ void dump_heap_fragmentation(output_char_t* output_char_fn) {
   }
 }
 
-int compute_allocation_type(uword tag) {
+#endif  // TOIT_ESP32
+
+int compute_allocation_type(word tag) {
   if (tag == 0) {
     tag = NULL_MALLOC_TAG;
   } else if (tag == 'W') {
@@ -256,8 +258,6 @@ int compute_allocation_type(uword tag) {
   }
   return tag;
 }
-
-#endif
 
 #endif // def TOIT_CMPCTMALLOC
 

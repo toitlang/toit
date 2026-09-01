@@ -63,8 +63,6 @@ void GcMetadata::set_up_singleton() {
       size -= adjust;
     }
   }
-#elif defined(TOIT_FREERTOS)
-  FATAL("UNIMPLEMENTED");
 #endif
   heap_extent_ = size;
   heap_start_munged_ = (lowest_address_ >> 1) |
