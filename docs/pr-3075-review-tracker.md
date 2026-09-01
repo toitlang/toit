@@ -109,10 +109,16 @@ it is not lost between this fix round and the final rebase:
 - **I2C common async contract (comment 13):** land the current async I2C/SPI
   stack, adapt that stack to the hybrid bus-owned/generic-transfer design, then
   put the EC618 implementation on top.
-- **Integer-pin rebase (comments 11, 21, 37–38, and 49–50):** after rebasing
-  onto the common integer-pin peripheral API, make native resources own pads
-  and GPIO-controller bits atomically, use the common console UART API, and
-  remove the temporary carrier-`Pin` helpers and split-lease state.
+- **Integer-pin rebase (comments 11, 37–38, and 49–50):** completed after the
+  master rebase. EC618 peripherals accept integers only and own their physical
+  PAD reservations natively. GPIO creation atomically owns both its PAD and
+  aliased controller bit; peripheral mux functions deliberately do not own the
+  GPIO bit, so valid sibling routes remain independent. The temporary
+  carrier-`Pin` helpers and split-lease state are gone.
+- **Common console UART (comment 21):** still open. The master API now has
+  `uart.Port.console`, but its native primitive remains ESP32-specific; EC618
+  still needs to map its anchor-selected console onto that common API before
+  the platform-specific query can be removed.
 - **Landing-only documentation cleanup (comments 1 and 5):** retain this
   tracker through the next review and stack recreation, then remove review
   archaeology and resolved bring-up history before landing.
@@ -141,7 +147,7 @@ retain the context needed to review each answer without reopening GitHub.
 | 8 | Resolved | `9fcd99bc` moves EC618 GPIO pad and controller-bit ownership to `ResourcePool`. |
 | 9 | Resolved | `9fcd99bc` unifies hardware teardown and lease return in one atomic path. |
 | 10 | Resolved | `9fcd99bc` configures output state before mux connection and adds opposite-edge capture for both initial levels. |
-| 11 | Rebase | Current GPIO ownership uses pools; after the integer-pin rebase every native peripheral constructor must reserve both pad and aliased controller bit. |
+| 11 | Resolved after rebase | Native peripherals reserve their integer-selected PADs. GPIO creation, specifically, reserves its PAD and aliased controller bit atomically; peripheral mux functions do not reserve unrelated GPIO-register ownership. |
 | 12 | Resolved | `9fcd99bc` disconnects the released alias while preserving the shared controller until its final owner closes. |
 | 13 | Deferred | Land the current async I2C/SPI stack, adapt it to the recorded hybrid bus-owned/generic-transfer contract, then add EC618. |
 | 14 | Resolved | `6ff640bf` collapses the I2C rollback `Defer`. |
@@ -167,8 +173,8 @@ retain the context needed to review each answer without reopening GitHub.
 | 34 | Resolved | `9fcd99bc` passes the held locker through GPIO helpers and pool operations. |
 | 35 | Resolved | `6ff640bf` assigns preflight checks to any OTA server/client while retaining authoritative device validation. |
 | 36 | Resolved | `ae5d45da` generates the relocation table in the build through provisional link, final link, and fixed-point check. |
-| 37 | Rebase | `6ff640bf` records removal of the temporary I2C carrier-pin helper after the integer-pin rebase. |
-| 38 | Rebase | The same `6ff640bf` TODO covers SPI and analogous UART carrier-pin helpers, not only the attached location. |
+| 37 | Resolved after rebase | I2C receives integer PAD numbers directly, the native bus owns them, and the carrier-pin helper is removed. |
+| 38 | Resolved after rebase | SPI and UART likewise receive integer PAD numbers directly and own them natively; all analogous carrier helpers are removed. |
 | 39 | Resolved | `4e895044` reverts the broken slot Toitdoc normalization; comments 2–4 were reapplied separately. |
 | 40 | Resolved | `4e895044` restores the relocation generator's intended Toitdoc paragraphs. |
 | 41 | Resolved | `4e895044` restores both firmware service Toitdocs. |
@@ -179,8 +185,8 @@ retain the context needed to review each answer without reopening GitHub.
 | 46 | Resolved, reviewer concern accepted | `813e402e` restores the 495-entry reviewed future-slot surface. The isolated cost is 7,344 bytes of flash and 456 bytes of RAM, too small to justify losing OTA capability. |
 | 47 | Resolved | `6ff640bf` documents that ESP-IDF hardware I2C transfers data; GPIO/PCNT only observe bus framing and never drive it. |
 | 48 | Resolved, TODO retained | `cce2a451` restores the orderly-shutdown TODO on ESP32, mirrors it on EC618, and removes the claim that the EC618 reset path already shuts down cleanly. Shutdown orchestration remains future common lifecycle work. |
-| 49 | Rebase TODO | No current-stack change. The carrier-`Pin` API prevents atomic pad/bit acquisition; after the integer-pin rebase, native GPIO creation must take both pools under one held locker. |
-| 50 | Rebase TODO | No current-stack change. `owns_gpio_bit` represents the temporary split lease required by carrier pins; simplify or remove it when native GPIO creation owns pad and bit together. |
+| 49 | Resolved after rebase | Native GPIO creation takes its PAD and aliased controller bit under one held global locker, while native peripherals take only their PADs. |
+| 50 | Resolved after rebase | The split lease and `owns_gpio_bit` state are removed; every GPIO resource owns both leases for its full lifetime. |
 
 ### Fix commits in review order
 
@@ -371,12 +377,14 @@ retain the context needed to review each answer without reopening GitHub.
   Master has since removed `gpio.Pin` peripheral arguments; after that rebase,
   constructing a pin/resource must reserve both the physical pad and aliased
   GPIO-controller bit itself.
-- **Finding:** **Rebase work.** No explicit TODO currently preserves this
-  requirement.
-- **Planned response/action:** Add the TODO now, then implement it rather than
-  carrying the TODO past the integer-pin rebase. The resource-pool refactor in
-  comment 8 must reserve the pad and controller bit atomically for every
-  integer-pin consumer.
+- **Finding:** **Resolved after rebase, with a narrower ownership rule than the
+  original wording.** GPIO resources must own both namespaces atomically.
+  Native peripheral resources must own their physical PADs, but must not claim
+  the aliased GPIO-controller bit while the PAD is muxed to a peripheral.
+- **Response/action:** EC618 now accepts integer PAD numbers directly. GPIO
+  creation takes both pools under the global locker; I2C, SPI, PWM, and UART
+  retain PAD leases in their native resources and release them only after
+  hardware teardown.
 
 #### 12. Pending comment `3824619315` — releasing one of two pads sharing a GPIO bit
 
@@ -744,22 +752,21 @@ retain the context needed to review each answer without reopening GitHub.
 - **Context:** The helper constructs and retains `gpio.Pin` carriers because
   the pre-rebase peripheral API takes pins. Master now uses integer pins and
   native peripheral resources should own pad reservations.
-- **Finding:** **Rebase work.** The compatibility layer has no TODO and can
-  otherwise become permanent.
-- **Planned response/action:** Mark the shared compatibility layer temporary,
-  then remove it during the integer-pin rebase. Let the native I2C resource
-  reserve/release pads; preserve only genuinely EC618-specific route
-  selection.
+- **Finding:** **Resolved after rebase.** The compatibility layer would be
+  redundant with master's integer-pin API.
+- **Response/action:** The carrier helper and wrapper subclass are removed.
+  `i2c.Bus` receives the PAD numbers directly, and the native EC618 bus owns
+  both PAD reservations through explicit close and forced teardown.
 
 #### 38. Pending comment `3897391311` — temporary SPI convenience helper
 
 - **Created/anchor:** 2026-08-31 18:50 UTC (edited 18:52), `6a0bfe68`,
   `lib/ec618/ec618.toit`.
-- **Context/finding:** **Rebase work; same issue as comment 37.** SPI wraps
-  carrier `Pin` objects solely for the old API.
-- **Planned response/action:** Use one TODO/audit covering I2C, SPI, and the
-  analogous UART helpers, then remove all carrier-pin ownership when rebasing
-  to integer pins. Do not fix only the attached SPI helper.
+- **Context/finding:** **Resolved after rebase; same issue as comment 37.** SPI
+  wrapped carrier `Pin` objects solely for the old API.
+- **Response/action:** SPI bus/device and UART construction now pass integers
+  directly. Their native resources own all selected PADs, including SPI
+  CS/DC and UART RS485 DE, and release them after hardware teardown.
 
 #### 39. Pending comment `3897500081` — broken slot Toitdocs
 
@@ -915,19 +922,15 @@ retain the context needed to review each answer without reopening GitHub.
   bit from its `ResourcePool` and recording that lease on the resource. The
   same mutex also spans teardown's controller-register reset, pad disconnect,
   pool returns, and `PadGpioLock` checks across one or two shared bits.
-- **Finding:** **Rebase TODO; no current-stack change.** A physical pad is
-  reserved when the temporary `gpio.Pin` carrier is constructed; its
-  GPIO-controller bit is claimed only if that resource is actually
-  configured/used as GPIO. This split is unavoidable before the integer-pin
-  rebase because peripherals currently receive carrier pins. Two pads that
-  alias one GPIO bit may still be used simultaneously by unrelated peripheral
-  mux functions, such as I2C0 on PAD14 and UART0 on PAD30, so taking both at
-  `Pin` construction would reject a valid combination.
-- **Planned response/action:** Treat the comment as a requirement for the
-  integer-pin rebase. Native GPIO creation must then take the physical pad and
-  GPIO-controller bit under one held locker; native peripheral constructors
-  must take their own pads directly, without constructing carrier `Pin`
-  resources. Do not change the transitional current-stack locking.
+- **Finding:** **Resolved after rebase.** Two pads that alias one GPIO bit may
+  still be used simultaneously by unrelated peripheral mux functions, such as
+  I2C0 on PAD14 and UART0 on PAD30. The atomic pair therefore belongs only to
+  a GPIO resource; native peripheral resources reserve physical PADs without
+  claiming GPIO-register ownership.
+- **Response/action:** Native GPIO creation now takes the PAD and controller
+  bit pools under one held locker and rolls back both on allocation failure.
+  Native peripheral constructors take and retain their own PADs directly,
+  without constructing carrier `Pin` resources.
 
 #### 50. Pending comment `3903809273` — when a GPIO resource lacks the bit lease
 
@@ -937,17 +940,12 @@ retain the context needed to review each answer without reopening GitHub.
   may reset and return the shared controller bit. A resource always owns its
   physical pad, but the controller-bit lease follows the split lifecycle from
   comment 49.
-- **Finding:** **Rebase TODO; no current-stack change.** The flag is false
-  between `Pin` construction and the first mutating GPIO operation, after an
-  attempted claim fails because an alias owns the bit, and for carrier-only
-  pads handed to a peripheral (including pads with no GPIO function). Once a
-  GPIO operation successfully claims the bit, it remains true until close.
-  This state exists because the old peripheral API forces pad ownership and
-  GPIO-bit ownership to have different lifetimes.
-- **Planned response/action:** Keep the transitional flag unchanged. During
-  the integer-pin rebase, make native GPIO construction acquire both leases
-  atomically, then simplify or remove `owns_gpio_bit` and its conditional
-  teardown paths.
+- **Finding:** **Resolved after rebase.** The split state existed only because
+  the old peripheral API forced PAD ownership and GPIO-bit ownership to have
+  different lifetimes.
+- **Response/action:** Native GPIO construction now acquires both leases
+  atomically. `owns_gpio_bit`, its lazy claim path, and its conditional
+  teardown are removed; GPIO teardown always resets and returns both leases.
 
 ## Response and duplicate-work audit
 
@@ -1313,25 +1311,19 @@ cleaned base, not merely link-tested against it.
 The remaining work is not the 273 duplicate reply records. It is the following
 code, evidence, integration, and documentation work:
 
-1. **Keep current-stack carrier pins alive where tests deliberately abandon
-   peripheral objects.** Do not add a second native lease while `gpio.Pin`
-   owns the pad. The PWM container-teardown test now retains its pin and
-   records the rebase TODO; audit analogous test-only lifetime patterns as
-   they are encountered.
-2. **Finish SPI evidence.** Rewire and hardware-test SPI1 on the documented
+1. **Finish SPI evidence.** Rewire and hardware-test SPI1 on the documented
    PAD27/PAD28/PAD29/PAD30 ALT1 route. Driver-owned whole-transfer copying may
    remain for the first version only with the current documented limitation;
    a streaming/token implementation is follow-up work if a safe progress signal
    can be exposed. The required camera-connector breakout has been ordered but
    has not arrived, so the SPI1 hardware proof is presently blocked.
-3. **Complete the rebase-only API and ownership work.** After Florian reviews
-   the current changes and the history is squash-rebased, rebase onto
-   `github.com/toitlang/toit` master. Consume the integer-GPIO peripheral APIs
-   and the separately upstreamed generic UART/FreeRTOS fixes. EC618 will not
-   support the deprecated `gpio.Pin` compatibility form; its native
-   peripherals must reserve integer-selected pads in C++. Re-audit all 377
-   original comments after the rewrite/rebase.
-4. **Finish the broad audits.** Complete the generic catch/CLI pass, the
+2. **Complete the remaining rebase integration.** Implement the common
+   `uart.Port.console` primitive for EC618 and remove the platform-specific
+   public console query where tests do not require the numeric anchor value.
+   Keep the current EC618 I2C implementation until the common asynchronous
+   I2C/SPI stack lands, then adapt it to the recorded hybrid contract.
+   Re-audit all 377 original comments after the rewrite/rebase.
+3. **Finish the broad audits.** Complete the generic catch/CLI pass, the
    envelope/firmware-tool separation audit, remaining partition-record/helper
    semantics, compatibility qualification of the mixed GCC 10.2.1/10.3.1
    vendor archives, and deployment of web commit `dbdfe99`. Jaguar still needs
@@ -1360,14 +1352,12 @@ already clear from the complete comment pass.
    commit, but must not be mixed with unrelated cleanup.
 
 2. **Complete ownership in two API phases.**
-   On the current stack, `gpio.Pin` owns the physical pad; code and tests that
-   retain a peripheral must retain those carrier pins too. Keep the existing
-   locked pools for controllers, PWM timers, ADC channels, GPIO controller
-   bits, and pin resources, but do not double-reserve a pin inside a native
-   peripheral. During the integer-GPIO rebase, remove EC618's deprecated
-   `gpio.Pin` compatibility path and make each native UART/I2C/SPI/PWM
-   acquisition atomically reserve all integer-selected pads. Temporary I2C
-   bus-clear GPIO use must stay under the same native ownership.
+   The first phase used carrier `gpio.Pin` objects. The completed master-rebase
+   phase removes that compatibility path: native UART/I2C/SPI/PWM resources
+   reserve all integer-selected PADs and release them after hardware teardown.
+   GPIO resources atomically reserve the physical PAD plus the aliased
+   controller bit. Temporary I2C bus-clear GPIO access stays within the bus's
+   native PAD ownership and respects competing sibling GPIO-bit owners.
 
 3. **Finish asynchronous operation and cancellation contracts.**
    Remove library-internal arbitrary timeouts from I2C and SPI. Make external
@@ -1493,12 +1483,12 @@ specific behavior named; a related general-audit item can remain open.
 | MbedTLS include order | **Resolved** | MbedTLS configuration is selected per target by the build-wide `MBEDTLS_CONFIG_FILE`, as it is for ESP32. Every Toit header that can do so includes MbedTLS before `top.h`, preserving `top.h`'s macro cleanup; source files follow the same order unless `top.h` is required to select the platform-specific include/gating path. |
 | Toitdoc/conventions | **Resolved** | Audited every PR-added Toitdoc, not just the attached lines: library comments follow imports, continuation paragraphs are indented, examples use fenced code blocks, EC618 UART mappings and restrictions live in `lib/ec618` with a signpost from the generic UART constructor, the unambiguous public console query is named `console-uart-id`, function comments in `mini-jag` are Toitdocs, and all edited sources pass `toit analyze` plus documentation generation. |
 | Generic catch/CLI guidance | **Audit** | Catch-alls that can mask unexpected failures and hand-written print/exit/fail paths remain in tests and tools. |
-| GPIO/pad ownership | **Open (rebase)** | Every current-stack `gpio.Pin` reserves its physical EC618 pad and configured GPIO-controller bit through resource teardown. Because common peripheral APIs still require these `Pin` objects, a native PWM/I2C/SPI/UART resource cannot reserve the same physical pad again. The abandoned native PWM lease draft was removed rather than creating double ownership; test paths that deliberately abandon a peripheral retain their carrier pins, with a TODO in the PWM teardown test. After rebasing onto the upstream integer-GPIO APIs, EC618 will accept integers only and each native peripheral must reserve and release its pads in C++, including temporary I2C bus-recovery mux changes. |
+| GPIO/pad ownership | **Resolved after rebase** | EC618 peripheral APIs accept integers only. Native UART/I2C/SPI/PWM resources reserve every selected physical PAD and return it after hardware teardown, including forced container teardown. GPIO creation atomically reserves both its PAD and aliased controller bit under the global locker; its resource always owns both. Peripheral mux functions intentionally do not reserve the GPIO bit, preserving valid simultaneous use of sibling PADs by different peripherals. I2C bus recovery operates under the bus's PAD lease and does not disturb a sibling GPIO owner. |
 | ADC | **Resolved** | The two application channels use a globally locked ownership pool, may coexist with each other, and reject a second owner of the same AIO input. `SimpleResource` already registered the resource automatically; its EC618 destructor deinitializes and releases the channel on explicit close or forced container teardown. Trim/configuration initialization is serialized, and the vendor driver serializes cross-channel conversions through its IRQ-safe request queue. EC618 conversion primitives only start or harvest the per-resource request; while it is pending, the public `Adc` method sleeps/yields in Toit under a per-instance monitor instead of busy-polling inside a primitive. The rig passed forced-container cleanup followed by exclusivity, explicit close/reacquisition, and scheduler-progress coverage. |
-| PWM | **Resolved (current stack)** | Each channel owns teardown and returns its timer through the locked global resource pool, including forced container teardown. Exact 0% and 100% use static GPIO levels; fractional factors remux and restart timer PWM. The container-teardown regression now retains the carrier `gpio.Pin`, preventing GC from deinitializing the pad while the leaked PWM resource is under test. Native pad ownership is intentionally deferred to the integer-GPIO rebase. |
-| I2C | **Resolved (current stack)** | The OTA-slot source owns the transfer engine and IRQs; the SDK submodule now retains only its stable CMSIS lifecycle plus the two required IRQ-name corrections. Transfers through 512 bytes use hardware-length FIFO mode and longer transfers use source-owned unknown-length FIFO refill/drain. Combined write-read holds the bus after the command byte and issues `START|RESTART` for the read address. The ESP32 fixture uses a hardware pulse counter gated by SCL and proved the combined operation has exactly two STARTs and one STOP; the same run passed exact 1,025-byte write, read, and combined read data. Transfer-buffer rollback is allocation-free and therefore safe with the embedded non-allocating `std::function` implementation. Existing cancellation, clock-stretch, recovery, and reuse coverage still applies. Native ownership of integer-selected pads and temporary bus-clear muxing remains rebase work, not an unresolved I2C protocol defect. |
+| PWM | **Resolved** | Each channel owns its integer-selected PAD and timer through the native resource lifetime, including forced container teardown. Exact 0% and 100% use static GPIO levels; fractional factors remux and restart timer PWM. |
+| I2C | **Resolved for current stack** | The OTA-slot source owns the transfer engine, IRQs, and integer-selected bus PADs; the SDK submodule retains only its stable CMSIS lifecycle plus the two required IRQ-name corrections. Transfers through 512 bytes use hardware-length FIFO mode and longer transfers use source-owned unknown-length FIFO refill/drain. Combined write-read holds the bus after the command byte and issues `START|RESTART` for the read address. The ESP32 fixture uses a hardware pulse counter gated by SCL and proved the combined operation has exactly two STARTs and one STOP; the same run passed exact 1,025-byte write, read, and combined read data. Transfer-buffer rollback is allocation-free and therefore safe with the embedded non-allocating `std::function` implementation. Existing cancellation, clock-stretch, recovery, ownership, and reuse coverage applies. Adapting this implementation to the future common hybrid asynchronous contract remains separate work. |
 | TCP/lwIP | **Resolved** | The EC618 vendor archive contains and schedules the normal 250 ms TCP timer; the historical “broken Nagle timers” claim was incorrect. The shared raw-lwIP writer now follows the documented contract by calling `tcp_output` after every successful `tcp_write`; lwIP itself applies Nagle. EC618 no longer silently forces `TCP_NODELAY`. Deterministic hardware loopback coverage asserts the default on both connected and accepted sockets and sends small payloads in both directions; the cellular HTTP test carries the same default assertion when a network is registered. |
-| SPI | **Open** | A globally locked lease makes each controller exclusive across containers and is returned by explicit or forced teardown. Teardown unconditionally stops the engine, detaches its callback, frees DMA memory only afterward, and releases bus/CS/DC pads to high impedance. The asynchronous library path has no arbitrary internal deadline; an outer cancellation runs unconditional `finally` cleanup that marks callbacks stale, stops DMA, deselects CS, and only then frees the native buffer. Read copy-back honors nonzero transfer offsets. The rig promptly cancels a 32 KiB DMA transfer that would otherwise take over 250 ms, then reuses the same controller/device. Command/address phases are packed under one CS assertion when their combined width is byte-aligned (each may be narrower); totals the 8-bit EC618 core cannot represent exactly are rejected. RC522 hardware covers a 4-bit command plus 4-bit address, including a zero-valued command. The current rewrite uses the LuatOS core SPI driver and explicitly muxes the selected bus pads itself, so its documented PAD28/29/30 SPI1 ALT1 route does not depend on the unrelated CMSIS RTE pin table. Remaining: replace whole-transfer copying with a signaled streaming/chunked design if the driver can expose progress, finish cross-peripheral pad ownership, and prove SPI1 on hardware after rewiring. |
+| SPI | **Open (hardware evidence)** | A globally locked lease makes each controller exclusive across containers and is returned by explicit or forced teardown. Native bus/device resources now own their integer-selected bus, CS, and DC PADs. Teardown unconditionally stops the engine, detaches its callback, frees DMA memory only afterward, and releases PADs to high impedance. The asynchronous library path has no arbitrary internal deadline; an outer cancellation runs unconditional `finally` cleanup that marks callbacks stale, stops DMA, deselects CS, and only then frees the native buffer. Read copy-back honors nonzero transfer offsets. The rig promptly cancels a 32 KiB DMA transfer that would otherwise take over 250 ms, then reuses the same controller/device. Command/address phases are packed under one CS assertion when their combined width is byte-aligned (each may be narrower); totals the 8-bit EC618 core cannot represent exactly are rejected. RC522 hardware covers a 4-bit command plus 4-bit address, including a zero-valued command. Remaining: replace whole-transfer copying with a signaled streaming/chunked design if the driver can expose progress, and prove SPI1 on hardware after rewiring. |
 | UART | **Resolved** | Heap rings, DMA TX/RX, acquire/release SPSC indices, two-piece ring copies, scoped PRIMASK guards, and teardown concerns are addressed. Controller acquisition and release use the globally locked resource pool shared with the ESP32 UART design. The public routing matrix is one flat flash-resident byte array, both UART2 mappings open on the rig, native route resolution fails eagerly when flow-control pads do not match the uniquely selected TX/RX mapping, and RS485 rejects a non-GPIO DE pad before the assertion-backed configuration path. The complete newline-less `^boot.rom...` banner on UART1 is mask-ROM output at every reset, not CMSIS-init residue; it cannot be suppressed, and the unsupported abort-send call is gone. Mini-jag now owns the explicit TX/RX `Pin` objects for both its primary and rescue ports and closes them deterministically with the port, so stopping the rescue listener releases PAD25/PAD26 before a test uses them as GPIO. Final SEND_COMPLETE queues a UART drain worker that waits for TEMT in task context, releases RS485 DE, and posts the true line-idle event; `wait_tx` is a non-blocking state check. Repeated errors retain exact counters but share one queued notification per UART, preventing an error storm from filling the shared event queue. CMSIS receive-break has its own state bit and wakes the portable `wait-for-break` API without counting the framing/parity bits the low line induces. Print-UART close is non-blocking and defers final buffer/controller release to that drain worker, so DMA never retains freed staging memory; hardware verified both explicit close and forced container teardown with 2,048 bytes in flight, followed by controller reacquisition without a reset. After installing the exact final slot, the hardware regression passed all 50 framing/baud configurations, detected receive break with no error increment, counted all 256 deliberately induced parity errors, and round-tripped exact data at 1/2, 511/512/513, 1023/1024/1025, 2047–2059, and 4095–4107 bytes across the receive and both TX staging boundaries. Flush timing, gap-free TX, RS485 direction timing, and the complete reopen/set-baud sweep also pass on hardware. |
 | Container wait lifecycle | **Resolved** | A container blocked in `wait` is retained in the strong `waited-on_` set until its exit notification arrives, preventing the weak service-proxy map and GC from closing it spuriously. Container identity hashes use the requested monotonic post-increment counter; the host container suite passes. |
 | Cellular | **Resolved** | Public network clients share one module, and the native layer now enforces the corresponding system-wide one-connection contract. The owning event resource powers the modem down on explicit disconnect, group close, and forced container teardown; a later resource group cannot disrupt it during initialization. Hardware coverage checks cross-group rejection, disconnect/reacquisition, and killed-container cleanup without requiring network attachment. |
