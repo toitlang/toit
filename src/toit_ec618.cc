@@ -585,13 +585,14 @@ static void start() {
     printf("[toit] INFO: VM exited (reason=%d)\n", static_cast<int>(exit_state.reason));
 
     // A dual-slot OTA stages the new slot via slot_stage (FirmwareWriter.commit)
-    // and asks to reboot into it through firmware.upgrade, which exits the VM via
-    // deep sleep. Mirror the ESP32 run loop (toit_esp32.cc): when the OTA staged a
-    // slot (anchor state NEW — the analogue of ESP32's boot partition changing),
+    // and asks to reboot into it through firmware.upgrade, which requests a VM
+    // reset. Mirror the ESP32 run loop (toit_esp32.cc): when the OTA staged a slot
+    // (anchor state NEW — the analogue of ESP32's boot partition changing),
     // do a hard chip reset so the dispatcher (toit_main.c) trial-boots the staged
     // slot, exactly like ESP32 calls esp_restart() on a firmware update. Done here
     // — before the VM destructor and OS::tear_down() — because EC618's external
-    // handler teardown can block; a firmware-update reset needs no clean shutdown.
+    // handler teardown can block. Gracefully stopping containers and system
+    // services before this request remains a firmware-service TODO.
     reset_into_staged_slot_if_needed();
   }
 

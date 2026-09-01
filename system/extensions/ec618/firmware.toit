@@ -77,8 +77,8 @@ class FirmwareServiceProvider extends EmbeddedFirmwareServiceProviderBase:
 
   upgrade -> none:
     // The new slot was staged by FirmwareWriter_.commit; reboot into it.
-    // firmware.upgrade exits the VM cleanly; the EC618 run loop then
-    // hard-resets into the staged slot.
+    // TODO(kasper): Before resetting, shut down other containers and system
+    // services, including network connections, properly.
     ec618.reset
 
   uri -> string?:
