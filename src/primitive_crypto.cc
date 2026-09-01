@@ -1160,6 +1160,24 @@ PRIMITIVE(rsa_generate_close) {
   return process->null_object();
 }
 
+#else
+
+PRIMITIVE(rsa_generate_init) {
+  FAIL(UNIMPLEMENTED);
+}
+
+PRIMITIVE(rsa_generate_start) {
+  FAIL(UNIMPLEMENTED);
+}
+
+PRIMITIVE(rsa_generate_finish) {
+  FAIL(UNIMPLEMENTED);
+}
+
+PRIMITIVE(rsa_generate_close) {
+  FAIL(UNIMPLEMENTED);
+}
+
 #endif // CONFIG_TOIT_CRYPTO_EXTRA
 
 // rsa_generate returns [private_key_der, public_key_der] as a Toit Array.
