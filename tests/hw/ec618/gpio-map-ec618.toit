@@ -41,16 +41,16 @@ SETTLE ::= Duration --ms=30
 
 class Control:
   id/int
-  tx/gpio.Pin
-  rx/gpio.Pin
+  tx/int
+  rx/int
   port/uart.Port
   channel/FramedChannel
 
   constructor .id:
     tx-pad := id == 1 ? wiring.EC618-UART1-TX-PAD : wiring.EC618-UART2-TX-PAD
     rx-pad := id == 1 ? wiring.EC618-UART1-RX-PAD : wiring.EC618-UART2-RX-PAD
-    tx = gpio.Pin tx-pad
-    rx = gpio.Pin rx-pad
+    tx = tx-pad
+    rx = rx-pad
     port = uart.Port --tx=tx --rx=rx --baud-rate=CONTROL-BAUD
     channel = FramedChannel port
     print "gpio-map-ec618: opened UART$id control (TX PAD$tx-pad / RX PAD$rx-pad)"
@@ -66,8 +66,6 @@ class Control:
 
   close -> none:
     port.close
-    rx.close
-    tx.close
 
 main:
   control := Control 1

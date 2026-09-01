@@ -98,10 +98,11 @@ class PwmResource : public Resource {
 
   ~PwmResource() override {
     TIMER_stop(timer_);
-    pad_release(pad_);
     if (pad_is_aon(pad_)) pad_aon_power_release();
     pwm_timers.put(timer_);
   }
+
+  void adopt_pad(const PadReserver& reserver) { pads_.adopt(reserver); }
 
   double factor() const { return factor_; }
   void apply(uint32_t period, double factor) {
@@ -113,6 +114,7 @@ class PwmResource : public Resource {
   int timer_;
   int pad_;
   double factor_;
+  Pads pads_;
 };
 
 class PwmResourceGroup : public ResourceGroup {
@@ -218,11 +220,18 @@ PRIMITIVE(start) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   if (!pwm_timers.take(timer)) FAIL(ALREADY_IN_USE);
+  PadReserver pads;
+  if (!pads.take(pad)) {
+    pwm_timers.put(timer);
+    FAIL(ALREADY_IN_USE);
+  }
   PwmResource* channel = _new PwmResource(group, timer, pad, factor);
   if (channel == null) {
     pwm_timers.put(timer);
     FAIL(MALLOC_FAILED);
   }
+  channel->adopt_pad(pads);
+  pads.keep();
 
   CLOCK_setClockSrc(kFClks[timer], (ClockSelect_e)kFClkSel26M[timer]);
   CLOCK_setClockDiv(kFClks[timer], 1);

@@ -2,25 +2,22 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import gpio
 import uart
 
 import .wiring as wiring
 
 class OwnedPort:
   port/uart.Port
-  tx/gpio.Pin
-  rx/gpio.Pin
+  tx/int
+  rx/int
 
   constructor tx-number/int rx-number/int baud/int:
-    tx = gpio.Pin tx-number
-    rx = gpio.Pin rx-number
+    tx = tx-number
+    rx = rx-number
     port = uart.Port --tx=tx --rx=rx --baud-rate=baud
 
   close -> none:
     port.close
-    rx.close
-    tx.close
 
 ec618-uart id/int baud/int -> OwnedPort:
   if id == 1:

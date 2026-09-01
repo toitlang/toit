@@ -12,7 +12,6 @@ The UART controllers are system-wide resources. Running with the argument
   The normal run also closes during an active transmission before reopening.
 */
 
-import gpio show Pin
 import uart
 
 expect-throws expected/string [block] -> none:
@@ -22,7 +21,7 @@ expect-throws expected/string [block] -> none:
   if caught is string and caught.contains expected: return
   throw "expected '$expected', got: $caught"
 
-reopen-after-drain tx/Pin rx/Pin -> uart.Port:
+reopen-after-drain tx/int rx/int -> uart.Port:
   deadline := Time.monotonic-us + 2_000_000
   while true:
     caught := catch:
@@ -35,8 +34,8 @@ reopen-after-drain tx/Pin rx/Pin -> uart.Port:
     sleep --ms=1
 
 main args:
-  tx := Pin 26
-  rx := Pin 25
+  tx := 26
+  rx := 25
   port := uart.Port --tx=tx --rx=rx --baud-rate=115200
 
   if not args.is-empty and args[0] == "leak":
@@ -45,17 +44,13 @@ main args:
     print "uart-lifecycle: leaving UART2 with $accepted bytes in flight for resource-group teardown coverage"
     return
 
-  try:
-    expect-throws "ALREADY_IN_USE":
-      uart.Port --tx=tx --rx=rx --baud-rate=115200
+  expect-throws "ALREADY_IN_USE":
+    uart.Port --tx=tx --rx=rx --baud-rate=115200
 
-    accepted := port.out.try-write (ByteArray 8192: (it * 31 + 7) & 0xff)
-    if accepted == 0: throw "failed to start explicit-close TX"
-    port.close
-    port = reopen-after-drain tx rx
-    port.close
-  finally:
-    rx.close
-    tx.close
+  accepted := port.out.try-write (ByteArray 8192: (it * 31 + 7) & 0xff)
+  if accepted == 0: throw "failed to start explicit-close TX"
+  port.close
+  port = reopen-after-drain tx rx
+  port.close
 
   print "uart-lifecycle: PASS exclusivity, close, and reacquisition"

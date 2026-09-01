@@ -5,13 +5,11 @@
 import ec618 show Ec618
 
 /**
-Checks that EC618 convenience peripherals release the pins they create.
+Checks that EC618 convenience peripherals release the PADs they reserve.
 
-Generic UART, I2C, and SPI constructors borrow caller-owned `gpio.Pin`
-  instances. The EC618 convenience constructors create those instances
-  themselves, so their `close` methods must close both the controller and the
-  internally owned pins. Each pair below reopens immediately without relying
-  on garbage collection.
+EC618 peripheral resources own their integer-addressed PADs directly. Each
+  pair below reopens immediately after close, without relying on carrier
+  `gpio.Pin` objects or garbage collection.
 */
 
 main:

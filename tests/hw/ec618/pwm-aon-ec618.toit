@@ -36,13 +36,13 @@ main:
 
   // Phase 1: PAD44 = TIMER1 — frequency and duty.
   generator := Pwm --frequency=1000
-  channel := generator.start (Ec618.pad wiring.EC618-TIMER1-PAD) --duty-factor=0.5
+  channel := generator.start wiring.EC618-TIMER1-PAD --duty-factor=0.5
   expect-hz control wiring.ESP32-TIMER1-PIN 1000 "pad44-1kHz"
   channel.close
   generator.close
 
   generator = Pwm --frequency=10
-  channel = generator.start (Ec618.pad wiring.EC618-TIMER1-PAD) --duty-factor=0.25
+  channel = generator.start wiring.EC618-TIMER1-PAD --duty-factor=0.25
   expect-duty control wiring.ESP32-TIMER1-PIN 250 "pad44-duty-0.25"
   channel.set-duty-factor 0.75
   expect-duty control wiring.ESP32-TIMER1-PIN 750 "pad44-duty-0.75"
@@ -51,7 +51,7 @@ main:
 
   // Phase 2: PAD47 = TIMER4.
   generator = Pwm --frequency=1000
-  channel = generator.start (Ec618.pad wiring.EC618-TIMER4-AON-PAD) --duty-factor=0.5
+  channel = generator.start wiring.EC618-TIMER4-AON-PAD --duty-factor=0.5
   expect-hz control wiring.ESP32-TIMER4-AON-PIN 1000 "pad47-1kHz"
   channel.close
   generator.close
@@ -59,9 +59,9 @@ main:
   // Phase 3: both AON PWM pins at once (TIMER1 + TIMER4), with distinct
   // frequencies so coupled pulses on either wire cannot hide.
   generator = Pwm --frequency=10
-  channel = generator.start (Ec618.pad wiring.EC618-TIMER1-PAD) --duty-factor=0.25
+  channel = generator.start wiring.EC618-TIMER1-PAD --duty-factor=0.25
   generator47 := Pwm --frequency=1000
-  channel47 := generator47.start (Ec618.pad wiring.EC618-TIMER4-AON-PAD) --duty-factor=0.5
+  channel47 := generator47.start wiring.EC618-TIMER4-AON-PAD --duty-factor=0.5
   expect-hz control wiring.ESP32-TIMER1-PIN 10 "both-pad44-frequency"
   expect-duty control wiring.ESP32-TIMER1-PIN 250 "both-pad44-duty"
   expect-hz control wiring.ESP32-TIMER4-AON-PIN 1000 "both-pad47"

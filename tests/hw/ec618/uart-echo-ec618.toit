@@ -2,7 +2,6 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import gpio
 import uart
 
 import .framed-control show FramedChannel
@@ -26,21 +25,19 @@ UART2-BAUDS ::= [9600, 115200, 921600, 1500000, 2000000, 3000000, 4000000]
 
 class OwnedPort:
   id/int
-  tx/gpio.Pin
-  rx/gpio.Pin
+  tx/int
+  rx/int
   port/uart.Port
 
   constructor .id baud/int:
     tx-pad := id == 1 ? wiring.EC618-UART1-TX-PAD : wiring.EC618-UART2-TX-PAD
     rx-pad := id == 1 ? wiring.EC618-UART1-RX-PAD : wiring.EC618-UART2-RX-PAD
-    tx = gpio.Pin tx-pad
-    rx = gpio.Pin rx-pad
+    tx = tx-pad
+    rx = rx-pad
     port = uart.Port --tx=tx --rx=rx --baud-rate=baud
 
   close -> none:
     port.close
-    rx.close
-    tx.close
 
 class Control:
   owned/OwnedPort
