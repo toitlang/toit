@@ -1,0 +1,21 @@
+sdk: ^2.0.0-alpha.150
+prefixes:
+  bme280: bme280-driver
+  bmp280: bmp280-driver
+  certificate-roots: toit-cert-roots
+packages:
+  bme280-driver:
+    url: github.com/toitware/bme280-driver
+    name: bme280
+    version: 1.1.0
+    hash: e2220d286aad8bbb78e27ffcbf558cbec0e1c687
+  bmp280-driver:
+    url: github.com/harshkc03/bmp280-driver
+    name: bmp280
+    version: 1.0.0
+    hash: 17824b46f0fd5b9355e616de4bb5603dd6e9f6eb
+  toit-cert-roots:
+    url: github.com/toitware/toit-cert-roots
+    name: certificate-roots
+    version: 1.11.0
+    hash: c117dbba4757d7c69e91af7a875ab6989f051a33
