@@ -161,10 +161,9 @@ build-command --legacy-create-layout/bool=false -> cli.Command:
         This command can be used to create, inspect, extract, and manipulate envelopes.
         """
       --options=[
-        cli.Option OPTION-ENVELOPE
+        cli.OptionPath OPTION-ENVELOPE
             --short-name="e"
             --help="Set the envelope to work on."
-            --type="file"
             --required
       ]
   if legacy-create-layout:
@@ -184,9 +183,8 @@ build-command --legacy-create-layout/bool=false -> cli.Command:
 
 create-cmd -> cli.Command:
   options := AR-ENTRY-ESP32-FILE-MAP.map: | key/string value/string |
-    cli.Option key
+    cli.OptionPath key
         --help="Set the $key part."
-        --type="file"
         --required=(key == "firmware.bin")
   cmd := cli.Command "create"
       --help="""
@@ -199,9 +197,8 @@ create-cmd -> cli.Command:
 
 create-esp32-cmd --name/string -> cli.Command:
   options := AR-ENTRY-ESP32-FILE-MAP.map: | key/string value/string |
-    cli.Option key
+    cli.OptionPath key
         --help="Set the $key part."
-        --type="file"
         --required=(key == "firmware.bin")
   return cli.Command name
       --help="""
@@ -210,8 +207,8 @@ create-esp32-cmd --name/string -> cli.Command:
         Add the Toit system snapshot to the envelope with the 'firmware.bin' option.
         """
       --options=options.values + [
-        cli.Option "system.snapshot"
-            --type="file"
+        cli.OptionPath "system.snapshot"
+            --extensions=[".snapshot"]
             --required,
       ]
       --run=:: create-envelope-esp32 it
@@ -258,23 +255,18 @@ create-ec618-cmd --name/string="ec618" -> cli.Command:
         The firmware binary is the AP binary produced by the EC618 build.
         """
       --options=[
-        cli.Option "firmware.bin"
+        cli.OptionPath "firmware.bin"
             --help="Set the firmware binary (the AP image)."
-            --type="file"
             --required,
-        cli.Option "cp.bin"
+        cli.OptionPath "cp.bin"
             --help="Set the CP (modem-core) image, so 'flash' can program a matching CP."
-            --type="file"
             --required,
-        cli.Option "reloc.bin"
+        cli.OptionPath "reloc.bin"
             --help="Set the required dual-slot relocation table (slot-reloc.bin)."
-            --type="file"
             --required,
-        cli.Option "data.bin"
-            --help="Set the per-slot VM .data init image (slot-data.bin) carried inside each slot."
-            --type="file",
-        cli.Option "system.snapshot"
-            --type="file"
+        cli.OptionPath "data.bin"
+            --help="Set the per-slot VM .data init image (slot-data.bin) carried inside each slot.",
+        cli.OptionPath "system.snapshot"
             --required,
       ]
       --run=:: create-envelope-ec618 it
@@ -331,9 +323,8 @@ create-host-cmd -> cli.Command:
         Create a firmware envelope for the host system.
         """
       --options=[
-        cli.Option "run-image"
+        cli.OptionPath "run-image"
             --help="Path to the run-image executable."
-            --type="file"
             --required,
         cli.OptionInt "word-size"
             --required,
@@ -365,10 +356,9 @@ create-envelope-host invocation/cli.Invocation -> none:
 container-cmd -> cli.Command:
   cmd := cli.Command "container"
       --help="Manipulate Toit containers in a firmware envelope."
-  option-output := cli.Option OPTION-OUTPUT
+  option-output := cli.OptionPath OPTION-OUTPUT
       --short-name=OPTION-OUTPUT-SHORT
       --help="Set the output envelope."
-      --type="file"
   option-name := cli.Option "name"
       --type="string"
       --required
@@ -379,9 +369,8 @@ container-cmd -> cli.Command:
           --aliases=["add"]
           --options=[
             option-output,
-            cli.Option "assets"
-                --help="Add assets to the container."
-                --type="file",
+            cli.OptionPath "assets"
+                --help="Add assets to the container.",
             cli.OptionEnum "trigger" ["none", "boot"]
                 --help="Trigger the container to run automatically."
                 --default="boot",
@@ -390,8 +379,7 @@ container-cmd -> cli.Command:
           ]
           --rest=[
             option-name,
-            cli.Option "image"
-                --type="file"
+            cli.OptionPath "image"
                 --required
           ]
           --run=:: container-install it
@@ -600,10 +588,9 @@ property-cmd -> cli.Command:
   cmd := cli.Command "property"
       --help="Manipulate properties in a firmware envelope."
 
-  option-output := cli.Option OPTION-OUTPUT
+  option-output := cli.OptionPath OPTION-OUTPUT
       --short-name=OPTION-OUTPUT-SHORT
       --help="Set the output envelope."
-      --type="file"
   option-key := cli.Option "key"
       --type="string"
   option-key-required := cli.Option option-key.name
@@ -748,19 +735,16 @@ extract-cmd -> cli.Command:
         ```
         """
       --options=[
-        cli.Option OPTION-OUTPUT
+        cli.OptionPath OPTION-OUTPUT
             --short-name=OPTION-OUTPUT-SHORT
             --help="Set the output file."
-            --type="file"
             --required,
-        cli.Option "config"
-            --type="file",
+        cli.OptionPath "config",
         cli.OptionEnum "format" ["binary", "elf", "ubjson", "image", "qemu", "tar"]
             --help="Set the output format."
             --default="binary",
-        cli.Option "partitions"
-            --help="Override the partition table of the envelope."
-            --type="file",
+        cli.OptionPath "partitions"
+            --help="Override the partition table of the envelope.",
         cli.OptionPatterns "partition"
             ["file:<name>=<path>", "empty:<name>=<size>"]
             --help="Replace the content of a partition or add a custom partition to the flashed image."
@@ -965,6 +949,7 @@ extract-host invocation/cli.Invocation envelope/Envelope --config-encoded/ByteAr
     uuid := name-to-uuid-mapping[name]
     tar-writer.add "ota0/bundled-images/$uuid" image
   tar-writer.close
+  tar-bytes.close
 
   write-file output-path --ui=ui: it.write tar-bytes.bytes
 
@@ -1402,15 +1387,13 @@ flash-cmd -> cli.Command:
           want to use the bundled version.
           """
       --options=[
-        cli.Option "config"
-            --type="file",
-        cli.Option "port"
-            --type="file"
+        cli.OptionPath "config",
+        cli.OptionPath "port"
             --short-name="p"
             --required,
         cli.OptionInt "baud"
             --default=921600,
-        cli.OptionEnum "chip" ["esp32", "esp32c3", "esp32c6", "esp32s2", "esp32s3"]
+        cli.OptionEnum "chip" ["esp32", "esp32c3", "esp32c6", "esp32p4", "esp32s2", "esp32s3"]
             --hidden
             --help="Deprecated. Don't use this option.",
         cli.OptionPatterns "partition"
@@ -1418,9 +1401,8 @@ flash-cmd -> cli.Command:
             --help="Replace the content of a partition or add a custom partition to the flashed image."
             --split-commas
             --multi,
-        cli.Option "partitions"
-            --help="Override the partition table."
-            --type="file",
+        cli.OptionPath "partitions"
+            --help="Override the partition table.",
       ]
       --run=:: flash it
 
@@ -1755,7 +1737,7 @@ show-cmd -> cli.Command:
         cli.Flag "all"
             --help="Show all information, including non-container entries."
             --short-name="a",
-        cli.Option "output"
+        cli.OptionPath "output"
             --help="Write output to the given file."
             --short-name="o",
       ]
@@ -2166,6 +2148,10 @@ class Esp32C6AddressMap implements AddressMap:
   drom-map-start ::= 0x42000000
   drom-map-end   ::= 0x43000000
 
+class Esp32P4AddressMap implements AddressMap:
+  drom-map-start ::= 0x40000000
+  drom-map-end   ::= 0x44000000
+
 class Esp32S2AddressMap implements AddressMap:
   drom-map-start ::= 0x3f000000
   drom-map-end   ::= 0x3ff80000
@@ -2190,6 +2176,7 @@ class Esp32Binary:
   static ESP-CHIP-ID-ESP32-C3 ::= 0x0005  // Chip ID: ESP32-C3.
   static ESP-CHIP-ID-ESP32-C6 ::= 0x000d  // Chip ID: ESP32-C6.
   static ESP-CHIP-ID-ESP32-H2 ::= 0x000a  // Chip ID: ESP32-H2.
+  static ESP-CHIP-ID-ESP32-P4 ::= 0x0012  // Chip ID: ESP32-P4.
   static ESP-CHIP-ID-ESP32-S2 ::= 0x0002  // Chip ID: ESP32-S2.
   static ESP-CHIP-ID-ESP32-S3 ::= 0x0009  // Chip ID: ESP32-S3.
 
@@ -2197,6 +2184,7 @@ class Esp32Binary:
       ESP-CHIP-ID-ESP32    : Esp32AddressMap,
       ESP-CHIP-ID-ESP32-C3 : Esp32C3AddressMap,
       ESP-CHIP-ID-ESP32-C6 : Esp32C6AddressMap,
+      ESP-CHIP-ID-ESP32-P4 : Esp32P4AddressMap,
       ESP-CHIP-ID-ESP32-S2 : Esp32S2AddressMap,
       ESP-CHIP-ID-ESP32-S3 : Esp32S3AddressMap,
   }
@@ -2206,6 +2194,7 @@ class Esp32Binary:
       ESP-CHIP-ID-ESP32-C3 : "esp32c3",
       ESP-CHIP-ID-ESP32-C6 : "esp32c6",
       ESP-CHIP-ID-ESP32-H2 : "esp32h2",
+      ESP-CHIP-ID-ESP32-P4 : "esp32p4",
       ESP-CHIP-ID-ESP32-S2 : "esp32s2",
       ESP-CHIP-ID-ESP32-S3 : "esp32s3",
   }

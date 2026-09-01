@@ -3,6 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import net
+import io
 import net.modules.dns
 import expect show *
 
@@ -11,6 +12,7 @@ main:
   test-txt-encoding
   test-ptr-encoding-length
   test-aaaa-encoding
+  test-additional-section
 
 test-srv-encoding:
   print "Testing SRV encoding..."
@@ -160,3 +162,77 @@ test-aaaa-encoding:
   expect-equals 16 rdlength
   
   print "AAAA encoding: OK"
+
+test-additional-section:
+  print "Testing Additional Section encoding/decoding..."
+  questions := [dns.Question "query.local" dns.RECORD-TXT]
+  answers := [dns.StringResource "query.local" dns.RECORD-TXT 120 false "answer"]
+  
+  // Create a packet specifically with additional records. 
+  
+  // Header: ID(2) + Flags(2) + QDCOUNT(2) + ANCOUNT(2) + NSCOUNT(2) + ARCOUNT(2)
+  // ID=0x1234, Flags=0x8400 (Response, Authoritative), QD=1, AN=1, NS=0, AR=1
+  
+  packet := io.Buffer
+  packet.big-endian.write-int16 0x1234
+  packet.big-endian.write-int16 0x8400
+  packet.big-endian.write-int16 1  // QD.
+  packet.big-endian.write-int16 1  // AN.
+  packet.big-endian.write-int16 0  // NS.
+  packet.big-endian.write-int16 1  // AR !!! This is what we want to test.
+  
+  // Question: 5 query 5 local 0 + Type(TXT=16) + Class(1).
+  packet.write-byte 5; packet.write "query"
+  packet.write-byte 5; packet.write "local"
+  packet.write-byte 0
+  packet.big-endian.write-int16 dns.RECORD-TXT
+  packet.big-endian.write-int16 1
+  
+  // Answer: Pointer to 12 (C0 0C) + Type(TXT) + Class(1) + TTL(120) + RDLen + Data.
+  packet.write-byte 0xC0; packet.write-byte 0x0C
+  packet.big-endian.write-int16 dns.RECORD-TXT
+  packet.big-endian.write-int16 1
+  packet.big-endian.write-int32 120
+  packet.big-endian.write-int16 7 // RDLENGTH: 1 (length byte) + 6 ("answer").
+  packet.write-byte 6; packet.write "answer"
+  
+  // Additional: "additional.local" + A record.
+  // 10 additional, then pointer to local (C0 12) - "local" is at 12 + 6 = 18 -> 0x12.
+  packet.write-byte 10; packet.write "additional"
+  packet.write-byte 0xC0; packet.write-byte 0x12
+  packet.big-endian.write-int16 dns.RECORD-A
+  packet.big-endian.write-int16 1
+  packet.big-endian.write-int32 120
+  packet.big-endian.write-int16 4
+  packet.write #[1, 2, 3, 4]
+  
+  raw-bytes := packet.bytes
+  decoded := dns.decode-packet raw-bytes
+  
+  expect-equals 1 decoded.questions.size
+  expect-equals 1 decoded.resources.size 
+  
+  // Now we expect 1 additional record!
+  expect-equals 1 decoded.additionals.size
+  expect-equals "additional.local" decoded.additionals[0].name
+  
+  print "Additional Section Decoding: OK"
+  
+  // Test Encoding support.
+  print "Testing Additional Section encoding..."
+  
+  add-questions := [dns.Question "test.local" dns.RECORD-A]
+  add-answers := [dns.AResource "test.local" 120 (net.IpAddress.parse "1.2.3.4")]
+  add-additionals := [dns.StringResource "pixel.local" dns.RECORD-TXT 120 false "foo=bar"]
+  
+  encoded := dns.create-dns-packet add-questions add-answers 
+      --id=123 
+      --is-response
+      --additionals=add-additionals
+      
+  decoded-back := dns.decode-packet encoded
+  expect-equals 1 decoded-back.additionals.size
+  expect-equals "pixel.local" decoded-back.additionals[0].name
+  expect-equals "foo=bar" (decoded-back.additionals[0] as dns.StringResource).value
+  
+  print "Additional Section Encoding: OK"

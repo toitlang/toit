@@ -33,6 +33,8 @@ enum UdpOption {
   UDP_MULTICAST_TTL        = 6,
   UDP_REUSE_ADDRESS        = 7,
   UDP_REUSE_PORT           = 8,
+  UDP_MULTICAST_IF         = 9,
+  UDP_MULTICAST_LEAVE      = 10,
 };
 
 } // namespace toit

@@ -118,9 +118,8 @@ set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wall -ffunction-sections -fdata-s
 
 include_directories(
   "${TOIT_SDK_SOURCE_DIR}/include"
+  "${IDF_PATH}/components/mbedtls/mbedtls/include"
   )
-
-include_directories("${IDF_PATH}/components/mbedtls/mbedtls/include")
 
 if (DEFINED USE_LWIP)
   set(LWIP_MBEDTLSDIR "../mbedtls")
@@ -238,10 +237,15 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   # Eventually, we need to import mbedtls differently.
   set(ENABLE_TESTING CACHE BOOL OFF)
   set(ENABLE_PROGRAMS CACHE BOOL OFF)
+  # Don't promote mbedtls warnings to errors. Newer mingw-w64 cross-compilers
+  # default to gnu_printf format checking and reject MBEDTLS_PRINTF_LONGLONG
+  # ("I64d"), which mbedtls then turns into a -Werror with -Wformat=2.
+  set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
   add_subdirectory(
     "${IDF_PATH}/components/mbedtls/mbedtls"
     "${CMAKE_BINARY_DIR}/mbedtls"
     EXCLUDE_FROM_ALL
     )
+
   set(CMAKE_POLICY_DEFAULT_CMP0076 NEW)
 endif()
