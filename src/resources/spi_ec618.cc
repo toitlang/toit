@@ -165,11 +165,10 @@ class SpiResourceGroup : public ResourceGroup {
     state->length = 0;
     state->cs = -1;
     state->keep_cs = false;
-    pad_release(mosi_);
-    pad_release(miso_);
-    pad_release(clock_);
     spi_controllers.put(controller_);
   }
+
+  void adopt_pads(const PadReserver& reserver) { pads_.adopt(reserver); }
 
   // Completion dispatch: only the CURRENT transfer's callback may set the
   // done bit (a late dispatch from an aborted transfer must not wake the
@@ -203,6 +202,7 @@ class SpiResourceGroup : public ResourceGroup {
   int clock_;
   uint32_t speed_ = 0;
   uint8_t mode_ = 0;
+  Pads pads_;
 };
 
 class SpiDevice : public EventResource {
@@ -221,12 +221,10 @@ class SpiDevice : public EventResource {
     , address_bits_(address_bits) {}
 
   ~SpiDevice() override {
-    if (cs_ >= 0) {
-      pad_set(cs_, 1);  // Deselect before letting go of the pad.
-      pad_release(cs_);
-    }
-    if (dc_ >= 0) pad_release(dc_);
+    if (cs_ >= 0) pad_set(cs_, 1);  // Deselect before letting go of the pad.
   }
+
+  void adopt_pads(const PadReserver& reserver) { pads_.adopt(reserver); }
 
   int controller() const { return group_->controller(); }
   int cs() const { return cs_; }
@@ -249,6 +247,7 @@ class SpiDevice : public EventResource {
   uint8_t mode_;
   uint8_t command_bits_;
   uint8_t address_bits_;
+  Pads pads_;
 };
 
 MODULE_IMPLEMENTATION(spi, MODULE_SPI)
@@ -265,6 +264,12 @@ PRIMITIVE(init) {
   if (event_source == null) FAIL(ALREADY_CLOSED);
   if (!spi_controllers.take(controller)) FAIL(ALREADY_IN_USE);
 
+  PadReserver pads;
+  if (!pads.take(mosi) || !pads.take(miso) || !pads.take(clock)) {
+    spi_controllers.put(controller);
+    FAIL(ALREADY_IN_USE);
+  }
+
   SpiResourceGroup* group = _new SpiResourceGroup(process, event_source,
                                                   controller,
                                                   mosi, miso, clock);
@@ -272,6 +277,8 @@ PRIMITIVE(init) {
     spi_controllers.put(controller);
     FAIL(MALLOC_FAILED);
   }
+  group->adopt_pads(pads);
+  pads.keep();
 
   // Route the three bus pads to the controller (ALT1; input buffer for
   // MISO so reads see the wire).
@@ -310,10 +317,15 @@ PRIMITIVE(device) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
+  PadReserver pads;
+  if (!pads.take(cs) || !pads.take(dc)) FAIL(ALREADY_IN_USE);
+
   SpiDevice* device = _new SpiDevice(
       group, cs, dc, frequency, (uint8_t)mode,
       (uint8_t)command_bits, (uint8_t)address_bits);
   if (device == null) FAIL(MALLOC_FAILED);
+  device->adopt_pads(pads);
+  pads.keep();
 
   if (cs >= 0) {
     bool configured = pad_output(cs, 1);

@@ -24,7 +24,6 @@
 // redirect is moved behind a build flag, this will be the preferred pin
 // preset for general use.
 
-import gpio
 import uart
 
 DURATION-S ::= 20
@@ -57,8 +56,8 @@ main args:
     throw "INVALID_PRESET"
 
   print "Opening $preset.name: TX=$preset.tx RX=$preset.rx baud=$baud-rate"
-  tx := gpio.Pin preset.tx
-  rx := gpio.Pin preset.rx
+  tx := preset.tx
+  rx := preset.rx
   port := uart.Port --tx=tx --rx=rx --baud-rate=baud-rate
   try:
     port.out.write "EC618 UART test: preset=$preset.name baud=$baud-rate\n"
@@ -80,5 +79,3 @@ main args:
     print "Done. bytes-received=$byte-count"
   finally:
     port.close
-    tx.close
-    rx.close

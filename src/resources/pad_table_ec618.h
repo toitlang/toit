@@ -64,6 +64,60 @@ void pad_aon_power_release();
 // Whether another physical PAD maps to the same GPIO controller bit.
 bool pad_gpio_is_shared(int pad);
 
+// Reserves a physical PAD for a native peripheral. EC618 peripheral
+// primitives receive PAD numbers directly and own the reservation until the
+// resource is closed.
+bool pad_pool_take(int pad);
+
+// Resets a PAD to its disconnected state and returns its reservation.
+void pad_pool_put(int pad);
+
+// Returns PAD reservations for every set bit. PAD indices are 1..48 and fit
+// in a single mask.
+static inline void pad_pool_put_mask(uint64_t mask) {
+  for (int pad = 0; mask != 0; pad++, mask >>= 1) {
+    if (mask & 1) pad_pool_put(pad);
+  }
+}
+
+// Accumulates PAD reservations while a peripheral is being constructed. Any
+// reservation made before an error is returned automatically unless keep is
+// called after ownership has been transferred to the resource.
+class PadReserver {
+ public:
+  ~PadReserver() { pad_pool_put_mask(owned_); }
+
+  bool take(int pad) {
+    if (pad < 0) return true;
+    ASSERT(0 < pad && pad <= kMaxPadIndex);
+    if (!pad_pool_take(pad)) return false;
+    owned_ |= uint64_t(1) << pad;
+    return true;
+  }
+
+  void keep() { owned_ = 0; }
+  uint64_t mask() const { return owned_; }
+
+ private:
+  uint64_t owned_ = 0;
+};
+
+// Holds the PADs owned by a native resource and releases them on close.
+class Pads {
+ public:
+  ~Pads() { release(); }
+
+  void adopt(const PadReserver& reserver) { mask_ = reserver.mask(); }
+
+  void release() {
+    pad_pool_put_mask(mask_);
+    mask_ = 0;
+  }
+
+ private:
+  uint64_t mask_ = 0;
+};
+
 // Holds the global pad/GPIO ownership lock while a peripheral temporarily
 // accesses one or two pads through their GPIO controller bits. `available`
 // is true only when every requested bit is currently unowned; a competing
@@ -105,11 +159,12 @@ int uart_pad(int uart_id, UartRole role, int mapping, int* out_mux);
 // Peripheral-only pads keep their mux; an idle peripheral doesn't drive, so
 // dropping the pulls releases them.
 //
-// Every driver that muxed a pad calls this when the owning resource goes
-// away — INCLUDING the forced teardown of a killed container. The contract
-// is "a closed pad is high-Z": a container can never leave a wire driven.
-// (Implemented in gpio_ec618.cc, which has the SDK GPIO includes.)
-void pad_release(int pad);
+// Native resources normally use pad_pool_put, which performs this reset while
+// returning the reservation. Drivers call pad_reset directly only to undo
+// incidental SDK muxing of a PAD they do not own. The contract is "a closed
+// pad is high-Z": a container can never leave a wire driven. (Implemented in
+// gpio_ec618.cc, which has the SDK GPIO includes.)
+void pad_reset(int pad);
 
 // Emergency marker: mux the pad to GPIO and drive it HIGH, from any
 // context (fatal paths). Used as a scope trigger when diagnosing

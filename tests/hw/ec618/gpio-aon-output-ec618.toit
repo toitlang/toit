@@ -65,8 +65,8 @@ main:
   power.set 1
   sleep --ms=500  // Rail charge + sensor startup (~2 ms, generously).
   bus := i2c.Bus
-      --sda=(Ec618.pad wiring.EC618-I2C1-SDA-PAD)
-      --scl=(Ec618.pad wiring.EC618-I2C1-SCL-PAD)
+      --sda=wiring.EC618-I2C1-SDA-PAD
+      --scl=wiring.EC618-I2C1-SCL-PAD
 
   2.repeat: | round/int |
     if round > 0:

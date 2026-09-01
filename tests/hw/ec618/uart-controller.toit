@@ -10,7 +10,6 @@
 // GPIO10 (RX from EC618, TX on ESP32); an optional third argument selects
 // the baud. Default baud is 115200.
 
-import gpio
 import io
 import uart
 
@@ -32,8 +31,8 @@ main args:
   baud-rate := args.size >= 3 ? int.parse args[2] : 115200
 
   print "Controller: ESP32 RX=$rx-num TX=$tx-num baud=$baud-rate"
-  rx := gpio.Pin rx-num
-  tx := gpio.Pin tx-num
+  rx := rx-num
+  tx := tx-num
   port := uart.Port --tx=tx --rx=rx --baud-rate=baud-rate
 
   failures := 0
@@ -56,8 +55,6 @@ main args:
       exit 1
   finally:
     port.close
-    rx.close
-    tx.close
 
 read-line reader/io.Reader -> string:
   bytes := #[]

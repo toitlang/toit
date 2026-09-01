@@ -18,8 +18,8 @@ This test needs no slave. Internal pull-ups keep the empty buses idle-high.
 
 open-alternate-i2c0 -> i2c.Bus:
   return i2c.Bus
-      --sda=(Ec618.pad 27)
-      --scl=(Ec618.pad 28)
+      --sda=27
+      --scl=28
       --frequency=100_000
       --pull-up
 
@@ -31,21 +31,15 @@ main args:
 
   bus := Ec618.i2c0 --pull-up
 
-  alternate-sda := Ec618.pad 27
-  alternate-scl := Ec618.pad 28
-  try:
-    // The alternate pads still route to I2C0. Constructing the bus directly
-    // proves that controller ownership is independent of the convenience
-    // route and its particular pins.
-    expect-throw "ALREADY_IN_USE":
-      i2c.Bus
-          --sda=alternate-sda
-          --scl=alternate-scl
-          --frequency=100_000
-          --pull-up
-  finally:
-    alternate-sda.close
-    alternate-scl.close
+  // The alternate pads still route to I2C0. Constructing the bus directly
+  // proves that controller ownership is independent of the convenience
+  // route and its particular pads.
+  expect-throw "ALREADY_IN_USE":
+    i2c.Bus
+        --sda=27
+        --scl=28
+        --frequency=100_000
+        --pull-up
 
   expect-throw "INVALID_ARGUMENT":
     bus.device 0x40 --frequency=49_000

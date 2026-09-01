@@ -141,7 +141,8 @@ disable-wakeup-input input/WakeupInput -> none:
 /**
 Configures an AON wakeup pad as a deep-sleep wake source.
 
-The $pin must identify one of the three ordinary GPIO wake pads:
+The $pad must be the physical PAD number of one of the three ordinary GPIO
+  wake pads:
 
 - PAD40 / `Ec618.gpio 20` / wakeup input 3.
 - PAD41 / `Ec618.gpio 21` / wakeup input 4.
@@ -156,12 +157,12 @@ The configuration only takes effect at the next $deep-sleep: an edge of
   reports $WAKEUP-PAD on the boot it causes. $pull-up / $pull-down
   select the pad's internal pull while asleep.
 */
-configure-wakeup-pad pin/Pin
+configure-wakeup-pad pad/int
     --pos-edge/bool=false
     --neg-edge/bool=false
     --pull-up/bool=false
     --pull-down/bool=false -> none:
-  input := wakeup-input-for-pad_ pin.num
+  input := wakeup-input-for-pad_ pad
   configure-wakeup-input input
       --pos-edge=pos-edge
       --neg-edge=neg-edge
@@ -169,12 +170,12 @@ configure-wakeup-pad pin/Pin
       --pull-down=pull-down
 
 /**
-Disables $pin as a deep-sleep wake source.
+Disables $pad as a deep-sleep wake source.
 
 The supported pins are the same as for $configure-wakeup-pad.
 */
-disable-wakeup-pad pin/Pin -> none:
-  disable-wakeup-input (wakeup-input-for-pad_ pin.num)
+disable-wakeup-pad pad/int -> none:
+  disable-wakeup-input (wakeup-input-for-pad_ pad)
 
 /**
 Returns the flashed base's identity ("base-v<N>+<fingerprint>"), or
@@ -453,7 +454,7 @@ class Ec618:
       --stop-bits/uart.StopBits=uart.Port.STOP-BITS-1
       --parity/int=uart.Port.PARITY-DISABLED
       --mode/int=uart.Port.MODE-UART
-      --rs485-de/Pin?=null
+      --rs485-de/int?=null
       --large-buffers/bool?=null:
     return open-uart_
         --uart-id=0
@@ -495,7 +496,7 @@ class Ec618:
       --stop-bits/uart.StopBits=uart.Port.STOP-BITS-1
       --parity/int=uart.Port.PARITY-DISABLED
       --mode/int=uart.Port.MODE-UART
-      --rs485-de/Pin?=null
+      --rs485-de/int?=null
       --large-buffers/bool?=null:
     return open-uart_
         --uart-id=1
@@ -524,9 +525,8 @@ class Ec618:
     RS485 direction (DE) pin: the driver raises it just before a
     transmission starts and drops it once the last bit has left the shift
     register. Unlike the fixed RTS/CTS routings, ANY GPIO-capable pad can
-    serve as DE (it is driven as a plain GPIO), so it is passed as a $Pin
-    (use $Ec618.gpio or $Ec618.pad). Required in RS485 mode; rejected
-    otherwise.
+    serve as DE (it is driven as a plain GPIO), so it is passed as a physical
+    PAD number. Required in RS485 mode; rejected otherwise.
   */
   static uart2 -> uart.Port
       --mapping/int=0
@@ -537,7 +537,7 @@ class Ec618:
       --stop-bits/uart.StopBits=uart.Port.STOP-BITS-1
       --parity/int=uart.Port.PARITY-DISABLED
       --mode/int=uart.Port.MODE-UART
-      --rs485-de/Pin?=null
+      --rs485-de/int?=null
       --large-buffers/bool?=null:
     return open-uart_
         --uart-id=2
@@ -569,7 +569,9 @@ class Ec618:
     or more use that ceiling.
   */
   static i2c0 --frequency/int=100_000 --pull-up/bool=false -> i2c.Bus:
-    return open-i2c_ 14 13 --frequency=frequency --pull-up=pull-up
+    return i2c.Bus --sda=14 --scl=13
+        --frequency=frequency
+        --pull-up=pull-up
 
   /**
   Opens the I2C1 bus.
@@ -584,7 +586,9 @@ class Ec618:
     or more use that ceiling.
   */
   static i2c1 --frequency/int=100_000 --pull-up/bool=false -> i2c.Bus:
-    return open-i2c_ 23 24 --frequency=frequency --pull-up=pull-up
+    return i2c.Bus --sda=23 --scl=24
+        --frequency=frequency
+        --pull-up=pull-up
 
   /**
   Opens the SPI0 bus (master).
@@ -594,7 +598,7 @@ class Ec618:
     (see $spi.Bus.device).
   */
   static spi0 -> spi.Bus:
-    return open-spi_ 24 25 26
+    return spi.Bus --mosi=24 --miso=25 --clock=26
 
   /**
   Opens the SPI1 bus (master).
@@ -603,42 +607,7 @@ class Ec618:
     unusable while UART0 is the console. Accepted but untested.
   */
   static spi1 -> spi.Bus:
-    return open-spi_ 28 29 30
-
-  // TODO: Remove these carrier-Pin helpers after rebasing onto the common
-  // integer-pin peripheral API. Native resources must then own their pads.
-  static open-i2c_ sda-pad/int scl-pad/int
-      --frequency/int
-      --pull-up/bool
-      -> i2c.Bus:
-    sda := pad sda-pad
-    handed-off := false
-    try:
-      scl := pad scl-pad
-      try:
-        bus := Ec618I2cBus_ sda scl
-            --frequency=frequency
-            --pull-up=pull-up
-        handed-off = true
-        return bus
-      finally:
-        if not handed-off: scl.close
-    finally:
-      if not handed-off: sda.close
-
-  static open-spi_ mosi-pad/int miso-pad/int clock-pad/int -> spi.Bus:
-    pins := []
-    handed-off := false
-    try:
-      mosi := owned-pin_ mosi-pad pins
-      miso := owned-pin_ miso-pad pins
-      clock := owned-pin_ clock-pad pins
-      bus := Ec618SpiBus_ mosi miso clock pins
-      handed-off = true
-      return bus
-    finally:
-      if not handed-off:
-        pins.do: it.close
+    return spi.Bus --mosi=28 --miso=29 --clock=30
 
   static open-uart_ -> uart.Port
       --uart-id/int
@@ -652,7 +621,7 @@ class Ec618:
       --stop-bits/uart.StopBits
       --parity/int
       --mode/int
-      --rs485-de/Pin?
+      --rs485-de/int?
       --large-buffers/bool?:
     if not 0 <= uart-id <= 2: throw "INVALID_ARGUMENT"
     if not 0 <= mapping < UART-MAPPINGS-PER-CONTROLLER_:
@@ -676,36 +645,24 @@ class Ec618:
     if rts-enabled and rts-pad < 0: throw "INVALID_ARGUMENT"
     if cts-enabled and cts-pad < 0: throw "INVALID_ARGUMENT"
 
-    owned-pins := []
-    handed-off := false
-    try:
-      tx/Pin? := tx-disabled ? null : (owned-pin_ tx-pad owned-pins)
-      rx/Pin? := rx-disabled ? null : (owned-pin_ rx-pad owned-pins)
-      // In RS485 mode the generic uart API carries the direction pin in the
-      // rts slot (the driver takes it out of flow-control matching). It was
-      // supplied by the caller, so it remains caller-owned.
-      rts/Pin? := rs485
-          ? rs485-de
-          : (rts-enabled ? (owned-pin_ rts-pad owned-pins) : null)
-      cts/Pin? := cts-enabled ? (owned-pin_ cts-pad owned-pins) : null
+    tx/int? := tx-disabled ? null : tx-pad
+    rx/int? := rx-disabled ? null : rx-pad
+    // In RS485 mode the generic UART API carries the direction pad in the RTS
+    // slot; the native EC618 resource owns it just like every other UART pad.
+    rts/int? := rs485 ? rs485-de : (rts-enabled ? rts-pad : null)
+    cts/int? := cts-enabled ? cts-pad : null
 
-      port := Ec618UartPort_ tx rx rts cts owned-pins
-          --large-buffers=large-buffers
-          --baud-rate=baud-rate
-          --data-bits=data-bits
-          --stop-bits=stop-bits
-          --parity=parity
-          --mode=mode
-      handed-off = true
-      return port
-    finally:
-      if not handed-off:
-        owned-pins.do: it.close
-
-  static owned-pin_ pad-number/int pins/List -> Pin:
-    pin := Pin pad-number
-    pins.add pin
-    return pin
+    return uart.Port
+        --tx=tx
+        --rx=rx
+        --rts=rts
+        --cts=cts
+        --large-buffers=large-buffers
+        --baud-rate=baud-rate
+        --data-bits=data-bits
+        --stop-bits=stop-bits
+        --parity=parity
+        --mode=mode
 
   static uart-pad_ offset/int -> int:
     value := UART-PADS_[offset]
@@ -729,67 +686,6 @@ class Ec618:
   */
   static adc1 --max-voltage/float?=null -> adc.Adc:
     return adc.Adc.channel 1 --max-voltage=max-voltage
-
-class Ec618I2cBus_ extends i2c.Bus:
-  sda_/Pin
-  scl_/Pin
-  closed_ := false
-
-  constructor .sda_ .scl_ --frequency/int --pull-up/bool:
-    super
-        --sda=sda_
-        --scl=scl_
-        --frequency=frequency
-        --pull-up=pull-up
-
-  close -> none:
-    if closed_: return
-    super
-    scl_.close
-    sda_.close
-    closed_ = true
-
-class Ec618SpiBus_ extends spi.Bus:
-  owned-pins_/List
-  closed_ := false
-
-  constructor mosi/Pin miso/Pin clock/Pin .owned-pins_:
-    super --mosi=mosi --miso=miso --clock=clock
-
-  close -> none:
-    if closed_: return
-    super
-    owned-pins_.do: it.close
-    closed_ = true
-
-class Ec618UartPort_ extends uart.Port:
-  owned-pins_/List
-  closed_ := false
-
-  constructor tx/Pin? rx/Pin? rts/Pin? cts/Pin? .owned-pins_
-      --large-buffers/bool?
-      --baud-rate/int
-      --data-bits/int
-      --stop-bits/uart.StopBits
-      --parity/int
-      --mode/int:
-    super
-        --tx=tx
-        --rx=rx
-        --rts=rts
-        --cts=cts
-        --large-buffers=large-buffers
-        --baud-rate=baud-rate
-        --data-bits=data-bits
-        --stop-bits=stop-bits
-        --parity=parity
-        --mode=mode
-
-  close -> none:
-    if closed_: return
-    super
-    owned-pins_.do: it.close
-    closed_ = true
 
 /**
 Attaches a console/control UART to the freshly staged OTA.
