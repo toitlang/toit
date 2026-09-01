@@ -98,6 +98,30 @@ class Client extends NetworkResourceProxy implements Interface udp.MulticastInte
     return udp-module.Socket this "0.0.0.0" (port ? port : 0)
 
   udp-open-multicast -> udp.MulticastSocket
+      --port/int?=null
+      --if-addr/IpAddress?=null
+      --reuse-address/bool=true
+      --reuse-port/bool=false
+      --loopback/bool=true
+      --ttl/int=1:
+    if is-closed: throw "Network closed"
+    if (proxy-mask & NetworkService.PROXY-UDP) != 0:
+      return super
+          --port=port
+          --if-addr=if-addr
+          --reuse-address=reuse-address
+          --reuse-port=reuse-port
+          --loopback=loopback
+          --ttl=ttl
+    return udp-module.Socket.multicast this
+        --port=port
+        --if-addr=if-addr
+        --reuse-address=reuse-address
+        --reuse-port=reuse-port
+        --loopback=loopback
+        --ttl=ttl
+
+  udp-open-multicast -> udp.MulticastSocket
       address/IpAddress
       port/int
       --if-addr/IpAddress?=null
@@ -115,14 +139,15 @@ class Client extends NetworkResourceProxy implements Interface udp.MulticastInte
           --reuse-port=reuse-port
           --loopback=loopback
           --ttl=ttl
-    return udp-module.Socket.multicast this
-        address
-        port
+    socket := udp-module.Socket.multicast this
+        --port=port
         --if-addr=if-addr
         --reuse-address=reuse-address
         --reuse-port=reuse-port
         --loopback=loopback
         --ttl=ttl
+    socket.multicast-add-membership address
+    return socket
 
   tcp-connect host/string port/int -> tcp.Socket:
     ips := resolve host

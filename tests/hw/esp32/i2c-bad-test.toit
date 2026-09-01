@@ -27,6 +27,7 @@ test:
       --sda=SDA-PIN
       --scl=SCL-PIN
       --frequency=100_000
+      --pull-up
 
   device := bus.device 123
 
