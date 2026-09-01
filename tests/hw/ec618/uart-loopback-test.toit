@@ -93,7 +93,7 @@ test-wait-tx-completes:
       // the hardware a few ms (3 bytes at 9600 = ~3 ms total) and check.
       sleep --ms=10
       // Drain RX so we don't leave bytes lingering for the next test.
-      _ := read-exact port.in 3
+      read-exact port.in 3
     finally:
       port.close
 

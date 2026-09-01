@@ -100,7 +100,7 @@ main:
 open-observers control-id/int -> Map:
   excluded := control-id == 1
       ? [wiring.ESP32-UART1-TX-PIN, wiring.ESP32-UART1-RX-PIN]
-      : wiring.ESP32-UART2-TX-NET-PINS + wiring.ESP32-UART2-RX-NET-PINS
+      : wiring.ESP32-EC618-PAD26-NET-PINS + wiring.ESP32-EC618-PAD25-NET-PINS
   pins := {:}
   wiring.ESP32-GPIO-OBSERVATION-PINS.do: | num/int |
     if not excluded.contains num:
