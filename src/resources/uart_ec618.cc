@@ -927,6 +927,13 @@ PRIMITIVE(create_path) {
   FAIL(UNIMPLEMENTED);
 }
 
+PRIMITIVE(create_console) {
+  // The common console constructor currently has ESP32-specific ownership
+  // and input-sharing semantics. Keep the table entry explicit until EC618
+  // can adopt its anchor-selected console without changing its boot setup.
+  FAIL(UNSUPPORTED);
+}
+
 PRIMITIVE(close) {
   ARGS(UartResourceGroup, group, UartResource, resource);
   group->unregister_resource(resource);
