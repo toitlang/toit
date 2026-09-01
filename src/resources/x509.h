@@ -18,6 +18,7 @@
 #define MBEDTLS_ALLOW_PRIVATE_ACCESS
 #include <mbedtls/x509_crt.h>
 
+#include "../top.h"
 #include "../heap.h"
 #include "../resource.h"
 #include "../sha.h"
