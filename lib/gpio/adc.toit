@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import .gpio
+import monitor
 
 /**
 Analog-to-Digital Conversion.
@@ -41,9 +42,6 @@ Pin 5 is an ADC pin of channel 2. However, the controller of ADC channel 2
 ADC1: Pins 0-6
 No ADC2.
 
-## ESP32P4
-ADC1: Pins 16-23, 49-54
-
 ## ESP32S2
 ADC1: Pins 1-10
 ADC2: Pins 11-20
@@ -61,6 +59,7 @@ class Adc:
 
   pin/any
   resource_ := ?
+  mutex_/monitor.Mutex ::= monitor.Mutex
 
   /**
   Initializes an Adc unit for the $pin.
@@ -88,23 +87,57 @@ class Adc:
     resource_ = adc-init_ resource-freeing-module_ (to-pin-num_ pin) allow-restricted (max-voltage ? max-voltage : 0.0)
 
   /**
+  Initializes an Adc unit on a dedicated analog $channel rather than a GPIO pin.
+
+  Some chips expose the ADC as fixed analog inputs addressed by channel number
+    instead of as a function on a GPIO pad, so there is no $pin (it is null).
+    The $get/$close operations are the same; only the construction differs.
+
+  # EC618
+  Channel 0 -> AIO3 and channel 1 -> AIO4 (the board's "ADC0"/"ADC1" pins). The
+    converter core measures 0..1.2 V; $max-voltage selects the smallest range
+    (up to 3.8 V) that covers it, for the best resolution. The higher ranges read
+    above 1.2 V by switching in a resistor divider *inside the chip*; $get
+    compensates for it and returns the true voltage at the pin, so callers see the
+    actual input regardless of range. Supported maxima: 1.2, 1.4, 1.6, 1.9, 2.4,
+    2.7, 3.2, 3.8 V; null uses the widest (3.8 V).
+  */
+  constructor.channel channel/int --max-voltage/float?=null:
+    pin = null
+    resource_ = adc-init_ resource-freeing-module_ channel false (max-voltage ? max-voltage : 0.0)
+
+  /**
   Measures the voltage on the pin.
   */
   get --samples=64 -> float:
+    result := 0.0
+    mutex_.do: result = get-locked_ samples
+    return result
+
+  get-locked_ samples/int -> float:
     if samples < 1: throw "OUT_OF_BOUNDS"
-    if samples <= MAX-SAMPLES-PER-CALL_: return adc-get_ resource_ samples
-    // Sample in chunks of 64, so we don't spend too much time in
-    // the primitive.
+    if samples <= MAX-SAMPLES-PER-CALL_: return get-chunk_ samples
+    // Keep each native request bounded. An asynchronous platform may return
+    // null while a conversion is pending; get-chunk_ yields before polling
+    // again, so other Toit tasks continue to run.
     full-chunk-factor := MAX-SAMPLES-PER-CALL_.to-float / samples
     result := 0.0
     sampled := 0
     while sampled < samples:
       is-full-chunk := sampled + MAX-SAMPLES-PER-CALL_ <= samples
       chunk-size := is-full-chunk ? MAX-SAMPLES-PER-CALL_ : samples - sampled
-      value := adc-get_ resource_ chunk-size
+      value := get-chunk_ chunk-size
       result += value * (is-full-chunk ? full-chunk-factor : (chunk-size.to-float / samples))
       sampled += chunk-size
     return result
+
+  get-chunk_ samples/int -> float:
+    // TODO: Signal conversion completion through a ResourceState instead of
+    // polling when the platform provides an asynchronous ADC callback.
+    while true:
+      result := adc-get_ resource_ samples
+      if result: return result
+      sleep --ms=1
 
   /**
   Measures the voltage on the pin and returns the obtained raw value.
@@ -116,16 +149,27 @@ class Adc:
   The value is not using the calibration data of the chip.
   */
   get --raw/bool -> int:
+    result := 0
+    mutex_.do: result = get-raw-locked_ raw
+    return result
+
+  get-raw-locked_ raw/bool -> int:
     if not raw: throw "INVALID_ARGUMENT"
-    return adc-get-raw_ resource_
+    // TODO: Signal conversion completion through a ResourceState instead of
+    // polling when the platform provides an asynchronous ADC callback.
+    while true:
+      result := adc-get-raw_ resource_
+      if result: return result
+      sleep --ms=1
 
   /**
   Closes the ADC unit and releases the associated resources.
   */
   close:
-    if resource_:
-      adc-close_ resource_
-      resource_ = null
+    mutex_.do:
+      if resource_:
+        adc-close_ resource_
+        resource_ = null
 
 adc-init_ group num allow-restricted max:
   #primitive.adc.init
