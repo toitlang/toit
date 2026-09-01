@@ -149,7 +149,7 @@ run invocation/cli.Invocation -> none:
                             "tools/ec618/gen-data-reloc.toit", "--",
                             "--readelf=arm-none-eabi-readelf",
                             "--elf=build/ec618/toit-slot-a.elf",
-                            "--out=src/toit_data_reloc.c", "--check"]
+                            "--out=build/ec618/generated/toit_data_reloc.c", "--check"]
     if check-error: fail "toit_data_reloc.c is STALE — regenerate (gen-data-reloc) and rebuild"
     else: ok "toit_data_reloc.c matches the slot elf"
 
