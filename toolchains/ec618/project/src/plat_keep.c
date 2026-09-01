@@ -510,6 +510,8 @@ extern void tcp_sent(void);
 extern void tcp_shutdown(void);
 extern void tcp_write(void);
 extern void tcpip_callback_with_block(void);
+extern void tcpip_timeout(void);
+extern void tcpip_untimeout(void);
 extern void trimAdcSetGolbalVar(void);
 extern void trunc(void);
 extern void tzset(void);
@@ -1008,6 +1010,8 @@ const void* const toit_plat_keep[] = {
   (const void*)&tcp_shutdown,
   (const void*)&tcp_write,
   (const void*)&tcpip_callback_with_block,
+  (const void*)&tcpip_timeout,
+  (const void*)&tcpip_untimeout,
   (const void*)&trimAdcSetGolbalVar,
   (const void*)&trunc,
   (const void*)&tzset,
