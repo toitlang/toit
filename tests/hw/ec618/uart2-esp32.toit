@@ -2,7 +2,6 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import gpio
 import uart
 
 import .wiring as wiring
@@ -30,8 +29,7 @@ WAIT ::= Duration --s=40
 main args:
   baud := args.is-empty ? DEFAULT-BAUD : int.parse args[0]
   expect := "$TOKEN $baud "
-  rx := gpio.Pin wiring.ESP32-UART2-RX-PIN
-  port := uart.Port --tx=null --rx=rx --baud-rate=baud
+  port := uart.Port --tx=null --rx=wiring.ESP32-UART2-RX-PIN --baud-rate=baud
   print "uart2-esp32: RX-only on IO$(wiring.ESP32-UART2-RX-PIN) at $baud baud, want >= $MIN-LINES lines \"$expect<n>\" (up to $(WAIT.in-s)s)"
 
   good := 0
@@ -52,7 +50,6 @@ main args:
         if buffer.size > 4096: buffer = buffer[buffer.size - 256 ..]
 
   port.close
-  rx.close
 
   if good >= MIN-LINES:
     print "uart2-esp32: PASS baud=$baud received $good cleanly-framed lines"

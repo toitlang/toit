@@ -46,8 +46,8 @@ The filter must sit between one bit time (the stop-bit high) and the 9-bit low
 
 main:
   port := uart.Port
-      --rx=(gpio.Pin wiring.ESP32-UART1-RX-PIN)
-      --tx=(gpio.Pin wiring.ESP32-UART1-TX-PIN)
+      --rx=wiring.ESP32-UART1-RX-PIN
+      --tx=wiring.ESP32-UART1-TX-PIN
       --baud-rate=115200
   print "uart2-gapfree-esp32: ready (commands IO$(wiring.ESP32-UART1-RX-PIN), watching IO$(wiring.ESP32-UART2-RX-PIN))"
 
@@ -76,11 +76,11 @@ main:
         filter-ns = int.parse parts[2]
       if window-ms == null or filter-ns == null: continue
       pin := gpio.Pin wiring.ESP32-UART2-RX-PIN --input
-      unit := pulse-counter.Unit pin --glitch-filter-ns=filter-ns
+      pin.close
+      unit := pulse-counter.Unit wiring.ESP32-UART2-RX-PIN --glitch-filter-ns=filter-ns
       sleep --ms=window-ms
       count := unit.value
       unit.close
-      pin.close
       port.out.write "G $count\n"
       print "uart2-gapfree-esp32: window $(window-ms)ms filter $(filter-ns)ns -> $count rising edges"
 

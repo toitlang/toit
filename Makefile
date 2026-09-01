@@ -535,6 +535,7 @@ download-packages-hw:
 	$$TOIT_EXE_HW pkg install --project-root tests/hw/pi
 	$$TOIT_EXE_HW pkg install --project-root tests/hw/esp32
 	$$TOIT_EXE_HW pkg install --project-root tests/hw/esp-tester
+	$$TOIT_EXE_HW pkg install --project-root tests/hw/ec618
 
 .PHONY: test-hw
 test-hw: rebuild-cmake-hw download-packages-hw

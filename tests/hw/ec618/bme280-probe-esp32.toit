@@ -29,8 +29,8 @@ main:
   sleep --ms=20  // Sensor start-up (2 ms per datasheet; generous).
 
   bus := i2c.Bus
-      --sda=(gpio.Pin wiring.ESP32-I2C1-SDA-PIN)
-      --scl=(gpio.Pin wiring.ESP32-I2C1-SCL-PIN)
+      --sda=wiring.ESP32-I2C1-SDA-PIN
+      --scl=wiring.ESP32-I2C1-SCL-PIN
   devices := bus.scan
   print "bme280-probe: scan -> $(devices.map: "0x$(%02x it)")"
 

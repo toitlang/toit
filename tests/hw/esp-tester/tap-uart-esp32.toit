@@ -14,14 +14,13 @@
 // 16 x 'P' pings -> n=16 crc=3f762b06) and check the tap reports it.
 
 import crypto.crc show Crc32
-import gpio
 import uart
 
 TAP ::= 18
 BAUD ::= 921600
 
 main:
-  port := uart.Port --rx=(gpio.Pin TAP) --tx=null --baud-rate=BAUD
+  port := uart.Port --rx=TAP --tx=null --baud-rate=BAUD
   print "tap-uart0rx: listening on IO$TAP @ $BAUD"
   burst := 0
   while true:

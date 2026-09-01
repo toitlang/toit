@@ -25,8 +25,8 @@ All assertions run on the EC618 (gpio-opendrain-ec618.toit).
 
 main:
   port := uart.Port
-      --rx=(gpio.Pin wiring.ESP32-UART2-RX-PIN)
-      --tx=(gpio.Pin wiring.ESP32-UART2-TX-PIN)
+      --rx=wiring.ESP32-UART2-RX-PIN
+      --tx=wiring.ESP32-UART2-TX-PIN
       --baud-rate=115200
   bus := gpio.Pin wiring.ESP32-OPEN-DRAIN-BUS-PIN --input --pull-up
   print "gpio-opendrain-esp32: ready (bus IO$(wiring.ESP32-OPEN-DRAIN-BUS-PIN))"
