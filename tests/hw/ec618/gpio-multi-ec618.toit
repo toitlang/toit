@@ -60,12 +60,10 @@ main args:
   // They must not be owned independently because their data, direction, and
   // interrupt registers are the same controller bit.
   primary := gpio.Pin 27
-  alternate := gpio.Pin 11
-  primary.configure --output
   expect-throws "ALREADY_IN_USE":
-    alternate.configure --output
+    gpio.Pin 11
   primary.close
-  alternate.configure --output
+  alternate := gpio.Pin 11 --output
   alternate.close
 
   control-owner := rig.ec618-uart 1 CONTROL-BAUD

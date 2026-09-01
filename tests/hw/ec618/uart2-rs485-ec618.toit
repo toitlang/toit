@@ -34,7 +34,7 @@ main:
   port := Ec618.uart2
       --baud-rate=BAUDS.first
       --mode=uart.Port.MODE-RS485-HALF-DUPLEX
-      --rs485-de=(Ec618.pad wiring.EC618-UART2-DIRECTION-PAD)
+      --rs485-de=wiring.EC618-UART2-DIRECTION-PAD
 
   try:
     BAUDS.do: | baud/int |

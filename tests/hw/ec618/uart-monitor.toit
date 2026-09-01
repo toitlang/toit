@@ -17,7 +17,6 @@
 //
 // A keepalive print every $ALIVE-MS makes silent phases visible.
 
-import gpio
 import monitor
 import uart
 
@@ -35,7 +34,7 @@ main args:
   baud-rate := args.size >= 2 ? int.parse args[1] : 115200
 
   print "Listening on RX=$rx-num at $baud-rate baud (Ctrl-C to stop)"
-  rx := gpio.Pin rx-num
+  rx := rx-num
   port := uart.Port --tx=null --rx=rx --baud-rate=baud-rate
 
   total-bytes := 0
@@ -73,7 +72,6 @@ main args:
         buffer = #[]
   finally:
     port.close
-    rx.close
 
 emit-line bytes/ByteArray:
   // EC618 phase markers are pure ASCII. The byte-range phase emits the

@@ -2,7 +2,6 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import gpio show Pin
 import uart
 
 /**
@@ -31,9 +30,9 @@ stop-bits-of code/int -> uart.StopBits:
   return uart.Port.STOP-BITS-1
 
 main:
-  control-tx := Pin 34
-  test-tx := Pin 26
-  test-rx := Pin 25
+  control-tx := 34
+  test-tx := 26
+  test-rx := 25
   control := uart.Port --tx=control-tx --rx=null --baud-rate=CONTROL-BAUD
   // A fresh UART1 open can emit a glitch byte that garbles the first line on
   // the wire; terminate any such garbage with a newline (the helper discards
@@ -144,10 +143,6 @@ main:
 
   control.out.write "Q\n"
   control.close
-  test-rx.close
-  test-tx.close
-  control-tx.close
-
   if not failures.is-empty:
     print "uart2-config-ec618: FAIL $failures"
     throw "UART2 config matrix failed: $failures"

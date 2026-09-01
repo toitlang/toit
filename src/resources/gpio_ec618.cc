@@ -81,24 +81,17 @@ static void apply_pull(int pad, bool pull_up, bool pull_down) {
 class GpioResource : public EventResource {
  public:
   TAG(GpioResource);
-  // gpio_bit is -1 for pads with no GPIO function: such a Pin is a pure
-  // carrier (it hands the pad number to a peripheral, e.g. the UART0
-  // console pads 29/30); reads/writes/interrupts reject it.
   GpioResource(ResourceGroup* group, int pad, int gpio_bit)
-    : EventResource(group, gpio_bit >= 0 ? Event::gpio_type(gpio_bit)
-                                         : Event::none_type())
+    : EventResource(group, Event::gpio_type(gpio_bit))
     , pad_(pad)
     , gpio_bit_(gpio_bit) {}
 
   int pad() const { return pad_; }
   int gpio_bit() const { return gpio_bit_; }
-  bool owns_gpio_bit() const { return owns_gpio_bit_; }
-  void set_owns_gpio_bit(bool value) { owns_gpio_bit_ = value; }
 
  private:
   int pad_;
   int gpio_bit_;
-  bool owns_gpio_bit_ = false;
 };
 
 // Matches GPIO-STATE-EDGE-TRIGGERED_ in lib/gpio/gpio.toit.
@@ -159,12 +152,10 @@ static void gpio_isr_handler() {
 // is pad-level state, because `set` only receives the pad number.
 static uint64_t open_drain_pads = 0;
 
-// A physical PAD is reserved as soon as its gpio.Pin exists. A GPIO controller
-// bit is reserved only when that pin is configured as GPIO: sibling pads may
-// legitimately coexist while muxed to different peripherals (for example,
-// I2C0 on PAD14 and UART0 on PAD30 share GPIO15 but do not use its GPIO
-// registers). If both siblings are configured as GPIO, however, their shared
-// direction/data/interrupt registers require one owner.
+// A gpio.Pin reserves both its physical PAD and GPIO controller bit. Native
+// peripherals reserve only their PADs, so sibling PADs that share a controller
+// bit may still serve different peripherals. Two GPIO pins can never alias the
+// same direction/data/interrupt registers.
 static_assert(kMaxPadIndex == 48, "update the EC618 pad resource pool");
 static ResourcePool<int, -1> pads(
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
@@ -180,27 +171,8 @@ static ResourcePool<int, -1> gpio_bits(
 static bool gpio_aon_powered[kMaxPadIndex + 1] = {};
 static int aon_power_users = 0;
 
-static bool reserve_pad(int pad) {
+bool pad_pool_take(int pad) {
   return pads.take(pad);
-}
-
-static bool claim_gpio_bit(GpioResource* resource) {
-  Locker locker(OS::global_mutex());
-  if (resource->owns_gpio_bit()) return true;
-  if (!gpio_bits.take(locker, resource->gpio_bit())) return false;
-  resource->set_owns_gpio_bit(true);
-  return true;
-}
-
-static bool gpio_owned_by_other_pad_locked(const Locker& locker,
-                                           GpioResource* resource) {
-  return !resource->owns_gpio_bit() &&
-      gpio_bits.is_taken(locker, resource->gpio_bit());
-}
-
-static bool gpio_owned_by_other_pad(GpioResource* resource) {
-  Locker locker(OS::global_mutex());
-  return gpio_owned_by_other_pad_locked(locker, resource);
 }
 
 PadGpioLock::PadGpioLock(int first_pad, int second_pad)
@@ -302,14 +274,14 @@ static void gpio_aon_power_release(int pad) {
 // See pad_table_ec618.h. Lives here because this is the file with the SDK
 // GPIO includes; all pad-muxing drivers (GPIO, I2C, SPI, PWM) share it.
 static void pad_release_locked(const Locker& locker, int pad,
-                               bool owns_gpio_bit) {
+                               bool reset_gpio_bit) {
   // Keep both ownership pools stable until every controller-register and mux
   // transition is complete. Otherwise a sibling could claim the shared GPIO
   // bit after the owner check but before this cleanup made the bit an input.
   int gpio_bit = pad_to_gpio(pad);
   if (gpio_bit >= 0) {
     // Do not disturb a sibling that currently owns the shared GPIO bit.
-    if (owns_gpio_bit || !gpio_bits.is_taken(locker, gpio_bit)) {
+    if (reset_gpio_bit || !gpio_bits.is_taken(locker, gpio_bit)) {
       GPIO_interruptConfig(to_port(gpio_bit), to_pin_index(gpio_bit),
                            GPIO_INTERRUPT_DISABLED);
       GpioPinConfig_t config;
@@ -330,9 +302,15 @@ static void pad_release_locked(const Locker& locker, int pad,
   if (pad_is_wakeup(pad)) wakeup_pad_set(pad, true, true, false);
 }
 
-void pad_release(int pad) {
+void pad_reset(int pad) {
   Locker locker(OS::global_mutex());
   pad_release_locked(locker, pad, false);
+}
+
+void pad_pool_put(int pad) {
+  Locker locker(OS::global_mutex());
+  pad_release_locked(locker, pad, false);
+  pads.put(locker, pad);
 }
 
 void pad_emergency_high(int pad) {
@@ -350,12 +328,9 @@ void GpioResourceGroup::on_unregister_resource(Resource* r) {
   GpioResource* resource = static_cast<GpioResource*>(r);
   Locker locker(OS::global_mutex());
   open_drain_pads &= ~(1ULL << resource->pad());
-  pad_release_locked(locker, resource->pad(), resource->owns_gpio_bit());
+  pad_release_locked(locker, resource->pad(), true);
   gpio_aon_power_release(resource->pad());
-  if (resource->owns_gpio_bit()) {
-    gpio_bits.put(locker, resource->gpio_bit());
-    resource->set_owns_gpio_bit(false);
-  }
+  gpio_bits.put(locker, resource->gpio_bit());
   pads.put(locker, resource->pad());
 }
 
@@ -393,15 +368,24 @@ PRIMITIVE(use) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   if (pad <= 0 || pad > kMaxPadIndex) FAIL(OUT_OF_RANGE);
-  // Pads without a GPIO function are still legal Pins: peripheral drivers
-  // take Pin arguments, and the pad number is all they need. gpio_bit stays
-  // -1; config/get/set reject it.
   int gpio_bit = pad_to_gpio(pad);
-  if (!reserve_pad(pad)) FAIL(ALREADY_IN_USE);
+  if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
+  {
+    // A GPIO pin owns both namespaces or neither. In particular, a sibling
+    // PAD cannot claim the same controller bit between the two reservations.
+    Locker locker(OS::global_mutex());
+    if (!pads.take(locker, pad)) FAIL(ALREADY_IN_USE);
+    if (!gpio_bits.take(locker, gpio_bit)) {
+      pads.put(locker, pad);
+      FAIL(ALREADY_IN_USE);
+    }
+  }
 
   GpioResource* resource = _new GpioResource(group, pad, gpio_bit);
   if (resource == null) {
-    pads.put(pad);
+    Locker locker(OS::global_mutex());
+    gpio_bits.put(locker, gpio_bit);
+    pads.put(locker, pad);
     FAIL(MALLOC_FAILED);
   }
 
@@ -425,10 +409,8 @@ PRIMITIVE(config) {
 
   int pad = resource->pad();
   int gpio_bit = resource->gpio_bit();
-  if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
   if (pull_up && pull_down) FAIL(INVALID_ARGUMENT);
   if (value < -1 || value > 1) FAIL(INVALID_ARGUMENT);
-  if (!claim_gpio_bit(resource)) FAIL(ALREADY_IN_USE);
 
   // AON-domain pads sit behind the AON IO LDO. Wake-only pins don't need
   // this rail, so acquire it when the pin is first configured as GPIO.
@@ -472,8 +454,6 @@ PRIMITIVE(config) {
 PRIMITIVE(get) {
   ARGS(GpioResource, resource);
   int gpio_bit = resource->gpio_bit();
-  if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
-  if (gpio_owned_by_other_pad(resource)) FAIL(ALREADY_IN_USE);
   return Smi::from(GPIO_pinRead(to_port(gpio_bit), to_pin_index(gpio_bit)) ? 1 : 0);
 }
 
@@ -481,9 +461,7 @@ PRIMITIVE(set) {
   ARGS(GpioResource, resource, int, value);
   int pad = resource->pad();
   int gpio_bit = resource->gpio_bit();
-  if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
   if (value != 0 && value != 1) FAIL(INVALID_ARGUMENT);
-  if (!claim_gpio_bit(resource)) FAIL(ALREADY_IN_USE);
   if (is_open_drain(pad)) {
     apply_open_drain_level(gpio_bit, value);
   } else {
@@ -496,9 +474,7 @@ PRIMITIVE(set) {
 PRIMITIVE(config_interrupt) {
   ARGS(GpioResource, resource, bool, enable, int, value);
   int gpio_bit = resource->gpio_bit();
-  if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
   if (value != 0 && value != 1) FAIL(INVALID_ARGUMENT);
-  if (!claim_gpio_bit(resource)) FAIL(ALREADY_IN_USE);
   // Capture the trigger sequence before arming: an interrupt firing
   // between the arming and the return then still reads as "after".
   uint32_t seq = edge_sequence;
@@ -515,8 +491,6 @@ PRIMITIVE(config_interrupt) {
 
 PRIMITIVE(last_edge_trigger_timestamp) {
   ARGS(GpioResource, resource);
-  if (resource->gpio_bit() < 0) FAIL(INVALID_ARGUMENT);
-  if (gpio_owned_by_other_pad(resource)) FAIL(ALREADY_IN_USE);
   return Smi::from(last_edge_seq[resource->gpio_bit()] & 0x3FFFFFFF);
 }
 
@@ -524,8 +498,6 @@ PRIMITIVE(set_open_drain) {
   ARGS(GpioResource, resource, bool, value);
   int pad = resource->pad();
   int gpio_bit = resource->gpio_bit();
-  if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
-  if (!claim_gpio_bit(resource)) FAIL(ALREADY_IN_USE);
   if (value == is_open_drain(pad)) return process->null_object();
   if (value) {
     // Carry the pin's current line level into the emulation (the input
@@ -551,8 +523,6 @@ PRIMITIVE(set_pull) {
   ARGS(GpioResource, resource, int, value);
   // value: 1 pull-up, -1 pull-down, 0 none.
   int pad = resource->pad();
-  int gpio_bit = resource->gpio_bit();
-  if (gpio_bit < 0) FAIL(INVALID_ARGUMENT);
   if (value < -1 || value > 1) FAIL(INVALID_ARGUMENT);
   apply_pull(pad, value > 0, value < 0);
   return process->null_object();

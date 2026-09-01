@@ -2,7 +2,6 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ec618 show Ec618
 import gpio
 import spi
 
@@ -35,14 +34,13 @@ POWER-DOWN-BIT ::= 0b0001_0000
 failures := []
 
 main args:
-  mosi := Ec618.pad wiring.EC618-SPI0-MOSI-PAD
-  miso := Ec618.pad wiring.EC618-SPI0-MISO-PAD
-  clock := Ec618.pad wiring.EC618-SPI0-CLK-PAD
+  mosi := wiring.EC618-SPI0-MOSI-PAD
+  miso := wiring.EC618-SPI0-MISO-PAD
+  clock := wiring.EC618-SPI0-CLK-PAD
   bus := spi.Bus --mosi=mosi --miso=miso --clock=clock
 
-  // Reuse the exact same Pin objects so the GPIO pad pool cannot be what
-  // rejects this second bus. The SPI controller itself must be exclusive
-  // across containers, and both explicit and forced teardown must return it.
+  // The first bus owns its PADs and controller. Both explicit and forced
+  // teardown must return those reservations.
   duplicate/spi.Bus? := null
   duplicate-error := catch:
     duplicate = spi.Bus --mosi=mosi --miso=miso --clock=clock
@@ -60,7 +58,7 @@ main args:
   rst := gpio.Pin wiring.EC618-RC522-RST-PAD --output --value=1
   sleep --ms=50  // Crystal start-up out of hard power-down.
 
-  cs := Ec618.pad wiring.EC618-SPI0-CS-PAD
+  cs := wiring.EC618-SPI0-CS-PAD
   device := bus.device --cs=cs --frequency=1_000_000
 
   version := rc522.read-reg device rc522.REG-VERSION
@@ -176,7 +174,6 @@ main args:
   check (invalid-prefix-error == "INVALID_ARGUMENT") "unaligned-prefix-rejected"
 
   bus.close
-  cs.close
   rst.set 0  // Hard power-down: quiet pins for the shared nets.
   rst.close
 

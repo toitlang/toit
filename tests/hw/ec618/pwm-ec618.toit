@@ -39,30 +39,27 @@ failures := []
 main args:
   if not args.is-empty and args[0] == "leak":
     leaked := Pwm --frequency=1000
-    // TODO: After the integer-GPIO rebase, the native PWM resource must own
-    // the pad lease. Until then, keep the carrier Pin alive in the test.
-    leaked-pin := Ec618.pad wiring.EC618-TIMER4-PAD
-    leaked-channel := leaked.start leaked-pin --duty-factor=0.5
-    print "pwm-ec618: leaving TIMER4/PAD$(leaked-pin.num) active for container-teardown coverage ($leaked-channel)"
+    leaked-channel := leaked.start wiring.EC618-TIMER4-PAD --duty-factor=0.5
+    print "pwm-ec618: leaving TIMER4/PAD$(wiring.EC618-TIMER4-PAD) active for container-teardown coverage ($leaked-channel)"
     return
 
   control := Ec618.uart2 --baud-rate=115200
-  timer4-pin := Ec618.pad wiring.EC618-TIMER4-PAD
-  timer0-pin := Ec618.pad wiring.EC618-TIMER0-PAD
+  timer4-pad := wiring.EC618-TIMER4-PAD
+  timer0-pad := wiring.EC618-TIMER0-PAD
 
   // Phase 1: forced teardown from a preceding leak run left the output
   // released and returned both the pad and TIMER4, so they can be acquired
   // immediately.
   expect-level control wiring.ESP32-TIMER4-PIN 0 "initially-silent"
   generator := Pwm --frequency=1000
-  channel := generator.start timer4-pin --duty-factor=0.5
+  channel := generator.start timer4-pad --duty-factor=0.5
   expect-hz control wiring.ESP32-TIMER4-PIN 1000 "1kHz"
   channel.close
   generator.close
 
   // Phase 2: duty factors at 10 Hz (slow enough for polled sampling).
   generator = Pwm --frequency=10
-  channel = generator.start timer4-pin --duty-factor=0.25
+  channel = generator.start timer4-pad --duty-factor=0.25
   expect-duty control wiring.ESP32-TIMER4-PIN 250 "duty-0.25"
   channel.set-duty-factor 0.5
   expect-duty control wiring.ESP32-TIMER4-PIN 500 "duty-0.50"
@@ -81,7 +78,7 @@ main args:
   // Phase 3: an armed low-to-high transition proves that 100% becomes
   // truly static. The former notched output would keep the RMT capture busy.
   generator = Pwm --frequency=10_000
-  channel = generator.start timer4-pin --duty-factor=0.0
+  channel = generator.start timer4-pad --duty-factor=0.0
   expect-nonstatic-rmt
       control
       channel
@@ -100,7 +97,7 @@ main args:
 
   // Phase 4: live frequency change on the generator.
   generator = Pwm --frequency=1000 --max-frequency=8000
-  channel = generator.start timer4-pin --duty-factor=0.5
+  channel = generator.start timer4-pad --duty-factor=0.5
   generator.frequency = 2000
   if generator.frequency != 2000: failures.add "frequency-readback"
   expect-hz control wiring.ESP32-TIMER4-PIN 2000 "2kHz"
@@ -109,8 +106,8 @@ main args:
 
   // Phase 5: two channels (two timers) from one generator.
   generator = Pwm --frequency=1000
-  channel = generator.start timer4-pin --duty-factor=0.5
-  channel16 := generator.start timer0-pin --duty-factor=0.5
+  channel = generator.start timer4-pad --duty-factor=0.5
+  channel16 := generator.start timer0-pad --duty-factor=0.5
   expect-hz control wiring.ESP32-TIMER4-PIN 1000 "two-ch-pad33"
   expect-hz control wiring.ESP32-TIMER0-PIN 1000 "two-ch-pad16"
   channel.close
@@ -121,9 +118,6 @@ main args:
 
   control.out.write "Q\n"
   control.close
-  timer4-pin.close
-  timer0-pin.close
-
   if not failures.is-empty:
     print "pwm-ec618: FAIL $failures"
     throw "PWM test failed: $failures"

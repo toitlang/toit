@@ -766,13 +766,10 @@ class I2cBusResource : public EventResource {
     }
     state->initialized = false;
     state->current_hz = 0;
-    // Hand the pads back disconnected (this also drops the pull-ups the
-    // bus may have enabled) — a container must leave the wires the way it
-    // found them, even when it is killed without closing the bus.
-    pad_release(sda_);
-    pad_release(scl_);
     release_controller(controller_);
   }
+
+  void adopt_pads(const PadReserver& reserver) { pads_.adopt(reserver); }
 
   int controller() const { return controller_; }
   I2cState* state() const { return &i2c_states[controller_]; }
@@ -818,6 +815,9 @@ class I2cBusResource : public EventResource {
   int sda_;
   int scl_;
   int device_count_;
+  // The destructor body tears down the hardware before this member resets and
+  // returns the PADs, including on forced container teardown.
+  Pads pads_;
 };
 
 class I2cDeviceResource : public EventResource {
@@ -943,6 +943,9 @@ PRIMITIVE(bus_create) {
   int controller = pads_to_controller(sda, scl);
   if (controller < 0) FAIL(INVALID_ARGUMENT);
   if (!ensure_i2c_chain_task()) FAIL(MALLOC_FAILED);
+
+  PadReserver pads;
+  if (!pads.take(sda) || !pads.take(scl)) FAIL(ALREADY_IN_USE);
   if (!reserve_controller(controller)) FAIL(ALREADY_IN_USE);
 
   I2cBusResource* bus = _new I2cBusResource(group, controller, sda, scl);
@@ -950,6 +953,8 @@ PRIMITIVE(bus_create) {
     release_controller(controller);
     FAIL(MALLOC_FAILED);
   }
+  bus->adopt_pads(pads);
+  pads.keep();
   bool handed_to_proxy = false;
   Defer delete_bus { [&] { if (!handed_to_proxy) delete bus; } };
 
@@ -979,8 +984,8 @@ PRIMITIVE(bus_create) {
   // Initialize() muxed the driver's RTE pins; release them when the user
   // chose a different routing, then route the chosen pads (ALT2, input
   // buffer on).
-  if (kRteSda[controller] != sda) pad_release(kRteSda[controller]);
-  if (kRteScl[controller] != scl) pad_release(kRteScl[controller]);
+  if (kRteSda[controller] != sda) pad_reset(kRteSda[controller]);
+  if (kRteScl[controller] != scl) pad_reset(kRteScl[controller]);
   GPIO_IomuxEC618(sda, 2, 1, 1);
   GPIO_IomuxEC618(scl, 2, 1, 1);
 

@@ -21,7 +21,6 @@
 
 import ec618
 import ec618 show Ec618
-import gpio show Pin
 import uart
 
 // PAD constants used in negative tests.
@@ -53,25 +52,17 @@ main:
 
 run-tests -> none:
   test "uart-rs485-non-gpio-de-rejected":
-    tx := Pin PAD-UART2-TX
-    rx := Pin PAD-UART2-RX
-    de := Pin PAD-NOT-A-GPIO
-    try:
-      expect-throws "INVALID_ARGUMENT":
-        uart.Port
-            --tx=tx
-            --rx=rx
-            --rts=de
-            --baud-rate=115200
-            --mode=uart.Port.MODE-RS485-HALF-DUPLEX
-    finally:
-      de.close
-      rx.close
-      tx.close
+    expect-throws "INVALID_ARGUMENT":
+      uart.Port
+          --tx=PAD-UART2-TX
+          --rx=PAD-UART2-RX
+          --rts=PAD-NOT-A-GPIO
+          --baud-rate=115200
+          --mode=uart.Port.MODE-RS485-HALF-DUPLEX
 
   test "uart2-controller-pool":
-    tx := Pin PAD-UART2-TX
-    rx := Pin PAD-UART2-RX
+    tx := PAD-UART2-TX
+    rx := PAD-UART2-RX
     first/uart.Port? := null
     contender/uart.Port? := null
     reopened/uart.Port? := null
@@ -86,8 +77,6 @@ run-tests -> none:
       if reopened: reopened.close
       if contender: contender.close
       if first: first.close
-      rx.close
-      tx.close
 
   test "uart2-default-opens-cleanly":
     port := Ec618.uart2 --baud-rate=115200
@@ -118,9 +107,9 @@ run-tests -> none:
     // through `uart.Port` should fail at the primitive layer.
     expect-throws "INVALID_ARGUMENT":
       uart.Port
-          --tx=(Pin PAD-UART2-TX)
-          --rx=(Pin PAD-UART2-RX)
-          --cts=(Pin 32)  // UART1 CTS pad — not valid for UART2.
+          --tx=PAD-UART2-TX
+          --rx=PAD-UART2-RX
+          --cts=32  // UART1 CTS pad — not valid for UART2.
           --baud-rate=115200
 
   // Adapts to whichever UART carries print in this build (or skips if
@@ -178,7 +167,7 @@ run-tests -> none:
   test "uart-bad-pin-pair-rejected":
     // Two random pads that aren't a UART pair.
     expect-throws "INVALID_ARGUMENT":
-      uart.Port --tx=(Pin 13) --rx=(Pin 14) --baud-rate=115200
+      uart.Port --tx=13 --rx=14 --baud-rate=115200
 
   test "uart-no-tx-no-rx-rejected":
     expect-throws "INVALID_ARGUMENT":
@@ -187,16 +176,16 @@ run-tests -> none:
   test "uart-invert-tx-rejected":
     expect-throws "INVALID_ARGUMENT":
       uart.Port
-          --tx=(Pin PAD-UART2-TX)
-          --rx=(Pin PAD-UART2-RX)
+          --tx=PAD-UART2-TX
+          --rx=PAD-UART2-RX
           --baud-rate=115200
           --invert-tx
 
   test "uart-mode-irda-rejected":
     expect-throws "INVALID_ARGUMENT":
       uart.Port
-          --tx=(Pin PAD-UART2-TX)
-          --rx=(Pin PAD-UART2-RX)
+          --tx=PAD-UART2-TX
+          --rx=PAD-UART2-RX
           --baud-rate=115200
           --mode=uart.Port.MODE-IRDA
 
@@ -261,19 +250,17 @@ run-tests -> none:
 
   test "ec618-gpio-shared-bit-exclusive":
     // GPIO12's PAD27 and PAD11 are distinct physical resources, but share
-    // direction/data/interrupt registers. They cannot be active as GPIO at
-    // the same time.
+    // direction/data/interrupt registers. GPIO construction acquires both
+    // ownership namespaces atomically, so the alias fails immediately.
     primary := Ec618.gpio 12
-    alternate := Ec618.gpio 12 --alt
     try:
-      primary.configure --output --value=0
       expect-throws "ALREADY_IN_USE":
-        alternate.configure --output --value=0
+        Ec618.gpio 12 --alt
     finally:
       primary.close
 
     // Closing one PAD releases the shared controller for the other PAD.
-    alternate.configure --output --value=0
+    alternate := Ec618.gpio 12 --alt --output --value=0
     alternate.close
 
   test "ec618-gpio-zero":

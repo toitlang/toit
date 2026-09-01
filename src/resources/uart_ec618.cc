@@ -99,6 +99,7 @@ struct UartTransferState {
   volatile bool tx_busy;
   volatile bool tx_waiting_for_empty;
   volatile bool closing;             // Teardown waits for the final TX drain.
+  Pads pads;                          // PAD reservations owned by this port.
   // Diagnostic counters (kept cheap; exposed to debugging sessions).
   uint32_t cb_events;       // Callback invocations.
   uint32_t rearm_fails;     // Receive() re-arms that returned an error.
@@ -300,6 +301,7 @@ void UartResourceGroup::on_unregister_resource(Resource* r) {
     free(transfer->tx_bufs[0]);
     free(transfer->tx_bufs[1]);
     free(transfer->ring);
+    transfer->pads.release();
     delete transfer;
   }
   state.de_pad = -1;
@@ -335,6 +337,7 @@ static void finish_uart_close(int id, UartTransferState* transfer) {
   free(transfer->tx_bufs[0]);
   free(transfer->tx_bufs[1]);
   free(transfer->ring);
+  transfer->pads.release();
   delete transfer;
   uart_controllers.put(id);
   uart_sleep_vote(-1);
@@ -754,7 +757,7 @@ PRIMITIVE(create) {
   // Validate pad ranges up front so the rest of the code can assume they
   // either are -1 or refer to a known pad.
   auto valid_pad = [](int pad) {
-    return pad < 0 || (pad > 0 && pad <= kMaxPadIndex);
+    return pad == -1 || (pad > 0 && pad <= kMaxPadIndex);
   };
   if (!valid_pad(tx) || !valid_pad(rx) || !valid_pad(rts) || !valid_pad(cts)) {
     FAIL(INVALID_ARGUMENT);
@@ -774,6 +777,10 @@ PRIMITIVE(create) {
 
   ResolvedPreset preset = {};
   if (!resolve_preset(tx, rx, matched_rts, cts, &preset)) FAIL(INVALID_ARGUMENT);
+
+  PadReserver pads;
+  if (!pads.take(tx) || !pads.take(rx) ||
+      !pads.take(rts) || !pads.take(cts)) FAIL(ALREADY_IN_USE);
 
   int id = preset.uart_id;
 
@@ -851,6 +858,8 @@ PRIMITIVE(create) {
     transfer->tx_bufs[1] = tx_buf1;
     transfer->tx_buf_size = tx_buf_size;
     transfer->control = cmsis_control_word(data_bits, parity, stop_bits);
+    transfer->pads.adopt(pads);
+    pads.keep();
     uart_states[id].transfer = transfer;  // Set before the first event can fire.
     ARM_DRIVER_USART* driver = kDrivers[id];
     // Uninitialize first — but only if the driver is genuinely

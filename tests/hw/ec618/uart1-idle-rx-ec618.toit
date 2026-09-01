@@ -29,8 +29,8 @@ PHASE-MS ::= 30_000
 
 main:
   port := uart.Port
-      --rx=(gpio.Pin wiring.EC618-UART1-RX-PAD)
-      --tx=(gpio.Pin wiring.EC618-UART1-TX-PAD)
+      --rx=wiring.EC618-UART1-RX-PAD
+      --tx=wiring.EC618-UART1-TX-PAD
       --baud-rate=115200
   total := 0
   reader := task::

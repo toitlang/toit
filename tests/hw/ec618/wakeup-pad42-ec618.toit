@@ -35,7 +35,7 @@ main args:
   if ec618.console-uart-id == 1:
     throw "the test needs UART1 for its ESP32 control channel"
 
-  pin := ec618.Ec618.pad wiring.EC618-WAKE-PAD
+  pad := wiring.EC618-WAKE-PAD
   control-owner := rig.ec618-uart 1 CONTROL-BAUD
   control := FramedChannel control-owner.port
 
@@ -43,8 +43,8 @@ main args:
     control.send "WAKE $mode"
     control.expect "READY $mode" --timeout-ms=CONTROL-TIMEOUT-MS
 
-    ec618.configure-wakeup-pad pin --pos-edge --pull-down
-    if mode == "disabled": ec618.disable-wakeup-pad pin
+    ec618.configure-wakeup-pad pad --pos-edge --pull-down
+    if mode == "disabled": ec618.disable-wakeup-pad pad
 
     // This must be the final console line before deep sleep. The host changes
     // to the reboot baud as soon as it receives the expected-cause marker.
@@ -54,7 +54,6 @@ main args:
     control.expect "ARMED $mode" --timeout-ms=CONTROL-TIMEOUT-MS
   finally:
     control-owner.close
-    pin.close
 
   ec618.deep-sleep (Duration --s=(mode == "enabled" ? 5 : 3))
   throw "deep sleep returned"
