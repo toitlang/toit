@@ -46,7 +46,6 @@ GPIO summary:
 - Esp32: https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/gpio.html
 - Esp32c3: https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-reference/peripherals/gpio.html
 - Esp32c6: https://docs.espressif.com/projects/esp-idf/en/stable/esp32c6/api-reference/peripherals/gpio.html
-- Esp32p4: https://docs.espressif.com/projects/esp-idf/en/stable/esp32p4/api-reference/peripherals/gpio.html
 - Esp32s2: https://docs.espressif.com/projects/esp-idf/en/stable/esp32s2/api-reference/peripherals/gpio.html
 - Esp32s3: https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/peripherals/gpio.html
 */
@@ -61,11 +60,6 @@ static ResourcePool<int, -1> gpio_pins(
     20, 21
 #elif CONFIG_IDF_TARGET_ESP32C6
     20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30
-#elif CONFIG_IDF_TARGET_ESP32P4
-    20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
-    30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
-    40, 41, 42, 43, 44, 45, 46, 47, 48, 49,
-    50, 51, 52, 53, 54
 #elif CONFIG_IDF_TARGET_ESP32S3
     20, 21, 26, 27, 28, 29,
     30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
@@ -93,11 +87,6 @@ static bool is_restricted_pin(int num) {
 static bool is_restricted_pin(int num) {
   // Pins 24-30 are used for flash and PSRAM.
   return 24 <= num && num <= 30;
-}
-#elif CONFIG_IDF_TARGET_ESP32P4
-static bool is_restricted_pin(int num) {
-  // TODO(floitsch): are there restricted pins on the P4?
-  return false;
 }
 #elif CONFIG_IDF_TARGET_ESP32S3
 static bool is_restricted_pin(int num) {
@@ -312,7 +301,10 @@ PRIMITIVE(unuse) {
 }
 
 PRIMITIVE(config) {
-  ARGS(int, num, bool, pull_up, bool, pull_down, bool, input, bool, output, bool, open_drain, int, value);
+  ARGS(GpioResource, resource, bool, pull_up, bool, pull_down, bool, input,
+       bool, output, bool, open_drain, int, value);
+  int num = resource->pin();
+  if (value < -1 || value > 1) FAIL(INVALID_ARGUMENT);
 
   gpio_config_t cfg = {
     .pin_bit_mask = 1ULL << num,
@@ -361,7 +353,8 @@ PRIMITIVE(config) {
 }
 
 PRIMITIVE(config_interrupt) {
-  ARGS(GpioResource, resource, bool, enable);
+  ARGS(GpioResource, resource, bool, enable, int, value);
+  USE(value);  // Level-trigger value, not used on ESP32.
   esp_err_t err = ESP_OK;
   gpio_num_t num = static_cast<gpio_num_t>(resource->pin());
   if (enable) {
@@ -385,8 +378,8 @@ PRIMITIVE(config_interrupt) {
 // If the pin is used in some peripheral, a call to this primitive doesn't
 // affect that configuration.
 PRIMITIVE(set_open_drain) {
-  ARGS(int, num, bool, enable);
-  if (num < 0 || num >= GPIO_NUM_MAX) FAIL(INVALID_ARGUMENT);
+  ARGS(GpioResource, resource, bool, enable);
+  int num = resource->pin();
 
   // Change the open-drain bit.
   // Directly writes to the memory-mapped register.
@@ -399,8 +392,9 @@ PRIMITIVE(set_open_drain) {
 // If the pin is used in some peripheral, a call to this primitive doesn't
 // affect that configuration.
 PRIMITIVE(set_pull) {
-  ARGS(int, num, int, direction);
-  if (num < 0 || num >= GPIO_NUM_MAX) FAIL(INVALID_ARGUMENT);
+  ARGS(GpioResource, resource, int, direction);
+  int num = resource->pin();
+  if (direction < -1 || direction > 1) FAIL(INVALID_ARGUMENT);
 
   gpio_pull_mode_t mode;
   if (direction == 0) {
@@ -422,13 +416,16 @@ PRIMITIVE(last_edge_trigger_timestamp) {
 }
 
 PRIMITIVE(get) {
-  ARGS(int, num);
+  ARGS(GpioResource, resource);
+  int num = resource->pin();
 
   return Smi::from(gpio_get_level((gpio_num_t)num));
 }
 
 PRIMITIVE(set) {
-  ARGS(int, num, int, value);
+  ARGS(GpioResource, resource, int, value);
+  int num = resource->pin();
+  if (value != 0 && value != 1) FAIL(INVALID_ARGUMENT);
 
   esp_err_t err = gpio_set_level((gpio_num_t)num, value);
   if (err != ESP_OK) return Primitive::os_error(err, process);
