@@ -1,4 +1,4 @@
-// Copyright (C) 2024 Toitware ApS.
+// Copyright (C) 2026 Toit contributors.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -21,9 +21,9 @@ import ...storage.bucket show BucketResource RamBucketResource
 
 import ..shared.storage-flash-registry show FlashRegistryBucketResource
 
-class StorageServiceProviderHost extends StorageServiceProvider:
+class StorageServiceProviderEc618 extends StorageServiceProvider:
   constructor registry/FlashRegistry:
-    super "system/storage/host" registry
+    super "system/storage/ec618" registry
 
   bucket-open client/int --scheme/string --path/string -> BucketResource:
     if scheme == Bucket.SCHEME-RAM:
