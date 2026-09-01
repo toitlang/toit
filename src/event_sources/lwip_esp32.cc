@@ -19,6 +19,11 @@
 
 #include <esp_netif.h>
 
+#elif defined(TOIT_EC618)
+
+// EC618: lwIP is initialized by the protocol stack (cmsStartPs).
+// No additional init needed here.
+
 #elif defined(TOIT_USE_LWIP)
 
 #include <fcntl.h>
@@ -60,7 +65,7 @@ namespace toit {
 
 bool needs_gc = false;
 
-#if defined(TOIT_ESP32) || defined(TOIT_USE_LWIP)
+#if defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP)
 
 static bool is_toit_error(int err) {
   return FIRST_TOIT_ERROR >= err && err >= LAST_TOIT_ERROR;
@@ -184,6 +189,8 @@ LwipEventSource::LwipEventSource()
 #if defined(TOIT_ESP32)
   // Create the LWIP thread.
   esp_netif_init();
+#elif defined(TOIT_EC618)
+  // lwIP is already initialized by the protocol stack (cmsStartPs).
 #else
   // LWIP defaults to using rand() to get randomness, but that returns the same
   // numbers (eg for local ports) every time, unless it is seeded.  That can
