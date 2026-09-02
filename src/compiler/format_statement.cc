@@ -124,10 +124,14 @@ class StatementPrinter {
     int from = start(expression);
     int to = end(expression);
     if (contains_multiline_string(expression)) return true;
+    std::vector<int> contained_comments = comments_->unconsumed_in(from, to);
+    for (int id : contained_comments) {
+      if (facts()->comments()[id].follows_code) return true;
+    }
     int first_line = facts()->line_index_at(from);
     int header_to = facts()->lines()[first_line].to;
     if (comments_->has_unconsumed_in(from, header_to)) return true;
-    if (is_control(expression)) return false;
+    if (is_control(expression)) return !contained_comments.empty();
     int last_line = facts()->line_index_at(
         std::max(from, to - 1));
     return comments_->has_unconsumed_in(
