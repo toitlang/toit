@@ -982,10 +982,10 @@ PRIMITIVE(bus_abort_controller_operation) {
   if (!resource->operation_in_flight()) return process->null_object();
 
   // ESP_ERR_INVALID_STATE means that completion won the race. The abort API
-  // still synchronized with the ISR before reporting that there was no active
-  // transaction. A bus-clear failure also leaves the transaction retired and
-  // its buffers safe to release; a later operation will report if the physical
-  // bus remains unusable.
+  // still synchronizes with the ISR before reporting that there was no active
+  // transaction. It retires the transaction with a bounded controller-FSM
+  // reset and deliberately does not wait for physical bus recovery; a later
+  // operation reports if a target continues to hold the bus.
   i2c_master_bus_abort_transaction(resource->handle());
   resource->discard_completion();
   resource->finish_operation();
