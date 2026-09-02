@@ -54,6 +54,7 @@ static ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
 
 const word kSpiTargetReadyState = 1 << 0;
 const word kSpiTargetDoneState = 1 << 1;
+const size_t kSpiBufferTargetMaxTransferSize = 4092;
 const word kSpiBufferTargetReceivedState = 1 << 2;
 const word kSpiBufferTargetStoppedState = 1 << 3;
 const word kSpiBufferTargetArmedState = 1 << 4;
@@ -334,9 +335,25 @@ SpiBufferTargetResource::SpiBufferTargetResource(
 }
 
 SpiBufferTargetResource::~SpiBufferTargetResource() {
-  // The transaction is deliberately always armed. Uninstalling the driver
-  // first prevents it from retaining references to the native buffers.
-  if (initialized_) FATAL_IF_NOT_ESP_OK(spi_slave_free(host_device_));
+  if (initialized_) {
+    // Normal close has already retired the continuously armed descriptor.
+    // Process teardown can arrive first, so drive the same asynchronous abort
+    // to completion before releasing buffers referenced by the ISR.
+    if (!stopping_) request_abort();
+    while (true) {
+      esp_err_t free_error = spi_slave_free(host_device_);
+      if (free_error == ESP_OK) break;
+      if (free_error != ESP_ERR_INVALID_STATE) {
+        FATAL_IF_NOT_ESP_OK(free_error);
+      }
+      esp_err_t abort_error = spi_slave_abort_transaction(
+          host_device_, transaction());
+      if (abort_error != ESP_OK && abort_error != ESP_ERR_INVALID_STATE) {
+        FATAL_IF_NOT_ESP_OK(abort_error);
+      }
+      vTaskDelay(1);
+    }
+  }
   free(response_buffer_);
   free(receive_buffer_);
   free(receive_ring_);
@@ -439,6 +456,8 @@ void SpiBufferTargetResource::complete_from_isr() {
 #endif
   bool enqueued = false;
   bool failed = false;
+  uint32_t receive_index = 0;
+  uint8_t* receive_destination = null;
 
   portENTER_CRITICAL_ISR(&spinlock_);
   if (stopping_) {
@@ -451,16 +470,32 @@ void SpiBufferTargetResource::complete_from_isr() {
   // queue capacity or wake a receiver for it.
   if (receive_buffer_ != null && received != 0) {
     if (receive_count_ < receive_queue_depth_) {
-      uint32_t index = receive_head_ + receive_count_;
-      if (index >= receive_queue_depth_) index -= receive_queue_depth_;
-      uint8_t* destination = receive_ring_ + index * buffer_size_;
-      for (size_t i = 0; i < received; i++) destination[i] = receive_buffer_[i];
-      receive_lengths_[index] = received;
-      receive_count_++;
-      enqueued = true;
+      receive_index = receive_head_ + receive_count_;
+      if (receive_index >= receive_queue_depth_) receive_index -= receive_queue_depth_;
+      receive_destination = receive_ring_ + receive_index * buffer_size_;
     } else if (dropped_receive_count_ != Smi::MAX_SMI_VALUE) {
       dropped_receive_count_++;
     }
+  }
+  portEXIT_CRITICAL_ISR(&spinlock_);
+
+  // Only this mounted descriptor can produce a completion, and it is not
+  // requeued until below. Copying outside the spinlock avoids keeping all
+  // interrupts on this core disabled for a full DMA-sized buffer.
+  if (receive_destination != null) {
+    memcpy(receive_destination, receive_buffer_, received);
+  }
+
+  portENTER_CRITICAL_ISR(&spinlock_);
+  if (stopping_) {
+    portEXIT_CRITICAL_ISR(&spinlock_);
+    signal_from_isr(kSpiBufferTargetStoppedState);
+    return;
+  }
+  if (receive_destination != null) {
+    receive_lengths_[receive_index] = received;
+    receive_count_++;
+    enqueued = true;
   }
 #if SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
   if (dma_ && response_buffer_ != null) {
@@ -765,7 +800,9 @@ PRIMITIVE(buffer_target_create) {
        bool, dma);
 
   size_t buffer_size = response.length();
-  if (mode < 0 || mode > 3 || buffer_size == 0 || receive_queue_depth == 0) {
+  if (mode < 0 || mode > 3 || buffer_size == 0 ||
+      buffer_size > kSpiBufferTargetMaxTransferSize ||
+      receive_queue_depth == 0) {
     FAIL(INVALID_ARGUMENT);
   }
   if (!dma && buffer_size > SOC_SPI_MAXIMUM_BUFFER_SIZE) FAIL(INVALID_ARGUMENT);

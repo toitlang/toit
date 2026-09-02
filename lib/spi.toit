@@ -316,9 +316,10 @@ class BufferTarget:
   /**
   Constructs an autonomous buffer-backed SPI target.
 
-  $buffer-size is the maximum size of one controller transaction. $transmit is
-    copied to the start of the native response buffer; remaining bytes are
-    initialized to $fill-byte.
+  $buffer-size is the maximum size of one controller transaction and must not
+    exceed $DEFAULT-TARGET-MAX-TRANSFER-SIZE. $transmit is copied to the start
+    of the native response buffer; remaining bytes are initialized to
+    $fill-byte.
 
   $receive-queue-depth is the number of complete MOSI transactions retained
     until $receive consumes them. Further transactions are still answered and
@@ -343,7 +344,9 @@ class BufferTarget:
       --dma/bool=true:
     if not 0 <= mode <= 3: throw "INVALID_ARGUMENT"
     if not mosi and not miso: throw "INVALID_ARGUMENT"
-    if buffer-size <= 0 or transmit.size > buffer-size: throw "INVALID_ARGUMENT"
+    if buffer-size <= 0 or buffer-size > DEFAULT-TARGET-MAX-TRANSFER-SIZE:
+      throw "INVALID_ARGUMENT"
+    if transmit.size > buffer-size: throw "INVALID_ARGUMENT"
     if receive-queue-depth <= 0: throw "INVALID_ARGUMENT"
     if not 0 <= fill-byte <= 0xff: throw "OUT_OF_RANGE"
     if not dma and buffer-size > TARGET-NON-DMA-MAX-TRANSFER-SIZE:
@@ -434,8 +437,7 @@ class BufferTarget:
         received = spi-buffer-target-receive_ resource_ result
         if received >= 0:
           return received == result.size ? result : result.copy 0 received
-        critical-do --no-respect-deadline:
-          state_.wait-for-state RECEIVED-STATE_
+        state_.wait-for-state RECEIVED-STATE_
 
   /** Number of complete MOSI transactions discarded because the queue was full. */
   dropped-receive-count -> int:

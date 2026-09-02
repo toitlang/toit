@@ -27,6 +27,7 @@ READ ::= 0x44
 RECEIVE ::= 0x45
 DROPPED ::= 0x46
 CLOSE ::= 0x47
+RECEIVE-TIMEOUT ::= 0x48
 READY ::= 0xb1
 DONE ::= 0xb2
 SYNC ::= 0xb3
@@ -56,6 +57,8 @@ test-board1:
       --use-miso
       --dma=false
   device := create-device bus --mode=0 --frequency=1_000_000
+  port.out.write #[RECEIVE-TIMEOUT] --flush
+  expect-equals DONE port.in.read-byte
   sent := pattern 17 0x20
   received := transfer device sent
   expected := ByteArray sent.size
@@ -230,6 +233,13 @@ main-board2:
   run-test --background: test-board2
 
 test-board2:
+  expect-throw "INVALID_ARGUMENT":
+    spi.BufferTarget
+        --mosi=MOSI
+        --clock=SCLK
+        --cs=CS
+        --buffer-size=4_093
+
   port := uart.Port --rx=RX2 --tx=TX2 --baud-rate=115200
   target/spi.BufferTarget? := null
   port.out.write #[SYNC] --flush
@@ -278,6 +288,10 @@ test-board2:
       port.out.write #[DONE] --flush
       port.out.little-endian.write-uint32 data.size
       port.out.write data --flush
+    else if command == RECEIVE-TIMEOUT:
+      expect-throw DEADLINE-EXCEEDED-ERROR:
+        with-timeout --ms=5: target.receive
+      port.out.write #[DONE] --flush
     else if command == DROPPED:
       port.out.little-endian.write-uint32 target.dropped-receive-count
       port.out.flush
