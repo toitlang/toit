@@ -214,12 +214,20 @@ test-board1:
 
 test-board1-esp32 port/uart.Port -> none:
   bus := i2c.Bus --sda=I2C-SDA --scl=I2C-SCL --frequency=100_000 --pull-up
+  expect-throw "INVALID_ARGUMENT": bus.scan --timeout-ms=0
+  expect-throw "INVALID_ARGUMENT": bus.test ADDRESS --timeout-ms=0
+  expect-throw "INVALID_ARGUMENT": bus.device ADDRESS --timeout-us=0
   expect (bus.test ADDRESS)
   expect-not (bus.test MISSING-ADDRESS --timeout-ms=5)
 
   missing := bus.device MISSING-ADDRESS
   expect-throw "I2C_NACK": missing.write #[1]
+  expect-throw "I2C_NACK": missing.read 1
   missing.close
+
+  unchecked := bus.device MISSING-ADDRESS --disable-ack-check
+  unchecked.write #[1, 2, 3]
+  unchecked.close
 
   device := bus.device ADDRESS
   [1, 31, 32, 127, 255].do: | size/int |
@@ -238,6 +246,46 @@ test-board1-esp32 port/uart.Port -> none:
   send-command port WRITE-READ [tx, rx]
   expect-equals rx (device.write-read tx rx.size)
   expect-equals OK port.in.read-byte
+
+  // Exercise contention on the controller operation slot. The target queues
+  // enough bytes for all reads before any controller task is started.
+  concurrent := ByteArray 100: 0xa5
+  send-command port QUEUE-READ [concurrent]
+  done := List 4: monitor.Latch
+  errors := List 4: null
+  4.repeat: | task-index/int |
+    task::
+      errors[task-index] = catch:
+        25.repeat:
+          expect-equals #[0xa5] (device.read 1)
+      done[task-index].set true
+  done.do: it.get
+  errors.do: | error/any? |
+    if error: throw error
+  expect-equals OK port.in.read-byte
+
+  device.close
+  slow := bus.device ADDRESS --frequency=50_000
+  send-command port WRITE-READ [#[0x23], #[0x45]]
+  expect-equals #[0x45] (slow.write-read #[0x23] 1)
+  expect-equals OK port.in.read-byte
+  slow.close
+
+  fast := bus.device ADDRESS --frequency=400_000
+  send-command port WRITE-READ [#[0x67], #[0x89]]
+  expect-equals #[0x89] (fast.write-read #[0x67] 1)
+  expect-equals OK port.in.read-byte
+  fast.close
+
+  // A task deadline must abort the native operation, wake the suspended task,
+  // and leave the controller usable for the next transaction.
+  abortable := bus.device ADDRESS --timeout-us=100_000
+  send-command port DYNAMIC-READ [#[0x5a], encode-u16 20]
+  expect-throw DEADLINE-EXCEEDED-ERROR:
+    with-timeout --ms=2: abortable.read 1
+  expect-equals OK port.in.read-byte
+  expect (bus.test ADDRESS)
+  abortable.close
 
   port.out.write-byte CLOSE
   port.out.flush
@@ -334,6 +382,12 @@ test-board2-esp32 -> none:
       target.write parts[1]
       send-byte port READY
       expect-equals parts[0] target.read
+      send-byte port OK
+    else if command == DYNAMIC-READ:
+      send-byte port READY
+      target.wait-for-read-request
+      sleep --ms=(decode-u16 parts[1])
+      target.write parts[0]
       send-byte port OK
     else:
       throw "Unknown command: $command"
