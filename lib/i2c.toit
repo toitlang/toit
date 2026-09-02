@@ -4,7 +4,7 @@
 
 import gpio
 import io
-import monitor show ResourceState_
+import monitor show Mutex ResourceState_
 import serial
 
 /**
@@ -51,6 +51,7 @@ class Target:
 
   resource_ := ?
   state_/ResourceState_ ::= ?
+  write-mutex_/Mutex ::= Mutex
   reported-dropped-receive-count_/int := 0
 
   /**
@@ -145,16 +146,17 @@ class Target:
     nonblocking.
   */
   write bytes/ByteArray -> none:
-    if not resource_: throw "CLOSED"
-    offset := 0
-    while offset < bytes.size:
+    write-mutex_.do:
       if not resource_: throw "CLOSED"
-      state_.clear-state REQUEST-STATE_
+      offset := 0
+      while offset < bytes.size:
+        if not resource_: throw "CLOSED"
+        state_.clear-state REQUEST-STATE_
 
-      written := i2c-target-write_ resource_ bytes offset
-      offset += written
-      if offset == bytes.size: return
-      state_.wait-for-state REQUEST-STATE_
+        written := i2c-target-write_ resource_ bytes offset
+        offset += written
+        if offset == bytes.size: return
+        state_.wait-for-state REQUEST-STATE_
 
   /**
   Waits until a controller requests data and returns the number of requests

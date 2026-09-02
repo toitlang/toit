@@ -4,6 +4,7 @@
 
 import expect show *
 import i2c
+import monitor
 import rmt
 import system
 import uart
@@ -37,6 +38,7 @@ DYNAMIC-READ ::= 5
 RECONFIGURE ::= 6
 OVERFLOW ::= 7
 TRANSACTION-OVERFLOW ::= 8
+CONCURRENT-QUEUE-READ ::= 9
 
 DEFAULT-CONFIG ::= 0
 TEN-BIT-CONFIG ::= 1
@@ -127,6 +129,22 @@ test-board1:
   small-buffer-read := make-data 8 0x13
   send-command port QUEUE-READ [small-buffer-read]
   expect-equals small-buffer-read (device.read small-buffer-read.size)
+  expect-equals OK port.in.read-byte
+
+  // Each write is larger than the native target buffer. Concurrent calls must
+  // remain contiguous rather than interleaving whenever a controller read
+  // frees a small amount of space.
+  concurrent-first := make-data 24 0x35
+  concurrent-second := make-data 24 0xb5
+  send-command port CONCURRENT-QUEUE-READ [concurrent-first, concurrent-second]
+  concurrent-expected := ByteArray (concurrent-first.size + concurrent-second.size)
+  concurrent-expected.replace 0 concurrent-first
+  concurrent-expected.replace concurrent-first.size concurrent-second
+  concurrent-actual := ByteArray concurrent-expected.size
+  concurrent-actual.size.repeat: | offset/int |
+    concurrent-actual[offset] = (device.read 1)[0]
+    sleep --ms=1
+  expect-equals concurrent-expected concurrent-actual
   expect-equals OK port.in.read-byte
 
   first := make-data 31 0x51
@@ -222,6 +240,22 @@ test-board2:
       expect-throw "OVERFLOW": target.try-read
       expect-null target.try-read
       expect-equals 1 target.dropped-receive-count
+      send-byte port OK
+    else if command == CONCURRENT-QUEUE-READ:
+      first-done := monitor.Latch
+      second-done := monitor.Latch
+      task::
+        target.write parts[0]
+        first-done.set true
+      // Let the first writer fill the native buffer and suspend before the
+      // second writer enters Target.write.
+      sleep --ms=5
+      task::
+        target.write parts[1]
+        second-done.set true
+      send-byte port READY
+      first-done.get
+      second-done.get
       send-byte port OK
     else:
       throw "Unknown command: $command"
