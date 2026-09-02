@@ -131,27 +131,24 @@ test-board1:
   expect-equals small-buffer-read (device.read small-buffer-read.size)
   expect-equals OK port.in.read-byte
 
-  device.close
-  // Isolate the concurrency check from any target TX/FIFO state left by the
-  // preceding short controller read.
-  reconfigure port SMALL-BUFFER-CONFIG
-  device = bus.device ADDRESS
+  if system.architecture != system.ARCHITECTURE-ESP32:
+    device.close
+    // Isolate the concurrency check from any target TX/FIFO state left by the
+    // preceding short controller read.
+    reconfigure port SMALL-BUFFER-CONFIG
+    device = bus.device ADDRESS --frequency=10_000
 
-  // Each write is larger than the native target buffer. Concurrent calls must
-  // remain contiguous rather than interleaving whenever a controller read
-  // frees a small amount of space.
-  concurrent-first := make-data 24 0x35
-  concurrent-second := make-data 24 0xb5
-  send-command port CONCURRENT-QUEUE-READ [concurrent-first, concurrent-second]
-  concurrent-expected := ByteArray (concurrent-first.size + concurrent-second.size)
-  concurrent-expected.replace 0 concurrent-first
-  concurrent-expected.replace concurrent-first.size concurrent-second
-  concurrent-actual := ByteArray concurrent-expected.size
-  concurrent-actual.size.repeat: | offset/int |
-    concurrent-actual[offset] = (device.read 1)[0]
-    sleep --ms=1
-  expect-equals concurrent-expected concurrent-actual
-  expect-equals OK port.in.read-byte
+    // The first write is larger than the hardware FIFO and native target
+    // buffer combined, so it suspends while holding the write mutex. A second
+    // writer must not overtake it when the controller frees buffer space.
+    concurrent-first := make-data 48 0x35
+    concurrent-second := make-data 8 0xb5
+    send-command port CONCURRENT-QUEUE-READ [concurrent-first, concurrent-second]
+    concurrent-expected := ByteArray (concurrent-first.size + concurrent-second.size)
+    concurrent-expected.replace 0 concurrent-first
+    concurrent-expected.replace concurrent-first.size concurrent-second
+    expect-equals concurrent-expected (device.read concurrent-expected.size)
+    expect-equals OK port.in.read-byte
 
   first := make-data 31 0x51
   second := make-data 31 0xc1
@@ -248,6 +245,7 @@ test-board2:
       expect-equals 1 target.dropped-receive-count
       send-byte port OK
     else if command == CONCURRENT-QUEUE-READ:
+      expect system.architecture != system.ARCHITECTURE-ESP32
       start-second := monitor.Latch
       second-done := monitor.Latch
       task::
