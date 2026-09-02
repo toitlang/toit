@@ -533,6 +533,7 @@ class Bus:
     slow, increase the timeout.
   */
   scan --timeout-ms/int=100 -> Set:
+    if timeout-ms <= 0: throw "INVALID_ARGUMENT"
     result := {}
     for i := 0x08; i < 0x78; i++:
       if test i --timeout-ms=timeout-ms: result.add i
@@ -548,6 +549,7 @@ class Bus:
   */
   test address --timeout-ms/int=100 -> bool:
     if not 0 <= address <= 0x7f: throw "INVALID_ARGUMENT"
+    if timeout-ms <= 0: throw "INVALID_ARGUMENT"
     return perform-controller-operation_
         (: i2c-bus-probe_ resource_ address timeout-ms)
         (: i2c-bus-probe-finish_ resource_)
@@ -587,7 +589,7 @@ class Bus:
       --timeout-us/int=100_000
       --disable-ack-check/bool=false:
     if address-bit-size != 7 and address-bit-size != 10: throw "INVALID_ARGUMENT"
-    if frequency <= 0 or timeout-us < 0: throw "INVALID_ARGUMENT"
+    if frequency <= 0 or timeout-us <= 0: throw "INVALID_ARGUMENT"
     limit := (1 << address-bit-size) - 1
     if not 0 <= i2c-address <= limit: throw "INVALID_ARGUMENT"
     return mutex_.do:
