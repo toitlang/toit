@@ -891,6 +891,20 @@ PRIMITIVE(buffer_target_create) {
       : allocate_dma_buffer(receive_storage_size, buffer_alignment);
   if (mosi_num >= 0 && receive_storage == null) FAIL(MALLOC_FAILED);
   Defer free_receive_storage { [&] { if (host_owned) free(receive_storage); } };
+#if SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
+  if (dma && receive_storage != null) {
+    // Only the initially mounted buffer passes through
+    // spi_slave_setup_priv_trans. The other aligned slices are first queued
+    // from the completion ISR, so invalidate the complete storage now before
+    // DMA can ever own one of them. Toit only reads the slices afterwards and
+    // therefore does not make them dirty before they are reused.
+    esp_err_t sync_error = esp_cache_msync(
+        receive_storage,
+        receive_storage_size,
+        ESP_CACHE_MSYNC_FLAG_DIR_M2C);
+    if (sync_error != ESP_OK) return Primitive::os_error(sync_error, process);
+  }
+#endif
 
   uint32_t* receive_indices = mosi_num < 0
       ? null
