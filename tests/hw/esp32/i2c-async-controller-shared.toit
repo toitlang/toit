@@ -108,43 +108,42 @@ test-board1:
   errors.do: | error/any? |
     if error: throw error
 
-  if system.architecture != system.ARCHITECTURE-ESP32:
-    device.close
-    slow := bus.device ADDRESS --frequency=50_000
-    probe-pin := gpio.Pin I2C-SCL-PROBE --input --pull-up
-    probe := rmt.In
-        probe-pin  // @no-warn
-        --resolution=1_000_000
-        --memory-blocks=8
-        --dma
-    probe.start-reading --min-ns=500 --max-ns=20_000_000
-    slow.write-read #[0] 8
-    slow-signals := with-timeout --ms=500: probe.wait-for-data
-    slow-low-periods := []
-    slow-signals.size.repeat: | i/int |
-      if (slow-signals.level i) == 0:
-        slow-low-periods.add (slow-signals.period i)
-    slow-low-periods.sort --in-place
-    slow-low := slow-low-periods[slow-low-periods.size / 2]
-    slow.close
+  device.close
+  slow := bus.device ADDRESS --frequency=50_000
+  probe-pin := gpio.Pin I2C-SCL-PROBE --input --pull-up
+  probe := rmt.In
+      probe-pin  // @no-warn
+      --resolution=1_000_000
+      --memory-blocks=8
+      --dma
+  probe.start-reading --min-ns=500 --max-ns=20_000_000
+  slow.write-read #[0] 8
+  slow-signals := with-timeout --ms=500: probe.wait-for-data
+  slow-low-periods := []
+  slow-signals.size.repeat: | i/int |
+    if (slow-signals.level i) == 0:
+      slow-low-periods.add (slow-signals.period i)
+  slow-low-periods.sort --in-place
+  slow-low := slow-low-periods[slow-low-periods.size / 2]
+  slow.close
 
-    fast := bus.device ADDRESS --frequency=400_000
-    probe.start-reading --min-ns=500 --max-ns=20_000_000
-    fast.write-read #[0] 8
-    fast-signals := with-timeout --ms=500: probe.wait-for-data
-    fast-low-periods := []
-    fast-signals.size.repeat: | i/int |
-      if (fast-signals.level i) == 0:
-        fast-low-periods.add (fast-signals.period i)
-    fast-low-periods.sort --in-place
-    fast-low := fast-low-periods[fast-low-periods.size / 2]
-    probe.close
-    probe-pin.close
-    print "Async I2C frequency probe: 50kHz low $(slow-low)us, 400kHz low $(fast-low)us"
-    expect slow-low >= 6
-    expect fast-low < 6
-    expect slow-low > fast-low * 2
-    device = fast
+  fast := bus.device ADDRESS --frequency=400_000
+  probe.start-reading --min-ns=500 --max-ns=20_000_000
+  fast.write-read #[0] 8
+  fast-signals := with-timeout --ms=500: probe.wait-for-data
+  fast-low-periods := []
+  fast-signals.size.repeat: | i/int |
+    if (fast-signals.level i) == 0:
+      fast-low-periods.add (fast-signals.period i)
+  fast-low-periods.sort --in-place
+  fast-low := fast-low-periods[fast-low-periods.size / 2]
+  probe.close
+  probe-pin.close
+  print "Async I2C frequency probe: 50kHz low $(slow-low)us, 400kHz low $(fast-low)us"
+  expect slow-low >= 6
+  expect fast-low < 6
+  expect slow-low > fast-low * 2
+  device = fast
 
   device.close
   reconfigure port REGISTER-10
