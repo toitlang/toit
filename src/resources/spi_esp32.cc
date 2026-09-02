@@ -23,6 +23,8 @@
 #include <esp_cache.h>
 #include <esp_heap_caps.h>
 #include <esp_private/spi_slave_internal.h>
+#include <hal/cache_hal.h>
+#include <hal/cache_ll.h>
 
 #include "../objects_inline.h"
 #include "../process.h"
@@ -52,6 +54,16 @@ static ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
 
 const word kSpiTargetReadyState = 1 << 0;
 const word kSpiTargetDoneState = 1 << 1;
+
+static size_t spi_dma_buffer_alignment(bool dma) {
+  if (!dma) return 4;
+#if SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
+  size_t cache_line_size =
+      cache_hal_get_cache_line_size(CACHE_LL_LEVEL_INT_MEM, CACHE_TYPE_DATA);
+  if (cache_line_size != 0) return cache_line_size;
+#endif
+  return 4;
+}
 
 #if CONFIG_SPI_SLAVE_ISR_IN_IRAM
 #define SPI_TARGET_ISR_ATTR IRAM_ATTR
@@ -325,13 +337,7 @@ PRIMITIVE(target_create) {
   if (mode < 0 || mode > 3 || max_transfer_size == 0) FAIL(INVALID_ARGUMENT);
   if (!dma && max_transfer_size > SOC_SPI_MAXIMUM_BUFFER_SIZE) FAIL(INVALID_ARGUMENT);
 
-  size_t buffer_alignment = 4;
-#if SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
-  if (dma) {
-    esp_err_t err = esp_cache_get_alignment(MALLOC_CAP_DMA, &buffer_alignment);
-    if (err != ESP_OK) return Primitive::os_error(err, process);
-  }
-#endif
+  size_t buffer_alignment = spi_dma_buffer_alignment(dma);
   ASSERT(Utils::is_power_of_two(buffer_alignment));
   size_t driver_max_transfer_size =
       (static_cast<size_t>(max_transfer_size) + buffer_alignment - 1) &
