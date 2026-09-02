@@ -306,7 +306,7 @@ class BufferTarget:
   static ARMED-STATE_ ::= 1 << 4
 
   resource_ := ?
-  state_/monitor.ResourceState_ ::= ?
+  state_ := null
   close-mutex_/monitor.Mutex ::= monitor.Mutex
   receive-mutex_/monitor.Mutex ::= monitor.Mutex
   size/int ::= ?
@@ -363,7 +363,7 @@ class BufferTarget:
     size = buffer-size
     can-receive_ = mosi != null
     can-transmit_ = miso != null
-    resource_ = spi-buffer-target-create_
+    resource := spi-buffer-target-create_
         spi-target-resource-group_
         (mosi or -1)
         (miso or -1)
@@ -375,10 +375,25 @@ class BufferTarget:
         receive-queue-depth
         response
         dma
-    state_ = monitor.ResourceState_ spi-target-resource-group_ resource_
-    critical-do --no-respect-deadline:
-      state_.wait-for-state ARMED-STATE_
-    add-finalizer this:: close
+    resource_ = resource
+    state/monitor.ResourceState_? := null
+    finalizer-added := false
+    initialized := false
+    try:
+      state = monitor.ResourceState_ spi-target-resource-group_ resource
+      state_ = state
+      add-finalizer this:: close
+      finalizer-added = true
+      spi-buffer-target-arm_ resource
+      critical-do --no-respect-deadline:
+        state.wait-for-state ARMED-STATE_
+      initialized = true
+    finally:
+      if not initialized:
+        if state: state.dispose
+        spi-buffer-target-close_ spi-target-resource-group_ resource false
+        resource_ = null
+        if finalizer-added: remove-finalizer this
 
   /** Returns the response byte stored at $index. */
   operator [] index/int -> int:
@@ -449,8 +464,8 @@ class BufferTarget:
     close-mutex_.do:
       if not resource_: return
       critical-do --no-respect-deadline:
-        spi-buffer-target-close_ spi-target-resource-group_ resource_ true
-        state_.wait-for-state STOPPED-STATE_
+        wait-for-callback := spi-buffer-target-close_ spi-target-resource-group_ resource_ true
+        if wait-for-callback: state_.wait-for-state STOPPED-STATE_
         state_.dispose
         spi-buffer-target-close_ spi-target-resource-group_ resource_ false
         resource_ = null
@@ -933,6 +948,9 @@ spi-buffer-target-create_
     response/ByteArray
     dma/bool:
   #primitive.spi.buffer-target-create
+
+spi-buffer-target-arm_ target:
+  #primitive.spi.buffer-target-arm
 
 spi-buffer-target-close_ group target abort/bool:
   #primitive.spi.buffer-target-close

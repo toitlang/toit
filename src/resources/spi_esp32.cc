@@ -192,7 +192,8 @@ class SpiBufferTargetResource : public EventQueueResource {
   // the native transaction could not be re-armed.
   int take_receive(uint8_t* destination);
   word dropped_receive_count() const;
-  void request_abort();
+  // Returns whether a completion callback will report the stopped state.
+  bool request_abort();
 
   SPI_TARGET_ISR_ATTR void armed_from_isr();
   SPI_TARGET_ISR_ATTR void complete_from_isr();
@@ -339,7 +340,7 @@ SpiBufferTargetResource::~SpiBufferTargetResource() {
     // Normal close has already retired the continuously armed descriptor.
     // Process teardown can arrive first, so drive the same asynchronous abort
     // to completion before releasing buffers referenced by the ISR.
-    if (!stopping_) request_abort();
+    if (!stopping_) (void) request_abort();
     while (true) {
       esp_err_t free_error = spi_slave_free(host_device_);
       if (free_error == ESP_OK) break;
@@ -424,7 +425,7 @@ word SpiBufferTargetResource::dropped_receive_count() const {
   return result;
 }
 
-void SpiBufferTargetResource::request_abort() {
+bool SpiBufferTargetResource::request_abort() {
   portENTER_CRITICAL(&spinlock_);
   ASSERT(!stopping_);
   stopping_ = true;
@@ -434,7 +435,9 @@ void SpiBufferTargetResource::request_abort() {
   // ESP_ERR_INVALID_STATE means that natural completion won the race. The
   // callback observes stopping_ and signals kSpiBufferTargetStoppedState
   // without re-arming the descriptor.
-  if (err != ESP_ERR_INVALID_STATE) FATAL_IF_NOT_ESP_OK(err);
+  if (err == ESP_ERR_INVALID_STATE) return false;
+  FATAL_IF_NOT_ESP_OK(err);
+  return true;
 }
 
 void SpiBufferTargetResource::armed_from_isr() {
@@ -939,9 +942,6 @@ PRIMITIVE(buffer_target_create) {
   if (err != ESP_OK) return Primitive::os_error(err, process);
   resource->set_initialized();
 
-  err = spi_slave_queue_trans(host_device, resource->transaction(), 0);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-
   resource->owned_pins().adopt(reserver);
   reserver.keep();
   group->register_resource(resource);
@@ -950,11 +950,20 @@ PRIMITIVE(buffer_target_create) {
   return proxy;
 }
 
+PRIMITIVE(buffer_target_arm) {
+  ARGS(SpiBufferTargetResource, target);
+  esp_err_t err = spi_slave_queue_trans(
+      target->host_device(), target->transaction(), 0);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  return process->null_object();
+}
+
 PRIMITIVE(buffer_target_close) {
   ARGS(SpiTargetResourceGroup, group, SpiBufferTargetResource, target, bool, abort);
   if (abort) {
-    target->request_abort();
-    return process->null_object();
+    return target->request_abort()
+        ? process->true_object()
+        : process->false_object();
   }
   group->unregister_resource(target);
   target_proxy->clear_external_address();
