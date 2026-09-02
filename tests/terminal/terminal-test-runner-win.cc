@@ -21,6 +21,17 @@ static void fail(const char* message, const std::string& output = "") {
   exit(1);
 }
 
+static void fail_process(
+    const char* message,
+    HANDLE process,
+    const std::string& output) {
+  DWORD exit_code = 0;
+  if (!GetExitCodeProcess(process, &exit_code)) fail(message, output);
+  fprintf(stderr, "%s (exit code %lu)\n", message, exit_code);
+  if (!output.empty()) fprintf(stderr, "terminal output:\n%s\n", output.c_str());
+  exit(1);
+}
+
 static void close_if_valid(HANDLE handle) {
   if (handle != NULL && handle != INVALID_HANDLE_VALUE) CloseHandle(handle);
 }
@@ -108,6 +119,7 @@ int main(int argc, char** argv) {
   bool sent_input = false;
   bool resized = false;
   bool saw_done = false;
+  bool process_exited = false;
   ULONGLONG deadline = GetTickCount64() + 10 * 1000;
 
   while (!saw_done && GetTickCount64() < deadline) {
@@ -140,13 +152,25 @@ int main(int argc, char** argv) {
     }
     saw_done = output.find("DONE") != std::string::npos;
 
-    if (!saw_done && WaitForSingleObject(process.hProcess, 0) == WAIT_OBJECT_0) {
-      fail("terminal test exited before completion", output);
+    if (!process_exited &&
+        WaitForSingleObject(process.hProcess, 0) == WAIT_OBJECT_0) {
+      // ConPTY delivers output asynchronously. The process can exit before its
+      // final output is visible in the pipe. Keep draining until DONE or the
+      // existing protocol deadline instead of failing as soon as it exits.
+      process_exited = true;
     }
     if (!saw_done) Sleep(10);
   }
 
-  if (!saw_done) fail("terminal test timed out", output);
+  if (!saw_done) {
+    if (process_exited) {
+      fail_process(
+          "terminal test exited before completion",
+          process.hProcess,
+          output);
+    }
+    fail("terminal test timed out", output);
+  }
   if (WaitForSingleObject(process.hProcess, 5 * 1000) != WAIT_OBJECT_0) {
     fail("terminal test did not exit", output);
   }

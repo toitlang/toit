@@ -59,6 +59,9 @@ set(TOIT_SKIP_TESTS
   i2s-board1.toit-esp32-philips24
   i2s-board1.toit-esp32-philips24-slave
   i2s-board1.toit-esp32-msb16-writer-fast-slave
+  # The plain philips16 variant can corrupt the classic ESP32's deep-sleep boot
+  # state and leave it boot-looping on a garbage wake stub.
+  i2s-board1.toit-esp32-philips16
   # Broken on the esp32s3 (same esp-idf I2S issue). Consistently failing in the
   # nightly (6/6) and reproduced locally.
   i2s-board1.toit-esp32s3-pcm8
