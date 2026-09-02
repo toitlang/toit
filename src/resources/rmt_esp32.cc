@@ -769,10 +769,10 @@ PRIMITIVE(channel_new) {
     return Primitive::os_error(err, process);
   }
 
-  // In open-drain mode, apply the requested pull now that the channel has
-  // configured the pin. A deprecated gpio.Pin (old API) applies its pull on the
-  // Toit side instead.
-  if (is_tx && kind == 2 && reserver.any()) {
+  // Apply the requested pull now that the channel has configured the pin. For
+  // output channels this is only meaningful in open-drain mode. A deprecated
+  // gpio.Pin (old API) applies its pull on the Toit side instead.
+  if (reserver.any() && (!is_tx || kind == 2)) {
     gpio_set_pull_mode(static_cast<gpio_num_t>(gpio_num),
                        pull_up ? GPIO_PULLUP_ONLY : GPIO_FLOATING);
   }
