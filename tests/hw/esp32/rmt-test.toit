@@ -138,7 +138,9 @@ test-simple-pulse pin-in/int pin-out/int:
   PULSE-LENGTH ::= 50
 
   out := rmt.Out pin-out --resolution=RESOLUTION
-  in := rmt.In pin-in --resolution=RESOLUTION
+  // Also exercise input-owned pull configuration. The output drives both
+  // levels, so the weak pull-up does not otherwise affect this pulse test.
+  in := rmt.In pin-in --resolution=RESOLUTION --pull-up
   in.start-reading --min-ns=1 --max-ns=(120 * 1000)
   out-signals := rmt.Signals 1
   out-signals.set 0 --level=1 --period=PULSE-LENGTH
