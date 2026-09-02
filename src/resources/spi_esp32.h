@@ -30,6 +30,8 @@
 
 namespace toit {
 
+const int kSpiControllerMaxDevicesPerHost = 6;
+
 class SpiResourceGroup : public ResourceGroup {
  public:
   TAG(SpiResourceGroup);
@@ -45,8 +47,17 @@ class SpiResourceGroup : public ResourceGroup {
   // GPIO pins reserved by this bus (mosi/miso/clock).
   GpioPins& owned_pins() { return owned_pins_; }
 
+  bool can_add_device() const {
+    return device_count_ < kSpiControllerMaxDevicesPerHost;
+  }
+
+ protected:
+  void on_register_resource(Resource*) override { device_count_++; }
+  void on_unregister_resource(Resource*) override { device_count_--; }
+
  private:
   spi_host_device_t host_device_;
+  int device_count_ = 0;
   GpioPins owned_pins_;
 };
 
@@ -76,6 +87,8 @@ class SpiDevice : public EventQueueResource {
 
   int dc() { return dc_; }
   bool operation_in_flight() const { return operation_in_flight_; }
+  bool bus_acquired() const { return bus_acquired_; }
+  void set_bus_acquired(bool value) { bus_acquired_ = value; }
   spi_transaction_t* transaction() { return &transaction_; }
   size_t transfer_size() const { return transfer_size_; }
   uint8_t* receive_buffer() const { return rx_buffer_; }
@@ -100,6 +113,7 @@ class SpiDevice : public EventQueueResource {
   int dc_;
   GpioPins owned_pins_;
   bool operation_in_flight_ = false;
+  bool bus_acquired_ = false;
   spi_transaction_t transaction_ = {};
   uint8_t* tx_buffer_ = null;
   uint8_t* rx_buffer_ = null;
