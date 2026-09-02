@@ -20,11 +20,9 @@
 #include <driver/gpio.h>
 #include <driver/spi_master.h>
 #include <driver/spi_slave.h>
+#include <esp_cache.h>
 #include <esp_heap_caps.h>
 #include <esp_private/spi_slave_internal.h>
-#if SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
-#include <esp_private/esp_cache_private.h>
-#endif
 
 #include "../objects_inline.h"
 #include "../process.h"
