@@ -232,6 +232,13 @@ test-validation:
   expect-throw "INVALID_ARGUMENT":
     i2c.RegisterTarget --sda=I2C-SDA --scl=I2C-SCL --address=ADDRESS --register-address-size=3
   expect-throw "INVALID_ARGUMENT":
+    i2c.RegisterTarget
+        --sda=I2C-SDA
+        --scl=I2C-SCL
+        --address=ADDRESS
+        --register-address-size=2
+        --receive-buffer-size=1
+  expect-throw "INVALID_ARGUMENT":
     i2c.RegisterTarget --sda=I2C-SDA --scl=I2C-SCL --address=ADDRESS --register-count=257
   expect-throw "INVALID_ARGUMENT":
     i2c.RegisterTarget --sda=I2C-SDA --scl=I2C-SCL --address=0x80
