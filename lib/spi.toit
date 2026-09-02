@@ -782,22 +782,36 @@ class Device_ extends DeviceBase_:
   device_ := ?
   state_/monitor.ResourceState_ ::= ?
   transfer-mutex_/monitor.Mutex ::= monitor.Mutex
-  owning-bus_/bool := false
+  owning-bus-task_/Task? := null
 
   registers_/Registers? := null
 
   /** Deprecated. Use $Bus.device. */
   constructor .spi_ .device_:
     state_ = monitor.ResourceState_ spi_.spi_ device_
-    add-finalizer this:: close
+    initialized := false
+    try:
+      add-finalizer this:: close
+      initialized = true
+    finally:
+      // Bus.device closes the native device if this constructor throws. Drop
+      // the notifier first so it cannot retain a proxy to that deleted state.
+      if not initialized: state_.dispose
 
   constructor.init_ .spi_ .device_:
     state_ = monitor.ResourceState_ spi_.spi_ device_
-    add-finalizer this:: close
+    initialized := false
+    try:
+      add-finalizer this:: close
+      initialized = true
+    finally:
+      // Bus.device closes the native device if this constructor throws. Drop
+      // the notifier first so it cannot retain a proxy to that deleted state.
+      if not initialized: state_.dispose
 
   /** See $Device.close. */
   close:
-    if owning-bus_: throw "INVALID_STATE"
+    if owning-bus-task_: throw "INVALID_STATE"
     bus := spi_
     if not bus: return
     bus.reservation-mutex_.do:
@@ -824,9 +838,12 @@ class Device_ extends DeviceBase_:
       --command/int=0
       --address/int=0
       --keep-cs-active/bool=false:
-    if keep-cs-active and not owning-bus_: throw "INVALID_STATE"
     transfer-mutex_.do:
       if not device_: throw "CLOSED"
+      owner := owning-bus-task_
+      if owner and not identical owner Task.current: throw "INVALID_STATE"
+      if keep-cs-active and not identical owner Task.current:
+        throw "INVALID_STATE"
       // Once queued, the ESP-IDF transaction cannot be canceled. Always wait
       // for completion and release its native buffers.
       critical-do --no-respect-deadline:
@@ -840,19 +857,19 @@ class Device_ extends DeviceBase_:
 
   /** See $Device.with-reserved-bus. */
   with-reserved-bus [block]:
-    if owning-bus_: throw "INVALID_STATE"
+    if owning-bus-task_: throw "INVALID_STATE"
     bus := spi_
     if not bus: throw "CLOSED"
     bus.reservation-mutex_.do:
       if not device_ or bus.closing_: throw "CLOSED"
       while not spi-acquire-bus_ device_: yield
-      owning-bus_ = true
+      owning-bus-task_ = Task.current
       bus.reservation-active_ = true
       try:
         block.call
       finally:
         critical-do:
-          owning-bus_ = false
+          owning-bus-task_ = null
           bus.reservation-active_ = false
           spi-release-bus_ device_
 
