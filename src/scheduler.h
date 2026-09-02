@@ -49,6 +49,7 @@ class Scheduler {
   enum ExitReason {
     EXIT_NONE,
     EXIT_DONE,
+    EXIT_RESET,
     EXIT_DEEP_SLEEP,
     EXIT_ERROR,
   };

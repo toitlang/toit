@@ -13,14 +13,15 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-#include "top.h"
-#include "uuid.h"
 #define MBEDTLS_ALLOW_PRIVATE_ACCESS
 #include <mbedtls/sha256.h>
 #if MBEDTLS_VERSION_MAJOR >= 3
 // Bring back the _ret names for sha functions.
 #include <mbedtls/compat-2.x.h>
 #endif
+
+#include "top.h"
+#include "uuid.h"
 
 #ifndef TOIT_FREERTOS
 

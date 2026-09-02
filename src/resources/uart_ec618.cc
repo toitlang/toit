@@ -1,0 +1,1110 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; version
+// 2.1 only.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// The license can be found in the file `LICENSE` in the top level
+// directory of this repository.
+
+#include "../top.h"
+
+#ifdef TOIT_EC618
+
+#include <atomic>
+#include <string.h>
+
+#include "../event_sources/uart_ec618.h"
+#include "../objects_inline.h"
+#include "../primitive.h"
+#include "../process.h"
+#include "../resource.h"
+#include "../resource_pool.h"
+#include "../utils.h"
+#include "pad_table_ec618.h"
+
+extern "C" {
+  #include "bsp_common.h"
+  #include "cmsis_os2.h"  // osDelay, for task-context TX drain waits.
+  #include "FreeRTOS.h"
+  #include "queue.h"
+  #include "task.h"
+  #include "driver_gpio.h"
+  #include "gpio.h"
+  #include "platform_define.h"
+  #include "anchor.h"     // Transactional console/control UART selection.
+  #include "slpman.h"     // Sleep-vote API used by uart_sleep_vote.
+  // All three UARTs run on the OPEN CMSIS driver (bsp_usart.c) instead of
+  // the closed Uart_* blob. The blob discarded its whole RX buffer on
+  // overflow, left RX unusable until reopen, and could hang during close.
+  // The CMSIS access structs are data symbols resolved directly from the
+  // selected base.
+  #include "Driver_USART.h"
+  extern ARM_DRIVER_USART Driver_USART0;
+  extern ARM_DRIVER_USART Driver_USART1;
+  extern ARM_DRIVER_USART Driver_USART2;
+  extern uint8_t toit_booted_slot;
+}
+
+namespace toit {
+
+static uint8_t current_console() {
+  return anchor_console_for_slot(toit_booted_slot);
+}
+
+// All pin arguments to PRIMITIVE(create) are PAD numbers (1..kMaxPadIndex).
+// -1 means "not used". Pin/function validation goes through the pad table
+// in `pad_table_ec618.h`, which is the single source of truth for which
+// physical pad carries which UART role.
+
+// Per-controller CMSIS transfer state (heap-allocated at open). The driver
+// uses the two TX staging buffers asynchronously and DMAs each
+// armed transfer into `chunk`; the event callback copies it into `ring`.
+// RX_TIMEOUT does not end the armed transfer on this driver — bsp_usart.c
+// reloads the descriptor and keeps streaming into the same buffer — so the
+// callback tracks how much of `chunk` it has already pushed (`seen`) and
+// re-arms only on RECEIVE_COMPLETE. Between transfers the driver's own
+// 32-byte staging FIFO catches the line, so the re-arm gap loses nothing
+// at sane bauds.
+struct UartTransferState {
+  uint8_t* ring;            // malloc'd ring buffer.
+  uint32_t ring_size;
+  // Single-producer/single-consumer ring indices. Publishing `head` makes
+  // the IRQ's preceding ring writes visible to the primitive; publishing
+  // `tail` lets the IRQ reuse only bytes the primitive has finished copying.
+  std::atomic<uint32_t> head{0};
+  std::atomic<uint32_t> tail{0};
+  uint32_t seen;            // Bytes of the CURRENT transfer already pushed.
+  uint32_t dropped;         // Bytes discarded with the ring full (drop-newest).
+  uint32_t control;         // The ARM_USART_CONTROL_* framing word (for set-baud).
+  // TX staging: Send() is asynchronous in DMA mode and keeps reading the
+  // buffer after the primitive returns, so the bytes are copied out of the
+  // (movable) Toit heap object first. DOUBLE-buffered: while one buffer's
+  // Send is in flight the writer stages the next chunk into the other,
+  // and the SEND_COMPLETE IRQ chains it immediately — without this every
+  // staging-chunk boundary put a task-wake-roundtrip gap (~0.5 ms) on the
+  // wire (measured by uart2-gapfree; fatal for LED-strip streaming).
+  // `tx_busy` is set while a Send (or chain of Sends) is in flight and
+  // cleared by the drain task once the final frame has left the wire.
+  uint8_t* tx_bufs[2];
+  uint32_t tx_buf_size;
+  volatile uint8_t tx_active;        // Buffer the current Send reads.
+  volatile uint32_t tx_pending_len;  // Bytes staged in the spare buffer (0 = none).
+  volatile bool tx_busy;
+  volatile bool tx_waiting_for_empty;
+  volatile bool closing;             // Teardown waits for the final TX drain.
+  Pads pads;                          // PAD reservations owned by this port.
+  // Diagnostic counters (kept cheap; exposed to debugging sessions).
+  uint32_t cb_events;       // Callback invocations.
+  uint32_t rearm_fails;     // Receive() re-arms that returned an error.
+  uint8_t chunk[512];       // The armed receive target.
+};
+
+// Same pattern as bsp_usart.c's SaveAndSetIRQMask. The UART irq and the
+// DMA-end irq are separate vectors that both walk the driver's transfer
+// state; sections that read or reconfigure it must be atomic against both.
+// Restoring the saved mask (rather than unconditionally enabling IRQs)
+// preserves nesting.
+class IrqMaskGuard {
+ public:
+  IrqMaskGuard() : mask_(__get_PRIMASK()) { __disable_irq(); }
+  ~IrqMaskGuard() {
+    __DSB();
+    __ISB();
+    __set_PRIMASK(mask_);
+  }
+
+ private:
+  uint32_t mask_;
+};
+
+struct UartState {
+  uint32_t baud_rate;   // Cached baud rate, for `get_baud_rate` without register reads.
+  uint32_t errors;      // Counter incremented from the driver callback on
+                        // parity/framing/overrun.
+  int de_pad;           // RS485 direction pin (PAD number), or -1.
+  UartTransferState* transfer;  // Non-null while the controller is open.
+};
+
+static UartState uart_states[3] = {};
+static ResourcePool<int, -1> uart_controllers(0, 1, 2);
+
+static void finish_uart_close(int id, UartTransferState* transfer);
+
+// Whether OUR code has run Initialize() on the controller (the boot-time
+// console init is handled separately in create).
+static bool cmsis_initialized[3] = {};
+
+// Per-controller CMSIS access. The driver structs are DATA bindings into
+// the base; the register pointers serve the few direct LSR/FCNR/RBR reads
+// the driver has no API for.
+static ARM_DRIVER_USART* const kDrivers[3] = {
+  &Driver_USART0, &Driver_USART1, &Driver_USART2,
+};
+static USART_TypeDef* const kUartRegs[3] = {
+  reinterpret_cast<USART_TypeDef*>(MP_UART0_BASE_ADDR),
+  reinterpret_cast<USART_TypeDef*>(MP_UART1_BASE_ADDR),
+  reinterpret_cast<USART_TypeDef*>(MP_UART2_BASE_ADDR),
+};
+// --- Toit state bits (match lib/uart.toit). --------------------------------
+static const uint32_t kReadState  = 1 << 0;
+static const uint32_t kErrorState = 1 << 1;
+static const uint32_t kWriteState = 1 << 2;
+static const uint32_t kBreakState = 1 << 3;
+
+// --- Resource ---------------------------------------------------------------
+
+class UartResource : public EventResource {
+ public:
+  TAG(UartResource);
+  UartResource(ResourceGroup* group, int uart_id)
+    : EventResource(group, Event::uart_type(uart_id))
+    , uart_id_(uart_id) {}
+
+  int uart_id() const { return uart_id_; }
+
+ private:
+  int uart_id_;
+};
+
+class UartResourceGroup : public ResourceGroup {
+ public:
+  TAG(UartResourceGroup);
+  explicit UartResourceGroup(Process* process, EventSource* event_source)
+    : ResourceGroup(process, event_source) {}
+
+  void on_unregister_resource(Resource* r) override;
+
+  uint32_t on_event(Resource* r, word data, uint32_t state) override {
+    switch (data) {
+      case Event::UART_KIND_RX:
+        state |= kReadState;
+        break;
+      case Event::UART_KIND_TX_DONE:
+        state |= kWriteState;
+        break;
+      case Event::UART_KIND_ERROR:
+        state |= kErrorState | kReadState;
+        break;
+      case Event::UART_KIND_BREAK:
+        state |= kBreakState;
+        break;
+    }
+    return state;
+  }
+};
+
+// Sleep vote: an open UART must keep the system out of SLEEP1. The
+// armed DMA receive does not survive the SLEEP1 power cycle (the SDK
+// restore callback restores registers, not in-flight transfers), so an
+// idle system with an open port goes DEAF on wake — reproduced with a
+// 35 s idle gap killing the agent; the byte-fed software watchdog then
+// starves and reboots ~60 s later, which is what every "PWRKEY-latch"
+// mystery actually was. The closed blob driver kept the system awake
+// implicitly. Proper per-driver suspend/resume belongs to the
+// deep-sleep work; until then any open port votes SLEEP1 away.
+// Module-global (one vote across all groups): the deep-sleep path must
+// be able to release a vote leaked by an open port at VM exit (see
+// uart_sleep_vote_release_for_sleep), which per-group state can't offer.
+// These statics are OTA-safe because every slot carries its own .data image.
+static uint8_t uart_sleep_vote_handle = 0xff;
+static bool uart_sleep_vote_held = false;
+static int uart_open_ports = 0;
+
+static void uart_sleep_vote(int delta) {
+  uart_open_ports += delta;
+  if (uart_sleep_vote_handle == 0xff) {
+    if (uart_open_ports <= 0) return;
+    slpManApplyPlatVoteHandle("TOITUART", &uart_sleep_vote_handle);
+    if (uart_sleep_vote_handle == 0xff) return;
+  }
+  if (uart_open_ports > 0 && !uart_sleep_vote_held) {
+    slpManPlatVoteDisableSleep(uart_sleep_vote_handle, SLP_SLP1_STATE);
+    uart_sleep_vote_held = true;
+  } else if (uart_open_ports == 0 && uart_sleep_vote_held) {
+    slpManPlatVoteEnableSleep(uart_sleep_vote_handle, SLP_SLP1_STATE);
+    uart_sleep_vote_held = false;
+  }
+}
+
+// Called from the deep-sleep path (toit_ec618.cc) after the VM has exited:
+// a port still open at that point (e.g. the test agent's console port —
+// its container is not torn down on a deep-sleep exit) would leave the
+// vote held and block hibernate forever. Deep sleep ends in a reboot, so
+// in-flight UART state is moot — release unconditionally. Returns whether
+// the vote was actually held (diagnostic).
+extern "C" bool toit_uart_sleep_vote_release_for_sleep() {
+  if (!uart_sleep_vote_held) return false;
+  slpManPlatVoteEnableSleep(uart_sleep_vote_handle, SLP_SLP1_STATE);
+  uart_sleep_vote_held = false;
+  return true;
+}
+
+void UartResourceGroup::on_unregister_resource(Resource* r) {
+  auto uart_res = static_cast<UartResource*>(r);
+  int id = uart_res->uart_id();
+  UartState& state = uart_states[id];
+#if CONFIG_TOIT_EC618_PRINT_UART
+  // The print UART shares the controller with printf/monitor output:
+  // tear down OUR half only (RX irqs + buffers) and leave the
+  // controller powered and configured so printf keeps flowing
+  // (SendPolling needs only the CONFIGURED flag).
+  if (id == current_console()) {
+    UartTransferState* transfer = state.transfer;
+    if (transfer != null) {
+      bool tx_busy;
+      {
+        IrqMaskGuard guard;
+        kDrivers[id]->Control(ARM_USART_CONTROL_RX, 0);
+        transfer->closing = true;
+        tx_busy = transfer->tx_busy;
+      }
+      // Keep the transfer state and controller lease alive while DMA still
+      // owns a staging buffer. The normal TX drain task finishes teardown
+      // after the physical line-idle edge; an idle port can finish now.
+      if (!tx_busy) finish_uart_close(id, transfer);
+    } else {
+      state.de_pad = -1;
+      uart_controllers.put(id);
+      uart_sleep_vote(-1);
+    }
+    return;
+  }
+#endif
+  if (state.transfer != null) {
+    // CMSIS teardown from a quiesced state — this is the path the
+    // closed blob's Uart_DeInit could hang on this path. CONTROL_RX 0 is
+    // the supported abort (ABORT_RECEIVE is not): RX irqs masked, DMA
+    // suspended, rx_busy cleared. POWER_OFF then resets the module
+    // and stops+resets the RX DMA channel, so nothing references
+    // `chunk` by the time it is freed below.
+    UartTransferState* transfer;
+    {
+      IrqMaskGuard guard;
+      kDrivers[id]->Control(ARM_USART_CONTROL_RX, 0);
+      kDrivers[id]->Control(ARM_USART_CONTROL_TX, 0);
+      kDrivers[id]->PowerControl(ARM_POWER_OFF);
+      kDrivers[id]->Uninitialize();
+      cmsis_initialized[id] = false;
+      transfer = state.transfer;
+      state.transfer = null;  // Unhook before freeing (the IRQ checks it).
+    }
+    // POWER_OFF stopped the TX DMA channel and Uninitialize closed it,
+    // so nothing references the staging buffers (or chunk) past this
+    // point.
+    free(transfer->tx_bufs[0]);
+    free(transfer->tx_bufs[1]);
+    free(transfer->ring);
+    transfer->pads.release();
+    delete transfer;
+  }
+  state.de_pad = -1;
+  uart_controllers.put(id);
+  uart_sleep_vote(-1);
+}
+
+// Drives the RS485 direction line through the same GPIO_pin* API as
+// gpio_ec618.cc. The GPIO driver explicitly warns against mixing its API
+// with the separate core-driver GPIO stack.
+static void set_de_level(int pad, int level) {
+  int gpio_bit = pad_to_gpio(pad);
+  if (gpio_bit < 0) return;
+  uint16_t mask = 1 << (gpio_bit & 0xf);
+  GPIO_pinWrite(gpio_bit >> 4, mask, level ? mask : 0);
+}
+
+// Releases a print-UART transfer only after its asynchronous TX has stopped.
+// The ordinary close path powers the controller off and can free immediately;
+// the print path must leave it configured for SendPolling, so the drain task
+// owns the final release instead.
+static void finish_uart_close(int id, UartTransferState* transfer) {
+  int de_pad;
+  {
+    IrqMaskGuard guard;
+    if (uart_states[id].transfer != transfer || transfer->tx_busy) return;
+    uart_states[id].transfer = null;
+    de_pad = uart_states[id].de_pad;
+    uart_states[id].de_pad = -1;
+  }
+
+  if (de_pad >= 0) set_de_level(de_pad, 0);
+  free(transfer->tx_bufs[0]);
+  free(transfer->tx_bufs[1]);
+  free(transfer->ring);
+  transfer->pads.release();
+  delete transfer;
+  uart_controllers.put(id);
+  uart_sleep_vote(-1);
+}
+
+// --- CMSIS driver path (UART2) ----------------------------------------------
+//
+// Transfer protocol: only RECEIVE_COMPLETE ends an armed Receive(); on
+// RX_TIMEOUT the driver reloads the DMA descriptor and the SAME transfer
+// keeps filling `chunk`, with GetRxCount() growing monotonically. The
+// callback therefore pushes the [seen..GetRxCount()) delta into the ring
+// — dropping the NEWEST bytes when full, counted in `dropped` and
+// `errors`, with RX staying alive — and re-arms only on completion.
+
+// Posts a uart event from the driver callback. The callback usually runs
+// in ISR context (UART irq, DMA-end irq) but the driver also invokes it
+// from INSIDE Receive()/task context when bytes are already waiting —
+// FromISR queue ops from a task lose the event, so pick by IPSR.
+static void send_uart_event(int id, word kind) {
+  if (__get_IPSR() != 0) {
+    Ec618EventSource::send_event_from_isr(Event::uart_type(id), kind);
+  } else {
+    Ec618EventSource::send_event(Event::uart_type(id), kind);
+  }
+}
+
+// Raise the TX FIFO-empty threshold without resetting either FIFO. The
+// remaining bytes give the completion IRQ enough time to chain the next DMA
+// buffer without a wire gap.
+static void tx_trigger_boost(int id) {
+  kUartRegs[id]->FCR = USART_FCR_FIFO_EN_Msk
+      | (1u << USART_FCR_RX_FIFO_AVAIL_TRIG_LEVEL_Pos)  // 8-byte RX (fork default).
+      | (2u << USART_FCR_TX_FIFO_EMPTY_TRIG_LEVEL_Pos);  // 8-byte TX-empty.
+}
+
+static QueueHandle_t uart_tx_drain_queue = null;
+static bool uart_tx_drain_task_created = false;
+static const UBaseType_t kUartTxDrainTaskPriority = 21;  // Above the VM task (20).
+
+static void uart_tx_drain_task(void*) {
+  while (true) {
+    uint8_t id;
+    if (xQueueReceive(uart_tx_drain_queue, &id, portMAX_DELAY) != pdTRUE) continue;
+
+    while (true) {
+      UartTransferState* transfer;
+      bool pending;
+      bool idle;
+      {
+        IrqMaskGuard guard;
+        transfer = uart_states[id].transfer;
+        pending = transfer != null && transfer->tx_waiting_for_empty;
+        idle = (kUartRegs[id]->LSR & USART_LSR_TX_EMPTY_Msk) != 0;
+      }
+      if (!pending) break;
+      if (!idle) {
+        osDelay(1);
+        continue;
+      }
+
+      bool notify = false;
+      bool finish_close = false;
+      {
+        IrqMaskGuard guard;
+        transfer = uart_states[id].transfer;
+        if (transfer != null && transfer->tx_waiting_for_empty &&
+            (kUartRegs[id]->LSR & USART_LSR_TX_EMPTY_Msk) != 0) {
+          transfer->tx_waiting_for_empty = false;
+          int de = uart_states[id].de_pad;
+          if (de >= 0) set_de_level(de, 0);
+          transfer->tx_busy = false;
+          finish_close = transfer->closing;
+          notify = !finish_close;
+        }
+      }
+      if (finish_close) {
+        finish_uart_close(id, transfer);
+      } else if (notify) {
+        send_uart_event(id, Event::UART_KIND_TX_DONE);
+      }
+      break;
+    }
+  }
+}
+
+static bool ensure_uart_tx_drain_task() {
+  if (uart_tx_drain_task_created) return true;
+  if (uart_tx_drain_queue == null) {
+    uart_tx_drain_queue = xQueueCreate(6, sizeof(uint8_t));
+    if (uart_tx_drain_queue == null) return false;
+  }
+  if (xTaskCreate(uart_tx_drain_task, "toit_uart_tx", 512, null,
+                  kUartTxDrainTaskPriority, null) != pdPASS) {
+    return false;
+  }
+  uart_tx_drain_task_created = true;
+  return true;
+}
+
+static void queue_uart_tx_drain(int id) {
+  uint8_t value = static_cast<uint8_t>(id);
+  if (__get_IPSR() != 0) {
+    BaseType_t woken = pdFALSE;
+    xQueueSendFromISR(uart_tx_drain_queue, &value, &woken);
+  } else {
+    xQueueSend(uart_tx_drain_queue, &value, 0);
+  }
+}
+
+// Mostly runs in ISR context with a tight clock: at a 16-byte FIFO trigger
+// and 921600 baud there are ~170 us before the hardware FIFO overruns, so
+// the copy is two memcpys, not a byte loop.
+static void cmsis_ring_push(int id, const uint8_t* data, uint32_t n) {
+  UartTransferState* transfer = uart_states[id].transfer;
+  uint32_t head = transfer->head.load(std::memory_order_relaxed);
+  uint32_t tail = transfer->tail.load(std::memory_order_acquire);
+  uint32_t used = head >= tail ? head - tail : transfer->ring_size - tail + head;
+  uint32_t free_space = transfer->ring_size - 1 - used;  // One slot separates full from empty.
+  uint32_t take = n < free_space ? n : free_space;
+  if (take < n) {
+    // Drop newest and count it; RX remains usable after overflow.
+    transfer->dropped += n - take;
+    uart_states[id].errors += n - take;
+    send_uart_event(id, Event::UART_KIND_ERROR);
+  }
+  uint32_t first = transfer->ring_size - head;
+  if (first > take) first = take;
+  memcpy(transfer->ring + head, data, first);
+  if (take > first) memcpy(transfer->ring, data + first, take - first);
+  head += take;
+  if (head >= transfer->ring_size) head -= transfer->ring_size;
+  transfer->head.store(head, std::memory_order_release);
+}
+
+static void cmsis_uart_event(int id, uint32_t event) {
+  IrqMaskGuard guard;
+  UartTransferState* transfer = uart_states[id].transfer;
+  if (transfer == null) return;
+  transfer->cb_events++;
+  ARM_DRIVER_USART* driver = kDrivers[id];
+  if (event & (ARM_USART_EVENT_RECEIVE_COMPLETE | ARM_USART_EVENT_RX_TIMEOUT)) {
+    uint32_t n = driver->GetRxCount();
+    if (n > sizeof(transfer->chunk)) n = sizeof(transfer->chunk);
+    if (n > transfer->seen) {
+      cmsis_ring_push(id, transfer->chunk + transfer->seen, n - transfer->seen);
+      transfer->seen = n;
+      send_uart_event(id, Event::UART_KIND_RX);
+    }
+    if (event & ARM_USART_EVENT_RECEIVE_COMPLETE) {
+      // Only RECEIVE_COMPLETE ends the armed transfer. RX_TIMEOUT leaves
+      // it RUNNING — bsp_usart.c reloads the descriptor and keeps
+      // streaming into the same buffer (and can fire this callback from
+      // inside Receive() itself) — so a Receive() here re-enters the
+      // driver's DMA state machine against a live transfer. Under flood
+      // that re-entrancy wrote received bytes outside `chunk` and
+      // corrupted the heap (hardfault in the interpreter). Push the
+      // delta above; arm a new transfer only when the old one is over.
+      transfer->seen = 0;
+      if (driver->Receive(transfer->chunk, sizeof(transfer->chunk)) != ARM_DRIVER_OK) {
+        transfer->rearm_fails++;
+      }
+    }
+  }
+  if (event & ARM_USART_EVENT_RX_OVERFLOW) {
+    uart_states[id].errors++;
+    send_uart_event(id, Event::UART_KIND_ERROR);
+  }
+  if (event & (ARM_USART_EVENT_SEND_COMPLETE | ARM_USART_EVENT_TX_COMPLETE)) {
+    bool chained = false;
+    if (transfer->tx_pending_len > 0) {
+      // Chain the staged next chunk right here in the IRQ: only the shift
+      // register is still draining, so a fast re-kick keeps the wire
+      // gapless (uart2-gapfree — a task-level re-stage costs ~0.5 ms of
+      // idle line per chunk boundary). bsp_usart clears send_active
+      // before invoking this callback, so the re-entrant Send is
+      // accepted. On the should-never-happen error path fall through to
+      // the idle handling so the writer wakes and can act, rather than
+      // waiting for a completion that will not come (the pending bytes
+      // are lost — like any hardware TX error).
+      transfer->tx_active ^= 1;
+      uint32_t len = transfer->tx_pending_len;
+      transfer->tx_pending_len = 0;
+      uint8_t* buf = transfer->tx_bufs[transfer->tx_active];
+      USART_TypeDef* reg = kUartRegs[id];
+      if (len <= 10) {
+        // At the 8-byte TX-empty trigger at most 8 of the 32 FIFO entries
+        // remain occupied. Tiny tails fit completely, so avoid a redundant
+        // DMA setup (and its lossy one-byte special case) and let the normal
+        // task-context line-idle drain below finish the transfer.
+        for (uint32_t i = 0; i < len; i++) reg->THR = buf[i];
+      } else {
+        // Pre-feed the FIFO before arming the DMA. Eight THR writes top it
+        // up without tripping Send's FIFO-relax spin (> 16), and leave at
+        // least three bytes for the asynchronous path.
+        const uint32_t prefeed = 8;
+        for (uint32_t i = 0; i < prefeed; i++) reg->THR = buf[i];
+        chained =
+            kDrivers[id]->Send(buf + prefeed, len - prefeed) == ARM_DRIVER_OK;
+      }
+    }
+    if (!chained) {
+      if (!transfer->tx_waiting_for_empty) {
+        // The CMSIS driver has no TX_COMPLETE event. Finish the FIFO and
+        // shift-register drain in task context, outside both the IRQ and
+        // the VM primitive.
+        transfer->tx_waiting_for_empty = true;
+        queue_uart_tx_drain(id);
+      }
+    }
+    // A chained send freed the spare buffer. A final send wakes waiters only
+    // after the true line-idle edge above.
+    if (chained || !transfer->tx_busy) {
+      send_uart_event(id, Event::UART_KIND_TX_DONE);
+    }
+  }
+  if (event & ARM_USART_EVENT_RX_BREAK) {
+    // A break is data-line signalling, not a receive error. The hardware
+    // generally reports framing/parity alongside it because the line stays
+    // low; match the ESP32 API and expose the break without counting those
+    // derivative status bits as errors.
+    send_uart_event(id, Event::UART_KIND_BREAK);
+  } else if (event & (ARM_USART_EVENT_RX_FRAMING_ERROR |
+                      ARM_USART_EVENT_RX_PARITY_ERROR)) {
+    uart_states[id].errors++;
+    send_uart_event(id, Event::UART_KIND_ERROR);
+  }
+}
+
+// The CMSIS event callback carries no context argument — one thunk per
+// controller.
+static void cmsis_uart_event0(uint32_t event) { cmsis_uart_event(0, event); }
+static void cmsis_uart_event1(uint32_t event) { cmsis_uart_event(1, event); }
+static void cmsis_uart_event2(uint32_t event) { cmsis_uart_event(2, event); }
+static void (* const kUartCallbacks[3])(uint32_t) = {
+  cmsis_uart_event0, cmsis_uart_event1, cmsis_uart_event2,
+};
+
+// TX shift register + FIFO empty, read straight from the LSR (the driver
+// has no API for it).
+static bool tx_idle(int id) {
+  UartTransferState* transfer = uart_states[id].transfer;
+  if (transfer == null) return true;
+  // tx_busy covers the armed-but-not-yet-started DMA gap, where the
+  // FIFO is still empty and TEMT alone would report idle too early.
+  // (It stays true across chained Sends; the pending check is belt.)
+  if (transfer->tx_busy || transfer->tx_pending_len > 0) return false;
+  return (kUartRegs[id]->LSR & USART_LSR_TX_EMPTY_Msk) != 0;
+}
+
+// Builds the ARM_USART_CONTROL word for mode + framing.
+static uint32_t cmsis_control_word(int data_bits, int parity, int stop_bits) {
+  uint32_t control = ARM_USART_MODE_ASYNCHRONOUS;
+  switch (data_bits) {
+    case 5: control |= ARM_USART_DATA_BITS_5; break;
+    case 6: control |= ARM_USART_DATA_BITS_6; break;
+    case 7: control |= ARM_USART_DATA_BITS_7; break;
+    default: control |= ARM_USART_DATA_BITS_8; break;
+  }
+  // Toit parity: 1 disabled, 2 even, 3 odd (lib/uart.toit).
+  if (parity == 2) control |= ARM_USART_PARITY_EVEN;
+  else if (parity == 3) control |= ARM_USART_PARITY_ODD;
+  else control |= ARM_USART_PARITY_NONE;
+  // Toit stop bits: 1 one, 2 one-and-half, 3 two (StopBits.value_).
+  if (stop_bits == 3) control |= ARM_USART_STOP_BITS_2;
+  else if (stop_bits == 2) control |= ARM_USART_STOP_BITS_1_5;
+  else control |= ARM_USART_STOP_BITS_1;
+  return control;
+}
+
+// --- Pad-table-driven preset resolution ------------------------------------
+//
+// Walk every (controller, mapping) combination and pick the one that
+// matches all of the user-supplied pads. Pads passed as -1 act as
+// wildcards.
+
+struct ResolvedPreset {
+  int uart_id;
+  int mapping;
+  // Iomux selectors for the chosen pads, as returned by uart_pad().
+  // -1 if the corresponding pad wasn't used.
+  int tx_mux;
+  int rx_mux;
+  int rts_mux;
+  int cts_mux;
+};
+
+static bool resolve_preset(int tx_pad, int rx_pad, int rts_pad, int cts_pad,
+                           ResolvedPreset* out) {
+  // 3 controllers × at most 2 mappings each (UART0:2, UART1:1, UART2:2).
+  // We don't allow alt CTS mapping to be picked implicitly — that's only
+  // selected by the caller passing the alt CTS pad.
+  for (int uart_id = 0; uart_id <= 2; uart_id++) {
+    for (int mapping = 0; mapping <= 1; mapping++) {
+      int tx_mux = -1, rx_mux = -1;
+      int expected_tx = uart_pad(uart_id, UartRole::TX, mapping, &tx_mux);
+      int expected_rx = uart_pad(uart_id, UartRole::RX, mapping, &rx_mux);
+      // A controller mapping must define both TX and RX pads.
+      if (expected_tx < 0 || expected_rx < 0) continue;
+
+      // The user-provided pads must match (or be -1).
+      if (tx_pad >= 0 && tx_pad != expected_tx) continue;
+      if (rx_pad >= 0 && rx_pad != expected_rx) continue;
+
+      // Flow-control pads (if requested) must agree with this controller.
+      // Every supported TX and RX pad uniquely identifies its data mapping,
+      // and at least one direction is present. Once those pads match, no later
+      // data mapping can make an invalid flow-control pad valid. We still try
+      // every role mapping here because UART1 has an alternate CTS pad.
+      int rts_mux_found = -1, cts_mux_found = -1;
+      if (rts_pad >= 0) {
+        bool rts_ok = false;
+        for (int rts_mapping = 0; rts_mapping <= 1; rts_mapping++) {
+          int mux = -1;
+          int p = uart_pad(uart_id, UartRole::RTS, rts_mapping, &mux);
+          if (p == rts_pad) { rts_ok = true; rts_mux_found = mux; break; }
+        }
+        if (!rts_ok) return false;
+      }
+      if (cts_pad >= 0) {
+        bool cts_ok = false;
+        for (int cts_mapping = 0; cts_mapping <= 1; cts_mapping++) {
+          int mux = -1;
+          int p = uart_pad(uart_id, UartRole::CTS, cts_mapping, &mux);
+          if (p == cts_pad) { cts_ok = true; cts_mux_found = mux; break; }
+        }
+        if (!cts_ok) return false;
+      }
+
+      out->uart_id = uart_id;
+      out->mapping = mapping;
+      out->tx_mux = tx_pad >= 0 ? tx_mux : -1;
+      out->rx_mux = rx_pad >= 0 ? rx_mux : -1;
+      out->rts_mux = rts_mux_found;
+      out->cts_mux = cts_mux_found;
+      return true;
+    }
+  }
+  return false;
+}
+
+static void configure_uart_pad(int pad, int mux, bool pull_up) {
+  GPIO_IomuxEC618(pad, mux, 0, 0);
+  if (pull_up) GPIO_PullConfig(pad, 1, 1);
+}
+
+static void configure_de_pad(int pad) {
+  // Any pad can serve as the RS485 direction line; we drive it as plain
+  // GPIO, configured as output starting low (= RX direction).
+  int gpio_bit = pad_to_gpio(pad);
+  ASSERT(gpio_bit >= 0);  // Validated before preset resolution in create.
+  GPIO_IomuxEC618(pad, pad_gpio_mux(pad), 0, 0);
+  GpioPinConfig_t config;
+  memset(&config, 0, sizeof(config));
+  config.pinDirection = GPIO_DIRECTION_OUTPUT;
+  config.misc.initOutput = 0;  // Idle low = RX direction.
+  GPIO_pinConfig(gpio_bit >> 4, gpio_bit & 0xf, &config);
+}
+
+// ---------------------------------------------------------------------------
+
+MODULE_IMPLEMENTATION(uart, MODULE_UART)
+
+PRIMITIVE(init) {
+  if (!ensure_uart_tx_drain_task()) FAIL(MALLOC_FAILED);
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  Ec618EventSource* event_source = Ec618EventSource::instance();
+  if (event_source == null) FAIL(ALREADY_CLOSED);
+
+  UartResourceGroup* group = _new UartResourceGroup(process, event_source);
+  if (group == null) FAIL(MALLOC_FAILED);
+
+  proxy->set_external_address(group);
+  return proxy;
+}
+
+// Toit mode values (from lib/uart.toit).
+static const int kModeUart             = 0;
+static const int kModeRs485HalfDuplex  = 1;
+static const int kModeIrda             = 2;
+
+// tx_flags bits (lib/uart.toit constructor):
+//   1 = invert-tx, 2 = invert-rx, 8 = high-priority, 16 = large-buffers.
+static const int kTxFlagInvertTx       = 1;
+static const int kTxFlagInvertRx       = 2;
+static const int kTxFlagHighPriority   = 8;
+static const int kTxFlagLargeBuffers   = 16;
+
+PRIMITIVE(create) {
+  ARGS(UartResourceGroup, group,
+       int, tx, int, rx, int, rts, int, cts,
+       int, baud_rate, int, data_bits, int, stop_bits, int, parity,
+       int, tx_flags, int, mode);
+
+  // Both pin args may be -1 (TX-only or RX-only); but at least one must
+  // be set, otherwise there's no UART direction at all.
+  if (tx < 0 && rx < 0) FAIL(INVALID_ARGUMENT);
+  if (data_bits < 5 || data_bits > 8) FAIL(INVALID_ARGUMENT);
+  if (stop_bits < 1 || stop_bits > 3) FAIL(INVALID_ARGUMENT);
+  if (parity < 1 || parity > 3) FAIL(INVALID_ARGUMENT);
+  if (baud_rate <= 0 || baud_rate > 4000000) FAIL(INVALID_ARGUMENT);
+
+  // TX/RX inversion has no EC618 equivalent — reject it rather than silently
+  // dropping it. Note: kTxFlagHighPriority is also an ESP32-only knob, but the
+  // generic uart library auto-sets it for baud >= 460800 (lib/uart.toit), so
+  // rejecting it would make EVERY open at >= 460800 baud fail. It is only a task-
+  // priority hint, so treat it as a harmless no-op here. (large-buffers, which the
+  // library auto-sets alongside it, is honored below as a bigger RX cache.)
+  if ((tx_flags & (kTxFlagInvertTx | kTxFlagInvertRx)) != 0) {
+    FAIL(INVALID_ARGUMENT);
+  }
+  if (mode == kModeIrda) FAIL(INVALID_ARGUMENT);
+  if (mode != kModeUart && mode != kModeRs485HalfDuplex) FAIL(INVALID_ARGUMENT);
+
+  // Validate pad ranges up front so the rest of the code can assume they
+  // either are -1 or refer to a known pad.
+  auto valid_pad = [](int pad) {
+    return pad == -1 || (pad > 0 && pad <= kMaxPadIndex);
+  };
+  if (!valid_pad(tx) || !valid_pad(rx) || !valid_pad(rts) || !valid_pad(cts)) {
+    FAIL(INVALID_ARGUMENT);
+  }
+
+  // RS485: rts is the direction pin, not a flow-control pin. Take it out
+  // of the preset matching and pass any GPIO-capable pad through.
+  int de_pad = -1;
+  int matched_rts = rts;
+  if (mode == kModeRs485HalfDuplex) {
+    if (cts != -1) FAIL(INVALID_ARGUMENT);
+    if (rts < 0) FAIL(INVALID_ARGUMENT);
+    if (pad_to_gpio(rts) < 0) FAIL(INVALID_ARGUMENT);
+    de_pad = rts;
+    matched_rts = -1;  // Keep the preset matcher away from this pin.
+  }
+
+  ResolvedPreset preset = {};
+  if (!resolve_preset(tx, rx, matched_rts, cts, &preset)) FAIL(INVALID_ARGUMENT);
+
+  PadReserver pads;
+  if (!pads.take(tx) || !pads.take(rx) ||
+      !pads.take(rts) || !pads.take(cts)) FAIL(ALREADY_IN_USE);
+
+  int id = preset.uart_id;
+
+  // Refuse to hand out the controller that's currently carrying the
+  // firmware's print stream.
+  //
+  // Belt-and-suspenders, not load-bearing: a quick experiment with this
+  // check disabled showed that interleaved use of the same UART by
+  // `printf` (CMSIS Driver_USART<id>->SendPolling, the print path) and
+  // by Toit's UART API (Uart_TxTaskSafe, after a fresh Uart_BaseInitEx)
+  // produces clean, in-order output — neither side corrupts the other.
+  // Re-initialising the controller from underneath the print path does
+  // not break it on this chip / PLAT.
+  //
+  // We still refuse the open because:
+  //   - The user almost never wants their data interleaved with [toit]
+  //     log lines on the same wire.
+  //   - We only verified TX; concurrent RX (both paths racing for the
+  //     same incoming bytes) and heavy/bursty loads were not tested.
+  //   - It surfaces the situation as an exception instead of producing
+  //     mysterious mixed output at runtime.
+  //
+  // A user who really needs the print UART for application data should
+  // reprovision the anchor record's console byte pointing at a
+  // different controller, or with CONFIG_TOIT_EC618_PRINT_UART=0 to
+  // disable the print redirect entirely.
+  //
+  // CONFIG_TOIT_EC618_ALLOW_PRINT_UART_REUSE escapes this check; the
+  // OTA-over-UART path on quirky-plenty needs to receive on the same
+  // wire that's also carrying print output. We've observed it working
+  // in practice (TX and RX paths don't fight on this chip).
+#if CONFIG_TOIT_EC618_PRINT_UART && !CONFIG_TOIT_EC618_ALLOW_PRINT_UART_REUSE
+  if (id == current_console()) FAIL(ALREADY_IN_USE);
+#endif
+
+  if (!uart_controllers.take(id)) FAIL(ALREADY_IN_USE);
+  bool controller_handed_to_resource = false;
+  Defer return_controller { [&] {
+    if (!controller_handed_to_resource) uart_controllers.put(id);
+  } };
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  UartResource* resource = _new UartResource(group, id);
+  if (resource == null) FAIL(MALLOC_FAILED);
+
+  // Pin muxing — only touch pads the user actually configured.
+  if (tx >= 0)  configure_uart_pad(tx,  preset.tx_mux,  /*pull_up=*/false);
+  if (rx >= 0)  configure_uart_pad(rx,  preset.rx_mux,  /*pull_up=*/true);
+  if (matched_rts >= 0) configure_uart_pad(rts, preset.rts_mux, /*pull_up=*/false);
+  if (cts >= 0) configure_uart_pad(cts, preset.cts_mux, /*pull_up=*/true);
+  if (de_pad >= 0) configure_de_pad(de_pad);
+
+  {
+    // Every controller runs the open CMSIS driver (see the include
+    // comment): TX and RX are DMA mode. RX must continue while flash writes
+    // stall XIP; the callback copies each completed DMA chunk into our ring.
+    uint32_t ring_size = (tx_flags & kTxFlagLargeBuffers) ? 32768 : 8192;
+    uint32_t tx_buf_size = (tx_flags & kTxFlagLargeBuffers) ? 4096 : 2048;
+    UartTransferState* transfer = _new UartTransferState();
+    uint8_t* ring = transfer ? unvoid_cast<uint8_t*>(malloc(ring_size)) : null;
+    uint8_t* tx_buf0 = ring ? unvoid_cast<uint8_t*>(malloc(tx_buf_size)) : null;
+    uint8_t* tx_buf1 = tx_buf0 ? unvoid_cast<uint8_t*>(malloc(tx_buf_size)) : null;
+    if (transfer == null || ring == null || tx_buf0 == null || tx_buf1 == null) {
+      free(tx_buf0);
+      free(ring);
+      delete transfer;
+      delete resource;
+      FAIL(MALLOC_FAILED);
+    }
+    transfer->ring = ring;
+    transfer->ring_size = ring_size;
+    transfer->tx_bufs[0] = tx_buf0;
+    transfer->tx_bufs[1] = tx_buf1;
+    transfer->tx_buf_size = tx_buf_size;
+    transfer->control = cmsis_control_word(data_bits, parity, stop_bits);
+    transfer->pads.adopt(pads);
+    pads.keep();
+    uart_states[id].transfer = transfer;  // Set before the first event can fire.
+    ARM_DRIVER_USART* driver = kDrivers[id];
+    // Uninitialize first — but only if the driver is genuinely
+    // initialized: Initialize() is a no-op on an INITIALIZED driver (the
+    // console controller is initialized at boot by the print path, so our
+    // event callback would silently never install), while Uninitialize()
+    // on a NEVER-initialized driver closes DMA channels that were never
+    // opened and wedges the device on the next open. Track it ourselves;
+    // the print-uart teardown intentionally leaves its driver
+    // initialized.
+    bool was_initialized = cmsis_initialized[id];
+#if CONFIG_TOIT_EC618_PRINT_UART
+    if (id == current_console()) was_initialized = true;
+#endif
+    if (was_initialized) driver->Uninitialize();
+    driver->Initialize(kUartCallbacks[id]);
+    cmsis_initialized[id] = true;
+    // FULL -> OFF -> FULL: the OFF in the middle GPR-resets the UART block.
+    // Every close does this reset, but the first open since boot starts
+    // from whatever state the ROM left the controller in — that first
+    // session was consistently dead on the wire (echo 9600/reopen cell,
+    // duplex round 1) until a close/reopen cycle had reset the block once.
+    // The reset must run with the block CLOCKED (OFF before any FULL = bus
+    // hang), hence the leading FULL.
+    driver->PowerControl(ARM_POWER_FULL);
+    driver->PowerControl(ARM_POWER_OFF);
+    driver->PowerControl(ARM_POWER_FULL);
+    // (The RX FIFO triggers are 16 via USARTn_RX_TRIG_LVL in RTE_Device.h
+    // — the IRQ-mode default of 30-of-32 left 2 bytes of overrun
+    // headroom.)
+    driver->Control(transfer->control, baud_rate);
+    // Autobaud off, explicitly: the boot ROM leaves UART0 in autobaud
+    // ("urc baud: 0") and SetBaudrate only clears ADCR for baud==0; with
+    // ADCR live, the irq handler treats RX timeouts as autobaud events.
+    kUartRegs[id]->ADCR = 0;
+    driver->Control(ARM_USART_CONTROL_TX, 1);
+    driver->Control(ARM_USART_CONTROL_RX, 1);
+    // RS485 keeps the drained-FIFO SEND_COMPLETE semantics: its DE drop
+    // spins for TEMT from the completion callback, and the early trigger
+    // would put ~8 undrained frames under that spin (regressed the rs485
+    // test at 9600). Half-duplex messaging gains nothing from chaining.
+    if (de_pad < 0) tx_trigger_boost(id);
+    // Masked: Receive() enables the RX irqs mid-call and can invoke the
+    // event callback from THIS task context — an RX irq landing in that
+    // window runs a second callback concurrently, and two ring pushes
+    // racing on `head` turn the ring memcpy into a wild write.
+    IrqMaskGuard guard;
+    if (driver->Receive(transfer->chunk, sizeof(transfer->chunk)) != ARM_DRIVER_OK) {
+      transfer->rearm_fails++;
+    }
+  }
+
+  uart_states[id].baud_rate = baud_rate;
+  uart_states[id].errors = 0;
+  uart_states[id].de_pad = de_pad;
+
+  group->register_resource(resource);
+  controller_handed_to_resource = true;
+  uart_sleep_vote(1);
+  proxy->set_external_address(resource);
+  return proxy;
+}
+
+PRIMITIVE(create_path) {
+  FAIL(UNIMPLEMENTED);
+}
+
+PRIMITIVE(create_console) {
+  // The common console constructor currently has ESP32-specific ownership
+  // and input-sharing semantics. Keep the table entry explicit until EC618
+  // can adopt its anchor-selected console without changing its boot setup.
+  FAIL(UNSUPPORTED);
+}
+
+PRIMITIVE(close) {
+  ARGS(UartResourceGroup, group, UartResource, resource);
+  group->unregister_resource(resource);
+  resource_proxy->clear_external_address();
+  return process->null_object();
+}
+
+PRIMITIVE(get_baud_rate) {
+  ARGS(UartResource, resource);
+  return Primitive::integer(uart_states[resource->uart_id()].baud_rate, process);
+}
+
+PRIMITIVE(set_baud_rate) {
+  ARGS(UartResource, resource, int, baud_rate);
+  if (baud_rate <= 0 || baud_rate > 4000000) FAIL(INVALID_ARGUMENT);
+  int id = resource->uart_id();
+  UartTransferState* transfer = uart_states[id].transfer;
+  if (transfer == null) FAIL(ALREADY_CLOSED);
+  {
+    // Set-baud is a full power-cycle of the controller, mirroring the
+    // create path exactly (one mental model, one tested sequence). A baud
+    // change loses in-flight bytes by definition, so the FIFO/GPR reset
+    // costs nothing semantically. ABORT_RECEIVE is a silent no-op in
+    // bsp_usart.c; CONTROL_RX 0 is the supported abort, and Control()
+    // with a mode word disables the whole UART while it swaps the
+    // divisor, so the quiesce must come first.
+    IrqMaskGuard guard;
+    ARM_DRIVER_USART* driver = kDrivers[id];
+    driver->Control(ARM_USART_CONTROL_RX, 0);
+    driver->Control(ARM_USART_CONTROL_TX, 0);
+    driver->PowerControl(ARM_POWER_OFF);   // GPR block reset (clocked).
+    driver->PowerControl(ARM_POWER_FULL);
+    driver->Control(transfer->control, static_cast<uint32_t>(baud_rate));
+    driver->Control(ARM_USART_CONTROL_TX, 1);
+    driver->Control(ARM_USART_CONTROL_RX, 1);
+    if (uart_states[id].de_pad < 0) tx_trigger_boost(id);
+    transfer->seen = 0;
+    // The power cycle killed any in-flight Send (a baud change loses
+    // in-flight bytes by definition); without this the writer would wait
+    // forever for a SEND_COMPLETE that can no longer fire.
+    transfer->tx_busy = false;
+    transfer->tx_pending_len = 0;
+    transfer->tx_waiting_for_empty = false;
+    if (driver->Receive(transfer->chunk, sizeof(transfer->chunk)) != ARM_DRIVER_OK) {
+      transfer->rearm_fails++;
+    }
+  }
+  uart_states[id].baud_rate = baud_rate;
+  return process->null_object();
+}
+
+PRIMITIVE(write) {
+  ARGS(UartResource, resource, Blob, data, int, from, int, to, int, break_length);
+  // The PLAT driver has no break-signal API. Reject rather than silently
+  // sending the data without the requested break.
+  if (break_length != 0) FAIL(UNIMPLEMENTED);
+  if (from < 0 || to < from || to > data.length()) FAIL(OUT_OF_BOUNDS);
+
+  int id = resource->uart_id();
+
+  // Raise the RS485 direction line before the first byte goes out; the
+  // TX-done callback drops it once the shift register drains.
+  int de = uart_states[id].de_pad;
+  if (de >= 0) set_de_level(de, 1);
+
+  int len = to - from;
+  int written;
+  UartTransferState* transfer = uart_states[id].transfer;
+  if (transfer == null) FAIL(ALREADY_CLOSED);
+  {
+    // CMSIS path: TX is DMA_MODE (RTE_Device.h) — Send is ASYNCHRONOUS
+    // and keeps reading its buffer after this primitive returns, so the
+    // bytes are staged in driver-owned buffers first (a Toit heap object
+    // can move under GC). While a Send is in flight, the next chunk is
+    // staged into the SPARE buffer for the completion IRQ to chain
+    // gaplessly; only with both buffers occupied does the writer wait
+    // for the TX event.
+    if (transfer->tx_busy) {
+      IrqMaskGuard guard;
+      if (transfer->tx_busy && !transfer->tx_waiting_for_empty &&
+          transfer->tx_pending_len == 0 && len > 1) {
+        // len == 1 stays on the SendPolling path below (via a retry once
+        // idle): a chained Send() of a single byte would hit the driver's
+        // lossy num==1 special case.
+        int chunk = len;
+        if (chunk > (int)transfer->tx_buf_size) chunk = (int)transfer->tx_buf_size;
+        memcpy(transfer->tx_bufs[transfer->tx_active ^ 1], data.address() + from, chunk);
+        transfer->tx_pending_len = chunk;
+        written = chunk;
+      } else {
+        written = 0;
+      }
+    } else if (len == 1) {
+      // Send() special-cases num==1 (no DMA: IER |= TX_DATA_REQ + a direct
+      // THR write) and that byte was observed to VANISH from the wire under
+      // load — a lost protocol ack stalls the whole test rig. SendPolling
+      // is synchronous, drains the FIFO first, and is exercised constantly
+      // by the print path; a single byte costs one frame time.
+      int32_t status32 = kDrivers[id]->SendPolling(data.address() + from, 1);
+      written = (status32 == ARM_DRIVER_OK) ? 1 : 0;
+    } else {
+      int chunk = len;
+      if (chunk > (int)transfer->tx_buf_size) chunk = (int)transfer->tx_buf_size;
+      memcpy(transfer->tx_bufs[transfer->tx_active], data.address() + from, chunk);
+      transfer->tx_busy = true;
+      int32_t status32 = kDrivers[id]->Send(transfer->tx_bufs[transfer->tx_active], chunk);
+      if (status32 != ARM_DRIVER_OK) {
+        transfer->tx_busy = false;
+        written = 0;
+      } else {
+        written = chunk;
+      }
+    }
+  }
+
+  // (RS485: Send is asynchronous; the drain task drops the DE line after
+  // TEMT — dropping it here would cut the line mid-transfer.)
+  return Primitive::integer(written, process);
+}
+
+PRIMITIVE(read) {
+  ARGS(UartResource, resource);
+  int id = resource->uart_id();
+
+  UartTransferState* transfer = uart_states[id].transfer;
+  if (transfer != null) {
+    // Drain our ring (filled by cmsis_uart_event). Snapshot head once: the
+    // IRQ only ever ADDS bytes, so the acquired window we copy is stable.
+    uint32_t head = transfer->head.load(std::memory_order_acquire);
+    uint32_t tail = transfer->tail.load(std::memory_order_relaxed);
+    uint32_t available = head >= tail ? head - tail
+                                      : transfer->ring_size - tail + head;
+    if (available == 0) return process->null_object();
+    ByteArray* result = process->allocate_byte_array(available);
+    if (result == null) FAIL(ALLOCATION_FAILED);
+    ByteArray::Bytes bytes(result);
+    uint32_t first = transfer->ring_size - tail;
+    if (first > available) first = available;
+    memcpy(bytes.address(), transfer->ring + tail, first);
+    if (available > first) {
+      memcpy(bytes.address() + first, transfer->ring, available - first);
+    }
+    tail += available;
+    if (tail >= transfer->ring_size) tail -= transfer->ring_size;
+    transfer->tail.store(tail, std::memory_order_release);
+    return result;
+  }
+  FAIL(ALREADY_CLOSED);
+}
+
+PRIMITIVE(wait_tx) {
+  ARGS(UartResource, resource);
+  int id = resource->uart_id();
+  // Pure state check: final SEND_COMPLETE waits for the shift register
+  // before posting TX_DONE, so a false result always has a future event.
+  return BOOL(tx_idle(id));
+}
+
+PRIMITIVE(set_control_flags) {
+  FAIL(UNIMPLEMENTED);
+}
+
+PRIMITIVE(get_control_flags) {
+  FAIL(UNIMPLEMENTED);
+}
+
+PRIMITIVE(errors) {
+  ARGS(UartResource, resource);
+  return Primitive::integer(uart_states[resource->uart_id()].errors, process);
+}
+
+}  // namespace toit
+
+#endif  // TOIT_EC618

@@ -23,6 +23,7 @@
 #include <mbedtls/compat-2.x.h>
 #endif
 
+#include "top.h"
 #include "resource.h"
 #include "tags.h"
 #include "utils.h"
@@ -57,5 +58,4 @@ class Sha : public SimpleResource {
 };
 
 }
-
 

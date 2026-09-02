@@ -279,7 +279,12 @@ inline bool intrinsic_ushr(Object* a, Object* b, Smi** result) {
 
 Interpreter::Result Interpreter::run() {
 #define LABEL(opcode, length, format, print) &&interpret_##opcode,
+  // On EC618 (no data cache), place the dispatch table in RAM for fast access.
+#ifdef TOIT_EC618
+  static void* dispatch_table[] __attribute__((section(".data"))) = {
+#else
   static void* dispatch_table[] = {
+#endif
     BYTECODES(LABEL)
   };
 #undef LABEL
@@ -1396,8 +1401,7 @@ Interpreter::Result Interpreter::run() {
       store_stack(sp);
       if (Flags::trace) printf("[exit interpretation exit_value=%d]\n", exit_value);
       return Result(exit_value);
-    } else {
-      ASSERT(return_code == 2);
+    } else if (return_code == 2) {
       Object* duration = POP();
       int64 value = 0;
       if (is_smi(duration)) {
@@ -1413,6 +1417,14 @@ Interpreter::Result Interpreter::run() {
       store_stack(sp);
       if (Flags::trace) printf("[exit interpretation]\n");
       return Result(Result::DEEP_SLEEP, value);
+    } else {
+      ASSERT(return_code == 3);
+      static_assert(FRAME_SIZE == 2, "Unexpected frame size");
+      PUSH(reinterpret_cast<Object*>(bcp + HALT_LENGTH));
+      PUSH(program->frame_marker());
+      store_stack(sp);
+      if (Flags::trace) printf("[reset interpretation]\n");
+      return Result(Result::RESET);
     }
   OPCODE_END();
 

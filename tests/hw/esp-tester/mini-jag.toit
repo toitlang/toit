@@ -7,13 +7,20 @@ import esp32
 import expect show *
 import io
 import net
-import system
+import net.tcp
+import system show architecture
 import system.assets
 import system.containers
 import system.storage
-import net.tcp
 import uart
 import uuid show Uuid
+
+// EC618-only dependencies. Importing them on the ESP32 is harmless; the
+// EC618 code path is the only one that actually calls into them.
+import ec618
+import ec618.slot
+import ec618.watchdog
+import system.firmware
 
 import .shared
 
@@ -21,6 +28,13 @@ NETWORK-RETRIES ::= 10
 BUCKET-NAME ::= "toitlang.org/toit/tester"
 
 main:
+  // The EC618 has neither Wi-Fi nor a host reset line in our rig, so it runs a
+  // resident agent that talks the whole control protocol over its print UART.
+  // Every other (ESP32) target keeps master's serial-or-TCP control path.
+  if architecture == "ec618":
+    main-ec618
+    return
+
   cause := esp32.wakeup-cause
   print "Wakeup cause: $cause"
   // It looks like resetting the chip through the UART yields RESET-UNKNOWN.
@@ -32,7 +46,7 @@ main:
     with-control-channel: | reader/io.Reader |
       install-new-test reader
       wait-for-run-signal reader
-    esp32.deep-sleep Duration.ZERO
+    esp32.reset
   run-test
 
 with-control-channel [block]:
@@ -101,6 +115,17 @@ clear-containers:
     if id != containers.current:
       containers.uninstall id
 
+clear-containers-ec618 -> string?:
+  first-error/string? := null
+  containers.images.do: | image/containers.ContainerImage |
+    // ContainerImageWriter tests are anonymous. Preserve named containers
+    // embedded in the firmware slot, including oversized hardware tests.
+    if image.id != containers.current and image.name != SLEEPER-NAME and not image.name:
+      error := catch: containers.uninstall image.id
+      if error and not first-error:
+        first-error = "id=$image.id error=$error"
+  return first-error
+
 install-new-test reader/io.Reader:
   arg-size := reader.little-endian.read-int32
   arg := reader.read-bytes arg-size
@@ -159,3 +184,345 @@ run-test:
   containers.images.do: | image/containers.ContainerImage |
     if image.id != containers.current:
       containers.start image.id [arg]
+
+/**
+EC618 resident-agent control channel.
+
+The agent owns the print UART selected by the firmware and serves the shared
+  request/ack protocol. It never reboots itself: a test runs as a child
+  container whose `print` output streams back on the same wire, and once it
+  exits the agent listens for the next test or firmware update.
+*/
+class Ec618Control:
+  port/uart.Port
+
+  constructor id/int --large-buffers/bool=false:
+    tx-pad := id == 0 ? 30 : (id == 1 ? 34 : 26)
+    rx-pad := id == 0 ? 29 : (id == 1 ? 33 : 25)
+    port = uart.Port
+        --tx=tx-pad
+        --rx=rx-pad
+        --baud-rate=115200
+        --large-buffers=large-buffers
+
+  close -> none:
+    port.close
+
+/**
+Opens the UART to which the firmware redirects `print`.
+
+The agent's control channel and the test's print output share that wire. The
+  controller follows the anchor record's console byte through
+  $ec618.console-uart-id, so changing the provisioned console does not require a
+  change to this agent. The returned owner closes the UART controller, which in
+  turn releases its physical pads.
+*/
+open-control-uart -> Ec618Control:
+  id := ec618.console-uart-id
+  // --large-buffers: the port OPENS at 115200 (which would auto-select the
+  // small 8 KiB ring) but CMD-BAUD later hops it to ~921600 for bulk
+  // transfers — and a container install must ride out multi-hundred-ms
+  // flash stalls on RX buffering alone (no flow control). 32 KiB matches
+  // what the old blob driver always allocated.
+  if 0 <= id <= 2: return Ec618Control id --large-buffers
+  throw "mini-jag needs a print UART (build with CONFIG_TOIT_EC618_PRINT_UART=1)"
+
+main-ec618:
+  // Arm the application watchdog first, before anything that could wedge (for
+  // example, opening the UART). It is fed below on every host message, so if
+  // the host goes quiet or our read wedges, it resets into a fresh agent.
+  watchdog.watchdog-start --timeout=WATCHDOG-TIMEOUT
+  // The VM is kept alive by a SEPARATE "sleeper" container installed alongside us
+  // (see the tester's envelope build) — a task here would die with us if we throw.
+  // If this agent ever crashes, the sleeper keeps the VM scheduling so it never
+  // reaches EXIT_DONE / deep sleep (which would tear down the application
+  // watchdog and brick a no-remote-reset rig). The sleeper does NOT feed it —
+  // only host messages (below) do — so a dead/silent agent still gets reset.
+  // The lane + any open failure go to the CONSOLE (print), which is
+  // visible even when the control lane itself is the thing that broke.
+  print "[mini-jag] starting; control uart=$ec618.console-uart-id"
+  control/Ec618Control? := null
+  open-error := catch: control = open-control-uart
+  if open-error:
+    print "[mini-jag] control uart open FAILED: $open-error"
+    throw open-error
+  // RESCUE channel: if the host has not reached us on the control UART
+  // shortly after boot (e.g. a firmware change broke that controller), start
+  // serving the same protocol on UART2 as well — reachable through the
+  // ESP32 TCP bridge (uart-bridge-esp32.toit) + socat PTY on the host. On a
+  // healthy rig the host connects immediately, the rescue never arms, and
+  // UART2 stays free for tests.
+  if ec618.console-uart-id != 2:
+    task --background::
+      sleep --ms=45_000
+      if not primary-contact_:
+        e := catch:
+          rescue := Ec618Control 2
+          try:
+            // The rescue must NEVER starve the tests of UART2: release the
+            // controller the moment the PRIMARY channel hears the host
+            // (silence windows are routine in the rig's watchdog-recovery
+            // flow, so the rescue arms regularly on healthy rigs too).
+            task --background::
+              while not primary-contact_: sleep --ms=1_000
+              catch: rescue.port.close  // Unblocks the rescue serve loop.
+            serve rescue.port --primary=false
+          finally:
+            rescue.close
+        if e: print "[mini-jag] rescue listener stopped: $e"
+  serve control.port
+
+/**
+Serves the request/ack protocol on $port until the device reboots.
+
+For the non-primary rescue listener, returns when the port is closed.
+*/
+serve port/uart.Port --primary/bool=true -> none:
+  reader := port.in
+  out := port.out
+  reason := ec618.reset-reason-name ec618.reset-reason
+  wake := ec618.wakeup-cause-name ec618.wakeup-cause
+  status out "ec618 ready reset=$reason wake=$wake active=$(string.from-rune slot.active)"
+  // The host's running firmware writer survives across commands.
+  writer/firmware.FirmwareWriter? := null
+  arg/string := ""
+  while true:
+    command := reader.read-byte
+    if primary: primary-contact_ = true
+    last-host-contact-us_ = Time.monotonic-us
+    watchdog.watchdog-feed  // The host is talking to us; we are alive.
+    if command == CMD-PING:
+      if not test-running_: out.write #[ACK-PONG]  // Silent during a test (keep-alive ping).
+    else if command == CMD-ARG:
+      size := reader.little-endian.read-int32
+      arg = (reader.read-bytes size).to-string
+      status out "arg=\"$arg\""
+      out.write #[ACK-OK]
+    else if command == CMD-BAUD:
+      // Hop the control UART to a faster rate for bulk transfers. Ack at
+      // the OLD baud and drain it onto the wire before switching; the
+      // host switches after reading the ack. A reboot returns the UART
+      // to 115200, which is why handshakes always start there.
+      baud := reader.little-endian.read-int32
+      if 9600 <= baud and baud <= 4_000_000:
+        out.write #[ACK-OK]
+        out.flush
+        port.baud-rate = baud
+        status out "baud=$baud"
+      else:
+        out.write #[ACK-ERROR]
+    else if command == CMD-INSTALL:
+      out.write #[(install-container reader out port ? ACK-OK : ACK-ERROR)]
+    else if command == CMD-RUN:
+      run-installed arg out
+    else if command == CMD-RUN-EMBEDDED:
+      run-installed arg out --embedded
+    else if command == CMD-CANCEL:
+      // Acknowledge before stopping: Container.stop waits for process teardown,
+      // and the host must know that cancellation reached the agent even if a
+      // broken resource destructor then takes too long. Closing the host link
+      // after this also stops watchdog feeds, so teardown still has a bounded
+      // last-resort recovery path.
+      out.write #[ACK-OK]
+      out.flush
+      cancel-running-test out
+    else if command == CMD-FW-BEGIN:
+      size := reader.little-endian.read-int32
+      error := catch: writer = firmware.FirmwareWriter 0 size
+      status out "fw begin size=$size$(error ? " error=$error" : "")"
+      out.write #[(error ? ACK-ERROR : ACK-OK)]
+    else if command == CMD-FW-WRITE:
+      out.write #[(fw-write reader writer out ? ACK-OK : ACK-ERROR)]
+    else if command == CMD-FW-COMMIT:
+      checksum := reader.read-bytes 32
+      error := catch: writer.commit --checksum=checksum
+      writer = null
+      status out "fw commit$(error ? " error=$error" : " ok")"
+      out.write #[(error ? ACK-ERROR : ACK-OK)]
+    else if command == CMD-FW-UPGRADE:
+      status out "fw upgrade: rebooting into the trial slot"
+      out.write #[ACK-OK]
+      firmware.upgrade  // Does not return — the device reboots.
+    else if command == CMD-TRIAL:
+      out.write #[(firmware.is-validation-pending ? ACK-TRIAL-YES : ACK-TRIAL-NO)]
+    else if command == CMD-VALIDATE:
+      error := catch: firmware.validate
+      status out "validate$(error ? " error=$error" : " ok")"
+      out.write #[(error ? ACK-ERROR : ACK-OK)]
+    else if command == CMD-ROLLBACK:
+      status out "rollback: resetting to the known-good slot"
+      out.write #[ACK-OK]
+      firmware.rollback  // Does not return — the device reboots.
+    else:
+      // A stray byte (boot-rom noise, a half-consumed command). Report it and
+      // resync on the next byte; the host re-pings to recover.
+      status out "ignoring 0x$(%02x command)"
+
+/**
+Writes one `[mini-jag] ...` status line to the host.
+
+The agent uses these for all of its own chatter. The host prints them and
+  otherwise ignores any line starting with `[`, which distinguishes status
+  text from a single acknowledgement byte.
+*/
+status out/io.Writer message/string -> none:
+  out.write "$MINI-JAG-TAG $message\n"
+
+/**
+Receives and installs a container image after clearing any prior test.
+
+Returns whether installation succeeded; the caller writes the final
+  acknowledgement from the result.
+
+The wire format starts with `<size:4 LE><crc32:4>`. After ACK-READY, it carries
+  a sequence of `<len:4 BE><bytes>` chunks, each acknowledged with ACK-OK. The
+  per-chunk acknowledgement flow-controls the transfer because the shared UART
+  has no hardware flow control.
+*/
+install-container reader/io.Reader out/io.Writer port/uart.Port -> bool:
+  size := reader.little-endian.read-int32
+  expected-crc := reader.read-bytes 4
+  cleanup-error := clear-containers-ec618
+  if cleanup-error:
+    status out "install cleanup failed $cleanup-error"
+    return false
+  summer := crc.Crc32
+  image-writer := containers.ContainerImageWriter size
+  out.write #[ACK-READY]
+  written := 0
+  errors-before := port.errors
+  error := catch:
+    while written < size:
+      // Bounded reads: a lost byte otherwise wedges the agent here until
+      // the watchdog (the host sees the error status + ACK-ERROR instead
+      // and can retry), and the rx-errs delta in the status line tells
+      // whether the device-side driver counted drops.
+      length := with-timeout --ms=8_000: reader.big-endian.read-uint32
+      chunk := with-timeout --ms=8_000: reader.read-bytes length
+      watchdog.watchdog-feed  // Each chunk is host contact; a large install stays alive.
+      summer.add chunk
+      image-writer.write chunk
+      written += chunk.size
+      out.write #[ACK-OK]
+    if summer.get != expected-crc: throw "CRC mismatch"
+    image-writer.commit
+  status out "install size=$size written=$written rx-errs=$(port.errors - errors-before)$(error ? " error=$error" : " ok")"
+  return error == null
+
+// The application watchdog is armed for the agent's whole life and fed on
+// every host message: the agent is alive exactly while it services the host.
+// A test runs in the background, so host pings keep feeding the watchdog while
+// a healthy command loop remains responsive. If the loop, VM, or whole device
+// wedges, feeds stop and the device reboots into a fresh agent without an
+// external reset. The one-minute recovery window also gives a newly OTA'd
+// agent time for the host to reconnect.
+WATCHDOG-TIMEOUT ::= Duration --s=60
+// A live runner pings every 3 s. If it disappears, stop its test while the VM
+// is still healthy enough to unwind resources; the watchdog remains the
+// fallback only when this lease task itself cannot run.
+TEST-HOST-LEASE ::= Duration --s=15
+
+// True while a test container runs in the background. While set, a CMD-PING is
+// fed but NOT acked, so the host's keep-alive pings don't interleave ack bytes
+// into the test's output stream.
+test-running_/bool := false
+
+// The running container is kept here so the command loop can stop it. Stopping
+// the process is important: it executes Toit finally blocks and native resource
+// destructors, unlike abandoning the host UART while the process keeps running.
+running-container_/containers.Container? := null
+cancel-running-test-in-progress_/bool := false
+last-host-contact-us_/int := Time.monotonic-us
+test-run-sequence_/int := 0
+
+// Whether a host command ever arrived on the PRIMARY control UART — gates
+// (and releases) the UART2 rescue listener in main-ec618.
+primary-contact_/bool := false
+
+/**
+Starts the installed test container in the background.
+
+Reports its exit through a status line so the command loop keeps reading, and
+  the host's pings keep feeding the watchdog, while the test runs.
+*/
+run-installed arg/string out/io.Writer --embedded/bool=false -> none:
+  if test-running_:
+    status out "run: a test is already running"
+    return
+  test-image/containers.ContainerImage? := null
+  containers.images.do: | image/containers.ContainerImage |
+    if not test-image and image.id != containers.current and image.name != SLEEPER-NAME:
+      is-embedded := image.name != null
+      if is-embedded == embedded: test-image = image
+  if not test-image:
+    status out "run: no container installed"
+    return
+  status out "run: starting test"
+  start-error := catch --trace:
+    running-container_ = containers.start test-image.id [arg]
+  if start-error:
+    running-container_ = null
+    status out "run: test start failed error=$start-error"
+    return
+  test-running_ = true
+  test-run-sequence_++
+  sequence := test-run-sequence_
+  task --background::
+    while test-running_ and test-run-sequence_ == sequence:
+      sleep --ms=1_000
+      if Time.monotonic-us - last-host-contact-us_ > TEST-HOST-LEASE.in-us:
+        status out "run: host lease expired; canceling test"
+        cancel-running-test out
+        break
+  task::
+    // The agent must survive anything the test (or the wait machinery)
+    // throws: an unhandled exception here kills the whole agent process and
+    // the device sits unresponsive until the watchdog resets it.
+    code/int? := null
+    container := running-container_
+    error := catch --trace: code = container.wait
+    cleanup-error/any? := null
+    if not embedded:
+      cleanup-error = catch: containers.uninstall test-image.id
+    running-container_ = null
+    test-running_ = false
+    if error:
+      status out "run: test wait failed error=$error"
+    else if cleanup-error:
+      status out "run: test cleanup failed error=$cleanup-error"
+    else:
+      status out "run: test exited code=$code"
+
+/**
+Stops the running test through the container service.
+
+This is deliberately process cancellation rather than a protocol disconnect:
+  process teardown unwinds Toit code and destroys every native resource.
+*/
+cancel-running-test out/io.Writer -> none:
+  if cancel-running-test-in-progress_: return
+  container := running-container_
+  if not container:
+    status out "cancel: no running test"
+    return
+  cancel-running-test-in-progress_ = true
+  error := catch --trace: container.stop
+  cancel-running-test-in-progress_ = false
+  status out "cancel: $(error ? "failed error=$error" : "requested")"
+
+/**
+Reads one OTA chunk and feeds it to the firmware $writer.
+
+Each chunk is encoded as `<len:4 BE><bytes>`. Acknowledges readiness before the
+  payload so the host paces the transfer.
+*/
+fw-write reader/io.Reader writer/firmware.FirmwareWriter? out/io.Writer -> bool:
+  length := reader.big-endian.read-uint32
+  out.write #[ACK-READY]
+  chunk := reader.read-bytes length
+  if not writer:
+    status out "fw write: no active writer"
+    return false
+  error := catch: writer.write chunk
+  if error: status out "fw write error=$error"
+  return error == null
