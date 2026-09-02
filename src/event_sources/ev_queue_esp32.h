@@ -39,7 +39,7 @@ constexpr int I2C_EVENT_QUEUE_SIZE = 3;
 constexpr int I2S_EVENT_QUEUE_SIZE = 6;
 constexpr int RMT_EVENT_QUEUE_SIZE = 8;
 constexpr int ESPNOW_EVENT_QUEUE_SIZE = 3;
-constexpr int SPI_EVENT_QUEUE_SIZE = 4;
+constexpr int SPI_EVENT_QUEUE_SIZE = 12;
 
 struct GpioEvent {
   word pin;

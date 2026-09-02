@@ -54,6 +54,8 @@ test:
 
     task::
       device.with-reserved-bus:
+        expect-throw "INVALID_STATE": device.close
+        expect-throw "INVALID_STATE": bus.close
         expect-equals "keep_active" channel-to-task.receive
         device.transfer #[1, 2, 3] --keep-cs-active
         channel-from-task.send "cs_is_active"
