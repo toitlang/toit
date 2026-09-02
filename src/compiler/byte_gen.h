@@ -46,6 +46,7 @@ class ByteGen : private ir::Visitor {
       , method_mapper_(SourceMapper::MethodMapper::invalid())
       , emitter_(null)
       , local_heights_()
+      , local_nodes_()
       , locals_count_(0)
       , break_target_(null)
       , continue_target_(null)
@@ -94,6 +95,8 @@ class ByteGen : private ir::Visitor {
 
   // The height of every local.
   int local_heights_[128];
+  // The source-level local associated with every local index.
+  ir::Local* local_nodes_[128];
   // The number of locals that have been registered so far.
   int locals_count_;
 
@@ -108,12 +111,13 @@ class ByteGen : private ir::Visitor {
   SourceMapper::MethodMapper method_mapper() const { return method_mapper_; }
   ProgramBuilder* program_builder() const { return program_builder_; }
 
-  int register_local() {
-    return register_local(emitter()->height());
+  int register_local(ir::Local* local) {
+    return register_local(local, emitter()->height());
   }
 
-  int register_local(int height) {
+  int register_local(ir::Local* local, int height) {
     local_heights_[locals_count_] = height;
+    local_nodes_[locals_count_] = local;
     return locals_count_++;
   }
 
@@ -211,4 +215,3 @@ class ByteGen : private ir::Visitor {
 
 } // namespace toit::compiler
 } // namespace toit
-

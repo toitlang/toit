@@ -17,10 +17,20 @@
 #include "primitive.h"
 #include "process.h"
 #include "heap.h"
+#include "vm_state_checkpoint.h"
 
 namespace toit {
 
 MODULE_IMPLEMENTATION(debug, MODULE_DEBUG)
+
+PRIMITIVE(vm_state_checkpoint_arm) {
+#ifdef TOIT_VM_STATE_CHECKPOINTS
+  vm_state_checkpoint_arm();
+  return process->null_object();
+#else
+  FAIL(UNIMPLEMENTED);
+#endif
+}
 
 struct PerClass {
   uint32 count;

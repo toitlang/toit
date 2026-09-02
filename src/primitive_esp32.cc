@@ -20,6 +20,7 @@
 #include "flash_allocation.h"
 #include "objects_inline.h"
 #include "os.h"
+#include "device_memory_dump_esp32.h"
 #include "primitive.h"
 #include "process.h"
 #include "scheduler.h"
@@ -448,7 +449,7 @@ class PageReport {
       uword flags = pages_[i] & FLAG_MASK;
       flags |= MALLOC_MANAGED;
       if (i != end_page) flags |= MERGE_WITH_NEXT;
-      if (tag == TOIT_HEAP_MALLOC_TAG) flags |= TOIT;
+      if (tag == TOIT_HEAP_MALLOC_TAG || tag == GC_METADATA_MALLOC_TAG) flags |= TOIT;
       else if (tag == WIFI_MALLOC_TAG) flags |= BUFFERS;
       else if (tag == LWIP_MALLOC_TAG) flags |= BUFFERS;
       else if (tag == EXTERNAL_BYTE_ARRAY_MALLOC_TAG) flags |= EXTERNAL;
@@ -567,6 +568,23 @@ PRIMITIVE(memory_page_report) {
   ByteArray::Bytes bytes(result);
   memcpy(bytes.address(), buffer.content(), buffer.size());
   return result;
+}
+
+PRIMITIVE(dump_memory) {
+  PRIVILEGED;
+  ARGS(uint32, baud_rate);
+#if CONFIG_TOIT_DEVICE_MEMORY_DUMP
+  if (!device_memory_dump_is_supported()) FAIL(UNSUPPORTED);
+  uint32 effective_baud_rate = CONFIG_ESP_CONSOLE_UART_BAUDRATE;
+  if (baud_rate != 0) {
+    esp_err_t err = prepare_device_memory_dump(baud_rate);
+    if (err != ESP_OK) return Primitive::os_error(err, process);
+    effective_baud_rate = baud_rate;
+  }
+  dump_device_memory(effective_baud_rate);
+#else
+  FAIL(UNSUPPORTED);
+#endif
 }
 
 PRIMITIVE(watchdog_init) {
