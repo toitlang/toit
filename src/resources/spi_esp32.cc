@@ -39,7 +39,7 @@
 
 namespace toit {
 
-static_assert(SOC_SPI_PERIPH_NUM - 1 <= SPI_EVENT_QUEUE_SIZE,
+static_assert(2 * (SOC_SPI_PERIPH_NUM - 1) <= SPI_EVENT_QUEUE_SIZE,
               "Increase SPI_EVENT_QUEUE_SIZE");
 
 const spi_host_device_t kInvalidHostDevice = spi_host_device_t(-1);
@@ -157,8 +157,32 @@ SpiResourceGroup::~SpiResourceGroup() {
 }
 
 SpiTargetResource::~SpiTargetResource() {
-  // Normal Toit cleanup waits for an abort callback before releasing these
-  // buffers. Uninstall first as a final process-teardown safeguard.
+  if (initialized_ && operation_in_flight_) {
+    // Process teardown can bypass Target.close. Abort and wait for the driver
+    // to retire the mounted descriptor before releasing its buffers. This is
+    // outside a primitive; ordinary close rejects an in-flight exchange.
+    bool abort_requested = false;
+    while (true) {
+      if (!abort_requested) {
+        esp_err_t abort_error = spi_slave_abort_transaction(
+            host_device_, transaction());
+        if (abort_error == ESP_OK) {
+          abort_requested = true;
+        } else if (abort_error != ESP_ERR_INVALID_STATE) {
+          FATAL_IF_NOT_ESP_OK(abort_error);
+        }
+      }
+      esp_err_t free_error = spi_slave_free(host_device_);
+      if (free_error == ESP_OK) {
+        initialized_ = false;
+        break;
+      }
+      if (free_error != ESP_ERR_INVALID_STATE) {
+        FATAL_IF_NOT_ESP_OK(free_error);
+      }
+      vTaskDelay(1);
+    }
+  }
   if (initialized_) FATAL_IF_NOT_ESP_OK(spi_slave_free(host_device_));
   if (operation_in_flight_) finish_operation();
   vQueueDeleteWithCaps(queue());
