@@ -98,7 +98,7 @@ test-board1:
   errors := List 4: null
   4.repeat: | task-index/int |
     task::
-      errors[task-index] = catch --unwind:
+      errors[task-index] = catch:
         25.repeat: | iteration/int |
           index := task-index * 53 + iteration
           expected := initial[index]
@@ -119,17 +119,25 @@ test-board1:
         --dma
     probe.start-reading --min-ns=500 --max-ns=20_000_000
     slow.write-read #[0] 8
+    slow-signals := with-timeout --ms=500: probe.wait-for-data
+    slow-low-periods := []
+    slow-signals.size.repeat: | i/int |
+      if (slow-signals.level i) == 0:
+        slow-low-periods.add (slow-signals.period i)
+    slow-low-periods.sort --in-place
+    slow-low := slow-low-periods[slow-low-periods.size / 2]
     slow.close
+
     fast := bus.device ADDRESS --frequency=400_000
+    probe.start-reading --min-ns=500 --max-ns=20_000_000
     fast.write-read #[0] 8
-    signals := with-timeout --ms=500: probe.wait-for-data
-    low-periods := []
-    signals.size.repeat: | i/int |
-      if (signals.level i) == 0:
-        low-periods.add (signals.period i)
-    low-periods.sort --in-place
-    fast-low := low-periods[low-periods.size / 4]
-    slow-low := low-periods[(low-periods.size * 3) / 4]
+    fast-signals := with-timeout --ms=500: probe.wait-for-data
+    fast-low-periods := []
+    fast-signals.size.repeat: | i/int |
+      if (fast-signals.level i) == 0:
+        fast-low-periods.add (fast-signals.period i)
+    fast-low-periods.sort --in-place
+    fast-low := fast-low-periods[fast-low-periods.size / 2]
     probe.close
     probe-pin.close
     print "Async I2C frequency probe: 50kHz low $(slow-low)us, 400kHz low $(fast-low)us"
@@ -158,67 +166,52 @@ test-board1:
   seven.close
   ten.close
 
-  if system.architecture != system.ARCHITECTURE-ESP32:
-    reconfigure port DYNAMIC
+  reconfigure port DYNAMIC
 
-    // Prove that the suspended controller task does not prevent another Toit
-    // task from running during successful clock stretching.
-    stretched := bus.device ADDRESS --timeout-us=30_000
-    expected := make-data 17 0xc4
-    send-command port DYNAMIC-READ [expected, encode-u16 10]
-    ran-while-waiting := monitor.Latch
-    task::
-      sleep --ms=2
-      ran-while-waiting.set true
-    start := Time.monotonic-us
-    expect-equals expected (stretched.read expected.size)
-    elapsed := Time.monotonic-us - start
-    expect ran-while-waiting.has-value
-    expect elapsed >= 9_000
-    expect elapsed < 30_000
-    expect-equals OK port.in.read-byte
-    stretched.close
-
-    // A task deadline aborts the native transaction even when every
-    // individual stretch is shorter than the device's SCL timeout. The bus
-    // must be reusable after the target releases the clock.
-    abortable := bus.device ADDRESS --timeout-us=100_000
-    send-command port DYNAMIC-READ [#[0x5a], encode-u16 20]
-    expect-throw DEADLINE-EXCEEDED-ERROR:
-      with-timeout --ms=2: abortable.read 1
-    expect-equals OK port.in.read-byte
-    expect (bus.test ADDRESS)
-    abortable.close
-
-    // Exercise the controller pull-up configuration and resource reuse after
-    // a large number of asynchronous transactions and errors.
-    bus.close
-    bus = i2c.Bus --sda=I2C-SDA --scl=I2C-SCL --frequency=100_000 --pull-up
-    expect-not (bus.test MISSING-ADDRESS --timeout-ms=5)
-    bus.close
-
-    // A timed-out target transaction cannot be completed or torn down cleanly
-    // by the current ESP-IDF target driver. Keep this destructive edge case
-    // last; the test rig resets both boards before the next test.
-    bus = i2c.Bus --sda=I2C-SDA --scl=I2C-SCL --frequency=100_000 --pull-up
-    timeout-device := bus.device ADDRESS --timeout-us=2_000
-    timed-out := make-data 11 0xb1
-    send-command port TIMEOUT-READ [encode-u16 10]
-    expect-throw "I2C_TIMEOUT": timeout-device.read timed-out.size
-    return
-
-  port.out.write-byte CLOSE
-  port.out.flush
+  // Prove that the suspended controller task does not prevent another Toit
+  // task from running during successful clock stretching.
+  stretched := bus.device ADDRESS --timeout-us=30_000
+  expected := make-data 17 0xc4
+  send-command port DYNAMIC-READ [expected, encode-u16 10]
+  ran-while-waiting := monitor.Latch
+  task::
+    sleep --ms=2
+    ran-while-waiting.set true
+  start := Time.monotonic-us
+  expect-equals expected (stretched.read expected.size)
+  elapsed := Time.monotonic-us - start
+  expect ran-while-waiting.has-value
+  expect elapsed >= 9_000
+  expect elapsed < 30_000
   expect-equals OK port.in.read-byte
+  stretched.close
 
-  bus.close
+  // A task deadline aborts the native transaction even when every individual
+  // stretch is shorter than the device's SCL timeout. The bus must be reusable
+  // after the target releases the clock.
+  abortable := bus.device ADDRESS --timeout-us=100_000
+  send-command port DYNAMIC-READ [#[0x5a], encode-u16 20]
+  expect-throw DEADLINE-EXCEEDED-ERROR:
+    with-timeout --ms=2: abortable.read 1
+  expect-equals OK port.in.read-byte
+  expect (bus.test ADDRESS)
+  abortable.close
 
   // Exercise the controller pull-up configuration and resource reuse after a
   // large number of asynchronous transactions and errors.
+  bus.close
   bus = i2c.Bus --sda=I2C-SDA --scl=I2C-SCL --frequency=100_000 --pull-up
   expect-not (bus.test MISSING-ADDRESS --timeout-ms=5)
   bus.close
-  port.close
+
+  // A timed-out target transaction cannot be completed or torn down cleanly
+  // by the current ESP-IDF target driver. Keep this destructive edge case
+  // last; the test rig resets both boards before the next test.
+  bus = i2c.Bus --sda=I2C-SDA --scl=I2C-SCL --frequency=100_000 --pull-up
+  timeout-device := bus.device ADDRESS --timeout-us=2_000
+  timed-out := make-data 11 0xb1
+  send-command port TIMEOUT-READ [encode-u16 10]
+  expect-throw "I2C_TIMEOUT": timeout-device.read timed-out.size
 
 test-board1-esp32 port/uart.Port -> none:
   bus := i2c.Bus --sda=I2C-SDA --scl=I2C-SCL --frequency=100_000 --pull-up

@@ -444,6 +444,8 @@ class Bus:
   Some addresses are reserved and are not scanned. See
     https://www.i2c-bus.org/addressing/.
 
+  Probes use the standard-mode 100kHz clock rate.
+
   Waits at most $timeout-ms for a response on each address. If the bus is very
     slow, increase the timeout.
   */
@@ -455,6 +457,8 @@ class Bus:
 
   /**
   Tests if the $address responds.
+
+  The probe uses the standard-mode 100kHz clock rate.
 
   Waits at most $timeout-ms for a response. If the bus is very slow, increase
     the timeout.
@@ -472,13 +476,15 @@ class Bus:
   */
   close -> none:
     mutex_.do:
-      if not resource_: return
-      devices_.values.do: it.close-native_
-      devices_.clear
-      state_.dispose
-      i2c-bus-close_ resource_
-      resource_ = null
-      remove-finalizer this
+      critical-do:
+        if not resource_: return
+        devices := devices_.values
+        devices.do: it.close-native_
+        devices_.clear
+        state_.dispose
+        i2c-bus-close_ resource_
+        resource_ = null
+        remove-finalizer this
 
   /**
   Creates the device connected on the $i2c-address.
@@ -785,7 +791,8 @@ class Device implements serial.Device:
   close -> none:
     bus := bus_
     if not bus: return
-    bus.mutex_.do: close-native_
+    bus.mutex_.do:
+      critical-do: close-native_
 
   close-native_ -> none:
     if not resource_: return
