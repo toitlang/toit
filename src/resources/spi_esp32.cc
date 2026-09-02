@@ -165,9 +165,10 @@ class SpiBufferTargetResource : public EventQueueResource {
                           spi_host_device_t host_device,
                           QueueHandle_t event_queue,
                           uint8_t* response_buffer,
-                          uint8_t* receive_buffer,
-                          uint8_t* receive_ring,
+                          uint8_t* receive_storage,
+                          uint32_t* receive_indices,
                           uint32_t* receive_lengths,
+                          uint32_t* free_receive_indices,
                           size_t buffer_size,
                           size_t driver_buffer_size,
                           uint32_t receive_queue_depth,
@@ -179,7 +180,7 @@ class SpiBufferTargetResource : public EventQueueResource {
   GpioPins& owned_pins() { return owned_pins_; }
 
   void set_initialized() { initialized_ = true; }
-  bool can_receive() const { return receive_buffer_ != null; }
+  bool can_receive() const { return receive_storage_ != null; }
   bool can_transmit() const { return response_buffer_ != null; }
   size_t buffer_size() const { return buffer_size_; }
 
@@ -205,9 +206,10 @@ class SpiBufferTargetResource : public EventQueueResource {
 
   spi_host_device_t host_device_;
   uint8_t* response_buffer_;
-  uint8_t* receive_buffer_;
-  uint8_t* receive_ring_;
+  uint8_t* receive_storage_;
+  uint32_t* receive_indices_;
   uint32_t* receive_lengths_;
+  uint32_t* free_receive_indices_;
   const size_t buffer_size_;
   const size_t driver_buffer_size_;
   const uint32_t receive_queue_depth_;
@@ -217,7 +219,10 @@ class SpiBufferTargetResource : public EventQueueResource {
   mutable spinlock_t spinlock_;
   uint32_t receive_head_ = 0;
   uint32_t receive_count_ = 0;
+  uint32_t free_receive_count_ = 0;
+  uint32_t active_receive_index_ = 0;
   word dropped_receive_count_ = 0;
+  bool response_dirty_ = false;
   bool requeue_failed_ = false;
   bool stopping_ = false;
   bool initially_armed_ = false;
@@ -307,9 +312,10 @@ SpiBufferTargetResource::SpiBufferTargetResource(
     spi_host_device_t host_device,
     QueueHandle_t event_queue,
     uint8_t* response_buffer,
-    uint8_t* receive_buffer,
-    uint8_t* receive_ring,
+    uint8_t* receive_storage,
+    uint32_t* receive_indices,
     uint32_t* receive_lengths,
+    uint32_t* free_receive_indices,
     size_t buffer_size,
     size_t driver_buffer_size,
     uint32_t receive_queue_depth,
@@ -317,20 +323,27 @@ SpiBufferTargetResource::SpiBufferTargetResource(
     : EventQueueResource(group, event_queue)
     , host_device_(host_device)
     , response_buffer_(response_buffer)
-    , receive_buffer_(receive_buffer)
-    , receive_ring_(receive_ring)
+    , receive_storage_(receive_storage)
+    , receive_indices_(receive_indices)
     , receive_lengths_(receive_lengths)
+    , free_receive_indices_(free_receive_indices)
     , buffer_size_(buffer_size)
     , driver_buffer_size_(driver_buffer_size)
     , receive_queue_depth_(receive_queue_depth)
     , dma_(dma) {
   spinlock_initialize(&spinlock_);
+  if (receive_storage_ != null) {
+    free_receive_count_ = receive_queue_depth_;
+    for (uint32_t i = 0; i < receive_queue_depth_; i++) {
+      free_receive_indices_[i] = i + 1;
+    }
+  }
   transaction_ = {
     .flags = 0,
     .length = driver_buffer_size * 8,
     .trans_len = 0,
     .tx_buffer = response_buffer,
-    .rx_buffer = receive_buffer,
+    .rx_buffer = receive_storage,
     .user = this,
   };
 }
@@ -356,9 +369,10 @@ SpiBufferTargetResource::~SpiBufferTargetResource() {
     }
   }
   free(response_buffer_);
-  free(receive_buffer_);
-  free(receive_ring_);
+  free(receive_storage_);
+  free(receive_indices_);
   free(receive_lengths_);
+  free(free_receive_indices_);
   vQueueDeleteWithCaps(queue());
   spi_host_devices.put(host_device_);
   owned_pins_.release();
@@ -374,6 +388,7 @@ int SpiBufferTargetResource::get_response(uint32_t index) const {
 void SpiBufferTargetResource::set_response(uint32_t index, uint8_t value) {
   portENTER_CRITICAL(&spinlock_);
   response_buffer_[index] = value;
+  response_dirty_ = true;
   portEXIT_CRITICAL(&spinlock_);
 }
 
@@ -391,6 +406,7 @@ void SpiBufferTargetResource::write_response(
   for (uint32_t i = 0; i < length; i++) {
     portENTER_CRITICAL(&spinlock_);
     response_buffer_[index + i] = source[i];
+    response_dirty_ = true;
     portEXIT_CRITICAL(&spinlock_);
   }
 }
@@ -402,15 +418,20 @@ int SpiBufferTargetResource::take_receive(uint8_t* destination) {
     portEXIT_CRITICAL(&spinlock_);
     return result;
   }
-  uint32_t index = receive_head_;
-  uint32_t length = receive_lengths_[index];
+  uint32_t queue_index = receive_head_;
+  uint32_t buffer_index = receive_indices_[queue_index];
+  uint32_t length = receive_lengths_[queue_index];
   // Keep the slot counted while copying so the ISR cannot reuse it. This can
   // temporarily make a full queue drop one more transaction, but avoids
   // disabling interrupts for a potentially large managed-memory copy.
   portEXIT_CRITICAL(&spinlock_);
-  memcpy(destination, receive_ring_ + index * buffer_size_, length);
+  memcpy(destination,
+         receive_storage_ + buffer_index * driver_buffer_size_,
+         length);
 
   portENTER_CRITICAL(&spinlock_);
+  ASSERT(free_receive_count_ < receive_queue_depth_);
+  free_receive_indices_[free_receive_count_++] = buffer_index;
   receive_head_++;
   if (receive_head_ == receive_queue_depth_) receive_head_ = 0;
   receive_count_--;
@@ -459,8 +480,9 @@ void SpiBufferTargetResource::complete_from_isr() {
 #endif
   bool enqueued = false;
   bool failed = false;
-  uint32_t receive_index = 0;
-  uint8_t* receive_destination = null;
+#if SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
+  bool sync_response = false;
+#endif
 
   portENTER_CRITICAL_ISR(&spinlock_);
   if (stopping_) {
@@ -471,23 +493,36 @@ void SpiBufferTargetResource::complete_from_isr() {
   // A floating or newly configured CS line can produce an interrupt without
   // any clock edges. It carries no transaction data, so don't consume receive
   // queue capacity or wake a receiver for it.
-  if (receive_buffer_ != null && received != 0) {
-    if (receive_count_ < receive_queue_depth_) {
-      receive_index = receive_head_ + receive_count_;
-      if (receive_index >= receive_queue_depth_) receive_index -= receive_queue_depth_;
-      receive_destination = receive_ring_ + receive_index * buffer_size_;
+  if (receive_storage_ != null && received != 0) {
+    if (free_receive_count_ != 0) {
+      uint32_t queue_index = receive_head_ + receive_count_;
+      if (queue_index >= receive_queue_depth_) queue_index -= receive_queue_depth_;
+      receive_indices_[queue_index] = active_receive_index_;
+      receive_lengths_[queue_index] = received;
+      active_receive_index_ = free_receive_indices_[--free_receive_count_];
+      transaction_.rx_buffer =
+          receive_storage_ + active_receive_index_ * driver_buffer_size_;
+      receive_count_++;
+      enqueued = true;
     } else if (dropped_receive_count_ != Smi::MAX_SMI_VALUE) {
       dropped_receive_count_++;
     }
   }
+#if SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
+  sync_response = response_dirty_;
+  response_dirty_ = false;
+#endif
   portEXIT_CRITICAL_ISR(&spinlock_);
 
-  // Only this mounted descriptor can produce a completion, and it is not
-  // requeued until below. Copying outside the spinlock avoids keeping all
-  // interrupts on this core disabled for a full DMA-sized buffer.
-  if (receive_destination != null) {
-    memcpy(receive_destination, receive_buffer_, received);
+#if SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
+  // The response is already DMA-readable until Toit changes it. Avoid an
+  // unconditional full-buffer cache writeback on every transaction.
+  if (sync_response && dma_ && response_buffer_ != null) {
+    esp_err_t err = esp_cache_msync(
+        response_buffer_, driver_buffer_size_, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+    if (err != ESP_OK) failed = true;
   }
+#endif
 
   portENTER_CRITICAL_ISR(&spinlock_);
   if (stopping_) {
@@ -495,18 +530,6 @@ void SpiBufferTargetResource::complete_from_isr() {
     signal_from_isr(kSpiBufferTargetStoppedState);
     return;
   }
-  if (receive_destination != null) {
-    receive_lengths_[receive_index] = received;
-    receive_count_++;
-    enqueued = true;
-  }
-#if SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
-  if (dma_ && response_buffer_ != null) {
-    esp_err_t err = esp_cache_msync(
-        response_buffer_, driver_buffer_size_, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-    if (err != ESP_OK) failed = true;
-  }
-#endif
   transaction_.trans_len = 0;
   if (!failed) {
     esp_err_t err = spi_slave_queue_trans_isr(host_device_, &transaction_);
@@ -817,8 +840,10 @@ PRIMITIVE(buffer_target_create) {
   if (driver_buffer_size < buffer_size || driver_buffer_size > INT_MAX) {
     FAIL(INVALID_ARGUMENT);
   }
-  if (buffer_size > SIZE_MAX / receive_queue_depth) FAIL(INVALID_ARGUMENT);
-  size_t receive_ring_size = buffer_size * receive_queue_depth;
+  if (receive_queue_depth == UINT32_MAX) FAIL(INVALID_ARGUMENT);
+  size_t receive_buffer_count = static_cast<size_t>(receive_queue_depth) + 1;
+  if (driver_buffer_size > SIZE_MAX / receive_buffer_count) FAIL(INVALID_ARGUMENT);
+  size_t receive_storage_size = driver_buffer_size * receive_buffer_count;
   if (receive_queue_depth > SIZE_MAX / sizeof(uint32_t)) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -857,18 +882,23 @@ PRIMITIVE(buffer_target_create) {
     memset(response_buffer + buffer_size, 0xff, driver_buffer_size - buffer_size);
   }
 
-  uint8_t* receive_buffer = mosi_num < 0
+  // One buffer is mounted for the next transaction. The remaining buffers are
+  // either free or hold completed transactions until Toit consumes them. The
+  // completion callback rotates pointers instead of copying up to 4092 bytes
+  // while the peripheral is unarmed.
+  uint8_t* receive_storage = mosi_num < 0
       ? null
-      : allocate_dma_buffer(driver_buffer_size, buffer_alignment);
-  if (mosi_num >= 0 && receive_buffer == null) FAIL(MALLOC_FAILED);
-  Defer free_receive { [&] { if (host_owned) free(receive_buffer); } };
+      : allocate_dma_buffer(receive_storage_size, buffer_alignment);
+  if (mosi_num >= 0 && receive_storage == null) FAIL(MALLOC_FAILED);
+  Defer free_receive_storage { [&] { if (host_owned) free(receive_storage); } };
 
-  uint8_t* receive_ring = mosi_num < 0
+  uint32_t* receive_indices = mosi_num < 0
       ? null
-      : static_cast<uint8_t*>(heap_caps_malloc(
-          receive_ring_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-  if (mosi_num >= 0 && receive_ring == null) FAIL(MALLOC_FAILED);
-  Defer free_ring { [&] { if (host_owned) free(receive_ring); } };
+      : static_cast<uint32_t*>(heap_caps_malloc(
+          receive_queue_depth * sizeof(uint32_t),
+          MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  if (mosi_num >= 0 && receive_indices == null) FAIL(MALLOC_FAILED);
+  Defer free_indices { [&] { if (host_owned) free(receive_indices); } };
 
   uint32_t* receive_lengths = mosi_num < 0
       ? null
@@ -878,6 +908,16 @@ PRIMITIVE(buffer_target_create) {
           MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
   if (mosi_num >= 0 && receive_lengths == null) FAIL(MALLOC_FAILED);
   Defer free_lengths { [&] { if (host_owned) free(receive_lengths); } };
+
+  uint32_t* free_receive_indices = mosi_num < 0
+      ? null
+      : static_cast<uint32_t*>(heap_caps_malloc(
+          receive_queue_depth * sizeof(uint32_t),
+          MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  if (mosi_num >= 0 && free_receive_indices == null) FAIL(MALLOC_FAILED);
+  Defer free_free_indices { [&] {
+    if (host_owned) free(free_receive_indices);
+  } };
 
   QueueHandle_t event_queue = xQueueCreateWithCaps(
       1, sizeof(word), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -889,9 +929,10 @@ PRIMITIVE(buffer_target_create) {
       host_device,
       event_queue,
       response_buffer,
-      receive_buffer,
-      receive_ring,
+      receive_storage,
+      receive_indices,
       receive_lengths,
+      free_receive_indices,
       buffer_size,
       driver_buffer_size,
       receive_queue_depth,

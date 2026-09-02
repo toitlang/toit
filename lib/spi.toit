@@ -278,8 +278,13 @@ An ESP32 SPI target that remains armed using native response and receive buffers
 
 Unlike $Target, this class does not wait for a Toit task to prepare each
   transaction. The peripheral is armed before the constructor returns and is
-  re-armed from its completion callback. This is useful for protocols whose
-  controller cannot observe a separate ready signal.
+  re-armed from its completion callback. Received buffers are rotated instead
+  of copied in that callback, so re-arming does not depend on the transaction
+  size or on Toit task scheduling. This is useful for protocols whose
+  controller cannot observe a separate ready signal. As with any ESP32 SPI
+  target, the controller must still leave CS inactive long enough for the
+  completion interrupt to re-arm the peripheral; a zero-width CS-inactive
+  interval is not supported.
 
 SPI does not define a register-address protocol. The response is therefore a
   plain byte buffer: each controller transaction starts at offset zero. Toit
@@ -294,11 +299,16 @@ On the classic ESP32 with DMA enabled, only complete four-byte words received
   on MOSI are queued. A trailing one to three bytes are discarded, matching
   the ESP-IDF target DMA restriction.
 
-The peripheral is continuously armed. On configurations where ESP-IDF copies
-  the response into hardware registers while arming, a response update can be
-  too late for the next transaction. An update is guaranteed to be visible in
-  the transaction after the next completed transaction, and can be visible
-  sooner.
+On configurations where ESP-IDF copies the response into hardware registers
+  while arming, a response update can be too late for the next transaction. An
+  update is guaranteed to be visible in the transaction after the next
+  completed transaction, and can be visible sooner.
+
+On the classic ESP32, SPI target interrupts are not placed in IRAM in the Toit
+  firmware configuration. The target therefore cannot re-arm while flash
+  operations disable the instruction cache. Controllers that may communicate
+  during flash erase or write must use a separate ready signal or a newer ESP32
+  variant.
 */
 class BufferTarget:
   static RECEIVED-STATE_ ::= 1 << 2
