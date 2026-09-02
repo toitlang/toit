@@ -433,6 +433,8 @@ test-close-active-target port/uart.Port -> none:
       target.exchange #[ ]
           --receive-size=8
           --when-armed=:
+            expect-throw "INVALID_STATE": target.close
+            expect-throw "INVALID_STATE": target.exchange #[0]
             armed.set true
             port.out.write #[READY] --flush
     done.set true
