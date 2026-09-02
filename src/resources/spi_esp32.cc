@@ -807,13 +807,7 @@ PRIMITIVE(buffer_target_create) {
   }
   if (!dma && buffer_size > SOC_SPI_MAXIMUM_BUFFER_SIZE) FAIL(INVALID_ARGUMENT);
 
-  size_t buffer_alignment = 4;
-#if SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
-  if (dma) {
-    esp_err_t err = esp_cache_get_alignment(MALLOC_CAP_DMA, &buffer_alignment);
-    if (err != ESP_OK) return Primitive::os_error(err, process);
-  }
-#endif
+  size_t buffer_alignment = spi_dma_buffer_alignment(dma);
   ASSERT(Utils::is_power_of_two(buffer_alignment));
   size_t driver_buffer_size =
       (buffer_size + buffer_alignment - 1) & ~(buffer_alignment - 1);
