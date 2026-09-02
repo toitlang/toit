@@ -489,6 +489,9 @@ Each device on the bus is enabled with its own chip-select pin. See $Bus.device.
 */
 class Bus:
   spi_ := ?
+  devices_ := {:}
+  closing_/bool := false
+  reservation-active_/bool := false
   /**
   Mutex to serialize reservation attempts of multiple devices.
   See $Device.with-reserved-bus.
@@ -522,7 +525,16 @@ class Bus:
 
   /** Closes this SPI bus and frees the associated resources. */
   close:
-    spi-close_ spi_
+    if reservation-active_: throw "INVALID_STATE"
+    reservation-mutex_.do:
+      if not spi_: return
+      closing_ = true
+      devices := devices_.keys
+      devices.do: | device/Device_ |
+        device.close-under-reservation_
+      critical-do:
+        spi-close_ spi_
+        spi_ = null
 
   /**
   Configures a device on this SPI bus.
@@ -584,8 +596,12 @@ class Bus:
     // integer API the primitive configures it as output.
     if dc is gpio.Pin: dc.configure --output
 
-    d := spi-device_ spi_ cs-num dc-num command-bits address-bits frequency mode cs-setup-cycles cs-hold-cycles
-    return Device_.init_ this d
+    return reservation-mutex_.do:
+      if not spi_ or closing_: throw "CLOSED"
+      d := spi-device_ spi_ cs-num dc-num command-bits address-bits frequency mode cs-setup-cycles cs-hold-cycles
+      result := Device_.init_ this d
+      devices_[result] = true
+      return result
 
 /**
 A device connected with SPI.
@@ -740,7 +756,7 @@ abstract class DeviceBase_ implements Device:
 class Device_ extends DeviceBase_:
   static TRANSFER-DONE_ ::= 1 << 0
 
-  spi_/Bus := ?
+  spi_ := ?
   device_ := ?
   state_/monitor.ResourceState_ ::= ?
   transfer-mutex_/monitor.Mutex ::= monitor.Mutex
@@ -759,12 +775,21 @@ class Device_ extends DeviceBase_:
 
   /** See $Device.close. */
   close:
+    if owning-bus_: throw "INVALID_STATE"
+    bus := spi_
+    if not bus: return
+    bus.reservation-mutex_.do:
+      close-under-reservation_
+
+  close-under-reservation_:
     transfer-mutex_.do:
       if not device_: return
       critical-do:
         state_.dispose
         spi-device-close_ spi_.spi_ device_
         device_ = null
+        spi_.devices_.remove this
+        spi_ = null
         remove-finalizer this
 
   /** See $Device.transfer. */
@@ -793,14 +818,21 @@ class Device_ extends DeviceBase_:
 
   /** See $Device.with-reserved-bus. */
   with-reserved-bus [block]:
-    spi_.reservation-mutex_.do:
+    if owning-bus_: throw "INVALID_STATE"
+    bus := spi_
+    if not bus: throw "CLOSED"
+    bus.reservation-mutex_.do:
+      if not device_ or bus.closing_: throw "CLOSED"
       while not spi-acquire-bus_ device_: yield
       owning-bus_ = true
+      bus.reservation-active_ = true
       try:
         block.call
       finally:
-        owning-bus_ = false
-        spi-release-bus_ device_
+        critical-do:
+          owning-bus_ = false
+          bus.reservation-active_ = false
+          spi-release-bus_ device_
 
 class DevicePath_ extends DeviceBase_:
   static TRANSFER-DONE_ ::= 1 << 0

@@ -39,7 +39,8 @@
 
 namespace toit {
 
-static_assert(2 * (SOC_SPI_PERIPH_NUM - 1) <= SPI_EVENT_QUEUE_SIZE,
+static_assert(kSpiControllerMaxDevicesPerHost * (SOC_SPI_PERIPH_NUM - 1) <=
+                  SPI_EVENT_QUEUE_SIZE,
               "Increase SPI_EVENT_QUEUE_SIZE");
 
 const spi_host_device_t kInvalidHostDevice = spi_host_device_t(-1);
@@ -244,7 +245,14 @@ SpiResourceGroup::~SpiResourceGroup() {
 }
 
 SpiDevice::~SpiDevice() {
-  ASSERT(!operation_in_flight_);
+  if (operation_in_flight_) {
+    spi_transaction_t* completed = null;
+    FATAL_IF_NOT_ESP_OK(spi_device_get_trans_result(
+        handle_, &completed, portMAX_DELAY));
+    ASSERT(completed == transaction());
+    finish_operation();
+  }
+  if (bus_acquired_) spi_device_release_bus(handle_);
   FATAL_IF_NOT_ESP_OK(spi_bus_remove_device(handle_));
   vQueueDeleteWithCaps(queue());
   // Release any GPIO pins this device reserved (cs/dc).
@@ -1250,6 +1258,7 @@ PRIMITIVE(device) {
 
   if (cs_setup_cycles < 0 || cs_setup_cycles > 16 ||
       cs_hold_cycles < 0 || cs_hold_cycles > 16) FAIL(INVALID_ARGUMENT);
+  if (!spi->can_add_device()) FAIL(ALREADY_IN_USE);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
@@ -1422,12 +1431,14 @@ PRIMITIVE(acquire_bus) {
   if (err != ESP_OK) {
     return Primitive::os_error(err, process);
   }
+  device->set_bus_acquired(true);
   return process->true_object();
 }
 
 PRIMITIVE(release_bus) {
   ARGS(SpiDevice, device);
   spi_device_release_bus(device->handle());
+  device->set_bus_acquired(false);
   return process->null_object();
 }
 
