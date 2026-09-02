@@ -111,11 +111,11 @@ test-board1:
 
   device.close
   slow := bus.device ADDRESS --frequency=50_000
-  probe-pin := gpio.Pin I2C-SCL-PROBE --input --pull-up
   probe := rmt.In
-      probe-pin  // @no-warn
+      I2C-SCL-PROBE
       --resolution=1_000_000
       --memory-blocks=8
+      --pull-up
       --dma
   probe.start-reading --min-ns=500 --max-ns=20_000_000
   slow.write-read #[0] 8
@@ -139,7 +139,6 @@ test-board1:
   fast-low-periods.sort --in-place
   fast-low := fast-low-periods[fast-low-periods.size / 2]
   probe.close
-  probe-pin.close
   print "Async I2C frequency probe: 50kHz low $(slow-low)us, 400kHz low $(fast-low)us"
   expect slow-low >= 6
   expect fast-low < 6
@@ -266,11 +265,11 @@ test-board1-esp32 port/uart.Port -> none:
   expect-equals OK port.in.read-byte
 
   device.close
-  probe-pin := gpio.Pin I2C-SCL-PROBE --input --pull-up
   probe := rmt.In
-      probe-pin  // @no-warn
+      I2C-SCL-PROBE
       --resolution=1_000_000
       --memory-blocks=8
+      --pull-up
 
   slow := bus.device ADDRESS --frequency=50_000
   probe.start-reading --min-ns=500 --max-ns=20_000_000
@@ -299,7 +298,6 @@ test-board1-esp32 port/uart.Port -> none:
   fast-low-periods.sort --in-place
   fast-low := fast-low-periods[fast-low-periods.size / 2]
   probe.close
-  probe-pin.close
   print "Async I2C classic frequency probe: 50kHz low $(slow-low)us, 400kHz low $(fast-low)us"
   expect slow-low >= 6
   expect fast-low < 6
