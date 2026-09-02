@@ -695,6 +695,9 @@ PRIMITIVE(init) {
   SpiResourceGroup* spi = _new SpiResourceGroup(
       process, EventQueueEventSource::instance(), host_device);
   if (!spi) {
+    SystemEventSource::instance()->run([&]() -> void {
+      FATAL_IF_NOT_ESP_OK(spi_bus_free(capture.host_device));
+    });
     spi_host_devices.put(host_device);
     FAIL(MALLOC_FAILED);
   }

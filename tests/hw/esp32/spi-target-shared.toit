@@ -258,7 +258,18 @@ test-board1:
     test-abort port bus ABORT-ACTIVE dma
     test-close-active port bus dma
 
+  // Exercise the controller bus's device ownership and bounded native slots.
+  // The devices deliberately omit CS because no transfers are performed.
+  devices := List 6:
+    bus.device --frequency=100_000
+  expect-throws "ALREADY_IN_USE":
+    bus.device --frequency=100_000
+  devices[2].close
+  replacement := bus.device --frequency=100_000
   bus.close
+  devices.do: | device/spi.Device |
+    expect-throws "CLOSED": device.write #[0]
+  expect-throws "CLOSED": replacement.write #[0]
   if is-classic-esp32:
     [1, 3].do: | mode/int |
       expect-throws "INVALID_ARGUMENT":

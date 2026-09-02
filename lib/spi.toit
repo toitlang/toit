@@ -529,10 +529,10 @@ class Bus:
     reservation-mutex_.do:
       if not spi_: return
       closing_ = true
-      devices := devices_.copy
-      devices.do: | device/Device_ |
-        device.close-under-reservation_
-      devices_.clear
+      // Closing a device removes it from this bounded list. Avoid allocating a
+      // snapshot here: close must remain usable when the heap is exhausted.
+      while not devices_.is-empty:
+        devices_.last.close-under-reservation_
       critical-do:
         spi-close_ spi_
         spi_ = null
@@ -572,7 +572,11 @@ class Bus:
     cycles before the first clock edge. ESP-IDF only supports this option for
     half-duplex transactions, except for a limited one-cycle case on the
     classic ESP32. $cs-hold-cycles keeps CS active after the last clock edge.
-    Both values must be between 0 and 16.
+  Both values must be between 0 and 16.
+
+  The bus retains the returned device until either the device or the bus is
+    explicitly closed. Dropping the last application reference does not free a
+    device slot while its bus remains open.
   */
   // __TYPE-MIGRATION__ cs: gpio.Pin. Deprecated. Provide an integer instead.
   // __TYPE-MIGRATION__ cs: int?
@@ -600,9 +604,20 @@ class Bus:
     return reservation-mutex_.do:
       if not spi_ or closing_: throw "CLOSED"
       d := spi-device_ spi_ cs-num dc-num command-bits address-bits frequency mode cs-setup-cycles cs-hold-cycles
-      result := Device_.init_ this d
-      devices_.add result
-      return result
+      result/Device_? := null
+      registered := false
+      try:
+        created := Device_.init_ this d
+        result = created
+        devices_.add created
+        registered = true
+        return created
+      finally:
+        if not registered:
+          if result:
+            result.close-under-reservation_
+          else:
+            spi-device-close_ spi_ d
 
 /**
 A device connected with SPI.
