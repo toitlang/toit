@@ -131,6 +131,12 @@ test-board1:
   expect-equals small-buffer-read (device.read small-buffer-read.size)
   expect-equals OK port.in.read-byte
 
+  device.close
+  // Isolate the concurrency check from any target TX/FIFO state left by the
+  // preceding short controller read.
+  reconfigure port SMALL-BUFFER-CONFIG
+  device = bus.device ADDRESS
+
   // Each write is larger than the native target buffer. Concurrent calls must
   // remain contiguous rather than interleaving whenever a controller read
   // frees a small amount of space.
