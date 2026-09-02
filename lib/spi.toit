@@ -489,7 +489,7 @@ Each device on the bus is enabled with its own chip-select pin. See $Bus.device.
 */
 class Bus:
   spi_ := ?
-  devices_ := {:}
+  devices_ := []
   closing_/bool := false
   reservation-active_/bool := false
   /**
@@ -529,9 +529,10 @@ class Bus:
     reservation-mutex_.do:
       if not spi_: return
       closing_ = true
-      devices := devices_.keys
+      devices := devices_.copy
       devices.do: | device/Device_ |
         device.close-under-reservation_
+      devices_.clear
       critical-do:
         spi-close_ spi_
         spi_ = null
@@ -600,7 +601,7 @@ class Bus:
       if not spi_ or closing_: throw "CLOSED"
       d := spi-device_ spi_ cs-num dc-num command-bits address-bits frequency mode cs-setup-cycles cs-hold-cycles
       result := Device_.init_ this d
-      devices_[result] = true
+      devices_.add result
       return result
 
 /**
