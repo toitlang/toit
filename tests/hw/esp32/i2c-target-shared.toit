@@ -118,6 +118,8 @@ test-board1:
   expect-equals OK port.in.read-byte
 
   device.close
+  // Recreating the target resets its dropped-transaction counter, making the
+  // exact count checked by board 2 independent of the preceding overflow.
   reconfigure port SMALL-BUFFER-CONFIG
   device = bus.device ADDRESS
   small-buffer-write := make-data 31 0x84

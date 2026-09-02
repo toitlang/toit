@@ -145,6 +145,7 @@ class Target:
     nonblocking.
   */
   write bytes/ByteArray -> none:
+    if not resource_: throw "CLOSED"
     offset := 0
     while offset < bytes.size:
       if not resource_: throw "CLOSED"
