@@ -1192,6 +1192,7 @@ PRIMITIVE(device_write) {
 
 PRIMITIVE(device_write_finish) {
   ARGS(I2cDeviceResource, resource);
+  if (resource->handle() == null || resource->bus() == null) FAIL(ALREADY_CLOSED);
   return finish_controller_operation(resource->bus(), null, 0, process);
 }
 
@@ -1214,6 +1215,7 @@ PRIMITIVE(device_read) {
 
 PRIMITIVE(device_read_finish) {
   ARGS(I2cDeviceResource, resource, MutableBlob, buffer, int, length);
+  if (resource->handle() == null || resource->bus() == null) FAIL(ALREADY_CLOSED);
   if (length < 0 || length > buffer.length()) FAIL(OUT_OF_BOUNDS);
   return finish_controller_operation(
       resource->bus(), buffer.address(), length, process);
@@ -1244,6 +1246,7 @@ PRIMITIVE(device_write_read) {
 
 PRIMITIVE(device_write_read_finish) {
   ARGS(I2cDeviceResource, resource, MutableBlob, buffer, int, length);
+  if (resource->handle() == null || resource->bus() == null) FAIL(ALREADY_CLOSED);
   if (length < 0 || length > buffer.length()) FAIL(OUT_OF_BOUNDS);
   return finish_controller_operation(
       resource->bus(), buffer.address(), length, process);
