@@ -82,10 +82,13 @@ class Target:
   static DONE-STATE_ ::= 1 << 1
 
   resource_ := ?
-  state_/monitor.ResourceState_ ::= ?
+  state_ := null
   mutex_/monitor.Mutex ::= monitor.Mutex
+  close-mutex_/monitor.Mutex ::= monitor.Mutex
   max-transfer-size/int ::= ?
   exchange-in-flight_/bool := false
+  closing_/bool := false
+  when-armed-active_/bool := false
 
   /**
   Constructs an SPI target.
@@ -133,7 +136,7 @@ class Target:
         and system.architecture == system.ARCHITECTURE-ESP32:
       if miso or (mode & 1) != 0: throw "INVALID_ARGUMENT"
 
-    resource_ = spi-target-create_
+    resource := spi-target-create_
         spi-target-resource-group_
         (mosi or -1)
         (miso or -1)
@@ -144,8 +147,19 @@ class Target:
         receive-lsb-first
         max-transfer-size
         dma
-    state_ = monitor.ResourceState_ spi-target-resource-group_ resource_
-    add-finalizer this:: finalize_
+    resource_ = resource
+    state/monitor.ResourceState_? := null
+    initialized := false
+    try:
+      state = monitor.ResourceState_ spi-target-resource-group_ resource
+      state_ = state
+      add-finalizer this:: finalize_
+      initialized = true
+    finally:
+      if not initialized:
+        if state: state.dispose
+        spi-target-close_ spi-target-resource-group_ resource
+        resource_ = null
 
   /**
   Arms and waits for one full-duplex SPI transaction.
@@ -175,7 +189,8 @@ class Target:
 
   The $when-armed block runs before this method starts waiting for the
     controller. It can assert an application-level ready signal to tell the
-    controller that it may start generating clocks.
+    controller that it may start generating clocks. It must not call $close;
+    doing so throws `INVALID_STATE`.
   */
   exchange transmit/ByteArray=#[ ] -> ByteArray
       --receive-size/int=transmit.size
@@ -187,7 +202,7 @@ class Target:
     if not 0 < transfer-size <= max-transfer-size: throw "OUT_OF_RANGE"
 
     return mutex_.do:
-      if not resource_: throw "CLOSED"
+      if not resource_ or closing_: throw "CLOSED"
       if exchange-in-flight_: throw "INVALID_STATE"
 
       // Allocate everything managed by the Toit heap before the native
@@ -205,8 +220,13 @@ class Target:
         // bounded and does not depend on controller clocks.
         critical-do --no-respect-deadline:
           state_.wait-for-state READY-STATE_
-        when-armed.call
+        when-armed-active_ = true
+        try:
+          when-armed.call
+        finally:
+          when-armed-active_ = false
         state_.wait-for-state DONE-STATE_
+        if closing_: throw "CLOSED"
         size := spi-target-transfer-finish_ resource_ receive-buffer false
         finished = true
         exchange-in-flight_ = false
@@ -225,16 +245,30 @@ class Target:
               state_.clear-state READY-STATE_ | DONE-STATE_
             exchange-in-flight_ = false
 
-  /** Closes the target and releases its peripheral, pins, and native buffers. */
+  /**
+  Closes the target and releases its peripheral, pins, and native buffers.
+
+  An exchange running in another task is aborted and throws `CLOSED`. Calling
+    this method from that exchange's `when-armed` block is invalid.
+  */
   close -> none:
-    mutex_.do:
+    close-mutex_.do:
       if not resource_: return
-      if exchange-in-flight_: throw "INVALID_STATE"
-      critical-do:
-        state_.dispose
-        spi-target-close_ spi-target-resource-group_ resource_
-        resource_ = null
-        remove-finalizer this
+      if when-armed-active_: throw "INVALID_STATE"
+      closing_ = true
+      if exchange-in-flight_:
+        critical-do --no-respect-deadline:
+          // The descriptor is mounted before READY is reported. Waiting here
+          // also wakes an exchange that has not yet left its READY wait.
+          state_.wait-for-state READY-STATE_
+          spi-target-transfer-finish_ resource_ #[ ] true
+          state_.wait-for-state DONE-STATE_
+      mutex_.do:
+        critical-do:
+          state_.dispose
+          spi-target-close_ spi-target-resource-group_ resource_
+          resource_ = null
+          remove-finalizer this
 
   finalize_ -> none:
     close
