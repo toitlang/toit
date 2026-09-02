@@ -827,6 +827,10 @@ class In extends Channel_:
         Channel_.CHANNEL-KIND-INPUT_
         pull-up
         dma
+    // For the new (integer) API the primitive applies the pull when it owns the
+    // pin. For a deprecated $gpio.Pin the pin owns its own configuration.
+    if pin is gpio.Pin:
+      pin.set-pull --up=pull-up --off=(not pull-up)
     super.from-sub_ resource
 
   /** Closes the channel. */
