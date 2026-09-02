@@ -17,7 +17,7 @@ UART-TX1 ::= Variant.CURRENT.board-connection-pin2
 UART-RX2 ::= Variant.CURRENT.board-connection-pin2
 UART-TX2 ::= Variant.CURRENT.board-connection-pin1
 
-I2C-SDA ::= Variant.CURRENT.board-connection-pin4
+I2C-SDA ::= Variant.CURRENT.board-connection-pin3
 I2C-SCL ::= Variant.CURRENT.board-connection-pin5
 I2C-SCL-PROBE ::= Variant.CURRENT.board-connection-pin6
 
