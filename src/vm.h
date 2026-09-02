@@ -19,6 +19,7 @@
 
 namespace toit {
 
+class Debugger;
 class EventSource;
 class EventSourceManager;
 class Scheduler;
@@ -42,9 +43,17 @@ class VM {
   EventSourceManager* event_manager() const { return event_manager_; }
   EventSource* nop_event_source() const { return nop_event_source_; }
 
+  // The debugger, or null when not debugging.
+  Debugger* debugger() const { return debugger_; }
+
+  // Create the debugger, start its controller thread, and print `dbg:ready`.
+  // Called once at startup when the debug condition holds.
+  void start_debugger();
+
  private:
   static VM* current_;
   Scheduler* scheduler_;
+  Debugger* debugger_ = null;
 
   EventSourceManager* event_manager_ = null;
   EventSource* nop_event_source_ = null;

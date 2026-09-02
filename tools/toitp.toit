@@ -98,6 +98,23 @@ print-bytecodes program/Program:
   print
   methods.do: it.output program
 
+print-positions program/Program:
+  program.methods.do: | method/ToitMethod |
+    info := program.method-info-for method.id
+    path := info.error-path
+    index := 0
+    length := method.bytecodes.size
+    while index < length:
+      absolute-bci := method.absolute-bci-from-bci index
+      pos/Position := info.position index
+      print "$absolute-bci $path $pos.line $pos.column"
+      opcode := method.bytecodes[index]
+      index += BYTE-CODES[opcode].size
+
+print-class-names program/Program:
+  program.class-tags.size.repeat: | id/int |
+    print "$id $(program.class-name-for id)"
+
 has-call program/Program method/ToitMethod:
   method.do-calls program: if matching it: return true
   return false
@@ -307,6 +324,44 @@ build-command -> cli.Command:
           with-filtered-cli-program invocation: | program/Program |
             print-bytecodes program
   snapshot-command.add bytecodes-command
+
+  positions-command := cli.Command "positions"
+      --help="""
+          Print the source position of every bytecode, one line per bytecode:
+          <absolute_bci> <error_path> <line> <col>.
+
+          Used by 'jag debug --web' to map a paused (method, offset) to a
+          source line. $filter-help
+          """
+      --rest=[snapshot-option, filter-option]
+      --examples=[
+        cli.Example "Print bytecode positions for snapshot 'foo.snapshot':"
+            --arguments="foo.snapshot",
+      ]
+      --run=:: | invocation/cli.Invocation |
+          with-filtered-cli-program invocation: | program/Program |
+            print-positions program
+  snapshot-command.add positions-command
+
+  class-names-command := cli.Command "class-names"
+      --help="""
+          Print the name of every class, one line per class id:
+          <class_id> <name>.
+
+          Used by 'jag debug --web' to resolve the numeric class ids that the
+          debugger emits for heap-object registers (<obj:<class_id>>) into
+          class names.
+          """
+      --rest=[snapshot-option]
+      --examples=[
+        cli.Example "Print class names for snapshot 'foo.snapshot':"
+            --arguments="foo.snapshot",
+      ]
+      --run=:: | invocation/cli.Invocation |
+          snapshot := SnapshotBundle.from-file invocation["snapshot"]
+          program := snapshot.decode
+          print-class-names program
+  snapshot-command.add class-names-command
 
   uuid-command := cli.Command "uuid"
       --help="Print the UUID of the snapshot."

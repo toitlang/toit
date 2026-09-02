@@ -98,8 +98,19 @@ Method Program::find_method(Object* receiver, word offset) {
 
 // OPCODE_TRACE is only called from within Interpreter::run which gives access to:
 //   uint8* bcp;
+// When a debugger is attached (`debug_active_`), every bytecode runs the debug
+// hook. The hook is gated on a single bool so there is zero overhead when not
+// debugging. On a breakpoint/step hit we store the stack (exactly like
+// CHECK_PREEMPT) and return DEBUG_PAUSED so the scheduler can park the process.
 #define OPCODE_TRACE() \
-  if (Flags::trace) trace(bcp);
+  if (Flags::trace) trace(bcp); \
+  if (debug_active_ && debug_check(bcp, sp)) {                        \
+    static_assert(FRAME_SIZE == 2, "Unexpected frame size");          \
+    PUSH(reinterpret_cast<Object*>(bcp));                             \
+    PUSH(program->frame_marker());                                    \
+    store_stack(sp);                                                  \
+    return Result(Result::DEBUG_PAUSED);                              \
+  }
 
 // Dispatching helper macros.
 #define DISPATCH(n)                                                                \

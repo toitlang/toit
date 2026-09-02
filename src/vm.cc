@@ -15,6 +15,7 @@
 
 #include <signal.h>
 
+#include "debugger.h"
 #include "entropy_mixer.h"
 #include "memory.h"
 #include "program_memory.h"
@@ -43,7 +44,7 @@ VM::VM() {
 
   OS::reset_monotonic_time();  // Reset "up time".
   Primitive::set_up();
-  scheduler_ = _new Scheduler();
+  scheduler_ = _new Scheduler(this);
 
   event_manager_ = _new EventSourceManager();
   nop_event_source_ = _new NopEventSource();
@@ -52,8 +53,19 @@ VM::VM() {
 
 VM::~VM() {
   delete event_manager_;
+  // Stop the debug controller thread before tearing down the scheduler so it
+  // can no longer reach into it.
+  if (debugger_ != null) debugger_->stop();
   delete scheduler_;
+  delete debugger_;
   current_ = null;
+}
+
+void VM::start_debugger() {
+  ASSERT(debugger_ == null);
+  debugger_ = _new Debugger(scheduler_);
+  if (debugger_ == null) FATAL("Cannot allocate debugger");
+  debugger_->start();
 }
 
 VM* VM::current_ = null;
