@@ -114,29 +114,44 @@ class LspServer:
 
   last-crash-report-time_ := null
 
-  /// A set of open request-ids
-  /// When a request is canceled, it is removed from the set, so
-  ///   that we don't respond multiple times.
-  open-requests_ /Set := {}
+  /**
+  A map from open request-ids to the task that handles the request.
+
+  When a request is canceled, the corresponding task is canceled and the entry
+    is removed from the map, so that we don't respond multiple times.
+  */
+  open-requests_ /Map := {:}
 
   constructor .connection_ .toit-path-override_:
 
   run -> none:
     while true:
-      parsed := connection_.read
-      if parsed == null: return
-      id := parsed.get "id"
-      if id: open-requests_.add id
-      task:: catch --trace:
-        active-requests_++
-        method := parsed["method"]
-        params := parsed.get "params"
-        verbose: "Request for $method $id"
-        response := handle_ method params
-        verbose: "Request $method $id handled"
-        if id and (open-requests_.contains id):
-          open-requests_.remove id
-          connection_.reply id response
+      request := connection_.read
+      if not request: return
+      id := request.get "id"
+      handler-task := task:: catch --trace:
+        handle-request-in-task_ request
+      // Register the task for cancelation.
+      if id: open-requests_[id] = handler-task
+
+  handle-request-in-task_ request/Map -> none:
+    active-requests_++
+    id := request.get "id"
+    try:
+      method := request["method"]
+      params := request.get "params"
+      verbose: "Request for $method $id"
+      response := handle_ method params
+      verbose: "Request $method $id handled"
+      if id and (open-requests_.contains id):
+        // Only reply if we hadn't already replied with "Cancelled".
+        open-requests_.remove id
+        connection_.reply id response
+    finally:
+      // The handler task may be unwinding because the request was
+      // canceled. Clean up under cancelation guard.
+      critical-do:
+        if id: open-requests_.remove id
         active-requests_--
         if active-requests_ == 0 and not on-idle-callbacks_.is-empty:
           callbacks := on-idle-callbacks_
@@ -247,9 +262,13 @@ class LspServer:
 
   cancel params/CancelParams -> none:
     id := params.id
-    task := open-requests_.get id
-    if task:
+    handler-task/Task? := open-requests_.get id
+    if handler-task:
       open-requests_.remove id
+      // Actually abort the work that is done for this request. The handler
+      // task unwinds at its next blocking operation, which lets $Compiler.run
+      // kill and reap the compiler process it may have started.
+      handler-task.cancel
       connection_.reply id
           ResponseError
             --code=ErrorCodes.request-cancelled
@@ -623,107 +642,113 @@ class LspServer:
 
     // Documents for which the summary changed.
     changed-summary-documents := {}
-    // Documents for which we want to report diagnostics.
-    report-diagnostics-documents := {}
+    // Documents that need to be analyzed as a result of the changes.
+    documents-needing-analysis/Set? := null
+    // Applying the result and reporting diagnostics must not be interrupted
+    // by a cancelation of the request, or the bookkeeping ends up
+    // half-applied.
+    critical-do:
+      // Documents for which we want to report diagnostics.
+      report-diagnostics-documents := {}
 
-    // Always report diagnostics for the given uris, unless there is a more recent
-    // analysis already, or if the document has been updated in the meantime.
-    uris.do: | uri |
-      doc := analyzed-documents.get-or-create --uri=uri
-      opened-doc := documents_.get-opened --uri=uri
-      content-revision := opened-doc ? opened-doc.revision : -1
-      if not doc.analysis-revision >= revision and not content-revision > revision:
-        report-diagnostics-documents.add uri
+      // Always report diagnostics for the given uris, unless there is a more recent
+      // analysis already, or if the document has been updated in the meantime.
+      uris.do: | uri |
+        doc := analyzed-documents.get-or-create --uri=uri
+        opened-doc := documents_.get-opened --uri=uri
+        content-revision := opened-doc ? opened-doc.revision : -1
+        if not doc.analysis-revision >= revision and not content-revision > revision:
+          report-diagnostics-documents.add uri
 
-    summaries.do: |summary-uri summary|
-      assert: summary != null
-      opened := documents_.get-opened --uri=summary-uri
-      content-revision := opened ? opened.revision : -1
-      update-result := analyzed-documents.update-document-after-analysis
-          --uri=summary-uri
-          --analysis-revision=revision
-          --content-revision=content-revision
-          --summary=summary
-      has-changed-summary := (update-result & AnalyzedDocuments.SUMMARY-CHANGED-EXTERNALLY-BIT) != 0
-      first-analysis-after-content-change :=
-          (update-result & AnalyzedDocuments.FIRST-ANALYSIS-AFTER-CONTENT-CHANGE-BIT) != 0
+      summaries.do: |summary-uri summary|
+        assert: summary != null
+        opened := documents_.get-opened --uri=summary-uri
+        content-revision := opened ? opened.revision : -1
+        update-result := analyzed-documents.update-document-after-analysis
+            --uri=summary-uri
+            --analysis-revision=revision
+            --content-revision=content-revision
+            --summary=summary
+        has-changed-summary := (update-result & AnalyzedDocuments.SUMMARY-CHANGED-EXTERNALLY-BIT) != 0
+        first-analysis-after-content-change :=
+            (update-result & AnalyzedDocuments.FIRST-ANALYSIS-AFTER-CONTENT-CHANGE-BIT) != 0
 
-      // If the summary has changed, it either means that:
-      //  - this was one of the $uris that was analyzed
-      //  - the $summary_uri depends on one of the $uris (but was also reachable from them)
-      //  - the $summary_uri (or one of its dependencies) was changed. This could be because
-      //    of a change on disk, or because of a `did_change` call. In the latter case,
-      //    there would still be another analysis running, but this one completed earlier.
-      if has-changed-summary:
-        changed-summary-documents.add summary-uri
-      if has-changed-summary or first-analysis-after-content-change:
-        report-diagnostics-documents.add summary-uri
-      dep-document := analyzed-documents.get-existing --uri=summary-uri
-      request-revision := dep-document.analysis-requested-by-revision
-      if request-revision != -1 and request-revision < revision:
-        report-diagnostics-documents.add summary-uri
-
-    // All reverse dependencies of changed documents need to have their diagnostics printed.
-    // We add all transitive dependencies, as it's hard to track implicit exports.
-    // For example, the return type of a method, requires all users of the method
-    //   to check whether a member call of the result is now allowed or not.
-    //   Say class 'A' in lib1 has a method 'foo' that is changed to take an additional parameter.
-    //   Say lib2 imports lib1 and return an 'A' from its 'bar' method.
-    //   Say lib3 imports lib2 and calls `bar.foo`. This call needs a diagnostic change, since
-    //     the 'foo' method now requires an additional parameter.
-    //
-    // This can happen multiple layers down.
-    // Note that we do this only if the summary of the initial file changes. As such, we
-    //   usually don't analyze everything.
-    //
-    // We will also remove files that are in a different project-root. During the
-    //   reverse dependency creation we add them (so we don't end up in an infinite
-    //   recursion), but they will be removed just afterwards.
-    changed-summary-documents.do:
-      document := analyzed-documents.get-existing --uri=it
-      add-transitive-reverse-deps_
-          --analyzed=analyzed-documents
-          --start-uris=document.reverse-deps
-          --result=report-diagnostics-documents
-
-    // Remove the documents that are not in the same project-root, or are in
-    // .packages (assuming we don't want them).
-    should-report-package-diagnostics := settings_.should-report-package-diagnostics
-    report-diagnostics-documents.filter --in-place: | uri/string |
-      document-project-uri := documents_.project-uri-for --uri=uri
-      if document-project-uri != project-uri: continue.filter false
-      if not should-report-package-diagnostics and is-inside-dot-packages --uri=uri:
-        // Only report diagnostics for package files if they are open.
-        if not documents_.get-opened --uri=uri:
-          continue.filter false
-      true
-
-    // Send the diagnostics we have to the client.
-    report-diagnostics-documents.do: |uri|
-      document := analyzed-documents.get-existing --uri=uri
-      request-revision := document.analysis-requested-by-revision
-      was-analyzed := summaries.contains uri
-      if was-analyzed:
-        diagnostics := diagnostics-per-uri.get uri --if-absent=: []
-        send-diagnostics (PushDiagnosticsParams --uri=uri --diagnostics=diagnostics)
+        // If the summary has changed, it either means that:
+        //  - this was one of the $uris that was analyzed
+        //  - the $summary_uri depends on one of the $uris (but was also reachable from them)
+        //  - the $summary_uri (or one of its dependencies) was changed. This could be because
+        //    of a change on disk, or because of a `did_change` call. In the latter case,
+        //    there would still be another analysis running, but this one completed earlier.
+        if has-changed-summary:
+          changed-summary-documents.add summary-uri
+        if has-changed-summary or first-analysis-after-content-change:
+          report-diagnostics-documents.add summary-uri
+        dep-document := analyzed-documents.get-existing --uri=summary-uri
+        request-revision := dep-document.analysis-requested-by-revision
         if request-revision != -1 and request-revision < revision:
-          // Mark the request as done.
-          document.analysis-requested-by-revision = -1
-      else if request-revision < revision:
-        document.analysis-requested-by-revision = revision
+          report-diagnostics-documents.add summary-uri
 
-    // Local lambda that returns whether a document needs analysis.
-    needs-analysis := : |uri|
-      document := analyzed-documents.get-existing --uri=uri
-      up-to-date := document.analysis-revision >= revision
-      opened := documents_.get-opened --uri=uri
-      content-revision := opened ? opened.revision : -1
-      will-be-analyzed := content-revision > revision
-      not up-to-date and not will-be-analyzed
+      // All reverse dependencies of changed documents need to have their diagnostics printed.
+      // We add all transitive dependencies, as it's hard to track implicit exports.
+      // For example, the return type of a method, requires all users of the method
+      //   to check whether a member call of the result is now allowed or not.
+      //   Say class 'A' in lib1 has a method 'foo' that is changed to take an additional parameter.
+      //   Say lib2 imports lib1 and return an 'A' from its 'bar' method.
+      //   Say lib3 imports lib2 and calls `bar.foo`. This call needs a diagnostic change, since
+      //     the 'foo' method now requires an additional parameter.
+      //
+      // This can happen multiple layers down.
+      // Note that we do this only if the summary of the initial file changes. As such, we
+      //   usually don't analyze everything.
+      //
+      // We will also remove files that are in a different project-root. During the
+      //   reverse dependency creation we add them (so we don't end up in an infinite
+      //   recursion), but they will be removed just afterwards.
+      changed-summary-documents.do:
+        document := analyzed-documents.get-existing --uri=it
+        add-transitive-reverse-deps_
+            --analyzed=analyzed-documents
+            --start-uris=document.reverse-deps
+            --result=report-diagnostics-documents
 
-    // See which documents need to be analyzed as a result of changes.
-    documents-needing-analysis := report-diagnostics-documents.filter --in-place: // Reuse the set.
-      needs-analysis.call it
+      // Remove the documents that are not in the same project-root, or are in
+      // .packages (assuming we don't want them).
+      should-report-package-diagnostics := settings_.should-report-package-diagnostics
+      report-diagnostics-documents.filter --in-place: | uri/string |
+        document-project-uri := documents_.project-uri-for --uri=uri
+        if document-project-uri != project-uri: continue.filter false
+        if not should-report-package-diagnostics and is-inside-dot-packages --uri=uri:
+          // Only report diagnostics for package files if they are open.
+          if not documents_.get-opened --uri=uri:
+            continue.filter false
+        true
+
+      // Send the diagnostics we have to the client.
+      report-diagnostics-documents.do: |uri|
+        document := analyzed-documents.get-existing --uri=uri
+        request-revision := document.analysis-requested-by-revision
+        was-analyzed := summaries.contains uri
+        if was-analyzed:
+          diagnostics := diagnostics-per-uri.get uri --if-absent=: []
+          send-diagnostics (PushDiagnosticsParams --uri=uri --diagnostics=diagnostics)
+          if request-revision != -1 and request-revision < revision:
+            // Mark the request as done.
+            document.analysis-requested-by-revision = -1
+        else if request-revision < revision:
+          document.analysis-requested-by-revision = revision
+
+      // Local lambda that returns whether a document needs analysis.
+      needs-analysis := : |uri|
+        document := analyzed-documents.get-existing --uri=uri
+        up-to-date := document.analysis-revision >= revision
+        opened := documents_.get-opened --uri=uri
+        content-revision := opened ? opened.revision : -1
+        will-be-analyzed := content-revision > revision
+        not up-to-date and not will-be-analyzed
+
+      // See which documents need to be analyzed as a result of changes.
+      documents-needing-analysis = report-diagnostics-documents.filter --in-place: // Reuse the set.
+        needs-analysis.call it
 
     if not documents-needing-analysis.is-empty:
       // It's highly unlikely that a reverse dependency changes its summary as a result

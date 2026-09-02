@@ -68,6 +68,10 @@ class MultiplexConnection:
         if frame-size < 0:
           frame-size = -frame-size
           to = compiler-to-fs_
+        // The compiler may die mid-frame, leaving a header without its
+        // payload. Treat a truncated frame like a closed connection instead
+        // of throwing UNEXPECTED_END_OF_READER out of the dispatch task.
+        if not buffered-from-compiler_.try-ensure-buffered frame-size: return
         data := buffered-from-compiler_.read-bytes frame-size
         to.write_ data
     finally:

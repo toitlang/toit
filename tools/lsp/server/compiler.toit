@@ -103,9 +103,13 @@ class Compiler:
         try:
           sleep --ms=timeout-ms_
           if not has-terminated:
-            SIGKILL ::= 9
-            pipe.kill_ process.pid SIGKILL
-            was-killed-because-of-timeout = true
+            // Don't log the broken-pipe errors the file server sees when the
+            // compiler goes away.
+            file-server.mark-shutting-down
+            // On Windows, terminating a process that has already exited on its
+            // own fails. Nothing to do in that case.
+            if (catch: process.kill --hard) == null:
+              was-killed-because-of-timeout = true
         finally:
           timeout-task = null
 
@@ -118,30 +122,47 @@ class Compiler:
       reader := io.Reader.adapt to-parser
       read-callback.call reader
     finally:
+      is-canceled := Task.current.is-canceled
       if timeout-task: timeout-task.cancel
-      file-server.close
-      to-parser.close
-      multiplex.close
+      // The cleanup below blocks (most notably in 'process.wait'). If we are
+      // unwinding because of a cancelation, those blocking operations would
+      // throw immediately, leaving the compiler process running and unreaped.
+      critical-do:
+        if is-canceled:
+          // The request was canceled. Kill the compiler instead of letting it
+          // run to completion: closing its pipes while it is still talking to
+          // us would just make it complain on stderr.
+          // Nothing has reaped the process yet ('process.wait' below is the
+          // only place that does), so the pid is still valid. On Windows,
+          // terminating a process that has already exited on its own fails,
+          // which is fine.
+          file-server.mark-shutting-down
+          catch: process.kill --hard
 
-      exit-value := process.wait
-      verbose: "Compiler terminated with exit_signal: $(pipe.exit-signal exit-value)"
-      has-terminated = true
-      if not ignore-crashes:
-        exit-signal := pipe.exit-signal exit-value
-        if exit-signal:
-          // Assume that any exit-signal was because of a crash of the compiler.
-          if on-crash_:
-            reason := (pipe.signal-to-string exit-signal)
-            if was-killed-because-of-timeout: reason += "\nKilled after timeout"
-            on-crash_.call flags compiler-input reason file-server.protocol
-          did-crash = true
+        file-server.close
+        to-parser.close
+        multiplex.close
+
+        exit-value := process.wait
+        verbose: "Compiler terminated with exit_signal: $(pipe.exit-signal exit-value)"
+        has-terminated = true
+        // A canceled run killed the compiler on purpose. Don't report that as a crash.
+        if not ignore-crashes and not is-canceled:
+          exit-signal := pipe.exit-signal exit-value
+          if exit-signal:
+            // Assume that any exit-signal was because of a crash of the compiler.
+            if on-crash_:
+              reason := (pipe.signal-to-string exit-signal)
+              if was-killed-because-of-timeout: reason += "\nKilled after timeout"
+              on-crash_.call flags compiler-input reason file-server.protocol
+            did-crash = true
     return not did-crash
 
   analyze --project-uri/string? uris/List -> AnalysisResult?:
     // Work around small stack size.
     // TODO(1268): remove work-around
     latch := monitor.Latch
-    task:: catch --trace:
+    analysis-task := task:: catch --trace:
       paths := uris.map: | uri |
         path := translator.to-path uri --to-compiler
         // There are multiple ways to encode URIs. Check that the uri is already
@@ -239,7 +260,12 @@ class Compiler:
             if on-error_: on-error_.call "LSP Server: unexpected line from compiler: $line"
           result = AnalysisResult diagnostics-per-uri diagnostics-without-position summary
       latch.set (completed-successfully ? result : null)
-    return latch.get
+    try:
+      return latch.get
+    finally:
+      // If we are unwinding (typically because the request was canceled), the
+      // task that actually runs the compiler must be stopped as well.
+      if not latch.has-value: analysis-task.cancel
 
   /**
   Gets all the completion from the compiler and calls the given $block

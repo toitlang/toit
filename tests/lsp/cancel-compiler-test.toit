@@ -70,3 +70,22 @@ test client/LspClient:
   client.send-cancel id
   // Just shouldn't do anything.
   client.wait-for-idle
+
+  // Canceling must kill the compiler. Without the kill, the server only
+  // becomes idle once the compiler has finished or has hit the timeout.
+  mock-compiler.set-completion-result
+    "SLOW\n20000000\n\n0\n0\n0\n0\nfoo\n-1\nbar\n-1\n"
+  start := Time.monotonic-us
+  completions = client.send-completion-request --uri=uri 1 2 --id-callback=:
+    client.send-cancel it
+  expect-equals -32800 completions["code"]
+  client.wait-for-idle
+  elapsed-ms := (Time.monotonic-us - start) / 1000
+  print "idle $elapsed-ms ms after cancel"
+  expect elapsed-ms < 5000
+
+  // The server must still work afterwards.
+  mock-compiler.set-completion-result
+    "\n0\n0\n0\n0\nfoo\n-1\nbar\n-1\n"
+  completions = client.send-completion-request --uri=uri 1 2
+  expect-equals 2 completions.size
