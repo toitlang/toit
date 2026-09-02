@@ -242,13 +242,16 @@ test-board2:
       expect-equals 1 target.dropped-receive-count
       send-byte port OK
     else if command == CONCURRENT-QUEUE-READ:
+      first-started := monitor.Latch
       first-done := monitor.Latch
       second-done := monitor.Latch
       task::
+        first-started.set true
         target.write parts[0]
         first-done.set true
-      // Let the first writer fill the native buffer and suspend before the
-      // second writer enters Target.write.
+      // Ensure the first task is running, then let it fill the native buffer
+      // and suspend before the second writer enters Target.write.
+      first-started.get
       sleep --ms=5
       task::
         target.write parts[1]
