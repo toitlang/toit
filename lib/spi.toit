@@ -88,7 +88,7 @@ class Target:
   max-transfer-size/int ::= ?
   exchange-in-flight_/bool := false
   closing_/bool := false
-  when-armed-active_/bool := false
+  when-armed-task_/Task? := null
 
   /**
   Constructs an SPI target.
@@ -189,8 +189,8 @@ class Target:
 
   The $when-armed block runs before this method starts waiting for the
     controller. It can assert an application-level ready signal to tell the
-    controller that it may start generating clocks. It must not call $close;
-    doing so throws `INVALID_STATE`.
+    controller that it may start generating clocks. It must not call $close or
+    recursively call $exchange; doing so throws `INVALID_STATE`.
   */
   exchange transmit/ByteArray=#[ ] -> ByteArray
       --receive-size/int=transmit.size
@@ -200,6 +200,7 @@ class Target:
     if not 0 <= fill-byte <= 0xff: throw "OUT_OF_RANGE"
     transfer-size := transmit.size > receive-size ? transmit.size : receive-size
     if not 0 < transfer-size <= max-transfer-size: throw "OUT_OF_RANGE"
+    if identical Task.current when-armed-task_: throw "INVALID_STATE"
 
     return mutex_.do:
       if not resource_ or closing_: throw "CLOSED"
@@ -220,11 +221,11 @@ class Target:
         // bounded and does not depend on controller clocks.
         critical-do --no-respect-deadline:
           state_.wait-for-state READY-STATE_
-        when-armed-active_ = true
+        when-armed-task_ = Task.current
         try:
           when-armed.call
         finally:
-          when-armed-active_ = false
+          when-armed-task_ = null
         state_.wait-for-state DONE-STATE_
         if closing_: throw "CLOSED"
         size := spi-target-transfer-finish_ resource_ receive-buffer false
@@ -254,7 +255,7 @@ class Target:
   close -> none:
     close-mutex_.do:
       if not resource_: return
-      if when-armed-active_: throw "INVALID_STATE"
+      if identical Task.current when-armed-task_: throw "INVALID_STATE"
       closing_ = true
       if exchange-in-flight_:
         critical-do --no-respect-deadline:
