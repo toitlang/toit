@@ -4,6 +4,7 @@
 
 import expect show *
 import io
+import monitor
 import spi
 import system
 import uart
@@ -25,6 +26,7 @@ PREPARE ::= 0x31
 ABORT-IDLE ::= 0x32
 ABORT-ACTIVE ::= 0x33
 RESUME ::= 0x34
+CLOSE-ACTIVE ::= 0x35
 SYNC ::= 0xa0
 READY ::= 0xa1
 DONE ::= 0xa2
@@ -254,6 +256,7 @@ test-board1:
   [false, true].do: | dma/bool |
     test-abort port bus ABORT-IDLE dma
     test-abort port bus ABORT-ACTIVE dma
+    test-close-active port bus dma
 
   bus.close
   if is-classic-esp32:
@@ -285,6 +288,9 @@ test-board2:
     command := port.in.read-byte
     if command == ABORT-IDLE or command == ABORT-ACTIVE:
       test-abort-target port command
+      continue
+    if command == CLOSE-ACTIVE:
+      test-close-active-target port
       continue
     if command != PREPARE: throw "Unknown command: $command"
 
@@ -387,6 +393,69 @@ test-abort-target port/uart.Port command/int -> none:
     port.out.little-endian.write-uint32 result.size
     port.out.write result --flush
     if index == 0: expect-equals RESUME port.in.read-byte
+  target.close
+
+test-close-active port/uart.Port bus/spi.Bus dma/bool -> none:
+  suffix := dma ? "dma" : "no-dma"
+  print "SPI target: close-active-$suffix"
+
+  device := bus.device
+      --cs=CS
+      --frequency=400_000
+      --mode=0
+      --cs-setup-cycles=1
+  port.out.write #[CLOSE-ACTIVE, dma ? 1 : 0] --flush
+  expect-equals READY port.in.read-byte
+  expect-equals ABORTED port.in.read-byte
+
+  port.out.write #[RESUME] --flush
+  expect-equals READY port.in.read-byte
+  expected := pattern 8 0x6d
+  controller-data := expected.copy
+  device.transfer controller-data
+  expect-equals expected (read-target-result port)
+  device.close
+
+test-close-active-target port/uart.Port -> none:
+  dma := port.in.read-byte != 0
+  target := spi.Target
+      --mosi=MOSI
+      --clock=SCLK
+      --cs=CS
+      --max-transfer-size=64
+      --dma=dma
+
+  armed := monitor.Latch
+  done := monitor.Latch
+  exchange-error := null
+  task::
+    exchange-error = catch:
+      target.exchange #[ ]
+          --receive-size=8
+          --when-armed=:
+            armed.set true
+            port.out.write #[READY] --flush
+    done.set true
+  armed.get
+  target.close
+  done.get
+  expect-equals "CLOSED" exchange-error
+  port.out.write #[ABORTED] --flush
+
+  expect-equals RESUME port.in.read-byte
+  target = spi.Target
+      --mosi=MOSI
+      --clock=SCLK
+      --cs=CS
+      --max-transfer-size=64
+      --dma=dma
+  result := target.exchange #[ ]
+      --receive-size=8
+      --when-armed=:
+        port.out.write #[READY] --flush
+  port.out.write #[DONE] --flush
+  port.out.little-endian.write-uint32 result.size
+  port.out.write result --flush
   target.close
 
 prepare-target port/uart.Port current/Case:
