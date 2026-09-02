@@ -28,6 +28,8 @@ test:
   expect-equals 0 measure.get
   expect-throw "ALREADY_IN_USE": gpio.Pin TEST-PIN
   target.close
+  expect-throw "CLOSED": target.write #[]
+  expect-throw "CLOSED": target.write #[0]
 
   // Verify both SDA and SCL receive the requested pull-up.
   target = make-target TEST-PIN OTHER-PIN --pull-up
