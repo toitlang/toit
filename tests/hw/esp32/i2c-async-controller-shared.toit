@@ -36,6 +36,7 @@ EXPECT-WRITE ::= 5
 QUEUE-READ ::= 6
 WRITE-READ ::= 7
 TIMEOUT-READ ::= 8
+STRETCH-CLOCK ::= 9
 
 REGISTER-7 ::= 1
 REGISTER-10 ::= 2
@@ -265,22 +266,52 @@ test-board1-esp32 port/uart.Port -> none:
   expect-equals OK port.in.read-byte
 
   device.close
+  probe-pin := gpio.Pin I2C-SCL-PROBE --input --pull-up
+  probe := rmt.In
+      probe-pin  // @no-warn
+      --resolution=1_000_000
+      --memory-blocks=8
+
   slow := bus.device ADDRESS --frequency=50_000
+  probe.start-reading --min-ns=500 --max-ns=20_000_000
   send-command port WRITE-READ [#[0x23], #[0x45]]
   expect-equals #[0x45] (slow.write-read #[0x23] 1)
   expect-equals OK port.in.read-byte
+  slow-signals := with-timeout --ms=500: probe.wait-for-data
+  slow-low-periods := []
+  slow-signals.size.repeat: | i/int |
+    if (slow-signals.level i) == 0:
+      slow-low-periods.add (slow-signals.period i)
+  slow-low-periods.sort --in-place
+  slow-low := slow-low-periods[slow-low-periods.size / 2]
   slow.close
 
   fast := bus.device ADDRESS --frequency=400_000
+  probe.start-reading --min-ns=500 --max-ns=20_000_000
   send-command port WRITE-READ [#[0x67], #[0x89]]
   expect-equals #[0x89] (fast.write-read #[0x67] 1)
   expect-equals OK port.in.read-byte
+  fast-signals := with-timeout --ms=500: probe.wait-for-data
+  fast-low-periods := []
+  fast-signals.size.repeat: | i/int |
+    if (fast-signals.level i) == 0:
+      fast-low-periods.add (fast-signals.period i)
+  fast-low-periods.sort --in-place
+  fast-low := fast-low-periods[fast-low-periods.size / 2]
+  probe.close
+  probe-pin.close
+  print "Async I2C classic frequency probe: 50kHz low $(slow-low)us, 400kHz low $(fast-low)us"
+  expect slow-low >= 6
+  expect fast-low < 6
+  expect slow-low > fast-low * 2
   fast.close
 
   // A task deadline must abort the native operation, wake the suspended task,
   // and leave the controller usable for the next transaction.
   abortable := bus.device ADDRESS --timeout-us=100_000
-  send-command port DYNAMIC-READ [#[0x5a], encode-u16 20]
+  // Classic ESP32 cannot clock-stretch from its target read callback. Instead,
+  // board 2 holds SCL low through the fixture's resistor-coupled probe pin.
+  send-command port STRETCH-CLOCK [encode-u16 20]
   expect-throw DEADLINE-EXCEEDED-ERROR:
     with-timeout --ms=2: abortable.read 1
   expect-equals OK port.in.read-byte
@@ -383,11 +414,12 @@ test-board2-esp32 -> none:
       send-byte port READY
       expect-equals parts[0] target.read
       send-byte port OK
-    else if command == DYNAMIC-READ:
+    else if command == STRETCH-CLOCK:
+      stretcher := gpio.Pin I2C-SCL-PROBE --output --open-drain --value=0
       send-byte port READY
-      target.wait-for-read-request
-      sleep --ms=(decode-u16 parts[1])
-      target.write parts[0]
+      sleep --ms=(decode-u16 parts[0])
+      stretcher.set 1
+      stretcher.close
       send-byte port OK
     else:
       throw "Unknown command: $command"
