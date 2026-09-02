@@ -74,6 +74,12 @@ test:
     channel-to-task.send "keep_active"
     expect-equals "cs_is_active" channel-from-task.receive
     expect-equals 0 in.get
+    // The reservation belongs to the task running the block, not merely to
+    // this Device object. A transfer from another task could otherwise join
+    // or terminate the reserving task's CS-low frame.
+    expect-throw "INVALID_STATE": device.transfer #[4, 5, 6]
+    expect-throw "INVALID_STATE": device.transfer #[4, 5, 6] --keep-cs-active
+    expect-equals 0 in.get
     channel-to-task.send "transfer_without_active"
     expect-equals "cs_is_inactive" channel-from-task.receive
     expect-equals 1 in.get

@@ -1355,6 +1355,7 @@ PRIMITIVE(device) {
 PRIMITIVE(device_close) {
   ARGS(SpiResourceGroup, spi, SpiDevice, device);
   spi->unregister_resource(device);
+  device_proxy->clear_external_address();
   return process->null_object();
 }
 
