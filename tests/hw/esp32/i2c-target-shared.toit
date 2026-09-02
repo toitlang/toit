@@ -3,7 +3,6 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-import gpio
 import i2c
 import rmt
 import system
@@ -72,11 +71,11 @@ test-board1:
     send-command port DYNAMIC-READ [expected]
     // GPIO38 drives the S3 devkit's onboard RGB LED and needs a local pull-up
     // to be a reliable high-impedance probe through the 5K resistor.
-    probe-pin := gpio.Pin I2C-SCL-PROBE --input --pull-up
     probe := rmt.In
-        probe-pin  // @no-warn
+        I2C-SCL-PROBE
         --resolution=1_000_000
         --memory-blocks=8
+        --pull-up
         --dma
     probe.start-reading --min-ns=1_000 --max-ns=20_000_000
     start := Time.monotonic-us
@@ -97,7 +96,6 @@ test-board1:
     expect longest-low >= 9_000
     expect longest-low < 20_000
     probe.close
-    probe-pin.close
 
   tx := make-data 19 0x71
   expected-rx := make-data 23 0x29
