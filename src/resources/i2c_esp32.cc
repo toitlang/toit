@@ -587,8 +587,9 @@ PRIMITIVE(register_target_create) {
        bool, allow_power_down,
        bool, broadcast);
 
-  if (register_count == 0 || receive_buffer_size == 0) FAIL(INVALID_ARGUMENT);
+  if (register_count == 0) FAIL(INVALID_ARGUMENT);
   if (register_address_size != 1 && register_address_size != 2) FAIL(INVALID_ARGUMENT);
+  if (receive_buffer_size < register_address_size) FAIL(INVALID_ARGUMENT);
   uint32_t addressable_register_count = 1u << (register_address_size * 8);
   if (register_count > addressable_register_count) FAIL(INVALID_ARGUMENT);
 

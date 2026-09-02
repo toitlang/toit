@@ -235,9 +235,9 @@ Controller writes start with a one- or two-byte, big-endian register address.
   actually read. Controller accesses wrap at the end of the register array.
 
 The native array is initialized to zero. Toit code can access it with indexing,
-  $read, and $write while the target is active. Individual byte updates are
-  atomic; a bulk operation concurrent with a controller transaction can be
-  observed one byte at a time.
+  $read, and $write while the target is active. Toit access is not synchronized
+  with controller transactions. Coordinate the two sides if multi-byte values
+  must be observed consistently.
 
 Register targets require an I2C peripheral with address-match clock stretching
   and are not supported on the original ESP32.
@@ -277,7 +277,7 @@ class RegisterTarget:
     if register-address-size != 1 and register-address-size != 2: throw "INVALID_ARGUMENT"
     register-limit := 1 << (register-address-size * 8)
     if not 0 < register-count <= register-limit: throw "INVALID_ARGUMENT"
-    if receive-buffer-size <= 0: throw "INVALID_ARGUMENT"
+    if receive-buffer-size < register-address-size: throw "INVALID_ARGUMENT"
 
     size = register-count
     resource_ = i2c-register-target-create_
