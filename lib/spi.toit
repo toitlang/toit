@@ -486,6 +486,12 @@ Bus for communicating using SPI.
 
 An SPI bus is constructed with 3 main wires for data transmission and a clock.
 Each device on the bus is enabled with its own chip-select pin. See $Bus.device.
+
+On the classic ESP32, SPI controller completion interrupts are not placed in
+  IRAM in the Toit firmware configuration. A transaction can complete in
+  hardware while a flash operation has disabled the instruction cache, but the
+  waiting Toit task is not resumed until the cache is available again. This
+  affects completion latency, not the nonblocking primitive contract.
 */
 class Bus:
   spi_ := ?
