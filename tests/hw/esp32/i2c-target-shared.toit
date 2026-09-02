@@ -17,7 +17,7 @@ UART-TX1 ::= Variant.CURRENT.board-connection-pin2
 UART-RX2 ::= Variant.CURRENT.board-connection-pin2
 UART-TX2 ::= Variant.CURRENT.board-connection-pin1
 
-I2C-SDA ::= Variant.CURRENT.board-connection-pin4
+I2C-SDA ::= Variant.CURRENT.board-connection-pin3
 // Pin 5 is resistor-coupled to pin 6 on board 1. Pin 6 is deliberately left
 // free so later timing tests can use it as a non-invasive SCL probe.
 I2C-SCL ::= Variant.CURRENT.board-connection-pin5
