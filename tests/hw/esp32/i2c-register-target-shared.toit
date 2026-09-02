@@ -3,7 +3,6 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-import gpio
 import i2c
 import rmt
 import system
@@ -101,11 +100,11 @@ test-board1:
     // The resistor-coupled neighboring pin probes SCL without loading it.
     // Unlike the dynamic Target test, the register target must not contain a
     // millisecond-scale stretch while a Toit task prepares its response.
-    probe-pin := gpio.Pin I2C-SCL-PROBE --input --pull-up
     probe := rmt.In
-        probe-pin  // @no-warn
+        I2C-SCL-PROBE
         --resolution=1_000_000
         --memory-blocks=8
+        --pull-up
         --dma
     probe.start-reading --min-ns=1_000 --max-ns=20_000_000
     expect-equals (wrapped initial 11 100) (registers.read-bytes 11 100)
@@ -117,7 +116,6 @@ test-board1:
     print "Register I2C SCL probe: $(scl-signals.size) signals, longest low $(longest-low)us"
     expect longest-low < 100
     probe.close
-    probe-pin.close
 
   device.close
   reconfigure port WIDE-CONFIG
