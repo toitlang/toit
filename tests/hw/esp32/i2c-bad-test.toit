@@ -31,5 +31,5 @@ test:
 
   device := bus.device 123
 
-  expect-throw "ESP_ERR_INVALID_STATE": device.read 1
-  expect-throw "ESP_ERR_INVALID_STATE": device.write #[1, 2, 3]
+  expect-throw "I2C_NACK": device.read 1
+  expect-throw "I2C_NACK": device.write #[1, 2, 3]
