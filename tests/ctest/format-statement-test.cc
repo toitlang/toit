@@ -14,6 +14,7 @@
 #include "../../src/compiler/sources.h"
 #include "../../src/compiler/symbol_canonicalizer.h"
 #include "../../src/top.h"
+#include "format-test-support.h"
 
 namespace toit {
 namespace compiler {
