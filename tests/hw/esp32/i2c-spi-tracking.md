@@ -116,7 +116,7 @@ overflow scenario provide the mixed-operation stress pass.
 
 | Area | Covered cases |
 | --- | --- |
-| I2C target | 7-bit and 10-bit addresses, direct read/write, combined write-read, FIFO-boundary sizes, dynamic response, clock stretching, bounded receive queues, oversized transactions, broadcast, close/reconfigure |
+| I2C target | 7-bit and 10-bit addresses, direct read/write, combined write-read, FIFO-boundary sizes, dynamic response, clock stretching, response-block exceptions and non-local returns, bounded receive queues, oversized transactions, broadcast, close/reconfigure |
 | I2C register target | 8-bit and 16-bit register addresses, wraparound, reads larger than the FIFO, pointer continuation, live updates, overflow accounting, broadcast |
 | I2C controller | asynchronous scheduling, contention, 50/100/400 kHz operation, NACK, timeout, address-width collision, clock-stretch recovery, invalid arguments |
 | SPI target | modes 0-3, transmit/receive/full duplex, direction changes between target instances, MSB/LSB order, DMA and non-DMA, 50 kHz through 5 MHz, sizes 1 through 4092, idle/active abort, close and reuse |
@@ -149,6 +149,8 @@ overflow scenario provide the mixed-operation stress pass.
 | 2026-09-03 | `b010aac9` plus follow-up changes | `817726ca57` | ESP32 | Immediate full matrix with setup fixtures excluded | 12/12 pass in 78.13 s |
 | 2026-09-03 | `b010aac9` plus follow-up changes | `817726ca57` | ESP32-S3 | Full I2C/SPI matrix after setup | 15/15 pass in 128.76 s |
 | 2026-09-03 | `b010aac9` plus follow-up changes | `817726ca57` | ESP32-S3 | Immediate full matrix with setup fixtures excluded | 12/12 pass in 73.46 s |
+| 2026-09-04 | `527dc816` | `817726ca57` | ESP32 | `i2c-target-board1.toit` | Pass: throwing and non-local-return response blocks close the target; target recreation and subsequent transactions succeed |
+| 2026-09-04 | `527dc816` | `817726ca57` | ESP32-S3 | `i2c-target-board1.toit` | Pass: active clock stretch is released after throwing and non-local-return response blocks; target recreation and subsequent transactions succeed |
 
 Add the exact command, result, and any captured timing to this table as each
 remaining item is completed.
