@@ -128,11 +128,7 @@ class Target:
     check-receive-overflow_
     return i2c-target-receive_ resource_
 
-  /**
-  Waits for and returns the next complete controller write transaction.
-
-  Waiting suspends only the calling Toit task.
-  */
+  /** Waits for and returns the next complete controller write transaction. */
   read -> ByteArray:
     while true:
       if not resource_: throw "CLOSED"
