@@ -27,7 +27,6 @@ namespace toit {
 
 constexpr int GPIO_QUEUE_SIZE = 32;
 constexpr int UART_QUEUE_SIZE = 32;
-constexpr int STDIN_QUEUE_SIZE = 4;
 
 // Queue-set entries reserved for queues owned by each peripheral subsystem.
 // Each subsystem has a static_assert next to its resource implementation so a
@@ -35,6 +34,7 @@ constexpr int STDIN_QUEUE_SIZE = 4;
 // new EventQueueResource subsystem must add its own reservation here and to
 // MAX_QUEUE_SET_SIZE.
 constexpr int UART_EVENT_QUEUE_SIZE = 5 * UART_QUEUE_SIZE;
+constexpr int STDIN_EVENT_QUEUE_SIZE = 4;
 constexpr int I2C_EVENT_QUEUE_SIZE = 3;
 constexpr int I2S_EVENT_QUEUE_SIZE = 6;
 constexpr int RMT_EVENT_QUEUE_SIZE = 8;
