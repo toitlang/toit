@@ -216,13 +216,16 @@ test-board2:
     else if command == QUEUE-READ:
       target.write parts[0]
       send-byte port READY
-      target.wait-for-read-request
+      target.wait-for-read-request: |request-count/int|
+        expect-equals 1 request-count
+        #[ ]
       send-byte port OK
     else if command == DYNAMIC-READ:
       send-byte port READY
-      target.wait-for-read-request
-      sleep --ms=10
-      target.write parts[0]
+      target.wait-for-read-request: |request-count/int|
+        expect-equals 1 request-count
+        sleep --ms=10
+        parts[0]
       send-byte port OK
     else if command == WRITE-READ:
       target.write parts[1]
