@@ -443,8 +443,8 @@ class BufferTarget:
   /**
   Waits for and returns the next complete MOSI transaction.
 
-  Waiting suspends only the calling Toit task. If the controller released CS
-    before $size bytes, the returned array is correspondingly shorter.
+  If the controller released CS before $size bytes, the returned array is
+    correspondingly shorter.
   */
   receive -> ByteArray:
     if not can-receive_: throw "INVALID_STATE"
