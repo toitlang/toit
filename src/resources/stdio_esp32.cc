@@ -42,6 +42,9 @@ namespace toit {
 
 static const word STDIN_READ_EVENT = 1 << 0;
 static const int STDIN_BUFFER_SIZE = 1024;
+static const int STDIN_QUEUE_SIZE = 4;
+static_assert(STDIN_QUEUE_SIZE <= STDIN_EVENT_QUEUE_SIZE,
+              "Increase STDIN_EVENT_QUEUE_SIZE");
 #ifdef TOIT_STDIN_UART
 static const int UART_STDIN_RX_BUFFER_SIZE = 4096;
 #endif
