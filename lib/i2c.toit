@@ -168,20 +168,26 @@ class Target:
         state_.wait-for-state REQUEST-STATE_
 
   /**
-  Waits until a controller requests data and returns the number of requests
-    observed since the previous call.
+  Waits until a controller requests data and queues the response returned by
+    $block.
+
+  The block receives the number of read requests observed since the previous
+    call and must return a $ByteArray.
 
   On targets capable of clock stretching this notification arrives while the
-    controller is waiting, allowing a subsequent $write to supply the current
-    transaction. The original ESP32 cannot stretch for this event; responses
-    must be queued before the controller starts reading.
+    controller is waiting, so the returned bytes supply the current
+    transaction. The original ESP32 cannot stretch for this event; there the
+    returned bytes are queued for subsequent controller reads.
   */
-  wait-for-read-request -> int:
+  wait-for-read-request [block] -> none:
     while true:
       if not resource_: throw "CLOSED"
       state_.clear-state REQUEST-STATE_
       count := i2c-target-take-request-count_ resource_
-      if count != 0: return count
+      if count != 0:
+        response/ByteArray := block.call count
+        write response
+        return
       state_.wait-for-state REQUEST-STATE_
 
   /** Number of controller write transactions dropped due to buffer overflow. */
