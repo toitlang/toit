@@ -30,6 +30,20 @@ In case of the Bosch [BME280 sensor](https://cdn.sparkfun.com/assets/e/7/3/b/1/B
 ```
   device := bus.device 0x76
 ```
+
+# ESP32 target support
+
+All supported ESP32 variants can use $Target. The target features differ:
+
+- ESP32 supports 7-bit and 10-bit addresses. It does not support general-call
+  broadcast or clock stretching while waiting for a target response, so it
+  requires read responses to be queued before the controller starts reading.
+- ESP32-S2 supports only 7-bit addresses and does not support general-call
+  broadcast. It supports response-time clock stretching.
+- ESP32-C3, ESP32-C6, ESP32-P4, and ESP32-S3 support 7-bit and 10-bit
+  addresses, general-call broadcast, and response-time clock stretching.
+
+General-call broadcast cannot be combined with a 10-bit target address.
 */
 
 /** The default frequency for I2C communication. 400kHz. */
@@ -68,9 +82,9 @@ class Target:
   If $pull-up is true, the weak internal pull-ups are enabled. External
     pull-ups are recommended for normal and fast bus speeds.
 
-  $broadcast makes the target acknowledge the general-call address. It is not
-    supported by every ESP32 variant and cannot be combined with a 10-bit
-    address.
+  $broadcast makes the target acknowledge the general-call address. See the
+    ESP32 target support section above for availability. It cannot be combined
+    with a 10-bit address.
 
   */
   constructor
