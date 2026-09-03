@@ -490,8 +490,7 @@ Each device on the bus is enabled with its own chip-select pin. See $Bus.device.
 On the classic ESP32, SPI controller completion interrupts are not placed in
   IRAM in the Toit firmware configuration. A transaction can complete in
   hardware while a flash operation has disabled the instruction cache, but the
-  waiting Toit task is not resumed until the cache is available again. This
-  affects completion latency, not the nonblocking primitive contract.
+  waiting Toit task is not resumed until the cache is available again.
 */
 class Bus:
   spi_ := ?
