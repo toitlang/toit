@@ -29,6 +29,7 @@ FREQUENCY ::= 100_000
 
 READY ::= 0xa5
 OK ::= 0x5a
+CONTROLLER-DONE ::= 0xc3
 
 WRITE ::= 1
 QUEUE-READ ::= 2
@@ -161,12 +162,14 @@ test-board1:
     expect-equals concurrent-expected (device.read concurrent-expected.size)
     expect-equals OK port.in.read-byte
 
-  first := make-data 31 0x51
-  second := make-data 31 0xc1
-  send-command port OVERFLOW [first]
-  device.write first
-  device.write second
-  expect-equals OK port.in.read-byte
+  3.repeat: | iteration/int |
+    first := make-data 31 (0x51 + iteration)
+    second := make-data 31 (0xc1 + iteration)
+    send-command port OVERFLOW [first]
+    device.write first
+    device.write second
+    send-byte port CONTROLLER-DONE
+    expect-equals OK port.in.read-byte
 
   // Distinguish a transaction larger than the driver's receive buffer from
   // an application that merely leaves too many complete transactions unread.
@@ -174,6 +177,7 @@ test-board1:
   oversized := make-data 63 0x6d
   send-command port TRANSACTION-OVERFLOW []
   device.write oversized
+  send-byte port CONTROLLER-DONE
   expect-equals OK port.in.read-byte
 
   if system.architecture != system.ARCHITECTURE-ESP32:
@@ -202,6 +206,7 @@ test-board2:
   target := make-target DEFAULT-CONFIG
   expect-null target.try-read
   expect-equals 0 target.dropped-receive-count
+  expected-overflow-count := 0
 
   port := uart.Port --rx=UART-RX2 --tx=UART-TX2 --baud-rate=115_200
   send-byte port READY
@@ -258,15 +263,16 @@ test-board2:
       send-byte port OK
     else if command == OVERFLOW:
       send-byte port READY
-      sleep --ms=30
+      expect-equals CONTROLLER-DONE port.in.read-byte
       expect-throw "OVERFLOW": target.try-read
       expect-equals parts[0] target.read
       expect-null target.try-read
-      expect target.dropped-receive-count >= 1
+      expected-overflow-count++
+      expect-equals expected-overflow-count target.dropped-receive-count
       send-byte port OK
     else if command == TRANSACTION-OVERFLOW:
       send-byte port READY
-      sleep --ms=30
+      expect-equals CONTROLLER-DONE port.in.read-byte
       expect-throw "OVERFLOW": target.try-read
       expect-null target.try-read
       expect-equals 1 target.dropped-receive-count

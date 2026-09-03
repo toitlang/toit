@@ -169,6 +169,7 @@ test-board1:
 
   // Prove that the suspended controller task does not prevent another Toit
   // task from running during successful clock stretching.
+  print "Async I2C: dynamic clock-stretch recovery"
   stretched := bus.device ADDRESS --timeout-us=30_000
   expected := make-data 17 0xc4
   send-command port DYNAMIC-READ [expected, encode-u16 10]
@@ -188,6 +189,7 @@ test-board1:
   // A task deadline aborts the native transaction even when every individual
   // stretch is shorter than the device's SCL timeout. The bus must be reusable
   // after the target releases the clock.
+  print "Async I2C: deadline abort recovery"
   abortable := bus.device ADDRESS --timeout-us=100_000
   send-command port DYNAMIC-READ [#[0x5a], encode-u16 20]
   expect-throw DEADLINE-EXCEEDED-ERROR:
@@ -195,6 +197,26 @@ test-board1:
   expect-equals OK port.in.read-byte
   expect (bus.test ADDRESS)
   abortable.close
+
+  // Hold SCL externally before START. The per-device stretch timeout applies
+  // to SCL pulses after a transaction has started, so use the task deadline
+  // to abort this bus-not-idle case. Releasing the probe pin lets us verify
+  // that the same bus and target recover immediately.
+  print "Async I2C: external SCL deadline recovery"
+  external-timeout-device := bus.device ADDRESS --timeout-us=2_000
+  send-command port STRETCH-CLOCK [encode-u16 10]
+  expect-throw DEADLINE-EXCEEDED-ERROR:
+    with-timeout --ms=3: external-timeout-device.read 1
+  expect-equals OK port.in.read-byte
+  expect (bus.test ADDRESS)
+  external-timeout-device.close
+
+  recovered := bus.device ADDRESS --timeout-us=30_000
+  recovered-data := #[0x6b]
+  send-command port DYNAMIC-READ [recovered-data, encode-u16 1]
+  expect-equals recovered-data (recovered.read 1)
+  expect-equals OK port.in.read-byte
+  recovered.close
 
   // Exercise the controller pull-up configuration and resource reuse after a
   // large number of asynchronous transactions and errors.
@@ -368,6 +390,13 @@ test-board2:
         expect-equals 1 request-count
         sleep --ms=(decode-u16 parts[1])
         parts[0]
+      send-byte port OK
+    else if command == STRETCH-CLOCK:
+      stretcher := gpio.Pin I2C-SCL-PROBE --output --open-drain --value=0
+      send-byte port READY
+      sleep --ms=(decode-u16 parts[0])
+      stretcher.set 1
+      stretcher.close
       send-byte port OK
     else if command == TIMEOUT-READ:
       send-byte port READY
