@@ -3,6 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import gpio
 import io
 import monitor
 import spi
@@ -27,6 +28,7 @@ ABORT-IDLE ::= 0x32
 ABORT-ACTIVE ::= 0x33
 RESUME ::= 0x34
 CLOSE-ACTIVE ::= 0x35
+NONBYTE-TERMINATION ::= 0x36
 SYNC ::= 0xa0
 READY ::= 0xa1
 DONE ::= 0xa2
@@ -80,6 +82,13 @@ test-board1:
 
   cases := []
   4.repeat: | mode/int |
+    cases.add (Case "mode-$(mode)-full-duplex-no-dma"
+        --frequency=400_000
+        --mode=mode
+        --transmit=(pattern 16 (0x40 + mode))
+        --controller-data=(pattern 16 (0x10 + mode))
+        --max-transfer-size=64
+        --dma=false)
     [false, true].do: | dma/bool |
       suffix := dma ? "dma" : "no-dma"
       if not dma or (mode & 1) == 0:
@@ -253,10 +262,11 @@ test-board1:
       if current.transmit-lsb-first: reverse-bits-in-place expected-controller
       expect-equals expected-controller controller-result
 
-  [false, true].do: | dma/bool |
-    test-abort port bus ABORT-IDLE dma
-    test-abort port bus ABORT-ACTIVE dma
-    test-close-active port bus dma
+  3.repeat:
+    [false, true].do: | dma/bool |
+      test-abort port bus ABORT-IDLE dma
+      test-abort port bus ABORT-ACTIVE dma
+      test-close-active port bus dma
 
   // Exercise the controller bus's device ownership and bounded native slots.
   // The devices deliberately omit CS because no transfers are performed.
@@ -270,6 +280,12 @@ test-board1:
   devices.do: | device/spi.Device |
     expect-throws "CLOSED": device.write #[0]
   expect-throws "CLOSED": replacement.write #[0]
+
+  // ESP-IDF's SPI controller API can only issue whole bytes. Drive mode-0
+  // clocks directly to verify target completion and reuse when CS rises in
+  // the middle of a byte.
+  test-nonbyte-termination port
+
   if is-classic-esp32:
     [1, 3].do: | mode/int |
       expect-throws "INVALID_ARGUMENT":
@@ -302,6 +318,9 @@ test-board2:
       continue
     if command == CLOSE-ACTIVE:
       test-close-active-target port
+      continue
+    if command == NONBYTE-TERMINATION:
+      test-nonbyte-target port
       continue
     if command != PREPARE: throw "Unknown command: $command"
 
@@ -470,6 +489,73 @@ test-close-active-target port/uart.Port -> none:
   port.out.little-endian.write-uint32 result.size
   port.out.write result --flush
   target.close
+
+test-nonbyte-termination port/uart.Port -> none:
+  print "SPI target: non-byte-aligned CS termination"
+  cs := gpio.Pin CS --output --value=1
+  clock := gpio.Pin SCLK --output --value=0
+  mosi := gpio.Pin MOSI --output --value=0
+  try:
+    // Avoid counts congruent to one modulo eight. ESP32-S3's hardware exposes
+    // an N-1 counter for early termination, making those cases byte-ambiguous
+    // (one clock is indistinguishable from no clocks at all).
+    [2, 7, 10, 15, 31].do: | bit-count/int |
+      port.out.write #[NONBYTE-TERMINATION, bit-count] --flush
+      expect-equals READY port.in.read-byte
+      bitbang-mode0 cs clock mosi bit-count
+      expect-equals (bit-count + 7) / 8 (read-target-result port).size
+
+      // Reuse the same target immediately for a complete two-byte exchange.
+      port.out.write #[RESUME] --flush
+      expect-equals READY port.in.read-byte
+      bitbang-mode0 cs clock mosi 16
+      expect-equals 2 (read-target-result port).size
+  finally:
+    mosi.close
+    clock.close
+    cs.close
+
+test-nonbyte-target port/uart.Port -> none:
+  bit-count := port.in.read-byte
+  target := spi.Target
+      --mosi=MOSI
+      --clock=SCLK
+      --cs=CS
+      --max-transfer-size=8
+      --dma=false
+
+  result := target.exchange #[ ]
+      --receive-size=8
+      --when-armed=:
+        port.out.write #[READY] --flush
+  port.out.write #[DONE] --flush
+  port.out.little-endian.write-uint32 result.size
+  port.out.write result --flush
+  expect-equals (bit-count + 7) / 8 result.size
+
+  expect-equals RESUME port.in.read-byte
+  result = target.exchange #[ ]
+      --receive-size=8
+      --when-armed=:
+        port.out.write #[READY] --flush
+  port.out.write #[DONE] --flush
+  port.out.little-endian.write-uint32 result.size
+  port.out.write result --flush
+  expect-equals 2 result.size
+  target.close
+
+bitbang-mode0 cs/gpio.Pin clock/gpio.Pin mosi/gpio.Pin bit-count/int -> none:
+  cs.set 0
+  sleep --ms=1
+  bit-count.repeat: | index/int |
+    mosi.set (index & 1)
+    sleep --ms=1
+    clock.set 1
+    sleep --ms=1
+    clock.set 0
+    sleep --ms=1
+  sleep --ms=1
+  cs.set 1
 
 prepare-target port/uart.Port current/Case:
   flags := 0

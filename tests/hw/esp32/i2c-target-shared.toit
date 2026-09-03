@@ -29,6 +29,7 @@ FREQUENCY ::= 100_000
 
 READY ::= 0xa5
 OK ::= 0x5a
+CONTROLLER-DONE ::= 0xc3
 
 WRITE ::= 1
 QUEUE-READ ::= 2
