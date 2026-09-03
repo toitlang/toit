@@ -37,6 +37,7 @@ import .protocol.hover
 import .protocol-toit
 
 import .compiler
+import .compiler-scheduler
 import .documents
 import .file-server
 import .repro
@@ -48,6 +49,8 @@ import .toitdoc-markdown show ToitdocMarkdownVisitor
 
 DEFAULT-SETTINGS /Map ::= {:}
 DEFAULT-TIMEOUT-MS ::= 10_000
+DEFAULT-MAX-CONCURRENT-COMPILERS ::= 4
+DEFAULT-ANALYSIS-DEBOUNCE-MS ::= 250
 DEFAULT-REPRO-DIR ::= "/tmp/lsp_repros"
 CRASH-REPORT-RATE-LIMIT-MS ::= 30_000
 
@@ -87,6 +90,13 @@ monitor Settings:
   timeout-ms -> int:
     return get_ "timeoutMs" --if-absent=: DEFAULT-TIMEOUT-MS
 
+  analysis-debounce-ms -> int:
+    return get_ "analysisDebounceMs" --if-absent=: DEFAULT-ANALYSIS-DEBOUNCE-MS
+
+  /// A value <= 0 means that the number of compilers is not limited.
+  max-concurrent-compilers -> int:
+    return get_ "maxConcurrentCompilers" --if-absent=: DEFAULT-MAX-CONCURRENT-COMPILERS
+
   should-write-repro -> bool:
     return (get_ "shouldWriteReproOnCrash" --if-absent=: false) == true
 
@@ -112,6 +122,9 @@ class LspServer:
   /// The settings from the client (or, if not supported, default settings).
   settings_ /Settings := Settings
 
+  /// Decides when compiler actions run. All compiler work goes through it.
+  scheduler_ /CompilerScheduler
+
   last-crash-report-time_ := null
 
   /**
@@ -123,6 +136,12 @@ class LspServer:
   open-requests_ /Map := {:}
 
   constructor .connection_ .toit-path-override_:
+    scheduler_ = CompilerScheduler
+        --max-concurrent=DEFAULT-MAX-CONCURRENT-COMPILERS
+        --debounce-ms=DEFAULT-ANALYSIS-DEBOUNCE-MS
+    // We can't pass on-idle to CompilerScheduler constructor due to needing
+    // "this" to be fully constructed before we can create a lambda.
+    scheduler_.on-idle = :: check-idle_
 
   run -> none:
     while true:
@@ -135,7 +154,7 @@ class LspServer:
       if id: open-requests_[id] = handler-task
 
   handle-request-in-task_ request/Map -> none:
-    active-requests_++
+    work-started_
     id := request.get "id"
     try:
       method := request["method"]
@@ -152,11 +171,20 @@ class LspServer:
       // canceled. Clean up under cancelation guard.
       critical-do:
         if id: open-requests_.remove id
-        active-requests_--
-        if active-requests_ == 0 and not on-idle-callbacks_.is-empty:
-          callbacks := on-idle-callbacks_
-          on-idle-callbacks_ = []
-          callbacks.do: it.call
+        work-finished_
+
+  work-started_ -> none:
+    active-requests_++
+
+  work-finished_ -> none:
+    active-requests_--
+    check-idle_
+
+  check-idle_ -> none:
+    if active-requests_ == 0 and scheduler_.is-idle and not on-idle-callbacks_.is-empty:
+      callbacks := on-idle-callbacks_
+      on-idle-callbacks_ = []
+      callbacks.do: it.call
 
   handle_ method/string params/Map? -> any:
     // TODO(florian): this should be a switch or something.
@@ -258,6 +286,8 @@ class LspServer:
       // Client configurations can only make the output verbose, but not disable it,
       //   if it was given by command-line.
       is-verbose = is-verbose or settings_.is-verbose
+      scheduler_.max-concurrent = settings_.max-concurrent-compilers
+      scheduler_.debounce-ms = settings_.analysis-debounce-ms
     // TODO(florian): register DidChangeConfigurationNotification.type
 
   cancel params/CancelParams -> none:
@@ -283,12 +313,12 @@ class LspServer:
     //   taken into account.
     content-revision := next-analysis-revision_
     documents_.did-open --uri=uri document.text content-revision
-    analyze [uri]
+    scheduler_.run --id="analysis": analyze [uri]
 
   analyze-many params -> none:
     uris := params["uris"]
     uris = uris.map: translator.canonicalize it
-    analyze uris
+    scheduler_.run --id="analysis": analyze uris
 
   archive params/ArchiveParams -> string:
     non-canonicalized-uris := params.uris or [params.uri]
@@ -299,7 +329,8 @@ class LspServer:
     project-uri := documents_.project-uri-for --uri=uris[0]
     paths := uris.map: translator.to-path it
     compiler := compiler_
-    compiler.parse --paths=paths --project-uri=project-uri
+    scheduler_.run --id="archive":
+      compiler.parse --paths=paths --project-uri=project-uri
     buffer := io.Buffer
     write-repro
         --writer=buffer
@@ -315,8 +346,8 @@ class LspServer:
   snapshot-bundle params/SnapshotBundleParams -> Map?:
     uri := translator.canonicalize params.uri
     project-uri := documents_.project-uri-for --uri=uri
-    compiler := compiler_
-    bundle := compiler.snapshot-bundle --project-uri=project-uri uri
+    bundle := scheduler_.run --id="snapshot-bundle":
+      compiler_.snapshot-bundle --project-uri=project-uri uri
     // Encode the byte-array as base64.
     if not bundle: return null
     return {
@@ -346,28 +377,32 @@ class LspServer:
       // The next analysis-revision is thus the one where the new content has been
       //   taken into account.
       documents_.did-change --uri=uri it.text next-analysis-revision_
-    analyze [uri]
+    // Editors send a change for every keystroke. Let the scheduler decide
+    // when to analyze and batch the changed documents into one run.
+    scheduler_.schedule --id="analysis" --arg=uri:: | uris/List |
+      analyze uris
 
   completion params/CompletionParams -> any: // Either a List/*<CompletionItem>*/ or a $CompletionList.
     uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
-    compiler_.complete --project-uri=project-uri uri params.position.line params.position.character:
-      | prefix/string edit-range/Range? completions/List |
-      if completions.is-empty: return completions
-      if not prefix.ends-with "-": return completions
-      // The prefix ends with a '-'. VS Code doesn't like that and assumes that any completion we
-      // give is a new word. We therefore either adda default-range, or run through all
-      // completions and add a textEdit.
-      // TODO(florian): completion-range feature is disabled until we can test it on a
-      // real editor. When changing, make sure to update the test and the Go version.
-      if false and client-supports-completion-range_:
-        return CompletionList
-            --items=completions
-            --item-defaults=(CompletionItemDefaults --edit-range=edit-range)
-      completions.do: | item/CompletionItem |
-        text-edit := TextEdit --range=edit-range --new-text=item.label
-        item.set-text-edit text-edit
-      return completions
+    scheduler_.run --id="completion":
+      compiler_.complete --project-uri=project-uri uri params.position.line params.position.character:
+        | prefix/string edit-range/Range? completions/List |
+        if completions.is-empty: return completions
+        if not prefix.ends-with "-": return completions
+        // The prefix ends with a '-'. VS Code doesn't like that and assumes that any completion we
+        // give is a new word. We therefore either adda default-range, or run through all
+        // completions and add a textEdit.
+        // TODO(florian): completion-range feature is disabled until we can test it on a
+        // real editor. When changing, make sure to update the test and the Go version.
+        if false and client-supports-completion-range_:
+          return CompletionList
+              --items=completions
+              --item-defaults=(CompletionItemDefaults --edit-range=edit-range)
+        completions.do: | item/CompletionItem |
+          text-edit := TextEdit --range=edit-range --new-text=item.label
+          item.set-text-edit text-edit
+        return completions
     unreachable
 
   // TODO(florian): The specification supports a list of locations, or Locationlinks..
@@ -375,7 +410,8 @@ class LspServer:
   goto-definition params/TextDocumentPositionParams -> List/*<Location>*/:
     uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
-    return compiler_.goto-definition --project-uri=project-uri uri params.position.line params.position.character
+    return scheduler_.run --id="goto-definition":
+      compiler_.goto-definition --project-uri=project-uri uri params.position.line params.position.character
 
   rename params/RenameParams -> any:
     uri := translator.canonicalize params.text-document.uri
@@ -393,18 +429,19 @@ class LspServer:
     // a shared dependency file).
     all-references := []
     seen := {}
-    entry-uris.do: | entry-uri |
-      references := compiler_.find-references
-          --project-uri=project-uri
-          --entry-uri=entry-uri
-          uri
-          params.position.line
-          params.position.character
-      references.do: | location/Location |
-        key := "$location.uri:$(location.range.start.line):$(location.range.start.character):$(location.range.end.line):$(location.range.end.character)"
-        if not seen.contains key:
-          seen.add key
-          all-references.add location
+    scheduler_.run --id="rename":
+      entry-uris.do: | entry-uri |
+        references := compiler_.find-references
+            --project-uri=project-uri
+            --entry-uri=entry-uri
+            uri
+            params.position.line
+            params.position.character
+        references.do: | location/Location |
+          key := "$location.uri:$(location.range.start.line):$(location.range.start.character):$(location.range.end.line):$(location.range.end.character)"
+          if not seen.contains key:
+            seen.add key
+            all-references.add location
 
     if all-references.is-empty: return null
     // Group TextEdits by URI.
@@ -417,16 +454,18 @@ class LspServer:
   prepare-rename params/TextDocumentPositionParams -> any:
     uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
-    return compiler_.prepare-rename --project-uri=project-uri uri params.position.line params.position.character
+    return scheduler_.run --id="prepare-rename":
+      compiler_.prepare-rename --project-uri=project-uri uri params.position.line params.position.character
 
   selection-range params/Map -> List:
     uri := translator.canonicalize params["textDocument"]["uri"]
     project-uri := documents_.project-uri-for --uri=uri --recompute
     positions := params["positions"]
-    range-lists := compiler_.selection-range
-        --project-uri=project-uri
-        uri
-        positions
+    range-lists := scheduler_.run --id="selection-range":
+      compiler_.selection-range
+          --project-uri=project-uri
+          uri
+          positions
     return range-lists.map: | ranges/List? |
       if not ranges or ranges.is-empty:
         null
@@ -499,7 +538,8 @@ class LspServer:
     uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
 
-    definition := compiler_.hover --project-uri=project-uri uri params.position.line params.position.character
+    definition := scheduler_.run --id="hover":
+      compiler_.hover --project-uri=project-uri uri params.position.line params.position.character
     if not definition: return null
 
     if definition.text:
@@ -531,7 +571,8 @@ class LspServer:
     analyzed-documents := documents_.analyzed-documents-for --project-uri=project-uri
     document := analyzed-documents.get --uri=uri
     if not (document and document.summary):
-      analyze --project-uri=project-uri [uri] next-analysis-revision_++
+      scheduler_.run --id="document-symbol":
+        analyze --project-uri=project-uri [uri] next-analysis-revision_++
       document = analyzed-documents.get-existing --uri=uri
       if not document.summary: return []
     opened-document := documents_.get-opened --uri=uri
@@ -548,7 +589,8 @@ class LspServer:
   semantic-tokens params/SemanticTokensParams -> SemanticTokens:
     uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
-    tokens := compiler_.semantic-tokens --project-uri=project-uri uri
+    tokens := scheduler_.run --id="semantic-tokens":
+      compiler_.semantic-tokens --project-uri=project-uri uri
     return SemanticTokens --data=tokens
 
   shutdown:
@@ -569,6 +611,8 @@ class LspServer:
   Analyzes the given $uris and sends diagnostics to the client.
 
   Transitively analyzes all newly discovered files.
+
+  Must be called from within a $CompilerScheduler.run action.
   */
   analyze uris/List revision/int?=null -> none:
     if uris.is-empty: return
