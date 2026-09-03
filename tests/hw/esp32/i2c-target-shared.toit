@@ -39,6 +39,8 @@ RECONFIGURE ::= 6
 OVERFLOW ::= 7
 TRANSACTION-OVERFLOW ::= 8
 CONCURRENT-QUEUE-READ ::= 9
+THROWING-READ ::= 10
+RETURNING-READ ::= 11
 
 DEFAULT-CONFIG ::= 0
 TEN-BIT-CONFIG ::= 1
@@ -98,6 +100,15 @@ test-board1:
     expect longest-low >= 9_000
     expect longest-low < 20_000
     probe.close
+
+  // An exceptional or non-local exit from the response block must release an
+  // active stretch and close the target instead of wedging the bus.
+  [THROWING-READ, RETURNING-READ].do: | command/int |
+    send-command port command []
+    catch: device.read 1
+    expect-equals OK port.in.read-byte
+    reconfigure port DEFAULT-CONFIG
+    expect (bus.test ADDRESS)
 
   tx := make-data 19 0x71
   expected-rx := make-data 23 0x29
@@ -227,6 +238,19 @@ test-board2:
         sleep --ms=10
         parts[0]
       send-byte port OK
+    else if command == THROWING-READ:
+      send-byte port READY
+      expect-throw "HANDLER_ERROR":
+        target.wait-for-read-request: |request-count/int|
+          expect-equals 1 request-count
+          throw "HANDLER_ERROR"
+      expect-throw "CLOSED": target.try-read
+      send-byte port OK
+    else if command == RETURNING-READ:
+      send-byte port READY
+      expect-equals "RETURNED" (wait-for-request-and-return target)
+      expect-throw "CLOSED": target.try-read
+      send-byte port OK
     else if command == WRITE-READ:
       target.write parts[1]
       send-byte port READY
@@ -267,6 +291,12 @@ test-board2:
       send-byte port OK
     else:
       throw "Unknown command: $command"
+
+wait-for-request-and-return target/i2c.Target -> string:
+  target.wait-for-read-request: |request-count/int|
+    expect-equals 1 request-count
+    return "RETURNED"
+  unreachable
 
 make-target config/int -> i2c.Target:
   if config == DEFAULT-CONFIG:
