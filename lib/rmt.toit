@@ -801,6 +801,8 @@ class In extends Channel_:
     internal-RAM DMA buffer and can be much larger. DMA is only supported on
     some chips, including the ESP32P4 and ESP32S3.
 
+  If $pull-up is true, the pin's internal pull-up resistor is enabled.
+
   Passing a $gpio.Pin as $pin is deprecated; provide the integer GPIO number
     instead. The $gpio.Pin form will be removed in a future release.
   */
@@ -809,6 +811,7 @@ class In extends Channel_:
   constructor pin/any
       --resolution/int
       --memory-blocks/int=1
+      --pull-up/bool=false
       --.dma/bool=false:
     if not 1 <= memory-blocks: throw "INVALID_ARGUMENT"
 
@@ -822,8 +825,12 @@ class In extends Channel_:
         resolution
         hw-symbols
         Channel_.CHANNEL-KIND-INPUT_
-        false
+        pull-up
         dma
+    // For the new (integer) API the primitive applies the pull when it owns the
+    // pin. For a deprecated $gpio.Pin the pin owns its own configuration.
+    if pin is gpio.Pin:
+      pin.set-pull --up=pull-up --off=(not pull-up)
     super.from-sub_ resource
 
   /** Closes the channel. */

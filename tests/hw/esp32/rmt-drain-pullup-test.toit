@@ -25,9 +25,25 @@ RESOLUTION ::= 1_000_000  // 1MHz.
 main:
   print "$RMT-PIN <-> $LEVEL-PIN <-> $MEASURE-PIN"
   run-test:
+    test-input-pull-up
     2.repeat:
       test-no-pull-up --idle-level=it
       test-pull-up --idle-level=it
+
+test-input-pull-up:
+  measure-pin := gpio.Pin MEASURE-PIN --input
+
+  input := rmt.In RMT-PIN --resolution=RESOLUTION
+  // Give the 1M resistor time to pull the otherwise floating input low.
+  sleep --ms=1
+  expect-equals 0 measure-pin.get
+  input.close
+
+  input = rmt.In RMT-PIN --resolution=RESOLUTION --pull-up
+  // The internal pull-up wins over the 1M resistor to ground.
+  expect-equals 1 measure-pin.get
+  input.close
+  measure-pin.close
 
 test-no-pull-up --idle-level/int:
   print "Testing no pull up idle_level=$idle-level"
