@@ -36,6 +36,8 @@ SYNC ::= 0xb3
 FLAG-USE-MOSI ::= 1 << 0
 FLAG-USE-MISO ::= 1 << 1
 FLAG-DMA ::= 1 << 2
+FLAG-TRANSMIT-LSB-FIRST ::= 1 << 3
+FLAG-RECEIVE-LSB-FIRST ::= 1 << 4
 
 main-board1:
   run-test: test-board1
@@ -82,9 +84,46 @@ test-board1:
   expect-equals #[1, 0x81, 3, 0x91, 0x92, 0x93, 0x94, 0xa5, 0xa5] received
   expect-equals sent (take-received port)
 
-  print "SPI buffer target: receive queue overflow"
+  print "SPI buffer target: modes and bit order"
   close-target port
   device.close
+  [
+    [0, false, false],
+    [1, false, false],
+    [2, false, false],
+    [3, false, false],
+    [0, true, false],
+    [0, false, true],
+    [0, true, true],
+  ].do: | current/List |
+    mode/int := current[0]
+    transmit-lsb-first/bool := current[1]
+    receive-lsb-first/bool := current[2]
+    print "SPI buffer target: mode=$mode tx-lsb=$transmit-lsb-first rx-lsb=$receive-lsb-first"
+    response := pattern 16 (0x15 + mode)
+    sent = pattern 16 (0x91 + mode)
+    create-target port
+        --mode=mode
+        --buffer-size=16
+        --queue-depth=2
+        --fill-byte=0xff
+        --initial=response
+        --use-mosi
+        --use-miso
+        --dma=false
+        --transmit-lsb-first=transmit-lsb-first
+        --receive-lsb-first=receive-lsb-first
+    device = create-device bus --mode=mode --frequency=1_000_000
+    expected-response := response.copy
+    if transmit-lsb-first: reverse-bits-in-place expected-response
+    expect-equals expected-response (transfer device sent)
+    expected-receive := sent.copy
+    if receive-lsb-first: reverse-bits-in-place expected-receive
+    expect-equals expected-receive (take-received port)
+    close-target port
+    device.close
+
+  print "SPI buffer target: receive queue overflow"
   create-target port
       --mode=0
       --buffer-size=16
@@ -95,12 +134,15 @@ test-board1:
       --use-miso
       --dma=false
   device = create-device bus --mode=0 --frequency=2_000_000
-  5.repeat: | index/int |
-    data := pattern 16 (0x40 + index)
-    expect-equals (filled 16 0x5a) (transfer device data)
-  expect-equals 2 (dropped port)
-  3.repeat: | index/int |
-    expect-equals (pattern 16 (0x40 + index)) (take-received port)
+  3.repeat: | round/int |
+    5.repeat: | index/int |
+      data := pattern 16 (0x40 + round * 8 + index)
+      expect-equals (filled 16 0x5a) (transfer device data)
+    expect-equals (round + 1) * 2 (dropped port)
+    3.repeat: | index/int |
+      expect-equals
+          (pattern 16 (0x40 + round * 8 + index))
+          (take-received port)
 
   print "SPI buffer target: receive wait and repeated re-arm"
   port.out.write #[RECEIVE] --flush
@@ -225,48 +267,49 @@ test-board1:
   close-target port
   device.close
 
-  [false, true].do: | dma/bool |
-    suffix := dma ? "dma" : "no-dma"
-    print "SPI buffer target: active close-$suffix"
-    create-target port
-        --mode=0
-        --buffer-size=64
-        --queue-depth=2
-        --fill-byte=0xff
-        --initial=#[ ]
-        --use-mosi
-        --use-miso=false
-        --dma=dma
-    device = create-device bus
-        --mode=0
-        --frequency=(dma ? 400_000 : 100_000)
-    device.with-reserved-bus:
-      device.transfer #[0x5a] --keep-cs-active
-      // Closing must not wait for CS to be released by the controller.
-      close-target port
-      // The target has disconnected its CS input, so this only terminates the
-      // controller-side reservation.
-      device.transfer #[0]
-    device.close
+  3.repeat:
+    [false, true].do: | dma/bool |
+      suffix := dma ? "dma" : "no-dma"
+      print "SPI buffer target: active close-$suffix"
+      create-target port
+          --mode=0
+          --buffer-size=64
+          --queue-depth=2
+          --fill-byte=0xff
+          --initial=#[ ]
+          --use-mosi
+          --use-miso=false
+          --dma=dma
+      device = create-device bus
+          --mode=0
+          --frequency=(dma ? 400_000 : 100_000)
+      device.with-reserved-bus:
+        device.transfer #[0x5a] --keep-cs-active
+        // Closing must not wait for CS to be released by the controller.
+        close-target port
+        // The target has disconnected its CS input, so this only terminates the
+        // controller-side reservation.
+        device.transfer #[0]
+      device.close
 
-    // Closing must also release the peripheral and pins for a new target.
-    create-target port
-        --mode=0
-        --buffer-size=8
-        --queue-depth=2
-        --fill-byte=0xff
-        --initial=#[ ]
-        --use-mosi
-        --use-miso=false
-        --dma=dma
-    device = create-device bus
-        --mode=0
-        --frequency=(dma ? 400_000 : 100_000)
-    recovery := pattern 8 (dma ? 0xd1 : 0x1d)
-    transfer device recovery
-    expect-equals recovery (take-received port)
-    close-target port
-    device.close
+      // Closing must also release the peripheral and pins for a new target.
+      create-target port
+          --mode=0
+          --buffer-size=8
+          --queue-depth=2
+          --fill-byte=0xff
+          --initial=#[ ]
+          --use-mosi
+          --use-miso=false
+          --dma=dma
+      device = create-device bus
+          --mode=0
+          --frequency=(dma ? 400_000 : 100_000)
+      recovery := pattern 8 (dma ? 0xd1 : 0x1d)
+      transfer device recovery
+      expect-equals recovery (take-received port)
+      close-target port
+      device.close
 
   bus.close
   port.close
@@ -306,6 +349,8 @@ test-board2:
           --buffer-size=buffer-size
           --receive-queue-depth=queue-depth
           --fill-byte=fill-byte
+          --transmit-lsb-first=((flags & FLAG-TRANSMIT-LSB-FIRST) != 0)
+          --receive-lsb-first=((flags & FLAG-RECEIVE-LSB-FIRST) != 0)
           --dma=(flags & FLAG-DMA) != 0
       port.out.write #[READY] --flush
     else if command == WRITE:
@@ -352,11 +397,15 @@ create-target port/uart.Port
     --initial/ByteArray
     --use-mosi/bool
     --use-miso/bool
-    --dma/bool:
+    --dma/bool
+    --transmit-lsb-first/bool=false
+    --receive-lsb-first/bool=false:
   flags := 0
   if use-mosi: flags |= FLAG-USE-MOSI
   if use-miso: flags |= FLAG-USE-MISO
   if dma: flags |= FLAG-DMA
+  if transmit-lsb-first: flags |= FLAG-TRANSMIT-LSB-FIRST
+  if receive-lsb-first: flags |= FLAG-RECEIVE-LSB-FIRST
   port.out.write #[CREATE, mode, flags, fill-byte]
   port.out.little-endian.write-uint32 buffer-size
   port.out.little-endian.write-uint32 queue-depth
@@ -424,3 +473,12 @@ pattern size/int seed/int -> ByteArray:
   size.repeat: | index/int |
     result[index] = (seed + index * 37) & 0xff
   return result
+
+reverse-bits-in-place bytes/ByteArray -> none:
+  bytes.size.repeat: | index/int |
+    value := bytes[index]
+    reversed := 0
+    8.repeat:
+      reversed = (reversed << 1) | (value & 1)
+      value >>= 1
+    bytes[index] = reversed
