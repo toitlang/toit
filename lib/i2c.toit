@@ -151,9 +151,8 @@ class Target:
   /**
   Queues all $bytes for controller reads.
 
-  If the native send buffer fills, this method suspends the calling Toit task
-    until a controller asks for more data. Native primitive calls remain
-    nonblocking.
+  If the native send buffer fills, this method waits until a controller asks
+    for more data.
   */
   write bytes/ByteArray -> none:
     write-mutex_.do:
