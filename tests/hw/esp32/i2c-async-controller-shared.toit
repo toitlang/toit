@@ -364,18 +364,20 @@ test-board2:
       send-byte port OK
     else if command == DYNAMIC-READ:
       send-byte port READY
-      dynamic-target.wait-for-read-request
-      sleep --ms=(decode-u16 parts[1])
-      dynamic-target.write parts[0]
+      dynamic-target.wait-for-read-request: |request-count/int|
+        expect-equals 1 request-count
+        sleep --ms=(decode-u16 parts[1])
+        parts[0]
       send-byte port OK
     else if command == TIMEOUT-READ:
       send-byte port READY
-      dynamic-target.wait-for-read-request
-      sleep --ms=(decode-u16 parts[0])
-      // The controller has aborted this transaction. The current ESP-IDF
-      // target peripheral cannot finish or close it cleanly, so leave cleanup
-      // to the test rig's board reset.
-      while true: sleep --ms=1_000
+      dynamic-target.wait-for-read-request: |request-count/int|
+        expect-equals 1 request-count
+        sleep --ms=(decode-u16 parts[0])
+        // The controller has aborted this transaction. The current ESP-IDF
+        // target peripheral cannot finish or close it cleanly, so leave cleanup
+        // to the test rig's board reset.
+        while true: sleep --ms=1_000
     else:
       throw "Unknown command: $command"
 
@@ -405,7 +407,9 @@ test-board2-esp32 -> none:
     else if command == QUEUE-READ:
       target.write parts[0]
       send-byte port READY
-      target.wait-for-read-request
+      target.wait-for-read-request: |request-count/int|
+        expect-equals 1 request-count
+        #[ ]
       send-byte port OK
     else if command == WRITE-READ:
       target.write parts[1]
