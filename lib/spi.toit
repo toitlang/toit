@@ -170,10 +170,9 @@ class Target:
     $fill-byte for any remaining clocks. The maximum of the transmit and
     receive sizes is the maximum number of bytes accepted for this transaction.
 
-  Waiting suspends only the calling Toit task. If the task is interrupted or
-    reaches its deadline after the peripheral is armed, the transaction is
-    aborted and its native buffers are released before the exception is
-    propagated.
+  If the task is interrupted or reaches its deadline after the peripheral is
+    armed, the transaction is aborted and its native buffers are released
+    before the exception is propagated.
   */
   exchange transmit/ByteArray=#[ ] -> ByteArray
       --receive-size/int=transmit.size
