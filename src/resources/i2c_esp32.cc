@@ -19,7 +19,11 @@
 
 #include <cmath>
 #include <driver/i2c_master.h>
+#include <driver/i2c_slave.h>
 #include <esp_memory_utils.h>
+#include <freertos/idf_additions.h>
+#include <freertos/message_buffer.h>
+#include <freertos/queue.h>
 
 #include "../linked.h"
 #include "../objects_inline.h"
@@ -30,7 +34,12 @@
 
 #include "gpio_esp32.h"
 
+#include "../event_sources/ev_queue_esp32.h"
+
 namespace toit {
+
+static_assert(SOC_I2C_NUM <= I2C_EVENT_QUEUE_SIZE,
+              "Increase I2C_EVENT_QUEUE_SIZE");
 
 // Should be lower than PROCESS_MAX_RUNTIME_US of scheduler.cc.
 // Synchronous operations should never take that long anyway.
@@ -41,6 +50,124 @@ class I2cResourceGroup : public ResourceGroup {
   TAG(I2cResourceGroup);
   explicit I2cResourceGroup(Process* process)
     : ResourceGroup(process) {}
+};
+
+const word kTargetReceiveState = 1 << 0;
+const word kTargetRequestState = 1 << 1;
+const word kTargetOverflowState = 1 << 2;
+
+class I2cTargetResourceGroup : public ResourceGroup {
+ public:
+  TAG(I2cTargetResourceGroup);
+
+  I2cTargetResourceGroup(Process* process, EventSource* event_source)
+      : ResourceGroup(process, event_source) {}
+
+  uint32_t on_event(Resource* resource, word data, uint32_t state) override {
+    return state | data;
+  }
+};
+
+class I2cTargetResource : public EventQueueResource {
+ public:
+  TAG(I2cTargetResource);
+
+  I2cTargetResource(I2cTargetResourceGroup* group,
+                    i2c_slave_dev_handle_t handle,
+                    QueueHandle_t event_queue,
+                    MessageBufferHandle_t receive_buffer)
+      : EventQueueResource(group, event_queue)
+      , handle_(handle)
+      , receive_buffer_(receive_buffer) {
+    spinlock_initialize(&spinlock_);
+  }
+
+  ~I2cTargetResource() override {
+    ESP_ERROR_CHECK(i2c_del_slave_device(handle_));
+    vMessageBufferDeleteWithCaps(receive_buffer_);
+    vQueueDeleteWithCaps(queue());
+    owned_pins_.release();
+  }
+
+  i2c_slave_dev_handle_t handle() const { return handle_; }
+  MessageBufferHandle_t receive_buffer() const { return receive_buffer_; }
+  GpioPins& owned_pins() { return owned_pins_; }
+
+  IRAM_ATTR bool receive_from_isr(const uint8_t* data, size_t length) {
+    BaseType_t higher_was_woken = pdFALSE;
+    size_t sent = xMessageBufferSendFromISR(receive_buffer_, data, length, &higher_was_woken);
+    signal_from_isr(sent == length ? kTargetReceiveState : kTargetOverflowState,
+                    &higher_was_woken);
+    if (sent != length) {
+      portENTER_CRITICAL_ISR(&spinlock_);
+      if (dropped_receive_count_ != Smi::MAX_SMI_VALUE) dropped_receive_count_++;
+      portEXIT_CRITICAL_ISR(&spinlock_);
+    }
+    return higher_was_woken == pdTRUE;
+  }
+
+  IRAM_ATTR bool receive_overflow_from_isr() {
+    BaseType_t higher_was_woken = pdFALSE;
+    portENTER_CRITICAL_ISR(&spinlock_);
+    if (dropped_receive_count_ != Smi::MAX_SMI_VALUE) dropped_receive_count_++;
+    portEXIT_CRITICAL_ISR(&spinlock_);
+    signal_from_isr(kTargetOverflowState, &higher_was_woken);
+    return higher_was_woken == pdTRUE;
+  }
+
+  IRAM_ATTR bool request_from_isr() {
+    BaseType_t higher_was_woken = pdFALSE;
+    portENTER_CRITICAL_ISR(&spinlock_);
+    if (request_count_ != Smi::MAX_SMI_VALUE) request_count_++;
+    portEXIT_CRITICAL_ISR(&spinlock_);
+    signal_from_isr(kTargetRequestState, &higher_was_woken);
+    return higher_was_woken == pdTRUE;
+  }
+
+  word take_request_count() {
+    portENTER_CRITICAL(&spinlock_);
+    word result = request_count_;
+    request_count_ = 0;
+    portEXIT_CRITICAL(&spinlock_);
+    return result;
+  }
+
+  word dropped_receive_count() const {
+    portENTER_CRITICAL(&spinlock_);
+    word result = dropped_receive_count_;
+    portEXIT_CRITICAL(&spinlock_);
+    return result;
+  }
+
+  bool receive_event(word* data) override {
+    word unused;
+    if (xQueueReceive(queue(), &unused, 0) != pdTRUE) return false;
+    portENTER_CRITICAL(&spinlock_);
+    *data = pending_event_;
+    pending_event_ = 0;
+    portEXIT_CRITICAL(&spinlock_);
+    return true;
+  }
+
+ private:
+  IRAM_ATTR void signal_from_isr(word event, BaseType_t* higher_was_woken) {
+    portENTER_CRITICAL_ISR(&spinlock_);
+    pending_event_ |= event;
+    portEXIT_CRITICAL_ISR(&spinlock_);
+
+    word payload = 0;
+    // A full queue already represents a pending notification. The event bits
+    // above retain all event kinds until the event-source thread drains it.
+    xQueueSendFromISR(queue(), &payload, higher_was_woken);
+  }
+
+  i2c_slave_dev_handle_t handle_;
+  MessageBufferHandle_t receive_buffer_;
+  mutable spinlock_t spinlock_;
+  word pending_event_ = 0;
+  word request_count_ = 0;
+  word dropped_receive_count_ = 0;
+  GpioPins owned_pins_;
 };
 
 class I2cBusResource;
@@ -139,6 +266,185 @@ PRIMITIVE(init) {
   return proxy;
 }
 
+PRIMITIVE(target_init) {
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  auto group = _new I2cTargetResourceGroup(process, EventQueueEventSource::instance());
+  if (group == null) FAIL(MALLOC_FAILED);
+
+  proxy->set_external_address(group);
+  return proxy;
+}
+
+IRAM_ATTR static bool target_receive_handler(i2c_slave_dev_handle_t handle,
+                                              const i2c_slave_rx_done_event_data_t* event,
+                                              void* context) {
+  auto resource = static_cast<I2cTargetResource*>(context);
+  if (event->overflow) return resource->receive_overflow_from_isr();
+  return resource->receive_from_isr(event->buffer, event->length);
+}
+
+IRAM_ATTR static bool target_request_handler(i2c_slave_dev_handle_t handle,
+                                              const i2c_slave_request_event_data_t* event,
+                                              void* context) {
+  auto resource = static_cast<I2cTargetResource*>(context);
+  return resource->request_from_isr();
+}
+
+PRIMITIVE(target_create) {
+  ARGS(I2cTargetResourceGroup, group,
+       int, sda,
+       int, scl,
+       int, address_bit_size,
+       uint16, address,
+       uint32, send_buffer_size,
+       uint32, receive_buffer_size,
+       bool, pullup,
+       bool, allow_power_down,
+       bool, broadcast);
+
+  if (send_buffer_size == 0 || receive_buffer_size == 0) FAIL(INVALID_ARGUMENT);
+
+  i2c_addr_bit_len_t address_length;
+  if (address_bit_size == 7 && address <= 0x7f) {
+    address_length = I2C_ADDR_BIT_LEN_7;
+  #if SOC_I2C_SUPPORT_10BIT_ADDR
+  } else if (address_bit_size == 10 && address <= 0x3ff) {
+    address_length = I2C_ADDR_BIT_LEN_10;
+  #endif
+  } else {
+    FAIL(INVALID_ARGUMENT);
+  }
+
+  #if !SOC_I2C_SLAVE_SUPPORT_BROADCAST
+  if (broadcast) FAIL(UNSUPPORTED);
+  #endif
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  GpioPinReserver reserver;
+  bool reserve_ok = true;
+  int sda_num = reserver.decode_and_take(sda, &reserve_ok);
+  int scl_num = reserver.decode_and_take(scl, &reserve_ok);
+  if (!reserve_ok) FAIL(ALREADY_IN_USE);
+
+  bool handed_to_resource = false;
+
+  QueueHandle_t event_queue = xQueueCreateWithCaps(
+      1, sizeof(word), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  if (event_queue == null) FAIL(MALLOC_FAILED);
+  Defer delete_event_queue {
+    [&] { if (!handed_to_resource) vQueueDeleteWithCaps(event_queue); }
+  };
+
+  size_t message_buffer_size = receive_buffer_size + sizeof(size_t) + 1;
+  if (message_buffer_size < receive_buffer_size) FAIL(INVALID_ARGUMENT);
+  MessageBufferHandle_t receive_buffer = xMessageBufferCreateWithCaps(
+      message_buffer_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  if (receive_buffer == null) FAIL(MALLOC_FAILED);
+  Defer delete_receive_buffer {
+    [&] { if (!handed_to_resource) vMessageBufferDeleteWithCaps(receive_buffer); }
+  };
+
+  i2c_slave_config_t config = {
+    .i2c_port = -1,
+    .sda_io_num = static_cast<gpio_num_t>(sda_num),
+    .scl_io_num = static_cast<gpio_num_t>(scl_num),
+    .clk_source = I2C_CLK_SRC_DEFAULT,
+    .send_buf_depth = send_buffer_size,
+    .receive_buf_depth = receive_buffer_size,
+    .slave_addr = address,
+    .addr_bit_len = address_length,
+    .intr_priority = 0,
+    .flags = {
+      .allow_pd = allow_power_down,
+      .enable_internal_pullup = pullup,
+      #if SOC_I2C_SLAVE_SUPPORT_BROADCAST
+      .broadcast_en = broadcast,
+      #endif
+    },
+  };
+
+  i2c_slave_dev_handle_t handle;
+  esp_err_t err = i2c_new_slave_device(&config, &handle);
+  if (err == ESP_ERR_NOT_FOUND) FAIL(ALREADY_IN_USE);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  Defer delete_target {
+    [&] { if (!handed_to_resource) i2c_del_slave_device(handle); }
+  };
+
+  auto resource = _new I2cTargetResource(group, handle, event_queue, receive_buffer);
+  if (resource == null) FAIL(MALLOC_FAILED);
+  handed_to_resource = true;
+  bool registered = false;
+  Defer delete_resource { [&] { if (!registered) delete resource; } };
+
+  i2c_slave_event_callbacks_t callbacks = {
+    .on_request = target_request_handler,
+    .on_receive = target_receive_handler,
+  };
+  err = i2c_slave_register_event_callbacks(handle, &callbacks, resource);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
+  resource->owned_pins().adopt(reserver);
+  reserver.keep();
+  group->register_resource(resource);
+  proxy->set_external_address(resource);
+  registered = true;
+  return proxy;
+}
+
+PRIMITIVE(target_close) {
+  ARGS(I2cTargetResourceGroup, group, I2cTargetResource, target);
+  group->unregister_resource(target);
+  target_proxy->clear_external_address();
+  return process->null_object();
+}
+
+PRIMITIVE(target_receive) {
+  ARGS(I2cTargetResource, target);
+
+  auto receive_buffer = target->receive_buffer();
+  size_t length = xMessageBufferNextLengthBytes(receive_buffer);
+  if (length == 0) return process->null_object();
+
+  ByteArray* result = process->allocate_byte_array(length);
+  if (result == null) FAIL(ALLOCATION_FAILED);
+
+  size_t received = xMessageBufferReceive(
+      receive_buffer, ByteArray::Bytes(result).address(), length, 0);
+  ASSERT(received == length);
+  return result;
+}
+
+PRIMITIVE(target_write) {
+  ARGS(I2cTargetResource, target, Blob, buffer, uint32, offset);
+  if (offset > buffer.length()) FAIL(OUT_OF_BOUNDS);
+  uint32_t length = buffer.length() - offset;
+  if (length == 0) return Smi::zero();
+
+  uint32_t written = 0;
+  esp_err_t err = i2c_slave_write(
+      target->handle(), buffer.address() + offset, length, &written, 0);
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+  ASSERT(Smi::is_valid(written));
+  return Smi::from(written);
+}
+
+PRIMITIVE(target_take_request_count) {
+  ARGS(I2cTargetResource, target);
+  return Smi::from(target->take_request_count());
+}
+
+PRIMITIVE(target_dropped_receive_count) {
+  ARGS(I2cTargetResource, target);
+  return Smi::from(target->dropped_receive_count());
+}
+
 PRIMITIVE(bus_create) {
   ARGS(I2cResourceGroup, group, int, sda, int, scl, bool, pullup);
 
@@ -220,10 +526,10 @@ PRIMITIVE(device_create) {
        bool, disable_ack_check)
 
   i2c_addr_bit_len_t dev_addr_length;
-  if (address_bit_size == 7) {
+  if (address_bit_size == 7 && address <= 0x7f) {
     dev_addr_length = I2C_ADDR_BIT_LEN_7;
   #if SOC_I2C_SUPPORT_10BIT_ADDR
-  } else if (address_bit_size == 10) {
+  } else if (address_bit_size == 10 && address <= 0x3ff) {
     dev_addr_length = I2C_ADDR_BIT_LEN_10;
   #endif
   } else {

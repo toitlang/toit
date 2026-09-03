@@ -4,6 +4,7 @@
 
 import gpio
 import io
+import monitor show Mutex ResourceState_
 import serial
 
 /**
@@ -29,10 +30,197 @@ In case of the Bosch [BME280 sensor](https://cdn.sparkfun.com/assets/e/7/3/b/1/B
 ```
   device := bus.device 0x76
 ```
+
+# ESP32 target support
+
+All supported ESP32 variants can use $Target. The target features differ:
+
+- ESP32 supports 7-bit and 10-bit addresses. It does not support general-call
+  broadcast or clock stretching while waiting for a target response, so it
+  requires read responses to be queued before the controller starts reading.
+- ESP32-S2 supports only 7-bit addresses and does not support general-call
+  broadcast. It supports response-time clock stretching.
+- ESP32-C3, ESP32-C6, ESP32-P4, and ESP32-S3 support 7-bit and 10-bit
+  addresses, general-call broadcast, and response-time clock stretching.
+
+General-call broadcast cannot be combined with a 10-bit target address.
 */
 
 /** The default frequency for I2C communication. 400kHz. */
 DEFAULT-FREQUENCY ::= 400_000
+
+/** Default native buffer size for an I2C target. */
+DEFAULT-TARGET-BUFFER-SIZE ::= 256
+
+/**
+An addressable I2C target.
+
+A target receives complete controller write transactions with $read and queues
+  bytes for controller read transactions with $write.
+*/
+class Target:
+  static RECEIVE-STATE_ ::= 1 << 0
+  static REQUEST-STATE_ ::= 1 << 1
+  static OVERFLOW-STATE_ ::= 1 << 2
+
+  resource_ := ?
+  state_/ResourceState_ ::= ?
+  write-mutex_/Mutex ::= Mutex
+  reported-dropped-receive-count_/int := 0
+
+  /**
+  Constructs an I2C target on the $sda and $scl GPIOs.
+
+  The $address is either a 7-bit or 10-bit address, selected with
+    $address-size. The pins are reserved until $close is called.
+
+  $send-buffer-size is the number of native bytes available for responses to
+    controller reads. $receive-buffer-size is both the largest controller
+    write transaction that can be received and the approximate amount of
+    native space used to queue unread transactions.
+
+  If $pull-up is true, the weak internal pull-ups are enabled. External
+    pull-ups are recommended for normal and fast bus speeds.
+
+  $broadcast makes the target acknowledge the general-call address. See the
+    ESP32 target support section above for availability. It cannot be combined
+    with a 10-bit address.
+
+  */
+  constructor
+      --sda/int
+      --scl/int
+      --address/int
+      --address-size/int=7
+      --send-buffer-size/int=DEFAULT-TARGET-BUFFER-SIZE
+      --receive-buffer-size/int=DEFAULT-TARGET-BUFFER-SIZE
+      --pull-up/bool=false
+      --broadcast/bool=false:
+    if address-size != 7 and address-size != 10: throw "INVALID_ARGUMENT"
+    limit := (1 << address-size) - 1
+    if not 0 <= address <= limit: throw "INVALID_ARGUMENT"
+    if broadcast and address-size == 10: throw "INVALID_ARGUMENT"
+    if send-buffer-size <= 0 or receive-buffer-size <= 0: throw "INVALID_ARGUMENT"
+
+    resource_ = i2c-target-create_
+        target-resource-group_
+        sda
+        scl
+        address-size
+        address
+        send-buffer-size
+        receive-buffer-size
+        pull-up
+        false
+        broadcast
+    state_ = ResourceState_ target-resource-group_ resource_
+    add-finalizer this:: close
+
+  /**
+  Returns the next complete controller write transaction, or null if none is
+    queued.
+
+  Transaction boundaries are preserved. An overflow is reported by throwing
+    `OVERFLOW`; $dropped-receive-count provides the cumulative count.
+  */
+  try-read -> ByteArray?:
+    if not resource_: throw "CLOSED"
+    check-receive-overflow_
+    return i2c-target-receive_ resource_
+
+  /** Waits for and returns the next complete controller write transaction. */
+  read -> ByteArray:
+    while true:
+      if not resource_: throw "CLOSED"
+      state_.clear-state RECEIVE-STATE_ | OVERFLOW-STATE_
+
+      check-receive-overflow_
+      result := i2c-target-receive_ resource_
+      if result: return result
+      state_.wait-for-state RECEIVE-STATE_ | OVERFLOW-STATE_
+
+  /**
+  Queues as many bytes as currently fit for a controller read.
+
+  Returns the number of bytes queued. This method does not wait.
+  */
+  try-write bytes/ByteArray -> int:
+    if not resource_: throw "CLOSED"
+    return i2c-target-write_ resource_ bytes 0
+
+  /**
+  Queues all $bytes for controller reads.
+
+  If the native send buffer fills, this method waits until a controller asks
+    for more data.
+  */
+  write bytes/ByteArray -> none:
+    write-mutex_.do:
+      if not resource_: throw "CLOSED"
+      offset := 0
+      while offset < bytes.size:
+        if not resource_: throw "CLOSED"
+        state_.clear-state REQUEST-STATE_
+
+        written := i2c-target-write_ resource_ bytes offset
+        offset += written
+        if offset == bytes.size: return
+        state_.wait-for-state REQUEST-STATE_
+
+  /**
+  Waits until a controller requests data and queues the response returned by
+    $block.
+
+  The block receives the number of read requests observed since the previous
+    call and must return a $ByteArray.
+
+  If the block throws or performs a non-local return, the target is closed so
+    an active controller transaction does not leave the bus stretched.
+
+  On targets capable of clock stretching this notification arrives while the
+    controller is waiting, so the returned bytes supply the current
+    transaction. The original ESP32 cannot stretch for this event; there the
+    returned bytes are queued for subsequent controller reads.
+  */
+  wait-for-read-request [block] -> none:
+    while true:
+      if not resource_: throw "CLOSED"
+      state_.clear-state REQUEST-STATE_
+      count := i2c-target-take-request-count_ resource_
+      if count != 0:
+        replied := false
+        try:
+          response/ByteArray := block.call count
+          write response
+          replied = true
+        finally:
+          if not replied:
+            // A controller may currently be waiting with SCL stretched. If
+            // the block unwinds without a response, closing the target is the
+            // only way to release the peripheral safely.
+            close
+        return
+      state_.wait-for-state REQUEST-STATE_
+
+  /** Number of controller write transactions dropped due to buffer overflow. */
+  dropped-receive-count -> int:
+    if not resource_: throw "CLOSED"
+    return i2c-target-dropped-receive-count_ resource_
+
+  /** Closes the target and releases its pins and native buffers. */
+  close -> none:
+    if not resource_: return
+    critical-do:
+      state_.dispose
+      i2c-target-close_ target-resource-group_ resource_
+      resource_ = null
+      remove-finalizer this
+
+  check-receive-overflow_ -> none:
+    count := i2c-target-dropped-receive-count_ resource_
+    if count != reported-dropped-receive-count_:
+      reported-dropped-receive-count_ = count
+      throw "OVERFLOW"
 
 /**
 Bus for communicating using I2C.
@@ -152,22 +340,31 @@ class Bus:
   /**
   Creates the device connected on the $i2c-address.
 
+  $address-size selects a 7-bit or 10-bit address.
+
   It is an error to connect a device on an address already in use.
     A device can be released with $Device.close.
   */
-  device i2c-address/int --frequency/int -> Device:
-    if devices_.contains i2c-address: throw "Device already connected"
-    device := Device.init_ this i2c-address frequency
-    devices_[i2c-address] = device
+  device i2c-address/int --frequency/int --address-size/int=7 -> Device:
+    if address-size != 7 and address-size != 10: throw "INVALID_ARGUMENT"
+    limit := (1 << address-size) - 1
+    if not 0 <= i2c-address <= limit: throw "INVALID_ARGUMENT"
+    key := device-key_ i2c-address address-size
+    if devices_.contains key: throw "Device already connected"
+    device := Device.init_ this i2c-address address-size frequency key
+    devices_[key] = device
     return device
 
 
   /**
-  Variant of $(device i2c-address --frequency) that uses the default frequency
-    given to the bus at construction.
+  Variant of $(device i2c-address --frequency --address-size) that uses the
+    default frequency given to the bus at construction.
   */
-  device i2c-address/int -> Device:
-    return device i2c-address --frequency=frequency_
+  device i2c-address/int --address-size/int=7 -> Device:
+    return device i2c-address --frequency=frequency_ --address-size=address-size
+
+  device-key_ address/int address-size/int -> int:
+    return address | (address-size == 10 ? 1 << 10 : 0)
 
 /**
 Device connected using the I2C bus.
@@ -178,16 +375,18 @@ A device is connected on a specific I2C address that can be found in the data
 class Device implements serial.Device:
   /** I2C address of the device. */
   address/int ::= ?
+  /** Number of address bits, either 7 or 10. */
+  address-size/int ::= ?
 
   bus_/Bus? := ?
   resource_ := ?
   registers_/Registers? := null
+  key_/int ::= ?
 
-  constructor.init_ .bus_/Bus .address frequency/int:
-    address-bit-size := 7
+  constructor.init_ .bus_/Bus .address .address-size frequency/int .key_:
     timeout-us := 100_000
     disable-ack-check := false
-    resource_ = i2c-device-create_ bus_.resource_ address-bit-size address frequency timeout-us disable-ack-check
+    resource_ = i2c-device-create_ bus_.resource_ address-size address frequency timeout-us disable-ack-check
     add-finalizer this:: close
 
   /**
@@ -396,7 +595,7 @@ class Device implements serial.Device:
     if not resource_: return
     i2c-device-close_ resource_
     resource_ = null
-    bus_.devices_.remove address
+    bus_.devices_.remove key_
     bus_ = null
 
 /**
@@ -429,9 +628,41 @@ class Registers extends serial.Registers:
     device_.write bytes
 
 resource-group_ ::= i2c-init_
+target-resource-group_ ::= i2c-target-init_
 
 i2c-init_:
   #primitive.i2c.init
+
+i2c-target-init_:
+  #primitive.i2c.target-init
+
+i2c-target-create_
+    group
+    sda/int
+    scl/int
+    address-size/int
+    address/int
+    send-buffer-size/int
+    receive-buffer-size/int
+    pull-up/bool
+    allow-power-down/bool
+    broadcast/bool:
+  #primitive.i2c.target-create
+
+i2c-target-close_ group target:
+  #primitive.i2c.target-close
+
+i2c-target-receive_ target:
+  #primitive.i2c.target-receive
+
+i2c-target-write_ target bytes/ByteArray offset/int:
+  #primitive.i2c.target-write
+
+i2c-target-take-request-count_ target:
+  #primitive.i2c.target-take-request-count
+
+i2c-target-dropped-receive-count_ target:
+  #primitive.i2c.target-dropped-receive-count
 
 i2c-bus-create_ resource-group sda scl pull-up:
   #primitive.i2c.bus-create
