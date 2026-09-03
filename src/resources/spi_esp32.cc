@@ -231,9 +231,13 @@ class SpiBufferTargetResource : public EventQueueResource {
   GpioPins owned_pins_;
 };
 
-SpiResourceGroup::SpiResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device)
+SpiResourceGroup::SpiResourceGroup(Process* process,
+                                   EventSource* event_source,
+                                   spi_host_device_t host_device,
+                                   bool half_duplex)
     : ResourceGroup(process, event_source)
-    , host_device_(host_device) {}
+    , host_device_(host_device)
+    , half_duplex_(half_duplex) {}
 
 SpiResourceGroup::~SpiResourceGroup() {
   SystemEventSource::instance()->run([&]() -> void {
@@ -693,7 +697,10 @@ PRIMITIVE(init) {
   }
 
   SpiResourceGroup* spi = _new SpiResourceGroup(
-      process, EventQueueEventSource::instance(), host_device);
+      process,
+      EventQueueEventSource::instance(),
+      host_device,
+      mosi_num == -1 || miso_num == -1);
   if (!spi) {
     SystemEventSource::instance()->run([&]() -> void {
       FATAL_IF_NOT_ESP_OK(spi_bus_free(capture.host_device));
@@ -1303,7 +1310,9 @@ PRIMITIVE(device) {
     .input_delay_ns   = 0,
     .sample_point     = SPI_SAMPLING_POINT_PHASE_0,
     .spics_io_num     = cs_num,
-    .flags            = 0,
+    .flags            = spi->half_duplex()
+        ? static_cast<uint32_t>(SPI_DEVICE_HALFDUPLEX)
+        : 0u,
     .queue_size       = 1,
     .pre_cb           = null,
     .post_cb          = spi_post_transfer_callback,

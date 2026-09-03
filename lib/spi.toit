@@ -577,7 +577,11 @@ class Bus:
     cycles before the first clock edge. ESP-IDF only supports this option for
     half-duplex transactions, except for a limited one-cycle case on the
     classic ESP32. $cs-hold-cycles keeps CS active after the last clock edge.
-  Both values must be between 0 and 16.
+    Setup must be between 0 and 16. Hold must be between 0 and 16, except on the
+    classic ESP32 where the maximum is 15.
+
+  On ESP32, a bus configured with only one of `mosi` and `miso` registers its
+    devices as half-duplex. A bus with both data pins remains full-duplex.
 
   The bus retains the returned device until either the device or the bus is
     explicitly closed. Dropping the last application reference does not free a
@@ -600,6 +604,8 @@ class Bus:
     if mode < 0 or mode > 3: throw "Argument Error"
     if not 0 <= cs-setup-cycles <= 16: throw "OUT_OF_RANGE"
     if not 0 <= cs-hold-cycles <= 16: throw "OUT_OF_RANGE"
+    if system.architecture == system.ARCHITECTURE-ESP32 and cs-hold-cycles == 16:
+      throw "OUT_OF_RANGE"
     cs-num := gpio.to-pin-num_ cs
     dc-num := gpio.to-pin-num_ dc
     // For a deprecated gpio.Pin the dc pin is configured here; for the new

@@ -35,7 +35,10 @@ const int kSpiControllerMaxDevicesPerHost = 6;
 class SpiResourceGroup : public ResourceGroup {
  public:
   TAG(SpiResourceGroup);
-  SpiResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device);
+  SpiResourceGroup(Process* process,
+                   EventSource* event_source,
+                   spi_host_device_t host_device,
+                   bool half_duplex);
   ~SpiResourceGroup() override;
 
   uint32_t on_event(Resource* resource, word data, uint32_t state) override {
@@ -43,6 +46,7 @@ class SpiResourceGroup : public ResourceGroup {
   }
 
   spi_host_device_t host_device() { return host_device_; }
+  bool half_duplex() const { return half_duplex_; }
 
   // GPIO pins reserved by this bus (mosi/miso/clock).
   GpioPins& owned_pins() { return owned_pins_; }
@@ -57,6 +61,7 @@ class SpiResourceGroup : public ResourceGroup {
 
  private:
   spi_host_device_t host_device_;
+  const bool half_duplex_;
   int device_count_ = 0;
   GpioPins owned_pins_;
 };
