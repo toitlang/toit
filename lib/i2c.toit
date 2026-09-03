@@ -174,6 +174,9 @@ class Target:
   The block receives the number of read requests observed since the previous
     call and must return a $ByteArray.
 
+  If the block throws or performs a non-local return, the target is closed so
+    an active controller transaction does not leave the bus stretched.
+
   On targets capable of clock stretching this notification arrives while the
     controller is waiting, so the returned bytes supply the current
     transaction. The original ESP32 cannot stretch for this event; there the
@@ -185,8 +188,17 @@ class Target:
       state_.clear-state REQUEST-STATE_
       count := i2c-target-take-request-count_ resource_
       if count != 0:
-        response/ByteArray := block.call count
-        write response
+        replied := false
+        try:
+          response/ByteArray := block.call count
+          write response
+          replied = true
+        finally:
+          if not replied:
+            // A controller may currently be waiting with SCL stretched. If
+            // the block unwinds without a response, closing the target is the
+            // only way to release the peripheral safely.
+            close
         return
       state_.wait-for-state REQUEST-STATE_
 
