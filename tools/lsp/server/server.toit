@@ -37,6 +37,7 @@ import .protocol.hover
 import .protocol-toit
 
 import .compiler
+import .compiler-scheduler
 import .documents
 import .file-server
 import .repro
@@ -48,6 +49,8 @@ import .toitdoc-markdown show ToitdocMarkdownVisitor
 
 DEFAULT-SETTINGS /Map ::= {:}
 DEFAULT-TIMEOUT-MS ::= 10_000
+DEFAULT-MAX-CONCURRENT-COMPILERS ::= 4
+DEFAULT-ANALYSIS-DEBOUNCE-MS ::= 250
 DEFAULT-REPRO-DIR ::= "/tmp/lsp_repros"
 CRASH-REPORT-RATE-LIMIT-MS ::= 30_000
 
@@ -87,6 +90,13 @@ monitor Settings:
   timeout-ms -> int:
     return get_ "timeoutMs" --if-absent=: DEFAULT-TIMEOUT-MS
 
+  analysis-debounce-ms -> int:
+    return get_ "analysisDebounceMs" --if-absent=: DEFAULT-ANALYSIS-DEBOUNCE-MS
+
+  /// A value <= 0 means that the number of compilers is not limited.
+  max-concurrent-compilers -> int:
+    return get_ "maxConcurrentCompilers" --if-absent=: DEFAULT-MAX-CONCURRENT-COMPILERS
+
   should-write-repro -> bool:
     return (get_ "shouldWriteReproOnCrash" --if-absent=: false) == true
 
@@ -112,36 +122,69 @@ class LspServer:
   /// The settings from the client (or, if not supported, default settings).
   settings_ /Settings := Settings
 
+  /// Decides when compiler actions run. All compiler work goes through it.
+  scheduler_ /CompilerScheduler
+
   last-crash-report-time_ := null
 
-  /// A set of open request-ids
-  /// When a request is canceled, it is removed from the set, so
-  ///   that we don't respond multiple times.
-  open-requests_ /Set := {}
+  /**
+  A map from open request-ids to the task that handles the request.
+
+  When a request is canceled, the corresponding task is canceled and the entry
+    is removed from the map, so that we don't respond multiple times.
+  */
+  open-requests_ /Map := {:}
 
   constructor .connection_ .toit-path-override_:
+    scheduler_ = CompilerScheduler
+        --max-concurrent=DEFAULT-MAX-CONCURRENT-COMPILERS
+        --debounce-ms=DEFAULT-ANALYSIS-DEBOUNCE-MS
+    // We can't pass on-idle to CompilerScheduler constructor due to needing
+    // "this" to be fully constructed before we can create a lambda.
+    scheduler_.on-idle = :: check-idle_
 
   run -> none:
     while true:
-      parsed := connection_.read
-      if parsed == null: return
-      id := parsed.get "id"
-      if id: open-requests_.add id
-      task:: catch --trace:
-        active-requests_++
-        method := parsed["method"]
-        params := parsed.get "params"
-        verbose: "Request for $method $id"
-        response := handle_ method params
-        verbose: "Request $method $id handled"
-        if id and (open-requests_.contains id):
-          open-requests_.remove id
-          connection_.reply id response
-        active-requests_--
-        if active-requests_ == 0 and not on-idle-callbacks_.is-empty:
-          callbacks := on-idle-callbacks_
-          on-idle-callbacks_ = []
-          callbacks.do: it.call
+      request := connection_.read
+      if not request: return
+      id := request.get "id"
+      handler-task := task:: catch --trace:
+        handle-request-in-task_ request
+      // Register the task for cancelation.
+      if id: open-requests_[id] = handler-task
+
+  handle-request-in-task_ request/Map -> none:
+    work-started_
+    id := request.get "id"
+    try:
+      method := request["method"]
+      params := request.get "params"
+      verbose: "Request for $method $id"
+      response := handle_ method params
+      verbose: "Request $method $id handled"
+      if id and (open-requests_.contains id):
+        // Only reply if we hadn't already replied with "Cancelled".
+        open-requests_.remove id
+        connection_.reply id response
+    finally:
+      // The handler task may be unwinding because the request was
+      // canceled. Clean up under cancelation guard.
+      critical-do:
+        if id: open-requests_.remove id
+        work-finished_
+
+  work-started_ -> none:
+    active-requests_++
+
+  work-finished_ -> none:
+    active-requests_--
+    check-idle_
+
+  check-idle_ -> none:
+    if active-requests_ == 0 and scheduler_.is-idle and not on-idle-callbacks_.is-empty:
+      callbacks := on-idle-callbacks_
+      on-idle-callbacks_ = []
+      callbacks.do: it.call
 
   handle_ method/string params/Map? -> any:
     // TODO(florian): this should be a switch or something.
@@ -243,13 +286,19 @@ class LspServer:
       // Client configurations can only make the output verbose, but not disable it,
       //   if it was given by command-line.
       is-verbose = is-verbose or settings_.is-verbose
+      scheduler_.max-concurrent = settings_.max-concurrent-compilers
+      scheduler_.debounce-ms = settings_.analysis-debounce-ms
     // TODO(florian): register DidChangeConfigurationNotification.type
 
   cancel params/CancelParams -> none:
     id := params.id
-    task := open-requests_.get id
-    if task:
+    handler-task/Task? := open-requests_.get id
+    if handler-task:
       open-requests_.remove id
+      // Actually abort the work that is done for this request. The handler
+      // task unwinds at its next blocking operation, which lets $Compiler.run
+      // kill and reap the compiler process it may have started.
+      handler-task.cancel
       connection_.reply id
           ResponseError
             --code=ErrorCodes.request-cancelled
@@ -264,12 +313,12 @@ class LspServer:
     //   taken into account.
     content-revision := next-analysis-revision_
     documents_.did-open --uri=uri document.text content-revision
-    analyze [uri]
+    scheduler_.run --id="analysis": analyze [uri]
 
   analyze-many params -> none:
     uris := params["uris"]
     uris = uris.map: translator.canonicalize it
-    analyze uris
+    scheduler_.run --id="analysis": analyze uris
 
   archive params/ArchiveParams -> string:
     non-canonicalized-uris := params.uris or [params.uri]
@@ -280,7 +329,8 @@ class LspServer:
     project-uri := documents_.project-uri-for --uri=uris[0]
     paths := uris.map: translator.to-path it
     compiler := compiler_
-    compiler.parse --paths=paths --project-uri=project-uri
+    scheduler_.run --id="archive":
+      compiler.parse --paths=paths --project-uri=project-uri
     buffer := io.Buffer
     write-repro
         --writer=buffer
@@ -296,8 +346,8 @@ class LspServer:
   snapshot-bundle params/SnapshotBundleParams -> Map?:
     uri := translator.canonicalize params.uri
     project-uri := documents_.project-uri-for --uri=uri
-    compiler := compiler_
-    bundle := compiler.snapshot-bundle --project-uri=project-uri uri
+    bundle := scheduler_.run --id="snapshot-bundle":
+      compiler_.snapshot-bundle --project-uri=project-uri uri
     // Encode the byte-array as base64.
     if not bundle: return null
     return {
@@ -327,28 +377,32 @@ class LspServer:
       // The next analysis-revision is thus the one where the new content has been
       //   taken into account.
       documents_.did-change --uri=uri it.text next-analysis-revision_
-    analyze [uri]
+    // Editors send a change for every keystroke. Let the scheduler decide
+    // when to analyze and batch the changed documents into one run.
+    scheduler_.schedule --id="analysis" --arg=uri:: | uris/List |
+      analyze uris
 
   completion params/CompletionParams -> any: // Either a List/*<CompletionItem>*/ or a $CompletionList.
     uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
-    compiler_.complete --project-uri=project-uri uri params.position.line params.position.character:
-      | prefix/string edit-range/Range? completions/List |
-      if completions.is-empty: return completions
-      if not prefix.ends-with "-": return completions
-      // The prefix ends with a '-'. VS Code doesn't like that and assumes that any completion we
-      // give is a new word. We therefore either adda default-range, or run through all
-      // completions and add a textEdit.
-      // TODO(florian): completion-range feature is disabled until we can test it on a
-      // real editor. When changing, make sure to update the test and the Go version.
-      if false and client-supports-completion-range_:
-        return CompletionList
-            --items=completions
-            --item-defaults=(CompletionItemDefaults --edit-range=edit-range)
-      completions.do: | item/CompletionItem |
-        text-edit := TextEdit --range=edit-range --new-text=item.label
-        item.set-text-edit text-edit
-      return completions
+    scheduler_.run --id="completion":
+      compiler_.complete --project-uri=project-uri uri params.position.line params.position.character:
+        | prefix/string edit-range/Range? completions/List |
+        if completions.is-empty: return completions
+        if not prefix.ends-with "-": return completions
+        // The prefix ends with a '-'. VS Code doesn't like that and assumes that any completion we
+        // give is a new word. We therefore either adda default-range, or run through all
+        // completions and add a textEdit.
+        // TODO(florian): completion-range feature is disabled until we can test it on a
+        // real editor. When changing, make sure to update the test and the Go version.
+        if false and client-supports-completion-range_:
+          return CompletionList
+              --items=completions
+              --item-defaults=(CompletionItemDefaults --edit-range=edit-range)
+        completions.do: | item/CompletionItem |
+          text-edit := TextEdit --range=edit-range --new-text=item.label
+          item.set-text-edit text-edit
+        return completions
     unreachable
 
   // TODO(florian): The specification supports a list of locations, or Locationlinks..
@@ -356,7 +410,8 @@ class LspServer:
   goto-definition params/TextDocumentPositionParams -> List/*<Location>*/:
     uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
-    return compiler_.goto-definition --project-uri=project-uri uri params.position.line params.position.character
+    return scheduler_.run --id="goto-definition":
+      compiler_.goto-definition --project-uri=project-uri uri params.position.line params.position.character
 
   rename params/RenameParams -> any:
     uri := translator.canonicalize params.text-document.uri
@@ -374,18 +429,19 @@ class LspServer:
     // a shared dependency file).
     all-references := []
     seen := {}
-    entry-uris.do: | entry-uri |
-      references := compiler_.find-references
-          --project-uri=project-uri
-          --entry-uri=entry-uri
-          uri
-          params.position.line
-          params.position.character
-      references.do: | location/Location |
-        key := "$location.uri:$(location.range.start.line):$(location.range.start.character):$(location.range.end.line):$(location.range.end.character)"
-        if not seen.contains key:
-          seen.add key
-          all-references.add location
+    scheduler_.run --id="rename":
+      entry-uris.do: | entry-uri |
+        references := compiler_.find-references
+            --project-uri=project-uri
+            --entry-uri=entry-uri
+            uri
+            params.position.line
+            params.position.character
+        references.do: | location/Location |
+          key := "$location.uri:$(location.range.start.line):$(location.range.start.character):$(location.range.end.line):$(location.range.end.character)"
+          if not seen.contains key:
+            seen.add key
+            all-references.add location
 
     if all-references.is-empty: return null
     // Group TextEdits by URI.
@@ -398,16 +454,18 @@ class LspServer:
   prepare-rename params/TextDocumentPositionParams -> any:
     uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
-    return compiler_.prepare-rename --project-uri=project-uri uri params.position.line params.position.character
+    return scheduler_.run --id="prepare-rename":
+      compiler_.prepare-rename --project-uri=project-uri uri params.position.line params.position.character
 
   selection-range params/Map -> List:
     uri := translator.canonicalize params["textDocument"]["uri"]
     project-uri := documents_.project-uri-for --uri=uri --recompute
     positions := params["positions"]
-    range-lists := compiler_.selection-range
-        --project-uri=project-uri
-        uri
-        positions
+    range-lists := scheduler_.run --id="selection-range":
+      compiler_.selection-range
+          --project-uri=project-uri
+          uri
+          positions
     return range-lists.map: | ranges/List? |
       if not ranges or ranges.is-empty:
         null
@@ -480,7 +538,8 @@ class LspServer:
     uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
 
-    definition := compiler_.hover --project-uri=project-uri uri params.position.line params.position.character
+    definition := scheduler_.run --id="hover":
+      compiler_.hover --project-uri=project-uri uri params.position.line params.position.character
     if not definition: return null
 
     if definition.text:
@@ -512,7 +571,8 @@ class LspServer:
     analyzed-documents := documents_.analyzed-documents-for --project-uri=project-uri
     document := analyzed-documents.get --uri=uri
     if not (document and document.summary):
-      analyze --project-uri=project-uri [uri] next-analysis-revision_++
+      scheduler_.run --id="document-symbol":
+        analyze --project-uri=project-uri [uri] next-analysis-revision_++
       document = analyzed-documents.get-existing --uri=uri
       if not document.summary: return []
     opened-document := documents_.get-opened --uri=uri
@@ -529,7 +589,8 @@ class LspServer:
   semantic-tokens params/SemanticTokensParams -> SemanticTokens:
     uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
-    tokens := compiler_.semantic-tokens --project-uri=project-uri uri
+    tokens := scheduler_.run --id="semantic-tokens":
+      compiler_.semantic-tokens --project-uri=project-uri uri
     return SemanticTokens --data=tokens
 
   shutdown:
@@ -550,6 +611,8 @@ class LspServer:
   Analyzes the given $uris and sends diagnostics to the client.
 
   Transitively analyzes all newly discovered files.
+
+  Must be called from within a $CompilerScheduler.run action.
   */
   analyze uris/List revision/int?=null -> none:
     if uris.is-empty: return
@@ -623,107 +686,113 @@ class LspServer:
 
     // Documents for which the summary changed.
     changed-summary-documents := {}
-    // Documents for which we want to report diagnostics.
-    report-diagnostics-documents := {}
+    // Documents that need to be analyzed as a result of the changes.
+    documents-needing-analysis/Set? := null
+    // Applying the result and reporting diagnostics must not be interrupted
+    // by a cancelation of the request, or the bookkeeping ends up
+    // half-applied.
+    critical-do:
+      // Documents for which we want to report diagnostics.
+      report-diagnostics-documents := {}
 
-    // Always report diagnostics for the given uris, unless there is a more recent
-    // analysis already, or if the document has been updated in the meantime.
-    uris.do: | uri |
-      doc := analyzed-documents.get-or-create --uri=uri
-      opened-doc := documents_.get-opened --uri=uri
-      content-revision := opened-doc ? opened-doc.revision : -1
-      if not doc.analysis-revision >= revision and not content-revision > revision:
-        report-diagnostics-documents.add uri
+      // Always report diagnostics for the given uris, unless there is a more recent
+      // analysis already, or if the document has been updated in the meantime.
+      uris.do: | uri |
+        doc := analyzed-documents.get-or-create --uri=uri
+        opened-doc := documents_.get-opened --uri=uri
+        content-revision := opened-doc ? opened-doc.revision : -1
+        if not doc.analysis-revision >= revision and not content-revision > revision:
+          report-diagnostics-documents.add uri
 
-    summaries.do: |summary-uri summary|
-      assert: summary != null
-      opened := documents_.get-opened --uri=summary-uri
-      content-revision := opened ? opened.revision : -1
-      update-result := analyzed-documents.update-document-after-analysis
-          --uri=summary-uri
-          --analysis-revision=revision
-          --content-revision=content-revision
-          --summary=summary
-      has-changed-summary := (update-result & AnalyzedDocuments.SUMMARY-CHANGED-EXTERNALLY-BIT) != 0
-      first-analysis-after-content-change :=
-          (update-result & AnalyzedDocuments.FIRST-ANALYSIS-AFTER-CONTENT-CHANGE-BIT) != 0
+      summaries.do: |summary-uri summary|
+        assert: summary != null
+        opened := documents_.get-opened --uri=summary-uri
+        content-revision := opened ? opened.revision : -1
+        update-result := analyzed-documents.update-document-after-analysis
+            --uri=summary-uri
+            --analysis-revision=revision
+            --content-revision=content-revision
+            --summary=summary
+        has-changed-summary := (update-result & AnalyzedDocuments.SUMMARY-CHANGED-EXTERNALLY-BIT) != 0
+        first-analysis-after-content-change :=
+            (update-result & AnalyzedDocuments.FIRST-ANALYSIS-AFTER-CONTENT-CHANGE-BIT) != 0
 
-      // If the summary has changed, it either means that:
-      //  - this was one of the $uris that was analyzed
-      //  - the $summary_uri depends on one of the $uris (but was also reachable from them)
-      //  - the $summary_uri (or one of its dependencies) was changed. This could be because
-      //    of a change on disk, or because of a `did_change` call. In the latter case,
-      //    there would still be another analysis running, but this one completed earlier.
-      if has-changed-summary:
-        changed-summary-documents.add summary-uri
-      if has-changed-summary or first-analysis-after-content-change:
-        report-diagnostics-documents.add summary-uri
-      dep-document := analyzed-documents.get-existing --uri=summary-uri
-      request-revision := dep-document.analysis-requested-by-revision
-      if request-revision != -1 and request-revision < revision:
-        report-diagnostics-documents.add summary-uri
-
-    // All reverse dependencies of changed documents need to have their diagnostics printed.
-    // We add all transitive dependencies, as it's hard to track implicit exports.
-    // For example, the return type of a method, requires all users of the method
-    //   to check whether a member call of the result is now allowed or not.
-    //   Say class 'A' in lib1 has a method 'foo' that is changed to take an additional parameter.
-    //   Say lib2 imports lib1 and return an 'A' from its 'bar' method.
-    //   Say lib3 imports lib2 and calls `bar.foo`. This call needs a diagnostic change, since
-    //     the 'foo' method now requires an additional parameter.
-    //
-    // This can happen multiple layers down.
-    // Note that we do this only if the summary of the initial file changes. As such, we
-    //   usually don't analyze everything.
-    //
-    // We will also remove files that are in a different project-root. During the
-    //   reverse dependency creation we add them (so we don't end up in an infinite
-    //   recursion), but they will be removed just afterwards.
-    changed-summary-documents.do:
-      document := analyzed-documents.get-existing --uri=it
-      add-transitive-reverse-deps_
-          --analyzed=analyzed-documents
-          --start-uris=document.reverse-deps
-          --result=report-diagnostics-documents
-
-    // Remove the documents that are not in the same project-root, or are in
-    // .packages (assuming we don't want them).
-    should-report-package-diagnostics := settings_.should-report-package-diagnostics
-    report-diagnostics-documents.filter --in-place: | uri/string |
-      document-project-uri := documents_.project-uri-for --uri=uri
-      if document-project-uri != project-uri: continue.filter false
-      if not should-report-package-diagnostics and is-inside-dot-packages --uri=uri:
-        // Only report diagnostics for package files if they are open.
-        if not documents_.get-opened --uri=uri:
-          continue.filter false
-      true
-
-    // Send the diagnostics we have to the client.
-    report-diagnostics-documents.do: |uri|
-      document := analyzed-documents.get-existing --uri=uri
-      request-revision := document.analysis-requested-by-revision
-      was-analyzed := summaries.contains uri
-      if was-analyzed:
-        diagnostics := diagnostics-per-uri.get uri --if-absent=: []
-        send-diagnostics (PushDiagnosticsParams --uri=uri --diagnostics=diagnostics)
+        // If the summary has changed, it either means that:
+        //  - this was one of the $uris that was analyzed
+        //  - the $summary_uri depends on one of the $uris (but was also reachable from them)
+        //  - the $summary_uri (or one of its dependencies) was changed. This could be because
+        //    of a change on disk, or because of a `did_change` call. In the latter case,
+        //    there would still be another analysis running, but this one completed earlier.
+        if has-changed-summary:
+          changed-summary-documents.add summary-uri
+        if has-changed-summary or first-analysis-after-content-change:
+          report-diagnostics-documents.add summary-uri
+        dep-document := analyzed-documents.get-existing --uri=summary-uri
+        request-revision := dep-document.analysis-requested-by-revision
         if request-revision != -1 and request-revision < revision:
-          // Mark the request as done.
-          document.analysis-requested-by-revision = -1
-      else if request-revision < revision:
-        document.analysis-requested-by-revision = revision
+          report-diagnostics-documents.add summary-uri
 
-    // Local lambda that returns whether a document needs analysis.
-    needs-analysis := : |uri|
-      document := analyzed-documents.get-existing --uri=uri
-      up-to-date := document.analysis-revision >= revision
-      opened := documents_.get-opened --uri=uri
-      content-revision := opened ? opened.revision : -1
-      will-be-analyzed := content-revision > revision
-      not up-to-date and not will-be-analyzed
+      // All reverse dependencies of changed documents need to have their diagnostics printed.
+      // We add all transitive dependencies, as it's hard to track implicit exports.
+      // For example, the return type of a method, requires all users of the method
+      //   to check whether a member call of the result is now allowed or not.
+      //   Say class 'A' in lib1 has a method 'foo' that is changed to take an additional parameter.
+      //   Say lib2 imports lib1 and return an 'A' from its 'bar' method.
+      //   Say lib3 imports lib2 and calls `bar.foo`. This call needs a diagnostic change, since
+      //     the 'foo' method now requires an additional parameter.
+      //
+      // This can happen multiple layers down.
+      // Note that we do this only if the summary of the initial file changes. As such, we
+      //   usually don't analyze everything.
+      //
+      // We will also remove files that are in a different project-root. During the
+      //   reverse dependency creation we add them (so we don't end up in an infinite
+      //   recursion), but they will be removed just afterwards.
+      changed-summary-documents.do:
+        document := analyzed-documents.get-existing --uri=it
+        add-transitive-reverse-deps_
+            --analyzed=analyzed-documents
+            --start-uris=document.reverse-deps
+            --result=report-diagnostics-documents
 
-    // See which documents need to be analyzed as a result of changes.
-    documents-needing-analysis := report-diagnostics-documents.filter --in-place: // Reuse the set.
-      needs-analysis.call it
+      // Remove the documents that are not in the same project-root, or are in
+      // .packages (assuming we don't want them).
+      should-report-package-diagnostics := settings_.should-report-package-diagnostics
+      report-diagnostics-documents.filter --in-place: | uri/string |
+        document-project-uri := documents_.project-uri-for --uri=uri
+        if document-project-uri != project-uri: continue.filter false
+        if not should-report-package-diagnostics and is-inside-dot-packages --uri=uri:
+          // Only report diagnostics for package files if they are open.
+          if not documents_.get-opened --uri=uri:
+            continue.filter false
+        true
+
+      // Send the diagnostics we have to the client.
+      report-diagnostics-documents.do: |uri|
+        document := analyzed-documents.get-existing --uri=uri
+        request-revision := document.analysis-requested-by-revision
+        was-analyzed := summaries.contains uri
+        if was-analyzed:
+          diagnostics := diagnostics-per-uri.get uri --if-absent=: []
+          send-diagnostics (PushDiagnosticsParams --uri=uri --diagnostics=diagnostics)
+          if request-revision != -1 and request-revision < revision:
+            // Mark the request as done.
+            document.analysis-requested-by-revision = -1
+        else if request-revision < revision:
+          document.analysis-requested-by-revision = revision
+
+      // Local lambda that returns whether a document needs analysis.
+      needs-analysis := : |uri|
+        document := analyzed-documents.get-existing --uri=uri
+        up-to-date := document.analysis-revision >= revision
+        opened := documents_.get-opened --uri=uri
+        content-revision := opened ? opened.revision : -1
+        will-be-analyzed := content-revision > revision
+        not up-to-date and not will-be-analyzed
+
+      // See which documents need to be analyzed as a result of changes.
+      documents-needing-analysis = report-diagnostics-documents.filter --in-place: // Reuse the set.
+        needs-analysis.call it
 
     if not documents-needing-analysis.is-empty:
       // It's highly unlikely that a reverse dependency changes its summary as a result

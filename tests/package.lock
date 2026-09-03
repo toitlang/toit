@@ -1,81 +1,70 @@
 sdk: ^2.0.0-alpha.190
 prefixes:
-  ar: pkg-ar
-  certificate_roots: toit-cert-roots
-  cli: pkg-cli
-  font_x11_adobe: pkg-font-x11-adobe
-  fs: pkg-fs
-  host: pkg-host
-  partition-table: toit-partition-table-esp32
-  semver: toit-semver
-  tar: pkg-tar
+  ar: github.com/toitlang/pkg-ar-1
+  certificate_roots: github.com/toitware/toit-cert-roots-1
+  cli: github.com/toitlang/pkg-cli-2
+  font_x11_adobe: github.com/toitlang/pkg-font-x11-adobe-0
+  fs: github.com/toitlang/pkg-fs-2
+  host: github.com/toitlang/pkg-host-1
+  partition-table: github.com/toitware/toit-partition-table-esp32-1
+  semver: github.com/toitware/toit-semver-1
+  tar: github.com/toitlang/pkg-tar-2
 packages:
-  pkg-ar:
-    url: github.com/toitlang/pkg-ar
-    name: ar
-    version: 1.4.1
+  github.com/toitlang/pkg-ar-1:
     hash: 66f0359ed405dbebbc06a0cda9864b10b2d6aa34
-  pkg-cli:
-    url: github.com/toitlang/pkg-cli
-    name: cli
-    version: 2.16.0
+    url: github.com/toitlang/pkg-ar
+    version: 1.4.1
+  github.com/toitlang/pkg-cli-2:
     hash: 8b57ca731ab1798a2a97c4afc1ea464072cf2cbb
     prefixes:
-      desktop: pkg-desktop
-      fs: pkg-fs
-      host: pkg-host
-      lockfile: toit-lockfile
-  pkg-desktop:
-    url: github.com/toitlang/pkg-desktop
-    name: desktop
-    version: 1.1.0
+      desktop: github.com/toitlang/pkg-desktop-1
+      fs: github.com/toitlang/pkg-fs-2
+      host: github.com/toitlang/pkg-host-1
+      lockfile: github.com/toitware/toit-lockfile-1
+    url: github.com/toitlang/pkg-cli
+    version: 2.16.0
+  github.com/toitlang/pkg-desktop-1:
     hash: d6ad1d5c25e16d0c2910a132acba426251b5d87f
     prefixes:
-      host: pkg-host
-  pkg-font-x11-adobe:
-    url: github.com/toitlang/pkg-font-x11-adobe
-    name: font_x11_adobe
-    version: 0.1.0
+      host: github.com/toitlang/pkg-host-1
+    url: github.com/toitlang/pkg-desktop
+    version: 1.1.0
+  github.com/toitlang/pkg-font-x11-adobe-0:
     hash: f844400722165252148f087cdf189abab0a47f3d
-  pkg-fs:
-    url: github.com/toitlang/pkg-fs
-    name: fs
-    version: 2.3.1
+    url: github.com/toitlang/pkg-font-x11-adobe
+    version: 0.1.0
+  github.com/toitlang/pkg-fs-2:
     hash: 60836d4500317af2093d59d50c117d612c33f1fa
     prefixes:
-      host: pkg-host
-  pkg-host:
+      host: github.com/toitlang/pkg-host-1
+    url: github.com/toitlang/pkg-fs
+    version: 2.3.1
+  github.com/toitlang/pkg-host-1:
+    hash: 50b7e52052c0b0baa48eef60609ff0f4df2f02b7
     url: github.com/toitlang/pkg-host
-    name: host
-    version: 1.17.0
-    hash: 05a26b5fa1cc73dc64a5e9cc16c40ae5aa24e0fb
-  pkg-tar:
-    url: github.com/toitlang/pkg-tar
-    name: tar
-    version: 2.1.0
+    version: 1.21.0
+  github.com/toitlang/pkg-tar-2:
     hash: c9abee2219ec674a12a2e7cdc9cd7a74af875fe7
     prefixes:
-      host: pkg-host
-  toit-cert-roots:
-    url: github.com/toitware/toit-cert-roots
-    name: certificate-roots
-    version: 1.11.0
+      host: github.com/toitlang/pkg-host-1
+    url: github.com/toitlang/pkg-tar
+    version: 2.1.0
+  github.com/toitware/toit-cert-roots-1:
     hash: c117dbba4757d7c69e91af7a875ab6989f051a33
-  toit-lockfile:
-    url: github.com/toitware/toit-lockfile
-    name: lockfile
-    version: 1.0.0
+    url: github.com/toitware/toit-cert-roots
+    version: 1.11.0
+  github.com/toitware/toit-lockfile-1:
     hash: 47ddd8c13811e6cc368d6fef8f383b855f9d0ada
     prefixes:
-      fs: pkg-fs
-      host: pkg-host
-  toit-partition-table-esp32:
-    url: github.com/toitware/toit-partition-table-esp32
-    name: partition-table
-    version: 1.4.0
+      fs: github.com/toitlang/pkg-fs-2
+      host: github.com/toitlang/pkg-host-1
+    url: github.com/toitware/toit-lockfile
+    version: 1.0.0
+  github.com/toitware/toit-partition-table-esp32-1:
     hash: 9ee4032b913a00d0c0f87446261d034842b707f1
-  toit-semver:
-    url: github.com/toitware/toit-semver
-    name: semver
-    version: 1.2.0
+    url: github.com/toitware/toit-partition-table-esp32
+    version: 1.4.0
+  github.com/toitware/toit-semver-1:
     hash: 7b862ca7b40601ae2a63ec6ffbacebb48c929e02
+    url: github.com/toitware/toit-semver
+    version: 1.2.0

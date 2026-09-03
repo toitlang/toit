@@ -131,6 +131,7 @@ class PipeFileServer implements FileServer:
   protocol / FileServerProtocol
   to-compiler_   / io.CloseableWriter
   from-compiler_ / io.CloseableReader
+  is-shutting-down_ / bool := false
 
   constructor .protocol .to-compiler_ .from-compiler_:
 
@@ -140,11 +141,18 @@ class PipeFileServer implements FileServer:
   */
   run -> string:
     task::
-      catch --trace:
+      // Once the compiler process is going away, writing to its stdin fails
+      // with "Broken pipe". These are expected during teardown and should not
+      // be logged.
+      catch --trace=(: not is-shutting-down_):
         protocol.handle from-compiler_ to-compiler_
     return "-2"
 
+  mark-shutting-down -> none:
+    is-shutting-down_ = true
+
   close:
+    mark-shutting-down
     from-compiler_.close
     to-compiler_.close
 
