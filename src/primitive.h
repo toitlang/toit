@@ -435,6 +435,13 @@ namespace toit {
   PRIMITIVE(target_write, 3)                 \
   PRIMITIVE(target_take_request_count, 1)    \
   PRIMITIVE(target_dropped_receive_count, 1) \
+  PRIMITIVE(register_target_create, 11)      \
+  PRIMITIVE(register_target_close, 2)        \
+  PRIMITIVE(register_target_get, 2)          \
+  PRIMITIVE(register_target_set, 3)          \
+  PRIMITIVE(register_target_read, 3)         \
+  PRIMITIVE(register_target_write, 3)        \
+  PRIMITIVE(register_target_dropped_write_count, 1) \
   PRIMITIVE(bus_create, 4)                   \
   PRIMITIVE(bus_close, 1)                    \
   PRIMITIVE(bus_probe, 3)                    \
@@ -1159,6 +1166,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_ImageOutputStream(N, name)   MAKE_UNPACKING_MACRO(ImageOutputStream, N, name)
 #define _A_T_I2cBusResource(N, name)      MAKE_UNPACKING_MACRO(I2cBusResource, N, name)
 #define _A_T_I2cDeviceResource(N, name)   MAKE_UNPACKING_MACRO(I2cDeviceResource, N, name)
+#define _A_T_I2cRegisterTargetResource(N, name) MAKE_UNPACKING_MACRO(I2cRegisterTargetResource, N, name)
 #define _A_T_I2cTargetResource(N, name)   MAKE_UNPACKING_MACRO(I2cTargetResource, N, name)
 #define _A_T_IntResource(N, name)         MAKE_UNPACKING_MACRO(IntResource, N, name)
 #define _A_T_LookupResult(N, name)        MAKE_UNPACKING_MACRO(LookupResult, N, name)
