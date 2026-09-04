@@ -214,6 +214,26 @@ menu "Toit"
             help
                 ESP-Now support in the Toit binary.
 
+        config TOIT_ENABLE_I2C_TARGET
+            boolean "Enable I2C target support on ESP32"
+            default "y"
+            depends on SOC_I2C_SUPPORT_SLAVE
+            select I2C_ENABLE_SLAVE_DRIVER_VERSION_2
+            help
+                I2C target and register-target support in the Toit binary.
+
+                Disable this option to reduce firmware size when only I2C
+                controller functionality is needed.
+
+        config TOIT_ENABLE_SPI_TARGET
+            boolean "Enable SPI target support on ESP32"
+            default "y"
+            help
+                SPI target and buffer-target support in the Toit binary.
+
+                Disable this option to reduce firmware size when only SPI
+                controller functionality is needed.
+
         config TOIT_SPIRAM_HEAP
             boolean "Enable Toit heap in SPIRAM"
             default "y"
