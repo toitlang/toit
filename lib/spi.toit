@@ -486,16 +486,24 @@ Bus for communicating using SPI.
 
 An SPI bus is constructed with 3 main wires for data transmission and a clock.
 Each device on the bus is enabled with its own chip-select pin. See $Bus.device.
+
+On the classic ESP32, SPI controller completion interrupts are not placed in
+  IRAM in the Toit firmware configuration. A transaction can complete in
+  hardware while a flash operation has disabled the instruction cache, but the
+  waiting Toit task is not resumed until the cache is available again.
 */
 class Bus:
   spi_ := ?
+  devices_ := []
+  closing_/bool := false
+  reservation-active_/bool := false
   /**
   Mutex to serialize reservation attempts of multiple devices.
   See $Device.with-reserved-bus.
 
-  When trying to acquire the bus, the ESP-IDF currently (as of 2022-07-19) does not allow to set a timeout.
-    This means that the program would be stuck in the primitive. We thus use this mutex to avoid that
-    situation.
+  ESP-IDF's blocking acquisition API does not support a finite timeout. Toit
+    instead tries without waiting and yields between attempts; this mutex keeps
+    those attempts serialized across devices on the bus.
   */
   reservation-mutex_/monitor.Mutex ::= monitor.Mutex
 
@@ -522,7 +530,17 @@ class Bus:
 
   /** Closes this SPI bus and frees the associated resources. */
   close:
-    spi-close_ spi_
+    if reservation-active_: throw "INVALID_STATE"
+    reservation-mutex_.do:
+      if not spi_: return
+      closing_ = true
+      // Closing a device removes it from this bounded list. Avoid allocating a
+      // snapshot here: close must remain usable when the heap is exhausted.
+      while not devices_.is-empty:
+        devices_.last.close-under-reservation_
+      critical-do:
+        spi-close_ spi_
+        spi_ = null
 
   /**
   Configures a device on this SPI bus.
@@ -559,7 +577,11 @@ class Bus:
     cycles before the first clock edge. ESP-IDF only supports this option for
     half-duplex transactions, except for a limited one-cycle case on the
     classic ESP32. $cs-hold-cycles keeps CS active after the last clock edge.
-    Both values must be between 0 and 16.
+  Both values must be between 0 and 16.
+
+  The bus retains the returned device until either the device or the bus is
+    explicitly closed. Dropping the last application reference does not free a
+    device slot while its bus remains open.
   */
   // __TYPE-MIGRATION__ cs: gpio.Pin. Deprecated. Provide an integer instead.
   // __TYPE-MIGRATION__ cs: int?
@@ -584,8 +606,23 @@ class Bus:
     // integer API the primitive configures it as output.
     if dc is gpio.Pin: dc.configure --output
 
-    d := spi-device_ spi_ cs-num dc-num command-bits address-bits frequency mode cs-setup-cycles cs-hold-cycles
-    return Device_.init_ this d
+    return reservation-mutex_.do:
+      if not spi_ or closing_: throw "CLOSED"
+      d := spi-device_ spi_ cs-num dc-num command-bits address-bits frequency mode cs-setup-cycles cs-hold-cycles
+      result/Device_? := null
+      registered := false
+      try:
+        created := Device_.init_ this d
+        result = created
+        devices_.add created
+        registered = true
+        return created
+      finally:
+        if not registered:
+          if result:
+            result.close-under-reservation_
+          else:
+            spi-device-close_ spi_ d
 
 /**
 A device connected with SPI.
@@ -738,22 +775,57 @@ abstract class DeviceBase_ implements Device:
 
 /** Device connected to an SPI bus. */
 class Device_ extends DeviceBase_:
-  spi_/Bus := ?
+  static TRANSFER-DONE_ ::= 1 << 0
+
+  spi_ := ?
   device_ := ?
-  owning-bus_/bool := false
+  state_/monitor.ResourceState_ ::= ?
+  transfer-mutex_/monitor.Mutex ::= monitor.Mutex
+  owning-bus-task_/Task? := null
 
   registers_/Registers? := null
 
   /** Deprecated. Use $Bus.device. */
   constructor .spi_ .device_:
+    state_ = monitor.ResourceState_ spi_.spi_ device_
+    initialized := false
+    try:
+      add-finalizer this:: close
+      initialized = true
+    finally:
+      // Bus.device closes the native device if this constructor throws. Drop
+      // the notifier first so it cannot retain a proxy to that deleted state.
+      if not initialized: state_.dispose
 
   constructor.init_ .spi_ .device_:
+    state_ = monitor.ResourceState_ spi_.spi_ device_
+    initialized := false
+    try:
+      add-finalizer this:: close
+      initialized = true
+    finally:
+      // Bus.device closes the native device if this constructor throws. Drop
+      // the notifier first so it cannot retain a proxy to that deleted state.
+      if not initialized: state_.dispose
 
   /** See $Device.close. */
   close:
-    if device_:
-      spi-device-close_ spi_.spi_ device_
-      device_ = null
+    if owning-bus-task_: throw "INVALID_STATE"
+    bus := spi_
+    if not bus: return
+    bus.reservation-mutex_.do:
+      close-under-reservation_
+
+  close-under-reservation_:
+    transfer-mutex_.do:
+      if not device_: return
+      critical-do:
+        state_.dispose
+        spi-device-close_ spi_.spi_ device_
+        device_ = null
+        spi_.devices_.remove this
+        spi_ = null
+        remove-finalizer this
 
   /** See $Device.transfer. */
   transfer
@@ -765,19 +837,40 @@ class Device_ extends DeviceBase_:
       --command/int=0
       --address/int=0
       --keep-cs-active/bool=false:
-    if keep-cs-active and not owning-bus_: throw "INVALID_STATE"
-    return spi-transfer_ device_ data command address from to read dc keep-cs-active
+    transfer-mutex_.do:
+      if not device_: throw "CLOSED"
+      owner := owning-bus-task_
+      if owner and not identical owner Task.current: throw "INVALID_STATE"
+      if keep-cs-active and not identical owner Task.current:
+        throw "INVALID_STATE"
+      // Once queued, the ESP-IDF transaction cannot be canceled. Always wait
+      // for completion and release its native buffers.
+      critical-do --no-respect-deadline:
+        state_.clear-state TRANSFER-DONE_
+        spi-transfer-start_ device_ data command address from to read dc keep-cs-active
+        state_.wait-for-state TRANSFER-DONE_
+        // The post callback wakes this task slightly before ESP-IDF retires
+        // the descriptor. Poll with a zero timeout until its return queue is
+        // ready; no primitive waits for the driver.
+        while not spi-transfer-finish_ device_ data from read: yield
 
   /** See $Device.with-reserved-bus. */
   with-reserved-bus [block]:
-    spi_.reservation-mutex_.do:
-      spi-acquire-bus_ device_
-      owning-bus_ = true
+    if owning-bus-task_: throw "INVALID_STATE"
+    bus := spi_
+    if not bus: throw "CLOSED"
+    bus.reservation-mutex_.do:
+      if not device_ or bus.closing_: throw "CLOSED"
+      while not spi-acquire-bus_ device_: yield
+      owning-bus-task_ = Task.current
+      bus.reservation-active_ = true
       try:
         block.call
       finally:
-        owning-bus_ = false
-        spi-release-bus_ device_
+        critical-do:
+          owning-bus-task_ = null
+          bus.reservation-active_ = false
+          spi-release-bus_ device_
 
 class DevicePath_ extends DeviceBase_:
   static TRANSFER-DONE_ ::= 1 << 0
@@ -992,8 +1085,11 @@ spi-device_ spi cs/int dc/int command-bits/int address-bits/int frequency/int mo
 spi-device-close_ spi device:
   #primitive.spi.device-close
 
-spi-transfer_ device data/ByteArray command/int address/int from to read/bool dc/int keep-cs-active/bool:
-  #primitive.spi.transfer
+spi-transfer-start_ device data/ByteArray command/int address/int from to read/bool dc/int keep-cs-active/bool:
+  #primitive.spi.transfer-start
+
+spi-transfer-finish_ device data/ByteArray from/int read/bool:
+  #primitive.spi.transfer-finish
 
 spi-acquire-bus_ device:
   #primitive.spi.acquire-bus

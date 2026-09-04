@@ -54,6 +54,8 @@ test:
 
     task::
       device.with-reserved-bus:
+        expect-throw "INVALID_STATE": device.close
+        expect-throw "INVALID_STATE": bus.close
         expect-equals "keep_active" channel-to-task.receive
         device.transfer #[1, 2, 3] --keep-cs-active
         channel-from-task.send "cs_is_active"
@@ -71,6 +73,12 @@ test:
     expect-equals 1 in.get
     channel-to-task.send "keep_active"
     expect-equals "cs_is_active" channel-from-task.receive
+    expect-equals 0 in.get
+    // The reservation belongs to the task running the block, not merely to
+    // this Device object. A transfer from another task could otherwise join
+    // or terminate the reserving task's CS-low frame.
+    expect-throw "INVALID_STATE": device.transfer #[4, 5, 6]
+    expect-throw "INVALID_STATE": device.transfer #[4, 5, 6] --keep-cs-active
     expect-equals 0 in.get
     channel-to-task.send "transfer_without_active"
     expect-equals "cs_is_inactive" channel-from-task.receive

@@ -39,7 +39,8 @@
 
 namespace toit {
 
-static_assert(2 * (SOC_SPI_PERIPH_NUM - 1) <= SPI_EVENT_QUEUE_SIZE,
+static_assert(kSpiControllerMaxDevicesPerHost * (SOC_SPI_PERIPH_NUM - 1) <=
+                  SPI_EVENT_QUEUE_SIZE,
               "Increase SPI_EVENT_QUEUE_SIZE");
 
 const spi_host_device_t kInvalidHostDevice = spi_host_device_t(-1);
@@ -241,6 +242,72 @@ SpiResourceGroup::~SpiResourceGroup() {
   spi_host_devices.put(host_device_);
   // Release any GPIO pins this bus reserved (mosi/miso/clock).
   owned_pins_.release();
+}
+
+SpiDevice::~SpiDevice() {
+  if (operation_in_flight_) {
+    spi_transaction_t* completed = null;
+    FATAL_IF_NOT_ESP_OK(spi_device_get_trans_result(
+        handle_, &completed, portMAX_DELAY));
+    ASSERT(completed == transaction());
+    finish_operation();
+  }
+  if (bus_acquired_) spi_device_release_bus(handle_);
+  FATAL_IF_NOT_ESP_OK(spi_bus_remove_device(handle_));
+  vQueueDeleteWithCaps(queue());
+  // Release any GPIO pins this device reserved (cs/dc).
+  owned_pins_.release();
+}
+
+void SpiDevice::prepare_operation(const uint8_t* tx_data,
+                                  uint8_t* tx_buffer,
+                                  uint8_t* rx_buffer,
+                                  size_t transfer_size,
+                                  uint32_t flags,
+                                  uint16_t command,
+                                  uint64_t address) {
+  ASSERT(!operation_in_flight_);
+  tx_buffer_ = tx_buffer;
+  rx_buffer_ = rx_buffer;
+  transfer_size_ = transfer_size;
+  transaction_ = {
+    .flags = flags,
+    .cmd = command,
+    .addr = address,
+    .length = transfer_size * 8,
+    .rxlength = 0,
+    .user = this,
+    .tx_buffer = tx_buffer,
+    .rx_buffer = rx_buffer,
+  };
+  if (transfer_size != 0 && tx_buffer == null) {
+    ASSERT(transfer_size <= sizeof(transaction_.tx_data));
+    transaction_.flags |= SPI_TRANS_USE_TXDATA;
+    memcpy(transaction_.tx_data, tx_data, transfer_size);
+  }
+  operation_in_flight_ = true;
+}
+
+void SpiDevice::finish_operation() {
+  ASSERT(operation_in_flight_);
+  free(tx_buffer_);
+  free(rx_buffer_);
+  tx_buffer_ = null;
+  rx_buffer_ = null;
+  transfer_size_ = 0;
+  transaction_ = {};
+  operation_in_flight_ = false;
+}
+
+void SpiDevice::complete_from_isr() {
+  BaseType_t higher_was_woken = pdFALSE;
+  word event = kSpiControllerDoneState;
+  xQueueSendFromISR(queue(), &event, &higher_was_woken);
+  if (higher_was_woken == pdTRUE) portYIELD_FROM_ISR();
+}
+
+bool SpiDevice::receive_event(word* data) {
+  return xQueueReceive(queue(), data, 0) == pdTRUE;
 }
 
 SpiTargetResource::~SpiTargetResource() {
@@ -625,8 +692,12 @@ PRIMITIVE(init) {
     return Primitive::os_error(err, process);
   }
 
-  SpiResourceGroup* spi = _new SpiResourceGroup(process, null, host_device);
+  SpiResourceGroup* spi = _new SpiResourceGroup(
+      process, EventQueueEventSource::instance(), host_device);
   if (!spi) {
+    SystemEventSource::instance()->run([&]() -> void {
+      FATAL_IF_NOT_ESP_OK(spi_bus_free(capture.host_device));
+    });
     spi_host_devices.put(host_device);
     FAIL(MALLOC_FAILED);
   }
@@ -1172,6 +1243,11 @@ PRIMITIVE(close) {
   return process->null_object();
 }
 
+SPI_CONTROLLER_ISR_ATTR static void spi_post_transfer_callback(spi_transaction_t* t) {
+  auto resource = static_cast<SpiDevice*>(t->user);
+  resource->complete_from_isr();
+}
+
 PRIMITIVE(device) {
   ARGS(SpiResourceGroup, spi,
        int, cs,
@@ -1185,6 +1261,7 @@ PRIMITIVE(device) {
 
   if (cs_setup_cycles < 0 || cs_setup_cycles > 16 ||
       cs_hold_cycles < 0 || cs_hold_cycles > 16) FAIL(INVALID_ARGUMENT);
+  if (!spi->can_add_device()) FAIL(ALREADY_IN_USE);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
@@ -1229,19 +1306,28 @@ PRIMITIVE(device) {
     .flags            = 0,
     .queue_size       = 1,
     .pre_cb           = null,
-    .post_cb          = null,
+    .post_cb          = spi_post_transfer_callback,
   };
+  QueueHandle_t event_queue = xQueueCreateWithCaps(
+      1, sizeof(word), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  if (event_queue == null) FAIL(MALLOC_FAILED);
+  bool queue_handed_to_resource = false;
+  Defer delete_queue { [&] {
+    if (!queue_handed_to_resource) vQueueDeleteWithCaps(event_queue);
+  } };
+
   spi_device_handle_t device;
   esp_err_t err = spi_bus_add_device(spi->host_device(), &conf, &device);
   if (err != ESP_OK) {
     return Primitive::os_error(err, process);
   }
 
-  SpiDevice* spi_device = _new SpiDevice(spi, device, dc_num);
+  SpiDevice* spi_device = _new SpiDevice(spi, device, event_queue, dc_num);
   if (spi_device == null) {
     spi_bus_remove_device(device);
     FAIL(MALLOC_FAILED);
   }
+  queue_handed_to_resource = true;
 
   // The reservation now belongs to the resource and is released on close.
   spi_device->owned_pins().adopt(reserver);
@@ -1255,69 +1341,108 @@ PRIMITIVE(device) {
 PRIMITIVE(device_close) {
   ARGS(SpiResourceGroup, spi, SpiDevice, device);
   spi->unregister_resource(device);
+  device_proxy->clear_external_address();
   return process->null_object();
 }
 
-PRIMITIVE(transfer) {
+PRIMITIVE(transfer_start) {
   ARGS(SpiDevice, device, MutableBlob, tx, int, command, int64, address, int, from, int, to, bool, read, int, dc, bool, keep_cs_active);
 
   if (from < 0 || from > to || to > tx.length()) FAIL(OUT_OF_BOUNDS);
+  if (device->operation_in_flight()) FAIL(INVALID_STATE);
 
   size_t length = to - from;
 
   uint32_t flags = 0;
   if (keep_cs_active) flags |= SPI_TRANS_CS_KEEP_ACTIVE;
 
-  spi_transaction_t trans = {
-    .flags = flags,
-    .cmd = uint16(command),
-    .addr = uint64(address),
-    .length = length * 8,
-    .rxlength = 0,
-    .user = null,
-    .tx_buffer = tx.address() + from,
-    .rx_buffer = null,
-  };
-
-  bool using_buffer = false;
-  if (read) {
-    if (length <= SpiDevice::BUFFER_SIZE) {
-      trans.rx_buffer = device->buffer();
-      using_buffer = true;
-    } else {
-      // Reuse buffer (no need for memcpy, but is slightly slower).
-      trans.rx_buffer = tx.address() + from;
-    }
+  // Use the driver's inline storage to avoid a native allocation for the
+  // common 1-4 byte case. The descriptor remains alive until transfer_finish
+  // retires it.
+  bool use_inline_tx = length != 0 && length <= SpiDevice::INLINE_TX_SIZE;
+  const uint8_t* tx_data = length == 0 ? null : tx.address() + from;
+  uint8_t* tx_buffer = use_inline_tx ? null : allocate_dma_buffer(length, 4);
+  if (length != 0 && !use_inline_tx && tx_buffer == null) {
+    return Primitive::os_error(ESP_ERR_NO_MEM, process);
+  }
+  bool buffers_handed_to_resource = false;
+  Defer free_tx_buffer { [&] {
+    if (!buffers_handed_to_resource) free(tx_buffer);
+  } };
+  if (length != 0 && !use_inline_tx) {
+    memcpy(tx_buffer, tx_data, length);
   }
 
   if (device->dc() != -1) {
     gpio_set_level(static_cast<gpio_num_t>(device->dc()), dc);
   }
 
-  esp_err_t err = spi_device_polling_transmit(device->handle(), &trans);
-  if (err != ESP_OK) {
-    return Primitive::os_error(err, process);
+  uint8_t* rx_buffer = read ? allocate_dma_buffer(length, 4) : null;
+  if (read && length != 0 && rx_buffer == null) {
+    return Primitive::os_error(ESP_ERR_NO_MEM, process);
   }
+  Defer free_rx_buffer { [&] {
+    if (!buffers_handed_to_resource) free(rx_buffer);
+  } };
 
-  if (using_buffer) {
-    memcpy(tx.address() + from, trans.rx_buffer, length);
-  }
+  device->prepare_operation(
+      tx_data,
+      tx_buffer,
+      rx_buffer,
+      length,
+      flags,
+      static_cast<uint16_t>(command),
+      static_cast<uint64_t>(address));
+  buffers_handed_to_resource = true;
+  bool queued = false;
+  Defer cancel_operation { [&] {
+    if (!queued) device->finish_operation();
+  } };
 
+  esp_err_t err = spi_device_queue_trans(
+      device->handle(), device->transaction(), 0);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  queued = true;
   return process->null_object();
+}
+
+PRIMITIVE(transfer_finish) {
+  ARGS(SpiDevice, device, MutableBlob, data, int, from, bool, read);
+  if (!device->operation_in_flight()) FAIL(INVALID_STATE);
+
+  size_t length = device->transfer_size();
+  if (from < 0 || static_cast<size_t>(from) > data.length() ||
+      length > data.length() - from) FAIL(OUT_OF_BOUNDS);
+
+  spi_transaction_t* completed = null;
+  esp_err_t err = spi_device_get_trans_result(
+      device->handle(), &completed, 0);
+  if (err == ESP_ERR_TIMEOUT) return process->false_object();
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  ASSERT(completed == device->transaction());
+
+  if (read && length != 0) {
+    memcpy(data.address() + from, device->receive_buffer(), length);
+  }
+  device->finish_operation();
+  return process->true_object();
 }
 
 PRIMITIVE(acquire_bus) {
   ARGS(SpiDevice, device);
-  esp_err_t err = spi_device_acquire_bus(device->handle(), portMAX_DELAY);
+  esp_err_t err = spi_device_try_acquire_bus(device->handle());
+  if (err == ESP_ERR_TIMEOUT) return process->false_object();
   if (err != ESP_OK) {
     return Primitive::os_error(err, process);
   }
-  return process->null_object();
+  device->set_bus_acquired(true);
+  return process->true_object();
 }
 
 PRIMITIVE(release_bus) {
   ARGS(SpiDevice, device);
   spi_device_release_bus(device->handle());
+  device->set_bus_acquired(false);
   return process->null_object();
 }
 
