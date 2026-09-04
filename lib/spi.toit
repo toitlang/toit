@@ -274,6 +274,214 @@ class Target:
     close
 
 /**
+An ESP32 SPI target that remains armed using native response and receive buffers.
+
+Unlike $Target, this class does not wait for a Toit task to prepare each
+  transaction. The peripheral is armed before the constructor returns and is
+  re-armed from its completion callback. Received buffers are rotated instead
+  of copied in that callback, so re-arming does not depend on the transaction
+  size or on Toit task scheduling. This is useful for protocols whose
+  controller cannot observe a separate ready signal. As with any ESP32 SPI
+  target, the controller must still leave CS inactive long enough for the
+  completion interrupt to re-arm the peripheral; a zero-width CS-inactive
+  interval is not supported.
+
+SPI does not define a register-address protocol. The response is therefore a
+  plain byte buffer: each controller transaction starts at offset zero. Toit
+  code can update that buffer using indexing, $read, and $write. Individual
+  bytes are atomic, but a controller transaction concurrent with an update may
+  observe the response one byte at a time.
+
+Complete MOSI transactions are copied into a bounded native queue. This is not
+  a streaming API: the controller must release CS at each buffer boundary.
+
+On the classic ESP32 with DMA enabled, only complete four-byte words received
+  on MOSI are queued. A trailing one to three bytes are discarded, matching
+  the ESP-IDF target DMA restriction.
+
+On configurations where ESP-IDF copies the response into hardware registers
+  while arming, a response update can be too late for the next transaction. An
+  update is guaranteed to be visible in the transaction after the next
+  completed transaction, and can be visible sooner.
+
+On the classic ESP32, SPI target interrupts are not placed in IRAM in the Toit
+  firmware configuration. The target therefore cannot re-arm while flash
+  operations disable the instruction cache. Controllers that may communicate
+  during flash erase or write must use a separate ready signal or a newer ESP32
+  variant.
+*/
+class BufferTarget:
+  static RECEIVED-STATE_ ::= 1 << 2
+  static STOPPED-STATE_ ::= 1 << 3
+  static ARMED-STATE_ ::= 1 << 4
+
+  resource_ := ?
+  state_ := null
+  close-mutex_/monitor.Mutex ::= monitor.Mutex
+  receive-mutex_/monitor.Mutex ::= monitor.Mutex
+  size/int ::= ?
+  can-receive_/bool ::= ?
+  can-transmit_/bool ::= ?
+
+  /**
+  Constructs an autonomous buffer-backed SPI target.
+
+  $buffer-size is the maximum size of one controller transaction and must not
+    exceed $DEFAULT-TARGET-MAX-TRANSFER-SIZE. $transmit is copied to the start
+    of the native response buffer; remaining bytes are initialized to
+    $fill-byte.
+
+  $receive-queue-depth is the number of complete MOSI transactions retained
+    until $receive consumes them. Further transactions are still answered and
+    re-arm the peripheral, but their received data is discarded and counted by
+    $dropped-receive-count.
+
+  Pin, mode, bit-order, DMA, and classic ESP32 restrictions are the same as for
+    $Target.
+  */
+  constructor
+      transmit/ByteArray=#[ ]
+      --mosi/int?=null
+      --miso/int?=null
+      --clock/int
+      --cs/int
+      --mode/int=0
+      --transmit-lsb-first/bool=false
+      --receive-lsb-first/bool=false
+      --buffer-size/int=TARGET-NON-DMA-MAX-TRANSFER-SIZE
+      --receive-queue-depth/int=4
+      --fill-byte/int=0xff
+      --dma/bool=true:
+    if not 0 <= mode <= 3: throw "INVALID_ARGUMENT"
+    if not mosi and not miso: throw "INVALID_ARGUMENT"
+    if buffer-size <= 0 or buffer-size > DEFAULT-TARGET-MAX-TRANSFER-SIZE:
+      throw "INVALID_ARGUMENT"
+    if transmit.size > buffer-size: throw "INVALID_ARGUMENT"
+    if receive-queue-depth <= 0: throw "INVALID_ARGUMENT"
+    if not 0 <= fill-byte <= 0xff: throw "OUT_OF_RANGE"
+    if not dma and buffer-size > TARGET-NON-DMA-MAX-TRANSFER-SIZE:
+      throw "INVALID_ARGUMENT"
+    if dma
+        and mosi
+        and system.architecture == system.ARCHITECTURE-ESP32:
+      if miso or (mode & 1) != 0: throw "INVALID_ARGUMENT"
+
+    response := ByteArray buffer-size
+    response.fill fill-byte
+    response.replace 0 transmit
+
+    size = buffer-size
+    can-receive_ = mosi != null
+    can-transmit_ = miso != null
+    resource := spi-buffer-target-create_
+        spi-target-resource-group_
+        (mosi or -1)
+        (miso or -1)
+        clock
+        cs
+        mode
+        transmit-lsb-first
+        receive-lsb-first
+        receive-queue-depth
+        response
+        dma
+    resource_ = resource
+    state/monitor.ResourceState_? := null
+    finalizer-added := false
+    initialized := false
+    try:
+      state = monitor.ResourceState_ spi-target-resource-group_ resource
+      state_ = state
+      add-finalizer this:: close
+      finalizer-added = true
+      spi-buffer-target-arm_ resource
+      critical-do --no-respect-deadline:
+        state.wait-for-state ARMED-STATE_
+      initialized = true
+    finally:
+      if not initialized:
+        if state: state.dispose
+        spi-buffer-target-close_ spi-target-resource-group_ resource false
+        resource_ = null
+        if finalizer-added: remove-finalizer this
+
+  /** Returns the response byte stored at $index. */
+  operator [] index/int -> int:
+    if not resource_: throw "CLOSED"
+    if not can-transmit_: throw "INVALID_STATE"
+    return spi-buffer-target-get_ resource_ index
+
+  /**
+  Stores $value in the response buffer and returns it.
+
+  See the class documentation for when the update becomes visible on MISO.
+  */
+  operator []= index/int value/int -> int:
+    if not resource_: throw "CLOSED"
+    if not can-transmit_: throw "INVALID_STATE"
+    return spi-buffer-target-set_ resource_ index value
+
+  /** Returns $count response bytes starting at $index. */
+  read index/int count/int -> ByteArray:
+    if not resource_: throw "CLOSED"
+    if not can-transmit_: throw "INVALID_STATE"
+    if count < 0: throw "OUT_OF_BOUNDS"
+    result := ByteArray count
+    spi-buffer-target-read_ resource_ index result
+    return result
+
+  /**
+  Writes $bytes into the response buffer starting at $index.
+
+  See the class documentation for when the update becomes visible on MISO.
+  */
+  write index/int bytes/ByteArray -> none:
+    if not resource_: throw "CLOSED"
+    if not can-transmit_: throw "INVALID_STATE"
+    spi-buffer-target-write_ resource_ index bytes
+
+  /**
+  Waits for and returns the next complete MOSI transaction.
+
+  If the controller released CS before $size bytes, the returned array is
+    correspondingly shorter.
+  */
+  receive -> ByteArray:
+    if not can-receive_: throw "INVALID_STATE"
+    result := ByteArray size
+    return receive-mutex_.do:
+      while true:
+        if not resource_: throw "CLOSED"
+        received := spi-buffer-target-receive_ resource_ result
+        if received >= 0:
+          return received == result.size ? result : result.copy 0 received
+
+        state_.clear-state RECEIVED-STATE_
+        // Close the race between finding the queue empty and clearing the
+        // state bit. A callback after this second check wakes the wait below.
+        received = spi-buffer-target-receive_ resource_ result
+        if received >= 0:
+          return received == result.size ? result : result.copy 0 received
+        state_.wait-for-state RECEIVED-STATE_
+
+  /** Number of complete MOSI transactions discarded because the queue was full. */
+  dropped-receive-count -> int:
+    if not resource_: throw "CLOSED"
+    return spi-buffer-target-dropped-receive-count_ resource_
+
+  /** Stops the target and releases its peripheral, pins, and native buffers. */
+  close -> none:
+    close-mutex_.do:
+      if not resource_: return
+      critical-do --no-respect-deadline:
+        wait-for-callback := spi-buffer-target-close_ spi-target-resource-group_ resource_ true
+        if wait-for-callback: state_.wait-for-state STOPPED-STATE_
+        state_.dispose
+        spi-buffer-target-close_ spi-target-resource-group_ resource_ false
+        resource_ = null
+        remove-finalizer this
+
+/**
 Bus for communicating using SPI.
 
 An SPI bus is constructed with 3 main wires for data transmission and a clock.
@@ -736,6 +944,44 @@ spi-target-transfer-start_
 
 spi-target-transfer-finish_ target receive-buffer/ByteArray abort/bool:
   #primitive.spi.target-transfer-finish
+
+spi-buffer-target-create_
+    group
+    mosi/int
+    miso/int
+    clock/int
+    cs/int
+    mode/int
+    transmit-lsb-first/bool
+    receive-lsb-first/bool
+    receive-queue-depth/int
+    response/ByteArray
+    dma/bool:
+  #primitive.spi.buffer-target-create
+
+spi-buffer-target-arm_ target:
+  #primitive.spi.buffer-target-arm
+
+spi-buffer-target-close_ group target abort/bool:
+  #primitive.spi.buffer-target-close
+
+spi-buffer-target-get_ target index/int:
+  #primitive.spi.buffer-target-get
+
+spi-buffer-target-set_ target index/int value/int:
+  #primitive.spi.buffer-target-set
+
+spi-buffer-target-read_ target index/int result/ByteArray:
+  #primitive.spi.buffer-target-read
+
+spi-buffer-target-write_ target index/int bytes/ByteArray:
+  #primitive.spi.buffer-target-write
+
+spi-buffer-target-receive_ target result/ByteArray:
+  #primitive.spi.buffer-target-receive
+
+spi-buffer-target-dropped-receive-count_ target:
+  #primitive.spi.buffer-target-dropped-receive-count
 
 spi-close_ spi:
   #primitive.spi.close

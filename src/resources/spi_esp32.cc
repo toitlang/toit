@@ -54,6 +54,10 @@ static ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
 
 const word kSpiTargetReadyState = 1 << 0;
 const word kSpiTargetDoneState = 1 << 1;
+const size_t kSpiBufferTargetMaxTransferSize = 4092;
+const word kSpiBufferTargetReceivedState = 1 << 2;
+const word kSpiBufferTargetStoppedState = 1 << 3;
+const word kSpiBufferTargetArmedState = 1 << 4;
 
 static size_t spi_dma_buffer_alignment(bool dma) {
   if (!dma) return 4;
@@ -153,6 +157,79 @@ class SpiTargetResource : public EventQueueResource {
   GpioPins owned_pins_;
 };
 
+class SpiBufferTargetResource : public EventQueueResource {
+ public:
+  TAG(SpiBufferTargetResource);
+
+  SpiBufferTargetResource(SpiTargetResourceGroup* group,
+                          spi_host_device_t host_device,
+                          QueueHandle_t event_queue,
+                          uint8_t* response_buffer,
+                          uint8_t* receive_storage,
+                          uint32_t* receive_indices,
+                          uint32_t* receive_lengths,
+                          uint32_t* free_receive_indices,
+                          size_t buffer_size,
+                          size_t driver_buffer_size,
+                          uint32_t receive_queue_depth,
+                          bool dma);
+  ~SpiBufferTargetResource() override;
+
+  spi_host_device_t host_device() const { return host_device_; }
+  spi_slave_transaction_t* transaction() { return &transaction_; }
+  GpioPins& owned_pins() { return owned_pins_; }
+
+  void set_initialized() { initialized_ = true; }
+  bool can_receive() const { return receive_storage_ != null; }
+  bool can_transmit() const { return response_buffer_ != null; }
+  size_t buffer_size() const { return buffer_size_; }
+
+  int get_response(uint32_t index) const;
+  void set_response(uint32_t index, uint8_t value);
+  void read_response(uint32_t index, uint8_t* destination, uint32_t length) const;
+  void write_response(uint32_t index, const uint8_t* source, uint32_t length);
+
+  // Returns the received byte count, -1 when the queue is empty, and -2 when
+  // the native transaction could not be re-armed.
+  int take_receive(uint8_t* destination);
+  word dropped_receive_count() const;
+  // Returns whether a completion callback will report the stopped state.
+  bool request_abort();
+
+  SPI_TARGET_ISR_ATTR void armed_from_isr();
+  SPI_TARGET_ISR_ATTR void complete_from_isr();
+
+  bool receive_event(word* data) override;
+
+ private:
+  SPI_TARGET_ISR_ATTR void signal_from_isr(word event);
+
+  spi_host_device_t host_device_;
+  uint8_t* response_buffer_;
+  uint8_t* receive_storage_;
+  uint32_t* receive_indices_;
+  uint32_t* receive_lengths_;
+  uint32_t* free_receive_indices_;
+  const size_t buffer_size_;
+  const size_t driver_buffer_size_;
+  const uint32_t receive_queue_depth_;
+  const bool dma_;
+  bool initialized_ = false;
+  spi_slave_transaction_t transaction_ = {};
+  mutable spinlock_t spinlock_;
+  uint32_t receive_head_ = 0;
+  uint32_t receive_count_ = 0;
+  uint32_t free_receive_count_ = 0;
+  uint32_t active_receive_index_ = 0;
+  word dropped_receive_count_ = 0;
+  bool response_dirty_ = false;
+  bool requeue_failed_ = false;
+  bool stopping_ = false;
+  bool initially_armed_ = false;
+  word pending_event_ = 0;
+  GpioPins owned_pins_;
+};
+
 SpiResourceGroup::SpiResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device)
     : ResourceGroup(process, event_source)
     , host_device_(host_device) {}
@@ -230,6 +307,265 @@ void SpiTargetResource::finish_operation() {
   operation_in_flight_ = false;
 }
 
+SpiBufferTargetResource::SpiBufferTargetResource(
+    SpiTargetResourceGroup* group,
+    spi_host_device_t host_device,
+    QueueHandle_t event_queue,
+    uint8_t* response_buffer,
+    uint8_t* receive_storage,
+    uint32_t* receive_indices,
+    uint32_t* receive_lengths,
+    uint32_t* free_receive_indices,
+    size_t buffer_size,
+    size_t driver_buffer_size,
+    uint32_t receive_queue_depth,
+    bool dma)
+    : EventQueueResource(group, event_queue)
+    , host_device_(host_device)
+    , response_buffer_(response_buffer)
+    , receive_storage_(receive_storage)
+    , receive_indices_(receive_indices)
+    , receive_lengths_(receive_lengths)
+    , free_receive_indices_(free_receive_indices)
+    , buffer_size_(buffer_size)
+    , driver_buffer_size_(driver_buffer_size)
+    , receive_queue_depth_(receive_queue_depth)
+    , dma_(dma) {
+  spinlock_initialize(&spinlock_);
+  if (receive_storage_ != null) {
+    free_receive_count_ = receive_queue_depth_;
+    for (uint32_t i = 0; i < receive_queue_depth_; i++) {
+      free_receive_indices_[i] = i + 1;
+    }
+  }
+  transaction_ = {
+    .flags = 0,
+    .length = driver_buffer_size * 8,
+    .trans_len = 0,
+    .tx_buffer = response_buffer,
+    .rx_buffer = receive_storage,
+    .user = this,
+  };
+}
+
+SpiBufferTargetResource::~SpiBufferTargetResource() {
+  if (initialized_) {
+    // Normal close has already retired the continuously armed descriptor.
+    // Process teardown can arrive first, so drive the same asynchronous abort
+    // to completion before releasing buffers referenced by the ISR.
+    if (!stopping_) (void) request_abort();
+    while (true) {
+      esp_err_t free_error = spi_slave_free(host_device_);
+      if (free_error == ESP_OK) break;
+      if (free_error != ESP_ERR_INVALID_STATE) {
+        FATAL_IF_NOT_ESP_OK(free_error);
+      }
+      esp_err_t abort_error = spi_slave_abort_transaction(
+          host_device_, transaction());
+      if (abort_error != ESP_OK && abort_error != ESP_ERR_INVALID_STATE) {
+        FATAL_IF_NOT_ESP_OK(abort_error);
+      }
+      vTaskDelay(1);
+    }
+  }
+  free(response_buffer_);
+  free(receive_storage_);
+  free(receive_indices_);
+  free(receive_lengths_);
+  free(free_receive_indices_);
+  vQueueDeleteWithCaps(queue());
+  spi_host_devices.put(host_device_);
+  owned_pins_.release();
+}
+
+int SpiBufferTargetResource::get_response(uint32_t index) const {
+  portENTER_CRITICAL(&spinlock_);
+  int result = response_buffer_[index];
+  portEXIT_CRITICAL(&spinlock_);
+  return result;
+}
+
+void SpiBufferTargetResource::set_response(uint32_t index, uint8_t value) {
+  portENTER_CRITICAL(&spinlock_);
+  response_buffer_[index] = value;
+  response_dirty_ = true;
+  portEXIT_CRITICAL(&spinlock_);
+}
+
+void SpiBufferTargetResource::read_response(
+    uint32_t index, uint8_t* destination, uint32_t length) const {
+  for (uint32_t i = 0; i < length; i++) {
+    portENTER_CRITICAL(&spinlock_);
+    destination[i] = response_buffer_[index + i];
+    portEXIT_CRITICAL(&spinlock_);
+  }
+}
+
+void SpiBufferTargetResource::write_response(
+    uint32_t index, const uint8_t* source, uint32_t length) {
+  for (uint32_t i = 0; i < length; i++) {
+    portENTER_CRITICAL(&spinlock_);
+    response_buffer_[index + i] = source[i];
+    response_dirty_ = true;
+    portEXIT_CRITICAL(&spinlock_);
+  }
+}
+
+int SpiBufferTargetResource::take_receive(uint8_t* destination) {
+  portENTER_CRITICAL(&spinlock_);
+  if (receive_count_ == 0) {
+    int result = requeue_failed_ ? -2 : -1;
+    portEXIT_CRITICAL(&spinlock_);
+    return result;
+  }
+  uint32_t queue_index = receive_head_;
+  uint32_t buffer_index = receive_indices_[queue_index];
+  uint32_t length = receive_lengths_[queue_index];
+  // Keep the slot counted while copying so the ISR cannot reuse it. This can
+  // temporarily make a full queue drop one more transaction, but avoids
+  // disabling interrupts for a potentially large managed-memory copy.
+  portEXIT_CRITICAL(&spinlock_);
+  memcpy(destination,
+         receive_storage_ + buffer_index * driver_buffer_size_,
+         length);
+
+  portENTER_CRITICAL(&spinlock_);
+  ASSERT(free_receive_count_ < receive_queue_depth_);
+  free_receive_indices_[free_receive_count_++] = buffer_index;
+  receive_head_++;
+  if (receive_head_ == receive_queue_depth_) receive_head_ = 0;
+  receive_count_--;
+  portEXIT_CRITICAL(&spinlock_);
+  return length;
+}
+
+word SpiBufferTargetResource::dropped_receive_count() const {
+  portENTER_CRITICAL(&spinlock_);
+  word result = dropped_receive_count_;
+  portEXIT_CRITICAL(&spinlock_);
+  return result;
+}
+
+bool SpiBufferTargetResource::request_abort() {
+  portENTER_CRITICAL(&spinlock_);
+  ASSERT(!stopping_);
+  stopping_ = true;
+  portEXIT_CRITICAL(&spinlock_);
+
+  esp_err_t err = spi_slave_abort_transaction(host_device_, &transaction_);
+  // ESP_ERR_INVALID_STATE means that natural completion won the race. The
+  // callback observes stopping_ and signals kSpiBufferTargetStoppedState
+  // without re-arming the descriptor.
+  if (err == ESP_ERR_INVALID_STATE) return false;
+  FATAL_IF_NOT_ESP_OK(err);
+  return true;
+}
+
+void SpiBufferTargetResource::armed_from_isr() {
+  portENTER_CRITICAL_ISR(&spinlock_);
+  bool signal = !initially_armed_;
+  initially_armed_ = true;
+  portEXIT_CRITICAL_ISR(&spinlock_);
+  if (signal) signal_from_isr(kSpiBufferTargetArmedState);
+}
+
+void SpiBufferTargetResource::complete_from_isr() {
+  size_t received = (transaction_.trans_len + 7) / 8;
+  if (received > buffer_size_) received = buffer_size_;
+#if CONFIG_IDF_TARGET_ESP32
+  // Classic ESP32 target DMA only commits complete words to its receive
+  // buffer. ESP-IDF documents that a controller's trailing bytes are
+  // discarded when its transaction length is not a multiple of four.
+  if (dma_) received &= ~static_cast<size_t>(3);
+#endif
+  bool enqueued = false;
+  bool failed = false;
+#if SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
+  bool sync_response = false;
+#endif
+
+  portENTER_CRITICAL_ISR(&spinlock_);
+  if (stopping_) {
+    portEXIT_CRITICAL_ISR(&spinlock_);
+    signal_from_isr(kSpiBufferTargetStoppedState);
+    return;
+  }
+  // A floating or newly configured CS line can produce an interrupt without
+  // any clock edges. It carries no transaction data, so don't consume receive
+  // queue capacity or wake a receiver for it.
+  if (receive_storage_ != null && received != 0) {
+    if (free_receive_count_ != 0) {
+      uint32_t queue_index = receive_head_ + receive_count_;
+      if (queue_index >= receive_queue_depth_) queue_index -= receive_queue_depth_;
+      receive_indices_[queue_index] = active_receive_index_;
+      receive_lengths_[queue_index] = received;
+      active_receive_index_ = free_receive_indices_[--free_receive_count_];
+      transaction_.rx_buffer =
+          receive_storage_ + active_receive_index_ * driver_buffer_size_;
+      receive_count_++;
+      enqueued = true;
+    } else if (dropped_receive_count_ != Smi::MAX_SMI_VALUE) {
+      dropped_receive_count_++;
+    }
+  }
+#if SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
+  sync_response = response_dirty_;
+  response_dirty_ = false;
+#endif
+  portEXIT_CRITICAL_ISR(&spinlock_);
+
+#if SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
+  // The response is already DMA-readable until Toit changes it. Avoid an
+  // unconditional full-buffer cache writeback on every transaction.
+  if (sync_response && dma_ && response_buffer_ != null) {
+    esp_err_t err = esp_cache_msync(
+        response_buffer_, driver_buffer_size_, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+    if (err != ESP_OK) failed = true;
+  }
+#endif
+
+  portENTER_CRITICAL_ISR(&spinlock_);
+  if (stopping_) {
+    portEXIT_CRITICAL_ISR(&spinlock_);
+    signal_from_isr(kSpiBufferTargetStoppedState);
+    return;
+  }
+  transaction_.trans_len = 0;
+  if (!failed) {
+    esp_err_t err = spi_slave_queue_trans_isr(host_device_, &transaction_);
+    if (err != ESP_OK) failed = true;
+  }
+  if (failed) {
+    requeue_failed_ = true;
+  }
+  // Keep the decision to re-arm atomic with request_abort. If close sets
+  // stopping_ first, this callback does not re-arm. If this callback wins, it
+  // queues the descriptor before close can ask ESP-IDF to abort it.
+  portEXIT_CRITICAL_ISR(&spinlock_);
+
+  if (enqueued || failed) signal_from_isr(kSpiBufferTargetReceivedState);
+}
+
+bool SpiBufferTargetResource::receive_event(word* data) {
+  word unused;
+  if (xQueueReceive(queue(), &unused, 0) != pdTRUE) return false;
+  portENTER_CRITICAL(&spinlock_);
+  *data = pending_event_;
+  pending_event_ = 0;
+  portEXIT_CRITICAL(&spinlock_);
+  return true;
+}
+
+void SpiBufferTargetResource::signal_from_isr(word event) {
+  BaseType_t higher_was_woken = pdFALSE;
+  portENTER_CRITICAL_ISR(&spinlock_);
+  pending_event_ |= event;
+  portEXIT_CRITICAL_ISR(&spinlock_);
+  word payload = 0;
+  xQueueSendFromISR(queue(), &payload, &higher_was_woken);
+  if (higher_was_woken == pdTRUE) portYIELD_FROM_ISR();
+}
+
 MODULE_IMPLEMENTATION(spi, MODULE_SPI);
 
 PRIMITIVE(init) {
@@ -274,7 +610,11 @@ PRIMITIVE(init) {
   conf.quadhd_io_num = -1;
   conf.max_transfer_sz = 0;
   conf.flags = 0;
+#if CONFIG_SPI_MASTER_ISR_IN_IRAM
   conf.intr_flags = ESP_INTR_FLAG_IRAM;
+#else
+  conf.intr_flags = 0;
+#endif
   CAPTURE2(spi_host_device_t, host_device, spi_bus_config_t, conf);
   esp_err_t err = ESP_OK;
   SystemEventSource::instance()->run([&]() -> void {
@@ -417,7 +757,16 @@ PRIMITIVE(target_create) {
     .post_trans_cb = spi_target_done_callback,
   };
 
-  esp_err_t err = spi_slave_initialize(
+  // CS is active low. Keep it inactive while the peer has not configured its
+  // controller pin yet; otherwise a floating edge can complete the first
+  // descriptor before any clocks have been received. Some peripherals retain
+  // the previous bit count for such a no-clock completion, so filtering only
+  // on trans_len is not sufficient.
+  esp_err_t err = gpio_set_pull_mode(
+      static_cast<gpio_num_t>(cs_num), GPIO_PULLUP_ONLY);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
+  err = spi_slave_initialize(
       host_device,
       &bus_config,
       &target_config,
@@ -449,6 +798,278 @@ static uint8_t* allocate_dma_buffer(size_t size, size_t alignment) {
       alignment,
       allocation_size,
       MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT));
+}
+
+SPI_TARGET_ISR_ATTR static void spi_buffer_target_done_callback(
+    spi_slave_transaction_t* transaction) {
+  auto resource = static_cast<SpiBufferTargetResource*>(transaction->user);
+  resource->complete_from_isr();
+}
+
+SPI_TARGET_ISR_ATTR static void spi_buffer_target_armed_callback(
+    spi_slave_transaction_t* transaction) {
+  auto resource = static_cast<SpiBufferTargetResource*>(transaction->user);
+  resource->armed_from_isr();
+}
+
+PRIMITIVE(buffer_target_create) {
+  ARGS(SpiTargetResourceGroup, group,
+       int, mosi,
+       int, miso,
+       int, clock,
+       int, cs,
+       int, mode,
+       bool, transmit_lsb_first,
+       bool, receive_lsb_first,
+       uint32, receive_queue_depth,
+       Blob, response,
+       bool, dma);
+
+  size_t buffer_size = response.length();
+  if (mode < 0 || mode > 3 || buffer_size == 0 ||
+      buffer_size > kSpiBufferTargetMaxTransferSize ||
+      receive_queue_depth == 0) {
+    FAIL(INVALID_ARGUMENT);
+  }
+  if (!dma && buffer_size > SOC_SPI_MAXIMUM_BUFFER_SIZE) FAIL(INVALID_ARGUMENT);
+
+  size_t buffer_alignment = spi_dma_buffer_alignment(dma);
+  ASSERT(Utils::is_power_of_two(buffer_alignment));
+  size_t driver_buffer_size =
+      (buffer_size + buffer_alignment - 1) & ~(buffer_alignment - 1);
+  if (driver_buffer_size < buffer_size || driver_buffer_size > INT_MAX) {
+    FAIL(INVALID_ARGUMENT);
+  }
+  if (receive_queue_depth == UINT32_MAX) FAIL(INVALID_ARGUMENT);
+  size_t receive_buffer_count = static_cast<size_t>(receive_queue_depth) + 1;
+  if (driver_buffer_size > SIZE_MAX / receive_buffer_count) FAIL(INVALID_ARGUMENT);
+  size_t receive_storage_size = driver_buffer_size * receive_buffer_count;
+  if (receive_queue_depth > SIZE_MAX / sizeof(uint32_t)) FAIL(INVALID_ARGUMENT);
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  GpioPinReserver reserver;
+  bool reserve_ok = true;
+  if (mosi < -1 || miso < -1 || clock < 0 || cs < 0) FAIL(INVALID_ARGUMENT);
+  int mosi_num = reserver.decode_and_take(mosi, &reserve_ok);
+  int miso_num = reserver.decode_and_take(miso, &reserve_ok);
+  int clock_num = reserver.decode_and_take(clock, &reserve_ok);
+  int cs_num = reserver.decode_and_take(cs, &reserve_ok);
+  if (!reserve_ok) FAIL(ALREADY_IN_USE);
+  if (clock_num < 0 || cs_num < 0) FAIL(INVALID_ARGUMENT);
+  if (mosi_num < 0 && miso_num < 0) FAIL(INVALID_ARGUMENT);
+#if CONFIG_IDF_TARGET_ESP32
+  if (dma && mosi_num >= 0 && (miso_num >= 0 || (mode & 1) != 0)) {
+    FAIL(INVALID_ARGUMENT);
+  }
+#endif
+
+  spi_host_device_t host_device = spi_host_devices.any();
+  if (host_device == kInvalidHostDevice) FAIL(ALREADY_IN_USE);
+  bool host_owned = true;
+  Defer release_host { [&] {
+    if (host_owned) spi_host_devices.put(host_device);
+  } };
+
+  uint8_t* response_buffer = miso_num < 0
+      ? null
+      : allocate_dma_buffer(driver_buffer_size, buffer_alignment);
+  if (miso_num >= 0 && response_buffer == null) FAIL(MALLOC_FAILED);
+  Defer free_response { [&] { if (host_owned) free(response_buffer); } };
+  if (response_buffer != null) {
+    memcpy(response_buffer, response.address(), buffer_size);
+    memset(response_buffer + buffer_size, 0xff, driver_buffer_size - buffer_size);
+  }
+
+  // One buffer is mounted for the next transaction. The remaining buffers are
+  // either free or hold completed transactions until Toit consumes them. The
+  // completion callback rotates pointers instead of copying up to 4092 bytes
+  // while the peripheral is unarmed.
+  uint8_t* receive_storage = mosi_num < 0
+      ? null
+      : allocate_dma_buffer(receive_storage_size, buffer_alignment);
+  if (mosi_num >= 0 && receive_storage == null) FAIL(MALLOC_FAILED);
+  Defer free_receive_storage { [&] { if (host_owned) free(receive_storage); } };
+#if SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
+  if (dma && receive_storage != null) {
+    // Only the initially mounted buffer passes through
+    // spi_slave_setup_priv_trans. The other aligned slices are first queued
+    // from the completion ISR, so invalidate the complete storage now before
+    // DMA can ever own one of them. Toit only reads the slices afterwards and
+    // therefore does not make them dirty before they are reused.
+    esp_err_t sync_error = esp_cache_msync(
+        receive_storage,
+        receive_storage_size,
+        ESP_CACHE_MSYNC_FLAG_DIR_M2C);
+    if (sync_error != ESP_OK) return Primitive::os_error(sync_error, process);
+  }
+#endif
+
+  uint32_t* receive_indices = mosi_num < 0
+      ? null
+      : static_cast<uint32_t*>(heap_caps_malloc(
+          receive_queue_depth * sizeof(uint32_t),
+          MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  if (mosi_num >= 0 && receive_indices == null) FAIL(MALLOC_FAILED);
+  Defer free_indices { [&] { if (host_owned) free(receive_indices); } };
+
+  uint32_t* receive_lengths = mosi_num < 0
+      ? null
+      : static_cast<uint32_t*>(heap_caps_calloc(
+          receive_queue_depth,
+          sizeof(uint32_t),
+          MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  if (mosi_num >= 0 && receive_lengths == null) FAIL(MALLOC_FAILED);
+  Defer free_lengths { [&] { if (host_owned) free(receive_lengths); } };
+
+  uint32_t* free_receive_indices = mosi_num < 0
+      ? null
+      : static_cast<uint32_t*>(heap_caps_malloc(
+          receive_queue_depth * sizeof(uint32_t),
+          MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  if (mosi_num >= 0 && free_receive_indices == null) FAIL(MALLOC_FAILED);
+  Defer free_free_indices { [&] {
+    if (host_owned) free(free_receive_indices);
+  } };
+
+  QueueHandle_t event_queue = xQueueCreateWithCaps(
+      1, sizeof(word), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  if (event_queue == null) FAIL(MALLOC_FAILED);
+  Defer delete_queue { [&] { if (host_owned) vQueueDeleteWithCaps(event_queue); } };
+
+  auto resource = _new SpiBufferTargetResource(
+      group,
+      host_device,
+      event_queue,
+      response_buffer,
+      receive_storage,
+      receive_indices,
+      receive_lengths,
+      free_receive_indices,
+      buffer_size,
+      driver_buffer_size,
+      receive_queue_depth,
+      dma);
+  if (resource == null) FAIL(MALLOC_FAILED);
+  host_owned = false;
+  bool registered = false;
+  Defer delete_resource { [&] { if (!registered) delete resource; } };
+
+  spi_bus_config_t bus_config = {};
+  bus_config.mosi_io_num = mosi_num;
+  bus_config.miso_io_num = miso_num;
+  bus_config.sclk_io_num = clock_num;
+  bus_config.quadwp_io_num = -1;
+  bus_config.quadhd_io_num = -1;
+  bus_config.max_transfer_sz = driver_buffer_size;
+  bus_config.flags = 0;
+#if CONFIG_SPI_SLAVE_ISR_IN_IRAM
+  bus_config.intr_flags = ESP_INTR_FLAG_IRAM;
+#else
+  bus_config.intr_flags = 0;
+#endif
+
+  uint32_t flags = SPI_SLAVE_NO_RETURN_RESULT;
+  if (transmit_lsb_first) flags |= SPI_SLAVE_TXBIT_LSBFIRST;
+  if (receive_lsb_first) flags |= SPI_SLAVE_RXBIT_LSBFIRST;
+  spi_slave_interface_config_t target_config = {
+    .spics_io_num = cs_num,
+    .flags = flags,
+    .queue_size = 1,
+    .mode = static_cast<uint8_t>(mode),
+    .post_setup_cb = spi_buffer_target_armed_callback,
+    .post_trans_cb = spi_buffer_target_done_callback,
+  };
+
+  // The buffer target is armed continuously, including before its peer has
+  // configured CS as an output. Hold the active-low line at its idle level so
+  // a floating edge cannot produce a duplicate of the previous transaction.
+  esp_err_t err = gpio_set_pull_mode(
+      static_cast<gpio_num_t>(cs_num), GPIO_PULLUP_ONLY);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
+  err = spi_slave_initialize(
+      host_device,
+      &bus_config,
+      &target_config,
+      dma ? SPI_DMA_CH_AUTO : SPI_DMA_DISABLED);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  resource->set_initialized();
+
+  resource->owned_pins().adopt(reserver);
+  reserver.keep();
+  group->register_resource(resource);
+  proxy->set_external_address(resource);
+  registered = true;
+  return proxy;
+}
+
+PRIMITIVE(buffer_target_arm) {
+  ARGS(SpiBufferTargetResource, target);
+  esp_err_t err = spi_slave_queue_trans(
+      target->host_device(), target->transaction(), 0);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  return process->null_object();
+}
+
+PRIMITIVE(buffer_target_close) {
+  ARGS(SpiTargetResourceGroup, group, SpiBufferTargetResource, target, bool, abort);
+  if (abort) {
+    return target->request_abort()
+        ? process->true_object()
+        : process->false_object();
+  }
+  group->unregister_resource(target);
+  target_proxy->clear_external_address();
+  return process->null_object();
+}
+
+PRIMITIVE(buffer_target_get) {
+  ARGS(SpiBufferTargetResource, target, uint32, index);
+  if (!target->can_transmit()) FAIL(INVALID_STATE);
+  if (index >= target->buffer_size()) FAIL(OUT_OF_BOUNDS);
+  return Smi::from(target->get_response(index));
+}
+
+PRIMITIVE(buffer_target_set) {
+  ARGS(SpiBufferTargetResource, target, uint32, index, uint8, value);
+  if (!target->can_transmit()) FAIL(INVALID_STATE);
+  if (index >= target->buffer_size()) FAIL(OUT_OF_BOUNDS);
+  target->set_response(index, value);
+  return Smi::from(value);
+}
+
+PRIMITIVE(buffer_target_read) {
+  ARGS(SpiBufferTargetResource, target, uint32, index, MutableBlob, result);
+  if (!target->can_transmit()) FAIL(INVALID_STATE);
+  if (index > target->buffer_size() ||
+      result.length() > target->buffer_size() - index) FAIL(OUT_OF_BOUNDS);
+  target->read_response(index, result.address(), result.length());
+  return process->null_object();
+}
+
+PRIMITIVE(buffer_target_write) {
+  ARGS(SpiBufferTargetResource, target, uint32, index, Blob, bytes);
+  if (!target->can_transmit()) FAIL(INVALID_STATE);
+  if (index > target->buffer_size() ||
+      bytes.length() > target->buffer_size() - index) FAIL(OUT_OF_BOUNDS);
+  target->write_response(index, bytes.address(), bytes.length());
+  return process->null_object();
+}
+
+PRIMITIVE(buffer_target_receive) {
+  ARGS(SpiBufferTargetResource, target, MutableBlob, result);
+  if (!target->can_receive()) FAIL(INVALID_STATE);
+  if (result.length() < target->buffer_size()) FAIL(OUT_OF_BOUNDS);
+  int received = target->take_receive(result.address());
+  if (received == -2) FAIL(INVALID_STATE);
+  return Smi::from(received);
+}
+
+PRIMITIVE(buffer_target_dropped_receive_count) {
+  ARGS(SpiBufferTargetResource, target);
+  return Smi::from(target->dropped_receive_count());
 }
 
 PRIMITIVE(target_transfer_start) {
