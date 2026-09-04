@@ -52,6 +52,10 @@ DEFAULT-FREQUENCY ::= 400_000
 /** Default native buffer size for an I2C target. */
 DEFAULT-TARGET-BUFFER-SIZE ::= 256
 
+CONTROLLER-RESULT-OK_ ::= 0
+CONTROLLER-RESULT-NACK_ ::= 1
+CONTROLLER-RESULT-TIMEOUT_ ::= 2
+
 /**
 An addressable I2C target.
 
@@ -331,10 +335,14 @@ class RegisterTarget:
 /**
 Bus for communicating using I2C.
 
-The communication is synchronous.
+Controller operations from multiple tasks are serialized on this bus.
 */
 class Bus:
+  static CONTROLLER-DONE-STATE_ ::= 1 << 0
+
   resource_ := ?
+  state_/ResourceState_ ::= ?
+  mutex_/Mutex ::= Mutex
   devices_ := {:}
   frequency_/int
 
@@ -403,7 +411,31 @@ class Bus:
       --pull-up/bool=false:
     frequency_ = frequency
     resource_ = i2c-bus-create_ resource-group_ (gpio.to-pin-num_ sda) (gpio.to-pin-num_ scl) pull-up
+    state_ = ResourceState_ resource-group_ resource_
     add-finalizer this:: close
+
+  perform-controller-operation_ [start] [finish]:
+    return mutex_.do:
+      if not resource_: throw "CLOSED"
+      result := null
+      finished := false
+      try:
+        state_.clear-state CONTROLLER-DONE-STATE_
+        start.call
+        state_.wait-for-state CONTROLLER-DONE-STATE_
+        result = finish.call
+        finished = true
+      finally:
+        if not finished:
+          critical-do --no-respect-deadline:
+            // This is a no-op if start failed or finish already released the
+            // operation. Otherwise it synchronously retires the native
+            // transaction before releasing its buffers.
+            i2c-bus-abort-controller-operation_ resource_
+            // A completion that raced with the deadline must not satisfy the
+            // next controller operation.
+            state_.clear-state CONTROLLER-DONE-STATE_
+      return result
 
   /**
   Scans all valid addresses.
@@ -413,23 +445,32 @@ class Bus:
   Some addresses are reserved and are not scanned. See
     https://www.i2c-bus.org/addressing/.
 
+  Probes use the standard-mode 100kHz clock rate.
+
   Waits at most $timeout-ms for a response on each address. If the bus is very
     slow, increase the timeout.
   */
   scan --timeout-ms/int=100 -> Set:
+    if timeout-ms <= 0: throw "INVALID_ARGUMENT"
     result := {}
     for i := 0x08; i < 0x78; i++:
-      if test i: result.add i
+      if test i --timeout-ms=timeout-ms: result.add i
     return result
 
   /**
   Tests if the $address responds.
 
+  The probe uses the standard-mode 100kHz clock rate.
+
   Waits at most $timeout-ms for a response. If the bus is very slow, increase
     the timeout.
   */
   test address --timeout-ms/int=100 -> bool:
-    return i2c-bus-probe_ resource_ address timeout-ms
+    if not 0 <= address <= 0x7f: throw "INVALID_ARGUMENT"
+    if timeout-ms <= 0: throw "INVALID_ARGUMENT"
+    return perform-controller-operation_
+        (: i2c-bus-probe_ resource_ address timeout-ms)
+        (: i2c-bus-probe-finish_ resource_)
 
   /**
   Closes this I2C bus.
@@ -437,37 +478,60 @@ class Bus:
   Releases the resources associated with this bus.
   */
   close -> none:
-    if not resource_: return
-    devices_.values.do: it.close
-    devices_.clear
-    i2c-bus-close_ resource_
-    resource_ = null
+    mutex_.do:
+      critical-do:
+        if not resource_: return
+        devices := devices_.values
+        devices.do: it.close-native_
+        devices_.clear
+        state_.dispose
+        i2c-bus-close_ resource_
+        resource_ = null
+        remove-finalizer this
 
   /**
   Creates the device connected on the $i2c-address.
 
   $address-size selects a 7-bit or 10-bit address.
 
+  $timeout-us is the maximum SCL clock-stretching interval tolerated by the
+    controller. If $disable-ack-check is true, missing acknowledgements do not
+    fail write transactions.
+
   It is an error to connect a device on an address already in use.
     A device can be released with $Device.close.
   */
-  device i2c-address/int --frequency/int --address-size/int=7 -> Device:
+  device i2c-address/int -> Device
+      --frequency/int
+      --address-size/int=7
+      --timeout-us/int=100_000
+      --disable-ack-check/bool=false:
     if address-size != 7 and address-size != 10: throw "INVALID_ARGUMENT"
+    if frequency <= 0 or timeout-us <= 0: throw "INVALID_ARGUMENT"
     limit := (1 << address-size) - 1
     if not 0 <= i2c-address <= limit: throw "INVALID_ARGUMENT"
-    key := device-key_ i2c-address address-size
-    if devices_.contains key: throw "Device already connected"
-    device := Device.init_ this i2c-address address-size frequency key
-    devices_[key] = device
-    return device
+    return mutex_.do:
+      if not resource_: throw "CLOSED"
+      key := device-key_ i2c-address address-size
+      if devices_.contains key: throw "Device already connected"
+      device := Device.init_ this i2c-address address-size frequency timeout-us disable-ack-check key
+      devices_[key] = device
+      return device
 
 
   /**
   Variant of $(device i2c-address --frequency --address-size) that uses the
     default frequency given to the bus at construction.
   */
-  device i2c-address/int --address-size/int=7 -> Device:
-    return device i2c-address --frequency=frequency_ --address-size=address-size
+  device i2c-address/int -> Device
+      --address-size/int=7
+      --timeout-us/int=100_000
+      --disable-ack-check/bool=false:
+    return device i2c-address
+        --frequency=frequency_
+        --address-size=address-size
+        --timeout-us=timeout-us
+        --disable-ack-check=disable-ack-check
 
   device-key_ address/int address-size/int -> int:
     return address | (address-size == 10 ? 1 << 10 : 0)
@@ -477,6 +541,10 @@ Device connected using the I2C bus.
 
 A device is connected on a specific I2C address that can be found in the data
   sheet of the device.
+
+# Errors
+Controller operations throw `I2C_NACK` when acknowledgement checking fails and
+  `I2C_TIMEOUT` when the configured clock-stretching timeout is exceeded.
 */
 class Device implements serial.Device:
   /** I2C address of the device. */
@@ -489,11 +557,22 @@ class Device implements serial.Device:
   registers_/Registers? := null
   key_/int ::= ?
 
-  constructor.init_ .bus_/Bus .address .address-size frequency/int .key_:
-    timeout-us := 100_000
-    disable-ack-check := false
+  constructor.init_
+      .bus_/Bus
+      .address
+      .address-size
+      frequency/int
+      timeout-us/int
+      disable-ack-check/bool
+      .key_:
     resource_ = i2c-device-create_ bus_.resource_ address-size address frequency timeout-us disable-ack-check
     add-finalizer this:: close
+
+  check-controller-result_ result/int -> none:
+    if result == CONTROLLER-RESULT-OK_: return
+    if result == CONTROLLER-RESULT-NACK_: throw "I2C_NACK"
+    if result == CONTROLLER-RESULT-TIMEOUT_: throw "I2C_TIMEOUT"
+    throw "I2C_ERROR"
 
   /**
   See $serial.Device.registers.
@@ -536,7 +615,12 @@ class Device implements serial.Device:
   - a 'stop'.
   */
   write bytes/ByteArray:
-    i2c-device-write_ resource_ bytes
+    bus := bus_
+    if not bus: throw "CLOSED"
+    result := bus.perform-controller-operation_
+        (: i2c-device-write_ resource_ bytes)
+        (: i2c-device-write-finish_ resource_)
+    check-controller-result_ result
 
   /**
   Variant of $(write bytes).
@@ -607,7 +691,7 @@ class Device implements serial.Device:
   */
   read size/int -> ByteArray:
     result := ByteArray size
-    i2c-device-read_ resource_ result size
+    read-into result size
     return result
 
   /**
@@ -617,7 +701,12 @@ class Device implements serial.Device:
   */
   read-into buffer/ByteArray size/int=buffer.size -> none:
     if buffer.size < size: throw "OUT_OF_RANGE"
-    i2c-device-read_ resource_ buffer size
+    bus := bus_
+    if not bus: throw "CLOSED"
+    result := bus.perform-controller-operation_
+        (: i2c-device-read_ resource_ buffer size)
+        (: i2c-device-read-finish_ resource_ buffer size)
+    check-controller-result_ result
 
   /**
   Variant of $(read size).
@@ -685,7 +774,7 @@ class Device implements serial.Device:
   */
   write-read tx-buffer/io.Data size/int -> ByteArray:
     rx-buffer := ByteArray size
-    i2c-device-write-read_ resource_ tx-buffer rx-buffer size
+    write-read-into --tx-buffer=tx-buffer --rx-buffer=rx-buffer size
     return rx-buffer
 
   /**
@@ -694,15 +783,27 @@ class Device implements serial.Device:
   */
   write-read-into --tx-buffer/io.Data --rx-buffer/ByteArray size/int=rx-buffer.size -> none:
     if rx-buffer.size < size: throw "OUT_OF_RANGE"
-    i2c-device-write-read_ resource_ tx-buffer rx-buffer size
+    bus := bus_
+    if not bus: throw "CLOSED"
+    result := bus.perform-controller-operation_
+        (: i2c-device-write-read_ resource_ tx-buffer rx-buffer size)
+        (: i2c-device-write-read-finish_ resource_ rx-buffer size)
+    check-controller-result_ result
 
   /** Closes this device and releases the I2C address. */
   close -> none:
+    bus := bus_
+    if not bus: return
+    bus.mutex_.do:
+      critical-do: close-native_
+
+  close-native_ -> none:
     if not resource_: return
     i2c-device-close_ resource_
     resource_ = null
     bus_.devices_.remove key_
     bus_ = null
+    remove-finalizer this
 
 /**
 Registers for an I2C device.
@@ -816,8 +917,11 @@ i2c-bus-close_ resource:
 i2c-bus-probe_ resource address/int timeout-ms/int:
   #primitive.i2c.bus-probe
 
-i2c-bus-reset_ resource:
-  #primitive.i2c.bus-reset
+i2c-bus-probe-finish_ resource:
+  #primitive.i2c.bus-probe-finish
+
+i2c-bus-abort-controller-operation_ resource:
+  #primitive.i2c.bus-abort-controller-operation
 
 i2c-device-create_ bus address-length/int address/int frequency/int timeout-us/int disable-ack-check/bool:
   #primitive.i2c.device-create
@@ -828,12 +932,21 @@ i2c-device-close_ device:
 i2c-device-read_ device buffer/ByteArray size/int:
   #primitive.i2c.device-read
 
+i2c-device-read-finish_ device buffer/ByteArray size/int:
+  #primitive.i2c.device-read-finish
+
 i2c-device-write_ device buffer/io.Data:
   #primitive.i2c.device-write:
     return io.primitive-redo-io-data_ it buffer 0 buffer.byte-size: | bytes/ByteArray |
       i2c-device-write_ device bytes
 
+i2c-device-write-finish_ device:
+  #primitive.i2c.device-write-finish
+
 i2c-device-write-read_ device tx-buffer/io.Data rx-buffer/ByteArray size/int:
   #primitive.i2c.device-write-read:
     return io.primitive-redo-io-data_ it tx-buffer 0 tx-buffer.byte-size: | tx-bytes/ByteArray |
       i2c-device-write-read_ device tx-bytes rx-buffer size
+
+i2c-device-write-read-finish_ device rx-buffer/ByteArray size/int:
+  #primitive.i2c.device-write-read-finish

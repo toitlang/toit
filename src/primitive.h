@@ -445,12 +445,16 @@ namespace toit {
   PRIMITIVE(bus_create, 4)                   \
   PRIMITIVE(bus_close, 1)                    \
   PRIMITIVE(bus_probe, 3)                    \
-  PRIMITIVE(bus_reset, 1)                    \
+  PRIMITIVE(bus_probe_finish, 1)             \
+  PRIMITIVE(bus_abort_controller_operation, 1) \
   PRIMITIVE(device_create, 6)                \
   PRIMITIVE(device_close, 1)                 \
   PRIMITIVE(device_write, 2)                 \
+  PRIMITIVE(device_write_finish, 1)          \
   PRIMITIVE(device_read, 3)                  \
+  PRIMITIVE(device_read_finish, 3)           \
   PRIMITIVE(device_write_read, 4)            \
+  PRIMITIVE(device_write_read_finish, 3)     \
 
 #define MODULE_I2S(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
