@@ -21,6 +21,11 @@ namespace compiler {
 MODULE_TYPES(spi, MODULE_SPI)
 
 TYPE_PRIMITIVE_ANY(init)
+TYPE_PRIMITIVE_ANY(target_init)
+TYPE_PRIMITIVE_ANY(target_create)
+TYPE_PRIMITIVE_ANY(target_close)
+TYPE_PRIMITIVE_ANY(target_transfer_start)
+TYPE_PRIMITIVE_ANY(target_transfer_finish)
 TYPE_PRIMITIVE_ANY(close)
 TYPE_PRIMITIVE_ANY(device)
 TYPE_PRIMITIVE_ANY(device_close)

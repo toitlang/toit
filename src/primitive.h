@@ -471,8 +471,13 @@ namespace toit {
 
 #define MODULE_SPI(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
+  PRIMITIVE(target_init, 0)                  \
+  PRIMITIVE(target_create, 10)               \
+  PRIMITIVE(target_close, 2)                 \
+  PRIMITIVE(target_transfer_start, 4)        \
+  PRIMITIVE(target_transfer_finish, 3)       \
   PRIMITIVE(close, 1)                        \
-  PRIMITIVE(device, 7)                       \
+  PRIMITIVE(device, 9)                       \
   PRIMITIVE(device_close, 2)                 \
   PRIMITIVE(transfer, 9)                     \
   PRIMITIVE(acquire_bus, 1)                  \
@@ -1143,6 +1148,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_ResourceGroup(N, name)       MAKE_UNPACKING_MACRO(ResourceGroup, N, name)
 #define _A_T_SpiDevice(N, name)           MAKE_UNPACKING_MACRO(SpiDevice, N, name)
 #define _A_T_SpiResourceGroup(N, name)    MAKE_UNPACKING_MACRO(SpiResourceGroup, N, name)
+#define _A_T_SpiTargetResourceGroup(N, name) MAKE_UNPACKING_MACRO(SpiTargetResourceGroup, N, name)
 #define _A_T_SpiFlashResourceGroup(N, name)  MAKE_UNPACKING_MACRO(SpiFlashResourceGroup, N, name)
 #define _A_T_SignalResourceGroup(N, name) MAKE_UNPACKING_MACRO(SignalResourceGroup, N, name)
 #define _A_T_SocketResourceGroup(N, name) MAKE_UNPACKING_MACRO(SocketResourceGroup, N, name)
@@ -1210,6 +1216,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_WritePipeResource(N, name)   MAKE_UNPACKING_MACRO(WritePipeResource, N, name)
 #define _A_T_I2sResource(N, name)         MAKE_UNPACKING_MACRO(I2sResource, N, name)
 #define _A_T_SpiResource(N, name)         MAKE_UNPACKING_MACRO(SpiResource, N, name)
+#define _A_T_SpiTargetResource(N, name)   MAKE_UNPACKING_MACRO(SpiTargetResource, N, name)
 #define _A_T_AdcResource(N, name)         MAKE_UNPACKING_MACRO(AdcResource, N, name)
 #define _A_T_DacResource(N, name)         MAKE_UNPACKING_MACRO(DacResource, N, name)
 #define _A_T_PmLockResource(N, name)      MAKE_UNPACKING_MACRO(PmLockResource, N, name)

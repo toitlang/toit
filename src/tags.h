@@ -29,6 +29,7 @@ namespace toit {
   fn(EthernetEvents)                    \
   fn(EthernetIpEvents)                  \
   fn(SpiDevice)                         \
+  fn(SpiTargetResource)                 \
   fn(X509Certificate)                   \
   fn(AesContext)                        \
   fn(FlashRegion)                       \
@@ -98,6 +99,7 @@ namespace toit {
   fn(I2cTargetResourceGroup)            \
   fn(I2sResourceGroup)                  \
   fn(SpiResourceGroup)                  \
+  fn(SpiTargetResourceGroup)            \
   fn(SpiFlashResourceGroup)             \
   fn(SignalResourceGroup)               \
   fn(SocketResourceGroup)               \
