@@ -433,6 +433,7 @@ namespace toit {
   PRIMITIVE(target_close, 2)                 \
   PRIMITIVE(target_receive, 1)               \
   PRIMITIVE(target_write, 3)                 \
+  PRIMITIVE(target_set_default_response, 2)  \
   PRIMITIVE(target_take_request_count, 1)    \
   PRIMITIVE(target_dropped_receive_count, 1) \
   PRIMITIVE(register_target_create, 11)      \

@@ -628,6 +628,18 @@ PRIMITIVE(target_write) {
   return Smi::from(written);
 }
 
+PRIMITIVE(target_set_default_response) {
+  ARGS(I2cTargetResource, target, Blob, response);
+  if (response.length() == 0 || response.length() > SOC_I2C_FIFO_LEN) {
+    FAIL(INVALID_ARGUMENT);
+  }
+
+  esp_err_t err = i2c_slave_set_default_response(
+      target->handle(), response.address(), response.length());
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  return process->null_object();
+}
+
 PRIMITIVE(target_take_request_count) {
   ARGS(I2cTargetResource, target);
   return Smi::from(target->take_request_count());
@@ -821,6 +833,7 @@ PRIMITIVE(target_create)                      { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(target_close)                       { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(target_receive)                     { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(target_write)                       { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_set_default_response)         { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(target_take_request_count)          { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(target_dropped_receive_count)       { FAIL(UNIMPLEMENTED); }
 PRIMITIVE(register_target_create)             { FAIL(UNIMPLEMENTED); }

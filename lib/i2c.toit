@@ -52,6 +52,9 @@ DEFAULT-FREQUENCY ::= 400_000
 /** Default native buffer size for an I2C target. */
 DEFAULT-TARGET-BUFFER-SIZE ::= 256
 
+/** Maximum size of a default I2C target response. */
+MAX-DEFAULT-RESPONSE-SIZE ::= 32
+
 CONTROLLER-RESULT-OK_ ::= 0
 CONTROLLER-RESULT-NACK_ ::= 1
 CONTROLLER-RESULT-TIMEOUT_ ::= 2
@@ -170,6 +173,35 @@ class Target:
         offset += written
         if offset == bytes.size: return
         state_.wait-for-state REQUEST-STATE_
+
+  /**
+  Sets the response served when no bytes from $write or $try-write are ready.
+
+  The response must contain between 1 and $MAX-DEFAULT-RESPONSE-SIZE bytes,
+    and the controller must not read beyond it.
+
+  Call this method before using $write, $try-write, or $wait-for-read-request
+    to supply response data, and before the controller starts its first read
+    transaction.
+
+  Bytes queued by $write or $try-write supersede the default response starting
+    at a controller read transaction boundary. The controller may receive the
+    default response once more after bytes have been queued. When all queued
+    bytes have been read and that transaction ends, the default response is
+    restored automatically.
+
+  Later calls atomically stage a new default response. It is installed the next
+    time the default response is restored.
+
+  This mode is useful on the original ESP32, which cannot stretch the clock
+    while application code prepares a response.
+  */
+  set-default-response bytes/ByteArray -> none:
+    write-mutex_.do:
+      if not resource_: throw "CLOSED"
+      if bytes.size == 0 or bytes.size > MAX-DEFAULT-RESPONSE-SIZE:
+        throw "INVALID_ARGUMENT"
+      i2c-target-set-default-response_ resource_ bytes
 
   /**
   Waits until a controller requests data and queues the response returned by
@@ -868,6 +900,9 @@ i2c-target-receive_ target:
 
 i2c-target-write_ target bytes/ByteArray offset/int:
   #primitive.i2c.target-write
+
+i2c-target-set-default-response_ target bytes/ByteArray:
+  #primitive.i2c.target-set-default-response
 
 i2c-target-take-request-count_ target:
   #primitive.i2c.target-take-request-count

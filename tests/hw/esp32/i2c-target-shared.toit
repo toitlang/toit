@@ -42,6 +42,8 @@ TRANSACTION-OVERFLOW ::= 8
 CONCURRENT-QUEUE-READ ::= 9
 THROWING-READ ::= 10
 RETURNING-READ ::= 11
+DEFAULT-RESPONSE ::= 12
+LATE-DEFAULT-RESPONSE ::= 13
 
 DEFAULT-CONFIG ::= 0
 TEN-BIT-CONFIG ::= 1
@@ -58,6 +60,42 @@ test-board1:
   bus := i2c.Bus --sda=I2C-SDA --scl=I2C-SCL --frequency=FREQUENCY --pull-up
   expect (bus.test ADDRESS)
   device := bus.device ADDRESS
+
+  if system.architecture != system.ARCHITECTURE-ESP32:
+    late-default-response := #[0x37, 0x73, 0x42]
+    send-command port LATE-DEFAULT-RESPONSE [late-default-response]
+    expect-equals late-default-response (device.read late-default-response.size)
+    expect-equals OK port.in.read-byte
+    device.close
+    reconfigure port DEFAULT-CONFIG
+    device = bus.device ADDRESS
+
+  not-ready-response := #[0x00, 0xee, 0xee, 0xee, 0xee, 0xee, 0xee, 0xee]
+  ready-response := #[READY, 1, 2, 3, 4, 5, 6, 7]
+  request := #[0x17, 0x23, 0x42]
+  send-command port DEFAULT-RESPONSE
+      [not-ready-response, ready-response, request]
+  expect-equals not-ready-response (device.read not-ready-response.size)
+  expect-equals not-ready-response (device.read not-ready-response.size)
+
+  // The target keeps serving the default response after it receives a request.
+  device.write request
+  expect-equals READY port.in.read-byte
+  expect-equals not-ready-response (device.read not-ready-response.size)
+  expect-equals not-ready-response (device.read not-ready-response.size)
+
+  // A normal response supersedes the default at a read boundary. Once the
+  // normal response is consumed, the default is restored automatically.
+  send-byte port CONTROLLER-DONE
+  expect-equals OK port.in.read-byte
+  expect-equals not-ready-response (device.read not-ready-response.size)
+  expect-equals ready-response (device.read ready-response.size)
+  expect-equals not-ready-response (device.read not-ready-response.size)
+  expect-equals not-ready-response (device.read not-ready-response.size)
+
+  device.close
+  reconfigure port DEFAULT-CONFIG
+  device = bus.device ADDRESS
 
   [1, 2, 15, 31, 32, 63].do: | size/int |
     data := make-data size size
@@ -206,6 +244,9 @@ test-board2:
   target := make-target DEFAULT-CONFIG
   expect-null target.try-read
   expect-equals 0 target.dropped-receive-count
+  expect-throw "INVALID_ARGUMENT": target.set-default-response #[]
+  expect-throw "INVALID_ARGUMENT":
+    target.set-default-response (ByteArray (i2c.MAX-DEFAULT-RESPONSE-SIZE + 1))
   expected-overflow-count := 0
 
   port := uart.Port --rx=UART-RX2 --tx=UART-TX2 --baud-rate=115_200
@@ -255,6 +296,22 @@ test-board2:
       send-byte port READY
       expect-equals "RETURNED" (wait-for-request-and-return target)
       expect-throw "CLOSED": target.try-read
+      send-byte port OK
+    else if command == DEFAULT-RESPONSE:
+      target.set-default-response parts[0]
+      send-byte port READY
+      expect-equals parts[2] target.read
+      send-byte port READY
+      expect-equals CONTROLLER-DONE port.in.read-byte
+      target.write parts[1]
+      send-byte port OK
+    else if command == LATE-DEFAULT-RESPONSE:
+      expect system.architecture != system.ARCHITECTURE-ESP32
+      send-byte port READY
+      target.wait-for-read-request: |request-count/int|
+        expect-equals 1 request-count
+        target.set-default-response parts[0]
+        #[]
       send-byte port OK
     else if command == WRITE-READ:
       target.write parts[1]

@@ -151,6 +151,7 @@ overflow scenario provide the mixed-operation stress pass.
 | 2026-09-03 | `b010aac9` plus follow-up changes | `817726ca57` | ESP32-S3 | Immediate full matrix with setup fixtures excluded | 12/12 pass in 73.46 s |
 | 2026-09-04 | `527dc816` | `817726ca57` | ESP32 | `i2c-target-board1.toit` | Pass: throwing and non-local-return response blocks close the target; target recreation and subsequent transactions succeed |
 | 2026-09-04 | `527dc816` | `817726ca57` | ESP32-S3 | `i2c-target-board1.toit` | Pass: active clock stretch is released after throwing and non-local-return response blocks; target recreation and subsequent transactions succeed |
+| 2026-09-05 | `b8cf906b` plus late-default regression | `c30e19e02d` | ESP32-S3 | `ctest --verbose --test-dir build/hw -C esp32s3 -R i2c-target-board1.toit-esp32s3$` | Pass: the controller began reading before the target installed its first default response; installing it released SCL and returned the expected bytes |
 
 Add the exact command, result, and any captured timing to this table as each
 remaining item is completed.
