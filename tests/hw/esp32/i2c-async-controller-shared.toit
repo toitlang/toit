@@ -194,6 +194,21 @@ test-board1:
     with-timeout --ms=2: abortable.read 1
   expect-equals OK port.in.read-byte
   expect (bus.test ADDRESS)
+
+  // Cancellation must run the abort cleanup before the task terminates and
+  // releases the bus mutex.
+  send-command port DYNAMIC-READ [#[0x6b], encode-u16 20]
+  canceled := monitor.Latch
+  operation := task::
+    try:
+      abortable.read 1
+    finally:
+      critical-do: canceled.set true
+  sleep --ms=2
+  operation.cancel
+  with-timeout --ms=100: canceled.get
+  expect-equals OK port.in.read-byte
+  expect (bus.test ADDRESS)
   abortable.close
 
   // Exercise the controller pull-up configuration and resource reuse after a
@@ -312,6 +327,21 @@ test-board1-esp32 port/uart.Port -> none:
   send-command port STRETCH-CLOCK [encode-u16 20]
   expect-throw DEADLINE-EXCEEDED-ERROR:
     with-timeout --ms=2: abortable.read 1
+  expect-equals OK port.in.read-byte
+  expect (bus.test ADDRESS)
+
+  // Cancellation must run the abort cleanup before the task terminates and
+  // releases the bus mutex.
+  send-command port STRETCH-CLOCK [encode-u16 20]
+  canceled := monitor.Latch
+  operation := task::
+    try:
+      abortable.read 1
+    finally:
+      critical-do: canceled.set true
+  sleep --ms=2
+  operation.cancel
+  with-timeout --ms=100: canceled.get
   expect-equals OK port.in.read-byte
   expect (bus.test ADDRESS)
   abortable.close

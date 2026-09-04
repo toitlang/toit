@@ -427,13 +427,14 @@ class Bus:
         finished = true
       finally:
         if not finished:
-          // This is a no-op if start failed or finish already released the
-          // operation. Otherwise it synchronously retires the native
-          // transaction before releasing its buffers.
-          i2c-bus-abort-controller-operation_ resource_
-          // A completion that raced with the deadline must not satisfy the
-          // next controller operation.
-          state_.clear-state CONTROLLER-DONE-STATE_
+          critical-do --no-respect-deadline:
+            // This is a no-op if start failed or finish already released the
+            // operation. Otherwise it synchronously retires the native
+            // transaction before releasing its buffers.
+            i2c-bus-abort-controller-operation_ resource_
+            // A completion that raced with the deadline must not satisfy the
+            // next controller operation.
+            state_.clear-state CONTROLLER-DONE-STATE_
       return result
 
   /**
