@@ -60,6 +60,8 @@ class I2cResourceGroup : public ResourceGroup {
 
 const word kControllerDoneState = 1 << 0;
 
+#ifdef CONFIG_TOIT_ENABLE_I2C_TARGET
+
 const word kTargetReceiveState = 1 << 0;
 const word kTargetRequestState = 1 << 1;
 const word kTargetOverflowState = 1 << 2;
@@ -276,6 +278,8 @@ class I2cRegisterTargetResource : public EventQueueResource {
   GpioPins owned_pins_;
 };
 
+#endif  // CONFIG_TOIT_ENABLE_I2C_TARGET
+
 class I2cBusResource;
 class I2cDeviceResource;
 typedef DoubleLinkedList<I2cDeviceResource, 99> DeviceList;
@@ -449,6 +453,8 @@ PRIMITIVE(init) {
   return proxy;
 }
 
+#ifdef CONFIG_TOIT_ENABLE_I2C_TARGET
+
 PRIMITIVE(target_init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
@@ -620,6 +626,18 @@ PRIMITIVE(target_write) {
   }
   ASSERT(Smi::is_valid(written));
   return Smi::from(written);
+}
+
+PRIMITIVE(target_set_default_response) {
+  ARGS(I2cTargetResource, target, Blob, response);
+  if (response.length() == 0 || response.length() > SOC_I2C_FIFO_LEN) {
+    FAIL(INVALID_ARGUMENT);
+  }
+
+  esp_err_t err = i2c_slave_set_default_response(
+      target->handle(), response.address(), response.length());
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  return process->null_object();
 }
 
 PRIMITIVE(target_take_request_count) {
@@ -807,6 +825,26 @@ PRIMITIVE(register_target_dropped_write_count) {
   ARGS(I2cRegisterTargetResource, target);
   return Smi::from(target->dropped_write_count());
 }
+
+#else
+
+PRIMITIVE(target_init)                        { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_create)                      { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_close)                       { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_receive)                     { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_write)                       { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_set_default_response)         { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_take_request_count)          { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_dropped_receive_count)       { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_create)             { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_close)              { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_get)                { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_set)                { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_read)               { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_write)              { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_dropped_write_count) { FAIL(UNIMPLEMENTED); }
+
+#endif  // CONFIG_TOIT_ENABLE_I2C_TARGET
 
 PRIMITIVE(bus_create) {
   ARGS(I2cResourceGroup, group, int, sda, int, scl, bool, pullup);

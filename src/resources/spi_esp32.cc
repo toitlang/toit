@@ -53,6 +53,18 @@ static ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
 #endif
 );
 
+static uint8_t* allocate_dma_buffer(size_t size, size_t alignment) {
+  if (size == 0) return null;
+  size_t allocation_size = (size + alignment - 1) & ~(alignment - 1);
+  if (allocation_size < size) return null;
+  return static_cast<uint8_t*>(heap_caps_aligned_alloc(
+      alignment,
+      allocation_size,
+      MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT));
+}
+
+#ifdef CONFIG_TOIT_ENABLE_SPI_TARGET
+
 const word kSpiTargetReadyState = 1 << 0;
 const word kSpiTargetDoneState = 1 << 1;
 const size_t kSpiBufferTargetMaxTransferSize = 4092;
@@ -231,9 +243,15 @@ class SpiBufferTargetResource : public EventQueueResource {
   GpioPins owned_pins_;
 };
 
-SpiResourceGroup::SpiResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device)
+#endif  // CONFIG_TOIT_ENABLE_SPI_TARGET
+
+SpiResourceGroup::SpiResourceGroup(Process* process,
+                                   EventSource* event_source,
+                                   spi_host_device_t host_device,
+                                   bool half_duplex)
     : ResourceGroup(process, event_source)
-    , host_device_(host_device) {}
+    , host_device_(host_device)
+    , half_duplex_(half_duplex) {}
 
 SpiResourceGroup::~SpiResourceGroup() {
   SystemEventSource::instance()->run([&]() -> void {
@@ -309,6 +327,8 @@ void SpiDevice::complete_from_isr() {
 bool SpiDevice::receive_event(word* data) {
   return xQueueReceive(queue(), data, 0) == pdTRUE;
 }
+
+#ifdef CONFIG_TOIT_ENABLE_SPI_TARGET
 
 SpiTargetResource::~SpiTargetResource() {
   if (initialized_ && operation_in_flight_) {
@@ -633,6 +653,8 @@ void SpiBufferTargetResource::signal_from_isr(word event) {
   if (higher_was_woken == pdTRUE) portYIELD_FROM_ISR();
 }
 
+#endif  // CONFIG_TOIT_ENABLE_SPI_TARGET
+
 MODULE_IMPLEMENTATION(spi, MODULE_SPI);
 
 PRIMITIVE(init) {
@@ -693,7 +715,10 @@ PRIMITIVE(init) {
   }
 
   SpiResourceGroup* spi = _new SpiResourceGroup(
-      process, EventQueueEventSource::instance(), host_device);
+      process,
+      EventQueueEventSource::instance(),
+      host_device,
+      mosi_num == -1 || miso_num == -1);
   if (!spi) {
     SystemEventSource::instance()->run([&]() -> void {
       FATAL_IF_NOT_ESP_OK(spi_bus_free(capture.host_device));
@@ -710,6 +735,8 @@ PRIMITIVE(init) {
 
   return proxy;
 }
+
+#ifdef CONFIG_TOIT_ENABLE_SPI_TARGET
 
 PRIMITIVE(target_init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -859,16 +886,6 @@ PRIMITIVE(target_close) {
   group->unregister_resource(resource);
   resource_proxy->clear_external_address();
   return process->null_object();
-}
-
-static uint8_t* allocate_dma_buffer(size_t size, size_t alignment) {
-  if (size == 0) return null;
-  size_t allocation_size = (size + alignment - 1) & ~(alignment - 1);
-  if (allocation_size < size) return null;
-  return static_cast<uint8_t*>(heap_caps_aligned_alloc(
-      alignment,
-      allocation_size,
-      MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT));
 }
 
 SPI_TARGET_ISR_ATTR static void spi_buffer_target_done_callback(
@@ -1236,6 +1253,25 @@ PRIMITIVE(target_transfer_finish) {
   return Smi::from(result_size);
 }
 
+#else
+
+PRIMITIVE(target_init)                         { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_create)                       { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_close)                        { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_transfer_start)               { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_transfer_finish)              { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_create)                { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_arm)                   { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_close)                 { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_get)                   { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_set)                   { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_read)                  { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_write)                 { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_receive)               { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_dropped_receive_count) { FAIL(UNIMPLEMENTED); }
+
+#endif  // CONFIG_TOIT_ENABLE_SPI_TARGET
+
 PRIMITIVE(close) {
   ARGS(SpiResourceGroup, spi);
   spi->tear_down();
@@ -1303,7 +1339,9 @@ PRIMITIVE(device) {
     .input_delay_ns   = 0,
     .sample_point     = SPI_SAMPLING_POINT_PHASE_0,
     .spics_io_num     = cs_num,
-    .flags            = 0,
+    .flags            = spi->half_duplex()
+        ? static_cast<uint32_t>(SPI_DEVICE_HALFDUPLEX)
+        : 0u,
     .queue_size       = 1,
     .pre_cb           = null,
     .post_cb          = spi_post_transfer_callback,
