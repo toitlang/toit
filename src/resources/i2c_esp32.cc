@@ -36,6 +36,12 @@
 
 #include "../event_sources/ev_queue_esp32.h"
 
+#if CONFIG_I2C_ISR_IRAM_SAFE
+#define I2C_IRAM_ATTR IRAM_ATTR
+#else
+#define I2C_IRAM_ATTR
+#endif
+
 namespace toit {
 
 static_assert(SOC_I2C_NUM <= I2C_EVENT_QUEUE_SIZE,
@@ -93,7 +99,7 @@ class I2cTargetResource : public EventQueueResource {
   MessageBufferHandle_t receive_buffer() const { return receive_buffer_; }
   GpioPins& owned_pins() { return owned_pins_; }
 
-  IRAM_ATTR bool receive_from_isr(const uint8_t* data, size_t length) {
+  I2C_IRAM_ATTR bool receive_from_isr(const uint8_t* data, size_t length) {
     BaseType_t higher_was_woken = pdFALSE;
     size_t sent = xMessageBufferSendFromISR(receive_buffer_, data, length, &higher_was_woken);
     signal_from_isr(sent == length ? kTargetReceiveState : kTargetOverflowState,
@@ -106,7 +112,7 @@ class I2cTargetResource : public EventQueueResource {
     return higher_was_woken == pdTRUE;
   }
 
-  IRAM_ATTR bool receive_overflow_from_isr() {
+  I2C_IRAM_ATTR bool receive_overflow_from_isr() {
     BaseType_t higher_was_woken = pdFALSE;
     portENTER_CRITICAL_ISR(&spinlock_);
     if (dropped_receive_count_ != Smi::MAX_SMI_VALUE) dropped_receive_count_++;
@@ -115,7 +121,7 @@ class I2cTargetResource : public EventQueueResource {
     return higher_was_woken == pdTRUE;
   }
 
-  IRAM_ATTR bool request_from_isr() {
+  I2C_IRAM_ATTR bool request_from_isr() {
     BaseType_t higher_was_woken = pdFALSE;
     portENTER_CRITICAL_ISR(&spinlock_);
     if (request_count_ != Smi::MAX_SMI_VALUE) request_count_++;
@@ -150,7 +156,7 @@ class I2cTargetResource : public EventQueueResource {
   }
 
  private:
-  IRAM_ATTR void signal_from_isr(word event, BaseType_t* higher_was_woken) {
+  I2C_IRAM_ATTR void signal_from_isr(word event, BaseType_t* higher_was_woken) {
     portENTER_CRITICAL_ISR(&spinlock_);
     pending_event_ |= event;
     portEXIT_CRITICAL_ISR(&spinlock_);
@@ -193,7 +199,7 @@ class I2cRegisterTargetResource : public Resource {
     owned_pins_.release();
   }
 
-  IRAM_ATTR void receive_from_isr(const uint8_t* data, size_t length, bool overflow) {
+  I2C_IRAM_ATTR void receive_from_isr(const uint8_t* data, size_t length, bool overflow) {
     if (overflow) {
       portENTER_CRITICAL_ISR(&spinlock_);
       if (dropped_write_count_ != Smi::MAX_SMI_VALUE) dropped_write_count_++;
@@ -208,7 +214,7 @@ class I2cRegisterTargetResource : public Resource {
     }
     pointer %= register_count_;
     for (size_t i = register_address_size_; i < length; i++) {
-      registers_[pointer] = data[i];
+      store_register_from_isr(pointer, data[i]);
       pointer++;
       if (pointer == register_count_) pointer = 0;
     }
@@ -216,17 +222,22 @@ class I2cRegisterTargetResource : public Resource {
     prefetch_pointer_ = pointer;
   }
 
-  IRAM_ATTR const uint8_t* transmit_from_isr(size_t capacity, size_t* length) {
+  I2C_IRAM_ATTR const uint8_t* transmit_from_isr(size_t capacity, size_t* length) {
     size_t remaining = register_count_ - prefetch_pointer_;
     size_t result_length = capacity < remaining ? capacity : remaining;
-    const uint8_t* result = registers_ + prefetch_pointer_;
+    if (result_length > sizeof(transmit_buffer_)) {
+      result_length = sizeof(transmit_buffer_);
+    }
+    for (size_t i = 0; i < result_length; i++) {
+      transmit_buffer_[i] = load_register_from_isr(prefetch_pointer_ + i);
+    }
     prefetch_pointer_ += result_length;
     if (prefetch_pointer_ == register_count_) prefetch_pointer_ = 0;
     *length = result_length;
-    return result;
+    return transmit_buffer_;
   }
 
-  IRAM_ATTR void transmit_done_from_isr(size_t length) {
+  I2C_IRAM_ATTR void transmit_done_from_isr(size_t length) {
     uint32_t advance = length % register_count_;
     register_pointer_ = advance < register_count_ - register_pointer_
         ? register_pointer_ + advance
@@ -234,16 +245,24 @@ class I2cRegisterTargetResource : public Resource {
     prefetch_pointer_ = register_pointer_;
   }
 
-  int get(uint32_t index) const { return registers_[index]; }
+  int get(uint32_t index) const {
+    return load_register(index);
+  }
 
-  void set(uint32_t index, uint8_t value) { registers_[index] = value; }
+  void set(uint32_t index, uint8_t value) {
+    store_register(index, value);
+  }
 
   void read(uint32_t index, uint8_t* destination, uint32_t length) const {
-    memcpy(destination, registers_ + index, length);
+    for (uint32_t i = 0; i < length; i++) {
+      destination[i] = load_register(index + i);
+    }
   }
 
   void write(uint32_t index, const uint8_t* source, uint32_t length) {
-    memcpy(registers_ + index, source, length);
+    for (uint32_t i = 0; i < length; i++) {
+      store_register(index + i, source[i]);
+    }
   }
 
   word dropped_write_count() const {
@@ -257,8 +276,35 @@ class I2cRegisterTargetResource : public Resource {
   GpioPins& owned_pins() { return owned_pins_; }
 
  private:
+  uint8_t load_register(uint32_t index) const {
+    portENTER_CRITICAL(&spinlock_);
+    uint8_t result = registers_[index];
+    portEXIT_CRITICAL(&spinlock_);
+    return result;
+  }
+
+  void store_register(uint32_t index, uint8_t value) {
+    portENTER_CRITICAL(&spinlock_);
+    registers_[index] = value;
+    portEXIT_CRITICAL(&spinlock_);
+  }
+
+  I2C_IRAM_ATTR uint8_t load_register_from_isr(uint32_t index) const {
+    portENTER_CRITICAL_ISR(&spinlock_);
+    uint8_t result = registers_[index];
+    portEXIT_CRITICAL_ISR(&spinlock_);
+    return result;
+  }
+
+  I2C_IRAM_ATTR void store_register_from_isr(uint32_t index, uint8_t value) {
+    portENTER_CRITICAL_ISR(&spinlock_);
+    registers_[index] = value;
+    portEXIT_CRITICAL_ISR(&spinlock_);
+  }
+
   i2c_slave_dev_handle_t handle_;
   uint8_t* registers_;
+  uint8_t transmit_buffer_[SOC_I2C_FIFO_LEN];
   uint32_t register_count_;
   uint32_t register_address_size_;
   uint32_t register_pointer_ = 0;
@@ -375,7 +421,7 @@ PRIMITIVE(target_init) {
   return proxy;
 }
 
-IRAM_ATTR static bool target_receive_handler(i2c_slave_dev_handle_t handle,
+I2C_IRAM_ATTR static bool target_receive_handler(i2c_slave_dev_handle_t handle,
                                               const i2c_slave_rx_done_event_data_t* event,
                                               void* context) {
   auto resource = static_cast<I2cTargetResource*>(context);
@@ -383,7 +429,7 @@ IRAM_ATTR static bool target_receive_handler(i2c_slave_dev_handle_t handle,
   return resource->receive_from_isr(event->buffer, event->length);
 }
 
-IRAM_ATTR static bool target_request_handler(i2c_slave_dev_handle_t handle,
+I2C_IRAM_ATTR static bool target_request_handler(i2c_slave_dev_handle_t handle,
                                               const i2c_slave_request_event_data_t* event,
                                               void* context) {
   auto resource = static_cast<I2cTargetResource*>(context);
@@ -574,7 +620,7 @@ PRIMITIVE(target_dropped_receive_count) {
   return Smi::from(target->dropped_receive_count());
 }
 
-RTC_IRAM_ATTR static bool register_target_receive_handler(
+I2C_IRAM_ATTR static bool register_target_receive_handler(
     i2c_slave_dev_handle_t handle,
     const i2c_slave_rx_done_event_data_t* event,
     void* context) {
@@ -583,7 +629,7 @@ RTC_IRAM_ATTR static bool register_target_receive_handler(
   return false;
 }
 
-RTC_IRAM_ATTR static bool register_target_transmit_handler(
+I2C_IRAM_ATTR static bool register_target_transmit_handler(
     i2c_slave_dev_handle_t handle,
     i2c_slave_transmit_event_data_t* event,
     void* context) {
@@ -594,7 +640,7 @@ RTC_IRAM_ATTR static bool register_target_transmit_handler(
   return false;
 }
 
-RTC_IRAM_ATTR static bool register_target_transmit_done_handler(
+I2C_IRAM_ATTR static bool register_target_transmit_done_handler(
     i2c_slave_dev_handle_t handle,
     const i2c_slave_transmit_done_event_data_t* event,
     void* context) {
