@@ -491,11 +491,6 @@ Bus for communicating using SPI.
 
 An SPI bus is constructed with 3 main wires for data transmission and a clock.
 Each device on the bus is enabled with its own chip-select pin. See $Bus.device.
-
-On the classic ESP32, SPI controller completion interrupts are not placed in
-  IRAM in the Toit firmware configuration. A transaction can complete in
-  hardware while a flash operation has disabled the instruction cache, but the
-  waiting Toit task is not resumed until the cache is available again.
 */
 class Bus:
   spi_ := ?
@@ -543,7 +538,7 @@ class Bus:
       // snapshot here: close must remain usable when the heap is exhausted.
       while not devices_.is-empty:
         devices_.last.close-under-reservation_
-      critical-do:
+      critical-do --no-respect-deadline:
         spi-close_ spi_
         spi_ = null
 
@@ -624,10 +619,11 @@ class Bus:
         return created
       finally:
         if not registered:
-          if result:
-            result.close-under-reservation_
-          else:
-            spi-device-close_ spi_ d
+          critical-do --no-respect-deadline:
+            if result:
+              result.close-under-reservation_
+            else:
+              spi-device-close_ spi_ d
 
 /**
 A device connected with SPI.
@@ -800,7 +796,8 @@ class Device_ extends DeviceBase_:
     finally:
       // Bus.device closes the native device if this constructor throws. Drop
       // the notifier first so it cannot retain a proxy to that deleted state.
-      if not initialized: state_.dispose
+      if not initialized:
+        critical-do --no-respect-deadline: state_.dispose
 
   constructor.init_ .spi_ .device_:
     state_ = monitor.ResourceState_ spi_.spi_ device_
@@ -811,7 +808,8 @@ class Device_ extends DeviceBase_:
     finally:
       // Bus.device closes the native device if this constructor throws. Drop
       // the notifier first so it cannot retain a proxy to that deleted state.
-      if not initialized: state_.dispose
+      if not initialized:
+        critical-do --no-respect-deadline: state_.dispose
 
   /** See $Device.close. */
   close:
@@ -824,7 +822,7 @@ class Device_ extends DeviceBase_:
   close-under-reservation_:
     transfer-mutex_.do:
       if not device_: return
-      critical-do:
+      critical-do --no-respect-deadline:
         state_.dispose
         spi-device-close_ spi_.spi_ device_
         device_ = null
@@ -872,7 +870,7 @@ class Device_ extends DeviceBase_:
       try:
         block.call
       finally:
-        critical-do:
+        critical-do --no-respect-deadline:
           owning-bus-task_ = null
           bus.reservation-active_ = false
           spi-release-bus_ device_
