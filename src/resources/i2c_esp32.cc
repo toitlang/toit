@@ -19,10 +19,13 @@
 
 #include <cmath>
 #include <driver/i2c_master.h>
+#ifdef CONFIG_TOIT_ENABLE_I2C_TARGET
 #include <driver/i2c_slave.h>
-#include <esp_memory_utils.h>
+#endif
 #include <freertos/idf_additions.h>
+#ifdef CONFIG_TOIT_ENABLE_I2C_TARGET
 #include <freertos/message_buffer.h>
+#endif
 #include <freertos/queue.h>
 
 #include "../linked.h"
@@ -777,7 +780,7 @@ PRIMITIVE(register_target_create) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  uint8_t* registers = unvoid_cast<uint8_t*>(heap_caps_calloc(
+  auto registers = unvoid_cast<uint8_t*>(heap_caps_calloc(
       register_count, sizeof(uint8_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
   if (registers == null) FAIL(MALLOC_FAILED);
   bool handed_to_resource = false;
@@ -885,20 +888,22 @@ PRIMITIVE(register_target_dropped_write_count) {
 
 #else
 
-PRIMITIVE(target_init)                        { FAIL(UNIMPLEMENTED); }
-PRIMITIVE(target_create)                      { FAIL(UNIMPLEMENTED); }
-PRIMITIVE(target_close)                       { FAIL(UNIMPLEMENTED); }
-PRIMITIVE(target_receive)                     { FAIL(UNIMPLEMENTED); }
-PRIMITIVE(target_write)                       { FAIL(UNIMPLEMENTED); }
-PRIMITIVE(target_take_request_count)          { FAIL(UNIMPLEMENTED); }
-PRIMITIVE(target_dropped_receive_count)       { FAIL(UNIMPLEMENTED); }
-PRIMITIVE(register_target_create)             { FAIL(UNIMPLEMENTED); }
-PRIMITIVE(register_target_close)              { FAIL(UNIMPLEMENTED); }
-PRIMITIVE(register_target_get)                { FAIL(UNIMPLEMENTED); }
-PRIMITIVE(register_target_set)                { FAIL(UNIMPLEMENTED); }
-PRIMITIVE(register_target_read)               { FAIL(UNIMPLEMENTED); }
-PRIMITIVE(register_target_write)              { FAIL(UNIMPLEMENTED); }
-PRIMITIVE(register_target_dropped_write_count) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_init)                          { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_create)                        { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_close)                         { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_receive)                       { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_write)                         { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_set_write_pending)             { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_set_handler_mode)              { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_take_request_count)            { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_dropped_receive_count)          { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_create)               { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_close)                { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_get)                  { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_set)                  { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_read)                 { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_write)                { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_dropped_write_count)  { FAIL(UNIMPLEMENTED); }
 
 #endif  // CONFIG_TOIT_ENABLE_I2C_TARGET
 

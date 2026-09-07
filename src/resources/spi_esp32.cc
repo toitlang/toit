@@ -19,12 +19,19 @@
 
 #include <driver/gpio.h>
 #include <driver/spi_master.h>
+#ifdef CONFIG_TOIT_ENABLE_SPI_TARGET
 #include <driver/spi_slave.h>
+#include <soc/soc_caps.h>
+#if SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
 #include <esp_cache.h>
-#include <esp_heap_caps.h>
-#include <esp_private/spi_slave_internal.h>
 #include <hal/cache_hal.h>
 #include <hal/cache_ll.h>
+#endif
+#endif
+#include <esp_heap_caps.h>
+#ifdef CONFIG_TOIT_ENABLE_SPI_TARGET
+#include <esp_private/spi_slave_internal.h>
+#endif
 
 #include "../objects_inline.h"
 #include "../process.h"
