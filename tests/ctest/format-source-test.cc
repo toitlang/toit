@@ -14,6 +14,7 @@
 #include "../../src/compiler/sources.h"
 #include "../../src/compiler/symbol_canonicalizer.h"
 #include "../../src/top.h"
+#include "format-test-support.h"
 
 namespace toit {
 namespace compiler {
@@ -73,6 +74,26 @@ static void test_format_source(Source* source,
          facts.shift_multiline_comment(
              standalone_id,
              facts.comments()[standalone_id].start_column + 2));
+
+  FormatCommentState state(&facts);
+  std::string own_line;
+  const FormatComment& own_line_comment = facts.comments()[own_line_id];
+  bool rendered = state.render_own_line(
+      own_line_comment.from, own_line_comment.to, 2, &own_line);
+  ASSERT(rendered);
+  expect("    // This comment is on its own line.", own_line);
+  ASSERT(state.consumed(own_line_id));
+
+  const FormatComment& standalone = facts.comments()[standalone_id];
+  rendered = state.render_own_line(
+      standalone.from, standalone.to, 2, &own_line);
+  ASSERT(rendered);
+  expect("    /* Standalone\n       block. */", own_line);
+  ASSERT(state.consumed(standalone_id));
+
+  expect("    value := 1  // Keep   every byte.",
+         state.render_verbatim(frozen_line, frozen_line, 4));
+  ASSERT(state.consumed(facts.lines()[frozen_line].trailing_line_comment));
 }
 
 } // namespace compiler
