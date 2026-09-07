@@ -4,6 +4,36 @@ This document tracks the remaining verification work for the asynchronous I2C
 and SPI controller/target stack. A box is checked only after the test has run on
 the hardware named in the entry with the current code and ESP-IDF submodule.
 
+## Refactor review follow-up
+
+- [x] Restack the I2C and SPI branches so every intermediate PR builds and its
+  tests use only APIs introduced at or below that point in the stack.
+- [x] Compile out I2C and SPI target implementations and private dependencies
+  when their `CONFIG_TOIT_ENABLE_*_TARGET` option is disabled.
+- [x] Serialize default-response replacement with controller reads and cover
+  both callback-backed and buffered transmit arbitration in ESP-IDF tests.
+- [x] Make constructor rollback, controller abort, close, and bus-reservation
+  release non-cancelable where partial cleanup would leave native state live.
+- [x] Remove the register-target C++ data race while documenting byte-level,
+  rather than transaction-level, atomicity.
+- [x] Bound target response handlers and test timeout fallback followed by a
+  successful later handler response.
+- [x] Attempt bounded physical I2C bus recovery after retiring an aborted
+  controller transaction.
+- [x] Keep the ESP-IDF fork changes local and narrowly scoped; remain on the
+  5.4 API rather than combining the refactor with an ESP-IDF 6 migration.
+- [x] Add ESP-IDF stress coverage for default-response arbitration,
+  callback-backed target reads, and abort/reuse of SPI target descriptors.
+- [x] Restore `CONFIG_SPI_MASTER_ISR_IN_IRAM` and link the classic ESP32
+  default envelope with both target implementations enabled.
+- [x] Build the classic ESP32 envelope with both target implementations
+  disabled to verify the configuration guards.
+- [x] Make the conditional cache-maintenance dependency match the SoCs that
+  actually require it.
+- [x] Run the updated I2C/SPI hardware matrix twice on ESP32 and ESP32-S3.
+- [x] Commit the review fixes at the correct levels of the stack and update all
+  affected PR branches.
+
 ## Completion criteria
 
 - All relevant sources build for ESP32 and ESP32-S3.
@@ -151,6 +181,11 @@ overflow scenario provide the mixed-operation stress pass.
 | 2026-09-03 | `b010aac9` plus follow-up changes | `817726ca57` | ESP32-S3 | Immediate full matrix with setup fixtures excluded | 12/12 pass in 73.46 s |
 | 2026-09-04 | `527dc816` | `817726ca57` | ESP32 | `i2c-target-board1.toit` | Pass: throwing and non-local-return response blocks close the target; target recreation and subsequent transactions succeed |
 | 2026-09-04 | `527dc816` | `817726ca57` | ESP32-S3 | `i2c-target-board1.toit` | Pass: active clock stretch is released after throwing and non-local-return response blocks; target recreation and subsequent transactions succeed |
+| 2026-09-05 | `b8cf906b` plus late-default regression | `c30e19e02d` | ESP32-S3 | `ctest --verbose --test-dir build/hw -C esp32s3 -R i2c-target-board1.toit-esp32s3$` | Pass: the controller began reading before the target installed its first default response; installing it released SCL and returned the expected bytes |
+| 2026-09-08 | restacked tree equivalent to `bdc5cad1` | `fc94150e9d` | ESP32 | Full I2C/SPI matrix after setup | 15/15 pass in 137.22 s with I2C and SPI targets enabled and SPI master ISR in IRAM |
+| 2026-09-08 | restacked tree equivalent to `bdc5cad1` | `fc94150e9d` | ESP32 | Immediate full matrix with setup fixtures excluded | 12/12 pass in 85.07 s |
+| 2026-09-08 | restacked tree equivalent to `bdc5cad1` | `fc94150e9d` | ESP32-S3 | Full I2C/SPI matrix after setup | 15/15 pass in 135.91 s after replacing the one-shot inter-board startup byte with an acknowledged synchronization handshake |
+| 2026-09-08 | restacked tree equivalent to `bdc5cad1` | `fc94150e9d` | ESP32-S3 | Immediate full matrix with setup fixtures excluded | 12/12 pass in 75.63 s |
 
 Add the exact command, result, and any captured timing to this table as each
 remaining item is completed.

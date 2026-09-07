@@ -2,9 +2,16 @@ cmake_minimum_required(VERSION 3.11)
 
 set(TOIT_BASE_DIR ${COMPONENT_PATH}/../../../..)
 
+set(TOIT_COMPONENT_REQUIRES
+        "efuse" "esp_adc" "esp_eth" "esp_hw_support" "esp_netif" "esp_rom"
+        "nvs_flash" "spi_flash" "mbedtls" "bt" "app_update" "ulp" "fatfs")
+if(CONFIG_TOIT_ENABLE_SPI_TARGET AND CONFIG_SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE)
+    list(APPEND TOIT_COMPONENT_REQUIRES "esp_mm")
+endif()
+
 # Register without sources, this will create an INTERFACE lib and we can then specify link options later
 idf_component_register(INCLUDE_DIRS "${TOIT_BASE_DIR}/src" "${TOIT_BASE_DIR}/include"
-        REQUIRES "efuse" "esp_adc" "esp_eth" "esp_hw_support" "esp_mm" "esp_netif" "esp_rom" "nvs_flash" "spi_flash" "mbedtls" "bt" "app_update" "ulp" "fatfs")
+        REQUIRES ${TOIT_COMPONENT_REQUIRES})
 
 cmake_policy(SET CMP0079 NEW)
 
@@ -24,6 +31,9 @@ add_subdirectory(${TOIT_BASE_DIR} toit EXCLUDE_FROM_ALL)
 
 # Add the include directories from the required components to the imported toit_vm target.
 target_include_directories(toit_vm PRIVATE "$<TARGET_PROPERTY:${COMPONENT_LIB},INTERFACE_INCLUDE_DIRECTORIES>")
+if(CONFIG_TOIT_ENABLE_SPI_TARGET AND CONFIG_SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE)
+    target_include_directories(toit_vm PRIVATE "$<TARGET_PROPERTY:idf::esp_mm,INTERFACE_INCLUDE_DIRECTORIES>")
+endif()
 
 # idf cmake does not honor the CMAKE_BUILD_TARGET, so we can not use the CMAKE_C(XX)?_FLAGS.
 # Add the required flags and defines with target_compile_* commands.
