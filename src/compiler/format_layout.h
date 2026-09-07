@@ -31,11 +31,14 @@ struct FormatStyle {
 
 // Formatter phase overview:
 //
-//   AST lowering -> Layout -> SelectedPlan -> FinalPlan -> rendering
+//   AST lowering -> Layout -> SelectedPlan -> FinalPlan
+//                                                + syntax insertions -> rendering
 //
 // Layout selection measures logical tokens without synthesized punctuation.
 // The selected token events stay private, so later phases cannot accidentally
-// depend on or change their order. Freezing makes that selection immutable.
+// depend on or change their order. Freezing makes that selection immutable;
+// syntax protection then responds to its line topology without feeding
+// punctuation back into width selection.
 
 // A zero-width position in a layout. Expression lowering records markers at
 // syntax boundaries; later phases can then reason about selected newlines
@@ -206,9 +209,9 @@ class FinalPlan {
   friend std::string render_plan(const FinalPlan&, const class PlanInsertions&);
 };
 
-// Text added after line selection lives beside, rather than inside, the final
-// plan. Insertions are restricted to single-line text and therefore cannot
-// retroactively influence width or line selection.
+// Syntax added after line selection lives beside, rather than inside, the
+// final plan. Insertions are restricted to single-line text and therefore
+// cannot retroactively influence width or line selection.
 class PlanInsertions {
  public:
   void insert_before(LayoutMarker marker, const std::string& text);
