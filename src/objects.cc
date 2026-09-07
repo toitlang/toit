@@ -332,6 +332,49 @@ int Stack::frames_do(Program* program, FrameCallback* cb) {
   return frame_no;
 }
 
+word Stack::_frame_marker_slot(Program* program, int frame_index) {
+  if (frame_index < 0) return -1;
+  word stack_length = _stack_base_addr() - _stack_sp_addr();
+  int marker = 0;
+  for (word index = 0; index < stack_length; index++) {
+    if (at(index) != program->frame_marker()) continue;
+    if (marker == frame_index) return index;
+    marker++;
+  }
+  return -1;
+}
+
+word Stack::frame_absolute_bci(Program* program, int frame_index) {
+  word slot = _frame_marker_slot(program, frame_index);
+  if (slot < 0) return -1;
+  word stack_length = _stack_base_addr() - _stack_sp_addr();
+  if (slot + 1 >= stack_length) return -1;
+  uint8* bcp = reinterpret_cast<uint8*>(at(slot + 1));
+  if (!program->bytecodes.is_inside(bcp)) return -1;
+  return program->absolute_bci_from_bcp(bcp);
+}
+
+int Stack::frame_register_count(Program* program, int frame_index) {
+  word slot = _frame_marker_slot(program, frame_index);
+  if (slot < 0) return 0;
+  // Registers occupy the slots between this frame's marker (plus its saved bcp)
+  // and the next frame's marker; for the bottom frame they run to the base.
+  word start = slot + 2;
+  word next = _frame_marker_slot(program, frame_index + 1);
+  word end = (next >= 0) ? next : (_stack_base_addr() - _stack_sp_addr());
+  if (start >= end) return 0;
+  return static_cast<int>(end - start);
+}
+
+Object* Stack::frame_register(Program* program, int frame_index, int reg_index) {
+  word slot = _frame_marker_slot(program, frame_index);
+  if (slot < 0) return program->null_object();
+  word index = slot + 2 + reg_index;
+  word stack_length = _stack_base_addr() - _stack_sp_addr();
+  if (reg_index < 0 || index >= stack_length) return program->null_object();
+  return at(index);
+}
+
 void Instance::instance_roots_do(word instance_size, RootCallback* cb) {
   if (has_active_finalizer() && cb->skip_marking(this)) return;
   word fields = fields_from_size(instance_size);

@@ -158,6 +158,35 @@ class Process : public ProcessListFromProcessGroup::Element,
   void clear_signal(Signal signal);
   uint32 signals() const { return signals_; }
 
+  // Debugger support. When a parked process is resumed by the debug controller,
+  // it stashes the step mode here; the scheduler consumes it (transfers it to
+  // the interpreter) the next time it runs the process. -1 means no pending
+  // debug resume.
+  void set_debug_resume(int step_mode) { debug_resume_ = step_mode; }
+  int take_debug_resume() {
+    int result = debug_resume_;
+    debug_resume_ = -1;
+    return result;
+  }
+
+  // Live single-step state, read/written by the interpreter's `debug_check` on
+  // the scheduler thread. It lives on the Process (NOT the shared per-thread
+  // Interpreter, which is reused across processes) so a step initiated for one
+  // process can never pause a different process that happens to run on the same
+  // interpreter. `step_mode`: 0 none, 1 step, 2 over, 3 out. `step_depth` is the
+  // frame count at the resume site, captured lazily on the first (skipped)
+  // bytecode after the resume. Begun once per resume by the interpreter.
+  void debug_begin_resume(int step_mode) {
+    debug_step_mode_ = step_mode;
+    debug_skip_once_ = true;
+    debug_step_depth_ = -1;
+  }
+  int debug_step_mode() const { return debug_step_mode_; }
+  bool debug_skip_once() const { return debug_skip_once_; }
+  void clear_debug_skip_once() { debug_skip_once_ = false; }
+  int debug_step_depth() const { return debug_step_depth_; }
+  void set_debug_step_depth(int depth) { debug_step_depth_ = depth; }
+
   // Processes have a priority in the range [0..255]. The scheduler
   // prioritizes running processes with higher priorities, so processes
   // with lower priorities might get starved by more important things.
@@ -299,6 +328,10 @@ class Process : public ProcessListFromProcessGroup::Element,
   int const id_;
   int next_task_id_;
   bool is_privileged_ = false;
+  int debug_resume_ = -1;
+  int debug_step_mode_ = 0;
+  bool debug_skip_once_ = false;
+  int debug_step_depth_ = -1;
 
   Program* program_;
   ProcessRunner* runner_;

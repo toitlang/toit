@@ -35,6 +35,7 @@
 
 #include <errno.h>
 #include <libgen.h>
+#include <stdlib.h>
 
 namespace toit {
 
@@ -82,6 +83,20 @@ static bool is_binary_file(const char* path) {
 
 int main(int argc, char **argv) {
   Flags::process_args(&argc, argv);
+
+  // Extract the `--debug` flag wherever it appears and remove it from argv, so
+  // the rest of the argument handling (including snapshot detection on argv[1])
+  // is unaffected. We activate the in-image debugger by setting OEVM_DEBUG,
+  // which is the single condition read by the scheduler and the VM.
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--debug") == 0) {
+      setenv("OEVM_DEBUG", "1", 1);
+      for (int j = i; j < argc - 1; j++) argv[j] = argv[j + 1];
+      argc--;
+      i--;
+    }
+  }
+
   if (argc < 2) print_usage(1);
 
   FlashRegistry::set_up();

@@ -1,0 +1,169 @@
+// Copyright (C) 2026 Toitware ApS.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; version
+// 2.1 only.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// The license can be found in the file `LICENSE` in the top level
+// directory of this repository.
+
+#pragma once
+
+#include <condition_variable>
+#include <mutex>
+#include <vector>
+
+#include "os.h"
+#include "top.h"
+
+namespace toit {
+
+class Locker;
+class Process;
+class Program;
+class Scheduler;
+
+// An in-image bytecode debugger speaking the line-based `dbg:` protocol over
+// stdout/stdin. It is owned by the VM and active only when debugging is enabled
+// (the `--debug` flag or the OEVM_DEBUG/TOIT_DEBUG environment variable).
+//
+// Threading model:
+//   - The interpreter (a scheduler worker thread) calls `should_break` /
+//     `on_pause` for every bytecode of a non-privileged process. On a hit it
+//     returns DEBUG_PAUSED and the scheduler parks the process.
+//   - `register_paused` runs on the scheduler thread, under the scheduler lock,
+//     once the process is actually parked.
+//   - A dedicated controller thread (NOT a scheduler worker, so it may block on
+//     stdin) reads `dbg:` commands and re-readies parked processes via
+//     `Scheduler::resume_debug_process`.
+// The debugger's own state is guarded by `mutex_`; a condition variable hands
+// off pause/target events between the threads.
+class Debugger {
+ public:
+  // Reason a process paused. Passed to `on_pause`.
+  enum Reason {
+    REASON_BREAK,
+    REASON_STEP,
+  };
+
+  explicit Debugger(Scheduler* scheduler);
+  ~Debugger();
+
+  bool active() const { return true; }
+
+  // Print `dbg:ready` and start the controller thread. Call once, before the
+  // target program runs.
+  void start();
+
+  // Stop the controller thread and join it. Must be called before the scheduler
+  // is torn down so the controller can no longer touch it.
+  void stop();
+
+  // Called from the interpreter for every bytecode of a non-privileged process.
+  // Returns true if execution should pause at `bci` (program-relative). Keys
+  // breakpoints on (Program*, entry_bci, off). Also captures the first
+  // non-privileged program and forces a pause at its entry so the operator can
+  // install breakpoints before the program makes progress.
+  bool should_break(Program* program, word bci);
+
+  // Print the `dbg:paused ...` line for the current pause.
+  void on_pause(Process* process, Program* program, word bci, int reason);
+
+  // Resolve the `<id> <off>` reported for a single-step pause at `bci`: finds
+  // the registered method that contains `bci` (the greatest entry bci <= bci)
+  // and records its id plus the method-relative offset, so a step pause is
+  // reported just like a breakpoint. Called from the interpreter (scheduler
+  // thread); guards the registry with `mutex_`.
+  void resolve_step_location(Program* program, word bci);
+
+  // Install a breakpoint at `entry_bci + off` in `program`, reported as `id`.
+  void add_breakpoint(Program* program, word entry_bci, word off, int id);
+
+  // Called by the scheduler (under its lock) once a process has parked on a
+  // DEBUG_PAUSED result. Records it and wakes a waiting controller command.
+  void register_paused(Locker& locker, Process* process);
+
+  // Emit `dbg:stack off=<bci> r0=<v> r1=<v> …` for `frame_index` of the parked
+  // `process`. Called by the scheduler from `inspect_debug_process` while it
+  // holds the scheduler lock, so the parked stack is stable while we read it.
+  void emit_stack(Locker& locker, Process* process, int frame_index);
+
+  // Prints a String register value as a double-quoted, escaped token (escapes
+  // " \ and control chars so the value stays whitespace-delimited on the wire,
+  // and truncates over-long strings). Used by emit_stack.
+  void emit_string(String* string);
+
+ private:
+  struct Breakpoint {
+    Program* program;
+    word entry_bci;
+    word off;
+    int id;
+  };
+
+  class ControllerThread;
+
+  // A registered method of the target program. `entry_bci` is program-relative
+  // (the bci of the method's first bytecode); breakpoints are keyed on it.
+  struct MethodInfo {
+    word entry_bci;
+    int arity;
+  };
+
+  // Controller-thread command handling.
+  void run_controller();
+  void handle_command(const char* line);
+  // Block until the target program is captured (or the session stops); returns
+  // the program, or null if stopping.
+  Program* await_target();
+  // Build (once, then cache) the id->method registry for `program`. Enumerates
+  // the program's methods from its dispatch table, deduplicating by entry bci,
+  // and assigns 1-based ids. Only ever touched on the controller thread.
+  void build_registry(Program* program);
+  void cmd_methods();
+  void cmd_break(int id, int off);
+  void cmd_clear(int id, int off);
+  void cmd_inspect(int frame_index);
+  void cmd_continue();
+  // Resume the parked process in a step mode (1 step, 2 over, 3 out) and
+  // acknowledge with `dbg:ok <verb>`.
+  void cmd_step(int step_mode, const char* verb);
+
+  Scheduler* const scheduler_;
+  ControllerThread* controller_ = null;
+
+  std::mutex mutex_;
+  std::condition_variable cond_;
+
+  // The user program we are debugging (first non-privileged program seen).
+  Program* target_program_ = null;
+  std::vector<Breakpoint> breakpoints_;
+
+  // The currently parked process (or -1 if none is parked).
+  int paused_pid_ = -1;
+
+  // Set during teardown to wake any waiting controller command and stop the
+  // controller loop from touching the scheduler.
+  bool stopped_ = false;
+
+  // Information about the most recent pause, for `on_pause` to report. Only
+  // touched on the single scheduler worker thread.
+  int last_id_ = -1;
+  word last_off_ = 0;
+
+  // Numeric id -> method registry for the target program, built lazily by
+  // `build_registry` and cached per program. `registry_[id - 1]` holds the
+  // method for 1-based id. Used by `cmd_break`/`cmd_clear` to resolve ids.
+  // (Method-name resolution stays in the offline driver; the VM is numeric
+  // only.)
+  Program* registry_program_ = null;
+  std::vector<MethodInfo> registry_;
+};
+
+} // namespace toit
