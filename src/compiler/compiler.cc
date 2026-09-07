@@ -36,6 +36,8 @@
 #include "filesystem_hybrid.h"
 #include "filesystem_local.h"
 #include "filesystem_lsp.h"
+#include "format_unit.h"
+#include "format_verifier.h"
 #include "lambda.h"
 #include "list.h"
 #include "lsp/lsp.h"
@@ -68,6 +70,7 @@
 #include "../os.h"
 #include "../snapshot.h"
 #include "../flags.h"
+#include "../file_writer.h"
 #include "../utils.h"
 
 #include "third_party/semver/semver.h"
@@ -958,6 +961,76 @@ void Compiler::analyze(List<const char*> source_paths,
   };
   Pipeline pipeline(configuration);
   pipeline.run(source_paths, false);
+}
+
+bool Compiler::format(const char* source_path, const char* out_path) {
+  FilesystemHybrid filesystem(source_path);
+  SourceManager sources(&filesystem);
+  PathBuilder path(&filesystem);
+  if (filesystem.is_absolute(source_path)) {
+    path.join(source_path);
+  } else {
+    path.join(filesystem.relative_anchor(source_path));
+    path.join(source_path);
+  }
+  path.canonicalize();
+
+  AnalysisDiagnostics diagnostics(&sources,
+                                  false,
+                                  true);
+  auto loaded = sources.load_file(path.buffer(), Package::invalid());
+  if (loaded.status != SourceManager::LoadResult::OK) {
+    loaded.report_error(&diagnostics);
+    return false;
+  }
+
+  Source* source = loaded.source;
+  SymbolCanonicalizer symbols;
+  Scanner scanner(source, &symbols, &diagnostics);
+  Parser parser(source, &scanner, &diagnostics);
+  ast::Unit* unit = parser.parse_unit();
+  if (diagnostics.encountered_error()) {
+    fprintf(stderr,
+            "toit format: %s has parse errors; not formatting\n",
+            source_path);
+    return false;
+  }
+
+  std::string formatted;
+  if (!format_unit(unit,
+                   source,
+                   scanner.comments(),
+                   &formatted)) {
+    fprintf(stderr,
+            "toit format: unsupported syntax or comment placement in %s; not formatting\n",
+            source_path);
+    return false;
+  }
+  if (!verify_formatted_output(
+      &sources,
+      source,
+      &scanner,
+      unit,
+      reinterpret_cast<const uint8*>(formatted.data()),
+      formatted.size(),
+      out_path)) {
+    return false;
+  }
+
+  bool changed = formatted.size() != static_cast<size_t>(source->size()) ||
+      memcmp(formatted.data(), source->text(), formatted.size()) != 0;
+  if ((strcmp(source_path, out_path) != 0 || changed) &&
+      !write_file_atomically(
+          out_path,
+          reinterpret_cast<const uint8*>(formatted.data()),
+          formatted.size())) {
+    fprintf(stderr,
+            "toit format: unable to atomically write %s: %s\n",
+            out_path,
+            strerror(errno));
+    return false;
+  }
+  return true;
 }
 
 #ifdef TOIT_POSIX

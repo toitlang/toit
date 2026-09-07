@@ -105,6 +105,10 @@ class Compiler {
                          const char* out_path,
                          const Configuration& config);
 
+  // Pretty-prints source files in place. Returns false without changing the
+  // destination if parsing, formatting, verification, or installation fails.
+  bool format(const char* source_path, const char* out_path);
+
  private:
   /// Analyzes the given sources.
   ///

@@ -107,6 +107,7 @@ int main(int argc, char **argv) {
   auto dep_format = compiler::Compiler::DepFormat::none;
   bool for_language_server = false;
   bool for_analysis = false;
+  bool for_format = false;
   bool for_dependencies = false;
   const char* vessels_root = null;
   const char* cross_os = null;
@@ -253,6 +254,10 @@ int main(int argc, char **argv) {
       for_dependencies = true;
       processed_args++;
       ways_to_run++;
+    } else if (strcmp(argv[processed_args], "--format") == 0) {
+      for_format = true;
+      processed_args++;
+      ways_to_run++;
     } else if (strcmp(argv[processed_args], "--strip") == 0) {
       should_strip = true;
       processed_args++;
@@ -285,7 +290,7 @@ int main(int argc, char **argv) {
     } else {
       if (strcmp(argv[processed_args], "--") == 0) processed_args++;
       if (ways_to_run == 0) {
-        ASSERT(!for_analysis && !for_dependencies);  // Otherwise ways_to_run would be 1.
+        ASSERT(!for_analysis && !for_format && !for_dependencies);
         if (processed_args == argc) {
           fprintf(stderr, "Missing toit-file, snapshot, or string-expression\n");
           print_usage(1);
@@ -302,7 +307,7 @@ int main(int argc, char **argv) {
   // We break after the first argument that isn't a flag.
   // This means that there is always at most one source-file.
   if (ways_to_run != 1) {
-    if (for_analysis || for_dependencies) {
+    if (for_analysis || for_format || for_dependencies) {
       ASSERT(direct_script != null);
       fprintf(stderr, "Can't analyze string expressions\n");
     } else {
@@ -331,7 +336,7 @@ int main(int argc, char **argv) {
 
   args = &argv[processed_args];
 
-  if (for_language_server || for_analysis || for_dependencies) {
+  if (for_language_server || for_analysis || for_format || for_dependencies) {
     if (bundle_filename != null) {
       fprintf(stderr, "Can't have snapshot-name with '--analyze' or '--lsp'\n");
       print_usage(1);
@@ -345,7 +350,9 @@ int main(int argc, char **argv) {
       if (args[0] == NULL) {
         fprintf(stderr,
                 "Missing toit-files to '%s'\n",
-                for_analysis ? "--analyze" : "--dependencies");
+                for_analysis
+                    ? "--analyze"
+                    : for_format ? "--format" : "--dependencies");
         print_usage(1);
       }
       // Add all remaining arguments to the `--analyze`|`--dependencies` as source paths.
@@ -385,6 +392,11 @@ int main(int argc, char **argv) {
   if (for_language_server) {
     compiler::Compiler compiler;
     compiler.language_server(compiler_config);
+  } else if (for_format) {
+    compiler::Compiler compiler;
+    for (int i = 0; i < source_path_count; i++) {
+      if (!compiler.format(source_paths[i], source_paths[i])) exit_state = 1;
+    }
   } else if (for_analysis || for_dependencies) {
     compiler::Compiler compiler;
     compiler.analyze(List<const char*>(source_paths, source_path_count),
