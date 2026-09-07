@@ -404,10 +404,11 @@ class BufferTarget:
       initialized = true
     finally:
       if not initialized:
-        if state: state.dispose
-        spi-buffer-target-close_ spi-target-resource-group_ resource false
-        resource_ = null
-        if finalizer-added: remove-finalizer this
+        critical-do --no-respect-deadline:
+          if state: state.dispose
+          spi-buffer-target-close_ spi-target-resource-group_ resource false
+          resource_ = null
+          if finalizer-added: remove-finalizer this
 
   /** Returns the response byte stored at $index. */
   operator [] index/int -> int:
