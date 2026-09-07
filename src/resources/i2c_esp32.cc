@@ -380,10 +380,6 @@ PRIMITIVE(target_create) {
     [&] { if (!handed_to_resource) i2c_del_slave_device(handle); }
   };
 
-  err = i2c_slave_set_default_response(
-      handle, default_response.address(), default_response.length());
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-
   auto resource = _new I2cTargetResource(group, handle, event_queue, receive_buffer);
   if (resource == null) FAIL(MALLOC_FAILED);
   handed_to_resource = true;
@@ -397,6 +393,10 @@ PRIMITIVE(target_create) {
     .on_transmit_done = null,
   };
   err = i2c_slave_register_event_callbacks(handle, &callbacks, resource);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
+  err = i2c_slave_set_default_response(
+      handle, default_response.address(), default_response.length());
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   resource->owned_pins().adopt(reserver);

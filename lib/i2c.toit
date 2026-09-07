@@ -56,6 +56,9 @@ DEFAULT-TARGET-BUFFER-SIZE ::= 256
 /** Maximum size of an I2C target default response. */
 MAX-DEFAULT-RESPONSE-SIZE ::= 32
 
+/** Default maximum time for producing a stretched target response. */
+DEFAULT-TARGET-RESPONSE-TIMEOUT-US ::= 50_000
+
 /**
 An addressable I2C target.
 
@@ -68,7 +71,7 @@ class Target:
   static OVERFLOW-STATE_ ::= 1 << 2
 
   resource_ := ?
-  state_/ResourceState_ ::= ?
+  state_ := null
   write-mutex_/Mutex ::= Mutex
   serving-read-requests_/bool := false
   writing-response_/bool := false
@@ -119,7 +122,7 @@ class Target:
     if response.size == 0 or response.size > MAX-DEFAULT-RESPONSE-SIZE:
       throw "INVALID_ARGUMENT"
 
-    resource_ = i2c-target-create_
+    resource := i2c-target-create_
         target-resource-group_
         sda
         scl
@@ -131,8 +134,20 @@ class Target:
         false
         broadcast
         response
-    state_ = ResourceState_ target-resource-group_ resource_
-    add-finalizer this:: close
+    resource_ = resource
+    state/ResourceState_? := null
+    initialized := false
+    try:
+      state = ResourceState_ target-resource-group_ resource
+      state_ = state
+      add-finalizer this:: close
+      initialized = true
+    finally:
+      if not initialized:
+        critical-do --no-respect-deadline:
+          if state: state.dispose
+          i2c-target-close_ target-resource-group_ resource
+          resource_ = null
 
   /**
   Returns the next complete controller write transaction, or null if none is
@@ -192,6 +207,11 @@ class Target:
     the transaction before consuming the response, the unused tail is
     discarded and the block is called for the next read transaction.
 
+  $response-timeout-us bounds each call to $block. If the block does not produce
+    a response in time, this method throws `DEADLINE_EXCEEDED` and restores the
+    default response, releasing a controller that is waiting for data. The block
+    must not suppress task deadlines for longer than this interval.
+
   While this method is active, the configured default response is suppressed.
     If the block throws or performs a non-local return, the default response is
     restored. A controller already waiting for a response is released with the
@@ -200,17 +220,18 @@ class Target:
   This method requires response-time clock stretching and is not supported on
     the original ESP32. Use $write to queue responses there.
   */
-  serve-read-requests [block] -> none:
+  serve-read-requests
+      --response-timeout-us/int=DEFAULT-TARGET-RESPONSE-TIMEOUT-US
+      [block] -> none:
+    if response-timeout-us <= 0: throw "INVALID_ARGUMENT"
     write-mutex_.do:
       if not resource_: throw "CLOSED"
       serving-read-requests_ = true
       activated := false
       try:
-        // TODO: Add a native fallback deadline that restores the default
-        // response before the hardware stretch limit and reports the first
-        // such fallback.
-        i2c-target-set-handler-mode_ resource_ true
-        activated = true
+        critical-do --no-respect-deadline:
+          i2c-target-set-handler-mode_ resource_ true
+          activated = true
         while true:
           if not resource_: throw "CLOSED"
           state_.clear-state REQUEST-STATE_
@@ -220,7 +241,7 @@ class Target:
             continue
 
           while true:
-            response/ByteArray := block.call
+            response/ByteArray := with-timeout --us=response-timeout-us: block.call
             if response.size == 0: continue
             write_ response
             break
@@ -236,7 +257,10 @@ class Target:
 
   write_ bytes/ByteArray -> none:
     if bytes.size == 0: return
-    i2c-target-set-write-pending_ resource_ true
+    pending := false
+    critical-do --no-respect-deadline:
+      i2c-target-set-write-pending_ resource_ true
+      pending = true
     try:
       offset := 0
       while offset < bytes.size:
@@ -248,8 +272,8 @@ class Target:
         if offset == bytes.size: return
         state_.wait-for-state REQUEST-STATE_
     finally:
-      if resource_:
-        critical-do --no-respect-deadline:
+      critical-do --no-respect-deadline:
+        if pending and resource_:
           i2c-target-set-write-pending_ resource_ false
 
   /** Number of controller write transactions dropped due to buffer overflow. */
@@ -260,7 +284,7 @@ class Target:
   /** Closes the target and releases its pins and native buffers. */
   close -> none:
     if not resource_: return
-    critical-do:
+    critical-do --no-respect-deadline:
       state_.dispose
       i2c-target-close_ target-resource-group_ resource_
       resource_ = null
