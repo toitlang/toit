@@ -302,9 +302,14 @@ PRIMITIVE(target_create) {
        uint32, receive_buffer_size,
        bool, pullup,
        bool, allow_power_down,
-       bool, broadcast);
+       bool, broadcast,
+       Blob, default_response);
 
-  if (send_buffer_size == 0 || receive_buffer_size == 0) FAIL(INVALID_ARGUMENT);
+  if (send_buffer_size == 0 || receive_buffer_size == 0 ||
+      default_response.length() == 0 ||
+      default_response.length() > SOC_I2C_FIFO_LEN) {
+    FAIL(INVALID_ARGUMENT);
+  }
 
   i2c_addr_bit_len_t address_length;
   if (address_bit_size == 7 && address <= 0x7f) {
@@ -375,6 +380,10 @@ PRIMITIVE(target_create) {
     [&] { if (!handed_to_resource) i2c_del_slave_device(handle); }
   };
 
+  err = i2c_slave_set_default_response(
+      handle, default_response.address(), default_response.length());
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
   auto resource = _new I2cTargetResource(group, handle, event_queue, receive_buffer);
   if (resource == null) FAIL(MALLOC_FAILED);
   handed_to_resource = true;
@@ -384,6 +393,8 @@ PRIMITIVE(target_create) {
   i2c_slave_event_callbacks_t callbacks = {
     .on_request = target_request_handler,
     .on_receive = target_receive_handler,
+    .on_transmit = null,
+    .on_transmit_done = null,
   };
   err = i2c_slave_register_event_callbacks(handle, &callbacks, resource);
   if (err != ESP_OK) return Primitive::os_error(err, process);
@@ -433,6 +444,26 @@ PRIMITIVE(target_write) {
   }
   ASSERT(Smi::is_valid(written));
   return Smi::from(written);
+}
+
+PRIMITIVE(target_set_write_pending) {
+  ARGS(I2cTargetResource, target, bool, pending);
+  esp_err_t err = i2c_slave_set_buffered_write_pending(target->handle(), pending);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  return process->null_object();
+}
+
+PRIMITIVE(target_set_handler_mode) {
+  ARGS(I2cTargetResource, target, bool, enabled);
+#if SOC_I2C_SLAVE_CAN_GET_STRETCH_CAUSE
+  esp_err_t err = i2c_slave_set_default_response_enabled(
+      target->handle(), !enabled);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  return process->null_object();
+#else
+  if (enabled) FAIL(UNSUPPORTED);
+  return process->null_object();
+#endif
 }
 
 PRIMITIVE(target_take_request_count) {
