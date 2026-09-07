@@ -424,7 +424,7 @@ class Bus:
   static CONTROLLER-DONE-STATE_ ::= 1 << 0
 
   resource_ := ?
-  state_/ResourceState_ ::= ?
+  state_ := null
   mutex_/Mutex ::= Mutex
   devices_ := {:}
   frequency_/int
@@ -493,9 +493,21 @@ class Bus:
       --frequency/int=DEFAULT-FREQUENCY
       --pull-up/bool=false:
     frequency_ = frequency
-    resource_ = i2c-bus-create_ resource-group_ (gpio.to-pin-num_ sda) (gpio.to-pin-num_ scl) pull-up
-    state_ = ResourceState_ resource-group_ resource_
-    add-finalizer this:: close
+    resource := i2c-bus-create_ resource-group_ (gpio.to-pin-num_ sda) (gpio.to-pin-num_ scl) pull-up
+    resource_ = resource
+    state/ResourceState_? := null
+    initialized := false
+    try:
+      state = ResourceState_ resource-group_ resource
+      state_ = state
+      add-finalizer this:: close
+      initialized = true
+    finally:
+      if not initialized:
+        critical-do --no-respect-deadline:
+          if state: state.dispose
+          i2c-bus-close_ resource
+          resource_ = null
 
   perform-controller-operation_ [start] [finish]:
     return mutex_.do:
@@ -562,7 +574,7 @@ class Bus:
   */
   close -> none:
     mutex_.do:
-      critical-do:
+      critical-do --no-respect-deadline:
         if not resource_: return
         devices := devices_.values
         devices.do: it.close-native_
@@ -648,8 +660,18 @@ class Device implements serial.Device:
       timeout-us/int
       disable-ack-check/bool
       .key_:
-    resource_ = i2c-device-create_ bus_.resource_ address-bit-size address frequency timeout-us disable-ack-check
-    add-finalizer this:: close
+    resource := i2c-device-create_ bus_.resource_ address-bit-size address frequency timeout-us disable-ack-check
+    resource_ = resource
+    initialized := false
+    try:
+      add-finalizer this:: close
+      initialized = true
+    finally:
+      if not initialized:
+        critical-do --no-respect-deadline:
+          i2c-device-close_ resource
+          resource_ = null
+          bus_ = null
 
   check-controller-result_ result/int -> none:
     if result == CONTROLLER-RESULT-OK_: return
@@ -878,7 +900,7 @@ class Device implements serial.Device:
     bus := bus_
     if not bus: return
     bus.mutex_.do:
-      critical-do: close-native_
+      critical-do --no-respect-deadline: close-native_
 
   close-native_ -> none:
     if not resource_: return
