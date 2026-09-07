@@ -429,10 +429,12 @@ namespace toit {
 #define MODULE_I2C(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
   PRIMITIVE(target_init, 0)                  \
-  PRIMITIVE(target_create, 10)               \
+  PRIMITIVE(target_create, 11)               \
   PRIMITIVE(target_close, 2)                 \
   PRIMITIVE(target_receive, 1)               \
   PRIMITIVE(target_write, 3)                 \
+  PRIMITIVE(target_set_write_pending, 2)     \
+  PRIMITIVE(target_set_handler_mode, 2)      \
   PRIMITIVE(target_take_request_count, 1)    \
   PRIMITIVE(target_dropped_receive_count, 1) \
   PRIMITIVE(bus_create, 4)                   \

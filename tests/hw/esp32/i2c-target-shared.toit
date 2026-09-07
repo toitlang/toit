@@ -40,12 +40,16 @@ OVERFLOW ::= 7
 TRANSACTION-OVERFLOW ::= 8
 CONCURRENT-QUEUE-READ ::= 9
 THROWING-READ ::= 10
-RETURNING-READ ::= 11
+HANDLER-SEQUENCE ::= 12
+RACING-QUEUE-READ ::= 13
+HANDLER-WRITE ::= 14
+ABORTED-HANDLER ::= 15
 
 DEFAULT-CONFIG ::= 0
 TEN-BIT-CONFIG ::= 1
 SMALL-BUFFER-CONFIG ::= 2
 BROADCAST-CONFIG ::= 3
+CUSTOM-DEFAULT-CONFIG ::= 4
 
 main-board1:
   run-test: test-board1
@@ -58,6 +62,65 @@ test-board1:
   expect (bus.test ADDRESS)
   device := bus.device ADDRESS
 
+  implicit-default := ByteArray 16 --initial=0xff
+  expect-equals implicit-default (device.read implicit-default.size)
+
+  device.close
+  reconfigure port CUSTOM-DEFAULT-CONFIG
+  device = bus.device ADDRESS
+  custom-default := #[0x31, 0xa7, 0x5c]
+  custom-read-size := system.architecture == system.ARCHITECTURE-ESP32
+      ? custom-default.size
+      : custom-default.size * 3
+  expected-custom-default := ByteArray custom-read-size:
+    custom-default[it % custom-default.size]
+  expect-equals expected-custom-default (device.read expected-custom-default.size)
+
+  if system.architecture != system.ARCHITECTURE-ESP32:
+    first-response := #[0x10, 0x11, 0x12]
+    second-response := #[0x20, 0x21, 0x22, 0x23]
+    third-response := #[0x30, 0x31, 0x32]
+    send-command port HANDLER-SEQUENCE [first-response, second-response, third-response]
+    // A short controller transaction discards the unused handler bytes. The
+    // next transaction calls the handler again.
+    expect-equals first-response[..2] (device.read 2)
+    // If that response is shorter than the controller transaction, the same
+    // handler is called again while SCL remains stretched.
+    expected-response := second-response + third-response
+    expect-equals expected-response (device.read expected-response.size)
+    // The next request makes the response block leave non-locally. The
+    // persistent serving scope must restore the default for that same request.
+    expect-equals custom-default (device.read custom-default.size)
+    expect-equals OK port.in.read-byte
+
+    send-command port THROWING-READ []
+    // An exception from the handler also restores the default without closing
+    // the target.
+    expect-equals custom-default (device.read custom-default.size)
+    expect-equals OK port.in.read-byte
+    expect-equals custom-default (device.read custom-default.size)
+    expect (bus.test ADDRESS)
+
+    abandoned-response := make-data 200 0x48
+    send-command port ABORTED-HANDLER [abandoned-response]
+    expect-equals abandoned-response[..16] (device.read 16)
+    expect-equals OK port.in.read-byte
+    // The timeout abandons the remainder of the handler response. It must not
+    // leak ahead of the restored fallback, now or on a later transaction.
+    expect-equals custom-default (device.read custom-default.size)
+    expect-equals custom-default (device.read custom-default.size)
+
+    handler-write := make-data 11 0x64
+    handler-read := make-data 9 0xa2
+    send-command port HANDLER-WRITE [handler-write, handler-read]
+    device.write handler-write
+    expect-equals handler-read (device.read handler-read.size)
+    expect-equals OK port.in.read-byte
+
+  device.close
+  reconfigure port DEFAULT-CONFIG
+  device = bus.device ADDRESS
+
   [1, 2, 15, 31, 32, 63].do: | size/int |
     data := make-data size size
     send-command port WRITE [data]
@@ -69,6 +132,29 @@ test-board1:
     send-command port QUEUE-READ [expected]
     expect-equals expected (device.read size)
     expect-equals OK port.in.read-byte
+
+  if system.architecture != system.ARCHITECTURE-ESP32:
+    queued-prefix := #[0x75, 0x86, 0x97]
+    send-command port QUEUE-READ [queued-prefix]
+    expect-equals (queued-prefix + (ByteArray 5 --initial=0xff)) (device.read 8)
+    expect-equals OK port.in.read-byte
+
+  // Queueing a response during an active default transaction must not replace
+  // or splice into that response. The queued bytes belong to the next
+  // transaction.
+  device.close
+  reconfigure port DEFAULT-CONFIG
+  device = bus.device ADDRESS --frequency=10_000
+  racing-response := make-data 17 0xd3
+  send-command port RACING-QUEUE-READ [racing-response]
+  fallback-read-size := system.architecture == system.ARCHITECTURE-ESP32 ? 32 : 64
+  expect-equals (ByteArray fallback-read-size --initial=0xff) (device.read fallback-read-size)
+  expect-equals racing-response (device.read racing-response.size)
+  expect-equals OK port.in.read-byte
+
+  device.close
+  reconfigure port DEFAULT-CONFIG
+  device = bus.device ADDRESS
 
   if system.architecture != system.ARCHITECTURE-ESP32:
     expected := make-data 17 0x91
@@ -100,15 +186,6 @@ test-board1:
     expect longest-low >= 9_000
     expect longest-low < 20_000
     probe.close
-
-  // An exceptional or non-local exit from the response block must release an
-  // active stretch and close the target instead of wedging the bus.
-  [THROWING-READ, RETURNING-READ].do: | command/int |
-    send-command port command []
-    catch: device.read 1
-    expect-equals OK port.in.read-byte
-    reconfigure port DEFAULT-CONFIG
-    expect (bus.test ADDRESS)
 
   tx := make-data 19 0x71
   expected-rx := make-data 23 0x29
@@ -165,7 +242,10 @@ test-board1:
   second := make-data 31 0xc1
   send-command port OVERFLOW [first]
   device.write first
-  device.write second
+  // Keep producing complete transactions while board 2 deliberately leaves
+  // its application receive queue unread. The extra transactions also make
+  // finalization independent of the peripheral's boundary notification lag.
+  8.repeat: device.write second
   expect-equals OK port.in.read-byte
 
   // Distinguish a transaction larger than the driver's receive buffer from
@@ -174,6 +254,10 @@ test-board1:
   oversized := make-data 63 0x6d
   send-command port TRANSACTION-OVERFLOW []
   device.write oversized
+  // Force subsequent address boundaries so all peripheral revisions report
+  // the completed oversized write before board 2 checks the overflow count.
+  device.write #[0x00]
+  device.write #[0x01]
   expect-equals OK port.in.read-byte
 
   if system.architecture != system.ARCHITECTURE-ESP32:
@@ -199,9 +283,25 @@ main-board2:
   run-test --background: test-board2
 
 test-board2:
+  expect-throw "INVALID_ARGUMENT":
+    i2c.Target
+        --sda=I2C-SDA
+        --scl=I2C-SCL
+        --address=ADDRESS
+        --default-response=#[]
+  expect-throw "INVALID_ARGUMENT":
+    i2c.Target
+        --sda=I2C-SDA
+        --scl=I2C-SCL
+        --address=ADDRESS
+        --default-response=(ByteArray (i2c.MAX-DEFAULT-RESPONSE-SIZE + 1))
+
   target := make-target DEFAULT-CONFIG
   expect-null target.try-read
   expect-equals 0 target.dropped-receive-count
+  if system.architecture == system.ARCHITECTURE-ESP32:
+    expect-throw "UNSUPPORTED":
+      target.serve-read-requests: #[]
 
   port := uart.Port --rx=UART-RX2 --tx=UART-TX2 --baud-rate=115_200
   send-byte port READY
@@ -227,29 +327,70 @@ test-board2:
     else if command == QUEUE-READ:
       target.write parts[0]
       send-byte port READY
-      target.wait-for-read-request: |request-count/int|
-        expect-equals 1 request-count
-        #[ ]
       send-byte port OK
     else if command == DYNAMIC-READ:
+      done := monitor.Semaphore
+      task::
+        catch:
+          with-timeout --ms=100:
+            target.serve-read-requests:
+              sleep --ms=10
+              parts[0]
+        done.up
+      // Spawning yields to the new task. An explicit second yield makes the
+      // test independent of that implementation detail and lets it reach the
+      // request wait after suppressing the fallback.
+      yield
+      expect-throw "INVALID_STATE": target.try-write #[0x55]
       send-byte port READY
-      target.wait-for-read-request: |request-count/int|
-        expect-equals 1 request-count
-        sleep --ms=10
-        parts[0]
+      done.down
       send-byte port OK
     else if command == THROWING-READ:
+      done := monitor.Semaphore
+      task::
+        expect-throw "HANDLER_ERROR":
+          target.serve-read-requests:
+            throw "HANDLER_ERROR"
+        done.up
+      yield
       send-byte port READY
-      expect-throw "HANDLER_ERROR":
-        target.wait-for-read-request: |request-count/int|
-          expect-equals 1 request-count
-          throw "HANDLER_ERROR"
-      expect-throw "CLOSED": target.try-read
+      done.down
       send-byte port OK
-    else if command == RETURNING-READ:
+    else if command == HANDLER-SEQUENCE:
+      done := monitor.Semaphore
+      task::
+        serve-handler-sequence target parts
+        done.up
+      yield
       send-byte port READY
-      expect-equals "RETURNED" (wait-for-request-and-return target)
-      expect-throw "CLOSED": target.try-read
+      done.down
+      send-byte port OK
+    else if command == HANDLER-WRITE:
+      invocations := 0
+      done := monitor.Semaphore
+      task::
+        catch:
+          with-timeout --ms=100:
+            target.serve-read-requests:
+              invocations++
+              parts[1]
+        done.up
+      yield
+      send-byte port READY
+      expect-equals parts[0] target.read
+      done.down
+      expect-equals 1 invocations
+      send-byte port OK
+    else if command == ABORTED-HANDLER:
+      done := monitor.Semaphore
+      task::
+        catch:
+          with-timeout --ms=50:
+            target.serve-read-requests: parts[0]
+        done.up
+      yield
+      send-byte port READY
+      done.down
       send-byte port OK
     else if command == WRITE-READ:
       target.write parts[1]
@@ -258,17 +399,27 @@ test-board2:
       send-byte port OK
     else if command == OVERFLOW:
       send-byte port READY
-      sleep --ms=30
-      expect-throw "OVERFLOW": target.try-read
-      expect-equals parts[0] target.read
-      expect-null target.try-read
+      // Keep the application receive buffer occupied until the subsequent
+      // transactions have all reached the ISR.
+      sleep --ms=100
+      got-transaction := false
+      got-overflow := false
+      // Delivery of the valid transaction and the overflow notification are
+      // independent ISR events, so their observable order is not defined.
+      with-timeout --ms=100:
+        while not (got-transaction and got-overflow):
+          error := catch --unwind=(: it != "OVERFLOW"):
+            transaction := target.read
+            if transaction == parts[0]: got-transaction = true
+          if error == "OVERFLOW":
+            expect (not got-overflow)
+            got-overflow = true
       expect target.dropped-receive-count >= 1
       send-byte port OK
     else if command == TRANSACTION-OVERFLOW:
       send-byte port READY
-      sleep --ms=30
+      sleep --ms=100
       expect-throw "OVERFLOW": target.try-read
-      expect-null target.try-read
       expect-equals 1 target.dropped-receive-count
       send-byte port OK
     else if command == CONCURRENT-QUEUE-READ:
@@ -289,14 +440,25 @@ test-board2:
       target.write parts[0]
       second-done.get
       send-byte port OK
+    else if command == RACING-QUEUE-READ:
+      send-byte port READY
+      sleep --ms=10
+      target.write parts[0]
+      send-byte port OK
     else:
       throw "Unknown command: $command"
 
-wait-for-request-and-return target/i2c.Target -> string:
-  target.wait-for-read-request: |request-count/int|
-    expect-equals 1 request-count
-    return "RETURNED"
-  unreachable
+serve-handler-sequence target/i2c.Target responses/List -> none:
+  index := -1
+  target.serve-read-requests:
+    index++
+    if index == 0:
+      // An empty response asks the same handler again without releasing SCL.
+      #[]
+    else if index <= responses.size:
+      responses[index - 1]
+    else:
+      return
 
 make-target config/int -> i2c.Target:
   if config == DEFAULT-CONFIG:
@@ -333,6 +495,15 @@ make-target config/int -> i2c.Target:
         --receive-buffer-size=32
         --pull-up
         --broadcast
+  if config == CUSTOM-DEFAULT-CONFIG:
+    return i2c.Target
+        --sda=I2C-SDA
+        --scl=I2C-SCL
+        --address=ADDRESS
+        --send-buffer-size=128
+        --receive-buffer-size=256
+        --default-response=#[0x31, 0xa7, 0x5c]
+        --pull-up
   unreachable
 
 reconfigure port/uart.Port config/int -> none:

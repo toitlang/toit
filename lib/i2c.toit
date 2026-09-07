@@ -37,7 +37,8 @@ All supported ESP32 variants can use $Target. The target features differ:
 
 - ESP32 supports 7-bit and 10-bit addresses. It does not support general-call
   broadcast or clock stretching while waiting for a target response, so it
-  requires read responses to be queued before the controller starts reading.
+  requires dynamic read responses to be queued before the controller starts
+  reading. The configured default response is always available.
 - ESP32-S2 supports only 7-bit addresses and does not support general-call
   broadcast. It supports response-time clock stretching.
 - ESP32-C3, ESP32-C6, ESP32-P4, and ESP32-S3 support 7-bit and 10-bit
@@ -51,6 +52,9 @@ DEFAULT-FREQUENCY ::= 400_000
 
 /** Default native buffer size for an I2C target. */
 DEFAULT-TARGET-BUFFER-SIZE ::= 256
+
+/** Maximum size of an I2C target default response. */
+MAX-DEFAULT-RESPONSE-SIZE ::= 32
 
 /**
 An addressable I2C target.
@@ -66,6 +70,8 @@ class Target:
   resource_ := ?
   state_/ResourceState_ ::= ?
   write-mutex_/Mutex ::= Mutex
+  serving-read-requests_/bool := false
+  writing-response_/bool := false
   reported-dropped-receive-count_/int := 0
 
   /**
@@ -78,6 +84,13 @@ class Target:
     controller reads. $receive-buffer-size is both the largest controller
     write transaction that can be received and the approximate amount of
     native space used to queue unread transactions.
+
+  $default-response is served when no response has been queued and no
+    $serve-read-requests handler is active. It must contain between 1 and
+    $MAX-DEFAULT-RESPONSE-SIZE bytes. If omitted, the default response is 32
+    bytes of `0xff`. On targets with response-time clock stretching, the
+    response repeats if a controller reads beyond it. The original ESP32 can
+    only guarantee the first response (at most 32 bytes) of a transaction.
 
   If $pull-up is true, the weak internal pull-ups are enabled. External
     pull-ups are recommended for normal and fast bus speeds.
@@ -94,6 +107,7 @@ class Target:
       --address-size/int=7
       --send-buffer-size/int=DEFAULT-TARGET-BUFFER-SIZE
       --receive-buffer-size/int=DEFAULT-TARGET-BUFFER-SIZE
+      --default-response/ByteArray?=null
       --pull-up/bool=false
       --broadcast/bool=false:
     if address-size != 7 and address-size != 10: throw "INVALID_ARGUMENT"
@@ -101,6 +115,9 @@ class Target:
     if not 0 <= address <= limit: throw "INVALID_ARGUMENT"
     if broadcast and address-size == 10: throw "INVALID_ARGUMENT"
     if send-buffer-size <= 0 or receive-buffer-size <= 0: throw "INVALID_ARGUMENT"
+    response := default-response or ByteArray MAX-DEFAULT-RESPONSE-SIZE --initial=0xff
+    if response.size == 0 or response.size > MAX-DEFAULT-RESPONSE-SIZE:
+      throw "INVALID_ARGUMENT"
 
     resource_ = i2c-target-create_
         target-resource-group_
@@ -113,6 +130,7 @@ class Target:
         pull-up
         false
         broadcast
+        response
     state_ = ResourceState_ target-resource-group_ resource_
     add-finalizer this:: close
 
@@ -142,10 +160,12 @@ class Target:
   /**
   Queues as many bytes as currently fit for a controller read.
 
-  Returns the number of bytes queued. This method does not wait.
+  Returns the number of bytes queued. This method does not wait. Throws
+    `INVALID_STATE` while $serve-read-requests is active.
   */
   try-write bytes/ByteArray -> int:
     if not resource_: throw "CLOSED"
+    if serving-read-requests_ or writing-response_: throw "INVALID_STATE"
     return i2c-target-write_ resource_ bytes 0
 
   /**
@@ -157,6 +177,67 @@ class Target:
   write bytes/ByteArray -> none:
     write-mutex_.do:
       if not resource_: throw "CLOSED"
+      writing-response_ = true
+      try:
+        write_ bytes
+      finally:
+        writing-response_ = false
+
+  /**
+  Serves controller read requests with responses returned by $block.
+
+  The block must return a $ByteArray. It is called again when the controller
+    consumes the response and continues reading. An empty response calls the
+    block again while the controller remains waiting. If the controller ends
+    the transaction before consuming the response, the unused tail is
+    discarded and the block is called for the next read transaction.
+
+  While this method is active, the configured default response is suppressed.
+    If the block throws or performs a non-local return, the default response is
+    restored. A controller already waiting for a response is released with the
+    default response.
+
+  This method requires response-time clock stretching and is not supported on
+    the original ESP32. Use $write to queue responses there.
+  */
+  serve-read-requests [block] -> none:
+    write-mutex_.do:
+      if not resource_: throw "CLOSED"
+      serving-read-requests_ = true
+      activated := false
+      try:
+        // TODO: Add a native fallback deadline that restores the default
+        // response before the hardware stretch limit and reports the first
+        // such fallback.
+        i2c-target-set-handler-mode_ resource_ true
+        activated = true
+        while true:
+          if not resource_: throw "CLOSED"
+          state_.clear-state REQUEST-STATE_
+          count := i2c-target-take-request-count_ resource_
+          if count == 0:
+            state_.wait-for-state REQUEST-STATE_
+            continue
+
+          while true:
+            response/ByteArray := block.call
+            if response.size == 0: continue
+            write_ response
+            break
+      finally:
+        critical-do --no-respect-deadline:
+          try:
+            if activated and resource_:
+              i2c-target-set-handler-mode_ resource_ false
+              // Ignore requests that were satisfied by restoring the fallback.
+              i2c-target-take-request-count_ resource_
+          finally:
+            serving-read-requests_ = false
+
+  write_ bytes/ByteArray -> none:
+    if bytes.size == 0: return
+    i2c-target-set-write-pending_ resource_ true
+    try:
       offset := 0
       while offset < bytes.size:
         if not resource_: throw "CLOSED"
@@ -166,41 +247,10 @@ class Target:
         offset += written
         if offset == bytes.size: return
         state_.wait-for-state REQUEST-STATE_
-
-  /**
-  Waits until a controller requests data and queues the response returned by
-    $block.
-
-  The block receives the number of read requests observed since the previous
-    call and must return a $ByteArray.
-
-  If the block throws or performs a non-local return, the target is closed so
-    an active controller transaction does not leave the bus stretched.
-
-  On targets capable of clock stretching this notification arrives while the
-    controller is waiting, so the returned bytes supply the current
-    transaction. The original ESP32 cannot stretch for this event; there the
-    returned bytes are queued for subsequent controller reads.
-  */
-  wait-for-read-request [block] -> none:
-    while true:
-      if not resource_: throw "CLOSED"
-      state_.clear-state REQUEST-STATE_
-      count := i2c-target-take-request-count_ resource_
-      if count != 0:
-        replied := false
-        try:
-          response/ByteArray := block.call count
-          write response
-          replied = true
-        finally:
-          if not replied:
-            // A controller may currently be waiting with SCL stretched. If
-            // the block unwinds without a response, closing the target is the
-            // only way to release the peripheral safely.
-            close
-        return
-      state_.wait-for-state REQUEST-STATE_
+    finally:
+      if resource_:
+        critical-do --no-respect-deadline:
+          i2c-target-set-write-pending_ resource_ false
 
   /** Number of controller write transactions dropped due to buffer overflow. */
   dropped-receive-count -> int:
@@ -646,7 +696,8 @@ i2c-target-create_
     receive-buffer-size/int
     pull-up/bool
     allow-power-down/bool
-    broadcast/bool:
+    broadcast/bool
+    default-response/ByteArray:
   #primitive.i2c.target-create
 
 i2c-target-close_ group target:
@@ -657,6 +708,12 @@ i2c-target-receive_ target:
 
 i2c-target-write_ target bytes/ByteArray offset/int:
   #primitive.i2c.target-write
+
+i2c-target-set-write-pending_ target pending/bool:
+  #primitive.i2c.target-set-write-pending
+
+i2c-target-set-handler-mode_ target enabled/bool:
+  #primitive.i2c.target-set-handler-mode
 
 i2c-target-take-request-count_ target:
   #primitive.i2c.target-take-request-count
