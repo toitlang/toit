@@ -44,6 +44,7 @@ HANDLER-SEQUENCE ::= 12
 RACING-QUEUE-READ ::= 13
 HANDLER-WRITE ::= 14
 ABORTED-HANDLER ::= 15
+HANDLER-TIMEOUT ::= 16
 
 DEFAULT-CONFIG ::= 0
 TEN-BIT-CONFIG ::= 1
@@ -100,6 +101,20 @@ test-board1:
     expect-equals OK port.in.read-byte
     expect-equals custom-default (device.read custom-default.size)
     expect (bus.test ADDRESS)
+
+    recovered-handler-response := make-data 7 0x5e
+    send-command port HANDLER-TIMEOUT [recovered-handler-response]
+    // The first handler deliberately misses its response deadline. The target
+    // must release this already-waiting controller with the default response.
+    expect-equals custom-default (device.read custom-default.size)
+    // Wait until board 2 has observed the timeout and restored the fallback,
+    // then let it re-enter handler mode.
+    expect-equals READY port.in.read-byte
+    send-byte port OK
+    // Prove that a later request receives a normal dynamic response.
+    expect-equals READY port.in.read-byte
+    expect-equals recovered-handler-response (device.read recovered-handler-response.size)
+    expect-equals OK port.in.read-byte
 
     abandoned-response := make-data 200 0x48
     send-command port ABORTED-HANDLER [abandoned-response]
@@ -380,6 +395,32 @@ test-board2:
       expect-equals parts[0] target.read
       done.down
       expect-equals 1 invocations
+      send-byte port OK
+    else if command == HANDLER-TIMEOUT:
+      first-done := monitor.Semaphore
+      task::
+        expect-throw DEADLINE-EXCEEDED-ERROR:
+          target.serve-read-requests --response-timeout-us=5_000:
+            sleep --ms=20
+            parts[0]
+        first-done.up
+      // The new task runs until serve-read-requests waits for a controller.
+      yield
+      send-byte port READY
+      first-done.down
+      // Do not re-enter handler mode until the controller has consumed the
+      // fallback released by the timeout.
+      send-byte port READY
+      expect-equals OK port.in.read-byte
+      done := monitor.Semaphore
+      task::
+        catch:
+          with-timeout --ms=100:
+            target.serve-read-requests: parts[0]
+        done.up
+      yield
+      send-byte port READY
+      done.down
       send-byte port OK
     else if command == ABORTED-HANDLER:
       done := monitor.Semaphore
