@@ -13,6 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include <algorithm>
 #include <list>
 
 #include "source_mapper.h"
@@ -143,6 +144,16 @@ void SourceMapper::MethodMapper::register_as_check(ir::Typecheck* check, int byt
   source_mapper()->register_as_check(check, method_index_, bytecode_offset);
 }
 
+void SourceMapper::MethodMapper::register_local(ir::Local* local,
+                                                int stack_height,
+                                                int start_bci) {
+  source_mapper()->register_local(local, method_index_, stack_height, start_bci);
+}
+
+void SourceMapper::MethodMapper::end_local(ir::Local* local, int end_bci) {
+  source_mapper()->end_local(local, method_index_, end_bci);
+}
+
 void SourceMapper::visit_selectors(SourceInfoCollector* collector) {
   collector->write_int(selectors_.size());
   for (auto location_id : selectors_.keys()) {
@@ -249,6 +260,32 @@ void SourceMapper::visit_global_info(SourceInfoCollector* collector) {
   }
 }
 
+void SourceMapper::visit_frame_debug_info(SourceInfoCollector* collector) {
+  collector->write_int(frame_debug_information_.size());
+  for (auto& frame : frame_debug_information_) {
+    auto& method = source_information_[frame.method_index];
+    ASSERT(method.id >= 0);
+    collector->write_int(method.id);
+    collector->write_int(frame.parameters.size());
+    for (auto& parameter : frame.parameters) {
+      collector->write_int(parameter.index);
+      collector->write_string(parameter.name);
+      collector->write_byte(static_cast<uint8>(parameter.kind));
+      collector->write_int(parameter.position.line);
+      collector->write_int(parameter.position.column);
+    }
+    collector->write_int(frame.locals.size());
+    for (auto& local : frame.locals) {
+      collector->write_int(local.stack_height);
+      collector->write_int(local.start_bci);
+      collector->write_int(local.end_bci == -1 ? method.bytecode_size : local.end_bci);
+      collector->write_string(local.name);
+      collector->write_int(local.position.line);
+      collector->write_int(local.position.column);
+    }
+  }
+}
+
 uint8* SourceMapper::cook(int* size) {
   StringTable string_table;
   // Compute how much memory is needed for the source info segments.
@@ -264,6 +301,8 @@ uint8* SourceMapper::cook(int* size) {
   visit_selector_offset_info(&selector_offset_segment);
   SourceInfoAllocator selectors_segment(&string_table);
   visit_selectors(&selectors_segment);
+  SourceInfoAllocator frame_debug_segment(&string_table);
+  visit_frame_debug_info(&frame_debug_segment);
   // The string-table must be visited last, as it collects the strings from all other segments.
   SourceInfoAllocator string_segment;
   string_table.visit(&string_segment);
@@ -275,7 +314,8 @@ uint8* SourceMapper::cook(int* size) {
       + string_segment.size()
       + selector_offset_segment.size()
       + global_segment.size()
-      + selectors_segment.size();
+      + selectors_segment.size()
+      + frame_debug_segment.size();
   uint8* buffer = unvoid_cast<uint8*>(malloc(*size));
   if (buffer == null) FATAL("Couldn't allocate memory for source info");
 
@@ -295,6 +335,8 @@ uint8* SourceMapper::cook(int* size) {
   visit_selector_offset_info(&writer);
   writer.write_header(70177024, selectors_segment.size());
   visit_selectors(&writer);
+  writer.write_header(70177025, frame_debug_segment.size());
+  visit_frame_debug_info(&writer);
 
   return buffer;
 }
@@ -325,6 +367,103 @@ SourceMapper::MethodEntry SourceMapper::build_method_entry(ir::Node* node,
     },
     .outer = outer,
   };
+}
+
+SourceMapper::FrameDebugEntry SourceMapper::build_frame_debug_entry(
+    int method_index,
+    List<ir::Parameter*> parameters,
+    int arity,
+    ParameterKind implicit_parameter_kind) {
+  FrameDebugEntry result = {
+    .method_index = method_index,
+  };
+  std::vector<bool> seen(arity, false);
+  for (auto parameter : parameters) {
+    int index = parameter->index();
+    ASSERT(0 <= index && index < arity);
+    FilePosition position = {.line = 0, .column = 0};
+    auto range = parameter->range();
+    if (range.is_valid()) {
+      auto location = manager_->compute_location(range.from());
+      position = {
+        .line = location.line_number,
+        .column = location.offset_in_line + 1,
+      };
+    }
+    result.parameters.push_back({
+      .index = index,
+      .name = parameter->name().c_str(),
+      .kind = index == 0 ? implicit_parameter_kind : ParameterKind::EXPLICIT,
+      .position = position,
+    });
+    seen[index] = true;
+  }
+  for (int index = 0; index < arity; index++) {
+    if (seen[index]) continue;
+    ParameterKind kind =
+        index == 0 ? implicit_parameter_kind : ParameterKind::IMPLICIT;
+    const char* name = null;
+    switch (kind) {
+      case ParameterKind::RECEIVER:
+        name = "this";
+        break;
+      case ParameterKind::BLOCK_ARGUMENT:
+        name = "<block>";
+        break;
+      case ParameterKind::EXPLICIT:
+      case ParameterKind::IMPLICIT:
+        name = "<implicit>";
+        break;
+    }
+    result.parameters.push_back({
+      .index = index,
+      .name = name,
+      .kind = kind,
+      .position = {.line = 0, .column = 0},
+    });
+  }
+  std::sort(result.parameters.begin(),
+            result.parameters.end(),
+            [](const ParameterEntry& a, const ParameterEntry& b) {
+              return a.index < b.index;
+            });
+  return result;
+}
+
+void SourceMapper::register_local(ir::Local* local,
+                                  int method_index,
+                                  int stack_height,
+                                  int start_bci) {
+  ASSERT(0 <= method_index && method_index < frame_debug_information_.size());
+  FilePosition position = {.line = 0, .column = 0};
+  auto range = local->range();
+  if (range.is_valid()) {
+    auto location = manager_->compute_location(range.from());
+    position = {
+      .line = location.line_number,
+      .column = location.offset_in_line + 1,
+    };
+  }
+  frame_debug_information_[method_index].locals.push_back({
+    .local = local,
+    .stack_height = stack_height,
+    .start_bci = start_bci,
+    .end_bci = -1,
+    .name = local->name().c_str(),
+    .position = position,
+  });
+}
+
+void SourceMapper::end_local(ir::Local* local, int method_index, int end_bci) {
+  ASSERT(0 <= method_index && method_index < frame_debug_information_.size());
+  auto& locals = frame_debug_information_[method_index].locals;
+  for (auto iterator = locals.rbegin(); iterator != locals.rend(); iterator++) {
+    if (iterator->local != local || iterator->end_bci != -1) continue;
+    ASSERT(iterator->start_bci <= end_bci);
+    iterator->end_bci = end_bci;
+    return;
+  }
+  UNREACHABLE();
 }
 
 void SourceMapper::register_selectors(List<ir::Class*> classes) {
@@ -443,6 +582,13 @@ SourceMapper::MethodMapper SourceMapper::register_method(ir::Method* method) {
   const char* holder_name;
   extract_holder_information(method->holder(), &holder_id, &holder_name);
   source_information_.push_back(build_method_entry(method, index, type, holder_id, name, holder_name, range));
+  frame_debug_information_.push_back(build_frame_debug_entry(
+      index,
+      method->parameters(),
+      method->plain_shape().arity(),
+      method->has_implicit_this()
+          ? ParameterKind::RECEIVER
+          : ParameterKind::EXPLICIT));
   return MethodMapper(this, index);
 }
 
@@ -456,6 +602,8 @@ SourceMapper::MethodMapper SourceMapper::register_global(ir::Global* global) {
   const char* holder_name;
   extract_holder_information(global->holder(), &holder_id, &holder_name);
   source_information_.push_back(build_method_entry(global, index, MethodType::GLOBAL, holder_id, name, holder_name, range));
+  frame_debug_information_.push_back(build_frame_debug_entry(
+      index, global->parameters(), 0, ParameterKind::EXPLICIT));
   return MethodMapper(this, index);
 }
 
@@ -465,6 +613,11 @@ SourceMapper::MethodMapper SourceMapper::register_lambda(int outer_index, ir::Co
   auto range = code->range();
   int encoded_outer = encode_outer_index(outer_index);
   source_information_.push_back(build_method_entry(code, index, MethodType::LAMBDA, encoded_outer, name, "", range));
+  frame_debug_information_.push_back(build_frame_debug_entry(
+      index,
+      code->parameters(),
+      code->parameters().length(),
+      ParameterKind::EXPLICIT));
   return MethodMapper(this, index);
 }
 
@@ -474,6 +627,11 @@ SourceMapper::MethodMapper SourceMapper::register_block(int outer_index, ir::Cod
   auto range = code->range();
   int encoded_outer = encode_outer_index(outer_index);
   source_information_.push_back(build_method_entry(code, index, MethodType::BLOCK, encoded_outer, name, "", range));
+  frame_debug_information_.push_back(build_frame_debug_entry(
+      index,
+      code->parameters(),
+      code->parameters().length() + 1,
+      ParameterKind::BLOCK_ARGUMENT));
   return MethodMapper(this, index);
 }
 

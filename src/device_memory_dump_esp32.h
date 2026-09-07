@@ -1,4 +1,4 @@
-// Copyright (C) 2022 Toitware ApS.
+// Copyright (C) 2026 Toit contributors.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -13,15 +13,20 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-#include "type_primitive.h"
+#pragma once
+
+#include "top.h"
+
+#ifdef TOIT_ESP32
+
+#include <esp_err.h>
 
 namespace toit {
-namespace compiler {
 
-MODULE_TYPES(debug, MODULE_DEBUG)
+bool device_memory_dump_is_supported();
+esp_err_t prepare_device_memory_dump(uint32 baud_rate);
+[[noreturn]] void dump_device_memory(uint32 baud_rate);
 
-TYPE_PRIMITIVE_ANY(object_histogram)
-TYPE_PRIMITIVE_NULL(vm_state_checkpoint_arm)
-
-}  // namespace toit::compiler
 }  // namespace toit
+
+#endif  // TOIT_ESP32

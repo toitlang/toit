@@ -31,7 +31,9 @@ class Class;
 class Code;
 class Expression;
 class Global;
+class Local;
 class Method;
+class Parameter;
 class Node;
 class ReferenceGlobal;
 class Typecheck;
@@ -58,6 +60,9 @@ class SourceMapper {
     void register_call(ir::Call* call, int bytecode_offset);
     void register_call(ir::ReferenceGlobal* call, int bytecode_offset);
     void register_as_check(ir::Typecheck* check, int bytecode_offset);
+
+    void register_local(ir::Local* local, int stack_height, int start_bci);
+    void end_local(ir::Local* local, int end_bci);
 
     MethodMapper register_lambda(ir::Code* code) {
       return source_mapper()->register_lambda(method_index_, code);
@@ -155,6 +160,35 @@ class SourceMapper {
     std::map<int, const char*> as_class_names;
   };
 
+  enum class ParameterKind : uint8 {
+    EXPLICIT = 0,
+    RECEIVER = 1,
+    BLOCK_ARGUMENT = 2,
+    IMPLICIT = 3,
+  };
+
+  struct ParameterEntry {
+    int index;
+    const char* name;
+    ParameterKind kind;
+    FilePosition position;
+  };
+
+  struct LocalEntry {
+    ir::Local* local;
+    int stack_height;
+    int start_bci;
+    int end_bci;
+    const char* name;
+    FilePosition position;
+  };
+
+  struct FrameDebugEntry {
+    int method_index;
+    std::vector<ParameterEntry> parameters;
+    std::vector<LocalEntry> locals;
+  };
+
   struct ClassEntry {
     int id;
     int super;
@@ -197,6 +231,7 @@ class SourceMapper {
   void visit_primitive_info(SourceInfoCollector* collector);
   void visit_selector_offset_info(SourceInfoCollector* collector);
   void visit_global_info(SourceInfoCollector* collector);
+  void visit_frame_debug_info(SourceInfoCollector* collector);
 
   MethodEntry build_method_entry(ir::Node* node,
                                  int id,
@@ -205,10 +240,20 @@ class SourceMapper {
                                  const char* name,
                                  const char* holder_name,
                                  Source::Range range);
+  FrameDebugEntry build_frame_debug_entry(int method_index,
+                                           List<ir::Parameter*> parameters,
+                                           int arity,
+                                           ParameterKind implicit_parameter_kind);
+  void register_local(ir::Local* local,
+                      int method_index,
+                      int stack_height,
+                      int start_bci);
+  void end_local(ir::Local* local, int method_index, int end_bci);
   void register_expression(ir::Expression* expression, int method_id, int bytecode_offset);
   void register_as_check(ir::Typecheck* check, int method_id, int bytecode_offset);
 
   std::vector<MethodEntry> source_information_;
+  std::vector<FrameDebugEntry> frame_debug_information_;
   Map<ir::Class*, ClassEntry> class_information_;
   std::map<int, const char*> selector_offsets_;
   std::vector<GlobalEntry> global_information_;

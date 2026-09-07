@@ -358,6 +358,9 @@ void ByteGen::visit_Sequence(Sequence* node) {
   }
 
   ASSERT(emitter()->height() == old_height + (is_for_value() ? 1 : 0));
+  for (int index = old_locals_count; index < locals_count_; index++) {
+    method_mapper_.end_local(local_nodes_[index], emitter()->position());
+  }
   locals_count_ = old_locals_count;
 }
 
@@ -388,13 +391,17 @@ void ByteGen::visit_TryFinally(TryFinally* node) {
     int reason_height = emitter()->height() - Interpreter::LINK_REASON_SLOT;
     auto reason = handler_parameters[0];
     auto exception = handler_parameters[1];
-    reason->set_index(register_local(reason_height));
-    exception->set_index(register_local(exception_height));
+    reason->set_index(register_local(reason, reason_height));
+    exception->set_index(register_local(exception, exception_height));
+    method_mapper_.register_local(reason, reason_height, emitter()->position());
+    method_mapper_.register_local(exception, exception_height, emitter()->position());
   }
   visit_for_effect(node->handler());
 
   if (!handler_parameters.is_empty()) {
     ASSERT(locals_count_ == old_locals_count + 2);
+    method_mapper_.end_local(handler_parameters[0], emitter()->position());
+    method_mapper_.end_local(handler_parameters[1], emitter()->position());
     locals_count_ = old_locals_count;
   }
   __ unwind();
@@ -1033,11 +1040,18 @@ void ByteGen::visit_AssignmentDefine(AssignmentDefine* node) {
     Local* local = target->as_Local();
     ASSERT(local->index() == -1);
     // TODO(florian): we should know the index of locals at this point.
-    local->set_index(register_local());
+    local->set_index(register_local(local));
   } else {
     UNIMPLEMENTED();
   }
   visit_for_value(node->right());
+  if (target->is_Local()) {
+    Local* local = target->as_Local();
+    method_mapper_.register_local(
+        local,
+        local_height(local->index()),
+        emitter()->position());
+  }
   if (is_for_value()) __ dup();
 }
 

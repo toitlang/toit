@@ -157,6 +157,16 @@ menu "Toit"
             monitored.
 
     menu "Advanced setup"
+        config TOIT_DEVICE_MEMORY_DUMP
+            boolean "Enable terminal device-memory dumps"
+            default "n"
+            depends on ESP_CONSOLE_UART
+            help
+                Include support for terminal device-memory dumps over the
+                console UART. Dumps contain sensitive data from all containers
+                on the device and should only be enabled when needed for
+                debugging or device inspection.
+
         config TOIT_INTERPRETER_IN_IRAM
             bool "Run interpreter from IRAM"
             default "y"

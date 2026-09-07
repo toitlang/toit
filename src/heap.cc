@@ -18,6 +18,7 @@
 #include "flags.h"
 #include "heap_report.h"
 #include "heap_roots.h"
+#include "vm_state_checkpoint.h"
 #include "interpreter.h"
 #include "objects_inline.h"
 #include "os.h"
@@ -297,7 +298,14 @@ void ObjectHeap::iterate_chunks(void* context, process_chunk_callback_t* callbac
 
 GcType ObjectHeap::gc(bool try_hard) {
   Locker locker(mutex_);
-  GcType type = two_space_heap_.collect_new_space(try_hard);
+  bool force_checkpoint_sweep =
+      vm_state_checkpoint_requested(VM_STATE_SWEEP_STARTED);
+  GcType type = two_space_heap_.collect_new_space(
+      force_checkpoint_sweep ? false : try_hard);
+  if (force_checkpoint_sweep && type == NEW_SPACE_GC) {
+    two_space_heap_.flush();
+    type = two_space_heap_.collect_old_space(false);
+  }
   gc_count_++;
   if (type != NEW_SPACE_GC) {
     full_gc_count_++;

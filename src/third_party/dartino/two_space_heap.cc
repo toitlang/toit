@@ -6,6 +6,7 @@
 
 #include "../../flags.h"
 #include "../../heap.h"
+#include "../../vm_state_checkpoint.h"
 #include "../../objects.h"
 #include "two_space_heap.h"
 #include "mark_sweep.h"
@@ -104,6 +105,7 @@ HeapObject* ScavengeVisitor::clone_into_space(Program* program, HeapObject* orig
   // Copy the content of source to target.
   memcpy(reinterpret_cast<void*>(new_address), reinterpret_cast<void*>(original->_raw()), object_size);
   original->set_forwarding_address(target);
+  vm_state_checkpoint(VM_STATE_SCAVENGE_AFTER_FORWARDING, original);
   return target;
 }
 
@@ -147,8 +149,10 @@ void TwoSpaceHeap::do_scavenge(ScavengeVisitor* visitor) {
   SemiSpace* to = visitor->to_space();
   to->start_scavenge();
   old_space()->start_scavenge();
+  vm_state_checkpoint(VM_STATE_SCAVENGE_STARTED, this);
 
   process_heap_->iterate_roots(visitor);
+  vm_state_checkpoint(VM_STATE_SCAVENGE_AFTER_ROOTS, this);
 
   old_space()->visit_remembered_set(visitor);
 
@@ -172,6 +176,7 @@ void TwoSpaceHeap::do_scavenge(ScavengeVisitor* visitor) {
   visitor->complete_scavenge();
 
   old_space()->end_scavenge();
+  vm_state_checkpoint(VM_STATE_SCAVENGE_COMPLETE, this);
 
   total_bytes_allocated_ -= to->used();
 }
@@ -364,6 +369,7 @@ GcType TwoSpaceHeap::collect_old_space(bool force_compact) {
   uword old_external = process_heap_->external_memory();
 
   bool compacted = perform_garbage_collection(force_compact);
+  vm_state_checkpoint(VM_STATE_GC_COMPLETE, this);
 
   if (Flags::tracegc) {
     uint64 end = OS::get_monotonic_time();
@@ -428,6 +434,7 @@ bool TwoSpaceHeap::perform_garbage_collection(bool force_compact) {
   MarkingVisitor marking_visitor(semi_space, &stack);
 
   process_heap_->iterate_roots(&marking_visitor);
+  vm_state_checkpoint(VM_STATE_MARK_AFTER_ROOTS, this);
 
   stack.process(&marking_visitor, old_space(), semi_space);
 
@@ -440,9 +447,12 @@ bool TwoSpaceHeap::perform_garbage_collection(bool force_compact) {
 
   stack.process(&marking_visitor, old_space(), semi_space);
 
+  vm_state_checkpoint(VM_STATE_MARK_COMPLETE, this);
+
   word regained_by_compacting = old_space()->compute_compaction_destinations();
 
   bool compact = force_compact || regained_by_compacting > 0;
+  if (vm_state_checkpoint_requested(VM_STATE_SWEEP_STARTED)) compact = false;
 
   if (compact) {
     // We can reclaim some memory by compacting.
@@ -463,6 +473,7 @@ void TwoSpaceHeap::sweep_heap() {
   SemiSpace* semi_space = new_space();
 
   old_space()->set_compacting(false);
+  vm_state_checkpoint(VM_STATE_SWEEP_STARTED, this);
 
   // Sweep over the old-space and rebuild the freelist.
   uword used_after = old_space()->sweep();
@@ -497,6 +508,7 @@ void TwoSpaceHeap::compact_heap() {
   SemiSpace* semi_space = new_space();
 
   old_space()->set_compacting(true);
+  vm_state_checkpoint(VM_STATE_COMPACTION_STARTED, this);
 
   old_space()->clear_free_list();
 

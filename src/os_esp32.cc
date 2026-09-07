@@ -493,6 +493,7 @@ void OS::free_pages(void* address, uword size) {
 void* OS::grab_virtual_memory(void* address, uword size) {
   // On ESP32 this is only used for allocating the heap metadata.  We put this
   // in the same space as the heap itself.
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + GC_METADATA_MALLOC_TAG);
   return heap_caps_malloc(size, toit_heap_caps_flags_for_metadata());
 }
 
@@ -723,6 +724,7 @@ class HeapSummaryPage {
       case BIGNUM_MALLOC_TAG: return "tls/bignum";
       case EXTERNAL_STRING_MALLOC_TAG: return "external string";
       case TOIT_HEAP_MALLOC_TAG: return "toit processes";
+      case GC_METADATA_MALLOC_TAG: return "gc metadata";
       case FREE_MALLOC_TAG: return "free";
       case LWIP_MALLOC_TAG: return "lwip";
       case HEAP_OVERHEAD_MALLOC_TAG: return "heap overhead";
