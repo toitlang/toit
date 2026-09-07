@@ -25,11 +25,9 @@ class UnitPrinter {
  public:
   UnitPrinter(Source* source,
               const FormatStyle& style,
-              const FormatExpressionOptions& expression_options,
               FormatCommentState* comments)
       : source_(source)
       , style_(style)
-      , expression_options_(expression_options)
       , comments_(comments) {}
 
   bool run(Unit* unit, std::string* result) {
@@ -66,13 +64,21 @@ class UnitPrinter {
     }
     if (!directives.empty()) sections.push_back(join(directives, "\n"));
 
+    Node* previous_declaration = null;
     for (auto node : unit->declarations()) {
       std::string text;
       std::string prefix;
       if (!leading(node, 0, cursor, &prefix)) return false;
       if (!declaration(node, 0, &text)) return false;
       if (!prefix.empty()) text = prefix + "\n" + text;
-      sections.push_back(std::move(text));
+      if (previous_declaration != null &&
+          previous_declaration->is_Field() && node->is_Field()) {
+        ASSERT(!sections.empty());
+        sections.back() += "\n" + text;
+      } else {
+        sections.push_back(std::move(text));
+      }
+      previous_declaration = node;
       cursor = end(node);
     }
     std::string trailing;
@@ -91,7 +97,6 @@ class UnitPrinter {
  private:
   Source* source_;
   const FormatStyle& style_;
-  const FormatExpressionOptions& expression_options_;
   FormatCommentState* comments_;
 
   const FormatSource* facts() const { return comments_->source(); }
@@ -184,8 +189,7 @@ class UnitPrinter {
   }
 
   bool flat(Expression* expression, std::string* result) {
-    return format_expression_flat(
-        expression, source_, result, expression_options_);
+    return format_expression_flat(expression, source_, result);
   }
 
   bool format_import(Import* import, std::string* result) {
@@ -268,8 +272,7 @@ class UnitPrinter {
                            source_,
                            indentation,
                            &initializer,
-                           style_,
-                           expression_options_)) return false;
+                           style_)) return false;
     prefix += field->is_final() ? " ::= " : " := ";
     ASSERT(!initializer.lines().empty());
     *result = prefix + initializer.lines()[0].text;
@@ -292,8 +295,7 @@ class UnitPrinter {
                               source_,
                               indentation,
                               &header,
-                              style_,
-                              expression_options_)) return false;
+                              style_)) return false;
     *result = header.render(indentation);
     if (method->body() != null) {
       std::string body;
@@ -302,7 +304,6 @@ class UnitPrinter {
                            indentation + style_.indentation_step,
                            &body,
                            style_,
-                           expression_options_,
                            comments_)) return false;
       if (!body.empty()) *result += "\n" + body;
     }
@@ -350,6 +351,7 @@ class UnitPrinter {
 
     std::vector<std::string> members;
     int cursor = facts()->lines()[facts()->line_index_at(start(klass))].to;
+    Node* previous_member = null;
     for (auto member : klass->members()) {
       std::string text;
       std::string prefix;
@@ -360,7 +362,14 @@ class UnitPrinter {
       if (!declaration(
           member, indentation + style_.indentation_step, &text)) return false;
       if (!prefix.empty()) text = prefix + "\n" + text;
-      members.push_back(std::move(text));
+      if (previous_member != null &&
+          previous_member->is_Field() && member->is_Field()) {
+        ASSERT(!members.empty());
+        members.back() += "\n" + text;
+      } else {
+        members.push_back(std::move(text));
+      }
+      previous_member = member;
       cursor = end(member);
     }
     *result = header;
@@ -382,12 +391,11 @@ bool format_unit(Unit* unit,
                  Source* source,
                  List<Scanner::Comment> comments,
                  std::string* result,
-                 const FormatStyle& style,
-                 const FormatExpressionOptions& expression_options) {
+                 const FormatStyle& style) {
   ASSERT(unit != null && source != null && result != null);
   FormatSource facts(source, comments);
   FormatCommentState comment_state(&facts);
-  UnitPrinter printer(source, style, expression_options, &comment_state);
+  UnitPrinter printer(source, style, &comment_state);
   if (!printer.run(unit, result)) return false;
   return comment_state.all_consumed();
 }

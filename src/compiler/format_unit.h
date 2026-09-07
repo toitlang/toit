@@ -24,9 +24,7 @@ bool format_unit(ast::Unit* unit,
                  Source* source,
                  List<Scanner::Comment> comments,
                  std::string* result,
-                 const FormatStyle& style = FormatStyle(),
-                 const FormatExpressionOptions& expression_options =
-                     FormatExpressionOptions());
+                 const FormatStyle& style = FormatStyle());
 
 } // namespace compiler
 } // namespace toit
