@@ -157,9 +157,10 @@ class Target:
       initialized = true
     finally:
       if not initialized:
-        if state: state.dispose
-        spi-target-close_ spi-target-resource-group_ resource
-        resource_ = null
+        critical-do --no-respect-deadline:
+          if state: state.dispose
+          spi-target-close_ spi-target-resource-group_ resource
+          resource_ = null
 
   /**
   Arms and waits for one full-duplex SPI transaction.
@@ -213,9 +214,10 @@ class Target:
       started := false
       finished := false
       try:
-        state_.clear-state READY-STATE_ | DONE-STATE_
-        spi-target-transfer-start_ resource_ transmit receive-size fill-byte
-        started = true
+        critical-do --no-respect-deadline:
+          state_.clear-state READY-STATE_ | DONE-STATE_
+          spi-target-transfer-start_ resource_ transmit receive-size fill-byte
+          started = true
         // The abort API operates on the mounted transaction. Mounting is
         // bounded and does not depend on controller clocks.
         critical-do --no-respect-deadline:
@@ -227,9 +229,11 @@ class Target:
           when-armed-task_ = null
         state_.wait-for-state DONE-STATE_
         if closing_: throw "CLOSED"
-        size := spi-target-transfer-finish_ resource_ receive-buffer false
-        finished = true
-        exchange-in-flight_ = false
+        size := 0
+        critical-do --no-respect-deadline:
+          size = spi-target-transfer-finish_ resource_ receive-buffer false
+          finished = true
+          exchange-in-flight_ = false
         return receive-buffer.copy 0 size
       finally:
         if not finished:
@@ -264,7 +268,7 @@ class Target:
           spi-target-transfer-finish_ resource_ #[ ] true
           state_.wait-for-state DONE-STATE_
       mutex_.do:
-        critical-do:
+        critical-do --no-respect-deadline:
           state_.dispose
           spi-target-close_ spi-target-resource-group_ resource_
           resource_ = null
