@@ -1052,10 +1052,13 @@ PRIMITIVE(bus_abort_controller_operation) {
 
   // ESP_ERR_INVALID_STATE means that completion won the race. The abort API
   // still synchronizes with the ISR before reporting that there was no active
-  // transaction. It retires the transaction with a bounded controller-FSM
-  // reset and deliberately does not wait for physical bus recovery; a later
-  // operation reports if a target continues to hold the bus.
-  i2c_master_bus_abort_transaction(resource->handle());
+  // transaction. First retire it so IDF can no longer access the Toit-owned
+  // buffers, then make a bounded best-effort attempt to recover the physical
+  // bus. Recovery failure must not hide the deadline or cancellation that
+  // brought us here; the next operation reports a bus that remains stuck.
+  esp_err_t err = i2c_master_bus_abort_transaction(resource->handle());
+  if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) FATAL_IF_NOT_ESP_OK(err);
+  if (err == ESP_OK) i2c_master_bus_reset(resource->handle());
   resource->discard_completion();
   resource->finish_operation();
   return process->null_object();
