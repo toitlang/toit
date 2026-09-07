@@ -267,6 +267,15 @@ class SourceManager {
   bool is_loaded(const char* path);
   bool is_loaded(const std::string& path);
 
+  /// Registers a Source backed directly by the given memory buffer, under
+  /// the given virtual path. Used e.g. by the formatter to re-parse its own
+  /// output without going through the filesystem.
+  ///
+  /// The buffer must outlive the returned Source.
+  Source* load_from_memory(const std::string& virtual_path,
+                           const uint8* bytes,
+                           int size);
+
  private:
   Filesystem* filesystem_;
 
