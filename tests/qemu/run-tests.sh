@@ -11,6 +11,7 @@ QEMU_SYSTEM_XTENSA="${QEMU_SYSTEM_XTENSA:-qemu-system-xtensa}"
 TOIT="${TOIT:-${ROOT_DIR}/build/host/sdk/bin/toit}"
 UART_ENVELOPE="${UART_ENVELOPE:-${ROOT_DIR}/build/esp32/firmware.envelope}"
 USB_ENVELOPE="${USB_ENVELOPE:-${ROOT_DIR}/build/esp32s3-usj/firmware.envelope}"
+MIXED_ENVELOPE="${MIXED_ENVELOPE:-${ROOT_DIR}/build/esp32s3/firmware.envelope}"
 QEMU_TIMEOUT_TICKS="${QEMU_TIMEOUT_TICKS:-300}"
 
 if ! command -v "${QEMU_SYSTEM_XTENSA}" >/dev/null 2>&1; then
@@ -21,7 +22,7 @@ if [[ ! -x "${TOIT}" ]]; then
   echo "Toit executable is not executable: ${TOIT}" >&2
   exit 2
 fi
-for envelope in "${UART_ENVELOPE}" "${USB_ENVELOPE}"; do
+for envelope in "${UART_ENVELOPE}" "${USB_ENVELOPE}" "${MIXED_ENVELOPE}"; do
   if [[ ! -f "${envelope}" ]]; then
     echo "Firmware envelope not found: ${envelope}" >&2
     exit 2
@@ -72,7 +73,7 @@ start_qemu() {
   local input="${TEMP_DIR}/${image}.in"
   QEMU_LOG="${TEMP_DIR}/${image}.log"
 
-  mkfifo "${input}"
+  if [[ ! -p "${input}" ]]; then mkfifo "${input}"; fi
   exec 3<>"${input}"
 
   local -a console_options
@@ -160,6 +161,12 @@ run_stdio_test() {
   printf 'hello-qemu\n' >&3
   wait_for STDOUT:hello-qemu
   wait_for STDERR:hello-qemu
+  # Enter on a serial terminal sends CR. The configured VFS must turn it
+  # into LF so read-line completes, for both primary and secondary consoles.
+  printf 'hello-cr\r' >&3
+  wait_for STDOUT:hello-cr
+  wait_for STDERR:hello-cr
+  wait_for STDIO-DONE
   stop_qemu
   echo "PASS: ${machine} ${console} stdin/stdout/stderr"
 }
@@ -182,6 +189,10 @@ run_esptool_flash_test() {
   printf 'hello-flashed-qemu\n' >&3
   wait_for STDOUT:hello-flashed-qemu
   wait_for STDERR:hello-flashed-qemu
+  printf 'hello-flashed-cr\r' >&3
+  wait_for STDOUT:hello-flashed-cr
+  wait_for STDERR:hello-flashed-cr
+  wait_for STDIO-DONE
   stop_qemu
   echo "PASS: bundled esptool flashed and booted an ESP32 in QEMU"
 }
@@ -201,8 +212,11 @@ run_uart_sharing_test() {
 make_image stdio.toit "${UART_ENVELOPE}" stdio-uart
 make_image stdio-uart-console.toit "${UART_ENVELOPE}" uart-share
 make_image stdio.toit "${USB_ENVELOPE}" stdio-usb
+make_image stdio.toit "${MIXED_ENVELOPE}" stdio-mixed
 
 run_esptool_flash_test
 run_stdio_test esp32 stdio-uart uart
 run_uart_sharing_test
 run_stdio_test esp32s3 stdio-usb usb-serial-jtag
+run_stdio_test esp32s3 stdio-mixed uart
+run_stdio_test esp32s3 stdio-mixed usb-serial-jtag
