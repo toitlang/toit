@@ -69,7 +69,10 @@ class Chunk : public ChunkList::Element {
 
   uword compaction_top() { return compaction_top_; }
 
-  void set_compaction_top(uword top) { compaction_top_ = top; }
+  void set_compaction_top(uword top) {
+    ASSERT(start_ <= top && top <= end_);
+    compaction_top_ = top;
+  }
 
   // Returns the size of this chunk in bytes.
   uword size() const { return end_ - start_; }
