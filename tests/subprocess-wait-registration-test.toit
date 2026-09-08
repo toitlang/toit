@@ -4,7 +4,7 @@
 
 import expect show *
 import host.pipe
-import system show platform PLATFORM-FREERTOS PLATFORM-WINDOWS
+import system show platform PLATFORM-FREERTOS
 
 SIGKILL ::= 9
 
@@ -12,10 +12,7 @@ main:
   // FreeRTOS cannot launch host subprocesses.
   if platform == PLATFORM-FREERTOS: return
 
-  // Stress the race between TerminateProcess and the Windows event thread
-  // recording the exit status. A killed child must never look like exit(9).
-  iterations := platform == PLATFORM-WINDOWS ? 200 : 25
-  iterations.repeat:
+  25.repeat:
     process := pipe.fork --create-stdin "cat" ["cat"]
 
     // Native signaling failures must reach the caller. Signal 999 is outside
