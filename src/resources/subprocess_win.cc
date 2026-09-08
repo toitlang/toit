@@ -95,6 +95,8 @@ PRIMITIVE(kill) {
   ARGS(SubprocessResource, subprocess, int, signal);
   if (signal != 9) FAIL(INVALID_ARGUMENT);
 
+  // The event thread must not cache the exit status before killed_ is set.
+  Locker locker(WindowsEventSource::instance()->mutex());
   if (!TerminateProcess(subprocess->handle(), signal)) WINDOWS_ERROR;
   subprocess->set_killed();
   return process->null_object();
