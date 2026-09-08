@@ -9,8 +9,10 @@ main:
   // The ESP32 UART driver flushes pending input when installed.
   input := io.stdin
   io.stdout.write "STDIO-READY\n"
-  data := input.read-line --keep-newline
-  io.stdout.write "STDOUT:"
-  if data: io.stdout.write data
-  io.stderr.write "STDERR:"
-  if data: io.stderr.write data
+  2.repeat:
+    data := input.read-line --keep-newline
+    io.stdout.write "STDOUT:"
+    if data: io.stdout.write data
+    io.stderr.write "STDERR:"
+    if data: io.stderr.write data
+  io.stdout.write "STDIO-DONE\n"

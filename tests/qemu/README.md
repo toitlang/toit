@@ -23,18 +23,21 @@ Release archives for other hosts are available on the same release page.
 
 ## Run the automated tests
 
-After building the regular ESP32 firmware, build a separate S3 envelope whose
-primary console is USB Serial/JTAG and run all standard-stream fixtures:
+After building the regular ESP32 and ESP32-S3 firmware, build a separate S3
+envelope whose primary console is USB Serial/JTAG and run all standard-stream
+fixtures:
 
 ```sh
 tests/qemu/build-s3-usb-envelope.sh
 QEMU_SYSTEM_XTENSA=$QEMU tests/qemu/run-tests.sh
 ```
 
-The runner tests stdin, stdout, and stderr through both an ESP32 UART and the
-ESP32-S3 USB Serial/JTAG device. It also verifies that `io.stdin` and
-`uart.Port.console` can share the console UART. Each input is sent only after
-the corresponding readiness marker appears, and every wait has a timeout.
+The runner tests stdin, stdout, and stderr with both LF and CR input through an
+ESP32 UART, a primary ESP32-S3 USB Serial/JTAG console, and both inputs of the
+standard ESP32-S3 UART-primary/USB-secondary configuration. It also verifies
+that `io.stdin` and `uart.Port.console` can share the console UART. Each input
+is sent only after the corresponding readiness marker appears, and every wait
+has a timeout.
 
 ## Build and create a flash image
 

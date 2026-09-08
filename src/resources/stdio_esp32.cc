@@ -94,6 +94,7 @@ static void release_uart_stdin() {
 #ifdef TOIT_STDIN_USB_SERIAL_JTAG
 static int usb_serial_jtag_stdin_users = 0;
 static QueueHandle_t usb_serial_jtag_stdin_queue = null;
+static int usb_serial_jtag_stdin_fd = -1;
 
 static void usb_serial_jtag_notify(usj_select_notif_t notification, BaseType_t* task_woken) {
   if (notification != USJ_SELECT_READ_NOTIF || usb_serial_jtag_stdin_queue == null) return;
@@ -112,12 +113,28 @@ static esp_err_t acquire_usb_serial_jtag_stdin(QueueHandle_t* queue) {
   usb_serial_jtag_stdin_queue = xQueueCreate(STDIN_QUEUE_SIZE, sizeof(word));
   if (usb_serial_jtag_stdin_queue == null) return ESP_ERR_NO_MEM;
 
+  // Read through the USB VFS to preserve its configured newline conversion.
+  // STDIN_FILENO only reaches the primary console, which may be UART.
+#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+  const char* path = "/dev/usbserjtag";
+#else
+  const char* path = "/dev/secondary";
+#endif
+  usb_serial_jtag_stdin_fd = ::open(path, O_RDONLY | O_NONBLOCK);
+  if (usb_serial_jtag_stdin_fd < 0) {
+    vQueueDelete(usb_serial_jtag_stdin_queue);
+    usb_serial_jtag_stdin_queue = null;
+    return ESP_FAIL;
+  }
+
   usb_serial_jtag_driver_config_t config = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
   esp_err_t err = ESP_FAIL;
   SystemEventSource::instance()->run([&]() -> void {
     err = usb_serial_jtag_driver_install(&config);
   });
   if (err != ESP_OK) {
+    ::close(usb_serial_jtag_stdin_fd);
+    usb_serial_jtag_stdin_fd = -1;
     vQueueDelete(usb_serial_jtag_stdin_queue);
     usb_serial_jtag_stdin_queue = null;
     return err;
@@ -149,6 +166,8 @@ static void release_usb_serial_jtag_stdin() {
     esp_rom_printf("[stdio] error: failed to uninstall USB Serial/JTAG driver\n");
     ESP_ERROR_CHECK(err);
   }
+  ::close(usb_serial_jtag_stdin_fd);
+  usb_serial_jtag_stdin_fd = -1;
   vQueueDelete(usb_serial_jtag_stdin_queue);
   usb_serial_jtag_stdin_queue = null;
 }
@@ -304,7 +323,13 @@ PRIMITIVE(stdin_read) {
 #endif
 #ifdef TOIT_STDIN_USB_SERIAL_JTAG
   auto read_usb = [&]() -> int {
-    return usb_serial_jtag_read_bytes(bytes.address(), STDIN_BUFFER_SIZE, 0);
+    int count = ::read(usb_serial_jtag_stdin_fd, bytes.address(), STDIN_BUFFER_SIZE);
+    if (count < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
+      read_error = errno;
+      return -1;
+    }
+    return count;
   };
 #endif
 
