@@ -181,7 +181,9 @@ jobs:
           # Remove the leading 'v' from the version if it exists.
           version_without_v=${version#v}
           # Debian uses '~' to sort prereleases before the final release.
-          debian_version=${version_without_v/-alpha./~alpha.}
+          # Keep epoch 1 in all future versions: packages through alpha.198
+          # used '-alpha.', which sorts after '~alpha.' without an epoch.
+          debian_version=1:${version_without_v/-alpha./~alpha.}
           sed -i "s/VERSION/$debian_version/" debian/changelog
           sed -i "s/RELEASE_DATE/$(date --rfc-email)/" debian/changelog
           sudo apt-get update
@@ -205,9 +207,14 @@ jobs:
           expected_version=${{ needs.build-and-upload.outputs.version }}
           pkg_version=$(dpkg -s toit | grep Version | cut -d ' ' -f 2)
           expected_pkg_version=${expected_version#v}
-          expected_pkg_version=${expected_pkg_version/-alpha./~alpha.}-1
+          expected_pkg_version=1:${expected_pkg_version/-alpha./~alpha.}-1
           if [ "$pkg_version" != "$expected_pkg_version" ]; then
             echo "Expected pkg version $expected_pkg_version but got $pkg_version"
+            exit 1
+          fi
+          # Compare against the actual version of the last pre-epoch release.
+          if ! dpkg --compare-versions "$pkg_version" gt 2.0.0-alpha.198-1; then
+            echo "Package $pkg_version does not upgrade from alpha.198"
             exit 1
           fi
           toit_version=$(toit version)
