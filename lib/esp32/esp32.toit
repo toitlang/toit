@@ -99,9 +99,15 @@ WAKEUP-GPIO ::= 7
 /** Wakeup caused by UART (light sleep only). */
 WAKEUP-UART ::= 8
 
+/** The shortest duration supported by $deep-sleep. */
+DEEP-SLEEP-MIN-DURATION ::= Duration --ms=50
+
 /**
 Enters deep sleep for the specified duration (up to 24h) and does not return.
-Exiting deep sleep causes the ESP32 to start over from main.
+  Exiting deep sleep causes the ESP32 to start over from main.
+
+Durations shorter than $DEEP-SLEEP-MIN-DURATION are increased to that
+  duration. Use $reset instead when no sleep is intended.
 
 If you need to deep sleep for longer than 24h, you can chain multiple
   deep sleeps.
@@ -112,6 +118,15 @@ If the ESP32 wakes up due to the $duration expiring, then
 */
 deep-sleep duration/Duration -> none:
   __deep-sleep__ duration.in-ms
+
+/**
+Resets the ESP32 and does not return.
+
+After restarting, $reset-reason is $RESET-SOFTWARE and $wakeup-cause is
+  $WAKEUP-UNDEFINED.
+*/
+reset -> none:
+  __reset__
 
 /**
 One of the RESET-* enum values (such as $RESET-POWER-ON) that
@@ -385,4 +400,3 @@ pm-lock-acquire_ resource/ByteArray:
 
 pm-lock-release_ resource/ByteArray:
   #primitive.esp32.pm-lock-release
-

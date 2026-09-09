@@ -14,6 +14,7 @@
 // directory of this repository.
 
 #define MBEDTLS_ALLOW_PRIVATE_ACCESS
+#include <mbedtls/bignum.h>
 
 #include "top.h"
 #include "objects_inline.h"
@@ -21,8 +22,6 @@
 #include "resource.h"
 #include "resource_pool.h"
 #include "vm.h"
-
-#include "mbedtls/bignum.h"
 
 namespace toit {
 

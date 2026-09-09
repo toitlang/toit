@@ -135,6 +135,12 @@ static void start() {
   }
 
   switch (exit_state.reason) {
+    case Scheduler::EXIT_RESET: {
+      ets_printf("[toit] INFO: resetting chip\n");
+      esp_restart();
+      UNREACHABLE();
+    }
+
     case Scheduler::EXIT_DEEP_SLEEP: {
       const int64 MIN_MS = 50;
       const int64 MAX_MS = 1 * 24 * 60 * 60 * 1000;  // 1 day.

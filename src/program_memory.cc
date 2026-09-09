@@ -126,14 +126,6 @@ void ProgramBlockList::do_pointers(Program* program, PointerCallback* callback) 
   callback->c_address(reinterpret_cast<void**>(hack.tail_cell()));
 }
 
-ProgramHeapMemory::ProgramHeapMemory() {
-  memory_mutex_ = OS::allocate_mutex(0, "Memory mutex");
-}
-
-ProgramHeapMemory::~ProgramHeapMemory() {
-  OS::dispose(memory_mutex_);
-}
-
 void ProgramHeapMemory::set_writable(ProgramBlock* block, bool value) {
   OS::set_writable(block, value);
 }

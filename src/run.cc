@@ -87,6 +87,9 @@ int run_program(SnapshotBundle boot_bundle, SnapshotBundle application_bundle, c
       case Scheduler::EXIT_ERROR:
         return exit.value;
 
+      case Scheduler::EXIT_RESET:
+        break;
+
       case Scheduler::EXIT_DEEP_SLEEP: {
         struct timespec sleep_time;
         sleep_time.tv_sec = exit.value / 1000;

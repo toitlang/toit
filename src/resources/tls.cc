@@ -205,7 +205,7 @@ word BaseMbedTlsSocket::handshake() {
   return mbedtls_ssl_handshake(&ssl);
 }
 
-#ifdef DEBUG_TLS
+#if defined(DEBUG_TLS) || defined(MBEDTLS_DEBUG_C)
 static void debug_printer(void* ctx, int level, const char* file, int line, const char* str) {
   printf("%s:%04d: %s", file, line, str);
 }
@@ -275,7 +275,7 @@ void MbedTlsResourceGroup::init_conf(mbedtls_ssl_config* conf) {
   }
   mbedtls_ssl_conf_session_tickets(conf, MBEDTLS_SSL_SESSION_TICKETS_ENABLED);
 
-#ifdef DEBUG_TLS
+#if defined(DEBUG_TLS) || defined(MBEDTLS_DEBUG_C)
   mbedtls_ssl_conf_dbg(conf, debug_printer, 0);
   mbedtls_debug_set_threshold(2);
 #endif
@@ -965,7 +965,7 @@ PRIMITIVE(get_internals) {
     memcpy(ByteArray::Bytes(encode_key).address(), out_aes_context->buf + out_aes_context->rk_offset, key_len);
     memcpy(ByteArray::Bytes(decode_key).address(), in_aes_context->buf + in_aes_context->rk_offset, key_len);
 #endif
-#elif defined(TOIT_FREERTOS)
+#elif defined(TOIT_ESP32)
     if (out_aes_context->key_bytes != key_len ||
         in_aes_context->key_bytes != key_len) {
       return process->null_object();

@@ -1,0 +1,123 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; version
+// 2.1 only.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// The license can be found in the file `LICENSE` in the top level
+// directory of this repository.
+
+// Toit-owned build-time configuration for the EC618 port.
+//
+// This header is force-included (via -include) by both the CMake/ninja
+// build that produces libtoit_vm.a and the xmake build that links the
+// final PLAT image, so every translation unit sees the same defaults.
+//
+// Each knob is wrapped in #ifndef, so downstream projects can override
+// an individual value by defining it on the compiler command line
+// (e.g. -DCONFIG_TOIT_EC618_PRINT_UART=0) without having to patch this
+// file.
+
+#ifndef TOIT_EC618_CONFIG_H_
+#define TOIT_EC618_CONFIG_H_
+
+// Whether printf / Toit's `print` output should be routed to a UART at
+// all. When disabled, all three UART controllers are free for
+// application use; diagnostic output still goes to whatever the PLAT
+// configures (USB CDC, unilog, ...).
+#ifndef CONFIG_TOIT_EC618_PRINT_UART
+// Enabled by default. The anchor record selects the actual console
+// controller transactionally for each slot.
+#define CONFIG_TOIT_EC618_PRINT_UART 1
+#endif
+
+// Baud rate used for the print UART when the redirect is enabled.
+#ifndef CONFIG_TOIT_EC618_PRINT_UART_BAUD
+#define CONFIG_TOIT_EC618_PRINT_UART_BAUD 115200
+#endif
+
+// Allow opening a `uart.Port` on the same UART controller that print
+// output is going to. By default the UART primitive rejects this with
+// `ALREADY_IN_USE` because mixed TX is surprising at runtime; the
+// hardware-test agent needs to receive on its console wire, so this
+// knob exists to lift the check. We have verified empirically that
+// concurrent TX+RX on this chip works, but interleaved bytes on TX
+// are up to the application to manage.
+#ifndef CONFIG_TOIT_EC618_ALLOW_PRINT_UART_REUSE
+#define CONFIG_TOIT_EC618_ALLOW_PRINT_UART_REUSE 1
+#endif
+
+// Whether to silence the PLAT "unilog" debug stream at startup. The PLAT
+// SDK normally pumps unilog out UART0 (at 3 Mbaud) and/or USB CDC. With
+// no consumer of that stream we just want it gone — saves CPU/DMA, and
+// frees UART0 so application code can drive it via `uart.Port`.
+//
+// When enabled (default), `BSP_CustomInit` calls
+//   soc_uart0_set_log_off(1)
+//   BSP_SetPlatConfigItemValue(PLAT_CONFIG_ITEM_LOG_CONTROL, 0)
+// early, which tells the unilog subsystem to stop writing.
+//
+// UART1 independently carries a complete "^boot.rom..." mask-ROM banner at
+// every reset. It is emitted before application code and cannot be suppressed.
+#ifndef CONFIG_TOIT_EC618_DISABLE_UNILOG
+#define CONFIG_TOIT_EC618_DISABLE_UNILOG 1
+#endif
+
+// Whether to leave the always-on (AON) hardware watchdog running (default) or
+// stop it at boot.
+//
+// The AON watchdog belongs to the PLATFORM, not to Toit (HW-verified
+// 2026-06-10): the boot ROM arms it (~27 s) and the CP core auto-feeds it
+// every couple of seconds for as long as a healthy CP runs — its target
+// register slides forward with no AP-side feeder. It is the whole-chip/CP
+// liveness guard, and Toit neither feeds nor uses it. (Toit's application
+// watchdog is a software watchdog — see lib/ec618/watchdog.toit.)
+//
+// Consequences:
+//  - With a healthy CP image flashed (the normal case) the AON never fires
+//    and costs nothing. Keep this 1.
+//  - With NO running CP (early bring-up, missing/mismatched CP image) nothing
+//    feeds it and the device reboots every ~27 s. Set this to 0 for such
+//    CP-less debugging: BSP_CustomInit then stops the AON at boot.
+//  - Before hibernate the CP stops feeding while the AON domain keeps
+//    counting, so the deep-sleep path always stops the AON explicitly
+//    (toit_ec618.cc) regardless of this knob; the ROM re-arms it on the wake
+//    reboot and the CP resumes feeding.
+//
+// Note: an AON reset is reported as RESET-POWER-ON, not AONWDT (the reset
+// reason is not preserved), and it may clear RTC memory like a cold boot.
+#ifndef CONFIG_TOIT_EC618_VM_WATCHDOG
+#define CONFIG_TOIT_EC618_VM_WATCHDOG 1
+#endif
+
+// Optional physical PAD to drive HIGH immediately before Toit's application
+// watchdog resets the chip. This is a scope/rig diagnostic for distinguishing
+// the software-watchdog fatal path from a platform or power reset. Keep -1 in
+// normal builds; set a GPIO-capable PAD number in [1..48] for diagnosis.
+#ifndef CONFIG_TOIT_EC618_WATCHDOG_FATAL_PAD
+#define CONFIG_TOIT_EC618_WATCHDOG_FATAL_PAD -1
+#endif
+
+// Maximum interval accepted by one EC618 deep-sleep timer. Longer requested
+// sleeps are split across timer wakes; the intermediate boots re-enter
+// hibernate before starting the Toit VM. Keep the production value at the
+// hardware limit. A shorter compiler-command-line override is useful for
+// exercising the multi-wake path on a hardware test rig.
+#ifndef CONFIG_TOIT_EC618_DEEP_SLEEP_MAX_MS
+#define CONFIG_TOIT_EC618_DEEP_SLEEP_MAX_MS (2 * 60 * 60 * 1000)
+#endif
+
+// Maximum number of FreeRTOS tasks that may be associated with Toit Thread
+// objects at once. The vendor FreeRTOS library has no TLS pointer slots, so
+// the EC618 port uses a fixed task-to-thread map instead.
+#ifndef CONFIG_TOIT_EC618_MAX_THREADS
+#define CONFIG_TOIT_EC618_MAX_THREADS 16
+#endif
+
+#endif  // TOIT_EC618_CONFIG_H_

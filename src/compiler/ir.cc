@@ -845,6 +845,7 @@ class Printer : public Visitor {
       case Builtin::EXIT: name = "exit"; break;
       case Builtin::INVOKE_LAMBDA: name = "invoke_lambda"; break;
       case Builtin::YIELD: name = "yield"; break;
+      case Builtin::RESET: name = "reset"; break;
       case Builtin::DEEP_SLEEP: name = "deep_sleep"; break;
       case Builtin::STORE_GLOBAL: name = "store_global"; break;
       case Builtin::LOAD_GLOBAL: name = "load_global"; break;

@@ -96,6 +96,10 @@ class Port extends Object with io.InMixin implements reader.Reader:
 
   Passing a $gpio.Pin is deprecated; provide the integer GPIO number instead.
     The $gpio.Pin form will be removed in a future release.
+
+  On the EC618, UART pins have fixed controller-specific mappings and not all
+    options are supported. Use the helpers in the `ec618` library; their
+    documentation lists the available mappings and platform restrictions.
   */
   // __TYPE-MIGRATION__ tx: gpio.Pin. Deprecated. Provide an integer instead.
   // __TYPE-MIGRATION__ tx: int?

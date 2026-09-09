@@ -63,8 +63,6 @@
   #include <esp32c3/rom/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32C6
   #include <esp32c6/rom/rtc.h>
-#elif CONFIG_IDF_TARGET_ESP32P4
-  #include <esp32p4/rom/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32S2
   #include <esp32s2/rom/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32S3
@@ -365,9 +363,7 @@ PRIMITIVE(enable_external_wakeup) {
 }
 
 PRIMITIVE(enable_touchpad_wakeup) {
-#ifdef CONFIG_IDF_TARGET_ESP32P4
-  FAIL(UNIMPLEMENTED);
-#elif SOC_TOUCH_SENSOR_SUPPORTED
+#if SOC_TOUCH_SENSOR_SUPPORTED
   esp_err_t err = esp_sleep_enable_touchpad_wakeup();
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "Failed: sleep_enable_touchpad_wakeup");
@@ -404,9 +400,7 @@ PRIMITIVE(ext1_wakeup_status) {
 }
 
 PRIMITIVE(touchpad_wakeup_status) {
-#if defined(CONFIG_IDF_TARGET_ESP32P4)
-  FAIL(UNIMPLEMENTED);
-#elif SOC_TOUCH_SENSOR_SUPPORTED
+#if SOC_TOUCH_SENSOR_SUPPORTED
   touch_pad_t pad = esp_sleep_get_touchpad_wakeup_status();
   return Primitive::integer(touch_pad_to_pin_num(pad), process);
 #else
@@ -640,9 +634,7 @@ PRIMITIVE(pin_hold_disable) {
 }
 
 PRIMITIVE(deep_sleep_pin_hold_enable) {
-#if defined(CONFIG_IDF_TARGET_ESP32P4)
-  FAIL(UNIMPLEMENTED);
-#elif !SOC_GPIO_SUPPORT_HOLD_SINGLE_IO_IN_DSLP
+#if !SOC_GPIO_SUPPORT_HOLD_SINGLE_IO_IN_DSLP
   gpio_deep_sleep_hold_en();
   return process->null_object();
 #else
@@ -651,9 +643,7 @@ PRIMITIVE(deep_sleep_pin_hold_enable) {
 }
 
 PRIMITIVE(deep_sleep_pin_hold_disable) {
-#if defined(CONFIG_IDF_TARGET_ESP32P4)
-  FAIL(UNIMPLEMENTED);
-#elif !SOC_GPIO_SUPPORT_HOLD_SINGLE_IO_IN_DSLP
+#if !SOC_GPIO_SUPPORT_HOLD_SINGLE_IO_IN_DSLP
   gpio_deep_sleep_hold_dis();
   return process->null_object();
 #else

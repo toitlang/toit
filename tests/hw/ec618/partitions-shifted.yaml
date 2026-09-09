@@ -1,0 +1,72 @@
+# yaml-language-server: $schema=https://toit.io/schemas/ec618/partition-table/v1.json
+#
+# SHIFTED test descriptor for the slot-move acceptance test. It is identical
+# to the default toolchains/ec618/partitions.yaml except for a 4 KiB pad
+# pushed in front of
+# ota-a, so BOTH slots sit one sector higher. Provisioning an image with
+# this table (tools/ec618/provision.toit) and booting it proves the
+# device really follows the anchor record, not the link: the dispatcher
+# boots the moved slot A, and an OTA stages the moved slot B.
+#
+# The default layout's one-sector free reserve moves in front of the slots;
+# the registry therefore stays at the same address and size.
+
+$schema: https://toit.io/schemas/ec618/partition-table/v1.json
+xip-offset: 0x800000
+
+partitions:
+  - name: headers          # Boot ROM flash headers (BLS/SYS).
+    type: locked
+    offset: 0x000000
+    size: 0x4000
+  - name: bootloader
+    type: locked
+    size: 0x20000
+  - name: base             # PLAT + dispatcher; SDK bootloader jumps here.
+    type: base
+    offset: 0x024000       # Boot-ROM-fixed AP load address (XIP 0x824000).
+    size: 0x16C000
+  - name: base-id          # 'TBI1' version + fingerprint, directly after
+    type: base-id          # the base — derived, never pinned.
+    size: 0x1000
+  - name: littlefs         # SDK littlefs; frozen with the base.
+    type: locked
+    size: 0x20000
+  - name: anchor           # The anchor record — must not move (it is the
+    type: anchor           # boundary after all frozen regions).
+    size: 0x2000
+  - name: shift-pad        # THE ACCEPTANCE-TEST SHIFT: one free sector
+    type: free             # pushing both slots +0x1000.
+    size: 0x1000
+  - name: ota-a
+    type: slot
+    size: 0xC0000
+  - name: ota-b
+    type: slot
+    size: 0xC0000
+  - name: registry         # Toit flash registry. LIVE data — must not move.
+    type: data
+    offset: 0x334000
+    size: 0xA8000
+  - name: nvram-factory    # Modem RF calibration — losing it bricks the modem.
+    type: locked
+    offset: 0x3DC000       # Vendor-fixed from here to the end of flash.
+    size: 0x4000
+  - name: nvram
+    type: locked
+    size: 0x4000
+  - name: hib-backup       # Deep-sleep/PSM memory backup.
+    type: locked
+    size: 0x18000
+  - name: plat-config
+    type: locked
+    size: 0x1000
+  - name: reset-info
+    type: locked
+    size: 0x1000
+  - name: excep-info       # SDK crash dump key info.
+    type: locked
+    size: 0x1000
+  - name: reserved-tail
+    type: locked
+    size: 0x1000

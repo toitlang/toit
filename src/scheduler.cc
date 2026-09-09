@@ -394,6 +394,10 @@ void Scheduler::run(SchedulerThread* scheduler_thread) {
   // all OS threads at startup on platforms that may have a hard time starting
   // such threads later due to memory pressure.
   while (!has_exit_reason()) {
+    // Feed the platform VM-liveness watchdog (a no-op where there is none).
+    // A wedged VM stops cycling this loop, stops feeding, and gets reset.
+    OS::feed_watchdog();
+
     if (ready_count_ == 0) {
       OS::wait(has_processes_);
       continue;
@@ -739,6 +743,12 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
 
     case Interpreter::Result::DEEP_SLEEP: {
       ExitState exit(EXIT_DEEP_SLEEP, result.value());
+      terminate_execution(locker, exit);
+      break;
+    }
+
+    case Interpreter::Result::RESET: {
+      ExitState exit(EXIT_RESET);
       terminate_execution(locker, exit);
       break;
     }

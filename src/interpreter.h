@@ -86,6 +86,7 @@ class Interpreter {
       PREEMPTED,
       YIELDED,
       TERMINATED,
+      RESET,
       DEEP_SLEEP,
     };
 
