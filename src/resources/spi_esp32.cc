@@ -54,6 +54,7 @@ static ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
 
 const word kSpiTargetReadyState = 1 << 0;
 const word kSpiTargetDoneState = 1 << 1;
+const int64 kSpiTargetTeardownTimeoutUs = 10 * 1000 * 1000;
 
 static size_t spi_dma_buffer_alignment(bool dma) {
   if (!dma) return 4;
@@ -171,6 +172,10 @@ SpiTargetResource::~SpiTargetResource() {
     // Process teardown can bypass Target.close. Abort and wait for the driver
     // to retire the mounted descriptor before releasing its buffers. This is
     // outside a primitive; ordinary close rejects an in-flight transfer.
+    // It is also outside the scheduler's deadlock detection, so bound the wait
+    // locally in case the driver or its ISR stops making progress.
+    int64 teardown_deadline =
+        OS::get_monotonic_time() + kSpiTargetTeardownTimeoutUs;
     bool abort_requested = false;
     while (true) {
       if (!abort_requested) {
@@ -189,6 +194,9 @@ SpiTargetResource::~SpiTargetResource() {
       }
       if (free_error != ESP_ERR_INVALID_STATE) {
         FATAL_IF_NOT_ESP_OK(free_error);
+      }
+      if (OS::get_monotonic_time() >= teardown_deadline) {
+        FATAL("Timed out tearing down SPI target");
       }
       vTaskDelay(1);
     }
