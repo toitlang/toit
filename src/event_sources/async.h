@@ -81,7 +81,7 @@ class AsyncEventSource : public EventSource {
   AsyncEventSource(const char* name);
 
  private:
-  void on_event(Resource* resource, word data);
+  virtual void on_event(Resource* resource, word data);
   friend class AsyncEventThread;
 };
 

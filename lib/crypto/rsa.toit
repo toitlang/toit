@@ -126,7 +126,7 @@ class RsaKey:
   static generate --bits/int=2048 -> RsaKeyPair:
     if bits != 1024 and bits != 2048 and bits != 3072 and bits != 4096: throw "INVALID_ARGUMENT"
     pair := null
-    catch --trace=(: it != "UNIMPLEMENTED"):
+    catch --unwind=(: it != "UNIMPLEMENTED"):
       resource := RsaGenerationResource_ bits
       try:
         resource.wait
