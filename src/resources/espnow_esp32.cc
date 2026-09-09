@@ -206,6 +206,8 @@ static esp_now_send_status_t tx_status;
 // of whether there is already one in the queue or not). If there are two events in
 // the queue, we will never add a receive event, as there is already one in the queue.
 const int kEventQueueSize = 3;
+static_assert(kEventQueueSize <= ESPNOW_EVENT_QUEUE_SIZE,
+              "Increase ESPNOW_EVENT_QUEUE_SIZE");
 static QueueHandle_t event_queue;
 
 // This function is registered as callback and will then be called on the high-priority WiFi task.
