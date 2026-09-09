@@ -12,16 +12,17 @@ import monitor
 main args:
   run-client-test args
     --use-mock
-    --pre-initialize=: it.configuration["shouldWriteReproOnCrash"] = true:
-    test --expect-repro it
+    --pre-initialize=(: it.configuration["shouldWriteReproOnCrash"] = true):
+    | client mock-compiler |
+    test --expect-repro client mock-compiler
 
   run-client-test args
     --use-mock
-    --pre-initialize=: it.configuration["shouldWriteReproOnCrash"] = false:
-    test --no-expect-repro it
+    --pre-initialize=(: it.configuration["shouldWriteReproOnCrash"] = false):
+    | client mock-compiler |
+    test --no-expect-repro client mock-compiler
 
-test --expect-repro/bool client/LspClient:
-  mock-compiler := MockCompiler client
+test --expect-repro/bool client/LspClient mock-compiler/MockCompiler:
 
   protocol1 := "$(directory.cwd)/protocol1.toit"
   protocol2 := "$(directory.cwd)/protocol2.toit"
@@ -38,7 +39,7 @@ test --expect-repro/bool client/LspClient:
     client.send-did-open --path=path
 
   print "sending mock for analyze"
-  mock-compiler.set-analysis-result "CRASH\n"
+  mock-compiler.set-analysis-result --crash
 
   semaphore := monitor.Semaphore
   did-create-repro := false

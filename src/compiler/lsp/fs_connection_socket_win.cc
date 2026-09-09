@@ -43,7 +43,9 @@ void LspFsConnectionSocket::initialize(Diagnostics* diagnostics) {
 
   addrinfo hints;
   memset(&hints, 0, sizeof(struct addrinfo));
-  hints.ai_family = AF_UNSPEC;     // Allow IPv4 or IPv6.
+  // Toit TCP listeners are IPv4 only. Trying ::1 first costs 2s on Windows,
+  // which retries a refused loopback connection before giving up.
+  hints.ai_family = AF_INET;
   hints.ai_socktype = SOCK_STREAM; // TCP.
   hints.ai_flags = 0;
   hints.ai_protocol = 0;           // Any protocol.

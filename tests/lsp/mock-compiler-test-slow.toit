@@ -10,10 +10,10 @@ import host.directory
 import expect show *
 
 main args:
-  run-client-test args --use-mock: test it
+  run-client-test args --use-mock: | client mock-compiler |
+    test client mock-compiler
 
-test client/LspClient:
-  mock-compiler := MockCompiler client
+test client/LspClient mock-compiler/MockCompiler:
 
   path1 := "/tmp/path1.toit"
   path2 := "/tmp/path2.toit"
