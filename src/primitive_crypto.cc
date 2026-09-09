@@ -896,6 +896,7 @@ class RsaGenerationEventSource : public AsyncEventSource {
   }
  private:
   RsaGenerationEventSource() : AsyncEventSource("RsaGeneration") {}
+  void on_event(Resource* resource, word data) override;
   AsyncEventThread* thread_ = null;
 };
 
@@ -906,7 +907,9 @@ class RsaGenerationResourceGroup : public ResourceGroup {
       : ResourceGroup(process, RsaGenerationEventSource::instance()) {}
 
  protected:
-  uint32 on_event(Resource* resource, word data, uint32_t state) override;
+  uint32 on_event(Resource* resource, word data, uint32_t state) override {
+    return state | data;
+  }
 };
 
 class RsaGenerationResource : public Resource {
@@ -923,7 +926,7 @@ class RsaGenerationResource : public Resource {
   void delete_or_mark_for_deletion() override {
     bool should_delete = false;
     {
-      Locker locker(resource_group()->event_source()->mutex());
+      Locker locker(RsaGenerationEventSource::instance()->mutex());
       if (thread_running_) {
         destroy_when_done_ = true;
       } else {
@@ -933,17 +936,14 @@ class RsaGenerationResource : public Resource {
     if (should_delete) delete this;
   }
 
-  void on_thread_done() {
-    bool should_delete = false;
-    {
-      Locker locker(resource_group()->event_source()->mutex());
-      if (destroy_when_done_) {
-        should_delete = true;
-      } else {
-        thread_running_ = false;
-      }
+  // Called with the event-source mutex held. The group may already be gone.
+  bool on_thread_done() {
+    if (destroy_when_done_) {
+      delete this;
+      return false;
     }
-    if (should_delete) delete this;
+    thread_running_ = false;
+    return true;
   }
 
   int bits() const { return bits_; }
@@ -996,9 +996,11 @@ class RsaGenerationResource : public Resource {
   size_t pub_len_ = 0;
 };
 
-uint32 RsaGenerationResourceGroup::on_event(Resource* resource, word data, uint32_t state) {
-  static_cast<RsaGenerationResource*>(resource)->on_thread_done();
-  return state | data;
+void RsaGenerationEventSource::on_event(Resource* resource, word data) {
+  Locker locker(mutex());
+  if (static_cast<RsaGenerationResource*>(resource)->on_thread_done()) {
+    dispatch(locker, resource, data);
+  }
 }
 
 PRIMITIVE(rsa_generate_init) {
@@ -1038,7 +1040,8 @@ PRIMITIVE(rsa_generate_start) {
   }
 
   resource->set_thread_running(true);
-  bool success = thread->run(resource, [](Resource* r) {
+  group->register_resource(resource);
+  thread->enqueue(resource, [](Resource* r) {
     RsaGenerationResource* res = static_cast<RsaGenerationResource*>(r);
     mbedtls_pk_context pk;
     mbedtls_pk_init(&pk);
@@ -1079,13 +1082,6 @@ PRIMITIVE(rsa_generate_start) {
     return (word)1; // Indicate done.
   });
 
-  if (!success) {
-    resource->set_thread_running(false);
-    delete resource;
-    FAIL(INVALID_STATE);
-  }
-
-  group->register_resource(resource);
   proxy->set_external_address(resource);
   return proxy;
 }
@@ -1145,6 +1141,24 @@ PRIMITIVE(rsa_generate_close) {
   group->tear_down();
   group_proxy->clear_external_address();
   return process->null_object();
+}
+
+#else
+
+PRIMITIVE(rsa_generate_init) {
+  FAIL(UNIMPLEMENTED);
+}
+
+PRIMITIVE(rsa_generate_start) {
+  FAIL(UNIMPLEMENTED);
+}
+
+PRIMITIVE(rsa_generate_finish) {
+  FAIL(UNIMPLEMENTED);
+}
+
+PRIMITIVE(rsa_generate_close) {
+  FAIL(UNIMPLEMENTED);
 }
 
 #endif // CONFIG_TOIT_CRYPTO_EXTRA
