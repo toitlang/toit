@@ -14,11 +14,11 @@ main args:
       args
       --use-mock
       // Decrease the timeout a bit to make the test terminate faster.
-      --pre-initialize=: it.configuration["timeoutMs"] = 500:
-    test it
+      --pre-initialize=(: it.configuration["timeoutMs"] = 500):
+    | client mock-compiler |
+    test client mock-compiler
 
-test client/LspClient:
-  mock-compiler := MockCompiler client
+test client/LspClient mock-compiler/MockCompiler:
 
   protocol1 := "$(directory.cwd)/protocol1.toit"
   protocol2 := "$(directory.cwd)/protocol2.toit"
@@ -35,7 +35,7 @@ test client/LspClient:
     client.send-did-open --path=path
 
   print "sending mock for analyze"
-  mock-compiler.set-analysis-result "TIMEOUT\n"
+  mock-compiler.set-analysis-result --timeout
 
   semaphore := monitor.Semaphore
 

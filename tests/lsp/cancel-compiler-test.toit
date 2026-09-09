@@ -8,13 +8,13 @@ import expect show *
 import monitor
 
 main args:
-  run-client-test args --use-mock: test it
+  run-client-test args --use-mock: | client mock-compiler |
+    test client mock-compiler
 
-test client/LspClient:
+test client/LspClient mock-compiler/MockCompiler:
   // We want to cancel the request before it has finished, so we
   //   must not automatically wait for idle.
   client.always-wait-for-idle = false
-  mock-compiler := MockCompiler client
 
   uri := "untitled:Untitled-1"
   path := client.to-path uri
@@ -31,61 +31,34 @@ test client/LspClient:
     Completely ignored content.
   """
 
-  sleep-amount := 10
-  cancel-succeeded := false
-  while sleep-amount < 1000_000:
-    mock-compiler.set-completion-result
-      "SLOW\n$sleep-amount\n\n0\n0\n0\n0\nfoo\n-1\nbar\n-1\n"
-    client.wait-for-idle
-
-    completions := client.send-completion-request --uri=uri 1 2 --id-callback=:
-      print "canceling $it"
-      client.send-cancel it
-    if completions.contains "code":
-      if completions["code"] == -32800:
-        // This is the expected result.
-        cancel-succeeded = true
-        break
-      if completions["code"] != 0:
-        // Fail, if the code is neither -32800 or 0 (see below for 0).
-        expect-equals -32800 completions["code"]
-
-      // On the Go version of the LSP server we sometimes get 0 as code, with
-      // a message saying "EOF".
-      // We just try again.
-    else:
-      print "Got a response: $completions"
-    sleep-amount *= 2
-  expect cancel-succeeded
-
+  // The compiler waits for us at the rendezvous, so the cancel is guaranteed
+  // to arrive while the request is still running.
+  mock-compiler.set-completion-result --sync
+      "\n0\n0\n0\n0\nfoo\n-1\nbar\n-1\n"
   client.wait-for-idle
+
+  completions := client.send-completion-request --uri=uri 1 2 --id-callback=: | id |
+    // The compiler is now running and waits for us.
+    mock-compiler.wait-for-waiting 1
+    print "canceling $id"
+    client.send-cancel id
+  expect-equals -32800 completions["code"]
+
+  // Canceling must kill the compiler. We never release it, so the server can
+  // only become idle again if it killed the compiler.
+  with-timeout --ms=5_000: client.wait-for-idle
 
   // Now try to cancel a request where we were too slow for the cancel.
   mock-compiler.set-completion-result
     "\n0\n0\n0\n0\nfoo\n-1\nbar\n-1\n"
   id := null
-  completions := client.send-completion-request --uri=uri 1 2 --id-callback=:
+  completions = client.send-completion-request --uri=uri 1 2 --id-callback=:
     id = it
   print "cancelling request that has already finished"
   client.send-cancel id
   // Just shouldn't do anything.
   client.wait-for-idle
 
-  // Canceling must kill the compiler. Without the kill, the server only
-  // becomes idle once the compiler has finished or has hit the timeout.
-  mock-compiler.set-completion-result
-    "SLOW\n20000000\n\n0\n0\n0\n0\nfoo\n-1\nbar\n-1\n"
-  start := Time.monotonic-us
-  completions = client.send-completion-request --uri=uri 1 2 --id-callback=:
-    client.send-cancel it
-  expect-equals -32800 completions["code"]
-  client.wait-for-idle
-  elapsed-ms := (Time.monotonic-us - start) / 1000
-  print "idle $elapsed-ms ms after cancel"
-  expect elapsed-ms < 5000
-
   // The server must still work afterwards.
-  mock-compiler.set-completion-result
-    "\n0\n0\n0\n0\nfoo\n-1\nbar\n-1\n"
   completions = client.send-completion-request --uri=uri 1 2
   expect-equals 2 completions.size
