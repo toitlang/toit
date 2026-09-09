@@ -297,6 +297,121 @@ class Target:
       throw "OVERFLOW"
 
 /**
+An I2C target backed by a native register array.
+
+Controller writes start with a one- or two-byte, big-endian register address.
+  Any following bytes update consecutive registers. A write containing only
+  the address selects the first register for a subsequent controller read.
+  A write containing data leaves the selected register immediately after the
+  last byte written.
+  Controller reads are answered directly from native memory without waiting
+  for a Toit task, and advance the selected register by the number of bytes
+  actually read. Controller accesses wrap at the end of the register array.
+
+The native array is initialized to zero. Toit code can access it with indexing,
+  $read, and $write while the target is active. Individual byte accesses are
+  atomic, but multi-byte accesses are not snapshots of a controller transaction.
+  Coordinate the two sides if multi-byte values must be observed consistently.
+
+Register targets require an I2C peripheral with address-match clock stretching
+  and are not supported on the original ESP32.
+*/
+class RegisterTarget:
+  resource_ := ?
+  size/int ::= ?
+
+  /**
+  Constructs a register-backed I2C target on the $sda and $scl GPIOs.
+
+  $register-count is the number of native register bytes. The
+    $register-address-byte-size is the number of address bytes in the controller
+    protocol and must be 1 or 2. A one-byte address can select at most 256
+    registers; a two-byte address can select at most 65,536.
+
+  $receive-buffer-size is the largest complete controller write transaction
+    that can update the registers. Writes exceeding it are discarded.
+
+  The I2C address, pull-up, and broadcast options have the same meaning as for
+    $Target.
+  */
+  constructor
+      --sda/int
+      --scl/int
+      --address/int
+      --address-bit-size/int=7
+      --register-count/int=256
+      --register-address-byte-size/int=1
+      --receive-buffer-size/int=DEFAULT-TARGET-BUFFER-SIZE
+      --pull-up/bool=false
+      --broadcast/bool=false:
+    if address-bit-size != 7 and address-bit-size != 10: throw "INVALID_ARGUMENT"
+    address-limit := (1 << address-bit-size) - 1
+    if not 0 <= address <= address-limit: throw "INVALID_ARGUMENT"
+    if broadcast and address-bit-size == 10: throw "INVALID_ARGUMENT"
+    if register-address-byte-size != 1 and register-address-byte-size != 2: throw "INVALID_ARGUMENT"
+    register-limit := 1 << (register-address-byte-size * 8)
+    if not 0 < register-count <= register-limit: throw "INVALID_ARGUMENT"
+    if receive-buffer-size < register-address-byte-size: throw "INVALID_ARGUMENT"
+
+    size = register-count
+    resource := i2c-register-target-create_
+        resource-group_
+        sda
+        scl
+        address-bit-size
+        address
+        register-count
+        register-address-byte-size
+        receive-buffer-size
+        pull-up
+        false
+        broadcast
+    resource_ = resource
+    initialized := false
+    try:
+      add-finalizer this:: close
+      initialized = true
+    finally:
+      if not initialized:
+        critical-do --no-respect-deadline:
+          i2c-register-target-close_ resource-group_ resource
+          resource_ = null
+
+  /** Returns the byte stored at $index. */
+  operator [] index/int -> int:
+    if not resource_: throw "CLOSED"
+    return i2c-register-target-get_ resource_ index
+
+  /** Stores $value at $index and returns it. */
+  operator []= index/int value/int -> int:
+    if not resource_: throw "CLOSED"
+    return i2c-register-target-set_ resource_ index value
+
+  /** Returns $count consecutive register bytes starting at $index. */
+  read index/int count/int -> ByteArray:
+    if not resource_: throw "CLOSED"
+    if count < 0: throw "OUT_OF_BOUNDS"
+    return i2c-register-target-read_ resource_ index count
+
+  /** Writes $bytes to consecutive registers starting at $index. */
+  write index/int bytes/ByteArray -> none:
+    if not resource_: throw "CLOSED"
+    i2c-register-target-write_ resource_ index bytes
+
+  /** Number of controller write transactions discarded due to overflow. */
+  dropped-write-count -> int:
+    if not resource_: throw "CLOSED"
+    return i2c-register-target-dropped-write-count_ resource_
+
+  /** Closes the target and releases its pins and native register array. */
+  close -> none:
+    if not resource_: return
+    critical-do --no-respect-deadline:
+      i2c-register-target-close_ resource-group_ resource_
+      resource_ = null
+      remove-finalizer this
+
+/**
 Bus for communicating using I2C.
 
 The communication is synchronous.
@@ -688,11 +803,16 @@ class Registers extends serial.Registers:
 
   /** See $super. */
   read-bytes reg/int count/int -> ByteArray:
-    return device_.read-reg reg count
+    register-size := byte-size_
+    if not 0 <= reg < (1 << (register-size * 8)): throw "OUT_OF_RANGE"
+    address := ByteArray register-size
+    byte-order_.put-uint address register-size 0 reg
+    return device_.read-address address count
 
   /** See $super. */
   write-bytes reg/int bytes/ByteArray:
     register-size := byte-size_
+    if not 0 <= reg < (1 << (register-size * 8)): throw "OUT_OF_RANGE"
     data := ByteArray bytes.size + register-size
     byte-order_.put-uint data register-size 0 reg
     data.replace register-size bytes
@@ -744,6 +864,38 @@ i2c-target-take-request-count_ target:
 
 i2c-target-dropped-receive-count_ target:
   #primitive.i2c.target-dropped-receive-count
+
+i2c-register-target-create_
+    group
+    sda/int
+    scl/int
+    address-bit-size/int
+    address/int
+    register-count/int
+    register-address-byte-size/int
+    receive-buffer-size/int
+    pull-up/bool
+    allow-power-down/bool
+    broadcast/bool:
+  #primitive.i2c.register-target-create
+
+i2c-register-target-close_ group target:
+  #primitive.i2c.register-target-close
+
+i2c-register-target-get_ target index/int:
+  #primitive.i2c.register-target-get
+
+i2c-register-target-set_ target index/int value/int:
+  #primitive.i2c.register-target-set
+
+i2c-register-target-read_ target index/int count/int:
+  #primitive.i2c.register-target-read
+
+i2c-register-target-write_ target index/int bytes/ByteArray:
+  #primitive.i2c.register-target-write
+
+i2c-register-target-dropped-write-count_ target:
+  #primitive.i2c.register-target-dropped-write-count
 
 i2c-bus-create_ resource-group sda scl pull-up:
   #primitive.i2c.bus-create
