@@ -648,6 +648,7 @@ jobs:
           pip install jsonschema jinja2
           make esp32
           make ESP32_CHIP=esp32c3 esp32
+          make ESP32_CHIP=esp32c6 esp32
           make ESP32_CHIP=esp32p4 esp32
           make ESP32_CHIP=esp32s2 esp32
           make ESP32_CHIP=esp32s3 esp32
