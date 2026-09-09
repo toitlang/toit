@@ -47,11 +47,11 @@ test:
 
 test-validation:
   expect-throw "INVALID_ARGUMENT":
-    i2c.Target --sda=TEST-PIN --scl=OTHER-PIN --address=0x42 --address-size=8
+    i2c.Target --sda=TEST-PIN --scl=OTHER-PIN --address=0x42 --address-bit-size=8
   expect-throw "INVALID_ARGUMENT":
     i2c.Target --sda=TEST-PIN --scl=OTHER-PIN --address=0x80
   expect-throw "INVALID_ARGUMENT":
-    i2c.Target --sda=TEST-PIN --scl=OTHER-PIN --address=0x400 --address-size=10
+    i2c.Target --sda=TEST-PIN --scl=OTHER-PIN --address=0x400 --address-bit-size=10
   expect-throw "INVALID_ARGUMENT":
     i2c.Target --sda=TEST-PIN --scl=OTHER-PIN --address=0x42 --send-buffer-size=0
   expect-throw "INVALID_ARGUMENT":
@@ -61,7 +61,7 @@ test-validation:
         --sda=TEST-PIN
         --scl=OTHER-PIN
         --address=0x2aa
-        --address-size=10
+        --address-bit-size=10
         --broadcast
   if system.architecture == system.ARCHITECTURE-ESP32:
     expect-throw "UNSUPPORTED":
