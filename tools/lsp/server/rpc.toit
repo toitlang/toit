@@ -118,10 +118,13 @@ class RpcConnection:
     else:
       payload = json.encode packet
     mutex_.do:
-      writeln_ "Content-Length: $(payload.size)"
-      writeln_ "Content-Type: $(use-ubjson_ ? CONTENT-TYPE-UBJSON_ : CONTENT-TYPE-JSON_)"
-      writeln_ ""
-      write_   payload
+      // A half-written packet would corrupt the stream for good. Don't let a
+      // cancelation or deadline interrupt the write.
+      critical-do --no-respect-deadline:
+        writeln_ "Content-Length: $(payload.size)"
+        writeln_ "Content-Type: $(use-ubjson_ ? CONTENT-TYPE-UBJSON_ : CONTENT-TYPE-JSON_)"
+        writeln_ ""
+        write_   payload
 
   read:
     while true:

@@ -46,6 +46,9 @@ run-client-test
         --spawn-process=spawn-process
         --pre-initialize=: | client args |
             client.configuration["reproDir"] = repro-dir
+            // Tests send a 'didChange' and then immediately wait for the
+            // analysis. Don't make them wait for the debounce.
+            client.configuration["analysisDebounceMs"] = 0
             pre-initialize.call client args
   finally:
     directory.rmdir --recursive repro-dir
