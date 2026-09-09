@@ -88,7 +88,46 @@ class SpiTargetResourceGroup : public ResourceGroup {
   }
 };
 
-class SpiTargetResource : public EventQueueResource {
+struct SpiTargetConfig {
+  int mosi;
+  int miso;
+  int clock;
+  int cs;
+  size_t max_transfer_size;
+  int mode;
+  bool transmit_lsb_first;
+  bool receive_lsb_first;
+  bool dma;
+  slave_transaction_cb_t armed_callback;
+  slave_transaction_cb_t done_callback;
+};
+
+class SpiTargetResourceBase : public EventQueueResource {
+ public:
+  SpiTargetResourceBase(SpiTargetResourceGroup* group,
+                        spi_host_device_t host_device,
+                        QueueHandle_t event_queue)
+      : EventQueueResource(group, event_queue)
+      , host_device_(host_device) {}
+  ~SpiTargetResourceBase() override;
+
+  spi_host_device_t host_device() const { return host_device_; }
+  GpioPins& owned_pins() { return owned_pins_; }
+
+  esp_err_t initialize_driver(const SpiTargetConfig& config);
+
+ protected:
+  bool initialized() const { return initialized_; }
+  void release_driver(spi_slave_transaction_t* transaction,
+                      bool abort_requested = false);
+
+ private:
+  spi_host_device_t host_device_;
+  bool initialized_ = false;
+  GpioPins owned_pins_;
+};
+
+class SpiTargetResource : public SpiTargetResourceBase {
  public:
   TAG(SpiTargetResource);
 
@@ -99,8 +138,7 @@ class SpiTargetResource : public EventQueueResource {
                     size_t buffer_alignment,
                     bool dma,
                     bool transmit_enabled)
-      : EventQueueResource(group, event_queue)
-      , host_device_(host_device)
+      : SpiTargetResourceBase(group, host_device, event_queue)
       , max_transfer_size_(max_transfer_size)
       , buffer_alignment_(buffer_alignment)
       , dma_(dma)
@@ -108,12 +146,8 @@ class SpiTargetResource : public EventQueueResource {
 
   ~SpiTargetResource() override;
 
-  spi_host_device_t host_device() const { return host_device_; }
   size_t max_transfer_size() const { return max_transfer_size_; }
   size_t buffer_alignment() const { return buffer_alignment_; }
-  GpioPins& owned_pins() { return owned_pins_; }
-
-  void set_initialized() { initialized_ = true; }
 
   bool operation_in_flight() const { return operation_in_flight_; }
   spi_slave_transaction_t* transaction() { return &transaction_; }
@@ -144,21 +178,18 @@ class SpiTargetResource : public EventQueueResource {
     if (higher_was_woken == pdTRUE) portYIELD_FROM_ISR();
   }
 
-  spi_host_device_t host_device_;
   const size_t max_transfer_size_;
   const size_t buffer_alignment_;
   const bool dma_;
   const bool transmit_enabled_;
-  bool initialized_ = false;
   bool operation_in_flight_ = false;
   spi_slave_transaction_t transaction_ = {};
   uint8_t* tx_buffer_ = null;
   uint8_t* rx_buffer_ = null;
   size_t receive_size_ = 0;
-  GpioPins owned_pins_;
 };
 
-class SpiBufferTargetResource : public EventQueueResource {
+class SpiBufferTargetResource : public SpiTargetResourceBase {
  public:
   TAG(SpiBufferTargetResource);
 
@@ -176,11 +207,8 @@ class SpiBufferTargetResource : public EventQueueResource {
                           bool dma);
   ~SpiBufferTargetResource() override;
 
-  spi_host_device_t host_device() const { return host_device_; }
   spi_slave_transaction_t* transaction() { return &transaction_; }
-  GpioPins& owned_pins() { return owned_pins_; }
 
-  void set_initialized() { initialized_ = true; }
   bool can_receive() const { return receive_storage_ != null; }
   bool can_transmit() const { return response_buffer_ != null; }
   size_t buffer_size() const { return buffer_size_; }
@@ -205,7 +233,6 @@ class SpiBufferTargetResource : public EventQueueResource {
  private:
   SPI_TARGET_ISR_ATTR void signal_from_isr(word event);
 
-  spi_host_device_t host_device_;
   uint8_t* response_buffer_;
   uint8_t* receive_storage_;
   uint32_t* receive_indices_;
@@ -215,7 +242,6 @@ class SpiBufferTargetResource : public EventQueueResource {
   const size_t driver_buffer_size_;
   const uint32_t receive_queue_depth_;
   const bool dma_;
-  bool initialized_ = false;
   spi_slave_transaction_t transaction_ = {};
   mutable spinlock_t spinlock_;
   uint32_t receive_head_ = 0;
@@ -228,7 +254,6 @@ class SpiBufferTargetResource : public EventQueueResource {
   bool stopping_ = false;
   bool initially_armed_ = false;
   word pending_event_ = 0;
-  GpioPins owned_pins_;
 };
 
 SpiResourceGroup::SpiResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device)
@@ -244,45 +269,105 @@ SpiResourceGroup::~SpiResourceGroup() {
   owned_pins_.release();
 }
 
-SpiTargetResource::~SpiTargetResource() {
-  if (initialized_ && operation_in_flight_) {
-    // Process teardown can bypass Target.close. Abort and wait for the driver
-    // to retire the mounted descriptor before releasing its buffers. This is
-    // outside a primitive; ordinary close rejects an in-flight transfer.
-    // It is also outside the scheduler's deadlock detection, so bound the wait
-    // locally in case the driver or its ISR stops making progress.
-    int64 teardown_deadline =
-        OS::get_monotonic_time() + kSpiTargetTeardownTimeoutUs;
-    bool abort_requested = false;
-    while (true) {
-      if (!abort_requested) {
-        esp_err_t abort_error = spi_slave_abort_transaction(
-            host_device_, transaction());
-        if (abort_error == ESP_OK) {
-          abort_requested = true;
-        } else if (abort_error != ESP_ERR_INVALID_STATE) {
-          FATAL_IF_NOT_ESP_OK(abort_error);
-        }
-      }
-      esp_err_t free_error = spi_slave_free(host_device_);
-      if (free_error == ESP_OK) {
-        initialized_ = false;
-        break;
-      }
-      if (free_error != ESP_ERR_INVALID_STATE) {
-        FATAL_IF_NOT_ESP_OK(free_error);
-      }
-      if (OS::get_monotonic_time() >= teardown_deadline) {
-        FATAL("Timed out tearing down SPI target");
-      }
-      vTaskDelay(1);
-    }
-  }
-  if (initialized_) FATAL_IF_NOT_ESP_OK(spi_slave_free(host_device_));
-  if (operation_in_flight_) finish_operation();
+SpiTargetResourceBase::~SpiTargetResourceBase() {
+  ASSERT(!initialized_);
   vQueueDeleteWithCaps(queue());
   spi_host_devices.put(host_device_);
   owned_pins_.release();
+}
+
+esp_err_t SpiTargetResourceBase::initialize_driver(
+    const SpiTargetConfig& config) {
+  ASSERT(!initialized_);
+
+  spi_bus_config_t bus_config = {};
+  bus_config.mosi_io_num = config.mosi;
+  bus_config.miso_io_num = config.miso;
+  bus_config.sclk_io_num = config.clock;
+  bus_config.quadwp_io_num = -1;
+  bus_config.quadhd_io_num = -1;
+  bus_config.max_transfer_sz = static_cast<int>(config.max_transfer_size);
+  bus_config.flags = 0;
+#if CONFIG_SPI_SLAVE_ISR_IN_IRAM
+  bus_config.intr_flags = ESP_INTR_FLAG_IRAM;
+#else
+  bus_config.intr_flags = 0;
+#endif
+
+  uint32_t flags = SPI_SLAVE_NO_RETURN_RESULT;
+  if (config.transmit_lsb_first) flags |= SPI_SLAVE_TXBIT_LSBFIRST;
+  if (config.receive_lsb_first) flags |= SPI_SLAVE_RXBIT_LSBFIRST;
+  spi_slave_interface_config_t target_config = {
+    .spics_io_num = config.cs,
+    .flags = flags,
+    .queue_size = 1,
+    .mode = static_cast<uint8_t>(config.mode),
+    .post_setup_cb = config.armed_callback,
+    .post_trans_cb = config.done_callback,
+  };
+
+  // CS is active low. Keep it inactive while the peer has not configured its
+  // controller pin yet; otherwise a floating edge can complete a descriptor
+  // before any clocks have been received.
+  esp_err_t err = gpio_set_pull_mode(
+      static_cast<gpio_num_t>(config.cs), GPIO_PULLUP_ONLY);
+  if (err != ESP_OK) return err;
+
+  err = spi_slave_initialize(
+      host_device_,
+      &bus_config,
+      &target_config,
+      config.dma ? SPI_DMA_CH_AUTO : SPI_DMA_DISABLED);
+  if (err == ESP_OK) initialized_ = true;
+  return err;
+}
+
+void SpiTargetResourceBase::release_driver(
+    spi_slave_transaction_t* transaction, bool abort_requested) {
+  ASSERT(initialized_);
+  if (transaction == null) {
+    FATAL_IF_NOT_ESP_OK(spi_slave_free(host_device_));
+    initialized_ = false;
+    return;
+  }
+
+  // Process teardown is outside the scheduler's deadlock detection. Bound the
+  // wait locally in case the driver or its ISR stops making progress.
+  int64 teardown_deadline =
+      OS::get_monotonic_time() + kSpiTargetTeardownTimeoutUs;
+  while (true) {
+    if (!abort_requested) {
+      esp_err_t abort_error =
+          spi_slave_abort_transaction(host_device_, transaction);
+      if (abort_error == ESP_OK) {
+        abort_requested = true;
+      } else if (abort_error != ESP_ERR_INVALID_STATE) {
+        FATAL_IF_NOT_ESP_OK(abort_error);
+      }
+    }
+    esp_err_t free_error = spi_slave_free(host_device_);
+    if (free_error == ESP_OK) {
+      initialized_ = false;
+      return;
+    }
+    if (free_error != ESP_ERR_INVALID_STATE) {
+      FATAL_IF_NOT_ESP_OK(free_error);
+    }
+    if (OS::get_monotonic_time() >= teardown_deadline) {
+      FATAL("Timed out tearing down SPI target");
+    }
+    vTaskDelay(1);
+  }
+}
+
+SpiTargetResource::~SpiTargetResource() {
+  if (initialized()) {
+    // Process teardown can bypass Target.close. Abort and wait for the driver
+    // to retire the mounted descriptor before releasing its buffers. Ordinary
+    // close rejects an in-flight transfer.
+    release_driver(operation_in_flight_ ? transaction() : null);
+  }
+  if (operation_in_flight_) finish_operation();
 }
 
 void SpiTargetResource::prepare_operation(uint8_t* tx_buffer,
@@ -328,8 +413,7 @@ SpiBufferTargetResource::SpiBufferTargetResource(
     size_t driver_buffer_size,
     uint32_t receive_queue_depth,
     bool dma)
-    : EventQueueResource(group, event_queue)
-    , host_device_(host_device)
+    : SpiTargetResourceBase(group, host_device, event_queue)
     , response_buffer_(response_buffer)
     , receive_storage_(receive_storage)
     , receive_indices_(receive_indices)
@@ -357,39 +441,18 @@ SpiBufferTargetResource::SpiBufferTargetResource(
 }
 
 SpiBufferTargetResource::~SpiBufferTargetResource() {
-  if (initialized_) {
+  if (initialized()) {
     // Normal close has already retired the continuously armed descriptor.
     // Process teardown can arrive first, so drive the same asynchronous abort
     // to completion before releasing buffers referenced by the ISR.
-    // Process teardown is outside the scheduler's deadlock detection.
-    int64 teardown_deadline =
-        OS::get_monotonic_time() + kSpiTargetTeardownTimeoutUs;
-    if (!stopping_) (void) request_abort();
-    while (true) {
-      esp_err_t free_error = spi_slave_free(host_device_);
-      if (free_error == ESP_OK) break;
-      if (free_error != ESP_ERR_INVALID_STATE) {
-        FATAL_IF_NOT_ESP_OK(free_error);
-      }
-      esp_err_t abort_error = spi_slave_abort_transaction(
-          host_device_, transaction());
-      if (abort_error != ESP_OK && abort_error != ESP_ERR_INVALID_STATE) {
-        FATAL_IF_NOT_ESP_OK(abort_error);
-      }
-      if (OS::get_monotonic_time() >= teardown_deadline) {
-        FATAL("Timed out tearing down SPI buffer target");
-      }
-      vTaskDelay(1);
-    }
+    bool abort_requested = !stopping_ && request_abort();
+    release_driver(transaction(), abort_requested);
   }
   free(response_buffer_);
   free(receive_storage_);
   free(receive_indices_);
   free(receive_lengths_);
   free(free_receive_indices_);
-  vQueueDeleteWithCaps(queue());
-  spi_host_devices.put(host_device_);
-  owned_pins_.release();
 }
 
 int SpiBufferTargetResource::get_response(uint32_t index) const {
@@ -466,7 +529,7 @@ bool SpiBufferTargetResource::request_abort() {
   stopping_ = true;
   portEXIT_CRITICAL(&spinlock_);
 
-  esp_err_t err = spi_slave_abort_transaction(host_device_, &transaction_);
+  esp_err_t err = spi_slave_abort_transaction(host_device(), &transaction_);
   // ESP_ERR_INVALID_STATE means that natural completion won the race. The
   // callback observes stopping_ and signals kSpiBufferTargetStoppedState
   // without re-arming the descriptor.
@@ -546,7 +609,7 @@ void SpiBufferTargetResource::complete_from_isr() {
   }
   transaction_.trans_len = 0;
   if (!failed) {
-    esp_err_t err = spi_slave_queue_trans_isr(host_device_, &transaction_);
+    esp_err_t err = spi_slave_queue_trans_isr(host_device(), &transaction_);
     if (err != ESP_OK) failed = true;
   }
   if (failed) {
@@ -745,48 +808,21 @@ PRIMITIVE(target_create) {
   bool registered = false;
   Defer delete_resource { [&] { if (!registered) delete resource; } };
 
-  spi_bus_config_t bus_config = {};
-  bus_config.mosi_io_num = mosi_num;
-  bus_config.miso_io_num = miso_num;
-  bus_config.sclk_io_num = clock_num;
-  bus_config.quadwp_io_num = -1;
-  bus_config.quadhd_io_num = -1;
-  bus_config.max_transfer_sz = driver_max_transfer_size;
-  bus_config.flags = 0;
-#if CONFIG_SPI_SLAVE_ISR_IN_IRAM
-  bus_config.intr_flags = ESP_INTR_FLAG_IRAM;
-#else
-  bus_config.intr_flags = 0;
-#endif
-
-  uint32_t flags = SPI_SLAVE_NO_RETURN_RESULT;
-  if (transmit_lsb_first) flags |= SPI_SLAVE_TXBIT_LSBFIRST;
-  if (receive_lsb_first) flags |= SPI_SLAVE_RXBIT_LSBFIRST;
-  spi_slave_interface_config_t target_config = {
-    .spics_io_num = cs_num,
-    .flags = flags,
-    .queue_size = 1,
-    .mode = static_cast<uint8_t>(mode),
-    .post_setup_cb = spi_target_ready_callback,
-    .post_trans_cb = spi_target_done_callback,
+  SpiTargetConfig config = {
+    .mosi = mosi_num,
+    .miso = miso_num,
+    .clock = clock_num,
+    .cs = cs_num,
+    .max_transfer_size = driver_max_transfer_size,
+    .mode = mode,
+    .transmit_lsb_first = transmit_lsb_first,
+    .receive_lsb_first = receive_lsb_first,
+    .dma = dma,
+    .armed_callback = spi_target_ready_callback,
+    .done_callback = spi_target_done_callback,
   };
-
-  // CS is active low. Keep it inactive while the peer has not configured its
-  // controller pin yet; otherwise a floating edge can complete the first
-  // descriptor before any clocks have been received. Some peripherals retain
-  // the previous bit count for such a no-clock completion, so filtering only
-  // on trans_len is not sufficient.
-  esp_err_t err = gpio_set_pull_mode(
-      static_cast<gpio_num_t>(cs_num), GPIO_PULLUP_ONLY);
+  esp_err_t err = resource->initialize_driver(config);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-
-  err = spi_slave_initialize(
-      host_device,
-      &bus_config,
-      &target_config,
-      dma ? SPI_DMA_CH_AUTO : SPI_DMA_DISABLED);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-  resource->set_initialized();
 
   resource->owned_pins().adopt(reserver);
   reserver.keep();
@@ -970,46 +1006,21 @@ PRIMITIVE(buffer_target_create) {
   bool registered = false;
   Defer delete_resource { [&] { if (!registered) delete resource; } };
 
-  spi_bus_config_t bus_config = {};
-  bus_config.mosi_io_num = mosi_num;
-  bus_config.miso_io_num = miso_num;
-  bus_config.sclk_io_num = clock_num;
-  bus_config.quadwp_io_num = -1;
-  bus_config.quadhd_io_num = -1;
-  bus_config.max_transfer_sz = driver_buffer_size;
-  bus_config.flags = 0;
-#if CONFIG_SPI_SLAVE_ISR_IN_IRAM
-  bus_config.intr_flags = ESP_INTR_FLAG_IRAM;
-#else
-  bus_config.intr_flags = 0;
-#endif
-
-  uint32_t flags = SPI_SLAVE_NO_RETURN_RESULT;
-  if (transmit_lsb_first) flags |= SPI_SLAVE_TXBIT_LSBFIRST;
-  if (receive_lsb_first) flags |= SPI_SLAVE_RXBIT_LSBFIRST;
-  spi_slave_interface_config_t target_config = {
-    .spics_io_num = cs_num,
-    .flags = flags,
-    .queue_size = 1,
-    .mode = static_cast<uint8_t>(mode),
-    .post_setup_cb = spi_buffer_target_armed_callback,
-    .post_trans_cb = spi_buffer_target_done_callback,
+  SpiTargetConfig config = {
+    .mosi = mosi_num,
+    .miso = miso_num,
+    .clock = clock_num,
+    .cs = cs_num,
+    .max_transfer_size = driver_buffer_size,
+    .mode = mode,
+    .transmit_lsb_first = transmit_lsb_first,
+    .receive_lsb_first = receive_lsb_first,
+    .dma = dma,
+    .armed_callback = spi_buffer_target_armed_callback,
+    .done_callback = spi_buffer_target_done_callback,
   };
-
-  // The buffer target is armed continuously, including before its peer has
-  // configured CS as an output. Hold the active-low line at its idle level so
-  // a floating edge cannot produce a duplicate of the previous transaction.
-  esp_err_t err = gpio_set_pull_mode(
-      static_cast<gpio_num_t>(cs_num), GPIO_PULLUP_ONLY);
+  esp_err_t err = resource->initialize_driver(config);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-
-  err = spi_slave_initialize(
-      host_device,
-      &bus_config,
-      &target_config,
-      dma ? SPI_DMA_CH_AUTO : SPI_DMA_DISABLED);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-  resource->set_initialized();
 
   resource->owned_pins().adopt(reserver);
   reserver.keep();
