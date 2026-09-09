@@ -210,7 +210,7 @@ test-board1:
 
   device.close
   reconfigure port TEN-BIT-CONFIG
-  device = bus.device TEN-BIT-ADDRESS --address-size=10
+  device = bus.device TEN-BIT-ADDRESS --address-bit-size=10
   ten-bit-write := make-data 29 0x37
   send-command port WRITE [ten-bit-write]
   device.write ten-bit-write
@@ -515,7 +515,7 @@ make-target config/int -> i2c.Target:
         --sda=I2C-SDA
         --scl=I2C-SCL
         --address=TEN-BIT-ADDRESS
-        --address-size=10
+        --address-bit-size=10
         --send-buffer-size=64
         --receive-buffer-size=64
         --pull-up

@@ -81,7 +81,7 @@ class Target:
   Constructs an I2C target on the $sda and $scl GPIOs.
 
   The $address is either a 7-bit or 10-bit address, selected with
-    $address-size. The pins are reserved until $close is called.
+    $address-bit-size. The pins are reserved until $close is called.
 
   $send-buffer-size is the number of native bytes available for responses to
     controller reads. $receive-buffer-size is both the largest controller
@@ -107,16 +107,16 @@ class Target:
       --sda/int
       --scl/int
       --address/int
-      --address-size/int=7
+      --address-bit-size/int=7
       --send-buffer-size/int=DEFAULT-TARGET-BUFFER-SIZE
       --receive-buffer-size/int=DEFAULT-TARGET-BUFFER-SIZE
       --default-response/ByteArray?=null
       --pull-up/bool=false
       --broadcast/bool=false:
-    if address-size != 7 and address-size != 10: throw "INVALID_ARGUMENT"
-    limit := (1 << address-size) - 1
+    if address-bit-size != 7 and address-bit-size != 10: throw "INVALID_ARGUMENT"
+    limit := (1 << address-bit-size) - 1
     if not 0 <= address <= limit: throw "INVALID_ARGUMENT"
-    if broadcast and address-size == 10: throw "INVALID_ARGUMENT"
+    if broadcast and address-bit-size == 10: throw "INVALID_ARGUMENT"
     if send-buffer-size <= 0 or receive-buffer-size <= 0: throw "INVALID_ARGUMENT"
     response := default-response or ByteArray MAX-DEFAULT-RESPONSE-SIZE --initial=0xff
     if response.size == 0 or response.size > MAX-DEFAULT-RESPONSE-SIZE:
@@ -126,7 +126,7 @@ class Target:
         target-resource-group_
         sda
         scl
-        address-size
+        address-bit-size
         address
         send-buffer-size
         receive-buffer-size
@@ -414,31 +414,31 @@ class Bus:
   /**
   Creates the device connected on the $i2c-address.
 
-  $address-size selects a 7-bit or 10-bit address.
+  $address-bit-size selects a 7-bit or 10-bit address.
 
   It is an error to connect a device on an address already in use.
     A device can be released with $Device.close.
   */
-  device i2c-address/int --frequency/int --address-size/int=7 -> Device:
-    if address-size != 7 and address-size != 10: throw "INVALID_ARGUMENT"
-    limit := (1 << address-size) - 1
+  device i2c-address/int --frequency/int --address-bit-size/int=7 -> Device:
+    if address-bit-size != 7 and address-bit-size != 10: throw "INVALID_ARGUMENT"
+    limit := (1 << address-bit-size) - 1
     if not 0 <= i2c-address <= limit: throw "INVALID_ARGUMENT"
-    key := device-key_ i2c-address address-size
+    key := device-key_ i2c-address address-bit-size
     if devices_.contains key: throw "Device already connected"
-    device := Device.init_ this i2c-address address-size frequency key
+    device := Device.init_ this i2c-address address-bit-size frequency key
     devices_[key] = device
     return device
 
 
   /**
-  Variant of $(device i2c-address --frequency --address-size) that uses the
+  Variant of $(device i2c-address --frequency --address-bit-size) that uses the
     default frequency given to the bus at construction.
   */
-  device i2c-address/int --address-size/int=7 -> Device:
-    return device i2c-address --frequency=frequency_ --address-size=address-size
+  device i2c-address/int --address-bit-size/int=7 -> Device:
+    return device i2c-address --frequency=frequency_ --address-bit-size=address-bit-size
 
-  device-key_ address/int address-size/int -> int:
-    return address | (address-size == 10 ? 1 << 10 : 0)
+  device-key_ address/int address-bit-size/int -> int:
+    return address | (address-bit-size == 10 ? 1 << 10 : 0)
 
 /**
 Device connected using the I2C bus.
@@ -450,17 +450,17 @@ class Device implements serial.Device:
   /** I2C address of the device. */
   address/int ::= ?
   /** Number of address bits, either 7 or 10. */
-  address-size/int ::= ?
+  address-bit-size/int ::= ?
 
   bus_/Bus? := ?
   resource_ := ?
   registers_/Registers? := null
   key_/int ::= ?
 
-  constructor.init_ .bus_/Bus .address .address-size frequency/int .key_:
+  constructor.init_ .bus_/Bus .address .address-bit-size frequency/int .key_:
     timeout-us := 100_000
     disable-ack-check := false
-    resource_ = i2c-device-create_ bus_.resource_ address-size address frequency timeout-us disable-ack-check
+    resource_ = i2c-device-create_ bus_.resource_ address-bit-size address frequency timeout-us disable-ack-check
     add-finalizer this:: close
 
   /**
@@ -714,7 +714,7 @@ i2c-target-create_
     group
     sda/int
     scl/int
-    address-size/int
+    address-bit-size/int
     address/int
     send-buffer-size/int
     receive-buffer-size/int
