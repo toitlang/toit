@@ -151,7 +151,7 @@ test-board1:
   // Keep both address widths for the same raw address registered. ESP-IDF's
   // callback must report completion for the actual transaction device.
   seven := bus.device ADDRESS
-  ten := bus.device ADDRESS --address-size=10 --frequency=100_000
+  ten := bus.device ADDRESS --address-bit-size=10 --frequency=100_000
   wide := make-data 256 0x87
   set-registers port 0 wide
   expect-equals (wrapped wide 211 73) (ten.write-read #[211] 73)
@@ -458,9 +458,9 @@ make-register-target config/int -> i2c.RegisterTarget:
       --sda=I2C-SDA
       --scl=I2C-SCL
       --address=ADDRESS
-      --address-size=(config == REGISTER-10 ? 10 : 7)
+      --address-bit-size=(config == REGISTER-10 ? 10 : 7)
       --register-count=256
-      --register-address-size=1
+      --register-address-byte-size=1
       --receive-buffer-size=128
       --pull-up
 
