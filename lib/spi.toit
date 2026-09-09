@@ -63,9 +63,9 @@ main:
 */
 
 /**
-An ESP32 SPI target that exchanges one transaction at a time with a controller.
+An ESP32 SPI target that handles one transaction at a time with a controller.
 
-The $exchange method arms the peripheral before suspending the calling Toit
+The $transfer method arms the peripheral before suspending the calling Toit
   task.
 
 SPI does not define a standard register protocol. Protocols that interpret the
@@ -86,7 +86,7 @@ class Target:
   mutex_/monitor.Mutex ::= monitor.Mutex
   close-mutex_/monitor.Mutex ::= monitor.Mutex
   max-transfer-size/int ::= ?
-  exchange-in-flight_/bool := false
+  transfer-in-flight_/bool := false
   closing_/bool := false
   when-armed-task_/Task? := null
 
@@ -114,7 +114,7 @@ class Target:
   Classic ESP32 target DMA commits received MOSI data in complete four-byte
     words. If the controller ends a transaction at another byte boundary, the
     trailing one to three bytes are discarded and are not returned by
-    $exchange.
+    $transfer.
   */
   constructor
       --mosi/int?=null
@@ -175,24 +175,24 @@ class Target:
     armed, the transaction is aborted and its native buffers are released
     before the exception is propagated.
   */
-  exchange transmit/ByteArray=#[ ] -> ByteArray
+  transfer transmit/ByteArray=#[ ] -> ByteArray
       --receive-size/int=transmit.size
       --fill-byte/int=0xff:
-    return exchange transmit
+    return transfer transmit
         --receive-size=receive-size
         --fill-byte=fill-byte
         --when-armed=: null
 
   /**
-  Variant of $(exchange transmit) that calls $when-armed once the peripheral
+  Variant of $(transfer transmit) that calls $when-armed once the peripheral
     is armed.
 
   The $when-armed block runs before this method starts waiting for the
     controller. It can assert an application-level ready signal to tell the
     controller that it may start generating clocks. It must not call $close or
-    recursively call $exchange; doing so throws `INVALID_STATE`.
+    recursively call $transfer; doing so throws `INVALID_STATE`.
   */
-  exchange transmit/ByteArray=#[ ] -> ByteArray
+  transfer transmit/ByteArray=#[ ] -> ByteArray
       --receive-size/int=transmit.size
       --fill-byte/int=0xff
       [--when-armed]:
@@ -204,13 +204,13 @@ class Target:
 
     return mutex_.do:
       if not resource_ or closing_: throw "CLOSED"
-      if exchange-in-flight_: throw "INVALID_STATE"
+      if transfer-in-flight_: throw "INVALID_STATE"
 
-      // Allocate everything managed by the Toit heap before the native
-      // transaction owns DMA buffers and can complete asynchronously.
+      // Allocate the result buffer before starting the asynchronous native
+      // transaction. Cleanup needs this buffer even if later Toit code throws.
       receive-buffer := ByteArray receive-size
 
-      exchange-in-flight_ = true
+      transfer-in-flight_ = true
       started := false
       finished := false
       try:
@@ -233,7 +233,7 @@ class Target:
         critical-do --no-respect-deadline:
           size = spi-target-transfer-finish_ resource_ receive-buffer false
           finished = true
-          exchange-in-flight_ = false
+          transfer-in-flight_ = false
         return receive-buffer.copy 0 size
       finally:
         if not finished:
@@ -247,23 +247,23 @@ class Target:
               state_.wait-for-state DONE-STATE_
               spi-target-transfer-finish_ resource_ receive-buffer false
               state_.clear-state READY-STATE_ | DONE-STATE_
-            exchange-in-flight_ = false
+            transfer-in-flight_ = false
 
   /**
   Closes the target and releases its peripheral, pins, and native buffers.
 
-  An exchange running in another task is aborted and throws `CLOSED`. Calling
-    this method from that exchange's `when-armed` block is invalid.
+  A transfer running in another task is aborted and throws `CLOSED`. Calling
+    this method from that transfer's `when-armed` block is invalid.
   */
   close -> none:
     close-mutex_.do:
       if not resource_: return
       if identical Task.current when-armed-task_: throw "INVALID_STATE"
       closing_ = true
-      if exchange-in-flight_:
+      if transfer-in-flight_:
         critical-do --no-respect-deadline:
           // The descriptor is mounted before READY is reported. Waiting here
-          // also wakes an exchange that has not yet left its READY wait.
+          // also wakes a transfer that has not yet left its READY wait.
           state_.wait-for-state READY-STATE_
           spi-target-transfer-finish_ resource_ #[ ] true
           state_.wait-for-state DONE-STATE_
