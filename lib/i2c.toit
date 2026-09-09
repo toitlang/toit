@@ -324,7 +324,7 @@ class RegisterTarget:
   Constructs a register-backed I2C target on the $sda and $scl GPIOs.
 
   $register-count is the number of native register bytes. The
-    $register-address-size is the number of address bytes in the controller
+    $register-address-byte-size is the number of address bytes in the controller
     protocol and must be 1 or 2. A one-byte address can select at most 256
     registers; a two-byte address can select at most 65,536.
 
@@ -338,30 +338,30 @@ class RegisterTarget:
       --sda/int
       --scl/int
       --address/int
-      --address-size/int=7
+      --address-bit-size/int=7
       --register-count/int=256
-      --register-address-size/int=1
+      --register-address-byte-size/int=1
       --receive-buffer-size/int=DEFAULT-TARGET-BUFFER-SIZE
       --pull-up/bool=false
       --broadcast/bool=false:
-    if address-size != 7 and address-size != 10: throw "INVALID_ARGUMENT"
-    address-limit := (1 << address-size) - 1
+    if address-bit-size != 7 and address-bit-size != 10: throw "INVALID_ARGUMENT"
+    address-limit := (1 << address-bit-size) - 1
     if not 0 <= address <= address-limit: throw "INVALID_ARGUMENT"
-    if broadcast and address-size == 10: throw "INVALID_ARGUMENT"
-    if register-address-size != 1 and register-address-size != 2: throw "INVALID_ARGUMENT"
-    register-limit := 1 << (register-address-size * 8)
+    if broadcast and address-bit-size == 10: throw "INVALID_ARGUMENT"
+    if register-address-byte-size != 1 and register-address-byte-size != 2: throw "INVALID_ARGUMENT"
+    register-limit := 1 << (register-address-byte-size * 8)
     if not 0 < register-count <= register-limit: throw "INVALID_ARGUMENT"
-    if receive-buffer-size < register-address-size: throw "INVALID_ARGUMENT"
+    if receive-buffer-size < register-address-byte-size: throw "INVALID_ARGUMENT"
 
     size = register-count
     resource := i2c-register-target-create_
         resource-group_
         sda
         scl
-        address-size
+        address-bit-size
         address
         register-count
-        register-address-size
+        register-address-byte-size
         receive-buffer-size
         pull-up
         false
@@ -869,10 +869,10 @@ i2c-register-target-create_
     group
     sda/int
     scl/int
-    address-size/int
+    address-bit-size/int
     address/int
     register-count/int
-    register-address-size/int
+    register-address-byte-size/int
     receive-buffer-size/int
     pull-up/bool
     allow-power-down/bool

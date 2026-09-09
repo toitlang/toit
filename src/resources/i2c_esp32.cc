@@ -184,12 +184,12 @@ class I2cRegisterTargetResource : public Resource {
                             i2c_slave_dev_handle_t handle,
                             uint8_t* registers,
                             uint32_t register_count,
-                            uint32_t register_address_size)
+                            uint32_t register_address_byte_size)
       : Resource(group)
       , handle_(handle)
       , registers_(registers)
       , register_count_(register_count)
-      , register_address_size_(register_address_size) {
+      , register_address_byte_size_(register_address_byte_size) {
     spinlock_initialize(&spinlock_);
   }
 
@@ -206,14 +206,14 @@ class I2cRegisterTargetResource : public Resource {
       portEXIT_CRITICAL_ISR(&spinlock_);
       return;
     }
-    if (length < register_address_size_) return;
+    if (length < register_address_byte_size_) return;
 
     uint32_t pointer = 0;
-    for (uint32_t i = 0; i < register_address_size_; i++) {
+    for (uint32_t i = 0; i < register_address_byte_size_; i++) {
       pointer = (pointer << 8) | data[i];
     }
     pointer %= register_count_;
-    for (size_t i = register_address_size_; i < length; i++) {
+    for (size_t i = register_address_byte_size_; i < length; i++) {
       store_register_from_isr(pointer, data[i]);
       pointer++;
       if (pointer == register_count_) pointer = 0;
@@ -306,7 +306,7 @@ class I2cRegisterTargetResource : public Resource {
   uint8_t* registers_;
   uint8_t transmit_buffer_[SOC_I2C_FIFO_LEN];
   uint32_t register_count_;
-  uint32_t register_address_size_;
+  uint32_t register_address_byte_size_;
   uint32_t register_pointer_ = 0;
   uint32_t prefetch_pointer_ = 0;
   mutable spinlock_t spinlock_;
@@ -656,16 +656,16 @@ PRIMITIVE(register_target_create) {
        int, address_bit_size,
        uint16, address,
        uint32, register_count,
-       uint32, register_address_size,
+       uint32, register_address_byte_size,
        uint32, receive_buffer_size,
        bool, pullup,
        bool, allow_power_down,
        bool, broadcast);
 
   if (register_count == 0) FAIL(INVALID_ARGUMENT);
-  if (register_address_size != 1 && register_address_size != 2) FAIL(INVALID_ARGUMENT);
-  if (receive_buffer_size < register_address_size) FAIL(INVALID_ARGUMENT);
-  uint32_t addressable_register_count = 1u << (register_address_size * 8);
+  if (register_address_byte_size != 1 && register_address_byte_size != 2) FAIL(INVALID_ARGUMENT);
+  if (receive_buffer_size < register_address_byte_size) FAIL(INVALID_ARGUMENT);
+  uint32_t addressable_register_count = 1u << (register_address_byte_size * 8);
   if (register_count > addressable_register_count) FAIL(INVALID_ARGUMENT);
 
   i2c_addr_bit_len_t address_length;
@@ -730,7 +730,7 @@ PRIMITIVE(register_target_create) {
   };
 
   auto resource = _new I2cRegisterTargetResource(
-      group, handle, registers, register_count, register_address_size);
+      group, handle, registers, register_count, register_address_byte_size);
   if (resource == null) FAIL(MALLOC_FAILED);
   handed_to_resource = true;
   bool registered = false;

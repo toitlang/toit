@@ -119,7 +119,7 @@ test-board1:
 
   device.close
   reconfigure port WIDE-CONFIG
-  device = bus.device TEN-BIT-ADDRESS --address-size=10
+  device = bus.device TEN-BIT-ADDRESS --address-bit-size=10
   registers = device.registers --byte-size=2
   wide := make-data 512 0x57
   set-registers port 0 wide
@@ -228,13 +228,13 @@ test-validation:
   expect-throw "INVALID_ARGUMENT":
     i2c.RegisterTarget --sda=I2C-SDA --scl=I2C-SCL --address=ADDRESS --register-count=0
   expect-throw "INVALID_ARGUMENT":
-    i2c.RegisterTarget --sda=I2C-SDA --scl=I2C-SCL --address=ADDRESS --register-address-size=3
+    i2c.RegisterTarget --sda=I2C-SDA --scl=I2C-SCL --address=ADDRESS --register-address-byte-size=3
   expect-throw "INVALID_ARGUMENT":
     i2c.RegisterTarget
         --sda=I2C-SDA
         --scl=I2C-SCL
         --address=ADDRESS
-        --register-address-size=2
+        --register-address-byte-size=2
         --receive-buffer-size=1
   expect-throw "INVALID_ARGUMENT":
     i2c.RegisterTarget --sda=I2C-SDA --scl=I2C-SCL --address=ADDRESS --register-count=257
@@ -248,7 +248,7 @@ make-target config/int -> i2c.RegisterTarget:
         --scl=I2C-SCL
         --address=ADDRESS
         --register-count=256
-        --register-address-size=1
+        --register-address-byte-size=1
         --receive-buffer-size=64
         --pull-up
   if config == WIDE-CONFIG:
@@ -256,9 +256,9 @@ make-target config/int -> i2c.RegisterTarget:
         --sda=I2C-SDA
         --scl=I2C-SCL
         --address=TEN-BIT-ADDRESS
-        --address-size=10
+        --address-bit-size=10
         --register-count=512
-        --register-address-size=2
+        --register-address-byte-size=2
         --receive-buffer-size=64
         --pull-up
   if config == SMALL-CONFIG:
@@ -267,7 +267,7 @@ make-target config/int -> i2c.RegisterTarget:
         --scl=I2C-SCL
         --address=ADDRESS
         --register-count=32
-        --register-address-size=1
+        --register-address-byte-size=1
         --receive-buffer-size=16
         --no-pull-up
   if config == BROADCAST-CONFIG:
@@ -276,7 +276,7 @@ make-target config/int -> i2c.RegisterTarget:
         --scl=I2C-SCL
         --address=ADDRESS
         --register-count=32
-        --register-address-size=1
+        --register-address-byte-size=1
         --receive-buffer-size=32
         --pull-up
         --broadcast
