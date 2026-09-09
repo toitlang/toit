@@ -314,7 +314,7 @@ test-board2:
         --max-transfer-size=max-transfer-size
         --dma=dma
 
-    result := target.exchange transmit
+    result := target.transfer transmit
         --receive-size=receive-size
         --fill-byte=fill-byte
         --when-armed=:
@@ -376,7 +376,7 @@ test-abort-target port/uart.Port command/int -> none:
   timeout-ms := command == ABORT-ACTIVE ? 200 : 20
   expect-throws DEADLINE-EXCEEDED-ERROR:
     with-timeout --ms=timeout-ms:
-      target.exchange #[ ]
+      target.transfer #[ ]
           --receive-size=64
           --when-armed=:
             port.out.write #[READY] --flush
@@ -385,7 +385,7 @@ test-abort-target port/uart.Port command/int -> none:
   expect-equals RESUME port.in.read-byte
 
   2.repeat: | index |
-    result := target.exchange #[ ]
+    result := target.transfer #[ ]
         --receive-size=8
         --when-armed=:
           port.out.write #[READY] --flush
@@ -427,21 +427,21 @@ test-close-active-target port/uart.Port -> none:
 
   armed := monitor.Latch
   done := monitor.Latch
-  exchange-error := null
+  transfer-error := null
   task::
-    exchange-error = catch:
-      target.exchange #[ ]
+    transfer-error = catch:
+      target.transfer #[ ]
           --receive-size=8
           --when-armed=:
             expect-throw "INVALID_STATE": target.close
-            expect-throw "INVALID_STATE": target.exchange #[0]
+            expect-throw "INVALID_STATE": target.transfer #[0]
             armed.set true
             port.out.write #[READY] --flush
     done.set true
   armed.get
   target.close
   done.get
-  expect-equals "CLOSED" exchange-error
+  expect-equals "CLOSED" transfer-error
   port.out.write #[ABORTED] --flush
 
   expect-equals RESUME port.in.read-byte
@@ -451,7 +451,7 @@ test-close-active-target port/uart.Port -> none:
       --cs=CS
       --max-transfer-size=64
       --dma=dma
-  result := target.exchange #[ ]
+  result := target.transfer #[ ]
       --receive-size=8
       --when-armed=:
         port.out.write #[READY] --flush

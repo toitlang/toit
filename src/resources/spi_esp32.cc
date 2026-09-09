@@ -170,7 +170,7 @@ SpiTargetResource::~SpiTargetResource() {
   if (initialized_ && operation_in_flight_) {
     // Process teardown can bypass Target.close. Abort and wait for the driver
     // to retire the mounted descriptor before releasing its buffers. This is
-    // outside a primitive; ordinary close rejects an in-flight exchange.
+    // outside a primitive; ordinary close rejects an in-flight transfer.
     bool abort_requested = false;
     while (true) {
       if (!abort_requested) {
