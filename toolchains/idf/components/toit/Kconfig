@@ -229,10 +229,20 @@ menu "Toit"
             boolean "Enable SPI target support on ESP32"
             default "y"
             help
-                SPI target and buffer-target support in the Toit binary.
+                SPI target support in the Toit binary.
 
                 Disable this option to reduce firmware size when only SPI
                 controller functionality is needed.
+
+        config TOIT_ENABLE_SPI_BUFFER_TARGET
+            boolean "Enable buffered SPI target support on ESP32"
+            default "y"
+            depends on TOIT_ENABLE_SPI_TARGET
+            help
+                Autonomous buffered SPI target support in the Toit binary.
+
+                Disable this option to reduce firmware size while retaining
+                the transaction-at-a-time SPI target.
 
         config TOIT_SPIRAM_HEAP
             boolean "Enable Toit heap in SPIRAM"
