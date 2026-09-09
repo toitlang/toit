@@ -21,17 +21,17 @@
 #include <driver/spi_master.h>
 #ifdef CONFIG_TOIT_ENABLE_SPI_TARGET
 #include <driver/spi_slave.h>
+#include <esp_private/spi_slave_internal.h>
 #include <soc/soc_caps.h>
 #if SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
+#ifdef CONFIG_TOIT_ENABLE_SPI_BUFFER_TARGET
 #include <esp_cache.h>
+#endif
 #include <hal/cache_hal.h>
 #include <hal/cache_ll.h>
 #endif
 #endif
 #include <esp_heap_caps.h>
-#ifdef CONFIG_TOIT_ENABLE_SPI_TARGET
-#include <esp_private/spi_slave_internal.h>
-#endif
 
 #include "../objects_inline.h"
 #include "../process.h"
@@ -75,10 +75,12 @@ static uint8_t* allocate_dma_buffer(size_t size, size_t alignment) {
 const word kSpiTargetReadyState = 1 << 0;
 const word kSpiTargetDoneState = 1 << 1;
 const int64 kSpiTargetTeardownTimeoutUs = 10 * 1000 * 1000;
+#ifdef CONFIG_TOIT_ENABLE_SPI_BUFFER_TARGET
 const size_t kSpiBufferTargetMaxTransferSize = 4092;
 const word kSpiBufferTargetReceivedState = 1 << 2;
 const word kSpiBufferTargetStoppedState = 1 << 3;
 const word kSpiBufferTargetArmedState = 1 << 4;
+#endif
 
 static size_t spi_dma_buffer_alignment(bool dma) {
   if (!dma) return 4;
@@ -178,6 +180,8 @@ class SpiTargetResource : public EventQueueResource {
   GpioPins owned_pins_;
 };
 
+#ifdef CONFIG_TOIT_ENABLE_SPI_BUFFER_TARGET
+
 class SpiBufferTargetResource : public EventQueueResource {
  public:
   TAG(SpiBufferTargetResource);
@@ -250,6 +254,8 @@ class SpiBufferTargetResource : public EventQueueResource {
   word pending_event_ = 0;
   GpioPins owned_pins_;
 };
+
+#endif  // CONFIG_TOIT_ENABLE_SPI_BUFFER_TARGET
 
 #endif  // CONFIG_TOIT_ENABLE_SPI_TARGET
 
@@ -408,6 +414,8 @@ void SpiTargetResource::finish_operation() {
   transaction_ = {};
   operation_in_flight_ = false;
 }
+
+#ifdef CONFIG_TOIT_ENABLE_SPI_BUFFER_TARGET
 
 SpiBufferTargetResource::SpiBufferTargetResource(
     SpiTargetResourceGroup* group,
@@ -674,6 +682,8 @@ void SpiBufferTargetResource::signal_from_isr(word event) {
   if (higher_was_woken == pdTRUE) portYIELD_FROM_ISR();
 }
 
+#endif  // CONFIG_TOIT_ENABLE_SPI_BUFFER_TARGET
+
 #endif  // CONFIG_TOIT_ENABLE_SPI_TARGET
 
 MODULE_IMPLEMENTATION(spi, MODULE_SPI);
@@ -908,6 +918,8 @@ PRIMITIVE(target_close) {
   resource_proxy->clear_external_address();
   return process->null_object();
 }
+
+#ifdef CONFIG_TOIT_ENABLE_SPI_BUFFER_TARGET
 
 SPI_TARGET_ISR_ATTR static void spi_buffer_target_done_callback(
     spi_slave_transaction_t* transaction) {
@@ -1180,6 +1192,20 @@ PRIMITIVE(buffer_target_dropped_receive_count) {
   ARGS(SpiBufferTargetResource, target);
   return Smi::from(target->dropped_receive_count());
 }
+
+#else
+
+PRIMITIVE(buffer_target_create)                { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_arm)                   { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_close)                 { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_get)                   { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_set)                   { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_read)                  { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_write)                 { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_receive)               { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_dropped_receive_count) { FAIL(UNIMPLEMENTED); }
+
+#endif  // CONFIG_TOIT_ENABLE_SPI_BUFFER_TARGET
 
 PRIMITIVE(target_transfer_start) {
   ARGS(SpiTargetResource, resource,
