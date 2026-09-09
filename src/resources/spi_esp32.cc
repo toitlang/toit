@@ -361,6 +361,9 @@ SpiBufferTargetResource::~SpiBufferTargetResource() {
     // Normal close has already retired the continuously armed descriptor.
     // Process teardown can arrive first, so drive the same asynchronous abort
     // to completion before releasing buffers referenced by the ISR.
+    // Process teardown is outside the scheduler's deadlock detection.
+    int64 teardown_deadline =
+        OS::get_monotonic_time() + kSpiTargetTeardownTimeoutUs;
     if (!stopping_) (void) request_abort();
     while (true) {
       esp_err_t free_error = spi_slave_free(host_device_);
@@ -372,6 +375,9 @@ SpiBufferTargetResource::~SpiBufferTargetResource() {
           host_device_, transaction());
       if (abort_error != ESP_OK && abort_error != ESP_ERR_INVALID_STATE) {
         FATAL_IF_NOT_ESP_OK(abort_error);
+      }
+      if (OS::get_monotonic_time() >= teardown_deadline) {
+        FATAL("Timed out tearing down SPI buffer target");
       }
       vTaskDelay(1);
     }
