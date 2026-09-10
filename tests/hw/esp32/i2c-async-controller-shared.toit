@@ -27,6 +27,7 @@ MISSING-ADDRESS ::= 0x71
 
 READY ::= 0xa5
 OK ::= 0x5a
+SYNC ::= 0xc3
 
 SET ::= 1
 RECONFIGURE ::= 2
@@ -47,7 +48,7 @@ main-board1:
 
 test-board1:
   port := uart.Port --rx=UART-RX1 --tx=UART-TX1 --baud-rate=115_200
-  expect-equals READY port.in.read-byte
+  synchronize-controller port
 
   if system.architecture == system.ARCHITECTURE-ESP32:
     test-board1-esp32 port
@@ -62,6 +63,7 @@ test-board1:
   found := bus.scan --timeout-ms=5
   expect (found.contains ADDRESS)
   expect-not (found.contains MISSING-ADDRESS)
+  print "Async I2C: probe and scan complete"
 
   missing := bus.device MISSING-ADDRESS
   expect-throw "I2C_NACK": missing.write #[1]
@@ -81,6 +83,7 @@ test-board1:
 
   expect-equals initial (registers.read-bytes 0 initial.size)
   expect-equals (wrapped initial 17 1024) (registers.read-bytes 17 1024)
+  print "Async I2C: initial register reads complete"
 
   into := ByteArray 40: 0xee
   device.write #[23]
@@ -108,6 +111,7 @@ test-board1:
   done.do: it.get
   errors.do: | error/any? |
     if error: throw error
+  print "Async I2C: contention complete"
 
   device.close
   slow := bus.device ADDRESS --frequency=50_000
@@ -162,6 +166,7 @@ test-board1:
   reconfigure port REGISTER-10
   set-registers port 0 wide
   expect-equals #[wide[3]] (ten.write-read #[3] 1)
+  print "Async I2C: address-width collision complete"
   seven.close
   ten.close
 
@@ -169,6 +174,7 @@ test-board1:
 
   // Prove that the suspended controller task does not prevent another Toit
   // task from running during successful clock stretching.
+  print "Async I2C: dynamic clock-stretch recovery"
   stretched := bus.device ADDRESS --timeout-us=30_000
   expected := make-data 17 0xc4
   send-command port DYNAMIC-READ [expected, encode-u16 10]
@@ -188,6 +194,7 @@ test-board1:
   // A task deadline aborts the native transaction even when every individual
   // stretch is shorter than the device's SCL timeout. The bus must be reusable
   // after the target releases the clock.
+  print "Async I2C: deadline abort recovery"
   abortable := bus.device ADDRESS --timeout-us=100_000
   send-command port DYNAMIC-READ [#[0x5a], encode-u16 20]
   expect-throw DEADLINE-EXCEEDED-ERROR:
@@ -210,6 +217,26 @@ test-board1:
   expect-equals OK port.in.read-byte
   expect (bus.test ADDRESS)
   abortable.close
+
+  // Hold SCL externally before START. The per-device stretch timeout applies
+  // to SCL pulses after a transaction has started, so use the task deadline
+  // to abort this bus-not-idle case. Releasing the probe pin lets us verify
+  // that the same bus and target recover immediately.
+  print "Async I2C: external SCL deadline recovery"
+  external-timeout-device := bus.device ADDRESS --timeout-us=2_000
+  send-command port STRETCH-CLOCK [encode-u16 10]
+  expect-throw DEADLINE-EXCEEDED-ERROR:
+    with-timeout --ms=3: external-timeout-device.read 1
+  expect-equals OK port.in.read-byte
+  expect (bus.test ADDRESS)
+  external-timeout-device.close
+
+  recovered := bus.device ADDRESS --timeout-us=30_000
+  recovered-data := #[0x6b]
+  send-command port DYNAMIC-READ [recovered-data, encode-u16 1]
+  expect-equals recovered-data (recovered.read 1)
+  expect-equals OK port.in.read-byte
+  recovered.close
 
   // Exercise the controller pull-up configuration and resource reuse after a
   // large number of asynchronous transactions and errors.
@@ -364,7 +391,7 @@ test-board2:
   register-target/i2c.RegisterTarget? := make-register-target REGISTER-7
   dynamic-target/i2c.Target? := null
   port := uart.Port --rx=UART-RX2 --tx=UART-TX2 --baud-rate=115_200
-  send-byte port READY
+  synchronize-target port
 
   while true:
     command := port.in.read-byte
@@ -400,6 +427,13 @@ test-board2:
             sleep --ms=(decode-u16 parts[1])
             parts[0]
       send-byte port OK
+    else if command == STRETCH-CLOCK:
+      stretcher := gpio.Pin I2C-SCL-PROBE --output --open-drain --value=0
+      send-byte port READY
+      sleep --ms=(decode-u16 parts[0])
+      stretcher.set 1
+      stretcher.close
+      send-byte port OK
     else if command == TIMEOUT-READ:
       send-byte port READY
       dynamic-target.serve-read-requests:
@@ -420,7 +454,7 @@ test-board2-esp32 -> none:
       --receive-buffer-size=512
       --pull-up
   port := uart.Port --rx=UART-RX2 --tx=UART-TX2 --baud-rate=115_200
-  send-byte port READY
+  synchronize-target port
 
   while true:
     command := port.in.read-byte
@@ -499,6 +533,29 @@ read-parts port/uart.Port -> List:
 send-byte port/uart.Port value/int -> none:
   port.out.write-byte value
   port.out.flush
+
+synchronize-controller port/uart.Port -> none:
+  synchronized := monitor.Latch
+  sender-done := monitor.Latch
+  task::
+    try:
+      while not synchronized.has-value:
+        send-byte port SYNC
+        sleep --ms=10
+    finally:
+      critical-do --no-respect-deadline: sender-done.set true
+
+  expect-equals READY port.in.read-byte
+  synchronized.set true
+  sender-done.get
+  send-byte port OK
+  expect-equals READY port.in.read-byte
+
+synchronize-target port/uart.Port -> none:
+  while port.in.read-byte != SYNC: null
+  send-byte port READY
+  while port.in.read-byte != OK: null
+  send-byte port READY
 
 encode-u16 value/int -> ByteArray:
   return #[value & 0xff, (value >> 8) & 0xff]

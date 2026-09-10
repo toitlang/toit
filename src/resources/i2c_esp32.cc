@@ -19,10 +19,13 @@
 
 #include <cmath>
 #include <driver/i2c_master.h>
+#ifdef CONFIG_TOIT_ENABLE_I2C_TARGET
 #include <driver/i2c_slave.h>
-#include <esp_memory_utils.h>
+#endif
 #include <freertos/idf_additions.h>
+#ifdef CONFIG_TOIT_ENABLE_I2C_TARGET
 #include <freertos/message_buffer.h>
+#endif
 #include <freertos/queue.h>
 
 #include "../linked.h"
@@ -60,6 +63,8 @@ class I2cResourceGroup : public ResourceGroup {
 
 const word kControllerDoneState = 1 << 0;
 
+#ifdef CONFIG_TOIT_ENABLE_I2C_TARGET
+
 const word kTargetReceiveState = 1 << 0;
 const word kTargetRequestState = 1 << 1;
 const word kTargetOverflowState = 1 << 2;
@@ -76,30 +81,58 @@ class I2cTargetResourceGroup : public ResourceGroup {
   }
 };
 
-class I2cTargetResource : public EventQueueResource {
+struct I2cTargetConfig {
+  int sda;
+  int scl;
+  i2c_addr_bit_len_t address_length;
+  uint16_t address;
+  uint32_t send_buffer_size;
+  uint32_t receive_buffer_size;
+  bool pullup;
+  bool allow_power_down;
+  bool broadcast;
+};
+
+class I2cTargetResourceBase : public EventQueueResource {
+ public:
+  I2cTargetResourceBase(ResourceGroup* group, QueueHandle_t event_queue)
+      : EventQueueResource(group, event_queue) {}
+  ~I2cTargetResourceBase() override;
+
+  i2c_slave_dev_handle_t handle() const { return handle_; }
+  GpioPins& owned_pins() { return owned_pins_; }
+
+  esp_err_t initialize_driver(
+      const I2cTargetConfig& config,
+      const i2c_slave_event_callbacks_t& callbacks,
+      void* callback_context);
+
+ protected:
+  void release_driver();
+
+ private:
+  i2c_slave_dev_handle_t handle_ = null;
+  GpioPins owned_pins_;
+};
+
+class I2cTargetResource : public I2cTargetResourceBase {
  public:
   TAG(I2cTargetResource);
 
   I2cTargetResource(I2cTargetResourceGroup* group,
-                    i2c_slave_dev_handle_t handle,
                     QueueHandle_t event_queue,
                     MessageBufferHandle_t receive_buffer)
-      : EventQueueResource(group, event_queue)
-      , handle_(handle)
+      : I2cTargetResourceBase(group, event_queue)
       , receive_buffer_(receive_buffer) {
     spinlock_initialize(&spinlock_);
   }
 
   ~I2cTargetResource() override {
-    ESP_ERROR_CHECK(i2c_del_slave_device(handle_));
+    release_driver();
     vMessageBufferDeleteWithCaps(receive_buffer_);
-    vQueueDeleteWithCaps(queue());
-    owned_pins_.release();
   }
 
-  i2c_slave_dev_handle_t handle() const { return handle_; }
   MessageBufferHandle_t receive_buffer() const { return receive_buffer_; }
-  GpioPins& owned_pins() { return owned_pins_; }
 
   I2C_IRAM_ATTR bool receive_from_isr(const uint8_t* data, size_t length) {
     BaseType_t higher_was_woken = pdFALSE;
@@ -169,26 +202,22 @@ class I2cTargetResource : public EventQueueResource {
     xQueueSendFromISR(queue(), &payload, higher_was_woken);
   }
 
-  i2c_slave_dev_handle_t handle_;
   MessageBufferHandle_t receive_buffer_;
   mutable spinlock_t spinlock_;
   word pending_event_ = 0;
   word request_count_ = 0;
   word dropped_receive_count_ = 0;
-  GpioPins owned_pins_;
 };
 
-class I2cRegisterTargetResource : public EventQueueResource {
+class I2cRegisterTargetResource : public I2cTargetResourceBase {
  public:
   TAG(I2cRegisterTargetResource);
 
   I2cRegisterTargetResource(I2cResourceGroup* group,
-                            i2c_slave_dev_handle_t handle,
                             uint8_t* registers,
                             uint32_t register_count,
                             uint32_t register_address_byte_size)
-      : EventQueueResource(group, null)
-      , handle_(handle)
+      : I2cTargetResourceBase(group, null)
       , registers_(registers)
       , register_count_(register_count)
       , register_address_byte_size_(register_address_byte_size) {
@@ -196,9 +225,8 @@ class I2cRegisterTargetResource : public EventQueueResource {
   }
 
   ~I2cRegisterTargetResource() override {
-    ESP_ERROR_CHECK(i2c_del_slave_device(handle_));
+    release_driver();
     free(registers_);
-    owned_pins_.release();
   }
 
   I2C_IRAM_ATTR void receive_from_isr(const uint8_t* data, size_t length, bool overflow) {
@@ -275,7 +303,6 @@ class I2cRegisterTargetResource : public EventQueueResource {
   }
 
   uint32_t register_count() const { return register_count_; }
-  GpioPins& owned_pins() { return owned_pins_; }
 
  private:
   uint8_t load_register(uint32_t index) const {
@@ -304,7 +331,6 @@ class I2cRegisterTargetResource : public EventQueueResource {
     portEXIT_CRITICAL_ISR(&spinlock_);
   }
 
-  i2c_slave_dev_handle_t handle_;
   uint8_t* registers_;
   uint8_t transmit_buffer_[SOC_I2C_FIFO_LEN];
   uint32_t register_count_;
@@ -313,8 +339,52 @@ class I2cRegisterTargetResource : public EventQueueResource {
   uint32_t prefetch_pointer_ = 0;
   mutable spinlock_t spinlock_;
   word dropped_write_count_ = 0;
-  GpioPins owned_pins_;
 };
+
+I2cTargetResourceBase::~I2cTargetResourceBase() {
+  ASSERT(handle_ == null);
+  if (queue() != null) vQueueDeleteWithCaps(queue());
+  owned_pins_.release();
+}
+
+esp_err_t I2cTargetResourceBase::initialize_driver(
+    const I2cTargetConfig& config,
+    const i2c_slave_event_callbacks_t& callbacks,
+    void* callback_context) {
+  ASSERT(handle_ == null);
+  i2c_slave_config_t driver_config = {
+    .i2c_port = -1,
+    .sda_io_num = static_cast<gpio_num_t>(config.sda),
+    .scl_io_num = static_cast<gpio_num_t>(config.scl),
+    .clk_source = I2C_CLK_SRC_DEFAULT,
+    .send_buf_depth = config.send_buffer_size,
+    .receive_buf_depth = config.receive_buffer_size,
+    .slave_addr = config.address,
+    .addr_bit_len = config.address_length,
+    .intr_priority = 0,
+    .flags = {
+      .allow_pd = config.allow_power_down,
+      .enable_internal_pullup = config.pullup,
+      #if SOC_I2C_SLAVE_SUPPORT_BROADCAST
+      .broadcast_en = config.broadcast,
+      #endif
+    },
+  };
+  i2c_slave_dev_handle_t handle;
+  esp_err_t err = i2c_new_slave_device(&driver_config, &handle);
+  if (err != ESP_OK) return err;
+  handle_ = handle;
+  return i2c_slave_register_event_callbacks(
+      handle_, &callbacks, callback_context);
+}
+
+void I2cTargetResourceBase::release_driver() {
+  if (handle_ == null) return;
+  ESP_ERROR_CHECK(i2c_del_slave_device(handle_));
+  handle_ = null;
+}
+
+#endif  // CONFIG_TOIT_ENABLE_I2C_TARGET
 
 class I2cBusResource;
 class I2cDeviceResource;
@@ -489,6 +559,8 @@ PRIMITIVE(init) {
   return proxy;
 }
 
+#ifdef CONFIG_TOIT_ENABLE_I2C_TARGET
+
 PRIMITIVE(target_init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
@@ -517,6 +589,23 @@ I2C_IRAM_ATTR static bool target_request_handler(
   return resource->request_from_isr();
 }
 
+static bool decode_target_address(
+    int address_bit_size,
+    uint16_t address,
+    i2c_addr_bit_len_t* address_length) {
+  if (address_bit_size == 7 && address <= 0x7f) {
+    *address_length = I2C_ADDR_BIT_LEN_7;
+    return true;
+  }
+#if SOC_I2C_SUPPORT_10BIT_ADDR
+  if (address_bit_size == 10 && address <= 0x3ff) {
+    *address_length = I2C_ADDR_BIT_LEN_10;
+    return true;
+  }
+#endif
+  return false;
+}
+
 PRIMITIVE(target_create) {
   ARGS(I2cTargetResourceGroup, group,
        int, sda,
@@ -537,15 +626,8 @@ PRIMITIVE(target_create) {
   }
 
   i2c_addr_bit_len_t address_length;
-  if (address_bit_size == 7 && address <= 0x7f) {
-    address_length = I2C_ADDR_BIT_LEN_7;
-  #if SOC_I2C_SUPPORT_10BIT_ADDR
-  } else if (address_bit_size == 10 && address <= 0x3ff) {
-    address_length = I2C_ADDR_BIT_LEN_10;
-  #endif
-  } else {
-    FAIL(INVALID_ARGUMENT);
-  }
+  if (!decode_target_address(
+          address_bit_size, address, &address_length)) FAIL(INVALID_ARGUMENT);
 
   #if !SOC_I2C_SLAVE_SUPPORT_BROADCAST
   if (broadcast) FAIL(UNSUPPORTED);
@@ -578,50 +660,35 @@ PRIMITIVE(target_create) {
     [&] { if (!handed_to_resource) vMessageBufferDeleteWithCaps(receive_buffer); }
   };
 
-  i2c_slave_config_t config = {
-    .i2c_port = -1,
-    .sda_io_num = static_cast<gpio_num_t>(sda_num),
-    .scl_io_num = static_cast<gpio_num_t>(scl_num),
-    .clk_source = I2C_CLK_SRC_DEFAULT,
-    .send_buf_depth = send_buffer_size,
-    .receive_buf_depth = receive_buffer_size,
-    .slave_addr = address,
-    .addr_bit_len = address_length,
-    .intr_priority = 0,
-    .flags = {
-      .allow_pd = allow_power_down,
-      .enable_internal_pullup = pullup,
-      #if SOC_I2C_SLAVE_SUPPORT_BROADCAST
-      .broadcast_en = broadcast,
-      #endif
-    },
-  };
-
-  i2c_slave_dev_handle_t handle;
-  esp_err_t err = i2c_new_slave_device(&config, &handle);
-  if (err == ESP_ERR_NOT_FOUND) FAIL(ALREADY_IN_USE);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-  Defer delete_target {
-    [&] { if (!handed_to_resource) i2c_del_slave_device(handle); }
-  };
-
-  auto resource = _new I2cTargetResource(group, handle, event_queue, receive_buffer);
+  auto resource = _new I2cTargetResource(group, event_queue, receive_buffer);
   if (resource == null) FAIL(MALLOC_FAILED);
   handed_to_resource = true;
   bool registered = false;
   Defer delete_resource { [&] { if (!registered) delete resource; } };
 
+  I2cTargetConfig config = {
+    .sda = sda_num,
+    .scl = scl_num,
+    .address_length = address_length,
+    .address = address,
+    .send_buffer_size = send_buffer_size,
+    .receive_buffer_size = receive_buffer_size,
+    .pullup = pullup,
+    .allow_power_down = allow_power_down,
+    .broadcast = broadcast,
+  };
   i2c_slave_event_callbacks_t callbacks = {
     .on_request = target_request_handler,
     .on_receive = target_receive_handler,
     .on_transmit = null,
     .on_transmit_done = null,
   };
-  err = i2c_slave_register_event_callbacks(handle, &callbacks, resource);
+  esp_err_t err = resource->initialize_driver(config, callbacks, resource);
+  if (err == ESP_ERR_NOT_FOUND) FAIL(ALREADY_IN_USE);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   err = i2c_slave_set_default_response(
-      handle, default_response.address(), default_response.length());
+      resource->handle(), default_response.address(), default_response.length());
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   resource->owned_pins().adopt(reserver);
@@ -750,15 +817,8 @@ PRIMITIVE(register_target_create) {
   if (register_count > addressable_register_count) FAIL(INVALID_ARGUMENT);
 
   i2c_addr_bit_len_t address_length;
-  if (address_bit_size == 7 && address <= 0x7f) {
-    address_length = I2C_ADDR_BIT_LEN_7;
-  #if SOC_I2C_SUPPORT_10BIT_ADDR
-  } else if (address_bit_size == 10 && address <= 0x3ff) {
-    address_length = I2C_ADDR_BIT_LEN_10;
-  #endif
-  } else {
-    FAIL(INVALID_ARGUMENT);
-  }
+  if (!decode_target_address(
+          address_bit_size, address, &address_length)) FAIL(INVALID_ARGUMENT);
 
   #if !SOC_I2C_SLAVE_SUPPORT_BROADCAST
   if (broadcast) FAIL(UNSUPPORTED);
@@ -771,7 +831,7 @@ PRIMITIVE(register_target_create) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  uint8_t* registers = unvoid_cast<uint8_t*>(heap_caps_calloc(
+  auto registers = unvoid_cast<uint8_t*>(heap_caps_calloc(
       register_count, sizeof(uint8_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
   if (registers == null) FAIL(MALLOC_FAILED);
   bool handed_to_resource = false;
@@ -783,47 +843,32 @@ PRIMITIVE(register_target_create) {
   int scl_num = reserver.decode_and_take(scl, &reserve_ok);
   if (!reserve_ok) FAIL(ALREADY_IN_USE);
 
-  i2c_slave_config_t config = {
-    .i2c_port = -1,
-    .sda_io_num = static_cast<gpio_num_t>(sda_num),
-    .scl_io_num = static_cast<gpio_num_t>(scl_num),
-    .clk_source = I2C_CLK_SRC_DEFAULT,
-    .send_buf_depth = SOC_I2C_FIFO_LEN,
-    .receive_buf_depth = receive_buffer_size,
-    .slave_addr = address,
-    .addr_bit_len = address_length,
-    .intr_priority = 0,
-    .flags = {
-      .allow_pd = allow_power_down,
-      .enable_internal_pullup = pullup,
-      #if SOC_I2C_SLAVE_SUPPORT_BROADCAST
-      .broadcast_en = broadcast,
-      #endif
-    },
-  };
-
-  i2c_slave_dev_handle_t handle;
-  esp_err_t err = i2c_new_slave_device(&config, &handle);
-  if (err == ESP_ERR_NOT_FOUND) FAIL(ALREADY_IN_USE);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-  Defer delete_target {
-    [&] { if (!handed_to_resource) i2c_del_slave_device(handle); }
-  };
-
   auto resource = _new I2cRegisterTargetResource(
-      group, handle, registers, register_count, register_address_byte_size);
+      group, registers, register_count, register_address_byte_size);
   if (resource == null) FAIL(MALLOC_FAILED);
   handed_to_resource = true;
   bool registered = false;
   Defer delete_resource { [&] { if (!registered) delete resource; } };
 
+  I2cTargetConfig config = {
+    .sda = sda_num,
+    .scl = scl_num,
+    .address_length = address_length,
+    .address = address,
+    .send_buffer_size = SOC_I2C_FIFO_LEN,
+    .receive_buffer_size = receive_buffer_size,
+    .pullup = pullup,
+    .allow_power_down = allow_power_down,
+    .broadcast = broadcast,
+  };
   i2c_slave_event_callbacks_t callbacks = {
     .on_request = null,
     .on_receive = register_target_receive_handler,
     .on_transmit = register_target_transmit_handler,
     .on_transmit_done = register_target_transmit_done_handler,
   };
-  err = i2c_slave_register_event_callbacks(handle, &callbacks, resource);
+  esp_err_t err = resource->initialize_driver(config, callbacks, resource);
+  if (err == ESP_ERR_NOT_FOUND) FAIL(ALREADY_IN_USE);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   resource->owned_pins().adopt(reserver);
@@ -876,6 +921,27 @@ PRIMITIVE(register_target_dropped_write_count) {
   ARGS(I2cRegisterTargetResource, target);
   return Smi::from(target->dropped_write_count());
 }
+
+#else
+
+PRIMITIVE(target_init)                          { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_create)                        { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_close)                         { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_receive)                       { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_write)                         { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_set_write_pending)             { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_set_handler_mode)              { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_take_request_count)            { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_dropped_receive_count)          { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_create)               { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_close)                { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_get)                  { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_set)                  { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_read)                 { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_write)                { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_dropped_write_count)  { FAIL(UNIMPLEMENTED); }
+
+#endif  // CONFIG_TOIT_ENABLE_I2C_TARGET
 
 PRIMITIVE(bus_create) {
   ARGS(I2cResourceGroup, group, int, sda, int, scl, bool, pullup);
