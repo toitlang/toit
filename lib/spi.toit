@@ -577,7 +577,7 @@ class Bus:
     cycles before the first clock edge. ESP-IDF only supports this option for
     half-duplex transactions, except for a limited one-cycle case on the
     classic ESP32. $cs-hold-cycles keeps CS active after the last clock edge.
-  Both values must be between 0 and 16.
+    Both values must be between 0 and 16.
 
   The bus retains the returned device until either the device or the bus is
     explicitly closed. Dropping the last application reference does not free a
