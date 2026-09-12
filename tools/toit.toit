@@ -45,7 +45,7 @@ is-toit-source path/string -> bool:
   if not file.is-file path: return false
   contents := file.read-contents path
   if snapshot-lib.SnapshotBundle.is-bundle-content contents: return true
-  if contents[0] == '#' and contents[1] == '!':
+  if contents.size >= 2 and contents[0] == '#' and contents[1] == '!':
     // We accept any file that starts with a shebang line.
     return true
   return false

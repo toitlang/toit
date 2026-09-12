@@ -38,3 +38,23 @@ main args:
     expect-not-equals 0 fork-result.exit-code
     combined = fork-result.stdout + fork-result.stderr
     expect (combined.contains "Unknown command or invalid source file")
+
+    // Short files without a Toit extension aren't source files.
+    short-path := "$tmp-dir/short"
+    ["", "#", "!", "x"].do: | contents/string |
+      file.write-contents --path=short-path contents
+      [[], ["--"]].do: | prefix/List |
+        result := toit-exe.fork (prefix + [short-path])
+        expect-equals 1 result.exit-code
+        message := result.stdout + result.stderr
+        expect (message.contains "Unknown command or invalid source file")
+
+    // Files without a Toit extension can still be shebang scripts or snapshots.
+    script-path := "$tmp-dir/script"
+    file.write-contents --path=script-path
+        "#!/usr/bin/env toit\n" + (file.read-contents src-path).to-string
+    snapshot-path := "$tmp-dir/snapshot"
+    toit-exe.backticks ["compile", "--snapshot", "-o", snapshot-path, src-path]
+    [src-path, script-path, snapshot-path].do: | path/string |
+      [[], ["--"]].do: | prefix/List |
+        expect-equals "hello\n" (toit-exe.backticks (prefix + [path, "hello"]))
