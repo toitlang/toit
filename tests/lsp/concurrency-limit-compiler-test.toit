@@ -10,31 +10,23 @@ import expect show *
 import monitor
 
 REQUEST-COUNT ::= 6
-COMPILER-DELAY-US ::= 300_000
 
 main args:
-  // Run the same batch of requests with a limit that serializes them, with a
-  // limit that lets all of them run at the same time, and without any limit.
-  serialized-ms := measure args --max-concurrent=1
-  concurrent-ms := measure args --max-concurrent=REQUEST-COUNT
-  unlimited-ms := measure args --max-concurrent=0
-  print "serialized: $(serialized-ms)ms, concurrent: $(concurrent-ms)ms, unlimited: $(unlimited-ms)ms"
-  // Serialized, the requests take REQUEST-COUNT times as long. Be generous
-  // with the factor, so that a loaded machine doesn't make the test flaky.
-  expect serialized-ms > concurrent-ms * 2
-  expect serialized-ms > unlimited-ms * 2
+  test args --max-concurrent=1 --limit=1
+  test args --max-concurrent=2 --limit=2
+  test args --max-concurrent=REQUEST-COUNT --limit=REQUEST-COUNT
+  // A limit of 0 means that the compilers are not limited.
+  test args --max-concurrent=0 --limit=REQUEST-COUNT
 
-measure args --max-concurrent/int -> int:
-  result := 0
+test args --max-concurrent/int --limit/int -> none:
   run-client-test
       args
       --use-mock
-      --pre-initialize=: it.configuration["maxConcurrentCompilers"] = max-concurrent:
-    result = run-requests it
-  return result
+      --pre-initialize=(: it.configuration["maxConcurrentCompilers"] = max-concurrent):
+    | client mock-compiler |
+    run-requests client mock-compiler --limit=limit
 
-run-requests client/LspClient -> int:
-  mock-compiler := MockCompiler client
+run-requests client/LspClient mock-compiler/MockCompiler --limit/int -> none:
 
   uri := "untitled:Untitled-1"
   path := client.to-path uri
@@ -43,22 +35,35 @@ run-requests client/LspClient -> int:
   mock-compiler.set-analysis-result (mock-compiler.build-analysis-answer --path=path)
   client.send-did-open --uri=uri --text="Ignored content"
 
-  // Every completion request runs a compiler that takes $COMPILER-DELAY-US.
-  mock-compiler.set-completion-result
-      "SLOW\n$COMPILER-DELAY-US\n\n0\n0\n0\n0\nfoo\n-1\nbar\n-1\n"
+  // Every completion request now runs a compiler that waits for us.
+  mock-compiler.set-completion-result --sync
+      "\n0\n0\n0\n0\nfoo\n-1\nbar\n-1\n"
 
   // The requests must overlap, so we must not wait for idle in between.
   client.always-wait-for-idle = false
   done := monitor.Semaphore
-  start := Time.monotonic-us
+  errors := []
   REQUEST-COUNT.repeat:
-    task:: catch --trace:
-      completions := client.send-completion-request --uri=uri 1 2
-      expect-equals 2 completions.size
-      done.up
+    task::
+      try:
+        completions := client.send-completion-request --uri=uri 1 2
+        if completions.size != 2: errors.add "Unexpected completions: $completions"
+      finally:
+        done.up
+
+  // Release the compilers one at a time. As long as a compiler isn't released
+  // it can't finish, and thus no additional compiler may start.
+  REQUEST-COUNT.repeat: | released/int |
+    expected-waiting := (min REQUEST-COUNT (released + limit)) - released
+    waiting := mock-compiler.wait-for-waiting expected-waiting
+    // No compiler may have started beyond the limit.
+    expect-equals expected-waiting waiting.size
+    mock-compiler.release waiting.first
+
   REQUEST-COUNT.repeat: done.down
-  elapsed-ms := (Time.monotonic-us - start) / 1000
+  if not errors.is-empty: throw "$errors"
 
   client.always-wait-for-idle = true
   client.wait-for-idle
-  return elapsed-ms
+  completion-runs := mock-compiler.started.filter: it.command == MockCompiler.COMPLETE
+  expect-equals REQUEST-COUNT completion-runs.size

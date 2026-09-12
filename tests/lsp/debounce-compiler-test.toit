@@ -14,11 +14,11 @@ main args:
   run-client-test
       args
       --use-mock
-      --pre-initialize=: it.configuration["analysisDebounceMs"] = DEBOUNCE-MS:
-    test it
+      --pre-initialize=(: it.configuration["analysisDebounceMs"] = DEBOUNCE-MS):
+    | client mock-compiler |
+    test client mock-compiler
 
-test client/LspClient:
-  mock-compiler := MockCompiler client
+test client/LspClient mock-compiler/MockCompiler:
 
   uri := "untitled:Untitled-1"
   path := client.to-path uri
