@@ -524,7 +524,7 @@ test-nonbyte-target port/uart.Port -> none:
       --max-transfer-size=8
       --dma=false
 
-  result := target.exchange #[ ]
+  result := target.transfer #[ ]
       --receive-size=8
       --when-armed=:
         port.out.write #[READY] --flush
@@ -534,7 +534,7 @@ test-nonbyte-target port/uart.Port -> none:
   expect-equals (bit-count + 7) / 8 result.size
 
   expect-equals RESUME port.in.read-byte
-  result = target.exchange #[ ]
+  result = target.transfer #[ ]
       --receive-size=8
       --when-armed=:
         port.out.write #[READY] --flush
