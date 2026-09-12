@@ -35,6 +35,37 @@ class WindowsResource : public Resource {
   virtual bool is_event_enabled(HANDLE event) { return true; }
 };
 
+// An OVERLAPPED structure, and whether the last operation issued with it was
+// started.
+//
+// Closing a handle cancels its pending operations, but their completion can
+// still be written to the OVERLAPPED structure after the close returns. Call
+// cancel_and_wait before closing the handle or the event, and before freeing
+// the structure.
+class WindowsOverlapped {
+ public:
+  OVERLAPPED* get() { return &overlapped_; }
+  HANDLE event() const { return overlapped_.hEvent; }
+  void set_event(HANDLE event) { overlapped_.hEvent = event; }
+
+  // Records the result of an overlapped call, like ReadFile or WSARecv.
+  // Returns whether the operation started, which includes completing
+  // synchronously. Doesn't change the last error.
+  bool issued(bool success, DWORD error) {
+    started_ = success || error == ERROR_IO_PENDING;
+    return started_;
+  }
+
+  // Cancels the last operation and waits for it to complete, unless it failed
+  // to start: the structure isn't meaningful after a synchronous failure, and
+  // waiting could block forever.
+  void cancel_and_wait(HANDLE handle);
+
+ private:
+  OVERLAPPED overlapped_{};
+  bool started_ = false;
+};
+
 class WindowsEventThread;
 class WindowsResourceEvent;
 

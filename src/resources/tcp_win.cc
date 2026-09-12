@@ -85,8 +85,8 @@ class TcpSocketResource : public TcpSocketBaseResource {
       , auxiliary_event_(auxiliary_event) {
     read_buffer_.buf = read_data_;
     read_buffer_.len = READ_BUFFER_SIZE;
-    read_overlapped_.hEvent = read_event;
-    write_overlapped_.hEvent = write_event;
+    read_overlapped_.set_event(read_event);
+    write_overlapped_.set_event(write_event);
     if (!issue_read_request()) {
       int error_code = WSAGetLastError();
       if (error_code == WSAECONNRESET) {
@@ -112,17 +112,17 @@ class TcpSocketResource : public TcpSocketBaseResource {
 
   std::vector<HANDLE> events() override {
     return std::vector<HANDLE>({
-        read_overlapped_.hEvent,
-        write_overlapped_.hEvent,
+        read_overlapped_.event(),
+        write_overlapped_.event(),
         auxiliary_event_
     });
   }
 
   uint32_t on_event(HANDLE event, uint32_t state) override {
-    if (event == read_overlapped_.hEvent) {
+    if (event == read_overlapped_.event()) {
       read_ready_ = true;
       state |= TCP_READ;
-    } else if (event == write_overlapped_.hEvent) {
+    } else if (event == write_overlapped_.event()) {
       write_ready_ = true;
       state |= TCP_WRITE;
     } else if (event == auxiliary_event_) {
@@ -150,25 +150,27 @@ class TcpSocketResource : public TcpSocketBaseResource {
   }
 
   void do_close() override {
+    // Reaping the outstanding read also matters for the peer: closing a socket
+    // that has a pending overlapped WSARecv is an abortive close, so the peer
+    // gets an RST and loses the data it has not read yet.
+    read_overlapped_.cancel_and_wait(reinterpret_cast<HANDLE>(socket()));
+    write_overlapped_.cancel_and_wait(reinterpret_cast<HANDLE>(socket()));
     TcpSocketBaseResource::do_close();
-    CloseHandle(read_overlapped_.hEvent);
-    CloseHandle(write_overlapped_.hEvent);
+    CloseHandle(read_overlapped_.event());
+    CloseHandle(write_overlapped_.event());
   }
 
   bool issue_read_request() {
     read_ready_ = false;
     read_count_ = 0;
     DWORD flags = 0;
-    int receive_result = WSARecv(socket(), &read_buffer_, 1, NULL, &flags, &read_overlapped_, NULL);
-    if (receive_result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
-      return false;
-    }
-    return true;
+    int receive_result = WSARecv(socket(), &read_buffer_, 1, NULL, &flags, read_overlapped_.get(), NULL);
+    return read_overlapped_.issued(receive_result == 0, WSAGetLastError());
   }
 
   bool receive_read_response() {
     DWORD flags;
-    bool overlapped_result = WSAGetOverlappedResult(socket(), &read_overlapped_, &read_count_, false, &flags);
+    bool overlapped_result = WSAGetOverlappedResult(socket(), read_overlapped_.get(), &read_count_, false, &flags);
     if (read_count_ == 0) closed_ = true;
     return overlapped_result;
   }
@@ -190,23 +192,19 @@ class TcpSocketResource : public TcpSocketBaseResource {
     memcpy(write_buffer_.buf, buffer, length);
     write_buffer_.len = length;
 
-    int send_result = WSASend(socket(), &write_buffer_, 1, NULL, 0, &write_overlapped_, NULL);
-
-    if (send_result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
-      return false;
-    }
-    return true;
+    int send_result = WSASend(socket(), &write_buffer_, 1, NULL, 0, write_overlapped_.get(), NULL);
+    return write_overlapped_.issued(send_result == 0, WSAGetLastError());
   }
 
  private:
   WSABUF read_buffer_{};
   char read_data_[READ_BUFFER_SIZE]{};
-  OVERLAPPED read_overlapped_{};
+  WindowsOverlapped read_overlapped_;
   DWORD read_count_ = 0;
   bool read_ready_ = false;
 
   WSABUF write_buffer_{};
-  OVERLAPPED write_overlapped_{};
+  WindowsOverlapped write_overlapped_;
   bool write_ready_ = true;
 
   HANDLE auxiliary_event_;

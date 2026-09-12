@@ -72,24 +72,25 @@ class HandlePipeResource : public WindowsResource {
   TAG(PipeResource);
   HandlePipeResource(ResourceGroup* resource_group, HANDLE handle, HANDLE event)
   : WindowsResource(resource_group), handle_(handle) {
-    overlapped_.hEvent = event;
+    overlapped_.set_event(event);
   }
 
   HANDLE handle() { return handle_; }
 
   std::vector<HANDLE> events() override {
-    return std::vector<HANDLE>( { overlapped_.hEvent } );
+    return std::vector<HANDLE>( { overlapped_.event() } );
   }
 
   void do_close() override {
-    CloseHandle(overlapped_.hEvent);
+    overlapped_.cancel_and_wait(handle_);
     CloseHandle(handle_);
+    CloseHandle(overlapped_.event());
   }
 
-  OVERLAPPED* overlapped() { return &overlapped_; }
+  WindowsOverlapped& overlapped() { return overlapped_; }
  private:
   HANDLE handle_;
-  OVERLAPPED overlapped_{};
+  WindowsOverlapped overlapped_;
 };
 
 class ReadPipeResource : public HandlePipeResource {
@@ -107,15 +108,12 @@ class ReadPipeResource : public HandlePipeResource {
   bool issue_read_request() {
     read_ready_ = false;
     read_count_ = 0;
-    bool success = ReadFile(handle(), read_data_, READ_BUFFER_SIZE, &read_count_, overlapped());
-    if (!success && WSAGetLastError() != ERROR_IO_PENDING) {
-      return false;
-    }
-    return true;
+    bool success = ReadFile(handle(), read_data_, READ_BUFFER_SIZE, &read_count_, overlapped().get());
+    return overlapped().issued(success, GetLastError());
   }
 
   bool receive_read_response() {
-    bool overlapped_result = GetOverlappedResult(handle(), overlapped(), &read_count_, false);
+    bool overlapped_result = GetOverlappedResult(handle(), overlapped().get(), &read_count_, false);
     return overlapped_result;
   }
 
@@ -150,7 +148,8 @@ class WritePipeResource : public HandlePipeResource {
 
   bool ready_for_write() const { return write_ready_; }
 
-
+  // Reports success as soon as the write is queued. Closing the pipe cancels
+  // a write that is still pending, so its data can be lost.
   bool send(const uint8* buffer, word length) {
     if (write_buffer_ != null) free(write_buffer_);
 
@@ -161,11 +160,8 @@ class WritePipeResource : public HandlePipeResource {
     memcpy(write_buffer_, buffer, length);
 
     DWORD tmp;
-    bool send_result = WriteFile(handle(), write_buffer_, length, &tmp, overlapped());
-    if (!send_result && WSAGetLastError() != ERROR_IO_PENDING) {
-      return false;
-    }
-    return true;
+    bool send_result = WriteFile(handle(), write_buffer_, length, &tmp, overlapped().get());
+    return overlapped().issued(send_result, GetLastError());
   }
 
  private:
