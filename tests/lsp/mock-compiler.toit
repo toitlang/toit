@@ -88,7 +88,7 @@ class MockCompiler:
   static PORT-ENVIRONMENT-VARIABLE ::= "TOIT_MOCK_COMPILER_PORT"
   static ANALYZE ::= "ANALYZE"
   static COMPLETE ::= "COMPLETE"
-  /// How long $wait-for-waiting waits before giving up.
+  /// How long we wait on the mock compiler before giving up.
   static WAIT-TIMEOUT-MS ::= 10_000
 
   server_ / ServerSocket
@@ -190,12 +190,17 @@ class MockCompiler:
       runs_.add run
       changed_.raise
 
-      if synced-commands_.contains command:
+      hung-up := monitor.Latch
+      task::
+        // The compiler sends nothing more, so this blocks until the socket is
+        // closed, which means the mock compiler finished or was killed.
+        catch: reader.drain
+        hung-up.set true
         // A run that is killed while it waits must not count as waiting.
-        task::
-          catch: reader.read
-          run.release_ false
-          changed_.raise
+        run.release_ false
+        changed_.raise
+
+      if synced-commands_.contains command:
         if not run.released_.get: return
       else:
         run.release_ true
@@ -206,6 +211,11 @@ class MockCompiler:
       catch:
         socket.out.write "$answer.size\n"
         socket.out.write answer
+      // Wait for the compiler to hang up instead of closing right away. On
+      // Windows a write returns once the send is queued, not once the data has
+      // reached the network stack, and closing the socket cancels a queued
+      // send.
+      catch: with-timeout --ms=WAIT-TIMEOUT-MS: hung-up.get
     finally:
       socket.close
 
