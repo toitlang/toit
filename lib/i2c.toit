@@ -563,9 +563,18 @@ class Bus:
   test address --timeout-ms/int=100 -> bool:
     if not 0 <= address <= 0x7f: throw "INVALID_ARGUMENT"
     if timeout-ms <= 0: throw "INVALID_ARGUMENT"
-    return perform-controller-operation_
-        (: i2c-bus-probe_ resource_ address timeout-ms)
-        (: i2c-bus-probe-finish_ resource_)
+    result := false
+    error := catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
+      result = with-timeout --ms=timeout-ms:
+        perform-controller-operation_
+            (: i2c-bus-probe_ resource_ address timeout-ms)
+            (: i2c-bus-probe-finish_ resource_)
+    if error:
+      // An earlier caller deadline is automatically rethrown by 'catch'. A
+      // deadline caught here was installed for this probe and is equivalent
+      // to the driver's hardware timeout.
+      return false
+    return result
 
   /**
   Closes this I2C bus.

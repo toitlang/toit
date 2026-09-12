@@ -19,6 +19,7 @@ UART-RX2 ::= Variant.CURRENT.board-connection-pin2
 UART-TX2 ::= Variant.CURRENT.board-connection-pin1
 
 I2C-SDA ::= Variant.CURRENT.board-connection-pin3
+SYNC-PIN ::= Variant.CURRENT.board-connection-pin4
 I2C-SCL ::= Variant.CURRENT.board-connection-pin5
 I2C-SCL-PROBE ::= Variant.CURRENT.board-connection-pin6
 
@@ -27,7 +28,7 @@ MISSING-ADDRESS ::= 0x71
 
 READY ::= 0xa5
 OK ::= 0x5a
-SYNC ::= 0xc3
+SYNC-LOW-SEEN ::= 0xc3
 
 SET ::= 1
 RECONFIGURE ::= 2
@@ -54,7 +55,7 @@ test-board1:
     test-board1-esp32 port
     return
 
-  bus := i2c.Bus --sda=I2C-SDA --scl=I2C-SCL --frequency=100_000 --pull-up=false
+  bus := i2c.Bus --sda=I2C-SDA --scl=I2C-SCL --frequency=100_000 --pull-up
 
   // Probe completion exercises both DONE and NACK callbacks. Scanning repeats
   // this over enough transactions to catch stale completion state.
@@ -535,27 +536,17 @@ send-byte port/uart.Port value/int -> none:
   port.out.flush
 
 synchronize-controller port/uart.Port -> none:
-  synchronized := monitor.Latch
-  sender-done := monitor.Latch
-  task::
-    try:
-      while not synchronized.has-value:
-        send-byte port SYNC
-        sleep --ms=10
-    finally:
-      critical-do --no-respect-deadline: sender-done.set true
-
-  expect-equals READY port.in.read-byte
-  synchronized.set true
-  sender-done.get
-  send-byte port OK
-  expect-equals READY port.in.read-byte
+  ready := gpio.Pin SYNC-PIN --input --pull-up
+  while ready.get != 0: sleep --ms=1
+  send-byte port SYNC-LOW-SEEN
+  while ready.get != 1: sleep --ms=1
+  ready.close
 
 synchronize-target port/uart.Port -> none:
-  while port.in.read-byte != SYNC: null
-  send-byte port READY
-  while port.in.read-byte != OK: null
-  send-byte port READY
+  ready := gpio.Pin SYNC-PIN --output --value=0
+  while port.in.read-byte != SYNC-LOW-SEEN: null
+  ready.set 1
+  ready.close
 
 encode-u16 value/int -> ByteArray:
   return #[value & 0xff, (value >> 8) & 0xff]
