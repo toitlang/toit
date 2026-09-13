@@ -731,3 +731,16 @@ hit EOF instead of waiting — a "silent lane" that is actually a lying
 observer. `stty -F /tmp/<pty> min 1 time 0` before reading, re-apply
 after any tester session on the PTY, and never point two readers at one
 PTY (they steal bytes from each other).
+
+## 15. Fixed-precision float formatting fails — OPEN
+
+Observed during the September 2026 ADC regression: `$(%.3f value)` throws
+`MALLOC_FAILED` in `core.float_to_string` despite ample free native memory.
+Ordinary float interpolation works. The fixed-precision path uses
+`safe_double_print` and the platform `snprintf` with `%.*lf`; the exact
+platform formatting failure still needs investigation.
+
+The ADC test now uses ordinary float strings for diagnostics and retains
+all voltage-accuracy assertions. This avoids making a formatting failure
+look like an ADC failure. Reproduce separately with `print "$(%.3f 0.5)"`
+before changing the platform formatter or its allocation retry behavior.
