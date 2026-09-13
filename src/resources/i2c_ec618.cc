@@ -103,9 +103,6 @@ struct I2cState {
                              // cycles).
   uint32_t src_hz;           // Selected functional-clock source (26 MHz
                              // or 51.2 MHz); 0 = not yet pinned.
-  uint32_t bus_hz;           // Pace for bus-level probes: the most recent
-                             // device transfer's frequency (sticky across
-                             // quiesce), else kBusDefaultHz.
   volatile bool transfer_active;
   volatile bool hardware_busy;
   bool dedicated_mode;
@@ -456,13 +453,13 @@ static int32_t start_transmit(int controller) {
 
   state->count = 0;
   state->hardware_busy = true;
-  bool dedicated = state->stage == I2cStage::WRITE_PENDING_READ;
+  bool dedicated = state->stage == I2cStage::WRITE_PENDING_READ || length == 0;
   if (dedicated) {
     regs->MCR = 0;
     regs->MCR = I2C_MCR_I2C_EN_Msk;
     state->dedicated_mode = true;
     regs->ISR = regs->ISR;
-    regs->TDR = state->tx[state->count++];
+    if (length != 0) regs->TDR = state->tx[state->count++];
     regs->IER =
         I2C_IER_DETECT_STOP_Msk |
         I2C_IER_ARBITRATATION_LOST_Msk |
@@ -746,7 +743,7 @@ class I2cBusResource : public EventResource {
  public:
   TAG(I2cBusResource);
   I2cBusResource(ResourceGroup* group, int controller, int sda, int scl)
-    : EventResource(group, Event::none_type())
+    : EventResource(group, Event::i2c_type(controller))
     , controller_(controller)
     , sda_(sda)
     , scl_(scl)
@@ -825,7 +822,7 @@ class I2cDeviceResource : public EventResource {
   TAG(I2cDeviceResource);
   I2cDeviceResource(ResourceGroup* group, I2cBusResource* bus, int address,
                     uint32_t frequency)
-    : EventResource(group, Event::i2c_type(bus->controller()))
+    : EventResource(group, Event::none_type())
     , bus_(bus)
     , address_(address)
     , frequency_(frequency) {
@@ -862,10 +859,10 @@ class I2cResourceGroup : public ResourceGroup {
     // Only the CURRENT transfer's completion may set the done bit: a
     // dispatch from an earlier (aborted or spin-consumed) transfer
     // arriving late must not wake the next transfer's wait.
-    auto device = static_cast<I2cDeviceResource*>(r);
-    I2cState* i2c_state = &i2c_states[device->controller()];
+    auto bus = static_cast<I2cBusResource*>(r);
+    I2cState* i2c_state = bus->state();
     uint16_t dispatch_seq = (data >> 16) & 0xffff;
-    if (device != i2c_state->active_device ||
+    if (!i2c_state->transfer_active ||
         dispatch_seq != i2c_state->seq) return state;
     return state | 1;  // Transfer-done bit, matching lib/i2c.toit.
   }
@@ -995,7 +992,6 @@ PRIMITIVE(bus_create) {
   }
 
   state->current_hz = 0;
-  state->bus_hz = kBusDefaultHz;
   ensure_setup(controller, kBusDefaultHz);
 
   group->register_resource(bus);
@@ -1016,50 +1012,52 @@ PRIMITIVE(bus_probe) {
   ARGS(I2cBusResource, bus, uint16, address, int, timeout_ms);
   I2cState* state = bus->state();
   if (state->transfer_active) FAIL(ALREADY_IN_USE);
-  if (address > 0x7f) FAIL(INVALID_ARGUMENT);
-  if (!bus->bus_usable()) return BOOL(false);
-  // SMBus receive-byte probe: a present device ACKs its address and one
-  // byte transfers; an absent one NACKs.
-  uint8_t scratch;
-  int controller = bus->controller();
-  ensure_setup(controller, state->bus_hz != 0 ? state->bus_hz : kBusDefaultHz);
+  if (address > 0x7f || timeout_ms <= 0) FAIL(INVALID_ARGUMENT);
+  // A non-null TX buffer selects the dedicated write engine, but no data
+  // byte is submitted. The address acknowledgement triggers STOP.
+  PendingI2cBuffers buffers;
+  buffers.tx = unvoid_cast<uint8_t*>(malloc(1));
+  if (buffers.tx == null) FAIL(MALLOC_FAILED);
+  bool usable = bus->bus_usable();
+  ensure_setup(bus->controller(), kBusDefaultHz);
   state->address = address;
   state->active_device = null;
   state->seq++;
-  state->notify_toit = false;
-  state->owns_buffers = false;
-  state->tx = null;
+  state->notify_toit = true;
+  state->owns_buffers = true;
+  state->tx = buffers.tx;
   state->tx_len = 0;
-  state->rx = &scratch;
-  state->rx_len = 1;
+  state->rx = null;
+  state->rx_len = 0;
   state->last_event = 0;
   state->transfer_active = true;
-  if (!start_legs(state, controller)) return BOOL(false);
-
-  uint16_t clamped_timeout_ms =
-      timeout_ms < 1 ? 1 : (timeout_ms > 1000 ? 1000 : timeout_ms);
-  int64 deadline_us =
-      OS::get_monotonic_time() +
-      static_cast<int64>(clamped_timeout_ms) * 1000 * 3;
-  while (state->last_event == 0) {
-    if (OS::get_monotonic_time() > deadline_us) {
-      quiesce(controller);
-      release_transfer(state);
-      return BOOL(false);
-    }
+  buffers.handed_to_state = true;
+  if (!usable) {
+    send_i2c_completion(bus->controller(), state, ARM_I2C_EVENT_BUS_ERROR, false);
+  } else if (!start_legs(state, bus->controller())) {
+    FAIL(HARDWARE_ERROR);
   }
+  return process->null_object();
+}
+
+PRIMITIVE(bus_probe_finish) {
+  ARGS(I2cBusResource, bus);
+  I2cState* state = bus->state();
+  if (!state->transfer_active || state->active_device != null ||
+      state->last_event == 0) FAIL(INVALID_STATE);
   I2cResult result = event_to_result(state->last_event);
-  if (result != I2cResult::OK) quiesce(controller);
+  if (result != I2cResult::OK) quiesce(bus->controller());
   release_transfer(state);
   return BOOL(result == I2cResult::OK);
 }
 
-PRIMITIVE(bus_reset) {
+PRIMITIVE(bus_abort_controller_operation) {
   ARGS(I2cBusResource, bus);
   I2cState* state = bus->state();
-  bool had_transfer = state->transfer_active;
-  quiesce(bus->controller());
-  if (had_transfer) release_transfer(state);
+  if (state->transfer_active) {
+    quiesce(bus->controller());
+    release_transfer(state);
+  }
   return process->null_object();
 }
 
@@ -1104,29 +1102,6 @@ PRIMITIVE(device_close) {
   return process->null_object();
 }
 
-// EC618 always starts transfers asynchronously. These primitives remain in
-// the common module ABI for platforms whose transfer_start returns false, but
-// the EC618 library path cannot reach them.
-
-PRIMITIVE(device_write) {
-  FAIL(UNIMPLEMENTED);
-}
-
-PRIMITIVE(device_read) {
-  FAIL(UNIMPLEMENTED);
-}
-
-PRIMITIVE(device_write_read) {
-  FAIL(UNIMPLEMENTED);
-}
-
-// --- Asynchronous transfers --------------------------------------------------
-//
-// transfer_start copies the Toit buffers into driver-owned memory, kicks
-// off the IRQ-driven legs and returns `true` immediately; the completion
-// callback raises the resource state, the library waits for it without
-// blocking the VM, and transfer_finish collects the result.
-
 PRIMITIVE(device_transfer_start) {
   ARGS(I2cDeviceResource, device, Blob, tx, int, rx_length);
   if (rx_length < 0) FAIL(OUT_OF_RANGE);
@@ -1149,7 +1124,6 @@ PRIMITIVE(device_transfer_start) {
   // All fallible allocation is complete before bus recovery, clock changes,
   // or an address phase can touch the wire.
   if (!device->bus()->bus_usable()) FAIL(HARDWARE_ERROR);
-  state->bus_hz = device->frequency();
   ensure_setup(device->controller(), device->frequency());
 
   state->address = device->address();
@@ -1166,36 +1140,50 @@ PRIMITIVE(device_transfer_start) {
   buffers.handed_to_state = true;
 
   if (!start_legs(state, device->controller())) FAIL(HARDWARE_ERROR);
-  return process->true_object();
+  return process->null_object();
 }
 
 PRIMITIVE(device_transfer_finish) {
-  ARGS(I2cDeviceResource, device, MutableBlob, rx_out);
+  ARGS(I2cDeviceResource, device, MutableBlob, rx_out, int, length);
+  if (length < 0 || length > rx_out.length()) FAIL(OUT_OF_BOUNDS);
   I2cState* state = device->bus()->state();
   if (!state->transfer_active || state->active_device != device) {
     FAIL(INVALID_ARGUMENT);
   }
 
   uint32_t event = state->last_event;
-  if (event == 0) {
-    // The caller left its wait before completion (for example, an outer
-    // with-timeout canceled it). Stop the engine before releasing buffers.
-    quiesce(device->controller());
-    release_transfer(state);
-    return Primitive::integer(static_cast<int>(I2cResult::CANCELED), process);
-  }
+  if (event == 0) FAIL(INVALID_STATE);
+  if (state->rx_len > static_cast<uint32_t>(length)) FAIL(OUT_OF_BOUNDS);
   I2cResult result = event_to_result(event);
   if (result == I2cResult::OK && state->rx != null) {
     uint32_t n = state->rx_len;
-    if (n > static_cast<uint32_t>(rx_out.length())) n = rx_out.length();
     memcpy(rx_out.address(), state->rx, n);
   }
   if (result != I2cResult::OK) {
     quiesce(device->controller());
   }
   release_transfer(state);
-  return Primitive::integer(static_cast<int>(result), process);
+  int code = result == I2cResult::OK ? 0
+      : result == I2cResult::ADDRESS_NACK ? 1 : 3;
+  return Smi::from(code);
 }
+
+PRIMITIVE(target_init) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_create) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_close) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_receive) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_write) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_set_write_pending) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_set_handler_mode) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_take_request_count) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_dropped_receive_count) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_create) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_close) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_get) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_set) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_read) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_write) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(register_target_dropped_write_count) { FAIL(UNIMPLEMENTED); }
 
 }  // namespace toit
 

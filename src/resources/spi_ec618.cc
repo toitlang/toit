@@ -44,11 +44,8 @@ namespace toit {
 // DC are plain GPIOs handled here, which is what gives the library's
 // keep-cs-active semantics.
 //
-// Small transfers run synchronously (SPI_BlockTransfer). Large ones can
-// run ASYNCHRONOUSLY (transfer_start/transfer_finish): the bytes move by
-// DMA while the VM keeps scheduling, and the completion callback wakes
-// the waiting task through the shared event source — the same shape as
-// the I2C async path.
+// All transfers run asynchronously: DMA moves driver-owned bytes while the
+// VM continues scheduling. Prefix and payload share one CS assertion.
 //
 // Pin arguments are PAD numbers. Controller routings (iomux ALT1):
 //   SPI0: MOSI=PAD24, MISO=PAD25, CLK=PAD26 (the Air780E's SPI pins;
@@ -74,7 +71,11 @@ static void pad_set(int pad, int level);
 // (malloc'd) bytes — GC moves heap objects, so the Toit buffer is copied
 // out at start and back at finish. The sequence tag keeps a late
 // completion of an aborted transfer from claiming the next one's wait.
+class SpiDevice;
+
 struct SpiState {
+  EventResource* owner;
+  uint32_t prefix_length;
   volatile bool active;
   volatile uint8_t seq;
   volatile bool done;      // Set by the completion callback.
@@ -176,11 +177,12 @@ class SpiResourceGroup : public ResourceGroup {
   uint32_t on_event(Resource* r, word data, uint32_t state_bits) override {
     SpiState* state = &spi_states[controller_];
     uint8_t dispatch_seq = (data >> 16) & 0xff;
-    if (dispatch_seq != state->seq) return state_bits;
+    if (!state->active || r != state->owner || dispatch_seq != state->seq) return state_bits;
     return state_bits | 1;  // Transfer-done bit, matching lib/spi.toit.
   }
 
   int controller() const { return controller_; }
+  SpiDevice* reserved_device = null;
 
   // The controller's currently-applied configuration (devices on one bus
   // can differ; transfers reconfigure on change).
@@ -221,12 +223,23 @@ class SpiDevice : public EventResource {
     , address_bits_(address_bits) {}
 
   ~SpiDevice() override {
+    SpiState* state = &spi_states[controller()];
+    if (state->owner == this) {
+      stop_transfer(controller(), state);
+      SPI_SetCallbackFun(controller(), null, null);
+      if (cs_ >= 0) pad_set(cs_, 1);
+      free(state->buffer);
+      state->buffer = null;
+      state->owner = null;
+    }
+    if (group_->reserved_device == this) group_->reserved_device = null;
     if (cs_ >= 0) pad_set(cs_, 1);  // Deselect before letting go of the pad.
   }
 
   void adopt_pads(const PadReserver& reserver) { pads_.adopt(reserver); }
 
   int controller() const { return group_->controller(); }
+  SpiResourceGroup* group() const { return group_; }
   int cs() const { return cs_; }
   int dc() const { return dc_; }
   int command_bits() const { return command_bits_; }
@@ -302,7 +315,8 @@ PRIMITIVE(close) {
 
 PRIMITIVE(device) {
   ARGS(SpiResourceGroup, group, int, cs, int, dc, int, command_bits,
-       int, address_bits, int, frequency, int, mode);
+       int, address_bits, int, frequency, int, mode, int, cs_setup_cycles, int, cs_hold_cycles);
+  if (cs_setup_cycles != 0 || cs_hold_cycles != 0) FAIL(UNIMPLEMENTED);
   if (command_bits < 0 || command_bits > 16) FAIL(INVALID_ARGUMENT);
   if (address_bits < 0 || address_bits > 64) FAIL(INVALID_ARGUMENT);
   // The core driver transfers complete 8-bit frames. A byte-aligned combined
@@ -359,88 +373,39 @@ static void append_bits(uint8_t* out, int* offset,
   }
 }
 
-PRIMITIVE(transfer) {
-  ARGS(SpiDevice, device, MutableBlob, tx, int, command, int64, address,
-       int, from, int, to, bool, read, int, dc, bool, keep_cs_active);
-  if (from < 0 || from > to || to > tx.length()) FAIL(OUT_OF_BOUNDS);
-
-  int prefix_bits = device->command_bits() + device->address_bits();
-  int prefix_bytes = prefix_bits / 8;
-  int data_length = to - from;
-  int transfer_length = prefix_bytes + data_length;
-
-  uint8_t* allocated = null;
-  uint8_t* data = tx.address() + from;
-  if (prefix_bytes != 0) {
-    allocated = unvoid_cast<uint8_t*>(malloc(transfer_length));
-    if (allocated == null) FAIL(MALLOC_FAILED);
-    memset(allocated, 0, prefix_bytes);
-    int bit_offset = 0;
-    append_bits(allocated, &bit_offset, (uint64_t)(uint32_t)command,
-                device->command_bits());
-    append_bits(allocated, &bit_offset, (uint64_t)address,
-                device->address_bits());
-    memcpy(allocated + prefix_bytes, data, data_length);
-    data = allocated;
-  }
-  Defer free_allocated {[&] { free(allocated); }};
-
-  device->ensure_config();
-  if (device->dc() >= 0) pad_set(device->dc(), dc);
-  if (device->cs() >= 0) pad_set(device->cs(), 0);
-
-  // Full duplex; prefix receive bits are discarded and data-phase receive
-  // bytes replace the requested range in the caller's ByteArray.
-  int32_t result = SPI_BlockTransfer(device->controller(), data,
-                                     read ? data : null, transfer_length);
-
-  if (device->cs() >= 0 && !keep_cs_active) pad_set(device->cs(), 1);
-  if (result != 0) {
-    SPI_TransferStop(device->controller());
-    FAIL(HARDWARE_ERROR);
-  }
-  if (read && prefix_bytes != 0) {
-    memcpy(tx.address() + from, data + prefix_bytes, data_length);
-  }
-  return process->null_object();
-}
-
-// --- Asynchronous transfers --------------------------------------------------
-//
-// transfer_start copies the Toit bytes into driver-owned memory, arms the
-// completion callback and kicks a non-blocking DMA transfer; the library
-// waits on the resource state without blocking the VM, and transfer_finish
-// copies the (full-duplex) received bytes back and releases the buffer.
-
-// DMA-transfer length guard. The SDK's own LCD path pushes hundreds of KB
-// per TransferEx, so the engine has no small hardware cap; this bounds the
-// driver-owned allocation to something a device heap can sensibly carry.
 static const int kMaxAsyncTransfer = 0x10000;
 
-PRIMITIVE(device_transfer_start) {
-  ARGS(SpiDevice, device, Blob, tx, int, from, int, to, bool, read,
-       int, dc, bool, keep_cs_active);
-  // Prefix phases are packed by the synchronous primitive so command,
-  // address and data remain under one CS assertion.
-  if (device->command_bits() != 0 || device->address_bits() != 0) {
-    return process->false_object();
-  }
+PRIMITIVE(transfer_start) {
+  ARGS(SpiDevice, device, Blob, tx, int, command, int64, address,
+       int, from, int, to, bool, read, int, dc, bool, keep_cs_active);
+  if (device->group()->reserved_device != null &&
+      device->group()->reserved_device != device) FAIL(INVALID_STATE);
+  if (keep_cs_active && device->group()->reserved_device != device) FAIL(INVALID_STATE);
   if (from < 0 || from > to || to > tx.length()) FAIL(OUT_OF_BOUNDS);
   int length = to - from;
-  if (length == 0 || length > kMaxAsyncTransfer) FAIL(OUT_OF_RANGE);
+  int prefix_length = (device->command_bits() + device->address_bits()) / 8;
+  if (length > kMaxAsyncTransfer - prefix_length) FAIL(OUT_OF_RANGE);
+  int total_length = prefix_length + length;
+  if (total_length == 0) FAIL(INVALID_ARGUMENT);
 
   int controller = device->controller();
   SpiState* state = &spi_states[controller];
   if (state->active) FAIL(ALREADY_IN_USE);
 
-  uint8_t* buffer = unvoid_cast<uint8_t*>(malloc(length));
+  uint8_t* buffer = unvoid_cast<uint8_t*>(malloc(total_length));
   if (buffer == null) FAIL(MALLOC_FAILED);
-  memcpy(buffer, tx.address() + from, length);
+  memset(buffer, 0, prefix_length);
+  int offset = 0;
+  append_bits(buffer, &offset, static_cast<uint32_t>(command), device->command_bits());
+  append_bits(buffer, &offset, static_cast<uint64_t>(address), device->address_bits());
+  memcpy(buffer + prefix_length, tx.address() + from, length);
 
   device->ensure_config();
   if (device->dc() >= 0) pad_set(device->dc(), dc);
   if (device->cs() >= 0) pad_set(device->cs(), 0);
 
+  state->owner = device;
+  state->prefix_length = prefix_length;
   state->seq++;
   state->done = false;
   state->read = read;
@@ -457,12 +422,13 @@ PRIMITIVE(device_transfer_start) {
                      (void*)(uintptr_t)controller);
   SPI_SetNoBlock(controller);
   int32_t rc = SPI_TransferEx(controller, buffer, read ? buffer : null,
-                              length, /*IsBlock=*/0, /*UseDMA=*/1);
+                              total_length, /*IsBlock=*/0, /*UseDMA=*/1);
   if (rc != 0) {
     stop_transfer(controller, state);
     device->recover_after_abort();
     free(buffer);
     state->buffer = null;
+    state->owner = null;
     state->done = false;
     state->from = 0;
     state->length = 0;
@@ -470,53 +436,76 @@ PRIMITIVE(device_transfer_start) {
     state->keep_cs = false;
     FAIL(HARDWARE_ERROR);
   }
-  return process->true_object();
+  return process->null_object();
 }
 
-PRIMITIVE(device_transfer_finish) {
-  ARGS(SpiDevice, device, MutableBlob, rx_out);
-  int controller = device->controller();
-  SpiState* state = &spi_states[controller];
-  if (!state->active) FAIL(INVALID_ARGUMENT);
-
-  int result = 0;
-  if (!state->done) {
-    // The caller left its wait before completion (for example, an outer
-    // with-timeout canceled it). Stop DMA before releasing its buffer.
-    stop_transfer(controller, state);
-    device->recover_after_abort();
-    result = -1;
-  } else if (state->read) {
-    uint32_t n = state->length;
-    uint32_t available = state->from < (uint32_t)rx_out.length()
-        ? rx_out.length() - state->from
-        : 0;
-    if (n > available) n = available;
-    memcpy(rx_out.address() + state->from, state->buffer, n);
-  }
+static void release_transfer(SpiState* state) {
   state->active = false;
   free(state->buffer);
   state->buffer = null;
+  state->owner = null;
   state->done = false;
-  state->from = 0;
   state->length = 0;
   state->cs = -1;
   state->keep_cs = false;
-  return Primitive::integer(result, process);
+}
+
+PRIMITIVE(transfer_finish) {
+  ARGS(SpiDevice, device, MutableBlob, rx_out, int, from, bool, read);
+  SpiState* state = &spi_states[device->controller()];
+  if (!state->active || state->owner != device) FAIL(INVALID_STATE);
+  if (from < 0 || from > rx_out.length() ||
+      state->length > static_cast<uint32_t>(rx_out.length() - from)) FAIL(OUT_OF_BOUNDS);
+  if (!state->done) return process->false_object();
+  if (read && state->read) {
+    memcpy(rx_out.address() + from, state->buffer + state->prefix_length, state->length);
+  }
+  release_transfer(state);
+  return process->true_object();
+}
+
+PRIMITIVE(transfer_abort) {
+  ARGS(SpiDevice, device);
+  SpiState* state = &spi_states[device->controller()];
+  if (!state->active || state->owner != device) return process->true_object();
+  stop_transfer(device->controller(), state);
+  if (device->cs() >= 0) pad_set(device->cs(), 1);
+  device->recover_after_abort();
+  release_transfer(state);
+  return process->true_object();
 }
 
 PRIMITIVE(acquire_bus) {
-  ARGS(SpiResourceGroup, group);
-  USE(group);
-  // Single-master, transfers serialize naturally; reservation is a no-op.
-  return process->null_object();
+  ARGS(SpiDevice, device);
+  auto group = device->group();
+  SpiState* state = &spi_states[device->controller()];
+  if (state->active || group->reserved_device != null) return process->false_object();
+  group->reserved_device = device;
+  return process->true_object();
 }
 
 PRIMITIVE(release_bus) {
-  ARGS(SpiResourceGroup, group);
-  USE(group);
+  ARGS(SpiDevice, device);
+  if (device->group()->reserved_device != device) FAIL(INVALID_STATE);
+  device->group()->reserved_device = null;
+  if (device->cs() >= 0) pad_set(device->cs(), 1);
   return process->null_object();
 }
+
+PRIMITIVE(target_init) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_create) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_close) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_transfer_start) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(target_transfer_finish) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_create) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_arm) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_close) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_get) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_set) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_read) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_write) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_receive) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(buffer_target_dropped_receive_count) { FAIL(UNIMPLEMENTED); }
 
 }  // namespace toit
 
