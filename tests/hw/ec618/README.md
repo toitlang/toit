@@ -54,14 +54,15 @@ the classic ESP32's UART2 pins: only UART1 may carry control during SPI.
    address and forwards the independent UART1 lane on TCP port 18561. It also
    enables additional internal pull-ups on the connected I2C1 nets. For a permanent rig, fit external
    pull-ups appropriate to the wiring capacitance; internal pulls are weak.
-3. Start the host coordinator (requires Python and pyserial):
-   `python3 run-bus-rig.py --bridge <classic-ip> --target-port <verified-serial-port>`.
-   It waits for the S3 to boot and relays the existing CRC-protected EC618
+3. Install the host coordinator's dependencies with `toit pkg install` in this
+   directory, then start it:
+   `toit run run-bus-rig.toit -- --bridge <classic-ip> --target-port <verified-serial-port>`.
+   It waits for the target to boot and relays the existing CRC-protected EC618
    control frames. It never substitutes a verdict for missing target output.
 4. Run `bus-controller-ec618.toit` with the EC618 mini-jag tester. The default
    covers I2C, stretching/cancellation, and SPI. Arguments `i2c`, `speed`, `stretch`,
    or `spi` select one group. Restart the coordinator before another run;
-   opening the S3 adapter resets the fixture and releases its previous role.
+   the coordinator resets the target over RTS and releases its previous role.
 
 The tests compare both SPI directions, prefixes (including a zero-valued
 four-bit command followed by a four-bit address), slice sentinels, all four
