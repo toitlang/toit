@@ -7,9 +7,11 @@ class MyClass:
 /*
       @ def
       ^
-  [def, return-type, make-call, instantiation]
+  [def, nullable, nullable-local, return-type, make-call, instantiation]
 */
   field := 0
+  my-class/MyClass? := null
+/*         @ nullable */
 
   member -> int:
     return field
@@ -24,6 +26,8 @@ main:
 /*
          @ instantiation
          ^
-  [def, return-type, make-call, instantiation]
+  [def, nullable, nullable-local, return-type, make-call, instantiation]
 */
   obj.member
+  nullable-local/MyClass? := null
+/*               @ nullable-local */

@@ -71,6 +71,10 @@ static bool range_matches_name(const Source::Range& range,
 
 static Source::Range class_reference_range(ast::Expression* expression) {
   if (expression == null) return Source::Range::invalid();
+  // `Foo?` wraps the type; the reference is the inner name.
+  if (expression->is_Nullable()) {
+    return class_reference_range(expression->as_Nullable()->type());
+  }
   if (expression->is_Dot()) {
     return expression->as_Dot()->name()->selection_range();
   }
@@ -816,8 +820,8 @@ void FindReferencesVisitor::visit_Typecheck(ir::Typecheck* node) {
         node->kind() == ir::Typecheck::AS_CHECK ||
         node->kind() == ir::Typecheck::LOCAL_AS_CHECK) {
       auto* ast_type = ir_to_ast_map_.lookup(node);
-      if (ast_type != null) {
-        emit_range(ast_type->selection_range());
+      if (ast_type != null && ast_type->is_Expression()) {
+        emit_range(class_reference_range(ast_type->as_Expression()));
       }
     }
     // For PARAMETER_AS_CHECK, RETURN_AS_CHECK, and FIELD_* checks, the
