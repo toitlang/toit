@@ -44,9 +44,14 @@ static Source* source_for_range(const Source::Range& range,
   return source_manager->source_for_position(range.from());
 }
 
+// Returns whether the text of the range is exactly the expected name.
+// With allow_prefix, `prefix.Name` matches as well; the visitor trims
+// emitted ranges to the name's length, so such a range yields exactly
+// the name.
 static bool range_matches_name(const Source::Range& range,
                                const char* expected,
-                               SourceManager* source_manager) {
+                               SourceManager* source_manager,
+                               bool allow_prefix = false) {
   if (!range.is_valid() || expected == null) return false;
   auto* source = source_manager->source_for_position(range.from());
   if (source == null) return false;
@@ -57,10 +62,15 @@ static bool range_matches_name(const Source::Range& range,
 
   const uint8* text = source->text();
   int expected_len = static_cast<int>(strlen(expected));
-  if ((to - from) != expected_len) return false;
+  int name_from = to - expected_len;
+  if (name_from < from) return false;
+  if (name_from != from) {
+    if (!allow_prefix) return false;
+    if (static_cast<char>(text[name_from - 1]) != '.') return false;
+  }
 
   for (int i = 0; i < expected_len; i++) {
-    char actual = static_cast<char>(text[from + i]);
+    char actual = static_cast<char>(text[name_from + i]);
     char wanted = expected[i];
     if (actual == wanted) continue;
     if ((actual == '_' && wanted == '-') || (actual == '-' && wanted == '_')) continue;
@@ -749,11 +759,21 @@ void FindReferencesVisitor::visit_CallStatic(ir::CallStatic* node) {
     }
     if (ast_target != null) {
       if (ast_target->is_Dot()) {
-        auto* receiver = ast_target->as_Dot()->receiver();
-        if (receiver->is_Identifier()) {
+        auto* dot = ast_target->as_Dot();
+        auto* receiver = dot->receiver();
+        if (is_unnamed_constructor_or_factory(method) &&
+            range_matches_name(dot->name()->selection_range(),
+                               target_class_->name().c_str(),
+                               source_manager_)) {
+          // `prefix.Class`: the class name is the dot's name.
+          emit_range(dot->name()->selection_range());
+          emitted = true;
+        } else if (receiver->is_Identifier()) {
+          // `Class.member`.
           emit_range(receiver->selection_range());
           emitted = true;
         } else if (receiver->is_Dot()) {
+          // `prefix.Class.member`.
           emit_range(receiver->as_Dot()->name()->selection_range());
           emitted = true;
         }
@@ -770,7 +790,11 @@ void FindReferencesVisitor::visit_CallStatic(ir::CallStatic* node) {
       // compiler for classes that extend another without an explicit
       // constructor) may have synthesized ranges that don't correspond to
       // the class name.
-      if (range_matches_name(node->range(), target_class_->name().c_str(), source_manager_)) {
+      // The no-argument `prefix.Class` form is a Dot expression, not a
+      // call, so it is not in the ir_to_ast map; its range ends with the
+      // class name.
+      if (range_matches_name(node->range(), target_class_->name().c_str(), source_manager_,
+                             /*allow_prefix=*/true)) {
         emit_range(node->range());
       }
     }

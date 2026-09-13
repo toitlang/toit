@@ -4,12 +4,25 @@
 
 import .cross-file-class-rename-test-dep show Gadget
 /*                                            @ show */
+import .cross-file-class-rename-test-dep as dep
 
 main:
   g := Gadget
 /*
        @ use
        ^
-  [def, type-param, type-return, ctor-call, show, use]
+  [def, type-param, type-return, ctor-call, show, use, prefixed-args, prefixed-noargs]
 */
   print g.value
+  a := dep.Gadget 1
+/*
+           @ prefixed-args
+           ^
+  [def, type-param, type-return, ctor-call, show, use, prefixed-args, prefixed-noargs]
+*/
+  b := dep.Gadget
+/*
+           @ prefixed-noargs
+           ^
+  [def, type-param, type-return, ctor-call, show, use, prefixed-args, prefixed-noargs]
+*/
