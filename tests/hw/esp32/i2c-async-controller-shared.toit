@@ -66,9 +66,13 @@ test-board1:
   expect-not (found.contains MISSING-ADDRESS)
   print "Async I2C: probe and scan complete"
 
+  // Tight alternation catches combined NACK/STOP completion and stale error
+  // state at the next start. Keep the deadline outside the transfer loop.
   missing := bus.device MISSING-ADDRESS
-  expect-throw "I2C_NACK": missing.write #[1]
-  expect-throw "I2C_NACK": missing.read 1
+  with-timeout --ms=2_000:
+    100.repeat:
+      expect-throw "I2C_NACK": missing.write #[1]
+      expect-throw "I2C_NACK": missing.read 1
   missing.close
 
   // This is an exposed controller configuration, and also verifies that the
