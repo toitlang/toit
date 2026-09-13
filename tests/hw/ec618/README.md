@@ -11,9 +11,8 @@ Dual-board tests normally use a pair of files:
 The test files contain the assertions and protocol, not host-specific launch
 commands or serial-port names. See
 [the EC618 rig guide](../../../docs/ec618-rig-guide.md) for the current way to
-identify each board, launch a test, and recover either rig. See
-[the hardware-test plan](../../../docs/ec618-hw-tests.md) for the authoritative
-wiring and coverage matrix.
+identify each board, launch a test, and recover either rig. The same guide
+records the wiring and regression groups.
 
 Executable tests import their physical signal assignments from
 [`wiring.toit`](wiring.toit). Add a function-named signal there instead of
@@ -27,8 +26,8 @@ and some board contacts mirror the same net. Tests that depend on a particular
 wire use the shared wiring data.
 
 The chip-level GPIO/PAD mapping comes from the EC618 CSDK's complete
-`allGpioMap` example table and its `GPIO_ToPadEC618` helper. The hardware-test
-plan records the separate board-level evidence: which Air780E connector
+`allGpioMap` example table and its `GPIO_ToPadEC618` helper. The rig guide
+records the separate board-level evidence: which Air780E connector
 contact reaches which pad, and which contacts are mirrors of the same net.
 
 The rig uses 3.3 V digital IO on both the EC618 and ESP32. EC618 AIO3/AIO4 are
