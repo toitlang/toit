@@ -205,8 +205,18 @@ restart:
         // We went back to the start of source data we were trying to fit in
         // the destination chunk, and not even the first line could fit.  Time
         // to move to the next destination chunk.
-        dest.chunk()->set_compaction_top(dest.address);
+        // If we arrived here straight after a chunk switch, dest.address is
+        // still biased below the chunk start to account for the tail of an
+        // object placed in an earlier chunk (see below).  Nothing was placed
+        // in this chunk, so its top is its start, and the bias must carry over
+        // to the next chunk since the source line is unchanged.
+        uword bias = 0;
+        if (dest.address < dest.chunk()->start()) {
+          bias = dest.chunk()->start() - dest.address;
+        }
+        dest.chunk()->set_compaction_top(dest.address + bias);
         dest = dest.next_chunk();
+        dest.address -= bias;
         goto restart;
       }
       dest_table--;
