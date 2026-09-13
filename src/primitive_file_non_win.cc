@@ -13,9 +13,10 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-#include "top.h"
-
+// Define before every header so 32-bit POSIX hosts use 64-bit directory offsets.
 #define _FILE_OFFSET_BITS 64
+
+#include "top.h"
 
 #include "primitive_file.h"
 #include "primitive.h"
