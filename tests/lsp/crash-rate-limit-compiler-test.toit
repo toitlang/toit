@@ -16,7 +16,8 @@ main args:
       // We are modifying LSP server internal state. As such, we can't run
       //   the server as a separate process.
       --no-spawn-process:
-    test-rate-limiting it --with-server-process
+    | client mock-compiler |
+    test-rate-limiting client mock-compiler --with-server-process
 
   print "All done"
 
@@ -24,8 +25,7 @@ main args:
   //   for RPC calls.
   exit 0
 
-test-rate-limiting client/LspClient --with-server-process/bool=false:
-  mock-compiler := MockCompiler client
+test-rate-limiting client/LspClient mock-compiler/MockCompiler --with-server-process/bool=false:
 
   client.send-reset-crash-rate-limit
 
@@ -44,7 +44,7 @@ test-rate-limiting client/LspClient --with-server-process/bool=false:
     client.send-did-open --path=path
 
   print "sending mock for analyze"
-  mock-compiler.set-analysis-result "CRASH\n"
+  mock-compiler.set-analysis-result --crash
 
   semaphore := monitor.Semaphore
 

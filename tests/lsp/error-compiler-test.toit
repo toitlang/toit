@@ -7,14 +7,16 @@ import .mock-compiler
 import expect show *
 
 main args:
-  run-client-test args --use-mock: test it --error-handler-path="window/showMessage"
+  run-client-test args --use-mock: | client mock-compiler |
+    test client mock-compiler --error-handler-path="window/showMessage"
+
   run-client-test args
       --use-mock
-      --pre-initialize=: it.configuration["shouldWriteReproOnCrash"] = false:
-    test it --error-handler-path="window/logMessage"
+      --pre-initialize=(: it.configuration["shouldWriteReproOnCrash"] = false):
+    | client mock-compiler |
+    test client mock-compiler --error-handler-path="window/logMessage"
 
-test client/LspClient --error-handler-path/string:
-  mock-compiler := MockCompiler client
+test client/LspClient mock-compiler/MockCompiler --error-handler-path/string:
 
   UNEXPECTED-ERROR-LINE ::= "unexpected line that should be reported as error"
 

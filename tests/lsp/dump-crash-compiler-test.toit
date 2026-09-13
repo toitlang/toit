@@ -21,10 +21,10 @@ binary-contains-string byte-array/ByteArray needle/string -> bool:
   return false
 
 main args:
-  run-client-test args --use-mock: test it
+  run-client-test args --use-mock: | client mock-compiler |
+    test client mock-compiler
 
-test client/LspClient:
-  mock-compiler := MockCompiler client
+test client/LspClient mock-compiler/MockCompiler:
 
   protocol1 := "$(directory.cwd)/protocol1.toit"
   protocol2 := "$(directory.cwd)/protocol2.toit"
@@ -41,8 +41,7 @@ test client/LspClient:
     client.send-did-open --path=path
 
   print "sending mock for analyze"
-  mock-compiler.set-analysis-result "CRASH\n"
-  mock-compiler.set-dump-file-names-result "CRASH\n$protocol1\n"
+  mock-compiler.set-analysis-result --crash
 
   semaphore := monitor.Semaphore
 

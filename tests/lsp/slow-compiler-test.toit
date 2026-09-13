@@ -2,90 +2,62 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+// Tests that the diagnostics of an outdated analysis are discarded.
+
 import .lsp-client show LspClient run-client-test
 import .mock-compiler
 import expect show *
 import monitor
 
 main args:
-  run-client-test args --use-mock: test it
+  run-client-test args --use-mock: | client mock-compiler |
+    test client mock-compiler
 
-test client/LspClient:
-  // We want to send multiple requests overlapping each other, so we
-  //   must not automatically wait for idle.
+test client/LspClient mock-compiler/MockCompiler:
+  // The analyses must overlap, so we must not wait for idle in between.
   client.always-wait-for-idle = false
-  mock-compiler := MockCompiler client
 
   uri := "untitled:Untitled-1"
   path := client.to-path uri
 
-  mutex := monitor.Mutex
-  response-counter := 0
-  last-clean-diagnostics := -1
-  last-error-diagnostics := -1
-  client.install-handler "textDocument/publishDiagnostics":: |params|
-    // The mutex makes it cleaner to do the checks below with clean data.
-    // Without any printing/logging we don't need it, but it's safer to
-    //   prepare for such code.
-    mutex.do:
-      diagnostics-uri := params["uri"]
-      if diagnostics-uri == uri:
-        if params["diagnostics"].is-empty:
-          last-clean-diagnostics = response-counter
-        else:
-          last-error-diagnostics = response-counter
-        response-counter++
+  diagnostics-count := 0
+  error-diagnostics-count := 0
+  clean-diagnostics := monitor.Latch
+  client.install-handler "textDocument/publishDiagnostics":: | params |
+    if params["uri"] == uri:
+      diagnostics-count++
+      if params["diagnostics"].is-empty:
+        if not clean-diagnostics.has-value: clean-diagnostics.set true
+      else:
+        error-diagnostics-count++
 
-  sleep-us := 10
-  first-diagnostics-was-ignored := false
-  while sleep-us < 1000_000:
-    deps := []
-    error-diagnostics := [
-      MockDiagnostic --path=path "Unresolved identifier: 'foo' RESPONSE FROM MOCK" 1 2 1 5,
-    ]
-    clean-diagnostics := []
+  deps := []
+  error-diagnostics := [
+    MockDiagnostic --path=path "Unresolved identifier: 'foo' RESPONSE FROM MOCK" 1 2 1 5,
+  ]
+  mock-compiler.set-mock-data --path=path (MockData error-diagnostics deps)
+  error-answer := mock-compiler.build-analysis-answer --path=path
+  mock-compiler.set-mock-data --path=path (MockData [] deps)
+  clean-answer := mock-compiler.build-analysis-answer --path=path
 
-    error-mock-data := MockData error-diagnostics deps
-    mock-compiler.set-mock-data --path=path error-mock-data
-    error-answer := mock-compiler.build-analysis-answer --delay-us=sleep-us --path=path
+  // The analysis of the 'didOpen' waits for us, and can thus not finish before
+  // the change below has been analyzed.
+  mock-compiler.set-analysis-result --sync error-answer
+  client.send-did-open --uri=uri --text="""
+    Completely ignored content.
+  """
+  mock-compiler.wait-for-waiting 1
 
-    clean-mock-data := MockData clean-diagnostics deps
-    mock-compiler.set-mock-data --path=path clean-mock-data
-    clean-answer := mock-compiler.build-analysis-answer --delay-us=sleep-us --path=path
+  // The change starts a newer analysis, which finishes first.
+  mock-compiler.set-analysis-result clean-answer
+  client.send-did-change --uri=uri """
+    Also completely ignored
+  """
+  clean-diagnostics.get
 
-    mock-compiler.set-analysis-result error-answer
-
-    client.wait-for-idle
-
-    current-response-counter := response-counter
-
-    client.send-did-open --uri=uri --text="""
-      Completely ignored content.
-    """
-
-    // Give the server a chance to launch the mock-compiler with the error-mock data.
-    sleep --ms=sleep-us / 1000 / 2
-
-    mock-compiler.set-analysis-result clean-answer
-
-    client.send-did-change --uri=uri """
-      Also completely ignored
-    """
-
-    client.wait-for-idle
-
-    client.send-did-close --path=path
-
-    mutex.do:
-      expect last-clean-diagnostics >= current-response-counter
-      // Sometimes the mock-update happened before the mock-compiler was run,
-      //   and we get two clean diagnostics.
-      // The test only succeeds if we end up with just one diagnostic.
-      if response-counter == current-response-counter + 1:
-        expect last-error-diagnostics < current-response-counter
-        first-diagnostics-was-ignored = true
-        break
-    sleep-us *= 2
-  expect first-diagnostics-was-ignored
-
+  // The outdated analysis must not publish its diagnostics anymore.
+  mock-compiler.release-all
+  client.always-wait-for-idle = true
   client.wait-for-idle
+  expect-equals 0 error-diagnostics-count
+  expect-equals 1 diagnostics-count
