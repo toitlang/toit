@@ -452,6 +452,8 @@ extern void slpManStartPowerOff(void);
 extern void slpManUnregisterPredefinedBackupCb(void);
 extern void slpManUnregisterPredefinedRestoreCb(void);
 extern void slpManUpdatePmuTimingCfg(void);
+// Fixed-precision float formatting needs newlib-nano's optional formatter.
+extern void _printf_float(void);
 extern void snprintf(void);
 extern void soc_call_function_in_service(void);
 extern void soc_cms_proc(void);
@@ -952,6 +954,7 @@ const void* const toit_plat_keep[] = {
   (const void*)&slpManUnregisterPredefinedBackupCb,
   (const void*)&slpManUnregisterPredefinedRestoreCb,
   (const void*)&slpManUpdatePmuTimingCfg,
+  (const void*)&_printf_float,
   (const void*)&snprintf,
   (const void*)&soc_call_function_in_service,
   (const void*)&soc_cms_proc,

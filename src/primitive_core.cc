@@ -768,7 +768,7 @@ static void int64_to_string(char* buffer, size_t size, int64 value, int base) {
   uint64 uval;
   if (base == 10 && value < 0) {
     negative = true;
-    uval = static_cast<uint64>(-value);
+    uval = uint64(0) - static_cast<uint64>(value);
   } else {
     uval = static_cast<uint64>(value);
   }
@@ -789,7 +789,7 @@ static Object* printf_style_integer_to_string(Process* process, int64 value, int
   char buffer[70];
 #ifdef TOIT_EC618
   // Newlib nano doesn't support 64-bit format specifiers.
-  // Use manual conversion for values that don't fit in int.
+  // Hexadecimal and octal formatting preserve all 64 bits of negative values.
   if (base == 2) {
     char* p = buffer;
     int first_bit = value == 0 ? 0 : 63 - Utils::clz(value);
@@ -797,7 +797,7 @@ static Object* printf_style_integer_to_string(Process* process, int64 value, int
       *p++ = '0' + ((value >> i) & 1);
     }
     *p++ = '\0';
-  } else if (value >= INT_MIN && value <= INT_MAX && base != 2) {
+  } else if (value >= INT_MIN && value <= INT_MAX && (base == 10 || value >= 0)) {
     int v = static_cast<int>(value);
     switch (base) {
       case 8:  snprintf(buffer, sizeof(buffer), "%o", static_cast<unsigned>(v)); break;
@@ -877,8 +877,20 @@ PRIMITIVE(int64_to_string) {
 PRIMITIVE(uint64_to_string) {
   ARGS(int64, value);
   char buffer[70];
+#ifdef TOIT_EC618
+  // Newlib nano does not implement the unsigned 64-bit format specifier.
+  uint64 remaining = static_cast<uint64>(value);
+  char* start = buffer + sizeof(buffer);
+  *--start = '\0';
+  do {
+    *--start = '0' + remaining % 10;
+    remaining /= 10;
+  } while (remaining != 0);
+  return process->allocate_string_or_error(start);
+#else
   snprintf(buffer, sizeof(buffer), "%" PRIu64, static_cast<uint64>(value));
   return process->allocate_string_or_error(buffer);
+#endif
 }
 
 PRIMITIVE(large_integer_add) {

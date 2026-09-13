@@ -34,3 +34,8 @@ target(TARGET_NAME)
         LIB_USER = LIB_USER .. TOIT_BUILD .. "/mbedtls/library/libmbedcrypto.a "
     end
 target_end()
+
+-- The SDK's prebuilt kernel only aligns task stacks to four bytes.
+target(TARGET_NAME .. ".elf")
+    add_ldflags("-Wl,--wrap=pxPortInitialiseStack", {force = true})
+target_end()

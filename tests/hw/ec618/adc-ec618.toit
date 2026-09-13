@@ -71,7 +71,7 @@ test-channel ch/int -> bool:
   sorted := readings.sort
   spread := sorted.last - sorted.first
   if spread < LIVE-SPREAD-MIN:
-    print "adc-ec618: channel $ch  spread=$(spread)V too small — no DAC swing seen (check wiring/divider) -> FAIL"
+    print "adc-ec618: channel $ch  spread=$(%.3f spread)V too small — no DAC swing seen (check wiring/divider) -> FAIL"
     return false
 
   // 2-point self-calibration from the extreme DAC levels. The lowest/highest
@@ -87,7 +87,7 @@ test-channel ch/int -> bool:
   // levels never share samples (assumes ratio is not tiny; our rig is ~0.5-0.9).
   pin-step := ratio * (DAC-LEVELS[1] - DAC-LEVELS[0])
   window := pin-step * 0.4
-  print "adc-ec618: channel $ch  divider ratio=$(ratio)  (DAC $(dac-low)..$(dac-high)V -> pin $(m-low)..$(m-high)V)"
+  print "adc-ec618: channel $ch  divider ratio=$(%.3f ratio)  (DAC $(%.3f dac-low)..$(%.3f dac-high)V -> pin $(%.3f m-low)..$(%.3f m-high)V)"
 
   ok := true
   for i := 1; i < DAC-LEVELS.size - 1; i++:
@@ -95,13 +95,13 @@ test-channel ch/int -> bool:
     predicted := offset + ratio * dac-v
     plateau := readings.filter: | r | (r - predicted).abs <= window
     if plateau.size < MIN-PLATEAU-SAMPLES:
-      print "adc-ec618: channel $ch  DAC=$(dac-v)V  predicted $(predicted)V  only $plateau.size samples near it -> FAIL"
+      print "adc-ec618: channel $ch  DAC=$(%.3f dac-v)V  predicted $(%.3f predicted)V  only $plateau.size samples near it -> FAIL"
       ok = false
       continue
     measured := median plateau
     err := (measured - predicted).abs
     mark := err <= MATCH-DELTA ? "ok" : "FAIL"
-    print "adc-ec618: channel $ch  DAC=$(dac-v)V  predicted $(predicted)V  measured $(measured)V  err $(err)V  $mark"
+    print "adc-ec618: channel $ch  DAC=$(%.3f dac-v)V  predicted $(%.3f predicted)V  measured $(%.3f measured)V  err $(%.3f err)V  $mark"
     if err > MATCH-DELTA: ok = false
 
   return ok
