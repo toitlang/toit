@@ -31,7 +31,7 @@ main:
   resize-resource := terminal-resize-watch_ resize-group 1
   resize-state := monitor.ResourceState_ resize-group resize-resource
   print "WATCHING"
-  assert: resize-state.wait-for-state RESIZE-EVENT == RESIZE-EVENT
+  assert: (resize-state.wait-for-state RESIZE-EVENT) == RESIZE-EVENT
   assert-size_ 1 100 30
   resize-state.dispose
   terminal-resize-unwatch_ resize-resource resize-group
