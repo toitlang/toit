@@ -35,6 +35,9 @@
 #elif CONFIG_IDF_TARGET_ESP32C6
   #include <esp32c6/rom/ets_sys.h>
   #include <esp32c6/rtc.h>
+#elif CONFIG_IDF_TARGET_ESP32P4
+  #include <esp32p4/rom/ets_sys.h>
+  #include <esp32p4/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32S2
   #include <esp32s2/rom/ets_sys.h>
   #include <esp32s2/rtc.h>
