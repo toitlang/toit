@@ -1,5 +1,15 @@
 # EC618 hardware tests — living plan
 
+## Current programmable bus fixture
+
+As of September 2026, the RC522 and BME280 are no longer installed. The dated
+sensor results below record earlier bring-up; they do not validate the current
+async backend. See the [fixture instructions](../tests/hw/ec618/README.md#programmable-i2cspi-fixture)
+and [`wiring.toit`](../tests/hw/ec618/wiring.toit) for the replacement ESP32-S3
+I2C1/SPI target, the classic ESP32 I2C0 target, and current test entry points.
+New backend hardware validation remains pending until the matching EC618
+base and firmware can be flashed.
+
 Goal: grow real hardware-in-the-loop coverage for the EC618, and implement the
 missing peripheral functionality the tests exercise. This is a **living
 document** — update it as tests/peripherals land or as the setup changes.

@@ -51,7 +51,7 @@ main args:
   // the native bus resource, so callers do not need to close each child.
   child := bus.device 0x41 --frequency=100_000
   bus.close
-  expect-throw "CLOSED": child.write #[]
+  expect-throw "CLOSED": child.write #[0]
   child.close  // Closing an already-invalidated child remains idempotent.
 
   // The controller reservation, not a particular routing, was released.

@@ -14,8 +14,7 @@ Drives real I2C0 traffic — full address scans — through pads 14 (SDA) /
 The bus has no devices (the wires go straight to ESP32 inputs), so the
   local pass criteria are: the bus opens, every scan completes EMPTY (112
   clean NACKs each — no wedge, no phantom device), and closing is clean.
-  This is the first real-transaction proof of the I2C0 controller; bmp280
-  covered I2C1 only.
+  The S3 register-target tests exercise I2C1 separately.
 
 Internal pull-ups both sides (--pull-up here; the ESP32 pulls its
   observer pins up too) keep the open-drain bus high.

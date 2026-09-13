@@ -20,12 +20,7 @@ For every ordinary dev-board GPIO net, this program:
 1. Drives a pulse train while the ESP32 observes every safe connected input.
 2. Configures the EC618 pad as input before asking the ESP32 to drive low/high.
 
-PAD42's ESP32 connection controls the loaded sensor-power path and is not
-  bidirectionally observable as logic. Its input direction is covered here; its
-  output direction is covered by `gpio-aon-output-ec618.toit`, which proves that
-  it powers the BMP280 across two cycles. After the PAD42 input phase, this test
-  holds the sensor rail high so GPIO tests on its SDA/SCL wires cannot
-  parasitically power the sensor and appear as false cross-net edges.
+PAD42 is now an ordinary observed GPIO net; the sensor load was removed.
 
 Dedicated pads verify the two supported pull paths after the ESP32 has driven
   the opposite level and acknowledged its release: wake-domain PAD42 for
@@ -72,7 +67,6 @@ main:
   control.send "HELLO 1"
   control.expect "READY 1"
 
-  sensor-power/gpio.Pin? := null
   try:
     wiring.GPIO-TEST-WIRES.do: | wire/List |
       pad/int := wire[0]
@@ -80,15 +74,8 @@ main:
       expected/List := wire.size == 3 ? wire[2] : direct
       if pad == wiring.EC618-UART1-TX-PAD:
         control = switch-control control 2
-      if pad != wiring.EC618-GPIO22-PAD:
-        test-output control pad direct expected
+      test-output control pad direct expected
       test-input control pad
-      if pad == wiring.EC618-GPIO22-PAD:
-        sensor-power = gpio.Pin pad --output --value=1
-
-    if sensor-power:
-      sensor-power.close
-      sensor-power = null
     down-pad := wiring.EC618-GPIO-PULL-DOWN-TEST-PAD
     down-result := test-pulls control down-pad
     if not down-result[0]: throw "PAD$down-pad pull-down did not settle low"
@@ -99,9 +86,8 @@ main:
     control.send "Q"
     control.expect "BYE"
   finally:
-    if sensor-power: sensor-power.close
     control.close
-  print "gpio-map-ec618: PASS ordinary GPIO nets both ways, PAD42 input, pull-up, and pull-down"
+  print "gpio-map-ec618: PASS GPIO nets both ways, including PAD42, pull-up, and pull-down"
 
 switch-control old/Control id/int -> Control:
   replacement := Control id
