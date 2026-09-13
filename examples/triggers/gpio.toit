@@ -14,7 +14,6 @@ Start the program, and let the device go into deep sleep.
 Connect pin 32 to 3.3V. The device should wake up again.
 */
 
-import gpio
 import esp32
 
 WAKEUP-PIN ::= 32
@@ -28,9 +27,7 @@ main:
   else:
     print "Woken up for other reasons: $esp32.wakeup-cause"
 
-  pin := gpio.Pin WAKEUP-PIN
-  mask := 0
-  mask |= 1 << pin.num
+  mask := 1 << WAKEUP-PIN
 
   esp32.enable-external-wakeup mask true
 

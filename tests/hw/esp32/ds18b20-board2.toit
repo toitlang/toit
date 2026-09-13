@@ -4,7 +4,6 @@
 
 import ds18b20
 import expect show *
-import gpio
 
 import .test
 import .variants
@@ -13,7 +12,7 @@ main:
   run-test: test
 
 test:
-  data := gpio.Pin Variant.CURRENT.board2-ds18b20-pin
+  data := Variant.CURRENT.board2-ds18b20-pin
   driver := ds18b20.Ds18b20 data
 
   2.repeat:

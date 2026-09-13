@@ -25,7 +25,7 @@ main:
 test:
   measure-pin := gpio.Pin MEASURE-PIN --input
   test-pin := gpio.Pin TEST-PIN --output
-  level-pin := gpio.Pin LEVEL-PIN  // Will be reconfigured.
+  level-pin := gpio.Pin LEVEL-PIN --input  // Will be reconfigured.
   try:
     test-gpio
         --test-pin=test-pin

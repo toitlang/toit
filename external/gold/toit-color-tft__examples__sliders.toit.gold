@@ -1,0 +1,6 @@
+toit-color-tft/examples/get-display.toit:28:34: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+    return gpio.InvertedPin (gpio.Pin -num)
+                                 ^~~~
+toit-color-tft/examples/get-display.toit:29:14: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+  return gpio.Pin num
+             ^~~~

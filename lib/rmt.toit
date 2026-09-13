@@ -1104,7 +1104,7 @@ class ChannelInOut:
     // it). The pin is passed through an `any` variable so the channels'
     // deprecated-Pin warning doesn't trigger.
     if pin is int:
-      this.pin = gpio.Pin pin
+      this.pin = gpio.Pin pin --input
       owns-pin_ = true
     else:
       this.pin = pin as gpio.Pin

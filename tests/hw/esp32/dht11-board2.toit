@@ -3,7 +3,6 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-import gpio
 import dhtxx.dht11
 
 import .test
@@ -13,7 +12,7 @@ main:
   run-test: test
 
 test:
-  data := gpio.Pin Variant.CURRENT.board2-dht11-pin
+  data := Variant.CURRENT.board2-dht11-pin
   driver := dht11.Dht11 data
 
   2.repeat:

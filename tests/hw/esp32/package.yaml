@@ -4,13 +4,13 @@ dependencies:
     version: ^1.0.0
   dhtxx:
     url: github.com/toitware/toit-dhtxx
-    version: ^1.10.0
+    version: ^1.11.0
   ds18b20:
     url: github.com/toitware/toit-ds18b20
-    version: ^2.1.0
+    version: ^2.2.0
   hc_sr04:
     url: github.com/lask/toit-hc-sr04
-    version: ^2.2.0
+    version: ^2.3.0
   pixel_strip:
     url: github.com/toitware/toit-pixel-strip
     version: ^1.4.0

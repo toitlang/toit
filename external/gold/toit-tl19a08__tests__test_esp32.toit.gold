@@ -1,0 +1,6 @@
+toit-tl19a08/tests/test_esp32.toit:61:16: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+      --rx=gpio.Pin RX
+               ^~~~
+toit-tl19a08/tests/test_esp32.toit:62:16: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+      --tx=gpio.Pin TX
+               ^~~~

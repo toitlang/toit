@@ -1,0 +1,18 @@
+HD44780/examples/example_20x4.toit:18:18: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+      --en = gpio.Pin EN-PIN
+                 ^~~~
+HD44780/examples/example_20x4.toit:19:18: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+      --rs = gpio.Pin RS-PIN
+                 ^~~~
+HD44780/examples/example_20x4.toit:20:18: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+      --d4 = gpio.Pin D4-PIN
+                 ^~~~
+HD44780/examples/example_20x4.toit:21:18: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+      --d5 = gpio.Pin D5-PIN
+                 ^~~~
+HD44780/examples/example_20x4.toit:22:18: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+      --d6 = gpio.Pin D6-PIN
+                 ^~~~
+HD44780/examples/example_20x4.toit:23:18: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+      --d7 = gpio.Pin D7-PIN
+                 ^~~~

@@ -7,7 +7,7 @@
 import gpio
 
 main:
-  pin := gpio.Pin 18
+  pin := gpio.Pin 18 --input
   num := pin.num
 /*         ^
   []

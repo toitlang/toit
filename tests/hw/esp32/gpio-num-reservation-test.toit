@@ -28,10 +28,10 @@ test:
   // New integer API: the peripheral reserves the pin.
   out := rmt.Out PIN --resolution=1_000_000
   // The pin is now taken: opening it as a gpio.Pin must fail.
-  expect-throw "ALREADY_IN_USE": gpio.Pin PIN
+  expect-throw "ALREADY_IN_USE": gpio.Pin PIN --input
   out.close
   // After closing the peripheral the pin is free again.
-  pin := gpio.Pin PIN
+  pin := gpio.Pin PIN --input
   pin.close
 
   // The pin can be handed to a new peripheral after the first one released it.
@@ -40,12 +40,12 @@ test:
 
   // Deprecated path: the gpio.Pin owns the reservation; the peripheral reuses
   // it without taking ownership.
-  deprecated-pin := gpio.Pin PIN
+  deprecated-pin := gpio.Pin PIN  // @no-warn
   out3 := rmt.Out deprecated-pin --resolution=1_000_000
   out3.close
   // Closing the peripheral must not release a pin it doesn't own.
-  expect-throw "ALREADY_IN_USE": gpio.Pin PIN
+  expect-throw "ALREADY_IN_USE": gpio.Pin PIN --input
   deprecated-pin.close
   // Now it is free again.
-  pin2 := gpio.Pin PIN
+  pin2 := gpio.Pin PIN --input
   pin2.close

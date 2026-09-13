@@ -158,14 +158,6 @@ if (DEFINED EXECUTING_SCRIPT)
         COMMAND_ERROR_IS_FATAL ANY
       )
     endif()
-    # If bin/version.toit.in (or app/version.toit.in) exists, copy it to
-    # bin/version.toit (resp. app/version.toit).
-    foreach(LOCATION "app" "bin")
-      set(LOCATION_PATH "${REPO_PATH}/${LOCATION}")
-      if (EXISTS "${LOCATION_PATH}/version.toit.in")
-        configure_file("${LOCATION_PATH}/version.toit.in" "${LOCATION_PATH}/version.toit" COPYONLY)
-      endif()
-    endforeach()
   else()
     message(FATAL_ERROR "Unknown script command ${SCRIPT_COMMAND}")
   endif()
@@ -235,6 +227,14 @@ function(find_toit_projects directory)
   function(process_directory current_dir project_name)
     # Check if package.yaml or package.lock exists in the current directory.
     if(EXISTS "${current_dir}/package.yaml" OR EXISTS "${current_dir}/package.lock")
+      # Prepare version files for both top-level and nested projects before
+      # collecting their health tests.
+      foreach(LOCATION "app" "bin")
+        set(LOCATION_PATH "${current_dir}/${LOCATION}")
+        if (EXISTS "${LOCATION_PATH}/version.toit.in")
+          configure_file("${LOCATION_PATH}/version.toit.in" "${LOCATION_PATH}/version.toit" COPYONLY)
+        endif()
+      endforeach()
       toit_project("${project_name}" "${current_dir}")
     endif()
 
@@ -317,7 +317,14 @@ endforeach()
 
 include("${TOIT_SDK_SOURCE_DIR}/tests/tools/health.cmake")
 
-file(GLOB_RECURSE HEALTH_SOURCES "${CMAKE_CURRENT_LIST_DIR}/*.toit")
+# Only check configured repositories. Old or disabled repositories can still
+# have cached checkouts in the downloads directory.
+set(HEALTH_SOURCES)
+foreach(REPO ${TOIT_REPOS})
+  get_filename_component(REPO_NAME "${REPO}" NAME)
+  file(GLOB_RECURSE REPO_HEALTH_SOURCES "${DOWNLOADS_DIR}/${REPO_NAME}/*.toit")
+  list(APPEND HEALTH_SOURCES ${REPO_HEALTH_SOURCES})
+endforeach()
 
 foreach(FILE ${HEALTH_SOURCES})
   if (FILE MATCHES "/[.]packages/")
