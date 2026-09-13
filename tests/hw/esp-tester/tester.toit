@@ -897,13 +897,21 @@ class Ec618Link:
     send CMD-BAUD
     writer_.write header
     timeout-error := catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
-      if (read-ack --timeout-ms=2000) == ACK-OK:
-        port_.baud-rate = baud
-        log "$name_: control UART now at $baud baud"
-        // The agent's "baud=" status line arrives at the new rate; a
-        // mismatch would surface here as garbage instead of an ack later.
-        drain --quiet-ms=300
-        return true
+      with-timeout --ms=2000:
+        while true:
+          ack := read-ack --timeout-ms=2000
+          // A keep-alive ping can reach the agent just after the test exits.
+          // Its PONG precedes this command's ACK at the old baud.
+          if ack == ACK-PONG: continue
+          if ack != ACK-OK:
+            log "$name_: unexpected baud-switch acknowledgement '$(printable_ ack)'"
+            break
+          port_.baud-rate = baud
+          log "$name_: control UART now at $baud baud"
+          // The agent's "baud=" status line arrives at the new rate; a
+          // mismatch would surface here as garbage instead of an ack later.
+          drain --quiet-ms=300
+          return true
     if timeout-error:
       log "$name_: timed out waiting for the baud-switch acknowledgement"
     log "$name_: baud switch to $baud failed; staying at $old-baud"

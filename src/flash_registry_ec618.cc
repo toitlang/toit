@@ -109,18 +109,21 @@ int FlashRegistry::erase_chunk(word offset, word size) {
 
 bool FlashRegistry::write_chunk(const void* chunk, word offset, word size) {
   uint32_t addr = registry_offset + offset;
-  // BSP_QSPI_Write_Safe disables XIP during the write, so the source
-  // buffer must be in RAM (not flash). Copy to a stack/heap buffer first.
-  uint8_t small_buf[256];
-  uint8_t* ram_buf = small_buf;
-  if (static_cast<word>(size) > static_cast<word>(sizeof(small_buf))) {
-    ram_buf = static_cast<uint8_t*>(malloc(size));
-    if (!ram_buf) return false;
+  // The BSP disables XIP while programming, so even flash-backed input must
+  // pass through RAM. Bound the staging space independently of the write:
+  // rewriting a multi-page bucket can otherwise need a second large buffer
+  // when the storage service already holds its serialized contents in RAM.
+  uint8_t buffer[256];
+  const uint8_t* source = static_cast<const uint8_t*>(chunk);
+  while (size > 0) {
+    word count = Utils::min(size, static_cast<word>(sizeof(buffer)));
+    memcpy(buffer, source, count);
+    if (BSP_QSPI_Write_Safe(buffer, addr, count) != QSPI_OK) return false;
+    source += count;
+    addr += count;
+    size -= count;
   }
-  memcpy(ram_buf, chunk, size);
-  bool ok = BSP_QSPI_Write_Safe(ram_buf, addr, size) == QSPI_OK;
-  if (ram_buf != small_buf) free(ram_buf);
-  return ok;
+  return true;
 }
 
 bool FlashRegistry::erase_flash_registry() {

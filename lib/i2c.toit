@@ -726,7 +726,7 @@ class Device implements serial.Device:
   /**
   Writes the $bytes to the device.
 
-  Throws `INVALID_ARGUMENT` if $bytes is empty.
+  The $bytes data must not be empty.
 
   # Advanced
   The write operation is executed by sending:

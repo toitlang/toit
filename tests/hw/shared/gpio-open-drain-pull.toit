@@ -68,7 +68,9 @@ test-gpio --test-pin/gpio.Pin --measure-pin/gpio.Pin --level-pin/gpio.Pin:
   // The test pin is draining.
   expect-equals 0 measure-pin.get
 
-  level-pin.close
+  // Release the driven level while retaining the caller's pin ownership.
+  // The caller may reconfigure this pin after the shared checks return.
+  level-pin.configure --input
 
   // Switch back to non-open-drain.
   test-pin.set-open-drain false

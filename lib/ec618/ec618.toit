@@ -565,8 +565,9 @@ class Ec618:
     sensor breakouts carry their own bus pull-ups.
 
   $frequency is an upper bound. Values below about 49kHz are rejected.
-    The EC618's measured-safe ceiling is about 363kHz; requests of 400kHz
-    or more use that ceiling.
+    Requests of 400kHz or more use the controller's bounded fast-mode
+    setting. Devices do not support a custom hardware clock-stretch timeout;
+    use `with-timeout` to bound an operation.
   */
   static i2c0 --frequency/int=100_000 --pull-up/bool=false -> i2c.Bus:
     return i2c.Bus --sda=14 --scl=13
@@ -582,8 +583,9 @@ class Ec618:
   If $pull-up is true, the pads' internal pull-ups are enabled.
 
   $frequency is an upper bound. Values below about 49kHz are rejected.
-    The EC618's measured-safe ceiling is about 363kHz; requests of 400kHz
-    or more use that ceiling.
+    Requests of 400kHz or more use the controller's bounded fast-mode
+    setting. Devices do not support a custom hardware clock-stretch timeout;
+    use `with-timeout` to bound an operation.
   */
   static i2c1 --frequency/int=100_000 --pull-up/bool=false -> i2c.Bus:
     return i2c.Bus --sda=23 --scl=24

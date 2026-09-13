@@ -5,6 +5,27 @@ so the work continues on a different host machine wired to the **same rigs**.
 Pairs with [ec618-roadmap.md](ec618-roadmap.md) and the wiring table in
 [ec618-hw-tests.md](ec618-hw-tests.md).
 
+## Current bus fixture (September 2026)
+
+The RC522 and BME280 have been removed. A dedicated ESP32-S3 now terminates
+their former bus wires. Follow the
+[programmable fixture instructions](../tests/hw/ec618/README.md#programmable-i2cspi-fixture)
+for current I2C/SPI tests; sensor power and sensor helper instructions below
+are historical. The classic ESP32 still supplies the UART1 control bridge,
+GPIO observations, DAC outputs, and the separate I2C0 target. The classic ESP32 uses the basic `i2c.Target`
+API; `RegisterTarget` and response-time stretching require the S3.
+
+The S3 uses GPIO7/6/5/4 for SPI CS/clock/MOSI/MISO and GPIO13/12 for I2C
+SCL/SDA. These reach EC618 PAD23/26/24/25 and PAD24/23 respectively.
+GPIO7 and GPIO12 are physically tied together, as are GPIO5 and GPIO13;
+only one target role may own those nets at a time. Serial port numbers
+have changed repeatedly; identify USB devices again before flashing.
+
+The current I2C driver programs a complete timing word and selects the
+51.2 MHz clock for fast transfers. The July timing recipe below is historical.
+Custom hardware clock-stretch timeouts are explicitly unsupported on EC618;
+use task deadlines for cancellation.
+
 ## The two rigs at a glance
 
 | | `modest-affair` (test rig) | `quirky-plenty` (dev/flash rig) |

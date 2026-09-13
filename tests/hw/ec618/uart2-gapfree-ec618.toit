@@ -51,7 +51,9 @@ main:
   control := Ec618.uart1 --baud-rate=115200
   control.out.write "\n"     // Fresh-open glitch-byte flush (rig rule).
   print "uart2-gapfree-ec618: control lane open"
-  test := Ec618.uart2 --baud-rate=BAUDS.first
+  // Keep the 2.5 MBd frame within one 4 KiB staging buffer. Changing baud
+  // later does not resize the buffer allocated when the port opens.
+  test := Ec618.uart2 --baud-rate=BAUDS.first --large-buffers
 
   try:
     BAUDS.do: | baud/int |

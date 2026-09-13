@@ -46,7 +46,7 @@ main:
     with-control-channel: | reader/io.Reader |
       install-new-test reader
       wait-for-run-signal reader
-    esp32.reset
+    esp32.deep-sleep Duration.ZERO
   run-test
 
 with-control-channel [block]:

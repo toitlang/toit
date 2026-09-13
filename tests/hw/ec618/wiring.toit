@@ -37,24 +37,21 @@ ESP32-UART2-DIRECTION-PIN ::= 16
 EC618-OPEN-DRAIN-BUS-PAD ::= 33
 ESP32-OPEN-DRAIN-BUS-PIN ::= 16
 
-// SPI0 / MFRC522. RST shares the TIMER0/PAD16 wire.
+// SPI0 controller and passive classic ESP32 observation wires.
 EC618-SPI0-CS-PAD ::= 23
 EC618-SPI0-MOSI-PAD ::= 24
 EC618-SPI0-MISO-PAD ::= 25
 EC618-SPI0-CLK-PAD ::= 26
-EC618-RC522-RST-PAD ::= 16
 ESP32-SPI0-CS-PIN ::= 33
 ESP32-SPI0-MOSI-PIN ::= 22
 ESP32-SPI0-MISO-PIN ::= 14
 ESP32-SPI0-CLK-PIN ::= 27
-ESP32-RC522-RST-PIN ::= 23
 
-// I2C1 / BMP280. ESP32 IO13 switches sensor power and is also wired to PAD42.
+// I2C1 controller and passive classic ESP32 observation wires.
 EC618-I2C1-SDA-PAD ::= 23
 EC618-I2C1-SCL-PAD ::= 24
 ESP32-I2C1-SDA-PIN ::= 33
 ESP32-I2C1-SCL-PIN ::= 22
-ESP32-SENSOR-POWER-PIN ::= 13
 
 // I2C0 passive observation wires.
 EC618-I2C0-SDA-PAD ::= 14
@@ -94,16 +91,13 @@ ESP32-GPIO-OBSERVATION-PINS ::= [27, 21, 14, 16, 4, 13, 33, 32, 23, 22, 19, 18, 
 //   [EC618 PAD, direct ESP32 GPIOs, optional observed coupled GPIOs].
 // The duplicated GPIO10/GPIO11 board contacts are the same physical nets, so
 // PAD25 and PAD26 each intentionally have two ESP32 observers.
-// The powered BMP280 fixture couples SDA/SCL/power transitions; the third
-// element on PAD23/PAD24 records that observed cluster without claiming extra
-// direct wires.
 GPIO-TEST-WIRES ::= [
   [26, ESP32-EC618-PAD26-NET-PINS],
   [25, ESP32-EC618-PAD25-NET-PINS],
   [42, [13]],
-  [23, [33], [13, 33, 22]],
+  [23, [33]],
   [16, [23]],
-  [24, [22], [13, 33, 22]],
+  [24, [22]],
   [44, [19]],
   [14, [18]],
   [13, [17]],
@@ -125,3 +119,13 @@ EC618-TIMER4-PAD ::= 33
 ESP32-TIMER4-PIN ::= 16
 EC618-TIMER4-AON-PAD ::= 47
 ESP32-TIMER4-AON-PIN ::= 2
+
+// Dedicated ESP32-S3 target. SPI CS and I2C SDA share a physical net, as do
+// SPI MOSI and I2C SCL. Run these fixtures sequentially and leave the unused
+// aliases as inputs. UART2 on the classic ESP32 also shares CLK/MISO.
+S3-SPI0-CS-PIN ::= 7
+S3-SPI0-CLK-PIN ::= 6
+S3-SPI0-MOSI-PIN ::= 5
+S3-SPI0-MISO-PIN ::= 4
+S3-I2C1-SCL-PIN ::= 13
+S3-I2C1-SDA-PIN ::= 12
