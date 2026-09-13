@@ -80,13 +80,12 @@ class TcpSocketResource : public TcpSocketBaseResource {
  public:
   TAG(TcpSocketResource);
   TcpSocketResource(TcpResourceGroup* resource_group, SOCKET socket,
-                    HANDLE read_event, HANDLE write_event, HANDLE auxiliary_event)
+                    HANDLE read_event, HANDLE auxiliary_event)
       : TcpSocketBaseResource(resource_group, socket)
       , auxiliary_event_(auxiliary_event) {
     read_buffer_.buf = read_data_;
     read_buffer_.len = READ_BUFFER_SIZE;
-    read_overlapped_.hEvent = read_event;
-    write_overlapped_.hEvent = write_event;
+    read_overlapped_.set_event(read_event);
     if (!issue_read_request()) {
       int error_code = WSAGetLastError();
       if (error_code == WSAECONNRESET) {
@@ -100,37 +99,36 @@ class TcpSocketResource : public TcpSocketBaseResource {
     }
   }
 
-  ~TcpSocketResource() override {
-    if (write_buffer_.buf != null) free(write_buffer_.buf);
-  }
-
   DWORD read_count() const { return read_count_; }
   char* read_buffer() const { return read_buffer_.buf; }
-  bool ready_for_write() const { return write_ready_; }
   bool ready_for_read() const { return read_ready_; }
   bool closed() const { return closed_; }
 
   std::vector<HANDLE> events() override {
     return std::vector<HANDLE>({
-        read_overlapped_.hEvent,
-        write_overlapped_.hEvent,
+        read_overlapped_.event(),
         auxiliary_event_
     });
   }
 
   uint32_t on_event(HANDLE event, uint32_t state) override {
-    if (event == read_overlapped_.hEvent) {
+    if (event == read_overlapped_.event()) {
       read_ready_ = true;
       state |= TCP_READ;
-    } else if (event == write_overlapped_.hEvent) {
-      write_ready_ = true;
-      state |= TCP_WRITE;
     } else if (event == auxiliary_event_) {
       WSANETWORKEVENTS network_events;
       if (WSAEnumNetworkEvents(socket(), NULL, &network_events) == SOCKET_ERROR) {
         set_error_code(WSAGetLastError());
-        state |= TCP_ERROR;
-      };
+        return state | TCP_ERROR;
+      }
+      if (network_events.lNetworkEvents & FD_WRITE) {
+        if (network_events.iErrorCode[FD_WRITE_BIT] == 0) {
+          state |= TCP_WRITE;
+        } else {
+          set_error_code(network_events.iErrorCode[FD_WRITE_BIT]);
+          state |= TCP_ERROR;
+        }
+      }
       if (network_events.lNetworkEvents & FD_CLOSE) {
         if (network_events.iErrorCode[FD_CLOSE_BIT] == 0) {
           state |= TCP_READ;
@@ -150,64 +148,46 @@ class TcpSocketResource : public TcpSocketBaseResource {
   }
 
   void do_close() override {
+    // Reaping the outstanding read also matters for the peer: closing a socket
+    // that has a pending overlapped WSARecv is an abortive close, so the peer
+    // gets an RST and loses the data it has not read yet.
+    read_overlapped_.cancel_and_wait(reinterpret_cast<HANDLE>(socket()));
     TcpSocketBaseResource::do_close();
-    CloseHandle(read_overlapped_.hEvent);
-    CloseHandle(write_overlapped_.hEvent);
+    CloseHandle(read_overlapped_.event());
+    CloseHandle(auxiliary_event_);
   }
 
   bool issue_read_request() {
     read_ready_ = false;
     read_count_ = 0;
     DWORD flags = 0;
-    int receive_result = WSARecv(socket(), &read_buffer_, 1, NULL, &flags, &read_overlapped_, NULL);
-    if (receive_result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
-      return false;
-    }
-    return true;
+    int receive_result = WSARecv(socket(), &read_buffer_, 1, NULL, &flags, read_overlapped_.get(), NULL);
+    return read_overlapped_.issued(receive_result == 0, WSAGetLastError());
   }
 
   bool receive_read_response() {
     DWORD flags;
-    bool overlapped_result = WSAGetOverlappedResult(socket(), &read_overlapped_, &read_count_, false, &flags);
+    bool overlapped_result = WSAGetOverlappedResult(socket(), read_overlapped_.get(), &read_count_, false, &flags);
     if (read_count_ == 0) closed_ = true;
     return overlapped_result;
   }
 
-  bool send(const uint8* buffer, word length) {
-    if (write_buffer_.buf != null) {
-      free(write_buffer_.buf);
-      write_buffer_.buf = null;
-    }
-
-    write_ready_ = false;
-
-    // We need to copy the buffer out to a long-lived heap object
-    write_buffer_.buf = static_cast<char*>(malloc(length));
-    if (!write_buffer_.buf) {
-      WSASetLastError(ERROR_NOT_ENOUGH_MEMORY);
-      return false;
-    }
-    memcpy(write_buffer_.buf, buffer, length);
-    write_buffer_.len = length;
-
-    int send_result = WSASend(socket(), &write_buffer_, 1, NULL, 0, &write_overlapped_, NULL);
-
-    if (send_result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
-      return false;
-    }
-    return true;
+  int send(const uint8* buffer, int length) {
+    // WSAEventSelect puts the socket in nonblocking mode. Only report bytes
+    // accepted by the transport, so close cannot cancel a queued WSASend.
+    // FD_WRITE wakes the writer once a full send buffer has room again.
+    // Always retry the nonblocking send. Caching readiness here can lose an
+    // FD_WRITE handled between send returning WSAEWOULDBLOCK and clearing the
+    // cached flag, leaving the writer asleep on a writable socket.
+    return ::send(socket(), reinterpret_cast<const char*>(buffer), length, 0);
   }
 
  private:
   WSABUF read_buffer_{};
   char read_data_[READ_BUFFER_SIZE]{};
-  OVERLAPPED read_overlapped_{};
+  WindowsOverlapped read_overlapped_;
   DWORD read_count_ = 0;
   bool read_ready_ = false;
-
-  WSABUF write_buffer_{};
-  OVERLAPPED write_overlapped_{};
-  bool write_ready_ = true;
 
   HANDLE auxiliary_event_;
   bool closed_ = false;
@@ -256,26 +236,19 @@ PRIMITIVE(init) {
 }
 
 static Object* create_events(Process* process, SOCKET socket, WSAEVENT& read_event,
-                             WSAEVENT& write_event, WSAEVENT& auxiliary_event) {
+                             WSAEVENT& auxiliary_event) {
   auxiliary_event = WSACreateEvent();
   if (auxiliary_event == WSA_INVALID_EVENT) {
     WINDOWS_ERROR;
   }
 
-  if (WSAEventSelect(socket, auxiliary_event, FD_CLOSE) == SOCKET_ERROR) {
+  if (WSAEventSelect(socket, auxiliary_event, FD_WRITE | FD_CLOSE) == SOCKET_ERROR) {
     close_handle_keep_errno(auxiliary_event);
     WINDOWS_ERROR;
   }
 
   read_event = WSACreateEvent();
   if (read_event == WSA_INVALID_EVENT) {
-    close_handle_keep_errno(auxiliary_event);
-    WINDOWS_ERROR;
-  }
-
-  write_event = WSACreateEvent();
-  if (write_event == WSA_INVALID_EVENT) {
-    close_handle_keep_errno(read_event);
     close_handle_keep_errno(auxiliary_event);
     WINDOWS_ERROR;
   }
@@ -299,25 +272,24 @@ PRIMITIVE(connect) {
   }
 
   ToitSocketAddress socket_address(address.address(), address.length(), port);
-  int result = connect(socket, socket_address.as_socket_address(), socket_address.port());
+  int result = connect(socket, socket_address.as_socket_address(), socket_address.size());
   if (result == SOCKET_ERROR && WSAGetLastError() != WSAEINPROGRESS) {
     close_keep_errno(socket);
     WINDOWS_ERROR;
   }
 
-  WSAEVENT read_event, write_event, auxiliary_event;
-  auto error = create_events(process, socket, read_event, write_event, auxiliary_event);
+  WSAEVENT read_event, auxiliary_event;
+  auto error = create_events(process, socket, read_event, auxiliary_event);
 
   if (error) {
     close_keep_errno(socket);
     return error;
   }
 
-  auto tcp_resource = _new TcpSocketResource(resource_group, socket, read_event, write_event, auxiliary_event);
+  auto tcp_resource = _new TcpSocketResource(resource_group, socket, read_event, auxiliary_event);
   if (!tcp_resource) {
     close_keep_errno(socket);
     close_handle_keep_errno(read_event);
-    close_handle_keep_errno(write_event);
     close_handle_keep_errno(auxiliary_event);
     FAIL(MALLOC_FAILED);
   }
@@ -342,19 +314,19 @@ PRIMITIVE(accept) {
     WINDOWS_ERROR;
   }
 
-  WSAEVENT read_event, write_event, auxiliary_event;
-  auto error = create_events(process, socket, read_event, write_event, auxiliary_event);
+  WSAEVENT read_event, auxiliary_event;
+  auto error = create_events(process, socket, read_event, auxiliary_event);
   if (error) {
     close_keep_errno(socket);
     return error;
   }
 
-  auto tcp_resource = _new TcpSocketResource(resource_group, socket, read_event, write_event, auxiliary_event);
+  auto tcp_resource = _new TcpSocketResource(resource_group, socket, read_event, auxiliary_event);
 
   if (!tcp_resource) {
     close_keep_errno(socket);
     close_handle_keep_errno(read_event);
-    close_handle_keep_errno(write_event);
+    close_handle_keep_errno(auxiliary_event);
     FAIL(MALLOC_FAILED);
   }
 
@@ -424,11 +396,12 @@ PRIMITIVE(write) {
 
   if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_BOUNDS);
 
-  if (!tcp_resource->ready_for_write()) return Smi::from(-1);
-
-  if (!tcp_resource->send(data.address() + from, to - from)) WINDOWS_ERROR;
-
-  return Smi::from(to-from);
+  int written = tcp_resource->send(data.address() + from, to - from);
+  if (written == SOCKET_ERROR) {
+    if (WSAGetLastError() == WSAEWOULDBLOCK) return Smi::from(-1);
+    WINDOWS_ERROR;
+  }
+  return Smi::from(written);
 }
 
 PRIMITIVE(read)  {

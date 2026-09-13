@@ -24,6 +24,16 @@ namespace toit {
 
 WindowsEventSource* WindowsEventSource::instance_ = null;
 
+void WindowsOverlapped::cancel_and_wait(HANDLE handle) {
+  if (!started_) return;
+  CancelIoEx(handle, &overlapped_);
+  // Wait even if CancelIoEx didn't find the operation: it may be in the middle
+  // of completing. Returns immediately if it has completed, and the
+  // cancellation keeps the wait on the event thread short otherwise.
+  DWORD count;
+  GetOverlappedResult(handle, &overlapped_, &count, TRUE);
+}
+
 class WindowsEventThread;
 class WindowsResourceEvent {
  public:

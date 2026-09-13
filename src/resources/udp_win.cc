@@ -63,8 +63,8 @@ class UdpSocketResource : public WindowsResource {
     , socket_(socket) {
     read_buffer_.buf = read_data_;
     read_buffer_.len = READ_BUFFER_SIZE;
-    read_overlapped_.hEvent = read_event;
-    write_overlapped_.hEvent = write_event;
+    read_overlapped_.set_event(read_event);
+    write_overlapped_.set_event(write_event);
     set_state(UDP_WRITE);
   }
 
@@ -91,14 +91,14 @@ class UdpSocketResource : public WindowsResource {
   bool ready_for_write() const { return write_ready_; }
 
   std::vector<HANDLE> events() override {
-    return std::vector<HANDLE>({read_overlapped_.hEvent, write_overlapped_.hEvent });
+    return std::vector<HANDLE>({read_overlapped_.event(), write_overlapped_.event() });
   }
 
   uint32_t on_event(HANDLE event, uint32_t state) override {
-    if (event == read_overlapped_.hEvent) {
+    if (event == read_overlapped_.event()) {
       read_ready_ = true;
       state |= UDP_READ;
-    } else if (event == write_overlapped_.hEvent) {
+    } else if (event == write_overlapped_.event()) {
       write_ready_ = true;
       state |= UDP_WRITE;
     }
@@ -107,9 +107,11 @@ class UdpSocketResource : public WindowsResource {
   }
 
   void do_close() override {
+    read_overlapped_.cancel_and_wait(reinterpret_cast<HANDLE>(socket_));
+    write_overlapped_.cancel_and_wait(reinterpret_cast<HANDLE>(socket_));
     closesocket(socket_);
-    CloseHandle(read_overlapped_.hEvent);
-    CloseHandle(write_overlapped_.hEvent);
+    CloseHandle(read_overlapped_.event());
+    CloseHandle(write_overlapped_.event());
   }
 
   bool issue_read_request() {
@@ -119,16 +121,13 @@ class UdpSocketResource : public WindowsResource {
     int receive_result = WSARecvFrom(socket_, &read_buffer_, 1, NULL, &flags,
                                      read_peer_address_.as_socket_address(),
                                      read_peer_address_.size_pointer(),
-                                     &read_overlapped_, NULL);
-    if (receive_result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
-      return false;
-    }
-    return true;
+                                     read_overlapped_.get(), NULL);
+    return read_overlapped_.issued(receive_result == 0, WSAGetLastError());
   }
 
   bool receive_read_response() {
     DWORD flags;
-    bool overlapped_result = WSAGetOverlappedResult(socket_, &read_overlapped_, &read_count_, false, &flags);
+    bool overlapped_result = WSAGetOverlappedResult(socket_, read_overlapped_.get(), &read_count_, false, &flags);
     return overlapped_result;
   }
 
@@ -151,12 +150,12 @@ class UdpSocketResource : public WindowsResource {
       send_result = WSASendTo(socket_, &write_buffer_, 1, &tmp, 0,
                               socket_address->as_socket_address(),
                               socket_address->size(),
-                              &write_overlapped_, NULL);
+                              write_overlapped_.get(), NULL);
     } else {
-      send_result = WSASend(socket_, &write_buffer_, 1, &tmp, 0, &write_overlapped_, NULL);
+      send_result = WSASend(socket_, &write_buffer_, 1, &tmp, 0, write_overlapped_.get(), NULL);
     }
 
-    if (send_result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
+    if (!write_overlapped_.issued(send_result == 0, WSAGetLastError())) {
       return false;
     }
 
@@ -168,13 +167,13 @@ class UdpSocketResource : public WindowsResource {
 
   WSABUF read_buffer_{};
   char read_data_[READ_BUFFER_SIZE]{};
-  OVERLAPPED read_overlapped_{};
+  WindowsOverlapped read_overlapped_;
   DWORD read_count_ = 0;
   ToitSocketAddress read_peer_address_;
   bool read_ready_ = false;
 
   WSABUF write_buffer_{};
-  OVERLAPPED write_overlapped_{};
+  WindowsOverlapped write_overlapped_;
   bool write_ready_ = true;
 
   DWORD error_code_ = ERROR_SUCCESS;

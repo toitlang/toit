@@ -243,6 +243,13 @@ PRIMITIVE(write) {
   return Primitive::os_error(errno, process);
 }
 
+// POSIX writes have already completed when the write primitive returns.
+PRIMITIVE(write_result) {
+  ARGS(IntResource, fd_resource, int, written);
+  USE(fd_resource);
+  return Smi::from(written);
+}
+
 PRIMITIVE(fd) {
   ARGS(IntResource, fd_resource);
   int fd = fd_resource->id();

@@ -4,6 +4,8 @@
 
 import expect show *
 import zlib
+import host.directory
+import host.file
 import host.pipe
 import io
 
@@ -34,22 +36,24 @@ test-gzip str/string:
   expect-equals str result.bytes.to-string
 
 gzip-compress data/ByteArray -> ByteArray:
-  // Use host 'gzip' to compress.
-  proc := pipe.fork
-      --use-path
-      --create-stdin
-      --create-stdout
-      "gzip"
-      ["gzip", "-c"]
+  // Use host 'gzip' to compress. Give it a file rather than writing to its
+  // stdin: on Windows, closing a pipe cancels a write that is still pending.
+  tmp-dir := directory.mkdtemp "/tmp/zlib-gzip-test-"
+  try:
+    path := "$tmp-dir/data"
+    file.write-contents --path=path data
+    proc := pipe.fork
+        --use-path
+        --create-stdout
+        "gzip"
+        ["gzip", "-c", path]
 
-  writer := proc.stdin.out
-  writer.write data
-  writer.close
+    result := io.Buffer
+    reader := proc.stdout.in
+    while chunk := reader.read:
+      result.write chunk
 
-  result := io.Buffer
-  reader := proc.stdout.in
-  while chunk := reader.read:
-    result.write chunk
-
-  proc.wait
-  return result.bytes
+    proc.wait
+    return result.bytes
+  finally:
+    directory.rmdir --recursive tmp-dir

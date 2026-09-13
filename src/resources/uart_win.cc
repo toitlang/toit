@@ -43,9 +43,9 @@ public:
   UartResource(ResourceGroup* group, HANDLE uart, HANDLE read_event, HANDLE write_event, HANDLE error_event)
       : WindowsResource(group)
       , uart_(uart) {
-    read_overlapped_.hEvent = read_event;
-    write_overlapped_.hEvent = write_event;
-    comm_events_overlapped_.hEvent = error_event;
+    read_overlapped_.set_event(read_event);
+    write_overlapped_.set_event(write_event);
+    comm_events_overlapped_.set_event(error_event);
 
     set_state(kWriteState);
 
@@ -75,42 +75,42 @@ public:
   DWORD error_code() const { return error_code_; }
 
   void do_close() override {
-    CloseHandle(read_overlapped_.hEvent);
-    CloseHandle(write_overlapped_.hEvent);
-    CloseHandle(comm_events_overlapped_.hEvent);
+    read_overlapped_.cancel_and_wait(uart_);
+    write_overlapped_.cancel_and_wait(uart_);
+    // Also keeps the completion from writing to event_mask_.
+    comm_events_overlapped_.cancel_and_wait(uart_);
     CloseHandle(uart_);
+    CloseHandle(read_overlapped_.event());
+    CloseHandle(write_overlapped_.event());
+    CloseHandle(comm_events_overlapped_.event());
   }
 
   std::vector<HANDLE> events() override {
     return std::vector<HANDLE>({
-                                   read_overlapped_.hEvent,
-                                   write_overlapped_.hEvent,
-                                   comm_events_overlapped_.hEvent
+                                   read_overlapped_.event(),
+                                   write_overlapped_.event(),
+                                   comm_events_overlapped_.event()
     });
   }
 
   bool issue_comm_events_request() {
-    bool succeeded = WaitCommEvent(uart_, &event_mask_, &comm_events_overlapped_);
-    if (!succeeded && GetLastError() != ERROR_IO_PENDING) {
-      return false;
-    }
-    return true;
+    bool succeeded = WaitCommEvent(uart_, &event_mask_, comm_events_overlapped_.get());
+    return comm_events_overlapped_.issued(succeeded, GetLastError());
   }
 
   bool issue_read_request() {
     read_ready_ = false;
     read_count_ = 0;
-    bool success = ReadFile(uart_, read_data_, READ_BUFFER_SIZE, &read_count_, &read_overlapped_);
-    if (!success && GetLastError() != ERROR_IO_PENDING) {
-      return false;
-    }
-    return true;
+    bool success = ReadFile(uart_, read_data_, READ_BUFFER_SIZE, &read_count_, read_overlapped_.get());
+    return read_overlapped_.issued(success, GetLastError());
   }
 
   bool receive_read_response() {
-    return GetOverlappedResult(uart_, &read_overlapped_, &read_count_, false);
+    return GetOverlappedResult(uart_, read_overlapped_.get(), &read_count_, false);
   }
 
+  // Reports success as soon as the write is queued. Closing the port cancels
+  // a write that is still pending, so its data can be lost.
   bool send(const uint8* buffer, word length) {
     // The caller must ensure that the previous write has completed before
     // calling send again. If write_ready_ is false, the previous WriteFile
@@ -125,24 +125,20 @@ public:
     memcpy(write_buffer_, buffer, length);
 
     DWORD tmp;
-    bool send_result = WriteFile(uart_, write_buffer_, length, &tmp, &write_overlapped_);
-    if (!send_result && GetLastError() != ERROR_IO_PENDING) {
-      return false;
-    }
-
-    return true;
+    bool send_result = WriteFile(uart_, write_buffer_, length, &tmp, write_overlapped_.get());
+    return write_overlapped_.issued(send_result, GetLastError());
   }
 
   uint32_t on_event(HANDLE event, uint32_t state) override {
-    if (event == read_overlapped_.hEvent) {
+    if (event == read_overlapped_.event()) {
       read_ready_ = true;
       state |= kReadState;
-    } else if (event == write_overlapped_.hEvent) {
+    } else if (event == write_overlapped_.event()) {
       write_ready_ = true;
       state |= kWriteState;
-    } else if (event == comm_events_overlapped_.hEvent) {
+    } else if (event == comm_events_overlapped_.event()) {
       DWORD tmp;
-      bool succeeded = GetOverlappedResult(uart_, &comm_events_overlapped_, &tmp, false);
+      bool succeeded = GetOverlappedResult(uart_, comm_events_overlapped_.get(), &tmp, false);
       if (!succeeded) {
         error_code_ = GetLastError();
       } else {
@@ -170,15 +166,15 @@ public:
   bool dtr_ = false;
 
   char read_data_[READ_BUFFER_SIZE]{};
-  OVERLAPPED read_overlapped_{};
+  WindowsOverlapped read_overlapped_;
   DWORD read_count_ = 0;
   bool read_ready_ = false;
 
-  OVERLAPPED write_overlapped_{};
+  WindowsOverlapped write_overlapped_;
   char* write_buffer_ = null;
   bool write_ready_ = true;
 
-  OVERLAPPED comm_events_overlapped_{};
+  WindowsOverlapped comm_events_overlapped_;
   DWORD event_mask_ = 0;
 
   DWORD error_code_ = ERROR_SUCCESS;
