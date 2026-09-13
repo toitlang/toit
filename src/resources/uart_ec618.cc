@@ -367,10 +367,10 @@ static void send_uart_event(int id, word kind) {
 // Raise the TX FIFO-empty threshold without resetting either FIFO. The
 // remaining bytes give the completion IRQ enough time to chain the next DMA
 // buffer without a wire gap.
-static void tx_trigger_boost(int id) {
+static void tx_trigger_boost(int id, bool boost = true) {
   kUartRegs[id]->FCR = USART_FCR_FIFO_EN_Msk
       | (1u << USART_FCR_RX_FIFO_AVAIL_TRIG_LEVEL_Pos)  // 8-byte RX (fork default).
-      | (2u << USART_FCR_TX_FIFO_EMPTY_TRIG_LEVEL_Pos);  // 8-byte TX-empty.
+      | ((boost ? 2u : 0u) << USART_FCR_TX_FIFO_EMPTY_TRIG_LEVEL_Pos);
 }
 
 static QueueHandle_t uart_tx_drain_queue = null;
@@ -534,6 +534,7 @@ static void cmsis_uart_event(int id, uint32_t event) {
         // least three bytes for the asynchronous path.
         const uint32_t prefeed = 8;
         for (uint32_t i = 0; i < prefeed; i++) reg->THR = buf[i];
+        if (uart_states[id].de_pad < 0) tx_trigger_boost(id);
         chained =
             kDrivers[id]->Send(buf + prefeed, len - prefeed) == ARM_DRIVER_OK;
       }
@@ -1038,6 +1039,11 @@ PRIMITIVE(write) {
       int chunk = len;
       if (chunk > (int)transfer->tx_buf_size) chunk = (int)transfer->tx_buf_size;
       memcpy(transfer->tx_bufs[transfer->tx_active], data.address() + from, chunk);
+      // A short transfer may never fill above the eight-byte early-empty
+      // threshold, so no crossing interrupt follows its DMA completion.
+      // Wait for an empty FIFO for these transfers. Longer transfers retain
+      // the early callback used to chain buffers without a wire gap.
+      if (de < 0) tx_trigger_boost(id, chunk > 16);
       transfer->tx_busy = true;
       int32_t status32 = kDrivers[id]->Send(transfer->tx_bufs[transfer->tx_active], chunk);
       if (status32 != ARM_DRIVER_OK) {
