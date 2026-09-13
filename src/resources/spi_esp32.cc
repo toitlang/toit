@@ -1513,6 +1513,13 @@ PRIMITIVE(transfer_finish) {
   return process->true_object();
 }
 
+PRIMITIVE(transfer_abort) {
+  ARGS(SpiDevice, device);
+  // ESP-IDF cannot abort controller transactions. Keep ownership until finish
+  // has drained the return queue, including when the callback already ran.
+  return BOOL(!device->operation_in_flight());
+}
+
 PRIMITIVE(acquire_bus) {
   ARGS(SpiDevice, device);
   esp_err_t err = spi_device_try_acquire_bus(device->handle());

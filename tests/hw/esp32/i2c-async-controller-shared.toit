@@ -66,9 +66,13 @@ test-board1:
   expect-not (found.contains MISSING-ADDRESS)
   print "Async I2C: probe and scan complete"
 
+  // Tight alternation catches combined NACK/STOP completion and stale error
+  // state at the next start. Keep the deadline outside the transfer loop.
   missing := bus.device MISSING-ADDRESS
-  expect-throw "I2C_NACK": missing.write #[1]
-  expect-throw "I2C_NACK": missing.read 1
+  with-timeout --ms=2_000:
+    100.repeat:
+      expect-throw "I2C_NACK": missing.write #[1]
+      expect-throw "I2C_NACK": missing.read 1
   missing.close
 
   // This is an exposed controller configuration, and also verifies that the
@@ -92,9 +96,10 @@ test-board1:
   expect-equals (wrapped initial 23 19) (into[0..19])
   expect-equals (ByteArray 21: 0xee) (into[19..])
 
-  expect-throw "ESP_ERR_INVALID_ARG": device.write #[]
-  expect-throw "ESP_ERR_INVALID_ARG": device.read 0
-  expect-throw "ESP_ERR_INVALID_ARG": device.write-read #[0] 0
+  expect-throw "INVALID_ARGUMENT": device.write #[]
+  expect-throw "INVALID_ARGUMENT": device.read 0
+  expect-throw "INVALID_ARGUMENT": device.write-read #[0] 0
+  expect-throw "INVALID_ARGUMENT": device.write-read #[] 1
   expect-throw "OUT_OF_RANGE": device.read-into (ByteArray 1) 2
 
   // All tasks share one native bus operation slot. Each write-read remains

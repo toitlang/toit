@@ -1161,7 +1161,7 @@ PRIMITIVE(device_create) {
     .dev_addr_length = dev_addr_length,
     .device_address = address,
     .scl_speed_hz = frequency_hz,
-    .scl_wait_us = timeout_us,
+    .scl_wait_us = timeout_us == 0 ? 100000 : timeout_us,
     .flags = {
       .disable_ack_check = disable_ack_check,
     },
@@ -1239,81 +1239,34 @@ static Object* finish_controller_operation(I2cBusResource* bus,
   return Smi::from(static_cast<int>(result));
 }
 
-PRIMITIVE(device_write) {
-  ARGS(I2cDeviceResource, resource, Blob, buffer);
+PRIMITIVE(device_transfer_start) {
+  ARGS(I2cDeviceResource, resource, Blob, tx_buffer, int, rx_length);
   if (resource->handle() == null) FAIL(ALREADY_CLOSED);
+  if (rx_length < 0) FAIL(OUT_OF_BOUNDS);
+  if (tx_buffer.length() == 0 && rx_length == 0) FAIL(INVALID_ARGUMENT);
 
   auto bus = resource->bus();
   esp_err_t err = prepare_controller_operation(
-      bus, buffer.address(), buffer.length(), 0);
+      bus, tx_buffer.address(), tx_buffer.length(), rx_length);
   if (err != ESP_OK) return Primitive::os_error(err, process);
   bool dispatched = false;
   Defer cancel_operation { [&] { if (!dispatched) bus->finish_operation(); } };
 
-  err = i2c_master_transmit(resource->handle(),
-                            bus->tx_buffer(),
-                            buffer.length(),
-                            0);
+  if (tx_buffer.length() == 0) {
+    err = i2c_master_receive(resource->handle(), bus->rx_buffer(), rx_length, 0);
+  } else if (rx_length == 0) {
+    err = i2c_master_transmit(resource->handle(), bus->tx_buffer(), tx_buffer.length(), 0);
+  } else {
+    err = i2c_master_transmit_receive(resource->handle(),
+                                    bus->tx_buffer(), tx_buffer.length(),
+                                    bus->rx_buffer(), rx_length, 0);
+  }
   if (err != ESP_OK) return Primitive::os_error(err, process);
   dispatched = true;
   return process->null_object();
 }
 
-PRIMITIVE(device_write_finish) {
-  ARGS(I2cDeviceResource, resource);
-  if (resource->handle() == null || resource->bus() == null) FAIL(ALREADY_CLOSED);
-  return finish_controller_operation(resource->bus(), null, 0, process);
-}
-
-PRIMITIVE(device_read) {
-  ARGS(I2cDeviceResource, resource, MutableBlob, buffer, int, length);
-  if (resource->handle() == null) FAIL(ALREADY_CLOSED);
-  if (length < 0 || length > buffer.length()) FAIL(OUT_OF_BOUNDS);
-
-  auto bus = resource->bus();
-  esp_err_t err = prepare_controller_operation(bus, null, 0, length);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-  bool dispatched = false;
-  Defer cancel_operation { [&] { if (!dispatched) bus->finish_operation(); } };
-
-  err = i2c_master_receive(resource->handle(), bus->rx_buffer(), length, 0);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-  dispatched = true;
-  return process->null_object();
-}
-
-PRIMITIVE(device_read_finish) {
-  ARGS(I2cDeviceResource, resource, MutableBlob, buffer, int, length);
-  if (resource->handle() == null || resource->bus() == null) FAIL(ALREADY_CLOSED);
-  if (length < 0 || length > buffer.length()) FAIL(OUT_OF_BOUNDS);
-  return finish_controller_operation(
-      resource->bus(), buffer.address(), length, process);
-}
-
-PRIMITIVE(device_write_read) {
-  ARGS(I2cDeviceResource, resource, Blob, tx_buffer, MutableBlob, rx_buffer, int, length)
-  if (resource->handle() == null) FAIL(ALREADY_CLOSED);
-  if (length < 0 || length > rx_buffer.length()) FAIL(OUT_OF_BOUNDS);
-
-  auto bus = resource->bus();
-  esp_err_t err = prepare_controller_operation(
-      bus, tx_buffer.address(), tx_buffer.length(), length);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-  bool dispatched = false;
-  Defer cancel_operation { [&] { if (!dispatched) bus->finish_operation(); } };
-
-  err = i2c_master_transmit_receive(resource->handle(),
-                                    bus->tx_buffer(),
-                                    tx_buffer.length(),
-                                    bus->rx_buffer(),
-                                    length,
-                                    0);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-  dispatched = true;
-  return process->null_object();
-}
-
-PRIMITIVE(device_write_read_finish) {
+PRIMITIVE(device_transfer_finish) {
   ARGS(I2cDeviceResource, resource, MutableBlob, buffer, int, length);
   if (resource->handle() == null || resource->bus() == null) FAIL(ALREADY_CLOSED);
   if (length < 0 || length > buffer.length()) FAIL(OUT_OF_BOUNDS);
