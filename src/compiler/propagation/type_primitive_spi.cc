@@ -40,6 +40,7 @@ TYPE_PRIMITIVE_ANY(device)
 TYPE_PRIMITIVE_ANY(device_close)
 TYPE_PRIMITIVE_ANY(transfer_start)
 TYPE_PRIMITIVE_ANY(transfer_finish)
+TYPE_PRIMITIVE_ANY(transfer_abort)
 TYPE_PRIMITIVE_ANY(acquire_bus)
 TYPE_PRIMITIVE_ANY(release_bus)
 

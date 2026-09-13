@@ -44,12 +44,8 @@ TYPE_PRIMITIVE_ANY(bus_probe_finish)
 TYPE_PRIMITIVE_ANY(bus_abort_controller_operation)
 TYPE_PRIMITIVE_ANY(device_create)
 TYPE_PRIMITIVE_ANY(device_close)
-TYPE_PRIMITIVE_ANY(device_write)
-TYPE_PRIMITIVE_ANY(device_write_finish)
-TYPE_PRIMITIVE_ANY(device_read)
-TYPE_PRIMITIVE_ANY(device_read_finish)
-TYPE_PRIMITIVE_ANY(device_write_read)
-TYPE_PRIMITIVE_ANY(device_write_read_finish)
+TYPE_PRIMITIVE_ANY(device_transfer_start)
+TYPE_PRIMITIVE_ANY(device_transfer_finish)
 
 }  // namespace toit::compiler
 }  // namespace toit
