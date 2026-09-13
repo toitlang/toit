@@ -24,7 +24,7 @@ main args:
   try:
     exchange control "PING" "READY"
     if mode == "all" or mode == "i2c": test-i2c control
-    if mode == "i2c0": test-i2c control --controller=0
+    if mode == "i2c0": test-i2c0 control
     if mode == "all" or mode == "speed": test-speed control
     if mode == "all" or mode == "stretch": test-stretch control
     if mode == "all" or mode == "spi": test-spi control
@@ -32,6 +32,34 @@ main args:
     print "bus-controller-ec618: PASS"
   finally:
     uart.close
+
+test-i2c0 control/FramedChannel:
+  bus := Ec618.i2c0 --pull-up
+  try:
+    [50_000, 100_000, 400_000].do: | frequency/int |
+      device := bus.device 0x42 --frequency=frequency
+      try:
+        [1, 4, 16, 32].do: | size/int |
+          exchange control "I2C0-ARM $size" "READY"
+          expect (bus.test 0x42)
+          expect (not (bus.test 0x43))
+          with-timeout --ms=2_000:
+            expect-equals (pattern size 7) (device.read size)
+          exchange control "I2C0-ARM $size" "READY"
+          with-timeout --ms=2_000:
+            expect-equals (pattern size 7) (device.write-read #[0, 0] size)
+          exchange control "I2C0-CHECK 0"
+          print "I2C0 $frequency read/write-read $size PASS"
+        [1, 32, 512, 513, 1025].do: | size/int |
+          exchange control "I2C0-ARM 1" "READY"
+          with-timeout --ms=2_000: device.write (pattern size 23)
+          exchange control "I2C0-CHECK $size"
+          print "I2C0 $frequency write $size PASS"
+      finally:
+        device.close
+    exchange control "I2C-CLOSE"
+  finally:
+    bus.close
 
 test-i2c control/FramedChannel --controller/int=1:
   exchange control "I2C-REG" "READY"

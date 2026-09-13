@@ -12,7 +12,8 @@ their former bus wires. Follow the
 [programmable fixture instructions](../tests/hw/ec618/README.md#programmable-i2cspi-fixture)
 for current I2C/SPI tests; sensor power and sensor helper instructions below
 are historical. The classic ESP32 still supplies the UART1 control bridge,
-GPIO observations, DAC outputs, and the separate I2C0 target.
+GPIO observations, DAC outputs, and the separate I2C0 target. The classic ESP32 uses the basic `i2c.Target`
+API; `RegisterTarget` and response-time stretching require the S3.
 
 The S3 uses GPIO7/6/5/4 for SPI CS/clock/MOSI/MISO and GPIO13/12 for I2C
 SCL/SDA. These reach EC618 PAD23/26/24/25 and PAD24/23 respectively.

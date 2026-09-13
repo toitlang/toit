@@ -73,7 +73,11 @@ I2C1.
 
 To test I2C0, install `bus-target-esp32.toit` as the classic ESP32's standalone
 boot container using the same SDK and Wi-Fi configuration. It combines the
-UART1 bridge with a register target on GPIO18/17. Point `--target-port` at
+UART1 bridge with a basic `i2c.Target` on GPIO18/17. The original ESP32
+does not support `RegisterTarget` or response-time stretching; its fixture
+uses a fresh target for each read and limits default responses to 32 bytes.
+I2C0 checks reads and repeated starts through 32 bytes, and writes through
+1025 bytes, at 50/100/400 kHz. Point `--target-port` at
 the classic ESP32 console and run the controller with argument `i2c0`.
 The S3 must be idle during this run. The I2C0 scan and ownership tests remain
 separate; reset the classic fixture to release its target before an empty-bus

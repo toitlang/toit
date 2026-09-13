@@ -4,6 +4,8 @@
 
 import gpio
 
+import .test
+
 /**
 Exercises every common GPIO primitive through the pin resource.
 
@@ -12,6 +14,9 @@ GPIO4 is otherwise unused on the EC618 companion rig. Its internal pull-up
 */
 
 main:
+  run-test: test
+
+test:
   pin := gpio.Pin 4 --input --pull-up
   sleep --ms=10
   if pin.get != 1: throw "GPIO4 pull-up did not read high"
