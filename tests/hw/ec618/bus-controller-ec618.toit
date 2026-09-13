@@ -110,7 +110,10 @@ test-spi control/FramedChannel:
           --miso=wiring.EC618-SPI0-MISO-PAD
           --clock=wiring.EC618-SPI0-CLK-PAD
     expect-equals "ALREADY_IN_USE" duplicate-error
-    test-spi-cancellation control bus
+    // Reuse the large payload so repeated DMA checks do not fragment the
+    // small native heap with differently sized external byte arrays.
+    buffer := ByteArray (32768 + 4)
+    test-spi-cancellation control bus buffer
     4.repeat: | mode/int |
       [0, 1, 3].do: | prefix/int |
         device := bus.device
@@ -122,7 +125,7 @@ test-spi control/FramedChannel:
         try:
           [1, 4, 16, 32, 63, 64, 65, 511, 512, 513, 1025, 4092, 8193, 32768].do: | size/int |
             exchange control "SPI $(size + prefix) $mode $prefix" "READY"
-            buffer := ByteArray (size + 4) --initial=0xee
+            buffer.size.repeat: buffer[it] = 0xee
             size.repeat: buffer[it + 2] = (it * 31 + 23) & 0xff
             with-timeout --ms=5_000:
               // A zero-valued four-bit command still occupies its prefix
@@ -131,7 +134,7 @@ test-spi control/FramedChannel:
                   --command=(prefix == 1 ? 0 : 0xa5)
                   --address=(prefix == 1 ? 0xb : 0x1234)
             expect-equals #[0xee, 0xee] (buffer[..2])
-            expect-equals #[0xee, 0xee] (buffer[size + 2..])
+            expect-equals #[0xee, 0xee] (buffer[size + 2..size + 4])
             mismatch := -1
             size.repeat:
               expected := ((it + prefix) * 31 + 7) & 0xff
@@ -147,14 +150,14 @@ test-spi control/FramedChannel:
   finally:
     bus.close
 
-test-spi-cancellation control/FramedChannel bus/spi.Bus:
+test-spi-cancellation control/FramedChannel bus/spi.Bus payload/ByteArray:
   canceled := bus.device --cs=wiring.EC618-SPI0-CS-PAD --frequency=100_000
   try:
-    payload := pattern 32768 23
+    32768.repeat: payload[it] = (it * 31 + 23) & 0xff
     exchange control "SPI-CANCEL 32768 0 0" "READY"
     started := Time.monotonic-us
     expect-throw DEADLINE-EXCEEDED-ERROR:
-      with-timeout --ms=20: canceled.transfer payload --read
+      with-timeout --ms=20: canceled.transfer payload --to=32768 --read
     elapsed := Time.monotonic-us - started
     print "SPI cancellation: $elapsed us"
     expect (elapsed < 150_000) --message="SPI cancellation must promptly retire DMA"

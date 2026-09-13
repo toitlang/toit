@@ -1,9 +1,14 @@
 # ESP32 I²C slave for EC618 long-transfer tests
 
-This ESP-IDF application makes an ESP32 a deterministic I²C slave for
-[`i2c-long-transfer-ec618.toit`](../i2c-long-transfer-ec618.toit). It checks
-the exact length and contents of a 1,025-byte write, and supplies deterministic
-data for 1,025-byte read and combined write-read tests.
+This is a historical native diagnostic fixture. The maintained EC618 tests
+now use the Toit target APIs described in the [hardware-test README](../README.md):
+`bus-target-s3.toit` for long read/write transfers and `bus-target-esp32.toit`
+for I2C0. The `i2c-long-transfer-ec618.toit` wrapper runs that new suite and
+is not compatible with this application.
+
+The native application remains available for driver-level diagnostics. Its
+protocol checks a 1,025-byte write and supplies deterministic data for
+1,025-byte read and combined write-read operations.
 
 Wire the boards as follows, with a shared ground:
 
