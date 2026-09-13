@@ -15,6 +15,10 @@ HEADER ::= "4096\n".to-byte-array
 PAYLOAD ::= ByteArray 4096: it & 0xff
 
 main:
+  test-small-write
+  test-backpressure
+
+test-small-write:
   network := net.open
   port := Latch
   closed := Latch
@@ -42,3 +46,33 @@ main:
   socket.close
   expect-equals HEADER.size + PAYLOAD.size received.size
   expect-equals HEADER + PAYLOAD received
+
+// Force the writer to run out of transport buffer space. A second task must
+// remain runnable while the peer is not reading, and every byte must arrive.
+test-backpressure:
+  network := net.open
+  port := Latch
+  started := Latch
+  finished := Latch
+  payload := ByteArray (16 * 1024 * 1024): it & 0xff
+
+  task::
+    server := tcp.TcpServerSocket network
+    server.listen "127.0.0.1" 0
+    port.set server.local-address.port
+    socket := server.accept
+    started.set true
+    socket.out.write payload
+    socket.close
+    server.close
+    finished.set true
+
+  socket := tcp.TcpSocket network
+  socket.connect "127.0.0.1" port.get
+  started.get
+  sleep --ms=100
+  received := socket.in.read-all
+  socket.close
+  finished.get
+  expect-equals payload.size received.size
+  expect-equals payload received

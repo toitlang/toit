@@ -148,8 +148,8 @@ class WritePipeResource : public HandlePipeResource {
 
   bool ready_for_write() const { return write_ready_; }
 
-  // Reports success as soon as the write is queued. Closing the pipe cancels
-  // a write that is still pending, so its data can be lost.
+  // The write primitive preserves its queued-count result for older host
+  // packages. New callers must use write_result before reporting success.
   bool send(const uint8* buffer, word length) {
     if (write_buffer_ != null) free(write_buffer_);
 
@@ -157,6 +157,11 @@ class WritePipeResource : public HandlePipeResource {
 
     // We need to copy the buffer out to a long-lived heap object.
     write_buffer_ = static_cast<char*>(malloc(length));
+    if (write_buffer_ == null) {
+      write_ready_ = true;
+      SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+      return false;
+    }
     memcpy(write_buffer_, buffer, length);
 
     DWORD tmp;
@@ -456,6 +461,19 @@ PRIMITIVE(write) {
   if (!pipe_resource->send(tx, to - from)) WINDOWS_ERROR;
 
   return Smi::from(to - from);
+}
+
+// Returns null while a queued write is pending. Waiting happens in Toit, so
+// neither the scheduler thread nor the event thread blocks on a slow reader.
+PRIMITIVE(write_result) {
+  ARGS(WritePipeResource, pipe_resource, int, written);
+  USE(written);
+  DWORD count;
+  if (!GetOverlappedResult(pipe_resource->handle(), pipe_resource->overlapped().get(), &count, FALSE)) {
+    if (GetLastError() == ERROR_IO_INCOMPLETE) return process->null_object();
+    WINDOWS_ERROR;
+  }
+  return Smi::from(count);
 }
 
 PRIMITIVE(read) {

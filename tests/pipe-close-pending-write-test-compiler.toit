@@ -4,6 +4,7 @@
 
 import expect show *
 import host.pipe
+import monitor show *
 import system
 
 // Closing a pipe while a write is still pending must not let the write's
@@ -36,8 +37,17 @@ test toit-run/string:
       toit-run
       [toit-run, system.program-path, "CHILD"]
 
-  process.stdin.out.write (ByteArray PAYLOAD-SIZE)
+  started := Latch
+  finished := Latch
+  task::
+    started.set true
+    error := catch: process.stdin.out.write (ByteArray PAYLOAD-SIZE)
+    finished.set (error or false)
+  started.get
+  // Let the writer fill the pipe and suspend before closing it from this task.
+  sleep --ms=50
   process.stdin.close
+  finished.get
 
   spray := []
   SPRAY-SIZES.do: | size |

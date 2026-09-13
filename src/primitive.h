@@ -792,6 +792,7 @@ namespace toit {
   PRIMITIVE(fork2, 10)                       \
   PRIMITIVE(fd, 1)                           \
   PRIMITIVE(is_a_tty, 1)                     \
+  PRIMITIVE(write_result, 2)                 \
 
 #define MODULE_STDIO(PRIMITIVE)              \
   PRIMITIVE(stdin_init, 0)                   \
