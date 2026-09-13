@@ -101,7 +101,6 @@ class TcpSocketResource : public TcpSocketBaseResource {
 
   DWORD read_count() const { return read_count_; }
   char* read_buffer() const { return read_buffer_.buf; }
-  bool ready_for_write() const { return write_ready_; }
   bool ready_for_read() const { return read_ready_; }
   bool closed() const { return closed_; }
 
@@ -124,7 +123,6 @@ class TcpSocketResource : public TcpSocketBaseResource {
       }
       if (network_events.lNetworkEvents & FD_WRITE) {
         if (network_events.iErrorCode[FD_WRITE_BIT] == 0) {
-          write_ready_ = true;
           state |= TCP_WRITE;
         } else {
           set_error_code(network_events.iErrorCode[FD_WRITE_BIT]);
@@ -178,11 +176,10 @@ class TcpSocketResource : public TcpSocketBaseResource {
     // WSAEventSelect puts the socket in nonblocking mode. Only report bytes
     // accepted by the transport, so close cannot cancel a queued WSASend.
     // FD_WRITE wakes the writer once a full send buffer has room again.
-    int result = ::send(socket(), reinterpret_cast<const char*>(buffer), length, 0);
-    if (result == SOCKET_ERROR && WSAGetLastError() == WSAEWOULDBLOCK) {
-      write_ready_ = false;
-    }
-    return result;
+    // Always retry the nonblocking send. Caching readiness here can lose an
+    // FD_WRITE handled between send returning WSAEWOULDBLOCK and clearing the
+    // cached flag, leaving the writer asleep on a writable socket.
+    return ::send(socket(), reinterpret_cast<const char*>(buffer), length, 0);
   }
 
  private:
@@ -191,8 +188,6 @@ class TcpSocketResource : public TcpSocketBaseResource {
   WindowsOverlapped read_overlapped_;
   DWORD read_count_ = 0;
   bool read_ready_ = false;
-
-  bool write_ready_ = true;
 
   HANDLE auxiliary_event_;
   bool closed_ = false;
@@ -400,8 +395,6 @@ PRIMITIVE(write) {
   USE(proxy);
 
   if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_BOUNDS);
-
-  if (!tcp_resource->ready_for_write()) return Smi::from(-1);
 
   int written = tcp_resource->send(data.address() + from, to - from);
   if (written == SOCKET_ERROR) {

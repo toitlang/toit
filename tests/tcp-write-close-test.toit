@@ -49,11 +49,13 @@ test-small-write:
 
 // Force the writer to run out of transport buffer space. A second task must
 // remain runnable while the peer is not reading, and every byte must arrive.
+// Repeat on the same socket so readiness must recover after each stall.
 test-backpressure:
   network := net.open
   port := Latch
-  started := Latch
+  started := Channel 1
   finished := Latch
+  rounds := 4
   payload := ByteArray (16 * 1024 * 1024): it & 0xff
 
   task::
@@ -61,18 +63,21 @@ test-backpressure:
     server.listen "127.0.0.1" 0
     port.set server.local-address.port
     socket := server.accept
-    started.set true
-    socket.out.write payload
+    rounds.repeat:
+      started.send true
+      socket.out.write payload
     socket.close
     server.close
     finished.set true
 
   socket := tcp.TcpSocket network
   socket.connect "127.0.0.1" port.get
-  started.get
-  sleep --ms=100
-  received := socket.in.read-all
+  reader := socket.in
+  rounds.repeat:
+    started.receive
+    sleep --ms=100
+    received := reader.read-bytes payload.size
+    expect-equals payload received
+  expect-null reader.read
   socket.close
   finished.get
-  expect-equals payload.size received.size
-  expect-equals payload received
