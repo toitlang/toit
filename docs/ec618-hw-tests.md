@@ -7,8 +7,30 @@ sensor results below record earlier bring-up; they do not validate the current
 async backend. See the [fixture instructions](../tests/hw/ec618/README.md#programmable-i2cspi-fixture)
 and [`wiring.toit`](../tests/hw/ec618/wiring.toit) for the replacement ESP32-S3
 I2C1/SPI target, the classic ESP32 I2C0 target, and current test entry points.
-New backend hardware validation remains pending until the matching EC618
-base and firmware can be flashed.
+Validation on 2026-09-13 used both EC618 boards and the programmable targets:
+
+- I2C1: write/read/write-read through 1,025 bytes at 50/100/400 kHz,
+  frequency changes, ACK/NACK, stretching, cancellation, and immediate reuse.
+- I2C0: the classic ESP32 basic target checks read/write-read through 32
+  bytes and writes through 1,025 bytes at 50/100/400 kHz. Larger read replies
+  use the S3 fixture on I2C1 because the classic target lacks stretch causes.
+- SPI: both directions, all four modes, prefixes of 0/1/3 bytes, lengths
+  through 32 KiB, slice sentinels, DMA cancellation, and immediate reuse.
+  The harness reuses one large payload to avoid fragmenting the native heap.
+- GPIO, ADC, PWM, UART stress/configuration/overflow/recovery, and peripheral
+  lifetime tests passed. Both EC618 boards passed the nine standalone
+  lifecycle checks and multipage storage; the module also passed DNS, TCP,
+  HTTPS, and UDP/NTP over cellular.
+- The integration's host suite passed all 1,002 cases across the run and
+  environment-corrected reruns. Multicast needs the expected loopback route;
+  the isolated namespace also needs `USER` to match its mapped user for PTYs.
+
+The independent ESP32/S3 rigs also exercised the complete hardware matrix;
+all I2C/SPI cases passed on both variants. Classic ESP-NOW packet loss,
+classic short-sleep timing failures, and intermittent Wi-Fi TCP test hangs
+were reproduced on unchanged master firmware (`0ef62329`). These remain
+baseline test failures to investigate separately. EC618 fixed-precision
+float formatting remains open as [known issue 15](ec618-known-issues.md).
 
 Goal: grow real hardware-in-the-loop coverage for the EC618, and implement the
 missing peripheral functionality the tests exercise. This is a **living
