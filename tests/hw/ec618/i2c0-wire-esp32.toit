@@ -1,0 +1,79 @@
+// Copyright (C) 2026 Toit contributors.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
+
+import gpio
+import pulse-counter
+
+import .wiring as wiring
+
+/**
+ESP32 half of the I2C0 bus-level HW test: hardware pulse counters watch
+  both I2C0 wires while the EC618 (i2c0-scan-ec618.toit) drives scan
+  traffic on pads 14 (SDA) / 13 (SCL).
+
+Two things are proven at once for the rig's coverage matrix: the I2C0
+  controller really drives board pins 22/23, and — for
+  the first time — WHICH wire is which: the two pins have only ever moved
+  in lockstep. During an address scan SCL carries ~18 edges per 9-bit
+  frame while SDA carries a handful, so the expected-SCL wire (IO17) must
+  count clearly more edges than the expected-SDA wire (IO18). A swapped
+  pair inverts the ratio and fails — with counts that say so.
+
+The I2C clock (~46 kHz on the EC618) is far too fast for GPIO polling;
+  the ESP32's pulse-counter peripheral counts in hardware (the pwm test's
+  trick). Internal pull-ups on both observer pins keep the open-drain bus
+  high alongside the EC618's own pad pull-ups.
+
+*/
+
+BASELINE ::= Duration --s=3
+WINDOW ::= Duration --s=25
+MAX-BASELINE-EDGES ::= 20      // A pulled-up idle bus is quiet.
+MIN-SCL-EDGES ::= 1500         // 3 scans x 112 frames x ~18 edges >> this.
+MIN-SDA-EDGES ::= 150          // Address bits + start/stop, far fewer than SCL.
+
+count pin-num/int window/Duration -> int:
+  pin := gpio.Pin pin-num --input --pull-up
+  pin.close
+  unit := pulse-counter.Unit pin-num
+  sleep window
+  edges := unit.value
+  unit.close
+  return edges
+
+main:
+  print "i2c0-wire-esp32: baseline (quiet bus) $(BASELINE.in-s)s"
+  base-scl := count wiring.ESP32-I2C0-SCL-PIN BASELINE
+  base-sda := count wiring.ESP32-I2C0-SDA-PIN BASELINE
+  print "i2c0-wire-esp32: baseline scl=$base-scl sda=$base-sda"
+
+  print "i2c0-wire-esp32: watching IO$(wiring.ESP32-I2C0-SCL-PIN) (SCL?) + IO$(wiring.ESP32-I2C0-SDA-PIN) (SDA?) for $(WINDOW.in-s)s"
+  // The counters watch sequentially-opened units on both pins at once.
+  scl-pin := gpio.Pin wiring.ESP32-I2C0-SCL-PIN --input --pull-up
+  sda-pin := gpio.Pin wiring.ESP32-I2C0-SDA-PIN --input --pull-up
+  scl-pin.close
+  sda-pin.close
+  scl-unit := pulse-counter.Unit wiring.ESP32-I2C0-SCL-PIN
+  sda-unit := pulse-counter.Unit wiring.ESP32-I2C0-SDA-PIN
+  sleep WINDOW
+  scl-edges := scl-unit.value
+  sda-edges := sda-unit.value
+  scl-unit.close
+  sda-unit.close
+  print "i2c0-wire-esp32: scl=$scl-edges sda=$sda-edges"
+
+  failures := []
+  if base-scl > MAX-BASELINE-EDGES or base-sda > MAX-BASELINE-EDGES:
+    failures.add "noisy-baseline ($base-scl/$base-sda)"
+  if scl-edges < MIN-SCL-EDGES:
+    failures.add "scl-quiet (IO$(wiring.ESP32-I2C0-SCL-PIN) saw $scl-edges, wanted >= $MIN-SCL-EDGES)"
+  if sda-edges < MIN-SDA-EDGES:
+    failures.add "sda-quiet (IO$(wiring.ESP32-I2C0-SDA-PIN) saw $sda-edges, wanted >= $MIN-SDA-EDGES)"
+  if scl-edges < 2 * sda-edges:
+    failures.add "wire-identity (SCL should clock ~4x SDA; a swap inverts this: $scl-edges vs $sda-edges)"
+
+  if failures.is-empty:
+    print "i2c0-wire-esp32: PASS I2C0 drives pins 22/23; IO17=SCL IO18=SDA confirmed"
+  else:
+    print "i2c0-wire-esp32: FAIL $failures"

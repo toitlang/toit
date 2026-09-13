@@ -38,13 +38,18 @@ import semver
 import tar
 
 import ..system.extensions.host.run-image-boot-sh
+import .ec618.slot-reloc show SlotRelocTable
+import .firmware.ec618 as firmware-ec618
+import .firmware.image-details as image-details
 import .image
 import .snapshot
 import .snapshot-to-image
 
-ENVELOPE-FORMAT-VERSION ::= 8
+ENVELOPE-FORMAT-VERSION-ESP32-HOST ::= 8
+ENVELOPE-FORMAT-VERSION-EC618      ::= 1000
 
 WORD-SIZE-ESP32 ::= 4
+WORD-SIZE-EC618 ::= firmware-ec618.WORD-SIZE
 
 // Shared AR entries.
 AR-ENTRY-INFO       ::= "\$envelope"
@@ -74,6 +79,26 @@ AR-ENTRY-ESP32-FILE-MAP ::= {
 
 // Host AR entries.
 AR-ENTRY-HOST-RUN-IMAGE ::= "\$run-image"
+
+// EC618 AR entries.
+AR-ENTRY-EC618-FIRMWARE-BIN ::= "\$ec618-fw.bin"
+// The CP (modem-core) image. Bundled so `flash` can program a matching
+// CP — a mismatched CP resets the chip a few seconds after the modem is
+// enabled.
+AR-ENTRY-EC618-CP-BIN ::= "\$ec618-cp.bin"
+// The "SRL3" dual-slot relocation table (built by tools/ec618/gen-slot-reloc.toit
+// from the canonical neutral-base link). Carried in the envelope so `extract` can place the
+// bundled extension inside the VM slot and relocate it with the VM body
+// using one relocation pass. Every EC618 envelope must carry this entry.
+AR-ENTRY-EC618-RELOC ::= "\$ec618-reloc.bin"
+// The VM's writable-.data init image (the per-slot data region, built by
+// tools/ec618/gen-slot-reloc.toit alongside the reloc table). Each firmware
+// carries its OWN .data so an A!=B OTA boots correct VM state: the bytes ride
+// inside the slot after the VM body+extension (verbatim, never relocated), and
+// the device copies the active slot's copy to __vm_data_start at boot. Its size
+// must equal the relocation table's data_size. (The AR
+// name must stay <=16 chars, like the other entries.)
+AR-ENTRY-EC618-VM-DATA ::= "\$ec618-data.bin"
 
 SYSTEM-CONTAINER-NAME ::= "system"
 
@@ -124,10 +149,10 @@ write-file path/string --ui/cli.Ui [block] -> none:
     stream.close
 
 main arguments/List:
-  firmware-cmd := build-command --create-esp32-only
+  firmware-cmd := build-command --legacy-create-layout
   firmware-cmd.run arguments
 
-build-command --create-esp32-only/bool=false -> cli.Command:
+build-command --legacy-create-layout/bool=false -> cli.Command:
   firmware-cmd := cli.Command "firmware"
       --help="""
         Manipulate firmware envelopes.
@@ -141,8 +166,11 @@ build-command --create-esp32-only/bool=false -> cli.Command:
             --help="Set the envelope to work on."
             --required
       ]
-  if create-esp32-only:
+  if legacy-create-layout:
+    // Preserve the standalone tool's historical spelling. The SDK command
+    // uses the unambiguous `toit tool firmware create esp32` hierarchy.
     firmware-cmd.add (create-esp32-cmd --name="create")
+    firmware-cmd.add (create-ec618-cmd --name="create-ec618")
   else:
     firmware-cmd.add create-cmd
   firmware-cmd.add extract-cmd
@@ -163,6 +191,7 @@ create-cmd -> cli.Command:
         Create a firmware envelope of the specified kind.
         """
   cmd.add (create-esp32-cmd --name="esp32")
+  cmd.add create-ec618-cmd
   cmd.add create-host-cmd
   return cmd
 
@@ -216,6 +245,76 @@ create-envelope-esp32 invocation/cli.Invocation -> none:
       --sdk-version=system-snapshot.sdk-version
       --kind=Envelope.KIND-ESP32
       --word-size=WORD-SIZE-ESP32
+  envelope.store output-path --ui=ui
+
+create-ec618-cmd --name/string="ec618" -> cli.Command:
+  return cli.Command name
+      --help="""
+        Create a firmware envelope from an EC618 firmware binary.
+
+        The firmware binary is the AP binary produced by the EC618 build.
+        """
+      --options=[
+        cli.OptionPath "firmware.bin"
+            --help="Set the firmware binary (the AP image)."
+            --required,
+        cli.OptionPath "cp.bin"
+            --help="Set the CP (modem-core) image, so 'flash' can program a matching CP."
+            --required,
+        cli.OptionPath "reloc.bin"
+            --help="Set the required dual-slot relocation table (slot-reloc.bin)."
+            --required,
+        cli.OptionPath "data.bin"
+            --help="Set the per-slot VM .data init image (slot-data.bin) carried inside each slot.",
+        cli.OptionPath "system.snapshot"
+            --required,
+      ]
+      --run=:: create-envelope-ec618 it
+
+create-envelope-ec618 invocation/cli.Invocation -> none:
+  output-path := invocation[OPTION-ENVELOPE]
+  input-path := invocation["firmware.bin"]
+
+  ui := invocation.cli.ui
+
+  firmware-bin-data := read-file input-path --ui=ui
+  system-snapshot-content := read-file invocation["system.snapshot"] --ui=ui
+  system-snapshot := SnapshotBundle system-snapshot-content
+
+  reloc := read-file invocation["reloc.bin"] --ui=ui
+  reloc-table := SlotRelocTable.parse reloc
+  firmware-ec618.validate-envelope-base firmware-bin-data reloc-table
+
+  // For EC618, we include the raw firmware binary without stripping
+  // DROM extensions (no ESP32-style segment parsing needed). This is the
+  // complete AP image, including the exact base verified above.
+  entries := {
+    AR-ENTRY-EC618-FIRMWARE-BIN: firmware-bin-data,
+    SYSTEM-CONTAINER-NAME: system-snapshot-content,
+    AR-ENTRY-PROPERTIES: json.encode {
+      PROPERTY-CONTAINER-FLAGS: {
+        SYSTEM-CONTAINER-NAME: IMAGE-FLAG-RUN-BOOT | IMAGE-FLAG-RUN-CRITICAL,
+      },
+    },
+  }
+
+  entries[AR-ENTRY-EC618-CP-BIN] = read-file invocation["cp.bin"] --ui=ui
+
+  entries[AR-ENTRY-EC618-RELOC] = reloc
+
+  data-path := invocation["data.bin"]
+  if data-path:
+    data := read-file data-path --ui=ui
+    if data.size != reloc-table.data-size:
+      ui.abort "EC618 relocation table requires 0x$(%x reloc-table.data-size) bytes of VM .data, but '$data-path' contains 0x$(%x data.size)."
+    entries[AR-ENTRY-EC618-VM-DATA] = data
+  else if reloc-table.data-size != 0:
+    ui.abort "EC618 relocation table requires a VM .data image; pass --data.bin."
+
+  envelope := Envelope.create entries
+      --sdk-version=system-snapshot.sdk-version
+      --kind=Envelope.KIND-EC618
+      --word-size=WORD-SIZE-EC618
   envelope.store output-path --ui=ui
 
 create-host-cmd -> cli.Command:
@@ -680,6 +779,8 @@ extract invocation/cli.Invocation -> none:
     extract-esp32 invocation envelope --config-encoded=config-encoded
   else if envelope.kind == Envelope.KIND-HOST:
     extract-host invocation envelope --config-encoded=config-encoded
+  else if envelope.kind == Envelope.KIND-EC618:
+    extract-ec618 invocation envelope --config-encoded=config-encoded
   else:
     throw "unsupported kind: $(envelope.kind)"
 
@@ -860,6 +961,98 @@ parse-flash-size_ flash-size-string/string --ui/cli.Ui -> int:
   if not flash-size-string.ends-with "MB":
     ui.abort "Unexpected flash size '$flash-size-string'."
   return (int.parse flash-size-string[..flash-size-string.size - 2]) * 1024 * 1024
+
+extract-ec618 -> none
+    invocation/cli.Invocation
+    envelope/Envelope
+    --config-encoded/ByteArray:
+  output-path := invocation[OPTION-OUTPUT]
+  ui := invocation.cli.ui
+
+  format := invocation["format"]
+  if format != "binary" and format != "ubjson" and format != "image":
+    ui.abort "Unsupported format for EC618 envelope: '$format'. Use 'binary', 'image' (binpkg), or 'ubjson'."
+
+  firmware-bin := extract-binary-ec618 envelope --config-encoded=config-encoded --ui=ui
+
+  if format == "image":
+    // Produce a .binpkg (the EC618 flashable format), including the CP
+    // (modem-core) zone when the envelope carries one.
+    cp := envelope.entries.get AR-ENTRY-EC618-CP-BIN
+    binpkg := convert-to-binpkg firmware-bin --cp=cp
+    write-file output-path --ui=ui: it.write binpkg
+    return
+
+  if format == "binary":
+    // The OTA payload: the active slot's CANONICAL firmware (table-first,
+    // [ size ][ table ][ VM body + extension ]) — the exact bytes firmware.map
+    // returns and the device FirmwareWriter consumes (relocate-on-write). This
+    // matches the standard contract where `extract --format binary` is the
+    // image that is OTA'd. The flashable whole-AP image is the 'image'/binpkg
+    // format.
+    reloc-table := envelope.entries.get AR-ENTRY-EC618-RELOC
+        --if-present=: SlotRelocTable.parse it
+        --if-absent=: ui.abort "EC618 envelope is missing its SRL3 relocation table."
+    output := firmware-ec618.canonical-firmware firmware-bin reloc-table
+    write-file output-path --ui=ui: it.write output
+    return
+
+  parts := firmware-ec618.parts firmware-bin
+  output := {
+    "parts"  : parts,
+    "binary" : firmware-bin,
+  }
+  write-file output-path --ui=ui: it.write (ubjson.encode output)
+
+extract-binary-ec618 envelope/Envelope --config-encoded/ByteArray --ui/cli.Ui -> ByteArray:
+  containers := []
+  entries := envelope.entries
+  properties := entries.get AR-ENTRY-PROPERTIES
+      --if-present=: json.decode it
+      --if-absent=: {:}
+  flags := get-flags envelope
+
+  has-system-image := entries.contains SYSTEM-CONTAINER-NAME
+  if has-system-image: containers.add null
+
+  non-system-images := {:}
+  entries.do: | name/string content/ByteArray |
+    if name == SYSTEM-CONTAINER-NAME or not is-container-name name:
+      continue.do
+    assets-data := entries.get "+$name"
+    entry := extract-container name flags content --assets=assets-data --word-size=envelope.word-size
+    containers.add entry
+    non-system-images[name] = entry.id.to-byte-array
+
+  if has-system-image:
+    name := SYSTEM-CONTAINER-NAME
+    content := entries[name]
+    system-assets := {:}
+    if not non-system-images.is-empty: system-assets["images"] = tison.encode non-system-images
+    assets-encoded := assets.encode system-assets
+    containers[0] = extract-container name flags content --assets=assets-encoded --word-size=envelope.word-size
+
+  firmware-bin := entries.get AR-ENTRY-EC618-FIRMWARE-BIN
+  if not firmware-bin:
+    throw "cannot find $AR-ENTRY-EC618-FIRMWARE-BIN entry in envelope '$envelope.path'"
+
+  system-uuid/Uuid? := null
+  if properties.contains "uuid":
+    system-uuid = Uuid.parse properties["uuid"] --if-error=(: null)
+  system-uuid = system-uuid or sdk-version-uuid --sdk-version=envelope.sdk-version
+
+  reloc-table := entries.get AR-ENTRY-EC618-RELOC
+      --if-present=: SlotRelocTable.parse it
+      --if-absent=: ui.abort "EC618 envelope is missing its SRL3 relocation table."
+  vm-data/ByteArray? := entries.get AR-ENTRY-EC618-VM-DATA
+
+  return firmware-ec618.build-image
+      --binary-input=firmware-bin
+      --containers=containers
+      --system-uuid=system-uuid
+      --config-encoded=config-encoded
+      --reloc-table=reloc-table
+      --vm-data=vm-data
 
 // The flash sizes (in MiB) that the ESP32 image header can encode. The index of
 // a size is the value stored in the high nibble of the 'spi_size' header byte.
@@ -1093,11 +1286,45 @@ find-esptool_ -> List:
       return ["python3", location.trim]
   throw "cannot find esptool"
 
+find-ectool_ -> string:
+  bin-extension := ?
+  bin-name := system.program-path
+  if platform == system.PLATFORM-WINDOWS:
+    bin-name = bin-name.replace --all "\\" "/"
+    bin-extension = ".exe"
+  else:
+    bin-extension = ""
+
+  if ectool-path := os.env.get "ECTOOL_PATH":
+    return ectool-path
+
+  // Look next to the firmware binary.
+  list := bin-name.split "/"
+  dir := list[..list.size - 1].join "/"
+  if dir != "":
+    ectool := "$dir/ectool$bin-extension"
+    if file.is-file ectool: return ectool
+    // Also look in third_party/ectool/.
+    ectool = "$dir/../third_party/ectool/ectool$bin-extension"
+    if file.is-file ectool: return ectool
+
+  // Try to find ectool in PATH.
+  ectool := "ectool$bin-extension"
+  if platform != system.PLATFORM-WINDOWS:
+    location := pipe.backticks "/bin/sh" "-c" "command -v $ectool || true"
+    if location.trim != "": return location.trim
+  else:
+    catch:
+      pipe.backticks ectool "--help"
+      return ectool
+  throw "cannot find ectool"
+
 tool-cmd -> cli.Command:
   return cli.Command "tool"
       --help="Provides information about used external tools."
       --subcommands=[
         esptool-cmd,
+        ectool-cmd,
       ]
 
 esptool-cmd -> cli.Command:
@@ -1122,6 +1349,23 @@ esptool invocation/cli.Invocation -> none:
     ui.emit --result "Command: $esptool\nVersion: $version"
   else:
     ui.emit --result "$command\n$version"
+
+ectool-cmd -> cli.Command:
+  return cli.Command "ectool"
+      --help="Prints the path of the found ectool."
+      --examples=[
+        cli.Example "Print the path of the found ectool."
+            --arguments="-e ignored-envelope",
+      ]
+      --run=:: ectool-info it
+
+ectool-info invocation/cli.Invocation -> none:
+  ui := invocation.cli.ui
+  ectool := find-ectool_
+  if ui.wants-structured:
+    ui.emit --result {"command": ectool}
+  else:
+    ui.emit --result "Command: $ectool"
 
 flash-cmd -> cli.Command:
   return cli.Command "flash"
@@ -1176,13 +1420,21 @@ flash invocation/cli.Invocation -> none:
 
   envelope := Envelope.load input-path --ui=ui
 
+  if envelope.kind == Envelope.KIND-EC618:
+    flash-ec618 invocation envelope
+    return
+
   if envelope.kind != Envelope.KIND-ESP32:
-    ui.abort "Only ESP32 envelopes can be flashed."
+    ui.abort "Only ESP32 and EC618 envelopes can be flashed."
 
   if platform != system.PLATFORM-WINDOWS:
     stat := file.stat port
     if not stat or stat[file.ST-TYPE] != file.CHARACTER-DEVICE:
       throw "cannot open port '$port'"
+
+  // Resolve the external tool before building the image or creating temporary
+  // partition files, so a missing esptool fails without leaving file output.
+  esptool := find-esptool_
 
   config-encoded := ByteArray 0
   if config-path:
@@ -1201,7 +1453,6 @@ flash invocation/cli.Invocation -> none:
             partition-args.add "0x$(%x offset)"
             partition-args.add tmp-file
 
-          esptool := find-esptool_
           esptool-major := esptool-major-version_ esptool
           if not esptool-major:
             ui.abort "Could not determine the esptool version."
@@ -1222,7 +1473,6 @@ flash invocation/cli.Invocation -> none:
               ui.abort "The partition table needs $(required-flash-size / 0x100000)MB of flash, but the device only has $(detected-flash-size / 0x100000)MB."
             if not detected-flash-size:
               ui.emit --warning "Could not determine the device's flash size; skipping the flash-size check."
-
           before-args := flashing["extra_esptool_args"]["before"]
           after-args := flashing["extra_esptool_args"]["after"]
           write-flash-args := flashing["write_flash_args"]
@@ -1246,6 +1496,72 @@ flash invocation/cli.Invocation -> none:
           if code != 0: exit 1
         finally:
           directory.rmdir --recursive tmp
+
+flash-ec618 invocation/cli.Invocation envelope/Envelope -> none:
+  ui := invocation.cli.ui
+  config-path := invocation["config"]
+  port := invocation["port"]
+
+  // Resolve the external tool before building the image or creating the
+  // temporary binpkg, so a missing ectool fails without leaving file output.
+  ectool := find-ectool_
+
+  config-encoded := ByteArray 0
+  if config-path:
+    config-encoded = read-file config-path --ui=ui
+    exception := catch: ubjson.decode config-encoded
+    if exception: config-encoded = ubjson.encode (json.decode config-encoded)
+
+  firmware-bin := extract-binary-ec618 envelope --config-encoded=config-encoded --ui=ui
+
+  // Program the CP (modem-core) image when the envelope carries one. A CP
+  // that does not match the AP PLAT resets the chip a few seconds after the
+  // modem is enabled, so flashing the matching CP is the default.
+  // TODO(florian): add a command-line flag to skip the CP burn (e.g. for
+  // faster iteration when the CP is known to already match).
+  cp := envelope.entries.get AR-ENTRY-EC618-CP-BIN
+  burn-cp := cp ? "y" : "n"
+
+  binpkg := convert-to-binpkg firmware-bin --cp=cp
+  tmp := directory.mkdtemp "/tmp/toit-flash-"
+  try:
+    binpkg-path := "$tmp/toit.binpkg"
+    write-file binpkg-path --ui=ui: it.write binpkg
+
+    code := pipe.run-program [ectool, "burn", "--burn_bl", "n", "--burn_cp", burn-cp, "-f", binpkg-path]
+    if code != 0: exit 1
+  finally:
+    directory.rmdir --recursive tmp
+
+/**
+Builds one .binpkg zone record: a 364-byte image header followed by the
+zone's data.
+
+The image header carries the application $name at offset 0, the data size
+at offset 76, and the subsystem identifier ($subsystem, e.g. "AP" or "CP")
+at offset 336. ectool burns each zone to a fixed address derived from the
+subsystem, so the other header fields can stay zero.
+*/
+binpkg-zone --name/string --subsystem/string data/ByteArray -> ByteArray:
+  IMAGE-HEADER-SIZE ::= 364
+  image-header := ByteArray IMAGE-HEADER-SIZE
+  image-header.replace 0 name.to-byte-array
+  LITTLE-ENDIAN.put-uint32 image-header 76 data.size
+  image-header.replace 336 subsystem.to-byte-array
+  return image-header + data
+
+/**
+Converts a raw AP firmware binary to .binpkg format, optionally appending
+a CP (modem-core) zone.
+
+The binpkg format is a 52-byte (zero-filled) file header followed by one
+or more zones, each a 364-byte image header plus the zone's data.
+*/
+convert-to-binpkg firmware-bin/ByteArray --cp/ByteArray?=null --app-name/string="toit" -> ByteArray:
+  BINPKG-HEADER-SIZE ::= 52
+  result := (ByteArray BINPKG-HEADER-SIZE) + (binpkg-zone --name=app-name --subsystem="AP" firmware-bin)
+  if cp: result += binpkg-zone --name="cp" --subsystem="CP" cp
+  return result
 
 get-flags envelope/Envelope -> Map?:
   properties := envelope.entries.get AR-ENTRY-PROPERTIES
@@ -1436,9 +1752,15 @@ show invocation/cli.Invocation -> none:
   ui := invocation.cli.ui
 
   envelope := Envelope.load input-path --ui=ui
-  kind-string := envelope.kind == Envelope.KIND-ESP32
-      ? Envelope.KIND-STRING-ESP32
-      : Envelope.KIND-STRING-HOST
+  kind-string := ?
+  if envelope.kind == Envelope.KIND-ESP32:
+    kind-string = Envelope.KIND-STRING-ESP32
+  else if envelope.kind == Envelope.KIND-EC618:
+    kind-string = Envelope.KIND-STRING-EC618
+  else if envelope.kind == Envelope.KIND-HOST:
+    kind-string = Envelope.KIND-STRING-HOST
+  else:
+    unreachable
 
   result := {
     "envelope-format-version": envelope.version_,
@@ -1525,9 +1847,11 @@ class Envelope:
 
   static KIND-ESP32 ::= 0
   static KIND-HOST  ::= 1
+  static KIND-EC618 ::= 2
 
   static KIND-STRING-ESP32 ::= "esp32"
   static KIND-STRING-HOST  ::= "host"
+  static KIND-STRING-EC618 ::= "ec618"
 
   static INFO-ENTRY-MARKER-OFFSET   ::= 0
   static INFO-ENTRY-VERSION-OFFSET  ::= 4
@@ -1559,6 +1883,8 @@ class Envelope:
             kind = KIND-ESP32
           else if kind-string == KIND-STRING-HOST:
             kind = KIND-HOST
+          else if kind-string == KIND-STRING-EC618:
+            kind = KIND-EC618
           else:
             throw "unsupported kind: $kind-string"
           word-size = metadata[META-WORD-SIZE]
@@ -1568,7 +1894,9 @@ class Envelope:
     if sdk-version == "": throw "cannot open envelope - missing or corrupt metadata entry"
 
   constructor.create .entries --.sdk-version --.kind --.word-size:
-    version_ = ENVELOPE-FORMAT-VERSION
+    version_ = kind == KIND-EC618
+        ? ENVELOPE-FORMAT-VERSION-EC618
+        : ENVELOPE-FORMAT-VERSION-ESP32-HOST
 
   store path/string --ui/cli.Ui -> none:
     write-file path --ui=ui: | writer/io.Writer |
@@ -1585,6 +1913,8 @@ class Envelope:
         kind-string = KIND-STRING-ESP32
       else if kind == KIND-HOST:
         kind-string = KIND-STRING-HOST
+      else if kind == KIND-EC618:
+        kind-string = KIND-STRING-EC618
       else:
         throw "unsupported kind: $(kind)"
 
@@ -1606,8 +1936,8 @@ class Envelope:
     version := LITTLE-ENDIAN.uint32 info 4
     if marker != MARKER:
       throw "cannot open envelope - malformed"
-    if version != ENVELOPE-FORMAT-VERSION:
-      throw "cannot open envelope - expected version $ENVELOPE-FORMAT-VERSION, was $version"
+    if version != ENVELOPE-FORMAT-VERSION-ESP32-HOST and version != ENVELOPE-FORMAT-VERSION-EC618:
+      throw "cannot open envelope - expected version $ENVELOPE-FORMAT-VERSION-ESP32-HOST or $ENVELOPE-FORMAT-VERSION-EC618, was $version"
     return version
 
 class RelocationInformation:
@@ -1675,7 +2005,7 @@ class RelocationInformation:
 ceil_ x/int y/int -> int:
   return (x + y - 1) / y
 
-class ContainerEntry:
+class ContainerEntry implements firmware-ec618.Container:
   id/Uuid
   name/string
   flags/int
@@ -2079,10 +2409,6 @@ class Esp32BinarySegment:
   stringify -> string:
     return "len 0x$(%05x size) load 0x$(%08x address) file_offs 0x$(%08x offset)"
 
-IMAGE-DATA-MAGIC-1 ::= 0x7017da7a
-IMAGE-DETAILS-SIZE ::= 4 + Uuid.SIZE
-IMAGE-DATA-MAGIC-2 ::= 0x00c09f19
-
 // The DROM segment contains a section where we patch in the image details.
 patch-details-esp32 bits/ByteArray unique-id/Uuid table-address/int -> none:
   // Patch the binary at the offset we compute by searching for
@@ -2099,13 +2425,4 @@ patch-details-esp32 bits/ByteArray unique-id/Uuid table-address/int -> none:
 // The exact location of this area can depend on a future SDK version
 // so we don't know it exactly.
 find-details-offset-esp32 bits/ByteArray -> int:
-  limit := bits.size - IMAGE-DETAILS-SIZE
-  for offset := 0; offset < limit; offset += WORD-SIZE-ESP32:
-    word-1 := LITTLE-ENDIAN.uint32 bits offset
-    if word-1 != IMAGE-DATA-MAGIC-1: continue
-    candidate := offset + WORD-SIZE-ESP32
-    word-2 := LITTLE-ENDIAN.uint32 bits candidate + IMAGE-DETAILS-SIZE
-    if word-2 == IMAGE-DATA-MAGIC-2: return candidate
-  // No magic numbers were found so the image is from a legacy SDK that has the
-  // image details at a fixed offset.
-  throw "cannot find magic marker in binary file"
+  return image-details.find-offset bits --word-size=WORD-SIZE-ESP32

@@ -13,14 +13,17 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+// Define before every header so 32-bit POSIX hosts use 64-bit directory offsets.
 #define _FILE_OFFSET_BITS 64
+
+#include "top.h"
 
 #include "primitive_file.h"
 #include "primitive.h"
 #include "process.h"
 #include "objects_inline.h"
 
-#if defined(TOIT_POSIX) || defined(TOIT_FREERTOS)
+#if defined(TOIT_POSIX) || defined(TOIT_ESP32)
 
 #include <dirent.h>
 #include <errno.h>
@@ -622,4 +625,4 @@ PRIMITIVE(cwd) {
 }
 
 }
-#endif  // Linux and BSD.
+#endif  // !TOIT_EC618 && (TOIT_POSIX || TOIT_FREERTOS)

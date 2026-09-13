@@ -19,7 +19,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_ESP32) || defined(TOIT_USE_LWIP) && CONFIG_TOIT_ENABLE_IP
+#if defined(TOIT_ESP32) || defined(TOIT_EC618) || defined(TOIT_USE_LWIP) && CONFIG_TOIT_ENABLE_IP
 
 #include <lwip/udp.h>
 #include "lwip/ip_addr.h"
@@ -96,7 +96,11 @@ class UdpSocket : public Resource {
   }
 
   void tear_down() {
+#ifdef TOIT_EC618
+    tcpip_untimeout(on_send_unblock, this);
+#else
     sys_untimeout(on_send_unblock, this);
+#endif
     if (upcb_) {
       udp_recv(upcb_, null, null);
       udp_remove(upcb_);
@@ -112,9 +116,17 @@ class UdpSocket : public Resource {
     spare_packet_ = null;
   }
 
+#ifdef TOIT_EC618
+  // EC618's lwIP udp_recv callback returns int instead of void.
+  static int on_recv(void* arg, udp_pcb* upcb, pbuf* p, const ip_addr_t* addr, u16_t port) {
+    unvoid_cast<UdpSocket*>(arg)->on_recv(p, addr, port);
+    return 0;
+  }
+#else
   static void on_recv(void* arg, udp_pcb* upcb, pbuf* p, const ip_addr_t* addr, u16_t port) {
     unvoid_cast<UdpSocket*>(arg)->on_recv(p, addr, port);
   }
+#endif
   void on_recv(pbuf* p, const ip_addr_t* addr, u16_t port);
 
   void send_state();
@@ -229,7 +241,11 @@ void UdpSocket::send_state() {
 
 void UdpSocket::block_send() {
   send_blocked_ = true;
+#ifdef TOIT_EC618
+  if (tcpip_timeout(50, on_send_unblock, this) != ERR_OK) send_blocked_ = false;
+#else
   sys_timeout(50, on_send_unblock, this);
+#endif
   send_state();
 }
 
@@ -263,7 +279,9 @@ PRIMITIVE(create_socket) {
     udp_pcb* upcb = udp_new();
     if (upcb == null) FAIL(MALLOC_FAILED);
     // Match BSD default: IP_MULTICAST_LOOP is ON by default.
+#ifndef TOIT_EC618
     udp_set_flags(upcb, UDP_FLAGS_MULTICAST_LOOP);
+#endif
 
     UdpSocket* socket = _new UdpSocket(capture.resource_group, upcb);
     if (socket == null) {
@@ -327,7 +345,9 @@ PRIMITIVE(bind) {
     udp_pcb* upcb = udp_new();
     if (upcb == null) FAIL(MALLOC_FAILED);
     // Match BSD default: IP_MULTICAST_LOOP is ON by default.
+#ifndef TOIT_EC618
     udp_set_flags(upcb, UDP_FLAGS_MULTICAST_LOOP);
+#endif
 
     err_t err = udp_bind(upcb, &capture.addr, capture.port);
     if (err != ERR_OK) {
@@ -545,9 +565,16 @@ PRIMITIVE(get_option) {
         return BOOL(capture.socket->upcb()->flags & UDP_FLAGS_MULTICAST_LOOP);
 
       case UDP_MULTICAST_TTL:
+#ifdef TOIT_EC618
+        return Smi::from(0);  // Multicast is not supported on EC618.
+#else
         return Smi::from(capture.socket->upcb()->mcast_ttl);
+#endif
 
       case UDP_MULTICAST_IF: {
+#ifdef TOIT_EC618
+        FAIL(UNIMPLEMENTED);
+#else
         ip4_addr_t addr4 = capture.socket->upcb()->mcast_ip4;
         ByteArray* result = capture.process->allocate_byte_array(4);
         if (result == null) FAIL(ALLOCATION_FAILED);
@@ -555,6 +582,7 @@ PRIMITIVE(get_option) {
         uint32_t raw = ip4_addr_get_u32(&addr4);
         memcpy(bytes.address(), &raw, 4);
         return result;
+#endif
       }
 
       case UDP_REUSE_ADDRESS:
@@ -604,7 +632,11 @@ PRIMITIVE(set_option) {
         ip_addr_t group_addr;
         const uint8* a = bytes.address();
         IP_ADDR4(&group_addr, a[0], a[1], a[2], a[3]);
+#ifdef TOIT_EC618
+        err_t err = ERR_VAL;  // Multicast is not supported on EC618.
+#else
         err_t err = igmp_joingroup(ip_2_ip4(IP_ADDR_ANY), ip_2_ip4(&group_addr));
+#endif
         if (err != ERR_OK) return lwip_error(capture.process, err);
         break;
       }
@@ -620,7 +652,11 @@ PRIMITIVE(set_option) {
         ip_addr_t group_addr;
         const uint8* a = bytes.address();
         IP_ADDR4(&group_addr, a[0], a[1], a[2], a[3]);
+#ifdef TOIT_EC618
+        err_t err = ERR_VAL;  // Multicast is not supported on EC618.
+#else
         err_t err = igmp_leavegroup(ip_2_ip4(IP_ADDR_ANY), ip_2_ip4(&group_addr));
+#endif
         if (err != ERR_OK) return lwip_error(capture.process, err);
         break;
       }
@@ -634,11 +670,18 @@ PRIMITIVE(set_option) {
       case UDP_MULTICAST_TTL: {
         if (!is_smi(capture.raw)) FAIL(WRONG_OBJECT_TYPE);
         int value = Smi::value(Smi::cast(capture.raw));
+#ifndef TOIT_EC618
         capture.socket->upcb()->mcast_ttl = value;
+#else
+        USE(value);
+#endif
         break;
       }
 
       case UDP_MULTICAST_IF: {
+#ifdef TOIT_EC618
+        FAIL(UNIMPLEMENTED);
+#else
         Blob bytes;
         if (!capture.raw->byte_content(capture.process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) {
           FAIL(WRONG_OBJECT_TYPE);
@@ -650,6 +693,7 @@ PRIMITIVE(set_option) {
         IP4_ADDR(&addr4, bytes.address()[0], bytes.address()[1], bytes.address()[2], bytes.address()[3]);
         udp_set_multicast_netif_addr(capture.socket->upcb(), &addr4);
         break;
+#endif
       }
 
       // LwIP might not support SO_REUSEPORT distinct from SO_REUSEADDR, or it
@@ -686,4 +730,4 @@ PRIMITIVE(gc) {
 
 } // namespace toit
 
-#endif // defined(TOIT_ESP32) || defined(TOIT_USE_LWIP)
+#endif // defined(TOIT_ESP32) || defined(TOIT_EC618) || defined(TOIT_USE_LWIP)
