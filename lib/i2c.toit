@@ -719,6 +719,8 @@ class Device implements serial.Device:
   /**
   Writes the $bytes to the device.
 
+  Throws `INVALID_ARGUMENT` if $bytes is empty.
+
   # Advanced
   The write operation is executed by sending:
   - a 'start',
@@ -729,11 +731,12 @@ class Device implements serial.Device:
   - a 'stop'.
   */
   write bytes/ByteArray:
+    if bytes.is-empty: throw "INVALID_ARGUMENT"
     bus := bus_
     if not bus: throw "CLOSED"
     result := bus.perform-controller-operation_
-        (: i2c-device-write_ resource_ bytes)
-        (: i2c-device-write-finish_ resource_)
+        (: i2c-device-transfer-start_ resource_ bytes 0)
+        (: i2c-device-transfer-finish_ resource_ #[ ] 0)
     check-controller-result_ result
 
   /**
@@ -795,6 +798,8 @@ class Device implements serial.Device:
   /**
   Reads $size bytes from the device.
 
+  The $size must be positive.
+
   # Advanced
   The read operation is done as follows:
   - send a 'start',
@@ -814,12 +819,13 @@ class Device implements serial.Device:
   Reads $size bytes into the given $buffer.
   */
   read-into buffer/ByteArray size/int=buffer.size -> none:
-    if buffer.size < size: throw "OUT_OF_RANGE"
+    if size < 0 or buffer.size < size: throw "OUT_OF_RANGE"
+    if size == 0: throw "INVALID_ARGUMENT"
     bus := bus_
     if not bus: throw "CLOSED"
     result := bus.perform-controller-operation_
-        (: i2c-device-read_ resource_ buffer size)
-        (: i2c-device-read-finish_ resource_ buffer size)
+        (: i2c-device-transfer-start_ resource_ #[ ] size)
+        (: i2c-device-transfer-finish_ resource_ buffer size)
     check-controller-result_ result
 
   /**
@@ -873,6 +879,8 @@ class Device implements serial.Device:
   /**
   Writes the $tx-buffer to the device and reads $size bytes.
 
+  The $tx-buffer must be nonempty and $size must be positive.
+
   # Advanced
   This operation is done as follows:
   - send a 'start',
@@ -896,12 +904,13 @@ class Device implements serial.Device:
   Reads $size bytes into the given $rx-buffer.
   */
   write-read-into --tx-buffer/io.Data --rx-buffer/ByteArray size/int=rx-buffer.size -> none:
-    if rx-buffer.size < size: throw "OUT_OF_RANGE"
+    if size < 0 or rx-buffer.size < size: throw "OUT_OF_RANGE"
+    if size == 0 or tx-buffer.byte-size == 0: throw "INVALID_ARGUMENT"
     bus := bus_
     if not bus: throw "CLOSED"
     result := bus.perform-controller-operation_
-        (: i2c-device-write-read_ resource_ tx-buffer rx-buffer size)
-        (: i2c-device-write-read-finish_ resource_ rx-buffer size)
+        (: i2c-device-transfer-start_ resource_ tx-buffer size)
+        (: i2c-device-transfer-finish_ resource_ rx-buffer size)
     check-controller-result_ result
 
   /** Closes this device and releases the I2C address. */
@@ -1050,24 +1059,12 @@ i2c-device-create_ bus address-length/int address/int frequency/int timeout-us/i
 i2c-device-close_ device:
   #primitive.i2c.device-close
 
-i2c-device-read_ device buffer/ByteArray size/int:
-  #primitive.i2c.device-read
-
-i2c-device-read-finish_ device buffer/ByteArray size/int:
-  #primitive.i2c.device-read-finish
-
-i2c-device-write_ device buffer/io.Data:
-  #primitive.i2c.device-write:
-    return io.primitive-redo-io-data_ it buffer 0 buffer.byte-size: | bytes/ByteArray |
-      i2c-device-write_ device bytes
-
-i2c-device-write-finish_ device:
-  #primitive.i2c.device-write-finish
-
-i2c-device-write-read_ device tx-buffer/io.Data rx-buffer/ByteArray size/int:
-  #primitive.i2c.device-write-read:
+// A transfer has a write phase, a read phase, or both with a repeated START.
+// Empty public operations are rejected before submitting native work.
+i2c-device-transfer-start_ device tx-buffer/io.Data rx-size/int:
+  #primitive.i2c.device-transfer-start:
     return io.primitive-redo-io-data_ it tx-buffer 0 tx-buffer.byte-size: | tx-bytes/ByteArray |
-      i2c-device-write-read_ device tx-bytes rx-buffer size
+      i2c-device-transfer-start_ device tx-bytes rx-size
 
-i2c-device-write-read-finish_ device rx-buffer/ByteArray size/int:
-  #primitive.i2c.device-write-read-finish
+i2c-device-transfer-finish_ device rx-buffer/ByteArray size/int:
+  #primitive.i2c.device-transfer-finish

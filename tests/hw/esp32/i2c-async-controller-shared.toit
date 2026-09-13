@@ -92,9 +92,10 @@ test-board1:
   expect-equals (wrapped initial 23 19) (into[0..19])
   expect-equals (ByteArray 21: 0xee) (into[19..])
 
-  expect-throw "ESP_ERR_INVALID_ARG": device.write #[]
-  expect-throw "ESP_ERR_INVALID_ARG": device.read 0
-  expect-throw "ESP_ERR_INVALID_ARG": device.write-read #[0] 0
+  expect-throw "INVALID_ARGUMENT": device.write #[]
+  expect-throw "INVALID_ARGUMENT": device.read 0
+  expect-throw "INVALID_ARGUMENT": device.write-read #[0] 0
+  expect-throw "INVALID_ARGUMENT": device.write-read #[] 1
   expect-throw "OUT_OF_RANGE": device.read-into (ByteArray 1) 2
 
   // All tasks share one native bus operation slot. Each write-read remains

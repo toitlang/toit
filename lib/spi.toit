@@ -498,12 +498,11 @@ class Bus:
   closing_/bool := false
   reservation-active_/bool := false
   /**
-  Mutex to serialize reservation attempts of multiple devices.
-  See $Device.with-reserved-bus.
+  Serializes controller transfers, reservations, and resource changes.
 
-  ESP-IDF's blocking acquisition API does not support a finite timeout. Toit
-    instead tries without waiting and yields between attempts; this mutex keeps
-    those attempts serialized across devices on the bus.
+  A reservation holds this monitor across the caller's block. Transfers by
+    that same task can enter it again; other tasks wait without entering the
+    native driver. Each bus therefore needs only one active native operation.
   */
   reservation-mutex_/monitor.Mutex ::= monitor.Mutex
 
@@ -846,22 +845,31 @@ class Device_ extends DeviceBase_:
       --command/int=0
       --address/int=0
       --keep-cs-active/bool=false:
-    transfer-mutex_.do:
-      if not device_: throw "CLOSED"
-      owner := owning-bus-task_
-      if owner and not identical owner Task.current: throw "INVALID_STATE"
-      if keep-cs-active and not identical owner Task.current:
-        throw "INVALID_STATE"
-      // Once queued, the ESP-IDF transaction cannot be canceled. Always wait
-      // for completion and release its native buffers.
-      critical-do --no-respect-deadline:
-        state_.clear-state TRANSFER-DONE_
-        spi-transfer-start_ device_ data command address from to read dc keep-cs-active
-        state_.wait-for-state TRANSFER-DONE_
-        // The post callback wakes this task slightly before ESP-IDF retires
-        // the descriptor. Poll with a zero timeout until its return queue is
-        // ready; no primitive waits for the driver.
-        while not spi-transfer-finish_ device_ data from read: yield
+    owner := owning-bus-task_
+    if owner and not identical owner Task.current: throw "INVALID_STATE"
+    bus := spi_
+    if not bus: throw "CLOSED"
+    bus.reservation-mutex_.do:
+      transfer-mutex_.do:
+        if not device_ or bus.closing_: throw "CLOSED"
+        if keep-cs-active and not identical owning-bus-task_ Task.current:
+          throw "INVALID_STATE"
+        finished := false
+        try:
+          state_.clear-state TRANSFER-DONE_
+          spi-transfer-start_ device_ data command address from to read dc keep-cs-active
+          state_.wait-for-state TRANSFER-DONE_
+          // A completion callback may precede native descriptor retirement.
+          while not spi-transfer-finish_ device_ data from read: yield
+          finished = true
+        finally:
+          if not finished:
+            critical-do --no-respect-deadline:
+              // Abort retires the operation when supported. Other backends
+              // must drain it before either buffers or bus ownership change.
+              if not spi-transfer-abort_ device_:
+                while not spi-transfer-finish_ device_ data from false: yield
+              state_.clear-state TRANSFER-DONE_
 
   /** See $Device.with-reserved-bus. */
   with-reserved-bus [block]:
@@ -1099,6 +1107,10 @@ spi-transfer-start_ device data/ByteArray command/int address/int from to read/b
 
 spi-transfer-finish_ device data/ByteArray from/int read/bool:
   #primitive.spi.transfer-finish
+
+// Returns true only when native ownership is retired, including when idle.
+spi-transfer-abort_ device:
+  #primitive.spi.transfer-abort
 
 spi-acquire-bus_ device:
   #primitive.spi.acquire-bus
