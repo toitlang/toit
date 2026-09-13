@@ -599,8 +599,14 @@ class Bus:
   $address-bit-size selects a 7-bit or 10-bit address.
 
   $timeout-us is the maximum SCL clock-stretching interval tolerated by the
-    controller. If $disable-ack-check is true, missing acknowledgements do not
-    fail write transactions.
+    controller. If omitted or null, the platform default is used: 100 ms on
+    ESP32, and no hardware timeout on EC618. EC618 does not support a custom
+    clock-stretching timeout and rejects a non-null $timeout-us with
+    `UNIMPLEMENTED`. Use `with-timeout` to bound the whole operation on either
+    platform.
+
+  If $disable-ack-check is true, missing acknowledgements do not fail write
+    transactions.
 
   It is an error to connect a device on an address already in use.
     A device can be released with $Device.close.
@@ -608,17 +614,18 @@ class Bus:
   device i2c-address/int -> Device
       --frequency/int
       --address-bit-size/int=7
-      --timeout-us/int=100_000
+      --timeout-us/int?=null
       --disable-ack-check/bool=false:
     if address-bit-size != 7 and address-bit-size != 10: throw "INVALID_ARGUMENT"
-    if frequency <= 0 or timeout-us <= 0: throw "INVALID_ARGUMENT"
+    if frequency <= 0: throw "INVALID_ARGUMENT"
+    if timeout-us != null and timeout-us <= 0: throw "INVALID_ARGUMENT"
     limit := (1 << address-bit-size) - 1
     if not 0 <= i2c-address <= limit: throw "INVALID_ARGUMENT"
     return mutex_.do:
       if not resource_: throw "CLOSED"
       key := device-key_ i2c-address address-bit-size
       if devices_.contains key: throw "Device already connected"
-      device := Device.init_ this i2c-address address-bit-size frequency timeout-us disable-ack-check key
+      device := Device.init_ this i2c-address address-bit-size frequency (timeout-us or 0) disable-ack-check key
       devices_[key] = device
       return device
 
@@ -629,7 +636,7 @@ class Bus:
   */
   device i2c-address/int -> Device
       --address-bit-size/int=7
-      --timeout-us/int=100_000
+      --timeout-us/int?=null
       --disable-ack-check/bool=false:
     return device i2c-address
         --frequency=frequency_

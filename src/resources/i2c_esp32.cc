@@ -1161,7 +1161,7 @@ PRIMITIVE(device_create) {
     .dev_addr_length = dev_addr_length,
     .device_address = address,
     .scl_speed_hz = frequency_hz,
-    .scl_wait_us = timeout_us,
+    .scl_wait_us = timeout_us == 0 ? 100000 : timeout_us,
     .flags = {
       .disable_ack_check = disable_ack_check,
     },
