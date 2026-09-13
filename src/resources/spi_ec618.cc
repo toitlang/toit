@@ -401,6 +401,10 @@ PRIMITIVE(transfer_start) {
   memcpy(buffer + prefix_length, tx.address() + from, length);
 
   device->ensure_config();
+  // Establish the configured idle clock level while CS is still inactive.
+  // Enabling the shift engine only after asserting CS would expose a CPOL
+  // transition as an extra edge to a mode-2 or mode-3 target.
+  kSpiRegs[controller]->CR1 |= SPI_CR1_SSE_Msk;
   if (device->dc() >= 0) pad_set(device->dc(), dc);
   if (device->cs() >= 0) pad_set(device->cs(), 0);
 

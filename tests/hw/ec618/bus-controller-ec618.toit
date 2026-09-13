@@ -37,19 +37,23 @@ test-i2c control/FramedChannel --controller/int=1:
   exchange control "I2C-REG" "READY"
   bus := controller == 0 ? (Ec618.i2c0 --pull-up) : (Ec618.i2c1 --pull-up)
   try:
-    expect (bus.test 0x42)
-    expect (not (bus.test 0x43 --timeout-ms=20))
+    expect-throw "UNIMPLEMENTED": bus.device 0x42 --timeout-us=1_000
+    expect (bus.test 0x42) --message="known I2C target must ACK address-only probe"
+    expect (not (bus.test 0x43 --timeout-ms=20)) --message="absent I2C target must NACK probe"
     [100_000, 400_000, 50_000].do: | frequency/int |
       device := bus.device 0x42 --frequency=frequency
       try:
         [1, 4, 16, 32, 63, 64, 65, 511, 512, 513, 1024, 1025].do: | size/int |
           with-timeout --ms=5_000:
+            if size > 512: print "I2C $size combined read"
             expect-equals (pattern size 7) (device.write-read #[0, 0] size)
+            if size > 512: print "I2C $size separate read"
             device.write #[0, 0]
             buffer := ByteArray (size + 5) --initial=0xee
             device.read-into buffer size
             expect-equals (pattern size 7) (buffer[..size])
             expect-equals (ByteArray 5 --initial=0xee) (buffer[size..])
+            if size > 512: print "I2C $size write"
             device.write (#[0, 0] + (pattern size 23))
           exchange control "I2C-CHECK $size"
           print "I2C $frequency $size PASS"
@@ -78,21 +82,7 @@ test-spi control/FramedChannel:
           --miso=wiring.EC618-SPI0-MISO-PAD
           --clock=wiring.EC618-SPI0-CLK-PAD
     expect-equals "ALREADY_IN_USE" duplicate-error
-    canceled := bus.device --cs=wiring.EC618-SPI0-CS-PAD --frequency=100_000
-    try:
-      exchange control "SPI-CANCEL 32768 0 0" "READY"
-      started := Time.monotonic-us
-      expect-throw DEADLINE-EXCEEDED-ERROR:
-        with-timeout --ms=20: canceled.transfer (pattern 32768 23) --read
-      expect (Time.monotonic-us - started < 150_000)
-      exchange control "SPI-DONE"
-      exchange control "SPI 4 0 0" "READY"
-      bytes := pattern 4 23
-      canceled.transfer bytes --read
-      expect-equals (pattern 4 7) bytes
-      exchange control "SPI-DONE"
-    finally:
-      canceled.close
+    test-spi-cancellation control bus
     4.repeat: | mode/int |
       [0, 1, 3].do: | prefix/int |
         device := bus.device
@@ -104,7 +94,8 @@ test-spi control/FramedChannel:
         try:
           [1, 4, 16, 32, 63, 64, 65, 511, 512, 513, 1025, 4092, 8193, 32768].do: | size/int |
             exchange control "SPI $(size + prefix) $mode $prefix" "READY"
-            buffer := #[0xee, 0xee] + (pattern size 23) + #[0xee, 0xee]
+            buffer := ByteArray (size + 4) --initial=0xee
+            size.repeat: buffer[it + 2] = (it * 31 + 23) & 0xff
             with-timeout --ms=5_000:
               // A zero-valued four-bit command still occupies its prefix
               // bits; the following four-bit address must not move left.
@@ -113,14 +104,40 @@ test-spi control/FramedChannel:
                   --address=(prefix == 1 ? 0xb : 0x1234)
             expect-equals #[0xee, 0xee] (buffer[..2])
             expect-equals #[0xee, 0xee] (buffer[size + 2..])
-            expected := pattern (size + prefix) 7
-            expect-equals (expected[prefix..]) (buffer[2..size + 2])
+            mismatch := -1
+            size.repeat:
+              expected := ((it + prefix) * 31 + 7) & 0xff
+              if mismatch < 0 and expected != buffer[it + 2]: mismatch = it
             exchange control "SPI-DONE"
+            if mismatch >= 0:
+              expected := ((mismatch + prefix) * 31 + 7) & 0xff
+              print "SPI mismatch expected=$expected got=$(buffer[mismatch + 2])"
+            expect (mismatch < 0) --message="SPI mode=$mode prefix=$prefix size=$size first mismatch=$mismatch"
             print "SPI mode=$mode prefix=$prefix size=$size PASS"
         finally:
           device.close
   finally:
     bus.close
+
+test-spi-cancellation control/FramedChannel bus/spi.Bus:
+  canceled := bus.device --cs=wiring.EC618-SPI0-CS-PAD --frequency=100_000
+  try:
+    payload := pattern 32768 23
+    exchange control "SPI-CANCEL 32768 0 0" "READY"
+    started := Time.monotonic-us
+    expect-throw DEADLINE-EXCEEDED-ERROR:
+      with-timeout --ms=20: canceled.transfer payload --read
+    elapsed := Time.monotonic-us - started
+    print "SPI cancellation: $elapsed us"
+    expect (elapsed < 150_000) --message="SPI cancellation must promptly retire DMA"
+    exchange control "SPI-DONE"
+    exchange control "SPI 4 0 0" "READY"
+    bytes := pattern 4 23
+    canceled.transfer bytes --read
+    expect-equals (pattern 4 7) bytes
+    exchange control "SPI-DONE"
+  finally:
+    canceled.close
 
 test-stretch control/FramedChannel:
   bus := Ec618.i2c1 --pull-up
@@ -147,19 +164,20 @@ test-speed control/FramedChannel:
   exchange control "I2C-REG" "READY"
   bus := Ec618.i2c1 --pull-up
   durations := []
+  expected := pattern 1025 7
   try:
     [50_000, 100_000, 200_000, 330_000, 400_000, 1_000_000, 50_000].do: | frequency/int |
       device := bus.device 0x42 --frequency=frequency
       elapsed := 0
       try:
         3.repeat:
-          // Probes always use 100 kHz. The next transfer must restore the
+          // Probes always use 50 kHz. The next transfer must restore the
           // device's requested frequency rather than inheriting probe pace.
           expect (bus.test 0x42)
           started := Time.monotonic-us
-          with-timeout --ms=2_000:
-            expect-equals (pattern 1025 7) (device.write-read #[0, 0] 1025)
+          received := with-timeout --ms=2_000: device.write-read #[0, 0] expected.size
           elapsed += Time.monotonic-us - started
+          expect-equals expected received
       finally:
         device.close
       durations.add elapsed

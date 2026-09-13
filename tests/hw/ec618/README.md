@@ -52,7 +52,9 @@ the classic ESP32's UART2 pins: only UART1 may carry control during SPI.
    S3. Use the octal PSRAM configuration for this board. Its console is the
    host control endpoint; do not install a competing serial mini-jag agent.
 2. Run `bus-control-esp32.toit` on the classic ESP32. It prints its network
-   address and forwards the independent UART1 lane on TCP port 18561.
+   address and forwards the independent UART1 lane on TCP port 18561. It also
+   enables additional internal pull-ups on the connected I2C1 nets. For a permanent rig, fit external
+   pull-ups appropriate to the wiring capacitance; internal pulls are weak.
 3. Start the host coordinator (requires Python and pyserial):
    `python3 run-bus-rig.py --bridge <classic-ip> --target-port <verified-serial-port>`.
    It waits for the S3 to boot and relays the existing CRC-protected EC618

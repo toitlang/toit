@@ -64,7 +64,7 @@ serve --sda/int --scl/int --spi-enabled/bool=false:
               sleep --ms=delay
               #[0xa5]
           finally:
-            responder-done.set true
+            critical-do: responder-done.set true
         // Let the responder enter its native request wait before READY.
         sleep --ms=1
         reply "READY"
@@ -101,7 +101,14 @@ serve --sda/int --scl/int --spi-enabled/bool=false:
             expected := pattern (expected-size - prefix) 23
             if prefix == 1: expected = #[0x0b] + expected
             if prefix == 3: expected = #[0xa5, 0x12, 0x34] + expected
-            expect-equals expected received
+            // A controller abort can terminate halfway through a byte. The
+            // target API rounds its returned length upward, so only complete
+            // prefix bytes have a defined value in that case.
+            checked-size := command == "SPI-CANCEL" ? received.size - 1 : received.size
+            mismatch := -1
+            checked-size.repeat:
+              if mismatch < 0 and expected[it] != received[it]: mismatch = it
+            expect (mismatch < 0) --message="SPI target size=$expected-size first mismatch=$mismatch"
           completed.set error
       else if command == "SPI-DONE":
         error := completed.get

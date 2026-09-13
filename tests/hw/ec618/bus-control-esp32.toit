@@ -2,6 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import gpio
 import monitor
 import net
 import uart
@@ -10,6 +11,10 @@ import .wiring as wiring
 
 /** Forwards the independent UART1 test-control lane to the host coordinator. */
 main:
+  // Add the helper's internal pulls for the replacement I2C1 fixture's
+  // wiring. Both pins stay inputs, including while SPI owns these nets.
+  scl-pull := gpio.Pin wiring.ESP32-I2C1-SCL-PIN --input --pull-up
+  sda-pull := gpio.Pin wiring.ESP32-I2C1-SDA-PIN --input --pull-up
   network := net.open
   port := uart.Port
       --rx=wiring.ESP32-UART1-RX-PIN
@@ -18,7 +23,9 @@ main:
   server := network.tcp-listen 18561
   print "BUS-CONTROL $network.address:18561"
   try:
-    while socket := server.accept:
+    while true:
+      socket := server.accept
+      if not socket: continue
       socket.no-delay = true
       done := monitor.Latch
       upstream := task::
@@ -26,7 +33,7 @@ main:
           while data := port.in.read:
             socket.out.write data --flush
         finally:
-          done.set true
+          critical-do: done.set true
       try:
         while data := socket.in.read:
           port.out.write data --flush
@@ -38,3 +45,5 @@ main:
     server.close
     port.close
     network.close
+    scl-pull.close
+    sda-pull.close

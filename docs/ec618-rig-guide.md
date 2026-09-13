@@ -20,6 +20,11 @@ GPIO7 and GPIO12 are physically tied together, as are GPIO5 and GPIO13;
 only one target role may own those nets at a time. Serial port numbers
 have changed repeatedly; identify USB devices again before flashing.
 
+The current I2C driver programs a complete timing word and selects the
+51.2 MHz clock for fast transfers. The July timing recipe below is historical.
+Custom hardware clock-stretch timeouts are explicitly unsupported on EC618;
+use task deadlines for cancellation.
+
 ## The two rigs at a glance
 
 | | `modest-affair` (test rig) | `quirky-plenty` (dev/flash rig) |
