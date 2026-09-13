@@ -29,6 +29,7 @@ ABORT-ACTIVE ::= 0x33
 RESUME ::= 0x34
 CLOSE-ACTIVE ::= 0x35
 NONBYTE-TERMINATION ::= 0x36
+MODE2-SETUP ::= 0x37
 SYNC ::= 0xa0
 READY ::= 0xa1
 DONE ::= 0xa2
@@ -77,8 +78,9 @@ main-board1:
 test-board1:
   port := uart.Port --rx=RX1 --tx=TX1 --baud-rate=115200
   expect-equals SYNC port.in.read-byte
-  bus := spi.Bus --clock=SCLK --mosi=MOSI --miso=MISO
   is-classic-esp32 := system.architecture == system.ARCHITECTURE-ESP32
+  if not is-classic-esp32: test-mode2-setup port
+  bus := spi.Bus --clock=SCLK --mosi=MOSI --miso=MISO
 
   cases := []
   4.repeat: | mode/int |
@@ -89,6 +91,14 @@ test-board1:
         --controller-data=(pattern 16 (0x10 + mode))
         --max-transfer-size=64
         --dma=false)
+    if not is-classic-esp32:
+      [1, 3, 16].do: | size/int |
+        cases.add (Case "mode-$(mode)-full-duplex-dma-$size"
+            --frequency=400_000
+            --mode=mode
+            --transmit=(pattern size 7)
+            --controller-data=(pattern size 23)
+            --max-transfer-size=size)
     [false, true].do: | dma/bool |
       suffix := dma ? "dma" : "no-dma"
       if not dma or (mode & 1) == 0:
@@ -322,6 +332,9 @@ test-board2:
     if command == NONBYTE-TERMINATION:
       test-nonbyte-target port
       continue
+    if command == MODE2-SETUP:
+      test-mode2-setup-target port
+      continue
     if command != PREPARE: throw "Unknown command: $command"
 
     mode := port.in.read-byte
@@ -489,6 +502,59 @@ test-close-active-target port/uart.Port -> none:
   port.out.little-endian.write-uint32 result.size
   port.out.write result --flush
   target.close
+
+test-mode2-setup port/uart.Port -> none:
+  print "SPI target: mode-2 DMA data setup before falling edge"
+  cs := gpio.Pin CS --output --value=1
+  clock := gpio.Pin SCLK --output --value=1
+  mosi := gpio.Pin MOSI --output --value=0
+  miso := gpio.Pin MISO --input
+  expected := #[0x07, 0x55, 0xa5, 0xe1]
+  outgoing := #[0x17, 0x36, 0x55, 0x74]
+  received := ByteArray expected.size
+  try:
+    port.out.write #[MODE2-SETUP] --flush
+    expect-equals READY port.in.read-byte
+    cs.set 0
+    sleep --ms=1
+    (expected.size * 8).repeat: | index/int |
+      byte := index / 8
+      bit := 7 - index % 8
+      mosi.set ((outgoing[byte] >> bit) & 1)
+      sleep --ms=1
+      // CPHA=0 requires the data to be stable before the leading edge.
+      // Sampling well before it avoids depending on controller input delay.
+      received[byte] = (received[byte] << 1) | miso.get
+      clock.set 0
+      sleep --ms=1
+      clock.set 1
+      sleep --ms=1
+    cs.set 1
+    expect-equals outgoing (read-target-result port)
+    expect-equals expected received
+  finally:
+    miso.close
+    mosi.close
+    clock.close
+    cs.close
+
+test-mode2-setup-target port/uart.Port -> none:
+  target := spi.Target
+      --mosi=MOSI
+      --miso=MISO
+      --clock=SCLK
+      --cs=CS
+      --mode=2
+      --max-transfer-size=4
+  try:
+    result := target.transfer #[0x07, 0x55, 0xa5, 0xe1]
+        --when-armed=:
+          port.out.write #[READY] --flush
+    port.out.write #[DONE] --flush
+    port.out.little-endian.write-uint32 result.size
+    port.out.write result --flush
+  finally:
+    target.close
 
 test-nonbyte-termination port/uart.Port -> none:
   print "SPI target: non-byte-aligned CS termination"
