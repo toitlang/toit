@@ -630,7 +630,9 @@ multi-chunk bursts are gap-free at 115200 and 921600.
 >=2.7 us line-idle splice (bracketed with detector filters; the 0x00-payload
 scheme cannot measure past 9 bit-times = 3 us there). The masked-IRQ path
 (USART ISR + callback + Send/DMA setup) exceeds the 26.7 us budget the
-trigger buys at that baud. The test's 3 MBd phase stays RED until fixed.
+trigger buys at that baud. The regression test covers the supported contract:
+multi-chunk transfers at 115200/921600 and one explicitly requested 4 KiB staging buffer at
+2.5 MBd. Multi-chunk MBd-rate waveform generation remains unsupported.
 
 **Fix path:** hardware-chained TX DMA descriptors in the bsp_usart fork
 (the RX path already chains descriptors), so the next chunk needs no CPU
@@ -638,7 +640,7 @@ at all. That is a BASE change (bsp_usart.c) — bundle with the next base
 version bump.
 
 **Guidance until then:** keep frames within one staging buffer (4 KiB with
---large-buffers, i.e. >=460800 baud). For WS2812B-over-UART at 2.5 MBd
+--large-buffers requested when opening the port). For WS2812B-over-UART at 2.5 MBd
 (9 inverted UART signals = 3 protocol bits, i.e. 8 bytes per 24-bit LED;
 the line needs an external NOT gate — the EC618 cannot invert TX) that is
 512 LEDs per gap-free frame at ~61 fps: a single Send never splices. RS485/DE ports intentionally keep
