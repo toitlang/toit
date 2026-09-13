@@ -15,7 +15,8 @@
 #include "../../src/compiler/list.h"
 #include "../../src/utils.h"
 
-#ifdef WIN32
+// mingw-w64 14 and newer provide mkdtemp.
+#if defined(WIN32) && !(defined(__MINGW64_VERSION_MAJOR) && __MINGW64_VERSION_MAJOR >= 14)
 static char* mkdtemp(char* tmpl) {
   UNIMPLEMENTED();
 }
