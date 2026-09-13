@@ -1,0 +1,19 @@
+tests/negative/gpio-pin-direction-test.toit:19:7: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+  gpio.Pin 5
+      ^~~~
+tests/negative/gpio-pin-direction-test.toit:20:7: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+  gpio.Pin 5 --pull-up --no-pull-down --open-drain --allow-restricted --value=0
+      ^~~~
+tests/negative/gpio-pin-direction-test.toit:23:14: error: Can't cast 'false' to 'True'
+  gpio.Pin 5 --no-input
+             ^~~~~
+tests/negative/gpio-pin-direction-test.toit:24:14: error: Can't cast 'false' to 'True'
+  gpio.Pin 5 --no-output
+             ^~~~~
+tests/negative/gpio-pin-direction-test.toit:25:22: error: Can't cast 'false' to 'True'
+  gpio.Pin 5 --input --no-output
+                     ^~~~~
+tests/negative/gpio-pin-direction-test.toit:26:25: error: Can't cast 'false' to 'True'
+  gpio.Pin 5 --no-input --no-output
+                        ^~~~~
+Compilation failed

@@ -26,7 +26,7 @@ test:
 
   target := make-target TEST-PIN OTHER-PIN --pull-up=false
   expect-equals 0 measure.get
-  expect-throw "ALREADY_IN_USE": gpio.Pin TEST-PIN
+  expect-throw "ALREADY_IN_USE": gpio.Pin TEST-PIN --input
   target.close
   expect-throw "CLOSED": target.write #[]
   expect-throw "CLOSED": target.write #[0]
@@ -41,7 +41,7 @@ test:
   target.close
 
   // The target released its pin reservation.
-  pin := gpio.Pin TEST-PIN
+  pin := gpio.Pin TEST-PIN --input
   pin.close
   measure.close
 

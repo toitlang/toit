@@ -1,0 +1,6 @@
+toit-tl19a08/examples/main.toit:22:17: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+  pin_rx := gpio.Pin RX
+                ^~~~
+toit-tl19a08/examples/main.toit:23:17: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+  pin_tx := gpio.Pin TX
+                ^~~~

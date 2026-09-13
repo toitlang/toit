@@ -1,0 +1,6 @@
+toit-tm1640/examples/clock.toit:16:9: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+    gpio.Pin 3
+        ^~~~
+toit-tm1640/examples/clock.toit:17:9: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+    gpio.Pin 1
+        ^~~~

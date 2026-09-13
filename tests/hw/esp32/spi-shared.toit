@@ -59,10 +59,10 @@ main-board2:
   run-test --background: test-board2
 
 test-board2:
-  slave-cs := gpio.Pin SLAVE-CS
-  slave-sclk := gpio.Pin SLAVE-SCLK
-  slave-mosi := gpio.Pin SLAVE-MOSI
-  slave-miso := gpio.Pin SLAVE-MISO
+  slave-cs := gpio.Pin SLAVE-CS --input
+  slave-sclk := gpio.Pin SLAVE-SCLK --input
+  slave-mosi := gpio.Pin SLAVE-MOSI --input
+  slave-miso := gpio.Pin SLAVE-MISO --input
 
   slave := shared.SlaveBitBang
       --cs=slave-cs

@@ -38,13 +38,22 @@ class PinFactory implements shared.PinFactory:
         if pin1: pin1.close
       else:
         if pin2: pin2.close
-      pin := gpio.Pin pin-identifier
-          --input=input
-          --output=output
-          --pull-down=pull-down
-          --pull-up=pull-up
-          --open-drain=open-drain
-          --value=value
+      pin/gpio.Pin := ?
+      if output:
+        pin = gpio.Pin pin-identifier
+            --output
+            --input=input
+            --pull-down=pull-down
+            --pull-up=pull-up
+            --open-drain=open-drain
+            --value=(value or 0)
+      else:
+        expect input
+        pin = gpio.Pin pin-identifier
+            --input
+            --pull-down=pull-down
+            --pull-up=pull-up
+            --open-drain=open-drain
       if pin-identifier == PIN1:
         pin1 = pin
       else:
@@ -69,12 +78,12 @@ main:
   run-test: test
 
 test:
-  expect-throw "RESTRICTED_PIN": gpio.Pin RESTRICTED
-  pin1 := gpio.Pin PIN1
-  pin2 := gpio.Pin PIN2
+  expect-throw "RESTRICTED_PIN": gpio.Pin RESTRICTED --input
+  pin1 := gpio.Pin PIN1 --input
+  pin2 := gpio.Pin PIN2 --input
 
-  expect-throw "ALREADY_IN_USE": gpio.Pin PIN1
-  expect-throw "ALREADY_IN_USE": gpio.Pin PIN2
+  expect-throw "ALREADY_IN_USE": gpio.Pin PIN1 --input
+  expect-throw "ALREADY_IN_USE": gpio.Pin PIN2 --input
 
   // Test that we can close a pin and open it again.
   pin1.close

@@ -249,8 +249,8 @@ main:
   run-test: test
 
 test:
-  pin1 := gpio.Pin RMT-PIN-1
-  pin2 := gpio.Pin RMT-PIN-2
+  pin1 := gpio.Pin RMT-PIN-1 --input
+  pin2 := gpio.Pin RMT-PIN-2 --input
 
   test-resource pin1
 

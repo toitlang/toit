@@ -1,0 +1,9 @@
+toit-r46ca01/tests/test_baudrate_esp32.toit:42:17: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+  pin-rx := gpio.Pin RX
+                ^~~~
+toit-r46ca01/tests/test_baudrate_esp32.toit:43:17: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+  pin-tx := gpio.Pin TX
+                ^~~~
+toit-r46ca01/tests/test_baudrate_esp32.toit:44:18: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+  pin-rts := gpio.Pin RTS
+                 ^~~~

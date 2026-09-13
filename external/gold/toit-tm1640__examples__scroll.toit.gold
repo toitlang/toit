@@ -1,0 +1,6 @@
+toit-tm1640/examples/scroll.toit:16:17: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+    --sck = gpio.Pin 3
+                ^~~~
+toit-tm1640/examples/scroll.toit:17:17: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+    --sda = gpio.Pin 1
+                ^~~~

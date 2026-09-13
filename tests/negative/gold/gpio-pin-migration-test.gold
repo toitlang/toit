@@ -1,3 +1,6 @@
+tests/negative/gpio-pin-migration-test.toit:18:14: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+  pin := gpio.Pin 5
+             ^~~~
 tests/negative/gpio-pin-migration-test.toit:22:11: warning: Deprecated type 'Pin' for parameter 'pin'. Provide an integer instead
   rmt.Out pin --resolution=1_000_000     // Warning: deprecated Pin.
           ^~~

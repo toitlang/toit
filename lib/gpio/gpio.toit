@@ -129,11 +129,30 @@ interface Pin:
     return Pin num --output
 
   /**
-  Opens a GPIO pin on $num in a custom mode.
+  Opens a GPIO pin on $num in input mode.
 
-  If the pin is to be used by another peripheral, both $input and $output can be
-    left as `false`. The library that uses the pin should call $configure with the
-    configuration it needs.
+  While the pin is in input mode, $pull-up and $pull-down resistors are applied as
+    configured.
+
+  See $(constructor num --output) for more information on the remaining parameters.
+  */
+  constructor num/int
+      --input/True
+      --pull-up/bool=false
+      --pull-down/bool=false
+      --open-drain/bool=false
+      --allow-restricted/bool=false
+      --value/int=0:
+    return Pin_ num
+        --input
+        --pull-up=pull-up
+        --pull-down=pull-down
+        --open-drain=open-drain
+        --allow-restricted=allow-restricted
+        --value=value
+
+  /**
+  Opens a GPIO pin on $num in output mode, optionally also enabling $input.
 
   If a pin should be used both as $input and as an $output, $open-drain is often needed to
     avoid short-circuits. See $configure for more information.
@@ -146,8 +165,8 @@ interface Pin:
     $value parameter.
   */
   constructor num/int
+      --output/True
       --input/bool=false
-      --output/bool=false
       --pull-up/bool=false
       --pull-down/bool=false
       --open-drain/bool=false
@@ -155,10 +174,34 @@ interface Pin:
       --value/int=0:
     return Pin_ num
         --input=input
-        --output=output
+        --output
         --pull-up=pull-up
         --pull-down=pull-down
         --open-drain=open-drain
+        --allow-restricted=allow-restricted
+        --value=value
+
+  /**
+  Opens a GPIO pin on $num without configuring its direction.
+
+  Deprecated: Provide --input or --output. For peripheral libraries, provide the
+    integer GPIO number instead of a Pin.
+
+  The library that uses the pin should call $configure with the configuration it needs.
+
+  See $(constructor num --output) for more information on the remaining parameters.
+  */
+  constructor num/int
+      --pull-up/bool=false
+      --pull-down/bool=false
+      --open-drain/bool=false
+      --allow-restricted/bool=false
+      --value/int=0:
+    return Pin_ num
+        --pull-up=pull-up
+        --pull-down=pull-down
+        --open-drain=open-drain
+        --allow-restricted=allow-restricted
         --value=value
 
   /**

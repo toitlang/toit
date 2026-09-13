@@ -1,0 +1,12 @@
+cellular/src/base/service.toit:310:19: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+        rx := gpio.Pin rx_
+                  ^~~~
+cellular/src/modules/ublox/sara_r5.toit:185:41: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+    rx-pin/gpio.Pin := rx is int ? (gpio.Pin rx) : (rx as gpio.Pin)
+                                        ^~~~
+cellular/src/base/service.toit:35:31: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+  if value is int: return gpio.Pin value
+                              ^~~~
+cellular/src/base/service.toit:39:14: warning: Deprecated constructor of 'Pin'. Provide --input or --output. For peripheral libraries, provide the integer GPIO number instead of a Pin
+  pin := gpio.Pin value[0]
+             ^~~~

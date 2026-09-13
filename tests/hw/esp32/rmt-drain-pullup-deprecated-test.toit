@@ -30,7 +30,7 @@ test-no-pull-up --idle-level/int:
   print "Testing no pull up idle_level=$idle-level"
   measure-pin := gpio.Pin MEASURE-PIN --input
 
-  rmt-pin := gpio.Pin RMT-PIN
+  rmt-pin := gpio.Pin RMT-PIN --input
 
   out := rmt.Channel rmt-pin --output --idle-level=idle-level  // @no-warn
   in := rmt.Channel rmt-pin --input  // @no-warn
@@ -74,7 +74,7 @@ test-pull-up --idle-level/int:
   print "Testing with pull up idle_level=$idle-level"
   measure-pin := gpio.Pin MEASURE-PIN --input
 
-  rmt-pin := gpio.Pin RMT-PIN
+  rmt-pin := gpio.Pin RMT-PIN --input
 
   out := rmt.Channel rmt-pin --output --idle-level=idle-level  // @no-warn
   in := rmt.Channel rmt-pin --input  // @no-warn
