@@ -19,6 +19,9 @@ exchange control/FramedChannel command/string expected/string="OK":
 
 main args:
   mode := args.is-empty ? "all" : args[0]
+  if mode == "": mode = "all"
+  if not ["all", "i2c", "i2c0", "speed", "stretch", "spi"].contains mode:
+    throw "Unknown bus test mode: $mode"
   uart := Ec618.uart1 --baud-rate=115200
   control := FramedChannel uart
   try:

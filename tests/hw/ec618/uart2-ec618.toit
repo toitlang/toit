@@ -27,7 +27,7 @@ DURATION ::= Duration --s=12   // Long enough for the ESP32 to catch many lines.
 GAP ::= Duration --ms=20
 
 main args:
-  baud := args.is-empty ? DEFAULT-BAUD : int.parse args[0]
+  baud := args.is-empty or args[0] == "" ? DEFAULT-BAUD : int.parse args[0]
   // TX-only: only GPIO11/PAD26 is claimed and driven; the RX pad stays free.
   port := Ec618.uart2 --baud-rate=baud --rx-disabled
   print "uart2-ec618: sending \"$TOKEN $baud <n>\" on UART2 TX (GPIO11) at $baud baud for $(DURATION.in-s)s"
