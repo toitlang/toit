@@ -24,10 +24,12 @@ test:
   // while allowing other tasks to run, then permit immediate bus reuse.
   ticks := 0
   running := true
-  ticker := task::
+  ticker-done := monitor.Latch
+  task::
     while running:
       ticks++
       sleep --ms=1
+    ticker-done.set true
   try:
     expect-throw DEADLINE-EXCEEDED-ERROR:
       with-timeout --ms=10: slow.transfer payload
@@ -42,6 +44,10 @@ test:
     task::
       error := catch:
         slow.with-reserved-bus:
+          expect-throw "INVALID_STATE": fast.transfer #[0]
+          expect-throw "INVALID_STATE": fast.close
+          expect-throw "INVALID_STATE": fast.with-reserved-bus: null
+          expect-throw "INVALID_STATE": bus.device --frequency=1_000_000
           reserved.set true
           release.get
           slow.transfer #[4]
@@ -54,7 +60,7 @@ test:
     fast.transfer #[6]
   finally:
     running = false
-    ticker.join
+    ticker-done.get
     bus.close
   expect-throw "CLOSED": slow.transfer #[7]
   expect-throw "CLOSED": fast.transfer #[8]
