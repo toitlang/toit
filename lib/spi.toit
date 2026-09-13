@@ -686,7 +686,7 @@ interface Device extends serial.Device:
   /**
   Transfers the given $data to the device.
 
-  Controller transfers on a bus are serialized. Other tasks continue running
+  Transfers on devices created by $Bus are serialized. Other tasks continue running
     while a transfer is in progress. Cancellation aborts the transfer when the
     hardware supports it; otherwise it waits for the accepted transfer to
     finish. Native buffers are released before cancellation propagates.
@@ -724,7 +724,8 @@ interface Device extends serial.Device:
   /**
   Reserves the bus for this device while executing the given $block.
 
-  The reservation belongs to the calling task. Within the block, that task
+  For devices created by $Bus, the reservation belongs to the calling task.
+    Within the block, that task
     may transfer using this device, but must not create, close, transfer using,
     or reserve another device on the same bus. Other tasks wait for the bus;
     using this reserved device from another task throws `INVALID_STATE`.
