@@ -742,6 +742,13 @@ Ordinary float interpolation works. The fixed-precision path uses
 `safe_double_print` and the platform `snprintf` with `%.*lf`; the exact
 platform formatting failure still needs investigation.
 
+The master fixes for the float-to-string memory leak (#3045, `a985fb7d52`)
+and small-precision heap allocation (#3046, `ddec5426ec`) are already included
+in the EC618 firmware used for this regression. As of master `aa831d6851`,
+`safe_double_print` and `float_to_string` are identical to the tested EC618
+implementation. Those fixes therefore do not resolve the observed EC618
+failure; the platform formatting path remains to be investigated.
+
 The ADC test now uses ordinary float strings for diagnostics and retains
 all voltage-accuracy assertions. This avoids making a formatting failure
 look like an ADC failure. Reproduce separately with `print "$(%.3f 0.5)"`
