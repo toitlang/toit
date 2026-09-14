@@ -18,8 +18,8 @@ The two test pins remain high impedance until the EC618 reports that its inputs
 main:
   control-owner := rig.esp32-uart 1 115200
   control := FramedChannel control-owner.port
-  first := gpio.Pin wiring.ESP32-GPIO24-PIN
-  second := gpio.Pin wiring.ESP32-GPIO27-PIN
+  first := gpio.Pin wiring.ESP32-GPIO24-PIN --input
+  second := gpio.Pin wiring.ESP32-GPIO27-PIN --input
   configured := false
 
   try:

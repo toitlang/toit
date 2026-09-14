@@ -205,7 +205,7 @@ word BaseMbedTlsSocket::handshake() {
   return mbedtls_ssl_handshake(&ssl);
 }
 
-#if defined(DEBUG_TLS) || defined(MBEDTLS_DEBUG_C)
+#ifdef DEBUG_TLS
 static void debug_printer(void* ctx, int level, const char* file, int line, const char* str) {
   printf("%s:%04d: %s", file, line, str);
 }
@@ -275,7 +275,7 @@ void MbedTlsResourceGroup::init_conf(mbedtls_ssl_config* conf) {
   }
   mbedtls_ssl_conf_session_tickets(conf, MBEDTLS_SSL_SESSION_TICKETS_ENABLED);
 
-#if defined(DEBUG_TLS) || defined(MBEDTLS_DEBUG_C)
+#ifdef DEBUG_TLS
   mbedtls_ssl_conf_dbg(conf, debug_printer, 0);
   mbedtls_debug_set_threshold(2);
 #endif
