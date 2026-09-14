@@ -696,6 +696,59 @@ jobs:
             build/firmware-esp32s2.gz
             build/firmware-esp32s3.gz
 
+  # Build every envelope variant nightly. Keep this independent of the regular
+  # ESP32 job so its failures do not prevent checking the remaining variants.
+  esp32-envelope-sizes:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/checkout@v7
+        with:
+          repository: toitlang/envelopes
+          ref: main
+          path: build/partition-size-envelopes
+          persist-credentials: false
+
+      - uses: actions/checkout@v7
+        with:
+          repository: toitlang/jaguar
+          ref: master
+          path: build/partition-size-jaguar
+          persist-credentials: false
+
+      - name: Set up build environment
+        uses: ./actions/setup-build
+        with:
+          toit-dir: .
+          esp32: true
+          cache-key-prefix: esp32-envelope-sizes
+
+      - name: Build SDK and size-check tools
+        run: |
+          make sdk
+          build/host/sdk/bin/toit pkg install --project-root=build/partition-size-jaguar
+          build/host/sdk/bin/toit compile -O2 --snapshot \
+            -o build/partition-size-jaguar.snapshot \
+            build/partition-size-jaguar/src/jaguar.toit
+          build/host/sdk/bin/toit pkg install --project-root=build/partition-size-envelopes/tools
+          build/host/sdk/bin/toit compile -o build/partition-size-envelope-tool \
+            build/partition-size-envelopes/tools/main.toit
+
+      - name: Build and check all ESP32 envelope variants
+        env:
+          CCACHE_MAXSIZE: 600M
+        run: |
+          source third_party/esp-idf/export.sh
+          bash tests/esp32/check-envelope-variants.sh \
+            build/partition-size-envelopes \
+            build/partition-size-envelope-tool \
+            build/partition-size-jaguar.snapshot
+
   # The raspbian executable is also built on the 'cross' job, but we want to
   # run the serial test as fast as possible and don't want to wait for the
   # 'cross' job to finish.
