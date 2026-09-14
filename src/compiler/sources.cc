@@ -18,6 +18,8 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <limits.h>
+#include <algorithm>
+#include <vector>
 
 #include "ast.h"
 #include "diagnostic.h"
@@ -103,6 +105,20 @@ class SourceManagerSource : public Source {
 
   int offset() const { return offset_; }
 
+  /// Returns the offsets at which lines start, computed on first use.
+  ///
+  /// A line starts after every '\n' ("\r\n" contains one). A lone '\r' does
+  /// not end a line.
+  const std::vector<int>& line_starts() {
+    if (line_starts_.empty()) {
+      line_starts_.push_back(0);
+      for (int i = 0; i < size_; i++) {
+        if (text_[i] == '\n') line_starts_.push_back(i + 1);
+      }
+    }
+    return line_starts_;
+  }
+
  private:
   const char* absolute_path_;
   Package package_;
@@ -110,6 +126,7 @@ class SourceManagerSource : public Source {
   const uint8* text_;
   int size_;
   int offset_;
+  std::vector<int> line_starts_;
 };
 
 const char* error_message_for_load_error(SourceManager::LoadResult::Status status) {
@@ -220,32 +237,15 @@ Source* SourceManager::source_for_position(Source::Position position) const {
   int absolute_offset = position.token();
   ASSERT(0 <= absolute_offset && absolute_offset < next_offset_);
 
-  SourceManagerSource* entry = null;
+  // Sources are sorted by offset. Find the last one starting at or before the offset.
+  auto it = std::upper_bound(sources_.begin(), sources_.end(), absolute_offset,
+                             [](int offset, SourceManagerSource* source) {
+                               return offset < source->offset();
+                             });
+  SourceManagerSource* entry = *(it - 1);
+  ASSERT(entry->offset() <= absolute_offset && absolute_offset <= entry->offset() + entry->size());
 
-  if (entry == null) {
-    int start_index = 0;
-    int end_index = sources_.size() - 1;
-    while (start_index != end_index) {
-      int half_index = start_index + (end_index - start_index) / 2;
-      auto current = sources_[half_index];
-      if (absolute_offset < current->offset()) {
-        end_index = half_index - 1;
-      } else if (absolute_offset > current->offset() + current->size()) {
-        start_index = half_index + 1;
-      } else {
-        start_index = end_index = half_index;
-        break;
-      }
-    }
-    entry = sources_[start_index];
-    ASSERT(entry->offset() <= absolute_offset && absolute_offset <= entry->offset() + entry->size());
-  }
-  ASSERT(entry != null);
-
-  cached_offset_ = absolute_offset;
   cached_source_entry_ = entry;
-  cached_location_ = Source::Location::invalid();
-
   return entry;
 }
 
@@ -253,50 +253,21 @@ Source::Location SourceManager::compute_location(Source::Position position) cons
   int absolute_offset = position.token();
   ASSERT(0 <= absolute_offset && absolute_offset < next_offset_);
 
-  SourceManagerSource* entry = null;
-
-  int start_offset = 0;  // The starting offset to search for.
-  int line = 1;  // The line number.
-  int line_start = 0;  // The start of the line.
-
-  if (cached_offset_ >= 0 &&
-      cached_source_entry_->offset() <= absolute_offset &&
-      absolute_offset <= cached_source_entry_->offset() + cached_source_entry_->size()) {
-    entry = cached_source_entry_;
-    if (cached_offset_ < absolute_offset) {
-      if (cached_location_.is_valid()) {
-        start_offset = cached_offset_ - entry->offset();
-        line = cached_location_.line_number;
-        line_start = cached_location_.line_offset;
-      }
-    }
-  }
-  if (entry == null) {
+  SourceManagerSource* entry = cached_source_entry_;
+  if (entry == null ||
+      absolute_offset < entry->offset() ||
+      absolute_offset > entry->offset() + entry->size()) {
     entry = static_cast<SourceManagerSource*>(source_for_position(position));
   }
-  ASSERT(entry != null);
-  const uint8* text = entry->text();
   int offset_in_source = absolute_offset - entry->offset();
 
-  for (int i = start_offset; i < offset_in_source; i++) {
-    int c = text[i];
-    if (c == '\r' && text[i + 1] == '\n') {
-      i++;
-      c = '\n';
-    }
-    if (c == '\n') {
-      line_start = i + 1;
-      line++;
-    }
-  }
+  auto& starts = entry->line_starts();
+  auto it = std::upper_bound(starts.begin(), starts.end(), offset_in_source) - 1;
+  int line = static_cast<int>(it - starts.begin()) + 1;
+  int line_start = *it;
 
   int offset_in_line = offset_in_source - line_start;
-  Source::Location result(entry, offset_in_source, offset_in_line, line, line_start);
-
-  cached_offset_ = absolute_offset;
-  cached_source_entry_ = entry;
-  cached_location_ = result;
-  return result;
+  return Source::Location(entry, offset_in_source, offset_in_line, line, line_start);
 }
 
 Source::Position SourceManager::line_column_to_position(Source* source, int line, int utf16_column) {
