@@ -228,9 +228,7 @@ class SourceManager {
 
   SourceManager(Filesystem* filesystem)
       : filesystem_(filesystem)
-      , cached_source_entry_(null)
-      , cached_offset_(-1)
-      , cached_location_(null, 0, 0, 0, 0) {}
+      , cached_source_entry_(null) {}
 
   /// Loads the given file.
   ///
@@ -276,8 +274,6 @@ class SourceManager {
   UnorderedMap<std::string, SourceManagerSource*> path_to_source_;
 
   mutable SourceManagerSource* cached_source_entry_;
-  mutable int cached_offset_;
-  mutable Source::Location cached_location_;
 
   SourceManagerSource* register_source(const std::string& path,
                                        const Package& package,
