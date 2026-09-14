@@ -6,6 +6,9 @@ class Gadget:
 /*    @ def */
   value := 0
 
+  constructor:
+  constructor .value:
+
 helper x/Gadget:
 /*       @ type-param */
   return x

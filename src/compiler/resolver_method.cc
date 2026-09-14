@@ -3186,13 +3186,16 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
     }
   }
 
-  // Store AST call expression for calls with named arguments.
+  // Store AST call expression for calls with named arguments and for
+  // prefixed calls ('prefix.foo 1 2').
   // This allows the rename visitor to recover the source ranges of
-  // named-argument tokens (e.g., "--param_name") at call sites.
+  // named-argument tokens (e.g., "--param_name") and of the class name in
+  // prefixed constructor calls (the IR call range only covers the prefix).
   // Only real Call nodes (not Index/IndexSlice) are mapped, since only
   // user-written named arguments should participate in rename.
-  if (ir_to_ast_map_ != null && has_named_arguments && !stack_.empty() &&
-      potential_call->is_Call()) {
+  bool is_prefixed_call = ast_target->is_Dot() && scope_->is_prefixed_identifier(ast_target);
+  if (ir_to_ast_map_ != null && (has_named_arguments || is_prefixed_call) &&
+      !stack_.empty() && potential_call->is_Call()) {
     auto* ir_node = stack_.back();
     // When block or lambda arguments are present, the call builder hoists
     // them into temporaries and wraps the call in an ir::Sequence.  The
