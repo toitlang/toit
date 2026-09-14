@@ -59,9 +59,9 @@ main args:
   // PAD27 and PAD11 are distinct physical pads, but both route GPIO12.
   // They must not be owned independently because their data, direction, and
   // interrupt registers are the same controller bit.
-  primary := gpio.Pin 27
+  primary := gpio.Pin 27 --input
   expect-throws "ALREADY_IN_USE":
-    gpio.Pin 11
+    gpio.Pin 11 --input
   primary.close
   alternate := gpio.Pin 11 --output
   alternate.close
@@ -84,7 +84,7 @@ main args:
     // Initial values must be visible without a separate set.
     verify control pins "100"
     expect-throws "ALREADY_IN_USE":
-      gpio.Pin wiring.EC618-GPIO11-PAD
+      gpio.Pin wiring.EC618-GPIO11-PAD --input
     expect-throws "INVALID_ARGUMENT":
       pins[0].set 2
 

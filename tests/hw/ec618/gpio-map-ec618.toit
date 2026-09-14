@@ -104,9 +104,8 @@ test-output control/Control pad/int direct/List expected/List -> none:
   control.send "OBSERVE $pad"
   control.expect "READY-TO-OBSERVE $pad"
 
-  pin := gpio.Pin pad
+  pin := gpio.Pin pad --output --value=0
   try:
-    pin.configure --output --value=0
     PULSES.repeat:
       pin.set 1
       sleep PULSE-HALF
@@ -120,9 +119,8 @@ test-output control/Control pad/int direct/List expected/List -> none:
   print "gpio-map-ec618: PAD$pad output direct IO$direct, observed IO$expected"
 
 test-input control/Control pad/int -> none:
-  pin := gpio.Pin pad
+  pin := gpio.Pin pad --input
   try:
-    pin.configure --input
     [0, 1].do: | level/int |
       control.send "DRIVE $pad $level"
       control.expect "DRIVEN $pad $level"
@@ -136,12 +134,10 @@ test-input control/Control pad/int -> none:
   print "gpio-map-ec618: PAD$pad input read ESP32 low/high"
 
 test-pulls control/Control pad/int -> List:
-  pin := gpio.Pin pad
+  pin := gpio.Pin pad --input
   down-ok := false
   up-ok := false
   try:
-    pin.configure --input
-
     // Establish a high level, then release before enabling the pull-down.
     control.send "DRIVE $pad 1"
     control.expect "DRIVEN $pad 1"
