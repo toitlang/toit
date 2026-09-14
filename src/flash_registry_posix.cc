@@ -58,10 +58,15 @@ void FlashRegistry::set_up() {
   ASSERT(allocations_memory() == null);
 
   int fd = -1;
-  int flags = MAP_ANONYMOUS | MAP_SHARED;
   int padding = 0;
 
   const char* path = getenv("TOIT_FLASH_REGISTRY_FILE");
+
+  // Sharing is only needed for the file-backed case. For anonymous memory,
+  // MAP_PRIVATE reads map the zero page, so the boot scan of the 64 MB region
+  // does not allocate ~16k pages (~25 ms per VM start).
+  int flags = path ? MAP_SHARED : (MAP_ANONYMOUS | MAP_PRIVATE);
+
   if (path != null) {
     fd = open(path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
     if (fd < 0) {
@@ -71,7 +76,6 @@ void FlashRegistry::set_up() {
       perror("FlashRegistry::set_up/ftruncate");
     }
 
-    flags = MAP_SHARED;
     is_file_backed = true;
   }
 
