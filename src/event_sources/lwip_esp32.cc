@@ -95,8 +95,8 @@ String* lwip_strerror(Process* process, err_t err) {
   };
 
   static const char* custom_strerr[] = {
-             "Host name lookup failure"                 /* ERR_NAME_LOOKUP_FAILURE -126  */
-             "Connection closed due to memory pressure" /* ERR_MEM_NON_RECOVERABLE -127 */
+             "Host name lookup failure",                 /* ERR_NAME_LOOKUP_FAILURE -126  */
+             "Connection closed due to memory pressure", /* ERR_MEM_NON_RECOVERABLE -127 */
   };
 
   const char* str = "Unknown network error";
@@ -104,7 +104,10 @@ String* lwip_strerror(Process* process, err_t err) {
   if (err <= 0 && static_cast<unsigned>(-err) < sizeof(error_names) / sizeof(error_names[0])) {
     str = error_names[-err];
   } else if (is_toit_error(err)) {
-    str = custom_strerr[err - FIRST_TOIT_ERROR];
+    unsigned index = FIRST_TOIT_ERROR - err;
+    if (index < sizeof(custom_strerr) / sizeof(custom_strerr[0])) {
+      str = custom_strerr[index];
+    }
   }
   return process->allocate_string(str);
 }
