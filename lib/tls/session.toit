@@ -601,7 +601,8 @@ class Session:
     // limiting us.
     if remaining-message-bytes >= 0x4000: throw "TLS handshake message too large to defragment"
     // Make a synthetic record that was not on the wire.
-    synthetic := ByteArray remaining-message-bytes + RECORD-HEADER-SIZE_  // Include space for header.
+    // External, so tls-set-incoming_ can take the buffer instead of copying it.
+    synthetic := ByteArray.external remaining-message-bytes + RECORD-HEADER-SIZE_  // Include space for header.
     synthetic.replace 0 header.bytes
     synthetic-header := RecordHeader_ synthetic
     // Overwrite record size of header.
