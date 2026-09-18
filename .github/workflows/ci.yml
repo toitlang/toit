@@ -717,7 +717,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: toitlang/jaguar
-          ref: master
+          # Follow Jaguar's default branch (currently main).
           path: build/partition-size-jaguar
           persist-credentials: false
 

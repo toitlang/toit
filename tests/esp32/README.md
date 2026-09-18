@@ -3,8 +3,9 @@
 The `esp32-envelope-sizes` CI job runs only on the nightly schedule. It builds
 every ESP32 variant listed by `toitlang/envelopes` on `main`, using the SDK under
 test, and checks each envelope both with only its bundled containers and with
-Jaguar installed. Jaguar's snapshot is compiled from `master` with that same
-SDK. Ordinary CI runs do not perform these size checks.
+Jaguar installed. Jaguar's snapshot is compiled from its default branch
+(currently `main`) with that same SDK. Ordinary CI runs do not perform these
+size checks.
 
 The job uses the existing compiler cache, but always builds and checks every
 variant. It keeps only one native build on disk at a time and reports all
