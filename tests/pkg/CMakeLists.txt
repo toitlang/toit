@@ -55,7 +55,13 @@ foreach(file ${TOIT_PKG_TESTS})
   set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT ${PKG_TEST_TIMEOUT})
 
   if ("${file}" IN_LIST TOIT_PKG_GOLD_TESTS)
-    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT ${PKG_GOLD_TEST_TIMEOUT})
+    set(gold_timeout ${PKG_GOLD_TEST_TIMEOUT})
+    if ("${file}" STREQUAL "tests/pkg/completion-gold-test.toit" AND DEFINED ENV{TOIT_CHECK_PROPAGATED_TYPES})
+      # Completion queries run in separate processes. Each invocation repeats
+      # type propagation for the CLI programs, unlike the in-process pkg tests.
+      math(EXPR gold_timeout "${gold_timeout} * 2")
+    endif()
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT ${gold_timeout})
     string(REPLACE "/" "_" update_name "${file}")
     string(REPLACE "\\" "_" update_name "${update_name}")
     set(update_name "${update_name}-update-gold")
