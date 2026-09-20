@@ -80,7 +80,8 @@ class Session:
       else:
         expect-equals ["finished", cases_] receive
         send ["PASS", cases_]
-        print "TESTER PASS: $cases_ cases"
+        print "Tester verified all $cases_ cases"
+    // Use the ordinary runner marker only after the tester accepts all cases.
     print "All tests done"
 
   close:

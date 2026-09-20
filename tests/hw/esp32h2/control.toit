@@ -50,6 +50,10 @@ class Testee:
     if op == "open-drain":
       pins_[request[1]].set-open-drain true
       return null
+    if op == "levels":
+      result := {:}
+      pins_.do: | pin resource | result[pin] = resource.get
+      return result
     if op == "read": return pins_[request[1]].get
     if op == "wait":
       pins_[request[1]].wait-for request[2]

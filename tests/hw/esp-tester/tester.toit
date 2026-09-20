@@ -150,9 +150,6 @@ main args:
         cli.Option "port-board2"
             --help="The path to the UART port of board 2"
             --type="path",
-        cli.Flag "tester-board2"
-            --help="Use board 2 as the authoritative tester; require its TESTER PASS verdict"
-            --default=false,
         cli.Option "arg"
             --help="The argument to pass to the test"
             --type="string"
@@ -291,8 +288,6 @@ run-test invocation/cli.Invocation:
   toit-exe := invocation["toit-exe"]
   port-board1 := invocation["port-board1"]
   port-board2 := invocation["port-board2"]
-  tester-board2 := invocation["tester-board2"]
-  if tester-board2 and not port-board2: throw "--tester-board2 requires --port-board2"
   test-path := invocation["test"]
   test2-path := invocation["test2"]
   arg := invocation["arg"]
@@ -335,7 +330,6 @@ run-test invocation/cli.Invocation:
           if port-board2:
             board2 = TestDevice
                 --name="board2"
-                --completion-marker=(tester-board2 ? "TESTER PASS:" : ALL-TESTS-DONE)
                 --port-path=port-board2
                 --ui=ui
                 --toit-exe=toit-exe
@@ -359,9 +353,8 @@ run-test invocation/cli.Invocation:
             board2.wait-until-running
 
           ui.emit --verbose "Waiting for all tests to be done."
-          if not tester-board2:
-            board1.wait-until-done test-timeout-ms
-            log "Board1 done"
+          board1.wait-until-done test-timeout-ms
+          log "Board1 done"
           if board2:
             board2.wait-until-done test-timeout-ms
             log "Board2 done"
@@ -417,15 +410,13 @@ class TestDevice:
   running-container/monitor.Latch := monitor.Latch
   all-tests-done/monitor.Latch := monitor.Latch
   image-bytes-sent_/int := 0
-  completion-marker/string
   ui/cli.Ui
   tmp-dir/string
 
   network_/net.Client? := null
   socket_/tcp.Socket? := null
 
-  constructor --.name --.toit-exe --port-path/string --.ui --.already-installed --.use-network
-      --.completion-marker=ALL-TESTS-DONE:
+  constructor --.name --.toit-exe --port-path/string --.ui --.already-installed --.use-network:
     port = uart.HostPort port-path --baud-rate=CONSOLE-BAUD-RATE
     tmp-dir = directory.mkdtemp "/tmp/esp-tester"
     read-task = task --background:: read-output_
@@ -480,7 +471,7 @@ class TestDevice:
     if line.contains MINI-JAG-LISTENING:
       set-latch_ device-ready-latch
       return
-    if line.starts-with completion-marker:
+    if line.starts-with ALL-TESTS-DONE:
       set-latch_ all-tests-done
       return
     if line.starts-with UART-TRANSFER-ERROR:

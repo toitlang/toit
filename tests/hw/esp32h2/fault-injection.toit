@@ -2,7 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-// Negative tests: every mode must fail on the tester, with no TESTER PASS.
+// Negative tests: every mode must fail, with no completion marker from either board.
 import expect show *
 import .session
 

@@ -23,29 +23,6 @@ Helper GPIO33 connects through **1 MΩ** to helper GPIO32. H2 GPIO14 is
 disconnected from the helper. Leave H2 GPIO13/14 alone because the board may
 use them for its low-frequency crystal.
 
-## Wiring check
-
-`wiring-fixture` is an ESP-IDF C project that builds for either `esp32h2` or
-`esp32`. Build it in separate directories with the corresponding `IDF_TARGET`
-and `SDKCONFIG` paths, then flash each board. The fixture releases its pins
-after three seconds without a command.
-
-This is a bootstrap check for use before the new port is trusted. Its C fixture
-runs on both boards; the explicit chip branches select their pin whitelists.
-The normal Toit suites below make the ESP32 the tester.
-
-Run the Toit host check from the repository root:
-
-```sh
-build/host/sdk/bin/toit run tests/hw/esp32h2/check-wiring.toit -- \
-  --h2-port "$H2_PORT" --helper-port "$HELPER_PORT" \
-  --output wiring-results.json
-```
-
-It checks each usable link high/low/high, verifies the other lines remain
-unchanged, and tests the resistor against both H2 internal pulls. GPIO35 is
-only tested as an input. Reserved pins are never driven.
-
 ## Toit tests
 
 From the repository root:
@@ -60,34 +37,52 @@ TOIT="$PWD/build/host/sdk/bin/toit"
   --envelope build/esp32/firmware.envelope --control serial
 ```
 
+Run the paired wiring pre-check after setup, before the peripheral suites:
+
+```sh
+"$TOIT" run tests/hw/esp-tester/tester.toit -- --toit-exe "$TOIT" run \
+  --port-board1 "$H2_PORT" --port-board2 "$HELPER_PORT" --control serial \
+  tests/hw/esp32h2/check-wiring.toit tests/hw/esp32h2/check-wiring.toit
+```
+
+`check-wiring.toit` runs entirely on the two Toit boards. The ESP32 checks
+high/low/high on each of the five GPIO links in both directions and verifies
+that other GPIO lines stay high. It also checks the resistor against H2 pulls,
+using readings from both boards. The two UART links (H2 GPIO2/5 to ESP32
+GPIO27/35) are checked through a 256-byte echo; they remain the control channel
+and are not exercised as GPIOs. Reserved pins are never driven. No separate C
+firmware or host wiring-check program is needed.
+
 All H2 suites now run on both boards. The ESP32 is the trusted **tester**;
 H2 is the **testee**. For example:
 
 ```sh
 "$TOIT" run tests/hw/esp-tester/tester.toit -- --toit-exe "$TOIT" run \
-  --tester-board2 --port-board1 "$H2_PORT" --port-board2 "$HELPER_PORT" \
+  --port-board1 "$H2_PORT" --port-board2 "$HELPER_PORT" \
   --control serial \
   tests/hw/esp32h2/peripherals.toit tests/hw/esp32h2/peripherals.toit
 ```
 
 The tester initiates each named case, enforces a deadline, and evaluates its
 own electrical observations and the testee's returned measurements/payloads.
-Both boards still perform local assertions. Only the tester emits `TESTER PASS`,
-after all cases and the final completion handshake; closing resources never
-signals success. Case numbers and names reject skipped or out-of-order cases.
-The host builds, installs, launches, and records logs. With `--tester-board2`
-it requires the tester's verdict, not a success marker from the testee. Its
-outer timeout remains a safeguard against a failed tester.
+Both boards still perform local assertions. The tester delays its ordinary
+`All tests done` marker until all cases and the final completion handshake
+succeed. The testee waits for the tester's acceptance before emitting its own
+marker. Closing resources never signals success. Case numbers and names reject
+skipped or out-of-order cases. The unchanged host runner builds, installs,
+launches, records logs, and waits for both boards' completion markers. Its
+outer timeout remains a safeguard against a failed board.
 
 `basics.toit` reports chip identity and RTC size to the tester. `runtime.toit`
 reuses the EC618 GC/storage self-tests; these internal checks remain on H2,
 with the tester enforcing their sequence, explicit completion, and deadlines.
 The existing standalone `tests/hw/esp32/run-time-test.toit` is still available
-for runtime accounting and timer deep-sleep retention; it uses the legacy host
-runner without `--tester-board2`.
+for runtime accounting and timer deep-sleep retention; it uses the same host
+runner with a single board.
 
 | H2 test | ESP32 tester | Coverage |
 | --- | --- | --- |
+| `check-wiring.toit` | `check-wiring.toit` | Wiring pre-check: UART, GPIO links and unintended changes on other lines, resistor/pulls. |
 | `basics.toit` | `basics.toit` | Chip identity, RTC memory size, formatting, collections. |
 | `runtime.toit` | `runtime.toit` | H2 GC and storage self-tests supervised by ESP32. |
 | `peripherals.toit` | `peripherals.toit` | UART payloads through 4096 bytes; GPIO input/output, open drain, interrupts, pull-up/down; ADC; pulse counter; PWM. |
@@ -123,10 +118,10 @@ is no background-writer success shortcut.
 
 ## Verdict rejection tests
 
-Run `fault-injection.toit` on both boards with `--tester-board2` and each
+Run `fault-injection.toit` on both boards with each
 `--arg` value: `corrupt`, `silent`, `cleanup`, `skip`, and `crash`.
-**Each run must fail**, log a tester-side rejection or timeout, and contain no
-`TESTER PASS`. These check that wrong data, a silent testee, cleanup without
-completion, skipped work, and a testee crash cannot become success. The three
-second case deadline belongs to the ESP32; the host's outer timeout should
-not be reached.
+**Each run must fail** and neither board may emit `All tests done`. These check
+that wrong data, a silent testee, cleanup without completion, skipped work, and
+a testee crash cannot become success. Both boards enforce a three second case
+deadline. The host can report either board's error first; its
+outer timeout should not be reached.
