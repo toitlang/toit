@@ -12,11 +12,6 @@ variant. It keeps only one native build on disk at a time and reports all
 synthesis, build, and size failures before failing the job. It is independent
 of the regular ESP32 job, so failures there do not skip variant coverage.
 
-After regenerating `sdkconfig.defaults`, check variant synthesis too: the
-envelopes repository applies patches with these files as context. In particular,
-keep the explicit `CONFIG_PERIPH_CTRL_FUNC_IN_IRAM=n` in the classic ESP32
-defaults for the `esp32-spiram-rev3` patch, even though it matches the IDF default.
-
 `check-partition-sizes.sh` extracts complete flash images using the firmware
 tool. This checks the final app size, including relocated containers, assets,
 configuration, and flash-page padding, against the envelope's partition table.
