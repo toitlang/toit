@@ -73,9 +73,9 @@ This is a selected regression suite, not a copy of every older test matrix.
 External sensor integrations, unavailable radios, deprecated API permutations,
 platform-specific EC618 contracts, and very long soak tests are not included.
 Advanced target APIs, exhaustive I2S slot configurations, watchdog and firmware
-update lifecycle tests remain possible additions. The existing ESP32/S3 suite is
-not removed by this change. Its BLE/I2S utility imports forward here so removing
-that suite later does not remove dependencies of the paired tests.
+update lifecycle tests remain possible additions. The paired suite contains
+independent copies of the BLE/I2S utilities. Changes to the existing ESP32/S3
+suite are deferred to a follow-up PR.
 
 ## I2S format failure reproducers
 
