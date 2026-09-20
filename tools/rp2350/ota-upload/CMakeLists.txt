@@ -31,14 +31,21 @@ endif()
 install(TARGETS ota-upload RUNTIME DESTINATION bin)
 
 include(CTest)
-if(BUILD_TESTING)
-  find_package(Python3 COMPONENTS Interpreter)
-  if(Python3_Interpreter_FOUND AND UNIX)
+if(BUILD_TESTING AND UNIX)
+  get_filename_component(TOIT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
+  find_program(TOIT_EXECUTABLE NAMES toit HINTS "${TOIT_ROOT}/build/host/sdk/bin")
+  if(TOIT_EXECUTABLE)
+    add_executable(ota-upload-pty-bridge pty_bridge.cc)
+    set_target_properties(ota-upload-pty-bridge PROPERTIES CXX_STANDARD 11)
     add_test(
       NAME ota-upload-pty
-      COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_ota_upload.py"
-              "$<TARGET_FILE:ota-upload>"
+      COMMAND "${TOIT_EXECUTABLE}" run "${CMAKE_CURRENT_SOURCE_DIR}/test-ota-upload.toit"
+              -- "$<TARGET_FILE:ota-upload>" "$<TARGET_FILE:ota-upload-pty-bridge>"
     )
-    set_tests_properties(ota-upload-pty PROPERTIES TIMEOUT 20)
+    if(EXISTS "${TOIT_ROOT}/tools/.packages-bootstrap/package-timestamp")
+      set_tests_properties(ota-upload-pty PROPERTIES
+        ENVIRONMENT "TOIT_PACKAGE_CACHE_PATHS=${TOIT_ROOT}/tools/.packages-bootstrap")
+    endif()
+    set_tests_properties(ota-upload-pty PROPERTIES TIMEOUT 30)
   endif()
 endif()

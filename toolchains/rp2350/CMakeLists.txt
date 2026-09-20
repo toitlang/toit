@@ -125,7 +125,6 @@ if (TOIT_RP2350_BUILD_VM)
   if (NOT EXISTS "${TOIT_HOST}")
     message(FATAL_ERROR "Build the matching host tools first: make host-tools")
   endif()
-  find_package(Python3 COMPONENTS Interpreter REQUIRED)
   function(toit_relative_import out path)
     file(RELATIVE_PATH relative "${CMAKE_CURRENT_BINARY_DIR}" "${path}")
     string(REGEX REPLACE "[.]toit$" "" relative "${relative}")
@@ -160,6 +159,7 @@ if (TOIT_RP2350_BUILD_VM)
   endif()
   set(TOIT_BOOT_ASSET_ARGS ${TOIT_IMAGE_ASSET_ARGS})
   set(TOIT_APPLICATION_COMMANDS)
+  set(TOIT_APPLICATION_DEPENDENCIES)
   set(TOIT_BUNDLED_IMAGES)
   if (TOIT_RP2350_OTA)
     # The application runs as an independent noncritical container. Keep its
@@ -170,18 +170,20 @@ if (TOIT_RP2350_BUILD_VM)
       COMMAND "${TOIT_HOST}" tool snapshot-to-image --format=binary -m32 ${TOIT_IMAGE_ASSET_ARGS}
         -o application.image application.snapshot)
     list(APPEND TOIT_BUNDLED_IMAGES application.image)
+    list(APPEND TOIT_APPLICATION_DEPENDENCIES "${CMAKE_CURRENT_BINARY_DIR}/application.toit")
   endif()
   add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/boot.S"
     COMMAND "${TOIT_HOST}" compile -s -o boot.snapshot boot.toit
     COMMAND "${TOIT_HOST}" tool snapshot-to-image --format=binary -m32 ${TOIT_BOOT_ASSET_ARGS} -o boot.image boot.snapshot
     ${TOIT_APPLICATION_COMMANDS}
-    COMMAND "${Python3_EXECUTABLE}" "${TOIT_ROOT}/tools/rp2350/image-to-assembly.py" boot.image boot.S ${TOIT_BUNDLED_IMAGES}
+    COMMAND "${TOIT_HOST}" run "${TOIT_ROOT}/tools/rp2350/image-to-assembly.toit" -- boot.image boot.S ${TOIT_BUNDLED_IMAGES}
     DEPENDS "${TOIT_RP2350_PROGRAM}" ${TOIT_LIBRARY_SOURCES} ${TOIT_RP2350_TEST_SOURCES}
       "${CMAKE_CURRENT_BINARY_DIR}/boot.toit" "${TOIT_ROOT}/system/services.toit"
+      ${TOIT_APPLICATION_DEPENDENCIES}
       "${CMAKE_CURRENT_LIST_DIR}/application.toit.in"
       "${CMAKE_CURRENT_LIST_DIR}/ota-console.toit" ${TOIT_SYSTEM_SOURCES}
       ${TOIT_RP2350_ASSETS}
-      "${TOIT_ROOT}/tools/rp2350/image-to-assembly.py" "${TOIT_HOST}"
+      "${TOIT_ROOT}/tools/rp2350/image-to-assembly.toit" "${TOIT_HOST}"
     VERBATIM)
   if (TOIT_RP2350_ENVELOPE_BASE)
     add_executable(toit-rp2350 main.cc failure.cc envelope-stub.S)

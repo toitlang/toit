@@ -41,7 +41,7 @@ required for the sanitizer-enabled native parser test.
 
 `run_ota_image_parser_tests.sh IMAGE.bin...` can be used separately for native
 images or other derived images. It runs the production parser under ASan and
-UBSan, boundary mutations, the independent Python hash checks, and picotool
+UBSan, boundary mutations, the independent Toit hash checks, and picotool
 when available. Set `REQUIRE_PICOTOOL=1` to make a missing picotool an error.
 
 `check-persistent-data.sh TOIT-RP2350.ELF` verifies that the RAM bucket and
@@ -49,3 +49,10 @@ both retained clock fields are inside the SDK's persistent-data section in
 SRAM bank 0. This catches accidentally placing a retained field in ordinary
 BSS, even when the firmware still links. It requires Arm GNU `objdump` and
 `nm`; override `OBJDUMP` and `NM` for another toolchain installation.
+
+`run_flash_tests.sh BASE.bin SYSTEM.snapshot PARTITIONS.uf2` tests ROM flashing
+without a USB device. A mock picotool captures the generated UF2 and checks it
+against extraction from the current envelope with an installed container and
+configuration. It checks USB serial selection, verification and absolute
+partition addressing, error propagation, and that a failed load never reboots.
+Invalid OTA/BOOT option combinations must fail before invoking a tool.

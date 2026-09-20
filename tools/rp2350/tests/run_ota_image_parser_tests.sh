@@ -5,6 +5,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/../../.." && pwd)"
+export TOIT_PACKAGE_CACHE_PATHS="${TOIT_PACKAGE_CACHE_PATHS:-$root/tools/.packages-bootstrap}"
 temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT
 
@@ -66,7 +67,7 @@ if [[ -z "$picotool" ]]; then
     echo "FAIL: picotool was not found" >&2
     exit 1
   fi
-  echo "SKIP: picotool was not found; Python digest checks still run" >&2
+  echo "SKIP: picotool was not found; Toit digest checks still run" >&2
 fi
 
 for image in "${images[@]}"; do
@@ -74,7 +75,7 @@ for image in "${images[@]}"; do
   UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
     "$temporary/ota_image_parser_test" "$image"
   ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 \
-    python3 "$root/tools/rp2350/tests/ota_image_hash_test.py" \
+    "${TOIT:-$root/build/host/sdk/bin/toit}" run "$root/tools/rp2350/tests/ota-image-hash-test.toit" -- \
       "$temporary/ota_image_parser_test" "$image"
   if [[ -n "$picotool" ]]; then
     information="$($picotool info -a "$image")"

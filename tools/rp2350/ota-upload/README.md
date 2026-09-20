@@ -32,7 +32,9 @@ glibc baseline.
 Run the PTY protocol tests with:
 
 ```sh
+cmake --build build/rp2350-ota-upload --target ota-upload-pty-bridge
 ctest --test-dir build/rp2350-ota-upload --output-on-failure
 ```
 
-Python is used only by these tests.
+The tests use Toit and a small native PTY transport helper. Build the host SDK
+and install the dependencies in tools/rp2350 before running them.
