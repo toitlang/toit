@@ -18,7 +18,7 @@ cmake_minimum_required(VERSION 3.20.0)
 project(hw NONE)  # No need for compilers.
 
 add_custom_target(
-  check_hw
+  check_hw_esp32
   # Fail quickly and clearly when serial paths are absent or point at the
   # wrong chip family. The later commands are only run when this succeeds.
   COMMAND ${CMAKE_CTEST_COMMAND} -j2 -C hw --output-on-failure
@@ -28,9 +28,10 @@ add_custom_target(
   COMMAND ${CMAKE_CTEST_COMMAND} -j2 -C hw --output-on-failure
       -FA "^rig-preflight-"
       -R "^rig-health-board1\\.toit-(esp32|esp32s3)$"
-  # The current Raspberry Pi can't run more than 2 tests in parallel.
+  # Run only the ESP32 tests; Pi tests have an independent target.
   COMMAND ${CMAKE_CTEST_COMMAND} -j2 -T test -C hw --output-on-failure
       -FA "^(rig-preflight-|setup-boards-)"
+      -R ".*-(esp32|esp32s3)$"
       -E "^(rig-preflight-|rig-health-|setup-board)"
   VERBATIM
   USES_TERMINAL
@@ -46,3 +47,5 @@ enable_testing()
 
 add_subdirectory(pi)
 add_subdirectory(esp32)
+
+add_custom_target(check_hw DEPENDS check_pi check_hw_esp32)

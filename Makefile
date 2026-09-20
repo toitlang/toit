@@ -531,15 +531,29 @@ download-packages-hw-host:
 	cmake -E env TOIT_EXE_HW=$(BUILD)/$(HOST)/sdk/bin/toit $(MAKE) download-packages-hw
 
 .PHONY: download-packages-hw
-download-packages-hw:
+download-packages-hw: download-packages-hw-pi download-packages-hw-esp32
+	$$TOIT_EXE_HW pkg install --project-root tests/hw/ec618
+
+.PHONY: download-packages-hw-pi
+download-packages-hw-pi:
 	$$TOIT_EXE_HW pkg install --project-root tests/hw/pi
+
+.PHONY: download-packages-hw-esp32
+download-packages-hw-esp32:
 	$$TOIT_EXE_HW pkg install --project-root tests/hw/esp32
 	$$TOIT_EXE_HW pkg install --project-root tests/hw/esp-tester
-	$$TOIT_EXE_HW pkg install --project-root tests/hw/ec618
 
 .PHONY: test-hw
 test-hw: rebuild-cmake-hw download-packages-hw
-	(cd $(BUILD)/hw && ninja check_hw)
+	(cd $(BUILD)/hw && ninja -k0 check_hw)
+
+.PHONY: test-hw-pi
+test-hw-pi: rebuild-cmake-hw download-packages-hw-pi
+	(cd $(BUILD)/hw && ninja check_pi)
+
+.PHONY: test-hw-esp32
+test-hw-esp32: rebuild-cmake-hw download-packages-hw-esp32
+	(cd $(BUILD)/hw && ninja check_hw_esp32)
 
 .PHONY: build-test-assets
 build-test-assets: $(BUILD)/$(HOST)/CMakeCache.txt
