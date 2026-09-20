@@ -39,3 +39,13 @@ bash tests/esp32/check-envelope-variants.sh path/to/envelopes \
 
 This checks each variant's own partition table. It does not certify arbitrary
 user containers, assets, or standalone partition-table overrides.
+
+The default C3 layout reserves 0x1b0000 bytes per OTA slot and 512 KiB for
+programs. The C6 layout reserves 0x1d0000 bytes per OTA slot (including room for
+the FAT variant with Jaguar) and 256 KiB for programs. Both fit in 4 MiB flash.
+Both defaults disable `CONFIG_MBEDTLS_ECP_FIXED_POINT_OPTIM`, saving about
+27 KiB of flash at the cost of slower elliptic-curve operations. The larger
+OTA slots are retained for headroom.
+These layouts change partition offsets: existing devices need a full reflash
+and reprovisioning when migrating from the smaller OTA slots; an ordinary OTA
+update does not migrate the partition table or stored programs.
