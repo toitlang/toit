@@ -5,7 +5,6 @@
 import expect show *
 import gpio
 import gpio.dac as dac
-import pulse-counter
 import .control as control
 import .session
 import .wiring
@@ -71,28 +70,6 @@ main:
           expect (measured - voltage).abs < 0.2
       finally:
         analog.close
-    control.run-case session "Pulse counter":
-      pin := gpio.Pin 14 --output --value=0
-      try:
-        control.call session ["counter-start"]
-        100.repeat:
-          pin.set 1
-          sleep --ms=1
-          pin.set 0
-          sleep --ms=1
-        expect-equals 100 (control.call session ["counter-read"])
-      finally:
-        pin.close
-    control.run-case session "PWM":
-      control.call session ["pwm", 1000]
-      counter := pulse-counter.Unit 14
-      try:
-        sleep --ms=200
-        count := counter.value
-        print "PWM pulses in 200ms: $count"
-        expect 180 <= count <= 220
-      finally:
-        counter.close
     session.finish
   finally:
     if reserved: reserved.close

@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-import .buses as buses
+import ..paired.buses as buses
 import .session
 
 main:
@@ -15,6 +15,8 @@ main:
       [17, 19, 30, 31, 32, 33, 62, 63, 64, 65, 94, 95, 96, 127, 128, 129, 255, 256, 1024].do: | size |
         session.run-case "I2C boundary size=$size frequency=$frequency":
           observed := buses.i2c-case session.port IS-TESTEE frequency size
+              (IS-TESTEE ? 1 : 14)
+              (IS-TESTEE ? 4 : 32)
           response := session.observation observed
           if not IS-TESTEE: expect-equals (buses.pattern 32 123) response
     session.finish

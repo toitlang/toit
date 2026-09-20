@@ -4,18 +4,13 @@
 
 import gpio
 import gpio.adc as adc
-import gpio.pwm as pwm
-import pulse-counter
 import .session
 import .wiring
 
 /** Executes operations on the testee, returning observations without a verdict. */
 class Testee:
   pins_/Map := {:}
-  counter_/pulse-counter.Unit? := null
   analog_/adc.Adc? := null
-  pwm_/pwm.Pwm? := null
-  channel_/pwm.PwmChannel? := null
 
   serve session/Session:
     try:
@@ -26,10 +21,7 @@ class Testee:
         session.send (execute_ request)
     finally:
       pins_.values.do: it.close
-      if counter_: counter_.close
       if analog_: analog_.close
-      if channel_: channel_.close
-      if pwm_: pwm_.close
 
   execute_ request/List -> any:
     op := request[0]
@@ -67,14 +59,6 @@ class Testee:
     if op == "adc":
       if not analog_: analog_ = adc.Adc H2-ADC
       return analog_.get --samples=128
-    if op == "counter-start":
-      counter_ = pulse-counter.Unit 1
-      return null
-    if op == "counter-read": return counter_.value
-    if op == "pwm":
-      pwm_ = pwm.Pwm --frequency=request[1]
-      channel_ = pwm_.start 1 --duty-factor=0.5
-      return null
     throw "Unknown testee operation: $op"
 
 call session/Session request/List -> any:

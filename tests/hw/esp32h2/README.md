@@ -25,6 +25,12 @@ use them for its low-frequency crystal.
 
 ## Toit tests
 
+Install the pixel-strip dependency with `toit pkg install` from `tests/hw`.
+Reusable implementations are in [`../paired`](../paired/README.md); these
+entrypoints supply the H2/ESP32 wiring and roles. The paired implementations do
+not select pins or roles from chip identity.
+
+
 From the repository root:
 
 ```sh
@@ -50,10 +56,9 @@ high/low/high on each of the five GPIO links in both directions and verifies
 that other GPIO lines stay high. It also checks the resistor against H2 pulls,
 using readings from both boards. The two UART links (H2 GPIO2/5 to ESP32
 GPIO27/35) are checked through a 256-byte echo; they remain the control channel
-and are not exercised as GPIOs. Reserved pins are never driven. No separate C
-firmware or host wiring-check program is needed.
+and are not exercised as GPIOs. Reserved pins are never driven.
 
-All H2 suites now run on both boards. The ESP32 is the trusted **tester**;
+All H2 suites run on both boards. The ESP32 is the trusted **tester**;
 H2 is the **testee**. For example:
 
 ```sh
@@ -65,18 +70,18 @@ H2 is the **testee**. For example:
 
 The tester initiates each named case, enforces a deadline, and evaluates its
 own electrical observations and the testee's returned measurements/payloads.
-Both boards still perform local assertions. The tester delays its ordinary
+Both boards perform local assertions. The tester delays its ordinary
 `All tests done` marker until all cases and the final completion handshake
 succeed. The testee waits for the tester's acceptance before emitting its own
 marker. Closing resources never signals success. Case numbers and names reject
-skipped or out-of-order cases. The unchanged host runner builds, installs,
+skipped or out-of-order cases. The host runner builds, installs,
 launches, records logs, and waits for both boards' completion markers. Its
 outer timeout remains a safeguard against a failed board.
 
 `basics.toit` reports chip identity and RTC size to the tester. `runtime.toit`
-reuses the EC618 GC/storage self-tests; these internal checks remain on H2,
+reuses the portable GC, storage, and formatting tests; these internal checks remain on H2,
 with the tester enforcing their sequence, explicit completion, and deadlines.
-The existing standalone `tests/hw/esp32/run-time-test.toit` is still available
+The existing standalone `tests/hw/esp32/run-time-test.toit` is available
 for runtime accounting and timer deep-sleep retention; it uses the same host
 runner with a single board.
 
@@ -84,26 +89,39 @@ runner with a single board.
 | --- | --- | --- |
 | `check-wiring.toit` | `check-wiring.toit` | Wiring pre-check: UART, GPIO links and unintended changes on other lines, resistor/pulls. |
 | `basics.toit` | `basics.toit` | Chip identity, RTC memory size, formatting, collections. |
-| `runtime.toit` | `runtime.toit` | H2 GC and storage self-tests supervised by ESP32. |
-| `peripherals.toit` | `peripherals.toit` | UART payloads through 4096 bytes; GPIO input/output, open drain, interrupts, pull-up/down; ADC; pulse counter; PWM. |
+| `runtime.toit` | `runtime.toit` | GC, storage including multipage flash values, and floating-point formatting supervised by ESP32. |
+| `regressions.toit` | `regressions.toit` | PWM waveforms/endpoints/lifecycle; UART duplex, framing and gap detection; GPIO release/ownership/edge waits; PCNT filtering; UART pixel-strip waveforms; optional RMT timing failure reproducer. |
+| `peripherals.toit` | `peripherals.toit` | UART payloads through 4096 bytes; GPIO input/output, open drain, interrupts, pull-up/down; ADC. |
 | `wakeup.toit` | `wakeup.toit` | GPIO10 high and low external wakeup, reset reason, and wake-source mask. |
-| `buses.toit` | `buses.toit` | Both SPI roles in all four modes, H2 target DMA through 1024 bytes, both I2C roles, RMT transmit and receive. |
+| `buses.toit` | `buses.toit` | SPI roles/modes and DMA boundaries through 4092 bytes, target cancellation/reuse; I2C roles and buffer guards; RMT transmit/receive and long output. |
 | `i2c-repeated-start.toit` | `i2c-repeated-start.toit` | Long repeated-start transfers at FIFO boundaries and recovery after NACK. |
-| `ble.toit` | `ble.toit` | Both BLE roles, advertising/scanning, connection, read/write, notifications, adapter close/reopen. |
+| `ble.toit` | `ble.toit` | Both BLE roles, descriptors, repeated writes/notifications through 200 bytes, adapter close/reopen. |
 | `i2s.toit` | `i2s.toit` | ESP32 verifies 200 KB of I2S data in every role, including raw receive buffers forwarded by H2. |
+
+Run `regressions.toit` on both boards. With no `--arg` it runs all selected
+passing regressions; `--arg pwm`, `uart`, `gpio`, or `pixels-uart` selects one
+family. `--arg pixels-rmt` reproduces the RMT pixel-strip timing failure;
+`--arg pixels` runs both backends. `--arg pwm-reverse` runs the
+same PWM checks with ESP32 as testee and H2 as observer.
+PWM checks physical high/low durations and absence of edges at 0%/100%.
+UART tests include deliberately inserted pauses to validate gap detection.
+See the shared suite README for timing thresholds and coverage limits.
 
 For I2S, run the paired command with each of these `--arg` values:
 `philips16`, `philips16-slave`, `philips16-writer`, and
-`philips16-writer-slave`. This covers H2 receive/transmit in both clock roles.
+`philips16-writer-slave`, `msb32-slave`, and `msb32-writer`. The Philips cases
+cover H2 receive/transmit in both clock roles; the MSB cases check 32-bit data
+in both directions. Additional `msb32`, `pcm16-writer`, and
+`pcm16-writer-slave` arguments reproduce format/clock-role issues; see the
+shared README before including them in a passing regression run.
 The reused data verifier allows up to 30 stream errors for the known IDF issue documented
 in `tests/hw/esp32/i2s-shared.toit`; a pass does not imply an error-free stream.
 
 I2C uses internal pull-ups and tests 50 and 100 kHz. Writes through 1024 bytes
 and 32-byte reads are verified with repeated starts in both controller/target
 roles. The boundary regression covers writes around the 32-byte controller
-FIFO boundaries and verifies recovery after an address NACK. It caught an
-ESP-IDF controller bug: the next address could be queued before the preceding
-write drained the TX FIFO. ESP-IDF PR
+FIFO boundaries and verifies recovery after an address NACK. The controller must drain the preceding write from its TX FIFO before queuing
+the next address. ESP-IDF PR
 [toitware/esp-idf#134](https://github.com/toitware/esp-idf/pull/134) drains the FIFO
 before the repeated START, preserving the combined transaction on the wire.
 Use firmware containing that fix for the long repeated-start regression.

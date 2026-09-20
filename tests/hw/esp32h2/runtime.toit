@@ -4,16 +4,12 @@
 
 // Reuse the platform-independent allocation and storage regression tests.
 import .session
-import ..ec618.gc as gc
-import ..ec618.storage as storage
+import ..paired.runtime as runtime
 
 main:
   session := Session
   try:
-    session.run-case "GC self-test" --ms=60000:
-      if IS-TESTEE: gc.main
-    session.run-case "Storage self-test" --ms=60000:
-      if IS-TESTEE: storage.main
+    runtime.run session
     session.finish
   finally:
     session.close
