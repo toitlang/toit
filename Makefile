@@ -263,7 +263,7 @@ rp2350: rp2350-prerequisites host-tools rp2350-packages
 		-DPICO_BOARD="$(PICO_BOARD)" -DTOIT_RP2350_PROGRAM="$(RP2350_PROGRAM)" \
 		-DTOIT_RP2350_VERSION="$(RP2350_VERSION)" \
 		$(RP2350_CMAKE_FLAGS)
-	cmake --build "$(RP2350_VM_BUILD)" --target toit-rp2350 --parallel
+	$(RP2350_TOIT_ENV) cmake --build "$(RP2350_VM_BUILD)" --target toit-rp2350 --parallel
 
 rp2350-flasher: rp2350-setup
 	bash tools/rp2350/build-flasher.sh
@@ -280,7 +280,7 @@ rp2350-envelope: rp2350-prerequisites host-tools rp2350-packages rp2350-ota-uplo
 		-DTOIT_RP2350_ENVELOPE_BASE=ON -DPICO_SDK_PATH="$(PICO_SDK_PATH)" \
 		-DPICO_BOARD="$(PICO_BOARD)" -DTOIT_RP2350_VERSION="$(RP2350_VERSION)" \
 		$(RP2350_CMAKE_FLAGS)
-	cmake --build "$(RP2350_ENVELOPE_BUILD)" --target toit-rp2350 --parallel
+	$(RP2350_TOIT_ENV) cmake --build "$(RP2350_ENVELOPE_BUILD)" --target toit-rp2350 --parallel
 	$(RP2350_TOIT_ENV) $(TOIT_BIN) compile --snapshot -o "$(RP2350_ENVELOPE_BUILD)/system.snapshot" \
 		system/extensions/rp2350/boot.toit
 	"$(RP2350_PICOTOOL)" partition create \

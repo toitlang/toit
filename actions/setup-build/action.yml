@@ -50,10 +50,11 @@ runs:
       shell: bash
       run: |
         cd ${{inputs.toit-dir}}
-        git submodule sync -- third_party/esp-idf third_party/luatos-soc-ec618
+        git submodule sync -- third_party/esp-idf third_party/luatos-soc-ec618 third_party/pico-sdk
         git submodule update --init --jobs 2 -- \
           third_party/esp-idf \
-          third_party/luatos-soc-ec618
+          third_party/luatos-soc-ec618 \
+          third_party/pico-sdk
 
     # Host builds only need mbedTLS from ESP-IDF. Initializing every ESP-IDF
     # component is substantially slower.

@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 // Runs once on the classic ESP32 helper to enter the WeAct's USB bootloader.
-// See docs/rp2350-rig-guide.md for wiring and host-side verification.
+// See tests/hw/rp2350/README.md for wiring and host-side verification.
 import gpio
 import .wiring as wiring
 

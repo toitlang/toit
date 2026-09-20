@@ -1461,33 +1461,36 @@ find-ectool_ -> string:
   throw "cannot find ectool"
 
 find-rp2350-ota-upload_ -> string:
+  return find-rp2350-tool_ "ota-upload" "RP2350_OTA_UPLOAD_PATH"
+
+find-rp2350-tool_ name/string environment-variable/string -> string:
   bin-extension := platform == system.PLATFORM-WINDOWS ? ".exe" : ""
   bin-name := system.program-path
   if platform == system.PLATFORM-WINDOWS:
     bin-name = bin-name.replace --all "\\" "/"
 
-  if uploader-path := os.env.get "RP2350_OTA_UPLOAD_PATH":
+  if uploader-path := os.env.get environment-variable:
     return uploader-path
 
   list := bin-name.split "/"
   dir := list[..list.size - 1].join "/"
   if dir != "":
     // Installed SDK layout.
-    uploader := "$dir/../lib/toit/bin/ota-upload$bin-extension"
+    uploader := "$dir/../lib/toit/bin/$name$bin-extension"
     if file.is-file uploader: return uploader
     // Standalone/developer layout.
-    uploader = "$dir/ota-upload$bin-extension"
+    uploader = "$dir/$name$bin-extension"
     if file.is-file uploader: return uploader
 
-  uploader := "ota-upload$bin-extension"
+  uploader := "$name$bin-extension"
   if platform != system.PLATFORM-WINDOWS:
-    location := pipe.backticks "/bin/sh" "-c" "command -v ota-upload || true"
+    location := pipe.backticks "/bin/sh" "-c" "command -v $name || true"
     if location.trim != "": return location.trim
   else:
     catch:
       pipe.backticks uploader "--help"
       return uploader
-  throw "cannot find the RP2350 OTA uploader; set RP2350_OTA_UPLOAD_PATH"
+  throw "cannot find $name; set $environment-variable"
 
 tool-cmd -> cli.Command:
   return cli.Command "tool"
@@ -1572,15 +1575,21 @@ flash-cmd -> cli.Command:
 
           ESP32 flashing uses Espressif's esptool.py. Use 'ESPTOOL_PATH' to
           specify its path. RP2350 flashing performs an OTA update over the
-          running firmware's USB serial console. Use 'RP2350_OTA_UPLOAD_PATH'
-          to specify the native uploader. RP2350 bootstrap UF2 flashing is not
-          provided by this command.
+          running firmware's USB serial console. For initial installation or
+          recovery, put the RP2350 in BOOT mode and pass '--bootloader'. This
+          generates a recovery image from the envelope and loads it using the
+          bundled picotool. Use '--serial' to select a particular USB board.
+          Recovery preserves the other firmware slot and persistent registry;
+          it does not guarantee a downgrade from an existing confirmed image.
           """
       --options=[
         cli.OptionPath "config",
         cli.OptionPath "port"
-            --short-name="p"
-            --required,
+            --short-name="p",
+        cli.Flag "bootloader"
+            --help="Install or recover an RP2350 through its USB ROM bootloader.",
+        cli.OptionString "serial"
+            --help="Select an RP2350 board by USB serial number (requires '--bootloader').",
         cli.OptionInt "baud"
             --default=921600,
         cli.OptionEnum "chip" ["esp32", "esp32c3", "esp32c6", "esp32p4", "esp32s2", "esp32s3"]
@@ -1609,6 +1618,11 @@ flash invocation/cli.Invocation -> none:
     ui.emit --warning "The 'chip' option is deprecated and should not be used."
 
   envelope := Envelope.load input-path --ui=ui
+
+  if envelope.kind != Envelope.KIND-RP2350:
+    if invocation["bootloader"] or invocation["serial"]:
+      ui.abort "The '--bootloader' and '--serial' options require an RP2350 envelope."
+    if not port: ui.abort "Missing required option '--port'."
 
   if envelope.kind == Envelope.KIND-EC618:
     flash-ec618 invocation envelope
@@ -1734,12 +1748,22 @@ flash-rp2350 invocation/cli.Invocation envelope/Envelope -> none:
   if invocation["partitions"] or not invocation["partition"].is-empty:
     ui.abort "The '--partitions' and '--partition' options are only supported for ESP32 envelopes."
 
-  if platform != system.PLATFORM-WINDOWS:
+  bootloader := invocation["bootloader"]
+  serial := invocation["serial"]
+  if bootloader:
+    if port: ui.abort "BOOT mode uses USB directly. Use '--serial' instead of '--port'."
+  else:
+    if serial: ui.abort "The '--serial' option requires '--bootloader'."
+    if not port: ui.abort "Missing '--port' for an OTA update. Use '--bootloader' for initial installation."
+
+  if not bootloader and platform != system.PLATFORM-WINDOWS:
     stat := file.stat port
     if not stat or stat[file.ST-TYPE] != file.CHARACTER-DEVICE:
       throw "cannot open port '$port'"
 
-  uploader := find-rp2350-ota-upload_
+  uploader := bootloader
+      ? find-rp2350-tool_ "picotool" "PICOTOOL_PATH"
+      : find-rp2350-ota-upload_
 
   config-encoded := ByteArray 0
   if config-path := invocation["config"]:
@@ -1748,12 +1772,23 @@ flash-rp2350 invocation/cli.Invocation envelope/Envelope -> none:
     if exception: config-encoded = ubjson.encode (json.decode config-encoded)
 
   firmware-bin := extract-binary-rp2350 envelope --config-encoded=config-encoded
+  if bootloader:
+    partition-table := envelope.entries.get AR-ENTRY-RP2350-PARTITION-UF2
+        --if-absent=: ui.abort "RP2350 envelope is missing its bootstrap partition-table UF2."
+    firmware-bin = firmware-rp2350-uf2.build-image firmware-bin --partition-table=partition-table
   tmp := directory.mkdtemp "/tmp/toit-flash-"
   try:
-    firmware-path := "$tmp/toit-rp2350.bin"
+    firmware-path := bootloader ? "$tmp/recovery.uf2" : "$tmp/toit-rp2350.bin"
     write-file firmware-path --ui=ui: it.write firmware-bin
-    code := pipe.run-program [uploader, "--port", port, firmware-path]
-    if code != 0: exit 1
+    if bootloader:
+      selector := serial ? ["--ser", serial] : []
+      code := pipe.run-program ([uploader, "load", "--verify", "--ignore-partitions", firmware-path] + selector)
+      if code != 0: exit 1
+      code = pipe.run-program ([uploader, "reboot"] + selector)
+      if code != 0: exit 1
+    else:
+      code := pipe.run-program [uploader, "--port", port, firmware-path]
+      if code != 0: exit 1
   finally:
     directory.rmdir --recursive tmp
 

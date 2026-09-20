@@ -60,9 +60,21 @@ jobs:
           make host-tools
           make rp2350 RP2350_CMAKE_FLAGS=-DTOIT_RP2350_OTA=ON
           build/host/sdk/bin/toit analyze tools/rp2350/tests/library-api-smoke.toit
+      - name: Check changing the application rebuilds its snapshot
+        run: |
+          cp build/rp2350-vm/application.snapshot "$RUNNER_TEMP/previous-application.snapshot"
+          cmake -S toolchains/rp2350 -B build/rp2350-vm \
+            -DTOIT_RP2350_PROGRAM="$PWD/tests/hw/rp2350/vm-gpio-smoke.toit"
+          cmake -E env "TOIT_PACKAGE_CACHE_PATHS=$PWD/tools/.packages-bootstrap" \
+            cmake --build build/rp2350-vm --target toit-rp2350 --parallel
+          if cmp -s "$RUNNER_TEMP/previous-application.snapshot" build/rp2350-vm/application.snapshot; then
+            echo 'Changing RP2350_PROGRAM retained the previous application' >&2
+            exit 1
+          fi
       - name: Build and test native OTA uploader
         run: |
           make rp2350-ota-upload
+          cmake --build build/rp2350-ota-upload --target ota-upload-pty-bridge
           ctest --test-dir build/rp2350-ota-upload --output-on-failure --no-tests=error
           tools/rp2350/ota-upload/check-linux-runtime.sh \
             build/rp2350-ota-upload/ota-upload 2.35
@@ -83,6 +95,10 @@ jobs:
           tools/rp2350/tests/check-persistent-data.sh \
             build/rp2350-envelope/toit-rp2350.elf
           tools/rp2350/tests/run_envelope_tests.sh \
+            build/rp2350-envelope/toit-rp2350.bin \
+            build/rp2350-envelope/system.snapshot \
+            build/rp2350-envelope/partitions-experimental.uf2
+          tools/rp2350/tests/run_flash_tests.sh \
             build/rp2350-envelope/toit-rp2350.bin \
             build/rp2350-envelope/system.snapshot \
             build/rp2350-envelope/partitions-experimental.uf2

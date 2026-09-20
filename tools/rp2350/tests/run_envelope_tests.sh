@@ -78,7 +78,7 @@ helper=(
 
 "${firmware[@]}" --envelope="$temporary/installed.envelope" show \
   --output="$temporary/show.json"
-python3 "$root/tools/rp2350/tests/envelope_fixture.py" \
+"$toit" run "$root/tools/rp2350/tests/envelope-fixture.toit" -- \
   verify-show "$temporary/show.json" "$temporary/assets.bin"
 "${firmware[@]}" --envelope="$temporary/installed.envelope" container extract \
   --part=assets --output="$temporary/extracted-assets.bin" child
@@ -105,13 +105,13 @@ cmp "$temporary/firmware-1.bin" "$temporary/firmware-2.bin"
 "${firmware[@]}" --envelope="$temporary/installed.envelope" extract \
   --format=image --config="$temporary/config.json" \
   --output="$temporary/bootstrap.uf2"
-python3 "$root/tools/rp2350/tests/envelope_fixture.py" verify-uf2 \
+"$toit" run "$root/tools/rp2350/tests/envelope-fixture.toit" -- verify-uf2 \
   "$temporary/bootstrap.uf2" "$temporary/firmware-1.bin" "$partition_table"
 
 # Mirror the ROM's explicit-buy mutation, then build the same recovery image
 # through independent picotool conversion and combination. The pure-Toit
 # writer must match it byte for byte.
-python3 "$root/tools/rp2350/tests/envelope_fixture.py" mutate \
+"$toit" run "$root/tools/rp2350/tests/envelope-fixture.toit" -- mutate \
   terminal-tbyb "$temporary/firmware-1.bin" "$temporary/confirmed.bin"
 "$picotool" info -a "$temporary/confirmed.bin" \
   >"$temporary/confirmed-info.txt"
@@ -151,7 +151,7 @@ RP2350_OTA_UPLOAD_PATH="$temporary/fake-ota-upload" \
 cmp "$temporary/firmware-1.bin" "$temporary/flashed.bin"
 
 for mutation in hash root-tbyb terminal-tbyb; do
-  python3 "$root/tools/rp2350/tests/envelope_fixture.py" mutate \
+  "$toit" run "$root/tools/rp2350/tests/envelope-fixture.toit" -- mutate \
     "$mutation" "$base" "$temporary/$mutation.bin"
   if "${firmware[@]}" --envelope="$temporary/$mutation.envelope" create-rp2350 \
       --firmware.bin="$temporary/$mutation.bin" \
@@ -164,7 +164,7 @@ for mutation in hash root-tbyb terminal-tbyb; do
 done
 
 for mutation in partition-hash partition-layout; do
-  python3 "$root/tools/rp2350/tests/envelope_fixture.py" mutate \
+  "$toit" run "$root/tools/rp2350/tests/envelope-fixture.toit" -- mutate \
     "$mutation" "$partition_table" "$temporary/$mutation.uf2"
   if "${firmware[@]}" --envelope="$temporary/$mutation.envelope" create-rp2350 \
       --firmware.bin="$base" \

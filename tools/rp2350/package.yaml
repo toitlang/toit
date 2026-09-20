@@ -1,2 +1,4 @@
-# These standalone helpers use only the standard library.
-dependencies: {}
+dependencies:
+  host:
+    url: github.com/toitlang/pkg-host
+    version: ^1.21.0
