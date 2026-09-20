@@ -1,4 +1,0 @@
-container-child: PASS token=boot
-container-child: PASS token=rpc
-container-install-rp2350: PASS flash image, process, GC, RPC, and exit notification
-RP2350 application completed
