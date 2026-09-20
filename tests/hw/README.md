@@ -6,15 +6,16 @@ reproduce failures from the daily `serial` CI job locally.
 
 ## Overview
 
-The "serial" tests are CTest fixtures that drive real ESP32 boards over USB.
+The "serial" tests cover Raspberry Pi peripherals and real ESP32 boards over USB.
 The CI workflow runs them on a self-hosted runner (label `serial`) once a day
 from `.github/workflows/ci.yml` (job `serial`). Locally you can reproduce them on
 any Linux machine with the boards plugged in.
 
 The tests live in two trees:
 - [`pi/`](pi/) — Raspberry Pi tests. Skip locally unless you actually have a Pi.
-- [`esp32/`](esp32/) — ESP32 / ESP32-S3 board tests. These are the ones the
-  daily CI runs.
+- [`esp32/`](esp32/) — ESP32 / ESP32-S3 board tests.
+
+Daily CI runs both trees in separate steps.
 
 The driver is [`esp-tester/tester.toit`](esp-tester/tester.toit). It flashes a
 per-test firmware onto the board, runs the test program, and collects output
@@ -64,7 +65,8 @@ with the configurations `<variant>` and `hw`, so:
 |---|---|
 | `-C esp32` | Only esp32 tests (skip esp32s3 setup fixtures) |
 | `-C esp32s3` | Only esp32s3 tests |
-| `-C hw` | Both — what CI uses |
+| `-C pi` | Only Raspberry Pi tests |
+| `-C hw` | Raspberry Pi and both ESP32 variants |
 
 Run a single test:
 
@@ -78,11 +80,17 @@ Run a category:
 ctest --verbose --test-dir build/hw -C esp32 -R "uart-"
 ```
 
-For the complete matrix, prefer `make test-hw` (or the `check_hw` Ninja
-target). It first opens and identifies all configured serial devices, flashes
-the tester firmware, and runs a board-to-board GPIO sentinel. A failed preflight
-stops the matrix, so a disconnected or miswired rig produces a few focused
-failures instead of a long list of dependent tests that were never run.
+Use `make test-hw-pi` for the Pi tests and `make test-hw-esp32` for both ESP32
+variants. CI runs the Pi tests before setting up the ESP32 rig, so missing
+serial devices or ESP32 configuration cannot prevent the Pi tests from running.
+The Pi target only needs `TOIT_EXE_HW` and the pin configuration from `pi-test.env`.
+
+For the complete matrix, use `make test-hw` (or `ninja -k0 check_hw`). The Pi
+and ESP32 targets run independently. The ESP32 target first opens and identifies
+all configured serial devices, flashes the tester firmware, and runs a
+board-to-board GPIO sentinel. A failed preflight stops only the ESP32 matrix,
+so a disconnected or miswired rig produces a few focused failures instead of
+a long list of dependent tests that were never run.
 
 Notes:
 - `-R <regex>` matches test names. Append `$` to avoid matching the `-esp32s3`

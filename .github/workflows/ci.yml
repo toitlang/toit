@@ -1539,6 +1539,13 @@ jobs:
           mkdir -p rpi
           tar x -zf rpi.tar.gz -C rpi
 
+      - name: Test Raspberry Pi
+        env:
+          TOIT_EXE_HW: ${{ github.workspace }}/rpi/toit/bin/toit
+        run: |
+          source $HOME/pi-test.env
+          make test-hw-pi
+
       - name: Download esptool
         # The Toit SDK we got is not yet combined and thus missing the esptool.
         run: |
@@ -1558,15 +1565,13 @@ jobs:
           gunzip firmware-esp32.gz
           gunzip firmware-esp32s3.gz
 
-      - name: Test Raspberry Pi
+      - name: Test ESP32 rig
         env:
           TOIT_EXE_HW: ${{ github.workspace }}/rpi/toit/bin/toit
           ESP32_ENVELOPE: ${{ github.workspace }}/firmware-esp32
           ESP32S3_ENVELOPE: ${{ github.workspace }}/firmware-esp32s3
         run: |
-          # Get the pin configuration from the file in the runner's home.
-          source $HOME/pi-test.env
           # Get the esp32 port and wifi configuration from the file in the runner's home.
           source $HOME/esp32-test.env
 
-          make TOIT_EXE_HW=${{ github.workspace }}/rpi/toit/bin/toit test-hw
+          make test-hw-esp32
