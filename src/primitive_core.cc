@@ -2797,7 +2797,13 @@ PRIMITIVE(rtc_user_bytes) {
 }
 #else
 PRIMITIVE(rtc_user_bytes) {
+#ifdef TOIT_RP2350
+  // Pico's low-power runtime retains this linker section across deep sleep
+  // and clears it on other resets. Keep the existing 4 KiB bucket capacity.
+  static uint8 rtc_memory[4096] __attribute__((section(".persistent_data.toit_rtc_memory")));
+#else
   static uint8 rtc_memory[4096];
+#endif
   ByteArray* result = process->object_heap()->allocate_external_byte_array(
       sizeof(rtc_memory), rtc_memory, false, false);
   if (result == null) FAIL(ALLOCATION_FAILED);
@@ -2833,6 +2839,8 @@ PRIMITIVE(hostname) {
   return process->allocate_string_or_error(buffer);
 #elif defined(TOIT_EC618)
   return process->allocate_string_or_error("ec618");
+#elif defined(TOIT_RP2350)
+  return process->allocate_string_or_error("rp2350");
 #else
 #error "Unsupported platform"
 #endif

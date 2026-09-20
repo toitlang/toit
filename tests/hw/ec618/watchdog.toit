@@ -1,4 +1,4 @@
-// Tests the EC618 application watchdog (lib/ec618/watchdog.toit) end to end.
+// Tests the common application watchdog API on EC618 end to end.
 //
 // The user deadline is enforced by a high-priority task whose timed wait wakes
 // the chip from tickless idle. The normal WDT is its active-time backstop if a
@@ -23,7 +23,7 @@
 //       watchdog watchdog.snapshot
 
 import ec618
-import ec618.watchdog
+import system.watchdog
 import system.storage
 
 TIMEOUT-S ::= 2
@@ -52,19 +52,19 @@ main:
 
   if state == 1:
     print "[watchdog-test] idle/light-sleep deadline passed; testing busy execution"
-    watchdog.watchdog-start --timeout=(Duration --s=TIMEOUT-S)
+    watchdog.start --timeout=(Duration --s=TIMEOUT-S)
 
     // Feed while busy for longer than the timeout.
     5.repeat:
       busy-wait --ms=1000
-      watchdog.watchdog-feed
+      watchdog.feed
       print "[watchdog-test] busy feed, alive at $(it + 1)s"
 
     bucket[STATE-KEY] = #[2]
     print "[watchdog-test] busy without feed; expect a reset within $(TIMEOUT-S)s"
     wait-bound --busy
 
-    watchdog.watchdog-stop
+    watchdog.stop
     bucket[STATE-KEY] = #[0x82]
     bucket.close
     print "[watchdog-test] busy deadline did not fire"
@@ -73,17 +73,17 @@ main:
   // Fresh run: prove that sleeps shorter than the deadline preserve the
   // remaining wall-clock deadline when it is fed.
   print "[watchdog-test] testing idle/light-sleep deadline at $(TIMEOUT-S)s"
-  watchdog.watchdog-start --timeout=(Duration --s=TIMEOUT-S)
+  watchdog.start --timeout=(Duration --s=TIMEOUT-S)
   5.repeat:
     sleep --ms=1000
-    watchdog.watchdog-feed
+    watchdog.feed
     print "[watchdog-test] sleep feed, alive at $(it + 1)s"
 
   bucket[STATE-KEY] = #[1]
   print "[watchdog-test] sleeping without feed; expect a reset within $(TIMEOUT-S)s"
   wait-bound
 
-  watchdog.watchdog-stop
+  watchdog.stop
   bucket[STATE-KEY] = #[0x81]
   bucket.close
   print "[watchdog-test] idle deadline did not fire"

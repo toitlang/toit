@@ -292,6 +292,15 @@ jobs:
           NGROK_AUTH_TOKEN: "${{ secrets.NGROK_FLORIAN }}"
           SSH_PASS: "aoeuAOEU0"
 
+      - name: Check bundled RP2350 flashing tools
+        shell: bash
+        run: |
+          executable_suffix=""
+          if [[ "$RUNNER_OS" == "Windows" ]]; then executable_suffix=.exe; fi
+          build/host/sdk/lib/toit/bin/picotool$executable_suffix version
+          build/host/sdk/lib/toit/bin/ota-upload$executable_suffix --help
+          test -f build/host/sdk/lib/toit/rp2350/libusb-source.tar.gz
+
       - name: Build test SDKs - Linux only
         if: env.DO_MORE_TESTS == 'true' && runner.os == 'Linux'
         run: |

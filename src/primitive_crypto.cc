@@ -16,9 +16,8 @@
 #include "top.h"
 #if defined(TOIT_ESP32)
 #include <esp_random.h>
-#elif defined(TOIT_EC618)
-// The hardware TRNG, through the same entry the mbedtls entropy source uses
-// (os_ec618.cc, backed by rngGenRandom).
+#elif defined(TOIT_EC618) || defined(TOIT_RP2350)
+// Use the platform entropy source shared with mbedtls.
 extern "C" int mbedtls_hardware_poll(void* data, unsigned char* output,
                                      size_t len, size_t* olen);
 #else
@@ -774,7 +773,7 @@ PRIMITIVE(aes_ecb_close) {
 static int rsa_rng(void* /*ctx*/, unsigned char* buffer, size_t len) {
 #if defined(TOIT_ESP32)
   esp_fill_random(buffer, len);
-#elif defined(TOIT_EC618)
+#elif defined(TOIT_EC618) || defined(TOIT_RP2350)
   // The hardware TRNG (see the declaration at the top of this file);
   // std::random_device on newlib is a deterministically seeded PRNG —
   // unusable for RSA. Any nonzero return aborts the mbedtls operation.

@@ -4,11 +4,13 @@
 
 import uuid
 import encoding.tison
+import rp2350
+import system
 
 import system.storage  // For toitdoc.
 
 /**
-Functionality available on devices (ESP32).
+Functionality available on devices (ESP32 and RP2350).
 */
 
 /** Name of this device. */
@@ -16,9 +18,14 @@ name -> string:
   return hardware-id.stringify
 
 /** Hardware ID of this device. */
-hardware-id/uuid.Uuid ::= uuid.Uuid.uuid5 "hw_id" get-mac-address_
+hardware-id/uuid.Uuid ::= uuid.Uuid.uuid5 "hw_id" get-hardware-id_
 
 // --------------------------------------------------------------------------
+
+get-hardware-id_:
+  if system.architecture == system.ARCHITECTURE-RP2350:
+    return rp2350.unique-id
+  return get-mac-address_
 
 get-mac-address_:
   #primitive.esp32.get-mac-address

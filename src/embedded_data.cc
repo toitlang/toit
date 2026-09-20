@@ -30,12 +30,34 @@ extern "C" {
 #endif
 
 const EmbeddedDataExtension* EmbeddedDataExtension::cast(const void* pointer) {
+#ifdef TOIT_RP2350
+  // ROM maps the selected 4 MiB firmware slot at this logical XIP address.
+  // Check the descriptor before reading it, including envelope-patched bases.
+  const uword address = reinterpret_cast<uword>(pointer);
+  const uword firmware_end = 0x10400000;
+  if ((address & 3) != 0 || address < 0x10000000 ||
+      address > firmware_end - HEADER_WORDS * sizeof(uint32)) return null;
+#endif
   const uint32* header = reinterpret_cast<const uint32*>(pointer);
   if (!header) return null;
   if (header[HEADER_INDEX_MARKER] != HEADER_MARKER) return null;
   uint32 checksum = 0;
   for (int i = 0; i < HEADER_WORDS; i++) checksum ^= header[i];
   if (checksum != HEADER_CHECKSUM) return null;
+#ifdef TOIT_RP2350
+  uint32 used = header[HEADER_INDEX_USED];
+  uint32 free = header[HEADER_INDEX_FREE];
+  uint32 count = header[HEADER_INDEX_IMAGE_COUNT];
+  if (used < HEADER_WORDS * sizeof(uint32) || used > firmware_end - address ||
+      free > firmware_end - address - used ||
+      count > (used - HEADER_WORDS * sizeof(uint32)) / (2 * sizeof(uint32))) return null;
+  for (uint32 i = 0; i < count; i++) {
+    uint32 start = header[HEADER_WORDS + i * 2];
+    uint32 size = header[HEADER_WORDS + i * 2 + 1];
+    if ((start & 3) != 0 || start < address + (HEADER_WORDS + count * 2) * sizeof(uint32) ||
+        start > address + used || size < 48 || size > address + used - start) return null;
+  }
+#endif
 #ifdef TOIT_ESP32
   uint32 size = header[HEADER_INDEX_USED] + header[HEADER_INDEX_FREE];
   void* end = reinterpret_cast<void*>(reinterpret_cast<uint32>(pointer) + size);
@@ -115,7 +137,7 @@ const Program* EmbeddedDataExtension::program(uword offset) const {
   return reinterpret_cast<const Program*>(reinterpret_cast<uword>(this) + offset);
 }
 
-#if defined(TOIT_ESP32) || defined(TOIT_EC618)
+#if defined(TOIT_ESP32) || defined(TOIT_EC618) || defined(TOIT_RP2350)
 
 struct DromData {
   // The data between magic1 and magic2 must be less than 256 bytes, otherwise the
@@ -132,17 +154,25 @@ struct DromData {
 // we don't want that.  But it's still const because it goes in a flash section.
 #ifdef TOIT_ESP32
 DromData drom_data __attribute__((section(".rodata_custom_desc")));
-#elif defined(TOIT_EC618)
+#elif defined(TOIT_EC618) || defined(TOIT_RP2350)
 DromData drom_data __attribute__((section(".rodata")));
 #else
 #error "DromData section is not defined for this platform"
 #endif
 
 const uint8* EmbeddedData::uuid() {
+#ifdef TOIT_RP2350
+  extern const uint8 toit_program_uuid[] asm("toit_program_uuid");
+  if (drom_data.extension == 0) return toit_program_uuid;
+#endif
   return drom_data.uuid;
 }
 
 const EmbeddedDataExtension* EmbeddedData::extension() {
+#ifdef TOIT_RP2350
+  extern const uint32 toit_embedded_extension[] asm("toit_embedded_extension");
+  if (drom_data.extension == 0) return EmbeddedDataExtension::cast(toit_embedded_extension);
+#endif
   return EmbeddedDataExtension::cast(reinterpret_cast<const void*>(drom_data.extension));
 }
 

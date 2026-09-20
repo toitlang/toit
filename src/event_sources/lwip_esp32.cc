@@ -65,7 +65,7 @@ namespace toit {
 
 bool needs_gc = false;
 
-#if defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP)
+#if defined(TOIT_ESP32) || defined(TOIT_EC618) || defined(TOIT_USE_LWIP)
 
 static bool is_toit_error(int err) {
   return FIRST_TOIT_ERROR >= err && err >= LAST_TOIT_ERROR;

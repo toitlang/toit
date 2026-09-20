@@ -17,7 +17,7 @@
 
 #include <errno.h>
 #include <limits.h>
-#ifndef TOIT_EC618
+#if !defined(TOIT_EC618) && !defined(TOIT_RP2350)
 #include <pthread.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -82,7 +82,7 @@ void OS::timespec_increment(timespec* ts, int64 ns) {
   ASSERT(ts->tv_nsec < ns_per_second);
 }
 
-#ifdef TOIT_EC618
+#if defined(TOIT_EC618) || defined(TOIT_RP2350)
 bool OS::monotonic_gettime(int64* timestamp) {
   *timestamp = OS::get_system_time();
   return true;
@@ -139,7 +139,7 @@ bool OS::get_real_time(struct timespec* time) {
   time->tv_nsec = utc->UTCms * 1000000LL;
   return true;
 }
-#else
+#elif !defined(TOIT_RP2350)
 bool OS::get_real_time(struct timespec* time) {
   if (clock_gettime(CLOCK_REALTIME, time) == 0) return true;
 

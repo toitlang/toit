@@ -52,6 +52,10 @@ ADC2: Pins 11-20
 ## ESP32S3
 ADC1: Pins 1-10
 ADC2: Pins 11-20
+
+## RP2350
+RP2350A: GP26-GP29
+RP2350B: GP40-GP47
 */
 
 /**
@@ -83,6 +87,10 @@ class Adc:
 
   Passing a $Pin is deprecated; provide the integer GPIO number instead.
     The $Pin form will be removed in a future release.
+
+  RP2350 requires an integer GP number; the deprecated $Pin form is not
+    available. It uses a fixed nominal 3.3V range and 12-bit conversion, so
+    $max-voltage does not select attenuation or change voltage scaling.
   */
   // __TYPE-MIGRATION__ pin: Pin. Deprecated. Provide an integer instead.
   // __TYPE-MIGRATION__ pin: int
@@ -97,7 +105,8 @@ class Adc:
     The $get/$close operations are the same; only the construction differs.
 
   # EC618
-  Channel 0 -> AIO3 and channel 1 -> AIO4 (the board's "ADC0"/"ADC1" pins). The
+  EC618 uses integer AIO channel numbers: channel 0 -> AIO3 and channel 1 ->
+    AIO4 (the board's "ADC0"/"ADC1" pins). The
     converter core measures 0..1.2 V; $max-voltage selects the smallest range
     (up to 3.8 V) that covers it, for the best resolution. The higher ranges read
     above 1.2 V by switching in a resistor divider *inside the chip*; $get
@@ -145,8 +154,8 @@ class Adc:
   /**
   Measures the voltage on the pin and returns the obtained raw value.
 
-  On the ESP32 the ADC readings are 12 bits, so the value will be in the
-    range 0-4095.
+  On ESP32 and RP2350 the ADC readings are 12 bits, so the value will be in
+    the range 0-4095.
 
   The returned value is not scaled to the voltage range of the pin.
   The value is not using the calibration data of the chip.

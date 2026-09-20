@@ -236,6 +236,115 @@ endef
 
 $(foreach arch,$(TOITLANG_SYSROOTS),$(eval $(call CROSS_RULE,$(arch))))
 
+# RP2350 (Raspberry Pi Pico 2 / WeAct). The first target is native bring-up;
+# it validates the SDK and hardware independently of the VM port.
+PICO_SDK_PATH ?= $(CURDIR)/third_party/pico-sdk
+PICO_BOARD ?= weact_studio_rp2350b_core
+RP2350_BUILD ?= $(BUILD)/rp2350
+RP2350_CMAKE_FLAGS ?=
+RP2350_SERIAL ?=
+RP2350_FLASH_FLAGS ?=
+RP2350_VM_BUILD ?= $(BUILD)/rp2350-vm
+RP2350_PROGRAM ?= $(CURDIR)/tests/hw/rp2350/vm-smoke.toit
+RP2350_VERSION ?= 1
+RP2350_OTA_UPLOAD_BUILD ?= $(BUILD)/rp2350-ota-upload
+RP2350_ENVELOPE_BUILD ?= $(BUILD)/rp2350-envelope
+RP2350_PICOTOOL ?= $(CURDIR)/.cache/rp2350/install/bin/picotool
+RP2350_BUNDLE_PLATFORM ?= $(shell uname -s | tr '[:upper:]' '[:lower:]')-$(shell uname -m)
+RP2350_ENVELOPE_DIST ?= $(RP2350_ENVELOPE_BUILD)/toit-rp2350-$(RP2350_BUNDLE_PLATFORM)
+RP2350_ENVELOPE_ARCHIVE ?= $(RP2350_ENVELOPE_BUILD)/toit-rp2350-$(RP2350_BUNDLE_PLATFORM).tar.gz
+RP2350_PACKAGE_CACHE_PATHS ?= $(if $(wildcard $(CURDIR)/tools/.packages-bootstrap/package-timestamp),$(CURDIR)/tools/.packages-bootstrap,)
+RP2350_TOIT_ENV = $(if $(RP2350_PACKAGE_CACHE_PATHS),TOIT_PACKAGE_CACHE_PATHS="$(RP2350_PACKAGE_CACHE_PATHS)",)
+
+.PHONY: rp2350 rp2350-flasher rp2350-ota-upload
+rp2350: rp2350-prerequisites host-tools rp2350-packages
+	cmake -S toolchains/rp2350 -B "$(RP2350_VM_BUILD)" -G Ninja \
+		-DTOIT_RP2350_BUILD_VM=ON -DPICO_SDK_PATH="$(PICO_SDK_PATH)" \
+		-DPICO_BOARD="$(PICO_BOARD)" -DTOIT_RP2350_PROGRAM="$(RP2350_PROGRAM)" \
+		-DTOIT_RP2350_VERSION="$(RP2350_VERSION)" \
+		$(RP2350_CMAKE_FLAGS)
+	$(RP2350_TOIT_ENV) cmake --build "$(RP2350_VM_BUILD)" --target toit-rp2350 --parallel
+
+rp2350-flasher: rp2350-setup
+	bash tools/rp2350/build-flasher.sh
+
+rp2350-ota-upload:
+	cmake -S tools/rp2350/ota-upload -B "$(RP2350_OTA_UPLOAD_BUILD)" \
+		-DCMAKE_BUILD_TYPE="$(BUILD_TYPE)"
+	cmake --build "$(RP2350_OTA_UPLOAD_BUILD)" --target ota-upload --parallel
+
+.PHONY: rp2350-envelope
+rp2350-envelope: rp2350-prerequisites host-tools rp2350-packages rp2350-ota-upload
+	cmake -S toolchains/rp2350 -B "$(RP2350_ENVELOPE_BUILD)" -G Ninja \
+		-DTOIT_RP2350_BUILD_VM=ON -DTOIT_RP2350_OTA=ON \
+		-DTOIT_RP2350_ENVELOPE_BASE=ON -DPICO_SDK_PATH="$(PICO_SDK_PATH)" \
+		-DPICO_BOARD="$(PICO_BOARD)" -DTOIT_RP2350_VERSION="$(RP2350_VERSION)" \
+		$(RP2350_CMAKE_FLAGS)
+	$(RP2350_TOIT_ENV) cmake --build "$(RP2350_ENVELOPE_BUILD)" --target toit-rp2350 --parallel
+	$(RP2350_TOIT_ENV) $(TOIT_BIN) compile --snapshot -o "$(RP2350_ENVELOPE_BUILD)/system.snapshot" \
+		system/extensions/rp2350/boot.toit
+	"$(RP2350_PICOTOOL)" partition create \
+		toolchains/rp2350/partitions-experimental.json \
+		"$(RP2350_ENVELOPE_BUILD)/partitions-experimental.uf2"
+	$(RP2350_TOIT_ENV) $(TOIT_BIN) run --project-root tools tools/firmware.toit -- \
+		-e "$(RP2350_ENVELOPE_BUILD)/firmware.envelope" create-rp2350 \
+		--firmware.bin "$(RP2350_ENVELOPE_BUILD)/toit-rp2350.bin" \
+		--partition-table.uf2 "$(RP2350_ENVELOPE_BUILD)/partitions-experimental.uf2" \
+		--system.snapshot "$(RP2350_ENVELOPE_BUILD)/system.snapshot"
+	$(RP2350_TOIT_ENV) $(TOIT_BIN) run --project-root tools tools/firmware.toit -- \
+		-e "$(RP2350_ENVELOPE_BUILD)/firmware.envelope" extract --format=image \
+		--output "$(RP2350_ENVELOPE_BUILD)/recovery.uf2"
+	cmake -E make_directory "$(RP2350_ENVELOPE_DIST)"
+	cmake -E copy \
+		"$(RP2350_ENVELOPE_BUILD)/firmware.envelope" \
+		"$(RP2350_ENVELOPE_BUILD)/recovery.uf2" \
+		"$(RP2350_OTA_UPLOAD_BUILD)/ota-upload$(EXE_SUFFIX)" \
+		"$(RP2350_ENVELOPE_DIST)"
+	cmake -E copy "$(CURDIR)/docs/rp2350-envelope-bundle.md" \
+		"$(RP2350_ENVELOPE_DIST)/README.md"
+	cmake -E copy "$(CURDIR)/LICENSE" "$(RP2350_ENVELOPE_DIST)/LICENSE"
+	(cd "$(RP2350_ENVELOPE_BUILD)" && cmake -E tar czf \
+		"$(abspath $(RP2350_ENVELOPE_ARCHIVE))" \
+		"$(notdir $(RP2350_ENVELOPE_DIST))/firmware.envelope" \
+		"$(notdir $(RP2350_ENVELOPE_DIST))/recovery.uf2" \
+		"$(notdir $(RP2350_ENVELOPE_DIST))/ota-upload$(EXE_SUFFIX)" \
+		"$(notdir $(RP2350_ENVELOPE_DIST))/README.md" \
+		"$(notdir $(RP2350_ENVELOPE_DIST))/LICENSE")
+
+.PHONY: rp2350-prerequisites rp2350-packages rp2350-setup rp2350-bringup
+rp2350-prerequisites:
+	@if [[ ! -f "$(PICO_SDK_PATH)/pico_sdk_init.cmake" || \
+	       ! -f "$(PICO_SDK_PATH)/lib/mbedtls/library/aes.c" || \
+	       ! -f "$(PICO_SDK_PATH)/lib/tinyusb/src/tusb.c" || \
+	       ! -f "$(CURDIR)/third_party/FreeRTOS-Kernel/include/FreeRTOS.h" || \
+	       ! -f "$(CURDIR)/third_party/FreeRTOS-Kernel/portable/ThirdParty/Community-Supported-Ports/GCC/RP2350_ARM_NTZ/FreeRTOS_Kernel_import.cmake" || \
+	       ! -x "$(RP2350_PICOTOOL)" ]]; then \
+		PICO_SDK_PATH="$(PICO_SDK_PATH)" bash tools/rp2350/setup.sh; \
+	fi
+
+rp2350-packages:
+	@if [[ ! -f "$(CURDIR)/tools/.packages/package-timestamp" && \
+	       ! -f "$(CURDIR)/tools/.packages-bootstrap/package-timestamp" ]]; then \
+		$(MAKE) download-packages; \
+	fi
+
+rp2350-setup:
+	PICO_SDK_PATH="$(PICO_SDK_PATH)" bash tools/rp2350/setup.sh
+
+rp2350-bringup: rp2350-prerequisites
+	cmake -S toolchains/rp2350 -B "$(RP2350_BUILD)" -G Ninja \
+		-DCMAKE_BUILD_TYPE="$(BUILD_TYPE)" -DPICO_SDK_PATH="$(PICO_SDK_PATH)" \
+		-DPICO_BOARD="$(PICO_BOARD)" -DPICO_PLATFORM=rp2350-arm-s \
+		$(RP2350_CMAKE_FLAGS)
+	cmake --build "$(RP2350_BUILD)" --target toit-rp2350-bringup --parallel
+
+.PHONY: rp2350-flash-bringup
+rp2350-flash-bringup:
+	@test -n "$(RP2350_SERIAL)" || { echo 'Set RP2350_SERIAL to the target USB serial.' >&2; exit 1; }
+	"$(CURDIR)/.cache/rp2350/install/bin/picotool" load -v -x \
+		"$(RP2350_BUILD)/toit-rp2350-bringup.uf2" --ser "$(RP2350_SERIAL)" \
+		$(RP2350_FLASH_FLAGS)
+
 # EC618
 EC618_SDK = $(CURDIR)/third_party/luatos-soc-ec618
 EC618_GCC_PATH ?= $(HOME)/.xmake/packages/g/gnu_rm/2021.10/69b9a9c7bd56401fb164f28701b1431e

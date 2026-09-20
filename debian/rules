@@ -32,3 +32,10 @@ override_dh_auto_configure:
 # temporary staging area, and then 'dh_install' will move files to the final locations.
 override_dh_auto_install:
 	dh_auto_install --destdir=debian/tmp
+
+# Install the bundled upstream PICOBOOT access rule through debhelper.
+# Keep the generated debhelper input out of the source tree.
+override_dh_installudev:
+	set -e; trap 'rm -f debian/toit.udev' EXIT; \
+		cp debian/tmp/usr/lib/toit/rp2350/60-picotool.rules debian/toit.udev; \
+		dh_installudev --priority=60

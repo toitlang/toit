@@ -1,0 +1,14 @@
+// Copyright (C) 2026 Toit contributors.
+// Use of this source code is governed by the LGPL-2.1 license in LICENSE.
+import @TOIT_SERVICE_IMPORT@ show SystemServiceManager
+import @TOIT_APPLICATION_IMPORT@ as application
+
+// A minimal privileged boot process for VM/peripheral bring-up. Installing
+// discovery lets standard library clients use their absent-service fallback.
+main:
+  SystemServiceManager
+  error := catch --trace: application.main
+  if error:
+    print "RP2350 boot program failed: $error"
+    exit 1
+  exit 0
