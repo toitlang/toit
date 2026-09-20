@@ -1,0 +1,19 @@
+diff --git a/components/esp_driver_i2c/i2c_slave_v2.c b/components/esp_driver_i2c/i2c_slave_v2.c
+--- a/components/esp_driver_i2c/i2c_slave_v2.c
++++ b/components/esp_driver_i2c/i2c_slave_v2.c
+@@ -483,6 +483,7 @@ I2C_SLAVE_ISR_ATTR static void i2c_slave_isr_handler(void *arg)
+     }
+ 
+     if (int_mask & I2C_INTR_SLV_COMPLETE) {
++        i2c_ll_get_rxfifo_cnt(hal->dev, &rx_fifo_exist_len);
+         if (slave_rw == I2C_SLAVE_READ_BY_MASTER) {
+             transmit_done = i2c_slave_handle_default_response(
+                                 i2c_slave, &pxHigherPriorityTaskWoken);
+@@ -531,6 +532,7 @@ I2C_SLAVE_ISR_ATTR static void i2c_slave_isr_handler(void *arg)
+ 
+ #if SOC_I2C_SLAVE_CAN_GET_STRETCH_CAUSE
+     if (int_mask & I2C_INTR_STRETCH) {  // STRETCH
++        i2c_ll_get_rxfifo_cnt(hal->dev, &rx_fifo_exist_len);
+         pxHigherPriorityTaskWoken |= i2c_slave_handle_stretch_event(i2c_slave, rx_fifo_exist_len, slave_rw);
+     }
+ #endif

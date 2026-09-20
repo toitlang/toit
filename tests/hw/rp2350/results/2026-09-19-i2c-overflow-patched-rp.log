@@ -1,0 +1,23 @@
+[toit] RP2350 VM starting
+[toit] flash JEDEC ef4018
+[toit] boot partition=1 type=4 trial/update=1
+i2c-overflow-diagnostic-rp2350: waiting 20 seconds for native ESP32 peer
+container-child: PASS token=boot
+envelope-rp2350: PASS existing flash bucket and region survived recovery
+envelope-rp2350: PASS bundled container, assets, config, GC, storage RPC, and identity
+i2c-overflow-diagnostic-rp2350: discarded pre-sync response 'ERROR invalid-command'
+I2C0 frequency=100000 size=257 repetition=0 controller-error=null ESP32 expected=257 received=257 mismatch=-1 driver-overflow=0 raw-overflow=0 raw=0x00000013 ena=0x00000880 fifo=0 now-raw-overflow=0 now-raw=0x00000013 now-ena=0x00000880 now-fifo=0
+I2C0 frequency=400000 size=65 repetition=0 controller-error=null ESP32 expected=65 received=65 mismatch=-1 driver-overflow=0 raw-overflow=0 raw=0x00000013 ena=0x00000880 fifo=0 now-raw-overflow=0 now-raw=0x00000013 now-ena=0x00000880 now-fifo=0
+I2C0 frequency=400000 size=65 repetition=1 controller-error=null ESP32 expected=65 received=65 mismatch=-1 driver-overflow=0 raw-overflow=0 raw=0x00000013 ena=0x00000880 fifo=0 now-raw-overflow=0 now-raw=0x00000013 now-ena=0x00000880 now-fifo=0
+I2C0 frequency=400000 size=257 repetition=0 controller-error=null ESP32 expected=257 received=257 mismatch=-1 driver-overflow=0 raw-overflow=0 raw=0x00000013 ena=0x00000880 fifo=0 now-raw-overflow=0 now-raw=0x00000013 now-ena=0x00000880 now-fifo=0
+I2C0 frequency=400000 size=257 repetition=1 controller-error=null ESP32 expected=257 received=257 mismatch=-1 driver-overflow=0 raw-overflow=0 raw=0x00000013 ena=0x00000880 fifo=0 now-raw-overflow=0 now-raw=0x00000013 now-ena=0x00000880 now-fifo=0
+I2C0 frequency=400000 size=1025 repetition=0 controller-error=null ESP32 expected=1025 received=1025 mismatch=-1 driver-overflow=0 raw-overflow=0 raw=0x00000013 ena=0x00000880 fifo=0 now-raw-overflow=0 now-raw=0x00000013 now-ena=0x00000880 now-fifo=0
+I2C0 frequency=400000 size=1025 repetition=1 controller-error=null ESP32 expected=1025 received=1025 mismatch=-1 driver-overflow=0 raw-overflow=0 raw=0x00000013 ena=0x00000880 fifo=0 now-raw-overflow=0 now-raw=0x00000013 now-ena=0x00000880 now-fifo=0
+I2C1 frequency=100000 size=257 repetition=0 controller-error=null ESP32 expected=257 received=257 mismatch=-1 driver-overflow=0 raw-overflow=0 raw=0x00000013 ena=0x00000880 fifo=0 now-raw-overflow=0 now-raw=0x00000013 now-ena=0x00000880 now-fifo=0
+I2C1 frequency=400000 size=65 repetition=0 controller-error=null ESP32 expected=65 received=65 mismatch=-1 driver-overflow=0 raw-overflow=0 raw=0x00000013 ena=0x00000880 fifo=0 now-raw-overflow=0 now-raw=0x00000013 now-ena=0x00000880 now-fifo=0
+I2C1 frequency=400000 size=65 repetition=1 controller-error=null ESP32 expected=65 received=65 mismatch=-1 driver-overflow=0 raw-overflow=0 raw=0x00000013 ena=0x00000880 fifo=0 now-raw-overflow=0 now-raw=0x00000013 now-ena=0x00000880 now-fifo=0
+I2C1 frequency=400000 size=257 repetition=0 controller-error=null ESP32 expected=257 received=257 mismatch=-1 driver-overflow=0 raw-overflow=0 raw=0x00000013 ena=0x00000880 fifo=0 now-raw-overflow=0 now-raw=0x00000013 now-ena=0x00000880 now-fifo=0
+I2C1 frequency=400000 size=257 repetition=1 controller-error=null ESP32 expected=257 received=257 mismatch=-1 driver-overflow=0 raw-overflow=0 raw=0x00000013 ena=0x00000880 fifo=0 now-raw-overflow=0 now-raw=0x00000013 now-ena=0x00000880 now-fifo=0
+I2C1 frequency=400000 size=1025 repetition=0 controller-error=null ESP32 expected=1025 received=1025 mismatch=-1 driver-overflow=0 raw-overflow=0 raw=0x00000013 ena=0x00000880 fifo=0 now-raw-overflow=0 now-raw=0x00000013 now-ena=0x00000880 now-fifo=0
+I2C1 frequency=400000 size=1025 repetition=1 controller-error=null ESP32 expected=1025 received=1025 mismatch=-1 driver-overflow=0 raw-overflow=0 raw=0x00000013 ena=0x00000880 fifo=0 now-raw-overflow=0 now-raw=0x00000013 now-ena=0x00000880 now-fifo=0
+i2c-overflow-diagnostic-rp2350: diagnostic complete

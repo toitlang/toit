@@ -1,0 +1,8 @@
+[toit] RP2350 VM starting
+[toit] flash JEDEC ef4018
+[toit] boot partition=0 type=0 trial/update=0
+TOIT-OTA VALIDATED 0
+spi-contract-rp2350: argument validation
+spi-contract-rp2350: both controllers reserved
+spi-contract-rp2350: PASS
+RP2350 application completed

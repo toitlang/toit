@@ -1,0 +1,22 @@
+[  0.100s] TOIT-OTA REBOOTING
+[  0.457s] USB disconnected
+[  1.009s] USB opened
+[  2.612s] [toit] RP2350 VM starting
+[  2.613s] [toit] flash JEDEC ef4018
+[  2.613s] [toit] boot partition=1 type=4 trial/update=1
+[  2.713s] registry-inventory: offset=0 size=36864 type=0 id=5a0b19b8-1f8a-cf67-f644-ad5fd82dcd7a
+[  2.713s] registry-inventory: offset=45056 size=4096 type=1 id=0bd8d324-8674-54b3-9a10-eea4f06075e2
+[  2.713s] registry-inventory: offset=53248 size=12288 type=1 id=acd7c59a-89ae-51c9-afe4-5edebd015be2
+[  2.713s] registry-inventory: offset=65536 size=12288 type=1 id=569c64dd-c4c4-537d-9958-cc9dd936cf43
+[  2.713s] registry-inventory: offset=77824 size=4096 type=1 id=14b9cc7c-5a8e-53db-a4f0-da427cd89901
+[  2.713s] registry-inventory: offset=81920 size=4096 type=1 id=4e1607f3-1bea-530e-9fba-501ef2be4215
+[  2.713s] registry-inventory: offset=126976 size=4096 type=1 id=e107eeee-8850-522b-a1c9-9c672b1cffcf
+[  2.713s] registry-inventory: offset=135168 size=4096 type=1 id=cf6ffd92-6dc9-546a-a875-39e28ce652e4
+[  2.713s] registry-inventory: PASS scan complete
+[  3.113s] TOIT-OTA INFO 1 1 1 4194304
+[  3.214s] container-child: PASS token=boot
+[  3.314s] envelope-rp2350: PASS existing flash bucket and region survived recovery
+[  3.414s] envelope-rp2350: PASS bundled container, assets, config, GC, storage RPC, and identity
+[  5.117s] TOIT-OTA INFO 1 1 0 4194304
+[  7.121s] TOIT-OTA INFO 1 1 0 4194304
+[  9.124s] TOIT-OTA INFO 1 1 0 4194304

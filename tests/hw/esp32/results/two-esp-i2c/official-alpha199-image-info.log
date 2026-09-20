@@ -1,0 +1,50 @@
+Warning: DEPRECATED: 'esptool.py' is deprecated. Please use 'esptool' instead. The '.py' suffix will be removed in a future major release.
+esptool v5.3.1
+Image size: 4128768 bytes
+Detected image type: ESP32
+
+ESP32 Image Header
+==================
+Image version: 1
+Entry point: 0x40085cbc
+Segments: 7
+Flash size: 4MB
+Flash freq: 40m
+Flash mode: DIO
+
+ESP32 Extended Image Header
+===========================
+WP pin: 0xee (disabled)
+Flash pins drive settings: clk_drv: 0x0, q_drv: 0x0, d_drv: 0x0, cs0_drv: 0x0, hd_drv: 0x0, wp_drv: 0x0
+Chip ID: 0 (ESP32)
+Minimal chip revision: v0.0, (legacy min_rev = 0)
+Maximal chip revision: v3.99
+
+Segments Information
+====================
+Segment   Length   Load addr   File offs  Memory types
+-------  -------  ----------  ----------  ------------
+      0  0x4c438  0x3f400020  0x00000018  DROM
+      1  0x0001c  0x3ff80060  0x0004c458  RTC_DRAM
+      2  0x03b94  0x3ffbdb60  0x0004c47c  BYTE_ACCESSIBLE, DRAM
+      3  0x10fa20  0x400d0020  0x00050018  IROM
+      4  0x01e70  0x3ffc16f4  0x0015fa40  BYTE_ACCESSIBLE, DRAM
+      5  0x1fe5c  0x40080000  0x001618b8  IRAM
+      6  0x00060  0x400c0000  0x0018171c  RTC_IRAM
+
+ESP32 Image Footer
+==================
+Checksum: 0x21 (valid)
+Validation hash: 15f4a8eec45767e05261a4fe6c52938e057558051cc2c3574daf7baebce6ccab (valid)
+
+Application Information
+=======================
+Project name: toit
+App version: e2b044e
+Compile time:  
+ELF file SHA256: d10a9fafefccf103c6015d91c7046759ce6a805f9a9f76048d27088d55bac4f8
+ESP-IDF: v5.2-dev-13492-g1d89388f11
+Minimal eFuse block revision: 0.0
+Maximal eFuse block revision: 0.99
+MMU page size: 64 KB
+Secure version: 0

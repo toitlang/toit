@@ -1,0 +1,50 @@
+# RP2350 I2C target process-teardown physical test — 2026-09-19
+# Native source src/resources/i2c_rp2350.cc SHA-256: 7e93a09e7c4f4ca3cb44b7e7d4f318d25c871d247a2dd915e5a87bdae3a1d891
+# Fixture image SHA-256: b695b88a8b7b490ef7eaf97a1356ee3a6b27412eb5965ea5be171ec9b10d9a8e
+# Fixture snapshot SHA-256: 8bfc3bb8a3315d1c5b16b76bf89a75ed01365ffa8370ec2162440db03728eab8
+# ESP peer: tests/hw/rp2350/i2c-target-controller-esp32.toit on opposite-singer
+# Stage: build/rp2350-ota-upload/ota-upload --no-reboot --port /dev/serial/by-id/usb-Raspberry_Pi_Pico_DC67867C6256ED2B-if00 .cache/rp2350/i2c-target-teardown-rp2350-v56.bin
+# Activate/capture: python3 /tmp/rp2350-reboot-capture-timed.py /tmp/i2c-target-teardown-v56-final.log 60
+# ESP result during forced teardown: ESP I2C STRETCH length=32 ended=I2C_TIMEOUT; helper then consumed QUIT and stopped cleanly.
+# The earlier 50-ms handler-deadline run is excluded: it did not prove native teardown and its stack location was not decoded against the exact snapshot.
+[  0.100s] TOIT-OTA REBOOTING
+[  0.578s] USB disconnected
+[  0.980s] USB opened
+[  2.685s] [toit] RP2350 VM starting
+[  2.685s] [toit] flash JEDEC ef4018
+[  2.685s] [toit] boot partition=1 type=4 trial/update=1
+[  3.186s] TOIT-OTA INFO 1 1 1 4194304
+[  3.186s] i2c-target-teardown-rp2350: waiting 20 seconds for ESP32 peer
+[  3.287s] container-child: PASS token=boot
+[  3.387s] envelope-rp2350: PASS existing flash bucket and region survived recovery
+[  3.487s] envelope-rp2350: PASS bundled container, assets, config, GC, storage RPC, and identity
+[  5.192s] TOIT-OTA INFO 1 1 0 4194304
+[  7.197s] TOIT-OTA INFO 1 1 0 4194304
+[  9.203s] TOIT-OTA INFO 1 1 0 4194304
+[ 11.208s] TOIT-OTA INFO 1 1 0 4194304
+[ 13.212s] TOIT-OTA INFO 1 1 0 4194304
+[ 15.217s] TOIT-OTA INFO 1 1 0 4194304
+[ 17.223s] TOIT-OTA INFO 1 1 0 4194304
+[ 19.228s] TOIT-OTA INFO 1 1 0 4194304
+[ 21.233s] TOIT-OTA INFO 1 1 0 4194304
+[ 23.239s] TOIT-OTA INFO 1 1 0 4194304
+[ 23.239s] i2c-target-teardown-rp2350: EXIT WHILE STRETCHED
+[ 25.244s] TOIT-OTA INFO 1 1 0 4194304
+[ 25.545s] i2c-target-teardown-rp2350: PASS child exit and same-VM reuse
+[ 27.249s] TOIT-OTA INFO 1 1 0 4194304
+[ 29.255s] TOIT-OTA INFO 1 1 0 4194304
+[ 31.260s] TOIT-OTA INFO 1 1 0 4194304
+[ 33.265s] TOIT-OTA INFO 1 1 0 4194304
+[ 35.270s] TOIT-OTA INFO 1 1 0 4194304
+[ 37.275s] TOIT-OTA INFO 1 1 0 4194304
+[ 39.280s] TOIT-OTA INFO 1 1 0 4194304
+[ 41.285s] TOIT-OTA INFO 1 1 0 4194304
+[ 43.290s] TOIT-OTA INFO 1 1 0 4194304
+[ 45.296s] TOIT-OTA INFO 1 1 0 4194304
+[ 47.301s] TOIT-OTA INFO 1 1 0 4194304
+[ 49.306s] TOIT-OTA INFO 1 1 0 4194304
+[ 51.311s] TOIT-OTA INFO 1 1 0 4194304
+[ 53.317s] TOIT-OTA INFO 1 1 0 4194304
+[ 55.323s] TOIT-OTA INFO 1 1 0 4194304
+[ 57.328s] TOIT-OTA INFO 1 1 0 4194304
+[ 59.333s] TOIT-OTA INFO 1 1 0 4194304

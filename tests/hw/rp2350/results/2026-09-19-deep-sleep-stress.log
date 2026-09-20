@@ -1,0 +1,287 @@
+[  0.100s] TOIT-OTA REBOOTING
+[  0.399s] USB disconnected
+[  1.003s] USB opened
+[  2.606s] [toit] RP2350 VM starting
+[  2.606s] [toit] flash JEDEC ef4018
+[  2.606s] [toit] boot partition=0 type=4 trial/update=1
+[  3.007s] container-child: PASS token=boot
+[  3.107s] TOIT-OTA INFO 1 0 1 4194304
+[  3.307s] deep-sleep-rp2350: phase=0 sleep-wakeup=false
+[  3.307s] deep-sleep-rp2350: entering sleep duration-ms=0 with active peripherals
+[  3.307s] [toit] VM exited: reason=3 value=0
+[  3.307s] [toit] VM teardown complete
+[  3.462s] USB disconnected
+[  5.067s] USB opened
+[  6.670s] [toit] RP2350 VM starting
+[  6.670s] [toit] flash JEDEC ef4018
+[  6.670s] [toit] boot partition=0 type=0 trial/update=0
+[  6.670s] TOIT-OTA INFO 1 0 0 4194304
+[  7.070s] container-child: PASS token=boot
+[  7.070s] deep-sleep-rp2350: retained RAM and monotonic clock PASS elapsed-us=3872204
+[  7.271s] TOIT-OTA INFO 1 0 0 4194304
+[  7.271s] deep-sleep-rp2350: phase=1 sleep-wakeup=true
+[  7.371s] deep-sleep-rp2350: entering sleep duration-ms=2000 with active peripherals
+[  7.371s] [toit] VM exited: reason=3 value=2000
+[  7.371s] [toit] VM teardown complete
+[  7.561s] USB disconnected
+[  9.920s] USB opened
+[ 11.623s] [toit] RP2350 VM starting
+[ 11.623s] [toit] flash JEDEC ef4018
+[ 11.623s] [toit] boot partition=0 type=0 trial/update=0
+[ 11.723s] TOIT-OTA INFO 1 0 0 4194304
+[ 12.024s] container-child: PASS token=boot
+[ 12.124s] TOIT-OTA INFO 1 0 0 4194304
+[ 12.124s] deep-sleep-rp2350: retained RAM and monotonic clock PASS elapsed-us=4836028
+[ 12.324s] deep-sleep-rp2350: phase=2 sleep-wakeup=true
+[ 12.324s] deep-sleep-rp2350: entering sleep duration-ms=5000 with active peripherals
+[ 12.324s] [toit] VM exited: reason=3 value=5000
+[ 12.324s] [toit] VM teardown complete
+[ 12.683s] USB disconnected
+[ 18.101s] USB opened
+[ 19.603s] [toit] RP2350 VM starting
+[ 19.603s] [toit] flash JEDEC ef4018
+[ 19.603s] [toit] boot partition=0 type=0 trial/update=0
+[ 19.703s] TOIT-OTA INFO 1 0 0 4194304
+[ 20.004s] container-child: PASS token=boot
+[ 20.104s] deep-sleep-rp2350: retained RAM and monotonic clock PASS elapsed-us=7820911
+[ 20.304s] TOIT-OTA INFO 1 0 0 4194304
+[ 20.305s] deep-sleep-rp2350: phase=3 sleep-wakeup=true
+[ 20.305s] deep-sleep-rp2350: entering sleep duration-ms=1000 with active peripherals
+[ 20.305s] [toit] VM exited: reason=3 value=1000
+[ 20.305s] [toit] VM teardown complete
+[ 20.629s] USB disconnected
+[ 21.933s] USB opened
+[ 23.637s] [toit] RP2350 VM starting
+[ 23.637s] [toit] flash JEDEC ef4018
+[ 23.637s] [toit] boot partition=0 type=0 trial/update=0
+[ 23.737s] TOIT-OTA INFO 1 0 0 4194304
+[ 24.037s] container-child: PASS token=boot
+[ 24.037s] deep-sleep-rp2350: retained RAM and monotonic clock PASS elapsed-us=3833353
+[ 24.237s] deep-sleep-rp2350: phase=4 sleep-wakeup=true
+[ 24.338s] TOIT-OTA INFO 1 0 0 4194304
+[ 24.338s] deep-sleep-rp2350: entering sleep duration-ms=1000 with active peripherals
+[ 24.338s] [toit] VM exited: reason=3 value=1000
+[ 24.338s] [toit] VM teardown complete
+[ 24.461s] USB disconnected
+[ 26.016s] USB opened
+[ 27.619s] [toit] RP2350 VM starting
+[ 27.619s] [toit] flash JEDEC ef4018
+[ 27.619s] [toit] boot partition=0 type=0 trial/update=0
+[ 27.719s] TOIT-OTA INFO 1 0 0 4194304
+[ 28.020s] container-child: PASS token=boot
+[ 28.120s] deep-sleep-rp2350: retained RAM and monotonic clock PASS elapsed-us=3823172
+[ 28.320s] deep-sleep-rp2350: phase=5 sleep-wakeup=true
+[ 28.320s] deep-sleep-rp2350: entering sleep duration-ms=1000 with active peripherals
+[ 28.320s] [toit] VM exited: reason=3 value=1000
+[ 28.320s] [toit] VM teardown complete
+[ 28.567s] USB disconnected
+[ 30.174s] USB opened
+[ 31.576s] [toit] RP2350 VM starting
+[ 31.576s] [toit] flash JEDEC ef4018
+[ 31.576s] [toit] boot partition=0 type=0 trial/update=0
+[ 31.677s] TOIT-OTA INFO 1 0 0 4194304
+[ 32.077s] container-child: PASS token=boot
+[ 32.077s] deep-sleep-rp2350: retained RAM and monotonic clock PASS elapsed-us=3830824
+[ 32.278s] deep-sleep-rp2350: phase=6 sleep-wakeup=true
+[ 32.378s] deep-sleep-rp2350: entering sleep duration-ms=1000 with active peripherals
+[ 32.378s] [toit] VM exited: reason=3 value=1000
+[ 32.378s] [toit] VM teardown complete
+[ 32.644s] USB disconnected
+[ 34.053s] USB opened
+[ 35.657s] [toit] RP2350 VM starting
+[ 35.657s] [toit] flash JEDEC ef4018
+[ 35.658s] [toit] boot partition=0 type=0 trial/update=0
+[ 35.658s] TOIT-OTA INFO 1 0 0 4194304
+[ 36.058s] container-child: PASS token=boot
+[ 36.159s] deep-sleep-rp2350: retained RAM and monotonic clock PASS elapsed-us=3868796
+[ 36.359s] deep-sleep-rp2350: phase=7 sleep-wakeup=true
+[ 36.460s] deep-sleep-rp2350: entering sleep duration-ms=1000 with active peripherals
+[ 36.460s] [toit] VM exited: reason=3 value=1000
+[ 36.460s] [toit] VM teardown complete
+[ 36.831s] USB disconnected
+[ 38.139s] USB opened
+[ 39.743s] [toit] RP2350 VM starting
+[ 39.743s] [toit] flash JEDEC ef4018
+[ 39.743s] [toit] boot partition=0 type=0 trial/update=0
+[ 39.743s] TOIT-OTA INFO 1 0 0 4194304
+[ 40.144s] container-child: PASS token=boot
+[ 40.144s] deep-sleep-rp2350: retained RAM and monotonic clock PASS elapsed-us=3824102
+[ 40.345s] deep-sleep-rp2350: phase=8 sleep-wakeup=true
+[ 40.445s] deep-sleep-rp2350: entering sleep duration-ms=1000 with active peripherals
+[ 40.445s] [toit] VM exited: reason=3 value=1000
+[ 40.445s] [toit] VM teardown complete
+[ 40.582s] USB disconnected
+[ 42.243s] USB opened
+[ 43.747s] [toit] RP2350 VM starting
+[ 43.747s] [toit] flash JEDEC ef4018
+[ 43.747s] [toit] boot partition=0 type=0 trial/update=0
+[ 43.747s] TOIT-OTA INFO 1 0 0 4194304
+[ 44.148s] container-child: PASS token=boot
+[ 44.148s] deep-sleep-rp2350: retained RAM and monotonic clock PASS elapsed-us=3824288
+[ 44.349s] deep-sleep-rp2350: phase=9 sleep-wakeup=true
+[ 44.449s] deep-sleep-rp2350: entering sleep duration-ms=1000 with active peripherals
+[ 44.449s] [toit] VM exited: reason=3 value=1000
+[ 44.449s] [toit] VM teardown complete
+[ 44.677s] USB disconnected
+[ 46.036s] USB opened
+[ 47.741s] [toit] RP2350 VM starting
+[ 47.741s] [toit] flash JEDEC ef4018
+[ 47.741s] [toit] boot partition=0 type=0 trial/update=0
+[ 47.741s] TOIT-OTA INFO 1 0 0 4194304
+[ 48.142s] container-child: PASS token=boot
+[ 48.142s] deep-sleep-rp2350: retained RAM and monotonic clock PASS elapsed-us=3823995
+[ 48.343s] deep-sleep-rp2350: phase=10 sleep-wakeup=true
+[ 48.443s] deep-sleep-rp2350: entering sleep duration-ms=1000 with active peripherals
+[ 48.443s] [toit] VM exited: reason=3 value=1000
+[ 48.443s] [toit] VM teardown complete
+[ 48.521s] USB disconnected
+[ 50.182s] USB opened
+[ 51.686s] [toit] RP2350 VM starting
+[ 51.686s] [toit] flash JEDEC ef4018
+[ 51.686s] [toit] boot partition=0 type=0 trial/update=0
+[ 51.786s] TOIT-OTA INFO 1 0 0 4194304
+[ 52.087s] container-child: PASS token=boot
+[ 52.187s] deep-sleep-rp2350: retained RAM and monotonic clock PASS elapsed-us=3825093
+[ 52.388s] TOIT-OTA INFO 1 0 0 4194304
+[ 52.388s] deep-sleep-rp2350: phase=11 sleep-wakeup=true
+[ 52.489s] deep-sleep-rp2350: entering sleep duration-ms=1000 with active peripherals
+[ 52.489s] [toit] VM exited: reason=3 value=1000
+[ 52.489s] [toit] VM teardown complete
+[ 52.613s] USB disconnected
+[ 54.275s] USB opened
+[ 55.779s] [toit] RP2350 VM starting
+[ 55.779s] [toit] flash JEDEC ef4018
+[ 55.779s] [toit] boot partition=0 type=0 trial/update=0
+[ 55.779s] TOIT-OTA INFO 1 0 0 4194304
+[ 56.180s] container-child: PASS token=boot
+[ 56.180s] deep-sleep-rp2350: retained RAM and monotonic clock PASS elapsed-us=3823400
+[ 56.380s] deep-sleep-rp2350: phase=12 sleep-wakeup=true
+[ 56.481s] TOIT-OTA INFO 1 0 0 4194304
+[ 56.481s] deep-sleep-rp2350: entering sleep duration-ms=1000 with active peripherals
+[ 56.481s] [toit] VM exited: reason=3 value=1000
+[ 56.481s] [toit] VM teardown complete
+[ 56.717s] USB disconnected
+[ 58.127s] USB opened
+[ 59.731s] [toit] RP2350 VM starting
+[ 59.731s] [toit] flash JEDEC ef4018
+[ 59.731s] [toit] boot partition=0 type=0 trial/update=0
+[ 59.831s] TOIT-OTA INFO 1 0 0 4194304
+[ 60.132s] container-child: PASS token=boot
+[ 60.232s] deep-sleep-rp2350: retained RAM and monotonic clock PASS elapsed-us=3828793
+[ 60.433s] deep-sleep-rp2350: phase=13 sleep-wakeup=true
+[ 60.433s] deep-sleep-rp2350: entering sleep duration-ms=1000 with active peripherals
+[ 60.433s] [toit] VM exited: reason=3 value=1000
+[ 60.433s] [toit] VM teardown complete
+[ 60.560s] USB disconnected
+[ 62.171s] USB opened
+[ 63.775s] [toit] RP2350 VM starting
+[ 63.775s] [toit] flash JEDEC ef4018
+[ 63.775s] [toit] boot partition=0 type=0 trial/update=0
+[ 63.775s] TOIT-OTA INFO 1 0 0 4194304
+[ 64.176s] container-child: PASS token=boot
+[ 64.176s] deep-sleep-rp2350: retained RAM and monotonic clock PASS elapsed-us=3823939
+[ 64.377s] deep-sleep-rp2350: phase=14 sleep-wakeup=true
+[ 64.477s] deep-sleep-rp2350: entering sleep duration-ms=1000 with active peripherals
+[ 64.477s] [toit] VM exited: reason=3 value=1000
+[ 64.477s] [toit] VM teardown complete
+[ 64.644s] USB disconnected
+[ 66.304s] USB opened
+[ 67.708s] [toit] RP2350 VM starting
+[ 67.708s] [toit] flash JEDEC ef4018
+[ 67.708s] [toit] boot partition=0 type=0 trial/update=0
+[ 67.808s] TOIT-OTA INFO 1 0 0 4194304
+[ 68.109s] container-child: PASS token=boot
+[ 68.209s] deep-sleep-rp2350: retained RAM and monotonic clock PASS elapsed-us=3822057
+[ 68.410s] deep-sleep-rp2350: phase=15 sleep-wakeup=true
+[ 68.410s] deep-sleep-rp2350: entering sleep duration-ms=1000 with active peripherals
+[ 68.410s] [toit] VM exited: reason=3 value=1000
+[ 68.410s] [toit] VM teardown complete
+[ 68.764s] USB disconnected
+[ 70.123s] USB opened
+[ 71.727s] [toit] RP2350 VM starting
+[ 71.728s] [toit] flash JEDEC ef4018
+[ 71.728s] [toit] boot partition=0 type=0 trial/update=0
+[ 71.828s] TOIT-OTA INFO 1 0 0 4194304
+[ 72.129s] container-child: PASS token=boot
+[ 72.229s] deep-sleep-rp2350: retained RAM and monotonic clock PASS elapsed-us=3826421
+[ 72.430s] deep-sleep-rp2350: phase=16 sleep-wakeup=true
+[ 72.430s] deep-sleep-rp2350: entering sleep duration-ms=1000 with active peripherals
+[ 72.430s] [toit] VM exited: reason=3 value=1000
+[ 72.430s] [toit] VM teardown complete
+[ 72.594s] USB disconnected
+[ 74.255s] USB opened
+[ 75.759s] [toit] RP2350 VM starting
+[ 75.759s] [toit] flash JEDEC ef4018
+[ 75.759s] [toit] boot partition=0 type=0 trial/update=0
+[ 75.860s] TOIT-OTA INFO 1 0 0 4194304
+[ 76.161s] container-child: PASS token=boot
+[ 76.261s] deep-sleep-rp2350: retained RAM and monotonic clock PASS elapsed-us=3829409
+[ 76.361s] deep-sleep-rp2350: phase=17 sleep-wakeup=true
+[ 76.461s] deep-sleep-rp2350: entering sleep duration-ms=1000 with active peripherals
+[ 76.462s] [toit] VM exited: reason=3 value=1000
+[ 76.462s] [toit] VM teardown complete
+[ 76.683s] USB disconnected
+[ 78.345s] USB opened
+[ 79.749s] [toit] RP2350 VM starting
+[ 79.749s] [toit] flash JEDEC ef4018
+[ 79.749s] [toit] boot partition=0 type=0 trial/update=0
+[ 79.849s] TOIT-OTA INFO 1 0 0 4194304
+[ 80.149s] container-child: PASS token=boot
+[ 80.250s] deep-sleep-rp2350: retained RAM and monotonic clock PASS elapsed-us=3819483
+[ 80.450s] deep-sleep-rp2350: phase=18 sleep-wakeup=true
+[ 80.450s] deep-sleep-rp2350: entering sleep duration-ms=1000 with active peripherals
+[ 80.450s] [toit] VM exited: reason=3 value=1000
+[ 80.450s] [toit] VM teardown complete
+[ 80.783s] USB disconnected
+[ 82.193s] USB opened
+[ 83.797s] [toit] RP2350 VM starting
+[ 83.797s] [toit] flash JEDEC ef4018
+[ 83.797s] [toit] boot partition=0 type=0 trial/update=0
+[ 83.797s] TOIT-OTA INFO 1 0 0 4194304
+[ 84.199s] container-child: PASS token=boot
+[ 84.199s] deep-sleep-rp2350: retained RAM and monotonic clock PASS elapsed-us=3825970
+[ 84.399s] deep-sleep-rp2350: phase=19 sleep-wakeup=true
+[ 84.499s] deep-sleep-rp2350: entering sleep duration-ms=1000 with active peripherals
+[ 84.500s] [toit] VM exited: reason=3 value=1000
+[ 84.500s] [toit] VM teardown complete
+[ 84.620s] USB disconnected
+[ 86.281s] USB opened
+[ 87.784s] [toit] RP2350 VM starting
+[ 87.785s] [toit] flash JEDEC ef4018
+[ 87.785s] [toit] boot partition=0 type=0 trial/update=0
+[ 87.785s] TOIT-OTA INFO 1 0 0 4194304
+[ 88.186s] container-child: PASS token=boot
+[ 88.186s] deep-sleep-rp2350: retained RAM and monotonic clock PASS elapsed-us=3820308
+[ 88.386s] deep-sleep-rp2350: phase=20 sleep-wakeup=true
+[ 88.387s] deep-sleep-rp2350: requesting software reset after timer wakes
+[ 88.387s] [toit] VM exited: reason=2 value=0
+[ 88.387s] [toit] VM teardown complete
+[ 88.456s] USB disconnected
+[ 88.909s] USB opened
+[ 90.613s] [toit] RP2350 VM starting
+[ 90.614s] [toit] flash JEDEC ef4018
+[ 90.614s] [toit] boot partition=0 type=0 trial/update=0
+[ 90.614s] TOIT-OTA INFO 1 0 0 4194304
+[ 91.015s] container-child: PASS token=boot
+[ 91.215s] deep-sleep-rp2350: phase=21 sleep-wakeup=false
+[ 91.215s] deep-sleep-rp2350: requesting watchdog reset after timer wakes
+[ 92.293s] USB disconnected
+[ 92.702s] USB opened
+[ 94.406s] [toit] RP2350 VM starting
+[ 94.406s] [toit] flash JEDEC ef4018
+[ 94.406s] [toit] boot partition=0 type=0 trial/update=0
+[ 94.506s] TOIT-OTA INFO 1 0 0 4194304
+[ 94.807s] container-child: PASS token=boot
+[ 94.908s] TOIT-OTA INFO 1 0 0 4194304
+[ 95.008s] deep-sleep-rp2350: phase=22 sleep-wakeup=false
+[ 95.008s] deep-sleep-rp2350: PASS 20 timer wakes, retained RAM/flash/clocks, software and watchdog resets
+[ 96.913s] TOIT-OTA INFO 1 0 0 4194304
+[ 98.919s] TOIT-OTA INFO 1 0 0 4194304
+[100.924s] TOIT-OTA INFO 1 0 0 4194304
+[102.930s] TOIT-OTA INFO 1 0 0 4194304
+[104.935s] TOIT-OTA INFO 1 0 0 4194304
+[106.941s] TOIT-OTA INFO 1 0 0 4194304
+[108.946s] TOIT-OTA INFO 1 0 0 4194304
+[110.951s] TOIT-OTA INFO 1 0 0 4194304
+[112.956s] TOIT-OTA INFO 1 0 0 4194304
+[114.961s] TOIT-OTA INFO 1 0 0 4194304

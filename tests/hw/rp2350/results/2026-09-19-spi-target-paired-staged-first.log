@@ -1,0 +1,84 @@
+[  0.100s] TOIT-OTA REBOOTING
+[  0.642s] USB disconnected
+[  1.045s] USB opened
+[  2.649s] [toit] RP2350 VM starting
+[  2.650s] [toit] flash JEDEC ef4018
+[  2.650s] [toit] boot partition=1 type=4 trial/update=1
+[  2.750s] spi-target-rp2350: waiting 20 seconds for ESP32 peer
+[  3.152s] TOIT-OTA INFO 1 1 1 4194304
+[  3.253s] container-child: PASS token=boot
+[  3.353s] envelope-rp2350: PASS existing flash bucket and region survived recovery
+[  3.453s] envelope-rp2350: PASS bundled container, assets, config, GC, storage RPC, and identity
+[  5.158s] TOIT-OTA INFO 1 1 0 4194304
+[  7.164s] TOIT-OTA INFO 1 1 0 4194304
+[  9.169s] TOIT-OTA INFO 1 1 0 4194304
+[ 11.172s] TOIT-OTA INFO 1 1 0 4194304
+[ 13.177s] TOIT-OTA INFO 1 1 0 4194304
+[ 15.181s] TOIT-OTA INFO 1 1 0 4194304
+[ 17.185s] TOIT-OTA INFO 1 1 0 4194304
+[ 19.189s] TOIT-OTA INFO 1 1 0 4194304
+[ 21.193s] TOIT-OTA INFO 1 1 0 4194304
+[ 22.796s] SPI0 case peer is clocking
+[ 22.796s] SPI0 case peer is clocking
+[ 22.896s] SPI0 case peer is clocking
+[ 22.896s] SPI0 case peer is clocking
+[ 22.896s] SPI0 case peer is clocking
+[ 22.896s] SPI0 case peer is clocking
+[ 22.996s] SPI0 case peer is clocking
+[ 22.996s] SPI0 case peer is clocking
+[ 22.996s] SPI0 case peer is clocking
+[ 22.996s] SPI0 case peer is clocking
+[ 23.096s] SPI0 case peer is clocking
+[ 23.096s] SPI0 case peer is clocking
+[ 23.096s] SPI0 case peer is clocking
+[ 23.096s] SPI0 case peer is clocking
+[ 23.197s] TOIT-OTA INFO 1 1 0 4194304
+[ 23.197s] SPI0 case peer is clocking
+[ 23.197s] SPI0 case peer is clocking
+[ 23.197s] SPI0 case peer is clocking
+[ 23.197s] SPI0 case peer is clocking
+[ 23.297s] SPI0 case peer is clocking
+[ 23.297s] SPI0 case peer is clocking
+[ 23.297s] SPI0 case peer is clocking
+[ 23.297s] SPI0 case peer is clocking
+[ 23.397s] SPI0 case peer is clocking
+[ 23.397s] SPI0 case peer is clocking
+[ 23.397s] SPI0 sequence 0 peer is clocking
+[ 23.397s] SPI0 sequence 1 peer is clocking
+[ 23.397s] SPI0 sequence 2 peer is clocking
+[ 23.397s] SPI0 sequence 3 peer is clocking
+[ 23.397s] SPI target consecutive short transactions dma=false PASS
+[ 23.498s] SPI0 sequence 0 peer is clocking
+[ 23.498s] SPI0 sequence 1 peer is clocking
+[ 23.498s] SPI0 sequence 2 peer is clocking
+[ 23.498s] SPI0 sequence 3 peer is clocking
+[ 23.498s] SPI target consecutive short transactions dma=true PASS
+[ 23.498s] SPI1 case peer is clocking
+[ 23.498s] SPI1 case peer is clocking
+[ 23.598s] SPI1 case peer is clocking
+[ 23.598s] SPI1 case peer is clocking
+[ 23.598s] SPI0 early CS peer is clocking
+[ 23.598s] : Expected <#[0x17, 0x36, 0x55]>, but was <#[0x17, 0x36, 0x55, 0x20, 0xc0, 0x28, 0x00, 0x20]>
+[ 23.598s] ----
+[ 23.598s] Received a Toit system message. Executing the command below will
+[ 23.598s] make it human readable:
+[ 23.598s] ----
+[ 23.598s] jag decode WyNVBVVYU1UbdjIuMC4wLWFscGhhLjE5OS44Kzg5YWEwMDhjU1UZd2VhY3Rfc3R1ZGlvX3JwMjM1MGJfY29yZVskVSNVEPYtFLImCV1viWhnOgM8WA1bI1UEVUVTVRBBU1NFUlRJT05fRkFJTEVEU1VbRXhwZWN0ZWQgPCNbMHgxNywgMHgzNiwgMHg1NV0+LCBidXQgd2FzIDwjWzB4MTcsIDB4MzYsIDB4NTUsIDB4MjAsIDB4YzAsIDB4MjgsIDB4MDAsIDB4MjBdPlsjVQJVU1sjVRFbI2wAAAADVUZVAEkaJlsjbAAAAANVRlUBSRo9WyNsAAAAA1VGVQJJGe1bI2wAAAADVUZVA0kKkFsjbAAAAANVRlUESQrWWyNsAAAAA1VGVQVJBg1bI2wAAAADVUZVBkkGTlsjbAAAAANVRlUHSQJYWyNsAAAAA1VGVQhJAtRbI2wAAAADVUZVCUkYZVsjbAAAAANVRlUKSRomWyNsAAAAA1VGVQtJGj1bI2wAAAADVUZVDEk6UFsjbAAAAANVRlUNSTpoWyNsAAAAA1VGVQ5JOYxbI2wAAAADVUZVD0k6FFsjbAAAAANVRlUQSRh+
+[ 25.201s] TOIT-OTA INFO 1 1 0 4194304
+[ 27.205s] TOIT-OTA INFO 1 1 0 4194304
+[ 29.210s] TOIT-OTA INFO 1 1 0 4194304
+[ 31.215s] TOIT-OTA INFO 1 1 0 4194304
+[ 33.221s] TOIT-OTA INFO 1 1 0 4194304
+[ 35.226s] TOIT-OTA INFO 1 1 0 4194304
+[ 37.231s] TOIT-OTA INFO 1 1 0 4194304
+[ 39.237s] TOIT-OTA INFO 1 1 0 4194304
+[ 41.242s] TOIT-OTA INFO 1 1 0 4194304
+[ 43.247s] TOIT-OTA INFO 1 1 0 4194304
+[ 45.253s] TOIT-OTA INFO 1 1 0 4194304
+[ 47.258s] TOIT-OTA INFO 1 1 0 4194304
+[ 49.263s] TOIT-OTA INFO 1 1 0 4194304
+[ 51.268s] TOIT-OTA INFO 1 1 0 4194304
+[ 53.272s] TOIT-OTA INFO 1 1 0 4194304
+[ 55.276s] TOIT-OTA INFO 1 1 0 4194304
+[ 57.280s] TOIT-OTA INFO 1 1 0 4194304
+[ 59.285s] TOIT-OTA INFO 1 1 0 4194304

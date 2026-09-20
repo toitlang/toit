@@ -1,0 +1,3 @@
+Scanning for device with name: 'opposite-singer'
+Running 'tests/hw/rp2350/spi-controller-esp32.toit' on 'opposite-singer' ...
+Success: Sent 49KB code to 'opposite-singer' in 2.63s

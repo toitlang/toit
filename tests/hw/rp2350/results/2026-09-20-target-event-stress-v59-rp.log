@@ -1,0 +1,29 @@
+[   0.003s] capture sent TOIT-OTA REBOOT
+[   0.013s] TOIT-OTA REBOOTING
+[   0.592s] capture observed serial disconnect
+[   0.999s] capture reopened serial port
+[   2.624s] [toit] RP2350 VM starting
+[   2.624s] [toit] flash JEDEC ef4018
+[   2.625s] [toit] boot partition=1 type=4 trial/update=1
+[   2.736s] target-event-stress-rp2350: waiting 20 seconds for ESP32 peer
+[   3.062s] TOIT-OTA INFO 1 1 1 4194304
+[   3.194s] container-child: PASS token=boot
+[   3.276s] envelope-rp2350: PASS existing flash bucket and region survived recovery
+[   3.337s] envelope-rp2350: PASS bundled container, assets, config, GC, storage RPC, and identity
+[   5.013s] TOIT-OTA INFO 1 1 0 4194304
+[   7.027s] TOIT-OTA INFO 1 1 0 4194304
+[   9.018s] TOIT-OTA INFO 1 1 0 4194304
+[  11.020s] TOIT-OTA INFO 1 1 0 4194304
+[  13.027s] TOIT-OTA INFO 1 1 0 4194304
+[  15.030s] TOIT-OTA INFO 1 1 0 4194304
+[  17.043s] TOIT-OTA INFO 1 1 0 4194304
+[  19.036s] TOIT-OTA INFO 1 1 0 4194304
+[  21.049s] TOIT-OTA INFO 1 1 0 4194304
+[  23.052s] TOIT-OTA INFO 1 1 0 4194304
+[  23.406s] target-event-stress-rp2350: phase=0 mode=1 dma=false PASS
+[  24.074s] target-event-stress-rp2350: phase=1 mode=3 dma=false PASS
+[  24.736s] target-event-stress-rp2350: phase=2 mode=1 dma=true PASS
+[  25.049s] TOIT-OTA INFO 1 1 0 4194304
+[  25.394s] target-event-stress-rp2350: phase=3 mode=3 dma=true PASS
+[  25.394s] target-event-stress-rp2350: PASS I2C/SPI targets, GPIO, UART and GC
+[  27.068s] TOIT-OTA INFO 1 1 0 4194304

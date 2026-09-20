@@ -1,0 +1,15 @@
+Before reset: DeviceInfo(partition=0, trial=False, slot_size=4194304)
+Resetting after ACK 8192, before upload completion
+Scanning for device with name: 'opposite-singer'
+Running 'tools/rp2350/reset-esp32.toit' on 'opposite-singer' ...
+Success: Sent 37KB code to 'opposite-singer' in 1.92s
+device: TOIT-OTA VALIDATED 0
+device: TOIT-OTA INFO 1 0 0 4194304
+After reset: DeviceInfo(partition=0, trial=False, slot_size=4194304)
+event-stress-rp2350: timer worker complete
+event-stress-rp2350: I2C worker complete
+event-stress-rp2350: UART worker complete
+event-stress-rp2350: GPIO worker complete
+event-stress-rp2350: PASS shared dispatch, polling, and teardown
+RP2350 application completed
+ota-reset-test: partial PASS

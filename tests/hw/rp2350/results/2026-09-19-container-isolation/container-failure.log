@@ -1,0 +1,9 @@
+container-child: PASS token=boot
+container-failure-rp2350: deliberately failing an application assertion
+: Expected <expected>, but was <deliberate failure>
+----
+Received a Toit system message. Executing the command below will
+make it human readable:
+----
+jag decode WyNVBVVYU1UbdjIuMC4wLWFscGhhLjE5OS44Kzg5YWEwMDhjU1UZd2VhY3Rfc3R1ZGlvX3JwMjM1MGJfY29yZVskVSNVED4CroJXgFdgrrjvfepcQINbI1UEVUVTVRBBU1NFUlRJT05fRkFJTEVEU1UxRXhwZWN0ZWQgPGV4cGVjdGVkPiwgYnV0IHdhcyA8ZGVsaWJlcmF0ZSBmYWlsdXJlPlsjVQJVU1sjVQ9bI2wAAAADVUZVAEkIE1sjbAAAAANVRlUBSQgqWyNsAAAAA1VGVQJJB9pbI2wAAAADVUZVA0kRK1sjbAAAAANVRlUESRFxWyNsAAAAA1VGVQVJATdbI2wAAAADVUZVBkkBFlsjbAAAAANVRlUHSQanWyNsAAAAA1VGVQhJCBNbI2wAAAADVUZVCUkIKlsjbAAAAANVRlUKSSN4WyNsAAAAA1VGVQtJI5BbI2wAAAADVUZVDEkitFsjbAAAAANVRlUNSSM8WyNsAAAAA1VGVQ5JBsA=
+TOIT-OTA INFO 1 0 0 4194304

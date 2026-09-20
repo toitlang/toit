@@ -1,0 +1,27 @@
+TOIT-OTA REBOOTING
+[USB reconnect]
+[toit] RP2350 VM starting
+[toit] flash JEDEC ef4018
+[toit] boot partition=0 type=4 trial/update=1
+TOIT-OTA INFO 1 0 1 4194304
+RP2350 Toit VM smoke starting
+TOIT-OTA INFO 1 0 1 4194304
+container-child: PASS token=boot
+TOIT-OTA INFO 1 0 1 4194304
+RP2350 VM/GC/timer smoke: PASS (1354 collections)
+RP2350 application completed
+TOIT-OTA INFO 1 0 1 4194304
+[test] injecting native hardfault
+[USB reconnect]
+[toit] RP2350 VM starting
+[toit] flash JEDEC ef4018
+[toit] boot partition=1 type=0 trial/update=0
+TOIT-OTA VALIDATED 1
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+i2c-controller-rp2350: waiting 20 seconds for ESP32 peer
+container-child: PASS token=boot
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304

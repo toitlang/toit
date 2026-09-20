@@ -1,0 +1,102 @@
+[   6.011s] i2c-target-esp32: creating target controller=0 size=1
+[   6.011s] i2c-target-esp32: target ready
+[   6.052s] i2c-target-esp32: RESULT OK
+[   6.093s] i2c-target-esp32: STATUS expected=1025 dropped=0 received=1025 mismatch=-1 suffix=0 tail=567594b3d2f1102f4e6d8cabcae90827466584a3c2e1001f3e5d7c9bbad9f817
+[   6.133s] E (75671) i2c.slave: I2CDIAG port=0 alloc-core=1 core-mask=0x2 entries=65 wm=64 complete=1 colatched=0 raw-ovf=0 raw-or=0x00000893 last-raw=0x00000093 last-mask=0x00000080 max-fifo=16 last-status=0x03040100 status-at-max=0x05041011 requested-drain=1025 max-gap-cycles=106755
+[   6.133s] i2c-target-esp32: creating target controller=0 size=1
+[   6.133s] i2c-target-esp32: target ready
+[   6.174s] i2c-target-esp32: RESULT OK
+[   6.205s] i2c-target-esp32: STATUS expected=1025 dropped=0 received=1025 mismatch=-1 suffix=0 tail=567594b3d2f1102f4e6d8cabcae90827466584a3c2e1001f3e5d7c9bbad9f817
+[   6.246s] E (75791) i2c.slave: I2CDIAG port=0 alloc-core=0 core-mask=0x1 entries=65 wm=64 complete=1 colatched=0 raw-ovf=0 raw-or=0x00000893 last-raw=0x00000093 last-mask=0x00000080 max-fifo=16 last-status=0x03040100 status-at-max=0x05041011 requested-drain=1025 max-gap-cycles=104094
+[   6.256s] i2c-target-esp32: creating target controller=0 size=1
+[   6.256s] i2c-target-esp32: target ready
+[   6.287s] i2c-target-esp32: RESULT OK
+[   6.327s] i2c-target-esp32: STATUS expected=1025 dropped=0 received=1025 mismatch=-1 suffix=0 tail=567594b3d2f1102f4e6d8cabcae90827466584a3c2e1001f3e5d7c9bbad9f817
+[   6.358s] E (75911) i2c.slave: I2CDIAG port=0 alloc-core=0 core-mask=0x1 entries=65 wm=64 complete=1 colatched=0 raw-ovf=0 raw-or=0x00000893 last-raw=0x00000093 last-mask=0x00000080 max-fifo=16 last-status=0x03040100 status-at-max=0x05041011 requested-drain=1025 max-gap-cycles=103779
+[   6.368s] i2c-target-esp32: creating target controller=0 size=1
+[   6.378s] i2c-target-esp32: target ready
+[   6.409s] i2c-target-esp32: RESULT OK
+[   6.450s] i2c-target-esp32: STATUS expected=1025 dropped=0 received=1025 mismatch=-1 suffix=0 tail=567594b3d2f1102f4e6d8cabcae90827466584a3c2e1001f3e5d7c9bbad9f817
+[   6.491s] E (76031) i2c.slave: I2CDIAG port=0 alloc-core=1 core-mask=0x2 entries=65 wm=64 complete=1 colatched=0 raw-ovf=0 raw-or=0x00000893 last-raw=0x00000093 last-mask=0x00000080 max-fifo=17 last-status=0x03040100 status-at-max=0x03041110 requested-drain=1025 max-gap-cycles=111855
+[   6.491s] i2c-target-esp32: creating target controller=0 size=1
+[   6.491s] i2c-target-esp32: target ready
+[   6.531s] i2c-target-esp32: RESULT OK
+[   6.562s] i2c-target-esp32: STATUS expected=1025 dropped=0 received=1025 mismatch=-1 suffix=0 tail=567594b3d2f1102f4e6d8cabcae90827466584a3c2e1001f3e5d7c9bbad9f817
+[   6.603s] E (76141) i2c.slave: I2CDIAG port=0 alloc-core=0 core-mask=0x1 entries=65 wm=64 complete=1 colatched=0 raw-ovf=0 raw-or=0x00000893 last-raw=0x00000093 last-mask=0x00000080 max-fifo=16 last-status=0x03040100 status-at-max=0x05041011 requested-drain=1025 max-gap-cycles=106485
+[   6.613s] i2c-target-esp32: creating target controller=0 size=1
+[   6.613s] i2c-target-esp32: target ready
+[   6.644s] i2c-target-esp32: RESULT OK
+[   6.684s] i2c-target-esp32: STATUS expected=1025 dropped=0 received=1025 mismatch=-1 suffix=0 tail=567594b3d2f1102f4e6d8cabcae90827466584a3c2e1001f3e5d7c9bbad9f817
+[   6.725s] E (76261) i2c.slave: I2CDIAG port=0 alloc-core=0 core-mask=0x1 entries=65 wm=64 complete=1 colatched=0 raw-ovf=0 raw-or=0x00000893 last-raw=0x00000093 last-mask=0x00000080 max-fifo=16 last-status=0x03040100 status-at-max=0x05041011 requested-drain=1025 max-gap-cycles=105321
+[   6.725s] i2c-target-esp32: creating target controller=0 size=1
+[   6.725s] i2c-target-esp32: target ready
+[   6.766s] i2c-target-esp32: RESULT OK
+[   6.797s] i2c-target-esp32: STATUS expected=1025 dropped=0 received=1025 mismatch=-1 suffix=0 tail=567594b3d2f1102f4e6d8cabcae90827466584a3c2e1001f3e5d7c9bbad9f817
+[   6.838s] E (76381) i2c.slave: I2CDIAG port=0 alloc-core=1 core-mask=0x2 entries=65 wm=64 complete=1 colatched=0 raw-ovf=0 raw-or=0x00000893 last-raw=0x00000093 last-mask=0x00000080 max-fifo=16 last-status=0x03040100 status-at-max=0x05041011 requested-drain=1025 max-gap-cycles=103992
+[   6.848s] i2c-target-esp32: creating target controller=0 size=1
+[   6.848s] i2c-target-esp32: target ready
+[   6.879s] i2c-target-esp32: RESULT OK
+[   6.919s] i2c-target-esp32: STATUS expected=1025 dropped=0 received=1025 mismatch=-1 suffix=0 tail=567594b3d2f1102f4e6d8cabcae90827466584a3c2e1001f3e5d7c9bbad9f817
+[   6.960s] E (76501) i2c.slave: I2CDIAG port=0 alloc-core=0 core-mask=0x1 entries=65 wm=64 complete=1 colatched=0 raw-ovf=0 raw-or=0x00000893 last-raw=0x00000093 last-mask=0x00000080 max-fifo=16 last-status=0x03040100 status-at-max=0x05041011 requested-drain=1025 max-gap-cycles=105105
+[   6.970s] i2c-target-esp32: creating target controller=0 size=1
+[   6.970s] i2c-target-esp32: target ready
+[   6.990s] i2c-target-esp32: RESULT ERROR I2C_NACK
+[   7.021s] i2c-target-esp32: STATUS expected=1025 dropped=0 received=512 mismatch=480 suffix=32 tail=5757575757575757575757575757575757575757575757575757575757575757
+[   7.082s] E (76621) i2c.slave: I2CDIAG port=0 alloc-core=1 core-mask=0x2 entries=29 wm=29 complete=1 colatched=1 raw-ovf=0 raw-or=0x00000893 last-raw=0x00000893 last-mask=0x00000880 max-fifo=32 last-status=0x05042000 status-at-max=0x05042000 requested-drain=512 max-gap-cycles=323034
+[   7.082s] i2c-target-esp32: creating target controller=0 size=1
+[   7.082s] i2c-target-esp32: target ready
+[   7.113s] i2c-target-esp32: RESULT ERROR I2C_NACK
+[   7.144s] i2c-target-esp32: STATUS expected=1025 dropped=0 received=496 mismatch=464 suffix=32 tail=6767676767676767676767676767676767676767676767676767676767676767
+[   7.185s] E (76721) i2c.slave: I2CDIAG port=0 alloc-core=1 core-mask=0x2 entries=28 wm=28 complete=1 colatched=1 raw-ovf=0 raw-or=0x00000893 last-raw=0x00000893 last-mask=0x00000880 max-fifo=32 last-status=0x05042000 status-at-max=0x05042000 requested-drain=496 max-gap-cycles=252276
+[   7.185s] i2c-target-esp32: creating target controller=1 size=1
+[   7.195s] i2c-target-esp32: target ready
+[   7.205s] i2c-target-esp32: RESULT OK
+[   7.246s] i2c-target-esp32: STATUS expected=257 dropped=0 received=257 mismatch=-1 suffix=0 tail=567594b3d2f1102f4e6d8cabcae90827466584a3c2e1001f3e5d7c9bbad9f817
+[   7.287s] E (76821) i2c.slave: I2CDIAG port=0 alloc-core=1 core-mask=0x2 entries=17 wm=16 complete=1 colatched=0 raw-ovf=0 raw-or=0x00000893 last-raw=0x00000093 last-mask=0x00000080 max-fifo=16 last-status=0x03040100 status-at-max=0x05041011 requested-drain=257 max-gap-cycles=104100
+[   7.287s] i2c-target-esp32: creating target controller=1 size=1
+[   7.287s] i2c-target-esp32: target ready
+[   7.297s] i2c-target-esp32: RESULT OK
+[   7.338s] i2c-target-esp32: STATUS expected=257 dropped=0 received=257 mismatch=-1 suffix=0 tail=567594b3d2f1102f4e6d8cabcae90827466584a3c2e1001f3e5d7c9bbad9f817
+[   7.379s] E (76921) i2c.slave: I2CDIAG port=0 alloc-core=0 core-mask=0x1 entries=17 wm=16 complete=1 colatched=0 raw-ovf=0 raw-or=0x00000893 last-raw=0x00000093 last-mask=0x00000080 max-fifo=16 last-status=0x03040100 status-at-max=0x05041011 requested-drain=257 max-gap-cycles=106974
+[   7.379s] i2c-target-esp32: creating target controller=1 size=1
+[   7.379s] i2c-target-esp32: target ready
+[   7.399s] i2c-target-esp32: RESULT ERROR I2C_NACK
+[   7.430s] i2c-target-esp32: STATUS expected=257 dropped=0 received=256 mismatch=224 suffix=32 tail=5757575757575757575757575757575757575757575757575757575757575757
+[   7.471s] E (77021) i2c.slave: I2CDIAG port=0 alloc-core=1 core-mask=0x2 entries=13 wm=13 complete=1 colatched=1 raw-ovf=0 raw-or=0x00000893 last-raw=0x00000893 last-mask=0x00000880 max-fifo=32 last-status=0x05042000 status-at-max=0x05042000 requested-drain=256 max-gap-cycles=318390
+[   7.482s] i2c-target-esp32: creating target controller=1 size=1
+[   7.482s] i2c-target-esp32: target ready
+[   7.492s] i2c-target-esp32: RESULT OK
+[   7.532s] i2c-target-esp32: STATUS expected=257 dropped=0 received=257 mismatch=-1 suffix=0 tail=567594b3d2f1102f4e6d8cabcae90827466584a3c2e1001f3e5d7c9bbad9f817
+[   7.574s] E (77111) i2c.slave: I2CDIAG port=0 alloc-core=0 core-mask=0x1 entries=17 wm=16 complete=1 colatched=0 raw-ovf=0 raw-or=0x00000893 last-raw=0x00000093 last-mask=0x00000080 max-fifo=16 last-status=0x03040100 status-at-max=0x05041011 requested-drain=257 max-gap-cycles=106230
+[   7.574s] i2c-target-esp32: creating target controller=1 size=1
+[   7.574s] i2c-target-esp32: target ready
+[   7.584s] i2c-target-esp32: RESULT OK
+[   7.625s] i2c-target-esp32: STATUS expected=257 dropped=0 received=257 mismatch=-1 suffix=0 tail=567594b3d2f1102f4e6d8cabcae90827466584a3c2e1001f3e5d7c9bbad9f817
+[   7.665s] E (77201) i2c.slave: I2CDIAG port=0 alloc-core=1 core-mask=0x2 entries=17 wm=16 complete=1 colatched=0 raw-ovf=0 raw-or=0x00000893 last-raw=0x00000093 last-mask=0x00000080 max-fifo=16 last-status=0x03040100 status-at-max=0x05041011 requested-drain=257 max-gap-cycles=105927
+[   7.665s] i2c-target-esp32: creating target controller=1 size=1
+[   7.665s] i2c-target-esp32: target ready
+[   7.675s] i2c-target-esp32: RESULT OK
+[   7.706s] i2c-target-esp32: STATUS expected=257 dropped=0 received=257 mismatch=-1 suffix=0 tail=567594b3d2f1102f4e6d8cabcae90827466584a3c2e1001f3e5d7c9bbad9f817
+[   7.747s] E (77291) i2c.slave: I2CDIAG port=0 alloc-core=0 core-mask=0x1 entries=17 wm=16 complete=1 colatched=0 raw-ovf=0 raw-or=0x00000893 last-raw=0x00000093 last-mask=0x00000080 max-fifo=16 last-status=0x03040100 status-at-max=0x05041011 requested-drain=257 max-gap-cycles=106608
+[   7.757s] i2c-target-esp32: creating target controller=1 size=1
+[   7.757s] i2c-target-esp32: target ready
+[   7.767s] i2c-target-esp32: RESULT OK
+[   7.798s] i2c-target-esp32: STATUS expected=257 dropped=0 received=257 mismatch=-1 suffix=0 tail=567594b3d2f1102f4e6d8cabcae90827466584a3c2e1001f3e5d7c9bbad9f817
+[   7.838s] E (77381) i2c.slave: I2CDIAG port=0 alloc-core=1 core-mask=0x2 entries=17 wm=16 complete=1 colatched=0 raw-ovf=0 raw-or=0x00000893 last-raw=0x00000093 last-mask=0x00000080 max-fifo=16 last-status=0x03040100 status-at-max=0x05041011 requested-drain=257 max-gap-cycles=104043
+[   7.849s] i2c-target-esp32: creating target controller=1 size=1
+[   7.849s] i2c-target-esp32: target ready
+[   7.859s] i2c-target-esp32: RESULT OK
+[   7.889s] i2c-target-esp32: STATUS expected=257 dropped=0 received=257 mismatch=-1 suffix=0 tail=567594b3d2f1102f4e6d8cabcae90827466584a3c2e1001f3e5d7c9bbad9f817
+[   7.930s] E (77471) i2c.slave: I2CDIAG port=0 alloc-core=1 core-mask=0x2 entries=17 wm=16 complete=1 colatched=0 raw-ovf=0 raw-or=0x00000893 last-raw=0x00000093 last-mask=0x00000080 max-fifo=16 last-status=0x03040100 status-at-max=0x05041011 requested-drain=257 max-gap-cycles=107160
+[   7.930s] i2c-target-esp32: creating target controller=1 size=1
+[   7.930s] i2c-target-esp32: target ready
+[   7.950s] i2c-target-esp32: RESULT OK
+[   7.981s] i2c-target-esp32: STATUS expected=257 dropped=0 received=257 mismatch=-1 suffix=0 tail=567594b3d2f1102f4e6d8cabcae90827466584a3c2e1001f3e5d7c9bbad9f817
+[   8.022s] E (77561) i2c.slave: I2CDIAG port=0 alloc-core=0 core-mask=0x1 entries=17 wm=16 complete=1 colatched=0 raw-ovf=0 raw-or=0x00000893 last-raw=0x00000093 last-mask=0x00000080 max-fifo=16 last-status=0x03040100 status-at-max=0x05041011 requested-drain=257 max-gap-cycles=104118
+[   8.022s] i2c-target-esp32: creating target controller=1 size=1
+[   8.022s] i2c-target-esp32: target ready
+[   8.042s] i2c-target-esp32: RESULT OK
+[   8.072s] i2c-target-esp32: STATUS expected=257 dropped=0 received=257 mismatch=-1 suffix=0 tail=567594b3d2f1102f4e6d8cabcae90827466584a3c2e1001f3e5d7c9bbad9f817
+[   8.113s] E (77651) i2c.slave: I2CDIAG port=0 alloc-core=1 core-mask=0x2 entries=17 wm=16 complete=1 colatched=0 raw-ovf=0 raw-or=0x00000893 last-raw=0x00000093 last-mask=0x00000080 max-fifo=16 last-status=0x03040100 status-at-max=0x05041011 requested-drain=257 max-gap-cycles=108558
+[   8.113s] i2c-target-esp32: complete
+[   8.123s] [jaguar] INFO: program 61a45f3a-28f5-ce00-11e9-c940af5a11a2 stopped

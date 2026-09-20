@@ -1,0 +1,14 @@
+Before reset: DeviceInfo(partition=0, trial=False, slot_size=4194304)
+Scanning for device with name: 'opposite-singer'
+Running 'tools/rp2350/reset-esp32.toit' on 'opposite-singer' ...
+Success: Sent 37KB code to 'opposite-singer' in 1.89s
+device: TOIT-OTA INFO 1 0 0 4194304
+After reset: DeviceInfo(partition=0, trial=False, slot_size=4194304)
+Traceback (most recent call last):
+  File "/tmp/rp2350-ota-reset-test.py", line 37, in <module>
+    data=s.read(4096)
+  File "/usr/lib/python3.14/site-packages/serial/serialposix.py", line 595, in read
+    raise SerialException(
+        'device reports readiness to read but returned no data '
+        '(device disconnected or multiple access on port?)')
+serial.serialutil.SerialException: device reports readiness to read but returned no data (device disconnected or multiple access on port?)

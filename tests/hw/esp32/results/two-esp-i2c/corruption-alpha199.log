@@ -1,0 +1,217 @@
+
+
+--- 000000: Attempt 1 of 1
+--- 000004: Connecting to board2
+--- 000005: Connecting to board1
+--- 000005: Compiling test
+--- 000006: Compiling test
+--- 000230: Converting snapshot to image
+--- 000234: Converting snapshot to image
+
+000512-board2: ets Jun  8 2016 00:22:57
+000512-board2: 
+000512-board2: rst:0x1 (POWERON_RESET),boot:0x13 (S
+000513-board1: ets Jun  8 2016 00:22:57
+000513-board1: 
+000513-board1: rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+000518-board2: configsip: 0, SPIWP:0xee
+000518-board2: clk_drv:0x00,q_drPI_FAST_FLASH_BOOT)
+000518-board1: configsip: 0, SPIWP:0xee
+000518-board1: clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+000523-board2: mode:DIOv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+000524-board1: mode:DIO, clock div:2
+000529-board2: load:0x3fff0030,len:268
+000529-board2: ho 0 tail 12 room 4
+000529-board2: loa, clock div:2
+000530-board1: load:0x3fff0030,len:268
+000530-board1: ho 0 tail 12 room 4
+000530-board1: load:0x40078000,len:13408
+000534-board2: load:0x40080400,len:4
+000534-board2: load:0x40080404,ld:0x40078000,len:13408
+000535-board1: load:0x40080400,len:4
+000535-board1: load:0x40080404,len:2880
+000538-board2: entry 0x40080558en:2880
+000539-board1: entry 0x40080558
+001159-board2: [toit] INFO: starting <v2.0.0-alpha.199>
+001159-board2: [toit] DEBUG: clearing
+001160-board1: [toit] INFO: starting <v2.0.0-alpha.199>
+001160-board1: [toit] DEBUG: clearing RTC memory: invalid checksum
+001164-board2: [toit] INFO: running on ESP32 - r RTC memory: invalid checksum
+001165-board1: [toit] INFO: running on ESP32 - revision 1.0evision 1.0
+001227-board2: Wakeup cause: 0
+001228-board1: Wakeup cause: 0
+001233-board2: UART-BAUD-RATE-REQUEST: 921600
+001234-board1: UART-BAUD-RATE-REQUEST: 921600
+001304-board2: UART-BAUD-RATE-SYNCED
+001304-board2: MINI-JAG LISTENING--- 001304: Sending test to device board2
+
+001305-board1: UART-BAUD-RATE-SYNCED
+001305-board1: MINI-JAG LISTENING--- 001305: Sending test to device board1
+
+001307-board2: ARGS: 
+001309-board1: ARGS: 
+001334-board2: Clearing old containers
+001337-board1: Clearing old containers
+001465-board2: SIZE: 50688
+001502-board1: SIZE: 50688
+002655-board2: READY FOR CHUNK: 0
+002690-board2: READY FOR CHUNK: 1024
+002732-board2: READY FOR CHUNK: 2048
+002770-board2: READY FOR CHUNK: 3072
+002808-board2: READY FOR CHUNK: 4096
+002843-board2: READY FOR CHUNK: 5120
+002881-board2: READY FOR CHUNK: 6144
+002918-board2: READY FOR CHUNK: 7168
+002956-board2: READY FOR CHUNK: 8192
+002970-board1: READY FOR CHUNK: 0
+002992-board2: READY FOR CHUNK: 9216
+003006-board1: READY FOR CHUNK: 1024
+003030-board2: READY FOR CHUNK: 10240
+003047-board1: READY FOR CHUNK: 2048
+003068-board2: READY FOR CHUNK: 11264
+003086-board1: READY FOR CHUNK: 3072
+003105-board2: READY FOR CHUNK: 12288
+003123-board1: READY FOR CHUNK: 4096
+003139-board2: READY FOR CHUNK: 13312
+003158-board1: READY FOR CHUNK: 5120
+003177-board2: READY FOR CHUNK: 14336
+003196-board1: READY FOR CHUNK: 6144
+003215-board2: READY FOR CHUNK: 15360
+003234-board1: READY FOR CHUNK: 7168
+003253-board2: READY FOR CHUNK: 16384
+003271-board1: READY FOR CHUNK: 8192
+003289-board2: READY FOR CHUNK: 17408
+003308-board1: READY FOR CHUNK: 9216
+003328-board2: READY FOR CHUNK: 18432
+003346-board1: READY FOR CHUNK: 10240
+003366-board2: READY FOR CHUNK: 19456
+003384-board1: READY FOR CHUNK: 11264
+003402-board2: READY FOR CHUNK: 20480
+003421-board1: READY FOR CHUNK: 12288
+003437-board2: READY FOR CHUNK: 21504
+003457-board1: READY FOR CHUNK: 13312
+003476-board2: READY FOR CHUNK: 22528
+003496-board1: READY FOR CHUNK: 14336
+003512-board2: READY FOR CHUNK: 23552
+003532-board1: READY FOR CHUNK: 15360
+003551-board2: READY FOR CHUNK: 24576
+003569-board1: READY FOR CHUNK: 16384
+003587-board2: READY FOR CHUNK: 25600
+003605-board1: READY FOR CHUNK: 17408
+003625-board2: READY FOR CHUNK: 26624
+003643-board1: READY FOR CHUNK: 18432
+003664-board2: READY FOR CHUNK: 27648
+003681-board1: READY FOR CHUNK: 19456
+003700-board2: READY FOR CHUNK: 28672
+003717-board1: READY FOR CHUNK: 20480
+003737-board2: READY FOR CHUNK: 29696
+003753-board1: READY FOR CHUNK: 21504
+003774-board2: READY FOR CHUNK: 30720
+003791-board1: READY FOR CHUNK: 22528
+003811-board2: READY FOR CHUNK: 31744
+003827-board1: READY FOR CHUNK: 23552
+003849-board2: READY FOR CHUNK: 32768
+003864-board1: READY FOR CHUNK: 24576
+003885-board2: READY FOR CHUNK: 33792
+003900-board1: READY FOR CHUNK: 25600
+003923-board2: READY FOR CHUNK: 34816
+003939-board1: READY FOR CHUNK: 26624
+003959-board2: READY FOR CHUNK: 35840
+003978-board1: READY FOR CHUNK: 27648
+003997-board2: READY FOR CHUNK: 36864
+004015-board1: READY FOR CHUNK: 28672
+004034-board2: READY FOR CHUNK: 37888
+004050-board1: READY FOR CHUNK: 29696
+004069-board2: READY FOR CHUNK: 38912
+004088-board1: READY FOR CHUNK: 30720
+004107-board2: READY FOR CHUNK: 39936
+004126-board1: READY FOR CHUNK: 31744
+004143-board2: READY FOR CHUNK: 40960
+004163-board1: READY FOR CHUNK: 32768
+004183-board2: READY FOR CHUNK: 41984
+004200-board1: READY FOR CHUNK: 33792
+004220-board2: READY FOR CHUNK: 43008
+004237-board1: READY FOR CHUNK: 34816
+004257-board2: READY FOR CHUNK: 44032
+004274-board1: READY FOR CHUNK: 35840
+004295-board2: READY FOR CHUNK: 45056
+004312-board1: READY FOR CHUNK: 36864
+004332-board2: READY FOR CHUNK: 46080
+004349-board1: READY FOR CHUNK: 37888
+004368-board2: READY FOR CHUNK: 47104
+004385-board1: READY FOR CHUNK: 38912
+004406-board2: READY FOR CHUNK: 48128
+004423-board1: READY FOR CHUNK: 39936
+004442-board2: READY FOR CHUNK: 49152
+004459-board1: READY FOR CHUNK: 40960
+004479-board2: READY FOR CHUNK: 50176--- 004481: Waiting for test to be fully installed
+
+004497-board1: READY FOR CHUNK: 41984
+004505-board2: WRITTEN: 50688
+004515-board2: INSTALLED CONTAINER
+004515-board2: WAITING FOR RUN-SIGNAL--- 004516: Board2 ready
+
+004535-board1: READY FOR CHUNK: 43008
+004572-board1: READY FOR CHUNK: 44032
+004609-board1: READY FOR CHUNK: 45056
+004646-board1: READY FOR CHUNK: 46080
+004682-board1: READY FOR CHUNK: 47104
+004719-board1: READY FOR CHUNK: 48128
+004756-board1: READY FOR CHUNK: 49152
+004794-board1: READY FOR CHUNK: 50176--- 004795: Waiting for test to be fully installed
+
+004819-board1: WRITTEN: 50688
+004830-board1: INSTALLED CONTAINER
+004830-board1: WAITING FOR RUN-SIGNAL--- 004830: Board1 ready
+--- 004830: Running test on device board1
+
+004838-board1: [toit] INFO: entering deep sleep for 50ms
+004893-board1: ets Jun  8 2016 00:22:57
+004893-board1: 
+004893-board1: rst:0x5 (DEEPSLEEP_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+004898-board1: configsip: 0, SPIWP:0xee
+004898-board1: clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+004904-board1: mode:DIO, clock div:2
+004910-board1: load:0x3fff0030,len:268
+004910-board1: ho 0 tail 12 room 4
+004910-board1: load:0x40078000,len:13408
+004915-board1: load:0x40080400,len:4
+004915-board1: load:0x40080404,len:2880
+004920-board1: entry 0x40080558
+004963-board1: [toit] INFO: starting <v2.0.0-alpha.199>
+004963-board1: [toit] INFO: running on ESP32 - revision 1.0
+005033-board1: Wakeup cause: 4
+005033-board1: RUNNING INSTALLED CONTAINER--- 005033: Running test on device board2
+
+005041-board2: [toit] INFO: entering deep sleep for 50ms
+005096-board2: ets Jun  8 2016 00:22:57
+005096-board2: 
+005096-board2: rst:0x5 (DEEPSLEEP_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+005102-board2: configsip: 0, SPIWP:0xee
+005102-board2: clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+005107-board2: mode:DIO, clock div:2
+005113-board2: load:0x3fff0030,len:268
+005113-board2: ho 0 tail 12 room 4
+005113-board2: load:0x40078000,len:13408
+005118-board2: load:0x40080400,len:4
+005118-board2: load:0x40080404,len:2880
+005123-board2: entry 0x40080558
+005166-board2: [toit] INFO: starting <v2.0.0-alpha.199>
+005166-board2: [toit] INFO: running on ESP32 - revision 1.0
+005236-board2: Wakeup cause: 4
+005236-board2: RUNNING INSTALLED CONTAINER
+005296-board2: All tests done.
+005383-board1: I2C frequency=100000 size=257 repetition=0 controller-error=null target expected=257 dropped=0 received=257 mismatch=-1 suffix=0
+005440-board1: I2C frequency=100000 size=257 repetition=1 controller-error=null target expected=257 dropped=0 received=257 mismatch=-1 suffix=0
+005502-board1: I2C frequency=100000 size=257 repetition=2 controller-error=null target expected=257 dropped=0 received=257 mismatch=-1 suffix=0
+005643-board1: I2C frequency=100000 size=1025 repetition=0 controller-error=null target expected=1025 dropped=0 received=1025 mismatch=-1 suffix=0
+005784-board1: I2C frequency=100000 size=1025 repetition=1 controller-error=null target expected=1025 dropped=0 received=1025 mismatch=-1 suffix=0
+005923-board1: I2C frequency=100000 size=1025 repetition=2 controller-error=null target expected=1025 dropped=0 received=1025 mismatch=-1 suffix=0
+005971-board1: I2C frequency=400000 size=257 repetition=0 controller-error=null target expected=257 dropped=0 received=257 mismatch=-1 suffix=0
+006011-board1: I2C frequency=400000 size=257 repetition=1 controller-error=null target expected=257 dropped=0 received=257 mismatch=-1 suffix=0
+006050-board1: I2C frequency=400000 size=257 repetition=2 controller-error=null target expected=257 dropped=0 received=257 mismatch=-1 suffix=0
+006123-board1: I2C frequency=400000 size=1025 repetition=0 controller-error=null target expected=1025 dropped=0 received=1025 mismatch=-1 suffix=0
+006195-board1: I2C frequency=400000 size=1025 repetition=1 controller-error=null target expected=1025 dropped=0 received=1025 mismatch=-1 suffix=0
+006263-board1: I2C frequency=400000 size=1025 repetition=2 controller-error=null target expected=1025 dropped=0 received=1025 mismatch=-1 suffix=0
+006272-board1: All tests done.--- 006272: Board1 done
+--- 006272: Board2 done

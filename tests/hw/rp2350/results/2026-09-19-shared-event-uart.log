@@ -1,0 +1,24 @@
+[toit] RP2350 VM starting
+[toit] flash JEDEC ef4018
+[toit] boot partition=1 type=4 trial/update=4
+uart-rp2350: contract start
+uart-rp2350: invalid configuration checks ok
+uart-rp2350: integer-only pin check ok
+uart-rp2350: reservation checks ok
+uart-rp2350: flow-control mux and break checks ok
+uart-rp2350: contract ok
+uart-rp2350: UART0 open; HELLO
+uart-rp2350: HELLO ok
+uart-rp2350: echo 1 ok @ 115207
+uart-rp2350: echo 31 ok @ 115207
+uart-rp2350: echo 256 ok @ 115207
+uart-rp2350: echo 4096 ok @ 115207
+uart-rp2350: baud 921600 ok
+uart-rp2350: echo 4096 ok @ 921658
+uart-rp2350: overflow and recovery ok
+uart-rp2350: baud 9600 ok
+uart-rp2350: echo 257 ok @ 9600
+uart-rp2350: baud 115200 ok
+uart-rp2350: PASS contract, duplex, baud, buffering, overflow, and recovery
+[toit] VM exited: reason=1 value=0
+[toit] VM teardown complete

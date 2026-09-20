@@ -1,0 +1,7 @@
+[  0.103s] TOIT-OTA REBOOTING
+[  0.504s] USB disconnected
+[  0.955s] USB opened
+[  2.658s] [toit] RP2350 VM starting
+[  2.658s] [toit] flash JEDEC ef4018
+[  2.658s] [toit] boot partition=1 type=4 trial/update=1
+[  2.658s] WARNING: unhandled system message 3

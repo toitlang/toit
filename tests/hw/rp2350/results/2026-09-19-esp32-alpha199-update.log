@@ -1,0 +1,12 @@
+Jaguar CLI: v1.72.0
+Requested firmware SDK: v2.0.0-alpha.199
+Device: opposite-singer
+
+Command:
+  jag firmware update --device opposite-singer
+
+Result:
+  Firmware envelope downloaded from the official v2.0.0-alpha.199 release.
+  Update completed with exit status 0 without a name or Wi-Fi override.
+  jag firmware --device opposite-singer reported Toit SDK v2.0.0-alpha.199.
+  jag ping opposite-singer returned pong after update and after hardware tests.

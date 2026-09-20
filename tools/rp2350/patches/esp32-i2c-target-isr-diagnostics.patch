@@ -1,0 +1,145 @@
+--- a/components/esp_driver_i2c/i2c_slave_v2.c
++++ b/components/esp_driver_i2c/i2c_slave_v2.c
+@@ -5,11 +5,13 @@
+  */
+ 
+ #include <stdint.h>
++#include <inttypes.h>
+ #include <stdbool.h>
+ #include <string.h>
+ #include "sdkconfig.h"
+ #include "soc/soc_caps.h"
+ #include "esp_attr.h"
++#include "esp_cpu.h"
+ #include "esp_rom_gpio.h"
+ #include "driver/gpio.h"
+ #include "hal/gpio_ll.h"
+@@ -472,6 +474,46 @@
+     i2c_hal_context_t *hal = &i2c_slave->base->hal;
+     uint32_t int_mask = 0;
+     i2c_ll_get_intr_mask(hal->dev, &int_mask);
++#if CONFIG_IDF_TARGET_ESP32
++    uint32_t debug_raw = hal->dev->int_raw.val;
++    uint32_t debug_cycle = esp_cpu_get_cycle_count();
++    uint32_t debug_fifo_count = 0;
++    i2c_ll_get_rxfifo_cnt(hal->dev, &debug_fifo_count);
++    i2c_slave->debug_isr_entries++;
++    i2c_slave->debug_core_mask |= 1u << esp_cpu_get_core_id();
++    i2c_slave->debug_raw_or |= debug_raw;
++    i2c_slave->debug_last_raw = debug_raw;
++    i2c_slave->debug_last_mask = int_mask;
++    i2c_slave->debug_last_status = hal->dev->status_reg.val;
++    if (debug_fifo_count > i2c_slave->debug_max_fifo_count) {
++        i2c_slave->debug_max_fifo_count = debug_fifo_count;
++        i2c_slave->debug_status_at_max_fifo = hal->dev->status_reg.val;
++    }
++    if (i2c_slave->debug_last_cycle != 0) {
++        uint32_t gap = debug_cycle - i2c_slave->debug_last_cycle;
++        if (gap > i2c_slave->debug_max_gap_cycles) {
++            i2c_slave->debug_max_gap_cycles = gap;
++        }
++    }
++    i2c_slave->debug_last_cycle = debug_cycle;
++    if (debug_raw & I2C_RXFIFO_OVF_INT_RAW_M) {
++        i2c_slave->debug_raw_overflow_entries++;
++    }
++    if (int_mask & I2C_INTR_SLV_RXFIFO_WM) {
++        i2c_slave->debug_wm_entries++;
++        i2c_slave->debug_requested_drain_bytes += debug_fifo_count;
++    }
++    if (int_mask & I2C_INTR_SLV_COMPLETE) {
++        i2c_slave->debug_complete_entries++;
++        if (debug_fifo_count) {
++            i2c_slave->debug_requested_drain_bytes += debug_fifo_count;
++        }
++    }
++    if ((int_mask & I2C_INTR_SLV_RXFIFO_WM) &&
++        (int_mask & I2C_INTR_SLV_COMPLETE)) {
++        i2c_slave->debug_colatched_entries++;
++    }
++#endif
+     i2c_ll_clear_intr_mask(hal->dev, int_mask);
+     uint32_t rx_fifo_exist_len = 0;
+     i2c_ll_get_rxfifo_cnt(hal->dev, &rx_fifo_exist_len);
+@@ -548,6 +590,9 @@
+ {
+     esp_err_t ret = ESP_OK;
+     if (i2c_slave->base) {
++#if CONFIG_IDF_TARGET_ESP32
++        int debug_port = i2c_slave->base->port_num;
++#endif
+         i2c_ll_disable_intr_mask(i2c_slave->base->hal.dev, I2C_LL_SLAVE_EVENT_INTR);
+         i2c_common_deinit_pins(i2c_slave->base);
+         ret = i2c_release_bus_handle(i2c_slave->base);
+@@ -556,6 +601,32 @@
+             // to the slave and its owned resources.
+             return ret;
+         }
++#if CONFIG_IDF_TARGET_ESP32
++        ESP_LOGE(TAG,
++                 "I2CDIAG port=%d alloc-core=%" PRIu32 " core-mask=0x%" PRIx32
++                 " entries=%" PRIu32 " wm=%" PRIu32 " complete=%" PRIu32
++                 " colatched=%" PRIu32 " raw-ovf=%" PRIu32
++                 " raw-or=0x%08" PRIx32 " last-raw=0x%08" PRIx32
++                 " last-mask=0x%08" PRIx32 " max-fifo=%" PRIu32
++                 " last-status=0x%08" PRIx32 " status-at-max=0x%08" PRIx32
++                 " requested-drain=%" PRIu32 " max-gap-cycles=%" PRIu32,
++                 debug_port,
++                 i2c_slave->debug_alloc_core,
++                 i2c_slave->debug_core_mask,
++                 i2c_slave->debug_isr_entries,
++                 i2c_slave->debug_wm_entries,
++                 i2c_slave->debug_complete_entries,
++                 i2c_slave->debug_colatched_entries,
++                 i2c_slave->debug_raw_overflow_entries,
++                 i2c_slave->debug_raw_or,
++                 i2c_slave->debug_last_raw,
++                 i2c_slave->debug_last_mask,
++                 i2c_slave->debug_max_fifo_count,
++                 i2c_slave->debug_last_status,
++                 i2c_slave->debug_status_at_max_fifo,
++                 i2c_slave->debug_requested_drain_bytes,
++                 i2c_slave->debug_max_gap_cycles);
++#endif
+     }
+     if (i2c_slave->rx_ring_buf) {
+         vRingbufferDeleteWithCaps(i2c_slave->rx_ring_buf);
+@@ -636,6 +707,9 @@
+     }
+     ret = esp_intr_alloc_intrstatus(i2c_periph_signal[i2c_port_num].irq, isr_flags, (uint32_t)i2c_ll_get_interrupt_status_reg(hal->dev), I2C_LL_SLAVE_EVENT_INTR, i2c_slave_isr_handler, i2c_slave, &i2c_slave->base->intr_handle);
+     ESP_GOTO_ON_ERROR(ret, err, TAG, "install i2c slave interrupt failed");
++#if CONFIG_IDF_TARGET_ESP32
++    i2c_slave->debug_alloc_core = esp_cpu_get_core_id();
++#endif
+ 
+     portENTER_CRITICAL(&i2c_slave->base->spinlock);
+     i2c_hal_slave_init(hal);
+--- a/components/esp_driver_i2c/i2c_private.h
++++ b/components/esp_driver_i2c/i2c_private.h
+@@ -249,6 +249,26 @@
+     bool request_pending;                             // target is stretching while waiting for transmit data
+     bool transmit_active;                             // controller is reading from the target
+     bool buffered_write_pending;                      // application will continue a partially buffered response
++#if CONFIG_IDF_TARGET_ESP32
++    // Test-only receive-path diagnostics. These fields are intentionally part
++    // of the isolated diagnostic build and are not a production API.
++    uint32_t debug_alloc_core;
++    uint32_t debug_core_mask;
++    uint32_t debug_isr_entries;
++    uint32_t debug_wm_entries;
++    uint32_t debug_complete_entries;
++    uint32_t debug_colatched_entries;
++    uint32_t debug_raw_overflow_entries;
++    uint32_t debug_raw_or;
++    uint32_t debug_last_raw;
++    uint32_t debug_last_mask;
++    uint32_t debug_last_status;
++    uint32_t debug_status_at_max_fifo;
++    uint32_t debug_max_fifo_count;
++    uint32_t debug_requested_drain_bytes;
++    uint32_t debug_last_cycle;
++    uint32_t debug_max_gap_cycles;
++#endif
+ };
+ 
+ #endif // CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2

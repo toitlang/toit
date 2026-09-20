@@ -1,0 +1,55 @@
+[  0.100s] TOIT-OTA REBOOTING
+[  0.582s] USB disconnected
+[  0.884s] USB opened
+[  2.588s] [toit] RP2350 VM starting
+[  2.588s] [toit] flash JEDEC ef4018
+[  2.588s] [toit] power diagnostic reset=02000000 state=00000200 timer=00010042 time=364432 previous=544f0003
+[  2.588s] [toit] boot partition=1 type=4 trial/update=1
+[  2.989s] container-child: PASS token=boot
+[  3.190s] TOIT-OTA INFO 1 1 1 4194304
+[  3.290s] deep-sleep-rp2350: phase=0 sleep-wakeup=false
+[  3.391s] deep-sleep-rp2350: entering sleep duration-ms=0 with active peripherals
+[  3.391s] [toit] VM exited: reason=3 value=0
+[  3.656s] [toit] VM teardown complete
+[  3.656s] USB disconnected
+[  5.065s] USB opened
+[  6.569s] [toit] RP2350 VM starting
+[  6.569s] [toit] flash JEDEC ef4018
+[  6.569s] [toit] power diagnostic reset=02000000 state=00000200 timer=00010042 time=3187 previous=544f0002
+[  6.569s] [toit] boot partition=1 type=0 trial/update=0
+[  6.569s] TOIT-OTA INFO 1 1 0 4194304
+[  6.970s] container-child: PASS token=boot
+[  6.970s] deep-sleep-rp2350: retained RAM and monotonic clock PASS elapsed-us=3755185
+[  7.171s] deep-sleep-rp2350: phase=1 sleep-wakeup=true
+[  7.271s] TOIT-OTA INFO 1 1 0 4194304
+[  7.271s] deep-sleep-rp2350: entering sleep duration-ms=2000 with active peripherals
+[  7.272s] [toit] VM exited: reason=3 value=2000
+[  7.514s] [toit] VM teardown complete
+[  7.514s] USB disconnected
+[ 15.819s] USB opened
+[ 17.423s] [toit] RP2350 VM starting
+[ 17.423s] [toit] flash JEDEC ef4018
+[ 17.424s] [toit] power diagnostic reset=02000000 state=00000200 timer=00010042 time=10253 previous=544f0002
+[ 17.424s] [toit] boot partition=1 type=0 trial/update=0
+[ 17.524s] TOIT-OTA INFO 1 1 0 4194304
+[ 17.825s] container-child: PASS token=boot
+[ 17.825s] .
+[ 17.825s] ----
+[ 17.825s] Received a Toit system message. Executing the command below will
+[ 17.825s] make it human readable:
+[ 17.825s] ----
+[ 17.825s] jag decode WyNVBVVYU1UbdjIuMC4wLWFscGhhLjE5OS44Kzg5YWEwMDhjU1UZd2VhY3Rfc3R1ZGlvX3JwMjM1MGJfY29yZVskVSNVEI9IQB9wrFw4n/Nxsgqcl2BbI1UEVUVTVRBBU1NFUlRJT05fRkFJTEVEU1UAWyNVAlVTWyNVDlsjbAAAAANVRlUASRRwWyNsAAAAA1VGVQFJFIdbI2wAAAADVUZVAkkUN1sjbAAAAANVRlUDSQWRWyNsAAAAA1VGVQRJAoRbI2wAAAADVUZVBUkEH1sjbAAAAANVRlUGSRKvWyNsAAAAA1VGVQdJFHBbI2wAAAADVUZVCEkUh1sjbAAAAANVRlUJSUeFWyNsAAAAA1VGVQpJR51bI2wAAAADVUZVC0lGwVsjbAAAAANVRlUMSUdJWyNsAAAAA1VGVQ1JEsg=
+[ 18.026s] TOIT-OTA INFO 1 1 0 4194304
+[ 20.031s] TOIT-OTA INFO 1 1 0 4194304
+[ 22.036s] TOIT-OTA INFO 1 1 0 4194304
+[ 24.042s] TOIT-OTA INFO 1 1 0 4194304
+[ 26.047s] TOIT-OTA INFO 1 1 0 4194304
+[ 28.053s] TOIT-OTA INFO 1 1 0 4194304
+[ 30.058s] TOIT-OTA INFO 1 1 0 4194304
+[ 32.063s] TOIT-OTA INFO 1 1 0 4194304
+[ 34.068s] TOIT-OTA INFO 1 1 0 4194304
+[ 36.073s] TOIT-OTA INFO 1 1 0 4194304
+[ 38.079s] TOIT-OTA INFO 1 1 0 4194304
+[ 40.084s] TOIT-OTA INFO 1 1 0 4194304
+[ 42.089s] TOIT-OTA INFO 1 1 0 4194304
+[ 44.094s] TOIT-OTA INFO 1 1 0 4194304

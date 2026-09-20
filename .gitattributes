@@ -17,3 +17,8 @@ tests/font-test.toit -text
 tests/string-large-literal-test.toit -text
 tests/string-trailing-test.toit -text
 tests/string-test.toit -text
+
+# Preserve raw hardware captures and patch context, including recorded hashes.
+tests/hw/rp2350/results/** -text -whitespace
+tests/hw/esp32/results/** -text -whitespace
+tools/rp2350/patches/*.patch -text -whitespace

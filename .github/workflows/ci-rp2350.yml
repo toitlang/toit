@@ -1,0 +1,107 @@
+# Copyright (C) 2026 Toit contributors.
+# Use of this source code is governed by the LGPL-2.1 license that can be
+# found in the LICENSE file.
+
+name: CI RP2350
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ci-rp2350.yml'
+      - '.gitmodules'
+      - 'Makefile'
+      - 'CMakeLists.txt'
+      - 'docs/rp2350-envelope-bundle.md'
+      - 'src/**'
+      - 'lib/**'
+      - 'system/**'
+      - 'mbedtls/**'
+      - 'tests/hw/rp2350/**'
+      - 'third_party/pico-sdk'
+      - 'third_party/FreeRTOS-Kernel'
+      - 'toolchains/rp2350/**'
+      - 'tools/rp2350/**'
+      - 'tools/firmware/**'
+      - 'tools/firmware.toit'
+      - 'tools/rp2350-envelope-test-helper.toit'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # This also defines the oldest supported glibc baseline for the uploader.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Set up host build
+        uses: ./actions/setup-build
+        with:
+          toit-dir: .
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build pkg-config libusb-1.0-0-dev \
+            gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
+      - name: Prepare pinned SDK and picotool
+        run: |
+          make rp2350-setup
+          expected_sdk=$(git ls-files --stage third_party/pico-sdk | awk '{print $2}')
+          actual_sdk=$(git -C third_party/pico-sdk rev-parse HEAD)
+          test -n "$expected_sdk"
+          test "$actual_sdk" = "$expected_sdk"
+      - name: Build native validation firmware
+        run: make rp2350-bringup
+      - name: Build matching host tools and RP2350 VM
+        run: |
+          make host-tools
+          make rp2350 RP2350_CMAKE_FLAGS=-DTOIT_RP2350_OTA=ON
+          build/host/sdk/bin/toit analyze tools/rp2350/tests/library-api-smoke.toit
+      - name: Build and test native OTA uploader
+        run: |
+          make rp2350-ota-upload
+          ctest --test-dir build/rp2350-ota-upload --output-on-failure --no-tests=error
+          tools/rp2350/ota-upload/check-linux-runtime.sh \
+            build/rp2350-ota-upload/ota-upload 2.35
+      - name: Test OTA image parser and hash verification
+        env:
+          PICOTOOL: ${{ github.workspace }}/.cache/rp2350/install/bin/picotool
+          REQUIRE_PICOTOOL: 1
+        run: |
+          tools/rp2350/tests/run_ota_image_parser_tests.sh \
+            build/rp2350-vm/toit-rp2350.bin
+      - name: Check firmware metadata
+        run: |
+          .cache/rp2350/install/bin/picotool info -a build/rp2350/toit-rp2350-bringup.uf2
+          .cache/rp2350/install/bin/picotool info -a build/rp2350-vm/toit-rp2350.uf2
+      - name: Build and test firmware envelopes
+        run: |
+          make rp2350-envelope
+          tools/rp2350/tests/check-persistent-data.sh \
+            build/rp2350-envelope/toit-rp2350.elf
+          tools/rp2350/tests/run_envelope_tests.sh \
+            build/rp2350-envelope/toit-rp2350.bin \
+            build/rp2350-envelope/system.snapshot \
+            build/rp2350-envelope/partitions-experimental.uf2
+      - name: Check distributable envelope bundle
+        run: |
+          bundle=build/rp2350-envelope/toit-rp2350-linux-x86_64
+          archive="$bundle.tar.gz"
+          test -f "$bundle/firmware.envelope"
+          test -f "$bundle/recovery.uf2"
+          test -x "$bundle/ota-upload"
+          test -f "$bundle/README.md"
+          test -f "$bundle/LICENSE"
+          test -f "$archive"
+          "$bundle/ota-upload" --help >/dev/null
+          temporary=$(mktemp -d)
+          tar -xzf "$archive" -C "$temporary"
+          "$temporary/$(basename "$bundle")/ota-upload" --help >/dev/null
+      - name: Upload distributable envelope bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: toit-rp2350-linux-x86_64
+          path: build/rp2350-envelope/toit-rp2350-linux-x86_64.tar.gz

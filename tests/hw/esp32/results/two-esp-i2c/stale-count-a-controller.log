@@ -1,0 +1,102 @@
+
+
+--- 000000: Attempt 1 of 1
+--- 000001: Connecting to board1
+--- 000002: Compiling test
+--- 000213: Converting snapshot to image
+
+000510-board1: ets Jun  8 2016 00:22:57
+000510-board1: 
+000510-board1: rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+000515-board1: configsip: 0, SPIWP:0xee
+000515-board1: clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+000521-board1: mode:DIO, clock div:2
+000526-board1: load:0x3fff0030,len:268
+000526-board1: ho 0 tail 12 room 4
+000526-board1: load:0x40078000,len:13408
+000532-board1: load:0x40080400,len:4
+000532-board1: load:0x40080404,len:2880
+000536-board1: entry 0x40080558
+001157-board1: [toit] INFO: starting <v2.0.0-alpha.199>
+001157-board1: [toit] DEBUG: clearing RTC memory: invalid checksum
+001162-board1: [toit] INFO: running on ESP32 - revision 1.0
+001226-board1: Wakeup cause: 0
+001231-board1: UART-BAUD-RATE-REQUEST: 921600
+001300-board1: UART-BAUD-RATE-SYNCED
+001300-board1: MINI-JAG LISTENING--- 001300: Sending test to device board1
+
+001304-board1: ARGS: 
+001333-board1: Clearing old containers
+001488-board1: SIZE: 46464
+002865-board1: READY FOR CHUNK: 0
+002900-board1: READY FOR CHUNK: 1024
+002941-board1: READY FOR CHUNK: 2048
+002979-board1: READY FOR CHUNK: 3072
+003017-board1: READY FOR CHUNK: 4096
+003052-board1: READY FOR CHUNK: 5120
+003089-board1: READY FOR CHUNK: 6144
+003127-board1: READY FOR CHUNK: 7168
+003165-board1: READY FOR CHUNK: 8192
+003201-board1: READY FOR CHUNK: 9216
+003240-board1: READY FOR CHUNK: 10240
+003278-board1: READY FOR CHUNK: 11264
+003315-board1: READY FOR CHUNK: 12288
+003350-board1: READY FOR CHUNK: 13312
+003388-board1: READY FOR CHUNK: 14336
+003426-board1: READY FOR CHUNK: 15360
+003464-board1: READY FOR CHUNK: 16384
+003500-board1: READY FOR CHUNK: 17408
+003537-board1: READY FOR CHUNK: 18432
+003575-board1: READY FOR CHUNK: 19456
+003612-board1: READY FOR CHUNK: 20480
+003648-board1: READY FOR CHUNK: 21504
+003686-board1: READY FOR CHUNK: 22528
+003722-board1: READY FOR CHUNK: 23552
+003760-board1: READY FOR CHUNK: 24576
+003795-board1: READY FOR CHUNK: 25600
+003833-board1: READY FOR CHUNK: 26624
+003871-board1: READY FOR CHUNK: 27648
+003907-board1: READY FOR CHUNK: 28672
+003942-board1: READY FOR CHUNK: 29696
+003980-board1: READY FOR CHUNK: 30720
+004017-board1: READY FOR CHUNK: 31744
+004056-board1: READY FOR CHUNK: 32768
+004093-board1: READY FOR CHUNK: 33792
+004130-board1: READY FOR CHUNK: 34816
+004168-board1: READY FOR CHUNK: 35840
+004206-board1: READY FOR CHUNK: 36864
+004244-board1: READY FOR CHUNK: 37888
+004279-board1: READY FOR CHUNK: 38912
+004317-board1: READY FOR CHUNK: 39936
+004354-board1: READY FOR CHUNK: 40960
+004392-board1: READY FOR CHUNK: 41984
+004430-board1: READY FOR CHUNK: 43008
+004466-board1: READY FOR CHUNK: 44032
+004503-board1: READY FOR CHUNK: 45056
+004540-board1: READY FOR CHUNK: 46080--- 004541: Waiting for test to be fully installed
+
+004560-board1: WRITTEN: 46464
+004573-board1: INSTALLED CONTAINER
+004573-board1: WAITING FOR RUN-SIGNAL--- 004573: Board1 ready
+--- 004573: Running test on device board1
+
+004582-board1: ;f�v7ets Jun  8 2016 00:22:57
+004636-board1: 
+004636-board1: rst:0x5 (DEEPSLEEP_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+004642-board1: configsip: 0, SPIWP:0xee
+004642-board1: clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+004647-board1: mode:DIO, clock div:2
+004653-board1: load:0x3fff0030,len:268
+004653-board1: ho 0 tail 12 room 4
+004653-board1: load:0x40078000,len:13408
+004658-board1: load:0x40080400,len:4
+004658-board1: load:0x40080404,len:2880
+004663-board1: entry 0x40080558
+004706-board1: [toit] INFO: starting <v2.0.0-alpha.199>
+004706-board1: [toit] INFO: running on ESP32 - revision 1.0
+004776-board1: Wakeup cause: 4
+004776-board1: RUNNING INSTALLED CONTAINER
+004860-board1: controller repetition=0 error=null
+004879-board1: controller repetition=1 error=null
+004900-board1: controller repetition=2 error=null
+004900-board1: All tests done.--- 004900: Board1 done
