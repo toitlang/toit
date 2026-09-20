@@ -57,8 +57,10 @@ and copy it onto the mounted ROM drive. This uses the mass-storage interface
 and does not require the picotool access rule. Updates through the running
 application's serial port also do not require this rule.
 
-Windows requires a WinUSB driver for the picoboot interface. The native uploader
-uses the application's serial port and does not require that USB driver.
+On Windows, RP2350 ROM flashing does not need the manual WinUSB driver
+installation required for RP2040; see the upstream
+[picotool driver notes](https://github.com/raspberrypi/picotool#zadig).
+The native uploader uses the application's serial port.
 
 ## Dependency notices and replacement
 
