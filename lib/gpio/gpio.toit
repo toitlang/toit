@@ -61,8 +61,8 @@ Pins 15-21 are reserved for flash.
 Pins 2, 3, 8, 9, and 25 are strapping pins.
 Pins 26-27 are used by USB Serial/JTAG.
 Pins 1-5 are ADC pins of channel 1.
-Pins 7-14 are RTC pins and can be used in deep sleep, subject to package and
-  board availability. Pins 13-14 may be connected to a board's 32 kHz crystal.
+Pins 7-14 are RTC pins and can be used in deep sleep.
+Pins 13-14 may be connected to a board's 32 kHz crystal.
 
 # ESP32P4
 The ESP32P4 has 55 physical pins (0-54). Each pin can be used as

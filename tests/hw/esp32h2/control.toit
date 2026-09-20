@@ -2,47 +2,85 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import expect show *
-import uart
+import gpio
+import gpio.adc as adc
+import gpio.pwm as pwm
+import pulse-counter
+import .session
 import .wiring
 
-PING ::= 0
-INPUT ::= 1
-OUTPUT ::= 2
-READ ::= 3
-DAC ::= 4
-PULSES ::= 5
-DELAYED-OUTPUT ::= 6
-DONE ::= 7
-ECHO ::= 8
-COUNT ::= 9
-ACK ::= 0xa5
+/** Executes operations on the testee, returning observations without a verdict. */
+class Testee:
+  pins_/Map := {:}
+  counter_/pulse-counter.Unit? := null
+  analog_/adc.Adc? := null
+  pwm_/pwm.Pwm? := null
+  channel_/pwm.PwmChannel? := null
 
-class Control:
-  port/uart.Port ::= uart.Port --rx=H2-RX --tx=H2-TX --baud-rate=115200
+  serve session/Session:
+    try:
+      while true:
+        request := session.receive
+        op := request[0]
+        if op == "end": return
+        session.send (execute_ request)
+    finally:
+      pins_.values.do: it.close
+      if counter_: counter_.close
+      if analog_: analog_.close
+      if channel_: channel_.close
+      if pwm_: pwm_.close
 
-  constructor:
-    // The runner starts the helper after the H2 container has started.
-    sleep --ms=1500
-    command PING 0 0
+  execute_ request/List -> any:
+    op := request[0]
+    if op == "echo": return request[1]
+    if op == "pin":
+      pin := request[1]
+      if not GPIO-LINKS.contains pin: throw "Unsafe testee pin: $pin"
+      old := pins_.get pin
+      pins_.remove pin
+      if old: old.close
+      pins_[pin] = request[2] == "input"
+          ? (gpio.Pin pin --input)
+          : (gpio.Pin pin --output --value=0)
+      return null
+    if op == "set":
+      pins_[request[1]].set request[2]
+      return null
+    if op == "open-drain":
+      pins_[request[1]].set-open-drain true
+      return null
+    if op == "read": return pins_[request[1]].get
+    if op == "wait":
+      pins_[request[1]].wait-for request[2]
+      return pins_[request[1]].get
+    if op == "pull":
+      pin := pins_[request[1]]
+      if request[2] == 0: pin.set-pull --off
+      else if request[2] == 1: pin.set-pull --up
+      else: pin.set-pull --down
+      return null
+    if op == "adc":
+      if not analog_: analog_ = adc.Adc H2-ADC
+      return analog_.get --samples=128
+    if op == "counter-start":
+      counter_ = pulse-counter.Unit 1
+      return null
+    if op == "counter-read": return counter_.value
+    if op == "pwm":
+      pwm_ = pwm.Pwm --frequency=request[1]
+      channel_ = pwm_.start 1 --duty-factor=0.5
+      return null
+    throw "Unknown testee operation: $op"
 
-  command op/int pin/int value/int -> none:
-    port.out.write #[0x93, 0x7a, op, pin, value, op ^ pin ^ value ^ 0xff]
-    expect-equals ACK port.in.read-byte
+call session/Session request/List -> any:
+  session.send request
+  return session.receive
 
-  read pin/int -> int:
-    command READ pin 0
-    return port.in.read-byte
-
-  count pin/int -> int:
-    command COUNT pin 0
-    return port.in.little-endian.read-uint16
-
-  echo data/ByteArray:
-    command ECHO (data.size >> 8) (data.size & 255)
-    port.out.write data
-    expect-equals data (port.in.read-bytes data.size)
-
-  close:
-    command DONE 0 0
-    port.close
+run-case session/Session name/string [tester]:
+  session.run-case name:
+    if IS-TESTEE:
+      (Testee).serve session
+    else:
+      tester.call
+      session.send ["end"]

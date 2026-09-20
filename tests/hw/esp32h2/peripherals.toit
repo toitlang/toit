@@ -4,83 +4,96 @@
 
 import expect show *
 import gpio
-import gpio.adc as adc
-import gpio.pwm as pwm
+import gpio.dac as dac
 import pulse-counter
-import .control
+import .control as control
+import .session
 import .wiring
 
 main:
-  control := Control
+  session := Session
+  reserved := IS-TESTEE ? null : (gpio.Pin 25 --input)
   try:
     [1, 17, 255, 1024, 4096].do: | size |
-      control.echo (ByteArray size: (it * 37 + size) & 255)
-    print "UART bidirectional payloads passed"
+      control.run-case session "UART $size":
+        data := ByteArray size: (it * 37 + size) & 255
+        expect-equals data (control.call session ["echo", data])
     GPIO-LINKS.do: | pin peer |
-      control.command INPUT peer 0
-      local := gpio.Pin pin --output
-      [1, 0, 1, 0].do: | value |
-        local.set value
-        expect-equals value (control.read peer)
-      local.set-open-drain true
-      control.command INPUT peer 1
-      [1, 0, 1].do: | value |
-        local.set value
-        expect-equals value (control.read peer)
-      local.close
-      control.command OUTPUT peer 0
-      local = gpio.Pin pin --input
-      [1, 0].do: | value |
-        control.command DELAYED-OUTPUT peer value
-        local.wait-for value
-        expect-equals value local.get
-      local.close
-      control.command INPUT peer 0
-    print "GPIO output, open drain, input, and interrupt checks passed"
-
-    control.command INPUT HELPER-PULL 0
-    local := gpio.Pin H2-PULL --input
-    [0, 1].do: | bias |
-      control.command OUTPUT HELPER-BIAS bias
-      local.set-pull --off
-      sleep --ms=10
-      expect-equals bias local.get
-      local.set-pull --up
-      sleep --ms=10
-      expect-equals 1 local.get
-      local.set-pull --down
-      sleep --ms=10
-      expect-equals 0 local.get
-    local.close
-    control.command INPUT HELPER-BIAS 0
-    print "GPIO pulls passed against 1 MOhm bias"
-
-    analog := adc.Adc H2-ADC
-    [0.3, 0.8, 1.5].do: | voltage |
-      control.command DAC HELPER-DAC (voltage * 100).to-int
-      sleep --ms=20
-      measured := analog.get --samples=128
-      print "ADC requested=$voltage measured=$measured"
-      expect (measured - voltage).abs < 0.2
-    analog.close
-    control.command INPUT HELPER-DAC 0
-
-    control.command OUTPUT 14 0
-    unit := pulse-counter.Unit 1
-    control.command PULSES 14 100
-    expect-equals ACK control.port.in.read-byte
-    expect-equals 100 unit.value
-    unit.close
-    control.command INPUT 14 0
-    print "Pulse counter passed"
-
-    generator := pwm.Pwm --frequency=1000
-    channel := generator.start 1 --duty-factor=0.5
-    count := control.count 14
-    print "PWM pulses in 200ms: $count"
-    expect 180 <= count <= 220
-    channel.close
-    generator.close
+      control.run-case session "GPIO $pin output/open-drain/input/interrupt":
+        local := gpio.Pin peer --input
+        try:
+          control.call session ["pin", pin, "output"]
+          [1, 0, 1, 0].do: | value |
+            control.call session ["set", pin, value]
+            expect-equals value local.get
+          control.call session ["open-drain", pin]
+          local.set-pull --up
+          [1, 0, 1].do: | value |
+            control.call session ["set", pin, value]
+            expect-equals value local.get
+        finally:
+          local.close
+        control.call session ["pin", pin, "input"]
+        local = gpio.Pin peer --output --value=0
+        try:
+          [1, 0].do: | value |
+            session.send ["wait", pin, value]
+            sleep --ms=50
+            local.set value
+            expect-equals value session.receive
+            expect-equals value (control.call session ["read", pin])
+        finally:
+          local.close
+    control.run-case session "GPIO pulls against 1 MOhm bias":
+      observer := gpio.Pin HELPER-PULL --input
+      bias := gpio.Pin HELPER-BIAS --output --value=0
+      try:
+        control.call session ["pin", H2-PULL, "input"]
+        [0, 1].do: | value |
+          bias.set value
+          [0, 1, 2].do: | pull |
+            control.call session ["pull", H2-PULL, pull]
+            sleep --ms=10
+            expected := pull == 0 ? value : (pull == 1 ? 1 : 0)
+            expect-equals expected observer.get
+            expect-equals expected (control.call session ["read", H2-PULL])
+      finally:
+        bias.close
+        observer.close
+    control.run-case session "ADC":
+      analog := dac.Dac HELPER-DAC --initial-voltage=0.3
+      try:
+        [0.3, 0.8, 1.5].do: | voltage |
+          analog.set voltage
+          sleep --ms=20
+          measured := control.call session ["adc"]
+          print "ADC stimulus=$voltage observed=$measured"
+          expect (measured - voltage).abs < 0.2
+      finally:
+        analog.close
+    control.run-case session "Pulse counter":
+      pin := gpio.Pin 14 --output --value=0
+      try:
+        control.call session ["counter-start"]
+        100.repeat:
+          pin.set 1
+          sleep --ms=1
+          pin.set 0
+          sleep --ms=1
+        expect-equals 100 (control.call session ["counter-read"])
+      finally:
+        pin.close
+    control.run-case session "PWM":
+      control.call session ["pwm", 1000]
+      counter := pulse-counter.Unit 14
+      try:
+        sleep --ms=200
+        count := counter.value
+        print "PWM pulses in 200ms: $count"
+        expect 180 <= count <= 220
+      finally:
+        counter.close
+    session.finish
   finally:
-    control.close
-  print "All tests done"
+    if reserved: reserved.close
+    session.close

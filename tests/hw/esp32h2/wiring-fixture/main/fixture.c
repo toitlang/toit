@@ -15,6 +15,8 @@
 
 #if CONFIG_IDF_TARGET_ESP32H2
 static const int pins[] = {0, 1, 2, 3, 4, 5, 10};
+// The bootstrap fixture runs on both boards; reject other targets rather
+// than silently using the wrong board's pin whitelist.
 #elif CONFIG_IDF_TARGET_ESP32
 static const int pins[] = {12, 13, 14, 26, 27, 32, 33, 35};
 #else

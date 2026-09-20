@@ -5,14 +5,22 @@
 import esp32
 import expect show *
 import system
+import .session
 
 main:
-  expect-equals system.ARCHITECTURE-ESP32H2 system.architecture
-  expect-equals 6 esp32.mac-address.size
-  expect-equals 3840 esp32.RTC-MEMORY-SIZE  // @no-warn
-  expect-equals esp32.RTC-MEMORY-SIZE esp32.rtc-user-bytes.size  // @no-warn
-  expect-equals "12345678901234" "$(12345678901234)"
-  expect-equals "b3a73ce2ff2" "$(%x 12345678901234)"
-  expect-equals 15 ([1, 2, 3, 4, 5].reduce: | a b | a + b)
-  print "H2 basic runtime checks passed"
-  print "All tests done"
+  session := Session
+  try:
+    session.run-case "Runtime identity and RTC memory":
+      report := null
+      if IS-TESTEE:
+        report = [system.architecture, esp32.mac-address.size,
+            esp32.RTC-MEMORY-SIZE, esp32.rtc-user-bytes.size,  // @no-warn
+            "$(12345678901234)", "$(%x 12345678901234)",
+            ([1, 2, 3, 4, 5].reduce: | a b | a + b)]
+      observed := session.observation report
+      if not IS-TESTEE:
+        expect-equals [system.ARCHITECTURE-ESP32H2, 6, 3840, 3840,
+            "12345678901234", "b3a73ce2ff2", 15] observed
+    session.finish
+  finally:
+    session.close

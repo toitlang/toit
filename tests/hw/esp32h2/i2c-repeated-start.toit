@@ -2,24 +2,21 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import system
-import uart
+import expect show *
 import .buses as buses
-import .wiring
+import .session
 
 main:
-  h2 := system.architecture == system.ARCHITECTURE-ESP32H2
-  port := uart.Port
-      --rx=(h2 ? H2-RX : HELPER-RX)
-      --tx=(h2 ? H2-TX : HELPER-TX)
-      --baud-rate=115200
-  if h2: sleep --ms=1500
+  session := Session
   try:
     [50_000, 100_000].do: | frequency |
-      // Exercise both sides of the controller's 32-byte FIFO boundaries.
+      // The tester checks every written byte. H2 reports its received response,
+      // which the tester also compares with its independently generated data.
       [17, 19, 30, 31, 32, 33, 62, 63, 64, 65, 94, 95, 96, 127, 128, 129, 255, 256, 1024].do: | size |
-        print "Repeated-start write size $size frequency=$frequency"
-        buses.i2c-case port h2 frequency size
+        session.run-case "I2C boundary size=$size frequency=$frequency":
+          observed := buses.i2c-case session.port IS-TESTEE frequency size
+          response := session.observation observed
+          if not IS-TESTEE: expect-equals (buses.pattern 32 123) response
+    session.finish
   finally:
-    port.close
-  print "All tests done"
+    session.close

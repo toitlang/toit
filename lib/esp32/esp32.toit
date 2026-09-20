@@ -173,7 +173,7 @@ The following GPIO pins can be used:
 - ESP32: 0, 2, 4, 12-15, 25-27, 32-39
 - ESP32-S2: 0-21
 - ESP32-S3: 0-21
-- ESP32-H2: 7-14, subject to package and board availability
+- ESP32-H2: 7-14
 
 Support for the ESP32-C3 is not yet implemented.
 
