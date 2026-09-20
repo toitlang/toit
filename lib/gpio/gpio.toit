@@ -54,6 +54,16 @@ Pins 0-7 are RTC pins and can be used in deep-sleep.
 For chip variants without an in-package flash, GPIO14 is not led out to any
   chip pins.
 
+# ESP32H2
+The ESP32H2 has GPIO numbers 0-27.
+Pins 6-7 and 15-21 are not exposed on variants with in-package flash.
+Pins 15-21 are reserved for flash.
+Pins 2, 3, 8, 9, and 25 are strapping pins.
+Pins 26-27 are used by USB Serial/JTAG.
+Pins 1-5 are ADC pins of channel 1.
+Pins 7-14 are RTC pins and can be used in deep sleep, subject to package and
+  board availability. Pins 13-14 may be connected to a board's 32 kHz crystal.
+
 # ESP32P4
 The ESP32P4 has 55 physical pins (0-54). Each pin can be used as
   a general-purpose pin, or be connected to a peripheral.
