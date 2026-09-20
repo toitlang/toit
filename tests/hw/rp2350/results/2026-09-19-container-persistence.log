@@ -1,3 +1,0 @@
-container-persistence-rp2350: PASS installed image survived OTA, auto-started, and uninstalled
-RP2350 application completed
-container-child: PASS token=boot

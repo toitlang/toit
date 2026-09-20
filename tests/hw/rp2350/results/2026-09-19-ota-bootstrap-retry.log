@@ -1,5 +1,0 @@
-[toit] RP2350 VM starting
-[toit] flash JEDEC ef4018
-[toit] boot partition=1 type=4 trial/update=1
-WARNING: unhandled system message 2
-RP2350 system startup failed: UNSUPPORTED

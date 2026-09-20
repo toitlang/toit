@@ -1,3 +1,0 @@
-container-child: PASS token=boot
-envelope-rp2350: PASS existing flash bucket and region survived recovery
-envelope-rp2350: PASS bundled container, assets, config, GC, and storage RPC

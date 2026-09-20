@@ -1,6 +1,0 @@
-[  23.427s] target-event-stress-esp32: phase=0 PASS
-[  24.086s] target-event-stress-esp32: phase=1 PASS
-[  24.736s] target-event-stress-esp32: phase=2 PASS
-[  25.404s] target-event-stress-esp32: phase=3 PASS
-[  25.414s] target-event-stress-esp32: PASS concurrent I2C/SPI and GPIO stimulus
-[  25.424s] [jaguar] INFO: program 80f65282-1204-6b67-4c53-313fb5b0a079 stopped

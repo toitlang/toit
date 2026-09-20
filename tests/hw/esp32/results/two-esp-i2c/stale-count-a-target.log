@@ -1,5 +1,0 @@
-I (40545) i2c-stale-count: RESULT repetition=0 raw=0x00000893 fifo=20 length=40 mismatch=20 driver-overflow=0 raw-overflow=0
-I (40575) i2c-stale-count: RESULT repetition=1 raw=0x00000893 fifo=20 length=40 mismatch=20 driver-overflow=0 raw-overflow=0
-I (40595) i2c-stale-count: RESULT repetition=2 raw=0x00000893 fifo=20 length=40 mismatch=20 driver-overflow=0 raw-overflow=0
-I (40595) i2c-stale-count: COMPLETE
-I (40595) main_task: Returned from app_main()

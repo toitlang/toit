@@ -1,7 +1,0 @@
-[toit] RP2350 VM starting
-RP2350 Toit VM smoke starting
-RP2350 VM/GC/timer smoke: PASS (1347 collections)
-gpio-resource-rp2350: PASS
-gpio-interrupt-rp2350: PASS 100 transitions
-[toit] VM exited: reason=1 value=0
-[toit] VM teardown complete

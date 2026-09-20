@@ -1,6 +1,0 @@
-baseline: partition=0 trial=0 slot=4194304 image=504224
-wrong-transport-sha: PASS error='firmware: checksum mismatch' INFO=partition0/trial0
-bad-rom-image-sha@8192: PASS error='INVALID_ARGUMENT' INFO=partition0/trial0
-terminal-tbyb-cleared@504116: PASS error='INVALID_ARGUMENT' INFO=partition0/trial0
-truncated-timeout@8192/504224: PASS error='DEADLINE_EXCEEDED' INFO=partition0/trial0
-ota-negative-test: PASS
