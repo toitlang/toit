@@ -38,13 +38,24 @@ contains its own partition table. Other UF2 files may use a different loading
 procedure. Normal ROM version selection still applies to preserved slot B;
 recovery does not promise a downgrade.
 
-On Linux, an administrator can install the supplied access rule, reload udev,
-and reconnect the board:
+ROM flashing with picotool uses the PICOBOOT USB interface, separate from the
+ROM's mass-storage interface. Permission to mount the removable drive does not
+grant direct USB access to picotool.
+
+On Linux, the Toit Debian package installs the USB access rule automatically.
+For SDK archives or standalone bundles, an administrator installs the supplied
+rule once, reloads udev, and reconnects the board:
 
 ```sh
 sudo install -m 0644 lib/toit/rp2350/60-picotool.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules
 ```
+
+Alternatively, extract a recovery UF2 with
+`toit tool firmware -e firmware.envelope extract --format=image --output=recovery.uf2`
+and copy it onto the mounted ROM drive. This uses the mass-storage interface
+and does not require the picotool access rule. Updates through the running
+application's serial port also do not require this rule.
 
 Windows requires a WinUSB driver for the picoboot interface. The native uploader
 uses the application's serial port and does not require that USB driver.

@@ -24,8 +24,10 @@ toit tool firmware -e firmware.envelope flash --bootloader --serial BOARD_SERIAL
 board is connected. ROM boot mode has no application serial port. The command
 generates the recovery UF2 from the envelope, so installed containers, assets
 and configuration are included. Loading uses USB directly; no mounted drive
-or manual extraction is needed. Linux requires permission to access the USB
-device; the flasher bundle supplies a udev rule for that purpose.
+or manual extraction is needed. On Linux, the Debian package installs the USB
+access rule automatically; SDK archives need a one-time setup. See
+[flashing tools](rp2350-flasher.md) for that setup and the alternative of copying
+a recovery UF2 onto the mounted ROM drive.
 
 Recovery writes the partition table and slot A, preserving slot B and the
 registry. It starts confirmed rather than as a trial. The ROM's normal version
