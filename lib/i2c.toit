@@ -561,6 +561,8 @@ class Bus:
     `UNIMPLEMENTED` there.
   */
   scan --timeout-ms/int=100 -> Set:
+    // TODO(rp2350): Probe in software by temporarily switching the bus's
+    // reserved SDA/SCL pins to GPIO, then restore their I2C function.
     if timeout-ms <= 0: throw "INVALID_ARGUMENT"
     result := {}
     for i := 0x08; i < 0x78; i++:

@@ -41,7 +41,7 @@ static const double kAdcCodeCount = 4096.0;
 static_assert(NUM_ADC_CHANNELS == 5 || NUM_ADC_CHANNELS == 9,
               "unexpected RP2350 ADC input count");
 
-static bool adc_initialized = false;
+static int adc_users = 0;
 
 static bool is_adc_pin(int pin) {
   return pin >= static_cast<int>(ADC_BASE_PIN) &&
@@ -56,6 +56,17 @@ class AdcResource : public SimpleResource {
       : SimpleResource(group), pin_(pin) {}
 
   ~AdcResource() override {
+    {
+      Locker locker(OS::global_mutex());
+      ASSERT(adc_users > 0);
+      gpio_deinit(pin_);
+      if (--adc_users == 0) {
+        // The SDK has no adc_deinit. Stop conversions and turn the block off;
+        // adc_init resets and enables it when the next resource is opened.
+        adc_run(false);
+        hw_clear_bits(&adc_hw->cs, ADC_CS_EN_BITS);
+      }
+    }
     gpio_pool_put(pin_);
   }
 
@@ -67,8 +78,8 @@ class AdcResource : public SimpleResource {
 };
 
 // Selects the resource's channel and discards conversions to settle the ADC's
-// sample-and-hold after a mux change. This matters for the rig's 10 kohm source
-// on GP41 and also keeps sequential reads independent of the previous channel.
+// sample-and-hold after a mux change. This keeps sequential reads independent
+// of the previous channel, including with a high-impedance source.
 static void select_and_settle(AdcResource* resource) {
   adc_select_input(resource->channel());
   for (int i = 0; i < kSettleSamples; i++) adc_read();
@@ -90,21 +101,18 @@ PRIMITIVE(init) {
   if (!is_adc_pin(pin)) FAIL(OUT_OF_RANGE);
   if (!gpio_pool_take(pin)) FAIL(ALREADY_IN_USE);
 
-  {
-    // RP2350 has one ADC shared by every input. Initialization, mux selection,
-    // and conversions are serialized on this lock.
-    Locker locker(OS::global_mutex());
-    if (!adc_initialized) {
-      adc_init();
-      adc_initialized = true;
-    }
-    adc_gpio_init(pin);
-  }
-
   AdcResource* resource = _new AdcResource(group, pin);
   if (resource == null) {
     gpio_pool_put(pin);
     FAIL(MALLOC_FAILED);
+  }
+
+  {
+    // RP2350 has one ADC shared by every input. Initialization, mux selection,
+    // conversions, and shutdown are serialized on this lock.
+    Locker locker(OS::global_mutex());
+    if (adc_users++ == 0) adc_init();
+    adc_gpio_init(pin);
   }
 
   proxy->set_external_address(resource);

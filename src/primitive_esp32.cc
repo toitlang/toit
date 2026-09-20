@@ -31,6 +31,7 @@
 
 #include "uuid.h"
 #include "vm.h"
+#include "watchdog.h"
 
 #include <atomic>
 #include <errno.h>
