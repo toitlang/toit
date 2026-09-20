@@ -7,3 +7,10 @@
 	path = third_party/luatos-soc-ec618
 	url = https://github.com/toitlang/luatos-soc-2022.git
 	branch = floitsch/bring-up-cleaned
+[submodule "third_party/pico-sdk"]
+	path = third_party/pico-sdk
+	url = https://github.com/toitlang/pico-sdk.git
+	branch = toit-2.3.1
+[submodule "third_party/FreeRTOS-Kernel"]
+	path = third_party/FreeRTOS-Kernel
+	url = https://github.com/FreeRTOS/FreeRTOS-Kernel.git

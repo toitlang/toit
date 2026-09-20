@@ -1,0 +1,44 @@
+TOIT-OTA REBOOTING
+[USB reconnect]
+[toit] RP2350 VM starting
+[toit] flash JEDEC ef4018
+[toit] boot partition=1 type=4 trial/update=1
+[test] injecting native system-oom
+RP2350 heap: out of memory in primitive 0:121
+[toit] native panic; rebooting[USB reconnect]
+[toit] RP2350 VM starting
+[toit] flash JEDEC ef4018
+[toit] boot partition=0 type=0 trial/update=0
+TOIT-OTA VALIDATED 0
+TOIT-OTA INFO 1 0 0 4194304
+TOIT-OTA INFO 1 0 0 4194304
+
+[host] confirmed recovery 3.46s after fault marker
+container-child: PASS token=boot
+TOIT-OTA INFO 1 0 0 4194304
+TOIT-OTA INFO 1 0 0 4194304
+memory-pressure-rp2350: starting
+RP2350 heap: out of memory in primitive 0:121
+RP2350 heap: out of memory in primitive 0:121
+RP2350 heap: out of memory in primitive 0:121
+RP2350 heap: out of memory in primitive 0:121
+RP2350 heap: out of memory in primitive 0:121
+RP2350 heap: out of memory in primitive 0:121
+RP2350 heap: out of memory in primitive 0:121
+RP2350 heap: out of memory in primitive 0:121
+RP2350 heap: out of memory in primitive 0:121
+RP2350 heap: out of memory in primitive 0:121
+RP2350 heap: out of memory in primitive 0:121
+RP2350 heap: out of memory in primitive 0:121
+RP2350 heap: out of memory in primitive 0:121
+RP2350 heap: out of memory in primitive 0:121
+RP2350 heap: out of memory in primitive 0:121
+RP2350 heap: out of memory in primitive 0:121
+RP2350 heap: out of memory in primitive 0:121
+RP2350 heap: out of memory in primitive 0:121
+RP2350 heap: out of memory in primitive 0:121
+RP2350 heap: out of memory in primitive 0:121
+memory-pressure-rp2350: PASS rejected oversized allocations, retained data, GC, and timers
+RP2350 application completed
+TOIT-OTA INFO 1 0 0 4194304
+TOIT-OTA INFO 1 0 0 4194304

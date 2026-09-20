@@ -1,0 +1,35 @@
+[   0.003s] capture sent TOIT-OTA REBOOT
+[   0.013s] TOIT-OTA REBOOTING
+[   0.592s] capture observed serial disconnect
+[   0.998s] capture reopened serial port
+[   2.633s] [toit] RP2350 VM starting
+[   2.633s] [toit] flash JEDEC ef4018
+[   2.633s] [toit] boot partition=0 type=4 trial/update=1
+[   2.745s] i2c-target-rp2350: waiting 20 seconds for ESP32 peer
+[   3.070s] TOIT-OTA INFO 1 0 1 4194304
+[   3.202s] container-child: PASS token=boot
+[   3.284s] envelope-rp2350: PASS existing flash bucket and region survived recovery
+[   3.334s] envelope-rp2350: PASS bundled container, assets, config, GC, storage RPC, and identity
+[   5.030s] TOIT-OTA INFO 1 0 0 4194304
+[   7.033s] TOIT-OTA INFO 1 0 0 4194304
+[   9.035s] TOIT-OTA INFO 1 0 0 4194304
+[  11.034s] TOIT-OTA INFO 1 0 0 4194304
+[  13.045s] TOIT-OTA INFO 1 0 0 4194304
+[  15.043s] TOIT-OTA INFO 1 0 0 4194304
+[  17.057s] TOIT-OTA INFO 1 0 0 4194304
+[  19.061s] TOIT-OTA INFO 1 0 0 4194304
+[  21.066s] TOIT-OTA INFO 1 0 0 4194304
+[  23.030s] I2C0 addressable target PASS
+[  23.061s] TOIT-OTA INFO 1 0 0 4194304
+[  23.325s] I2C1 addressable target PASS
+[  23.325s] I2C0 10-bit arm
+[  23.335s] I2C0 10-bit controller write
+[  23.346s] I2C0 10-bit target receive
+[  23.346s] I2C0 10-bit controller read
+[  23.356s] I2C0 general-call arm
+[  23.366s] I2C0 general-call controller write
+[  23.377s] I2C0 general-call target receive
+[  23.377s] I2C0 10-bit and general-call target PASS
+[  23.418s] I2C0 register target PASS
+[  23.428s] i2c-target-rp2350: PASS both controllers and register target
+[  25.074s] TOIT-OTA INFO 1 0 0 4194304

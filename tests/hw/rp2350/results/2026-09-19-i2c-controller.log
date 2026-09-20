@@ -1,0 +1,10 @@
+[toit] RP2350 VM starting
+[toit] flash JEDEC ef4018
+[toit] boot partition=0 type=4 trial/update=0
+i2c-controller-rp2350: waiting 20 seconds for ESP32 peer
+I2C0: opening GP pair
+I2C0: 100000 Hz transfers
+WARNING: unhandled system message 2
+RP2350 boot program failed: DEADLINE_EXCEEDED
+[toit] VM exited: reason=4 value=1
+[toit] VM teardown complete

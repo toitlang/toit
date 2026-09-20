@@ -1,0 +1,33 @@
+TOIT-OTA REBOOTING
+[USB reconnect]
+[toit] RP2350 VM starting
+[toit] flash JEDEC ef4018
+[toit] boot partition=0 type=4 trial/update=1
+watchdog-rp2350: preserving ROM trial timer
+container-child: PASS token=boot
+TOIT-OTA INFO 1 0 1 4194304
+TOIT-OTA INFO 1 0 1 4194304
+TOIT-OTA INFO 1 0 1 4194304
+TOIT-OTA INFO 1 0 1 4194304
+TOIT-OTA INFO 1 0 1 4194304
+TOIT-OTA INFO 1 0 1 4194304
+TOIT-OTA INFO 1 0 1 4194304
+TOIT-OTA INFO 1 0 1 4194304
+[USB reconnect]
+[toit] RP2350 VM starting
+[toit] flash JEDEC ef4018
+[toit] boot partition=1 type=0 trial/update=0
+TOIT-OTA INFO 1 1 0 4194304
+container-child: PASS token=boot
+envelope-rp2350: PASS existing flash bucket and region survived recovery
+envelope-rp2350: PASS bundled container, assets, config, GC, storage RPC, and identity
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304

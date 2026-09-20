@@ -1,0 +1,9 @@
+[toit] RP2350 VM starting
+[toit] flash JEDEC ef4018
+[toit] boot partition=0 type=4 trial/update=0
+RP2350 Toit VM smoke starting
+RP2350 VM/GC/timer smoke: PASS (1341 collections)
+gpio-resource-rp2350: PASS
+gpio-interrupt-rp2350: PASS 100 transitions
+[toit] VM exited: reason=1 value=0
+[toit] VM teardown complete

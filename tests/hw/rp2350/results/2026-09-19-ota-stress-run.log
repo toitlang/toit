@@ -1,0 +1,12 @@
+[USB reconnect]
+[toit] RP2350 VM starting
+[toit] flash JEDEC ef4018
+[toit] boot partition=0 type=0 trial/update=0
+TOIT-OTA VALIDATED 0
+event-stress-rp2350: starting concurrent workers
+event-stress-rp2350: timer worker complete
+event-stress-rp2350: I2C worker complete
+event-stress-rp2350: UART worker complete
+event-stress-rp2350: GPIO worker complete
+event-stress-rp2350: PASS shared dispatch, polling, and teardown
+RP2350 application completed

@@ -1,0 +1,2 @@
+ca21d6739356f87f1cde70a7e7fd35d84a89b8d20b12226a9b00d3db0af72579  .cache/two-esp-i2c-backups/board1-before.bin
+dd621f1227b2ad8551fb894c84a88ca11e83d71c077b1cfa3bab86362de1517c  .cache/two-esp-i2c-backups/board2-before.bin

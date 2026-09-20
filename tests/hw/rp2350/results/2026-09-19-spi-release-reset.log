@@ -1,0 +1,3 @@
+Scanning for device with name: 'opposite-singer'
+Running 'tools/rp2350/reset-esp32.toit' on 'opposite-singer' ...
+Success: Sent 37KB code to 'opposite-singer' in 1.97s

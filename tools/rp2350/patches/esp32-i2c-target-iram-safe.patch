@@ -1,0 +1,12 @@
+diff --git a/toolchains/esp32/sdkconfig b/toolchains/esp32/sdkconfig
+--- a/toolchains/esp32/sdkconfig
++++ b/toolchains/esp32/sdkconfig
+@@ -877,7 +877,7 @@ CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2=y
+ #
+ # ESP-Driver:I2C Configurations
+ #
+-# CONFIG_I2C_ISR_IRAM_SAFE is not set
++CONFIG_I2C_ISR_IRAM_SAFE=y
+ # CONFIG_I2C_ENABLE_DEBUG_LOG is not set
+ CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2=y
+ # end of ESP-Driver:I2C Configurations

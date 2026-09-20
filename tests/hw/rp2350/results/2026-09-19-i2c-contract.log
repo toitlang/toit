@@ -1,0 +1,8 @@
+[toit] RP2350 VM starting
+[toit] flash JEDEC ef4018
+[toit] boot partition=1 type=4 trial/update=4
+i2c-contract-rp2350: argument validation
+i2c-contract-rp2350: both controllers reserved
+i2c-contract-rp2350: PASS
+[toit] VM exited: reason=1 value=0
+[toit] VM teardown complete

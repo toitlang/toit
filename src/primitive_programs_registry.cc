@@ -131,8 +131,9 @@ PRIMITIVE(assets) {
 
 PRIMITIVE(config) {
   PRIVILEGED;
-#if defined(TOIT_ESP32) || defined(TOIT_EC618)
+#if defined(TOIT_ESP32) || defined(TOIT_EC618) || defined(TOIT_RP2350)
   const EmbeddedDataExtension* extension = EmbeddedData::extension();
+  if (extension == null) FAIL(INVALID_STATE);
   List<uint8> config = extension->config();
   Object* result = config.is_empty()
       ? process->object_heap()->allocate_internal_byte_array(0)

@@ -1,0 +1,4 @@
+RP2350 Toit VM smoke starting
+container-child: PASS token=boot
+RP2350 VM/GC/timer smoke: PASS (1354 collections)
+RP2350 application completed

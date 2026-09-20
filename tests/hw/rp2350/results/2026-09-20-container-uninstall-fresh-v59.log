@@ -1,0 +1,14 @@
+[  0.100s] TOIT-OTA REBOOTING
+[  0.677s] USB disconnected
+[  1.029s] USB opened
+[  2.632s] [toit] RP2350 VM starting
+[  2.632s] [toit] flash JEDEC ef4018
+[  2.632s] [toit] boot partition=1 type=4 trial/update=1
+[  3.133s] TOIT-OTA INFO 1 1 1 4194304
+[  3.233s] container-child: PASS token=boot
+[  3.433s] container-persistence-rp2350: PASS installed image survived OTA, auto-started, and uninstalled
+[  3.433s] envelope-rp2350: PASS existing flash bucket and region survived recovery
+[  3.534s] envelope-rp2350: PASS bundled container, assets, config, GC, storage RPC, and identity
+[  5.137s] TOIT-OTA INFO 1 1 0 4194304
+[  7.141s] TOIT-OTA INFO 1 1 0 4194304
+[  9.146s] TOIT-OTA INFO 1 1 0 4194304

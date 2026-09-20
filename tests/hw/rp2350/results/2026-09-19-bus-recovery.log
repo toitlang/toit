@@ -1,0 +1,48 @@
+I2C0: opening GP pair
+I2C0: 100000 Hz transfers
+I2C0: 100000 Hz read 1 PASS
+I2C0: 100000 Hz write-read 1 PASS
+I2C0: 100000 Hz read 4 PASS
+I2C0: 100000 Hz write-read 4 PASS
+I2C0: 100000 Hz read 16 PASS
+I2C0: 100000 Hz write-read 16 PASS
+I2C0: 100000 Hz read 32 PASS
+I2C0: 100000 Hz write-read 32 PASS
+I2C0: 100000 Hz write 1 PASS
+I2C0: 100000 Hz write 31 PASS
+I2C0: 100000 Hz write 32 PASS
+I2C0: 100000 Hz write 33 PASS
+I2C0: 100000 Hz write 63 PASS
+I2C0: 100000 Hz write 64 PASS
+I2C0: 100000 Hz write 65 PASS
+I2C0: 100000 Hz write 257 PASS
+I2C0: 100000 Hz write 1025 PASS
+I2C0: clock-stretch timeout
+I2C0 100000 Hz baseline and recovery PASS
+I2C0: 12 task cancellations, GC, and recovery reads PASS
+I2C1: opening GP pair
+I2C1: 100000 Hz transfers
+I2C1: 100000 Hz read 1 PASS
+I2C1: 100000 Hz write-read 1 PASS
+I2C1: 100000 Hz read 4 PASS
+I2C1: 100000 Hz write-read 4 PASS
+I2C1: 100000 Hz read 16 PASS
+I2C1: 100000 Hz write-read 16 PASS
+I2C1: 100000 Hz read 32 PASS
+I2C1: 100000 Hz write-read 32 PASS
+I2C1: 100000 Hz write 1 PASS
+I2C1: 100000 Hz write 31 PASS
+I2C1: 100000 Hz write 32 PASS
+I2C1: 100000 Hz write 33 PASS
+I2C1: 100000 Hz write 63 PASS
+I2C1: 100000 Hz write 64 PASS
+I2C1: 100000 Hz write 65 PASS
+I2C1: 100000 Hz write 257 PASS
+I2C1: 100000 Hz write 1025 PASS
+I2C1: clock-stretch timeout
+I2C1 100000 Hz baseline and recovery PASS
+I2C1: 12 task cancellations, GC, and recovery reads PASS
+spi-contract-rp2350: argument validation
+spi-contract-rp2350: both controllers reserved
+spi-contract-rp2350: PASS
+bus-recovery-rp2350: PASS

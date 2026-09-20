@@ -1,0 +1,15 @@
+# Observed RP2350 console excerpt from the v35 diagnostic run.
+# The capture process was interrupted before its final file write, so this is
+# the exact retained terminal excerpt rather than a complete raw serial log.
+# The omitted prefix contained PASS markers for every 100 kHz read,
+# write-read, and write through 1025 bytes, and every 400 kHz read/write-read.
+
+I2C0: 400000 Hz write 1 PASS
+I2C0: 400000 Hz write 31 PASS
+I2C0: 400000 Hz write 32 PASS
+I2C0: 400000 Hz write 33 PASS
+I2C0: 400000 Hz write 63 PASS
+I2C0: 400000 Hz write 64 PASS
+I2C0: 400000 Hz write 65 PASS
+I2C0: 400000 Hz write 257 PASS
+I2C0: 400000 Hz write 1025 failed: I2C_NACK; ESP32 expected=1025 dropped=0 received=432 mismatch=400

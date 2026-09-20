@@ -1,0 +1,42 @@
+TOIT-OTA REBOOTING
+[USB reconnect]
+[toit] RP2350 VM starting
+[toit] flash JEDEC ef4018
+[toit] boot partition=1 type=4 trial/update=1
+container-child: PASS token=boot
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+watchdog-rp2350: feeding for longer than the timeout PASS
+watchdog-rp2350: stopped watchdog stayed inactive PASS
+watchdog-rp2350: waiting for application watchdog expiration
+TOIT-OTA INFO 1 1 0 4194304
+[USB reconnect]
+[toit] RP2350 VM starting
+[toit] flash JEDEC ef4018
+[toit] boot partition=1 type=0 trial/update=0
+TOIT-OTA INFO 1 1 0 4194304
+container-child: PASS token=boot
+watchdog-rp2350: expiration observed; requesting software reset
+[toit] VM exited: reason=2 value=0
+[toit] VM teardown complete
+[USB reconnect]
+[toit] RP2350 VM starting
+[toit] flash JEDEC ef4018
+[toit] boot partition=1 type=0 trial/update=0
+TOIT-OTA INFO 1 1 0 4194304
+container-child: PASS token=boot
+watchdog-rp2350: PASS feed, stop, expiration, and software reset causes
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304
+TOIT-OTA INFO 1 1 0 4194304

@@ -1,0 +1,68 @@
+RP2350 native rig validation, 2026-09-19
+
+Target: WeAct RP2350B Core Board, USB serial DC67867C6256ED2B
+Helper: opposite-singer, c5ff57f7-eec1-4c74-8ead-31a01ad99fcd
+Platform: rp2350-arm-s, Pico SDK 2.3.1, RP2350 revision 3
+Firmware target: toit-rp2350-rig-test
+Source: toolchains/rp2350/rig_test.c
+UF2: build/rp2350/toit-rp2350-rig-test.uf2
+UF2 size: 69120 bytes
+UF2 SHA-256: bcde0a7ba6ef30fc2ad84c9c640a9a2e19e3cc0dc0922757ca9ecce09c149357
+ESP32 test: tests/hw/rp2350/rig-test-esp32.toit
+
+WIRE GP16 -> ESP34 PASS target banner received
+WIRE GP1 <- ESP4 PASS target accepted exact command token
+UART0 GP1/GP16 PASS exact 4096-byte binary echo
+WIRE GP4 -> ESP19 PASS low/high
+WIRE GP4 <- ESP19 PASS low/high
+WIRE GP5 -> ESP27 PASS low/high
+WIRE GP5 <- ESP27 PASS low/high
+WIRE GP6 -> ESP18 PASS low/high
+WIRE GP6 <- ESP18 PASS low/high
+WIRE GP7 -> ESP23 PASS low/high
+WIRE GP7 <- ESP23 PASS low/high
+WIRE GP8 -> ESP13 PASS low/high
+WIRE GP8 <- ESP13 PASS low/high
+WIRE GP9 -> ESP14 PASS low/high
+WIRE GP9 <- ESP14 PASS low/high
+WIRE GP10 -> ESP32 PASS low/high
+WIRE GP10 <- ESP32 PASS low/high
+WIRE GP11 -> ESP33 PASS low/high
+WIRE GP11 <- ESP33 PASS low/high
+WIRE GP32 -> ESP22 PASS low/high
+WIRE GP32 <- ESP22 PASS low/high
+WIRE GP33 <-1Mohm- ESP17 PASS weak-low
+WIRE GP33 <-1Mohm- ESP17 PASS weak-high
+GP33 INTERNAL PULL-UP PASS independently observed on ESP35
+GP33 INTERNAL PULL-DOWN PASS independently observed on ESP35
+WIRE GP33 -> ESP35 PASS low/high
+ADC GP40 stimulus=0.2V raw=918 range=878..924
+ADC GP40 stimulus=0.8V raw=918 range=880..925
+ADC GP40 stimulus=1.6V raw=919 range=886..927
+ADC GP40 stimulus=2.4V raw=918 range=887..927
+ADC GP40 stimulus=3.0V raw=919 range=881..930
+WIRE GP40 <- ESP25 DAC FAIL staircase=[918, 918, 919, 918, 919]
+ADC GP41 stimulus=0.2V raw=319 range=317..323
+ADC GP41 stimulus=0.8V raw=979 range=974..984
+ADC GP41 stimulus=1.6V raw=1883 range=1878..1887
+ADC GP41 stimulus=2.4V raw=2787 range=2782..2793
+ADC GP41 stimulus=3.0V raw=3460 range=3453..3467
+WIRE GP41 <- ESP26 DAC PASS staircase=[319, 979, 1883, 2787, 3460]
+RIG FAIL 1 signal test(s) failed
+
+GP40 follow-up using ESP25 as a push-pull digital output through the same 4 kohm wire:
+
+handshake=READY adc40-probe REV 3
+digital-low ADC 40 921 888 928
+digital-high ADC 40 919 886 926
+
+The digital follow-up also did not move GP40. This rules out a failure limited
+to ESP25 DAC mode. Check continuity from ESP25 through the 4 kohm resistor to
+RP GP40, then test RP GP40 itself if continuity is good.
+
+Control-line results from the same session:
+
+- RUN PASS: open-drain pulse disconnected and re-enumerated the application as
+  USB 2e8a:0009.
+- BOOT/RUN PASS: BOOT asserted first, then RUN pulsed; ROM enumerated as USB
+  2e8a:000f with serial DC67867C6256ED2B and the RP2350 mass-storage volume.

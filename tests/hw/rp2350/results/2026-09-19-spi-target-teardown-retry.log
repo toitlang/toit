@@ -1,0 +1,57 @@
+[  0.100s] TOIT-OTA REBOOTING
+[  0.653s] USB disconnected
+[  1.005s] USB opened
+[  2.709s] [toit] RP2350 VM starting
+[  2.709s] [toit] flash JEDEC ef4018
+[  2.710s] [toit] boot partition=0 type=4 trial/update=1
+[  3.111s] TOIT-OTA INFO 1 0 1 4194304
+[  3.311s] container-child: PASS token=boot
+[  3.312s] spi-target-teardown-rp2350: exiting with 2 armed DMA targets
+[  3.412s] spi-target-contract-rp2350: mode and pin validation
+[  3.412s] spi-target-contract-rp2350: shared controller and pin ownership
+[  3.412s] spi-target-contract-rp2350: RP2350B high bank
+[  3.412s] spi-target-contract-rp2350: both controllers
+[  3.412s] envelope-rp2350: PASS existing flash bucket and region survived recovery
+[  3.512s] envelope-rp2350: PASS bundled container, assets, config, GC, storage RPC, and identity
+[  3.512s] spi-target-contract-rp2350: PASS
+[  3.512s] spi-target-teardown-rp2350: exiting with 2 armed DMA targets
+[  3.512s] spi-target-contract-rp2350: mode and pin validation
+[  3.512s] spi-target-contract-rp2350: shared controller and pin ownership
+[  3.613s] spi-target-contract-rp2350: RP2350B high bank
+[  3.613s] spi-target-contract-rp2350: both controllers
+[  3.613s] spi-target-contract-rp2350: PASS
+[  3.613s] spi-target-teardown-rp2350: exiting with 2 armed DMA targets
+[  3.613s] spi-target-contract-rp2350: mode and pin validation
+[  3.613s] spi-target-contract-rp2350: shared controller and pin ownership
+[  3.613s] spi-target-contract-rp2350: RP2350B high bank
+[  3.713s] spi-target-contract-rp2350: both controllers
+[  3.713s] spi-target-contract-rp2350: PASS
+[  3.713s] spi-target-teardown-rp2350: PASS three child exits and same-VM resource reuse
+[  5.117s] TOIT-OTA INFO 1 0 0 4194304
+[  7.123s] TOIT-OTA INFO 1 0 0 4194304
+[  9.129s] TOIT-OTA INFO 1 0 0 4194304
+[ 11.134s] TOIT-OTA INFO 1 0 0 4194304
+[ 13.140s] TOIT-OTA INFO 1 0 0 4194304
+[ 15.145s] TOIT-OTA INFO 1 0 0 4194304
+[ 17.150s] TOIT-OTA INFO 1 0 0 4194304
+[ 19.156s] TOIT-OTA INFO 1 0 0 4194304
+[ 21.161s] TOIT-OTA INFO 1 0 0 4194304
+[ 23.166s] TOIT-OTA INFO 1 0 0 4194304
+[ 25.172s] TOIT-OTA INFO 1 0 0 4194304
+[ 27.177s] TOIT-OTA INFO 1 0 0 4194304
+[ 29.183s] TOIT-OTA INFO 1 0 0 4194304
+[ 31.188s] TOIT-OTA INFO 1 0 0 4194304
+[ 33.193s] TOIT-OTA INFO 1 0 0 4194304
+[ 35.200s] TOIT-OTA INFO 1 0 0 4194304
+[ 37.205s] TOIT-OTA INFO 1 0 0 4194304
+[ 39.211s] TOIT-OTA INFO 1 0 0 4194304
+[ 41.216s] TOIT-OTA INFO 1 0 0 4194304
+[ 43.221s] TOIT-OTA INFO 1 0 0 4194304
+[ 45.226s] TOIT-OTA INFO 1 0 0 4194304
+[ 47.232s] TOIT-OTA INFO 1 0 0 4194304
+[ 49.237s] TOIT-OTA INFO 1 0 0 4194304
+[ 51.242s] TOIT-OTA INFO 1 0 0 4194304
+[ 53.248s] TOIT-OTA INFO 1 0 0 4194304
+[ 55.253s] TOIT-OTA INFO 1 0 0 4194304
+[ 57.260s] TOIT-OTA INFO 1 0 0 4194304
+[ 59.266s] TOIT-OTA INFO 1 0 0 4194304

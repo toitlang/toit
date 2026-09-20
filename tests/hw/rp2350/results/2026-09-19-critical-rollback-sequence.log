@@ -1,0 +1,39 @@
+TOIT-OTA REBOOTING
+[USB reconnect]
+[toit] RP2350 VM starting
+[toit] flash JEDEC ef4018
+[toit] boot partition=1 type=4 trial/update=1
+critical-failure-rp2350: rejecting trial before validation
+: Expected <healthy startup>, but was <deliberate critical failure>
+----
+Received a Toit system message. Executing the command below will
+make it human readable:
+----
+jag decode WyNVBVVYU1UbdjIuMC4wLWFscGhhLjE5OS44Kzg5YWEwMDhjU1UZd2VhY3Rfc3R1ZGlvX3JwMjM1MGJfY29yZVskVSNVEF/NCNlQk1hridorYwmRePRbI1UEVUVTVRBBU1NFUlRJT05fRkFJTEVEU1VBRXhwZWN0ZWQgPGhlYWx0aHkgc3RhcnR1cD4sIGJ1dCB3YXMgPGRlbGliZXJhdGUgY3JpdGljYWwgZmFpbHVyZT5bI1UCVVNbI1UOWyNsAAAAA1VGVQBJCOpbI2wAAAADVUZVAUkJAVsjbAAAAANVRlUCSQixWyNsAAAAA1VGVQNJAa1bI2wAAAADVUZVBEkB81sjbAAAAANVRlUFSQFaWyNsAAAAA1VGVQZJB35bI2wAAAADVUZVB0kI6lsjbAAAAANVRlUISQkBWyNsAAAAA1VGVQlJI9BbI2wAAAADVUZVCkkj6FsjbAAAAANVRlULSSMMWyNsAAAAA1VGVQxJI5RbI2wAAAADVUZVDUkHlw==
+[toit] VM exited: reason=4 value=255
+[toit] VM teardown complete
+[USB reconnect]
+[toit] RP2350 VM starting
+[toit] flash JEDEC ef4018
+[toit] boot partition=0 type=0 trial/update=0
+TOIT-OTA INFO 1 0 0 4194304
+container-child: PASS token=boot
+envelope-rp2350: PASS existing flash bucket and region survived recovery
+envelope-rp2350: PASS bundled container, assets, config, GC, and storage RPC
+TOIT-OTA INFO 1 0 0 4194304
+TOIT-OTA INFO 1 0 0 4194304
+TOIT-OTA INFO 1 0 0 4194304
+TOIT-OTA INFO 1 0 0 4194304
+TOIT-OTA INFO 1 0 0 4194304
+TOIT-OTA INFO 1 0 0 4194304
+TOIT-OTA INFO 1 0 0 4194304
+TOIT-OTA INFO 1 0 0 4194304
+TOIT-OTA INFO 1 0 0 4194304
+TOIT-OTA INFO 1 0 0 4194304
+TOIT-OTA INFO 1 0 0 4194304
+TOIT-OTA INFO 1 0 0 4194304
+TOIT-OTA INFO 1 0 0 4194304
+TOIT-OTA INFO 1 0 0 4194304
+TOIT-OTA INFO 1 0 0 4194304
+TOIT-OTA INFO 1 0 0 4194304
+TOIT-OTA INFO 1 0 0 4194304

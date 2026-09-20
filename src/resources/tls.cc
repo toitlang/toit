@@ -24,7 +24,9 @@
 #include <mbedtls/pem.h>
 #include <mbedtls/platform.h>
 #if MBEDTLS_VERSION_MAJOR >= 3
+#ifndef TOIT_RP2350
 #include <../library/ssl_misc.h>
+#endif
 #include <mbedtls/cipher.h>
 #else
 #include <mbedtls/ssl_internal.h>
@@ -868,6 +870,13 @@ bool MbedTlsSocket::init() {
   return true;
 }
 
+#ifdef TOIT_RP2350
+PRIMITIVE(get_internals) {
+  // The Pico SDK's private TLS headers are not C++ compatible. Session export
+  // needs a separate adapter before it can be supported on this platform.
+  FAIL(UNIMPLEMENTED);
+}
+#else
 #if MBEDTLS_VERSION_MAJOR >= 3 && MBEDTLS_VERSION_MINOR >= 5
 #define GET_KEY_BITLEN(info) (mbedtls_cipher_info_get_key_bitlen(info))
 #define GET_IV_SIZE(info) (mbedtls_cipher_info_get_iv_size(info))
@@ -1000,6 +1009,8 @@ PRIMITIVE(get_internals) {
 
   return result;
 }
+
+#endif  // TOIT_RP2350
 
 PRIMITIVE(get_random) {
   ARGS(MutableBlob, destination);
