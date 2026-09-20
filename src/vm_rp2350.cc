@@ -5,6 +5,7 @@
 #ifdef TOIT_RP2350
 #include "vm.h"
 #include "event_sources/timer.h"
+#include "event_sources/tls.h"
 #include "event_sources/event_rp2350.h"
 #include "event_sources/gpio_rp2350.h"
 #include "event_sources/uart_rp2350.h"
@@ -14,6 +15,7 @@
 namespace toit {
 void VM::load_platform_event_sources() {
   event_manager()->add_event_source(_new TimerEventSource());
+  event_manager()->add_event_source(_new TlsEventSource());
   // Sources are destroyed in reverse order. Keep the dispatcher alive until
   // every peripheral has detached and disabled its interrupts.
   auto dispatcher = _new Rp2350EventDispatcher();

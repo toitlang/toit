@@ -4,7 +4,8 @@
 import expect show *
 import gpio
 import rp2350
-import rp2350.watchdog
+import rp2350.watchdog as rp2350-watchdog
+import system.watchdog as watchdog
 import spi
 import system.firmware
 import system.storage
@@ -56,7 +57,7 @@ main:
       expect wall-elapsed >= minimum / 1_000_000
       expect wall-elapsed < minimum / 1_000_000 + 15
       print "deep-sleep-rp2350: retained RAM and monotonic clock PASS elapsed-us=$elapsed"
-    expect-equals (phase == finished) watchdog.caused-reset
+    expect-equals (phase == finished) rp2350-watchdog.caused-reset
     // Persist the next phase before deliberately losing RAM and restarting.
     bucket["token"] = token
     bucket["payload"] = "survived power-down"
@@ -86,7 +87,7 @@ main:
     unreachable
   if phase == cycles + 1:
     print "deep-sleep-rp2350: requesting watchdog reset after timer wakes"
-    watchdog.watchdog-start --timeout=(Duration --s=1)
+    watchdog.start --timeout=(Duration --s=1)
     sleep --ms=5000
     throw "watchdog failed to reset the chip"
 
@@ -101,7 +102,7 @@ main:
   expect-equals 0 pin.get
   milliseconds := sleep-duration phase
   // The one-second application watchdog must stop during the longer sleep.
-  watchdog.watchdog-start --timeout=(Duration --s=1)
+  watchdog.start --timeout=(Duration --s=1)
   print "deep-sleep-rp2350: entering sleep duration-ms=$milliseconds with active peripherals"
   rp2350.deep-sleep (Duration --ms=milliseconds)
   unreachable

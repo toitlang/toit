@@ -10,13 +10,15 @@ import uart
 RP2350 UART0 contract, full-duplex, buffering, and overflow test.
 
 The rig connects RP GP16 TX to ESP32 GPIO34 RX and RP GP1 RX to ESP32 GPIO4
-  TX. Start uart-esp32.toit first. The test exercises short and ring-spanning
-  writes, baud changes, drop-newest RX overflow, error accounting, recovery,
+  TX. GP33 is observed by ESP32 GPIO35. Start uart-esp32.toit first. The test
+  exercises short and ring-spanning writes, software RS485 direction timing,
+  baud changes, drop-newest RX overflow, error accounting, recovery,
   controller/pin reservations, and UART/AUX mux validation.
 */
 
 TX ::= 16
 RX ::= 1
+DIRECTION ::= 33
 INITIAL-BAUD ::= 115_200
 TIMEOUT-MS ::= 10_000
 BURST-SIZE ::= 4096
@@ -26,7 +28,12 @@ main:
   test-contract
   print "uart-rp2350: contract ok"
 
-  port := uart.Port --tx=TX --rx=RX --baud-rate=INITIAL-BAUD
+  port := uart.Port
+      --tx=TX
+      --rx=RX
+      --rts=DIRECTION
+      --baud-rate=INITIAL-BAUD
+      --mode=uart.Port.MODE-RS485-HALF-DUPLEX
   try:
     token := "rp2350-uart-47a1"
     print "uart-rp2350: UART0 open; HELLO"
@@ -57,7 +64,7 @@ main:
   finally:
     port.close
 
-  print "uart-rp2350: PASS contract, duplex, baud, buffering, overflow, and recovery"
+  print "uart-rp2350: PASS contract, RS485 direction, duplex, baud, buffering, overflow, and recovery"
 
 test-contract:
   // GP0 is the WeAct board's PSRAM CS and must never be remuxed.
@@ -74,11 +81,21 @@ test-contract:
     uart.Port --tx=TX --rx=5 --baud-rate=INITIAL-BAUD  // Different UARTs.
   expect-throw "INVALID_ARGUMENT":
     uart.Port --tx=TX --rx=RX --rts=18 --baud-rate=INITIAL-BAUD
-  expect-throw "UNIMPLEMENTED":
+  rs485 := uart.Port
+      --tx=TX
+      --rx=RX
+      --rts=DIRECTION
+      --baud-rate=INITIAL-BAUD
+      --mode=uart.Port.MODE-RS485-HALF-DUPLEX
+  rs485.close
+  released-de := gpio.Pin DIRECTION --input
+  released-de.close
+  expect-throw "INVALID_ARGUMENT":
     uart.Port
         --tx=TX
         --rx=RX
-        --rts=19
+        --rts=DIRECTION
+        --cts=18
         --baud-rate=INITIAL-BAUD
         --mode=uart.Port.MODE-RS485-HALF-DUPLEX
   expect-throw "UNIMPLEMENTED":

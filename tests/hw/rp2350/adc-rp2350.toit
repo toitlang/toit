@@ -70,11 +70,17 @@ test-contract:
   if chunked < 0.0 or chunked > 3.3:
     throw "ADC chunked voltage outside nominal range: $chunked"
   expect-throw "OUT_OF_BOUNDS": adc.get --samples=0
-  adc.close
-  adc.close
 
-  // close releases the shared GPIO reservation and allows either peripheral
-  // to reacquire the pad.
+  // Closing one channel must leave the shared ADC running for the other.
+  other := Adc wiring.RP2350-ADC-PINS[1]
+  adc.close
+  adc.close
+  raw = other.get --raw
+  if raw < 0 or raw > 4095: throw "second ADC channel stopped with first"
+  other.close
+
+  // Closing the last channel powers the ADC down. Reopening initializes it
+  // again and releases the shared GPIO reservation on the next close.
   pin := gpio.Pin first-pin --input
   pin.close
   adc = Adc first-pin

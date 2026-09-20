@@ -13,10 +13,6 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-// TODO(floitsch): upstream this into the toit-watchdog package
-// (https://github.com/toitware/toit-watchdog) so the portable watchdog API
-// works on the EC618 too, instead of relying on this chip-specific library.
-
 /**
 The EC618 watchdog.
 

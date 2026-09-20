@@ -26,6 +26,8 @@
 #if MBEDTLS_VERSION_MAJOR >= 3
 #ifndef TOIT_RP2350
 #include <../library/ssl_misc.h>
+#else
+#include "tls_rp2350.h"
 #endif
 #include <mbedtls/cipher.h>
 #else
@@ -870,13 +872,6 @@ bool MbedTlsSocket::init() {
   return true;
 }
 
-#ifdef TOIT_RP2350
-PRIMITIVE(get_internals) {
-  // The Pico SDK's private TLS headers are not C++ compatible. Session export
-  // needs a separate adapter before it can be supported on this platform.
-  FAIL(UNIMPLEMENTED);
-}
-#else
 #if MBEDTLS_VERSION_MAJOR >= 3 && MBEDTLS_VERSION_MINOR >= 5
 #define GET_KEY_BITLEN(info) (mbedtls_cipher_info_get_key_bitlen(info))
 #define GET_IV_SIZE(info) (mbedtls_cipher_info_get_iv_size(info))
@@ -904,21 +899,39 @@ static bool known_cipher_info(const mbedtls_cipher_info_t* info, size_t key_bitl
   return true;
 }
 
+#ifndef TOIT_RP2350
 static bool known_transform(mbedtls_ssl_transform* transform, size_t iv_len) {
   if (transform->taglen != 16) return false;
   if (transform->ivlen != iv_len) return false;
   return true;
 }
+#endif
 
 PRIMITIVE(get_internals) {
   ARGS(BaseMbedTlsSocket, socket);
-  size_t iv_len = socket->ssl.transform_out->ivlen;
+#ifdef TOIT_RP2350
+  ToitTlsTransforms transforms;
+  int status = toit_tls_get_transforms(&socket->ssl, &transforms);
+  if (status < 0) return Smi::from(42);
+  if (status == 0) return process->null_object();
+  size_t iv_len = transforms.iv_length;
+  mbedtls_cipher_context_t* out_cipher_ctx = transforms.encode;
+  mbedtls_cipher_context_t* in_cipher_ctx = transforms.decode;
+  const uint8* encode_iv_data = transforms.encode_iv;
+  const uint8* decode_iv_data = transforms.decode_iv;
+#else
   // mbedtls_cipher_context_t from include/mbedtls/cipher.h.
   if (socket->ssl.transform_out == null || socket->ssl.transform_in == null) {
     return Smi::from(42);  // Not ready yet.  This should not happen - it will throw in Toit.
   }
+  size_t iv_len = socket->ssl.transform_out->ivlen;
+  if (!known_transform(socket->ssl.transform_out, iv_len)) return process->null_object();
+  if (!known_transform(socket->ssl.transform_in, iv_len)) return process->null_object();
   mbedtls_cipher_context_t* out_cipher_ctx = &socket->ssl.transform_out->cipher_ctx_enc;
   mbedtls_cipher_context_t* in_cipher_ctx = &socket->ssl.transform_in->cipher_ctx_dec;
+  const uint8* encode_iv_data = socket->ssl.transform_out->iv_enc;
+  const uint8* decode_iv_data = socket->ssl.transform_in->iv_dec;
+#endif
   size_t key_bitlen = out_cipher_ctx->key_bitlen;
   // mbedtls_cipher_info_t from include/mbedtls/cipher.h.
   const mbedtls_cipher_info_t* out_info = out_cipher_ctx->cipher_info;
@@ -928,8 +941,6 @@ PRIMITIVE(get_internals) {
   if (out_info->mode != in_info->mode) return process->null_object();
   if (!known_cipher_info(out_info, key_bitlen, iv_len)) return process->null_object();
   if (!known_cipher_info(in_info, key_bitlen, iv_len)) return process->null_object();
-  if (!known_transform(socket->ssl.transform_out, iv_len)) return process->null_object();
-  if (!known_transform(socket->ssl.transform_in, iv_len)) return process->null_object();
   if (in_cipher_ctx->key_bitlen != static_cast<int>(key_bitlen)) return process->null_object();
   if (out_cipher_ctx->key_bitlen != static_cast<int>(key_bitlen)) return process->null_object();
 
@@ -944,8 +955,8 @@ PRIMITIVE(get_internals) {
   ByteArray* master_secret = process->allocate_byte_array(48);
   Array* result = process->object_heap()->allocate_array(9, Smi::zero());
   if (!encode_iv || !decode_iv || !encode_key || !decode_key || !result || !session_id || !session_ticket || !master_secret) FAIL(ALLOCATION_FAILED);
-  memcpy(ByteArray::Bytes(encode_iv).address(), socket->ssl.transform_out->iv_enc, iv_len);
-  memcpy(ByteArray::Bytes(decode_iv).address(), socket->ssl.transform_in->iv_dec, iv_len);
+  memcpy(ByteArray::Bytes(encode_iv).address(), encode_iv_data, iv_len);
+  memcpy(ByteArray::Bytes(decode_iv).address(), decode_iv_data, iv_len);
   memcpy(ByteArray::Bytes(session_id).address(), socket->ssl.session->id, socket->ssl.session->id_len);
   memcpy(ByteArray::Bytes(session_ticket).address(), socket->ssl.session->ticket, socket->ssl.session->ticket_len);
   memcpy(ByteArray::Bytes(master_secret).address(), socket->ssl.session->master, 48);
@@ -1009,8 +1020,6 @@ PRIMITIVE(get_internals) {
 
   return result;
 }
-
-#endif  // TOIT_RP2350
 
 PRIMITIVE(get_random) {
   ARGS(MutableBlob, destination);

@@ -27,6 +27,7 @@
 #include "process.h"
 #include "sha.h"
 #include "slot_reloc_ec618.h"
+#include "watchdog.h"
 #include "watchdog_ec618.h"
 #include "wakeup_ec618.h"
 
@@ -667,21 +668,35 @@ PRIMITIVE(base_id) {
   return process->allocate_string_or_error(buffer);
 }
 
-PRIMITIVE(watchdog_init) {
-  ARGS(int, seconds);
-  if (seconds < 1 || seconds > 60) FAIL(INVALID_ARGUMENT);
+Object* platform_watchdog_start(Process* process, int timeout_ms) {
+  if (timeout_ms <= 0 || timeout_ms > 60000) FAIL(INVALID_ARGUMENT);
+  int seconds = (timeout_ms + 999) / 1000;
   if (!ec618_watchdog_init(seconds)) FAIL(MALLOC_FAILED);
   return process->null_object();
 }
 
-PRIMITIVE(watchdog_feed) {
+Object* platform_watchdog_feed(Process* process) {
   ec618_watchdog_feed();
   return process->null_object();
 }
 
-PRIMITIVE(watchdog_deinit) {
+Object* platform_watchdog_stop(Process* process) {
   ec618_watchdog_deinit();
   return process->null_object();
+}
+
+PRIMITIVE(watchdog_init) {
+  ARGS(int, seconds);
+  if (seconds < 1 || seconds > 60) FAIL(INVALID_ARGUMENT);
+  return platform_watchdog_start(process, seconds * 1000);
+}
+
+PRIMITIVE(watchdog_feed) {
+  return platform_watchdog_feed(process);
+}
+
+PRIMITIVE(watchdog_deinit) {
+  return platform_watchdog_stop(process);
 }
 
 }  // namespace toit

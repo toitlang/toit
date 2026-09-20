@@ -81,6 +81,7 @@ namespace toit {
   M(espnow,  MODULE_ESPNOW)                  \
   M(bignum,  MODULE_BIGNUM)                  \
   M(rp2350,  MODULE_RP2350)                  \
+  M(watchdog, MODULE_WATCHDOG)               \
 
 #define MODULE_RP2350(PRIMITIVE)             \
   PRIMITIVE(boot_partition, 0)               \
@@ -98,6 +99,11 @@ namespace toit {
   PRIMITIVE(watchdog_stop, 0)                \
   PRIMITIVE(watchdog_caused_reset, 0)        \
   PRIMITIVE(woke_from_deep_sleep, 0)         \
+
+#define MODULE_WATCHDOG(PRIMITIVE)           \
+  PRIMITIVE(start, 1)                        \
+  PRIMITIVE(feed, 0)                         \
+  PRIMITIVE(stop, 0)                         \
 
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(write_on_stdout, 2)              \

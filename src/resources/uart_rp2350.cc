@@ -24,8 +24,10 @@
 #include "hardware/gpio.h"
 #include "hardware/irq.h"
 #include "hardware/regs/uart.h"
-#include "hardware/sync.h"
 #include "hardware/uart.h"
+
+#include "FreeRTOS.h"
+#include "task.h"
 
 #include "../event_sources/uart_rp2350.h"
 #include "../objects_inline.h"
@@ -160,6 +162,7 @@ class UartResource : public Rp2350UartEventResource {
 
   UartResource(ResourceGroup* group, int uart_id,
                int tx_pin, int rx_pin, int rts_pin, int cts_pin,
+               bool rs485,
                uint64_t owned_pins, uint8_t* rx_ring, uint32_t rx_ring_size,
                uint8_t* tx_ring, uint32_t tx_ring_size)
       : Rp2350UartEventResource(group, uart_id)
@@ -168,6 +171,7 @@ class UartResource : public Rp2350UartEventResource {
       , rx_pin_(rx_pin)
       , rts_pin_(rts_pin)
       , cts_pin_(cts_pin)
+      , rs485_(rs485)
       , owned_pins_(owned_pins)
       , rx_ring_(rx_ring)
       , rx_ring_size_(rx_ring_size)
@@ -175,6 +179,7 @@ class UartResource : public Rp2350UartEventResource {
       , tx_ring_size_(tx_ring_size) {}
 
   ~UartResource() override {
+    if (rs485_) gpio_put(rts_pin_, false);
     uart_deinit(uart_);
     free(rx_ring_);
     free(tx_ring_);
@@ -293,8 +298,12 @@ class UartResource : public Rp2350UartEventResource {
   }
 
   bool finish_transmit_if_idle() override {
-    return tx_empty() &&
+    taskENTER_CRITICAL();
+    bool idle = tx_empty() &&
         (uart_get_hw(uart_)->fr & UART_UARTFR_BUSY_BITS) == 0;
+    if (idle && rs485_) gpio_put(rts_pin_, false);
+    taskEXIT_CRITICAL();
+    return idle;
   }
 
   int write(const uint8_t* data, int length) {
@@ -313,14 +322,17 @@ class UartResource : public Rp2350UartEventResource {
     if (count > first) memcpy(tx_ring_, data + first, count - first);
     head += count;
     if (head >= tx_ring_size_) head -= tx_ring_size_;
-    tx_head_.store(head, std::memory_order_release);
-
     if (count != 0) {
+      // Publishing the ring head, raising RS485 DE, and feeding the FIFO must
+      // be atomic against the event task's final line-idle check. Otherwise a
+      // new write could race with that task lowering DE for the prior write.
+      taskENTER_CRITICAL();
+      tx_head_.store(head, std::memory_order_release);
+      if (rs485_) gpio_put(rts_pin_, true);
       Rp2350UartEventSource::cancel_tx_poll(uart_id());
       // A PL011 TX interrupt is threshold driven and need not fire merely
       // because it is enabled while the FIFO is already empty. Seed the FIFO
       // here, then let the IRQ refill it after it crosses the threshold.
-      uint32_t interrupt_status = save_and_disable_interrupts();
       uart_hw_t* hardware = uart_get_hw(uart_);
       uint32_t tail = tx_tail_.load(std::memory_order_relaxed);
       head = tx_head_.load(std::memory_order_acquire);
@@ -335,7 +347,7 @@ class UartResource : public Rp2350UartEventResource {
       } else {
         hw_set_bits(&hardware->imsc, UART_UARTIMSC_TXIM_BITS);
       }
-      restore_interrupts(interrupt_status);
+      taskEXIT_CRITICAL();
       if (ring_empty) {
         Rp2350UartEventSource::request_tx_poll(uart_id());
       }
@@ -394,6 +406,7 @@ class UartResource : public Rp2350UartEventResource {
   int rx_pin_;
   int rts_pin_;
   int cts_pin_;
+  bool rs485_;
   uint64_t owned_pins_;
   uint8_t* rx_ring_;
   uint32_t rx_ring_size_;
@@ -447,9 +460,10 @@ PRIMITIVE(create) {
   if (stop_bits < 1 || stop_bits > 3) FAIL(INVALID_ARGUMENT);
   if (parity < 1 || parity > 3) FAIL(INVALID_ARGUMENT);
   if (stop_bits == 2) FAIL(UNIMPLEMENTED);  // PL011 has no 1.5-stop mode.
-  if (mode == kModeRs485HalfDuplex) FAIL(UNIMPLEMENTED);
   if (mode == kModeIrda) FAIL(INVALID_ARGUMENT);
-  if (mode != kModeUart) FAIL(INVALID_ARGUMENT);
+  if (mode != kModeUart && mode != kModeRs485HalfDuplex) {
+    FAIL(INVALID_ARGUMENT);
+  }
 
   int pins[4];
   int encoded[] = { encoded_tx, encoded_rx, encoded_rts, encoded_cts };
@@ -466,6 +480,8 @@ PRIMITIVE(create) {
   int rts = pins[2];
   int cts = pins[3];
   if (tx < 0 && rx < 0) FAIL(INVALID_ARGUMENT);
+  bool rs485 = mode == kModeRs485HalfDuplex;
+  if (rs485 && (tx < 0 || rts < 0 || cts >= 0)) FAIL(INVALID_ARGUMENT);
 
   UartPinMapping mappings[4];
   UartPinRole roles[] = {
@@ -474,6 +490,9 @@ PRIMITIVE(create) {
   int uart_id = -1;
   for (int i = 0; i < 4; i++) {
     if (pins[i] < 0) continue;
+    // In RS485 mode RTS is an arbitrary GPIO used for driver enable, rather
+    // than the PL011 flow-control signal.
+    if (rs485 && roles[i] == UART_PIN_RTS) continue;
     if (!uart_pin_mapping(pins[i], roles[i], &mappings[i])) {
       FAIL(INVALID_ARGUMENT);
     }
@@ -509,7 +528,7 @@ PRIMITIVE(create) {
 
   uint64_t owned_pins = reservations.keep();
   UartResource* resource = _new UartResource(
-      group, uart_id, tx, rx, rts, cts, owned_pins,
+      group, uart_id, tx, rx, rts, cts, rs485, owned_pins,
       rx_ring, rx_capacity + 1, tx_ring, tx_capacity + 1);
   if (resource == null) {
     free(rx_ring);
@@ -523,12 +542,18 @@ PRIMITIVE(create) {
 
   for (int i = 0; i < 4; i++) {
     if (pins[i] < 0) continue;
+    if (rs485 && roles[i] == UART_PIN_RTS) continue;
     if (roles[i] == UART_PIN_RX || roles[i] == UART_PIN_CTS) {
       gpio_pull_up(pins[i]);
     } else {
       gpio_disable_pulls(pins[i]);
     }
     gpio_set_function(pins[i], mappings[i].function);
+  }
+  if (rs485) {
+    gpio_init(rts);
+    gpio_put(rts, false);
+    gpio_set_dir(rts, GPIO_OUT);
   }
   if ((tx_flags & kTxFlagInvertTx) != 0 && tx >= 0) {
     gpio_set_outover(tx, GPIO_OVERRIDE_INVERT);
@@ -543,7 +568,7 @@ PRIMITIVE(create) {
       ? UART_PARITY_EVEN
       : parity == 3 ? UART_PARITY_ODD : UART_PARITY_NONE;
   uart_set_format(uart, data_bits, stop_bits == 3 ? 2 : 1, uart_parity);
-  uart_set_hw_flow(uart, cts >= 0, rts >= 0);
+  uart_set_hw_flow(uart, cts >= 0, rts >= 0 && !rs485);
   resource->set_baud_rate(actual_baud);
 
   group->register_resource(resource);
@@ -610,9 +635,7 @@ PRIMITIVE(read) {
 
 PRIMITIVE(wait_tx) {
   ARGS(UartResource, resource);
-  bool idle = resource->tx_empty() &&
-      (uart_get_hw(resource->uart())->fr & UART_UARTFR_BUSY_BITS) == 0;
-  return BOOL(idle);
+  return BOOL(resource->finish_transmit_if_idle());
 }
 
 PRIMITIVE(set_control_flags) {

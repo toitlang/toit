@@ -8,6 +8,7 @@
 #include "flash_rp2350.h"
 #include "ota_image_rp2350.h"
 #include "sha.h"
+#include "watchdog.h"
 #include "watchdog_rp2350.h"
 #include "hardware/sync.h"
 #include "hardware/watchdog.h"
@@ -80,8 +81,7 @@ static bool trial() {
   return boot_info(&info) && (info.tbyb_and_update_info & BOOT_TBYB_AND_UPDATE_FLAG_BUY_PENDING);
 }
 
-PRIMITIVE(watchdog_start) {
-  ARGS(int, timeout_ms);
+Object* platform_watchdog_start(Process* process, int timeout_ms) {
   // RP2350's 24-bit timer runs at 1 MHz. Keep the public limit at a whole
   // second below the hardware's 16.777215-second maximum.
   if (timeout_ms < 1000 || timeout_ms > 16000) FAIL(INVALID_ARGUMENT);
@@ -96,17 +96,30 @@ PRIMITIVE(watchdog_start) {
   return process->null_object();
 }
 
-PRIMITIVE(watchdog_feed) {
+Object* platform_watchdog_feed(Process* process) {
   if (app_watchdog_armed) watchdog_update();
   return process->null_object();
 }
 
-PRIMITIVE(watchdog_stop) {
+Object* platform_watchdog_stop(Process* process) {
   if (app_watchdog_armed) {
     watchdog_disable();
     app_watchdog_armed = false;
   }
   return process->null_object();
+}
+
+PRIMITIVE(watchdog_start) {
+  ARGS(int, timeout_ms);
+  return platform_watchdog_start(process, timeout_ms);
+}
+
+PRIMITIVE(watchdog_feed) {
+  return platform_watchdog_feed(process);
+}
+
+PRIMITIVE(watchdog_stop) {
+  return platform_watchdog_stop(process);
 }
 
 PRIMITIVE(watchdog_caused_reset) {

@@ -30,6 +30,7 @@
 
 #include "uuid.h"
 #include "vm.h"
+#include "watchdog.h"
 
 #include <atomic>
 #include <errno.h>
@@ -569,19 +570,34 @@ PRIMITIVE(memory_page_report) {
   return result;
 }
 
-PRIMITIVE(watchdog_init) {
-  ARGS(uint32, ms);
-
-  int watchdog = watchdog_timers.any();
-  if (watchdog == kInvalidWatchdogTimer) FAIL(ALREADY_IN_USE);
-
+static Object* watchdog_start(Process* process, uint32_t timeout_ms,
+                              bool allow_rearm) {
+  // The watchdog is process-global. Keep its pool state and the IDF task
+  // watchdog state in one critical section so concurrent containers cannot
+  // reconfigure while another one is stopping it.
+  Locker locker(OS::global_mutex());
   esp_task_wdt_config_t config = {
-    .timeout_ms = ms,
+    .timeout_ms = static_cast<uint32_t>(timeout_ms),
     .idle_core_mask = 0,
     .trigger_panic = true,
   };
+
+  if (watchdog_timers.is_taken(locker, kWatchdogSingletonId)) {
+    if (!allow_rearm) FAIL(ALREADY_IN_USE);
+    esp_err_t err = esp_task_wdt_reconfigure(&config);
+    if (err != ESP_OK) return Primitive::os_error(err, process);
+    SystemEventSource::instance()->run([&]() {
+      err = esp_task_wdt_reset();
+    });
+    if (err != ESP_OK) return Primitive::os_error(err, process);
+    return process->null_object();
+  }
+
+  int watchdog = watchdog_timers.any(locker);
+  if (watchdog == kInvalidWatchdogTimer) FAIL(ALREADY_IN_USE);
   esp_err_t err = esp_task_wdt_init(&config);
   if (err != ESP_OK) {
+    watchdog_timers.put(locker, kWatchdogSingletonId);
     return Primitive::os_error(err, process);
   }
 
@@ -589,12 +605,20 @@ PRIMITIVE(watchdog_init) {
     err = esp_task_wdt_add(null);  // Add the SystemEventSource thread.
   });
   if (err != ESP_OK) {
+    if (esp_task_wdt_deinit() == ESP_OK) {
+      watchdog_timers.put(locker, kWatchdogSingletonId);
+    }
     return Primitive::os_error(err, process);
   }
   return process->null_object();
 }
 
-PRIMITIVE(watchdog_reset) {
+static Object* watchdog_feed(Process* process, bool stopped_is_noop) {
+  Locker locker(OS::global_mutex());
+  if (stopped_is_noop &&
+      !watchdog_timers.is_taken(locker, kWatchdogSingletonId)) {
+    return process->null_object();
+  }
   esp_err_t err;
   SystemEventSource::instance()->run([&]() {
     err = esp_task_wdt_reset();
@@ -605,7 +629,12 @@ PRIMITIVE(watchdog_reset) {
   return process->null_object();
 }
 
-PRIMITIVE(watchdog_deinit) {
+static Object* watchdog_stop(Process* process, bool stopped_is_noop) {
+  Locker locker(OS::global_mutex());
+  if (stopped_is_noop &&
+      !watchdog_timers.is_taken(locker, kWatchdogSingletonId)) {
+    return process->null_object();
+  }
   esp_err_t err;
   SystemEventSource::instance()->run([&]() {
     err = esp_task_wdt_delete(null);  // Remove the SystemEventSource thread.
@@ -617,8 +646,34 @@ PRIMITIVE(watchdog_deinit) {
   if (err != ESP_OK) {
     return Primitive::os_error(err, process);
   }
-  watchdog_timers.put(kWatchdogSingletonId);
+  watchdog_timers.put(locker, kWatchdogSingletonId);
   return process->null_object();
+}
+
+Object* platform_watchdog_start(Process* process, int timeout_ms) {
+  if (timeout_ms <= 0) FAIL(INVALID_ARGUMENT);
+  return watchdog_start(process, static_cast<uint32_t>(timeout_ms), true);
+}
+
+Object* platform_watchdog_feed(Process* process) {
+  return watchdog_feed(process, true);
+}
+
+Object* platform_watchdog_stop(Process* process) {
+  return watchdog_stop(process, true);
+}
+
+PRIMITIVE(watchdog_init) {
+  ARGS(uint32, timeout_ms);
+  return watchdog_start(process, timeout_ms, false);
+}
+
+PRIMITIVE(watchdog_reset) {
+  return watchdog_feed(process, false);
+}
+
+PRIMITIVE(watchdog_deinit) {
+  return watchdog_stop(process, false);
 }
 
 PRIMITIVE(pin_hold_enable) {
