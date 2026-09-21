@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import system.trace show send-trace-message
+import system show architecture ARCHITECTURE-ESP32H2
 import system.storage  // For toitdoc.
 
 /**
@@ -172,6 +173,7 @@ The following GPIO pins can be used:
 - ESP32: 0, 2, 4, 12-15, 25-27, 32-39
 - ESP32-S2: 0-21
 - ESP32-S3: 0-21
+- ESP32-H2: 7-14
 
 Support for the ESP32-C3 is not yet implemented.
 
@@ -229,16 +231,18 @@ set-real-time-clock time/Time -> none:
 set-real-time-clock_ seconds/int ns/int -> none:
   #primitive.core.set-real-time-clock
 
-/** The WiFi MAC address of the ESP32. */
+/** The base MAC address of the ESP32. */
 mac-address -> ByteArray:
   #primitive.esp32.get-mac-address
 
 /**
 Size of the user accessible RTC memory.
 
+The ESP32-H2 provides 3840 bytes; other ESP32 variants provide 4096 bytes.
+
 Deprecated.
 */
-RTC-MEMORY-SIZE ::= 4096
+RTC-MEMORY-SIZE ::= architecture == ARCHITECTURE-ESP32H2 ? 3840 : 4096
 
 /**
 Constructs a $ByteArray backed by the RTC user data.

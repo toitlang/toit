@@ -17,11 +17,11 @@ $Signals represent a collection of signals to be sent by the RMT controller.
 # Hardware differences
 
 The ESP32 has 8 RMT channels, each of which can be configured for input or output.
-The ESP32C3 and ESP32C6 each have 2 TX and 2 RX channels.
+The ESP32C3, ESP32C6, and ESP32H2 each have 2 TX and 2 RX channels.
 The ESP32P4, ESP32S2 and ESP32S3 each have 4 TX and 4 RX channels.
 
 The number of bytes per memory block is 256 on the ESP32 and ESP32S2. It is
-  192 on the ESP32C3, ESP32C6, ESP32P4, and ESP32S3.
+  192 on the ESP32C3, ESP32C6, ESP32H2, ESP32P4, and ESP32S3.
 
 RMT DMA is available on the ESP32P4 and ESP32S3. DMA-capable channels consume
   an internal DMA channel and internal RAM, so DMA is disabled by default.
@@ -700,7 +700,7 @@ class Channel:
 The number of bytes per memory block.
 
 On the ESP32 and ESP32S2 it is 256.
-On the ESP32C3, ESP32C6, ESP32P4, and ESP32S3 it is 192.
+On the ESP32C3, ESP32C6, ESP32H2, ESP32P4, and ESP32S3 it is 192.
 */
 BYTES-PER-MEMORY-BLOCK/int ::= rmt-bytes-per-memory-block_
 
@@ -983,7 +983,7 @@ class Out extends Channel_:
 
   The $loop-count parameter specifies how many times the signals are repeated. If it is
     set to -1, the signals are repeated indefinitely. The ESP32 only supports -1 (infinite)
-    and 1. Other variants, like the ESP32C3, ESP32C6, ESP32P4, ESP32S2, and ESP32S3, support
+    and 1. Other variants, like the ESP32C3, ESP32C6, ESP32H2, ESP32P4, ESP32S2, and ESP32S3, support
     other positive values.
 
   The $done-level parameter specifies the level of the pin when the transmission is done.
@@ -1133,7 +1133,7 @@ class ChannelInOut:
 /**
 Synchronizes the output of multiple $Out channels.
 
-Not all hardware supports this feature. The ESP32 does not, but the ESP32C3, ESP32C6,
+Not all hardware supports this feature. The ESP32 does not, but the ESP32C3, ESP32C6, ESP32H2,
   ESP32P4, ESP32S2, and ESP32S3 do.
 */
 class SynchronizationManager:

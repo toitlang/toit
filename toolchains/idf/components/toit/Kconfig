@@ -205,12 +205,14 @@ menu "Toit"
             boolean "Enable WIFI on ESP32"
             default "y"
             depends on TOIT_ENABLE_IP
+            depends on SOC_WIFI_SUPPORTED
             help
                 WIFI support in the Toit binary.
 
         config TOIT_ENABLE_ESPNOW
             boolean "Enable ESP-Now on ESP32"
             default "y"
+            depends on SOC_WIFI_SUPPORTED
             help
                 ESP-Now support in the Toit binary.
 
