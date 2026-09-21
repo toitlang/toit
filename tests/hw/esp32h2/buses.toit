@@ -3,16 +3,17 @@
 // be found in the tests/LICENSE file.
 
 import .session
+import .wiring
 import ..paired.buses as buses
 
 main:
   session := Session
   try:
     buses.run session
-        (IS-TESTEE ? 1 : 14)
-        (IS-TESTEE ? 4 : 32)
-        (IS-TESTEE ? 3 : 26)
-        (IS-TESTEE ? 0 : 12)
+        SPI-CS
+        SPI-CLOCK
+        SPI-MOSI
+        SPI-MISO
         --testee-dma
         --no-tester-dma
     session.finish

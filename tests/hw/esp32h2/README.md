@@ -28,7 +28,10 @@ use them for its low-frequency crystal.
 Install the pixel-strip dependency with `toit pkg install` from `tests/hw`.
 Reusable implementations are in [`../paired`](../paired/README.md); these
 entrypoints supply the H2/ESP32 wiring and roles. The paired implementations do
-not select pins or roles from chip identity.
+not select pins or roles from chip identity. [wiring.toit](wiring.toit) defines
+the physical connections and named peripheral assignments; pin numbers stay
+in that fixture configuration. Reversing test roles does not change the local
+pin assignments.
 
 
 From the repository root:

@@ -10,7 +10,7 @@ import .wiring
 
 main:
   session := Session
-  reserved := IS-TESTEE ? null : (gpio.Pin 25 --input)
+  reserved := IS-TESTEE ? null : (gpio.Pin HELPER-RESERVED --input)
   try:
     control.run-case session "Wiring: control UART":
       // These two wires remain assigned to UART throughout the pre-check.

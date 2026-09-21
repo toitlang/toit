@@ -11,7 +11,7 @@ import .wiring
 
 main:
   session := Session
-  reserved := IS-TESTEE ? null : (gpio.Pin 25 --input)
+  reserved := IS-TESTEE ? null : (gpio.Pin HELPER-RESERVED --input)
   try:
     [1, 17, 255, 1024, 4096].do: | size |
       control.run-case session "UART $size":

@@ -5,6 +5,7 @@
 import expect show *
 import i2s
 import .session
+import .wiring
 import ..paired.i2s as i2s-tests
 
 main args/List:
@@ -17,9 +18,9 @@ main args/List:
   session := Session --baud-rate=921600
   try:
     i2s-tests.run session
-        (IS-TESTEE ? 3 : 26)
-        (IS-TESTEE ? 1 : 14)
-        (IS-TESTEE ? 4 : 32)
+        I2S-DATA
+        I2S-CLOCK
+        I2S-WORD-SELECT
         --testee-writer=(arg.contains "writer")
         --testee-master=(not (arg.contains "slave"))
         --bits=(arg.contains "32" ? 32 : 16)
