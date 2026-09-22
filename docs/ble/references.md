@@ -1,14 +1,5 @@
 # Local BLE specification references
 
-Implementation reference for USB startup ordering: [Core 6.3, Vol 4 Part B,
-sections 2.1–2.4](https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core_v6.3/out/en/host-controller-interface/usb-transport-layer.html)
-describes separate event and ACL endpoints in legacy USB mode. A
-[July 2026 Linux Bluetooth patch report](https://lkml.iu.edu/hypermail/linux/kernel/2607.3/14640.html)
-reports ACL preceding Connection Complete on Edimax USB `7392:c611`, matching
-our dongle ID. This is evidence for a transport-ordering hypothesis, not proof
-that the proposed kernel patch is merged or that every observed failure has
-that cause. Our HCI user-channel implementation handles its own bounded hold.
-
 Inspected on 2026-09-07. These four user-provided PDFs satisfy the reference
 requirements for starting the BLE host implementation. All allow text extraction;
 `pdftotext -layout` completed successfully for each. The Core includes the HCI,
