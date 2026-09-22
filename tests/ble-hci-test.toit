@@ -994,11 +994,26 @@ class FakeTransport implements Transport:
   sent/hci.Packets ::= hci.Packets 16
   sent-count/int := 0
   closed/bool := false
+  /**
+  Features this fake controller reports for every LE Read Remote Features.
+
+  The host reads remote features on each new central link. The fake answers
+    such commands itself, without exposing them through $sent, so scripted
+    responders only see the traffic they scripted. Set to null to script the
+    exchange manually.
+  */
+  auto-features/ByteArray? := #[1, 0, 0, 0, 0, 0, 0, 0]
+  feature-reads/int := 0
 
   receive -> ByteArray: return received.take
 
   send packet/ByteArray -> none:
     if closed: throw "FAKE_CLOSED"
+    if auto-features and packet.size == 6 and packet[0] == 1 and packet[1] == 0x16 and packet[2] == 0x20:
+      feature-reads++
+      received.add #[4, 0x0f, 4, 0, 1, 0x16, 0x20]
+      received.add (#[4, 0x3e, 12, 4, 0, packet[4], packet[5]] + auto-features)
+      return
     sent-count++
     sent.add packet.copy
 
@@ -1079,6 +1094,8 @@ test-status:
 // the latter must never finish or discard the former, even when rejected.
 test-status-procedure-isolation features-first/bool rejected/bool:
   transport := FakeTransport
+  // This test scripts the feature exchange itself.
+  transport.auto-features = null
   controller := hci.Controller transport
   features := #[4, 0x3e, 12, 4, 0, 0x18, 0, 1, 0, 0, 0, 0, 0, 0, 0]
   final-event := monitor.Latch

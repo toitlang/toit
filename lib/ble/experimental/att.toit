@@ -157,9 +157,16 @@ class Client:
   valid-database-revision revision/int -> bool:
     return not error_ and link_.connected and revision == database-revision_
 
-  /** Rejects stale discovery work or a closed connection. */
+  /**
+  Rejects stale discovery work or a closed connection.
+
+  A closed client or ended link reports its own error; only a live connection
+    whose database revision moved reports GATT_DATABASE_CHANGED.
+  */
   check-database-revision revision/int -> none:
-    if not (valid-database-revision revision): throw "GATT_DATABASE_CHANGED"
+    if revision != database-revision_: throw "GATT_DATABASE_CHANGED"
+    if error_: throw error_
+    if not link_.connected: throw (link_.error or "HCI_LINK_DISCONNECTED")
 
   /**
   Monitors a discovered Service Changed characteristic during $body.
