@@ -38,6 +38,7 @@ FINISHED_            ::= 20
 
 ALERT-WARNING_ ::= 1
 ALERT-FATAL_   ::= 2
+ALERT-CLOSE-NOTIFY_ ::= 0
 
 RECORD-HEADER-SIZE_ ::= 5
 CLIENT-RANDOM-SIZE_ ::= 32
@@ -914,16 +915,18 @@ class ServerHello_:
     index += 3
     extensions = {:}
     if index != packet.size:
+      if index + 2 > packet.size: throw "PROTOCOL_ERROR"
       extensions-length := BIG-ENDIAN.uint16 packet index
       index += 2
-      while extensions-length > 0:
+      if extensions-length != packet.size - index: throw "PROTOCOL_ERROR"
+      while index < packet.size:
+        if index + 4 > packet.size: throw "PROTOCOL_ERROR"
         extension-type := BIG-ENDIAN.uint16 packet index
         extension-length := BIG-ENDIAN.uint16 packet index + 2
-        extension := packet[index + 4..index + 4 + extension-length]
-        extensions[extension-type] = extension
+        if extension-length > packet.size - index - 4 or extensions.contains extension-type:
+          throw "PROTOCOL_ERROR"
+        extensions[extension-type] = packet[index + 4..index + 4 + extension-length]
         index += 4 + extension-length
-        extensions-length -= 4 + extension-length
-    if index != packet.size: throw "PROTOCOL_ERROR"
 
 class SymmetricSession_:
   write-keys /KeyData_
@@ -934,6 +937,7 @@ class SymmetricSession_:
 
   buffered-plaintext-index_ := 0
   buffered-plaintext_ := []
+  peer-closed_ := false
 
   constructor .parent_ .writer_ .reader_ .write-keys .read-keys:
 
@@ -994,6 +998,7 @@ class SymmetricSession_:
         parent_.close
 
   read_ expected-type/int -> ByteArray?:
+    if peer-closed_: return null
     while true:
       if buffered-plaintext-index_ != buffered-plaintext_.size:
         result := buffered-plaintext_[buffered-plaintext-index_]
@@ -1041,12 +1046,23 @@ class SymmetricSession_:
       // Since we got here, the tag was successfully verified.
       if plain-chunk.size != 0: buffered-plaintext.add plain-chunk
       if record-header.type == ALERT_:
+        // Alerts are control messages. Their bytes must never be handed to
+        // the application as data, so handle them here and read on.
         alert-data := byte-array-join_ buffered-plaintext
-        if alert-data[0] != ALERT-WARNING_:
-          print "See https://www.rfc-editor.org/rfc/rfc4346#section-7.2"
-          throw "Fatal TLS alert: $alert-data[1]"
-      else:
-        assert: record-header.type == expected-type
+        if alert-data.size != 2: throw "PROTOCOL_ERROR"
+        level := alert-data[0]
+        description := alert-data[1]
+        if level == ALERT-FATAL_:
+          throw "Fatal TLS alert: $description"
+        if level != ALERT-WARNING_: throw "PROTOCOL_ERROR"
+        if description == ALERT-CLOSE-NOTIFY_:
+          // The peer has finished writing. Report end of stream now and
+          // on every later read, even if the transport stays open.
+          peer-closed_ = true
+          return null
+        // Other warnings do not affect the connection.
+        continue
+      assert: record-header.type == expected-type
       buffered-plaintext_ = buffered-plaintext
       buffered-plaintext-index_ = 0
 
