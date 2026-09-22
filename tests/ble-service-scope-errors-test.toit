@@ -6,7 +6,7 @@ import ble.experimental.service.client as clients
 import ble.experimental.service.gatt-provider as providers
 import expect show *
 import monitor
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-peripheral-test as peripheral
 
 main:

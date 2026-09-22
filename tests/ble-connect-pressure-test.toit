@@ -6,7 +6,7 @@ import ble.experimental.central
 import ble.experimental.hci
 import expect show *
 import system
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 
 main:
   slots := List 16384

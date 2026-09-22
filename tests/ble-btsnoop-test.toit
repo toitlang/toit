@@ -6,7 +6,7 @@ import ble.experimental.btsnoop show Btsnoop
 import expect show *
 import io
 
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 
 main:
   test-records --payloads

@@ -4,7 +4,7 @@
 
 import expect show *
 import io
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 
 // Keeps credit commands separate from the existing ATT response assertions.
 // Every returned credit must match a packet received on the same live handle.

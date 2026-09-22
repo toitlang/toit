@@ -10,7 +10,7 @@ import ble.experimental.transport
 import ble.experimental.service.client as clients
 import ble.experimental.service.private-scanning-provider as providers
 import ble.experimental.service.provider as rpc
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-scan-rotation-test as rotation
 
 main:

@@ -9,7 +9,7 @@ import ble.experimental.transport
 import ble.experimental.hci
 import ble.experimental.service.client as clients
 import ble.experimental.service.gatt-provider as providers
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-receive-flow-fixture as flow
 
 main:

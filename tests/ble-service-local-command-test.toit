@@ -8,7 +8,7 @@ import system
 import ble.experimental.signaling as signaling
 import ble.experimental.service.client as clients
 import .ble-service-gatt-test as service
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-peripheral-test as peripheral
 
 main:

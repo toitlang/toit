@@ -12,7 +12,7 @@ import ble.experimental.security-owner
 import ble.experimental.service.client as clients
 import ble.experimental.signaling as signaling
 import .ble-cccd-session-test as configuration
-import .ble-hci-test as wire
+import .ble-fixture as wire
 import .ble-peripheral-test as peripheral
 import .ble-security-cleanup-test as security
 import .ble-service-gatt-test as service

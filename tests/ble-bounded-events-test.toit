@@ -10,7 +10,7 @@ import monitor
 import system
 import .ble-bounded-accept-test as fixture
 import .ble-connect-isolation-test as connections
-import .ble-hci-test as hci-fixture
+import .ble-fixture as hci-fixture
 import .ble-multilink-test as links
 
 main:

@@ -9,7 +9,7 @@ import ble.experimental.transport
 import ble.experimental.service.client as clients
 import ble.experimental.service.advertising-provider as providers
 import ble.experimental.service.provider as rpc
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-peripheral-test as peripheral
 
 main:

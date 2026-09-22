@@ -15,7 +15,7 @@ import ble.experimental.smp-pairing as smp
 import ble.experimental.transport
 import ble.experimental.service.client as clients
 import ble.experimental.service.gatt-provider as providers
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-security-test as wire
 import .ble-receive-flow-fixture as flow
 

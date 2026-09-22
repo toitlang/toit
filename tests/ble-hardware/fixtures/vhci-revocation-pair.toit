@@ -6,14 +6,15 @@ import ble.experimental.att
 import ble.experimental.bond
 import ble.experimental.central
 import ble.experimental.esp32
+import ble.experimental.hexdump
 import ble.experimental.hci
 import ble.experimental.security
 import .vhci-bond-revocation-peer as fixture
 
 // Fresh on-air pairing, with public fixture approval of Numeric Comparison.
 // The campaign verifier must compare the central and peer numbers.
-pair --first-peer/ByteArray?=null --receive-acl-packets/int=0 -> List:
-  controller := hci.Controller (esp32.Esp32Transport)
+pair --first-peer/ByteArray?=null --receive-acl-packets/int=0 --trace/bool=false -> List:
+  controller := hci.Controller (trace ? (hexdump.Hexdump esp32.Esp32Transport) : esp32.Esp32Transport)
   host/central.Central? := null
   candidates := []
   try:

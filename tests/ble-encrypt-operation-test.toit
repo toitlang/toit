@@ -7,7 +7,7 @@ import ble.experimental.encryption
 import ble.experimental.hci
 import expect show *
 import monitor
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-hardware.fixtures.hci-trace as trace
 import .ble-hardware.fixtures.vhci-central-provider as diagnostics
 

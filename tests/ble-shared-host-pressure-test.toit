@@ -7,7 +7,7 @@ import ble.experimental.hci
 import ble.experimental.service.shared-host as shared
 import expect show *
 import system
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 
 main:
   factory := Factory

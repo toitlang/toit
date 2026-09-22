@@ -11,7 +11,7 @@ import ble.experimental.hci as hci
 import .ble-accept-update-test as update-fixture
 import .ble-bounded-accept-test as bounded-fixture
 import .ble-connect-isolation-test as connections
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-peripheral-test as legacy
 import .ble-multilink-test as links
 

@@ -8,7 +8,7 @@ import ble.experimental.service.provider as rpc
 import expect show *
 import system
 import .ble-shared-host-pressure-test as heap-fixture
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 
 main:
   4.repeat: run it

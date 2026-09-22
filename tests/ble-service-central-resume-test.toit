@@ -17,7 +17,7 @@ import ble.experimental.smp-identity
 import ble.experimental.transport
 import ble.experimental.service.client as clients
 import ble.experimental.service.gatt-provider as providers
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-key-reply-test as keys
 import .ble-receive-flow-fixture as flow
 

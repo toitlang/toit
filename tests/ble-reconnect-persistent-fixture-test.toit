@@ -7,7 +7,7 @@ import ble.experimental.hci
 import ble.experimental.signaling
 import expect show *
 import monitor
-import .ble-hci-test as packets
+import .ble-fixture as packets
 import .ble-peripheral-test as peripheral
 import .ble-hardware.fixtures.hci-echo as echo
 import .ble-hardware.fixtures.hci-server as server

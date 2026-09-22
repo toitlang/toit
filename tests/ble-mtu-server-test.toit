@@ -9,7 +9,7 @@ import ble.experimental.hci
 import expect show *
 import io
 import system
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-peripheral-test as peripheral
 
 main:

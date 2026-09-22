@@ -7,7 +7,7 @@ import ble.experimental.encryption
 import ble.experimental.hci
 import expect show *
 import system
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-multilink-test as links
 
 main:

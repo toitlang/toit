@@ -9,7 +9,7 @@ import ble.experimental.hci
 import ble.experimental.signaling
 import expect show *
 import monitor
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-peripheral-test as peripheral
 
 main:

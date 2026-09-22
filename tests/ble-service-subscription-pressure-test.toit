@@ -9,7 +9,7 @@ import expect show *
 import io
 import monitor
 import system
-import .ble-hci-test as hci
+import .ble-fixture as hci
 import .ble-mtu-server-test as wire
 import .ble-subscriptions-test as subscriptions
 

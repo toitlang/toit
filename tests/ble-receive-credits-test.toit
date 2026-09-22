@@ -7,7 +7,7 @@ import expect show *
 import io
 import monitor
 import system
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 
 main:
   with-timeout --ms=2_000: deferred-submission

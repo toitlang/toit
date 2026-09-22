@@ -7,7 +7,7 @@ import ble.experimental.hci
 import ble.experimental.service.shared-host as shared
 import expect show *
 import monitor
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-multilink-test as links
 import .ble-peripheral-test as peripheral
 import .ble-service-multiclient-test as clients

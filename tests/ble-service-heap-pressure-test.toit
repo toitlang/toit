@@ -6,7 +6,7 @@ import ble.experimental.service.client as clients
 import expect show *
 import monitor
 import system
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-multilink-test as links
 import .ble-service-multiclient-test as shared
 

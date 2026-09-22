@@ -10,7 +10,7 @@ import ble.experimental.transport as transport
 import ble.experimental.signaling as signaling
 import ble.experimental.service.gatt-provider as providers
 import ble.experimental.service.client as clients
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-peripheral-test as peripheral
 import .ble-receive-flow-fixture as flow
 

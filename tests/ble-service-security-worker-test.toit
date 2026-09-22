@@ -10,7 +10,7 @@ import expect show *
 import monitor
 import .ble-bounded-accept-test as accept
 import .ble-connect-isolation-test as connect
-import .ble-hci-test as wire
+import .ble-fixture as wire
 import .ble-multilink-test as links
 import .ble-security-cleanup-test as cleanup
 import .ble-service-multiclient-test as packets

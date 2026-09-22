@@ -6,7 +6,7 @@ import ble.experimental.service.client as clients
 import expect show *
 import system
 import .ble-service-central-test as fixture
-import .ble-hci-test as hci
+import .ble-fixture as hci
 import .ble-subscriptions-test as subscriptions
 import .ble-mtu-server-test as wire
 

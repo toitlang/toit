@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-hardware.connection-events as events
 
 main:

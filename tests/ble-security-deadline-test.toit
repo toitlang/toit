@@ -10,7 +10,7 @@ import ble.experimental.security
 import ble.experimental.smp-pairing as smp
 import expect show *
 import monitor
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-security-test as wire
 
 main:

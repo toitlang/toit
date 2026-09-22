@@ -77,3 +77,14 @@ esptool write when bonds must survive.
 Additional peers are available on request: a Linux laptop with its own
 Bluetooth, an Android phone, a Raspberry Pi 4 (`ssh pi4`), and other ESP32
 variants.
+
+## Tracing
+
+Wrap a transport in `ble.experimental.hexdump.Hexdump` on a board to print
+every HCI packet as `HCI RX|TX <us> <hex>` on the serial log; convert a saved
+log with `toit run tools/ble-hci-log.toit LOG OUT.btsnoop` and open it in
+Wireshark. On Linux, `ble.experimental.btsnoop.Btsnoop` writes the file
+directly, and `btmon` captures the other side when it is a BlueZ adapter.
+Traces contain keys; keep them out of the repository. The revocation campaign
+fixtures take `--trace` to enable this on all three boards
+(`tests/ble-hardware/fixtures/vhci-bond-revocation-*.toit`).

@@ -10,7 +10,7 @@ import expect show *
 import io
 import monitor
 import system
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 
 main:
   server-tests

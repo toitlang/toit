@@ -7,7 +7,7 @@ import ble.experimental.connection
 import ble.experimental.hci
 import expect show *
 import monitor
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-multilink-test as links
 
 COMMAND ::= #[1, 0x13, 0x20, 14, 0x34, 2, 12, 0, 24, 0, 0, 0, 0x90, 1, 0, 0, 0, 0]

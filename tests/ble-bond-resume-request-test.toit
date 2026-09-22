@@ -12,7 +12,7 @@ import ble.experimental.smp-identity
 import expect show *
 import monitor
 
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-key-reply-test as keys
 
 // Core 6.3 Vol 3 Part H 2.4.6, Figure 2.7: a central with a stored key that

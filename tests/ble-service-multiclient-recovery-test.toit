@@ -8,7 +8,7 @@ import ble.experimental.transport
 import ble.experimental.service.client as clients
 import ble.experimental.service.gatt-provider as providers
 import ble.experimental.service.provider as rpc
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-multilink-test as links
 import .ble-service-multiclient-test as shared
 import .ble-service-central-cancel-test as shutdown

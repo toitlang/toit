@@ -17,7 +17,7 @@ import ble.experimental.smp-features show PairingError
 import expect show *
 import monitor
 import system
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-key-reply-test as key-fixture
 
 main:

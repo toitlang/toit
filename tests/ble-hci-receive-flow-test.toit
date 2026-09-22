@@ -7,7 +7,7 @@ import ble.experimental.central
 import expect show *
 import monitor
 import system
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 
 ACL ::= #[2, 0x34, 2, 3, 0, 7, 8, 9]
 COMPLETED ::= #[1, 0x35, 0x0c, 5, 1, 0x34, 2, 1, 0]

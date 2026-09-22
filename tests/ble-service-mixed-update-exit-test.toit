@@ -17,7 +17,7 @@ import .ble-connect-isolation-test as connect
 import .ble-multilink-test as links
 import .ble-bounded-accept-test as accept
 import .ble-accept-update-test as updates
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-peripheral-test as legacy
 
 ARM-EXIT ::= 1000

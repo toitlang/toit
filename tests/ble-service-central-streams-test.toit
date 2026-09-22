@@ -5,7 +5,7 @@
 import expect show *
 import system
 import ble.experimental.service.client as clients
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-service-central-test as service
 
 main:

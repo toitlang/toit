@@ -8,7 +8,7 @@ import ble.experimental.gatt-server
 import ble.experimental.hci
 import expect show *
 import monitor
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-mtu-server-test as wire
 
 main:

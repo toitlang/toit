@@ -7,7 +7,7 @@ import ble.experimental.central
 import ble.experimental.hci
 import expect show *
 import monitor
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-multilink-test as multi
 import .ble-peripheral-test as peripheral
 

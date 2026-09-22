@@ -15,7 +15,7 @@ import ble.experimental.smp-identity as identity
 import expect show *
 import monitor
 import system
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-security-test as wire
 import .ble-key-reply-test as keys
 import .ble-smp-identity-test as identity-fixture

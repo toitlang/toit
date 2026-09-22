@@ -9,7 +9,7 @@ import ble.experimental.service.central-provider as providers
 import ble.experimental.service.client as clients
 import ble.experimental.service.provider as rpc
 import expect show *
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-multilink-test as links
 import .ble-security-cleanup-test as cleanup
 import .ble-service-multiclient-test as connections

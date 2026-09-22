@@ -14,7 +14,7 @@ import ble.experimental.hci
 import ble.experimental.smp-identity show Identity
 import .ble-bond-table-test as records
 import .ble-cccd-storage-test as configuration
-import .ble-hci-test as wire
+import .ble-fixture as wire
 
 // Tests trusted ownership and storage ordering with synthetic, unencrypted links.
 main:

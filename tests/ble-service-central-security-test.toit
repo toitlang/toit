@@ -10,7 +10,7 @@ import ble.experimental.security-owner show Owner
 import ble.experimental.transport
 import ble.experimental.service.client as clients
 import ble.experimental.service.gatt-provider as providers
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-service-shutdown-test as security
 
 main:

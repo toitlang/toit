@@ -12,7 +12,7 @@ import expect show *
 import io
 import monitor
 import system
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-connect-isolation-test as isolation
 import .ble-multilink-test as links
 import .ble-receive-flow-fixture as flow

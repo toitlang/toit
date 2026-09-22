@@ -20,7 +20,7 @@ import expect show *
 import monitor
 import system
 import .ble-bond-table-test as storage
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-security-test as wire
 import .ble-security-identity-test as identities
 import .ble-key-reply-test as keys

@@ -7,7 +7,7 @@ import ble.experimental.service.provider as rpc
 import expect show *
 import system
 import .ble-service-init-pressure-test as init-fixture
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 
 main:
   4.repeat: run it

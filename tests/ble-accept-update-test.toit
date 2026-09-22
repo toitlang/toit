@@ -10,7 +10,7 @@ import ble.experimental.bounded-central as bounded
 import ble.experimental.central as central
 import ble.experimental.hci as hci
 import .ble-bounded-accept-test as bounded-fixture
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-peripheral-test as legacy
 import .ble-connect-isolation-test as connections
 import .ble-multilink-test as links

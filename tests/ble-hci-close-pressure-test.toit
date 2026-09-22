@@ -6,7 +6,7 @@ import ble.experimental.hci
 import expect show *
 import io
 import system
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-hci-receive-flow-test as flow
 import .ble-receive-credits-test as packets
 

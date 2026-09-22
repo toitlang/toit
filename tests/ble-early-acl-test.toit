@@ -5,7 +5,7 @@
 import expect show *
 import ble.experimental.central
 import ble.experimental.hci
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-peripheral-test as peripheral
 
 main:
