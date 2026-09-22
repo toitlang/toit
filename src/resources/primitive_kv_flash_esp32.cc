@@ -69,7 +69,11 @@ PRIMITIVE(init) {
   }
 
   PersistentResourceGroup* resource_group = _new PersistentResourceGroup(handle, process);
-  if (!resource_group) FAIL(MALLOC_FAILED);
+  if (!resource_group) {
+    // The resource group has not adopted the successfully opened handle.
+    nvs_close(handle);
+    FAIL(MALLOC_FAILED);
+  }
 
   proxy->set_external_address(resource_group);
   return proxy;
@@ -95,6 +99,13 @@ PRIMITIVE(read_bytes) {
     return process->null_object();
   } else if (err != ESP_OK) {
     return Primitive::os_error(err, process);
+  }
+
+  // The two NVS reads take separate locks. A concurrent writer can shrink the
+  // blob, yielding ESP_OK with fewer bytes than the allocated array. Do not
+  // return the unwritten tail; report the same error as a growing blob.
+  if (length != static_cast<size_t>(bytes.length())) {
+    return Primitive::os_error(ESP_ERR_NVS_INVALID_LENGTH, process);
   }
 
   return array;
