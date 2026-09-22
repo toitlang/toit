@@ -375,14 +375,15 @@ PRIMITIVE(byte_array_convert_to_string) {
 PRIMITIVE(blob_index_of) {
   ARGS(Blob, bytes, int, byte, word, from, word, to);
   if (!(0 <= from && from <= to && to <= bytes.length())) FAIL(OUT_OF_BOUNDS);
-#if defined(__x86_64__) && !defined(__SANITIZE_THREAD__)
+#if defined(__x86_64__) && !defined(__SANITIZE_THREAD__) && !defined(TOIT_ASAN)
   const uint8* address = bytes.address();
   // Algorithm from https://github.com/erikcorry/struhchuh.
   // Search for "*" using only aligned SSE2 128 bit loads. This may load data
   // either side of the string, but can never cause a fault because the loads are
   // in 128 bit sections also covered by the string and the fault hardware works
   // at a higher granularity.  Threadsanitizer doesn't understand this and reports
-  // use-after-frees.
+  // use-after-frees. AddressSanitizer also rejects loads outside the allocation;
+  // sanitizer builds use the bounded memchr path below.
   int last_bits = reinterpret_cast<uintptr_t>(address + from) & 15;
   // The movemask_epi8 instruction takes the top bit of each of the 16 bytes and
   // puts them in the low 16 bits of the register, so we use a 16 bit mask here.

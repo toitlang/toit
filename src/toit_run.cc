@@ -402,7 +402,7 @@ int main(int argc, char **argv) {
 
   free(boot_bundle_path);
 
-  GcMetadata::tear_down();
+  ObjectMemory::tear_down();
   OS::tear_down();
   FlashRegistry::tear_down();
   return exit_state;
