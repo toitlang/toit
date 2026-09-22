@@ -234,6 +234,10 @@ class MessageEncoder {
 
   bool malloc_failed_ = false;
 
+  // All out-of-line references share the decoder's fixed external table,
+  // regardless of whether their memory is copied or transferred.
+  unsigned external_count_ = 0;
+
   unsigned copied_count_ = 0;
   void* copied_[MESSAGING_ENCODING_MAX_EXTERNALS];
 
@@ -242,6 +246,7 @@ class MessageEncoder {
 
   bool encode_array(Array* object, word from, word to);
   bool encode_byte_array(ByteArray* object);
+  bool reserve_external();
   bool encode_copy(Object* object, int tag);
   bool encode_list(Instance* instance, word from, word to);
   bool encode_map(Instance* instance);
