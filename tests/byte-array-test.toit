@@ -14,6 +14,36 @@ main:
   test-hash-code
   test-construction
   test-reverse
+  test-cow-reverse
+
+test-cow-reverse:
+  // Use a shared writable backing for the regression so a broken COW path
+  // produces an assertion failure rather than writing into read-only memory.
+  backing := ByteArray_ 6
+  backing.size.repeat: backing[it] = it + 1
+  bytes := CowByteArray_ backing
+  other := CowByteArray_ backing
+  slice := bytes[1..5]
+  bytes.reverse --in-place
+  expect-equals #[1, 2, 3, 4, 5, 6] backing
+  expect-equals backing other
+  expect-equals #[6, 5, 4, 3, 2, 1] bytes
+  expect-equals #[5, 4, 3, 2] slice
+  expect bytes.is-mutable_
+  owned := bytes.backing_
+  bytes.reverse --in-place
+  expect-identical owned bytes.backing_
+  expect-equals backing bytes
+  // The compiler may reuse literal backing across invocations. Neither
+  // reversal nor mutation through an earlier slice may change that literal.
+  3.repeat:
+    literal := #[1, 2, 3, 4, 5, 6]
+    view := literal[1..5]
+    literal.reverse --in-place
+    expect-equals #[6, 5, 4, 3, 2, 1] literal
+    expect-equals #[5, 4, 3, 2] view
+    view[0] = 99
+    expect-equals #[6, 99, 4, 3, 2, 1] literal
 
 test-basic:
   2.repeat:

@@ -36,6 +36,7 @@ class SizedReader_ extends io.Reader:
     try:
       with-timeout Client.DEFAULT-MAX-DELAY:
         b := reader_.read --max-size=remaining_
+        if not b: throw io.Reader.UNEXPECTED-END-OF-READER
         remaining_ -= b.size
         return b
     finally: | is-exception _ |
