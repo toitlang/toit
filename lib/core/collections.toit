@@ -2415,13 +2415,29 @@ abstract class HashedInsertionOrderedCollection_:
 
   rebuild_ old-size/int step/int --allow-shrink/bool --rebuild-backing/bool:
     if rebuild-backing:
-      // Rebuild backing to remove deleted elements.
+      // Compact into separate backing. Allocation failure must not leave the
+      // original index pointing into entries that have already been moved.
+      replacement := List (size_ * step)
       i := 0
       backing_.do:
         if it is not Tombstone_:
-          backing_[i++] = it
-      length := size_ * step
-      backing_.resize size_ * step
+          replacement[i++] = it
+      previous-backing := backing_
+      previous-index := index_
+      previous-spaces := index-spaces-left_
+      committed := false
+      try:
+        backing_ = replacement
+        // Use a new index so failure cannot modify the saved one through reuse.
+        index_ = null
+        rebuild_ old-size step --allow-shrink --rebuild-backing=false
+        committed = true
+      finally:
+        if not committed:
+          backing_ = previous-backing
+          index_ = previous-index
+          index-spaces-left_ = previous-spaces
+      return
     new-index-size := pick-new-index-size_ old-size --allow-shrink=allow-shrink
     index-mask := new-index-size - 1
     if not index_ or index-mask > HASH-MASK_ or rebuild-backing:
