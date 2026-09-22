@@ -894,24 +894,19 @@ class ServerHello_:
   cipher-suite /int
 
   constructor packet/ByteArray:
-    header := RecordHeader_ packet
-    if header.type != HANDSHAKE_ or packet[5] != SERVER-HELLO_:
-      if header.type == ALERT_:
-        print "Alert: $(packet[5] == 2 ? "fatal" : "warning") $(packet[6])"
-        print "See https://www.rfc-editor.org/rfc/rfc4346#section-7.2"
+    // The packet is a complete, possibly reassembled, TLS 1.2 ServerHello:
+    // a 5-byte record header, a 4-byte handshake header, the 2-byte version,
+    // 32 random bytes, the session ID, the cipher suite, the compression
+    // method and optional extensions. The peer controls every length field,
+    // so validate each enclosing length before indexing into the packet.
+    if packet.size < 47 or packet[0] != HANDSHAKE_ or packet[5] != SERVER-HELLO_ or
+        (BIG-ENDIAN.uint16 packet 3) != packet.size - 5 or
+        (BIG-ENDIAN.uint24 packet 6) != packet.size - 9:
       throw "PROTOCOL_ERROR"
-    assert:
-      handshake-header := HandshakeHeader_ packet
-      header.length == handshake-header.length + 4  // Last line is value being asserted.
     random = packet[11..43]
-    str := ""
-    for i := random.size - 8; i < random.size; i++:
-      if ' ' <= random[i] <= '~':
-        str += "$(%c random[i])"
-      else:
-        break
     server-session-id-length := packet[43]
     index := 44 + server-session-id-length
+    if server-session-id-length > 32 or index + 3 > packet.size: throw "PROTOCOL_ERROR"
     session-id = packet[44..index]
     cipher-suite = BIG-ENDIAN.uint16 packet index
     compression-method := packet[index + 2]
