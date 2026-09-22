@@ -26,8 +26,9 @@
 #include "ev_queue_esp32.h"
 
 // The max queue set size is the maximum number of events in the queue. This is used for the gpio queue,
-// up to three UART queues, the USB stdin queue, and the stop semaphore.
-#define MAX_QUEUE_SET_SIZE (GPIO_QUEUE_SIZE + 3 * UART_QUEUE_SIZE + STDIN_QUEUE_SIZE + 1)
+// up to three UART queues, the USB stdin queue, the controller-only BLE wake
+// queue when enabled, and the stop semaphore.
+#define MAX_QUEUE_SET_SIZE (GPIO_QUEUE_SIZE + 3 * UART_QUEUE_SIZE + STDIN_QUEUE_SIZE + BLE_HCI_QUEUE_SIZE + 1)
 
 namespace toit {
 

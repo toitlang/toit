@@ -78,6 +78,17 @@ namespace toit {
   M(debug,   MODULE_DEBUG)                   \
   M(espnow,  MODULE_ESPNOW)                  \
   M(bignum,  MODULE_BIGNUM)                  \
+  M(ble_hci, MODULE_BLE_HCI)                 \
+
+#define MODULE_BLE_HCI(PRIMITIVE)            \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(open, 2)                         \
+  PRIMITIVE(receive, 2)                      \
+  PRIMITIVE(send, 2)                         \
+  PRIMITIVE(close, 2)                        \
+  PRIMITIVE(diagnostics, 1)                  \
+  PRIMITIVE(test, 3)                         \
+  PRIMITIVE(open_management, 1)              \
 
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(write_on_stdout, 2)              \
@@ -1138,6 +1149,8 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_WifiResourceGroup(N, name)   MAKE_UNPACKING_MACRO(WifiResourceGroup, N, name)
 #define _A_T_EthernetResourceGroup(N, name) MAKE_UNPACKING_MACRO(EthernetResourceGroup, N, name)
 #define _A_T_BleResourceGroup(N, name)    MAKE_UNPACKING_MACRO(BleResourceGroup, N, name)
+#define _A_T_BleHciResourceGroup(N, name) MAKE_UNPACKING_MACRO(BleHciResourceGroup, N, name)
+#define _A_T_BleHciResource(N, name)      MAKE_UNPACKING_MACRO(BleHciResource, N, name)
 #define _A_T_X509ResourceGroup(N, name)   MAKE_UNPACKING_MACRO(X509ResourceGroup, N, name)
 #define _A_T_PwmResourceGroup(N, name)    MAKE_UNPACKING_MACRO(PwmResourceGroup, N, name)
 #define _A_T_RpcResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RpcResourceGroup, N, name)

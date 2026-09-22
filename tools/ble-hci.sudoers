@@ -1,0 +1,6 @@
+# Development permissions for flo's BLE checkout on this machine.
+# Validate with visudo -cf before installing as /etc/sudoers.d/toit-ble.
+# The VM receives network-administration capability, not full root privileges.
+# Reapply after rebuilding the executable. No arbitrary sudo command is allowed.
+flo ALL=(root) NOPASSWD: /usr/bin/setcap cap_net_admin+ep /home/flo/work/opentoit-ble/build/host/sdk/lib/toit/bin/toit.run
+flo ALL=(root) NOPASSWD: /usr/bin/btmgmt --index 0 power on, /usr/bin/btmgmt --index 0 power off

@@ -71,6 +71,7 @@ namespace toit {
   fn(AeadContext)                       \
   fn(TlsHandshakeToken)                 \
   fn(EspNowResource)                    \
+  fn(BleHciResource)                    \
   fn(MbedTlsSocket)                     \
   fn(RsaGenerationResource)             \
 
@@ -104,6 +105,7 @@ namespace toit {
   fn(RpcResourceGroup)                  \
   fn(MbedTlsResourceGroup)              \
   fn(UdpResourceGroup)                  \
+  fn(BleHciResourceGroup)               \
   fn(UartResourceGroup)                 \
   fn(StdinResourceGroup)                \
   fn(TerminalResizeResourceGroup)       \

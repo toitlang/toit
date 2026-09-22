@@ -115,10 +115,10 @@ The $gc flag indicates whether a garbage collection should be performed
 Returns an array with stats for the current process.
 The stats, listed by index in the array, are:
 0. New-space (small collection) GC count for the process
-1. Allocated memory on the Toit heap of the process
-2. Reserved memory on the Toit heap of the process
+1. Allocated memory attributed to the process: object heap plus registered external allocations
+2. Reserved object-heap memory plus registered external allocations
 3. Process message count
-4. Bytes allocated in object heap
+4. Cumulative bytes allocated in the object heap and registered external allocations
 5. Group ID
 6. Process ID
 7. Free memory in the system
@@ -131,8 +131,10 @@ The "bytes allocated in the heap" tracks the total number of allocations, but
   allocation pressure of the process.  It corresponds to the value returned
   by $bytes-allocated-delta.
 
-The "allocated memory" is the combined size of all live objects on the heap.
-The "reserved memory" is the size of the heap.
+The "allocated memory" includes occupied object-heap storage and registered
+  external allocations. The "reserved memory" includes reserved object-heap
+  storage and registered external allocations. Neither counter includes all
+  native system allocations, and neither isolates compactable heap storage.
 
 By passing the optional $list argument to be filled in, you can avoid causing
   an allocation, which may interfere with the tracking of allocations.  But note
