@@ -63,6 +63,19 @@ if (DEFINED EC618_GCC_PATH)
   list(APPEND toit_core_SRC "${TOIT_DATA_RELOC_SOURCE}")
 endif()
 
+option(TOIT_BLE_HCI_TESTING "Enable HCI test hooks (test builds only)" OFF)
+if (TOIT_BLE_HCI_TESTING)
+  set_source_files_properties(resources/ble_hci_esp32.cc resources/ble_hci_linux.cc PROPERTIES
+    COMPILE_DEFINITIONS TOIT_BLE_HCI_TESTING=1)
+endif()
+
+if (CONFIG_BT_CONTROLLER_ONLY AND CONFIG_STDATOMIC_S32C1I_SPIRAM_WORKAROUND)
+  # The VHCI resource explicitly allocates its atomic counters in internal RAM.
+  # Keep IDF's PSRAM workaround enabled everywhere else.
+  set_property(SOURCE resources/ble_hci_esp32.cc APPEND PROPERTY
+    COMPILE_OPTIONS "-mno-disable-hardware-atomics")
+endif()
+
 # Sources that are only needed to run a program.
 file(GLOB run_SRC
   "run.cc"
