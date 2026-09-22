@@ -356,7 +356,7 @@ add-image path/string existing-uuids/Set --run-boot/bool --run-critical/bool -> 
   image-data := file.read-contents path
   writer := containers.ContainerImageWriter image-data.size
   writer.write image-data
-  writer.commit --run-boot=run-boot --run-critical
+  writer.commit --run-boot=run-boot --run-critical=run-critical
 
 handle-arguments arguments/List container-manager/RunImageContainerManager -> none:
   existing-uuids/Set := {}
