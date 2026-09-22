@@ -288,6 +288,11 @@ class Session:
         if tls-state: tls-state.dispose
         if is-exception: reader_ = null
 
+        // Release the handshake token if we managed to create it. The token
+        // is a resource of the TLS group, so this must happen before the
+        // group can be torn down by the last 'unuse' below.
+        if token: tls-token-release_ token
+
         if is-exception or symmetric-session_ != null:
           // We do not need the resources any more. Either
           // because we're running in Toit mode using a
@@ -301,10 +306,6 @@ class Session:
           // until $close is called.
           tls-group_ = tls-group
           add-finalizer this:: close
-
-        // Release the handshake token if we managed to
-        // create the resource group.
-        if token: tls-token-release_ token
 
         // Mark the handshake as no longer in progress and
         // send back any exception to whoever may be waiting
@@ -409,8 +410,10 @@ class Session:
         flush-outgoing_
         return sent
       wrote := tls-write_ tls_ data from to
+      // Negative results are MbedTLS error codes. Formatting them allocates,
+      // so it happens in a separate primitive; see the native read primitive.
+      if wrote < 0: tls-error_ tls_ -wrote
       if wrote == 0: flush-outgoing_
-      if wrote < 0: throw "UNEXPECTED_TLS_STATUS: $wrote"
       from += wrote
       sent += wrote
 
@@ -420,6 +423,7 @@ class Session:
     if not tls_: throw "TLS_SOCKET_NOT_CONNECTED"
     while true:
       res := tls-read_ tls_
+      if res is int and res < 0: tls-error_ tls_ -res
       if res == TOIT-TLS-WANT-READ_:
         if not read-more_: return null
       else:
@@ -433,7 +437,12 @@ class Session:
   close-write:
     if not tls_: return
     if closed-for-write_: return
-    tls-close-write_ tls_
+    while true:
+      result := tls-close-write_ tls_
+      if result is int and result < 0: tls-error_ tls_ -result
+      if result != TOIT-TLS-WANT-WRITE_: break
+      // The outgoing buffer is full; drain it and queue the alert again.
+      flush-outgoing_
     flush-outgoing_
     closed-for-write_ = true
 
