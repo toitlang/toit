@@ -98,6 +98,7 @@ Process::Process(ProcessRunner* runner, ProcessGroup* group, SystemMessage* term
 
 Process::~Process() {
   state_ = TERMINATING;
+  MessageDecoder::deallocate(main_arguments_);
   MessageDecoder::deallocate(spawn_arguments_);
   delete termination_message_;
 

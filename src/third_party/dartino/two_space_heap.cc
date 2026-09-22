@@ -29,6 +29,11 @@ Process* TwoSpaceHeap::process() {
   return process_heap_->owner();
 }
 
+TwoSpaceHeap::~TwoSpaceHeap() {
+  // The private GC spare is outside both spaces' chunk lists.
+  if (spare_chunk_) ObjectMemory::free_chunk(spare_chunk_);
+}
+
 HeapObject* TwoSpaceHeap::allocate(uword size) {
   uword result = semi_space_.allocate(size);
   if (result == 0) {
