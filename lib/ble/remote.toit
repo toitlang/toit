@@ -548,8 +548,9 @@ class RemoteDevice extends Resource_:
   constructor.private_ .manager .identifier secure/bool:
     device-resource := ble-connect_ manager.resource_ identifier secure
     super device-resource
-    state := resource-state_.wait-for-state CONNECTED-EVENT_ | CONNECT-FAILED-EVENT_
-    if state & CONNECT-FAILED-EVENT_ != 0:
+    // The link can disconnect before setup (including MTU exchange) completes.
+    state := resource-state_.wait-for-state CONNECTED-EVENT_ | CONNECT-FAILED-EVENT_ | DISCONNECTED-EVENT_
+    if state & (CONNECT-FAILED-EVENT_ | DISCONNECTED-EVENT_) != 0:
       close_
       throw "BLE connection failed"
 
@@ -645,7 +646,7 @@ class RemoteReadWriteElement_ extends Resource_:
         remote-service_.device.resource-state_.wait-for-state READY-TO-SEND-WITHOUT-RESPONSE-EVENT_
 
   request-read_ -> ByteArray:
-    resource-state_.clear-state VALUE-DATA-READY-EVENT_
+    resource-state_.clear-state VALUE-DATA-READY-EVENT_ | VALUE-DATA-READ-FAILED-EVENT_
     ble-request-read_ resource_
     state := resource-state_.wait-for-state VALUE-DATA-READY-EVENT_ | VALUE-DATA-READ-FAILED-EVENT_
     if state & VALUE-DATA-READ-FAILED-EVENT_ != 0: throw-error_
