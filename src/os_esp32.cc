@@ -36,6 +36,7 @@
 #include "heap_report.h"
 #include "memory.h"
 #include "os.h"
+#include "os_condition_wait.h"
 #include "rtc_memory_esp32.h"
 #include "scheduler.h"
 #include "utils.h"
@@ -130,24 +131,48 @@ void OS::close(int fd) {
 // of that slot, or a timed-out wait, can leave notification bits behind for an
 // unrelated condition variable wait on the same task. A stale semaphore give
 // can only cause a conventional spurious wakeup on its owning thread.
-__thread SemaphoreHandle_t condition_wake_semaphore_ = null;
+struct ConditionWaitPlatform {
+  using Signal = SemaphoreHandle_t;
+  using Timer = esp_timer_handle_t;
+  using Callback = esp_timer_cb_t;
 
-struct ConditionWaitTimer {
-  SemaphoreHandle_t wake;
-  SemaphoreHandle_t callback_complete;
-  esp_timer_handle_t timer;
+  static Signal create_signal() { return xSemaphoreCreateBinary(); }
+  static void delete_signal(Signal signal) { vSemaphoreDelete(signal); }
+  static Timer create_timer(Callback callback, void* arg) {
+    esp_timer_create_args_t args{};
+    args.callback = callback;
+    args.arg = arg;
+    args.name = "toit condition wait";
+    Timer timer = null;
+    if (esp_timer_create(&args, &timer) != ESP_OK) return null;
+    return timer;
+  }
+  static void delete_timer(Timer timer) {
+    if (esp_timer_delete(timer) != ESP_OK) FATAL("unable to delete condition wait timer");
+  }
 };
+
+using ConditionWaitTimer = ConditionWaitResources<ConditionWaitPlatform>;
 
 // A native thread can only wait on one condition variable at a time, so one
 // timer per thread is sufficient. Toit task timers are multiplexed separately
 // by TimerEventSource; they do not each block a native thread.
+//
+// Threads spawned through Thread::spawn prepare their resources before the
+// task starts, so their first timed wait cannot fail on allocation. Threads
+// supplied by the platform (the main task) use the thread-local fallback and
+// allocate on their first wait.
 __thread ConditionWaitTimer condition_wait_timer_{};
+__thread ConditionWaitTimer* prepared_condition_wait_timer_ = null;
+
+static ConditionWaitTimer* condition_wait_resources() {
+  return prepared_condition_wait_timer_ == null ? &condition_wait_timer_ : prepared_condition_wait_timer_;
+}
 
 static SemaphoreHandle_t current_condition_wake_semaphore() {
-  if (condition_wake_semaphore_ == null) {
-    condition_wake_semaphore_ = xSemaphoreCreateBinary();
-  }
-  return condition_wake_semaphore_;
+  ConditionWaitTimer* result = condition_wait_resources();
+  if (!result->initialize_wake()) FATAL("unable to allocate condition wait semaphore");
+  return result->wake;
 }
 
 static void condition_wait_timeout(void* arg) {
@@ -161,20 +186,9 @@ static void condition_wait_timeout(void* arg) {
 }
 
 static ConditionWaitTimer* current_condition_wait_timer() {
-  ConditionWaitTimer* result = &condition_wait_timer_;
-  if (result->timer == null) {
-    result->wake = current_condition_wake_semaphore();
-    result->callback_complete = xSemaphoreCreateBinary();
-    if (result->wake == null || result->callback_complete == null) {
-      FATAL("unable to allocate condition wait timer semaphores");
-    }
-    esp_timer_create_args_t args{};
-    args.callback = condition_wait_timeout;
-    args.arg = result;
-    args.name = "toit condition wait";
-    if (esp_timer_create(&args, &result->timer) != ESP_OK) {
-      FATAL("unable to allocate condition wait timer");
-    }
+  ConditionWaitTimer* result = condition_wait_resources();
+  if (!result->initialize(condition_wait_timeout)) {
+    FATAL("unable to allocate condition wait timer");
   }
   return result;
 }
@@ -333,6 +347,7 @@ __thread Thread* current_thread_ = null;
 struct ThreadData {
   TaskHandle_t handle;
   SemaphoreHandle_t terminated;
+  ConditionWaitTimer condition_wait;
 };
 
 Thread::Thread(const char* name)
@@ -353,25 +368,25 @@ static void esp_thread_start(void* arg) {
 void Thread::_boot() {
   auto thread = reinterpret_cast<ThreadData*>(handle_);
   current_thread_ = this;
+  prepared_condition_wait_timer_ = &thread->condition_wait;
   ASSERT(current() == this);
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + OTHER_THREADS_MALLOC_TAG);
   entry();
   // Timed waits always cancel or finish their callback before returning, so
-  // no callback can use these semaphores after the native thread exits.
-  if (condition_wait_timer_.timer != null) {
-    if (esp_timer_delete(condition_wait_timer_.timer) != ESP_OK) {
-      FATAL("unable to delete condition wait timer");
-    }
-    condition_wait_timer_.timer = null;
-    vSemaphoreDelete(condition_wait_timer_.callback_complete);
-    condition_wait_timer_.callback_complete = null;
-  }
-  if (condition_wake_semaphore_ != null) {
-    vSemaphoreDelete(condition_wake_semaphore_);
-    condition_wake_semaphore_ = null;
-  }
+  // no callback can use these resources after the native thread exits.
+  prepared_condition_wait_timer_->dispose();
+  prepared_condition_wait_timer_ = null;
+  // After signaling, do not touch ThreadData or take application locks: the
+  // joiner may delete the data immediately.
   xSemaphoreGive(thread->terminated);
+#ifdef CONFIG_FREERTOS_UNICORE
+  // Self-deletion leaves the task's stack allocated until the idle task runs.
+  // On a single core the joiner is what runs next, so let it delete this task
+  // and reclaim the stack before it starts another worker.
+  while (true) vTaskSuspend(null);
+#else
   vTaskDelete(null);
+#endif
 }
 
 bool Thread::spawn(int stack_size, int core) {
@@ -380,6 +395,14 @@ bool Thread::spawn(int stack_size, int core) {
   if (thread == null) return false;
   thread->terminated = xSemaphoreCreateBinary();
   if (thread->terminated == null) {
+    delete thread;
+    return false;
+  }
+  // The condition-wait resources live as long as the thread. Allocating them
+  // here makes their failure part of the fallible spawn instead of a FATAL in
+  // the thread's first timed wait.
+  if (!thread->condition_wait.initialize(condition_wait_timeout)) {
+    vSemaphoreDelete(thread->terminated);
     delete thread;
     return false;
   }
@@ -397,6 +420,8 @@ bool Thread::spawn(int stack_size, int core) {
     &thread->handle,
     core);
   if (res != pdPASS) {
+    handle_ = null;
+    thread->condition_wait.dispose();
     vSemaphoreDelete(thread->terminated);
     delete thread;
     return false;
@@ -421,6 +446,10 @@ void Thread::join() {
   if (xSemaphoreTake(thread->terminated, portMAX_DELAY) != pdTRUE) {
     FATAL("Thread join failed");
   }
+#ifdef CONFIG_FREERTOS_UNICORE
+  // The worker has signaled and suspended itself; see Thread::_boot.
+  vTaskDelete(thread->handle);
+#endif
   vSemaphoreDelete(thread->terminated);
   delete thread;
   handle_ = null;
