@@ -115,7 +115,6 @@ class SystemServiceManager extends ServiceProvider
       if uuids.is-empty: services-by-uuid_.remove uuid
 
     if not services.is-empty: return
-    service-managers_.remove pid
     services-by-pid_.remove pid
 
   discover uuid/string --wait/bool client/int -> List:
@@ -147,10 +146,17 @@ class SystemServiceManager extends ServiceProvider
 
   watch pid/int target/int -> none:
     if pid == target: return
-    processes := service-managers_.get pid
-    if processes: processes.add target
+    // A watch can arrive after the stop notification has already been handled.
+    // Report that terminal state now rather than retaining an unwakeable watch.
+    error := catch: process-get-priority_ target
+    if error:
+      if error != "INVALID_ARGUMENT": throw error
+      process-send_ pid SYSTEM-RPC-NOTIFY-TERMINATED_ target
+      return
+    (service-managers_.get pid --init=(: {})).add target
 
   on-process-stop pid/int -> none:
+    service-managers_.remove pid
     services := services-by-pid_.get pid
     // Iterate over a copy of the values, so we can manipulate the
     // underlying map in the call to unlisten.

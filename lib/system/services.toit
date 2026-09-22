@@ -138,14 +138,26 @@ class ServiceSelectorRestricted extends ServiceSelector:
         tags-allowed = true
     return tags-allowed
 
-class DiscoveryProxy_ extends ServiceResourceProxy:
-  channel_/monitor.Channel
+// Discovery notifications invalidate a snapshot. Coalescing them avoids
+// blocking the system-message task when several providers register together.
+monitor DiscoveryChanges_:
+  changed_/bool := false
 
-  constructor client/ServiceClient .channel_ handle/int:
+  notify -> none:
+    changed_ = true
+
+  wait -> none:
+    await: changed_
+    changed_ = false
+
+class DiscoveryProxy_ extends ServiceResourceProxy:
+  changes_/DiscoveryChanges_
+
+  constructor client/ServiceClient .changes_ handle/int:
     super client handle
 
   on-notified_ notification/any -> none:
-    channel_.send notification
+    changes_.notify
 
 /**
 Base class for clients that connect to and use provided services
@@ -158,6 +170,7 @@ Subclasses implement service-specific methods to provide convenient APIs.
 */
 class ServiceClient:
   selector/ServiceSelector
+  provider-pid_/int?
 
   _id_/int? := null
   _pid_/int? := null
@@ -170,7 +183,18 @@ class ServiceClient:
 
   static DEFAULT-OPEN-TIMEOUT /Duration ::= Duration --ms=100
 
-  constructor .selector:
+  /**
+  Creates a client, optionally restricted to a trusted provider process.
+
+  Obtain $provider-pid from trusted launch/configuration code, not from provider
+    names, tags or untrusted messages. The restriction never falls back to
+    another process. A restarted provider process requires a new client with
+    its new ID.
+  */
+  constructor .selector --provider-pid/int?=null:
+    if provider-pid != null and not 0 <= provider-pid <= 0x7fff_ffff:
+      throw "INVALID_ARGUMENT"
+    provider-pid_ = provider-pid
 
   open --timeout/Duration? -> ServiceClient:
     return open --timeout=timeout --if-absent=: throw "Cannot find service"
@@ -181,22 +205,30 @@ class ServiceClient:
   open --timeout/Duration?=null [--if-absent] -> any:
     discovered/List? := null
     proxy/DiscoveryProxy_? := null
-    channel/monitor.Channel? := null
+    changes/DiscoveryChanges_? := null
     if timeout:
+      // Install notification dispatch before requesting a notifiable resource.
+      ServiceResourceProxyManager_.instance
       // Get a pair with a list of current services, and a resource that will
       // notify us of new services as they are registered.
       result := _client_.discover selector.uuid --wait
       if result:
         discovered = result[0]
         resource := result[1]
-        channel = monitor.Channel 1
-        proxy = DiscoveryProxy_ (_client_ as ServiceDiscoveryServiceClient) channel resource
+        changes = DiscoveryChanges_
+        proxy = DiscoveryProxy_ (_client_ as ServiceDiscoveryServiceClient) changes resource
     else:
       // Get a list of current services, but don't wait for new ones.
       result := _client_.discover selector.uuid --no-wait
       if result: discovered = result[0]
 
     try:
+      if proxy:
+        // A registration notification can arrive after discover takes its
+        // snapshot but before the proxy is registered. Re-read once after
+        // registration; subsequent changes are covered by the proxy.
+        current := _client_.discover selector.uuid --no-wait
+        discovered = current ? current[0] : null
       if discovered:
         result := find-service_ discovered
         if result: return result
@@ -207,9 +239,12 @@ class ServiceClient:
         catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
           with-timeout timeout:
             while true:
-              discovered = channel.receive
-              result := find-service_ discovered
-              if result: return result
+              changes.wait
+              current := _client_.discover selector.uuid --no-wait
+              discovered = current ? current[0] : null
+              if discovered:
+                result := find-service_ discovered
+                if result: return result
       return if-absent.call
     finally:
       if proxy: proxy.close
@@ -219,6 +254,7 @@ class ServiceClient:
     candidate-index := null
     candidate-priority := null
     for i := 0; i < discovered.size; i += 7:
+      if provider-pid_ != null and discovered[i] != provider-pid_: continue
       tags := discovered[i + 6]
       allowed := selector.is-allowed_
           --name=discovered[i + 2]
@@ -245,7 +281,12 @@ class ServiceClient:
     return _open_ selector --pid=pid --id=id
 
   _open_ selector/ServiceSelector --pid/int --id/int -> ServiceClient:
+    if provider-pid_ != null and pid != provider-pid_: throw "SERVICE_PROVIDER_NOT_ALLOWED"
     if _id_: throw "Already opened"
+    // Watch before submitting the opening RPC, so process death also wakes
+    // calls already awaiting a reply. The system service bootstraps this watch.
+    if pid >= 0 and pid != Process.current.id:
+      TerminationObserver_.instance.watch-provider pid
     // Open the client by doing a RPC-call to the discovered process.
     // This returns the client id necessary for invoking service methods.
     definition ::= rpc.invoke pid RPC-SERVICES-OPEN_ [
@@ -285,7 +326,11 @@ class ServiceClient:
     _id_ = _name_ = _pid_ = null
     remove-finalizer this
     ServiceResourceProxyManager_.unregister-all id
-    critical-do: rpc.invoke pid RPC-SERVICES-CLOSE_ id
+    critical-do:
+      error := catch: rpc.invoke pid RPC-SERVICES-CLOSE_ id
+      // Local resources are already closed. A vanished provider has nothing
+      // left to release, so closing this client remains idempotent.
+      if error and error != "NO_SUCH_PROCESS": throw error
 
   stringify -> string:
     return "service:$_name_@$(_major_).$(_minor_).$(_patch_)"
@@ -302,7 +347,9 @@ class ServiceClient:
     // TODO(kasper): Should we avoid using the task deadline here
     // and use our own? If we're timing out and trying to call
     // close after timing out, it should still work.
-    critical-do: rpc.invoke _pid_ RPC-SERVICES-CLOSE-RESOURCE_ [id, handle]
+    critical-do:
+      error := catch: rpc.invoke _pid_ RPC-SERVICES-CLOSE-RESOURCE_ [id, handle]
+      if error and error != "NO_SUCH_PROCESS": throw error
 
 /**
 A handler for requests from clients.
@@ -462,8 +509,15 @@ class ServiceProvider:
     if not resources: return
     result ::= resources.get handle
     if not result: return
-    resources.remove handle
-    if resources.is-empty: _resources_.remove client
+    // Remove only one entry: the client entry if this is its final resource.
+    // Map removal can fail while initializing deletion state, or after deletion
+    // when shrinking storage. Only a resource that remains registered needs retry.
+    if resources.size == 1:
+      error := catch: _resources_.remove client
+      if error and (_resources_.contains client): throw error
+    else:
+      error := catch: resources.remove handle
+      if error and (resources.contains handle): throw error
 
   _new-resource-handle_ notifiable/bool -> int:
     handle ::= _resource-handle-next_
@@ -528,8 +582,10 @@ abstract class ServiceResource implements rpc.RpcSerializable:
     handle := _handle_
     if not handle: return
     provider := _provider_
-    _handle_ = _provider_ = null
     provider._unregister-resource_ _client_ handle
+    // Keep the handle retryable if unregistering fails before removal. Once it
+    // succeeds, close callbacks observe closure and cannot run more than once.
+    _handle_ = _provider_ = null
     on-closed
 
   serialize-for-rpc -> int:
@@ -611,12 +667,37 @@ class ServiceResourceProxyManager_ implements SystemMessageHandler_:
 
   on-message type/int gid/int pid/int message/any -> none:
     assert: type == SYSTEM-RPC-NOTIFY-RESOURCE_
+    if message is not List or message.size != 3: return
+    if message[0] is not int or message[1] is not int: return
     client ::= message[0]
     handle ::= message[1]
     proxies ::= proxies_.get client
     if not proxies: return
     proxy ::= proxies.get handle
-    if proxy: proxy.on-notified_ message[2]
+    if not proxy: return
+    provider/int? := proxy.client_._pid_
+    if provider == null: return
+    if pid != (provider < 0 ? 0 : provider): return
+    proxy.on-notified_ message[2]
+
+// Client-only processes need termination notifications without installing a
+// service provider's RPC broker over their existing request handler.
+class TerminationObserver_ implements SystemMessageHandler_:
+  static instance ::= TerminationObserver_
+
+  manager/ServiceManager_? := null
+
+  constructor:
+    set-system-message-handler_ SYSTEM-RPC-NOTIFY-TERMINATED_ this
+
+  watch-provider pid/int -> none:
+    _client_.watch pid
+
+  on-message type/int gid/int pid/int message/any -> none:
+    assert: type == SYSTEM-RPC-NOTIFY-TERMINATED_
+    if pid != 0 or message is not int: return
+    rpc.Rpc.instance.peer-terminated message
+    if manager: manager.on-message type gid pid message
 
 class ServiceManager_ implements SystemMessageHandler_:
   static instance := ServiceManager_
@@ -632,22 +713,31 @@ class ServiceManager_ implements SystemMessageHandler_:
   handlers-by-client_/Map ::= {:}   // Map<int, ServiceHandler>
 
   constructor:
-    set-system-message-handler_ SYSTEM-RPC-NOTIFY-TERMINATED_ this
+    TerminationObserver_.instance.manager = this
     broker_.register-procedure RPC-SERVICES-OPEN_:: | arguments _ pid |
       open pid arguments[0] arguments[1] arguments[2] arguments[3]
-    broker_.register-procedure RPC-SERVICES-CLOSE_:: | arguments |
+    broker_.register-procedure RPC-SERVICES-CLOSE_:: | arguments _ pid |
+      check-client-owner_ arguments pid
       close arguments
     broker_.register-procedure RPC-SERVICES-INVOKE_:: | arguments gid pid |
       client/int ::= arguments[0]
+      check-client-owner_ client pid
       handler/ServiceHandler ::= handlers-by-client_.get client --if-absent=(: throw "HANDLER_NOT_FOUND")
       handler.handle arguments[1] arguments[2] --gid=gid --client=client
-    broker_.register-procedure RPC-SERVICES-CLOSE-RESOURCE_:: | arguments |
+    broker_.register-procedure RPC-SERVICES-CLOSE-RESOURCE_:: | arguments _ pid |
       client/int ::= arguments[0]
+      check-client-owner_ client pid
       providers-by-client_.get client --if-present=: | provider/ServiceProvider |
         resource/ServiceResource? := provider._find-resource_ client arguments[1]
         if resource: resource.close
     broker_.install
     uninitialized = false
+
+  check-client-owner_ client/int pid/int -> none:
+    owner/int? := clients_.get client
+    // Unknown clients retain existing invocation errors and idempotent close
+    // behavior. A live handle belongs exclusively to its opening process.
+    if owner != null and owner != pid: throw "SERVICE_CLIENT_NOT_OWNED"
 
   static is-empty -> bool:
     return uninitialized or instance.providers_.is-empty
