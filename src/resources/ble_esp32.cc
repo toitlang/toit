@@ -30,6 +30,7 @@
 #include <esp_bt.h>
 #include <esp_log.h>
 #include <nimble/nimble_port.h>
+#include <nvs_flash.h>
 #include <host/ble_hs.h>
 #undef min
 #undef max
@@ -38,6 +39,10 @@
 #include <services/gap/ble_svc_gap.h>
 #include <services/gatt/ble_svc_gatt.h>
 #include <store/config/ble_store_config.h>
+
+// The ESP-IDF store initializer is used by its examples but is not declared
+// in the public store/config header.
+extern "C" void ble_store_config_init(void);
 
 namespace toit {
 
@@ -1203,6 +1208,8 @@ class BleAdapterResource : public BleResource, public Thread {
     // It is important to call nimble_port_init before starting the nimble
     // background thread that uses structures initialize by the init function.
     nimble_port_init();
+    // Load persisted bonds before the host thread can accept connections.
+    ble_store_config_init();
 
     // The adapter creation is guaraded by the BLE pool (which only has one entry).
     // We can thus safely set the instance_ field.
@@ -2398,6 +2405,16 @@ PRIMITIVE(create_adapter) {
 
   int id = ble_pool.any();
   if (id == kInvalidBle) FAIL(ALREADY_IN_USE);
+
+#if CONFIG_BT_NIMBLE_NVS_PERSIST
+  // BLE-only applications cannot rely on Wi-Fi or the storage service having
+  // initialized the default NVS partition. Preserve storage on any error.
+  esp_err_t error = nvs_flash_init();
+  if (error != ESP_OK) {
+    ble_pool.put(id);
+    return Primitive::os_error(error, process);
+  }
+#endif
 
   // We can already set the callback, even though the adapter hasn't been created
   // yet.
