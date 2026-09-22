@@ -211,10 +211,14 @@ class ConnectionSession extends rpc.Session:
     link_ = link
     security_ = provider.create-central-security-owner host_ link info
     client_ = att.Client host_ link --mtu-limit=mtu --pairing=security_
+    // Exchange the MTU first, as any GATT client does (Core Vol 3 Part G
+    // 4.3.1). The peer's ATT response also proves that its host finished
+    // connection setup; a BlueZ peripheral, for example, tears the link down
+    // when an LTK request or Pairing Request arrives before that point.
+    if security_ or mtu > 23: client_.exchange-mtu
     if security_:
       provider.run-central-security-owner security_
       if not security_.paired or not security_.encrypted: throw "GATT_CENTRAL_SECURITY_NOT_READY"
-    if mtu > 23: client_.exchange-mtu
     ready_.set [link.info.address.copy, link.info.address-type, client_.mtu]
 
   is-central -> bool: return true

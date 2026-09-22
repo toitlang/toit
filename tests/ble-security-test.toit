@@ -112,6 +112,11 @@ take-smp transport/fixture.FakeTransport reassembler/acl.Reassembler --complete/
     result := reassembler.accept packet
     if complete: transport.received.add #[4, 0x13, 5, 1, 0x34, 2, 1, 0]
     if result:
+      if result.channel == 4 and result.payload.size == 3 and result.payload[0] == 2:
+        // The client exchanges its MTU before any security procedure; answer
+        // it like a peer that accepts the client's value.
+        transport.received.add (fixture.att-event (#[3] + result.payload[1..]))
+        continue
       expect-equals 6 result.channel
       return result.payload
 

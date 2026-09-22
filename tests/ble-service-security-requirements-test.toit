@@ -88,6 +88,9 @@ run mode/string encryption/bool authentication/bool scoped/bool:
     radio.received.add fixture.connection-event
     setup-sends = radio.sent-count
     if mode != "plain":
+      // With a security owner the client exchanges its MTU before security.
+      fixture.gatt-reply radio #[2, 23, 0] #[3, 23, 0]
+      setup-sends = radio.sent-count
       selected := provider as secure.Provider
       selected.entered.get
       radio.received.add #[4, 8, 4, 0, 0x34, 2, 1]

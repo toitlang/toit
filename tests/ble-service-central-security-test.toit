@@ -28,6 +28,8 @@ run mode/string:
     fixture.initialize-replies provider.radio
     fixture.status-reply provider.radio fixture.create-command
     provider.radio.received.add fixture.connection-event
+    // The secured link exchanges its MTU before the owner runs.
+    fixture.gatt-reply provider.radio #[2, 23, 0] #[3, 23, 0]
     if mode == "ready" or mode == "authenticated":
       provider.entered.get
       provider.radio.received.add #[4, 8, 4, 0, 0x34, 2, 1]
