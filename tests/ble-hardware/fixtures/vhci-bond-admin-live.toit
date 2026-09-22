@@ -10,6 +10,7 @@ import ble.experimental.bond-registry
 import ble.experimental.bond-resume
 import ble.experimental.central
 import ble.experimental.esp32
+import ble.experimental.hexdump
 import ble.experimental.hci
 import ble.experimental.security-owner show Owner
 import ble.experimental.smp-identity show Identity
@@ -133,6 +134,9 @@ application pid/int:
     administrator.close
     client.close
 
+/** Wraps every opened controller transport in an HCI hexdump when true. */
+trace-hci/bool := false
+
 class Provider extends central-provider.Provider:
   registry_/bond-registry.Registry
   receive-acl-packets_/int
@@ -150,7 +154,7 @@ class Provider extends central-provider.Provider:
   central-session-limit -> int: return 2
   open-transport -> Radio:
     opens++
-    radio := Radio (esp32.Esp32Transport)
+    radio := Radio (trace-hci ? (hexdump.Hexdump esp32.Esp32Transport) : esp32.Esp32Transport)
     radios.add radio
     return radio
   create-central-security-owner host/central.Central link/central.Link info/hci.Capabilities -> Owner?:

@@ -17,7 +17,7 @@ import ble.experimental.smp-identity
 import expect show *
 import monitor
 import system
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-key-reply-test as keys
 import .ble-peripheral-test as peripheral-fixture
 import .ble-bond-table-test as storage

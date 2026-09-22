@@ -7,6 +7,7 @@ import ble.experimental.bond
 import ble.experimental.bond-resume
 import ble.experimental.central
 import ble.experimental.esp32
+import ble.experimental.hexdump
 import ble.experimental.gatt-server as gatt
 import ble.experimental.hci
 import ble.experimental.native
@@ -17,10 +18,10 @@ import .vhci-bond-revocation-peer as fixture
 
 main: run
 
-run --first-peer/ByteArray?=null --receive-acl-packets/int=0:
+run --first-peer/ByteArray?=null --receive-acl-packets/int=0 --trace/bool=false:
   with-timeout --ms=150_000:
     radio := ShutdownRadio
-    controller := hci.Controller radio
+    controller := hci.Controller (trace ? (hexdump.Hexdump radio) : radio)
     host/Host? := null
     try:
       info := hci.initialize controller --receive-acl-packets=receive-acl-packets

@@ -8,7 +8,7 @@ import ble.experimental.hci
 import expect show *
 import monitor
 
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 
 FEATURES-COMMAND ::= #[1, 0x16, 0x20, 2, 0x34, 2]
 FEATURES-STATUS ::= #[4, 0x0f, 4, 0, 1, 0x16, 0x20]
@@ -129,7 +129,9 @@ disconnect-wakes:
     transport.received.add FEATURES-STATUS
     transport.received.add #[4, 5, 4, 0, 0x34, 2, 0x13]
   try:
-    expect-throw "HCI_CONNECTION_LOST": host.connect #[1, 2, 3, 4, 5, 6] --address-type=1
+    error := catch: host.connect #[1, 2, 3, 4, 5, 6] --address-type=1
+    expect error is central.ConnectionLost
+    expect-equals 0x13 (error as central.ConnectionLost).reason
     expect-equals 0 host.links_.size
   finally:
     host.close

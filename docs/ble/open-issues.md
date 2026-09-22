@@ -34,21 +34,23 @@ immediate resumption both pass on unmodified kernel 7.2.4:
 agent asks for MITM; resuming a Just Works bond against it requires
 authenticated re-pairing, which is a different scenario.
 
-## Intermittent connection failure with reason 0x3e
+## Intermittent connection failure with reason 0x3e (attributed 2026-09-23)
 
 Linux (Realtek dongle) central reconnecting to an ESP32 peripheral fails at
-random cycles (5, 18, 78, 80, 274, 289 in different runs) with
-disconnect reason 0x3e, Connection Failed to be Established, about 250 ms into
-discovery. The peripheral times out in accept. Changing adapter, native
-firmware, or keeping the controller alive did not change the picture. Zero host
-ACL had been sent on a failing attempt.
+random cycles with disconnect reason 0x3e, Connection Failed to be
+Established, before any host traffic. The discriminating experiment
+(`build/ble-0x3e-ab-001`): the same central, dongle and script against a
+NimBLE peripheral on the same board type fails identically, on the third
+connection in that run, and against the Toit-host peripheral on the tenth. The
+failure is therefore in the link layer between the Realtek controller and the
+ESP32 controller, not in the Toit host.
 
-0x3e is a link-layer establishment failure and happens before the host is
-involved. The discriminating experiment has not been run: same board, same
-dongle, same script, with NimBLE peripheral firmware. If NimBLE fails at the
-same rate the cause is controller or RF and the host only needs a clean retry
-policy in the central and continued advertising in the peripheral. Also test
-with a non-Realtek central once one is available.
+Host consequences: `Central.connect` now reports the loss as
+`ConnectionLost` with the controller reason so callers can distinguish it, and
+an application that needs the connection retries. A non-Realtek central (the
+laptop, the Raspberry Pi, or an nRF52840 running Zephyr's HCI USB sample) is
+the way to measure whether the ESP32 side contributes; reconnect campaigns on
+this dongle are not a host reliability gate.
 
 ## Encryption failing with MIC error (status 0x3d)
 

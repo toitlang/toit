@@ -9,7 +9,7 @@ import ble.experimental.privacy
 import ble.experimental.scanning
 import ble.experimental.transport
 import ble.experimental.service.private-scanning-provider as providers
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 
 main:
   with-timeout --ms=10_000:

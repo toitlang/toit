@@ -24,7 +24,7 @@ run-with-transport radio/transport.Transport peer/ByteArray --canceled-first/boo
     if canceled-first:
       error := catch:
         host.connect peer --address-type=0 --timeout=(Duration --s=30)
-      if error and error != "HCI_CONNECTION_LOST": throw error
+      if error and not (error is central.ConnectionLost): throw error
       if not host.first-link: throw "WINNER_CONNECTION_NOT_OBSERVED"
       reason := with-timeout --ms=5_000: host.first-link.wait-disconnected
       if reason != 0x13: throw "WINNER_DISCONNECT_REASON"

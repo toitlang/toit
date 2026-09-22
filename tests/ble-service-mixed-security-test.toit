@@ -16,7 +16,7 @@ import io
 import monitor
 import system
 import .ble-connect-isolation-test as connect
-import .ble-hci-test as packets
+import .ble-fixture as packets
 import .ble-key-reply-test as keys
 import .ble-multilink-test as links
 import .ble-service-mixed-test as mixed

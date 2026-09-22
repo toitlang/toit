@@ -10,7 +10,7 @@ import io
 import monitor
 import system
 import .ble-connect-isolation-test as connections
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-multilink-test as links
 
 main:

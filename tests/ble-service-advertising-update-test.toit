@@ -9,7 +9,7 @@ import ble.experimental.service.client as clients
 import ble.experimental.service.api as api
 import .ble-service-advertising-test as advertising
 import .ble-service-private-advertising-test as private-fixture
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-peripheral-test as peripheral
 
 main:

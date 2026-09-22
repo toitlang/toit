@@ -22,7 +22,8 @@ import .vhci-revocation-pair as pairing-fixture
 main arguments: run arguments
 
 run arguments --private/bool=false --authenticated/bool=false
-    --first-peer/ByteArray?=null --receive-acl-packets/int=0:
+    --first-peer/ByteArray?=null --receive-acl-packets/int=0 --trace/bool=false:
+  live.trace-hci = trace
   if private and authenticated: throw "UNSUPPORTED_FIXTURE_COMBINATION"
   if first-peer and not authenticated: throw "UNSUPPORTED_FIXTURE_COMBINATION"
   with-timeout --ms=(authenticated ? 120_000 : 60_000):
@@ -35,7 +36,7 @@ run arguments --private/bool=false --authenticated/bool=false
       table.remove 1
       registry := bond-registry.Registry table --owner-limit=2
       candidates := authenticated
-          ? (pairing-fixture.pair --first-peer=first-peer --receive-acl-packets=receive-acl-packets)
+          ? (pairing-fixture.pair --first-peer=first-peer --receive-acl-packets=receive-acl-packets --trace=trace)
           : (List 2: fixture.candidate it --private=private)
       2.repeat: | index/int |
         if (registry.add candidates[index]) != index: throw "REVOKE_TWO_SLOT"

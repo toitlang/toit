@@ -14,7 +14,7 @@ import monitor
 import system
 import .ble-bounded-accept-test as accept
 import .ble-connect-isolation-test as connect
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-multilink-test as links
 import .ble-service-multiclient-test as wire
 
@@ -90,7 +90,8 @@ failed-central mode/string:
         expect-throw "HCI_CONNECTION_FAILED status=62": b.connect (links.address 2) --address-type=1
       else:
         error := catch: failed = b.connect (links.address 2) --address-type=1
-        if error: expect-equals "HCI_CONNECTION_LOST" error
+        // The provider's ConnectionLost crosses RPC as its string form.
+        if error: expect (error.stringify.starts-with "HCI_CONNECTION_LOST")
         else:
           // Completion can reach RPC before the following disconnect. Once
           // survivor traffic proves that event was dispatched, reads must fail.

@@ -8,7 +8,7 @@ import ble.experimental.connection
 import ble.experimental.hci
 import expect show *
 import monitor
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 
 main:
   with-timeout --ms=5_000:

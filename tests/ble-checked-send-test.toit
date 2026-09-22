@@ -6,7 +6,7 @@ import ble.experimental.central
 import ble.experimental.hci
 import expect show *
 import monitor
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 
 main:
   4.repeat: | mode/int | run mode

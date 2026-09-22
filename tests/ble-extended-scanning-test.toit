@@ -10,7 +10,7 @@ import io
 import monitor
 import system
 import .ble-advertising-parser-test as parser
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 
 main:
   with-timeout --ms=10_000:

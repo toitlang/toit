@@ -57,9 +57,24 @@ indications and HCI events progress independently.
 - Cancellation cancels the underlying procedure where possible and accounts for late events. When an HCI timeout leaves command ownership uncertain, the controller is failed rather than guessing which response belongs to which command.
 - Uncertain completions (an interrupted write, an RPC that may have been applied) are reported, never retried automatically.
 
-The current implementation encodes these rules with `critical-do` blocks and
-zero-length sleeps as explicit cancellation points. A simpler contract is
-planned; see the review document.
+### Cancellation contract
+
+Toit delivers task cancellation and deadlines at blocking points: a monitor
+wait, `sleep`, or an RPC. `catch` never catches the cancellation of its own
+task (it unwinds), and any monitor operation in a cancelled task throws again
+immediately unless it runs inside `critical-do`. The host therefore follows
+five rules; a violation is a bug even when a test passes.
+
+1. **Commands are atomic.** `Controller.command` submits the packet and consumes its Command Status or Command Complete under `critical-do --no-respect-deadline`, bounded by its own timeout. A cancelled or expired caller observes that at the command's exit, never in the middle; callers do not wrap commands in `critical-do` themselves.
+2. **Cancellation points are explicit.** Where a procedure wants to observe a deferred cancellation between two atomic steps it calls `checkpoint` (`cancellation.toit`), which throws `CANCELED` or `DEADLINE_EXCEEDED` when due and otherwise returns. `sleep --ms=0` is not used for this.
+3. **Waits are owned.** A caller waits on a latch that the owner's reader task completes, fails, or expires. The wait itself is plain (`latch.get`), so cancellation and the caller's deadline interrupt it; the pending object stays registered with the owner, which settles or aborts it when the event or its deadline arrives. No result is ever attributed to a caller that stopped waiting.
+4. **Deadlines live in one queue.** Each owner (controller, link owner, ATT client, GATT server) keeps a `DeadlineQueue` of its pending operations. The owner's reader task bounds its receive by the earliest deadline and expires due entries itself, so timeouts fire even when the waiting task has been cancelled. Bounds come from one `Timeouts` policy object, not literals at call sites.
+5. **Cleanup is critical and bounded.** `finally` blocks that release protocol state run under `critical-do --no-respect-deadline`, contain only non-waiting operations or bounded waits with their own `with-timeout`, and never depend on a monitor operation succeeding in a cancelled task outside that scope.
+
+The current implementation still contains the older idiom (`critical-do` around
+individual commands plus `sleep --ms=0` as the cancellation point); the rules
+above are the target that new code follows and that the link owner is being
+moved to.
 
 ## Memory ownership
 

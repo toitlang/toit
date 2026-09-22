@@ -11,7 +11,7 @@ import ble.experimental.service.client as clients
 import ble.experimental.service.gatt-provider as gatt
 import ble.experimental.service.provider as rpc
 import ble.experimental.signaling as signaling
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-peripheral-test as peripheral
 import .ble-service-central-cancel-test as shutdown
 import .ble-service-advertising-exit-test as advertising-exit

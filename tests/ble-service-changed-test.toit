@@ -8,7 +8,7 @@ import ble.experimental.att
 import ble.experimental.central
 import ble.experimental.gatt
 import ble.experimental.hci
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 
 main:
   with-timeout --ms=5_000: scoped-indications

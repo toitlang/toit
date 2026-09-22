@@ -21,6 +21,20 @@ class ConnectionError:
 
   stringify -> string: return "HCI_CONNECTION_FAILED status=$status"
 
+/**
+A connection that ended before its setup completed.
+
+$reason is the controller's disconnection reason when one was reported (for
+  example 0x3e, Connection Failed to be Established), otherwise null.
+*/
+class ConnectionLost:
+  reason/int?
+
+  constructor .reason:
+
+  stringify -> string:
+    return reason ? "HCI_CONNECTION_LOST reason=0x$(%02x reason)" : "HCI_CONNECTION_LOST"
+
 /** A particular connection lifetime, distinct from its reusable HCI handle. */
 class Link:
   info/connection.Completion
@@ -31,6 +45,7 @@ class Link:
   encryption-required_/bool := false
   closing_/bool := false
   error_ := null
+  reason_/int? := null
   credits_/acl.Credits
   reassembler_/acl.Reassembler
   inbox_/acl.Inbox ::= acl.Inbox
@@ -168,6 +183,9 @@ class Link:
   end_ reason/int -> none:
     if not connected_: return
     connected_ = false
+    // Record the reason before waking any waiter; the disconnection latch is
+    // set last so that protocol readers observe the failed inbox first.
+    reason_ = reason
     release_ "HCI_LINK_DISCONNECTED"
     ended_.set reason
 
@@ -566,9 +584,9 @@ class Central:
         if link.info.address-type != address-type or link.info.address != peer:
           fail_ "HCI_UNEXPECTED_PEER"
           throw error_
-        if not link.connected: throw "HCI_CONNECTION_LOST"
+        if not link.connected: throw (lost_ link)
         read-features_ link
-        if not link.connected: throw "HCI_CONNECTION_LOST"
+        if not link.connected: throw (lost_ link)
         return link
     finally:
       if submitted and not delivered:
@@ -654,7 +672,7 @@ class Central:
     delivered := false
     try:
       link/Link := body.call pending
-      if not owns-link link: throw "HCI_CONNECTION_LOST"
+      if not owns-link link: throw (lost_ link)
       sleep --ms=0
       delivered = true
       return link
@@ -743,7 +761,7 @@ class Central:
         result := pending.get
         if result is connection.Completion: throw (ConnectionError result.status)
         link = result
-        if not link.connected: throw "HCI_CONNECTION_LOST"
+        if not link.connected: throw (lost_ link)
         // Legacy advertising already stopped when this connection was created
         // (Core Vol 4, Part E, 7.8.9). Consume the redundant disable reply even
         // if our caller leaves, so cancellation cannot poison the command engine.
@@ -923,6 +941,10 @@ class Central:
     // The peer may have disconnected while the command was in flight.
     if error and link.connected_: throw error
     link.wait-disconnected
+
+  /** Describes a link that ended during setup, with its reason when known. */
+  lost_ link/Link -> ConnectionLost:
+    return ConnectionLost link.reason_
 
   find-link_ handle/int -> Link?:
     return links_.get handle --if-absent=: null

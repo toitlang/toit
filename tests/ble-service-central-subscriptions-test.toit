@@ -6,7 +6,7 @@ import expect show *
 import monitor
 import ble.experimental.service.client as clients
 import .ble-service-central-test as service
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 
 main:
   with-timeout --ms=15_000:

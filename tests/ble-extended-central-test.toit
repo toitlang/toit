@@ -8,7 +8,7 @@ import ble.experimental.hci
 import expect show *
 import io
 import .ble-connect-isolation-test as isolation
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-multilink-test as links
 
 main:

@@ -14,7 +14,7 @@ import ble.experimental.service.client as clients
 import ble.experimental.signaling
 import .ble-cccd-session-test as configuration
 import .ble-service-cccd-test as service
-import .ble-hci-test as wire
+import .ble-fixture as wire
 import .ble-peripheral-test as peripheral
 import .ble-mtu-server-test as packets
 

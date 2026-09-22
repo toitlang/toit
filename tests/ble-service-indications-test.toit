@@ -11,7 +11,7 @@ import ble.experimental.service.api as api
 import expect show *
 import monitor
 import system
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-key-reply-test as keys
 import .ble-mtu-server-test as wire
 

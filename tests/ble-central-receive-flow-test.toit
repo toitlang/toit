@@ -8,7 +8,7 @@ import expect show *
 import io
 import monitor
 import system
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
 import .ble-hci-receive-flow-test as flow
 import .ble-multilink-test as links
 

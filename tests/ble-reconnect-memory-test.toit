@@ -5,18 +5,19 @@
 import expect show *
 import system
 
-import .ble-hci-test as fixture
+import .ble-fixture as fixture
+import .ble-hci-test as hci-tests
 
 main:
   with-timeout --ms=30_000:
     // Warm the VM's task/exception paths before comparing live state.
-    fixture.test-att-reconnect --wait-closed
+    hci-tests.test-att-reconnect --wait-closed
     stats := system.process-stats --gc
     baseline := stats[system.STATS-INDEX-ALLOCATED-MEMORY]
     maximum := baseline
     minimum := baseline
     20.repeat:
-      fixture.test-att-reconnect --wait-closed
+      hci-tests.test-att-reconnect --wait-closed
       system.process-stats --gc stats
       live := stats[system.STATS-INDEX-ALLOCATED-MEMORY]
       maximum = max maximum live
