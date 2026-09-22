@@ -31,13 +31,21 @@ class Rpc implements SystemMessageHandler_:
         process-send_ pid SYSTEM-RPC-REQUEST_ [ id, name, arguments ]
     return sequential ? (sequencer_.do send) : send.call
 
+  /** Fails outstanding calls to a process whose termination was observed. */
+  peer-terminated pid/int -> none:
+    synchronizer_.peer-terminated pid
+
   on-message type gid pid reply -> none:
     assert: type == SYSTEM-RPC-REPLY_
+    if reply is not List or reply.size < 3 or reply[0] is not int: return
     id/int := reply[0]
+    if not (synchronizer_.expects id pid): return
+    if reply[1] is not bool: return
     is-exception/bool := reply[1]
+    if is-exception and reply.size < 4: return
     result/any := reply[2]
     if is-exception: result = RpcException_ result reply[3]
-    synchronizer_.receive id result
+    synchronizer_.receive id pid result
 
 class RpcException_:
   exception/any
@@ -48,6 +56,7 @@ monitor RpcSynchronizer_:
   static EMPTY ::= Object
 
   map_/Map ::= {:}
+  pids_/Map ::= {:}
   id_/int := 0
 
   send pid/int [send] -> any:
@@ -58,6 +67,9 @@ monitor RpcSynchronizer_:
     result/any := EMPTY
     try:
       map[id] = EMPTY
+      // Negative destinations are aliases for the system process (PID zero).
+      // Replies carry its actual PID, not the alias used to submit the request.
+      pids_[id] = pid < 0 ? 0 : pid
       // Lock is kept during the non-blocking send.
       if send.call id pid:
         await:
@@ -65,6 +77,7 @@ monitor RpcSynchronizer_:
           not identical EMPTY result
     finally: | is-exception exception |
       map.remove id
+      pids_.remove id
       if is-exception:
         if exception.value == DEADLINE-EXCEEDED-ERROR or Task.current.is-canceled:
           process-send_ pid SYSTEM-RPC-CANCEL_ [ id ]
@@ -78,7 +91,16 @@ monitor RpcSynchronizer_:
     if trace: rethrow exception trace
     throw exception
 
-  receive id/int value/any -> none:
+  peer-terminated pid/int -> none:
+    pids_.do: | id/int target/int |
+      if target == pid and identical EMPTY map_[id]:
+        map_[id] = RpcException_ "NO_SUCH_PROCESS" null
+
+  expects id/int pid/int -> bool:
+    return (pids_.get id) == pid
+
+  receive id/int pid/int value/any -> none:
+    if (pids_.get id) != pid: return
     map_.update id --if-absent=(: return): | existing |
       // Unless the existing value indicates that we are ready to receive
       // the result of the RPC call, we discard it.
