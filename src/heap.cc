@@ -190,9 +190,9 @@ word ObjectHeap::max_external_allocation() {
 
 void ObjectHeap::register_external_allocation(word size) {
   if (size == 0) return;
-  // Overloading on an atomic type makes an atomic += and returns new value.
+  // Update both current and lifetime external-memory accounting atomically.
   external_memory_ += size;
-  total_external_memory_ += size;
+  total_external_memory_.fetch_add(size, std::memory_order_relaxed);
 }
 
 void ObjectHeap::unregister_external_allocation(word size) {

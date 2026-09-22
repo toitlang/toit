@@ -436,5 +436,8 @@ task-new_ lambda/Lambda -> Task_:
 
 task-transfer-to_ to/Task_ detach-stack:
   #primitive.core.task-transfer: | task |
+    // Successful transfers resume through this same primitive failure block,
+    // but rejected transfers carry an error string, not the current task.
+    if task is not Task_: throw task
     Task_.current = task
     return task

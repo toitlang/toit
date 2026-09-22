@@ -84,7 +84,12 @@ class ObjectHeap {
 
   Program* program() const { return program_; }
 
-  int64 total_bytes_allocated() const { return total_external_memory_ + two_space_heap_.total_bytes_allocated(); }
+  int64 total_bytes_allocated() const {
+    uint64 total = total_external_memory_.load(std::memory_order_relaxed) +
+        two_space_heap_.total_bytes_allocated();
+    ASSERT(total <= INT64_MAX);
+    return static_cast<int64>(total);
+  }
   int64 bytes_reserved() const { return external_memory_ + two_space_heap_.size(); }
   int64 bytes_allocated() const { return external_memory_ + two_space_heap_.used(); }
   uword external_memory() const { return external_memory_; }
@@ -204,7 +209,7 @@ class ObjectHeap {
 
   word max_heap_size_ = 0;  // Configured max heap size, incl. external allocation.
   std::atomic<word> external_memory_;  // Allocated external memory in bytes.
-  std::atomic<word> total_external_memory_;  // Includes memory that was later freed.
+  std::atomic<uint64> total_external_memory_;  // Includes memory that was later freed.
 
   Task* task_ = null;
   ObjectNotifierList object_notifiers_;

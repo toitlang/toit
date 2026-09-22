@@ -409,7 +409,6 @@ class HeapObject : public Object {
   friend class Stack;
   friend class GcMetadata;
   friend class CompactingVisitor;
-  friend class SweepingVisitor;
   friend class ScavengeVisitor;
 };
 

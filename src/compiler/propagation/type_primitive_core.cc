@@ -198,6 +198,8 @@ TYPE_PRIMITIVE_TASK(task_new)
 
 TYPE_PRIMITIVE(task_transfer) {
   failure.add_task(program);
+  // A target with no native stack is rejected before switching tasks.
+  failure.add_string(program);
 }
 
 TYPE_PRIMITIVE_STRING(float_to_string)

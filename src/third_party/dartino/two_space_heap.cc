@@ -21,6 +21,12 @@ TwoSpaceHeap::TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* ch
   if (chunk) water_mark_ = chunk->start();
 }
 
+TwoSpaceHeap::~TwoSpaceHeap() {
+  // This chunk was removed from the semispace during scavenging, so neither
+  // space's destructor owns it anymore.
+  if (spare_chunk_) ObjectMemory::free_chunk(spare_chunk_);
+}
+
 word TwoSpaceHeap::max_external_allocation() {
   return process_heap_->max_external_allocation();
 }
@@ -53,6 +59,9 @@ HeapObject* TwoSpaceHeap::new_space_allocation_failure(uword size) {
     // directly into old-space.
     uword result = old_space_.allocate(size);
     if (result != 0) {
+      // New-space allocations are counted through its used-byte total.
+      // This primitive retry bypasses new space, so account for it here.
+      total_bytes_allocated_.fetch_add(size, std::memory_order_relaxed);
       // The code that populates newly allocated objects assumes that they
       // are in new space and does not have a write barrier.  We mark the
       // object dirty immediately, so it is checked by the next GC.
@@ -173,7 +182,7 @@ void TwoSpaceHeap::do_scavenge(ScavengeVisitor* visitor) {
 
   old_space()->end_scavenge();
 
-  total_bytes_allocated_ -= to->used();
+  total_bytes_allocated_.fetch_sub(to->used(), std::memory_order_relaxed);
 }
 
 GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
@@ -187,7 +196,7 @@ GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
   // that can't be expanded.
   malloc_failed_ = false;
 
-  total_bytes_allocated_ += from->used();
+  total_bytes_allocated_.fetch_add(from->used(), std::memory_order_relaxed);
 
   if (has_empty_new_space()) {
     if (Flags::tracegc) {
@@ -328,8 +337,8 @@ GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
   return collect_old_space_if_needed(try_hard, trigger_old_space_gc);
 }
 
-uword TwoSpaceHeap::total_bytes_allocated() const {
-  uword result = total_bytes_allocated_;
+uint64 TwoSpaceHeap::total_bytes_allocated() const {
+  uint64 result = total_bytes_allocated_.load(std::memory_order_relaxed);
   result += new_space()->used();
   return result;
 }

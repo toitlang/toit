@@ -2429,7 +2429,7 @@ PRIMITIVE(get_real_time_clock) {
   Object* tv_sec = Primitive::integer(time.tv_sec, process);
   if (Primitive::is_error(tv_sec)) return tv_sec;
   Object* tv_nsec = Primitive::integer(time.tv_nsec, process);
-  if (Primitive::is_error(tv_sec)) return tv_nsec;
+  if (Primitive::is_error(tv_nsec)) return tv_nsec;
   result->at_put(0, tv_sec);
   result->at_put(1, tv_nsec);
   return result;
@@ -2441,7 +2441,7 @@ PRIMITIVE(set_real_time_clock) {
   if (sizeof(timespec::tv_sec) == sizeof(long) && (tv_sec < LONG_MIN || tv_sec > LONG_MAX)) FAIL(INVALID_ARGUMENT);
   if (tv_nsec < LONG_MIN || tv_nsec > LONG_MAX) FAIL(INVALID_ARGUMENT);
   struct timespec time = {
-    .tv_sec = static_cast<long>(tv_sec),
+    .tv_sec = static_cast<time_t>(tv_sec),
     .tv_nsec = static_cast<long>(tv_nsec),
   };
   static_assert(sizeof(time.tv_nsec) == sizeof(long), "Unexpected size of timespec field");

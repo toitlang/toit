@@ -201,12 +201,13 @@ Chunk* ObjectMemory::spare_chunk_ = null;
 Mutex* ObjectMemory::spare_chunk_mutex_ = null;
 
 void ObjectMemory::tear_down() {
-  GcMetadata::tear_down();
   if (!spare_chunk_mutex_) FATAL("ObjectMemory::tear_down without set_up");
   OS::dispose(spare_chunk_mutex_);
   spare_chunk_mutex_ = null;
   free_chunk(spare_chunk_);
   spare_chunk_ = null;
+  // Chunk destruction still updates the page metadata.
+  GcMetadata::tear_down();
 }
 
 #ifdef TOIT_DEBUG

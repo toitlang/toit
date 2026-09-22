@@ -393,7 +393,10 @@ class AllocationManager {
     }
     // Don't change this to use C++ array 'new' because that isn't compatible
     // with realloc.
-    ptr_ = malloc(length);
+    // Some allocators return null for malloc(0). Still provide an owned,
+    // freeable pointer for empty external ByteArrays. Accounting tracks the
+    // requested payload length, excluding allocator padding as usual.
+    ptr_ = malloc(length == 0 ? 1 : length);
     if (ptr_ == null) {
       process_->object_heap()->set_last_allocation_result(ObjectHeap::ALLOCATION_OUT_OF_MEMORY);
     } else {
