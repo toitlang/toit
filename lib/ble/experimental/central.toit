@@ -30,6 +30,7 @@ class Link:
   encryption_/encryption.Change? := null
   encryption-required_/bool := false
   closing_/bool := false
+  error_ := null
   credits_/acl.Credits
   reassembler_/acl.Reassembler
   inbox_/acl.Inbox ::= acl.Inbox
@@ -47,6 +48,8 @@ class Link:
   parameters_/connection.Update := ?
   receive-owner_ := null
   receive-limit_/int
+  peer-features_/ByteArray? := null
+  features-latch_/monitor.Latch ::= monitor.Latch
 
   constructor .info --acl-count/int --receive-limit/int=65 --credit-pool/acl.ControllerCredits?=null:
     receive-limit_ = receive-limit
@@ -105,8 +108,33 @@ class Link:
   /** Returns the configured maximum reassembled L2CAP payload size. */
   receive-limit -> int: return receive-limit_
 
+  /**
+  Returns the peer's LE features once the exchange completed, otherwise null.
+
+  Central-role links read them right after connection. Null also means the
+    controller rejected the read or the peer failed the exchange.
+  */
+  peer-features -> ByteArray?: return peer-features_ and peer-features_.copy
+
+  /**
+  Waits for the feature exchange started at connection and returns its result.
+
+  Throws when the link ends first. The caller supplies any deadline. Links
+    that never started an exchange (peripheral role) return null immediately.
+  */
+  wait-peer-features -> ByteArray?:
+    if not features-latch_.has-value: features-latch_.get
+    return peer-features
+
+  features-known_ bytes/ByteArray? -> none:
+    peer-features_ = bytes
+    if not features-latch_.has-value: features-latch_.set null
+
   /** Returns whether application traffic is allowed, excluding local shutdown. */
   connected -> bool: return connected_ and not closing_
+
+  /** Returns the error that stopped this link, or null while it is usable. */
+  error -> any: return error_
 
   /** Waits for a complete L2CAP PDU, or throws when the link ends. */
   receive --owner=null -> acl.Packet:
@@ -130,6 +158,7 @@ class Link:
 
   stop_ error -> none:
     closing_ = true
+    if not error_: error_ = error
     fail-procedures_ error
     receive-owner_ = null
     credits_.stop error
@@ -151,6 +180,7 @@ class Link:
 
   fail-procedures_ error -> none:
     encryption-key_ = null
+    if not features-latch_.has-value: features-latch_.set error --exception
     observer := encryption-observer_
     encryption-observer_ = null
     if observer: observer.set error --exception
@@ -162,6 +192,7 @@ class Link:
     if pending: pending.set error --exception
 
   release_ error -> none:
+    if not error_: error_ = error
     fail-procedures_ error
     receive-owner_ = null
     credits_.fail error
@@ -300,6 +331,10 @@ class Central:
     completed := false
     try:
       with-timeout timeout:
+        // Start encryption only after the feature exchange begun at connection
+        // has finished, as other hosts do. A resumed BlueZ peripheral tears the
+        // link down when the LTK request arrives before its own feature read.
+        link.wait-peer-features
         // Prevent handle reuse through new connect/accept procedures while
         // command serialization or the native transport can still block.
         error := catch: security-command_ link 0x2019 bytes --status-event
@@ -532,6 +567,8 @@ class Central:
           fail_ "HCI_UNEXPECTED_PEER"
           throw error_
         if not link.connected: throw "HCI_CONNECTION_LOST"
+        read-features_ link
+        if not link.connected: throw "HCI_CONNECTION_LOST"
         return link
     finally:
       if submitted and not delivered:
@@ -548,6 +585,32 @@ class Central:
       pending_ = null
       pending-local-random-address_ = null
       busy_ = false
+
+  /**
+  Starts the LE feature exchange on a new central-role link.
+
+  Every mainstream host reads remote features right after connection; some
+    peers depend on that ordering before encryption. The completion event is
+    consumed by the reader; $Link.wait-peer-features observes it. A controller
+    rejection leaves the features unknown without failing the connection. An
+    interrupted submission disconnects the new link before unwinding.
+  */
+  read-features_ link/Link -> none:
+    settled := false
+    try:
+      critical-do --no-respect-deadline:
+        error := catch:
+          controller_.command 0x2016 (connection.features-parameters link.info.handle) --status-event
+        if error:
+          if not (error is hci.CommandError): throw error
+          link.features-known_ null
+      settled = true
+      sleep --ms=0
+    finally:
+      if not settled and link.connected:
+        cleanup-error := catch:
+          with-timeout --ms=3_000: disconnect_ link
+        if cleanup-error: fail_ cleanup-error
 
   /** Supplies the connection command for this owner's controller command family. */
   connection-opcode -> int: return 0x200d
@@ -933,6 +996,7 @@ class Central:
         link := Link completion --acl-count=acl-quota_ --receive-limit=receive-limit_
             --credit-pool=credit-pool_
         link.local-random-address_ = pending-local-random-address_
+        if completion.role != 0: link.features-known_ null
         links_[completion.handle] = link
         on-connected link
         if not early-acl_.is-empty:
@@ -949,6 +1013,13 @@ class Central:
         pending_ = null
         pending.set link
         if advertising-updates_: advertising-updates_.stop
+      return
+    features := connection.decode-features packet
+    if features:
+      // The exchange can complete with an error after the link already ended;
+      // a completion for an unknown lifetime carries no information.
+      link := find-link_ features.handle
+      if link: link.features-known_ (features.status == 0 ? features.bytes : null)
       return
     key-request := encryption.decode-key-request packet
     if key-request:

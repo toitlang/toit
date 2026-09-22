@@ -150,3 +150,30 @@ random-address bytes/ByteArray -> ByteArray:
     all-one = all-one and bytes[i] == 255
   if all-zero or all-one: throw "INVALID_ARGUMENT"
   return bytes.copy
+
+/** The peer's LE features, or a controller status when the exchange failed. */
+class Features:
+  status/int
+  handle/int
+  bytes/ByteArray
+
+  constructor .status .handle .bytes:
+
+/** Encodes LE Read Remote Features (Vol 4 Part E, 7.8.21). */
+features-parameters handle/int -> ByteArray:
+  if not 0 <= handle <= 0x0eff: throw "INVALID_ARGUMENT"
+  result := ByteArray 2
+  io.LITTLE-ENDIAN.put-uint16 result 0 handle
+  return result
+
+/** Decodes LE Read Remote Features Complete (Vol 4 Part E, 7.7.65.4). */
+decode-features packet/ByteArray -> Features?:
+  hci.validate-packet packet
+  if packet[0] != 4 or packet[1] != 0x3e: return null
+  if packet.size < 4: throw "HCI_MALFORMED_CONNECTION_EVENT"
+  if packet[3] != 4: return null
+  if packet.size != 15: throw "HCI_MALFORMED_CONNECTION_EVENT"
+  handle := io.LITTLE-ENDIAN.uint16 packet 5
+  if handle > 0x0eff: throw "HCI_MALFORMED_CONNECTION_EVENT"
+  return Features packet[4] handle (packet[4] == 0 ? packet[7..15].copy : #[])
+
