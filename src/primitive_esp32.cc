@@ -167,6 +167,21 @@ PRIMITIVE(ota_write) {
     FAIL(OUT_OF_BOUNDS);
   }
 
+  // Validate the write before the identical-page optimization below can
+  // advance ota_written. The last OTA write is the only one that is allowed
+  // to not be divisible by 16.
+  if (ota_written != Utils::round_up(ota_written, FLASH_SEGMENT_SIZE)) {
+    ESP_LOGE("Toit", "More OTA was written after last block");
+    FAIL(OUT_OF_BOUNDS);
+  }
+
+  // Written as a subtraction so the check cannot overflow.
+  if (ota_size > 0 && (ota_written > ota_size || bytes.length() > ota_size - ota_written)) {
+    ESP_LOGE("Toit", "OTA write overflows predetermined size (%d + %d > %d)",
+        ota_written, bytes.length(), ota_size);
+    FAIL(OUT_OF_BOUNDS);
+  }
+
   if (bytes.length() == FLASH_PAGE_SIZE && ota_written == Utils::round_up(ota_written, FLASH_PAGE_SIZE)) {
     // Common case - we are page aligned and asked to write one page.
     // We optimize for the case where this page is already what we want.
@@ -184,19 +199,6 @@ PRIMITIVE(ota_write) {
       ota_written += FLASH_PAGE_SIZE;
       return Smi::from(ota_written);
     }
-  }
-
-  // The last OTA is the only one that is allowed to not be divisible
-  // by 16.
-  if (ota_written != Utils::round_up(ota_written, FLASH_SEGMENT_SIZE)) {
-    ESP_LOGE("Toit", "More OTA was written after last block");
-    FAIL(OUT_OF_BOUNDS);
-  }
-
-  if (ota_size > 0 && (ota_written + bytes.length() > ota_size)) {
-    ESP_LOGE("Toit", "OTA write overflows predetermined size (%d + %d > %d)",
-        ota_written, bytes.length(), ota_size);
-    FAIL(OUT_OF_BOUNDS);
   }
 
   uword to_write = Utils::round_down(bytes.length(), FLASH_SEGMENT_SIZE);
@@ -237,15 +239,6 @@ PRIMITIVE(ota_end) {
   ARGS(int, size, Object, expected);
   esp_err_t err = ESP_OK;
 
-  const int BLOCK = 1024;
-  AllocationManager allocation(process);
-  uint8* buffer = allocation.alloc(BLOCK);
-  if (buffer == null) FAIL(ALLOCATION_FAILED);
-
-  Sha* sha256 = _new Sha(null, 256);
-  if (sha256 == null) FAIL(ALLOCATION_FAILED);
-  DeferDelete<Sha> d(sha256);
-
   if (size != 0) {
     if (ota_partition == null) {
       ESP_LOGE("Toit", "Cannot end OTA session before starting it");
@@ -266,6 +259,9 @@ PRIMITIVE(ota_end) {
     esp_image_metadata_t image_metadata;
 
     err = esp_image_verify(ESP_IMAGE_VERIFY, &partition_position, &image_metadata);
+    // Verification is read-only. Keep the completed upload so the primitive
+    // can be retried after a GC.
+    if (err == ESP_ERR_NO_MEM) FAIL(MALLOC_FAILED);
     if (err != ESP_OK) {
       ESP_LOGE("Toit", "esp_image_verify failed (%s)!", esp_err_to_name(err));
       ota_partition = null;
@@ -278,14 +274,23 @@ PRIMITIVE(ota_end) {
     Blob checksum_bytes;
     if (expected->byte_content(process->program(), &checksum_bytes, STRINGS_OR_BYTE_ARRAYS)) {
       if (checksum_bytes.length() != Sha::HASH_LENGTH_256) FAIL(INVALID_ARGUMENT);
+      // Only a commit with a checksum needs the read buffer and the hash
+      // state. Aborts and checksum-less commits should not fail on them.
+      const int BLOCK = 1024;
+      AllocationManager allocation(process);
+      uint8* buffer = allocation.alloc(BLOCK);
+      if (buffer == null) FAIL(ALLOCATION_FAILED);
+      Sha* sha256 = _new Sha(null, 256);
+      if (sha256 == null) FAIL(ALLOCATION_FAILED);
+      DeferDelete<Sha> d(sha256);
       for (int i = 0; i < size; i += BLOCK) {
         int chunk = Utils::min(BLOCK, size - i);
         err = esp_partition_read(ota_partition, i, buffer, chunk);
         if (err != ESP_OK) FAIL(OUT_OF_BOUNDS);
-        sha256->add(buffer, chunk);
+        if (int error = sha256->add(buffer, chunk)) return Sha::error(process, error);
       }
       uint8 calculated[Sha::HASH_LENGTH_256];
-      sha256->get(calculated);
+      if (int error = sha256->get(calculated)) return Sha::error(process, error);
       int diff = 0;
       for (int i = 0; i < Sha::HASH_LENGTH_256; i++) {
         diff |= calculated[i] ^ checksum_bytes.address()[i];
@@ -298,6 +303,8 @@ PRIMITIVE(ota_end) {
     }
 
     err = esp_ota_set_boot_partition(ota_partition);
+    // IDF verifies the image again before updating the boot selection.
+    if (err == ESP_ERR_NO_MEM) FAIL(MALLOC_FAILED);
   }
 
   ota_partition = null;
