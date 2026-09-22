@@ -121,7 +121,9 @@ class FontBlock {
   // Checks a file to see if memory mapped file data is a valid Toit font file
   // with a given font name.  Pass null as font name to skip that part of the
   // verification.
-  static bool verify(const uint8* data, uint32 length, const char* name);
+  // Returns false when the data is not a valid font block. If the SHA backend
+  // failed instead, hash_error is set to the backend error code.
+  static bool verify(const uint8* data, uint32 length, const char* name, int* hash_error);
   int from() const { return from_; }
   int to() const { return to_ ; }
   const char* font_name() const { return font_name_; }

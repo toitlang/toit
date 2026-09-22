@@ -51,8 +51,8 @@ Object* X509ResourceGroup::parse(Process* process, const uint8_t* encoded, size_
 
   uint8 checksum[Sha::HASH_LENGTH_256];
   { Sha sha256(null, 256);
-    sha256.add(encoded, encoded_size);
-    sha256.get(&checksum[0]);
+    if (int error = sha256.add(encoded, encoded_size)) return Sha::error(process, error);
+    if (int error = sha256.get(&checksum[0])) return Sha::error(process, error);
   }
 
   for (Resource* it : resources()) {

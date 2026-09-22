@@ -36,7 +36,8 @@ namespace toit {
 //    -'n'   name      Font name.
 //    -'c'   copyright Copyright message.
 //    0:               Bitmap data follows, terminated by 0xff.
-bool FontBlock::verify(const uint8* data, uint32 length, const char* name) {
+bool FontBlock::verify(const uint8* data, uint32 length, const char* name, int* hash_error) {
+  *hash_error = 0;
   // Sanity checks - is it a font file?
   // TODO: If we support big endian then this needs fixing.
   if (Utils::read_unaligned_uint32(data) != 0x7017f097) return false;
@@ -87,9 +88,11 @@ bool FontBlock::verify(const uint8* data, uint32 length, const char* name) {
   for (int i = 0; i < Sha::HASH_LENGTH_256; i++) has_checksum |= data[i + 8];
   if (has_checksum) {
     Sha sha(null, 256);
-    sha.add(data + 40, length - 40);
+    *hash_error = sha.add(data + 40, length - 40);
+    if (*hash_error != 0) return false;
     uint8 calculated[Sha::HASH_LENGTH_256];
-    sha.get(calculated);
+    *hash_error = sha.get(calculated);
+    if (*hash_error != 0) return false;
     // Check sha256 checksum without bailing out early.
     uint8 sha256_errors = 0;
     for (int i = 0; i < Sha::HASH_LENGTH_256; i++) sha256_errors |= calculated[i] ^ data[i + 8];
@@ -465,7 +468,11 @@ PRIMITIVE(get_font) {
     page1_length = sizeof(FONT_PAGE_ToitLogo);
   }
   if (page1 == null) return process->null_object();
-  if (!FontBlock::verify(page1, page1_length, null)) FAIL(INVALID_ARGUMENT);
+  int hash_error;
+  if (!FontBlock::verify(page1, page1_length, null, &hash_error)) {
+    if (hash_error != 0) return Sha::error(process, hash_error);
+    FAIL(INVALID_ARGUMENT);
+  }
   FontBlock* block1 = _new FontBlock(page1, false);
   if (!block1) FAIL(ALLOCATION_FAILED);
   if (!font->add(block1)) {
@@ -498,7 +505,9 @@ PRIMITIVE(get_nonbuiltin) {
     if (!block_array->byte_content(process->program(), &bytes, &length, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
     // TODO: We should perhaps avoid redoing this verification if the data is
     // in flash and we already did it once.
-    if (!FontBlock::verify(bytes, length, null)) {
+    int hash_error;
+    if (!FontBlock::verify(bytes, length, null, &hash_error)) {
+      if (hash_error != 0) return Sha::error(process, hash_error);
       FAIL(INVALID_ARGUMENT);
     }
     AllocationManager manager(process);

@@ -186,6 +186,10 @@ PRIMITIVE(sha_start) {
 
   Sha* sha = _new Sha(group, bits);
   if (!sha) FAIL(MALLOC_FAILED);
+  if (int error = sha->status()) {
+    group->unregister_resource(sha);
+    return Sha::error(process, error);
+  }
   proxy->set_external_address(sha);
   return proxy;
 }
@@ -206,7 +210,7 @@ PRIMITIVE(sha_add) {
   ARGS(Sha, sha, Blob, data, word, from, word, to);
   if (!sha) FAIL(INVALID_ARGUMENT);
   if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_RANGE);
-  sha->add(data.address() + from, to - from);
+  if (int error = sha->add(data.address() + from, to - from)) return Sha::error(process, error);
   return process->null_object();
 }
 
@@ -215,7 +219,7 @@ PRIMITIVE(sha_get) {
   ByteArray* result = process->allocate_byte_array(sha->hash_length());
   if (result == null) FAIL(ALLOCATION_FAILED);
   ByteArray::Bytes bytes(result);
-  sha->get(bytes.address());
+  if (int error = sha->get(bytes.address())) return Sha::error(process, error);
   sha->resource_group()->unregister_resource(sha);
   sha_proxy->clear_external_address();
   return result;
