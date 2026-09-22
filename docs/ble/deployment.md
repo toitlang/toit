@@ -79,4 +79,4 @@ Acceptance:
 These decisions precede a production persistence claim. They do not block
 continued protocol, lifecycle or interoperability work, and they do not authorize
 irreversible device security configuration. Existing scoped evidence and unresolved
-radio failures remain in [security.md](security.md) and [progress.md](progress.md).
+radio failures remain in [security.md](security.md) and [open-issues.md](open-issues.md).
