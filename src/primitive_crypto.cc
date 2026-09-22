@@ -36,6 +36,9 @@ extern "C" int mbedtls_hardware_poll(void* data, unsigned char* output,
 #include "mbedtls/chachapoly.h"
 #include "mbedtls/ecdsa.h"
 #include "mbedtls/ecp.h"
+extern "C" {
+#include "mbedtls/constant_time.h"
+}
 
 #include "aes.h"
 #include "objects.h"
@@ -67,6 +70,15 @@ extern "C" int mbedtls_hardware_poll(void* data, unsigned char* output,
 namespace toit {
 
 MODULE_IMPLEMENTATION(crypto, MODULE_CRYPTO)
+
+PRIMITIVE(constant_time_equals) {
+  ARGS(Blob, first, Blob, second);
+  // Length is public. Avoid passing potentially null empty-buffer pointers.
+  if (first.length() != second.length()) return BOOL(false);
+  if (first.length() == 0) return BOOL(true);
+  return BOOL(mbedtls_ct_memcmp(first.address(), second.address(), first.length()) == 0);
+}
+
 
 PRIMITIVE(sha1_start) {
   ARGS(SimpleResourceGroup, group);
@@ -1526,11 +1538,6 @@ PRIMITIVE(ec_get_public_key_der) {
 PRIMITIVE(ec_compute_shared_secret) {
   ARGS(Blob, private_key_der, Blob, public_key_der);
 
-  // GLEN_MAX is 66 for secp521r1.
-  static const int GLEN_MAX = 66;
-  ByteArray* result = process->allocate_byte_array(GLEN_MAX, /*force_external*/ true);
-  if (result == null) FAIL(ALLOCATION_FAILED);
-
   mbedtls_pk_context pk_prv, pk_pub;
   mbedtls_pk_init(&pk_prv);
   mbedtls_pk_init(&pk_pub);
@@ -1558,6 +1565,12 @@ PRIMITIVE(ec_compute_shared_secret) {
     FAIL(INVALID_ARGUMENT);
   }
 
+  // Allocate the exact field width before multiplication. Small shared secrets
+  // stay in the managed heap; allocation failure retries before expensive ECDH.
+  size_t glen = (ec_prv->grp.pbits + 7) / 8;
+  ByteArray* result = process->allocate_byte_array(glen);
+  if (result == null) FAIL(ALLOCATION_FAILED);
+
   mbedtls_ecp_point R;
   mbedtls_ecp_point_init(&R);
 
@@ -1567,9 +1580,6 @@ PRIMITIVE(ec_compute_shared_secret) {
     return tls_error(null, process, ret);
   }
 
-  size_t glen = (ec_prv->grp.pbits + 7) / 8;
-  ASSERT(glen <= ByteArray::Bytes(result).length());
-
   ret = mbedtls_mpi_write_binary(&R.X, ByteArray::Bytes(result).address(), glen);
   
   mbedtls_ecp_point_free(&R);
@@ -1578,7 +1588,6 @@ PRIMITIVE(ec_compute_shared_secret) {
     return tls_error(null, process, ret);
   }
 
-  result->resize_external(process, glen);
   return result;
 }
 }
