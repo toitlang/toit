@@ -59,23 +59,23 @@ idf_build_set_property(TOIT_COMPONENT_NAME "${COMPONENT_NAME}")
 
 # Try to resolve a file or path given in the sdkconfig.
 # The order of resolution is:
-#   1. Absolute path (or relative to this CMakeFile (unlikely))
+#   1. Absolute path
 #   2. Path relative to main projects directory
 #   3. Path relative to the base dir of toit
 function(resolve_file out in toit_base_dir warning_text)
-    set(result ${in})
-    if (NOT EXISTS ${result})
-        set(result ${CMAKE_HOME_DIRECTORY}/${in})
-        if (NOT EXISTS ${result})
-            set(result ${toit_base_dir}/${in})
-            if (NOT EXISTS ${result})
-                if(warning_text)
-                    message(WARNING "Missing ${warning_text} file ${in}. Build will fail")
-                endif()
-            endif()
+    # Never return an unresolved relative path: custom commands execute in the
+    # build directory, which can differ from CMake's invocation directory.
+    set(result "${in}")
+    if (NOT IS_ABSOLUTE "${result}")
+        set(result "${CMAKE_HOME_DIRECTORY}/${in}")
+        if (NOT EXISTS "${result}")
+            set(result "${toit_base_dir}/${in}")
         endif()
     endif()
-    set(${out} ${result} PARENT_SCOPE)
+    if (NOT EXISTS "${result}" AND warning_text)
+        message(WARNING "Missing ${warning_text} file ${in}. Build will fail")
+    endif()
+    set(${out} "${result}" PARENT_SCOPE)
 endfunction()
 
 function(toit_postprocess)
@@ -87,7 +87,8 @@ function(toit_postprocess)
 
     idf_build_get_property(EXECUTABLE_NAME EXECUTABLE_NAME)
 
-    add_custom_target(firmware ALL DEPENDS bootloader partition_table_bin gen_project_binary)
+    # Envelope creation also reads OTA metadata when firmware is built directly.
+    add_custom_target(firmware ALL DEPENDS bootloader partition_table_bin gen_project_binary blank_ota_data)
     add_dependencies(flash firmware)
     resolve_file(BOOT ${CONFIG_TOIT_SYSTEM_SOURCE} ${TOIT_BASE_DIR} "system toit")
     resolve_file(BOOT_PROJECT_ROOT ${CONFIG_TOIT_SYSTEM_SOURCE_PROJECT_ROOT} ${TOIT_BASE_DIR} "")
