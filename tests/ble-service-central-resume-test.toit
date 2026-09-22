@@ -47,7 +47,10 @@ run private/bool authenticated/bool reject/bool --receive-flow/bool=false:
     event[8] = private ? 1 : 0
     event.replace 9 provider.peer
     radio.received.add event
-    // Resume must submit encryption with the saved key, without fresh SMP.
+    // The client exchanges its MTU first; the peer's answer proves its host
+    // finished connection setup. Resume then submits encryption with the
+    // saved key, without fresh SMP.
+    fixture.gatt-reply radio #[2, 23, 0] #[3, 23, 0]
     fixture.status-reply radio (hci.command-packet 0x2019 (encryption.enable-parameters 0x234 keys.KEY))
     submitted.set true
     allow.get
@@ -81,8 +84,9 @@ run private/bool authenticated/bool reject/bool --receive-flow/bool=false:
     expect (not provider.owner.paired and not provider.owner.authenticated)
     expect-equals keys.KEY provider.saved.key
     if reject and receive-flow:
-      expect-equals 0 (provider.radio as flow.Radio).received-acl
-      expect-equals 0 (provider.radio as flow.Radio).returned
+      // Only the MTU exchange preceding encryption produced incoming ACL.
+      expect-equals 1 (provider.radio as flow.Radio).received-acl
+      expect-equals 1 (provider.radio as flow.Radio).returned
     else:
       flow.check provider.radio
   finally:

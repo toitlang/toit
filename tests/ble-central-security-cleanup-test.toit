@@ -24,6 +24,8 @@ main:
       responder := task::
         fixture.initialize-replies provider.radio
         links.establish provider.radio 1 0x234
+        // The secured link exchanges its MTU before the owner runs.
+        fixture.gatt-reply provider.radio #[2, 23, 0] #[3, 23, 0]
         if limit == 2: connections.disconnect provider.radio 0x234
         fixture.initialize-replies provider.recovery
         links.establish provider.recovery 1 0x234
@@ -59,6 +61,8 @@ shared-survivor:
       fixture.initialize-replies provider.radio
       links.establish provider.radio 1 0x234
       links.establish provider.radio 2 0x235
+      connections.sent provider.radio 0x235 #[2, 23, 0]
+      connections.incoming provider.radio 0x235 #[3, 23, 0]
       connections.disconnect provider.radio 0x235
       connections.sent provider.radio 0x234 #[0x0a, 3, 0]
       connections.incoming provider.radio 0x234 #[0x0b, 42]

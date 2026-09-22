@@ -150,6 +150,7 @@ resume-central provider/Provider host/Host:
   parameters := host.encode-connection provider.addresses[0] --address-type=(provider.private ? 1 : 0) --own-address-type=0
   packets.status-reply provider.radio (hci.command-packet host.connection-opcode parameters)
   provider.radio.received.add (event provider 0)
+  packets.gatt-reply provider.radio #[2, 23, 0] #[3, 23, 0]
   packets.status-reply provider.radio (hci.command-packet 0x2019
       (encryption.enable-parameters 0x234 provider.saved-keys[0]))
   secure.encryption-event provider.radio 0x234 true

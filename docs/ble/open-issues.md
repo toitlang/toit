@@ -4,22 +4,35 @@ Failures observed on the rig that are not understood, and what to do about
 each. The detailed campaign records are archived outside the repository
 (`opentoit-ble-archive/docs-2026-09-22`).
 
-## Immediate bond resumption against a BlueZ peripheral fails
+## Immediate bond resumption against a BlueZ peripheral (resolved 2026-09-23)
 
-A Toit central that reconnects to a bonded BlueZ 5.87 peripheral and starts
-encryption right after Connection Complete is disconnected by the peer (remote
-reason 0x13) before Encryption Change. Waiting for the peer's Security Request,
-or a one-second delay, makes it pass. The previous investigation attributed this
-to a callback-selection bug in the Linux kernel's HCI request handling and
-prepared a patched `bluetooth.ko`; that patch was never loaded.
+A Toit central that reconnected to a bonded BlueZ 5.87 peripheral and started
+encryption right after Connection Complete was disconnected by the peer
+(remote reason 0x13) before Encryption Change. The previous investigation
+attributed this to a Linux kernel bug and prepared a patched `bluetooth.ko`.
 
-The practical cause is on our side: the host never issues LE Read Remote
-Features. Every mainstream host does after connection and before starting
-encryption, which lets the peripheral's kernel finish its own feature request
-before the LTK reply arrives. Fix: issue LE Read Remote Features (0x2016) as
-part of connection setup and wait for LE Read Remote Features Complete before
-starting encryption. Validate with `tests/ble-hardware/central-fresh-bond.toit`
-against an unmodified kernel.
+Three things on our side were nonstandard, each fixed:
+
+1. The host never issued LE Read Remote Features. Connection setup now includes
+   the exchange; `Central.connect` returns after it completes.
+2. Security ran before any ATT traffic. A GATT client exchanges its MTU first
+   (Core Vol 3 Part G 4.3.1); the peer's ATT response also proves that its
+   host finished connection setup. The central provider now exchanges the MTU
+   before running the security owner.
+3. BlueZ holds the ATT channel of a bonded peer until the link is encrypted and
+   sends a Security Request instead. The resumption owner answered Pairing Not
+   Supported. It now follows Core Vol 3 Part H 2.4.6, Figure 2.7: a stored key
+   that meets the request starts encryption immediately (from the ATT receive
+   task, concurrently with the pending MTU exchange), a request for MITM that
+   an unauthenticated key cannot meet is answered Pairing Not Supported, and a
+   request during or after encryption setup is ignored.
+
+With the reference presenting a Just Works peer (an agent registered as
+NoInputNoOutput, so BlueZ requests 0x29 rather than 0x2d), pairing and
+immediate resumption both pass on unmodified kernel 7.2.4:
+`build/ble-resume-features-001/{pair,resume}`. A BlueZ peripheral without an
+agent asks for MITM; resuming a Just Works bond against it requires
+authenticated re-pairing, which is a different scenario.
 
 ## Intermittent connection failure with reason 0x3e
 

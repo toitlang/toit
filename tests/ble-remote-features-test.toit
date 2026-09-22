@@ -17,7 +17,7 @@ main:
   codecs
   with-timeout --ms=5_000: exchange
   with-timeout --ms=5_000: rejected
-  with-timeout --ms=5_000: encryption-waits
+  with-timeout --ms=5_000: connect-waits
   with-timeout --ms=5_000: disconnect-wakes
   with-timeout --ms=5_000: automatic-fixture
 
@@ -83,12 +83,13 @@ rejected:
       host.close
       responder.cancel
 
-/** Encryption is not started before the exchange has completed. */
-encryption-waits:
+/** Connect returns only after the exchange completed; encryption then proceeds. */
+connect-waits:
   transport := fixture.FakeTransport
   transport.auto-features = null
   host := central.Central (hci.Controller transport)
   completion := monitor.Latch
+  connected := monitor.Latch
   responder := task::
     fixture.status-reply transport fixture.create-command
     transport.received.add fixture.connection-event
@@ -101,21 +102,22 @@ encryption-waits:
     transport.received.add #[4, 0x0f, 4, 0, 1, 0x19, 0x20]
     transport.received.add #[4, 8, 4, 0, 0x34, 2, 1]
   try:
-    link := host.connect #[1, 2, 3, 4, 5, 6] --address-type=1
-    encrypting := task::
-      host.encrypt link (ByteArray 16: it)
+    connecting := task::
+      connected.set (host.connect #[1, 2, 3, 4, 5, 6] --address-type=1)
     sleep --ms=50
-    // Create Connection and the feature read were sent; encryption was not.
+    // Create Connection and the feature read were sent; connect has not returned.
     expect-equals 2 transport.sent-count
-    expect-null link.peer-features
+    expect-not connected.has-value
     completion.set true
-    with-timeout --ms=2_000: while not link.encrypted: sleep --ms=5
+    link/central.Link := connected.get
+    expect-equals #[1, 0, 0, 0, 0, 0, 0, 0] link.peer-features
+    host.encrypt link (ByteArray 16: it)
     expect link.encrypted
   finally:
     host.close
     responder.cancel
 
-/** A link that ends during the exchange wakes feature waiters with its error. */
+/** A link that ends during the exchange makes connect report a lost connection. */
 disconnect-wakes:
   transport := fixture.FakeTransport
   transport.auto-features = null
@@ -127,9 +129,8 @@ disconnect-wakes:
     transport.received.add FEATURES-STATUS
     transport.received.add #[4, 5, 4, 0, 0x34, 2, 0x13]
   try:
-    link := host.connect #[1, 2, 3, 4, 5, 6] --address-type=1
-    expect-throw "HCI_LINK_DISCONNECTED": link.wait-peer-features
-    expect-equals 0x13 link.wait-disconnected
+    expect-throw "HCI_CONNECTION_LOST": host.connect #[1, 2, 3, 4, 5, 6] --address-type=1
+    expect-equals 0 host.links_.size
   finally:
     host.close
     responder.cancel

@@ -587,16 +587,19 @@ class Central:
       busy_ = false
 
   /**
-  Starts the LE feature exchange on a new central-role link.
+  Completes connection setup with the LE feature exchange on a central link.
 
-  Every mainstream host reads remote features right after connection; some
-    peers depend on that ordering before encryption. The completion event is
-    consumed by the reader; $Link.wait-peer-features observes it. A controller
-    rejection leaves the features unknown without failing the connection. An
-    interrupted submission disconnects the new link before unwinding.
+  Every mainstream host reads remote features right after connection, and
+    peers rely on that ordering: a BlueZ peripheral, for example, drops SMP
+    and ATT traffic that arrives before its own side of the exchange has
+    finished. The exchange therefore belongs to connection setup: $connect
+    returns only after LE Read Remote Features Complete, within the caller's
+    connect deadline. A controller rejection or a failed exchange leaves the
+    features unknown without failing the connection. Interruption disconnects
+    the new link before unwinding.
   */
   read-features_ link/Link -> none:
-    settled := false
+    ready := false
     try:
       critical-do --no-respect-deadline:
         error := catch:
@@ -604,10 +607,13 @@ class Central:
         if error:
           if not (error is hci.CommandError): throw error
           link.features-known_ null
-      settled = true
       sleep --ms=0
+      error := catch: link.wait-peer-features
+      // An ended link is reported by the caller as a lost connection.
+      if error and link.connected: throw error
+      ready = true
     finally:
-      if not settled and link.connected:
+      if not ready and link.connected:
         cleanup-error := catch:
           with-timeout --ms=3_000: disconnect_ link
         if cleanup-error: fail_ cleanup-error

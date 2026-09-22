@@ -218,6 +218,11 @@ take-smp radio/packets.FakeTransport handle/int reassembler/acl.Reassembler -> B
     result := reassembler.accept packet
     links.completed radio handle
     if result:
+      if result.channel == 4 and result.payload.size == 3 and result.payload[0] == 2:
+        // Answer the client's MTU exchange, which precedes security.
+        response := #[2, handle & 0xff, (handle >> 8) | 0x20, 7, 0, 3, 0, 4, 0, 3, result.payload[1], result.payload[2]]
+        radio.received.add response
+        continue
       expect-equals 6 result.channel
       return result.payload
 
