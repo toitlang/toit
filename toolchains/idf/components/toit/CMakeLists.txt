@@ -2,8 +2,10 @@ cmake_minimum_required(VERSION 3.11)
 
 set(TOIT_BASE_DIR ${COMPONENT_PATH}/../../../..)
 
+# esp_psram is listed explicitly so that a build restricted with -DCOMPONENTS
+# still initializes PSRAM; nothing else pulls it in once lwIP is not built.
 set(TOIT_COMPONENT_REQUIRES
-        "efuse" "esp_adc" "esp_eth" "esp_hw_support" "esp_netif" "esp_rom"
+        "efuse" "esp_adc" "esp_eth" "esp_hw_support" "esp_netif" "esp_psram" "esp_rom"
         "nvs_flash" "spi_flash" "mbedtls" "bt" "app_update" "ulp" "fatfs")
 if(CONFIG_TOIT_ENABLE_SPI_TARGET AND CONFIG_SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE)
     list(APPEND TOIT_COMPONENT_REQUIRES "esp_mm")
@@ -67,26 +69,7 @@ idf_component_set_property(${COMPONENT_NAME} TOIT ${TOIT})
 idf_component_set_property(${COMPONENT_NAME} TOIT_BASE_DIR ${TOIT_BASE_DIR})
 idf_build_set_property(TOIT_COMPONENT_NAME "${COMPONENT_NAME}")
 
-# Try to resolve a file or path given in the sdkconfig.
-# The order of resolution is:
-#   1. Absolute path (or relative to this CMakeFile (unlikely))
-#   2. Path relative to main projects directory
-#   3. Path relative to the base dir of toit
-function(resolve_file out in toit_base_dir warning_text)
-    set(result ${in})
-    if (NOT EXISTS ${result})
-        set(result ${CMAKE_HOME_DIRECTORY}/${in})
-        if (NOT EXISTS ${result})
-            set(result ${toit_base_dir}/${in})
-            if (NOT EXISTS ${result})
-                if(warning_text)
-                    message(WARNING "Missing ${warning_text} file ${in}. Build will fail")
-                endif()
-            endif()
-        endif()
-    endif()
-    set(${out} ${result} PARENT_SCOPE)
-endfunction()
+include(${CMAKE_CURRENT_LIST_DIR}/resolve_file.cmake)
 
 function(toit_postprocess)
     idf_build_get_property(TOIT_COMPONENT_NAME TOIT_COMPONENT_NAME)
@@ -98,6 +81,10 @@ function(toit_postprocess)
     idf_build_get_property(EXECUTABLE_NAME EXECUTABLE_NAME)
 
     add_custom_target(firmware ALL DEPENDS bootloader partition_table_bin gen_project_binary)
+    # The envelope packaging below reads ota_data_initial.bin.
+    if(TARGET blank_ota_data)
+        add_dependencies(firmware blank_ota_data)
+    endif()
     add_dependencies(flash firmware)
     resolve_file(BOOT ${CONFIG_TOIT_SYSTEM_SOURCE} ${TOIT_BASE_DIR} "system toit")
     resolve_file(BOOT_PROJECT_ROOT ${CONFIG_TOIT_SYSTEM_SOURCE_PROJECT_ROOT} ${TOIT_BASE_DIR} "")

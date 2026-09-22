@@ -21,14 +21,12 @@
 
 #include "esp_event.h"
 #include "esp_log.h"
-#include "esp_netif.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
 #include "esp_system.h"
 #include "rom/ets_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "lwip/tcpip.h"
 
 #include "esp_sleep.h"
 
@@ -148,8 +146,8 @@ static void start() {
       if (ms < MIN_MS) ms = MIN_MS;
       else if (ms > MAX_MS) ms = MAX_MS;
       ets_printf("[toit] INFO: entering deep sleep for %lldms\n", ms);
-      err_t err = esp_sleep_enable_timer_wakeup(ms * 1000);
-      if (err != ERR_OK) FATAL("cannot enable deep sleep timer");
+      esp_err_t err = esp_sleep_enable_timer_wakeup(ms * 1000);
+      if (err != ESP_OK) FATAL("cannot enable deep sleep timer");
       break;
     }
 

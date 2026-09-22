@@ -19,7 +19,9 @@
 
 #include <esp_wifi.h>
 #include <nvs_flash.h>
-#include <lwip/sockets.h>
+#if defined(CONFIG_TOIT_ENABLE_WIFI)
+#include <esp_netif.h>
+#endif
 
 #include "wifi_espnow_esp32.h"
 
