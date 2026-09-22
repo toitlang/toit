@@ -65,6 +65,7 @@ TYPE_PRIMITIVE_ANY(ec_verify)
 TYPE_PRIMITIVE_ANY(ec_get_private_key_der)
 TYPE_PRIMITIVE_ANY(ec_get_public_key_der)
 TYPE_PRIMITIVE_ANY(ec_compute_shared_secret)
+TYPE_PRIMITIVE_ANY(constant_time_equals)
 
 }  // namespace toit::compiler
 }  // namespace toit

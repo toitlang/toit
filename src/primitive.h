@@ -556,7 +556,8 @@ namespace toit {
   PRIMITIVE(ec_verify, 4)                    \
   PRIMITIVE(ec_get_private_key_der, 2)       \
   PRIMITIVE(ec_get_public_key_der, 1)        \
-  PRIMITIVE(ec_compute_shared_secret, 2)
+  PRIMITIVE(ec_compute_shared_secret, 2)     \
+  PRIMITIVE(constant_time_equals, 2)
   
 #define MODULE_CRYPTO_RANDOM(PRIMITIVE)      \
   PRIMITIVE(random, 1)                       \

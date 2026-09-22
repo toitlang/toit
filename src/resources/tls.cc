@@ -19,6 +19,7 @@
 #define MBEDTLS_ALLOW_PRIVATE_ACCESS
 #include <mbedtls/chachapoly.h>
 #include <mbedtls/error.h>
+#include <mbedtls/ecp.h>
 #include <mbedtls/gcm.h>
 #include <mbedtls/oid.h>
 #include <mbedtls/pem.h>
@@ -435,7 +436,11 @@ Object* tls_error(BaseMbedTlsSocket* socket, Process* process, int err) {
       return Primitive::mark_as_error(str);
     }
   }
-  if (((-err) & 0xff80) == -MBEDTLS_ERR_SSL_CA_CHAIN_REQUIRED) {
+  // Protocol code distinguishes invalid EC points from allocation/internal
+  // failures. Preserve this exact error even without the full strerror table.
+  if (err == MBEDTLS_ERR_ECP_INVALID_KEY) {
+    strncpy(buffer, "ECP - Invalid private or public key", BUFFER_LEN);
+  } else if (((-err) & 0xff80) == -MBEDTLS_ERR_SSL_CA_CHAIN_REQUIRED) {
     strncpy(buffer, "No root certificate provided.\n", BUFFER_LEN);
   }
 #ifdef TOIT_FREERTOS
