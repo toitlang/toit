@@ -968,24 +968,30 @@ class SymmetricSession_:
         explicit-iv = #[]
         8.repeat: iv[4 + it] ^= sequence-number[it]
       encryptor := write-keys.new-encryptor iv
-      encryptor.start --authenticated-data=(sequence-number + record-header.bytes)
-      // Now that we have used the actual size of the plaintext as the authentication data
-      // we update the header with the real size on the wire, which includes some more data.
-      record-header.length = length2 + explicit-iv.size + Aead_.TAG-SIZE
-      List.chunk-up from2 to2 512: | from3 to3 length3 |
-        first /bool := from3 == from2
-        last /bool := to3 == to2
-        plaintext := ByteArray (to3 - from3)
-        data.write-to-byte-array plaintext --at=0 from3 to3
-        parts := [encryptor.add plaintext]
-        if first:
-          parts = [record-header.bytes, explicit-iv, parts[0]]
-        if last:
-          parts.add encryptor.finish
-        else:
-          yield  // Don't monopolize the CPU with long crypto operations.
-        encrypted := byte-array-join_ parts
-        writer_.write encrypted
+      try:
+        encryptor.start --authenticated-data=(sequence-number + record-header.bytes)
+        // Now that we have used the actual size of the plaintext as the authentication data
+        // we update the header with the real size on the wire, which includes some more data.
+        record-header.length = length2 + explicit-iv.size + Aead_.TAG-SIZE
+        List.chunk-up from2 to2 512: | from3 to3 length3 |
+          first /bool := from3 == from2
+          last /bool := to3 == to2
+          plaintext := ByteArray (to3 - from3)
+          data.write-to-byte-array plaintext --at=0 from3 to3
+          parts := [encryptor.add plaintext]
+          if first:
+            parts = [record-header.bytes, explicit-iv, parts[0]]
+          if last:
+            parts.add encryptor.finish
+          else:
+            yield  // Don't monopolize the CPU with long crypto operations.
+          encrypted := byte-array-join_ parts
+          writer_.write encrypted
+      finally:
+        // Release the native cipher state even if encrypting or sending a
+        // chunk throws, or the task is canceled while the transport is
+        // backpressured. Closing after 'finish' is a no-op.
+        encryptor.close
     return to - from
 
   read --expected-type/int=APPLICATION-DATA_ -> ByteArray?:
@@ -1027,24 +1033,29 @@ class SymmetricSession_:
 
       plaintext-length := encrypted-length - Aead_.TAG-SIZE - explicit-iv.size
       decryptor := read-keys.new-decryptor iv
-      // Overwrite the length with the unpadded length before adding the header
-      // to the authenticated data.
-      record-header.length = plaintext-length
-      decryptor.start --authenticated-data=(sequence-number + record-header.bytes)
       // Accumulate plaintext in a local to ensure that no data is read by the
       // application that has not been verified.
       buffered-plaintext := []
-      while plaintext-length > 0:
-        encrypted := reader_.read --max-size=plaintext-length
-        if not encrypted: return null
-        plaintext-length -= encrypted.size
-        plain-chunk := decryptor.add encrypted
+      try:
+        // Overwrite the length with the unpadded length before adding the header
+        // to the authenticated data.
+        record-header.length = plaintext-length
+        decryptor.start --authenticated-data=(sequence-number + record-header.bytes)
+        while plaintext-length > 0:
+          encrypted := reader_.read --max-size=plaintext-length
+          if not encrypted: return null
+          plaintext-length -= encrypted.size
+          plain-chunk := decryptor.add encrypted
+          if plain-chunk.size != 0: buffered-plaintext.add plain-chunk
+        if not reader_.try-ensure-buffered Aead_.TAG-SIZE: return null
+        received-tag := reader_.read-bytes Aead_.TAG-SIZE
+        plain-chunk := decryptor.verify received-tag
+        // Since we got here, the tag was successfully verified.
         if plain-chunk.size != 0: buffered-plaintext.add plain-chunk
-      if not reader_.try-ensure-buffered Aead_.TAG-SIZE: return null
-      received-tag := reader_.read-bytes Aead_.TAG-SIZE
-      plain-chunk := decryptor.verify received-tag
-      // Since we got here, the tag was successfully verified.
-      if plain-chunk.size != 0: buffered-plaintext.add plain-chunk
+      finally:
+        // Release the native cipher state after truncated, failed or canceled
+        // reads as well. Closing after 'verify' is a no-op.
+        decryptor.close
       if record-header.type == ALERT_:
         // Alerts are control messages. Their bytes must never be handed to
         // the application as data, so handle them here and read on.
@@ -1089,7 +1100,9 @@ class TlsGroup_:
     if users_ == 0:
       handle := handle_
       handle_ = null
-      tls-deinit_ handle
+      // The handle is null if $use failed in tls-init_. The error from that
+      // failure must not be replaced by a failing deinit of a null handle.
+      if handle: tls-deinit_ handle
 
 /**
 Generate $size random bytes using the PRF of RFC 5246.
