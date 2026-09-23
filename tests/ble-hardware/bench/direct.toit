@@ -23,6 +23,7 @@ main:
   controller := hci.Controller esp32.Esp32Transport
   info := hci.initialize controller
   host := central.Central controller --acl-length=info.acl-length --acl-count=info.acl-count
+      --receive-limit=247
   database := attributes.Database --value-limit=512 --mtu-limit=247
   database.add-service uuids.SERVICE
   value := database.add-characteristic uuids.VALUE --read --notify --value=payload

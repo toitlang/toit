@@ -16,6 +16,16 @@ block, and the process's own allocated bytes.
 | Toit host, provider + application containers, one RPC per notification | 160 | 95.4 KB | 82 KB, 78 KB after 10 cycles | provider 12–15 KB (20 KB reserved), app 2 KB |
 | Toit host, provider + application containers, `notify-values` in batches of 32 | 376 | same | same | same |
 
+With 244-byte notifications at ATT MTU 247 and Data Length Extension (both
+stacks negotiate 251-octet link-layer PDUs with the same dongle):
+
+| Peripheral | Notifications/s | Bytes/s |
+| --- | --- | --- |
+| NimBLE host, `ble` package | 264–268 | 65 KB/s |
+| Toit host, direct | 330–332 | 81 KB/s |
+| Toit host, provider model, one RPC per notification | 157–159 | 39 KB/s |
+| Toit host, provider model, `notify-values` in batches of 32 | 310 | 76 KB/s |
+
 Free heap at boot before any BLE code: 142–149 KB. All three recover their
 idle figure after every disconnect (no growth over ten cycles); the largest
 free block shrinks once after the first cycle and then stays.
@@ -51,8 +61,12 @@ free block shrinks once after the first cycle and then stays.
    whatever the host does, so the service API has `Session.notify-values`,
    one round trip for up to 32 values; with it the provider model reaches the
    direct host's rate.
-3. Data Length Extension is the other half of throughput for large values; it
-   is a protocol-parity item, not a host cost.
+3. With large values the picture inverts: at 244 bytes the Toit host moves
+   more bytes than NimBLE (81 against 65 KB/s direct, 76 KB/s batched through
+   the provider). The per-notification interpreter cost is then a smaller
+   share, and the NimBLE backend's own per-write overhead (mbuf allocation,
+   the `ble` package's value copy and RPC-free but task-switching path)
+   dominates instead. Data Length Extension is on in both.
 4. A 2× gap on 20-byte notifications is the expected price of an interpreted
    host; it is within "some performance loss is acceptable". The credit fast
    path and single-fragment framing (23 to 17 µs per notification on Linux)

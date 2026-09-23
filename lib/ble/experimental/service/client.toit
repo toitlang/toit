@@ -6,6 +6,7 @@ import system.services
 import ble show Advertisement
 
 import .api as api
+import io
 
 /**
 Opens the experimental BLE request service without importing host code.
@@ -710,8 +711,19 @@ class Session extends services.ServiceResourceProxy:
   */
   notify-values handle/int values/List -> int:
     if not 1 <= values.size <= 32: throw "INVALID_ARGUMENT"
-    copies := values.map: copy-bounded_ it 512
-    return connection_.call_ api.NOTIFY-VALUES [handle_, handle, copies]
+    // One length-prefixed buffer: the RPC layer carries a single large byte
+    // array better than a list of them.
+    total := 0
+    values.do: | value/ByteArray |
+      if value.size > 512: throw "INVALID_ARGUMENT"
+      total += 2 + value.size
+    packed := ByteArray total
+    offset := 0
+    values.do: | value/ByteArray |
+      io.LITTLE-ENDIAN.put-uint16 packed offset value.size
+      packed.replace (offset + 2) value
+      offset += 2 + value.size
+    return connection_.call_ api.NOTIFY-VALUES [handle_, handle, packed]
 
   /**
   Submits a complete value snapshot, or returns null when not subscribed.
