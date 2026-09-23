@@ -30,7 +30,7 @@ installed on the device (see "Using the ble package" below).
 | Path | Content |
 | --- | --- |
 | `lib/ble/host.toit` | The `ble` package's public API on top of the service client; chosen by `ble.Adapter` when no native host exists |
-| `lib/ble/experimental/` | The host: `hci`, `acl`, `central` (link owner for both roles) with `link`, `att`, `gatt`, `attribute-server`, `gatt-server`, `smp-*`, `security`, `bond-*`, `cccd-*`, `privacy`, `scanning`, `advertising*`, `timeouts` (every bound), `cancellation` |
+| `lib/ble/experimental/` | The host: `hci`, `acl`, `central` (link owner for both roles) with `link`, `att`, `gatt`, `attribute-server`, `gatt-server`, `smp-*`, `security`, `bond-*` with `storage-key`, `cccd-*`, `privacy`, `scanning`, `advertising*`, `timeouts` (every bound), `cancellation` |
 | `lib/ble/experimental/service/` | RPC service: `api` (selector, method indices), `client`, `provider` base and the provider variants |
 | `src/resources/ble_hci_linux.cc`, `ble_hci_esp32.cc` | Native transports (HCI user channel; controller-only VHCI) |
 | `tests/ble-*-test.toit` | Software tests on a scripted in-memory transport; `tests/ble-hci-test.toit` doubles as the shared fixture |
