@@ -47,7 +47,7 @@ abstract class Provider extends central-provider.Provider:
   */
   create-shared-host controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
     if peripheral-session-limit > 1:
-      return central.Central controller --acl-length=info.acl-length --acl-count=info.acl-count
+      return central.Central controller --acl-length=info.acl-length --acl-count=info.acl-count --phy-2m=info.phy-2m
           --receive-limit=receive-limit
           --link-limit=peripheral-session-limit
     return super controller info receive-limit
@@ -109,7 +109,7 @@ abstract class Provider extends central-provider.Provider:
     Preserve the supplied receive bound and controller credit limits.
   */
   create-host controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
-    return central.Central controller --acl-length=info.acl-length --acl-count=info.acl-count
+    return central.Central controller --acl-length=info.acl-length --acl-count=info.acl-count --phy-2m=info.phy-2m
         --early-acl-timeout=early-acl-timeout
         --receive-limit=receive-limit
 

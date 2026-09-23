@@ -190,7 +190,7 @@ configure controller/hci.Controller info/hci.Capabilities -> none:
   if info.commands[36] & 0x3e != 0x3e or info.commands[37] & 0x81 != 0x81:
     throw "HCI_BOUNDED_ADVERTISING_UNSUPPORTED"
   extended.configure controller info
-  controller.command hci.LE-SET-EVENT-MASK #[0x5f, 2, 2, 0, 0, 0, 0, 0]
+  controller.command hci.LE-SET-EVENT-MASK #[0x5f, 0x0a, 2, 0, 0, 0, 0, 0]
 
 parameters_ interval/int own-address-type/int -> ByteArray:
   if not 0x20 <= interval <= 0x4000: throw "INVALID_ARGUMENT"

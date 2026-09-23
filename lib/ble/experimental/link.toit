@@ -49,6 +49,7 @@ class Link:
   encryption_/encryption.Change? := null
   encryption-required_/bool := false
   data-length_/connection.DataLength? := null
+  phy_/connection.Phy? := null
   closing_/bool := false
   error_ := null
   reason_/int? := null
@@ -164,6 +165,9 @@ class Link:
     the connection; without it the link stays at 27 octets and this is null.
   */
   data-length -> connection.DataLength?: return data-length_
+
+  /** Returns the PHYs in effect, or null while the link still uses the 1M PHY it started on. */
+  phy -> connection.Phy?: return phy_
 
   /** Waits for a complete L2CAP PDU, or throws when the link ends. */
   receive --owner=null -> acl.Packet:

@@ -50,7 +50,7 @@ class Central extends central.Central:
 configure controller/hci.Controller info/hci.Capabilities -> none:
   if info.le-features[1] & 0x10 == 0: throw "HCI_EXTENDED_ADVERTISING_UNSUPPORTED"
   if info.commands[37] & 0x80 == 0: throw "HCI_EXTENDED_INITIATING_UNSUPPORTED"
-  controller.command hci.LE-SET-EVENT-MASK #[0x5f, 2, 0, 0, 0, 0, 0, 0]
+  controller.command hci.LE-SET-EVENT-MASK #[0x5f, 0x0a, 0, 0, 0, 0, 0, 0]
 
 /** Encodes one explicit peer and the LE 1M initiating PHY (Core 6.3, 7.8.66). */
 create-parameters address/ByteArray --address-type/int --own-address-type/int=0 -> ByteArray:

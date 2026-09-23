@@ -34,6 +34,7 @@ class Central:
   link-limit_/int
   acl-quota_/int
   accept-parameter-requests_/bool
+  phy-2m_/bool
   events_/hci.Packets ::= hci.Packets 32
   busy_/bool := false
   security-submissions_/int := 0
@@ -75,8 +76,10 @@ class Central:
   */
   constructor .controller_ --acl-length/int=27 --acl-count/int=1
       --early-acl-timeout/Duration?=null --receive-limit/int=65
-      --link-limit/int=1 --acl-quota/int?=null --accept-parameter-requests/bool=false:
+      --link-limit/int=1 --acl-quota/int?=null --accept-parameter-requests/bool=false
+      --phy-2m/bool=false:
     accept-parameter-requests_ = accept-parameter-requests
+    phy-2m_ = phy-2m
     if acl-length < 1 or acl-count < 1: throw "INVALID_ARGUMENT"
     if not 65 <= receive-limit <= 1024: throw "INVALID_ARGUMENT"
     receive-limit_ = receive-limit
@@ -381,6 +384,7 @@ class Central:
         if not link.connected: throw (lost_ link)
         read-features_ link
         if not link.connected: throw (lost_ link)
+        request-phy_ link
         return link
     finally:
       if submitted and not delivered:
@@ -438,6 +442,20 @@ class Central:
         cleanup-error := catch:
           disconnect_ link
         if cleanup-error: fail_ cleanup-error
+
+  /**
+  Asks for the 2M PHY on a link this owner initiated when both sides have it.
+
+  The update completes asynchronously ($Link.phy); a rejection or a peer
+    that keeps 1M is not an error.
+  */
+  request-phy_ link/Link -> none:
+    if not phy-2m_: return
+    features := link.peer-features
+    if not features or features.size < 2 or features[1] & 0x01 == 0: return
+    error := catch:
+      controller_.command hci.LE-SET-PHY (connection.phy-2m-parameters link.info.handle) --status-event
+    if error and not (error is hci.CommandError): throw error
 
   /** Supplies the connection command for this owner's controller command family. */
   connection-opcode -> int: return 0x200d
@@ -861,6 +879,11 @@ class Central:
       // a completion for an unknown lifetime carries no information.
       link := find-link_ features.handle
       if link: link.features-known_ (features.status == 0 ? features.bytes : null)
+      return
+    phy := connection.decode-phy-update packet
+    if phy:
+      link := find-link_ phy.handle
+      if link: link.phy_ = phy
       return
     data-length := connection.decode-data-length packet
     if data-length:

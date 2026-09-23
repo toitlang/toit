@@ -9,7 +9,7 @@ echo "dongle=$index observer=$other"
 $T compile -s -o $C/provider.snapshot tests/ble-hardware/bench/provider-traced.toit
 $T compile -s -o $C/central.snapshot tests/ble-hardware/compat-central.toit
 $T compile -s -o $C/heart-rate.snapshot examples/ble/heart_rate.toit
-cp build/esp32-ble-current/firmware.envelope $C/app.envelope
+cp build/esp32-ble-host/firmware.envelope $C/app.envelope
 $T tool firmware -e $C/app.envelope container install ble-provider $C/provider.snapshot
 $T tool firmware -e $C/app.envelope container install heart-rate $C/heart-rate.snapshot
 $T tool firmware -e $C/app.envelope flash --port $port --partition empty:nvs=65536 2>&1 | tail -1
