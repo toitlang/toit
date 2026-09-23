@@ -7,6 +7,7 @@ import monitor
 import .bond show Candidate
 import .central show Central Link
 import .encryption as encryption
+import .smp-legacy show LegacyKey
 import .security-owner show Owner
 import .signaling as signaling
 
@@ -29,6 +30,7 @@ class Resume implements Owner:
   host_/Central
   link_/Link
   key_/ByteArray? := ?
+  legacy_/LegacyKey? := ?
   authenticated_/bool
   used_/bool := false
   joined_/bool := false
@@ -48,11 +50,22 @@ class Resume implements Owner:
       throw "BLE_BOND_WRONG_LOCAL_IDENTITY"
     if not (candidate.peer.matches link_.info.address --address-type=link_.info.address-type):
       throw "BLE_BOND_WRONG_PEER_IDENTITY"
-    key_ = candidate.key
     authenticated_ = candidate.authenticated
-    if link_.info.role == 1:
-      host_.set-encryption-key link_ key_
+    if candidate.legacy:
+      // A legacy bond resumes with the key the peer distributed (central) or
+      // the one this side distributed (peripheral); the STK is not kept.
       key_ = null
+      legacy_ = link_.info.role == 0 ? candidate.peer-legacy : candidate.local-legacy
+      if not legacy_: throw "BLE_BOND_NO_LEGACY_KEY"
+      if link_.info.role == 1:
+        host_.set-legacy-encryption-key link_ legacy_
+        legacy_ = null
+    else:
+      key_ = candidate.key
+      legacy_ = null
+      if link_.info.role == 1:
+        host_.set-encryption-key link_ key_
+        key_ = null
 
   matches host/Central link/Link -> bool: return host == host_ and link == link_
   paired -> bool: return ready_ and not closed_ and link_.connected
@@ -100,7 +113,10 @@ class Resume implements Owner:
     error := catch:
       with-timeout timeout:
         if link_.info.role == 0:
-          host_.encrypt link_ key_ --timeout=timeout
+          if legacy_:
+            host_.encrypt-legacy link_ legacy_ --timeout=timeout
+          else:
+            host_.encrypt link_ key_ --timeout=timeout
         else:
           change := link_.wait-encryption-change
           if change.status != 0: throw (encryption.Error change.status)
@@ -110,6 +126,7 @@ class Resume implements Owner:
         ready_ = true
     critical-do --no-respect-deadline:
       key_ = null
+      legacy_ = null
       worker_ = null
       if error:
         if not result_.has-value: result_.set error --exception
@@ -151,6 +168,7 @@ class Resume implements Owner:
       closed_ = true
       ready_ = false
       key_ = null
+      legacy_ = null
       if not result_.has-value: result_.set "BLE_BOND_RESUME_CLOSED" --exception
       worker := worker_
       if worker and worker != Task.current: worker.cancel

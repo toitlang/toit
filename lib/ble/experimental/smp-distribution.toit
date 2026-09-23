@@ -3,6 +3,7 @@
 // be found in the lib/LICENSE file.
 
 import .smp-identity as identity
+import .smp-legacy as legacy
 import .security-state show SecurityState
 import .smp-features show PairingError
 
@@ -10,7 +11,9 @@ import .smp-features show PairingError
 Orders a negotiated SC identity exchange (Core 6.3 Vol 3 Part H 3.6.1).
 
 The peripheral issues its identity first. The central waits for that identity
-  before issuing its own, unless no peripheral identity was negotiated. Methods
+  before issuing its own, unless no peripheral identity was negotiated. Legacy
+  pairing distributes long term keys (Encryption Information, Central
+  Identification) before identities, in the same responder-first order. Methods
   return ordered PDUs for the connection owner to submit. They never report
   delivery, bond completion or persistence. The owner supplies the negotiated
   directions, enforces the procedure deadline and sends each returned list once.
@@ -20,14 +23,19 @@ class Exchange:
   initiator_/bool
   local_/identity.Identity? := ?
   receiver_/identity.Receiver? := ?
+  local-key_/legacy.LegacyKey? := ?
+  key-receiver_/legacy.LegacyKeyReceiver? := ?
   started_/bool := false
   closed_/bool := false
   issued_/bool := false
 
-  constructor .security_ --initiator/bool --local/identity.Identity?=null --receive-identity/bool:
+  constructor .security_ --initiator/bool --local/identity.Identity?=null --receive-identity/bool
+      --local-key/legacy.LegacyKey?=null --receive-key/bool=false:
     initiator_ = initiator
     local_ = local
     receiver_ = receive-identity ? (identity.Receiver security_) : null
+    local-key_ = local-key
+    key-receiver_ = receive-key ? (legacy.LegacyKeyReceiver security_) : null
 
   /** Starts the encrypted phase and returns any immediately eligible local PDUs. */
   start -> List:
@@ -36,7 +44,7 @@ class Exchange:
     succeeded := false
     try:
       check-encryption_
-      result := (not initiator_ or not receiver_) ? issue_ : []
+      result := (not initiator_ or not expects-peer_) ? issue_ : []
       succeeded = true
       return result
     finally:
@@ -47,9 +55,12 @@ class Exchange:
     check-active_
     succeeded := false
     try:
-      if not receiver_: throw (PairingError 0x0a)
-      receiver_.receive packet
-      result := initiator_ and receiver_.identity ? issue_ : []
+      if key-receiver_ and not key-receiver_.key:
+        key-receiver_.receive packet
+      else:
+        if not receiver_: throw (PairingError 0x0a)
+        receiver_.receive packet
+      result := initiator_ and peer-complete_ ? issue_ : []
       succeeded = true
       return result
     finally:
@@ -60,15 +71,29 @@ class Exchange:
     check-active_
     return receiver_ and receiver_.identity
 
+  /** Returns the peer's distributed legacy key, or null while pending or not negotiated. */
+  peer-legacy-key -> legacy.LegacyKey?:
+    check-active_
+    return key-receiver_ and key-receiver_.key
+
   /** Reports whether local packets have been issued to the owner, not delivered. */
   local-identity-issued -> bool:
     check-active_
     return issued_
 
+  expects-peer_ -> bool: return receiver_ != null or key-receiver_ != null
+
+  peer-complete_ -> bool:
+    if key-receiver_ and not key-receiver_.key: return false
+    if receiver_ and not receiver_.identity: return false
+    return true
+
   issue_ -> List:
-    if issued_ or not local_: return []
-    packets := local_.packets security_
-    issued_ = true
+    if issued_: return []
+    packets := []
+    if local-key_: packets.add-all (local-key_.packets security_)
+    if local_: packets.add-all (local_.packets security_)
+    if not packets.is-empty: issued_ = true
     return packets
 
   check-active_ -> none:
@@ -86,3 +111,6 @@ class Exchange:
     if receiver_: receiver_.close
     receiver_ = null
     local_ = null
+    if key-receiver_: key-receiver_.close
+    key-receiver_ = null
+    local-key_ = null

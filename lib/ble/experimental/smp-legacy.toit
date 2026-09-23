@@ -11,7 +11,10 @@ All inputs and outputs are in the order the values travel on the air: SMP
   works on the big-endian representation, so the helpers reverse around it.
 */
 
+import crypto
 import crypto.aes
+import .security-state show SecurityState
+import .smp-features show PairingError
 
 /** e(k, p): AES-128 of the 128-bit value $p under $k, both least significant byte first. */
 e k/ByteArray p/ByteArray -> ByteArray:
@@ -54,3 +57,70 @@ xor_ a/ByteArray b/ByteArray -> ByteArray:
 
 reverse_ bytes/ByteArray -> ByteArray:
   return ByteArray bytes.size: bytes[bytes.size - 1 - it]
+
+/**
+A legacy long term key with the identifiers a peer presents to ask for it
+  (Encryption Information and Central Identification, 3.6.2 and 3.6.3).
+
+$ltk is the 128-bit key least significant byte first as distributed; $key
+  returns it in the big-endian order the encryption commands take.
+*/
+class LegacyKey:
+  ltk/ByteArray
+  ediv/int
+  rand/ByteArray
+
+  constructor .ltk .ediv .rand:
+    if ltk.size != 16 or not 0 <= ediv <= 0xffff or rand.size != 8: throw "INVALID_ARGUMENT"
+
+  /** Creates a fresh key to distribute. */
+  constructor.random:
+    ltk = crypto.random --size=16
+    random := crypto.random --size=2
+    ediv = random[0] | (random[1] << 8)
+    rand = crypto.random --size=8
+
+  /** Returns the key in big-endian cryptographic order. */
+  key -> ByteArray: return reverse_ ltk
+
+  /** Encodes the ordered pair only while this connection has its new encryption key. */
+  packets security/SecurityState -> List:
+    if not security.paired or not security.encrypted: throw "SMP_IDENTITY_NOT_ENCRYPTED"
+    return [#[6] + ltk, #[7, ediv & 0xff, ediv >> 8] + rand]
+
+/** Collects one distributed legacy key, withholding partial results. */
+class LegacyKeyReceiver:
+  security_/SecurityState
+  pending_/ByteArray? := null
+  key_/LegacyKey? := null
+  closed_/bool := false
+
+  constructor .security_:
+
+  /** Accepts Encryption Information followed by Central Identification. */
+  receive packet/ByteArray -> none:
+    if closed_: throw "SMP_IDENTITY_CLOSED"
+    succeeded := false
+    try:
+      if not security_.paired or not security_.encrypted: throw "SMP_IDENTITY_NOT_ENCRYPTED"
+      if key_: throw (PairingError 0x0a)
+      if not pending_:
+        if packet.size != 17 or packet[0] != 6: throw (PairingError 0x0a)
+        pending_ = packet[1..].copy
+      else:
+        if packet.size != 11 or packet[0] != 7: throw (PairingError 0x0a)
+        key_ = LegacyKey pending_ (packet[1] | (packet[2] << 8)) packet[3..].copy
+        pending_ = null
+      succeeded = true
+    finally:
+      if not succeeded: close
+
+  /** Returns the complete key, or null while pending. */
+  key -> LegacyKey?:
+    if closed_: throw "SMP_IDENTITY_CLOSED"
+    return key_
+
+  close -> none:
+    closed_ = true
+    pending_ = null
+    key_ = null
