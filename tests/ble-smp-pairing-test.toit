@@ -409,7 +409,11 @@ failures:
   pair.b.close
   pair = Pair
   pair.a.start --now=0
-  expect-equals [#[5, 3]] (pair.a.receive #[2, 3, 0, 0, 16, 0, 0] --now=0)
+  // A peer without Secure Connections gets legacy Just Works: a confirm, not a refusal.
+  legacy-start := pair.a.receive #[2, 3, 0, 0, 16, 0, 0] --now=0
+  expect-equals 1 legacy-start.size
+  expect-equals 17 legacy-start[0].size
+  expect-equals 3 legacy-start[0][0]
   pair.b.close
   pair = Pair
   pair.a.start --now=0
