@@ -179,6 +179,39 @@ decode-data-length packet/ByteArray -> DataLength?:
     throw "HCI_MALFORMED_CONNECTION_EVENT"
   return DataLength handle tx-octets tx-time rx-octets rx-time
 
+/** The PHYs in effect on a link after a PHY update. */
+class Phy:
+  static PHY-1M ::= 1
+  static PHY-2M ::= 2
+  static PHY-CODED ::= 3
+  handle/int
+  tx/int
+  rx/int
+
+  constructor .handle .tx .rx:
+
+/** Encodes LE Set PHY asking for 2M in both directions (Vol 4 Part E, 7.8.49). */
+phy-2m-parameters handle/int -> ByteArray:
+  if not 0 <= handle <= 0x0eff: throw "INVALID_ARGUMENT"
+  result := ByteArray 7
+  io.LITTLE-ENDIAN.put-uint16 result 0 handle
+  result[3] = 0x02
+  result[4] = 0x02
+  return result
+
+/** Decodes LE PHY Update Complete (Vol 4 Part E, 7.7.65.12). */
+decode-phy-update packet/ByteArray -> Phy?:
+  hci.validate-packet packet
+  if packet[0] != 4 or packet[1] != 0x3e: return null
+  if packet.size < 4: throw "HCI_MALFORMED_CONNECTION_EVENT"
+  if packet[3] != 0x0c: return null
+  if packet.size != 9: throw "HCI_MALFORMED_CONNECTION_EVENT"
+  if packet[4] != 0: return null
+  handle := io.LITTLE-ENDIAN.uint16 packet 5
+  if handle > 0x0eff or not 1 <= packet[7] <= 3 or not 1 <= packet[8] <= 3:
+    throw "HCI_MALFORMED_CONNECTION_EVENT"
+  return Phy handle packet[7] packet[8]
+
 /** The peer's LE features, or a controller status when the exchange failed. */
 class Features:
   status/int

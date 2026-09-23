@@ -3,21 +3,29 @@
 set -uo pipefail
 cd /home/flo/work/opentoit-ble
 variant=$1; cycles=${2:-10}
-C=build/ble-bench-001; T=build/host/sdk/bin/toit; mkdir -p "$C"
-port=/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_7eb10aca7cfbea11919ff4375fbcde76-if00-port0
-peer=083af2234daa
+C=build/ble-bench-001; T=build/host/sdk/bin/toit
+# BENCH_BOARD=s3 runs on ESP32-S3 Board1 (2M PHY capable) instead of the original ESP32.
+if [ "${BENCH_BOARD:-esp32}" = s3 ]; then
+  port=/dev/serial/by-id/usb-1a86_USB_Single_Serial_544C020917-if00
+  peer=f412fac150fe
+  firmware=build/esp32s3-ble-host/firmware.envelope
+else
+  port=/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_7eb10aca7cfbea11919ff4375fbcde76-if00-port0
+  peer=083af2234daa
+  firmware=build/esp32-ble-host/firmware.envelope
+fi
 index=$(btmgmt info | awk '/^hci/{h=$1} /addr 08:BE:AC:2A:DA:C2/{sub(":","",h); print substr(h,4)}')
 [ -n "$index" ] || { echo "adapter not found"; exit 2; }
 mkdir -p "$C/$variant"
 if [ "$variant" = toit ]; then
-  cp build/esp32-ble-current/firmware.envelope "$C/toit.envelope"
+  cp "$firmware" "$C/toit.envelope"
   $T compile -s -o "$C/provider.snapshot" tests/ble-hardware/bench/provider.toit
   $T compile -s -o "$C/app.snapshot" tests/ble-hardware/bench/app.toit
   $T tool firmware -e "$C/toit.envelope" container install ble-provider "$C/provider.snapshot"
   $T tool firmware -e "$C/toit.envelope" container install bench "$C/app.snapshot"
   envelope="$C/toit.envelope"
 elif [ "$variant" = direct ]; then
-  cp build/esp32-ble-current/firmware.envelope "$C/direct.envelope"
+  cp "$firmware" "$C/direct.envelope"
   $T compile -s -o "$C/direct.snapshot" tests/ble-hardware/bench/direct.toit
   $T tool firmware -e "$C/direct.envelope" container install bench "$C/direct.snapshot"
   envelope="$C/direct.envelope"

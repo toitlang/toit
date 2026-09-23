@@ -28,6 +28,7 @@ main args/List:
     host = central.Central controller --acl-length=info.acl-length --acl-count=info.acl-count
         --receive-limit=247
         --early-acl-timeout=(Duration --ms=20)
+        --phy-2m=info.phy-2m
     cycles.repeat: | cycle/int |
       started := Time.monotonic-us
       link := host.connect address --address-type=0 --timeout=(Duration --s=30)
@@ -49,7 +50,8 @@ main args/List:
         if descriptors.size != 1: throw "BENCH_CCCD_NOT_FOUND"
         connected := Time.monotonic-us - started
         length := link.data-length
-        print "BENCH central cycle=$cycle connected-us=$connected mtu=$mtu interval=$link.parameters.interval tx-octets=$(length ? length.tx-octets : 27) rx-octets=$(length ? length.rx-octets : 27)"
+        phy := link.phy
+        print "BENCH central cycle=$cycle connected-us=$connected mtu=$mtu interval=$link.parameters.interval tx-octets=$(length ? length.tx-octets : 27) rx-octets=$(length ? length.rx-octets : 27) phy=$(phy ? "$phy.tx/$phy.rx" : "1/1")"
         client.subscribe characteristic.handle --cccd=descriptors[0].handle --queue-limit=32: | stream/att.Subscription |
           first := with-timeout --ms=10_000: stream.receive
           count = 1

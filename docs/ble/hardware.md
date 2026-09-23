@@ -46,10 +46,9 @@ make BLE_HOST=1 esp32s3    # build/esp32s3-ble-host/firmware.envelope
 
 It layers `toolchains/<chip>/sdkconfig.ble-host` (no Bluedroid, no NimBLE,
 controller only, BLE-only mode on the original ESP32) over the ordinary
-defaults. The development rig also keeps `build/ble-esp32-current-build.sh`
-and `build/ble-esp32s3-current-build.sh` (plain cmake against the current host
-SDK, outputs under `build/esp32-ble-current` and `build/esp32s3-ble-current`)
-for quick rebuilds.
+defaults. Containers must come from the same SDK build as the envelope
+(`build/host/sdk/bin/toit` after `make`); the firmware tool refuses a
+snapshot from another SDK version.
 
 Assemble and flash an application:
 
@@ -57,7 +56,7 @@ Assemble and flash an application:
 toit=build/host/sdk/bin/toit
 $toit compile -s -o /tmp/provider.snapshot examples/ble/experimental/advertising-provider.toit
 $toit compile -s -o /tmp/app.snapshot examples/ble/experimental/advertising-counter.toit
-cp build/esp32-ble-current/firmware.envelope /tmp/app.envelope
+cp build/esp32-ble-host/firmware.envelope /tmp/app.envelope
 $toit tool firmware -e /tmp/app.envelope container install provider /tmp/provider.snapshot
 $toit tool firmware -e /tmp/app.envelope container install app /tmp/app.snapshot
 $toit tool firmware -e /tmp/app.envelope flash --port /dev/serial/by-id/<board>

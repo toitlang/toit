@@ -11,7 +11,7 @@ its fixed limits, and the gaps that must close before it can replace NimBLE.
 | HCI | Reset, identity and feature discovery, event masks, command credits, Command Status vs Command Complete, LE scan/advertise/connect/disconnect, ACL fragmentation and reassembly, shared ACL transmit budget with per-link quota, optional controller-to-host flow control, legacy and extended (1M PHY) connection commands, finite extended advertising for accept. |
 | Scanning | Legacy passive and active scanning, duplicate filtering, bounded report queue with drop counter, optional timed RPA rotation. |
 | Advertising | Legacy connectable and non-connectable advertising, live payload updates, optional timed RPA rotation. |
-| Connections | Bounded live registry (default one link, up to 16), connection parameter update from either role, disconnect with reason, Data Length Extension (a supporting controller gets 251-octet defaults at initialization and each link reports its negotiated lengths). |
+| Connections | Bounded live registry (default one link, up to 16), connection parameter update from either role, disconnect with reason, Data Length Extension (a supporting controller gets 251-octet defaults at initialization and each link reports its negotiated lengths), LE 2M PHY (1M/2M defaults at initialization; a link owner asks for 2M after a connection it initiated when the peer supports it, and `Link.phy` reports the update; the original ESP32 controller has no 2M). |
 | L2CAP | Fixed ATT, signaling and SMP channels; parameter request/response; rejection of other channels. |
 | ATT/GATT client | MTU exchange (23 to 517), primary service, characteristic and descriptor discovery, read, read long, write, write long (prepare/execute), write command, up to eight scoped subscriptions with a shared bounded queue, indications with confirmation, Service Changed monitor with a connection-local database revision. |
 | ATT/GATT server | Static database of at most 64 attributes, values up to 512 bytes, Service Changed by default, dynamic reads and pre-commit write validation through scoped handlers, prepared writes with atomic execute, notifications (single and batched through one RPC) and single-outstanding indications, user description and extended properties descriptors, per-attribute encryption and authentication requirements. |
@@ -42,7 +42,6 @@ its fixed limits, and the gaps that must close before it can replace NimBLE.
 These are needed for parity with `lib/ble` as applications use it today:
 
 - LE Read Remote Features after connection (every mainstream host does it; its absence is the likely trigger of the BlueZ resumption failure, see [open issues](open-issues.md)).
-- 2M PHY.
 - Legacy (non Secure Connections) pairing, Passkey Entry and OOB. The current NimBLE configuration permits legacy pairing by default.
 - Controller-based privacy (resolving list); today the host resolves RPAs itself and cannot connect to a rotating peer without scanning first.
 - Extended advertising PDUs (only legacy PDUs over extended commands are used).

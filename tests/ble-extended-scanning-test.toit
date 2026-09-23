@@ -138,7 +138,7 @@ test-cancel:
     responder.cancel
 
 setup radio/fixture.FakeTransport:
-  fixture.reply radio #[1, 1, 32, 8, 0x5f, 0x12, 0, 0, 0, 0, 0, 0] #[]
+  fixture.reply radio #[1, 1, 32, 8, 0x5f, 0x1a, 0, 0, 0, 0, 0, 0] #[]
   fixture.reply radio #[1, 0x41, 32, 8, 0, 0, 1, 0, 0x10, 0, 0x10, 0] #[]
   fixture.reply radio #[1, 0x42, 32, 6, 1, 1, 0, 0, 0, 0] #[]
 
@@ -150,7 +150,7 @@ test-queue:
   statistics := Statistics
   received := []
   responder := task::
-    fixture.reply radio #[1, 1, 32, 8, 0x5f, 0x12, 0, 0, 0, 0, 0, 0] #[]
+    fixture.reply radio #[1, 1, 32, 8, 0x5f, 0x1a, 0, 0, 0, 0, 0, 0] #[]
     fixture.reply radio #[1, 0x41, 32, 8, 0, 0, 1, 0, 0x10, 0, 0x10, 0] #[]
     expect-equals #[1, 0x42, 32, 6, 1, 1, 0, 0, 0, 0] radio.sent.take
     // Fill the bounded report queue while enable still awaits its reply.

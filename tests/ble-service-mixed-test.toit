@@ -347,8 +347,8 @@ class AdmissionSession extends rpc.Session:
 
 initialize radio/fixture.FakeTransport --missing/int=-1:
   fixture.initialize-replies radio --extended
-  fixture.reply radio #[1, 1, 0x20, 8, 0x5f, 2, 0, 0, 0, 0, 0, 0] #[]
-  fixture.reply radio #[1, 1, 0x20, 8, 0x5f, 2, 2, 0, 0, 0, 0, 0] #[]
+  fixture.reply radio #[1, 1, 0x20, 8, 0x5f, 0x0a, 0, 0, 0, 0, 0, 0] #[]
+  fixture.reply radio #[1, 1, 0x20, 8, 0x5f, 0x0a, 2, 0, 0, 0, 0, 0] #[]
   fixture.reply radio #[1, 0x1c, 0x20, 0] #[0, 0, 0, 0, missing == 0 ? 0 : 8, missing == 1 ? 0 : 2, 0, 0]
 
 peripheral radio/fixture.FakeTransport:

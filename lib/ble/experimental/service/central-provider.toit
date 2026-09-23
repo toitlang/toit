@@ -67,7 +67,7 @@ abstract class Provider extends scanning-provider.Provider implements shared.Fac
 
   /** Creates a protocol owner with provider-selected controller limits. */
   create-central-host controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
-    return central.Central controller --acl-length=info.acl-length --acl-count=info.acl-count
+    return central.Central controller --acl-length=info.acl-length --acl-count=info.acl-count --phy-2m=info.phy-2m
         --receive-limit=receive-limit
         --link-limit=central-session-limit
 

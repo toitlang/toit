@@ -7,7 +7,7 @@ index=$(btmgmt info | awk '/^hci/{h=$1} /addr 08:BE:AC:2A:DA:C2/{sub(":","",h); 
 $T compile -s -o $C/provider.snapshot tests/ble-hardware/bench/provider.toit
 $T compile -s -o $C/heart-rate.snapshot examples/ble/heart_rate.toit
 $T compile -s -o $C/central.snapshot tests/ble-hardware/compat-central.toit
-cp build/esp32-ble-current/firmware.envelope $C/app.envelope
+cp build/esp32-ble-host/firmware.envelope $C/app.envelope
 $T tool firmware -e $C/app.envelope container install ble-provider $C/provider.snapshot
 $T tool firmware -e $C/app.envelope container install heart-rate $C/heart-rate.snapshot
 $T tool firmware -e $C/app.envelope flash --port $port --partition empty:nvs=65536 2>&1 | tail -1
