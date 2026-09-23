@@ -141,6 +141,7 @@ client-tests:
 
 cancel-tests:
   transport := fixture.FakeTransport
+  transport.auto-disconnect = true
   host := central.Central (hci.Controller transport)
   waiting := monitor.Latch
   ended := monitor.Latch
@@ -166,8 +167,8 @@ cancel-tests:
     waiting.get
     writer.cancel
     ended.get
-    expect (not link.connected)
-    host.wait-closed
+    fixture.wait-ended link
+    expect (not transport.closed)
     expect-throw "ATT_REQUEST_ABORTED": client.read 3
   finally:
     if writer: writer.cancel

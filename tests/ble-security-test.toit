@@ -45,6 +45,7 @@ main:
 
 rejected --complete/bool=true --remote/bool=false --attempts/retry.Attempts?=null:
   transport := fixture.FakeTransport
+  transport.auto-disconnect = true
   host := central.Central (hci.Controller transport)
   peer := smp.Session --no-initiator --io-capability=1 --require-authentication
       --local-address=#[1, 6, 5, 4, 3, 2, 1]
@@ -89,7 +90,8 @@ rejected --complete/bool=true --remote/bool=false --attempts/retry.Attempts?=nul
       expect-equals DEADLINE-EXCEEDED-ERROR error
       expect (Time.monotonic-us - started < 4_000_000)
     checked.get
-    expect transport.closed
+    fixture.wait-ended link
+    expect (not transport.closed)
     expect (not pairing.encrypted and not pairing.authenticated and not link.encrypted)
     expect-equals 12 pairing.failure-reason
     pairing.close
@@ -439,6 +441,7 @@ peripheral-success --random-address/bool=false --failure/int=0:
 // A fresh controller/link/owner must not bypass shared failed-pairing history.
 blocked-pairing attempts/retry.Attempts --attempt-identity/ByteArray?=null --peer-address/ByteArray?=null:
   transport := fixture.FakeTransport
+  transport.auto-disconnect = true
   host := central.Central (hci.Controller transport)
   client/att.Client? := null
   address := peer-address or #[1, 2, 3, 4, 5, 6]
@@ -465,7 +468,8 @@ blocked-pairing attempts/retry.Attempts --attempt-identity/ByteArray?=null --pee
     expect-throw "SMP_REPEATED_ATTEMPTS": pairing.run: unreachable
     expect-equals null pairing.failure-reason
     expect-equals sent-before transport.sent-count
-    expect transport.closed
+    fixture.wait-ended link
+    expect (not transport.closed)
     expect (not pairing.encrypted and not pairing.authenticated and not link.encrypted)
   finally:
     if client: client.close

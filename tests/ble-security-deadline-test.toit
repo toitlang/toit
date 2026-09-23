@@ -33,6 +33,7 @@ main:
 expires mode/int:
   numeric := mode >= 2
   transport := fixture.FakeTransport
+  transport.auto-disconnect = true
   host := central.Central (hci.Controller transport)
   client/att.Client? := null
   peer := smp.Session --no-initiator --io-capability=(numeric ? 1 : 3)
@@ -93,7 +94,8 @@ expires mode/int:
     expect-equals numeric approval-exited
     if mode == 1: expect (ignored > 200)
     expect-throw "SMP_INVALID_STATE": pairing.run: unreachable
-    host.wait-closed
+    fixture.wait-ended link
+    expect (not transport.closed)
   finally:
     responder.cancel
     peer.close

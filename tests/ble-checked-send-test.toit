@@ -14,6 +14,7 @@ main:
 run mode/int:
   with-timeout --ms=5_000:
     radio := HeldTransport
+    radio.auto-disconnect = true
     host := central.Central (hci.Controller radio) --acl-count=1
         --acl-length=(mode == 2 ? 4 : 27)
     responder := task::
@@ -58,8 +59,8 @@ run mode/int:
         radio.received.add #[4, 0x13, 5, 1, 0x34, 2, 1, 0]
       expect-equals "STALE" outcome.get
       expect-equals count radio.sent-count
-      expect radio.closed
-      expect (not link.connected)
+      fixture.wait-ended link
+      expect (not radio.closed)
     finally:
       if sender: sender.cancel
       responder.cancel

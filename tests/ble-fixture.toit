@@ -72,6 +72,16 @@ class FakeTransport implements Transport:
   */
   auto-features/ByteArray? := #[1, 0, 0, 0, 0, 0, 0, 0]
   feature-reads/int := 0
+  /**
+  Whether this fake completes disconnects itself.
+
+  A link-local failure ends only that link, and the owner's cleanup then
+    disconnects it. Tests about the failure, not the disconnect, opt in here:
+    the command is answered with Command Status and Disconnection Complete
+    (reason 0x16) without appearing in $sent or $sent-count.
+  */
+  auto-disconnect/bool := false
+  disconnects/int := 0
 
   receive -> ByteArray: return received.take
 
@@ -81,6 +91,11 @@ class FakeTransport implements Transport:
       feature-reads++
       received.add #[4, 0x0f, 4, 0, 1, 0x16, 0x20]
       received.add (#[4, 0x3e, 12, 4, 0, packet[4], packet[5]] + auto-features)
+      return
+    if auto-disconnect and packet.size == 7 and packet[0] == 1 and packet[1] == 0x06 and packet[2] == 0x04:
+      disconnects++
+      received.add #[4, 0x0f, 4, 0, 1, 0x06, 0x04]
+      received.add #[4, 0x05, 4, 0, packet[4], packet[5], 0x16]
       return
     sent-count++
     sent.add packet.copy
@@ -139,3 +154,8 @@ initialize-replies transport/FakeTransport --shared/bool=false --acl-length/int=
     reply transport #[1, 2, 32, 0] #[acl-length & 0xff, acl-length >> 8, 8]
   reply transport #[1, 1, 12, 8, 0x90, 0x80, 4, 0, 0, 0x80, 0, 0x20] #[]
   reply transport #[1, 1, 32, 8, 0x1f, 0, 0, 0, 0, 0, 0, 0] #[]
+
+/** Waits until $link has ended, whatever error ended it. */
+wait-ended link/central.Link -> none:
+  catch --unwind=(: it == DEADLINE-EXCEEDED-ERROR or it == CANCELED-ERROR):
+    link.wait-disconnected

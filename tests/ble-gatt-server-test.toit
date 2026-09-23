@@ -47,6 +47,7 @@ test-aggregate-budget --written/bool=false:
   first := database.add-characteristic #[0xf1, 0xff] --write --validate-write --value=#[1]
   second := database.add-characteristic #[0xf2, 0xff] --write --validate-write --value=#[2]
   radio := fixture.FakeTransport
+  radio.auto-disconnect = true
   host := central.Central (hci.Controller radio)
   response-seen := false
   responder := task::
@@ -89,8 +90,8 @@ test-aggregate-budget --written/bool=false:
     expect-equals 2 entered
     expect-equals 1 completed
     expect-equals 2 unwound
-    expect (not link.connected)
-    expect radio.closed
+    fixture.wait-ended link
+    expect (not radio.closed)
     expect-equals written response-seen
     // Pre-commit timeout leaves both values unchanged. Post-commit timeout
     // preserves both accepted values, even if their hooks cannot all finish.
@@ -108,6 +109,7 @@ test-server fail/bool --queued/bool=false --parameters/bool=false --parameter-re
   input := database.add-characteristic #[0xf1, 0xff] --write
   echo := database.add-characteristic #[0xf2, 0xff] --read --notify --dynamic-read=dynamic
   transport := fixture.FakeTransport
+  transport.auto-disconnect = true
   host := central.Central (hci.Controller transport)
   server/gatt-server.Server? := null
   responder := task::
@@ -174,7 +176,8 @@ test-server fail/bool --queued/bool=false --parameters/bool=false --parameter-re
     expect-equals 1 writes
     if fail:
       expect-equals "APPLICATION_FAILED" error
-      expect transport.closed
+      fixture.wait-ended link
+      expect (not transport.closed)
     else:
       expect-equals null error
       expect (not transport.closed)

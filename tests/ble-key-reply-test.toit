@@ -178,20 +178,25 @@ close-pending:
 
 rejected-event --duplicate/bool:
   transport := fixture.FakeTransport
+  transport.auto-disconnect = true
   host := central.Central (hci.Controller transport)
   responder := task::
     establish transport
     expect-equals #[1, 0x1b, 0x20, 2, 0x34, 2] transport.sent.take
     if duplicate:
       transport.received.add request
+      // The pending reply still settles; the duplicate alone ends the link.
+      transport.received.add #[4, 14, 6, 1, 0x1b, 0x20, 0, 0x34, 2]
     else:
       transport.received.add #[4, 14, 6, 1, 0x1b, 0x20, 0, 0x35, 2]
   try:
     link := host.accept #[2, 1, 6]
     transport.received.add request
     expected := duplicate ? "HCI_DUPLICATE_KEY_REQUEST" : "HCI_MALFORMED_KEY_REPLY"
-    expect-throw expected: link.wait-disconnected
-    host.wait-closed
+    // The failure ends the link locally; the owner stays open.
+    expect-equals 0x16 link.wait-disconnected
+    expect-equals expected link.error
+    expect (not transport.closed)
     expect (not link.key-reply-pending)
   finally:
     responder.cancel

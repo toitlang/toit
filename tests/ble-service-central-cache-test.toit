@@ -20,6 +20,7 @@ run active/bool --migrate/bool=false --body-failure/bool=false:
   with-timeout --ms=10_000:
     provider := service.Provider
     provider.install
+    provider.radio.auto-disconnect = true
     client := clients.Client
     client.open
     database := attributes.Database.with-defaults
@@ -143,7 +144,7 @@ run active/bool --migrate/bool=false --body-failure/bool=false:
               expect-throw "GATT_DATABASE_CHANGED": stream.receive
       if body-failure:
         expect-equals "APPLICATION_FAILED" monitor-error
-        while not provider.radio.closed: yield
+        while provider.radio.disconnects == 0: yield
       else if active:
         expect-equals "GATT_DATABASE_CHANGED" monitor-error
       else:

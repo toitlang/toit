@@ -46,6 +46,7 @@ run mode/string --peripheral/bool=false --authenticated/bool=false --private/boo
     registry = bond-registry.Registry table
     expect-equals 0 (registry.add candidate)
   radio := fixture.FakeTransport
+  radio.auto-disconnect = true
   host := central.Central (hci.Controller radio)
   started := monitor.Latch
   accepted := monitor.Latch
@@ -84,7 +85,7 @@ run mode/string --peripheral/bool=false --authenticated/bool=false --private/boo
       else:
         if mode == "wrong-key": radio.received.add #[4, 8, 4, 6, 0x34, 2, 0]
         if mode == "disabled": radio.received.add #[4, 8, 4, 0, 0x34, 2, 0]
-        while not radio.closed: sleep --ms=1
+        while radio.disconnects == 0: sleep --ms=1
     finally:
       critical-do --no-respect-deadline: ended.set true
   client/att.Client? := null
@@ -160,9 +161,9 @@ run mode/string --peripheral/bool=false --authenticated/bool=false --private/boo
         expect-equals 6 error.status
       else:
         expect-equals (mode == "timeout" ? "DEADLINE_EXCEEDED" : "HCI_ENCRYPTION_NOT_ENABLED") error
-    while link.connected: sleep --ms=1
+    fixture.wait-ended link
     expect (not resume.paired and not resume.encrypted and not resume.authenticated)
-    expect radio.closed
+    expect (not radio.closed)
     expect-equals #[1, 0x0a, 3, 0, 5] (permissions.request #[0x0a, 3, 0])
     expect-equals #[1, 0x0a, 5, 0, 5] (permissions.request #[0x0a, 5, 0])
     client.close

@@ -117,7 +117,7 @@ transmit-disconnect:
     received.get
     replacement := host.connect (address 3) --address-type=1
     expect (replacement != a and replacement.connected and b.connected)
-    expect-throw "HCI_INVALID_LINK": host.send a 4 #[0xcc]
+    expect-throw "HCI_LINK_DISCONNECTED": host.send a 4 #[0xcc]
     expect-equals 0x13 a.wait-disconnected
   finally:
     if sender: sender.cancel
