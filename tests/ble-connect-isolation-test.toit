@@ -159,7 +159,9 @@ interrupted configuring/bool mode/string --extended-mode/bool=false:
     expect (not returned)
     if mode == "deadline": expect-equals DEADLINE-EXCEEDED-ERROR failure
     if terminal:
-      // Deadline expiry before the command reply is inherently ambiguous.
+      // The caller left, but the abandoned command's bound is the engine's
+      // and its expiry still fails the owner (docs/ble/design.md, rule 3).
+      with-timeout --ms=4_000: catch: survivor.receive
       expect (radio.closed and not survivor.connected)
     else:
       expect (survivor.connected and not radio.closed)

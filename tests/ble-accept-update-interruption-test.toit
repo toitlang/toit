@@ -57,6 +57,9 @@ run mode/string extended/bool second/bool:
           links.incoming radio 0x234 #[1, 0, 4, 0, 0xa1] --start
           expect-equals #[2, 0x34, 2, 5, 0, 1, 0, 4, 0, 0xa2] radio.sent.take
           links.completed radio 0x234
+        else:
+          // The interrupted accept settles its enable and stops advertising.
+          legacy.reply radio 0x200a #[0]
     finally:
       critical-do --no-respect-deadline: responder-ended.set true
   survivor := extended ? (host.connect (links.address 1) --address-type=1) : null
@@ -98,8 +101,8 @@ run mode/string extended/bool second/bool:
         expect-equals #[0xa1] survivor.receive.payload
         host.send survivor 4 #[0xa2]
       else:
-        expect radio.closed
-        expect-equals request radio.history.last
+        expect (not radio.closed)
+        expect-equals #[1, 10, 32, 1, 0] radio.history.last
     responder-ended.get
   finally:
     host.close

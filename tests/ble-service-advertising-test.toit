@@ -29,9 +29,16 @@ run mode/string:
   response := mode == "scannable" ? #[2, 9, 'x'] : #[]
   responder := task::
     if mode == "cancel-start":
-      expect-equals #[1, 3, 12, 0] provider.radio.sent.take
+      // Cancel while initialization runs. Every command is answered promptly;
+      // the cancelled worker leaves at the checkpoint after whichever command
+      // it was in and its cleanup commands are answered too.
       entered.set true
-      // No reply: cancelling readiness must abort startup promptly.
+      // The cancelled worker closes the radio at some point in this script.
+      catch --unwind=(: it != "FAKE_CLOSED"):
+        fixture.initialize-replies provider.radio
+        while true:
+          packet := provider.radio.sent.take
+          provider.radio.received.add #[4, 14, 4, 1, packet[1], packet[2], 0]
     else:
       fixture.initialize-replies provider.radio
       // Assert the wire encoding independently of the production encoder.
@@ -42,6 +49,9 @@ run mode/string:
       if mode == "cancel-enable":
         expect-equals #[1, 10, 32, 1, 1] provider.radio.sent.take
         entered.set true
+        provider.radio.received.add #[4, 14, 4, 1, 10, 32, 0]
+        // Cleanup after the cancellation disables advertising.
+        peripheral.reply provider.radio 0x200a #[0]
       else if mode == "enable-error":
         expect-equals #[1, 10, 32, 1, 1] provider.radio.sent.take
         provider.radio.received.add #[4, 14, 4, 1, 10, 32, 12]

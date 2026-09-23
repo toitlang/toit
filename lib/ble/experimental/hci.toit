@@ -5,6 +5,7 @@
 import io
 import monitor
 
+import .cancellation show checkpoint
 import .transport show Transport
 import .receive-credits as receive-credits
 
@@ -59,20 +60,25 @@ A serialized HCI command engine with an independent receive task.
 
 Owns the transport. Call $close deterministically. Command Status only completes
   command submission; callers must separately await the procedure's final event.
+
+The engine owns every pending command (docs/ble/design.md, cancellation
+  contract): a caller that stops waiting, because it was cancelled or its
+  deadline passed, detaches, and the engine still attributes and consumes the
+  response and restores the command credit. Only a response that never arrives
+  within the command's own bound fails the controller; a dedicated deadline
+  task enforces that bound so it holds after every caller has left.
 */
 class Controller:
   transport_/Transport
-  mutex_/monitor.Mutex ::= monitor.Mutex
-  credits_/Credits_ ::= Credits_
+  engine_/Engine_ ::= Engine_
   incoming_/Packets ::= Packets 32
   reports_/Packets? := null
-  pending_/monitor.Latch? := null
-  opcode_/int := 0
-  status-event_/bool := false
   error_ := null
   close-error_ := null
   reader_/Task? := null
   reader-ended_/monitor.Latch ::= monitor.Latch
+  timer_/Task? := null
+  timer-ended_/monitor.Latch ::= monitor.Latch
   event-owner_ := null
   receive-credits_/receive-credits.ReceiveCredits? := null
 
@@ -83,12 +89,23 @@ class Controller:
         if error: fail_ error
       finally:
         critical-do --no-respect-deadline: reader-ended_.set true
+    // The engine, not the caller, decides that the controller stopped
+    // answering: this task fails the controller when a pending command
+    // outlives its bound, whether or not anyone still waits for it.
+    timer_ = task --background --name="HCI deadlines"::
+      try:
+        error := catch: deadline-loop_
+        if error: fail_ error
+      finally:
+        critical-do --no-respect-deadline: timer-ended_.set true
 
   /**
   Sends a command and returns its return parameters, excluding status.
 
-  A timeout or cancellation during submission fails the controller because a
-    subsequent late response cannot safely be attributed to another command.
+  Submission is atomic. The wait for the response is not: a cancelled caller or
+    one whose deadline passes leaves immediately, and the engine settles the
+    command on its own. $timeout bounds the controller's answer; expiry fails
+    the controller because ownership of its next response is then uncertain.
   */
   command opcode/int parameters/ByteArray=#[]
       --timeout/Duration=(Duration --s=3)
@@ -100,32 +117,48 @@ class Controller:
 
   The scoped predicate must not wait or perform IO. False returns
     HCI_COMMAND_NOT_SENT without consuming a credit or failing the controller.
-    It guards the enqueue boundary; transport send may itself wait afterward.
+    Otherwise behaves like $command.
   */
   command-if opcode/int parameters/ByteArray=#[]
       --timeout/Duration=(Duration --s=3)
       --status-event/bool=false [allowed] -> ByteArray:
+    return (submit-if opcode parameters --timeout=timeout --status-event=status-event allowed).wait
+
+  /**
+  Submits a command and returns its pending response without waiting.
+
+  Submission is atomic; once this returns, the command is with the controller
+    and $Pending.wait can be called, abandoned, or retried by any task. A
+    procedure whose completion has side effects (creating a connection,
+    starting encryption) submits explicitly so it knows the command is out
+    even if it is cancelled before the response.
+  */
+  submit opcode/int parameters/ByteArray=#[]
+      --timeout/Duration=(Duration --s=3)
+      --status-event/bool=false -> Pending:
+    return submit-if opcode parameters --timeout=timeout --status-event=status-event: true
+
+  /** Like $submit, guarded by $allowed at the submission boundary. */
+  submit-if opcode/int parameters/ByteArray=#[]
+      --timeout/Duration=(Duration --s=3)
+      --status-event/bool=false [allowed] -> Pending:
     packet := command-packet opcode parameters
-    return with-timeout timeout:
-      mutex_.do:
-        check-open_
-        completed := false
-        try:
-          if not (credits_.take-if allowed):
-            completed = true
-            throw "HCI_COMMAND_NOT_SENT"
-          response := monitor.Latch
-          pending_ = response
-          opcode_ = opcode
-          status-event_ = status-event
-          transport_.send packet
-          result/ByteArray := response.get
-          completed = true
-          if result.is-empty: throw "HCI_MALFORMED_RESPONSE"
-          if result[0] != 0: throw (CommandError opcode result[0])
-          return result[1..]
-        finally:
-          if not completed: fail_ "HCI_COMMAND_ABORTED"
+    check-open_
+    deadline := Time.monotonic-us + timeout.in-us
+    // Everything the command needs exists before the slot is reserved, so an
+    // allocation failure cannot strand a reserved slot or a sent packet.
+    latch := monitor.Latch
+    pending := Pending opcode latch
+    if not (engine_.acquire latch opcode status-event deadline allowed): throw "HCI_COMMAND_NOT_SENT"
+    sent := false
+    try:
+      // An interrupted transport send leaves ownership of the next response
+      // unknown, so submission runs to completion regardless of the caller.
+      critical-do --no-respect-deadline: transport_.send packet
+      sent = true
+    finally:
+      if not sent: fail_ "HCI_COMMAND_ABORTED"
+    return pending
 
   /** Waits for a non-command event or ACL packet. */
   receive --owner=null -> ByteArray:
@@ -243,6 +276,7 @@ class Controller:
     if not error_: throw "BLE_OWNER_NOT_CLOSED"
     with-timeout --ms=3_000:
       reader-ended_.get
+      timer-ended_.get
 
   /** Reports a retained transport-close failure, including automatic teardown. */
   close-error -> any: return close-error_
@@ -261,12 +295,9 @@ class Controller:
         error_ = error
         if receive-credits_: receive-credits_.close
         event-owner_ = null
-        credits_.fail error
+        engine_.fail error
         incoming_.fail error
         if reports_: reports_.fail error
-        pending := pending_
-        pending_ = null
-        if pending: pending.set error --exception
         close-error_ = catch: transport_.close
         // Automatic failure keeps its primary error or cancellation. Explicit
         // close has no earlier failure to preserve and reports cleanup errors.
@@ -277,6 +308,14 @@ class Controller:
         reader := reader_
         reader_ = null
         if reader and reader != Task.current: reader.cancel
+        timer := timer_
+        timer_ = null
+        if timer and timer != Task.current: timer.cancel
+
+  deadline-loop_ -> none:
+    while true:
+      deadline := engine_.wait-pending
+      if not engine_.wait-settled deadline: throw "HCI_COMMAND_ABORTED"
 
   receive-loop_ -> none:
     count := 0
@@ -287,17 +326,11 @@ class Controller:
       if packet[0] == 4 and packet[1] == 0x0e:
         // Command Complete: credits, opcode, return parameters (section 7.7.14).
         if packet.size < 6: throw "HCI_MALFORMED_RESPONSE"
-        opcode := io.LITTLE-ENDIAN.uint16 packet 4
-        credits_.update packet[3]
-        if opcode != 0:
-          complete_ opcode false packet[6..]
+        engine_.settle (io.LITTLE-ENDIAN.uint16 packet 4) false packet[6..] packet[3]
       else if packet[0] == 4 and packet[1] == 0x0f:
         // Command Status: status, credits, opcode (section 7.7.15).
         if packet.size != 7: throw "HCI_MALFORMED_RESPONSE"
-        opcode := io.LITTLE-ENDIAN.uint16 packet 5
-        credits_.update packet[4]
-        if opcode != 0:
-          complete_ opcode true packet[3..4]
+        engine_.settle (io.LITTLE-ENDIAN.uint16 packet 5) true packet[3..4] packet[4]
       else if packet[0] == 4 and packet[1] == 0x10:
         throw "HCI_HARDWARE_ERROR"
       else if packet[0] == 4 and packet[1] == 0x3e and
@@ -309,17 +342,18 @@ class Controller:
       count++
       if count % 16 == 0: yield
 
-  complete_ opcode/int status-event/bool result/ByteArray -> none:
-    pending := pending_
-    if not pending or opcode != opcode_:
-      throw "HCI_UNEXPECTED_COMMAND_RESPONSE"
-    if result.is-empty: throw "HCI_MALFORMED_RESPONSE"
-    // An unknown command may be rejected with either response event
-    // (section 4.5.1), irrespective of the event expected on success.
-    if status-event != status-event_ and result[0] == 0:
-      throw "HCI_UNEXPECTED_COMMAND_RESPONSE"
-    pending_ = null
-    pending.set result
+/** A submitted command whose response can be awaited by any task, any number of times. */
+class Pending:
+  opcode/int
+  latch_/monitor.Latch
+
+  constructor .opcode .latch_:
+
+  /** Waits for the response; returns the return parameters excluding status. */
+  wait -> ByteArray:
+    result/ByteArray := latch_.get
+    if result[0] != 0: throw (CommandError opcode result[0])
+    return result[1..]
 
 /** A bounded packet queue. Failure wakes readers and releases retained data. */
 monitor Packets:
@@ -349,22 +383,66 @@ monitor Packets:
     error_ = error
     queue_.clear
 
-monitor Credits_:
-  count_/int := 1
+/**
+The command slot: one credit and at most one pending command.
+
+Serializes callers, settles responses delivered by the receive task and keeps
+  the pending command's deadline for that task to enforce.
+*/
+monitor Engine_:
+  credits_/int := 1
+  pending_/monitor.Latch? := null
+  opcode_/int := 0
+  status-event_/bool := false
+  deadline_/int := 0
   error_ := null
 
-  take-if [allowed] -> bool:
-    await: error_ or count_ > 0
+  /** Reserves the slot for $latch; false when $allowed declines at the boundary. */
+  acquire latch/monitor.Latch opcode/int status-event/bool deadline/int [allowed] -> bool:
+    await: error_ or (credits_ > 0 and pending_ == null)
     if error_: throw error_
     if not allowed.call: return false
-    count_--
+    credits_--
+    pending_ = latch
+    opcode_ = opcode
+    status-event_ = status-event
+    deadline_ = deadline
     return true
 
-  update count/int -> none:
-    count_ = count
+  /** Applies a response from the receive task; opcode zero only updates credits. */
+  settle opcode/int status-event/bool result/ByteArray credits/int -> none:
+    credits_ = credits
+    if opcode == 0: return
+    pending := pending_
+    if not pending or opcode != opcode_: throw "HCI_UNEXPECTED_COMMAND_RESPONSE"
+    if result.is-empty: throw "HCI_MALFORMED_RESPONSE"
+    // An unknown command may be rejected with either response event
+    // (section 4.5.1), irrespective of the event expected on success.
+    if status-event != status-event_ and result[0] == 0:
+      throw "HCI_UNEXPECTED_COMMAND_RESPONSE"
+    pending_ = null
+    pending.set result
+
+  /** Waits until a command is pending and returns its deadline. */
+  wait-pending -> int:
+    await: error_ or pending_ != null
+    if error_: throw error_
+    return deadline_
+
+  /**
+  Waits until the pending command with $deadline settled; false on expiry.
+
+  A later command with a new deadline counts as settled for this wait.
+  */
+  wait-settled deadline/int -> bool:
+    return try-await --deadline=deadline: error_ or pending_ == null or deadline_ != deadline
 
   fail error -> none:
+    if error_: return
     error_ = error
+    pending := pending_
+    pending_ = null
+    if pending: pending.set error --exception
 
 /** The baseline controller identity and LE ACL transmit limits. */
 class Capabilities:
@@ -394,14 +472,22 @@ initialize controller/Controller --receive-acl-packets/int=0 --receive-acl-lengt
     throw "INVALID_ARGUMENT"
   if controller.receive-flow-control: throw "HCI_RX_ALREADY_OWNED"
   if receive-acl-packets != 0 and controller.event-owner_: throw "HCI_RX_ALREADY_OWNED"
+  // Each command is atomic; a cancelled caller leaves between commands.
   require-length_ (controller.command RESET) 0
+  checkpoint
   version := require-length_ (controller.command READ-VERSION) 8
+  checkpoint
   commands := require-length_ (controller.command READ-COMMANDS) 64
+  checkpoint
   features := require-length_ (controller.command READ-FEATURES) 8
   if features[4] & 0x40 == 0: throw "HCI_LE_NOT_SUPPORTED"
+  checkpoint
   address := require-length_ (controller.command READ-ADDRESS) 6
+  checkpoint
   le-features := require-length_ (controller.command LE-READ-FEATURES) 8
+  checkpoint
   buffers := require-length_ (controller.command LE-READ-BUFFER-SIZE) 3
+  checkpoint
   acl-length := io.LITTLE-ENDIAN.uint16 buffers 0
   acl-count := buffers[2]
   if acl-count == 0:
@@ -412,8 +498,10 @@ initialize controller/Controller --receive-acl-packets/int=0 --receive-acl-lengt
   if acl-length == 0 or acl-count == 0: throw "HCI_INVALID_BUFFER_LIMITS"
   // Disconnect, encryption change/refresh, hardware error, completed packets, LE meta.
   controller.command SET-EVENT-MASK #[0x90, 0x80, 0x04, 0, 0, 0x80, 0, 0x20]
+  checkpoint
   // Legacy LE connection, advertising, update, features, and key request events.
   controller.command LE-SET-EVENT-MASK #[0x1f, 0, 0, 0, 0, 0, 0, 0]
+  checkpoint
   if receive-acl-packets != 0:
     if commands[10] & 0xe0 != 0xe0: throw "HCI_RX_FLOW_UNSUPPORTED"
     controller.configure-receive_ receive-acl-length receive-acl-packets

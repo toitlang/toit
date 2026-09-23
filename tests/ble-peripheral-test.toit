@@ -82,6 +82,8 @@ test-abort cancel/bool:
   responder := task::
     setup transport
     ready.set true
+    // The interrupted accept stops the advertising it enabled.
+    reply transport 0x200a #[0]
   waiter := task::
     try:
       error := catch: host.accept #[2, 1, 6] --timeout=(Duration --ms=30)
@@ -92,8 +94,7 @@ test-abort cancel/bool:
     ready.get
     if cancel: waiter.cancel
     ended.get
-    expect transport.closed
-    expect-throw "HCI_ACCEPT_ABORTED": host.accept #[]
+    expect (not transport.closed)
   finally:
     host.close
     waiter.cancel

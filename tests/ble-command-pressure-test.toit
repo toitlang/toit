@@ -39,9 +39,9 @@ main:
         slots.fill null
         system.process-stats --gc
         if error == "ALLOCATION_FAILED" or error == "OUT_OF_MEMORY": failures++
-        else if error == DEADLINE-EXCEEDED-ERROR: expired++
+        else if error == "HCI_COMMAND_ABORTED": expired++
         else: throw "UNEXPECTED_COMMAND_RESULT $error"
-        if error == DEADLINE-EXCEEDED-ERROR: expect radio.closed
+        if error == "HCI_COMMAND_ABORTED": expect radio.closed
         if not radio.closed:
           // A pre-submission failure may leave the controller usable. Check
           // that it has neither a stale command nor a consumed command credit.
@@ -51,7 +51,7 @@ main:
           finally:
             responder.cancel
           recovered++
-        else if error != DEADLINE-EXCEEDED-ERROR:
+        else if error != "HCI_COMMAND_ABORTED":
           aborted++
         controller.close
         expect radio.closed
@@ -64,6 +64,9 @@ main:
         radio.close
       print "COMMAND_PRESSURE ROUND trial=$trial error=$error"
     print "COMMAND_PRESSURE SUMMARY failures=$failures expired=$expired recovered=$recovered aborted=$aborted"
-    if failures == 0 or expired == 0 or recovered == 0 or aborted == 0:
+    // Submission allocates everything before the packet leaves, so a failure
+    // with the command out (aborted) is possible only inside the transport's
+    // send and need not occur; the other boundaries must.
+    if failures == 0 or expired == 0 or recovered == 0:
       throw "PRESSURE_BOUNDARY_NOT_COVERED"
     print "COMMAND_PRESSURE COMPLETE"

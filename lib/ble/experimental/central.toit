@@ -12,6 +12,8 @@ import .acl as acl
 import .hci as hci
 import .advertising-set as advertising-set
 import .advertising-updates as advertising-updates
+import .cancellation show checkpoint
+import .timeouts as timeouts
 
 /** A controller-reported failure to establish a connection. */
 class ConnectionError:
@@ -565,17 +567,18 @@ class Central:
     pending_ = pending
     submitted := false
     delivered := false
+    status/hci.Pending? := null
     try:
       return with-timeout timeout:
         if local:
-          critical-do: controller_.command 0x2005 local
-        sleep --ms=0
-        // Publish successful submission before observing deferred cancellation.
-        // Otherwise the command engine aborts and takes established links down.
-        critical-do:
-          controller_.command connection-opcode parameters --status-event
-          submitted = true
-        sleep --ms=0
+          controller_.command 0x2005 local
+          checkpoint
+        // Once submitted, creation must be cancelled on any exit, even one
+        // that leaves before the controller's status arrives.
+        status = controller_.submit connection-opcode parameters --status-event
+        submitted = true
+        status.wait
+        checkpoint
         result := pending.get
         delivered = true
         if result is connection.Completion:
@@ -592,13 +595,21 @@ class Central:
       if submitted and not delivered:
         cleanup-error := catch:
           critical-do --no-respect-deadline:
-            with-timeout --ms=3_000:
+            // The abandoned creation still settles with the engine; only a
+            // creation the controller accepted has anything to cancel.
+            created := true
+            status-error := catch: status.wait
+            if status-error:
+              if not (status-error is hci.CommandError): throw status-error
+              created = false
+            if created:
               cancel-error := catch: controller_.command 0x200e
               if cancel-error:
                 if not (cancel-error is hci.CommandError): throw cancel-error
                 if cancel-error.status != 0x0c: throw cancel-error
-              result := pending.get
-              if result is Link: disconnect_ result
+              with-timeout timeouts.CLEANUP:
+                result := pending.get
+                if result is Link: disconnect_ result
         if cleanup-error: fail_ cleanup-error
       pending_ = null
       pending-local-random-address_ = null
@@ -633,7 +644,7 @@ class Central:
     finally:
       if not ready and link.connected:
         cleanup-error := catch:
-          with-timeout --ms=3_000: disconnect_ link
+          disconnect_ link
         if cleanup-error: fail_ cleanup-error
 
   /** Supplies the connection command for this owner's controller command family. */
@@ -673,7 +684,7 @@ class Central:
     try:
       link/Link := body.call pending
       if not owns-link link: throw (lost_ link)
-      sleep --ms=0
+      checkpoint
       delivered = true
       return link
     finally:
@@ -685,7 +696,7 @@ class Central:
           error := catch: result = pending.get
           if not error and result is Link:
             cleanup-error := catch:
-              with-timeout --ms=3_000: disconnect_ result
+              disconnect_ result
             if cleanup-error: fail_ cleanup-error
         pending_ = null
         pending-local-random-address_ = null
@@ -723,35 +734,30 @@ class Central:
     pending-local-random-address_ = local
     pending_ = pending
     completed := false
-    setup-rejected := false
-    command-settled := true
-    enable-attempted := false
+    // The engine owns the setup commands, so cleanup can settle whichever
+    // one a cancelled caller abandoned instead of guessing its outcome.
+    setup/hci.Pending? := null
+    enable/hci.Pending? := null
     link/Link? := null
     advertising-updates_ = updates
     try:
       return with-timeout timeout:
-        setup-error := catch:
-          configuration := [
-            [0x2006, parameters],
-            [0x2008, data],
-            [0x2009, response],
-          ]
-          if local: configuration.insert [0x2005, local] --at=0
-          configuration.do: | command/List |
-            sleep --ms=0
-            if updates and updates.ended: throw "HCI_ADVERTISING_UPDATE_ABORTED"
-            command-settled = false
-            // Consume this command's bounded reply before observing the caller's
-            // cancellation. No connection can result before enabling advertising.
-            critical-do --no-respect-deadline: controller_.command command[0] command[1]
-            command-settled = true
-          sleep --ms=0
-          enable-attempted = true
-          critical-do --no-respect-deadline: controller_.command 0x200a #[1]
-          sleep --ms=0
-        if setup-error:
-          setup-rejected = setup-error is hci.CommandError
-          throw setup-error
+        configuration := [
+          [0x2006, parameters],
+          [0x2008, data],
+          [0x2009, response],
+        ]
+        if local: configuration.insert [0x2005, local] --at=0
+        configuration.do: | command/List |
+          checkpoint
+          if updates and updates.ended: throw "HCI_ADVERTISING_UPDATE_ABORTED"
+          // No connection can result before advertising is enabled.
+          setup = controller_.submit command[0] command[1]
+          setup.wait
+        checkpoint
+        enable = controller_.submit 0x200a #[1]
+        enable.wait
+        checkpoint
         if updates:
           updates.ready
           while not pending.has-value:
@@ -763,11 +769,11 @@ class Central:
         link = result
         if not link.connected: throw (lost_ link)
         // Legacy advertising already stopped when this connection was created
-        // (Core Vol 4, Part E, 7.8.9). Consume the redundant disable reply even
-        // if our caller leaves, so cancellation cannot poison the command engine.
-        critical-do --no-respect-deadline: controller_.command 0x200a #[0]
-        // Observe deferred cancellation/deadline before transferring the link.
-        sleep --ms=0
+        // (Core Vol 4, Part E, 7.8.9); the disable command settles regardless
+        // of the caller's cancellation.
+        controller_.command 0x200a #[0]
+        // Observe a deferred cancellation before transferring the link.
+        checkpoint
         completed = true
         return link
     finally:
@@ -782,12 +788,24 @@ class Central:
             result := null
             failure := catch: result = pending.get
             if not failure and result is Link: link = result
-          if link:
+          if not link and (enable or setup):
+            // Settle what this task abandoned. An enable the controller
+            // accepted means advertising runs and must be stopped; the
+            // disable's completion is ordered after any connection the
+            // controller created meanwhile, so the latch is final after it.
             cleanup-error := catch:
-              with-timeout --ms=3_000: disconnect_ link
+              last := enable or setup
+              error := catch: last.wait
+              if error and not (error is hci.CommandError): throw error
+              if enable and not error:
+                controller_.command 0x200a #[0]
+                if pending.has-value:
+                  result := pending.get
+                  if result is Link: link = result
             if cleanup-error: fail_ cleanup-error
-          else if not setup-rejected and (enable-attempted or not command-settled):
-            fail_ "HCI_ACCEPT_ABORTED"
+          if link:
+            cleanup-error := catch: disconnect_ link
+            if cleanup-error: fail_ cleanup-error
         pending_ = null
         pending-local-random-address_ = null
         busy_ = false
@@ -797,15 +815,13 @@ class Central:
     data := advertising-set.data request.data
     response := advertising-set.data request.response
     error := catch:
-      critical-do --no-respect-deadline:
-        controller_.command-if 0x2008 data: not changes.ended
-      // Settle the submitted command, then observe cancellation before sending
-      // another one or reporting success to the update caller.
-      sleep --ms=0
+      controller_.command-if 0x2008 data: not changes.ended
+      // Observe cancellation before sending another command or reporting
+      // success to the update caller.
+      checkpoint
       if not changes.ended:
-        critical-do --no-respect-deadline:
-          controller_.command-if 0x2009 response: not changes.ended
-        sleep --ms=0
+        controller_.command-if 0x2009 response: not changes.ended
+        checkpoint
     if error:
       if error == "HCI_COMMAND_NOT_SENT" and changes.ended: return
       changes.stop --error=error.stringify
@@ -825,7 +841,7 @@ class Central:
     busy_ = true
     completed := false
     try:
-      with-timeout --ms=3_000: disconnect_ link
+      disconnect_ link
       completed = true
     finally:
       busy_ = false
@@ -907,7 +923,7 @@ class Central:
       task --background --name="BLE link cleanup"::
         try:
           failure := catch:
-            with-timeout --ms=3_000: disconnect_ link
+            disconnect_ link
           if failure:
             fail_ failure
             close
@@ -940,7 +956,8 @@ class Central:
       controller_.command 0x0406 (connection.disconnect-parameters link.info.handle) --status-event
     // The peer may have disconnected while the command was in flight.
     if error and link.connected_: throw error
-    link.wait-disconnected
+    // The engine bounds the command; this owner bounds the completion event.
+    with-timeout timeouts.CLEANUP: link.wait-disconnected
 
   /** Describes a link that ended during setup, with its reason when known. */
   lost_ link/Link -> ConnectionLost:

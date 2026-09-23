@@ -177,7 +177,7 @@ run mode/string:
       // The caller stays canceled while the missing command reply still fails
       // the provider under its own bound and remains available to diagnostics.
       expect-null failure
-      expect-throw "DEADLINE_EXCEEDED": provider.last.invoke api.ADVERTISING-STOP []
+      expect-throw "HCI_COMMAND_ABORTED": provider.last.invoke api.ADVERTISING-STOP []
       expect (Time.monotonic-us - cancelled-at < 4_000_000)
     else:
       expect-null failure

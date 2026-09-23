@@ -10,6 +10,7 @@ import .connection as connection
 import .extended-central as extended
 import .hci as hci
 import .advertising-updates as advertising-updates
+import .cancellation show checkpoint
 
 /**
 Owns extended central links and accepts through finite legacy advertising PDUs.
@@ -54,24 +55,34 @@ class Central extends extended.Central:
         updates_ = updates
         created := false
         try:
-          critical-do --no-respect-deadline:
-            selected := controller_.command 0x2036 parameters
-            created = true
-            if selected.size != 1: throw "HCI_MALFORMED_RESPONSE"
-          sleep --ms=0
+          // The set may exist once the command is out; cleanup removes it
+          // even when this task leaves before the reply.
+          creation := controller_.submit 0x2036 parameters
+          created = true
+          selected/ByteArray? := null
+          try:
+            selected = creation.wait
+          finally: | is-exception exception |
+            // A rejected creation leaves no set; classify here so a
+            // cancellation arriving with the reply cannot skip it.
+            if is-exception and exception.value is hci.CommandError: created = false
+          if selected.size != 1: throw "HCI_MALFORMED_RESPONSE"
+          checkpoint
           if local:
-            critical-do --no-respect-deadline: controller_.command 0x2035 (#[0] + local)
-            sleep --ms=0
-          critical-do --no-respect-deadline: controller_.command 0x2037 data
-          sleep --ms=0
-          critical-do --no-respect-deadline: controller_.command 0x2038 response
-          sleep --ms=0
+            controller_.command 0x2035 (#[0] + local)
+            checkpoint
+          controller_.command 0x2037 data
+          checkpoint
+          controller_.command 0x2038 response
+          checkpoint
           while true:
             if updates and updates.ended and not pending.has-value: throw "HCI_ADVERTISING_UPDATE_ABORTED"
             window_ = monitor.Latch
             timeout-seen_ = false
             // Publish the window before submission: its event may precede
-            // Command Complete. Consume the command reply before cancellation.
+            // Command Complete. Classify a rejection in the same critical
+            // section as the command: a cancelled task's catch rethrows
+            // CANCELED after the block, which would skip the classification.
             critical-do --no-respect-deadline:
               error := catch: controller_.command 0x2039 #[1, 1, 0, 100, 0, 0]
               if error:
@@ -80,7 +91,7 @@ class Central extends extended.Central:
                 else:
                   catch: close
                 throw error
-            sleep --ms=0
+            checkpoint
             if updates:
               updates.ready
               while not window_.has-value:
@@ -92,12 +103,17 @@ class Central extends extended.Central:
             terminal := wait-window_ pending
             window_ = null
             if terminal[4] == 0: continue.with-accept-procedure pending.get
-            sleep --ms=0
+            checkpoint
         finally: | is-exception _ |
           critical-do --no-respect-deadline:
             error := catch:
               if window_: wait-window_ pending
-              if created: controller_.command 0x203c #[0]
+              if created:
+                removal := catch: controller_.command 0x203c #[0]
+                // Creation abandoned before its reply may have failed; an
+                // unknown set (0x42) then means there is nothing to remove.
+                if removal and not (removal is hci.CommandError and removal.status == 0x42):
+                  throw removal
             window_ = null
             accept-pending_ = null
             updates_ = null
@@ -109,14 +125,12 @@ class Central extends extended.Central:
     data := data_ request.data
     response := data_ request.response
     error := catch:
-      critical-do --no-respect-deadline:
-        controller_.command-if 0x2037 data: not changes.ended
+      controller_.command-if 0x2037 data: not changes.ended
       // Do not extend a cancelled accept with another update command.
-      sleep --ms=0
+      checkpoint
       if not changes.ended:
-        critical-do --no-respect-deadline:
-          controller_.command-if 0x2038 response: not changes.ended
-        sleep --ms=0
+        controller_.command-if 0x2038 response: not changes.ended
+        checkpoint
     if error:
       if error == "HCI_COMMAND_NOT_SENT" and changes.ended: return
       changes.stop --error=error.stringify

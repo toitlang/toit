@@ -38,7 +38,8 @@ canceled-configuration stage/int mode/string:
   failure := null
   returned := false
   waiter/Task? := null
-  terminal := mode == "missing" or mode == "enabled"
+  // An enable the controller accepted is settled and reversed by cleanup.
+  terminal := mode == "missing"
   responder := task::
     multi.establish transport 1 0x234
     (stage + 1).repeat: | index/int |
@@ -49,6 +50,10 @@ canceled-configuration stage/int mode/string:
         release.get
       if index < stage or mode != "missing":
         complete transport (command[1] | command[2] << 8)
+    if mode == "enabled":
+      // Cleanup stops the advertising it abandoned before releasing the slot.
+      expect-equals (hci.command-packet 0x200a #[0]) transport.sent.take
+      complete transport 0x200a
     ended.get
     if not terminal:
       // No enable or disconnect from the canceled procedure may precede this
@@ -85,7 +90,6 @@ canceled-configuration stage/int mode/string:
     if mode == "timeout": expect-equals DEADLINE-EXCEEDED-ERROR failure
     if terminal:
       expect (transport.closed and not survivor.connected)
-      if mode == "enabled": expect-throw "HCI_ACCEPT_ABORTED": survivor.receive
     else:
       expect (survivor.connected and not transport.closed)
       expect-equals #[0xd1] survivor.receive.payload

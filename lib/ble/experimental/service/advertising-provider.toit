@@ -6,6 +6,7 @@ import monitor
 import ..advertising-set as advertising
 import ..connection as connection
 import ..hci as hci
+import ..cancellation show checkpoint
 import ..transport as transport
 import .api as api
 import .provider as rpc
@@ -70,12 +71,19 @@ class AdvertisingSession extends rpc.Session:
           radio = provider.open-transport
           controller = hci.Controller radio
           hci.initialize controller
-          if local: controller.command 0x2005 local
+          checkpoint
+          if local:
+            controller.command 0x2005 local
+            checkpoint
           controller.command 0x2006 parameters
+          checkpoint
           controller.command 0x2008 data
+          checkpoint
           controller.command 0x2009 response
+          checkpoint
           controller.command 0x200a #[1]
           enabled = true
+          checkpoint
           ready_.set true
           while not changes_.stopped:
             request/Update_? := null
