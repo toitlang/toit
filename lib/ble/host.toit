@@ -331,9 +331,15 @@ class HostPeripheral_ extends Peripheral:
         session = build-session_
         session.start advertisement_ --scan-response=scan-response_ --interval=interval_
       if error:
-        if first: started.set error
+        if first:
+          started.set error
+          return
+        // The provider could not restart advertising after a disconnect
+        // (for example while it still releases the previous link); retry
+        // at a gentle pace rather than spin or give up silently.
         session_ = null
-        return
+        sleep --ms=250
+        continue
       session_ = session
       if first:
         first = false
