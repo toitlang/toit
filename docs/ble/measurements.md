@@ -13,7 +13,7 @@ block, and the process's own allocated bytes.
 | --- | --- | --- | --- | --- |
 | NimBLE host, `ble` package, one container | 755–775 | 105.5 KB | 98 KB | 1.5 KB |
 | Toit host, direct (one container owns the controller) | 375–460 | 109.4 KB | 102 KB, 90 KB after 5 cycles | 6–9 KB |
-| Toit host, provider + application containers, one RPC per notification | 160 | 95.4 KB | 82 KB, 78 KB after 10 cycles | provider 12–15 KB (20 KB reserved), app 2 KB |
+| Toit host, provider + application containers, one RPC per notification | 160 | 95.4 KB (115 KB with the BR/EDR memory released, see below) | 82 KB, 78 KB after 10 cycles (86 KB released) | provider 12–15 KB (20 KB reserved), app 2 KB |
 | Toit host, provider + application containers, `notify-values` in batches of 32 | 376 | same | same | same |
 
 With 244-byte notifications at ATT MTU 247 and Data Length Extension (both
@@ -38,9 +38,14 @@ free block shrinks once after the first cycle and then stays.
   heap while the Toit host's state lives in the (compactable) process heap.
   The provider model costs about 14 KB on top: a second process (8 KB
   reserved at start, 20 KB reserved while connected) and the RPC buffers.
-  `esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT)` is not called by
-  either build and would return the BR/EDR controller memory on the original
-  ESP32 in both.
+  The controller-only transport now calls
+  `esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT)` before initializing
+  the controller on the original ESP32, which returns the unused BR/EDR
+  memory: free heap while advertising rose from 95–100 KB to 115 KB and
+  while connected from 91 KB to 106 KB in the provider model, so the
+  provider model now has about 10 KB more free heap than the NimBLE build
+  and the direct variant about 24 KB more. The NimBLE backend does not make
+  the call; the same one-line change is proposed for it separately.
 - **Throughput.** Per notification the Toit host spends a flat 1.9–2.1 ms of
   interpreter time on the ESP32 (no call under 1 ms, so it is CPU bound, not
   credit bound); the same path costs 23 µs on the Linux host. NimBLE, native,
