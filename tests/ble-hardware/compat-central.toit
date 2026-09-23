@@ -6,9 +6,15 @@
 // board) through the `ble` package's public API on the Toit host: a
 // Linux provider is installed in this process and Adapter falls back to it.
 //
-// Usage: toit.run compat-central.snapshot <adapter index>
+// Usage: toit.run compat-central.snapshot <adapter index> scan
+//        toit.run compat-central.snapshot <adapter index> connect <identifier hex>
+//
+// Two invocations because bluetoothd (AutoEnable) powers the adapter back on
+// as soon as a session's user channel closes; the runner powers it off again
+// between the phases.
 
 import ble show *
+import encoding.hex
 import ble.experimental.linux
 import ble.experimental.transport
 import ble.experimental.service.gatt-provider as gatt
@@ -24,12 +30,16 @@ main args/List:
     adapter := Adapter
     print "COMPAT adapter=$adapter.adapter-metadata.identifier"
     central := adapter.central
-    found/RemoteScannedDevice? := null
-    central.scan --duration=(Duration --s=20): | device/RemoteScannedDevice |
-      if device.data.name == "Toit heart rate demo": found = device
-    if not found: throw "COMPAT_PEER_NOT_FOUND"
-    print "COMPAT found $found"
-    device := central.connect found.identifier
+    if args[1] == "scan":
+      found/RemoteScannedDevice? := null
+      central.scan --duration=(Duration --s=10): | device/RemoteScannedDevice |
+        if device.data.name == "Toit heart rate demo": found = device
+      if not found: throw "COMPAT_PEER_NOT_FOUND"
+      print "COMPAT found identifier=$(hex.encode (found.identifier as ByteArray)) rssi=$found.rssi"
+      adapter.close
+      return
+    identifier := hex.decode args[2]
+    device := central.connect identifier
     print "COMPAT connected mtu=$device.mtu"
     service := (device.discover-services [SERVICE])[0]
     characteristics := service.discover-characteristics
@@ -51,5 +61,6 @@ main args/List:
 class Provider extends gatt.Provider:
   index_/int
   constructor .index_: super
-  open-transport -> transport.Transport: return linux.LinuxTransport index_
   early-acl-timeout -> Duration?: return Duration --ms=20
+
+  open-transport -> transport.Transport: return linux.LinuxTransport index_

@@ -88,3 +88,14 @@ directly, and `btmon` captures the other side when it is a BlueZ adapter.
 Traces contain keys; keep them out of the repository. The revocation campaign
 fixtures take `--trace` to enable this on all three boards
 (`tests/ble-hardware/fixtures/vhci-bond-revocation-*.toit`).
+
+## Checking the `ble` package on the host
+
+`tests/ble-hardware/compat.sh` (outputs under `build/ble-compat-001/`) installs
+`tests/ble-hardware/bench/provider.toit` and the unchanged
+`examples/ble/heart_rate.toit` on the original ESP32's controller-only image,
+then runs `tests/ble-hardware/compat-central.toit` on the Edimax dongle in two processes (bluetoothd re-powers the adapter after every session, so the runner powers it off between them): a
+Linux provider in the same process and the `ble` package's central API on
+top of it (scan by name, connect, discover, subscribe, three notifications,
+one write). Pass: the central prints `COMPAT COMPLETE` and the board prints
+`Heart rate app received data`.
