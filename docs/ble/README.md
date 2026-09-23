@@ -36,15 +36,15 @@ installed on the device (see "Using the ble package" below).
 | `tests/ble-*-test.toit` | Software tests on a scripted in-memory transport; `tests/ble-hci-test.toit` doubles as the shared fixture |
 | `tests/ble-hardware/` | Board and adapter fixtures; `fixtures/` holds the provider/application images; `bench/` the NimBLE comparison; `campaigns/` the multi-board campaigns |
 | `tests/ble-interop/` | Optional Bumble (Python) software peer suite and radio observers |
-| `examples/ble/experimental/` | A minimal advertising provider and application |
+| `examples/ble/experimental/` | The provider container to deploy with `ble` package applications, plus a minimal advertising provider and application |
 
 ## Using the ble package
 
 An application written against the `ble` package (`Adapter`, `Central`,
-`Peripheral`, ...) needs no change: install a provider container (for
-example `tests/ble-hardware/bench/provider.toit`, a `gatt-provider` on the
-ESP32 transport) beside it on a controller-only firmware, and `Adapter`
-picks the provider when the native host is absent. `examples/ble/heart_rate.toit`
+`Peripheral`, ...) needs no change: build the controller-only firmware
+(`make BLE_HOST=1 esp32`), install a provider container beside the
+application (`examples/ble/experimental/gatt-provider.toit` is the one to
+start from), and `Adapter` picks the provider when the native host is absent. `examples/ble/heart_rate.toit`
 runs this way unchanged; `tests/ble-hardware/compat.sh` is the check. The
 peripheral serves as many centrals at once as the provider's
 `peripheral-session-limit` allows (one by default) and keeps advertising

@@ -37,19 +37,19 @@ build the supervisor with `-DTOIT_BUILD_BLE_TEST_TOOLS=ON`.
 
 ## ESP32: build and flash
 
-Controller-only firmware is built from `toolchains/esp32` with a defaults file
-that replaces the NimBLE options by:
+Controller-only firmware is a committed build variant:
 
-```
-CONFIG_BT_BLUEDROID_ENABLED=n
-CONFIG_BT_CONTROLLER_ENABLED=y
-CONFIG_BT_CONTROLLER_ONLY=y
-CONFIG_BTDM_CTRL_MODE_BLE_ONLY=y
+```sh
+make BLE_HOST=1 esp32      # build/esp32-ble-host/firmware.envelope
+make BLE_HOST=1 esp32s3    # build/esp32s3-ble-host/firmware.envelope
 ```
 
-`build/ble-esp32-current-build.sh` and `build/ble-esp32s3-current-build.sh`
-are the local build helpers (IDF 5.4.2); their outputs are
-`build/esp32-ble-current/firmware.envelope` and `build/esp32s3-ble-current/firmware.envelope`.
+It layers `toolchains/<chip>/sdkconfig.ble-host` (no Bluedroid, no NimBLE,
+controller only, BLE-only mode on the original ESP32) over the ordinary
+defaults. The development rig also keeps `build/ble-esp32-current-build.sh`
+and `build/ble-esp32s3-current-build.sh` (plain cmake against the current host
+SDK, outputs under `build/esp32-ble-current` and `build/esp32s3-ble-current`)
+for quick rebuilds.
 
 Assemble and flash an application:
 
