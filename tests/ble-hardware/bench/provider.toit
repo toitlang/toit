@@ -20,3 +20,5 @@ main:
 class Provider extends service.Provider:
   constructor: super
   open-transport -> transport.Transport: return esp32.Esp32Transport
+  // Two centrals at once for the ble package check; the benchmark uses one.
+  peripheral-session-limit -> int: return 2

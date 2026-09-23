@@ -99,3 +99,11 @@ Linux provider in the same process and the `ble` package's central API on
 top of it (scan by name, connect, discover, subscribe, three notifications,
 one write). Pass: the central prints `COMPAT COMPLETE` and the board prints
 `Heart rate app received data`.
+
+`tests/ble-hardware/multi-central-check.sh` runs the same flow with the
+traced provider (`bench/provider-traced.toit`, two peripheral sessions) and
+holds the connection for ten seconds; the board's HCI log then shows LE Set
+Advertising Enable again right after the connection, before the disconnect,
+which is the controller advertising for a second central while the first
+is connected. The two-central data path itself is covered by
+`tests/ble-compat-multi-peripheral-test.toit`.
