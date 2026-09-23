@@ -698,6 +698,22 @@ class Session extends services.ServiceResourceProxy:
   notify handle/int -> bool: return connection_.call_ api.NOTIFY [handle_, handle]
 
   /**
+  Retains and publishes each of $values in order in one round trip.
+
+  One RPC costs milliseconds on a small board, so a burst of notifications
+    goes through this call. Each value replaces the retained value before its
+    notification, as $set-value followed by $notify would. At most 32 values
+    of at most 512 bytes each; a value larger than $mtu minus three bytes
+    throws GATT_VALUE_EXCEEDS_MTU before anything after it is sent. Returns
+    the number sent, which is smaller than $values when the peer is not
+    subscribed at the time.
+  */
+  notify-values handle/int values/List -> int:
+    if not 1 <= values.size <= 32: throw "INVALID_ARGUMENT"
+    copies := values.map: copy-bounded_ it 512
+    return connection_.call_ api.NOTIFY-VALUES [handle_, handle, copies]
+
+  /**
   Submits a complete value snapshot, or returns null when not subscribed.
 
   Only one receipt may be outstanding until its wait completes. The value must

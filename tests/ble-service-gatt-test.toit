@@ -49,8 +49,12 @@ test --builder/bool=false --custom-timeout/bool=false --receive-flow/bool=false:
         radio.received.add (fixture.att-event #[0x12, input, 0, 42])
         fixture.att-sent radio #[0x13]
         fixture.att-sent radio #[0x1b, echo, 0, 42]
+        // One batched call publishes three values in order.
+        fixture.att-sent radio #[0x1b, echo, 0, 1]
+        fixture.att-sent radio #[0x1b, echo, 0, 2]
+        fixture.att-sent radio #[0x1b, echo, 0, 3]
         radio.received.add (fixture.att-event #[0x0a, echo, 0])
-        fixture.att-sent radio #[0x0b, 42]
+        fixture.att-sent radio #[0x0b, 3]
         radio.received.add #[4, 5, 4, 0, 0x34, 2, 0x13]
       finally:
         critical-do --no-respect-deadline: ended.set true
@@ -106,7 +110,9 @@ application --builder/bool=false --custom-timeout/bool=false:
             if custom-timeout: sleep --ms=1100
             writes++
             session.set-value echo value
-            expect (session.notify echo))
+            expect (session.notify echo)
+            expect-throw "INVALID_ARGUMENT": session.notify-values echo []
+            expect-equals 3 (session.notify-values echo [#[1], #[2], #[3]]))
     expect-equals 2 reads
     expect-equals 1 writes
     expect-equals 2 observed-writes
