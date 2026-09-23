@@ -49,6 +49,12 @@ monitor ControllerCredits:
     if account.pool_ != this: throw "INVALID_ARGUMENT"
     if account.error_: throw account.error_
     if account.waiting_: throw "HCI_ACL_CREDIT_BUSY"
+    // Fast path: nobody queued ahead and capacity at hand, so no waiter
+    // bookkeeping. Arrival order is preserved because the queue is empty.
+    if waiting_.is-empty and outstanding_ < capacity_ and account.outstanding_ < account.quota_:
+      account.outstanding_++
+      outstanding_++
+      return
     try:
       // Protect publication too: entering cleanup scope can require stack space.
       waiting_.add account
@@ -182,6 +188,18 @@ fragments-do handle/int channel/int payload/ByteArray --limit/int [send] -> none
   if not 0 <= handle <= 0x0eff or not 1 <= channel <= 0xffff or
       not 1 <= limit <= 1024 or payload.size > 1024:
     throw "INVALID_ARGUMENT"
+  if payload.size + 4 <= limit:
+    // One fragment: frame the payload directly instead of building the
+    // L2CAP PDU first and copying it again.
+    packet := ByteArray (9 + payload.size)
+    packet[0] = 2
+    io.LITTLE-ENDIAN.put-uint16 packet 1 handle
+    io.LITTLE-ENDIAN.put-uint16 packet 3 (4 + payload.size)
+    io.LITTLE-ENDIAN.put-uint16 packet 5 payload.size
+    io.LITTLE-ENDIAN.put-uint16 packet 7 channel
+    packet.replace 9 payload
+    send.call packet
+    return
   pdu := ByteArray (4 + payload.size)
   io.LITTLE-ENDIAN.put-uint16 pdu 0 payload.size
   io.LITTLE-ENDIAN.put-uint16 pdu 2 channel
