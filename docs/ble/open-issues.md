@@ -83,3 +83,12 @@ The missing tool behind all of the above is a packet trace from both ends. Add
 a btsnoop writer to the Toit transport (`Transport` wrapper writing
 `btsnoop` format so Wireshark opens it) and use `btmon` on the Linux side.
 Then rerun the three failures above with traces instead of A/B guessing.
+
+## Platform: RPC messages with many large byte arrays
+
+`system.services` RPC fails with `WRONG_OBJECT_TYPE` when one message carries
+more than eight byte arrays above 128 bytes (each becomes an external
+allocation in the message). One 7.8 KB array works. `Session.notify-values`
+therefore packs its values into a single length-prefixed buffer. The limit
+and its error belong to the RPC layer, not to BLE; worth a clearer error or
+a documented bound there.

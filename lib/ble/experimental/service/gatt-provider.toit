@@ -17,6 +17,7 @@ import .provider as rpc
 import .central-provider as central-provider
 import .shared-host as shared
 import ..timeouts as timeouts
+import io
 
 /** Provides one configured peripheral, with all protocol work in this process. */
 abstract class Provider extends central-provider.Provider:
@@ -307,14 +308,19 @@ class Session extends rpc.Session:
       if not server_: throw "GATT_NOT_CONNECTED"
       return server_.notify arguments[0] --no-truncate
     if index == api.NOTIFY-VALUES:
-      if arguments.size != 2 or arguments[1] is not List: throw "INVALID_ARGUMENT"
-      values/List := arguments[1]
-      if not 1 <= values.size <= 32: throw "INVALID_ARGUMENT"
-      values.do: if it is not ByteArray or it.size > 512: throw "INVALID_ARGUMENT"
+      if arguments.size != 2 or arguments[1] is not ByteArray: throw "INVALID_ARGUMENT"
+      packed/ByteArray := arguments[1]
+      if packed.size > 32 * 514: throw "INVALID_ARGUMENT"
       if not server_: throw "GATT_NOT_CONNECTED"
       sent := 0
-      values.do: | value/ByteArray |
-        database_.set-value arguments[0] value
+      offset := 0
+      while offset < packed.size:
+        if offset + 2 > packed.size: throw "INVALID_ARGUMENT"
+        length := io.LITTLE-ENDIAN.uint16 packed offset
+        offset += 2
+        if length > 512 or offset + length > packed.size: throw "INVALID_ARGUMENT"
+        database_.set-value arguments[0] packed[offset..offset + length]
+        offset += length
         if not (server_.notify arguments[0] --no-truncate): return sent
         sent++
       return sent
