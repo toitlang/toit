@@ -36,6 +36,7 @@ class Owner implements security-owner.Owner:
 
 close-server fail/bool:
   radio := fixture.FakeTransport
+  radio.auto-disconnect = true
   host := central.Central (hci.Controller radio)
   sent := monitor.Latch
   responder := task::
@@ -55,9 +56,8 @@ close-server fail/bool:
     error := catch: server.close
     expect-equals (fail ? "SECURITY_CLOSE_FAILED" : null) error
     expect-equals "closed" server.parameter-status
-    expect (not link.connected)
-    host.wait-closed
-    expect radio.closed
+    fixture.wait-ended link
+    expect (not radio.closed)
     server.close
     expect-equals 1 owner.closes
     sleep --ms=60

@@ -43,7 +43,11 @@ controller's event stream, keeps a registry of live links keyed by HCI handle,
 runs connect and accept procedures with cancellation, tracks encryption and
 parameter updates per link, and fragments/reassembles ACL. Each `Link` is one
 connection lifetime: a reused HCI handle after disconnect is a different
-`Link`, so late events and requests cannot act on the wrong connection.
+`Link`, so late events and requests cannot act on the wrong connection. A
+link-local failure (a protocol error, a lost encryption, an interrupted send)
+stops and disconnects that link only, whatever the link limit; the owner
+closes only when the controller's own state is uncertain (an unanswered
+command, a failed disconnect cleanup, a malformed event).
 
 `att.Client` and `gatt-server.Server` each claim one link's PDU stream and run
 their own receive task. ATT requests are serialized per link; notifications,

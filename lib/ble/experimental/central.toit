@@ -868,7 +868,7 @@ class Central:
     with-timeout timeouts.DRAIN:
       link.send-mutex_.do:
         check-open_
-        if (find-link_ link.info.handle) != link or not link.connected: throw "HCI_INVALID_LINK"
+        if (find-link_ link.info.handle) != link or not link.connected: throw (link.error or "HCI_INVALID_LINK")
         link.credits_.drain
 
   /**
@@ -884,7 +884,8 @@ class Central:
     with-timeout timeouts.SEND:
       link.send-mutex_.do:
         check-open_
-        if (find-link_ link.info.handle) != link or not link.connected: throw "HCI_INVALID_LINK"
+        // A stopped link reports what stopped it, not a generic identity error.
+        if (find-link_ link.info.handle) != link or not link.connected: throw (link.error or "HCI_INVALID_LINK")
         check.call
         completed := false
         try:
@@ -901,40 +902,39 @@ class Central:
   /**
   Stops a failed link and schedules bounded controller disconnection.
 
-  Configured multi-link owners preserve other links. Exclusive owners retain
-    their existing close-on-failure behavior. Credits and the registry slot stay
-    charged until Disconnection Complete. Failure to finish cleanup closes the
-    controller because its resource state is then uncertain.
+  A link-local failure ends that link only; the owner and its other links
+    stay usable. Credits and the registry slot stay charged until
+    Disconnection Complete. Failure to finish cleanup closes the controller
+    because its resource state is then uncertain.
   */
   abort link/Link --error="HCI_LINK_CLOSED" -> none:
     if not error: throw "INVALID_ARGUMENT"
     if not link.connected: return
     check-open_
     if (find-link_ link.info.handle) != link: throw "HCI_INVALID_LINK"
-    if link-limit_ == 1:
-      fail_ error
-      close
-      return
-    started := false
-    tracked := false
-    try:
-      link.stop_ error
-      cleanup_.start
-      tracked = true
-      task --background --name="BLE link cleanup"::
-        try:
-          failure := catch:
-            disconnect_ link
-          if failure:
-            fail_ failure
-            close
-        finally:
-          critical-do --no-respect-deadline: cleanup_.done
-      started = true
-    finally:
-      if not started:
-        if tracked: cleanup_.done
-        close
+    // Callers abort from cleanup, often in a cancelled task: the hand-over to
+    // the cleanup task must not be interrupted (docs/ble/design.md, rule 5).
+    critical-do --no-respect-deadline:
+      started := false
+      tracked := false
+      try:
+        link.stop_ error
+        cleanup_.start
+        tracked = true
+        task --background --name="BLE link cleanup"::
+          try:
+            failure := catch:
+              disconnect_ link
+            if failure:
+              fail_ failure
+              close
+          finally:
+            critical-do --no-respect-deadline: cleanup_.done
+        started = true
+      finally:
+        if not started:
+          if tracked: cleanup_.done
+          close
 
   /** Waits for other control events for the upper protocol layer. */
   receive -> ByteArray: return events_.take
@@ -1008,7 +1008,11 @@ class Central:
           packet = with-timeout (Duration --us=remaining): controller_.receive --owner=this
         if error == DEADLINE-EXCEEDED-ERROR: throw "HCI_EARLY_ACL_TIMEOUT"
         if error: throw error
-      controller_.consume packet --owner=this: process-packet_ packet
+      // A packet's state transitions complete or fail as a unit: closing this
+      // owner cancels the reader, which must not leave a link half ended
+      // (removed from the registry, its disconnection never published).
+      critical-do --no-respect-deadline:
+        controller_.consume packet --owner=this: process-packet_ packet
 
   process-packet_ packet/ByteArray -> none:
     if packet[0] == 2:

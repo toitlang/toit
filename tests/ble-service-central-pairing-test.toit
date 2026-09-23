@@ -28,6 +28,7 @@ main:
 run numeric/bool random/bool --receive-flow/bool=false:
   provider := Provider numeric random --receive-flow=receive-flow
   provider.install
+  provider.radio.auto-disconnect = true
   client := clients.Client
   client.open
   submitted := monitor.Latch
@@ -72,7 +73,7 @@ run numeric/bool random/bool --receive-flow/bool=false:
     expect-equals #[42] value
     // Losing established encryption invalidates the connection even while idle.
     provider.radio.received.add #[4, 8, 4, 0, 0x34, 2, 0]
-    while not provider.radio.closed: sleep --ms=1
+    while provider.radio.disconnects == 0: sleep --ms=1
     expect (not provider.owner.encrypted and not provider.owner.authenticated)
     expect-throw "HCI_ENCRYPTION_LOST": connection.read 3
     flow.check provider.radio

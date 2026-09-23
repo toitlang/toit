@@ -17,6 +17,7 @@ main:
 run mode/int:
   with-timeout --ms=5_000:
     radio := held.HeldTransport
+    radio.auto-disconnect = true
     host := central.Central (hci.Controller radio)
     client/att.Client? := null
     responder := task::
@@ -75,6 +76,6 @@ exercise radio/held.HeldTransport client/att.Client mode/int:
     else:
       if mode >= 2: expect-equals "GATT_DATABASE_CHANGED" failure
       expect-equals count radio.sent-count
-      expect radio.closed
+      expect (not radio.closed)
   finally:
     sender.cancel

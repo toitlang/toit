@@ -47,7 +47,6 @@ These are needed for parity with `lib/ble` as applications use it today:
 - Unbounded peripheral advertising and more than one peripheral connection.
 - More than two concurrent connections in the service layer; the controller supports up to `CONFIG_BTDM_CTRL_BLE_MAX_CONN`.
 - Larger databases, included services, Read By Type by UUID and Read Multiple on the client side, Database Hash and Client Supported Features.
-- Per-link failure isolation as the default: with a link limit of one, any per-link protocol error closes the controller.
 - The existing `ble` package API on top of this host, so current applications and Jaguar run unchanged.
 
 ## Verification state

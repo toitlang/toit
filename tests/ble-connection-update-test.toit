@@ -110,6 +110,7 @@ lifecycle:
 
 missing-completion:
   transport := fixture.FakeTransport
+  transport.auto-disconnect = true
   host := central.Central (hci.Controller transport)
   responder := task::
     fixture.status-reply transport fixture.create-command
@@ -119,8 +120,8 @@ missing-completion:
     link := host.connect #[1, 2, 3, 4, 5, 6] --address-type=1
     expect-throw DEADLINE-EXCEEDED-ERROR:
       host.update-parameters link --interval-min=12 --interval-max=24 --timeout=(Duration --ms=20)
-    expect (not link.connected)
-    host.wait-closed
+    fixture.wait-ended link
+    expect (not transport.closed)
   finally:
     responder.cancel
     host.close

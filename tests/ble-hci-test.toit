@@ -317,6 +317,7 @@ test-att:
 
 test-att-bad-response:
   transport := FakeTransport
+  transport.auto-disconnect = true
   host := central.Central (hci.Controller transport)
   responder := task::
     status-reply transport create-command
@@ -328,7 +329,8 @@ test-att-bad-response:
     link := host.connect #[1, 2, 3, 4, 5, 6] --address-type=1
     client = att.Client host link
     expect-throw "ATT_MALFORMED_RESPONSE": client.read 1
-    expect transport.closed
+    wait-ended link
+    expect (not transport.closed)
   finally:
     if client: client.close
     host.close
@@ -336,6 +338,7 @@ test-att-bad-response:
 
 test-att-cancel:
   transport := FakeTransport
+  transport.auto-disconnect = true
   host := central.Central (hci.Controller transport)
   ready := monitor.Latch
   responder := task::
@@ -357,7 +360,8 @@ test-att-cancel:
     ready.get
     caller.cancel
     finished.get
-    expect transport.closed
+    wait-ended link
+    expect (not transport.closed)
     expect-throw "ATT_REQUEST_ABORTED": client.read 1
   finally:
     if caller: caller.cancel
@@ -403,6 +407,7 @@ test-subscription-cancel:
 
 test-subscription-disable-rejected:
   transport := FakeTransport
+  transport.auto-disconnect = true
   host := central.Central (hci.Controller transport)
   responder := task::
     status-reply transport create-command
@@ -418,7 +423,8 @@ test-subscription-disable-rejected:
       client.subscribe 3 --cccd=4: stream = it
     expect error is att.AttributeError
     expect-equals 3 error.code
-    expect transport.closed
+    wait-ended link
+    expect (not transport.closed)
     expect-throw "ATT_CLOSED": stream.receive
     expect-throw "ATT_CLOSED": client.read 1
   finally:
@@ -428,6 +434,7 @@ test-subscription-disable-rejected:
 
 test-subscription-primary-preserved:
   transport := FakeTransport
+  transport.auto-disconnect = true
   host := central.Central (hci.Controller transport)
   responder := task::
     status-reply transport create-command
@@ -443,7 +450,8 @@ test-subscription-primary-preserved:
       client.subscribe 3 --cccd=4: | subscription/att.Subscription |
         stream = subscription
         throw "PRIMARY_SUBSCRIPTION_FAILURE"
-    expect transport.closed
+    wait-ended link
+    expect (not transport.closed)
     expect-throw "ATT_CLOSED": stream.receive
     expect-throw "ATT_CLOSED": client.read 1
   finally:
@@ -1301,6 +1309,7 @@ test-reader-shutdown:
     controller.wait-closed
     controller.wait-closed
     transport := FakeTransport
+    transport.auto-disconnect = true
     host := central.Central (hci.Controller transport)
     detached := central.Link (connection.Completion 0 1 0 #[0, 0, 0, 0, 0, 0] 24 0 400) --acl-count=1
     expect-throw "HCI_INVALID_LINK": att.Client host detached
@@ -1311,6 +1320,9 @@ test-reader-shutdown:
     client := att.Client host link
     client.close
     client.wait-closed
+    // Closing the client ends its link only; the owner stays usable.
+    wait-ended link
+    host.close
     host.wait-closed
     responder.cancel
 

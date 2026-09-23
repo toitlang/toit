@@ -71,7 +71,7 @@ exercise:
     expect-equals #[0xb4] b.receive.payload
     done.get
     expect-equals 8 radio.attempts
-    expect-throw "HCI_INVALID_LINK": host.send a 4 #[0]
+    expect-throw "HCI_LINK_DISCONNECTED": host.send a 4 #[0]
     expect (b.connected and replacement.connected)
   finally:
     responder.cancel

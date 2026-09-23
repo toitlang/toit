@@ -34,6 +34,7 @@ main:
 
 run mode/string --peripheral/bool=false --numeric/bool=false:
   radio := fixture.FakeTransport
+  radio.auto-disconnect = true
   host := central.Central (hci.Controller radio)
   local := identity.Identity (ByteArray 16 --initial=1) #[6, 5, 4, 3, 2, 1] 0
   peer-id := identity.Identity (ByteArray 16 --initial=2) #[1, 2, 3, 4, 5, 0xc6] 1
@@ -71,7 +72,7 @@ run mode/string --peripheral/bool=false --numeric/bool=false:
       if mode != "unencrypted": radio.received.add #[4, 8, 4, 0, 0x34, 2, 1]
       if mode == "declined" or mode == "missing-identity":
         if mode == "missing-identity": check-local radio reassembler local
-        while not radio.closed: sleep --ms=1
+        while radio.disconnects == 0: sleep --ms=1
       else:
         if peripheral: check-local radio reassembler local
         packets := peer-id.packets identity-fixture.Security
@@ -84,10 +85,10 @@ run mode/string --peripheral/bool=false --numeric/bool=false:
           if mode == "success":
             fixture.gatt-reply radio #[0x0a, 1, 0] #[0x0b, 42]
           else:
-            while not radio.closed: sleep --ms=1
+            while radio.disconnects == 0: sleep --ms=1
         else:
           partial.set true
-          while not radio.closed: sleep --ms=1
+          while radio.disconnects == 0: sleep --ms=1
     finally:
       critical-do --no-respect-deadline: ended.set true
   client/att.Client? := null
@@ -129,18 +130,20 @@ run mode/string --peripheral/bool=false --numeric/bool=false:
       expected := mode == "declined" ? "SMP_BOND_NOT_NEGOTIATED" : "SMP_BOND_IDENTITY_REQUIRED"
       expect-equals expected result.get
       expect (not pairing.encrypted)
-      expect radio.closed
+      fixture.wait-ended link
+      expect (not radio.closed)
     else if mode == "storage-error" or mode == "table-full":
       expect-equals (mode == "storage-error" ? "STORAGE_FAILED" : "BLE_BOND_TABLE_FULL") result.get
       expect-equals 1 candidate-calls
       expect (not pairing.encrypted)
-      expect radio.closed
+      fixture.wait-ended link
+      expect (not radio.closed)
     else if mode == "partial":
       partial.get
       // No candidate identity is visible after only Identity Information.
       expect-throw "SMP_IDENTITY_NOT_READY": pairing.peer-identity
       worker.cancel
-      while not radio.closed: sleep --ms=1
+      while radio.disconnects == 0: sleep --ms=1
       expect (not pairing.encrypted)
     else if mode == "timeout":
       expect-equals "SMP_TIMEOUT" result.get
