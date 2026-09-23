@@ -34,6 +34,9 @@ class Features:
   /** Returns the known SC distribution bits; EncKey and obsolete/RFU bits are ignored. */
   initiator-keys -> int: return bytes_[5] & 0x0a
   responder-keys -> int: return bytes_[6] & 0x0a
+  /** Returns the legacy EncKey distribution bits, which SC ignores. */
+  initiator-encryption-key -> bool: return bytes_[5] & 1 != 0
+  responder-encryption-key -> bool: return bytes_[6] & 1 != 0
 
   /** Returns f6's AuthReq/OOB/IOcap order, preserving the exchanged AuthReq byte. */
   check-iocap -> ByteArray: return #[bytes_[3], bytes_[2], bytes_[1]]
@@ -55,7 +58,7 @@ Requires both SC bits and key sizes of 16. Numeric Comparison and Passkey Entry
 select-association request/Features response/Features --require-authentication/bool -> string:
   if request.response or not response.response: throw (PairingError 0x0a)
   if not request.secure-connections or not response.secure-connections:
-    throw (PairingError 3)
+    return select-legacy-association request response --require-authentication=require-authentication
   if request.key-size != 16 or response.key-size != 16: throw (PairingError 6)
   if response.initiator-keys & ~request.initiator-keys != 0 or
       response.responder-keys & ~request.responder-keys != 0:
@@ -73,3 +76,26 @@ select-association request/Features response/Features --require-authentication/b
     if require-authentication: throw (PairingError 3)
     return "just-works"
   return "passkey-entry"
+
+/**
+Selects the legacy (non Secure Connections) association when either side
+  lacks SC: Just Works with a full 128-bit key only, unauthenticated.
+
+Legacy Passkey Entry and OOB are not executed by the host; a peer that asks
+  for MITM protection with capable IO is refused (reason 3), as is a local
+  authentication requirement, since legacy Just Works cannot satisfy it.
+*/
+select-legacy-association request/Features response/Features --require-authentication/bool -> string:
+  if request.key-size != 16 or response.key-size != 16: throw (PairingError 6)
+  if request.oob or response.oob: throw (PairingError 2)
+  if require-authentication: throw (PairingError 3)
+  if response.initiator-keys & ~request.initiator-keys != 0 or
+      response.responder-keys & ~request.responder-keys != 0:
+    throw (PairingError 0x0a)
+  if request.mitm or response.mitm:
+    a := request.io-capability
+    b := response.io-capability
+    // Table 2.8 for legacy: no IO on either side, or both display only, is Just Works.
+    if a == 3 or b == 3 or (a < 2 and b < 2): return "legacy-just-works"
+    throw (PairingError 3)
+  return "legacy-just-works"

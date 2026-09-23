@@ -7,6 +7,7 @@ import crypto.ec as ec
 import .sc-crypto as sc
 import .sc-ecdh as ecdh
 import .smp-features as features
+import .smp-legacy as legacy-pairing
 
 /**
 One SC Just Works/Numeric Comparison key exchange, without transport or persistence.
@@ -42,6 +43,10 @@ class Session:
   queued-check_/ByteArray? := null
   number_/int? := null
   ltk_/ByteArray? := null
+  // Legacy Just Works: the randoms and confirms in wire order.
+  legacy-random_/ByteArray? := null
+  legacy-peer-random_/ByteArray? := null
+  legacy-peer-confirm_/ByteArray? := null
 
   constructor --initiator/bool --io-capability/int --require-authentication/bool
       --local-address/ByteArray --peer-address/ByteArray
@@ -56,10 +61,12 @@ class Session:
     authentication_ = require-authentication
     local-address_ = local-address.copy
     peer-address_ = peer-address.copy
+    // EncKey is asked for as well: SC ignores it, and a legacy peer that
+    // bonds needs it to distribute its long term key.
     local_ = features.Features #[initiator ? 1 : 2, io-capability, 0,
                                 (require-authentication ? 0x0c : 8) | (bond ? 1 : 0), 16,
-                                (initiator ? distribute-identity : request-identity) ? 2 : 0,
-                                (initiator ? request-identity : distribute-identity) ? 2 : 0]
+                                ((initiator ? distribute-identity : request-identity) ? 2 : 0) | (bond ? 1 : 0),
+                                ((initiator ? request-identity : distribute-identity) ? 2 : 0) | (bond ? 1 : 0)]
         --response=(not initiator)
 
   state -> string: return state_
@@ -69,6 +76,17 @@ class Session:
   verified -> bool: return state_ == "complete"
   /** Tests the verified candidate key's association strength, not link encryption. */
   authenticated -> bool: return verified and method_ == "numeric-comparison"
+  /**
+  Whether this exchange used legacy pairing: the key is a short term key for
+    this connection only, and a bond needs the encrypted key distribution.
+  */
+  legacy -> bool: return method_ == "legacy-just-works"
+  /** The negotiated legacy EncKey distribution directions: [initiator sends, responder sends]. */
+  legacy-key-distribution -> List:
+    if not verified or not legacy: throw "SMP_KEY_NOT_READY"
+    response := initiator_ ? peer_ : local_
+    if not local_.bonding or not peer_.bonding: return [false, false]
+    return [response.initiator-encryption-key, response.responder-encryption-key]
 
   /** Reports mutual bonding intent only after the candidate key is verified. */
   bonding -> bool: return verified and local_.bonding and peer_.bonding
@@ -159,8 +177,9 @@ class Session:
           response-bytes[3] &= ~1
           response-bytes[5] = response-bytes[6] = 0
         else:
-          response-bytes[5] &= peer_.initiator-keys
-          response-bytes[6] &= peer_.responder-keys
+          // Keep what the peer offered, EncKey included (see the constructor).
+          response-bytes[5] &= peer_.packet[5]
+          response-bytes[6] &= peer_.packet[6]
         local_ = features.Features response-bytes --response
       request := initiator_ ? local_ : peer_
       response := initiator_ ? peer_ : local_
@@ -169,11 +188,38 @@ class Session:
           (response.initiator-keys != 0 or response.responder-keys != 0):
         throw (features.PairingError 3)
       if method_ == "passkey-entry": throw (features.PairingError 3)
+      if method_ == "legacy-just-works":
+        legacy-random_ = crypto.random --size=16
+        state_ = "legacy-confirm"
+        if initiator_: return [#[3] + (legacy-confirm_ legacy-random_)]
+        return [local_.packet]
       pair_ = ecdh.generate
       public_ = ecdh.public-key pair_.public-key
       nonce_ = crypto.random --size=16
       state_ = "public"
       return initiator_ ? [#[0x0c] + public_] : [local_.packet]
+    if state_ == "legacy-confirm":
+      if code != 3 or bytes.size != 17: throw (features.PairingError 0x0a)
+      legacy-peer-confirm_ = bytes[1..].copy
+      state_ = "legacy-random"
+      // The initiator reveals its random once it holds the responder's
+      // confirm; the responder answers a confirm with its own confirm.
+      if initiator_: return [#[4] + legacy-random_]
+      return [#[3] + (legacy-confirm_ legacy-random_)]
+    if state_ == "legacy-random":
+      if code != 4 or bytes.size != 17: throw (features.PairingError 0x0a)
+      legacy-peer-random_ = bytes[1..].copy
+      if not (sc.verify-check (legacy-confirm_ legacy-peer-random_) legacy-peer-confirm_):
+        throw (features.PairingError 4)
+      mrand := initiator_ ? legacy-random_ : legacy-peer-random_
+      srand := initiator_ ? legacy-peer-random_ : legacy-random_
+      // The STK is a big-endian key like the SC LTK for the encryption commands.
+      ltk_ = reverse_ (legacy-pairing.s1 (ByteArray 16) srand mrand)
+      result := initiator_ ? [] : [#[4] + legacy-random_]
+      clear_
+      state_ = "complete"
+      deadline_ = null
+      return result
     if state_ == "public":
       if code != 0x0c or bytes.size != 65: throw (features.PairingError 0x0a)
       peer-public_ = bytes[1..].copy
@@ -226,6 +272,18 @@ class Session:
       return result
     throw (features.PairingError 0x0a)
 
+  /** c1 over the exchange with TK zero for one of the two randoms. */
+  legacy-confirm_ random/ByteArray -> ByteArray:
+    request := initiator_ ? local_ : peer_
+    response := initiator_ ? peer_ : local_
+    initiating := initiator_ ? local-address_ : peer-address_
+    responding := initiator_ ? peer-address_ : local-address_
+    iat := initiating[0]
+    ia := reverse_ initiating[1..]
+    rat := responding[0]
+    ra := reverse_ responding[1..]
+    return legacy-pairing.c1 (ByteArray 16) random request.packet response.packet iat ia rat ra
+
   derive_ -> none:
     na := initiator_ ? nonce_ : peer-nonce_
     nb := initiator_ ? peer-nonce_ : nonce_
@@ -262,6 +320,9 @@ class Session:
     peer-check_ = null
     queued-check_ = null
     number_ = null
+    legacy-random_ = null
+    legacy-peer-random_ = null
+    legacy-peer-confirm_ = null
 
 reverse_ bytes/ByteArray -> ByteArray:
   return ByteArray bytes.size: bytes[bytes.size - 1 - it]
