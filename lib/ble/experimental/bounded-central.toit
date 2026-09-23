@@ -55,6 +55,8 @@ class Central extends extended.Central:
         accept-pending_ = pending
         updates_ = updates
         created := false
+        // The engine owns the enable; cleanup settles one this task abandoned.
+        enable/hci.Pending? := null
         try:
           // The set may exist once the command is out; cleanup removes it
           // even when this task leaves before the reply.
@@ -81,17 +83,17 @@ class Central extends extended.Central:
             window_ = monitor.Latch
             timeout-seen_ = false
             // Publish the window before submission: its event may precede
-            // Command Complete. Classify a rejection in the same critical
-            // section as the command: a cancelled task's catch rethrows
-            // CANCELED after the block, which would skip the classification.
-            critical-do --no-respect-deadline:
-              error := catch: controller_.command 0x2039 #[1, 1, 0, 100, 0, 0]
-              if error:
-                if error is hci.CommandError and not window_.has-value and not pending.has-value:
-                  window_ = null
-                else:
-                  catch: close
-                throw error
+            // Command Complete. A cancelled task skips this classification
+            // (its catch rethrows CANCELED after the block) and cleanup
+            // settles the enable instead.
+            enable = controller_.submit 0x2039 #[1, 1, 0, 100, 0, 0]
+            error := catch: enable.wait
+            if error:
+              if error is hci.CommandError and not window_.has-value and not pending.has-value:
+                window_ = null
+              else:
+                catch: close
+              throw error
             checkpoint
             if updates:
               updates.ready
@@ -103,11 +105,17 @@ class Central extends extended.Central:
                   break
             terminal := wait-window_ pending
             window_ = null
+            enable = null
             if terminal[4] == 0: continue.with-accept-procedure pending.get
             checkpoint
         finally: | is-exception _ |
           critical-do --no-respect-deadline:
             error := catch:
+              if window_ and enable:
+                // A rejected enable without an event opened no window.
+                settled := catch: enable.wait
+                if settled is hci.CommandError and not window_.has-value and not pending.has-value:
+                  window_ = null
               if window_: wait-window_ pending
               if created:
                 removal := catch: controller_.command 0x203c #[0]
