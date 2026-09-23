@@ -151,6 +151,34 @@ random-address bytes/ByteArray -> ByteArray:
   if all-zero or all-one: throw "INVALID_ARGUMENT"
   return bytes.copy
 
+/** The link-layer payload lengths and times in effect after a length update. */
+class DataLength:
+  handle/int
+  tx-octets/int
+  tx-time/int
+  rx-octets/int
+  rx-time/int
+
+  constructor .handle .tx-octets .tx-time .rx-octets .rx-time:
+
+/** Decodes LE Data Length Change (Vol 4 Part E, 7.7.65.7). */
+decode-data-length packet/ByteArray -> DataLength?:
+  hci.validate-packet packet
+  if packet[0] != 4 or packet[1] != 0x3e: return null
+  if packet.size < 4: throw "HCI_MALFORMED_CONNECTION_EVENT"
+  if packet[3] != 7: return null
+  if packet.size != 14: throw "HCI_MALFORMED_CONNECTION_EVENT"
+  handle := io.LITTLE-ENDIAN.uint16 packet 4
+  if handle > 0x0eff: throw "HCI_MALFORMED_CONNECTION_EVENT"
+  tx-octets := io.LITTLE-ENDIAN.uint16 packet 6
+  tx-time := io.LITTLE-ENDIAN.uint16 packet 8
+  rx-octets := io.LITTLE-ENDIAN.uint16 packet 10
+  rx-time := io.LITTLE-ENDIAN.uint16 packet 12
+  if not 27 <= tx-octets <= 251 or not 27 <= rx-octets <= 251 or
+      not 328 <= tx-time <= 17040 or not 328 <= rx-time <= 17040:
+    throw "HCI_MALFORMED_CONNECTION_EVENT"
+  return DataLength handle tx-octets tx-time rx-octets rx-time
+
 /** The peer's LE features, or a controller status when the exchange failed. */
 class Features:
   status/int

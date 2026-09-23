@@ -20,6 +20,7 @@ READ-ADDRESS ::= 0x1009
 LE-SET-EVENT-MASK ::= 0x2001
 LE-READ-BUFFER-SIZE ::= 0x2002
 LE-READ-FEATURES ::= 0x2003
+LE-WRITE-SUGGESTED-DEFAULT-DATA-LENGTH ::= 0x2024
 SET-CONTROLLER-TO-HOST-FLOW-CONTROL ::= 0x0c31
 HOST-BUFFER-SIZE ::= 0x0c33
 
@@ -500,9 +501,16 @@ initialize controller/Controller --receive-acl-packets/int=0 --receive-acl-lengt
   // Disconnect, encryption change/refresh, hardware error, completed packets, LE meta.
   controller.command SET-EVENT-MASK #[0x90, 0x80, 0x04, 0, 0, 0x80, 0, 0x20]
   checkpoint
-  // Legacy LE connection, advertising, update, features, and key request events.
-  controller.command LE-SET-EVENT-MASK #[0x1f, 0, 0, 0, 0, 0, 0, 0]
+  // Legacy LE connection, advertising, update, features, key request and
+  // data length change events.
+  controller.command LE-SET-EVENT-MASK #[0x5f, 0, 0, 0, 0, 0, 0, 0]
   checkpoint
+  // Data Length Extension (Vol 6 Part B 4.5.10): a controller that supports it
+  // initiates the length update on every new connection from these defaults,
+  // so 251-octet link-layer PDUs need no per-connection command.
+  if le-features[0] & 0x20 != 0 and commands[33] & 0x40 != 0:
+    controller.command LE-WRITE-SUGGESTED-DEFAULT-DATA-LENGTH #[0xfb, 0x00, 0x48, 0x08]
+    checkpoint
   if receive-acl-packets != 0:
     if commands[10] & 0xe0 != 0xe0: throw "HCI_RX_FLOW_UNSUPPORTED"
     controller.configure-receive_ receive-acl-length receive-acl-packets

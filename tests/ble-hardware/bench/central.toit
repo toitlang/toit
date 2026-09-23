@@ -26,11 +26,12 @@ main args/List:
   try:
     info := hci.initialize controller
     host = central.Central controller --acl-length=info.acl-length --acl-count=info.acl-count
+        --receive-limit=247
         --early-acl-timeout=(Duration --ms=20)
     cycles.repeat: | cycle/int |
       started := Time.monotonic-us
       link := host.connect address --address-type=0 --timeout=(Duration --s=30)
-      client := att.Client host link
+      client := att.Client host link --mtu-limit=247
       count := 0
       bytes := 0
       elapsed := 0
@@ -47,7 +48,8 @@ main args/List:
         descriptors := (gatt.descriptors client characteristic).filter: it.uuid == #[0x02, 0x29]
         if descriptors.size != 1: throw "BENCH_CCCD_NOT_FOUND"
         connected := Time.monotonic-us - started
-        print "BENCH central cycle=$cycle connected-us=$connected mtu=$mtu interval=$link.parameters.interval"
+        length := link.data-length
+        print "BENCH central cycle=$cycle connected-us=$connected mtu=$mtu interval=$link.parameters.interval tx-octets=$(length ? length.tx-octets : 27) rx-octets=$(length ? length.rx-octets : 27)"
         client.subscribe characteristic.handle --cccd=descriptors[0].handle --queue-limit=32: | stream/att.Subscription |
           first := with-timeout --ms=10_000: stream.receive
           count = 1

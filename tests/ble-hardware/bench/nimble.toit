@@ -24,7 +24,7 @@ main:
       Advertisement --services=[BleUuid uuids.SERVICE-STRING]
   stats.report "nimble" "advertising"
   stats.periodic "nimble"
-  payload := ByteArray 20: it
+  payload := ByteArray uuids.PAYLOAD: it
   writes := 0
   failures := 0
   while true:

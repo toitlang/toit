@@ -83,7 +83,7 @@ configured-traffic:
   client/att.Client? := null
   responder := task::
     fixture.initialize-replies radio
-    fixture.reply radio #[1, 1, 0x20, 8, 0x1f, 2, 0, 0, 0, 0, 0, 0] #[]
+    fixture.reply radio #[1, 1, 0x20, 8, 0x5f, 2, 0, 0, 0, 0, 0, 0] #[]
     fixture.status-reply radio #[1, 0x43, 0x20, 26, 0, 0, 1, 1, 2, 3, 4, 5, 6, 1, 16, 0, 16, 0, 24, 0, 40, 0, 0, 0, 144, 1, 0, 0, 0, 0]
     radio.received.add (isolation.completed-connection 1 0x234)
     fixture.gatt-reply radio #[0x0a, 3, 0] #[0x0b, 42]

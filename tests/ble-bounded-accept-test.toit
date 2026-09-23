@@ -167,8 +167,8 @@ configuration:
   host/bounded.Central? := null
   responder := task::
     fixture.initialize-replies radio
-    fixture.reply radio #[1, 1, 0x20, 8, 0x1f, 2, 0, 0, 0, 0, 0, 0] #[]
-    fixture.reply radio #[1, 1, 0x20, 8, 0x1f, 2, 2, 0, 0, 0, 0, 0] #[]
+    fixture.reply radio #[1, 1, 0x20, 8, 0x5f, 2, 0, 0, 0, 0, 0, 0] #[]
+    fixture.reply radio #[1, 1, 0x20, 8, 0x5f, 2, 2, 0, 0, 0, 0, 0] #[]
   try:
     info := hci.initialize controller
     info.le-features[1] = 0x10

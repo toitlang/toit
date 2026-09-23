@@ -19,11 +19,11 @@ CYCLES ::= 1000
 
 main:
   stats.report "direct" "boot"
-  payload := ByteArray 20: it
+  payload := ByteArray uuids.PAYLOAD: it
   controller := hci.Controller esp32.Esp32Transport
   info := hci.initialize controller
   host := central.Central controller --acl-length=info.acl-length --acl-count=info.acl-count
-  database := attributes.Database.with-defaults --name="Toit bench"
+  database := attributes.Database --value-limit=512 --mtu-limit=247
   database.add-service uuids.SERVICE
   value := database.add-characteristic uuids.VALUE --read --notify --value=payload
   stats.report "direct" "initialized"
