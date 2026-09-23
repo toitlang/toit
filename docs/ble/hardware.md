@@ -107,3 +107,12 @@ Advertising Enable again right after the connection, before the disconnect,
 which is the controller advertising for a second central while the first
 is connected. The two-central data path itself is covered by
 `tests/ble-compat-multi-peripheral-test.toit`.
+
+## Nightly run
+
+`tests/ble-hardware/nightly.sh` runs pair and resume against BlueZ, the
+three-board revocation campaign, both benchmark variants and the two `ble`
+package checks in sequence, one line of pass/fail per step plus the markers
+each step printed. It expects the campaign directories under `build/`
+(`ble-resume-features-003`, `ble-mic-003`, `ble-bench-001`) and the boards
+flashed as those campaigns leave them; wire it to cron on the rig host.
