@@ -13,6 +13,7 @@ import .smp-distribution as distribution
 import .smp-pairing as smp
 import .smp-features show PairingError
 import .signaling as signaling
+import .timeouts as timeouts
 
 monitor Progress_:
   version_/int := 0
@@ -200,7 +201,7 @@ class Pairing implements Owner:
         finally:
           encrypting_ = false
       else:
-        with-timeout --ms=30_000:
+        with-timeout timeouts.SECURITY:
           change := link_.wait-encryption-change
           if error_: throw error_
           if change.status != 0: throw (encryption.Error change.status)
@@ -228,7 +229,7 @@ class Pairing implements Owner:
         if timer_: timer_.cancel
       if timer_:
         critical-do --no-respect-deadline:
-          with-timeout --ms=3_000: timer-ended_.get
+          with-timeout timeouts.JOIN: timer-ended_.get
 
   /** Dispatches one SMP PDU from the owning ATT receive loop. */
   receive bytes/ByteArray -> none:
@@ -254,7 +255,7 @@ class Pairing implements Owner:
             if bytes.size != 2 or not 1 <= bytes[1] <= 0x0f:
               // Part H 2.3 requires an Invalid Parameters response. Bound its
               // submission and drain before the existing terminal cleanup.
-              with-timeout --ms=3_000: host_.send link_ 6 #[5, 0x0a]
+              with-timeout timeouts.SEND: host_.send link_ 6 #[5, 0x0a]
               host_.drain link_
               throw (PairingError 0x0a)
             throw (PairingError bytes[1])
@@ -281,7 +282,7 @@ class Pairing implements Owner:
       host_.set-encryption-key link_ engine_.key
     packets.do: | bytes/ByteArray |
       if error_: throw error_
-      with-timeout --ms=3_000: host_.send link_ 6 bytes
+      with-timeout timeouts.SEND: host_.send link_ 6 bytes
     if engine_.state == "failed":
       // Give a generated Pairing Failed response a bounded controller drain
       // before fail_ shuts down this link's transport. This is not a peer ack.
@@ -306,9 +307,9 @@ class Pairing implements Owner:
   send-distribution_ packets/List -> none:
     packets.do: | bytes/ByteArray |
       if error_: throw error_
-      with-timeout --ms=3_000: host_.send link_ 6 bytes
+      with-timeout timeouts.SEND: host_.send link_ 6 bytes
     // Submission is not peer delivery; this phase exposes candidate data only.
-    if not packets.is-empty: distribution-deadline_ = Time.monotonic-us + 30_000_000
+    if not packets.is-empty: distribution-deadline_ = Time.monotonic-us + timeouts.SECURITY.in-us
 
   watch_ -> none:
     while active_ and not error_:

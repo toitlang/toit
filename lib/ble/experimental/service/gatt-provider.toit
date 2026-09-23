@@ -16,6 +16,7 @@ import .api as api
 import .provider as rpc
 import .central-provider as central-provider
 import .shared-host as shared
+import ..timeouts as timeouts
 
 /** Provides one configured peripheral, with all protocol work in this process. */
 abstract class Provider extends central-provider.Provider:
@@ -201,7 +202,7 @@ class Session extends rpc.Session:
             if pool_:
               if link_:
                 disconnect-error := catch:
-                  with-timeout --ms=3_000: link_.wait-disconnected
+                  with-timeout timeouts.CLEANUP: link_.wait-disconnected
                 if disconnect-error and not link_.has-ended: throw disconnect-error
             else if host_: host_.wait-closed
             else if controller_: controller_.wait-closed
@@ -340,7 +341,7 @@ class Session extends rpc.Session:
 
   run_ -> none:
     if pool_:
-      with-timeout --ms=60_000:
+      with-timeout timeouts.SETUP:
         pool_.setup: | host/central.Central capabilities/hci.Capabilities |
           host_ = host
           accept_ capabilities
@@ -400,7 +401,7 @@ class Session extends rpc.Session:
       critical-do --no-respect-deadline:
         if pairing-task_:
           pairing-task_.cancel
-          with-timeout --ms=3_000: pairing-ended_.get
+          with-timeout timeouts.JOIN: pairing-ended_.get
 
   release_ -> any:
     if pairing-task_: pairing-task_.cancel

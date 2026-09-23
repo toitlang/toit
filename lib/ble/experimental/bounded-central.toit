@@ -11,6 +11,7 @@ import .extended-central as extended
 import .hci as hci
 import .advertising-updates as advertising-updates
 import .cancellation show checkpoint
+import .timeouts as timeouts
 
 /**
 Owns extended central links and accepts through finite legacy advertising PDUs.
@@ -140,7 +141,7 @@ class Central extends extended.Central:
   wait-window_ pending/monitor.Latch -> ByteArray:
     result/ByteArray? := null
     error := catch:
-      with-timeout --ms=3_000: result = window_.get
+      with-timeout timeouts.WINDOW: result = window_.get
     // Keep a controller failure primary if the ordinary connection latch
     // already carries it, including while waiting for a missing terminal event.
     if pending.has-value: pending.get

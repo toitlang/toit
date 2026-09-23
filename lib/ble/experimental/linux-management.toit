@@ -5,6 +5,7 @@
 import io
 import monitor
 import .transport show Transport
+import .timeouts as timeouts
 
 /** Linux management commands for configuring a test controller under BlueZ. */
 class Client:
@@ -46,7 +47,7 @@ class Client:
     return mutex_.do:
       succeeded := false
       try:
-        result := with-timeout --ms=5_000:
+        result := with-timeout timeouts.MANAGEMENT:
           request := ByteArray (6 + parameters.size)
           io.LITTLE-ENDIAN.put-uint16 request 0 opcode
           io.LITTLE-ENDIAN.put-uint16 request 2 adapter_

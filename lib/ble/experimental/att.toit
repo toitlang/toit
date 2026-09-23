@@ -9,6 +9,7 @@ import .central as central
 import .hci as hci
 import .signaling as signaling
 import .security-owner as security
+import .timeouts as timeouts
 
 /** An ATT error response, retaining the failing request, handle, and status. */
 class AttributeError:
@@ -290,7 +291,7 @@ class Client:
     result := ByteArray limit
     offset := 0
     part-limit := mtu_ - 1
-    response := with-timeout --ms=3_000: request_ (handle-request_ 0x0a handle) 0x0b --database-revision=revision
+    response := with-timeout timeouts.ATT-REQUEST: request_ (handle-request_ 0x0a handle) 0x0b --database-revision=revision
     part := response[1..]
     while true:
       if offset + part.size > limit: throw "ATT_VALUE_TOO_LONG"
@@ -303,7 +304,7 @@ class Client:
       previous-limit := part-limit
       part-limit = mtu_ - 1
       error := catch:
-        response = with-timeout --ms=3_000: request_ bytes 0x0d --database-revision=revision
+        response = with-timeout timeouts.ATT-REQUEST: request_ bytes 0x0d --database-revision=revision
         part = response[1..]
       if error:
         if error is AttributeError and error.handle == handle and error.code == 0x0b and
@@ -312,7 +313,7 @@ class Client:
           // read while this operation is in progress. Restart at the larger MTU.
           offset = 0
           part-limit = mtu_ - 1
-          response = with-timeout --ms=3_000: request_ (handle-request_ 0x0a handle) 0x0b --database-revision=revision
+          response = with-timeout timeouts.ATT-REQUEST: request_ (handle-request_ 0x0a handle) 0x0b --database-revision=revision
           part = response[1..]
           continue
         // Invalid Offset can terminate a long value. A fixed short attribute
@@ -347,7 +348,7 @@ class Client:
     bytes := ByteArray (3 + value.size)
     bytes.replace 0 (handle-request_ 0x52 handle)
     bytes.replace 3 value
-    with-timeout --ms=3_000:
+    with-timeout timeouts.SEND:
       mutex_.do:
         if error_: throw error_
         if database-revision != null: check-database-revision database-revision
@@ -384,12 +385,12 @@ class Client:
             io.LITTLE-ENDIAN.put-uint16 packet 1 handle
             io.LITTLE-ENDIAN.put-uint16 packet 3 offset
             packet.replace 5 snapshot[offset..offset + length]
-            response := with-timeout --ms=3_000: request_ packet 0x17 --database-revision=revision
+            response := with-timeout timeouts.ATT-REQUEST: request_ packet 0x17 --database-revision=revision
             if response.size != packet.size or response[1..] != packet[1..]:
               throw "ATT_PREPARE_MISMATCH"
             offset += length
             if offset == snapshot.size: break
-          response := with-timeout --ms=3_000: request_ #[0x18, 1] 0x19 --database-revision=revision
+          response := with-timeout timeouts.ATT-REQUEST: request_ #[0x18, 1] 0x19 --database-revision=revision
           if response != #[0x19]:
             fail_ "ATT_MALFORMED_RESPONSE"
             throw error_
@@ -399,7 +400,7 @@ class Client:
             canceled := false
             try:
               critical-do --no-respect-deadline:
-                response := with-timeout --ms=3_000: request_ #[0x18, 0] 0x19
+                response := with-timeout timeouts.ATT-REQUEST: request_ #[0x18, 0] 0x19
                 if response != #[0x19]: throw "ATT_MALFORMED_RESPONSE"
                 canceled = true
             finally:
@@ -484,7 +485,7 @@ class Client:
   /** Waits for reader cleanup after close or failure, with a three-second bound. */
   wait-closed -> none:
     if not error_: throw "BLE_OWNER_NOT_CLOSED"
-    with-timeout --ms=3_000:
+    with-timeout timeouts.JOIN:
       reader-ended_.get
 
   /**

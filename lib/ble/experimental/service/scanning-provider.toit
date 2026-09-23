@@ -10,6 +10,7 @@ import ..transport as transport
 import .api as api
 import .provider as rpc
 import .advertising-provider as advertising-provider
+import ..timeouts as timeouts
 
 /** Provides legacy scanning with bounded queues without importing ATT, GATT or SMP. */
 abstract class Provider extends advertising-provider.Provider:
@@ -120,7 +121,7 @@ class ScanSession extends rpc.Session:
     if index == api.SCAN-STOP:
       if worker_ and not ended_.has-value: worker_.cancel
       critical-do --no-respect-deadline:
-        with-timeout --ms=5_000: ended_.get
+        with-timeout timeouts.WORKER: ended_.get
       if cleanup-error_: throw cleanup-error_.stringify
       if scan-error_: throw scan-error_.stringify
       return [statistics_.dropped-events, reports_.dropped, reports_.remaining]

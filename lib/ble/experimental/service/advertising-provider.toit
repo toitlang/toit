@@ -10,6 +10,7 @@ import ..cancellation show checkpoint
 import ..transport as transport
 import .api as api
 import .provider as rpc
+import ..timeouts as timeouts
 
 /** Provides non-connectable legacy advertising without ATT, GATT or SMP. */
 abstract class Provider extends rpc.Provider:
@@ -100,9 +101,9 @@ class AdvertisingSession extends rpc.Session:
               request = changes_.next
             if changes_.stopped: break
             if request:
-              with-timeout --ms=3_000:
-                controller.command 0x2008 request.data
-                if not changes_.stopped: controller.command 0x2009 request.response
+              // Each command carries the engine's bound.
+              controller.command 0x2008 request.data
+              if not changes_.stopped: controller.command 0x2009 request.response
               if changes_.stopped: break
               changes_.complete request
             else if expired:
@@ -168,7 +169,7 @@ class AdvertisingSession extends rpc.Session:
       // rather than continue toward enabling advertising for an absent caller.
       if worker_ and not ready_.has-value: worker_.cancel
       critical-do --no-respect-deadline:
-        with-timeout --ms=5_000: ended_.get
+        with-timeout timeouts.WORKER: ended_.get
       if error_: throw error_.stringify
       return null
     return super index arguments
