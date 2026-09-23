@@ -25,6 +25,12 @@ stacks negotiate 251-octet link-layer PDUs with the same dongle):
 | Toit host, direct | 330–332 | 81 KB/s |
 | Toit host, provider model, one RPC per notification | 157–159 | 39 KB/s |
 | Toit host, provider model, `notify-values` in batches of 32 | 310 | 76 KB/s |
+| Toit host, direct, on ESP32-S3 Board1 with the LE 2M PHY (`BENCH_BOARD=s3 run.sh direct`) | 584–590 | 143 KB/s |
+
+The S3 row is the same central and payload with the 2M PHY negotiated
+(`phy=2/2` in the central's log; the original ESP32 has no 2M PHY) and the
+S3's faster core: 1.6 ms of interpreter time per notification, a fifth of
+the calls under 1 ms.
 
 Free heap at boot before any BLE code: 142–149 KB. All three recover their
 idle figure after every disconnect; over forty connect/notify/disconnect
