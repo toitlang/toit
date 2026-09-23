@@ -7,6 +7,7 @@ import ble show Advertisement
 
 import .api as api
 import io
+import monitor
 
 /**
 Opens the experimental BLE request service without importing host code.
@@ -811,6 +812,7 @@ class Request:
   value/ByteArray
   active_/bool := true
   replied_/bool := false
+  replied-latch_/monitor.Latch ::= monitor.Latch
 
   constructor .session_ record/List:
     token_ = record[0]
@@ -838,8 +840,20 @@ class Request:
   respond_ error/int value/ByteArray -> none:
     if not active_: throw "GATT_REQUEST_EXPIRED"
     if replied_: throw "GATT_ALREADY_REPLIED"
-    session_.reply_ token_ error value
-    replied_ = true
+    try:
+      session_.reply_ token_ error value
+      replied_ = true
+    finally:
+      if not replied-latch_.has-value: replied-latch_.set replied_
+
+  /**
+  Waits until another task has replied to this request.
+
+  Lets a serving loop hand a request to a handler task and keep request
+    order; returns when the reply was sent or the attempt failed.
+  */
+  wait-replied_ -> none:
+    replied-latch_.get
 
 /** A bounded service indication receipt; confirmation is not durable peer storage. */
 class Indication:

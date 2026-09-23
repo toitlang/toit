@@ -14,6 +14,7 @@ vendor controller for radio timing, the link layer and link encryption.
 
 ```
 Toit application
+  -> ble (the existing package API; host.toit maps it onto the service client)
   -> ble.experimental.service.client   (RPC, resource handles, scoped blocks)
   -> provider container: service/*     (admission, request mailbox, policy hooks)
        -> gatt-server / att.Client / scanning / advertising

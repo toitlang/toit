@@ -9,6 +9,7 @@ import monitor show ResourceState_
 import system
 import encoding.hex
 
+import .host
 import .local
 import .remote
 
@@ -1038,14 +1039,14 @@ class AdapterMetadata:
   constructor.private_ .identifier .address .supports-central-role .supports-peripheral-role .handle_:
 
   adapter -> Adapter:
-    return Adapter.private_ this
+    return NativeAdapter_ this
 
 /**
 An adapter represents the chip or peripheral that is used to communicate over BLE.
 On the ESP32 it is the integrated peripheral. On desktops it is provided by
   the operating system, and can be a USB chip, or an integrated chip of laptops.
 */
-class Adapter extends Resource_:
+abstract class Adapter extends Resource_:
   static discover-adapter-metadata_ -> List/*<AdapterMetadata>*/:
     return ble-retrieve-adapters_.map:
       AdapterMetadata.private_ it[0] it[1] it[2] it[3] it[4]
@@ -1054,11 +1055,26 @@ class Adapter extends Resource_:
   central_/Central? := null
   peripheral_/Peripheral? := null
 
-  constructor: return discover-adapter-metadata_[0].adapter
+  /**
+  Opens the default adapter.
+
+  Firmware with a native BLE host (NimBLE) uses it. Firmware without one,
+    such as a controller-only ESP32 image or a Linux host, uses the Toit
+    host through its BLE service provider when one is installed; the
+    same classes and behaviour apply. Throws "Unsupported platform" when
+    neither is available.
+  */
+  constructor:
+    error := catch: return discover-adapter-metadata_[0].adapter
+    if error != "Unsupported platform" and error != "PRIMITIVE_LOOKUP_FAILED": throw error
+    return host-adapter_
 
   constructor.private_ .adapter-metadata:
     super (ble-create-adapter_ resource-group_)
     resource-state_.wait-for-state STARTED-EVENT_
+
+  constructor.host_ .adapter-metadata:
+    super.host_
 
   close -> none:
     if is-closed: return
@@ -1076,8 +1092,10 @@ class Adapter extends Resource_:
   */
   central -> Central:
     if not adapter-metadata.supports-central-role: throw "NOT_SUPPORTED"
-    if not central_: central_ = Central this
+    if not central_: central_ = create-central_
     return central_
+
+  abstract create-central_ -> Central
 
   remove-central_ central/Central -> none:
     assert: central == central_
@@ -1098,13 +1116,27 @@ class Adapter extends Resource_:
   */
   peripheral --bonding/bool=false --secure-connections/bool=false --name/string?=null -> Peripheral:
     if not adapter-metadata.supports-peripheral-role: throw "NOT_SUPPORTED"
-    if name: ble-set-gap-device-name_ resource_ name
-    if not peripheral_: peripheral_ = Peripheral this bonding secure-connections
-    return peripheral_;
+    if not peripheral_: peripheral_ = create-peripheral_ bonding secure-connections name
+    return peripheral_
+
+  abstract create-peripheral_ bonding/bool secure-connections/bool name/string? -> Peripheral
 
   remove-peripheral_ peripheral/Peripheral -> none:
     assert: peripheral == peripheral_
     peripheral_ = null
+
+  abstract set-preferred-mtu mtu/int
+
+class NativeAdapter_ extends Adapter:
+  constructor adapter-metadata/AdapterMetadata:
+    super.private_ adapter-metadata
+
+  create-central_ -> Central:
+    return NativeCentral_ this resource_
+
+  create-peripheral_ bonding/bool secure-connections/bool name/string? -> Peripheral:
+    if name: ble-set-gap-device-name_ resource_ name
+    return NativePeripheral_ this resource_ bonding secure-connections
 
   set-preferred-mtu mtu/int:
     ble-set-preferred-mtu_ resource_ mtu
@@ -1151,12 +1183,15 @@ DATA-WRITE-REQUEST-EVENT_             ::= 1 << 24
 
 class Resource_:
   resource_/any? := null
-  resource-state_/ResourceState_
+  resource-state_/ResourceState_? := null
 
   constructor .resource_:
     resource-state_ = ResourceState_ resource-group_ resource_
     add-finalizer this::
       close_
+
+  /** A resource of the Toit host backend, which owns no native resource. */
+  constructor.host_:
 
   close_:
     if resource_:
