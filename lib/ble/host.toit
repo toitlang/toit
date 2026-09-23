@@ -428,6 +428,10 @@ class HostLocalCharacteristic_ extends LocalCharacteristic implements HostElemen
     writable := properties & CHARACTERISTIC-PROPERTY-WRITE != 0
     command := properties & CHARACTERISTIC-PROPERTY-WRITE-WITHOUT-RESPONSE != 0
     encrypted := permissions & (CHARACTERISTIC-PERMISSION-READ-ENCRYPTED | CHARACTERISTIC-PERMISSION-WRITE-ENCRYPTED) != 0
+    // Writes with a response go through validation so a write handler can
+    // process the value before the response leaves. Write commands have no
+    // response to hold back, so the provider commits them at once and a
+    // disconnect right after the command cannot lose them.
     handle_ = session.add-characteristic (uuid.to-byte-array --reversed)
         --read=readable
         --write=writable
@@ -435,7 +439,7 @@ class HostLocalCharacteristic_ extends LocalCharacteristic implements HostElemen
         --notify=(properties & CHARACTERISTIC-PROPERTY-NOTIFY != 0)
         --indicate=(properties & CHARACTERISTIC-PROPERTY-INDICATE != 0)
         --dynamic-read=readable
-        --validate-write=(writable or command)
+        --validate-write=writable
         --encrypted=encrypted
         --value=value_
     descriptors_.do: | descriptor/HostLocalDescriptor_ | descriptor.build_ session handle_
@@ -481,15 +485,16 @@ class HostLocalCharacteristic_ extends LocalCharacteristic implements HostElemen
     handling-writes_ = not for-read
     try:
       while true:
-        request/rpc.Request? := null
+        request := null
         error := catch: request = requests.take
         if error: return
         if for-read:
-          if request.kind != 1: continue
           value := block.call
           request.reply (ByteArray.from value)
+        else if request is ByteArray:
+          // A committed write command: the block sees it, nothing to answer.
+          block.call request
         else:
-          if request.kind == 1: continue
           block.call request.value
           request.accept
     finally:
@@ -514,7 +519,11 @@ class HostLocalCharacteristic_ extends LocalCharacteristic implements HostElemen
 
   serve-written_ value/ByteArray -> none:
     value_ = value
-    if requests_ and handling-writes_: return
+    requests := requests_
+    if requests and handling-writes_:
+      // Validated writes reached the handler already; commands arrive here.
+      if properties & CHARACTERISTIC-PROPERTY-WRITE == 0: requests.add value
+      return
     written_.add value
 
   create-descriptor_ uuid/BleUuid properties/int permissions/int value/io.Data? -> LocalDescriptor:
