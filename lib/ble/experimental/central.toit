@@ -385,7 +385,7 @@ class Central:
     link.encryption-key_ = null
 
   security-command_ link/Link opcode/int bytes/ByteArray --status-event/bool=false -> ByteArray:
-    return with-timeout --ms=3_000:
+    return with-timeout timeouts.COMMAND:
       // Automatic key replies must progress while another connection procedure
       // is pending, including before an accepted link's advertising termination.
       // Serialize the command and block new admission during submission; the
@@ -519,7 +519,7 @@ class Central:
       link.peer-parameter-error_ = null
       cleanup_.start
       tracked = true
-      with-timeout --ms=3_000: send link 5 #[0x13, request.identifier, 2, 0, 0, 0]
+      with-timeout timeouts.SEND: send link 5 #[0x13, request.identifier, 2, 0, 0, 0]
       link.peer-parameter-request_ = retained
       link.peer-parameter-verdict_ = 0
       task --background --name="BLE peer parameters"::
@@ -864,7 +864,7 @@ class Central:
     packets to other storage.
   */
   drain link/Link -> none:
-    with-timeout --ms=3_000:
+    with-timeout timeouts.DRAIN:
       link.send-mutex_.do:
         check-open_
         if (find-link_ link.info.handle) != link or not link.connected: throw "HCI_INVALID_LINK"
@@ -880,7 +880,7 @@ class Central:
   */
   send-checked link/Link channel/int payload/ByteArray [check] -> none:
     if not 1 <= channel <= 0xffff or payload.size > 1024: throw "INVALID_ARGUMENT"
-    with-timeout --ms=3_000:
+    with-timeout timeouts.SEND:
       link.send-mutex_.do:
         check-open_
         if (find-link_ link.info.handle) != link or not link.connected: throw "HCI_INVALID_LINK"
@@ -941,7 +941,7 @@ class Central:
   /** Waits for reader cleanup after close or failure, with a three-second bound. */
   wait-closed -> none:
     if not error_: throw "BLE_OWNER_NOT_CLOSED"
-    with-timeout --ms=3_000:
+    with-timeout timeouts.JOIN:
       reader-ended_.get
       controller_.wait-closed
       cleanup_.wait

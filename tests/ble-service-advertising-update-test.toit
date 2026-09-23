@@ -92,7 +92,8 @@ run mode/string:
       expect (result[0] is string and result[0].contains "status=12")
       expect session.is-closed
     else if mode == "lost-second":
-      expect-equals DEADLINE-EXCEEDED-ERROR result[0]
+      // The unanswered command's bound is the engine's, not the worker's.
+      expect-equals "HCI_COMMAND_ABORTED" result[0]
       expect session.is-closed
     else if mode == "cancel":
       expect-null result[0]

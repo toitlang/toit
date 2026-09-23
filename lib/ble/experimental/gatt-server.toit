@@ -9,6 +9,7 @@ import .cccd-store as cccd
 import .central as central
 import .signaling as signaling
 import .security-owner as security
+import .timeouts as timeouts
 
 /** A submitted indication whose protocol confirmation can be awaited. */
 class Indication:
@@ -287,7 +288,7 @@ class Server:
           validate.call request
         finally:
           handling_ = false)
-      with-timeout --ms=10_000:
+      with-timeout timeouts.SERVE-PDU:
         response := session_.request packet.payload read-handler validate-handler
         if response:
           host_.send link_ 4 response

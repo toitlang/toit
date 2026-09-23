@@ -14,6 +14,7 @@ import .api as api
 import .provider as rpc
 import .scanning-provider as scanning-provider
 import .shared-host as shared
+import ..timeouts as timeouts
 
 /** Provides scanning and bounded central-role GATT connections. */
 abstract class Provider extends scanning-provider.Provider implements shared.Factory:
@@ -186,7 +187,7 @@ class ConnectionSession extends rpc.Session:
             if pool_:
               if link_:
                 failure := catch:
-                  with-timeout --ms=3_000: link_.wait-disconnected
+                  with-timeout timeouts.CLEANUP: link_.wait-disconnected
                 // A latched controller failure is a completed link lifetime.
                 // Only an unfinished wait is a cleanup failure; the pool still
                 // joins the failed controller before releasing its last slot.
@@ -235,12 +236,12 @@ class ConnectionSession extends rpc.Session:
       failure := null
       try:
         if not pool_ and link_ and link_.connected:
-          failure = catch:
-            with-timeout --ms=3_000: host_.disconnect link_
+          // The owner bounds the command and the completion event itself.
+          failure = catch: host_.disconnect link_
       finally:
         if worker_ and not ended_.has-value: worker_.cancel
         critical-do --no-respect-deadline:
-          with-timeout --ms=5_000: ended_.get
+          with-timeout timeouts.WORKER: ended_.get
       if cleanup-error_: throw cleanup-error_.stringify
       if failure: throw failure.stringify
       return null
@@ -380,4 +381,4 @@ class Subscription_:
   cancel -> none:
     if worker_: worker_.cancel
   wait-ended -> none:
-    with-timeout --ms=5_000: ended_.get
+    with-timeout timeouts.WORKER: ended_.get

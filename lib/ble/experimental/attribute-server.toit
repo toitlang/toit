@@ -5,6 +5,7 @@
 import io
 import .cccd-store as cccd
 import .security-state show SecurityState
+import .timeouts as timeouts
 
 /** A bounded GATT database with a static layout. UUIDs use Bluetooth wire byte order. */
 class Database:
@@ -422,7 +423,7 @@ class Session:
     prepare-budget_ = prepare-limit_ * 18
     if cccd-store:
       saved/ByteArray? := null
-      with-timeout --ms=3_000: saved = cccd-store.load
+      with-timeout timeouts.STORE: saved = cccd-store.load
       if saved: restore-cccd_ saved
     database_.sealed_ = true
 
@@ -751,7 +752,7 @@ class Session:
     succeeded := false
     saving-cccd_ = true
     try:
-      with-timeout --ms=3_000: cccd-store_.save state
+      with-timeout timeouts.STORE: cccd-store_.save state
       check-open_
       if not (security_.paired and security_.encrypted): throw "GATT_INSUFFICIENT_SECURITY"
       service-changed-pending_ = changed

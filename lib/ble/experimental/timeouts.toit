@@ -26,6 +26,9 @@ ATT-REQUEST ::= Duration --s=3
 /** Draining accounted controller buffers before ending a link. */
 DRAIN ::= Duration --s=3
 
+/** Submitting one PDU: link serialization, controller credits and the transport. */
+SEND ::= Duration --s=3
+
 /** The whole SMP exchange and the encryption that follows (Core Vol 3 Part H 3.4). */
 SECURITY ::= Duration --s=30
 
@@ -46,3 +49,15 @@ CONNECT ::= Duration --s=10
 
 /** Accepting one incoming connection while advertising. */
 ACCEPT ::= Duration --s=30
+
+/** The termination event of one bounded advertising window (one second of advertising plus slack). */
+WINDOW ::= Duration --s=3
+
+/** One reply on the Linux Bluetooth management socket. */
+MANAGEMENT ::= Duration --s=5
+
+/** A cancelled session worker's cleanup, as awaited by its RPC caller. */
+WORKER ::= Duration --s=5
+
+/** Bringing up a shared host: controller initialization and its first configuration. */
+SETUP ::= Duration --s=60

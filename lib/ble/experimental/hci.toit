@@ -8,6 +8,7 @@ import monitor
 import .cancellation show checkpoint
 import .transport show Transport
 import .receive-credits as receive-credits
+import .timeouts as timeouts
 
 RESET ::= 0x0c03
 SET-EVENT-MASK ::= 0x0c01
@@ -108,7 +109,7 @@ class Controller:
     the controller because ownership of its next response is then uncertain.
   */
   command opcode/int parameters/ByteArray=#[]
-      --timeout/Duration=(Duration --s=3)
+      --timeout/Duration=timeouts.COMMAND
       --status-event/bool=false -> ByteArray:
     return command-if opcode parameters --timeout=timeout --status-event=status-event: true
 
@@ -120,7 +121,7 @@ class Controller:
     Otherwise behaves like $command.
   */
   command-if opcode/int parameters/ByteArray=#[]
-      --timeout/Duration=(Duration --s=3)
+      --timeout/Duration=timeouts.COMMAND
       --status-event/bool=false [allowed] -> ByteArray:
     return (submit-if opcode parameters --timeout=timeout --status-event=status-event allowed).wait
 
@@ -134,13 +135,13 @@ class Controller:
     even if it is cancelled before the response.
   */
   submit opcode/int parameters/ByteArray=#[]
-      --timeout/Duration=(Duration --s=3)
+      --timeout/Duration=timeouts.COMMAND
       --status-event/bool=false -> Pending:
     return submit-if opcode parameters --timeout=timeout --status-event=status-event: true
 
   /** Like $submit, guarded by $allowed at the submission boundary. */
   submit-if opcode/int parameters/ByteArray=#[]
-      --timeout/Duration=(Duration --s=3)
+      --timeout/Duration=timeouts.COMMAND
       --status-event/bool=false [allowed] -> Pending:
     packet := command-packet opcode parameters
     check-open_
@@ -200,7 +201,7 @@ class Controller:
   return-receipt_ receipt/receive-credits.Receipt -> none:
     error := catch:
       critical-do --no-respect-deadline:
-        with-timeout --ms=3_000:
+        with-timeout timeouts.CLEANUP:
           sent := false
           if receipt.can-submit:
             sent = transport_.send-if receipt.command:
@@ -274,7 +275,7 @@ class Controller:
   /** Waits for reader cleanup after close or failure, with a three-second bound. */
   wait-closed -> none:
     if not error_: throw "BLE_OWNER_NOT_CLOSED"
-    with-timeout --ms=3_000:
+    with-timeout timeouts.JOIN:
       reader-ended_.get
       timer-ended_.get
 
