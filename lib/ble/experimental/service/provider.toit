@@ -11,12 +11,25 @@ import .requests as bridge
 abstract class Provider extends services.ServiceProvider implements services.ServiceHandler:
   // Reserve the supported ownership slots before opening any controller.
   // Registering a successfully created session must not grow a list afterward.
-  sessions_/List ::= List 2
+  // Eight slots cover every configuration (two shared sessions, or up to
+  // eight peripheral sessions); admission never uses more than configured.
+  sessions_/List ::= List 8
   opening_/bool := false
 
   constructor:
     super "toit.io/experimental/ble" --major=0 --minor=17
     provides api.SELECTOR --handler=this
+
+  /**
+  Bounds simultaneous peripheral sessions on one shared controller.
+
+  One by default: the peripheral owns the controller exclusively. A provider
+    that returns more lets that many clients (or one client several times)
+    serve a central each on a shared host, advertising again while
+    connected; central sessions are then refused while any peripheral
+    session exists. At most eight.
+  */
+  peripheral-session-limit -> int: return 1
 
   /** Bounds simultaneous central clients; other radio modes stay exclusive. */
   central-session-limit -> int: return 1
@@ -76,6 +89,8 @@ abstract class Provider extends services.ServiceProvider implements services.Ser
       mixed := mixed-role-sessions
       if mixed and limit != 2: throw "INVALID_ARGUMENT"
       peripheral := index == api.OPEN or index == api.OPEN-BUILDER or index == api.OPEN-BOUNDED-BUILDER
+      peripherals := peripheral-session-limit
+      if not 1 <= peripherals <= 8: throw "INVALID_ARGUMENT"
       occupied := 0
       free-slot := -1
       sessions_.size.repeat: | slot/int |
@@ -87,13 +102,21 @@ abstract class Provider extends services.ServiceProvider implements services.Ser
           if free-slot < 0: free-slot = slot
           continue.repeat
         occupied++
+        if peripherals > 1 and session.is-peripheral:
+          // Shared peripheral hosting: any client may add sessions up to
+          // the bound; nothing else shares the controller meanwhile.
+          if peripheral: continue.repeat
+          throw "GATT_SERVICE_BUSY"
         if session.owner-client == client: throw "GATT_SERVICE_BUSY"
         if index == api.CONNECT and session.is-central: continue.repeat
         if mixed and ((index == api.CONNECT and session.is-peripheral) or
             (peripheral and session.is-central)):
           continue.repeat
         throw "GATT_SERVICE_BUSY"
-      if occupied >= limit or free-slot < 0: throw "GATT_SERVICE_BUSY"
+      if peripheral and peripherals > 1:
+        if occupied >= peripherals or free-slot < 0: throw "GATT_SERVICE_BUSY"
+      else if occupied >= limit or free-slot < 0:
+        throw "GATT_SERVICE_BUSY"
       opening_ = true
       try:
         session/Session := ?
