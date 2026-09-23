@@ -135,7 +135,7 @@ class ThrowingCloseTransport extends FakeTransport:
     throw "TRANSPORT_CLOSE_FAILED"
 
 initialize-replies transport/FakeTransport --shared/bool=false --acl-length/int=251 --receive-flow/bool=false
-    --extended/bool=false:
+    --extended/bool=false --data-length/bool=false:
   reply transport #[1, 3, 12, 0] #[]
   reply transport #[1, 1, 16, 0] #[10, 1, 0, 10, 93, 0, 1, 0]
   commands := ByteArray 64
@@ -143,17 +143,19 @@ initialize-replies transport/FakeTransport --shared/bool=false --acl-length/int=
   if extended:
     commands[36] = 0x3e
     commands[37] = 0x81
+  if data-length: commands[33] = 0x40
   reply transport #[1, 2, 16, 0] commands
   reply transport #[1, 3, 16, 0] #[0, 0, 0, 0, 0x40, 0, 0, 0]
   reply transport #[1, 9, 16, 0] #[1, 2, 3, 4, 5, 6]
-  reply transport #[1, 3, 32, 0] #[1, extended ? 0x10 : 0, 0, 0, 0, 0, 0, 0]
+  reply transport #[1, 3, 32, 0] #[(data-length ? 0x21 : 1), extended ? 0x10 : 0, 0, 0, 0, 0, 0, 0]
   if shared:
     reply transport #[1, 2, 32, 0] #[0, 0, 0]
     reply transport #[1, 5, 16, 0] #[0xfb, 0, 0, 8, 0, 0, 0]
   else:
     reply transport #[1, 2, 32, 0] #[acl-length & 0xff, acl-length >> 8, 8]
   reply transport #[1, 1, 12, 8, 0x90, 0x80, 4, 0, 0, 0x80, 0, 0x20] #[]
-  reply transport #[1, 1, 32, 8, 0x1f, 0, 0, 0, 0, 0, 0, 0] #[]
+  reply transport #[1, 1, 32, 8, 0x5f, 0, 0, 0, 0, 0, 0, 0] #[]
+  if data-length: reply transport #[1, 0x24, 32, 4, 0xfb, 0, 0x48, 8] #[]
 
 /** Waits until $link has ended, whatever error ended it. */
 wait-ended link/central.Link -> none:

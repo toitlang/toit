@@ -37,7 +37,7 @@ scan controller/hci.Controller info/hci.Capabilities
     statistics.stopped = false
     statistics.dropped-events = 0
   try:
-    controller.command hci.LE-SET-EVENT-MASK #[0x1f, 0x12, 0, 0, 0, 0, 0, 0]
+    controller.command hci.LE-SET-EVENT-MASK #[0x5f, 0x12, 0, 0, 0, 0, 0, 0]
     controller.command 0x2041 #[0, 0, 1, 0, 0x10, 0, 0x10, 0]
     controller.command 0x2042 #[1, 1, 0, 0, 0, 0]
     enabled = true

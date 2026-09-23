@@ -45,6 +45,7 @@ class Link:
   connected_/bool := true
   encryption_/encryption.Change? := null
   encryption-required_/bool := false
+  data-length_/connection.DataLength? := null
   closing_/bool := false
   error_ := null
   reason_/int? := null
@@ -152,6 +153,14 @@ class Link:
 
   /** Returns the error that stopped this link, or null while it is usable. */
   error -> any: return error_
+
+  /**
+  Returns the link-layer payload lengths in effect, or null before any update.
+
+  Controllers that support Data Length Extension negotiate these right after
+    the connection; without it the link stays at 27 octets and this is null.
+  */
+  data-length -> connection.DataLength?: return data-length_
 
   /** Waits for a complete L2CAP PDU, or throws when the link ends. */
   receive --owner=null -> acl.Packet:
@@ -1070,6 +1079,12 @@ class Central:
       // a completion for an unknown lifetime carries no information.
       link := find-link_ features.handle
       if link: link.features-known_ (features.status == 0 ? features.bytes : null)
+      return
+    data-length := connection.decode-data-length packet
+    if data-length:
+      // A change for an ended lifetime carries no information.
+      link := find-link_ data-length.handle
+      if link: link.data-length_ = data-length
       return
     key-request := encryption.decode-key-request packet
     if key-request:

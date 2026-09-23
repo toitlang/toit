@@ -24,7 +24,7 @@ main:
   rpc-start := Time.monotonic-us
   calls.repeat: client.capabilities
   print "BENCH app rpc-round-trip-us=$((Time.monotonic-us - rpc-start) / calls)"
-  payload := ByteArray 20: it
+  payload := ByteArray uuids.PAYLOAD: it
   CYCLES.repeat: | cycle/int |
     session := client.configure --mtu-limit=517 --value-limit=512
     session.add-service uuids.SERVICE
