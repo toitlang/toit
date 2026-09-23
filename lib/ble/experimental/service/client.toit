@@ -64,7 +64,7 @@ class Client extends services.ServiceClient:
   */
   start-advertising data/ByteArray --scan-response/ByteArray=#[]
       --interval/int=160 --scannable/bool=false -> Advertising:
-    session := Advertising this (invoke_ api.OPEN-ADVERTISING [(copy-bounded_ data 31), (copy-bounded_ scan-response 31), interval, scannable])
+    session := Advertising this (open_ api.OPEN-ADVERTISING [(copy-bounded_ data 31), (copy-bounded_ scan-response 31), interval, scannable])
     ready := false
     try:
       session.ready_
@@ -85,7 +85,7 @@ class Client extends services.ServiceClient:
   */
   connect address/ByteArray --address-type/int=0 --timeout/Duration=(Duration --s=30) --mtu-limit/int=23
       --require-encryption/bool=false --require-authentication/bool=false -> Connection:
-    result := Connection this (invoke_ api.CONNECT [(copy-bounded_ address 6), address-type, timeout.in-us, mtu-limit])
+    result := Connection this (open_ api.CONNECT [(copy-bounded_ address 6), address-type, timeout.in-us, mtu-limit])
     succeeded := false
     try:
       result.info
@@ -140,7 +140,7 @@ class Client extends services.ServiceClient:
   scan --duration/Duration=(Duration --s=10) --continuous/bool=false --active/bool=false
       --interval/int=16 --window/int=16 --filter-duplicates/bool=true
       --service-uuid/ByteArray?=null --limited-only/bool=false [report] -> List:
-    scan := Scan_ this (invoke_ api.OPEN-SCAN [continuous ? null : duration.in-us, active, interval, window, filter-duplicates, service-uuid and (copy-bounded_ service-uuid 16), limited-only])
+    scan := Scan_ this (open_ api.OPEN-SCAN [continuous ? null : duration.in-us, active, interval, window, filter-duplicates, service-uuid and (copy-bounded_ service-uuid 16), limited-only])
     try:
       while true:
         value := scan.next
@@ -151,7 +151,7 @@ class Client extends services.ServiceClient:
 
   /** Opens the provider's configured peripheral session. */
   session -> Session:
-    return Session this (invoke_ api.OPEN null)
+    return Session this (open_ api.OPEN null)
 
   /**
   Opens a bounded database builder without acquiring the controller yet.
@@ -166,8 +166,8 @@ class Client extends services.ServiceClient:
       --handler-timeout/Duration=(Duration --s=1) -> Session:
     if not 1 <= handler-timeout.in-us <= 10_000_000: throw "INVALID_ARGUMENT"
     result := value-limit == 20 and mtu-limit == 23
-        ? (Session this (invoke_ api.OPEN-BUILDER name))
-        : (Session this (invoke_ api.OPEN-BOUNDED-BUILDER [name, value-limit, mtu-limit]))
+        ? (Session this (open_ api.OPEN-BUILDER name))
+        : (Session this (open_ api.OPEN-BOUNDED-BUILDER [name, value-limit, mtu-limit]))
     succeeded := false
     try:
       if handler-timeout.in-us != 1_000_000: result.set-handler-timeout handler-timeout
@@ -177,6 +177,20 @@ class Client extends services.ServiceClient:
       if not succeeded: result.close
 
   call_ index/int arguments/List -> any: return invoke_ index arguments
+
+  /**
+  Opens a provider resource atomically and returns its handle.
+
+  The provider admits and creates a resource without waiting, but an open
+    whose reply is lost to the caller's cancellation would leak that resource
+    until this client closes. The open therefore runs to completion; a
+    cancelled caller observes its cancellation at the next wait and releases
+    the proxy in its cleanup (docs/ble/design.md, rules 1 and 5).
+  */
+  open_ index/int arguments/any -> int:
+    handle/int? := null
+    critical-do --no-respect-deadline: handle = invoke_ index arguments
+    return handle
 
   next_ handle/int -> List: return invoke_ api.NEXT [handle]
 

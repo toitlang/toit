@@ -22,6 +22,16 @@ main:
       controller := hci.Controller radio
       host := central.Central controller
       initializer := task:: fixture.reply radio #[1, 3, 12, 0] #[]
+      // The controller answers creation and cancellation; only the connection
+      // itself never completes, so the caller's deadline expires at the wait.
+      attempt := task::
+        // A trial that fails before sending closes the radio under us.
+        catch:
+          fixture.status-reply radio fixture.create-command
+          fixture.reply radio (hci.command-packet 0x200e #[]) #[]
+          event := fixture.connection-event.copy
+          event[4] = 2
+          radio.received.add event
       try:
         controller.command hci.RESET
         filled := 0
@@ -34,6 +44,7 @@ main:
         (trial * 4).repeat: slots[filled - 1 - it] = null
         error := catch: host.connect address --address-type=1 --timeout=timeout
         slots.fill null
+        attempt.cancel
         system.process-stats --gc
         if error == "OUT_OF_MEMORY" or error == "ALLOCATION_FAILED": failures++
         else if error == DEADLINE-EXCEEDED-ERROR: expired++
@@ -54,6 +65,7 @@ main:
       finally:
         slots.fill null
         initializer.cancel
+        attempt.cancel
         host.close
         host.wait-closed
       print "CONNECT_PRESSURE ROUND trial=$trial"

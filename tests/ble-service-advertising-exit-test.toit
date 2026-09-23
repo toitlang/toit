@@ -152,6 +152,11 @@ run stage/string --close-failure/bool=false:
           expect-equals (#[1, 9, 32, 32] + (ByteArray 32)) provider.radio.sent.take
         // Kill the client with an accepted command still awaiting its reply.
         provider.enable-seen.set true
+        // The engine keeps the command; once the dead client's session is
+        // closed, the late reply is consumed and the cleanup disable follows.
+        while not provider.last.is-closed: sleep --ms=1
+        provider.radio.received.add #[4, 14, 4, 1, stage == "update-data" ? 8 : 9, 32, 0]
+        peripheral.reply provider.radio 0x200a #[0]
     if not close-failure:
       setup provider.next-radio
       peripheral.reply provider.next-radio 0x200a #[1]

@@ -12,6 +12,7 @@ import ble.experimental.att
 import ble.experimental.gatt
 import ble.experimental.signaling
 import ble.experimental.transport show Transport
+import ble.experimental.cancellation show checkpoint
 
 import .ble-fixture show *
 import expect show *
@@ -1083,7 +1084,9 @@ test-timeout:
   transport := FakeTransport
   controller := hci.Controller transport
   try:
-    expect-throw DEADLINE-EXCEEDED-ERROR:
+    // The bound belongs to the engine: expiry fails the controller and the
+    // caller sees that failure, not its own deadline.
+    expect-throw "HCI_COMMAND_ABORTED":
       controller.command hci.RESET --timeout=(Duration --ms=10)
     expect transport.closed
     expect-throw "HCI_COMMAND_ABORTED": controller.command hci.RESET
@@ -1180,7 +1183,9 @@ test-automatic-close-failure --receive-error/bool=false:
     radio.started.get
     expect-equals #[1, 3, 12, 0] radio.sent.take
     if receive-error: radio.received.fail "TEST_RECEIVE_FAILED"
-    expect-equals (receive-error ? "TEST_RECEIVE_FAILED" : DEADLINE-EXCEEDED-ERROR) result.get
+    // A missing response is the engine's failure, reported to the caller as
+    // the controller's abort rather than as the caller's own deadline.
+    expect-equals (receive-error ? "TEST_RECEIVE_FAILED" : "HCI_COMMAND_ABORTED") result.get
     with-timeout --ms=200:
       controller.wait-closed
       radio.ended.get
@@ -1194,6 +1199,9 @@ test-automatic-close-failure --receive-error/bool=false:
     controller.wait-closed
 
 test-canceled-close-failure:
+  // A caller cancelled while its command is pending leaves at once; the
+  // engine still owns the command: its late response is consumed and the
+  // controller stays usable (docs/ble/design.md, rules 1 and 3).
   radio := ThrowingCloseTransport
   controller := hci.Controller radio
   caught := false
@@ -1208,12 +1216,42 @@ test-canceled-close-failure:
     radio.started.get
     expect-equals #[1, 3, 12, 0] radio.sent.take
     caller.cancel
-    with-timeout --ms=200:
-      ended.get
-      controller.wait-closed
-      radio.ended.get
-    // Cancellation must unwind, not become a catchable close exception.
+    with-timeout --ms=200: ended.get
+    // Cancellation must unwind, not become a catchable exception.
     expect (not caught)
+    expect-equals 0 radio.closes
+    // The next command waits for the abandoned response, then proceeds.
+    responder := task::
+      radio.received.add #[4, 14, 4, 1, 3, 12, 0]
+      reply radio #[1, 1, 16, 0] #[10, 1, 0, 10, 93, 0, 1, 0]
+    expect-equals #[10, 1, 0, 10, 93, 0, 1, 0] (controller.command hci.READ-VERSION)
+    responder.cancel
+  finally:
+    caller.cancel
+    radio.received.fail "TEST_ENDED"
+    // The healthy controller now reports the transport's close failure.
+    expect-throw "TRANSPORT_CLOSE_FAILED": controller.close
+    controller.wait-closed
+    expect-equals 1 radio.closes
+  // Without a response the command's own bound fails the controller even
+  // though its caller left long before.
+  radio = ThrowingCloseTransport
+  controller = hci.Controller radio
+  ended = monitor.Latch
+  caller = task::
+    try:
+      catch: controller.command hci.RESET --timeout=(Duration --ms=100)
+    finally:
+      critical-do --no-respect-deadline: ended.set true
+  try:
+    radio.started.get
+    expect-equals #[1, 3, 12, 0] radio.sent.take
+    caller.cancel
+    with-timeout --ms=500:
+      ended.get
+      // The reader ends when the engine's bound fails the controller.
+      radio.ended.get
+      controller.wait-closed
     expect-equals 1 radio.closes
     expect-throw "HCI_COMMAND_ABORTED": controller.command hci.RESET
   finally:

@@ -65,16 +65,19 @@ task (it unwinds), and any monitor operation in a cancelled task throws again
 immediately unless it runs inside `critical-do`. The host therefore follows
 five rules; a violation is a bug even when a test passes.
 
-1. **Commands are atomic.** `Controller.command` submits the packet and consumes its Command Status or Command Complete under `critical-do --no-respect-deadline`, bounded by its own timeout. A cancelled or expired caller observes that at the command's exit, never in the middle; callers do not wrap commands in `critical-do` themselves.
+1. **The engine owns commands.** `Controller.submit` reserves the command slot, sends the packet atomically and returns a `Pending`; `Controller.command` is a submit followed by a plain wait (rule 3). A caller that stops waiting detaches, the engine still attributes and consumes the response, and a dedicated deadline task fails the controller when a response outlives the command's bound. A procedure whose cleanup depends on an abandoned command's outcome (connection creation, advertising setup and enable, advertising-set creation) keeps the `Pending` and settles it in cleanup instead of guessing. The service client applies the same rule to resource opens: an open RPC runs to completion so a cancelled caller can release the handle it got. Callers never wrap commands in `critical-do` themselves.
 2. **Cancellation points are explicit.** Where a procedure wants to observe a deferred cancellation between two atomic steps it calls `checkpoint` (`cancellation.toit`), which throws `CANCELED` or `DEADLINE_EXCEEDED` when due and otherwise returns. `sleep --ms=0` is not used for this.
 3. **Waits are owned.** A caller waits on a latch that the owner's reader task completes, fails, or expires. The wait itself is plain (`latch.get`), so cancellation and the caller's deadline interrupt it; the pending object stays registered with the owner, which settles or aborts it when the event or its deadline arrives. No result is ever attributed to a caller that stopped waiting.
-4. **Deadlines live in one queue.** Each owner (controller, link owner, ATT client, GATT server) keeps a `DeadlineQueue` of its pending operations. The owner's reader task bounds its receive by the earliest deadline and expires due entries itself, so timeouts fire even when the waiting task has been cancelled. Bounds come from one `Timeouts` policy object, not literals at call sites.
+4. **Deadlines belong to owners.** Each owner (controller, link owner, ATT client, GATT server) expires its own pending operations, so a bound holds even when the waiting task has been cancelled: the controller's deadline task bounds the one pending command, and a link owner bounds the event that follows a command (a disconnection, a completion after a cancelled creation) with `timeouts.CLEANUP`, separately from the command itself, so cleanup bounds never race the engine's. Owners with several concurrent operations keep them in a `DeadlineQueue`. Bounds come from `timeouts.toit`, not literals at call sites.
 5. **Cleanup is critical and bounded.** `finally` blocks that release protocol state run under `critical-do --no-respect-deadline`, contain only non-waiting operations or bounded waits with their own `with-timeout`, and never depend on a monitor operation succeeding in a cancelled task outside that scope.
+6. **`catch` does not classify under cancellation.** In a cancelled task `catch` rethrows CANCELED after its block, so code after `error := catch:` never runs then. A failure classification that must not be skipped (recording that a command was rejected, choosing between cleanup paths) goes into a `finally` block with `| is-exception exception |`, or into the same critical section as the command it classifies.
 
-The current implementation still contains the older idiom (`critical-do` around
-individual commands plus `sleep --ms=0` as the cancellation point); the rules
-above are the target that new code follows and that the link owner is being
-moved to.
+Status: the controller engine, the connect and legacy accept procedures, the
+bounded advertising-set creation and the service client's opens follow these
+rules. The bounded accept's enable command, the security and parameter-update
+paths, and the ATT client still use the older idiom (`critical-do` around a
+command with classification in the same section) and literal bounds; they are
+being moved rule by rule, and `DeadlineQueue` is not integrated yet.
 
 ## Memory ownership
 
