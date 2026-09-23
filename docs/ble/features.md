@@ -18,6 +18,7 @@ its fixed limits, and the gaps that must close before it can replace NimBLE.
 | SMP | Secure Connections Just Works and Numeric Comparison in both roles, f4/f5/f6/g2 with AES-CMAC, P-256 through mbedTLS with invalid-point and debug-key rejection, constant-time confirm comparison, identity (IRK) distribution, retry admission policy. |
 | Encryption | LE Start Encryption on central links, LTK request replies on peripheral links, encryption change tracking, links that require encryption for their lifetime. |
 | Privacy | Host-side RPA generation and resolution, host-selected random addresses for scanning, advertising and connecting. |
+| `ble` package | The existing public API (`Adapter`, `Central`, `Peripheral`, remote and local services, characteristics and descriptors) runs unchanged on this host: `Adapter` falls back to the BLE service provider when the firmware has no native host (`lib/ble/host.toit`). Scan, connect by identifier, discovery, read, write, subscribe and notifications on the central side; services, characteristics with callback reads and writes, descriptors, advertising and notifications on the peripheral side. |
 | Bonds | Encrypted (AES-GCM) bond records bound to namespace and slot, an in-memory table with snapshots, resumption owners, revocation markers, an administration service, protected per-bond CCCD storage, offline database migration. |
 | Service layer | Five provider variants plus policy subclasses, bounded request mailbox for server handlers, client-side scoped blocks, capability discovery, provider PID pinning. |
 
@@ -47,7 +48,7 @@ These are needed for parity with `lib/ble` as applications use it today:
 - Unbounded peripheral advertising and more than one peripheral connection.
 - More than two concurrent connections in the service layer; the controller supports up to `CONFIG_BTDM_CTRL_BLE_MAX_CONN`.
 - Larger databases, included services, Read By Type by UUID and Read Multiple on the client side, Database Hash and Client Supported Features.
-- The existing `ble` package API on top of this host, so current applications and Jaguar run unchanged.
+- In the `ble` package on this host: several simultaneous peripheral connections (one central at a time; advertising resumes after each disconnect), `bonded-peers`, and the `--bonding`/`--secure-connections` flags (pairing policy is the provider's).
 
 ## Verification state
 

@@ -8,22 +8,26 @@ import system
 import .ble
 import .remote show RemoteCharacteristic  // For Toitdoc.
 
-
 /**
 The manager for advertising and managing local services.
+
+The public classes of the peripheral side are backend-independent: the
+  native (NimBLE) implementation and the Toit host implementation
+  (see `ble.host`) each provide subclasses. Applications only see these
+  classes.
 */
-class Peripheral extends Resource_:
+abstract class Peripheral extends Resource_:
   static DEFAULT-INTERVAL ::= Duration --us=46875
+
   adapter/Adapter
-
   services_/List := []
-
   deployed_/bool := false
 
-  constructor .adapter bonding/bool secure-connections/bool:
-    resource := ble-create-peripheral-manager_ adapter.resource_ bonding secure-connections
+  constructor.native_ .adapter resource:
     super resource
-    resource-state_.wait-for-state STARTED-EVENT_
+
+  constructor.host_ .adapter:
+    super.host_
 
   /**
   Closes the peripheral manager and all its services.
@@ -56,17 +60,77 @@ class Peripheral extends Resource_:
 
   Throws if the adapter does not allow configuration of $interval or $connection-mode.
   */
+  abstract start-advertise
+      data/Advertisement
+      --scan-response/Advertisement?=null
+      --interval/Duration=DEFAULT-INTERVAL
+      --connection-mode/int=BLE-CONNECT-MODE-NONE
+
+  /**
+  Variant of $(start-advertise data).
+
+  Sets the connection-mode to $BLE-CONNECT-MODE-UNDIRECTIONAL.
+  */
   start-advertise
       data/Advertisement
       --scan-response/Advertisement?=null
       --interval/Duration=DEFAULT-INTERVAL
+      --allow-connections/True:
+    start-advertise data --scan-response=scan-response --interval=interval --connection-mode=BLE-CONNECT-MODE-UNDIRECTIONAL
+
+  /**
+  Stops advertising.
+  */
+  abstract stop-advertise
+
+  /**
+  Adds a new service to the peripheral identified by $uuid.
+
+  The returned service should be configured with the appropriate characteristics and then
+    be deployed.
+  */
+  add-service uuid/BleUuid -> LocalService:
+    if deployed_: throw "Peripheral is already deployed"
+    service := create-service_ uuid
+    services_.add service
+    return service
+
+  abstract create-service_ uuid/BleUuid -> LocalService
+
+  /**
+  Whether the peripheral's services have been deployed.
+  */
+  deployed -> bool:
+    return deployed_
+
+  /**
+  Deploys all services of the peripheral.
+
+  After deployment, no more services or characteristics can be added.
+  */
+  deploy -> none:
+    if deployed_: throw "Already deployed"
+    deploy_
+    deployed_ = true
+
+  abstract deploy_ -> none
+
+class NativePeripheral_ extends Peripheral:
+  constructor adapter/Adapter resource bonding/bool secure-connections/bool:
+    super.native_ adapter (ble-create-peripheral-manager_ resource bonding secure-connections)
+    resource-state_.wait-for-state STARTED-EVENT_
+
+  start-advertise
+      data/Advertisement
+      --scan-response/Advertisement?=null
+      --interval/Duration=Peripheral.DEFAULT-INTERVAL
       --connection-mode/int=BLE-CONNECT-MODE-NONE:
     if system.platform == system.PLATFORM-MACOS:
       if scan-response: throw "UNSUPPORTED"
       data.data-blocks.do: | block/DataBlock |
         if not block.is-name and not block.is-services and not block.is-flags:
           throw "UNSUPPORTED"
-      if interval != DEFAULT-INTERVAL or connection-mode != BLE-CONNECT-MODE-NONE: throw "INVALID_ARGUMENT"
+      if interval != Peripheral.DEFAULT-INTERVAL or connection-mode != BLE-CONNECT-MODE-NONE: throw "INVALID_ARGUMENT"
 
       services := data.services
       raw-service-classes := Array_ services.size null
@@ -94,63 +158,26 @@ class Peripheral extends Resource_:
           response-raw
           interval.in-us
           connection-mode
-
     state := resource-state_.wait-for-state ADVERTISE-START-SUCEEDED-EVENT_ | ADVERTISE-START-FAILED-EVENT_
     if state & ADVERTISE-START-FAILED-EVENT_ != 0: throw "Failed to start advertising"
 
-  /**
-  Variant of $(start-advertise data).
-
-  Sets the connection-mode to $BLE-CONNECT-MODE-UNDIRECTIONAL.
-  */
-  start-advertise
-      data/Advertisement
-      --scan-response/Advertisement?=null
-      --interval/Duration=DEFAULT-INTERVAL
-      --allow-connections/True:
-    start-advertise data --scan-response=scan-response --interval=interval --connection-mode=BLE-CONNECT-MODE-UNDIRECTIONAL
-
-  /**
-  Stops advertising.
-  */
   stop-advertise:
     ble-advertise-stop_ resource_
 
-  /**
-  Adds a new service to the peripheral identified by $uuid.
+  create-service_ uuid/BleUuid -> LocalService:
+    return NativeLocalService_ this uuid
 
-  The returned service should be configured with the appropriate characteristics and then
-    be deployed.
-  */
-  add-service uuid/BleUuid -> LocalService:
-    service := LocalService this uuid
-    services_.add service
-    return service
-
-  /**
-  Whether the peripheral's services have been deployed.
-  */
-  deployed -> bool:
-    return deployed_
-
-  /**
-  Deploys all services of the peripheral.
-
-  After deployment, no more services or characteristics can be added.
-  */
-  deploy -> none:
-    if deployed_: throw "Already deployed"
+  deploy_ -> none:
     ble-reserve-services_ resource_ services_.size
     services_.size.repeat: | i/int |
-      service/LocalService := services_[i]
+      service/NativeLocalService_ := services_[i]
       service.deploy_ i
     ble-start-gatt-server_ resource_
-    deployed_ = true
 
 /**
 Defines a BLE service with characteristics.
 */
-class LocalService extends Resource_ implements Attribute:
+abstract class LocalService extends Resource_ implements Attribute:
   static DEFAULT-READ-TIMEOUT-MS ::= 2500
   static DEFAULT-WRITE-TIMEOUT-MS ::= 2500
 
@@ -160,15 +187,14 @@ class LocalService extends Resource_ implements Attribute:
   uuid/BleUuid
 
   peripheral-manager/Peripheral
-
   deployed_/bool := false
-
   characteristics_/List := []
 
-  constructor .peripheral-manager .uuid:
-    if peripheral-manager.deployed_: throw "Peripheral is already deployed"
-    resource := ble-add-service_ peripheral-manager.resource_ uuid.encode-for-platform_
+  constructor.native_ .peripheral-manager .uuid resource:
     super resource
+
+  constructor.host_ .peripheral-manager .uuid:
+    super.host_
 
   /**
   Closes this service and all its characteristics.
@@ -186,45 +212,26 @@ class LocalService extends Resource_ implements Attribute:
   remove-characteristic_ characteristic/LocalCharacteristic -> none:
     characteristics_.remove characteristic
 
-
   /**
   Deprecated. Pass the timeout to the $LocalCharacteristic.handle-read-request function instead.
   */
-  // TODO(florian): when removing this function, also remove the argument to the constructor.
   add-characteristic -> LocalCharacteristic
       uuid/BleUuid
       --properties/int
       --permissions/int
       --value/io.Data?=null
       --read-timeout-ms/int:
-    if peripheral-manager.deployed_: throw "Service is already deployed"
-    read-permission-bits := CHARACTERISTIC-PERMISSION-READ
-        | CHARACTERISTIC-PERMISSION-READ-ENCRYPTED
-    read-properties-bits := CHARACTERISTIC-PROPERTY-READ
-        | CHARACTERISTIC-PROPERTY-NOTIFY
-        | CHARACTERISTIC-PROPERTY-INDICATE
-    write-permission-bits := CHARACTERISTIC-PERMISSION-WRITE
-        | CHARACTERISTIC-PERMISSION-WRITE-ENCRYPTED
-    write-properties-bits := CHARACTERISTIC-PROPERTY-WRITE
-        | CHARACTERISTIC-PROPERTY-WRITE-WITHOUT-RESPONSE
-
-    if permissions & read-permission-bits != 0 and
-        properties & read-properties-bits == 0:
-      throw "Read permission requires read property (READ, NOTIFY or INDICATE)"
-    if permissions & write-permission-bits != 0 and
-        properties & write-properties-bits == 0:
-      throw "Write permission requires write property (WRITE or WRITE_WITHOUT_RESPONSE)"
-
-    characteristic := LocalCharacteristic this uuid properties permissions value read-timeout-ms
-    characteristics_.add characteristic
-    return characteristic
+    return add-characteristic_ uuid --properties=properties --permissions=permissions --value=value
+        --read-timeout-ms=read-timeout-ms
 
   /**
   Adds a characteristic to this service with the given parameters.
 
   The $uuid is the uuid of the characteristic
+
   The $properties is one of the CHARACTERISTIC-PROPERTY-* values (see
     $CHARACTERISTIC-PROPERTY-BROADCAST and similar).
+
   $permissions is one of the CHARACTERISTIC-PERMISSIONS-* values (see
     $CHARACTERISTIC-PERMISSION-READ and similar).
 
@@ -244,6 +251,15 @@ class LocalService extends Resource_ implements Attribute:
       --properties/int
       --permissions/int
       --value/io.Data?=null:
+    return add-characteristic_ uuid --properties=properties --permissions=permissions --value=value
+        --read-timeout-ms=DEFAULT-READ-TIMEOUT-MS
+
+  add-characteristic_ -> LocalCharacteristic
+      uuid/BleUuid
+      --properties/int
+      --permissions/int
+      --value/io.Data?
+      --read-timeout-ms/int:
     if peripheral-manager.deployed_: throw "Service is already deployed"
     read-permission-bits := CHARACTERISTIC-PERMISSION-READ
         | CHARACTERISTIC-PERMISSION-READ-ENCRYPTED
@@ -254,17 +270,17 @@ class LocalService extends Resource_ implements Attribute:
         | CHARACTERISTIC-PERMISSION-WRITE-ENCRYPTED
     write-properties-bits := CHARACTERISTIC-PROPERTY-WRITE
         | CHARACTERISTIC-PROPERTY-WRITE-WITHOUT-RESPONSE
-
     if permissions & read-permission-bits != 0 and
         properties & read-properties-bits == 0:
       throw "Read permission requires read property (READ, NOTIFY or INDICATE)"
     if permissions & write-permission-bits != 0 and
         properties & write-properties-bits == 0:
       throw "Write permission requires write property (WRITE or WRITE_WITHOUT_RESPONSE)"
-
-    characteristic := LocalCharacteristic this uuid properties permissions value DEFAULT-READ-TIMEOUT-MS
+    characteristic := create-characteristic_ uuid properties permissions value read-timeout-ms
     characteristics_.add characteristic
     return characteristic
+
+  abstract create-characteristic_ uuid/BleUuid properties/int permissions/int value/io.Data? read-timeout-ms/int -> LocalCharacteristic
 
   /**
   Convenience method to add a read-only characteristic with the given $uuid and $value.
@@ -273,6 +289,7 @@ class LocalService extends Resource_ implements Attribute:
     or an empty ByteArray, then the characteristic supports callback reads and the client needs
     to call $LocalCharacteristic.handle-read-request to provide the value upon request.
   NOTE: Read callbacks are not supported in MacOS.
+
   When using read callbacks, the $read-timeout-ms specifies the time the callback function is allowed
     to use.
 
@@ -354,7 +371,6 @@ class LocalService extends Resource_ implements Attribute:
   Deploys this service.
 
   After deployment, no more characteristics can be added.
-
   See $add-characteristic.
 
   Deprecated. Use $Peripheral.deploy instead.
@@ -362,8 +378,17 @@ class LocalService extends Resource_ implements Attribute:
   deploy -> none:
     peripheral-manager.deploy
 
+class NativeLocalService_ extends LocalService:
+  constructor peripheral-manager/NativePeripheral_ uuid/BleUuid:
+    super.native_ peripheral-manager uuid
+        (ble-add-service_ peripheral-manager.resource_ uuid.encode-for-platform_)
+
+  create-characteristic_ uuid/BleUuid properties/int permissions/int value/io.Data? read-timeout-ms/int -> LocalCharacteristic:
+    return NativeLocalCharacteristic_ this uuid properties permissions value read-timeout-ms
+
   /**
   Deploys the service.
+
   Depending on the platform, the peripheral manager may still need to start the gatt server.
   */
   deploy_ index/int -> none:
@@ -371,20 +396,20 @@ class LocalService extends Resource_ implements Attribute:
     state := resource-state_.wait-for-state (SERVICE-ADD-SUCCEEDED-EVENT_ | SERVICE-ADD-FAILED-EVENT_)
     if state & SERVICE-ADD-FAILED-EVENT_ != 0: throw "Failed to add service"
 
-class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
+abstract class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   uuid/BleUuid
 
   permissions/int
   properties/int
   service/LocalService
-
   descriptors_/List := []
   read-timeout-ms_/int
 
-  constructor .service .uuid .properties .permissions value/io.Data? .read-timeout-ms_:
-    if service.peripheral-manager.deployed: throw "Peripheral is already deployed"
-    resource := ble-add-characteristic_ service.resource_ uuid.encode-for-platform_ properties permissions value
-    super resource
+  constructor.native_ .service .uuid .properties .permissions .read-timeout-ms_ resource:
+    super.native_ resource
+
+  constructor.host_ .service .uuid .properties .permissions .read-timeout-ms_:
+    super.host_
 
   /**
   Close this characteristic and all its descriptors.
@@ -413,8 +438,7 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   In most cases $write is sufficient and easier to use. The main reason to use this function
     is to set a value without sending out any notification.
   */
-  set-value value/io.Data?:
-    ble-set-value_ resource_ value
+  abstract set-value value/io.Data?
 
   /**
   Sets the value of this characteristic and sends a notification or indication if supported.
@@ -430,14 +454,9 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   */
   write value/io.Data --set-value/bool=true:
     if permissions & CHARACTERISTIC-PERMISSION-READ == 0: throw "Invalid permission"
+    write_ value --set-value=set-value
 
-    if (properties & (CHARACTERISTIC-PROPERTY-NOTIFY | CHARACTERISTIC-PROPERTY-INDICATE)) != 0:
-      clients := ble-get-subscribed-clients resource_
-      clients.do:
-        ble-notify-characteristics-value_ resource_ it value
-
-    if set-value:
-      ble-set-value_ resource_ value
+  abstract write_ value/io.Data --set-value/bool
 
   /**
   Reads a value that is written to this characteristic.
@@ -489,50 +508,18 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   handle-write-request --timeout-ms/int=LocalService.DEFAULT-WRITE-TIMEOUT-MS [block]:
     handle-request_ --for-read=false --timeout-ms=timeout-ms block
 
-  handle-request_ --for-read/bool --timeout-ms/int [block]:
-    // In case of a write-handler, we also accept data-received-events, just in case
-    // data was received before the handler was set.
-    event := for-read ? DATA-READ-REQUEST-EVENT_ : (DATA-WRITE-REQUEST-EVENT_ | DATA-RECEIVED-EVENT_)
-    if not resource_: throw "ALREADY_CLOSED"
-    ble-callback-init_ resource_ timeout-ms for-read
-    try:
-      while true:
-        state := resource-state_.wait-for-state event
-        if not resource_: return
-        value := null
-        try:
-          if for-read:
-            // Call the block to get the value we should send to the client.
-            value = block.call
-          else:
-            value = null
-            // Get the received value, and call the block with it.
-            received-value := ble-get-value_ resource_
-            // Typically, we only get a 'null' here if it was a data-received-event.
-            // TODO(florian): why is this possible?
-            if received-value:
-              block.call received-value
-        finally:
-          // Always reply.
-          // If no value was set we store null.
-          // TODO(florian): would be nice to mark the callback as canceled if the block throws.
-          critical-do:
-            resource-state_.clear-state event
-            if state & (DATA_READ-REQUEST-EVENT_ | DATA-WRITE-REQUEST-EVENT_) != 0:
-              ble-callback-reply_ resource_ value for-read
-    finally:
-      // If the resource is already gone, then the corresponding callback data-structure
-      // is already deallocated as well.
-      if resource_: ble-callback-deinit_ resource_ for-read
+  abstract handle-request_ --for-read/bool --timeout-ms/int [block]
 
   /**
   Adds a descriptor to this characteristic.
+
   $uuid is the uuid of the descriptor
   $properties is one of the CHARACTERISTIC-PROPERTY-* values (see
     $CHARACTERISTIC-PROPERTY-BROADCAST and similar).
   $permissions is one of the CHARACTERISTIC-PERMISSIONS-* values (see
     $CHARACTERISTIC-PERMISSION-READ and similar).
   if $value is specified, it is used as the initial value for the characteristic.
+
   The peripheral must not yet be deployed.
 
   Deprecated. Use $(add-descriptor uuid --properties --permissions --value) instead.
@@ -542,22 +529,30 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
 
   /**
   Adds a descriptor to this characteristic.
+
   $uuid is the uuid of the descriptor
   $properties is one of the CHARACTERISTIC-PROPERTY-* values (see
     $CHARACTERISTIC-PROPERTY-BROADCAST and similar).
   $permissions is one of the CHARACTERISTIC-PERMISSIONS-* values (see
     $CHARACTERISTIC-PERMISSION-READ and similar).
   If $value is specified, it is used as the initial value for the characteristic.
+
   The peripheral must not yet be deployed.
   */
   add-descriptor uuid/BleUuid --properties/int --permissions/int --value/io.Data?=null -> LocalDescriptor:
-    descriptor := LocalDescriptor this uuid properties permissions value
+    if service.peripheral-manager.deployed: throw "Peripheral is already deployed"
+    if (descriptors_.any: it.uuid == uuid): throw "Descriptor already exists"
+    descriptor := create-descriptor_ uuid properties permissions value
     descriptors_.add descriptor
     return descriptor
 
+  abstract create-descriptor_ uuid/BleUuid properties/int permissions/int value/io.Data? -> LocalDescriptor
+
   /**
   Adds a read-only descriptor to this characteristic with the given $uuid.
+
   If $secure is specified, the descriptor requires encryption.
+
   The peripheral must not yet be deployed.
   */
   add-descriptor uuid/BleUuid --value/io.Data --secure/bool=false -> LocalDescriptor:
@@ -572,22 +567,68 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   Typically, users do not need to access the handle directly. It may be useful
     for debugging purposes, but it is not required for normal operation.
   */
+  abstract handle -> int
+
+class NativeLocalCharacteristic_ extends LocalCharacteristic:
+  constructor service/NativeLocalService_ uuid/BleUuid properties/int permissions/int value/io.Data? read-timeout-ms/int:
+    super.native_ service uuid properties permissions read-timeout-ms
+        (ble-add-characteristic_ service.resource_ uuid.encode-for-platform_ properties permissions value)
+
+  set-value value/io.Data?:
+    ble-set-value_ resource_ value
+
+  write_ value/io.Data --set-value/bool:
+    if (properties & (CHARACTERISTIC-PROPERTY-NOTIFY | CHARACTERISTIC-PROPERTY-INDICATE)) != 0:
+      clients := ble-get-subscribed-clients resource_
+      clients.do:
+        ble-notify-characteristics-value_ resource_ it value
+    if set-value:
+      ble-set-value_ resource_ value
+
+  handle-request_ --for-read/bool --timeout-ms/int [block]:
+    event := for-read ? DATA-READ-REQUEST-EVENT_ : (DATA-WRITE-REQUEST-EVENT_ | DATA-RECEIVED-EVENT_)
+    if not resource_: throw "ALREADY_CLOSED"
+    ble-callback-init_ resource_ timeout-ms for-read
+    try:
+      while true:
+        state := resource-state_.wait-for-state event
+        if not resource_: return
+        value := null
+        try:
+          if for-read:
+            value = block.call
+          else:
+            value = null
+            received-value := ble-get-value_ resource_
+            if received-value:
+              block.call received-value
+        finally:
+          critical-do:
+            resource-state_.clear-state event
+            if state & (DATA_READ-REQUEST-EVENT_ | DATA-WRITE-REQUEST-EVENT_) != 0:
+              ble-callback-reply_ resource_ value for-read
+    finally:
+      if resource_: ble-callback-deinit_ resource_ for-read
+
+  create-descriptor_ uuid/BleUuid properties/int permissions/int value/io.Data? -> LocalDescriptor:
+    return NativeLocalDescriptor_ this uuid properties permissions value
+
+  read_ -> ByteArray: return native-read_
+
   handle -> int:
     return ble-handle_ resource_
 
-
-class LocalDescriptor extends LocalReadWriteElement_ implements Attribute:
+abstract class LocalDescriptor extends LocalReadWriteElement_ implements Attribute:
   uuid/BleUuid
   characteristic/LocalCharacteristic
   permissions/int
   properties/int
 
-  constructor .characteristic .uuid .properties .permissions value/io.Data:
-    service := characteristic.service
-    if service.peripheral-manager.deployed: throw "Peripheral is already deployed"
-    if (characteristic.descriptors_.any: it.uuid == uuid): throw "Descriptor already exists"
-    resource :=  ble-add-descriptor_ characteristic.resource_ uuid.encode-for-platform_ properties permissions value
-    super resource
+  constructor.native_ .characteristic .uuid .properties .permissions resource:
+    super.native_ resource
+
+  constructor.host_ .characteristic .uuid .properties .permissions:
+    super.host_
 
   /**
   Closes this descriptor.
@@ -607,7 +648,9 @@ class LocalDescriptor extends LocalReadWriteElement_ implements Attribute:
   set-value value/io.Data:
     if (permissions & CHARACTERISTIC-PERMISSION-WRITE) == 0:
       throw "Invalid permission"
-    ble-set-value_ resource_ value
+    set-value_ value
+
+  abstract set-value_ value/io.Data
 
   /**
   Sets the value of this descriptor.
@@ -631,15 +674,33 @@ class LocalDescriptor extends LocalReadWriteElement_ implements Attribute:
   Typically, users do not need to access the handle directly. It may be useful
     for debugging purposes, but it is not required for normal operation.
   */
+  abstract handle -> int
+
+class NativeLocalDescriptor_ extends LocalDescriptor:
+  constructor characteristic/NativeLocalCharacteristic_ uuid/BleUuid properties/int permissions/int value/io.Data?:
+    super.native_ characteristic uuid properties permissions
+        (ble-add-descriptor_ characteristic.resource_ uuid.encode-for-platform_ properties permissions value)
+
+  set-value_ value/io.Data:
+    ble-set-value_ resource_ value
+
+  read_ -> ByteArray: return native-read_
+
   handle -> int:
     return ble-handle_ resource_
 
-
-class LocalReadWriteElement_ extends Resource_:
-  constructor resource:
+abstract class LocalReadWriteElement_ extends Resource_:
+  constructor.native_ resource:
     super resource
 
-  read_ -> ByteArray:
+  constructor.host_:
+    super.host_
+
+  /** Waits for and returns the next value written by a client. */
+  abstract read_ -> ByteArray
+
+  // Native elements share this implementation; host elements keep a queue.
+  native-read_ -> ByteArray:
     resource-state_.clear-state DATA-RECEIVED-EVENT_
     while true:
       buf := ble-get-value_ resource_
