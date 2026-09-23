@@ -27,8 +27,11 @@ stacks negotiate 251-octet link-layer PDUs with the same dongle):
 | Toit host, provider model, `notify-values` in batches of 32 | 310 | 76 KB/s |
 
 Free heap at boot before any BLE code: 142–149 KB. All three recover their
-idle figure after every disconnect (no growth over ten cycles); the largest
-free block shrinks once after the first cycle and then stays.
+idle figure after every disconnect; over forty connect/notify/disconnect
+cycles (`run.sh toit 40`, `run.sh direct 40`, with the BR/EDR memory
+released) free heap after disconnect stays at 141.2 KB in the provider model
+and 120.2 KB in the direct variant to the byte, and the largest free block
+(86 KB and 110.6 KB) does not move after the first cycle.
 
 ## Reading the numbers
 
