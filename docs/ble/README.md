@@ -6,7 +6,12 @@ command handling, L2CAP, ATT/GATT, SMP, GAP policy and persistence.
 
 Status: experimental and opt-in. NimBLE remains the default ESP32 backend.
 See [features](features.md) for what is implemented, [open issues](open-issues.md)
-for known failures, and [design](design.md) for the architecture.
+for known failures, [design](design.md) for the architecture, and
+[measurements](measurements.md) for memory and throughput against NimBLE.
+
+The existing `ble` package API runs on this host unchanged: on firmware
+without a native BLE host, `ble.Adapter` uses the BLE service provider
+installed on the device (see "Using the ble package" below).
 
 | Document | Content |
 | --- | --- |
@@ -16,6 +21,7 @@ for known failures, and [design](design.md) for the architecture.
 | [gatt-cache.md](gatt-cache.md) | Database layout, Service Changed, client invalidation, CCCD persistence and migration |
 | [deployment.md](deployment.md) | What a production deployment must still supply (keys, trusted launch, recovery) |
 | [hardware.md](hardware.md) | The test rig, permissions, flashing, Linux adapter ownership, interop suite |
+| [measurements.md](measurements.md) | Memory and notification throughput against NimBLE on the same board |
 | [open-issues.md](open-issues.md) | Unresolved failures and how to debug them |
 | [references.md](references.md) | Specification editions used |
 
@@ -23,13 +29,25 @@ for known failures, and [design](design.md) for the architecture.
 
 | Path | Content |
 | --- | --- |
-| `lib/ble/experimental/` | The host: `hci`, `acl`, `central` (link owner for both roles), `att`, `gatt`, `attribute-server`, `gatt-server`, `smp-*`, `security`, `bond-*`, `cccd-*`, `privacy`, `scanning`, `advertising*` |
+| `lib/ble/host.toit` | The `ble` package's public API on top of the service client; chosen by `ble.Adapter` when no native host exists |
+| `lib/ble/experimental/` | The host: `hci`, `acl`, `central` (link owner for both roles) with `link`, `att`, `gatt`, `attribute-server`, `gatt-server`, `smp-*`, `security`, `bond-*`, `cccd-*`, `privacy`, `scanning`, `advertising*`, `timeouts` (every bound), `cancellation` |
 | `lib/ble/experimental/service/` | RPC service: `api` (selector, method indices), `client`, `provider` base and the provider variants |
 | `src/resources/ble_hci_linux.cc`, `ble_hci_esp32.cc` | Native transports (HCI user channel; controller-only VHCI) |
 | `tests/ble-*-test.toit` | Software tests on a scripted in-memory transport; `tests/ble-hci-test.toit` doubles as the shared fixture |
-| `tests/ble-hardware/` | Board and adapter fixtures; `fixtures/` holds the provider/application images |
+| `tests/ble-hardware/` | Board and adapter fixtures; `fixtures/` holds the provider/application images; `bench/` the NimBLE comparison; `campaigns/` the multi-board campaigns |
 | `tests/ble-interop/` | Optional Bumble (Python) software peer suite and radio observers |
 | `examples/ble/experimental/` | A minimal advertising provider and application |
+
+## Using the ble package
+
+An application written against the `ble` package (`Adapter`, `Central`,
+`Peripheral`, ...) needs no change: install a provider container (for
+example `tests/ble-hardware/bench/provider.toit`, a `gatt-provider` on the
+ESP32 transport) beside it on a controller-only firmware, and `Adapter`
+picks the provider when the native host is absent. `examples/ble/heart_rate.toit`
+runs this way unchanged; `tests/ble-hardware/compat.sh` is the check. The
+peripheral serves one central at a time and resumes advertising after each
+disconnect; bonding and pairing policy belong to the provider.
 
 ## Using the service from an application
 

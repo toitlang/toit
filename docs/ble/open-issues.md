@@ -61,6 +61,14 @@ This is a bond storage or revocation ordering bug, not timing. Reproduce with
 HCI traces on both ends (see Tracing below) and compare the LTKs each side
 installed.
 
+Status 2026-09-23: the three-board authenticated revocation campaign runs
+with full HCI tracing on all boards (`build/ble-mic-00N/run.sh runN`,
+`tests/ble-hardware/campaigns`). Eight traced runs completed: seven passed
+without any MIC failure, one failed only because a freshly flashed central
+connected before the peers were reset (boards must start from deep sleep so
+the monitors reset the peers first). The failure remains unreproduced with
+tracing; keep collecting runs.
+
 ## Fixture-side compensations to revisit
 
 Each of these routes a test around a failure instead of explaining it:
