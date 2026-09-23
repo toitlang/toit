@@ -72,13 +72,13 @@ five rules; a violation is a bug even when a test passes.
 5. **Cleanup is critical and bounded.** `finally` blocks that release protocol state run under `critical-do --no-respect-deadline`, contain only non-waiting operations or bounded waits with their own `with-timeout`, and never depend on a monitor operation succeeding in a cancelled task outside that scope.
 6. **`catch` does not classify under cancellation.** In a cancelled task `catch` rethrows CANCELED after its block, so code after `error := catch:` never runs then. A failure classification that must not be skipped (recording that a command was rejected, choosing between cleanup paths) goes into a `finally` block with `| is-exception exception |`, or into the same critical section as the command it classifies.
 
-Status: the controller engine, the connect and legacy accept procedures, the
-bounded advertising-set creation and the service client's opens follow these
-rules, as does the bounded accept, and every bound in the host names a
-`timeouts` constant. The security and parameter-update paths and the ATT
-client still use the older idiom (`critical-do` around a command with
-classification in the same section); they are being moved rule by rule, and
-`DeadlineQueue` is not integrated yet.
+Status: the controller engine, the connect and accept procedures (legacy and
+bounded), the service client's opens and the feature read follow these rules,
+and every bound in the host names a `timeouts` constant. The remaining
+`critical-do` sections are cleanup under rule 5. Owners still bound their
+concurrent operations with per-operation timer tasks (indications, security,
+parameter updates); folding those into a `DeadlineQueue` per owner is planned
+together with the split of the link owner.
 
 ## Memory ownership
 
