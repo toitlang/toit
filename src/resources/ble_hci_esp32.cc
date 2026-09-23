@@ -80,6 +80,12 @@ class BleHciResource : public EventQueueResource {
 
   esp_err_t initialize() {
     if (esp_bt_controller_get_status() != ESP_BT_CONTROLLER_STATUS_IDLE) return ESP_ERR_INVALID_STATE;
+#if CONFIG_IDF_TARGET_ESP32
+    // The dual-mode controller reserves BR/EDR memory even in BLE-only mode;
+    // release it to the heap once. It can only be released before the first
+    // initialization, and a later failure to release (already done) is fine.
+    esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT);
+#endif
     esp_bt_controller_config_t config = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
     esp_err_t error = esp_bt_controller_init(&config);
     if (error != ESP_OK) return error;

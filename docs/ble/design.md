@@ -50,6 +50,10 @@ stops and disconnects that link only, whatever the link limit; the owner
 closes only when the controller's own state is uncertain (an unanswered
 command, a failed disconnect cleanup, a malformed event).
 
+`link.Link` (re-exported by `central`) holds what a connection carries between
+the owner's procedures: its inbox, credit account, encryption state,
+negotiated parameters and data length, and the error that ended it.
+
 `att.Client` and `gatt-server.Server` each claim one link's PDU stream and run
 their own receive task. ATT requests are serialized per link; notifications,
 indications and HCI events progress independently.
