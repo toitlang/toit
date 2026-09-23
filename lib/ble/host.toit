@@ -10,9 +10,10 @@ Firmware without a native BLE host (a controller-only ESP32 image, or a Linux
   `ble.experimental.service`. $Adapter picks this backend when the native one
   is unavailable and a provider is installed. Differences from the native
   backend are noted on each class; the main ones are that the peripheral
-  accepts one connection at a time (advertising resumes after each
-  disconnect) and that pairing policy belongs to the provider, so the
-  `--bonding` and `--secure-connections` flags are advisory.
+  serves as many centrals at once as the provider's peripheral session
+  limit allows (one by default; advertising resumes after each disconnect)
+  and that pairing policy belongs to the provider, so the `--bonding` and
+  `--secure-connections` flags are advisory.
 */
 
 import io
@@ -253,8 +254,11 @@ class HostPeripheral_ extends Peripheral:
   name_/string?
   closed_/bool := false
   advertising_/rpc.Advertising? := null
-  session_/rpc.Session? := null
-  connected_/bool := false
+  // Connected sessions, one per central, and the session that waits for
+  // the next central while the provider still has a slot.
+  sessions_/List := []
+  waiting_/rpc.Session? := null
+  ended-signal_/monitor.Latch := monitor.Latch
   advertisement_/ByteArray? := null
   scan-response_/ByteArray? := null
   interval_/int := 160
@@ -270,6 +274,8 @@ class HostPeripheral_ extends Peripheral:
     if closed_: return
     super
     closed_ = true
+    // The native backend drops its connections with the manager.
+    sessions_.copy.do: | session/rpc.Session | catch: session.close
 
   create-service_ uuid/BleUuid -> LocalService:
     return HostLocalService_ this uuid
@@ -313,15 +319,17 @@ class HostPeripheral_ extends Peripheral:
     if advertising_:
       advertising_.stop
       advertising_ = null
-    // A session that still waits for a peer ends now; a connected one runs on.
-    if session_ and not connected_:
-      catch: session_.close
+    // The session that still waits for a peer ends now; connected ones run on.
+    waiting := waiting_
+    if waiting: catch: waiting.close
 
   /**
-  Serves one peripheral session after another while advertising is active.
+  Keeps one session waiting for the next central while advertising is active.
 
-  Each session carries a fresh copy of the database, accepts one central,
-    serves its requests until it disconnects, and is then replaced.
+  Each session carries a fresh copy of the database and serves one central
+    until it disconnects; a new session starts advertising as soon as the
+    provider has a slot, so several centrals can be connected at once when
+    the provider allows it.
   */
   serve-connections_ started/monitor.Latch -> none:
     first := true
@@ -334,26 +342,38 @@ class HostPeripheral_ extends Peripheral:
         if first:
           started.set error
           return
+        if error == "GATT_SERVICE_BUSY":
+          // Every slot serves a central; advertise again when one ends.
+          signal := ended-signal_
+          catch: with-timeout --ms=1_000: signal.get
+          continue
         // The provider could not restart advertising after a disconnect
         // (for example while it still releases the previous link); retry
         // at a gentle pace rather than spin or give up silently.
-        session_ = null
         sleep --ms=250
         continue
-      session_ = session
+      waiting_ = session
       if first:
         first = false
         started.set null
-      error = catch:
-        session.peer
-        connected_ = true
-        session.serve
-            (: | request/rpc.Request | serve-read_ request)
-            (: | request/rpc.Request | serve-validate_ request)
-            (: | handle/int value/ByteArray | serve-written_ handle value)
-      connected_ = false
-      session_ = null
-      services_.do: | service/HostLocalService_ | service.disconnected_
+      error = catch: session.peer
+      waiting_ = null
+      // Stopped, expired or failed while waiting: the loop re-checks the flags.
+      if error: continue
+      sessions_.add session
+      task:: serve-session_ session
+
+  serve-session_ session/rpc.Session -> none:
+    catch:
+      session.serve
+          (: | request/rpc.Request | serve-read_ request)
+          (: | request/rpc.Request | serve-validate_ request)
+          (: | handle/int value/ByteArray | serve-written_ handle value)
+    sessions_.remove session
+    if sessions_.is-empty: services_.do: | service/HostLocalService_ | service.disconnected_
+    signal := ended-signal_
+    ended-signal_ = monitor.Latch
+    signal.set true
 
   build-session_ -> rpc.Session:
     timeout := Duration --ms=LocalService.DEFAULT-WRITE-TIMEOUT-MS
@@ -462,25 +482,29 @@ class HostLocalCharacteristic_ extends LocalCharacteristic implements HostElemen
 
   set-value value/io.Data?:
     value_ = value ? (ByteArray.from value) : #[]
-    session := peripheral_.session_
-    if session and peripheral_.connected_ and handle_ != 0: session.set-value handle_ value_
+    if handle_ == 0: return
+    peripheral_.sessions_.copy.do: | session/rpc.Session |
+      catch: session.set-value handle_ value_
 
   write_ value/io.Data --set-value/bool:
     bytes := ByteArray.from value
     previous := value_
     if set-value: value_ = bytes
-    session := peripheral_.session_
-    if not session or not peripheral_.connected_ or handle_ == 0: return
-    if properties & (CHARACTERISTIC-PROPERTY-NOTIFY | CHARACTERISTIC-PROPERTY-INDICATE) == 0:
-      if set-value: session.set-value handle_ bytes
-      return
-    session.set-value handle_ bytes
-    if properties & CHARACTERISTIC-PROPERTY-NOTIFY != 0:
-      session.notify handle_
-    else:
-      receipt := session.indicate handle_
-      if receipt: receipt.wait
-    if not set-value: session.set-value handle_ previous
+    if handle_ == 0: return
+    notifies := properties & (CHARACTERISTIC-PROPERTY-NOTIFY | CHARACTERISTIC-PROPERTY-INDICATE) != 0
+    peripheral_.sessions_.copy.do: | session/rpc.Session |
+      // A session that ends meanwhile is left to its own cleanup.
+      catch:
+        if not notifies:
+          if set-value: session.set-value handle_ bytes
+        else:
+          session.set-value handle_ bytes
+          if properties & CHARACTERISTIC-PROPERTY-NOTIFY != 0:
+            session.notify handle_
+          else:
+            receipt := session.indicate handle_
+            if receipt: receipt.wait
+          if not set-value: session.set-value handle_ previous
 
   read_ -> ByteArray: return written_.take
 

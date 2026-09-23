@@ -46,8 +46,9 @@ example `tests/ble-hardware/bench/provider.toit`, a `gatt-provider` on the
 ESP32 transport) beside it on a controller-only firmware, and `Adapter`
 picks the provider when the native host is absent. `examples/ble/heart_rate.toit`
 runs this way unchanged; `tests/ble-hardware/compat.sh` is the check. The
-peripheral serves one central at a time and resumes advertising after each
-disconnect; bonding and pairing policy belong to the provider.
+peripheral serves as many centrals at once as the provider's
+`peripheral-session-limit` allows (one by default) and keeps advertising
+while connected; bonding and pairing policy belong to the provider.
 
 ## Using the service from an application
 

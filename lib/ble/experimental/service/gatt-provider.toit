@@ -34,7 +34,23 @@ abstract class Provider extends central-provider.Provider:
     $create-shared-host policy for both roles, including early security hooks.
     This hook alone does not relax RPC admission.
   */
-  reserve-peripheral-host -> shared.Host?: return null
+  reserve-peripheral-host -> shared.Host?:
+    if peripheral-session-limit > 1: return reserve-shared-host
+    return null
+
+  /**
+  Sizes the shared host for several peripheral links when configured.
+
+  A mixed-role provider overrides this with its own extended-advertising
+    host; this default serves the plain case of one controller advertising
+    again while it already has peripheral links.
+  */
+  create-shared-host controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
+    if peripheral-session-limit > 1:
+      return central.Central controller --acl-length=info.acl-length --acl-count=info.acl-count
+          --receive-limit=receive-limit
+          --link-limit=peripheral-session-limit
+    return super controller info receive-limit
 
   capabilities -> List: return [api.CAP-ADVERTISING | api.CAP-SCAN | api.CAP-CONTINUOUS-SCAN | api.CAP-GATT-PERIPHERAL | api.CAP-GATT-CENTRAL, 60_000_000, 512, 517, central-session-limit]
 
