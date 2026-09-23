@@ -7,6 +7,7 @@ import monitor
 
 import .connection as connection
 import .encryption as encryption
+import .smp-legacy as legacy
 import .signaling as signaling
 import .acl as acl
 import .hci as hci
@@ -134,12 +135,23 @@ class Central:
     link identity again before enqueueing and declines a disconnected lifetime.
   */
   encrypt link/Link key/ByteArray --timeout/Duration=(Duration --s=30) -> none:
+    encrypt_ link key null 0 timeout
+
+  /**
+  Starts encryption with a legacy bond's peer-distributed key, EDIV and Rand.
+
+  Otherwise as $encrypt.
+  */
+  encrypt-legacy link/Link key/legacy.LegacyKey --timeout/Duration=(Duration --s=30) -> none:
+    encrypt_ link key.key key.rand key.ediv timeout
+
+  encrypt_ link/Link key/ByteArray random/ByteArray? ediv/int timeout/Duration -> none:
     if not (owns-link link): throw "HCI_INVALID_LINK"
     if link.info.role != 0: throw "HCI_ENCRYPT_REQUIRES_CENTRAL"
     if link.encryption-pending_: throw "HCI_ENCRYPTION_BUSY"
     if busy_ or security-submissions_ != 0: throw "HCI_CONNECTION_BUSY"
     if timeout.in-us <= 0: throw "INVALID_ARGUMENT"
-    bytes := encryption.enable-parameters link.info.handle key
+    bytes := encryption.enable-parameters link.info.handle key --random=random --ediv=ediv
     pending := monitor.Latch
     link.encryption-pending_ = pending
     completed := false
@@ -172,11 +184,24 @@ class Central:
     if link.key-reply-pending_: throw "HCI_KEY_REPLY_BUSY"
     link.encryption-key_ = key.copy
 
-  /** Removes a peripheral link's key; link close also drops it automatically. */
+  /**
+  Installs a legacy bond's locally distributed key for this peripheral link.
+
+  The controller's request must carry the key's EDIV and Rand; any other
+    request is answered negatively. Coexists with $set-encryption-key.
+  */
+  set-legacy-encryption-key link/Link key/legacy.LegacyKey -> none:
+    if not (owns-link link): throw "HCI_INVALID_LINK"
+    if link.info.role != 1: throw "HCI_KEY_REQUIRES_PERIPHERAL"
+    if link.key-reply-pending_: throw "HCI_KEY_REPLY_BUSY"
+    link.legacy-key_ = key
+
+  /** Removes a peripheral link's keys; link close also drops them automatically. */
   clear-encryption-key link/Link -> none:
     if not (owns-link link): throw "HCI_INVALID_LINK"
     if link.key-reply-pending_: throw "HCI_KEY_REPLY_BUSY"
     link.encryption-key_ = null
+    link.legacy-key_ = null
 
   security-command_ link/Link opcode/int bytes/ByteArray --status-event/bool=false -> ByteArray:
     return with-timeout timeouts.COMMAND:
@@ -201,6 +226,9 @@ class Central:
       link.key-reply-pending_ = true
       link.key-reply-error_ = null
       key := request.secure-connections ? link.encryption-key_ : null
+      legacy-key := link.legacy-key_
+      if not key and legacy-key and legacy-key.ediv == request.ediv and legacy-key.rand == request.random:
+        key = legacy-key.key
       opcode := key ? 0x201a : 0x201b
       bytes := key
           ? (encryption.reply-parameters link.info.handle key)

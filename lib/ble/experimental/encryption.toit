@@ -64,12 +64,21 @@ decode-key-request packet/ByteArray -> KeyRequest?:
   if handle > 0x0eff: throw "HCI_MALFORMED_ENCRYPTION_EVENT"
   return KeyRequest handle packet[6..14].copy (io.LITTLE-ENDIAN.uint16 packet 14)
 
-/** Encodes LE Enable Encryption parameters for a big-endian SC LTK (7.8.24). */
-enable-parameters handle/int key/ByteArray -> ByteArray:
+/**
+Encodes LE Enable Encryption parameters for a big-endian LTK (7.8.24).
+
+SC keys use the zero $random and $ediv defaults; a legacy bond passes the
+  values its peer distributed with the key.
+*/
+enable-parameters handle/int key/ByteArray --random/ByteArray?=null --ediv/int=0 -> ByteArray:
   check_ handle key
+  if random and random.size != 8: throw "INVALID_ARGUMENT"
+  if not 0 <= ediv <= 0xffff: throw "INVALID_ARGUMENT"
   result := ByteArray 28
   io.LITTLE-ENDIAN.put-uint16 result 0 handle
-  // SC uses zero Rand and EDIV; the HCI LTK is least-significant-octet first.
+  if random: result.replace 2 random
+  io.LITTLE-ENDIAN.put-uint16 result 10 ediv
+  // The HCI LTK is least-significant-octet first.
   16.repeat: result[12 + it] = key[15 - it]
   return result
 

@@ -10,6 +10,7 @@ import .central as central
 import .encryption as encryption
 import .smp-identity as identity
 import .smp-distribution as distribution
+import .smp-legacy as legacy
 import .smp-pairing as smp
 import .smp-features show PairingError
 import .signaling as signaling
@@ -63,6 +64,8 @@ class Pairing implements Owner:
   distribution-deadline_/int? := null
   distribution-done_/bool := false
   peer-identity_/identity.Identity? := null
+  local-legacy_/legacy.LegacyKey? := null
+  peer-legacy_/legacy.LegacyKey? := null
   attempts_/retry.Attempts?
   attempt-identity_/ByteArray? := null
   error_ := null
@@ -143,7 +146,16 @@ class Pairing implements Owner:
       if not encrypted: throw "SMP_IDENTITY_NOT_ENCRYPTED"
       local := identity_ or (stable-identity_ local-address_ local-address-type_)
       peer := peer-identity_ or (stable-identity_ link_.info.address link_.info.address-type)
-      candidate.call (bond.Candidate engine_.key local peer --authenticated=authenticated_)
+      if engine_.legacy:
+        // The STK only protects this connection; a legacy bond consists of
+        // the distributed long term keys, and a bond without any is useless.
+        if not local-legacy_ and not peer-legacy_: throw "SMP_BOND_KEYS_REQUIRED"
+        candidate.call (bond.Candidate (ByteArray 16) local peer
+            --authenticated=authenticated_
+            --peer-legacy=peer-legacy_
+            --local-legacy=local-legacy_)
+      else:
+        candidate.call (bond.Candidate engine_.key local peer --authenticated=authenticated_)
       if error_: throw error_
       if not encrypted: throw "SMP_IDENTITY_NOT_ENCRYPTED"
 
@@ -207,11 +219,12 @@ class Pairing implements Owner:
           if change.status != 0: throw (encryption.Error change.status)
           if not change.enabled: throw "HCI_ENCRYPTION_NOT_ENABLED"
       mutex_.do: start-distribution_
-      while distribution_ and engine_.receive-identity and not peer-identity_:
+      while distribution_ and not peer-distribution-complete_:
         version := progress_.version
         if error_: throw error_
         peer-identity_ = distribution_.peer-identity
-        if not peer-identity_: progress_.wait version
+        peer-legacy_ = distribution_.peer-legacy-key
+        if not peer-distribution-complete_: progress_.wait version
       if error_: throw error_
       distribution-done_ = true
       completed.call
@@ -263,6 +276,7 @@ class Pairing implements Owner:
           start-distribution_
           send-distribution_ (distribution_.receive bytes)
           peer-identity_ = distribution_.peer-identity
+          peer-legacy_ = distribution_.peer-legacy-key
           progress_.changed
         else:
           send_ (engine_.receive bytes)
@@ -297,12 +311,26 @@ class Pairing implements Owner:
     authenticated_ = engine_.authenticated
     complete_ = true
     if not engine_.bonding: return
+    receive-key := false
+    if engine_.legacy:
+      initiator := link_.info.role == 0
+      directions := engine_.legacy-key-distribution
+      if directions[initiator ? 0 : 1]: local-legacy_ = legacy.LegacyKey.random
+      receive-key = directions[initiator ? 1 : 0]
     distribution_ = distribution.Exchange this --initiator=(link_.info.role == 0)
         --local=(engine_.distribute-identity ? identity_ : null)
         --receive-identity=engine_.receive-identity
+        --local-key=local-legacy_
+        --receive-key=receive-key
     distribution-deadline_ = Time.monotonic-us + 30_000_000
     send-distribution_ distribution_.start
     progress_.changed
+
+  peer-distribution-complete_ -> bool:
+    if engine_.receive-identity and not peer-identity_: return false
+    if engine_.legacy and engine_.legacy-key-distribution[link_.info.role == 0 ? 1 : 0] and not peer-legacy_:
+      return false
+    return true
 
   send-distribution_ packets/List -> none:
     packets.do: | bytes/ByteArray |
@@ -339,6 +367,8 @@ class Pairing implements Owner:
       distribution_ = null
       identity_ = null
       peer-identity_ = null
+      local-legacy_ = null
+      peer-legacy_ = null
       distribution-done_ = false
       distribution-deadline_ = null
       progress_.changed

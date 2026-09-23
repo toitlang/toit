@@ -13,6 +13,7 @@ A `Link` is created by the owner's receive task on Connection Complete and
 */
 
 import monitor
+import .smp-legacy show LegacyKey
 
 import .connection as connection
 import .encryption as encryption
@@ -58,6 +59,7 @@ class Link:
   inbox_/acl.Inbox ::= acl.Inbox
   send-mutex_/monitor.Mutex ::= monitor.Mutex
   encryption-key_/ByteArray? := null
+  legacy-key_/LegacyKey? := null
   key-reply-pending_/bool := false
   key-reply-error_ := null
   encryption-pending_/monitor.Latch? := null
@@ -216,6 +218,7 @@ class Link:
 
   fail-procedures_ error -> none:
     encryption-key_ = null
+    legacy-key_ = null
     if not features-latch_.has-value: features-latch_.set error --exception
     observer := encryption-observer_
     encryption-observer_ = null
