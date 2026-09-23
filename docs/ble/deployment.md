@@ -17,8 +17,15 @@ record remains valid when replayed with the same key and context.
 The storage key must come from a trusted deployment facility and remain stable
 across ordinary provider restarts. The existing public fixture keys and automatic
 pairing approvals are test configuration. The SDK's raw flash adapter supplies
-record storage, not an independently protected key source. No production key
-provider or provisioning command is implemented by these BLE modules.
+record storage, not an independently protected key source.
+
+`storage-key.StorageKey` is the baseline key source: `provision` creates a
+device-unique random 32-byte key once in a flash bucket, `load` returns it
+and refuses to run (`BLE_STORAGE_KEY_MISSING`) when it is absent, so a
+provider that lost its key stops bonded admission instead of overwriting
+records. The key's secrecy is that of the flash: enable flash encryption and
+secure boot, or supply another key source, for a deployment where the flash
+contents are within the attacker's reach.
 
 Acceptance for a selected deployment:
 
