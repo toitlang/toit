@@ -51,6 +51,9 @@ main args/List:
       value := send[0].wait-for-notification
       print "COMPAT notification $value"
     receive[0].write #[1, 2, 3]
+    // A write without response is only handed to the stack; give the
+    // controller a few connection events before the disconnect.
+    sleep --ms=300
     send[0].unsubscribe
     device.close
     print "COMPAT COMPLETE notifications=3 written=3"
