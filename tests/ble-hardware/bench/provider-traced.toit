@@ -2,23 +2,21 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-// The Toit host provider container for the memory comparison.
+// The provider container with HCI tracing on the serial log and two
+// peripheral sessions, for checks that need to see the controller traffic.
 
 import ble.experimental.esp32
+import ble.experimental.hexdump
 import ble.experimental.transport
 import ble.experimental.service.gatt-provider as service
-import .stats as stats
 
 main:
-  stats.report "provider" "boot"
   provider := Provider
   provider.install
-  stats.report "provider" "installed"
-  stats.periodic "provider"
+  print "BENCH provider phase=installed traced=true"
   provider.uninstall --wait
 
 class Provider extends service.Provider:
   constructor: super
-  open-transport -> transport.Transport: return esp32.Esp32Transport
-  // Two centrals at once for the ble package check; the benchmark uses one.
+  open-transport -> transport.Transport: return hexdump.Hexdump esp32.Esp32Transport
   peripheral-session-limit -> int: return 2
