@@ -74,8 +74,8 @@ five rules; a violation is a bug even when a test passes.
 
 Status: the controller engine, the connect and legacy accept procedures, the
 bounded advertising-set creation and the service client's opens follow these
-rules, and every bound in the host names a `timeouts` constant. The bounded
-accept's enable command, the security and parameter-update paths, and the ATT
+rules, as does the bounded accept, and every bound in the host names a
+`timeouts` constant. The security and parameter-update paths and the ATT
 client still use the older idiom (`critical-do` around a command with
 classification in the same section); they are being moved rule by rule, and
 `DeadlineQueue` is not integrated yet.

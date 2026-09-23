@@ -630,14 +630,15 @@ class Central:
   read-features_ link/Link -> none:
     ready := false
     try:
-      critical-do --no-respect-deadline:
-        error := catch:
-          controller_.command 0x2016 (connection.features-parameters link.info.handle) --status-event
-        if error:
-          if not (error is hci.CommandError): throw error
-          link.features-known_ null
-      sleep --ms=0
-      error := catch: link.wait-peer-features
+      // A cancelled task skips this classification; cleanup then disconnects
+      // the link, so the abandoned command's outcome no longer matters.
+      error := catch:
+        controller_.command 0x2016 (connection.features-parameters link.info.handle) --status-event
+      if error:
+        if not (error is hci.CommandError): throw error
+        link.features-known_ null
+      checkpoint
+      error = catch: link.wait-peer-features
       // An ended link is reported by the caller as a lost connection.
       if error and link.connected: throw error
       ready = true
