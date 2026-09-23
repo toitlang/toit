@@ -39,15 +39,20 @@ main:
       ended.set error
     sent := 0
     started/int? := null
+    // Alternate cycles use one RPC per notification and batched calls of 32,
+    // to show the round-trip cost against the host's own.
+    batched := cycle % 2 == 1
+    batch := List 32: payload
     error := catch:
       while not ended.has-value:
-        if session.notify value:
+        count := batched ? (session.notify-values value batch) : ((session.notify value) ? 1 : 0)
+        if count > 0:
           if not started: started = Time.monotonic-us
-          sent++
+          sent += count
         else:
           sleep --ms=5
     elapsed := started ? Time.monotonic-us - started : 0
-    print "BENCH app cycle=$cycle sent=$sent us=$elapsed error=$error termination=$session.termination-reason"
+    print "BENCH app cycle=$cycle batched=$batched sent=$sent us=$elapsed error=$error termination=$session.termination-reason"
     ended.get
     stats.report "app" "disconnected" --extra=" cycle=$cycle"
   stats.report "app" "done"

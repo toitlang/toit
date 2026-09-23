@@ -13,7 +13,8 @@ block, and the process's own allocated bytes.
 | --- | --- | --- | --- | --- |
 | NimBLE host, `ble` package, one container | 755–775 | 105.5 KB | 98 KB | 1.5 KB |
 | Toit host, direct (one container owns the controller) | 375–460 | 109.4 KB | 102 KB, 90 KB after 5 cycles | 6–9 KB |
-| Toit host, provider + application containers | 160 | 95.4 KB | 82 KB, 78 KB after 10 cycles | provider 12–15 KB (20 KB reserved), app 2 KB |
+| Toit host, provider + application containers, one RPC per notification | 160 | 95.4 KB | 82 KB, 78 KB after 10 cycles | provider 12–15 KB (20 KB reserved), app 2 KB |
+| Toit host, provider + application containers, `notify-values` in batches of 32 | 376 | same | same | same |
 
 Free heap at boot before any BLE code: 142–149 KB. All three recover their
 idle figure after every disconnect (no growth over ten cycles); the largest
@@ -43,13 +44,17 @@ free block shrinks once after the first cycle and then stays.
 1. The notify path is the place to optimise in the host: every call arms a
    timer for its send bound, copies the value three times (ATT PDU, L2CAP
    PDU, ACL packet), and pays a credit-account round trip through two
-   monitors. A fast path for the common case (credit available, single
-   fragment) is planned before any deeper change.
-2. The service API needs a batched notification call so one RPC carries many
-   values; per-notification RPC is a floor of about 2.5 ms per call on the
-   ESP32 whatever the host does.
+   monitors. The fast path for the common case (credit available, single
+   fragment) is in place; deeper changes (a pre-framed send buffer, fewer
+   monitor transitions) remain possible.
+2. Per-notification RPC is a floor of about 2.5 ms per call on the ESP32
+   whatever the host does, so the service API has `Session.notify-values`,
+   one round trip for up to 32 values; with it the provider model reaches the
+   direct host's rate.
 3. Data Length Extension is the other half of throughput for large values; it
    is a protocol-parity item, not a host cost.
 4. A 2× gap on 20-byte notifications is the expected price of an interpreted
-   host; it is within "some performance loss is acceptable". The provider
-   model's 5× is not, and is addressed by 2.
+   host; it is within "some performance loss is acceptable". The credit fast
+   path and single-fragment framing (23 to 17 µs per notification on Linux)
+   moved the board from 2.0 to about 1.8 ms per notification; the rest is
+   spread over monitors, timers and allocations with no single hot spot.

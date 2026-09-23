@@ -306,6 +306,18 @@ class Session extends rpc.Session:
       if arguments.size != 1: throw "INVALID_ARGUMENT"
       if not server_: throw "GATT_NOT_CONNECTED"
       return server_.notify arguments[0] --no-truncate
+    if index == api.NOTIFY-VALUES:
+      if arguments.size != 2 or arguments[1] is not List: throw "INVALID_ARGUMENT"
+      values/List := arguments[1]
+      if not 1 <= values.size <= 32: throw "INVALID_ARGUMENT"
+      values.do: if it is not ByteArray or it.size > 512: throw "INVALID_ARGUMENT"
+      if not server_: throw "GATT_NOT_CONNECTED"
+      sent := 0
+      values.do: | value/ByteArray |
+        database_.set-value arguments[0] value
+        if not (server_.notify arguments[0] --no-truncate): return sent
+        sent++
+      return sent
     if index == api.INDICATE:
       if arguments.size != 2: throw "INVALID_ARGUMENT"
       if not server_: throw "GATT_NOT_CONNECTED"

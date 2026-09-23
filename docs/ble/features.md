@@ -1,6 +1,6 @@
 # Feature inventory
 
-Service protocol 0.24 (`service/api.toit`). This lists what the host implements,
+Service protocol 0.25 (`service/api.toit`). This lists what the host implements,
 its fixed limits, and the gaps that must close before it can replace NimBLE.
 
 ## Implemented
@@ -14,7 +14,7 @@ its fixed limits, and the gaps that must close before it can replace NimBLE.
 | Connections | Bounded live registry (default one link, up to 16), connection parameter update from either role, disconnect with reason. |
 | L2CAP | Fixed ATT, signaling and SMP channels; parameter request/response; rejection of other channels. |
 | ATT/GATT client | MTU exchange (23 to 517), primary service, characteristic and descriptor discovery, read, read long, write, write long (prepare/execute), write command, up to eight scoped subscriptions with a shared bounded queue, indications with confirmation, Service Changed monitor with a connection-local database revision. |
-| ATT/GATT server | Static database of at most 64 attributes, values up to 512 bytes, Service Changed by default, dynamic reads and pre-commit write validation through scoped handlers, prepared writes with atomic execute, notifications and single-outstanding indications, user description and extended properties descriptors, per-attribute encryption and authentication requirements. |
+| ATT/GATT server | Static database of at most 64 attributes, values up to 512 bytes, Service Changed by default, dynamic reads and pre-commit write validation through scoped handlers, prepared writes with atomic execute, notifications (single and batched through one RPC) and single-outstanding indications, user description and extended properties descriptors, per-attribute encryption and authentication requirements. |
 | SMP | Secure Connections Just Works and Numeric Comparison in both roles, f4/f5/f6/g2 with AES-CMAC, P-256 through mbedTLS with invalid-point and debug-key rejection, constant-time confirm comparison, identity (IRK) distribution, retry admission policy. |
 | Encryption | LE Start Encryption on central links, LTK request replies on peripheral links, encryption change tracking, links that require encryption for their lifetime. |
 | Privacy | Host-side RPA generation and resolution, host-selected random addresses for scanning, advertising and connecting. |
