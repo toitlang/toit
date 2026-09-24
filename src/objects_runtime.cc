@@ -96,7 +96,7 @@ bool Object::mutable_byte_content(Process* process, MutableBlob* blob, Error** e
 }
 
 uint8* ByteArray::neuter(Process* process) {
-  ASSERT(has_external_address());
+  ASSERT(has_owned_external_memory());
   ASSERT(external_tag() == RawByteTag);
   Bytes bytes(this);
   process->unregister_external_allocation(bytes.length());
