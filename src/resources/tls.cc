@@ -498,7 +498,7 @@ PRIMITIVE(set_incoming) {
   if (from < 0 || from > blob.length()) FAIL(INVALID_ARGUMENT);
   // is_byte_array is quite strict.  For example, COW byte arrays are not
   // byte arrays.
-  if (is_byte_array(incoming) && ByteArray::cast(incoming)->has_external_address()) {
+  if (is_byte_array(incoming) && ByteArray::cast(incoming)->has_owned_external_memory()) {
     // We need to neuter the byte array and steal its external data.  The
     // socket frees the packet, so it must get the start of the allocation.
     uint8* address = const_cast<uint8*>(blob.address());

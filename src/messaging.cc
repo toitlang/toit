@@ -310,7 +310,7 @@ bool MessageEncoder::encode_map(Instance* instance) {
 }
 
 bool MessageEncoder::encode_byte_array(ByteArray* object) {
-  if (encoding_tison() || !object->has_external_address()) {
+  if (encoding_tison() || !object->has_owned_external_memory()) {
     return encode_copy(object, TAG_BYTE_ARRAY);
   }
 
