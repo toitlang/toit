@@ -186,6 +186,8 @@ Object* SpiResource::transfer_finish(bool was_read, Process* process) {
   if (result == null) {
     FAIL(ALLOCATION_FAILED);
   }
+  // The finalizer unregisters the memory when it frees it.
+  process->register_external_allocation(buffer_size);
   buffer_ = null;
   buffer_size_ = 0;
   return result;
