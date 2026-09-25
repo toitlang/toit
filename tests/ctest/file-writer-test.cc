@@ -16,6 +16,7 @@
 
 #include "../../src/file_writer.h"
 #include "../../src/top.h"
+#include "format-test-support.h"
 
 namespace toit {
 

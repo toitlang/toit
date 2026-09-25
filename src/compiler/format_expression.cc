@@ -254,10 +254,9 @@ class ExpressionPrinter {
     bool right_associative = is_right_associative(kind);
     int left_precedence = right_associative ? precedence : precedence - 1;
     int right_precedence = right_associative ? precedence - 1 : precedence;
-    if (precedence == PRECEDENCE_ASSIGNMENT || is_logical(kind)) {
+    if (precedence == PRECEDENCE_ASSIGNMENT) {
       right_precedence = PRECEDENCE_NONE;
     }
-    if (is_logical(kind)) left_precedence = PRECEDENCE_NONE;
 
     std::string result =
         binary_operand(binary->left(), left_precedence, kind) + " " +
