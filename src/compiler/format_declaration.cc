@@ -108,7 +108,9 @@ class MethodHeaderPrinter {
     if (parameter->default_value() != null) {
       std::string value;
       if (!expression(parameter->default_value(), &value)) return false;
-      text += "=" + value;
+      text += "=" + (parameter->default_value()->is_Parenthesis()
+          ? "(" + value + ")"
+          : value);
     }
     if (parameter->is_block()) text += "]";
     *result = text;

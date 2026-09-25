@@ -19,6 +19,13 @@ using namespace ast;
 
 namespace {
 
+Expression* peel_parentheses(Expression* expression) {
+  while (expression != null && expression->is_Parenthesis()) {
+    expression = expression->as_Parenthesis()->expression();
+  }
+  return expression;
+}
+
 class StatementPrinter {
  public:
   StatementPrinter(Source* source,
@@ -47,7 +54,8 @@ class StatementPrinter {
             cursor,
             expression_start,
             indentation - original_indentation,
-            &leading)) return false;
+            &leading,
+            style_.max_blank_lines)) return false;
         if (!leading.empty()) statements.push_back(std::move(leading));
       }
       std::string text;
@@ -55,8 +63,13 @@ class StatementPrinter {
         int first_line = facts()->line_index_at(expression_start);
         int last_line = facts()->line_index_at(
             std::max(expression_start, end(expression) - 1));
-        text = comments_->render_verbatim(
-            first_line, last_line, indentation);
+        if (contains_multiline_string(expression)) {
+          text = comments_->render_verbatim_preserving_continuations(
+              first_line, last_line, indentation);
+        } else {
+          text = comments_->render_verbatim(
+              first_line, last_line, indentation);
+        }
       } else if (!statement(expression, indentation, &text)) {
         return false;
       }
@@ -96,14 +109,27 @@ class StatementPrinter {
         expression->is_TryFinally();
   }
 
+  bool contains_multiline_string(Expression* expression) const {
+    int from = start(expression);
+    int to = end(expression);
+    const uint8* bytes = source_->text();
+    for (int offset = from; offset + 2 < to; offset++) {
+      if (bytes[offset] == '"' && bytes[offset + 1] == '"' &&
+          bytes[offset + 2] == '"') return true;
+    }
+    return false;
+  }
+
   bool should_render_verbatim(Expression* expression) const {
     int from = start(expression);
+    int to = end(expression);
+    if (contains_multiline_string(expression)) return true;
     int first_line = facts()->line_index_at(from);
     int header_to = facts()->lines()[first_line].to;
     if (comments_->has_unconsumed_in(from, header_to)) return true;
     if (is_control(expression)) return false;
     int last_line = facts()->line_index_at(
-        std::max(from, end(expression) - 1));
+        std::max(from, to - 1));
     return comments_->has_unconsumed_in(
         facts()->lines()[first_line].from,
         facts()->lines()[last_line].to);
@@ -122,6 +148,15 @@ class StatementPrinter {
   bool flat(Expression* expression, std::string* result) {
     return format_expression_flat(
         expression, source_, result, expression_options_);
+  }
+
+  bool condition(Expression* expression, std::string* result) {
+    if (!flat(expression, result)) return false;
+    if (expression->is_Parenthesis() &&
+        peel_parentheses(expression)->is_Call()) {
+      *result = "(" + *result + ")";
+    }
+    return true;
   }
 
   bool formatted(Expression* expression,
@@ -182,7 +217,7 @@ class StatementPrinter {
                   const std::string& keyword,
                   std::string* result) {
     std::string condition;
-    if (!flat(conditional->expression(), &condition)) return false;
+    if (!this->condition(conditional->expression(), &condition)) return false;
     std::string body;
     if (!suite(conditional->yes(),
                indentation + style_.indentation_step,
@@ -245,6 +280,19 @@ class StatementPrinter {
       *result = render_prefixed(prefix + " ", value, indentation);
       return true;
     }
+    if (expression->is_Binary() &&
+        Token::precedence(expression->as_Binary()->kind()) ==
+            PRECEDENCE_ASSIGNMENT) {
+      Binary* assignment = expression->as_Binary();
+      std::string left;
+      if (!flat(assignment->left(), &left)) return false;
+      FormatOutput value;
+      if (!formatted(assignment->right(), indentation, &value)) return false;
+      std::string operation = Token::symbol(assignment->kind()).c_str();
+      *result = render_prefixed(
+          left + " " + operation + " ", value, indentation);
+      return true;
+    }
     if (expression->is_BreakContinue()) {
       BreakContinue* jump = expression->as_BreakContinue();
       std::string text = jump->is_break() ? "break" : "continue";
@@ -270,7 +318,7 @@ class StatementPrinter {
     if (expression->is_While()) {
       While* loop = expression->as_While();
       std::string condition;
-      if (!flat(loop->condition(), &condition)) return false;
+      if (!this->condition(loop->condition(), &condition)) return false;
       std::string body;
       if (!suite(loop->body(),
                  indentation + style_.indentation_step,
