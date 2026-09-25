@@ -22,13 +22,11 @@ class MethodHeaderPrinter {
   MethodHeaderPrinter(Method* method,
                       Source* source,
                       int base_indentation,
-                      const FormatStyle& style,
-                      const FormatExpressionOptions& expression_options)
+                      const FormatStyle& style)
       : method_(method)
       , source_(source)
       , base_indentation_(base_indentation)
-      , style_(style)
-      , expression_options_(expression_options) {}
+      , style_(style) {}
 
   bool run(FormatOutput* result) {
     if (!prepare()) return false;
@@ -80,15 +78,13 @@ class MethodHeaderPrinter {
   Source* source_;
   int base_indentation_;
   const FormatStyle& style_;
-  const FormatExpressionOptions& expression_options_;
   std::string prefix_;
   std::string return_type_;
   std::vector<std::string> parameters_;
   int first_named_ = -1;
 
   bool expression(Expression* node, std::string* result) {
-    return format_expression_flat(
-        node, source_, result, expression_options_);
+    return format_expression_flat(node, source_, result);
   }
 
   bool prepare_parameter(Parameter* parameter, std::string* result) {
@@ -194,12 +190,10 @@ bool format_method_header(Method* method,
                           Source* source,
                           int base_indentation,
                           FormatOutput* result,
-                          const FormatStyle& style,
-                          const FormatExpressionOptions& expression_options) {
+                          const FormatStyle& style) {
   ASSERT(method != null && source != null && result != null);
   ASSERT(base_indentation >= 0);
-  MethodHeaderPrinter printer(
-      method, source, base_indentation, style, expression_options);
+  MethodHeaderPrinter printer(method, source, base_indentation, style);
   return printer.run(result);
 }
 

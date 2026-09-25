@@ -77,12 +77,10 @@ class ExpressionPrinter {
  public:
   ExpressionPrinter(Source* source,
                     int base_indentation,
-                    const FormatStyle& style,
-                    const FormatExpressionOptions& options)
+                    const FormatStyle& style)
       : source_(source)
       , base_indentation_(base_indentation)
-      , style_(style)
-      , options_(options) {}
+      , style_(style) {}
 
   bool run(Expression* expression, FormatOutput* result) {
     ASSERT(expression != null && result != null);
@@ -101,7 +99,6 @@ class ExpressionPrinter {
   Source* source_;
   int base_indentation_;
   const FormatStyle& style_;
-  const FormatExpressionOptions& options_;
   bool supported_ = true;
 
   int start(Node* node) const {
@@ -284,8 +281,7 @@ class ExpressionPrinter {
                                 source_,
                                 0,
                                 &body_text,
-                                style_,
-                                options_)) {
+                                style_)) {
       supported_ = false;
       return std::string();
     }
@@ -385,7 +381,6 @@ class ExpressionPrinter {
 
   bool needs_bitwise_parentheses(Token::Kind parent,
                                  Token::Kind child) const {
-    if (!options_.parenthesize_mixed_bitwise) return false;
     if (!is_bitwise(parent) && !is_bitwise(child)) return false;
     if (Token::precedence(parent) == PRECEDENCE_ASSIGNMENT) return false;
     return parent != child;
@@ -627,8 +622,7 @@ class ExpressionPrinter {
                            source_,
                            0,
                            &body_text,
-                           style_,
-                           options_)) {
+                           style_)) {
         supported_ = false;
         return true;
       }
@@ -696,8 +690,7 @@ class ExpressionPrinter {
                            source_,
                            0,
                            &body_text,
-                           style_,
-                           options_)) return false;
+                           style_)) return false;
       append_suite_body(
           result,
           style_.continuation_step,
@@ -740,8 +733,7 @@ class ExpressionPrinter {
                          source_,
                          0,
                          &body_text,
-                         style_,
-                         options_)) return false;
+                         style_)) return false;
 
     *result = FormatOutput::single_line(first);
     size_t line_start = 0;
@@ -959,8 +951,7 @@ class ExpressionPrinter {
                            source_,
                            0,
                            &body_text,
-                           style_,
-                           options_)) {
+                           style_)) {
         supported_ = false;
         return false;
       }
@@ -1121,10 +1112,9 @@ class ExpressionPrinter {
 
 bool format_expression_flat(Expression* expression,
                             Source* source,
-                            std::string* result,
-                            const FormatExpressionOptions& options) {
+                            std::string* result) {
   ASSERT(source != null);
-  ExpressionPrinter printer(source, 0, FormatStyle(), options);
+  ExpressionPrinter printer(source, 0, FormatStyle());
   return printer.run_flat(expression, result);
 }
 
@@ -1132,11 +1122,10 @@ bool format_expression(Expression* expression,
                        Source* source,
                        int base_indentation,
                        FormatOutput* result,
-                       const FormatStyle& style,
-                       const FormatExpressionOptions& options) {
+                       const FormatStyle& style) {
   ASSERT(source != null);
   ASSERT(base_indentation >= 0);
-  ExpressionPrinter printer(source, base_indentation, style, options);
+  ExpressionPrinter printer(source, base_indentation, style);
   return printer.run(expression, result);
 }
 
