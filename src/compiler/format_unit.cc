@@ -135,7 +135,10 @@ class UnitPrinter {
   }
 
   int method_header_end(Method* method) const {
-    if (method->body() == null) return end(method);
+    if (method->body() == null) {
+      int offset = std::max(start(method), end(method) - 1);
+      return facts()->lines()[facts()->line_index_at(offset)].to;
+    }
     int body_start = method->body()->expressions().is_empty()
         ? end(method)
         : start(method->body()->expressions().first());
@@ -153,6 +156,17 @@ class UnitPrinter {
     int first = facts()->line_index_at(start(node));
     int last = facts()->line_index_at(std::max(start(node), end(node) - 1));
     return comments_->render_verbatim(first, last, indentation);
+  }
+
+  bool contains_multiline_string(Node* node) const {
+    int from = start(node);
+    int to = end(node);
+    const uint8* bytes = source_->text();
+    for (int offset = from; offset + 2 < to; offset++) {
+      if (bytes[offset] == '"' && bytes[offset + 1] == '"' &&
+          bytes[offset + 2] == '"') return true;
+    }
+    return false;
   }
 
   static std::string indent(int indentation) {
@@ -220,6 +234,14 @@ class UnitPrinter {
   }
 
   bool field(Field* field, int indentation, std::string* result) {
+    if (contains_multiline_string(field)) {
+      int first = facts()->line_index_at(start(field));
+      int last = facts()->line_index_at(
+          std::max(start(field), end(field) - 1));
+      *result = comments_->render_verbatim_preserving_continuations(
+          first, last, indentation);
+      return true;
+    }
     if (comments_->has_unconsumed_in(
         start(field),
         facts()->lines()[facts()->line_index_at(end(field))].to)) {
