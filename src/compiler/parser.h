@@ -289,7 +289,6 @@ class Parser {
   Source* source_;
   Scanner* scanner_;
   Diagnostics* diagnostics_;
-
   bool encountered_stack_overflow_ = false;
 
   ScannerStateQueue scanner_state_queue_;
