@@ -656,12 +656,13 @@ class DataBlock:
   /** Whether this data block encodes data for the given uuid. */
   is-service-data-for uuid/BleUuid -> bool:
     uuid-bytes := uuid.to-byte-array --reversed
+    if data.size < uuid-bytes.size: return false
     if uuid-bytes.size == 2:
-      return type == TYPE-SERVICE-DATA-16 and data[0 .. 1] == uuid-bytes
+      return type == TYPE-SERVICE-DATA-16 and data[0 .. 2] == uuid-bytes
     else if uuid-bytes.size == 4:
-      return type == TYPE-SERVICE-DATA-32 and data[0 .. 3] == uuid-bytes
+      return type == TYPE-SERVICE-DATA-32 and data[0 .. 4] == uuid-bytes
     else if uuid-bytes.size == 16:
-      return type == TYPE-SERVICE-DATA-128 and data[0 .. 15] == uuid-bytes
+      return type == TYPE-SERVICE-DATA-128 and data[0 .. 16] == uuid-bytes
     return false
 
   /**
