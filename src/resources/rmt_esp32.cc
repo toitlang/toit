@@ -1015,6 +1015,8 @@ PRIMITIVE(receive) {
   bool dispose, clear;
   ByteArray* result = process->object_heap()->allocate_external_byte_array(received, bytes, dispose=true, clear=false);
   if (result == null) FAIL(ALLOCATION_FAILED);
+  // The finalizer unregisters the memory when it frees it.
+  process->register_external_allocation(received);
 
   in->set_buffer(null);
   in->set_received(-1);
