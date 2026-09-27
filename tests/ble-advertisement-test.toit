@@ -210,10 +210,18 @@ test-data-blocks:
   expect-equals #[0x01, 0x02, 0x03] data
   uuid := block.service-data: | uuid data | uuid
   expect-equals uuid16-1 uuid
+  expect (block.is-service-data-for uuid16-1)
+  expect-not (block.is-service-data-for uuid16-2)
+  expect-not (block.is-service-data-for uuid32-1)
+  // Too short to hold the UUID.
+  expect-not ((DataBlock DataBlock.TYPE-SERVICE-DATA-16 #[0x34]).is-service-data-for uuid16-1)
 
   block = DataBlock.service-data uuid32-1 #[0x01, 0x02, 0x03]
   expect-equals #[0x08, 0x20, 0x78, 0x56, 0x34, 0x12, 0x01, 0x02, 0x03] block.to-raw
   expect block.is-service-data
+  expect (block.is-service-data-for uuid32-1)
+  expect-not (block.is-service-data-for uuid32-2)
+  expect-not (block.is-service-data-for uuid16-1)
   data = block.service-data: | uuid data |
     expect-equals uuid32-1 uuid
     expect-equals #[0x01, 0x02, 0x03] data
@@ -229,6 +237,9 @@ test-data-blocks:
                 ]
                 block.to-raw
   expect block.is-service-data
+  expect (block.is-service-data-for uuid128-1)
+  expect-not (block.is-service-data-for uuid128-2)
+  expect-not (block.is-service-data-for uuid32-1)
   data = block.service-data: | uuid data |
     expect-equals uuid128-1 uuid
     expect-equals #[0x01, 0x02, 0x03] data
