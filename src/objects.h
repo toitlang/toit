@@ -656,6 +656,15 @@ class ByteArray : public HeapObject {
     _set_external_address(null);
   }
 
+  // Whether the external memory belongs to this process and is freed by the
+  // VM finalizer. Only such byte arrays may be neutered. Others point at
+  // memory owned by someone else, like RTC memory or flash.
+  // The finalizer flag is shared with Toit finalizers, but `add-finalizer`
+  // only accepts instances, so on a byte array it means the VM finalizer.
+  bool has_owned_external_memory() const {
+    return has_external_address() && has_active_finalizer();
+  }
+
   uint8* neuter(Process* process);
 
   word external_tag() const {

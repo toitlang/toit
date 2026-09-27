@@ -34,6 +34,12 @@ test-set-incoming:
   session.tls-set-incoming_ socket internal 3
   expect-equals 10 internal.size
 
+  // External byte arrays the process doesn't own are copied.
+  rtc := rtc-user-bytes_
+  size := rtc.size
+  session.tls-set-incoming_ socket rtc 0
+  expect-equals size rtc.size
+
   session.tls-set-incoming_ socket (ByteArray 10) 0
   session.tls-close_ socket
   session.tls-deinit_ group
@@ -70,3 +76,6 @@ class TestReader extends io.CloseableReader:
     return result
 
   close_ -> none:
+
+rtc-user-bytes_ -> ByteArray:
+  #primitive.core.rtc-user-bytes
