@@ -36,6 +36,15 @@ abstract class Provider extends scanning-provider.Provider implements shared.Fac
 
   capabilities -> List: return [api.CAP-ADVERTISING | api.CAP-SCAN | api.CAP-CONTINUOUS-SCAN | api.CAP-GATT-CENTRAL, 60_000_000, 512, 517, central-session-limit]
 
+  /**
+  Whether central-role links apply a peripheral's valid connection parameter
+    request (L2CAP Connection Parameter Update Request).
+
+  True by default, as in other hosts; the request is applied with LE
+    Connection Update and bounded like any other update.
+  */
+  accept-parameter-requests -> bool: return true
+
   /** Selects a central session's local random address, or null for public. */
   central-local-random-address info/hci.Capabilities -> ByteArray?: return null
 
@@ -69,6 +78,7 @@ abstract class Provider extends scanning-provider.Provider implements shared.Fac
   /** Creates a protocol owner with provider-selected controller limits. */
   create-central-host controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
     return central.Central controller --acl-length=info.acl-length --acl-count=info.acl-count --phy-2m=info.phy-2m
+        --accept-parameter-requests=accept-parameter-requests
         --receive-limit=receive-limit
         --link-limit=central-session-limit
 

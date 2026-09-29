@@ -7,6 +7,7 @@ import monitor
 import .attribute-server as attributes
 import .cccd-store as cccd
 import .central as central
+import .connection as connection
 import .signaling as signaling
 import .security-owner as security
 import .timeouts as timeouts
@@ -45,6 +46,12 @@ class Server:
   handling_/bool := false
   parameter-status_/string? := null
   parameter-timer_/Task? := null
+  parameter-identifier_/int := 0
+  parameter-verdict_/monitor.Latch? := null
+  // The LE Connection Update expected after an accepted request that nobody
+  // waits for, so that the next request does not arrive while the central is
+  // still applying it (it would refuse as busy).
+  applying_/monitor.Latch? := null
   indication_/Indication? := null
   indication-timer_/Task? := null
   change-indication_/bool := false
@@ -80,22 +87,35 @@ class Server:
       indicate session_.service-changed-handle
 
   /**
-  Submits one peripheral interval request while allowing ATT serving to continue.
+  Submits a peripheral connection parameter request (L2CAP Connection
+    Parameter Update Request) while ATT serving continues.
 
   The serve loop processes the response. Acceptance is the peer's signaling
-    decision, not evidence that the controller applied the new parameters.
-    A single timeout task exists only while this request is pending.
+    decision, not evidence that the controller applied the new parameters;
+    $update-parameters also waits for that. One request may be pending at a
+    time; each uses a new identifier, so a late answer to an earlier one is
+    ignored. A single timeout task exists only while a request is pending.
+    Intervals are in 1.25 ms units, the supervision timeout in 10 ms units.
   */
-  request-parameters --interval/int=12 --timeout/Duration=(Duration --s=30) -> none:
+  request-parameters --interval/int=12 --interval-max/int=interval --latency/int=0
+      --supervision-timeout/int=400 --timeout/Duration=(Duration --s=30) -> none:
     check-open_
     if link_.info.role != 1: throw "GATT_NOT_PERIPHERAL"
     if timeout.in-us <= 0: throw "INVALID_ARGUMENT"
-    if parameter-status_: throw "L2CAP_PARAMETER_REQUEST_ALREADY_SENT"
-    request := signaling.parameter-request 1 --interval=interval
+    if parameter-status_ == "pending": throw "L2CAP_PARAMETER_REQUEST_BUSY"
+    identifier := parameter-identifier_ % 255 + 1
+    request := signaling.parameter-request identifier --interval=interval --interval-max=interval-max
+        --latency=latency
+        --supervision-timeout=supervision-timeout
+    parameter-identifier_ = identifier
     parameter-status_ = "pending"
+    verdict := monitor.Latch
+    parameter-verdict_ = verdict
     parameter-timer_ = task --background::
       sleep timeout
-      if parameter-status_ == "pending": parameter-status_ = "timeout"
+      if parameter-status_ == "pending" and parameter-verdict_ == verdict:
+        parameter-status_ = "timeout"
+        verdict.set "timeout"
       parameter-timer_ = null
     submitted := false
     try:
@@ -104,8 +124,47 @@ class Server:
     finally:
       if not submitted: close
 
-  /** Returns null, pending, accepted, rejected, timeout, or closed. */
+  /** Returns null, pending, accepted, rejected, timeout, or closed for the latest request. */
   parameter-status -> string?: return parameter-status_
+
+  /**
+  Asks the central for new connection parameters and waits until they apply.
+
+  Waits for an earlier request to finish first, then sends one (see
+    $request-parameters) and waits for the central's LE Connection Update,
+    all within $timeout. Returns the parameters the controller reports;
+    throws L2CAP_PARAMETERS_REJECTED when the central refuses and
+    DEADLINE_EXCEEDED when it does not answer or apply them in time.
+  */
+  update-parameters --interval-min/int --interval-max/int=interval-min --latency/int=0
+      --supervision-timeout/int=400 --timeout/Duration=(Duration --s=30) -> connection.Update:
+    check-open_
+    if link_.info.role != 1: throw "GATT_NOT_PERIPHERAL"
+    result/connection.Update? := null
+    with-timeout timeout:
+      while parameter-status_ == "pending": parameter-verdict_.get
+      applying := applying_
+      if applying and not applying.has-value:
+        catch: with-timeout timeouts.PARAMETER-SETTLE: applying.get
+        // Applied or not, this request takes over the link's update slot.
+        if link_.parameter-pending_ == applying: link_.parameter-pending_ = null
+      if link_.parameter-pending_: throw "HCI_PARAMETER_UPDATE_BUSY"
+      applied := monitor.Latch
+      link_.parameter-pending_ = applied
+      try:
+        request-parameters --interval=interval-min --interval-max=interval-max --latency=latency
+            --supervision-timeout=supervision-timeout
+            --timeout=timeout
+        verdict := parameter-verdict_.get
+        if verdict == "rejected": throw "L2CAP_PARAMETERS_REJECTED"
+        if verdict != "accepted": throw DEADLINE-EXCEEDED-ERROR
+        update/connection.Update := applied.get
+        if update.status != 0: throw "HCI_PARAMETER_UPDATE_FAILED status=$update.status"
+        result = update
+      finally:
+        critical-do --no-respect-deadline:
+          if link_.parameter-pending_ == applied: link_.parameter-pending_ = null
+    return result
 
   /**
   Serves until peer disconnect, calling $written after each acknowledged write.
@@ -234,7 +293,9 @@ class Server:
       if parameter-timer_:
         parameter-timer_.cancel
         parameter-timer_ = null
-      if parameter-status_ == "pending": parameter-status_ = "closed"
+      if parameter-status_ == "pending":
+        parameter-status_ = "closed"
+        if parameter-verdict_: parameter-verdict_.set "closed"
       session_.close
       if link_.connected: host_.abort link_ --error="GATT_SERVER_CLOSED"
       if error: throw error
@@ -249,9 +310,13 @@ class Server:
       // are unsolicited; the generic policy discards recognized responses
       // without interpreting their bodies (Core 6.3, Vol 3 Part A, section 4).
       if packet.channel == 5 and parameter-status_ == "pending":
-        result := signaling.parameter-response packet.payload 1
+        result := signaling.parameter-response packet.payload parameter-identifier_
         if result != null:
           parameter-status_ = result == 0 ? "accepted" : "rejected"
+          if result == 0 and not link_.parameter-pending_:
+            applying_ = monitor.Latch
+            link_.parameter-pending_ = applying_
+          parameter-verdict_.set parameter-status_
           if parameter-timer_: parameter-timer_.cancel
           parameter-timer_ = null
           continue

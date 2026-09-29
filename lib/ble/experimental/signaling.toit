@@ -5,15 +5,15 @@
 import io
 
 /** Encodes a peripheral Connection Parameter Update Request (section 4.20). */
-parameter-request identifier/int --interval/int=12 --latency/int=0
+parameter-request identifier/int --interval/int=12 --interval-max/int=interval --latency/int=0
     --supervision-timeout/int=400 -> ByteArray:
-  if not 1 <= identifier <= 255 or not 6 <= interval <= 3200 or
+  if not 1 <= identifier <= 255 or not 6 <= interval <= interval-max <= 3200 or
       not 0 <= latency <= 499 or not 10 <= supervision-timeout <= 3200 or
-      supervision-timeout * 4 <= (latency + 1) * interval:
+      supervision-timeout * 4 <= (latency + 1) * interval-max:
     throw "INVALID_ARGUMENT"
   result := #[0x12, identifier, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   io.LITTLE-ENDIAN.put-uint16 result 4 interval
-  io.LITTLE-ENDIAN.put-uint16 result 6 interval
+  io.LITTLE-ENDIAN.put-uint16 result 6 interval-max
   io.LITTLE-ENDIAN.put-uint16 result 8 latency
   io.LITTLE-ENDIAN.put-uint16 result 10 supervision-timeout
   return result

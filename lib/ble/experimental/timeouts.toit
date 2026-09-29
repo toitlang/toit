@@ -34,6 +34,11 @@ SECURITY ::= Duration --s=30
 
 /** A connection parameter update after the controller accepted the command. */
 PARAMETER-UPDATE ::= Duration --s=30
+/**
+How long a new peripheral parameter request waits for the central to apply
+  an earlier accepted one; the central refuses requests while it applies one.
+*/
+PARAMETER-SETTLE ::= Duration --s=2
 
 /** An indication's confirmation (Core Vol 3 Part F 3.3.3 transaction timeout). */
 INDICATION ::= Duration --s=30

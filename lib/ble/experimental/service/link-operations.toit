@@ -4,6 +4,7 @@
 
 import ..central as central
 import ..connection as connection
+import ..gatt-server as gatt
 import .api as api
 
 /** Tests whether $index names one of the link operations handled here. */
@@ -19,15 +20,16 @@ Shared by central connections and peripheral sessions. LINK-INFO returns
   27 until the controllers report otherwise. WAIT-DISCONNECTED returns the
   HCI reason once the link has ended.
 */
-link-operation host/central.Central link/central.Link index/int arguments/List -> any:
+link-operation host/central.Central link/central.Link index/int arguments/List
+    --server/gatt.Server?=null -> any:
   // RPC carries strings; controller errors are objects.
   result := null
-  error := catch: result = link-operation_ host link index arguments
+  error := catch: result = link-operation_ host link index arguments server
   if error is string: throw error
   if error: throw error.stringify
   return result
 
-link-operation_ host/central.Central link/central.Link index/int arguments/List -> any:
+link-operation_ host/central.Central link/central.Link index/int arguments/List server/gatt.Server? -> any:
   if index == api.LINK-INFO:
     if not arguments.is-empty: throw "INVALID_ARGUMENT"
     phy := link.phy
@@ -61,6 +63,15 @@ link-operation_ host/central.Central link/central.Link index/int arguments/List 
     return host.read-tx-power link --maximum=arguments[0]
   if index == api.UPDATE-PARAMETERS:
     if arguments.size != 4: throw "INVALID_ARGUMENT"
+    if link.info.role == 1:
+      // A peripheral asks the central through L2CAP signaling.
+      if not server: throw "GATT_UNSUPPORTED_SERVICE_OPERATION"
+      applied := server.update-parameters
+          --interval-min=arguments[0]
+          --interval-max=arguments[1]
+          --latency=arguments[2]
+          --supervision-timeout=arguments[3]
+      return [applied.interval, applied.latency, applied.supervision-timeout]
     update := host.update-parameters link
         --interval-min=arguments[0]
         --interval-max=arguments[1]
