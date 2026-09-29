@@ -39,6 +39,9 @@ static const uint8 NUMBER_OF_MALLOC_TAGS          = 15;
 
 int compute_allocation_type(word tag);
 
+// Returns a human-readable name for a tag returned by compute_allocation_type.
+const char* malloc_tag_name(int tag);
+
 #ifdef TOIT_CMPCTMALLOC
 
 class HeapFragmentationDumper : public Buffer {

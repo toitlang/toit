@@ -717,22 +717,7 @@ class HeapSummaryPage {
   }
 
   static const char* name_of_type(int tag) {
-    switch (tag) {
-      case MISC_MALLOC_TAG: return "misc";
-      case EXTERNAL_BYTE_ARRAY_MALLOC_TAG: return "external byte array";
-      case BIGNUM_MALLOC_TAG: return "tls/bignum";
-      case EXTERNAL_STRING_MALLOC_TAG: return "external string";
-      case TOIT_HEAP_MALLOC_TAG: return "toit processes";
-      case FREE_MALLOC_TAG: return "free";
-      case LWIP_MALLOC_TAG: return "lwip";
-      case HEAP_OVERHEAD_MALLOC_TAG: return "heap overhead";
-      case EVENT_SOURCE_MALLOC_TAG: return "event source";
-      case OTHER_THREADS_MALLOC_TAG: return "thread/other";
-      case THREAD_SPAWN_MALLOC_TAG: return "thread/spawn";
-      case NULL_MALLOC_TAG: return "untagged";
-      case WIFI_MALLOC_TAG: return "wifi";
-    }
-    return "unknown";
+    return malloc_tag_name(tag);
   }
 
   void set_owning_process(Process* process) { owning_process_ = process; }

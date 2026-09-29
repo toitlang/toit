@@ -248,8 +248,8 @@ object-histogram_ marker/string full-gcs/int? -> ByteArray:
 /**
 Captures the memory state of the system and prints it on stdout.
 
-The capture pauses all processes while their heaps and their roots are
-  written as lines that start with "#TMC".
+The capture pauses all processes while their heaps, their roots, and the
+  allocations of the system heap are written as lines that start with "#TMC".
   The memory inspector in the SDK's tools/memory-inspector directory decodes
   such lines and answers questions about where memory is used.
 

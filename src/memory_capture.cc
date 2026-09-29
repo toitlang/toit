@@ -19,6 +19,7 @@
 
 #include "encoder.h"
 #include "heap.h"
+#include "heap_report.h"
 #include "objects_inline.h"
 #include "os.h"
 #include "process.h"
@@ -28,6 +29,12 @@
 #include "tags.h"
 #include "utils.h"
 #include "vm.h"
+
+#ifdef TOIT_ESP32
+#include <esp_heap_caps.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#endif
 
 namespace toit {
 
@@ -64,6 +71,15 @@ enum RecordType {
   // [type, number of records before this one, complete, number of processes
   //  that could not be paused (and are missing from the capture)].
   END_RECORD = 9,
+  // [type, name, name, ...]: the names of the malloc tags, indexed by tag.
+  MALLOC_TAG_NAMES_RECORD = 10,
+  // [type, name, total size, free size, largest free block].
+  SYSTEM_HEAP_RECORD = 11,
+  // [type, bytes]: allocations of the system heap; see $write_malloc_map.
+  MALLOC_RECORD = 12,
+  // [type, address, ...]: addresses in the blocks of the system heap that
+  // the capture itself uses (its buffers and the stack of its thread).
+  CAPTURE_BLOCKS_RECORD = 13,
 };
 
 enum RootKind {
@@ -164,6 +180,10 @@ class MemoryCapture {
   void write_header();
   void write_layout();
   void write_struct_tag_names();
+#ifdef TOIT_ESP32
+  void write_system_heap();
+  void write_malloc_map();
+#endif
   void write_program(Program* program);
   void write_process(Process* process);
   void write_roots(Process* process, RootKind kind, Object** roots, word count, word first_index);
@@ -282,6 +302,139 @@ void MemoryCapture::write_struct_tag_names() {
     end();
   }
 }
+
+#ifdef TOIT_ESP32
+
+// Writes the names of the malloc tags, the sizes of the system heaps, and the
+// allocations of the system heap.
+void MemoryCapture::write_system_heap() {
+  Encoder* encoder = begin(MALLOC_TAG_NAMES_RECORD, NUMBER_OF_MALLOC_TAGS);
+  for (int i = 0; i < NUMBER_OF_MALLOC_TAGS; i++) {
+    encoder->write_string(malloc_tag_name(i));
+  }
+  end();
+
+  struct { const char* name; uint32 caps; } heaps[] = {
+    { "internal", MALLOC_CAP_INTERNAL },
+    { "external", MALLOC_CAP_SPIRAM },
+  };
+  for (auto heap : heaps) {
+    uword total = heap_caps_get_total_size(heap.caps);
+    if (total == 0) continue;
+    Encoder* encoder = begin(SYSTEM_HEAP_RECORD, 4);
+    encoder->write_string(heap.name);
+    encoder->write_int(total);
+    encoder->write_int(heap_caps_get_free_size(heap.caps));
+    encoder->write_int(heap_caps_get_largest_free_block(heap.caps));
+    end();
+  }
+
+  write_malloc_map();
+}
+
+// The allocations of the system heap are collected in windows, so the capture
+// only needs a small buffer: every pass over the heap collects the allocations
+// with the lowest addresses at or above the start of the window. The allocator
+// lock is held while iterating, so the callback can neither allocate nor print.
+struct MallocWindow {
+  struct Entry {
+    uword address;
+    uword size;
+    uint8 tag;
+  };
+  static const int CAPACITY = 64;
+  Entry entries[CAPACITY];  // Sorted by address.
+  int count = 0;
+  uword start = 0;
+
+  static bool callback(void* self, void* tag, void* address, uword size) {
+    reinterpret_cast<MallocWindow*>(self)->add(reinterpret_cast<word>(tag), reinterpret_cast<uword>(address), size);
+    return false;
+  }
+
+  void add(word tag, uword address, uword size) {
+    if (address < start) return;
+    if (count == CAPACITY && address >= entries[CAPACITY - 1].address) return;
+    // Insertion sort. If the window is full, the last entry falls out.
+    int i = (count == CAPACITY) ? CAPACITY - 1 : count++;
+    while (i > 0 && entries[i - 1].address > address) {
+      entries[i] = entries[i - 1];
+      i--;
+    }
+    entries[i].address = address;
+    entries[i].size = size;
+    entries[i].tag = compute_allocation_type(tag);
+  }
+};
+
+static void write_uleb128(Buffer* buffer, uword value) {
+  while (value >= 0x80) {
+    buffer->put_byte(0x80 | (value & 0x7f));
+    value >>= 7;
+  }
+  buffer->put_byte(value);
+}
+
+static word uleb128_size(uword value) {
+  word size = 1;
+  while (value >= 0x80) {
+    size++;
+    value >>= 7;
+  }
+  return size;
+}
+
+// The malloc map is a sequence of entries (address as uleb128, size as
+// uleb128, tag as byte), sorted by address and split over MALLOC records.
+void MemoryCapture::write_malloc_map() {
+  const int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
+  const int all_heaps = 0;
+  MallocWindow* window = _new MallocWindow();
+  if (window == null) {
+    complete_ = false;
+    return;
+  }
+
+  Encoder* encoder = begin(CAPTURE_BLOCKS_RECORD, 2);
+  encoder->write_int(reinterpret_cast<uword>(window));
+  encoder->write_int(reinterpret_cast<uword>(pxTaskGetStackStart(null)));
+  end();
+
+  uword window_start = 0;
+  while (true) {
+    window->count = 0;
+    window->start = window_start;
+    heap_caps_iterate_tagged_memory_areas(window, null, &MallocWindow::callback, flags, all_heaps);
+    int index = 0;
+    while (index < window->count) {
+      // Find how many entries fit in a record.
+      word bytes = 0;
+      int limit = index;
+      while (limit < window->count) {
+        auto entry = &window->entries[limit];
+        word entry_size = uleb128_size(entry->address) + uleb128_size(entry->size) + 1;
+        if (bytes + entry_size > DATA_CHUNK_SIZE) break;
+        bytes += entry_size;
+        limit++;
+      }
+      Encoder* encoder = begin(MALLOC_RECORD, 1);
+      encoder->write_byte_array_header(bytes);
+      for (int i = index; i < limit; i++) {
+        auto entry = &window->entries[i];
+        write_uleb128(&buffer_, entry->address);
+        write_uleb128(&buffer_, entry->size);
+        buffer_.put_byte(entry->tag);
+      }
+      end();
+      index = limit;
+    }
+    if (window->count < MallocWindow::CAPACITY) break;
+    window_start = window->entries[MallocWindow::CAPACITY - 1].address + 1;
+  }
+  delete window;
+}
+
+#endif  // TOIT_ESP32
 
 void MemoryCapture::write_program(Program* program) {
   for (int i = 0; i < written_program_count_; i++) {
@@ -412,6 +565,9 @@ void MemoryCapture::run() {
   ProcessListFromScheduler paused;
   int not_paused = scheduler->pause_all_processes(&paused);
   if (not_paused > 0) complete_ = false;
+#ifdef TOIT_ESP32
+  write_system_heap();
+#endif
   for (Process* process : paused) write_process(process);
   scheduler->resume_all_processes(&paused);
 

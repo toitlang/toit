@@ -37,8 +37,9 @@ enum MemoryCaptureStart {
 };
 
 // Starts a capture of the memory state of the system on a separate thread.
-// The capture pauses all Toit processes and writes their heaps and their
-// roots to stdout. The format is described in memory_capture.cc.
+// The capture pauses all Toit processes and writes their heaps, their roots,
+// and the allocations of the system heap to stdout. The format is described
+// in memory_capture.cc.
 MemoryCaptureStart start_memory_capture(const char* reason);
 
 // Returns true when the most recently started capture has completed.
