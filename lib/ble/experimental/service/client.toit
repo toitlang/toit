@@ -289,7 +289,7 @@ Discovery returns owned lists: services [start,end,uuid], characteristics
   Operations after local closure throw GATT_CONNECTION_CLOSED; disconnect remains
   idempotent.
 */
-class Connection extends services.ServiceResourceProxy:
+class Connection extends services.ServiceResourceProxy with GattClient:
   connection_/Client
 
   constructor .connection_ handle/int:
@@ -304,6 +304,49 @@ class Connection extends services.ServiceResourceProxy:
 
   /** Returns a fresh observation of this link's achieved security. */
   security -> SecuritySnapshot: return SecuritySnapshot (operation_ api.SECURITY [])
+
+  /**
+  Returns [role, tx PHY, rx PHY, tx octets, rx octets, interval, latency,
+    supervision timeout, peer address, peer address type] for this link.
+  */
+  link-info -> List: return connection_.call_ api.LINK-INFO [handle_]
+
+  /** Asks for PHYs by preference mask and returns the [tx, rx] PHYs in effect afterwards. */
+  set-phy --tx/int --rx/int -> List: return connection_.call_ api.SET-PHY [handle_, tx, rx]
+
+  /** Reads the controller's RSSI for this link in dBm. */
+  rssi -> int: return connection_.call_ api.READ-RSSI [handle_]
+
+  /** Reads this link's current (or $maximum) transmit power in dBm. */
+  tx-power --maximum/bool=false -> int: return connection_.call_ api.READ-TX-POWER [handle_, maximum]
+
+  /** Asks for connection parameters (central role only); returns [interval, latency, timeout] applied. */
+  update-parameters --interval-min/int --interval-max/int --latency/int --supervision-timeout/int -> List:
+    return connection_.call_ api.UPDATE-PARAMETERS [handle_, interval-min, interval-max, latency, supervision-timeout]
+
+  /** Waits for the link to end and returns the controller's HCI reason code. */
+  wait-disconnected -> int: return connection_.call_ api.WAIT-DISCONNECTED [handle_]
+
+  /** Ends the connection and waits for protocol cleanup before releasing ownership. */
+  disconnect -> none:
+    if is-closed: return
+    try:
+      connection_.call_ api.CENTRAL-STOP [handle_]
+    finally:
+      close
+
+  operation_ index/int arguments/List:
+    result := connection_.call_ index ([handle_] + arguments)
+    if result[0]: return result[1]
+    throw (AttributeError result[1] result[2] result[3])
+
+/**
+GATT client procedures on a link's peer: a peripheral's database from a
+  central connection, or a central's database from a peripheral session.
+*/
+abstract mixin GattClient:
+  abstract is-closed -> bool
+  abstract operation_ index/int arguments/List -> any
 
   read handle/int -> ByteArray: return operation_ api.CENTRAL-READ [handle]
   write handle/int value/ByteArray -> none: operation_ api.CENTRAL-WRITE [handle, (copy-bounded_ value 512)]
@@ -327,27 +370,6 @@ class Connection extends services.ServiceResourceProxy:
   /** Captures this connection's current database revision for checked access. */
   database -> DatabaseView: return DatabaseView this (operation_ api.CENTRAL-REVISION [])
 
-  /**
-  Returns [role, tx PHY, rx PHY, tx octets, rx octets, interval, latency,
-    supervision timeout, peer address, peer address type] for this link.
-  */
-  link-info -> List: return connection_.call_ api.LINK-INFO [handle_]
-
-  /** Asks for PHYs by preference mask and returns the [tx, rx] PHYs in effect afterwards. */
-  set-phy --tx/int --rx/int -> List: return connection_.call_ api.SET-PHY [handle_, tx, rx]
-
-  /** Reads the controller's RSSI for this link in dBm. */
-  rssi -> int: return connection_.call_ api.READ-RSSI [handle_]
-
-  /** Reads this link's current (or $maximum) transmit power in dBm. */
-  tx-power --maximum/bool=false -> int: return connection_.call_ api.READ-TX-POWER [handle_, maximum]
-
-  /** Asks for connection parameters (central role only); returns [interval, latency, timeout] applied. */
-  update-parameters --interval-min/int --interval-max/int --latency/int --supervision-timeout/int -> List:
-    return connection_.call_ api.UPDATE-PARAMETERS [handle_, interval-min, interval-max, latency, supervision-timeout]
-
-  /** Waits for the link to end and returns the controller's HCI reason code. */
-  wait-disconnected -> int: return connection_.call_ api.WAIT-DISCONNECTED [handle_]
 
   /**
   Monitors Service Changed while running the scoped block.
@@ -397,22 +419,9 @@ class Connection extends services.ServiceResourceProxy:
           if not is-closed: operation_ api.CENTRAL-UNSUBSCRIBE [token]
         if error and not is-exception: throw error
 
-  /** Ends the connection and waits for protocol cleanup before releasing ownership. */
-  disconnect -> none:
-    if is-closed: return
-    try:
-      connection_.call_ api.CENTRAL-STOP [handle_]
-    finally:
-      close
-
-  operation_ index/int arguments/List:
-    result := connection_.call_ index ([handle_] + arguments)
-    if result[0]: return result[1]
-    throw (AttributeError result[1] result[2] result[3])
-
 /** Receives owned values while its connection's subscription block is active. */
 class Subscription:
-  connection_/Connection
+  connection_/GattClient
   token_/int
   constructor .connection_ .token_:
   /**
@@ -435,7 +444,7 @@ Handles discovered through this view belong to its revision. Reuse this view
   and must not be replayed automatically. This is not a persistent cache.
 */
 class DatabaseView:
-  connection_/Connection
+  connection_/GattClient
   revision_/int
   constructor .connection_ .revision_:
   /** Enables a scoped subscription only while this database revision is current. */
@@ -645,7 +654,7 @@ Runs application blocks locally while the provider owns ATT and HCI.
 Operations after local closure throw GATT_REQUESTS_CLOSED. The serving loop
   closes this handle on exit; inspect $termination-reason for its observed cause.
 */
-class Session extends services.ServiceResourceProxy:
+class Session extends services.ServiceResourceProxy with GattClient:
   /**
   Sets the per-handler budget before start seals the session.
 
@@ -682,6 +691,15 @@ class Session extends services.ServiceResourceProxy:
   handle_ -> int:
     if is-closed: throw "GATT_REQUESTS_CLOSED"
     return super
+
+  /**
+  GATT client operations ($GattClient) reach the connected central's
+    database; they need a connected central.
+  */
+  operation_ index/int arguments/List:
+    result := connection_.call_ index ([handle_] + arguments)
+    if result[0]: return result[1]
+    throw (AttributeError result[1] result[2] result[3])
 
   /**
   Adds a primary service, or a $secondary one, before advertising starts;

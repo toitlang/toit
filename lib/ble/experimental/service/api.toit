@@ -8,7 +8,7 @@ import system.services
 SELECTOR ::= services.ServiceSelector
     --uuid="9d28731e-2a9f-4b19-adf7-39717fae7622"
     --major=0
-    --minor=29
+    --minor=30
 
 OPEN ::= 0
 NEXT ::= 1
@@ -71,6 +71,8 @@ CENTRAL-READ-BY-UUID ::= 54
 CENTRAL-READ-MULTIPLE ::= 55
 // Peripheral builder: an include in the latest service.
 INCLUDE-SERVICE ::= 56
+// Peripheral sessions accept the CENTRAL-* GATT client operations too
+// (minor 30): they reach the connected central's database.
 // Provider-wide: the peers a deployment lists as bonded.
 BONDED-PEERS ::= 57
 

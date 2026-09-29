@@ -11,6 +11,7 @@ import ..transport as transport
 import ..pairing-attempts as retry
 import ..security-owner show Owner
 import .api as api
+import .gatt-client-operations as operations
 import .link-operations as link-operations
 import .provider as rpc
 import .scanning-provider as scanning-provider
@@ -133,8 +134,7 @@ class ConnectionSession extends rpc.Session:
   ended_/monitor.Latch ::= monitor.Latch
   released_/bool := false
   cleanup-error_ := null
-  subscriptions_/Map ::= {:}
-  next-subscription_/int := 0
+  operations_/operations.ClientOperations? := null
 
   constructor provider/Provider client/int address/ByteArray type/int timeout/int mtu/int:
     super provider client --value-limit=512
@@ -176,7 +176,7 @@ class ConnectionSession extends rpc.Session:
           security-error := null
           close-error := null
           cleanup-error_ = catch:
-            subscriptions_.values.do: | subscription/Subscription_ | subscription.cancel
+            if operations_: operations_.cancel
             // ATT owns security after construction and finishes protocol
             // cleanup before reporting a hook error. Before construction,
             // release the installed owner directly. Either way, still join
@@ -191,7 +191,7 @@ class ConnectionSession extends rpc.Session:
                 else if controller_: controller_.close
                 else if transport_: transport_.close
             if client_: client_.wait-closed
-            subscriptions_.values.do: | subscription/Subscription_ | subscription.wait-ended
+            if operations_: operations_.wait-ended
             if pool_:
               if link_:
                 failure := catch:
@@ -220,6 +220,7 @@ class ConnectionSession extends rpc.Session:
     link_ = link
     security_ = provider.create-central-security-owner host_ link info
     client_ = att.Client host_ link --mtu-limit=mtu --pairing=security_
+    operations_ = operations.ClientOperations client_
     // Exchange the MTU first, as any GATT client does (Core Vol 3 Part G
     // 4.3.1). The peer's ATT response also proves that its host finished
     // connection setup; a BlueZ peripheral, for example, tears the link down
@@ -275,134 +276,4 @@ class ConnectionSession extends rpc.Session:
       paired := link_.connected and security_ != null and security_.paired
       authenticated := encrypted and paired and security_.authenticated
       return [paired, encrypted, authenticated]
-    if index == api.CENTRAL-REVISION:
-      if not arguments.is-empty: throw "INVALID_ARGUMENT"
-      return client_.database-revision
-    if index == api.CENTRAL-CHECKED:
-      if arguments.size != 3: throw "INVALID_ARGUMENT"
-      expected/int := arguments[0]
-      operation/int := arguments[1]
-      if not [api.CENTRAL-READ, api.CENTRAL-WRITE, api.CENTRAL-SERVICES,
-              api.CENTRAL-CHARACTERISTICS, api.CENTRAL-DESCRIPTORS, api.CENTRAL-SUBSCRIBE,
-              api.CENTRAL-WRITE-COMMAND, api.CENTRAL-INCLUDED, api.CENTRAL-READ-BY-UUID,
-              api.CENTRAL-READ-MULTIPLE].contains operation:
-        throw "INVALID_ARGUMENT"
-      client_.check-database-revision expected
-      result := operation_ operation arguments[2] --revision=expected
-      client_.check-database-revision expected
-      return result
-    if index == api.CENTRAL-MONITOR:
-      if not arguments.is-empty: throw "INVALID_ARGUMENT"
-      if subscriptions_.size == 8: throw "ATT_SUBSCRIPTION_LIMIT"
-      token := ++next-subscription_
-      subscriptions_[token] = Subscription_ client_ 0 0 true 8 --monitor-changes
-      return token
-    if index == api.CENTRAL-SUBSCRIBE:
-      if arguments.size != 4: throw "INVALID_ARGUMENT"
-      handle/int := arguments[0]
-      cccd/int := arguments[1]
-      indications/bool := arguments[2]
-      limit/int := arguments[3]
-      if not 1 <= handle < cccd <= 0xffff or not 1 <= limit <= 32: throw "INVALID_ARGUMENT"
-      if subscriptions_.size == 8: throw "ATT_SUBSCRIPTION_LIMIT"
-      token := ++next-subscription_
-      subscriptions_[token] = Subscription_ client_ handle cccd indications limit --revision=revision
-      return token
-    if index == api.CENTRAL-SUBSCRIPTION-READY or index == api.CENTRAL-SUBSCRIPTION-NEXT or index == api.CENTRAL-UNSUBSCRIBE:
-      if arguments.size != 1: throw "INVALID_ARGUMENT"
-      subscription/Subscription_? := subscriptions_.get arguments[0]
-      if not subscription: throw "ATT_SUBSCRIPTION_CLOSED"
-      if index == api.CENTRAL-UNSUBSCRIBE:
-        try:
-          subscription.stop
-        finally:
-          if subscription.ended: subscriptions_.remove arguments[0]
-        return null
-      if index == api.CENTRAL-SUBSCRIPTION-READY:
-        subscription.ready
-        return null
-      return subscription.receive
-    if index == api.CENTRAL-READ:
-      if arguments.size != 1: throw "INVALID_ARGUMENT"
-      return client_.read-long arguments[0] --database-revision=revision
-    if index == api.CENTRAL-WRITE:
-      if arguments.size != 2: throw "INVALID_ARGUMENT"
-      value/ByteArray := arguments[1]
-      if value.size > 512: throw "INVALID_ARGUMENT"
-      if value.size <= client_.mtu - 3: client_.write arguments[0] value --database-revision=revision
-      else: client_.write-long arguments[0] value --database-revision=revision
-      return null
-    if index == api.CENTRAL-WRITE-COMMAND:
-      if arguments.size != 2: throw "INVALID_ARGUMENT"
-      client_.write-command arguments[0] arguments[1] --database-revision=revision
-      return null
-    if index == api.CENTRAL-SERVICES:
-      if not arguments.is-empty: throw "INVALID_ARGUMENT"
-      return (gatt.services client_).map: | s/gatt.Service | [s.start, s.end, s.uuid.copy]
-    if index == api.CENTRAL-CHARACTERISTICS:
-      if arguments.size != 2: throw "INVALID_ARGUMENT"
-      return (gatt.characteristics client_ (gatt.Service arguments[0] arguments[1] #[])).map: | c/gatt.Characteristic |
-        [c.declaration, c.handle, c.properties, c.uuid.copy, c.end]
-    if index == api.CENTRAL-INCLUDED:
-      if arguments.size != 2: throw "INVALID_ARGUMENT"
-      return (gatt.included-services client_ (gatt.Service arguments[0] arguments[1] #[])).map: | i/gatt.IncludedService |
-        [i.handle, i.start, i.end, i.uuid.copy]
-    if index == api.CENTRAL-READ-BY-UUID:
-      if arguments.size != 3 or arguments[0] is not ByteArray: throw "INVALID_ARGUMENT"
-      return gatt.read-by-uuid client_ arguments[0] --start=arguments[1] --end=arguments[2]
-    if index == api.CENTRAL-READ-MULTIPLE:
-      if arguments.size != 2 or arguments[0] is not List or arguments[0].size > 32: throw "INVALID_ARGUMENT"
-      return gatt.read-multiple client_ arguments[0] --variable=arguments[1]
-    if index == api.CENTRAL-DESCRIPTORS:
-      if arguments.size != 2: throw "INVALID_ARGUMENT"
-      c := gatt.Characteristic 0 arguments[0] 0 #[]
-      c.end = arguments[1]
-      return (gatt.descriptors client_ c).map: | d/gatt.Descriptor | [d.handle, d.uuid.copy]
-    throw "GATT_UNSUPPORTED_SERVICE_OPERATION"
-
-// A provider task holds the cheap ATT subscription block for its RPC lifetime.
-// Values stay in ATT's bounded managed queue; RPC does not add a second queue.
-class Subscription_:
-  ready_/monitor.Latch ::= monitor.Latch
-  stop_/monitor.Latch ::= monitor.Latch
-  ended_/monitor.Latch ::= monitor.Latch
-  worker_/Task? := null
-  stream_/att.Subscription? := null
-  error_ := null
-
-  constructor client/att.Client handle/int cccd/int indications/bool limit/int --monitor-changes/bool=false --revision/int?=null:
-    worker_ = task --background::
-      try:
-        error_ = catch:
-          if monitor-changes:
-            gatt.with-service-changed client:
-              ready_.set true
-              stop_.get
-          else:
-            client.subscribe handle --cccd=cccd --indications=indications --queue-limit=limit
-                --database-revision=revision: | stream/att.Subscription |
-              stream_ = stream
-              ready_.set true
-              stop_.get
-      finally:
-        critical-do --no-respect-deadline:
-          if not ready_.has-value: ready_.set (error_ or "ATT_SUBSCRIPTION_CLOSED") --exception
-          ended_.set true
-
-  ready -> none: ready_.get
-  ended -> bool: return ended_.has-value
-  receive -> ByteArray:
-    ready
-    if not stream_: throw "INVALID_ARGUMENT"
-    // ATT returns an owned payload view; RPC copies slices into the message.
-    return stream_.receive
-
-  stop -> none:
-    if not stop_.has-value: stop_.set true
-    wait-ended
-    if error_: throw error_
-
-  cancel -> none:
-    if worker_: worker_.cancel
-  wait-ended -> none:
-    with-timeout timeouts.WORKER: ended_.get
+    return operations_.invoke index arguments --revision=revision

@@ -100,7 +100,6 @@ main:
       expect-equals 1 (data.notify-values [#[5], #[6]])
       expect-equals #[6] data.value
       expect-equals -60 connection.rssi
-      expect-throw "BLE_UNSUPPORTED": connection.discover-services
       applied := connection.request-parameters --interval-min=(Duration --ms=30)
       expect-equals (Duration --ms=30) applied.interval
       expect-equals 24 connection.parameters.interval-units
