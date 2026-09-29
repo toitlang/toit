@@ -4,6 +4,7 @@
 
 import monitor
 
+import .att as att
 import .attribute-server as attributes
 import .cccd-store as cccd
 import .central as central
@@ -56,6 +57,7 @@ class Server:
   indication-timer_/Task? := null
   change-indication_/bool := false
   security-ready_/bool := false
+  client_/att.Client? := null
 
   constructor .host_ .link_ database/attributes.Database --pairing/security.Owner?=null
       --handler-timeout/Duration=(Duration --s=1) --cccd-store/cccd.Store?=null:
@@ -68,6 +70,19 @@ class Server:
 
   /** Returns the session's negotiated ATT MTU. */
   mtu -> int: return session_.mtu
+
+  /**
+  Returns the ATT client on this server's bearer, for GATT procedures
+    against the central's database. Created on first use; the serving loop
+    delivers its responses, notifications and indications, so it works only
+    while the server serves. It closes with the server.
+  */
+  client -> att.Client:
+    check-open_
+    if not client_:
+      client_ = att.Client.attached host_ link_ --mtu-limit=session_.mtu-limit --mtu=session_.mtu
+          --on-mtu=:: | mtu/int | session_.adopt-mtu mtu
+    return client_
 
   /**
   Sends a retained Service Changed notice after trusted security setup completes.
@@ -297,6 +312,7 @@ class Server:
         parameter-status_ = "closed"
         if parameter-verdict_: parameter-verdict_.set "closed"
       session_.close
+      if client_: error = error or (catch: client_.close)
       if link_.connected: host_.abort link_ --error="GATT_SERVER_CLOSED"
       if error: throw error
 
@@ -331,6 +347,11 @@ class Server:
         if response: host_.send link_ 6 response
         continue
       if packet.channel != 4: throw "ATT_UNHANDLED_L2CAP_CHANNEL"
+      if not packet.payload.is-empty and (att.client-bound packet.payload[0]):
+        // Without a client, responses are unsolicited and the peer's
+        // notifications unsubscribed: both are dropped.
+        if client_: client_.deliver_ packet.payload
+        continue
       if not packet.payload.is-empty and packet.payload[0] == 0x1e:
         if packet.payload.size != 1: throw "ATT_INVALID_CONFIRMATION"
         // A confirmation has no handle; it belongs to the sole pending receipt.
@@ -358,6 +379,7 @@ class Server:
         if response:
           host_.send link_ 4 response
           session_.response-sent
+          if client_ and response[0] == 3: client_.follow-mtu_ session_.mtu
         session_.writes-do: | handle/int value/ByteArray |
           handling_ = true
           try:

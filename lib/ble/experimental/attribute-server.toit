@@ -554,6 +554,19 @@ class Session:
   /** Returns the effective MTU, initially 23. */
   mtu -> int: return mtu_
 
+  /** The receive MTU this server offers in an exchange. */
+  mtu-limit -> int: return database_.mtu-limit
+
+  /**
+  Adopts the bearer's MTU after an exchange this server did not answer:
+    the one a client on the same bearer started (Core 6.3 Vol 3 Part F
+    3.2.8: one MTU per bearer, for both roles).
+  */
+  adopt-mtu mtu/int -> none:
+    check-open_
+    if not 23 <= mtu <= 517: throw "INVALID_ARGUMENT"
+    if not pending-mtu_: mtu_ = mtu
+
   /**
   Applies a pending MTU after its exchange response has been submitted.
 
