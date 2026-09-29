@@ -31,7 +31,7 @@ def parse_args():
     parser.add_argument('--adapter-address', required=True)
     parser.add_argument('--peer-address', required=True)
     parser.add_argument('--private', action='store_true',
-                        help='Rotate the public-fixture IRK RPA before every connection; requires private-provider firmware')
+                        help='Rotate the public-fixture IRK RPA before every connection; requires firmware whose provider sets privacy-irk')
     for name in ('vm', 'supervisor', 'policy', 'relay', 'board-log', 'output'):
         parser.add_argument(f'--{name}', type=Path, required=True)
     args = parser.parse_args()

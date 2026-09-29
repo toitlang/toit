@@ -8,16 +8,16 @@ import ble.experimental.hci
 import ble.experimental.privacy
 import ble.experimental.scanning
 import ble.experimental.transport
-import ble.experimental.service.private-scanning-provider as providers
+import ble.experimental.service.scanning-provider as providers
 import .ble-fixture as fixture
 
 main:
   with-timeout --ms=10_000:
     test-queued-reports
     ["disable", "address", "enable", "policy", "deadline"].do: test-failure it
-    expect-throw "INVALID_ARGUMENT": Provider (ByteArray 15)
-    expect-throw "INVALID_ARGUMENT": Provider (ByteArray 16) --period=(Duration --us=0)
-    expect-throw "INVALID_ARGUMENT": Provider (ByteArray 16) --period=(Duration --s=3601)
+    expect-throw "INVALID_ARGUMENT": (Provider (ByteArray 15)).scan-local-random-address
+    expect-throw "INVALID_ARGUMENT": (Provider (ByteArray 16) --period=(Duration --us=0)).scan-address-rotation-interval
+    expect-throw "INVALID_ARGUMENT": (Provider (ByteArray 16) --period=(Duration --s=3601)).scan-address-rotation-interval
 
 test-queued-reports:
   key := ByteArray 16: it + 1
@@ -129,6 +129,12 @@ reject radio/fixture.FakeTransport command/ByteArray:
   radio.received.add #[4, 14, 4, 1, command[1], command[2], 12]
 
 class Provider extends providers.Provider:
+  irk_/ByteArray
+  period_/Duration
   constructor key/ByteArray --period/Duration=(Duration --ms=30):
-    super key --rotation-interval=period
+    irk_ = key.copy
+    period_ = period
+    super
+  privacy-irk -> ByteArray?: return irk_
+  privacy-rotation-interval -> Duration: return period_
   open-transport -> transport.Transport: unreachable

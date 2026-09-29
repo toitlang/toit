@@ -6,6 +6,7 @@ import monitor
 import ..advertising-set as advertising
 import ..connection as connection
 import ..hci as hci
+import ..privacy as privacy
 import ..cancellation show checkpoint
 import ..transport as transport
 import .api as api
@@ -18,11 +19,43 @@ abstract class Provider extends rpc.Provider:
 
   abstract open-transport -> transport.Transport
 
-  /** Selects an owned static random or resolvable private address, or public addressing. */
-  local-random-address -> ByteArray?: return null
+  /**
+  Returns the identity resolving key for privacy, or null for public addresses.
+
+  With a key, advertising, scanning and peripheral sessions use resolvable
+    private addresses generated from it, rotated every
+    $privacy-rotation-interval. Trusted provider code owns the key; no
+    application RPC supplies it.
+  */
+  privacy-irk -> ByteArray?: return null
+
+  /** How long one resolvable private address stays in use (15 minutes by default). */
+  privacy-rotation-interval -> Duration: return Duration --s=900
+
+  previous-address_/ByteArray? := null
+
+  /**
+  Selects an owned static random or resolvable private address, or public addressing.
+
+  The default generates a fresh resolvable private address from $privacy-irk,
+    never the same as the previous one, or returns null without a key.
+  */
+  local-random-address -> ByteArray?:
+    irk := privacy-irk
+    if not irk: return null
+    if irk.size != 16: throw "INVALID_ARGUMENT"
+    while true:
+      address := privacy.generate irk
+      if address == previous-address_: continue
+      previous-address_ = address.copy
+      return address
 
   /** Supplies a provider-owned address rotation interval, or disables timed rotation. */
-  address-rotation-interval -> Duration?: return null
+  address-rotation-interval -> Duration?:
+    if not privacy-irk: return null
+    interval := privacy-rotation-interval
+    if not 1 <= interval.in-us <= 3_600_000_000: throw "INVALID_ARGUMENT"
+    return interval
 
   capabilities -> List: return [api.CAP-ADVERTISING, 0, 0, 0, 1]
 
