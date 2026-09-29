@@ -55,6 +55,7 @@ void SystemEventSource::run(const std::function<void ()>& func) {
   }
   in_run_ = true;
   is_run_done_ = false;
+  run_heap_tag_ = OS::get_heap_tag();
   { // The call to post an event must be done without holding
     // the lock, because we will wait if the queue is full and
     // we need the lock to handle and thus consume events.
@@ -103,7 +104,13 @@ void SystemEventSource::on_event(esp_event_base_t base, int32_t id, void* event_
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
   if (base == RUN_EVENT) {
     const std::function<void ()>* func = reinterpret_cast<const std::function<void ()>*>(event_data);
-    (*func)();
+    if (is_process_malloc_tag(run_heap_tag_)) {
+      // Attribute the allocations to the process on whose behalf they are made.
+      HeapTagScope run_scope(run_heap_tag_);
+      (*func)();
+    } else {
+      (*func)();
+    }
     is_run_done_ = true;
     OS::signal(run_cond_);
   } else {

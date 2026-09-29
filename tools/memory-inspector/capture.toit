@@ -77,8 +77,10 @@ class MallocBlock:
   address/int
   size/int
   tag/int
+  /** The process that made the allocation, or on whose behalf it was made, or null. */
+  process-id/int?
 
-  constructor .address .size .tag:
+  constructor .address .size .tag .process-id:
 
   end -> int: return address + size
 
@@ -279,7 +281,8 @@ class Capture:
       address := read-uleb.call
       size := read-uleb.call
       tag := bytes[position++]
-      malloc-blocks.add (MallocBlock address size tag)
+      process := read-uleb.call
+      malloc-blocks.add (MallocBlock address size tag (process == 0 ? null : process - 1))
 
   read-word_ bytes/ByteArray offset/int -> int:
     if word-size == 4: return LITTLE-ENDIAN.uint32 bytes offset

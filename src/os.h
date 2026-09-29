@@ -256,11 +256,21 @@ class OS {
   friend class ConditionVariable;
 };
 
+// Sets the malloc tag of the current thread for the lifetime of the scope.
+// Setting a custom tag keeps the process of the current tag, so allocations
+// are still attributed to the process on whose behalf they are made.
 class HeapTagScope {
  public:
   HeapTagScope(uword tag) {
     old = OS::get_heap_tag();
-    OS::set_heap_tag(tag);
+    word new_tag = tag;
+    int process_id = process_id_of_malloc_tag(old);
+    bool is_custom = ITERATE_CUSTOM_TAGS <= new_tag &&
+        new_tag < ITERATE_CUSTOM_TAGS + (1 << PROCESS_MALLOC_TAG_KIND_BITS);
+    if (process_id >= 0 && is_custom) {
+      new_tag = process_malloc_tag(process_id, new_tag);
+    }
+    OS::set_heap_tag(new_tag);
   }
 
   ~HeapTagScope() {

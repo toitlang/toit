@@ -340,6 +340,7 @@ struct MallocWindow {
   struct Entry {
     uword address;
     uword size;
+    int process_id;  // -1 if the allocation isn't attributed to a process.
     uint8 tag;
   };
   static const int CAPACITY = 64;
@@ -363,6 +364,7 @@ struct MallocWindow {
     }
     entries[i].address = address;
     entries[i].size = size;
+    entries[i].process_id = process_id_of_malloc_tag(tag);
     entries[i].tag = compute_allocation_type(tag);
   }
 };
@@ -385,7 +387,9 @@ static word uleb128_size(uword value) {
 }
 
 // The malloc map is a sequence of entries (address as uleb128, size as
-// uleb128, tag as byte), sorted by address and split over MALLOC records.
+// uleb128, tag as byte, process id + 1 as uleb128, or 0 if the allocation
+// isn't attributed to a process), sorted by address and split over MALLOC
+// records.
 void MemoryCapture::write_malloc_map() {
   const int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
   const int all_heaps = 0;
@@ -412,7 +416,8 @@ void MemoryCapture::write_malloc_map() {
       int limit = index;
       while (limit < window->count) {
         auto entry = &window->entries[limit];
-        word entry_size = uleb128_size(entry->address) + uleb128_size(entry->size) + 1;
+        word entry_size = uleb128_size(entry->address) + uleb128_size(entry->size) + 1 +
+            uleb128_size(entry->process_id + 1);
         if (bytes + entry_size > DATA_CHUNK_SIZE) break;
         bytes += entry_size;
         limit++;
@@ -424,6 +429,7 @@ void MemoryCapture::write_malloc_map() {
         write_uleb128(&buffer_, entry->address);
         write_uleb128(&buffer_, entry->size);
         buffer_.put_byte(entry->tag);
+        write_uleb128(&buffer_, entry->process_id + 1);
       }
       end();
       index = limit;
@@ -602,9 +608,13 @@ static MemoryCaptureThread* capture_thread = null;
 MemoryCaptureStart start_memory_capture(const char* reason) {
   Locker locker(OS::global_mutex());
   if (capture_thread != null) return MEMORY_CAPTURE_ALREADY_RUNNING;
+  // The capture's own memory doesn't belong to the requesting process.
+  word old_tag = OS::get_heap_tag();
+  OS::set_heap_tag(ITERATE_CUSTOM_TAGS + THREAD_SPAWN_MALLOC_TAG);
   auto thread = _new MemoryCaptureThread(reason);
-  if (thread == null) return MEMORY_CAPTURE_OUT_OF_MEMORY;
-  if (!thread->spawn(6 * KB)) {
+  bool spawned = thread != null && thread->spawn(6 * KB);
+  OS::set_heap_tag(old_tag);
+  if (!spawned) {
     delete thread;
     return MEMORY_CAPTURE_OUT_OF_MEMORY;
   }

@@ -72,6 +72,7 @@ class SystemEventSource : public EventSource {
   ConditionVariable* run_cond_;
   bool in_run_;
   bool is_run_done_;
+  word run_heap_tag_ = 0;  // The malloc tag of the thread that called $run.
 
   static SystemEventSource* instance_;
 };

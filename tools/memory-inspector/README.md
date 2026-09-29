@@ -23,6 +23,7 @@ alias memory-inspector='toit run --project-root tools tools/memory-inspector/mai
 
 memory-inspector record --port /dev/ttyUSB0 capture.txt
 memory-inspector summary --envelope firmware.envelope capture.txt
+memory-inspector malloc --owner "process 1" --envelope firmware.envelope capture.txt
 memory-inspector census --process 1 --envelope firmware.envelope capture.txt
 memory-inspector objects --process 1 --class MyClass --envelope firmware.envelope capture.txt
 memory-inspector object --envelope firmware.envelope capture.txt 0x3fcc4850
@@ -59,12 +60,21 @@ Without a snapshot, classes are shown as `class#<id>`.
 ## What the answers mean
 
 - `summary`: the size of the system heaps, the used blocks of the system heap
-  by owner, and per process its heap and the classes that use the most memory.
-  A process owns the malloc blocks that hold its heap chunks and the external
-  content of its objects (external strings and byte arrays, and native
-  resources that are referenced from byte-array proxies). The blocks the
-  capture itself uses are owned by `memory capture`. All other blocks are
-  grouped by their malloc tag.
+  by owner (with a breakdown by malloc tag), and per process its heap, the
+  system-heap bytes it owns, and the classes that use the most memory.
+- Owners of system-heap blocks: a process owns the blocks that hold its heap
+  chunks and the external content of its objects (external strings and byte
+  arrays, and native resources that are referenced from byte-array proxies),
+  even if another process allocated them, for example before sending a byte
+  array to it. A process also owns the blocks that were allocated by it or on
+  its behalf: by its primitives, by drivers and event sources while serving
+  it, and by the Wi-Fi driver it started. The malloc tag of a block records
+  this process. The blocks the capture itself uses are owned by
+  `memory capture`. All other blocks (allocated by ESP-IDF before Toit
+  started, by system threads, or for the GC metadata) are grouped by their
+  malloc tag. A block that was allocated for a process that has exited keeps
+  that process as its owner.
+- `malloc`: the blocks of one owner or tag, largest first.
 - `census`: per class the number of objects, their bytes on the Toit heap,
   their external bytes in the system heap, and how many of them are live.
 - Live objects are reachable from the roots of their process: its current

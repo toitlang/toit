@@ -57,7 +57,7 @@ void HeapFragmentationDumper::log_allocation(void* allocation, uword size, void*
     if (!unemitted_8_byte_overhead_ && is_overhead && subrange_size == 8) {
       unemitted_8_byte_overhead_ = true;
     } else {
-      word wtag = reinterpret_cast<word>(tag);
+      word wtag = custom_malloc_tag(reinterpret_cast<word>(tag));
       bool is_free = wtag == ITERATE_TAG_FREE;
       bool is_custom = (wtag >= ITERATE_CUSTOM_TAGS && wtag < ITERATE_CUSTOM_TAGS + 16);
       uint8 allocation_type =
@@ -242,6 +242,7 @@ void dump_heap_fragmentation(output_char_t* output_char_fn) {
 #endif  // TOIT_ESP32
 
 int compute_allocation_type(word tag) {
+  tag = custom_malloc_tag(tag);
   if (tag == 0) {
     tag = NULL_MALLOC_TAG;
   } else if (tag == 'W') {

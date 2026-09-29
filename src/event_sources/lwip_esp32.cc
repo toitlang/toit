@@ -225,7 +225,15 @@ LwipEventSource::~LwipEventSource() {
 
 void LwipEventSource::on_thread(void* arg) {
   CallContext* call = unvoid_cast<CallContext*>(arg);
-  Object* result = call->func();
+  Object* result;
+  int process_id = process_id_of_malloc_tag(call->heap_tag);
+  if (process_id >= 0) {
+    // Attribute the allocations to the process on whose behalf they are made.
+    HeapTagScope scope(process_malloc_tag(process_id, ITERATE_CUSTOM_TAGS + LWIP_MALLOC_TAG));
+    result = call->func();
+  } else {
+    result = call->func();
+  }
 
   auto lwip = instance();
   Locker locker(lwip->mutex());

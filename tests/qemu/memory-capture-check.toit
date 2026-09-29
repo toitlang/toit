@@ -47,6 +47,9 @@ main args:
   expect (owners.any: it["owner"] == "memory capture")
   // The GC metadata has its own tag.
   expect (owners.any: it["owner"] == "gc metadata")
+  // The owners have a breakdown by tag, and processes know their share.
+  expect app-owner["by-tag"]["external byte array"] >= 20_000
+  expect apps[0]["system-heap-bytes"] >= 20_000
 
   census := (inspect.call "census" ["--process", "$app-id", "--limit", "100"])[0]["result"]
   node := (census.filter: it["class"] == "Node")[0]
@@ -57,3 +60,6 @@ main args:
   path := inspect.call "path" [address]
   expect-equals "global" path[0]["root"]
   expect-equals "nodes" path[0]["global"]
+
+  blocks := inspect.call "malloc" ["--owner", "process $app-id", "--tag", "external byte array"]
+  expect (blocks.any: it["size"] >= 20_000)

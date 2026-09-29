@@ -57,6 +57,7 @@ class LwipEventSource : public EventSource {
       null,
       func,
       false,
+      OS::get_heap_tag(),
     };
 
     // Send a message to the LwIP thread that instructs it to run our code.
@@ -78,6 +79,7 @@ class LwipEventSource : public EventSource {
     Object* result;
     const std::function<Object*()>& func;
     bool done;
+    word heap_tag;  // The malloc tag of the calling thread.
   };
 
   static void on_thread(void* arg);

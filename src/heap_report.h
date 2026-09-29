@@ -37,6 +37,8 @@ static const uint8 THREAD_SPAWN_MALLOC_TAG        = 12;
 static const uint8 NULL_MALLOC_TAG                = 13;
 static const uint8 WIFI_MALLOC_TAG                = 14;
 static const uint8 NUMBER_OF_MALLOC_TAGS          = 15;
+static_assert(NUMBER_OF_MALLOC_TAGS <= (1 << PROCESS_MALLOC_TAG_KIND_BITS),
+              "Malloc tags must fit in process malloc tags");
 
 int compute_allocation_type(word tag);
 

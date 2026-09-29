@@ -415,6 +415,37 @@ static const word ITERATE_TAG_HEAP_OVERHEAD = -2;
 
 static const word ITERATE_CUSTOM_TAGS = -100;
 
+// Malloc tags can also identify the Toit process that made an allocation, or
+// on whose behalf it was made. Such a tag combines the id of the process with
+// the kind of the allocation (the offset of a custom tag, see heap_report.h):
+//   PROCESS_MALLOC_TAGS + (process id << PROCESS_MALLOC_TAG_KIND_BITS) + kind
+static const word PROCESS_MALLOC_TAGS = 0x10000;
+static const int PROCESS_MALLOC_TAG_KIND_BITS = 4;
+
+static inline bool is_process_malloc_tag(word tag) {
+  return tag >= PROCESS_MALLOC_TAGS;
+}
+
+// Returns the tag for an allocation of the given kind (a custom tag) that is
+// made by or for the process with the given id.
+static inline word process_malloc_tag(int process_id, word custom_tag) {
+  word kind = custom_tag - ITERATE_CUSTOM_TAGS;
+  return PROCESS_MALLOC_TAGS + (static_cast<word>(process_id) << PROCESS_MALLOC_TAG_KIND_BITS) + kind;
+}
+
+// Returns the id of the process in a malloc tag, or -1.
+static inline int process_id_of_malloc_tag(word tag) {
+  if (!is_process_malloc_tag(tag)) return -1;
+  return static_cast<int>((tag - PROCESS_MALLOC_TAGS) >> PROCESS_MALLOC_TAG_KIND_BITS);
+}
+
+// Returns the custom tag of a malloc tag without its process.
+static inline word custom_malloc_tag(word tag) {
+  if (!is_process_malloc_tag(tag)) return tag;
+  word kind = (tag - PROCESS_MALLOC_TAGS) & ((1 << PROCESS_MALLOC_TAG_KIND_BITS) - 1);
+  return ITERATE_CUSTOM_TAGS + kind;
+}
+
 static const int DEFAULT_OPTIMIZATION_LEVEL = 1;
 
 typedef void process_chunk_callback_t(void* context, Process* process, uword address, uword size);

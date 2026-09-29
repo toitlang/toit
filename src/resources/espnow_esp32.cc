@@ -361,6 +361,7 @@ Object* EspNowResource::init(Process* process,
   }
 
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+  cfg.osi_funcs = tagged_wifi_osi_funcs();
   esp_err_t err = esp_wifi_init(&cfg);
   if (err != ESP_OK) return Primitive::os_error(err, process);
   state_ = State::WIFI_INITTED;

@@ -101,6 +101,26 @@ build-command -> cli.Command:
       --run=:: | invocation/cli.Invocation |
         output ((load-analysis invocation).summary))
 
+  root.add (cli.Command "malloc"
+      --help="""
+        Lists the used blocks of the system heap, largest first.
+
+        Filter by the owner that 'summary' shows ("process <id>", or a malloc
+          tag for blocks that no process owns) and by malloc tag.
+        """
+      --options=snapshot-options + [
+        limit-option,
+        cli.Option "owner" --help="The owner of the blocks, for example 'process 1' or 'lwip'.",
+        cli.Option "tag" --help="The malloc tag of the blocks, for example 'misc'.",
+      ]
+      --rest=[capture-option]
+      --run=:: | invocation/cli.Invocation |
+        analysis := load-analysis invocation
+        output (analysis.malloc-blocks
+            --owner=invocation["owner"]
+            --tag=invocation["tag"]
+            --limit=invocation["limit"]))
+
   root.add (cli.Command "census"
       --help="""
         Lists the classes of the objects in the heap of a process, with the

@@ -102,13 +102,19 @@ class Analysis:
     return null
 
   /**
-  Assigns malloc blocks to their owners: a process owns the blocks that hold
-    its heap chunks and the external content of its objects. The blocks the
-    capture uses belong to the capture.
+  Assigns malloc blocks to the processes that own them.
+  A process owns the blocks that hold its heap chunks and the external
+    content of its objects, even when another process allocated them (for
+    example, when a byte array was sent to it). Other blocks belong to the
+    process that allocated them, or on whose behalf they were allocated, as
+    recorded in their malloc tag. The blocks the capture uses belong to the
+    capture.
   Returns a map from block address to owner ("process <id>" or $CAPTURE-OWNER).
   */
   malloc-owners -> Map:
     owners := {:}
+    capture.malloc-blocks.do: | block/MallocBlock |
+      if block.process-id: owners[block.address] = "process $block.process-id"
     capture.processes.do: | process/ProcessInfo |
       process.chunks.do: | chunk/Chunk |
         block := malloc-block-containing chunk.address
@@ -121,6 +127,19 @@ class Analysis:
       block := malloc-block-containing address
       if block: owners[block.address] = CAPTURE-OWNER
     return owners
+
+  owned-bytes_/Map? := null
+
+  /** The number of system-heap bytes that the process owns, or null without a malloc map. */
+  system-heap-bytes process/ProcessInfo -> int?:
+    if capture.malloc-blocks.is-empty: return null
+    if not owned-bytes_:
+      owned-bytes_ = {:}
+      owners := malloc-owners
+      capture.malloc-blocks.do: | block/MallocBlock |
+        owner := owners.get block.address
+        if owner: owned-bytes_[owner] = (owned-bytes_.get owner --if-absent=: 0) + block.size
+    return owned-bytes_.get "process $process.id" --if-absent=: 0
 
   summary -> Map:
     result := {
@@ -177,12 +196,39 @@ class Analysis:
       }
       entry["bytes"] += block.size
       entry["blocks"] += 1
+      if owner:
+        by-tag := entry.get "by-tag" --init=: {:}
+        by-tag[tag-name] = (by-tag.get tag-name --if-absent=: 0) + block.size
     used := by-owner.values.sort: | a b | b["bytes"].compare-to a["bytes"]
     return {
       "used": used,
       "free": { "bytes": free-bytes, "blocks": free-count, "largest-block": largest-free },
       "allocator-overhead": overhead,
     }
+
+  /**
+  Returns the blocks of the system heap with the given owner ("process <id>"
+    or a malloc tag for blocks without a process) and tag, largest first.
+  */
+  malloc-blocks --owner/string? --tag/string? --limit/int -> List:
+    owners := malloc-owners
+    result := []
+    capture.malloc-blocks.do: | block/MallocBlock |
+      tag-name := capture.malloc-tag-name block.tag
+      if tag-name == "free" or tag-name == "heap overhead": continue.do
+      block-owner := (owners.get block.address) or tag-name
+      if owner and owner != block-owner: continue.do
+      if tag and tag != tag-name: continue.do
+      entry := {
+        "address": hex block.address,
+        "size": block.size,
+        "tag": tag-name,
+        "owner": block-owner,
+      }
+      if block.process-id: entry["allocated-by"] = "process $block.process-id"
+      result.add entry
+    result.sort --in-place: | a b | b["size"].compare-to a["size"]
+    return result[..min limit result.size]
 
   process-summary process/ProcessInfo -> Map:
     program := program-of process
@@ -194,6 +240,8 @@ class Analysis:
       "heap-bytes": process.heap-bytes,
       "external-bytes": process.external-bytes,
     }
+    system-heap := system-heap-bytes process
+    if system-heap: result["system-heap-bytes"] = system-heap
     heap := heap process
     reached := reached process
     live-bytes := 0
@@ -430,11 +478,16 @@ diff before/Analysis after/Analysis -> Map:
       change["bytes"] += entry["live-bytes"] + entry["live-external-bytes"]
     changed := classes.values.filter: it["count"] != 0 or it["bytes"] != 0
     changed.sort --in-place: | a b | b["bytes"].abs.compare-to a["bytes"].abs
-    processes.add {
+    entry := {
       "id": process.id,
       "heap-bytes": process.heap-bytes - old.heap-bytes,
       "external-bytes": process.external-bytes - old.external-bytes,
-      "classes": changed,
     }
+    before-system-heap := before.system-heap-bytes old
+    after-system-heap := after.system-heap-bytes process
+    if before-system-heap and after-system-heap:
+      entry["system-heap-bytes"] = after-system-heap - before-system-heap
+    entry["classes"] = changed
+    processes.add entry
   result["processes"] = processes
   return result

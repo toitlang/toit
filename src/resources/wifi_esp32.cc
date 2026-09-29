@@ -530,6 +530,7 @@ PRIMITIVE(init) {
 
   // Create a thread that takes care of logging into the Wifi AP.
   wifi_init_config_t init_config = WIFI_INIT_CONFIG_DEFAULT();
+  init_config.osi_funcs = tagged_wifi_osi_funcs();
   init_config.nvs_enable = 0;
   if (!OS::use_spiram_for_heap()) {
     // Configuring ESP-IDF for SPIRAM support dramatically increases the amount

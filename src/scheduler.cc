@@ -15,6 +15,7 @@
 
 #include "resource.h"
 #include "flags.h"
+#include "heap_report.h"
 #include "interpreter.h"
 #include "objects_inline.h"
 #include "os.h"
@@ -519,6 +520,8 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
     }
 
     for (Process* target : targets) {
+      // Attribute the memory of the collected heap to its process.
+      HeapTagScope scope(process_malloc_tag(target->id(), ITERATE_CUSTOM_TAGS + MISC_MALLOC_TAG));
       GcType type = target->gc(try_hard);
       if (type != NEW_SPACE_GC) {
         Locker locker(mutex_);
@@ -647,6 +650,8 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     process->set_idle_since_gc(false);
     if (process->signals() == 0) {
       Unlocker unlock(locker);
+      // Attribute the allocations of the process and its primitives to it.
+      HeapTagScope scope(process_malloc_tag(process->id(), ITERATE_CUSTOM_TAGS + MISC_MALLOC_TAG));
       result = interpreter->run();
     }
     preemption_method_header_bcp = interpreter->preemption_method_header_bcp();
