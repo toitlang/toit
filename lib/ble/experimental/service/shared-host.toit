@@ -60,7 +60,7 @@ class Host:
         initialized := false
         try:
           error_ = catch:
-            // Keep ownership if allocating the controller's managed state fails.
+            // Keep ownership of whatever opened if a later step fails.
             transport_ = factory_.open-transport
             controller_ = hci.Controller transport_
             info_ = hci.initialize controller_ --receive-acl-packets=receive-acl-packets_
@@ -96,12 +96,6 @@ class Host:
     references_--
     if references_ != 0: return
     closing_ = true
-    // Worker creation can fail with an exhausted heap before setup opens any
-    // resource. Finish this empty lifetime without entering cleanup helpers
-    // whose stack growth could itself require allocation.
-    if not transport_ and not controller_ and not host_:
-      released = true
-      return
     critical-do --no-respect-deadline:
       close-owner_
       error := catch:

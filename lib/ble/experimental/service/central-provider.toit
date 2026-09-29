@@ -166,10 +166,7 @@ class ConnectionSession extends rpc.Session:
           security-error := null
           close-error := null
           cleanup-error_ = catch:
-            // Initialization failure has no subscriptions; avoid allocating
-            // snapshots while recovering from controller-construction OOM.
-            if not subscriptions_.is-empty:
-              subscriptions_.values.do: | subscription/Subscription_ | subscription.cancel
+            subscriptions_.values.do: | subscription/Subscription_ | subscription.cancel
             // ATT owns security after construction and finishes protocol
             // cleanup before reporting a hook error. Before construction,
             // release the installed owner directly. Either way, still join
@@ -184,8 +181,7 @@ class ConnectionSession extends rpc.Session:
                 else if controller_: controller_.close
                 else if transport_: transport_.close
             if client_: client_.wait-closed
-            if not subscriptions_.is-empty:
-              subscriptions_.values.do: | subscription/Subscription_ | subscription.wait-ended
+            subscriptions_.values.do: | subscription/Subscription_ | subscription.wait-ended
             if pool_:
               if link_:
                 failure := catch:

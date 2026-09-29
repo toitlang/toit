@@ -99,7 +99,7 @@ monitor Mailbox_:
       if Time.monotonic-us >= packet_[4]: throw "GATT_REQUEST_EXPIRED"
       result := List.from packet_
       empty := #[]
-      // Allocation failure must leave the offer available for another pull.
+      // A failure before this point leaves the offer available for another pull.
       delivered_ = true
       // Transfer the owned value; keep private metadata for reply validation.
       packet_[5] = empty
