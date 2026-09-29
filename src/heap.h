@@ -169,6 +169,22 @@ class ObjectHeap {
 
   void iterate_roots(RootCallback* callback);
 
+  // Iterates the external roots and the roots held by object notifiers. These
+  // are the roots of $iterate_roots, except for the task and the globals.
+  void iterate_external_roots(RootCallback* callback);
+
+  // Iterates the objects that finalizers keep alive: the lambdas of registered
+  // finalizers, and the keys and lambdas of finalizers that are ready to run.
+  // Keys of registered finalizers are weak and not visited.
+  void iterate_finalizer_roots(RootCallback* callback);
+
+  // Writes cached allocation state back to the heap, so that its chunks can
+  // be traversed object by object.
+  void flush() {
+    Locker locker(mutex_);
+    two_space_heap_.flush();
+  }
+
   // Update the memory limit for triggering the next old-space GC.  We base
   // this on a multiple of the number of chunks in use and the externally
   // allocated memory just after the previous GC.

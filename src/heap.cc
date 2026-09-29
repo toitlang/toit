@@ -284,6 +284,10 @@ void ObjectHeap::iterate_roots(RootCallback* callback) {
   // Process the roots in the object heap.
   callback->do_root(reinterpret_cast<Object**>(&task_));
   callback->do_roots(global_variables_, program()->global_variables.length());
+  iterate_external_roots(callback);
+}
+
+void ObjectHeap::iterate_external_roots(RootCallback* callback) {
   for (auto root : external_roots_) callback->do_roots(root->slot(), 1);
 
   // Process roots in the object_notifiers_ list.
@@ -343,6 +347,11 @@ void ObjectHeap::process_registered_finalizers_helper(FinalizerNodeFifo* list, R
   list->remove_wherever([ss, from_space, in_closure_queue](FinalizerNode* node) -> bool {
     return node->weak_processing(in_closure_queue, ss, from_space);
   });
+}
+
+void ObjectHeap::iterate_finalizer_roots(RootCallback* callback) {
+  for (auto finalizer : registered_callback_finalizers_) finalizer->strong_roots_do(callback);
+  for (auto finalizer : runnable_finalizers_) finalizer->roots_do(callback);
 }
 
 void ObjectHeap::iterate_finalization_roots(RootCallback* cb) {

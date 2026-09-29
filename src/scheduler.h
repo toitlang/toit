@@ -150,6 +150,16 @@ class Scheduler {
 
   void iterate_process_chunks(void* context, process_chunk_callback_t callback);
 
+  // Pauses all Toit processes at a safepoint, so their heaps can be inspected
+  // while they don't change. The paused processes are appended to $paused.
+  // Processes that don't reach a safepoint within a second (for example,
+  // because they are blocked in a primitive) keep running and are not added.
+  // Returns the number of these processes.
+  // Must not be called from a scheduler thread. Every call must be followed
+  // by a call to $resume_all_processes.
+  int pause_all_processes(ProcessListFromScheduler* paused);
+  void resume_all_processes(ProcessListFromScheduler* paused);
+
  private:
   // Introduce a new process to the scheduler. The scheduler will not terminate until
   // all processes has completed.
@@ -171,6 +181,9 @@ class Scheduler {
   // are still supported while the process is suspended.
   void gc_suspend_process(Locker& locker, Process* process);
   void gc_resume_process(Locker& locker, Process* process);
+
+  // Whether any Toit process is running on a scheduler thread.
+  bool has_running_processes(Locker& locker);
 
   // Check if a cross-process GC is in process and wait for it to complete if so. After
   // waiting transition to the new state.
@@ -217,7 +230,8 @@ class Scheduler {
   // Condition variable used for both gc_cross_processes_ and gc_waiting_for_preemption_.
   ConditionVariable* gc_condition_;
 
-  // Are we currently doing a cross-process GC?
+  // Are we currently doing a cross-process GC, or are all processes paused
+  // by $pause_all_processes?
   bool gc_cross_processes_;
 
   // Number of OS threads that we're waiting for to be preempted for GC.

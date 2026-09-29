@@ -37,6 +37,9 @@ class FinalizerNode : public FinalizerNodeFifo::Element {
   // Called at the end of compaction and at other times where all pointers
   // should be visited with no weakness/finalization processing.
   virtual void roots_do(RootCallback* cb) = 0;
+  // Visits the pointers that this node keeps alive while it is registered,
+  // independently of whether its key is alive.
+  virtual void strong_roots_do(RootCallback* cb) {}
   // Cleanup when a heap is deleted.
   virtual void heap_dying() {}
   // Should return true if the node should be unlinked.
@@ -81,6 +84,8 @@ class ToitFinalizerNode : public CallableFinalizerNode {
     : CallableFinalizerNode(map, lambda, heap) {}
 
   virtual void roots_do(RootCallback* cb);
+  // The lambda is called when the key dies, so it is always alive.
+  virtual void strong_roots_do(RootCallback* cb) { cb->do_root(&lambda_); }
   virtual bool weak_processing(bool in_closure_queue, RootCallback* visitor, LivenessOracle* oracle);
   virtual bool keep_after_callback() const { return false; }
 };

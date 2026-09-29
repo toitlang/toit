@@ -503,6 +503,9 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
     ProcessListFromScheduler targets;
     { Locker locker(mutex_);
       for (ProcessGroup* group : groups_) {
+        // Another thread is doing a cross-process GC, or has paused all
+        // processes to inspect them. Don't touch the other processes.
+        if (gc_cross_processes_ && !doing_cross_process_gc) break;
         for (Process* target : group->processes()) {
           if (target->program() == null) continue;  // External process.
           if (target->state() != Process::RUNNING && !target->idle_since_gc()) {
@@ -802,6 +805,62 @@ void Scheduler::gc_resume_process(Locker& locker, Process* process) {
   process->set_state(Process::IDLE);
   if (was_scheduled) process_ready(locker, process);
   ASSERT(!process->is_suspended());
+}
+
+int Scheduler::pause_all_processes(ProcessListFromScheduler* paused) {
+  Locker locker(mutex_);
+  // Wait for any ongoing cross-process GC or pause to complete.
+  while (gc_cross_processes_) OS::wait(gc_condition_);
+  // Setting gc_cross_processes_ makes processes park when they reach a
+  // safepoint (see $wait_for_any_gc_to_complete).
+  gc_cross_processes_ = true;
+  for (SchedulerThread* thread : threads_) {
+    Process* running_process = thread->interpreter()->process();
+    if (running_process != null) running_process->signal(Process::PREEMPT);
+  }
+  // Parking processes signal the condition variable.
+  int64 deadline = OS::get_monotonic_time() + 1000000LL;  // Wait for up to 1 second.
+  while (has_running_processes(locker)) {
+    if (!OS::wait_us(gc_condition_, deadline - OS::get_monotonic_time())) break;
+  }
+  gc_waiting_for_preemption_ = 0;
+
+  int not_paused = 0;
+  for (ProcessGroup* group : groups_) {
+    for (Process* process : group->processes()) {
+      if (process->program() == null) continue;  // External process.
+      Process::State state = process->state();
+      if (state == Process::IDLE || state == Process::SCHEDULED) {
+        gc_suspend_process(locker, process);
+      } else if (state != Process::SUSPENDED_AWAITING_GC) {
+        not_paused++;  // Still running or terminating.
+        continue;
+      }
+      paused->append(process);
+    }
+  }
+  return not_paused;
+}
+
+bool Scheduler::has_running_processes(Locker& locker) {
+  for (ProcessGroup* group : groups_) {
+    for (Process* process : group->processes()) {
+      if (process->program() != null && process->state() == Process::RUNNING) return true;
+    }
+  }
+  return false;
+}
+
+void Scheduler::resume_all_processes(ProcessListFromScheduler* paused) {
+  Locker locker(mutex_);
+  while (!paused->is_empty()) {
+    Process* process = paused->remove_first();
+    if (process->state() != Process::SUSPENDED_AWAITING_GC) {
+      gc_resume_process(locker, process);
+    }
+  }
+  gc_cross_processes_ = false;
+  OS::signal_all(gc_condition_);
 }
 
 void Scheduler::wait_for_any_gc_to_complete(Locker& locker, Process* process, Process::State new_state) {
