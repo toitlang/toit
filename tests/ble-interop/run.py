@@ -61,6 +61,21 @@ def cases():
                "indication-server.toit", [], expected)
     yield ("toit-client", "bumble-server.py", [], "att-client.toit", [],
            {"role": "toit-client", "exchanges": 131})
+    for legacy in (False, True):
+        for role in ("initiator", "responder"):
+            for bumble_io in (0, 2):
+                toit_io = 2 if bumble_io == 0 else 0
+                options = ["--toit-role", role, "--bumble-io", str(bumble_io)]
+                if legacy:
+                    options += ["--legacy"]
+                name = f"passkey-{'legacy' if legacy else 'sc'}-{role}-toit-io-{toit_io}"
+                yield (name, "bumble-passkey.py", options, "smp-passkey.toit",
+                       [role, str(toit_io)],
+                       {"legacy": legacy, "toit_role": role, "bumble_io": bumble_io,
+                        "key_match": True})
+            yield (f"passkey-{'legacy' if legacy else 'sc'}-{role}-wrong", "bumble-passkey.py",
+                   ["--toit-role", role, "--bumble-io", "0", "--wrong"] + (["--legacy"] if legacy else []),
+                   "smp-passkey.toit", [role, "2"], {"wrong_passkey_rejected": True})
     for role in ("initiator", "responder"):
         for own_io in (1, 3):
             for peer_io in range(5):

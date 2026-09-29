@@ -1,8 +1,8 @@
 # Security: pairing, encryption, bonds
 
-Only LE Secure Connections is implemented, with Just Works and Numeric
-Comparison. Legacy pairing, Passkey Entry and OOB are not implemented; peers
-that do not offer Secure Connections are rejected with Pairing Not Supported.
+LE Secure Connections is implemented with Just Works, Numeric Comparison and
+Passkey Entry, and legacy pairing with Just Works and Passkey Entry (128-bit
+keys only). OOB is not implemented.
 Nothing here is a production security claim; see [deployment.md](deployment.md)
 for what a deployment must still supply.
 
@@ -28,11 +28,16 @@ Construct `security.Pairing` with the host, link, the local address actually
 used on air and the IO capability and authentication policy; attach it to the
 link's `att.Client` or `gatt-server.Server` with `--pairing`; call `run` with a
 confirmation block while the receiver runs. The block receives the six-digit
-Numeric Comparison number and returns a bool; Just Works never calls it.
+Numeric Comparison number and returns a bool; Just Works never calls it. For
+Passkey Entry, `run --display` receives the passkey this side shows (IO
+capabilities 0, 1 and 4) and `run --input` returns the passkey its user typed
+(2 and 4), or null to give up; which side does which follows Core Vol 3 Part
+H Table 2.8. Providers get the same through `display-passkey` and
+`input-passkey`.
 
 - A central sends Pairing Request; a peripheral waits for the peer's request. The engine's deadline is enforced by a timer task even when no packet arrives.
 - The central submits LE Start Encryption only after verifying the peer's DHKey Check. The peripheral installs its key before sending its own final check so an immediate LTK request can be answered.
-- `Pairing.encrypted` requires both a completed exchange and a live Encryption Change; `authenticated` additionally requires Numeric Comparison. Before returning, `Link.require-encryption` makes encryption mandatory for the rest of the link: a later disabled or failed encryption event aborts it.
+- `Pairing.encrypted` requires both a completed exchange and a live Encryption Change; `authenticated` additionally requires Numeric Comparison or Passkey Entry. Before returning, `Link.require-encryption` makes encryption mandatory for the rest of the link: a later disabled or failed encryption event aborts it.
 - Failure, timeout, cancellation and receiver close abort the link and drop ephemeral references. Only one attempt per owner.
 - With `--bond`, an identity, or `--request-identity`, the exchange negotiates bonding and runs identity distribution after encryption; `run --candidate` hands the caller a `bond.Candidate` with the LTK, both identities and the authentication flag. The candidate is data, not a stored bond.
 
@@ -49,7 +54,7 @@ command may still be queued.
 ## Attribute requirements
 
 `Database.add-characteristic --encrypted` protects the value and its CCCD;
-`--authenticated` additionally requires Numeric Comparison. Declarations stay
+`--authenticated` additionally requires Numeric Comparison or Passkey Entry. Declarations stay
 discoverable. Checks apply to reads, writes, prepared writes and outgoing
 updates, are repeated after application handlers return, and cover every staged
 attribute before an Execute Write commits. Error codes follow GAP Vol 3 Part C
