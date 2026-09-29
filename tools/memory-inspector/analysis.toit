@@ -384,3 +384,57 @@ class Analysis:
           entry["field"] = index
           result.add entry
     return result
+
+/**
+Compares two captures. Processes are matched by id and program.
+Positive numbers mean that $after uses more than $before.
+*/
+diff before/Analysis after/Analysis -> Map:
+  result := {:}
+  if not before.capture.malloc-blocks.is-empty and not after.capture.malloc-blocks.is-empty:
+    by-tag := {:}
+    add := : | analysis/Analysis sign/int |
+      owners := analysis.malloc-owners
+      analysis.capture.malloc-blocks.do: | block/MallocBlock |
+        // The capture's own buffers are not interesting.
+        if (owners.get block.address) == CAPTURE-OWNER: continue.do
+        name := analysis.capture.malloc-tag-name block.tag
+        by-tag[name] = (by-tag.get name --if-absent=: 0) + sign * block.size
+    add.call before -1
+    add.call after 1
+    changes := []
+    by-tag.do: | name delta | if delta != 0: changes.add { "tag": name, "bytes": delta }
+    changes.sort --in-place: | a b | b["bytes"].abs.compare-to a["bytes"].abs
+    result["malloc-by-tag"] = changes
+
+  processes := []
+  after.capture.processes.do: | process/ProcessInfo |
+    old/ProcessInfo? := null
+    before.capture.processes.do: | candidate/ProcessInfo |
+      if candidate.id == process.id and
+          (before.program-of candidate).uuid == (after.program-of process).uuid:
+        old = candidate
+    if not old: continue.do
+    // The programs are the same, so the class ids match. Only live objects
+    // count, so that garbage doesn't hide or fake growth.
+    classes := {:}
+    (before.census old).do: | entry/Map |
+      classes[entry["class-id"]] = {
+        "class": entry["class"],
+        "count": -entry["live-count"],
+        "bytes": -(entry["live-bytes"] + entry["live-external-bytes"]),
+      }
+    (after.census process).do: | entry/Map |
+      change := classes.get entry["class-id"] --init=: { "class": entry["class"], "count": 0, "bytes": 0 }
+      change["count"] += entry["live-count"]
+      change["bytes"] += entry["live-bytes"] + entry["live-external-bytes"]
+    changed := classes.values.filter: it["count"] != 0 or it["bytes"] != 0
+    changed.sort --in-place: | a b | b["bytes"].abs.compare-to a["bytes"].abs
+    processes.add {
+      "id": process.id,
+      "heap-bytes": process.heap-bytes - old.heap-bytes,
+      "external-bytes": process.external-bytes - old.external-bytes,
+      "classes": changed,
+    }
+  result["processes"] = processes
+  return result

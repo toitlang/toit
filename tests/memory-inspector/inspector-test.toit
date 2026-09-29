@@ -22,9 +22,14 @@ run-test toit-exe/string sdk-dir/string tmp-dir/string -> none:
   source := fs.join sdk-dir "tests" "memory-inspector" "capture-source.toit"
   snapshot := fs.join tmp-dir "source.snapshot"
   pipe.backticks [toit-exe, "compile", "--snapshot", "-o", snapshot, source]
-  output := pipe.backticks [toit-exe, "run", snapshot]
+  // Windows prints "\r\n".
+  output := (pipe.backticks [toit-exe, "run", snapshot]).replace --all "\r\n" "\n"
+  parts := output.split "SPLIT\n"
+  expect-equals 2 parts.size
   first := fs.join tmp-dir "first.txt"
-  file.write-contents --path=first output
+  second := fs.join tmp-dir "second.txt"
+  file.write-contents --path=first parts[0]
+  file.write-contents --path=second parts[1]
 
   // Compile the inspector once, instead of for every query.
   tools-dir := fs.join sdk-dir "tools"
@@ -81,3 +86,8 @@ run-test toit-exe/string sdk-dir/string tmp-dir/string -> none:
 
   retainers := inspect.call ["retainers", first, address]
   expect retainers.size >= 1
+
+  diff := inspect.call ["diff", first, second]
+  changes := (diff["processes"].filter: it["id"] == process-id)[0]["classes"]
+  node-change := (changes.filter: it["class"] == "Node")[0]
+  expect-equals 1 node-change["count"]

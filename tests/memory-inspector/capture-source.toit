@@ -35,3 +35,6 @@ main:
   big-buffer = ByteArray 20_000
   register-finalizer 1
   system.capture-memory --reason="first"
+  print "SPLIT"
+  retained-nodes = Node "extra" retained-nodes
+  system.capture-memory --reason="second"

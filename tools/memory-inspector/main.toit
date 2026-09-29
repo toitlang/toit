@@ -162,6 +162,23 @@ build-command -> cli.Command:
         address := parse-address invocation["address"]
         output (analysis.retainers (process-for analysis address) address --limit=invocation["limit"]))
 
+  root.add (cli.Command "diff"
+      --help="""
+        Compares two captures of the same device, for example to find leaks.
+        Shows how the system heap changed per malloc tag and how the classes
+          in each process changed. Positive numbers mean growth.
+        """
+      --options=snapshot-options
+      --rest=[
+        cli.OptionPath "before" --required --help="The earlier capture.",
+        cli.OptionPath "after" --required --help="The later capture.",
+      ]
+      --run=:: | invocation/cli.Invocation |
+        names := load-names invocation
+        before := Analysis (load-capture invocation["before"]) names
+        after := Analysis (load-capture invocation["after"]) names
+        output (diff before after))
+
   return root
 
 output value/any -> none:

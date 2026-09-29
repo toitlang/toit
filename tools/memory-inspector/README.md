@@ -28,6 +28,7 @@ memory-inspector objects --process 1 --class MyClass --envelope firmware.envelop
 memory-inspector object --envelope firmware.envelope capture.txt 0x3fcc4850
 memory-inspector path --envelope firmware.envelope capture.txt 0x3fcc4850
 memory-inspector retainers --envelope firmware.envelope capture.txt 0x3fcc4850
+memory-inspector diff --envelope firmware.envelope before.txt after.txt
 ```
 
 On the host, `toit run` programs can capture too: their stdout contains the
@@ -71,6 +72,8 @@ Without a snapshot, classes are shown as `class#<id>`.
   alive. Other objects are garbage that hasn't been collected yet.
 - `path`: a shortest chain of references from a root to an object. Stack slots
   are shown by index.
+- `diff`: compares the live objects of processes that run the same program.
+  Positive numbers mean that the later capture uses more.
 
 ## Capture format
 
