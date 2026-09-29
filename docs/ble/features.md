@@ -1,6 +1,6 @@
 # Feature inventory
 
-Service protocol 0.25 (`service/api.toit`). This lists what the host implements,
+Service protocol 0.26 (`service/api.toit`). This lists what the host implements,
 its fixed limits, and the gaps that must close before it can replace NimBLE.
 
 ## Implemented
@@ -19,6 +19,8 @@ its fixed limits, and the gaps that must close before it can replace NimBLE.
 | Encryption | LE Start Encryption on central links, LTK request replies on peripheral links, encryption change tracking, links that require encryption for their lifetime. |
 | Privacy | Host-side RPA generation and resolution, host-selected random addresses for scanning, advertising and connecting. |
 | Peripheral sessions | A provider whose `peripheral-session-limit` is above one serves that many centrals at once on a shared host, advertising again while connected; central sessions are refused meanwhile. |
+| Application API | `ble.experimental.next` ([api.md](api.md)): connect and disconnect events in both roles, link details and PHY/parameter requests, transmit power control (ESP32 vendor API), handlers with the central's connection, batched notifications. Verified on the original ESP32 and the ESP32-S3 with `tests/ble-hardware/next-check.sh`. |
+| Link operations | Read PHY, data length, connection parameters, RSSI (Read RSSI) and transmit power (Read Transmit Power Level) of any link; LE Set PHY with preferences, waiting for its completion and for the automatic 2M request made after connecting; disconnect reason. |
 | `ble` package | The existing public API (`Adapter`, `Central`, `Peripheral`, remote and local services, characteristics and descriptors) runs unchanged on this host: `Adapter` falls back to the BLE service provider when the firmware has no native host (`lib/ble/host.toit`). Scan, connect by identifier, discovery, read, write, subscribe and notifications on the central side; services, characteristics with callback reads and writes, descriptors, advertising and notifications on the peripheral side. Writes with a response pass through the application's write handler before the response leaves; write commands are committed by the provider at once. Verified on hardware with the unchanged `examples/ble/heart_rate.toit` (`tests/ble-hardware/compat.sh`). |
 | Bonds | Encrypted (AES-GCM) bond records bound to namespace and slot, an in-memory table with snapshots, resumption owners, revocation markers, an administration service, protected per-bond CCCD storage, offline database migration. |
 | Service layer | Five provider variants plus policy subclasses, bounded request mailbox for server handlers, client-side scoped blocks, capability discovery, provider PID pinning. |

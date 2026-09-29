@@ -107,6 +107,19 @@ which is the controller advertising for a second central while the first
 is connected. The two-central data path itself is covered by
 `tests/ble-compat-multi-peripheral-test.toit`.
 
+## Application API
+
+`tests/ble-hardware/next-check.sh` flashes the controller-only original
+ESP32 (or ESP32-S3 Board1 with `NEXT_BOARD=s3`) with the provider and
+`examples/ble/experimental/next-peripheral.toit`, then runs
+`next-central.toit` on the Edimax dongle through `ble.experimental.next.linux`.
+The central finds the board by address, connects, reads the link,
+subscribes, has one write refused with an application ATT error, asks for
+new parameters and disconnects (`NEXT_CENTRAL COMPLETE`). The board prints
+the connect and disconnect events, the link (PHY, MTU, RSSI, transmit
+power at the 9 dBm it set, parameters, data length) and the refused write.
+Pass `2` to request the 2M PHY explicitly.
+
 ## Legacy pairing
 
 `tests/ble-hardware/legacy-bond.sh` flashes ESP32 Board2 with the default
