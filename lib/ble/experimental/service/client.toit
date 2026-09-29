@@ -176,17 +176,22 @@ class Client extends services.ServiceClient:
   Opens a bounded database builder without acquiring the controller yet.
 
   $value-limit is at most 512 bytes and $mtu-limit is 23 through 517. The MTU
-    remains 23 until the peer exchanges it. The value bound also limits RPC
+    remains 23 until the peer exchanges it. $attribute-limit bounds the
+    database, the default services included (nine attributes); providers
+    allow up to 256 by default. The value bound also limits RPC
     handler records and replies; larger retained values can use long reads.
     $handler-timeout sets the per-handler budget described by
     $Session.set-handler-timeout; it defaults to one second.
   */
   configure --name/string="Toit" --value-limit/int=20 --mtu-limit/int=23
-      --handler-timeout/Duration=(Duration --s=1) -> Session:
+      --handler-timeout/Duration=(Duration --s=1) --attribute-limit/int=64 -> Session:
     if not 1 <= handler-timeout.in-us <= 10_000_000: throw "INVALID_ARGUMENT"
-    result := value-limit == 20 and mtu-limit == 23
+    arguments := attribute-limit == 64
+        ? [name, value-limit, mtu-limit]
+        : [name, value-limit, mtu-limit, attribute-limit]
+    result := value-limit == 20 and mtu-limit == 23 and attribute-limit == 64
         ? (Session this (open_ api.OPEN-BUILDER name))
-        : (Session this (open_ api.OPEN-BOUNDED-BUILDER [name, value-limit, mtu-limit]))
+        : (Session this (open_ api.OPEN-BOUNDED-BUILDER arguments))
     succeeded := false
     try:
       if handler-timeout.in-us != 1_000_000: result.set-handler-timeout handler-timeout

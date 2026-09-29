@@ -15,13 +15,29 @@ class Database:
   characteristic_/int := 0
   value-limit_/int
   mtu-limit_/int
+  attribute-limit_/int
+  subscribable_/int := 0
   service-changed-cccd_/int := 0
 
-  constructor --value-limit/int=20 --mtu-limit/int=23:
+  /** The most attributes a database may hold. */
+  static MAX-ATTRIBUTES ::= 512
+  /**
+  The most notifying or indicating characteristics (one CCCD each): saved
+    subscriptions count them in one byte. Unreachable below 766 attributes.
+  */
+  static MAX-SUBSCRIBABLE ::= 255
+
+  /**
+  Creates an empty database of at most $attribute-limit attributes (64 by
+    default, at most $MAX-ATTRIBUTES).
+  */
+  constructor --value-limit/int=20 --mtu-limit/int=23 --attribute-limit/int=64:
     if not 1 <= value-limit <= 512: throw "INVALID_ARGUMENT"
     if not 23 <= mtu-limit <= 517: throw "INVALID_ARGUMENT"
+    if not 1 <= attribute-limit <= MAX-ATTRIBUTES: throw "INVALID_ARGUMENT"
     value-limit_ = value-limit
     mtu-limit_ = mtu-limit
+    attribute-limit_ = attribute-limit
 
   /**
   Creates baseline GAP and GATT services for an unbonded server.
@@ -34,11 +50,13 @@ class Database:
     connection caching is not supplied.
   */
   constructor.with-defaults --name/string="Toit" --value-limit/int=20 --mtu-limit/int=23
-      --immutable-layout/bool=false:
+      --attribute-limit/int=64 --immutable-layout/bool=false:
     if not 1 <= value-limit <= 512: throw "INVALID_ARGUMENT"
     if not 23 <= mtu-limit <= 517: throw "INVALID_ARGUMENT"
+    if not 1 <= attribute-limit <= MAX-ATTRIBUTES: throw "INVALID_ARGUMENT"
     value-limit_ = value-limit
     mtu-limit_ = mtu-limit
+    attribute-limit_ = attribute-limit
     bytes := name.to-byte-array
     if bytes.size > value-limit: throw "INVALID_ARGUMENT"
     add-service #[0, 0x18]
@@ -87,6 +105,7 @@ class Database:
     if service_ == 0 or value.size > value-limit: throw "INVALID_ARGUMENT"
     if (dynamic-read and not read) or (validate-write and not (write or write-command)): throw "INVALID_ARGUMENT"
     check-building_ ((notify or indicate) ? 3 : 2)
+    if (notify or indicate) and subscribable_ >= MAX-SUBSCRIBABLE: throw "GATT_DATABASE_FULL"
     uuid = normalize_ uuid
     properties := (read ? 2 : 0) | (write ? 8 : 0) | (notify ? 0x10 : 0) | (indicate ? 0x20 : 0)
     if write-command: properties |= 4
@@ -108,6 +127,7 @@ class Database:
     attribute.validate-write = validate-write
     attribute.command-writable = write-command
     if notify or indicate:
+      subscribable_++
       cccd := add_ #[2, 0x29] #[0, 0] true true
       descriptor := attributes_[cccd - 1] as Attribute_
       descriptor.notifies = handle
@@ -187,9 +207,9 @@ class Database:
     return Session this --security=security --handler-timeout=handler-timeout --cccd-store=cccd-store
 
   decode-cccd_ state/ByteArray -> Map:
-    if state.size < 2 or state.size > 258: throw "GATT_INVALID_CCCD_STATE"
+    if state.size < 2 or state.size > 2 + 4 * MAX-SUBSCRIBABLE: throw "GATT_INVALID_CCCD_STATE"
     count := state[1]
-    if (state[0] != 1 and state[0] != 0x81) or count > 64 or state.size != 2 + count * 4:
+    if (state[0] != 1 and state[0] != 0x81) or state.size != 2 + count * 4:
       throw "GATT_INVALID_CCCD_STATE"
     subscriptions := {:}
     previous := 0
@@ -233,7 +253,7 @@ class Database:
 
   check-building_ count/int -> none:
     if sealed_: throw "GATT_DATABASE_SEALED"
-    if attributes_.size + count > 64: throw "GATT_DATABASE_FULL"
+    if attributes_.size + count > attribute-limit_: throw "GATT_DATABASE_FULL"
 
   add_ uuid/ByteArray value/ByteArray read/bool write/bool -> int:
     handle := attributes_.size + 1

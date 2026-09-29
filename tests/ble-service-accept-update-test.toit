@@ -128,6 +128,7 @@ class Provider extends gatt-fixture.TestProvider:
     last = super client name
     return last
 
-  create-bounded-builder client/int name/string value-limit/int mtu-limit/int -> rpc.Session:
-    last = super client name value-limit mtu-limit
+  create-bounded-builder client/int name/string value-limit/int mtu-limit/int
+      --attribute-limit/int=64 -> rpc.Session:
+    last = super client name value-limit mtu-limit --attribute-limit=attribute-limit
     return last

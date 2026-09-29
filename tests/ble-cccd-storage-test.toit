@@ -111,7 +111,7 @@ protected-records:
     expect-throw "INVALID_ARGUMENT": bank.session 0 bond --database-id=invalid
   [-1, 255].do: | invalid/int |
     expect-throw "INVALID_ARGUMENT": bank.session invalid bond --database-id=DATABASE-ID
-  [#[], ByteArray 259].do: | invalid/ByteArray |
+  [#[], ByteArray 1023].do: | invalid/ByteArray |
     expect-throw "INVALID_ARGUMENT": store.save invalid
   bank.close
   bank.close

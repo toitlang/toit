@@ -74,6 +74,11 @@ main:
   full := server.Database
   64.repeat: full.add-service #[0, 0x18]
   expect (catch: full.add-service #[0, 0x18]) == "GATT_DATABASE_FULL"
+  // A larger database on request, up to 512 attributes.
+  large := server.Database --attribute-limit=300
+  300.repeat: large.add-service #[0, 0x18]
+  expect (catch: large.add-service #[0, 0x18]) == "GATT_DATABASE_FULL"
+  expect (catch: server.Database --attribute-limit=513) == "INVALID_ARGUMENT"
   // Read By Type stops before an unreadable match, then errors when that
   // match becomes the first requested attribute on the next page.
   permissions := server.Database
