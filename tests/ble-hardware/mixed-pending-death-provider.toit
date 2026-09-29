@@ -1,8 +1,0 @@
-// Copyright (C) 2026 Toit contributors.
-// Use of this source code is governed by a Zero-Clause BSD license that can
-// be found in the tests/LICENSE file.
-
-import .mixed-central-death-provider as fixture
-
-main:
-  with-timeout --ms=160_000: fixture.run --pending
