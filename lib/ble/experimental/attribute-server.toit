@@ -682,8 +682,8 @@ class Session:
         if validation.error_ != 0: return error_ opcode handle validation.error_
       security-error = security-error_ attribute
       if security-error != 0: return error_ opcode handle security-error
-      // Allocate the reply and accepted-write record before publishing state.
-      // OOM must not change a value without its matching write record.
+      // Build the reply and accepted-write record before publishing state, so
+      // a failure cannot change a value without its matching write record.
       accepted := [[handle, value]]
       response := #[0x13]
       if attribute.notifies != 0:

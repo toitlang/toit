@@ -35,8 +35,8 @@ class NativeTransport implements Transport:
     add-finalizer this:: close
 
   initialize_ adapter/int --management/bool=false -> none:
-    // Enter the protected scope before acquiring a native resource: even
-    // creating the helper's call frame can fail under heap pressure.
+    // Enter the protected scope before acquiring the native resource, so any
+    // failure after the open releases it.
     resource := null
     completed := false
     try:

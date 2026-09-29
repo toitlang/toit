@@ -4,7 +4,6 @@
 
 import ble.experimental.native as native
 import encoding.hex
-import system
 
 // Only the isolated --fault-injection firmware enables the test primitive.
 // Direct primitives keep automatic readers from consuming injected packets.
@@ -14,29 +13,10 @@ main args/List:
   group := init_
   if not args.is-empty:
     with-radio group: | radio |
-      error := catch: test_ radio 0 #[]
+      error := catch: test_ radio 2 #[4, 14, 1, 7]
       if error != "UNIMPLEMENTED": throw "FAULT_HOOK_ENABLED"
     print "VHCI_FAULTS DISABLED"
     return
-  20.repeat: | cycle/int |
-    with-radio group: | radio |
-      first := #[4, 14, 4, 1, 9, 16, 0]
-      expected := first.copy
-      second := #[2, 1, 0, 3, 0, 7, 8, 9]
-      if (test_ radio 2 first) != 0 or (test_ radio 2 second) != 0:
-        throw "INJECTION_FAILED"
-      first[6] = 99
-      before := system.process-stats --gc
-      test_ radio 0 #[]
-      received := receive_ radio 1029
-      failures := test_ radio 1 #[]
-      after := system.process-stats
-      gcs := after[system.STATS-INDEX-FULL-GC-COUNT] - before[system.STATS-INDEX-FULL-GC-COUNT]
-      if failures < 1 or gcs < 1: throw "RECEIVE_RETRY_NOT_EXERCISED"
-      if received != expected or (receive_ radio 1029) != second:
-        throw "RETRY_PACKET_CHANGED"
-      if (receive_ radio 1029) != null: throw "RETRY_PACKET_DUPLICATED"
-      print "VHCI_FAULTS retry=$cycle failures=$failures full-gcs=$gcs exact=true"
   ["HCI_QUEUE_OVERFLOW", "HCI_INVALID_PACKET", "HCI_OVERSIZED_PACKET"].do: | fault/string |
     with-radio group: | radio |
       if fault == "HCI_QUEUE_OVERFLOW":

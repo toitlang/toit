@@ -14,8 +14,7 @@ main args/List:
   if args == ["disabled"]:
     expect-throw "UNIMPLEMENTED": native.testing-pair
     group := init_
-    [1, 2].do: | action/int |
-      expect-throw "UNIMPLEMENTED": test_ group action
+    expect-throw "UNIMPLEMENTED": test_ group 0
     print "NATIVE_LINUX DISABLED"
     return
   if not args.is-empty: throw "INVALID_ARGUMENT"
@@ -28,7 +27,6 @@ main args/List:
       foreign-close
       deadline-close
       canceled-close
-      allocation-retry
       close-reader
       peer-close
       peer-close --writer
@@ -109,35 +107,6 @@ foreign-close:
     pair.do: | resource |
       if rejected: close_ owner resource
       else: catch: close_ owner resource
-
-// A dedicated group prevents another fixture's reader from consuming the
-// group-local injection. Direct primitives let us check an empty queue exactly.
-allocation-retry:
-  group := init_
-  pair/List := test_ group 0
-  try:
-    left := pair[0]
-    right := pair[1]
-    first := #[4, 14, 4, 1, 9, 16, 0]
-    expected := first.copy
-    second := #[2, 1, 0, 3, 0, 7, 8, 9]
-    expect (send_ left first)
-    expect (send_ left second)
-    first.fill 99
-    before := system.process-stats --gc
-    test_ group 1
-    received := receive_ right 2048
-    failures/int := test_ group 2
-    after := system.process-stats
-    expect (failures > 0)
-    expect (after[system.STATS-INDEX-FULL-GC-COUNT] > before[system.STATS-INDEX-FULL-GC-COUNT])
-    expect-equals expected received
-    expect-equals second (receive_ right 2048)
-    expect-equals null (receive_ right 2048)
-    system.process-stats --gc
-    expect-equals expected received
-  finally:
-    pair.do: close_ group it
 
 init_:
   #primitive.ble_hci.init

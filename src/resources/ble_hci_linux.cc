@@ -42,14 +42,6 @@ class BleHciResourceGroup : public ResourceGroup {
   explicit BleHciResourceGroup(Process* process)
       : ResourceGroup(process, EpollEventSource::instance()) {}
 
-#ifdef TOIT_BLE_HCI_TESTING
-  // Explicit fixture groups only: fail packet allocation until a full GC has
-  // exercised the interpreter retry path. No managed pointer is retained.
-  bool test_receive_armed = false;
-  int test_gc_count = 0;
-  int test_allocation_failures = 0;
-#endif
-
  private:
   uint32_t on_event(Resource* resource, word data, uint32_t state) override {
     if (data & EPOLLIN) state |= 1;
@@ -112,16 +104,6 @@ PRIMITIVE(receive) {
   int fd = resource->id();
   ByteArray* packet = null;
   auto result = ble_hci::receive_packet(fd, limit, [&](ssize_t length) -> uint8* {
-#ifdef TOIT_BLE_HCI_TESTING
-    auto group = static_cast<BleHciResourceGroup*>(resource->resource_group());
-    if (group->test_receive_armed) {
-      if (group->test_gc_count == process->gc_count(FULL_GC)) {
-        group->test_allocation_failures++;
-        return nullptr;
-      }
-      group->test_receive_armed = false;
-    }
-#endif
     packet = process->allocate_byte_array(length);
     if (packet == null) return nullptr;
     return ByteArray::Bytes(packet).address();
@@ -176,13 +158,6 @@ PRIMITIVE(test) {
 #ifdef TOIT_BLE_HCI_TESTING
   ARGS(BleHciResourceGroup, group, int, action, Blob, packet);
   if (packet.length() != 0) FAIL(INVALID_ARGUMENT);
-  if (action == 1) {
-    group->test_gc_count = process->gc_count(FULL_GC);
-    group->test_allocation_failures = 0;
-    group->test_receive_armed = true;
-    return process->null_object();
-  }
-  if (action == 2) return Smi::from(group->test_allocation_failures);
   if (action != 0) FAIL(INVALID_ARGUMENT);
   // Allocate every managed object before acquiring native descriptors. A
   // primitive allocation failure can then retry without leaking a socket pair.

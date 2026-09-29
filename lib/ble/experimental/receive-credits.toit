@@ -77,7 +77,7 @@ class ReceiveCredits:
 
   /** Invalidates all receipts and drops packet references without sending credits. */
   close -> none:
-    // Repeated calls also finish any cleanup interrupted by allocation failure.
+    // Repeated calls finish any cleanup an earlier call did not complete.
     closed_ = true
     accounts_.do --values: | account/Account_ | account.active = false
     receipts_.do: | receipt/Receipt | receipt.packet_ = null

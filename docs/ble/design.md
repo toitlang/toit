@@ -99,7 +99,12 @@ losing packets or retaining pointers into movable memory:
 3. Transmit borrows the managed pointer only for the synchronous native send; VHCI and `send()` both copy before returning.
 4. Queues at every stage are bounded. Advertising reports may be dropped with a counter; connection data is never silently dropped, the affected link or controller fails instead.
 5. Values retained for the application (notifications, read results) own stable bytes independent of packet buffers.
-6. State is published only after all allocations for the change have succeeded, so an allocation failure cannot leave a half-applied write.
+6. State is published only after everything the change needs exists, so a failure part way (an exception, cancellation or an allocation failure) cannot leave a half-applied write.
+
+Running out of memory is otherwise handled best effort: the host has no
+dedicated recovery paths or tests for heap exhaustion. The failing operation
+throws and the session or link it belongs to ends; a supervisor restarts a
+provider that cannot continue.
 
 RPC copies byte arrays above 128 bytes into external storage; the client
 snapshots outgoing arrays so caller buffers are not neutered.

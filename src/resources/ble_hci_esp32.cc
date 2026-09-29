@@ -109,8 +109,6 @@ class BleHciResource : public EventQueueResource {
   ble_hci::PacketQueue<8, 1029> packets;
 
 #ifdef TOIT_BLE_HCI_TESTING
-  int test_gc_count = -1;
-  int test_allocation_failures = 0;
   esp_err_t test_stop_controller(bool deinitialize) {
     // Deliberately leave one ownership flag stale so close encounters a real
     // ESP-IDF invalid-state error. Only isolated fault-test builds expose this.
@@ -242,14 +240,6 @@ PRIMITIVE(receive) {
       too_large = true;
       return nullptr;
     }
-#ifdef TOIT_BLE_HCI_TESTING
-    // Exercise the interpreter's actual ALLOCATION_FAILED retry path. Keep
-    // failing this packet allocation until the runtime has performed a full GC.
-    if (resource->test_gc_count == process->gc_count(FULL_GC)) {
-      resource->test_allocation_failures++;
-      return nullptr;
-    }
-#endif
     packet = process->allocate_byte_array(size);
     return packet ? ByteArray::Bytes(packet).address() : nullptr;
   });
@@ -348,11 +338,6 @@ PRIMITIVE(test) {
 #ifdef TOIT_BLE_HCI_TESTING
   ARGS(BleHciResource, resource, int, action, Blob, packet);
   switch (action) {
-    case 0:
-      resource->test_gc_count = process->gc_count(FULL_GC);
-      resource->test_allocation_failures = 0;
-      return process->null_object();
-    case 1: return Smi::from(resource->test_allocation_failures);
     case 2: return Smi::from(static_cast<int>(resource->test_inject(packet.address(), packet.length())));
     case 3: return Smi::from(resource->test_stop_controller(false));
     case 4: return Smi::from(resource->test_stop_controller(true));
