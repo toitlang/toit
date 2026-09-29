@@ -49,6 +49,20 @@ class Client extends services.ServiceClient:
   set-tx-power dbm/int -> int: return invoke_ api.SET-TX-POWER dbm
 
   /**
+  Returns the bonded peers the provider lists, as [address type, identity
+    address in HCI order] pairs. Providers list none unless the deployment
+    keeps bonds and chooses to list them.
+  */
+  bonded-peers -> List:
+    result := invoke_ api.BONDED-PEERS null
+    if result is not List: throw "GATT_BAD_RESPONSE"
+    result.do: | peer/any |
+      if peer is not List or peer.size != 2 or peer[0] is not int or not 0 <= peer[0] <= 3 or
+          peer[1] is not ByteArray or peer[1].size != 6:
+        throw "GATT_BAD_RESPONSE"
+    return result
+
+  /**
   Advertises without accepting connections for the lifetime of $body.
 
   Uses the provider's address policy (public by default). $interval uses 625 microsecond units,

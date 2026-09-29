@@ -89,6 +89,17 @@ abstract class Provider extends services.ServiceProvider implements services.Ser
     throw "GATT_UNSUPPORTED_SERVICE_OPERATION"
 
   /**
+  Returns the bonded peers every client may see, as [address type, identity
+    address in HCI order] pairs a central can connect to: type 0 or 1, or 2
+    or 3 for peers in the controller's resolving list.
+
+  Bond storage belongs to the deployment, so the default lists none; a
+    provider that keeps a bond registry overrides it (the bond
+    administration service stays the place for keys and revocation).
+  */
+  bonded-peers -> List: return []
+
+  /**
   Runs $block while no session holds or is opening the controller.
 
   Throws GATT_SERVICE_BUSY otherwise. Session admission is refused while the
@@ -113,6 +124,14 @@ abstract class Provider extends services.ServiceProvider implements services.Ser
     if index == api.ADAPTER-INFO:
       if arguments != null: throw "INVALID_ARGUMENT"
       return adapter-info
+    if index == api.BONDED-PEERS:
+      if arguments != null: throw "INVALID_ARGUMENT"
+      peers := bonded-peers
+      peers.do: | peer/any |
+        if peer is not List or peer.size != 2 or peer[0] is not int or not 0 <= peer[0] <= 3 or
+            peer[1] is not ByteArray or peer[1].size != 6:
+          throw "INVALID_ARGUMENT"
+      return peers.map: | peer/List | [peer[0], peer[1].copy]
     if index == api.SET-TX-POWER:
       if arguments is not int or not -127 <= arguments <= 127: throw "INVALID_ARGUMENT"
       return set-tx-power arguments

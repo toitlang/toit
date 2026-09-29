@@ -13,7 +13,8 @@ Firmware without a native BLE host (a controller-only ESP32 image, or a Linux
   serves as many centrals at once as the provider's peripheral session
   limit allows (one by default; advertising resumes after each disconnect)
   and that pairing policy belongs to the provider, so the `--bonding` and
-  `--secure-connections` flags are advisory.
+  `--secure-connections` flags are advisory. `bonded-peers` lists what the
+  provider chooses to list (none by default).
 */
 
 import io
@@ -87,8 +88,9 @@ class HostCentral_ extends Central:
       address = bytes.copy
     else:
       throw "INVALID_ARGUMENT"
-    // Identity address types resolve to their public or random kind.
-    if type >= 2: type -= 2
+    // Identity types (2, 3) come from a controller that resolved the peer;
+    // it connects to them through its resolving list.
+    if type > 3: throw "INVALID_ARGUMENT"
     connection := host-adapter_.client_.connect address --address-type=type
         --mtu-limit=host-adapter_.preferred-mtu_
         --require-encryption=secure
@@ -122,8 +124,13 @@ class HostCentral_ extends Central:
           (AdvertisementData.raw_ report.data --connectable=(connectable == true)))  // @no-warn
       true
 
-  /** The provider owns bonds; it does not expose them through this API. */
-  bonded-peers -> List: return []
+  /** The bonded peers the provider lists, as identifiers for $connect. */
+  bonded-peers -> List:
+    return host-adapter_.client_.bonded-peers.map: | peer/List |
+      identifier := ByteArray 7
+      identifier[0] = peer[0]
+      identifier.replace 1 peer[1]
+      identifier
 
 class HostRemoteDevice_ extends RemoteDevice:
   connection_/rpc.Connection
