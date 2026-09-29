@@ -481,9 +481,15 @@ class Central:
     if not phy-2m_: return
     features := link.peer-features
     if not features or features.size < 2 or features[1] & 0x01 == 0: return
+    // Tracked like an explicit request: controllers run one PHY procedure
+    // at a time, and $set-phy waits for this one first.
+    pending := monitor.Latch
+    link.phy-pending_ = pending
     error := catch:
       controller_.command hci.LE-SET-PHY (connection.phy-2m-parameters link.info.handle) --status-event
-    if error and not (error is hci.CommandError): throw error
+    if error:
+      if link.phy-pending_ == pending: link.phy-pending_ = null
+      if not (error is hci.CommandError): throw error
 
   /**
   Asks the controllers for PHYs and waits for the outcome.
@@ -496,8 +502,13 @@ class Central:
   */
   set-phy link/Link --tx/int --rx/int --timeout/Duration=timeouts.PARAMETER-UPDATE -> connection.Phy:
     if not (owns-link link): throw "HCI_INVALID_LINK"
-    if link.phy-pending_: throw "HCI_PHY_UPDATE_BUSY"
     bytes := connection.phy-parameters link.info.handle --tx=tx --rx=rx
+    // Let a running procedure (the automatic one after connecting, or
+    // another request) finish; its outcome does not matter here.
+    while link.phy-pending_:
+      earlier := link.phy-pending_
+      catch: with-timeout timeout: earlier.get
+      if link.phy-pending_ == earlier: link.phy-pending_ = null
     pending := monitor.Latch
     link.phy-pending_ = pending
     try:

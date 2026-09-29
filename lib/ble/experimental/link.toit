@@ -172,6 +172,15 @@ class Link:
   /** Returns the PHYs in effect, or null while the link still uses the 1M PHY it started on. */
   phy -> connection.Phy?: return phy_
 
+  /**
+  Waits up to $timeout for a PHY update in progress to finish.
+
+  Returns at once when none runs. The update's outcome is in $phy.
+  */
+  wait-phy-settled timeout/Duration -> none:
+    pending := phy-pending_
+    if pending: catch: with-timeout timeout: pending.get
+
   /** Waits for a complete L2CAP PDU, or throws when the link ends. */
   receive --owner=null -> acl.Packet:
     if connected and owner != receive-owner_: throw "L2CAP_RECEIVE_OWNED"

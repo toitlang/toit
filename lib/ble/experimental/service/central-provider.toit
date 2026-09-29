@@ -219,6 +219,9 @@ class ConnectionSession extends rpc.Session:
     // connection setup; a BlueZ peripheral, for example, tears the link down
     // when an LTK request or Pairing Request arrives before that point.
     if security_ or mtu > 23: client_.exchange-mtu
+    // The host asks for the 2M PHY on connecting; report the link as it
+    // ends up rather than as it started.
+    link.wait-phy-settled (Duration --s=1)
     if security_:
       provider.run-central-security-owner security_
       if not security_.paired or not security_.encrypted: throw "GATT_CENTRAL_SECURITY_NOT_READY"

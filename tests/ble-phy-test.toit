@@ -10,11 +10,13 @@ import ble.experimental.central
 import ble.experimental.connection
 import ble.experimental.hci
 import expect show *
+import monitor
 import .ble-fixture as fixture
 
 main:
   with-timeout --ms=5_000:
     supported
+    request-after-automatic
     peer-without-2m
     malformed
 
@@ -39,6 +41,43 @@ supported:
     expect-equals 2 link.phy.tx
     expect-equals 2 link.phy.rx
     expect-equals 0x234 link.phy.handle
+  finally:
+    responder.cancel
+    if host: host.close
+    controller.close
+
+// An explicit request while the automatic one runs waits for it instead of
+// making the controller refuse a second procedure (Command Disallowed).
+request-after-automatic:
+  radio := fixture.FakeTransport
+  radio.auto-features = #[1, 1, 0, 0, 0, 0, 0, 0]
+  controller := hci.Controller radio
+  asked := monitor.Latch
+  responder := task::
+    fixture.initialize-replies radio --phy-2m
+    fixture.status-reply radio fixture.create-command
+    radio.received.add fixture.connection-event
+    fixture.status-reply radio (hci.command-packet 0x2032 #[0x34, 2, 0, 2, 2, 0, 0])
+    asked.get
+    // Nothing else is sent until the automatic update completes.
+    sent := radio.sent-count
+    sleep --ms=20
+    expect-equals sent radio.sent-count
+    radio.received.add #[4, 0x3e, 6, 0x0c, 0, 0x34, 2, 2, 2]
+    fixture.status-reply radio (hci.command-packet 0x2032 #[0x34, 2, 0, 1, 1, 0, 0])
+    radio.received.add #[4, 0x3e, 6, 0x0c, 0, 0x34, 2, 1, 1]
+  host/central.Central? := null
+  try:
+    info := hci.initialize controller
+    host = central.Central controller --phy-2m=info.phy-2m
+    link := host.connect #[1, 2, 3, 4, 5, 6] --address-type=1
+    result := null
+    requester := task::
+      result = host.set-phy link --tx=1 --rx=1
+    asked.set true
+    while not result: sleep --ms=1
+    expect-equals 1 result.tx
+    expect-equals 1 link.phy.rx
   finally:
     responder.cancel
     if host: host.close
