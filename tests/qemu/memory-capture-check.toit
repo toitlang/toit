@@ -45,6 +45,8 @@ main args:
   expect app-owner["bytes"] >= 20_000
   // The capture's own memory is labeled.
   expect (owners.any: it["owner"] == "memory capture")
+  // The GC metadata has its own tag.
+  expect (owners.any: it["owner"] == "gc metadata")
 
   census := (inspect.call "census" ["--process", "$app-id", "--limit", "100"])[0]["result"]
   node := (census.filter: it["class"] == "Node")[0]

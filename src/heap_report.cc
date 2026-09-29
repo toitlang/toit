@@ -266,6 +266,7 @@ const char* malloc_tag_name(int tag) {
     case BIGNUM_MALLOC_TAG: return "tls/bignum";
     case EXTERNAL_STRING_MALLOC_TAG: return "external string";
     case TOIT_HEAP_MALLOC_TAG: return "toit processes";
+    case GC_METADATA_MALLOC_TAG: return "gc metadata";
     case FREE_MALLOC_TAG: return "free";
     case LWIP_MALLOC_TAG: return "lwip";
     case HEAP_OVERHEAD_MALLOC_TAG: return "heap overhead";

@@ -99,7 +99,7 @@ void GcMetadata::set_up_singleton() {
   // lose memory when the malloc rounds a series of big allocations up to 4k
   // page boundaries.
   {
-    HeapTagScope scope(ITERATE_CUSTOM_TAGS + TOIT_HEAP_MALLOC_TAG);
+    HeapTagScope scope(ITERATE_CUSTOM_TAGS + GC_METADATA_MALLOC_TAG);
     metadata_ = reinterpret_cast<uint8*>(OS::grab_virtual_memory(null, metadata_size_));
   }
 

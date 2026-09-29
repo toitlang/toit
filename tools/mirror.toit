@@ -637,7 +637,7 @@ class HeapPage extends Mirror:
   //   B 2 - Bignum
   //   S 3 - External string
   //   T 4 - Toit heap
-  //   U 5 - Unused (spare) Toit heap
+  //   G 5 - GC metadata
   //   F 6 - free or heap overhead (header)
   //   W 7 - LwIP
   //   H 8 - Malloc heap overhead
@@ -666,7 +666,7 @@ class HeapPage extends Mirror:
         offset += HEADER_
       repetitions := extra + (((byte >> 4) & 0b11) + 1) * GRANULARITY_
       use := byte & 0b1111
-      usage-char := "?ABSTUFWH?EOP?W "[use]
+      usage-char := "?ABSTGFWH?EOP?W "[use]
       block.call offset repetitions usage-char (offset + repetitions == PAGE_)
       offset += repetitions
     if offset < PAGE_:
@@ -700,6 +700,7 @@ DESCRIPTIONS_ ::= {
   'B': "Bignum (crypto)",
   'S': "External string",
   'T': "Toit GCed heap",
+  'G': "GC metadata",
   'F': "Free",
   'W': "LwIP/WiFi",
   'H': "Malloc heap bookkeeping",
@@ -775,7 +776,7 @@ class ColorBlockOutputter_ extends UnicodeBlockOutputter_:
     'B': 111,  // Bignum.
     'S': 190,  // External string.
     'T': 214,  // Toit heap.
-    'U': 112,  // Unused (spare) Toit heap.
+    'G': 112,  // GC metadata.
     'F': 44,   // Cyan, free memory.
     'W': 170,  // Purple, LwIP/Wifi.
     'E': 89,   // Dark red, event sources.
