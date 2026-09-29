@@ -32,7 +32,13 @@
 
 namespace toit {
 
+#ifdef TOIT_WASM
+// Emscripten backs anonymous mappings with zero-filled memory, so the whole
+// region is paid for up front.
+static const int ALLOCATION_SIZE = 4 * MB;
+#else
 static const int ALLOCATION_SIZE = 64 * MB;
+#endif
 
 static void* allocations_mmap = null;
 static size_t allocations_mmap_size = 0;

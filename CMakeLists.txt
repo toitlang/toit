@@ -40,7 +40,14 @@ if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32" OR "${TOIT_SYSTEM_NAME}" STREQUAL "ec6
   set(TOIT_IS_EMBEDDED TRUE)
 endif()
 
-if (NOT DEFINED HOST_TOIT AND (NOT ${TOIT_IS_EMBEDDED}))
+# WebAssembly builds only build the VM. The tools, tests and examples run on
+# the host.
+set(TOIT_IS_WASM FALSE)
+if ("${TOIT_SYSTEM_NAME}" STREQUAL "wasm")
+  set(TOIT_IS_WASM TRUE)
+endif()
+
+if (NOT DEFINED HOST_TOIT AND (NOT ${TOIT_IS_EMBEDDED}) AND (NOT ${TOIT_IS_WASM}))
   set(HOST_TOIT "${CMAKE_BINARY_DIR}/sdk/bin/toit")
 endif()
 
@@ -195,7 +202,7 @@ if ("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
   add_subdirectory(third_party/libgpiod)
 endif()
 
-if (NOT ${TOIT_IS_EMBEDDED})
+if (NOT ${TOIT_IS_EMBEDDED} AND NOT ${TOIT_IS_WASM})
   add_subdirectory(tools)
   add_subdirectory(system/extensions/host)
 
@@ -226,7 +233,7 @@ if (NOT ${TOIT_IS_EMBEDDED})
   # External Toit packages and projects.
   add_subdirectory(external)
 
-endif() # NOT TOIT_IS_EMBEDDED
+endif() # NOT TOIT_IS_EMBEDDED AND NOT TOIT_IS_WASM
 
 # Build mbedtls for non-ESP32 targets. ESP32 gets mbedtls from the ESP-IDF
 # build system.

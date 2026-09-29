@@ -124,7 +124,7 @@ void StdinEventSource::entry() {
         pollfd descriptor = { STDIN_FILENO, POLLIN, 0 };
         int poll_result;
         do {
-          poll_result = poll(&descriptor, 1, -1);
+          poll_result = ::poll(&descriptor, 1, -1);
         } while (poll_result < 0 && errno == EINTR);
         if (poll_result < 0) {
           error = errno;

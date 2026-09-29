@@ -55,6 +55,10 @@ class TimerEventSource : public EventSource, public Thread {
 
   void arm(Timer* timer, int64_t timeout);
 
+#ifdef TOIT_NO_THREADS
+  int64 poll(int64 now) override;
+#endif
+
  private:
   void entry() override;
 

@@ -40,6 +40,13 @@ PLATFORM-MACOS ::= "macOS"
 /** Return value from $platform. */
 PLATFORM-LINUX ::= "Linux"
 
+/**
+Return value from $platform.
+
+The platform when the VM runs as WebAssembly, in a browser or in Node.js.
+*/
+PLATFORM-WASM ::= "Wasm"
+
 /** Returns a string identifying the underlying platform. */
 platform -> string:
   #primitive.core.platform
@@ -76,6 +83,9 @@ ARCHITECTURE-ESP32S3 ::= "esp32s3"
 
 /** Return value from $architecture. */
 ARCHITECTURE-EC618 ::= "ec618"
+
+/** Return value from $architecture. */
+ARCHITECTURE-WASM32 ::= "wasm32"
 
 /** Returns a string identifying the underlying architecture. */
 architecture -> string:

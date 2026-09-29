@@ -1,0 +1,37 @@
+<!doctype html>
+<!--
+Copyright (C) 2026 Toit contributors.
+Use of this source code is governed by a Zero-Clause BSD license that can
+be found in the examples/LICENSE file.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Toit in WebAssembly</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="demo.mjs"></script>
+</head>
+<body>
+  <header>
+    <h1>Toit in WebAssembly</h1>
+    <p>
+      The Toit VM, compiled to WebAssembly with Emscripten, running
+      snapshots that were compiled on the host with
+      <code>toit compile --snapshot</code>.
+    </p>
+  </header>
+  <main>
+    <nav id="programs" aria-label="Programs"></nav>
+    <section>
+      <div class="toolbar">
+        <button id="run" type="button">Run</button>
+        <span id="status" role="status"></span>
+      </div>
+      <pre id="source" aria-label="Source"></pre>
+      <pre id="stage" aria-label="Stage" hidden></pre>
+      <pre id="output" aria-label="Output"></pre>
+    </section>
+  </main>
+</body>
+</html>

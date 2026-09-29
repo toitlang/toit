@@ -53,6 +53,7 @@
 #include "optimizations/optimizations.h"
 #include "parser.h"
 #include "propagation/type_database.h"
+#include "wasm_backend.h"
 #include "resolver.h"
 #include "resolver_scope.h"
 #include "../snapshot_bundle.h"
@@ -2136,7 +2137,8 @@ toit::Program* construct_program(ir::Program* ir_program,
                                  TypeOracle* oracle,
                                  TypeDatabase* propagated_types,
                                  bool run_optimizations,
-                                 MethodSelectorOffsets* method_selector_offsets) {
+                                 MethodSelectorOffsets* method_selector_offsets,
+                                 bool is_final) {
   source_mapper->register_selectors(ir_program->classes());
 
   drop_abstract_methods(ir_program);
@@ -2171,7 +2173,19 @@ toit::Program* construct_program(ir::Program* ir_program,
   assign_global_ids(ir_program->globals());
 
   Backend backend(source_mapper->manager(), source_mapper);
-  auto program = backend.emit(ir_program, method_selector_offsets);
+  std::function<void (DispatchTable*)> emit_wasm = null;
+  if (is_final && Flags::wasm_output != null) {
+    // Experimental: also compile the program to a WebAssembly GC module.
+    emit_wasm = [&](DispatchTable* dispatch_table) {
+      WasmBackend wasm_backend(ir_program, dispatch_table);
+      std::string wat = wasm_backend.emit();
+      FILE* file = fopen(Flags::wasm_output, "wb");
+      if (file == null) FATAL("could not open '%s'", Flags::wasm_output);
+      fwrite(wat.data(), 1, wat.size(), file);
+      fclose(file);
+    };
+  }
+  auto program = backend.emit(ir_program, method_selector_offsets, emit_wasm);
   return program;
 }
 
@@ -2408,12 +2422,14 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   TypeOracle oracle(source_mapper);
   MethodSelectorOffsets method_selector_offsets;
   statistics.switch_phase(PipelineStatistics::CODE_GENERATION);
+  bool has_second_pass = run_optimizations && configuration_.optimization_level >= 2;
   auto program = construct_program(ir_program,
                                    source_mapper,
                                    &oracle,
                                    null,
                                    run_optimizations,
-                                   &method_selector_offsets);
+                                   &method_selector_offsets,
+                                   !has_second_pass);
 
   SourceMapper optimized_source_mapper(source_manager());
   if (run_optimizations && configuration_.optimization_level >= 2) {
@@ -2437,7 +2453,8 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
                                 &oracle,
                                 types,
                                 true,
-                                &method_selector_offsets);
+                                &method_selector_offsets,
+                                true);
     delete types;
   }
 

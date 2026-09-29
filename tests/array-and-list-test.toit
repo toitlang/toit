@@ -3,6 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import system
 
 main:
   test-byte-array
@@ -126,6 +127,9 @@ test-array:
   expect sorted.is-sorted
 
 ARRAYLET-SIZE ::= LargeArray_.ARRAYLET-SIZE
+// The experimental WebAssembly GC backend has no size limit for plain arrays,
+// so it doesn't need arraylets.
+USES-ARRAYLETS ::= system.architecture != "wasm-gc"
 FILLER := 3.1415
 
 
@@ -136,9 +140,10 @@ test-large-array-do:
     sizes.do: | new-size |
       sizes.do: | copy-size |
         array := Array_ size
-        expect-equals
-            size <= ARRAYLET-SIZE
-            array is SmallArray_
+        if USES-ARRAYLETS:
+          expect-equals
+              size <= ARRAYLET-SIZE
+              array is SmallArray_
 
         count := 0
         array.do: count++
@@ -160,9 +165,10 @@ test-large-array-do:
 
           expect-equals new-size copy.size
 
-          expect-equals
-              new-size <= ARRAYLET-SIZE
-              copy is SmallArray_
+          if USES-ARRAYLETS:
+            expect-equals
+                new-size <= ARRAYLET-SIZE
+                copy is SmallArray_
 
           // Verify that the arraylets were reused.
           if array is LargeArray_ and copy is LargeArray_:

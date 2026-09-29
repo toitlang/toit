@@ -21,6 +21,8 @@
 // (os_ec618.cc, backed by rngGenRandom).
 extern "C" int mbedtls_hardware_poll(void* data, unsigned char* output,
                                      size_t len, size_t* olen);
+#elif defined(TOIT_WASM)
+#include <unistd.h>  // For getentropy.
 #else
 #include <random>
 #endif
@@ -781,6 +783,14 @@ static int rsa_rng(void* /*ctx*/, unsigned char* buffer, size_t len) {
   size_t filled = 0;
   if (mbedtls_hardware_poll(null, buffer, len, &filled) != 0 || filled != len) {
     return -1;
+  }
+#elif defined(TOIT_WASM)
+  // Emscripten's std::random_device allocates with a throwing new. The
+  // getentropy call is backed by crypto.getRandomValues, but can only
+  // provide 256 bytes at a time.
+  for (size_t offset = 0; offset < len; offset += 256) {
+    size_t chunk = Utils::min(len - offset, static_cast<size_t>(256));
+    if (getentropy(buffer + offset, chunk) != 0) return -1;
   }
 #else
   // Use std::random_device when no platform hardware RNG is available.

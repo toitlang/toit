@@ -82,6 +82,37 @@ class Scheduler {
     int group_id);
 #endif
 
+#ifdef TOIT_NO_THREADS
+  // Without threads, the scheduler doesn't block waiting for processes to
+  // complete. Instead, the embedder starts the boot program and then drives
+  // the scheduler from its event loop by repeatedly calling [run_next] until
+  // it returns false. Finally, [finish] tears down the remaining processes.
+
+  // Start the boot program, but don't run it yet.
+  void start_boot_program(Program* program, char** argv, int group_id);
+
+  // Start the boot program, but don't run it yet.
+  void start_boot_program(
+    Program* program,
+    SnapshotBundle system,
+    SnapshotBundle application,
+    char** argv,
+    int group_id);
+
+  // Whether there are processes that are ready to run.
+  bool has_ready_processes();
+
+  // Runs the next ready process until it yields, terminates, or runs past
+  // the given deadline (in OS::get_monotonic_time microseconds), in which
+  // case it is preempted.
+  // Returns false when the boot program has terminated and [finish] must
+  // be called.
+  bool run_next(int64 deadline);
+
+  // Tears down all remaining processes and returns the exit state.
+  ExitState finish();
+#endif
+
   // Run a new program. Returns the process ID of the root process.
   // Takes over the arguments and initial memory.
   int run_program(Program* program, MessageEncoder* arguments, ProcessGroup* group, InitialMemoryManager* initial_memory);
@@ -188,6 +219,8 @@ class Scheduler {
   void terminate_execution(Locker& locker, ExitState exit);
 
   Scheduler::ExitState launch_program(Locker& locker, Process* process);
+  void start_program(Locker& locker, Process* process);
+  Scheduler::ExitState finish_program(Locker& locker);
 
   Process* find_process(Locker& locker, int pid);
 

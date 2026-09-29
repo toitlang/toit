@@ -69,6 +69,15 @@ Scheduler::Scheduler()
   while (num_threads_ < max_threads_) {
     start_thread(locker);
   }
+#elif defined(TOIT_NO_THREADS)
+  // Without threads, processes are run on the embedder's thread when it
+  // calls run_next. The scheduler thread is never spawned, but it
+  // provides the interpreter, and it makes the running process visible to
+  // the code that iterates over the threads.
+  SchedulerThread* thread = _new SchedulerThread(this);
+  if (thread == null) FATAL("unable to allocate scheduler thread");
+  threads_.prepend(thread);
+  num_threads_ = max_threads_ = 1;
 #endif
 }
 
@@ -155,7 +164,62 @@ Scheduler::ExitState Scheduler::run_boot_program(
 
 #endif
 
-Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process) {
+#ifdef TOIT_NO_THREADS
+
+void Scheduler::start_boot_program(Program* program, char** argv, int group_id) {
+  Locker locker(mutex_);
+  Process* process = new_boot_process(locker, program, group_id);
+  process->set_main_arguments(argv);
+  start_program(locker, process);
+}
+
+void Scheduler::start_boot_program(
+    Program* program,
+    SnapshotBundle system,
+    SnapshotBundle application,
+    char** argv,
+    int group_id) {
+  Locker locker(mutex_);
+  Process* process = new_boot_process(locker, program, group_id);
+  process->set_main_arguments(argv);
+  process->set_spawn_arguments(system, application);
+  start_program(locker, process);
+}
+
+bool Scheduler::has_ready_processes() {
+  Locker locker(mutex_);
+  return ready_count_ > 0;
+}
+
+bool Scheduler::run_next(int64 deadline) {
+  Locker locker(mutex_);
+  if (has_exit_reason() || num_processes_ == 0) return false;
+  if (ready_count_ == 0) return true;
+
+  Process* process = null;
+  for (int i = 0; i < NUMBER_OF_READY_QUEUES; i++) {
+    ProcessListFromScheduler& ready_queue = ready_queue_[i];
+    if (ready_queue.is_empty()) continue;
+    process = ready_queue.remove_first();
+    ready_count_--;
+    break;
+  }
+  ASSERT(process->state() == Process::SCHEDULED);
+
+  SchedulerThread* scheduler_thread = threads_.first();
+  scheduler_thread->interpreter()->set_preemption_deadline(deadline);
+  run_process(locker, process, scheduler_thread);
+  return !has_exit_reason() && num_processes_ > 0;
+}
+
+Scheduler::ExitState Scheduler::finish() {
+  Locker locker(mutex_);
+  return finish_program(locker);
+}
+
+#endif  // TOIT_NO_THREADS
+
+void Scheduler::start_program(Locker& locker, Process* process) {
   ProcessGroup* group = process->group();
   Interpreter interpreter;
   interpreter.activate(process);
@@ -169,6 +233,10 @@ Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process)
   groups_.prepend(group);
   boot_process_ = process;
   add_process(locker, process);
+}
+
+Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process) {
+  start_program(locker, process);
 
   tick_schedule(locker, OS::get_monotonic_time(), true);
   while (num_processes_ > 0 && num_threads_ > 0) {
@@ -182,6 +250,10 @@ Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process)
     }
   }
 
+  return finish_program(locker);
+}
+
+Scheduler::ExitState Scheduler::finish_program(Locker& locker) {
   if (!has_exit_reason()) {
     exit_state_.reason = EXIT_DONE;
   }

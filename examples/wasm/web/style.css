@@ -1,0 +1,108 @@
+/* Copyright (C) 2026 Toit contributors.
+   Use of this source code is governed by a Zero-Clause BSD license that can
+   be found in the examples/LICENSE file. */
+
+:root {
+  --bg: #fafafa;
+  --fg: #1d1d1f;
+  --muted: #6b6b70;
+  --panel: #ffffff;
+  --border: #dcdce0;
+  --accent: #2458d6;
+  --accent-fg: #ffffff;
+  --error: #c0262d;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #151517;
+    --fg: #ececf0;
+    --muted: #9a9aa2;
+    --panel: #1e1e22;
+    --border: #34343a;
+    --accent: #6f9bff;
+    --accent-fg: #0b0b0d;
+    --error: #ff6b70;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 system-ui, sans-serif;
+}
+
+header { padding: 24px 16px 8px; max-width: 1100px; margin: 0 auto; }
+header h1 { margin: 0 0 4px; font-size: 24px; }
+header p { margin: 0; color: var(--muted); }
+
+main {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+@media (max-width: 640px) {
+  main { grid-template-columns: minmax(0, 1fr); }
+  nav { display: flex; flex-wrap: wrap; }
+}
+
+nav button {
+  display: block;
+  width: 100%;
+  margin-bottom: 4px;
+  padding: 6px 10px;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  nav button { width: auto; }
+}
+
+nav button[aria-current="true"] {
+  background: var(--panel);
+  border-color: var(--border);
+  font-weight: 600;
+}
+
+.toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.toolbar button {
+  padding: 6px 18px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.toolbar button:disabled { opacity: 0.5; cursor: default; }
+#status { color: var(--muted); }
+
+pre {
+  margin: 0 0 12px;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+#source { max-height: 320px; }
+#stage { line-height: 1; letter-spacing: 2px; text-align: center; }
+#output { min-height: 120px; }
+#output .err { color: var(--error); }

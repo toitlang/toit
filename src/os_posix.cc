@@ -25,7 +25,9 @@
 #include "vm.h"
 
 #include <errno.h>
+#ifndef TOIT_NO_THREADS
 #include <pthread.h>
+#endif
 #include <sys/resource.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -52,6 +54,8 @@ bool OS::get_process_cpu_times(int64* user_us, int64* system_us) {
   *system_us = usage.ru_stime.tv_sec * 1000000LL + usage.ru_stime.tv_usec;
   return true;
 }
+
+#ifndef TOIT_NO_THREADS
 
 class ConditionVariable {
  public:
@@ -189,6 +193,8 @@ Thread* Thread::current() {
   return result;
 }
 
+#endif  // TOIT_NO_THREADS
+
 // Mutex forwarders.
 Mutex* OS::allocate_mutex(int level, const char* title) { return _new Mutex(level, title); }
 void OS::dispose(Mutex* mutex) { delete mutex; }
@@ -196,6 +202,7 @@ bool OS::is_locked(Mutex* mutex) { return mutex->is_locked(); }  // For asserts.
 void OS::lock(Mutex* mutex) { mutex->lock(); }
 void OS::unlock(Mutex* mutex) { mutex->unlock(); }
 
+#ifndef TOIT_NO_THREADS
 // Condition variable forwarders.
 ConditionVariable* OS::allocate_condition_variable(Mutex* mutex) { return _new ConditionVariable(mutex); }
 void OS::wait(ConditionVariable* condition) { condition->wait(); }
@@ -203,6 +210,7 @@ bool OS::wait_us(ConditionVariable* condition, int64 us) { return condition->wai
 void OS::signal(ConditionVariable* condition) { condition->signal(); }
 void OS::signal_all(ConditionVariable* condition) { condition->signal_all(); }
 void OS::dispose(ConditionVariable* condition) { delete condition; }
+#endif  // TOIT_NO_THREADS
 
 void OS::close(int fd) {
   ::close(fd);
@@ -247,6 +255,19 @@ void OS::heap_summary_report(int max_pages, const char* marker, Process* process
       static_cast<int>(Utils::read_unaligned_uint32_be(uuid + 12)));
 }
 
+#ifdef TOIT_WASM
+
+// WebAssembly has no memory protection, so there is no need to align to
+// the (64KB) WebAssembly page size either.
+ProtectableAlignedMemory::~ProtectableAlignedMemory() {}
+void ProtectableAlignedMemory::mark_read_only() {}
+
+size_t ProtectableAlignedMemory::compute_alignment(size_t alignment) {
+  return alignment;
+}
+
+#else
+
 ProtectableAlignedMemory::~ProtectableAlignedMemory() {
   int status = mprotect(address(), byte_size(), PROT_READ | PROT_WRITE);
   if (status != 0) perror("~ProtectableAlignedMemory. mark_read_write");
@@ -262,6 +283,8 @@ size_t ProtectableAlignedMemory::compute_alignment(size_t alignment) {
   return Utils::max(alignment, system_page_size);
 }
 
+#endif
+
 const char* OS::get_architecture() {
 #if defined(__aarch64__)
   return "arm64";
@@ -273,6 +296,8 @@ const char* OS::get_architecture() {
   return "x86";
 #elif defined(__riscv) && __riscv_xlen == 64
   return "riscv64";
+#elif defined(__wasm32__)
+  return "wasm32";
 #else
   #error "Unknown architecture"
 #endif

@@ -164,7 +164,8 @@ static List<uint16> encode_typecheck_interface_list(const List<ir::Class*> inter
 }
 
 Program* Backend::emit(ir::Program* ir_program,
-                       MethodSelectorOffsets* method_selector_offsets) {
+                       MethodSelectorOffsets* method_selector_offsets,
+                       const std::function<void (DispatchTable* dispatch_table)>& on_dispatch_table) {
   // Compile everything.
 
   auto classes = ir_program->classes();
@@ -266,6 +267,7 @@ Program* Backend::emit(ir::Program* ir_program,
 
   set_entry_points(ir_program->entry_points(), &dispatch_table, &program_builder);
   program_builder.cook();
+  if (on_dispatch_table) on_dispatch_table(&dispatch_table);
   return program;
 }
 

@@ -27,6 +27,53 @@ AsyncEventThread::AsyncEventThread(const char* name, AsyncEventSource* event_sou
     , mutex_(OS::allocate_mutex(20, name))
     , queue_cond_(OS::allocate_condition_variable(mutex_)) {}
 
+#ifdef TOIT_NO_THREADS
+
+AsyncEventThreadList AsyncEventThread::started_threads_;
+
+void AsyncEventThread::start() {
+  started_threads_.prepend(this);
+}
+
+void AsyncEventThread::stop() {
+  Locker locker(mutex_);
+  if (state_ == STOPPED) return;
+  state_ = STOPPED;
+  started_threads_.remove(this);
+  while (QueueElement* element = queue_.remove_first()) delete element;
+}
+
+bool AsyncEventThread::run_next() {
+  Locker locker(mutex_);
+  if (state_ != IDLE || queue_.is_empty()) return false;
+  auto element = queue_.remove_first();
+  auto resource = element->resource;
+  auto func = element->func;
+  delete element;
+  state_ = RUNNING;
+  word result;
+  { Unlocker unlocker(locker);
+    result = func(resource);
+  }
+  if (state_ == STOPPED) return false;
+  state_ = IDLE;
+  { Unlocker unlocker(locker);
+    event_source_->on_event(resource, result);
+  }
+  return !queue_.is_empty();
+}
+
+int64 AsyncEventThread::poll_all(int64 now) {
+  bool more = false;
+  for (AsyncEventThread* thread : started_threads_) {
+    if (thread->run_next()) more = true;
+  }
+  // Ask to be polled again immediately if there is more work.
+  return more ? now : -1;
+}
+
+#else  // TOIT_NO_THREADS
+
 void AsyncEventThread::start() {
   spawn();
 }
@@ -43,6 +90,7 @@ void AsyncEventThread::stop() {
   join();
 }
 
+#endif  // TOIT_NO_THREADS
 
 void AsyncEventThread::entry() {
   Locker locker(mutex_);

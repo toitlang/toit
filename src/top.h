@@ -66,6 +66,12 @@
 //  TOIT_ESP32      : ESP-IDF
 //  TOIT_DARWIN   : Apple's OSX
 //  TOIT_LINUX    : Ubuntu etc.
+//  TOIT_WASM     : WebAssembly, compiled with Emscripten.
+//
+// Feature configuration:
+//  TOIT_NO_THREADS : The VM runs on a single OS thread. The scheduler and the
+//                    event sources are driven by an event loop instead of
+//                    blocking threads.
 
 #if defined(ESP_PLATFORM)
 #define TOIT_ESP32
@@ -87,20 +93,26 @@
 #define TOIT_POSIX
 #elif defined(WIN32)
 #define TOIT_WINDOWS
+#elif defined(__EMSCRIPTEN__)
+#define TOIT_WASM
+// Emscripten emulates enough of POSIX (files, time, environment) for the
+// generic POSIX code paths. There are no threads, though.
+#define TOIT_POSIX
+#define TOIT_NO_THREADS
 #else
 #define TOIT_LINUX
 #define TOIT_POSIX
 #endif
 
-#if defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_ESP32) + defined(TOIT_EC618) > 1
+#if defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_ESP32) + defined(TOIT_EC618) + defined(TOIT_WASM) > 1
 #error "More than one OS configuration specified"
-#elif defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_ESP32) + defined(TOIT_EC618) < 1
+#elif defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_ESP32) + defined(TOIT_EC618) + defined(TOIT_WASM) < 1
 #error "No OS configuration specified"
 #endif
 
 #if (__WORDSIZE == 64) || __WIN64
 #define BUILD_64 1
-#elif (__WORDSIZE == 32) || ESP32 || __EC618 || __WIN32
+#elif (__WORDSIZE == 32) || ESP32 || __EC618 || __WIN32 || __wasm32__
 #define BUILD_32 1
 #else
 #error "Expecting a 32 or 64 bit memory model"

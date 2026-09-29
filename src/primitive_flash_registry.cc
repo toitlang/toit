@@ -295,6 +295,8 @@ PRIMITIVE(partition_find) {
   uword offset = partition->address;
   size = partition->size;
 #else
+  // The key doesn't fit the small-string buffer on all platforms.
+  AllowThrowingNew host_only;
   std::string key(path);
   auto probe = partitions.find(path);
   word* partition;
@@ -304,7 +306,6 @@ PRIMITIVE(partition_find) {
     partition = static_cast<word*>(malloc(size + sizeof(word)));
     memset(partition + 1, 0xff, size);
     *partition = size;
-    AllowThrowingNew host_only;
     partitions[key] = partition;
   } else {
     partition = probe->second;

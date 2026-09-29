@@ -20,6 +20,10 @@
 #include "process.h"
 #include "scheduler.h"
 
+#ifdef TOIT_NO_THREADS
+#include "event_sources/async.h"
+#endif
+
 namespace toit {
 
 Resource::~Resource() {
@@ -237,5 +241,18 @@ void LazyEventSource::unuse() {
     stop();
   }
 }
+
+#ifdef TOIT_NO_THREADS
+
+int64 EventSourceManager::poll(int64 now) {
+  int64 result = AsyncEventThread::poll_all(now);
+  for (EventSource* event_source : event_sources_) {
+    int64 next = event_source->poll(now);
+    if (next >= 0 && (result < 0 || next < result)) result = next;
+  }
+  return result;
+}
+
+#endif  // TOIT_NO_THREADS
 
 } // namespace toit

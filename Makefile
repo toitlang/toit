@@ -236,6 +236,36 @@ endef
 
 $(foreach arch,$(TOITLANG_SYSROOTS),$(eval $(call CROSS_RULE,$(arch))))
 
+# WebAssembly, compiled with Emscripten. The host SDK is needed to compile
+# the embedded system program.
+.PHONY: wasm
+wasm:
+	$(MAKE) TARGET=wasm sdk
+
+.PHONY: test-wasm
+test-wasm: wasm download-packages
+	python3 tools/wasm/run-tests.py \
+		--host-toit $(TOIT_BIN) \
+		--wasm-vm $(BUILD)/wasm/sdk/bin/toit.run.js
+
+# The browser demo in examples/wasm. Serve it with any static web server,
+# for example 'python3 -m http.server -d build/wasm/demo'.
+.PHONY: wasm-demo
+wasm-demo: wasm
+	HOST_TOIT=$(TOIT_BIN) tools/wasm/build-demo.sh $(BUILD)/wasm/demo
+
+# Runs the demo programs in headless Firefox.
+.PHONY: test-wasm-browser
+test-wasm-browser: wasm-demo
+	python3 tools/wasm/browser-test.py --demo $(BUILD)/wasm/demo
+
+# The experimental WebAssembly GC backend of the compiler (see
+# docs/wasm-gc-backend.md). Needs Binaryen's 'wasm-as'.
+.PHONY: test-wasm-gc
+test-wasm-gc: tools download-packages
+	python3 tools/wasm/run-tests.py --backend gc \
+		--toit-compile $(BIN_DIR)/../lib/toit/bin/toit.compile
+
 # EC618
 EC618_SDK = $(CURDIR)/third_party/luatos-soc-ec618
 EC618_GCC_PATH ?= $(HOME)/.xmake/packages/g/gnu_rm/2021.10/69b9a9c7bd56401fb164f28701b1431e

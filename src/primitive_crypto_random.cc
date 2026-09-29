@@ -22,6 +22,8 @@
 // (os_ec618.cc, backed by rngGenRandom).
 extern "C" int mbedtls_hardware_poll(void* data, unsigned char* output,
                                      size_t len, size_t* olen);
+#elif defined(TOIT_WASM)
+#include <unistd.h>  // For getentropy.
 #else
 #include <random>
 #endif
@@ -58,6 +60,15 @@ PRIMITIVE(random) {
   if (mbedtls_hardware_poll(null, bytes.address(), size, &filled) != 0 ||
       filled != static_cast<size_t>(size)) {
     FAIL(ERROR);
+  }
+#elif defined(TOIT_WASM)
+  // Emscripten's std::random_device allocates with a throwing new. The
+  // getentropy call is backed by crypto.getRandomValues, but can only
+  // provide 256 bytes at a time.
+  auto address = bytes.address();
+  for (int offset = 0; offset < size; offset += 256) {
+    int chunk = Utils::min(size - offset, 256);
+    if (getentropy(address + offset, chunk) != 0) FAIL(ERROR);
   }
 #else
   // The std::random_device is mapped to /dev/urandom on Linux/macOS and to

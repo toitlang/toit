@@ -150,10 +150,21 @@ Method Program::find_method(Object* receiver, word offset) {
 #define B_ARG1(name) uint8 name = bcp[1];
 #define S_ARG1(name) uint16 name = Utils::read_unaligned_uint16(bcp + 1);
 
+#ifdef TOIT_NO_THREADS
+// Without threads there is no ticker that can set the preemption marker
+// asynchronously, so the interpreter periodically checks whether it has run
+// past its preemption deadline. The check happens at the same places where
+// the preemption marker is checked: calls and backwards branches.
+#define PREEMPTION_TICK()                                             \
+  (--preemption_countdown_ < 0 ? check_preemption_deadline() : (void)0)
+#else
+#define PREEMPTION_TICK() ((void)0)
+#endif
+
 // CHECK_STACK_OVERFLOW checks if there is enough stack space to call
 // the given target method.
 #define CHECK_STACK_OVERFLOW(target)                                  \
-  if (sp - target.max_height() < watermark_) {                        \
+  if (PREEMPTION_TICK(), sp - target.max_height() < watermark_) {     \
     OverflowState state;                                              \
     sp = handle_stack_overflow(sp, &state, target);                   \
     switch (state) {                                                  \
@@ -173,7 +184,7 @@ Method Program::find_method(Object* receiver, word offset) {
 
 // CHECK_PREEMPT checks for preemption by looking at the watermark.
 #define CHECK_PREEMPT(entry)                                          \
-  if (watermark_ == PREEMPTION_MARKER) {                              \
+  if (PREEMPTION_TICK(), watermark_ == PREEMPTION_MARKER) {           \
     watermark_ = null;                                                \
     preemption_method_header_bcp_ = Method::header_from_entry(entry); \
     static_assert(FRAME_SIZE == 2, "Unexpected frame size");          \
@@ -225,7 +236,7 @@ inline word mul(word a, word b) { return a * b; }
 inline bool intrinsic_add(Object* a, Object* b, Smi** result) {
   return Interpreter::are_smis(a, b) &&
 #ifdef BUILD_32
-    !__builtin_sadd_overflow((word) a, (word) b, (word*) result);
+    !__builtin_add_overflow((word) a, (word) b, (word*) result);
 #elif BUILD_64
     !LP64(__builtin_sadd,_overflow)((word) a, (word) b, (word*) result);
 #endif
@@ -235,7 +246,7 @@ inline bool intrinsic_add(Object* a, Object* b, Smi** result) {
 inline bool intrinsic_sub(Object* a, Object* b, Smi** result) {
   return Interpreter::are_smis(a, b) &&
 #ifdef BUILD_32
-    !__builtin_ssub_overflow((word) a, (word) b, (word*) result);
+    !__builtin_sub_overflow((word) a, (word) b, (word*) result);
 #elif BUILD_64
     !LP64(__builtin_ssub,_overflow)((word) a, (word) b, (word*) result);
 #endif
@@ -245,7 +256,7 @@ inline bool intrinsic_sub(Object* a, Object* b, Smi** result) {
 inline bool intrinsic_mul(Object* a, Object* b, Smi** result) {
   return Interpreter::are_smis(a, b) &&
 #ifdef BUILD_32
-    !__builtin_smul_overflow((word) a, ((word) b) >> 1, (word*) result);
+    !__builtin_mul_overflow((word) a, ((word) b) >> 1, (word*) result);
 #elif BUILD_64
     !LP64(__builtin_smul,_overflow)((word) a, ((word) b) >> 1, (word*) result);
 #endif

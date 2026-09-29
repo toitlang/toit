@@ -1,0 +1,39 @@
+# Tests that are skipped when running on the WebAssembly VM.
+# See tools/wasm/run-tests.py.
+
+# No network sockets.
+tests/close-test.toit
+tests/dns-test.toit
+tests/dns-tools-test.toit
+tests/interface-address-test.toit
+tests/keepalive-test.toit
+tests/services-network-test.toit
+tests/socket-*-test.toit
+tests/socket-test.toit
+tests/tcp-*-test.toit
+tests/tls-*-test.toit
+tests/tls-*-test-slow.toit
+tests/tls2-test.toit
+tests/udp-*-test.toit
+tests/udp-test.toit
+tests/regress/issue3-test.toit
+
+# No subprocesses.
+tests/subprocess-*-test.toit
+tests/zlib-deprecated-test.toit
+tests/zlib-gzip-test.toit
+tests/zlib-test.toit
+
+# No serial ports.
+tests/uart-test.toit
+
+# Platform specific: expects Linux or macOS.
+tests/hostname-test.toit
+
+# The runner executes snapshots, not source files.
+tests/program-name-test.toit
+tests/program-path-test.toit
+
+# Emscripten's localtime and mktime ignore the TZ environment variable
+# and always use the local time zone of the JavaScript engine.
+tests/time-test.toit

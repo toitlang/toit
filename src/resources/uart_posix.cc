@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_POSIX
+#if defined(TOIT_POSIX) && !defined(TOIT_WASM)
 
 #include <fcntl.h>
 #include <errno.h>
@@ -473,4 +473,4 @@ PRIMITIVE(errors) {
 
 } // namespace toit
 
-#endif // TOIT_LINUX
+#endif // defined(TOIT_POSIX) && !defined(TOIT_WASM)

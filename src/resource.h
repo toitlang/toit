@@ -244,6 +244,15 @@ class EventSource : public EventSourceList::Element {
     return resources_;
   }
 
+#ifdef TOIT_NO_THREADS
+  // Without threads, event sources can't wait for events on a thread of
+  // their own. Instead, the embedder's event loop regularly polls them.
+  // Polling dispatches the events that are ready, and returns the time (in
+  // OS::get_system_time microseconds) at which the event source wants to be
+  // polled again, or -1 if it isn't waiting for any timed event.
+  virtual int64 poll(int64 now) { return -1; }
+#endif
+
  protected:
   explicit EventSource(const char* name, int lock_level = 0);
   virtual ~EventSource();
@@ -311,6 +320,13 @@ class EventSourceManager {
   void add_event_source(EventSource* event_source) {
     event_sources_.prepend(event_source);
   }
+
+#ifdef TOIT_NO_THREADS
+  // Polls all event sources. Returns the earliest time (in
+  // OS::get_system_time microseconds) at which any event source wants to be
+  // polled again, or -1 if none is waiting for a timed event.
+  int64 poll(int64 now);
+#endif
 
  private:
   EventSourceList event_sources_;

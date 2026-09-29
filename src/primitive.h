@@ -80,6 +80,7 @@ namespace toit {
   M(debug,   MODULE_DEBUG)                   \
   M(espnow,  MODULE_ESPNOW)                  \
   M(bignum,  MODULE_BIGNUM)                  \
+  M(js,      MODULE_JS)                      \
 
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(write_on_stdout, 2)              \
@@ -910,6 +911,12 @@ namespace toit {
   PRIMITIVE(binary_operator, 5)              \
   PRIMITIVE(exp_mod, 6)                      \
 
+#define MODULE_JS(PRIMITIVE)                 \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(eval, 2)                         \
+  PRIMITIVE(call_start, 3)                   \
+  PRIMITIVE(call_result, 1)                  \
+
 // ----------------------------------------------------------------------------
 
 #define MODULE_IMPLEMENTATION_PRIMITIVE(name, arity)                \
@@ -1236,6 +1243,8 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_EthernetIpEvents(N, name)    MAKE_UNPACKING_MACRO(EthernetIpEvents, N, name)
 #define _A_T_MbedTlsSocket(N, name)       MAKE_UNPACKING_MACRO(MbedTlsSocket, N, name)
 #define _A_T_RsaGenerationResource(N, name) MAKE_UNPACKING_MACRO(RsaGenerationResource, N, name)
+#define _A_T_JsResourceGroup(N, name)     MAKE_UNPACKING_MACRO(JsResourceGroup, N, name)
+#define _A_T_JsCallResource(N, name)      MAKE_UNPACKING_MACRO(JsCallResource, N, name)
 #define _A_T_BaseMbedTlsSocket(N, name)   MAKE_UNPACKING_MACRO(BaseMbedTlsSocket, N, name)
 #define _A_T_X509Certificate(N, name)     MAKE_UNPACKING_MACRO(X509Certificate, N, name)
 #define _A_T_AesContext(N, name)          MAKE_UNPACKING_MACRO(AesContext, N, name)

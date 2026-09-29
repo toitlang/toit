@@ -24,7 +24,9 @@ if ("${CMAKE_SYSTEM_NAME}" MATCHES "Windows" OR "${CMAKE_SYSTEM_NAME}" MATCHES "
   set(UTF_8_MANIFEST_LIB utf8_manifest)
 endif()
 
-if (NOT ${TOIT_IS_EMBEDDED})
+if (${TOIT_IS_WASM})
+  add_custom_target(build_tools)
+elseif (NOT ${TOIT_IS_EMBEDDED})
   add_custom_target(build_tools)
   add_subdirectory(compiler)
 endif()
@@ -69,7 +71,7 @@ file(GLOB run_SRC
 )
 
 # Exclude files with a main(), and files that are not used in the compiler.
-list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run|toit_run_image|vessel|vm|objects_runtime).cc$")
+list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run|toit_run_image|toit_wasm|vessel|vm|objects_runtime).cc$")
 list(REMOVE_ITEM toit_core_SRC ${run_SRC})
 
 # Files that are used in the VM, but not in the compiler.
@@ -160,7 +162,125 @@ endforeach()
 
 add_custom_target(build_boot_snapshot DEPENDS "${EMBEDDED_PROGRAM_SNAPSHOT_CC_toit}")
 
-if (NOT ${TOIT_IS_EMBEDDED})
+if (${TOIT_IS_WASM})
+  # The WebAssembly VM embeds the same system program as the host's
+  # toit.run. Snapshots are platform independent, so it is compiled with
+  # the host compiler, using the bootstrap packages that the host build
+  # already downloaded.
+  set(wasm_boot_source "${EMBEDDED_PROGRAM_SOURCE_toit_run}")
+  get_filename_component(wasm_boot_dir "${wasm_boot_source}" DIRECTORY)
+  set(wasm_boot_snapshot "${EMBEDDED_PROGRAM_SNAPSHOT_toit_run}")
+  set(wasm_boot_snapshot_cc "${EMBEDDED_PROGRAM_SNAPSHOT_CC_toit_run}")
+  set(wasm_boot_dep "${GEN_DIR}/toit_run.dep")
+  if (POLICY CMP0116)
+    cmake_policy(SET CMP0116 NEW)
+  endif()
+  add_custom_command(
+    OUTPUT "${wasm_boot_snapshot}"
+    DEPFILE "${wasm_boot_dep}"
+    DEPENDS "${HOST_TOIT}" "${wasm_boot_source}"
+    COMMAND ${CMAKE_COMMAND} -E env
+        "TOIT_PACKAGE_CACHE_PATHS=${wasm_boot_dir}/.packages-bootstrap"
+      "${HOST_TOIT}" compile
+        --dependency-file "${wasm_boot_dep}"
+        --dependency-format ninja
+        -O2
+        --snapshot
+        -o "${wasm_boot_snapshot}"
+        "${wasm_boot_source}"
+  )
+  add_custom_command(
+    OUTPUT "${wasm_boot_snapshot_cc}"
+    COMMAND "${CMAKE_COMMAND}"
+        "-DSYMBOL=toit_run_snapshot"
+        "-DINPUT=${wasm_boot_snapshot}"
+        "-DOUTPUT=${wasm_boot_snapshot_cc}"
+        -P "${CMAKE_SOURCE_DIR}/tools/embed-binary.cmake"
+    DEPENDS "${wasm_boot_snapshot}" "${CMAKE_SOURCE_DIR}/tools/embed-binary.cmake"
+  )
+
+  # The WebAssembly VM, runnable with Node.js.
+  add_executable(
+    toit.run
+    toit_wasm.cc
+    "${wasm_boot_snapshot_cc}"
+    )
+  set_target_properties(toit.run
+    PROPERTIES
+    SUFFIX ".js"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/bin"
+    )
+  target_link_libraries(
+    toit.run
+    -Wl,--whole-archive
+    toit_vm
+    -Wl,--no-whole-archive
+    mbedtls
+    )
+  set(wasm_js_library "${CMAKE_CURRENT_SOURCE_DIR}/wasm/library_toit.js")
+  target_link_options(
+    toit.run
+    PRIVATE
+    "--js-library=${wasm_js_library}"
+    -sENVIRONMENT=node
+    -sNODERAWFS=1
+    -sEXIT_RUNTIME=1
+    -sALLOW_MEMORY_GROWTH=1
+    -sMAXIMUM_MEMORY=1GB
+    -sSTACK_SIZE=1MB
+    )
+  set_target_properties(toit.run PROPERTIES LINK_DEPENDS "${wasm_js_library}")
+  add_dependencies(build_tools toit.run)
+
+  # The WebAssembly VM as an ES module, for browsers and other JavaScript
+  # embedders. See src/wasm/toit.mjs for the API.
+  set(wasm_web_dir "${CMAKE_BINARY_DIR}/sdk/wasm")
+  add_executable(
+    toit-vm
+    toit_wasm.cc
+    "${wasm_boot_snapshot_cc}"
+    )
+  set_target_properties(toit-vm
+    PROPERTIES
+    SUFFIX ".mjs"
+    RUNTIME_OUTPUT_DIRECTORY "${wasm_web_dir}"
+    )
+  target_link_libraries(
+    toit-vm
+    -Wl,--whole-archive
+    toit_vm
+    -Wl,--no-whole-archive
+    mbedtls
+    )
+  target_link_options(
+    toit-vm
+    PRIVATE
+    "--js-library=${wasm_js_library}"
+    -sMODULARIZE=1
+    -sEXPORT_ES6=1
+    -sEXPORT_NAME=createToitVM
+    -sENVIRONMENT=web,worker,node
+    -sINVOKE_RUN=0
+    -sEXIT_RUNTIME=1
+    -sFORCE_FILESYSTEM=1
+    -sEXPORTED_RUNTIME_METHODS=callMain,FS
+    -sALLOW_MEMORY_GROWTH=1
+    -sMAXIMUM_MEMORY=1GB
+    -sSTACK_SIZE=1MB
+    )
+  set_target_properties(toit-vm PROPERTIES LINK_DEPENDS "${wasm_js_library}")
+  add_custom_command(
+    OUTPUT "${wasm_web_dir}/toit.mjs"
+    COMMAND ${CMAKE_COMMAND} -E copy
+        "${CMAKE_CURRENT_SOURCE_DIR}/wasm/toit.mjs"
+        "${wasm_web_dir}/toit.mjs"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/wasm/toit.mjs"
+    )
+  add_custom_target(toit-vm-api DEPENDS "${wasm_web_dir}/toit.mjs")
+  add_dependencies(build_tools toit-vm toit-vm-api)
+endif()
+
+if (NOT ${TOIT_IS_EMBEDDED} AND NOT ${TOIT_IS_WASM})
   add_executable(
     toit
     toit.cc
@@ -266,7 +386,7 @@ target_link_libraries(
   ${UTF_8_MANIFEST_LIB}
 )
 
-if (NOT ${TOIT_IS_EMBEDDED})
+if (NOT ${TOIT_IS_EMBEDDED} AND NOT ${TOIT_IS_WASM})
   add_custom_target(build_vessels)
   add_dependencies(build_tools build_vessels)
 
@@ -493,4 +613,4 @@ if (NOT ${TOIT_IS_EMBEDDED})
   install(TARGETS toit.run toit.compile
     RUNTIME DESTINATION lib/toit/bin
   )
-endif() # NOT TOIT_IS_EMBEDDED
+endif() # NOT TOIT_IS_EMBEDDED AND NOT TOIT_IS_WASM

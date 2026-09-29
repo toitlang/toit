@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <functional>
+
 #include "byte_gen.h"
 #include "ir.h"
 #include "method_selector_offsets.h"
@@ -37,7 +39,12 @@ class Backend {
       , source_mapper_(source_mapper) {}
 
   // As a side-effect fills in the source-mapper.
-  Program* emit(ir::Program* program, MethodSelectorOffsets* method_selector_offsets);
+  /// Emits the program.
+  /// If given, the [on_dispatch_table] callback is invoked with the dispatch
+  ///   table that was used for the program.
+  Program* emit(ir::Program* program,
+                MethodSelectorOffsets* method_selector_offsets,
+                const std::function<void (DispatchTable* dispatch_table)>& on_dispatch_table = null);
 
  private:
   SourceManager* source_manager_;

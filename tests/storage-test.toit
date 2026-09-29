@@ -2,6 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import system
 import system.storage
 import encoding.tison
 import expect show *
@@ -340,7 +341,10 @@ test-region-flash-no-writable:
   region.close
 
 test-region-flash-large:
-  capacity := 60_000_000  // Roughly 60 MB.
+  // The emulated flash is 64 MB on most hosts, but only 4 MB on Wasm.
+  capacity := system.platform == system.PLATFORM-WASM
+      ? 3_000_000  // Roughly 3 MB.
+      : 60_000_000  // Roughly 60 MB.
   region := storage.Region.open --flash "region-large" --capacity=capacity
   region.erase
   content := ByteArray capacity

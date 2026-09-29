@@ -78,6 +78,7 @@ namespace toit {
   fn(MbedTlsSocket)                     \
   fn(RsaGenerationResource)             \
   fn(CellularEvents)                    \
+  fn(JsCallResource)                    \
 
 // When adding a class make sure that they all are subclasses of
 // the BleCallbackResource. If it isn't update the Min/MaxTag below.
@@ -128,6 +129,7 @@ namespace toit {
   fn(TouchResourceGroup)                \
   fn(EspNowResourceGroup)               \
   fn(CellularResourceGroup)             \
+  fn(JsResourceGroup)                   \
 
 #define MAKE_ENUM(name)                 \
   name##Tag,                            \

@@ -31,3 +31,12 @@ make arm-linux-gnueabi
 ```
 
 The binaries are in build/TARGET/sdk/bin directory.
+
+## WebAssembly
+
+See [docs/wasm.md](docs/wasm.md). In short, with Emscripten installed:
+
+```shell
+make wasm
+node build/wasm/sdk/bin/toit.run.js hello.snapshot
+```

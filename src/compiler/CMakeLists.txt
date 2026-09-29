@@ -28,9 +28,23 @@ list(FILTER toit_compiler_SRC EXCLUDE REGEX "/toitc.cc$")
 add_subdirectory(third_party/libyaml EXCLUDE_FROM_ALL)
 add_subdirectory(third_party/semver EXCLUDE_FROM_ALL)
 
+# The runtime of the WebAssembly GC backend is embedded in the compiler.
+set(wasm_runtime_wat "${CMAKE_CURRENT_SOURCE_DIR}/wasm_runtime.wat")
+set(wasm_runtime_cc "${CMAKE_CURRENT_BINARY_DIR}/wasm_runtime_wat.cc")
+add_custom_command(
+  OUTPUT "${wasm_runtime_cc}"
+  COMMAND "${CMAKE_COMMAND}"
+      "-DSYMBOL=toit_wasm_runtime_wat"
+      "-DINPUT=${wasm_runtime_wat}"
+      "-DOUTPUT=${wasm_runtime_cc}"
+      -P "${CMAKE_SOURCE_DIR}/tools/embed-binary.cmake"
+  DEPENDS "${wasm_runtime_wat}" "${CMAKE_SOURCE_DIR}/tools/embed-binary.cmake"
+)
+
 add_library(
   toit_compiler
   ${toit_compiler_SRC}
+  "${wasm_runtime_cc}"
   )
 
 set_source_files_properties(propagation/type_database.cc PROPERTIES COMPILE_OPTIONS "-O3")

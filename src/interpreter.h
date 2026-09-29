@@ -149,6 +149,16 @@ class Interpreter {
   void preempt();
   uint8* preemption_method_header_bcp() const { return preemption_method_header_bcp_; }
 
+#ifdef TOIT_NO_THREADS
+  // Without threads, there is no ticker that preempts the interpreter.
+  // Instead, the interpreter preempts itself once the monotonic time
+  // (OS::get_monotonic_time) passes the given deadline.
+  void set_preemption_deadline(int64 deadline) {
+    preemption_deadline_ = deadline;
+    preemption_countdown_ = PREEMPTION_CHECK_INTERVAL;
+  }
+#endif
+
   static bool are_smis(Object* a, Object* b);
   static bool are_floats(Object* a, Object* b);
 
@@ -167,6 +177,15 @@ class Interpreter {
 
   // Preemption method.
   uint8* preemption_method_header_bcp_;
+
+#ifdef TOIT_NO_THREADS
+  // The number of calls and backwards branches between checks of the clock.
+  static const int PREEMPTION_CHECK_INTERVAL = 1024;
+  int preemption_countdown_ = PREEMPTION_CHECK_INTERVAL;
+  int64 preemption_deadline_ = INT64_MAX;
+
+  void check_preemption_deadline();
+#endif
 
   void trace(uint8* bcp);
   Method lookup_entry();

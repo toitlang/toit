@@ -47,6 +47,13 @@ void Interpreter::preempt() {
   watermark_ = PREEMPTION_MARKER;
 }
 
+#ifdef TOIT_NO_THREADS
+void Interpreter::check_preemption_deadline() {
+  preemption_countdown_ = PREEMPTION_CHECK_INTERVAL;
+  if (OS::get_monotonic_time() >= preemption_deadline_) preempt();
+}
+#endif
+
 Method Interpreter::lookup_entry() {
   Method result = process_->entry();
   if (!result.is_valid()) FATAL("Cannot locate entry method for interpreter");

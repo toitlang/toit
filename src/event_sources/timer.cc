@@ -29,7 +29,9 @@ TimerEventSource::TimerEventSource()
     , stop_(false) {
   ASSERT(instance_ == null);
   instance_ = this;
+#ifndef TOIT_NO_THREADS
   spawn();
+#endif
 }
 
 TimerEventSource::~TimerEventSource() {
@@ -96,6 +98,21 @@ void TimerEventSource::on_unregister_resource(Locker& locker, Resource* r) {
     }
   }
 }
+
+#ifdef TOIT_NO_THREADS
+
+int64 TimerEventSource::poll(int64 now) {
+  Locker locker(mutex());
+  while (!timers_.is_empty()) {
+    Timer* next = timers_.first();
+    if (next->timeout() > now) return next->timeout();
+    timers_.remove_first();
+    dispatch(locker, next, 0);
+  }
+  return -1;
+}
+
+#endif  // TOIT_NO_THREADS
 
 void TimerEventSource::entry() {
   Locker locker(mutex());

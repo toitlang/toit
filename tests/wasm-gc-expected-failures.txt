@@ -1,0 +1,52 @@
+# Tests that are expected to fail with the experimental WebAssembly GC backend
+# (see docs/wasm-gc-backend.md), in addition to the ones in wasm-skip.txt.
+# See tools/wasm/run-tests.py.
+
+# No crypto primitives.
+tests/aes-test.toit
+tests/bignum-test.toit
+tests/crypto-*-test.toit
+tests/crypto-test.toit
+tests/import2-test.toit
+tests/tls3-test.toit
+tests/uuid-test.toit
+tests/x509-test.toit
+
+# No zlib primitives.
+tests/inflate-test.toit
+tests/zlib-glitch-test.toit
+tests/zlib-uncompressed-test.toit
+
+# The JavaScript host emulates the system process, and only knows about
+# printing and tracing. Services within the program aren't found.
+tests/containers-test.toit
+tests/cross-process-gc-test.toit
+tests/log-test.toit
+tests/rpc-test.toit
+tests/rpc-unowned-external-test.toit
+tests/services-*-test.toit
+
+# No finalizers or weak references.
+tests/finalizer-leaks-test.toit
+tests/finalizer-test.toit
+tests/weak-map-test.toit
+
+# Stack overflows can't be caught (JavaScript engines don't let WebAssembly
+# code catch them).
+tests/exception-test.toit
+tests/regress/issue1027-test.toit
+
+# No heap statistics or memory limits.
+tests/bytes-allocated-test.toit
+tests/max-heap-size-test.toit
+tests/object-histogram-test.toit
+
+# No external byte arrays in messages.
+tests/serialization-test.toit
+
+# No file system, flash, firmware, network, or processes.
+tests/dns-abort-test.toit
+tests/firmware-map-test.toit
+tests/null-string-test.toit
+tests/regress/issue4-test.toit
+tests/storage-test.toit

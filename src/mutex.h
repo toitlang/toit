@@ -20,7 +20,7 @@
 #ifdef TOIT_FREERTOS
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
-#else
+#elif !defined(TOIT_NO_THREADS)
 #include <errno.h>
 #include <pthread.h>
 #endif
@@ -33,7 +33,7 @@ class Mutex {
 #ifdef TOIT_FREERTOS
     sem_ = xSemaphoreCreateMutex();
     if (!sem_) FATAL("mutex allocation of semaphore failed")
-#else
+#elif !defined(TOIT_NO_THREADS)
     pthread_mutex_init(&mutex_, null);
 #endif
   }
@@ -41,7 +41,7 @@ class Mutex {
   ~Mutex() {
 #ifdef TOIT_FREERTOS
     vSemaphoreDelete(sem_);
-#else
+#elif !defined(TOIT_NO_THREADS)
     pthread_mutex_destroy(&mutex_);
 #endif
   }
@@ -54,6 +54,11 @@ class Mutex {
     if (xSemaphoreTake(sem_, portMAX_DELAY) != pdTRUE) {
       FATAL("mutex lock failed");
     }
+#elif defined(TOIT_NO_THREADS)
+    // With only one thread, taking a lock that is already held can never
+    // succeed. It would be a dead-lock on a threaded platform.
+    if (locked_) FATAL("dead-lock on mutex '%s'", name_);
+    locked_ = true;
 #else
     int error = pthread_mutex_lock(&mutex_);
     if (error != 0) FATAL("mutex lock failed with error %d", error);
@@ -65,6 +70,9 @@ class Mutex {
     if (xSemaphoreGive(sem_) != pdTRUE) {
       FATAL("mutex unlock failed");
     }
+#elif defined(TOIT_NO_THREADS)
+    if (!locked_) FATAL("unlocking unlocked mutex '%s'", name_);
+    locked_ = false;
 #else
     int error = pthread_mutex_unlock(&mutex_);
     if (error != 0) FATAL("mutex unlock failed with error %d", error);
@@ -74,6 +82,8 @@ class Mutex {
   bool is_locked() {
 #ifdef TOIT_FREERTOS
     return xSemaphoreGetMutexHolder(sem_) != null;
+#elif defined(TOIT_NO_THREADS)
+    return locked_;
 #else
     int error = pthread_mutex_trylock(&mutex_);
     if (error == 0) {
@@ -90,6 +100,8 @@ class Mutex {
   const char* const name_;
 #ifdef TOIT_FREERTOS
   SemaphoreHandle_t sem_;
+#elif defined(TOIT_NO_THREADS)
+  bool locked_ = false;
 #else
   pthread_mutex_t mutex_;
 #endif

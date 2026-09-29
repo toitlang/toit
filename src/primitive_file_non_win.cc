@@ -373,7 +373,7 @@ PRIMITIVE(stat) {
   Object* size = Primitive::integer(statbuf.st_size, process);
   if (Primitive::is_error(size)) return size;
 
-#if defined(TOIT_LINUX) || defined(TOIT_FREERTOS)
+#if defined(TOIT_LINUX) || defined(TOIT_FREERTOS) || defined(TOIT_WASM)
   Object* atime = time_stamp(process, statbuf.st_atim);
   if (Primitive::is_error(atime)) return atime;
 
