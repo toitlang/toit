@@ -23,7 +23,7 @@ its fixed limits, and the gaps that must close before it can replace NimBLE.
 | Link operations | Read PHY, data length, connection parameters, RSSI (Read RSSI) and transmit power (Read Transmit Power Level) of any link; LE Set PHY with preferences, waiting for its completion and for the automatic 2M request made after connecting; disconnect reason. |
 | `ble` package | The existing public API (`Adapter`, `Central`, `Peripheral`, remote and local services, characteristics and descriptors) runs unchanged on this host: `Adapter` falls back to the BLE service provider when the firmware has no native host (`lib/ble/host.toit`). Scan, connect by identifier, discovery, read, write, subscribe and notifications on the central side; services, characteristics with callback reads and writes, descriptors, advertising and notifications on the peripheral side. Writes with a response pass through the application's write handler before the response leaves; write commands are committed by the provider at once. Verified on hardware with the unchanged `examples/ble/heart_rate.toit` (`tests/ble-hardware/compat.sh`). |
 | Bonds | Encrypted (AES-GCM) bond records bound to namespace and slot, an in-memory table with snapshots, resumption owners, revocation markers, an administration service, protected per-bond CCCD storage, offline database migration. |
-| Service layer | Five provider variants plus policy subclasses, bounded request mailbox for server handlers, client-side scoped blocks, capability discovery, provider PID pinning. |
+| Service layer | Scanning and GATT providers (the GATT one serves both roles) configured through hooks (privacy, pairing, session limits, mixed roles, resolving list, bonded peers), bounded request mailbox for server handlers, client-side scoped blocks, capability discovery, provider PID pinning. |
 
 ## Fixed limits
 
@@ -39,17 +39,22 @@ its fixed limits, and the gaps that must close before it can replace NimBLE.
 | Sessions per provider | up to 8 central and 8 peripheral sessions (`central-session-limit`, `peripheral-session-limit`; 1 each by default), both roles at once with `mixed-role-sessions`; one session per service client, so the application API opens a client per connection. The controller bounds it further: the original ESP32 images (NimBLE and controller-only alike) allow 2 connections (`CONFIG_BTDM_CTRL_BLE_MAX_CONN`), the ESP32-S3 10 activities. |
 | Pairing attempts | one per owner object |
 
-## Gaps relative to the NimBLE backend
+## Differences from the NimBLE backend
 
-These are needed for parity with `lib/ble` as applications use it today:
+No known gap remains for the `ble` package as applications use it today.
+Deliberate differences on this host: pairing policy is the provider's, so
+the peripheral's `--bonding` and `--secure-connections` flags are advisory,
+and `bonded-peers` lists what the provider chooses to list (none by default).
 
-- OOB pairing. A legacy peer that offers only keys shorter than 128 bits is refused.
-- Extended advertising PDUs (only legacy PDUs over extended commands are used).
-- In the `ble` package on this host: `bonded-peers`, and the `--bonding`/`--secure-connections` flags (pairing policy is the provider's).
+Not implemented, and not offered by the NimBLE backend either: OOB pairing
+(a legacy peer that offers only keys shorter than 128 bits is refused),
+extended advertising PDUs (more than 31 bytes, Coded PHY; only legacy PDUs
+over extended commands are used), periodic advertising, L2CAP
+connection-oriented channels and EATT.
 
 ## Verification state
 
-All 181 software tests run in the ordinary CTest suite on a scripted in-memory
+All 182 BLE test programs run in the ordinary CTest suite on a scripted in-memory
 transport. Hardware coverage exists for every feature above on the rig described
 in [hardware.md](hardware.md), against BlueZ, Bumble and NimBLE peers, but it is
 manual, and the failures in [open-issues.md](open-issues.md) remain.

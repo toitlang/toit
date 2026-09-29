@@ -14,6 +14,7 @@ import ble.experimental.connection
 import ble.experimental.hci
 import ble.experimental.resolving-list as resolving
 import ble.experimental.transport
+import ble as package
 import ble.experimental.next as ble
 import ble.experimental.service.gatt-provider as providers
 import .ble-fixture as fixture
@@ -27,6 +28,7 @@ main:
     decoding
     direct
     through-api
+    through-package
 
 /** The commands that load one entry, as the fake controller sees them. */
 expect-configuration radio/fixture.FakeTransport:
@@ -126,9 +128,40 @@ through-api:
     responder.cancel
     provider.uninstall
 
+/** The `ble` package lists the provider's bonded peers and connects to one by identity. */
+through-package:
+  provider := Provider
+  provider.install
+  ended := monitor.Latch
+  responder := task::
+    try:
+      radio := provider.radio
+      fixture.initialize-replies radio --privacy
+      expect-configuration radio
+      fixture.status-reply radio (hci.command-packet 0x200d (connection.create-parameters IDENTITY --address-type=3))
+      radio.received.add (enhanced-event --resolved)
+      fixture.status-reply radio #[1, 6, 4, 3, 0x34, 2, 0x13]
+      radio.received.add #[4, 5, 4, 0, 0x34, 2, 0x16]
+    finally:
+      critical-do --no-respect-deadline: ended.set true
+  adapter := package.Adapter
+  try:
+    adapter.set-preferred-mtu 23
+    central := adapter.central
+    peers := central.bonded-peers
+    expect-equals [#[3] + IDENTITY] peers
+    device := central.connect peers[0]
+    device.close
+    ended.get
+  finally:
+    adapter.close
+    responder.cancel
+    provider.uninstall
+
 class Provider extends providers.Provider:
   radio/fixture.FakeTransport := fixture.FakeTransport
   constructor: super
   open-transport -> transport.Transport: return radio
+  bonded-peers -> List: return [[3, IDENTITY]]
   resolving-list -> List?:
     return [resolving.Entry --address-type=1 --address=IDENTITY --irk=IRK]
