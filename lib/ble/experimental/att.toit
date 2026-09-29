@@ -134,6 +134,8 @@ class Client:
   database-revision_/int := 0
   service-changed-handle_/int := 0
   service-changed-cccd_/int := 0
+  attached_/bool := false
+  on-mtu_/Lambda? := null
 
   constructor .host_ .link_ --mtu-limit/int=23 --pairing/security.Owner?=null:
     pairing_ = pairing
@@ -150,6 +152,29 @@ class Client:
         if error: fail_ error
       finally:
         critical-do --no-respect-deadline: reader-ended_.set true
+
+  /**
+  A client on the bearer of an ATT server that owns the link's receive
+    stream (Core 6.3 Vol 3 Part F 3.2.11: one bearer serves both roles).
+
+  The owner hands every PDU for which $client-bound holds to $deliver_, and
+    keeps the shared MTU in step: $follow-mtu_ after its own exchange,
+    $on-mtu after this client's. $mtu is the bearer's MTU so far; above 23
+    it counts as exchanged. Closing an attached client leaves the link up
+    unless a request is still waiting for its response.
+  */
+  constructor.attached .host_ .link_ --mtu-limit/int --mtu/int=23 --on-mtu/Lambda:
+    pairing_ = null
+    if not 23 <= mtu-limit <= 517 or mtu-limit > link_.receive-limit or not 23 <= mtu <= mtu-limit:
+      throw "INVALID_ARGUMENT"
+    if not (host_.owns-link link_): throw "HCI_INVALID_LINK"
+    mtu-limit_ = mtu-limit
+    notifications_ = UpdateQueue_ updates_ 32
+    attached_ = true
+    on-mtu_ = on-mtu
+    mtu_ = mtu
+    mtu-started_ = mtu > 23
+    reader-ended_.set true
 
   /** Returns the connection-local discovery revision. */
   database-revision -> int: return database-revision_
@@ -511,7 +536,10 @@ class Client:
         if pairing_: pairing_.close
       // An old link's teardown must not close a controller that can already be
       // establishing another connection, possibly with the same numeric handle.
-      if link_.connected: host_.abort link_ --error=error
+      // An attached client is a guest on its server's bearer: closing it
+      // ends the link only when a response is outstanding.
+      if link_.connected and (not attached_ or error != "ATT_CLOSED" or pending_):
+        host_.abort link_ --error=error
       pending := pending_
       pending_ = null
       if pending: pending.set error --exception
@@ -540,79 +568,112 @@ class Client:
         if response: host_.send link_ 6 response
         continue
       if packet.channel != 4: throw "ATT_UNHANDLED_L2CAP_CHANNEL"
-      bytes := packet.payload
-      if not bytes.is-empty and bytes[0] == 0x1d:
-        // Confirm even an invalid handle/value, then discard it (3.4.7.2).
-        // Do not take the request mutex: an indication can arrive while an
-        // unrelated request is awaiting its response.
-        changed := bytes.size >= 3 and service-changed-handle_ != 0 and
-            (io.LITTLE-ENDIAN.uint16 bytes 1) == service-changed-handle_
-        invalid-change := false
-        if changed:
-          database-revision_++
-          invalid-change = bytes.size != 7
-          if not invalid-change:
-            first := io.LITTLE-ENDIAN.uint16 bytes 3
-            last := io.LITTLE-ENDIAN.uint16 bytes 5
-            invalid-change = not 1 <= first <= last <= 0xffff
-        if changed:
-          subscriptions_.do: | subscription/Subscription? |
-            if subscription and subscription.handle != service-changed-handle_:
-              subscription.packets_.fail "GATT_DATABASE_CHANGED"
-        host_.send link_ 4 #[0x1e]
-        if invalid-change: throw "GATT_INVALID_SERVICE_CHANGED"
-        if changed: continue
-        if bytes.size < 3 or bytes.size > (min mtu_ 515) or
-            (io.LITTLE-ENDIAN.uint16 bytes 1) == 0: continue
-      if bytes.is-empty or bytes.size > mtu_: throw "ATT_INVALID_PDU"
-      opcode := bytes[0]
-      if opcode == 2:
-        if bytes.size != 3:
-          host_.send link_ 4 #[1, 2, 0, 0, 4]
-          continue
-        peer := io.LITTLE-ENDIAN.uint16 bytes 1
-        if peer-mtu_ != null and peer-mtu_ != peer: throw "ATT_MTU_CHANGED"
-        host_.send link_ 4 (mtu-packet_ 3 mtu-limit_)
-        peer-mtu_ = peer
-        // Crossing exchanges keep default-sized responses until our own
-        // exchange response arrives. This client sends no notifications itself.
-        if not mtu-pending_: mtu_ = peer < 23 ? 23 : (min peer mtu-limit_)
-        continue
-      if opcode == 4 or opcode == 6 or opcode == 8 or opcode == 0x0a or
-          opcode == 0x0c or opcode == 0x0e or opcode == 0x10 or opcode == 0x12 or
-          opcode == 0x16 or opcode == 0x18 or opcode == 0x20:
-        // We have no local attribute database yet; reject requests explicitly.
-        host_.send link_ 4 #[1, opcode, 0, 0, 6]
-        continue
-      if opcode & 0x40 != 0: continue  // Unsupported commands have no response.
-      if opcode == 0x1b or opcode == 0x1d:
-        // Invalid notifications are ignored as required by section 3.4.7.1.
-        if bytes.size < 3 or (io.LITTLE-ENDIAN.uint16 bytes 1) == 0: continue
-        subscription := subscription-for_ (io.LITTLE-ENDIAN.uint16 bytes 1)
-        if subscription:
-          subscription.packets_.add bytes
-        else:
-          notifications_.add bytes
-        continue
-      pending := pending_
-      if not pending: throw "ATT_UNEXPECTED_RESPONSE"
-      if opcode == 1:
-        if bytes.size != 5 or bytes[1] != opcode_ or bytes[4] == 0:
-          throw "ATT_MALFORMED_RESPONSE"
-      else if opcode != expected_:
-        throw "ATT_UNEXPECTED_RESPONSE"
-      if opcode == 3:
-        if bytes.size != 3: throw "ATT_MALFORMED_RESPONSE"
-        peer := io.LITTLE-ENDIAN.uint16 bytes 1
-        if peer-mtu_ != null and peer-mtu_ != peer: throw "ATT_MTU_CHANGED"
-        peer-mtu_ = peer
-        mtu_ = peer < 23 ? 23 : (min peer mtu-limit_)
-      if opcode_ == 2:
-        mtu-pending_ = false
-        if opcode == 1 and peer-mtu_ != null:
-          mtu_ = peer-mtu_ < 23 ? 23 : (min peer-mtu_ mtu-limit_)
-      pending_ = null
-      pending.set bytes
+      handle-att_ packet.payload
+
+  /**
+  Takes a client-bound PDU from the server that owns the bearer of an
+    attached client. After close it is dropped; a protocol violation closes
+    the client and is rethrown for the owner, which ends the link.
+  */
+  deliver_ bytes/ByteArray -> none:
+    if error_: return
+    error := catch: handle-att_ bytes
+    if error:
+      fail_ error
+      throw error
+
+  /** Adopts the bearer's MTU after the owning server answered an exchange. */
+  follow-mtu_ mtu/int -> none:
+    mtu_ = mtu
+    mtu-started_ = true
+
+  handle-att_ bytes/ByteArray -> none:
+    if not bytes.is-empty and bytes[0] == 0x1d:
+      // Confirm even an invalid handle/value, then discard it (3.4.7.2).
+      // Do not take the request mutex: an indication can arrive while an
+      // unrelated request is awaiting its response.
+      changed := bytes.size >= 3 and service-changed-handle_ != 0 and
+          (io.LITTLE-ENDIAN.uint16 bytes 1) == service-changed-handle_
+      invalid-change := false
+      if changed:
+        database-revision_++
+        invalid-change = bytes.size != 7
+        if not invalid-change:
+          first := io.LITTLE-ENDIAN.uint16 bytes 3
+          last := io.LITTLE-ENDIAN.uint16 bytes 5
+          invalid-change = not 1 <= first <= last <= 0xffff
+      if changed:
+        subscriptions_.do: | subscription/Subscription? |
+          if subscription and subscription.handle != service-changed-handle_:
+            subscription.packets_.fail "GATT_DATABASE_CHANGED"
+      host_.send link_ 4 #[0x1e]
+      if invalid-change: throw "GATT_INVALID_SERVICE_CHANGED"
+      if changed: return
+      if bytes.size < 3 or bytes.size > (min mtu_ 515) or
+          (io.LITTLE-ENDIAN.uint16 bytes 1) == 0: return
+    if bytes.is-empty or bytes.size > mtu_: throw "ATT_INVALID_PDU"
+    opcode := bytes[0]
+    if opcode == 2:
+      if bytes.size != 3:
+        host_.send link_ 4 #[1, 2, 0, 0, 4]
+        return
+      peer := io.LITTLE-ENDIAN.uint16 bytes 1
+      if peer-mtu_ != null and peer-mtu_ != peer: throw "ATT_MTU_CHANGED"
+      host_.send link_ 4 (mtu-packet_ 3 mtu-limit_)
+      peer-mtu_ = peer
+      // Crossing exchanges keep default-sized responses until our own
+      // exchange response arrives. This client sends no notifications itself.
+      if not mtu-pending_: mtu_ = peer < 23 ? 23 : (min peer mtu-limit_)
+      return
+    if opcode == 4 or opcode == 6 or opcode == 8 or opcode == 0x0a or
+        opcode == 0x0c or opcode == 0x0e or opcode == 0x10 or opcode == 0x12 or
+        opcode == 0x16 or opcode == 0x18 or opcode == 0x20:
+      // We have no local attribute database yet; reject requests explicitly.
+      host_.send link_ 4 #[1, opcode, 0, 0, 6]
+      return
+    if opcode & 0x40 != 0: return  // Unsupported commands have no response.
+    // Multiple Handle Value Notification needs a feature this client never
+    // enables on a peer (Vol 3 Part G 7.2).
+    if opcode == 0x23: return
+    if opcode == 0x1b or opcode == 0x1d:
+      // Invalid notifications are ignored as required by section 3.4.7.1.
+      if bytes.size < 3 or (io.LITTLE-ENDIAN.uint16 bytes 1) == 0: return
+      subscription := subscription-for_ (io.LITTLE-ENDIAN.uint16 bytes 1)
+      if subscription:
+        subscription.packets_.add bytes
+      else:
+        notifications_.add bytes
+      return
+    pending := pending_
+    if not pending: throw "ATT_UNEXPECTED_RESPONSE"
+    if opcode == 1:
+      if bytes.size != 5 or bytes[1] != opcode_ or bytes[4] == 0:
+        throw "ATT_MALFORMED_RESPONSE"
+    else if opcode != expected_:
+      throw "ATT_UNEXPECTED_RESPONSE"
+    if opcode == 3:
+      if bytes.size != 3: throw "ATT_MALFORMED_RESPONSE"
+      peer := io.LITTLE-ENDIAN.uint16 bytes 1
+      if peer-mtu_ != null and peer-mtu_ != peer: throw "ATT_MTU_CHANGED"
+      peer-mtu_ = peer
+      mtu_ = peer < 23 ? 23 : (min peer mtu-limit_)
+      if on-mtu_: on-mtu_.call mtu_
+    if opcode_ == 2:
+      mtu-pending_ = false
+      if opcode == 1 and peer-mtu_ != null:
+        mtu_ = peer-mtu_ < 23 ? 23 : (min peer-mtu_ mtu-limit_)
+    pending_ = null
+    pending.set bytes
+
+/**
+Whether a PDU with $opcode arriving on a bearer is for its client: a
+  response, an Error Response (only ever an answer to this side's request),
+  or one of the peer's notifications and indications. Requests, commands and
+  confirmations are for its server.
+*/
+client-bound opcode/int -> bool:
+  if opcode == 1 or opcode == 0x1b or opcode == 0x1d or opcode == 0x23: return true
+  return opcode & 1 == 1 and 3 <= opcode <= 0x21 and opcode != 0x15 and opcode != 0x1f
 
 mtu-packet_ opcode/int mtu/int -> ByteArray:
   result := #[opcode, 0, 0]
