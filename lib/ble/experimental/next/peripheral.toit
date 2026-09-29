@@ -33,6 +33,20 @@ class GattServer:
 
   connections_ -> List: return peripheral_ ? peripheral_.links_ : []
 
+  /** The attributes the provider's database needs, its nine default ones included. */
+  attribute-count_ -> int:
+    count := 9
+    services_.do: | service/Service |
+      count++
+      service.characteristics_.do: | characteristic/Characteristic |
+        count += 2
+        if characteristic.notify_ or characteristic.indicate_: count++
+        characteristic.descriptors_.do: | descriptor/Descriptor |
+          count++
+          // A writable User Description brings Extended Properties along.
+          if descriptor.write_ and descriptor.uuid == (BleUuid "2901"): count++
+    return count
+
 /** A primary service in a $GattServer. */
 class Service:
   server/GattServer
@@ -327,6 +341,7 @@ class Peripheral:
   build-session_ -> List:
     session := client_.configure --name=name_ --value-limit=512 --mtu-limit=517
         --handler-timeout=handler-timeout_
+        --attribute-limit=(max 64 server_.attribute-count_)
     handles := {:}
     error := catch:
       server_.services_.do: | service/Service | service.build_ session handles

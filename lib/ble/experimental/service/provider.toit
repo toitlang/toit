@@ -70,8 +70,9 @@ abstract class Provider extends services.ServiceProvider implements services.Ser
     throw "GATT_UNSUPPORTED_SERVICE_OPERATION"
 
   /** Opens a builder with explicit bounds; subclasses may support larger values. */
-  create-bounded-builder client/int name/string value-limit/int mtu-limit/int -> Session:
-    if value-limit != 20 or mtu-limit != 23: throw "GATT_UNSUPPORTED_SERVICE_OPERATION"
+  create-bounded-builder client/int name/string value-limit/int mtu-limit/int
+      --attribute-limit/int=64 -> Session:
+    if value-limit != 20 or mtu-limit != 23 or attribute-limit != 64: throw "GATT_UNSUPPORTED_SERVICE_OPERATION"
     return create-builder client name
 
   /**
@@ -119,7 +120,7 @@ abstract class Provider extends services.ServiceProvider implements services.Ser
       if index == api.OPEN and arguments != null: throw "INVALID_ARGUMENT"
       if index == api.OPEN-BUILDER and arguments is not string: throw "INVALID_ARGUMENT"
       if index == api.OPEN-BOUNDED-BUILDER:
-        if arguments is not List or arguments.size != 3: throw "INVALID_ARGUMENT"
+        if arguments is not List or not 3 <= arguments.size <= 4: throw "INVALID_ARGUMENT"
       if index == api.OPEN-SCAN and arguments is not List: throw "INVALID_ARGUMENT"
       if index == api.CONNECT and arguments is not List: throw "INVALID_ARGUMENT"
       if index == api.OPEN-ADVERTISING and arguments is not List: throw "INVALID_ARGUMENT"
@@ -174,6 +175,7 @@ abstract class Provider extends services.ServiceProvider implements services.Ser
           session = create-builder client arguments
         else:
           session = create-bounded-builder client arguments[0] arguments[1] arguments[2]
+              --attribute-limit=(arguments.size == 4 ? arguments[3] : 64)
         sessions_[free-slot] = session
         return session
       finally:

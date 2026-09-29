@@ -142,7 +142,8 @@ class Provider extends providers.Provider:
   last/ObservedSession? := null
   constructor:
     super
-  create-bounded-builder client/int name/string value-limit/int mtu-limit/int -> rpc.Session:
+  create-bounded-builder client/int name/string value-limit/int mtu-limit/int
+      --attribute-limit/int=64 -> rpc.Session:
     last = ObservedSession this client --name=name --value-limit=value-limit --mtu-limit=mtu-limit
     return last
   open-transport -> transport.Transport: return radio

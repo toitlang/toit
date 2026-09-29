@@ -198,8 +198,14 @@ abstract class Provider extends central-provider.Provider:
   create-builder client/int name/string -> rpc.Session:
     return Session this client --name=name
 
-  create-bounded-builder client/int name/string value-limit/int mtu-limit/int -> rpc.Session:
+  /** The largest database an application may ask for, in attributes (at most 512). */
+  max-attributes -> int: return 256
+
+  create-bounded-builder client/int name/string value-limit/int mtu-limit/int
+      --attribute-limit/int=64 -> rpc.Session:
+    if attribute-limit is not int or not 1 <= attribute-limit <= max-attributes: throw "INVALID_ARGUMENT"
     return Session this client --name=name --value-limit=value-limit --mtu-limit=mtu-limit
+        --attribute-limit=attribute-limit
 
 class Session extends rpc.Session:
   is-peripheral -> bool: return true
@@ -230,10 +236,12 @@ class Session extends rpc.Session:
   pairing-task_/Task? := null
   pairing-ended_/monitor.Latch ::= monitor.Latch
 
-  constructor .provider_ client/int --name/string?=null --value-limit/int=20 --mtu-limit/int=23:
+  constructor .provider_ client/int --name/string?=null --value-limit/int=20 --mtu-limit/int=23
+      --attribute-limit/int=64:
     database_ = name == null
         ? provider_.create-database
-        : (attributes.Database.with-defaults --name=name --value-limit=value-limit --mtu-limit=mtu-limit)
+        : (attributes.Database.with-defaults --name=name --value-limit=value-limit --mtu-limit=mtu-limit
+            --attribute-limit=attribute-limit)
     if name == null:
       advertisement_ = provider_.advertisement.copy
       if advertisement_.size > 31: throw "INVALID_ARGUMENT"

@@ -128,7 +128,8 @@ class Provider extends gatt.Provider:
     return opens == 1 ? radio : next-radio
   create-builder client/int name/string -> rpc.Session:
     return create-bounded-builder client name 20 23
-  create-bounded-builder client/int name/string value-limit/int mtu-limit/int -> rpc.Session:
+  create-bounded-builder client/int name/string value-limit/int mtu-limit/int
+      --attribute-limit/int=64 -> rpc.Session:
     last = Session this client name value-limit mtu-limit
     return last
   handle index/int arguments/any --gid/int --client/int -> any:
