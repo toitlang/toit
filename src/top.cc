@@ -82,7 +82,11 @@ bool throwing_new_allowed = false;
 
 }
 
-#ifndef __SANITIZE_THREAD__
+// Sanitizers must see matching allocation and deallocation families. In an
+// ASAN build, use its new/delete interceptors instead of allocating with malloc
+// here and releasing through its delete interceptor. As with TSan, these builds
+// do not enforce throwing_new_allowed through the overrides below.
+#if !defined(__SANITIZE_THREAD__) && !defined(TOIT_ASAN)
 
 // Override new operator (normal version) so we can log allocations.
 void* operator new(size_t size) {
