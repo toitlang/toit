@@ -108,6 +108,21 @@ static int get_adc1_channel(int pin) {
   }
 }
 
+#elif CONFIG_IDF_TARGET_ESP32H2
+
+#define ADC_CLK_SRC_DEFAULT ADC_DIGI_CLK_SRC_DEFAULT
+
+static int get_adc1_channel(int pin) {
+  switch (pin) {
+    case 1: return ADC_CHANNEL_0;
+    case 2: return ADC_CHANNEL_1;
+    case 3: return ADC_CHANNEL_2;
+    case 4: return ADC_CHANNEL_3;
+    case 5: return ADC_CHANNEL_4;
+    default: return -1;
+  }
+}
+
 #elif CONFIG_IDF_TARGET_ESP32P4
 
 #define ADC_CLK_SRC_DEFAULT ADC_RTC_CLK_SRC_DEFAULT

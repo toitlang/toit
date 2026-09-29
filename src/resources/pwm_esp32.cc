@@ -76,30 +76,35 @@ const ledc_clk_cfg_t kDefaultClk = LEDC_USE_RC_FAST_CLK;
 class PwmResource : public Resource {
  public:
   TAG(PwmResource);
-  PwmResource(ResourceGroup* group, ledc_channel_t channel, gpio_num_t num, bool owns_pin)
+  PwmResource(ResourceGroup* group, ledc_channel_t channel, gpio_num_t num, bool owns_pin, bool full_duty)
     : Resource(group)
     , channel_(channel)
     , num_(num)
-    , owns_pin_(owns_pin) {}
+    , owns_pin_(owns_pin)
+    , full_duty_(full_duty) {}
 
   ledc_channel_t channel() const { return channel_; }
   gpio_num_t num() const { return num_; }
   // Whether this channel reserved its pin and must release it.
   bool owns_pin() const { return owns_pin_; }
+  bool full_duty() const { return full_duty_; }
+  void set_full_duty(bool value) { full_duty_ = value; }
 
  private:
   ledc_channel_t channel_;
   gpio_num_t num_;
   bool owns_pin_;
+  bool full_duty_;
 };
 
 class PwmResourceGroup : public ResourceGroup {
  public:
   TAG(PwmResourceGroup);
-  PwmResourceGroup(Process* process, ledc_timer_t timer, uint32 max_value)
+  PwmResourceGroup(Process* process, ledc_timer_t timer, uint32 max_value, int max_frequency)
      : ResourceGroup(process)
      , timer_(timer)
-     , max_value_(max_value) {}
+     , max_value_(max_value)
+     , max_frequency_(max_frequency) {}
 
   ~PwmResourceGroup() {
     ledc_timer_rst(SPEED_MODE, timer_);
@@ -108,6 +113,7 @@ class PwmResourceGroup : public ResourceGroup {
 
   ledc_timer_t timer() { return timer_; }
   uint32 max_value() { return max_value_; }
+  int max_frequency() { return max_frequency_; }
 
  protected:
   virtual void on_unregister_resource(Resource* r) {
@@ -132,6 +138,7 @@ class PwmResourceGroup : public ResourceGroup {
  private:
   ledc_timer_t timer_;
   uint32 max_value_;
+  int max_frequency_;
 };
 
 MODULE_IMPLEMENTATION(pwm, MODULE_PWM)
@@ -183,7 +190,7 @@ PRIMITIVE(init) {
     return Primitive::os_error(err, process);
   }
 
-  PwmResourceGroup* gpio = _new PwmResourceGroup(process, timer, (1 << resolution_bits) - 1);
+  PwmResourceGroup* gpio = _new PwmResourceGroup(process, timer, (1 << resolution_bits) - 1, max_frequency);
   if (!gpio) {
     ledc_timer_rst(SPEED_MODE, timer);
     ledc_timers.put(timer);
@@ -240,12 +247,18 @@ PRIMITIVE(start) {
     },
   };
   esp_err_t err = ledc_channel_config(&config);
+  if (err == ESP_OK && factor >= 1.0) {
+    // The largest duty counter value still leaves a one-tick low pulse.
+    // Force the idle level instead; this also works at maximum resolution,
+    // where programming 2^resolution as the duty would overflow the counter.
+    err = ledc_stop(SPEED_MODE, channel, 1);
+  }
   if (err != ESP_OK) {
     ledc_channels.put(channel);
     return Primitive::os_error(err, process);
   }
 
-  PwmResource* pwm = _new PwmResource(resource_group, channel, static_cast<gpio_num_t>(pin_num), owns_pin);
+  PwmResource* pwm = _new PwmResource(resource_group, channel, static_cast<gpio_num_t>(pin_num), owns_pin, factor >= 1.0);
   if (!pwm) {
     ledc_stop(SPEED_MODE, channel, 0);
     ledc_channels.put(channel);
@@ -266,6 +279,9 @@ PRIMITIVE(start) {
 PRIMITIVE(factor) {
   ARGS(PwmResourceGroup, resource_group, PwmResource, resource);
 
+  // A stopped idle-high channel does not advance its duty counter.
+  if (resource->full_duty()) return Primitive::allocate_double(1.0, process);
+
   uint32 duty = ledc_get_duty(SPEED_MODE, resource->channel());
   if (duty == LEDC_ERR_DUTY) {
     return Primitive::os_error(LEDC_ERR_DUTY, process);
@@ -283,11 +299,15 @@ PRIMITIVE(set_factor) {
     return Primitive::os_error(err, process);
   }
 
-  err = ledc_update_duty(SPEED_MODE, resource->channel());
+  // Updating a duty below 100% re-enables a channel stopped at idle-high.
+  err = factor >= 1.0
+      ? ledc_stop(SPEED_MODE, resource->channel(), 1)
+      : ledc_update_duty(SPEED_MODE, resource->channel());
   if (err != ESP_OK) {
     return Primitive::os_error(err, process);
   }
 
+  resource->set_full_duty(factor >= 1.0);
   return process->null_object();
 }
 
@@ -303,7 +323,7 @@ PRIMITIVE(frequency) {
 PRIMITIVE(set_frequency) {
   ARGS(PwmResourceGroup, resource_group, int, frequency);
 
-  if (frequency <= 0 || frequency > resource_group->max_value()) FAIL(OUT_OF_BOUNDS);
+  if (frequency <= 0 || frequency > resource_group->max_frequency()) FAIL(OUT_OF_BOUNDS);
 
   esp_err_t err = ledc_set_freq(SPEED_MODE, resource_group->timer(), static_cast<uint32>(frequency));
   if (err != ESP_OK) {

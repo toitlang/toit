@@ -110,8 +110,9 @@ main args:
         if invocation["chip"] == CHIP-EC618:
           setup-tester-ec618 invocation
         else:
-          if not invocation["wifi-ssid"] or not invocation["wifi-password"]:
-            throw "ESP32 setup requires --wifi-ssid and --wifi-password"
+          if invocation["control"] == "network" or invocation["wifi-ssid"] or invocation["wifi-password"]:
+            if not invocation["wifi-ssid"] or not invocation["wifi-password"]:
+              throw "Wi-Fi setup requires both --wifi-ssid and --wifi-password"
           setup-tester invocation
 
   root-cmd.add setup-cmd
@@ -754,21 +755,23 @@ setup-tester invocation/cli.Invocation:
       "-e", envelope-path,
       "-o", tester-envelope-path,
     ]
-    wifi-config-path := fs.join dir "wifi-config.json"
-    file.write-contents --path=wifi-config-path """
-      {
-        "wifi": {
-          "wifi.ssid": "$invocation["wifi-ssid"]",
-          "wifi.password": "$invocation["wifi-password"]"
-        }
-      }
-    """
-    run-toit --ui=ui toit-exe [
+    flash-args := [
       "tool", "firmware", "flash",
       "-e", tester-envelope-path,
-      "--config", wifi-config-path,
       "--port", port-path,
     ]
+    if invocation["wifi-ssid"]:
+      wifi-config-path := fs.join dir "wifi-config.json"
+      file.write-contents --path=wifi-config-path """
+        {
+          "wifi": {
+            "wifi.ssid": "$invocation["wifi-ssid"]",
+            "wifi.password": "$invocation["wifi-password"]"
+          }
+        }
+      """
+      flash-args.add-all ["--config", wifi-config-path]
+    run-toit --ui=ui toit-exe flash-args
 
 // ----------------------------------------------------------------------------
 // EC618 host driver.

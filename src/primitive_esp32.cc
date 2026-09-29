@@ -63,6 +63,8 @@
   #include <esp32c3/rom/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32C6
   #include <esp32c6/rom/rtc.h>
+#elif CONFIG_IDF_TARGET_ESP32H2
+  #include <esp32h2/rom/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32P4
   #include <esp32p4/rom/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32S2
@@ -353,7 +355,12 @@ PRIMITIVE(total_deep_sleep_time) {
 PRIMITIVE(enable_external_wakeup) {
 #if SOC_PM_SUPPORT_EXT1_WAKEUP
   ARGS(int64, pin_mask, bool, on_any_high);
-  esp_err_t err = esp_sleep_enable_ext1_wakeup(pin_mask, on_any_high ? ESP_EXT1_WAKEUP_ANY_HIGH : ESP_EXT1_WAKEUP_ALL_LOW);
+#if CONFIG_IDF_TARGET_ESP32
+  auto low_mode = ESP_EXT1_WAKEUP_ALL_LOW;
+#else
+  auto low_mode = ESP_EXT1_WAKEUP_ANY_LOW;
+#endif
+  esp_err_t err = esp_sleep_enable_ext1_wakeup(pin_mask, on_any_high ? ESP_EXT1_WAKEUP_ANY_HIGH : low_mode);
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "Failed: sleep_enable_ext1_wakeup");
     FAIL(ERROR);
@@ -419,7 +426,8 @@ PRIMITIVE(get_mac_address) {
   if (result == null) FAIL(ALLOCATION_FAILED);
 
   ByteArray::Bytes bytes = ByteArray::Bytes(result);
-  esp_err_t err = esp_efuse_mac_get_default(bytes.address());
+  // The efuse-default API writes an eight-byte EUI-64 on IEEE 802.15.4 chips.
+  esp_err_t err = esp_read_mac(bytes.address(), ESP_MAC_BASE);
   if (err != ESP_OK) memset(bytes.address(), 0, 6);
 
   return result;
