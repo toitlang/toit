@@ -50,6 +50,13 @@ stops and disconnects that link only, whatever the link limit; the owner
 closes only when the controller's own state is uncertain (an unanswered
 command, a failed disconnect cleanup, a malformed event).
 
+The owner's code is split by concern: `central.toit` keeps the registry, the
+receive task and dispatch, sending, disconnect and abort;
+`central-establish.toit` connect and accept; `central-security.toit`
+encryption and long term keys; `central-control.toit` connection
+parameters, L2CAP signaling, remote features, PHY, RSSI and transmit power.
+The three are mixins of `Central` that declare the members they use from it.
+
 `link.Link` (re-exported by `central`) holds what a connection carries between
 the owner's procedures: its inbox, credit account, encryption state,
 negotiated parameters and data length, and the error that ended it.
@@ -77,17 +84,22 @@ five rules; a violation is a bug even when a test passes.
 1. **The engine owns commands.** `Controller.submit` reserves the command slot, sends the packet atomically and returns a `Pending`; `Controller.command` is a submit followed by a plain wait (rule 3). A caller that stops waiting detaches, the engine still attributes and consumes the response, and a dedicated deadline task fails the controller when a response outlives the command's bound. A procedure whose cleanup depends on an abandoned command's outcome (connection creation, advertising setup and enable, advertising-set creation) keeps the `Pending` and settles it in cleanup instead of guessing. The service client applies the same rule to resource opens: an open RPC runs to completion so a cancelled caller can release the handle it got. Callers never wrap commands in `critical-do` themselves.
 2. **Cancellation points are explicit.** Where a procedure wants to observe a deferred cancellation between two atomic steps it calls `checkpoint` (`cancellation.toit`), which throws `CANCELED` or `DEADLINE_EXCEEDED` when due and otherwise returns. `sleep --ms=0` is not used for this.
 3. **Waits are owned.** A caller waits on a latch that the owner's reader task completes, fails, or expires. The wait itself is plain (`latch.get`), so cancellation and the caller's deadline interrupt it; the pending object stays registered with the owner, which settles or aborts it when the event or its deadline arrives. No result is ever attributed to a caller that stopped waiting.
-4. **Deadlines belong to owners.** Each owner (controller, link owner, ATT client, GATT server) expires its own pending operations, so a bound holds even when the waiting task has been cancelled: the controller's deadline task bounds the one pending command, and a link owner bounds the event that follows a command (a disconnection, a completion after a cancelled creation) with `timeouts.CLEANUP`, separately from the command itself, so cleanup bounds never race the engine's. Owners with several concurrent operations keep them in a `DeadlineQueue`. Bounds come from `timeouts.toit`, not literals at call sites.
+4. **Deadlines belong to owners.** Each owner (controller, link owner, ATT client, GATT server) expires its own pending operations, so a bound holds even when the waiting task has been cancelled: the controller's deadline task bounds the one pending command, and a link owner bounds the event that follows a command (a disconnection, a completion after a cancelled creation) with `timeouts.CLEANUP`, separately from the command itself, so cleanup bounds never race the engine's. An operation that needs its own timer (an indication, a parameter request, a pairing procedure) has a timer task only while it is pending. Bounds come from `timeouts.toit`, not literals at call sites.
 5. **Cleanup is critical and bounded.** `finally` blocks that release protocol state run under `critical-do --no-respect-deadline`, contain only non-waiting operations or bounded waits with their own `with-timeout`, and never depend on a monitor operation succeeding in a cancelled task outside that scope.
 6. **`catch` does not classify under cancellation.** In a cancelled task `catch` rethrows CANCELED after its block, so code after `error := catch:` never runs then. A failure classification that must not be skipped (recording that a command was rejected, choosing between cleanup paths) goes into a `finally` block with `| is-exception exception |`, or into the same critical section as the command it classifies.
 
 Status: the controller engine, the connect and accept procedures (legacy and
 bounded), the service client's opens and the feature read follow these rules,
 and every bound in the host names a `timeouts` constant. The remaining
-`critical-do` sections are cleanup under rule 5. Owners still bound their
-concurrent operations with per-operation timer tasks (indications, security,
-parameter updates); folding those into a `DeadlineQueue` per owner is planned
-together with the split of the link owner.
+`critical-do` sections are cleanup under rule 5.
+
+A shared `DeadlineQueue` per owner (as in the TCP/IP stack) was considered
+for the per-operation timers and not adopted: there are at most three per
+link, each exists only while its operation is pending, and the pairing
+deadline moves as the procedure advances. A shared queue would need expiry
+callbacks that never block, while an expiring indication has to abort its
+link, which can take up to `timeouts.CLEANUP` and would delay every other
+deadline behind it.
 
 ## Memory ownership
 
