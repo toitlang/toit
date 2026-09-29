@@ -64,11 +64,13 @@ abstract class Provider extends central-provider.Provider:
     if mixed-role-sessions:
       configure-mixed-roles controller info
       return bounded.Central controller --acl-length=info.acl-length --acl-count=info.acl-count
+          --accept-parameter-requests=accept-parameter-requests
           --receive-limit=receive-limit
           --link-limit=2
           --early-acl-timeout=early-acl-timeout
     if peripheral-session-limit > 1:
       return central.Central controller --acl-length=info.acl-length --acl-count=info.acl-count --phy-2m=info.phy-2m
+          --accept-parameter-requests=accept-parameter-requests
           --receive-limit=receive-limit
           --link-limit=peripheral-session-limit
     return super controller info receive-limit
@@ -144,6 +146,7 @@ abstract class Provider extends central-provider.Provider:
   */
   create-host controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
     return central.Central controller --acl-length=info.acl-length --acl-count=info.acl-count --phy-2m=info.phy-2m
+        --accept-parameter-requests=accept-parameter-requests
         --early-acl-timeout=early-acl-timeout
         --receive-limit=receive-limit
 
@@ -347,7 +350,7 @@ class Session extends rpc.Session:
       return advertising-updates_.update arguments[0] arguments[1]
     if link-operations.is-link-operation index:
       if not link_: throw "GATT_NOT_CONNECTED"
-      return link-operations.link-operation host_ link_ index arguments
+      return link-operations.link-operation host_ link_ index arguments --server=server_
     if index == api.SECURITY:
       if not arguments.is-empty: throw "INVALID_ARGUMENT"
       if not link_: throw "GATT_NOT_CONNECTED"

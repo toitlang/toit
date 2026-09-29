@@ -121,12 +121,13 @@ class Connection:
   Asks for new connection parameters and returns the ones the controllers
     applied.
 
-  Central role only for now. The interval is a range in which the controller
-    picks; the supervision timeout must exceed (1 + $latency) * interval * 2.
+  The interval is a range in which the central's controller picks; the
+    supervision timeout must exceed (1 + $latency) * interval * 2. In the
+    peripheral role this asks the central, which may refuse
+    (L2CAP_PARAMETERS_REJECTED).
   */
   request-parameters --interval-min/Duration --interval-max/Duration=interval-min
       --latency/int=0 --supervision-timeout/Duration=(Duration --s=4) -> ConnectionParameters:
-    if role != ROLE-CENTRAL: throw "BLE_UNSUPPORTED"
     result := backend_.update-parameters
         --interval-min=(interval-min.in-us / 1250)
         --interval-max=(interval-max.in-us / 1250)

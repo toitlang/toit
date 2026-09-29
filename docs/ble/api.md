@@ -155,7 +155,7 @@ while true:
 | `request-phy` | asks for a PHY (both directions, or `--tx` and `--rx`); returns the `Phy` the controllers settled on |
 | `data-length` | negotiated link-layer payload octets, tx and rx |
 | `parameters` | connection interval, latency and supervision timeout |
-| `request-parameters` | asks for new connection parameters (central role for now) |
+| `request-parameters` | asks for new connection parameters: directly as central, through the central as peripheral |
 | `security` | `SECURITY-NONE`, `SECURITY-ENCRYPTED` or `SECURITY-AUTHENTICATED`, as achieved now |
 | `rssi` | the controller's RSSI for this link, in dBm |
 | `tx-power` | the controller's current transmit power on this link, in dBm |
@@ -194,9 +194,6 @@ that ended under an operation makes it throw; `wait-closed` says why.
   capabilities, confirmation, bond storage) stay in the provider, as
   today. The API lets an application require a security level and read
   what was achieved; it does not start pairing itself.
-- **Peripheral-initiated parameter updates** (L2CAP Connection Parameter
-  Update Request) are not implemented in the host yet; `request-parameters`
-  is central-only until they are.
 - **Subscriptions outside a block.** `subscribe` is scoped; a long-lived
   subscription object would need a task holding the scope.
 - **GATT client on peripheral-role links.** The service offers GATT client

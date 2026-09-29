@@ -36,4 +36,4 @@ echo "central-exit=$?"
 sleep 3
 grep -a "NEXT_CENTRAL\|EXCEPTION\|error" "$C/central.log" | cut -c1-200
 echo "--- board:"
-grep -a "address:\|tx power\|connected:\|link:\|  interval\|reset the\|disconnected:\|EXCEPTION" "$C/board.log" | cut -c1-200
+grep -a "address:\|tx power\|connected:\|parameters\|link:\|  interval\|reset the\|disconnected:\|EXCEPTION" "$C/board.log" | cut -c1-200

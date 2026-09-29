@@ -54,6 +54,10 @@ main:
         fixture.att-sent radio #[0x1b, DATA, 0, 5]
         fixture.att-sent radio #[0x1b, DATA, 0, 6]
         fixture.reply radio #[1, 0x05, 0x14, 2, 0x34, 2] #[0x34, 2, 0xc4]
+        // The peripheral asks for 30 ms through L2CAP; the central accepts and applies it.
+        fixture.att-sent radio (signaling.parameter-request 2 --interval=24) --channel=5
+        radio.received.add (fixture.att-event #[0x13, 2, 2, 0, 0, 0] --channel=5)
+        radio.received.add #[4, 0x3e, 10, 3, 0, 0x34, 2, 24, 0, 0, 0, 0x90, 1]
         disconnect.get
         radio.received.add #[4, 5, 4, 0, 0x34, 2, 0x13]
         // The second central: the provider opens the controller again.
@@ -97,7 +101,9 @@ main:
       expect-equals #[6] data.value
       expect-equals -60 connection.rssi
       expect-throw "BLE_UNSUPPORTED": connection.discover-services
-      expect-throw "BLE_UNSUPPORTED": connection.request-parameters --interval-min=(Duration --ms=30)
+      applied := connection.request-parameters --interval-min=(Duration --ms=30)
+      expect-equals (Duration --ms=30) applied.interval
+      expect-equals 24 connection.parameters.interval-units
       expect (not connection.is-closed)
       disconnect.set true
       reason := connection.wait-closed
@@ -106,6 +112,7 @@ main:
       expect connection.is-closed
       // The last state stays readable until close.
       expect-equals 24 connection.parameters.interval-units
+      expect-equals 0 connection.parameters.latency
       connection.close
       expect peripheral.connections.is-empty
 

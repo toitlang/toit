@@ -51,7 +51,14 @@ main:
 
 watch connection/ble.Connection:
   catch:
-    // Give the central time to settle PHY and parameters.
+    // A heart rate sensor is happy with a slow connection: ask the central.
+    error := catch:
+      applied := connection.request-parameters
+          --interval-min=(Duration --ms=45)
+          --interval-max=(Duration --ms=60)
+      print "parameters: $applied"
+    if error: print "parameters refused: $error"
+    // Give the central time to settle its PHY.
     sleep --ms=2_000
     print "link: $connection.peer phy=$connection.phy mtu=$connection.mtu rssi=$connection.rssi dBm tx=$connection.tx-power dBm"
     print "  $connection.parameters, $connection.data-length"
