@@ -27,17 +27,30 @@ abstract class Provider extends advertising-provider.Provider:
     validates and copies the result before setup. Trusted provider code owns
     the identity policy; no address is supplied through application RPC.
   */
-  scan-local-random-address -> ByteArray?: return null
+  scan-local-random-address -> ByteArray?:
+    return privacy-irk ? local-random-address : null
+
+  /** Rotates the scanning address this often, or never for null (the default without privacy). */
+  scan-address-rotation-interval -> Duration?: return address-rotation-interval
 
   /**
   Runs the scan in the session worker using the provider's address policy.
 
-  Overrides can select timed rotation without retaining that implementation in
-    ordinary deployments. The scoped $report block queues reports promptly.
+  The scoped $report block queues reports promptly.
   */
   run-scan controller/hci.Controller
       --active/bool --interval/int --window/int --filter-duplicates/bool
       --statistics/scanning.Statistics [report] -> int:
+    rotation := scan-address-rotation-interval
+    if rotation:
+      return scanning.scan controller report
+          --active=active
+          --interval=interval
+          --window=window
+          --filter-duplicates=filter-duplicates
+          --statistics=statistics
+          --rotation-interval=rotation
+          --next-address=: scan-local-random-address
     return scanning.scan controller report
         --active=active
         --interval=interval

@@ -6,7 +6,7 @@ import ble.experimental.central
 import ble.experimental.hci
 import ble.experimental.service.client as clients
 import ble.experimental.service.api
-import ble.experimental.service.mixed-provider as mixed
+import ble.experimental.service.gatt-provider as mixed
 import ble.experimental.service.provider as rpc
 import expect show *
 import io
@@ -503,6 +503,8 @@ class Provider extends mixed.Provider:
   opens/int := 0
   last-central/rpc.Session? := null
   last-peripheral/rpc.Session? := null
+
+  mixed-role-sessions -> bool: return true
 
   open-transport -> Radio:
     opens++

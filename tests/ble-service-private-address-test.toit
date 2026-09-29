@@ -8,7 +8,7 @@ import ble.experimental.privacy
 import ble.experimental.signaling
 import ble.experimental.transport
 import ble.experimental.service.client as clients
-import ble.experimental.service.private-provider as private-provider
+import ble.experimental.service.gatt-provider as gatt-provider
 import ble.experimental.service.provider as rpc
 import expect show *
 import monitor
@@ -18,8 +18,8 @@ import .ble-peripheral-test as peripheral
 
 main:
   with-timeout --ms=5_000:
-    expect-throw "INVALID_ARGUMENT": Provider (ByteArray 15)
-    expect-throw "INVALID_ARGUMENT": Provider (ByteArray 17)
+    expect-throw "INVALID_ARGUMENT": (Provider (ByteArray 15)).local-random-address
+    expect-throw "INVALID_ARGUMENT": (Provider (ByteArray 17)).local-random-address
     irk := ByteArray 16: it + 1
     expected-key := irk.copy
     provider := Provider irk
@@ -82,13 +82,16 @@ application interval/int:
   finally:
     client.close
 
-class Provider extends private-provider.Provider:
+class Provider extends gatt-provider.Provider:
   radios/List ::= [fixture.FakeTransport, fixture.FakeTransport]
   opened/int := 0
   last/rpc.Session? := null
 
+  irk_/ByteArray
   constructor irk/ByteArray:
-    super irk
+    irk_ = irk.copy
+    super
+  privacy-irk -> ByteArray?: return irk_
 
   open-transport -> transport.Transport: return radios[opened++]
 

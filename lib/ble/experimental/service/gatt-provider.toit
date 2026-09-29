@@ -6,8 +6,11 @@ import monitor
 
 import ..attribute-server as attributes
 import ..cccd-store as cccd
+import ..bounded-central as bounded
 import ..central as central
+import ..controller-states as states
 import ..gatt-server as gatt
+import ..security as security
 import ..hci as hci
 import ..advertising-updates as advertising-updates
 import ..security-owner show Owner
@@ -36,24 +39,44 @@ abstract class Provider extends central-provider.Provider:
     This hook alone does not relax RPC admission.
   */
   reserve-peripheral-host -> shared.Host?:
-    if peripheral-session-limit > 1: return reserve-shared-host
+    if mixed-role-sessions or peripheral-session-limit > 1: return reserve-shared-host
     return null
 
   /**
-  Sizes the shared host for several peripheral links when configured.
+  Lets one peripheral and one central session share the controller.
 
-  A mixed-role provider overrides this with its own extended-advertising
-    host; this default serves the plain case of one controller advertising
-    again while it already has peripheral links.
+  False by default. When true the provider serves both roles at once through
+    the extended command family; controllers that cannot advertise
+    connectably while connected as central (and initiate while connected as
+    peripheral) fail the first session with GATT_MIXED_CONTROLLER_UNSUPPORTED.
+  */
+  mixed-role-sessions -> bool: return false
+
+  central-session-limit -> int: return mixed-role-sessions ? 2 : 1
+
+  /**
+  Sizes the shared host for mixed roles or several peripheral links.
+
+  Mixed roles use the extended command family with two links; several
+    peripheral sessions advertise again while they already have links.
   */
   create-shared-host controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
+    if mixed-role-sessions:
+      configure-mixed-roles controller info
+      return bounded.Central controller --acl-length=info.acl-length --acl-count=info.acl-count
+          --receive-limit=receive-limit
+          --link-limit=2
+          --early-acl-timeout=early-acl-timeout
     if peripheral-session-limit > 1:
       return central.Central controller --acl-length=info.acl-length --acl-count=info.acl-count --phy-2m=info.phy-2m
           --receive-limit=receive-limit
           --link-limit=peripheral-session-limit
     return super controller info receive-limit
 
-  capabilities -> List: return [api.CAP-ADVERTISING | api.CAP-SCAN | api.CAP-CONTINUOUS-SCAN | api.CAP-GATT-PERIPHERAL | api.CAP-GATT-CENTRAL, 60_000_000, 512, 517, central-session-limit]
+  capabilities -> List:
+    flags := api.CAP-ADVERTISING | api.CAP-SCAN | api.CAP-CONTINUOUS-SCAN | api.CAP-GATT-PERIPHERAL | api.CAP-GATT-CENTRAL
+    if mixed-role-sessions: flags |= api.CAP-MIXED-ROLES
+    return [flags, 60_000_000, 512, 517, central-session-limit]
 
   /** Creates a fresh, bounded database for an application session. */
   create-database -> attributes.Database: return attributes.Database.with-defaults
@@ -79,20 +102,12 @@ abstract class Provider extends central-provider.Provider:
   early-acl-timeout -> Duration?: return null
 
   /**
-  Selects a local RPA or static random address for the next peripheral session.
+  Enables fresh pairing with this IO capability, or disables it (null, the default).
 
-  Returns six HCI-order bytes, or null to use the public address. Called once
-    per session before advertising. The provider owns identity keys and address
-    lifetime policy; application RPC never supplies this security context.
-    Central validates and copies the result before submitting controller commands.
-  */
-  local-random-address -> ByteArray?: return null
-
-  /**
-  Returns null unless the explicit pairing-provider module is selected.
-
-  Retained as a migration guard: enabling pairing through the ordinary base
-    raises GATT_PAIRING_PROVIDER_REQUIRED instead of silently ignoring policy.
+  The values are the SMP IO capabilities: 0 display only, 1 display yes/no,
+    2 keyboard only, 3 no input no output, 4 keyboard display. Secure
+    Connections (Just Works, Numeric Comparison) and legacy Just Works are
+    supported. Bond storage stays with $create-security-owner overrides.
   */
   pairing-io-capability -> int?: return null
 
@@ -117,18 +132,25 @@ abstract class Provider extends central-provider.Provider:
   /**
   Selects security for the accepted link entirely inside the provider.
 
-  The default selects no security owner. Choose pairing-provider for fresh
-    pairing. A resumption override
-    returns the owner already installed by its host's on-connected hook.
-    No key material or security policy is accepted through application RPC.
+  The default pairs (without bonding) when $pairing-io-capability is set, and
+    selects no security owner otherwise. A resumption override returns the
+    owner already installed by its host's on-connected hook. No key material
+    or security policy is accepted through application RPC.
   */
   create-security-owner host/central.Central link/central.Link info/hci.Capabilities -> Owner?:
-    if pairing-io-capability != null: throw "GATT_PAIRING_PROVIDER_REQUIRED"
-    return null
+    capability := pairing-io-capability
+    if capability == null: return null
+    return security.Pairing host link --local-address=(link.local-random-address or info.address)
+        --local-address-type=(link.local-random-address ? 1 : 0)
+        --io-capability=capability
+        --require-authentication=require-authentication
+        --attempts=pairing-attempts
+        --attempt-identity=(pairing-peer-identity link)
 
-  /** Runs a custom security owner; overrides own its storage/UI policy. */
+  /** Runs the security owner; the default runs pairing with $confirm-pairing. */
   run-security-owner owner/Owner -> none:
-    throw "GATT_SECURITY_OWNER_UNSUPPORTED"
+    if owner is not security.Pairing: throw "GATT_SECURITY_OWNER_UNSUPPORTED"
+    (owner as security.Pairing).run: | number/int | confirm-pairing number
 
   create-session client/int -> rpc.Session:
     return Session this client
@@ -463,3 +485,14 @@ class Session extends rpc.Session:
     // released ownership. Still let the worker join, but quarantine this slot.
     transport-cleanup-error_ = transport-cleanup-error_ or close-error
     return error or transport-cleanup-error_
+
+/**
+Configures the extended command family for mixed roles and checks that the
+  controller supports both establishment orders.
+*/
+configure-mixed-roles controller/hci.Controller info/hci.Capabilities -> none:
+  bounded.configure controller info
+  supported := states.read controller
+  if not (supported.supports states.CONNECTABLE-ADVERTISING-WITH-CENTRAL) or
+      not (supported.supports states.INITIATING-WITH-PERIPHERAL):
+    throw "GATT_MIXED_CONTROLLER_UNSUPPORTED"

@@ -14,8 +14,9 @@ It owns the controller and serves scanning, central connections, one local
   raise or lower $Provider.peripheral-session-limit to taste.
 
 Pairing and bonding policy belong to the provider: this one does not pair.
-  See `ble.experimental.service.pairing-provider` and `docs/ble/security.md`
-  for the hooks a deployment adds to pair, bond and protect stored keys.
+  Override $service.Provider.pairing-io-capability (and
+  $service.Provider.confirm-pairing) to pair; see `docs/ble/security.md`
+  for the hooks a deployment adds to bond and protect stored keys.
 
 Install: `toit tool firmware -e <envelope> container install ble-provider <this snapshot>`.
 */

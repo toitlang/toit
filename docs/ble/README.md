@@ -69,12 +69,20 @@ container that owns the controller. The provider is chosen at deployment time:
 
 | Provider module | Operations |
 | --- | --- |
-| `advertising-provider` | Non-connectable advertising with live payload updates |
-| `scanning-provider` | Advertising and legacy scanning |
-| `central-provider` | Scanning and outgoing GATT connections |
-| `gatt-provider` | The above plus a local GATT peripheral |
-| `mixed-provider` | Two central clients, or one central and one peripheral client, on controllers that support extended advertising (not the original ESP32) |
-| `pairing-provider`, `private-*-provider`, `bond-admin-provider` | Policy subclasses adding fresh pairing, host-generated private addresses, and bond administration |
+| `scanning-provider` | Advertising and legacy scanning: the small image (137 KB snapshot) |
+| `gatt-provider` | Everything: scanning, advertising, outgoing GATT connections and a local GATT peripheral (250 KB, 285 KB with pairing in use) |
+| `bond-admin-provider` | A separate service for bond administration |
+
+`advertising-provider` and `central-provider` are the layers `gatt-provider`
+is built from; they can be deployed on their own but are not separate
+variants. Policy is set by overriding hooks rather than by choosing a
+module: `privacy-irk` (resolvable private addresses for advertising, scanning
+and peripheral sessions, rotated every `privacy-rotation-interval`),
+`pairing-io-capability` with `confirm-pairing` and `require-authentication`
+(fresh pairing), `mixed-role-sessions` (one central and one peripheral
+client at once, on controllers with extended advertising, not the original
+ESP32), `peripheral-session-limit` (several centrals), and the
+`create-security-owner` family for bonds.
 
 Each provider is a subclass that supplies `open-transport` (an
 `esp32.Esp32Transport` on a controller-only ESP32 build, or a

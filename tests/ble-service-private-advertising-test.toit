@@ -9,7 +9,7 @@ import ble.experimental.privacy
 import ble.experimental.transport
 import ble.experimental.service.client as clients
 import ble.experimental.service.api as api
-import ble.experimental.service.private-advertising-provider as providers
+import ble.experimental.service.advertising-provider as providers
 import ble.experimental.service.provider as rpc
 import .ble-fixture as fixture
 import .ble-peripheral-test as peripheral
@@ -18,8 +18,8 @@ import .ble-service-central-cancel-test as shutdown
 
 main:
   with-timeout --ms=10_000:
-    expect-throw "INVALID_ARGUMENT": Provider (ByteArray 15)
-    expect-throw "INVALID_ARGUMENT": Provider (ByteArray 16) --rotation-interval=(Duration --us=0)
+    expect-throw "INVALID_ARGUMENT": (Provider (ByteArray 15)).local-random-address
+    expect-throw "INVALID_ARGUMENT": (Provider (ByteArray 16) --rotation-interval=(Duration --us=0)).address-rotation-interval
     ["normal", "disable-error", "address-error", "enable-error", "cancel-wait", "cancel-address"].do: run it
     ["waiting", "disable", "address", "enable"].do: client-exit it
 
@@ -94,7 +94,12 @@ class ExitProvider extends providers.Provider:
   last/rpc.Session? := null
   opens/int := 0
 
-  constructor key/ByteArray: super key --rotation-interval=(Duration --ms=500)
+  irk_/ByteArray
+  constructor key/ByteArray:
+    irk_ = key.copy
+    super
+  privacy-irk -> ByteArray?: return irk_
+  privacy-rotation-interval -> Duration: return Duration --ms=500
   open-transport -> transport.Transport:
     opens++
     return opens == 1 ? radio : next-radio
@@ -212,8 +217,14 @@ class Provider extends providers.Provider:
   last/rpc.Session? := null
   opens/int := 0
 
+  irk_/ByteArray
+  rotation_/Duration
   constructor key/ByteArray --rotation-interval/Duration=(Duration --ms=50):
-    super key --rotation-interval=rotation-interval
+    irk_ = key.copy
+    rotation_ = rotation-interval
+    super
+  privacy-irk -> ByteArray?: return irk_
+  privacy-rotation-interval -> Duration: return rotation_
   open-transport -> transport.Transport:
     opens++
     return radio

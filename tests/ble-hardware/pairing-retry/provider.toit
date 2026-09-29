@@ -4,7 +4,7 @@ import ble.experimental.transport
 import ble.experimental.security-owner show Owner
 import ble.experimental.security
 import ble.experimental.pairing-attempts as retry
-import ble.experimental.service.pairing-provider as pairing
+import ble.experimental.service.gatt-provider as gatt
 import encoding.hex
 import system
 
@@ -18,7 +18,7 @@ main:
   finally:
     provider.uninstall
 
-class Provider extends pairing.Provider:
+class Provider extends gatt.Provider:
   attempts/retry.Attempts ::= retry.Attempts --minimum=(Duration --s=10)
   confirmations/int := 0
   round/int := -1

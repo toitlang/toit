@@ -77,7 +77,7 @@ resistance is provided; see [deployment.md](deployment.md).
 
 The host generates RPAs from an IRK and resolves incoming random addresses
 against stored IRKs. Providers select the local address per session and may
-rotate it between sessions (`private-*-provider`). Controller-based resolution
+rotate it between sessions (the providers' `privacy-irk` hook). Controller-based resolution
 is not used, so a bonded peer that rotates its address must be found by
 scanning before connecting.
 

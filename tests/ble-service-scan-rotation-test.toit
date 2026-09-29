@@ -8,7 +8,7 @@ import system
 import ble.experimental.privacy
 import ble.experimental.transport
 import ble.experimental.service.client as clients
-import ble.experimental.service.private-scanning-provider as providers
+import ble.experimental.service.scanning-provider as providers
 import ble.experimental.service.provider as rpc
 import .ble-fixture as fixture
 import .ble-scan-rotation-test as rotation
@@ -82,8 +82,12 @@ class Provider extends providers.Provider:
   radio/fixture.FakeTransport ::= fixture.FakeTransport
   last/rpc.Session? := null
 
+  irk_/ByteArray
   constructor key/ByteArray:
-    super key --rotation-interval=(Duration --ms=50)
+    irk_ = key.copy
+    super
+  privacy-irk -> ByteArray?: return irk_
+  privacy-rotation-interval -> Duration: return Duration --ms=50
   open-transport -> transport.Transport: return radio
   create-scan client/int arguments/List -> rpc.Session:
     last = super client arguments

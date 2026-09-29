@@ -13,7 +13,7 @@ import ble.experimental.hci
 import ble.experimental.privacy
 import ble.experimental.security-owner show Owner
 import ble.experimental.service.client as clients
-import ble.experimental.service.mixed-provider as policy
+import ble.experimental.service.gatt-provider as policy
 import ble.experimental.service.provider as rpc
 import ble.experimental.smp-identity as identity
 import expect show *
@@ -215,7 +215,7 @@ class Provider extends mixed.Provider:
     return bond.Candidate saved-keys[index] local identities[index] --authenticated
 
   create-shared-host controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
-    policy.configure controller info
+    policy.configure-mixed-roles controller info
     records.allow = false
     host = Host controller info receive-limit registry
     ready.set host

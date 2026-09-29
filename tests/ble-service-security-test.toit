@@ -19,7 +19,6 @@ import ble.experimental.smp-pairing as smp
 import ble.experimental.transport
 import ble.experimental.service.client as clients
 import ble.experimental.service.gatt-provider as providers
-import ble.experimental.service.pairing-provider as pairing
 import expect show *
 import monitor
 import system
@@ -32,7 +31,6 @@ import .ble-receive-flow-fixture as flow
 
 main:
   with-timeout --ms=10_000:
-    legacy-provider-guard
     retry-provider-guard
     [false, true].do: | receive-flow/bool |
       [false, true].do: | random-address/bool |
@@ -279,7 +277,7 @@ application --close-during-confirmation/bool=false --observe-authenticated/bool?
   finally:
     client.close
 
-class Provider extends pairing.Provider:
+class Provider extends providers.Provider:
   radio/fixture.FakeTransport
   receive-flow_/bool
   address/ByteArray? := null
@@ -314,27 +312,6 @@ class Provider extends pairing.Provider:
     finally:
       confirmation-exited = true
 
-// Old providers must receive an explicit migration error, not silently lose
-// their pairing policy while exposing the ordinary application RPC surface.
-legacy-provider-guard:
-  provider := LegacyProvider
-  responder := task::
-    flow.initialize provider.radio false
-    keys.establish provider.radio
-  provider.install
-  try:
-    expect-throw "GATT_PAIRING_PROVIDER_REQUIRED": application
-    expect provider.radio.closed
-  finally:
-    responder.cancel
-    provider.uninstall
-
-class LegacyProvider extends providers.Provider:
-  radio/fixture.FakeTransport ::= fixture.FakeTransport
-  constructor: super
-  open-transport -> transport.Transport: return radio
-  pairing-io-capability -> int?: return 3
-
 // Admission failures must reach the application through the service boundary,
 // before this fresh owner sends SMP or exposes an encrypted connection.
 retry-provider-guard:
@@ -355,7 +332,7 @@ retry-provider-guard:
     responder.cancel
     provider.uninstall
 
-class RetryProvider extends pairing.Provider:
+class RetryProvider extends providers.Provider:
   radio/RetryRadio ::= RetryRadio
   attempts/retry.Attempts ::= retry.Attempts --minimum=(Duration --s=10)
   constructor: super
