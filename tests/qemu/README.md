@@ -35,7 +35,9 @@ QEMU_SYSTEM_XTENSA=$QEMU tests/qemu/run-tests.sh
 The runner tests stdin, stdout, and stderr with both LF and CR input through an
 ESP32 UART, a primary ESP32-S3 USB Serial/JTAG console, and both inputs of the
 standard ESP32-S3 UART-primary/USB-secondary configuration. It also verifies
-that `io.stdin` and `uart.Port.console` can share the console UART. Each input
+that `io.stdin` and `uart.Port.console` can share the console UART, and that
+the memory inspector (tools/memory-inspector) decodes a memory capture of an
+ESP32 correctly. Each input
 is sent only after the corresponding readiness marker appears, and every wait
 has a timeout.
 

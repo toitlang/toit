@@ -209,10 +209,22 @@ run_uart_sharing_test() {
   echo "PASS: ESP32 io.stdin and uart.Port.console sharing"
 }
 
+run_memory_capture_test() {
+  start_qemu esp32 memory-capture uart
+  wait_for MEMORY-CAPTURE-DONE
+  stop_qemu
+  "${TOIT}" pkg install --project-root "${ROOT_DIR}/tools" >/dev/null
+  "${TOIT}" run --project-root "${ROOT_DIR}/tools" \
+    "${ROOT_DIR}/tests/qemu/memory-capture-check.toit" -- \
+    "${TOIT}" "${ROOT_DIR}" "${QEMU_LOG}" "${TEMP_DIR}/memory-capture.envelope"
+  echo "PASS: ESP32 memory capture"
+}
+
 make_image stdio.toit "${UART_ENVELOPE}" stdio-uart
 make_image stdio-uart-console.toit "${UART_ENVELOPE}" uart-share
 make_image stdio.toit "${USB_ENVELOPE}" stdio-usb
 make_image stdio.toit "${MIXED_ENVELOPE}" stdio-mixed
+make_image memory-capture.toit "${UART_ENVELOPE}" memory-capture
 
 run_esptool_flash_test
 run_stdio_test esp32 stdio-uart uart
@@ -220,3 +232,4 @@ run_uart_sharing_test
 run_stdio_test esp32s3 stdio-usb usb-serial-jtag
 run_stdio_test esp32s3 stdio-mixed uart
 run_stdio_test esp32s3 stdio-mixed usb-serial-jtag
+run_memory_capture_test
