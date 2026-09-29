@@ -35,7 +35,7 @@ its fixed limits, and the gaps that must close before it can replace NimBLE.
 | Reassembled L2CAP payload | 65 bytes default, up to 1024 |
 | Client subscriptions | 8, sharing a 32-packet queue |
 | Native ESP32 ingress queue | 8 packets of 1029 bytes, 2 slots reserved from advertising reports |
-| Peripheral accept | one session per provider, advertising bounded to 60 seconds |
+| Peripheral accept | advertises until a central connects (60 seconds per session with mixed roles, see `advertising-timeout`) |
 | Central sessions per provider | 1, or 2 with the mixed provider |
 | Pairing attempts | one per owner object |
 
@@ -46,7 +46,6 @@ These are needed for parity with `lib/ble` as applications use it today:
 - OOB pairing. A legacy peer that offers only keys shorter than 128 bits is refused.
 - Controller-based privacy (resolving list); today the host resolves RPAs itself and cannot connect to a rotating peer without scanning first.
 - Extended advertising PDUs (only legacy PDUs over extended commands are used).
-- Unbounded peripheral advertising (a session's wait for a central is bounded at 60 s; the `ble` package backend simply starts the next session).
 - More than two concurrent connections in the service layer; the controller supports up to `CONFIG_BTDM_CTRL_BLE_MAX_CONN`.
 - Larger databases, included services, Read By Type by UUID and Read Multiple on the client side, Database Hash and Client Supported Features.
 - In the `ble` package on this host: `bonded-peers`, and the `--bonding`/`--secure-connections` flags (pairing policy is the provider's).

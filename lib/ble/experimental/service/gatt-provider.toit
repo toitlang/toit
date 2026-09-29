@@ -100,6 +100,17 @@ abstract class Provider extends central-provider.Provider:
   /** Supplies legacy advertising data for the configured database. */
   advertisement -> ByteArray: return #[2, 1, 6]
 
+  /**
+  How long a peripheral session advertises for a central, or null to
+    advertise until one connects or the client closes the session.
+
+  Unbounded by default. With $mixed-role-sessions an advertising session
+    holds the shared host's setup, so central sessions would wait behind it;
+    there the default is 60 seconds.
+  */
+  advertising-timeout -> Duration?:
+    return mixed-role-sessions ? (Duration --s=60) : null
+
   /** Allows a transport-specific bound for ACL arriving before connection events. */
   early-acl-timeout -> Duration?: return null
 
@@ -425,7 +436,8 @@ class Session extends rpc.Session:
 
   run_ -> none:
     if pool_:
-      with-timeout timeouts.SETUP:
+      // Setup includes advertising for the central, bounded only as configured.
+      with-timeout provider_.advertising-timeout:
         pool_.setup: | host/central.Central capabilities/hci.Capabilities |
           host_ = host
           accept_ capabilities
@@ -439,7 +451,7 @@ class Session extends rpc.Session:
     serve_
 
   accept_ info/hci.Capabilities -> none:
-    link := host_.accept advertisement_ --interval=interval_ --scan-response=scan-response_ --timeout=(Duration --s=60)
+    link := host_.accept advertisement_ --interval=interval_ --scan-response=scan-response_ --timeout=provider_.advertising-timeout
         --local-random-address=provider_.local-random-address
         --updates=advertising-updates_
     link_ = link

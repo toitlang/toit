@@ -194,7 +194,7 @@ abstract mixin LinkEstablishment_:
     command already sent is settled before returning or reusing the owner.
   */
   accept advertisement/ByteArray --scan-response/ByteArray=#[] --interval/int=160
-      --timeout/Duration=(Duration --s=30) --local-random-address/ByteArray?=null
+      --timeout/Duration?=(Duration --s=30) --local-random-address/ByteArray?=null
       --updates/advertising-updates.Changes?=null -> Link:
     local := local-random-address and (connection.random-address local-random-address)
     parameters := advertising-set.parameters --interval=interval --own-address-type=(local ? 1 : 0)

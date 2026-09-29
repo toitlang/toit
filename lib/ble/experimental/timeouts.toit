@@ -63,6 +63,3 @@ MANAGEMENT ::= Duration --s=5
 
 /** A cancelled session worker's cleanup, as awaited by its RPC caller. */
 WORKER ::= Duration --s=5
-
-/** Bringing up a shared host: controller initialization and its first configuration. */
-SETUP ::= Duration --s=60

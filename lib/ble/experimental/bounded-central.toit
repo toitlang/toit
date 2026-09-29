@@ -44,7 +44,7 @@ class Central extends extended.Central:
         --accept-parameter-requests=accept-parameter-requests
 
   accept advertisement/ByteArray --scan-response/ByteArray=#[] --interval/int=160
-      --timeout/Duration=(Duration --s=30) --local-random-address/ByteArray?=null
+      --timeout/Duration?=(Duration --s=30) --local-random-address/ByteArray?=null
       --updates/advertising-updates.Changes?=null -> central.Link:
     local := local-random-address and (connection.random-address local-random-address)
     parameters := parameters_ interval (local ? 1 : 0)
