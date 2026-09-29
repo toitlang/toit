@@ -65,6 +65,7 @@ class Link:
   encryption-pending_/monitor.Latch? := null
   encryption-observer_/monitor.Latch? := null
   parameter-pending_/monitor.Latch? := null
+  phy-pending_/monitor.Latch? := null
   parameter-worker_/bool := false
   peer-parameter-error_ := null
   peer-parameter-request_/ByteArray? := null
@@ -229,6 +230,9 @@ class Link:
     pending := parameter-pending_
     parameter-pending_ = null
     if pending: pending.set error --exception
+    phy := phy-pending_
+    phy-pending_ = null
+    if phy: phy.set error --exception
 
   release_ error -> none:
     if not error_: error_ = error

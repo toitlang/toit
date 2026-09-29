@@ -485,6 +485,52 @@ class Central:
       controller_.command hci.LE-SET-PHY (connection.phy-2m-parameters link.info.handle) --status-event
     if error and not (error is hci.CommandError): throw error
 
+  /**
+  Asks the controllers for PHYs and waits for the outcome.
+
+  $tx and $rx are preference masks (bit 0 1M, bit 1 2M, bit 2 Coded). Either
+    side of the link may start this procedure. Returns the PHYs in effect
+    afterwards, which may differ from the preference when the peer does not
+    support it. One request per link at a time. $timeout bounds the wait for
+    the PHY Update Complete event; expiry leaves the link as it is.
+  */
+  set-phy link/Link --tx/int --rx/int --timeout/Duration=timeouts.PARAMETER-UPDATE -> connection.Phy:
+    if not (owns-link link): throw "HCI_INVALID_LINK"
+    if link.phy-pending_: throw "HCI_PHY_UPDATE_BUSY"
+    bytes := connection.phy-parameters link.info.handle --tx=tx --rx=rx
+    pending := monitor.Latch
+    link.phy-pending_ = pending
+    try:
+      controller_.command-if hci.LE-SET-PHY bytes --status-event: owns-link link
+      return with-timeout timeout: pending.get
+    finally:
+      critical-do --no-respect-deadline:
+        if link.phy-pending_ == pending: link.phy-pending_ = null
+
+  /** Reads the controller's RSSI for this link in dBm (Read RSSI, 7.5.4). */
+  read-rssi link/Link -> int:
+    if not (owns-link link): throw "HCI_INVALID_LINK"
+    parameters := ByteArray 2
+    io.LITTLE-ENDIAN.put-uint16 parameters 0 link.info.handle
+    result := controller_.command-if 0x1405 parameters: owns-link link
+    if result.size != 3: throw "HCI_MALFORMED_RESPONSE"
+    return io.LITTLE-ENDIAN.int8 result 2
+
+  /**
+  Reads this link's transmit power in dBm (Read Transmit Power Level, 7.3.35).
+
+  $maximum reads the highest level the controller would use instead of the
+    current one.
+  */
+  read-tx-power link/Link --maximum/bool=false -> int:
+    if not (owns-link link): throw "HCI_INVALID_LINK"
+    parameters := ByteArray 3
+    io.LITTLE-ENDIAN.put-uint16 parameters 0 link.info.handle
+    parameters[2] = maximum ? 1 : 0
+    result := controller_.command-if 0x0c2d parameters: owns-link link
+    if result.size != 3: throw "HCI_MALFORMED_RESPONSE"
+    return io.LITTLE-ENDIAN.int8 result 2
+
   /** Supplies the connection command for this owner's controller command family. */
   connection-opcode -> int: return 0x200d
 
@@ -911,7 +957,19 @@ class Central:
     phy := connection.decode-phy-update packet
     if phy:
       link := find-link_ phy.handle
-      if link: link.phy_ = phy
+      if link:
+        link.phy_ = phy
+        pending := link.phy-pending_
+        link.phy-pending_ = null
+        if pending: pending.set phy
+      return
+    phy-failure := connection.decode-phy-update-failure packet
+    if phy-failure:
+      link := find-link_ phy-failure[0]
+      if link:
+        pending := link.phy-pending_
+        link.phy-pending_ = null
+        if pending: pending.set (hci.CommandError hci.LE-SET-PHY phy-failure[1]) --exception
       return
     data-length := connection.decode-data-length packet
     if data-length:

@@ -10,6 +10,7 @@ import ..transport as transport
 /** Supplies one shared controller and its provider-owned early security policy. */
 interface Factory:
   open-transport -> transport.Transport
+  controller-ready radio/transport.Transport info/hci.Capabilities -> none
   create-shared-host controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central
 
 /**
@@ -63,6 +64,7 @@ class Host:
             transport_ = factory_.open-transport
             controller_ = hci.Controller transport_
             info_ = hci.initialize controller_ --receive-acl-packets=receive-acl-packets_
+            factory_.controller-ready transport_ info_
             host_ = factory_.create-shared-host controller_ info_ 517
           if error_: throw error_
           initialized = true

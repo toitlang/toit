@@ -8,7 +8,7 @@ import system.services
 SELECTOR ::= services.ServiceSelector
     --uuid="9d28731e-2a9f-4b19-adf7-39717fae7622"
     --major=0
-    --minor=24
+    --minor=26
 
 OPEN ::= 0
 NEXT ::= 1
@@ -55,6 +55,16 @@ SET-HANDLER-TIMEOUT ::= 41
 ADVERTISING-UPDATE ::= 42
 PERIPHERAL-ADVERTISING-UPDATE ::= 43
 NOTIFY-VALUES ::= 44
+// Link operations, on both central connections and peripheral sessions.
+LINK-INFO ::= 45
+SET-PHY ::= 46
+READ-RSSI ::= 47
+READ-TX-POWER ::= 48
+UPDATE-PARAMETERS ::= 49
+WAIT-DISCONNECTED ::= 50
+// Provider-wide operations.
+ADAPTER-INFO ::= 51
+SET-TX-POWER ::= 52
 
 CAP-SCAN ::= 1
 CAP-GATT-PERIPHERAL ::= 2

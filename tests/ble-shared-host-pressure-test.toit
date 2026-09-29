@@ -30,6 +30,8 @@ class Factory implements shared.Factory:
   slots/List ::= List 16384
   opened/bool := false
 
+  controller-ready radio info -> none:
+
   open-transport -> fixture.FakeTransport:
     filled := 0
     failure := catch:

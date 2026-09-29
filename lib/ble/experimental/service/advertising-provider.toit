@@ -26,6 +26,55 @@ abstract class Provider extends rpc.Provider:
 
   capabilities -> List: return [api.CAP-ADVERTISING, 0, 0, 0, 1]
 
+  controller-info_/hci.Capabilities? := null
+  tx-power-control_/transport.TxPowerControl? := null
+  tx-power-setting_/int? := null
+
+  /**
+  Records a controller lifetime's start; every controller open calls this
+    after initialization.
+
+  Remembers the controller's description for $adapter-info and applies the
+    transmit power the application asked for.
+  */
+  controller-ready radio/transport.Transport info/hci.Capabilities -> none:
+    controller-info_ = info
+    if radio is transport.TxPowerControl:
+      control := radio as transport.TxPowerControl
+      tx-power-control_ = control
+      if tx-power-setting_: control.set-tx-power tx-power-setting_
+
+  adapter-info -> List:
+    if not controller-info_: probe-controller_
+    info := controller-info_
+    control := tx-power-control_
+    power := control and (control.tx-power or (tx-power-setting_ and (control.closest-tx-power tx-power-setting_)))
+    return [info.address.copy, control != null, power, info.phy-2m]
+
+  set-tx-power dbm/int -> int:
+    if not controller-info_: probe-controller_
+    control := tx-power-control_
+    if not control: throw "BLE_UNSUPPORTED"
+    tx-power-setting_ = dbm
+    // A controller that is off gets the setting when it next starts.
+    return control.set-tx-power dbm or (control.closest-tx-power dbm)
+
+  /** Opens and initializes the controller once to learn what it is. */
+  probe-controller_ -> none:
+    with-idle-controller_:
+      radio := open-transport
+      controller/hci.Controller? := null
+      try:
+        controller = hci.Controller radio
+        controller-ready radio (hci.initialize controller)
+      finally:
+        critical-do --no-respect-deadline:
+          if controller:
+            controller.close
+            with-timeout timeouts.CLEANUP: controller.wait-closed
+          else:
+            radio.close
+
   create-session client/int -> rpc.Session:
     throw "GATT_UNSUPPORTED_SERVICE_OPERATION"
 
@@ -71,7 +120,7 @@ class AdvertisingSession extends rpc.Session:
         failure = catch:
           radio = provider.open-transport
           controller = hci.Controller radio
-          hci.initialize controller
+          provider.controller-ready radio (hci.initialize controller)
           checkpoint
           if local:
             controller.command 0x2005 local
