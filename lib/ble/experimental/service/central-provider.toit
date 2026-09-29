@@ -94,7 +94,7 @@ abstract class Provider extends scanning-provider.Provider implements shared.Fac
   // Called synchronously before a connection task starts. Reservations include
   // pending setup and cleanup, so neither can escape the configured limit.
   reserve-pool_ -> shared.Host?:
-    if central-session-limit == 1: return null
+    if central-session-limit == 1 and not mixed-role-sessions: return null
     return reserve-shared-host
 
   /**

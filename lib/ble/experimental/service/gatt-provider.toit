@@ -43,15 +43,18 @@ abstract class Provider extends central-provider.Provider:
     return null
 
   /**
-  Lets one peripheral and one central session share the controller.
+  Lets central and peripheral sessions share the controller.
 
-  False by default. When true the provider serves both roles at once through
-    the extended command family; controllers that cannot advertise
-    connectably while connected as central (and initiate while connected as
-    peripheral) fail the first session with GATT_MIXED_CONTROLLER_UNSUPPORTED.
+  False by default. When true the provider serves both roles at once, up to
+    $central-session-limit centrals and $peripheral-session-limit
+    peripherals, through the extended command family; controllers that
+    cannot advertise connectably while connected as central (and initiate
+    while connected as peripheral) fail the first session with
+    GATT_MIXED_CONTROLLER_UNSUPPORTED.
   */
   mixed-role-sessions -> bool: return false
 
+  /** One central session by default, two with $mixed-role-sessions; at most eight. */
   central-session-limit -> int: return mixed-role-sessions ? 2 : 1
 
   /**
@@ -66,19 +69,21 @@ abstract class Provider extends central-provider.Provider:
       return bounded.Central controller --acl-length=info.acl-length --acl-count=info.acl-count
           --accept-parameter-requests=accept-parameter-requests
           --receive-limit=receive-limit
-          --link-limit=2
+          --link-limit=(central-session-limit + peripheral-session-limit)
           --early-acl-timeout=early-acl-timeout
-    if peripheral-session-limit > 1:
-      return central.Central controller --acl-length=info.acl-length --acl-count=info.acl-count --phy-2m=info.phy-2m
-          --accept-parameter-requests=accept-parameter-requests
-          --receive-limit=receive-limit
-          --link-limit=peripheral-session-limit
-    return super controller info receive-limit
+    return central.Central controller --acl-length=info.acl-length --acl-count=info.acl-count --phy-2m=info.phy-2m
+        --accept-parameter-requests=accept-parameter-requests
+        --receive-limit=receive-limit
+        --link-limit=(max central-session-limit peripheral-session-limit)
 
   capabilities -> List:
     flags := api.CAP-ADVERTISING | api.CAP-SCAN | api.CAP-CONTINUOUS-SCAN | api.CAP-GATT-PERIPHERAL | api.CAP-GATT-CENTRAL
     if mixed-role-sessions: flags |= api.CAP-MIXED-ROLES
-    return [flags, 60_000_000, 512, 517, central-session-limit]
+    // Sessions that can hold the controller at once.
+    sessions := mixed-role-sessions
+        ? central-session-limit + peripheral-session-limit
+        : (max central-session-limit peripheral-session-limit)
+    return [flags, 60_000_000, 512, 517, sessions]
 
   /** Creates a fresh, bounded database for an application session. */
   create-database -> attributes.Database: return attributes.Database.with-defaults
