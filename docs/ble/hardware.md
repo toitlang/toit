@@ -126,7 +126,12 @@ Pass `2` to request the 2M PHY explicitly.
 with the provider and `peripheral-client.toit` and lets `bluetoothctl` on
 the Edimax dongle connect to it. While BlueZ discovers the board, the board
 reads BlueZ's own database over the same link: its GAP Device Name ("red
-#1" on the rig) and its services (1800, 1801, 180a). The script removes the
+#1" on the rig) and its services (1800, 1801, 180a). It then calls
+`request-security`: the provider (`pairing-gatt-provider.toit`, Just Works)
+sends a Security Request, BlueZ asks its agent to authorize the pairing
+(the script answers "yes" after six seconds; any other answer rejects it and
+ends the link), pairs and encrypts, and the board prints `security=1`. The
+script removes the
 board from BlueZ first: a bond kept from an earlier campaign makes BlueZ
 encrypt with a key the freshly flashed board no longer has, and it then
 ends the link with an authentication failure.
