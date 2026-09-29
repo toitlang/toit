@@ -412,7 +412,7 @@ ResolutionShape ResolutionShape::for_static_method(ast::Method* method) {
         // We still deduplicate the names, as the compiler otherwise tries to do
         //   direct calls, which leads to all kinds of problems.
         // We ensure that the names are different symbols.
-        const char* copied_name = strdup(name.c_str());
+        const char* copied_name = Zone::current()->strdup(name.c_str());
         name = Symbol::synthetic(copied_name);
       }
       names.add(name);

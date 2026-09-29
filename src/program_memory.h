@@ -178,6 +178,17 @@ class ProgramRawHeap {
  public:
   ProgramRawHeap() {}
 
+  // Only for heaps built from individually malloc-allocated ProgramBlocks,
+  // such as the compiler's temporary programs. Image-backed heaps must not
+  // use this: their blocks are part of the image's contiguous allocation.
+  void free_malloced_blocks() {
+    blocks_.set_writable(true);
+    while (auto block = blocks_.remove_first()) {
+      block->~ProgramBlock();
+      free(block);
+    }
+  }
+
   void take_blocks(ProgramBlockList* blocks);
 
   // Size of all objects stored in this heap.

@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "zone.h"
+
 #include "selector.h"
 #include <algorithm>
 
@@ -67,26 +69,26 @@ ir::Expression* CallBuilder::call_constructor(ir::ReferenceMethod* target) {
   auto method_shape = target->target()->resolution_shape();
   bool has_implicit_this = true;
   return do_call_static(method_shape, has_implicit_this, [&](CallShape call_shape, List<ir::Expression*> args) {
-    return _new ir::CallConstructor(target, call_shape, args, range_);
+    return zone_new<ir::CallConstructor>(target, call_shape, args, range_);
   });
 }
 ir::Expression* CallBuilder::call_static(ir::ReferenceMethod* target) {
   auto method_shape = target->target()->resolution_shape();
   bool has_implicit_this = false;
   return do_call_static(method_shape, has_implicit_this, [&](CallShape call_shape, List<ir::Expression*> args) {
-    return _new ir::CallStatic(target, call_shape, args, range_);
+    return zone_new<ir::CallStatic>(target, call_shape, args, range_);
   });
 }
 ir::Expression* CallBuilder::call_builtin(ir::Builtin* builtin) {
   ResolutionShape method_shape(builtin->arity());
   bool has_implicit_this = false;
   return do_call_static(method_shape, has_implicit_this, [&](CallShape call_shape, List<ir::Expression*> args) {
-    return _new ir::CallBuiltin(builtin, call_shape, args, range_);
+    return zone_new<ir::CallBuiltin>(builtin, call_shape, args, range_);
   });
 }
 ir::Expression* CallBuilder::call_block(ir::Expression* block) {
   return do_block_call(block, [&](ir::Expression* block, CallShape call_shape, List<ir::Expression*> args) {
-    return _new ir::CallBlock(block, call_shape, args, range_);
+    return zone_new<ir::CallBlock>(block, call_shape, args, range_);
   });
 }
 ir::Expression* CallBuilder::call_instance(ir::Dot* dot) {
@@ -95,7 +97,7 @@ ir::Expression* CallBuilder::call_instance(ir::Dot* dot) {
 ir::Expression* CallBuilder::call_instance(ir::Dot* dot, Source::Range range) {
   if (!range.is_valid()) range = range_;
   return do_call_instance(dot, [&](ir::Dot* dot, CallShape call_shape, List<ir::Expression*> args) {
-    return _new ir::CallVirtual(dot, call_shape, args, range);
+    return zone_new<ir::CallVirtual>(dot, call_shape, args, range);
   });
 }
 
@@ -163,9 +165,9 @@ ir::Expression* CallBuilder::with_hoisted_args(ir::Expression* target,
     // get referenced through a `ReferenceBlock`.
     if (expression->is_Code()) {
       auto code = expression->as_Code();
-      auto block = _new ir::Block(Symbol::synthetic("<block>"), code->range());
-      sequence_exprs.add(_new ir::AssignmentDefine(block, code, code->range()));
-      return (_new ir::ReferenceBlock(block, 0, expression->range()))->as_Expression();
+      auto block = zone_new<ir::Block>(Symbol::synthetic("<block>"), code->range());
+      sequence_exprs.add(zone_new<ir::AssignmentDefine>(block, code, code->range()));
+      return (zone_new<ir::ReferenceBlock>(block, 0, expression->range()))->as_Expression();
     }
     // If there are no named arguments, then we don't need to create temporaries for any
     // other type.
@@ -174,12 +176,12 @@ ir::Expression* CallBuilder::with_hoisted_args(ir::Expression* target,
     if (expression->is_Reference()) return expression;
     if (expression->is_Literal()) return expression;
 
-    auto temporary = _new ir::Local(Symbol::synthetic("<tmp>"),
+    auto temporary = zone_new<ir::Local>(Symbol::synthetic("<tmp>"),
                                     true,   // Final.
                                     expression->is_block(),
                                     expression->range());
-    sequence_exprs.add(_new ir::AssignmentDefine(temporary, expression, expression->range()));
-    return (_new ir::ReferenceLocal(temporary, 0, expression->range()))->as_Expression();
+    sequence_exprs.add(zone_new<ir::AssignmentDefine>(temporary, expression, expression->range()));
+    return (zone_new<ir::ReferenceLocal>(temporary, 0, expression->range()))->as_Expression();
   };
 
   // Create temporaries, so that we can guarantee the evaluation order.
@@ -193,7 +195,7 @@ ir::Expression* CallBuilder::with_hoisted_args(ir::Expression* target,
   if (sequence_exprs.is_empty()) return fun(target);
 
   sequence_exprs.add(fun(target));
-  return _new ir::Sequence(sequence_exprs.build(), range_);
+  return zone_new<ir::Sequence>(sequence_exprs.build(), range_);
 }
 
 ir::Expression* CallBuilder::do_call_static(ResolutionShape shape,
@@ -231,12 +233,12 @@ ir::Expression* CallBuilder::do_call_static(ResolutionShape shape,
       if (argument_index < args_.size()) {
         if (must_be_non_block && args_[argument_index].is_block) {
           // Fill up the non-block arg.
-          return (_new ir::LiteralNull(range_))->as_Expression();
+          return (zone_new<ir::LiteralNull>(range_))->as_Expression();
         }
         return args_[argument_index++].expression;
       }
       if (!must_be_non_block) FATAL("Block arguments can't have default value");
-      return (_new ir::LiteralNull(range_))->as_Expression();
+      return (zone_new<ir::LiteralNull>(range_))->as_Expression();
     };
 
     int ir_argument_index = 0;
@@ -265,7 +267,7 @@ ir::Expression* CallBuilder::do_call_static(ResolutionShape shape,
         continue;
       }
       if (!shape.optional_names()[i]) FATAL("Not optional argument");
-      ir_arguments[ir_argument_index++] = _new ir::LiteralNull(range_);
+      ir_arguments[ir_argument_index++] = zone_new<ir::LiteralNull>(range_);
     }
     ASSERT(used_names_count == named_mapping.size());
 

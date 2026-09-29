@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2026 Toit contributors.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -13,27 +13,12 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-#include "../zone.h"
-
-#include "return_peephole.h"
+#include "zone.h"
 
 namespace toit {
 namespace compiler {
 
-using namespace ir;
-
-Expression* return_peephole(Return* node) {
-  if (node->value()->is_If()) {
-    auto old_if = node->value()->as_If();
-    // Push the `return` into the `if`.
-    auto new_if = zone_new<If>(old_if->condition(),
-                          zone_new<Return>(old_if->yes(), false, node->range()),
-                          zone_new<Return>(old_if->no(), false, node->range()),
-                          node->range());
-    return new_if;
-  }
-  return node;
-}
+thread_local Zone* Zone::current_ = null;
 
 } // namespace toit::compiler
 } // namespace toit

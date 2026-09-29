@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "zone.h"
+
 #include <string>
 
 #include "comments.h"
@@ -159,7 +161,7 @@ class ToitdocTextBuilder {
       // On Windows also drop the '\r', so we don't end up in the middle of a \r\n.
       text_.pop_back();
     }
-    return _new ToitdocSource(source_, text_, source_line_offsets_, toitdoc_line_offsets_);
+    return zone_new<ToitdocSource>(source_, text_, source_line_offsets_, toitdoc_line_offsets_);
   }
 
  private:
@@ -451,7 +453,7 @@ Toitdoc<ast::Node*> ToitdocParser::parse() {
   while (peek() != '\0') {
     sections.add(parse_section());
   }
-  auto contents = _new toitdoc::Contents(sections.build());
+  auto contents = zone_new<toitdoc::Contents>(sections.build());
   return Toitdoc<ast::Node*>(contents,
                              ListBuilder<ast::Node*>::build_from_vector(reference_asts_),
                              toitdoc_source_->range(0, toitdoc_source_->size()));
@@ -482,7 +484,7 @@ toitdoc::Section* ToitdocParser::parse_section() {
     if (statement != null) statements.add(statement);
     skip_whitespace();
   }
-  return _new toitdoc::Section(title, level, statements.build());
+  return zone_new<toitdoc::Section>(title, level, statements.build());
 }
 
 toitdoc::Statement* ToitdocParser::parse_statement() {
@@ -506,12 +508,12 @@ toitdoc::CodeSection* ToitdocParser::parse_code_section() {
     if (matches("```")) {
       int end = index_;
       advance("```");
-      return _new toitdoc::CodeSection(make_symbol(begin, end));
+      return zone_new<toitdoc::CodeSection>(make_symbol(begin, end));
     }
     advance();
   }
   report_error(begin - 3, index_, "Unterminated code section");
-  return _new toitdoc::CodeSection(make_symbol(begin, index_));
+  return zone_new<toitdoc::CodeSection>(make_symbol(begin, index_));
 }
 
 static bool is_eol(int c) {
@@ -553,7 +555,7 @@ toitdoc::Itemized* ToitdocParser::parse_itemized() {
     items.add(parse_item(indentation));
     skip_whitespace();
   } while (matches("- ") || matches("* "));
-  return _new toitdoc::Itemized(items.build());
+  return zone_new<toitdoc::Itemized>(items.build());
 }
 
 toitdoc::Item* ToitdocParser::parse_item(int indentation) {
@@ -585,7 +587,7 @@ toitdoc::Item* ToitdocParser::parse_item(int indentation) {
     if (statement != null) statements.add(statement);
     skip_whitespace();
   }
-  return _new toitdoc::Item(statements.build());
+  return zone_new<toitdoc::Item>(statements.build());
 }
 
 toitdoc::Paragraph* ToitdocParser::parse_paragraph(int indentation_override) {
@@ -671,7 +673,7 @@ toitdoc::Paragraph* ToitdocParser::parse_paragraph(int indentation_override) {
 
     // Extract all the text so far, so we can handle the special char.
     if (text_start != index_) {
-      expressions.add(_new toitdoc::Text(make_escaped_symbol(text_start, index_)));
+      expressions.add(zone_new<toitdoc::Text>(make_escaped_symbol(text_start, index_)));
     }
 
     if (c == '\0') break;
@@ -724,24 +726,24 @@ toitdoc::Paragraph* ToitdocParser::parse_paragraph(int indentation_override) {
           buffer += expressions[j]->as_Text()->text().c_str();
         }
         auto combined_symbol = Symbol::synthetic(buffer);
-        expression = _new toitdoc::Text(combined_symbol);
+        expression = zone_new<toitdoc::Text>(combined_symbol);
       }
     }
     combined_expressions[combined_index++] = expression;
   }
 
   if (combined_expressions.is_empty()) return null;
-  return _new toitdoc::Paragraph(combined_expressions);
+  return zone_new<toitdoc::Paragraph>(combined_expressions);
 }
 
 toitdoc::Code* ToitdocParser::parse_code() {
-  return _new toitdoc::Code(parse_delimited('`',
+  return zone_new<toitdoc::Code>(parse_delimited('`',
                                             false,
                                             "Incomplete `code` segment"));
 }
 
 toitdoc::Text* ToitdocParser::parse_string() {
-  return _new toitdoc::Text(parse_delimited('"',
+  return zone_new<toitdoc::Text>(parse_delimited('"',
                                             true,
                                             "Incomplete string"));
 }
@@ -802,7 +804,7 @@ toitdoc::Ref* ToitdocParser::parse_ref() {
     begin++;
     if (look_ahead(-1) == ')') end--;
   }
-  return _new toitdoc::Ref(id, make_symbol(begin, end));
+  return zone_new<toitdoc::Ref>(id, make_symbol(begin, end));
 }
 
 static bool is_legal_link_char(int c) {
@@ -845,7 +847,7 @@ toitdoc::Link* ToitdocParser::parse_link() {
   }
   int text_end = index_;
   auto symbol = make_symbol(begin, text_end);
-  return _new toitdoc::Link(symbol, symbol);
+  return zone_new<toitdoc::Link>(symbol, symbol);
 }
 
 void ToitdocParser::skip_comment(bool should_report_error) {

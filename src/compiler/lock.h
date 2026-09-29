@@ -107,6 +107,7 @@ std::string find_lock_file(const char* source_path,
 std::string find_lock_file_at(const char* dir,
                              Filesystem* fs);
 
+// Returns a caller-owned malloc buffer.
 const char* compute_package_cache_path_from_home(const char* home, Filesystem* fs);
 
 } // namespace toit::compiler

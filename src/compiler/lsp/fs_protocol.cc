@@ -20,7 +20,7 @@ namespace compiler {
 
 const char* LspFsProtocol::sdk_path() {
   connection_->putline("SDK PATH");
-  return connection_->getline();
+  return Zone::current()->own_malloc(connection_->getline());
 }
 
 List<const char*> LspFsProtocol::package_cache_paths() {
@@ -34,7 +34,7 @@ List<const char*> LspFsProtocol::package_cache_paths() {
 
   for (int i = 0; i < count; i++) {
     char* line = connection_->getline();
-    result[i] = line;
+    result[i] = Zone::current()->own_malloc(line);
   }
   return result;
 }
@@ -75,8 +75,9 @@ LspFsProtocol::PathInfo LspFsProtocol::fetch_info_for(const char* path) {
   bool is_directory = strcmp(is_directory_str, "true") == 0;
   free(is_directory_str);
 
-  const char* content_size_str = connection_->getline();
+  char* content_size_str = connection_->getline();
   int size = atoi(content_size_str);
+  free(content_size_str);
   uint8* content = null;
   if (size >= 0) {
     content = unvoid_cast<uint8*>(malloc(size + 1));

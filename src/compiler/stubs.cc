@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "zone.h"
+
 #include "stubs.h"
 
 #include "selector.h"
@@ -79,7 +81,7 @@ void add_stub_methods_and_switch_to_plain_shapes(ir::Program* program) {
           Symbol stub_parameter_name = i == 0
               ? Symbols::this_
               : Symbol::synthetic("<stub-parameter>");
-          stub_parameters[i] = _new ir::Parameter(stub_parameter_name,
+          stub_parameters[i] = zone_new<ir::Parameter>(stub_parameter_name,
                                                   ir::Type::any(),  // The types will be updated below.
                                                   call_shape.is_block(i),
                                                   i,
@@ -91,10 +93,10 @@ void add_stub_methods_and_switch_to_plain_shapes(ir::Program* program) {
         CallBuilder builder(range);
         for (int i = 0; i < source_arity; i++) {
           builder.add_argument(
-            _new ir::ReferenceLocal(stub_parameters[i], 0, range),
+            zone_new<ir::ReferenceLocal>(stub_parameters[i], 0, range),
             call_shape.name_for(i));
         }
-        auto forward_call = builder.call_static(_new ir::ReferenceMethod(method, range));
+        auto forward_call = builder.call_static(zone_new<ir::ReferenceMethod>(method, range));
 
         ASSERT(forward_call->is_CallStatic());
         forward_call->as_CallStatic()->mark_tail_call();
@@ -113,13 +115,13 @@ void add_stub_methods_and_switch_to_plain_shapes(ir::Program* program) {
           stub_parameter->set_has_default_value(target_parameters[i]->has_default_value());
         }
 
-        auto stub = _new ir::AdapterStub(method->name(),
+        auto stub = zone_new<ir::AdapterStub>(method->name(),
                                          method->holder(),
                                          call_shape.to_plain_shape(),
                                          range,
                                          method->outline_range());
         stub->set_parameters(stub_parameters);
-        stub->set_body(_new ir::Return(forward_call, false, range));
+        stub->set_body(zone_new<ir::Return>(forward_call, false, range));
         stub->set_return_type(method->return_type());
         stubs.push_back(stub);
       }
@@ -162,7 +164,7 @@ class IsInterfaceVisitor : public ir::TraversingVisitor {
     //   be distinguished from them.
     int name_len = strlen(klass->name().c_str());
     int fresh_length = 4 + name_len;
-    char* fresh_name = unvoid_cast<char*>(malloc(fresh_length + 1));
+    char* fresh_name = unvoid_cast<char*>(Zone::current()->allocate(fresh_length + 1));
     memcpy(fresh_name, "*is-", 4);
     memcpy(fresh_name + 4, klass->name().c_str(), name_len);
     fresh_name[fresh_length] = '\0';
@@ -185,13 +187,13 @@ class IsInterfaceVisitor : public ir::TraversingVisitor {
 static ir::IsInterfaceOrMixinStub* create_stub(ir::Class* holder,
                                                Selector<CallShape> selector,
                                                ir::Class* interface_or_mixin) {
-  auto stub = _new ir::IsInterfaceOrMixinStub(selector.name(),
+  auto stub = zone_new<ir::IsInterfaceOrMixinStub>(selector.name(),
                                               holder,
                                               selector.shape().to_plain_shape(),
                                               interface_or_mixin,
                                               holder->range(),
                                               holder->range());
-  auto this_parameter = _new ir::Parameter(Symbols::this_,
+  auto this_parameter = zone_new<ir::Parameter>(Symbols::this_,
                                             ir::Type::any(),
                                             false,
                                             0,
@@ -204,7 +206,7 @@ static ir::IsInterfaceOrMixinStub* create_stub(ir::Class* holder,
   stub->set_return_type(ir::Type::any());
   // The body should never get compiled, but this makes it easier to deal
   // with the stub.
-  stub->set_body(_new ir::Return(_new ir::LiteralBoolean(true, stub->range()), false, stub->range()));
+  stub->set_body(zone_new<ir::Return>(zone_new<ir::LiteralBoolean>(true, stub->range()), false, stub->range()));
   return stub;
 }
 

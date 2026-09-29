@@ -2,6 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+#include "../../src/compiler/zone.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -122,6 +124,7 @@ void writer_printf(LspWriter* writer, const char* format, ...) {
 }
 
 int main(int argc, char** argv) {
+  toit::compiler::Zone zone;
 #ifdef TOIT_WINDOWS
   // On Windows, we need to set the stdout to binary mode.
   // Otherwise, any '\n' we print becomes '\r\n'.

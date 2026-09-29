@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "zone.h"
+
 #include <deque>
 #include "ir.h"
 #include "map.h"
@@ -138,7 +140,7 @@ class MixinConstructorVisitor : protected SuperCallVisitor {
     bool is_block, default_value;
     int block_index;
     this_ = node->parameters()[0];
-    next_super_ = _new ir::Parameter(Symbol::synthetic("<next-super>"),
+    next_super_ = zone_new<ir::Parameter>(Symbol::synthetic("<next-super>"),
                                      ir::Type::any(),
                                      is_block=true,
                                      block_index=1,
@@ -159,18 +161,18 @@ class MixinConstructorVisitor : protected SuperCallVisitor {
       for (auto field : fields_) {
         auto range = field->range();
         bool is_final, is_block;
-        auto local = _new ir::Local(field->name(),
+        auto local = zone_new<ir::Local>(field->name(),
                                     is_final=false,
                                     is_block=false,
                                     field->type(),
                                     range);
         field_to_local_[field] = local;
         // TODO(florian): can we avoid the `null` assignment?
-        auto definition = _new ir::AssignmentDefine(local, _new ir::LiteralNull(range), range);
+        auto definition = zone_new<ir::AssignmentDefine>(local, zone_new<ir::LiteralNull>(range), range);
         new_body.add(definition);
       }
       new_body.add(node->body());
-      node->replace_body(_new ir::Sequence(new_body.build(), node->range()));
+      node->replace_body(zone_new<ir::Sequence>(new_body.build(), node->range()));
     }
     return SuperCallVisitor::visit_Method(node);
   }
@@ -187,17 +189,17 @@ class MixinConstructorVisitor : protected SuperCallVisitor {
   /// Replaces the static super call with a call to the block.
   ir::Node* visit_static_super_call(ir::CallStatic* node, const Source::Range& range) override {
     ASSERT(node == null || node->arguments().length() == 1);
-    auto block_ref = _new ir::ReferenceLocal(next_super_, block_depth_, range);
+    auto block_ref = zone_new<ir::ReferenceLocal>(next_super_, block_depth_, range);
     int arity = fields_.length() + 1;
     auto arguments = ListBuilder<ir::Expression*>::allocate(arity);
     // The first argument is 'this'.
-    arguments[0] = _new ir::ReferenceLocal(this_, block_depth_, range);
+    arguments[0] = zone_new<ir::ReferenceLocal>(this_, block_depth_, range);
     for (int i = 0; i < fields_.length(); i++) {
-      arguments[i + 1] = _new ir::ReferenceLocal(field_to_local_.at(fields_[i]), block_depth_, range);
+      arguments[i + 1] = zone_new<ir::ReferenceLocal>(field_to_local_.at(fields_[i]), block_depth_, range);
     }
     bool is_setter;
     auto shape = CallShape(arity, 0, List<Symbol>(), 0, is_setter=false).with_implicit_this();
-    auto block_call = _new ir::CallBlock(block_ref, shape, arguments, range);
+    auto block_call = zone_new<ir::CallBlock>(block_ref, shape, arguments, range);
     has_seen_static_super_ = true;
     return SuperCallVisitor::visit(block_call);
   }
@@ -206,14 +208,14 @@ class MixinConstructorVisitor : protected SuperCallVisitor {
   ir::Node* visit_FieldLoad(ir::FieldLoad* node) override {
     ASSERT(field_to_local_.contains_key(node->field()));
     ASSERT(!has_seen_static_super_);
-    return _new ir::ReferenceLocal(field_to_local_.at(node->field()), block_depth_, node->range());
+    return zone_new<ir::ReferenceLocal>(field_to_local_.at(node->field()), block_depth_, node->range());
   }
 
   /// Field accesses are replaced with local variable accesses.
   ir::Node* visit_FieldStore(ir::FieldStore* node) override {
     ASSERT(field_to_local_.contains_key(node->field()));
     ASSERT(!has_seen_static_super_);
-    auto result = _new ir::AssignmentLocal(field_to_local_.at(node->field()),
+    auto result = zone_new<ir::AssignmentLocal>(field_to_local_.at(node->field()),
                                            block_depth_,
                                            node->value(),
                                            node->range());
@@ -246,7 +248,7 @@ static List<ir::Parameter*> duplicate_parameters(List<ir::Parameter*> parameters
   auto result = ListBuilder<ir::Parameter*>::allocate(parameters.length());
   for (int i = 0; i < parameters.length(); i++) {
     auto parameter = parameters[i];
-    result[i] = _new ir::Parameter(parameter->name(),
+    result[i] = zone_new<ir::Parameter>(parameter->name(),
                                    parameter->type(),
                                    parameter->is_block(),
                                    parameter->index(),
@@ -270,7 +272,7 @@ static Map<ir::Field*, ir::Field*> apply_mixins(ir::Class* klass) {
   Map<ir::Field*, ir::Field*> field_map;  // From mixin-field to class-field.
   for (auto mixin : klass->mixins()) {
     for (auto field : mixin->fields()) {
-      auto new_field = _new ir::Field(field->name(),
+      auto new_field = zone_new<ir::Field>(field->name(),
                                       klass,
                                       field->is_final(),
                                       field->range(),
@@ -321,36 +323,36 @@ static Map<ir::Field*, ir::Field*> apply_mixins(ir::Class* klass) {
         auto probe = field_map.find(field_stub->field());
         ASSERT(probe != field_map.end());
         auto new_field = probe->second;
-        ir::FieldStub* new_field_stub = _new ir::FieldStub(new_field,
+        ir::FieldStub* new_field_stub = zone_new<ir::FieldStub>(new_field,
                                                            klass,
                                                            field_stub->is_getter(),
                                                            range,
                                                            method->outline_range());
         new_field_stub->set_plain_shape(shape);
-        auto this_ref = _new ir::ReferenceLocal(stub_parameters[0], 0, range);
+        auto this_ref = zone_new<ir::ReferenceLocal>(stub_parameters[0], 0, range);
         if (field_stub->is_getter()) {
           ASSERT(stub_parameters.length() == 1);
-          auto load = _new ir::FieldLoad(this_ref, new_field, range);
-          auto ret = _new ir::Return(load, false, range);
-          body = _new ir::Sequence(ListBuilder<ir::Expression*>::build(ret), range);
+          auto load = zone_new<ir::FieldLoad>(this_ref, new_field, range);
+          auto ret = zone_new<ir::Return>(load, false, range);
+          body = zone_new<ir::Sequence>(ListBuilder<ir::Expression*>::build(ret), range);
         } else {
           ASSERT(stub_parameters.length() == 2);
-          auto store = _new ir::FieldStore(this_ref,
+          auto store = zone_new<ir::FieldStore>(this_ref,
                                            new_field,
-                                           _new ir::ReferenceLocal(stub_parameters[1], 0, range),
+                                           zone_new<ir::ReferenceLocal>(stub_parameters[1], 0, range),
                                            range);
-          auto ret = _new ir::Return(store, false, range);
+          auto ret = zone_new<ir::Return>(store, false, range);
           if (!new_field->type().is_class()) {
-            body = _new ir::Sequence(ListBuilder<ir::Expression*>::build(ret), range);
+            body = zone_new<ir::Sequence>(ListBuilder<ir::Expression*>::build(ret), range);
           } else {
             auto type = new_field->type();
             new_field_stub->set_checked_type(type);
-            auto check = _new ir::Typecheck(ir::Typecheck::PARAMETER_AS_CHECK,
-                                            _new ir::ReferenceLocal(stub_parameters[1], 0, range),
+            auto check = zone_new<ir::Typecheck>(ir::Typecheck::PARAMETER_AS_CHECK,
+                                            zone_new<ir::ReferenceLocal>(stub_parameters[1], 0, range),
                                             type,
                                             type.klass()->name(),
                                             range);
-            body = _new ir::Sequence(ListBuilder<ir::Expression*>::build(check, ret), range);
+            body = zone_new<ir::Sequence>(ListBuilder<ir::Expression*>::build(check, ret), range);
           }
         }
         stub = new_field_stub;
@@ -358,29 +360,29 @@ static Map<ir::Field*, ir::Field*> apply_mixins(ir::Class* klass) {
         // We copy over the method (used to determine if a class is an interface or mixin).
         // The body will not be compiled, so it's not important what we put in there.
         auto is_stub = method->as_IsInterfaceOrMixinStub();
-        stub = _new ir::IsInterfaceOrMixinStub(method_name,
+        stub = zone_new<ir::IsInterfaceOrMixinStub>(method_name,
                                                klass,
                                                shape,
                                                is_stub->interface_or_mixin(),
                                                method->range(),
                                                method->outline_range());
 
-        body = _new ir::Return(_new ir::LiteralBoolean(true, range), false, range);
+        body = zone_new<ir::Return>(zone_new<ir::LiteralBoolean>(true, range), false, range);
       } else {
         auto forward_arguments = ListBuilder<ir::Expression*>::allocate(arity);
         for (int i = 0; i < arity; i++) {
           auto stub_parameter = stub_parameters[i];
-          forward_arguments[i] = _new ir::ReferenceLocal(stub_parameter, 0, range);
+          forward_arguments[i] = zone_new<ir::ReferenceLocal>(stub_parameter, 0, range);
         }
 
-        auto forward_call = _new ir::CallStatic(_new ir::ReferenceMethod(method, range),
+        auto forward_call = zone_new<ir::CallStatic>(zone_new<ir::ReferenceMethod>(method, range),
                                                 shape.to_equivalent_call_shape(),
                                                 forward_arguments,
                                                 range);
         forward_call->mark_tail_call();
 
-        stub = _new ir::MixinStub(method_name, klass, shape, method->range(), method->outline_range());
-        body = _new ir::Return(forward_call, false, range);
+        stub = zone_new<ir::MixinStub>(method_name, klass, shape, method->range(), method->outline_range());
+        body = zone_new<ir::Return>(forward_call, false, range);
       }
       stub->set_parameters(stub_parameters);
       stub->set_body(body);
@@ -452,7 +454,7 @@ class ConstructorVisitor : protected SuperCallVisitor {
     ASSERT(outer_this_param_ != null);
     ASSERT(original_super_expression == null || original_super_expression->arguments().length() >= 1);
     ir::Expression* outermost_this_ref = original_super_expression == null
-        ? _new ir::ReferenceLocal(outer_this_param_, 0, range)
+        ? zone_new<ir::ReferenceLocal>(outer_this_param_, 0, range)
         : original_super_expression->as_Call()->arguments()[0];
 
     // Keep track of how many block calls we do to reach the original expression.
@@ -471,7 +473,7 @@ class ConstructorVisitor : protected SuperCallVisitor {
     ir::Expression* super_expression = original_super_expression;
     for (int i = 0; i < mixins_.length(); i++) {
       int parameter_index;
-      auto this_param = _new ir::Parameter(Symbols::this_,
+      auto this_param = zone_new<ir::Parameter>(Symbols::this_,
                                           ir::Type::any(),
                                           is_block=false,
                                           // Parameter index 0 is reserved for the implicit block parameter.
@@ -501,7 +503,7 @@ class ConstructorVisitor : protected SuperCallVisitor {
         auto field = fields[j];
         auto range = field->range();
         auto class_field = field_map_.at(field);
-        auto parameter = _new ir::Parameter(field->name(),
+        auto parameter = zone_new<ir::Parameter>(field->name(),
                                             ir::Type::any(),
                                             is_block=false,
                                             parameter_index++,
@@ -510,9 +512,9 @@ class ConstructorVisitor : protected SuperCallVisitor {
                                             range);
         parameters[j + 1] = parameter;
         // The body has a field-store for each parameter.
-        body[j] = _new ir::FieldStore(_new ir::ReferenceLocal(this_param, 0, range),
+        body[j] = zone_new<ir::FieldStore>(zone_new<ir::ReferenceLocal>(this_param, 0, range),
                                       class_field,
-                                      _new ir::ReferenceLocal(parameter, 0, range),
+                                      zone_new<ir::ReferenceLocal>(parameter, 0, range),
                                       range);
       }
 
@@ -521,9 +523,9 @@ class ConstructorVisitor : protected SuperCallVisitor {
 
       // Take these expressions and pass them to the next mixin constructor (wrapped
       // in a code/block object).
-      auto body_sequence = _new ir::Sequence(body, range);
+      auto body_sequence = zone_new<ir::Sequence>(body, range);
       auto name = Symbol::synthetic("<mixin-super>");
-      auto block_code = _new ir::Code(name,
+      auto block_code = zone_new<ir::Code>(name,
                                       parameters,
                                       body_sequence,
                                       is_block=true,
@@ -532,23 +534,23 @@ class ConstructorVisitor : protected SuperCallVisitor {
       original_args_block_depth++;
 
       // Blocks must be inside locals so that they can be referenced with `ReferenceBlock`.
-      auto block = _new ir::Block(name, range);
-      auto block_assig = _new ir::AssignmentDefine(block, block_code, range);
+      auto block = zone_new<ir::Block>(name, range);
+      auto block_assig = zone_new<ir::AssignmentDefine>(block, block_code, range);
       ASSERT(mixin->unnamed_constructors().length() == 1);
       auto constructor = mixin->unnamed_constructors()[0];
-      auto constructor_ref = _new ir::ReferenceMethod(constructor, range);
+      auto constructor_ref = zone_new<ir::ReferenceMethod>(constructor, range);
       auto arguments = ListBuilder<ir::Expression*>::allocate(2);
       auto outer_this = i == 0
           ? outermost_this_ref
-          : _new ir::ReferenceLocal(this_params[i - 1], 0, range);
+          : zone_new<ir::ReferenceLocal>(this_params[i - 1], 0, range);
       arguments[0] = outer_this;
-      arguments[1] = _new ir::ReferenceBlock(block, 0, range);
-      auto call = _new ir::CallStatic(constructor_ref,
+      arguments[1] = zone_new<ir::ReferenceBlock>(block, 0, range);
+      auto call = zone_new<ir::CallStatic>(constructor_ref,
                                       constructor->plain_shape().to_equivalent_call_shape(),
                                       arguments,
                                       range);
       auto expressions = ListBuilder<ir::Expression*>::build(block_assig, call);
-      super_expression = _new ir::Sequence(expressions, range);
+      super_expression = zone_new<ir::Sequence>(expressions, range);
     }
 
     // Adjust the arguments of the original call.
@@ -559,7 +561,7 @@ class ConstructorVisitor : protected SuperCallVisitor {
         auto arg = original_super_expression->arguments()[i];
         if (i == 0) {
           // Replace the 'this' with the one that is given as argument to the block.
-          arguments[0] = _new ir::ReferenceLocal(this_params.back(), 0, arg->range());
+          arguments[0] = zone_new<ir::ReferenceLocal>(this_params.back(), 0, arg->range());
           continue;
         }
         if (arg->is_Literal()) continue;
@@ -570,29 +572,29 @@ class ConstructorVisitor : protected SuperCallVisitor {
           ASSERT(ref->block_depth() == 0);
           if (arg->is_ReferenceBlock()) {
             auto block_ref = ref->as_ReferenceBlock();
-            arguments[i] = _new ir::ReferenceBlock(block_ref->target(),
+            arguments[i] = zone_new<ir::ReferenceBlock>(block_ref->target(),
                                                    original_args_block_depth,
                                                    arg->range());
           } else {
-            arguments[i] = _new ir::ReferenceLocal(ref->target(),
+            arguments[i] = zone_new<ir::ReferenceLocal>(ref->target(),
                                                    original_args_block_depth,
                                                    ref->range());
           }
           continue;
         }
         // Hoist the argument.
-        auto hoisted = _new ir::Local(Symbol::synthetic("<hoisted-super-arg>"),
+        auto hoisted = zone_new<ir::Local>(Symbol::synthetic("<hoisted-super-arg>"),
                                       is_final=true,
                                       is_block=arg->is_block(),
                                       ir::Type::any(),
                                       arg->range());
-        auto hoisted_def = _new ir::AssignmentDefine(hoisted, arg, arg->range());
+        auto hoisted_def = zone_new<ir::AssignmentDefine>(hoisted, arg, arg->range());
         hoisted_args.add(hoisted_def);
-        arguments[i] = _new ir::ReferenceLocal(hoisted, original_args_block_depth, arg->range());
+        arguments[i] = zone_new<ir::ReferenceLocal>(hoisted, original_args_block_depth, arg->range());
       }
       if (!hoisted_args.is_empty()) {
         hoisted_args.add(super_expression);
-        super_expression = _new ir::Sequence(hoisted_args.build(), range);
+        super_expression = zone_new<ir::Sequence>(hoisted_args.build(), range);
       }
     }
     return super_expression;

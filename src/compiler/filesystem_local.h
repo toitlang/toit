@@ -32,6 +32,7 @@ class FilesystemLocal : public Filesystem {
     delete[] sdk_path_;
 #endif
     free(package_cache_paths_buffer_);
+    for (auto buffer : content_buffers_) free(buffer);
   }
 
   void initialize(Diagnostics* diagnostics) {}
@@ -54,7 +55,9 @@ class FilesystemLocal : public Filesystem {
   /// Returns a malloced data structure that should be freed
   ///   by the caller with `delete []`.
   static char* get_executable_path();
+  // The single-path overload returns a caller-owned malloc buffer.
   static char* to_local_path(const char* path);
+  // The list and its copied paths belong to the current zone.
   static List<const char*> to_local_path(List<const char*> paths);
 
  protected:
@@ -68,6 +71,7 @@ class FilesystemLocal : public Filesystem {
                               const std::function<bool (const char*)>& callback);
 
  private:
+  std::vector<uint8*> content_buffers_;
   const char* sdk_path_ = null;
   char* package_cache_paths_buffer_ = null;
   List<const char*> package_cache_paths_;

@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "../zone.h"
+
 #include "virtual_call.h"
 #include "typecheck.h"
 #include "utils.h"
@@ -113,13 +115,13 @@ Expression* optimize_virtual_call(CallVirtual* node,
     auto field_stub = direct_method->as_FieldStub();
     auto field = field_stub->field();
     bool is_getter = field_stub->is_getter();
-    if (is_getter) return _new FieldLoad(receiver, field, node->range());
+    if (is_getter) return zone_new<FieldLoad>(receiver, field, node->range());
     // If the field is final don't inline the stub, but still transform it
     // into a static call by falling through.
     if (!field->is_final()) {
       Expression* value = node->arguments()[0];
       if (field_stub->checked_type().is_valid()) {
-        value = _new Typecheck(Typecheck::FIELD_AS_CHECK,
+        value = zone_new<Typecheck>(Typecheck::FIELD_AS_CHECK,
                                value,
                                field_stub->checked_type(),
                                field_stub->checked_type().klass()->name(),
@@ -129,7 +131,7 @@ Expression* optimize_virtual_call(CallVirtual* node,
                                    method,
                                    literal_types);
       }
-      return _new FieldStore(receiver, field, value, node->range());
+      return zone_new<FieldStore>(receiver, field, value, node->range());
     }
   }
 
@@ -151,7 +153,7 @@ Expression* optimize_virtual_call(CallVirtual* node,
   ListBuilder<Expression*> new_arguments;
   new_arguments.add(receiver);
   new_arguments.add(node->arguments());
-  auto result = _new CallStatic(_new ReferenceMethod(direct_method, node->range()),
+  auto result = zone_new<CallStatic>(zone_new<ReferenceMethod>(direct_method, node->range()),
                                 new_arguments.build(),
                                 node->shape(),
                                 node->range());

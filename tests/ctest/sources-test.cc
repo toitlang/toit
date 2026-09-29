@@ -2,6 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+#include "../../src/compiler/zone.h"
+
 #include <cstring>
 
 #include "../../src/top.h"
@@ -114,6 +116,7 @@ static void test_multiple_sources() {
 }
 
 int main(int argc, char** argv) {
+  toit::compiler::Zone zone;
   AllowThrowingNew allow;
   test_lf();
   test_cr();

@@ -71,7 +71,12 @@ class TypeDatabase {
   std::unordered_map<int, TypeSet> output_;
   std::unordered_map<int, TypeSet> returns_;
 
-  static std::unordered_map<Program*, TypeDatabase*> cache_;
+  // Compiler callers delete databases after use. The optional type-checking
+  // interpreter retains them in this process-lifetime cache instead.
+  struct Cache : std::unordered_map<Program*, TypeDatabase*> {
+    ~Cache();
+  };
+  static Cache cache_;
 
   TypeDatabase(Program* program, int words_per_type);
 

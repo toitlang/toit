@@ -40,7 +40,7 @@ char* FilesystemLocal::get_executable_path() {
 List<const char*> FilesystemLocal::to_local_path(List<const char*> paths) {
   auto result = ListBuilder<const char*>::allocate(paths.length());
   for (int i = 0; i < paths.length(); i++) {
-    result[i] = FilesystemLocal::to_local_path(paths[i]);
+    result[i] = Zone::current()->own_malloc(FilesystemLocal::to_local_path(paths[i]));
   }
   return result;
 }
@@ -163,6 +163,7 @@ const uint8* FilesystemLocal::do_read_content(const char* path, int* size) {
   }
   buffer[byte_count] = '\0';
   *size = byte_count;
+  content_buffers_.push_back(buffer);
   return buffer;
 }
 

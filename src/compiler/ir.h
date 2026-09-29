@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include "zone.h"
+
 #include "list.h"
 #include "token.h"
 #include "sources.h"
@@ -1104,23 +1106,23 @@ class Builtin : public Node {
 
   static Builtin* resolve(Symbol id) {
     if (id == Symbols::__throw__) {
-      return _new Builtin(THROW);
+      return zone_new<Builtin>(THROW);
     } else if (id == Symbols::__exit__) {
-      return _new Builtin(EXIT);
+      return zone_new<Builtin>(EXIT);
     } else if (id == Symbols::__invoke_lambda__) {
-      return _new Builtin(INVOKE_LAMBDA);
+      return zone_new<Builtin>(INVOKE_LAMBDA);
     } else if (id == Symbols::__yield__) {
-      return _new Builtin(YIELD);
+      return zone_new<Builtin>(YIELD);
     } else if (id == Symbols::__reset__) {
-      return _new Builtin(RESET);
+      return zone_new<Builtin>(RESET);
     } else if (id == Symbols::__deep_sleep__) {
-      return _new Builtin(DEEP_SLEEP);
+      return zone_new<Builtin>(DEEP_SLEEP);
     } else if (id == Symbols::__store_global_with_id__) {
-      return _new Builtin(STORE_GLOBAL);
+      return zone_new<Builtin>(STORE_GLOBAL);
     } else if (id == Symbols::__load_global_with_id__) {
-      return _new Builtin(LOAD_GLOBAL);
+      return zone_new<Builtin>(LOAD_GLOBAL);
     } else if (id == Symbols::__invoke_initializer__) {
-      return _new Builtin(INVOKE_INITIALIZER);
+      return zone_new<Builtin>(INVOKE_INITIALIZER);
     }
     // The identical builtin is recognized by the static call resolver
     // and the global-id builtin isn't accessible from userspace.

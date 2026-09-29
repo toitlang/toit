@@ -847,7 +847,8 @@ static LockFileContent parse_lock_file(const std::string& lock_file_path,
         } else if (str[0] != '^') {
           diagnostics->report_error(range, "SDK constraint must be of form '^version': '%s'", str.c_str());
         } else {
-          semver_t _;
+          semver_t _ = {};
+          Defer free_version { [&] { semver_free(&_); } };
           int semver_status = semver_parse(&str.c_str()[1], &_);
           if (semver_status != 0) {
             diagnostics->report_error(range, "Invalid SDK constraint: '%s'", str.c_str());
@@ -1054,7 +1055,7 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
     path_builder.join(LOCAL_PACKAGE_DIR);
     path_builder.canonicalize();
 
-    builder.add(path_builder.strdup());
+    builder.add(Zone::current()->strdup(path_builder.c_str()));
 
     // Add the other package caches as fallbacks.
     builder.add(fs->package_cache_paths());
