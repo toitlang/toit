@@ -8,9 +8,11 @@ permissions and flashing procedure.
   Linux with an adapter index. Names starting with `vhci-` open the ESP32
   controller, `hci-` the Linux adapter, `service-` are applications talking to
   a provider over RPC, `reference-*` and `nimble-*` use the NimBLE backend.
-- Top-level files are scenario drivers built from those fixtures. Many exist in
-  `mixed-*` and `bounded-*` variants covering role, security and address
-  combinations; they should be consolidated into parameterized scripts.
+- Top-level files are the drivers of the maintained checks: the `*.sh`
+  scripts, `nightly.sh` which runs them all, `bench/` for measurements, and
+  `campaigns/` and `pairing-retry/` for the documented campaigns. One-off
+  campaign drivers that no check runs any more were removed on 2026-09-30;
+  they are in the git history.
 - `adapter-policy.toit` with `tools/ble-hci-supervisor` reserves a Linux
   adapter by MAC and restores its power state.
 - `*-check.awk` scripts evaluate captured serial logs.
