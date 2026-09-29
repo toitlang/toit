@@ -5,11 +5,12 @@
 import ..central as central
 import ..connection as connection
 import ..gatt-server as gatt
+import ..transport as transport
 import .api as api
 
 /** Tests whether $index names one of the link operations handled here. */
 is-link-operation index/int -> bool:
-  return api.LINK-INFO <= index <= api.WAIT-DISCONNECTED
+  return api.LINK-INFO <= index <= api.WAIT-DISCONNECTED or index == api.SET-LINK-TX-POWER
 
 /**
 Runs a link operation for a session that owns $link on $host.
@@ -22,15 +23,23 @@ Shared by central connections and peripheral sessions. LINK-INFO returns
   HCI reason once the link has ended.
 */
 link-operation host/central.Central link/central.Link index/int arguments/List
-    --server/gatt.Server?=null -> any:
+    --server/gatt.Server?=null --tx-power-control/transport.TxPowerControl?=null -> any:
   // RPC carries strings; controller errors are objects.
   result := null
-  error := catch: result = link-operation_ host link index arguments server
+  error := catch: result = link-operation_ host link index arguments server tx-power-control
   if error is string: throw error
   if error: throw error.stringify
   return result
 
-link-operation_ host/central.Central link/central.Link index/int arguments/List server/gatt.Server? -> any:
+link-operation_ host/central.Central link/central.Link index/int arguments/List server/gatt.Server?
+    tx-power-control/transport.TxPowerControl? -> any:
+  if index == api.SET-LINK-TX-POWER:
+    if arguments.size != 1 or arguments[0] is not int: throw "INVALID_ARGUMENT"
+    if not tx-power-control: throw "BLE_UNSUPPORTED"
+    if not link.connected: throw (link.error or "HCI_LINK_DISCONNECTED")
+    level := tx-power-control.set-connection-tx-power link.info.handle arguments[0]
+    if level == null: throw "HCI_LINK_DISCONNECTED"
+    return level
   if index == api.LINK-INFO:
     if not arguments.is-empty: throw "INVALID_ARGUMENT"
     phy := link.phy
@@ -63,6 +72,11 @@ link-operation_ host/central.Central link/central.Link index/int arguments/List 
     return host.read-rssi link
   if index == api.READ-TX-POWER:
     if arguments.size != 1 or arguments[0] is not bool: throw "INVALID_ARGUMENT"
+    // Vendor control knows per-link changes that some controllers' HCI read
+    // misses (the original ESP32).
+    if not arguments[0] and tx-power-control and link.connected:
+      level := tx-power-control.connection-tx-power link.info.handle
+      if level != null: return level
     return host.read-tx-power link --maximum=arguments[0]
   if index == api.UPDATE-PARAMETERS:
     if arguments.size != 4: throw "INVALID_ARGUMENT"

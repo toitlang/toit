@@ -326,6 +326,12 @@ class Connection extends services.ServiceResourceProxy with GattClient:
   /** Reads this link's current (or $maximum) transmit power in dBm. */
   tx-power --maximum/bool=false -> int: return connection_.call_ api.READ-TX-POWER [handle_, maximum]
 
+  /**
+  Sets this link's transmit power through the controller's vendor control
+    and returns the level used, in dBm; throws BLE_UNSUPPORTED without it.
+  */
+  set-tx-power dbm/int -> int: return connection_.call_ api.SET-LINK-TX-POWER [handle_, dbm]
+
   /** Asks for connection parameters (central role only); returns [interval, latency, timeout] applied. */
   update-parameters --interval-min/int --interval-max/int --latency/int --supervision-timeout/int -> List:
     return connection_.call_ api.UPDATE-PARAMETERS [handle_, interval-min, interval-max, latency, supervision-timeout]
@@ -824,6 +830,12 @@ class Session extends services.ServiceResourceProxy with GattClient:
 
   /** Reads this link's current (or $maximum) transmit power in dBm. */
   tx-power --maximum/bool=false -> int: return connection_.call_ api.READ-TX-POWER [handle_, maximum]
+
+  /**
+  Sets this link's transmit power through the controller's vendor control
+    and returns the level used, in dBm; throws BLE_UNSUPPORTED without it.
+  */
+  set-tx-power dbm/int -> int: return connection_.call_ api.SET-LINK-TX-POWER [handle_, dbm]
 
   /** Asks for connection parameters (central role only); returns [interval, latency, timeout] applied. */
   update-parameters --interval-min/int --interval-max/int --latency/int --supervision-timeout/int -> List:

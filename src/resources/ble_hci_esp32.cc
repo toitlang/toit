@@ -305,12 +305,14 @@ static const int8 TX_POWER_LEVELS[] = {-24, -21, -18, -15, -12, -9, -6, -3, 0, 3
 static const int TX_POWER_LEVEL_COUNT = sizeof(TX_POWER_LEVELS) / sizeof(TX_POWER_LEVELS[0]);
 
 // Action 0 reads the advertising power, 1 sets advertising, scanning and
-// default power to the level closest to dbm, 2 only rounds dbm. Reading and
-// setting need an enabled controller and return null otherwise; the vendor
-// API is global, so no transport resource is involved.
+// default power to the level closest to dbm, 2 only rounds dbm, 3 sets the
+// power of the connection with the HCI handle, 4 reads it (ESP32-S3 only).
+// Reading and setting need an enabled controller and return null otherwise;
+// the vendor API is global, so no transport resource is involved.
 PRIMITIVE(tx_power) {
-  ARGS(int, action, int, dbm);
-  if (action < 0 || action > 2) FAIL(INVALID_ARGUMENT);
+  ARGS(int, action, int, dbm, int, handle);
+  if (action < 0 || action > 4) FAIL(INVALID_ARGUMENT);
+  if (action >= 3 && (handle < 0 || handle > 0x0eff)) FAIL(OUT_OF_RANGE);
   int best = 0;
   for (int i = 1; i < TX_POWER_LEVEL_COUNT; i++) {
     int distance = TX_POWER_LEVELS[i] - dbm;
@@ -321,6 +323,24 @@ PRIMITIVE(tx_power) {
   }
   if (action == 2) return Smi::from(TX_POWER_LEVELS[best]);
   if (esp_bt_controller_get_status() != ESP_BT_CONTROLLER_STATUS_ENABLED) return process->null_object();
+  if (action >= 3) {
+#if CONFIG_IDF_TARGET_ESP32
+    // The original ESP32 controller accepts per-connection levels
+    // (ESP_BLE_PWR_TYPE_CONN_HDLx) but keeps transmitting a live connection
+    // at the default level, as measured at the peer; do not pretend otherwise.
+    FAIL(UNIMPLEMENTED);
+#else
+    if (action == 4) {
+      int index = static_cast<int>(esp_ble_tx_power_get_enhanced(ESP_BLE_ENHANCED_PWR_TYPE_CONN, handle));
+      if (index < 0 || index >= TX_POWER_LEVEL_COUNT) FAIL(ERROR);
+      return Smi::from(TX_POWER_LEVELS[index]);
+    }
+    auto level = static_cast<esp_power_level_t>(best);
+    esp_err_t error = esp_ble_tx_power_set_enhanced(ESP_BLE_ENHANCED_PWR_TYPE_CONN, handle, level);
+    if (error != ESP_OK) return Primitive::os_error(error, process);
+    return Smi::from(TX_POWER_LEVELS[best]);
+#endif
+  }
   if (action == 0) {
     int index = static_cast<int>(esp_ble_tx_power_get(ESP_BLE_PWR_TYPE_ADV));
     if (index < 0 || index >= TX_POWER_LEVEL_COUNT) FAIL(ERROR);

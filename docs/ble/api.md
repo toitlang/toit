@@ -173,6 +173,7 @@ while true:
 | `request-security` | asks for a level and returns the one reached: as peripheral a Security Request makes the central pair (the provider's pairing policy applies); as central the link paired at `connect --security` |
 | `rssi` | the controller's RSSI for this link, in dBm |
 | `tx-power` | the controller's current transmit power on this link, in dBm |
+| `set-tx-power` | this link's transmit power (ESP32-S3; verified at the peer as a 21 dB RSSI drop for 9 to -12 dBm). The original ESP32 controller accepts a per-connection level but keeps transmitting at the default, so it throws `BLE_UNSUPPORTED` there |
 | `disconnect` | ends the link and waits until it has ended |
 | `wait-closed` | waits for the end and returns the `DisconnectReason` |
 | `is-closed` | whether the link ended |
@@ -204,5 +205,3 @@ that ended under an operation makes it throw; `wait-closed` says why.
 
 - **Name and place.** `ble.experimental.next` marks it as a candidate. If it
   replaces the `ble` package API, it moves to `import ble`.
-- **Per-connection transmit power.** The ESP32 vendor API can set it per
-  connection handle; the API sets the default for new connections only.

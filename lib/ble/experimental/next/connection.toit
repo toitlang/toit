@@ -173,6 +173,14 @@ class Connection:
   tx-power -> int: return backend_.tx-power
 
   /**
+  Sets this link's transmit power and returns the level used, in dBm (the
+    supported level closest to $dbm); other links and advertising keep
+    theirs ($Adapter.set-tx-power sets those). Throws BLE_UNSUPPORTED where
+    the controller has no transmit power control ($Adapter.supports-tx-power-control).
+  */
+  set-tx-power dbm/int -> int: return backend_.set-tx-power dbm
+
+  /**
   Discovers the peer's primary services, all or those in $uuids.
 
   In both roles: as a peripheral, this is the connected central's database

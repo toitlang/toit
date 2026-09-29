@@ -118,7 +118,12 @@ subscribes, has one write refused with an application ATT error, asks for
 new parameters and disconnects (`NEXT_CENTRAL COMPLETE`). The board prints
 the connect and disconnect events, the link (PHY, MTU, RSSI, transmit
 power at the 9 dBm it set, parameters, data length) and the refused write.
-Pass `2` to request the 2M PHY explicitly.
+Pass `2` to request the 2M PHY explicitly. The example also sets its link to
+6 dBm: on the ESP32-S3 the link then reads 6 dBm (a -12 dBm setting showed
+as a 22 dB lower RSSI at the dongle); the original ESP32 refuses, because its
+controller keeps transmitting a live connection at the default level whatever
+per-connection level its vendor API accepts (measured at the dongle, with
+every connection slot set).
 
 ## GATT client as a peripheral
 

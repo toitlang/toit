@@ -383,6 +383,7 @@ class Session extends rpc.Session:
     if link-operations.is-link-operation index:
       if not link_: throw "GATT_NOT_CONNECTED"
       return link-operations.link-operation host_ link_ index arguments --server=server_
+          --tx-power-control=provider_.tx-power-control_
     if operations.is-client-operation index:
       // A GATT client on the central's database, sharing the bearer.
       if not server_: throw "GATT_NOT_CONNECTED"

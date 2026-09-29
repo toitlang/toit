@@ -121,6 +121,7 @@ abstract class Provider extends scanning-provider.Provider implements shared.Fac
     return ConnectionSession this client address.copy type timeout mtu
 
 class ConnectionSession extends rpc.Session:
+  provider_/Provider
   pool_/shared.Host? := null
   attempts_/retry.Attempts? := null
   controller_/hci.Controller? := null
@@ -136,7 +137,8 @@ class ConnectionSession extends rpc.Session:
   cleanup-error_ := null
   operations_/operations.ClientOperations? := null
 
-  constructor provider/Provider client/int address/ByteArray type/int timeout/int mtu/int:
+  constructor .provider_ client/int address/ByteArray type/int timeout/int mtu/int:
+    provider := provider_
     super provider client --value-limit=512
     try:
       pool_ = provider.reserve-pool_
@@ -263,6 +265,7 @@ class ConnectionSession extends rpc.Session:
     ready_.get
     if link-operations.is-link-operation index:
       return link-operations.link-operation host_ link_ index arguments
+          --tx-power-control=provider_.tx-power-control_
     result := null
     error := catch: result = operation_ index arguments
     if error is att.AttributeError: return [false, error.request, error.handle, error.code]

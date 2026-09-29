@@ -209,5 +209,5 @@ class QueueDiagnostics:
     if code == 3: return "HCI_QUEUE_OVERFLOW"
     return "HCI_UNKNOWN_QUEUE_FAULT"
 
-tx-power_ action/int dbm/int -> int?:
+tx-power_ action/int dbm/int handle/int -> int?:
   #primitive.ble_hci.tx_power

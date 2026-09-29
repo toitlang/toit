@@ -23,6 +23,21 @@ interface TxPowerControl:
   /** Returns the supported level closest to $dbm without changing anything. */
   closest-tx-power dbm/int -> int
 
+  /**
+  Sets the transmit power of the connection with the HCI $handle, until it
+    ends; others keep theirs.
+
+  Uses the supported level closest to $dbm and returns it, or returns null
+    without effect while the controller is off.
+  */
+  set-connection-tx-power handle/int dbm/int -> int?
+
+  /**
+  Returns the transmit power of the connection with the HCI $handle in dBm,
+    as the vendor control knows it, or null while the controller is off.
+  */
+  connection-tx-power handle/int -> int?
+
 /** A transport of complete HCI packets, including their packet-type byte. */
 interface Transport:
   /** Waits for and returns one owned packet. Throws when closed or failed. */
