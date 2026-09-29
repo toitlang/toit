@@ -208,3 +208,6 @@ class QueueDiagnostics:
     if code == 2: return "HCI_OVERSIZED_PACKET"
     if code == 3: return "HCI_QUEUE_OVERFLOW"
     return "HCI_UNKNOWN_QUEUE_FAULT"
+
+tx-power_ action/int dbm/int -> int?:
+  #primitive.ble_hci.tx_power

@@ -13,6 +13,7 @@ import ..advertising-updates as advertising-updates
 import ..security-owner show Owner
 import ..transport as transport
 import .api as api
+import .link-operations as link-operations
 import .provider as rpc
 import .central-provider as central-provider
 import .shared-host as shared
@@ -301,6 +302,9 @@ class Session extends rpc.Session:
       check-serving
       if arguments.size != 2: throw "INVALID_ARGUMENT"
       return advertising-updates_.update arguments[0] arguments[1]
+    if link-operations.is-link-operation index:
+      if not link_: throw "GATT_NOT_CONNECTED"
+      return link-operations.link-operation host_ link_ index arguments
     if index == api.SECURITY:
       if not arguments.is-empty: throw "INVALID_ARGUMENT"
       if not link_: throw "GATT_NOT_CONNECTED"
@@ -383,6 +387,7 @@ class Session extends rpc.Session:
       transport_ = provider_.open-transport
       controller_ = hci.Controller transport_
       info := hci.initialize controller_ --receive-acl-packets=provider_.receive-acl-packets
+      provider_.controller-ready transport_ info
       host_ = provider_.create-host controller_ info (max 65 database_.mtu-limit)
       accept_ info
     serve_

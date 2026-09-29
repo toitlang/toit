@@ -11,6 +11,7 @@ import ..transport as transport
 import ..pairing-attempts as retry
 import ..security-owner show Owner
 import .api as api
+import .link-operations as link-operations
 import .provider as rpc
 import .scanning-provider as scanning-provider
 import .shared-host as shared
@@ -155,6 +156,7 @@ class ConnectionSession extends rpc.Session:
             transport_ = provider.open-transport
             controller_ = hci.Controller transport_
             info := hci.initialize controller_ --receive-acl-packets=provider.receive-acl-packets
+            provider.controller-ready transport_ info
             host_ = provider.create-central-host controller_ info (max 65 mtu)
             connect_ provider info address type timeout mtu
           link_.wait-disconnected
@@ -249,6 +251,8 @@ class ConnectionSession extends rpc.Session:
       if not arguments.is-empty: throw "INVALID_ARGUMENT"
       return ready_.get
     ready_.get
+    if link-operations.is-link-operation index:
+      return link-operations.link-operation host_ link_ index arguments
     result := null
     error := catch: result = operation_ index arguments
     if error is att.AttributeError: return [false, error.request, error.handle, error.code]

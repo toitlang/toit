@@ -190,6 +190,34 @@ class Phy:
 
   constructor .handle .tx .rx:
 
+/**
+Encodes LE Set PHY with preference masks (Vol 4 Part E, 7.8.49).
+
+Bit 0 is 1M, bit 1 is 2M and bit 2 is Coded in both $tx and $rx; each needs
+  at least one bit. Coded PHY options are left to the controller.
+*/
+phy-parameters handle/int --tx/int --rx/int -> ByteArray:
+  if not 0 <= handle <= 0x0eff or not 1 <= tx <= 7 or not 1 <= rx <= 7: throw "INVALID_ARGUMENT"
+  result := ByteArray 7
+  io.LITTLE-ENDIAN.put-uint16 result 0 handle
+  result[3] = tx
+  result[4] = rx
+  return result
+
+/**
+Decodes a failed LE PHY Update Complete as [handle, status], or null.
+
+$decode-phy-update returns null for these; a host-initiated request needs
+  the status to finish.
+*/
+decode-phy-update-failure packet/ByteArray -> List?:
+  hci.validate-packet packet
+  if packet[0] != 4 or packet[1] != 0x3e or packet.size != 9 or packet[3] != 0x0c: return null
+  if packet[4] == 0: return null
+  handle := io.LITTLE-ENDIAN.uint16 packet 5
+  if handle > 0x0eff: throw "HCI_MALFORMED_CONNECTION_EVENT"
+  return [handle, packet[4]]
+
 /** Encodes LE Set PHY asking for 2M in both directions (Vol 4 Part E, 7.8.49). */
 phy-2m-parameters handle/int -> ByteArray:
   if not 0 <= handle <= 0x0eff: throw "INVALID_ARGUMENT"

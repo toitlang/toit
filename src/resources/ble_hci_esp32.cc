@@ -306,6 +306,44 @@ PRIMITIVE(diagnostics) {
   return result;
 }
 
+// The controller's power levels in dBm, indexed by esp_power_level_t.
+#if CONFIG_IDF_TARGET_ESP32
+static const int8 TX_POWER_LEVELS[] = {-12, -9, -6, -3, 0, 3, 6, 9};
+#else
+static const int8 TX_POWER_LEVELS[] = {-24, -21, -18, -15, -12, -9, -6, -3, 0, 3, 6, 9, 12, 15, 18, 20};
+#endif
+static const int TX_POWER_LEVEL_COUNT = sizeof(TX_POWER_LEVELS) / sizeof(TX_POWER_LEVELS[0]);
+
+// Action 0 reads the advertising power, 1 sets advertising, scanning and
+// default power to the level closest to dbm, 2 only rounds dbm. Reading and
+// setting need an enabled controller and return null otherwise; the vendor
+// API is global, so no transport resource is involved.
+PRIMITIVE(tx_power) {
+  ARGS(int, action, int, dbm);
+  if (action < 0 || action > 2) FAIL(INVALID_ARGUMENT);
+  int best = 0;
+  for (int i = 1; i < TX_POWER_LEVEL_COUNT; i++) {
+    int distance = TX_POWER_LEVELS[i] - dbm;
+    int best_distance = TX_POWER_LEVELS[best] - dbm;
+    if (distance < 0) distance = -distance;
+    if (best_distance < 0) best_distance = -best_distance;
+    if (distance < best_distance) best = i;
+  }
+  if (action == 2) return Smi::from(TX_POWER_LEVELS[best]);
+  if (esp_bt_controller_get_status() != ESP_BT_CONTROLLER_STATUS_ENABLED) return process->null_object();
+  if (action == 0) {
+    int index = static_cast<int>(esp_ble_tx_power_get(ESP_BLE_PWR_TYPE_ADV));
+    if (index < 0 || index >= TX_POWER_LEVEL_COUNT) FAIL(ERROR);
+    return Smi::from(TX_POWER_LEVELS[index]);
+  }
+  auto level = static_cast<esp_power_level_t>(best);
+  esp_err_t error = esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_DEFAULT, level);
+  if (error == ESP_OK) error = esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, level);
+  if (error == ESP_OK) error = esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_SCAN, level);
+  if (error != ESP_OK) return Primitive::os_error(error, process);
+  return Smi::from(TX_POWER_LEVELS[best]);
+}
+
 PRIMITIVE(test) {
 #ifdef TOIT_BLE_HCI_TESTING
   ARGS(BleHciResource, resource, int, action, Blob, packet);

@@ -3,6 +3,7 @@
 // be found in the lib/LICENSE file.
 
 import .native as native
+import .transport as transport
 
 /**
 An exclusive ESP32 VHCI controller transport.
@@ -17,6 +18,19 @@ Explicit close reports HARDWARE_ERROR if controller disable or deinitialization
   fails, after releasing the native resource. Exact controller errors are logged.
   A caller must not treat an idempotent subsequent close as proof of recovery.
 */
-class Esp32Transport extends native.NativeTransport:
+class Esp32Transport extends native.NativeTransport implements transport.TxPowerControl:
   constructor:
     super 0 --packet-limit=1029
+
+  /**
+  Returns the advertising transmit power in dBm, or null while the controller is off.
+
+  The original ESP32 supports -12 to +9 dBm in 3 dB steps, the ESP32-S3
+    -24 to +18 dBm in 3 dB steps and +20 dBm.
+  */
+  tx-power -> int?: return native.tx-power_ 0 0
+
+  /** Sets advertising, scanning and default connection power; see $transport.TxPowerControl.set-tx-power. */
+  set-tx-power dbm/int -> int?: return native.tx-power_ 1 dbm
+
+  closest-tx-power dbm/int -> int: return native.tx-power_ 2 dbm

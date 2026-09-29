@@ -71,10 +71,47 @@ abstract class Provider extends services.ServiceProvider implements services.Ser
     if value-limit != 20 or mtu-limit != 23: throw "GATT_UNSUPPORTED_SERVICE_OPERATION"
     return create-builder client name
 
+  /**
+  Describes the controller as [identity address, transmit power control,
+    advertising transmit power or null, 2M PHY support].
+
+  Unsupported by providers without a controller.
+  */
+  adapter-info -> List:
+    throw "GATT_UNSUPPORTED_SERVICE_OPERATION"
+
+  /** Sets the controller's transmit power in dBm and returns the level used. */
+  set-tx-power dbm/int -> int:
+    throw "GATT_UNSUPPORTED_SERVICE_OPERATION"
+
+  /**
+  Runs $block while no session holds or is opening the controller.
+
+  Throws GATT_SERVICE_BUSY otherwise. Session admission is refused while the
+    block runs, so it may open the controller briefly.
+  */
+  with-idle-controller_ [block]:
+    if opening_: throw "GATT_SERVICE_BUSY"
+    sessions_.size.repeat: | slot/int |
+      session/Session? := sessions_[slot]
+      if session and session.is-released: sessions_[slot] = null
+      else if session: throw "GATT_SERVICE_BUSY"
+    opening_ = true
+    try:
+      return block.call
+    finally:
+      opening_ = false
+
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == api.CAPABILITIES:
       if arguments != null: throw "INVALID_ARGUMENT"
       return capabilities
+    if index == api.ADAPTER-INFO:
+      if arguments != null: throw "INVALID_ARGUMENT"
+      return adapter-info
+    if index == api.SET-TX-POWER:
+      if arguments is not int or not -127 <= arguments <= 127: throw "INVALID_ARGUMENT"
+      return set-tx-power arguments
     if index == api.OPEN or index == api.OPEN-BUILDER or index == api.OPEN-BOUNDED-BUILDER or index == api.OPEN-SCAN or index == api.CONNECT or index == api.OPEN-ADVERTISING:
       if index == api.OPEN and arguments != null: throw "INVALID_ARGUMENT"
       if index == api.OPEN-BUILDER and arguments is not string: throw "INVALID_ARGUMENT"

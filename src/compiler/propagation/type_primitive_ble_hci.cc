@@ -23,6 +23,7 @@ TYPE_PRIMITIVE_BOOL(send)
 TYPE_PRIMITIVE_NULL(close)
 TYPE_PRIMITIVE_ANY(diagnostics)
 TYPE_PRIMITIVE_ANY(test)
+TYPE_PRIMITIVE_ANY(tx_power)
 
 } // namespace toit::compiler
 } // namespace toit

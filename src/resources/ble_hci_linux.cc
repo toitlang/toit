@@ -167,6 +167,11 @@ PRIMITIVE(diagnostics) {
   return process->null_object();
 }
 
+PRIMITIVE(tx_power) {
+  // Linux exposes no standard transmit power control for LE controllers.
+  FAIL(UNIMPLEMENTED);
+}
+
 PRIMITIVE(test) {
 #ifdef TOIT_BLE_HCI_TESTING
   ARGS(BleHciResourceGroup, group, int, action, Blob, packet);

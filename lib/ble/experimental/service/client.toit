@@ -32,6 +32,23 @@ class Client extends services.ServiceClient:
     return Capabilities (invoke_ api.CAPABILITIES null)
 
   /**
+  Returns [identity address, transmit power control, advertising transmit
+    power in dBm or null, 2M PHY support] for the provider's controller.
+
+  The provider opens the controller briefly the first time if nothing else
+    has; it throws GATT_SERVICE_BUSY when another session is opening it then.
+  */
+  adapter-info -> List: return invoke_ api.ADAPTER-INFO null
+
+  /**
+  Sets the controller's transmit power for advertising, scanning and new
+    connections, and returns the level in dBm the controller uses.
+
+  Throws BLE_UNSUPPORTED when the controller has no transmit power control.
+  */
+  set-tx-power dbm/int -> int: return invoke_ api.SET-TX-POWER dbm
+
+  /**
   Advertises without accepting connections for the lifetime of $body.
 
   Uses the provider's address policy (public by default). $interval uses 625 microsecond units,
@@ -278,6 +295,28 @@ class Connection extends services.ServiceResourceProxy:
 
   /** Captures this connection's current database revision for checked access. */
   database -> DatabaseView: return DatabaseView this (operation_ api.CENTRAL-REVISION [])
+
+  /**
+  Returns [role, tx PHY, rx PHY, tx octets, rx octets, interval, latency,
+    supervision timeout, peer address, peer address type] for this link.
+  */
+  link-info -> List: return connection_.call_ api.LINK-INFO [handle_]
+
+  /** Asks for PHYs by preference mask and returns the [tx, rx] PHYs in effect afterwards. */
+  set-phy --tx/int --rx/int -> List: return connection_.call_ api.SET-PHY [handle_, tx, rx]
+
+  /** Reads the controller's RSSI for this link in dBm. */
+  rssi -> int: return connection_.call_ api.READ-RSSI [handle_]
+
+  /** Reads this link's current (or $maximum) transmit power in dBm. */
+  tx-power --maximum/bool=false -> int: return connection_.call_ api.READ-TX-POWER [handle_, maximum]
+
+  /** Asks for connection parameters (central role only); returns [interval, latency, timeout] applied. */
+  update-parameters --interval-min/int --interval-max/int --latency/int --supervision-timeout/int -> List:
+    return connection_.call_ api.UPDATE-PARAMETERS [handle_, interval-min, interval-max, latency, supervision-timeout]
+
+  /** Waits for the link to end and returns the controller's HCI reason code. */
+  wait-disconnected -> int: return connection_.call_ api.WAIT-DISCONNECTED [handle_]
 
   /**
   Monitors Service Changed while running the scoped block.
@@ -683,6 +722,28 @@ class Session extends services.ServiceResourceProxy:
 
   /** Returns the current negotiated ATT MTU, initially 23 after connection. */
   mtu -> int: return connection_.call_ api.MTU [handle_]
+
+  /**
+  Returns [role, tx PHY, rx PHY, tx octets, rx octets, interval, latency,
+    supervision timeout, peer address, peer address type] for this link.
+  */
+  link-info -> List: return connection_.call_ api.LINK-INFO [handle_]
+
+  /** Asks for PHYs by preference mask and returns the [tx, rx] PHYs in effect afterwards. */
+  set-phy --tx/int --rx/int -> List: return connection_.call_ api.SET-PHY [handle_, tx, rx]
+
+  /** Reads the controller's RSSI for this link in dBm. */
+  rssi -> int: return connection_.call_ api.READ-RSSI [handle_]
+
+  /** Reads this link's current (or $maximum) transmit power in dBm. */
+  tx-power --maximum/bool=false -> int: return connection_.call_ api.READ-TX-POWER [handle_, maximum]
+
+  /** Asks for connection parameters (central role only); returns [interval, latency, timeout] applied. */
+  update-parameters --interval-min/int --interval-max/int --latency/int --supervision-timeout/int -> List:
+    return connection_.call_ api.UPDATE-PARAMETERS [handle_, interval-min, interval-max, latency, supervision-timeout]
+
+  /** Waits for the link to end and returns the controller's HCI reason code. */
+  wait-disconnected -> int: return connection_.call_ api.WAIT-DISCONNECTED [handle_]
 
   /** Reads an owned snapshot of a retained application value. */
   value handle/int -> ByteArray: return connection_.call_ api.VALUE [handle_, handle]
