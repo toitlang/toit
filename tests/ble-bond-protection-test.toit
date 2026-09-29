@@ -5,6 +5,7 @@
 import ble.experimental.bond
 import ble.experimental.bond-protection
 import ble.experimental.smp-identity
+import ble.experimental.smp-legacy
 import expect show *
 import encoding.hex
 import system
@@ -44,6 +45,15 @@ main:
     expect-throw "BLE_INVALID_SEALED_BOND": independent.open altered --context=context
   expect-throw "BLE_INVALID_SEALED_BOND": independent.open sealed[..97] --context=context
   expect-throw "BLE_INVALID_SEALED_BOND": independent.open (sealed + #[0]) --context=context
+  // A legacy bond seals to a longer record and round-trips with its keys.
+  legacy-key := smp-legacy.LegacyKey (ByteArray 16 --initial=9) 0x0102 (ByteArray 8 --initial=4)
+  legacy := bond.Candidate (ByteArray 16) local peer --no-authenticated --peer-legacy=legacy-key
+  sealed-legacy := protector.seal legacy --context=context
+  expect-equals (98 + 27) sealed-legacy.size
+  opened := independent.open sealed-legacy --context=context
+  expect-equals legacy.encode opened.encode
+  expect-equals 0x0102 opened.peer-legacy.ediv
+  expect-throw "BLE_INVALID_SEALED_BOND": independent.open sealed-legacy[..sealed-legacy.size - 1] --context=context
   expect-throw "BLE_INVALID_SEALED_BOND": independent.open sealed --context="provider-1/peer-2".to-byte-array
   expect-throw "BLE_INVALID_SEALED_BOND": independent.open sealed --context="provider-2/peer-1".to-byte-array
   wrong := bond-protection.Protection (ByteArray 32 --initial=0xff)
