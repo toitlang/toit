@@ -46,11 +46,20 @@ class Sha : public SimpleResource {
 
   int hash_length() const { return bits_ >> 3; }
 
-  void add(const uint8* contents, intptr_t extra);
-  void get(uint8* hash);
+  // The mbedtls SHA backend can fail. On ESP32 the IDF DMA implementation
+  // reports allocation failure as ESP_FAIL (-1). Once any operation has
+  // failed, the context is unusable and every later call reports the same
+  // error. Callers must check the results.
+  int status() const { return status_; }
+  [[nodiscard]] int add(const uint8* contents, intptr_t extra);
+  [[nodiscard]] int get(uint8* hash);
+  // Converts a backend error into a primitive error result. -1 (ESP_FAIL)
+  // becomes MALLOC_FAILED so the GC retry path applies.
+  static Object* error(Process* process, int code);
 
  private:
   int bits_;
+  int status_;
   union {
     mbedtls_sha256_context context_;
     mbedtls_sha512_context context_512_;

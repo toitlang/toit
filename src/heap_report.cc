@@ -158,8 +158,13 @@ class FlashHeapFragmentationDumper : public HeapFragmentationDumper {
     // has been flushed.
     uword size = position_;
     uint8 checksum[Sha::HASH_LENGTH_256];
-    sha256_.get(checksum);
+    if (has_overflow()) return;
+    if (sha256_.get(checksum) != 0) {
+      set_overflow();
+      return;
+    }
     write_buffer(checksum, Sha::HASH_LENGTH_256);
+    if (has_overflow()) return;
     uint8 size_field[4];
     size_field[0] = size & 0xff;
     size_field[1] = (size >> 8) & 0xff;
@@ -170,13 +175,19 @@ class FlashHeapFragmentationDumper : public HeapFragmentationDumper {
 
   virtual void write_buffer(const uint8* str, uword len) {
     ASSERT(len % WRITE_BLOCK_SIZE_ == 0);
+    if (has_overflow()) return;
+    int hash_error;
     if (position_ == 0) {
       // We don't checksum the first 4 bytes, since this is not ubjson, it's
       // the length field, and it's incorrect (we go back and write it at the
       // end when we know the size).
-      sha256_.add(str + 4, len - 4);
+      hash_error = sha256_.add(str + 4, len - 4);
     } else {
-      sha256_.add(str, len);
+      hash_error = sha256_.add(str, len);
+    }
+    if (hash_error != 0) {
+      set_overflow();
+      return;
     }
     for (size_t i = 0; i < len; i += WRITE_BLOCK_SIZE_) {
       if (position_ >= partition_->size) {
