@@ -315,12 +315,64 @@ class RemoteCharacteristic:
       record_.subscribe --indications=use-indications --queue-limit=queue-limit: | stream/rpc.Subscription |
         block.call (Values stream)
 
+  /**
+  Subscribes until $Subscription.close, for values received outside one
+    block (from a field, or by several tasks in turn).
+
+  The same as the block form otherwise: the subscription is active when this
+    returns, and $Subscription.close unsubscribes and waits until the peer
+    was told. A task in the background holds it; close it before dropping it.
+  */
+  subscribe --indications/bool?=null --queue-limit/int=8 -> Subscription:
+    return Subscription.start_ this --indications=indications --queue-limit=queue-limit
+
   /** Discovers this characteristic's descriptors. */
   discover-descriptors -> List:
     return att_: record_.descriptors.map: | record/rpc.DescriptorRecord |
       RemoteDescriptor this (BleUuid.from-reversed record.uuid) record
 
   stringify -> string: return "RemoteCharacteristic $uuid"
+
+/** A subscription that lasts until $close; see $RemoteCharacteristic.subscribe. */
+class Subscription:
+  characteristic/RemoteCharacteristic
+  values_/Values? := null
+  stop_/monitor.Latch ::= monitor.Latch
+  ended_/monitor.Latch ::= monitor.Latch
+  closed_/bool := false
+
+  constructor.start_ .characteristic --indications/bool? --queue-limit/int:
+    ready := monitor.Latch
+    task --background::
+      error := catch:
+        characteristic.subscribe --indications=indications --queue-limit=queue-limit: | values/Values |
+          ready.set values
+          stop_.get
+      if not ready.has-value: ready.set error
+      critical-do --no-respect-deadline: ended_.set error
+    started := ready.get
+    if started is not Values: throw started
+    values_ = started
+
+  /**
+  Waits for the next value.
+
+  Throws when the subscription ended: BLE_CLOSED after $close, otherwise
+    the reason it ended (the link closed, the queue overflowed).
+  */
+  receive -> ByteArray:
+    if closed_: throw "BLE_CLOSED"
+    return values_.receive
+
+  /** Whether the subscription ended, by $close or otherwise. */
+  is-closed -> bool: return closed_ or ended_.has-value
+
+  /** Unsubscribes, and waits until the peer was told or the link ended. */
+  close -> none:
+    if closed_: return
+    closed_ = true
+    stop_.set true
+    ended_.get
 
 /** Values arriving on a subscription. */
 class Values:
