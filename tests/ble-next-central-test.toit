@@ -42,6 +42,11 @@ main:
         radio.received.add (fixture.att-event #[0x1b, 3, 0, 7])
         radio.received.add (fixture.att-event #[0x1b, 3, 0, 8])
         fixture.gatt-reply radio #[0x12, 4, 0, 0, 0] #[0x13]
+        // Read Multiple Variable Length, then Read By Type and includes.
+        fixture.gatt-reply radio #[0x20, 3, 0, 3, 0] #[0x21, 1, 0, 42, 1, 0, 43]
+        fixture.gatt-reply radio #[8, 1, 0, 5, 0, 0xf1, 0xff] #[9, 3, 3, 0, 42]
+        fixture.gatt-reply radio #[8, 4, 0, 5, 0, 0xf1, 0xff] #[1, 8, 4, 0, 0x0a]
+        fixture.gatt-reply radio #[8, 1, 0, 5, 0, 2, 0x28] #[1, 8, 1, 0, 0x0a]
         fixture.status-reply radio #[1, 0x32, 0x20, 7, 0x34, 2, 0, 2, 2, 0, 0]
         radio.received.add #[4, 0x3e, 6, 0x0c, 0, 0x34, 2, 2, 2]
         fixture.reply radio #[1, 0x05, 0x14, 2, 0x34, 2] #[0x34, 2, 0xc4]
@@ -82,6 +87,9 @@ main:
           values.add stream.receive
           values.add stream.receive
         expect-equals [#[7], #[8]] values
+        expect-equals [#[42], #[43]] (connection.read-multiple [characteristic, characteristic])
+        expect-equals [#[42]] (service.read-by-uuid (ble.BleUuid "fff1"))
+        expect-equals [] service.discover-included-services
         expect-equals (ble.Phy ble.PHY-2M ble.PHY-2M) (connection.request-phy ble.PHY-2M)
         expect-equals (ble.Phy ble.PHY-2M ble.PHY-2M) connection.phy
         expect-equals -60 connection.rssi

@@ -67,7 +67,10 @@ main:
   expect-equals #[0x13] (session.request #[0x12, 4, 0, 0, 0])
   expect-equals null (session.request #[0x52, 3, 0, 99])
   expect-equals #[0x0b, 42] (session.request #[0x0a, 3, 0])
-  expect-equals #[1, 0x20, 0, 0, 6] (session.request #[0x20, 3, 0, 0, 0])
+  // Read Multiple Variable Length refuses the invalid handle; an undefined
+  // request opcode is not supported.
+  expect-equals #[1, 0x20, 0, 0, 1] (session.request #[0x20, 3, 0, 0, 0])
+  expect-equals #[1, 0x26, 0, 0, 6] (session.request #[0x26, 3, 0])
   // Bluetooth-base 128-bit types match their 16-bit equivalent.
   expect-equals #[9, 7, 2, 0, 0x1a, 3, 0, 0xf1, 0xff]
       session.request #[8, 1, 0, 4, 0, 0xfb, 0x34, 0x9b, 0x5f, 0x80, 0, 0, 0x80, 0, 0x10, 0, 0, 3, 0x28, 0, 0]

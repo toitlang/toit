@@ -167,6 +167,25 @@ class Connection:
       if not uuids or (uuids.contains uuid): result.add (RemoteService this uuid record)
     return result
 
+  /**
+  Reads several characteristics in one request and returns their values.
+
+  Uses Read Multiple Variable Length, and separate reads for a peer that
+    does not support it. Values longer than MTU - 3 bytes in total are cut;
+    read those one by one.
+  */
+  read-multiple characteristics/List -> List:
+    if characteristics.size < 2:
+      return characteristics.map: | characteristic/RemoteCharacteristic | characteristic.read
+    handles := characteristics.map: | characteristic/RemoteCharacteristic | characteristic.record_.handle
+    view := (characteristics[0] as RemoteCharacteristic).record_.view_
+    result := null
+    error := catch: result = att_: view.read-multiple handles --variable
+    if error is AttError and error.code == AttError.REQUEST-NOT-SUPPORTED:
+      return characteristics.map: | characteristic/RemoteCharacteristic | characteristic.read
+    if error: throw error
+    return result
+
   /** Discovers the service with the given $uuid; throws BLE_SERVICE_NOT_FOUND if the peer has none. */
   discover-service uuid/BleUuid -> RemoteService:
     services := discover-services [uuid]
@@ -220,6 +239,21 @@ class RemoteService:
       found := BleUuid.from-reversed record.uuid
       if not uuids or (uuids.contains found): result.add (RemoteCharacteristic this found record)
     return result
+
+  /** Discovers the services this service includes. */
+  discover-included-services -> List:
+    return att_: record_.included-services.map: | record/rpc.ServiceRecord |
+      RemoteService connection (BleUuid.from-reversed record.uuid) record
+
+  /**
+  Reads every characteristic of this service with the given $uuid in one
+    procedure (Read Using Characteristic UUID) and returns their values.
+
+  Each value is at most MTU - 4 bytes.
+  */
+  read-by-uuid uuid/BleUuid -> List:
+    pairs := att_: record_.read-by-uuid (uuid.to-byte-array --reversed)
+    return pairs.map: | pair/List | pair[1]
 
   /** Discovers the characteristic with the given $uuid; throws BLE_CHARACTERISTIC_NOT_FOUND if there is none. */
   characteristic uuid/BleUuid -> RemoteCharacteristic:
