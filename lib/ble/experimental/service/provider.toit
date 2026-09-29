@@ -31,10 +31,13 @@ abstract class Provider extends services.ServiceProvider implements services.Ser
   */
   peripheral-session-limit -> int: return 1
 
-  /** Bounds simultaneous central clients; other radio modes stay exclusive. */
+  /** Bounds simultaneous central sessions (at most eight); other radio modes stay exclusive. */
   central-session-limit -> int: return 1
 
-  /** Allows one peripheral and one central client only for an explicit shared provider. */
+  /**
+  Lets central and peripheral sessions share the controller, each up to its
+    own limit; without it they exclude each other.
+  */
   mixed-role-sessions -> bool: return false
 
   /** Creates a session whose close hook releases its protocol resources. */
@@ -121,14 +124,19 @@ abstract class Provider extends services.ServiceProvider implements services.Ser
       if index == api.CONNECT and arguments is not List: throw "INVALID_ARGUMENT"
       if index == api.OPEN-ADVERTISING and arguments is not List: throw "INVALID_ARGUMENT"
       if opening_: throw "GATT_SERVICE_BUSY"
-      limit := central-session-limit
-      if not 1 <= limit <= 2: throw "INVALID_ARGUMENT"
+      // Admission: scanning and broadcasting own the controller alone. Central
+      // and peripheral sessions share it up to their limits, and with each
+      // other only with mixed roles. A client holds one session, except that
+      // it may add peripheral sessions when several are allowed.
+      central-limit := central-session-limit
+      peripheral-limit := peripheral-session-limit
+      if not 1 <= central-limit <= 8 or not 1 <= peripheral-limit <= 8: throw "INVALID_ARGUMENT"
       mixed := mixed-role-sessions
-      if mixed and limit != 2: throw "INVALID_ARGUMENT"
       peripheral := index == api.OPEN or index == api.OPEN-BUILDER or index == api.OPEN-BOUNDED-BUILDER
-      peripherals := peripheral-session-limit
-      if not 1 <= peripherals <= 8: throw "INVALID_ARGUMENT"
-      occupied := 0
+      central := index == api.CONNECT
+      centrals := 0
+      peripherals := 0
+      exclusive := 0
       free-slot := -1
       sessions_.size.repeat: | slot/int |
         session/Session? := sessions_[slot]
@@ -138,21 +146,18 @@ abstract class Provider extends services.ServiceProvider implements services.Ser
         if not session:
           if free-slot < 0: free-slot = slot
           continue.repeat
-        occupied++
-        if peripherals > 1 and session.is-peripheral:
-          // Shared peripheral hosting: any client may add sessions up to
-          // the bound; nothing else shares the controller meanwhile.
-          if peripheral: continue.repeat
+        if session.owner-client == client and
+            not (peripheral and session.is-peripheral and peripheral-limit > 1):
           throw "GATT_SERVICE_BUSY"
-        if session.owner-client == client: throw "GATT_SERVICE_BUSY"
-        if index == api.CONNECT and session.is-central: continue.repeat
-        if mixed and ((index == api.CONNECT and session.is-peripheral) or
-            (peripheral and session.is-central)):
-          continue.repeat
-        throw "GATT_SERVICE_BUSY"
-      if peripheral and peripherals > 1:
-        if occupied >= peripherals or free-slot < 0: throw "GATT_SERVICE_BUSY"
-      else if occupied >= limit or free-slot < 0:
+        if session.is-central: centrals++
+        else if session.is-peripheral: peripherals++
+        else: exclusive++
+      if free-slot < 0 or exclusive > 0: throw "GATT_SERVICE_BUSY"
+      if central:
+        if centrals >= central-limit or (peripherals > 0 and not mixed): throw "GATT_SERVICE_BUSY"
+      else if peripheral:
+        if peripherals >= peripheral-limit or (centrals > 0 and not mixed): throw "GATT_SERVICE_BUSY"
+      else if centrals > 0 or peripherals > 0:
         throw "GATT_SERVICE_BUSY"
       opening_ = true
       try:

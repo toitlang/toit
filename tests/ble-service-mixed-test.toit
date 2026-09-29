@@ -129,7 +129,7 @@ failed-central mode/string:
 // Client closure during Command Status must join cancellation or a winning
 // connection before admitting a replacement, preserving the peripheral link.
 pending-central won/bool:
-  provider := Provider
+  provider := OneEachProvider
   provider.install
   a := clients.Client
   b := clients.Client
@@ -309,9 +309,19 @@ admission:
                 (second == api.CONNECT and (peripheral-mode first))))
           if allowed:
             b = provider.handle second (arguments second) --gid=1 --client=2
+            // Two central sessions and one peripheral session fit, the
+            // roles together only with mixed roles.
+            centrals := (first == api.CONNECT ? 1 : 0) + (second == api.CONNECT ? 1 : 0)
+            peripherals := 2 - centrals
             modes.do: | third/int |
-              expect-throw "GATT_SERVICE_BUSY":
-                provider.handle third (arguments third) --gid=1 --client=3
+              fits := third == api.CONNECT
+                  ? centrals < 2 and (peripherals == 0 or mixed)
+                  : (peripheral-mode third) and peripherals < 1 and (centrals == 0 or mixed)
+              if fits:
+                (provider.handle third (arguments third) --gid=1 --client=3).close
+              else:
+                expect-throw "GATT_SERVICE_BUSY":
+                  provider.handle third (arguments third) --gid=1 --client=3
           else:
             expect-throw "GATT_SERVICE_BUSY":
               provider.handle second (arguments second) --gid=1 --client=2
@@ -376,7 +386,7 @@ held-disconnect radio/fixture.FakeTransport handle/int seen/monitor.Latch releas
   links.ended radio handle
 
 run peripheral-first/bool close-central/bool:
-  provider := Provider
+  provider := OneEachProvider
   provider.install
   central-client := clients.Client
   peripheral-client := clients.Client
@@ -522,3 +532,7 @@ class Provider extends mixed.Provider:
   create-session client/int -> rpc.Session:
     last-peripheral = super client
     return last-peripheral
+
+// One central and one peripheral session: the controller is then full.
+class OneEachProvider extends Provider:
+  central-session-limit -> int: return 1

@@ -37,10 +37,12 @@ class Connection:
   watcher_/Task? := null
   last-info_/List? := null
   on-release_/Lambda? := null
+  client_/rpc.Client? := null
 
-  constructor.central_ .central_ .peer --mtu/int:
+  constructor.central_ .central_ .peer --mtu/int --client/rpc.Client:
     role = ROLE-CENTRAL
     mtu_ = mtu
+    client_ = client
     start-watcher_
 
   constructor.peripheral_ .session_ .peer --on-release/Lambda:
@@ -195,6 +197,7 @@ class Connection:
       released_ = true
       if central_: catch: central_.close
       if session_: catch: session_.close
+      if client_: catch: client_.close
       if watcher_: watcher_.cancel
       if not ended_.has-value: ended_.set (DisconnectReason DisconnectReason.LOCAL-HOST)
       if on-release_: catch: on-release_.call

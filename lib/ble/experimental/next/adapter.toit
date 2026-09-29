@@ -18,6 +18,7 @@ On a device, a provider container owns the controller and every application
 */
 class Adapter:
   client_/rpc.Client
+  provider-pid_/int?
   on-close_/Lambda? := null
   closed_/bool := false
   info_/List? := null
@@ -28,11 +29,13 @@ class Adapter:
   $provider-pid restricts the adapter to the provider with that process id.
   */
   constructor --provider-pid/int?=null:
+    provider-pid_ = provider-pid
     client_ = rpc.Client --provider-pid=provider-pid
     client_.open
 
   /** Opens an adapter whose $close also runs $on-close (used by the Linux helper). */
   constructor.with-cleanup_ --on-close/Lambda:
+    provider-pid_ = null
     client_ = rpc.Client
     client_.open
     on-close_ = on-close
@@ -47,6 +50,7 @@ class Adapter:
         --advertising=capabilities.advertising
         --max-value-size=capabilities.max-value-size
         --max-mtu=capabilities.max-mtu
+        --max-sessions=capabilities.max-sessions
 
   adapter-info_ -> List:
     if not info_: info_ = client_.adapter-info
@@ -131,14 +135,20 @@ class Adapter:
   connect address/Address --timeout/Duration=(Duration --s=10) --mtu/int=247
       --security/int=SECURITY-NONE --phy/int?=null -> Connection:
     if not 23 <= mtu <= 517: throw "INVALID_ARGUMENT"
+    // Each connection is a session of its own service client: the provider
+    // admits one session per client, and connections should not compete.
+    client := rpc.Client --provider-pid=provider-pid_
+    client.open
     raw/rpc.Connection? := null
     error := catch:
-      raw = client_.connect address.bytes --address-type=address.type --timeout=timeout --mtu-limit=mtu
+      raw = client.connect address.bytes --address-type=address.type --timeout=timeout --mtu-limit=mtu
           --require-encryption=(security >= SECURITY-ENCRYPTED)
           --require-authentication=(security == SECURITY-AUTHENTICATED)
-    if error == "GATT_CENTRAL_SECURITY_REQUIRED": throw "BLE_INSUFFICIENT_SECURITY"
-    if error: throw error
-    connection := Connection.central_ raw address --mtu=raw.info[2]
+    if error:
+      client.close
+      if error == "GATT_CENTRAL_SECURITY_REQUIRED": throw "BLE_INSUFFICIENT_SECURITY"
+      throw error
+    connection := Connection.central_ raw address --mtu=raw.info[2] --client=client
     if phy:
       succeeded := false
       try:

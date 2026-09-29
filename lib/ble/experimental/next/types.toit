@@ -195,5 +195,7 @@ class Capabilities:
   max-value-size/int
   /** The largest ATT MTU the provider negotiates. */
   max-mtu/int
+  /** How many connections (sessions) the provider serves at once. */
+  max-sessions/int
 
-  constructor --.scanning --.central --.peripheral --.advertising --.max-value-size --.max-mtu:
+  constructor --.scanning --.central --.peripheral --.advertising --.max-value-size --.max-mtu --.max-sessions:
