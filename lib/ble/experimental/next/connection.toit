@@ -153,12 +153,13 @@ class Connection:
   /**
   Discovers the peer's primary services, all or those in $uuids.
 
-  Central role only. The results belong to the peer's current database: after
-    a Service Changed indication their operations throw and the application
-    discovers again.
+  In both roles: as a peripheral, this is the connected central's database
+    (a phone's Current Time or Battery service, for example), reached over
+    the same link while this device serves its own. The results belong to
+    the peer's current database: after a Service Changed indication their
+    operations throw and the application discovers again.
   */
   discover-services uuids/List?=null -> List:
-    if not central_: throw "BLE_UNSUPPORTED"
     view := backend_.database
     records := view.discover-services
     result := []

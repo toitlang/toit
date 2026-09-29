@@ -95,6 +95,9 @@ finally:
   connection throws `BLE_INSUFFICIENT_SECURITY` if it cannot reach the
   level; pairing policy belongs to the provider). `with-connection` is the
   scoped form.
+- Discovery works in both roles: as a peripheral, `discover-services` and
+  the rest reach the connected central's database (a phone's Current Time
+  or Battery service) over the same link while this device serves its own.
 - `discover-services`, `discover-service`, `discover-characteristics`,
   `characteristic` and `discover-descriptors` return objects bound to the
   peer's current database; after a Service Changed indication their
@@ -204,7 +207,5 @@ that ended under an operation makes it throw; `wait-closed` says why.
   capabilities, confirmation, bond storage) stay in the provider, as
   today. The API lets an application require a security level and read
   what was achieved; it does not start pairing itself.
-- **GATT client on peripheral-role links.** The service offers GATT client
-  operations only on central connections.
 - **Per-connection transmit power.** The ESP32 vendor API can set it per
   connection handle; the API sets the default for new connections only.

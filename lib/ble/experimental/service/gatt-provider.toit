@@ -16,6 +16,7 @@ import ..advertising-updates as advertising-updates
 import ..security-owner show Owner
 import ..transport as transport
 import .api as api
+import .gatt-client-operations as operations
 import .link-operations as link-operations
 import .provider as rpc
 import .central-provider as central-provider
@@ -225,6 +226,7 @@ class Session extends rpc.Session:
   host_/central.Central? := null
   link_/central.Link? := null
   server_/gatt.Server? := null
+  operations_/operations.ClientOperations? := null
   indication_/gatt.Indication? := null
   indication-token_/int := 0
   submitting-indication_/bool := false
@@ -381,6 +383,11 @@ class Session extends rpc.Session:
     if link-operations.is-link-operation index:
       if not link_: throw "GATT_NOT_CONNECTED"
       return link-operations.link-operation host_ link_ index arguments --server=server_
+    if operations.is-client-operation index:
+      // A GATT client on the central's database, sharing the bearer.
+      if not server_: throw "GATT_NOT_CONNECTED"
+      if not operations_: operations_ = operations.ClientOperations server_.client
+      return operations_.reply index arguments
     if index == api.SECURITY:
       if not arguments.is-empty: throw "INVALID_ARGUMENT"
       if not link_: throw "GATT_NOT_CONNECTED"
@@ -525,6 +532,7 @@ class Session extends rpc.Session:
 
   release_ -> any:
     if pairing-task_: pairing-task_.cancel
+    if operations_: operations_.cancel
     // Once constructed, the server owns security cleanup. Before that point,
     // close the installed owner once, even if its hook throws. A hook failure
     // must neither escape the background worker nor skip controller teardown.
@@ -543,6 +551,7 @@ class Session extends rpc.Session:
     // A later idempotent close cannot prove that a failed transport close
     // released ownership. Still let the worker join, but quarantine this slot.
     transport-cleanup-error_ = transport-cleanup-error_ or close-error
+    if operations_: catch: operations_.wait-ended
     return error or transport-cleanup-error_
 
 /**
