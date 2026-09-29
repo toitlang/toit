@@ -24,6 +24,10 @@ alias memory-inspector='toit run --project-root tools tools/memory-inspector/mai
 memory-inspector record --port /dev/ttyUSB0 capture.txt
 memory-inspector summary --envelope firmware.envelope capture.txt
 memory-inspector census --process 1 --envelope firmware.envelope capture.txt
+memory-inspector objects --process 1 --class MyClass --envelope firmware.envelope capture.txt
+memory-inspector object --envelope firmware.envelope capture.txt 0x3fcc4850
+memory-inspector path --envelope firmware.envelope capture.txt 0x3fcc4850
+memory-inspector retainers --envelope firmware.envelope capture.txt 0x3fcc4850
 ```
 
 On the host, `toit run` programs can capture too: their stdout contains the
@@ -65,6 +69,8 @@ Without a snapshot, classes are shown as `class#<id>`.
 - Live objects are reachable from the roots of their process: its current
   task, its globals, its external roots, and the objects its finalizers keep
   alive. Other objects are garbage that hasn't been collected yet.
+- `path`: a shortest chain of references from a root to an object. Stack slots
+  are shown by index.
 
 ## Capture format
 

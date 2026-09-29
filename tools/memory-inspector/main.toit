@@ -71,6 +71,8 @@ build-command -> cli.Command:
 
   capture-option := cli.OptionPath "capture" --required
       --help="A file that contains a capture, for example a console log."
+  address-option := cli.Option "address" --required
+      --help="The address of an object, for example 0x3fc9a3b0."
   process-option := cli.OptionInt "process"
       --help="The id of the process. Defaults to all processes."
   limit-option := cli.OptionInt "limit" --default=20
@@ -114,6 +116,52 @@ build-command -> cli.Command:
           classes := analysis.census process
           classes[..min limit classes.size]))
 
+  root.add (cli.Command "objects"
+      --help="Lists the largest objects of a class."
+      --options=snapshot-options + [
+        process-option,
+        limit-option,
+        cli.Option "class" --required --help="The name of the class.",
+      ]
+      --rest=[capture-option]
+      --run=:: | invocation/cli.Invocation |
+        analysis := load-analysis invocation
+        output (for-processes analysis invocation: | process/ProcessInfo |
+          analysis.objects process
+              --class-name=invocation["class"]
+              --limit=invocation["limit"]))
+
+  root.add (cli.Command "object"
+      --help="Shows the fields of an object."
+      --options=snapshot-options + [limit-option]
+      --rest=[capture-option, address-option]
+      --run=:: | invocation/cli.Invocation |
+        analysis := load-analysis invocation
+        address := parse-address invocation["address"]
+        output (analysis.inspect (process-for analysis address) address --limit=invocation["limit"]))
+
+  root.add (cli.Command "path"
+      --help="""
+        Shows why an object is alive: a shortest chain of references from a
+          root (a task, a global, or an external root) to the object.
+        An empty list means that the object is not reachable.
+        """
+      --options=snapshot-options
+      --rest=[capture-option, address-option]
+      --run=:: | invocation/cli.Invocation |
+        analysis := load-analysis invocation
+        address := parse-address invocation["address"]
+        output (analysis.path (process-for analysis address) address))
+
+  root.add (cli.Command "retainers"
+      --help="Lists the roots and objects that directly reference an object."
+      --options=snapshot-options + [limit-option]
+      --rest=[capture-option, address-option]
+      --run=:: | invocation/cli.Invocation |
+        analysis := load-analysis invocation
+        address := parse-address invocation["address"]
+        output (analysis.retainers (process-for analysis address) address --limit=invocation["limit"]))
+
   return root
 
 output value/any -> none:
@@ -132,6 +180,15 @@ load-names invocation/cli.Invocation -> Names:
 
 load-analysis invocation/cli.Invocation -> Analysis:
   return Analysis (load-capture invocation["capture"]) (load-names invocation)
+
+parse-address text/string -> int:
+  if text.starts-with "0x": return int.parse text[2..] --radix=16
+  return int.parse text
+
+process-for analysis/Analysis address/int -> ProcessInfo:
+  chunk := analysis.capture.chunk-containing address
+  if not chunk: throw "address 0x$(%x address) is not in a captured heap"
+  return analysis.process-by-id chunk.process-id
 
 /**
 Calls $block for the process given by the "process" option, or for all

@@ -49,3 +49,9 @@ main args:
   census := (inspect.call "census" ["--process", "$app-id", "--limit", "100"])[0]["result"]
   node := (census.filter: it["class"] == "Node")[0]
   expect-equals 300 node["live-count"]
+
+  strings := (inspect.call "objects" ["--process", "$app-id", "--class", "String_", "--limit", "1000"])[0]["result"]
+  address := (strings.filter: it["preview"] == "node 299")[0]["address"]
+  path := inspect.call "path" [address]
+  expect-equals "global" path[0]["root"]
+  expect-equals "nodes" path[0]["global"]

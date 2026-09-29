@@ -22,6 +22,8 @@ import .capture
 import .heap
 import .names
 
+hex address/int -> string: return "0x$(%x address)"
+
 /** The owner of the blocks that the capture itself uses. */
 CAPTURE-OWNER ::= "memory capture"
 
@@ -253,3 +255,132 @@ class Analysis:
     if capture.malloc-blocks.is-empty: return object.external-size or 0
     block := malloc-block-containing object.external-address
     return block ? block.size : 0
+
+  /** Returns the objects of the given class (by name or id), largest first. */
+  objects process/ProcessInfo --class-name/string --limit/int -> List:
+    heap := heap process
+    program := program-of process
+    reached := reached process
+    matching := heap.objects.filter: | object/HeapObject |
+      (names.class-name program object.class-id) == class-name
+    matching.sort --in-place: | a b |
+      (b.size + (external-size b)).compare-to (a.size + (external-size a))
+    return matching[..min limit matching.size].map: | object/HeapObject |
+      describe-object process object --live=(reached.contains object.address)
+
+  describe-object process/ProcessInfo object/HeapObject --live/bool -> Map:
+    program := program-of process
+    result := {
+      "address": hex object.address,
+      "class": names.class-name program object.class-id,
+      "size": object.size,
+      "live": live,
+    }
+    if object.external-address:
+      result["external"] = {
+        "address": hex object.external-address,
+        "heap-bytes": external-size object,
+      }
+      if object.external-size: result["external"]["size"] = object.external-size
+      if object.struct-tag and object.struct-tag != capture.layout["raw-byte-tag"]:
+        result["external"]["struct"] = capture.struct-tag-names.get object.struct-tag
+            --if-absent=: "tag $object.struct-tag"
+    preview := preview_ (heap process) object
+    if preview: result["preview"] = preview
+    return result
+
+  preview_ heap/Heap object/HeapObject -> string?:
+    content := heap.content object
+    if not content: return null
+    shown := content[..min 40 content.size]
+    if object.class-tag == capture.layout["string-tag"]:
+      text := shown.to-string-non-throwing
+      return content.size > shown.size ? "$text..." : text
+    return "$content.size bytes"
+
+  /** Describes a value in a field or root. */
+  describe-value process/ProcessInfo value/int -> Map:
+    heap := heap process
+    program := program-of process
+    if heap.is-smi value: return { "smi": (heap.signed value) >> capture.layout["smi-tag-size"] }
+    if value == program.null-value: return { "literal": "null" }
+    if value == program.true-value: return { "literal": "true" }
+    if value == program.false-value: return { "literal": "false" }
+    object := heap.object-for-value value
+    if object:
+      result := { "object": hex object.address, "class": names.class-name program object.class-id }
+      preview := preview_ heap object
+      if preview: result["preview"] = preview
+      return result
+    if heap.is-heap-pointer value and program.contains value:
+      return { "program-object": hex value }
+    return { "raw": hex value }
+
+  /** Describes an object with all its fields. */
+  inspect process/ProcessInfo address/int --limit/int -> Map:
+    heap := heap process
+    object := heap.object-at address
+    if not object: throw "no object at $(hex address) in process $process.id"
+    reached := reached process
+    result := describe-object process object --live=(reached.contains address)
+    field-names := null
+    if object.class-tag == capture.layout["instance-tag"] or object.class-tag == capture.layout["task-tag"]:
+      field-names = names.field-names (program-of process) object.class-id
+    fields := []
+    heap.pointer-fields object: | index value |
+      if fields.size < limit:
+        entry := { "index": index, "value": describe-value process value }
+        if field-names and index < field-names.size: entry["name"] = field-names[index]
+        fields.add entry
+    result["fields"] = fields
+    return result
+
+  /** Returns the chain of references from a root to the object. */
+  path process/ProcessInfo address/int -> List:
+    heap := heap process
+    object := heap.object-at address
+    if not object: throw "no object at $(hex address) in process $process.id"
+    reached := reached process
+    if not reached.contains address: return []
+    program := program-of process
+    steps := []
+    current := object
+    while true:
+      reference/Reference := reached[current.address]
+      step := describe-object process current --live
+      if reference.root:
+        root := reference.root
+        step["root"] = root.kind-name
+        if root.kind == GLOBAL-ROOT: step["global"] = names.global-name program root.index
+        steps.add step
+        break
+      from := reference.from
+      field-names := null
+      if from.class-tag == capture.layout["instance-tag"] or from.class-tag == capture.layout["task-tag"]:
+        field-names = names.field-names program from.class-id
+      step["referenced-by-field"] = (field-names and reference.index < field-names.size)
+          ? field-names[reference.index]
+          : reference.index
+      steps.add step
+      current = from
+    return List steps.size: steps[steps.size - 1 - it]
+
+  /** Returns the objects that directly reference the object at the given address. */
+  retainers process/ProcessInfo address/int --limit/int -> List:
+    heap := heap process
+    reached := reached process
+    result := []
+    process.roots.do: | root/Root |
+      if (heap.object-for-value root.value) and (heap.object-for-value root.value).address == address:
+        entry := { "root": root.kind-name, "index": root.index }
+        if root.kind == GLOBAL-ROOT: entry["global"] = names.global-name (program-of process) root.index
+        result.add entry
+    heap.objects.do: | object/HeapObject |
+      if result.size >= limit: return result
+      heap.pointer-fields object: | index value |
+        referenced := heap.object-for-value value
+        if referenced and referenced.address == address:
+          entry := describe-object process object --live=(reached.contains object.address)
+          entry["field"] = index
+          result.add entry
+    return result

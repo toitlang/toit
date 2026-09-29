@@ -53,3 +53,31 @@ run-test toit-exe/string sdk-dir/string tmp-dir/string -> none:
   expect-equals 501 node["live-count"]
   byte-arrays := (census.filter: it["class"] == "ByteArray_")[0]
   expect byte-arrays["bytes"] + byte-arrays["external-bytes"] >= 20_000
+
+  objects := (inspect.call ["objects", "--process", "$process-id", "--class", "Node", "--limit", "1000", first])[0]["result"]
+  live := objects.filter: it["live"]
+  expect-equals 501 live.size
+
+  // The strings have previews, so they can be found by their content.
+  strings := (inspect.call ["objects", "--process", "$process-id", "--class", "String_", "--limit", "10000", first])[0]["result"]
+  address-of := : | text/string | (strings.filter: it["preview"] == text)[0]["address"]
+
+  // "node 499" is the value of the head of the retained list.
+  path := inspect.call ["path", first, address-of.call "node 499"]
+  expect-equals "global" path[0]["root"]
+  expect-equals "retained-nodes" path[0]["global"]
+  expect-equals 2 path.size
+  address := path[0]["address"]
+  expect-equals "value" path[1]["referenced-by-field"]
+
+  object := inspect.call ["object", first, address]
+  expect-equals "Node" object["class"]
+  field-names := object["fields"].map: it["name"]
+  expect-equals ["value", "next"] field-names
+  expect-equals "node 499" object["fields"][0]["value"]["preview"]
+
+  held-path := inspect.call ["path", first, address-of.call "held by finalizer 1"]
+  expect-equals "finalizer" held-path[0]["root"]
+
+  retainers := inspect.call ["retainers", first, address]
+  expect retainers.size >= 1
