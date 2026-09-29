@@ -18,7 +18,7 @@ import .ble-fixture as wire
 import .ble-peripheral-test as peripheral
 import .ble-mtu-server-test as packets
 
-STATE ::= #[0x81, 2, 9, 0, 2, 0, 13, 0, 1, 0]
+STATE ::= #[0x81, 2, 9, 0, 2, 0, 17, 0, 1, 0]
 
 main:
   with-timeout --ms=12_000:
@@ -28,7 +28,7 @@ main:
     expect-equals STATE store.state
     expect-equals 0 store.saves
     service-round store --pending --confirm
-    expect-equals #[1, 2, 9, 0, 2, 0, 13, 0, 1, 0] store.state
+    expect-equals #[1, 2, 9, 0, 2, 0, 17, 0, 1, 0] store.state
     expect-equals 1 store.saves
     service-round store --no-pending --confirm
     expect-equals 1 store.saves
@@ -63,7 +63,7 @@ service-round store/configuration.Store --pending/bool --confirm/bool --late-sec
       radio.received.add (wire.att-event #[0x13, 1, 2, 0, 0, 0] --channel=5)
       if late-security:
         // Serving begins while the trusted owner's setup is still pending.
-        radio.received.add (wire.att-event #[0x0a, 13, 0])
+        radio.received.add (wire.att-event #[0x0a, 17, 0])
         wire.att-sent radio #[0x0b, 1, 0]
         provider.ready.set true
       if pending:
@@ -79,10 +79,10 @@ service-round store/configuration.Store --pending/bool --confirm/bool --late-sec
         store.release.set true
       if confirm:
         // This response is ordered after durable confirmation processing.
-        radio.received.add (wire.att-event #[0x0a, 13, 0])
+        radio.received.add (wire.att-event #[0x0a, 17, 0])
         wire.att-sent radio #[0x0b, 1, 0]
         cleared.set true
-        wire.att-sent radio #[0x1b, 12, 0, 42]
+        wire.att-sent radio #[0x1b, 16, 0, 42]
       radio.received.add #[4, 5, 4, 0, 0x34, 2, 0x13]
     finally:
       critical-do --no-respect-deadline: ended.set true
@@ -92,11 +92,11 @@ service-round store/configuration.Store --pending/bool --confirm/bool --late-sec
     session.add-characteristic #[0xf1, 0xff] --read --notify --value=#[42]
     session.start #[2, 1, 6]
     observed.get
-    if pending: expect (not (session.notify 12))
+    if pending: expect (not (session.notify 16))
     proceed.set true
     if confirm:
       cleared.get
-      expect (session.notify 12)
+      expect (session.notify 16)
     ended.get
     session.close
     expect-equals 1 provider.selected
@@ -110,7 +110,7 @@ service-round store/configuration.Store --pending/bool --confirm/bool --late-sec
     responder.cancel
 
 receipt-clear fail/bool:
-  database := attributes.Database.with-defaults
+  database := attributes.Database.with-defaults --caching
   database.add-service #[0xf0, 0xff]
   database.add-characteristic #[0xf1, 0xff] --read --notify --value=#[42]
   store := configuration.Store
@@ -128,7 +128,7 @@ receipt-clear fail/bool:
     radio.received.add wire.connection-event
     // An unsolicited confirmation cannot clear stored pending information.
     packets.incoming radio #[0x1e]
-    packets.incoming radio #[0x12, 13, 0, 1, 0]
+    packets.incoming radio #[0x12, 17, 0, 1, 0]
     packets.outgoing radio #[0x13]
     packets.outgoing radio #[0x1d, 8, 0, 1, 0, 0xff, 0xff]
     packets.incoming radio #[0x1e]
@@ -147,7 +147,7 @@ receipt-clear fail/bool:
     server = gatt-server.Server host link database --pairing=service.Owner --cccd-store=store
     error := catch:
       server.serve: | handle/int _ |
-        expect-equals 13 handle
+        expect-equals 17 handle
         expect-equals 0x81 store.state[0]
         store.pause = true
         store.fail = fail

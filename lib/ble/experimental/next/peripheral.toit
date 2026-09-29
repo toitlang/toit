@@ -33,7 +33,10 @@ class GattServer:
 
   connections_ -> List: return peripheral_ ? peripheral_.links_ : []
 
-  /** The attributes the provider's database needs, its nine default ones included. */
+  /**
+  The attributes the provider's database needs, its nine default ones
+    included (the Robust Caching pair comes on top).
+  */
   attribute-count_ -> int:
     count := 9
     services_.do: | service/Service |

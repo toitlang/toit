@@ -17,9 +17,9 @@ import .ble-multilink-test as multi
 import .ble-peripheral-test as peripheral
 import .ble-service-gatt-test as gatt
 
-INPUT ::= 12
-ECHO ::= 14
-CCCD ::= 15
+INPUT ::= 16
+ECHO ::= 18
+CCCD ::= 19
 
 class TwoProvider extends gatt.TestProvider:
   constructor: super

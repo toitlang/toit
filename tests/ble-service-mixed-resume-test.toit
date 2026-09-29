@@ -184,7 +184,7 @@ event provider/Provider index/int -> ByteArray:
   return result
 
 protected-read provider/Provider:
-  wire.incoming provider.radio 0x235 #[0x0a, 14, 0]
+  wire.incoming provider.radio 0x235 #[0x0a, 18, 0]
   wire.sent provider.radio 0x235 #[0x0b, 43]
 
 class Provider extends mixed.Provider:

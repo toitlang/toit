@@ -16,12 +16,12 @@ import ble.experimental.service.gatt-provider as providers
 import .ble-fixture as fixture
 import .ble-peripheral-test as peripheral-fixture
 
-// Handles: the default database ends at 9, the service is 10.
-STATIC ::= 12
-DYNAMIC ::= 14
-CONTROL ::= 16
-DATA ::= 18
-DATA-CCCD ::= 19
+// Handles: the default database ends at 13, the service is 14.
+STATIC ::= 16
+DYNAMIC ::= 18
+CONTROL ::= 20
+DATA ::= 22
+DATA-CCCD ::= 23
 
 ADVERTISEMENT ::= ble.Advertisement --name="T"
 // The API adds the Flags field to connectable advertising.

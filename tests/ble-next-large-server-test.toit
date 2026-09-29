@@ -23,9 +23,9 @@ main:
         radio := provider.radios.receive
         fixture.initialize-replies radio
         peripheral.accept radio
-        // Nine default attributes, the service at 10, then two per
-        // characteristic: the last value is at 10 + 2 * COUNT.
-        last := 10 + 2 * COUNT
+        // Thirteen default attributes, the service at 14, then two per
+        // characteristic: the last value is at 14 + 2 * COUNT.
+        last := 14 + 2 * COUNT
         radio.received.add (fixture.att-event #[0x0a, last, 0])
         fixture.att-sent radio #[0x0b, COUNT - 1]
         radio.received.add #[4, 5, 4, 0, 0x34, 2, 0x13]

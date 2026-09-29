@@ -49,7 +49,7 @@ run stage/int failing/bool:
         peripheral.reply radio 0x200a #[0]
         fixture.att-sent radio (signaling.parameter-request 1) --channel=5
         radio.received.add (fixture.att-event #[0x13, 1, 2, 0, 0, 0] --channel=5)
-        radio.received.add (fixture.att-event #[0x0a, 12, 0])
+        radio.received.add (fixture.att-event #[0x0a, 16, 0])
         fixture.att-sent radio #[0x0b, 42]
         radio.received.add #[4, 5, 4, 0, 0x34, 2, 0x13]
     finally:
@@ -78,7 +78,7 @@ run stage/int failing/bool:
       session := replacement.configure
       try:
         session.add-service #[0xf0, 0xff]
-        expect-equals 12 (session.add-characteristic #[0xf1, 0xff] --read --value=#[42])
+        expect-equals 16 (session.add-characteristic #[0xf1, 0xff] --read --value=#[42])
         session.start #[2, 1, 6]
         expect-equals [#[1, 2, 3, 4, 5, 6], 1] session.peer
         expect-throw "GATT_PEER_DISCONNECTED": session.next
