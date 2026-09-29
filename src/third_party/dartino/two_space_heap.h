@@ -33,6 +33,7 @@ class HeapObjectFunctionVisitor : public HeapObjectVisitor {
 class TwoSpaceHeap {
  public:
   TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* chunk);
+  ~TwoSpaceHeap();
 
   // Allocate raw object. Returns null if a garbage collection is
   // needed.
@@ -112,7 +113,7 @@ class TwoSpaceHeap {
   void compact_heap();
   void set_promotion_failed() { old_space_.set_promotion_failed(true); }
 
-  uword total_bytes_allocated() const;
+  uint64 total_bytes_allocated() const;
 
   word max_external_allocation();
 
@@ -128,7 +129,7 @@ class TwoSpaceHeap {
   Chunk* spare_chunk_ = null;  // Only used for large heap heuristics mode.
   uword water_mark_;
   uword semi_space_size_;
-  uword total_bytes_allocated_ = 0;
+  std::atomic<uint64> total_bytes_allocated_{0};
   bool large_allocation_failed_ = false;
   bool malloc_failed_ = false;
 };

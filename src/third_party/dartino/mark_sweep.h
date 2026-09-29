@@ -118,29 +118,4 @@ class CompactingVisitor : public HeapObjectVisitor {
   FixPointersVisitor* fix_pointers_visitor_;
 };
 
-class SweepingVisitor : public HeapObjectVisitor {
- public:
-  SweepingVisitor(Program* program, OldSpace* space);
-
-  virtual void chunk_start(Chunk* chunk) override {
-    GcMetadata::initialize_starts_for_chunk(chunk);
-  }
-
-  virtual uword visit(HeapObject* object) override;
-
-  virtual void chunk_end(Chunk* chunk, uword end) override {
-    add_free_list_region(end);
-    GcMetadata::clear_mark_bits_for_chunk(chunk);
-  }
-
-  uword used() const { return used_; }
-
- private:
-  void add_free_list_region(uword free_end_);
-
-  FreeList* free_list_;
-  uword free_start_;
-  int used_;
-};
-
 }  // namespace toit
