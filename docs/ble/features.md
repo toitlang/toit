@@ -15,7 +15,7 @@ its fixed limits, and the gaps that must close before it can replace NimBLE.
 | L2CAP | Fixed ATT, signaling and SMP channels; parameter request/response; rejection of other channels. |
 | ATT/GATT client | MTU exchange (23 to 517), primary service, characteristic and descriptor discovery, read, read long, write, write long (prepare/execute), write command, up to eight scoped subscriptions with a shared bounded queue, indications with confirmation, Service Changed monitor with a connection-local database revision. |
 | ATT/GATT server | Static database of at most 64 attributes, values up to 512 bytes, Service Changed by default, dynamic reads and pre-commit write validation through scoped handlers, prepared writes with atomic execute, notifications (single and batched through one RPC) and single-outstanding indications, user description and extended properties descriptors, per-attribute encryption and authentication requirements. |
-| SMP | Secure Connections Just Works and Numeric Comparison in both roles, f4/f5/f6/g2 with AES-CMAC, P-256 through mbedTLS with invalid-point and debug-key rejection, constant-time confirm comparison, identity (IRK) distribution, retry admission policy. |
+| SMP | Secure Connections Just Works and Numeric Comparison in both roles, f4/f5/f6/g2 with AES-CMAC, P-256 through mbedTLS with invalid-point and debug-key rejection, constant-time confirm comparison, identity (IRK) distribution, retry admission policy. LE legacy Just Works in both roles with 128-bit keys, long term key distribution (EDIV/Rand) and resumption of legacy bonds; verified on hardware against a NimBLE legacy peripheral (`tests/ble-hardware/legacy-bond.sh`). |
 | Encryption | LE Start Encryption on central links, LTK request replies on peripheral links, encryption change tracking, links that require encryption for their lifetime. |
 | Privacy | Host-side RPA generation and resolution, host-selected random addresses for scanning, advertising and connecting. |
 | Peripheral sessions | A provider whose `peripheral-session-limit` is above one serves that many centrals at once on a shared host, advertising again while connected; central sessions are refused meanwhile. |
@@ -41,8 +41,7 @@ its fixed limits, and the gaps that must close before it can replace NimBLE.
 
 These are needed for parity with `lib/ble` as applications use it today:
 
-- LE Read Remote Features after connection (every mainstream host does it; its absence is the likely trigger of the BlueZ resumption failure, see [open issues](open-issues.md)).
-- Legacy (non Secure Connections) pairing, Passkey Entry and OOB. The current NimBLE configuration permits legacy pairing by default.
+- Passkey Entry (SC and legacy) and OOB. A legacy peer that requires MITM protection, or offers only keys shorter than 128 bits, is refused.
 - Controller-based privacy (resolving list); today the host resolves RPAs itself and cannot connect to a rotating peer without scanning first.
 - Extended advertising PDUs (only legacy PDUs over extended commands are used).
 - Unbounded peripheral advertising (a session's wait for a central is bounded at 60 s; the `ble` package backend simply starts the next session).
