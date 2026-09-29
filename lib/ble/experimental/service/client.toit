@@ -306,6 +306,12 @@ class Connection extends services.ServiceResourceProxy with GattClient:
   security -> SecuritySnapshot: return SecuritySnapshot (operation_ api.SECURITY [])
 
   /**
+  Asks for security and returns what the link achieved. A central connection
+    paired when it connected, if the provider pairs, so this only observes.
+  */
+  request-security -> SecuritySnapshot: return SecuritySnapshot (operation_ api.REQUEST-SECURITY [])
+
+  /**
   Returns [role, tx PHY, rx PHY, tx octets, rx octets, interval, latency,
     supervision timeout, peer address, peer address type] for this link.
   */
@@ -791,6 +797,15 @@ class Session extends services.ServiceResourceProxy with GattClient:
 
   /** Returns achieved security; throws GATT_NOT_CONNECTED before a peer connects. */
   security -> SecuritySnapshot: return SecuritySnapshot (connection_.call_ api.SECURITY [handle_])
+
+  /**
+  Asks the connected central to pair with a Security Request and waits until
+    pairing ended (bounded by the 30-second SMP timeout), returning what the
+    link achieved. Pairing policy stays the provider's: without it, throws
+    GATT_SECURITY_UNSUPPORTED. A failed pairing ends the link.
+  */
+  request-security -> SecuritySnapshot:
+    return SecuritySnapshot (connection_.call_ api.REQUEST-SECURITY [handle_])
 
   /** Returns the current negotiated ATT MTU, initially 23 after connection. */
   mtu -> int: return connection_.call_ api.MTU [handle_]

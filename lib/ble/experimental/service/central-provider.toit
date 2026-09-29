@@ -270,6 +270,9 @@ class ConnectionSession extends rpc.Session:
     return [true, result]
 
   operation_ index/int arguments/List --revision/int?=null:
+    // A central pairs when it connects (see $Provider.run-central-security-owner);
+    // asking later reports what that achieved.
+    if index == api.REQUEST-SECURITY: return operation_ api.SECURITY arguments
     if index == api.SECURITY:
       if not arguments.is-empty: throw "INVALID_ARGUMENT"
       encrypted := link_.encrypted

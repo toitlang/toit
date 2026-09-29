@@ -138,8 +138,30 @@ class Connection:
     return ConnectionParameters result[0] result[1] result[2]
 
   /** The security the link has reached: $SECURITY-NONE, $SECURITY-ENCRYPTED or $SECURITY-AUTHENTICATED. */
-  security -> int:
-    snapshot/rpc.SecuritySnapshot := backend_.security
+  security -> int: return snapshot-level_ backend_.security
+
+  /**
+  Asks for at least $level ($SECURITY-ENCRYPTED or $SECURITY-AUTHENTICATED)
+    and returns the level the link reached.
+
+  As a peripheral, sends the central a Security Request and waits until
+    pairing ended (at most 30 seconds); pairing follows the provider's
+    policy, and a failed pairing ends the link. As a central, the link paired
+    when it connected ($Adapter.connect's `--security`), so this only
+    checks. Throws BLE_INSUFFICIENT_SECURITY when the link stays below
+    $level, and BLE_UNSUPPORTED when the provider does not pair.
+  */
+  request-security level/int=SECURITY-ENCRYPTED -> int:
+    if not SECURITY-ENCRYPTED <= level <= SECURITY-AUTHENTICATED: throw "INVALID_ARGUMENT"
+    snapshot/rpc.SecuritySnapshot? := null
+    error := catch: snapshot = backend_.request-security
+    if error == "GATT_SECURITY_UNSUPPORTED": throw "BLE_UNSUPPORTED"
+    if error: throw error
+    achieved := snapshot-level_ snapshot
+    if achieved < level: throw "BLE_INSUFFICIENT_SECURITY"
+    return achieved
+
+  static snapshot-level_ snapshot/rpc.SecuritySnapshot -> int:
     if snapshot.authenticated: return SECURITY-AUTHENTICATED
     if snapshot.encrypted: return SECURITY-ENCRYPTED
     return SECURITY-NONE

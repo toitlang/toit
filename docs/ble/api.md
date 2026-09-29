@@ -170,6 +170,7 @@ while true:
 | `parameters` | connection interval, latency and supervision timeout |
 | `request-parameters` | asks for new connection parameters: directly as central, through the central as peripheral |
 | `security` | `SECURITY-NONE`, `SECURITY-ENCRYPTED` or `SECURITY-AUTHENTICATED`, as achieved now |
+| `request-security` | asks for a level and returns the one reached: as peripheral a Security Request makes the central pair (the provider's pairing policy applies); as central the link paired at `connect --security` |
 | `rssi` | the controller's RSSI for this link, in dBm |
 | `tx-power` | the controller's current transmit power on this link, in dBm |
 | `disconnect` | ends the link and waits until it has ended |
@@ -203,9 +204,5 @@ that ended under an operation makes it throw; `wait-closed` says why.
 
 - **Name and place.** `ble.experimental.next` marks it as a candidate. If it
   replaces the `ble` package API, it moves to `import ble`.
-- **Pairing from the application.** Pairing and bonding policy (IO
-  capabilities, confirmation, bond storage) stay in the provider, as
-  today. The API lets an application require a security level and read
-  what was achieved; it does not start pairing itself.
 - **Per-connection transmit power.** The ESP32 vendor API can set it per
   connection handle; the API sets the default for new connections only.
