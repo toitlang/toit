@@ -23,9 +23,9 @@ main:
 
 test --builder/bool=false --custom-timeout/bool=false --receive-flow/bool=false:
   with-timeout --ms=8_000:
-    input := builder ? 12 : 3
-    echo := builder ? 14 : 5
-    cccd := builder ? 15 : 6
+    input := builder ? 16 : 3
+    echo := builder ? 18 : 5
+    cccd := builder ? 19 : 6
     provider := TestProvider --receive-flow=receive-flow
     ended := monitor.Latch
     responder := task::

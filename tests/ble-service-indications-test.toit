@@ -29,18 +29,18 @@ run mode/string:
       keys.establish radio
       fixture.att-sent radio (signaling.parameter-request 1) --channel=5
       radio.received.add (fixture.att-event #[0x13, 1, 2, 0, 0, 0] --channel=5)
-      radio.received.add (fixture.att-event #[0x12, 13, 0, 2, 0])
+      radio.received.add (fixture.att-event #[0x12, 17, 0, 2, 0])
       wire.outgoing radio #[0x13]
       radio.received.add (fixture.att-event (wire.exchange 2 517))
       wire.outgoing radio (wire.exchange 3 517)
-      radio.received.add (fixture.att-event #[0x12, 13, 0, 2, 0])
+      radio.received.add (fixture.att-event #[0x12, 17, 0, 2, 0])
       wire.outgoing radio #[0x13]
-      wire.outgoing radio (#[0x1d, 12, 0] + (payload 0))
+      wire.outgoing radio (#[0x1d, 16, 0] + (payload 0))
       if mode == "confirmed":
         // Let the first waiter expire without retracting the submitted indication.
         sleep --ms=50
         radio.received.add (fixture.att-event #[0x1e])
-        wire.outgoing radio (#[0x1d, 12, 0] + (payload 1))
+        wire.outgoing radio (#[0x1d, 16, 0] + (payload 1))
         radio.received.add (fixture.att-event #[0x1e])
       if mode == "disconnect":
         sleep --ms=50
@@ -94,14 +94,14 @@ application mode/string:
             (: | request/clients.Request | unreachable)
             (: | request/clients.Request | unreachable)
             (: | handle/int value/ByteArray |
-              expect-equals 13 handle
+              expect-equals 17 handle
               if session.mtu == 23:
-                expect-throw "GATT_VALUE_EXCEEDS_MTU": session.indicate 12
+                expect-throw "GATT_VALUE_EXCEEDS_MTU": session.indicate 16
               else:
-                receipt := session.indicate 12 --timeout=(Duration --ms=(mode == "timeout" ? 150 : 3_000))
+                receipt := session.indicate 16 --timeout=(Duration --ms=(mode == "timeout" ? 150 : 3_000))
                 expect (receipt != null)
                 expect-throw "GATT_INDICATION_WAIT_IN_SERVE": receipt.wait
-                expect-throw "GATT_INDICATION_BUSY": session.indicate 12
+                expect-throw "GATT_INDICATION_BUSY": session.indicate 16
                 receipt-ready.set receipt)
         if error and error != "GATT_REQUESTS_CLOSED" and error != "GATT_SERVER_CLOSED": throw error
       finally:
@@ -119,11 +119,11 @@ application mode/string:
       if mode == "confirmed":
         expect-throw "DEADLINE_EXCEEDED":
           with-timeout --ms=1: receipt.wait
-        session.set-value 12 (payload 1)
+        session.set-value 16 (payload 1)
         system.process-stats --gc
         receipt.wait
         expect-throw "GATT_INDICATION_EXPIRED": receipt.wait
-        next := session.indicate 12
+        next := session.indicate 16
         expect-throw "GATT_INDICATION_EXPIRED": receipt.wait
         next.wait
       else if mode == "timeout":

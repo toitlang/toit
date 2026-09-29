@@ -163,8 +163,8 @@ run peripheral-first/bool central-numeric/bool peripheral-numeric/bool lose-cent
 peripheral client/clients.Client -> clients.Session:
   session := client.configure
   session.add-service #[0xf0, 0xff]
-  expect-equals 12 (session.add-characteristic #[0xf1, 0xff] --read --encrypted --value=#[42])
-  expect-equals 14 (session.add-characteristic #[0xf2, 0xff] --read --authenticated --value=#[43])
+  expect-equals 16 (session.add-characteristic #[0xf1, 0xff] --read --encrypted --value=#[42])
+  expect-equals 18 (session.add-characteristic #[0xf2, 0xff] --read --authenticated --value=#[43])
   session.start #[2, 1, 6]
   session.peer
   return session
@@ -172,15 +172,15 @@ peripheral client/clients.Client -> clients.Session:
 pair-peripheral provider/Provider:
   mixed.peripheral provider.radio
   // Even an authenticated central role must not unlock the peripheral role.
-  wire.incoming provider.radio 0x235 #[0x0a, 12, 0]
-  wire.sent provider.radio 0x235 #[1, 0x0a, 12, 0, 5]
+  wire.incoming provider.radio 0x235 #[0x0a, 16, 0]
+  wire.sent provider.radio 0x235 #[1, 0x0a, 16, 0, 5]
   pair provider 1
 
 protected-read provider/Provider:
-  wire.incoming provider.radio 0x235 #[0x0a, 12, 0]
+  wire.incoming provider.radio 0x235 #[0x0a, 16, 0]
   wire.sent provider.radio 0x235 #[0x0b, 42]
-  wire.incoming provider.radio 0x235 #[0x0a, 14, 0]
-  wire.sent provider.radio 0x235 (provider.numeric[1] ? #[0x0b, 43] : #[1, 0x0a, 14, 0, 5])
+  wire.incoming provider.radio 0x235 #[0x0a, 18, 0]
+  wire.sent provider.radio 0x235 (provider.numeric[1] ? #[0x0b, 43] : #[1, 0x0a, 18, 0, 5])
 
 pair provider/Provider index/int:
   radio := provider.radio

@@ -31,19 +31,19 @@ main:
         peripheral.reply radio 0x200a #[0]
         fixture.att-sent radio (signaling.parameter-request 1) --channel=5
         radio.received.add (fixture.att-event #[0x13, 1, 2, 0, 0, 0] --channel=5)
-        radio.received.add (fixture.att-event #[8, 11, 0, 12, 0, 3, 0x28])
-        fixture.att-sent radio #[9, 7, 11, 0, 6, 12, 0, 0xf1, 0xff]
-        radio.received.add (fixture.att-event #[0x12, 12, 0, 77])
-        fixture.att-sent radio #[1, 0x12, 12, 0, 3]
+        radio.received.add (fixture.att-event #[8, 15, 0, 16, 0, 3, 0x28])
+        fixture.att-sent radio #[9, 7, 15, 0, 6, 16, 0, 0xf1, 0xff]
+        radio.received.add (fixture.att-event #[0x12, 16, 0, 77])
+        fixture.att-sent radio #[1, 0x12, 16, 0, 3]
         count := radio.sent-count
         2.repeat: | index/int |
           value := index == 0 ? #[42] : #[]
-          radio.received.add (fixture.att-event (#[0x52, 12, 0] + value))
+          radio.received.add (fixture.att-event (#[0x52, 16, 0] + value))
           received[index].get
           expect-equals count radio.sent-count
-        radio.received.add (fixture.att-event #[0x52, 12, 0, 99])
+        radio.received.add (fixture.att-event #[0x52, 16, 0, 99])
         rejected.get
-        radio.received.add (fixture.att-event #[0x0a, 12, 0])
+        radio.received.add (fixture.att-event #[0x0a, 16, 0])
         fixture.att-sent radio #[0x0b]
         radio.received.add #[4, 5, 4, 0, 0x34, 2, 0x13]
       finally:
@@ -52,7 +52,7 @@ main:
       session := client.configure
       session.add-service #[0xf0, 0xff]
       handle := session.add-characteristic #[0xf1, 0xff] --read --write-command --validate-write
-      expect-equals 12 handle
+      expect-equals 16 handle
       session.start #[2, 1, 6]
       values := []
       validations := 0

@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can
 // be found in the lib/LICENSE file.
 
+import crypto.cmac show cmac
 import io
 import .cccd-store as cccd
 import .security-state show SecurityState
@@ -18,6 +19,8 @@ class Database:
   attribute-limit_/int
   subscribable_/int := 0
   service-changed-cccd_/int := 0
+  client-features_/int := 0
+  database-hash_/int := 0
 
   /** The most attributes a database may hold. */
   static MAX-ATTRIBUTES ::= 512
@@ -26,6 +29,9 @@ class Database:
     subscriptions count them in one byte. Unreachable below 766 attributes.
   */
   static MAX-SUBSCRIBABLE ::= 255
+
+  /** Client Supported Features bit for Robust Caching (Core 6.3 Vol 3 Part G 7.2). */
+  static ROBUST-CACHING ::= 1
 
   /**
   Creates an empty database of at most $attribute-limit attributes (64 by
@@ -46,17 +52,23 @@ class Database:
     Service Changed therefore exists by default. Set $immutable-layout only if
     the layout cannot change for the usable lifetime of the device (Core 6.3
     Vol 3 Part G 2.5 and 7.1). Bonded CCCDs require a trusted session store;
-    explicit layout migration uses ConfigurationMigration. Automatic cross-
-    connection caching is not supplied.
+    explicit layout migration uses ConfigurationMigration.
+
+  With $caching the GATT service also has Client Supported Features and
+    Database Hash, the Robust Caching pair (Core 6.3 Vol 3 Part G 2.5.2.1,
+    7.2 and 7.3): clients that cache the layout check the hash, and a bonded
+    client that enabled Robust Caching is told with Database Out Of Sync
+    (0x12) when the layout changed since its last connection. Their four
+    attributes come on top of $attribute-limit, up to $MAX-ATTRIBUTES.
   */
   constructor.with-defaults --name/string="Toit" --value-limit/int=20 --mtu-limit/int=23
-      --attribute-limit/int=64 --immutable-layout/bool=false:
+      --attribute-limit/int=64 --immutable-layout/bool=false --caching/bool=false:
     if not 1 <= value-limit <= 512: throw "INVALID_ARGUMENT"
     if not 23 <= mtu-limit <= 517: throw "INVALID_ARGUMENT"
     if not 1 <= attribute-limit <= MAX-ATTRIBUTES: throw "INVALID_ARGUMENT"
     value-limit_ = value-limit
     mtu-limit_ = mtu-limit
-    attribute-limit_ = attribute-limit
+    attribute-limit_ = caching ? (min MAX-ATTRIBUTES (attribute-limit + 4)) : attribute-limit
     bytes := name.to-byte-array
     if bytes.size > value-limit: throw "INVALID_ARGUMENT"
     add-service #[0, 0x18]
@@ -67,6 +79,11 @@ class Database:
       handle := add-characteristic #[5, 0x2a] --indicate --value=#[1, 0, 0xff, 0xff]
       service-changed-cccd_ = handle + 1
       (attribute_ handle).application-value = false
+    if caching:
+      client-features_ = add-characteristic #[0x29, 0x2b] --read --write --value=#[0]
+      (attribute_ client-features_).application-value = false
+      database-hash_ = add-characteristic #[0x2a, 0x2b] --read --value=(ByteArray 16)
+      (attribute_ database-hash_).application-value = false
 
   /** Returns the configured maximum application value size (at most 512 bytes). */
   value-limit -> int: return value-limit_
@@ -77,6 +94,39 @@ class Database:
   /** Returns the built-in Service Changed value handle, or null when absent. */
   service-changed-handle -> int?:
     return service-changed-cccd_ == 0 ? null : service-changed-cccd_ - 1
+
+  /** Returns the Client Supported Features value handle, or null without caching. */
+  client-features-handle -> int?: return client-features_ == 0 ? null : client-features_
+
+  /** Returns the Database Hash value handle, or null without caching. */
+  database-hash-handle -> int?: return database-hash_ == 0 ? null : database-hash_
+
+  /**
+  Returns the Database Hash of the layout (Core 6.3 Vol 3 Part G 7.3.1):
+    AES-CMAC with a zero key over the handle, type and value of every
+    service, include, characteristic declaration and extended properties
+    descriptor, and the handle and type of every other GATT-defined
+    descriptor. Characteristic values do not take part. The result is in
+    wire order (least significant byte first).
+  */
+  database-hash -> ByteArray:
+    message := io.Buffer
+    attributes_.do: | attribute/Attribute_ |
+      uuid := attribute.uuid
+      if uuid.size != 2: continue.do
+      type := io.LITTLE-ENDIAN.uint16 uuid 0
+      with-value := 0x2800 <= type <= 0x2803 or type == 0x2900
+      if not with-value and not 0x2901 <= type <= 0x2905: continue.do
+      message.little-endian.write-uint16 attribute.handle
+      message.write uuid
+      if with-value: message.write attribute.value
+    return (cmac --key=(ByteArray 16) message.bytes).reverse
+
+  /** Freezes the layout; the Database Hash is fixed from here on. */
+  seal_ -> none:
+    if sealed_: return
+    sealed_ = true
+    if database-hash_ != 0: (attribute_ database-hash_).value = database-hash
 
   /** Adds a primary service and returns its declaration handle. */
   add-service uuid/ByteArray -> int:
@@ -206,10 +256,19 @@ class Database:
       --cccd-store/cccd.Store?=null -> Session:
     return Session this --security=security --handler-timeout=handler-timeout --cccd-store=cccd-store
 
+  /**
+  Decodes a stored configuration: format 1 (subscriptions) or 2
+    (subscriptions and one octet of client features). The high bit of the
+    format octet marks a layout change the client has not seen yet.
+  */
   decode-cccd_ state/ByteArray -> Map:
-    if state.size < 2 or state.size > 2 + 4 * MAX-SUBSCRIBABLE: throw "GATT_INVALID_CCCD_STATE"
+    if state.size < 2 or state.size > 3 + 4 * MAX-SUBSCRIBABLE: throw "GATT_INVALID_CCCD_STATE"
     count := state[1]
-    if (state[0] != 1 and state[0] != 0x81) or state.size != 2 + count * 4:
+    format := state[0] & 0x7f
+    if (format != 1 and format != 2) or state.size != (format == 1 ? 2 : 3) + count * 4:
+      throw "GATT_INVALID_CCCD_STATE"
+    features := decode-features_ state
+    if features & ~ROBUST-CACHING != 0 or (format == 2 and (features == 0 or client-features_ == 0)):
       throw "GATT_INVALID_CCCD_STATE"
     subscriptions := {:}
     previous := 0
@@ -223,19 +282,31 @@ class Database:
         throw "GATT_INVALID_CCCD_STATE"
       subscriptions[attribute.notifies] = value[0]
       previous = handle
-    if state[0] == 0x81 and
-        (subscriptions.get (service-changed-cccd_ - 1) --if-absent=: 0) != 2:
+    if state[0] & 0x80 != 0 and not (tracks-change_ subscriptions features):
       throw "GATT_INVALID_CCCD_STATE"
     return subscriptions
 
-  encode-cccd_ subscriptions/Map --changed/bool=false -> ByteArray:
+  /** The client features in a stored configuration. */
+  decode-features_ state/ByteArray -> int:
+    return state[0] & 0x7f == 2 ? state.last : 0
+
+  /**
+  Whether a pending layout change can reach the client: by a Service Changed
+    indication, or by Database Out Of Sync with Robust Caching.
+  */
+  tracks-change_ subscriptions/Map features/int -> bool:
+    return (subscriptions.get (service-changed-cccd_ - 1) --if-absent=: 0) == 2 or
+        features & ROBUST-CACHING != 0
+
+  encode-cccd_ subscriptions/Map --changed/bool=false --features/int=0 -> ByteArray:
     count := 0
     attributes_.do: | attribute/Attribute_ |
       if attribute.notifies != 0 and (subscriptions.get attribute.notifies --if-absent=: 0) != 0:
         count++
-    state := ByteArray (2 + count * 4)
-    state[0] = changed ? 0x81 : 1
+    state := ByteArray ((features == 0 ? 2 : 3) + count * 4)
+    state[0] = (changed ? 0x80 : 0) | (features == 0 ? 1 : 2)
     state[1] = count
+    if features != 0: state[state.size - 1] = features
     offset := 2
     attributes_.do: | attribute/Attribute_ |
       if attribute.notifies == 0: continue.do
@@ -316,8 +387,8 @@ class ConfigurationMigration:
       targets.add target
     if mapping_.size != mapping.size: throw "GATT_INVALID_CCCD_MIGRATION"
     mapping_[before_.service-changed-cccd_] = after_.service-changed-cccd_
-    before_.sealed_ = true
-    after_.sealed_ = true
+    before_.seal_
+    after_.seal_
 
   /** Returns a complete new snapshot, retaining a pending full-range change notice. */
   apply state/ByteArray? -> ByteArray:
@@ -327,8 +398,9 @@ class ConfigurationMigration:
       if target == 0: continue.do
       bits := previous.get (before_.attribute_ source).notifies --if-absent=: 0
       if bits != 0: subscriptions[(after_.attribute_ target).notifies] = bits
-    changed := (subscriptions.get after_.service-changed-handle --if-absent=: 0) == 2
-    return after_.encode-cccd_ subscriptions --changed=changed
+    features := state and after_.client-features_ != 0 ? before_.decode-features_ state : 0
+    changed := after_.tracks-change_ subscriptions features
+    return after_.encode-cccd_ subscriptions --changed=changed --features=features
 
 class Attribute_:
   handle/int
@@ -418,6 +490,9 @@ class Session:
   cccd-store_/cccd.Store?
   saving-cccd_/bool := false
   service-changed-pending_/bool := false
+  client-features_/int := 0
+  out-of-sync-sent_/bool := false
+  hash-read_/bool := false
   subscriptions_/Map := {:}
   closed_/bool := false
   prepared_/List := []
@@ -445,7 +520,7 @@ class Session:
       saved/ByteArray? := null
       with-timeout timeouts.STORE: saved = cccd-store.load
       if saved: restore-cccd_ saved
-    database_.sealed_ = true
+    database_.seal_
 
   /** Returns the effective MTU, initially 23. */
   mtu -> int: return mtu_
@@ -473,6 +548,21 @@ class Session:
 
   /** Returns the fixed Service Changed handle, or null when absent. */
   service-changed-handle -> int?: return database_.service-changed-handle
+
+  /** The client's supported features (Core 6.3 Vol 3 Part G 7.2), restored for a bond. */
+  client-features -> int: return client-features_
+
+  /**
+  Whether the client is change-unaware (Core 6.3 Vol 3 Part G 2.5.2.1): it
+    enabled Robust Caching and has not seen a layout change yet. Its
+    commands are ignored, and its first request gets Database Out Of Sync.
+    It becomes change-aware when it confirms the Service Changed
+    indication, or with its next request after that error or after reading
+    the Database Hash.
+  */
+  change-unaware -> bool:
+    return service-changed-pending_ and client-features_ & Database.ROBUST-CACHING != 0 and
+        security_ != null and security_.paired and security_.encrypted
 
   /**
   Durably clears a pending change after its indication was confirmed.
@@ -537,7 +627,7 @@ class Session:
     entries := accepted_
     accepted_ = []
     entries.do: | entry/List |
-      if entry[0] != database_.service-changed-cccd_:
+      if entry[0] != database_.service-changed-cccd_ and entry[0] != database_.client-features_:
         written.call entry[0] entry[1].copy
 
   check-open_ -> none:
@@ -560,9 +650,17 @@ class Session:
     opcode := pdu[0]
     // Commands never receive a response, including malformed or denied writes.
     if opcode & 0x40 != 0:
-      if opcode == 0x52: write-command_ pdu validate
+      if opcode == 0x52 and not change-unaware: write-command_ pdu validate
       return null
     if pdu.size > mtu_: return error_ opcode 0 4
+    if opcode != 2 and change-unaware:
+      if opcode == 8 and (pdu.size == 7 or pdu.size == 21) and (normalize_ pdu[5..]) == #[0x2a, 0x2b]:
+        hash-read_ = true
+      else if hash-read_ or out-of-sync-sent_:
+        save-cccd_ subscriptions_ false
+      else:
+        out-of-sync-sent_ = true
+        return error_ opcode (opcode == 0x18 or pdu.size < 3 ? 0 : io.LITTLE-ENDIAN.uint16 pdu 1) 0x12
     if opcode == 0x16:
       if pdu.size < 5: return error_ opcode 0 4
       handle := io.LITTLE-ENDIAN.uint16 pdu 1
@@ -714,6 +812,7 @@ class Session:
       security-error := security-error_ attribute
       if security-error != 0: return error_ opcode handle security-error
       value := pdu[3..].copy
+      if handle == database_.client-features_: return write-client-features_ attribute value
       if attribute.application-value and value.size > database_.value-limit:
         return error_ opcode handle 0x0d
       if attribute.user-description and not value.is-valid-string-content:
@@ -749,6 +848,25 @@ class Session:
       return response
     return error_ opcode 0 6
 
+  /**
+  Enables client features. Only Robust Caching is supported; other bits are
+    ignored, and a client cannot disable a feature it enabled (Value Not
+    Allowed).
+  */
+  write-client-features_ attribute/Attribute_ value/ByteArray -> ByteArray:
+    if value.is-empty: return error_ 0x12 attribute.handle 0x0d
+    if client-features_ & ~value[0] != 0: return error_ 0x12 attribute.handle 0x13
+    features := client-features_ | (value[0] & Database.ROBUST-CACHING)
+    if features != client-features_:
+      if cccd-store_:
+        save-cccd_ subscriptions_ service-changed-pending_ --features=features
+        if (security-error_ attribute) != 0:
+          close
+          throw "GATT_INSUFFICIENT_SECURITY"
+      else:
+        client-features_ = features
+    return #[0x13]
+
   write-command_ pdu/ByteArray [validate] -> none:
     if pdu.size < 3 or pdu.size > mtu_: return
     handle := io.LITTLE-ENDIAN.uint16 pdu 1
@@ -767,7 +885,8 @@ class Session:
     accepted_ = accepted
 
   security-error_ attribute/Attribute_ -> int:
-    if not attribute.encrypted and not (cccd-store_ and attribute.notifies != 0): return 0
+    per-client := attribute.notifies != 0 or attribute.handle == database_.client-features_
+    if not attribute.encrypted and not (cccd-store_ and per-client): return 0
     // GAP Vol 3 Part C 10.3.1: no key requires pairing; an existing key
     // without encryption requires encryption, regardless of MITM policy.
     if not security_ or not security_.paired: return 5
@@ -781,16 +900,22 @@ class Session:
   value_ attribute/Attribute_ -> ByteArray:
     if attribute.notifies != 0:
       return #[(subscriptions_.get attribute.notifies --if-absent=: 0), 0]
+    if attribute.handle == database_.client-features_: return #[client-features_]
     return attribute.value
 
   restore-cccd_ state/ByteArray -> none:
     state = state.copy
     subscriptions_ = database_.decode-cccd_ state
-    service-changed-pending_ = state[0] == 0x81
+    client-features_ = database_.decode-features_ state
+    service-changed-pending_ = state[0] & 0x80 != 0
 
-  save-cccd_ subscriptions/Map changed/bool -> none:
-    changed = changed and (subscriptions.get database_.service-changed-handle --if-absent=: 0) == 2
-    state := database_.encode-cccd_ subscriptions --changed=changed
+  /**
+  Saves the configuration. A save that clears the pending change also makes
+    the client change-aware.
+  */
+  save-cccd_ subscriptions/Map changed/bool --features/int=client-features_ -> none:
+    changed = changed and (database_.tracks-change_ subscriptions features)
+    state := database_.encode-cccd_ subscriptions --changed=changed --features=features
     succeeded := false
     saving-cccd_ = true
     try:
@@ -798,6 +923,10 @@ class Session:
       check-open_
       if not (security_.paired and security_.encrypted): throw "GATT_INSUFFICIENT_SECURITY"
       service-changed-pending_ = changed
+      client-features_ = features
+      if not changed:
+        out-of-sync-sent_ = false
+        hash-read_ = false
       succeeded = true
     finally:
       saving-cccd_ = false
@@ -830,6 +959,7 @@ class Session:
     staged := {:}
     writes := []
     subscriptions := subscriptions_.copy
+    features := client-features_
     queued.do: | pdu/ByteArray |
       handle := io.LITTLE-ENDIAN.uint16 pdu 1
       offset := io.LITTLE-ENDIAN.uint16 pdu 3
@@ -847,6 +977,9 @@ class Session:
       if attribute.notifies != 0:
         if not (valid-cccd_ attribute next): return error_ 0x18 handle 0x13
         subscriptions[attribute.notifies] = next[0]
+      if handle == database_.client-features_:
+        if next.is-empty or client-features_ & ~next[0] != 0: return error_ 0x18 handle 0x13
+        features = client-features_ | (next[0] & Database.ROBUST-CACHING)
       staged[handle] = next
       writes.add [handle, next]
     committed := []
@@ -869,8 +1002,9 @@ class Session:
     // All allocation and validation precedes mutation. No application code is
     // called while committing the transaction, including repeated handles.
     response := #[0x19]
-    if cccd-store_ and (writes.any: | entry/List | (database_.attribute_ entry[0]).notifies != 0):
-      save-cccd_ subscriptions service-changed-pending_
+    if cccd-store_ and (features != client-features_ or
+        (writes.any: | entry/List | (database_.attribute_ entry[0]).notifies != 0)):
+      save-cccd_ subscriptions service-changed-pending_ --features=features
       committed.do: | entry/List |
         if (security-error_ (database_.attribute_ entry[0])) != 0:
           close
@@ -878,8 +1012,9 @@ class Session:
     critical-do --no-respect-deadline:
       writes.do: | entry/List |
         attribute := database_.attribute_ entry[0]
-        if attribute.notifies == 0: attribute.value = entry[1]
+        if attribute.notifies == 0 and entry[0] != database_.client-features_: attribute.value = entry[1]
       subscriptions_ = subscriptions
+      client-features_ = features
       accepted_ = committed
     return response
 

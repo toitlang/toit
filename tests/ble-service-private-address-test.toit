@@ -51,7 +51,7 @@ main:
             peripheral.reply radio 0x200a #[0]
             fixture.att-sent radio (signaling.parameter-request 1) --channel=5
             radio.received.add (fixture.att-event #[0x13, 1, 2, 0, 0, 0] --channel=5)
-            radio.received.add (fixture.att-event #[0x0a, 12, 0])
+            radio.received.add (fixture.att-event #[0x0a, 16, 0])
             fixture.att-sent radio #[0x0b, 42]
             radio.received.add #[4, 5, 4, 0, 0x34, 2, 0x13]
           finally:

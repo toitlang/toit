@@ -1,7 +1,8 @@
 # GATT database, Service Changed and client cache
 
 Governing text: Core 6.3 Vol 3 Part G 2.5 (caching), 3.3.3.3 (bonded CCCD
-persistence) and 7.1 (Service Changed).
+persistence), 7.1 (Service Changed), 7.2 (Client Supported Features) and 7.3
+(Database Hash).
 
 ## Server layout
 
@@ -12,10 +13,27 @@ Service Changed and promises a fixed layout for the device's lifetime. The
 Service Changed value is indication-only, its CCCD starts disabled per
 connection, and the full range 0x0001 to 0xFFFF is indicated.
 
+`--caching` (on in the providers' databases) adds the Robust Caching pair to
+the GATT service, so application attributes start at handle 14:
+
+- Database Hash: AES-CMAC with a zero key over the declarations (Vol 3
+  Part G 7.3.1), fixed when the database is sealed. Values do not take part.
+  Clients that cache a layout compare it on reconnection.
+- Client Supported Features: per connection; only Robust Caching (bit 0) is
+  kept, and a client cannot clear a bit it set (Value Not Allowed). A bonded
+  client's features are stored with its CCCDs.
+
+A bonded client with Robust Caching is change-unaware while its stored
+configuration carries a pending layout change and the link is encrypted: its
+commands are ignored, its first request (other than the MTU exchange and a
+Read By Type of the Database Hash) gets Database Out Of Sync (0x12), and the
+next request makes it change-aware and clears the pending change durably, as
+does confirming the Service Changed indication.
+
 Sessions start with an empty subscription map unless a trusted `cccd.Store`
 is supplied. The store belongs to one bond and one database revision; it is
-loaded at session start, saved atomically on every CCCD write before the ATT
-response, and its loaded subscriptions stay inactive until paired encryption is
+loaded at session start, saved atomically on every CCCD or client features
+write before the ATT response, and its loaded subscriptions stay inactive until paired encryption is
 established. A save failure closes the session.
 
 ## Offline migration
@@ -25,7 +43,8 @@ maps every old application CCCD to its successor (zero for removed). Service
 Changed maps automatically and must keep its handle. The registry applies it to
 each stored configuration before advertising and marks a pending full-range
 Service Changed that is cleared durably only after the client confirms the
-indication. Live database mutation is not implemented.
+indication (or, with Robust Caching, after its request following Database
+Out Of Sync). Client features carry over. Live database mutation is not implemented.
 
 ## Client side
 
@@ -44,5 +63,5 @@ read, write and subscription. An active subscription whose database changed
 reports `GATT_DATABASE_CHANGED`; its cleanup closes the link rather than
 writing a possibly repurposed CCCD.
 
-There is no persistent bonded client cache and no Database Hash / Client
-Supported Features support.
+There is no persistent bonded client cache: the client does not read peers'
+Database Hash or enable Robust Caching on them.

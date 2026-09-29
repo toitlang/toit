@@ -177,8 +177,9 @@ class Client extends services.ServiceClient:
 
   $value-limit is at most 512 bytes and $mtu-limit is 23 through 517. The MTU
     remains 23 until the peer exchanges it. $attribute-limit bounds the
-    database, the default services included (nine attributes); providers
-    allow up to 256 by default. The value bound also limits RPC
+    database, the default services included (nine attributes; the provider
+    adds the four Robust Caching attributes on top); providers allow up to
+    256 by default. The value bound also limits RPC
     handler records and replies; larger retained values can use long reads.
     $handler-timeout sets the per-handler budget described by
     $Session.set-handler-timeout; it defaults to one second.

@@ -78,14 +78,14 @@ resumed-service authenticated/bool --receive-flow/bool=false:
           parameters-sent = true
       expect (disabled and key-replied and parameters-sent)
       radio.received.add (fixture.att-event #[0x13, 1, 2, 0, 0, 0] --channel=5)
-      radio.received.add (fixture.att-event #[0x0a, 12, 0])
-      fixture.att-sent radio #[1, 0x0a, 12, 0, 5]
+      radio.received.add (fixture.att-event #[0x0a, 16, 0])
+      fixture.att-sent radio #[1, 0x0a, 16, 0, 5]
       radio.received.add #[4, 8, 4, 0, 0x34, 2, 1]
       provider.secured.get
-      radio.received.add (fixture.att-event #[0x0a, 12, 0])
+      radio.received.add (fixture.att-event #[0x0a, 16, 0])
       fixture.att-sent radio #[0x0b, 42]
-      radio.received.add (fixture.att-event #[0x0a, 14, 0])
-      fixture.att-sent radio (authenticated ? #[0x0b, 43] : #[1, 0x0a, 14, 0, 5])
+      radio.received.add (fixture.att-event #[0x0a, 18, 0])
+      fixture.att-sent radio (authenticated ? #[0x0b, 43] : #[1, 0x0a, 18, 0, 5])
       radio.received.add #[4, 5, 4, 0, 0x34, 2, 0x13]
     finally:
       critical-do --no-respect-deadline: ended.set true
@@ -206,8 +206,8 @@ respond provider/Provider peer/smp.Session capability/int numeric/bool close-dur
   if provider.address: provider.address.fill 0
   fixture.att-sent radio (signaling.parameter-request 1) --channel=5
   radio.received.add (fixture.att-event #[0x13, 1, 2, 0, 0, 0] --channel=5)
-  radio.received.add (fixture.att-event #[0x0a, 12, 0])
-  fixture.att-sent radio #[1, 0x0a, 12, 0, 5]
+  radio.received.add (fixture.att-event #[0x0a, 16, 0])
+  fixture.att-sent radio #[1, 0x0a, 16, 0, 5]
   if capability == 0:
     wire.send-smp radio peer.start
     expect-equals #[5, 5] (wire.take-smp radio (acl.Reassembler 0x234 --limit=65))
@@ -231,14 +231,14 @@ respond provider/Provider peer/smp.Session capability/int numeric/bool close-dur
     // The protocol owner requires its pairing worker to consume encryption
     // completion before exposing security. Requests may briefly see 0x0f.
     while true:
-      radio.received.add (fixture.att-event #[0x0a, 12, 0])
+      radio.received.add (fixture.att-event #[0x0a, 16, 0])
       response := radio.sent.take
       radio.received.add #[4, 0x13, 5, 1, 0x34, 2, 1, 0]
       if response[9..] == #[0x0b, 42]: break
-      expect-equals #[1, 0x0a, 12, 0, 0x0f] response[9..]
+      expect-equals #[1, 0x0a, 16, 0, 0x0f] response[9..]
       sleep --ms=2
-  radio.received.add (fixture.att-event #[0x0a, 14, 0])
-  fixture.att-sent radio (numeric ? #[0x0b, 43] : #[1, 0x0a, 14, 0, 5])
+  radio.received.add (fixture.att-event #[0x0a, 18, 0])
+  fixture.att-sent radio (numeric ? #[0x0b, 43] : #[1, 0x0a, 18, 0, 5])
   radio.received.add #[4, 5, 4, 0, 0x34, 2, 0x13]
 
 application --close-during-confirmation/bool=false --observe-authenticated/bool?=null:
@@ -247,9 +247,9 @@ application --close-during-confirmation/bool=false --observe-authenticated/bool?
   try:
     session := client.configure
     session.add-service #[0xf0, 0xff]
-    expect-equals 12 (session.add-characteristic #[0xf1, 0xff] --read --encrypted --value=#[42]
+    expect-equals 16 (session.add-characteristic #[0xf1, 0xff] --read --encrypted --value=#[42]
         --dynamic-read=(observe-authenticated != null))
-    expect-equals 14 (session.add-characteristic #[0xf2, 0xff] --read --authenticated --value=#[43])
+    expect-equals 18 (session.add-characteristic #[0xf2, 0xff] --read --authenticated --value=#[43])
     session.start #[2, 1, 6]
     session.peer
     if close-during-confirmation:
@@ -259,7 +259,7 @@ application --close-during-confirmation/bool=false --observe-authenticated/bool?
     session.serve
         (: | request/clients.Request |
           expect (observe-authenticated != null)
-          expect-equals 12 request.handle
+          expect-equals 16 request.handle
           expect-equals null observed
           observed = session.security
           expect (observed.paired and observed.encrypted)

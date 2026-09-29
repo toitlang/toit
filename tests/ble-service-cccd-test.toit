@@ -23,7 +23,7 @@ main:
     store := configuration.Store
     store.pause = true
     round store false
-    expect-equals #[1, 1, 13, 0, 1, 0] store.state
+    expect-equals #[1, 1, 17, 0, 1, 0] store.state
     round store true
     expect-equals 1 store.saves
 
@@ -46,18 +46,18 @@ round store/configuration.Store restored/bool:
       peripheral.reply radio 0x200a #[0]
       wire.att-sent radio (signaling.parameter-request 1) --channel=5
       radio.received.add (wire.att-event #[0x13, 1, 2, 0, 0, 0] --channel=5)
-      radio.received.add (wire.att-event #[0x0a, 13, 0])
+      radio.received.add (wire.att-event #[0x0a, 17, 0])
       wire.att-sent radio #[0x0b, (restored ? 1 : 0), 0]
       if not restored:
         before := radio.sent-count
-        radio.received.add (wire.att-event #[0x12, 13, 0, 1, 0])
+        radio.received.add (wire.att-event #[0x12, 17, 0, 1, 0])
         store.entered.get
         // The successful ATT response must wait for the trusted store.
         expect-equals before radio.sent-count
         store.release.set true
         wire.att-sent radio #[0x13]
       ready.set true
-      wire.att-sent radio #[0x1b, 12, 0, 42]
+      wire.att-sent radio #[0x1b, 16, 0, 42]
       notified.set true
       radio.received.add #[4, 5, 4, 0, 0x34, 2, 0x13]
     finally:
@@ -65,10 +65,10 @@ round store/configuration.Store restored/bool:
   try:
     session := client.configure
     session.add-service #[0xf0, 0xff]
-    expect-equals 12 (session.add-characteristic #[0xf1, 0xff] --read --notify --value=#[42])
+    expect-equals 16 (session.add-characteristic #[0xf1, 0xff] --read --notify --value=#[42])
     session.start #[2, 1, 6]
     ready.get
-    expect (session.notify 12)
+    expect (session.notify 16)
     notified.get
     ended.get
     session.close
@@ -92,7 +92,7 @@ class Provider extends service.TestProvider:
   create-cccd-store host/central.Central link/central.Link database/attributes.Database owner/security-owner.Owner? -> cccd.Store?:
     expect-equals this.owner owner
     expect (owner.matches host link)
-    expect-equals #[42] (database.value 12)
+    expect-equals #[42] (database.value 16)
     selected++
     return store_
 

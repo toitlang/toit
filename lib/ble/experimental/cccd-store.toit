@@ -16,8 +16,11 @@ Snapshots are bounded, versioned byte arrays owned by the caller. Session close
   own the store's lifetime. A store must not call back into its session.
 
 Version 1 uses a two-byte header and sorted four-byte CCCD entries, at most
-  255 of them (1022 bytes). Bit 7 of the version byte retains a pending full-range Service
-  Changed indication; it requires the Service Changed CCCD to be enabled.
+  255 of them (1022 bytes). Version 2 appends the client's supported features
+  (one byte, nonzero; 1023 bytes at most). Bit 7 of the version byte retains a
+  pending layout change the client has not seen: a full-range Service Changed
+  indication, which requires the Service Changed CCCD to be enabled, or a
+  Database Out Of Sync for a client with Robust Caching.
   ConfigurationMigration produces this flag together with remapped entries.
   Confirmation clears it in a replacement of the same complete snapshot.
 */

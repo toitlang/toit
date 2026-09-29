@@ -86,7 +86,7 @@ abstract class Provider extends central-provider.Provider:
     return [flags, 60_000_000, 512, 517, sessions]
 
   /** Creates a fresh, bounded database for an application session. */
-  create-database -> attributes.Database: return attributes.Database.with-defaults
+  create-database -> attributes.Database: return attributes.Database.with-defaults --caching
 
   /**
   Selects trusted CCCD storage for one bond and this exact database revision.
@@ -238,10 +238,12 @@ class Session extends rpc.Session:
 
   constructor .provider_ client/int --name/string?=null --value-limit/int=20 --mtu-limit/int=23
       --attribute-limit/int=64:
-    database_ = name == null
-        ? provider_.create-database
-        : (attributes.Database.with-defaults --name=name --value-limit=value-limit --mtu-limit=mtu-limit
-            --attribute-limit=attribute-limit)
+    if name == null:
+      database_ = provider_.create-database
+    else:
+      database_ = attributes.Database.with-defaults --name=name --caching --value-limit=value-limit
+          --mtu-limit=mtu-limit
+          --attribute-limit=attribute-limit
     if name == null:
       advertisement_ = provider_.advertisement.copy
       if advertisement_.size > 31: throw "INVALID_ARGUMENT"

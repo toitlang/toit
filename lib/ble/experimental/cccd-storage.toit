@@ -81,7 +81,7 @@ class Storage:
     if error and error != "BLE_INVALID_SEALED_CCCD": throw error
     previous := load-record_ slot before
     next/ByteArray := transform.call previous
-    if not 2 <= next.size <= 1022: throw "INVALID_ARGUMENT"
+    if not 2 <= next.size <= 1023: throw "INVALID_ARGUMENT"
     write-record_ slot after next.copy
 
   /** Deletes and verifies all configuration for this slot before bond reuse. */
@@ -125,7 +125,7 @@ class Storage:
       decryptor.close
 
   save_ slot/int context/ByteArray state/ByteArray -> none:
-    if not 2 <= state.size <= 1022: throw "INVALID_ARGUMENT"
+    if not 2 <= state.size <= 1023: throw "INVALID_ARGUMENT"
     state = state.copy
     mutex_.do:
       check-usable_ slot

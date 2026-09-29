@@ -14,9 +14,9 @@ import .ble-fixture as fixture
 import .ble-peripheral-test as peripheral
 import .ble-service-gatt-test as gatt
 
-INPUT ::= 12
-ECHO ::= 14
-CCCD ::= 15
+INPUT ::= 16
+ECHO ::= 18
+CCCD ::= 19
 
 main:
   with-timeout --ms=10_000:
