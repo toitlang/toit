@@ -89,7 +89,7 @@ namespace toit {
   PRIMITIVE(diagnostics, 1)                  \
   PRIMITIVE(test, 3)                         \
   PRIMITIVE(open_management, 1)              \
-  PRIMITIVE(tx_power, 2)                     \
+  PRIMITIVE(tx_power, 3)                     \
 
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(write_on_stdout, 2)              \

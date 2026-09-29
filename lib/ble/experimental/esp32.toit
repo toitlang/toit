@@ -28,9 +28,30 @@ class Esp32Transport extends native.NativeTransport implements transport.TxPower
   The original ESP32 supports -12 to +9 dBm in 3 dB steps, the ESP32-S3
     -24 to +18 dBm in 3 dB steps and +20 dBm.
   */
-  tx-power -> int?: return native.tx-power_ 0 0
+  tx-power -> int?: return native.tx-power_ 0 0 0
 
   /** Sets advertising, scanning and default connection power; see $transport.TxPowerControl.set-tx-power. */
-  set-tx-power dbm/int -> int?: return native.tx-power_ 1 dbm
+  set-tx-power dbm/int -> int?: return native.tx-power_ 1 dbm 0
 
-  closest-tx-power dbm/int -> int: return native.tx-power_ 2 dbm
+  closest-tx-power dbm/int -> int: return native.tx-power_ 2 dbm 0
+
+  /**
+  Sets one connection's power; see $transport.TxPowerControl.set-connection-tx-power.
+
+  Throws BLE_UNSUPPORTED on the original ESP32: its controller accepts a
+    per-connection level but keeps transmitting at the default one.
+  */
+  set-connection-tx-power handle/int dbm/int -> int?:
+    result := null
+    error := catch: result = native.tx-power_ 3 dbm handle
+    if error == "UNIMPLEMENTED": throw "BLE_UNSUPPORTED"
+    if error: throw error
+    return result
+
+  /** Returns one connection's power, or null where only HCI knows it (the original ESP32). */
+  connection-tx-power handle/int -> int?:
+    result := null
+    error := catch: result = native.tx-power_ 4 0 handle
+    if error == "UNIMPLEMENTED": return null
+    if error: throw error
+    return result

@@ -58,6 +58,10 @@ watch connection/ble.Connection:
           --interval-max=(Duration --ms=60)
       print "parameters: $applied"
     if error: print "parameters refused: $error"
+    // This link needs less than the advertising power, where the controller
+    // can say so.
+    catch --unwind=(: it != "BLE_UNSUPPORTED"):
+      print "link power: $(connection.set-tx-power 6) dBm"
     // Give the central time to settle its PHY.
     sleep --ms=2_000
     print "link: $connection.peer phy=$connection.phy mtu=$connection.mtu rssi=$connection.rssi dBm tx=$connection.tx-power dBm"
