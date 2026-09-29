@@ -344,8 +344,12 @@ class Session extends rpc.Session:
           --authenticated=((flags & 8) != 0)
     if index == api.ADD-SERVICE:
       check-building_
-      if arguments.size != 1: throw "INVALID_ARGUMENT"
-      return database_.add-service arguments[0]
+      if arguments.size != 1 and arguments.size != 2: throw "INVALID_ARGUMENT"
+      return database_.add-service arguments[0] --secondary=(arguments.size == 2 and arguments[1] == true)
+    if index == api.INCLUDE-SERVICE:
+      check-building_
+      if arguments.size != 1 or arguments[0] is not int: throw "INVALID_ARGUMENT"
+      return database_.include-service arguments[0]
     if index == api.ADD-CHARACTERISTIC:
       check-building_
       if arguments.size != 3: throw "INVALID_ARGUMENT"

@@ -669,9 +669,21 @@ class Session extends services.ServiceResourceProxy:
     if is-closed: throw "GATT_REQUESTS_CLOSED"
     return super
 
-  /** Adds a primary service before advertising starts; UUIDs use wire order. */
-  add-service uuid/ByteArray -> int:
-    return connection_.call_ api.ADD-SERVICE [handle_, (copy-bounded_ uuid 16)]
+  /**
+  Adds a primary service, or a $secondary one, before advertising starts;
+    UUIDs use wire order.
+  */
+  add-service uuid/ByteArray --secondary/bool=false -> int:
+    arguments := [handle_, (copy-bounded_ uuid 16)]
+    if secondary: arguments.add true
+    return connection_.call_ api.ADD-SERVICE arguments
+
+  /**
+  Includes an earlier service (by its declaration handle) in the latest
+    service, before that service's first characteristic.
+  */
+  include-service service/int -> int:
+    return connection_.call_ api.INCLUDE-SERVICE [handle_, service]
 
   /**
   Adds a bounded descriptor to the latest characteristic before start.
