@@ -148,9 +148,9 @@ class SystemServiceManager extends ServiceProvider
     if pid == target: return
     // A watch can arrive after the stop notification has already been handled.
     // Report that terminal state now rather than retaining an unwakeable watch.
-    error := catch: process-get-priority_ target
+    error := catch --unwind=(: it != "INVALID_ARGUMENT"):
+      process-get-priority_ target
     if error:
-      if error != "INVALID_ARGUMENT": throw error
       process-send_ pid SYSTEM-RPC-NOTIFY-TERMINATED_ target
       return
     (service-managers_.get pid --init=(: {})).add target

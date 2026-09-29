@@ -327,10 +327,10 @@ class ServiceClient:
     remove-finalizer this
     ServiceResourceProxyManager_.unregister-all id
     critical-do:
-      error := catch: rpc.invoke pid RPC-SERVICES-CLOSE_ id
       // Local resources are already closed. A vanished provider has nothing
       // left to release, so closing this client remains idempotent.
-      if error and error != "NO_SUCH_PROCESS": throw error
+      catch --unwind=(: it != "NO_SUCH_PROCESS"):
+        rpc.invoke pid RPC-SERVICES-CLOSE_ id
 
   stringify -> string:
     return "service:$_name_@$(_major_).$(_minor_).$(_patch_)"
@@ -348,8 +348,8 @@ class ServiceClient:
     // and use our own? If we're timing out and trying to call
     // close after timing out, it should still work.
     critical-do:
-      error := catch: rpc.invoke _pid_ RPC-SERVICES-CLOSE-RESOURCE_ [id, handle]
-      if error and error != "NO_SUCH_PROCESS": throw error
+      catch --unwind=(: it != "NO_SUCH_PROCESS"):
+        rpc.invoke _pid_ RPC-SERVICES-CLOSE-RESOURCE_ [id, handle]
 
 /**
 A handler for requests from clients.
@@ -513,11 +513,11 @@ class ServiceProvider:
     // Map removal can fail while initializing deletion state, or after deletion
     // when shrinking storage. Only a resource that remains registered needs retry.
     if resources.size == 1:
-      error := catch: _resources_.remove client
-      if error and (_resources_.contains client): throw error
+      catch --unwind=(: _resources_.contains client):
+        _resources_.remove client
     else:
-      error := catch: resources.remove handle
-      if error and (resources.contains handle): throw error
+      catch --unwind=(: resources.contains handle):
+        resources.remove handle
 
   _new-resource-handle_ notifiable/bool -> int:
     handle ::= _resource-handle-next_
