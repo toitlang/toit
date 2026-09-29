@@ -10,7 +10,7 @@ import encoding.hex
 import expect show *
 import io
 import system
-import ..ble-hci-test as fixture
+import ..ble-fixture as fixture
 
 main:
   with-timeout --ms=25_000:

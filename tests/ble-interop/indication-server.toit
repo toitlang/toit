@@ -11,7 +11,7 @@ import expect show *
 import io
 import monitor
 import system
-import ..ble-hci-test as fixture
+import ..ble-fixture as fixture
 
 // Full connection-level GATT owner, with synthetic HCI setup and an ATT pipe.
 main:
@@ -20,6 +20,8 @@ main:
     database.add-service #[0xf0, 0xff]
     handle := database.add-characteristic #[0xf1, 0xff] --read --write --indicate --value=#[7]
     transport := fixture.FakeTransport
+    // A failed indication ends only its link; the fake answers the disconnect.
+    transport.auto-disconnect = true
     host := central.Central (hci.Controller transport)
     controls := hci.Packets 8
     sender := task::
