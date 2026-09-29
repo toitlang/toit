@@ -94,11 +94,13 @@ refused:
       --peer-address=PEER
   session.start --now=0
   expect-equals [#[5, 3]] (session.receive #[2, 3, 0, 0, 16, 0, 0] --now=1)
-  // A legacy peer wanting MITM with a keyboard would need Passkey Entry.
+  // A legacy peer wanting MITM with a keyboard gets Passkey Entry: this
+  // display-yes/no side shows the passkey.
   session = smp.Session --no-initiator --io-capability=1 --no-require-authentication
       --local-address=LOCAL
       --peer-address=PEER
-  expect-equals [#[5, 3]] (session.receive #[1, 2, 0, 4, 16, 0, 0] --now=0)
+  expect-equals [#[2, 1, 0, 8, 16, 0, 0]] (session.receive #[1, 2, 0, 4, 16, 0, 0] --now=0)
+  expect (0 <= session.passkey-display <= 999_999)
   // A short key is refused too.
   session = smp.Session --no-initiator --io-capability=3 --no-require-authentication
       --local-address=LOCAL

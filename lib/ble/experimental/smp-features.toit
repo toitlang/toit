@@ -72,30 +72,47 @@ select-association request/Features response/Features --require-authentication/b
   b := response.io-capability
   if (a == 1 or a == 4) and (b == 1 or b == 4): return "numeric-comparison"
   // NoInputNoOutput, or two display-only-capable devices, cannot authenticate.
-  if a == 3 or b == 3 or (a < 2 and b < 2):
+  if (passkey-roles a b) == null:
     if require-authentication: throw (PairingError 3)
     return "just-works"
   return "passkey-entry"
 
 /**
 Selects the legacy (non Secure Connections) association when either side
-  lacks SC: Just Works with a full 128-bit key only, unauthenticated.
+  lacks SC: Just Works or Passkey Entry, with a full 128-bit key only.
 
-Legacy Passkey Entry and OOB are not executed by the host; a peer that asks
-  for MITM protection with capable IO is refused (reason 3), as is a local
-  authentication requirement, since legacy Just Works cannot satisfy it.
+OOB is not supported. A local authentication requirement is met only by
+  Passkey Entry.
 */
 select-legacy-association request/Features response/Features --require-authentication/bool -> string:
   if request.key-size != 16 or response.key-size != 16: throw (PairingError 6)
   if request.oob or response.oob: throw (PairingError 2)
-  if require-authentication: throw (PairingError 3)
   if response.initiator-keys & ~request.initiator-keys != 0 or
       response.responder-keys & ~request.responder-keys != 0:
     throw (PairingError 0x0a)
-  if request.mitm or response.mitm:
-    a := request.io-capability
-    b := response.io-capability
-    // Table 2.8 for legacy: no IO on either side, or both display only, is Just Works.
-    if a == 3 or b == 3 or (a < 2 and b < 2): return "legacy-just-works"
-    throw (PairingError 3)
+  if (request.mitm or response.mitm) and
+      (passkey-roles request.io-capability response.io-capability) != null:
+    return "legacy-passkey-entry"
+  if require-authentication: throw (PairingError 3)
   return "legacy-just-works"
+
+/**
+Returns who enters the passkey for Passkey Entry between IO capabilities
+  $initiator and $responder (Core 6.3 Vol 3 Part H, Table 2.8), as
+  [initiator inputs, responder inputs], or null when the pair cannot use
+  Passkey Entry. The side that does not input displays the passkey.
+
+IO capabilities: 0 display only, 1 display yes/no, 2 keyboard only, 3 no
+  input no output, 4 keyboard display. With Secure Connections, two
+  display-yes/no-capable sides use Numeric Comparison instead.
+*/
+passkey-roles initiator/int responder/int -> List?:
+  if initiator == 3 or responder == 3: return null
+  if initiator == 2 and responder == 2: return [true, true]
+  if initiator == 2: return [true, false]
+  if responder == 2: return [false, true]
+  if initiator < 2 and responder < 2: return null
+  // One side has a keyboard and a display (4), the other a display: the
+  // keyboard-display side inputs unless both have one, then the responder.
+  if responder == 4: return [false, true]
+  return [true, false]

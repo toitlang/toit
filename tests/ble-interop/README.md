@@ -11,9 +11,10 @@ python3 -m venv /tmp/ble-bumble-venv
   --toit-run build/host/sdk/lib/toit/bin/toit.run --output build/ble-bumble-suite
 ```
 
-`run.py` runs 61 process-pipe cases (ATT client and server, MTU 23/247/517,
+`run.py` runs 73 process-pipe cases (ATT client and server, MTU 23/247/517,
 long reads and prepared-write transactions, subscriptions, indications, Secure
-Connections pairing, descriptors, advertising lifecycle) with Bumble and a Toit
+Connections pairing, Passkey Entry over Secure Connections and legacy pairing,
+descriptors, advertising lifecycle) with Bumble and a Toit
 fixture connected over an HCI pipe, no hardware. It writes one log per case and
 `results.json`. `*-test.py` files are negative controls for the runner.
 

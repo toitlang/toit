@@ -118,6 +118,24 @@ abstract class Provider extends central-provider.Provider:
   confirm-pairing number/int -> bool: return false
 
   /**
+  Shows the six-digit Passkey Entry $passkey for the peer's user to type.
+
+  Called when $pairing-io-capability has a display (0, 1 or 4) and the
+    association makes this side the displaying one. The default prints it,
+    which suits development on a serial console; a product overrides it.
+  */
+  display-passkey passkey/int -> none:
+    print "BLE passkey: $(%06d passkey)"
+
+  /**
+  Returns the passkey the user typed, or null to give up.
+
+  Called when $pairing-io-capability has a keyboard (2 or 4) and this side
+    must type what the peer displays. The default gives up.
+  */
+  input-passkey -> int?: return null
+
+  /**
   Creates the session's protocol owner before advertising starts.
 
   Overrides may load trusted bond records here and return a Central subclass
@@ -150,7 +168,10 @@ abstract class Provider extends central-provider.Provider:
   /** Runs the security owner; the default runs pairing with $confirm-pairing. */
   run-security-owner owner/Owner -> none:
     if owner is not security.Pairing: throw "GATT_SECURITY_OWNER_UNSUPPORTED"
-    (owner as security.Pairing).run: | number/int | confirm-pairing number
+    (owner as security.Pairing).run
+        --display=(:: display-passkey it)
+        --input=(:: input-passkey)
+        : | number/int | confirm-pairing number
 
   create-session client/int -> rpc.Session:
     return Session this client

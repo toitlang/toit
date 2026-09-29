@@ -128,8 +128,17 @@ class Pairing implements Owner:
     if not distribution-done_ or not encrypted: throw "SMP_IDENTITY_NOT_READY"
     return peer-identity_
 
-  run [confirm] -> none:
-    run_ confirm: null
+  /**
+  Pairs, calling $confirm with the six-digit number for Numeric Comparison.
+
+  For Passkey Entry, $display receives the six-digit passkey this side shows,
+    once, and $input is called when the user must type the passkey the peer
+    shows; it returns the passkey, or null when the user gives up (Passkey
+    Entry Failed). Both run in the pairing task; $input may wait for the
+    user within the SMP timeout.
+  */
+  run [confirm] --display/Lambda?=null --input/Lambda?=null -> none:
+    run_ display input confirm: null
 
   /**
   Invokes a scoped storage block with candidate material before discarding the LTK.
@@ -140,8 +149,8 @@ class Pairing implements Owner:
     partial/failed distribution or without controller encryption. The block is
     called by the pairing task, never the receive task, and is not stored.
   */
-  run [confirm] [--candidate] -> none:
-    run_ confirm:
+  run [confirm] [--candidate] --display/Lambda?=null --input/Lambda?=null -> none:
+    run_ display input confirm:
       if not engine_.bonding: throw "SMP_BOND_NOT_NEGOTIATED"
       if not encrypted: throw "SMP_IDENTITY_NOT_ENCRYPTED"
       local := identity_ or (stable-identity_ local-address_ local-address-type_)
@@ -159,18 +168,18 @@ class Pairing implements Owner:
       if error_: throw error_
       if not encrypted: throw "SMP_IDENTITY_NOT_ENCRYPTED"
 
-  run_ [confirm] [completed] -> none:
+  run_ display/Lambda? input/Lambda? [confirm] [completed] -> none:
     if used_ or error_: throw "SMP_INVALID_STATE"
     if not attempts_:
-      run-attempt_ confirm completed
+      run-attempt_ display input confirm completed
       return
     error := catch:
-      attempts_.with-attempt attempt-identity_: run-attempt_ confirm completed
+      attempts_.with-attempt attempt-identity_: run-attempt_ display input confirm completed
     if error:
       fail_ error
       throw error
 
-  run-attempt_ [confirm] [completed] -> none:
+  run-attempt_ display/Lambda? input/Lambda? [confirm] [completed] -> none:
     if used_ or error_: throw "SMP_INVALID_STATE"
     used_ = true
     active_ = true
@@ -183,11 +192,33 @@ class Pairing implements Owner:
           critical-do --no-respect-deadline: timer-ended_.set true
       if link_.info.role == 0:
         mutex_.do: send_ engine_.start
+      displayed := false
       while not ready_:
         version := progress_.version
         if error_: throw error_
+        passkey := engine_.passkey-display
+        if passkey != null and not displayed:
+          displayed = true
+          if not display: throw "SMP_PASSKEY_DISPLAY_UNSUPPORTED"
+          display.call passkey
         number := engine_.comparison-number
-        if number != null:
+        if engine_.passkey-requested:
+          typed/int? := null
+          if input:
+            remaining := engine_.deadline - Time.monotonic-us
+            if remaining <= 0: throw "SMP_TIMEOUT"
+            input-error := catch:
+              typed = with-timeout (Duration --us=remaining): input.call
+            if input-error:
+              if input-error == DEADLINE-EXCEEDED-ERROR and Time.monotonic-us >= engine_.deadline:
+                fail_ "SMP_TIMEOUT"
+                throw "SMP_TIMEOUT"
+              throw input-error
+          mutex_.do:
+            if error_: throw error_
+            // A rejected entry fails the engine; send_ reports its reason.
+            send_ (typed == null ? engine_.reject-passkey : (engine_.enter-passkey typed))
+        else if number != null:
           deadline := engine_.deadline
           remaining := deadline - Time.monotonic-us
           if remaining <= 0: throw "SMP_TIMEOUT"

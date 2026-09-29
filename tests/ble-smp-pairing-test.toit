@@ -40,7 +40,21 @@ association-rounds:
         nonce := peer-transcript initiator 0 --own-io=1 --peer-io=peer-io --numeric
         expect (not nonces.contains nonce)
         nonces.add nonce
-    [0, 2, 3].do: | peer-io/int |
+    // A keyboard-only peer makes it Passkey Entry, with this side displaying.
+    passkey := smp.Session --initiator=initiator --io-capability=1
+        --require-authentication
+        --local-address=#[0, 1, 2, 3, 4, 5, 6]
+        --peer-address=#[1, 6, 5, 4, 3, 2, 1]
+    try:
+      if initiator: passkey.start --now=0
+      outgoing := passkey.receive #[initiator ? 2 : 1, 2, 0, 12, 16, 0, 0] --now=1
+      expect-equals 1 outgoing.size
+      expect-equals (initiator ? 0x0c : 2) outgoing[0][0]
+      expect (0 <= passkey.passkey-display <= 999_999)
+      expect (not passkey.passkey-requested)
+    finally:
+      passkey.close
+    [0, 3].do: | peer-io/int |
       session := smp.Session --initiator=initiator --io-capability=1
           --require-authentication
           --local-address=#[0, 1, 2, 3, 4, 5, 6]
