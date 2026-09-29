@@ -3,8 +3,9 @@
 // be found in the tests/LICENSE file.
 
 // GATT client procedures against the host's own attribute server: included
-// services (scripted, since the server declares none), read by UUID and Read
-// Multiple in both forms, and the server's refusal of an unreadable handle.
+// services (secondary services with 16-bit and 128-bit UUIDs), read by UUID
+// and Read Multiple in both forms, and the server's refusal of an unreadable
+// handle.
 
 import ble.experimental.att
 import ble.experimental.attribute-server as attributes
@@ -23,7 +24,12 @@ main:
     transport := fixture.FakeTransport
     host := central.Central (hci.Controller transport)
     database := attributes.Database.with-defaults --value-limit=512
+    battery := database.add-service BATTERY --secondary
+    database.add-characteristic #[0x19, 0x2a] --read --value=#[90]
+    custom := database.add-service CUSTOM --secondary
     service := database.add-service #[0xf0, 0xff]
+    database.include-service battery
+    database.include-service custom
     first := database.add-characteristic #[0xf1, 0xff] --read --value=#[1, 2]
     second := database.add-characteristic #[0xf2, 0xff] --read --value=#[3]
     hidden := database.add-characteristic #[0xf3, 0xff] --write
@@ -36,7 +42,7 @@ main:
         packet := transport.sent.take
         request := packet[9..]
         transport.received.add #[4, 0x13, 5, 1, 0x34, 2, 1, 0]
-        wire.incoming transport (scripted request or (session.request request))
+        wire.incoming transport (session.request request)
         session.response-sent
     client/att.Client? := null
     try:
@@ -53,28 +59,17 @@ main:
       expect-equals 2 error.code
       expect-equals hidden error.handle
       // Included services, one with a 16-bit and one with a 128-bit UUID.
+      // Primary discovery does not find the secondary ones.
       services := gatt.services client
+      expect-equals 3 services.size
       primary := services.last
       expect-equals service primary.start
       included := gatt.included-services client primary
       expect-equals 2 included.size
-      expect-equals [20, 25, BATTERY] [included[0].start, included[0].end, included[0].uuid]
-      expect-equals [30, 31, CUSTOM] [included[1].start, included[1].end, included[1].uuid]
-      expect-equals 20 included[0].service.start
+      expect-equals [battery, battery + 2, BATTERY] [included[0].start, included[0].end, included[0].uuid]
+      expect-equals [custom, custom, CUSTOM] [included[1].start, included[1].end, included[1].uuid]
+      expect-equals battery included[0].service.start
     finally:
       if client: client.close
       responder.cancel
       host.close
-
-/**
-Answers what the reference server cannot: include declarations at handles 11
-  and 12 of the fff0 service, and the declaration of the 128-bit one.
-*/
-scripted request/ByteArray -> ByteArray?:
-  if request.size == 7 and request[0] == 8 and request[5..] == #[2, 0x28]:
-    start := request[1] | (request[2] << 8)
-    if start <= 11: return #[9, 8, 11, 0, 20, 0, 25, 0, 0x0f, 0x18]
-    if start <= 12: return #[9, 6, 12, 0, 30, 0, 31, 0]
-    return #[1, 8, request[1], request[2], 0x0a]
-  if request == #[0x0a, 30, 0]: return #[0x0b] + CUSTOM
-  return null

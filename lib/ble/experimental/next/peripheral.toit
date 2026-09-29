@@ -22,10 +22,13 @@ class GattServer:
   services_/List ::= []
   peripheral_/Peripheral? := null
 
-  /** Adds a primary service. */
-  add-service uuid/BleUuid -> Service:
+  /**
+  Adds a primary service, or a $secondary one: centrals find a secondary
+    service only through a service that includes it ($Service.include).
+  */
+  add-service uuid/BleUuid --secondary/bool=false -> Service:
     if peripheral_: throw "BLE_SERVER_IN_USE"
-    service := Service this uuid
+    service := Service this uuid --secondary=secondary
     services_.add service
     return service
 
@@ -40,7 +43,7 @@ class GattServer:
   attribute-count_ -> int:
     count := 9
     services_.do: | service/Service |
-      count++
+      count += 1 + service.includes_.size
       service.characteristics_.do: | characteristic/Characteristic |
         count += 2
         if characteristic.notify_ or characteristic.indicate_: count++
@@ -50,13 +53,31 @@ class GattServer:
           if descriptor.write_ and descriptor.uuid == (BleUuid "2901"): count++
     return count
 
-/** A primary service in a $GattServer. */
+/** A service in a $GattServer. */
 class Service:
   server/GattServer
   uuid/BleUuid
+  is-secondary/bool
+  includes_/List ::= []
   characteristics_/List ::= []
 
-  constructor .server .uuid:
+  constructor .server .uuid --secondary/bool:
+    is-secondary = secondary
+
+  /**
+  Includes $other, a service added to the same server before this one
+    (Core 6.3 Vol 3 Part G 3.2): centrals that discover this service's
+    includes find it there.
+  */
+  include other/Service -> none:
+    if server.peripheral_: throw "BLE_SERVER_IN_USE"
+    index := server.services_.index-of other
+    if other.server != server or index < 0 or index >= (server.services_.index-of this) or
+        includes_.contains other:
+      throw "INVALID_ARGUMENT"
+    includes_.add other
+
+  includes -> List: return includes_.copy
 
   /**
   Adds a characteristic.
@@ -104,8 +125,15 @@ class Service:
 
   characteristics -> List: return characteristics_.copy
 
-  build_ session/rpc.Session handles/Map -> none:
-    session.add-service (uuid.to-byte-array --reversed)
+  /**
+  Adds this service to $session. $declarations holds the declaration handles
+    of the server's services by index, those before this one filled in.
+  */
+  build_ session/rpc.Session handles/Map declarations/List -> none:
+    services := server.services_
+    declarations[services.index-of this] = session.add-service (uuid.to-byte-array --reversed)
+        --secondary=is-secondary
+    includes_.do: | other/Service | session.include-service declarations[services.index-of other]
     characteristics_.do: | characteristic/Characteristic |
       characteristic.build_ session handles
 
@@ -347,7 +375,8 @@ class Peripheral:
         --attribute-limit=(max 64 server_.attribute-count_)
     handles := {:}
     error := catch:
-      server_.services_.do: | service/Service | service.build_ session handles
+      declarations := List server_.services_.size
+      server_.services_.do: | service/Service | service.build_ session handles declarations
     if error:
       session.close
       throw error

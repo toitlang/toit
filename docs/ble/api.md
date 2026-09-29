@@ -126,6 +126,9 @@ while true:
     connection.close
 ```
 
+- `add-service --secondary` declares a service that centrals reach only
+  through another service's include; `service.include other` includes an
+  earlier service of the same server.
 - The `GattServer` is defined once and frozen when a `Peripheral` uses it.
   The provider builds a database from it for every connected central, so
   all centrals see the same attributes and one value per characteristic:

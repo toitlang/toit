@@ -128,13 +128,42 @@ class Database:
     sealed_ = true
     if database-hash_ != 0: (attribute_ database-hash_).value = database-hash
 
-  /** Adds a primary service and returns its declaration handle. */
-  add-service uuid/ByteArray -> int:
+  /**
+  Adds a primary service, or a $secondary one (reachable only through
+    another service's include), and returns its declaration handle.
+  */
+  add-service uuid/ByteArray --secondary/bool=false -> int:
     check-building_ 1
     uuid = normalize_ uuid
-    service_ = add_ #[0, 0x28] uuid true false
+    service_ = add_ #[secondary ? 1 : 0, 0x28] uuid true false
     characteristic_ = 0
     return service_
+
+  /**
+  Includes the service declared at $service in the latest service and
+    returns the include declaration's handle (Core 6.3 Vol 3 Part G 3.2).
+
+  Includes come directly after their service's declaration, before its
+    characteristics. The included service must be an earlier one, so its
+    handle range is final.
+  */
+  include-service service/int -> int:
+    check-building_ 1
+    if service_ == 0 or characteristic_ != 0: throw "INVALID_ARGUMENT"
+    included := attribute_ service
+    if not included or service >= service_ or
+        (included.uuid != #[0, 0x28] and included.uuid != #[1, 0x28]):
+      throw "INVALID_ARGUMENT"
+    // The included service's range ends before the latest service.
+    end := service_ - 1
+    attributes_.do: | next/Attribute_ |
+      if service < next.handle < service_ and (next.uuid == #[0, 0x28] or next.uuid == #[1, 0x28]):
+        end = min end (next.handle - 1)
+    value := ByteArray (included.value.size == 2 ? 6 : 4)
+    io.LITTLE-ENDIAN.put-uint16 value 0 service
+    io.LITTLE-ENDIAN.put-uint16 value 2 end
+    if included.value.size == 2: value.replace 4 included.value
+    return add_ #[2, 0x28] value true false
 
   /**
   Adds a bounded value, its declaration, and an optional notification/indication CCCD.
