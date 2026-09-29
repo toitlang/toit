@@ -498,6 +498,7 @@ class Array : public HeapObject {
 
   friend class ObjectHeap;
   friend class ProgramHeap;
+  friend class MemoryCapture;
 
  protected:
   static word _offset_from(word index) { return HEADER_SIZE + index * WORD_SIZE; }
@@ -739,6 +740,7 @@ class ByteArray : public HeapObject {
 
   friend class ObjectHeap;
   friend class ProgramHeap;
+  friend class MemoryCapture;
   friend class ShortPrintVisitor;
   friend class VmFinalizerNode;
 
@@ -788,6 +790,7 @@ class LargeInteger : public HeapObject {
   }
   friend class ObjectHeap;
   friend class ProgramHeap;
+  friend class MemoryCapture;
   friend class SnapshotReader;
 };
 
@@ -1088,6 +1091,7 @@ class Stack : public HeapObject {
 
   friend class ObjectHeap;
   friend class ProgramHeap;
+  friend class MemoryCapture;
 };
 
 class Double : public HeapObject {
@@ -1121,6 +1125,7 @@ class Double : public HeapObject {
   friend class Interpreter;
   friend class ObjectHeap;
   friend class ProgramHeap;
+  friend class MemoryCapture;
 };
 
 class String : public HeapObject {
@@ -1425,6 +1430,7 @@ class String : public HeapObject {
 
   friend class ObjectHeap;
   friend class ProgramHeap;
+  friend class MemoryCapture;
   friend class VmFinalizerNode;
 };
 
@@ -1521,6 +1527,7 @@ class Instance : public HeapObject {
 
   friend class ObjectHeap;
   friend class ProgramHeap;
+  friend class MemoryCapture;
 };
 
 /*
@@ -1570,6 +1577,8 @@ class FreeListRegion : public HeapObject {
   static const word SIZE_OFFSET = HeapObject::SIZE;
   static const word NEXT_OFFSET = SIZE_OFFSET + WORD_SIZE;
   static const word MINIMUM_SIZE = NEXT_OFFSET + WORD_SIZE;
+
+  friend class MemoryCapture;
 };
 
 /*
@@ -1640,6 +1649,8 @@ class PromotedTrack : public HeapObject {
   static const word END_OFFSET = HeapObject::SIZE;
   static const word NEXT_OFFSET = END_OFFSET + WORD_SIZE;
   static const word HEADER_SIZE = NEXT_OFFSET + WORD_SIZE;
+
+  friend class MemoryCapture;
 };
 
 class Task : public Instance {

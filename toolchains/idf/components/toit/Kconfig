@@ -134,6 +134,19 @@ menu "Toit"
             processing, but requires more flash, RAM, and CPU on targets
             without a floating-point unit.
 
+    config TOIT_MEMORY_CAPTURE
+        bool "Support memory captures"
+        default "y"
+        help
+            If selected, Toit programs can capture the memory state of the
+            device with 'system.capture-memory'. The capture pauses all Toit
+            processes and writes their heaps to the console, where tools can
+            analyze it.
+
+            Captures contain the data of all containers, including secrets.
+            They are only written to the console. Disable this option to
+            remove the feature and save flash space.
+
     config TOIT_REPORT_UART_DATA_LOSS
         bool "Report when UART data is lost"
         default "y"

@@ -17,6 +17,7 @@
 #include "primitive.h"
 #include "process.h"
 #include "heap.h"
+#include "memory_capture.h"
 
 namespace toit {
 
@@ -101,6 +102,30 @@ PRIMITIVE(object_histogram) {
   process->object_heap()->register_external_allocation(encoding_buffer.size());
   encoding_buffer.take_content();  // Don't free the content!
   return result;
+}
+
+PRIMITIVE(memory_capture_start) {
+#ifdef TOIT_MEMORY_CAPTURE
+  ARGS(cstring, reason);
+  // Not privileged: the capture is only written to the console, which is as
+  // privileged as a debugger.
+  switch (start_memory_capture(reason)) {
+    case MEMORY_CAPTURE_STARTED: return process->null_object();
+    case MEMORY_CAPTURE_ALREADY_RUNNING: FAIL(ALREADY_IN_USE);
+    case MEMORY_CAPTURE_OUT_OF_MEMORY: FAIL(MALLOC_FAILED);
+  }
+  UNREACHABLE();
+#else
+  FAIL(UNIMPLEMENTED);
+#endif
+}
+
+PRIMITIVE(memory_capture_done) {
+#ifdef TOIT_MEMORY_CAPTURE
+  return BOOL(is_memory_capture_done());
+#else
+  FAIL(UNIMPLEMENTED);
+#endif
 }
 
 } // namespace toit

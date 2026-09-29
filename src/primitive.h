@@ -895,6 +895,8 @@ namespace toit {
 
 #define MODULE_DEBUG(PRIMITIVE)              \
   PRIMITIVE(object_histogram, 2)             \
+  PRIMITIVE(memory_capture_start, 1)         \
+  PRIMITIVE(memory_capture_done, 0)          \
 
 #define MODULE_ESPNOW(PRIMITIVE)             \
   PRIMITIVE(init, 0)                         \

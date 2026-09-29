@@ -246,6 +246,30 @@ object-histogram_ marker/string full-gcs/int? -> ByteArray:
   #primitive.debug.object-histogram
 
 /**
+Captures the memory state of the system and prints it on stdout.
+
+The capture pauses all processes while their heaps and their roots are
+  written as lines that start with "#TMC".
+  The memory inspector in the SDK's tools/memory-inspector directory decodes
+  such lines and answers questions about where memory is used.
+
+The capture contains the data of all processes, including secrets.
+
+On embedded platforms the firmware must be built with memory captures
+  enabled (CONFIG_TOIT_MEMORY_CAPTURE).
+*/
+capture-memory --reason/string="" -> none:
+  capture-memory-start_ reason
+  while not capture-memory-done_:
+    sleep --ms=10
+
+capture-memory-start_ reason/string -> none:
+  #primitive.debug.memory-capture-start
+
+capture-memory-done_ -> bool:
+  #primitive.debug.memory-capture-done
+
+/**
 Returns the name of the toit file, image, snapshot, or executable that the
   current program was run from.
 
