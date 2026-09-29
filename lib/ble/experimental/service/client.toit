@@ -883,6 +883,9 @@ class Request:
     deadline = record[4]
     value = record[5]
 
+  /** Whether this request still waits for a reply. */
+  is-pending -> bool: return active_ and not replied_
+
   /** Returns an owned value to a read request. */
   reply value/ByteArray -> none:
     if kind != api.READ: throw "INVALID_ARGUMENT"
