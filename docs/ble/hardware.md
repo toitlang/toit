@@ -120,6 +120,17 @@ the connect and disconnect events, the link (PHY, MTU, RSSI, transmit
 power at the 9 dBm it set, parameters, data length) and the refused write.
 Pass `2` to request the 2M PHY explicitly.
 
+## GATT client as a peripheral
+
+`tests/ble-hardware/peripheral-client-check.sh` flashes the original ESP32
+with the provider and `peripheral-client.toit` and lets `bluetoothctl` on
+the Edimax dongle connect to it. While BlueZ discovers the board, the board
+reads BlueZ's own database over the same link: its GAP Device Name ("red
+#1" on the rig) and its services (1800, 1801, 180a). The script removes the
+board from BlueZ first: a bond kept from an earlier campaign makes BlueZ
+encrypt with a key the freshly flashed board no longer has, and it then
+ends the link with an authentication failure.
+
 ## Controller-based privacy
 
 The rig's Realtek dongles have no link-layer privacy, so
