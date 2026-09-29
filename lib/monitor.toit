@@ -312,6 +312,9 @@ monitor Channel:
     if not blocking and size_ == 0: return null
     await: size_ > 0
     value := buffer_[start_]
+    // Transfer ownership to the receiver instead of retaining the consumed
+    // value until this ring slot is reused.
+    buffer_[start_] = null
     start_ = (start_ + 1) % buffer_.size
     size_--
     return value

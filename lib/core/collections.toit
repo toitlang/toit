@@ -1836,7 +1836,7 @@ class CowByteArray_ implements ByteArray:
     return backing_.last
 
   reverse --in-place/True -> none:
-    backing_.reverse --in-place
+    ensure-mutable_.reverse --in-place
 
   reverse -> ByteArray:
     return backing_.reverse

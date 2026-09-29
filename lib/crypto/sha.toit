@@ -63,8 +63,9 @@ class Sha_ extends Checksum:
   Calculates the SHA224+ hash.
   */
   get -> ByteArray:
+    result := sha-get_ sha-state_
     remove-finalizer this
-    return sha-get_ sha-state_
+    return result
 
   clone -> Sha_:
     return Sha_.private_ (sha-clone_ sha-state_)
