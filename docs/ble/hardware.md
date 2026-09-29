@@ -120,6 +120,19 @@ the connect and disconnect events, the link (PHY, MTU, RSSI, transmit
 power at the 9 dBm it set, parameters, data length) and the refused write.
 Pass `2` to request the 2M PHY explicitly.
 
+## Controller-based privacy
+
+The rig's Realtek dongles have no link-layer privacy, so
+`tests/ble-hardware/private-resolve.sh` runs between two boards. The
+original ESP32 runs `next-peripheral.toit` beside
+`private-gatt-provider.toit` and advertises from resolvable private
+addresses of a fixed test IRK. ESP32-S3 Board1 runs
+`private-resolving-provider.toit`, which loads the peripheral's identity and
+IRK into its controller's resolving list, and `private-central.toit`: the
+scan report names the peripheral by identity, and the central connects by
+identity twice, the second time without scanning while the peripheral uses
+a fresh RPA (`PRIVATE_CENTRAL COMPLETE`).
+
 ## Legacy pairing
 
 `tests/ble-hardware/legacy-bond.sh` flashes ESP32 Board2 with the default

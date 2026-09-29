@@ -4,7 +4,7 @@
 
 // The deployable GATT provider with privacy: advertising uses resolvable
 // private addresses from a fixed test IRK (IRK below, public test value).
-// For tests/ble-hardware/next-check.sh with NEXT_PRIVATE=1.
+// For tests/ble-hardware/private-resolve.sh.
 
 import ble.experimental.esp32
 import ble.experimental.transport
