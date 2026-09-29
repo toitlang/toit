@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 
 // The experimental application API in the central role: connect, discovery,
-// reads, writes, a subscription, PHY and parameter requests, RSSI, and the
+// reads, writes, subscriptions (scoped and not), PHY and parameter requests, RSSI, and the
 // reason of a local disconnect.
 
 import expect show *
@@ -41,6 +41,13 @@ main:
         fixture.gatt-reply radio #[0x12, 4, 0, 1, 0] #[0x13]
         radio.received.add (fixture.att-event #[0x1b, 3, 0, 7])
         radio.received.add (fixture.att-event #[0x1b, 3, 0, 8])
+        fixture.gatt-reply radio #[0x12, 4, 0, 0, 0] #[0x13]
+        // The same through a Subscription object.
+        fixture.gatt-reply radio #[4, 4, 0, 5, 0] #[5, 1, 4, 0, 2, 0x29]
+        fixture.gatt-reply radio #[4, 5, 0, 5, 0] #[1, 4, 5, 0, 0x0a]
+        fixture.gatt-reply radio #[0x12, 4, 0, 1, 0] #[0x13]
+        radio.received.add (fixture.att-event #[0x1b, 3, 0, 9])
+        radio.received.add (fixture.att-event #[0x1b, 3, 0, 10])
         fixture.gatt-reply radio #[0x12, 4, 0, 0, 0] #[0x13]
         // Read Multiple Variable Length, then Read By Type and includes.
         fixture.gatt-reply radio #[0x20, 3, 0, 3, 0] #[0x21, 1, 0, 42, 1, 0, 43]
@@ -87,6 +94,15 @@ main:
           values.add stream.receive
           values.add stream.receive
         expect-equals [#[7], #[8]] values
+        subscription := characteristic.subscribe
+        received := monitor.Latch
+        task:: received.set subscription.receive
+        expect-equals #[9] received.get
+        expect-equals #[10] subscription.receive
+        expect (not subscription.is-closed)
+        subscription.close
+        expect subscription.is-closed
+        expect-throw "BLE_CLOSED": subscription.receive
         expect-equals [#[42], #[43]] (connection.read-multiple [characteristic, characteristic])
         expect-equals [#[42]] (service.read-by-uuid (ble.BleUuid "fff1"))
         expect-equals [] service.discover-included-services

@@ -101,8 +101,9 @@ finally:
   operations throw and the application discovers again.
 - `RemoteCharacteristic`: `read`, `write` (with response), `write
   --no-response` (Write Command), `subscribe [block]` (notifications, or
-  indications when the characteristic has only those), `can-read` and the
-  other property tests. Peer refusals throw `AttError` with the ATT code.
+  indications when the characteristic has only those), `subscribe` without
+  a block (a `Subscription` with `receive` and `close`, for values read
+  outside one scope), `can-read` and the other property tests. Peer refusals throw `AttError` with the ATT code.
 
 ## Peripheral role
 
@@ -203,8 +204,6 @@ that ended under an operation makes it throw; `wait-closed` says why.
   capabilities, confirmation, bond storage) stay in the provider, as
   today. The API lets an application require a security level and read
   what was achieved; it does not start pairing itself.
-- **Subscriptions outside a block.** `subscribe` is scoped; a long-lived
-  subscription object would need a task holding the scope.
 - **GATT client on peripheral-role links.** The service offers GATT client
   operations only on central connections.
 - **Per-connection transmit power.** The ESP32 vendor API can set it per
