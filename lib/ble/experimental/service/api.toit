@@ -8,7 +8,7 @@ import system.services
 SELECTOR ::= services.ServiceSelector
     --uuid="9d28731e-2a9f-4b19-adf7-39717fae7622"
     --major=0
-    --minor=30
+    --minor=31
 
 OPEN ::= 0
 NEXT ::= 1
@@ -75,6 +75,8 @@ INCLUDE-SERVICE ::= 56
 // (minor 30): they reach the connected central's database.
 // Provider-wide: the peers a deployment lists as bonded.
 BONDED-PEERS ::= 57
+// Link: the application asks for security (a Security Request as peripheral).
+REQUEST-SECURITY ::= 58
 
 CAP-SCAN ::= 1
 CAP-GATT-PERIPHERAL ::= 2

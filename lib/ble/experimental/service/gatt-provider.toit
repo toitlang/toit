@@ -388,6 +388,18 @@ class Session extends rpc.Session:
       if not server_: throw "GATT_NOT_CONNECTED"
       if not operations_: operations_ = operations.ClientOperations server_.client
       return operations_.reply index arguments
+    if index == api.REQUEST-SECURITY:
+      if not arguments.is-empty: throw "INVALID_ARGUMENT"
+      if not link_: throw "GATT_NOT_CONNECTED"
+      // Pairing policy is the provider's: without an owner it does not pair.
+      if not pairing_: throw "GATT_SECURITY_UNSUPPORTED"
+      if pairing_ is not security.Pairing: throw "GATT_SECURITY_OWNER_UNSUPPORTED"
+      if not link_.encrypted:
+        (pairing_ as security.Pairing).request-security
+        // The provider's pairing run, already waiting as responder, pairs
+        // with the central and ends; a failure ends the link.
+        with-timeout timeouts.SECURITY: pairing-ended_.get
+      return invoke api.SECURITY []
     if index == api.SECURITY:
       if not arguments.is-empty: throw "INVALID_ARGUMENT"
       if not link_: throw "GATT_NOT_CONNECTED"

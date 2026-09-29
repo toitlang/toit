@@ -275,6 +275,20 @@ class Pairing implements Owner:
         critical-do --no-respect-deadline:
           with-timeout timeouts.JOIN: timer-ended_.get
 
+  /**
+  Asks the central to start pairing with a Security Request, as the
+    peripheral; $run, already waiting for it, then pairs as usual.
+
+  Does nothing when pairing already started or finished: a central that is
+    pairing or has paired needs no request.
+  */
+  request-security -> none:
+    if link_.info.role != 1: throw "SMP_NOT_PERIPHERAL"
+    mutex_.do:
+      if error_: throw error_
+      if engine_.state != "idle": return
+      with-timeout timeouts.SEND: host_.send link_ 6 engine_.security-request
+
   /** Dispatches one SMP PDU from the owning ATT receive loop. */
   receive bytes/ByteArray -> none:
     if not active_:

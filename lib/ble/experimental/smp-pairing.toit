@@ -173,6 +173,15 @@ class Session:
     if not verified: throw "SMP_KEY_NOT_READY"
     return ltk_.copy
 
+  /**
+  Returns a Security Request (Core 6.3 Vol 3 Part H 3.6.7) with this
+    responder's AuthReq, asking the central to pair (or to encrypt with an
+    existing bond). Only before pairing started.
+  */
+  security-request -> ByteArray:
+    if initiator_ or state_ != "idle": throw "SMP_INVALID_STATE"
+    return #[0x0b, local_.packet[3]]
+
   start --now/int=Time.monotonic-us -> List:
     if not initiator_ or state_ != "idle": throw "SMP_INVALID_STATE"
     state_ = "features"

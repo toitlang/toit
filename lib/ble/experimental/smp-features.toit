@@ -52,8 +52,7 @@ Requires both SC bits and key sizes of 16. Numeric Comparison and Passkey Entry
   Just Works cannot satisfy an explicit local authentication requirement. A local requirement
   also cannot retroactively change already exchanged flags. OOB is not supported.
   The returned method is a plan, never evidence that authentication succeeded.
-  The pairing session executes Just Works and Numeric Comparison separately.
-  Passkey Entry execution is unsupported by the host.
+  The pairing session executes it.
 */
 select-association request/Features response/Features --require-authentication/bool -> string:
   if request.response or not response.response: throw (PairingError 0x0a)
