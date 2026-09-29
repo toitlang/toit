@@ -8,7 +8,7 @@ import system.services
 SELECTOR ::= services.ServiceSelector
     --uuid="9d28731e-2a9f-4b19-adf7-39717fae7622"
     --major=0
-    --minor=26
+    --minor=27
 
 OPEN ::= 0
 NEXT ::= 1
@@ -65,6 +65,10 @@ WAIT-DISCONNECTED ::= 50
 // Provider-wide operations.
 ADAPTER-INFO ::= 51
 SET-TX-POWER ::= 52
+// More GATT client procedures on central connections.
+CENTRAL-INCLUDED ::= 53
+CENTRAL-READ-BY-UUID ::= 54
+CENTRAL-READ-MULTIPLE ::= 55
 
 CAP-SCAN ::= 1
 CAP-GATT-PERIPHERAL ::= 2

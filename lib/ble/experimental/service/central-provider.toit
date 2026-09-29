@@ -284,7 +284,8 @@ class ConnectionSession extends rpc.Session:
       operation/int := arguments[1]
       if not [api.CENTRAL-READ, api.CENTRAL-WRITE, api.CENTRAL-SERVICES,
               api.CENTRAL-CHARACTERISTICS, api.CENTRAL-DESCRIPTORS, api.CENTRAL-SUBSCRIBE,
-              api.CENTRAL-WRITE-COMMAND].contains operation:
+              api.CENTRAL-WRITE-COMMAND, api.CENTRAL-INCLUDED, api.CENTRAL-READ-BY-UUID,
+              api.CENTRAL-READ-MULTIPLE].contains operation:
         throw "INVALID_ARGUMENT"
       client_.check-database-revision expected
       result := operation_ operation arguments[2] --revision=expected
@@ -342,6 +343,16 @@ class ConnectionSession extends rpc.Session:
       if arguments.size != 2: throw "INVALID_ARGUMENT"
       return (gatt.characteristics client_ (gatt.Service arguments[0] arguments[1] #[])).map: | c/gatt.Characteristic |
         [c.declaration, c.handle, c.properties, c.uuid.copy, c.end]
+    if index == api.CENTRAL-INCLUDED:
+      if arguments.size != 2: throw "INVALID_ARGUMENT"
+      return (gatt.included-services client_ (gatt.Service arguments[0] arguments[1] #[])).map: | i/gatt.IncludedService |
+        [i.handle, i.start, i.end, i.uuid.copy]
+    if index == api.CENTRAL-READ-BY-UUID:
+      if arguments.size != 3 or arguments[0] is not ByteArray: throw "INVALID_ARGUMENT"
+      return gatt.read-by-uuid client_ arguments[0] --start=arguments[1] --end=arguments[2]
+    if index == api.CENTRAL-READ-MULTIPLE:
+      if arguments.size != 2 or arguments[0] is not List or arguments[0].size > 32: throw "INVALID_ARGUMENT"
+      return gatt.read-multiple client_ arguments[0] --variable=arguments[1]
     if index == api.CENTRAL-DESCRIPTORS:
       if arguments.size != 2: throw "INVALID_ARGUMENT"
       c := gatt.Characteristic 0 arguments[0] 0 #[]

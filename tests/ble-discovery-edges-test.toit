@@ -176,13 +176,14 @@ foreign-records:
 
 result-limit:
   script := []
-  65.repeat: | index/int |
+  513.repeat: | index/int |
     handle := index + 1
     request := #[0x10, 0, 0, 0xff, 0xff, 0, 0x28]
-    request[1] = handle
+    request[1] = handle & 0xff
+    request[2] = handle >> 8
     response := #[0x11, 6, 0, 0, 0, 0, 1, 0x18]
-    response[2] = handle
-    response[4] = handle
+    response[2] = response[4] = handle & 0xff
+    response[3] = response[5] = handle >> 8
     script.add [request, response]
   with-peer script: | client/att.Client |
     expect-throw "GATT_DISCOVERY_LIMIT": gatt.services client

@@ -298,6 +298,17 @@ class Connection extends services.ServiceResourceProxy:
   characteristics start/int end/int -> List: return operation_ api.CENTRAL-CHARACTERISTICS [start, end]
   descriptors handle/int end/int -> List: return operation_ api.CENTRAL-DESCRIPTORS [handle, end]
 
+  /** Returns [declaration handle, start, end, uuid] for each service included in [start, end]. */
+  included start/int end/int -> List: return operation_ api.CENTRAL-INCLUDED [start, end]
+
+  /** Returns [handle, value] for every attribute of type $uuid (wire order) in [start, end]. */
+  read-by-uuid uuid/ByteArray start/int end/int -> List:
+    return operation_ api.CENTRAL-READ-BY-UUID [(copy-bounded_ uuid 16), start, end]
+
+  /** Reads several handles in one request; concatenated bytes, or a list with $variable. */
+  read-multiple handles/List --variable/bool=false -> any:
+    return operation_ api.CENTRAL-READ-MULTIPLE [handles, variable]
+
   /** Captures this connection's current database revision for checked access. */
   database -> DatabaseView: return DatabaseView this (operation_ api.CENTRAL-REVISION [])
 
@@ -421,6 +432,11 @@ class DatabaseView:
     return services.map: ServiceRecord this it
   characteristics start/int end/int -> List: return call_ api.CENTRAL-CHARACTERISTICS [start, end]
   descriptors handle/int end/int -> List: return call_ api.CENTRAL-DESCRIPTORS [handle, end]
+  included start/int end/int -> List: return call_ api.CENTRAL-INCLUDED [start, end]
+  read-by-uuid uuid/ByteArray start/int end/int -> List:
+    return call_ api.CENTRAL-READ-BY-UUID [(copy-bounded_ uuid 16), start, end]
+  read-multiple handles/List --variable/bool=false -> any:
+    return call_ api.CENTRAL-READ-MULTIPLE [handles, variable]
   read handle/int -> ByteArray: return call_ api.CENTRAL-READ [handle]
   write handle/int value/ByteArray -> none: call_ api.CENTRAL-WRITE [handle, (copy-bounded_ value 512)]
   /** Submits a revision-checked Write Command, bounded by MTU minus three. */
@@ -441,6 +457,12 @@ class ServiceRecord:
   uuid -> ByteArray: return uuid_.copy
   characteristics -> List:
     return (view_.characteristics start end).map: CharacteristicRecord view_ it
+  /** Discovers the services this one includes, as records bound to the same view. */
+  included-services -> List:
+    return (view_.included start end).map: | values/List |
+      ServiceRecord view_ [values[1], values[2], values[3]]
+  /** Returns [handle, value] for the attributes of type $uuid (wire order) in this service. */
+  read-by-uuid uuid/ByteArray -> List: return view_.read-by-uuid uuid start end
 
 /** A discovered characteristic; operations retain its original revision. */
 class CharacteristicRecord:

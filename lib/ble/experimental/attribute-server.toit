@@ -666,6 +666,28 @@ class Session:
           offset += width
       if opcode != 6: result[1] = opcode == 4 ? (width == 4 ? 1 : 2) : width
       return result[0..used]
+    if opcode == 0x0e or opcode == 0x20:
+      // Read Multiple (Vol 3 Part F 3.4.4.7) concatenates the values; the
+      // variable-length form (3.4.4.11) prefixes each with its length. Both
+      // stop at the MTU. Any refused handle refuses the whole request.
+      if pdu.size < 5 or (pdu.size - 1) % 2 != 0: return error_ opcode 0 4
+      response := #[opcode + 1]
+      ((pdu.size - 1) / 2).repeat: | index/int |
+        handle := io.LITTLE-ENDIAN.uint16 pdu (1 + index * 2)
+        attribute := database_.attribute_ handle
+        if not attribute: return error_ opcode handle 1
+        if not attribute.readable: return error_ opcode handle 2
+        security-error := security-error_ attribute
+        if security-error != 0: return error_ opcode handle security-error
+        value := value_ attribute
+        if attribute.dynamic-read:
+          reply := read_ attribute opcode read
+          if reply.error_ != 0: return error_ opcode handle reply.error_
+          value = reply.value_
+        if opcode == 0x20: response += #[value.size & 0xff, value.size >> 8]
+        response += value
+      if response.size > mtu_: response = response[..mtu_]
+      return response
     if opcode == 0x0a or opcode == 0x0c or opcode == 0x12:
       if pdu.size < 3 or (opcode == 0x0a and pdu.size != 3) or (opcode == 0x0c and pdu.size != 5):
         return error_ opcode 0 4

@@ -43,6 +43,25 @@ class Characteristic extends DiscoveryRecord_:
 
   constructor .declaration .handle .properties .uuid:
 
+/**
+A service included by another: the include declaration's handle and the
+  included service's handle range and little-endian UUID.
+*/
+class IncludedService extends DiscoveryRecord_:
+  handle/int
+  start/int
+  end/int
+  uuid/ByteArray
+
+  constructor .handle .start .end .uuid:
+
+  /** The included service as a record for further discovery. */
+  service -> Service:
+    result := Service start end uuid
+    result.client_ = client_
+    result.revision_ = revision_
+    return result
+
 /** A descriptor handle and little-endian UUID. */
 class Descriptor extends DiscoveryRecord_:
   handle/int
@@ -51,7 +70,7 @@ class Descriptor extends DiscoveryRecord_:
   constructor .handle .uuid:
 
 /**
-Discovers primary services, with a bounded result of at most 64 entries.
+Discovers primary services, with a bounded result of at most 512 entries.
 
 Results are connection-local observations, not a persistent cache. Rediscover
   after reconnect and after an applicable Service Changed indication. Callers
@@ -79,6 +98,105 @@ services client/att.Client -> List:
       offset += width
   client.check-database-revision revision
   return result
+
+/**
+Discovers the services $service includes (Vol 3 Part G 4.5.1).
+
+128-bit included UUIDs are not in the declaration; each costs one read of the
+  included service's declaration.
+*/
+included-services client/att.Client service/Service -> List:
+  service.check client
+  revision := client.database-revision
+  range_ service.start service.end
+  result := []
+  start := service.start
+  while start <= service.end:
+    page := page_ client 8 start service.end --type=0x2802 --revision=revision
+    if not page: break
+    width := width_ page 6 8
+    offset := 2
+    while offset < page.size:
+      handle := io.LITTLE-ENDIAN.uint16 page offset
+      first := io.LITTLE-ENDIAN.uint16 page (offset + 2)
+      last := io.LITTLE-ENDIAN.uint16 page (offset + 4)
+      if not start <= handle <= service.end or not 1 <= first <= last:
+        throw "GATT_INVALID_HANDLE_RANGE"
+      uuid := width == 8
+          ? page[offset + 6..offset + 8].copy
+          : client.read first --database-revision=revision
+      if uuid.size != 2 and uuid.size != 16: throw "GATT_INVALID_RESPONSE"
+      record := IncludedService handle first last uuid
+      record.bind_ client revision
+      add_ result record
+      start = handle + 1
+      offset += width
+  client.check-database-revision revision
+  return result
+
+/**
+Reads every attribute of type $uuid (little endian, 2 or 16 bytes) between
+  $start and $end (Read Using Characteristic UUID, Vol 3 Part G 4.8.2).
+
+Returns [handle, value] pairs. Each value is at most MTU - 4 bytes; read a
+  longer one by its handle.
+*/
+read-by-uuid client/att.Client uuid/ByteArray --start/int=1 --end/int=0xffff -> List:
+  if uuid.size != 2 and uuid.size != 16: throw "INVALID_ARGUMENT"
+  range_ start end
+  revision := client.database-revision
+  result := []
+  while start <= end:
+    request := ByteArray 5 + uuid.size
+    request[0] = 8
+    io.LITTLE-ENDIAN.put-uint16 request 1 start
+    io.LITTLE-ENDIAN.put-uint16 request 3 end
+    request.replace 5 uuid
+    page/ByteArray? := null
+    error := catch: page = client.request request --response=9 --database-revision=revision
+    if error:
+      if error is att.AttributeError and error.code == 0x0a: break
+      throw error
+    if page.size < 2 or page[1] < 2 or (page.size - 2) % page[1] != 0: throw "GATT_INVALID_RESPONSE"
+    width := page[1]
+    offset := 2
+    while offset < page.size:
+      handle := io.LITTLE-ENDIAN.uint16 page offset
+      if not start <= handle <= end: throw "GATT_INVALID_HANDLE_RANGE"
+      add_ result [handle, page[offset + 2..offset + width].copy]
+      start = handle + 1
+      offset += width
+    if start == 0: break
+  client.check-database-revision revision
+  return result
+
+/**
+Reads several attributes in one request (Read Multiple, Vol 3 Part G 4.8.4).
+
+Without $variable the peer concatenates the values, so the caller must know
+  their sizes; returns the bytes. With $variable (Read Multiple Variable
+  Length, 4.8.5) returns the list of values. Both stop at MTU - 1 bytes.
+*/
+read-multiple client/att.Client handles/List --variable/bool=false -> any:
+  if handles.size < 2: throw "INVALID_ARGUMENT"
+  request := ByteArray 1 + 2 * handles.size
+  request[0] = variable ? 0x20 : 0x0e
+  handles.size.repeat: | index/int |
+    handle := handles[index]
+    if not 1 <= handle <= 0xffff: throw "INVALID_ARGUMENT"
+    io.LITTLE-ENDIAN.put-uint16 request (1 + 2 * index) handle
+  response := client.request request --response=(variable ? 0x21 : 0x0f)
+      --database-revision=client.database-revision
+  if not variable: return response[1..].copy
+  values := []
+  offset := 1
+  while offset + 2 <= response.size:
+    length := io.LITTLE-ENDIAN.uint16 response offset
+    offset += 2
+    // The last value may be cut at the MTU.
+    values.add response[offset..min (offset + length) response.size].copy
+    offset += length
+  return values
 
 /** Discovers characteristics and derives their descriptor ranges. */
 characteristics client/att.Client service/Service -> List:
@@ -251,5 +369,5 @@ range_ start/int end/int -> none:
   if not 1 <= start <= end <= 0xffff: throw "INVALID_ARGUMENT"
 
 add_ result/List value -> none:
-  if result.size >= 64: throw "GATT_DISCOVERY_LIMIT"
+  if result.size >= 512: throw "GATT_DISCOVERY_LIMIT"
   result.add value
