@@ -44,7 +44,9 @@ class Protection:
   open bytes/ByteArray --context/ByteArray -> Candidate:
     key := require-key_
     aad := associated-data_ context
-    if bytes.size != 98 or bytes[..4] != HEADER_: throw "BLE_INVALID_SEALED_BOND"
+    // Header, nonce, the shortest record and the tag; the decoded record
+    // checks its own length per version.
+    if bytes.size < 98 or bytes[..4] != HEADER_: throw "BLE_INVALID_SEALED_BOND"
     decryptor := aes.AesGcm.decryptor key bytes[4..16]
     try:
       plaintext/ByteArray? := null
