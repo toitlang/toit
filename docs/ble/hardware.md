@@ -107,6 +107,18 @@ which is the controller advertising for a second central while the first
 is connected. The two-central data path itself is covered by
 `tests/ble-compat-multi-peripheral-test.toit`.
 
+## Legacy pairing
+
+`tests/ble-hardware/legacy-bond.sh` flashes ESP32 Board2 with the default
+(NimBLE) firmware and `fixtures/nimble-legacy-bond-peer.toit`, a peripheral
+with bonding and Secure Connections off, then runs
+`legacy-bond-central.toit` on the Edimax dongle twice. The first run pairs
+with legacy Just Works, stores the bond and reads an encrypted
+characteristic; the second resumes the stored bond with the peer's EDIV and
+Rand, without pairing, and reads it again. Both print
+`LEGACY_BOND COMPLETE`. The default firmware comes from `make esp32`; pass
+another envelope as the first argument.
+
 ## Nightly run
 
 `tests/ble-hardware/nightly.sh` runs pair and resume against BlueZ, the
