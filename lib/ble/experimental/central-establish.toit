@@ -91,7 +91,11 @@ abstract mixin LinkEstablishment_:
         if result is connection.Completion:
           throw (ConnectionError result.status)
         link/Link := result
-        if link.info.address-type != address-type or link.info.address != peer:
+        // Connecting by identity (types 2, 3) matches the resolved identity.
+        matches := address-type >= 2
+            ? link.info.identity-address == peer and link.info.identity-address-type == address-type - 2
+            : link.info.address-type == address-type and link.info.address == peer
+        if not matches:
           fail_ "HCI_UNEXPECTED_PEER"
           throw error_
         if not link.connected: throw (lost_ link)

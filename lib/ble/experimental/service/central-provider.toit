@@ -115,7 +115,7 @@ abstract class Provider extends scanning-provider.Provider implements shared.Fac
     type/int := arguments[1]
     timeout/int := arguments[2]
     mtu/int := arguments[3]
-    if address.size != 6 or not 0 <= type <= 1 or not 1 <= timeout <= 60_000_000 or not 23 <= mtu <= 517:
+    if address.size != 6 or not 0 <= type <= 3 or not 1 <= timeout <= 60_000_000 or not 23 <= mtu <= 517:
       throw "INVALID_ARGUMENT"
     return ConnectionSession this client address.copy type timeout mtu
 
@@ -166,7 +166,7 @@ class ConnectionSession extends rpc.Session:
             transport_ = provider.open-transport
             controller_ = hci.Controller transport_
             info := hci.initialize controller_ --receive-acl-packets=provider.receive-acl-packets
-            provider.controller-ready transport_ info
+            provider.controller-ready transport_ controller_ info
             host_ = provider.create-central-host controller_ info (max 65 mtu)
             connect_ provider info address type timeout mtu
           link_.wait-disconnected

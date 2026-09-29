@@ -22,7 +22,6 @@ ERRORS ::= {
   "HCI_UNSUPPORTED_PACKET_TYPE",
   "HCI_MALFORMED_CONNECTION_EVENT",
   "HCI_UNEXPECTED_CONNECTION_ROLE",
-  "HCI_UNEXPECTED_CONTROLLER_PRIVACY",
   "HCI_MALFORMED_ENCRYPTION_EVENT",
   "HCI_MALFORMED_ACL_CREDITS",
 }
@@ -73,14 +72,14 @@ main:
           io.LITTLE-ENDIAN.put-uint16 packet (packet[1] == 5 ? 4 : 5) handle
           shared-rejection packet --receive-flow=false --extended-mode=extended-mode
           shared-rejection packet --receive-flow --extended-mode=extended-mode
-    // Resolution is disabled. Reject unexpected local/peer RPA metadata even
-    // after the receive ledger has registered the otherwise valid new handle.
+    // A peer RPA next to a non-identity address type is malformed; a local
+    // RPA is valid metadata, so the frame is merely an unsolicited connection.
     12.repeat: | offset/int |
       packet := isolation.completed-connection 3 0x236
       packet[15 + offset] = 1
       [false, true].do: | receive-flow/bool |
         shared-rejection packet --receive-flow=receive-flow --extended-mode
-            --expected="HCI_UNEXPECTED_CONTROLLER_PRIVACY"
+            --expected=(offset < 6 ? "HCI_UNEXPECTED_CONNECTION" : "HCI_MALFORMED_CONNECTION_EVENT")
 
 checked packet/ByteArray [decode]:
   original := packet.copy

@@ -54,7 +54,7 @@ configure controller/hci.Controller info/hci.Capabilities -> none:
 
 /** Encodes one explicit peer and the LE 1M initiating PHY (Core 6.3, 7.8.66). */
 create-parameters address/ByteArray --address-type/int --own-address-type/int=0 -> ByteArray:
-  if address.size != 6 or not 0 <= address-type <= 1 or not 0 <= own-address-type <= 1:
+  if address.size != 6 or not 0 <= address-type <= 3 or not 0 <= own-address-type <= 1:
     throw "INVALID_ARGUMENT"
   bytes := ByteArray 26
   bytes[1] = own-address-type
@@ -68,27 +68,6 @@ create-parameters address/ByteArray --address-type/int --own-address-type/int=0 
   io.LITTLE-ENDIAN.put-uint16 bytes 20 400
   return bytes
 
-/** Decodes Enhanced Connection Complete v1 for explicit on-air addresses. */
+/** Decodes Enhanced Connection Complete v1, with or without controller address resolution. */
 decode-completion packet/ByteArray --role/int=0 -> connection.Completion?:
-  if role != 0 and role != 1: throw "INVALID_ARGUMENT"
-  hci.validate-packet packet
-  if packet[0] != 4 or packet[1] != 0x3e: return null
-  if packet.size < 4: throw "HCI_MALFORMED_CONNECTION_EVENT"
-  if packet[3] != 0x0a: return null
-  if packet.size != 34: throw "HCI_MALFORMED_CONNECTION_EVENT"
-  status := packet[4]
-  if status != 0: return connection.Completion status 0 0 #[] 0 0 0
-  handle := io.LITTLE-ENDIAN.uint16 packet 5
-  if handle > 0x0eff or packet[8] > 1: throw "HCI_MALFORMED_CONNECTION_EVENT"
-  if packet[7] != role: throw "HCI_UNEXPECTED_CONNECTION_ROLE"
-  // These fields must be zero without controller address resolution. Reject
-  // unexpected identity/RPA state rather than pass the wrong address to SMP.
-  12.repeat:
-    if packet[it + 15] != 0: throw "HCI_UNEXPECTED_CONTROLLER_PRIVACY"
-  interval := io.LITTLE-ENDIAN.uint16 packet 27
-  latency := io.LITTLE-ENDIAN.uint16 packet 29
-  timeout := io.LITTLE-ENDIAN.uint16 packet 31
-  if not 6 <= interval <= 3200 or not 0 <= latency <= 499 or
-      not 10 <= timeout <= 3200 or timeout * 4 <= (latency + 1) * interval:
-    throw "HCI_MALFORMED_CONNECTION_EVENT"
-  return connection.Completion status handle packet[8] packet[9..15].copy interval latency timeout --role=role
+  return connection.decode-enhanced-completion packet --role=role

@@ -98,7 +98,7 @@ class ScanSession extends rpc.Session:
         error = catch:
           transport_ = provider.open-transport
           controller_ = hci.Controller transport_
-          provider.controller-ready transport_ (hci.initialize controller_)
+          provider.controller-ready transport_ controller_ (hci.initialize controller_)
           deadline := duration and (Time.monotonic-us + duration)
           elapsed := catch:
             with-timeout (duration and (Duration --us=duration)):

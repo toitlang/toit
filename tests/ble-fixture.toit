@@ -135,7 +135,7 @@ class ThrowingCloseTransport extends FakeTransport:
     throw "TRANSPORT_CLOSE_FAILED"
 
 initialize-replies transport/FakeTransport --shared/bool=false --acl-length/int=251 --receive-flow/bool=false
-    --extended/bool=false --data-length/bool=false --phy-2m/bool=false:
+    --extended/bool=false --data-length/bool=false --phy-2m/bool=false --privacy/bool=false:
   reply transport #[1, 3, 12, 0] #[]
   reply transport #[1, 1, 16, 0] #[10, 1, 0, 10, 93, 0, 1, 0]
   commands := ByteArray 64
@@ -145,10 +145,14 @@ initialize-replies transport/FakeTransport --shared/bool=false --acl-length/int=
     commands[37] = 0x81
   if data-length: commands[33] = 0x40
   if phy-2m: commands[35] = 0x60
+  if privacy:
+    commands[34] |= 0x68
+    commands[35] |= 0x06
+    commands[39] |= 0x04
   reply transport #[1, 2, 16, 0] commands
   reply transport #[1, 3, 16, 0] #[0, 0, 0, 0, 0x40, 0, 0, 0]
   reply transport #[1, 9, 16, 0] #[1, 2, 3, 4, 5, 6]
-  reply transport #[1, 3, 32, 0] #[(data-length ? 0x21 : 1), (extended ? 0x10 : 0) | (phy-2m ? 1 : 0), 0, 0, 0, 0, 0, 0]
+  reply transport #[1, 3, 32, 0] #[(data-length ? 0x21 : 1) | (privacy ? 0x40 : 0), (extended ? 0x10 : 0) | (phy-2m ? 1 : 0), 0, 0, 0, 0, 0, 0]
   if shared:
     reply transport #[1, 2, 32, 0] #[0, 0, 0]
     reply transport #[1, 5, 16, 0] #[0xfb, 0, 0, 8, 0, 0, 0]

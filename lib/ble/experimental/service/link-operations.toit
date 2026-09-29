@@ -16,7 +16,8 @@ Runs a link operation for a session that owns $link on $host.
 
 Shared by central connections and peripheral sessions. LINK-INFO returns
   [role, tx PHY, rx PHY, tx octets, rx octets, interval, latency, supervision
-  timeout, peer address, peer address type]; the PHY is 1M and the octets
+  timeout, peer address, peer address type, identity address or null,
+  identity address type or null]; the PHY is 1M and the octets
   27 until the controllers report otherwise. WAIT-DISCONNECTED returns the
   HCI reason once the link has ended.
 */
@@ -46,6 +47,8 @@ link-operation_ host/central.Central link/central.Link index/int arguments/List 
       parameters.supervision-timeout,
       link.info.address.copy,
       link.info.address-type,
+      link.info.identity-address and link.info.identity-address.copy,
+      link.info.identity-address-type,
     ]
   if index == api.WAIT-DISCONNECTED:
     if not arguments.is-empty: throw "INVALID_ARGUMENT"

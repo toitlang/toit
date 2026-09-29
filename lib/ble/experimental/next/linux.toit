@@ -19,6 +19,7 @@ import ..linux-management as management
 import ..native as native
 import ..transport as transport
 import ..service.gatt-provider as gatt
+import ..resolving-list as resolving
 import .adapter
 import .peripheral show Peripheral
 
@@ -27,10 +28,14 @@ Opens adapter $index.
 
 $peripheral-sessions is how many centrals a $Peripheral serves at once;
   while any is connected, the adapter does not connect to peripherals.
+  $central-sessions is how many peripherals it connects to at once.
+
+$resolve lists bonded peers ($resolving.Entry) for the controller to
+  resolve, so they can be found and connected to by identity.
 */
-open index/int --peripheral-sessions/int=1 -> Adapter:
-  if not 1 <= peripheral-sessions <= 8: throw "INVALID_ARGUMENT"
-  provider := Provider_ index peripheral-sessions
+open index/int --peripheral-sessions/int=1 --central-sessions/int=1 --resolve/List?=null -> Adapter:
+  if not 1 <= peripheral-sessions <= 8 or not 1 <= central-sessions <= 8: throw "INVALID_ARGUMENT"
+  provider := Provider_ index peripheral-sessions central-sessions resolve
   provider.install
   adapter/Adapter? := null
   try:
@@ -42,8 +47,14 @@ open index/int --peripheral-sessions/int=1 -> Adapter:
 class Provider_ extends gatt.Provider:
   index_/int
   peripheral-sessions_/int
+  central-sessions_/int
+  resolve_/List?
 
-  constructor .index_ .peripheral-sessions_: super
+  constructor .index_ .peripheral-sessions_ .central-sessions_ .resolve_: super
+
+  central-session-limit -> int: return central-sessions_
+
+  resolving-list -> List?: return resolve_
 
   /**
   Takes the adapter from BlueZ and opens its user channel.
