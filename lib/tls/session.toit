@@ -38,6 +38,7 @@ FINISHED_            ::= 20
 
 ALERT-WARNING_ ::= 1
 ALERT-FATAL_   ::= 2
+ALERT-CLOSE-NOTIFY_ ::= 0
 
 RECORD-HEADER-SIZE_ ::= 5
 CLIENT-RANDOM-SIZE_ ::= 32
@@ -287,6 +288,11 @@ class Session:
         if tls-state: tls-state.dispose
         if is-exception: reader_ = null
 
+        // Release the handshake token if we managed to create it. The token
+        // is a resource of the TLS group, so this must happen before the
+        // group can be torn down by the last 'unuse' below.
+        if token: tls-token-release_ token
+
         if is-exception or symmetric-session_ != null:
           // We do not need the resources any more. Either
           // because we're running in Toit mode using a
@@ -300,10 +306,6 @@ class Session:
           // until $close is called.
           tls-group_ = tls-group
           add-finalizer this:: close
-
-        // Release the handshake token if we managed to
-        // create the resource group.
-        if token: tls-token-release_ token
 
         // Mark the handshake as no longer in progress and
         // send back any exception to whoever may be waiting
@@ -408,8 +410,10 @@ class Session:
         flush-outgoing_
         return sent
       wrote := tls-write_ tls_ data from to
+      // Negative results are MbedTLS error codes. Formatting them allocates,
+      // so it happens in a separate primitive; see the native read primitive.
+      if wrote < 0: tls-error_ tls_ -wrote
       if wrote == 0: flush-outgoing_
-      if wrote < 0: throw "UNEXPECTED_TLS_STATUS: $wrote"
       from += wrote
       sent += wrote
 
@@ -419,6 +423,7 @@ class Session:
     if not tls_: throw "TLS_SOCKET_NOT_CONNECTED"
     while true:
       res := tls-read_ tls_
+      if res is int and res < 0: tls-error_ tls_ -res
       if res == TOIT-TLS-WANT-READ_:
         if not read-more_: return null
       else:
@@ -432,7 +437,12 @@ class Session:
   close-write:
     if not tls_: return
     if closed-for-write_: return
-    tls-close-write_ tls_
+    while true:
+      result := tls-close-write_ tls_
+      if result is int and result < 0: tls-error_ tls_ -result
+      if result != TOIT-TLS-WANT-WRITE_: break
+      // The outgoing buffer is full; drain it and queue the alert again.
+      flush-outgoing_
     flush-outgoing_
     closed-for-write_ = true
 
@@ -894,24 +904,19 @@ class ServerHello_:
   cipher-suite /int
 
   constructor packet/ByteArray:
-    header := RecordHeader_ packet
-    if header.type != HANDSHAKE_ or packet[5] != SERVER-HELLO_:
-      if header.type == ALERT_:
-        print "Alert: $(packet[5] == 2 ? "fatal" : "warning") $(packet[6])"
-        print "See https://www.rfc-editor.org/rfc/rfc4346#section-7.2"
+    // The packet is a complete, possibly reassembled, TLS 1.2 ServerHello:
+    // a 5-byte record header, a 4-byte handshake header, the 2-byte version,
+    // 32 random bytes, the session ID, the cipher suite, the compression
+    // method and optional extensions. The peer controls every length field,
+    // so validate each enclosing length before indexing into the packet.
+    if packet.size < 47 or packet[0] != HANDSHAKE_ or packet[5] != SERVER-HELLO_ or
+        (BIG-ENDIAN.uint16 packet 3) != packet.size - 5 or
+        (BIG-ENDIAN.uint24 packet 6) != packet.size - 9:
       throw "PROTOCOL_ERROR"
-    assert:
-      handshake-header := HandshakeHeader_ packet
-      header.length == handshake-header.length + 4  // Last line is value being asserted.
     random = packet[11..43]
-    str := ""
-    for i := random.size - 8; i < random.size; i++:
-      if ' ' <= random[i] <= '~':
-        str += "$(%c random[i])"
-      else:
-        break
     server-session-id-length := packet[43]
     index := 44 + server-session-id-length
+    if server-session-id-length > 32 or index + 3 > packet.size: throw "PROTOCOL_ERROR"
     session-id = packet[44..index]
     cipher-suite = BIG-ENDIAN.uint16 packet index
     compression-method := packet[index + 2]
@@ -919,16 +924,18 @@ class ServerHello_:
     index += 3
     extensions = {:}
     if index != packet.size:
+      if index + 2 > packet.size: throw "PROTOCOL_ERROR"
       extensions-length := BIG-ENDIAN.uint16 packet index
       index += 2
-      while extensions-length > 0:
+      if extensions-length != packet.size - index: throw "PROTOCOL_ERROR"
+      while index < packet.size:
+        if index + 4 > packet.size: throw "PROTOCOL_ERROR"
         extension-type := BIG-ENDIAN.uint16 packet index
         extension-length := BIG-ENDIAN.uint16 packet index + 2
-        extension := packet[index + 4..index + 4 + extension-length]
-        extensions[extension-type] = extension
+        if extension-length > packet.size - index - 4 or extensions.contains extension-type:
+          throw "PROTOCOL_ERROR"
+        extensions[extension-type] = packet[index + 4..index + 4 + extension-length]
         index += 4 + extension-length
-        extensions-length -= 4 + extension-length
-    if index != packet.size: throw "PROTOCOL_ERROR"
 
 class SymmetricSession_:
   write-keys /KeyData_
@@ -939,6 +946,7 @@ class SymmetricSession_:
 
   buffered-plaintext-index_ := 0
   buffered-plaintext_ := []
+  peer-closed_ := false
 
   constructor .parent_ .writer_ .reader_ .write-keys .read-keys:
 
@@ -969,24 +977,30 @@ class SymmetricSession_:
         explicit-iv = #[]
         8.repeat: iv[4 + it] ^= sequence-number[it]
       encryptor := write-keys.new-encryptor iv
-      encryptor.start --authenticated-data=(sequence-number + record-header.bytes)
-      // Now that we have used the actual size of the plaintext as the authentication data
-      // we update the header with the real size on the wire, which includes some more data.
-      record-header.length = length2 + explicit-iv.size + Aead_.TAG-SIZE
-      List.chunk-up from2 to2 512: | from3 to3 length3 |
-        first /bool := from3 == from2
-        last /bool := to3 == to2
-        plaintext := ByteArray (to3 - from3)
-        data.write-to-byte-array plaintext --at=0 from3 to3
-        parts := [encryptor.add plaintext]
-        if first:
-          parts = [record-header.bytes, explicit-iv, parts[0]]
-        if last:
-          parts.add encryptor.finish
-        else:
-          yield  // Don't monopolize the CPU with long crypto operations.
-        encrypted := byte-array-join_ parts
-        writer_.write encrypted
+      try:
+        encryptor.start --authenticated-data=(sequence-number + record-header.bytes)
+        // Now that we have used the actual size of the plaintext as the authentication data
+        // we update the header with the real size on the wire, which includes some more data.
+        record-header.length = length2 + explicit-iv.size + Aead_.TAG-SIZE
+        List.chunk-up from2 to2 512: | from3 to3 length3 |
+          first /bool := from3 == from2
+          last /bool := to3 == to2
+          plaintext := ByteArray (to3 - from3)
+          data.write-to-byte-array plaintext --at=0 from3 to3
+          parts := [encryptor.add plaintext]
+          if first:
+            parts = [record-header.bytes, explicit-iv, parts[0]]
+          if last:
+            parts.add encryptor.finish
+          else:
+            yield  // Don't monopolize the CPU with long crypto operations.
+          encrypted := byte-array-join_ parts
+          writer_.write encrypted
+      finally:
+        // Release the native cipher state even if encrypting or sending a
+        // chunk throws, or the task is canceled while the transport is
+        // backpressured. Closing after 'finish' is a no-op.
+        encryptor.close
     return to - from
 
   read --expected-type/int=APPLICATION-DATA_ -> ByteArray?:
@@ -999,6 +1013,7 @@ class SymmetricSession_:
         parent_.close
 
   read_ expected-type/int -> ByteArray?:
+    if peer-closed_: return null
     while true:
       if buffered-plaintext-index_ != buffered-plaintext_.size:
         result := buffered-plaintext_[buffered-plaintext-index_]
@@ -1027,31 +1042,47 @@ class SymmetricSession_:
 
       plaintext-length := encrypted-length - Aead_.TAG-SIZE - explicit-iv.size
       decryptor := read-keys.new-decryptor iv
-      // Overwrite the length with the unpadded length before adding the header
-      // to the authenticated data.
-      record-header.length = plaintext-length
-      decryptor.start --authenticated-data=(sequence-number + record-header.bytes)
       // Accumulate plaintext in a local to ensure that no data is read by the
       // application that has not been verified.
       buffered-plaintext := []
-      while plaintext-length > 0:
-        encrypted := reader_.read --max-size=plaintext-length
-        if not encrypted: return null
-        plaintext-length -= encrypted.size
-        plain-chunk := decryptor.add encrypted
+      try:
+        // Overwrite the length with the unpadded length before adding the header
+        // to the authenticated data.
+        record-header.length = plaintext-length
+        decryptor.start --authenticated-data=(sequence-number + record-header.bytes)
+        while plaintext-length > 0:
+          encrypted := reader_.read --max-size=plaintext-length
+          if not encrypted: return null
+          plaintext-length -= encrypted.size
+          plain-chunk := decryptor.add encrypted
+          if plain-chunk.size != 0: buffered-plaintext.add plain-chunk
+        if not reader_.try-ensure-buffered Aead_.TAG-SIZE: return null
+        received-tag := reader_.read-bytes Aead_.TAG-SIZE
+        plain-chunk := decryptor.verify received-tag
+        // Since we got here, the tag was successfully verified.
         if plain-chunk.size != 0: buffered-plaintext.add plain-chunk
-      if not reader_.try-ensure-buffered Aead_.TAG-SIZE: return null
-      received-tag := reader_.read-bytes Aead_.TAG-SIZE
-      plain-chunk := decryptor.verify received-tag
-      // Since we got here, the tag was successfully verified.
-      if plain-chunk.size != 0: buffered-plaintext.add plain-chunk
+      finally:
+        // Release the native cipher state after truncated, failed or canceled
+        // reads as well. Closing after 'verify' is a no-op.
+        decryptor.close
       if record-header.type == ALERT_:
+        // Alerts are control messages. Their bytes must never be handed to
+        // the application as data, so handle them here and read on.
         alert-data := byte-array-join_ buffered-plaintext
-        if alert-data[0] != ALERT-WARNING_:
-          print "See https://www.rfc-editor.org/rfc/rfc4346#section-7.2"
-          throw "Fatal TLS alert: $alert-data[1]"
-      else:
-        assert: record-header.type == expected-type
+        if alert-data.size != 2: throw "PROTOCOL_ERROR"
+        level := alert-data[0]
+        description := alert-data[1]
+        if level == ALERT-FATAL_:
+          throw "Fatal TLS alert: $description"
+        if level != ALERT-WARNING_: throw "PROTOCOL_ERROR"
+        if description == ALERT-CLOSE-NOTIFY_:
+          // The peer has finished writing. Report end of stream now and
+          // on every later read, even if the transport stays open.
+          peer-closed_ = true
+          return null
+        // Other warnings do not affect the connection.
+        continue
+      assert: record-header.type == expected-type
       buffered-plaintext_ = buffered-plaintext
       buffered-plaintext-index_ = 0
 
@@ -1078,7 +1109,9 @@ class TlsGroup_:
     if users_ == 0:
       handle := handle_
       handle_ = null
-      tls-deinit_ handle
+      // The handle is null if $use failed in tls-init_. The error from that
+      // failure must not be replaced by a failing deinit of a null handle.
+      if handle: tls-deinit_ handle
 
 /**
 Generate $size random bytes using the PRF of RFC 5246.

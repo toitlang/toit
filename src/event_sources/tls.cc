@@ -64,32 +64,38 @@ void TlsEventSource::stop() {
 void TlsEventSource::handshake(TlsSocket* socket) {
   Locker locker(mutex());
   sockets_.append(socket);
-  OS::signal(sockets_changed_);
+  // The condition is shared with threads waiting in on_unregister_resource.
+  OS::signal_all(sockets_changed_);
 }
 
 void TlsEventSource::close(TlsSocket* socket) {
-  { Locker locker(mutex());
-    if (sockets_.is_linked(socket)) {
-      // Delay the close until the event source is
-      // done with the socket.
-      socket->delay_close();
-      return;
-    }
-  }
   socket->resource_group()->unregister_resource(socket);
 }
 
 void TlsEventSource::on_unregister_resource(Locker& locker, Resource* r) {
   ASSERT(is_locked());
-#ifdef DEBUG
-  // We never close a socket that is currently in the
-  // event source socket list. We may get non-socket
-  // resources in here, so we need to run through the
-  // list to safely figure out if they are present.
-  for (auto s : sockets_) {
-    ASSERT(s != r);
+  // A socket that is queued for, or in the middle of, a handshake step is
+  // still used by the worker thread. Unregistration is followed by deletion
+  // of the socket, and when a process dies, of its whole resource group and
+  // the TLS group state the handshake uses. Deferring the close and letting
+  // the worker unregister the socket on its own thread later raced with
+  // exactly that teardown. Instead, mark the socket so that the worker does
+  // not start another step or dispatch a result, and wait here until the
+  // worker has dropped it. That blocks the closing process for at most one
+  // handshake step, which is pure computation on already buffered input.
+  // Non-socket resources (handshake tokens) also reach this hook; they are
+  // never in the list.
+  while (true) {
+    bool pending = false;
+    for (auto socket : sockets_) {
+      if (socket != r) continue;
+      socket->delay_close();
+      pending = true;
+      break;
+    }
+    if (!pending) return;
+    OS::wait(sockets_changed_);  // Releases the event-source mutex while waiting.
   }
-#endif
 }
 
 void TlsEventSource::entry() {
@@ -107,18 +113,15 @@ void TlsEventSource::entry() {
         result = socket->handshake();
       }
 
-      // We maintain a simple invariant: We never close a socket
-      // that is currently in the event source socket list. Remove
-      // the socket now, so that the call to unregister will be
-      // reached in the right state.
+      // The owning process unregisters and deletes the socket, never this
+      // thread. Once the socket has been removed from the list and the
+      // condition signaled, it must not be touched again.
       sockets_.remove_first();
 
-      if (socket->needs_delayed_close()) {
-        Unlocker unlocker(locker);
-        socket->resource_group()->unregister_resource(socket);
-      } else {
+      if (!socket->needs_delayed_close()) {
         dispatch(locker, socket, result);
       }
+      OS::signal_all(sockets_changed_);
     }
 
     OS::wait(sockets_changed_);

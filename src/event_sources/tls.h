@@ -32,9 +32,9 @@ class TlsSocket : public Resource, public TlsSocketList::Element {
 
   virtual word handshake() = 0;
 
-  // Sockets that are part of the list of sockets in the event
-  // source cannot be eagerly closed. Instead, we let the event
-  // source close them when they are no longer in the list.
+  // A closing socket stays alive until the worker thread has removed it
+  // from its list; see TlsEventSource::on_unregister_resource. Once marked,
+  // the worker neither starts another handshake step nor dispatches a result.
   bool needs_delayed_close() const { return needs_delayed_close_; }
   void delay_close() { needs_delayed_close_ = true; }
 

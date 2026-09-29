@@ -506,11 +506,17 @@ PRIMITIVE(set_incoming) {
     socket->set_incoming(address, blob.length());
     socket->set_from(from);
   } else {
-    // We need to take a copy of the incoming.
+    // We need to take a copy of the incoming. Allocate the copy before
+    // replacing the previous input, so an allocation failure leaves the
+    // socket unchanged for the GC retry. Some allocators return null for
+    // malloc(0), which must not be reported as an allocation failure.
     uword length = blob.length() - from;
-    uint8* address = reinterpret_cast<uint8*>(malloc(length));
-    if (address == null) FAIL(MALLOC_FAILED);
-    memcpy(address, blob.address() + from, length);
+    uint8* address = null;
+    if (length != 0) {
+      address = reinterpret_cast<uint8*>(malloc(length));
+      if (address == null) FAIL(MALLOC_FAILED);
+      memcpy(address, blob.address() + from, length);
+    }
     socket->set_incoming(address, length);
   }
   return process->null_object();
@@ -558,9 +564,16 @@ Object* MbedTlsResourceGroup::tls_socket_create(Process* process, const char* ho
   MbedTlsSocket* socket = _new MbedTlsSocket(this);
 
   if (socket == null) FAIL(MALLOC_FAILED);
-  proxy->set_external_address(socket);
 
-  mbedtls_ssl_set_hostname(&socket->ssl, hostname);
+  // Setting the hostname copies it and can fail (allocation, or a name that
+  // is too long). Ignoring that left a socket that verified the peer
+  // certificate against no name at all.
+  int ret = mbedtls_ssl_set_hostname(&socket->ssl, hostname);
+  if (ret != 0) {
+    delete socket;
+    return tls_error(null, process, ret);
+  }
+  proxy->set_external_address(socket);
   register_resource(socket);
   return proxy;
 }
@@ -582,16 +595,29 @@ PRIMITIVE(handshake) {
 // MbedTLS may need more data to be input (buffered) before it can return any
 // decrypted data.  In that case we return TLS_WANT_READ.
 // If the connection is closed, returns null.
+// Other MbedTLS errors are returned as their (negative) error code. Turning
+// the code into an error string allocates, and a primitive that fails to
+// allocate is retried after a GC. The retry must not repeat mbedtls_ssl_read,
+// which has already consumed the record, so the Toit side formats the error
+// with a separate call to the error primitive.
 PRIMITIVE(read)  {
   ARGS(MbedTlsSocket, socket);
 
-  // Process data and read available size, before allocating buffer.
-  if (mbedtls_ssl_read(&socket->ssl, null, 0) == MBEDTLS_ERR_SSL_WANT_READ) {
-    // Early return to avoid allocation when no data is available.
-    return Smi::from(TLS_WANT_READ);
+  // Process records before allocating the output buffer. A zero-length
+  // application record is legal (some peers send them as keep-alives or for
+  // CBC record splitting) and is not a closed connection, so keep processing
+  // the input we already have until data is available or it runs out.
+  int size;
+  while (true) {
+    int status = mbedtls_ssl_read(&socket->ssl, null, 0);
+    if (status == MBEDTLS_ERR_SSL_WANT_READ) return Smi::from(TLS_WANT_READ);
+    if (status == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) return process->null_object();
+    if (status < 0) return Smi::from(status);
+    size = mbedtls_ssl_get_bytes_avail(&socket->ssl);
+    if (size != 0) break;
+    if (static_cast<uword>(socket->from()) == socket->incoming_length()) return Smi::from(TLS_WANT_READ);
   }
-  int size = mbedtls_ssl_get_bytes_avail(&socket->ssl);
-  if (size < 0 || size > ByteArray::PREFERRED_IO_BUFFER_SIZE) size = ByteArray::PREFERRED_IO_BUFFER_SIZE;
+  if (size > ByteArray::PREFERRED_IO_BUFFER_SIZE) size = ByteArray::PREFERRED_IO_BUFFER_SIZE;
 
   ByteArray* array = process->allocate_byte_array(size, /*force_external*/ true);
   if (array == null) FAIL(ALLOCATION_FAILED);
@@ -601,39 +627,37 @@ PRIMITIVE(read)  {
   } else if (read == MBEDTLS_ERR_SSL_WANT_READ) {
     return Smi::from(TLS_WANT_READ);
   } else if (read < 0) {
-    return tls_error(socket, process, read);
+    return Smi::from(read);
   }
 
   array->resize_external(process, read);
   return array;
 }
 
-// This is only used after the handshake.  It reads data that has been decrypted.
-// Normally returns a byte array.
-// MbedTLS may need more data to be input (buffered) before it can return any
-// decrypted data.  In that case we return TLS_WANT_READ, an integer.
-// If the connection is closed, returns null.
+// This is only used after the handshake.  It encrypts and buffers data for
+// the transport. Returns the number of bytes consumed, zero if the outgoing
+// buffer must be flushed first, or a negative MbedTLS error code (see the
+// comment on the read primitive for why the code is not formatted here).
 PRIMITIVE(write) {
   ARGS(MbedTlsSocket, socket, Blob, data, int, from, int, to)
 
   if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_RANGE);
 
   int wrote = mbedtls_ssl_write(&socket->ssl, data.address() + from, to - from);
-  if (wrote < 0) {
-    if (wrote == MBEDTLS_ERR_SSL_WANT_WRITE) {
-      wrote = 0;
-    } else {
-      return tls_error(socket, process, wrote);
-    }
-  }
+  if (wrote == MBEDTLS_ERR_SSL_WANT_WRITE) wrote = 0;
 
   return Smi::from(wrote);
 }
 
+// Queues a close_notify alert. Returns null when the alert has been written
+// to the outgoing buffer, TLS_WANT_WRITE if the buffer must be flushed and
+// the call repeated, or a negative MbedTLS error code.
 PRIMITIVE(close_write) {
   ARGS(MbedTlsSocket, socket);
 
-  mbedtls_ssl_close_notify(&socket->ssl);
+  int status = mbedtls_ssl_close_notify(&socket->ssl);
+  if (status == MBEDTLS_ERR_SSL_WANT_WRITE) return Smi::from(TLS_WANT_WRITE);
+  if (status < 0) return Smi::from(status);
 
   return process->null_object();
 }
@@ -1024,54 +1048,45 @@ typedef DoubleLinkedList<TlsHandshakeToken> TlsHandshakeTokenList;
 // a non-zero state. All zero state tokens are chained
 // together in a waiters list and get a non-zero state
 // one at a time as other tokens are released.
+//
+// Admission, the waiters list and the notification of the next waiter are
+// all protected by the TLS event-source mutex. Releasing a token used to
+// pick the next waiter under one lock and notify it under another; in
+// between, the waiter could be released (and deleted) by its own process,
+// so the notification touched a freed token and the admission count was
+// left one too high. Do not nest OS::tls_mutex() with this mutex; both
+// have lock level 1.
 class TlsHandshakeToken : public Resource, public TlsHandshakeTokenList::Element {
  public:
   TAG(TlsHandshakeToken);
   explicit TlsHandshakeToken(MbedTlsResourceGroup* group)
       : Resource(group) {
-    TlsHandshakeToken* token = acquire();
-    if (token) {
-      ASSERT(token == this);
+    Locker locker(group->event_source()->mutex());
+    if (count > 0) {
+      count--;
       set_state(1);
+    } else {
+      waiters.append(this);
     }
   }
 
   ~TlsHandshakeToken() {
-    TlsHandshakeToken* token = release();
-    if (token) {
-      ASSERT(token != this);
-      EventSource* source = token->resource_group()->event_source();
-      source->set_state(token, 1);
+    EventSource* source = resource_group()->event_source();
+    Locker locker(source->mutex());
+    if (waiters.is_linked(this)) {
+      waiters.unlink(this);
+    } else if (waiters.is_empty()) {
+      count++;
+    } else {
+      TlsHandshakeToken* token = waiters.remove_first();
+      ASSERT(token->resource_group()->event_source() == source);
+      source->set_state(locker, token, 1);
     }
   }
 
  private:
   static int count;
   static TlsHandshakeTokenList waiters;
-
-  TlsHandshakeToken* acquire() {
-    Locker locker(OS::tls_mutex());
-    if (count > 0) {
-      count--;
-      return this;
-    } else {
-      waiters.append(this);
-      return null;
-    }
-  }
-
-  TlsHandshakeToken* release() {
-    Locker locker(OS::tls_mutex());
-    if (waiters.is_linked(this)) {
-      waiters.unlink(this);
-      return null;
-    } else if (waiters.is_empty()) {
-      count++;
-      return null;
-    } else {
-      return waiters.remove_first();
-    }
-  }
 };
 
 int TlsHandshakeToken::count = HANDSHAKE_CONCURRENCY;
@@ -1086,6 +1101,10 @@ PRIMITIVE(token_acquire) {
   TlsHandshakeToken* token = _new TlsHandshakeToken(group);
   if (!token) FAIL(MALLOC_FAILED);
 
+  // Register the token with its group. A process that dies while waiting
+  // for admission otherwise leaks the token, and with it one of the
+  // HANDSHAKE_CONCURRENCY slots, permanently.
+  group->register_resource(token);
   proxy->set_external_address(token);
   return proxy;
 }
