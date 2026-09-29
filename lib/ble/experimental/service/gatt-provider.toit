@@ -458,7 +458,7 @@ class Session extends rpc.Session:
       transport_ = provider_.open-transport
       controller_ = hci.Controller transport_
       info := hci.initialize controller_ --receive-acl-packets=provider_.receive-acl-packets
-      provider_.controller-ready transport_ info
+      provider_.controller-ready transport_ controller_ info
       host_ = provider_.create-host controller_ info (max 65 database_.mtu-limit)
       accept_ info
     serve_
@@ -502,7 +502,11 @@ class Session extends rpc.Session:
         // The child enters run before yielding, so early buffered SMP is not
         // dispatched to an inactive owner when serving starts.
         started.get
-      peer_.set [link.info.address.copy, link.info.address-type]
+      // A peer the controller resolved is reported by its identity (types 2, 3).
+      identity := link.info.identity-address
+      peer_.set (identity
+          ? [identity.copy, link.info.identity-address-type + 2]
+          : [link.info.address.copy, link.info.address-type])
       server_.serve-with-requests
           (: | read/attributes.ReadRequest | requests.read read)
           (: | write/attributes.WriteRequest | requests.validate write)

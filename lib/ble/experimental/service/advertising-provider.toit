@@ -7,6 +7,7 @@ import ..advertising-set as advertising
 import ..connection as connection
 import ..hci as hci
 import ..privacy as privacy
+import ..resolving-list as resolving
 import ..cancellation show checkpoint
 import ..transport as transport
 import .api as api
@@ -70,12 +71,27 @@ abstract class Provider extends rpc.Provider:
   Remembers the controller's description for $adapter-info and applies the
     transmit power the application asked for.
   */
-  controller-ready radio/transport.Transport info/hci.Capabilities -> none:
+  controller-ready radio/transport.Transport controller/hci.Controller info/hci.Capabilities -> none:
     controller-info_ = info
     if radio is transport.TxPowerControl:
       control := radio as transport.TxPowerControl
       tx-power-control_ = control
       if tx-power-setting_: control.set-tx-power tx-power-setting_
+    entries := resolving-list
+    if entries and (resolving.supported info):
+      resolving.configure controller info entries
+
+  /**
+  Returns the bonded peers the controller resolves ($resolving.Entry: identity
+    address and IRK), or null (the default) to leave resolution to the host.
+
+  With entries, advertising reports and connections name those peers by
+    their identity (address types 2 and 3), and centrals can connect to them
+    by identity while they rotate their addresses. A controller without
+    link-layer privacy ignores the list; the host still resolves addresses
+    itself where it has the keys. Called at every controller start.
+  */
+  resolving-list -> List?: return null
 
   adapter-info -> List:
     if not controller-info_: probe-controller_
@@ -99,7 +115,7 @@ abstract class Provider extends rpc.Provider:
       controller/hci.Controller? := null
       try:
         controller = hci.Controller radio
-        controller-ready radio (hci.initialize controller)
+        controller-ready radio controller (hci.initialize controller)
       finally:
         critical-do --no-respect-deadline:
           if controller:
@@ -153,7 +169,7 @@ class AdvertisingSession extends rpc.Session:
         failure = catch:
           radio = provider.open-transport
           controller = hci.Controller radio
-          provider.controller-ready radio (hci.initialize controller)
+          provider.controller-ready radio controller (hci.initialize controller)
           checkpoint
           if local:
             controller.command 0x2005 local

@@ -33,7 +33,8 @@ encoding:
   expected[2] = 0
   expect-equals expected (extended.create-parameters #[1, 2, 3, 4, 5, 6] --address-type=0 --own-address-type=1)
   expect-throw "INVALID_ARGUMENT": extended.create-parameters #[] --address-type=0
-  expect-throw "INVALID_ARGUMENT": extended.create-parameters address --address-type=2
+  // Types 2 and 3 name a resolving-list identity; 4 does not exist.
+  expect-throw "INVALID_ARGUMENT": extended.create-parameters address --address-type=4
   expect-throw "INVALID_ARGUMENT": extended.create-parameters address --address-type=0 --own-address-type=2
 
 decoding:
@@ -54,14 +55,14 @@ decoding:
   expect-equals null (extended.decode-completion fixture.connection-event)
   expect-equals null (extended.decode-completion #[4, 5, 0])
   expect-throw "INVALID_ARGUMENT": extended.decode-completion packet --role=2
-  [5, 8, 15, 26, 27, 29, 31].do: | offset/int |
+  // An unresolved peer (types 0, 1) with a peer RPA is malformed; resolved
+  // peers are covered by ble-resolving-list-test.
+  [5, 8, 26, 27, 29, 31].do: | offset/int |
     malformed := isolation.completed-connection 1 0x234
     expected := "HCI_MALFORMED_CONNECTION_EVENT"
     if offset == 5: io.LITTLE-ENDIAN.put-uint16 malformed offset 0x0f00
-    if offset == 8: malformed[offset] = 2
-    if offset == 15 or offset == 26:
-      malformed[offset] = 1
-      expected = "HCI_UNEXPECTED_CONTROLLER_PRIVACY"
+    if offset == 8: malformed[offset] = 4
+    if offset == 26: malformed[offset] = 1
     if offset == 27: io.LITTLE-ENDIAN.put-uint16 malformed offset 5
     if offset == 29: io.LITTLE-ENDIAN.put-uint16 malformed offset 500
     if offset == 31: io.LITTLE-ENDIAN.put-uint16 malformed offset 9

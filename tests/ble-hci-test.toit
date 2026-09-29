@@ -847,7 +847,7 @@ test-connection-codecs:
                  24, 0, 40, 0, 0, 0, 0x90, 1, 0, 0, 0, 0]
       connection.create-parameters address --address-type=1
   expect-throw "INVALID_ARGUMENT": connection.create-parameters #[] --address-type=0
-  expect-throw "INVALID_ARGUMENT": connection.create-parameters address --address-type=2
+  expect-throw "INVALID_ARGUMENT": connection.create-parameters address --address-type=4
   packet := #[4, 0x3e, 19, 1, 0, 0x34, 0x02, 0, 1,
               1, 2, 3, 4, 5, 6, 24, 0, 0, 0, 0x90, 1, 0]
   decoded := connection.decode-completion packet

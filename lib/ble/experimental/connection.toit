@@ -8,9 +8,10 @@ import .hci as hci
 
 /** Encodes legacy LE connection parameters (Core 6.3, 7.8.12). */
 create-parameters address/ByteArray --address-type/int --own-address-type/int=0 -> ByteArray:
-  // The caller selects public/random on-air addresses and resolves peer identity.
-  // Controller-based privacy address types 2/3 are not enabled by this encoder.
-  if address.size != 6 or not 0 <= address-type <= 1: throw "INVALID_ARGUMENT"
+  // Address types 0 and 1 are on-air addresses; 2 and 3 are the identity of a
+  // peer in the controller's resolving list (resolving-list.toit), which the
+  // controller finds by its current resolvable private address.
+  if address.size != 6 or not 0 <= address-type <= 3: throw "INVALID_ARGUMENT"
   if not 0 <= own-address-type <= 1: throw "INVALID_ARGUMENT"
   result := ByteArray 25
   io.LITTLE-ENDIAN.put-uint16 result 0 0x10
@@ -24,7 +25,13 @@ create-parameters address/ByteArray --address-type/int --own-address-type/int=0 
   io.LITTLE-ENDIAN.put-uint16 result 19 400
   return result
 
-/** A legacy LE connection completion, including failed procedures. */
+/**
+An LE connection completion, including failed procedures.
+
+$address is the peer's address on air. When the controller resolved it from
+  its resolving list, $identity-address and $identity-address-type give the
+  peer's identity; otherwise they are null.
+*/
 class Completion:
   status/int
   handle/int
@@ -34,8 +41,11 @@ class Completion:
   latency/int
   supervision-timeout/int
   role/int
+  identity-address/ByteArray?
+  identity-address-type/int?
 
-  constructor .status .handle .address-type .address .interval .latency .supervision-timeout --role/int=0:
+  constructor .status .handle .address-type .address .interval .latency .supervision-timeout --role/int=0
+      --.identity-address=null --.identity-address-type=null:
     this.role = role
 
 /**
@@ -49,6 +59,7 @@ decode-completion packet/ByteArray --role/int=0 -> Completion?:
   hci.validate-packet packet
   if packet[0] != 4 or packet[1] != 0x3e: return null
   if packet.size < 4: throw "HCI_MALFORMED_CONNECTION_EVENT"
+  if packet[3] == 0x0a: return decode-enhanced-completion packet --role=role
   if packet[3] != 1: return null
   if packet.size != 22: throw "HCI_MALFORMED_CONNECTION_EVENT"
   status := packet[4]
@@ -63,6 +74,43 @@ decode-completion packet/ByteArray --role/int=0 -> Completion?:
       not 10 <= timeout <= 3200 or timeout * 4 <= (latency + 1) * interval:
     throw "HCI_MALFORMED_CONNECTION_EVENT"
   return Completion status handle packet[8] packet[9..15] interval latency timeout --role=role
+
+/**
+Decodes LE Enhanced Connection Complete v1 (Vol 4 Part E 7.7.65.10).
+
+A resolved peer (address type 2 or 3) reports its identity; its on-air
+  address is the peer resolvable private address, or the identity itself
+  when the peer used that on air.
+*/
+decode-enhanced-completion packet/ByteArray --role/int=0 -> Completion?:
+  if role != 0 and role != 1: throw "INVALID_ARGUMENT"
+  hci.validate-packet packet
+  if packet[0] != 4 or packet[1] != 0x3e or packet.size < 4 or packet[3] != 0x0a: return null
+  if packet.size != 34: throw "HCI_MALFORMED_CONNECTION_EVENT"
+  status := packet[4]
+  if status != 0: return Completion status 0 0 #[] 0 0 0
+  handle := io.LITTLE-ENDIAN.uint16 packet 5
+  type := packet[8]
+  if handle > 0x0eff or type > 3: throw "HCI_MALFORMED_CONNECTION_EVENT"
+  if packet[7] != role: throw "HCI_UNEXPECTED_CONNECTION_ROLE"
+  interval := io.LITTLE-ENDIAN.uint16 packet 27
+  latency := io.LITTLE-ENDIAN.uint16 packet 29
+  timeout := io.LITTLE-ENDIAN.uint16 packet 31
+  if not 6 <= interval <= 3200 or not 0 <= latency <= 499 or
+      not 10 <= timeout <= 3200 or timeout * 4 <= (latency + 1) * interval:
+    throw "HCI_MALFORMED_CONNECTION_EVENT"
+  address := packet[9..15].copy
+  peer-rpa := packet[21..27]
+  resolved-rpa := peer-rpa.any: it != 0
+  if type < 2:
+    if resolved-rpa: throw "HCI_MALFORMED_CONNECTION_EVENT"
+    return Completion status handle type address interval latency timeout --role=role
+  identity-type := type - 2
+  on-air := resolved-rpa ? peer-rpa.copy : address
+  return Completion status handle (resolved-rpa ? 1 : identity-type) on-air interval latency timeout
+      --role=role
+      --identity-address=address
+      --identity-address-type=identity-type
 
 /** A disconnection completion, including a possible controller rejection. */
 class Disconnection:

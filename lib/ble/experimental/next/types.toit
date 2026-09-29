@@ -26,17 +26,24 @@ A Bluetooth device address with its type.
 
 $bytes are in the order used on the air and in HCI (least significant byte
   first); $stringify prints the usual most-significant-first form.
+
+The identity types name a bonded peer by its identity address when the
+  controller resolved its private address (see the provider's
+  `resolving-list`); connecting to such an address finds the peer whatever
+  address it currently uses on air.
 */
 class Address:
   static PUBLIC ::= 0
   static RANDOM ::= 1
+  static PUBLIC-IDENTITY ::= 2
+  static RANDOM-IDENTITY ::= 3
 
   bytes_/ByteArray
   type/int
 
   /** An address from its six HCI-order bytes. */
   constructor bytes/ByteArray --.type=PUBLIC:
-    if bytes.size != 6 or not 0 <= type <= 1: throw "INVALID_ARGUMENT"
+    if bytes.size != 6 or not 0 <= type <= 3: throw "INVALID_ARGUMENT"
     bytes_ = bytes.copy
 
   /** Parses "aa:bb:cc:dd:ee:ff", most significant byte first. */
@@ -49,7 +56,10 @@ class Address:
   /** The six address bytes, least significant first. */
   bytes -> ByteArray: return bytes_.copy
 
-  is-random -> bool: return type == RANDOM
+  is-random -> bool: return type == RANDOM or type == RANDOM-IDENTITY
+
+  /** Whether this names a resolved peer by its identity. */
+  is-identity -> bool: return type >= PUBLIC-IDENTITY
 
   operator == other -> bool:
     return other is Address and type == other.type and bytes_ == other.bytes_
@@ -58,7 +68,10 @@ class Address:
 
   stringify -> string:
     text := (List 6: "$(%02x bytes_[5 - it])").join ":"
-    return is-random ? "$text (random)" : text
+    if type == RANDOM: return "$text (random)"
+    if type == PUBLIC-IDENTITY: return "$text (identity)"
+    if type == RANDOM-IDENTITY: return "$text (random identity)"
+    return text
 
 /** The PHYs a link uses in each direction ($PHY-1M, $PHY-2M, $PHY-CODED). */
 class Phy:

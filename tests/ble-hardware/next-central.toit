@@ -6,19 +6,30 @@
 // examples/ble/experimental/next-peripheral.toit on a board through the
 // experimental application API and prints what the link looks like.
 //
-// Usage: toit.run next-central.snapshot <adapter index> <peripheral address> [phy]
+// Usage: toit.run next-central.snapshot <adapter index> <peripheral address> [phy] [irk]
+//
+// With an IRK (32 hex digits, most significant first) the peripheral
+// advertises resolvable private addresses: the dongle's controller resolves
+// them to the given identity and the central connects by identity.
 
 import ble.experimental.next as ble
 import ble.experimental.next.linux as linux
+import ble.experimental.resolving-list as resolving
+import encoding.hex
 
 HEART-RATE ::= ble.BleUuid "180d"
 MEASUREMENT ::= ble.BleUuid "2a37"
 CONTROL-POINT ::= ble.BleUuid "2a39"
 
 main args/List:
-  adapter := linux.open (int.parse args[0])
+  identity := ble.Address.parse args[1]
+  phy := args.size > 2 and args[2] != "-" ? int.parse args[2] : null
+  entries := null
+  if args.size > 3:
+    entries = [resolving.Entry --address-type=0 --address=identity.bytes --irk=(hex.decode args[3])]
+  adapter := linux.open (int.parse args[0]) --resolve=entries
   try:
-    run adapter (ble.Address.parse args[1]) (args.size > 2 ? int.parse args[2] : null)
+    run adapter identity phy
   finally:
     adapter.close
 
@@ -27,7 +38,7 @@ run adapter/ble.Adapter address/ble.Address phy/int? -> none:
   report := adapter.find --service=HEART-RATE --duration=(Duration --s=20): | candidate/ble.ScanReport |
     candidate.address.bytes == address.bytes
   if not report: throw "NEXT_PERIPHERAL_NOT_FOUND"
-  print "NEXT_CENTRAL found $report"
+  print "NEXT_CENTRAL found $report identity=$report.address.is-identity"
   adapter.with-connection report.address --phy=phy: | connection/ble.Connection |
     print "NEXT_CENTRAL connected phy=$connection.phy mtu=$connection.mtu rssi=$connection.rssi tx=$connection.tx-power"
     print "NEXT_CENTRAL link $connection.parameters; $connection.data-length"

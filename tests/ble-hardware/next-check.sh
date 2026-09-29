@@ -2,7 +2,9 @@
 # The experimental application API on hardware: the controller-only board runs
 # examples/ble/experimental/next-peripheral.toit beside the provider, the
 # Edimax dongle runs next-central.toit. NEXT_BOARD=s3 uses ESP32-S3 Board1
-# (2M PHY) instead of the original ESP32.
+# (2M PHY) instead of the original ESP32. NEXT_PRIVATE=1 installs a provider
+# that advertises resolvable private addresses; the central resolves them in
+# the dongle's controller and connects by identity.
 # Usage: tests/ble-hardware/next-check.sh [phy to request]
 set -uo pipefail
 cd "$(dirname "$0")/../.."
@@ -17,7 +19,14 @@ fi
 index=$(btmgmt info | awk '/^hci/{h=$1} /addr 08:BE:AC:2A:DA:C2/{sub(":","",h); print substr(h,4)}')
 [ -n "$index" ] || { echo "adapter 08:BE:AC:2A:DA:C2 not found"; exit 2; }
 C=build/ble-next-001/${NEXT_BOARD:-esp32}; mkdir -p "$C"
-$T compile -s -o "$C/provider.snapshot" examples/ble/experimental/gatt-provider.toit || exit 1
+provider=examples/ble/experimental/gatt-provider.toit
+irk=
+if [ "${NEXT_PRIVATE:-0}" = 1 ]; then
+  provider=tests/ble-hardware/private-gatt-provider.toit
+  irk=404142434445464748494a4b4c4d4e4f
+  C=$C-private; mkdir -p "$C"
+fi
+$T compile -s -o "$C/provider.snapshot" $provider || exit 1
 $T compile -s -o "$C/peripheral.snapshot" examples/ble/experimental/next-peripheral.toit || exit 1
 $T compile -s -o "$C/central.snapshot" tests/ble-hardware/next-central.toit || exit 1
 cp "$firmware" "$C/app.envelope"
@@ -31,7 +40,7 @@ timeout -s INT -k 5s 120s jag monitor --port "$port" --force-plain > "$C/board.l
 pids+=($!)
 for i in $(seq 1 300); do grep -qa "address:" "$C/board.log" && break; sleep 0.1; done
 address=$(grep -ao "address: [0-9a-f:]*" "$C/board.log" | head -1 | cut -d' ' -f2)
-timeout -s INT -k 5s 60s build/host/sdk/lib/toit/bin/toit.run "$C/central.snapshot" "$index" "$address" ${1:-} > "$C/central.log" 2>&1
+timeout -s INT -k 5s 60s build/host/sdk/lib/toit/bin/toit.run "$C/central.snapshot" "$index" "$address" ${1:--} $irk > "$C/central.log" 2>&1
 echo "central-exit=$?"
 sleep 3
 grep -a "NEXT_CENTRAL\|EXCEPTION\|error" "$C/central.log" | cut -c1-200

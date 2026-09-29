@@ -72,7 +72,7 @@ class Factory implements shared.Factory:
   reject/bool := false
   host/Host? := null
 
-  controller-ready radio info -> none:
+  controller-ready radio controller info -> none:
 
   open-transport -> Radio:
     opens++

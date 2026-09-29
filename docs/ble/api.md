@@ -64,7 +64,13 @@ again whenever it restarts the controller.
 
 On Linux, `ble.experimental.next.linux.open 0` installs a provider for hci0
 in the calling process and returns an adapter; the adapter must be powered
-off in BlueZ and the process needs `CAP_NET_ADMIN`.
+off in BlueZ and the process needs `CAP_NET_ADMIN`. `--resolve` loads
+bonded peers (`resolving-list.Entry`) into the controller's resolving list.
+
+Address types are `PUBLIC`, `RANDOM`, and, for peers the controller
+resolved, `PUBLIC-IDENTITY` and `RANDOM-IDENTITY` (`is-identity`). Such a
+peer appears in scan reports and as `connection.peer` by its identity, and
+`connect` takes its identity address while the peer rotates its RPAs.
 
 ## Central role
 

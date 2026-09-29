@@ -47,7 +47,7 @@ link-operations:
       critical-do --no-respect-deadline: ended.set true
   try:
     connection := client.connect #[1, 2, 3, 4, 5, 6] --address-type=1
-    expect-equals [0, 1, 1, 27, 27, 24, 0, 400, #[1, 2, 3, 4, 5, 6], 1] connection.link-info
+    expect-equals [0, 1, 1, 27, 27, 24, 0, 400, #[1, 2, 3, 4, 5, 6], 1, null, null] connection.link-info
     expect-equals [2, 2] (connection.set-phy --tx=2 --rx=2)
     expect-equals 2 connection.link-info[1]
     expect-equals "HCI_COMMAND_FAILED opcode=8242 status=17" (catch: connection.set-phy --tx=4 --rx=4)

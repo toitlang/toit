@@ -82,9 +82,17 @@ resistance is provided; see [deployment.md](deployment.md).
 
 The host generates RPAs from an IRK and resolves incoming random addresses
 against stored IRKs. Providers select the local address per session and may
-rotate it between sessions (the providers' `privacy-irk` hook). Controller-based resolution
-is not used, so a bonded peer that rotates its address must be found by
-scanning before connecting.
+rotate it between sessions (the providers' `privacy-irk` hook).
+
+Where the controller supports link-layer privacy, a provider can also hand
+it a resolving list (`resolving-list` hook, `resolving-list.toit`): bonded
+peers' identity addresses and IRKs. The controller then resolves their RPAs
+itself, reports them by identity (address types 2 and 3, the on-air RPA
+kept beside it), and a central connects to a rotating peer by identity
+without scanning first. Peers are added in network privacy mode, or device
+privacy mode when the controller supports it, which also accepts a peer
+that uses its identity on air. The local IRK in the list is zero: the host
+keeps generating the local RPAs.
 
 ## Known problems
 
