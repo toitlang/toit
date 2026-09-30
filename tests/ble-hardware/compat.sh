@@ -2,11 +2,14 @@
 set -uo pipefail
 cd /home/flo/work/opentoit-ble
 # The ble package on hardware: the original ESP32 by default, NEXT_BOARD=c3
-# the ESP32-C3.
+# the ESP32-C3, NEXT_BOARD=c6 the ESP32-C6.
 T=build/host/sdk/bin/toit
 if [ "${NEXT_BOARD:-esp32}" = c3 ]; then
   port=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
   firmware=build/esp32c3/firmware.envelope
+elif [ "${NEXT_BOARD:-esp32}" = c6 ]; then
+  port=/dev/serial/by-id/usb-1a86_USB_Single_Serial_5959032636-if00
+  firmware=build/esp32c6/firmware.envelope
 else
   port=/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_7eb10aca7cfbea11919ff4375fbcde76-if00-port0
   firmware=build/esp32/firmware.envelope

@@ -7,7 +7,7 @@ its fixed limits, and the gaps that must close before it can replace NimBLE.
 
 | Area | Implementation |
 | --- | --- |
-| Controller access | Linux HCI user channel (exclusive adapter ownership); ESP32 controller-only VHCI on the original, S3, C3 and C6 (verified on the original, the S3 and the C3). No macOS or Windows transport. |
+| Controller access | Linux HCI user channel (exclusive adapter ownership); ESP32 controller-only VHCI on the original, S3, C3 and C6 (verified on all four). No macOS or Windows transport. |
 | HCI | Reset, identity and feature discovery, event masks, command credits, Command Status vs Command Complete, LE scan/advertise/connect/disconnect, ACL fragmentation and reassembly, shared ACL transmit budget with per-link quota, optional controller-to-host flow control, legacy and extended (1M PHY) connection commands, finite extended advertising for accept. |
 | Scanning | Legacy passive and active scanning, duplicate filtering, bounded report queue with drop counter, optional timed RPA rotation. |
 | Advertising | Legacy connectable and non-connectable advertising, live payload updates, optional timed RPA rotation. |

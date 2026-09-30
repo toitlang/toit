@@ -46,10 +46,12 @@ make esp32      # build/esp32/firmware.envelope
 make esp32s3    # build/esp32s3/firmware.envelope
 ```
 
-The C3 builds the same way (`make esp32c3`) and runs on the rig's ESP32-C3
-(`/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0`, MAC 68:b6:b3:62:d5:e8):
-`NEXT_BOARD=c3 tests/ble-hardware/next-check.sh` and `compat.sh` cover it.
-The C6 (`make esp32c6`) is compile-verified only.
+The C3 and C6 build the same way (`make esp32c3`, `make esp32c6`) and run
+on the rig's ESP32-C3 (`/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0`,
+MAC 68:b6:b3:62:d5:e8) and ESP32-C6
+(`usb-1a86_USB_Single_Serial_5959032636-if00`, MAC f0:f5:bd:0f:0f:f8):
+`NEXT_BOARD=c3` or `c6` selects them in `tests/ble-hardware/next-check.sh`
+and `compat.sh`.
 
 ## Software peers
 
