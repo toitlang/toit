@@ -24,7 +24,6 @@
 #include "../primitive.h"
 #include "../process.h"
 #include "../resource.h"
-#include "../resource_pool.h"
 
 namespace toit {
 
@@ -32,27 +31,16 @@ static const uint32_t kEdgeTriggeredState = 1;
 static const uint32_t kLevelInterrupts =
     GPIO_IRQ_LEVEL_LOW | GPIO_IRQ_LEVEL_HIGH;
 
-#if NUM_BANK0_GPIOS == 48
-static ResourcePool<int, -1> gpio_pins(
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
-    10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
-    20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
-    30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
-    40, 41, 42, 43, 44, 45, 46, 47);
-#elif NUM_BANK0_GPIOS == 30
-static ResourcePool<int, -1> gpio_pins(
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
-    10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
-    20, 21, 22, 23, 24, 25, 26, 27, 28, 29);
-#else
-#error "update the RP2350 GPIO resource pool"
-#endif
+// A reservation is published only after the previous owner has reset the pad.
+// Atomic words allow deferred peripheral cleanup on the event task, without
+// taking the level-zero global mutex beneath an event-source mutex.
+static uint32_t gpio_reservations[(NUM_BANK0_GPIOS + 31) / 32] = {};
 
 static bool gpio_is_valid(int pin) {
   return pin >= 0 && pin < static_cast<int>(NUM_BANK0_GPIOS);
 }
 
-static bool is_restricted_pin(int pin) {
+bool is_restricted_pin(int pin) {
 #ifdef PICO_PSRAM_CS_PIN
   // XIP flash has its own QSPI bank. Boards with a second XIP device use a
   // bank-0 GPIO for CS1; changing that pin can break PSRAM accesses.
@@ -63,14 +51,17 @@ static bool is_restricted_pin(int pin) {
 
 bool gpio_pool_take(int pin) {
   if (!gpio_is_valid(pin)) return false;
-  return gpio_pins.take(pin);
+  uint32_t bit = 1u << (pin & 31);
+  return !(__atomic_fetch_or(&gpio_reservations[pin >> 5], bit, __ATOMIC_ACQ_REL) & bit);
 }
 
 static void reset_pin(int pin);
 
 void gpio_pool_put(int pin) {
   reset_pin(pin);
-  gpio_pins.put(pin);
+  uint32_t bit = 1u << (pin & 31);
+  uint32_t previous = __atomic_fetch_and(&gpio_reservations[pin >> 5], ~bit, __ATOMIC_ACQ_REL);
+  ASSERT(previous & bit);
 }
 
 class GpioResource : public Rp2350GpioEventResource {

@@ -11,6 +11,7 @@
 #include "event_sources/uart_rp2350.h"
 #include "event_sources/i2c_rp2350.h"
 #include "event_sources/spi_rp2350.h"
+#include "event_sources/pio_rp2350.h"
 #include "event_sources/stdio_rp2350.h"
 namespace toit {
 void VM::load_platform_event_sources() {
@@ -25,6 +26,7 @@ void VM::load_platform_event_sources() {
   event_manager()->add_event_source(create_rp2350_i2c_event_source());
   event_manager()->add_event_source(create_rp2350_spi_event_source());
   event_manager()->add_event_source(_new Rp2350StdinEventSource());
+  event_manager()->add_event_source(create_rp2350_pio_event_source());
   dispatcher->start();
 }
 }  // namespace toit
