@@ -19,7 +19,8 @@ $Esp32Transport is the transport a provider's `open-transport` hook returns
 An exclusive ESP32 VHCI controller transport.
 
 Requires firmware configured with the controller-only Bluetooth host option.
-  Supports the original ESP32 and ESP32-S3 in BLE-only mode. The native ingress
+  Supports every ESP32 with a Bluetooth LE controller (original, S3, C3,
+  C6) in BLE-only mode; verified on the original and the S3. The native ingress
   queue stays in internal RAM for lock-free counters, including when the managed
   heap uses PSRAM. The SDK keeps ESP-IDF's PSRAM atomic workaround enabled for
   other native code.
