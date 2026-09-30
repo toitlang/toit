@@ -7,6 +7,17 @@ import io
 
 import .transport show Transport
 
+/**
+The transport over the native HCI resource.
+
+$NativeTransport implements $Transport on the `ble_hci` primitives that back
+  the Linux user-channel socket and the ESP32 VHCI queue; the linux and esp32
+  libraries subclass it with the platform's setup. $QueueDiagnostics samples
+  the native receive queue for tests and benchmarks, and $testing-pair and
+  $testing-stop-controller exist only for fault tests on builds that enable
+  them.
+*/
+
 READ_ ::= 1
 WRITE_ ::= 2
 ERROR_ ::= 4

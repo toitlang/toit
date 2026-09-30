@@ -14,6 +14,18 @@ import .cancellation show checkpoint
 import .timeouts as timeouts
 
 /**
+A link owner with peripheral accept on controllers that use the extended
+  HCI commands.
+
+$Central extends the extended-central library's owner with
+  $Central.accept, which advertises in bounded windows through one extended
+  advertising set and returns the link a central connected on; $configure
+  prepares the controller. The GATT provider uses it for mixed-role
+  sessions, which need the extended command family; providers without them
+  stay on the legacy owner.
+*/
+
+/**
 Owns extended central links and accepts through finite legacy advertising PDUs.
 
 Call this module's $configure on a freshly initialized controller before creating

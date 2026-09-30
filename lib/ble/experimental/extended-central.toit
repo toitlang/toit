@@ -10,6 +10,18 @@ import .hci as hci
 import .advertising-updates as advertising-updates
 
 /**
+A link owner that connects through the extended HCI commands.
+
+$Central replaces the legacy connection commands of $central.Central with
+  their extended counterparts: a controller that has been given extended
+  advertising or scanning commands must be driven with the extended family
+  for the rest of its lifetime. $configure prepares the controller for it.
+  The bounded-central library builds on this class to add peripheral
+  accept; providers that only need legacy commands never import it, so its
+  encoders and decoders are tree-shaken away.
+*/
+
+/**
 Owns central links established through extended HCI commands on the LE 1M PHY.
 
 Requires a freshly initialized controller supporting extended advertising and
@@ -52,8 +64,9 @@ configure controller/hci.Controller info/hci.Capabilities -> none:
   if info.commands[37] & 0x80 == 0: throw "HCI_EXTENDED_INITIATING_UNSUPPORTED"
   controller.command hci.LE-SET-EVENT-MASK #[0x5f, 0x0a, 0, 0, 0, 0, 0, 0]
 
-/** Encodes one explicit peer and the LE 1M initiating PHY (Core 6.3, 7.8.66). */
+/** Encodes one explicit peer and the LE 1M initiating PHY for LE Extended Create Connection. */
 create-parameters address/ByteArray --address-type/int --own-address-type/int=0 -> ByteArray:
+  // Core 6.3, Vol 4 Part E, 7.8.66.
   if address.size != 6 or not 0 <= address-type <= 3 or not 0 <= own-address-type <= 1:
     throw "INVALID_ARGUMENT"
   bytes := ByteArray 26

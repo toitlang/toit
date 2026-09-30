@@ -17,6 +17,22 @@ import .central-control
 import .central-establish
 
 export Link ConnectionError ConnectionLost
+
+/**
+The link owner: connections in both roles on one controller.
+
+$Central claims an initialized $hci.Controller's event stream, keeps the
+  registry of live links, runs the connect and accept procedures, tracks
+  encryption and parameter updates per link and fragments and reassembles
+  ACL data. Each connection is a $Link (re-exported here with
+  $ConnectionError and $ConnectionLost) whose PDU stream the ATT client or
+  the GATT server then claims. The class is assembled from three mixins
+  ($LinkEstablishment_, $LinkSecurity_, $LinkControl_) that split its
+  procedures by concern. The central and GATT providers and the pairing code
+  build on it; extended-central and bounded-central subclass it for the
+  extended HCI commands.
+*/
+
 /**
 Owns an initialized controller and a bounded set of LE connections.
 

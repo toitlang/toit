@@ -4,6 +4,15 @@
 
 import io
 
+/**
+Parameter encoders for legacy advertising.
+
+$parameters builds the advertising-parameters command payload and $data the
+  31-byte advertising or scan-response payload. The link owner's accept
+  procedure and the advertising provider use them to start advertising over
+  the HCI controller; neither function sends anything itself.
+*/
+
 /** Encodes undirected legacy advertising with an explicit public/random local type. */
 parameters --interval/int=160 --own-address-type/int=0 --type/int=0 -> ByteArray:
   if not 0x20 <= interval <= 0x4000: throw "INVALID_ARGUMENT"

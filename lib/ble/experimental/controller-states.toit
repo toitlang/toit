@@ -4,6 +4,17 @@
 
 import .hci as hci
 
+/**
+The controller's supported LE state combinations.
+
+$read fetches the LE Supported States bit field from an $hci.Controller and
+  $States answers which combinations of roles the controller can hold at the
+  same time. The GATT provider uses it to decide whether mixed-role sessions
+  (advertising as a peripheral while acting as a central, or the reverse) are
+  possible; $CONNECTABLE-ADVERTISING-WITH-CENTRAL and
+  $INITIATING-WITH-PERIPHERAL name the two bits it asks for.
+*/
+
 // Core 6.3, Vol 4, Part E, section 7.8.27, LE_States table.
 CONNECTABLE-ADVERTISING-WITH-CENTRAL ::= 35
 INITIATING-WITH-PERIPHERAL ::= 41
@@ -31,7 +42,7 @@ class States:
   bytes -> ByteArray: return bytes_.copy
 
   /**
-  Tests a defined bit in the Core 6.3 table (0 through 41).
+  Tests one of the defined state bits (0 through 41).
 
   An all-zero controller response establishes no support. Reserved bits are
     retained for diagnostics but cannot be queried as known capabilities.

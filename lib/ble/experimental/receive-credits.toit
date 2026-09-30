@@ -5,6 +5,16 @@
 import io
 
 /**
+Host-side receive accounting for controller-to-host flow control.
+
+$ReceiveCredits is the window the controller engine charges for every ACL
+  packet it receives while the optional controller-to-host flow control is
+  on, and $Receipt is the credit for one packet, returned to the controller
+  once the packet was consumed or admitted to another bounded stage. The
+  engine owns the instance; nothing above the engine sees it.
+*/
+
+/**
 Tracks a bounded controller-to-host ACL window across connection lifetimes.
 
 Does not enable flow control or send commands. The caller records connection

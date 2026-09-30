@@ -20,8 +20,8 @@ CLEANUP ::= Duration --s=3
 /** Waiting for the receive task of a closed owner to end. */
 JOIN ::= Duration --s=3
 
-/** One ATT request's response (Core Vol 3 Part F 3.3.3 allows 30 s; we expect less). */
-ATT-REQUEST ::= Duration --s=3
+/** One ATT request's response (the protocol allows 30 s; we expect less). */
+ATT-REQUEST ::= Duration --s=3  // Core Vol 3 Part F 3.3.3 transaction timeout.
 
 /** Draining accounted controller buffers before ending a link. */
 DRAIN ::= Duration --s=3
@@ -29,8 +29,8 @@ DRAIN ::= Duration --s=3
 /** Submitting one PDU: link serialization, controller credits and the transport. */
 SEND ::= Duration --s=3
 
-/** The whole SMP exchange and the encryption that follows (Core Vol 3 Part H 3.4). */
-SECURITY ::= Duration --s=30
+/** The whole SMP exchange and the encryption that follows. */
+SECURITY ::= Duration --s=30  // Core Vol 3 Part H 3.4: 30 s between pairing PDUs.
 
 /** A connection parameter update after the controller accepted the command. */
 PARAMETER-UPDATE ::= Duration --s=30
@@ -40,8 +40,8 @@ How long a new peripheral parameter request waits for the central to apply
 */
 PARAMETER-SETTLE ::= Duration --s=2
 
-/** An indication's confirmation (Core Vol 3 Part F 3.3.3 transaction timeout). */
-INDICATION ::= Duration --s=30
+/** An indication's confirmation (the ATT transaction timeout). */
+INDICATION ::= Duration --s=30  // Core Vol 3 Part F 3.3.3.
 
 /** A pending durable store operation (CCCD or bond record). */
 STORE ::= Duration --s=3

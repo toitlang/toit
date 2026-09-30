@@ -8,6 +8,15 @@ import monitor
 import .transport show Transport
 
 /**
+An HCI tracing wrapper that writes a btsnoop file.
+
+$Btsnoop wraps any $Transport and records every packet crossing it to a
+  writer. A provider or a hardware test inserts it around its real transport
+  to capture traffic for Wireshark or btmon; the hexdump library is the
+  alternative for boards where only a text log is available.
+*/
+
+/**
 Records every packet crossing a $Transport in btsnoop format.
 
 The output opens in Wireshark and btmon (data link 1002, HCI H4 with the

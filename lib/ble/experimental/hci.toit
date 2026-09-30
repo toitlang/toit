@@ -10,6 +10,20 @@ import .transport show Transport
 import .receive-credits as receive-credits
 import .timeouts as timeouts
 
+/**
+The controller engine: HCI commands, events and ACL data over a transport.
+
+$Controller owns a $Transport and one receive task. It serializes commands
+  ($Controller.command and $Controller.submit with its $Pending), honours
+  command credits, and routes command responses to their waiter,
+  advertising reports to a lossy bounded $Packets queue and everything else
+  to the event stream that a link owner claims. $initialize resets the
+  controller, discovers its identity and buffer sizes into $Capabilities and
+  sets the event masks. A provider creates the controller over its
+  transport, initializes it, and then hands it to the link owner
+  (central), a scan or an advertising procedure.
+*/
+
 RESET ::= 0x0c03
 SET-EVENT-MASK ::= 0x0c01
 READ-VERSION ::= 0x1001
@@ -26,8 +40,9 @@ LE-SET-PHY ::= 0x2032
 SET-CONTROLLER-TO-HOST-FLOW-CONTROL ::= 0x0c31
 HOST-BUFFER-SIZE ::= 0x0c33
 
-/** Encodes an HCI command (Core 6.3, Vol 4 Part E, section 5.4.1). */
+/** Encodes an HCI command packet, including its packet-type byte. */
 command-packet opcode/int parameters/ByteArray -> ByteArray:
+  // Command packet format: Core 6.3, Vol 4 Part E, section 5.4.1.
   if not 1 <= opcode <= 0xffff or parameters.size > 255:
     throw "HCI_INVALID_COMMAND"
   result := ByteArray (4 + parameters.size)

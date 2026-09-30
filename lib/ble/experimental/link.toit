@@ -2,22 +2,26 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-/**
-One LE connection lifetime as seen by its owner (`central.Central`).
-
-A `Link` is created by the owner's receive task on Connection Complete and
-  ends on Disconnection Complete or owner failure; a reused HCI handle is a
-  different `Link`. The owner's procedures (connect, accept, encryption,
-  parameter updates) live in `central.toit`; this file holds the state a link
-  carries between them and the errors that end one.
-*/
-
 import monitor
 import .smp-legacy show LegacyKey
 
 import .connection as connection
 import .encryption as encryption
 import .acl as acl
+
+/**
+One LE connection lifetime as seen by its owner (`central.Central`).
+
+A $Link is created by the owner's receive task on Connection Complete and
+  ends on Disconnection Complete or owner failure; a reused HCI handle is a
+  different $Link. The owner's procedures (connect, accept, encryption,
+  parameter updates) live in `central.toit`, which re-exports this library;
+  this file holds the state a link carries between them (its inbox, credits,
+  encryption state, negotiated parameters) and the errors that end one,
+  $ConnectionError and $ConnectionLost. The ATT client and the GATT server
+  claim a link's PDU stream through $Link.claim-receive and read it with
+  $Link.receive.
+*/
 
 /** A controller-reported failure to establish a connection. */
 class ConnectionError:

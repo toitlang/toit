@@ -4,6 +4,18 @@
 
 import monitor
 
+/**
+Advertising payload updates while a peripheral accept is in progress.
+
+An application that advertises changing data (a counter, a sensor value)
+  hands the link owner a $Changes object with its accept call and then calls
+  $Changes.update from its own task. The accept worker takes each $Request
+  through $Changes.next, applies it to the controller between advertising
+  windows and settles it with $Changes.complete; $Changes.stop ends admission
+  when advertising ends. One update is pending at a time and each is
+  answered exactly once, also when the accept is cancelled or fails.
+*/
+
 /** Owns a single-use queue of payload changes for one peripheral accept operation. */
 class Changes:
   state_/State_ ::= State_

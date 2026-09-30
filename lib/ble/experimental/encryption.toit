@@ -5,6 +5,17 @@
 import io
 import .hci as hci
 
+/**
+HCI encoders and decoders for link encryption.
+
+The link owner's security mixin uses them to start encryption as a central
+  ($enable-parameters), to answer a peripheral controller's long term key
+  request ($decode-key-request, $reply-parameters, $negative-parameters) and
+  to observe the outcome ($decode-change into a $Change). Keys are passed
+  most significant byte first, as the pairing code produces them; the
+  encoders reverse them into HCI order.
+*/
+
 /** A controller-reported encryption procedure failure. */
 class Error:
   status/int
@@ -53,8 +64,9 @@ class KeyRequest:
     random.do: if it != 0: return false
     return true
 
-/** Decodes LE Long Term Key Request (Core 6.3 Vol 4 Part E, 7.7.65.5). */
+/** Decodes LE Long Term Key Request; null means an unrelated event. */
 decode-key-request packet/ByteArray -> KeyRequest?:
+  // Core 6.3 Vol 4 Part E, 7.7.65.5.
   hci.validate-packet packet
   if packet[0] != 4 or packet[1] != 0x3e: return null
   if packet.size < 4: throw "HCI_MALFORMED_ENCRYPTION_EVENT"
@@ -65,12 +77,13 @@ decode-key-request packet/ByteArray -> KeyRequest?:
   return KeyRequest handle packet[6..14].copy (io.LITTLE-ENDIAN.uint16 packet 14)
 
 /**
-Encodes LE Enable Encryption parameters for a big-endian LTK (7.8.24).
+Encodes LE Enable Encryption parameters for a big-endian LTK.
 
 SC keys use the zero $random and $ediv defaults; a legacy bond passes the
   values its peer distributed with the key.
 */
 enable-parameters handle/int key/ByteArray --random/ByteArray?=null --ediv/int=0 -> ByteArray:
+  // Core 6.3 Vol 4 Part E, 7.8.24.
   check_ handle key
   if random and random.size != 8: throw "INVALID_ARGUMENT"
   if not 0 <= ediv <= 0xffff: throw "INVALID_ARGUMENT"
@@ -82,16 +95,18 @@ enable-parameters handle/int key/ByteArray --random/ByteArray?=null --ediv/int=0
   16.repeat: result[12 + it] = key[15 - it]
   return result
 
-/** Encodes LE Long Term Key Request Reply for a big-endian LTK (7.8.25). */
+/** Encodes LE Long Term Key Request Reply for a big-endian LTK. */
 reply-parameters handle/int key/ByteArray -> ByteArray:
+  // Core 6.3 Vol 4 Part E, 7.8.25.
   check_ handle key
   result := ByteArray 18
   io.LITTLE-ENDIAN.put-uint16 result 0 handle
   16.repeat: result[2 + it] = key[15 - it]
   return result
 
-/** Encodes LE Long Term Key Request Negative Reply (7.8.26). */
+/** Encodes LE Long Term Key Request Negative Reply. */
 negative-parameters handle/int -> ByteArray:
+  // Core 6.3 Vol 4 Part E, 7.8.26.
   if not 0 <= handle <= 0x0eff: throw "INVALID_ARGUMENT"
   result := ByteArray 2
   io.LITTLE-ENDIAN.put-uint16 result 0 handle

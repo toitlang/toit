@@ -4,9 +4,21 @@
 
 import io
 
-/** Encodes a peripheral Connection Parameter Update Request (section 4.20). */
+/**
+The LE L2CAP signaling channel and the SMP refusal.
+
+The host has no dynamic L2CAP channels, so signaling reduces to connection
+  parameter requests and rejections: $parameter-request, $parameter-response
+  and $decode-parameter-request with $ParameterRequest serve the link owner's
+  parameter procedures, and $response is the default reply the ATT client and
+  GATT server give to anything else on the channel. $security-response is the
+  reply to pairing PDUs on the security channel when pairing is disabled.
+*/
+
+/** Encodes a peripheral Connection Parameter Update Request. */
 parameter-request identifier/int --interval/int=12 --interval-max/int=interval --latency/int=0
     --supervision-timeout/int=400 -> ByteArray:
+  // Core 6.3 Vol 3 Part A, section 4.20.
   if not 1 <= identifier <= 255 or not 6 <= interval <= interval-max <= 3200 or
       not 0 <= latency <= 499 or not 10 <= supervision-timeout <= 3200 or
       supervision-timeout * 4 <= (latency + 1) * interval-max:
@@ -39,10 +51,10 @@ parameter-response bytes/ByteArray identifier/int -> int?:
 Responds to LE signaling with the default fixed-channel policy for the selected role.
 
 Rejects connection-parameter changes and unsupported commands. Unsolicited known
-  responses and identifier zero are ignored. Supports MTUsig 23. See Core 6.3
-  Vol 3 Part A sections 4, 4.1 and 4.20–4.21.
+  responses and identifier zero are ignored. Supports MTUsig 23.
 */
 response bytes/ByteArray --peripheral/bool=false -> ByteArray?:
+  // Core 6.3 Vol 3 Part A sections 4, 4.1 and 4.20-4.21.
   if bytes.size < 4: throw "L2CAP_INVALID_SIGNALING"
   code := bytes[0]
   identifier := bytes[1]
@@ -60,8 +72,9 @@ response bytes/ByteArray --peripheral/bool=false -> ByteArray?:
     return #[0x13, identifier, 2, 0, 1, 0]
   return #[1, identifier, 2, 0, 0, 0]
 
-/** Rejects pairing with Pairing Not Supported (Core 6.3 Vol 3 Part H, 3.3/3.5.5). */
+/** Rejects pairing with Pairing Not Supported; null means the PDU is ignored. */
 security-response bytes/ByteArray -> ByteArray?:
+  // Pairing Failed and its reason: Core 6.3 Vol 3 Part H, 3.3 and 3.5.5.
   if bytes.is-empty: throw "SMP_INVALID_PDU"
   // Core 6.3, Vol 3, Part H, 3.3 requires ignoring reserved command codes,
   // including when pairing is disabled. Do not turn them into a failure.

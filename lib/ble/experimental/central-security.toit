@@ -12,6 +12,18 @@ import .central show Central
 import .timeouts as timeouts
 
 /**
+The encryption part of the link owner.
+
+$LinkSecurity_ is one of the three mixins that make up $Central, split out
+  by concern: $LinkSecurity_.encrypt and $LinkSecurity_.encrypt-legacy start
+  encryption on a central-role link, and $LinkSecurity_.set-encryption-key,
+  $LinkSecurity_.set-legacy-encryption-key and
+  $LinkSecurity_.clear-encryption-key give a peripheral-role link the key
+  its controller will ask for. The pairing code and the bond resume code
+  call these through $Central; this library is not imported on its own.
+*/
+
+/**
 Encryption and long term key handling of a link owner ($Central).
 
 Part of $Central; the abstract members are provided by it.

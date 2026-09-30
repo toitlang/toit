@@ -15,6 +15,18 @@ import .central-establish show LinkEstablishment_
 import .timeouts as timeouts
 
 /**
+The link-control part of the link owner.
+
+$LinkControl_ is one of the three mixins that make up $Central, split out by
+  concern: it holds the procedures that change or read a live link's
+  link-layer state, $LinkControl_.update-parameters, $LinkControl_.set-phy,
+  $LinkControl_.read-rssi and $LinkControl_.read-tx-power, and the
+  $LinkControl_.handle-signaling entry point that answers the peer's L2CAP
+  signaling. Callers use these through $Central; this library is not
+  imported on its own.
+*/
+
+/**
 Link-layer control of a link owner ($Central): connection parameters,
   L2CAP signaling, remote features, PHY, RSSI and transmit power.
 
@@ -216,8 +228,9 @@ abstract mixin LinkControl_:
       critical-do --no-respect-deadline:
         if link.phy-pending_ == pending: link.phy-pending_ = null
 
-  /** Reads the controller's RSSI for this link in dBm (Read RSSI, 7.5.4). */
+  /** Reads the controller's RSSI for this link in dBm. */
   read-rssi link/Link -> int:
+    // Read RSSI: Core 6.3 Vol 4 Part E, 7.5.4.
     if not (owns-link link): throw "HCI_INVALID_LINK"
     parameters := ByteArray 2
     io.LITTLE-ENDIAN.put-uint16 parameters 0 link.info.handle
@@ -226,12 +239,13 @@ abstract mixin LinkControl_:
     return io.LITTLE-ENDIAN.int8 result 2
 
   /**
-  Reads this link's transmit power in dBm (Read Transmit Power Level, 7.3.35).
+  Reads this link's transmit power in dBm.
 
   $maximum reads the highest level the controller would use instead of the
     current one.
   */
   read-tx-power link/Link --maximum/bool=false -> int:
+    // Read Transmit Power Level: Core 6.3 Vol 4 Part E, 7.3.35.
     if not (owns-link link): throw "HCI_INVALID_LINK"
     parameters := ByteArray 3
     io.LITTLE-ENDIAN.put-uint16 parameters 0 link.info.handle
