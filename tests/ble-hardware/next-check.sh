@@ -2,7 +2,7 @@
 # The application API on hardware: the controller-only board runs
 # examples/ble/v2-peripheral.toit on the system container's BLE provider, the
 # Edimax dongle runs next-central.toit. NEXT_BOARD=s3 uses ESP32-S3 Board1
-# (2M PHY) instead of the original ESP32.
+# (2M PHY) and NEXT_BOARD=c3 the ESP32-C3 instead of the original ESP32.
 # Usage: tests/ble-hardware/next-check.sh [phy to request]
 set -uo pipefail
 cd "$(dirname "$0")/../.."
@@ -10,6 +10,9 @@ T=build/host/sdk/bin/toit
 if [ "${NEXT_BOARD:-esp32}" = s3 ]; then
   port=/dev/serial/by-id/usb-1a86_USB_Single_Serial_544C020917-if00
   firmware=build/esp32s3/firmware.envelope
+elif [ "${NEXT_BOARD:-esp32}" = c3 ]; then
+  port=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
+  firmware=build/esp32c3/firmware.envelope
 else
   port=/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_7eb10aca7cfbea11919ff4375fbcde76-if00-port0
   firmware=build/esp32/firmware.envelope
