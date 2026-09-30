@@ -67,12 +67,14 @@ in [measurements.md](measurements.md).
    step 7; on the ESP32 they fail to find their primitives and `Adapter`
    falls back to the provider, which `tests/ble-hardware/compat.sh`
    verifies. The benchmark keeps the NimBLE numbers above as its reference.
-7. **`ble` on `ble.v2`.** The `ble` package's `Adapter`, `Central`,
-   `Peripheral`, `Remote*` and `Local*` classes are reimplemented on
-   `ble.v2` (one implementation instead of native plus host backends), with
-   `// Deprecated.` notes pointing at `ble.v2`. Behaviour stays as
-   documented; the software tests of the compatibility layer and
-   `tests/ble-hardware/compat.sh` verify it.
+7. **`ble` on `ble.v2`.** Done: `lib/ble/host.toit` implements the
+   package's classes on `ble.v2` (the native classes and their primitives
+   are gone from the Toit side; `src/resources/ble_darwin.mm` stays for the
+   macOS provider of step 8). `ble.v2` gained what the port needed:
+   `bonded-peers`, scan interval, window and limited mode, an unbounded
+   scan, the raw report bytes, remote handles, a descriptor value setter
+   and the peripheral's MTU. Verified by the software tests and
+   `tests/ble-hardware/compat.sh` (two centrals at once).
 8. **macOS backend.** A `ble.v2` provider over CoreBluetooth (reworking
    `src/resources/ble_darwin.mm`): scanning, connecting, discovery, reads,
    writes, subscriptions, RSSI; a GATT server with handlers and

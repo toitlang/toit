@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import ble show BleUuid
+import ..ble show BleUuid
 import monitor
 
 import ..experimental.service.client as rpc
@@ -328,6 +328,9 @@ class RemoteCharacteristic:
   /** The characteristic's property bits (the PROPERTY- constants). */
   properties -> int: return record_.properties
 
+  /** The value's attribute handle in the peer's database. */
+  handle -> int: return record_.handle
+
   can-read -> bool: return properties & PROPERTY-READ != 0
   can-write -> bool: return properties & PROPERTY-WRITE != 0
   can-write-without-response -> bool: return properties & PROPERTY-WRITE-WITHOUT-RESPONSE != 0
@@ -442,6 +445,9 @@ class RemoteDescriptor:
   record_/rpc.DescriptorRecord
 
   constructor .characteristic .uuid .record_:
+
+  /** The descriptor's attribute handle in the peer's database. */
+  handle -> int: return record_.handle
 
   read -> ByteArray: return att_: record_.read
   write value/ByteArray -> none: att_: record_.write value
