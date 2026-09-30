@@ -78,8 +78,9 @@ is built from; they can be deployed on their own but are not separate
 variants. Policy is set by overriding hooks rather than by choosing a
 module: `privacy-irk` (resolvable private addresses for advertising, scanning
 and peripheral sessions, rotated every `privacy-rotation-interval`),
-`pairing-io-capability` with `confirm-pairing` and `require-authentication`
-(fresh pairing), `mixed-role-sessions` (one central and one peripheral
+the `service.pairing.Support` mixin with its `pairing-io-capability`,
+`confirm-pairing` and `require-authentication` hooks (fresh pairing, linked
+only into providers that mix it in), `mixed-role-sessions` (one central and one peripheral
 client at once, on controllers with extended advertising, not the original
 ESP32), `peripheral-session-limit` (several centrals), and the
 `create-security-owner` family for bonds.
