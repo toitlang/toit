@@ -7,7 +7,7 @@ permissions and flashing procedure.
 - `fixtures/`: provider and application images installed on boards or run on
   Linux with an adapter index. Names starting with `vhci-` open the ESP32
   controller, `hci-` the Linux adapter, `service-` are applications talking to
-  a provider over RPC, `reference-*` and `nimble-*` use the NimBLE backend.
+  a provider over RPC.
 - Top-level files are the drivers of the maintained checks: the `*.sh`
   scripts, `nightly.sh` which runs them all, `bench/` for measurements, and
   `campaigns/` and `pairing-retry/` for the documented campaigns. One-off

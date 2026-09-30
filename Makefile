@@ -245,19 +245,8 @@ endif
 
 IDF_PY := "$(IDF_PATH)/tools/idf.py"
 
-# BLE_HOST=1 builds controller-only Bluetooth firmware for the Toit BLE host
-# (no NimBLE) from toolchains/<chip>/sdkconfig.ble-host, into a separate
-# build directory so both variants can coexist.
-BLE_HOST ?= 0
-ifeq ($(BLE_HOST),1)
-  ESP32_BUILD_DIR := $(BUILD)/$(ESP32_CHIP)-ble-host
-  # The variant keeps its own sdkconfig, generated from the layered defaults,
-  # instead of the committed toolchains/<chip>/sdkconfig.
-  ESP32_IDF_ARGS := -D SDKCONFIG=$(CURDIR)/$(ESP32_BUILD_DIR)/sdkconfig -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ble-host"
-else
-  ESP32_BUILD_DIR := $(BUILD)/$(ESP32_CHIP)
-  ESP32_IDF_ARGS :=
-endif
+ESP32_BUILD_DIR := $(BUILD)/$(ESP32_CHIP)
+ESP32_IDF_ARGS :=
 
 .PHONY: esp32
 esp32:

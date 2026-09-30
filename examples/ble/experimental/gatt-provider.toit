@@ -4,7 +4,7 @@
 
 /**
 The BLE provider to install beside `ble` package applications on
-  controller-only firmware (`make BLE_HOST=1 esp32`).
+  controller-only firmware (`make esp32`).
 
 It owns the controller and serves scanning, central connections, one local
   GATT peripheral database per session, and non-connectable advertising to

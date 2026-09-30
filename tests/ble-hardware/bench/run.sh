@@ -1,5 +1,5 @@
 #!/bin/bash
-# Usage: run.sh toit|system|direct|nimble [cycles]
+# Usage: run.sh toit|system|direct [cycles]
 set -uo pipefail
 cd /home/flo/work/opentoit-ble
 variant=$1; cycles=${2:-10}
@@ -8,11 +8,11 @@ C=build/ble-bench-001; T=build/host/sdk/bin/toit
 if [ "${BENCH_BOARD:-esp32}" = s3 ]; then
   port=/dev/serial/by-id/usb-1a86_USB_Single_Serial_544C020917-if00
   peer=f412fac150fe
-  firmware=build/esp32s3-ble-host/firmware.envelope
+  firmware=build/esp32s3/firmware.envelope
 else
   port=/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_7eb10aca7cfbea11919ff4375fbcde76-if00-port0
   peer=083af2234daa
-  firmware=build/esp32-ble-host/firmware.envelope
+  firmware=build/esp32/firmware.envelope
 fi
 index=$(btmgmt info | awk '/^hci/{h=$1} /addr 08:BE:AC:2A:DA:C2/{sub(":","",h); print substr(h,4)}')
 [ -n "$index" ] || { echo "adapter not found"; exit 2; }
@@ -36,10 +36,7 @@ elif [ "$variant" = direct ]; then
   $T tool firmware -e "$C/direct.envelope" container install bench "$C/direct.snapshot"
   envelope="$C/direct.envelope"
 else
-  cp build/esp32-ble-nimble-regression/firmware.envelope "$C/nimble.envelope"
-  $T compile -s -o "$C/nimble.snapshot" tests/ble-hardware/bench/nimble.toit
-  $T tool firmware -e "$C/nimble.envelope" container install bench "$C/nimble.snapshot"
-  envelope="$C/nimble.envelope"
+  echo "unknown variant $variant (the NimBLE variant went with NimBLE; its numbers are in docs/ble/measurements.md)"; exit 2
 fi
 $T compile -s -o "$C/central.snapshot" tests/ble-hardware/bench/central.toit
 $T tool firmware -e "$envelope" flash --port "$port" --partition empty:nvs=65536 2>&1 | tail -1

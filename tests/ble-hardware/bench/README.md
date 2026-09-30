@@ -8,8 +8,7 @@ disconnects, and repeats. Each peripheral prints `BENCH` lines with
 and reserved) at every phase and every two seconds.
 
 - `provider.toit` + `app.toit`: controller-only firmware, Toit host provider container and application container.
-- `nimble.toit`: default firmware (NimBLE), the `ble` package.
 - `central.toit`: Linux, `toit.run central.snapshot <adapter index> <peer address hex> [cycles]`.
 
-`run.sh toit|direct|nimble [cycles]` (outputs under `build/ble-bench-001/`) assembles and flashes both images on the original
+`run.sh toit|system|direct [cycles]` (outputs under `build/ble-bench-001/`) assembles and flashes both images on the original
 ESP32 and runs the central against each.
