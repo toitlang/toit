@@ -57,7 +57,7 @@ in [measurements.md](measurements.md).
    `compat.sh` on the rig's board; the first run found the VHCI wake queue
    sized for the ESP32 and S3 only (`ev_queue_esp32.h`), so `open` failed
    with "out of memory" on the C3 and the system process restarted in a
-   loop. The C6 is compile-verified only.
+   loop. The C6 passes both checks with that fix.
 6. **Remove NimBLE.** Done: `make esp32` (and s3, c3, c6) builds the
    controller-only firmware with the built-in provider; the NimBLE sdkconfig
    options, `src/resources/ble_esp32.cc`, the NimBLE hardware fixtures, the
@@ -114,7 +114,7 @@ in [measurements.md](measurements.md).
 | Free heap while advertising / connected | 105.5 KB / — | 120 KB / 115.5 KB |
 | 20-byte notifications | 765/s | 320/s batched, 157/s single |
 | 244-byte notifications | 65 KB/s | 76 KB/s (143 KB/s on the S3 at 2M) |
-| Chips | ESP32, S3, C3, C6 | the same (C3 verified on the rig, C6 compile-verified) |
+| Chips | ESP32, S3, C3, C6 | the same, all four verified on the rig |
 | macOS | `ble` over CoreBluetooth | `ble` and `ble.v2` over the CoreBluetooth provider, untested on a Mac |
 | Pairing, bonds, privacy, GATT client as peripheral, per-connection details | mostly absent | present (provider policy) |
 
