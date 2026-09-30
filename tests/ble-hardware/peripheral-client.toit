@@ -7,7 +7,7 @@
 // database over the same link (its GAP Device Name and its services) while
 // the central discovers this device's, then asks the central to pair.
 
-import ble.experimental.next as ble
+import ble.v2 as ble
 
 main:
   adapter := ble.Adapter

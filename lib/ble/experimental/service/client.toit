@@ -19,7 +19,7 @@ An application opens a $Client to the provider container that owns the
   the configured peripheral ($Client.session, a $Session serving its
   attributes to centrals) without importing any host code. GATT client
   operations are the same on both ($GattClient); errors from a peer are an
-  $AttributeError. This is what `ble.host` and `ble.experimental.next`
+  $AttributeError. This is what `ble.host` and `ble.v2`
   are built on; the providers live in `ble.experimental.service.provider`
   and its variants.
 */

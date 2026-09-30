@@ -7,7 +7,7 @@
 
 import expect show *
 import monitor
-import ble.experimental.next as ble
+import ble.v2 as ble
 import ble.experimental.transport
 import ble.experimental.service.gatt-provider as providers
 import .ble-fixture as fixture

@@ -5,14 +5,14 @@
 import ble show BleUuid Advertisement DataBlock
 import monitor
 
-import ..service.client as rpc
-import ..service.api as api
+import ..experimental.service.client as rpc
+import ..experimental.service.api as api
 import .adapter show Adapter
 import .connection
 import .types
 
 /**
-The peripheral role of the experimental application API (`ble.experimental.next`).
+The peripheral role of the application API (`ble.v2`).
 
 A $GattServer defines this device's $Service, $Characteristic and
   $Descriptor attributes; $Adapter.peripheral serves it and returns a

@@ -1,6 +1,6 @@
 #!/bin/bash
 # The experimental application API on hardware: the controller-only board runs
-# examples/ble/experimental/next-peripheral.toit beside the provider, the
+# examples/ble/v2-peripheral.toit beside the provider, the
 # Edimax dongle runs next-central.toit. NEXT_BOARD=s3 uses ESP32-S3 Board1
 # (2M PHY) instead of the original ESP32.
 # Usage: tests/ble-hardware/next-check.sh [phy to request]
@@ -18,7 +18,7 @@ index=$(btmgmt info | awk '/^hci/{h=$1} /addr 08:BE:AC:2A:DA:C2/{sub(":","",h); 
 [ -n "$index" ] || { echo "adapter 08:BE:AC:2A:DA:C2 not found"; exit 2; }
 C=build/ble-next-001/${NEXT_BOARD:-esp32}; mkdir -p "$C"
 $T compile -s -o "$C/provider.snapshot" examples/ble/experimental/gatt-provider.toit || exit 1
-$T compile -s -o "$C/peripheral.snapshot" examples/ble/experimental/next-peripheral.toit || exit 1
+$T compile -s -o "$C/peripheral.snapshot" examples/ble/v2-peripheral.toit || exit 1
 $T compile -s -o "$C/central.snapshot" tests/ble-hardware/next-central.toit || exit 1
 cp "$firmware" "$C/app.envelope"
 $T tool firmware -e "$C/app.envelope" container install ble-provider "$C/provider.snapshot" || exit 1

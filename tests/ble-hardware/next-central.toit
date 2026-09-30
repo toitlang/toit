@@ -3,13 +3,13 @@
 // be found in the tests/LICENSE file.
 
 // Linux central for tests/ble-hardware/next-check.sh: drives
-// examples/ble/experimental/next-peripheral.toit on a board through the
+// examples/ble/v2-peripheral.toit on a board through the
 // experimental application API and prints what the link looks like.
 //
 // Usage: toit.run next-central.snapshot <adapter index> <peripheral address> [phy]
 
-import ble.experimental.next as ble
-import ble.experimental.next.linux as linux
+import ble.v2 as ble
+import ble.v2.linux as linux
 
 HEART-RATE ::= ble.BleUuid "180d"
 MEASUREMENT ::= ble.BleUuid "2a37"

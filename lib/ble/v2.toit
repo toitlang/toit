@@ -4,19 +4,18 @@
 
 import ble show BleUuid Advertisement DataBlock
 
-import .next.adapter
-import .next.connection
-import .next.peripheral
-import .next.types
+import .v2.adapter
+import .v2.connection
+import .v2.peripheral
+import .v2.types
 
 /**
-An experimental application API for the Toit BLE host.
+The application API of the Toit BLE host, version 2 of the `ble` package.
 
-Import it as `import ble.experimental.next as ble`. It runs where the BLE
-  service runs: on controller-only firmware with a provider container, and
-  on Linux through `ble.experimental.next.linux`. The design and its open
-  questions are in `docs/ble/api.md`; the `ble` package keeps working beside
-  it.
+Import it as `import ble.v2 as ble`. It runs where the BLE service runs: on
+  firmware with a BLE provider, and on Linux through `ble.v2.linux`. Its
+  design is described in `docs/ble/api.md`; the `ble` package keeps working
+  beside it.
 
 $Adapter is the entry point. As a central, $Adapter.scan and $Adapter.find
   report nearby devices and $Adapter.connect opens a $Connection to one,

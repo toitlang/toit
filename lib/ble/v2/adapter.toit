@@ -4,13 +4,13 @@
 
 import ble show BleUuid Advertisement
 
-import ..service.client as rpc
+import ..experimental.service.client as rpc
 import .connection
 import .peripheral
 import .types
 
 /**
-The adapter of the experimental application API (`ble.experimental.next`).
+The adapter of the application API (`ble.v2`).
 
 $Adapter is where an application starts: it opens the BLE service, reports
   the provider's $Capabilities and the controller's $Address, scans
@@ -24,7 +24,7 @@ $Adapter is where an application starts: it opens the BLE service, reports
 The entry point: the device's BLE controller, reached through the BLE service.
 
 On a device, a provider container owns the controller and every application
-  opens its own adapter. On Linux, `ble.experimental.next.linux` installs a
+  opens its own adapter. On Linux, `ble.v2.linux` installs a
   provider in the application's process.
 */
 class Adapter:

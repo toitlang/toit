@@ -1,14 +1,13 @@
-# Application API (experimental)
+# Application API (`ble.v2`)
 
-`import ble.experimental.next as ble` is a new application API for the Toit
-BLE host, designed around what the host does rather than around NimBLE. It
-runs wherever the BLE service runs (controller-only ESP32 firmware with a
-provider container, or Linux through `ble.experimental.next.linux`) and sits
-beside the unchanged `ble` package, which keeps working. If it does not earn
-its place it can be dropped without touching anything else.
+`import ble.v2 as ble` is the application API of the Toit BLE host,
+designed around what the host does rather than around NimBLE. It runs
+wherever the BLE service runs (firmware with a BLE provider, or Linux through
+`ble.v2.linux`). The `ble` package keeps working beside it and is to be
+reimplemented on top of it ([replacement.md](replacement.md)).
 
-Code: `lib/ble/experimental/next.toit` and `lib/ble/experimental/next/`.
-Tests: `tests/ble-next-*-test.toit`. Examples: `examples/ble/experimental/next-*.toit`.
+Code: `lib/ble/v2.toit` and `lib/ble/v2/`.
+Tests: `tests/ble-next-*-test.toit`. Examples: `examples/ble/v2-*.toit`.
 
 ## Principles
 
@@ -63,7 +62,7 @@ it, and `set-tx-power` throws `BLE_UNSUPPORTED` there. The setting covers
 advertising, scanning and new connections, and the provider applies it
 again whenever it restarts the controller.
 
-On Linux, `ble.experimental.next.linux.open 0` installs a provider for hci0
+On Linux, `ble.v2.linux.open 0` installs a provider for hci0
 in the calling process and returns an adapter; the adapter must be powered
 off in BlueZ and the process needs `CAP_NET_ADMIN`. `--resolve` loads
 bonded peers (`resolving-list.Entry`) into the controller's resolving list.
@@ -211,5 +210,5 @@ that ended under an operation makes it throw; `wait-closed` says why.
 
 ## Open questions
 
-- **Name and place.** `ble.experimental.next` marks it as a candidate. If it
+- **Name and place.** `ble.v2` marks it as a candidate. If it
   replaces the `ble` package API, it moves to `import ble`.

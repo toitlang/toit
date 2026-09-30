@@ -2,17 +2,17 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import ..linux as linux
-import ..linux-management as management
-import ..native as native
-import ..transport as transport
-import ..service.gatt-provider as gatt
-import ..resolving-list as resolving
+import ..experimental.linux as linux
+import ..experimental.linux-management as management
+import ..experimental.native as native
+import ..experimental.transport as transport
+import ..experimental.service.gatt-provider as gatt
+import ..experimental.resolving-list as resolving
 import .adapter
 import .peripheral show Peripheral
 
 /**
-The application API (`ble.experimental.next`) on a Linux Bluetooth adapter.
+The application API (`ble.v2`) on a Linux Bluetooth adapter.
 
 Linux has no BLE provider container; $open installs one in the calling
   process for the HCI adapter with the given index (hci0 is 0) and returns
