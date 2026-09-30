@@ -27,7 +27,11 @@ $Adapter, $Central, $Peripheral and the remote and local attribute classes
   the provider chooses to list (none by default).
 */
 
-/** Opens the adapter through `ble.v2`, or throws "Unsupported platform" without a provider. */
+/**
+Opens the adapter through `ble.v2`: the device's BLE provider, or one
+  installed in this process (`ble.v2.linux`, `ble.v2.darwin`). Throws
+  "Unsupported platform" when there is none.
+*/
 host-adapter_ -> Adapter:
   adapter/v2.Adapter? := null
   error := catch: adapter = v2.Adapter

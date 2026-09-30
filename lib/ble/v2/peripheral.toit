@@ -387,7 +387,7 @@ class Peripheral:
         // Advertising is bounded by the provider; start over.
         if error == "DEADLINE_EXCEEDED" or error == "GATT_REQUESTS_CLOSED": continue
         throw error
-      return start-link_ session handles (Address peer[0] --type=peer[1])
+      return start-link_ session handles (peer-of_ peer[0] peer[1])
 
   /** Stops accepting and disconnects every central. */
   close -> none:

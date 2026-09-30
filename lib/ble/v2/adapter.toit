@@ -171,16 +171,24 @@ class Adapter:
   connect peer/Peer --timeout/Duration=(Duration --s=10) --mtu/int=247
       --security/int=SECURITY-NONE --phy/int?=null -> Connection:
     if not 23 <= mtu <= 517: throw "INVALID_ARGUMENT"
-    // The Toit host reaches every peer by its address.
-    target := peer.address
-    if not target: throw "INVALID_ARGUMENT"
+    // The Toit host reaches every peer by its address; macOS by its identifier.
+    bytes/ByteArray := ?
+    type/int := ?
+    if peer is PlatformPeer:
+      bytes = (peer as PlatformPeer).bytes
+      type = PlatformPeer.TYPE
+    else:
+      target := peer.address
+      if not target: throw "INVALID_ARGUMENT"
+      bytes = target.bytes
+      type = target.type
     // Each connection is a session of its own service client: the provider
     // admits one session per client, and connections should not compete.
     client := rpc.Client --provider-pid=provider-pid_
     client.open
     raw/rpc.Connection? := null
     error := catch:
-      raw = client.connect target.bytes --address-type=target.type --timeout=timeout --mtu-limit=mtu
+      raw = client.connect bytes --address-type=type --timeout=timeout --mtu-limit=mtu
           --require-encryption=(security >= SECURITY-ENCRYPTED)
           --require-authentication=(security == SECURITY-AUTHENTICATED)
     if error:
@@ -262,7 +270,7 @@ class ScanReport:
   constructor .raw_:
 
   /** The advertiser, to connect to or compare. */
-  peer -> Peer: return Address raw_.address --type=raw_.address-type
+  peer -> Peer: return peer-of_ raw_.address raw_.address-type
 
   /** The advertiser's address, or null where the platform hides it (see $Peer). */
   address -> Address?: return peer.address

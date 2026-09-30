@@ -133,7 +133,8 @@ class Client extends services.ServiceClient:
   */
   connect address/ByteArray --address-type/int=0 --timeout/Duration=(Duration --s=30) --mtu-limit/int=23
       --require-encryption/bool=false --require-authentication/bool=false -> Connection:
-    result := Connection this (open_ api.CONNECT [(copy-bounded_ address 6), address-type, timeout.in-us, mtu-limit])
+    // A platform identifier (type 4, macOS) is 16 bytes; an address 6.
+    result := Connection this (open_ api.CONNECT [(copy-bounded_ address (address-type == 4 ? 16 : 6)), address-type, timeout.in-us, mtu-limit])
     succeeded := false
     try:
       result.info
