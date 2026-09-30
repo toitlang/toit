@@ -336,7 +336,8 @@ class RemoteCharacteristic:
       else: record_.write value
 
   /**
-  Subscribes for the scope of $block, which receives a $Values stream.
+  Subscribes for the scope of $block, which receives a $Values stream, and
+    returns the block's result.
 
   Uses notifications when the characteristic has them, else indications
     (or indications when $indications is true). Leaving the block

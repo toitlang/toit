@@ -164,7 +164,7 @@ class Adapter:
 
   /**
   Connects to $peer, runs $block with the connection, and closes it on
-    every exit.
+    every exit. Returns the block's result.
   */
   with-connection peer/Peer --timeout/Duration=(Duration --s=10) --mtu/int=247
       --security/int=SECURITY-NONE --phy/int?=null [block] -> any:
