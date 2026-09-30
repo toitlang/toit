@@ -11,7 +11,6 @@ import ..bounded-central as bounded
 import ..central as central
 import ..controller-states as states
 import ..gatt-server as gatt
-import ..security as security
 import ..hci as hci
 import ..advertising-updates as advertising-updates
 import ..security-owner show Owner
@@ -134,40 +133,6 @@ abstract class Provider extends central-provider.Provider:
   early-acl-timeout -> Duration?: return null
 
   /**
-  Enables fresh pairing with this IO capability, or disables it (null, the default).
-
-  The values are the SMP IO capabilities: 0 display only, 1 display yes/no,
-    2 keyboard only, 3 no input no output, 4 keyboard display. Secure
-    Connections (Just Works, Numeric Comparison) and legacy Just Works are
-    supported. Bond storage stays with $create-security-owner overrides.
-  */
-  pairing-io-capability -> int?: return null
-
-  /** Requires authenticated pairing when the provider enables pairing. */
-  require-authentication -> bool: return false
-
-  /** Obtains local confirmation; overrides must use the device's trusted UI. */
-  confirm-pairing number/int -> bool: return false
-
-  /**
-  Shows the six-digit Passkey Entry $passkey for the peer's user to type.
-
-  Called when $pairing-io-capability has a display (0, 1 or 4) and the
-    association makes this side the displaying one. The default prints it,
-    which suits development on a serial console; a product overrides it.
-  */
-  display-passkey passkey/int -> none:
-    print "BLE passkey: $(%06d passkey)"
-
-  /**
-  Returns the passkey the user typed, or null to give up.
-
-  Called when $pairing-io-capability has a keyboard (2 or 4) and this side
-    must type what the peer displays. The default gives up.
-  */
-  input-passkey -> int?: return null
-
-  /**
   Creates the session's protocol owner before advertising starts.
 
   Overrides may load trusted bond records here and return a Central subclass
@@ -183,28 +148,18 @@ abstract class Provider extends central-provider.Provider:
   /**
   Selects security for the accepted link entirely inside the provider.
 
-  The default pairs (without bonding) when $pairing-io-capability is set, and
-    selects no security owner otherwise. A resumption override returns the
-    owner already installed by its host's on-connected hook. No key material
-    or security policy is accepted through application RPC.
+  The default selects none: the provider does not pair, and a central that
+    needs encryption is refused. Pairing is the `service.pairing` mixin's
+    opt-in; a resumption override returns the owner already installed by its
+    host's on-connected hook. No key material or security policy is accepted
+    through application RPC.
   */
   create-security-owner host/central.Central link/central.Link info/hci.Capabilities -> Owner?:
-    capability := pairing-io-capability
-    if capability == null: return null
-    return security.Pairing host link --local-address=(link.local-random-address or info.address)
-        --local-address-type=(link.local-random-address ? 1 : 0)
-        --io-capability=capability
-        --require-authentication=require-authentication
-        --attempts=pairing-attempts
-        --attempt-identity=(pairing-peer-identity link)
+    return null
 
-  /** Runs the security owner; the default runs pairing with $confirm-pairing. */
+  /** Runs the security owner created by $create-security-owner until the link is secured. */
   run-security-owner owner/Owner -> none:
-    if owner is not security.Pairing: throw "GATT_SECURITY_OWNER_UNSUPPORTED"
-    (owner as security.Pairing).run
-        --display=(:: display-passkey it)
-        --input=(:: input-passkey)
-        : | number/int | confirm-pairing number
+    throw "GATT_SECURITY_OWNER_UNSUPPORTED"
 
   create-session client/int -> rpc.Session:
     return Session this client
@@ -407,9 +362,8 @@ class Session extends rpc.Session:
       if not link_: throw "GATT_NOT_CONNECTED"
       // Pairing policy is the provider's: without an owner it does not pair.
       if not pairing_: throw "GATT_SECURITY_UNSUPPORTED"
-      if pairing_ is not security.Pairing: throw "GATT_SECURITY_OWNER_UNSUPPORTED"
       if not link_.encrypted:
-        (pairing_ as security.Pairing).request-security
+        pairing_.request-security
         // The provider's pairing run, already waiting as responder, pairs
         // with the central and ends; a failure ends the link.
         with-timeout timeouts.SECURITY: pairing-ended_.get

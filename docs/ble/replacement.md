@@ -35,10 +35,20 @@ in [measurements.md](measurements.md).
    Found on the way: a firmware with both the built-in provider and a
    separate provider container plus an application exceeds the 1.7 MB
    partition, one more reason for step 3.
-3. **Smaller provider.** The default provider should not carry what it
-   does not use: pairing (SC and legacy), ECDH, bonds and privacy become
-   opt-in through the hooks so tree shaking can drop them. Target: well under
-   the 233 KB above.
+3. **Smaller provider.** Pairing is now the `service.pairing.Support`
+   mixin's opt-in; a provider without it links no SMP, ECDH or bond code
+   (a pairing provider container is 281 KB, a plain one 244 KB). The system
+   image with the built-in provider is 326 KB at `-O2`, 137 KB of which is
+   the host core, against 91 KB for NimBLE's C code: bytecode costs more
+   flash, and that is the remaining gap.
+   Found: the built-in provider plus a deployment's own provider container
+   plus an application exceed the 1.7 MB partition (1327 KB firmware +
+   326 KB system + 281 KB provider). Subclassing the provider cannot stay
+   the way deployments set policy on the ESP32. Next: one host, the
+   system's, with policy delegated over RPC to a small optional policy
+   container (IO capability, confirmations, passkeys, bond records, the
+   resolving list, session limits); provider subclasses remain for Linux
+   and tests.
 4. **Faster small notifications.** The 2.5 ms RPC per operation is the
    bottleneck; batching already recovers half. Options to measure: fewer
    allocations per RPC, notifying from the provider on a timer the

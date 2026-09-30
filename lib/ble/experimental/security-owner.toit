@@ -20,4 +20,10 @@ An $Owner is the object that the link's ATT client or GATT server hands
 interface Owner extends SecurityState:
   matches host/Central link/Link -> bool
   receive bytes/ByteArray -> none
+  /**
+  As the peripheral, asks the central for security with a Security Request:
+    to pair, or to encrypt with the bond this owner holds. Does nothing on a
+    central link or when the link is already secured.
+  */
+  request-security -> none
   close -> none

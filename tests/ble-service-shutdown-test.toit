@@ -157,6 +157,7 @@ class HeldOwner implements Owner:
   encrypted -> bool: return not closed and link_.encrypted
   authenticated -> bool: return false
   receive bytes/ByteArray -> none: unreachable
+  request-security -> none: unreachable
   close -> none: closed = true
 
 class DelayedTransport extends fixture.FakeTransport:
