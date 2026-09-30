@@ -5,7 +5,9 @@
 import io
 import monitor
 
-import .ble
+import .adapter
+import .advertisement
+import .uuid
 import .local
 import .remote
 import .v2 as v2

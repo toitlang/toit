@@ -2,7 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import .ble show BleUuid Advertisement DataBlock
+import .uuid show BleUuid
+import .advertisement show Advertisement DataBlock
 
 import .v2.adapter
 import .v2.connection
