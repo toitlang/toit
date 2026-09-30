@@ -25,11 +25,9 @@ Shared by central connections and peripheral sessions. LINK-INFO returns
 link-operation host/central.Central link/central.Link index/int arguments/List
     --server/gatt.Server?=null --tx-power-control/transport.TxPowerControl?=null -> any:
   // RPC carries strings; controller errors are objects.
-  result := null
-  error := catch: result = link-operation_ host link index arguments server tx-power-control
-  if error is string: throw error
-  if error: throw error.stringify
-  return result
+  error := catch --unwind=(: it is string):
+    return link-operation_ host link index arguments server tx-power-control
+  throw error.stringify
 
 link-operation_ host/central.Central link/central.Link index/int arguments/List server/gatt.Server?
     tx-power-control/transport.TxPowerControl? -> any:

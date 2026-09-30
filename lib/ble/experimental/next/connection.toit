@@ -162,9 +162,9 @@ class Connection:
   request-security level/int=SECURITY-ENCRYPTED -> int:
     if not SECURITY-ENCRYPTED <= level <= SECURITY-AUTHENTICATED: throw "INVALID_ARGUMENT"
     snapshot/rpc.SecuritySnapshot? := null
-    error := catch: snapshot = backend_.request-security
-    if error == "GATT_SECURITY_UNSUPPORTED": throw "BLE_UNSUPPORTED"
-    if error: throw error
+    error := catch --unwind=(: it != "GATT_SECURITY_UNSUPPORTED"):
+      snapshot = backend_.request-security
+    if error: throw "BLE_UNSUPPORTED"
     achieved := snapshot-level_ snapshot
     if achieved < level: throw "BLE_INSUFFICIENT_SECURITY"
     return achieved
@@ -218,12 +218,9 @@ class Connection:
       return characteristics.map: | characteristic/RemoteCharacteristic | characteristic.read
     handles := characteristics.map: | characteristic/RemoteCharacteristic | characteristic.record_.handle
     view := (characteristics[0] as RemoteCharacteristic).record_.view_
-    result := null
-    error := catch: result = att_: view.read-multiple handles --variable
-    if error is AttError and error.code == AttError.REQUEST-NOT-SUPPORTED:
-      return characteristics.map: | characteristic/RemoteCharacteristic | characteristic.read
-    if error: throw error
-    return result
+    catch --unwind=(: it is not AttError or it.code != AttError.REQUEST-NOT-SUPPORTED):
+      return att_: view.read-multiple handles --variable
+    return characteristics.map: | characteristic/RemoteCharacteristic | characteristic.read
 
   /** Discovers the service with the given $uuid; throws BLE_SERVICE_NOT_FOUND if the peer has none. */
   discover-service uuid/BleUuid -> RemoteService:
@@ -442,9 +439,6 @@ class RemoteDescriptor:
 
 /** Runs $block, turning the service client's ATT errors into $AttError. */
 att_ [block] -> any:
-  result := null
-  error := catch: result = block.call
-  if error is rpc.AttributeError:
-    throw (AttError error.code --handle=error.handle --request=error.request)
-  if error: throw error
-  return result
+  error := catch --unwind=(: it is not rpc.AttributeError):
+    return block.call
+  throw (AttError error.code --handle=error.handle --request=error.request)

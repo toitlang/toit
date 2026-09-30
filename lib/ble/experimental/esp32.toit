@@ -42,16 +42,12 @@ class Esp32Transport extends native.NativeTransport implements transport.TxPower
     per-connection level but keeps transmitting at the default one.
   */
   set-connection-tx-power handle/int dbm/int -> int?:
-    result := null
-    error := catch: result = native.tx-power_ 3 dbm handle
-    if error == "UNIMPLEMENTED": throw "BLE_UNSUPPORTED"
-    if error: throw error
-    return result
+    catch --unwind=(: it != "UNIMPLEMENTED"):
+      return native.tx-power_ 3 dbm handle
+    throw "BLE_UNSUPPORTED"
 
   /** Returns one connection's power, or null where only HCI knows it (the original ESP32). */
   connection-tx-power handle/int -> int?:
-    result := null
-    error := catch: result = native.tx-power_ 4 0 handle
-    if error == "UNIMPLEMENTED": return null
-    if error: throw error
-    return result
+    catch --unwind=(: it != "UNIMPLEMENTED"):
+      return native.tx-power_ 4 0 handle
+    return null

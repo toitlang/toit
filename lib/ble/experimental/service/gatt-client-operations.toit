@@ -36,11 +36,11 @@ class ClientOperations:
     [false, request, handle, code] for the peer's ATT error.
   */
   reply index/int arguments/List -> List:
-    result := null
-    error := catch: result = invoke index arguments
+    // RPC carries strings; the peer's ATT errors become a reply.
+    error := catch --unwind=(: it is string):
+      return [true, invoke index arguments]
     if error is att.AttributeError: return [false, error.request, error.handle, error.code]
-    if error: throw error.stringify
-    return [true, result]
+    throw error.stringify
 
   /** Cancels every subscription's worker. */
   cancel -> none:
