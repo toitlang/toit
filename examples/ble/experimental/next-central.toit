@@ -26,7 +26,7 @@ run adapter/ble.Adapter:
   report := adapter.find --service=HEART-RATE --duration=(Duration --s=20)
   if not report: throw "no heart rate peripheral found"
   print "found: $report"
-  adapter.with-connection report.address: | connection/ble.Connection |
+  adapter.with-connection report.peer: | connection/ble.Connection |
     print "connected: phy=$connection.phy mtu=$connection.mtu rssi=$connection.rssi dBm"
     print "  $connection.parameters, $connection.data-length"
     service := connection.discover-service HEART-RATE

@@ -28,7 +28,7 @@ run adapter/ble.Adapter address/ble.Address phy/int? -> none:
     candidate.address.bytes == address.bytes
   if not report: throw "NEXT_PERIPHERAL_NOT_FOUND"
   print "NEXT_CENTRAL found $report"
-  adapter.with-connection report.address --phy=phy: | connection/ble.Connection |
+  adapter.with-connection report.peer --phy=phy: | connection/ble.Connection |
     print "NEXT_CENTRAL connected phy=$connection.phy mtu=$connection.mtu rssi=$connection.rssi tx=$connection.tx-power"
     print "NEXT_CENTRAL link $connection.parameters; $connection.data-length"
     service := connection.discover-service HEART-RATE

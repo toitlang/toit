@@ -382,7 +382,7 @@ class Peripheral:
       throw error
     return [session, handles]
 
-  start-link_ session/rpc.Session handles/Map peer/Address -> Connection:
+  start-link_ session/rpc.Session handles/Map peer/Peer -> Connection:
     link/PeripheralLink_? := null
     connection := Connection.peripheral_ session peer --on-release=::
       links_.remove link

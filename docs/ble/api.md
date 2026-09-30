@@ -24,9 +24,10 @@ Tests: `tests/ble-next-*-test.toit`. Examples: `examples/ble/experimental/next-*
 3. **Blocks for scopes, plain calls for everything else.** Scoped forms
    (`with-connection`, `subscribe`) clean up on every exit, cancellation
    included.
-4. **Typed values.** Addresses are `Address` objects (six bytes plus type,
-   printed the usual way), UUIDs are the `ble` package's `BleUuid`,
-   advertisements are its `Advertisement`, errors carry codes.
+4. **Typed values.** Remote devices are `Peer`s, addresses are `Address`
+   objects (six bytes plus type, printed the usual way), UUIDs are the
+   `ble` package's `BleUuid`, advertisements are its `Advertisement`,
+   errors carry codes.
 5. **Say what the radio does.** Operations document what completion means
    (queued, sent, acknowledged) and what a failure leaves behind, following
    the cancellation contract in [design.md](design.md).
@@ -67,6 +68,13 @@ in the calling process and returns an adapter; the adapter must be powered
 off in BlueZ and the process needs `CAP_NET_ADMIN`. `--resolve` loads
 bonded peers (`resolving-list.Entry`) into the controller's resolving list.
 
+A remote device is a `Peer`: what `ScanReport.peer` found and what
+`connection.peer` is connected to, and what `connect` takes. On the Toit
+host every peer is its `Address`. A platform whose stack hides addresses
+(CoreBluetooth names devices by a per-host identifier) would have peers of
+its own kind with a null `address`; code that finds, connects to, compares
+and prints peers works with both.
+
 Address types are `PUBLIC`, `RANDOM`, and, for peers the controller
 resolved, `PUBLIC-IDENTITY` and `RANDOM-IDENTITY` (`is-identity`). Such a
 peer appears in scan reports and as `connection.peer` by its identity, and
@@ -76,7 +84,7 @@ peer appears in scan reports and as `connection.peer` by its identity, and
 
 ```
 report := adapter.find --service=HEART-RATE
-connection := adapter.connect report.address --security=ble.SECURITY-ENCRYPTED
+connection := adapter.connect report.peer --security=ble.SECURITY-ENCRYPTED
 try:
   measurement := (connection.discover-service HEART-RATE).characteristic MEASUREMENT
   measurement.subscribe: | values/ble.Values |
@@ -161,7 +169,7 @@ while true:
 
 | Member | Meaning |
 | --- | --- |
-| `peer` | the peer's `Address` |
+| `peer` | the device at the other end, a `Peer` (its `Address` on the Toit host) |
 | `role` | `ROLE-CENTRAL` (this device connected) or `ROLE-PERIPHERAL` (a central connected to it) |
 | `mtu` | the negotiated ATT MTU |
 | `phy` | the current `Phy` (tx and rx: `PHY-1M`, `PHY-2M`, `PHY-CODED`) |

@@ -123,7 +123,8 @@ class Adapter:
     return found
 
   /**
-  Connects to the peripheral at $address.
+  Connects to the peripheral $peer (a $ScanReport's $ScanReport.peer, or an
+    $Address).
 
   $mtu is the ATT MTU this side offers (23 to 517). $security is the level
     the link must reach before this returns; pairing and bonding follow the
@@ -132,23 +133,26 @@ class Adapter:
     connected; by default the host moves to the 2M PHY when both sides have
     it.
   */
-  connect address/Address --timeout/Duration=(Duration --s=10) --mtu/int=247
+  connect peer/Peer --timeout/Duration=(Duration --s=10) --mtu/int=247
       --security/int=SECURITY-NONE --phy/int?=null -> Connection:
     if not 23 <= mtu <= 517: throw "INVALID_ARGUMENT"
+    // The Toit host reaches every peer by its address.
+    target := peer.address
+    if not target: throw "INVALID_ARGUMENT"
     // Each connection is a session of its own service client: the provider
     // admits one session per client, and connections should not compete.
     client := rpc.Client --provider-pid=provider-pid_
     client.open
     raw/rpc.Connection? := null
     error := catch:
-      raw = client.connect address.bytes --address-type=address.type --timeout=timeout --mtu-limit=mtu
+      raw = client.connect target.bytes --address-type=target.type --timeout=timeout --mtu-limit=mtu
           --require-encryption=(security >= SECURITY-ENCRYPTED)
           --require-authentication=(security == SECURITY-AUTHENTICATED)
     if error:
       client.close
       if error == "GATT_CENTRAL_SECURITY_REQUIRED": throw "BLE_INSUFFICIENT_SECURITY"
       throw error
-    connection := Connection.central_ raw address --mtu=raw.info[2] --client=client
+    connection := Connection.central_ raw peer --mtu=raw.info[2] --client=client
     if phy:
       succeeded := false
       try:
@@ -159,12 +163,12 @@ class Adapter:
     return connection
 
   /**
-  Connects to $address, runs $block with the connection, and closes it on
+  Connects to $peer, runs $block with the connection, and closes it on
     every exit.
   */
-  with-connection address/Address --timeout/Duration=(Duration --s=10) --mtu/int=247
+  with-connection peer/Peer --timeout/Duration=(Duration --s=10) --mtu/int=247
       --security/int=SECURITY-NONE --phy/int?=null [block] -> any:
-    connection := connect address --timeout=timeout --mtu=mtu --security=security --phy=phy
+    connection := connect peer --timeout=timeout --mtu=mtu --security=security --phy=phy
     try:
       return block.call connection
     finally:
@@ -219,8 +223,11 @@ class ScanReport:
 
   constructor .raw_:
 
-  /** The advertiser's address. */
-  address -> Address: return Address raw_.address --type=raw_.address-type
+  /** The advertiser, to connect to or compare. */
+  peer -> Peer: return Address raw_.address --type=raw_.address-type
+
+  /** The advertiser's address, or null where the platform hides it (see $Peer). */
+  address -> Address?: return peer.address
 
   /** The received signal strength in dBm, or null when the controller did not measure it. */
   rssi -> int?: return raw_.rssi
@@ -244,7 +251,7 @@ class ScanReport:
     return advertisement.services.contains uuid
 
   stringify -> string:
-    return "$address rssi=$rssi$(name ? " name=$name" : "")"
+    return "$peer rssi=$rssi$(name ? " name=$name" : "")"
 
 /** Advertising without connections, from $Adapter.advertise. */
 class Broadcast:
