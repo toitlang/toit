@@ -230,6 +230,8 @@ menu "Toit"
                 The Toit source file used to compile the system snapshot. The system is responsible for bringing up
                 basic Toit services. The file should be absolute, relative to the project dir or relative to
                 the Toit root dir (resolved in that order).
+                "system/extensions/esp32/boot-without-ble.toit" leaves the BLE service out of the system
+                container, for a deployment that installs a BLE provider container of its own.
 
         config TOIT_SYSTEM_SOURCE_PROJECT_ROOT
             string "Project root for system source"
