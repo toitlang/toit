@@ -49,11 +49,6 @@ in [measurements.md](measurements.md).
    container (IO capability, confirmations, passkeys, bond records, the
    resolving list, session limits); provider subclasses remain for Linux
    and tests.
-4. **Faster small notifications.** The 2.5 ms RPC per operation is the
-   bottleneck; batching already recovers half. Options to measure: fewer
-   allocations per RPC, notifying from the provider on a timer the
-   application feeds, and the direct host inside the application process
-   (375–460/s) as the upper bound of the RPC design.
 5. **C3 and C6.** Done, compile-verified only (no board on the rig): the
    controller-only transport builds for every chip with `CONFIG_BT_CONTROLLER_ONLY`,
    `make esp32c3` and `esp32c6` have their overlays, and the
@@ -97,7 +92,28 @@ in [measurements.md](measurements.md).
    `tests/ble-hardware/darwin-check.toit` against any BLE peripheral, and
    fix what the first run finds.
 
-## Efficiency goal
+4. **Faster small notifications** (open). The measured chain: one RPC
+   costs 2.5 ms, batching 32 values per RPC reaches 320/s in the system
+   container, and the direct host (no RPC at all) 375–460/s, against
+   NimBLE's 765/s. So the RPC is not the only limit: the host sends one ACL
+   packet per notification and refills controller credits from the
+   interpreter, about six packets per 15 ms connection event where NimBLE
+   fits eleven. The next step is in the host's transmit path (more packets
+   in flight per credit round), not in the service layer.
 
-Better than NimBLE on every row of the table above, or a documented reason
-why not. Flash is the hardest: the Toit host is a full host in bytecode.
+## Where it stands (end of 2026-09-30)
+
+| | NimBLE (was) | Toit host (now) |
+| --- | --- | --- |
+| Firmware binary, ESP32 | 1418 KB | 1327 KB |
+| System image | 172 KB | 326 KB (the provider; 137 KB of it is the host core) |
+| Free heap while advertising / connected | 105.5 KB / — | 120 KB / 115.5 KB |
+| 20-byte notifications | 765/s | 320/s batched, 157/s single |
+| 244-byte notifications | 65 KB/s | 76 KB/s (143 KB/s on the S3 at 2M) |
+| Chips | ESP32, S3, C3, C6 | the same (C3, C6 compile-verified) |
+| macOS | `ble` over CoreBluetooth | `ble` and `ble.v2` over the CoreBluetooth provider, untested on a Mac |
+| Pairing, bonds, privacy, GATT client as peripheral, per-connection details | mostly absent | present (provider policy) |
+
+Flash is the remaining regression (63 KB more in total for an ESP32 with the
+built-in provider), small notifications the remaining throughput gap.
+Better than NimBLE on every other row.
