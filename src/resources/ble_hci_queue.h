@@ -27,7 +27,12 @@ class PacketQueue {
   static_assert(Capacity > Reserved && Capacity < 0x80000000u, "Invalid capacity");
   static_assert((Capacity & (Capacity - 1)) == 0, "Capacity must divide counter wraparound");
   static_assert(MaxPacket >= 5 && MaxPacket <= 65535, "Invalid packet bound");
+  // RISC-V cores without the A extension (ESP32-C3) get their atomics from
+  // ESP-IDF's critical sections; the producer is the controller task, not an
+  // interrupt, so that is fine there.
+#if !defined(__riscv) || defined(__riscv_atomic)
   static_assert(ATOMIC_INT_LOCK_FREE == 2, "Callback counters must be lock-free");
+#endif
 
   QueuePush push(const uint8_t* bytes, unsigned length) {
     if (fault() != QueueFault::none) return QueuePush::failed;
