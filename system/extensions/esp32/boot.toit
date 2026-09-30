@@ -46,12 +46,20 @@ class SystemImage extends ContainerImage:
     unreachable  // Not implemented yet.
 
 main:
+  run --ble
+
+/**
+Boots the system with its services. Without $ble the BLE service is left
+  out, for a firmware whose deployment installs a provider container of its
+  own (see `boot-without-ble.toit`).
+*/
+run --ble/bool -> none:
   registry ::= FlashRegistry.scan
   service-manager ::= SystemServiceManager
   (FirmwareServiceProvider).install
   (StorageServiceProviderEsp32 registry).install
   (WifiServiceProvider).install
-  install-ble-service
+  if ble: install-ble-service
   container-manager := ContainerManager registry service-manager
   system-image := SystemImage container-manager
   container-manager.register-system-image system-image
