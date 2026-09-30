@@ -12,7 +12,7 @@ import monitor
 import ble.experimental.acl
 import ble.experimental.encryption
 import ble.experimental.hci
-import ble.experimental.next as ble
+import ble.v2 as ble
 import ble.experimental.smp-pairing as smp
 import ble.experimental.transport
 import ble.experimental.service.gatt-provider as providers

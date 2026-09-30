@@ -111,8 +111,8 @@ is connected. The two-central data path itself is covered by
 
 `tests/ble-hardware/next-check.sh` flashes the controller-only original
 ESP32 (or ESP32-S3 Board1 with `NEXT_BOARD=s3`) with the provider and
-`examples/ble/experimental/next-peripheral.toit`, then runs
-`next-central.toit` on the Edimax dongle through `ble.experimental.next.linux`.
+`examples/ble/v2-peripheral.toit`, then runs
+`next-central.toit` on the Edimax dongle through `ble.v2.linux`.
 The central finds the board by address, connects, reads the link,
 subscribes, has one write refused with an application ATT error, asks for
 new parameters and disconnects (`NEXT_CENTRAL COMPLETE`). The board prints
@@ -145,7 +145,7 @@ ends the link with an authentication failure.
 
 The rig's Realtek dongles have no link-layer privacy, so
 `tests/ble-hardware/private-resolve.sh` runs between two boards. The
-original ESP32 runs `next-peripheral.toit` beside
+original ESP32 runs `v2-peripheral.toit` beside
 `private-gatt-provider.toit` and advertises from resolvable private
 addresses of a fixed test IRK. ESP32-S3 Board1 runs
 `private-resolving-provider.toit`, which loads the peripheral's identity and

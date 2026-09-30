@@ -15,7 +15,7 @@ import ble.experimental.hci
 import ble.experimental.resolving-list as resolving
 import ble.experimental.transport
 import ble as package
-import ble.experimental.next as ble
+import ble.v2 as ble
 import ble.experimental.service.gatt-provider as providers
 import .ble-fixture as fixture
 

@@ -5,13 +5,13 @@
 import ble show BleUuid
 import monitor
 
-import ..service.client as rpc
+import ..experimental.service.client as rpc
 import .adapter show Adapter
 import .peripheral show Peripheral GattServer
 import .types
 
 /**
-Connections of the experimental application API (`ble.experimental.next`).
+Connections of the application API (`ble.v2`).
 
 A $Connection is one link to a peer in either role: it comes from
   $Adapter.connect (this device is the central) or from $Peripheral.accept

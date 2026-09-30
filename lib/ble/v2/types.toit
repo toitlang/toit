@@ -3,7 +3,7 @@
 // found in the lib/LICENSE file.
 
 /**
-Value types of the experimental application API (`ble.experimental.next`).
+Value types of the application API (`ble.v2`).
 
 Remote devices are $Peer objects, on the Toit host their $Address. A
   link's state is described by $Phy, $DataLength, $ConnectionParameters

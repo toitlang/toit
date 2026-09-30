@@ -52,14 +52,14 @@ while connected; bonding and pairing policy belong to the provider.
 
 ## The experimental application API
 
-`import ble.experimental.next as ble` is a new API designed around the
+`import ble.v2 as ble` is a new API designed around the
 host: one `Connection` class for both roles, `Peripheral.accept` and
 `Connection.wait-closed` as the connect and disconnect events, link details
 (PHY, data length, parameters, security, RSSI, transmit power) and
 transmit power control. It uses the same provider containers as the `ble`
-package; on Linux `ble.experimental.next.linux.open` installs one in the
+package; on Linux `ble.v2.linux.open` installs one in the
 process. Design, open questions and what it adds: [api.md](api.md).
-Examples: `examples/ble/experimental/next-peripheral.toit` and
+Examples: `examples/ble/v2-peripheral.toit` and
 `next-central.toit`; hardware check: `tests/ble-hardware/next-check.sh`.
 
 ## Using the service from an application

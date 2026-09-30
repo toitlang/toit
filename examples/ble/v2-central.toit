@@ -5,11 +5,11 @@
 /**
 A heart rate client on the experimental application API.
 
-Finds the peripheral of `next-peripheral.toit`, prints what the link looks
+Finds the peripheral of `v2-peripheral.toit`, prints what the link looks
   like, receives a few measurements and resets the energy counter.
 */
 
-import ble.experimental.next as ble
+import ble.v2 as ble
 
 HEART-RATE ::= ble.BleUuid "180d"
 MEASUREMENT ::= ble.BleUuid "2a37"

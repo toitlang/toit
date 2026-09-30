@@ -1,6 +1,6 @@
 #!/bin/bash
 # Controller-based address resolution between two boards. The original ESP32
-# runs examples/ble/experimental/next-peripheral.toit beside
+# runs examples/ble/v2-peripheral.toit beside
 # private-gatt-provider.toit and advertises from resolvable private
 # addresses. ESP32-S3 Board1 loads the peripheral's identity and IRK into its
 # controller's resolving list (private-resolving-provider.toit) and runs
@@ -14,7 +14,7 @@ peripheral_port=/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Co
 central_port=/dev/serial/by-id/usb-1a86_USB_Single_Serial_544C020917-if00
 C=build/ble-private-resolve; mkdir -p "$C"
 $T compile -s -o "$C/peripheral-provider.snapshot" tests/ble-hardware/private-gatt-provider.toit || exit 1
-$T compile -s -o "$C/peripheral.snapshot" examples/ble/experimental/next-peripheral.toit || exit 1
+$T compile -s -o "$C/peripheral.snapshot" examples/ble/v2-peripheral.toit || exit 1
 $T compile -s -o "$C/central-provider.snapshot" tests/ble-hardware/private-resolving-provider.toit || exit 1
 $T compile -s -o "$C/central.snapshot" tests/ble-hardware/private-central.toit || exit 1
 cp build/esp32-ble-host/firmware.envelope "$C/peripheral.envelope"

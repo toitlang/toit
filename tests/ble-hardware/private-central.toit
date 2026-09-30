@@ -7,7 +7,7 @@
 // identity in resolved scan reports, then connects again by identity alone
 // while the peripheral advertises from a fresh resolvable private address.
 
-import ble.experimental.next as ble
+import ble.v2 as ble
 import .private-resolving-provider show PEER-IDENTITY
 
 HEART-RATE ::= ble.BleUuid "180d"

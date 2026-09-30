@@ -11,7 +11,7 @@ Runs on controller-only firmware beside a BLE provider container (see
   control point.
 */
 
-import ble.experimental.next as ble
+import ble.v2 as ble
 
 HEART-RATE ::= ble.BleUuid "180d"
 MEASUREMENT ::= ble.BleUuid "2a37"
