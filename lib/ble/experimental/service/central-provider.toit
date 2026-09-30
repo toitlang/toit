@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can
 // be found in the lib/LICENSE file.
 
+import system.services
 import monitor
 import ..att as att
 import ..central as central
@@ -33,8 +34,8 @@ $Provider adds outgoing GATT connections to `scanning-provider`: each
 abstract class Provider extends scanning-provider.Provider implements shared.Factory:
   pool_/shared.Host? := null
   attempts_/retry.Attempts? := null
-  constructor:
-    super
+  constructor --priority/int=services.ServiceProvider.PRIORITY-NORMAL:
+    super --priority=priority
 
   /**
   Selects controller-to-host ACL credits for connection sessions; zero disables.

@@ -28,8 +28,13 @@ in [measurements.md](measurements.md).
    service priority so a deployment's own provider wins) and compare it with
    a separate provider container: flash added to the system image, heap
    while idle and while serving, and the small-notification rate. Decide on
-   the numbers; the expectation is the system container, because the RPC
-   cost is the same in both and the process overhead goes away.
+   the numbers. Done: the system container wins on every count
+   ([measurements.md](measurements.md)); `system/extensions/esp32/ble.toit`
+   installs the default provider at boot, strongly unpreferred, so a
+   deployment's own provider (installed as a container) takes precedence.
+   Found on the way: a firmware with both the built-in provider and a
+   separate provider container plus an application exceeds the 1.7 MB
+   partition, one more reason for step 3.
 3. **Smaller provider.** The default provider should not carry what it
    does not use: pairing (SC and legacy), ECDH, bonds and privacy become
    opt-in through the hooks so tree shaking can drop them. Target: well under

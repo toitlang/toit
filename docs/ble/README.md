@@ -36,19 +36,20 @@ installed on the device (see "Using the ble package" below).
 | `tests/ble-*-test.toit` | Software tests on a scripted in-memory transport; `tests/ble-hci-test.toit` doubles as the shared fixture |
 | `tests/ble-hardware/` | Board and adapter fixtures; `fixtures/` holds the provider/application images; `bench/` the NimBLE comparison; `campaigns/` the multi-board campaigns |
 | `tests/ble-interop/` | Optional Bumble (Python) software peer suite and radio observers |
-| `examples/ble/experimental/` | The provider container to deploy with `ble` package applications, plus a minimal advertising provider and application |
+| `examples/ble/experimental/` | A provider container for deployments with their own pairing or bond policy (the default provider is built into the system container), plus a minimal advertising provider and application |
 
 ## Using the ble package
 
 An application written against the `ble` package (`Adapter`, `Central`,
 `Peripheral`, ...) needs no change: build the controller-only firmware
-(`make BLE_HOST=1 esp32`), install a provider container beside the
-application (`examples/ble/experimental/gatt-provider.toit` is the one to
-start from), and `Adapter` picks the provider when the native host is absent. `examples/ble/heart_rate.toit`
-runs this way unchanged; `tests/ble-hardware/compat.sh` is the check. The
-peripheral serves as many centrals at once as the provider's
-`peripheral-session-limit` allows (one by default) and keeps advertising
-while connected; bonding and pairing policy belong to the provider.
+(`make BLE_HOST=1 esp32`), whose system container serves BLE
+(`system/extensions/esp32/ble.toit`), and `Adapter` picks that provider
+when the native host is absent. `examples/ble/heart_rate.toit` runs this
+way unchanged; `tests/ble-hardware/compat.sh` is the check. The built-in
+provider does not pair and lets two centrals connect at once; a deployment
+that wants pairing, bonds or other limits installs its own provider
+container (`examples/ble/experimental/gatt-provider.toit` is the one to
+start from), which takes precedence by service priority.
 
 ## The experimental application API
 
@@ -56,9 +57,8 @@ while connected; bonding and pairing policy belong to the provider.
 host: one `Connection` class for both roles, `Peripheral.accept` and
 `Connection.wait-closed` as the connect and disconnect events, link details
 (PHY, data length, parameters, security, RSSI, transmit power) and
-transmit power control. It uses the same provider containers as the `ble`
-package; on Linux `ble.v2.linux.open` installs one in the
-process. Design, open questions and what it adds: [api.md](api.md).
+transmit power control. It uses the same provider as the `ble` package;
+on Linux `ble.v2.linux.open` installs one in the process. Design, open questions and what it adds: [api.md](api.md).
 Examples: `examples/ble/v2-peripheral.toit` and
 `next-central.toit`; hardware check: `tests/ble-hardware/next-check.sh`.
 

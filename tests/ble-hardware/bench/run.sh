@@ -1,5 +1,5 @@
 #!/bin/bash
-# Usage: run.sh toit|nimble [cycles]
+# Usage: run.sh toit|system|direct|nimble [cycles]
 set -uo pipefail
 cd /home/flo/work/opentoit-ble
 variant=$1; cycles=${2:-10}
@@ -24,6 +24,12 @@ if [ "$variant" = toit ]; then
   $T tool firmware -e "$C/toit.envelope" container install ble-provider "$C/provider.snapshot"
   $T tool firmware -e "$C/toit.envelope" container install bench "$C/app.snapshot"
   envelope="$C/toit.envelope"
+elif [ "$variant" = system ]; then
+  # The provider built into the system container serves the application.
+  cp "$firmware" "$C/system.envelope"
+  $T compile -s -o "$C/app.snapshot" tests/ble-hardware/bench/app.toit
+  $T tool firmware -e "$C/system.envelope" container install bench "$C/app.snapshot"
+  envelope="$C/system.envelope"
 elif [ "$variant" = direct ]; then
   cp "$firmware" "$C/direct.envelope"
   $T compile -s -o "$C/direct.snapshot" tests/ble-hardware/bench/direct.toit

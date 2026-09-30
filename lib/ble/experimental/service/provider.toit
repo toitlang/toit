@@ -32,9 +32,17 @@ abstract class Provider extends services.ServiceProvider implements services.Ser
   sessions_/List ::= List 8
   opening_/bool := false
 
-  constructor:
+  /**
+  Registers the BLE service at $priority (see
+    $services.ServiceProvider.PRIORITY-NORMAL and the other levels).
+
+  Clients take the provider with the highest priority: a provider built
+    into the firmware registers as unpreferred so that one a deployment
+    installs, with its own pairing and bond policy, wins.
+  */
+  constructor --priority/int=services.ServiceProvider.PRIORITY-NORMAL:
     super "toit.io/experimental/ble" --major=0 --minor=17
-    provides api.SELECTOR --handler=this
+    provides api.SELECTOR --handler=this --priority=priority
 
   /**
   Bounds simultaneous peripheral sessions on one shared controller.
