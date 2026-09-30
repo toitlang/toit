@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import ..ble show BleUuid
+import ..uuid show BleUuid
 import monitor
 
 import ..experimental.service.client as rpc

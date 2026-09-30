@@ -4,7 +4,9 @@
 
 import io
 
-import .ble
+import .adapter
+import .advertisement
+import .uuid
 
 /**
 The central side of the `ble` package.
