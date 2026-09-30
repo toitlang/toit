@@ -9,6 +9,15 @@ import .ble
 import .remote show RemoteCharacteristic  // For Toitdoc.
 
 /**
+The peripheral side of the `ble` package.
+
+$Peripheral, from $Adapter.peripheral, publishes this device's
+  $LocalService, $LocalCharacteristic and $LocalDescriptor attributes to
+  connected centrals and advertises them. Applications reach these classes
+  through `import ble`; the native and the Toit host backends subclass them.
+*/
+
+/**
 The manager for advertising and managing local services.
 
 The public classes of the peripheral side are backend-independent: the

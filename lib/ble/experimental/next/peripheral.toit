@@ -12,6 +12,17 @@ import .connection
 import .types
 
 /**
+The peripheral role of the experimental application API (`ble.experimental.next`).
+
+A $GattServer defines this device's $Service, $Characteristic and
+  $Descriptor attributes; $Adapter.peripheral serves it and returns a
+  $Peripheral, which advertises and hands out the $Connection of each
+  central that connects through $Peripheral.accept. Values, notifications
+  and indications are managed on the $Characteristic, which knows every
+  connected central.
+*/
+
+/**
 A GATT server's definition: services, characteristics and descriptors.
 
 Define it once and hand it to $Adapter.peripheral. The provider builds a
@@ -65,9 +76,17 @@ class Service:
     is-secondary = secondary
 
   /**
-  Includes $other, a service added to the same server before this one
-    (Core 6.3 Vol 3 Part G 3.2): centrals that discover this service's
-    includes find it there.
+  Includes $other in this service.
+
+  An include says that this service builds on $other. A central that asks
+    for this service's included services finds $other there, with its
+    attributes, without searching all services. It is the only way for a
+    central to find a secondary service ($GattServer.add-service with
+    `--secondary`), since centrals do not find secondary services on their
+    own.
+
+  $other must belong to the same server and must have been added before this
+    service.
   */
   include other/Service -> none:
     if server.peripheral_: throw "BLE_SERVER_IN_USE"

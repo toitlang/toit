@@ -16,6 +16,27 @@ import .remote
 export *
 
 /**
+Bluetooth Low Energy.
+
+An application opens the device's $Adapter and takes one of its two
+  roles. As a central ($Adapter.central), a $Central scans for nearby
+  devices ($Central.scan) and connects to one ($Central.connect), whose
+  $RemoteDevice, $RemoteService and $RemoteCharacteristic give access to
+  the peer's services. As a peripheral ($Adapter.peripheral), a
+  $Peripheral publishes $LocalService and $LocalCharacteristic attributes
+  ($Peripheral.add-service, $Peripheral.deploy) and advertises them
+  ($Peripheral.start-advertise).
+
+Services, characteristics and descriptors are identified by a $BleUuid.
+  Advertising data is an $Advertisement made of $DataBlock fields, both when
+  sent and when received in a scan.
+
+On firmware with a native BLE host the adapter uses it; on firmware without
+  one (a controller-only ESP32 image, or Linux) the same API runs on the
+  Toit host through the BLE service provider installed on the device.
+*/
+
+/**
 A BLE Universally Unique ID.
 
 UUIDs are used to identify services, characteristics and descriptions.

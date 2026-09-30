@@ -4,6 +4,17 @@
 
 import system.services
 
+/**
+The wire protocol of the experimental BLE service.
+
+Providers (`ble.experimental.service.provider` and its variants) and the
+  client (`ble.experimental.service.client`) share $SELECTOR and the method
+  indices below; the `CAP-*` flags describe what a provider supports and
+  $READ, $VALIDATE-WRITE and $WRITTEN are the kinds of application request a
+  peripheral session pulls. Applications use the client rather than this
+  library.
+*/
+
 // Experimental protocol: incompatible changes remain possible before release.
 SELECTOR ::= services.ServiceSelector
     --uuid="9d28731e-2a9f-4b19-adf7-39717fae7622"

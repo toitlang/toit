@@ -10,6 +10,17 @@ import .peripheral
 import .types
 
 /**
+The adapter of the experimental application API (`ble.experimental.next`).
+
+$Adapter is where an application starts: it opens the BLE service, reports
+  the provider's $Capabilities and the controller's $Address, scans
+  ($Adapter.scan, $Adapter.find), connects to peripherals ($Adapter.connect,
+  $Adapter.with-connection), serves a $GattServer to centrals
+  ($Adapter.peripheral) and broadcasts advertisements ($Adapter.advertise).
+  Transmit power control is available where the controller has it.
+*/
+
+/**
 The entry point: the device's BLE controller, reached through the BLE service.
 
 On a device, a provider container owns the controller and every application

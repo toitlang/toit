@@ -8,6 +8,16 @@ import ..gatt-server as gatt
 import ..transport as transport
 import .api as api
 
+/**
+The link operations shared by central connections and peripheral sessions.
+
+Both kinds of session expose the same view of their link: its details
+  ($api.LINK-INFO), PHY changes, RSSI, transmit power, connection parameter
+  updates, disconnect and the wait for the link's end. $is-link-operation
+  recognizes their method indices and $link-operation runs one on a
+  $central.Link. Used by `central-provider` and `gatt-provider`.
+*/
+
 /** Tests whether $index names one of the link operations handled here. */
 is-link-operation index/int -> bool:
   return api.LINK-INFO <= index <= api.WAIT-DISCONNECTED or index == api.SET-LINK-TX-POWER

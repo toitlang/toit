@@ -8,6 +8,16 @@ import system
 import .ble
 
 /**
+The central side of the `ble` package.
+
+$Central, from $Adapter.central, scans for nearby devices
+  ($RemoteScannedDevice) and connects to them; a $RemoteDevice gives access
+  to the peer's $RemoteService, $RemoteCharacteristic and $RemoteDescriptor
+  attributes. Applications reach these classes through `import ble`; the
+  native and the Toit host backends subclass them.
+*/
+
+/**
 The manager for creating client connections.
 
 The public classes of the central side are backend-independent: the native

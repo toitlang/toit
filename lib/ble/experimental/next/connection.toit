@@ -11,6 +11,17 @@ import .peripheral show Peripheral GattServer
 import .types
 
 /**
+Connections of the experimental application API (`ble.experimental.next`).
+
+A $Connection is one link to a peer in either role: it comes from
+  $Adapter.connect (this device is the central) or from $Peripheral.accept
+  (a central connected to this device). It describes the link and reaches
+  the peer's GATT database through $RemoteService, $RemoteCharacteristic
+  (with $Subscription and $Values for notifications and indications) and
+  $RemoteDescriptor.
+*/
+
+/**
 A link to one peer, in either role.
 
 A central-role connection comes from $Adapter.connect: this device connected

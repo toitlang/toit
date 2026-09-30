@@ -8,6 +8,16 @@ import ..bond-info show BondInfo
 import .bond-admin-api as api
 
 /**
+The optional bond administration service.
+
+Trusted provider code installs a $Provider over its bond $Registry so that
+  one administrator container group can list bonds as $BondInfo rows and
+  revoke them through `ble.experimental.service.bond-admin-client`. It is
+  separate from the BLE service that applications use and shares no
+  controller with it.
+*/
+
+/**
 Exposes bond inventory and revocation to one explicitly selected container group.
 
 Borrows the registry; trusted provider code retains ownership and closes it

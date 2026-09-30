@@ -7,6 +7,16 @@ import ..bond-info show BondInfo
 import .bond-admin-api as api
 
 /**
+The client of the optional bond administration service.
+
+A trusted administrator container uses $Client to list the provider's bonds
+  as $BondInfo rows ($Client.bonds) and to revoke them ($Client.revoke,
+  $Client.revoke-bond). The provider side is
+  `ble.experimental.service.bond-admin-provider`; authorization is decided
+  there, by container group.
+*/
+
+/**
 An optional administrative client; discovery does not grant authorization.
 
 Use the provider process restriction with an ID supplied by trusted

@@ -24,6 +24,18 @@ import .shared-host as shared
 import ..timeouts as timeouts
 import io
 
+/**
+The complete experimental BLE service provider.
+
+$Provider adds a local GATT peripheral to `central-provider`: a $Session
+  builds the application's database ($attributes.Database), advertises,
+  serves connected centrals with $gatt.Server and forwards their reads and
+  writes to the application. Several centrals at once, mixed roles and
+  pairing policy are hooks on the provider. A deployment subclasses it and
+  supplies $Provider.open-transport; `examples/ble/experimental/gatt-provider.toit`
+  is the one to start from.
+*/
+
 /** Provides one configured peripheral, with all protocol work in this process. */
 abstract class Provider extends central-provider.Provider:
   constructor:

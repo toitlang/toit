@@ -8,6 +8,18 @@ import ..gatt as gatt
 import .api as api
 import ..timeouts as timeouts
 
+/**
+The GATT client operations shared by central connections and peripheral sessions.
+
+Discovery, reads, writes and subscriptions on a peer's database run on an
+  $att.Client whichever role the link has: a central uses the peripheral's
+  database, a peripheral session the connected central's. $is-client-operation
+  recognizes their method indices and $ClientOperations runs them,
+  including the subscription workers that queue notifications and
+  indications for the client. Used by `central-provider` and
+  `gatt-provider`.
+*/
+
 /** Whether $index is a GATT client operation ($ClientOperations.invoke). */
 is-client-operation index/int -> bool:
   return OPERATIONS_.contains index

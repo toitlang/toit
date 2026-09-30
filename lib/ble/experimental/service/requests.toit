@@ -5,6 +5,18 @@
 import ..attribute-server as attributes
 import .api as api
 
+/**
+The request mailbox between a provider's ATT server and its client.
+
+Reads, write validations and written hooks of a peripheral's attributes are
+  served by the application, on the other side of the RPC boundary. The
+  serving task hands each $attributes.ReadRequest or
+  $attributes.WriteRequest to $Requests, the client pulls it as a record
+  of kind $READ, $VALIDATE-WRITE or $WRITTEN ($Requests.next) and answers it
+  ($Requests.reply). Providers own a $Requests per session; applications
+  use it through `ble.experimental.service.client`.
+*/
+
 READ ::= api.READ
 VALIDATE-WRITE ::= api.VALIDATE-WRITE
 WRITTEN ::= api.WRITTEN
