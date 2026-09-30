@@ -28,6 +28,16 @@ Explicit close reports HARDWARE_ERROR if controller disable or deinitialization
   fails, after releasing the native resource. Exact controller errors are logged.
   A caller must not treat an idempotent subsequent close as proof of recovery.
 */
+/**
+Whether this firmware has the controller-only transport: its primitives are
+  linked in only when the Bluetooth controller runs without a native host.
+*/
+available -> bool:
+  catch --unwind=(: it != "PRIMITIVE_LOOKUP_FAILED"):
+    native.tx-power_ 2 0 0
+    return true
+  return false
+
 class Esp32Transport extends native.NativeTransport implements transport.TxPowerControl:
   constructor:
     super 0 --packet-limit=1029

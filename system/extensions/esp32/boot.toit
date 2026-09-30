@@ -19,6 +19,7 @@ import system.services show ServiceProvider
 
 import .firmware
 import .storage show StorageServiceProviderEsp32
+import .ble show install-ble-service
 import .wifi
 
 import ...boot
@@ -50,6 +51,7 @@ main:
   (FirmwareServiceProvider).install
   (StorageServiceProviderEsp32 registry).install
   (WifiServiceProvider).install
+  install-ble-service
   container-manager := ContainerManager registry service-manager
   system-image := SystemImage container-manager
   container-manager.register-system-image system-image

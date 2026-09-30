@@ -86,3 +86,22 @@ and 120.2 KB in the direct variant to the byte, and the largest free block
    path and single-fragment framing (23 to 17 µs per notification on Linux)
    moved the board from 2.0 to about 1.8 ms per notification; the rest is
    spread over monitors, timers and allocations with no single hot spot.
+
+## Provider in the system container (2026-09-30)
+
+Same benchmark, five cycles, on the firmware with the provider built into
+the system container (`system/extensions/esp32/ble.toit`, `run.sh system`)
+against a separate provider container on a firmware without the built-in
+one (`run.sh toit`). The built-in provider adds 157 KB to the system image
+(172 KB to 329 KB); a separate provider container is 323 KB. Both together
+with an application no longer fit the 1.7 MB firmware partition.
+
+| Provider | Free while advertising | Free while connected | Free after disconnect | RPC round trip | Notifications/s, single | Notifications/s, batched |
+| --- | --- | --- | --- | --- | --- | --- |
+| System container | 120.1 KB | 115.5 KB | 150.4 KB | 2.65 ms | 157 | 320 |
+| Separate container | 114.9 KB | 106.1 KB | 141.1 KB | 2.50 ms | 153 | 264 |
+
+The system container is the better place: 5 to 9 KB more free heap, about
+180 KB less flash, and batched notifications 20% faster, with one process
+fewer competing for the CPU.
+

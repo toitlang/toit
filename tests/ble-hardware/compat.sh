@@ -4,11 +4,9 @@ cd /home/flo/work/opentoit-ble
 C=build/ble-compat-001; T=build/host/sdk/bin/toit; mkdir -p $C
 port=/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_7eb10aca7cfbea11919ff4375fbcde76-if00-port0
 index=$(btmgmt info | awk '/^hci/{h=$1} /addr 08:BE:AC:2A:DA:C2/{sub(":","",h); print substr(h,4)}')
-$T compile -s -o $C/provider.snapshot tests/ble-hardware/bench/provider.toit
 $T compile -s -o $C/heart-rate.snapshot examples/ble/heart_rate.toit
 $T compile -s -o $C/central.snapshot tests/ble-hardware/compat-central.toit
 cp build/esp32-ble-host/firmware.envelope $C/app.envelope
-$T tool firmware -e $C/app.envelope container install ble-provider $C/provider.snapshot
 $T tool firmware -e $C/app.envelope container install heart-rate $C/heart-rate.snapshot
 $T tool firmware -e $C/app.envelope flash --port $port --partition empty:nvs=65536 2>&1 | tail -1
 pids=()

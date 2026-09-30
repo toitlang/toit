@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can
 // be found in the lib/LICENSE file.
 
+import system.services
 import monitor
 import ..advertising as advertising
 import ..hci as hci
@@ -24,8 +25,8 @@ $Provider adds scanning to `advertising-provider`: a $ScanSession owns the
 
 /** Provides legacy scanning with bounded queues without importing ATT, GATT or SMP. */
 abstract class Provider extends advertising-provider.Provider:
-  constructor:
-    super
+  constructor --priority/int=services.ServiceProvider.PRIORITY-NORMAL:
+    super --priority=priority
 
   /** Opens the exclusively owned controller transport in the serving task. */
   abstract open-transport -> transport.Transport

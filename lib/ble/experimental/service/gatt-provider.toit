@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can
 // be found in the lib/LICENSE file.
 
+import system.services
 import monitor
 
 import ..attribute-server as attributes
@@ -38,8 +39,8 @@ $Provider adds a local GATT peripheral to `central-provider`: a $Session
 
 /** Provides one configured peripheral, with all protocol work in this process. */
 abstract class Provider extends central-provider.Provider:
-  constructor:
-    super
+  constructor --priority/int=services.ServiceProvider.PRIORITY-NORMAL:
+    super --priority=priority
 
   /** Opens the exclusively owned controller transport in the serving task. */
   abstract open-transport -> transport.Transport

@@ -9,9 +9,10 @@ The BLE provider to install beside `ble` package applications on
 It owns the controller and serves scanning, central connections, one local
   GATT peripheral database per session, and non-connectable advertising to
   the applications on the device through `ble.experimental.service`. The
-  `ble` package's `Adapter` finds it automatically when the firmware has no
-  native host. Two peripheral sessions let two centrals connect at once;
-  raise or lower $Provider.peripheral-session-limit to taste.
+  system container already has a provider like this one; an installed one
+  takes precedence, which is how a deployment sets its own policy. Two
+  peripheral sessions let two centrals connect at once; raise or lower
+  $Provider.peripheral-session-limit to taste.
 
 Pairing and bonding policy belong to the provider: this one does not pair.
   Override $service.Provider.pairing-io-capability (and

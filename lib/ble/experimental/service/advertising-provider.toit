@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can
 // be found in the lib/LICENSE file.
 
+import system.services
 import monitor
 import ..advertising-set as advertising
 import ..connection as connection
@@ -26,7 +27,7 @@ $Provider serves non-connectable advertising to clients, one
 
 /** Provides non-connectable legacy advertising without ATT, GATT or SMP. */
 abstract class Provider extends rpc.Provider:
-  constructor: super
+  constructor --priority/int=services.ServiceProvider.PRIORITY-NORMAL: super --priority=priority
 
   abstract open-transport -> transport.Transport
 
