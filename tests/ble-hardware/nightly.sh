@@ -27,7 +27,6 @@ run "bench-toit" build/ble-bench-001/run.sh toit 5
 run "bench-direct" build/ble-bench-001/run.sh direct 5
 run "compat" tests/ble-hardware/compat.sh
 run "multi-central" tests/ble-hardware/multi-central-check.sh
-run "legacy-bond" tests/ble-hardware/legacy-bond.sh
 run "next" tests/ble-hardware/next-check.sh
 run "next-s3" env NEXT_BOARD=s3 tests/ble-hardware/next-check.sh 2
 run "private-resolve" tests/ble-hardware/private-resolve.sh
@@ -37,6 +36,6 @@ printf '%s\n' "${summary[@]}"
 # with resumed=true in the resume phase; revocation prints REVOKE_TWO COMPLETE and
 # both peers REVOKE_AUTH COMPLETE; bench prints central-exit=0; compat prints
 # COMPAT COMPLETE and the board Heart rate app received data.
-for f in resume-pair resume-resume revocation bench-toit bench-direct compat multi-central legacy-bond next next-s3 private-resolve peripheral-client; do
+for f in resume-pair resume-resume revocation bench-toit bench-direct compat multi-central next next-s3 private-resolve peripheral-client; do
   printf '%-14s ' "$f"; grep -aoh "CENTRAL_FRESH COMPLETE[^ ]*\|REVOKE_TWO COMPLETE\|REVOKE_AUTH COMPLETE peer=[01]\|central-exit=[0-9]\|COMPAT COMPLETE\|Heart rate app received data\|LEGACY_BOND COMPLETE resumed=[a-z]*\|NEXT_CENTRAL COMPLETE\|PRIVATE_CENTRAL COMPLETE\|PERIPHERAL_CLIENT security=[0-9]" "build/nightly-$f.log" 2>/dev/null | sort | uniq -c | tr '\n' ';'; echo
 done

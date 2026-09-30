@@ -13,7 +13,7 @@ index=$(btmgmt info | awk '/^hci/{h=$1} /addr 08:BE:AC:2A:DA:C2/{sub(":","",h); 
 C=build/ble-peripheral-client; mkdir -p "$C"
 $T compile -s -o "$C/provider.snapshot" tests/ble-hardware/pairing-gatt-provider.toit || exit 1
 $T compile -s -o "$C/app.snapshot" tests/ble-hardware/peripheral-client.toit || exit 1
-cp build/esp32-ble-host/firmware.envelope "$C/app.envelope"
+cp build/esp32/firmware.envelope "$C/app.envelope"
 $T tool firmware -e "$C/app.envelope" container install ble-provider "$C/provider.snapshot" || exit 1
 $T tool firmware -e "$C/app.envelope" container install app "$C/app.snapshot" || exit 1
 $T tool firmware -e "$C/app.envelope" flash --port "$port" --partition empty:nvs=65536 2>&1 | tail -1

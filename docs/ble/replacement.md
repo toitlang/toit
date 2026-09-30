@@ -56,13 +56,17 @@ in [measurements.md](measurements.md).
    (375–460/s) as the upper bound of the RPC design.
 5. **C3 and C6.** Done, compile-verified only (no board on the rig): the
    controller-only transport builds for every chip with `CONFIG_BT_CONTROLLER_ONLY`,
-   `make BLE_HOST=1 esp32c3` and `esp32c6` have their overlays, and the
+   `make esp32c3` and `esp32c6` have their overlays, and the
    C3's core without atomic instructions uses ESP-IDF's critical-section
    atomics for the VHCI queue counters.
-6. **Remove NimBLE.** `BLE_HOST=1` becomes the only firmware: the NimBLE
-   sdkconfig options, `src/resources/ble_esp32.cc`, the native classes of the
-   `ble` package and the NimBLE hardware fixtures go. The benchmark keeps the
-   NimBLE numbers above as its reference.
+6. **Remove NimBLE.** Done: `make esp32` (and s3, c3, c6) builds the
+   controller-only firmware with the built-in provider; the NimBLE sdkconfig
+   options, `src/resources/ble_esp32.cc`, the NimBLE hardware fixtures, the
+   legacy-bond hardware check (it needed a NimBLE peer) and the benchmark's
+   NimBLE variant are gone. The `ble` package's native classes stay until
+   step 7; on the ESP32 they fail to find their primitives and `Adapter`
+   falls back to the provider, which `tests/ble-hardware/compat.sh`
+   verifies. The benchmark keeps the NimBLE numbers above as its reference.
 7. **`ble` on `ble.v2`.** The `ble` package's `Adapter`, `Central`,
    `Peripheral`, `Remote*` and `Local*` classes are reimplemented on
    `ble.v2` (one implementation instead of native plus host backends), with

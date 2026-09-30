@@ -42,7 +42,7 @@ installed on the device (see "Using the ble package" below).
 
 An application written against the `ble` package (`Adapter`, `Central`,
 `Peripheral`, ...) needs no change: build the controller-only firmware
-(`make BLE_HOST=1 esp32`), whose system container serves BLE
+(`make esp32`), whose system container serves BLE
 (`system/extensions/esp32/ble.toit`), and `Adapter` picks that provider
 when the native host is absent. `examples/ble/heart_rate.toit` runs this
 way unchanged; `tests/ble-hardware/compat.sh` is the check. The built-in

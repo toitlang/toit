@@ -37,35 +37,17 @@ build the supervisor with `-DTOIT_BUILD_BLE_TEST_TOOLS=ON`.
 
 ## ESP32: build and flash
 
-Controller-only firmware is a committed build variant:
+The firmware is controller-only: the vendor Bluetooth controller with the
+Toit host (no Bluedroid, no NimBLE), and the BLE provider in the system
+container.
 
 ```sh
-make BLE_HOST=1 esp32      # build/esp32-ble-host/firmware.envelope
-make BLE_HOST=1 esp32s3    # build/esp32s3-ble-host/firmware.envelope
+make esp32      # build/esp32/firmware.envelope
+make esp32s3    # build/esp32s3/firmware.envelope
 ```
 
-It layers `toolchains/<chip>/sdkconfig.ble-host` (no Bluedroid, no NimBLE,
-controller only, BLE-only mode on the original ESP32) over the ordinary
-defaults. Containers must come from the same SDK build as the envelope
-(`build/host/sdk/bin/toit` after `make`); the firmware tool refuses a
-snapshot from another SDK version.
-
-Assemble and flash an application:
-
-```sh
-toit=build/host/sdk/bin/toit
-$toit compile -s -o /tmp/provider.snapshot examples/ble/experimental/advertising-provider.toit
-$toit compile -s -o /tmp/app.snapshot examples/ble/experimental/advertising-counter.toit
-cp build/esp32-ble-host/firmware.envelope /tmp/app.envelope
-$toit tool firmware -e /tmp/app.envelope container install provider /tmp/provider.snapshot
-$toit tool firmware -e /tmp/app.envelope container install app /tmp/app.snapshot
-$toit tool firmware -e /tmp/app.envelope flash --port /dev/serial/by-id/<board>
-stty -F /dev/serial/by-id/<board> 115200 raw; cat /dev/serial/by-id/<board>
-```
-
-Flashing the envelope rewrites all partitions including NVS; retained bonds on
-that board are lost. Use `toit tool firmware ... extract` and an app-only
-esptool write when bonds must survive.
+The C3 and C6 build the same way (`make esp32c3`, `make esp32c6`) but no
+board on the rig runs them.
 
 ## Software peers
 
@@ -156,15 +138,11 @@ a fresh RPA (`PRIVATE_CENTRAL COMPLETE`).
 
 ## Legacy pairing
 
-`tests/ble-hardware/legacy-bond.sh` flashes ESP32 Board2 with the default
-(NimBLE) firmware and `fixtures/nimble-legacy-bond-peer.toit`, a peripheral
-with bonding and Secure Connections off, then runs
-`legacy-bond-central.toit` on the Edimax dongle twice. The first run pairs
-with legacy Just Works, stores the bond and reads an encrypted
-characteristic; the second resumes the stored bond with the peer's EDIV and
-Rand, without pairing, and reads it again. Both print
-`LEGACY_BOND COMPLETE`. The default firmware comes from `make esp32`; pass
-another envelope as the first argument.
+Legacy pairing and bond resumption were verified on hardware against a
+NimBLE peripheral with Secure Connections off (2026-09-29); that check went
+with NimBLE. A legacy-only peer for the rig would be a Bumble peripheral on
+the second dongle; until then the software tests
+(`tests/ble-security-legacy-test.toit` and the SMP tests) cover it.
 
 ## Nightly run
 

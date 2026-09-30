@@ -17,8 +17,8 @@ $T compile -s -o "$C/peripheral-provider.snapshot" tests/ble-hardware/private-ga
 $T compile -s -o "$C/peripheral.snapshot" examples/ble/v2-peripheral.toit || exit 1
 $T compile -s -o "$C/central-provider.snapshot" tests/ble-hardware/private-resolving-provider.toit || exit 1
 $T compile -s -o "$C/central.snapshot" tests/ble-hardware/private-central.toit || exit 1
-cp build/esp32-ble-host/firmware.envelope "$C/peripheral.envelope"
-cp build/esp32s3-ble-host/firmware.envelope "$C/central.envelope"
+cp build/esp32/firmware.envelope "$C/peripheral.envelope"
+cp build/esp32s3/firmware.envelope "$C/central.envelope"
 $T tool firmware -e "$C/peripheral.envelope" container install ble-provider "$C/peripheral-provider.snapshot" || exit 1
 $T tool firmware -e "$C/peripheral.envelope" container install next "$C/peripheral.snapshot" || exit 1
 $T tool firmware -e "$C/central.envelope" container install ble-provider "$C/central-provider.snapshot" || exit 1

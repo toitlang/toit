@@ -9,10 +9,10 @@ cd "$(dirname "$0")/../.."
 T=build/host/sdk/bin/toit
 if [ "${NEXT_BOARD:-esp32}" = s3 ]; then
   port=/dev/serial/by-id/usb-1a86_USB_Single_Serial_544C020917-if00
-  firmware=build/esp32s3-ble-host/firmware.envelope
+  firmware=build/esp32s3/firmware.envelope
 else
   port=/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_7eb10aca7cfbea11919ff4375fbcde76-if00-port0
-  firmware=build/esp32-ble-host/firmware.envelope
+  firmware=build/esp32/firmware.envelope
 fi
 index=$(btmgmt info | awk '/^hci/{h=$1} /addr 08:BE:AC:2A:DA:C2/{sub(":","",h); print substr(h,4)}')
 [ -n "$index" ] || { echo "adapter 08:BE:AC:2A:DA:C2 not found"; exit 2; }

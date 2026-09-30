@@ -10,7 +10,7 @@ C=build/ble-resume-features-001; T=build/host/sdk/bin/toit; mkdir -p $C
 $T compile -s -o $C/provider.snapshot tests/ble-hardware/campaigns/bluez-resume/provider.toit
 $T compile -s -o $C/client.snapshot tests/ble-hardware/fixtures/service-central-values.toit
 $T compile -s -o $C/observer.snapshot tests/ble-hardware/linux-security-events.toit
-cp build/esp32-ble-host/firmware.envelope $C/application.envelope   # make BLE_HOST=1 esp32
+cp build/esp32/firmware.envelope $C/application.envelope   # make esp32
 $T tool firmware -e $C/application.envelope container install ble-provider $C/provider.snapshot
 $T tool firmware -e $C/application.envelope container install ble-client $C/client.snapshot
 # Fresh start: clear NVS on the board and the BlueZ bond for the test identity.
