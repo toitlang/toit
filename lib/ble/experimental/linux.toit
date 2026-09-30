@@ -5,6 +5,16 @@
 import .native as native
 
 /**
+The Linux transport: the host talks to a Bluetooth adapter through an HCI
+  user-channel socket.
+
+$LinuxTransport is the transport a provider's `open-transport` hook returns
+  on Linux, and what the application API's Linux entry point installs. The
+  adapter must be powered down first; the linux-management library does
+  that over the management socket.
+*/
+
+/**
 An exclusive Linux HCI user-channel transport.
 
 The selected adapter must be powered down before opening. The caller manages

@@ -7,6 +7,16 @@ import monitor
 import .transport show Transport
 import .timeouts as timeouts
 
+/**
+A client for the Linux Bluetooth management socket.
+
+$Client powers an adapter up or down and sets its privacy settings, which is
+  what a host must do before it can claim the adapter through a user-channel
+  transport (the linux library). $ControllerInfo is the snapshot it returns.
+  The application API's Linux entry point and the hardware tests use it; on
+  a device there is no equivalent.
+*/
+
 /** Linux management commands for configuring a test controller under BlueZ. */
 class Client:
   transport_/Transport

@@ -6,6 +6,16 @@ import .native as native
 import .transport as transport
 
 /**
+The ESP32 transport: the host's HCI packets go to the chip's own controller
+  through VHCI.
+
+$Esp32Transport is the transport a provider's `open-transport` hook returns
+  on a controller-only ESP32 firmware. It adds the vendor transmit power
+  control of $transport.TxPowerControl on top of the shared
+  $native.NativeTransport.
+*/
+
+/**
 An exclusive ESP32 VHCI controller transport.
 
 Requires firmware configured with the controller-only Bluetooth host option.

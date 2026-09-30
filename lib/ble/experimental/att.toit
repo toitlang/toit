@@ -11,6 +11,18 @@ import .signaling as signaling
 import .security-owner as security
 import .timeouts as timeouts
 
+/**
+The ATT client: requests, notifications and indications over one link.
+
+$Client claims one $central.Link's PDU stream and serializes requests on it
+  ($Client.request and the read and write procedures built on it, with
+  $AttributeError as the peer's refusal) while delivering the peer's
+  notifications and indications independently, as $Notification or through
+  a $Subscription. The gatt library's discovery procedures and the central
+  provider's GATT client operations build on it; $Client.attached is the
+  form that shares a link with a local GATT server.
+*/
+
 /** An ATT error response, retaining the failing request, handle, and status. */
 class AttributeError:
   request/int
@@ -104,14 +116,16 @@ class Subscription:
 /**
 An ATT client on the unenhanced fixed channel, initially using MTU 23.
 
-Serializes requests while receiving notifications independently (Core 6.3 Vol 3
-  Part F, 3.3.2). Owns the link's receive stream. Closing a live client or an
+Serializes requests, one outstanding at a time as the protocol requires,
+  while receiving notifications independently. Owns the link's receive
+  stream. Closing a live client or an
   ambiguous ATT failure aborts its link. Exclusive owners close as before;
   configured multi-link owners disconnect only the affected link.
   An ended link only closes this client, allowing the owner to reconnect.
   Discovery builds on $request.
 */
 class Client:
+  // Request flow control: Core 6.3 Vol 3 Part F, 3.3.2.
   pairing_/security.Owner?
   host_/central.Central
   link_/central.Link
@@ -155,7 +169,8 @@ class Client:
 
   /**
   A client on the bearer of an ATT server that owns the link's receive
-    stream (Core 6.3 Vol 3 Part F 3.2.11: one bearer serves both roles).
+    stream: one bearer serves both roles, so the server's reader hands
+    this client its PDUs.
 
   The owner hands every PDU for which $client-bound holds to $deliver_, and
     keeps the shared MTU in step: $follow-mtu_ after its own exchange,
@@ -164,6 +179,7 @@ class Client:
     unless a request is still waiting for its response.
   */
   constructor.attached .host_ .link_ --mtu-limit/int --mtu/int=23 --on-mtu/Lambda:
+    // One bearer for both roles: Core 6.3 Vol 3 Part F 3.2.11.
     pairing_ = null
     if not 23 <= mtu-limit <= 517 or mtu-limit > link_.receive-limit or not 23 <= mtu <= mtu-limit:
       throw "INVALID_ARGUMENT"
@@ -301,10 +317,11 @@ class Client:
 
   Uses Read Blob requests after a full first response. The peer can change its
     value between requests; this procedure does not provide a consistent snapshot
-    of a concurrently changing attribute (Core 6.3 Vol 3 Part F, 3.4.4.5).
+    of a concurrently changing attribute.
   */
   read-long handle/int --limit/int=512 --timeout/Duration=(Duration --s=30)
       --database-revision/int?=null -> ByteArray:
+    // Read Blob: Core 6.3 Vol 3 Part F, 3.4.4.5.
     if not 1 <= limit <= 512: throw "INVALID_ARGUMENT"
     return with-timeout timeout:
       mutex_.do:

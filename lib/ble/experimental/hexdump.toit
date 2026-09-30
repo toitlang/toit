@@ -7,6 +7,15 @@ import encoding.hex
 import .transport show Transport
 
 /**
+An HCI tracing wrapper that logs packets as text.
+
+$Hexdump wraps any $Transport and prints every packet crossing it. A provider
+  inserts it around its real transport when a serial log is the only way to
+  capture traffic from a board; the btsnoop library is the binary
+  alternative where a file can be written.
+*/
+
+/**
 Prints every packet crossing a $Transport as one text line.
 
 Intended for boards, where a serial log is the only channel: each line is

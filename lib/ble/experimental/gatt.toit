@@ -6,6 +6,19 @@ import io
 
 import .att as att
 
+/**
+GATT client procedures on top of the ATT client.
+
+$services, $included-services, $characteristics and $descriptors discover a
+  peer's database into $Service, $Characteristic, $IncludedService and
+  $Descriptor records that remember the $att.Client and database revision
+  they came from, so a stale record is rejected instead of acting on a
+  changed layout. $read, $write, $read-long, $write-long, $read-by-uuid and
+  $read-multiple are the value procedures, and $with-notifications,
+  $with-indications and $with-service-changed the scoped subscriptions. The
+  central provider's GATT client operations build on this library.
+*/
+
 // Discovered records retain a client and integer revision, not a global registry.
 // Unreachable records can therefore be collected without explicit deregistration.
 class DiscoveryRecord_:
@@ -74,11 +87,12 @@ Discovers primary services, with a bounded result of at most 512 entries.
 
 Results are connection-local observations, not a persistent cache. Rediscover
   after reconnect and after an applicable Service Changed indication. Callers
-  can use $with-service-changed for reader-side invalidation (Core 6.3 Vol 3
-  Part G 2.5). Checked helpers reject stale records; raw numeric ATT handles
-  remain the caller's responsibility.
+  can use $with-service-changed for reader-side invalidation. Checked helpers
+  reject stale records; raw numeric ATT handles remain the caller's
+  responsibility.
 */
 services client/att.Client -> List:
+  // Attribute caching and Service Changed: Core 6.3 Vol 3 Part G 2.5.
   revision := client.database-revision
   result := []
   start := 1
@@ -100,12 +114,13 @@ services client/att.Client -> List:
   return result
 
 /**
-Discovers the services $service includes (Vol 3 Part G 4.5.1).
+Discovers the services $service includes.
 
 128-bit included UUIDs are not in the declaration; each costs one read of the
   included service's declaration.
 */
 included-services client/att.Client service/Service -> List:
+  // Find Included Services: Core 6.3 Vol 3 Part G 4.5.1.
   service.check client
   revision := client.database-revision
   range_ service.start service.end
@@ -136,12 +151,13 @@ included-services client/att.Client service/Service -> List:
 
 /**
 Reads every attribute of type $uuid (little endian, 2 or 16 bytes) between
-  $start and $end (Read Using Characteristic UUID, Vol 3 Part G 4.8.2).
+  $start and $end with one Read By Type request per page.
 
 Returns [handle, value] pairs. Each value is at most MTU - 4 bytes; read a
   longer one by its handle.
 */
 read-by-uuid client/att.Client uuid/ByteArray --start/int=1 --end/int=0xffff -> List:
+  // Read Using Characteristic UUID: Core 6.3 Vol 3 Part G 4.8.2.
   if uuid.size != 2 and uuid.size != 16: throw "INVALID_ARGUMENT"
   range_ start end
   revision := client.database-revision
@@ -171,13 +187,16 @@ read-by-uuid client/att.Client uuid/ByteArray --start/int=1 --end/int=0xffff -> 
   return result
 
 /**
-Reads several attributes in one request (Read Multiple, Vol 3 Part G 4.8.4).
+Reads several attributes in one request.
 
-Without $variable the peer concatenates the values, so the caller must know
-  their sizes; returns the bytes. With $variable (Read Multiple Variable
-  Length, 4.8.5) returns the list of values. Both stop at MTU - 1 bytes.
+Without $variable the peer concatenates the values (Read Multiple), so the
+  caller must know their sizes; returns the bytes. With $variable (Read
+  Multiple Variable Length) returns the list of values. Both stop at
+  MTU - 1 bytes.
 */
 read-multiple client/att.Client handles/List --variable/bool=false -> any:
+  // Read Multiple and Read Multiple Variable Length: Core 6.3 Vol 3 Part G
+  // 4.8.4 and 4.8.5.
   if handles.size < 2: throw "INVALID_ARGUMENT"
   request := ByteArray 1 + 2 * handles.size
   request[0] = variable ? 0x20 : 0x0e

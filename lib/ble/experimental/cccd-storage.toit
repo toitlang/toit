@@ -9,6 +9,18 @@ import .bond show Candidate
 import .bond-storage show Records
 import .cccd-store as cccd
 
+/**
+Encrypted, per-bond persistence of client characteristic configuration.
+
+$Storage keeps one CCCD snapshot per bond slot in a $Records backend,
+  encrypted and authenticated against the slot, the bond's key material and
+  the database revision. $Storage.session hands the GATT servers a
+  $cccd.Store borrowed for one session, $Storage.migrate carries a slot's
+  configuration to a new database layout, and $Storage.remove clears a slot
+  when its bond is revoked. The bond registry owns the instance and calls it
+  on behalf of the provider.
+*/
+
 HEADER_ ::= #[0x54, 0x43, 0x43, 1]
 
 /**

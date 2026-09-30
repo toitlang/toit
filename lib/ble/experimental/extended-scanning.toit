@@ -7,7 +7,15 @@ import .advertising as advertising
 import .hci as hci
 import .scanning show Statistics
 
-/** Legacy advertisement discovery compatible with extended initiating commands. */
+/**
+Legacy advertisement discovery through the extended scanning commands.
+
+$scan is the counterpart of the scanning library's scan for controllers
+  where the legacy scan commands cannot be used alongside extended
+  initiating; it delivers the same $advertising.Report objects and
+  $Statistics. $reports-do decodes one Extended Advertising Report event,
+  keeping only the legacy PDUs in it.
+*/
 
 /**
 Scans legacy advertisements using extended commands, passive LE 1M and public addressing.
@@ -24,11 +32,11 @@ Calls the scoped $report block until it returns false. Only complete legacy PDUs
   events at the bounded queue. Returns the number of dropped events.
 
 All exits disable scanning; failed disable closes the controller. Use an outer
-  with-timeout for a finite discovery deadline. See Core 6.3 Vol 4 Part E,
-  sections 7.8.64, 7.8.65 and 7.7.65.13.
+  with-timeout for a finite discovery deadline.
 */
 scan controller/hci.Controller info/hci.Capabilities
     --queue-limit/int=32 --statistics/Statistics?=null [report] -> int:
+  // Commands and event: Core 6.3 Vol 4 Part E, 7.8.64, 7.8.65 and 7.7.65.13.
   if info.le-features[1] & 0x10 == 0 or info.commands[37] & 0x60 != 0x60:
     throw "HCI_EXTENDED_SCANNING_UNSUPPORTED"
   reports := controller.open-reports --limit=queue-limit

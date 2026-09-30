@@ -8,6 +8,18 @@ import .advertising as advertising
 import .connection as connection
 import .hci as hci
 
+/**
+Legacy advertisement discovery.
+
+$scan runs one scan on an $hci.Controller and delivers each
+  $advertising.Report to a scoped block until the block returns false or the
+  caller unwinds; the overload with an address policy rotates the local
+  random address at a fixed interval. $Statistics reports the dropped-event
+  count and whether scanning was disabled cleanly. The scanning provider's
+  scan sessions and the hardware tests use it; the extended-scanning library
+  is the variant for controllers that must use the extended commands.
+*/
+
 /** Receives the final HCI event-drop count, including on timeout/cancellation. */
 class Statistics:
   dropped-events/int := 0

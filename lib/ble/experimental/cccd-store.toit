@@ -3,6 +3,17 @@
 // be found in the lib/LICENSE file.
 
 /**
+The persistence boundary for a bonded peer's client characteristic
+  configuration.
+
+$Store is what the attribute server and the GATT server call to load and
+  save one peer's CCCDs and client features for one database revision. The
+  provider chooses and owns the implementation (the bond registry supplies
+  one backed by the cccd-storage library); the servers only borrow it for a
+  session's lifetime.
+*/
+
+/**
 Stores one bonded peer's CCCDs for one fixed database revision.
 
 Trusted provider code selects the peer, bond lifetime and database context.

@@ -8,6 +8,20 @@ import .cccd-store as cccd
 import .security-state show SecurityState
 import .timeouts as timeouts
 
+/**
+The local GATT database and the ATT server engine that serves it.
+
+$Database is the attribute table a provider builds once and seals; $Session
+  is one client's view of it, turning each ATT request PDU into a response
+  and keeping that client's MTU, subscriptions and caching state.
+  Application reads and writes reach the caller as $ReadRequest and
+  $WriteRequest through scoped blocks. $ConfigurationMigration carries saved
+  subscriptions across a layout change, with the $cccd.Store the provider
+  supplies. Nothing here touches a link: the gatt-server library binds a
+  $Session to one link's PDU stream, and the GATT provider builds the
+  database.
+*/
+
 /** A bounded GATT database with a static layout. UUIDs use Bluetooth wire byte order. */
 class Database:
   attributes_/List := []
@@ -30,8 +44,8 @@ class Database:
   */
   static MAX-SUBSCRIBABLE ::= 255
 
-  /** Client Supported Features bit for Robust Caching (Core 6.3 Vol 3 Part G 7.2). */
-  static ROBUST-CACHING ::= 1
+  /** Client Supported Features bit for Robust Caching. */
+  static ROBUST-CACHING ::= 1  // Core 6.3 Vol 3 Part G 7.2.
 
   /**
   Creates an empty database of at most $attribute-limit attributes (64 by
@@ -50,19 +64,22 @@ class Database:
 
   Layouts are sealed during connections, but firmware upgrades may change them.
     Service Changed therefore exists by default. Set $immutable-layout only if
-    the layout cannot change for the usable lifetime of the device (Core 6.3
-    Vol 3 Part G 2.5 and 7.1). Bonded CCCDs require a trusted session store;
-    explicit layout migration uses ConfigurationMigration.
+    the layout cannot change for the usable lifetime of the device: without
+    Service Changed a bonded client may cache the layout indefinitely and
+    would never learn of a change. Bonded CCCDs require a trusted session
+    store; explicit layout migration uses $ConfigurationMigration.
 
   With $caching the GATT service also has Client Supported Features and
-    Database Hash, the Robust Caching pair (Core 6.3 Vol 3 Part G 2.5.2.1,
-    7.2 and 7.3): clients that cache the layout check the hash, and a bonded
+    Database Hash, the Robust Caching pair: clients that cache the layout
+    check the hash, and a bonded
     client that enabled Robust Caching is told with Database Out Of Sync
     (0x12) when the layout changed since its last connection. Their four
     attributes come on top of $attribute-limit, up to $MAX-ATTRIBUTES.
   */
   constructor.with-defaults --name/string="Toit" --value-limit/int=20 --mtu-limit/int=23
       --attribute-limit/int=64 --immutable-layout/bool=false --caching/bool=false:
+    // Service Changed and when it may be absent: Core 6.3 Vol 3 Part G 2.5 and
+    // 7.1. Robust Caching: 2.5.2.1, 7.2 and 7.3.
     if not 1 <= value-limit <= 512: throw "INVALID_ARGUMENT"
     if not 23 <= mtu-limit <= 517: throw "INVALID_ARGUMENT"
     if not 1 <= attribute-limit <= MAX-ATTRIBUTES: throw "INVALID_ARGUMENT"
@@ -102,14 +119,15 @@ class Database:
   database-hash-handle -> int?: return database-hash_ == 0 ? null : database-hash_
 
   /**
-  Returns the Database Hash of the layout (Core 6.3 Vol 3 Part G 7.3.1):
-    AES-CMAC with a zero key over the handle, type and value of every
+  Returns the Database Hash of the layout: AES-CMAC with a zero key over
+    the handle, type and value of every
     service, include, characteristic declaration and extended properties
     descriptor, and the handle and type of every other GATT-defined
     descriptor. Characteristic values do not take part. The result is in
     wire order (least significant byte first).
   */
   database-hash -> ByteArray:
+    // Core 6.3 Vol 3 Part G 7.3.1.
     message := io.Buffer
     attributes_.do: | attribute/Attribute_ |
       uuid := attribute.uuid
@@ -141,13 +159,14 @@ class Database:
 
   /**
   Includes the service declared at $service in the latest service and
-    returns the include declaration's handle (Core 6.3 Vol 3 Part G 3.2).
+    returns the include declaration's handle.
 
   Includes come directly after their service's declaration, before its
     characteristics. The included service must be an earlier one, so its
     handle range is final.
   */
   include-service service/int -> int:
+    // Include declaration: Core 6.3 Vol 3 Part G 3.2.
     check-building_ 1
     if service_ == 0 or characteristic_ != 0: throw "INVALID_ARGUMENT"
     included := attribute_ service
@@ -385,10 +404,12 @@ The explicit mapping uses old CCCD handles as keys and new CCCD handles as
   must retain their UUID and notification/indication properties; the provider
   asserts their semantic identity, including when duplicate UUIDs exist.
   New characteristics start disabled. Service Changed is mapped automatically
-  and must retain its handle while bonds exist (Core 6.3 Vol 3 Part G 7.1).
-  Successful construction seals both layouts. No live database mutation occurs.
+  and must retain its handle while bonds exist, since a bonded client keeps
+  the handle it subscribed to. Successful construction seals both layouts.
+  No live database mutation occurs.
 */
 class ConfigurationMigration:
+  // Service Changed across bonds: Core 6.3 Vol 3 Part G 7.1.
   before_/Database
   after_/Database
   mapping_/Map
@@ -511,9 +532,9 @@ An ATT server session with independent MTU and notification configuration.
 Processes complete ATT PDUs, returning a response or null for commands. This
   initial engine has retained values, scoped read/write validation, explicit security requirements, and
   no transport dependency.
-  Core 6.3 Vol 3 Part F sections 3.4.2 through 3.4.5 define the wire procedures.
 */
 class Session:
+  // Wire procedures: Core 6.3 Vol 3 Part F sections 3.4.2 through 3.4.5.
   database_/Database
   security_/SecurityState?
   cccd-store_/cccd.Store?
@@ -559,10 +580,11 @@ class Session:
 
   /**
   Adopts the bearer's MTU after an exchange this server did not answer:
-    the one a client on the same bearer started (Core 6.3 Vol 3 Part F
-    3.2.8: one MTU per bearer, for both roles).
+    the one a client on the same bearer started. A bearer has one MTU, for
+    both roles, so the server must follow the client's exchange.
   */
   adopt-mtu mtu/int -> none:
+    // One MTU per bearer: Core 6.3 Vol 3 Part F 3.2.8.
     check-open_
     if not 23 <= mtu <= 517: throw "INVALID_ARGUMENT"
     if not pending-mtu_: mtu_ = mtu
@@ -591,18 +613,19 @@ class Session:
   /** Returns the fixed Service Changed handle, or null when absent. */
   service-changed-handle -> int?: return database_.service-changed-handle
 
-  /** The client's supported features (Core 6.3 Vol 3 Part G 7.2), restored for a bond. */
+  /** The client's supported features, restored for a bond. */
   client-features -> int: return client-features_
 
   /**
-  Whether the client is change-unaware (Core 6.3 Vol 3 Part G 2.5.2.1): it
-    enabled Robust Caching and has not seen a layout change yet. Its
+  Whether the client is change-unaware: it enabled Robust Caching and has
+    not seen a layout change yet. Its
     commands are ignored, and its first request gets Database Out Of Sync.
     It becomes change-aware when it confirms the Service Changed
     indication, or with its next request after that error or after reading
     the Database Hash.
   */
   change-unaware -> bool:
+    // Core 6.3 Vol 3 Part G 2.5.2.1.
     return service-changed-pending_ and client-features_ & Database.ROBUST-CACHING != 0 and
         security_ != null and security_.paired and security_.encrypted
 

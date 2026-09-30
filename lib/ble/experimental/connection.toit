@@ -6,8 +6,21 @@ import io
 
 import .hci as hci
 
-/** Encodes legacy LE connection parameters (Core 6.3, 7.8.12). */
+/**
+HCI encoders and decoders for the lifetime of one connection.
+
+The link owner's procedures use them: $create-parameters and
+  $decode-completion (with $Completion) for connection creation and accept,
+  $decode-disconnection and $disconnect-parameters for the end of a link,
+  and the parameter update, data length, PHY and remote features commands
+  and events in between ($Update, $DataLength, $Phy, $Features). Decoders
+  return null for unrelated events and throw for malformed ones; encoders
+  validate their arguments. Nothing here sends or waits.
+*/
+
+/** Encodes legacy LE connection parameters. */
 create-parameters address/ByteArray --address-type/int --own-address-type/int=0 -> ByteArray:
+  // LE Create Connection: Core 6.3, Vol 4 Part E, 7.8.12.
   // Address types 0 and 1 are on-air addresses; 2 and 3 are the identity of a
   // peer in the controller's resolving list (resolving-list.toit), which the
   // controller finds by its current resolvable private address.
@@ -76,13 +89,14 @@ decode-completion packet/ByteArray --role/int=0 -> Completion?:
   return Completion status handle packet[8] packet[9..15] interval latency timeout --role=role
 
 /**
-Decodes LE Enhanced Connection Complete v1 (Vol 4 Part E 7.7.65.10).
+Decodes LE Enhanced Connection Complete v1.
 
 A resolved peer (address type 2 or 3) reports its identity; its on-air
   address is the peer resolvable private address, or the identity itself
   when the peer used that on air.
 */
 decode-enhanced-completion packet/ByteArray --role/int=0 -> Completion?:
+  // Core 6.3, Vol 4 Part E, 7.7.65.10.
   if role != 0 and role != 1: throw "INVALID_ARGUMENT"
   hci.validate-packet packet
   if packet[0] != 4 or packet[1] != 0x3e or packet.size < 4 or packet[3] != 0x0a: return null
@@ -120,8 +134,9 @@ class Disconnection:
 
   constructor .status .handle .reason:
 
-/** Decodes Disconnection Complete (Core 6.3, Vol 4 Part E, 7.7.5). */
+/** Decodes Disconnection Complete; null means an unrelated event. */
 decode-disconnection packet/ByteArray -> Disconnection?:
+  // Core 6.3, Vol 4 Part E, 7.7.5.
   hci.validate-packet packet
   if packet[0] != 4 or packet[1] != 5: return null
   if packet.size != 7: throw "HCI_MALFORMED_CONNECTION_EVENT"
@@ -147,8 +162,9 @@ class Update:
 
   constructor .status .handle .interval .latency .supervision-timeout:
 
-/** Decodes LE Connection Update Complete (Vol 4 Part E, 7.7.65.3). */
+/** Decodes LE Connection Update Complete; null means an unrelated event. */
 decode-update packet/ByteArray -> Update?:
+  // Core 6.3, Vol 4 Part E, 7.7.65.3.
   hci.validate-packet packet
   if packet[0] != 4 or packet[1] != 0x3e: return null
   if packet.size < 4: throw "HCI_MALFORMED_CONNECTION_EVENT"
@@ -165,9 +181,10 @@ decode-update packet/ByteArray -> Update?:
     throw "HCI_MALFORMED_CONNECTION_EVENT"
   return Update 0 handle interval latency timeout
 
-/** Encodes LE Connection Update (Vol 4 Part E, 7.8.18). */
+/** Encodes LE Connection Update. */
 update-parameters handle/int --interval-min/int --interval-max/int
     --latency/int=0 --supervision-timeout/int=400 -> ByteArray:
+  // Core 6.3, Vol 4 Part E, 7.8.18.
   if not 0 <= handle <= 0x0eff or not 6 <= interval-min <= interval-max <= 3200 or
       not 0 <= latency <= 499 or not 10 <= supervision-timeout <= 3200 or
       supervision-timeout * 4 <= (latency + 1) * interval-max:
@@ -209,8 +226,9 @@ class DataLength:
 
   constructor .handle .tx-octets .tx-time .rx-octets .rx-time:
 
-/** Decodes LE Data Length Change (Vol 4 Part E, 7.7.65.7). */
+/** Decodes LE Data Length Change; null means an unrelated event. */
 decode-data-length packet/ByteArray -> DataLength?:
+  // Core 6.3, Vol 4 Part E, 7.7.65.7.
   hci.validate-packet packet
   if packet[0] != 4 or packet[1] != 0x3e: return null
   if packet.size < 4: throw "HCI_MALFORMED_CONNECTION_EVENT"
@@ -239,12 +257,13 @@ class Phy:
   constructor .handle .tx .rx:
 
 /**
-Encodes LE Set PHY with preference masks (Vol 4 Part E, 7.8.49).
+Encodes LE Set PHY with preference masks.
 
 Bit 0 is 1M, bit 1 is 2M and bit 2 is Coded in both $tx and $rx; each needs
   at least one bit. Coded PHY options are left to the controller.
 */
 phy-parameters handle/int --tx/int --rx/int -> ByteArray:
+  // Core 6.3, Vol 4 Part E, 7.8.49.
   if not 0 <= handle <= 0x0eff or not 1 <= tx <= 7 or not 1 <= rx <= 7: throw "INVALID_ARGUMENT"
   result := ByteArray 7
   io.LITTLE-ENDIAN.put-uint16 result 0 handle
@@ -266,8 +285,9 @@ decode-phy-update-failure packet/ByteArray -> List?:
   if handle > 0x0eff: throw "HCI_MALFORMED_CONNECTION_EVENT"
   return [handle, packet[4]]
 
-/** Encodes LE Set PHY asking for 2M in both directions (Vol 4 Part E, 7.8.49). */
+/** Encodes LE Set PHY asking for 2M in both directions. */
 phy-2m-parameters handle/int -> ByteArray:
+  // Core 6.3, Vol 4 Part E, 7.8.49.
   if not 0 <= handle <= 0x0eff: throw "INVALID_ARGUMENT"
   result := ByteArray 7
   io.LITTLE-ENDIAN.put-uint16 result 0 handle
@@ -275,8 +295,9 @@ phy-2m-parameters handle/int -> ByteArray:
   result[4] = 0x02
   return result
 
-/** Decodes LE PHY Update Complete (Vol 4 Part E, 7.7.65.12). */
+/** Decodes LE PHY Update Complete; null means an unrelated event. */
 decode-phy-update packet/ByteArray -> Phy?:
+  // Core 6.3, Vol 4 Part E, 7.7.65.12.
   hci.validate-packet packet
   if packet[0] != 4 or packet[1] != 0x3e: return null
   if packet.size < 4: throw "HCI_MALFORMED_CONNECTION_EVENT"
@@ -296,15 +317,17 @@ class Features:
 
   constructor .status .handle .bytes:
 
-/** Encodes LE Read Remote Features (Vol 4 Part E, 7.8.21). */
+/** Encodes LE Read Remote Features. */
 features-parameters handle/int -> ByteArray:
+  // Core 6.3, Vol 4 Part E, 7.8.21.
   if not 0 <= handle <= 0x0eff: throw "INVALID_ARGUMENT"
   result := ByteArray 2
   io.LITTLE-ENDIAN.put-uint16 result 0 handle
   return result
 
-/** Decodes LE Read Remote Features Complete (Vol 4 Part E, 7.7.65.4). */
+/** Decodes LE Read Remote Features Complete; null means an unrelated event. */
 decode-features packet/ByteArray -> Features?:
+  // Core 6.3, Vol 4 Part E, 7.7.65.4.
   hci.validate-packet packet
   if packet[0] != 4 or packet[1] != 0x3e: return null
   if packet.size < 4: throw "HCI_MALFORMED_CONNECTION_EVENT"

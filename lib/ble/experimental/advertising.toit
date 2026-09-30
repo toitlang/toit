@@ -4,6 +4,17 @@
 
 import .hci as hci
 
+/**
+Legacy advertising reports and their AD data.
+
+$reports-do decodes one LE Advertising Report event into $Report objects
+  that own their bytes, so a scan loop can keep a report after the next
+  receive. $advertises-service and $has-limited-discoverable-flags inspect
+  the AD data without allocating decoded structures; $Report wraps them for
+  a single report. The scanning libraries and the scanning provider build
+  their discovery loops on these.
+*/
+
 /** A legacy advertising report backed by managed packet storage. */
 class Report:
   event-type/int
@@ -50,9 +61,10 @@ Checks complete and incomplete service UUID lists in advertising $data.
 Accepts a 2-, 4-, or 16-byte little-endian $uuid, including Bluetooth base-UUID
   equivalence. Malformed advertising data returns false; it is untrusted peer
   data and does not justify closing the controller. Service-data and solicitation
-  fields are not service UUID lists. See CSS v15, Part A, section 1.1.
+  fields are not service UUID lists.
 */
 advertises-service data/ByteArray uuid/ByteArray -> bool:
+  // AD types and the service UUID list formats: CSS v15, Part A, section 1.1.
   target := expanded-uuid_ uuid
   short-target/bool? := uuid.size != 16 ? true : null
   offset := 0
@@ -107,10 +119,9 @@ Validates the whole event before delivering reports. Returns false for other
   type is part of the identity. Unknown event/address types are preserved.
   Unavailable or reserved RSSI values become null. Retained reports keep their
   managed bytes alive and are not invalidated by the next receive.
-
-See Core 6.3, Vol 4 Part E, sections 5.2 and 7.7.65.2.
 */
 reports-do packet/ByteArray [report] -> bool:
+  // Event format: Core 6.3, Vol 4 Part E, sections 5.2 and 7.7.65.2.
   hci.validate-packet packet
   if packet[0] != 4 or packet[1] != 0x3e: return false
   if packet.size < 4: throw "HCI_MALFORMED_ADVERTISING_REPORT"

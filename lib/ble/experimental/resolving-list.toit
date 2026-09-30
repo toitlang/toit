@@ -2,9 +2,17 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
+import .hci as hci
+
 /**
-Controller-based address resolution (Core 6.3 Vol 6 Part B 6.5, Vol 4 Part E
-  7.8.38 to 7.8.45).
+Controller-based address resolution.
+
+$configure loads the bonded peers' identities ($Entry) into the controller's
+  resolving list and enables resolution; $supported tells whether the
+  controller can do it. A provider with privacy calls it on a freshly
+  initialized controller so that reports and connection events name peers by
+  identity; the application API's Linux entry point does the same.
 
 The controller's resolving list maps bonded peers' identity addresses to
   their IRKs. With resolution enabled the controller resolves the peers'
@@ -15,8 +23,8 @@ The controller's resolving list maps bonded peers' identity addresses to
   entry is zero, so the controller never generates local addresses.
 */
 
-import io
-import .hci as hci
+// Resolving list and address resolution: Core 6.3 Vol 6 Part B 6.5 and
+// Vol 4 Part E 7.8.38 to 7.8.45.
 
 /** One bonded peer: its identity address (HCI order) and IRK (most significant byte first). */
 class Entry:

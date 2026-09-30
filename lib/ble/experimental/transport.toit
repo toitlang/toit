@@ -3,6 +3,17 @@
 // found in the lib/LICENSE file.
 
 /**
+The interface between the host and a controller.
+
+$Transport carries complete HCI packets (packet-type byte included) in both
+  directions; the controller engine owns one and the native Linux and ESP32
+  transports, the in-memory test transport and the btsnoop and hexdump
+  tracing wrappers implement it. $TxPowerControl is the optional extension a
+  transport implements when its controller can set transmit power through a
+  vendor interface.
+*/
+
+/**
 A transport whose controller has vendor transmit power control.
 
 HCI has no command to set the transmit power of legacy advertising or of

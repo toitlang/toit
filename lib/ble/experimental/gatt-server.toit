@@ -13,6 +13,19 @@ import .signaling as signaling
 import .security-owner as security
 import .timeouts as timeouts
 
+/**
+The GATT server on one link.
+
+$Server binds an attribute-server session to one $central.Link: it claims
+  the link's PDU stream, runs the receive task that serves each request
+  through the scoped blocks of $Server.serve and its variants, sends
+  $Server.notify and $Server.indicate (an $Indication can be awaited), and
+  routes the link's signaling and pairing PDUs to the link owner and the
+  pairing code. $Server.client is the ATT
+  client that shares the bearer for the peripheral's own requests. The GATT
+  provider creates one per peripheral session.
+*/
+
 /** A submitted indication whose protocol confirmation can be awaited. */
 class Indication:
   completed_/monitor.Latch ::= monitor.Latch

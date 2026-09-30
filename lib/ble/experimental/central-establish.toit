@@ -14,6 +14,21 @@ import .central show Central
 import .timeouts as timeouts
 
 /**
+The connection-establishment part of the link owner.
+
+$LinkEstablishment_ is one of the three mixins that make up $Central, split
+  out by concern: $LinkEstablishment_.connect creates an outgoing connection
+  and $LinkEstablishment_.accept advertises and waits for an incoming one,
+  both with cancellation and cleanup that settle the controller commands
+  they issued. The connection command and event
+  hooks ($LinkEstablishment_.connection-opcode,
+  $LinkEstablishment_.encode-connection,
+  $LinkEstablishment_.decode-connection-event) are what the extended-central
+  library overrides. Callers use these through $Central; this library is
+  not imported on its own.
+*/
+
+/**
 Connection establishment of a link owner ($Central): connect, accept and
   the advertising that accept runs.
 

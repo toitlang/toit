@@ -2,21 +2,31 @@
 // Use of this source code is governed by an MIT-style license that can
 // be found in the lib/LICENSE file.
 
-/**
-Resolvable private address arithmetic (Core 6.3 Vol 3 Part H 2.2.2 and Vol 6 Part B 1.3.2).
+import crypto
+import crypto.aes show AesEcb
+import crypto.compare show constant-time-equals
 
-IRKs and prand use most-significant-octet-first order, like the specification's
-  cryptographic vectors. Generated and resolved addresses use six-byte HCI wire
-  order, least significant octet first. Results own their managed storage.
+/**
+Resolvable private address arithmetic.
+
+$generate makes a fresh resolvable private address from an identity resolving
+  key (IRK), $resolves checks whether an address was made with a given IRK,
+  and $ah and $from-prand expose the hash and the deterministic construction
+  for tests. The advertising provider uses it to rotate the local address and
+  the pairing code to recognize bonded peers that rotate theirs.
+
+IRKs and prand use most-significant-octet-first order, the order in which
+  the cryptographic test vectors are written. Generated and resolved
+  addresses use six-byte HCI wire order, least significant octet first.
+  Results own their managed storage.
 
 Resolution is a 24-bit hash match, not authentication or unique identity proof.
   This module does not store keys, rotate controller addresses, or enable privacy
   in scanning, advertising, connection creation, or pairing.
 */
 
-import crypto
-import crypto.aes show AesEcb
-import crypto.compare show constant-time-equals
+// The ah function and the address layout: Core 6.3 Vol 3 Part H 2.2.2 and
+// Vol 6 Part B 1.3.2.
 
 /** Computes the three-byte ah hash, in most-significant-octet-first order. */
 ah irk/ByteArray prand/ByteArray -> ByteArray:

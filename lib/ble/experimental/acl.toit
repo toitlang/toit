@@ -7,6 +7,17 @@ import monitor
 
 import .hci as hci
 
+/**
+ACL data between the link owner and the controller.
+
+$ControllerCredits is the controller-wide transmit packet budget with one
+  $Credits account per connection lifetime; $completed-do feeds it the
+  controller's Number Of Completed Packets events. $fragments-do splits one
+  L2CAP PDU into ACL packets for sending and $Reassembler rebuilds a $Packet
+  from the received ones. The link owner (central) and each link use these;
+  nothing above the link sees ACL fragments.
+*/
+
 /** A complete basic L2CAP PDU payload in managed storage. */
 class Packet:
   channel/int
@@ -131,11 +142,13 @@ class Credits:
   /**
   Releases this account on Disconnection Complete or controller shutdown.
 
-  Disconnection releases outstanding buffers without a Completed Packets event
-    (Core 6.3 Vol 4 Part E 4.3). Old accounts cannot spend a replacement link's
-    credits, even if the controller reuses its numeric handle.
+  Disconnection releases outstanding buffers without a Completed Packets event.
+    Old accounts cannot spend a replacement link's credits, even if the
+    controller reuses its numeric handle.
   */
   fail error -> none:
+    // The controller flushes the link's buffers on disconnect: Core 6.3 Vol 4
+    // Part E 4.3.
     if not error: throw "INVALID_ARGUMENT"
     pool_.release this error
 
@@ -161,8 +174,9 @@ monitor Inbox:
     error_ = error
     queue_.clear
 
-/** Decodes interleaved completed-packet counts (Core 6.3 Vol 4 Part E, 7.7.19). */
+/** Decodes a Number Of Completed Packets event's per-handle counts; false for other events. */
 completed-do packet/ByteArray [completed] -> bool:
+  // Core 6.3 Vol 4 Part E, 7.7.19.
   hci.validate-packet packet
   if packet[0] != 4 or packet[1] != 0x13: return false
   if packet.size < 4 or packet.size != 4 + packet[3] * 4:
@@ -182,9 +196,10 @@ Fragments one basic L2CAP PDU into host-to-controller LE ACL packets.
 Calls the scoped $send block in wire order. The caller must serialize whole PDUs
   on a connection and acquire one controller credit per fragment before sending.
   All emitted arrays are owned managed storage. The $limit is the controller's
-  ACL data length, excluding its HCI header. See Core 6.3 Vol 4 Part E, 5.4.2.
+  ACL data length, excluding its HCI header.
 */
 fragments-do handle/int channel/int payload/ByteArray --limit/int [send] -> none:
+  // ACL packet format and fragmentation flags: Core 6.3 Vol 4 Part E, 5.4.2.
   if not 0 <= handle <= 0x0eff or not 1 <= channel <= 0xffff or
       not 1 <= limit <= 1024 or payload.size > 1024:
     throw "INVALID_ARGUMENT"
@@ -221,10 +236,12 @@ Reassembles one connection's controller-to-host LE ACL packets.
 
 Limits allocation using the announced L2CAP length, even when its header spans
   fragments. A malformed sequence resets partial storage and throws an explicit
-  error. The owner must report the resulting loss of channel reliability (Core
-  6.3 Vol 3 Part A, 7.2.2). Use a fresh instance for each connection lifetime.
+  error. The owner must report the resulting loss of channel reliability, as
+  the channel has no way to resynchronize. Use a fresh instance for each
+  connection lifetime.
 */
 class Reassembler:
+  // Reassembly and the loss of reliability on error: Core 6.3 Vol 3 Part A, 7.2.2.
   handle_/int
   limit_/int
   header_/ByteArray ::= ByteArray 4
