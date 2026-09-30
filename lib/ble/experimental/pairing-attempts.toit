@@ -5,6 +5,17 @@
 import monitor
 
 /**
+Rate limiting of repeated pairing attempts by the same peer.
+
+$Attempts keeps a bounded history of peer identities and their recent
+  pairing failures, and refuses or delays a new attempt while a peer is
+  penalized. A provider creates one and shares it among all its
+  `security.Pairing` objects (their `--attempts` option), which run each
+  exchange through $Attempts.with-attempt so that failures are charged
+  across connections, not only within one.
+*/
+
+/**
 Bounds repeated pairing attempts across connection lifetimes in one provider.
 
 Owns copies of seven-byte typed peer identities. Trusted callers must resolve
@@ -16,8 +27,8 @@ Failures delay the next attempt by the minimum, doubling up to the maximum. Afte
   each quiet decay period the penalty halves, eventually reaching zero. Decay
   must be at least the maximum delay; it never shortens a running refusal period.
   Successful attempts do not erase earlier failures. Defaults are one second,
-  sixty seconds and two minutes. Core Vol 3, Part H, 2.3.6 leaves these choices
-  to the implementation. The action uses a scoped block and no extra task.
+  sixty seconds and two minutes; the intervals are an implementation choice,
+  not a protocol requirement. The action uses a scoped block and no extra task.
 */
 class Attempts:
   capacity_/int
@@ -27,6 +38,8 @@ class Attempts:
   entries_/List := []
   mutex_/monitor.Mutex ::= monitor.Mutex
 
+  // Core Vol 3, Part H, 2.3.6 (repeated attempts) leaves the intervals to the
+  // implementation.
   constructor --capacity/int=32 --minimum/Duration=(Duration --s=1)
       --maximum/Duration=(Duration --s=60) --decay/Duration=(Duration --s=120):
     if not 1 <= capacity <= 255 or not 0 < minimum.in-us <= maximum.in-us <= decay.in-us:

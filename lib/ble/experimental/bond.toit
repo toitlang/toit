@@ -6,6 +6,18 @@ import .smp-identity show Identity
 import .smp-legacy show LegacyKey
 
 /**
+The record of one bond, as produced by pairing and kept by storage.
+
+$Candidate holds the long term key, both identities ($Identity) and the
+  authentication flag of a completed pairing, plus the distributed
+  $LegacyKey pair for a legacy bond. The pairing owner (`security`) produces
+  it, `bond-storage` seals it through $Candidate.encode and
+  $Candidate.decode, and `bond-resume` installs its key on a new
+  connection. It is data: holding one does not mean the bond is stored or
+  that the peer kept its copy.
+*/
+
+/**
 Owned candidate material for a 128-bit LE Secure Connections bond.
 
 Contains secrets. Encoding is a record format, not encryption or protected

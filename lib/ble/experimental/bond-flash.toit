@@ -7,6 +7,16 @@ import system.services show ServiceResourceProxy
 import .bond-storage show Records
 
 /**
+The flash backend for bond records on a device.
+
+$FlashRecords implements $Records over a raw flash bucket of the storage
+  service, giving the bond stack (`bond-storage`, `bond-table`, and
+  `bond-revocation` around it) its durable byte store. A provider creates
+  one per reserved namespace and hands it to the table; nothing else may
+  use that namespace.
+*/
+
+/**
 Raw flash-bucket adapter for protected candidate storage.
 
 Uses the storage service's bytes API directly: the general Bucket wrapper

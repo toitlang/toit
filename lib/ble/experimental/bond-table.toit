@@ -8,6 +8,19 @@ import .bond-info show BondInfo
 import .bond-storage show Records Storage
 
 /**
+A slot table of stored bonds for a trusted provider.
+
+$Table numbers the bonds of one $Records backend and $Storage key from
+  zero to its capacity: $Table.add takes the first free slot, $Table.load,
+  $Table.save and $Table.remove address one slot. $Table.snapshot preloads
+  every record into a $Snapshot, whose $Snapshot.find selects the bond of a
+  connection by its addresses without storage IO and whose $Snapshot.bonds
+  lists $BondInfo metadata; an $Entry guards one candidate until the next
+  mutation invalidates the snapshot. `bond-registry` owns a table and adds
+  admission and live-owner revocation on top.
+*/
+
+/**
 A bounded table of protected bond candidates for a trusted provider.
 
 Owns the backend after successful construction. Requires an exclusive namespace

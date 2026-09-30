@@ -7,6 +7,18 @@ import monitor
 import .bond show Candidate
 import .bond-protection show Protection
 
+/**
+Protected storage of bond candidates in a raw record backend.
+
+$Records is the backend interface: a namespaced byte store with read,
+  write and remove (`bond-flash` implements it on device flash,
+  `bond-revocation` wraps one with deletion markers). $Storage seals each
+  $Candidate with $Protection before it reaches the backend and verifies
+  every write and delete by reading back. `bond-table` builds its slot
+  table on $Storage; providers normally use that table rather than this
+  library directly.
+*/
+
 /** Raw record backend. Successful writes/removes must satisfy its durability policy. */
 interface Records:
   /** Returns a stable namespace, distinct from other stores using the same key. */

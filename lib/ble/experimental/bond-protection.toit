@@ -6,6 +6,17 @@ import crypto
 import crypto.aes
 import .bond show Candidate
 
+/**
+Sealing of bond records for storage in an untrusted byte store.
+
+$Protection encrypts and authenticates a $Candidate with AES-GCM under a
+  caller-provisioned 32-byte key ($Protection.seal), binding each record to
+  its storage namespace and slot, and only returns a decoded candidate after
+  the whole record has been authenticated ($Protection.open). `bond-storage`
+  uses it for every record it writes and reads; the key comes from the
+  deployment, for example `storage-key`.
+*/
+
 HEADER_ ::= #[0x54, 0x42, 0x53, 1]
 
 /**

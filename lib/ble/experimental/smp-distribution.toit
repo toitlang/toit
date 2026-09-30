@@ -8,7 +8,18 @@ import .security-state show SecurityState
 import .smp-features show PairingError
 
 /**
-Orders a negotiated SC identity exchange (Core 6.3 Vol 3 Part H 3.6.1).
+The key distribution phase that follows a bonding pairing.
+
+$Exchange orders the PDUs both sides send once the link is encrypted: the
+  legacy long term keys (`smp-legacy`) and the identities (`smp-identity`),
+  peripheral first, in the directions the pairing negotiated. $Exchange.start
+  and $Exchange.receive return the PDUs to send next; $Exchange.peer-identity
+  and $Exchange.peer-legacy-key expose what the peer distributed. The
+  pairing owner (`security.Pairing`) drives it and sends the packets.
+*/
+
+/**
+Orders a negotiated identity and key exchange between the two sides.
 
 The peripheral issues its identity first. The central waits for that identity
   before issuing its own, unless no peripheral identity was negotiated. Legacy

@@ -14,6 +14,22 @@ import .cccd-storage as configuration
 import .cccd-store as cccd
 
 /**
+Bond admission for a trusted provider: which connections get which stored bond.
+
+$Registry owns a $Table (and optionally the protected CCCD storage) and is
+  the one place that creates security owners from it: $Registry.resume
+  returns a $Resume owner for a connection whose peer is bonded, and
+  $Registry.bond wraps a fresh $Pairing in a $Bonding owner that persists
+  the resulting $Candidate before it grants encrypted access.
+  $Registry.remove revokes a slot, closing its live owners first;
+  $Registry.bonds and $Registry.inventory report metadata, and
+  $Registry.cccd-store selects a bonded peer's CCCD store. A provider that
+  keeps bonds creates one registry at startup and uses it from its
+  `create-security-owner` hook; the bond administration service
+  (`service/bond-admin-provider`) lists and removes bonds through it.
+*/
+
+/**
 Coordinates trusted-provider bond admission and live security owners.
 
 Owns the table after successful construction. All subsequent table mutations
