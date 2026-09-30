@@ -28,6 +28,7 @@ namespace toit {
   fn(WifiIpEvents)                      \
   fn(EthernetEvents)                    \
   fn(EthernetIpEvents)                  \
+  fn(PioResource)                       \
   fn(SpiDevice)                         \
   fn(SpiTargetResource)                 \
   fn(SpiBufferTargetResource)           \
@@ -95,6 +96,7 @@ namespace toit {
   fn(BleDescriptorResource)             \
 
 #define RESOURCE_GROUP_CLASSES_DO(fn)   \
+  fn(PioResourceGroup)                  \
   fn(SimpleResourceGroup)               \
   fn(AdcResourceGroup)                  \
   fn(DacResourceGroup)                  \
