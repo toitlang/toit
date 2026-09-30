@@ -3,7 +3,6 @@
 // found in the lib/LICENSE file.
 
 import io
-import system
 
 import .ble
 import .remote show RemoteCharacteristic  // For Toitdoc.
@@ -14,16 +13,15 @@ The peripheral side of the `ble` package.
 $Peripheral, from $Adapter.peripheral, publishes this device's
   $LocalService, $LocalCharacteristic and $LocalDescriptor attributes to
   connected centrals and advertises them. Applications reach these classes
-  through `import ble`; the native and the Toit host backends subclass them.
+  through `import ble`; the Toit host backend (`ble.host`) subclasses them.
 */
 
 /**
 The manager for advertising and managing local services.
 
-The public classes of the peripheral side are backend-independent: the
-  native (NimBLE) implementation and the Toit host implementation
-  (see `ble.host`) each provide subclasses. Applications only see these
-  classes.
+The public classes of the peripheral side are abstract; the Toit host
+  backend (see `ble.host`) provides the subclasses. Applications only see
+  these classes.
 */
 abstract class Peripheral extends Resource_:
   static DEFAULT-INTERVAL ::= Duration --us=46875
@@ -31,9 +29,6 @@ abstract class Peripheral extends Resource_:
   adapter/Adapter
   services_/List := []
   deployed_/bool := false
-
-  constructor.native_ .adapter resource:
-    super resource
 
   constructor.host_ .adapter:
     super.host_
@@ -64,10 +59,8 @@ abstract class Peripheral extends Resource_:
   The advertise includes the given $connection-mode, which must be one
     of the BLE-CONNECT-MODE-* constants (see $BLE-CONNECT-MODE-NONE and similar).
 
-  Throws if the adapter does not support parts of the advertise content.
-  For example, on MacOS manufacturing data can not be specified.
-
-  Throws if the adapter does not allow configuration of $interval or $connection-mode.
+  Throws if the adapter does not support parts of the advertise content, or
+    does not allow configuration of $interval or $connection-mode.
   */
   abstract start-advertise
       data/Advertisement
@@ -124,65 +117,6 @@ abstract class Peripheral extends Resource_:
 
   abstract deploy_ -> none
 
-class NativePeripheral_ extends Peripheral:
-  constructor adapter/Adapter resource bonding/bool secure-connections/bool:
-    super.native_ adapter (ble-create-peripheral-manager_ resource bonding secure-connections)
-    resource-state_.wait-for-state STARTED-EVENT_
-
-  start-advertise
-      data/Advertisement
-      --scan-response/Advertisement?=null
-      --interval/Duration=Peripheral.DEFAULT-INTERVAL
-      --connection-mode/int=BLE-CONNECT-MODE-NONE:
-    if system.platform == system.PLATFORM-MACOS:
-      if scan-response: throw "UNSUPPORTED"
-      data.data-blocks.do: | block/DataBlock |
-        if not block.is-name and not block.is-services and not block.is-flags:
-          throw "UNSUPPORTED"
-      if interval != Peripheral.DEFAULT-INTERVAL or connection-mode != BLE-CONNECT-MODE-NONE: throw "INVALID_ARGUMENT"
-
-      services := data.services
-      raw-service-classes := Array_ services.size null
-
-      services.size.repeat:
-        id/BleUuid := services[it]
-        raw-service-classes[it] = id.encode-for-platform_
-      ble-advertise-start_
-          resource_
-          data.name or ""
-          raw-service-classes
-          interval.in-us
-          connection-mode
-          data.flags
-    else:
-      raw := data.to-raw
-      if raw.size > 31: throw "INVALID_ARGUMENT"
-      response-raw/ByteArray? := null
-      if scan-response:
-        response-raw = scan-response.to-raw
-        if response-raw.size > 31: throw "INVALID_ARGUMENT"
-      ble-advertise-start-raw_
-          resource_
-          raw
-          response-raw
-          interval.in-us
-          connection-mode
-    state := resource-state_.wait-for-state ADVERTISE-START-SUCEEDED-EVENT_ | ADVERTISE-START-FAILED-EVENT_
-    if state & ADVERTISE-START-FAILED-EVENT_ != 0: throw "Failed to start advertising"
-
-  stop-advertise:
-    ble-advertise-stop_ resource_
-
-  create-service_ uuid/BleUuid -> LocalService:
-    return NativeLocalService_ this uuid
-
-  deploy_ -> none:
-    ble-reserve-services_ resource_ services_.size
-    services_.size.repeat: | i/int |
-      service/NativeLocalService_ := services_[i]
-      service.deploy_ i
-    ble-start-gatt-server_ resource_
-
 /**
 Defines a BLE service with characteristics.
 */
@@ -198,9 +132,6 @@ abstract class LocalService extends Resource_ implements Attribute:
   peripheral-manager/Peripheral
   deployed_/bool := false
   characteristics_/List := []
-
-  constructor.native_ .peripheral-manager .uuid resource:
-    super resource
 
   constructor.host_ .peripheral-manager .uuid:
     super.host_
@@ -248,7 +179,6 @@ abstract class LocalService extends Resource_ implements Attribute:
     value for the characteristic. If $value is null or an empty ByteArray, then the
     characteristic supports callback reads and the client needs
     to call $LocalCharacteristic.handle-read-request to provide the value upon request.
-  NOTE: Read callbacks are not supported in MacOS.
 
   The peripheral must not yet be deployed.
 
@@ -297,7 +227,6 @@ abstract class LocalService extends Resource_ implements Attribute:
   If $value is specified, it is used as the initial value for the characteristic. If $value is null
     or an empty ByteArray, then the characteristic supports callback reads and the client needs
     to call $LocalCharacteristic.handle-read-request to provide the value upon request.
-  NOTE: Read callbacks are not supported in MacOS.
 
   When using read callbacks, the $read-timeout-ms specifies the time the callback function is allowed
     to use.
@@ -387,24 +316,6 @@ abstract class LocalService extends Resource_ implements Attribute:
   deploy -> none:
     peripheral-manager.deploy
 
-class NativeLocalService_ extends LocalService:
-  constructor peripheral-manager/NativePeripheral_ uuid/BleUuid:
-    super.native_ peripheral-manager uuid
-        (ble-add-service_ peripheral-manager.resource_ uuid.encode-for-platform_)
-
-  create-characteristic_ uuid/BleUuid properties/int permissions/int value/io.Data? read-timeout-ms/int -> LocalCharacteristic:
-    return NativeLocalCharacteristic_ this uuid properties permissions value read-timeout-ms
-
-  /**
-  Deploys the service.
-
-  Depending on the platform, the peripheral manager may still need to start the gatt server.
-  */
-  deploy_ index/int -> none:
-    ble-deploy-service_ resource_ index
-    state := resource-state_.wait-for-state (SERVICE-ADD-SUCCEEDED-EVENT_ | SERVICE-ADD-FAILED-EVENT_)
-    if state & SERVICE-ADD-FAILED-EVENT_ != 0: throw "Failed to add service"
-
 abstract class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   uuid/BleUuid
 
@@ -413,9 +324,6 @@ abstract class LocalCharacteristic extends LocalReadWriteElement_ implements Att
   service/LocalService
   descriptors_/List := []
   read-timeout-ms_/int
-
-  constructor.native_ .service .uuid .properties .permissions .read-timeout-ms_ resource:
-    super.native_ resource
 
   constructor.host_ .service .uuid .properties .permissions .read-timeout-ms_:
     super.host_
@@ -578,63 +486,11 @@ abstract class LocalCharacteristic extends LocalReadWriteElement_ implements Att
   */
   abstract handle -> int
 
-class NativeLocalCharacteristic_ extends LocalCharacteristic:
-  constructor service/NativeLocalService_ uuid/BleUuid properties/int permissions/int value/io.Data? read-timeout-ms/int:
-    super.native_ service uuid properties permissions read-timeout-ms
-        (ble-add-characteristic_ service.resource_ uuid.encode-for-platform_ properties permissions value)
-
-  set-value value/io.Data?:
-    ble-set-value_ resource_ value
-
-  write_ value/io.Data --set-value/bool:
-    if (properties & (CHARACTERISTIC-PROPERTY-NOTIFY | CHARACTERISTIC-PROPERTY-INDICATE)) != 0:
-      clients := ble-get-subscribed-clients resource_
-      clients.do:
-        ble-notify-characteristics-value_ resource_ it value
-    if set-value:
-      ble-set-value_ resource_ value
-
-  handle-request_ --for-read/bool --timeout-ms/int [block]:
-    event := for-read ? DATA-READ-REQUEST-EVENT_ : (DATA-WRITE-REQUEST-EVENT_ | DATA-RECEIVED-EVENT_)
-    if not resource_: throw "ALREADY_CLOSED"
-    ble-callback-init_ resource_ timeout-ms for-read
-    try:
-      while true:
-        state := resource-state_.wait-for-state event
-        if not resource_: return
-        value := null
-        try:
-          if for-read:
-            value = block.call
-          else:
-            value = null
-            received-value := ble-get-value_ resource_
-            if received-value:
-              block.call received-value
-        finally:
-          critical-do:
-            resource-state_.clear-state event
-            if state & (DATA_READ-REQUEST-EVENT_ | DATA-WRITE-REQUEST-EVENT_) != 0:
-              ble-callback-reply_ resource_ value for-read
-    finally:
-      if resource_: ble-callback-deinit_ resource_ for-read
-
-  create-descriptor_ uuid/BleUuid properties/int permissions/int value/io.Data? -> LocalDescriptor:
-    return NativeLocalDescriptor_ this uuid properties permissions value
-
-  read_ -> ByteArray: return native-read_
-
-  handle -> int:
-    return ble-handle_ resource_
-
 abstract class LocalDescriptor extends LocalReadWriteElement_ implements Attribute:
   uuid/BleUuid
   characteristic/LocalCharacteristic
   permissions/int
   properties/int
-
-  constructor.native_ .characteristic .uuid .properties .permissions resource:
-    super.native_ resource
 
   constructor.host_ .characteristic .uuid .properties .permissions:
     super.host_
@@ -685,38 +541,10 @@ abstract class LocalDescriptor extends LocalReadWriteElement_ implements Attribu
   */
   abstract handle -> int
 
-class NativeLocalDescriptor_ extends LocalDescriptor:
-  constructor characteristic/NativeLocalCharacteristic_ uuid/BleUuid properties/int permissions/int value/io.Data?:
-    super.native_ characteristic uuid properties permissions
-        (ble-add-descriptor_ characteristic.resource_ uuid.encode-for-platform_ properties permissions value)
-
-  set-value_ value/io.Data:
-    ble-set-value_ resource_ value
-
-  read_ -> ByteArray: return native-read_
-
-  handle -> int:
-    return ble-handle_ resource_
-
+/** A local attribute a client can write to; the backend queues the written values. */
 abstract class LocalReadWriteElement_ extends Resource_:
-  constructor.native_ resource:
-    super resource
-
   constructor.host_:
     super.host_
 
   /** Waits for and returns the next value written by a client. */
   abstract read_ -> ByteArray
-
-  // Native elements share this implementation; host elements keep a queue.
-  native-read_ -> ByteArray:
-    resource-state_.clear-state DATA-RECEIVED-EVENT_
-    while true:
-      buf := ble-get-value_ resource_
-      if buf: return buf
-      resource-state_.wait-for-state DATA-RECEIVED-EVENT_
-
-ble-retrieve-adapters_:
-  if system.platform == system.PLATFORM-FREERTOS or system.platform == system.PLATFORM-MACOS:
-    return [["default", #[], true, true, null]]
-  throw "Unsupported platform"

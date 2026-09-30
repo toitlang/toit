@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import ble show BleUuid Advertisement DataBlock
+import ..ble show BleUuid Advertisement DataBlock
 import monitor
 
 import ..experimental.service.client as rpc
@@ -290,6 +290,14 @@ class Descriptor:
   /** The current value. */
   value -> ByteArray: return value_.copy
 
+  /** Replaces the value for every central. */
+  value= value/ByteArray -> none:
+    if value.size > 512: throw "INVALID_ARGUMENT"
+    value_ = value.copy
+    characteristic.service.server.connections_.do: | link/PeripheralLink_ |
+      handle := link.handle-of this
+      if handle: catch: link.session.set-value handle value_
+
   build_ session/rpc.Session characteristic-handle/int handles/Map -> none:
     handle := session.add-descriptor characteristic-handle (uuid.to-byte-array --reversed)
         --read=read_
@@ -313,15 +321,17 @@ class Peripheral:
   scan-response_/ByteArray := ?
   interval_/int
   handler-timeout_/Duration
+  mtu_/int
   links_/List ::= []
   waiting_/rpc.Session? := null
   ended-signal_/monitor.Latch := monitor.Latch
   closed_/bool := false
 
   constructor.private_ .client_ .server_ --name/string --advertisement/Advertisement
-      --scan-response/Advertisement? --interval/Duration --handler-timeout/Duration:
+      --scan-response/Advertisement? --interval/Duration --handler-timeout/Duration --mtu/int:
     if server_.peripheral_: throw "BLE_SERVER_IN_USE"
     name_ = name
+    mtu_ = mtu
     advertisement_ = connectable-advertisement_ advertisement
     scan-response_ = scan-response ? (raw-advertisement_ scan-response) : #[]
     interval_ = advertising-interval_ interval
@@ -389,7 +399,7 @@ class Peripheral:
 
   /** Builds a provider session with the server's database; returns [session, handle map]. */
   build-session_ -> List:
-    session := client_.configure --name=name_ --value-limit=512 --mtu-limit=517
+    session := client_.configure --name=name_ --value-limit=512 --mtu-limit=mtu_
         --handler-timeout=handler-timeout_
         --attribute-limit=(max 64 server_.attribute-count_)
     handles := {:}

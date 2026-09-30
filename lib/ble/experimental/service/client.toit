@@ -3,7 +3,7 @@
 // be found in the lib/LICENSE file.
 
 import system.services
-import ble show Advertisement
+import ...ble show Advertisement
 
 import .api as api
 import io

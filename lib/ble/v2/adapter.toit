@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import ble show BleUuid Advertisement
+import ..ble show BleUuid Advertisement
 
 import ..experimental.service.client as rpc
 import .connection
@@ -70,6 +70,13 @@ class Adapter:
   /** The controller's public identity address. */
   address -> Address: return Address adapter-info_[0]
 
+  /**
+  The bonded peers the provider lists, to $connect to; none unless the
+    deployment keeps bonds and chooses to list them.
+  */
+  bonded-peers -> List:
+    return client_.bonded-peers.map: | peer/List | Address peer[1] --type=peer[0]
+
   /** Whether the controller supports the LE 2M PHY. */
   supports-phy-2m -> bool: return adapter-info_[3]
 
@@ -99,15 +106,23 @@ class Adapter:
   /**
   Scans and calls $block with every report.
 
-  Stops after $duration, or when $block returns false. $active also asks
-    advertisers for their scan responses. $services keeps only reports
-    advertising one of the given service UUIDs. Without $duplicates, the
-    controller reports each advertiser once.
+  Stops after $duration (null: only when $block returns false), or when
+    $block returns false. $active also asks advertisers for their scan
+    responses. $services keeps only reports advertising one of the given
+    service UUIDs. Without $duplicates, the controller reports each
+    advertiser once. $limited keeps only advertisers in limited discoverable
+    mode. $interval and $window (0.625 ms to 10.24 s, the window at most the
+    interval) set how often and how long the controller listens; the
+    default listens continuously.
   */
-  scan --duration/Duration=(Duration --s=10) --active/bool=false --services/List?=null
-      --duplicates/bool=false [block] -> none:
+  scan --duration/Duration?=(Duration --s=10) --active/bool=false --services/List?=null
+      --duplicates/bool=false --limited/bool=false
+      --interval/Duration?=null --window/Duration?=null [block] -> none:
     filter := services and services.size == 1 ? ((services[0] as BleUuid).to-byte-array --reversed) : null
-    client_.scan --duration=duration --active=active --filter-duplicates=(not duplicates)
+    interval-units := interval ? interval.in-us / 625 : 16
+    window-units := window ? window.in-us / 625 : interval-units
+    if not 4 <= window-units <= interval-units <= 16384: throw "INVALID_ARGUMENT"
+    client_.scan --duration=(duration or (Duration --s=10)) --continuous=(duration == null) --active=active --filter-duplicates=(not duplicates) --interval=interval-units --window=window-units --limited-only=limited
         --service-uuid=filter: | raw/rpc.ScanReport |
       report := ScanReport raw
       if services and not filter and not (services.any: report.has-service it): continue.scan true
@@ -199,17 +214,20 @@ class Adapter:
   $advertisement (and the optional $scan-response) is advertised whenever
     $Peripheral.accept waits for a central, every $interval. $name is the GAP
     device name in the database. Handlers of the server get $handler-timeout
-    to answer a central.
+    to answer a central. $mtu is the ATT MTU this side offers to centrals
+    (23 to 517).
   */
   peripheral server/GattServer --advertisement/Advertisement --scan-response/Advertisement?=null
       --interval/Duration=(Duration --ms=100) --name/string="Toit"
-      --handler-timeout/Duration=(Duration --s=1) -> Peripheral:
+      --handler-timeout/Duration=(Duration --s=1) --mtu/int=517 -> Peripheral:
+    if not 23 <= mtu <= 517: throw "INVALID_ARGUMENT"
     return Peripheral.private_ client_ server
         --name=name
         --advertisement=advertisement
         --scan-response=scan-response
         --interval=interval
         --handler-timeout=handler-timeout
+        --mtu=mtu
 
   /**
   Broadcasts $advertisement without accepting connections, until
@@ -247,6 +265,9 @@ class ScanReport:
 
   /** The advertiser's address, or null where the platform hides it (see $Peer). */
   address -> Address?: return peer.address
+
+  /** The advertising data as received, for parsers of one's own. */
+  bytes -> ByteArray: return raw_.data.copy
 
   /** The received signal strength in dBm, or null when the controller did not measure it. */
   rssi -> int?: return raw_.rssi

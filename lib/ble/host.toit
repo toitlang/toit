@@ -8,40 +8,38 @@ import monitor
 import .ble
 import .local
 import .remote
-import .experimental.service.client as rpc
+import .v2 as v2
 
 /**
-The `ble` package on the Toit host.
+The `ble` package on `ble.v2`.
 
-Firmware without a native BLE host (a controller-only ESP32 image, or a Linux
-  host) serves the same public API through the BLE service provider of
-  `ble.experimental.service`, reached with a $rpc.Client. $Adapter picks
-  this backend when the native one is unavailable and a provider is
-  installed; applications keep using $Adapter, $Central
-  and $Peripheral and never import this library. Differences from the
-  native backend are noted on each class; the main ones are that the
-  peripheral serves as many centrals at once as the provider's peripheral
-  session limit allows (one by default; advertising resumes after each
-  disconnect) and that pairing policy belongs to the provider, so the
-  `--bonding` and `--secure-connections` flags are advisory.
-  `bonded-peers` lists what the provider chooses to list (none by default).
+$Adapter, $Central, $Peripheral and the remote and local attribute classes
+  are implemented here on the $v2.Adapter of the same device: the BLE
+  provider built into the firmware, or one installed in the process on
+  Linux. Applications keep using the `ble` package's classes and never
+  import this library. Differences from what the package once did on
+  NimBLE: the peripheral serves as many centrals at once as the provider
+  allows (two on the built-in provider) and keeps advertising while
+  connected; pairing policy belongs to the provider, so the `--bonding`
+  and `--secure-connections` flags are advisory; `bonded-peers` lists what
+  the provider chooses to list (none by default).
 */
 
-/** Opens the Toit host backend, or throws "Unsupported platform" without a provider. */
+/** Opens the adapter through `ble.v2`, or throws "Unsupported platform" without a provider. */
 host-adapter_ -> Adapter:
-  client := rpc.Client
-  error := catch: client.open --timeout=(Duration --s=2)
+  adapter/v2.Adapter? := null
+  error := catch: adapter = v2.Adapter
   if error: throw "Unsupported platform"
-  return HostAdapter_ client
+  return HostAdapter_ adapter
 
 class HostAdapter_ extends Adapter:
-  client_/rpc.Client
+  adapter_/v2.Adapter
   preferred-mtu_/int := 256
   closed_/bool := false
 
-  constructor .client_:
-    capabilities := client_.capabilities
-    super.host_ (AdapterMetadata.private_ "toit-host" #[] capabilities.gatt-central capabilities.gatt-peripheral null)
+  constructor .adapter_:
+    capabilities := adapter_.capabilities
+    super.host_ (AdapterMetadata.private_ "toit-host" #[] capabilities.central capabilities.peripheral null)
 
   is-closed -> bool: return closed_
 
@@ -49,7 +47,7 @@ class HostAdapter_ extends Adapter:
     if closed_: return
     super
     closed_ = true
-    client_.close
+    adapter_.close
 
   create-central_ -> Central:
     return HostCentral_ this
@@ -60,6 +58,13 @@ class HostAdapter_ extends Adapter:
   set-preferred-mtu mtu/int:
     if not 23 <= mtu <= 517: throw "INVALID_ARGUMENT"
     preferred-mtu_ = mtu
+
+/** The identifier of a peer: its address type, then its address (the native ESP32 shape). */
+identifier_ address/v2.Address -> ByteArray:
+  identifier := ByteArray 7
+  identifier[0] = address.type
+  identifier.replace 1 address.bytes
+  return identifier
 
 // ---------------------------------------------------------------------------
 // Central role.
@@ -81,21 +86,16 @@ class HostCentral_ extends Central:
   connect_ identifier/any secure/bool -> RemoteDevice:
     if identifier is not ByteArray: throw "INVALID_ARGUMENT"
     bytes/ByteArray := identifier
-    type := 0
-    address/ByteArray := ?
+    address/v2.Address := ?
     if bytes.size == 7:
-      type = bytes[0]
-      address = bytes[1..].copy
+      address = v2.Address bytes[1..] --type=bytes[0]
     else if bytes.size == 6:
-      address = bytes.copy
+      address = v2.Address bytes
     else:
       throw "INVALID_ARGUMENT"
-    // Identity types (2, 3) come from a controller that resolved the peer;
-    // it connects to them through its resolving list.
-    if type > 3: throw "INVALID_ARGUMENT"
-    connection := host-adapter_.client_.connect address --address-type=type
-        --mtu-limit=host-adapter_.preferred-mtu_
-        --require-encryption=secure
+    connection := host-adapter_.adapter_.connect address
+        --mtu=host-adapter_.preferred-mtu_
+        --security=(secure ? v2.SECURITY-ENCRYPTED : v2.SECURITY-NONE)
     return HostRemoteDevice_ this identifier connection
 
   scan_ -> none
@@ -105,37 +105,27 @@ class HostCentral_ extends Central:
       --limited-only/bool
       --active/bool
       [block]:
-    host-adapter_.client_.scan
-        --duration=(duration or (Duration --s=10))
-        --continuous=(duration == null)
-        --active=active
-        --interval=(interval == 0 ? 16 : interval)
-        --window=(window == 0 ? 16 : window)
-        --no-filter-duplicates
-        --limited-only=limited-only: | report/rpc.ScanReport |
-      // The identifier keeps the native ESP32 shape: address type, then address.
-      identifier/any := ByteArray 7
-      identifier[0] = report.address-type
-      identifier.replace 1 report.address
-      connectable := report.connectable
+    scan-interval := interval == 0 ? null : (Duration --us=interval * 625)
+    scan-window := window == 0 ? null : (Duration --us=window * 625)
+    host-adapter_.adapter_.scan --duration=duration --active=active --duplicates --limited=limited-only --interval=scan-interval --window=scan-window: | report/v2.ScanReport |
+      address := report.address
+      if not address: continue.scan true
+      connectable := report.is-connectable == true
+      identifier/any := identifier_ address
       block.call (RemoteScannedDevice identifier (report.rssi or 0)
-          --is-connectable=(connectable == true)
-          --is-scan-response=(report.scan-response == true)
-          --address-bytes=report.address
-          --address-type=report.address-type
-          (AdvertisementData.raw_ report.data --connectable=(connectable == true)))  // @no-warn
+          --is-connectable=connectable
+          --is-scan-response=report.is-scan-response
+          --address-bytes=address.bytes
+          --address-type=address.type
+          (AdvertisementData.raw_ report.bytes --connectable=connectable))  // @no-warn
       true
 
   /** The bonded peers the provider lists, as identifiers for $connect. */
   bonded-peers -> List:
-    return host-adapter_.client_.bonded-peers.map: | peer/List |
-      identifier := ByteArray 7
-      identifier[0] = peer[0]
-      identifier.replace 1 peer[1]
-      identifier
+    return host-adapter_.adapter_.bonded-peers.map: | peer/v2.Peer | identifier_ peer.address
 
 class HostRemoteDevice_ extends RemoteDevice:
-  connection_/rpc.Connection
+  connection_/v2.Connection
   closed_/bool := false
 
   constructor manager/HostCentral_ identifier/Object .connection_:
@@ -144,47 +134,36 @@ class HostRemoteDevice_ extends RemoteDevice:
   is-closed -> bool: return closed_
 
   discover-services_ service-uuids/List -> List:
-    wanted := service-uuids.map: | uuid/BleUuid | uuid.to-byte-array --reversed
-    records := connection_.database.discover-services
-    result := []
-    records.do: | record/rpc.ServiceRecord |
-      if wanted.is-empty or wanted.contains record.uuid:
-        result.add (HostRemoteService_ this (BleUuid.from-reversed record.uuid) record)
-    return result
+    services := connection_.discover-services (service-uuids.is-empty ? null : service-uuids)
+    return services.map: | service/v2.RemoteService | HostRemoteService_ this service
 
   disconnect_ --force/bool -> none:
     if closed_: return
     closed_ = true
-    if force:
-      connection_.close
-    else:
-      connection_.disconnect
+    if not force: catch: connection_.disconnect
+    connection_.close
 
-  mtu -> int: return connection_.info[2]
+  mtu -> int: return connection_.mtu
 
 class HostRemoteService_ extends RemoteService:
-  record_/rpc.ServiceRecord
+  remote_/v2.RemoteService
 
-  constructor device/HostRemoteDevice_ uuid/BleUuid .record_:
-    super.host_ device uuid
+  constructor device/HostRemoteDevice_ .remote_:
+    super.host_ device remote_.uuid
 
   is-closed -> bool: return device.is-closed
 
   discover-characteristics_ characteristic-uuids/List -> List:
-    wanted := characteristic-uuids.map: | uuid/BleUuid | uuid.to-byte-array --reversed
-    result := []
-    record_.characteristics.do: | record/rpc.CharacteristicRecord |
-      if wanted.is-empty or wanted.contains record.uuid:
-        result.add (HostRemoteCharacteristic_ this (BleUuid.from-reversed record.uuid) record.properties record)
-    return result
+    characteristics := remote_.discover-characteristics (characteristic-uuids.is-empty ? null : characteristic-uuids)
+    return characteristics.map: | characteristic/v2.RemoteCharacteristic |
+      HostRemoteCharacteristic_ this characteristic
 
 class HostRemoteCharacteristic_ extends RemoteCharacteristic:
-  record_/rpc.CharacteristicRecord
-  notifications_/Values_? := null
-  subscription-task_/Task? := null
+  remote_/v2.RemoteCharacteristic
+  subscription_/v2.Subscription? := null
 
-  constructor service/HostRemoteService_ uuid/BleUuid properties/int .record_:
-    super.host_ service uuid properties
+  constructor service/HostRemoteService_ .remote_:
+    super.host_ service remote_.uuid remote_.properties
 
   is-closed -> bool: return service.is-closed
 
@@ -193,67 +172,48 @@ class HostRemoteCharacteristic_ extends RemoteCharacteristic:
     super
 
   write_ value/io.Data --expects-response/bool:
-    bytes := ByteArray.from value
-    if expects-response: record_.write bytes
-    else: record_.write-command bytes
+    remote_.write (ByteArray.from value) --response=expects-response
 
-  request-read_ -> ByteArray: return record_.read
+  request-read_ -> ByteArray: return remote_.read
 
   wait-for-notification_ -> ByteArray?:
-    values := notifications_
-    if not values: throw "Characteristic is not subscribed"
-    return values.take
+    subscription := subscription_
+    if not subscription: throw "Characteristic is not subscribed"
+    return subscription.receive
 
   set-subscription_ subscribe/bool -> none:
     if subscribe:
-      if notifications_: return
-      // Notifications only when the characteristic offers them, indications otherwise.
+      if subscription_: return
+      // Notifications when the characteristic offers them, indications otherwise.
       indications := properties & CHARACTERISTIC-PROPERTY-NOTIFY == 0
-      values := Values_
-      ready := monitor.Latch
-      notifications_ = values
-      subscription-task_ = task::
-        error := catch:
-          record_.subscribe --indications=indications --queue-limit=32: | stream/rpc.Subscription |
-            ready.set true
-            while true: values.add stream.receive
-        critical-do --no-respect-deadline:
-          values.fail (error or "Disconnected")
-          if not ready.has-value: ready.set (error or "Disconnected") --exception
-      failure := catch: ready.get
-      if failure:
-        notifications_ = null
-        subscription-task_ = null
-        throw failure
+      subscription_ = remote_.subscribe --queue-limit=32 --indications=indications
     else:
-      if not notifications_: return
-      worker := subscription-task_
-      subscription-task_ = null
-      notifications_ = null
-      if worker: worker.cancel
+      subscription := subscription_
+      subscription_ = null
+      if subscription: subscription.close
 
   discover-descriptors_ -> List:
-    return record_.descriptors.map: | record/rpc.DescriptorRecord |
-      HostRemoteDescriptor_ this (BleUuid.from-reversed record.uuid) record
+    return remote_.discover-descriptors.map: | descriptor/v2.RemoteDescriptor |
+      HostRemoteDescriptor_ this descriptor
 
   mtu -> int: return service.device.mtu
 
-  handle -> int: return record_.handle
+  handle -> int: return remote_.handle
 
 class HostRemoteDescriptor_ extends RemoteDescriptor:
-  record_/rpc.DescriptorRecord
+  remote_/v2.RemoteDescriptor
 
-  constructor characteristic/HostRemoteCharacteristic_ uuid/BleUuid .record_:
-    super.host_ characteristic uuid
+  constructor characteristic/HostRemoteCharacteristic_ .remote_:
+    super.host_ characteristic remote_.uuid
 
   is-closed -> bool: return characteristic.is-closed
 
   write_ value/io.Data --expects-response/bool:
-    record_.write (ByteArray.from value)
+    remote_.write (ByteArray.from value)
 
-  request-read_ -> ByteArray: return record_.read
+  request-read_ -> ByteArray: return remote_.read
 
-  handle -> int: return record_.handle
+  handle -> int: return remote_.handle
 
 // ---------------------------------------------------------------------------
 // Peripheral role.
@@ -261,18 +221,11 @@ class HostRemoteDescriptor_ extends RemoteDescriptor:
 class HostPeripheral_ extends Peripheral:
   host-adapter_/HostAdapter_
   name_/string?
+  server_/v2.GattServer ::= v2.GattServer
+  peripheral_/v2.Peripheral? := null
+  broadcast_/v2.Broadcast? := null
+  accepting_/Task? := null
   closed_/bool := false
-  advertising_/rpc.Advertising? := null
-  // Connected sessions, one per central, and the session that waits for
-  // the next central while the provider still has a slot.
-  sessions_/List := []
-  waiting_/rpc.Session? := null
-  ended-signal_/monitor.Latch := monitor.Latch
-  advertisement_/ByteArray? := null
-  scan-response_/ByteArray? := null
-  interval_/int := 160
-  advertising-active_/bool := false
-  worker_/Task? := null
 
   constructor .host-adapter_ .name_:
     super.host_ host-adapter_
@@ -283,237 +236,161 @@ class HostPeripheral_ extends Peripheral:
     if closed_: return
     super
     closed_ = true
-    // The native backend drops its connections with the manager.
-    sessions_.copy.do: | session/rpc.Session | catch: session.close
+    stop-advertise
+    if peripheral_:
+      peripheral_.close
+      peripheral_ = null
 
   create-service_ uuid/BleUuid -> LocalService:
-    return HostLocalService_ this uuid
+    return HostLocalService_ this (server_.add-service uuid)
 
   deploy_ -> none:
-    // The database is built on the provider for every connection; nothing
-    // happens before advertising starts.
+    // The provider builds the database for every central that connects;
+    // nothing happens before advertising starts.
 
   start-advertise
       data/Advertisement
       --scan-response/Advertisement?=null
       --interval/Duration=Peripheral.DEFAULT-INTERVAL
       --connection-mode/int=BLE-CONNECT-MODE-NONE:
-    if advertising-active_ or advertising_: throw "Already advertising"
-    raw := data.to-raw
-    if raw.size > 31: throw "INVALID_ARGUMENT"
-    response-raw/ByteArray := #[]
-    if scan-response:
-      response-raw = scan-response.to-raw
-      if response-raw.size > 31: throw "INVALID_ARGUMENT"
-    units := interval.in-us / 625
-    if not 32 <= units <= 16384: throw "INVALID_ARGUMENT"
+    if closed_: throw "BLE_CLOSED"
+    if broadcast_ or accepting_: throw "Already advertising"
     if connection-mode == BLE-CONNECT-MODE-NONE:
-      advertising_ = host-adapter_.client_.start-advertising raw
-          --scan-response=response-raw
-          --interval=(units)
-          --scannable=(not response-raw.is-empty)
+      broadcast_ = host-adapter_.adapter_.advertise data --scan-response=scan-response --interval=interval
       return
     if connection-mode != BLE-CONNECT-MODE-UNDIRECTIONAL: throw "UNSUPPORTED"
-    advertisement_ = raw
-    scan-response_ = response-raw
-    interval_ = units
-    advertising-active_ = true
-    started := monitor.Latch
-    worker_ = task:: serve-connections_ started
-    error := started.get
-    if error: throw error
+    if not peripheral_:
+      timeout := Duration --ms=LocalService.DEFAULT-WRITE-TIMEOUT-MS
+      peripheral_ = host-adapter_.adapter_.peripheral server_ --advertisement=data --scan-response=scan-response --interval=interval --mtu=host-adapter_.preferred-mtu_ --handler-timeout=timeout
+          --name=(name_ or "Toit")
+    else:
+      peripheral_.set-advertisement data --scan-response=scan-response
+    accepting_ = task:: accept-connections_
 
   stop-advertise:
-    advertising-active_ = false
-    if advertising_:
-      advertising_.stop
-      advertising_ = null
-    // The session that still waits for a peer ends now; connected ones run on.
-    waiting := waiting_
-    if waiting: catch: waiting.close
+    if broadcast_:
+      broadcast_.stop
+      broadcast_ = null
+    // Ending the wait for the next central stops advertising; connected
+    // centrals stay connected.
+    accepting := accepting_
+    accepting_ = null
+    if accepting and accepting != Task.current: accepting.cancel
 
-  /**
-  Keeps one session waiting for the next central while advertising is active.
-
-  Each session carries a fresh copy of the database and serves one central
-    until it disconnects; a new session starts advertising as soon as the
-    provider has a slot, so several centrals can be connected at once when
-    the provider allows it.
-  */
-  serve-connections_ started/monitor.Latch -> none:
-    first := true
-    while advertising-active_ and not closed_:
-      session/rpc.Session? := null
-      error := catch:
-        session = build-session_
-        session.start advertisement_ --scan-response=scan-response_ --interval=interval_
-      if error:
-        if first:
-          started.set error
-          return
-        if error == "GATT_SERVICE_BUSY":
-          // Every slot serves a central; advertise again when one ends.
-          signal := ended-signal_
-          catch: with-timeout --ms=1_000: signal.get
-          continue
-        // The provider could not restart advertising after a disconnect
-        // (for example while it still releases the previous link); retry
-        // at a gentle pace rather than spin or give up silently.
+  /** Accepts centrals while advertising is on; each one is served until it leaves. */
+  accept-connections_ -> none:
+    peripheral := peripheral_
+    while peripheral_ == peripheral and not closed_:
+      connection/v2.Connection? := null
+      error := catch: connection = peripheral.accept
+      if not connection:
+        if error == CANCELED-ERROR or error == "BLE_CLOSED": return
+        // The provider could not advertise right now (for example while it
+        // still releases a previous link); retry at a gentle pace.
         sleep --ms=250
         continue
-      waiting_ = session
-      if first:
-        first = false
-        started.set null
-      error = catch: session.peer
-      waiting_ = null
-      // Stopped, expired or failed while waiting: the loop re-checks the flags.
-      if error: continue
-      sessions_.add session
-      task:: serve-session_ session
+      task:: watch-connection_ connection
 
-  serve-session_ session/rpc.Session -> none:
-    catch:
-      session.serve
-          (: | request/rpc.Request | serve-read_ request)
-          (: | request/rpc.Request | serve-validate_ request)
-          (: | handle/int value/ByteArray | serve-written_ handle value)
-    sessions_.remove session
-    if sessions_.is-empty: services_.do: | service/HostLocalService_ | service.disconnected_
-    signal := ended-signal_
-    ended-signal_ = monitor.Latch
-    signal.set true
+  watch-connection_ connection/v2.Connection -> none:
+    catch: connection.wait-closed
+    connection.close
+    peripheral := peripheral_
+    if peripheral and peripheral.connections.is-empty:
+      services_.do: | service/HostLocalService_ | service.disconnected_
 
-  build-session_ -> rpc.Session:
-    timeout := Duration --ms=LocalService.DEFAULT-WRITE-TIMEOUT-MS
-    session := host-adapter_.client_.configure --value-limit=512 --mtu-limit=host-adapter_.preferred-mtu_
-        --handler-timeout=timeout
-    services_.do: | service/HostLocalService_ | service.build_ session
-    return session
-
-  find-element_ handle/int -> HostElement_?:
-    services_.do: | service/HostLocalService_ |
-      element := service.find_ handle
-      if element: return element
-    return null
-
-  serve-read_ request/rpc.Request -> none:
-    element := find-element_ request.handle
-    if not element:
-      request.reject 0x0a
-      return
-    element.serve-read_ request
-
-  serve-validate_ request/rpc.Request -> none:
-    element := find-element_ request.handle
-    if not element:
-      request.reject 0x0a
-      return
-    element.serve-validate_ request
-
-  serve-written_ handle/int value/ByteArray -> none:
-    element := find-element_ handle
-    if element: element.serve-written_ value
+  /** The handle of a server element on the first connected central, or 0. */
+  handle-of_ element -> int:
+    peripheral := peripheral_
+    if not peripheral: return 0
+    peripheral.links_.do: | link/v2.PeripheralLink_ |
+      handle := link.handle-of element
+      if handle: return handle
+    return 0
 
 class HostLocalService_ extends LocalService:
-  constructor peripheral/HostPeripheral_ uuid/BleUuid:
-    super.host_ peripheral uuid
+  service_/v2.Service
+
+  constructor peripheral/HostPeripheral_ .service_:
+    super.host_ peripheral service_.uuid
 
   is-closed -> bool: return peripheral-manager.is-closed
 
   create-characteristic_ uuid/BleUuid properties/int permissions/int value/io.Data? read-timeout-ms/int -> LocalCharacteristic:
     return HostLocalCharacteristic_ this uuid properties permissions value read-timeout-ms
 
-  build_ session/rpc.Session -> none:
-    session.add-service (uuid.to-byte-array --reversed)
-    characteristics_.do: | characteristic/HostLocalCharacteristic_ | characteristic.build_ session
-
-  find_ handle/int -> HostElement_?:
-    characteristics_.do: | characteristic/HostLocalCharacteristic_ |
-      element := characteristic.find_ handle
-      if element: return element
-    return null
-
   disconnected_ -> none:
     characteristics_.do: | characteristic/HostLocalCharacteristic_ | characteristic.disconnected_
 
-/** What a characteristic and a descriptor share on the host: a handle, a value and request queues. */
-interface HostElement_:
-  serve-read_ request/rpc.Request -> none
-  serve-validate_ request/rpc.Request -> none
-  serve-written_ value/ByteArray -> none
+/** A read or write that a handler block answers; see $HostLocalCharacteristic_.handle-request_. */
+class Request_:
+  /** The proposed value of a write; null for a read. */
+  value/ByteArray?
+  answer_/monitor.Latch ::= monitor.Latch
 
-class HostLocalCharacteristic_ extends LocalCharacteristic implements HostElement_:
+  constructor .value:
+
+  /** Waits for the answer: the value for a read, null for an accepted write. */
+  wait -> ByteArray?: return answer_.get
+
+  reply value/ByteArray? -> none:
+    if not answer_.has-value: answer_.set value
+
+  fail error -> none:
+    if not answer_.has-value: answer_.set error --exception
+
+class HostLocalCharacteristic_ extends LocalCharacteristic:
   peripheral_/HostPeripheral_
-  value_/ByteArray := #[]
-  handle_/int := 0
+  characteristic_/v2.Characteristic? := null
   written_/Values_ ::= Values_
   requests_/Values_? := null
   handling-writes_/bool := false
 
   constructor service/HostLocalService_ uuid/BleUuid properties/int permissions/int value/io.Data? read-timeout-ms/int:
     peripheral_ = service.peripheral-manager as HostPeripheral_
-    value_ = value ? (ByteArray.from value) : #[]
     super.host_ service uuid properties permissions read-timeout-ms
-
-  is-closed -> bool: return service.is-closed
-
-  build_ session/rpc.Session -> none:
     readable := properties & CHARACTERISTIC-PROPERTY-READ != 0
     writable := properties & CHARACTERISTIC-PROPERTY-WRITE != 0
     command := properties & CHARACTERISTIC-PROPERTY-WRITE-WITHOUT-RESPONSE != 0
     encrypted := permissions & (CHARACTERISTIC-PERMISSION-READ-ENCRYPTED | CHARACTERISTIC-PERMISSION-WRITE-ENCRYPTED) != 0
-    // Writes with a response go through validation so a write handler can
-    // process the value before the response leaves. Write commands have no
-    // response to hold back, so the provider commits them at once and a
-    // disconnect right after the command cannot lose them.
-    handle_ = session.add-characteristic (uuid.to-byte-array --reversed)
-        --read=readable
-        --write=writable
-        --write-command=command
+    // Every read and write comes through this object: a read handler answers
+    // reads, a write handler sees writes before their response leaves, and
+    // without handlers the value is served and written values are queued.
+    // Write commands have no response to hold back, so they arrive written.
+    on-read := readable ? (:: | connection/v2.Connection | serve-read_) : null
+    validate := writable ? (:: | connection/v2.Connection value/ByteArray | serve-validate_ value) : null
+    on-write := (writable or command) ? (:: | connection/v2.Connection value/ByteArray | serve-written_ value) : null
+    characteristic_ = service.service_.add-characteristic uuid --read=readable --write=writable --write-without-response=command --on-read=on-read --validate=validate --on-write=on-write
         --notify=(properties & CHARACTERISTIC-PROPERTY-NOTIFY != 0)
         --indicate=(properties & CHARACTERISTIC-PROPERTY-INDICATE != 0)
-        --dynamic-read=readable
-        --validate-write=writable
-        --encrypted=encrypted
-        --value=value_
-    descriptors_.do: | descriptor/HostLocalDescriptor_ | descriptor.build_ session handle_
+        --value=(value ? (ByteArray.from value) : #[])
+        --security=(encrypted ? v2.SECURITY-ENCRYPTED : v2.SECURITY-NONE)
 
-  find_ handle/int -> HostElement_?:
-    if handle == handle_ and handle_ != 0: return this
-    descriptors_.do: | descriptor/HostLocalDescriptor_ |
-      if descriptor.handle_ == handle and handle != 0: return descriptor
-    return null
+  is-closed -> bool: return service.is-closed
 
   disconnected_ -> none:
     requests := requests_
     if requests: requests.fail "Disconnected"
 
   set-value value/io.Data?:
-    value_ = value ? (ByteArray.from value) : #[]
-    if handle_ == 0: return
-    peripheral_.sessions_.copy.do: | session/rpc.Session |
-      catch: session.set-value handle_ value_
+    characteristic_.value = value ? (ByteArray.from value) : #[]
 
   write_ value/io.Data --set-value/bool:
     bytes := ByteArray.from value
-    previous := value_
-    if set-value: value_ = bytes
-    if handle_ == 0: return
-    notifies := properties & (CHARACTERISTIC-PROPERTY-NOTIFY | CHARACTERISTIC-PROPERTY-INDICATE) != 0
-    peripheral_.sessions_.copy.do: | session/rpc.Session |
-      // A session that ends meanwhile is left to its own cleanup.
-      catch:
-        if not notifies:
-          if set-value: session.set-value handle_ bytes
-        else:
-          session.set-value handle_ bytes
-          if properties & CHARACTERISTIC-PROPERTY-NOTIFY != 0:
-            session.notify handle_
-          else:
-            receipt := session.indicate handle_
-            if receipt: receipt.wait
-          if not set-value: session.set-value handle_ previous
+    previous := characteristic_.value
+    notifies := properties & CHARACTERISTIC-PROPERTY-NOTIFY != 0
+    indicates := properties & CHARACTERISTIC-PROPERTY-INDICATE != 0
+    if not notifies and not indicates:
+      if set-value: characteristic_.value = bytes
+      return
+    if notifies:
+      characteristic_.notify bytes
+    else:
+      peripheral := peripheral_.peripheral_
+      if peripheral:
+        peripheral.connections.do: | connection/v2.Connection |
+          // A central that leaves meanwhile is left to its own cleanup.
+          catch: characteristic_.indicate bytes --to=connection
+    if not set-value: characteristic_.value = previous
 
   read_ -> ByteArray: return written_.take
 
@@ -535,29 +412,27 @@ class HostLocalCharacteristic_ extends LocalCharacteristic implements HostElemen
           block.call request
         else:
           block.call request.value
-          request.accept
+          request.reply null
     finally:
       requests_ = null
       handling-writes_ = false
 
-  serve-read_ request/rpc.Request -> none:
+  serve-read_ -> ByteArray:
     requests := requests_
     if requests and not handling-writes_:
+      request := Request_ null
       requests.add request
-      request.wait-replied_
-    else:
-      request.reply value_
+      return request.wait
+    return characteristic_.value
 
-  serve-validate_ request/rpc.Request -> none:
+  serve-validate_ value/ByteArray -> none:
     requests := requests_
     if requests and handling-writes_:
+      request := Request_ value
       requests.add request
-      request.wait-replied_
-    else:
-      request.accept
+      request.wait
 
   serve-written_ value/ByteArray -> none:
-    value_ = value
     requests := requests_
     if requests and handling-writes_:
       // Validated writes reached the handler already; commands arrive here.
@@ -568,38 +443,29 @@ class HostLocalCharacteristic_ extends LocalCharacteristic implements HostElemen
   create-descriptor_ uuid/BleUuid properties/int permissions/int value/io.Data? -> LocalDescriptor:
     return HostLocalDescriptor_ this uuid properties permissions value
 
-  handle -> int: return handle_
+  handle -> int: return peripheral_.handle-of_ characteristic_
 
-class HostLocalDescriptor_ extends LocalDescriptor implements HostElement_:
-  value_/ByteArray := #[]
-  handle_/int := 0
-  written_/Values_ ::= Values_
+class HostLocalDescriptor_ extends LocalDescriptor:
+  descriptor_/v2.Descriptor
 
   constructor characteristic/HostLocalCharacteristic_ uuid/BleUuid properties/int permissions/int value/io.Data?:
-    value_ = value ? (ByteArray.from value) : #[]
+    encrypted := permissions & (CHARACTERISTIC-PERMISSION-READ-ENCRYPTED | CHARACTERISTIC-PERMISSION-WRITE-ENCRYPTED) != 0
+    descriptor_ = characteristic.characteristic_.add-descriptor uuid --value=(value ? (ByteArray.from value) : #[])
+        --read=(properties & CHARACTERISTIC-PROPERTY-READ != 0)
+        --write=(properties & CHARACTERISTIC-PROPERTY-WRITE != 0)
+        --security=(encrypted ? v2.SECURITY-ENCRYPTED : v2.SECURITY-NONE)
     super.host_ characteristic uuid properties permissions
 
   is-closed -> bool: return characteristic.is-closed
 
-  build_ session/rpc.Session characteristic-handle/int -> none:
-    handle_ = session.add-descriptor characteristic-handle (uuid.to-byte-array --reversed)
-        --read=(properties & CHARACTERISTIC-PROPERTY-READ != 0)
-        --write=(properties & CHARACTERISTIC-PROPERTY-WRITE != 0)
-        --encrypted=(permissions & (CHARACTERISTIC-PERMISSION-READ-ENCRYPTED | CHARACTERISTIC-PERMISSION-WRITE-ENCRYPTED) != 0)
-        --value=value_
-
   set-value_ value/io.Data:
-    value_ = ByteArray.from value
+    descriptor_.value = ByteArray.from value
 
-  read_ -> ByteArray: return written_.take
+  read_ -> ByteArray: return descriptor_.value
 
-  serve-read_ request/rpc.Request -> none: request.reply value_
-  serve-validate_ request/rpc.Request -> none: request.accept
-  serve-written_ value/ByteArray -> none:
-    value_ = value
-    written_.add value
-
-  handle -> int: return handle_
+  handle -> int:
+    peripheral := characteristic.service.peripheral-manager as HostPeripheral_
+    return peripheral.handle-of_ descriptor_
 
 /** A bounded queue that fails its takers when its source ends. */
 monitor Values_:

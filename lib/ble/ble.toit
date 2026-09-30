@@ -3,10 +3,7 @@
 // found in the lib/LICENSE file.
 
 import io
-import monitor
 import uuid
-import monitor show ResourceState_
-import system
 import encoding.hex
 
 import .host
@@ -31,9 +28,14 @@ Services, characteristics and descriptors are identified by a $BleUuid.
   Advertising data is an $Advertisement made of $DataBlock fields, both when
   sent and when received in a scan.
 
-On firmware with a native BLE host the adapter uses it; on firmware without
-  one (a controller-only ESP32 image, or Linux) the same API runs on the
-  Toit host through the BLE service provider installed on the device.
+The package runs on the Toit host everywhere: the $Adapter reaches the
+  radio through the BLE service provider, which is built into the ESP32
+  firmware and runs in-process on Linux. macOS is pending its provider.
+
+Deprecated. This is the first version of the API; it is implemented on
+  `ble.v2` (`import ble.v2`), which new code should use: one connection
+  class for both roles with connect and disconnect events, link details,
+  and a GATT server defined once. It keeps working as documented.
 */
 
 /**
@@ -126,12 +128,6 @@ class BleUuid:
       if reversed: result = result.copy
     if reversed: result.reverse --in-place
     return result
-
-  encode-for-platform_:
-    if ble-platform-requires-uuid-as-byte-array_:
-      return to-byte-array
-    else:
-      return to-string
 
   hash-code -> int:
     return to-byte-array.hash-code
@@ -1050,6 +1046,13 @@ class AdapterConfig:
       --.secure-connections/bool=false:
 
 
+/**
+Describes an adapter: its $identifier, its $address and the roles it
+  supports.
+
+The Toit host backend fills it in from the capabilities of its BLE
+  service provider.
+*/
 class AdapterMetadata:
   identifier/string
   address/ByteArray
@@ -1059,19 +1062,15 @@ class AdapterMetadata:
 
   constructor.private_ .identifier .address .supports-central-role .supports-peripheral-role .handle_:
 
-  adapter -> Adapter:
-    return NativeAdapter_ this
-
 /**
 An adapter represents the chip or peripheral that is used to communicate over BLE.
-On the ESP32 it is the integrated peripheral. On desktops it is provided by
-  the operating system, and can be a USB chip, or an integrated chip of laptops.
+
+The adapter is the Toit host's: it reaches the radio through the BLE
+  service provider, which is built into the ESP32 firmware and runs
+  in-process on Linux. Its $central and $peripheral managers take the
+  two roles.
 */
 abstract class Adapter extends Resource_:
-  static discover-adapter-metadata_ -> List/*<AdapterMetadata>*/:
-    return ble-retrieve-adapters_.map:
-      AdapterMetadata.private_ it[0] it[1] it[2] it[3] it[4]
-
   adapter-metadata/AdapterMetadata?
   central_/Central? := null
   peripheral_/Peripheral? := null
@@ -1079,20 +1078,12 @@ abstract class Adapter extends Resource_:
   /**
   Opens the default adapter.
 
-  Firmware with a native BLE host (NimBLE) uses it. Firmware without one,
-    such as a controller-only ESP32 image or a Linux host, uses the Toit
-    host through its BLE service provider when one is installed; the
-    same classes and behaviour apply. Throws "Unsupported platform" when
-    neither is available.
+  The adapter is the Toit host's, reached through its BLE service
+    provider. Throws "Unsupported platform" when no provider is
+    available.
   */
   constructor:
-    error := catch: return discover-adapter-metadata_[0].adapter
-    if error != "Unsupported platform" and error != "PRIMITIVE_LOOKUP_FAILED": throw error
     return host-adapter_
-
-  constructor.private_ .adapter-metadata:
-    super (ble-create-adapter_ resource-group_)
-    resource-state_.wait-for-state STARTED-EVENT_
 
   constructor.host_ .adapter-metadata:
     super.host_
@@ -1148,279 +1139,18 @@ abstract class Adapter extends Resource_:
 
   abstract set-preferred-mtu mtu/int
 
-class NativeAdapter_ extends Adapter:
-  constructor adapter-metadata/AdapterMetadata:
-    super.private_ adapter-metadata
+/**
+The common base of the adapter, its managers and their attributes.
 
-  create-central_ -> Central:
-    return NativeCentral_ this resource_
-
-  create-peripheral_ bonding/bool secure-connections/bool name/string? -> Peripheral:
-    if name: ble-set-gap-device-name_ resource_ name
-    return NativePeripheral_ this resource_ bonding secure-connections
-
-  set-preferred-mtu mtu/int:
-    ble-set-preferred-mtu_ resource_ mtu
-
-// General events
-MALLOC-FAILED_                        ::= 1 << 22
-
-// Manager lifecycle events
-STARTED-EVENT_                        ::= 1 << 0
-
-// Central Manager Events
-COMPLETED-EVENT_                      ::= 1 << 1
-DISCOVERY-EVENT_                      ::= 1 << 2
-DISCOVERY-OPERATION-FAILED_           ::= 1 << 21
-
-// Remote Device Events
-CONNECTED-EVENT_                      ::= 1 << 3
-CONNECT-FAILED-EVENT_                 ::= 1 << 4
-DISCONNECTED-EVENT_                   ::= 1 << 5
-SERVICES-DISCOVERED-EVENT_            ::= 1 << 6
-READY-TO-SEND-WITHOUT-RESPONSE-EVENT_ ::= 1 << 13
-
-// Remote Service events
-CHARACTERISTIS-DISCOVERED-EVENT_      ::= 1 << 7
-
-// Remote Characteristics events
-VALUE-DATA-READY-EVENT_               ::= 1 << 9
-VALUE-DATA-READ-FAILED-EVENT_         ::= 1 << 10
-DESCRIPTORS-DISCOVERED-EVENT_         ::= 1 << 8
-VALUE-WRITE-SUCCEEDED-EVENT_          ::= 1 << 11
-VALUE-WRITE-FAILED-EVENT_             ::= 1 << 12
-SUBSCRIPTION-OPERATION-SUCCEEDED_     ::= 1 << 14
-SUBSCRIPTION-OPERATION-FAILED_        ::= 1 << 15
-
-// Peripheral Manager events
-ADVERTISE-START-SUCEEDED-EVENT_       ::= 1 << 16
-ADVERTISE-START-FAILED-EVENT_         ::= 1 << 17
-SERVICE-ADD-SUCCEEDED-EVENT_          ::= 1 << 18
-SERVICE-ADD-FAILED-EVENT_             ::= 1 << 19
-DATA-RECEIVED-EVENT_                  ::= 1 << 20
-DATA-READ-REQUEST-EVENT_              ::= 1 << 23
-DATA-WRITE-REQUEST-EVENT_             ::= 1 << 24
-
-
-class Resource_:
-  resource_/any? := null
-  resource-state_/ResourceState_? := null
-
-  constructor .resource_:
-    resource-state_ = ResourceState_ resource-group_ resource_
-    add-finalizer this::
-      close_
-
-  /** A resource of the Toit host backend, which owns no native resource. */
+Each subclass tracks its own lifetime and reports it through $is-closed.
+  The closing hooks of the subclasses chain to $close_, which holds
+  nothing itself.
+*/
+abstract class Resource_:
   constructor.host_:
 
-  close_:
-    if resource_:
-      try:
-        resource := resource_
-        resource_ = null
-        resource-state_.dispose
-        ble-release-resource_ resource
-      finally:
-        remove-finalizer this
+  /** Whether this resource has been closed. */
+  abstract is-closed -> bool
 
-  is-closed -> bool:
-    return resource_ == null
-
-  throw-error_ --is-oom/bool=false:
-    try:
-      ble-get-error_ resource_ is-oom
-    finally:
-      ble-clear-error_ resource_ is-oom
-
-  wait-for-state-with-oom_ bits -> int:
-    state := resource-state_.wait-for-state bits | MALLOC-FAILED_
-    if state & MALLOC-FAILED_ == 0: return state
-    // We encountered an OOM.
-    resource-state_.clear-state MALLOC-FAILED_
-    // Use 'throw-error_' to throw the error and clear it from the resource.
-    throw-error_ --is-oom
-    unreachable
-
-resource-group_ := ble-init_
-
-ble-init_:
-  #primitive.ble.init
-
-ble-create-adapter_ resource-group_:
-  #primitive.ble.create-adapter
-
-ble-create-central-manager_ adapter-resource:
-  #primitive.ble.create-central-manager
-
-ble-create-peripheral-manager_ adapter-resource bonding secure-connections:
-  #primitive.ble.create-peripheral-manager
-
-ble-scan-start_ central-manager passive/bool duration-us/int interval/int window/int limited/bool:
-  #primitive.ble.scan-start
-
-ble-scan-next_ central-manager:
-  #primitive.ble.scan-next
-
-ble-scan-stop_ central-manager:
-  #primitive.ble.scan-stop
-
-ble-connect_ central-manager address secure:
-  #primitive.ble.connect
-
-ble-disconnect_ device:
-  #primitive.ble.disconnect
-
-ble-release-resource_ resource:
-  #primitive.ble.release-resource
-
-ble-discover-services_ device service-uuids:
-  #primitive.ble.discover-services
-
-ble-discover-services-result_ device:
-  #primitive.ble.discover-services-result
-
-ble-discover-characteristics_ service characteristics-uuids:
-  #primitive.ble.discover-characteristics
-
-ble-discover-characteristics-result_ service:
-  #primitive.ble.discover-characteristics-result
-
-ble-discover-descriptors_ characteristic:
-  #primitive.ble.discover-descriptors
-
-ble-discover-descriptors-result_ characteristic:
-  #primitive.ble.discover-descriptors-result
-
-ble-request-read_ resource:
-  #primitive.ble.request-read
-
-ble-get-value_ characteristic:
-  #primitive.ble.get-value
-
-ble-write-value_ characteristic value with-response:
-  return ble-run-with-quota-backoff_: | last-attempt/bool |
-    ble-write-value__ characteristic value with-response (not last-attempt)
-
-ble-write-value__ characteristic value/io.Data with-response allow-retry:
-  #primitive.ble.write-value:
-    return io.primitive-redo-io-data_ it value: | bytes |
-      ble-write-value__ characteristic bytes with-response allow-retry
-
-ble-handle_ resource:
-  #primitive.ble.handle
-
-ble-set-characteristic-notify_ characteristic value:
-  #primitive.ble.set-characteristic-notify
-
-ble-advertise-start_ peripheral-manager name services interval_us connection-mode flags:
-  #primitive.ble.advertise-start
-
-ble-advertise-start-raw_ peripheral-manager advertising-packet/ByteArray scan-response/ByteArray? interval_us/int connection-mode/int:
-  #primitive.ble.advertise-start-raw
-
-ble-advertise-stop_ peripheral-manager:
-  #primitive.ble.advertise-stop
-
-ble-add-service_ peripheral-manager uuid:
-  #primitive.ble.add-service
-
-ble-add-characteristic_ service uuid properties permission value:
-  return ble-run-with-quota-backoff_:
-    ble-add-characteristic__ service uuid properties permission value
-  unreachable
-
-ble-add-characteristic__ service uuid properties permission value:
-  #primitive.ble.add-characteristic:
-    if value == null: throw it
-    return io.primitive-redo-io-data_ it value: | bytes |
-      ble-add-characteristic__ service uuid properties permission bytes
-
-ble-add-descriptor_ characteristic uuid properties permission value:
-  return ble-run-with-quota-backoff_:
-    ble-add-descriptor__ characteristic uuid properties permission value
-
-ble-add-descriptor__ characteristic uuid properties permission value:
-  #primitive.ble.add-descriptor:
-    if value == null: throw it
-    return io.primitive-redo-io-data_ it value: | bytes |
-      ble-add-descriptor__ characteristic uuid properties permission bytes
-
-ble-reserve-services_ peripheral-manager count:
-  #primitive.ble.reserve-services
-
-ble-deploy-service_ service index:
-  #primitive.ble.deploy-service
-
-ble-start-gatt-server_ peripheral-manager:
-  #primitive.ble.start-gatt-server
-
-ble-set-value_ characteristic new-value -> none:
-  ble-run-with-quota-backoff_:
-    ble-set-value__ characteristic new-value
-
-ble-set-value__ characteristic new-value:
-  #primitive.ble.set-value:
-    if new-value == null: throw it
-    return io.primitive-redo-io-data_ it new-value: | bytes |
-      ble-set-value__ characteristic bytes
-
-ble-get-subscribed-clients characteristic:
-  #primitive.ble.get-subscribed-clients
-
-ble-notify-characteristics-value_ characteristic client new-value:
-  return ble-run-with-quota-backoff_:
-    ble-notify-characteristics-value__ characteristic client new-value
-
-ble-notify-characteristics-value__ characteristic client new-value:
-  #primitive.ble.notify-characteristics-value:
-    if new-value == null: throw it
-    return io.primitive-redo-io-data_ it new-value: | bytes |
-      ble-notify-characteristics-value__ characteristic client bytes
-
-ble-get-att-mtu_ resource:
-  #primitive.ble.get-att-mtu
-
-ble-set-preferred-mtu_ adapter mtu:
-  #primitive.ble.set-preferred-mtu
-
-ble-get-error_ characteristic is-oom:
-  #primitive.ble.get-error
-
-ble-clear-error_ characteristic is-oom:
-  #primitive.ble.clear-error
-
-ble-platform-requires-uuid-as-byte-array_:
-  return system.platform == system.PLATFORM-FREERTOS
-
-ble-callback-init_ resource timeout-ms for-read:
-  #primitive.ble.toit-callback-init
-
-ble-callback-deinit_ resource for-read:
-  #primitive.ble.toit-callback-deinit
-
-ble-callback-reply_ resource value for-read:
-  ble-run-with-quota-backoff_ :
-    ble-callback-reply__ resource value for-read
-
-ble-callback-reply__ resource value for-read:
-  #primitive.ble.toit-callback-reply:
-    if value == null: throw it
-    return io.primitive-redo-io-data_ it value: | bytes |
-      ble-callback-reply__ resource bytes for-read
-
-ble-get-bonded-peers_ adapter:
-  #primitive.ble.get-bonded-peers
-
-ble-run-with-quota-backoff_ [block]:
-  start := Time.monotonic-us
-  while true:
-    // The last-attempt boolean is a signal to the block that it may abort the operation
-    // itself if it has a better error than "QUOTA_EXCEEDED".
-    last-attempt := Time.monotonic-us - start + 20 > 2_000_000
-    catch --unwind=(: it != "QUOTA_EXCEEDED"): return block.call last-attempt
-    sleep --ms=10
-    if Time.monotonic-us - start > 2_000_000: throw DEADLINE-EXCEEDED-ERROR
-
-ble-set-gap-device-name_ resource name:
-  #primitive.ble.set-gap-device-name
+  /** Releases what this resource holds; overrides call `super`. */
+  close_ -> none:
