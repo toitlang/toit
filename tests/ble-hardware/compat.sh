@@ -1,12 +1,21 @@
 #!/bin/bash
 set -uo pipefail
 cd /home/flo/work/opentoit-ble
-C=build/ble-compat-001; T=build/host/sdk/bin/toit; mkdir -p $C
-port=/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_7eb10aca7cfbea11919ff4375fbcde76-if00-port0
+# The ble package on hardware: the original ESP32 by default, NEXT_BOARD=c3
+# the ESP32-C3.
+T=build/host/sdk/bin/toit
+if [ "${NEXT_BOARD:-esp32}" = c3 ]; then
+  port=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
+  firmware=build/esp32c3/firmware.envelope
+else
+  port=/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_7eb10aca7cfbea11919ff4375fbcde76-if00-port0
+  firmware=build/esp32/firmware.envelope
+fi
+C=build/ble-compat-001/${NEXT_BOARD:-esp32}; mkdir -p $C
 index=$(btmgmt info | awk '/^hci/{h=$1} /addr 08:BE:AC:2A:DA:C2/{sub(":","",h); print substr(h,4)}')
 $T compile -s -o $C/heart-rate.snapshot examples/ble/heart_rate.toit
 $T compile -s -o $C/central.snapshot tests/ble-hardware/compat-central.toit
-cp build/esp32/firmware.envelope $C/app.envelope
+cp $firmware $C/app.envelope
 $T tool firmware -e $C/app.envelope container install heart-rate $C/heart-rate.snapshot
 $T tool firmware -e $C/app.envelope flash --port $port --partition empty:nvs=65536 2>&1 | tail -1
 pids=()
