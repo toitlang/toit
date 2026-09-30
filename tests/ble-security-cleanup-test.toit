@@ -30,6 +30,7 @@ class Owner implements security-owner.Owner:
   authenticated -> bool: return false
   matches host/central.Central link/central.Link -> bool: return host.owns-link link
   receive bytes/ByteArray -> none: unreachable
+  request-security -> none: unreachable
   close -> none:
     closes++
     if fail_: throw "SECURITY_CLOSE_FAILED"

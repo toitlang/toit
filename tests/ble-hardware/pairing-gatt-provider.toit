@@ -8,13 +8,14 @@
 import ble.experimental.esp32
 import ble.experimental.transport
 import ble.experimental.service.gatt-provider as service
+import ble.experimental.service.pairing as pairing
 
 main:
   provider := Provider
   provider.install
   provider.uninstall --wait
 
-class Provider extends service.Provider:
+class Provider extends service.Provider with pairing.Support:
   constructor: super
   open-transport -> transport.Transport: return esp32.Esp32Transport
   // NoInputNoOutput.

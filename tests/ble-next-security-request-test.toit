@@ -16,6 +16,7 @@ import ble.v2 as ble
 import ble.experimental.smp-pairing as smp
 import ble.experimental.transport
 import ble.experimental.service.gatt-provider as providers
+import ble.experimental.service.pairing as pairing
 import .ble-fixture as fixture
 import .ble-key-reply-test as keys
 import .ble-next-peripheral-test as peripheral
@@ -107,7 +108,7 @@ refuses:
     responder.cancel
     provider.uninstall
 
-class PairingProvider extends peripheral.Provider:
+class PairingProvider extends peripheral.Provider with pairing.Support:
   secured/monitor.Latch ::= monitor.Latch
   constructor: super
   pairing-io-capability -> int?: return 3

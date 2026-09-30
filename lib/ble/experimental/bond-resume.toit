@@ -9,6 +9,7 @@ import .central show Central Link
 import .encryption as encryption
 import .smp-legacy show LegacyKey
 import .security-owner show Owner
+import .timeouts as timeouts
 import .signaling as signaling
 
 /**
@@ -171,6 +172,13 @@ class Resume implements Owner:
       return
     response := signaling.security-response bytes
     if response: host_.send link_ 6 response
+
+  request-security -> none:
+    if closed_: throw "BLE_BOND_RESUME_CLOSED"
+    if link_.info.role != 1 or encrypted: return
+    // Bonding, MITM as the bond has it, Secure Connections unless legacy.
+    with-timeout timeouts.SEND:
+      host_.send link_ 6 #[0x0b, 1 | (authenticated_ ? 4 : 0) | (legacy_ ? 0 : 8)]
 
   /** Ends this security lifetime and releases installed keys through link abort. */
   close -> none:

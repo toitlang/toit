@@ -407,6 +407,10 @@ class Bonding implements TrackedOwner_:
     if closed_: throw "BLE_BOND_OWNER_EXPIRED"
     pairing_.receive bytes
 
+  request-security -> none:
+    if closed_: throw "BLE_BOND_OWNER_EXPIRED"
+    pairing_.request-security
+
   /** Pairs once and durably admits the candidate before granting access. */
   run [confirm] -> none:
     if used_ or closed_: throw "BLE_BOND_PAIRING_INVALID_STATE"

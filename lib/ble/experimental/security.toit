@@ -297,7 +297,7 @@ class Pairing implements Owner:
     pairing or has paired needs no request.
   */
   request-security -> none:
-    if link_.info.role != 1: throw "SMP_NOT_PERIPHERAL"
+    if link_.info.role != 1: return
     mutex_.do:
       if error_: throw error_
       if engine_.state != "idle": return

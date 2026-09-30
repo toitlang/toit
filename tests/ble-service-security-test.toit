@@ -19,6 +19,7 @@ import ble.experimental.smp-pairing as smp
 import ble.experimental.transport
 import ble.experimental.service.client as clients
 import ble.experimental.service.gatt-provider as providers
+import ble.experimental.service.pairing as pairing
 import expect show *
 import monitor
 import system
@@ -277,7 +278,7 @@ application --close-during-confirmation/bool=false --observe-authenticated/bool?
   finally:
     client.close
 
-class Provider extends providers.Provider:
+class Provider extends providers.Provider with pairing.Support:
   radio/fixture.FakeTransport
   receive-flow_/bool
   address/ByteArray? := null
@@ -332,7 +333,7 @@ retry-provider-guard:
     responder.cancel
     provider.uninstall
 
-class RetryProvider extends providers.Provider:
+class RetryProvider extends providers.Provider with pairing.Support:
   radio/RetryRadio ::= RetryRadio
   attempts/retry.Attempts ::= retry.Attempts --minimum=(Duration --s=10)
   constructor: super
