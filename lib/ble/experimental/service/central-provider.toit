@@ -18,6 +18,17 @@ import .scanning-provider as scanning-provider
 import .shared-host as shared
 import ..timeouts as timeouts
 
+/**
+The experimental BLE service provider for the central role.
+
+$Provider adds outgoing GATT connections to `scanning-provider`: each
+  $ConnectionSession connects to one peripheral on the controller shared
+  through $shared.Host and serves the client's GATT operations
+  ($operations.ClientOperations) and link operations
+  ($link-operations.link-operation). Pairing policy and the ACL credit
+  budget are provider hooks. `gatt-provider` builds on it.
+*/
+
 /** Provides scanning and bounded central-role GATT connections. */
 abstract class Provider extends scanning-provider.Provider implements shared.Factory:
   pool_/shared.Host? := null

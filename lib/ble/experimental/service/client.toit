@@ -10,6 +10,21 @@ import io
 import monitor
 
 /**
+The application side of the experimental BLE service.
+
+An application opens a $Client to the provider container that owns the
+  controller and gets advertising ($Client.with-advertising), scanning
+  ($Client.scan, yielding $ScanReport), central connections
+  ($Client.connect, $Client.with-connection, yielding a $Connection) and
+  the configured peripheral ($Client.session, a $Session serving its
+  attributes to centrals) without importing any host code. GATT client
+  operations are the same on both ($GattClient); errors from a peer are an
+  $AttributeError. This is what `ble.host` and `ble.experimental.next`
+  are built on; the providers live in `ble.experimental.service.provider`
+  and its variants.
+*/
+
+/**
 Opens the experimental BLE request service without importing host code.
 
 Outgoing byte arrays are snapshotted before RPC, preserving caller-owned arrays
@@ -549,12 +564,15 @@ class DescriptorRecord:
 /**
 An owned legacy scan report; payload bytes are opaque advertising data.
 
-Convenience properties decode Core 6.3, Vol 4 Part E, section 7.7.65.2.
-  Reserved event types remain available as $event-type and yield null properties.
-  A scan response does not identify its originating advertisement's type, so its
-  connectability and scannability are unknown here. No prior report is inferred.
+The convenience properties decode the event type of the controller's
+  advertising report. Reserved event types remain available as $event-type
+  and yield null properties. A scan response does not identify its
+  originating advertisement's type, so its connectability and scannability
+  are unknown here. No prior report is inferred.
 */
 class ScanReport:
+  // The event types are those of the HCI LE Advertising Report event
+  // (Core 6.3, Vol 4 Part E, section 7.7.65.2).
   event-type/int
   address-type/int
   address/ByteArray

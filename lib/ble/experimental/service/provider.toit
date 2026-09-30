@@ -7,6 +7,22 @@ import system.services
 import .api as api
 import .requests as bridge
 
+/**
+The base of the experimental BLE service providers.
+
+A provider container owns the controller and serves applications that
+  connect with `ble.experimental.service.client`. $Provider implements the
+  RPC handler for $api.SELECTOR: it admits sessions within the configured
+  limits ($Provider.peripheral-session-limit, $Provider.central-session-limit,
+  $Provider.mixed-role-sessions), keeps the radio modes that must be
+  exclusive exclusive, and delegates the actual operations to a $Session
+  per client resource. The variants add the operations: advertising
+  (`advertising-provider`), scanning (`scanning-provider`), central-role
+  GATT (`central-provider`) and a local peripheral (`gatt-provider`).
+  Application requests of a peripheral session flow through
+  $bridge.Requests.
+*/
+
 /** RPC ownership with exclusive radio modes and bounded connection sharing. */
 abstract class Provider extends services.ServiceProvider implements services.ServiceHandler:
   // Reserve the supported ownership slots before opening any controller.

@@ -7,6 +7,18 @@ import ..central as central
 import ..hci as hci
 import ..transport as transport
 
+/**
+One controller shared by several provider sessions.
+
+Central connections and peripheral sessions of the same provider run on one
+  controller and one $central.Central link owner. $Host owns that controller's
+  lifetime: sessions $Host.retain it before they start, set up under
+  $Host.setup, and $Host.release it when done; the last release closes the
+  controller. The provider supplies the transport, the early security policy
+  and the link owner through $Factory. Used by `central-provider` and
+  `gatt-provider`.
+*/
+
 /** Supplies one shared controller and its provider-owned early security policy. */
 interface Factory:
   open-transport -> transport.Transport

@@ -2,21 +2,6 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-/**
-The `ble` package on the Toit host.
-
-Firmware without a native BLE host (a controller-only ESP32 image, or a Linux
-  host) serves the same public API through the BLE service provider of
-  `ble.experimental.service`. $Adapter picks this backend when the native one
-  is unavailable and a provider is installed. Differences from the native
-  backend are noted on each class; the main ones are that the peripheral
-  serves as many centrals at once as the provider's peripheral session
-  limit allows (one by default; advertising resumes after each disconnect)
-  and that pairing policy belongs to the provider, so the `--bonding` and
-  `--secure-connections` flags are advisory. `bonded-peers` lists what the
-  provider chooses to list (none by default).
-*/
-
 import io
 import monitor
 
@@ -24,6 +9,23 @@ import .ble
 import .local
 import .remote
 import .experimental.service.client as rpc
+
+/**
+The `ble` package on the Toit host.
+
+Firmware without a native BLE host (a controller-only ESP32 image, or a Linux
+  host) serves the same public API through the BLE service provider of
+  `ble.experimental.service`, reached with a $rpc.Client. $Adapter picks
+  this backend when the native one is unavailable and a provider is
+  installed; applications keep using $Adapter, $Central
+  and $Peripheral and never import this library. Differences from the
+  native backend are noted on each class; the main ones are that the
+  peripheral serves as many centrals at once as the provider's peripheral
+  session limit allows (one by default; advertising resumes after each
+  disconnect) and that pairing policy belongs to the provider, so the
+  `--bonding` and `--secure-connections` flags are advisory.
+  `bonded-peers` lists what the provider chooses to list (none by default).
+*/
 
 /** Opens the Toit host backend, or throws "Unsupported platform" without a provider. */
 host-adapter_ -> Adapter:

@@ -12,6 +12,16 @@ import .provider as rpc
 import .advertising-provider as advertising-provider
 import ..timeouts as timeouts
 
+/**
+The experimental BLE service provider for advertising and legacy scanning.
+
+$Provider adds scanning to `advertising-provider`: a $ScanSession owns the
+  controller for its duration and queues reports for the client, within
+  bounds. It is the small image for deployments without GATT; a deployment
+  subclasses it and supplies $Provider.open-transport. `central-provider`
+  builds on it.
+*/
+
 /** Provides legacy scanning with bounded queues without importing ATT, GATT or SMP. */
 abstract class Provider extends advertising-provider.Provider:
   constructor:

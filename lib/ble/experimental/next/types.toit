@@ -2,6 +2,17 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+/**
+Value types of the experimental application API (`ble.experimental.next`).
+
+Remote devices are $Peer objects, on the Toit host their $Address. A
+  link's state is described by $Phy, $DataLength, $ConnectionParameters
+  and the security and role constants ($SECURITY-NONE and up,
+  $ROLE-CENTRAL, $ROLE-PERIPHERAL); how it ended by a $DisconnectReason.
+  A peer's refusal of a GATT operation is an $AttError, and $Capabilities
+  says what the provider supports.
+*/
+
 /** Security levels, as required by an application and as achieved by a link. */
 SECURITY-NONE ::= 0
 /** The link is encrypted; pairing may have been Just Works. */
@@ -144,11 +155,13 @@ class ConnectionParameters:
 /**
 Why a link ended.
 
-$code is the HCI reason (Core Vol 1 Part F), or null when the link ended
-  without one, for example because the provider failed; $message then says
-  what happened.
+$code is the controller's HCI error code for the disconnect (the named
+  constants below are the common ones), or null when the link ended without
+  one, for example because the provider failed; $message then says what
+  happened.
 */
 class DisconnectReason:
+  // The codes are the HCI error codes (Core Vol 1 Part F).
   code/int?
   message/string?
 

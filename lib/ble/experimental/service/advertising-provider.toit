@@ -14,6 +14,16 @@ import .api as api
 import .provider as rpc
 import ..timeouts as timeouts
 
+/**
+The smallest experimental BLE service provider: legacy advertising only.
+
+$Provider serves non-connectable advertising to clients, one
+  $AdvertisingSession at a time, and holds the address policy that the
+  other providers inherit ($Provider.privacy-irk,
+  $Provider.local-random-address). A deployment subclasses it and supplies
+  $Provider.open-transport. `scanning-provider` builds on it.
+*/
+
 /** Provides non-connectable legacy advertising without ATT, GATT or SMP. */
 abstract class Provider extends rpc.Provider:
   constructor: super

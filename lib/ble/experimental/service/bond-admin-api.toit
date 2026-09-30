@@ -4,6 +4,15 @@
 
 import system.services
 
+/**
+The wire protocol of the optional bond administration service.
+
+`ble.experimental.service.bond-admin-provider` and
+  `ble.experimental.service.bond-admin-client` share $SELECTOR and the
+  method indices $BONDS, $BONDS-WITH-REVISION, $REVOKE and
+  $REVOKE-IF-CURRENT. It is separate from the ordinary BLE service.
+*/
+
 // Optional administration protocol, separate from ordinary BLE operations.
 SELECTOR ::= services.ServiceSelector
     --uuid="e5cfa11d-240f-4530-b45e-40a1277eb696"

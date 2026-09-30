@@ -2,8 +2,17 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import ..linux as linux
+import ..linux-management as management
+import ..native as native
+import ..transport as transport
+import ..service.gatt-provider as gatt
+import ..resolving-list as resolving
+import .adapter
+import .peripheral show Peripheral
+
 /**
-The application API on a Linux Bluetooth adapter.
+The application API (`ble.experimental.next`) on a Linux Bluetooth adapter.
 
 Linux has no BLE provider container; $open installs one in the calling
   process for the HCI adapter with the given index (hci0 is 0) and returns
@@ -13,15 +22,6 @@ Linux has no BLE provider container; $open installs one in the calling
   BlueZ, which hands it over exclusively; BlueZ powers it on again when the
   process lets go.
 */
-
-import ..linux as linux
-import ..linux-management as management
-import ..native as native
-import ..transport as transport
-import ..service.gatt-provider as gatt
-import ..resolving-list as resolving
-import .adapter
-import .peripheral show Peripheral
 
 /**
 Opens adapter $index.
