@@ -2,20 +2,29 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-/**
-LE Secure Connections derivation functions (Core 6.3 Vol 3 Part H, 2.2.6–2.2.9).
+import crypto.cmac show cmac
+import crypto.compare show constant-time-equals
+import io
 
-All multi-octet inputs and outputs use most-significant-octet-first order, as in
-  the specification's Appendix D vectors and the crypto library. SMP little-endian
+/**
+The key derivation functions of LE Secure Connections pairing.
+
+$f4 computes a confirm value, $f5 derives the MacKey and LTK ($Keys) from
+  the shared Diffie-Hellman secret, $f6 computes the DHKey check and $g2
+  the Numeric Comparison number; $verify-check compares two check values in
+  constant time. They are AES-CMAC constructions over the SDK's `crypto.cmac`
+  and are used by the pairing engine (`smp-pairing`), which owns the exchange.
+
+All multi-octet inputs and outputs use most-significant-octet-first order,
+  like the standard test vectors and the crypto library. SMP little-endian
   public coordinates, nonces, and checks require conversion at the wire boundary.
   An address is seven bytes: public/random type (0/1), then the six address bytes
   most significant first. IO capabilities are AuthReq, OOB flag, IO capability,
   in that order. These functions do not perform pairing or authenticate a peer.
 */
 
-import crypto.cmac show cmac
-import crypto.compare show constant-time-equals
-import io
+// The functions follow Core 6.3 Vol 3 Part H, 2.2.6 to 2.2.9; the tests use
+// the Appendix D sample data.
 
 /** Derived keys with separate owned storage. */
 class Keys:

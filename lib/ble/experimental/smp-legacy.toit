@@ -2,8 +2,21 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import crypto
+import crypto.aes
+import .security-state show SecurityState
+import .smp-features show PairingError
+
 /**
-LE legacy pairing primitives (Core 6.3 Vol 3 Part H 2.2.3, 2.2.4).
+LE legacy pairing (without Secure Connections): its key functions and keys.
+
+$c1 and $s1 are the confirm and short term key functions that the pairing
+  engine (`smp-pairing`) uses for a legacy exchange; both build on $e, the
+  AES-128 block function. $LegacyKey is a long term key with the EDIV and
+  Rand a peer presents to ask for it, distributed after encryption; $LegacyKeyReceiver
+  collects the one the peer distributes. The distribution exchange
+  (`smp-distribution`) orders that traffic and bond records (`bond`) keep
+  the keys for resumption.
 
 All inputs and outputs are in the order the values travel on the air: SMP
   PDUs as transmitted (opcode first), addresses least significant byte first,
@@ -11,10 +24,9 @@ All inputs and outputs are in the order the values travel on the air: SMP
   works on the big-endian representation, so the helpers reverse around it.
 */
 
-import crypto
-import crypto.aes
-import .security-state show SecurityState
-import .smp-features show PairingError
+// The functions are those of Core 6.3 Vol 3 Part H 2.2.3 (c1) and 2.2.4 (s1);
+// the key PDUs are Encryption Information and Central Identification
+// (3.6.2 and 3.6.3).
 
 /** e(k, p): AES-128 of the 128-bit value $p under $k, both least significant byte first. */
 e k/ByteArray p/ByteArray -> ByteArray:
@@ -22,7 +34,7 @@ e k/ByteArray p/ByteArray -> ByteArray:
   return reverse_ ((aes.AesEcb.encryptor (reverse_ k)).encrypt (reverse_ p))
 
 /**
-c1: the confirm value over the pairing exchange (2.2.3).
+c1: the confirm value over the pairing exchange.
 
 $r is the 128-bit random, $preq and $pres the 7-byte Pairing Request and
   Response PDUs, $ia and $ra the initiating and responding 6-byte addresses
@@ -43,7 +55,7 @@ c1 k/ByteArray r/ByteArray preq/ByteArray pres/ByteArray iat/int ia/ByteArray ra
   first := e k (xor_ r p1)
   return e k (xor_ first p2)
 
-/** s1: the short term key from the two pairing randoms (2.2.4). */
+/** s1: the short term key from the two pairing randoms. */
 s1 k/ByteArray r1/ByteArray r2/ByteArray -> ByteArray:
   if r1.size != 16 or r2.size != 16: throw "INVALID_ARGUMENT"
   // r' takes the least significant 64 bits of each random: r1's below r2's.
@@ -60,7 +72,7 @@ reverse_ bytes/ByteArray -> ByteArray:
 
 /**
 A legacy long term key with the identifiers a peer presents to ask for it
-  (Encryption Information and Central Identification, 3.6.2 and 3.6.3).
+  (distributed as Encryption Information and Central Identification).
 
 $ltk is the 128-bit key least significant byte first as distributed; $key
   returns it in the big-endian order the encryption commands take.

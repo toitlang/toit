@@ -3,6 +3,17 @@
 // be found in the lib/LICENSE file.
 
 /**
+Public metadata of a stored bond, for inventory and administration.
+
+$BondInfo describes one bond slot without its keys: the local and peer
+  identity addresses, whether pairing was authenticated, and an optional
+  inventory revision. `bond-table.Snapshot.bonds` and
+  `bond-registry.Registry.bonds` return lists of these; the bond
+  administration service reports them to clients and uses the revision for
+  conditional revocation.
+*/
+
+/**
 An owned bond inventory record without key material.
 
 Addresses are public or static identity addresses in HCI byte order. The stored

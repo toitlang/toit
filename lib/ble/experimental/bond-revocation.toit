@@ -6,6 +6,17 @@ import monitor
 import .bond-storage show Records
 
 /**
+Deletion markers that keep a revoked bond revoked across an interrupted delete.
+
+$RevocableRecords wraps a $Records backend: a removal first writes and
+  verifies a marker, then deletes the record, and a marked record reads as
+  absent until a replacement has been written. Providers that must not
+  resurrect a revoked bond after a power loss put this between the flash
+  backend (`bond-flash`) and the bond table; every access to the namespace
+  must then go through the wrapper.
+*/
+
+/**
 Keeps interrupted deletions logically revoked across backend reopen.
 
 Owns the backend after successful construction. Requires exclusive use of its

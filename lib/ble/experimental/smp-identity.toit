@@ -2,19 +2,27 @@
 // Use of this source code is governed by an MIT-style license that can
 // be found in the lib/LICENSE file.
 
+import .security-state show SecurityState
+import .smp-features show PairingError
+import .connection as connection
+import .privacy as privacy
+
 /**
-Identity Information/Address PDUs (Core 6.3 Vol 3 Part H 3.6.4–3.6.5).
+The identity a device distributes after pairing: its IRK and identity address.
+
+$Identity holds one such identity, either the local one to distribute or a
+  peer's as received, and matches connection addresses against it, resolving
+  private addresses with the IRK. $Identity.packets encodes it as the two
+  Identity Information and Identity Address Information PDUs; $Receiver
+  collects the peer's pair. The distribution exchange (`smp-distribution`)
+  orders these on behalf of the pairing owner; bond records (`bond`) store
+  the identities.
 
 IRKs use crypto most-significant-first order; six-byte addresses use HCI order.
   This bounded codec does not negotiate distribution, send packets, persist a
   bond, or report baseband acknowledgment of outgoing keys. The connection owner
   must enforce peripheral-before-central distribution and its procedure deadline.
 */
-
-import .security-state show SecurityState
-import .smp-features show PairingError
-import .connection as connection
-import .privacy as privacy
 
 /** An owned peer identity, which is not itself evidence of authenticated pairing. */
 class Identity:

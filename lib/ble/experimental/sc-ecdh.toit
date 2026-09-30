@@ -2,17 +2,23 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import crypto.ec as ec
+
 /**
-P-256 key agreement for LE Secure Connections.
+P-256 key agreement for LE Secure Connections pairing.
+
+$generate creates the ephemeral key pair of one exchange, $public-key
+  exports its public half in the form SMP sends, and $dhkey computes the
+  shared secret from the peer's public key. The pairing engine
+  (`smp-pairing`) is the caller; the result feeds the `sc-crypto` derivations.
 
 Public keys use SMP's 64-byte X-then-Y representation: each coordinate is little
   endian. DHKey output is 32-byte big endian for the sc-crypto derivation functions.
   Point validation and scalar multiplication use the SDK's mbedTLS primitive.
-  The published Bluetooth debug public key is rejected. This module does not
-  implement pairing state or authenticate the remote public key.
+  The well-known debug public key is rejected, so a peer cannot make the
+  exchange decryptable by a sniffer. This module does not implement pairing
+  state or authenticate the remote public key.
 */
-
-import crypto.ec as ec
 
 // DER SubjectPublicKeyInfo: id-ecPublicKey, prime256v1, uncompressed point.
 PUBLIC-PREFIX_ ::= #[0x30, 0x59, 0x30, 0x13, 6, 7, 0x2a, 0x86, 0x48,

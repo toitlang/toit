@@ -12,6 +12,17 @@ import .security-owner show Owner
 import .signaling as signaling
 
 /**
+Resumption of a stored bond on a new connection.
+
+$Resume is the security $Owner for a link whose peer is already bonded: it
+  takes the stored $Candidate, installs its key and encrypts the link
+  ($Resume.run) instead of pairing again, and answers a peer's Security
+  Request with that key ($Resume.receive). `bond-registry` creates one per
+  admitted connection from its bond table; the owner is attached to the
+  link's ATT client or GATT server like a fresh `security.Pairing`.
+*/
+
+/**
 Attempts SC encryption on a fresh connection using a trusted stored candidate.
 
 The caller authenticates storage and selects the record. Both identities must
@@ -135,16 +146,18 @@ class Resume implements Owner:
         result_.set true
 
   /**
-  Answers a peer Security Request per Core 6.3 Vol 3 Part H 2.4.6, Figure 2.7.
+  Answers a peer's Security Request with the stored bond.
 
   On a central link the stored key is compared with the requested properties:
     a key that meets them is used for the encryption setup this owner performs
-    (an already started setup ignores the request, as required); a request for
-    MITM protection that an unauthenticated key cannot meet is answered with
-    Pairing Not Supported, because this owner never pairs. Replacement of a
-    bond requires an explicit provider decision. Other SMP traffic is rejected.
+    (a request arriving after the setup started is ignored, since the
+    encryption under way already answers it); a request for MITM protection
+    that an unauthenticated key cannot meet is answered with Pairing Not
+    Supported, because this owner never pairs. Replacement of a bond requires
+    an explicit provider decision. Other SMP traffic is rejected.
   */
   receive bytes/ByteArray -> none:
+    // The central's handling follows Core 6.3 Vol 3 Part H 2.4.6, Figure 2.7.
     if closed_: throw "BLE_BOND_RESUME_CLOSED"
     if bytes.size == 2 and bytes[0] == 0x0b and link_.info.role == 0:
       if used_: return

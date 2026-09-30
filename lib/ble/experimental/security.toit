@@ -16,6 +16,20 @@ import .smp-features show PairingError
 import .signaling as signaling
 import .timeouts as timeouts
 
+/**
+The pairing owner: fresh SMP pairing on one connection.
+
+$Pairing binds an `smp-pairing` engine to one link of a $central.Central,
+  drives the exchange ($Pairing.run with the confirmation, display and input
+  blocks), starts or awaits controller encryption, and then runs key and
+  identity distribution ($distribution.Exchange) when bonding was
+  negotiated. It is attached to the link's ATT client or GATT server as its
+  $Owner, so that incoming SMP PDUs reach $Pairing.receive. The
+  `--candidate` form of `run` hands the caller a $bond.Candidate to store;
+  `bond-registry` wraps it so the candidate is persisted before access is
+  granted. A shared $retry.Attempts limits repeated attempts by a peer.
+*/
+
 monitor Progress_:
   version_/int := 0
   version -> int: return version_

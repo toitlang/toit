@@ -2,7 +2,17 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-/** Pairing feature parsing and association selection; no pairing is enabled here. */
+/**
+The pairing feature exchange: what each side offers and what follows from it.
+
+$Features parses and validates a Pairing Request or Response PDU.
+  $select-association decides from the two of them which pairing method
+  runs (Just Works, Numeric Comparison or Passkey Entry, Secure Connections
+  or legacy through $select-legacy-association), and $passkey-roles says
+  which side types the passkey. $PairingError carries the reason of a
+  failed pairing. The pairing engine (`smp-pairing`) uses these; no pairing
+  is performed here.
+*/
 
 /** An SMP failure reason suitable for a later Pairing Failed response. */
 class PairingError:
@@ -12,11 +22,12 @@ class PairingError:
 
   stringify -> string: return "SMP_PAIRING_FAILED reason=$reason"
 
-/** An owned, validated Pairing Request or Response (Core 6.3 Part H, 3.5.1–2). */
+/** An owned, validated Pairing Request or Response PDU. */
 class Features:
   bytes_/ByteArray
 
   constructor bytes/ByteArray --response/bool=false:
+    // The layout is that of Core 6.3 Vol 3 Part H 3.5.1 and 3.5.2.
     if bytes.size != 7 or bytes[0] != (response ? 2 : 1) or
         bytes[1] > 4 or bytes[2] > 1 or (bytes[3] & 3) > 1 or
         not 7 <= bytes[4] <= 16:
@@ -47,14 +58,17 @@ class Features:
 /**
 Selects an SC association with full 128-bit keys and explicit authentication policy.
 
-Requires both SC bits and key sizes of 16. Numeric Comparison and Passkey Entry
-  are selected by Core 6.3 Vol 3 Part H Table 2.8 when either MITM flag is set.
-  Just Works cannot satisfy an explicit local authentication requirement. A local requirement
-  also cannot retroactively change already exchanged flags. OOB is not supported.
+Requires both SC bits and key sizes of 16. When either side asks for MITM
+  protection, the two IO capabilities decide between Numeric Comparison and
+  Passkey Entry (see $passkey-roles), falling back to Just Works when neither
+  is possible. Just Works cannot satisfy an explicit local authentication
+  requirement. A local requirement also cannot retroactively change already
+  exchanged flags. OOB is not supported.
   The returned method is a plan, never evidence that authentication succeeded.
   The pairing session executes it.
 */
 select-association request/Features response/Features --require-authentication/bool -> string:
+  // The method selection is Core 6.3 Vol 3 Part H Table 2.8.
   if request.response or not response.response: throw (PairingError 0x0a)
   if not request.secure-connections or not response.secure-connections:
     return select-legacy-association request response --require-authentication=require-authentication
@@ -97,15 +111,16 @@ select-legacy-association request/Features response/Features --require-authentic
 
 /**
 Returns who enters the passkey for Passkey Entry between IO capabilities
-  $initiator and $responder (Core 6.3 Vol 3 Part H, Table 2.8), as
-  [initiator inputs, responder inputs], or null when the pair cannot use
-  Passkey Entry. The side that does not input displays the passkey.
+  $initiator and $responder, as [initiator inputs, responder inputs], or
+  null when the pair cannot use Passkey Entry. The side that does not input
+  displays the passkey.
 
 IO capabilities: 0 display only, 1 display yes/no, 2 keyboard only, 3 no
   input no output, 4 keyboard display. With Secure Connections, two
   display-yes/no-capable sides use Numeric Comparison instead.
 */
 passkey-roles initiator/int responder/int -> List?:
+  // The roles are those of Core 6.3 Vol 3 Part H Table 2.8.
   if initiator == 3 or responder == 3: return null
   if initiator == 2 and responder == 2: return [true, true]
   if initiator == 2: return [true, false]

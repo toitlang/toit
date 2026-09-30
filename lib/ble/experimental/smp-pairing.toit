@@ -10,6 +10,19 @@ import .smp-features as features
 import .smp-legacy as legacy-pairing
 
 /**
+The SMP pairing engine: one key exchange as a pure state machine.
+
+$Session takes the peer's PDUs ($Session.receive) and the user's decisions
+  ($Session.approve, $Session.enter-passkey) and returns the PDUs to send;
+  it computes with `sc-ecdh`, `sc-crypto` and `smp-legacy` and selects the
+  method through `smp-features`. When $Session.verified, $Session.key is
+  the candidate long term key and the bonding accessors say what to
+  distribute. It never touches the link: the pairing owner
+  (`security.Pairing`) sends the packets, enforces $Session.deadline and
+  starts encryption.
+*/
+
+/**
 One pairing key exchange, without transport or persistence.
 
 Secure Connections with Just Works, Numeric Comparison or Passkey Entry, and
@@ -174,11 +187,12 @@ class Session:
     return ltk_.copy
 
   /**
-  Returns a Security Request (Core 6.3 Vol 3 Part H 3.6.7) with this
-    responder's AuthReq, asking the central to pair (or to encrypt with an
-    existing bond). Only before pairing started.
+  Returns a Security Request with this responder's AuthReq, asking the
+    central to pair (or to encrypt with an existing bond). Only before
+    pairing started.
   */
   security-request -> ByteArray:
+    // Core 6.3 Vol 3 Part H 3.6.7.
     if initiator_ or state_ != "idle": throw "SMP_INVALID_STATE"
     return #[0x0b, local_.packet[3]]
 
