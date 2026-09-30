@@ -106,7 +106,12 @@ class Connection:
   */
   request-phy phy/int -> Phy: return request-phy --tx=phy --rx=phy
 
-  /** Asks for the given PHYs per direction; see $(request-phy phy). */
+  /**
+  Variant of $(request-phy phy).
+
+  Asks for $tx in the transmit direction and $rx in the receive direction
+    separately, for example the Coded PHY only where range is short.
+  */
   request-phy --tx/int --rx/int -> Phy:
     if not PHY-1M <= tx <= PHY-CODED or not PHY-1M <= rx <= PHY-CODED: throw "INVALID_ARGUMENT"
     result := backend_.set-phy --tx=(1 << (tx - 1)) --rx=(1 << (rx - 1))
@@ -351,12 +356,13 @@ class RemoteCharacteristic:
         block.call (Values stream)
 
   /**
-  Subscribes until $Subscription.close, for values received outside one
-    block (from a field, or by several tasks in turn).
+  Variant of $(subscribe --indications --queue-limit [block]).
 
-  The same as the block form otherwise: the subscription is active when this
-    returns, and $Subscription.close unsubscribes and waits until the peer
-    was told. A task in the background holds it; close it before dropping it.
+  Returns a $Subscription that lasts until $Subscription.close instead of
+    the scope of a block, for values received from a field or by several
+    tasks in turn. The subscription is active when this returns;
+    $Subscription.close unsubscribes and waits until the peer was told. A
+    task in the background holds it, so close it before dropping it.
   */
   subscribe --indications/bool?=null --queue-limit/int=8 -> Subscription:
     return Subscription.start_ this --indications=indications --queue-limit=queue-limit
@@ -368,7 +374,10 @@ class RemoteCharacteristic:
 
   stringify -> string: return "RemoteCharacteristic $uuid"
 
-/** A subscription that lasts until $close; see $RemoteCharacteristic.subscribe. */
+/**
+A subscription that lasts until $close; see
+  $(RemoteCharacteristic.subscribe --indications --queue-limit).
+*/
 class Subscription:
   characteristic/RemoteCharacteristic
   values_/Values? := null

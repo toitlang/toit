@@ -112,6 +112,14 @@ class Adapter:
       --active/bool=(name != null) -> ScanReport?:
     return find --service=service --name=name --duration=duration --active=active: true
 
+  /**
+  Variant of $(find --service --name --duration --active).
+
+  Also calls $block with every report that matches $service and $name, and
+    returns the first one for which $block returns true. Use it for
+    conditions the filters cannot express, such as a manufacturer data
+    field or a minimum RSSI.
+  */
   find --service/BleUuid?=null --name/string?=null --duration/Duration=(Duration --s=10)
       --active/bool=(name != null) [block] -> ScanReport?:
     found/ScanReport? := null
