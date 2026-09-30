@@ -19,8 +19,8 @@ main:
     identity := ble.Address PEER-IDENTITY --type=ble.Address.PUBLIC-IDENTITY
     report := adapter.find --service=HEART-RATE --duration=(Duration --s=20)
     if not report: throw "PRIVATE_NOT_FOUND"
-    print "PRIVATE_CENTRAL found $report.address"
-    if report.address != identity: throw "PRIVATE_NOT_RESOLVED $report.address"
+    print "PRIVATE_CENTRAL found $report.peer"
+    if report.peer != identity: throw "PRIVATE_NOT_RESOLVED $report.peer"
     measure adapter identity
     // No scan: the controller recognizes the peripheral's next RPA itself.
     measure adapter identity

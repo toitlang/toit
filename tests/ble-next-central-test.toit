@@ -71,6 +71,7 @@ main:
       adapter.with-connection peer: | connection/ble.Connection |
         expect-equals ble.ROLE-CENTRAL connection.role
         expect-equals peer connection.peer
+        expect-equals peer connection.peer.address
         expect-equals 247 connection.mtu
         expect-equals 6 adapter.address.bytes.size
         expect (not adapter.supports-tx-power-control)

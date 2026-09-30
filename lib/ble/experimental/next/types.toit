@@ -22,7 +22,25 @@ PHY-2M ::= 2
 PHY-CODED ::= 3
 
 /**
-A Bluetooth device address with its type.
+A remote device: what a scan found, what a connection is to.
+
+On the Toit host every peer is its Bluetooth $Address. A platform whose
+  Bluetooth stack hides addresses (CoreBluetooth on macOS names devices by a
+  per-host identifier) has peers of its own kind, with a null $address.
+  Code that finds, connects to, compares and prints peers works with both;
+  only code that needs the address itself checks for it.
+*/
+interface Peer:
+  /** The peer's Bluetooth address, or null where the platform hides it. */
+  address -> Address?
+
+  operator == other -> bool
+  hash-code -> int
+  stringify -> string
+
+/**
+A Bluetooth device address with its type, and the $Peer it names on the
+  Toit host.
 
 $bytes are in the order used on the air and in HCI (least significant byte
   first); $stringify prints the usual most-significant-first form.
@@ -32,7 +50,7 @@ The identity types name a bonded peer by its identity address when the
   `resolving-list`); connecting to such an address finds the peer whatever
   address it currently uses on air.
 */
-class Address:
+class Address implements Peer:
   static PUBLIC ::= 0
   static RANDOM ::= 1
   static PUBLIC-IDENTITY ::= 2
@@ -55,6 +73,9 @@ class Address:
 
   /** The six address bytes, least significant first. */
   bytes -> ByteArray: return bytes_.copy
+
+  /** This address, as the $Peer it names. */
+  address -> Address: return this
 
   is-random -> bool: return type == RANDOM or type == RANDOM-IDENTITY
 

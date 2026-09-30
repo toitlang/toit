@@ -23,8 +23,11 @@ The connection stays an object after the link ended: $wait-closed returns
   for every connection, ended or not.
 */
 class Connection:
-  /** The peer's address. */
-  peer/Address
+  /**
+  The device at the other end: its $Address on the Toit host (see $Peer
+    for platforms that hide addresses).
+  */
+  peer/Peer
   /** This device's role on the link, $ROLE-CENTRAL or $ROLE-PERIPHERAL. */
   role/int
 

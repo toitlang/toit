@@ -54,7 +54,7 @@ connection-oriented channels and EATT.
 
 ## Verification state
 
-All 186 BLE test programs run in the ordinary CTest suite on a scripted in-memory
+All 187 BLE test programs run in the ordinary CTest suite on a scripted in-memory
 transport. Hardware coverage exists for every feature above on the rig described
 in [hardware.md](hardware.md), against BlueZ, Bumble and NimBLE peers, but it is
 manual, and the failures in [open-issues.md](open-issues.md) remain.
