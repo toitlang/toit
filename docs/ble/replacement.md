@@ -75,14 +75,27 @@ in [measurements.md](measurements.md).
    scan, the raw report bytes, remote handles, a descriptor value setter
    and the peripheral's MTU. Verified by the software tests and
    `tests/ble-hardware/compat.sh` (two centrals at once).
-8. **macOS backend.** A `ble.v2` provider over CoreBluetooth (reworking
-   `src/resources/ble_darwin.mm`): scanning, connecting, discovery, reads,
-   writes, subscriptions, RSSI; a GATT server with handlers and
-   notifications. Peers are CoreBluetooth identifiers (`Peer` with a null
-   address); `Capabilities` and `BLE_UNSUPPORTED` cover what macOS does not
-   offer (PHY, parameters, transmit power, `request-security`, peripheral
-   connect and disconnect events, broadcast advertising). Written without a
-   Mac at hand; needs a build and a run on one.
+8. **macOS backend.** Written, not yet run on a Mac:
+   `lib/ble/experimental/service/darwin-provider.toit` speaks the service
+   protocol over the CoreBluetooth primitives the `ble` package used before
+   (`lib/ble/experimental/darwin.toit`, `src/resources/ble_darwin.mm`,
+   unchanged). `ble.v2.darwin.open` gives a `ble.v2` adapter;
+   `ble.v2.darwin.install` puts the provider in the process for the `ble`
+   package (no automatic fallback: that would cost every ESP32 application
+   42 KB of snapshot). Peers are `PlatformPeer`s (16-byte identifiers,
+   address type 4 on the wire). Supported: scanning (name, service UUIDs,
+   manufacturer data re-encoded as advertising data), connecting, service
+   and characteristic discovery, reads, writes, subscriptions, the MTU; a
+   served database with static values, notifications and incoming writes,
+   published once per process; advertising a name and service UUIDs.
+   Unsupported, by the primitives or by macOS: descriptors, included
+   services, read handlers and write validation, the identity of
+   connected centrals and their connect and disconnect events (`accept`
+   returns one anonymous peer as soon as advertising runs), PHY,
+   parameters, RSSI, transmit power, security, the adapter's address.
+   To do on a Mac: build (`make sdk` on macOS), run
+   `tests/ble-hardware/darwin-check.toit` against any BLE peripheral, and
+   fix what the first run finds.
 
 ## Efficiency goal
 

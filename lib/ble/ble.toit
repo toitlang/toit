@@ -29,7 +29,8 @@ Services, characteristics and descriptors are identified by a $BleUuid.
 
 The package runs on the Toit host everywhere: the $Adapter reaches the
   radio through the BLE service provider, which is built into the ESP32
-  firmware and runs in-process on Linux. macOS is pending its provider.
+  firmware, or installed in the process on Linux and macOS
+  (`ble.v2.linux.open`, `ble.v2.darwin.install`).
 
 Deprecated. Use `ble.v2` (`import ble.v2`) instead.
 

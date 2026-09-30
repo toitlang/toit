@@ -50,6 +50,42 @@ interface Peer:
   stringify -> string
 
 /**
+A peer named by the platform's own identifier where its Bluetooth stack
+  hides addresses: the CoreBluetooth identifier of a device on macOS.
+
+Stable for this host while the device is known to it; not meaningful on
+  another host.
+*/
+class PlatformPeer implements Peer:
+  /** The address type the service protocol uses for platform identifiers. */
+  static TYPE ::= 4
+
+  bytes_/ByteArray
+
+  /** A peer from its identifier bytes (16 for CoreBluetooth). */
+  constructor bytes/ByteArray:
+    if bytes.is-empty: throw "INVALID_ARGUMENT"
+    bytes_ = bytes.copy
+
+  /** The identifier bytes. */
+  bytes -> ByteArray: return bytes_.copy
+
+  address -> Address?: return null
+
+  operator == other -> bool: return other is PlatformPeer and bytes_ == other.bytes_
+  hash-code -> int: return bytes_[0] | (bytes_[1] << 8) | (bytes_[2] << 16)
+
+  stringify -> string:
+    text := (List bytes_.size: "$(%02x bytes_[it])").join ""
+    if bytes_.size != 16: return "id $text"
+    return "$text[0..8]-$text[8..12]-$text[12..16]-$text[16..20]-$text[20..]"
+
+/** The $Peer of a service-protocol address: an $Address, or a $PlatformPeer for type 4. */
+peer-of_ bytes/ByteArray type/int -> Peer:
+  if type == PlatformPeer.TYPE: return PlatformPeer bytes
+  return Address bytes --type=type
+
+/**
 A Bluetooth device address with its type, and the $Peer it names on the
   Toit host.
 
