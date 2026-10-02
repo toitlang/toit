@@ -191,10 +191,14 @@ menu "Toit"
                 needed for TLS.
 
         config TOIT_ENABLE_IP
-            boolean "Enable IP stack on ESP32"
+            boolean "Enable native lwIP stack on ESP32"
             default "y"
+            depends on LWIP_ENABLE && ESP_NETIF_TCPIP_LWIP
             help
-                IP support from the toit binary.
+                Includes the lwIP event source and the native TCP/UDP
+                primitives in the Toit binary. Disabling this option alone
+                does not remove ESP-IDF's lwIP component from the build; also
+                disable LWIP_ENABLE for a build without lwIP.
 
         config TOIT_ENABLE_ETHERNET
             boolean "Enable Ethernet drivers on ESP32"

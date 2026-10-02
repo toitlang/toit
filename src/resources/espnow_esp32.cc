@@ -21,7 +21,9 @@
 
 #include <esp_wifi.h>
 #include <esp_event.h>
+#if defined(CONFIG_TOIT_ENABLE_IP)
 #include <esp_netif.h>
+#endif
 #include <esp_now.h>
 #include <esp_log.h>
 
@@ -477,6 +479,7 @@ static wifi_phy_mode_t map_toit_mode_to_esp_idf_mode(int toit_mode) {
 MODULE_IMPLEMENTATION(espnow, MODULE_ESPNOW)
 
 PRIMITIVE(init) {
+#if defined(CONFIG_TOIT_ENABLE_IP)
   // Not clear whether we should keep this call to esp_netif_init.
   // The lwip thread is supposed to do this (and normally does so).
   // However, it doesn't seem to be guaranteed.
@@ -484,6 +487,7 @@ PRIMITIVE(init) {
   // not clear whether it is thread-safe...
   esp_err_t err = esp_netif_init();
   if (err != ESP_OK) return Primitive::os_error(err, process);
+#endif
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);

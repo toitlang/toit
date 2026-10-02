@@ -29,10 +29,6 @@
 
 #include "../event_sources/tls.h"
 
-#if defined(TOIT_ESP32)
-#include "tcp_esp32.h"
-#endif
-
 namespace toit {
 
 class MbedTlsResourceGroup;

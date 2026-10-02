@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_ESP32
+#if defined(TOIT_ESP32) && defined(CONFIG_TOIT_ENABLE_IP)
 
 #include <esp_netif.h>
 
@@ -65,7 +65,7 @@ namespace toit {
 
 bool needs_gc = false;
 
-#if defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP)
+#if (defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_IP)) || defined(TOIT_USE_LWIP)
 
 static bool is_toit_error(int err) {
   return FIRST_TOIT_ERROR >= err && err >= LAST_TOIT_ERROR;
@@ -238,7 +238,7 @@ void LwipEventSource::on_thread(void* arg) {
   OS::signal_all(lwip->call_done());
 }
 
-#else // defined(TOIT_ESP32) || defined(TOIT_USE_LWIP)
+#else // (defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_IP)) || defined(TOIT_USE_LWIP)
 
 MODULE_IMPLEMENTATION(dhcp, MODULE_DHCP)
 
@@ -246,6 +246,6 @@ PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
   return process->null_object();
 }
 
-#endif // defined(TOIT_ESP32) || defined(TOIT_USE_LWIP)
+#endif // (defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_IP)) || defined(TOIT_USE_LWIP)
 
 } // namespace toit

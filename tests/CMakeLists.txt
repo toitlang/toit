@@ -148,6 +148,14 @@ foreach(file ${ALL_TESTS})
   endif()
 endforeach()
 
+add_test(
+  NAME "tests/firmware-path-test.cmake"
+  COMMAND ${CMAKE_COMMAND}
+      "-DTEST_DIRECTORY=${CMAKE_BINARY_DIR}/firmware-path-test"
+      -P "${TOIT_SDK_SOURCE_DIR}/tests/firmware-path-test.cmake"
+  )
+set_tests_properties("tests/firmware-path-test.cmake" PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
+
 set(PREEMPT_A_LOT_TEST "tests/json-test.toit")
 add_test(
   NAME "${PREEMPT_A_LOT_TEST}-PREEMPT_A_LOT"
