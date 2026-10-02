@@ -13,6 +13,10 @@ EXTERNAL-ID ::= "toit.io/external-test"
 main:
   client := external.Client.open EXTERNAL-ID
 
+  // The external process is created before the system process, so the
+  // system process doesn't have the first process ID.
+  expect-not-equals client.pid SYSTEM-PROCESS-ID_
+
   strings := [
     "",
     "foo",

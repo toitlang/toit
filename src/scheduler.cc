@@ -755,6 +755,11 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
   }
 }
 
+int Scheduler::boot_process_id() {
+  Locker locker(mutex_);
+  return boot_process_ ? boot_process_->id() : INVALID_PROCESS_ID;
+}
+
 int Scheduler::get_priority(int pid) {
   Locker locker(mutex_);
   Process* process = find_process(locker, pid);

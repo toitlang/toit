@@ -189,6 +189,7 @@ namespace toit {
   PRIMITIVE(get_generic_resource_group, 0)   \
   PRIMITIVE(process_signal_kill, 1)          \
   PRIMITIVE(process_current_id, 0)           \
+  PRIMITIVE(process_system_id, 0)            \
   PRIMITIVE(process_send, 3)                 \
   PRIMITIVE(pid_for_external_id, 1)          \
   PRIMITIVE(process_get_priority, 1)         \

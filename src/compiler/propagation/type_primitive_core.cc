@@ -237,6 +237,7 @@ TYPE_PRIMITIVE_BYTE_ARRAY(create_off_heap_byte_array)  // TODO(kasper): Should w
 TYPE_PRIMITIVE_INT(crc)
 TYPE_PRIMITIVE_SMI(gc_count)
 TYPE_PRIMITIVE_SMI(process_current_id)
+TYPE_PRIMITIVE_SMI(process_system_id)
 TYPE_PRIMITIVE_BOOL(process_signal_kill)
 TYPE_PRIMITIVE_SMI(process_get_priority)
 TYPE_PRIMITIVE_NULL(process_set_priority)
