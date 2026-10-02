@@ -2,6 +2,11 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+// Compiles repeatedly in-process to check that compilations release their
+// memory. Run under a leak checker to catch retained allocations.
+// With AddressSanitizer, use `ASAN_OPTIONS=alloc_dealloc_mismatch=0`:
+// `src/top.cc` overrides the C++ allocation operators with `malloc`.
+
 #include "../../src/compiler/compiler.h"
 #include "../../src/compiler/filesystem_lsp.h"
 #include "../../src/flags.h"

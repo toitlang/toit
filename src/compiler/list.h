@@ -76,7 +76,10 @@ class ListBuilder {
 
   static List<T> allocate(int length) {
     // Lists are borrowed views; the current zone owns their backing arrays.
-    T* data = Zone::current()->own_array(_new T[length]());
+    T* data = Zone::current()->allocate_array<T>(length);
+    // Constructed here, since element types grant their private default
+    // constructors to `ListBuilder`.
+    for (int i = 0; i < length; i++) new (&data[i]) T();
     return List<T>(data, length);
   }
 

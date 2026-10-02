@@ -28,9 +28,17 @@
 namespace toit {
 namespace compiler {
 
-// A compilation owns one zone. Nested zones may be used for shorter-lived work.
-// The current zone is thread-local; clients of compiler helpers must establish a
-// zone before allocating and must not retain its objects beyond its lifetime.
+// A compilation owns one zone. The public `Compiler` entry points (`compile`,
+// `analyze`, `language_server`) establish it; AST, IR, symbols, and source maps
+// share its lifetime because later passes refer back to earlier ones.
+// Results that outlive the compilation, such as the returned snapshot bundle,
+// must not be allocated in the zone.
+//
+// Nested zones may be used for shorter-lived work, but only if all values they
+// allocate die together.
+// The current zone is thread-local; clients of compiler helpers (including tests)
+// must establish a zone before allocating and must not retain its objects beyond
+// its lifetime. There is no fallback zone.
 // Objects are destroyed in reverse construction order, before releasing storage.
 // Destructors must not traverse other zone objects (which may already be dead).
 class Zone {
@@ -91,13 +99,32 @@ class Zone {
     return result;
   }
 
-  // Adopt allocations with an existing allocation/deallocation contract.
+  // Allocates uninitialized storage for an array. The caller must construct
+  // every element before the zone is released.
+  // Arrays of non-trivially destructible elements store their length in a
+  // header, so the cleanup can destroy the elements in reverse order.
   template<typename T>
-  T* own_array(T* array) {
-    add_cleanup(array, [](void* object) { delete[] static_cast<T*>(object); });
-    return array;
+  T* allocate_array(size_t length) {
+    static_assert(alignof(T) <= alignof(std::max_align_t), "Over-aligned zone array");
+    constexpr size_t header = std::is_trivially_destructible<T>::value
+        ? 0
+        : alignof(std::max_align_t);
+    if (length > (std::numeric_limits<size_t>::max() - header) / sizeof(T)) {
+      FATAL("Compiler zone allocation too large");
+    }
+    char* storage = static_cast<char*>(allocate(header + length * sizeof(T)));
+    if (header != 0) {
+      *reinterpret_cast<size_t*>(storage) = length;
+      add_cleanup(storage, [](void* storage) {
+        size_t length = *static_cast<size_t*>(storage);
+        T* elements = reinterpret_cast<T*>(static_cast<char*>(storage) + alignof(std::max_align_t));
+        for (size_t i = length; i > 0; i--) elements[i - 1].~T();
+      });
+    }
+    return reinterpret_cast<T*>(storage + header);
   }
 
+  // Adopt allocations with an existing allocation/deallocation contract.
   template<typename T>
   T* own_malloc(T* buffer) {
     if (buffer != null) {
