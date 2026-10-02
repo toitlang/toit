@@ -107,8 +107,8 @@ MessageEncoder::~MessageEncoder() {
 }
 
 uint8* MessageEncoder::take_buffer() {
-  for (unsigned i = 0; i < externals_count_; i++) {
-    ByteArray* array = externals_[i];
+  for (unsigned i = 0; i < transferred_count_; i++) {
+    ByteArray* array = transferred_[i];
     // Neuter the byte array. The contents of the array is now linked to from
     // an enqueued SystemMessage and will be used to construct a new external
     // byte array in the receiving process.
@@ -310,11 +310,11 @@ bool MessageEncoder::encode_map(Instance* instance) {
 }
 
 bool MessageEncoder::reserve_external() {
-  if (external_count_ >= MESSAGING_ENCODING_MAX_EXTERNALS) {
+  if (externals_count_ >= MESSAGING_ENCODING_MAX_EXTERNALS) {
     too_many_externals_ = true;
     return false;
   }
-  external_count_++;
+  externals_count_++;
   return true;
 }
 
@@ -326,8 +326,8 @@ bool MessageEncoder::encode_byte_array(ByteArray* object) {
   // A repeated reference must not give two decoded arrays ownership of the
   // same allocation. Copy subsequent occurrences before the first transfer
   // is committed and the original array is neutered.
-  for (unsigned i = 0; i < externals_count_; i++) {
-    if (externals_[i] == object) return encode_copy(object, TAG_BYTE_ARRAY);
+  for (unsigned i = 0; i < transferred_count_; i++) {
+    if (transferred_[i] == object) return encode_copy(object, TAG_BYTE_ARRAY);
   }
 
   ASSERT(!encoding_tison());
@@ -336,7 +336,7 @@ bool MessageEncoder::encode_byte_array(ByteArray* object) {
   write_uint8(TAG_BYTE_ARRAY);
   write_cardinal(bytes.length());
   write_pointer(bytes.address());
-  externals_[externals_count_++] = object;
+  transferred_[transferred_count_++] = object;
   return true;
 }
 
