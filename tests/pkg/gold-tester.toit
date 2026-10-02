@@ -294,26 +294,32 @@ class GoldTester:
     stderr := process.stderr
 
     stdout-data := #[]
-    stdout-task := task::
+    stdout-done := monitor.Latch
+    task::
       try:
         reader := stdout.in
         while chunk := reader.read:
           stdout-data += chunk
       finally:
         stdout.close
+        stdout-done.set true
 
     stderr-data := #[]
-    stderr-task := task::
+    stderr-done := monitor.Latch
+    task::
       try:
         reader := stderr.in
         while chunk := reader.read:
           stderr-data += chunk
       finally:
         stderr.close
+        stderr-done.set true
 
     exit-value := process.wait
-    stdout-task.cancel
-    stderr-task.cancel
+    // The exit can be observed before the readers have drained the pipes.
+    // Wait for them to reach the end of the output instead of cancelling.
+    stdout-done.get
+    stderr-done.get
 
     return RunResult_
         --stdout=stdout-data.to-string
