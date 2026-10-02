@@ -2754,7 +2754,7 @@ PRIMITIVE(firmware_mapping_at) {
 }
 
 PRIMITIVE(firmware_mapping_copy) {
-  ARGS(Instance, receiver, word, from, word, to, ByteArray, into, word, index);
+  ARGS(Instance, receiver, word, from, word, to, MutableBlob, output, word, index);
   if (index < 0) FAIL(OUT_OF_BOUNDS);
   word offset = Smi::value(receiver->at(1));
   word size = Smi::value(receiver->at(2));
@@ -2762,7 +2762,6 @@ PRIMITIVE(firmware_mapping_copy) {
       !Utils::is_aligned(to + offset, sizeof(uint32))) FAIL(INVALID_ARGUMENT);
   if (from > to || from < 0 || to > size) FAIL(OUT_OF_BOUNDS);
 
-  ByteArray::Bytes output(into);
   word bytes = to - from;
   if (index + bytes > output.length()) FAIL(OUT_OF_BOUNDS);
 

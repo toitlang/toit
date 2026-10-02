@@ -112,15 +112,13 @@ PRIMITIVE(read_bytes) {
 }
 
 PRIMITIVE(write_bytes) {
-  ARGS(PersistentResourceGroup, resource_group, cstring, key, ByteArray, value);
+  ARGS(PersistentResourceGroup, resource_group, cstring, key, Blob, value);
   if (!is_valid_key(key, process)) FAIL(INVALID_ARGUMENT);
   // The NVS code does not check for malloc failure.  See
   // https://github.com/toitware/toit/issues/961
   AllowThrowingNew issue_961;
 
-  ByteArray::Bytes bytes(value);
-
-  esp_err_t err = nvs_set_blob(resource_group->handle(), key, bytes.address(), bytes.length());
+  esp_err_t err = nvs_set_blob(resource_group->handle(), key, value.address(), value.length());
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   err = nvs_commit(resource_group->handle());
