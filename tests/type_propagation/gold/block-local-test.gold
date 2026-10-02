@@ -134,7 +134,7 @@ test-recursive tests/type_propagation/block-local-test.toit
 foo tests/type_propagation/block-local-test.toit
  - argument 0: {LargeInteger_|SmallInteger_}
  - argument 1: [block]
-  0[052] - load local, as class, pop 3 - LargeInteger_(25 - 27) // {True}
+  0[052] - load local, as class, pop 3 - LargeInteger_(26 - 28) // {True}
   2[022] - load null
   3[018] - load local 4
   4[023] - load smi 0

@@ -60,7 +60,7 @@ test-default-true tests/type_propagation/default-arguments-test.toit
   1[084] - branch if not null T8
   4[020] - load literal true
   6[004] - store local, pop S3
-  8[052] - load local, as class, pop 2 - True(21 - 23) // {True}
+  8[052] - load local, as class, pop 2 - True(22 - 24) // {True}
  10[016] - load local 2
  11[091] - return S1 1
 
@@ -70,7 +70,7 @@ test-default-false tests/type_propagation/default-arguments-test.toit
   1[084] - branch if not null T8
   4[020] - load literal false
   6[004] - store local, pop S3
-  8[052] - load local, as class, pop 2 - True(21 - 23) // {True}
+  8[052] - load local, as class, pop 2 - True(22 - 24) // {True}
  10[016] - load local 2
  11[091] - return S1 1
 
@@ -80,7 +80,7 @@ test-non-default tests/type_propagation/default-arguments-test.toit
   1[084] - branch if not null T8
   4[020] - load literal true
   6[004] - store local, pop S3
-  8[052] - load local, as class, pop 2 - True(21 - 23) // {True}
+  8[052] - load local, as class, pop 2 - True(22 - 24) // {True}
  10[016] - load local 2
  11[091] - return S1 1
 
@@ -90,6 +90,6 @@ test-non-default-non-literal tests/type_propagation/default-arguments-test.toit
   1[084] - branch if not null T9
   4[053] - invoke static gettrue tests/type_propagation/default-arguments-test.toit
   7[004] - store local, pop S3
-  9[052] - load local, as class, pop 2 - True(21 - 23) // {True}
+  9[052] - load local, as class, pop 2 - True(22 - 24) // {True}
  11[016] - load local 2
  12[091] - return S1 1
