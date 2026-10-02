@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "zone.h"
+
 #include <algorithm>
 
 #include "backend.h"
@@ -163,6 +165,14 @@ static List<uint16> encode_typecheck_interface_list(const List<ir::Class*> inter
   return result;
 }
 
+// Compiler-created blocks are individually allocated; runtime images are not.
+// Keep this ownership distinction out of Program's general destructor.
+class CompilerProgram : public Program {
+ public:
+  CompilerProgram() : Program(null, 0) {}
+  ~CompilerProgram() { heap()->free_malloced_blocks(); }
+};
+
 Program* Backend::emit(ir::Program* ir_program,
                        MethodSelectorOffsets* method_selector_offsets) {
   // Compile everything.
@@ -178,7 +188,7 @@ Program* Backend::emit(ir::Program* ir_program,
     source_mapper()->register_selector_offset(offset, selector.name().c_str());
   });
 
-  auto program = _new Program(null, 0);
+  auto program = zone_new<CompilerProgram>();
   ProgramBuilder program_builder(program, method_selector_offsets);
   program_builder.create_dispatch_table(dispatch_table.length());
 

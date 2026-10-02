@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "zone.h"
+
 #include "sources.h"
 
 #include <stdio.h>
@@ -217,7 +219,7 @@ SourceManagerSource* SourceManager::register_source(const std::string& absolute_
                                                     const std::string& error_path,
                                                     const uint8* source,
                                                     int size) {
-  auto entry = _new SourceManagerSource(strdup(absolute_path.c_str()),
+  auto entry = zone_new<SourceManagerSource>(Zone::current()->strdup(absolute_path.c_str()),
                                         package,
                                         error_path,
                                         source,

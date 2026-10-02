@@ -153,6 +153,7 @@ bool SnapshotBundle::uuid(uint8* buffer_16) const {
 SnapshotBundle SnapshotBundle::stripped() const {
   List<uint8> snapshot_bytes;
   const char* sdk_version = null;
+  Defer free_sdk_version { [&] { free(const_cast<char*>(sdk_version)); } };
   ar::MemoryReader reader(buffer_, size_);
   ar::File file;
   while (reader.next(&file) == 0) {
@@ -166,6 +167,7 @@ SnapshotBundle SnapshotBundle::stripped() const {
       char* buffer = unvoid_cast<char*>(malloc(sdk_len + 1));
       memcpy(buffer, file.content(), sdk_len);
       buffer[sdk_len] = '\0';
+      free(const_cast<char*>(sdk_version));
       sdk_version = buffer;
     }
   }

@@ -25,6 +25,10 @@ namespace compiler {
 class Trie {
  public:
   explicit Trie(int id);
+  ~Trie() { if (children_ != inlined_) free(children_); }
+
+  Trie(const Trie&) = delete;
+  Trie& operator=(const Trie&) = delete;
 
   Trie* get(int id) {
     int index = 0;

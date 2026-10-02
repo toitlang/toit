@@ -2,6 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+#include "../../src/compiler/zone.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
@@ -71,6 +73,7 @@ void do_test(List<ar::File> test, T& reader) {
 }
 
 int main(int argc, char** argv) {
+  toit::compiler::Zone zone;
   ar::File even_file(
     "even", ar::AR_DONT_FREE,
     unsigned_cast("even"), ar::AR_DONT_FREE,

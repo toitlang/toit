@@ -21,6 +21,7 @@
 #include <utility>
 
 #include "../utils.h"
+#include "zone.h"
 
 namespace toit {
 namespace compiler {
@@ -74,7 +75,11 @@ class ListBuilder {
   }
 
   static List<T> allocate(int length) {
-    T* data = _new T[length]();
+    // Lists are borrowed views; the current zone owns their backing arrays.
+    T* data = Zone::current()->allocate_array<T>(length);
+    // Constructed here, since element types grant their private default
+    // constructors to `ListBuilder`.
+    for (int i = 0; i < length; i++) new (&data[i]) T();
     return List<T>(data, length);
   }
 

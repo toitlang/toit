@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "../zone.h"
+
 #include "optimizations.h"
 
 #include "constant_propagation.h"
@@ -122,7 +124,7 @@ class OptimizationVisitor : public ReplacingVisitor {
 
   Node* visit_Super(Super* node) {
     node = ReplacingVisitor::visit_Super(node)->as_Super();
-    if (node->expression() == null) return _new Nop(node->range());
+    if (node->expression() == null) return zone_new<Nop>(node->range());
     return node->expression();
   }
 

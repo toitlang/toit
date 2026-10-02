@@ -31,6 +31,9 @@ namespace compiler {
 class FilesystemLsp : public Filesystem {
  public:
   explicit FilesystemLsp(LspFsProtocol* protocol) : protocol_(protocol) {}
+  ~FilesystemLsp() {
+    for (auto& entry : file_cache_.underlying_map()) free(const_cast<uint8*>(entry.second.content));
+  }
 
   void initialize(Diagnostics* diagnostics) {
     protocol_->initialize(diagnostics);

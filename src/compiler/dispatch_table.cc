@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "zone.h"
+
 #include <algorithm>
 
 #include "dispatch_table.h"
@@ -183,7 +185,7 @@ class RowFitter {
   void define(DispatchSelector& selector, Class* holder, Method* member) {
     SelectorRow* row = selectors_.lookup(selector);
     if (row == null) {
-      row = selectors_[selector] = _new SelectorRow(selector);
+      row = selectors_[selector] = zone_new<SelectorRow>(selector);
     }
     row->define(holder, member);
   }

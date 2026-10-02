@@ -24,7 +24,7 @@ namespace toit {
 namespace compiler {
 
 List<const char*> string_split(const char* str, const char* delim) {
-  return string_split(strdup(str), delim);
+  return string_split(Zone::current()->strdup(str), delim);
 }
 
 List<const char*> string_split(char* str, const char* delim) {

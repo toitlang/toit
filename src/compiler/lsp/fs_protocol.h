@@ -30,6 +30,7 @@ struct LspFsConnection {
   virtual ~LspFsConnection() {}
   virtual void initialize(Diagnostics* diagnostics) = 0;
   virtual void putline(const char* line) = 0;
+  // Caller owns the returned malloc buffer.
   virtual char* getline() = 0;
   virtual int read_data(uint8* content, int size) = 0;
 };
@@ -54,6 +55,7 @@ class LspFsProtocol {
   void list_directory_entries(const char* path,
                               const std::function<bool (const char*)>& callback);
 
+  // Caller owns PathInfo::content and must free it.
   PathInfo fetch_info_for(const char* path);
 
  private:

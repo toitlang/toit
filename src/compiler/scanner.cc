@@ -792,8 +792,7 @@ Token::Kind Scanner::scan_identifier(int peek) {
     return scan_illegal(peek);
   }
 
-  // If this is the lsp selection, create a copy of the source without the marker.
-  uint8* lsp_buffer = null;
+  // Read the source without the LSP marker.
   const uint8* from;
   const uint8* to;
   source()->text_range_without_marker(begin, index_, &from, &to);
@@ -809,7 +808,7 @@ Token::Kind Scanner::scan_identifier(int peek) {
   }
   // Note that the symbol could be of length 0, if it was the lsp selection.
   auto token_symbol = symbols_->canonicalize_identifier(canonicalized_from, canonicalized_to);
-  if (lsp_buffer != null) free(lsp_buffer);
+  if (canonicalized_from != from) free(const_cast<uint8*>(canonicalized_from));
   data_ = token_symbol.symbol;
   if (is_lsp_selection_ && lsp_selection_is_identifier_) {
     // Target wins over the stored kind. This means that keywords are also identified

@@ -83,6 +83,7 @@ class PathBuilder {
   int length() const { return buffer_.size(); }
   std::string buffer() const { return buffer_; }
   const char* c_str() const { return buffer_.c_str(); }
+  // Caller owns the returned malloc buffer.
   char* strdup() const { return ::strdup(c_str()); }
 
   void add(const std::string& str) { buffer_ += str; }

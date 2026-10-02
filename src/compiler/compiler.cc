@@ -598,14 +598,14 @@ class LineReader {
 
  /// Returns the next line without terminating `\n`.
  ///
- /// The returned string has been allocated with malloc.
+ /// The returned string belongs to the current compilation zone.
  char* next(const char* kind, bool must_be_non_empty = true) {
   auto characters_read = getline(&line_, &line_size_, file_);
   if (characters_read <= (must_be_non_empty ? 1 : 0)) {
     FATAL("LANGUAGE SERVER ERROR - Expected %s", kind);
   }
   line_[characters_read - 1] = '\0';  // Remove trailing newline.
-  return strdup(line_);
+  return Zone::current()->strdup(line_);
  }
 
  int next_int(const char* kind) {
@@ -632,6 +632,7 @@ Compiler::~Compiler() {
 }
 
 void Compiler::language_server(const Compiler::Configuration& compiler_config) {
+  Zone zone;
   // The language server uses a strict protocol over stdin/stdout, so switching
   // to binary mode on windows.
 #ifdef TOIT_WINDOWS
@@ -664,8 +665,7 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
   }
   LspProtocol* lsp_protocol = new LspProtocol(writer);
 
-  // We generally don't explicitly keep track of memory, but here we might need
-  // to release resources.
+  // These objects own external resources and are destroyed before the zone.
   Defer del { [&] {
       delete fs;
       delete fs_protocol;
@@ -920,6 +920,7 @@ bool read_from_pipe(int fd, void* buffer, int requested_bytes) {
 void Compiler::analyze(List<const char*> source_paths,
                        const Compiler::Configuration& compiler_config,
                        bool for_dependencies) {
+  Zone zone;
   // We accept '/' paths on Windows as well.
   // For simplicity (and consistency) switch to localized ones in the compiler.
   source_paths = FilesystemLocal::to_local_path(source_paths);
@@ -1050,10 +1051,11 @@ SnapshotBundle Compiler::compile(const char* source_path,
                                  const char* direct_script,
                                  const char* out_path,
                                  const Compiler::Configuration& compiler_config) {
+  Zone zone;
   // We accept '/' paths on Windows as well.
   // For simplicity (and consistency) switch to localized ones in the compiler.
-  source_path = FilesystemLocal::to_local_path(source_path);
-  out_path = FilesystemLocal::to_local_path(out_path);
+  source_path = Zone::current()->own_malloc(FilesystemLocal::to_local_path(source_path));
+  out_path = Zone::current()->own_malloc(FilesystemLocal::to_local_path(out_path));
   FilesystemHybrid fs(source_path);
   SourceManager source_manager(&fs);
   CompilationDiagnostics diagnostics(&source_manager,
@@ -1335,6 +1337,9 @@ Source* CompletionPipeline::_load_file(const char* path, const PackageLock& pack
     auto range = result->range(start_offset, offset);
     int len = offset - start_offset;
     auto dash_canonicalized = IdentifierValidator::canonicalize(&text[start_offset], len);
+    Defer free_canonicalized { [&] {
+      if (dash_canonicalized != &text[start_offset]) free(const_cast<uint8*>(dash_canonicalized));
+    } };
     auto canonicalized = symbol_canonicalizer()->canonicalize_identifier(dash_canonicalized, &dash_canonicalized[len]);
     if (canonicalized.kind == Token::Kind::IDENTIFIER) {
       handler()->set_and_emit_prefix(canonicalized.symbol, range);
@@ -1491,7 +1496,7 @@ static const uint8* wrap_direct_script_expression(const char* direct_script, Dia
     diagnostics->report_error("Command line expression does not support newline");
     exit(1);
   }
-  const uint8* text = unsigned_cast(strdup((header + direct_script).c_str()));
+  const uint8* text = unsigned_cast(Zone::current()->strdup((header + direct_script).c_str()));
   return text;
 }
 
@@ -1603,6 +1608,9 @@ static AddSegmentResult add_segment(PathBuilder* path_builder,
   if (result != AddSegmentResult::NOT_FOUND) return result;
 
   const char* old_style = IdentifierValidator::deprecated_underscore_identifier(segment, strlen(segment));
+  Defer free_old_style { [&] {
+    if (old_style != segment) free(const_cast<char*>(old_style));
+  } };
   if (old_style == segment) {
     // Didn't contain any '-'.
     return AddSegmentResult::NOT_FOUND;
@@ -1819,6 +1827,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
       next_segment = segments[segments.length() - 1]->data().c_str();
     } else {
       next_segment = IdentifierValidator::canonicalize(name.c_str(), name.size());
+      if (next_segment != name.c_str()) Zone::current()->own_malloc(next_segment);
     }
     auto result = add_segment(&import_path_builder,
                               next_segment,
@@ -1846,7 +1855,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
     auto segment_id = segments[i];
     auto segment = segment_id->data();
     if (segment_id->is_LspSelection()) {
-      lsp_path = import_path_builder.strdup();
+      lsp_path = Zone::current()->strdup(import_path_builder.c_str());
       lsp_segment = segment.c_str();
     }
     bool is_last_segment = i == segments.length() - 1;
@@ -1873,7 +1882,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
       } else {
         // We didn't find the toit file.
         // Keep the toit file path for error reporting.
-        const char* error_path = import_path_builder.strdup();
+        const char* error_path = Zone::current()->strdup(import_path_builder.c_str());
 
         // Give it another try, this time duplicating the last segment.
         // For example, for `import foo` we search for `foo.toit` and `foo/foo.toit`.
@@ -2038,7 +2047,7 @@ std::vector<ast::Unit*> Pipeline::_parse_units(List<const char*> source_paths,
       if (import_source == null) {
         ASSERT(diagnostics()->encountered_error());
         bool is_error_unit = true;
-        auto error_unit = _new ast::Unit(is_error_unit);
+        auto error_unit = zone_new<ast::Unit>(is_error_unit);
         import->set_unit(error_unit);
         units.push_back(error_unit);
         continue;
@@ -2082,14 +2091,16 @@ static void assign_global_ids(List<ir::Global*> globals) {
 }
 
 static bool check_sdk(const std::string& constraint, Diagnostics* diagnostics) {
-  semver_t constraint_semver;
+  semver_t constraint_semver = {};
+  Defer free_constraint { [&] { semver_free(&constraint_semver); } };
   ASSERT(constraint[0] == '^');
   int status = semver_parse(&constraint.c_str()[1], &constraint_semver);
   // We checked the version already during parsing of the lock file. So we know
   // the parsing must work.
   ASSERT(status == 0);
 
-  semver_t compiler_semver;
+  semver_t compiler_semver = {};
+  Defer free_version { [&] { semver_free(&compiler_semver); } };
   const char* compiler_version = vm_git_version();
   ASSERT(compiler_version[0] == 'v');
   status = semver_parse(&compiler_version[1], &compiler_semver);

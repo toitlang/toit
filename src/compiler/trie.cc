@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "zone.h"
+
 #include "trie.h"
 
 #include "../utils.h"
@@ -52,10 +54,11 @@ Trie* Trie::allocate(int index, int id) {
     Trie** new_children = unvoid_cast<Trie**>(malloc(sizeof(Trie*) * new_capacity));
     memcpy(new_children, children_, sizeof(Trie*) * capacity_);
     memset(new_children + capacity_, 0, sizeof(Trie*) * (new_capacity - capacity_));
+    if (children_ != inlined_) free(children_);
     capacity_ = new_capacity;
     children_ = new_children;
   }
-  return children_[index] = _new Trie(id);
+  return children_[index] = zone_new<Trie>(id);
 }
 
 } // namespace toit::compiler

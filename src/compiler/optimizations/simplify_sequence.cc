@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "../zone.h"
+
 #include "dead_code.h"
 
 namespace toit {
@@ -33,7 +35,7 @@ Node* simplify_sequence(Sequence* node) {
   List<Expression*> expressions = node->expressions();
   if (expressions.length() == 0) {
     // Not sure this can happen, but can't hurt.
-    return _new LiteralNull(node->range());
+    return zone_new<LiteralNull>(node->range());
   } else if (expressions.length() > 1) {
     return node;
   }

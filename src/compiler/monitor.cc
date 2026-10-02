@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "zone.h"
+
 #include "lambda.h"
 #include "list.h"
 #include "set.h"
@@ -35,7 +37,7 @@ class MonitorVisitor : public ReplacingVisitor {
     //   accessed correctly.
     auto blocked_body = visit(node->body())->as_Expression();
     parameters_.clear();
-    auto code = _new Code(Symbol::synthetic("<monitor-block>"),
+    auto code = zone_new<Code>(Symbol::synthetic("<monitor-block>"),
                           List<Parameter*>(),
                           blocked_body,
                           true,  // It's a block.
@@ -44,10 +46,10 @@ class MonitorVisitor : public ReplacingVisitor {
     // Build call to `locked_` instance method:
     //
     //  locked_: <blocked method-body>
-    auto this_reference = _new ir::ReferenceLocal(node->parameters()[0], 0, node->range());
+    auto this_reference = zone_new<ir::ReferenceLocal>(node->parameters()[0], 0, node->range());
     CallBuilder call_builder(node->range());
     call_builder.add_argument(code, Symbol::invalid());
-    auto dot = _new ir::Dot(this_reference, Symbols::locked_);
+    auto dot = zone_new<ir::Dot>(this_reference, Symbols::locked_);
     // The optimizer will make this a static call.
     auto lock_call = call_builder.call_instance(dot);
     node->replace_body(lock_call);
@@ -62,7 +64,7 @@ class MonitorVisitor : public ReplacingVisitor {
   ReferenceLocal* visit_ReferenceLocal(ReferenceLocal* node) {
     auto target = node->target();
     if (target->is_Parameter() && parameters_.contains(target->as_Parameter())) {
-      return _new ir::ReferenceLocal(target, node->block_depth() + 1, node->range());
+      return zone_new<ir::ReferenceLocal>(target, node->block_depth() + 1, node->range());
     }
     return node;
   }
@@ -72,7 +74,7 @@ class MonitorVisitor : public ReplacingVisitor {
     ASSERT(new_assig == node);
     auto local = node->local();
     if (local->is_Parameter() && parameters_.contains(local->as_Parameter())) {
-      return _new ir::AssignmentLocal(local, node->block_depth() + 1, node->right(), node->range());
+      return zone_new<ir::AssignmentLocal>(local, node->block_depth() + 1, node->right(), node->range());
     }
     return node;
   }

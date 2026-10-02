@@ -161,6 +161,7 @@ class IdentifierValidator {
     return c == LSP_SELECTION_MARKER || is_letter(c) || (c == '_');
   }
 
+  // Returns the borrowed input or a malloc buffer that the caller must free.
   static const uint8* canonicalize(const uint8* identifier, int len) {
     if (len < 3) return identifier;
 
@@ -209,7 +210,7 @@ class IdentifierValidator {
   }
 
   /// Returns the, now deprecated, old-style identifier where '-'
-  /// are replaced with '_'.
+  /// are replaced with '_'. Returns borrowed input or a caller-owned malloc buffer.
   static const char* deprecated_underscore_identifier(const char* identifier, int len) {
     bool contains_dashes = false;
     for (int i = 0; i < len; i++) {

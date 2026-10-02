@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "../zone.h"
+
 #include "rename.h"
 #include "../ast.h"
 #include "../ir.h"
@@ -342,7 +344,7 @@ void FindReferencesHandler::call_static_named(ast::Node* name_node,
       // parameter.  Create a temporary Local that carries the correct
       // name and the call-site range so that emit_prepare_rename can
       // produce a valid response.
-      target_ = _new ir::Local(name, true, false, cursor_range);
+      target_ = zone_new<ir::Local>(name, true, false, cursor_range);
       cursor_range_ = cursor_range;
       return;
     }

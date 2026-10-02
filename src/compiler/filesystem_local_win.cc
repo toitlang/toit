@@ -82,6 +82,7 @@ const char* FilesystemLocal::relative_anchor(const char* path) {
       FATAL("Couldn't resolve the current drive root");
     }
     result[written] = '\0';
+    content_buffers_.push_back(unsigned_cast(result));
     return result;
   }
   return cwd();

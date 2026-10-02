@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "zone.h"
+
 #include "resolver_method.h"
 
 #include <errno.h>
@@ -100,7 +102,7 @@ static const char* convert_string_content(const char* content,
     *length = strlen(content);
     return content;
   }
-  char* result = unvoid_cast<char*>(malloc(strlen(content) + 1));
+  char* result = unvoid_cast<char*>(Zone::current()->allocate(strlen(content) + 1));
   bool at_newline = skip_leading;
   int src = 0;
   int dst = 0;
@@ -472,7 +474,7 @@ void MethodResolver::resolve_fill_field_stub() {
   ir::Sequence* body;
 
   int parameter_index = 0;
-  auto this_parameter = _new ir::Parameter(MethodResolver::this_identifier(),
+  auto this_parameter = zone_new<ir::Parameter>(MethodResolver::this_identifier(),
                                            ir::Type(holder_),
                                            false,  // Not a block.
                                            parameter_index++,
@@ -481,17 +483,17 @@ void MethodResolver::resolve_fill_field_stub() {
                                            Source::Range::invalid());
   ir_parameters.add(this_parameter);
 
-  auto this_ref = _new ir::ReferenceLocal(this_parameter, 0, range);
+  auto this_ref = zone_new<ir::ReferenceLocal>(this_parameter, 0, range);
 
   if (field_stub->is_getter()) {
     // Some of the code here is duplicated in the mixin code.
-    body = _new ir::Sequence(list_of(_new ir::Return(_new ir::FieldLoad(this_ref, field, range),
+    body = zone_new<ir::Sequence>(list_of(zone_new<ir::Return>(zone_new<ir::FieldLoad>(this_ref, field, range),
                                                      false,
                                                      range)),
                              range);
   } else {
     // Some of the code here is duplicated in the mixin code.
-    auto new_value_parameter = _new ir::Parameter(Symbol::synthetic("<new value>"),
+    auto new_value_parameter = zone_new<ir::Parameter>(Symbol::synthetic("<new value>"),
                                                   ir_type,
                                                   false,  // Not a block.
                                                   parameter_index++,
@@ -505,14 +507,14 @@ void MethodResolver::resolve_fill_field_stub() {
       // TODO(florian): Do we just want to throw this string? Probably want to
       // print a message as well. Maybe call a helper method (like `lookup_failed`) ?
       const char* message = "FINAL_FIELD_ASSIGNMENT_FAILED";
-      auto throw_failure = _create_throw(new ir::LiteralString(message, strlen(message), range), range);
-      body = _new ir::Sequence(list_of(throw_failure), range);
+      auto throw_failure = _create_throw(zone_new<ir::LiteralString>(message, strlen(message), range), range);
+      body = zone_new<ir::Sequence>(list_of(throw_failure), range);
     } else {
-      auto store = _new ir::FieldStore(this_ref,
+      auto store = zone_new<ir::FieldStore>(this_ref,
                                        field,
-                                       _new ir::ReferenceLocal(new_value_parameter, 0, range),
+                                       zone_new<ir::ReferenceLocal>(new_value_parameter, 0, range),
                                        range);
-      auto ret = _new ir::Return(store, false, range);
+      auto ret = zone_new<ir::Return>(store, false, range);
       List<ir::Expression*> expressions;
       // Some of the code here is duplicated in the mixin code.
       if (field->type().is_class()) {
@@ -520,8 +522,8 @@ void MethodResolver::resolve_fill_field_stub() {
         field_stub->set_checked_type(type);
         // We could also use `FIELD_AS_CHECK` here, but we expect parameter checks to be
         //   more optimized than field as-checks.
-        auto check = _new ir::Typecheck(ir::Typecheck::PARAMETER_AS_CHECK,
-                                        _new ir::ReferenceLocal(new_value_parameter, 0, range),
+        auto check = zone_new<ir::Typecheck>(ir::Typecheck::PARAMETER_AS_CHECK,
+                                        zone_new<ir::ReferenceLocal>(new_value_parameter, 0, range),
                                         type,
                                         type.klass()->name(),
                                         range);
@@ -529,7 +531,7 @@ void MethodResolver::resolve_fill_field_stub() {
       } else {
         expressions = list_of(ret);
       }
-      body = _new ir::Sequence(expressions, range);
+      body = zone_new<ir::Sequence>(expressions, range);
     }
   }
   method_->set_return_type(ir_type);
@@ -586,7 +588,7 @@ void MethodResolver::resolve_fill_constructor() {
   Set<ir::Parameter*> field_storing_parameters;
   std::vector<ir::Expression*> parameter_expressions;
   if (is_synthetic_constructor) {
-    auto ir_parameter = _new ir::Parameter(MethodResolver::this_identifier(),
+    auto ir_parameter = zone_new<ir::Parameter>(MethodResolver::this_identifier(),
                                            ir::Type(holder_),
                                            false,  // Not a block.
                                            0,
@@ -642,11 +644,11 @@ void MethodResolver::resolve_fill_constructor() {
           ir_parameter->set_type(ir_field->type());
         }
         range = ir_to_ast_map_->at(ir_parameter)->selection_range();
-        ir_initial_value = _new ir::ReferenceLocal(ir_parameter, 0, range);
+        ir_initial_value = zone_new<ir::ReferenceLocal>(ir_parameter, 0, range);
         if (ir_parameter->type().is_class()) {
           // We can't rely on the typecheck of the field below, as FIELD_INITIALIZER_AS_CHECKS
           // can be optimized away, and as the type isn't always the same.
-          ir_initial_value = _new ir::Typecheck(ir::Typecheck::PARAMETER_AS_CHECK,
+          ir_initial_value = zone_new<ir::Typecheck>(ir::Typecheck::PARAMETER_AS_CHECK,
                                                 ir_initial_value,
                                                 ir_parameter->type(),
                                                 ir_parameter->type().klass()->name(),
@@ -662,7 +664,7 @@ void MethodResolver::resolve_fill_constructor() {
       diagnostics_ = &null_diagnostics;
       if (ast_field->initializer() == null) {
         range = ast_field->selection_range();
-        ir_initial_value = _new ir::LiteralUndefined(range);
+        ir_initial_value = zone_new<ir::LiteralUndefined>(range);
       } else {
         range = ast_field->initializer()->selection_range();
         LocalScope field_initializer_scope(scope_);
@@ -677,16 +679,16 @@ void MethodResolver::resolve_fill_constructor() {
     if (!ir_initial_value->is_LiteralNull() ||
         (ir_field->type().is_class() && !ir_field->type().is_nullable())) {
       ASSERT(range.is_valid());
-      auto this_ref = _new ir::ReferenceLocal(method_->parameters()[0], 0, range);
+      auto this_ref = zone_new<ir::ReferenceLocal>(method_->parameters()[0], 0, range);
       if (ir_field->type().is_class() && !ir_initial_value->is_LiteralUndefined()) {
-        ir_initial_value = _new ir::Typecheck(ir::Typecheck::FIELD_INITIALIZER_AS_CHECK,
+        ir_initial_value = zone_new<ir::Typecheck>(ir::Typecheck::FIELD_INITIALIZER_AS_CHECK,
                                               ir_initial_value,
                                               ir_field->type(),
                                               ir_field->type().klass()->name(),
                                               range);
       }
       compiled_expressions.add(
-        _new ir::FieldStore(this_ref, ir_field, ir_initial_value, range));
+        zone_new<ir::FieldStore>(this_ref, ir_field, ir_initial_value, range));
     }
   }
 
@@ -758,7 +760,7 @@ void MethodResolver::resolve_fill_constructor() {
       auto super_call = resolve_statement(expr, null);
       bool is_explicit = true;
       bool is_at_end = false;
-      compiled_expressions.add(_new ir::Super(super_call, is_explicit, is_at_end, expr->selection_range()));
+      compiled_expressions.add(zone_new<ir::Super>(super_call, is_explicit, is_at_end, expr->selection_range()));
       has_emitted_super_invocation = true;
       resolution_mode_ = CONSTRUCTOR_INSTANCE;
       continue;
@@ -792,10 +794,10 @@ void MethodResolver::resolve_fill_constructor() {
           auto super_call = build_synthetic_super();
           bool is_explicit = false;
           bool is_at_end = false;
-          compiled_expressions.add(_new ir::Super(super_call, is_explicit, is_at_end, expr->selection_range()));
+          compiled_expressions.add(zone_new<ir::Super>(super_call, is_explicit, is_at_end, expr->selection_range()));
         } else {
           bool is_at_end = false;
-          compiled_expressions.add(_new ir::Super(is_at_end, expr->selection_range()));
+          compiled_expressions.add(zone_new<ir::Super>(is_at_end, expr->selection_range()));
         }
         has_emitted_super_invocation = true;
       }
@@ -809,17 +811,17 @@ void MethodResolver::resolve_fill_constructor() {
       auto super_call = build_synthetic_super();
       bool is_explicit = false;
       bool is_at_end = true;
-      compiled_expressions.add(_new ir::Super(super_call, is_explicit, is_at_end, method_->range()));
+      compiled_expressions.add(zone_new<ir::Super>(super_call, is_explicit, is_at_end, method_->range()));
     } else {
       bool is_at_end = true;
-      compiled_expressions.add(_new ir::Super(is_at_end, method_->range()));
+      compiled_expressions.add(zone_new<ir::Super>(is_at_end, method_->range()));
     }
   }
 
-  auto this_ref = _new ir::ReferenceLocal(method_->parameters()[0], 0, method_->range());
-  compiled_expressions.add(_new ir::Return(this_ref, false, method_->range()));
+  auto this_ref = zone_new<ir::ReferenceLocal>(method_->parameters()[0], 0, method_->range());
+  compiled_expressions.add(zone_new<ir::Return>(this_ref, false, method_->range()));
 
-  method_->set_body(_new ir::Sequence(compiled_expressions.build(), method_->range()));
+  method_->set_body(zone_new<ir::Sequence>(compiled_expressions.build(), method_->range()));
 
   ASSERT(scope_ == &body_scope);
   scope_ = scope_->outer();
@@ -845,7 +847,7 @@ void MethodResolver::resolve_fill_global() {
   if (ast_field->initializer() == null) {
     report_error(ast_field, "Global variables must have initializers");
     range = ast_field->selection_range();
-    initial_value = _new ir::LiteralUndefined(range);
+    initial_value = zone_new<ir::LiteralUndefined>(range);
   } else {
     range = ast_field->initializer()->selection_range();
     initial_value = resolve_expression(ast_field->initializer(),
@@ -859,15 +861,15 @@ void MethodResolver::resolve_fill_global() {
     // The failure method takes the global id as argument.
     // However, we don't know the id yet, so we use a builtin to extract it at the end.
     CallBuilder builder(range);
-    builder.add_argument(_new ir::ReferenceGlobal(method_->as_Global(), false, range), Symbol::invalid());
-    auto id_call = builder.call_builtin(_new ir::Builtin(ir::Builtin::GLOBAL_ID));
+    builder.add_argument(zone_new<ir::ReferenceGlobal>(method_->as_Global(), false, range), Symbol::invalid());
+    auto id_call = builder.call_builtin(zone_new<ir::Builtin>(ir::Builtin::GLOBAL_ID));
     body = _call_runtime(Symbols::uninitialized_global_failure_,
                          list_of(id_call),
                          range);
   } else {
-    body = _new ir::Return(initial_value, false, range);
+    body = zone_new<ir::Return>(initial_value, false, range);
   }
-  method_->set_body(_new ir::Sequence(list_of(body), range));
+  method_->set_body(zone_new<ir::Sequence>(list_of(body), range));
 
   ASSERT(scope_ == &body_scope);
   scope_ = scope_->outer();
@@ -992,19 +994,19 @@ void MethodResolver::resolve_fill_method() {
             // Copy over the type of the field as type for the parameter.
             field_storing->set_type(field_type);
           }
-          auto dot = _new ir::Dot(_new ir::ReferenceLocal(this_parameter, 0, field_storing->range()),
+          auto dot = zone_new<ir::Dot>(zone_new<ir::ReferenceLocal>(this_parameter, 0, field_storing->range()),
                                   field_storing->name());
           auto ast_node = ir_to_ast_map_->at(field_storing);
-          ir::Expression* new_field_value = _new ir::ReferenceLocal(field_storing, 0, field_storing->range());
+          ir::Expression* new_field_value = zone_new<ir::ReferenceLocal>(field_storing, 0, field_storing->range());
           if (field_type.is_class()) {
-            new_field_value = _new ir::Typecheck(ir::Typecheck::FIELD_AS_CHECK,
+            new_field_value = zone_new<ir::Typecheck>(ir::Typecheck::FIELD_AS_CHECK,
                                                  new_field_value,
                                                  field_type,
                                                  field_type.klass()->name(),
                                                  field_storing->range());
           }
           auto setter_arg_list = list_of(new_field_value);
-          auto update = _new ir::CallVirtual(dot,
+          auto update = zone_new<ir::CallVirtual>(dot,
                                              setter_shape,
                                              setter_arg_list,
                                              ast_node->selection_range());
@@ -1030,17 +1032,17 @@ void MethodResolver::resolve_fill_method() {
     ir::Expression* last_expression = null;
     auto return_type = method_->return_type();
     if (return_type.is_class() && !return_type.is_nullable()) {
-      last_expression = _new ir::Typecheck(ir::Typecheck::RETURN_AS_CHECK,
-                                          _new ir::LiteralNull(method_range),
+      last_expression = zone_new<ir::Typecheck>(ir::Typecheck::RETURN_AS_CHECK,
+                                          zone_new<ir::LiteralNull>(method_range),
                                           method_->return_type(),
                                           method_->return_type().klass()->name(),
                                           method_range);
     } else {
-      last_expression = _new ir::Return(_new ir::LiteralNull(method_range), true, method_range);
+      last_expression = zone_new<ir::Return>(zone_new<ir::LiteralNull>(method_range), true, method_range);
     }
     extended.add(last_expression);
-    compiled_expressions.add(_new ir::Sequence(extended.build(), method_range));
-    method_->set_body(_new ir::Sequence(compiled_expressions.build(), method_range));
+    compiled_expressions.add(zone_new<ir::Sequence>(extended.build(), method_range));
+    method_->set_body(zone_new<ir::Sequence>(compiled_expressions.build(), method_range));
   } else {
     // Don't set the body.
     // We might miss errors on the default-values, but we would otherwise
@@ -1255,7 +1257,7 @@ void MethodResolver::_resolve_parameters(
 
   if (has_implicit_this) {
     ASSERT(id_offset == 0);
-    auto implicit_this = _new ir::Parameter(MethodResolver::this_identifier(),
+    auto implicit_this = zone_new<ir::Parameter>(MethodResolver::this_identifier(),
                                             ir::Type(holder_),
                                             false,  // Not a block
                                             0,
@@ -1331,7 +1333,7 @@ void MethodResolver::_resolve_parameters(
     auto default_value_range = parameter->default_value() == null
         ? Source::Range::invalid()
         : parameter->default_value()->full_range();
-    auto ir_parameter = _new ir::Parameter(name,
+    auto ir_parameter = zone_new<ir::Parameter>(name,
                                            type,
                                            is_block,
                                            index + id_offset,
@@ -1418,18 +1420,18 @@ void MethodResolver::_resolve_parameters(
         if (parameter->is_block()) {
           // Can't have default values for block parameters.
           ASSERT(diagnostics()->encountered_error());
-          comparison = _new ir::LiteralBoolean(false, parameter->selection_range());
+          comparison = zone_new<ir::LiteralBoolean>(false, parameter->selection_range());
         } else {
           CallBuilder builder(parameter->selection_range());
           builder.add_arguments(list_of(
-              _new ir::ReferenceLocal(ir_parameter, 0, parameter->selection_range()),
-              _new ir::LiteralNull(parameter->selection_range())));
-          comparison = builder.call_builtin(_new ir::Builtin(ir::Builtin::IDENTICAL));
+              zone_new<ir::ReferenceLocal>(ir_parameter, 0, parameter->selection_range()),
+              zone_new<ir::LiteralNull>(parameter->selection_range())));
+          comparison = builder.call_builtin(zone_new<ir::Builtin>(ir::Builtin::IDENTICAL));
         }
-        auto assignment = _new ir::AssignmentLocal(ir_parameter, 0, ir_default_value, ir_parameter->range());
-        auto ir_if = _new ir::If(comparison,
+        auto assignment = zone_new<ir::AssignmentLocal>(ir_parameter, 0, ir_default_value, ir_parameter->range());
+        auto ir_if = zone_new<ir::If>(comparison,
                                  assignment,
-                                 _new ir::LiteralNull(parameter->selection_range()),
+                                 zone_new<ir::LiteralNull>(parameter->selection_range()),
                                  parameter->selection_range());
         (*parameter_expressions).push_back(ir_if);
       }
@@ -1438,8 +1440,8 @@ void MethodResolver::_resolve_parameters(
     // No need to typecheck the `any` type, and don't try to typecheck in abstract methods.
     if (!type.is_any()) {
       ASSERT(type.is_class());
-      auto check = _new ir::Typecheck(ir::Typecheck::PARAMETER_AS_CHECK,
-                                      _new ir::ReferenceLocal(ir_parameter, 0, parameter->selection_range()),
+      auto check = zone_new<ir::Typecheck>(ir::Typecheck::PARAMETER_AS_CHECK,
+                                      zone_new<ir::ReferenceLocal>(ir_parameter, 0, parameter->selection_range()),
                                       type,
                                       type.klass()->name(),
                                       parameter->selection_range());
@@ -1518,29 +1520,29 @@ ir::Expression* MethodResolver::_create_array(List<ir::Expression*> entries,
 
   // The array-allocation will return the canonicalized empty array if the length is 0.
   // This means we don't need to do anything here.
-  auto length_argument = list_of(_new ir::LiteralInteger(entries.length(), range));
+  auto length_argument = list_of(zone_new<ir::LiteralInteger>(entries.length(), range));
   auto array_construction = _instantiate_runtime(Symbols::Array_, length_argument, range);
 
-  auto temporary = _new ir::Local(Symbol::synthetic("<array>"),
+  auto temporary = zone_new<ir::Local>(Symbol::synthetic("<array>"),
                                   true,   // Final.
                                   false,  // Not a block.
                                   range);
-  auto define = _new ir::AssignmentDefine(temporary, array_construction, range);
+  auto define = zone_new<ir::AssignmentDefine>(temporary, array_construction, range);
 
   expressions.add(define);
 
   for (int i = 0 ; i < entries.length(); i++) {
-    auto dot = _new ir::Dot(_new ir::ReferenceLocal(temporary, 0, range), Symbols::index_put);
-    auto args = list_of(_new ir::LiteralInteger(i, range), entries[i]);
-    auto add_call = _new ir::CallVirtual(dot,
+    auto dot = zone_new<ir::Dot>(zone_new<ir::ReferenceLocal>(temporary, 0, range), Symbols::index_put);
+    auto args = list_of(zone_new<ir::LiteralInteger>(i, range), entries[i]);
+    auto add_call = zone_new<ir::CallVirtual>(dot,
                                          CallShape::for_instance_call_no_named(args),
                                          args,
                                          range);
     expressions.add(add_call);
   }
   // The last expression of the sequence is the return value.
-  expressions.add(_new ir::ReferenceLocal(temporary, 0, range));
-  return _new ir::Sequence(expressions.build(), range);
+  expressions.add(zone_new<ir::ReferenceLocal>(temporary, 0, range));
+  return zone_new<ir::Sequence>(expressions.build(), range);
 }
 
 void MethodResolver::visit_Block(ast::Block* node) {
@@ -1593,10 +1595,10 @@ ir::Expression* MethodResolver::_create_lambda(ast::Lambda* node, Symbol label) 
     auto captured = captured_depths.keys()[i];
     captured->mark_captured();
     int depth = captured_depths.at(captured);
-    ir::Expression* captured_value = _new ir::ReferenceLocal(captured, depth, node->selection_range());
+    ir::Expression* captured_value = zone_new<ir::ReferenceLocal>(captured, depth, node->selection_range());
     if (captured->is_block()) {
       report_error(node, "Can't capture block variable %s", captured->name().c_str());
-      captured_value = _new ir::Error(captured->range(), list_of(captured_value));
+      captured_value = zone_new<ir::Error>(captured->range(), list_of(captured_value));
     }
     arguments[i] = captured_value;
   }
@@ -1613,10 +1615,10 @@ ir::Expression* MethodResolver::_create_lambda(ast::Lambda* node, Symbol label) 
   // Invoke the top-level `lambda_` function with the code and captured arguments.
   auto lambda_args_list = list_of(code,
                                   captured_args,
-                                  _new ir::LiteralInteger(arguments.length(), node->selection_range()));
+                                  zone_new<ir::LiteralInteger>(arguments.length(), node->selection_range()));
   auto shape = CallShape::for_static_call_no_named(lambda_args_list);
   auto lambda_ = _resolve_runtime_call(Symbols::lambda__, shape);
-  return _new ir::Lambda(lambda_,
+  return zone_new<ir::Lambda>(lambda_,
                          shape,
                          lambda_args_list,
                          captured_depths,
@@ -1632,7 +1634,7 @@ void MethodResolver::visit_Sequence(ast::Sequence* node) {
   for (auto expression : expressions) {
     ir_expressions.add(resolve_statement(expression, null));
   }
-  push(_new ir::Sequence(ir_expressions.build(), node->selection_range()));
+  push(zone_new<ir::Sequence>(ir_expressions.build(), node->selection_range()));
 
   ASSERT(scope_ = &scope);
   scope_ = scope.outer();
@@ -1704,7 +1706,7 @@ void MethodResolver::visit_TryFinally(ast::TryFinally* node) {
     }
 
     auto range = ast_parameter->selection_range();
-    ir::Local* local = _new ir::Local(name,
+    ir::Local* local = zone_new<ir::Local>(name,
                                       false,  // Final
                                       false,  // Not a block
                                       type,
@@ -1717,32 +1719,32 @@ void MethodResolver::visit_TryFinally(ast::TryFinally* node) {
       reason_local = local;
       // The interpreter only tells us the unwind reason.
       // We need to make it a boolean.
-      ir_handler_parameter = _new ir::Local(Symbol::synthetic("<unwind-reason>"),
+      ir_handler_parameter = zone_new<ir::Local>(Symbol::synthetic("<unwind-reason>"),
                                             true,  // Final
                                             false, // Not a block
                                             range);
-      auto throw_value = _new ir::LiteralInteger(Interpreter::UNWIND_REASON_WHEN_THROWING_EXCEPTION,
+      auto throw_value = zone_new<ir::LiteralInteger>(Interpreter::UNWIND_REASON_WHEN_THROWING_EXCEPTION,
                                                  range);
-      auto reason_ref = _new ir::ReferenceLocal(ir_handler_parameter, 0, range);
+      auto reason_ref = zone_new<ir::ReferenceLocal>(ir_handler_parameter, 0, range);
       ast::Binary comparison(Token::EQ, null, null);
       comparison.set_range(range);
       auto ir_comparison = _binary_operator(&comparison, throw_value, reason_ref);
-      auto assig = _new ir::AssignmentDefine(local, ir_comparison, range);
+      auto assig = zone_new<ir::AssignmentDefine>(local, ir_comparison, range);
       handler_expressions.add(assig);
     } else if (i == 1) {
       // Depending on whether we are in a throw we need to either use the value
       // from the stack, or assign `null`.
-      ir_handler_parameter = _new ir::Local(Symbol::synthetic("<exception>"),
+      ir_handler_parameter = zone_new<ir::Local>(Symbol::synthetic("<exception>"),
                                             true,  // Final
                                             false, // Not a block
                                             range);
       // Blank the exception value if we are not throwing.
-      auto null_val = _new ir::LiteralNull(range);
-      auto exception_ref = _new ir::ReferenceLocal(ir_handler_parameter, 0, range);
-      auto is_throw = _new ir::ReferenceLocal(reason_local, 0, range);
+      auto null_val = zone_new<ir::LiteralNull>(range);
+      auto exception_ref = zone_new<ir::ReferenceLocal>(ir_handler_parameter, 0, range);
+      auto is_throw = zone_new<ir::ReferenceLocal>(reason_local, 0, range);
       // Wrap the `is_throw` in an 'as any' to avoid type warnings
       //   ("always evaluates to true") later on.
-      auto iff = _new ir::If(_new ir::Typecheck(ir::Typecheck::AS_CHECK,
+      auto iff = zone_new<ir::If>(zone_new<ir::Typecheck>(ir::Typecheck::AS_CHECK,
                                                 is_throw,
                                                 ir::Type::any(),
                                                 Symbols::any,
@@ -1750,13 +1752,13 @@ void MethodResolver::visit_TryFinally(ast::TryFinally* node) {
                              exception_ref,
                              null_val,
                              range);
-      auto exception_assig = _new ir::AssignmentDefine(local, iff, range);
+      auto exception_assig = zone_new<ir::AssignmentDefine>(local, iff, range);
       handler_expressions.add(exception_assig);
     }
 
     if (type.is_class()) {
-      handler_expressions.add(_new ir::Typecheck(ir::Typecheck::Kind::PARAMETER_AS_CHECK,
-                                                 _new ir::ReferenceLocal(local, 0, range),
+      handler_expressions.add(zone_new<ir::Typecheck>(ir::Typecheck::Kind::PARAMETER_AS_CHECK,
+                                                 zone_new<ir::ReferenceLocal>(local, 0, range),
                                                  type,
                                                  type.klass()->name(),
                                                  range));
@@ -1770,12 +1772,12 @@ void MethodResolver::visit_TryFinally(ast::TryFinally* node) {
   ASSERT(ir_handler->is_Sequence());
   if (!handler_expressions.is_empty()) {
     handler_expressions.add(ir_handler->as_Sequence());
-    ir_handler = _new ir::Sequence(handler_expressions.build(), node->selection_range());
+    ir_handler = zone_new<ir::Sequence>(handler_expressions.build(), node->selection_range());
   }
 
   scope_ = handler_scope.outer();
 
-  auto try_ = _new ir::TryFinally(ir_body,
+  auto try_ = zone_new<ir::TryFinally>(ir_body,
                                   ir_handler_parameters,
                                   ir_handler->as_Sequence(),
                                   node->selection_range());
@@ -1796,7 +1798,7 @@ void MethodResolver::visit_If(ast::If* node) {
   ir::Expression* ir_no;
   auto ast_no = node->no();
   if (ast_no == null) {
-    ir_no = _new ir::LiteralNull(node->selection_range());
+    ir_no = zone_new<ir::LiteralNull>(node->selection_range());
   } else {
     ir_no = resolve_expression(ast_no, "If branches may not evaluate to blocks");
   }
@@ -1804,12 +1806,12 @@ void MethodResolver::visit_If(ast::If* node) {
   if (has_declaring_condition) {
     auto declaration = ir_condition->as_AssignmentDefine();
     auto local = declaration->local();
-    auto ref = _new ir::ReferenceLocal(local, 0, local->range());
+    auto ref = zone_new<ir::ReferenceLocal>(local, 0, local->range());
     // To delimit the visibility of the definition.
-    auto iff = _new ir::If(ref, ir_yes, ir_no, node->selection_range());
-    result = _new ir::Sequence(list_of(declaration, iff), node->selection_range());
+    auto iff = zone_new<ir::If>(ref, ir_yes, ir_no, node->selection_range());
+    result = zone_new<ir::Sequence>(list_of(declaration, iff), node->selection_range());
   } else {
-    result = _new ir::If(ir_condition, ir_yes, ir_no, node->selection_range());
+    result = zone_new<ir::If>(ir_condition, ir_yes, ir_no, node->selection_range());
   }
   scope_ = if_scope.outer();
   push(result);
@@ -1840,9 +1842,9 @@ void MethodResolver::visit_loop(ast::Node* node,
     // We move the declaration to the initializer, as if it was a `for` loop.
     auto loop_variable_declaration = ast_condition->as_DeclarationLocal();
     auto range = loop_variable_declaration->selection_range();
-    auto ast_undefined = _new ast::LiteralUndefined();
+    auto ast_undefined = zone_new<ast::LiteralUndefined>();
     ast_undefined->set_range(range);
-    ast_initializer = _new ast::DeclarationLocal(loop_variable_declaration->kind(),
+    ast_initializer = zone_new<ast::DeclarationLocal>(loop_variable_declaration->kind(),
                                                  loop_variable_declaration->name(),
                                                  loop_variable_declaration->type(),
                                                  ast_undefined);
@@ -1879,7 +1881,7 @@ void MethodResolver::visit_loop(ast::Node* node,
       ir_condition = resolve_expression(ast_condition, "Condition may not be a block");
     }
   } else {
-    ir_condition = _new ir::LiteralBoolean(true, node->selection_range());
+    ir_condition = zone_new<ir::LiteralBoolean>(true, node->selection_range());
   }
   if (assign_condition_to_loop_variable) {
     if (loop_variable == null) {
@@ -1904,7 +1906,7 @@ void MethodResolver::visit_loop(ast::Node* node,
   if (ast_update != null) {
     ir_update = resolve_expression(ast_update, null, true);
   } else {
-    ir_update = _new ir::Nop(node->selection_range());
+    ir_update = zone_new<ir::Nop>(node->selection_range());
   }
 
   if (loop_variable != null) {
@@ -1929,14 +1931,14 @@ void MethodResolver::visit_loop(ast::Node* node,
     loop_variable->mark_effectively_final_loop_variable();
   }
 
-  auto ir_while = _new ir::While(ir_condition, ir_body, ir_update, loop_variable, node->selection_range());
+  auto ir_while = zone_new<ir::While>(ir_condition, ir_body, ir_update, loop_variable, node->selection_range());
 
 
   ListBuilder<ir::Expression*> expressions;
   if (ir_initializer != null) expressions.add(ir_initializer);
   expressions.add(ir_while);
-  expressions.add(_new ir::LiteralNull(node->selection_range()));
-  push(_new ir::Sequence(expressions.build(), node->selection_range()));
+  expressions.add(zone_new<ir::LiteralNull>(node->selection_range()));
+  push(zone_new<ir::Sequence>(expressions.build(), node->selection_range()));
 
   ASSERT(scope_ = &loop_scope);
   scope_ = loop_scope.outer();
@@ -1972,7 +1974,7 @@ void MethodResolver::visit_BreakContinue(ast::BreakContinue* node) {
   switch (loop_status_) {
     case NO_LOOP:
       report_error(node, "'%s' must be inside loop", kind);
-      push(_new ir::Error(node->selection_range()));
+      push(zone_new<ir::Error>(node->selection_range()));
       break;
 
     case IN_LAMBDA_LOOP:
@@ -1980,12 +1982,12 @@ void MethodResolver::visit_BreakContinue(ast::BreakContinue* node) {
       report_error(node, "'%s' can't break out of lambda", kind);
       report_note(current_lambda_, "Location of the lambda that '%s' would break out of", kind);
       diagnostics()->end_group();
-      push(_new ir::Error(node->selection_range()));
+      push(zone_new<ir::Error>(node->selection_range()));
       break;
 
     case IN_LOOP:
     case IN_BLOCKED_LOOP:
-      push(_new ir::LoopBranch(node->is_break(), loop_block_depth_, node->selection_range()));
+      push(zone_new<ir::LoopBranch>(node->is_break(), loop_block_depth_, node->selection_range()));
   }
 }
 
@@ -2022,7 +2024,7 @@ ir::Code* MethodResolver::_create_code(
   std::vector<ir::Expression*> parameter_expressions;
 
   if (parameters.is_empty() && has_implicit_it_parameter) {
-    auto ir_parameter = _new ir::Parameter(Symbols::it,
+    auto ir_parameter = zone_new<ir::Parameter>(Symbols::it,
                                            ir::Type::any(), // No type.
                                            false,  // Not a block.
                                            id_offset,
@@ -2088,12 +2090,12 @@ ir::Code* MethodResolver::_create_code(
   if (!parameter_expressions.empty()) {
     // Prefix the body with the parameter expressions.
     parameter_expressions.push_back(ir_body);
-    ir_body = _new ir::Sequence(ListBuilder<ir::Expression*>::build_from_vector(parameter_expressions),
+    ir_body = zone_new<ir::Sequence>(ListBuilder<ir::Expression*>::build_from_vector(parameter_expressions),
                                 node->selection_range());
   }
 
   auto name = Symbol::synthetic(is_block ? "<block>" : "<lambda>");
-  return _new ir::Code(name,
+  return zone_new<ir::Code>(name,
                        ir_parameters,
                        ir_body,
                        is_block,
@@ -2150,7 +2152,7 @@ ir::Expression* MethodResolver::_resolve_constructor_super_target(ast::Node* tar
     auto method = candidate->as_Method();
     if (!method->is_constructor()) continue;
     if (method->resolution_shape().accepts(shape)) {
-      return _new ir::ReferenceMethod(method, target_node->selection_range());
+      return zone_new<ir::ReferenceMethod>(method, target_node->selection_range());
     }
   }
   auto constructor = method_->as_Constructor();
@@ -2161,7 +2163,7 @@ ir::Expression* MethodResolver::_resolve_constructor_super_target(ast::Node* tar
   report_error(target_node,
                 "Couldn't find matching constructor in superclass '%s'",
                 super->name().c_str());
-  return _new ir::Error(target_node->selection_range());
+  return zone_new<ir::Error>(target_node->selection_range());
 }
 
 MethodResolver::Candidates MethodResolver::_compute_target_candidates(ast::Node* target_node, Scope* scope) {
@@ -2340,7 +2342,7 @@ ir::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
   if (lookup_scope == null) lookup_scope = scope();
 
   auto candidates = _compute_target_candidates(target_node, lookup_scope);
-  if (candidates.encountered_error) return _new ir::Error(range);
+  if (candidates.encountered_error) return zone_new<ir::Error>(range);
 
   if (candidates.klass != null && candidates.nodes.is_empty()) {
     auto klass = candidates.klass;
@@ -2351,7 +2353,7 @@ ir::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
       report_error(target_node, "Class '%s' only has named constructors",
                    candidates.name.c_str());
     }
-    return _new ir::Error(range);
+    return zone_new<ir::Error>(range);
   }
 
   Symbol name = candidates.name;
@@ -2359,7 +2361,7 @@ ir::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
   if (!name.is_valid()) {
     // In this case the parser already reported an error.
     ASSERT(diagnostics()->encountered_error());
-    return _new ir::Error(range);
+    return zone_new<ir::Error>(range);
   }
 
   auto candidate_nodes = candidates.nodes;
@@ -2369,9 +2371,9 @@ ir::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
     if (candidate == ClassScope::SUPER_CLASS_SEPARATOR) {
       continue;
     } else if (ir::Block* block_node = candidate->as_Block()) {
-      return _new ir::ReferenceBlock(block_node, block_depth, range);
+      return zone_new<ir::ReferenceBlock>(block_node, block_depth, range);
     } else if (ir::Local* local_node = candidate->as_Local()) {
-      return _new ir::ReferenceLocal(local_node, block_depth, range);
+      return zone_new<ir::ReferenceLocal>(local_node, block_depth, range);
     } else if (ir::Global* global_node = candidate->as_Global()) {
       check_sdk_protection(name, target_node->selection_range(), global_node->range());
       // By default the global reference needs to check for lazy initializers.
@@ -2380,7 +2382,7 @@ ir::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
       // successive access to the same local don't need to check for the
       // initializer.
       bool is_lazy = true;  // Could be changed in optimizations further down the pipeline.
-      return _new ir::ReferenceGlobal(global_node, is_lazy, range);
+      return zone_new<ir::ReferenceGlobal>(global_node, is_lazy, range);
     } else if (candidate->is_Method()) {
       ASSERT(!(candidate->is_Method() && candidate->as_Method()->is_initializer()));
       auto method_node = candidate->as_Method();
@@ -2400,9 +2402,9 @@ ir::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
         // We special case the identical top-level method, because we want to
         // turn calls to that into a special bytecode.
         if (name == Symbols::identical && method_node->is_runtime_method() && method_node->holder() == null) {
-          return _new ir::Builtin(ir::Builtin::IDENTICAL);
+          return zone_new<ir::Builtin>(ir::Builtin::IDENTICAL);
         } else {
-          return _new ir::ReferenceMethod(method_node, range);
+          return zone_new<ir::ReferenceMethod>(method_node, range);
         }
       }
       // Instance method or field.
@@ -2415,11 +2417,11 @@ ir::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
 
         case CONSTRUCTOR_STATIC:
           report_error(target_node, "Can't access instance members before `super` call");
-          return _new ir::Error(range);
+          return zone_new<ir::Error>(range);
 
         case FIELD:
           report_error(target_node, "Can't access instance members in field initializers");
-          return _new ir::Error(range);
+          return zone_new<ir::Error>(range);
 
         case INSTANCE:
         case CONSTRUCTOR_INSTANCE:
@@ -2430,7 +2432,7 @@ ir::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
         case STATIC: {
           const char* kind = method_->is_factory() ? "factories" : "static contexts";
           report_error(target_node, "Can't access instance members in %s", kind);
-          return _new ir::Error(range);
+          return zone_new<ir::Error>(range);
         }
 
         case CONSTRUCTOR_SUPER:
@@ -2440,7 +2442,7 @@ ir::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
 
       // If the method is an instance method, then the caller must change the call to an
       // instance call.
-      return _new ir::ReferenceMethod(method_node, range);
+      return zone_new<ir::ReferenceMethod>(method_node, range);
     } else {
       UNREACHABLE();
     }
@@ -2453,7 +2455,7 @@ ir::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
       return _resolve_runtime_call(Symbols::assert_, shape_without_implicit_this);
     }
     report_error(target_node, "'assert' takes exactly one block");
-    return _new ir::Error(range);
+    return zone_new<ir::Error>(range);
   }
 
   // If there is no match at all, try to see, whether it's a builtin.
@@ -2465,7 +2467,7 @@ ir::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
         return builtin;
       }
       report_error(target_node, "Builtin call argument mismatch");
-      return _new ir::Error(range);
+      return zone_new<ir::Error>(range);
     }
   }
 
@@ -2477,7 +2479,7 @@ ir::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
     Selector<CallShape> selector(name, shape_without_implicit_this);
     report_no_such_static_method(candidate_nodes, selector, error_node->selection_range(), diagnostics());
   }
-  return _new ir::Error(range);
+  return zone_new<ir::Error>(range);
 }
 
 ir::Expression* MethodResolver::_this_ref(Source::Range range, bool ignore_resolution_mode) {
@@ -2488,7 +2490,7 @@ ir::Expression* MethodResolver::_this_ref(Source::Range range, bool ignore_resol
   }
   auto this_lookup = lookup(this_identifier());
   ASSERT(this_lookup.entry.is_single());
-  return _new ir::ReferenceLocal(this_lookup.entry.single()->as_Local(),
+  return zone_new<ir::ReferenceLocal>(this_lookup.entry.single()->as_Local(),
                                  this_lookup.block_depth,
                                  range);
 }
@@ -2511,7 +2513,7 @@ ir::Expression* MethodResolver::resolve_expression(ast::Node* node,
       position_node = position_node->as_Sequence()->expressions().last();
     }
     report_error(position_node, error_when_block);
-    result = _new ir::Error(node->selection_range(), list_of(result));
+    result = zone_new<ir::Error>(node->selection_range(), list_of(result));
   }
   return result;
 }
@@ -2535,7 +2537,7 @@ ir::Expression* MethodResolver::resolve_statement(ast::Node* node,
       position_node = position_node->as_Sequence()->expressions().last();
     }
     report_error(position_node, error_when_block);
-    result = _new ir::Error(node->selection_range(), list_of(result));
+    result = zone_new<ir::Error>(node->selection_range(), list_of(result));
   }
   return result;
 }
@@ -2546,7 +2548,7 @@ ir::Expression* MethodResolver::resolve_error(ast::Node* node) {
   scope_ = &scope;
   auto expression = resolve_statement(node, null);
   scope_ = scope.outer();
-  return _new ir::Sequence(list_of(expression), node->selection_range());
+  return zone_new<ir::Sequence>(list_of(expression), node->selection_range());
 }
 
 void MethodResolver::_handle_lsp_call_dot(ast::Dot* ast_dot, ir::Expression* ir_receiver) {
@@ -2742,7 +2744,7 @@ void MethodResolver::_visit_potential_call_identifier(ast::Node* ast_target,
         name = ir_target->as_ReferenceGlobal()->target()->name().c_str();
       }
       report_error(ast_target, "Can't invoke %s variable '%s'", kind, name);
-      push(_new ir::Error(ast_target->selection_range(), call_builder.arguments()));
+      push(zone_new<ir::Error>(ast_target->selection_range(), call_builder.arguments()));
     }
   } else if (ir_target->is_ReferenceMethod()) {
     auto ref = ir_target->as_ReferenceMethod();
@@ -2766,7 +2768,7 @@ void MethodResolver::_visit_potential_call_identifier(ast::Node* ast_target,
       }
       push(call_builder.call_constructor(ref));
     } else if (ref->target()->is_instance()) {
-      auto ir_dot = _new ir::Dot(_this_ref(ast_target->selection_range()), ref->target()->name());
+      auto ir_dot = zone_new<ir::Dot>(_this_ref(ast_target->selection_range()), ref->target()->name());
       push(call_builder.call_instance(ir_dot));
     } else if (ast_target->is_Identifier() &&
                 ast_target->as_Identifier()->data() == Token::symbol(Token::AZZERT) &&
@@ -2775,7 +2777,7 @@ void MethodResolver::_visit_potential_call_identifier(ast::Node* ast_target,
       // assert is used with wrong arguments.
       // We do allow direct calls to `_assert` which is why we check for the token `assert`.
       ASSERT(ref->target()->name() == Symbols::assert_);
-      push(_new ir::LiteralNull(ast_target->selection_range()));
+      push(zone_new<ir::LiteralNull>(ast_target->selection_range()));
     } else {
       push(call_builder.call_static(ref));
     }
@@ -2818,7 +2820,7 @@ void MethodResolver::_visit_potential_call_dot(ast::Dot* ast_dot,
                     candidates.name.c_str(),
                     ast_dot->name()->data().c_str());
       }
-      push(_new ir::Error(ast_dot->selection_range(), call_builder.arguments()));
+      push(zone_new<ir::Error>(ast_dot->selection_range(), call_builder.arguments()));
       return;
     }
   }
@@ -2833,10 +2835,10 @@ void MethodResolver::_visit_potential_call_dot(ast::Dot* ast_dot,
   if (receiver->is_block() && selector == Symbols::call) {
     if (call_builder.has_block_arguments()) {
       report_error(ast_dot, "Can't invoke a block with a block argument");
-      push(_new ir::Error(ast_dot->selection_range(), call_builder.arguments()));
+      push(zone_new<ir::Error>(ast_dot->selection_range(), call_builder.arguments()));
     } else if (call_builder.has_named_arguments()) {
       report_error(ast_dot, "Can't invoke a block with a named argument");
-      push(_new ir::Error(ast_dot->selection_range(), call_builder.arguments()));
+      push(zone_new<ir::Error>(ast_dot->selection_range(), call_builder.arguments()));
     } else {
       push(call_builder.call_block(receiver));
     }
@@ -2845,20 +2847,20 @@ void MethodResolver::_visit_potential_call_dot(ast::Dot* ast_dot,
     ListBuilder<ir::Expression*> nested;
     nested.add(receiver);
     nested.add(call_builder.arguments());
-    push(_new ir::Error(ast_dot->name()->selection_range(), nested.build()));
+    push(zone_new<ir::Error>(ast_dot->name()->selection_range(), nested.build()));
   } else if (receiver->is_block()) {
     report_error(ast_dot, "Can't invoke %s on a block", selector.c_str());
-    push(_new ir::Error(ast_dot->selection_range(), call_builder.arguments()));
+    push(zone_new<ir::Error>(ast_dot->selection_range(), call_builder.arguments()));
   } else if (is_reserved_identifier(selector)) {
     report_error(ast_dot->name(), "Invalid member name '%s'", selector.c_str());
-    push(_new ir::Error(ast_dot->selection_range(), call_builder.arguments()));
+    push(zone_new<ir::Error>(ast_dot->selection_range(), call_builder.arguments()));
   } else {
     ir::Dot* ir_dot;
     if (ast_dot->name()->is_LspSelection() || named_lsp_selection != null) {
       Symbol lsp_name = named_lsp_selection == null ? Symbol::invalid() : named_lsp_selection->data();
-      ir_dot = _new ir::LspSelectionDot(receiver, selector, lsp_name);
+      ir_dot = zone_new<ir::LspSelectionDot>(receiver, selector, lsp_name);
     } else {
-      ir_dot = _new ir::Dot(receiver, selector);
+      ir_dot = zone_new<ir::Dot>(receiver, selector);
     }
     push(call_builder.call_instance(ir_dot, ast_dot->name()->selection_range()));
   }
@@ -2868,14 +2870,14 @@ void MethodResolver::_visit_potential_call_index(ast::Node* ast_target,
                                                  CallBuilder& call_builder) {
   auto receiver = resolve_expression(ast_target,
                                      "Can't use the index operator on a block");
-  push(call_builder.call_instance(_new ir::Dot(receiver, Symbols::index)));
+  push(call_builder.call_instance(zone_new<ir::Dot>(receiver, Symbols::index)));
 }
 
 void MethodResolver::_visit_potential_call_index_slice(ast::Node* ast_target,
                                                        CallBuilder& call_builder) {
   auto receiver = resolve_expression(ast_target,
                                      "Can't use the slice operator on a block");
-  push(call_builder.call_instance(_new ir::Dot(receiver, Symbols::index_slice)));
+  push(call_builder.call_instance(zone_new<ir::Dot>(receiver, Symbols::index_slice)));
 }
 
 void MethodResolver::_visit_potential_call_super(ast::Node* ast_target,
@@ -2992,21 +2994,21 @@ void MethodResolver::_visit_potential_call_super(ast::Node* ast_target,
     case CONSTRUCTOR_LIMBO_INSTANCE:
       report_error(ast_target,
                   "Only one super call at the top-level of a constructor is allowed");
-      push(_new ir::Error(ast_target->selection_range(), call_builder.arguments()));
+      push(zone_new<ir::Error>(ast_target->selection_range(), call_builder.arguments()));
       break;
     case CONSTRUCTOR_LIMBO_STATIC:
       report_error(ast_target,
                   "Super constructor calls must be at the top-level");
-      push(_new ir::Error(ast_target->selection_range(), call_builder.arguments()));
+      push(zone_new<ir::Error>(ast_target->selection_range(), call_builder.arguments()));
       break;
     case FIELD:
       report_error(ast_target, "Can't access 'super' in field initializers");
-      push(_new ir::Error(ast_target->selection_range(), call_builder.arguments()));
+      push(zone_new<ir::Error>(ast_target->selection_range(), call_builder.arguments()));
       break;
     case STATIC:
       auto kind = method_->is_factory() ? "factory" : "static";
       report_error(ast_target, "Can't access 'super' in %s method", kind);
-      push(_new ir::Error(ast_target->selection_range(), call_builder.arguments()));
+      push(zone_new<ir::Error>(ast_target->selection_range(), call_builder.arguments()));
       break;
   }
 }
@@ -3097,7 +3099,7 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
       name = named->name()->data();
       argument = named->expression();
       if (argument == null) {
-        ir_argument = _new ir::LiteralBoolean(!named->inverted(), named->selection_range());
+        ir_argument = zone_new<ir::LiteralBoolean>(!named->inverted(), named->selection_range());
       } else {
         ASSERT(!named->inverted() || diagnostics()->encountered_error());
       }
@@ -3182,7 +3184,7 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
       ListBuilder<ir::Expression*> all_ir_nodes;
       all_ir_nodes.add(resolve_error(ast_target));
       all_ir_nodes.add(call_builder.arguments());
-      push(_new ir::Error(ast_target->selection_range(), all_ir_nodes.build()));
+      push(zone_new<ir::Error>(ast_target->selection_range(), all_ir_nodes.build()));
     }
   }
 
@@ -3213,7 +3215,7 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
 }
 
 void MethodResolver::visit_Error(ast::Error* node) {
-  push(_new ir::Error(node->selection_range()));
+  push(zone_new<ir::Error>(node->selection_range()));
 }
 
 void MethodResolver::visit_Call(ast::Call* node) {
@@ -3236,9 +3238,9 @@ void MethodResolver::visit_IndexSlice(ast::IndexSlice* node) {
   // Takes an ast-expression and wraps it into a named argument node.
   auto create_named_argument = [](Symbol name, ast::Expression* expr) {
     // Change it to a named argument.
-    auto identifier = _new ast::Identifier(name);
+    auto identifier = zone_new<ast::Identifier>(name);
     identifier->set_range(expr->selection_range());
-    auto named = _new ast::NamedArgument(identifier, false, expr);
+    auto named = zone_new<ast::NamedArgument>(identifier, false, expr);
     named->set_range(expr->selection_range());
     return named;
   };
@@ -3287,13 +3289,13 @@ void MethodResolver::visit_labeled_break_continue(ast::BreakContinue* node) {
   if (node->value()) {
     return_value = resolve_expression(node->value(), "Can't return a block");
   } else {
-    return_value = _new ir::LiteralNull(node->selection_range());
+    return_value = zone_new<ir::LiteralNull>(node->selection_range());
   }
   if (label_index == -1) {
-    push(_new ir::Error(node->selection_range(), list_of(return_value)));
+    push(zone_new<ir::Error>(node->selection_range(), list_of(return_value)));
   } else {
     int return_depth = break_continue_label_stack_.size() - 1 - label_index;
-    push(_new ir::Return(return_value, return_depth, node->selection_range()));
+    push(zone_new<ir::Return>(return_value, return_depth, node->selection_range()));
   }
 }
 
@@ -3306,10 +3308,10 @@ void MethodResolver::visit_Return(ast::Return* node) {
                                 "Can't return from within a %s initializer",
                                 kind);
     if (node->value() == null) {
-      push(_new ir::Error(node->selection_range()));
+      push(zone_new<ir::Error>(node->selection_range()));
     } else {
       auto value = resolve_expression(node->value(), null, true);
-      push(_new ir::Error(node->selection_range(), list_of(value)));
+      push(zone_new<ir::Error>(node->selection_range(), list_of(value)));
     }
     return;
   }
@@ -3325,24 +3327,24 @@ void MethodResolver::visit_Return(ast::Return* node) {
     if (!method_->return_type().is_none() &&
         ir_to_ast_map_->at(method_)->as_Method()->return_type() != null) {
       diagnostics()->report_warning(node->selection_range(), "Missing return value");
-      return_value = _new ir::LiteralUndefined(node->selection_range());
+      return_value = zone_new<ir::LiteralUndefined>(node->selection_range());
     } else {
-      return_value = _new ir::LiteralNull(node->selection_range());
+      return_value = zone_new<ir::LiteralNull>(node->selection_range());
     }
   }
   if (current_lambda_ != null) {
     report_error(node, "Can't explicitly return from within a lambda");
-    push(_new ir::Error(node->selection_range(), list_of(return_value)));
+    push(zone_new<ir::Error>(node->selection_range(), list_of(return_value)));
   } else {
     auto return_type = method_->return_type();
     if (return_type.is_class()) {
-      return_value = _new ir::Typecheck(ir::Typecheck::RETURN_AS_CHECK,
+      return_value = zone_new<ir::Typecheck>(ir::Typecheck::RETURN_AS_CHECK,
                                         return_value,
                                         return_type,
                                         return_type.klass()->name(),
                                         node->selection_range());
     }
-    push(_new ir::Return(return_value, false, node->selection_range()));
+    push(zone_new<ir::Return>(return_value, false, node->selection_range()));
   }
 }
 
@@ -3368,7 +3370,7 @@ void MethodResolver::visit_literal_this(ast::Identifier* node) {
   switch (resolution_mode_) {
     case CONSTRUCTOR_STATIC:
       report_error(node, "Can't access 'this' before a super call in the constructor");
-      push(_new ir::Error(node->selection_range()));
+      push(zone_new<ir::Error>(node->selection_range()));
       return;
 
     case CONSTRUCTOR_LIMBO_STATIC:
@@ -3378,7 +3380,7 @@ void MethodResolver::visit_literal_this(ast::Identifier* node) {
 
     case FIELD:
       report_error(node, "Can't access 'this' in a field initializer");
-      push(_new ir::Error(node->selection_range()));
+      push(zone_new<ir::Error>(node->selection_range()));
       return;
 
     case INSTANCE:
@@ -3389,7 +3391,7 @@ void MethodResolver::visit_literal_this(ast::Identifier* node) {
 
     case STATIC:
       report_error(node, "Can't access 'this' in static method");
-      push(_new ir::Error(node->selection_range()));
+      push(zone_new<ir::Error>(node->selection_range()));
       return;
 
     case CONSTRUCTOR_SUPER:
@@ -3398,7 +3400,7 @@ void MethodResolver::visit_literal_this(ast::Identifier* node) {
 
   auto this_lookup = lookup(this_identifier());
   ASSERT(this_lookup.entry.is_single());
-  push (_new ir::ReferenceLocal(this_lookup.entry.single()->as_Local(),
+  push (zone_new<ir::ReferenceLocal>(this_lookup.entry.single()->as_Local(),
                                 this_lookup.block_depth,
                                 node->selection_range()));
 }
@@ -3409,13 +3411,13 @@ ir::AssignmentLocal* MethodResolver::_typed_assign_local(ir::Local* local,
                                                          Source::Range range) {
   if (local->has_explicit_type() && local->type().is_class()) {
     auto type = local->type();
-    value = _new ir::Typecheck(ir::Typecheck::LOCAL_AS_CHECK,
+    value = zone_new<ir::Typecheck>(ir::Typecheck::LOCAL_AS_CHECK,
                                value,
                                type,
                                type.klass()->name(),
                                range);
   }
-  return _new ir::AssignmentLocal(local, block_depth, value, range);
+  return zone_new<ir::AssignmentLocal>(local, block_depth, value, range);
 }
 
 ir::Expression* MethodResolver::_as_or_is(ast::Binary* node) {
@@ -3441,7 +3443,7 @@ ir::Expression* MethodResolver::_as_or_is(ast::Binary* node) {
   }
 
   auto kind = is_as ? ir::Typecheck::AS_CHECK : ir::Typecheck::IS_CHECK;
-  auto ir_check = _new ir::Typecheck(kind,
+  auto ir_check = zone_new<ir::Typecheck>(kind,
                                      ir_left,
                                      type,
                                      type_name,
@@ -3451,7 +3453,7 @@ ir::Expression* MethodResolver::_as_or_is(ast::Binary* node) {
   // pipeline to extract the exact source range of the class name.
   (*ir_to_ast_map_)[ir_check] = ast_right;
   ir::Expression* result = ir_check;
-  if (node->kind() == Token::IS_NOT) result = _new ir::Not(result, node->selection_range());
+  if (node->kind() == Token::IS_NOT) result = zone_new<ir::Not>(result, node->selection_range());
   return result;
 }
 
@@ -3474,12 +3476,12 @@ ir::Expression* MethodResolver::_bad_define(ast::Binary* node) {
   if (node->left()->is_Identifier()) {
     auto name = node->left()->as_Identifier()->data();
     auto ir_right = _definition_rhs(node->right(), name);
-    return _new ir::Error(node->selection_range(), list_of(ir_right));
+    return zone_new<ir::Error>(node->selection_range(), list_of(ir_right));
   } else {
     report_error(node->left(), "Left-hand side of definition must be an identifier");
     auto ir_left = resolve_expression(node->left(), null);
     auto ir_right = _definition_rhs(node->right(), Symbol::invalid());
-    return _new ir::Error(node->selection_range(), list_of(ir_left, ir_right));
+    return zone_new<ir::Error>(node->selection_range(), list_of(ir_left, ir_right));
   }
 }
 
@@ -3563,20 +3565,20 @@ ir::Expression* MethodResolver::_define(ast::Expression* node,
 
   ir::Local* local;
   if (ir_right->is_block()) {
-    local = _new ir::Block(name, ast_declaration->name()->selection_range());
+    local = zone_new<ir::Block>(name, ast_declaration->name()->selection_range());
     if (type.is_valid()) {
       report_error(ast_declaration->type(),
                    "Can't assign block to a typed local");
     }
   } else {
-    local = _new ir::Local(name,
+    local = zone_new<ir::Local>(name,
                            ast_declaration->kind() == Token::DEFINE_FINAL,
                            ir_right->is_block(),
                            type,
                            ast_declaration->name()->selection_range());
     if (type.is_valid() && !type.is_any() && !ir_right->is_LiteralUndefined()) {
       ASSERT(type.is_class());
-      ir_right = _new ir::Typecheck(ir::Typecheck::LOCAL_AS_CHECK,
+      ir_right = zone_new<ir::Typecheck>(ir::Typecheck::LOCAL_AS_CHECK,
                                     ir_right,
                                     type,
                                     type.klass()->name(),
@@ -3590,18 +3592,18 @@ ir::Expression* MethodResolver::_define(ast::Expression* node,
     lsp_->selection_handler()->definition(local, ast_declaration->name()->selection_range());
   }
   scope()->add(name, ResolutionEntry(local));
-  return _new ir::AssignmentDefine(local, ir_right, ast_declaration->selection_range());
+  return zone_new<ir::AssignmentDefine>(local, ir_right, ast_declaration->selection_range());
 }
 
 ir::Expression* MethodResolver::_assign(ast::Binary* node, bool is_postfix) {
   ListBuilder<ir::Expression*> expressions;
 
   CreateTemp create_temp = [&expressions, node](ir::Expression* value) mutable {
-    auto temporary = _new ir::Local(Symbol::synthetic("<tmp>"),
+    auto temporary = zone_new<ir::Local>(Symbol::synthetic("<tmp>"),
                                     true,  // Final.
                                     false, // Not a block.
                                     Source::Range::invalid());
-    auto define = _new ir::AssignmentDefine(temporary, value, node->selection_range());
+    auto define = zone_new<ir::AssignmentDefine>(temporary, value, node->selection_range());
     expressions.add(define);
     return temporary;
   };
@@ -3610,7 +3612,7 @@ ir::Expression* MethodResolver::_assign(ast::Binary* node, bool is_postfix) {
   StoreOldValue store_old = [&](ir::Expression* value) mutable {
     if (!is_postfix) return value;
     old_value_tmp = create_temp(value);
-    ir::Expression* result = _new ir::ReferenceLocal(old_value_tmp, 0, node->selection_range());
+    ir::Expression* result = zone_new<ir::ReferenceLocal>(old_value_tmp, 0, node->selection_range());
     return result;
   };
 
@@ -3647,9 +3649,9 @@ ir::Expression* MethodResolver::_assign(ast::Binary* node, bool is_postfix) {
     }
     auto ir_right = resolve_expression(node->right(), null, true);
     if (ir_left == null) {
-      return _new ir::Error(node->selection_range(), list_of(ir_right));
+      return zone_new<ir::Error>(node->selection_range(), list_of(ir_right));
     } else {
-      return _new ir::Error(node->selection_range(), list_of(ir_left, ir_right));
+      return zone_new<ir::Error>(node->selection_range(), list_of(ir_left, ir_right));
     }
   }
 
@@ -3660,12 +3662,12 @@ ir::Expression* MethodResolver::_assign(ast::Binary* node, bool is_postfix) {
     if (is_postfix) {
       if (old_value_tmp == null) {
         ASSERT(diagnostics()->encountered_error());
-        expressions.add(_new ir::Error(node->selection_range()));
+        expressions.add(zone_new<ir::Error>(node->selection_range()));
       } else {
-        expressions.add(_new ir::ReferenceLocal(old_value_tmp, 0, node->left()->selection_range()));
+        expressions.add(zone_new<ir::ReferenceLocal>(old_value_tmp, 0, node->left()->selection_range()));
       }
     }
-    return _new ir::Sequence(expressions.build(), node->selection_range());
+    return zone_new<ir::Sequence>(expressions.build(), node->selection_range());
   }
 }
 
@@ -3751,7 +3753,7 @@ ir::Expression* MethodResolver::_potentially_store_field(ast::Node* node,
     ir::Expression* ir_value;
     if (is_compound) {
       auto ir_this = _this_ref(node->selection_range(), true);  // Don't care for the resolution-mode.
-      auto old_value = store_old(_new ir::FieldLoad(ir_this, field, node->selection_range()));
+      auto old_value = store_old(zone_new<ir::FieldLoad>(ir_this, field, node->selection_range()));
       ir_value = _binary_operator(node->as_Binary(), old_value);
     } else {
       ir_value = resolve_expression(value, "Can't store a block in a field", true);
@@ -3759,13 +3761,13 @@ ir::Expression* MethodResolver::_potentially_store_field(ast::Node* node,
 
     auto ir_this = _this_ref(node->selection_range(), true);  // Don't care for the resolution-mode.
     if (field->type().is_class()) {
-      ir_value = _new ir::Typecheck(ir::Typecheck::FIELD_AS_CHECK,
+      ir_value = zone_new<ir::Typecheck>(ir::Typecheck::FIELD_AS_CHECK,
                                     ir_value,
                                     field->type(),
                                     field->type().klass()->name(),
                                     node->selection_range());
     }
-    auto field_store = _new ir::FieldStore(ir_this, field, ir_value, node->selection_range());
+    auto field_store = zone_new<ir::FieldStore>(ir_this, field, ir_value, node->selection_range());
     if (field->is_final() &&
        (resolution_mode_ == CONSTRUCTOR_LIMBO_STATIC ||
         resolution_mode_ == CONSTRUCTOR_LIMBO_INSTANCE)) {
@@ -3809,7 +3811,7 @@ ir::Expression* MethodResolver::_potentially_load_field(Symbol name,
 
     auto field = candidate->as_FieldStub()->field();
     auto ir_this = _this_ref(range, true);  // Don't care for the resolution-mode.
-    return _new ir::FieldLoad(ir_this, field, range);
+    return zone_new<ir::FieldLoad>(ir_this, field, range);
   }
   return null;
 }
@@ -3857,10 +3859,10 @@ ir::Expression* MethodResolver::_assign_dot(ast::Binary* node,
 
   auto create_dot = [&](ir::Expression* receiver, Symbol selector) {
     if (dot->name()->is_LspSelection()) {
-      ir::Dot* result = _new ir::LspSelectionDot(receiver, selector, Symbol::invalid());
+      ir::Dot* result = zone_new<ir::LspSelectionDot>(receiver, selector, Symbol::invalid());
       return result;
     } else {
-      return _new ir::Dot(receiver, selector);
+      return zone_new<ir::Dot>(receiver, selector);
     }
   };
 
@@ -3873,7 +3875,7 @@ ir::Expression* MethodResolver::_assign_dot(ast::Binary* node,
     auto lhs = create_dot(ir_receiver, dot->name()->data());
     auto ir_rhs = resolve_expression(node->right(), "Can't assign block to instance member", true);
     auto args_list = list_of(ir_rhs);
-    auto* call = _new ir::CallVirtual(lhs, CallShape::for_instance_setter(), args_list, node->selection_range());
+    auto* call = zone_new<ir::CallVirtual>(lhs, CallShape::for_instance_setter(), args_list, node->selection_range());
     // Map the setter CallVirtual to the AST name identifier so that the
     // LSP rename visitor can retrieve the field name's source range (e.g.,
     // "is-paused" in "s.is-paused = value") instead of the "=" operator.
@@ -3885,8 +3887,8 @@ ir::Expression* MethodResolver::_assign_dot(ast::Binary* node,
 
   auto tmp = create_temp(ir_receiver);
   auto no_args = List<ir::Expression*>();
-  auto* getter_call = _new ir::CallVirtual(
-      create_dot(_new ir::ReferenceLocal(tmp, 0, dot->receiver()->selection_range()),
+  auto* getter_call = zone_new<ir::CallVirtual>(
+      create_dot(zone_new<ir::ReferenceLocal>(tmp, 0, dot->receiver()->selection_range()),
                  selector),
       CallShape::for_instance_call_no_named(no_args),
       no_args,
@@ -3900,8 +3902,8 @@ ir::Expression* MethodResolver::_assign_dot(ast::Binary* node,
   ASSERT(!new_value->is_block());
   auto new_value_args = list_of(new_value);
   // Note that we allow to assign blocks to fields, since getters may invoke them.
-  auto* setter_call = _new ir::CallVirtual(
-      create_dot(_new ir::ReferenceLocal(tmp, 0, dot->receiver()->selection_range()),
+  auto* setter_call = zone_new<ir::CallVirtual>(
+      create_dot(zone_new<ir::ReferenceLocal>(tmp, 0, dot->receiver()->selection_range()),
                  selector),
       CallShape::for_instance_setter(),
       new_value_args,
@@ -3944,15 +3946,15 @@ ir::Expression* MethodResolver::_assign_index(ast::Binary* node,
         arguments_builder_store.add(argument);
       } else {
         auto tmp = create_temp(argument);
-        arguments_builder_read.add(_new ir::ReferenceLocal(tmp, 0, argument->range()));
-        arguments_builder_store.add(_new ir::ReferenceLocal(tmp, 0, argument->range()));
+        arguments_builder_read.add(zone_new<ir::ReferenceLocal>(tmp, 0, argument->range()));
+        arguments_builder_store.add(zone_new<ir::ReferenceLocal>(tmp, 0, argument->range()));
       }
     }
 
-    auto ir_receiver_read = _new ir::ReferenceLocal(receiver_local, 0, receiver_range);
+    auto ir_receiver_read = zone_new<ir::ReferenceLocal>(receiver_local, 0, receiver_range);
     auto args_read = arguments_builder_read.build();
     auto old_value = store_old(
-        _new ir::CallVirtual(_new ir::Dot(ir_receiver_read, Symbols::index),
+        zone_new<ir::CallVirtual>(zone_new<ir::Dot>(ir_receiver_read, Symbols::index),
                              CallShape::for_instance_call_no_named(args_read),
                              args_read,
                              node->selection_range()));
@@ -3960,11 +3962,11 @@ ir::Expression* MethodResolver::_assign_index(ast::Binary* node,
     auto new_value = _binary_operator(node, old_value);
     arguments_builder_store.add(new_value);
 
-    ir_receiver = _new ir::ReferenceLocal(receiver_local, 0, receiver_range);
+    ir_receiver = zone_new<ir::ReferenceLocal>(receiver_local, 0, receiver_range);
     ir_arguments = arguments_builder_store.build();
   }
 
-  return _new ir::CallVirtual(_new ir::Dot(ir_receiver, Symbols::index_put),
+  return zone_new<ir::CallVirtual>(zone_new<ir::Dot>(ir_receiver, Symbols::index_put),
                               CallShape::for_instance_call_no_named(ir_arguments),
                               ir_arguments,
                               node->selection_range());
@@ -3976,14 +3978,14 @@ ir::Expression* MethodResolver::_assign_instance_member(ast::Binary* node,
   bool is_compound = node->kind() != Token::ASSIGN;
 
   auto create_receiver = [&]() {
-    return _new ir::Dot(_this_ref(node->left()->selection_range()), selector);
+    return zone_new<ir::Dot>(_this_ref(node->left()->selection_range()), selector);
   };
 
   ir::Expression* ir_value;
   if (is_compound) {
     auto no_args = List<ir::Expression*>();
     auto old_value = store_old(
-        _new ir::CallVirtual(create_receiver(),
+        zone_new<ir::CallVirtual>(create_receiver(),
                              CallShape::for_instance_call_no_named(no_args),
                              no_args,
                              node->selection_range()));
@@ -3995,7 +3997,7 @@ ir::Expression* MethodResolver::_assign_instance_member(ast::Binary* node,
     ir_value = resolve_expression(node->right(), "Can't assign block to instance member", true);
   }
   auto new_value_args = list_of(ir_value);
-  auto* setter_call = _new ir::CallVirtual(create_receiver(),
+  auto* setter_call = zone_new<ir::CallVirtual>(create_receiver(),
                               CallShape::for_instance_setter(),
                               new_value_args,
                               node->selection_range());
@@ -4218,7 +4220,7 @@ ir::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
   }
 
   if (!succeeded) {
-    return _new ir::Error(range, list_of(resolve_expression(ast_right, null, true)));
+    return zone_new<ir::Error>(range, list_of(resolve_expression(ast_right, null, true)));
   }
 
   bool is_compound = node->kind() != Token::ASSIGN;
@@ -4234,11 +4236,11 @@ ir::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
 
       case CONSTRUCTOR_STATIC:
         report_error(ast_left, "Can't access instance members before `super` call");
-        return _new ir::Error(range, list_of(resolve_expression(ast_right, null, true)));
+        return zone_new<ir::Error>(range, list_of(resolve_expression(ast_right, null, true)));
 
       case FIELD:
         report_error(ast_left, "Can't access instance members in field initializers");
-        return _new ir::Error(range, list_of(resolve_expression(ast_right, null, true)));
+        return zone_new<ir::Error>(range, list_of(resolve_expression(ast_right, null, true)));
 
       case INSTANCE:
       case CONSTRUCTOR_INSTANCE:
@@ -4249,7 +4251,7 @@ ir::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
       case STATIC: {
         const char* kind = method_->is_factory() ? "factories" : "static contexts";
         report_error(ast_left, "Can't access instance members in %s", kind);
-        return _new ir::Error(range, list_of(resolve_expression(ast_right, null, true)));
+        return zone_new<ir::Error>(range, list_of(resolve_expression(ast_right, null, true)));
       }
 
       case CONSTRUCTOR_SUPER:
@@ -4268,19 +4270,19 @@ ir::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
   if (ir_setter_node->is_Global()) {
     // Don't use locals here, as the closures in this block capture by reference.
     create_get = [&]() {
-      return _new ir::ReferenceGlobal(ir_getter_node->as_Global(), true, ast_left->selection_range());
+      return zone_new<ir::ReferenceGlobal>(ir_getter_node->as_Global(), true, ast_left->selection_range());
     };
     create_set = [&](ir::Expression* value) {
       // At this point the type of the global might not be set yet.
       // If necessary, a typecheck will be inserted later.
-      auto assignment = _new ir::AssignmentGlobal(ir_getter_node->as_Global(), value, range);
+      auto assignment = zone_new<ir::AssignmentGlobal>(ir_getter_node->as_Global(), value, range);
       global_assignments_.push_back(assignment);
       return assignment;
     };
   } else if (ir_setter_node->is_Local()) {
     // Don't use locals here, as the closures in this block capture by reference.
     create_get = [&]() {
-      return _new ir::ReferenceLocal(ir_getter_node->as_Local(), block_depth, ast_left->selection_range());
+      return zone_new<ir::ReferenceLocal>(ir_getter_node->as_Local(), block_depth, ast_left->selection_range());
     };
     create_set = [&](ir::Expression* value) {
       return _typed_assign_local(ir_getter_node->as_Local(),
@@ -4298,14 +4300,14 @@ ir::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
       auto getter_method = ir_getter_node->as_Method();
       CallBuilder builder(range);
       if (is_super) builder.add_argument(_this_ref(range), Symbol::invalid());
-      return builder.call_static(_new ir::ReferenceMethod(getter_method, range));
+      return builder.call_static(zone_new<ir::ReferenceMethod>(getter_method, range));
     };
     create_set = [&](ir::Expression* value) {
       auto setter_method = ir_setter_node->as_Method();
       CallBuilder builder(range);
       if (is_super) builder.add_argument(_this_ref(range), Symbol::invalid());
       builder.add_argument(value, Symbol::invalid());
-      return builder.call_static(_new ir::ReferenceMethod(setter_method, range));
+      return builder.call_static(zone_new<ir::ReferenceMethod>(setter_method, range));
     };
   }
 
@@ -4315,7 +4317,7 @@ ir::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
     ir_value = _binary_operator(node, old_value);
     if (ir_value->is_block()) {
       report_error(ast_right, "Can't use block value in assignment");
-      ir_value = _new ir::Error(ast_right->selection_range(), list_of(ir_value));
+      ir_value = zone_new<ir::Error>(ast_right->selection_range(), list_of(ir_value));
     }
   } else {
     ir_value = resolve_expression(ast_right, "Can't use block value in assignment", true);
@@ -4395,7 +4397,7 @@ ir::Expression* MethodResolver::_binary_operator(ast::Binary* node,
   }
   auto op = Token::symbol(compute_effective_operation(kind));
   auto right_args = list_of(ir_right);
-  auto result = _new ir::CallVirtual(_new ir::Dot(ir_left, op),
+  auto result = zone_new<ir::CallVirtual>(zone_new<ir::Dot>(ir_left, op),
                                      CallShape::for_instance_call_no_named(right_args),
                                      right_args,
                                      node->selection_range());
@@ -4412,7 +4414,7 @@ ir::Expression* MethodResolver::_binary_operator(ast::Binary* node,
       break;
     }
   }
-  if (inverted) return _new ir::Not(result, node->selection_range());
+  if (inverted) return zone_new<ir::Not>(result, node->selection_range());
   return result;
 }
 
@@ -4423,7 +4425,7 @@ ir::Expression* MethodResolver::_binary_comparison_operator(ast::Binary* node,
     auto ir_left = resolve_expression(node->left(), "Can't use blocks in comparison");
     auto ir_right = resolve_expression(node->right(), "Can't use blocks in comparison");
     if (temporary != null) {
-      ir_right = _new ir::AssignmentLocal(temporary, 0, ir_right, node->selection_range());
+      ir_right = zone_new<ir::AssignmentLocal>(temporary, 0, ir_right, node->selection_range());
     }
     return _binary_operator(node, ir_left, ir_right);
   }
@@ -4431,7 +4433,7 @@ ir::Expression* MethodResolver::_binary_comparison_operator(ast::Binary* node,
   bool outer_most = false;
   if (temporary == null) {
     outer_most = true;
-    temporary = _new ir::Local(Symbol::synthetic("<tmp_comp>"),
+    temporary = zone_new<ir::Local>(Symbol::synthetic("<tmp_comp>"),
                                false,  // Not final.
                                false,  // Not a block.
                                node->selection_range());
@@ -4439,14 +4441,14 @@ ir::Expression* MethodResolver::_binary_comparison_operator(ast::Binary* node,
   auto left_comparison = _binary_comparison_operator(node->left()->as_Binary(), temporary);
 
   // Now do the right comparison using the temporary from the left comparison.
-  auto ir_left = _new ir::ReferenceLocal(temporary, 0, node->left()->selection_range());
+  auto ir_left = zone_new<ir::ReferenceLocal>(temporary, 0, node->left()->selection_range());
   auto ir_right = resolve_expression(node->right(), "Can't use blocks in comparison");
   if (!outer_most) {
-    ir_right = _new ir::AssignmentLocal(temporary, 0, ir_right, node->selection_range());
+    ir_right = zone_new<ir::AssignmentLocal>(temporary, 0, ir_right, node->selection_range());
   }
   auto right_comparison = _binary_operator(node, ir_left, ir_right);
 
-  auto binary_and = _new ir::LogicalBinary(left_comparison,
+  auto binary_and = zone_new<ir::LogicalBinary>(left_comparison,
                                            right_comparison,
                                            ir::LogicalBinary::AND,
                                            node->selection_range());
@@ -4454,8 +4456,8 @@ ir::Expression* MethodResolver::_binary_comparison_operator(ast::Binary* node,
 
   // We need to have the definition of the local outside the left-comparison, as
   // we would otherwise pop the value too early.
-  auto define = _new ir::AssignmentDefine(temporary, _new ir::LiteralUndefined(node->selection_range()), node->selection_range());
-  return _new ir::Sequence(list_of(define, binary_and), node->selection_range());
+  auto define = zone_new<ir::AssignmentDefine>(temporary, zone_new<ir::LiteralUndefined>(node->selection_range()), node->selection_range());
+  return zone_new<ir::Sequence>(list_of(define, binary_and), node->selection_range());
 }
 
 ir::Expression* MethodResolver::_logical_operator(ast::Binary* node) {
@@ -4464,7 +4466,7 @@ ir::Expression* MethodResolver::_logical_operator(ast::Binary* node) {
   auto op = node->kind() == Token::LOGICAL_AND
       ? ir::LogicalBinary::AND
       : ir::LogicalBinary::OR;
-  return _new ir::LogicalBinary(ir_left, ir_right, op, node->selection_range());
+  return zone_new<ir::LogicalBinary>(ir_left, ir_right, op, node->selection_range());
 }
 
 void MethodResolver::visit_Binary(ast::Binary* node) {
@@ -4542,16 +4544,16 @@ void MethodResolver::visit_Unary(ast::Unary* node) {
           : Token::ASSIGN_SUB;
       // We can't allocate the following nodes on the stack, as
       // a field-store might retain them to give a better error message.
-      auto one = _new ast::LiteralInteger(Symbols::one);
+      auto one = zone_new<ast::LiteralInteger>(Symbols::one);
       one->set_range(node->selection_range());
-      auto assign = _new ast::Binary(operation, node->expression(), one);
+      auto assign = zone_new<ast::Binary>(operation, node->expression(), one);
       assign->set_range(node->selection_range());
       push(_assign(assign, is_postfix));
       break;
     }
 
     case Token::NOT: {
-      push(_new ir::Not(resolve_expression(node->expression(), "Can't negate blocks"), node->selection_range()));
+      push(zone_new<ir::Not>(resolve_expression(node->expression(), "Can't negate blocks"), node->selection_range()));
       break;
     }
 
@@ -4562,7 +4564,7 @@ void MethodResolver::visit_Unary(ast::Unary* node) {
           : "Can't bit-not blocks";
       auto receiver = resolve_expression(node->expression(), error_message);
       auto no_args = List<ir::Expression*>();
-      push(_new ir::CallVirtual(_new ir::Dot(receiver, Token::symbol(node->kind())),
+      push(zone_new<ir::CallVirtual>(zone_new<ir::Dot>(receiver, Token::symbol(node->kind())),
                                 CallShape::for_instance_call_no_named(no_args),
                                 no_args,
                                 node->selection_range()));
@@ -4575,16 +4577,16 @@ void MethodResolver::visit_Unary(ast::Unary* node) {
 }
 
 void MethodResolver::visit_LiteralNull(ast::LiteralNull* node) {
-  push(_new ir::LiteralNull(node->selection_range()));
+  push(zone_new<ir::LiteralNull>(node->selection_range()));
 }
 
 void MethodResolver::visit_LiteralUndefined(ast::LiteralUndefined* node) {
-  push(_new ir::LiteralUndefined(node->selection_range()));
+  push(zone_new<ir::LiteralUndefined>(node->selection_range()));
 }
 
 const char* strip_underscores(const char* str) {
   if (strchr(str, '_') == null) return str;
-  char* stripped = unvoid_cast<char*>(malloc(strlen(str)));
+  char* stripped = unvoid_cast<char*>(Zone::current()->allocate(strlen(str)));
   int len = strlen(str);
   int pos = 0;
   for (int i = 0; i < len; i++) {
@@ -4632,7 +4634,7 @@ void MethodResolver::visit_LiteralInteger(ast::LiteralInteger* node) {
       if (node->is_negated()) value = -value;
     }
   }
-  push(_new ir::LiteralInteger(value, node->selection_range()));
+  push(zone_new<ir::LiteralInteger>(value, node->selection_range()));
 }
 
 void MethodResolver::visit_LiteralString(ast::LiteralString* node,
@@ -4660,16 +4662,16 @@ void MethodResolver::visit_LiteralString(ast::LiteralString* node,
     report_error(node, "Invalid string: '%s'\n", content);
     result = "";
   }
-  push(_new ir::LiteralString(result, length, node->selection_range()));
+  push(zone_new<ir::LiteralString>(result, length, node->selection_range()));
 }
 
 ir::Expression* MethodResolver::_accumulate_concatenation(ir::Expression* lhs, ir::Expression* rhs, Source::Range range) {
   if (lhs == null) return rhs;
   if (rhs == null) return lhs;
   auto op = Token::symbol(compute_effective_operation(Token::ADD));
-  auto dot = _new ir::Dot(lhs, op);
+  auto dot = zone_new<ir::Dot>(lhs, op);
   auto args = list_of(rhs);
-  auto plus = _new ir::CallVirtual(dot,
+  auto plus = zone_new<ir::CallVirtual>(dot,
                                    CallShape::for_instance_call_no_named(args),
                                    args,
                                    range);
@@ -4726,9 +4728,9 @@ void MethodResolver::visit_LiteralStringInterpolation(ast::LiteralStringInterpol
     auto center = resolve_expression(expression,
                                    "Can't have a block as interpolated entry in a string");
     // Just call stringify.
-    auto dot = _new ir::Dot(center, Symbols::stringify);
+    auto dot = zone_new<ir::Dot>(center, Symbols::stringify);
     List<ir::Expression*> no_args;
-    auto stringify = _new ir::CallVirtual(dot,
+    auto stringify = zone_new<ir::CallVirtual>(dot,
                                           CallShape::for_instance_call_no_named(no_args),
                                           no_args,
                                           node->selection_range());
@@ -4736,7 +4738,7 @@ void MethodResolver::visit_LiteralStringInterpolation(ast::LiteralStringInterpol
     ASSERT(string_entry.is_class());
     auto string_class = string_entry.klass();
     ir::Type string_type(string_class);
-    auto stringify_as_string = _new ir::Typecheck(ir::Typecheck::AS_CHECK,
+    auto stringify_as_string = zone_new<ir::Typecheck>(ir::Typecheck::AS_CHECK,
                                                   stringify,
                                                   string_type,
                                                   string_type.klass()->name(),
@@ -4771,7 +4773,7 @@ void MethodResolver::visit_LiteralStringInterpolation(ast::LiteralStringInterpol
 
     if (has_formats) {
       if (format == null) {
-        array_entries.add(_new ir::LiteralNull(node->selection_range()));
+        array_entries.add(zone_new<ir::LiteralNull>(node->selection_range()));
       } else {
         visit_LiteralString(format);
         auto ir_entry_node = pop();
@@ -4799,7 +4801,7 @@ void MethodResolver::visit_LiteralStringInterpolation(ast::LiteralStringInterpol
 }
 
 void MethodResolver::visit_LiteralBoolean(ast::LiteralBoolean* node) {
-  push(_new ir::LiteralBoolean(node->value(), node->selection_range()));
+  push(zone_new<ir::LiteralBoolean>(node->value(), node->selection_range()));
 }
 
 void MethodResolver::visit_LiteralFloat(ast::LiteralFloat* node) {
@@ -4811,7 +4813,7 @@ void MethodResolver::visit_LiteralFloat(ast::LiteralFloat* node) {
     report_error(node, "Floating-point value out of range");
   }
   if (node->is_negated()) value = -value;
-  push(_new ir::LiteralFloat(value, node->selection_range()));
+  push(zone_new<ir::LiteralFloat>(value, node->selection_range()));
 }
 
 void MethodResolver::visit_LiteralCharacter(ast::LiteralCharacter* node) {
@@ -4844,7 +4846,7 @@ void MethodResolver::visit_LiteralCharacter(ast::LiteralCharacter* node) {
       value = c;
     }
   }
-  push(_new ir::LiteralInteger(value, node->selection_range()));
+  push(zone_new<ir::LiteralInteger>(value, node->selection_range()));
 }
 
 void MethodResolver::visit_LiteralList(ast::LiteralList* node) {
@@ -4883,7 +4885,7 @@ void MethodResolver::visit_LiteralByteArray(ast::LiteralByteArray* node) {
   }
 
 
-  auto length_literal = _new ir::LiteralInteger(ir_elements.length(), range);
+  auto length_literal = zone_new<ir::LiteralInteger>(ir_elements.length(), range);
   ir::Expression* ir_byte_array;
   if (length == 0) {
     ir_byte_array = _instantiate_runtime(Symbols::ByteArray_, list_of(length_literal), range);
@@ -4893,7 +4895,7 @@ void MethodResolver::visit_LiteralByteArray(ast::LiteralByteArray* node) {
     // If we can see that all values are literal integers we can create a
     // Copy-on-Write byte-array which is backed by read-only data.
     ir_byte_array = _call_runtime(Symbols::create_cow_byte_array_,
-                        list_of(_new ir::LiteralByteArray(data, range)),
+                        list_of(zone_new<ir::LiteralByteArray>(data, range)),
                         range);
   } else {
     // We don't know whether all elements are integer literals.
@@ -4904,26 +4906,26 @@ void MethodResolver::visit_LiteralByteArray(ast::LiteralByteArray* node) {
 
     auto array_construction = _instantiate_runtime(Symbols::ByteArray_, list_of(length_literal), range);
 
-    auto temporary = _new ir::Local(Symbol::synthetic("<bytes>"),
+    auto temporary = zone_new<ir::Local>(Symbol::synthetic("<bytes>"),
                                     true,   // Final.
                                     false,  // Not a block.
                                     range);
-    auto define = _new ir::AssignmentDefine(temporary, array_construction, range);
+    auto define = zone_new<ir::AssignmentDefine>(temporary, array_construction, range);
 
     expressions.add(define);
 
     for (int i = 0 ; i < ir_elements.length(); i++) {
-      auto dot = _new ir::Dot(_new ir::ReferenceLocal(temporary, 0, range), Symbols::index_put);
-      auto args = list_of(_new ir::LiteralInteger(i, range), ir_elements[i]);
-      auto put_call = _new ir::CallVirtual(dot,
+      auto dot = zone_new<ir::Dot>(zone_new<ir::ReferenceLocal>(temporary, 0, range), Symbols::index_put);
+      auto args = list_of(zone_new<ir::LiteralInteger>(i, range), ir_elements[i]);
+      auto put_call = zone_new<ir::CallVirtual>(dot,
                                            CallShape::for_instance_call_no_named(args),
                                            args,
                                            range);
       expressions.add(put_call);
     }
     // The last expression of the sequence is the return value.
-    expressions.add(_new ir::ReferenceLocal(temporary, 0, range));
-    ir_byte_array = _new ir::Sequence(expressions.build(), range);
+    expressions.add(zone_new<ir::ReferenceLocal>(temporary, 0, range));
+    ir_byte_array = zone_new<ir::Sequence>(expressions.build(), range);
   }
   // We want all these expressions to have the inferred type `ByteArray`.
   auto byte_array_entry = core_module_->scope()->lookup_shallow(Symbols::ByteArray);
@@ -4935,7 +4937,7 @@ void MethodResolver::visit_LiteralByteArray(ast::LiteralByteArray* node) {
   // statically know that the 'ir_byte_array' expression implements the right
   // type. However, it makes the type-inference assign the correct type to
   // the expression.
-  push(_new ir::Typecheck(ir::Typecheck::AS_CHECK,
+  push(zone_new<ir::Typecheck>(ir::Typecheck::AS_CHECK,
                           ir_byte_array,
                           byte_array_type,
                           byte_array_type.klass()->name(),
@@ -4946,38 +4948,38 @@ void MethodResolver::visit_LiteralSet(ast::LiteralSet* node) {
   ListBuilder<ir::Expression*> expressions;
 
   auto allocated_set = _instantiate_runtime(Symbols::Set, List<ir::Expression*>(), node->selection_range());
-  auto temporary = _new ir::Local(Symbol::synthetic("<tmp>"),
+  auto temporary = zone_new<ir::Local>(Symbol::synthetic("<tmp>"),
                                   true,   // Final.
                                   false,  // Not a block.
                                   node->selection_range());
-  auto define = _new ir::AssignmentDefine(temporary, allocated_set, node->selection_range());
+  auto define = zone_new<ir::AssignmentDefine>(temporary, allocated_set, node->selection_range());
   expressions.add(define);
 
   for (auto element : node->elements()) {
     auto ir_expression = resolve_expression(element, "Set elements may not be blocks");
-    auto dot = _new ir::Dot(_new ir::ReferenceLocal(temporary, 0, node->selection_range()),
+    auto dot = zone_new<ir::Dot>(zone_new<ir::ReferenceLocal>(temporary, 0, node->selection_range()),
                             Symbols::add);
     auto args = list_of(ir_expression);
-    auto push = _new ir::CallVirtual(dot,
+    auto push = zone_new<ir::CallVirtual>(dot,
                                      CallShape::for_instance_call_no_named(args),
                                      args,
                                      element->selection_range());
     expressions.add(push);
   }
-  expressions.add(_new ir::ReferenceLocal(temporary, 0, node->selection_range()));
+  expressions.add(zone_new<ir::ReferenceLocal>(temporary, 0, node->selection_range()));
 
-  push(_new ir::Sequence(expressions.build(), node->selection_range()));
+  push(zone_new<ir::Sequence>(expressions.build(), node->selection_range()));
 }
 
 void MethodResolver::visit_LiteralMap(ast::LiteralMap* node) {
   ListBuilder<ir::Expression*> expressions;
 
   auto allocated_set = _instantiate_runtime(Symbols::Map, List<ir::Expression*>(), node->selection_range());
-  auto temporary = _new ir::Local(Symbol::synthetic("<tmp>"),
+  auto temporary = zone_new<ir::Local>(Symbol::synthetic("<tmp>"),
                                   true,   // Final.
                                   false,  // Not a block.
                                   node->selection_range());
-  auto define = _new ir::AssignmentDefine(temporary, allocated_set, node->selection_range());
+  auto define = zone_new<ir::AssignmentDefine>(temporary, allocated_set, node->selection_range());
   expressions.add(define);
 
   auto ast_keys = node->keys();
@@ -4985,24 +4987,24 @@ void MethodResolver::visit_LiteralMap(ast::LiteralMap* node) {
   for (int i = 0; i < ast_keys.length(); i++) {
     auto ir_key = resolve_expression(ast_keys[i], "Map keys may not be blocks");
     auto ir_value = resolve_expression(ast_values[i], "Map values may not be blocks");
-    auto dot = _new ir::Dot(_new ir::ReferenceLocal(temporary, 0, node->selection_range()),
+    auto dot = zone_new<ir::Dot>(zone_new<ir::ReferenceLocal>(temporary, 0, node->selection_range()),
                             Symbols::index_put);
     auto args = list_of(ir_key, ir_value);
-    auto push = _new ir::CallVirtual(dot,
+    auto push = zone_new<ir::CallVirtual>(dot,
                                      CallShape::for_instance_call_no_named(args),
                                      args,
                                      ast_values[i]->selection_range());
     expressions.add(push);
   }
-  expressions.add(_new ir::ReferenceLocal(temporary, 0, node->selection_range()));
+  expressions.add(zone_new<ir::ReferenceLocal>(temporary, 0, node->selection_range()));
 
-  push(_new ir::Sequence(expressions.build(), node->selection_range()));
+  push(zone_new<ir::Sequence>(expressions.build(), node->selection_range()));
 }
 
 void MethodResolver::visit_call_main(ast::Call* node) {
   if (node->arguments().length() != 1) {
     report_error("Main primitive call must have one arguments");
-    push(_new ir::Error(node->selection_range()));
+    push(zone_new<ir::Error>(node->selection_range()));
     return;
   }
   ir::Method* main_method = null;
@@ -5033,12 +5035,12 @@ void MethodResolver::visit_call_main(ast::Call* node) {
       auto error_path = entry_module_->unit()->error_path();
       report_error("Couldn't find 'main' (with 0 or 1 argument) in entry file '%s'",
                    error_path.c_str());
-      push(_new ir::Error(node->selection_range()));
+      push(zone_new<ir::Error>(node->selection_range()));
     } else {
-      push(_new ir::Nop(node->selection_range()));
+      push(zone_new<ir::Nop>(node->selection_range()));
     }
   } else {
-    auto ref = _new ir::ReferenceMethod(main_method, node->selection_range());
+    auto ref = zone_new<ir::ReferenceMethod>(main_method, node->selection_range());
     CallBuilder builder(node->selection_range());
     ir::Expression* arg = resolve_expression(node->arguments()[0],
                                              "Argument to main intrinsic must not be a block");
@@ -5170,9 +5172,9 @@ void MethodResolver::visit_call_primitive(ast::Call* node) {
   }
   ir::Expression* invocation;
   if (encountered_error) {
-    invocation = _new ir::Error(node->selection_range());
+    invocation = zone_new<ir::Error>(node->selection_range());
   } else {
-    invocation = _new ir::PrimitiveInvocation(module_name, primitive_name, module, index, node->selection_range());
+    invocation = zone_new<ir::PrimitiveInvocation>(module_name, primitive_name, module, index, node->selection_range());
     has_primitive_invocation_ = true;
   }
 
@@ -5217,19 +5219,19 @@ void MethodResolver::visit_call_primitive(ast::Call* node) {
         report_error(ast_parameter, "Failure parameter can't have a default value");
       }
       Symbol name = ast_parameter->name()->data();
-      parameter_local = _new ir::Local(name,
+      parameter_local = zone_new<ir::Local>(name,
                                        false,  // Not final.
                                        false,  // Not a block.
                                        ast_parameter->selection_range());
     } else {
-      parameter_local = _new ir::Local(Symbols::it,
+      parameter_local = zone_new<ir::Local>(Symbols::it,
                                        false,  // Not final.
                                        false,  // Not a block.
                                        ast_failure->selection_range());
     }
-    auto define = _new ir::AssignmentDefine(parameter_local, invocation, node->selection_range());
+    auto define = zone_new<ir::AssignmentDefine>(parameter_local, invocation, node->selection_range());
     scope.add(parameter_local->name(), ResolutionEntry(parameter_local));
-    push(_new ir::Sequence(list_of(define, resolve_expression(ast_failure->body(), null)),
+    push(zone_new<ir::Sequence>(list_of(define, resolve_expression(ast_failure->body(), null)),
                            node->selection_range()));
     ASSERT(scope_ == &scope);
     scope_ = scope.outer();

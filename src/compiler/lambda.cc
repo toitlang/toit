@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "zone.h"
+
 #include "lambda.h"
 
 namespace toit {
@@ -33,9 +35,9 @@ class BoxVisitor : public ir::ReplacingVisitor {
       auto parameter = parameters[i];
       if (!needs_boxing(parameter)) continue;
       auto range = parameter->range();
-      auto box = create_box(new ir::ReferenceLocal(parameter, 0, range), range);
+      auto box = create_box(zone_new<ir::ReferenceLocal>(parameter, 0, range), range);
       box->as_CallConstructor()->mark_box_construction();
-      new_instructions.add(new ir::AssignmentLocal(parameter, 0, box, range));
+      new_instructions.add(zone_new<ir::AssignmentLocal>(parameter, 0, box, range));
     }
     if (new_instructions.is_empty()) return node;
     auto body = node->body();
@@ -45,7 +47,7 @@ class BoxVisitor : public ir::ReplacingVisitor {
     } else {
       new_instructions.add(body);
     }
-    node->replace_body(new ir::Sequence(new_instructions.build(), node->body()->range()));
+    node->replace_body(zone_new<ir::Sequence>(new_instructions.build(), node->body()->range()));
     return node;
   }
 
@@ -67,10 +69,10 @@ class BoxVisitor : public ir::ReplacingVisitor {
     if (probe != capture_replacements_.end()) {
       auto param = probe->second.first;
       auto depth = probe->second.second;
-      node = _new ir::ReferenceLocal(param, node->block_depth() - depth, node->range());
+      node = zone_new<ir::ReferenceLocal>(param, node->block_depth() - depth, node->range());
     }
     if (!needs_boxing(local)) return node;
-    auto field_load = _new ir::FieldLoad(node, field_, node->range());
+    auto field_load = zone_new<ir::FieldLoad>(node, field_, node->range());
     field_load->mark_box_load();
     return field_load;
   }
@@ -83,11 +85,11 @@ class BoxVisitor : public ir::ReplacingVisitor {
     if (probe != capture_replacements_.end()) {
       auto param = probe->second.first;
       auto depth = probe->second.second;
-      node = _new ir::AssignmentLocal(param, node->block_depth() - depth, node->right(), node->range());
+      node = zone_new<ir::AssignmentLocal>(param, node->block_depth() - depth, node->right(), node->range());
     }
     if (!needs_boxing(local)) return node;
-    auto field_store = _new ir::FieldStore(
-        _new ir::ReferenceLocal(node->local(), node->block_depth(), node->range()),
+    auto field_store = zone_new<ir::FieldStore>(
+        zone_new<ir::ReferenceLocal>(node->local(), node->block_depth(), node->range()),
         field_,
         node->right(),
         node->range());
@@ -104,19 +106,19 @@ class BoxVisitor : public ir::ReplacingVisitor {
       // The variable is already boxed, but we need to make sure the
       // box is "refreshed" at every iteration.
       auto range = loop_variable->range();
-      auto old_value_load = _new ir::FieldLoad(_new ir::ReferenceLocal(loop_variable, 0, range),
+      auto old_value_load = zone_new<ir::FieldLoad>(zone_new<ir::ReferenceLocal>(loop_variable, 0, range),
                                                field_,
                                                range);
       old_value_load->mark_box_load();
       auto new_box = create_box(old_value_load, range);
-      auto box_replacement = _new ir::AssignmentLocal(loop_variable, 0, new_box, range);
+      auto box_replacement = zone_new<ir::AssignmentLocal>(loop_variable, 0, new_box, range);
 
       auto update = new_while->update();
       if (update->is_Nop()) {
         node->replace_update(box_replacement);
       } else {
         auto expressions = ListBuilder<ir::Expression*>::build(box_replacement, update);
-        node->replace_update(_new ir::Sequence(expressions, node->update()->range()));
+        node->replace_update(zone_new<ir::Sequence>(expressions, node->update()->range()));
       }
     }
     return node;
@@ -148,7 +150,7 @@ class BoxVisitor : public ir::ReplacingVisitor {
       new_params.add(node->code()->parameters());
       int parameter_index = node->code()->parameters().length();
       for (auto captured_local : captured_depths.keys()) {
-        auto new_param = _new ir::CapturedLocal(captured_local, parameter_index++, captured_local->range());
+        auto new_param = zone_new<ir::CapturedLocal>(captured_local, parameter_index++, captured_local->range());
         new_params.add(new_param);
         capture_replacements[captured_local] = std::make_pair(new_param, captured_depths.at(captured_local));
       }
@@ -179,7 +181,7 @@ class BoxVisitor : public ir::ReplacingVisitor {
   ir::Expression* create_box(ir::Expression* initial_value, Source::Range range) {
     CallBuilder call_builder(range);
     call_builder.add_argument(initial_value, Symbol::invalid());
-    auto box = call_builder.call_constructor(new ir::ReferenceMethod(constructor_, range));
+    auto box = call_builder.call_constructor(zone_new<ir::ReferenceMethod>(constructor_, range));
     box->as_CallConstructor()->mark_box_construction();
     return box;
   }

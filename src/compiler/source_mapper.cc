@@ -415,7 +415,7 @@ SourceMapper::MethodMapper SourceMapper::register_method(ir::Method* method) {
   auto name = method->name().c_str();
   if (method->is_setter()) {
     int len = strlen(name);
-    auto name_with_assign = unvoid_cast<char*>(malloc(len + 2));
+    auto name_with_assign = unvoid_cast<char*>(Zone::current()->allocate(len + 2));
     memcpy(name_with_assign, name, len);
     name_with_assign[len] = '=';
     name_with_assign[len + 1] = '\0';

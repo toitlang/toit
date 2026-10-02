@@ -2,6 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+#include "../../src/compiler/zone.h"
+
 #include <stdio.h>
 #include <limits.h>
 
@@ -37,6 +39,7 @@ void write_to_file(List<ar::File> files, const char* path) {
 }
 
 int main(int argc, char** argv) {
+  toit::compiler::Zone zone;
   throwing_new_allowed = true;
   bool in_memory = false;
   if (argc == 3) {

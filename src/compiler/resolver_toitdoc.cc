@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "zone.h"
+
 #include "../top.h"
 
 #include "diagnostic.h"
@@ -115,7 +117,7 @@ static void ensure_has_toitdoc_scope(ir::Class* klass) {
   filler.add_all(klass->factories());
   filler.add_all(klass->methods());
   filler.add_all(klass->fields());
-  auto scope = _new SimpleScope(null);
+  auto scope = zone_new<SimpleScope>(null);
   filler.fill(scope);
   klass->statics()->for_each([&](Symbol name, const ResolutionEntry& entry) {
     scope->add(name, entry);

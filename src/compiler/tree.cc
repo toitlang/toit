@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "zone.h"
+
 #include <vector>
 
 #include "map.h"
@@ -517,7 +519,7 @@ class Fixup : public ReplacingVisitor {
 
     if (node->type().is_nullable()) {
       // Simply replace the original type with `Null_`.
-      return _new Typecheck(node->kind(),
+      return zone_new<Typecheck>(node->kind(),
                             node->expression(),
                             null_type_.to_nullable(),  // So the error message is more correct.
                             node->type_name(),
@@ -531,18 +533,18 @@ class Fixup : public ReplacingVisitor {
       //   and then materialize `false`.
       auto expressions =  ListBuilder<Expression*>::build(
         node->expression(),
-        _new LiteralBoolean(false, node->range()));
-      return _new Sequence(expressions, node->range());
+        zone_new<LiteralBoolean>(false, node->range()));
+      return zone_new<Sequence>(expressions, node->range());
     }
 
     // For as-checks we create a call to `as_check_failure` with the expression as argument.
     const char* name = node->type().klass()->name().c_str();
     ListBuilder<Expression*> arguments_builder;
     arguments_builder.add(node->expression());
-    arguments_builder.add(_new LiteralString(name, strlen(name), node->range()));
+    arguments_builder.add(zone_new<LiteralString>(name, strlen(name), node->range()));
     auto arguments = arguments_builder.build();
     auto shape = CallShape::for_static_call_no_named(arguments);
-    auto fail_call = _new CallStatic(_new ReferenceMethod(as_check_failure_, node->range()),
+    auto fail_call = zone_new<CallStatic>(zone_new<ReferenceMethod>(as_check_failure_, node->range()),
                                      shape,
                                      arguments,
                                      node->range());
@@ -561,7 +563,7 @@ class Fixup : public ReplacingVisitor {
       // we just ignore the call, but still evaluate all parameters.
       auto arguments = node->arguments();
       if (arguments.length() == 1) return arguments[0];
-      return _new Sequence(arguments, node->range());
+      return zone_new<Sequence>(arguments, node->range());
     }
     return node;
   }
@@ -585,7 +587,7 @@ class Fixup : public ReplacingVisitor {
     }
     // The store is dead code, as a type-check earlier would have thrown earlier.
     // Drop the store.
-    return _new Sequence(ListBuilder<Expression*>::build(node->receiver(), node->value()),
+    return zone_new<Sequence>(ListBuilder<Expression*>::build(node->receiver(), node->value()),
                          node->range());
   }
 

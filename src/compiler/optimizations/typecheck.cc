@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "../zone.h"
+
 #include "typecheck.h"
 #include "utils.h"
 
@@ -83,9 +85,9 @@ Expression* optimize_typecheck(Typecheck* node, Class* holder, Method* method, L
   if (node->is_as_check()) {
     return expression;
   } else if (expression->is_ReferenceLocal() || expression->is_Literal()) {
-    return _new LiteralBoolean(true, node->range());
+    return zone_new<LiteralBoolean>(true, node->range());
   } else {
-    return _new Sequence(ListBuilder<Expression*>::build(expression, _new LiteralBoolean(true, node->range())),
+    return zone_new<Sequence>(ListBuilder<Expression*>::build(expression, zone_new<LiteralBoolean>(true, node->range())),
                          node->range());
   }
 }

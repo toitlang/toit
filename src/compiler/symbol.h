@@ -42,7 +42,7 @@ class Symbol {
 
   static Symbol fresh() { return fresh(unsigned_cast("")); }
   static Symbol fresh(Symbol name) { return fresh(unsigned_cast(name.c_str())); }
-  static Symbol fresh(const uint8* name) { return synthetic(strdup(char_cast(name))); }
+  static Symbol fresh(const uint8* name) { return synthetic(Zone::current()->strdup(char_cast(name))); }
 
   static Symbol for_invoke(Opcode opcode);
 

@@ -36,6 +36,7 @@ namespace compiler {
 class ProgramBuilder {
  public:
   ProgramBuilder(Program* program, MethodSelectorOffsets* method_selector_offsets);
+  ~ProgramBuilder() { program_heap_.free_malloced_blocks(); }
 
   Program* program() const { return program_; }
   int size() const { return stack_.size(); }

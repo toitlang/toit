@@ -73,6 +73,8 @@ class Filesystem {
   bool is_regular_file(const char* path);
   bool is_directory(const char* path);
   bool exists(const char* path);
+  // Returned content is borrowed from the filesystem (or an intercepted input).
+  // It remains valid until the filesystem is destroyed.
   const uint8* read_content(const char* path, int* size);
 
   // List the directory entries that are relevant for Toit.

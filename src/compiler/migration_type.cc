@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "zone.h"
+
 #include <map>
 #include <string>
 
@@ -222,7 +224,7 @@ class MigrationTypeManager : public CommentsManager {
       }
     }
 
-    result.migration_type = _new ast::MigrationType(type,
+    result.migration_type = zone_new<ast::MigrationType>(type,
                                                     is_deprecated,
                                                     deprecation_message,
                                                     comment_range);
@@ -248,12 +250,12 @@ class MigrationTypeManager : public CommentsManager {
         diagnostics_->report_error(segment_range, "Invalid type in type-migration annotation");
         return null;
       }
-      auto id = _new ast::Identifier(ts.symbol);
+      auto id = zone_new<ast::Identifier>(ts.symbol);
       id->set_range(segment_range);
       if (result == null) {
         result = id;
       } else {
-        auto dot = _new ast::Dot(result, id);
+        auto dot = zone_new<ast::Dot>(result, id);
         dot->set_range(source_->range(start, pos));
         result = dot;
       }
@@ -265,7 +267,7 @@ class MigrationTypeManager : public CommentsManager {
     }
     if (pos < to && text[pos] == '?') {
       pos++;
-      auto nullable = _new ast::Nullable(result);
+      auto nullable = zone_new<ast::Nullable>(result);
       nullable->set_range(source_->range(start, pos));
       result = nullable;
     }

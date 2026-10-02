@@ -27,7 +27,7 @@ namespace compiler {
 
 Symbol Symbol::synthetic(const uint8* from, const uint8* to) {
   int n = to - from;
-  char* s = unvoid_cast<char*>(malloc(n + 1));
+  char* s = unvoid_cast<char*>(Zone::current()->allocate(n + 1));
   strncpy(s, char_cast(from), n);
   s[n] = '\0';
 
@@ -36,7 +36,7 @@ Symbol Symbol::synthetic(const uint8* from, const uint8* to) {
 
 Symbol Symbol::synthetic(const std::string& str) {
   int n = static_cast<int>(str.size());
-  char* s = unvoid_cast<char*>(malloc(n + 1));
+  char* s = unvoid_cast<char*>(Zone::current()->allocate(n + 1));
   strncpy(s, str.c_str(), n);
   s[n] = '\0';
 

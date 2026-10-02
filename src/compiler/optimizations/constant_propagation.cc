@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "../zone.h"
+
 #include "constant_propagation.h"
 
 #include <math.h>
@@ -124,10 +126,10 @@ class FoldingInliningVisitor : public ReplacingVisitor {
     node = ReplacingVisitor::visit_Not(node)->as_Not();
     auto value = node->value();
     if (value->is_LiteralBoolean()) {
-      return _new ir::LiteralBoolean(!value->as_LiteralBoolean()->value(), value->range());
+      return zone_new<ir::LiteralBoolean>(!value->as_LiteralBoolean()->value(), value->range());
     }
-    if (value->is_LiteralNull()) return _new ir::LiteralBoolean(true, value->range());
-    if (value->is_Literal()) return _new ir::LiteralBoolean(false, value->range());
+    if (value->is_LiteralNull()) return zone_new<ir::LiteralBoolean>(true, value->range());
+    if (value->is_Literal()) return zone_new<ir::LiteralBoolean>(false, value->range());
     return node;
   }
 
@@ -154,77 +156,77 @@ class FoldingInliningVisitor : public ReplacingVisitor {
 
 Expression* FoldingInliningVisitor::fold_int_int(int64 left, int64 right, Symbol selector, Source::Range range) {
   if (selector == Token::symbol(Token::ADD)) {
-    return _new ir::LiteralInteger(left + right, range);
+    return zone_new<ir::LiteralInteger>(left + right, range);
   } else if (selector == Token::symbol(Token::SUB)) {
-    return _new ir::LiteralInteger(left - right, range);
+    return zone_new<ir::LiteralInteger>(left - right, range);
   } else if (selector == Token::symbol(Token::MUL)) {
-    return _new ir::LiteralInteger(left * right, range);
+    return zone_new<ir::LiteralInteger>(left * right, range);
   } else if (selector == Token::symbol(Token::MOD) && right != 0) {
-    return _new ir::LiteralInteger(left % right, range);
+    return zone_new<ir::LiteralInteger>(left % right, range);
   } else if (selector == Token::symbol(Token::DIV) && right != 0) {
-    return _new ir::LiteralInteger(left / right, range);
+    return zone_new<ir::LiteralInteger>(left / right, range);
   } else if (selector == Token::symbol(Token::BIT_OR)) {
-    return _new ir::LiteralInteger(left | right, range);
+    return zone_new<ir::LiteralInteger>(left | right, range);
   } else if (selector == Token::symbol(Token::BIT_XOR)) {
-    return _new ir::LiteralInteger(left ^ right, range);
+    return zone_new<ir::LiteralInteger>(left ^ right, range);
   } else if (selector == Token::symbol(Token::BIT_AND)) {
-    return _new ir::LiteralInteger(left & right, range);
+    return zone_new<ir::LiteralInteger>(left & right, range);
   } else if (selector == Token::symbol(Token::BIT_SHL)) {
     if (right >= 64) {
-      return _new ir::LiteralInteger(0, range);
+      return zone_new<ir::LiteralInteger>(0, range);
     } else if (right >= 0) {
-      return _new ir::LiteralInteger(left << right, range);
+      return zone_new<ir::LiteralInteger>(left << right, range);
     }
   } else if (selector == Token::symbol(Token::BIT_SHR)) {
     if (right >= 64) {
-      return _new ir::LiteralInteger(left < 0 ? -1 : 0, range);
+      return zone_new<ir::LiteralInteger>(left < 0 ? -1 : 0, range);
     } else if (right >= 0) {
-      return _new ir::LiteralInteger(left >> right, range);
+      return zone_new<ir::LiteralInteger>(left >> right, range);
     }
   } else if (selector == Token::symbol(Token::BIT_USHR)) {
     if (right >= 64) {
-      return _new ir::LiteralInteger(0, range);
+      return zone_new<ir::LiteralInteger>(0, range);
     } else if (right > 0) {
       uint64 unsigned_left = static_cast<uint64>(left);
       int64 shifted = static_cast<int64>(unsigned_left >> right);
-      return _new ir::LiteralInteger(shifted, range);
+      return zone_new<ir::LiteralInteger>(shifted, range);
     }
   } else if (selector == Token::symbol(Token::EQ)) {
-    return _new ir::LiteralBoolean(left == right, range);
+    return zone_new<ir::LiteralBoolean>(left == right, range);
   } else if (selector == Token::symbol(Token::LT)) {
-    return _new ir::LiteralBoolean(left < right, range);
+    return zone_new<ir::LiteralBoolean>(left < right, range);
   } else if (selector == Token::symbol(Token::GT)) {
-    return _new ir::LiteralBoolean(left > right, range);
+    return zone_new<ir::LiteralBoolean>(left > right, range);
   } else if (selector == Token::symbol(Token::LTE)) {
-    return _new ir::LiteralBoolean(left <= right, range);
+    return zone_new<ir::LiteralBoolean>(left <= right, range);
   } else if (selector == Token::symbol(Token::GTE)) {
-    return _new ir::LiteralBoolean(left >= right, range);
+    return zone_new<ir::LiteralBoolean>(left >= right, range);
   }
   return null;
 }
 
 Expression* FoldingInliningVisitor::fold_float_float(double left, double right, Symbol selector, Source::Range range) {
   if (selector == Token::symbol(Token::ADD)) {
-    return _new ir::LiteralFloat(left + right, range);
+    return zone_new<ir::LiteralFloat>(left + right, range);
   } else if (selector == Token::symbol(Token::SUB)) {
-    return _new ir::LiteralFloat(left - right, range);
+    return zone_new<ir::LiteralFloat>(left - right, range);
   } else if (selector == Token::symbol(Token::MUL)) {
-    return _new ir::LiteralFloat(left * right, range);
+    return zone_new<ir::LiteralFloat>(left * right, range);
   } else if (selector == Token::symbol(Token::MOD)) {
-    return _new ir::LiteralFloat(fmod(left, right), range);
+    return zone_new<ir::LiteralFloat>(fmod(left, right), range);
   } else if (selector == Token::symbol(Token::DIV)) {
-    return _new ir::LiteralFloat(left / right, range);
+    return zone_new<ir::LiteralFloat>(left / right, range);
   } else if (selector == Token::symbol(Token::BIT_OR)) {
   } else if (selector == Token::symbol(Token::EQ)) {
-    return _new ir::LiteralBoolean(left == right, range);
+    return zone_new<ir::LiteralBoolean>(left == right, range);
   } else if (selector == Token::symbol(Token::LT)) {
-    return _new ir::LiteralBoolean(left < right, range);
+    return zone_new<ir::LiteralBoolean>(left < right, range);
   } else if (selector == Token::symbol(Token::GT)) {
-    return _new ir::LiteralBoolean(left > right, range);
+    return zone_new<ir::LiteralBoolean>(left > right, range);
   } else if (selector == Token::symbol(Token::LTE)) {
-    return _new ir::LiteralBoolean(left <= right, range);
+    return zone_new<ir::LiteralBoolean>(left <= right, range);
   } else if (selector == Token::symbol(Token::GTE)) {
-    return _new ir::LiteralBoolean(left >= right, range);
+    return zone_new<ir::LiteralBoolean>(left >= right, range);
   }
   return null;
 }

@@ -30,7 +30,12 @@ static int opcode_length[] { BYTECODES(BYTECODE_LENGTH) -1 };
 #undef BYTECODE_LENGTH
 
 static const int TYPES_BLOCK_SIZE = 1024;
-std::unordered_map<Program*, TypeDatabase*> TypeDatabase::cache_;
+TypeDatabase::Cache TypeDatabase::cache_;
+
+TypeDatabase::Cache::~Cache() {
+  // Each destructor removes itself from the cache.
+  while (!empty()) delete begin()->second;
+}
 
 TypeDatabase::TypeDatabase(Program* program, int words_per_type)
     : program_(program)

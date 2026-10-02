@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "../zone.h"
+
 #include "dead_code.h"
 
 namespace toit {
@@ -59,7 +61,7 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
         expressions[index] = result;
         index--;
       }
-      Sequence* sequence = _new Sequence(expressions, expression->range());
+      Sequence* sequence = zone_new<Sequence>(expressions, expression->range());
       return eliminator_->tag(sequence, terminates_);
     }
 
@@ -209,8 +211,8 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
     }
 
     node->replace_condition(condition);
-    node->replace_yes(yes ? yes : _new Nop(node->yes()->range()));
-    node->replace_no(no ? no : _new Nop(node->no()->range()));
+    node->replace_yes(yes ? yes : zone_new<Nop>(node->yes()->range()));
+    node->replace_no(no ? no : zone_new<Nop>(node->no()->range()));
     return tag(node, terminates_yes && terminates_no);
   }
 
@@ -227,7 +229,7 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
 
     Expression* right = visit(node->right(), null);
     node->replace_left(left);
-    node->replace_right(right ? right : _new Nop(node->right()->range()));
+    node->replace_right(right ? right : zone_new<Nop>(node->right()->range()));
     return node;
   }
 
@@ -235,7 +237,7 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
     node->body()->accept(this);
     bool terminates;
     Expression* handler = visit_for_effect(node->handler(), &terminates);
-    node->replace_handler(handler ? handler : _new Nop(node->handler()->range()));
+    node->replace_handler(handler ? handler : zone_new<Nop>(node->handler()->range()));
     return tag(node, terminates);
   }
 
@@ -247,8 +249,8 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
     Expression* body = visit(node->body(), null);
     Expression* update = visit(node->update(), null);
     node->replace_condition(condition);
-    node->replace_body(body ? body : _new Nop(node->body()->range()));
-    node->replace_update(update ? update : _new Nop(node->update()->range()));
+    node->replace_body(body ? body : zone_new<Nop>(node->body()->range()));
+    node->replace_update(update ? update : zone_new<Nop>(node->update()->range()));
     return node;
   }
 
@@ -326,7 +328,7 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
         arguments[0] = receiver;
         used++;
       }
-      result = _new Sequence(arguments.sublist(0, used), node->range());
+      result = zone_new<Sequence>(arguments.sublist(0, used), node->range());
       ASSERT(terminates);
     } else if (oracle_ != null && !node->is_CallBuiltin()) {
       // If we have propagated type information, we might know that
@@ -359,7 +361,7 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
       if (index == 0) {
         return terminate(null);
       } else {
-        return terminate(_new Sequence(arguments.sublist(0, index), node->range()));
+        return terminate(zone_new<Sequence>(arguments.sublist(0, index), node->range()));
       }
     }
 
@@ -382,7 +384,7 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   Node* visit_Code(Code* node) {
     Expression* result = null;
     if (!node->is_dead()) result = visit_for_value(node->body(), null);
-    node->replace_body(result ? result : _new Nop(node->range()));
+    node->replace_body(result ? result : zone_new<Nop>(node->range()));
     return node;
   }
 
@@ -397,7 +399,7 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
       ASSERT(!node->is_as_check());
       Helper helper(this);
       helper.visit_for_effect(node->expression());
-      return helper.result(_new LiteralBoolean(true, node->range()));
+      return helper.result(zone_new<LiteralBoolean>(true, node->range()));
     }
 
     Helper helper(this);
@@ -478,7 +480,7 @@ void eliminate_dead_code(Method* method, TypeOracle* oracle) {
   if (body == null) return;
 
   Expression* result = eliminator.visit_for_effect(body, null);
-  method->replace_body(result ? result : _new Nop(method->range()));
+  method->replace_body(result ? result : zone_new<Nop>(method->range()));
 }
 
 } // namespace toit::compiler

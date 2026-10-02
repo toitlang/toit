@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "zone.h"
+
 #include "parser.h"
 
 #include "diagnostic.h"
@@ -99,10 +101,10 @@ class ParserPeeker {
 };
 
 #define NEW_NODE(constructor, range) \
-  add_range(range, source_, _new constructor)
+  add_range(range, source_, constructor)
 
 #define NEW_NODE2(constructor, range, end_range) \
-  add_ranges(range, end_range, source_, _new constructor)
+  add_ranges(range, end_range, source_, constructor)
 
 void Parser::report_error(Source::Range range, const char* format, ...) {
   va_list arguments;
@@ -157,7 +159,7 @@ Unit* Parser::parse_unit(Source* override_source) {
     }
   }
 
-  auto result = NEW_NODE(Unit(override_source == null ? source_ : override_source,
+  auto result = NEW_NODE(zone_new<Unit>(override_source == null ? source_ : override_source,
                               imports.build(),
                               exports.build(),
                               declarations.build()),
@@ -714,7 +716,7 @@ Import* Parser::parse_import() {
     }
     skip_to_end_of_multiline_construct();
     // Make the import relative, so we don't need the prefix.
-    result = NEW_NODE(Import(true, 0, List<ast::Identifier*>(), null, List<ast::Identifier*>(), false),
+    result = NEW_NODE(zone_new<Import>(true, 0, List<ast::Identifier*>(), null, List<ast::Identifier*>(), false),
                       range);
   } else {
     Identifier* prefix = null;
@@ -728,7 +730,7 @@ Import* Parser::parse_import() {
         prefix = parse_identifier();
       } else {
         report_error(as_range, "'as' must be followed by identifier");
-        prefix = NEW_NODE(Identifier(Symbol::invalid()), as_range);
+        prefix = NEW_NODE(zone_new<Identifier>(Symbol::invalid()), as_range);
         skip_to_end_of_multiline_construct();
       }
     } else if (at_pseudo(Symbols::show)) {
@@ -749,7 +751,7 @@ Import* Parser::parse_import() {
         skip_to_end_of_multiline_construct();
       }
     }
-    result = NEW_NODE(Import(is_relative, dot_outs, identifiers.build(), prefix, show_identifiers, show_all),
+    result = NEW_NODE(zone_new<Import>(is_relative, dot_outs, identifiers.build(), prefix, show_identifiers, show_all),
                       range);
   }
   end_multiline_construct(IndentationStack::IMPORT, true);
@@ -766,7 +768,7 @@ Export* Parser::parse_export() {
   if (current_token() == Token::MUL) {
     auto all_range = current_range();
     consume();
-    result = NEW_NODE(Export(all_range), range);
+    result = NEW_NODE(zone_new<Export>(all_range), range);
   } else if (current_token() != Token::IDENTIFIER) {
     if (is_eol(current_token())) {
       report_error(eol_range(previous_range(), current_range()),
@@ -775,13 +777,13 @@ Export* Parser::parse_export() {
       report_error("Expected export identifier");
     }
     skip_to_end_of_multiline_construct();
-    result = NEW_NODE(Export(List<Identifier*>()), range);
+    result = NEW_NODE(zone_new<Export>(List<Identifier*>()), range);
   } else {
     ListBuilder<Identifier*> identifiers;
     do {
       identifiers.add(parse_identifier());
     } while (current_token() == Token::IDENTIFIER);
-    result = NEW_NODE(Export(identifiers.build()), range);
+    result = NEW_NODE(zone_new<Export>(identifiers.build()), range);
   }
   end_multiline_construct(IndentationStack::EXPORT, true);
   return result;
@@ -843,13 +845,13 @@ Declaration* Parser::parse_declaration(bool is_abstract, Source::Range abstract_
     }
     if (is_eol(current_token()) || current_token() == Token::COLON) {
       report_error(declaration_range, "Expected name of declaration");
-      name = NEW_NODE(Identifier(Symbol::invalid()), declaration_range);
+      name = NEW_NODE(zone_new<Identifier>(Symbol::invalid()), declaration_range);
     } else {
       report_error(declaration_range, "Invalid name for declaration");
       auto invalid_token = current_token();
       auto range = current_range();
       consume();
-      name = NEW_NODE(Identifier(Token::symbol(invalid_token)), range);
+      name = NEW_NODE(zone_new<Identifier>(Token::symbol(invalid_token)), range);
     }
   }
 
@@ -873,9 +875,9 @@ Declaration* Parser::parse_declaration(bool is_abstract, Source::Range abstract_
       if (token != Token::LBRACK) {
         consume();
         if (operator_is_lsp_selection) {
-          name = NEW_NODE(LspSelection(Token::symbol(token)), name_range);
+          name = NEW_NODE(zone_new<LspSelection>(Token::symbol(token)), name_range);
         } else {
-          name = NEW_NODE(Identifier(Token::symbol(token)), name_range);
+          name = NEW_NODE(zone_new<Identifier>(Token::symbol(token)), name_range);
         }
       } else {
         ASSERT(token == Token::LBRACK);
@@ -894,14 +896,14 @@ Declaration* Parser::parse_declaration(bool is_abstract, Source::Range abstract_
               // Hopefully, this reduces the number of follow-up errors.
               consume();
             }
-            name = NEW_NODE(Identifier(Token::symbol(token)), name_range);
+            name = NEW_NODE(zone_new<Identifier>(Token::symbol(token)), name_range);
           } else {
             if (!is_current_token_attached()) {
               report_error("Can't have space between '..' and ']'");
             }
             name_range = name_range.extend(current_range());
             consume();
-            name = NEW_NODE(Identifier(Symbols::index_slice), name_range);
+            name = NEW_NODE(zone_new<Identifier>(Symbols::index_slice), name_range);
           }
         } else if (current_token() != Token::RBRACK) {
           report_error(token_range, "Missing closing ']'");
@@ -911,7 +913,7 @@ Declaration* Parser::parse_declaration(bool is_abstract, Source::Range abstract_
             // Hopefully, this reduces the number of follow-up errors.
             consume();
           }
-          name = NEW_NODE(Identifier(Token::symbol(token)), name_range);
+          name = NEW_NODE(zone_new<Identifier>(Token::symbol(token)), name_range);
         } else {
           // Either `[]` or `[]=`.
           if (!is_current_token_attached()) {
@@ -925,9 +927,9 @@ Declaration* Parser::parse_declaration(bool is_abstract, Source::Range abstract_
             }
             name_range = name_range.extend(current_range());
             consume();
-            name = NEW_NODE(Identifier(Symbols::index_put), name_range);
+            name = NEW_NODE(zone_new<Identifier>(Symbols::index_put), name_range);
           } else {
-            name = NEW_NODE(Identifier(Symbols::index), name_range);
+            name = NEW_NODE(zone_new<Identifier>(Symbols::index), name_range);
           }
         }
       }
@@ -970,14 +972,14 @@ Declaration* Parser::parse_declaration(bool is_abstract, Source::Range abstract_
     Expression* initializer = null;
     if (has_initializer) {
       if (current_token() == Token::CONDITIONAL) {
-        initializer = NEW_NODE(LiteralUndefined(), current_range());
+        initializer = NEW_NODE(zone_new<LiteralUndefined>(), current_range());
         consume();
       } else {
         initializer = parse_expression(true);
       }
     }
     end_multiline_construct(IndentationStack::DECLARATION, true);
-    return NEW_NODE(Field(name->as_Identifier(), field_type, initializer,
+    return NEW_NODE(zone_new<Field>(name->as_Identifier(), field_type, initializer,
                           is_static, is_abstract, is_final, modifier_range),
                     declaration_range);
   } else if (current_token() == Token::PERIOD && is_current_token_attached()) {
@@ -992,7 +994,7 @@ Declaration* Parser::parse_declaration(bool is_abstract, Source::Range abstract_
       report_error(declaration_range.extend(period_range), "Invalid member name");
     } else {
       auto constructor_name = parse_identifier();
-      name = NEW_NODE(Dot(name, constructor_name), declaration_range.extend(constructor_name->selection_range()));
+      name = NEW_NODE(zone_new<Dot>(name, constructor_name), declaration_range.extend(constructor_name->selection_range()));
     }
   }
   auto return_type_parameters = parse_parameters(true);
@@ -1057,7 +1059,7 @@ Declaration* Parser::parse_declaration(bool is_abstract, Source::Range abstract_
     }
   }
   end_multiline_construct(IndentationStack::DECLARATION, true);
-  return NEW_NODE(Method(name, return_type, is_setter, is_static, is_abstract, parameters, body, modifier_range),
+  return NEW_NODE(zone_new<Method>(name, return_type, is_setter, is_static, is_abstract, parameters, body, modifier_range),
                   declaration_range);
 }
 
@@ -1128,7 +1130,7 @@ Class* Parser::parse_class_interface_monitor_or_mixin(bool is_abstract, Source::
     } else {
       report_error("Expected %s name", kind_name);
     }
-    name = NEW_NODE(Identifier(Symbol::invalid()), current_range());
+    name = NEW_NODE(zone_new<Identifier>(Symbol::invalid()), current_range());
     // Skip to the body.
     if (!skip_to_body(Token::COLON)) {
       member_indentation = 2;  // Assume that members are now intented by 2.
@@ -1200,7 +1202,7 @@ Class* Parser::parse_class_interface_monitor_or_mixin(bool is_abstract, Source::
     members.add(parse_declaration(false, Source::Range::invalid()));
   }
   end_multiline_construct(IndentationStack::CLASS, true);
-  return NEW_NODE(Class(name,
+  return NEW_NODE(zone_new<Class>(name,
                         super,
                         interfaces.build(),
                         mixins.build(),
@@ -1234,9 +1236,9 @@ Expression* Parser::parse_block_or_lambda(int indentation) {
   range = range.extend(current_range().from());
   end_multiline_construct(IndentationStack::BLOCK);
   if (lifo) {
-    return NEW_NODE(Block(body, parameters), range);
+    return NEW_NODE(zone_new<Block>(body, parameters), range);
   } else {
-    return NEW_NODE(Lambda(body, parameters), range);
+    return NEW_NODE(zone_new<Lambda>(body, parameters), range);
   }
 }
 
@@ -1309,7 +1311,7 @@ Sequence* Parser::parse_sequence() {
     needs_to_be_at_newline = true;
   }
   end_multiline_construct(IndentationStack::Kind::SEQUENCE);
-  return NEW_NODE(Sequence(expressions.build()), range);
+  return NEW_NODE(zone_new<Sequence>(expressions.build()), range);
 }
 
 Expression* Parser::parse_expression_or_definition(bool allow_colon) {
@@ -1349,15 +1351,15 @@ Expression* Parser::parse_expression(bool allow_colon) {
       diagnostics()->report_warning(range,
                                     "'return.label' is deprecated. Use 'continue.label' instead");
       if (!is_delimiter(current_token(), allow_colon, false)) {
-        return NEW_NODE(BreakContinue(false, parse_expression(allow_colon), label), range);
+        return NEW_NODE(zone_new<BreakContinue>(false, parse_expression(allow_colon), label), range);
       } else {
-        return NEW_NODE(BreakContinue(false, null, label), range);
+        return NEW_NODE(zone_new<BreakContinue>(false, null, label), range);
       }
     } else {
       if (!is_delimiter(current_token(), allow_colon, false)) {
-        return NEW_NODE(Return(parse_expression(allow_colon)), range);
+        return NEW_NODE(zone_new<Return>(parse_expression(allow_colon)), range);
       } else {
-        return NEW_NODE(Return(null), range);
+        return NEW_NODE(zone_new<Return>(null), range);
       }
     }
   } else if (current_token() == Token::BREAK || current_token() == Token::CONTINUE) {
@@ -1396,12 +1398,12 @@ Expression* Parser::parse_definition(bool allow_colon) {
   consume();
   Expression* value;
   if (current_token() == Token::CONDITIONAL) {
-    value = NEW_NODE(LiteralUndefined(), current_range());
+    value = NEW_NODE(zone_new<LiteralUndefined>(), current_range());
     consume();
   } else {
     value = parse_expression(allow_colon);
   }
-  return NEW_NODE(DeclarationLocal(token, name, type, value), range);
+  return NEW_NODE(zone_new<DeclarationLocal>(token, name, type, value), range);
 }
 
 namespace {  // anonymous
@@ -1457,7 +1459,7 @@ Expression* Parser::parse_logical_spelled(bool allow_colon) {
       }
       auto left = operands[left_index];
       operands[left_index] = {
-        .node = NEW_NODE(Binary(token, left.node, current.node),
+        .node = NEW_NODE(zone_new<Binary>(token, left.node, current.node),
                          current.range),
         .kind = left.kind,
         .range = left.range,
@@ -1483,7 +1485,7 @@ Expression* Parser::parse_not_spelled(bool allow_colon) {
     }
     auto left = parse_call(allow_colon);
     for (int i = not_ranges.size(); i > 0; i--) {
-      left = NEW_NODE(Unary(Token::NOT, true, left), not_ranges[i - 1]);
+      left = NEW_NODE(zone_new<Unary>(Token::NOT, true, left), not_ranges[i - 1]);
     }
     return left;
   } else {
@@ -1519,7 +1521,7 @@ Expression* Parser::parse_argument(bool allow_colon, bool full_expression) {
     }
   }
   if (name == null) return expression;
-  return NEW_NODE(NamedArgument(name, inverted, expression), range);
+  return NEW_NODE(zone_new<NamedArgument>(name, inverted, expression), range);
 }
 
 Expression* Parser::parse_call(bool allow_colon) {
@@ -1529,7 +1531,7 @@ Expression* Parser::parse_call(bool allow_colon) {
   bool is_call_primitive = false;
   if (current_token() == Token::AZZERT) {
     consume();
-    target = NEW_NODE(Identifier(Token::symbol(Token::AZZERT)), range);
+    target = NEW_NODE(zone_new<Identifier>(Token::symbol(Token::AZZERT)), range);
   } else {
     is_call_primitive = current_token() == Token::PRIMITIVE;
     target = parse_precedence(PRECEDENCE_ASSIGNMENT, allow_colon, is_call_primitive);
@@ -1623,7 +1625,7 @@ Expression* Parser::parse_call(bool allow_colon) {
 
   end_multiline_construct(IndentationStack::CALL);
   if (arguments.length() == 0 && !is_call_primitive) return target;
-  return NEW_NODE(Call(target, arguments.build(), is_call_primitive), range);
+  return NEW_NODE(zone_new<Call>(target, arguments.build(), is_call_primitive), range);
 }
 
 Expression* Parser::parse_if() {
@@ -1638,7 +1640,7 @@ Expression* Parser::parse_if() {
     // Could be a block in condition location, but that's unlikely. We prefer to
     // assume that the condition is not present.
     report_error("Missing condition");
-    condition = NEW_NODE(Error, current_range());
+    condition = NEW_NODE(zone_new<Error>(), current_range());
   } else {
     condition = parse_expression_or_definition(true);
   }
@@ -1689,7 +1691,7 @@ Expression* Parser::parse_if() {
   } else {
     end_multiline_construct(IndentationStack::IF_BODY);
   }
-  return NEW_NODE(If(condition, yes, no), range);
+  return NEW_NODE(zone_new<If>(condition, yes, no), range);
 }
 
 Expression* Parser::parse_while() {
@@ -1702,7 +1704,7 @@ Expression* Parser::parse_while() {
     // Could be a block in condition location, but that's unlikely. We prefer to
     // assume that the condition is not present.
     report_error("Missing condition");
-    condition = NEW_NODE(Error, current_range());
+    condition = NEW_NODE(zone_new<Error>(), current_range());
   } else {
     condition = parse_expression_or_definition(true);
   }
@@ -1714,7 +1716,7 @@ Expression* Parser::parse_while() {
                              IndentationStack::WHILE_BODY);
   Expression* body = parse_sequence();
   end_multiline_construct(IndentationStack::WHILE_BODY);
-  return NEW_NODE(While(condition, body), range);
+  return NEW_NODE(zone_new<While>(condition, body), range);
 }
 
 Expression* Parser::parse_for() {
@@ -1734,8 +1736,8 @@ Expression* Parser::parse_for() {
 
   if (!optional_delimiter(Token::SEMICOLON)) {
     report_error(error_range, "Missing semicolon");
-    condition = NEW_NODE(Error, current_range());
-    update = NEW_NODE(Error, current_range());
+    condition = NEW_NODE(zone_new<Error>(), current_range());
+    update = NEW_NODE(zone_new<Error>(), current_range());
     skip_to_body(Token::COLON);
     goto parse_body;
   }
@@ -1750,7 +1752,7 @@ Expression* Parser::parse_for() {
 
   if (!optional_delimiter(Token::SEMICOLON)) {
     report_error(error_range, "Missing semicolon");
-    update = NEW_NODE(Error, current_range());
+    update = NEW_NODE(zone_new<Error>(), current_range());
     skip_to_body(Token::COLON);
     goto parse_body;
   }
@@ -1775,7 +1777,7 @@ Expression* Parser::parse_for() {
                              IndentationStack::FOR_BODY);
   Expression* body = parse_sequence();
   end_multiline_construct(IndentationStack::FOR_BODY);
-  return NEW_NODE(For(initializer, condition, update, body), range);
+  return NEW_NODE(zone_new<For>(initializer, condition, update, body), range);
 }
 
 Expression* Parser::parse_try_finally() {
@@ -1817,7 +1819,7 @@ Expression* Parser::parse_try_finally() {
   }
   Sequence* handler = parse_sequence();
   end_multiline_construct(IndentationStack::TRY);
-  return NEW_NODE(TryFinally(body, handler_parameters, handler), range);
+  return NEW_NODE(zone_new<TryFinally>(body, handler_parameters, handler), range);
 }
 
 Expression* Parser::parse_precedence(Precedence precedence,
@@ -1827,7 +1829,7 @@ Expression* Parser::parse_precedence(Precedence precedence,
   if (is_call_primitive) {
     auto token = current_token();
     ASSERT(token == Token::PRIMITIVE);
-    expression = NEW_NODE(Identifier(Token::symbol(token)), current_range());
+    expression = NEW_NODE(zone_new<Identifier>(Token::symbol(token)), current_range());
     consume();
   } else {
     expression = parse_unary(allow_colon);
@@ -1863,7 +1865,7 @@ Expression* Parser::parse_precedence(Precedence precedence,
         Expression* right = at_newline()
             ? parse_expression(allow_colon)
             : parse_precedence(static_cast<Precedence>(level + 1), allow_colon);
-        expression = NEW_NODE(Binary(kind, expression, right), range);
+        expression = NEW_NODE(zone_new<Binary>(kind, expression, right), range);
       } else {
         consume();
         // If the operator is a declaration, we allow the `?` undefined literal on
@@ -1873,7 +1875,7 @@ Expression* Parser::parse_precedence(Precedence precedence,
         Expression* right;
         if ((kind == Token::DEFINE || kind == Token::DEFINE_FINAL) &&
             current_token() == Token::CONDITIONAL) {
-          right = NEW_NODE(LiteralUndefined(), current_range());
+          right = NEW_NODE(zone_new<LiteralUndefined>(), current_range());
           consume();
         } else if (at_newline()) {
           right = parse_expression(allow_colon);
@@ -1900,7 +1902,7 @@ Expression* Parser::parse_precedence(Precedence precedence,
           }
           right = parse_precedence(static_cast<Precedence>(level + 1), allow_colon);
         }
-        expression = NEW_NODE(Binary(kind, expression, right), range);
+        expression = NEW_NODE(zone_new<Binary>(kind, expression, right), range);
       }
       kind = current_token();
       next = Token::precedence(kind);
@@ -1918,7 +1920,7 @@ Expression* Parser::parse_postfix_index(Expression* head, bool* encountered_erro
   start_delimited(IndentationStack::DELIMITED, Token::LBRACK, Token::RBRACK);
   if (current_token_if_delimiter() == Token::RBRACK) {
     report_error("Missing argument for indexing operator");
-    result = NEW_NODE2(Index(head, List<ast::Expression*>()),
+    result = NEW_NODE2(zone_new<Index>(head, List<ast::Expression*>()),
                        range,
                        current_range_if_delimiter());
   } else {
@@ -1932,7 +1934,7 @@ Expression* Parser::parse_postfix_index(Expression* head, bool* encountered_erro
       if (current_token_if_delimiter() != Token::RBRACK) {
         second_argument = parse_expression(true);
       }
-      result = NEW_NODE2(IndexSlice(head, first_argument, second_argument),
+      result = NEW_NODE2(zone_new<IndexSlice>(head, first_argument, second_argument),
                          range,
                          current_range_if_delimiter());
     } else {
@@ -1942,7 +1944,7 @@ Expression* Parser::parse_postfix_index(Expression* head, bool* encountered_erro
         if (current_token_if_delimiter() == Token::RBRACK) break;
         arguments.add(parse_expression(true));
       }
-      result = NEW_NODE2(Index(head, arguments.build()),
+      result = NEW_NODE2(zone_new<Index>(head, arguments.build()),
                          range,
                          current_range_if_delimiter());
     }
@@ -1965,18 +1967,18 @@ Expression* Parser::parse_postfix_rest(Expression* head) {
       } else {
         report_error("Expected identifier");
       }
-      name = NEW_NODE(Identifier(Symbol::invalid()), current_range());
+      name = NEW_NODE(zone_new<Identifier>(Symbol::invalid()), current_range());
     } else {
       name = parse_identifier();
     }
-    return NEW_NODE(Dot(head, name), range.extend(name->selection_range()));
+    return NEW_NODE(zone_new<Dot>(head, name), range.extend(name->selection_range()));
   } else if (kind == Token::LBRACK) {
     bool had_errors;  // Ignored.
     return parse_postfix_index(head, &had_errors);
   } else {
     ASSERT(kind == Token::INCREMENT || kind == Token::DECREMENT);
     consume();
-    return NEW_NODE(Unary(kind, false, head), range);
+    return NEW_NODE(zone_new<Unary>(kind, false, head), range);
   }
 }
 
@@ -1991,9 +1993,9 @@ Expression* Parser::parse_break_continue(bool allow_colon) {
     label = parse_identifier();
   }
   if (label == null || is_delimiter(current_token(), allow_colon, false)) {
-    return NEW_NODE(BreakContinue(is_break, null, label), range);
+    return NEW_NODE(zone_new<BreakContinue>(is_break, null, label), range);
   } else {
-    return NEW_NODE(BreakContinue(is_break, parse_expression(allow_colon), label), range);
+    return NEW_NODE(zone_new<BreakContinue>(is_break, parse_expression(allow_colon), label), range);
   }
 }
 
@@ -2020,7 +2022,7 @@ Expression* Parser::parse_conditional_rest(Expression* head, bool allow_colon) {
     report_error("Missing ':' in conditional expression");
     if (current_token() == Token::DEDENT) {
       // Don't even try to read the 'no' part.
-      no = NEW_NODE(Error(), range);
+      no = NEW_NODE(zone_new<Error>(), range);
     }
   }
   switch_multiline_construct(IndentationStack::CONDITIONAL_THEN,
@@ -2028,7 +2030,7 @@ Expression* Parser::parse_conditional_rest(Expression* head, bool allow_colon) {
   if (no == null) no = parse_expression(allow_colon);
   switch_multiline_construct(IndentationStack::CONDITIONAL_ELSE,
                              IndentationStack::CONDITIONAL);
-  return NEW_NODE(If(head, yes, no), range);
+  return NEW_NODE(zone_new<If>(head, yes, no), range);
 }
 
 Expression* Parser::parse_unary(bool allow_colon) {
@@ -2064,14 +2066,14 @@ Expression* Parser::parse_unary(bool allow_colon) {
         }
       }
       Expression* expression = parse_precedence(PRECEDENCE_POSTFIX, allow_colon);
-      return NEW_NODE(Unary(kind, true, expression), range);
+      return NEW_NODE(zone_new<Unary>(kind, true, expression), range);
     }
     case Token::NOT: {
       report_error("'not' must be parenthesized when used at this location");
       auto range = current_range();
       consume();
       Expression* expression = parse_unary(allow_colon);
-      return NEW_NODE(Unary(Token::NOT, true, expression), range);
+      return NEW_NODE(zone_new<Unary>(Token::NOT, true, expression), range);
     }
     default: {
       return parse_primary(allow_colon);
@@ -2094,15 +2096,15 @@ Expression* Parser::parse_primary(bool allow_colon) {
     Expression* expression = parse_expression(true);
     auto end_range = current_range_if_delimiter();
     end_delimited(IndentationStack::DELIMITED, Token::RPAREN);
-    return NEW_NODE2(Parenthesis(expression), range, end_range);
+    return NEW_NODE2(zone_new<Parenthesis>(expression), range, end_range);
   } else if (current_token() == Token::IDENTIFIER) {
     return parse_identifier();
   } else if (current_token() == Token::INTEGER) {
-    Expression* expression = NEW_NODE(LiteralInteger(current_token_data()), range);
+    Expression* expression = NEW_NODE(zone_new<LiteralInteger>(current_token_data()), range);
     consume();
     return expression;
   } else if (current_token() == Token::DOUBLE) {
-    Expression* expression = NEW_NODE(LiteralFloat(current_token_data()), range);
+    Expression* expression = NEW_NODE(zone_new<LiteralFloat>(current_token_data()), range);
     consume();
     return expression;
   } else if (current_token() == Token::STRING || current_token() == Token::STRING_MULTI_LINE) {
@@ -2110,15 +2112,15 @@ Expression* Parser::parse_primary(bool allow_colon) {
   } else if (current_token() == Token::STRING_PART || current_token() == Token::STRING_PART_MULTI_LINE) {
     return parse_string_interpolate();
   } else if (current_token() == Token::CHARACTER) {
-    Expression* expression = NEW_NODE(LiteralCharacter(current_token_data()), range);
+    Expression* expression = NEW_NODE(zone_new<LiteralCharacter>(current_token_data()), range);
     consume();
     return expression;
   } else if (optional(Token::TRUE)) {
-    return NEW_NODE(LiteralBoolean(true), range);
+    return NEW_NODE(zone_new<LiteralBoolean>(true), range);
   } else if (optional(Token::FALSE)) {
-    return NEW_NODE(LiteralBoolean(false), range);
+    return NEW_NODE(zone_new<LiteralBoolean>(false), range);
   } else if (optional(Token::NULL_))  {
-    return NEW_NODE(LiteralNull(), range);
+    return NEW_NODE(zone_new<LiteralNull>(), range);
   } else if (current_token() == Token::LBRACK) {
     return parse_list();
   } else if (current_token() == Token::LSHARP_BRACK) {
@@ -2129,11 +2131,11 @@ Expression* Parser::parse_primary(bool allow_colon) {
     auto range = eol_range(previous_range(), current_range());
     report_error(range, "Incomplete expression");
     skip_to_dedent();
-    return NEW_NODE(Error(), range);
+    return NEW_NODE(zone_new<Error>(), range);
   } else {
     report_error(range, "Unexpected %s", Token::symbol(current_token()).c_str());
     skip_to_dedent();
-    return NEW_NODE(Error(), range);
+    return NEW_NODE(zone_new<Error>(), range);
   }
 }
 
@@ -2144,9 +2146,9 @@ Identifier* Parser::parse_identifier() {
   bool is_lsp_selection = current_state().scanner_state.is_lsp_selection();
   consume();
   if (is_lsp_selection) {
-    return NEW_NODE(LspSelection(data), range);
+    return NEW_NODE(zone_new<LspSelection>(data), range);
   } else {
-    return NEW_NODE(Identifier(data), range);
+    return NEW_NODE(zone_new<Identifier>(data), range);
   }
 }
 
@@ -2182,12 +2184,12 @@ ToitdocReference* Parser::parse_toitdoc_identifier_reference(int* end_offset) {
       auto operator_range = current_range();
       consume();
       if (token != Token::LBRACK) {
-        id = NEW_NODE(Identifier(Token::symbol(token)), operator_range);
+        id = NEW_NODE(zone_new<Identifier>(Token::symbol(token)), operator_range);
       } else {
         ASSERT(token == Token::LBRACK);
         if (current_token() != Token::RBRACK) {
           report_error(operator_range, "Missing closing ']'");
-          id = NEW_NODE(Identifier(Token::symbol(token)), operator_range);
+          id = NEW_NODE(zone_new<Identifier>(Token::symbol(token)), operator_range);
         } else {
           // Either `[]` or `[]=`.
           if (!is_current_token_attached()) report_error("Can't have space between '[' and ']'");
@@ -2201,9 +2203,9 @@ ToitdocReference* Parser::parse_toitdoc_identifier_reference(int* end_offset) {
             operator_range = operator_range.extend(current_range());
             *end_offset = current_state().scanner_state.to;
             consume();
-            id = NEW_NODE(Identifier(Symbols::index_put), operator_range);
+            id = NEW_NODE(zone_new<Identifier>(Symbols::index_put), operator_range);
           } else {
-            id = NEW_NODE(Identifier(Symbols::index), operator_range);
+            id = NEW_NODE(zone_new<Identifier>(Symbols::index), operator_range);
           }
         }
       }
@@ -2214,7 +2216,7 @@ ToitdocReference* Parser::parse_toitdoc_identifier_reference(int* end_offset) {
       target = id;
     } else {
       auto dot_range = target->selection_range().extend(id->selection_range());
-      target = NEW_NODE(Dot(target, id->as_Identifier()), dot_range);
+      target = NEW_NODE(zone_new<Dot>(target, id->as_Identifier()), dot_range);
     }
     if (is_operator) break;
     if (!is_current_token_attached()) break;
@@ -2227,7 +2229,7 @@ ToitdocReference* Parser::parse_toitdoc_identifier_reference(int* end_offset) {
   bool is_setter = false;
   if (encountered_error) {
     // The error wins over anything we already parsed.
-    target = NEW_NODE(Error(), current_range());
+    target = NEW_NODE(zone_new<Error>(), current_range());
   } else if (!is_operator && is_current_token_attached() && current_token() == Token::ASSIGN) {
     // Found a setter.
     node_range = node_range.extend(current_range());
@@ -2246,7 +2248,7 @@ ToitdocReference* Parser::parse_toitdoc_identifier_reference(int* end_offset) {
   // If this is a setter, then the range is already extended to more than the target range,
   //   and the `extend` here won't have any effect.
   node_range = node_range.extend(target->selection_range());
-  return NEW_NODE(ToitdocReference(target, is_setter), node_range);
+  return NEW_NODE(zone_new<ToitdocReference>(target, is_setter), node_range);
 }
 
 ToitdocReference* Parser::parse_toitdoc_signature_reference(int* end_offset) {
@@ -2331,7 +2333,7 @@ ToitdocReference* Parser::parse_toitdoc_signature_reference(int* end_offset) {
       }
       consume();
     }
-    parameters.add(NEW_NODE(Parameter(name, null, null, is_named, false, is_block),
+    parameters.add(NEW_NODE(zone_new<Parameter>(name, null, null, is_named, false, is_block),
                             range_start.extend(current_range())));
   }
 
@@ -2340,9 +2342,9 @@ ToitdocReference* Parser::parse_toitdoc_signature_reference(int* end_offset) {
   *end_offset = current_state().scanner_state.to;
 
   if (target == null || encountered_error) {
-    target = NEW_NODE(Error(), current_range());
+    target = NEW_NODE(zone_new<Error>(), current_range());
   }
-  return NEW_NODE2(ToitdocReference(target, is_target_setter, parameters.build()),
+  return NEW_NODE2(zone_new<ToitdocReference>(target, is_target_setter, parameters.build()),
                   open_range,
                   current_range());
 }
@@ -2357,7 +2359,7 @@ Expression* Parser::parse_list() {
   } while (optional_delimiter(Token::COMMA));
   auto end_range = current_range_if_delimiter();
   end_delimited(IndentationStack::LITERAL, Token::RBRACK);
-  return NEW_NODE2(LiteralList(elements.build()), range, end_range);
+  return NEW_NODE2(zone_new<LiteralList>(elements.build()), range, end_range);
 }
 
 Expression* Parser::parse_byte_array() {
@@ -2370,11 +2372,11 @@ Expression* Parser::parse_byte_array() {
     // reduction in runtime.
     auto token = current_state().token;
     if (token == Token::INTEGER && peek_token() == Token::COMMA) {
-      Expression* expression = NEW_NODE(LiteralInteger(current_token_data()), current_range());
+      Expression* expression = NEW_NODE(zone_new<LiteralInteger>(current_token_data()), current_range());
       consume();
       elements.add(expression);
     } else if (token == Token::CHARACTER && peek_token() == Token::COMMA) {
-      Expression* expression = NEW_NODE(LiteralCharacter(current_token_data()), current_range());
+      Expression* expression = NEW_NODE(zone_new<LiteralCharacter>(current_token_data()), current_range());
       consume();
       elements.add(expression);
     } else {
@@ -2384,7 +2386,7 @@ Expression* Parser::parse_byte_array() {
   } while (optional_delimiter(Token::COMMA));
   auto end_range = current_range_if_delimiter();
   end_delimited(IndentationStack::LITERAL, Token::RBRACK);
-  return NEW_NODE2(LiteralByteArray(elements.build()), range, end_range);
+  return NEW_NODE2(zone_new<LiteralByteArray>(elements.build()), range, end_range);
 }
 
 void Parser::discard_buffered_scanner_states() {
@@ -2428,7 +2430,7 @@ Expression* Parser::parse_string_interpolate() {
   auto range = start;
   do {
     Symbol current_data = current_token_data();
-    parts.add(NEW_NODE(LiteralString(current_data, is_multiline), range));
+    parts.add(NEW_NODE(zone_new<LiteralString>(current_data, is_multiline), range));
     consume();
     scan_interpolated_part();
     // We just passed $.
@@ -2441,7 +2443,7 @@ Expression* Parser::parse_string_interpolate() {
         consume();
         scan_string_format_part();
         ASSERT(current_token() == Token::STRING);
-        format = NEW_NODE(LiteralString(current_token_data(), false),
+        format = NEW_NODE(zone_new<LiteralString>(current_token_data(), false),
                           range);
         consume();
       }
@@ -2458,7 +2460,7 @@ Expression* Parser::parse_string_interpolate() {
       } else {
         report_error("Illegal identifier");
       }
-      expression = NEW_NODE(LiteralString(current_token_data(), is_multiline),
+      expression = NEW_NODE(zone_new<LiteralString>(current_token_data(), is_multiline),
                             current_range());
       discard_buffered_scanner_states();
     }
@@ -2484,7 +2486,7 @@ Expression* Parser::parse_string_interpolate() {
           scan_interpolated_part();
           if (current_token() == Token::IDENTIFIER && is_current_token_attached()) {
             Identifier* name = parse_identifier();
-            expression = NEW_NODE(Dot(expression, name), range);
+            expression = NEW_NODE(zone_new<Dot>(expression, name), range);
             continue;  // Try for another postfix.
           } else {
             report_error("Non-identifier member name");
@@ -2502,9 +2504,9 @@ Expression* Parser::parse_string_interpolate() {
   } while (kind != end_token);
 
   Symbol current_data  = current_token_data();
-  parts.add(NEW_NODE(LiteralString(current_data, is_multiline), range));
+  parts.add(NEW_NODE(zone_new<LiteralString>(current_data, is_multiline), range));
   consume();
-  return NEW_NODE(LiteralStringInterpolation(parts.build(), formats.build(), expressions.build()), start);
+  return NEW_NODE(zone_new<LiteralStringInterpolation>(parts.build(), formats.build(), expressions.build()), start);
 }
 
 Expression* Parser::parse_map_or_set() {
@@ -2514,11 +2516,11 @@ Expression* Parser::parse_map_or_set() {
   if (optional_delimiter(Token::COLON)) {
     auto end_range = current_range_if_delimiter();
     end_delimited(IndentationStack::LITERAL, Token::RBRACE);
-    return NEW_NODE2(LiteralMap(List<Expression*>(), List<Expression*>()), range, end_range);
+    return NEW_NODE2(zone_new<LiteralMap>(List<Expression*>(), List<Expression*>()), range, end_range);
   } else if (current_token_if_delimiter() == Token::RBRACE) {
     auto end_range = current_range_if_delimiter();
     end_delimited(IndentationStack::LITERAL, Token::RBRACE);
-    return NEW_NODE2(LiteralSet(List<Expression*>()), range, end_range);
+    return NEW_NODE2(zone_new<LiteralSet>(List<Expression*>()), range, end_range);
   }
 
   Expression* first = parse_expression(false);
@@ -2542,13 +2544,13 @@ Expression* Parser::parse_map_or_set() {
       if (has_colon || current_token() != Token::DEDENT) {
         value = parse_expression(true);
       } else {
-        value = NEW_NODE(Error, current_range());
+        value = NEW_NODE(zone_new<Error>(), current_range());
       }
       values.add(value);
     }
     auto end_range = current_range_if_delimiter();
     end_delimited(IndentationStack::LITERAL, Token::RBRACE);
-    return NEW_NODE2(LiteralMap(keys.build(), values.build()), range, end_range);
+    return NEW_NODE2(zone_new<LiteralMap>(keys.build(), values.build()), range, end_range);
   } else {
     ListBuilder<Expression*> elements;
     elements.add(first);
@@ -2559,7 +2561,7 @@ Expression* Parser::parse_map_or_set() {
     }
     auto end_range = current_range_if_delimiter();
     end_delimited(IndentationStack::LITERAL, Token::RBRACE);
-    return NEW_NODE2(LiteralSet(elements.build()), range, end_range);
+    return NEW_NODE2(zone_new<LiteralSet>(elements.build()), range, end_range);
   }
 }
 
@@ -2608,7 +2610,7 @@ Expression* Parser::parse_type(bool is_type_annotation) {
       report_error("Unexpected token while parsing type");
       auto bad_type_range = start_range.extend(current_range().from());
       if (type != null) return type;
-      return NEW_NODE(Error, bad_type_range);
+      return NEW_NODE(zone_new<Error>(), bad_type_range);
     }
     auto id = parse_identifier();
     if (id->data() == Symbols::implements ||
@@ -2620,7 +2622,7 @@ Expression* Parser::parse_type(bool is_type_annotation) {
     if (type == null) {
       type = id;
     } else {
-      type = NEW_NODE(Dot(type, id), id->selection_range());
+      type = NEW_NODE(zone_new<Dot>(type, id), id->selection_range());
     }
     if (is_current_token_attached() && current_token() == Token::PERIOD) {
       consume();
@@ -2640,10 +2642,10 @@ Expression* Parser::parse_type(bool is_type_annotation) {
   if (encountered_pseudo_keyword && type == null) {
     auto last_identifier = type->is_Dot() ? type->as_Dot()->name() : type;
     auto bad_type_range = start_range.extend(last_identifier->selection_range());
-    return NEW_NODE(Error, bad_type_range);
+    return NEW_NODE(zone_new<Error>(), bad_type_range);
   }
   if (is_nullable) {
-    return NEW_NODE(Nullable(type), type_range);
+    return NEW_NODE(zone_new<Nullable>(type), type_range);
   }
   return type;
 }
@@ -2797,7 +2799,7 @@ std::pair<Expression*, List<Parameter*>> Parser::parse_parameters(bool allow_ret
       reported_unusual_indentation = true;
     }
     ASSERT(name != null);
-    parameters.add(NEW_NODE(Parameter(name, type, default_value, is_named, is_field_storing, is_block),
+    parameters.add(NEW_NODE(zone_new<Parameter>(name, type, default_value, is_named, is_field_storing, is_block),
                             range.extend(name->selection_range())));
   }
   return std::make_pair(return_type, parameters.build());
@@ -2827,7 +2829,7 @@ Expression* Parser::parse_string() {
   ASSERT(current_token() == Token::STRING || current_token() == Token::STRING_MULTI_LINE);
   bool is_multiline = current_token() == Token::STRING_MULTI_LINE;
   auto range = current_range();
-  LiteralString* result = NEW_NODE(LiteralString(current_token_data(), is_multiline),
+  LiteralString* result = NEW_NODE(zone_new<LiteralString>(current_token_data(), is_multiline),
                                    range);
   consume();
   return result;
