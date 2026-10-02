@@ -67,9 +67,9 @@ monitor RpcSynchronizer_:
     result/any := EMPTY
     try:
       map[id] = EMPTY
-      // Negative destinations are aliases for the system process (PID zero).
+      // Negative destinations are aliases for the system process.
       // Replies carry its actual PID, not the alias used to submit the request.
-      pids_[id] = pid < 0 ? 0 : pid
+      pids_[id] = pid < 0 ? SYSTEM-PROCESS-ID_ : pid
       // Lock is kept during the non-blocking send.
       if send.call id pid:
         await:

@@ -677,7 +677,7 @@ class ServiceResourceProxyManager_ implements SystemMessageHandler_:
     if not proxy: return
     provider/int? := proxy.client_._pid_
     if provider == null: return
-    if pid != (provider < 0 ? 0 : provider): return
+    if pid != (provider < 0 ? SYSTEM-PROCESS-ID_ : provider): return
     proxy.on-notified_ message[2]
 
 // Client-only processes need termination notifications without installing a
@@ -695,7 +695,7 @@ class TerminationObserver_ implements SystemMessageHandler_:
 
   on-message type/int gid/int pid/int message/any -> none:
     assert: type == SYSTEM-RPC-NOTIFY-TERMINATED_
-    if pid != 0 or message is not int: return
+    if pid != SYSTEM-PROCESS-ID_ or message is not int: return
     rpc.Rpc.instance.peer-terminated message
     if manager: manager.on-message type gid pid message
 
