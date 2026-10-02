@@ -286,6 +286,10 @@ PRIMITIVE(process_current_id) {
   return Smi::from(process->id());
 }
 
+PRIMITIVE(process_system_id) {
+  return Smi::from(VM::current()->scheduler()->boot_process_id());
+}
+
 PRIMITIVE(process_get_priority) {
   ARGS(int, pid);
   int priority = VM::current()->scheduler()->get_priority(pid);

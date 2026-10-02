@@ -69,6 +69,15 @@ process-spawn_ priority method arguments -> int:
 process-current-id_ -> int:
   #primitive.core.process-current-id
 
+// The id of the system process, which receives messages sent to negative
+// process ids. It is not necessarily zero: external processes registered
+// before boot take the first ids. The value never changes while the
+// system process runs, so it is computed once.
+SYSTEM-PROCESS-ID_ ::= process-system-id_
+
+process-system-id_ -> int:
+  #primitive.core.process-system-id
+
 process-get-priority_ pid/int -> int:
   #primitive.core.process-get-priority
 

@@ -148,6 +148,9 @@ class Scheduler {
   bool is_locked() const { return OS::is_locked(mutex_); }
   bool is_boot_process(Process* process) const { return boot_process_ == process; }
 
+  // Returns the id of the boot process, or INVALID_PROCESS_ID if there is none.
+  int boot_process_id();
+
   void iterate_process_chunks(void* context, process_chunk_callback_t callback);
 
  private:
