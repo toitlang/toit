@@ -73,8 +73,10 @@ char* LspFsConnectionMultiplexStdout::getline() {
   if (line != buffer) FATAL("Couldn't read line");
   if (buffer[MAX_LINE_SIZE - 1] != SENTINEL) FATAL("Line too long");
   int len = strlen(buffer);
+  if (len == 0 || buffer[len - 1] != '\n') FATAL("Invalid filesystem response line");
   // Drop the '\n'.
   char* result = unvoid_cast<char*>(malloc(len));
+  if (result == null) FATAL("Couldn't allocate filesystem response line");
   memcpy(result, buffer, len - 1);
   result[len - 1] = '\0';
   return result;
