@@ -43,7 +43,9 @@ set(BOOT_SNAPSHOT ${CMAKE_CURRENT_BINARY_DIR}/toit_run_snapshot.cc)
 add_custom_command(
   OUTPUT ${BOOT_SNAPSHOT}
   COMMAND ${CMAKE_COMMAND} -E copy ${ORIGINAL_BOOT_SNAPSHOT} ${BOOT_SNAPSHOT}
-  DEPENDS build_boot_snapshot
+  # The target only orders the build. The file dependency makes the copy
+  # rerun when the snapshot changes.
+  DEPENDS build_boot_snapshot ${ORIGINAL_BOOT_SNAPSHOT}
   VERBATIM
 )
 
