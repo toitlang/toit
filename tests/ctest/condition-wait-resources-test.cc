@@ -5,11 +5,20 @@
 // Checks that ConditionWaitResources either owns a complete set of
 // platform resources or none at all, whichever platform allocation fails.
 
-#include <cassert>
 #include <cstdio>
+#include <cstdlib>
 #include <initializer_list>
 
 #include "../../src/os_condition_wait.h"
+
+// Unlike assert, CHECK also evaluates its condition when NDEBUG is defined.
+// Several conditions allocate resources, so they must always run.
+#define CHECK(cond) do { \
+  if (!(cond)) { \
+    std::fprintf(stderr, "%s:%d: check failed: %s\n", __FILE__, __LINE__, #cond); \
+    std::abort(); \
+  } \
+} while (false)
 
 namespace {
 
@@ -33,25 +42,25 @@ struct FakePlatform {
       active++;
       return &resource;
     }
-    assert(false);
+    CHECK(false);
     return nullptr;
   }
   static void release(Resource* resource) {
-    assert(resource->used);
+    CHECK(resource->used);
     resource->used = false;
     active--;
   }
   static Signal create_signal() { return create(false, nullptr); }
   static Timer create_timer(Callback callback, void* arg) {
-    assert(callback != nullptr);
+    CHECK(callback != nullptr);
     return create(true, arg);
   }
   static void delete_signal(Signal signal) {
-    assert(!signal->timer);
+    CHECK(!signal->timer);
     release(signal);
   }
   static void delete_timer(Timer timer) {
-    assert(timer->timer);
+    CHECK(timer->timer);
     release(timer);
   }
 };
@@ -70,10 +79,10 @@ __thread Resources fallback{};
 void callback(void*) {}
 
 void check_empty(const Resources& resources) {
-  assert(resources.wake == nullptr);
-  assert(resources.callback_complete == nullptr);
-  assert(resources.timer == nullptr);
-  assert(FakePlatform::active == 0);
+  CHECK(resources.wake == nullptr);
+  CHECK(resources.callback_complete == nullptr);
+  CHECK(resources.timer == nullptr);
+  CHECK(FakePlatform::active == 0);
 }
 
 }  // namespace
@@ -86,22 +95,22 @@ int main() {
     for (int failure = 1; failure <= allocations; failure++) {
       Resources resources{};
       FakePlatform::fail_at = 0;
-      if (preexisting_wake) assert(resources.initialize_wake());
+      if (preexisting_wake) CHECK(resources.initialize_wake());
       FakePlatform::fail_at = FakePlatform::attempts + failure;
-      assert(!resources.initialize(callback));
+      CHECK(!resources.initialize(callback));
       check_empty(resources);
       resources.dispose();
       check_empty(resources);
 
       // Retrying after a failed preparation owns exactly one complete set.
       FakePlatform::fail_at = 0;
-      assert(resources.initialize(callback));
-      assert(FakePlatform::active == 3);
-      assert(resources.timer->arg == &resources);
+      CHECK(resources.initialize(callback));
+      CHECK(FakePlatform::active == 3);
+      CHECK(resources.timer->arg == &resources);
       int attempts = FakePlatform::attempts;
-      assert(resources.initialize(callback));
-      assert(resources.initialize_wake());
-      assert(FakePlatform::attempts == attempts);
+      CHECK(resources.initialize(callback));
+      CHECK(resources.initialize_wake());
+      CHECK(FakePlatform::attempts == attempts);
       resources.dispose();
       resources.dispose();
       check_empty(resources);
