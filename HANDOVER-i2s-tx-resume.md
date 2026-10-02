@@ -114,6 +114,27 @@ The general hardware-test instructions are in `tests/hw/README.md`: the
    If one fails, run it on the baseline firmware too, to tell a regression from
    a known failure.
 
+5. Pixel strip end to end, with the fix. The branch
+   `floitsch/pixel-strip-i2s-stream` of toitware/toit-pixel-strip streams I2S
+   frames on a fixed driver. It keeps the bus running, writes each frame with
+   its leading reset interval, and doesn't stop or sleep per frame. The rig's
+   `pixel-strip-board1/2.toit` tests use the published package. Temporarily
+   point them at a local checkout of that branch, without committing the
+   change:
+   ```sh
+   git clone -b floitsch/pixel-strip-i2s-stream https://github.com/toitware/toit-pixel-strip /tmp/pixel-strip
+   # In tests/hw/esp32/package.yaml, replace the pixel_strip url/version with:
+   #   pixel_strip:
+   #     path: /tmp/pixel-strip
+   build/host/sdk/bin/toit pkg install --project-root tests/hw/esp32
+   make rebuild-cmake-hw
+   ctest --verbose --test-dir build/hw -C esp32 -R "pixel-strip-board1.toit-esp32$"
+   ctest --verbose --test-dir build/hw -C esp32s3 -R "pixel-strip-board1.toit-esp32s3$"
+   ```
+   Check that these tests cover the I2S backend and send consecutive frames
+   without pauses in between. If they don't, extend them locally and report
+   what you changed. Afterwards, restore `package.yaml` and `package.lock`.
+
 ## If the results differ
 
 - **The baseline passes:** the test doesn't reproduce the bug, so a pass with
@@ -138,17 +159,15 @@ The general hardware-test instructions are in `tests/hw/README.md`: the
 1. Mark toitware/esp-idf#136 as ready and merge it into `patch-head-5.4.2`.
 2. On this branch, point `third_party/esp-idf` at the merged commit, delete
    this file, and open the toit PR (submodule bump and new test).
-3. Once an SDK release contains the fix, simplify `I2sPixelStrip` in
-   toitware/toit-pixel-strip:
-   - Start the bus once, then write each frame (with its leading zero bytes as
-     the reset interval) per `output`.
-   - Drop the per-frame stop/preload/start and the sleep from #35.
-   - Make `close` push the last frame out before stopping.
-   - Raise the package's SDK constraint.
-
-   Keep #35's sleep version until that release.
+3. Once an SDK release contains the fix, land the branch
+   `floitsch/pixel-strip-i2s-stream` of toitware/toit-pixel-strip. It is
+   stacked on #35. Before merging it, raise the package's SDK constraint to
+   that release. Also update the `output` docs from #34: with this branch,
+   I2S returns once the frame is queued, as UART does. Keep #35's sleep
+   version until that release.
 
 ## Report back
 
 For each chip (ESP32, ESP32-S3), report the baseline and patched results of
-`i2s-burst-test`, including the failure output, and any i2s regressions.
+`i2s-burst-test`, including the failure output, any i2s regressions, and the
+pixel-strip results from step 5.
