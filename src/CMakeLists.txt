@@ -158,7 +158,10 @@ foreach (embedded_program ${EMBEDDED_TOIT_PROGRAMS})
   set(EMBEDDED_PROGRAM_IMAGE_CC_${embedded_program} "${GEN_DIR}/${embedded_program}_image.cc")
 endforeach()
 
-add_custom_target(build_boot_snapshot DEPENDS "${EMBEDDED_PROGRAM_SNAPSHOT_CC_toit}")
+add_custom_target(
+  build_boot_snapshot
+  DEPENDS "${EMBEDDED_PROGRAM_SNAPSHOT_CC_toit}" "${EMBEDDED_PROGRAM_SNAPSHOT_CC_toit_run}"
+)
 
 if (NOT ${TOIT_IS_EMBEDDED})
   add_executable(
