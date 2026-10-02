@@ -107,8 +107,8 @@ MessageEncoder::~MessageEncoder() {
 }
 
 uint8* MessageEncoder::take_buffer() {
-  for (unsigned i = 0; i < externals_count_; i++) {
-    ByteArray* array = externals_[i];
+  for (unsigned i = 0; i < transferred_count_; i++) {
+    ByteArray* array = transferred_[i];
     // Neuter the byte array. The contents of the array is now linked to from
     // an enqueued SystemMessage and will be used to construct a new external
     // byte array in the receiving process.
@@ -309,21 +309,34 @@ bool MessageEncoder::encode_map(Instance* instance) {
   return true;
 }
 
+bool MessageEncoder::reserve_external() {
+  if (externals_count_ >= MESSAGING_ENCODING_MAX_EXTERNALS) {
+    too_many_externals_ = true;
+    return false;
+  }
+  externals_count_++;
+  return true;
+}
+
 bool MessageEncoder::encode_byte_array(ByteArray* object) {
   if (encoding_tison() || !object->has_owned_external_memory()) {
     return encode_copy(object, TAG_BYTE_ARRAY);
   }
 
+  // A repeated reference must not give two decoded arrays ownership of the
+  // same allocation. Copy subsequent occurrences before the first transfer
+  // is committed and the original array is neutered.
+  for (unsigned i = 0; i < transferred_count_; i++) {
+    if (transferred_[i] == object) return encode_copy(object, TAG_BYTE_ARRAY);
+  }
+
   ASSERT(!encoding_tison());
+  if (!reserve_external()) return false;
   ByteArray::Bytes bytes(object);
   write_uint8(TAG_BYTE_ARRAY);
   write_cardinal(bytes.length());
   write_pointer(bytes.address());
-  if (externals_count_ >= MESSAGING_ENCODING_MAX_EXTERNALS) {
-    too_many_externals_ = true;
-    return false;
-  }
-  externals_[externals_count_++] = object;
+  transferred_[transferred_count_++] = object;
   return true;
 }
 
@@ -353,14 +366,11 @@ bool MessageEncoder::encode_bundles(SnapshotBundle system, SnapshotBundle applic
 
 bool MessageEncoder::encode_bytes_external(void* data, word length, bool free_on_failure) {
   if (encoding_tison()) return false;
+  if (!reserve_external()) return false;
   write_uint8(TAG_BYTE_ARRAY);
   write_cardinal(length);
   write_pointer(data);
   if (!encoding_for_size() && free_on_failure) {
-    if (copied_count() >= ARRAY_SIZE(copied_)) {
-      // TODO(kasper): Report meaningful error.
-      return false;
-    }
     copied_[copied_count_++] = data;
   }
   return true;
@@ -432,6 +442,9 @@ bool MessageEncoder::encode_copy(Object* object, int tag) {
   }
 
   ASSERT(!encoding_tison());
+  // Reserve during the size pass too. Check before malloc so quota failure
+  // cannot leak an allocation that has not entered the cleanup table yet.
+  if (!reserve_external()) return false;
   void* data = null;
   if (!encoding_for_size()) {
     // Strings are '\0'-terminated, so we need to make sure the allocated
@@ -442,10 +455,6 @@ bool MessageEncoder::encode_copy(Object* object, int tag) {
     data = malloc(length + extra);
     if (data == null) {
       malloc_failed_ = true;
-      return false;
-    }
-    if (copied_count_ >= ARRAY_SIZE(copied_)) {
-      // TODO(kasper): Report meaningful error.
       return false;
     }
     copied_[copied_count_++] = data;
