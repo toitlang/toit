@@ -2015,11 +2015,19 @@ class List_ extends List:
     else:
       if new-size < array_.size - LargeArray_.ARRAYLET-SIZE:
         array_ = array_.resize-for-list_ size_ (round-up new-size LargeArray_.ARRAYLET-SIZE) null
-      // Clear entries so they can be GC'ed.
-      limit := min size_ array_.size
-      for i := new-size; i < limit; i++:
-        array_[i] = null
-      size_ = new-size
+      truncate_ new-size
+
+  /**
+  Shrinks this list to $new-size without releasing capacity.
+  Does not allocate.
+  */
+  truncate_ new-size/int -> none:
+    assert: new-size <= size_
+    // Clear entries so they can be GC'ed.
+    limit := min size_ array_.size
+    for i := new-size; i < limit; i++:
+      array_[i] = null
+    size_ = new-size
 
   /** See $super. */
   operator [] index:
@@ -2415,13 +2423,29 @@ abstract class HashedInsertionOrderedCollection_:
 
   rebuild_ old-size/int step/int --allow-shrink/bool --rebuild-backing/bool:
     if rebuild-backing:
-      // Rebuild backing to remove deleted elements.
+      // Squeeze out deleted elements in place.  This doesn't allocate, so the
+      // backing is never left partially compacted.  Releasing the spare
+      // capacity allocates, so it happens at the end.
       i := 0
       backing_.do:
         if it is not Tombstone_:
           backing_[i++] = it
-      length := size_ * step
-      backing_.resize size_ * step
+      backing_.truncate_ size_ * step
+    succeeded := false
+    try:
+      rebuild-index_ old-size step --allow-shrink=allow-shrink --rebuild-backing=rebuild-backing
+      succeeded = true
+    finally:
+      // A failed rebuild (for example an allocation failure) can leave the
+      // index stale or incomplete.  Without an index the next lookup rebuilds
+      // it from the backing.
+      if not succeeded: index_ = null
+    if rebuild-backing:
+      // The collection is consistent again, so failing to release the spare
+      // capacity is harmless.
+      catch: backing_.resize backing_.size
+
+  rebuild-index_ old-size/int step/int --allow-shrink/bool --rebuild-backing/bool:
     new-index-size := pick-new-index-size_ old-size --allow-shrink=allow-shrink
     index-mask := new-index-size - 1
     if not index_ or index-mask > HASH-MASK_ or rebuild-backing:
@@ -2525,15 +2549,16 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
         if new-entry != null:
           add new-entry
         return new-entry
-      assert: size_ == 1
-      found := backing_[0]
-      if found is not Tombstone_:
+      if size_ == 1 and backing_[0] is not Tombstone_:
+        found := backing_[0]
         if compare.call found:
           return found
-      new-entry := initial.call
-      if new-entry != null:
-        add new-entry
-      return new-entry
+        new-entry := initial.call
+        if new-entry != null:
+          add new-entry
+        return new-entry
+      // No index, for example after a failed rebuild.
+      rebuild_ size_ --allow-shrink
 
     append-position := -1
     find-body_ null hash null
