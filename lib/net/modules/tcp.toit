@@ -72,6 +72,9 @@ class TcpSocket_:
       state-bits = state.wait-for-state (bits | error-bits | TOIT-TCP-NEEDS-GC_)
       if state-bits & TOIT-TCP-NEEDS-GC_ != 0:
         state-bits = null
+        // The cached state bits are sticky. Clear NEEDS_GC so we don't loop
+        // on it; the VM reports it again if another GC is needed.
+        state.clear-state TOIT-TCP-NEEDS-GC_
         tcp-gc_ state.group
     if state-bits == 0:
       return failure.call "NOT_CONNECTED"

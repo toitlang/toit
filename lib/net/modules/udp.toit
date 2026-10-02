@@ -272,6 +272,9 @@ class Socket implements udp.Socket udp.MulticastSocket:
       state-bits = state.wait-for-state (bits | TOIT-UDP-ERROR_ | TOIT-UDP-NEEDS-GC_)
       if state-bits & TOIT-UDP-NEEDS-GC_ != 0:
         state-bits = null
+        // The cached state bits are sticky. Clear NEEDS_GC so we don't loop
+        // on it; the VM reports it again if another GC is needed.
+        state.clear-state TOIT-UDP-NEEDS-GC_
         udp-gc_ state.group
     if not state_: return null  // Closed from a different task.
     assert: state-bits != 0
