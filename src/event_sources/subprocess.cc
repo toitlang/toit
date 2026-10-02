@@ -50,6 +50,7 @@ SubprocessEventSource::SubprocessEventSource()
 }
 
 SubprocessEventSource::~SubprocessEventSource() {
+  struct sigaction previous_action;
   { Locker locker(mutex());
     stop_ = true;
 
@@ -58,7 +59,9 @@ SubprocessEventSource::~SubprocessEventSource() {
     sigemptyset(&act.sa_mask);
     act.sa_handler = SIG_IGN;
     act.sa_flags = SA_NOCLDSTOP;
-    sigaction(SIGCHLD, &act, null);
+    if (sigaction(SIGCHLD, &act, &previous_action) != 0) {
+      FATAL("unable to ignore child signals during shutdown");
+    }
 
     // In case it is waiting for work in the condition variable.
     OS::signal(subprocess_waits_changed_);
@@ -66,6 +69,12 @@ SubprocessEventSource::~SubprocessEventSource() {
 
   // Wait for SubprocessEventSource thread to exit.
   join();
+
+  // Ignoring SIGCHLD also discards child exit statuses. Restore the caller's
+  // disposition before another VM or an exit-time tool starts children.
+  if (sigaction(SIGCHLD, &previous_action, null) != 0) {
+    FATAL("unable to restore child signals after shutdown");
+  }
 
   while (ProcessWaitResult* r = ignores_.remove_first()) {
     delete r;
