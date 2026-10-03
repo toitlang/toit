@@ -57,16 +57,25 @@ void LspFsConnectionSocket::initialize(Diagnostics* diagnostics) {
     exit(EXIT_FAILURE);
   }
 
+  int error = 0;
   for (auto info = head; info != null; info = info->ai_next) {
     SOCKET sock = socket(info->ai_family, info->ai_socktype, info->ai_protocol);
-    if (sock == INVALID_SOCKET) continue;
+    if (sock == INVALID_SOCKET) {
+      error = WSAGetLastError();
+      continue;
+    }
     BOOL value = TRUE;
     setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (const char*)&value, sizeof(value));
     if (connect(sock, info->ai_addr, info->ai_addrlen) == 0) {
       socket_ = sock;
       break;
     }
+    error = WSAGetLastError();
     closesocket(sock);
+  }
+  freeaddrinfo(head);
+  if (socket_ == -1) {
+    FATAL("failed to connect to port %s: error %d", port_, error);
   }
 }
 
@@ -75,7 +84,9 @@ LspFsConnectionSocket::~LspFsConnectionSocket() {
     closesocket(socket_);
     socket_ = -1;
   }
-  WSACleanup();
+  // Only balance a WSAStartup from initialize(). A failed WSAStartup is fatal,
+  // so being initialized means it succeeded.
+  if (is_initialized_) WSACleanup();
 }
 
 } // namespace compiler

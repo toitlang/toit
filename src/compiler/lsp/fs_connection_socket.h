@@ -31,6 +31,9 @@ class LspFsConnectionSocket : public LspFsConnection {
   explicit LspFsConnectionSocket(const char* port) : port_(port) {}
   ~LspFsConnectionSocket();
 
+  LspFsConnectionSocket(const LspFsConnectionSocket&) = delete;
+  LspFsConnectionSocket& operator=(const LspFsConnectionSocket&) = delete;
+
   void initialize(Diagnostics* diagnostics);
   void putline(const char*);
   char* getline();
