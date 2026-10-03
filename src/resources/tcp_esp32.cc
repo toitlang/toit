@@ -277,13 +277,16 @@ PRIMITIVE(listen) {
       return lwip_error(process, err);
     }
 
-    // The call to tcp_listen_with_backlog frees or reallocates the tpcb we
-    // pass to it, so there is no need to close that one.
-    tpcb = tcp_listen_with_backlog(tpcb, capture.backlog);
-    if (tpcb == null) {
+    // On success, tcp_listen_with_backlog_and_err frees the tpcb we pass to
+    // it. On failure (ERR_MEM, or ERR_USE when another socket already listens
+    // on the port) the tpcb is untouched and must be closed.
+    tcp_pcb* listen_tpcb = tcp_listen_with_backlog_and_err(tpcb, capture.backlog, &err);
+    if (listen_tpcb == null) {
       delete capture.socket;
-      FAIL(MALLOC_FAILED);
+      tcp_close(tpcb);
+      return lwip_error(process, err);
     }
+    tpcb = listen_tpcb;
 
     capture.socket->set_tpcb(tpcb);
     tcp_arg(tpcb, capture.socket);
