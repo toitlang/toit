@@ -360,7 +360,13 @@ PRIMITIVE(total_deep_sleep_time) {
 PRIMITIVE(enable_external_wakeup) {
 #if SOC_PM_SUPPORT_EXT1_WAKEUP
   ARGS(int64, pin_mask, bool, on_any_high);
-  esp_err_t err = esp_sleep_enable_ext1_wakeup(pin_mask, on_any_high ? ESP_EXT1_WAKEUP_ANY_HIGH : ESP_EXT1_WAKEUP_ALL_LOW);
+#if CONFIG_IDF_TARGET_ESP32
+  esp_sleep_ext1_wakeup_mode_t low_mode = ESP_EXT1_WAKEUP_ALL_LOW;
+#else
+  // Newer chips only support "any low" (same enum value as ESP32's "all low").
+  esp_sleep_ext1_wakeup_mode_t low_mode = ESP_EXT1_WAKEUP_ANY_LOW;
+#endif
+  esp_err_t err = esp_sleep_enable_ext1_wakeup(pin_mask, on_any_high ? ESP_EXT1_WAKEUP_ANY_HIGH : low_mode);
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "Failed: sleep_enable_ext1_wakeup");
     FAIL(ERROR);
