@@ -994,6 +994,9 @@ static void send_pipeline_result(int write_fd, const Pipeline::Result& pipeline_
     while (size > 0) {
       auto written = write(write_fd, data, size);
       if (written == -1 && errno == EAGAIN) continue;
+      // The parent went away (for example, it was killed). Nobody is
+      // interested in the result anymore, so exit without dumping core.
+      if (written == -1 && errno == EPIPE) exit(EXIT_FAILURE);
       if (written == -1) {
         FATAL("Couldn't write to pipe");
       }
