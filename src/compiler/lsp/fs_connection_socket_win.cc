@@ -53,8 +53,7 @@ void LspFsConnectionSocket::initialize(Diagnostics* diagnostics) {
   addrinfo* head;
   status = getaddrinfo(null, port_, &hints, &head);
   if (status != 0) {
-    fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
-    exit(EXIT_FAILURE);
+    FATAL("getaddrinfo for port %s failed: %s", port_, gai_strerror(status));
   }
 
   int error = 0;
