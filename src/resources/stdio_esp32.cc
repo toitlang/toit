@@ -15,6 +15,10 @@
 #ifdef CONFIG_ESP_CONSOLE_UART
 #define TOIT_STDIN_UART
 #endif
+// Note: while a usb.host.Host is open, the shared USB PHY belongs to the
+// OTG controller and USB Serial/JTAG stdin goes quiet. If stdin starts while
+// a Host has the PHY, it leaves USB Serial/JTAG out until the last stdin
+// user is gone (see usb_host_lock_phy).
 #if defined(CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG) || defined(CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG)
 #define TOIT_STDIN_USB_SERIAL_JTAG
 #endif
@@ -33,6 +37,7 @@
 
 #include "../event_sources/ev_queue_esp32.h"
 #include "../event_sources/system_esp32.h"
+#include "usb_host_esp32.h"
 #include "../objects_inline.h"
 #include "../primitive.h"
 #include "../process.h"
@@ -96,6 +101,8 @@ static void release_uart_stdin() {
 
 #ifdef TOIT_STDIN_USB_SERIAL_JTAG
 static int usb_serial_jtag_stdin_users = 0;
+// Null queue and -1 fd while the users share a stdin without USB
+// Serial/JTAG.
 static QueueHandle_t usb_serial_jtag_stdin_queue = null;
 static int usb_serial_jtag_stdin_fd = -1;
 
@@ -105,11 +112,18 @@ static void usb_serial_jtag_notify(usj_select_notif_t notification, BaseType_t* 
   xQueueSendFromISR(usb_serial_jtag_stdin_queue, &event, task_woken);
 }
 
-static esp_err_t acquire_usb_serial_jtag_stdin(QueueHandle_t* queue) {
+static esp_err_t acquire_usb_serial_jtag_stdin_locked(QueueHandle_t* queue, bool host_has_phy) {
   Locker locker(OS::global_mutex());
   if (usb_serial_jtag_stdin_users > 0) {
     usb_serial_jtag_stdin_users++;
     *queue = usb_serial_jtag_stdin_queue;
+    return ESP_OK;
+  }
+
+  if (host_has_phy) {
+    // The install would take the PHY from an open USB host.
+    usb_serial_jtag_stdin_users = 1;
+    *queue = null;
     return ESP_OK;
   }
 
@@ -154,10 +168,25 @@ static esp_err_t acquire_usb_serial_jtag_stdin(QueueHandle_t* queue) {
   return ESP_OK;
 }
 
+static esp_err_t acquire_usb_serial_jtag_stdin(QueueHandle_t* queue) {
+#ifdef CONFIG_TOIT_ENABLE_USB_HOST
+  // The PHY lock is taken before the global mutex: a USB host holds the
+  // PHY lock for seconds while it is torn down.
+  bool host_has_phy = usb_host_lock_phy();
+  esp_err_t err = acquire_usb_serial_jtag_stdin_locked(queue, host_has_phy);
+  usb_host_unlock_phy();
+  return err;
+#else
+  return acquire_usb_serial_jtag_stdin_locked(queue, false);
+#endif
+}
+
 static void release_usb_serial_jtag_stdin() {
   Locker locker(OS::global_mutex());
   ASSERT(usb_serial_jtag_stdin_users > 0);
   if (--usb_serial_jtag_stdin_users != 0) return;
+  // Started without USB Serial/JTAG; nothing to undo.
+  if (usb_serial_jtag_stdin_fd < 0) return;
 
   usb_serial_jtag_set_select_notif_callback(null);
   usb_serial_jtag_vfs_use_nonblocking();
@@ -326,6 +355,7 @@ PRIMITIVE(stdin_read) {
 #endif
 #ifdef TOIT_STDIN_USB_SERIAL_JTAG
   auto read_usb = [&]() -> int {
+    if (usb_serial_jtag_stdin_fd < 0) return 0;
     int count = ::read(usb_serial_jtag_stdin_fd, bytes.address(), STDIN_BUFFER_SIZE);
     if (count < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
@@ -355,6 +385,10 @@ PRIMITIVE(stdin_read) {
   if (read_count == 0) {
 #if defined(TOIT_STDIN_UART) && !defined(TOIT_STDIN_USB_SERIAL_JTAG)
     if (uart_eof) return process->null_object();
+#elif !defined(TOIT_STDIN_UART)
+    // Started while a USB host had the PHY: there is no console to read
+    // from, and nothing would ever wake a waiter up.
+    if (usb_serial_jtag_stdin_fd < 0) return process->null_object();
 #else
     USE(uart_eof);
 #endif
