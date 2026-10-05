@@ -25,8 +25,6 @@ bool format_sequence(ast::Sequence* sequence,
                      int indentation,
                      std::string* result,
                      const FormatStyle& style = FormatStyle(),
-                     const FormatExpressionOptions& expression_options =
-                         FormatExpressionOptions(),
                      FormatCommentState* comments = null);
 
 } // namespace compiler
