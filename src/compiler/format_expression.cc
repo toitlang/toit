@@ -1,0 +1,421 @@
+// Copyright (C) 2026 Toit contributors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; version
+// 2.1 only.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// The license can be found in the file `LICENSE` in the top level
+// directory of this repository.
+
+#include "format_expression.h"
+
+#include <algorithm>
+#include <string>
+#include <vector>
+
+#include "token.h"
+
+namespace toit {
+namespace compiler {
+
+using namespace ast;
+
+namespace {
+
+Expression* peel_parentheses(Expression* expression) {
+  while (expression != null && expression->is_Parenthesis()) {
+    expression = expression->as_Parenthesis()->expression();
+  }
+  return expression;
+}
+
+bool is_right_associative(Token::Kind kind) {
+  int precedence = Token::precedence(kind);
+  return precedence == PRECEDENCE_AND || precedence == PRECEDENCE_OR ||
+      precedence == PRECEDENCE_ASSIGNMENT;
+}
+
+bool is_logical(Token::Kind kind) {
+  int precedence = Token::precedence(kind);
+  return precedence == PRECEDENCE_AND || precedence == PRECEDENCE_OR;
+}
+
+bool is_bitwise(Token::Kind kind) {
+  int precedence = Token::precedence(kind);
+  return precedence == PRECEDENCE_BIT_SHIFT ||
+      precedence == PRECEDENCE_BIT_AND ||
+      precedence == PRECEDENCE_BIT_OR ||
+      precedence == PRECEDENCE_BIT_XOR;
+}
+
+bool is_static_receiver_candidate(Expression* expression) {
+  int identifiers = 0;
+  while (expression != null && expression->is_Dot()) {
+    identifiers++;
+    expression = expression->as_Dot()->receiver();
+  }
+  if (expression == null || !expression->is_Identifier()) return false;
+  return ++identifiers <= 3;
+}
+
+class ExpressionPrinter {
+ public:
+  ExpressionPrinter(Source* source,
+                    int base_indentation,
+                    const FormatStyle& style,
+                    const FormatExpressionOptions& options)
+      : source_(source)
+      , base_indentation_(base_indentation)
+      , style_(style)
+      , options_(options) {}
+
+  bool run(Expression* expression, FormatOutput* result) {
+    ASSERT(expression != null && result != null);
+    return format(expression, PRECEDENCE_NONE, result);
+  }
+
+ private:
+  Source* source_;
+  int base_indentation_;
+  const FormatStyle& style_;
+  const FormatExpressionOptions& options_;
+  bool supported_ = true;
+
+  int start(Node* node) const {
+    return source_->offset_in_source(node->full_range().from());
+  }
+
+  int end(Node* node) const {
+    return source_->offset_in_source(node->full_range().to());
+  }
+
+  std::string source_text(Node* node) const {
+    int from = start(node);
+    int to = end(node);
+    return std::string(
+        reinterpret_cast<const char*>(source_->text()) + from, to - from);
+  }
+
+  int estimated_flat_width(Expression* expression) {
+    if (expression == null) return -1;
+    expression = peel_parentheses(expression);
+    int from = start(expression);
+    int to = end(expression);
+    int width = 0;
+    bool pending_space = false;
+    bool after_opener = false;
+    uint8 quote = 0;
+    bool escaped = false;
+    for (int offset = from; offset < to; offset++) {
+      uint8 c = source_->text()[offset];
+      if (quote != 0) {
+        if ((c & 0xc0) != 0x80) width++;
+        if (escaped) {
+          escaped = false;
+        } else if (c == '\\') {
+          escaped = true;
+        } else if (c == quote) {
+          quote = 0;
+        }
+        continue;
+      }
+      if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+        if (!after_opener && width > 0) pending_space = true;
+        continue;
+      }
+      // These tokens may be added or removed by the printer. They are useful
+      // for rendering, but deliberately irrelevant to the rough measurement.
+      if (c == ',') {
+        pending_space = width > 0;
+        after_opener = false;
+        continue;
+      }
+      if (c == '(') {
+        after_opener = true;
+        continue;
+      }
+      if (c == ')' || c == '\\') {
+        after_opener = false;
+        continue;
+      }
+      if (c == ']' || c == '}') pending_space = false;
+      if (pending_space) {
+        width++;
+        pending_space = false;
+      }
+      if ((c & 0xc0) != 0x80) width++;
+      if (c == '\'' || c == '"') quote = c;
+      after_opener = c == '[' || c == '{';
+    }
+    return width;
+  }
+
+  std::string receiver(Expression* expression) {
+    bool had_parentheses = expression->is_Parenthesis();
+    Expression* inner = peel_parentheses(expression);
+    std::string result = flat(inner, PRECEDENCE_POSTFIX);
+    if (had_parentheses && is_static_receiver_candidate(inner)) {
+      return "(" + flat(inner, PRECEDENCE_NONE) + ")";
+    }
+    return result;
+  }
+
+  bool needs_bitwise_parentheses(Token::Kind parent,
+                                 Token::Kind child) const {
+    if (!options_.parenthesize_mixed_bitwise) return false;
+    if (!is_bitwise(parent) && !is_bitwise(child)) return false;
+    if (Token::precedence(parent) == PRECEDENCE_ASSIGNMENT) return false;
+    return parent != child;
+  }
+
+  std::string binary_operand(Expression* expression,
+                             int outer_precedence,
+                             Token::Kind parent_kind) {
+    Expression* inner = peel_parentheses(expression);
+    if (inner != null && inner->is_Binary() &&
+        needs_bitwise_parentheses(
+            parent_kind, inner->as_Binary()->kind())) {
+      return "(" + flat(inner, PRECEDENCE_NONE) + ")";
+    }
+    return flat(expression, outer_precedence);
+  }
+
+  std::string flat_binary(Binary* binary, int outer_precedence) {
+    Token::Kind kind = binary->kind();
+    int precedence = Token::precedence(kind);
+    bool parentheses =
+        outer_precedence != PRECEDENCE_NONE && precedence <= outer_precedence;
+    bool right_associative = is_right_associative(kind);
+    int left_precedence = right_associative ? precedence : precedence - 1;
+    int right_precedence = right_associative ? precedence - 1 : precedence;
+    if (precedence == PRECEDENCE_ASSIGNMENT || is_logical(kind)) {
+      right_precedence = PRECEDENCE_NONE;
+    }
+    if (is_logical(kind)) left_precedence = PRECEDENCE_NONE;
+
+    std::string result =
+        binary_operand(binary->left(), left_precedence, kind) + " " +
+        Token::symbol(kind).c_str() + " " +
+        binary_operand(binary->right(), right_precedence, kind);
+    return parentheses ? "(" + result + ")" : result;
+  }
+
+  std::string flat_ternary(If* expression, int outer_precedence) {
+    std::string result = flat(expression->expression(), PRECEDENCE_CONDITIONAL) +
+        " ? " + flat(expression->yes(), PRECEDENCE_NONE) + " : " +
+        flat(expression->no(), PRECEDENCE_NONE);
+    return outer_precedence == PRECEDENCE_NONE
+        ? result
+        : "(" + result + ")";
+  }
+
+  std::string flat(Expression* expression, int outer_precedence) {
+    if (!supported_ || expression == null) return std::string();
+    expression = peel_parentheses(expression);
+    if (expression->is_Binary()) {
+      return flat_binary(expression->as_Binary(), outer_precedence);
+    }
+    if (expression->is_Unary()) {
+      Unary* unary = expression->as_Unary();
+      std::string operation = Token::symbol(unary->kind()).c_str();
+      if (!unary->prefix()) {
+        return flat(unary->expression(), PRECEDENCE_POSTFIX) + operation;
+      }
+      Expression* operand = peel_parentheses(unary->expression());
+      std::string operand_text;
+      if (unary->kind() == Token::NOT && operand->is_Binary()) {
+        operand_text = "(" + flat(operand, PRECEDENCE_NONE) + ")";
+      } else {
+        operand_text = flat(operand, PRECEDENCE_POSTFIX);
+      }
+      std::string result = operation +
+          (unary->kind() == Token::NOT ? " " : "") + operand_text;
+      return unary->kind() == Token::NOT &&
+              outer_precedence != PRECEDENCE_NONE
+          ? "(" + result + ")"
+          : result;
+    }
+    if (expression->is_Dot()) {
+      Dot* dot = expression->as_Dot();
+      return receiver(dot->receiver()) + "." + source_text(dot->name());
+    }
+    if (expression->is_Index()) {
+      Index* index = expression->as_Index();
+      std::string result = receiver(index->receiver()) + "[";
+      for (int i = 0; i < index->arguments().length(); i++) {
+        if (i > 0) result += ", ";
+        result += flat(index->arguments()[i], PRECEDENCE_NONE);
+      }
+      return result + "]";
+    }
+    if (expression->is_IndexSlice()) {
+      IndexSlice* slice = expression->as_IndexSlice();
+      std::string result = receiver(slice->receiver()) + "[";
+      if (slice->from() != null) {
+        result += flat(slice->from(), PRECEDENCE_NONE);
+      }
+      result += "..";
+      if (slice->to() != null) result += flat(slice->to(), PRECEDENCE_NONE);
+      return result + "]";
+    }
+    if (expression->is_Nullable()) {
+      return flat(expression->as_Nullable()->type(), PRECEDENCE_POSTFIX) + "?";
+    }
+    if (expression->is_If()) {
+      If* conditional = expression->as_If();
+      if (conditional->yes() != null && conditional->yes()->is_Sequence()) {
+        supported_ = false;
+        return std::string();
+      }
+      return flat_ternary(conditional, outer_precedence);
+    }
+    if (expression->is_Identifier() || expression->is_LiteralNull() ||
+        expression->is_LiteralUndefined() ||
+        expression->is_LiteralBoolean() ||
+        expression->is_LiteralInteger() ||
+        expression->is_LiteralCharacter() ||
+        expression->is_LiteralString() ||
+        expression->is_LiteralStringInterpolation() ||
+        expression->is_LiteralFloat()) {
+      std::string result = source_text(expression);
+      if (result.find('\n') != std::string::npos ||
+          result.find('\r') != std::string::npos) {
+        supported_ = false;
+        return std::string();
+      }
+      return result;
+    }
+    supported_ = false;
+    return std::string();
+  }
+
+  void flatten_chain(Binary* binary,
+                     Token::Kind kind,
+                     std::vector<Expression*>* operands) {
+    if (is_right_associative(kind)) {
+      operands->push_back(binary->left());
+      Expression* right = binary->right();
+      if (!right->is_Parenthesis() && right->is_Binary() &&
+          right->as_Binary()->kind() == kind) {
+        flatten_chain(right->as_Binary(), kind, operands);
+      } else {
+        operands->push_back(right);
+      }
+      return;
+    }
+
+    Expression* left = binary->left();
+    if (!left->is_Parenthesis() && left->is_Binary() &&
+        left->as_Binary()->kind() == kind) {
+      flatten_chain(left->as_Binary(), kind, operands);
+    } else {
+      operands->push_back(left);
+    }
+    operands->push_back(binary->right());
+  }
+
+  FormatOutput broken_binary(Binary* binary, int outer_precedence) {
+    Token::Kind kind = binary->kind();
+    int precedence = Token::precedence(kind);
+    bool parentheses =
+        outer_precedence != PRECEDENCE_NONE && precedence <= outer_precedence;
+    std::vector<Expression*> operands;
+    flatten_chain(binary, kind, &operands);
+    std::string operation = Token::symbol(kind).c_str();
+
+    FormatOutput result = FormatOutput::single_line(
+        (parentheses ? "(" : "") + flat(operands[0], precedence));
+    bool trailing = is_logical(kind);
+    if (trailing && operands.size() > 1) result.append(" " + operation);
+    for (int i = 1; i < static_cast<int>(operands.size()); i++) {
+      bool last = i + 1 == static_cast<int>(operands.size());
+      std::string operand = flat(operands[i], precedence);
+      result.add_line(
+          style_.continuation_step,
+          trailing ? operand + (last ? "" : " " + operation)
+                   : operation + " " + operand);
+    }
+    if (parentheses) result.append(")");
+    return result;
+  }
+
+  bool render_flat(Expression* expression,
+                   int outer_precedence,
+                   FormatOutput* result) {
+    std::string text = flat(expression, outer_precedence);
+    if (!supported_) return false;
+    *result = FormatOutput::single_line(text);
+    return true;
+  }
+
+  bool format(Expression* expression,
+              int outer_precedence,
+              FormatOutput* result) {
+    Expression* inner = peel_parentheses(expression);
+    int flat_width = estimated_flat_width(expression);
+    if (flat_width < 0) return render_flat(expression, outer_precedence, result);
+
+    if (inner->is_Binary() &&
+        Token::precedence(inner->as_Binary()->kind()) !=
+            PRECEDENCE_ASSIGNMENT) {
+      Binary* binary = inner->as_Binary();
+      std::vector<Expression*> operands;
+      flatten_chain(binary, binary->kind(), &operands);
+      int splits = std::max(1, static_cast<int>(operands.size()) - 1);
+      if (!is_flat_acceptable(flat_width,
+                              base_indentation_,
+                              splits,
+                              splits,
+                              0,
+                              style_)) {
+        *result = broken_binary(binary, outer_precedence);
+        return supported_;
+      }
+    } else if (inner->is_If()) {
+      If* conditional = inner->as_If();
+      if (conditional->yes() == null ||
+          !conditional->yes()->is_Sequence()) {
+        if (!is_flat_acceptable(flat_width,
+                                base_indentation_,
+                                2,
+                                2,
+                                0,
+                                style_)) {
+          *result = FormatOutput::single_line(
+              flat(conditional->expression(), PRECEDENCE_CONDITIONAL));
+          result->add_line(
+              style_.continuation_step,
+              "? " + flat(conditional->yes(), PRECEDENCE_NONE));
+          result->add_line(
+              style_.continuation_step,
+              ": " + flat(conditional->no(), PRECEDENCE_NONE));
+          return supported_;
+        }
+      }
+    }
+    return render_flat(expression, outer_precedence, result);
+  }
+};
+
+} // namespace
+
+bool format_expression(Expression* expression,
+                       Source* source,
+                       int base_indentation,
+                       FormatOutput* result,
+                       const FormatStyle& style,
+                       const FormatExpressionOptions& options) {
+  ASSERT(source != null);
+  ASSERT(base_indentation >= 0);
+  ExpressionPrinter printer(source, base_indentation, style, options);
+  return printer.run(expression, result);
+}
+
+} // namespace compiler
+} // namespace toit
