@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 
+#include "format_statement.h"
 #include "token.h"
 
 namespace toit {
@@ -63,6 +64,13 @@ bool is_static_receiver_candidate(Expression* expression) {
   }
   if (expression == null || !expression->is_Identifier()) return false;
   return ++identifiers <= 3;
+}
+
+bool needs_call_argument_parentheses(Expression* expression) {
+  return expression->is_Call() || expression->is_Binary() ||
+      expression->is_If() || expression->is_DeclarationLocal() ||
+      (expression->is_Unary() &&
+       expression->as_Unary()->kind() == Token::NOT);
 }
 
 class ExpressionPrinter {
@@ -181,21 +189,124 @@ class ExpressionPrinter {
     if (argument->inverted()) result += "no-";
     result += source_text(argument->name());
     if (argument->expression() != null) {
-      result += "=" + flat(argument->expression(), PRECEDENCE_NONE);
+      Expression* value = argument->expression();
+      Expression* inner = peel_parentheses(value);
+      std::string value_text = flat(inner, PRECEDENCE_NONE);
+      if (value->is_Parenthesis() ||
+          needs_call_argument_parentheses(inner)) {
+        value_text = "(" + value_text + ")";
+      }
+      result += "=" + value_text;
     }
+    return result;
+  }
+
+  std::string flat_parameter(Parameter* parameter) {
+    std::string result;
+    if (parameter->is_named()) result += "--";
+    if (parameter->is_field_storing()) result += ".";
+    result += source_text(parameter->name());
+    if (parameter->type() != null) {
+      result += "/" + flat(parameter->type(), PRECEDENCE_NONE);
+    }
+    if (parameter->default_value() != null) {
+      Expression* value = parameter->default_value();
+      bool preserve_parentheses = value->is_Parenthesis();
+      std::string value_text = flat(value, PRECEDENCE_NONE);
+      result += "=" + (preserve_parentheses
+          ? "(" + value_text + ")"
+          : value_text);
+    }
+    return result;
+  }
+
+  std::string flat_local(DeclarationLocal* declaration) {
+    std::string result = flat(declaration->name(), PRECEDENCE_NONE);
+    if (declaration->type() != null) {
+      result += "/" + flat(declaration->type(), PRECEDENCE_NONE);
+    }
+    result += " " + std::string(Token::symbol(declaration->kind()).c_str());
+    if (declaration->value() != null) {
+      result += " " + flat(declaration->value(), PRECEDENCE_NONE);
+    }
+    return result;
+  }
+
+  Expression* suite_value(Expression* argument) {
+    if (argument->is_Block() || argument->is_Lambda()) return argument;
+    if (!argument->is_NamedArgument()) return null;
+    Expression* value = argument->as_NamedArgument()->expression();
+    return value != null && (value->is_Block() || value->is_Lambda())
+        ? value
+        : null;
+  }
+
+  std::string suite_introduction(Expression* suite) {
+    bool is_block = suite->is_Block();
+    List<Parameter*> parameters = is_block
+        ? suite->as_Block()->parameters()
+        : suite->as_Lambda()->parameters();
+    std::string result = is_block ? ":" : "::";
+    if (!parameters.is_empty()) {
+      result += " |";
+      for (auto parameter : parameters) {
+        result += " " + flat_parameter(parameter);
+      }
+      result += " |";
+    }
+    return result;
+  }
+
+  std::string flat_suite(Expression* expression) {
+    bool is_block = expression->is_Block();
+    Sequence* body = is_block
+        ? expression->as_Block()->body()
+        : expression->as_Lambda()->body();
+    if (body->expressions().length() != 1) {
+      supported_ = false;
+      return std::string();
+    }
+    Expression* only = body->expressions().first();
+    std::string body_text;
+    if (!only->is_Return() && !only->is_BreakContinue() &&
+        !only->is_While() && !only->is_For() &&
+        !only->is_TryFinally() &&
+        !(only->is_If() && only->as_If()->yes() != null &&
+          only->as_If()->yes()->is_Sequence())) {
+      body_text = flat(only, PRECEDENCE_NONE);
+    } else if (!format_sequence(body,
+                                source_,
+                                0,
+                                &body_text,
+                                style_,
+                                options_)) {
+      supported_ = false;
+      return std::string();
+    }
+    if (body_text.find('\n') != std::string::npos) {
+      supported_ = false;
+      return std::string();
+    }
+    std::string result = suite_introduction(expression);
+    if (!body_text.empty()) result += " " + body_text;
     return result;
   }
 
   std::string flat_call(Call* call, int outer_precedence) {
     std::string result = flat(call->target(), PRECEDENCE_POSTFIX);
     for (auto argument : call->arguments()) {
-      result += " ";
+      Expression* inner = peel_parentheses(argument);
       if (argument->is_NamedArgument()) {
-        result += flat_named_argument(argument->as_NamedArgument());
-      } else if (peel_parentheses(argument)->is_Call()) {
-        result += "(" + flat(peel_parentheses(argument), PRECEDENCE_NONE) + ")";
+        result += " " + flat_named_argument(argument->as_NamedArgument());
+      } else if (argument->is_Parenthesis() &&
+                 (inner->is_Block() || inner->is_Lambda())) {
+        result += " (" + flat_suite(inner) + ")";
+      } else if (argument->is_Block() || argument->is_Lambda()) {
+        result += flat_suite(argument);
+      } else if (needs_call_argument_parentheses(inner)) {
+        result += " (" + flat(inner, PRECEDENCE_NONE) + ")";
       } else {
-        result += flat(argument, PRECEDENCE_NONE);
+        result += " " + flat(argument, PRECEDENCE_NONE);
       }
     }
     return outer_precedence == PRECEDENCE_NONE
@@ -285,6 +396,12 @@ class ExpressionPrinter {
     }
     if (expression->is_NamedArgument()) {
       return flat_named_argument(expression->as_NamedArgument());
+    }
+    if (expression->is_DeclarationLocal()) {
+      return flat_local(expression->as_DeclarationLocal());
+    }
+    if (expression->is_Block() || expression->is_Lambda()) {
+      return flat_suite(expression);
     }
     if (expression->is_LiteralList()) {
       return flat_elements(
@@ -429,6 +546,14 @@ class ExpressionPrinter {
     if (argument->is_NamedArgument()) {
       return flat_named_argument(argument->as_NamedArgument());
     }
+    Expression* inner = peel_parentheses(argument);
+    if (argument->is_Parenthesis() &&
+        (inner->is_Block() || inner->is_Lambda())) {
+      return "(" + flat_suite(inner) + ")";
+    }
+    if (needs_call_argument_parentheses(inner)) {
+      return "(" + flat(inner, PRECEDENCE_NONE) + ")";
+    }
     return flat(argument, PRECEDENCE_NONE);
   }
 
@@ -439,6 +564,153 @@ class ExpressionPrinter {
       result.add_line(style_.continuation_step, call_argument(argument));
     }
     return result;
+  }
+
+  bool call_requires_suite_shape(Call* call) {
+    for (int i = 0; i < call->arguments().length(); i++) {
+      Expression* argument = call->arguments()[i];
+      Expression* suite = suite_value(argument);
+      if (suite == null) continue;
+      Sequence* body = suite->is_Block()
+          ? suite->as_Block()->body()
+          : suite->as_Lambda()->body();
+      if (body->expressions().length() != 1 ||
+          i + 1 != call->arguments().length()) return true;
+      std::string body_text;
+      if (!format_sequence(body,
+                           source_,
+                           0,
+                           &body_text,
+                           style_,
+                           options_)) {
+        supported_ = false;
+        return true;
+      }
+      if (body_text.find('\n') != std::string::npos) return true;
+    }
+    return false;
+  }
+
+  std::string named_suite_prefix(NamedArgument* named) {
+    std::string result = "--";
+    if (named->inverted()) result += "no-";
+    return result + source_text(named->name()) + "=";
+  }
+
+  void append_suite_body(FormatOutput* result,
+                         int header_indentation,
+                         int body_indentation,
+                         const std::string& header,
+                         const std::string& body_text) {
+    size_t first_newline = body_text.find('\n');
+    if (first_newline == std::string::npos) {
+      result->add_line(header_indentation,
+                       header + (body_text.empty() ? "" : " " + body_text));
+      return;
+    }
+    result->add_line(header_indentation, header);
+    size_t line_start = 0;
+    while (line_start < body_text.size()) {
+      size_t line_end = body_text.find('\n', line_start);
+      if (line_end == std::string::npos) line_end = body_text.size();
+      size_t non_space = line_start;
+      while (non_space < line_end && body_text[non_space] == ' ') non_space++;
+      result->add_line(
+          body_indentation + static_cast<int>(non_space - line_start),
+          body_text.substr(non_space, line_end - non_space));
+      line_start = line_end + 1;
+    }
+  }
+
+  bool segmented_suite_call(Call* call, FormatOutput* result) {
+    std::string first = flat(call->target(), PRECEDENCE_POSTFIX);
+    int first_suite = -1;
+    for (int i = 0; i < call->arguments().length(); i++) {
+      if (suite_value(call->arguments()[i]) != null) {
+        first_suite = i;
+        break;
+      }
+      first += " " + call_argument(call->arguments()[i]);
+    }
+    if (first_suite < 0) return false;
+    *result = FormatOutput::single_line(first);
+
+    for (int i = first_suite; i < call->arguments().length(); i++) {
+      Expression* argument = call->arguments()[i];
+      Expression* suite = suite_value(argument);
+      if (suite == null) {
+        result->add_line(style_.continuation_step, call_argument(argument));
+        continue;
+      }
+      Sequence* body = suite->is_Block()
+          ? suite->as_Block()->body()
+          : suite->as_Lambda()->body();
+      std::string body_text;
+      if (!format_sequence(body,
+                           source_,
+                           0,
+                           &body_text,
+                           style_,
+                           options_)) return false;
+      append_suite_body(
+          result,
+          style_.continuation_step,
+          style_.continuation_step + style_.indentation_step,
+          (argument->is_NamedArgument()
+              ? named_suite_prefix(argument->as_NamedArgument())
+              : std::string()) + suite_introduction(suite),
+          body_text);
+    }
+    return true;
+  }
+
+  bool suite_call(Call* call, FormatOutput* result) {
+    std::string first = flat(call->target(), PRECEDENCE_POSTFIX);
+    Expression* suite = null;
+    for (int i = 0; i < call->arguments().length(); i++) {
+      Expression* argument = call->arguments()[i];
+      Expression* candidate = suite_value(argument);
+      if (candidate == null) {
+        first += " " + call_argument(argument);
+        continue;
+      }
+      // A suite owns the remainder of its indentation level. The parser does
+      // not normally produce later arguments, but refusing this shape keeps
+      // the formatter conservative if the grammar grows.
+      if (suite != null || i + 1 != call->arguments().length()) return false;
+      suite = candidate;
+      if (argument->is_NamedArgument()) {
+        first += " " + named_suite_prefix(argument->as_NamedArgument());
+      }
+      first += suite_introduction(suite);
+    }
+    if (suite == null) return false;
+
+    Sequence* body = suite->is_Block()
+        ? suite->as_Block()->body()
+        : suite->as_Lambda()->body();
+    std::string body_text;
+    if (!format_sequence(body,
+                         source_,
+                         0,
+                         &body_text,
+                         style_,
+                         options_)) return false;
+
+    *result = FormatOutput::single_line(first);
+    size_t line_start = 0;
+    while (line_start < body_text.size()) {
+      size_t line_end = body_text.find('\n', line_start);
+      if (line_end == std::string::npos) line_end = body_text.size();
+      size_t non_space = line_start;
+      while (non_space < line_end && body_text[non_space] == ' ') non_space++;
+      result->add_line(
+          style_.indentation_step +
+              static_cast<int>(non_space - line_start),
+          body_text.substr(non_space, line_end - non_space));
+      line_start = line_end + 1;
+    }
+    return true;
   }
 
   FormatOutput named_suffix_call(Call* call, int first_named) {
@@ -490,7 +762,7 @@ class ExpressionPrinter {
     std::vector<int> arguments;
     for (auto argument : call->arguments()) {
       int width = estimated_call_argument_width(argument);
-      if (width < 0) return -1;
+      if (width < 0 || suite_value(argument) != null) return -1;
       arguments.push_back(width);
     }
 
@@ -631,6 +903,64 @@ class ExpressionPrinter {
               int outer_precedence,
               FormatOutput* result) {
     Expression* inner = peel_parentheses(expression);
+    if ((inner->is_Block() || inner->is_Lambda()) &&
+        outer_precedence == PRECEDENCE_NONE) {
+      Sequence* body = inner->is_Block()
+          ? inner->as_Block()->body()
+          : inner->as_Lambda()->body();
+      std::string body_text;
+      if (!format_sequence(body,
+                           source_,
+                           0,
+                           &body_text,
+                           style_,
+                           options_)) {
+        supported_ = false;
+        return false;
+      }
+      if (body_text.find('\n') != std::string::npos) {
+        FormatOutput suite_output = FormatOutput::single_line(
+            suite_introduction(inner));
+        size_t line_start = 0;
+        while (line_start < body_text.size()) {
+          size_t line_end = body_text.find('\n', line_start);
+          if (line_end == std::string::npos) line_end = body_text.size();
+          size_t non_space = line_start;
+          while (non_space < line_end && body_text[non_space] == ' ') {
+            non_space++;
+          }
+          suite_output.add_line(
+              style_.indentation_step +
+                  static_cast<int>(non_space - line_start),
+              body_text.substr(non_space, line_end - non_space));
+          line_start = line_end + 1;
+        }
+        *result = std::move(suite_output);
+        return true;
+      }
+    }
+    if (inner->is_Call() && outer_precedence == PRECEDENCE_NONE &&
+        call_requires_suite_shape(inner->as_Call())) {
+      FormatOutput suite_output;
+      Call* call = inner->as_Call();
+      bool has_nonfinal_suite = false;
+      for (int i = 0; i + 1 < call->arguments().length(); i++) {
+        if (suite_value(call->arguments()[i]) != null) {
+          has_nonfinal_suite = true;
+          break;
+        }
+      }
+      bool formatted = has_nonfinal_suite
+          ? segmented_suite_call(call, &suite_output)
+          : suite_call(call, &suite_output);
+      if (formatted) {
+        *result = std::move(suite_output);
+      } else {
+        supported_ = false;
+      }
+      return formatted;
+    }
+
     int flat_width = estimated_flat_width(expression);
     if (flat_width < 0) return render_flat(expression, outer_precedence, result);
 
