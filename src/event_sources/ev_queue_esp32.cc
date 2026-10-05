@@ -38,6 +38,7 @@ constexpr int MAX_QUEUE_SET_SIZE =
     RMT_EVENT_QUEUE_SIZE +
     ESPNOW_EVENT_QUEUE_SIZE +
     SPI_EVENT_QUEUE_SIZE +
+    USB_HOST_EVENT_QUEUE_SIZE +
     1;
 
 EventQueueEventSource* EventQueueEventSource::instance_ = null;
