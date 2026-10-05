@@ -106,6 +106,53 @@ static void test_format_expression(SourceManager* sources) {
       "foo or\n    bar or\n    gee");
   ASSERT(format(sources, "condition ? yes : no", 8) ==
       "condition\n    ? yes\n    : no");
+
+  ASSERT(format(sources, "print  \"hello\"") == "print \"hello\"");
+  ASSERT(format(
+      sources,
+      "consume arg01 arg02 arg03 arg04 arg05 arg06 arg07 arg08 arg09 arg10",
+      40) ==
+      "consume arg01 arg02 arg03 arg04 arg05 arg06 arg07 arg08 arg09 arg10");
+  ASSERT(format(
+      sources,
+      "http-client.post-request encoded --host=server-host --port=server-port",
+      38) ==
+      "http-client.post-request encoded\n"
+      "    --host=server-host\n"
+      "    --port=server-port");
+  ASSERT(format(
+      sources,
+      "send first-moderately-long second-moderately-long third-moderately-long",
+      36) ==
+      "send first-moderately-long \\\n"
+      "    second-moderately-long third-moderately-long");
+  ASSERT(format(sources, "consume (build x y)") == "consume (build x y)");
+  ASSERT(format(sources, "(build x).field") == "(build x).field");
+  ASSERT(format(sources, "1 + (compute x)") == "1 + (compute x)");
+  ASSERT(format(sources, "configure --no-cache") ==
+      "configure --no-cache");
+
+  ASSERT(format(sources, "[]") == "[]");
+  ASSERT(format(sources, "{}") == "{}");
+  ASSERT(format(sources, "{:}") == "{:}");
+  ASSERT(format(sources, "#[1,2,  3]") == "#[1, 2, 3]");
+  ASSERT(format(sources, "{one:1,two: 2}") == "{one: 1, two: 2}");
+  ASSERT(format(
+      sources,
+      "[aaaaaaaaaa, bbbbbbbbbb, cccccccccc, dddddddddd]",
+      24) ==
+      "[\n"
+      "  aaaaaaaaaa, bbbbbbbbbb,\n"
+      "  cccccccccc, dddddddddd,\n"
+      "]");
+  ASSERT(format(
+      sources,
+      "{first-long: one-long, second-long: two-long}",
+      24) ==
+      "{\n"
+      "  first-long: one-long,\n"
+      "  second-long: two-long,\n"
+      "}");
 }
 
 } // namespace compiler
