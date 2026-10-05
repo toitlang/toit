@@ -23,18 +23,45 @@ class StatementPrinter {
  public:
   StatementPrinter(Source* source,
                    const FormatStyle& style,
-                   const FormatExpressionOptions& expression_options)
+                   const FormatExpressionOptions& expression_options,
+                   FormatCommentState* comments)
       : source_(source)
       , style_(style)
-      , expression_options_(expression_options) {}
+      , expression_options_(expression_options)
+      , comments_(comments) {}
 
   bool sequence(Sequence* sequence, int indentation, std::string* result) {
     ASSERT(sequence != null && result != null);
     std::vector<std::string> statements;
+    // Earlier container printers have already consumed their comments. Using
+    // zero here lets the first statement claim own-line comments immediately
+    // after a suite's colon even though Sequence's AST range starts at its
+    // first expression.
+    int cursor = 0;
     for (auto expression : sequence->expressions()) {
+      int expression_start = start(expression);
+      if (comments_ != null) {
+        int original_indentation = line(expression_start).indentation;
+        std::string leading;
+        if (!comments_->render_own_line(
+            cursor,
+            expression_start,
+            indentation - original_indentation,
+            &leading)) return false;
+        if (!leading.empty()) statements.push_back(std::move(leading));
+      }
       std::string text;
-      if (!statement(expression, indentation, &text)) return false;
+      if (comments_ != null && should_render_verbatim(expression)) {
+        int first_line = facts()->line_index_at(expression_start);
+        int last_line = facts()->line_index_at(
+            std::max(expression_start, end(expression) - 1));
+        text = comments_->render_verbatim(
+            first_line, last_line, indentation);
+      } else if (!statement(expression, indentation, &text)) {
+        return false;
+      }
       statements.push_back(std::move(text));
+      cursor = end(expression);
     }
     *result = join(statements, "\n");
     return true;
@@ -44,6 +71,43 @@ class StatementPrinter {
   Source* source_;
   const FormatStyle& style_;
   const FormatExpressionOptions& expression_options_;
+  FormatCommentState* comments_;
+
+  FormatSource* facts() const {
+    return const_cast<FormatSource*>(comments_->source());
+  }
+
+  int start(Node* node) const {
+    return source_->offset_in_source(node->full_range().from());
+  }
+
+  int end(Node* node) const {
+    return source_->offset_in_source(node->full_range().to());
+  }
+
+  const FormatLine& line(int offset) const {
+    return facts()->lines()[facts()->line_index_at(offset)];
+  }
+
+  bool is_control(Expression* expression) const {
+    return (expression->is_If() && expression->as_If()->yes() != null &&
+            expression->as_If()->yes()->is_Sequence()) ||
+        expression->is_While() || expression->is_For() ||
+        expression->is_TryFinally();
+  }
+
+  bool should_render_verbatim(Expression* expression) const {
+    int from = start(expression);
+    int first_line = facts()->line_index_at(from);
+    int header_to = facts()->lines()[first_line].to;
+    if (comments_->has_unconsumed_in(from, header_to)) return true;
+    if (is_control(expression)) return false;
+    int last_line = facts()->line_index_at(
+        std::max(from, end(expression) - 1));
+    return comments_->has_unconsumed_in(
+        facts()->lines()[first_line].from,
+        facts()->lines()[last_line].to);
+  }
 
   static std::string join(const std::vector<std::string>& parts,
                           const char* separator) {
@@ -285,10 +349,11 @@ bool format_sequence(Sequence* sequence,
                      int indentation,
                      std::string* result,
                      const FormatStyle& style,
-                     const FormatExpressionOptions& expression_options) {
+                     const FormatExpressionOptions& expression_options,
+                     FormatCommentState* comments) {
   ASSERT(source != null && result != null);
   ASSERT(indentation >= 0);
-  StatementPrinter printer(source, style, expression_options);
+  StatementPrinter printer(source, style, expression_options, comments);
   return printer.sequence(sequence, indentation, result);
 }
 
