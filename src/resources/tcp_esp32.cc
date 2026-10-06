@@ -93,7 +93,7 @@ class SocketResourceGroup : public ResourceGroup {
 
 int LwipSocket::on_accept(tcp_pcb* tpcb, err_t err) {
   if (err != ERR_OK) {
-    // Currently this only happend when a SYN is received and
+    // Currently this only happens when a SYN is received and
     // there is not enough memory.  In this case err is ERR_MEM.
     // We do this to trigger a GC.  The counterpart will retransmit the
     // SYN.
@@ -104,10 +104,10 @@ int LwipSocket::on_accept(tcp_pcb* tpcb, err_t err) {
     return err;
   }
 
+  // On failure new_backlog_socket has aborted the new connection and
+  // requested a GC. The listening socket itself is fine, so don't flag an
+  // error on it.
   int result = new_backlog_socket(tpcb);
-  if (result != ERR_OK) {
-    socket_error(err);
-  }
   send_state();
   return result;
 }
@@ -200,8 +200,11 @@ int LwipSocket::new_backlog_socket(tcp_pcb* tpcb) {
   LwipSocket* socket = _new LwipSocket(resource_group(), kConnection);
   if (socket == null) {
     // We are not in a primitive, so we can't retry the operation.
-    // We return ERR_ABRT to tell LwIP that the connection is dead.
+    // We abort the connection and return ERR_ABRT to tell LwIP that it is
+    // gone. LwIP assumes that a callback returning ERR_ABRT has already
+    // aborted the pcb, so without the tcp_abort the pcb would leak.
     // We also trigger a GC so at least the next one will succeed.
+    tcp_abort(tpcb);
     needs_gc = true;
     return ERR_ABRT;
   }
