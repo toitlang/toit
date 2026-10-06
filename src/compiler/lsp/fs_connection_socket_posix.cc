@@ -17,6 +17,7 @@
 
 #ifdef TOIT_POSIX
 
+#include <errno.h>
 #include <limits.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -49,20 +50,28 @@ void LspFsConnectionSocket::initialize(Diagnostics* diagnostics) {
   addrinfo* result;
   int status = getaddrinfo(null, port_, &hints, &result);
   if (status != 0) {
-    fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
-    exit(EXIT_FAILURE);
+    FATAL("getaddrinfo for port %s failed: %s", port_, gai_strerror(status));
   }
 
+  int error = 0;
   for (auto info = result; info != null; info = info->ai_next) {
     int socket_fd = socket(info->ai_family, info->ai_socktype, info->ai_protocol);
-    if (socket_fd == -1) continue;
+    if (socket_fd == -1) {
+      error = errno;
+      continue;
+    }
     int one = 1;
     setsockopt(socket_fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
     if (connect(socket_fd, info->ai_addr, info->ai_addrlen) != -1) {
       socket_ = socket_fd;
       break;
     }
+    error = errno;
     close(socket_fd);
+  }
+  freeaddrinfo(result);
+  if (socket_ == -1) {
+    FATAL("failed to connect to port %s: %s", port_, strerror(error));
   }
 }
 
