@@ -17,13 +17,6 @@
 
 #include <stdio.h>
 
-#ifdef TOIT_POSIX
-#include <sys/socket.h>
-#endif
-#ifdef TOIT_WINDOWS
-#include <winsock.h>
-#endif
-
 #include "diagnostic.h"
 #include "filesystem_lsp.h"
 #include "../utils.h"

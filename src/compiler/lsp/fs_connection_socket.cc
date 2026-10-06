@@ -21,7 +21,7 @@
 #include <sys/socket.h>
 #endif
 #ifdef TOIT_WINDOWS
-#include <winsock.h>
+#include <winsock2.h>
 #endif
 
 #include "fs_connection_socket.h"

@@ -22,7 +22,7 @@
 
 #include "windows.h"
 
-size_t getline(char** lineptr, size_t* n, FILE* stream) {
+ssize_t getline(char** lineptr, size_t* n, FILE* stream) {
   if (lineptr == NULL || stream == NULL || n == NULL) {
     return -1;
   }

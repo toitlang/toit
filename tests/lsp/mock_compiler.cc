@@ -6,7 +6,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <errno.h>
 #include <stdint.h>
 #include <string.h>
 #include <signal.h>
@@ -29,68 +28,8 @@
 #include <process.h>
 #define getpid _getpid
 
-// https://stackoverflow.com/a/47229318
-// /* The original code is public domain -- Will Hartung 4/9/09 */
-// /* Modifications, public domain as well, by Antti Haapala, 11/10/17
-//    - Switched to getc on 5/23/19 */
-// Slightly modified (floitsch):
-//  - avoid warnings with malloc (using 'unvoid_cast').
-//  - indentation.
-//  - discard trailing '\r'.
-//  - formatting ('*' binds to type).
-//  - made the function static.
-//  - use 'null' instead of 'NULL'.
-//  - use `reinterpret_cast` instead of C cast.
-static ssize_t getline(char** lineptr, size_t* n, FILE* stream) {
-  size_t pos;
-  int c;
+#include "../../src/compiler/windows.h"
 
-  if (lineptr == null || stream == null || n == null) {
-    errno = EINVAL;
-    return -1;
-  }
-
-  c = getc(stream);
-  if (c == EOF) {
-    return -1;
-  }
-
-  if (*lineptr == null) {
-    *lineptr = toit::unvoid_cast<char*>(malloc(128));
-    if (*lineptr == null) {
-      return -1;
-    }
-    *n = 128;
-  }
-
-  pos = 0;
-  while(c != EOF) {
-    if (pos + 1 >= *n) {
-      size_t new_size = *n + (*n >> 2);
-      if (new_size < 128) {
-        new_size = 128;
-      }
-      char* new_ptr = toit::unvoid_cast<char*>(realloc(*lineptr, new_size));
-      if (new_ptr == null) {
-        return -1;
-      }
-      *n = new_size;
-      *lineptr = new_ptr;
-    }
-
-    reinterpret_cast<unsigned char*>(*lineptr)[pos ++] = c;
-    if (c == '\n') {
-      break;
-    }
-    c = getc(stream);
-  }
-
-  if (pos != 0 && (*lineptr)[pos - 1] == '\r') {
-    pos --;
-  }
-  (*lineptr)[pos] = '\0';
-  return pos;
-}
 #define SIGCRASH SIGILL
 #else
 // We use SIGKILL, since that one doesn't create core dumps.
