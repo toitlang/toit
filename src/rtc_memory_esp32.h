@@ -19,6 +19,8 @@
 
 #ifdef TOIT_ESP32
 
+#include "sdkconfig.h"
+
 namespace toit {
 
 // The RTC memory holds state that is preserved across reboots.
@@ -48,8 +50,13 @@ class RtcMemory {
   // Deprecated: User data.
   static uint8* user_data_address();
 
-  // Keep in sync with `RTC_MEMORY_SIZE` in `lib/esp32.toit`.
+  // Keep in sync with RTC-MEMORY-SIZE in lib/esp32/esp32.toit.
+#if defined(CONFIG_IDF_TARGET_ESP32H2)
+  // H2 has 4 KiB total; reserve space for Toit and IDF sleep state.
+  static const int RTC_USER_DATA_SIZE = 3840;
+#else
   static const int RTC_USER_DATA_SIZE = 4096;
+#endif
 };
 
 } // namespace toit

@@ -13,6 +13,7 @@ Each unit has two channels that can be configured independently. They share the
 The ESP32 has 8 units.
 The ESP32C3 has no pulse counter.
 The ESP32C6 has 4 units.
+The ESP32H2 has 4 units.
 The ESP32S2 has 4 units.
 The ESP32S3 has 4 units.
 

@@ -444,6 +444,10 @@ esp32c3:
 esp32c6:
 	$(MAKE) IDF_TARGET=esp32c6 ESP32_CHIP=esp32c6 esp32
 
+.PHONY: esp32h2
+esp32h2:
+	$(MAKE) IDF_TARGET=esp32h2 ESP32_CHIP=esp32h2 esp32
+
 .PHONY: esp32p4
 esp32p4:
 	$(MAKE) IDF_TARGET=esp32p4 ESP32_CHIP=esp32p4 esp32

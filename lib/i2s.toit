@@ -28,7 +28,7 @@ The channels on the peripheral are not independent. It's not possible to have tw
   simplex channels on the same peripheral.
 
 # Other ESP32 variants
-The ESP32C3, and ESP32C6 have one I2S peripheral. There are no restrictions on
+The ESP32C3, ESP32C6, and ESP32H2 have one I2S peripheral. There are no restrictions on
   which pins can be used for the master clock. The master clock can be used as
   input or output.
 
