@@ -118,10 +118,14 @@ file(GLOB porting_sources_SRC
 set(toit_vm_SRC ${toit_vm_runtime_SRC} ${toit_resources_SRC} ${toit_event_sources_SRC}
                 ${lwip_on_linux_sources_SRC} ${gc_sources_SRC})
 
-add_library(
-  toit_core
-  ${toit_core_SRC}
-  )
+# Only the host compiler links toit_core. Defining it for embedded builds adds
+# compile-database entries without the IDF flags.
+if (NOT ${TOIT_IS_EMBEDDED})
+  add_library(
+    toit_core
+    ${toit_core_SRC}
+    )
+endif()
 
 add_library(
   toit_vm
@@ -197,12 +201,16 @@ if (NOT ${TOIT_IS_EMBEDDED})
   add_dependencies(build_tools toit_run_image)
 endif()
 
-target_include_directories(toit_core PRIVATE "${TOIT_SDK_SOURCE_DIR}/third_party/dragonbox/include")
+if (NOT ${TOIT_IS_EMBEDDED})
+  target_include_directories(toit_core PRIVATE "${TOIT_SDK_SOURCE_DIR}/third_party/dragonbox/include")
+endif()
 target_include_directories(toit_vm PRIVATE "${TOIT_SDK_SOURCE_DIR}/third_party/dragonbox/include")
 
 # On linux, we need to link statically against libgcc as well.
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
-  target_link_libraries(toit_core PRIVATE gpiod::gpiod)
+  if (NOT ${TOIT_IS_EMBEDDED})
+    target_link_libraries(toit_core PRIVATE gpiod::gpiod)
+  endif()
   target_link_libraries(toit_vm PRIVATE gpiod::gpiod)
 
   set(TOIT_LINK_LIBS_LIBGCC -static-libgcc)
