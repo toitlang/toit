@@ -31,14 +31,15 @@ struct FormatStyle {
 
 // Formatter phase overview:
 //
-//   AST lowering -> Layout -> SelectedPlan -> FinalPlan
-//                                                + syntax insertions -> rendering
+//   AST lowering -> Layout -> SelectedPlan -> whitespace repairs -> FinalPlan
+//                                                               + syntax insertions -> rendering
 //
 // Layout selection measures logical tokens without synthesized punctuation.
 // The selected token events stay private, so later phases cannot accidentally
-// depend on or change their order. Freezing makes that selection immutable;
-// syntax protection then responds to its line topology without feeding
-// punctuation back into width selection.
+// depend on or change their order. Repairs can address exposed gaps but cannot
+// access token events. Freezing makes the result immutable; syntax protection
+// then responds to its line topology without feeding punctuation back into
+// width selection.
 
 // A zero-width position in a layout. Expression lowering records markers at
 // syntax boundaries; later phases can then reason about selected newlines
@@ -77,6 +78,7 @@ class LayoutGap {
   friend class LayoutBuilder;
   friend class LayoutSelector;
   friend class SelectedPlan;
+  friend class WhitespaceEdits;
 };
 
 enum class GapState {
@@ -149,12 +151,13 @@ class LayoutBuilder {
   int next_gap_ = 0;
 };
 
+class WhitespaceEdits;
 class FinalPlan;
 
 // A layout after every GROUP has selected its flat or broken form. This is the
-// concrete result of generic line selection. Token events are private and
-// have no relocation API, making preservation of token order an enforceable
-// invariant.
+// only mutable phase: aesthetic rules may change whitespace states that the
+// layout explicitly offered. Token events are private and have no relocation
+// API, making preservation of token order an enforceable invariant.
 class SelectedPlan {
  public:
   int line_of(LayoutMarker marker) const;
@@ -162,6 +165,10 @@ class SelectedPlan {
 
   bool can_select(LayoutGap gap, GapState state) const;
   bool is_selected(LayoutGap gap, GapState state) const;
+  // Returns false, without changing the plan, if two rules requested
+  // contradictory states. Callers can report `edits.conflicts()`.
+  bool apply(const WhitespaceEdits& edits);
+
   FinalPlan freeze() &&;
 
  private:
@@ -191,8 +198,8 @@ class SelectedPlan {
   friend std::string render_plan(const FinalPlan&, const class PlanInsertions&);
 };
 
-// Freezing closes layout selection. Later phases may inspect this final line
-// topology, but cannot mutate it.
+// Freezing closes the whitespace-repair phase. Later phases may inspect this
+// final line topology, but cannot mutate it.
 class FinalPlan {
  public:
   int line_of(LayoutMarker marker) const { return selected_.line_of(marker); }
