@@ -1723,7 +1723,9 @@ void MethodResolver::visit_TryFinally(ast::TryFinally* node) {
                                             true,  // Final
                                             false, // Not a block
                                             range);
-      auto throw_value = zone_new<ir::LiteralInteger>(Interpreter::UNWIND_REASON_WHEN_THROWING_EXCEPTION,
+      // Pass a temporary: zone_new takes its arguments by reference, which
+      // would odr-use the constant and fail to link with LTO.
+      auto throw_value = zone_new<ir::LiteralInteger>(int64(Interpreter::UNWIND_REASON_WHEN_THROWING_EXCEPTION),
                                                  range);
       auto reason_ref = zone_new<ir::ReferenceLocal>(ir_handler_parameter, 0, range);
       ast::Binary comparison(Token::EQ, null, null);
