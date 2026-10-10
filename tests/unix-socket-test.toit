@@ -15,6 +15,9 @@ main:
     expect-throw "INVALID_ARGUMENT": listen_ group path 10
     expect-throw "INVALID_ARGUMENT": connect_ group path
   expect-throw "INVALID_ARGUMENT": listen_ group "/unused" -1
+  [null, #[47, 116, 109, 112]].do: | path |
+    expect-throw "WRONG_OBJECT_TYPE": listen_ group path 10
+    expect-throw "WRONG_OBJECT_TYPE": connect_ group path
   directory := (mkdtemp_ "/tmp/toit-unix-").to-string
   path := "$directory/socket"
   listener := null
@@ -25,19 +28,24 @@ main:
   try:
     expect-not-null (catch: connect_ group path)
     listener = listen_ group path 1
-    expect-equals path (path_ listener false)
+    expect ((path_ listener false) is ByteArray)
+    expect-equals path (path_ listener false).to-string
     expect-null (accept_ group listener)
     expect-not-null (catch: listen_ group path 1)
     client = connect_ group path
     client-state = ResourceState_ group client
     client-state.wait-for-state 2 | 8
     expect-equals 0 (error-number_ client)
-    expect-equals path (path_ client true)
+    expect-equals path (path_ client true).to-string
     expect-null (path_ client false)
     accepted = accept_ group listener
     expect-not-null accepted
     accepted-state = ResourceState_ group accepted
-    expect-equals path (path_ accepted false)
+    // Reject mismatched groups without invalidating or closing either socket.
+    other-group := init_
+    expect-throw "WRONG_OBJECT_TYPE": close_ other-group client
+    expect-throw "WRONG_OBJECT_TYPE": close_ other-group accepted
+    expect-equals path (path_ accepted false).to-string
     expect-null (path_ accepted true)
     expect-equals -1 (read_ group accepted)
     expect-throw "OUT_OF_BOUNDS": write_ group client "hello" -1 2

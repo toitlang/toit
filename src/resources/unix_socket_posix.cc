@@ -103,8 +103,7 @@ static int create_socket() {
 
 static bool make_address(const Blob& path, sockaddr_un* address, socklen_t* length) {
   // Only filesystem paths are supported. Check bytes, not Unicode characters.
-  if (path.length() == 0 || path.length() >= static_cast<word>(sizeof(address->sun_path)) ||
-      memchr(path.address(), 0, path.length()) != null) return false;
+  if (path.length() == 0 || path.length() >= static_cast<word>(sizeof(address->sun_path))) return false;
   memset(address, 0, sizeof(*address));
   address->sun_family = AF_UNIX;
   memcpy(address->sun_path, path.address(), path.length());
@@ -132,7 +131,7 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(connect) {
-  ARGS(UnixSocketResourceGroup, group, Blob, path);
+  ARGS(UnixSocketResourceGroup, group, CStringBlob, path);
   sockaddr_un address;
   socklen_t length;
   if (!make_address(path, &address, &length)) FAIL(INVALID_ARGUMENT);
@@ -155,7 +154,7 @@ PRIMITIVE(connect) {
 }
 
 PRIMITIVE(listen) {
-  ARGS(UnixSocketResourceGroup, group, Blob, path, int, backlog);
+  ARGS(UnixSocketResourceGroup, group, CStringBlob, path, int, backlog);
   sockaddr_un address;
   socklen_t length;
   if (!make_address(path, &address, &length) || backlog < 0) FAIL(INVALID_ARGUMENT);
@@ -169,6 +168,8 @@ PRIMITIVE(listen) {
   // descriptor can generate a spurious hangup notification.
   IntResource* resource = _new IntResource(group, fd);
   if (resource == null) FAIL(MALLOC_FAILED);
+  // Pathname cleanup belongs to the caller, even if listen fails after bind:
+  // another process may have replaced the directory entry in the meantime.
   if (::bind(fd, reinterpret_cast<sockaddr*>(&address), length) == -1 || ::listen(fd, backlog) == -1) {
     int error = errno;
     delete resource;
@@ -255,6 +256,7 @@ PRIMITIVE(close_write) {
 
 PRIMITIVE(close) {
   ARGS(UnixSocketResourceGroup, group, IntResource, resource);
+  if (resource->resource_group() != group) FAIL(WRONG_OBJECT_TYPE);
   group->unregister_id(resource->id());
   resource_proxy->clear_external_address();
   return process->null_object();
@@ -288,7 +290,13 @@ PRIMITIVE(path) {
   }
   size_t size = Utils::min(static_cast<size_t>(length - offsetof(sockaddr_un, sun_path)),
                          sizeof(address.sun_path));
-  return process->allocate_string_or_error(address.sun_path, strnlen(address.sun_path, size));
+  // Peer names can contain arbitrary bytes. Let the caller decide whether to
+  // decode them as UTF-8 instead of constructing an invalid Toit string.
+  word path_length = strnlen(address.sun_path, size);
+  ByteArray* array = process->allocate_byte_array(path_length);
+  if (array == null) FAIL(ALLOCATION_FAILED);
+  memcpy(ByteArray::Bytes(array).address(), address.sun_path, path_length);
+  return array;
 }
 
 }  // namespace toit
