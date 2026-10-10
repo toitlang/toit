@@ -80,6 +80,7 @@ namespace toit {
   M(debug,   MODULE_DEBUG)                   \
   M(espnow,  MODULE_ESPNOW)                  \
   M(bignum,  MODULE_BIGNUM)                  \
+  M(unix_socket, MODULE_UNIX_SOCKET)         \
 
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(write_on_stdout, 2)              \
@@ -287,6 +288,19 @@ namespace toit {
   PRIMITIVE(get_option, 3)                   \
   PRIMITIVE(set_option, 4)                   \
   PRIMITIVE(gc, 1)                           \
+
+#define MODULE_UNIX_SOCKET(PRIMITIVE)        \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(connect, 2)                      \
+  PRIMITIVE(listen, 3)                       \
+  PRIMITIVE(accept, 2)                       \
+  PRIMITIVE(read, 2)                         \
+  PRIMITIVE(write, 5)                        \
+  PRIMITIVE(close_write, 2)                  \
+  PRIMITIVE(close, 2)                        \
+  PRIMITIVE(error_number, 1)                 \
+  PRIMITIVE(error, 1)                        \
+  PRIMITIVE(path, 2)                         \
 
 #define MODULE_UDP(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
@@ -1200,6 +1214,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_SignalResourceGroup(N, name) MAKE_UNPACKING_MACRO(SignalResourceGroup, N, name)
 #define _A_T_SocketResourceGroup(N, name) MAKE_UNPACKING_MACRO(SocketResourceGroup, N, name)
 #define _A_T_TcpResourceGroup(N, name)    MAKE_UNPACKING_MACRO(TcpResourceGroup, N, name)
+#define _A_T_UnixSocketResourceGroup(N, name) MAKE_UNPACKING_MACRO(UnixSocketResourceGroup, N, name)
 #define _A_T_MbedTlsResourceGroup(N, name)MAKE_UNPACKING_MACRO(MbedTlsResourceGroup, N, name)
 #define _A_T_TimerResourceGroup(N, name)  MAKE_UNPACKING_MACRO(TimerResourceGroup, N, name)
 #define _A_T_UdpResourceGroup(N, name)    MAKE_UNPACKING_MACRO(UdpResourceGroup, N, name)

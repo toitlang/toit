@@ -128,6 +128,7 @@ namespace toit {
   fn(TouchResourceGroup)                \
   fn(EspNowResourceGroup)               \
   fn(CellularResourceGroup)             \
+  fn(UnixSocketResourceGroup)           \
 
 #define MAKE_ENUM(name)                 \
   name##Tag,                            \
