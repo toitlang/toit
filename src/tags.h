@@ -75,6 +75,7 @@ namespace toit {
   fn(AeadContext)                       \
   fn(TlsHandshakeToken)                 \
   fn(EspNowResource)                    \
+  fn(UsbHostResource)                   \
   fn(MbedTlsSocket)                     \
   fn(RsaGenerationResource)             \
   fn(CellularEvents)                    \
@@ -127,6 +128,7 @@ namespace toit {
   fn(PwmResourceGroup)                  \
   fn(TouchResourceGroup)                \
   fn(EspNowResourceGroup)               \
+  fn(UsbHostResourceGroup)              \
   fn(CellularResourceGroup)             \
 
 #define MAKE_ENUM(name)                 \

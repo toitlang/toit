@@ -220,6 +220,21 @@ menu "Toit"
             help
                 ESP-Now support in the Toit binary.
 
+        config TOIT_ENABLE_USB_HOST
+            boolean "Enable USB host support"
+            default "n"
+            # TODO(P4): the P4 has two OTG controllers and needs controller
+            # selection in the USB host resource before it can be enabled.
+            depends on IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3
+            help
+                USB host support (control, bulk and interrupt transfers) in
+                the Toit binary, through the `usb.host` library. Costs about
+                37 KB of flash and 100 bytes of RAM; an open `usb.host.Host`
+                uses about 14 KB of internal RAM more until it is closed.
+                While a Host is open it owns the USB PHY, so a USB
+                Serial/JTAG console is disconnected until the host is closed
+                again.
+
         config TOIT_ENABLE_I2C_TARGET
             boolean "Enable I2C target support on ESP32"
             default "y"
