@@ -49,6 +49,53 @@ extern "C" {
 #include "uuid.h"
 #include "vm.h"
 
+namespace {
+
+// Cortex-M3 has no 64-bit exclusive accesses. Protect the compiler's 64-bit
+// atomic helpers against task switches and maskable interrupts on this single
+// core. Restore PRIMASK so nested calls preserve the caller's interrupt state.
+// NMI and fault handlers must not access these atomic objects.
+class Atomic64Guard {
+ public:
+  Atomic64Guard() : mask_(__get_PRIMASK()) {
+    __disable_irq();
+    __DMB();
+  }
+  ~Atomic64Guard() {
+    __DMB();
+    __set_PRIMASK(mask_);
+  }
+
+ private:
+  uint32_t mask_;
+};
+
+}  // namespace
+
+// GCC emits these calls for std::atomic<uint64>. Provide at least the ordering
+// requested by every memory-order argument, including sequential consistency.
+// Use plain volatile accesses here to avoid recursively calling these helpers.
+extern "C" uint64_t __atomic_load_8(const volatile void* ptr, int) {
+  Atomic64Guard guard;
+  return *static_cast<const volatile uint64_t*>(ptr);
+}
+
+extern "C" uint64_t __atomic_fetch_add_8(volatile void* ptr, uint64_t value, int) {
+  Atomic64Guard guard;
+  volatile uint64_t* target = static_cast<volatile uint64_t*>(ptr);
+  uint64_t previous = *target;
+  *target = previous + value;
+  return previous;
+}
+
+extern "C" uint64_t __atomic_fetch_sub_8(volatile void* ptr, uint64_t value, int) {
+  Atomic64Guard guard;
+  volatile uint64_t* target = static_cast<volatile uint64_t*>(ptr);
+  uint64_t previous = *target;
+  *target = previous - value;
+  return previous;
+}
+
 namespace toit {
 
 // Task-to-thread map. We can't use FreeRTOS TLS pointers because the
