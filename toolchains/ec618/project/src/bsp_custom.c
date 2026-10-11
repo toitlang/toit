@@ -144,3 +144,14 @@ void BSP_CustomInit(void) {
     setvbuf(stdout, NULL, _IONBF, 0);
 #endif
 }
+
+// Initialize only the console here; BSP_CustomInit still runs at its normal
+// platform stage, after the scheduler starts and PLAT configuration is ready.
+#if defined(TOIT_EC618_BOOT_DIAGNOSTICS)
+void toit_boot_diagnostic_console_init(void) {
+#if CONFIG_TOIT_EC618_PRINT_UART
+    SetPrintUart();
+    setvbuf(stdout, NULL, _IONBF, 0);
+#endif
+}
+#endif

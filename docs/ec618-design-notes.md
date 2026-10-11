@@ -73,3 +73,28 @@ that same allocator. In particular, `_memalign_r` cannot use its normal chunk
 splitting after calling a wrapped `_malloc_r`: it would interpret cmpctmalloc
 headers as newlib headers and corrupt memory. It is wrapped directly to the
 aligned allocator instead. See `toolchains/ec618/project/src/heap_7.c`.
+
+## Platform startup on QCX216
+
+The LuatOS precompiled `main_entry` checks APNV4 for a 32-character string
+beginning with `20` and halts before scheduler startup if it is absent. On
+the QCX216 bring-up board, an instrumented read returned a buffer with no
+NUL terminator in 64 bytes, failed this check, and was followed by repeated
+boots. This happens before the usual Toit console and dispatcher startup.
+
+Base v5 uses `project/src/platform_startup.c` (under `toolchains/ec618`) and
+`--wrap=main_entry` to retain the vendor object's other BSP functions while
+replacing its startup entry. It preserves the platform initialization order,
+empty application callback, task initialization, and kernel startup, without
+reading or modifying APNV4 as an eligibility check. Other platform services
+still perform their normal NVRAM operations.
+
+For early progress messages, build both stages with
+`TOIT_EC618_BOOT_DIAGNOSTICS=1 make ec618-base` followed by
+`TOIT_EC618_BOOT_DIAGNOSTICS=1 make ec618`. The diagnostic console initializes
+after `BSP_CommonInit`; its UART comes from the provisioned anchor and its
+baud rate remains 115200 by default. Normal `BSP_CustomInit` retains its
+original platform timing. This base change requires a full flash and matching
+slots. The diagnostic build has booted on QCX216 and run a repeating Toit
+heartbeat on UART1. Cellular, peripherals, sleep/wakeup, and OTA compatibility
+have not yet been verified on QCX216.
