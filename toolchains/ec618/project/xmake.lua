@@ -35,7 +35,17 @@ target(TARGET_NAME)
     end
 target_end()
 
--- The SDK's prebuilt kernel only aligns task stacks to four bytes.
+-- Align the prebuilt kernel's task stacks and use Toit's platform entry.
 target(TARGET_NAME .. ".elf")
-    add_ldflags("-Wl,--wrap=pxPortInitialiseStack", {force = true})
+    add_ldflags("-Wl,--wrap=pxPortInitialiseStack,--wrap=main_entry", {force = true})
 target_end()
+
+-- Optional progress markers for early platform bring-up.
+if os.getenv("TOIT_EC618_BOOT_DIAGNOSTICS") == "1" then
+    target(TARGET_NAME)
+        add_cxflags("-DTOIT_EC618_BOOT_DIAGNOSTICS=1", {force = true})
+    target_end()
+    target(TARGET_NAME .. ".elf")
+        add_cxflags("-DTOIT_EC618_BOOT_DIAGNOSTICS=1", {force = true})
+    target_end()
+end
