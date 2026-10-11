@@ -7,10 +7,10 @@ import encoding.json
 import expect show *
 import system
 
-import ble.experimental.attribute-server as attributes
-import ble.experimental.service.client as clients
-import ble.experimental.service.provider as providers
-import ble.experimental.service.requests as bridge
+import ble.implementation_.attribute-server as attributes
+import ble.service.client as clients
+import ble.implementation_.service.provider as providers
+import ble.implementation_.service.requests as bridge
 
 WARMUP ::= 100
 BEGIN ::= 0xfffe
@@ -154,7 +154,7 @@ class Provider extends providers.Provider:
   constructor .count .value-size:
     super
 
-  create-session client/int -> providers.Session:
+  create-session_ client/int -> providers.Session:
     return Session this client count value-size
 
 class Session extends providers.Session:

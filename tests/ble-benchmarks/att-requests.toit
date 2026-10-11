@@ -2,14 +2,14 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-// Measures allocation through the public raw ATT boundary with a simulated peer.
+// Measures allocation through the internal ATT boundary with a simulated peer.
 // Includes peer work and GC instrumentation; does not measure radio throughput.
-import ble.experimental.att
-import ble.experimental.central
-import ble.experimental.hci
+import ble.implementation_.att
+import ble.implementation_.central
+import ble.implementation_.hci
 import expect show *
 import system
-import ..ble-hci-test as fixture
+import ..ble-fixture as fixture
 import ..ble-mtu-server-test as wire
 
 main:

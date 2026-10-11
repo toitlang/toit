@@ -4,7 +4,7 @@
 
 import expect show *
 import system
-import ble.experimental.attribute-server as server
+import ble.implementation_.attribute-server as server
 
 main:
   with-timeout --ms=30_000:

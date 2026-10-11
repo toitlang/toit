@@ -5,12 +5,12 @@
 import expect show *
 import monitor
 import system
-import ble.experimental.transport
-import ble.experimental.service.api as api
-import ble.experimental.service.client as clients
-import ble.experimental.service.gatt-provider as gatt
-import ble.experimental.service.provider as rpc
-import ble.experimental.signaling as signaling
+import ble.transport
+import ble.implementation_.service.api as api
+import ble.service.client as clients
+import ble.implementation_.service.gatt-provider as gatt
+import ble.implementation_.service.provider as rpc
+import ble.implementation_.signaling as signaling
 import .ble-fixture as fixture
 import .ble-peripheral-test as peripheral
 import .ble-service-central-cancel-test as shutdown
@@ -126,7 +126,7 @@ class Provider extends gatt.Provider:
   open-transport -> transport.Transport:
     opens++
     return opens == 1 ? radio : next-radio
-  create-builder client/int name/string -> rpc.Session:
+  create-builder_ client/int name/string -> rpc.Session:
     return create-bounded-builder client name 20 23
   create-bounded-builder client/int name/string value-limit/int mtu-limit/int
       --attribute-limit/int=64 -> rpc.Session:

@@ -19,7 +19,6 @@ import system.services show ServiceProvider
 
 import .firmware
 import .storage show StorageServiceProviderEsp32
-import .ble show install-ble-service
 import .wifi
 
 import ...boot
@@ -46,20 +45,22 @@ class SystemImage extends ContainerImage:
     unreachable  // Not implemented yet.
 
 main:
-  run --ble
+  run: null
 
 /**
-Boots the system with its services. Without $ble the BLE service is left
-  out, for a firmware whose deployment installs a provider container of its
-  own (see `boot-without-ble.toit`).
+Boots the system with its core services and calls $install-providers before
+  starting application containers.
+
+The envelope build generates an entry point that installs the selected
+  optional providers. Custom system entry points can supply their own block.
 */
-run --ble/bool -> none:
+run [install-providers] -> none:
   registry ::= FlashRegistry.scan
   service-manager ::= SystemServiceManager
   (FirmwareServiceProvider).install
   (StorageServiceProviderEsp32 registry).install
   (WifiServiceProvider).install
-  if ble: install-ble-service
+  install-providers.call
   container-manager := ContainerManager registry service-manager
   system-image := SystemImage container-manager
   container-manager.register-system-image system-image

@@ -19,8 +19,9 @@ import .boot show run
 The system without the BLE service, for a firmware whose deployment installs
   a BLE provider container of its own (the built-in provider and a second
   one do not fit the ESP32 firmware partition together). Select it with
-  CONFIG_TOIT_SYSTEM_SOURCE.
+  CONFIG_TOIT_SYSTEM_SOURCE. With the default system source, prefer disabling
+  CONFIG_TOIT_SYSTEM_BLE instead.
 */
 
 main:
-  run --no-ble
+  run: null

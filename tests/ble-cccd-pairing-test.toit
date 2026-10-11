@@ -2,20 +2,20 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.acl
-import ble.experimental.attribute-server as attributes
-import ble.experimental.bond
-import ble.experimental.bond-registry
-import ble.experimental.bond-table
-import ble.experimental.cccd-storage
-import ble.experimental.central
-import ble.experimental.connection
-import ble.experimental.encryption
-import ble.experimental.gatt-server
-import ble.experimental.hci
-import ble.experimental.security
-import ble.experimental.smp-pairing as smp
-import ble.experimental.smp-identity show Identity
+import ble.implementation_.acl
+import ble.implementation_.attribute-server as attributes
+import ble.implementation_.bond
+import ble.implementation_.bond-registry
+import ble.implementation_.bond-table
+import ble.implementation_.cccd-storage
+import ble.implementation_.central
+import ble.implementation_.connection
+import ble.implementation_.encryption
+import ble.implementation_.gatt-server
+import ble.implementation_.hci
+import ble.implementation_.security
+import ble.implementation_.smp-pairing as smp
+import ble.implementation_.smp-identity show Identity
 import expect show *
 import monitor
 import system

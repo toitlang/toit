@@ -6,7 +6,7 @@
 // advertises one notifying characteristic and pushes notifications as fast as
 // the service layer allows while a central is subscribed.
 
-import ble.experimental.service.client as service
+import ble.service.client as service
 import monitor
 import .stats as stats
 import .uuids as uuids

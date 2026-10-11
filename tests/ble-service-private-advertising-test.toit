@@ -5,12 +5,12 @@
 import expect show *
 import monitor
 import system
-import ble.experimental.privacy
-import ble.experimental.transport
-import ble.experimental.service.client as clients
-import ble.experimental.service.api as api
-import ble.experimental.service.advertising-provider as providers
-import ble.experimental.service.provider as rpc
+import ble.implementation_.privacy
+import ble.transport
+import ble.service.client as clients
+import ble.implementation_.service.api as api
+import ble.implementation_.service.advertising-provider as providers
+import ble.implementation_.service.provider as rpc
 import .ble-fixture as fixture
 import .ble-peripheral-test as peripheral
 import .ble-service-advertising-exit-test as exits
@@ -103,7 +103,7 @@ class ExitProvider extends providers.Provider:
   open-transport -> transport.Transport:
     opens++
     return opens == 1 ? radio : next-radio
-  create-advertising client/int arguments/List -> rpc.Session:
+  create-advertising_ client/int arguments/List -> rpc.Session:
     last = super client arguments
     return last
   handle index/int arguments/any --gid/int --client/int -> any:
@@ -228,6 +228,6 @@ class Provider extends providers.Provider:
   open-transport -> transport.Transport:
     opens++
     return radio
-  create-advertising client/int arguments/List -> rpc.Session:
+  create-advertising_ client/int arguments/List -> rpc.Session:
     last = super client arguments
     return last

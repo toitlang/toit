@@ -6,8 +6,8 @@ import ..uuid show BleUuid
 import ..advertisement show Advertisement DataBlock
 import monitor
 
-import ..experimental.service.client as rpc
-import ..experimental.service.api as api
+import ..service.client as rpc
+import ..implementation_.service.api as api
 import .adapter show Adapter
 import .connection
 import .types

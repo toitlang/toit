@@ -15,7 +15,7 @@ vendor controller for radio timing, the link layer and link encryption.
 ```
 Toit application
   -> ble (the existing package API; host.toit maps it onto the service client)
-  -> ble.experimental.service.client   (RPC, resource handles, scoped blocks)
+  -> ble.service.client   (RPC, resource handles, scoped blocks)
   -> provider container: service/*     (admission, request mailbox, policy hooks)
        -> gatt-server / att.Client / scanning / advertising
        -> central.Central              (link owner: connect, accept, encryption, credits, per-link inbox)
@@ -136,7 +136,7 @@ One provider process owns a controller and arbitrates access for application
 containers through `system.services`. Connections, subscriptions, scans and
 advertising sessions are `ServiceResource`s, released on client close or death.
 Providers are subclasses with policy hooks (`open-transport`,
-`create-security-owner`, `local-random-address`, `create-cccd-store`, ...);
+`create-security-owner_`, `local-random-address`, `create-cccd-store_`, ...);
 no key material or controller handle crosses RPC.
 
 Tree shaking works per container: a small provider omits the protocol code it

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.smp-features as smp
+import ble.implementation_.smp-features as smp
 import expect show *
 import system
 

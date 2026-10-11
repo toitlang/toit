@@ -2,9 +2,9 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.central
-import ble.experimental.hci
-import ble.experimental.service.shared-host as shared
+import ble.implementation_.central
+import ble.implementation_.hci
+import ble.implementation_.service.shared-host as shared
 import expect show *
 import monitor
 import .ble-fixture as fixture
@@ -72,13 +72,13 @@ class Factory implements shared.Factory:
   reject/bool := false
   host/Host? := null
 
-  controller-ready radio controller info -> none:
+  controller-ready_ radio controller info -> none:
 
   open-transport -> Radio:
     opens++
     return radio
 
-  create-shared-host controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
+  create-shared-host_ controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
     creates++
     expect-equals 517 receive-limit
     if reject: throw "FIXTURE_HOST_REJECTED"

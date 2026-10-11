@@ -2,9 +2,9 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.central
-import ble.experimental.encryption
-import ble.experimental.hci
+import ble.implementation_.central
+import ble.implementation_.encryption
+import ble.implementation_.hci
 import expect show *
 import system
 import .ble-fixture as fixture

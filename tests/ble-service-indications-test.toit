@@ -2,12 +2,12 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.transport
-import ble.experimental.signaling
-import ble.experimental.service.client as clients
-import ble.experimental.service.gatt-provider as providers
-import ble.experimental.service.provider as rpc
-import ble.experimental.service.api as api
+import ble.transport
+import ble.implementation_.signaling
+import ble.service.client as clients
+import ble.implementation_.service.gatt-provider as providers
+import ble.implementation_.service.provider as rpc
+import ble.implementation_.service.api as api
 import expect show *
 import monitor
 import system

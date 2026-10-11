@@ -4,7 +4,7 @@
 
 import expect show *
 import system
-import ble.experimental.attribute-server as attributes
+import ble.implementation_.attribute-server as attributes
 
 // Unicode 17.0, section 3.9, Table 3-7 boundary encodings. Surrounding ASCII
 // makes truncations and substitutions exercise code-point transitions too.

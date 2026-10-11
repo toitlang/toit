@@ -3,7 +3,7 @@
 // found in the lib/LICENSE file.
 
 /**
-Converts a serial log with `ble.experimental.hexdump` lines into a btsnoop file.
+Converts a serial log with `ble.transport.hexdump` lines into a btsnoop file.
 
 Usage: `toit run tools/ble-hci-log.toit LOG OUT.btsnoop [PREFIX]`
 

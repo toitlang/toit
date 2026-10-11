@@ -2,11 +2,11 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.bond
-import ble.experimental.bond-flash
-import ble.experimental.bond-revocation
-import ble.experimental.bond-storage show Records Storage
-import ble.experimental.smp-identity show Identity
+import ble.implementation_.bond
+import ble.implementation_.bond-flash
+import ble.implementation_.bond-revocation
+import ble.implementation_.bond-storage show Records Storage
+import ble.implementation_.smp-identity show Identity
 
 // Public test keys, isolated from production and the radio fixtures. Install as
 // a boot container and reset between READY checkpoints. This never resets itself.

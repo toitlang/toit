@@ -11,7 +11,7 @@ import ble show *
 import expect show *
 import io
 import monitor
-import ble.experimental.signaling as signaling
+import ble.implementation_.signaling as signaling
 import .ble-fixture as fixture
 import .ble-multilink-test as multi
 import .ble-peripheral-test as peripheral

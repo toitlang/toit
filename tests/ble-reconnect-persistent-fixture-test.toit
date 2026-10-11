@@ -2,9 +2,9 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.advertising-set
-import ble.experimental.hci
-import ble.experimental.signaling
+import ble.implementation_.advertising-set
+import ble.implementation_.hci
+import ble.implementation_.signaling
 import expect show *
 import monitor
 import .ble-fixture as packets

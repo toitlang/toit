@@ -2,13 +2,13 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.bond
-import ble.experimental.bond-resume
-import ble.experimental.central
-import ble.experimental.connection
-import ble.experimental.encryption
-import ble.experimental.hci
-import ble.experimental.smp-identity
+import ble.implementation_.bond
+import ble.implementation_.bond-resume
+import ble.implementation_.central
+import ble.implementation_.connection
+import ble.implementation_.encryption
+import ble.implementation_.hci
+import ble.implementation_.smp-identity
 import expect show *
 import monitor
 

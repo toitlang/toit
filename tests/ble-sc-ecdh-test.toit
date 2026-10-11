@@ -2,7 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.sc-ecdh as sc
+import ble.implementation_.sc-ecdh as sc
 import crypto.ec as ec
 import encoding.hex as hex
 import expect show *

@@ -5,10 +5,10 @@
 import expect show *
 import monitor
 
-import ble.experimental.attribute-server as attributes
-import ble.experimental.service.requests as bridge
-import ble.experimental.service.client as clients
-import ble.experimental.service.provider as providers
+import ble.implementation_.attribute-server as attributes
+import ble.implementation_.service.requests as bridge
+import ble.service.client as clients
+import ble.implementation_.service.provider as providers
 
 main:
   with-timeout --ms=10_000:
@@ -183,7 +183,7 @@ class TestProvider extends providers.Provider:
   constructor:
     super
 
-  create-session client/int -> providers.Session:
+  create-session_ client/int -> providers.Session:
     current = TestSession this client
     return current
 

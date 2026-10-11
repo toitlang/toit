@@ -9,8 +9,8 @@
 import expect show *
 import monitor
 import ble.v2 as ble
-import ble.experimental.transport
-import ble.experimental.service.gatt-provider as providers
+import ble.transport
+import ble.implementation_.service.gatt-provider as providers
 import .ble-fixture as fixture
 import .ble-multilink-test as links
 import .ble-service-multiclient-test as wire

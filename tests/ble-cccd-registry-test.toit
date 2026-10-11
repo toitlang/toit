@@ -4,14 +4,14 @@
 
 import expect show *
 import monitor
-import ble.experimental.bond
-import ble.experimental.bond-registry
-import ble.experimental.bond-table
-import ble.experimental.cccd-storage
-import ble.experimental.central
-import ble.experimental.connection
-import ble.experimental.hci
-import ble.experimental.smp-identity show Identity
+import ble.implementation_.bond
+import ble.implementation_.bond-registry
+import ble.implementation_.bond-table
+import ble.implementation_.cccd-storage
+import ble.implementation_.central
+import ble.implementation_.connection
+import ble.implementation_.hci
+import ble.implementation_.smp-identity show Identity
 import .ble-bond-table-test as records
 import .ble-cccd-storage-test as configuration
 import .ble-fixture as wire

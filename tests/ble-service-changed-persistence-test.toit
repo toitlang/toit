@@ -5,13 +5,13 @@
 import expect show *
 import monitor
 import system
-import ble.experimental.attribute-server as attributes
-import ble.experimental.central
-import ble.experimental.gatt-server
-import ble.experimental.hci
-import ble.experimental.security-owner
-import ble.experimental.service.client as clients
-import ble.experimental.signaling
+import ble.implementation_.attribute-server as attributes
+import ble.implementation_.central
+import ble.implementation_.gatt-server
+import ble.implementation_.hci
+import ble.implementation_.security-owner
+import ble.service.client as clients
+import ble.implementation_.signaling
 import .ble-cccd-session-test as configuration
 import .ble-service-cccd-test as service
 import .ble-fixture as wire
@@ -38,7 +38,7 @@ main:
 class Provider extends service.Provider:
   ready/monitor.Latch ::= monitor.Latch
   constructor store/configuration.Store: super store
-  run-security-owner owner/security-owner.Owner -> none: ready.get
+  run-security-owner_ owner/security-owner.Owner -> none: ready.get
 
 service-round store/configuration.Store --pending/bool --confirm/bool --late-security/bool=false:
   provider := Provider store

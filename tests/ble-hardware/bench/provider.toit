@@ -4,9 +4,9 @@
 
 // The Toit host provider container for the memory comparison.
 
-import ble.experimental.esp32
-import ble.experimental.transport
-import ble.experimental.service.gatt-provider as service
+import ble.transport.esp32
+import ble.transport
+import ble.implementation_.service.gatt-provider as service
 import .stats as stats
 
 main:

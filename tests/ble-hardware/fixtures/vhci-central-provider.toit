@@ -2,10 +2,10 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the examples/LICENSE file.
 
-import ble.experimental.esp32
-import ble.experimental.hci
-import ble.experimental.transport
-import ble.experimental.service.central-provider as service
+import ble.transport.esp32
+import ble.implementation_.hci
+import ble.transport
+import ble.implementation_.service.central-provider as service
 import io
 import .hci-trace as trace
 
@@ -25,7 +25,7 @@ class Provider extends service.Provider:
   open-transport -> transport.Transport: return Diagnostics (esp32.Esp32Transport)
 
   // Separate unbonded fixture identity; preserve the public identity's bond.
-  central-local-random-address info/hci.Capabilities -> ByteArray?:
+  central-local-random-address_ info/hci.Capabilities -> ByteArray?:
     return #[0x01, 0x30, 0x23, 0xf2, 0x3a, 0xc8]
 
 // These bounded metadata records survive scan traffic filling the header trace.

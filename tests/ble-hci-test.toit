@@ -2,17 +2,17 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.hci
-import ble.experimental.advertising
-import ble.experimental.scanning
-import ble.experimental.connection
-import ble.experimental.central
-import ble.experimental.acl
-import ble.experimental.att
-import ble.experimental.gatt
-import ble.experimental.signaling
-import ble.experimental.transport show Transport
-import ble.experimental.cancellation show checkpoint
+import ble.implementation_.hci
+import ble.implementation_.advertising
+import ble.implementation_.scanning
+import ble.implementation_.connection
+import ble.implementation_.central
+import ble.implementation_.acl
+import ble.implementation_.att
+import ble.implementation_.gatt
+import ble.implementation_.signaling
+import ble.transport show Transport
+import ble.implementation_.cancellation show checkpoint
 
 import .ble-fixture show *
 import expect show *

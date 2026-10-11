@@ -4,14 +4,14 @@
 
 import expect show *
 import monitor
-import ble.experimental.central
-import ble.experimental.hci
-import ble.experimental.security-owner show Owner
-import ble.experimental.signaling
-import ble.experimental.transport
-import ble.experimental.service.client as clients
-import ble.experimental.service.gatt-provider as providers
-import ble.experimental.service.provider as rpc
+import ble.implementation_.central
+import ble.implementation_.hci
+import ble.implementation_.security-owner show Owner
+import ble.implementation_.signaling
+import ble.transport
+import ble.service.client as clients
+import ble.implementation_.service.gatt-provider as providers
+import ble.implementation_.service.provider as rpc
 import .ble-fixture as fixture
 import .ble-key-reply-test as keys
 
@@ -122,17 +122,17 @@ class SecurityProvider extends providers.Provider:
     failure_ = failure
     super
 
-  create-builder client/int name/string -> rpc.Session:
+  create-builder_ client/int name/string -> rpc.Session:
     last = super client name
     return last
 
   open-transport -> transport.Transport: return radio
 
-  create-security-owner host/central.Central link/central.Link info/hci.Capabilities -> Owner?:
+  create-security-owner_ host/central.Central link/central.Link info/hci.Capabilities -> Owner?:
     owner = HeldOwner host link
     return owner
 
-  run-security-owner owner/Owner -> none:
+  run-security-owner_ owner/Owner -> none:
     if failure_:
       entered.set true
       release.get
@@ -180,7 +180,7 @@ class Provider extends providers.Provider:
   constructor:
     super
 
-  create-builder client/int name/string -> rpc.Session:
+  create-builder_ client/int name/string -> rpc.Session:
     last = super client name
     return last
 

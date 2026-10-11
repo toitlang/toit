@@ -5,10 +5,10 @@
 import expect show *
 import monitor
 import system
-import ble.experimental.transport
-import ble.experimental.service.client as clients
-import ble.experimental.service.advertising-provider as providers
-import ble.experimental.service.provider as rpc
+import ble.transport
+import ble.service.client as clients
+import ble.implementation_.service.advertising-provider as providers
+import ble.implementation_.service.provider as rpc
 import .ble-fixture as fixture
 import .ble-peripheral-test as peripheral
 
@@ -138,6 +138,6 @@ class Provider extends providers.Provider:
   open-transport -> transport.Transport:
     opens++
     return radio
-  create-advertising client/int arguments/List -> rpc.Session:
+  create-advertising_ client/int arguments/List -> rpc.Session:
     last = super client arguments
     return last

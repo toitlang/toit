@@ -2,12 +2,12 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.attribute-server as attributes
-import ble.experimental.central
-import ble.experimental.gatt-server as gatt
-import ble.experimental.hci
-import ble.experimental.security-owner
-import ble.experimental.signaling
+import ble.implementation_.attribute-server as attributes
+import ble.implementation_.central
+import ble.implementation_.gatt-server as gatt
+import ble.implementation_.hci
+import ble.implementation_.security-owner
+import ble.implementation_.signaling
 import expect show *
 import monitor
 import .ble-fixture as fixture

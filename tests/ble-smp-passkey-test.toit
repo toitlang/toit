@@ -7,8 +7,8 @@
 // including the rounds that fail on a mistyped passkey.
 
 import expect show *
-import ble.experimental.smp-features as features
-import ble.experimental.smp-pairing as smp
+import ble.implementation_.smp-features as features
+import ble.implementation_.smp-pairing as smp
 
 INITIATOR ::= #[0, 1, 2, 3, 4, 5, 6]
 RESPONDER ::= #[1, 6, 5, 4, 3, 2, 0xc1]

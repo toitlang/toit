@@ -6,7 +6,7 @@ import expect show *
 import io
 import monitor
 import system
-import ble.experimental.service.client as clients
+import ble.service.client as clients
 import .ble-service-central-test as service
 import .ble-fixture as fixture
 import .ble-mtu-server-test as wire

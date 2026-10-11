@@ -2,7 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.linux-management
+import ble.implementation_.linux-management
 import expect show *
 import io
 import .ble-fixture as fixture

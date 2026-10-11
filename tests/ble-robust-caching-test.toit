@@ -8,7 +8,7 @@
 
 import expect show *
 import io
-import ble.experimental.attribute-server as attributes
+import ble.implementation_.attribute-server as attributes
 import .ble-cccd-session-test as session-fixture
 
 CLIENT-FEATURES ::= 11

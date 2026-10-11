@@ -5,11 +5,11 @@
 import expect show *
 import monitor
 
-import ble.experimental.attribute-server as attributes
-import ble.experimental.transport as transport
-import ble.experimental.signaling as signaling
-import ble.experimental.service.gatt-provider as providers
-import ble.experimental.service.client as clients
+import ble.implementation_.attribute-server as attributes
+import ble.transport as transport
+import ble.implementation_.signaling as signaling
+import ble.implementation_.service.gatt-provider as providers
+import ble.service.client as clients
 import .ble-fixture as fixture
 import .ble-peripheral-test as peripheral
 import .ble-receive-flow-fixture as flow
@@ -133,7 +133,7 @@ class TestProvider extends providers.Provider:
 
   open-transport -> transport.Transport: return radio
 
-  create-database -> attributes.Database:
+  create-database_ -> attributes.Database:
     database := attributes.Database
     database.add-service #[0xf0, 0xff]
     database.add-characteristic #[0xf1, 0xff] --write --validate-write

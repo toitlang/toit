@@ -5,18 +5,18 @@
 import expect show *
 import monitor
 import system
-import ble.experimental.bond
-import ble.experimental.bond-resume
-import ble.experimental.central
-import ble.experimental.connection
-import ble.experimental.encryption
-import ble.experimental.hci
-import ble.experimental.privacy
-import ble.experimental.security-owner show Owner
-import ble.experimental.smp-identity
-import ble.experimental.transport
-import ble.experimental.service.client as clients
-import ble.experimental.service.gatt-provider as providers
+import ble.implementation_.bond
+import ble.implementation_.bond-resume
+import ble.implementation_.central
+import ble.implementation_.connection
+import ble.implementation_.encryption
+import ble.implementation_.hci
+import ble.implementation_.privacy
+import ble.implementation_.security-owner show Owner
+import ble.implementation_.smp-identity
+import ble.transport
+import ble.service.client as clients
+import ble.implementation_.service.gatt-provider as providers
 import .ble-fixture as fixture
 import .ble-key-reply-test as keys
 import .ble-receive-flow-fixture as flow
@@ -118,10 +118,10 @@ class Provider extends providers.Provider:
 
   receive-acl-packets -> int: return receive-flow_ ? 4 : 0
   open-transport -> transport.Transport: return radio
-  central-local-random-address info/hci.Capabilities -> ByteArray?: return private_ ? local : null
-  create-central-security-owner host/central.Central link/central.Link info/hci.Capabilities -> Owner?:
+  central-local-random-address_ info/hci.Capabilities -> ByteArray?: return private_ ? local : null
+  create-central-security-owner_ host/central.Central link/central.Link info/hci.Capabilities -> Owner?:
     owner = bond-resume.Resume host link saved --local-address=(link.local-random-address or info.address)
         --require-authentication=saved.authenticated
     return owner
-  run-central-security-owner selected/Owner -> none:
+  run-central-security-owner_ selected/Owner -> none:
     (selected as bond-resume.Resume).run

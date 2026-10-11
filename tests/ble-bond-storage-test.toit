@@ -2,10 +2,10 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.bond
-import ble.experimental.bond-storage
-import ble.experimental.bond-flash
-import ble.experimental.smp-identity
+import ble.implementation_.bond
+import ble.implementation_.bond-storage
+import ble.implementation_.bond-flash
+import ble.implementation_.smp-identity
 import expect show *
 import system
 

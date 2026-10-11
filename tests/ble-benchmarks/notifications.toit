@@ -2,11 +2,11 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.service.api
+import ble.implementation_.service.api
 import expect show *
 import system
 import ..ble-service-central-test as fixture
-import ..ble-hci-test as hci
+import ..ble-fixture as hci
 import ..ble-mtu-server-test as wire
 import ..ble-subscriptions-test as subscriptions
 
@@ -14,7 +14,7 @@ import ..ble-subscriptions-test as subscriptions
 main:
   with-timeout --ms=30_000:
     provider := fixture.Provider
-    session := provider.create-connection 1 [#[1, 2, 3, 4, 5, 6], 1, 1_000_000, 517]
+    session := provider.create-connection_ 1 [#[1, 2, 3, 4, 5, 6], 1, 1_000_000, 517]
     expected := ByteArray 512 --initial=42
     responder := task::
       hci.initialize-replies provider.radio

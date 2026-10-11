@@ -2,9 +2,9 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.bond
-import ble.experimental.smp-features show PairingError
-import ble.experimental.smp-identity as identity
+import ble.implementation_.bond
+import ble.implementation_.smp-features show PairingError
+import ble.implementation_.smp-identity as identity
 import expect show *
 import system
 import .ble-smp-identity-test as fixture

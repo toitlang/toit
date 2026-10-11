@@ -4,8 +4,8 @@
 
 // Pairs on the first boot and resumes on later boots, using the fixture's
 // isolated namespace, so one image serves both phases.
-import ble.experimental.bond-flash
-import ble.experimental.bond-storage
+import ble.implementation_.bond-flash
+import ble.implementation_.bond-storage
 import ...central-fresh-bond as fixture
 
 main:

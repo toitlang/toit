@@ -2,10 +2,10 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.central
-import ble.experimental.hci
-import ble.experimental.security-owner
-import ble.experimental.service.client as clients
+import ble.implementation_.central
+import ble.implementation_.hci
+import ble.implementation_.security-owner
+import ble.service.client as clients
 import expect show *
 import monitor
 import .ble-bounded-accept-test as accept
@@ -24,7 +24,7 @@ stuck-worker:
   provider.install
   client := clients.Client
   client.open
-  pool := provider.reserve-shared-host
+  pool := provider.reserve-shared-host_
   disconnected := monitor.Latch
   responder := task::
     wire.initialize-replies provider.radio
@@ -82,7 +82,7 @@ class Provider extends fixture.Provider:
     super "normal"
     hook = cleanup.Owner false
 
-  run-security-owner owner/security-owner.Owner -> none:
+  run-security-owner_ owner/security-owner.Owner -> none:
     try:
       critical-do --no-respect-deadline:
         started.set true

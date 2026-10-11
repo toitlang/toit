@@ -2,18 +2,18 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.acl
-import ble.experimental.att
-import ble.experimental.attribute-server as attributes
-import ble.experimental.gatt-server
-import ble.experimental.central
-import ble.experimental.encryption
-import ble.experimental.hci
-import ble.experimental.security
-import ble.experimental.pairing-attempts as retry
-import ble.experimental.privacy as privacy
-import ble.experimental.smp-pairing as smp
-import ble.experimental.smp-features show PairingError
+import ble.implementation_.acl
+import ble.implementation_.att
+import ble.implementation_.attribute-server as attributes
+import ble.implementation_.gatt-server
+import ble.implementation_.central
+import ble.implementation_.encryption
+import ble.implementation_.hci
+import ble.implementation_.security
+import ble.implementation_.pairing-attempts as retry
+import ble.implementation_.privacy as privacy
+import ble.implementation_.smp-pairing as smp
+import ble.implementation_.smp-features show PairingError
 import expect show *
 import monitor
 import system
@@ -142,7 +142,7 @@ success --numeric/bool --random-address/bool=false --reject-at-encryption/bool=f
       --require-authentication=numeric
       --local-address=#[1, 6, 5, 4, 3, 2, 1]
       --peer-address=(#[(random-address ? 1 : 0)] + (ByteArray 6: local[5 - it]))
-  controller-ready := monitor.Latch
+  controller-ready_ := monitor.Latch
   allow-encryption := monitor.Latch
   done := monitor.Latch
   worker/Task? := null
@@ -159,7 +159,7 @@ success --numeric/bool --random-address/bool=false --reject-at-encryption/bool=f
       send-smp transport (peer.receive (take-smp transport reassembler))
     expected := hci.command-packet 0x2019 (encryption.enable-parameters 0x234 peer.key)
     fixture.status-reply transport expected
-    controller-ready.set true
+    controller-ready_.set true
     if reject-at-encryption:
       if not valid-failure:
         expect-equals #[5, 0x0a] (take-smp transport reassembler --complete=complete-failure)
@@ -216,7 +216,7 @@ success --numeric/bool --random-address/bool=false --reject-at-encryption/bool=f
         true
       if failure: done.set failure --exception
       else: done.set true
-    controller-ready.get
+    controller-ready_.get
     expect (not pairing.encrypted and not pairing.authenticated)
     sent := transport.sent-count
     [0, 4, 8, 0x0d, 0xff].do: | auth/int |

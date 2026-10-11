@@ -6,13 +6,13 @@
 // passkey through its callbacks, against a peer engine on the other side of
 // the fake controller, over Secure Connections and legacy pairing.
 
-import ble.experimental.acl
-import ble.experimental.att
-import ble.experimental.central
-import ble.experimental.encryption
-import ble.experimental.hci
-import ble.experimental.security
-import ble.experimental.smp-pairing as smp
+import ble.implementation_.acl
+import ble.implementation_.att
+import ble.implementation_.central
+import ble.implementation_.encryption
+import ble.implementation_.hci
+import ble.implementation_.security
+import ble.implementation_.smp-pairing as smp
 import expect show *
 import monitor
 import .ble-fixture as fixture

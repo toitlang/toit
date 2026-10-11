@@ -4,13 +4,13 @@
 
 import expect show *
 import monitor
-import ble.experimental.hci
-import ble.experimental.transport
-import ble.experimental.service.api as api
-import ble.experimental.service.client as clients
-import ble.experimental.service.central-provider as central
-import ble.experimental.service.gatt-provider as providers
-import ble.experimental.service.provider as rpc
+import ble.implementation_.hci
+import ble.transport
+import ble.implementation_.service.api as api
+import ble.service.client as clients
+import ble.implementation_.service.central-provider as central
+import ble.implementation_.service.gatt-provider as providers
+import ble.implementation_.service.provider as rpc
 import .ble-fixture as fixture
 import .ble-multilink-test as links
 import .ble-service-multiclient-test as shared
@@ -113,7 +113,7 @@ class Provider extends providers.Provider:
   open-transport -> transport.Transport:
     opens++
     return radio
-  create-connection client/int arguments/List -> rpc.Session:
+  create-connection_ client/int arguments/List -> rpc.Session:
     if arguments[0][0] != 1: return super client arguments
     exiting = Session this client arguments[0] arguments[1] arguments[2] arguments[3]
     return exiting

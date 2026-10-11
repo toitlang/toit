@@ -4,11 +4,11 @@
 
 import expect show *
 import monitor
-import ble.experimental.transport
-import ble.experimental.service.api as api
-import ble.experimental.service.client as clients
-import ble.experimental.service.scanning-provider as scanning
-import ble.experimental.service.provider as rpc
+import ble.transport
+import ble.implementation_.service.api as api
+import ble.service.client as clients
+import ble.implementation_.service.scanning-provider as scanning
+import ble.implementation_.service.provider as rpc
 import .ble-fixture as fixture
 import .ble-service-central-cancel-test as shutdown
 
@@ -93,7 +93,7 @@ class Provider extends scanning.Provider:
   open-transport -> transport.Transport:
     opens++
     return opens == 1 ? radio : next-radio
-  create-scan client/int arguments/List -> rpc.Session:
+  create-scan_ client/int arguments/List -> rpc.Session:
     // This fixture accepts only the exact continuous scan used by this test.
     expect-equals [null, false, 16, 16, true, null, false] arguments
     last = Session this client

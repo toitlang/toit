@@ -2,12 +2,12 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.central
-import ble.experimental.hci
-import ble.experimental.service.client as clients
-import ble.experimental.service.api
-import ble.experimental.service.gatt-provider as mixed
-import ble.experimental.service.provider as rpc
+import ble.implementation_.central
+import ble.implementation_.hci
+import ble.service.client as clients
+import ble.implementation_.service.api
+import ble.implementation_.service.gatt-provider as mixed
+import ble.implementation_.service.provider as rpc
 import expect show *
 import io
 import monitor
@@ -343,11 +343,11 @@ class AdmissionProvider extends rpc.Provider:
   constructor .mixed_: super
   central-session-limit -> int: return 2
   mixed-role-sessions -> bool: return mixed_
-  create-session client/int -> rpc.Session: return AdmissionSession this client 1
-  create-builder client/int name/string -> rpc.Session: return create-session client
-  create-connection client/int arguments/List -> rpc.Session: return AdmissionSession this client 2
-  create-scan client/int arguments/List -> rpc.Session: return AdmissionSession this client 0
-  create-advertising client/int arguments/List -> rpc.Session: return AdmissionSession this client 0
+  create-session_ client/int -> rpc.Session: return AdmissionSession this client 1
+  create-builder_ client/int name/string -> rpc.Session: return create-session_ client
+  create-connection_ client/int arguments/List -> rpc.Session: return AdmissionSession this client 2
+  create-scan_ client/int arguments/List -> rpc.Session: return AdmissionSession this client 0
+  create-advertising_ client/int arguments/List -> rpc.Session: return AdmissionSession this client 0
 
 class AdmissionSession extends rpc.Session:
   role_/int
@@ -520,16 +520,16 @@ class Provider extends mixed.Provider:
     opens++
     return radio
 
-  create-shared-host controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
+  create-shared-host_ controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
     owner := super controller info receive-limit
     ready.set owner
     return owner
 
-  create-connection client/int arguments/List -> rpc.Session:
+  create-connection_ client/int arguments/List -> rpc.Session:
     last-central = super client arguments
     return last-central
 
-  create-session client/int -> rpc.Session:
+  create-session_ client/int -> rpc.Session:
     last-peripheral = super client
     return last-peripheral
 

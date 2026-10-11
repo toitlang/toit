@@ -57,7 +57,9 @@ and `compat.sh`.
 
 - **BlueZ** on the second dongle: the independent Linux peer for pairing, bonding and GATT tests. `bluetoothctl`, `btmgmt` and `btmon` are the tools; `btmon` on the Toit-owned adapter needs `CAP_NET_RAW`.
 - **Bumble** (Python): `tests/ble-interop/run.py` runs 61 process-pipe cases without hardware; `radio-*.py` scripts drive an adapter against a board. Install into a virtualenv from `tests/ble-interop/requirements.txt` (Bumble 0.0.234). The GitHub workflow `ble-interop.yml` runs the software part on manual dispatch.
-- **NimBLE**: any board flashed with the default firmware and `tests/ble-hardware/fixtures/reference-peer.toit` or `nimble-bond-peer.toit` is an independent third peer.
+- **NimBLE** was used as an independent peer before its removal. Those fixtures
+  are no longer included; the default firmware now runs the Toit host. Historical
+  NimBLE results remain in the measurements and campaign notes.
 
 Additional peers are available on request: a Linux laptop with its own
 Bluetooth, an Android phone, a Raspberry Pi 4 (`ssh pi4`), and other ESP32
@@ -65,10 +67,10 @@ variants.
 
 ## Tracing
 
-Wrap a transport in `ble.experimental.hexdump.Hexdump` on a board to print
+Wrap a transport in `ble.transport.hexdump.Hexdump` on a board to print
 every HCI packet as `HCI RX|TX <us> <hex>` on the serial log; convert a saved
 log with `toit run tools/ble-hci-log.toit LOG OUT.btsnoop` and open it in
-Wireshark. On Linux, `ble.experimental.btsnoop.Btsnoop` writes the file
+Wireshark. On Linux, `ble.transport.btsnoop.Btsnoop` writes the file
 directly, and `btmon` captures the other side when it is a BlueZ adapter.
 Traces contain keys; keep them out of the repository. The revocation campaign
 fixtures take `--trace` to enable this on all three boards

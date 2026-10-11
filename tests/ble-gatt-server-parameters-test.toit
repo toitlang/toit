@@ -6,11 +6,11 @@
 // new identifier, a refusal is reported, a late answer to an earlier request
 // is ignored, and an accepted request completes when the central applies it.
 
-import ble.experimental.attribute-server as attributes
-import ble.experimental.central
-import ble.experimental.gatt-server
-import ble.experimental.hci
-import ble.experimental.signaling
+import ble.implementation_.attribute-server as attributes
+import ble.implementation_.central
+import ble.implementation_.gatt-server
+import ble.implementation_.hci
+import ble.implementation_.signaling
 import expect show *
 import monitor
 import .ble-fixture as fixture

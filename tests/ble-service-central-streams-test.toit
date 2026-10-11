@@ -4,7 +4,7 @@
 
 import expect show *
 import system
-import ble.experimental.service.client as clients
+import ble.service.client as clients
 import .ble-fixture as fixture
 import .ble-service-central-test as service
 

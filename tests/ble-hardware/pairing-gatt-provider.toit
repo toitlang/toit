@@ -5,10 +5,10 @@
 // The deployable GATT provider with Just Works pairing (no bonding), for
 // tests/ble-hardware/peripheral-client-check.sh.
 
-import ble.experimental.esp32
-import ble.experimental.transport
-import ble.experimental.service.gatt-provider as service
-import ble.experimental.service.pairing as pairing
+import ble.transport.esp32
+import ble.transport
+import ble.implementation_.service.gatt-provider as service
+import ble.implementation_.service.pairing as pairing
 
 main:
   provider := Provider

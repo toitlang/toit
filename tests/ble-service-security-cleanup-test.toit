@@ -2,13 +2,13 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.central
-import ble.experimental.hci
-import ble.experimental.service.client as clients
-import ble.experimental.service.gatt-provider as providers
-import ble.experimental.service.provider as rpc
-import ble.experimental.security-owner
-import ble.experimental.signaling
+import ble.implementation_.central
+import ble.implementation_.hci
+import ble.service.client as clients
+import ble.implementation_.service.gatt-provider as providers
+import ble.implementation_.service.provider as rpc
+import ble.implementation_.security-owner
+import ble.implementation_.signaling
 import expect show *
 import monitor
 import .ble-fixture as fixture
@@ -68,9 +68,9 @@ class CloseFailureProvider extends providers.Provider:
   joined/monitor.Latch ::= monitor.Latch
   last/rpc.Session? := null
   open-transport -> fixture.FakeTransport: return radio
-  create-host controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
+  create-host_ controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
     return JoinedHost controller info joined
-  create-session client/int -> rpc.Session:
+  create-session_ client/int -> rpc.Session:
     last = super client
     return last
 
@@ -141,10 +141,10 @@ class Provider extends providers.Provider:
   open-transport -> fixture.FakeTransport:
     opens++
     return opens == 1 ? radio : recovery
-  create-security-owner host/central.Central link/central.Link info/hci.Capabilities -> security-owner.Owner?:
+  create-security-owner_ host/central.Central link/central.Link info/hci.Capabilities -> security-owner.Owner?:
     return opens == 1 ? owner : null
-  run-security-owner owner/security-owner.Owner -> none:
+  run-security-owner_ owner/security-owner.Owner -> none:
     throw "SECURITY_RUN_FAILED"
-  create-session client/int -> rpc.Session:
+  create-session_ client/int -> rpc.Session:
     last = super client
     return last

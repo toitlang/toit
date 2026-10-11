@@ -6,15 +6,15 @@ import expect show *
 import monitor
 import system
 import system.services
-import ble.experimental.bond
-import ble.experimental.bond-info show BondInfo
-import ble.experimental.bond-registry
-import ble.experimental.bond-table
-import ble.experimental.privacy
-import ble.experimental.pairing-attempts as retry
-import ble.experimental.smp-identity show Identity
-import ble.experimental.service.bond-admin-api as api
-import ble.experimental.service.bond-admin-client as clients
+import ble.implementation_.bond
+import ble.implementation_.bond-info show BondInfo
+import ble.implementation_.bond-registry
+import ble.implementation_.bond-table
+import ble.implementation_.privacy
+import ble.implementation_.pairing-attempts as retry
+import ble.implementation_.smp-identity show Identity
+import ble.implementation_.service.bond-admin-api as api
+import ble.implementation_.service.bond-admin-client as clients
 import .ble-bond-admin-test as fixture
 
 main:

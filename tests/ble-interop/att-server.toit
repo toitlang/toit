@@ -2,7 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.attribute-server as server
+import ble.implementation_.attribute-server as server
 import encoding.hex
 import io
 import system

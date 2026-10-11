@@ -5,16 +5,16 @@
 import expect show *
 import monitor
 import system
-import ble.experimental.acl
-import ble.experimental.central
-import ble.experimental.encryption
-import ble.experimental.hci
-import ble.experimental.security
-import ble.experimental.security-owner show Owner
-import ble.experimental.smp-pairing as smp
-import ble.experimental.transport
-import ble.experimental.service.client as clients
-import ble.experimental.service.gatt-provider as providers
+import ble.implementation_.acl
+import ble.implementation_.central
+import ble.implementation_.encryption
+import ble.implementation_.hci
+import ble.implementation_.security
+import ble.implementation_.security-owner show Owner
+import ble.implementation_.smp-pairing as smp
+import ble.transport
+import ble.service.client as clients
+import ble.implementation_.service.gatt-provider as providers
 import .ble-fixture as fixture
 import .ble-security-test as wire
 import .ble-receive-flow-fixture as flow
@@ -109,16 +109,16 @@ class Provider extends providers.Provider:
   receive-acl-packets -> int: return receive-flow_ ? 4 : 0
 
   open-transport -> transport.Transport: return radio
-  central-local-random-address info/hci.Capabilities -> ByteArray?: return random_ ? local : null
-  create-central-security-owner host/central.Central link/central.Link info/hci.Capabilities -> Owner?:
+  central-local-random-address_ info/hci.Capabilities -> ByteArray?: return random_ ? local : null
+  create-central-security-owner_ host/central.Central link/central.Link info/hci.Capabilities -> Owner?:
     owner = security.Pairing host link --local-address=(link.local-random-address or info.address)
         --local-address-type=(link.local-random-address ? 1 : 0)
-        --attempts=pairing-attempts
-        --attempt-identity=(pairing-peer-identity link)
+        --attempts=pairing-attempts_
+        --attempt-identity=(pairing-peer-identity_ link)
         --io-capability=(numeric_ ? 1 : 3)
         --require-authentication=numeric_
     return owner
-  run-central-security-owner selected/Owner -> none:
+  run-central-security-owner_ selected/Owner -> none:
     (selected as security.Pairing).run: | number/int |
       expect numeric_
       expect-equals peer.comparison-number number

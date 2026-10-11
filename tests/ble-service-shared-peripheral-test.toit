@@ -2,15 +2,15 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.att
-import ble.experimental.bounded-central as bounded
-import ble.experimental.central
-import ble.experimental.hci
-import ble.experimental.security-owner
-import ble.experimental.service.client as clients
-import ble.experimental.service.gatt-provider as providers
-import ble.experimental.service.provider as rpc
-import ble.experimental.service.shared-host as shared
+import ble.implementation_.att
+import ble.implementation_.bounded-central as bounded
+import ble.implementation_.central
+import ble.implementation_.hci
+import ble.implementation_.security-owner
+import ble.service.client as clients
+import ble.implementation_.service.gatt-provider as providers
+import ble.implementation_.service.provider as rpc
+import ble.implementation_.service.shared-host as shared
 import expect show *
 import monitor
 import .ble-bounded-accept-test as accept
@@ -65,7 +65,7 @@ run mode/string:
   // A directly reserved central lifetime is deliberately outside RPC admission.
   // This tests the real peripheral session through RPC without enabling mixed
   // admission before its independent policy/security tests exist.
-  pool := provider.reserve-shared-host
+  pool := provider.reserve-shared-host_
   seen := monitor.Latch
   release := monitor.Latch
   responder := task::
@@ -199,22 +199,22 @@ class Provider extends providers.Provider:
     opens++
     return radio
 
-  reserve-peripheral-host -> shared.Host?: return reserve-shared-host
+  reserve-peripheral-host_ -> shared.Host?: return reserve-shared-host_
 
-  create-shared-host controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
+  create-shared-host_ controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
     host := bounded.Central controller --acl-length=info.acl-length --acl-count=info.acl-count
         --receive-limit=receive-limit
         --link-limit=2
     ready.set host
     return host
 
-  create-security-owner host/central.Central link/central.Link info/hci.Capabilities -> security-owner.Owner?:
+  create-security-owner_ host/central.Central link/central.Link info/hci.Capabilities -> security-owner.Owner?:
     if fail-security: throw "PERIPHERAL_SECURITY_FAILED"
     return hook
 
-  run-security-owner owner/security-owner.Owner -> none:
+  run-security-owner_ owner/security-owner.Owner -> none:
     (monitor.Latch).get
 
-  create-session client/int -> rpc.Session:
+  create-session_ client/int -> rpc.Session:
     last = super client
     return last

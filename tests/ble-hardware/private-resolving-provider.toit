@@ -7,10 +7,10 @@
 // whose BLE identity is below) with the test IRK of
 // private-gatt-provider.toit. For controllers with link-layer privacy.
 
-import ble.experimental.esp32
-import ble.experimental.resolving-list as resolving
-import ble.experimental.transport
-import ble.experimental.service.gatt-provider as service
+import ble.transport.esp32
+import ble.implementation_.resolving-list as resolving
+import ble.transport
+import ble.implementation_.service.gatt-provider as service
 import .private-gatt-provider show IRK
 
 // 08:3a:f2:23:4d:aa in HCI order.

@@ -3,8 +3,8 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-import ble.experimental.central
-import ble.experimental.hci
+import ble.implementation_.central
+import ble.implementation_.hci
 import .ble-fixture as fixture
 import .ble-peripheral-test as peripheral
 

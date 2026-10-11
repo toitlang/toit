@@ -4,12 +4,12 @@
 
 import expect show *
 import monitor
-import ble.experimental.central
-import ble.experimental.hci
-import ble.experimental.security-owner show Owner
-import ble.experimental.transport
-import ble.experimental.service.client as clients
-import ble.experimental.service.gatt-provider as providers
+import ble.implementation_.central
+import ble.implementation_.hci
+import ble.implementation_.security-owner show Owner
+import ble.transport
+import ble.service.client as clients
+import ble.implementation_.service.gatt-provider as providers
 import .ble-fixture as fixture
 import .ble-service-shutdown-test as security
 
@@ -85,10 +85,10 @@ class Provider extends providers.Provider:
   constructor .mode_:
     super
   open-transport -> transport.Transport: return radio
-  create-central-security-owner host/central.Central link/central.Link info/hci.Capabilities -> Owner?:
+  create-central-security-owner_ host/central.Central link/central.Link info/hci.Capabilities -> Owner?:
     owner = TestOwner host link --authenticated=(mode_ == "authenticated")
     return owner
-  run-central-security-owner selected/Owner -> none:
+  run-central-security-owner_ selected/Owner -> none:
     try:
       entered.set true
       release.get

@@ -9,7 +9,7 @@
 import ble show *
 import expect show *
 import monitor
-import ble.experimental.attribute-server as attributes
+import ble.implementation_.attribute-server as attributes
 import .ble-fixture as fixture
 import .ble-mtu-server-test as wire
 import .ble-service-central-test as service

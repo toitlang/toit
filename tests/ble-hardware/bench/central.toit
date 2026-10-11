@@ -6,11 +6,11 @@
 // host: connects to the peripheral, subscribes, counts notifications for a
 // fixed window, disconnects, and repeats.
 
-import ble.experimental.att
-import ble.experimental.central
-import ble.experimental.gatt
-import ble.experimental.hci
-import ble.experimental.linux
+import ble.implementation_.att
+import ble.implementation_.central
+import ble.implementation_.gatt
+import ble.implementation_.hci
+import ble.transport.linux
 import encoding.hex
 import .uuids as uuids
 

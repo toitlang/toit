@@ -5,7 +5,7 @@
 import ..uuid show BleUuid
 import ..advertisement show Advertisement
 
-import ..experimental.service.client as rpc
+import ..service.client as rpc
 import .connection
 import .peripheral
 import .types

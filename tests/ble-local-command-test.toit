@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-import ble.experimental.attribute-server as attributes
+import ble.implementation_.attribute-server as attributes
 import .ble-attribute-security-test as security
 
 main:

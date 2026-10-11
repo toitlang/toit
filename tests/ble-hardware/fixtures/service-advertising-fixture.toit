@@ -2,7 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the examples/LICENSE file.
 
-import ble.experimental.service.client as service
+import ble.service.client as service
 import system
 
 main:

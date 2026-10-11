@@ -2,7 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.btsnoop show Btsnoop
+import ble.transport.btsnoop show Btsnoop
 import expect show *
 import io
 

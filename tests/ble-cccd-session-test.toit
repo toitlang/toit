@@ -5,9 +5,9 @@
 import expect show *
 import monitor
 import system
-import ble.experimental.attribute-server as attributes
-import ble.experimental.cccd-store as cccd
-import ble.experimental.security-state show SecurityState
+import ble.implementation_.attribute-server as attributes
+import ble.implementation_.cccd-store as cccd
+import ble.implementation_.security-state show SecurityState
 
 main:
   with-timeout --ms=15_000:

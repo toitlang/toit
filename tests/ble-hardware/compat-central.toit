@@ -15,9 +15,9 @@
 
 import ble show *
 import encoding.hex
-import ble.experimental.linux
-import ble.experimental.transport
-import ble.experimental.service.gatt-provider as gatt
+import ble.transport.linux
+import ble.transport
+import ble.implementation_.service.gatt-provider as gatt
 
 SERVICE ::= BleUuid "1825"
 SEND ::= BleUuid "634b3c6e-ac41-4085-a97c-dd687fa1e50d"

@@ -4,7 +4,7 @@
 
 import expect show *
 import system
-import ble.experimental.attribute-server as attributes
+import ble.implementation_.attribute-server as attributes
 import .ble-attribute-security-test as security
 
 main:

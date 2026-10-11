@@ -2,8 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.service.api as api
-import ble.experimental.service.client as ble
+import ble.implementation_.service.api as api
+import ble.service.client as ble
 import expect show *
 import system.services
 import .services-provider-pin-test as fixture

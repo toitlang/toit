@@ -9,14 +9,14 @@
 
 import expect show *
 import monitor
-import ble.experimental.central
-import ble.experimental.connection
-import ble.experimental.hci
-import ble.experimental.resolving-list as resolving
-import ble.experimental.transport
+import ble.implementation_.central
+import ble.implementation_.connection
+import ble.implementation_.hci
+import ble.implementation_.resolving-list as resolving
+import ble.transport
 import ble as package
 import ble.v2 as ble
-import ble.experimental.service.gatt-provider as providers
+import ble.implementation_.service.gatt-provider as providers
 import .ble-fixture as fixture
 
 IDENTITY ::= #[1, 2, 3, 4, 5, 0xc6]                 // static random identity, HCI order

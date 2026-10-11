@@ -2,12 +2,12 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.bond
-import ble.experimental.bond-registry
-import ble.experimental.bond-table
-import ble.experimental.central
-import ble.experimental.hci
-import ble.experimental.smp-identity show Identity
+import ble.implementation_.bond
+import ble.implementation_.bond-registry
+import ble.implementation_.bond-table
+import ble.implementation_.central
+import ble.implementation_.hci
+import ble.implementation_.smp-identity show Identity
 import encoding.hex
 import system
 import .provider as fixture
@@ -34,7 +34,7 @@ class Provider extends fixture.Provider:
   registry_/bond-registry.Registry? := null
   constructor .identity_: super
 
-  create-host controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
+  create-host_ controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
     if not registry_:
       local_ = info.address.copy
       table := bond-table.Table (storage.MemoryRecords {:}) (ByteArray 32 --initial=42) --capacity=1
@@ -48,7 +48,7 @@ class Provider extends fixture.Provider:
       registry_.add candidate
     return super controller info receive-limit
 
-  pairing-peer-identity link/central.Link -> ByteArray:
+  pairing-peer-identity_ link/central.Link -> ByteArray:
     if link.info.address-type != 1 or link.info.address[5] & 0xc0 != 0x40:
       throw "EXPECTED_PRIVATE_PEER"
     result := registry_.resolve-peer-identity --local-address=local_ --local-address-type=0

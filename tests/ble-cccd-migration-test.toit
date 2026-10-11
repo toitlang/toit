@@ -5,12 +5,12 @@
 import expect show *
 import monitor
 import system
-import ble.experimental.attribute-server as attributes
-import ble.experimental.bond
-import ble.experimental.bond-table
-import ble.experimental.bond-registry
-import ble.experimental.cccd-storage
-import ble.experimental.smp-identity show Identity
+import ble.implementation_.attribute-server as attributes
+import ble.implementation_.bond
+import ble.implementation_.bond-table
+import ble.implementation_.bond-registry
+import ble.implementation_.cccd-storage
+import ble.implementation_.smp-identity show Identity
 import .ble-bond-table-test as records
 import .ble-cccd-storage-test as storage
 import .ble-cccd-registry-test as registry-fixture

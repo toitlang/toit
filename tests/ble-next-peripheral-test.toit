@@ -9,10 +9,10 @@
 import expect show *
 import monitor
 import ble.v2 as ble
-import ble.experimental.advertising-set
-import ble.experimental.signaling as signaling
-import ble.experimental.transport
-import ble.experimental.service.gatt-provider as providers
+import ble.implementation_.advertising-set
+import ble.implementation_.signaling as signaling
+import ble.transport
+import ble.implementation_.service.gatt-provider as providers
 import .ble-fixture as fixture
 import .ble-peripheral-test as peripheral-fixture
 

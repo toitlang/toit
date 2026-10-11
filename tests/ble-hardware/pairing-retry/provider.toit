@@ -1,10 +1,10 @@
 // Copyright (C) 2026 Toit contributors.
-import ble.experimental.esp32
-import ble.experimental.transport
-import ble.experimental.security-owner show Owner
-import ble.experimental.security
-import ble.experimental.pairing-attempts as retry
-import ble.experimental.service.gatt-provider as gatt
+import ble.transport.esp32
+import ble.transport
+import ble.implementation_.security-owner show Owner
+import ble.implementation_.security
+import ble.implementation_.pairing-attempts as retry
+import ble.implementation_.service.gatt-provider as gatt
 import encoding.hex
 import system
 
@@ -24,7 +24,7 @@ class Provider extends gatt.Provider:
   round/int := -1
   radio/Radio? := null
   constructor: super
-  pairing-attempts -> retry.Attempts: return attempts
+  pairing-attempts_ -> retry.Attempts: return attempts
   pairing-io-capability -> int?: return 1
   require-authentication -> bool: return true
   open-transport -> transport.Transport:
@@ -35,7 +35,7 @@ class Provider extends gatt.Provider:
     confirmations++
     print "RETRY_PROVIDER NUMERIC round=$round value=$number approve=$(round == 2)"
     return round == 2
-  run-security-owner owner/Owner -> none:
+  run-security-owner_ owner/Owner -> none:
     started := Time.monotonic-us --since-wakeup
     error := catch: super owner
     pairing-owner := owner as security.Pairing

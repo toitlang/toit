@@ -2,9 +2,9 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.central
-import ble.experimental.hci
-import ble.experimental.linux
+import ble.implementation_.central
+import ble.implementation_.hci
+import ble.transport.linux
 import encoding.hex
 import system
 

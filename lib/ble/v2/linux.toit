@@ -2,12 +2,12 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import ..experimental.linux as linux
-import ..experimental.linux-management as management
-import ..experimental.native as native
-import ..experimental.transport as transport
-import ..experimental.service.gatt-provider as gatt
-import ..experimental.resolving-list as resolving
+import ..transport.linux as linux
+import ..implementation_.linux-management as management
+import ..implementation_.native as native
+import ..transport as transport
+import ..implementation_.service.gatt-provider as gatt
+import ..service.resolving-list as resolving
 import .adapter
 import .peripheral show Peripheral
 

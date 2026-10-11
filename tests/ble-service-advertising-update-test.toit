@@ -5,8 +5,8 @@
 import expect show *
 import monitor
 import system
-import ble.experimental.service.client as clients
-import ble.experimental.service.api as api
+import ble.service.client as clients
+import ble.implementation_.service.api as api
 import .ble-service-advertising-test as advertising
 import .ble-service-private-advertising-test as private-fixture
 import .ble-fixture as fixture

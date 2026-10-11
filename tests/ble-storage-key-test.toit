@@ -4,7 +4,7 @@
 
 import expect show *
 import system.storage
-import ble.experimental.storage-key show StorageKey
+import ble.implementation_.storage-key show StorageKey
 
 PATH ::= "toit.io/test/ble-storage-key"
 

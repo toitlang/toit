@@ -2,9 +2,9 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.attribute-server as attributes
-import ble.experimental.central
-import ble.experimental.service.client as clients
+import ble.implementation_.attribute-server as attributes
+import ble.implementation_.central
+import ble.service.client as clients
 import expect show *
 import monitor
 import system
@@ -195,7 +195,7 @@ class Provider extends mixed.Provider:
   pending/monitor.Latch ::= monitor.Latch
   finished/monitor.Latch ::= monitor.Latch
 
-  create-database -> attributes.Database:
+  create-database_ -> attributes.Database:
     return database false
 
   handle index/int arguments/any --gid/int --client/int -> any:
@@ -217,7 +217,7 @@ class ResumedProvider extends resume.Provider:
 
   constructor private/bool: super private
 
-  create-database -> attributes.Database:
+  create-database_ -> attributes.Database:
     return database true
 
   handle index/int arguments/any --gid/int --client/int -> any:

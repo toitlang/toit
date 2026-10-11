@@ -3,12 +3,12 @@
 // be found in the tests/LICENSE file.
 
 
-import ble.experimental.advertising
-import ble.experimental.att
-import ble.experimental.central
-import ble.experimental.gatt
-import ble.experimental.hci
-import ble.experimental.scanning
+import ble.implementation_.advertising
+import ble.implementation_.att
+import ble.implementation_.central
+import ble.implementation_.gatt
+import ble.implementation_.hci
+import ble.implementation_.scanning
 import .fixtures.hci-echo as fixture
 
 exchange controller/hci.Controller host/central.Central cycle/int --peer-address/ByteArray?=null -> none:

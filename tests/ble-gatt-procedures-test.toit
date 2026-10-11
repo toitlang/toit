@@ -7,11 +7,11 @@
 // and Read Multiple in both forms, and the server's refusal of an unreadable
 // handle.
 
-import ble.experimental.att
-import ble.experimental.attribute-server as attributes
-import ble.experimental.central
-import ble.experimental.gatt
-import ble.experimental.hci
+import ble.implementation_.att
+import ble.implementation_.attribute-server as attributes
+import ble.implementation_.central
+import ble.implementation_.gatt
+import ble.implementation_.hci
 import expect show *
 import .ble-fixture as fixture
 import .ble-mtu-server-test as wire

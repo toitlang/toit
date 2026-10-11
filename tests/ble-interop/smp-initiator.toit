@@ -2,7 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.smp-pairing as smp
+import ble.implementation_.smp-pairing as smp
 import crypto.sha256 show sha256
 import encoding.hex
 import expect show *

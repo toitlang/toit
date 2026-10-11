@@ -2,7 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.transport
+import ble.transport
 import io
 
 // Test-only recorder. Retains public connection metadata, never packet bodies.

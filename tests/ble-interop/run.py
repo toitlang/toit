@@ -178,7 +178,7 @@ def main():
     output.mkdir(parents=True, exist_ok=False)
     results = []
     source_paths = list(Path(__file__).parent.glob("*.py")) + list(Path(__file__).parent.glob("*.toit"))
-    source_paths += list((root / "lib/ble/experimental").rglob("*.toit"))
+    source_paths += list((root / "lib/ble").rglob("*.toit"))
     hashes = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
               for p in source_paths}
     matrix = list(cases())

@@ -6,9 +6,9 @@
 // private addresses from a fixed test IRK (IRK below, public test value).
 // For tests/ble-hardware/private-resolve.sh.
 
-import ble.experimental.esp32
-import ble.experimental.transport
-import ble.experimental.service.gatt-provider as service
+import ble.transport.esp32
+import ble.transport
+import ble.implementation_.service.gatt-provider as service
 
 IRK ::= ByteArray 16: 0x40 + it
 

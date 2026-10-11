@@ -5,11 +5,11 @@
 import expect show *
 import monitor
 import system
-import ble.experimental.transport
-import ble.experimental.service.client as clients
-import ble.experimental.service.gatt-provider as providers
-import ble.experimental.service.scanning-provider as scanning-provider
-import ble.experimental.service.provider as rpc
+import ble.transport
+import ble.service.client as clients
+import ble.implementation_.service.gatt-provider as providers
+import ble.implementation_.service.scanning-provider as scanning-provider
+import ble.implementation_.service.provider as rpc
 import .ble-fixture as fixture
 
 main:
@@ -129,7 +129,7 @@ class Provider extends providers.Provider:
     address-calls++
     return private_ ? #[0xaa, 0xfb, 0x0d, 0x94, 0x81, 0x70] : null
   open-transport -> transport.Transport: return radio
-  create-scan client/int arguments/List -> rpc.Session:
+  create-scan_ client/int arguments/List -> rpc.Session:
     last-duration = arguments[0]
     last = super client arguments
     return last

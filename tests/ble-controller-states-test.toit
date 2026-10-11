@@ -2,8 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.controller-states as states
-import ble.experimental.hci
+import ble.implementation_.controller-states as states
+import ble.implementation_.hci
 import expect show *
 import .ble-fixture as fixture
 

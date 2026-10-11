@@ -2,10 +2,10 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.bond
-import ble.experimental.bond-protection
-import ble.experimental.smp-identity
-import ble.experimental.smp-legacy
+import ble.implementation_.bond
+import ble.implementation_.bond-protection
+import ble.implementation_.smp-identity
+import ble.implementation_.smp-legacy
 import expect show *
 import encoding.hex
 import system

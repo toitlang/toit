@@ -2,15 +2,15 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.acl
-import ble.experimental.central
-import ble.experimental.encryption
-import ble.experimental.hci
-import ble.experimental.security
-import ble.experimental.security-owner show Owner
-import ble.experimental.service.client as clients
-import ble.experimental.service.provider as rpc
-import ble.experimental.smp-pairing as smp
+import ble.implementation_.acl
+import ble.implementation_.central
+import ble.implementation_.encryption
+import ble.implementation_.hci
+import ble.implementation_.security
+import ble.implementation_.security-owner show Owner
+import ble.service.client as clients
+import ble.implementation_.service.provider as rpc
+import ble.implementation_.smp-pairing as smp
 import expect show *
 import io
 import monitor
@@ -253,14 +253,14 @@ class Provider extends mixed.Provider:
           --peer-address=#[0, 6, 5, 4, 3, 2, 1])
     super
 
-  create-builder client/int name/string -> rpc.Session:
+  create-builder_ client/int name/string -> rpc.Session:
     last-peripheral = super client name
     return last-peripheral
 
-  create-central-security-owner host/central.Central link/central.Link info/hci.Capabilities -> Owner?:
+  create-central-security-owner_ host/central.Central link/central.Link info/hci.Capabilities -> Owner?:
     return create-owner host link info 0
 
-  create-security-owner host/central.Central link/central.Link info/hci.Capabilities -> Owner?:
+  create-security-owner_ host/central.Central link/central.Link info/hci.Capabilities -> Owner?:
     return create-owner host link info 1
 
   create-owner host/central.Central link/central.Link info/hci.Capabilities index/int -> Owner:
@@ -270,8 +270,8 @@ class Provider extends mixed.Provider:
     owners[index] = owner
     return owner
 
-  run-central-security-owner selected/Owner -> none: run-owner selected 0
-  run-security-owner selected/Owner -> none: run-owner selected 1
+  run-central-security-owner_ selected/Owner -> none: run-owner selected 0
+  run-security-owner_ selected/Owner -> none: run-owner selected 1
 
   run-owner selected/Owner index/int:
     (selected as security.Pairing).run: | number/int |

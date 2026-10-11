@@ -4,10 +4,10 @@
 
 import expect show *
 import monitor
-import ble.experimental.advertising-updates as updates
-import ble.experimental.central as central
-import ble.experimental.bounded-central as bounded
-import ble.experimental.hci as hci
+import ble.implementation_.advertising-updates as updates
+import ble.implementation_.central as central
+import ble.implementation_.bounded-central as bounded
+import ble.implementation_.hci as hci
 import .ble-accept-update-test as update-fixture
 import .ble-bounded-accept-test as bounded-fixture
 import .ble-connect-isolation-test as connections

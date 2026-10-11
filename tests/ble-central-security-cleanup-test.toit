@@ -2,12 +2,12 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.central
-import ble.experimental.hci
-import ble.experimental.security-owner
-import ble.experimental.service.central-provider as providers
-import ble.experimental.service.client as clients
-import ble.experimental.service.provider as rpc
+import ble.implementation_.central
+import ble.implementation_.hci
+import ble.implementation_.security-owner
+import ble.implementation_.service.central-provider as providers
+import ble.service.client as clients
+import ble.implementation_.service.provider as rpc
 import expect show *
 import .ble-fixture as fixture
 import .ble-multilink-test as links
@@ -93,7 +93,7 @@ shared-survivor:
 
 class SharedProvider extends Provider:
   constructor: super 2
-  create-central-security-owner host/central.Central link/central.Link info/hci.Capabilities -> security-owner.Owner?:
+  create-central-security-owner_ host/central.Central link/central.Link info/hci.Capabilities -> security-owner.Owner?:
     return link.info.address[0] == 2 ? owner : null
 
 class Provider extends providers.Provider:
@@ -108,10 +108,10 @@ class Provider extends providers.Provider:
   open-transport -> fixture.FakeTransport:
     opens++
     return opens == 1 ? radio : recovery
-  create-central-security-owner host/central.Central link/central.Link info/hci.Capabilities -> security-owner.Owner?:
+  create-central-security-owner_ host/central.Central link/central.Link info/hci.Capabilities -> security-owner.Owner?:
     return opens == 1 ? owner : null
-  run-central-security-owner selected/security-owner.Owner -> none:
+  run-central-security-owner_ selected/security-owner.Owner -> none:
     throw "CENTRAL_SECURITY_RUN_FAILED"
-  create-connection client/int arguments/List -> rpc.Session:
+  create-connection_ client/int arguments/List -> rpc.Session:
     last = super client arguments
     return last

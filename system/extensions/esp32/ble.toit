@@ -14,9 +14,9 @@
 // directory of this repository.
 
 import system.services show ServiceProvider
-import ble.experimental.esp32 as esp32
-import ble.experimental.transport as transport
-import ble.experimental.service.gatt-provider as ble
+import ble.transport.esp32 as esp32
+import ble.transport as transport
+import ble.service.gatt-provider as ble
 
 /**
 The BLE service built into the system container.
@@ -40,6 +40,11 @@ class BleServiceProvider extends ble.Provider:
   open-transport -> transport.Transport: return esp32.Esp32Transport
   peripheral-session-limit -> int: return 2
 
-/** Installs $BleServiceProvider where the firmware has the controller-only transport. */
+/**
+Installs $BleServiceProvider.
+
+The envelope build includes this provider only with the controller-only
+  transport. Custom system entry points must ensure the same prerequisite.
+*/
 install-ble-service -> none:
-  if esp32.available: (BleServiceProvider).install
+  (BleServiceProvider).install

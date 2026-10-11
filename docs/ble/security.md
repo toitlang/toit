@@ -8,6 +8,11 @@ for what a deployment must still supply.
 
 ## Modules
 
+The protocol and bond modules below are private SDK internals under
+`ble.implementation_`. Public providers enable pairing through
+`ble.service.pairing.Support` and override its UI and authentication hooks.
+Custom protocol owners and bond persistence are not yet a public extension API.
+
 | Module | Role |
 | --- | --- |
 | `sc-crypto` | f4, f5, f6, g2 (Core Vol 3 Part H 2.2.6 to 2.2.9) over the SDK's AES-CMAC, most-significant-octet-first; tested with the Appendix D vectors |

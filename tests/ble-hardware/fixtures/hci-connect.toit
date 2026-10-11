@@ -2,11 +2,11 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the examples/LICENSE file.
 
-import ble.experimental.advertising
-import ble.experimental.central
-import ble.experimental.hci
-import ble.experimental.linux
-import ble.experimental.scanning
+import ble.implementation_.advertising
+import ble.implementation_.central
+import ble.implementation_.hci
+import ble.transport.linux
+import ble.implementation_.scanning
 import encoding.hex
 import uuid
 

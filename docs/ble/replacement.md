@@ -1,5 +1,10 @@
 # Replacing NimBLE with the Toit host
 
+The ESP32 replacement is complete: the Toit host is the only supported BLE host,
+and builds reject NimBLE and Bluedroid configurations. The old `ble` API uses
+`ble.v2`; it no longer probes for a native host or falls back between backends.
+The measurements and steps below record the migration and remaining work.
+
 The plan for making the Toit BLE host the only BLE implementation: what
 changes, in which order, and the numbers that decide the open choices. Each
 step is a separate commit series; the ones marked "measure" end with numbers
@@ -20,7 +25,7 @@ in [measurements.md](measurements.md).
 
 ## Steps
 
-1. **`ble.v2`.** `ble.experimental.next` becomes `lib/ble/v2.toit` and
+1. **`ble.v2`.** `ble.implementation_.next` becomes `lib/ble/v2.toit` and
    `lib/ble/v2/`, the stable name for the new API. Documentation, examples,
    tests and hardware checks follow.
 2. **Where the provider lives (measure).** Build the default provider into
@@ -75,9 +80,9 @@ in [measurements.md](measurements.md).
    and the peripheral's MTU. Verified by the software tests and
    `tests/ble-hardware/compat.sh` (two centrals at once).
 8. **macOS backend.** Written, not yet run on a Mac:
-   `lib/ble/experimental/service/darwin-provider.toit` speaks the service
+   `lib/ble/implementation_/service/darwin-provider.toit` speaks the service
    protocol over the CoreBluetooth primitives the `ble` package used before
-   (`lib/ble/experimental/darwin.toit`, `src/resources/ble_darwin.mm`,
+   (`lib/ble/implementation_/darwin.toit`, `src/resources/ble_darwin.mm`,
    unchanged). `ble.v2.darwin.open` gives a `ble.v2` adapter;
    `ble.v2.darwin.install` puts the provider in the process for the `ble`
    package (no automatic fallback: that would cost every ESP32 application

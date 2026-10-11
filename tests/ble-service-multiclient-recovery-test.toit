@@ -4,10 +4,10 @@
 
 import expect show *
 import monitor
-import ble.experimental.transport
-import ble.experimental.service.client as clients
-import ble.experimental.service.gatt-provider as providers
-import ble.experimental.service.provider as rpc
+import ble.transport
+import ble.service.client as clients
+import ble.implementation_.service.gatt-provider as providers
+import ble.implementation_.service.provider as rpc
 import .ble-fixture as fixture
 import .ble-multilink-test as links
 import .ble-service-multiclient-test as shared
@@ -86,7 +86,7 @@ class Provider extends providers.Provider:
     opens++
     expect (opens <= 2)
     return opens == 1 ? failed : fresh
-  create-connection client/int arguments/List -> rpc.Session:
+  create-connection_ client/int arguments/List -> rpc.Session:
     result := super client arguments
     sessions.add result
     return result

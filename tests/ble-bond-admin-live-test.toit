@@ -5,9 +5,9 @@
 import expect show *
 import monitor
 import system.containers
-import ble.experimental.bond-registry
-import ble.experimental.service.bond-admin-client as clients
-import ble.experimental.service.bond-admin-provider as providers
+import ble.implementation_.bond-registry
+import ble.implementation_.service.bond-admin-client as clients
+import ble.implementation_.service.bond-admin-provider as providers
 import .ble-bond-revocation-test as fixture
 
 main arguments:

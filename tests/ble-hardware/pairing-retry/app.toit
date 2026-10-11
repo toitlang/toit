@@ -1,5 +1,5 @@
 // Copyright (C) 2026 Toit contributors.
-import ble.experimental.service.client as service
+import ble.service.client as service
 import system
 
 main:

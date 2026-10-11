@@ -2,20 +2,20 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.bond
-import ble.experimental.bond-table
-import ble.experimental.bond-registry
-import ble.experimental.bond-resume
-import ble.experimental.bounded-central as bounded
-import ble.experimental.central
-import ble.experimental.encryption
-import ble.experimental.hci
-import ble.experimental.privacy
-import ble.experimental.security-owner show Owner
-import ble.experimental.service.client as clients
-import ble.experimental.service.gatt-provider as policy
-import ble.experimental.service.provider as rpc
-import ble.experimental.smp-identity as identity
+import ble.implementation_.bond
+import ble.implementation_.bond-table
+import ble.implementation_.bond-registry
+import ble.implementation_.bond-resume
+import ble.implementation_.bounded-central as bounded
+import ble.implementation_.central
+import ble.implementation_.encryption
+import ble.implementation_.hci
+import ble.implementation_.privacy
+import ble.implementation_.security-owner show Owner
+import ble.service.client as clients
+import ble.implementation_.service.gatt-provider as policy
+import ble.implementation_.service.provider as rpc
+import ble.implementation_.smp-identity as identity
 import expect show *
 import io
 import monitor
@@ -214,26 +214,26 @@ class Provider extends mixed.Provider:
   candidate index/int -> bond.Candidate:
     return bond.Candidate saved-keys[index] local identities[index] --authenticated
 
-  create-shared-host controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
+  create-shared-host_ controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
     policy.configure-mixed-roles controller info
     records.allow = false
     host = Host controller info receive-limit registry
     ready.set host
     return host
 
-  create-builder client/int name/string -> rpc.Session:
+  create-builder_ client/int name/string -> rpc.Session:
     last-peripheral = super client name
     return last-peripheral
 
-  create-central-security-owner owner/central.Central link/central.Link info/hci.Capabilities -> Owner?:
+  create-central-security-owner_ owner/central.Central link/central.Link info/hci.Capabilities -> Owner?:
     return (owner as Host).owners[link.info.handle]
 
-  create-security-owner owner/central.Central link/central.Link info/hci.Capabilities -> Owner?:
+  create-security-owner_ owner/central.Central link/central.Link info/hci.Capabilities -> Owner?:
     return (owner as Host).owners[link.info.handle]
 
-  run-central-security-owner selected/Owner -> none: (selected as bond-resume.Resume).run
+  run-central-security-owner_ selected/Owner -> none: (selected as bond-resume.Resume).run
 
-  run-security-owner selected/Owner -> none:
+  run-security-owner_ selected/Owner -> none:
     (selected as bond-resume.Resume).run
     (secured[1] as monitor.Latch).set true
 

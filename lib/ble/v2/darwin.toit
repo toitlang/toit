@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import ..experimental.service.darwin-provider as darwin
+import ..service.darwin-provider as darwin
 import .adapter
 
 /**
@@ -13,7 +13,7 @@ macOS has no BLE provider container; $open installs one in the calling
   on close. Peers are the platform's identifiers (`PlatformPeer`), and what
   macOS keeps to itself (PHY, connection parameters, transmit power,
   security, the identity of connected centrals) reports BLE_UNSUPPORTED;
-  see `ble.experimental.service.darwin-provider`.
+  see `ble.service.darwin-provider`.
 */
 
 /** Opens the Mac's Bluetooth adapter. */

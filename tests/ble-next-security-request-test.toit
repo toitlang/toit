@@ -9,14 +9,14 @@
 
 import expect show *
 import monitor
-import ble.experimental.acl
-import ble.experimental.encryption
-import ble.experimental.hci
+import ble.implementation_.acl
+import ble.implementation_.encryption
+import ble.implementation_.hci
 import ble.v2 as ble
-import ble.experimental.smp-pairing as smp
-import ble.experimental.transport
-import ble.experimental.service.gatt-provider as providers
-import ble.experimental.service.pairing as pairing
+import ble.implementation_.smp-pairing as smp
+import ble.transport
+import ble.implementation_.service.gatt-provider as providers
+import ble.implementation_.service.pairing as pairing
 import .ble-fixture as fixture
 import .ble-key-reply-test as keys
 import .ble-next-peripheral-test as peripheral

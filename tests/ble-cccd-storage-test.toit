@@ -5,10 +5,10 @@
 import expect show *
 import encoding.hex
 import system
-import ble.experimental.bond as bonds
-import ble.experimental.bond-flash
-import ble.experimental.cccd-storage
-import ble.experimental.smp-identity show Identity
+import ble.implementation_.bond as bonds
+import ble.implementation_.bond-flash
+import ble.implementation_.cccd-storage
+import ble.implementation_.smp-identity show Identity
 import .ble-bond-table-test as fixture
 
 DATABASE-ID ::= #[3, 2, 1]

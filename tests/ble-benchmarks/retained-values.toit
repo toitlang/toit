@@ -3,9 +3,9 @@
 // be found in the tests/LICENSE file.
 
 // A service-RPC retention experiment; it does not open a radio controller.
-import ble.experimental.service.client as clients
-import ble.experimental.service.gatt-provider as providers
-import ble.experimental.transport
+import ble.service.client as clients
+import ble.implementation_.service.gatt-provider as providers
+import ble.transport
 import encoding.json
 import expect show *
 import system

@@ -4,7 +4,7 @@
 
 import expect show *
 import system
-import ble.experimental.attribute-server as server
+import ble.implementation_.attribute-server as server
 
 main:
   [0x12, 0x52].do: | opcode/int |

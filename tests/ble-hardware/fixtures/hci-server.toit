@@ -2,12 +2,12 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the examples/LICENSE file.
 
-import ble.experimental.attribute-server as attributes
-import ble.experimental.central
-import ble.experimental.gatt-server
-import ble.experimental.hci
-import ble.experimental.linux
-import ble.experimental.transport
+import ble.implementation_.attribute-server as attributes
+import ble.implementation_.central
+import ble.implementation_.gatt-server
+import ble.implementation_.hci
+import ble.transport.linux
+import ble.transport
 import encoding.hex
 import system
 

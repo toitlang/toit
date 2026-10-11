@@ -6,9 +6,9 @@
 // initialization, a link owner asks for 2M after a connection it initiated
 // when the peer has it too, and the link records the update.
 
-import ble.experimental.central
-import ble.experimental.connection
-import ble.experimental.hci
+import ble.implementation_.central
+import ble.implementation_.connection
+import ble.implementation_.hci
 import expect show *
 import monitor
 import .ble-fixture as fixture

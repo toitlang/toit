@@ -5,10 +5,10 @@
 import expect show *
 import monitor
 import system
-import ble.experimental.service.client as clients
-import ble.experimental.service.gatt-provider as providers
-import ble.experimental.service.provider as rpc
-import ble.experimental.signaling as signaling
+import ble.service.client as clients
+import ble.implementation_.service.gatt-provider as providers
+import ble.implementation_.service.provider as rpc
+import ble.implementation_.signaling as signaling
 import .ble-service-gatt-test as gatt-fixture
 import .ble-fixture as fixture
 import .ble-peripheral-test as peripheral
@@ -124,7 +124,7 @@ class Provider extends gatt-fixture.TestProvider:
   last/rpc.Session? := null
   constructor: super
 
-  create-builder client/int name/string -> rpc.Session:
+  create-builder_ client/int name/string -> rpc.Session:
     last = super client name
     return last
 

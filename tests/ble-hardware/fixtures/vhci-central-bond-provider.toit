@@ -2,14 +2,14 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the examples/LICENSE file.
 
-import ble.experimental.bond
-import ble.experimental.bond-flash
-import ble.experimental.bond-storage
-import ble.experimental.bond-resume
-import ble.experimental.central
-import ble.experimental.hci
-import ble.experimental.security
-import ble.experimental.security-owner show Owner
+import ble.implementation_.bond
+import ble.implementation_.bond-flash
+import ble.implementation_.bond-storage
+import ble.implementation_.bond-resume
+import ble.implementation_.central
+import ble.implementation_.hci
+import ble.implementation_.security
+import ble.implementation_.security-owner show Owner
 import .vhci-central-provider as fixture
 
 // Public test storage key, isolated from the retained peripheral comparison bond.
@@ -33,27 +33,27 @@ class Provider extends fixture.Provider:
   constructor .store_:
     super
 
-  create-central-host controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
+  create-central-host_ controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
     // Storage errors propagate; only an absent record enables fresh pairing.
     saved_ = store_.load #[1]
     resumed = saved_ != null
     print "CENTRAL_BOND READY mode=$(resumed ? "resume" : "pair")"
     return super controller info receive-limit
 
-  create-central-security-owner host/central.Central link/central.Link info/hci.Capabilities -> Owner?:
+  create-central-security-owner_ host/central.Central link/central.Link info/hci.Capabilities -> Owner?:
     link_ = link
     local := link.local-random-address or info.address
     if saved_:
       return RequestTraceResume host link saved_ --local-address=local
     return security.Pairing host link --local-address=local
         --local-address-type=(link.local-random-address ? 1 : 0)
-        --attempts=pairing-attempts
-        --attempt-identity=(pairing-peer-identity link)
+        --attempts=pairing-attempts_
+        --attempt-identity=(pairing-peer-identity_ link)
         --io-capability=3
         --no-require-authentication
         --bond
 
-  run-central-security-owner selected/Owner -> none:
+  run-central-security-owner_ selected/Owner -> none:
     failure := catch: secure_ selected
     if failure:
       print "CENTRAL_BOND security-failed=$failure paired=$(selected.paired) encrypted=$(selected.encrypted)"

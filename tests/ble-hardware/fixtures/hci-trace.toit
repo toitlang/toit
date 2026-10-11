@@ -2,7 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the examples/LICENSE file.
 
-import ble.experimental.transport as transport
+import ble.transport as transport
 import encoding.hex
 
 /** Stores the first 64 HCI headers, excluding payloads that may contain keys or SMP data. */

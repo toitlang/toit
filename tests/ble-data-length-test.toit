@@ -5,9 +5,9 @@
 // Data Length Extension: a controller that supports it receives the suggested
 // default at initialization, and a link records the negotiated lengths.
 
-import ble.experimental.central
-import ble.experimental.connection
-import ble.experimental.hci
+import ble.implementation_.central
+import ble.implementation_.connection
+import ble.implementation_.hci
 import expect show *
 import .ble-fixture as fixture
 

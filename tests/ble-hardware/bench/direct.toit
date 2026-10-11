@@ -6,11 +6,11 @@
 // and pushes notifications directly through the GATT server, to separate the
 // host's cost from the RPC round trip of the provider model.
 
-import ble.experimental.attribute-server as attributes
-import ble.experimental.central
-import ble.experimental.esp32
-import ble.experimental.gatt-server
-import ble.experimental.hci
+import ble.implementation_.attribute-server as attributes
+import ble.implementation_.central
+import ble.transport.esp32
+import ble.implementation_.gatt-server
+import ble.implementation_.hci
 import monitor
 import .stats as stats
 import .uuids as uuids

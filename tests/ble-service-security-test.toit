@@ -2,24 +2,24 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.acl
-import ble.experimental.bond
-import ble.experimental.bond-table
-import ble.experimental.bond-registry
-import ble.experimental.bond-resume
-import ble.experimental.central
-import ble.experimental.encryption
-import ble.experimental.hci
-import ble.experimental.pairing-attempts as retry
-import ble.experimental.privacy
-import ble.experimental.security-owner show Owner
-import ble.experimental.smp-identity
-import ble.experimental.signaling
-import ble.experimental.smp-pairing as smp
-import ble.experimental.transport
-import ble.experimental.service.client as clients
-import ble.experimental.service.gatt-provider as providers
-import ble.experimental.service.pairing as pairing
+import ble.implementation_.acl
+import ble.implementation_.bond
+import ble.implementation_.bond-table
+import ble.implementation_.bond-registry
+import ble.implementation_.bond-resume
+import ble.implementation_.central
+import ble.implementation_.encryption
+import ble.implementation_.hci
+import ble.implementation_.pairing-attempts as retry
+import ble.implementation_.privacy
+import ble.implementation_.security-owner show Owner
+import ble.implementation_.smp-identity
+import ble.implementation_.signaling
+import ble.implementation_.smp-pairing as smp
+import ble.transport
+import ble.service.client as clients
+import ble.implementation_.service.gatt-provider as providers
+import ble.implementation_.service.pairing as pairing
 import expect show *
 import monitor
 import system
@@ -135,14 +135,14 @@ class ResumeProvider extends providers.Provider:
   receive-acl-packets -> int: return receive-flow_ ? 4 : 0
   open-transport -> transport.Transport: return radio
   local-random-address -> ByteArray?: return address
-  create-host controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
+  create-host_ controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
     // The registry already authenticated storage. Reject any further read
     // while an immediate LTK request can arrive at the connection hook.
     records.allow-read = false
     return ResumeHost controller info receive-limit registry
-  create-security-owner host/central.Central link/central.Link info/hci.Capabilities -> Owner?:
+  create-security-owner_ host/central.Central link/central.Link info/hci.Capabilities -> Owner?:
     return (host as ResumeHost).owner
-  run-security-owner owner/Owner -> none:
+  run-security-owner_ owner/Owner -> none:
     (owner as bond-resume.Resume).run
     secured.set true
 
@@ -318,7 +318,7 @@ class Provider extends providers.Provider with pairing.Support:
 retry-provider-guard:
   provider := RetryProvider
   expect-throw "PREVIOUS_PAIRING_FAILED":
-    provider.pairing-attempts.with-attempt #[1, 1, 2, 3, 4, 5, 6]:
+    provider.pairing-attempts_.with-attempt #[1, 1, 2, 3, 4, 5, 6]:
       throw "PREVIOUS_PAIRING_FAILED"
   system.process-stats --gc
   responder := task::
@@ -339,7 +339,7 @@ class RetryProvider extends providers.Provider with pairing.Support:
   constructor: super
   open-transport -> transport.Transport: return radio
   pairing-io-capability -> int?: return 3
-  pairing-attempts -> retry.Attempts: return attempts
+  pairing-attempts_ -> retry.Attempts: return attempts
 
 class RetryRadio extends fixture.FakeTransport:
   smp-packets/int := 0

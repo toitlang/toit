@@ -4,13 +4,13 @@
 
 import expect show *
 import monitor
-import ble.experimental.attribute-server as attributes
-import ble.experimental.cccd-store as cccd
-import ble.experimental.central
-import ble.experimental.hci
-import ble.experimental.security-owner
-import ble.experimental.service.client as clients
-import ble.experimental.signaling as signaling
+import ble.implementation_.attribute-server as attributes
+import ble.implementation_.cccd-store as cccd
+import ble.implementation_.central
+import ble.implementation_.hci
+import ble.implementation_.security-owner
+import ble.service.client as clients
+import ble.implementation_.signaling as signaling
 import .ble-cccd-session-test as configuration
 import .ble-fixture as wire
 import .ble-peripheral-test as peripheral
@@ -86,10 +86,10 @@ class Provider extends service.TestProvider:
   selected/int := 0
   constructor .store_:
     super
-  create-security-owner host/central.Central link/central.Link info/hci.Capabilities -> security-owner.Owner?:
+  create-security-owner_ host/central.Central link/central.Link info/hci.Capabilities -> security-owner.Owner?:
     return owner
-  run-security-owner owner/security-owner.Owner -> none:
-  create-cccd-store host/central.Central link/central.Link database/attributes.Database owner/security-owner.Owner? -> cccd.Store?:
+  run-security-owner_ owner/security-owner.Owner -> none:
+  create-cccd-store_ host/central.Central link/central.Link database/attributes.Database owner/security-owner.Owner? -> cccd.Store?:
     expect-equals this.owner owner
     expect (owner.matches host link)
     expect-equals #[42] (database.value 16)

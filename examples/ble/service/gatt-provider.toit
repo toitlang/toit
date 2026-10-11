@@ -1,0 +1,37 @@
+// Copyright (C) 2026 Toit contributors.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the examples/LICENSE file.
+
+/**
+The BLE provider to install beside `ble` package applications on
+  controller-only firmware (`make esp32`).
+
+It owns the controller and serves scanning, central connections, one local
+  GATT peripheral database per session, and non-connectable advertising to
+  the applications on the device through the BLE service. The
+  system container already has a provider like this one; an installed one
+  takes precedence, which is how a deployment sets its own policy. Two
+  peripheral sessions let two centrals connect at once; raise or lower
+  $Provider.peripheral-session-limit to taste.
+
+Pairing and bonding policy belong to the provider: this one does not pair.
+  Mix in `ble.service.pairing`'s `Support` to pair (its
+  hooks select the IO capability and confirm). Advanced bonding currently
+  uses private SDK APIs; see `docs/ble/security.md` for their design.
+
+Install: `toit tool firmware -e <envelope> container install ble-provider <this snapshot>`.
+*/
+
+import ble.transport.esp32
+import ble.transport
+import ble.service.gatt-provider as service
+
+main:
+  provider := Provider
+  provider.install
+  provider.uninstall --wait
+
+class Provider extends service.Provider:
+  constructor: super
+  open-transport -> transport.Transport: return esp32.Esp32Transport
+  peripheral-session-limit -> int: return 2

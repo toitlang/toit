@@ -5,8 +5,8 @@
 import expect show *
 import monitor
 import system
-import ble.experimental.signaling as signaling
-import ble.experimental.service.client as clients
+import ble.implementation_.signaling as signaling
+import ble.service.client as clients
 import .ble-service-gatt-test as service
 import .ble-fixture as fixture
 import .ble-peripheral-test as peripheral

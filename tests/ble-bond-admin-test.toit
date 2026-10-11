@@ -5,13 +5,13 @@
 import expect show *
 import monitor
 import system.containers
-import ble.experimental.bond
-import ble.experimental.bond-info show BondInfo
-import ble.experimental.bond-registry
-import ble.experimental.bond-table
-import ble.experimental.smp-identity show Identity
-import ble.experimental.service.bond-admin-client as clients
-import ble.experimental.service.bond-admin-provider as providers
+import ble.implementation_.bond
+import ble.implementation_.bond-info show BondInfo
+import ble.implementation_.bond-registry
+import ble.implementation_.bond-table
+import ble.implementation_.smp-identity show Identity
+import ble.implementation_.service.bond-admin-client as clients
+import ble.implementation_.service.bond-admin-provider as providers
 import .ble-bond-table-test as fixture
 
 main arguments:

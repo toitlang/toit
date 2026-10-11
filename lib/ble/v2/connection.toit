@@ -5,7 +5,7 @@
 import ..uuid show BleUuid
 import monitor
 
-import ..experimental.service.client as rpc
+import ..service.client as rpc
 import .adapter show Adapter
 import .peripheral show Peripheral GattServer
 import .types

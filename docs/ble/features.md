@@ -1,7 +1,7 @@
 # Feature inventory
 
 Service protocol 0.27 (`service/api.toit`). This lists what the host implements,
-its fixed limits, and the gaps that must close before it can replace NimBLE.
+its fixed limits, and differences from the former NimBLE backend.
 
 ## Implemented
 
@@ -21,7 +21,7 @@ its fixed limits, and the gaps that must close before it can replace NimBLE.
 | Peripheral sessions | A provider whose `peripheral-session-limit` is above one serves that many centrals at once on a shared host, advertising again while connected; central sessions are refused meanwhile. |
 | Application API | `ble.v2` ([api.md](api.md)): connect and disconnect events in both roles, link details and PHY/parameter requests, transmit power control (ESP32 vendor API; per link on the ESP32-S3), handlers with the central's connection, batched notifications, GATT client in both roles, secondary and included services, subscriptions with or without a scope, pairing started by a peripheral application (Security Request). Verified on the original ESP32 and the ESP32-S3 with `tests/ble-hardware/next-check.sh`. |
 | Link operations | Read PHY, data length, connection parameters, RSSI (Read RSSI) and transmit power (Read Transmit Power Level) of any link; LE Set PHY with preferences, waiting for its completion and for the automatic 2M request made after connecting; disconnect reason. |
-| `ble` package | The existing public API (`Adapter`, `Central`, `Peripheral`, remote and local services, characteristics and descriptors) runs unchanged on this host: `Adapter` falls back to the BLE service provider when the firmware has no native host (`lib/ble/host.toit`). Scan, connect by identifier, discovery, read, write, subscribe and notifications on the central side; services, characteristics with callback reads and writes, descriptors, advertising and notifications on the peripheral side. Writes with a response pass through the application's write handler before the response leaves; write commands are committed by the provider at once. Verified on hardware with the unchanged `examples/ble/heart_rate.toit` (`tests/ble-hardware/compat.sh`). |
+| `ble` package | The existing public API (`Adapter`, `Central`, `Peripheral`, remote and local services, characteristics and descriptors) runs unchanged on this host: `Adapter` uses the BLE service provider through `ble.v2` (`lib/ble/host.toit`). Scan, connect by identifier, discovery, read, write, subscribe and notifications on the central side; services, characteristics with callback reads and writes, descriptors, advertising and notifications on the peripheral side. Writes with a response pass through the application's write handler before the response leaves; write commands are committed by the provider at once. Verified on hardware with the unchanged `examples/ble/heart_rate.toit` (`tests/ble-hardware/compat.sh`). |
 | Bonds | Encrypted (AES-GCM) bond records bound to namespace and slot, an in-memory table with snapshots, resumption owners, revocation markers, an administration service, protected per-bond CCCD storage, offline database migration. |
 | Service layer | Scanning and GATT providers (the GATT one serves both roles) configured through hooks (privacy, pairing, session limits, mixed roles, resolving list, bonded peers), bounded request mailbox for server handlers, client-side scoped blocks, capability discovery, provider PID pinning. |
 
@@ -39,7 +39,7 @@ its fixed limits, and the gaps that must close before it can replace NimBLE.
 | Sessions per provider | up to 8 central and 8 peripheral sessions (`central-session-limit`, `peripheral-session-limit`; 1 each by default), both roles at once with `mixed-role-sessions`; one session per service client, so the application API opens a client per connection. The controller bounds it further: the original ESP32 images (NimBLE and controller-only alike) allow 2 connections (`CONFIG_BTDM_CTRL_BLE_MAX_CONN`), the ESP32-S3 10 activities. |
 | Pairing attempts | one per owner object |
 
-## Differences from the NimBLE backend
+## Differences from the former NimBLE backend
 
 No known gap remains for the `ble` package as applications use it today.
 Deliberate differences on this host: pairing policy is the provider's, so

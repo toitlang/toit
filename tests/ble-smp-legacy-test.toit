@@ -7,7 +7,7 @@
 
 import encoding.hex
 import expect show *
-import ble.experimental.smp-legacy as legacy
+import ble.implementation_.smp-legacy as legacy
 
 // The appendix writes values most significant byte first.
 le hex-string/string -> ByteArray:

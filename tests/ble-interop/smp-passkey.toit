@@ -5,7 +5,7 @@
 // The Toit side of bumble-passkey.py: one Passkey Entry exchange over pipes.
 // Usage: smp-passkey.toit <initiator|responder> <io capability>
 
-import ble.experimental.smp-pairing as smp
+import ble.implementation_.smp-pairing as smp
 import crypto.sha256 show sha256
 import encoding.hex
 import io

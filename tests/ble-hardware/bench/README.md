@@ -1,4 +1,9 @@
-# Memory and throughput comparison: NimBLE host vs Toit host
+# Toit BLE host memory and throughput
+
+The benchmark compares the Toit host in a separate provider container, in the
+system container, and used directly. Historical NimBLE measurements are kept in
+[measurements.md](../../../docs/ble/measurements.md); the NimBLE variant has been
+removed.
 
 Same board, same controller, same central. The peripheral advertises one
 service with one notifying characteristic; the central (Linux dongle, Toit
@@ -10,5 +15,5 @@ and reserved) at every phase and every two seconds.
 - `provider.toit` + `app.toit`: controller-only firmware, Toit host provider container and application container.
 - `central.toit`: Linux, `toit.run central.snapshot <adapter index> <peer address hex> [cycles]`.
 
-`run.sh toit|system|direct [cycles]` (outputs under `build/ble-bench-001/`) assembles and flashes both images on the original
-ESP32 and runs the central against each.
+`run.sh toit|system|direct [cycles]` (outputs under `build/ble-bench-001/`) assembles and flashes the selected image on the original
+ESP32 and runs the central against the selected variant.

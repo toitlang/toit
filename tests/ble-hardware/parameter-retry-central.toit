@@ -1,11 +1,11 @@
 // Copyright (C) 2026 Toit contributors.
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
-import ble.experimental.central
-import ble.experimental.esp32
-import ble.experimental.hci
-import ble.experimental.signaling
-import ble.experimental.transport
+import ble.implementation_.central
+import ble.transport.esp32
+import ble.implementation_.hci
+import ble.implementation_.signaling
+import ble.transport
 import encoding.hex
 import system
 

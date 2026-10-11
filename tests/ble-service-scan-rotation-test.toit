@@ -5,11 +5,11 @@
 import expect show *
 import monitor
 import system
-import ble.experimental.privacy
-import ble.experimental.transport
-import ble.experimental.service.client as clients
-import ble.experimental.service.scanning-provider as providers
-import ble.experimental.service.provider as rpc
+import ble.implementation_.privacy
+import ble.transport
+import ble.service.client as clients
+import ble.implementation_.service.scanning-provider as providers
+import ble.implementation_.service.provider as rpc
 import .ble-fixture as fixture
 import .ble-scan-rotation-test as rotation
 
@@ -89,6 +89,6 @@ class Provider extends providers.Provider:
   privacy-irk -> ByteArray?: return irk_
   privacy-rotation-interval -> Duration: return Duration --ms=50
   open-transport -> transport.Transport: return radio
-  create-scan client/int arguments/List -> rpc.Session:
+  create-scan_ client/int arguments/List -> rpc.Session:
     last = super client arguments
     return last

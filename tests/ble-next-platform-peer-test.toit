@@ -9,8 +9,8 @@
 import expect show *
 import monitor
 import ble.v2 as ble
-import ble.experimental.service.api as api
-import ble.experimental.service.provider as rpc
+import ble.implementation_.service.api as api
+import ble.implementation_.service.provider as rpc
 
 IDENTIFIER ::= ByteArray 16: it * 17
 
@@ -42,9 +42,9 @@ class Provider extends rpc.Provider:
   connected/List? := null
   constructor: super
   capabilities -> List: return [api.CAP-SCAN | api.CAP-GATT-CENTRAL, 60_000_000, 512, 517, 2]
-  create-session client/int -> rpc.Session: throw "GATT_UNSUPPORTED_SERVICE_OPERATION"
-  create-scan client/int arguments/List -> rpc.Session: return Scan this client
-  create-connection client/int arguments/List -> rpc.Session:
+  create-session_ client/int -> rpc.Session: throw "GATT_UNSUPPORTED_SERVICE_OPERATION"
+  create-scan_ client/int arguments/List -> rpc.Session: return Scan this client
+  create-connection_ client/int arguments/List -> rpc.Session:
     connected = [arguments[0], arguments[1]]
     return Connection this client
 

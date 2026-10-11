@@ -2,13 +2,13 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.bond
-import ble.experimental.bond-flash
-import ble.experimental.bond-storage
-import ble.experimental.central
-import ble.experimental.hci
-import ble.experimental.security
-import ble.experimental.security-owner show Owner
+import ble.implementation_.bond
+import ble.implementation_.bond-flash
+import ble.implementation_.bond-storage
+import ble.implementation_.central
+import ble.implementation_.hci
+import ble.implementation_.security
+import ble.implementation_.security-owner show Owner
 import monitor
 import .fixtures.vhci-central-provider as base
 import .fixtures.vhci-central-bond-provider as diagnostics
@@ -37,27 +37,27 @@ class Provider extends base.Provider:
 
   constructor .store_ .resume_: super
 
-  central-local-random-address info/hci.Capabilities -> ByteArray?: return IDENTITY.copy
+  central-local-random-address_ info/hci.Capabilities -> ByteArray?: return IDENTITY.copy
 
-  create-central-host controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
+  create-central-host_ controller/hci.Controller info/hci.Capabilities receive-limit/int -> central.Central:
     candidate_ = store_.load #[1]
     if resume_ and not candidate_: throw "CENTRAL_FRESH_MISSING_BOND"
     if not resume_ and candidate_: throw "CENTRAL_FRESH_BOND_ALREADY_EXISTS"
     print "CENTRAL_FRESH READY mode=$(resume_ ? "resume" : "pair")"
     return super controller info receive-limit
 
-  create-central-security-owner host/central.Central link/central.Link info/hci.Capabilities -> Owner?:
+  create-central-security-owner_ host/central.Central link/central.Link info/hci.Capabilities -> Owner?:
     link_ = link
     if resume_:
       return diagnostics.RequestTraceResume host link candidate_ --local-address=IDENTITY
     return security.Pairing host link --local-address=IDENTITY --local-address-type=1
-        --attempts=pairing-attempts
-        --attempt-identity=(pairing-peer-identity link)
+        --attempts=pairing-attempts_
+        --attempt-identity=(pairing-peer-identity_ link)
         --io-capability=3
         --no-require-authentication
         --bond
 
-  run-central-security-owner owner/Owner -> none:
+  run-central-security-owner_ owner/Owner -> none:
     failure := catch:
       if resume_:
         (owner as diagnostics.RequestTraceResume).run

@@ -1,12 +1,12 @@
 // Copyright (C) 2026 Toit contributors.
-import ble.experimental.esp32
-import ble.experimental.hci
-import ble.experimental.central
-import ble.experimental.scanning
-import ble.experimental.advertising
-import ble.experimental.security
-import ble.experimental.att
-import ble.experimental.smp-pairing as smp
+import ble.transport.esp32
+import ble.implementation_.hci
+import ble.implementation_.central
+import ble.implementation_.scanning
+import ble.implementation_.advertising
+import ble.implementation_.security
+import ble.implementation_.att
+import ble.implementation_.smp-pairing as smp
 import .provider as fixture
 
 main:

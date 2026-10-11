@@ -2,9 +2,9 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.att
-import ble.experimental.extended-central as extended
-import ble.experimental.hci
+import ble.implementation_.att
+import ble.implementation_.extended-central as extended
+import ble.implementation_.hci
 import expect show *
 import io
 import .ble-connect-isolation-test as isolation

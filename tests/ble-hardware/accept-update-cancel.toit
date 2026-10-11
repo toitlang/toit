@@ -2,13 +2,13 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.advertising-updates as updates
-import ble.experimental.attribute-server as attributes
-import ble.experimental.central as central
-import ble.experimental.esp32 as esp32
-import ble.experimental.gatt-server as gatt
-import ble.experimental.hci as hci
-import ble.experimental.transport as transport
+import ble.implementation_.advertising-updates as updates
+import ble.implementation_.attribute-server as attributes
+import ble.implementation_.central as central
+import ble.transport.esp32 as esp32
+import ble.implementation_.gatt-server as gatt
+import ble.implementation_.hci as hci
+import ble.transport as transport
 import monitor
 import system
 

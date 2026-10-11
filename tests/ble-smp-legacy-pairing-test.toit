@@ -7,8 +7,8 @@
 
 import crypto
 import expect show *
-import ble.experimental.smp-pairing as smp
-import ble.experimental.smp-legacy as legacy
+import ble.implementation_.smp-pairing as smp
+import ble.implementation_.smp-legacy as legacy
 
 LOCAL ::= #[0, 1, 2, 3, 4, 5, 6]   // type, then big-endian address
 PEER ::= #[1, 6, 5, 4, 3, 2, 1]

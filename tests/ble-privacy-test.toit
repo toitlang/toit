@@ -2,7 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.privacy as privacy
+import ble.implementation_.privacy as privacy
 import encoding.hex
 import expect show *
 import system

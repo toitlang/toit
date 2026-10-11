@@ -5,16 +5,16 @@
 // Legacy Just Works pairing and bonding through the security owner against
 // an emulated legacy peer, in both roles, and resumption of the stored bond.
 
-import ble.experimental.acl
-import ble.experimental.att
-import ble.experimental.bond
-import ble.experimental.bond-resume
-import ble.experimental.central
-import ble.experimental.encryption
-import ble.experimental.hci
-import ble.experimental.security
-import ble.experimental.smp-identity as identity
-import ble.experimental.smp-legacy as legacy
+import ble.implementation_.acl
+import ble.implementation_.att
+import ble.implementation_.bond
+import ble.implementation_.bond-resume
+import ble.implementation_.central
+import ble.implementation_.encryption
+import ble.implementation_.hci
+import ble.implementation_.security
+import ble.implementation_.smp-identity as identity
+import ble.implementation_.smp-legacy as legacy
 import crypto
 import expect show *
 import monitor

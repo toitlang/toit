@@ -5,12 +5,12 @@
 import expect show *
 import monitor
 import system
-import ble.experimental.central
-import ble.experimental.hci
-import ble.experimental.service.api as api
-import ble.experimental.service.client as clients
-import ble.experimental.service.gatt-provider as gatt
-import ble.experimental.service.provider as rpc
+import ble.implementation_.central
+import ble.implementation_.hci
+import ble.implementation_.service.api as api
+import ble.service.client as clients
+import ble.implementation_.service.gatt-provider as gatt
+import ble.implementation_.service.provider as rpc
 import .ble-service-mixed-test as mixed
 import .ble-service-multiclient-test as wire
 import .ble-connect-isolation-test as connect
@@ -148,7 +148,7 @@ class Provider extends mixed.Provider:
   closed/monitor.Latch ::= monitor.Latch
   last/Session? := null
   constructor: super
-  create-builder client/int name/string -> rpc.Session:
+  create-builder_ client/int name/string -> rpc.Session:
     last = Session this client name
     return last
   handle index/int arguments/any --gid/int --client/int -> any:

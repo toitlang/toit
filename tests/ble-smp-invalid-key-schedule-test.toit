@@ -2,9 +2,9 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.pairing-attempts as retry
-import ble.experimental.sc-ecdh as ecdh
-import ble.experimental.smp-pairing as smp
+import ble.implementation_.pairing-attempts as retry
+import ble.implementation_.sc-ecdh as ecdh
+import ble.implementation_.smp-pairing as smp
 import expect show *
 import system
 import .ble-smp-pairing-test as fixture

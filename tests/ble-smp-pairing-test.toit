@@ -2,9 +2,9 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.smp-pairing as smp
-import ble.experimental.sc-crypto as sc
-import ble.experimental.sc-ecdh as ecdh
+import ble.implementation_.smp-pairing as smp
+import ble.implementation_.sc-crypto as sc
+import ble.implementation_.sc-ecdh as ecdh
 import encoding.hex
 import expect show *
 import system

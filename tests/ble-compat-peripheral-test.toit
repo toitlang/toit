@@ -9,7 +9,7 @@
 import ble show *
 import expect show *
 import monitor
-import ble.experimental.signaling as signaling
+import ble.implementation_.signaling as signaling
 import .ble-fixture as fixture
 import .ble-peripheral-test as peripheral
 import .ble-service-gatt-test as gatt

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.pairing-attempts as retry
+import ble.implementation_.pairing-attempts as retry
 import expect show *
 import system
 import monitor

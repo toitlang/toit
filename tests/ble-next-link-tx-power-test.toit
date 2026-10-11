@@ -9,7 +9,7 @@
 import expect show *
 import monitor
 import ble.v2 as ble
-import ble.experimental.transport
+import ble.transport
 import .ble-fixture as fixture
 import .ble-next-peripheral-test as peripheral
 

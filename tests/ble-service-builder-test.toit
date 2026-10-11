@@ -3,9 +3,9 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-import ble.experimental.transport as transport
-import ble.experimental.service.gatt-provider as providers
-import ble.experimental.service.client as clients
+import ble.transport as transport
+import ble.implementation_.service.gatt-provider as providers
+import ble.service.client as clients
 
 main:
   with-timeout --ms=5_000:

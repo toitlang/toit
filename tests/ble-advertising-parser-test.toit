@@ -4,7 +4,7 @@
 
 import expect show *
 import system
-import ble.experimental.advertising as advertising
+import ble.implementation_.advertising as advertising
 
 main:
   256.repeat: | flags/int |

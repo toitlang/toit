@@ -4,8 +4,8 @@
 
 import expect show *
 import system
-import ble.experimental.attribute-server as attributes
-import ble.experimental.service.client as clients
+import ble.implementation_.attribute-server as attributes
+import ble.service.client as clients
 import .ble-fixture as fixture
 import .ble-mtu-server-test as wire
 import .ble-service-central-test as service

@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-import ble.experimental.attribute-server as server
+import ble.implementation_.attribute-server as server
 
 main:
   database := server.Database --value-limit=512

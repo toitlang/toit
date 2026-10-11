@@ -5,10 +5,10 @@
 import expect show *
 import monitor
 import system
-import ble.experimental.transport
-import ble.experimental.hci
-import ble.experimental.service.client as clients
-import ble.experimental.service.gatt-provider as providers
+import ble.transport
+import ble.implementation_.hci
+import ble.service.client as clients
+import ble.implementation_.service.gatt-provider as providers
 import .ble-fixture as fixture
 import .ble-receive-flow-fixture as flow
 
@@ -113,5 +113,5 @@ class Provider extends providers.Provider:
   receive-acl-packets -> int: return receive-flow_ ? 4 : 0
   open-transport -> transport.Transport: return radio
 
-  central-local-random-address info/hci.Capabilities -> ByteArray?:
+  central-local-random-address_ info/hci.Capabilities -> ByteArray?:
     return random_ ? #[1, 0x30, 0x23, 0xf2, 0x3a, 0xc8] : null

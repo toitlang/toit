@@ -2,12 +2,12 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import ble.experimental.central
-import ble.experimental.connection
-import ble.experimental.extended-central as extended
-import ble.experimental.hci
-import ble.experimental.service.client as clients
-import ble.experimental.service.provider as rpc
+import ble.implementation_.central
+import ble.implementation_.connection
+import ble.implementation_.extended-central as extended
+import ble.implementation_.hci
+import ble.service.client as clients
+import ble.implementation_.service.provider as rpc
 import expect show *
 import monitor
 import .ble-fixture as fixture
@@ -87,7 +87,7 @@ class Provider extends services.Provider:
 
   constructor: super
 
-  create-connection client/int arguments/List -> rpc.Session:
+  create-connection_ client/int arguments/List -> rpc.Session:
     last = super client arguments
     return last
 

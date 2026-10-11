@@ -4,11 +4,11 @@
 
 import expect show *
 import system
-import ble.experimental.hci
-import ble.experimental.privacy
-import ble.experimental.scanning
-import ble.experimental.transport
-import ble.experimental.service.scanning-provider as providers
+import ble.implementation_.hci
+import ble.implementation_.privacy
+import ble.implementation_.scanning
+import ble.transport
+import ble.implementation_.service.scanning-provider as providers
 import .ble-fixture as fixture
 
 main:
