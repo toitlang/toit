@@ -123,8 +123,9 @@ static const UartPad kUartPads[] = {
   // UART2 — alt 1 (pads 27/28 muxed with mux=5).
   {2, UartRole::TX,  1, 28, 5},
   {2, UartRole::RX,  1, 27, 5},
-  // UART2 alt 2 (GPIO6/7) is not yet listed — needs PAD numbers confirmed
-  // against the chip datasheet before we expose it.
+  // UART2 — alt 2 (camera data pads, confirmed by the Air780E GPIO table).
+  {2, UartRole::TX,  2, 22, 3},
+  {2, UartRole::RX,  2, 21, 3},
 };
 
 int uart_pad(int uart_id, UartRole role, int mapping, int* out_mux) {
