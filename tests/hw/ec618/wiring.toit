@@ -31,6 +31,24 @@ ESP32-UART2-TX-PIN ::= 14
 ESP32-EC618-PAD26-NET-PINS ::= [27, 21]
 ESP32-EC618-PAD25-NET-PINS ::= [14, 32]
 
+// FPC I2S1. Disconnect DS18B20 DQ from the clock net before driving clocks.
+EC618-I2S1-TX-PAD ::= 22
+EC618-I2S1-RX-PAD ::= 21
+EC618-I2S1-SCK-PAD ::= 19
+EC618-I2S1-WS-PAD ::= 20
+EC618-I2S1-MCLK-PAD ::= 18
+S3-I2S1-TX-PIN ::= 41
+S3-I2S1-RX-PIN ::= 8
+S3-I2S1-SCK-PIN ::= 1
+S3-I2S1-WS-PIN ::= 2
+S3-I2S1-MCLK-PIN ::= 42
+// The peer raises this handshake only after its slave I2S is running.
+EC618-I2S-PEER-READY-PAD ::= 27
+S3-I2S-PEER-READY-PIN ::= 40
+// Duplex captures complete only after both receivers have checked their data.
+EC618-I2S-CAPTURE-DONE-PAD ::= 28
+S3-I2S-CAPTURE-DONE-PIN ::= 39
+
 // UART2 RS485 direction and the open-drain regression share the PAD33 wire.
 EC618-UART2-DIRECTION-PAD ::= 33
 ESP32-UART2-DIRECTION-PIN ::= 16

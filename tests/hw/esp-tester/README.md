@@ -79,3 +79,39 @@ wedged, the VM hung, or an interrupt storm prevents the lease task from running
 notices the fresh boot banner mid-run and reports a failed run that recovered.
 The generous 60 s window also gives a freshly OTA'd agent time to reconnect
 without boot-looping the trial slot.
+
+## Paired EC618 I2S fixtures
+
+Use `tests/hw/esp-tester/run-ec618-i2s.toit` with a resident EC618 test agent
+and the matching S3 peer: `i2s-source-s3.toit` for receive,
+`i2s-sink-s3.toit` for transmit, or `i2s-duplex-s3.toit` for duplex.
+The runner checks peer identity and the EC618 base identity and trial status.
+It installs test containers, but does not flash either board.
+
+Wiring is recorded in `tests/hw/ec618/wiring.toit`. Disconnect DS18B20 DQ
+from the SCK net before running. Use persistent serial paths and hold the
+shared rig lock for the whole invocation. From the repository root:
+
+```sh
+flock -n /tmp/toit-ec618-rig.lock \
+  build/host/sdk/bin/toit run tests/hw/esp-tester/run-ec618-i2s.toit -- \
+  --port <EC618-UART0-path> --peer-port <S3-console-path> \
+  --toit-exe build/host/sdk/bin/toit --expected-base <deployed-base-id> \
+  --direction duplex --case 16000,16,0,master,0 --sensor-disconnected
+```
+
+The case fields are sample rate, sample width, format, EC618 role and slots.
+Formats are Philips=0, MSB=1 and PCM-short=2; duplex requires stereo slots=0.
+Optional duplex settings are `--buffer-duration-ms 1..1000` and
+`--capture-seconds 1..10` (default two seconds). The runner requires payload
+verification on both receivers for duplex, checks error counters, stops the
+peer and performs a final EC618 health check. Failure and cancellation also
+attempt bounded cleanup; a recovered board does not turn a failed test into
+a pass.
+
+Host regressions are `tests/i2s-pattern-test.toit`,
+`tests/i2s-stream-verifier-test.toit`, `tests/i2s-run-output-test.toit` and
+`tests/i2s-coordinator-test.toit`. These cover payload verification, split
+output, failed stages and cancellation without connecting to hardware.
+ESP32 I2S has known failures referenced in `tests/hw/esp32/fail.cmake`;
+a paired failure alone does not identify which endpoint is faulty.

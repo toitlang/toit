@@ -969,7 +969,9 @@ class Ec618Link:
 
   // Streams the running test's output to the log until the agent reports the
   // test's exit code. Returns whether it exited cleanly (code 0).
-  run --timeout-ms/int --embedded/bool=false -> bool:
+  // The optional observer receives decoded output chunks, which may split
+  // lines. It can coordinate a peer after the test has armed its inputs.
+  run --timeout-ms/int --embedded/bool=false --on-output/Lambda?=null -> bool:
     send (embedded ? CMD-RUN-EMBEDDED : CMD-RUN)
     deadline := Time.monotonic-us + timeout-ms * 1000
     marker := "$MINI-JAG-TAG run: test exited code="
@@ -990,7 +992,9 @@ class Ec618Link:
       catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
         data = with-timeout --ms=1000: reader_.read
       if not data: continue
-      collected += emit-device-output (data.to-string-non-throwing)
+      text := data.to-string-non-throwing
+      collected += emit-device-output text
+      if on-output: on-output.call text
 
       if not expected-reboot-wake:
         expectation := collected.index-of EC618-EXPECT-REBOOT-WAKE-TAG
