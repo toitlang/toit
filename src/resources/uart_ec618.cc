@@ -1010,11 +1010,17 @@ PRIMITIVE(set_baud_rate) {
     transfer->tx_busy = false;
     transfer->tx_pending_len = 0;
     transfer->tx_waiting_for_empty = false;
+    // Power-off ended transmission, including any RS485 bus ownership.
+    int de = uart_states[id].de_pad;
+    if (de >= 0) set_de_level(de, 0);
     if (driver->Receive(transfer->chunk, sizeof(transfer->chunk)) != ARM_DRIVER_OK) {
       transfer->rearm_fails++;
     }
   }
   uart_states[id].baud_rate = baud_rate;
+  // Writers may already be asleep waiting for the DMA that the power cycle
+  // canceled. Clearing tx_busy alone cannot wake them to retry or finish flush.
+  send_uart_event(id, Event::UART_KIND_TX_DONE);
   return process->null_object();
 }
 
@@ -1024,6 +1030,9 @@ PRIMITIVE(write) {
   // sending the data without the requested break.
   if (break_length != 0) FAIL(UNIMPLEMENTED);
   if (from < 0 || to < from || to > data.length()) FAIL(OUT_OF_BOUNDS);
+  // Empty writes must not claim the RS485 bus or start a zero-length Send,
+  // which has no completion callback to release the direction pin.
+  if (from == to) return Smi::from(0);
 
   int id = resource->uart_id();
 
@@ -1067,6 +1076,9 @@ PRIMITIVE(write) {
       // by the print path; a single byte costs one frame time.
       int32_t status32 = kDrivers[id]->SendPolling(data.address() + from, 1);
       written = (status32 == ARM_DRIVER_OK) ? 1 : 0;
+      // SendPolling drains the physical line before returning. There is no
+      // asynchronous completion or drain-task work for this synchronous path.
+      if (de >= 0) set_de_level(de, 0);
     } else {
       int chunk = len;
       if (chunk > (int)transfer->tx_buf_size) chunk = (int)transfer->tx_buf_size;
@@ -1080,6 +1092,7 @@ PRIMITIVE(write) {
       int32_t status32 = kDrivers[id]->Send(transfer->tx_bufs[transfer->tx_active], chunk);
       if (status32 != ARM_DRIVER_OK) {
         transfer->tx_busy = false;
+        if (de >= 0) set_de_level(de, 0);
         written = 0;
       } else {
         written = chunk;
