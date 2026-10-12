@@ -517,6 +517,7 @@ namespace toit {
   PRIMITIVE(read_to_buffer, 2)               \
   PRIMITIVE(errors_underrun, 1)              \
   PRIMITIVE(errors_overrun, 1)               \
+  PRIMITIVE(configure_buffered, 14)          \
 
 #define MODULE_SPI(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
@@ -1431,10 +1432,15 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
   _A_T_##t12(11, n12); \
   _A_T_##t13(12, n13);
 
-#define _OVERRIDE(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, _23, _24, _25, _26, NAME, ...) NAME
+#define _A_28(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6, t7, n7, t8, n8, t9, n9, t10, n10, t11, n11, t12, n12, t13, n13, t14, n14) \
+  _A_26(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6, t7, n7, t8, n8, t9, n9, t10, n10, t11, n11, t12, n12, t13, n13) \
+  _A_T_##t14(13, n14);
+
+#define _OVERRIDE(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, _23, _24, _25, _26, _27, _28, NAME, ...) NAME
 
 #define ARGS(...)        \
   _OVERRIDE(__VA_ARGS__, \
+    _A_28, _ODD,         \
     _A_26, _ODD,         \
     _A_24, _ODD,         \
     _A_22, _ODD,         \

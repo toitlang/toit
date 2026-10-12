@@ -39,6 +39,42 @@ The channels on the peripheral are independent. It's possible to have two simple
   channels on the same peripheral. However, while the two channels have independent
   master clocks, only one master clock can be routed to a pin.
 
+# EC618
+The EC618 has two I2S peripherals with fixed pin routes (physical pad numbers):
+
+| Peripheral | SCK | WS | TX | RX | MCLK |
+| --- | --- | --- | --- | --- | --- |
+| I2S0 | 35 | 36 | 38 | 37 | 39 |
+| I2S1 | 19 | 20 | 22 | 21 | 18 |
+
+The driver accepts 8-, 16-, 24-, and 32-bit samples in Philips, MSB, or PCM-short
+  format. Buffers contain little-endian samples of one, two, three, or four
+  bytes respectively, without padding. All mono and stereo slot selections
+  are supported; unselected transmit slots contain zeros. It supports master
+  and slave operation and an optional generated MCLK. External MCLK input and
+  inverted MCLK are unsupported. Generated clocks
+  require a base image exporting the fractional-clock functions. The clocks
+  are enabled by $Bus.start and disabled by $Bus.stop.
+
+Each active direction allocates a software ring targeting 200 ms at
+  the configured sample rate, capped at 32768 bytes by default.
+  The ring stores both wire slots regardless of channel selection, using
+  16-bit storage for 8/16-bit samples and 32-bit storage for 24/32-bit samples.
+  Capacity is rounded up to 64-frame blocks, with a minimum of 512 frames.
+  At 16/48/96 kHz, 8/16-bit samples use 12800/32768/32768 ring bytes per
+  direction, covering 200/170/85 ms respectively. For 24/32-bit samples,
+  the corresponding sizes are 25600/32768/32768 bytes, covering 200/85/42 ms.
+  Each direction also needs two 512-byte DMA blocks. Allocator rounding and
+  metadata can increase the actual RAM requirement.
+  An explicit `--buffer-duration-ms` request to $Bus.configure bypasses the default
+  cap and fails if memory is insufficient; it is never silently reduced.
+  Longer delays can still cause underruns or overruns. Preload
+  transmit data before starting when initial continuity matters.
+
+A DMA bus error stops transfer requests and causes reads and writes to throw
+  `HARDWARE_ERROR`. Call $Bus.stop before restarting or reconfiguring a failed
+  bus; closing the bus also releases its DMA channels.
+
 # Examples
 
 ```
@@ -302,7 +338,7 @@ class Bus:
   static SLOTS-MONO-RIGHT ::= 5
 
   i2s_ := ?
-  state_/ResourceState_ ::= ?
+  state_/ResourceState_? := null
 
   // The decoded GPIO numbers (or -1 for "no pin"). The channel reserves the
   // pins in its constructor and uses them again in $configure.
@@ -419,12 +455,24 @@ class Bus:
     left and right), $SLOTS-MONO-LEFT, or $SLOTS-MONO-RIGHT.
 
   The $format must be one of $FORMAT-MSB, $FORMAT-PHILIPS, $FORMAT-PCM-SHORT.
+
+  On EC618, $buffer-duration-ms optionally requests at least 1–1000 ms of
+    software buffering per active direction. Allocation is rounded to DMA
+    blocks with a minimum of 512 stereo frames. Both directions are allocated
+    before committing configuration; allocation failure preserves the previous
+    configuration and queued data. Growing a ring can temporarily require
+    memory for both old and new rings. A failed configuration may retain
+    storage already grown for one direction. Smaller configurations reuse existing
+    allocations; close the bus to release that memory. ESP32 does not support
+    this option.
+    When omitted, the platform's default buffering is used.
   */
   configure
       --mclk-external-frequency/int?=null
       --mclk-multiplier/int?=null
       --sample-rate/int
       --bits-per-sample/int
+      --buffer-duration-ms/int?=null
       --format/int=FORMAT-PHILIPS
       --slots-in/int
       --slots-out/int:
@@ -461,6 +509,25 @@ class Bus:
     else:
       mclk-external-frequency = -1
 
+    if buffer-duration-ms != null:
+      if not 1 <= buffer-duration-ms <= 1000: throw "INVALID_ARGUMENT"
+      i2s-configure-buffered_
+          i2s_
+          sample-rate
+          bits-per-sample
+          mclk-multiplier
+          mclk-external-frequency
+          format
+          slots-in
+          slots-out
+          tx-pin
+          rx-pin
+          mclk-pin
+          sck-pin
+          ws-pin
+          buffer-duration-ms
+      return
+
     i2s-configure_
         i2s_
         sample-rate
@@ -485,6 +552,7 @@ class Bus:
       --mclk-multiplier/int?=null
       --sample-rate/int
       --bits-per-sample/int
+      --buffer-duration-ms/int?=null
       --format/int=FORMAT-PHILIPS
       --slots/int=SLOTS-STEREO-BOTH:
     configure
@@ -492,6 +560,7 @@ class Bus:
       --mclk-multiplier=mclk-multiplier
       --sample-rate=sample-rate
       --bits-per-sample=bits-per-sample
+      --buffer-duration-ms=buffer-duration-ms
       --format=format
       --slots-in=slots
       --slots-out=slots
@@ -576,26 +645,37 @@ class Bus:
     the bus was created with the $start flag set to false, then this method
     must be called to start the bus.
 
-  When a bus was constructed but not started yet, then the master clock is
-    running, but the other signals are not. Specifically, in master mode,
-    there is no clock, word-select or data being transmitted.
+  On ESP32 platforms, when a bus was constructed but not started yet, the
+    master clock is running, but the other signals are not. Specifically, in
+    master mode, there is no bit clock, word-select or data being transmitted.
+    On EC618, the master clock also starts when this method is called.
 
   The bus must not already be started.
 
   There is no need to $stop a bus. Calling $close is enough.
   */
   start -> none:
-    if not i2s_: throw "CLOSED"
-    i2s-start_ i2s_
+    critical-do:
+      if not i2s_: throw "CLOSED"
+      if not state_: state_ = ResourceState_ resource-group_ i2s_
+      i2s-start_ i2s_
 
   /**
   Stops the bus.
 
   It's rare that you need to stop the bus. Usually, you just close it.
+
+  Pending reads and writes throw `INVALID_STATE`, even if the bus is
+    immediately restarted. Data already written may have been transmitted.
   */
   stop -> none:
-    if not i2s_: throw "CLOSED"
-    i2s-stop_ i2s_
+    critical-do:
+      if not i2s_: throw "CLOSED"
+      i2s-stop_ i2s_
+      // Wake all calls on this run. A new run gets a different monitor,
+      // so old calls cannot consume its events or resume transferring data.
+      if state_: state_.dispose
+      state_ = null
 
   /**
   Preloads data to the I2S bus.
@@ -624,10 +704,11 @@ class Bus:
   write bytes/ByteArray -> int:
     if not i2s_: throw "CLOSED"
 
+    state := state_
     total-size := bytes.size
     written := 0
     while written != total-size:
-      written += try-write bytes[written..]
+      written += try-write_ bytes[written..] state
     return total-size
 
   /**
@@ -640,18 +721,31 @@ class Bus:
   See $write for ESP32-specific notes.
   */
   try-write bytes/ByteArray -> int:
+    return try-write_ bytes state_
+
+  try-write_ bytes/ByteArray state/ResourceState_? -> int:
     while true:
       if not i2s_: throw "CLOSED"
+      if not state or not identical state state_: throw "INVALID_STATE"
 
-      state_.clear-state WRITE-STATE_ | ERROR-STATE_
-
+      // A nonblocking write with available space does not need a monitor
+      // transition. There is no task yield between validation and the call.
       written := i2s-write_ i2s_ bytes
       if written != 0: return written
-      // Try again without waiting for signals.
+
+      state.clear-state WRITE-STATE_ | ERROR-STATE_
+
+      // Entering the state monitor can yield to stop/close. Revalidate
+      // before using the native handle or transferring into a new run.
+      if not i2s_: throw "CLOSED"
+      if not identical state state_: throw "INVALID_STATE"
+
+      // Retry after clearing notifications so progress between the first
+      // attempt and monitor entry cannot leave us waiting on a lost wakeup.
       written = i2s-write_ i2s_ bytes
       if written != 0: return written
 
-      state := state_.wait-for-state WRITE-STATE_ | ERROR-STATE_
+      state.wait-for-state WRITE-STATE_ | ERROR-STATE_
 
   /**
   Reads bytes from the I2S bus.
@@ -666,7 +760,9 @@ class Bus:
     used.
   */
   read -> ByteArray?:
-    result := ByteArray 496
+    // A whole number of mono or stereo frames at every supported width,
+    // including compact 24-bit samples.
+    result := ByteArray 504
     count := read result
     if count < 350:
       // Avoid wasting too much memory.
@@ -681,15 +777,25 @@ class Bus:
   See $read for ESP32-specific notes.
   */
   read buffer/ByteArray -> int?:
+    state := state_
     while true:
       if not i2s_: throw "CLOSED"
+      if not state or not identical state state_: throw "INVALID_STATE"
 
-      state_.clear-state READ-STATE_ | ERROR-STATE_
-
+      // Consume ready data without entering a monitor. Only a read that
+      // cannot progress needs notification clearing and a checked retry.
       read := i2s-read-to-buffer_ i2s_ buffer
       if read > 0: return read
-      state := state_.wait-for-state READ-STATE_ | ERROR-STATE_
-      state_.clear-state READ-STATE_ | ERROR-STATE_
+
+      state.clear-state READ-STATE_ | ERROR-STATE_
+
+      // Monitor entry can yield, including to stop followed by restart.
+      if not i2s_: throw "CLOSED"
+      if not identical state state_: throw "INVALID_STATE"
+
+      read = i2s-read-to-buffer_ i2s_ buffer
+      if read > 0: return read
+      state.wait-for-state READ-STATE_ | ERROR-STATE_
 
   /**
   Closes the I2S bus and releases resources associated to it.
@@ -697,7 +803,8 @@ class Bus:
   close:
     if not i2s_: return
     critical-do:
-      state_.dispose
+      if state_: state_.dispose
+      state_ = null
       i2s-close_ resource-group_ i2s_
       i2s_ = null
       remove-finalizer this
@@ -737,6 +844,23 @@ i2s-configure_
     sck-pin
     ws-pin:
   #primitive.i2s.configure
+
+i2s-configure-buffered_
+    i2s_
+    sample-rate
+    bits-per-sample
+    mclk-multiplier
+    mclk-external-frequency
+    format
+    slots-in
+    slots-out
+    tx-pin
+    rx-pin
+    mclk-pin
+    sck-pin
+    ws-pin
+    buffer-duration-ms:
+  #primitive.i2s.configure-buffered
 
 i2s-start_ i2s:
   #primitive.i2s.start
