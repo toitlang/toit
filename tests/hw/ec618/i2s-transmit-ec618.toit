@@ -10,7 +10,8 @@ import ..shared.i2s-pattern
 import .wiring show *
 
 // Eight silent training frames, then a strict periodic payload on PAD22.
-// Deliberately leave the producer asleep for 150 ms after master start.
+// By default, leave the producer asleep for 150 ms after master start.
+// The optional no-stall mode uses default buffering for throughput checks.
 main args:
   parts := args[0].split ","
   rate := int.parse parts[0]
@@ -19,6 +20,9 @@ main args:
   master := parts[3] == "master"
   slots := int.parse parts[4]
   expect-equals "tx" parts[5]
+  expect (parts.size == 6 or parts.size == 7)
+  no-stall := parts.size == 7
+  if no-stall: expect-equals "no-stall" parts[6]
   data := pattern bits --slots=slots --inverted
   bus := i2s.Bus --master=master --tx=EC618-I2S1-TX-PAD --sck=EC618-I2S1-SCK-PAD --ws=EC618-I2S1-WS-PAD
       --mclk=(master ? EC618-I2S1-MCLK-PAD : null)
@@ -26,7 +30,7 @@ main args:
   try:
     if master: go = gpio.Pin EC618-I2S-PEER-READY-PAD --input --pull-down
     bus.configure --sample-rate=rate --bits-per-sample=bits --format=format
-        --buffer-duration-ms=(rate > 16_000 ? 200 : null)
+        --buffer-duration-ms=(not no-stall and rate > 16_000 ? 200 : null)
         --slots-in=i2s.Bus.SLOTS-STEREO-BOTH
         --slots-out=slots
     channels := slots <= i2s.Bus.SLOTS-STEREO-RIGHT ? 2 : 1
@@ -51,7 +55,7 @@ main args:
         go.wait-for 1
         started-us = Time.monotonic-us
         bus.start
-        sleep --ms=150
+        if not no-stall: sleep --ms=150
       else:
         started-us = Time.monotonic-us
       if offset != 0: bus.write data[offset..]
@@ -79,7 +83,7 @@ main args:
     underruns := bus.errors --underrun
     bus.stop
     print "I2S WRITE TIMING max_write_us=$max-write-us max_gc_write_us=$max-gc-write-us max_idle_us=$max-idle-us first_loss_write=$first-loss-write first_loss_us=$first-loss-us first_loss_count=$first-loss-count"
-    print "I2S TX TRAINED training=$TRAINING-FRAMES producer_stall_ms=$(master ? 150 : 0) underruns=$underruns"
+    print "I2S TX TRAINED training=$TRAINING-FRAMES producer_stall_ms=$(master and not no-stall ? 150 : 0) underruns=$underruns"
     expect-equals 0 underruns
     print "I2S TX PASS master=$master rate=$rate bits=$bits format=$format slots=$slots errors=0"
   finally:

@@ -25,6 +25,7 @@ main args:
         cli.Option "direction" --default="rx" --help="EC618 transfer direction: rx, tx or duplex.",
         cli.Option "buffer-duration-ms" --help="Explicit EC618 duplex buffer duration (1–1000 ms).",
         cli.Option "capture-seconds" --help="Duplex capture length (1–10 seconds; default 2).",
+        cli.Flag "tx-no-stall" --help="Transmit with default buffering and no deliberate producer pause.",
         cli.Flag "sensor-disconnected" --help="Confirm DS18B20 DQ is disconnected from BCLK.",
       ]
       --run=:: run it
@@ -46,6 +47,9 @@ run invocation/cli.Invocation:
   expect (["rx", "tx", "duplex"].contains direction)
   transmit := direction == "tx"
   duplex := direction == "duplex"
+  no-stall := invocation["tx-no-stall"]
+  if no-stall and not transmit:
+    invocation.cli.ui.abort "--tx-no-stall requires --direction=tx"
   expect 0 < rate <= 96_000
   expect ([8, 16, 24, 32].contains bits)
   expect 0 <= format <= 2
@@ -99,6 +103,7 @@ run invocation/cli.Invocation:
           ec.send CMD-CANCEL
           ec.expect "CANCEL" ACK-OK --timeout-ms=3000
         argument := invocation["case"] + ((transmit or duplex) ? ",$direction" : "")
+        if no-stall: argument += ",no-stall"
         if duration: argument += ",$duration"
         if capture-seconds:
           if not duration: argument += ",default"

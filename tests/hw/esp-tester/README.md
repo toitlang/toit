@@ -109,6 +109,12 @@ peer and performs a final EC618 health check. Failure and cancellation also
 attempt bounded cleanup; a recovered board does not turn a failed test into
 a pass.
 
+For transmit-only throughput checks, `--tx-no-stall` selects default bounded
+buffering and removes the deliberate 150 ms master-side producer pause.
+Without this flag, the existing stall test requests 200 ms buffering above
+16 kHz; that allocation can exceed EC618 RAM at high rates and sample widths.
+Both modes retain strict payload and error-counter verification.
+
 To register the paired matrix with CTest, configure `tests/hw` with
 `TOIT_EXE_HW`, `EC618_BOARD_PORT`, `EC618_I2S_PEER_PORT` and
 `EC618_EXPECT_BASE`, plus exactly one of `EC618_TEST_I2S_RX=ON`,
