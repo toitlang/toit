@@ -252,6 +252,10 @@ Returns the reason for the most recent reset of the application processor.
 The result is one of the RESET-* constants ($RESET-POWER-ON,
   $RESET-WATCHDOG-HARDWARE, ...). Use $reset-reason-name to turn it into a
   human-readable string.
+
+Requires a base image that initializes the vendor reset-reason decoder.
+  Early development bases omitted this and reported $RESET-POWER-ON for every
+  cause, including software resets and deep-sleep wakes.
 */
 reset-reason -> int:
   #primitive.ec618.reset-reason
@@ -301,9 +305,8 @@ The result is one of the WAKEUP-* constants ($WAKEUP-POWER-ON,
   $WAKEUP-RTC, ...). Use $wakeup-cause-name to turn it into a
   human-readable string.
 
-The EC618 reports $reset-reason as $RESET-POWER-ON even after a wake
-  from deep sleep, so this is the call that tells a deep-sleep wake
-  (by timer or wakeup pad) apart from a cold boot.
+Use this to identify the wake source (timer, wakeup pad, or power-on);
+  $reset-reason alone does not identify which source ended deep sleep.
 */
 wakeup-cause -> int:
   #primitive.ec618.wakeup-cause
