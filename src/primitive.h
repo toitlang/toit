@@ -741,6 +741,8 @@ namespace toit {
   PRIMITIVE(get, 2)                         \
   PRIMITIVE(get_raw, 1)                     \
   PRIMITIVE(close, 1)                       \
+  PRIMITIVE(init_group, 0)                  \
+  PRIMITIVE(cancel, 1)                      \
 
 #define MODULE_DAC(PRIMITIVE)               \
   PRIMITIVE(init, 0)                        \
@@ -1284,6 +1286,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_SpiTargetResource(N, name)   MAKE_UNPACKING_MACRO(SpiTargetResource, N, name)
 #define _A_T_SpiBufferTargetResource(N, name) MAKE_UNPACKING_MACRO(SpiBufferTargetResource, N, name)
 #define _A_T_AdcResource(N, name)         MAKE_UNPACKING_MACRO(AdcResource, N, name)
+#define _A_T_AdcResourceGroup(N, name)    MAKE_UNPACKING_MACRO(AdcResourceGroup, N, name)
 #define _A_T_DacResource(N, name)         MAKE_UNPACKING_MACRO(DacResource, N, name)
 #define _A_T_PmLockResource(N, name)      MAKE_UNPACKING_MACRO(PmLockResource, N, name)
 #define _A_T_PwmResource(N, name)         MAKE_UNPACKING_MACRO(PwmResource, N, name)

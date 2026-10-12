@@ -95,6 +95,7 @@ namespace toit {
 
 #define RESOURCE_GROUP_CLASSES_DO(fn)   \
   fn(SimpleResourceGroup)               \
+  fn(AdcResourceGroup)                  \
   fn(DacResourceGroup)                  \
   fn(GpioResourceGroup)                 \
   fn(I2cResourceGroup)                  \
