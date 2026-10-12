@@ -254,6 +254,8 @@ EC618_BASE_DIR ?= $(BUILD)/ec618-base
 # device needs a slot spliced in.
 .PHONY: ec618-base
 ec618-base: check-env host-tools
+	$(TOIT_BIN) run tests/ec618-base-api-test.toit
+	$(TOIT_BIN) run --project-root tools tools/ec618/check-base-api.toit
 	mkdir -p $(BUILD)/ec618-base
 	cd $(EC618_SDK) && rm -rf build && \
 		TOIT_BASE_LINK=1 GCC_PATH=$(EC618_GCC_PATH) PROJECT_NAME=toit PROJECT_DIR=$(CURDIR)/toolchains/ec618/project xmake config -p cross -y && \
@@ -261,6 +263,8 @@ ec618-base: check-env host-tools
 	cd $(CURDIR)
 	cp $(EC618_SDK)/build/toit/toit.elf $(BUILD)/ec618-base/base.elf
 	cp $(EC618_SDK)/build/toit/ap.bin $(BUILD)/ec618-base/base.bin
+	$(TOIT_BIN) run --project-root tools tools/ec618/check-base-api.toit -- --elf=$(BUILD)/ec618-base/base.elf \
+		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm
 	# Stamp the base-id record (magic + base-vN + fingerprint) into the
 	# reserved page; every slot build reads it into its SRL3 table and the
 	# device rejects slots built against a different base.

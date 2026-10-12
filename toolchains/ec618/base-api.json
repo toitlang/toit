@@ -1,0 +1,783 @@
+{
+  "description": "Frozen base peripheral ABI. Retain implemented chip and peripheral HAL APIs regardless of pin exposure or live test availability. Header changes require a renewed review. See docs/ec618-base-api.md.",
+  "headers": {
+    "PLAT/core/driver/include/driver_gpio.h": {
+      "sha256": "7883d2cbfc02494cf4723dcad1b8835e41ad9297cae419f7a0307e92050cb824",
+      "symbols": [
+        "GPIO_Config",
+        "GPIO_ExtiConfig",
+        "GPIO_ExtiSetCB",
+        "GPIO_FastOutput",
+        "GPIO_GlobalInit",
+        "GPIO_Input",
+        "GPIO_InputMulti",
+        "GPIO_IomuxEC618",
+        "GPIO_OutPulse",
+        "GPIO_Output",
+        "GPIO_OutputMulti",
+        "GPIO_PullConfig",
+        "GPIO_ToPadEC618",
+        "GPIO_Toggle",
+        "GPIO_ToggleMulti",
+        "GPIO_WakeupPadConfig"
+      ],
+      "excluded": {
+        "GPIO_ConfigWithPullEC618": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "GPIO_DriverWS2812B": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "GPIO_ODConfig": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "GPIO_OutputWithPullEC618": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead."
+      }
+    },
+    "PLAT/core/driver/include/driver_i2s.h": {
+      "sha256": "e5fc9b244929274e32c4f0bae0030003d2d66dcf67f5c79a689cdbabf8dfed0d",
+      "symbols": [],
+      "excluded": {
+        "I2S_BaseConfig": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "I2S_FullConfig": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "I2S_Rx": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "I2S_RxDebug": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "I2S_RxStop": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "I2S_Start": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "I2S_StopTransferLoop": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "I2S_TransferLoop": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "I2S_Tx": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "I2S_TxDebug": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "I2S_TxPause": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "I2S_TxStop": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead."
+      }
+    },
+    "PLAT/core/driver/include/driver_pcm.h": {
+      "sha256": "e1b0d7a30aa217df958387806a640d62a874fe7075861ed537919d55965539a1",
+      "symbols": [],
+      "excluded": {
+        "PCM_Start": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "PCM_Tx": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "PCM_TxPause": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "PCM_TxStop": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "SoftDAC_DeInit": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "SoftDAC_Init": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "SoftDAC_InitDefault": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "SoftDAC_Stop": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead."
+      }
+    },
+    "PLAT/core/driver/include/driver_uart.h": {
+      "sha256": "22e4441985e616c0adb93dc028d12f2b3153bac18a305afea3091c78883a760a",
+      "symbols": [
+        "Uart_BaseInitEx",
+        "Uart_ChangeBR",
+        "Uart_RxBufferCB",
+        "Uart_TxTaskSafe"
+      ],
+      "excluded": {
+        "Uart_DeInit": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "Uart_GetLastError": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "Uart_IsTSREmpty": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "Uart_PrintReg": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "Uart_RxBufferClear": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "Uart_RxBufferRead": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "Uart_RxTaskSafe": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "Uart_SetCb": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "Uart_SetDebug": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "Uart_SetErrorDropData": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "Uart_TxStop": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead."
+      }
+    },
+    "PLAT/core/driver/include/soc_dma.h": {
+      "sha256": "6fb563d4f1dbff38b2e5c4c6cdd07663e1091669cf73758176fb8e04d2b52d57",
+      "symbols": [
+        "DMA_ForceStartStream"
+      ],
+      "excluded": {}
+    },
+    "PLAT/core/driver/include/soc_i2c.h": {
+      "sha256": "c1ab460a8893b1cab22e5d8676098e2c3c3db608ff6d535bc99115730017aa57",
+      "symbols": [],
+      "excluded": {
+        "I2C_BlockRead": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "I2C_BlockWrite": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "I2C_ChangeBR": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "I2C_MasterSetup": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "I2C_MasterXfer": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "I2C_Prepare": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "I2C_Reset": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "I2C_UsePollingMode": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "I2C_WaitResult": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead."
+      }
+    },
+    "PLAT/core/driver/include/soc_lcd.h": {
+      "sha256": "5e3e9ef300bfca3d2334f1a86039d39fbab20af6822e6e79d2f1899134eb342f",
+      "symbols": [],
+      "excluded": {
+        "LCD_CameraDraw": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "LCD_Draw": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "LCD_DrawBlock": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "LCD_DrawCacheLen": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "LCD_RunUserAPI": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "LCD_ServiceInit": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead."
+      }
+    },
+    "PLAT/core/driver/include/soc_spi.h": {
+      "sha256": "e3ea641163c479ef09e2dee582d46cbc92ab4fcdb06f9d31dd8ec0478fdfe1d2",
+      "symbols": [
+        "SPI_BlockTransfer",
+        "SPI_FastTransfer",
+        "SPI_FlashBlockTransfer",
+        "SPI_GetSpeed",
+        "SPI_IsTransferBusy",
+        "SPI_MasterInit",
+        "SPI_SetCallbackFun",
+        "SPI_SetDMAEnable",
+        "SPI_SetDMATrigger",
+        "SPI_SetNewConfig",
+        "SPI_SetNoBlock",
+        "SPI_TransferEx",
+        "SPI_TransferStop",
+        "SPI_WaitTransferNoBusy"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc/adc.h": {
+      "sha256": "b0dc9eda4559511bd936af7002523373cd9acddd7ee246aa00f893cd30be52f0",
+      "symbols": [
+        "ADC_channelDeInit",
+        "ADC_channelInit",
+        "ADC_disableVrefOutput",
+        "ADC_enableVrefOutput",
+        "ADC_getDefaultConfig",
+        "ADC_startConversion"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc/alarm.h": {
+      "sha256": "af2dae8c9369271be9751bf6e6e3dd0afa9007ee29efaaec713b85f88f74e4f7",
+      "symbols": [
+        "alarmThmDisableInAdc",
+        "alarmThmEnableInAdc",
+        "alarmThmGetIntIndicate",
+        "alarmThmHwDeinit",
+        "alarmThmHwInit",
+        "alarmVBatGetIntIndicate",
+        "alarmVBatHwDeinit",
+        "alarmVBatHwInit"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc/apmu2Peripheral.h": {
+      "sha256": "a55a10d130ca78c09fcde80fa769b75aa76955a4f444f4f11d1d594904a75f4a",
+      "symbols": [
+        "apmuPeriCPPowerOnSetIrqMask",
+        "apmuPeriCPPowerOnSetIrqRestore",
+        "apmuPeriClearCPTimerInterrupt",
+        "apmuPeriDeleteCPTimer",
+        "apmuPeriDeleteWFITimer",
+        "apmuPeriLpuartIsRxActive",
+        "apmuPeriLpuartPreSleepProcess",
+        "apmuPeriStartCPTimer",
+        "apmuPeriStartWFITimer",
+        "apmuPeriUsbEnterAbortProc",
+        "apmuPeriUsbEnterStartProc",
+        "apmuPeriUsbSleep1LateRecoverFlow",
+        "apmuPeriUsbSleep1PreRecoverFlow",
+        "apmuPeriUsbSusp2HibGuardDlyChk",
+        "apmuPeriUsbSusp2VbusTblGuardDlyChk"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc/cache.h": {
+      "sha256": "724a4ee6f327017536a48082bec6b6bc98b79753838e55f66913031ab08d94c2",
+      "symbols": [
+        "DisableICache",
+        "EnableICache",
+        "IsICacheEnabled"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc/charge.h": {
+      "sha256": "fb2ac53908e11f7f0cd0b4b42a360defcaee1dd31a8640fdafb363e72fc4f240",
+      "symbols": [
+        "chargeGetCurStatus",
+        "chargeHwDeinit",
+        "chargeHwInit"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc/clock.h": {
+      "sha256": "a6f361d280072dde1b5dec186fcbee797a8b9b35bffbb41281d7cc745fc4f7cb",
+      "symbols": [
+        "CLOCK_AssertChkBeforeSlp",
+        "CLOCK_bclkEnable",
+        "CLOCK_clockDisable",
+        "CLOCK_clockEnable",
+        "CLOCK_clockReset",
+        "CLOCK_fracDivOutCLkEnable",
+        "CLOCK_fracDivOutClkDisable",
+        "CLOCK_getClockFreq",
+        "CLOCK_mclkDisable",
+        "CLOCK_mclkEnable",
+        "CLOCK_setBclkDiv",
+        "CLOCK_setBclkSrc",
+        "CLOCK_setClockDiv",
+        "CLOCK_setClockSrc",
+        "CLOCK_setFracDivConfig",
+        "CLOCK_setFracDivOutClkDiv",
+        "CLOCK_setMclkDiv",
+        "CLOCK_setMclkSrc",
+        "CLOCK_updateClockTreeElement",
+        "GPR_BclkEnable",
+        "GPR_apGetRstSrc",
+        "GPR_bootSetting",
+        "GPR_clockDisable",
+        "GPR_clockEnable",
+        "GPR_cpGetRstSrc",
+        "GPR_cpResetCfgSet",
+        "GPR_fracDivOutCLkEnable",
+        "GPR_fracDivOutClkDisable",
+        "GPR_getClockFreq",
+        "GPR_initialize",
+        "GPR_lockUpActionCtrl",
+        "GPR_mclkDisable",
+        "GPR_mclkEnable",
+        "GPR_setApbGprAcg",
+        "GPR_setBclkDiv",
+        "GPR_setBclkSrc",
+        "GPR_setClockDiv",
+        "GPR_setClockSrc",
+        "GPR_setFracDivConfig",
+        "GPR_setFracDivOutClkDiv",
+        "GPR_setMclkDiv",
+        "GPR_setMclkSrc",
+        "GPR_swReset",
+        "GPR_swResetModule"
+      ],
+      "excluded": {
+        "GPR_getCPLockUpResetCtrl": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead."
+      }
+    },
+    "PLAT/driver/chip/ec618/ap/inc/cpxip.h": {
+      "sha256": "2f977b58c8c5a4ced7d49596c87357fa06841fe57668f4186067c56758c54dc3",
+      "symbols": [
+        "CPXIP_Enable",
+        "CPXIP_QSPI_Erase_Sector",
+        "CPXIP_QSPI_Read",
+        "CPXIP_QSPI_Write"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc/cspi.h": {
+      "sha256": "3f394907b33eb2261bd314db418aab31103f89d2e0a957b78881a829103738f3",
+      "symbols": [
+        "cspiDrvInterface1"
+      ],
+      "excluded": {
+        "cspiDrvInterface0": "Instance is disabled by the SDK RTE configuration. Common clock, pad, interrupt and DMA APIs are retained for slot-owned drivers of either hardware instance."
+      }
+    },
+    "PLAT/driver/chip/ec618/ap/inc/dma.h": {
+      "sha256": "c6d28bae6ee06c8e558a4a3021444476c5d059754affea02fcb5f2d57ad177aa",
+      "symbols": [
+        "DMA_buildDescriptor",
+        "DMA_buildDescriptorChain",
+        "DMA_closeChannel",
+        "DMA_disableChannelInterrupts",
+        "DMA_enableChannelInterrupts",
+        "DMA_getChannelCount",
+        "DMA_getEnabledInterrupts",
+        "DMA_init",
+        "DMA_loadChannelDescriptorAndRun",
+        "DMA_loadChannelFirstDescriptor",
+        "DMA_openChannel",
+        "DMA_resetChannel",
+        "DMA_rigisterChannelCallback",
+        "DMA_setChannelRequestSource",
+        "DMA_startChannel",
+        "DMA_stopChannel",
+        "DMA_transferSetup"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc/ec618.h": {
+      "sha256": "f89abaae7d034aeafae1c2566711fd73af5c0a5e1f28803ff0400acead4f1e03",
+      "symbols": [],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc/flash_rt.h": {
+      "sha256": "46957c9ad1c96944beec98f46f79e7ada7bbb9e9eadd03d1341f48388cdb1409",
+      "symbols": [
+        "BSP_QSPI_Cfg_Gran_Size",
+        "BSP_QSPI_Erase_Safe",
+        "BSP_QSPI_Read_Safe",
+        "BSP_QSPI_Reg_Operation_Cb",
+        "BSP_QSPI_Write_Safe"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc/gpio.h": {
+      "sha256": "adcfd3a83e6b77408ca9f47d40dd9480164a32fd5881971c0ea7d94f00d58a68",
+      "symbols": [
+        "GPIO_clearInterruptFlags",
+        "GPIO_driverDeInit",
+        "GPIO_driverInit",
+        "GPIO_getInterruptFlags",
+        "GPIO_interruptConfig",
+        "GPIO_pinConfig",
+        "GPIO_pinRead",
+        "GPIO_pinWrite",
+        "GPIO_restoreIrqMask",
+        "GPIO_saveAndSetIrqMask"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc/gpr_common.h": {
+      "sha256": "ebabb6412fb6360a6c990b5b30b1b8b09a86ed975aa3a59e7309715a6284e5a4",
+      "symbols": [],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc/i2s.h": {
+      "sha256": "774021b7927898bdcfa10533655042e20e7e3e877fbb97f12778e2b5050b90ae",
+      "symbols": [
+        "i2sDrvInterface0"
+      ],
+      "excluded": {
+        "i2sDrvInterface1": "Instance is disabled by the SDK RTE configuration. Common clock, pad, interrupt and DMA APIs are retained for slot-owned drivers of either hardware instance."
+      }
+    },
+    "PLAT/driver/chip/ec618/ap/inc/ic.h": {
+      "sha256": "8f07f5435ca2ff41aef2caf251823bebfe3438a9f61fce6504cab672838e80f2",
+      "symbols": [
+        "IC_Powoff",
+        "IC_PowupInit",
+        "XIC_BackupIRQSetting",
+        "XIC_ClearAllPendingIRQ",
+        "XIC_ClearPendingIRQ",
+        "XIC_DisableAllIRQExceptUart",
+        "XIC_DisableIRQ",
+        "XIC_EnableIRQ",
+        "XIC_LatchIRQ",
+        "XIC_RestoreAllIRQ",
+        "XIC_RestoreIRQSetting",
+        "XIC_SetPendingIRQ",
+        "XIC_SetVector",
+        "XIC_SuppressOvfIRQ"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc/kpc.h": {
+      "sha256": "beb99e64791121102816a7aa1ed565920aba9be485620bd97937b642fe33adae",
+      "symbols": [
+        "KPC_deInit",
+        "KPC_getDefaultConfig",
+        "KPC_init",
+        "KPC_startScan",
+        "KPC_stopScan"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc/oneWire.h": {
+      "sha256": "9b4aa5dca89063a7c50e9714b4fe29d8f97499c8ead76b4c9c39f519ae8363c4",
+      "symbols": [
+        "owDeInit",
+        "owInit",
+        "owReadBit",
+        "owReadByte",
+        "owReset",
+        "owResetPd",
+        "owSetMode",
+        "owTouchByte",
+        "owWriteBit",
+        "owWriteByte"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc/pad.h": {
+      "sha256": "5a87dd99e30a6149a18229d0cc91cfc615806d789b13c2809d4117f01ceacb60",
+      "symbols": [
+        "PAD_driverDeInit",
+        "PAD_driverInit",
+        "PAD_enablePinInputBuffer",
+        "PAD_getDefaultConfig",
+        "PAD_setPinConfig",
+        "PAD_setPinConfigWhenInit",
+        "PAD_setPinMux",
+        "PAD_setPinPullConfig"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc/pwrkey.h": {
+      "sha256": "60b4cdad48b283a3803a34d25f288cc9a1f7f43ca03f3425f41e0221e83bab3e",
+      "symbols": [
+        "pwrKeyGetPinLevel",
+        "pwrKeyHwDeinit",
+        "pwrKeyHwInit",
+        "pwrKeyPopKey",
+        "pwrKeyPushKey",
+        "pwrKeyStartPowerOff",
+        "pwrkeyPwrOnDebounce"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc/rng.h": {
+      "sha256": "f3115da277fb12ec9093d39d1ffc438da896ee17120f35624804a606056718b2",
+      "symbols": [
+        "rngGenRandom"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc/sctreg.h": {
+      "sha256": "0a4c7897a52a3dfbe3a795e34d2d06834bd7cbe6751869c6b7be4c042a27a7fc",
+      "symbols": [],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc/timer.h": {
+      "sha256": "266659ca7bf8fec1879dae2a2462429b773115cfb00a9ebfa5578c65aed13248",
+      "symbols": [
+        "TIMER_clearInterruptFlags",
+        "TIMER_deInit",
+        "TIMER_driverInit",
+        "TIMER_getCount",
+        "TIMER_getDefaultConfig",
+        "TIMER_getInterruptConfig",
+        "TIMER_getInterruptFlags",
+        "TIMER_init",
+        "TIMER_interruptConfig",
+        "TIMER_netlightEnable",
+        "TIMER_setInitValue",
+        "TIMER_setMatch",
+        "TIMER_setReloadOption",
+        "TIMER_setupPwm",
+        "TIMER_start",
+        "TIMER_stop",
+        "TIMER_updatePwmDutyCycle"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc/tls.h": {
+      "sha256": "d759cdbd6d59737409f52fb33cc16b39163bd3f5fc002ffd51c45dc09511b01c",
+      "symbols": [
+        "aesUpdate",
+        "sctDeInit",
+        "sctInit",
+        "shaUpdate"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc/uart.h": {
+      "sha256": "14c837afdc9d62c7cb70a761bcb6e74e0228fc533fc2943ab6cc86f1ce01169a",
+      "symbols": [
+        "UART_flush",
+        "UART_init",
+        "UART_printf",
+        "UART_purgeRx",
+        "UART_receive",
+        "UART_send"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc/unilog.h": {
+      "sha256": "d87a88a14175b9ac81a611da926d9e7fa9e80f3c296a7ee8df3b21f53b938229",
+      "symbols": [
+        "swLogDump",
+        "swLogDumpPolling",
+        "swLogExcep",
+        "swLogPrintf",
+        "swLogPrintfPolling",
+        "uniLogFlushOut",
+        "uniLogForceOut",
+        "uniLogGetDumpRdyFlag",
+        "uniLogGetPherType",
+        "uniLogIsInitialized",
+        "uniLogModuleAllowAllTraces",
+        "uniLogModuleAllowTraces",
+        "uniLogModuleDisableAllTraces",
+        "uniLogModuleDisableTraces",
+        "uniLogSetPherType",
+        "uniLogStop",
+        "uniLogStopHwLog",
+        "uniLogTraceAllowCheck",
+        "unilogSwitch2UartLog",
+        "unilogSwitch2UsbLog"
+      ],
+      "excluded": {
+        "uniLogGetSettingFromFlash": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead."
+      }
+    },
+    "PLAT/driver/chip/ec618/ap/inc/wdt.h": {
+      "sha256": "d69949b4b82ceaea78ccd5aec589ebdc56fa75f79defb1429ebd2cff15fa96cb",
+      "symbols": [
+        "WDT_deInit",
+        "WDT_getDefaultConfig",
+        "WDT_getInterruptFlags",
+        "WDT_getMode",
+        "WDT_getStartStatus",
+        "WDT_init",
+        "WDT_kick",
+        "WDT_start",
+        "WDT_stop",
+        "WDT_unlock",
+        "WDTclearInterruptFlags"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc_cmsis/Driver_I2C.h": {
+      "sha256": "0f932bc0c5a320f464b1f9e95fe5c2be412335117427748b980d2552e5b59fe8",
+      "symbols": [
+        "Driver_I2C0",
+        "Driver_I2C1"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/chip/ec618/ap/inc_cmsis/Driver_SPI.h": {
+      "sha256": "f454a393e6a711d0c6fc05c698a36d98e7a797fdad35aec06af04588b9dd9c4a",
+      "symbols": [],
+      "excluded": {
+        "Driver_SPI0": "Alternative CMSIS SPI implementation excluded by SDK xmake.lua; the configured soc_spi.h implementation is retained.",
+        "Driver_SPI1": "Alternative CMSIS SPI implementation excluded by SDK xmake.lua; the configured soc_spi.h implementation is retained."
+      }
+    },
+    "PLAT/driver/chip/ec618/ap/inc_cmsis/Driver_USART.h": {
+      "sha256": "50a3110b458bbd9d1ea3cc47567eb7e23b3e10f5fbbe147aea40160a0d3d74ca",
+      "symbols": [
+        "Driver_USART0",
+        "Driver_USART1",
+        "Driver_USART2",
+        "Driver_LPUSART1"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/hal/ec618/ap/inc/hal_adc.h": {
+      "sha256": "0e4076d334c3aed62bbe1e1f2b2c304467050e115a36b29787a29d162f8e6677",
+      "symbols": [
+        "HAL_ADC_CalibrateRawCode",
+        "HAL_ADC_ConvertThermalRawCodeToTemperature",
+        "HAL_ADC_ConvertThermalRawCodeToTemperatureHighAccuracy",
+        "HAL_ADC_GetThermalTemperature",
+        "HAL_ADC_SampleVbatVoltage"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/hal/ec618/ap/inc/hal_adcproxy.h": {
+      "sha256": "a3a90323a01928f009505885910b95fa49d4ba1d0c9e64edeee2e92a855a9b12",
+      "symbols": [
+        "cpADCDeInit",
+        "cpADCInit",
+        "cpADCProxyStartChannel"
+      ],
+      "excluded": {
+        "adcProxyConvertRawCodeToTemperature": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead."
+      }
+    },
+    "PLAT/driver/hal/ec618/ap/inc/hal_alarm.h": {
+      "sha256": "2cb69a00e1a30f96cdbfa85ff9ba2fa90e14d0fbdd395bb0d1a0ed2df9aafebd",
+      "symbols": [
+        "alarmFuncInit"
+      ],
+      "excluded": {
+        "alarmThmHighDeinit": "Disabled by SDK __USER_CODE__; low-level alarm hardware API is retained.",
+        "alarmThmHighInit": "Disabled by SDK __USER_CODE__; low-level alarm hardware API is retained.",
+        "alarmVBatDeinit": "Disabled by SDK __USER_CODE__; low-level alarm hardware API is retained.",
+        "alarmVBatInit": "Disabled by SDK __USER_CODE__; low-level alarm hardware API is retained."
+      }
+    },
+    "PLAT/driver/hal/ec618/ap/inc/hal_charge.h": {
+      "sha256": "dae0d722ef7a8aac22cfa60c58496b38b1acbb2d85d59b5e40742b64160f250f",
+      "symbols": [
+        "chargeDetectDeinit",
+        "chargeDetectInit",
+        "chargeIntHandler"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/hal/ec618/ap/inc/hal_i2s.h": {
+      "sha256": "561b09f1a8a5b989389f6a0f6a8653581ff6e36a54f9c2085db7586b9a5dcbe6",
+      "symbols": [
+        "HAL_I2SGetTotalNum",
+        "HAL_I2SSetPlayRecord",
+        "HAL_I2SSetTotalNum",
+        "HAL_I2sConfig",
+        "HAL_I2sInit",
+        "HAL_I2sSrcAdjustVolumn",
+        "HAL_I2sStartSop",
+        "HAL_I2sTransfer",
+        "HAL_i2sSetSampleRate"
+      ],
+      "excluded": {
+        "HAL_I2sVolumnCtrl": "SDK implementation is inside #if 0; software volume scaling remains available.",
+        "HAL_aonIOVoltSet": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "HAL_normalIOVoltSet": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead."
+      }
+    },
+    "PLAT/driver/hal/ec618/ap/inc/hal_misc.h": {
+      "sha256": "de4243d0f7f45392040cd1f67dfbba8c9671bc488e35235d5408b70cc1d1a146",
+      "symbols": [
+        "HAL_Get_ChipID",
+        "apmuBootDbgGPIOSet",
+        "apmuGetLongSlpCfg",
+        "delay_us"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/hal/ec618/ap/inc/hal_pwrkey.h": {
+      "sha256": "c24e582e9ba56d37a62ec34cf2ed926203119c59cdd39811fb383afc34a8311d",
+      "symbols": [
+        "pwrKeyDeinit",
+        "pwrKeyInit",
+        "pwrKeyIntHandler"
+      ],
+      "excluded": {}
+    },
+    "PLAT/driver/hal/ec618/ap/inc/hal_uartDump.h": {
+      "sha256": "875ea37cb96e4c9cbe112ca219f909d5bc03d87440b6c9cd9e57b1807a9e613b",
+      "symbols": [
+        "HAL_UartDumpPortCheck",
+        "HAL_UartDumpPortInit",
+        "HAL_UartDumpPortSend"
+      ],
+      "excluded": {}
+    },
+    "PLAT/prebuild/PLAT/inc/slpman.h": {
+      "sha256": "3d25aa9fe6b8d71921b5f87983b543ec6744815a4b6c3df6bc1fb71e52e82d43",
+      "symbols": [
+        "slpManAONIOLatchEn",
+        "slpManAONIOPowerOff",
+        "slpManAONIOPowerOn",
+        "slpManAONIOVoltGet",
+        "slpManAONIOVoltSet",
+        "slpManAPPGetAONFlag1",
+        "slpManAPPGetAONFlag2",
+        "slpManAPPSetAONFlag1",
+        "slpManAPPSetAONFlag2",
+        "slpManAonWdtFeed",
+        "slpManAonWdtStop",
+        "slpManApplyPlatVoteHandle",
+        "slpManCheckVoteState",
+        "slpManDeepSlpTimerDel",
+        "slpManDeepSlpTimerIsRunning",
+        "slpManDeepSlpTimerRegisterExpCb",
+        "slpManDeepSlpTimerRemainMs",
+        "slpManDeepSlpTimerStart",
+        "slpManDrvVoteSleep",
+        "slpManExcutePredefinedBackupCb",
+        "slpManExcutePredefinedRestoreCb",
+        "slpManExcuteUsrdefinedBackupCb",
+        "slpManExcuteUsrdefinedRestoreCb",
+        "slpManExtIntPreProcess",
+        "slpManFindPlatVoteHandle",
+        "slpManForceIOPowerState",
+        "slpManGet6P25HZGlobalCnt",
+        "slpManGetCPVoteStatus",
+        "slpManGetCPWakeupFlag",
+        "slpManGetChargePinValue",
+        "slpManGetCurSlowCnt",
+        "slpManGetCurrentPmuTimingCfg",
+        "slpManGetDrvBitmap",
+        "slpManGetDrvVoteMask",
+        "slpManGetEstimateSlpTime",
+        "slpManGetIOSelPin",
+        "slpManGetLastSlpState",
+        "slpManGetPlatBitmap",
+        "slpManGetPwrkeyPinValue",
+        "slpManGetRawFlashEraseCnt",
+        "slpManGetSleepTime",
+        "slpManGetVoteInfo",
+        "slpManGetWakeupPadCfg",
+        "slpManGetWakeupPinValue",
+        "slpManGetWakeupSlowCnt",
+        "slpManGetWakeupSrc",
+        "slpManGivebackPlatVoteHandle",
+        "slpManIsLocalTimePrecise",
+        "slpManNormalIOVoltGet",
+        "slpManNormalIOVoltSet",
+        "slpManNormalIoPowerCtrl",
+        "slpManPlatGetSlpState",
+        "slpManPlatVoteDisableSleep",
+        "slpManPlatVoteEnableSleep",
+        "slpManPlatVoteForceEnableSleep",
+        "slpManPmuTimingChangedReq",
+        "slpManProductionTest",
+        "slpManRegisterPmuTimingCb",
+        "slpManRegisterPredefinedBackupCb",
+        "slpManRegisterPredefinedRestoreCb",
+        "slpManRegisterUsrSlpDepthCb",
+        "slpManRegisterUsrdefinedBackupCb",
+        "slpManRegisterUsrdefinedRestoreCb",
+        "slpManSavePmuTimingCfg",
+        "slpManSetCPSleepEnable",
+        "slpManSetDrvVoteMask",
+        "slpManSetPmuSleepMode",
+        "slpManSetSleepLimitTime",
+        "slpManSetWakeupIOPowerState",
+        "slpManSetWakeupPadCfg",
+        "slpManStartPowerOff",
+        "slpManStartWaitATTimer",
+        "slpManUnregisterPmuTimingCb",
+        "slpManUnregisterPredefinedBackupCb",
+        "slpManUnregisterPredefinedRestoreCb",
+        "slpManUnregisterUsrdefinedBackupCb",
+        "slpManUnregisterUsrdefinedRestoreCb",
+        "slpManUsim1LatchEn",
+        "slpManWaitATTimerSet"
+      ],
+      "excluded": {
+        "slpManAONIOGetLatchCfg": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "slpManFlushUsrNVMem": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "slpManGetUsrNVMem": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "slpManRestoreUsrNVMem": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
+        "slpManUpdateUserNVMem": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead."
+      }
+    },
+    "PLAT/prebuild/PLAT/inc/usbd_clscdc.h": {
+      "sha256": "92458170473187165cc65b16cd83bae65c5825baf5a42aa6358d98a683002391",
+      "symbols": [],
+      "excluded": {}
+    },
+    "PLAT/prebuild/PLAT/inc/usbd_multi_usrcfg_common.h": {
+      "sha256": "d392754648e550aee0148805e17ef8c9bf1e35d69d7cb8d4d95b5e20e8a50fc5",
+      "symbols": [
+        "usbcustom_multidev_ccinfo_map",
+        "usbcustom_multidev_cfg_end",
+        "usbcustom_multidev_cfg_reset",
+        "usbcustom_multidev_cfg_update",
+        "usbcustom_multidev_cmndesc",
+        "usbcustom_multidev_ctrl_proc",
+        "usbcustom_multidev_strdesc",
+        "usbd_multi_lib_cmndesc_cb",
+        "usbd_multi_lib_strdesc_cb",
+        "usbd_multi_libcall_cmndesc",
+        "usbd_multi_libcall_strdesc"
+      ],
+      "excluded": {}
+    },
+    "PLAT/prebuild/PLAT/inc/usbmst_external.h": {
+      "sha256": "1c125cb6500c4a56e8f838d421e2f5351b6b3d69b33680a333604843c81db62e",
+      "symbols": [
+        "ecm0_sig_conn_info",
+        "ecm0_sig_conn_stat",
+        "rndis0_downlink_get_epnum",
+        "rndis0_sig_conn_stat",
+        "rndis0_sig_conn_test",
+        "rndis0_uplink_get_epnum",
+        "rndis0_uplink_xfer_cfg",
+        "serial_vcom0_downlink_get_epnum",
+        "serial_vcom0_uplink_get_epnum",
+        "serial_vcom0_uplink_xfer_cfg",
+        "serial_vcom1_downlink_get_epnum",
+        "serial_vcom1_uplink_get_epnum",
+        "serial_vcom1_uplink_xfer_cfg",
+        "serial_vcom2_downlink_get_epnum",
+        "serial_vcom2_uplink_get_epnum",
+        "serial_vcom2_uplink_xfer_cfg",
+        "usbDevNotifyRndisEvent"
+      ],
+      "excluded": {}
+    }
+  },
+  "header_directories": [
+    "PLAT/driver/chip/ec618/ap/inc",
+    "PLAT/driver/hal/ec618/ap/inc",
+    "PLAT/core/driver/include"
+  ],
+  "excluded_headers": {
+    "PLAT/driver/hal/ec618/ap/inc/hal_dumpMedia.h": "Crash-dump transport, not a peripheral driver API; existing platform dump path stays linked.",
+    "PLAT/driver/hal/ec618/ap/inc/hal_phy.h": "Modem PHY debug/calibration internals, outside the application peripheral contract.",
+    "PLAT/driver/hal/ec618/ap/inc/hal_rfCali.h": "Factory radio calibration and AT test commands, outside the application peripheral contract."
+  }
+}

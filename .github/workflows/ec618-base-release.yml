@@ -84,6 +84,7 @@ jobs:
           cp build/ec618-base/base.elf build/release-ec618-base/ec618-base-v$VERSION.elf
           cp build/ec618-base/base.bin build/release-ec618-base/ec618-base-v$VERSION.bin
           cp build/ec618-base/base-manifest.json build/release-ec618-base/ec618-base-v$VERSION.json
+          cp toolchains/ec618/base-api.json build/release-ec618-base/ec618-base-v$VERSION-api.json
 
       - name: Publish
         env:
@@ -96,6 +97,8 @@ jobs:
           This is the universal base; the anchor record selects the console
           UART. Slots link against base.elf; base.bin carries the stamped
           base-id record the device checks before accepting a slot OTA.
+          The -api.json file records the reviewed peripheral export contract;
+          retained native APIs are not a claim of hardware qualification.
           Distributed envelopes carry the complete matching AP image; a
           flasher never downloads this release separately. To build an
           envelope against this release: download the files into a directory
