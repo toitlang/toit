@@ -109,6 +109,17 @@ peer and performs a final EC618 health check. Failure and cancellation also
 attempt bounded cleanup; a recovered board does not turn a failed test into
 a pass.
 
+To register the paired matrix with CTest, configure `tests/hw` with
+`TOIT_EXE_HW`, `EC618_BOARD_PORT`, `EC618_I2S_PEER_PORT` and
+`EC618_EXPECT_BASE`, plus exactly one of `EC618_TEST_I2S_RX=ON`,
+`EC618_TEST_I2S_TX=ON` or `EC618_TEST_I2S_DUPLEX=ON`. Enabling a matrix
+confirms that DS18B20 DQ is disconnected. Set `EC618_RIG_LOCK` to override
+the shared lock path. Run `ctest --test-dir <build-directory> -C ec618
+-L i2s --output-on-failure`. Receive registers 90 cases, transmit 24 and
+duplex 8; each case performs its own preflight and final health checks.
+Where the broader EC618 suite is present, its setup/cleanup fixtures also run.
+The paired matrix does not require Python.
+
 Host regressions are `tests/i2s-pattern-test.toit`,
 `tests/i2s-stream-verifier-test.toit`, `tests/i2s-run-output-test.toit` and
 `tests/i2s-coordinator-test.toit`. These cover payload verification, split
