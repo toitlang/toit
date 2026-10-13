@@ -18,6 +18,10 @@
 #ifdef TOIT_ESP32
 
 #include <driver/i2s_std.h>
+#include <esp_idf_version.h>
+#if ESP_IDF_VERSION_MAJOR >= 6
+#include <hal/i2s_ll.h>
+#endif
 #include <esp_log.h>
 #include "freertos/FreeRTOS.h"
 #include <freertos/queue.h>
@@ -37,7 +41,11 @@ namespace toit {
 
 // Each I2S controller can have one TX and one RX resource, each with a
 // length-one event queue. A duplex resource uses only one of those entries.
+#if ESP_IDF_VERSION_MAJOR >= 6
+static_assert(2 * I2S_LL_GET(INST_NUM) <= I2S_EVENT_QUEUE_SIZE,
+#else
 static_assert(2 * SOC_I2S_NUM <= I2S_EVENT_QUEUE_SIZE,
+#endif
               "Increase I2S_EVENT_QUEUE_SIZE");
 
 const int kReadState = 1 << 0;
@@ -52,10 +60,9 @@ class I2sResourceGroup : public ResourceGroup {
       : ResourceGroup(process, event_source) {}
 
   uint32_t on_event(Resource* r, word data, uint32_t state) {
-    if (data == kReadState || data == kWriteState || data == kErrorState) {
-      state |= data;
-    }
-    return state;
+    // The ISR accumulates pending events in a bit mask. Duplex transfers can
+    // deliver read, write and error notifications together.
+    return state | (data & (kReadState | kWriteState | kErrorState));
   }
 };
 
@@ -325,22 +332,16 @@ PRIMITIVE(create) {
   Defer free_resource { [&] { if (!successful_return) delete resource; } };
 
   if (tx_handle != null) {
-    i2s_event_callbacks_t callbacks = {
-      .on_recv = null,
-      .on_recv_q_ovf = null,
-      .on_sent = &channel_sent_handler,
-      .on_send_q_ovf = &channel_underrun_error_handler,
-    };
+    i2s_event_callbacks_t callbacks = {};
+    callbacks.on_sent = &channel_sent_handler;
+    callbacks.on_send_q_ovf = &channel_underrun_error_handler;
     err = i2s_channel_register_event_callback(tx_handle, &callbacks, resource);
     if (err != ESP_OK) return Primitive::os_error(err, process);
   }
   if (rx_handle != null) {
-    i2s_event_callbacks_t callbacks = {
-      .on_recv = &channel_read_handler,
-      .on_recv_q_ovf = &channel_overrun_error_handler,
-      .on_sent = null,
-      .on_send_q_ovf = null,
-    };
+    i2s_event_callbacks_t callbacks = {};
+    callbacks.on_recv = &channel_read_handler;
+    callbacks.on_recv_q_ovf = &channel_overrun_error_handler;
     err = i2s_channel_register_event_callback(rx_handle, &callbacks, resource);
     if (err != ESP_OK) return Primitive::os_error(err, process);
   }
