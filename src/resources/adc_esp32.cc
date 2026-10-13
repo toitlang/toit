@@ -33,6 +33,10 @@
 
 #include "../event_sources/system_esp32.h"
 
+#if CONFIG_IDF_TARGET_ESP32S31
+#include "esp_adc/adc_cali_s31.h"
+#endif
+
 namespace toit {
 
 #if CONFIG_IDF_TARGET_ESP32
@@ -104,6 +108,38 @@ static int get_adc1_channel(int pin) {
     case 4: return ADC_CHANNEL_4;
     case 5: return ADC_CHANNEL_5;
     case 6: return ADC_CHANNEL_6;
+    default: return -1;
+  }
+}
+
+#elif CONFIG_IDF_TARGET_ESP32S31
+
+#define ADC_CLK_SRC_DEFAULT ADC_DIGI_CLK_SRC_DEFAULT
+
+static int get_adc1_channel(int pin) {
+  switch (pin) {
+    case 42: return ADC_CHANNEL_0;
+    case 43: return ADC_CHANNEL_1;
+    case 44: return ADC_CHANNEL_2;
+    case 45: return ADC_CHANNEL_3;
+    case 46: return ADC_CHANNEL_4;
+    case 47: return ADC_CHANNEL_5;
+    case 48: return ADC_CHANNEL_6;
+    case 49: return ADC_CHANNEL_7;
+    default: return -1;
+  }
+}
+
+static int get_adc2_channel(int pin) {
+  switch (pin) {
+    case 50: return ADC_CHANNEL_0;
+    case 51: return ADC_CHANNEL_1;
+    case 52: return ADC_CHANNEL_2;
+    case 53: return ADC_CHANNEL_3;
+    case 54: return ADC_CHANNEL_4;
+    case 55: return ADC_CHANNEL_5;
+    case 56: return ADC_CHANNEL_6;
+    case 57: return ADC_CHANNEL_7;
     default: return -1;
   }
 }
@@ -224,10 +260,15 @@ static int get_adc2_channel(int pin) {
 #endif
 
 static adc_atten_t get_attenuation(int mv) {
+#if CONFIG_IDF_TARGET_ESP32S31
+  // S31 has one fixed attenuation setting.
+  return ADC_ATTEN_DB_0;
+#else
   if (mv <= 1100) return ADC_ATTEN_DB_0;
   if (mv <= 1500) return ADC_ATTEN_DB_2_5;
   if (mv <= 2200) return ADC_ATTEN_DB_6;
   return ADC_ATTEN_DB_12;
+#endif
 }
 
 static adc_oneshot_unit_handle_t adc1_unit = null;
@@ -433,7 +474,15 @@ PRIMITIVE(init) {
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   adc_cali_handle_t calibration = null;
+#if CONFIG_IDF_TARGET_ESP32S31
+  if (unit_id == ADC_UNIT_1) {
+    err = adc_cali_s31_init(*unit_handle, unit_id, static_cast<adc_channel_t>(channel));
+  } else {
+    err = ESP_ERR_NOT_SUPPORTED;
+  }
+#else
   err = calibration_init(unit_id, static_cast<adc_channel_t>(channel), attenuation, &calibration);
+#endif
   if (err == ESP_ERR_NOT_SUPPORTED) {
     ESP_LOGW("ADC", "Calibration unavailable; raw readings only");
   } else if (err != ESP_OK) {
@@ -465,7 +514,11 @@ PRIMITIVE(get) {
 
   if (samples < 1 || samples > 64) FAIL(OUT_OF_RANGE);
 
+#if CONFIG_IDF_TARGET_ESP32S31
+  if (resource->unit() != &adc1_unit) FAIL(UNSUPPORTED);
+#else
   if (resource->calibration() == null) FAIL(UNSUPPORTED);
+#endif
 
   uint32_t adc_reading = 0;
 
@@ -474,15 +527,27 @@ PRIMITIVE(get) {
     int raw;
     esp_err_t err = adc_oneshot_read(*resource->unit(), resource->channel(), &raw);
     if (err != ESP_OK) return Primitive::os_error(err, process);
+#if CONFIG_IDF_TARGET_ESP32S31
+    // S31 uses weighted redundant bits: convert each sample before averaging.
+    int millivolts;
+    err = adc_cali_s31_raw_to_voltage(ADC_UNIT_1, raw, &millivolts);
+    if (err != ESP_OK) return Primitive::os_error(err, process);
+    adc_reading += millivolts;
+#else
     adc_reading += raw;
+#endif
   }
 
   adc_reading /= samples;
 
   // Convert adc_reading to voltage in mV.
+#if CONFIG_IDF_TARGET_ESP32S31
+  int voltage = adc_reading;
+#else
   int voltage;
   esp_err_t err = adc_cali_raw_to_voltage(resource->calibration(), adc_reading, &voltage);
   if (err != ESP_OK) return Primitive::os_error(err, process);
+#endif
 
   return Primitive::allocate_double(voltage / 1000.0, process);
 }

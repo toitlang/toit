@@ -44,8 +44,15 @@ else
 endif
 export IDF_TARGET
 
-# Use Toitware ESP-IDF fork by default.
+# S31 uses a separately pinned IDF. A command-line IDF_PATH overrides selection.
+ifeq ($(IDF_TARGET),esp32s31)
+ifneq ($(origin IDF_PATH),command line)
+export IDF_PATH := $(CURDIR)/third_party/esp-idf-s31
+endif
+export IDF_TOOLS_PATH := $(or $(TOIT_S31_IDF_TOOLS_PATH),$(HOME)/.espressif-s31)
+else
 export IDF_PATH ?= $(CURDIR)/third_party/esp-idf
+endif
 export TOIT_HOST_IDF_PATH ?= $(CURDIR)/third_party/esp-idf
 
 ifeq ($(OS),Windows_NT)
@@ -413,7 +420,7 @@ ec618: check-env host-tools
 	@echo Reloc: $(BUILD)/ec618/slot-reloc.bin
 
 # ESP32 VARIANTS
-ifneq ($(filter $(IDF_TARGET),esp32c3 esp32c6 esp32p4),)
+ifneq ($(filter $(IDF_TARGET),esp32c3 esp32c6 esp32p4 esp32s31),)
 ESP32_COMPILER := riscv32-esp-elf-g++
 else
 ESP32_COMPILER := xtensa-esp32-elf-g++
@@ -445,6 +452,10 @@ esp32c3:
 .PHONY: esp32c6
 esp32c6:
 	$(MAKE) IDF_TARGET=esp32c6 ESP32_CHIP=esp32c6 esp32
+
+.PHONY: esp32s31
+esp32s31:
+	$(MAKE) IDF_TARGET=esp32s31 ESP32_CHIP=esp32s31 esp32
 
 .PHONY: esp32p4
 esp32p4:

@@ -53,7 +53,7 @@
 
 #include <driver/gpio.h>
 
-#if SOC_TOUCH_SENSOR_SUPPORTED
+#if SOC_TOUCH_SENSOR_SUPPORTED && !CONFIG_IDF_TARGET_ESP32S31
 #include <driver/touch_pad.h>
 #endif
 #if CONFIG_IDF_TARGET_ESP32
@@ -63,6 +63,8 @@
   #include <esp32c3/rom/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32C6
   #include <esp32c6/rom/rtc.h>
+#elif CONFIG_IDF_TARGET_ESP32S31
+  #include <esp32s31/rom/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32P4
   #include <esp32p4/rom/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32S2
@@ -380,7 +382,7 @@ PRIMITIVE(enable_external_wakeup) {
 PRIMITIVE(enable_touchpad_wakeup) {
 #ifdef CONFIG_IDF_TARGET_ESP32P4
   FAIL(UNIMPLEMENTED);
-#elif SOC_TOUCH_SENSOR_SUPPORTED
+#elif SOC_TOUCH_SENSOR_SUPPORTED && !CONFIG_IDF_TARGET_ESP32S31
   esp_err_t err = esp_sleep_enable_touchpad_wakeup();
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "Failed: sleep_enable_touchpad_wakeup");
@@ -419,7 +421,7 @@ PRIMITIVE(ext1_wakeup_status) {
 PRIMITIVE(touchpad_wakeup_status) {
 #if defined(CONFIG_IDF_TARGET_ESP32P4)
   FAIL(UNIMPLEMENTED);
-#elif SOC_TOUCH_SENSOR_SUPPORTED
+#elif SOC_TOUCH_SENSOR_SUPPORTED && !CONFIG_IDF_TARGET_ESP32S31
   touch_pad_t pad = esp_sleep_get_touchpad_wakeup_status();
   return Primitive::integer(touch_pad_to_pin_num(pad), process);
 #else
