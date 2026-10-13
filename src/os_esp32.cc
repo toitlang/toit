@@ -1003,7 +1003,8 @@ bool OS::unsetenv(const char* variable) {
 bool OS::set_real_time(struct timespec* time) {
   if (clock_settime(CLOCK_REALTIME, time) == 0) return true;
   struct timeval timeofday{};
-  TIMESPEC_TO_TIMEVAL(&timeofday, time);
+  timeofday.tv_sec = time->tv_sec;
+  timeofday.tv_usec = time->tv_nsec / 1000;
   return settimeofday(&timeofday, NULL) == 0;
 }
 

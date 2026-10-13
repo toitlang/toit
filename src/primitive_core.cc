@@ -2670,7 +2670,7 @@ PRIMITIVE(firmware_map) {
   const esp_partition_t* current_partition = esp_ota_get_running_partition();
   if (current_partition == null) FAIL(ERROR);
 
-  esp_partition_mmap_memory_t memory = ESP_PARTITION_MMAP_DATA;
+  auto memory = ESP_PARTITION_MMAP_DATA;
 #if defined(CONFIG_IDF_TARGET_ESP32)
   memory = ESP_PARTITION_MMAP_INST;
 #endif
