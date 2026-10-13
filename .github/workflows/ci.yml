@@ -631,6 +631,7 @@ jobs:
         with:
           toit-dir: .
           esp32: true
+          esp32s31: true
           cache-key-prefix: esp32
 
       # Verify that the firmware tool's flash-size assumption still holds: the
@@ -652,6 +653,7 @@ jobs:
           make ESP32_CHIP=esp32p4 esp32
           make ESP32_CHIP=esp32s2 esp32
           make ESP32_CHIP=esp32s3 esp32
+          make ESP32_CHIP=esp32s31 esp32
           ccache -s
 
       - name: Build ESP32-S3 USB Serial/JTAG console firmware
@@ -685,6 +687,7 @@ jobs:
           gzip --to-stdout build/esp32c3/firmware.envelope > build/firmware-esp32c3.gz
           gzip --to-stdout build/esp32s2/firmware.envelope > build/firmware-esp32s2.gz
           gzip --to-stdout build/esp32s3/firmware.envelope > build/firmware-esp32s3.gz
+          gzip --to-stdout build/esp32s31/firmware.envelope > build/firmware-esp32s31.gz
 
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v7
@@ -695,6 +698,7 @@ jobs:
             build/firmware-esp32c3.gz
             build/firmware-esp32s2.gz
             build/firmware-esp32s3.gz
+            build/firmware-esp32s31.gz
 
   # Build every envelope variant nightly. Keep this independent of the regular
   # ESP32 job so its failures do not prevent checking the remaining variants.

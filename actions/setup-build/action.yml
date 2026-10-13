@@ -8,6 +8,10 @@ inputs:
     description: "Whether to install build tools for compiling to the ESP32."
     required: false
     default: "false"
+  esp32s31:
+    description: "Whether to install the separately pinned S31 build tools."
+    required: false
+    default: "false"
   use-ccache:
     description: "Whether to use ccache for caching build artifacts."
     required: false
@@ -166,6 +170,11 @@ runs:
         ./export.ps1
         # Install the MbedTLS dependencies in the sourced Python environment.
         pip install jsonschema jinja2
+
+    - name: Install ESP32-S31 tools
+      if: inputs.esp32s31 == 'true'
+      shell: bash
+      run: ${{inputs.toit-dir}}/tools/setup-idf-s31.sh --install
 
     - name: Setup compilation env
       shell: bash
