@@ -50,7 +50,7 @@ jobs:
 
           # Archive the relevant submodules.
           # Initialize the top-level modules but not nested ones. This fills in the esp-idf submodule.
-          git submodule update --depth=1 --init .
+          git submodule update --depth=1 --init third_party/esp-idf third_party/luatos-soc-ec618
 
           esp_idf=${{ github.workspace }}/third_party/esp-idf
           # We only need mbedtls of the esp-idf submodule to build the host tools.

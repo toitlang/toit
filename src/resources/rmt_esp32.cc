@@ -23,6 +23,15 @@
 #include <driver/rmt_encoder.h>
 #include <driver/gpio.h>
 #include <esp_attr.h>
+#include <esp_idf_version.h>
+#if ESP_IDF_VERSION_MAJOR >= 6
+#include <hal/rmt_ll.h>
+#define TOIT_RMT_GROUPS RMT_LL_GET(INST_NUM)
+#define TOIT_RMT_CHANNELS_PER_GROUP RMT_LL_GET(CHANS_PER_INST)
+#else
+#define TOIT_RMT_GROUPS SOC_RMT_GROUPS
+#define TOIT_RMT_CHANNELS_PER_GROUP SOC_RMT_CHANNELS_PER_GROUP
+#endif
 
 #include "../objects_inline.h"
 #include "../primitive.h"
@@ -45,7 +54,7 @@
 
 namespace toit {
 
-static_assert(SOC_RMT_GROUPS * SOC_RMT_CHANNELS_PER_GROUP <= RMT_EVENT_QUEUE_SIZE,
+static_assert(TOIT_RMT_GROUPS * TOIT_RMT_CHANNELS_PER_GROUP <= RMT_EVENT_QUEUE_SIZE,
               "Increase RMT_EVENT_QUEUE_SIZE");
 
 const int kReadState = 1 << 0;
@@ -725,12 +734,33 @@ PRIMITIVE(channel_new) {
       .flags = {
         .invert_out = false,
         .with_dma = with_dma,
+#if ESP_IDF_VERSION_MAJOR < 6
         .io_loop_back = true,
         .io_od_mode = open_drain,
+#endif
         .allow_pd = false,
+#if ESP_IDF_VERSION_MAJOR >= 6
+        .init_level = open_drain,
+#endif
       },
     };
     err = rmt_new_tx_channel(&cfg, &handle);
+#if ESP_IDF_VERSION_MAJOR >= 6
+    if (err == ESP_OK) {
+      // IDF 6 routes and enables the peripheral output itself. Calling
+      // gpio_set_direction here resets that route to ordinary GPIO output.
+      // Enable loopback input and open-drain directly, preserving RMT output.
+      gpio_num_t pin = static_cast<gpio_num_t>(gpio_num);
+      esp_err_t gpio_err = gpio_input_enable(pin);
+      if (gpio_err == ESP_OK) {
+        gpio_err = open_drain ? gpio_od_enable(pin) : gpio_od_disable(pin);
+      }
+      if (gpio_err != ESP_OK) {
+        rmt_del_channel(handle);
+        err = gpio_err;
+      }
+    }
+#endif
   } else {
     // Input.
     rmt_rx_channel_config_t cfg = {
@@ -742,7 +772,9 @@ PRIMITIVE(channel_new) {
       .flags = {
         .invert_in = false,
         .with_dma = with_dma,
+#if ESP_IDF_VERSION_MAJOR < 6
         .io_loop_back = false,
+#endif
         .allow_pd = false,
       },
     };
@@ -1044,12 +1076,12 @@ PRIMITIVE(apply_carrier) {
 PRIMITIVE(sync_manager_new) {
   ARGS(SimpleResourceGroup, group, Array, channels)
 
-  if (channels->length() > SOC_RMT_CHANNELS_PER_GROUP) FAIL(INVALID_ARGUMENT);
+  if (channels->length() > TOIT_RMT_CHANNELS_PER_GROUP) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  rmt_channel_handle_t handles[SOC_RMT_CHANNELS_PER_GROUP];
+  rmt_channel_handle_t handles[TOIT_RMT_CHANNELS_PER_GROUP];
   for (int i = 0; i < channels->length(); i++) {
     Object* o = channels->at(i);
     if (!is_byte_array(o)) FAIL(WRONG_OBJECT_TYPE);

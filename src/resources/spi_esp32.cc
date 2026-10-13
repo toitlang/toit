@@ -327,16 +327,15 @@ void SpiDevice::prepare_operation(const uint8_t* tx_data,
   tx_buffer_ = tx_buffer;
   rx_buffer_ = rx_buffer;
   transfer_size_ = transfer_size;
-  transaction_ = {
-    .flags = flags,
-    .cmd = command,
-    .addr = address,
-    .length = transfer_size * 8,
-    .rxlength = 0,
-    .user = this,
-    .tx_buffer = tx_buffer,
-    .rx_buffer = rx_buffer,
-  };
+  transaction_ = {};
+  transaction_.flags = flags;
+  transaction_.cmd = command;
+  transaction_.addr = address;
+  transaction_.length = transfer_size * 8;
+  transaction_.rxlength = 0;
+  transaction_.user = this;
+  transaction_.tx_buffer = tx_buffer;
+  transaction_.rx_buffer = rx_buffer;
   if (transfer_size != 0 && tx_buffer == null) {
     ASSERT(transfer_size <= sizeof(transaction_.tx_data));
     transaction_.flags |= SPI_TRANS_USE_TXDATA;
@@ -478,14 +477,13 @@ void SpiTargetResource::prepare_operation(uint8_t* tx_buffer,
   tx_buffer_ = tx_buffer;
   rx_buffer_ = rx_buffer;
   receive_size_ = receive_size;
-  transaction_ = {
-    .flags = 0,
-    .length = transfer_size * 8,
-    .trans_len = 0,
-    .tx_buffer = tx_buffer,
-    .rx_buffer = rx_buffer,
-    .user = this,
-  };
+  transaction_ = {};
+  transaction_.flags = 0;
+  transaction_.length = transfer_size * 8;
+  transaction_.trans_len = 0;
+  transaction_.tx_buffer = tx_buffer;
+  transaction_.rx_buffer = rx_buffer;
+  transaction_.user = this;
   operation_in_flight_ = true;
 }
 
@@ -532,14 +530,13 @@ SpiBufferTargetResource::SpiBufferTargetResource(
       free_receive_indices_[i] = i + 1;
     }
   }
-  transaction_ = {
-    .flags = 0,
-    .length = driver_buffer_size * 8,
-    .trans_len = 0,
-    .tx_buffer = response_buffer,
-    .rx_buffer = receive_storage,
-    .user = this,
-  };
+  transaction_ = {};
+  transaction_.flags = 0;
+  transaction_.length = driver_buffer_size * 8;
+  transaction_.trans_len = 0;
+  transaction_.tx_buffer = response_buffer;
+  transaction_.rx_buffer = receive_storage;
+  transaction_.user = this;
 }
 
 SpiBufferTargetResource::~SpiBufferTargetResource() {
@@ -1373,13 +1370,12 @@ PRIMITIVE(device) {
   // here when we reserved it. A deprecated gpio.Pin (old API) is configured on
   // the Toit side instead.
   if (dc_owned) {
-    gpio_config_t dc_cfg = {
-      .pin_bit_mask = 1ULL << dc_num,
-      .mode = GPIO_MODE_OUTPUT,
-      .pull_up_en = GPIO_PULLUP_DISABLE,
-      .pull_down_en = GPIO_PULLDOWN_DISABLE,
-      .intr_type = GPIO_INTR_DISABLE,
-    };
+    gpio_config_t dc_cfg = {};
+    dc_cfg.pin_bit_mask = 1ULL << dc_num;
+    dc_cfg.mode = GPIO_MODE_OUTPUT;
+    dc_cfg.pull_up_en = GPIO_PULLUP_DISABLE;
+    dc_cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    dc_cfg.intr_type = GPIO_INTR_DISABLE;
     esp_err_t cfg_err = gpio_config(&dc_cfg);
     if (cfg_err != ESP_OK) return Primitive::os_error(cfg_err, process);
   }

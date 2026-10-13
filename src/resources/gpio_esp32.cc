@@ -61,6 +61,11 @@ static ResourcePool<int, -1> gpio_pins(
     20, 21
 #elif CONFIG_IDF_TARGET_ESP32C6
     20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30
+#elif CONFIG_IDF_TARGET_ESP32S31
+    20, 21, 22, 23, 24, 25,
+    33, 34, 35, 36, 37, 38, 39, 40,
+    42, 43, 44, 45, 46, 47, 48, 49, 50, 51,
+    52, 53, 54, 55, 56, 57, 58, 59, 60, 61
 #elif CONFIG_IDF_TARGET_ESP32P4
     20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
     30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
@@ -93,6 +98,12 @@ static bool is_restricted_pin(int num) {
 static bool is_restricted_pin(int num) {
   // Pins 24-30 are used for flash and PSRAM.
   return 24 <= num && num <= 30;
+}
+#elif CONFIG_IDF_TARGET_ESP32S31
+static bool is_restricted_pin(int num) {
+  // The WROOM-3 module does not expose GPIO26-32; its flash and PSRAM pins
+  // are not available as module GPIOs.
+  return false;
 }
 #elif CONFIG_IDF_TARGET_ESP32P4
 static bool is_restricted_pin(int num) {
@@ -135,13 +146,12 @@ void gpio_pool_put(int num) {
   // Clear all state associated with the GPIO pin.
   // NOTE: Don't use gpio_reset_pin - it will put on an internal pull-up that's
   // kept during deep sleep.
-  gpio_config_t cfg = {
-    .pin_bit_mask = 1ULL << num,
-    .mode = GPIO_MODE_DISABLE,
-    .pull_up_en = GPIO_PULLUP_DISABLE,
-    .pull_down_en = GPIO_PULLDOWN_DISABLE,
-    .intr_type = GPIO_INTR_DISABLE,
-  };
+  gpio_config_t cfg = {};
+  cfg.pin_bit_mask = 1ULL << num;
+  cfg.mode = GPIO_MODE_DISABLE;
+  cfg.pull_up_en = GPIO_PULLUP_DISABLE;
+  cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
+  cfg.intr_type = GPIO_INTR_DISABLE;
   gpio_config(&cfg);
   if (GPIO_IS_VALID_OUTPUT_GPIO(num)) gpio_set_level(static_cast<gpio_num_t>(num), 0);
 
@@ -317,13 +327,12 @@ PRIMITIVE(config) {
   int num = resource->pin();
   if (value < -1 || value > 1) FAIL(INVALID_ARGUMENT);
 
-  gpio_config_t cfg = {
-    .pin_bit_mask = 1ULL << num,
-    .mode = GPIO_MODE_OUTPUT_OD,
-    .pull_up_en = static_cast<gpio_pullup_t>(pull_up),
-    .pull_down_en = static_cast<gpio_pulldown_t>(pull_down),
-    .intr_type = GPIO_INTR_DISABLE,
-  };
+  gpio_config_t cfg = {};
+  cfg.pin_bit_mask = 1ULL << num;
+  cfg.mode = GPIO_MODE_OUTPUT_OD;
+  cfg.pull_up_en = static_cast<gpio_pullup_t>(pull_up);
+  cfg.pull_down_en = static_cast<gpio_pulldown_t>(pull_down);
+  cfg.intr_type = GPIO_INTR_DISABLE;
 
   if (output) {
     // Set the value before switching the mode.
