@@ -16,9 +16,8 @@
 #pragma once
 
 #define MBEDTLS_ALLOW_PRIVATE_ACCESS
-#include <mbedtls/sha256.h>
-#include <mbedtls/sha512.h>
-#if MBEDTLS_VERSION_MAJOR >= 3
+#include "mbedtls_compat.h"
+#if MBEDTLS_VERSION_MAJOR == 3
 // Bring back the _ret names for sha functions.
 #include <mbedtls/compat-2.x.h>
 #endif

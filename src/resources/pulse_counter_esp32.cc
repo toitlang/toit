@@ -25,6 +25,17 @@
 #include <hal/pcnt_ll.h>
 #include <driver/pulse_cnt.h>
 
+#if ESP_IDF_VERSION_MAJOR >= 6
+#define TOIT_PCNT_CHANNELS_PER_UNIT PCNT_LL_GET(CHANS_PER_UNIT)
+#else
+#define TOIT_PCNT_CHANNELS_PER_UNIT SOC_PCNT_CHANNELS_PER_UNIT
+#endif
+
+#ifndef PCNT_LL_MIN_LIM
+// Earlier IDF releases misspelled this constant.
+#define PCNT_LL_MIN_LIM PCNT_LL_MIN_LIN
+#endif
+
 #include "../objects_inline.h"
 #include "../primitive.h"
 #include "../process.h"
@@ -58,7 +69,7 @@ class PcntUnitResource : public Resource {
       disable();
     }
 
-    for (int i = 0; i < SOC_PCNT_CHANNELS_PER_UNIT; i++) {
+    for (int i = 0; i < TOIT_PCNT_CHANNELS_PER_UNIT; i++) {
       if (channels_[i] == null) break;
       pcnt_del_channel(channels_[i]);
     }
@@ -75,14 +86,14 @@ class PcntUnitResource : public Resource {
   GpioPins& owned_pins() { return owned_pins_; }
 
   bool has_channel_space() const {
-    for (int i = 0; i < SOC_PCNT_CHANNELS_PER_UNIT; i++) {
+    for (int i = 0; i < TOIT_PCNT_CHANNELS_PER_UNIT; i++) {
       if (channels_[i] == null) return true;
     }
     return false;
   }
   void add_channel(pcnt_channel_handle_t channel) {
     ASSERT(has_channel_space());
-    for (int i = 0; i < SOC_PCNT_CHANNELS_PER_UNIT; i++) {
+    for (int i = 0; i < TOIT_PCNT_CHANNELS_PER_UNIT; i++) {
       if (channels_[i] == null) {
         channels_[i] = channel;
         return;
@@ -132,18 +143,13 @@ class PcntUnitResource : public Resource {
     STARTED,
   };
   pcnt_unit_handle_t handle_;
-  pcnt_channel_handle_t channels_[SOC_PCNT_CHANNELS_PER_UNIT] = { null, };
+  pcnt_channel_handle_t channels_[TOIT_PCNT_CHANNELS_PER_UNIT] = { null, };
   State state_ = DISABLED;
   GpioPins owned_pins_;
 };
 
 MODULE_IMPLEMENTATION(pcnt, MODULE_PCNT)
 
-#if defined(PCNT_LL_MIN_LIM)
-// There seems to be a typo in the hal file.
-// https://github.com/espressif/esp-idf/issues/15554
-#error "ESP-IDF was fixed. Replace the constant below."
-#endif
 PRIMITIVE(new_unit) {
   ARGS(SimpleResourceGroup, resource_group,
        int, low_limit,
@@ -151,23 +157,18 @@ PRIMITIVE(new_unit) {
        uint32, glitch_filter_ns)
   bool handed_to_resource = false;
 
-  if (low_limit == 0) low_limit = PCNT_LL_MIN_LIN;
+  if (low_limit == 0) low_limit = PCNT_LL_MIN_LIM;
   if (high_limit == 0) high_limit = PCNT_LL_MAX_LIM;
 
-  if (!(PCNT_LL_MIN_LIN <= low_limit && low_limit < 0)) FAIL(OUT_OF_RANGE);
+  if (!(PCNT_LL_MIN_LIM <= low_limit && low_limit < 0)) FAIL(OUT_OF_RANGE);
   if (!(0 < high_limit && high_limit <= PCNT_LL_MAX_LIM)) FAIL(OUT_OF_RANGE);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  pcnt_unit_config_t config = {
-    .low_limit = low_limit,
-    .high_limit = high_limit,
-    .intr_priority = 0,
-    .flags = {
-      .accum_count = 0,
-    }
-  };
+  pcnt_unit_config_t config = {};
+  config.low_limit = low_limit;
+  config.high_limit = high_limit;
   pcnt_unit_handle_t handle;
   esp_err_t err = pcnt_new_unit(&config, &handle);
   if (err != ESP_OK) return Primitive::os_error(err, process);
@@ -260,7 +261,9 @@ PRIMITIVE(new_channel) {
       .invert_level_input = false,
       .virt_edge_io_level = 0,
       .virt_level_io_level = 0,
+#if ESP_IDF_VERSION_MAJOR < 6
       .io_loop_back = 0,
+#endif
     },
   };
   pcnt_channel_handle_t handle;

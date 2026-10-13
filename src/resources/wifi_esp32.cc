@@ -18,6 +18,7 @@
 #ifdef TOIT_ESP32
 
 #include <esp_wifi.h>
+#include <esp_idf_version.h>
 #include <nvs_flash.h>
 #if defined(CONFIG_TOIT_ENABLE_WIFI)
 #include <esp_netif.h>
@@ -230,7 +231,9 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
       uint32 outcome = WIFI_DISCONNECTED;
       switch (reason) {
         case WIFI_REASON_ASSOC_LEAVE:
+#if ESP_IDF_VERSION_MAJOR < 6
         case WIFI_REASON_ASSOC_EXPIRE:
+#endif
         case WIFI_REASON_AUTH_EXPIRE:
         case WIFI_REASON_HANDSHAKE_TIMEOUT:
           reconnect = true;
@@ -662,7 +665,9 @@ PRIMITIVE(disconnect) {
 PRIMITIVE(disconnect_reason) {
   ARGS(WifiEvents, wifi);
   switch (wifi->disconnect_reason()) {
+#if ESP_IDF_VERSION_MAJOR < 6
     case WIFI_REASON_ASSOC_EXPIRE:
+#endif
     case WIFI_REASON_ASSOC_LEAVE:
       return process->allocate_string_or_error("expired session");
     case WIFI_REASON_AUTH_EXPIRE:

@@ -321,10 +321,9 @@ static esp_err_t calibration_init(adc_unit_t unit,
   };
   err = adc_cali_create_scheme_line_fitting(&cali_config, handle);
 #else
-// This might not be fatal. Maybe there are chips that don't support
-// software calibration. In that case it should also fall back to
-// no calibration.
-#error "no supported calibration scheme"
+  // IDF does not yet expose calibration for every chip. Raw readings remain
+  // available; voltage readings report UNSUPPORTED without a calibration.
+  err = ESP_ERR_NOT_SUPPORTED;
 #endif
   if (err != ESP_OK) *handle = null;
   return err;
@@ -337,7 +336,7 @@ static void calibration_deinit(adc_cali_handle_t handle) {
 #elif ADC_CALI_SCHEME_LINE_FITTING_SUPPORTED
   adc_cali_delete_scheme_line_fitting(handle);
 #else
-#error "no supported calibration scheme"
+  USE(handle);
 #endif
 }
 
@@ -436,8 +435,7 @@ PRIMITIVE(init) {
   adc_cali_handle_t calibration = null;
   err = calibration_init(unit_id, static_cast<adc_channel_t>(channel), attenuation, &calibration);
   if (err == ESP_ERR_NOT_SUPPORTED) {
-    // We have seen this for early ESP32S3 dev boards.
-    ESP_LOGW("ADC", "eFuse not burned, no calibration");
+    ESP_LOGW("ADC", "Calibration unavailable; raw readings only");
   } else if (err != ESP_OK) {
     return Primitive::os_error(err, process);
   }

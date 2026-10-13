@@ -14,7 +14,7 @@
 // directory of this repository.
 
 #define MBEDTLS_ALLOW_PRIVATE_ACCESS
-#include <mbedtls/bignum.h>
+#include "mbedtls_compat.h"
 
 #include "top.h"
 #include "objects_inline.h"
