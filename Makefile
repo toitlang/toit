@@ -46,6 +46,7 @@ export IDF_TARGET
 
 # Use Toitware ESP-IDF fork by default.
 export IDF_PATH ?= $(CURDIR)/third_party/esp-idf
+export TOIT_HOST_IDF_PATH ?= $(CURDIR)/third_party/esp-idf
 
 ifeq ($(OS),Windows_NT)
 	EXE_SUFFIX=.exe
@@ -106,15 +107,8 @@ ifndef IGNORE_GIT_TAGS
 		exit 1; \
 	fi
 endif
-ifeq ('$(wildcard $(IDF_PATH)/components/mbedtls/mbedtls/LICENSE)',"")
-ifeq ('$(IDF_PATH)', '$(CURDIR)/third_party/esp-idf')
-	$(error mbedtls sources are missing. Did you `git submodule update --init --recursive`?)
-else
-	$(error Invalid IDF_PATH. Missing mbedtls sources.)
-endif
-endif
-ifneq ('$(realpath $(IDF_PATH))', '$(realpath $(CURDIR)/third_party/esp-idf)')
-	$(info -- Not using Toitware ESP-IDF fork.)
+ifeq ("$(wildcard $(TOIT_HOST_IDF_PATH)/components/mbedtls/mbedtls/LICENSE)","")
+	$(error Missing host MbedTLS sources. Run git submodule update --init --recursive.)
 endif
 ifeq ("$(wildcard ./toolchains/$(TOOLCHAIN).cmake)","")
 	$(error invalid compilation target '$(TOOLCHAIN)')
@@ -122,7 +116,7 @@ endif
 
 .PHONY: check-mbedtls-config
 check-mbedtls-config: check-env
-	@ if ! diff -q --ignore-all-space third_party/esp-idf/components/mbedtls/mbedtls/include/mbedtls/mbedtls_config.h mbedtls/include/default_config.h; then \
+	@ if ! diff -q --ignore-all-space "$(TOIT_HOST_IDF_PATH)/components/mbedtls/mbedtls/include/mbedtls/mbedtls_config.h" mbedtls/include/default_config.h; then \
 		echo "mbedtls/include/default_config.h is not in sync with third_party/esp-idf/components/mbedtls/mbedtls/include/mbedtls/mbedtls_config.h"; \
 		echo "See the mbedtls/include/README.md for instructions on how to update mbedtls/include/default_config.h"; \
 		exit 1; \
@@ -419,18 +413,26 @@ ec618: check-env host-tools
 	@echo Reloc: $(BUILD)/ec618/slot-reloc.bin
 
 # ESP32 VARIANTS
+ifneq ($(filter $(IDF_TARGET),esp32c3 esp32c6 esp32p4),)
+ESP32_COMPILER := riscv32-esp-elf-g++
+else
+ESP32_COMPILER := xtensa-esp32-elf-g++
+endif
+
 .PHONY: check-esp32-env
 check-esp32-env:
-ifeq ("", "$(shell command -v xtensa-esp32-elf-g++)")
-	$(error xtensa-esp32-elf-g++ not in path. Did you `source third_party/esp-idf/export.sh`?)
+ifeq ("$(wildcard $(IDF_PATH)/tools/idf.py)","")
+	$(error Missing ESP-IDF checkout at $(IDF_PATH). Run git submodule update --init --recursive.)
+endif
+ifeq ("", "$(shell command -v $(ESP32_COMPILER))")
+	$(error $(ESP32_COMPILER) not in path. Did you `source $(IDF_PATH)/export.sh`?)
 endif
 
 IDF_PY := "$(IDF_PATH)/tools/idf.py"
 
 .PHONY: esp32
 esp32:
-	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source '$(IDF_PATH)/export.sh'; fi; \
-	    $(MAKE) esp32-no-env
+	tools/with-idf.sh "$(IDF_PATH)" $(MAKE) esp32-no-env
 
 .PHONY: esp32-no-env
 esp32-no-env: check-env check-esp32-env sdk
@@ -459,7 +461,7 @@ esp32s3:
 # ESP32 MENU CONFIG
 .PHONY: menuconfig
 menuconfig:
-	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source '$(IDF_PATH)/export.sh'; fi; \
+	if [ "$(shell command -v $(ESP32_COMPILER))" = "" ]; then source '$(IDF_PATH)/export.sh'; fi; \
 	    $(MAKE) menuconfig-no-env
 
 .PHONY: menuconfig-no-env
@@ -470,7 +472,7 @@ menuconfig-no-env: check-env check-esp32-env
 # ESP32 MENU CONFIG
 .PHONY: size-components
 size-components:
-	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source '$(IDF_PATH)/export.sh'; fi; \
+	if [ "$(shell command -v $(ESP32_COMPILER))" = "" ]; then source '$(IDF_PATH)/export.sh'; fi; \
 	    $(MAKE) size-components-no-env
 
 .PHONY: size-components-no-env
@@ -479,7 +481,7 @@ size-components-no-env: check-env check-esp32-env
 
 .PHONY: flash
 flash:
-	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source '$(IDF_PATH)/export.sh'; fi; \
+	if [ "$(shell command -v $(ESP32_COMPILER))" = "" ]; then source '$(IDF_PATH)/export.sh'; fi; \
 	    $(MAKE) flash-no-env
 
 .PHONY: flash-no-env
