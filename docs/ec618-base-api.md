@@ -40,6 +40,11 @@ archiving a release. The export check accepts defined global symbols, including
 defined weak symbols; undefined weak symbols, local symbols and malformed
 symbol records cannot satisfy the contract.
 
+`make ec618` checks the complete export contract against the selected
+`EC618_BASE_DIR/base.elf` before linking slots. This also covers downloaded
+and previously built bases, including APIs that the current slot does not
+use yet. It does not rebuild or upgrade a selected base to satisfy the gate.
+
 Do not regenerate the contract from the current ELF: that would accept precisely
 the omissions this gate is intended to catch. Changes to prebuilt SDK libraries
 still require implementation review and hardware qualification; header hashes

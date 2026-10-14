@@ -290,6 +290,11 @@ ec618: check-env host-tools
 	# after base-side changes (toolchains/ec618/project/, the SDK submodule)
 	# rerun `make ec618-base`.
 	test -f $(EC618_BASE_DIR)/base.elf || $(MAKE) ec618-base
+	# Validate the selected base too, including downloaded or previously built
+	# artifacts. A freshly built base passing the gate does not prove that the
+	# base used for this slot retains the complete peripheral contract.
+	$(TOIT_BIN) run --project-root tools tools/ec618/check-base-api.toit -- --elf=$(EC618_BASE_DIR)/base.elf \
+		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm
 	# Generate the slot linker scripts from the base's geometry (correct for
 	# exactly this base, by construction), then link slot A (neutral link
 	# base) and slot B (its real flash address — the byte-identity oracle).
