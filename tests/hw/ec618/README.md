@@ -128,6 +128,11 @@ A later observer fault/recovery sequence also fails at EC618 with explicit
 100-ms buffers, including a roughly 106-ms write-service gap. The memory
 improvement makes that configuration usable; it does not guarantee lossless
 streaming through these delays. Keep this failure visible alongside passes.
+Failure timing needs care: exception formatting and serial reporting can
+inflate the final loss counts and service gaps. The duplex fixture stops
+at the first observed nonzero DMA counters, before payload-verification
+exceptions, and stops DMA before printing abort diagnostics. Earlier large
+failure-time maxima do not establish the cause of the first loss.
 Evidence is recorded in `docs/ec618-todo.md`, including failed attempts.
 
 EC618 Datasheet V1.3, section 7.5 specifies up to 96 kHz for 16/24-bit

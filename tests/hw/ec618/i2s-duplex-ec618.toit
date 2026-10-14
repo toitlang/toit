@@ -117,6 +117,11 @@ main args:
         received += filled
         before-verify-underruns = bus.errors --underrun
         before-verify-overruns = bus.errors --overrun
+        if before-verify-underruns != 0 or before-verify-overruns != 0:
+          // Freeze the first observed loss before exception formatting can
+          // delay servicing the rings and inflate both counters and timings.
+          bus.stop
+          throw "I2S underrun or overrun before payload verification"
         before-verify := Time.monotonic-us
         try:
           verifier.accept capture filled
@@ -154,6 +159,8 @@ main args:
   finally:
     try:
       if not completed:
+        // Diagnostic serial output must not create additional DMA losses.
+        bus.stop
         // Snapshot before cancellation/cleanup; do not replace the failure
         // if the diagnostic itself cannot inspect an already closed bus.
         catch:
