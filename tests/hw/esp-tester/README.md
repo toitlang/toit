@@ -121,8 +121,10 @@ To register the paired matrix with CTest, configure `tests/hw` with
 `EC618_TEST_I2S_TX=ON` or `EC618_TEST_I2S_DUPLEX=ON`. Enabling a matrix
 confirms that DS18B20 DQ is disconnected. Set `EC618_RIG_LOCK` to override
 the shared lock path. Run `ctest --test-dir <build-directory> -C ec618
--L i2s --output-on-failure`. Receive registers 90 cases, transmit 24 and
-duplex 8; each case performs its own preflight and final health checks.
+-L i2s --output-on-failure`. Receive registers 96 cases, transmit 30 and
+duplex 14; each case performs its own preflight and final health checks.
+Each direction includes 96-kHz Philips stereo at 16/24/32 bits in both
+clock roles. High-rate transmit cases use `--tx-no-stall` and default buffering.
 Where the broader EC618 suite is present, its setup/cleanup fixtures also run.
 The paired matrix does not require Python.
 

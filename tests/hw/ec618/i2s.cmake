@@ -30,7 +30,7 @@ if(EC618_TEST_I2S_RX OR EC618_TEST_I2S_TX OR EC618_TEST_I2S_DUPLEX)
             "${TOIT_EXE_HW}" run "${i2s_root}/tests/hw/esp-tester/run-ec618-i2s.toit" --
             --port "${EC618_BOARD_PORT}" --peer-port "${EC618_I2S_PEER_PORT}"
             --toit-exe "${TOIT_EXE_HW}" --expected-base "${EC618_EXPECT_BASE}"
-            --case "${rate},${bits},${format},${role},${slots}" --direction "${direction}" --sensor-disconnected
+            --case "${rate},${bits},${format},${role},${slots}" --direction "${direction}" --sensor-disconnected ${ARGN}
         CONFIGURATIONS ec618)
     set_tests_properties("${name}" PROPERTIES
         WORKING_DIRECTORY "${i2s_root}" TIMEOUT 150 RESOURCE_LOCK ec618-rig
@@ -48,7 +48,7 @@ if(EC618_TEST_I2S_RX OR EC618_TEST_I2S_TX OR EC618_TEST_I2S_DUPLEX)
         endforeach()
       endforeach()
     endforeach()
-    foreach(rate 8000 44100 48000)
+    foreach(rate 8000 44100 48000 96000)
       foreach(bits 16 24 32)
         ec618_i2s_test(rx ${rate} ${bits} 0 ${role} 0)
       endforeach()
@@ -62,6 +62,9 @@ if(EC618_TEST_I2S_RX OR EC618_TEST_I2S_TX OR EC618_TEST_I2S_DUPLEX)
           ec618_i2s_test(tx 16000 ${bits} ${format} ${role} 0)
         endforeach()
       endforeach()
+      foreach(bits 16 24 32)
+        ec618_i2s_test(tx 96000 ${bits} 0 ${role} 0 --tx-no-stall)
+      endforeach()
     endforeach()
   endif()
   if(EC618_TEST_I2S_DUPLEX)
@@ -70,6 +73,9 @@ if(EC618_TEST_I2S_RX OR EC618_TEST_I2S_TX OR EC618_TEST_I2S_DUPLEX)
         foreach(bits 16 32)
           ec618_i2s_test(duplex ${rate} ${bits} 0 ${role} 0)
         endforeach()
+      endforeach()
+      foreach(bits 16 24 32)
+        ec618_i2s_test(duplex 96000 ${bits} 0 ${role} 0)
       endforeach()
     endforeach()
   endif()
