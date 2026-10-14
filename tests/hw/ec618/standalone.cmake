@@ -15,6 +15,9 @@ if(EC618_TEST_STANDALONE OR EC618_TEST_FPC OR EC618_TEST_I2S_MASTER)
     set(ec618_lock "/tmp/toit-ec618-rig.lock")
   endif()
   function(ec618_standalone name file)
+    if(NOT EXISTS "${ec618_root}/${file}")
+      message(FATAL_ERROR "Missing EC618 test source: ${file}")
+    endif()
     add_test(NAME "${name}"
         COMMAND "${EC618_FLOCK}" -n "${ec618_lock}"
             "${TOIT_EXE_HW}" run tests/hw/esp-tester/run-ec618-standalone.toit --
