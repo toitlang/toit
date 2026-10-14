@@ -1,0 +1,30 @@
+OK
+[pkg, init]
+==================
+OK
+[pkg, install, zero@0.0]
+Package 'localhost:<[*PORT*]>/pkg/zero@0.0.1' installed with prefix 'zero'.
+==================
+== package.yaml
+dependencies:
+  zero:
+    url: localhost:<[*PORT*]>/pkg/zero
+    version: ^0.0.1
+==================
+OK
+[pkg, update, --major, zero@0]
+==================
+== package.lock
+prefixes:
+  zero: localhost_<[*PORT*]>/pkg/zero-0
+packages:
+  localhost_<[*PORT*]>/pkg/zero-0:
+    hash: <[*HASH*]>
+    url: localhost:<[*PORT*]>/pkg/zero
+    version: 0.1.2
+==================
+== package.yaml
+dependencies:
+  zero:
+    url: localhost:<[*PORT*]>/pkg/zero
+    version: ^0.1.2
