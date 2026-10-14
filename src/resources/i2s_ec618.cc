@@ -415,18 +415,32 @@ class I2sResource : public EventResource {
       frames = Utils::min(frames, I2sPipe::kBlockWords / 2);
       // Always consume both wire slots, including when the public buffer is
       // mono. Every ring position and DMA block remains stereo-frame aligned.
-      for (unsigned i = 0; i < frames; i++) {
+      if (format.matches_ring(pipe->ring_format.word_bytes())) {
+        unsigned words = frames * 2;
         if (tx) {
-          uint32_t left, right;
-          format.encode(bytes, &left, &right);
-          pipe->push(left);
-          pipe->push(right);
+          pipe->head = pipe->ring_format.copy(pipe->ring, pipe->ring_words,
+              pipe->head, bytes, words, true);
+          pipe->count += words;
         } else {
-          uint32_t left = pipe->pop();
-          uint32_t right = pipe->pop();
-          format.decode(bytes, left, right);
+          pipe->tail = pipe->ring_format.copy(pipe->ring, pipe->ring_words,
+              pipe->tail, bytes, words, false);
+          pipe->count -= words;
         }
-        bytes += frame_bytes;
+        bytes += frames * frame_bytes;
+      } else {
+        for (unsigned i = 0; i < frames; i++) {
+          if (tx) {
+            uint32_t left, right;
+            format.encode(bytes, &left, &right);
+            pipe->push(left);
+            pipe->push(right);
+          } else {
+            uint32_t left = pipe->pop();
+            uint32_t right = pipe->pop();
+            format.decode(bytes, left, right);
+          }
+          bytes += frame_bytes;
+        }
       }
       taskEXIT_CRITICAL();
       transferred += frames * frame_bytes;

@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <initializer_list>
 
 #include "../../src/resources/i2s_buffer_ec618.h"
 
@@ -63,7 +64,53 @@ static void check_width(int bits, uint32_t left, uint32_t right,
   }
 }
 
+static void check_ring_copy() {
+  const unsigned capacity = 18;
+  for (int bits : {16, 24, 32}) {
+    I2sRingFormat format(bits);
+    unsigned width = format.word_bytes();
+    for (unsigned index = 0; index < capacity; index++) {
+      for (unsigned count = 0; count <= capacity; count++) {
+        uint8_t ring[capacity * 4 + 2];
+        uint8_t expected[sizeof(ring)];
+        uint8_t data[sizeof(ring)];
+        uint8_t output[sizeof(ring)];
+        memset(ring, 0x5a, sizeof(ring));
+        memset(output, 0xa5, sizeof(output));
+        for (unsigned i = 0; i < sizeof(data); i++) data[i] = i * 13 + 7;
+        memcpy(expected, ring, sizeof(ring));
+        // Scalar reference also checks preservation of untouched ring bytes.
+        unsigned cursor = index;
+        for (unsigned i = 0; i < count; i++) {
+          uint32_t sample = 0;
+          for (unsigned byte = 0; byte < width; byte++) {
+            sample |= uint32_t(data[1 + i * width + byte]) << (byte * 8);
+          }
+          format.store(expected + 1, cursor, sample);
+          if (++cursor == capacity) cursor = 0;
+        }
+        CHECK(format.copy(ring + 1, capacity, index, data + 1, count, true) == cursor);
+        CHECK(memcmp(ring, expected, sizeof(ring)) == 0);
+        CHECK(format.copy(ring + 1, capacity, index, output + 1, count, false) == cursor);
+        CHECK(output[0] == 0xa5);
+        CHECK(memcmp(output + 1, data + 1, count * width) == 0);
+        for (unsigned i = 1 + count * width; i < sizeof(output); i++) CHECK(output[i] == 0xa5);
+        CHECK(memcmp(ring, expected, sizeof(ring)) == 0);
+      }
+    }
+  }
+  for (int bits : {8, 16, 24, 32}) {
+    for (int slots = 0; slots < 6; slots++) {
+      I2sBufferFormat format(bits, slots);
+      for (unsigned width = 2; width <= 4; width++) {
+        CHECK(format.matches_ring(width) == (slots == 0 && bits >= 16 && width == unsigned(bits / 8)));
+      }
+    }
+  }
+}
+
 int main() {
+  check_ring_copy();
   const int ring_widths[] = {8, 16, 24, 32};
   for (int bits : ring_widths) {
     I2sRingFormat ring_format(bits);

@@ -135,6 +135,16 @@ exceptions, and stops DMA before printing abort diagnostics. Earlier large
 failure-time maxima do not establish the cause of the first loss.
 Evidence is recorded in `docs/ec618-todo.md`, including failed attempts.
 
+Stereo 16/24/32-bit transfers now copy matching application/ring layouts
+directly, retaining the 64-frame critical-section limit. Conversion remains
+for padded 8-bit and channel-selection modes. Host checks cover ring wrap,
+unaligned buffers, untouched bytes and format selection. Live default-buffer
+96-kHz/16-bit, 48-kHz/32-bit and both 96-kHz/24-bit sampling-edge cases pass
+independent capture and ten-second EC618 receive checks. The subsequent
+observer-stall/recovery sequence also passes those EC618 checks. Native S3
+receiver failures and 100-ms allocation failures remain recorded; these
+finite runs do not establish that the intermittent EC618 loss is eliminated.
+
 EC618 Datasheet V1.3, section 7.5 specifies up to 96 kHz for 16/24-bit
 samples and 48 kHz for 32-bit samples. The driver rejects higher 32-bit
 rates in both roles, including explicit buffer-duration configurations.

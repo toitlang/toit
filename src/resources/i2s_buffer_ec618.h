@@ -41,6 +41,25 @@ class I2sRingFormat {
 
   unsigned word_bytes() const { return word_bytes_; }
 
+  // Copies at most one ring's worth of samples in matching byte layouts.
+  // The caller owns synchronization and checks capacity/availability.
+  unsigned copy(uint8_t* ring, unsigned capacity, unsigned index,
+                uint8_t* data, unsigned words, bool to_ring) const {
+    unsigned first = words < capacity - index ? words : capacity - index;
+    unsigned first_bytes = first * word_bytes_;
+    unsigned remaining_bytes = (words - first) * word_bytes_;
+    uint8_t* start = ring + index * word_bytes_;
+    if (to_ring) {
+      memcpy(start, data, first_bytes);
+      memcpy(ring, data + first_bytes, remaining_bytes);
+    } else {
+      memcpy(data, start, first_bytes);
+      memcpy(data + first_bytes, ring, remaining_bytes);
+    }
+    unsigned end = index + words;
+    return end < capacity ? end : end - capacity;
+  }
+
   uint32_t load(const uint8_t* ring, unsigned index) const {
     if (word_bytes_ == 2) {
       uint16_t result;
@@ -101,6 +120,11 @@ class I2sBufferFormat {
   }
 
   int frame_bytes() const { return sample_bytes_ * (slots_ <= STEREO_RIGHT ? 2 : 1); }
+
+  bool matches_ring(unsigned word_bytes) const {
+    return slots_ == STEREO_BOTH && sample_bytes_ >= 2
+        && static_cast<unsigned>(sample_bytes_) == word_bytes;
+  }
 
   void encode(const uint8_t* data, uint32_t* left, uint32_t* right) const {
     uint32_t first = load(data);
