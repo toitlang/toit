@@ -49,7 +49,7 @@ check-retention root/string --write/bool=false -> Set:
       stream.close
   symbols := Set
   headers.do: |name/string header/Map|
-    digest := hex.encode (sha256 (file.read-contents "$root/$SDK/$name"))
+    digest := header-digest (file.read-contents "$root/$SDK/$name")
     if digest != header["sha256"]: throw "SDK header changed; review peripheral ABI: $name"
     excluded/Map := header["excluded"]
     excluded.do: |symbol reason|
@@ -68,10 +68,24 @@ check-retention root/string --write/bool=false -> Set:
     if not explicit.contains symbol: generated += "EC618_BASE_API($symbol)\n"
   if write:
     file.write-contents generated --path="$root/$INCLUDE"
-  else if not file.is-file "$root/$INCLUDE" or (file.read-contents "$root/$INCLUDE").to-string != generated:
+  else if not file.is-file "$root/$INCLUDE" or (normalize-lines (file.read-contents "$root/$INCLUDE")).to-string != generated:
     throw "Stale peripheral_keep.inc; run check-base-api.toit --write"
   explicit.do: symbols.add it
   return symbols
+
+// Git may check text out as CRLF on Windows. Only normalize line endings;
+// declarations, comments and other whitespace remain part of the contract.
+normalize-lines source/ByteArray -> ByteArray:
+  // Some vendor comments are not UTF-8. Preserve all non-CRLF bytes exactly.
+  result := ByteArray source.size
+  size := 0
+  source.size.repeat: |i/int|
+    if source[i] == '\r' and i + 1 < source.size and source[i + 1] == '\n': continue.repeat
+    result[size++] = source[i]
+  return result.copy 0 size
+
+header-digest source/ByteArray -> string:
+  return hex.encode (sha256 (normalize-lines source))
 
 valid-symbol symbol/string -> bool:
   if symbol.is-empty: return false

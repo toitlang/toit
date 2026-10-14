@@ -30,6 +30,11 @@ review of changed declarations and exclusions; after that review, regenerate:
 build/host/sdk/bin/toit run --project-root tools tools/ec618/check-base-api.toit -- --write
 ```
 
+Header SHA256 values normalize CRLF to LF so Git's Windows checkout conversion
+does not appear to change the ABI. All other bytes, including non-UTF-8 vendor
+comments and lone carriage returns, remain significant. Generated retention
+text likewise permits LF or CRLF without changing its required contents.
+
 The gate is implemented in Toit. Its fault tests also run in the ordinary host
 suite as `tests/ec618-base-api-test.toit`, including deterministic generation
 and exclusion of duplicate retention pointers.

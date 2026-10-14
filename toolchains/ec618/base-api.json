@@ -2,7 +2,7 @@
   "description": "Frozen base peripheral ABI. Retain implemented chip and peripheral HAL APIs regardless of pin exposure or live test availability. Header changes require a renewed review. See docs/ec618-base-api.md.",
   "headers": {
     "PLAT/core/driver/include/driver_gpio.h": {
-      "sha256": "7883d2cbfc02494cf4723dcad1b8835e41ad9297cae419f7a0307e92050cb824",
+      "sha256": "5ddc18da4e202f40fef4dd0d1f4c6541ff5bf7b3aaaa744a16e6b795381714c4",
       "symbols": [
         "GPIO_Config",
         "GPIO_ExtiConfig",
@@ -29,7 +29,7 @@
       }
     },
     "PLAT/core/driver/include/driver_i2s.h": {
-      "sha256": "e5fc9b244929274e32c4f0bae0030003d2d66dcf67f5c79a689cdbabf8dfed0d",
+      "sha256": "919ec942233f1d8ab376f2499e5285d05bedf5cf7a4b767448712b44dc156b90",
       "symbols": [],
       "excluded": {
         "I2S_BaseConfig": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
@@ -47,7 +47,7 @@
       }
     },
     "PLAT/core/driver/include/driver_pcm.h": {
-      "sha256": "e1b0d7a30aa217df958387806a640d62a874fe7075861ed537919d55965539a1",
+      "sha256": "9f3f5fefbaeaa3e94d02a02fc557cfdcbe5a64be25ddf1eff662a90ff0fb37a9",
       "symbols": [],
       "excluded": {
         "PCM_Start": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
@@ -61,7 +61,7 @@
       }
     },
     "PLAT/core/driver/include/driver_uart.h": {
-      "sha256": "22e4441985e616c0adb93dc028d12f2b3153bac18a305afea3091c78883a760a",
+      "sha256": "8ac9af5ab8198c7cc669981c6fee7615ff773d1d852f194284913f228872c895",
       "symbols": [
         "Uart_BaseInitEx",
         "Uart_ChangeBR",
@@ -83,14 +83,14 @@
       }
     },
     "PLAT/core/driver/include/soc_dma.h": {
-      "sha256": "6fb563d4f1dbff38b2e5c4c6cdd07663e1091669cf73758176fb8e04d2b52d57",
+      "sha256": "12710116c25b2548a81030fb825ef54e355294f2350fd27be6d8ef97ccbbbe0e",
       "symbols": [
         "DMA_ForceStartStream"
       ],
       "excluded": {}
     },
     "PLAT/core/driver/include/soc_i2c.h": {
-      "sha256": "c1ab460a8893b1cab22e5d8676098e2c3c3db608ff6d535bc99115730017aa57",
+      "sha256": "18e94547d98c9f73718d775e9daacde939e1580bf9d90a2415a54eb5f1f66cd5",
       "symbols": [],
       "excluded": {
         "I2C_BlockRead": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
@@ -105,7 +105,7 @@
       }
     },
     "PLAT/core/driver/include/soc_lcd.h": {
-      "sha256": "5e3e9ef300bfca3d2334f1a86039d39fbab20af6822e6e79d2f1899134eb342f",
+      "sha256": "ed0e4f1d045e807118ead90fdf891e2468c227327784cfdad4a2729aa3065309",
       "symbols": [],
       "excluded": {
         "LCD_CameraDraw": "No implementation in the configured SDK driver or platform archives; retain the underlying chip API instead.",
@@ -117,7 +117,7 @@
       }
     },
     "PLAT/core/driver/include/soc_spi.h": {
-      "sha256": "e3ea641163c479ef09e2dee582d46cbc92ab4fcdb06f9d31dd8ec0478fdfe1d2",
+      "sha256": "188c6c6a2bf53ccb0d4fd47f9cc9d4bd157439171ff9d8e5f1ee8367dcee9a9d",
       "symbols": [
         "SPI_BlockTransfer",
         "SPI_FastTransfer",
@@ -137,7 +137,7 @@
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc/adc.h": {
-      "sha256": "b0dc9eda4559511bd936af7002523373cd9acddd7ee246aa00f893cd30be52f0",
+      "sha256": "26eeca0fd60f50b75b83785e5739462c2533211e0813cba3a3845411c935becd",
       "symbols": [
         "ADC_channelDeInit",
         "ADC_channelInit",
@@ -163,7 +163,7 @@
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc/apmu2Peripheral.h": {
-      "sha256": "a55a10d130ca78c09fcde80fa769b75aa76955a4f444f4f11d1d594904a75f4a",
+      "sha256": "50eee983b3fb6119178ee9c88335375310be656a135df29814e8795d17861a43",
       "symbols": [
         "apmuPeriCPPowerOnSetIrqMask",
         "apmuPeriCPPowerOnSetIrqRestore",
@@ -184,7 +184,7 @@
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc/cache.h": {
-      "sha256": "724a4ee6f327017536a48082bec6b6bc98b79753838e55f66913031ab08d94c2",
+      "sha256": "1d9a41d1606a56ee1c1811f69b058f4574f6ccbb7a84f4f03be4fb4d92b28314",
       "symbols": [
         "DisableICache",
         "EnableICache",
@@ -193,7 +193,7 @@
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc/charge.h": {
-      "sha256": "fb2ac53908e11f7f0cd0b4b42a360defcaee1dd31a8640fdafb363e72fc4f240",
+      "sha256": "3ddb846b234c45485a0482f3be464f4d05281e07b62825a0c3335a005ab80d92",
       "symbols": [
         "chargeGetCurStatus",
         "chargeHwDeinit",
@@ -202,7 +202,7 @@
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc/clock.h": {
-      "sha256": "a6f361d280072dde1b5dec186fcbee797a8b9b35bffbb41281d7cc745fc4f7cb",
+      "sha256": "6c171abf4edd95164e6bffed89e6fb21b4abc8e684667d17467f84bc4cc5d6f2",
       "symbols": [
         "CLOCK_AssertChkBeforeSlp",
         "CLOCK_bclkEnable",
@@ -264,7 +264,7 @@
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc/cspi.h": {
-      "sha256": "3f394907b33eb2261bd314db418aab31103f89d2e0a957b78881a829103738f3",
+      "sha256": "a229e905af75c910e45eb3a4c7d18319ff808228042d6a63fc0a5fc69e1efa1b",
       "symbols": [
         "cspiDrvInterface1"
       ],
@@ -273,7 +273,7 @@
       }
     },
     "PLAT/driver/chip/ec618/ap/inc/dma.h": {
-      "sha256": "c6d28bae6ee06c8e558a4a3021444476c5d059754affea02fcb5f2d57ad177aa",
+      "sha256": "8ed59778de32fcf226cde4f684f7d966e35027902b6ca04ae01ded5641aef9c8",
       "symbols": [
         "DMA_buildDescriptor",
         "DMA_buildDescriptorChain",
@@ -296,12 +296,12 @@
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc/ec618.h": {
-      "sha256": "f89abaae7d034aeafae1c2566711fd73af5c0a5e1f28803ff0400acead4f1e03",
+      "sha256": "84f428386537f3b1b837d2885424d96f5c380d8ac692f296f8f1f45d130ec31e",
       "symbols": [],
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc/flash_rt.h": {
-      "sha256": "46957c9ad1c96944beec98f46f79e7ada7bbb9e9eadd03d1341f48388cdb1409",
+      "sha256": "c334ce3dbd256261d2d80f8d9eff615972d23f4d82844e422d0d1a0b93366a1c",
       "symbols": [
         "BSP_QSPI_Cfg_Gran_Size",
         "BSP_QSPI_Erase_Safe",
@@ -312,7 +312,7 @@
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc/gpio.h": {
-      "sha256": "adcfd3a83e6b77408ca9f47d40dd9480164a32fd5881971c0ea7d94f00d58a68",
+      "sha256": "0f4378530cbb92a98700878a5c5b256b1ce60e91b97c507c1cdd638977b0c7c8",
       "symbols": [
         "GPIO_clearInterruptFlags",
         "GPIO_driverDeInit",
@@ -328,12 +328,12 @@
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc/gpr_common.h": {
-      "sha256": "ebabb6412fb6360a6c990b5b30b1b8b09a86ed975aa3a59e7309715a6284e5a4",
+      "sha256": "b39b2558a45e785ada908dddde52c05f0fc41c753ea9090c80a6cd8985057dc1",
       "symbols": [],
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc/i2s.h": {
-      "sha256": "774021b7927898bdcfa10533655042e20e7e3e877fbb97f12778e2b5050b90ae",
+      "sha256": "521e4391f880e6e11b772b595e96e34a1837805ed3fbf82820ba334116df7b63",
       "symbols": [
         "i2sDrvInterface0"
       ],
@@ -342,7 +342,7 @@
       }
     },
     "PLAT/driver/chip/ec618/ap/inc/ic.h": {
-      "sha256": "8f07f5435ca2ff41aef2caf251823bebfe3438a9f61fce6504cab672838e80f2",
+      "sha256": "3f67b06bf3b381be9d64c275cafbb2fde1d86c7109091115e2380b7683748319",
       "symbols": [
         "IC_Powoff",
         "IC_PowupInit",
@@ -362,7 +362,7 @@
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc/kpc.h": {
-      "sha256": "beb99e64791121102816a7aa1ed565920aba9be485620bd97937b642fe33adae",
+      "sha256": "1716369c4958012888ecc286960b3d2978f292b44cc3530844bdbb197c017725",
       "symbols": [
         "KPC_deInit",
         "KPC_getDefaultConfig",
@@ -373,7 +373,7 @@
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc/oneWire.h": {
-      "sha256": "9b4aa5dca89063a7c50e9714b4fe29d8f97499c8ead76b4c9c39f519ae8363c4",
+      "sha256": "38f3a32ff2e284010400740a36f27e7cc28586f23acdef1e8bb9416f39c815f3",
       "symbols": [
         "owDeInit",
         "owInit",
@@ -389,7 +389,7 @@
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc/pad.h": {
-      "sha256": "5a87dd99e30a6149a18229d0cc91cfc615806d789b13c2809d4117f01ceacb60",
+      "sha256": "013c0cd2cb60531fb6ff3597535879731c3df1bd33c806bc75f031394e16e73d",
       "symbols": [
         "PAD_driverDeInit",
         "PAD_driverInit",
@@ -403,7 +403,7 @@
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc/pwrkey.h": {
-      "sha256": "60b4cdad48b283a3803a34d25f288cc9a1f7f43ca03f3425f41e0221e83bab3e",
+      "sha256": "13b05c46a73c4f66e62acd2a700984c01460cd7bf52272f0b5ea9db504555011",
       "symbols": [
         "pwrKeyGetPinLevel",
         "pwrKeyHwDeinit",
@@ -416,19 +416,19 @@
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc/rng.h": {
-      "sha256": "f3115da277fb12ec9093d39d1ffc438da896ee17120f35624804a606056718b2",
+      "sha256": "2a672fbd0405e368ec77ed1529abbb91f1f0a19caf3145e7edf2721a6e286918",
       "symbols": [
         "rngGenRandom"
       ],
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc/sctreg.h": {
-      "sha256": "0a4c7897a52a3dfbe3a795e34d2d06834bd7cbe6751869c6b7be4c042a27a7fc",
+      "sha256": "05c5f83b10b1ada123998db6c6f7d354b752b9fac48617eaad4bb120f14f7fd9",
       "symbols": [],
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc/timer.h": {
-      "sha256": "266659ca7bf8fec1879dae2a2462429b773115cfb00a9ebfa5578c65aed13248",
+      "sha256": "a95e6e78546f929e5d2fc39d95d287ffb794830074e76e596ebaee4eb99c84f5",
       "symbols": [
         "TIMER_clearInterruptFlags",
         "TIMER_deInit",
@@ -451,7 +451,7 @@
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc/tls.h": {
-      "sha256": "d759cdbd6d59737409f52fb33cc16b39163bd3f5fc002ffd51c45dc09511b01c",
+      "sha256": "614882f5f34000364a1bb4c34e278249c02fff29a6e9633a646f9bb64cb08e15",
       "symbols": [
         "aesUpdate",
         "sctDeInit",
@@ -461,7 +461,7 @@
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc/uart.h": {
-      "sha256": "14c837afdc9d62c7cb70a761bcb6e74e0228fc533fc2943ab6cc86f1ce01169a",
+      "sha256": "364f31acd14c6e957c650a3cef28561278f76efae5d06ba2d16b46059c7d13e3",
       "symbols": [
         "UART_flush",
         "UART_init",
@@ -473,7 +473,7 @@
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc/unilog.h": {
-      "sha256": "d87a88a14175b9ac81a611da926d9e7fa9e80f3c296a7ee8df3b21f53b938229",
+      "sha256": "198af4030d1ce7586ba2592721b1d0b3ff8ab097f80b722b15e5a74a156e76f9",
       "symbols": [
         "swLogDump",
         "swLogDumpPolling",
@@ -501,7 +501,7 @@
       }
     },
     "PLAT/driver/chip/ec618/ap/inc/wdt.h": {
-      "sha256": "d69949b4b82ceaea78ccd5aec589ebdc56fa75f79defb1429ebd2cff15fa96cb",
+      "sha256": "5ff0df0c76dd5dd8e64aabb811df8d6fb7db5e227aca20fda24ae99bc1b7ca11",
       "symbols": [
         "WDT_deInit",
         "WDT_getDefaultConfig",
@@ -518,7 +518,7 @@
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc_cmsis/Driver_I2C.h": {
-      "sha256": "0f932bc0c5a320f464b1f9e95fe5c2be412335117427748b980d2552e5b59fe8",
+      "sha256": "eadc5cd299796ca2891823046f9f403a01c754f8b6ca085b0120d879f088bb34",
       "symbols": [
         "Driver_I2C0",
         "Driver_I2C1"
@@ -526,7 +526,7 @@
       "excluded": {}
     },
     "PLAT/driver/chip/ec618/ap/inc_cmsis/Driver_SPI.h": {
-      "sha256": "f454a393e6a711d0c6fc05c698a36d98e7a797fdad35aec06af04588b9dd9c4a",
+      "sha256": "35a84d873d7ff59493d3e3e8ceda1892cb30997d70edc15e8b3857562a30428d",
       "symbols": [],
       "excluded": {
         "Driver_SPI0": "Alternative CMSIS SPI implementation excluded by SDK xmake.lua; the configured soc_spi.h implementation is retained.",
@@ -534,7 +534,7 @@
       }
     },
     "PLAT/driver/chip/ec618/ap/inc_cmsis/Driver_USART.h": {
-      "sha256": "50a3110b458bbd9d1ea3cc47567eb7e23b3e10f5fbbe147aea40160a0d3d74ca",
+      "sha256": "dbb77f69a373db06d5c22d04d98b836f192801262f4a94db73f4721b5e35dba2",
       "symbols": [
         "Driver_USART0",
         "Driver_USART1",
@@ -544,7 +544,7 @@
       "excluded": {}
     },
     "PLAT/driver/hal/ec618/ap/inc/hal_adc.h": {
-      "sha256": "0e4076d334c3aed62bbe1e1f2b2c304467050e115a36b29787a29d162f8e6677",
+      "sha256": "577e55e6c6bbf4b06308e3415fbfb875ea8b7dbfbe915f3f47656167177df881",
       "symbols": [
         "HAL_ADC_CalibrateRawCode",
         "HAL_ADC_ConvertThermalRawCodeToTemperature",
@@ -587,7 +587,7 @@
       "excluded": {}
     },
     "PLAT/driver/hal/ec618/ap/inc/hal_i2s.h": {
-      "sha256": "561b09f1a8a5b989389f6a0f6a8653581ff6e36a54f9c2085db7586b9a5dcbe6",
+      "sha256": "fbaaf5200a461ce31b0c76c54eb7f25d83eac39e05637975be20f621720ce17b",
       "symbols": [
         "HAL_I2SGetTotalNum",
         "HAL_I2SSetPlayRecord",
@@ -606,7 +606,7 @@
       }
     },
     "PLAT/driver/hal/ec618/ap/inc/hal_misc.h": {
-      "sha256": "de4243d0f7f45392040cd1f67dfbba8c9671bc488e35235d5408b70cc1d1a146",
+      "sha256": "ea881687adc51fcdbc87438b255ff2fde1f39fe3243c543d6d71a456546d6236",
       "symbols": [
         "HAL_Get_ChipID",
         "apmuBootDbgGPIOSet",
@@ -625,7 +625,7 @@
       "excluded": {}
     },
     "PLAT/driver/hal/ec618/ap/inc/hal_uartDump.h": {
-      "sha256": "875ea37cb96e4c9cbe112ca219f909d5bc03d87440b6c9cd9e57b1807a9e613b",
+      "sha256": "fd7667b4274ccedd02b9067b25f8b9dbe94475caaed1f88b21884c9da3bfd729",
       "symbols": [
         "HAL_UartDumpPortCheck",
         "HAL_UartDumpPortInit",
@@ -634,7 +634,7 @@
       "excluded": {}
     },
     "PLAT/prebuild/PLAT/inc/slpman.h": {
-      "sha256": "3d25aa9fe6b8d71921b5f87983b543ec6744815a4b6c3df6bc1fb71e52e82d43",
+      "sha256": "3dd18cec84d818037bc4bcf1e117e9036ecf17dad4746e631e0869e254375595",
       "symbols": [
         "slpManAONIOLatchEn",
         "slpManAONIOPowerOff",
@@ -725,12 +725,12 @@
       }
     },
     "PLAT/prebuild/PLAT/inc/usbd_clscdc.h": {
-      "sha256": "92458170473187165cc65b16cd83bae65c5825baf5a42aa6358d98a683002391",
+      "sha256": "68dd71112142706f1a9f618f8b66450b12aed650bad8a550becf61b8a63c9dac",
       "symbols": [],
       "excluded": {}
     },
     "PLAT/prebuild/PLAT/inc/usbd_multi_usrcfg_common.h": {
-      "sha256": "d392754648e550aee0148805e17ef8c9bf1e35d69d7cb8d4d95b5e20e8a50fc5",
+      "sha256": "478ab92172101e4fa7295e0d2dee27582499d243ac2f3c0084885f5153616d5b",
       "symbols": [
         "usbcustom_multidev_ccinfo_map",
         "usbcustom_multidev_cfg_end",
@@ -747,7 +747,7 @@
       "excluded": {}
     },
     "PLAT/prebuild/PLAT/inc/usbmst_external.h": {
-      "sha256": "1c125cb6500c4a56e8f838d421e2f5351b6b3d69b33680a333604843c81db62e",
+      "sha256": "82425b9aa514865d5a298cf14cdb2ab40d175b8a67f011952456878a0d4844f6",
       "symbols": [
         "ecm0_sig_conn_info",
         "ecm0_sig_conn_stat",

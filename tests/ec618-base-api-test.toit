@@ -36,11 +36,21 @@ rejected expected/string [action]:
   expect ("$error".contains expected)
 
 main:
+  expect-equals #[0xff, 10, 13, 0xfe] (api.normalize-lines #[0xff, 13, 10, 13, 0xfe])
   root := directory.mkdtemp "/tmp/ec618-base-api-"
   try:
     fixture root
     required := api.check-retention root
     expect-equals 2 required.size
+    // Windows checkout conversion must not imply an ABI change.
+    file.write-contents (HEADER.replace --all "\n" "\r\n") --path="$root/$(api.SDK)/chip/clock.h"
+    include := (file.read-contents "$root/$(api.INCLUDE)").to-string
+    file.write-contents (include.replace --all "\n" "\r\n") --path="$root/$(api.INCLUDE)"
+    expect-equals 2 (api.check-retention root).size
+    file.write-contents "void CLOCK_newAPI(void);\r\n" --path="$root/$(api.SDK)/chip/clock.h"
+    rejected "header changed": api.check-retention root
+    file.write-contents HEADER --path="$root/$(api.SDK)/chip/clock.h"
+    api.check-retention root --write
     api.check-exports required "00900000 T CLOCK_mclkEnable\n00900004 T old_export\n"
     api.check-exports required "00900000\tT\tCLOCK_mclkEnable\n00900004\tT\told_export\n"
     api.check-exports required "00900000 W CLOCK_mclkEnable\n00900004 V old_export\n"
