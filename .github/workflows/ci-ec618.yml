@@ -16,8 +16,21 @@
 name: CI EC618
 
 on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "lib/**"
+      - "system/**"
+      - "toolchains/ec618/**"
+      - "tools/ec618/**"
+      - "tests/ctest/**"
+      - "Makefile"
+      - "actions/setup-build/**"
+      - ".github/workflows/ci-ec618.yml"
+      - ".github/workflows/ec618-base-release.yml"
   push:
     branches:
+      - "master"
       - "floitsch/ec618"
       - "floitsch/formatter.*"
   workflow_dispatch:
@@ -114,3 +127,36 @@ jobs:
       - name: Build EC618 firmware (slot vs base + guards + envelope)
         shell: bash
         run: make ec618
+
+      # A fresh base can hide an export missing from the deployed release.
+      # Require the versioned release too; never fall back to the local build.
+      - name: Download published EC618 base
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: toitlang/toit
+        run: |
+          set -euo pipefail
+          version=$(tr -d '[:space:]' < toolchains/ec618/base-version)
+          [[ "$version" =~ ^[0-9]+$ ]]
+          tag="ec618-base-v$version"
+          destination="$RUNNER_TEMP/ec618-published-base"
+          mkdir -p "$destination"
+          if ! gh release view "$tag" > /dev/null; then
+            echo "::error::Required base release $tag is unavailable. Publish and prove this version before merging; a fresh local base is not a compatibility check."
+            exit 1
+          fi
+          gh release download "$tag" --dir "$destination" \
+            --pattern "$tag.elf" --pattern "$tag.bin" --pattern "$tag.json"
+          mv "$destination/$tag.elf" "$destination/base.elf"
+          mv "$destination/$tag.bin" "$destination/base.bin"
+          mv "$destination/$tag.json" "$destination/base-manifest.json"
+          test -s "$destination/base.elf"
+          test -s "$destination/base.bin"
+          test -s "$destination/base-manifest.json"
+
+      - name: Prove firmware against published EC618 base
+        if: runner.os == 'Linux'
+        shell: bash
+        run: make ec618 EC618_BASE_DIR="$RUNNER_TEMP/ec618-published-base"

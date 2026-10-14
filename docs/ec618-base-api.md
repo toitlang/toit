@@ -45,6 +45,21 @@ symbol records cannot satisfy the contract.
 and previously built bases, including APIs that the current slot does not
 use yet. It does not rebuild or upgrade a selected base to satisfy the gate.
 
+EC618 CI runs for pull requests affecting the runtime, libraries, system,
+EC618 tooling, native tests or build configuration, and for pushes to master.
+After the fresh-base build, its Linux job downloads the published
+`toitlang/toit` release named by `toolchains/ec618/base-version` and runs the
+full slot build against those artifacts. Missing releases or assets fail
+the check; the local base is never substituted. The source-build matrix
+continues to run on Linux, macOS and Windows.
+
+When introducing a base version, first review and publish its artifact set
+with the EC618 base release workflow. That workflow proves a full slot build
+before publication and refuses to overwrite an existing version. The
+published-base CI check must then pass before merging the version change.
+Until v5 is published, this additional compatibility check intentionally
+fails; local candidate results do not count as published-base qualification.
+
 Do not regenerate the contract from the current ELF: that would accept precisely
 the omissions this gate is intended to catch. Changes to prebuilt SDK libraries
 still require implementation review and hardware qualification; header hashes
