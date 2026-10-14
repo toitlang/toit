@@ -23,8 +23,11 @@ below must not be confused with unpublished package/release dependencies.
 Evidence directories above are under `dev/ec618-rig/` in the bring-up
 workspace. They are local qualification artifacts, not published CI results.
 The two-minute test restores and verifies the original S3 app and passes
-final EC618/peer health. Slot A is validated; no further base flash is needed
-for the currently implemented drivers.
+final EC618/peer health. Slot A is validated on the previously qualified base.
+The deterministic object-order change produces candidate fingerprint
+`54dcd4c53ba8df5f38479c62e1106e2e`; two local builds are byte-identical and
+pass the export contract, but CI identity and live qualification are pending.
+Keep the rig on its qualified base until the final candidate is ready.
 
 Remaining closure work includes review/publication of the integration and
 package dependencies, publishing v5 and proving the published-base CI path,

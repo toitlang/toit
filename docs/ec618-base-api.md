@@ -139,6 +139,15 @@ that base. Expanding the contract prevents many future base updates; it does not
 make different bases binary compatible. Base OTA would additionally need its
 own recoverable update design and is not implemented by this change.
 
+The Xmake project sorts object paths before creating SDK/project archives and
+linking the base. SDK source globs otherwise inherit filesystem enumeration
+order, which can change exported addresses even with identical source and
+compiler versions. This removes that source of variation; it does not promise
+identity across different compilers or build configurations. Consumers must
+still use the published base artifacts and their exact fingerprint. Introducing
+the sorted order changes the candidate base identity and requires qualification
+before publication; historical device results above cover the earlier base.
+
 Build logs and artifact hashes are under
 `dev/ec618-rig/base-interface-audit-2026-10-11/`.
 

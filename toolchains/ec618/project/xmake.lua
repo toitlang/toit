@@ -49,3 +49,16 @@ if os.getenv("TOIT_EC618_BOOT_DIAGNOSTICS") == "1" then
         add_cxflags("-DTOIT_EC618_BOOT_DIAGNOSTICS=1", {force = true})
     target_end()
 end
+
+-- Recursive SDK source globs follow filesystem enumeration order. Freeze the
+-- object order before archiving/linking so identical inputs retain the same
+-- base addresses across checkouts. Normalize Windows path separators too.
+for _, name in ipairs({"driver", TARGET_NAME, TARGET_NAME .. ".elf"}) do
+    target(name)
+        before_link(function (target)
+            table.sort(target:objectfiles(), function (a, b)
+                return a:gsub("\\", "/") < b:gsub("\\", "/")
+            end)
+        end)
+    target_end()
+end
