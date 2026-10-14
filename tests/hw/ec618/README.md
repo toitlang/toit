@@ -18,6 +18,24 @@ Executable tests import their physical signal assignments from
 [`wiring.toit`](wiring.toit). Add a function-named signal there instead of
 embedding a rig pin number in an individual test.
 
+## CTest with a resident agent
+
+Configure `tests/hw` with `TOIT_EXE_HW` matching the installed firmware,
+`EC618_BOARD_PORT` set to its persistent UART0 path, and `EC618_EXPECT_BASE`
+set to its exact base identity. Enable `EC618_TEST_STANDALONE` for basics,
+ADC/cellular lifecycle and events, watchdog-stop and integer-width tests.
+`EC618_TEST_FPC` adds I2S allocation and stop tests. Enable
+`EC618_TEST_I2S_MASTER` only with DS18B20 disconnected and peer clock pins
+left as inputs; it adds the live-clock stop test.
+
+Run `ctest --test-dir <hardware-build> -C ec618 -L standalone --output-on-failure`.
+The Toit runner takes the shared rig lock through `flock`, checks the base
+identity and non-trial slot before each test, and checks health afterward.
+Failure triggers cancellation and a bounded recovery wait; successful
+recovery does not turn a failed test into a pass. It never flashes firmware.
+Coordinated bus tests still use the fixture procedure below; this standalone
+label does not cover their payload matrices.
+
 ## Paired I2S tests
 
 The three CMake options `EC618_TEST_I2S_RX`, `EC618_TEST_I2S_TX` and
