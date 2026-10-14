@@ -1,0 +1,5 @@
+name: zero
+description: Only major 0 versions
+url: localhost:<[*PORT*]>/pkg/zero
+version: 0.1.0
+hash: deadbeef1234567890abcdef1234567890abcdef
