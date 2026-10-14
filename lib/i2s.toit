@@ -60,12 +60,14 @@ The driver accepts 8-, 16-, 24-, and 32-bit samples in Philips, MSB, or PCM-shor
 Each active direction allocates a software ring targeting 200 ms at
   the configured sample rate, capped at 32768 bytes by default.
   The ring stores both wire slots regardless of channel selection, using
-  16-bit storage for 8/16-bit samples and 32-bit storage for 24/32-bit samples.
-  Capacity is rounded up to 64-frame blocks, with a minimum of 512 frames.
+  16-bit storage for 8/16-bit samples, three bytes for 24-bit samples, and
+  four bytes for 32-bit samples. Capacity uses whole 64-frame blocks, with
+  a minimum of 512 frames; the default byte cap is rounded down to a whole block.
   At 16/48/96 kHz, 8/16-bit samples use 12800/32768/32768 ring bytes per
-  direction, covering 200/170/85 ms respectively. For 24/32-bit samples,
-  the corresponding sizes are 25600/32768/32768 bytes, covering 200/85/42 ms
-  (the 96-kHz example applies only to 24-bit samples).
+  direction, covering 200/170/85 ms respectively. For 24-bit samples,
+  the corresponding sizes are 19200/32640/32640 bytes, covering 200/113/56 ms.
+  For 32-bit samples at 16/48 kHz, the sizes are 25600/32768 bytes,
+  covering 200/85 ms.
   Each direction also needs two 512-byte DMA blocks. Allocator rounding and
   metadata can increase the actual RAM requirement.
   An explicit `--buffer-duration-ms` request to $Bus.configure bypasses the default

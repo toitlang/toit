@@ -12,7 +12,7 @@ namespace toit {
 // Aim for 200 ms by default, bounded to 32 KB per direction. Explicit
 // durations are never capped: insufficient memory must fail configuration.
 // Counts are logical FIFO words. Compact rings store 8/16-bit samples in
-// 16 bits; the DMA blocks still use two unpacked 32-bit words per frame.
+// 16 bits and 24-bit samples in three bytes; DMA blocks remain unpacked.
 struct I2sBufferCapacity {
   static constexpr unsigned kBlockWords = 128;
   static constexpr unsigned kMinimumWords = 1024;
@@ -22,11 +22,11 @@ struct I2sBufferCapacity {
 
   static unsigned ring_words(int rate, int duration_ms = 0, unsigned word_bytes = 4) {
     if (rate <= 0 || rate > 96000 || duration_ms < 0 || duration_ms > 1000) return 0;
-    if (word_bytes != 2 && word_bytes != 4) return 0;
+    if (word_bytes < 2 || word_bytes > 4) return 0;
     unsigned ms = duration_ms == 0 ? 200 : unsigned(duration_ms);
     unsigned blocks = (unsigned(rate) * ms + 63999) / 64000;
     unsigned words = blocks * kBlockWords;
-    unsigned maximum_words = kDefaultMaximumBytes / word_bytes;
+    unsigned maximum_words = (kDefaultMaximumBytes / word_bytes / kBlockWords) * kBlockWords;
     if (duration_ms == 0 && words > maximum_words) words = maximum_words;
     return words < kMinimumWords ? kMinimumWords : words;
   }
@@ -37,7 +37,7 @@ struct I2sBufferCapacity {
 // and stores on the EC618. Indexes and DMA accounting remain in FIFO words.
 class I2sRingFormat {
  public:
-  explicit I2sRingFormat(int bits = 32) : word_bytes_(bits <= 16 ? 2 : 4) {}
+  explicit I2sRingFormat(int bits = 32) : word_bytes_(bits <= 16 ? 2 : bits / 8) {}
 
   unsigned word_bytes() const { return word_bytes_; }
 
@@ -46,6 +46,14 @@ class I2sRingFormat {
       uint16_t result;
       memcpy(&result, ring + index * 2, sizeof(result));
       return result;
+    }
+    if (word_bytes_ == 3) {
+      const uint8_t* sample = ring + index * 3;
+      // Ring storage is little-endian on EC618. memcpy permits the
+      // alternating unaligned halfword without reading past the sample.
+      uint16_t low;
+      memcpy(&low, sample, sizeof(low));
+      return uint32_t(low) | (uint32_t(sample[2]) << 16);
     }
     uint32_t result;
     memcpy(&result, ring + index * 4, sizeof(result));
@@ -56,6 +64,11 @@ class I2sRingFormat {
     if (word_bytes_ == 2) {
       uint16_t narrow = static_cast<uint16_t>(value);
       memcpy(ring + index * 2, &narrow, sizeof(narrow));
+    } else if (word_bytes_ == 3) {
+      uint8_t* sample = ring + index * 3;
+      uint16_t low = static_cast<uint16_t>(value);
+      memcpy(sample, &low, sizeof(low));
+      sample[2] = value >> 16;
     } else {
       memcpy(ring + index * 4, &value, sizeof(value));
     }

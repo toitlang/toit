@@ -67,7 +67,7 @@ int main() {
   const int ring_widths[] = {8, 16, 24, 32};
   for (int bits : ring_widths) {
     I2sRingFormat ring_format(bits);
-    const unsigned width = bits <= 16 ? 2 : 4;
+    const unsigned width = bits <= 16 ? 2 : bits / 8;
     CHECK(ring_format.word_bytes() == width);
     uint8_t storage[18];
     memset(storage, 0x5a, sizeof(storage));
@@ -76,11 +76,14 @@ int main() {
     CHECK(storage[0] == 0x5a);
     for (unsigned i = 1 + 4 * width; i < sizeof(storage); i++) CHECK(storage[i] == 0x5a);
     for (unsigned i = 0; i < 4; i++) {
-      CHECK(ring_format.load(storage + 1, i) == (samples[i] & (width == 2 ? 0xffff : 0xffffffff)));
+      uint32_t mask = width == 2 ? 0xffff : width == 3 ? 0xffffff : 0xffffffff;
+      CHECK(ring_format.load(storage + 1, i) == (samples[i] & mask));
     }
   }
   CHECK(I2sBufferCapacity::ring_words(96000, 0, 1) == 0);
-  CHECK(I2sBufferCapacity::ring_words(96000, 0, 3) == 0);
+  CHECK(I2sBufferCapacity::ring_words(96000, 0, 5) == 0);
+  CHECK(I2sBufferCapacity::ring_words(96000, 0, 3) * 3 == 32640);
+  CHECK(I2sBufferCapacity::ring_words(96000, 100, 3) * 3 == 57600);
   CHECK(I2sBufferCapacity::ring_words(16000, 0, 2) * 2 == 12800);
   CHECK(I2sBufferCapacity::ring_words(48000, 0, 2) * 2 == 32768);
   CHECK(I2sBufferCapacity::ring_words(96000, 0, 2) * 2 == 32768);
@@ -100,6 +103,11 @@ int main() {
   for (int rate = 1; rate <= 96000; rate++) {
     unsigned compact = I2sBufferCapacity::ring_words(rate, 0, 2);
     unsigned requested_frames = (unsigned(rate) * 200 + 999) / 1000;
+    unsigned packed = I2sBufferCapacity::ring_words(rate, 0, 3);
+    CHECK(packed >= 1024 && packed * 3 <= 32768);
+    CHECK(packed % I2sBufferCapacity::kBlockWords == 0);
+    CHECK(packed / 2 >= (requested_frames > 5440 ? 5440 : requested_frames));
+    CHECK(packed == 1024 || packed == 10880 || packed / 2 - requested_frames < 64);
     CHECK(compact >= 1024 && compact <= 16384);
     CHECK(compact % I2sBufferCapacity::kBlockWords == 0);
     CHECK(compact / 2 >= (requested_frames > 8192 ? 8192 : requested_frames));
@@ -122,6 +130,7 @@ int main() {
       CHECK(explicit_words / 2 >= explicit_frames);
       CHECK(explicit_words == 1024 || explicit_words / 2 - explicit_frames < 64);
       CHECK(I2sBufferCapacity::ring_words(rate, ms, 2) == explicit_words);
+      CHECK(I2sBufferCapacity::ring_words(rate, ms, 3) == explicit_words);
     }
   }
   const uint8_t left8[] = {0x81}, right8[] = {0xe3};

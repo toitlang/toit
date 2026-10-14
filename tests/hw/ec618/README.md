@@ -110,11 +110,20 @@ EC618 capture; one also passes both native S3 receivers. The intermittency
 remains unresolved. A compiler-control comparison produces byte-identical
 32-bit test images, ruling out changed test code as its explanation.
 
-At this rate and width, the default ring holds about 43 ms per direction.
-An explicit 100-ms duplex request needs 153600 ring bytes alone and fails
-with `MALLOC_FAILED` in the integrated tester firmware, before streaming.
-Both allocation-failure runs recover to a healthy agent. Do not present
-100 ms as a qualified remedy for the intermittent default-buffer failure.
+Before packed 24-bit storage, the default ring holds about 43 ms per
+direction and an explicit 100-ms duplex request needs 153600 ring bytes.
+That request fails with `MALLOC_FAILED`, even after correcting the thread
+stack-size units. All allocation-failure runs recover to a healthy agent.
+
+Packed 24-bit software rings use 32640 bytes by default (about 56 ms at
+96 kHz) and 115200 bytes total for 100-ms duplex. DMA buffers remain unpacked.
+The halfword-plus-byte implementation passes independent continuous SPI
+capture on both sampling edges with both default and 100-ms buffers; all
+four reverse EC618 captures verify ten seconds with zero over/underruns.
+Both mode-1 cases also pass native S3 receive; both mode-0 cases fail there.
+An earlier bytewise packed implementation failed all four EC618 streaming
+cases. These bounded results establish usable 100-ms buffers on this rig,
+but do not establish a cure for the intermittent service stalls.
 Evidence is recorded in `docs/ec618-todo.md`, including failed attempts.
 
 EC618 Datasheet V1.3, section 7.5 specifies up to 96 kHz for 16/24-bit

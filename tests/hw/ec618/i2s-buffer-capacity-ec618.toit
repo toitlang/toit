@@ -30,7 +30,8 @@ check-capacity --master/bool:
           bus.configure --sample-rate=rate --bits-per-sample=bits
               --slots-in=i2s.Bus.SLOTS-STEREO-BOTH
               --slots-out=slots
-          frames := min (bits <= 16 ? 8192 : 4096) (max 512 (((rate + 319) / 320) * 64))
+          maximum-frames := bits <= 16 ? 8192 : bits == 24 ? 5440 : 4096
+          frames := min maximum-frames (max 512 (((rate + 319) / 320) * 64))
           channels := slots == i2s.Bus.SLOTS-STEREO-BOTH ? 2 : 1
           expected := frames * channels * (bits / 8)
           total := 0
