@@ -59,6 +59,16 @@ or electrical timing; it does not qualify all frames or establish timing
 margins. Keep this duplex case failing until it is resolved or independently
 qualified; do not skip it or treat clean sampled windows as a full pass.
 
+Subsequent independent SPI captures verify over two consecutive seconds of
+96-kHz/24-bit EC618 output on each sampling edge while the reverse EC618
+capture verifies ten seconds, with zero capture overruns/underruns. The SPI
+observer rejects a deliberate 100-ms consumer stall after its first DMA
+block, then passes a full capture without reflashing. This provides bounded
+continuous duplex qualification beyond the earlier sampled windows. Native
+S3 receiver failures remain intermittent; one clean recovery run does not
+establish a fix. The independent results do not qualify indefinite streaming,
+first-frame fidelity or electrical timing margins.
+
 EC618 Datasheet V1.3, section 7.5 specifies up to 96 kHz for 16/24-bit
 samples and 48 kHz for 32-bit samples. The driver rejects higher 32-bit
 rates in both roles, including explicit buffer-duration configurations.
