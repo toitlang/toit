@@ -61,6 +61,7 @@ namespace toit {
   fn(PcntUnitResource)                  \
   fn(PcntChannelResource)               \
   fn(PwmResource)                       \
+  fn(OneWireResource)                   \
   fn(TouchResource)                     \
   fn(RmtResource)                       \
   fn(RmtSyncManagerResource)            \
@@ -126,6 +127,7 @@ namespace toit {
   fn(X509ResourceGroup)                 \
   fn(PcntUnitResourceGroup)             \
   fn(PwmResourceGroup)                  \
+  fn(OneWireResourceGroup)              \
   fn(TouchResourceGroup)                \
   fn(EspNowResourceGroup)               \
   fn(CellularResourceGroup)             \

@@ -81,6 +81,18 @@ namespace toit {
   M(espnow,  MODULE_ESPNOW)                  \
   M(bignum,  MODULE_BIGNUM)                  \
   M(unix_socket, MODULE_UNIX_SOCKET)         \
+  M(one_wire, MODULE_ONE_WIRE)               \
+
+// Dedicated 1-Wire controller operations. Protocol/device logic lives in the
+// one_wire package, which also provides an RMT backend on other platforms.
+#define MODULE_ONE_WIRE(PRIMITIVE)           \
+  PRIMITIVE(capabilities, 1)                 \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(create, 3)                       \
+  PRIMITIVE(close, 2)                        \
+  PRIMITIVE(start, 4)                        \
+  PRIMITIVE(finish, 1)                       \
+  PRIMITIVE(abort, 1)                        \
 
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(write_on_stdout, 2)              \
@@ -1229,6 +1241,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_BleResourceGroup(N, name)    MAKE_UNPACKING_MACRO(BleResourceGroup, N, name)
 #define _A_T_X509ResourceGroup(N, name)   MAKE_UNPACKING_MACRO(X509ResourceGroup, N, name)
 #define _A_T_PwmResourceGroup(N, name)    MAKE_UNPACKING_MACRO(PwmResourceGroup, N, name)
+#define _A_T_OneWireResourceGroup(N, name) MAKE_UNPACKING_MACRO(OneWireResourceGroup, N, name)
 #define _A_T_RpcResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RpcResourceGroup, N, name)
 #define _A_T_RmtResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RmtResourceGroup, N, name)
 #define _A_T_PcntUnitResourceGroup(N, name) MAKE_UNPACKING_MACRO(PcntUnitResourceGroup, N, name)
@@ -1290,6 +1303,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_DacResource(N, name)         MAKE_UNPACKING_MACRO(DacResource, N, name)
 #define _A_T_PmLockResource(N, name)      MAKE_UNPACKING_MACRO(PmLockResource, N, name)
 #define _A_T_PwmResource(N, name)         MAKE_UNPACKING_MACRO(PwmResource, N, name)
+#define _A_T_OneWireResource(N, name)     MAKE_UNPACKING_MACRO(OneWireResource, N, name)
 #define _A_T_TouchResource(N, name)       MAKE_UNPACKING_MACRO(TouchResource, N, name)
 #define _A_T_PcntUnitResource(N, name)    MAKE_UNPACKING_MACRO(PcntUnitResource, N, name)
 #define _A_T_EspNowResource(N, name)      MAKE_UNPACKING_MACRO(EspNowResource, N, name)
