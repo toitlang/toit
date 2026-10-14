@@ -57,7 +57,17 @@ for _, name in ipairs({"driver", TARGET_NAME, TARGET_NAME .. ".elf"}) do
     target(name)
         before_link(function (target)
             table.sort(target:objectfiles(), function (a, b)
-                return a:gsub("\\", "/") < b:gsub("\\", "/")
+                a = a:gsub("\\", "/")
+                b = b:gsub("\\", "/")
+                -- Lua string comparison can use host locale collation.
+                -- Compare bytes so punctuation has the same order everywhere.
+                for i = 1, math.min(#a, #b) do
+                    local x, y = a:byte(i), b:byte(i)
+                    if x ~= y then
+                        return x < y
+                    end
+                end
+                return #a < #b
             end)
         end)
     target_end()
