@@ -18,6 +18,46 @@ Executable tests import their physical signal assignments from
 [`wiring.toit`](wiring.toit). Add a function-named signal there instead of
 embedding a rig pin number in an individual test.
 
+## Cellular notifications and lifecycle
+
+After configuring an EC618 build, run the notification regression on the host:
+
+```sh
+cmake -P tests/hw/ec618/run-cellular-state-test.cmake
+```
+
+The runner reads vendor header paths and definitions from
+`build/ec618/compile_commands.json`. Set `-DCOMPILE_COMMANDS=<path>` before
+`-P` to use another build, or `-DCXX=<path>` to select a host C++ compiler.
+It checks truncated and unaligned notification payloads, attach/detach
+ordering, disconnect causes and IPv4 validity using the actual vendor types.
+It requires neither a SIM nor radio access.
+
+Run `cellular-lifecycle-ec618.toit` on EC618 to check exclusivity, ownership,
+disconnect-reason access and release/reacquisition. A run with argument `leak`,
+followed by a normal run, checks cleanup after container exit. These lifecycle
+checks do not require network attachment. Network tests require a working SIM
+and cellular coverage; passing host tests does not qualify network operation.
+
+## Dedicated 1-Wire controller
+
+The native controller provides standard-speed reset, bit and byte operations
+on PAD19 (mux 3), or PAD17/22/48 (mux 4). It permits one owner at a time and
+reserves the selected pad. Strong pull-up is not supported. The separate
+`one-wire.hardware` package backend supplies ROM search, CRC, serialization
+and deadline/cancellation cleanup; the ordinary portable package import does
+not require these new native primitives.
+
+Recorded hardware qualification covers PAD19: DS18B20 ROM search and conversion
+CRC, deadline abort, task cancellation, cross-container ownership and cleanup
+after normal exit or forced stop. This does not qualify PAD17/22/48. Portable
+package and unsupported-backend host tests do not replace sensor tests.
+The hardware backend requires a supporting SDK release before publication.
+
+Disconnect DS18B20 DQ before I2S tests that drive the shared PAD19 clock net.
+When testing 1-Wire, leave the connected peer pin as an input and use the
+sensor wiring and pull-up recorded in the rig guide.
+
 ## Pin identity
 
 Toit identifies an EC618 pin by its physical PAD number. Module silkscreen
