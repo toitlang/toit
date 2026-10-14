@@ -125,6 +125,9 @@ the shared lock path. Run `ctest --test-dir <build-directory> -C ec618
 duplex 14; each case performs its own preflight and final health checks.
 Each direction includes 96-kHz Philips stereo at 16/24/32 bits in both
 clock roles. High-rate transmit cases use `--tx-no-stall` and default buffering.
+Registration is not a claim of hardware qualification: the 96-kHz wide-sample
+cases retain known payload failures under investigation. Keep those failures
+visible; a passing lower-rate subset does not qualify the complete matrix.
 Where the broader EC618 suite is present, its setup/cleanup fixtures also run.
 The paired matrix does not require Python.
 
