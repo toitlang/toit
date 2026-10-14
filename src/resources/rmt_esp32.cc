@@ -777,7 +777,17 @@ PRIMITIVE(channel_new) {
         .allow_pd = false,
       },
     };
-    err = rmt_new_tx_channel(&cfg, &handle);
+    struct Allocation {
+      const rmt_tx_channel_config_t* config;
+      rmt_channel_handle_t* handle;
+      esp_err_t result;
+    } allocation = {&cfg, &handle, ESP_FAIL};
+    // Install RMT interrupts on the system event core, as for UART.
+    // Capture one reference so the synchronous callback stays inline.
+    SystemEventSource::instance()->run([&allocation]() -> void {
+      allocation.result = rmt_new_tx_channel(allocation.config, allocation.handle);
+    });
+    err = allocation.result;
   } else {
     // Input.
     rmt_rx_channel_config_t cfg = {
@@ -794,7 +804,17 @@ PRIMITIVE(channel_new) {
       },
     };
 
-    err = rmt_new_rx_channel(&cfg, &handle);
+    struct Allocation {
+      const rmt_rx_channel_config_t* config;
+      rmt_channel_handle_t* handle;
+      esp_err_t result;
+    } allocation = {&cfg, &handle, ESP_FAIL};
+    // Install RMT interrupts on the system event core, as for UART.
+    // Capture one reference so the synchronous callback stays inline.
+    SystemEventSource::instance()->run([&allocation]() -> void {
+      allocation.result = rmt_new_rx_channel(allocation.config, allocation.handle);
+    });
+    err = allocation.result;
   }
   if (err == ESP_ERR_NOT_FOUND) FAIL(ALREADY_IN_USE);
   if (err != ESP_OK) return Primitive::os_error(err, process);
