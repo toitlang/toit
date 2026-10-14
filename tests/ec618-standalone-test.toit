@@ -42,9 +42,9 @@ main:
   failure := catch:
     with-timeout --ms=20:
       run-standalone
-          --health=(::
-            events.add "health"
-            sleep --ms=1)
+          // Reach execute before yielding: a short sleep in initial health can
+          // consume the entire deadline on hosts with coarse timer scheduling.
+          --health=(:: events.add "health")
           --execute=(::
             events.add "execute"
             sleep --ms=1000
