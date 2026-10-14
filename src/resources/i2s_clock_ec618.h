@@ -18,8 +18,13 @@ struct I2sClockPlan {
   uint8_t output_divider;
   uint8_t bit_clock_divider;
 
+  // EC618 Datasheet V1.3, section 7.5: 16/24-bit I2S reaches 96 kHz,
+  // while 32-bit I2S is specified only through 48 kHz.
+  static int maximum_sample_rate(int bits) { return bits == 32 ? 48000 : 96000; }
+
   static bool calculate(int rate, int bits, int multiplier, I2sClockPlan* result) {
-    if (rate <= 0 || rate > 96000 || (bits != 8 && bits != 16 && bits != 24 && bits != 32)) return false;
+    if (rate <= 0 || rate > maximum_sample_rate(bits) ||
+        (bits != 8 && bits != 16 && bits != 24 && bits != 32)) return false;
     switch (multiplier) {
       case 128: case 256: case 384: case 512:
       case 576: case 768: case 1024: case 1152: break;

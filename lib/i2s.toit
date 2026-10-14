@@ -52,7 +52,8 @@ The driver accepts 8-, 16-, 24-, and 32-bit samples in Philips, MSB, or PCM-shor
   bytes respectively, without padding. All mono and stereo slot selections
   are supported; unselected transmit slots contain zeros. It supports master
   and slave operation and an optional generated MCLK. External MCLK input and
-  inverted MCLK are unsupported. Generated clocks
+  inverted MCLK are unsupported. Sample rates above 48 kHz with 32-bit samples
+  are unsupported; 16/24-bit samples support rates through 96 kHz. Generated clocks
   require a base image exporting the fractional-clock functions. The clocks
   are enabled by $Bus.start and disabled by $Bus.stop.
 
@@ -63,7 +64,8 @@ Each active direction allocates a software ring targeting 200 ms at
   Capacity is rounded up to 64-frame blocks, with a minimum of 512 frames.
   At 16/48/96 kHz, 8/16-bit samples use 12800/32768/32768 ring bytes per
   direction, covering 200/170/85 ms respectively. For 24/32-bit samples,
-  the corresponding sizes are 25600/32768/32768 bytes, covering 200/85/42 ms.
+  the corresponding sizes are 25600/32768/32768 bytes, covering 200/85/42 ms
+  (the 96-kHz example applies only to 24-bit samples).
   Each direction also needs two 512-byte DMA blocks. Allocator rounding and
   metadata can increase the actual RAM requirement.
   An explicit `--buffer-duration-ms` request to $Bus.configure bypasses the default

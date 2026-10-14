@@ -38,7 +38,7 @@ rig lock. For example, after configuring receive tests:
 ctest --test-dir <hardware-build> -C ec618 -L i2s-rx --output-on-failure
 ```
 
-The current matrices register 96 receive, 30 transmit and 14 duplex cases.
+The current matrices register 94 receive, 30 transmit and 12 duplex cases.
 These counts include the 96-kHz configurations; registration is not evidence
 that every case passes. The verifier checks distinct channel patterns and
 never resynchronizes after a payload mismatch. Startup allowances in the
@@ -46,6 +46,26 @@ S3 fixture do not qualify first-frame fidelity. Duplex checks both directions
 for two seconds by default, rather than establishing indefinite streaming.
 ESP32/S3 I2S has known failures listed in `../esp32/fail.cmake`, so a peer
 failure alone does not identify the EC618 as the faulty endpoint.
+
+The October 14 supported-endpoint run passes all six receive and six
+transmit cases, and five of six duplex cases. The remaining failure is
+96-kHz/24-bit EC618-master duplex at the S3 receiver; the reverse EC618
+capture passes. Native S3 diagnostics reproduce the corruption without
+the S3 Toit runtime. Independent SPI captures, aligned using BCLK counts
+and checked against native DMA frame counts, contain correct data at two
+frames corrupted by native I2S receivers, across separate runs using
+opposite SPI sampling edges. This narrows the failure to receiver behavior
+or electrical timing; it does not qualify all frames or establish timing
+margins. Keep this duplex case failing until it is resolved or independently
+qualified; do not skip it or treat clean sampled windows as a full pass.
+
+EC618 Datasheet V1.3, section 7.5 specifies up to 96 kHz for 16/24-bit
+samples and 48 kHz for 32-bit samples. The driver rejects higher 32-bit
+rates in both roles, including explicit buffer-duration configurations.
+The manufacturer-authored document was consulted through a
+[third-party mirror](https://www.scribd.com/document/1060340987/EC618-Datasheet-V1-3),
+not a manufacturer-hosted PDF. Historical 96-kHz/32-bit diagnostics do not
+qualify supported operation.
 
 EC618's default software ring targets 200 ms, capped at 32768 bytes per
 direction with a minimum of 512 stereo frames. An explicit

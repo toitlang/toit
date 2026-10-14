@@ -179,6 +179,9 @@ struct I2sPipe {
         DMA_BURST_8_BYTES,
         sizeof(blocks[i]),
       };
+      // Keep START interrupts disabled. The vendor MPDMA handler clears the
+      // status snapshot, then dispatches START instead of END if both are
+      // pending. Losing END would desynchronize our alternating block index.
       DmaExtraConfig_t extra = {&desc[1 - i], false, false, true};
       DMA_buildDescriptor(&desc[i], &config, &extra);
     }
@@ -217,7 +220,8 @@ class I2sResource : public EventResource {
     owners[id_] = null;
     if (powered_) {
       regs[id_]->INTCTL = 0;
-      GPR_clockDisable(fclk[id_]);
+      CLOCK_clockDisable(fclk[id_]);
+      CLOCK_setClockSrc(fclk[id_], id_ == 0 ? FCLK_I2S0_SEL_26M : FCLK_I2S1_SEL_26M);
       GPR_clockDisable(pclk[id_]);
       if (--powered_controllers == 0) slpManPlatVoteEnableSleep(sleep_handle, SLP_SLP1_STATE);
     }
@@ -225,10 +229,22 @@ class I2sResource : public EventResource {
     controllers.put(id_);
   }
 
-  void initialize() {
+  bool initialize() {
+    // High-rate rig tests fail with the default 26 MHz functional clock.
+    // Use 51.2 MHz and the managed API to enable its parent clock tree.
     if (powered_controllers++ == 0) slpManPlatVoteDisableSleep(sleep_handle, SLP_SLP1_STATE);
     GPR_clockEnable(pclk[id_]);
-    GPR_clockEnable(fclk[id_]);
+    Defer rollback { [&] {
+      if (!powered_) {
+        GPR_clockDisable(pclk[id_]);
+        if (--powered_controllers == 0) slpManPlatVoteEnableSleep(sleep_handle, SLP_SLP1_STATE);
+      }
+    } };
+    if (CLOCK_setClockSrc(fclk[id_], id_ == 0 ? FCLK_I2S0_SEL_51M : FCLK_I2S1_SEL_51M) != 0) return false;
+    if (CLOCK_clockEnable(fclk[id_]) != 0) {
+      CLOCK_setClockSrc(fclk[id_], id_ == 0 ? FCLK_I2S0_SEL_26M : FCLK_I2S1_SEL_26M);
+      return false;
+    }
     GPR_swReset(reset_pclk[id_]);
     GPR_swReset(reset_fclk[id_]);
     regs[id_]->INTCTL = 0;
@@ -238,6 +254,7 @@ class I2sResource : public EventResource {
     disable_clocks();
     powered_ = true;
     owners[id_] = this;
+    return true;
   }
 
   bool configure(unsigned words, int bits, int format, int slots_in, int slots_out,
@@ -490,7 +507,7 @@ PRIMITIVE(create) {
   }
   bus->pads_.adopt(pads);
   pads.keep();
-  bus->initialize();
+  if (!bus->initialize()) FAIL(HARDWARE_ERROR);
   // Peripheral and generated clocks remain disabled until start.
   for (int pad : selected_pads) {
     if (pad >= 0) { GPIO_IomuxEC618(pad, 1, 0, 1); GPIO_PullConfig(pad, 0, 0); }
@@ -510,6 +527,7 @@ static Object* configure_bus(Process* process, I2sResource* bus, int rate, int b
       !I2sBufferFormat::valid_input(slots_in) || !I2sBufferFormat::valid_output(slots_out)) FAIL(INVALID_ARGUMENT);
   unsigned words = I2sBufferCapacity::ring_words(rate, duration_ms, I2sRingFormat(bits).word_bytes());
   if (words == 0) FAIL(INVALID_ARGUMENT);
+  if (rate > I2sClockPlan::maximum_sample_rate(bits)) FAIL(UNSUPPORTED);
   if (external > 0) FAIL(UNSUPPORTED);
   if (mclk != -1 && (mclk & 0x10000)) FAIL(UNSUPPORTED);
   const int* pins = routes[bus->id_];

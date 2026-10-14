@@ -55,14 +55,17 @@ int main() {
       verify(rate, 8, multiplier);
       verify(rate, 16, multiplier);
       if (multiplier % 3 == 0) verify(rate, 24, multiplier);
-      verify(rate, 32, multiplier);
+      if (rate <= 48000) verify(rate, 32, multiplier);
     }
   }
   for (int multiplier : multipliers) {
     verify(96000, 8, multiplier);
     verify(96000, 16, multiplier);
     if (multiplier % 3 == 0) verify(96000, 24, multiplier);
-    verify(96000, 32, multiplier);
+    verify(48000, 32, multiplier);
+    I2sClockPlan rejected = {};
+    CHECK(!I2sClockPlan::calculate(48001, 32, multiplier, &rejected));
+    CHECK(!I2sClockPlan::calculate(96000, 32, multiplier, &rejected));
   }
   verify(100, 16, 128);  // Requires an output divider greater than four.
   I2sClockPlan plan = {};
