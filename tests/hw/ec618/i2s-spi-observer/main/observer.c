@@ -110,8 +110,10 @@ static bool IRAM_ATTR receive(i2s_chan_handle_t channel, i2s_event_data_t *event
   return false;
 }
 
+static unsigned capture_seconds = 10;
+
 static bool wait_ack(int level) {
-  int64_t deadline = esp_timer_get_time() + 15000000;
+  int64_t deadline = esp_timer_get_time() + (capture_seconds + 5) * 1000000LL;
   while (gpio_get_level(ACK) != level) {
     if (esp_timer_get_time() > deadline) return false;
     vTaskDelay(1);
@@ -258,14 +260,14 @@ static void report(void) {
            (unsigned long)v->first_frame, (unsigned long)v->first_left, (unsigned long)v->first_right,
            (unsigned long)sample(v->first_frame % 251, false, v->bits),
            (unsigned long)sample(v->first_frame % 251, true, v->bits), (unsigned long)callback_max_us[i]);
-    valid &= v->started && !v->invalid && !v->errors && v->frames >= rate * 99 / 10;
+    valid &= v->started && !v->invalid && !v->errors && v->frames >= rate * capture_seconds * 99 / 100;
   }
 Verify *q = &queued;
 printf("QUEUED external=%u frames=%lu errors=%lu invalid=%u training=%u drops=%lu reader_error=%d first_frame=%lu left=%08lx right=%08lx expected_left=%08lx expected_right=%08lx\n",
        esp_ptr_external_ram(read_buffer), (unsigned long)q->frames, (unsigned long)q->errors, q->invalid, q->training,
        (unsigned long)rx_losses, reader_error, (unsigned long)q->first_frame, (unsigned long)q->first_left, (unsigned long)q->first_right,
        (unsigned long)sample(q->first_frame % 251, false, q->bits), (unsigned long)sample(q->first_frame % 251, true, q->bits));
-valid &= q->started && !q->invalid && !q->errors && q->frames >= rate * 99 / 10 && !rx_losses && reader_error == ESP_OK;
+valid &= q->started && !q->invalid && !q->errors && q->frames >= rate * capture_seconds * 99 / 100 && !rx_losses && reader_error == ESP_OK;
 report_records("RX0", &checks[0]);
 report_records("RX1", &checks[1]);
 report_records("QUEUED", q);
@@ -290,8 +292,12 @@ void app_main(void) {
   configASSERT(reader_done);
   char line[80];
   while (fgets(line, sizeof(line), stdin)) {
-    unsigned hz, bits, external, spi_mode, stall_ms;
+    unsigned hz, bits, external, spi_mode, stall_ms, seconds;
     if (!strncmp(line, "PING", 4)) puts("DUAL-REPLY EC618-CONTINUOUS-SPI-v3");
+    else if (sscanf(line, "DURATION %u", &seconds) == 1 && seconds >= 10 && seconds <= 120 && tx && !running) {
+      capture_seconds = seconds;
+      puts("DUAL-REPLY OK");
+    }
     else if (sscanf(line, "STALL %u", &stall_ms) == 1 && (stall_ms == 0 || stall_ms == 100) && tx && !running) {
       stream_stall_ms = stall_ms;
       puts("DUAL-REPLY OK");
@@ -302,6 +308,7 @@ void app_main(void) {
     }
     else if (sscanf(line, "PREPARE %u %u %u %u", &hz, &bits, &external, &spi_mode) == 4 && external <= 1 && spi_mode <= 1 && hz && hz <= 96000 && (bits == 16 || bits == 24 || bits == 32)) {
       configure(hz, bits, external, spi_mode);
+      capture_seconds = 10;
       puts("DUAL-REPLY READY");
     } else if (!strncmp(line, "START", 5) && tx && !running) {
       if (gpio_get_level(ACK)) { puts("DUAL-REPLY FAILED ACK initially high"); continue; }
@@ -325,7 +332,7 @@ void app_main(void) {
       // Keep the strict startup verifier: a late receiver must fail training.
       ESP_ERROR_CHECK(i2s_channel_enable(rx[1]));
       printf("DUAL GO readback=%d ACK=%d\n", gpio_get_level(GO), gpio_get_level(ACK));
-      // The permanent EC test raises ACK after verifying ten seconds.
+      // The EC test raises ACK after verifying the requested duration.
       wire_start();
       bool captured = wait_ack(1);
       wire_halt();

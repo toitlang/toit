@@ -5,7 +5,9 @@ import host.file
 import .records show fields number
 
 main args:
-  expect-equals 4 args.size
+  expect (4 <= args.size <= 5)
+  seconds := args.size == 5 ? (int.parse args[4]) : 10
+  expect (10 <= seconds <= 120)
   duration := args[3]
   expect (["default", "100"].contains duration)
   duration-label := duration == "default" ? "" : " buffer_ms=$duration"
@@ -36,5 +38,5 @@ main args:
   last := number stream "end_after"
   expect (first <= (number stream "start_after") < (number stream "end_before") <= last)
   expect (target * 8 - 4 * bits <= last - first < (target + 6 * 4092) * 8)
-  expect (contents.contains "I2S DUPLEX PASS master=true rate=$rate bits=$bits format=0 slots=0$duration-label capture_s=10 errors=0")
+  expect (contents.contains "I2S DUPLEX PASS master=true rate=$rate bits=$bits format=0 slots=0$duration-label capture_s=$seconds errors=0")
   print "Continuous SPI and reverse EC618 payload PASS rate=$rate bits=$bits bytes=$target"

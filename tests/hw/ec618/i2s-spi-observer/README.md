@@ -73,6 +73,21 @@ with the other sampling mode. A 100-ms EC618 buffer request may fail with
 `MALLOC_FAILED`; it is not silently reduced and is not a qualified workaround
 for the intermittent default-buffer failure.
 
+An optional final argument selects 10..120 seconds of uninterrupted EC618
+receive verification (default 10). Pass the same seconds as the optional
+final argument to `check-stream.toit`; a ten-second verdict cannot satisfy
+a longer request. The independent SPI capture remains approximately two
+seconds. Native S3 capture and its frame-count requirement follow the full
+requested duration. Allow at least the capture duration plus 90 seconds in
+an enclosing host timeout. Long runs require the observer built with the
+`DURATION` command; older observers reject the command before streaming.
+
+On 2026-10-14 the bulk-copy EC618 firmware passed a 120-second default-buffer
+96-kHz/24-bit run: 69,120,000 received bytes, zero over/underruns, both native
+S3 receivers passing, and the independent two-second SPI capture passing.
+The preceding ten-second regression also passed all verdicts. This is a
+bounded qualification, not proof that all intermittent failures are resolved.
+
 Preserve the runner's exit status. It requires the EC618 and both native
 S3 receivers to pass. Independently assess the SPI stream and EC618 reverse
 payload using:

@@ -21,7 +21,7 @@ main args:
   expect (6 <= parts.size <= 8)
   duration/int? := parts.size >= 7 and parts[6] != "default" ? (int.parse parts[6]) : null
   seconds := parts.size == 8 ? (int.parse parts[7]) : 2
-  expect (1 <= seconds <= 10)
+  expect (1 <= seconds <= 120)
   configuration := "master=$master rate=$rate bits=$bits format=$format slots=$slots"
   if duration: configuration += " buffer_ms=$duration"
   if parts.size == 8: configuration += " capture_s=$seconds"
@@ -73,7 +73,7 @@ main args:
       offset = (offset + n) % data.size
     if not master: bus.start
     print "I2S DUPLEX READY $configuration"
-    with-timeout --ms=20_000:
+    with-timeout --ms=(seconds * 1000 + 10_000):
       go.wait-for 1
       started = Time.monotonic-us
       if master: bus.start

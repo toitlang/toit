@@ -23,6 +23,12 @@ main args:
     file.write-contents good --path=path
     expect-equals 0 (check "stream" ["96000", "24", path, "default"])
     rejected: check "stream" ["96000", "24", path, "100"]
+    rejected: check "stream" ["96000", "24", path, "default", "120"]
+    file.write-contents (good.replace "capture_s=10" "capture_s=120") --path=path
+    expect-equals 0 (check "stream" ["96000", "24", path, "default", "120"])
+    rejected: check "stream" ["96000", "24", path, "default"]
+    rejected: check "stream" ["96000", "24", path, "default", "121"]
+    rejected: check "stream" ["96000", "24", path, "default", "9"]
     [
       ["bytes=1153944", "bytes=4092"],
       ["blocks=282", "blocks=1"],

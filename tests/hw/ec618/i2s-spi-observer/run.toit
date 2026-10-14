@@ -12,9 +12,12 @@ import ...esp-tester.shared show *
 
 // Run under the rig lock from the repository root. Arguments: compiler,
 // EC port, S3 port, rate, width, external-memory flag, SPI mode, stall ms,
-// buffer duration (default or 100), and expected base identity.
+// Buffer duration (default or 100), expected base identity, and optional
+// capture seconds (10..120, default 10). SPI still captures two seconds.
 main args:
-  expect (args.size == 10)
+  expect (10 <= args.size <= 11)
+  seconds := args.size == 11 ? (int.parse args[10]) : 10
+  expect (10 <= seconds <= 120)
   expected-base := args[9]
   expect (expected-base.starts-with "base-v")
   stall-ms := int.parse args[7]
@@ -53,24 +56,25 @@ main args:
         exchange peer "SELFTEST $spi-mode" "SELFTEST-PASS"
         exchange peer "PREPARE $rate $bits $external $spi-mode" "READY"
         exchange peer "STALL $stall-ms" "OK"
-        ec.send-arg "$rate,$bits,0,master,0,duplex,$duration,10"
+        if seconds != 10: exchange peer "DURATION $seconds" "OK"
+        ec.send-arg "$rate,$bits,0,master,0,duplex,$duration,$seconds"
         ec.install-container image
         pending := ""
         started := false
         passed := false
         running = true
-        success := ec.run --timeout-ms=30_000 --on-output=(:: |text/string|
+        success := ec.run --timeout-ms=(seconds * 1000 + 20_000) --on-output=(:: |text/string|
           pending += text
           while true:
             newline := pending.index-of "\n"
             if newline < 0: break
             line := pending[..newline].trim
             pending = pending[newline + 1..]
-            if line == "I2S DUPLEX READY master=true rate=$rate bits=$bits format=0 slots=0$duration-label capture_s=10":
+            if line == "I2S DUPLEX READY master=true rate=$rate bits=$bits format=0 slots=0$duration-label capture_s=$seconds":
               if started: throw "Duplicate EC618 ready"
               exchange peer "START" "READY"
               started = true
-            if line == "I2S DUPLEX PASS master=true rate=$rate bits=$bits format=0 slots=0$duration-label capture_s=10 errors=0":
+            if line == "I2S DUPLEX PASS master=true rate=$rate bits=$bits format=0 slots=0$duration-label capture_s=$seconds errors=0":
               if not started: throw "EC618 verdict before start"
               passed = true
           if pending.size > 8192: throw "Oversized EC618 output line")
