@@ -18,6 +18,42 @@ Executable tests import their physical signal assignments from
 [`wiring.toit`](wiring.toit). Add a function-named signal there instead of
 embedding a rig pin number in an individual test.
 
+## Paired I2S tests
+
+The three CMake options `EC618_TEST_I2S_RX`, `EC618_TEST_I2S_TX` and
+`EC618_TEST_I2S_DUPLEX` select different resident S3 fixtures:
+`i2s-source-s3.toit`, `i2s-sink-s3.toit` and `i2s-duplex-s3.toit`, respectively.
+Enable only one option per build directory. Preserve the original S3 image
+before provisioning a fixture, disconnect DS18B20 DQ from the shared clock
+net, and verify the physical assignments in `wiring.toit`.
+
+Configure `tests/hw` with `TOIT_EXE_HW` pointing to the compiler matching the
+installed EC618 firmware, `EC618_BOARD_PORT` and `EC618_I2S_PEER_PORT` set to
+verified persistent serial paths, and `EC618_EXPECT_BASE` set to the expected
+base identity. Configuration and `ctest --show-only` do not provision boards.
+The runner requires the corresponding resident fixture and uses the shared
+rig lock. For example, after configuring receive tests:
+
+```sh
+ctest --test-dir <hardware-build> -C ec618 -L i2s-rx --output-on-failure
+```
+
+The current matrices register 96 receive, 30 transmit and 14 duplex cases.
+These counts include the 96-kHz configurations; registration is not evidence
+that every case passes. The verifier checks distinct channel patterns and
+never resynchronizes after a payload mismatch. Startup allowances in the
+S3 fixture do not qualify first-frame fidelity. Duplex checks both directions
+for two seconds by default, rather than establishing indefinite streaming.
+ESP32/S3 I2S has known failures listed in `../esp32/fail.cmake`, so a peer
+failure alone does not identify the EC618 as the faulty endpoint.
+
+EC618's default software ring targets 200 ms, capped at 32768 bytes per
+direction with a minimum of 512 stereo frames. An explicit
+`--buffer-duration-ms` value from 1 through 1000 bypasses the default byte
+cap and can fail allocation. High-rate wide samples therefore have less than
+200 ms of default buffering. Buffer-allocation and stop/restart tests do not
+substitute for exact live payload checks.
+
 ## Cellular notifications and lifecycle
 
 After configuring an EC618 build, run the notification regression on the host:
