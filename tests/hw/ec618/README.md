@@ -98,6 +98,10 @@ S3 receiver failures remain intermittent; one clean recovery run does not
 establish a fix. The independent results do not qualify indefinite streaming,
 first-frame fidelity or electrical timing margins.
 
+The [independent SPI observer](i2s-spi-observer/README.md) contains the pinned
+native fixture, Toit runner, exact-stream checks and host fault tests needed
+to reproduce these independent observations without patching the shared SDK.
+
 On the integrated v5 base, two default-buffer 96-kHz/24-bit duplex runs
 also fail at the EC618 endpoint, with underruns and overruns. These failures
 cannot be assigned solely to the S3 receiver. Subsequent repeats pass the
