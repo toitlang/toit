@@ -1,5 +1,37 @@
 # EC618 open work
 
+## Breakout integration status (2026-10-14)
+
+The original EC618 port and networking were released in alpha.199. This
+checklist covers the subsequent breakout enhancement and remaining platform
+work; it does not reopen the original network qualification.
+
+The integration branch contains the new pad routes, native I2S and 1-Wire,
+ADC completion events, cellular disconnect reasons, shared watchdog support,
+and Python-free standalone and FPC bus CTest runners. Implemented features
+below must not be confused with unpublished package/release dependencies.
+
+| Area | Evidence and limits |
+| --- | --- |
+| UART, I2C, SPI | The integrated stack-unit correction passes all four FPC bus cases: both UART routes, dual I2C and SPI. Evidence: `stack-units-offline-2026-10-14/bus-status.txt` and its test logs. The subsequent native changes affect only I2S. |
+| Platform lifecycle | Nine standalone cases pass in `stack-tls-uart-2026-10-14/standalone.log`, including ADC events/cancellation, cellular lifecycle, watchdog stop and I2S lifecycle. That run uses the temporary stack-measurement image. The final image separately passes basics, GC and a 20-KiB TLS echo; the measurement code is removed. |
+| I2S memory and transfer | Packed 24-bit rings and bounded block copies are implemented. Default-buffer supported-width captures pass; explicit 100-ms allocations can fail from fragmentation. The API reports allocation failure rather than silently reducing the request. |
+| Sustained I2S | `i2s-bulk-copy-repeat-2026-10-14` passes eight separate ten-second EC618/independent captures, with four native S3 failures. `i2s-long-capture-2026-10-14` passes one uninterrupted 120-second 96-kHz/24-bit EC618 capture (69,120,000 bytes, zero over/underruns), both native S3 receivers and independent SPI. SPI observes approximately two seconds, not the entire EC618 capture. Historical intermittent failures are not erased by these passes. |
+| Base API stability | The 399-symbol/49-header contract gates both base production and selection of an existing base. Current live identity is `base-v5+0a267ba79e218a57efff8eae73f2f665`; the full export check passes. Retained symbols are not hardware qualification for unwired peripherals. |
+| External packages | Native 1-Wire has recorded DS18B20 CRC and cancellation/container-cleanup qualification; the sensor is now disconnected for I2S. Package PR [toit-1-wire #38](https://github.com/toitware/toit-1-wire/pull/38) remains open. Shared-watchdog SDK [#3241](https://github.com/toitlang/toit/pull/3241) and package [#18](https://github.com/toitware/toit-watchdog/pull/18) remain open. |
+
+Evidence directories above are under `dev/ec618-rig/` in the bring-up
+workspace. They are local qualification artifacts, not published CI results.
+The two-minute test restores and verifies the original S3 app and passes
+final EC618/peer health. Slot A is validated; no further base flash is needed
+for the currently implemented drivers.
+
+Remaining closure work includes review/publication of the integration and
+package dependencies, publishing v5 and proving the published-base CI path,
+and resolving or explicitly documenting the remaining qualification limits.
+The 2026-10-14 release lookup still returns `release not found` for v5.
+Do not declare complete bring-up or publication from local commits alone.
+
 ## Runtime and peripherals
 
 - **Gap-free UART TX across staging buffers at high baud rates.** Multi-chunk
@@ -7,16 +39,12 @@
   Waveform generation must fit in one staging buffer (`--large-buffers` requests
   4 KiB). Removing the gaps needs hardware-chained TX DMA descriptors in the
   base driver. See `uart2-gapfree-{ec618,esp32}.toit` for the supported contract.
-- **Cellular disconnect reasons.** `disconnect_reason` in
-  `src/resources/cellular_ec618.cc` still returns a placeholder.
-- **ADC completion events.** Replace the one-millisecond polling in
-  `lib/gpio/adc.toit` with a resource event when the platform supports it.
 - **Orderly firmware shutdown.** Stop other containers and services before
   resetting for an upgrade; the shared lifecycle orchestration is still missing.
   The TODO is retained in both embedded firmware providers.
-- **Portable watchdog package.** Add EC618 support to `toit-watchdog`; the
-  implementation currently lives in `lib/ec618/watchdog.toit` and
-  `src/watchdog_ec618.cc`.
+- **Portable watchdog publication.** Coordinate the implemented shared API
+  and package qualification with SDK #3241 and watchdog #18 before publishing
+  the package's required SDK version. The qualification runner uses Toit.
 - **Delta OTA integration.** Finish/qualify the Artemis delta-apply path using
   the existing canonical firmware read and write APIs.
 
@@ -41,10 +69,14 @@
 
 ## Test coverage and rig automation
 
-- Wire the EC618 suites into CTest with explicit fixture ownership and a
-  recovery procedure for the manually booted dev board.
-- Narrow remaining catch-all handlers in rig tests so unexpected exceptions
-  cannot masquerade as expected timeouts (for example GPIO edge helpers).
+- Standalone and FPC bus suites are registered through `standalone.cmake`
+  and `bus.cmake`, using Toit runners with exact-base checks, exclusive rig
+  ownership and recovery. Paired I2S matrices require the matching resident
+  S3 fixture; enabling a suite is not proof that its fixture is installed.
+- GPIO edge helpers already distinguish deadlines from driver errors. The
+  output-low startup-glitch check remains unqualified with the opposing
+  external pull-up installed. Preserve that limitation until the wiring
+  permits the check; do not interpret the other GPIO passes as covering it.
 - Finish contention/cancellation coverage outside the new bus suites and
   replace remaining bring-up probes with bounded, asserted tests.
 - Generalize the tester's `--debug-boot` capture into reusable UART diagnostics.

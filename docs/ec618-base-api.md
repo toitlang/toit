@@ -87,7 +87,7 @@ This is not a promise to retain every private symbol in the modem SDK. Any futur
 space-driven exclusion must record its measured flash/RAM cost and the capability
 it prevents. Lack of wiring or live tests is not a valid exclusion reason.
 
-## Base v5 candidate measurement
+## Historical base v5 candidate measurement
 
 These measurements and live results come from the combined EC618 bring-up
 candidate, which also contains other platform changes. They establish the
@@ -129,3 +129,17 @@ own recoverable update design and is not implemented by this change.
 
 Build logs and artifact hashes are under
 `dev/ec618-rig/base-interface-audit-2026-10-11/`.
+
+## Current integrated qualification
+
+The subsequently rebuilt integration base has identity
+`base-v5+0a267ba79e218a57efff8eae73f2f665`. It is deployed on the breakout rig
+and passes the full export gate. Later stack-unit, packed-ring and block-copy
+fixes were installed through slot OTA without changing this base. The final
+two-minute I2S qualification leaves validated slot A and the original S3
+application restored; see `ec618-todo.md` for evidence and scope.
+
+These are local candidate results. The `ec618-base-v5` release remains absent
+at the 2026-10-14 audit, so neither published-artifact compatibility CI nor
+public availability is established. The earlier candidate's measurements
+above must not be presented as measurements of this rebuilt base.
