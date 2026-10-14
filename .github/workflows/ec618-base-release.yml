@@ -29,6 +29,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: ec618-base-release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -69,8 +73,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           VERSION=$(cat toolchains/ec618/base-version | tr -d '[:space:]')
+          [[ "$VERSION" =~ ^[0-9]+$ ]]
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          # A pre-existing tag could point at a different commit even without
+          # a release. Distinguish absence (2) from a failed remote query.
+          tag_status=0
+          git ls-remote --exit-code --tags origin "refs/tags/ec618-base-v$VERSION" > /dev/null || tag_status=$?
+          if (( tag_status != 2 )); then
+            echo "Expected an absent base tag; remote lookup returned $tag_status. Refusing publication."
+            exit 1
+          fi
           if gh release view "ec618-base-v$VERSION" > /dev/null 2>&1; then
             echo "Release ec618-base-v$VERSION already exists — bump toolchains/ec618/base-version."
             exit 1
@@ -85,12 +99,18 @@ jobs:
           cp build/ec618-base/base.bin build/release-ec618-base/ec618-base-v$VERSION.bin
           cp build/ec618-base/base-manifest.json build/release-ec618-base/ec618-base-v$VERSION.json
           cp toolchains/ec618/base-api.json build/release-ec618-base/ec618-base-v$VERSION-api.json
+          (
+            cd build/release-ec618-base
+            sha256sum "ec618-base-v$VERSION.elf" "ec618-base-v$VERSION.bin" \
+              "ec618-base-v$VERSION.json" "ec618-base-v$VERSION-api.json" > "ec618-base-v$VERSION-SHA256SUMS"
+          )
 
       - name: Publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "ec618-base-v$VERSION" \
+            --target "$GITHUB_SHA" \
             --title "EC618 base v$VERSION" \
             --notes "EC618 base artifact set used by envelope producers to link compatible slots.
 

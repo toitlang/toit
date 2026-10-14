@@ -40,6 +40,13 @@ archiving a release. The export check accepts defined global symbols, including
 defined weak symbols; undefined weak symbols, local symbols and malformed
 symbol records cannot satisfy the contract.
 
+The release workflow pins the release tag to its tested workflow commit,
+serializes publication, and refuses an existing tag (even without a release)
+or an unsuccessful remote tag lookup. Its `-SHA256SUMS` asset covers the ELF,
+binary, identity manifest and API contract. Published-base CI downloads and
+checks all four before using the base. These checks establish artifact
+integrity; they do not replace the export or firmware build gates.
+
 `make ec618` checks the complete export contract against the selected
 `EC618_BASE_DIR/base.elf` before linking slots. This also covers downloaded
 and previously built bases, including APIs that the current slot does not

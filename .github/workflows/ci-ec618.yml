@@ -148,7 +148,12 @@ jobs:
             exit 1
           fi
           gh release download "$tag" --dir "$destination" \
-            --pattern "$tag.elf" --pattern "$tag.bin" --pattern "$tag.json"
+            --pattern "$tag.elf" --pattern "$tag.bin" --pattern "$tag.json" \
+            --pattern "$tag-api.json" --pattern "$tag-SHA256SUMS"
+          (
+            cd "$destination"
+            sha256sum --check "$tag-SHA256SUMS"
+          )
           mv "$destination/$tag.elf" "$destination/base.elf"
           mv "$destination/$tag.bin" "$destination/base.bin"
           mv "$destination/$tag.json" "$destination/base-manifest.json"
