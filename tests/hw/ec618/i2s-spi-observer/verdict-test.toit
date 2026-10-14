@@ -44,6 +44,8 @@ main args:
     good = STALL + PASS + "SPI console: DUAL-REPLY OK\n"
     file.write-contents good --path=path
     expect-equals 0 (check "stall" [path])
+    expect-equals 0 (check "stall" [path, "default"])
+    rejected: check "stall" [path, "100"]
     rejected: check "stream" ["96000", "24", path, "default"]
     [
       ["error=-2", "error=-5"],
@@ -54,6 +56,11 @@ main args:
     ].do: |change/List|
       file.write-contents (good.replace change[0] change[1]) --path=path
       rejected: check "stall" [path]
+    file.write-contents (good.replace "slots=0 capture_s" "slots=0 buffer_ms=100 capture_s") --path=path
+    expect-equals 0 (check "stall" [path, "100"])
+    rejected: check "stall" [path]
+    rejected: check "stall" [path, "200"]
+    rejected: check "stream" ["96000", "24", path, "100"]
     print "Observer truncation, corruption, clock evidence, duplicate, reboot and stall verdict tests PASS"
   finally:
     directory.rmdir --recursive root

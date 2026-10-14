@@ -124,6 +124,10 @@ Both mode-1 cases also pass native S3 receive; both mode-0 cases fail there.
 An earlier bytewise packed implementation failed all four EC618 streaming
 cases. These bounded results establish usable 100-ms buffers on this rig,
 but do not establish a cure for the intermittent service stalls.
+A later observer fault/recovery sequence also fails at EC618 with explicit
+100-ms buffers, including a roughly 106-ms write-service gap. The memory
+improvement makes that configuration usable; it does not guarantee lossless
+streaming through these delays. Keep this failure visible alongside passes.
 Evidence is recorded in `docs/ec618-todo.md`, including failed attempts.
 
 EC618 Datasheet V1.3, section 7.5 specifies up to 96 kHz for 16/24-bit

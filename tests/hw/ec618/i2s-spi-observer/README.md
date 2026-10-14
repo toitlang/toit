@@ -87,6 +87,10 @@ a pass. For fault injection, use a 100-ms observer stall with default EC618
 buffers. `check-stall.toit -- capture.log` must accept that rejection and
 `check-stream.toit` must reject the truncated capture. This qualifies the
 observer's failure detection, not payload continuity during that stall.
+For the same injected observer stall with explicit 100-ms EC618 buffers,
+pass `100` as the runner's buffer-duration argument and check the result
+with `check-stall.toit -- capture.log 100`. The checker requires the matching
+EC618 buffer configuration and a clean ten-second reverse capture.
 
 The integrated v5 rig has both successful captures and intermittent EC618
 underrun/overrun failures. Keep those failures visible. These finite captures

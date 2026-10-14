@@ -5,7 +5,10 @@ import host.file
 import .records show fields number
 
 main args:
-  expect-equals 1 args.size
+  expect (args.size == 1 or args.size == 2)
+  duration := args.size == 2 ? args[1] : "default"
+  expect (["default", "100"].contains duration)
+  duration-label := duration == "default" ? "" : " buffer_ms=$duration"
   contents := (file.read-contents args[0]).to-string
   streams := []
   wires := []
@@ -27,7 +30,7 @@ main args:
   expect-equals 0 (number stream "counters")
   expect-equals 1 (number wires[0] "invalid")
   expect (100_000 <= (number stream "duration_us") < 500_000)
-  expect (contents.contains "I2S DUPLEX PASS master=true rate=96000 bits=24 format=0 slots=0 capture_s=10 errors=0")
+  expect (contents.contains "I2S DUPLEX PASS master=true rate=96000 bits=24 format=0 slots=0$duration-label capture_s=10 errors=0")
   expect (contents.contains "SPI console: DUAL-REPLY OK")
   expect (not contents.contains "assert failed")
   expect (not contents.contains "Rebooting...")
