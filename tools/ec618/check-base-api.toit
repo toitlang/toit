@@ -109,7 +109,7 @@ explicit-exports source/string -> Set:
 check-exports required/Set listing/string:
   linked := Set
   (listing.split "\n").do: |line/string|
-    parts := (line.replace --all "\t" " ").split " "
+    parts := (line.trim.replace --all "\t" " ").split " "
     parts = parts.filter: not it.is-empty
     if parts.size != 3: continue.do
     // GNU nm's default ELF format is address, type, name. Undefined weak

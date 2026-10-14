@@ -54,6 +54,9 @@ main:
     api.check-exports required "00900000 T CLOCK_mclkEnable\n00900004 T old_export\n"
     api.check-exports required "00900000\tT\tCLOCK_mclkEnable\n00900004\tT\told_export\n"
     api.check-exports required "00900000 W CLOCK_mclkEnable\n00900004 V old_export\n"
+    api.check-exports required "\r\n00900000 T CLOCK_mclkEnable\r\n00900004 T old_export\r\n"
+    rejected "lacks required exports: CLOCK_mclkEnable":
+      api.check-exports required "00900000 U CLOCK_mclkEnable\r\n00900004 T old_export\r\n"
     [
       "00900000 U CLOCK_mclkEnable",
       "00900000 w CLOCK_mclkEnable",
