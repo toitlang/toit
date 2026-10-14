@@ -263,6 +263,20 @@ class RmtPatternEncoder {
     *chunk_length = length(offset_index);
   }
 
+
+  // Select the common one-symbol-per-bit encoding without changing the API.
+  bool simple_bits() const {
+    return chunk_size() == 1 && length(START_OFFSET_INDEX) == 0 &&
+        length(BETWEEN_OFFSET_INDEX) == 0 && length(END_OFFSET_INDEX) == 4 &&
+        length(CHUNKS_OFFSET_INDEX) == 4 && length(CHUNKS_OFFSET_INDEX + 2) == 4;
+  }
+
+  uint32_t simple_symbol(int index) const {
+    const uint8* bytes = sequence(index < 2 ? CHUNKS_OFFSET_INDEX + index * 2 : END_OFFSET_INDEX);
+    return bytes[0] | (uint32_t(bytes[1]) << 8) |
+        (uint32_t(bytes[2]) << 16) | (uint32_t(bytes[3]) << 24);
+  }
+
   int max_symbol_length() const;
 
   static bool validate(const uint8* buffer, int buffer_length);
@@ -317,6 +331,9 @@ class RmtActivePatternEncoder {
       , has_encoded_end(false)
       , bit_length(bit_length) {
     encoder->increase_ref();
+    if (encoder->simple_bits()) {
+      for (int i = 0; i < 3; i++) simple_symbols[i] = encoder->simple_symbol(i);
+    }
   }
 
   ~RmtActivePatternEncoder() {
@@ -336,6 +353,7 @@ class RmtActivePatternEncoder {
   // The ESP-IDF only gives us the size in bytes, but we might want to encode
   // parts of a byte.
   const int bit_length;
+  uint32_t simple_symbols[3];
 };
 
 class RmtPatternEncoderResource : public Resource {
@@ -533,6 +551,35 @@ RMT_IRAM_ATTR static bool rx_done(rmt_channel_t* channel,
   // user will know what to do.
   xQueueSendFromISR(queue, &payload, &higher_was_woken);
   return higher_was_woken == pdTRUE;
+}
+
+// This path has no sequence parsing or packed state updates in the bit loop.
+IRAM_ATTR static size_t bit_encoder_callback(const void* data,
+                                             size_t data_size,
+                                             size_t symbols_written,
+                                             size_t symbols_free,
+                                             rmt_symbol_word_t* symbols,
+                                             bool* done,
+                                             void* arg) {
+  auto active = unvoid_cast<RmtActivePatternEncoder*>(arg);
+  const uint8* bytes = unvoid_cast<const uint8*>(data);
+  size_t bit_length = active->bit_length;
+  size_t position = symbols_written;
+  size_t count = 0;
+  uint32_t bit0 = active->simple_symbols[0];
+  uint32_t bit1 = active->simple_symbols[1];
+  int bit_xor = active->encoder->msb() ? 7 : 0;
+  while (position < bit_length && count < symbols_free) {
+    int shift = (position & 7) ^ bit_xor;
+    symbols[count++].val = (bytes[position >> 3] & (1 << shift)) ? bit1 : bit0;
+    position++;
+  }
+  if (position == bit_length && count < symbols_free) {
+    symbols[count++].val = active->simple_symbols[2];
+    position++;
+  }
+  *done = position > bit_length;
+  return count;
 }
 
 IRAM_ATTR static size_t encoder_callback(const void* data,
@@ -868,7 +915,7 @@ static Object* transmit(Process* process,
     // maximum length of all possible sequences.
     size_t min_chunk_size = pattern_encoder_resource->encoder()->max_symbol_length();
     rmt_simple_encoder_config_t encoder_cfg = {
-      .callback = encoder_callback,
+      .callback = active_encoder->encoder->simple_bits() ? bit_encoder_callback : encoder_callback,
       .arg = active_encoder,
       .min_chunk_size = min_chunk_size,
     };
