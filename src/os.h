@@ -35,7 +35,8 @@ class Thread {
   // and proper mutex checks with take place.
   static void ensure_system_thread();
 
-  // Returns true for success, false for malloc failure.
+  // Stack size is in bytes; zero selects the platform default.
+  // Returns true for success, false if the thread cannot be created.
   bool spawn(int stack_size = 0, int core = -1);
   void run();  // Run on current thread.
 
