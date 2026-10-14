@@ -82,6 +82,12 @@ namespace toit {
   M(bignum,  MODULE_BIGNUM)                  \
   M(unix_socket, MODULE_UNIX_SOCKET)         \
   M(one_wire, MODULE_ONE_WIRE)               \
+  M(watchdog, MODULE_WATCHDOG)               \
+
+#define MODULE_WATCHDOG(PRIMITIVE)           \
+  PRIMITIVE(start, 1)                        \
+  PRIMITIVE(feed, 0)                         \
+  PRIMITIVE(stop, 0)                         \
 
 // Dedicated 1-Wire controller operations. Protocol/device logic lives in the
 // one_wire package, which also provides an RMT backend on other platforms.
