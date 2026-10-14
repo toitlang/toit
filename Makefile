@@ -275,7 +275,10 @@ ec618-base: check-env host-tools
 		--nm=$(EC618_GCC_PATH)/bin/arm-none-eabi-nm \
 		--manifest=$(BUILD)/ec618-base/base-manifest.json
 
-ec618: check-env host-tools
+# Keep each .ONESHELL recipe short: Windows command launching can truncate
+# long recipes before the final checks, even while reporting success.
+.PHONY: ec618-link ec618-relocations
+ec618-link: check-env host-tools
 	# Build the EC618 VM library.
 	mkdir -p $(BUILD)/ec618
 	(cd $(BUILD)/ec618 && cmake $(CURDIR) -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=$(CURDIR)/toolchains/ec618.cmake -DEC618_GCC_PATH=$(EC618_GCC_PATH) --no-warn-unused-cli)
@@ -349,6 +352,8 @@ ec618: check-env host-tools
 		--readelf=$(EC618_GCC_PATH)/bin/arm-none-eabi-readelf \
 		--elf=$(BUILD)/ec618/toit-slot-a.elf \
 		--out=$(BUILD)/ec618/generated/toit_data_reloc.c --check
+
+ec618-relocations: ec618-link
 	# Assemble the full AP images: overlay each slot link onto the base image.
 	# The slot links confine all loadable bytes to the slot region (the .data
 	# init LMA rides in-slot, after the body), so this touches no base byte —
@@ -398,6 +403,8 @@ ec618: check-env host-tools
 		--out=$(BUILD)/ec618/slot-reloc.bin \
 		--data-out=$(BUILD)/ec618/slot-data.bin \
 		--verify-slot-b=$(BUILD)/ec618/ap-slot-b.bin
+
+ec618: ec618-relocations
 	# Prove the DEVICE relocator (src/slot_reloc_ec618.cc — the C++ that runs
 	# on the chip): relocate canonical == slot B and un-relocate slot B ==
 	# canonical, both whole-body and sector-chunked. The slot flash addresses are

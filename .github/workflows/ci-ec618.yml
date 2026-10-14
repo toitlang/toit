@@ -126,7 +126,10 @@ jobs:
 
       - name: Build EC618 firmware (slot vs base + guards + envelope)
         shell: bash
-        run: make ec618
+        run: |
+          make ec618
+          test -s build/ec618/firmware.envelope
+          test -s build/ec618/toit.binpkg
 
       - name: Record EC618 base build inputs
         shell: bash
