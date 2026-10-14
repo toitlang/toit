@@ -98,6 +98,21 @@ S3 receiver failures remain intermittent; one clean recovery run does not
 establish a fix. The independent results do not qualify indefinite streaming,
 first-frame fidelity or electrical timing margins.
 
+On the integrated v5 base, two default-buffer 96-kHz/24-bit duplex runs
+also fail at the EC618 endpoint, with underruns and overruns. These failures
+cannot be assigned solely to the S3 receiver. Subsequent repeats pass the
+complete independent SPI capture on both sampling edges and the ten-second
+EC618 capture; one also passes both native S3 receivers. The intermittency
+remains unresolved. A compiler-control comparison produces byte-identical
+32-bit test images, ruling out changed test code as its explanation.
+
+At this rate and width, the default ring holds about 43 ms per direction.
+An explicit 100-ms duplex request needs 153600 ring bytes alone and fails
+with `MALLOC_FAILED` in the integrated tester firmware, before streaming.
+Both allocation-failure runs recover to a healthy agent. Do not present
+100 ms as a qualified remedy for the intermittent default-buffer failure.
+Evidence is recorded in `docs/ec618-todo.md`, including failed attempts.
+
 EC618 Datasheet V1.3, section 7.5 specifies up to 96 kHz for 16/24-bit
 samples and 48 kHz for 32-bit samples. The driver rejects higher 32-bit
 rates in both roles, including explicit buffer-duration configurations.
