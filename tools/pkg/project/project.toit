@@ -137,6 +137,8 @@ class Project:
     lock-file.save
 
   same-major-version_ version/SemanticVersion -> SemanticVersion:
+    // For major 0 the caret only allows patch updates, so keep the minor.
+    if version.major == 0: return SemanticVersion --major=0 --minor=version.minor
     return SemanticVersion --major=version.major
 
   /**
@@ -247,7 +249,9 @@ class Project:
           dependency/Map := specification.dependencies[prefix]
           dependency[Specification.VERSION-KEY_] = requested-major == -1
               ? ">=0.0.0"
-              : "^$requested-major.0.0"
+              // Not '^N.0.0': for major 0 the caret only allows patch updates.
+              // The constraint is replaced with '^<picked>' after solving.
+              : ">=$requested-major.0.0,<$(requested-major + 1).0.0"
 
       solution := solve-and-download_
           --update-everything=prefixes.is-empty
