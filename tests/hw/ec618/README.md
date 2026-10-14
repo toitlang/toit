@@ -33,8 +33,19 @@ The Toit runner takes the shared rig lock through `flock`, checks the base
 identity and non-trial slot before each test, and checks health afterward.
 Failure triggers cancellation and a bounded recovery wait; successful
 recovery does not turn a failed test into a pass. It never flashes firmware.
-Coordinated bus tests still use the fixture procedure below; this standalone
-label does not cover their payload matrices.
+This standalone label does not cover coordinated bus payload matrices.
+
+For the breakout matrix, provision `fpc-target-s3.toit` on the S3 and run
+the classic ESP32 UART1 bridge. Configure `EC618_TEST_BUSES=ON`,
+`EC618_BUS_TARGET_PORT` and `EC618_BUS_BRIDGE`, then run CTest with
+`-C ec618 -L fpc-bus`. The four cases cover concurrent I2C0/I2C1, both
+alternate UART2 routes and SPI. `run-ec618-bus.toit` requires the exact
+`FPC-BUS-1` fixture identity, a complete case-specific controller verdict,
+and successful framed relay completion. It resets the target to idle and
+checks EC618 health after each case. CTest retains controller and relay
+output together. The bus and paired-I2S options require different resident
+S3 firmware and cannot be enabled together. These Toit runners do not add
+a Python dependency or provision either board.
 
 ## Paired I2S tests
 

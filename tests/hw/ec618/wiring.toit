@@ -147,3 +147,37 @@ S3-SPI0-MOSI-PIN ::= 5
 S3-SPI0-MISO-PIN ::= 4
 S3-I2C1-SCL-PIN ::= 13
 S3-I2C1-SDA-PIN ::= 12
+
+// FPC camera connector breakout, verified in both directions on 2026-10-07.
+// PAD22 was added and verified separately on 2026-10-11.
+// Each row is [EC618 PAD, S3 GPIO, printed breakout contact]. The breakout
+// numbering is reversed relative to ribbon-header-pinout.png: 25 - contact.
+// These nets are separate from the existing classic ESP32 harness above.
+FPC-TEST-WIRES ::= [
+  [19, 1, 8],    // PCLK/SCK, image contact 17.
+  [20, 2, 17],   // PWDN, image contact 8.
+  [18, 42, 12],  // XCLK, image contact 13.
+  [21, 41, 1],   // D2/SDO_0, image contact 24.
+  [27, 40, 22],  // Camera SDA, image contact 3.
+  [28, 39, 20],  // Camera SCL, image contact 5.
+  [22, 8, 2],   // D3/SDO_1, image contact 23 (marked NC in the image).
+]
+
+// Alternate peripheral routes on those verified FPC nets.
+EC618-FPC-I2C0-SDA-PAD ::= 27
+EC618-FPC-I2C0-SCL-PAD ::= 28
+EC618-FPC-I2C1-SDA-PAD ::= 19
+EC618-FPC-I2C1-SCL-PAD ::= 20
+EC618-FPC-UART2-RX-PAD ::= 27
+EC618-FPC-UART2-ALT-TX-PAD ::= 22
+EC618-FPC-UART2-ALT-RX-PAD ::= 21
+EC618-FPC-SPI0-CS-PAD ::= 18
+S3-FPC-I2C0-SDA-PIN ::= 40
+S3-FPC-I2C0-SCL-PIN ::= 39
+S3-FPC-I2C1-SDA-PIN ::= 1
+S3-FPC-I2C1-SCL-PIN ::= 2
+S3-FPC-UART2-TX-PIN ::= 40
+S3-FPC-UART2-RX-PIN ::= 39
+S3-FPC-UART2-ALT-TX-PIN ::= 41
+S3-FPC-UART2-ALT-RX-PIN ::= 8
+S3-FPC-SPI0-CS-PIN ::= 42

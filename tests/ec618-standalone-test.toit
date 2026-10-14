@@ -57,3 +57,16 @@ main:
             sleep --ms=1)
   expect-equals DEADLINE-EXCEEDED-ERROR failure
   expect-equals "health,execute,cancel,recover,health" (events.join ",")
+  [true, false].do: |test-success/bool|
+    events = []
+    failure = catch:
+      run-standalone
+          --health=(:: events.add "health")
+          --execute=(:: test-success)
+          --cancel=(:: events.add "cancel")
+          --recover=(:: events.add "recover")
+          --cleanup=(::
+            events.add "cleanup"
+            throw "fixture-error")
+    expect-equals (test-success ? "fixture-error" : "EC618 test failed") failure
+    expect-equals (test-success ? "health,cleanup,health" : "health,cancel,recover,cleanup,health") (events.join ",")

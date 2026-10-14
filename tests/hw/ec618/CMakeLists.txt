@@ -7,6 +7,7 @@ set(EC618_BOARD_PORT "$ENV{EC618_BOARD_PORT}" CACHE FILEPATH "Persistent EC618 U
 set(EC618_EXPECT_BASE "$ENV{EC618_EXPECT_BASE}" CACHE STRING "Required EC618 base identity")
 set(EC618_RIG_LOCK "$ENV{EC618_RIG_LOCK}" CACHE FILEPATH "Shared advisory lock for EC618 rig runners")
 include(standalone.cmake)
+include(bus.cmake)
 include(i2s.cmake)
 
 add_custom_target(check_ec618

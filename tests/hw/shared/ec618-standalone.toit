@@ -3,7 +3,8 @@
 // be found in the tests/LICENSE file.
 
 // Transport callbacks let host tests check failure and cleanup ordering.
-run-standalone --health/Lambda --execute/Lambda --cancel/Lambda --recover/Lambda:
+run-standalone --health/Lambda --execute/Lambda --cancel/Lambda --recover/Lambda
+    --cleanup/Lambda?=null:
   health.call
   returned := false
   failure/any := null
@@ -21,6 +22,11 @@ run-standalone --health/Lambda --execute/Lambda --cancel/Lambda --recover/Lambda
         if recovery-error:
           print "EC618 recovery wait failed: $recovery-error"
           cleanup-error = recovery-error
+      if cleanup:
+        fixture-error := catch: cleanup.call
+        if fixture-error:
+          print "EC618 fixture cleanup failed: $fixture-error"
+          cleanup-error = fixture-error
       health-error := catch: health.call
       if health-error:
         print "Final EC618 health failed: $health-error"
