@@ -1,0 +1,13 @@
+// Copyright line.
+main:
+  // Before the value.
+  value := 1  // Keep   every byte.
+  /* Opaque
+     alignment. */
+  return value
+
+class C:
+  configure
+      --x/int
+      -> bool:  // Keep header placement.
+    return true
