@@ -20,7 +20,6 @@
 #include "objects_inline.h"
 #include "vm.h"
 
-#include "event_sources/ble_esp32.h"
 #include "event_sources/lwip_esp32.h"
 #include "event_sources/system_esp32.h"
 #include "event_sources/timer.h"
@@ -40,9 +39,6 @@ void VM::load_platform_event_sources() {
 #endif
 #if defined(CONFIG_TOIT_CRYPTO)
   event_manager()->add_event_source(_new TlsEventSource());
-#endif
-#ifdef CONFIG_BT_ENABLED
-  event_manager()->add_event_source(_new BleEventSource());
 #endif
 }
 

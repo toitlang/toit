@@ -23,6 +23,12 @@
 #include "../os.h"
 #include "../utils.h"
 
+#if CONFIG_BT_CONTROLLER_ONLY
+#define BLE_HCI_QUEUE_SIZE 1
+#else
+#define BLE_HCI_QUEUE_SIZE 0
+#endif
+
 namespace toit {
 
 constexpr int GPIO_QUEUE_SIZE = 32;

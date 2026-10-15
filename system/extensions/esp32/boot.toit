@@ -45,11 +45,22 @@ class SystemImage extends ContainerImage:
     unreachable  // Not implemented yet.
 
 main:
+  run: null
+
+/**
+Boots the system with its core services and calls $install-providers before
+  starting application containers.
+
+The envelope build generates an entry point that installs the selected
+  optional providers. Custom system entry points can supply their own block.
+*/
+run [install-providers] -> none:
   registry ::= FlashRegistry.scan
   service-manager ::= SystemServiceManager
   (FirmwareServiceProvider).install
   (StorageServiceProviderEsp32 registry).install
   (WifiServiceProvider).install
+  install-providers.call
   container-manager := ContainerManager registry service-manager
   system-image := SystemImage container-manager
   container-manager.register-system-image system-image

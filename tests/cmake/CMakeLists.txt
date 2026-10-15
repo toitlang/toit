@@ -15,6 +15,15 @@
 
 include(${TOIT_SDK_SOURCE_DIR}/tools/toit.cmake)
 
+add_test(
+  NAME tests/cmake/system-providers
+  COMMAND ${CMAKE_COMMAND}
+      "-DSOURCE_DIR=${TOIT_SDK_SOURCE_DIR}"
+      "-DOUTPUT_DIR=${CMAKE_BINARY_DIR}/system-provider-test"
+      "-DTOIT=$<TARGET_FILE:toit>"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/system-providers.cmake"
+)
+
 # Tests the cmake rules.
 # This includes the dependency resolution of ADD_TOIT_SNAPSHOT and ADD_TOIT_EXE.
 

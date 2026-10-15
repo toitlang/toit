@@ -81,6 +81,18 @@ namespace toit {
   M(espnow,  MODULE_ESPNOW)                  \
   M(bignum,  MODULE_BIGNUM)                  \
   M(unix_socket, MODULE_UNIX_SOCKET)         \
+  M(ble_hci, MODULE_BLE_HCI)                 \
+
+#define MODULE_BLE_HCI(PRIMITIVE)            \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(open, 2)                         \
+  PRIMITIVE(receive, 2)                      \
+  PRIMITIVE(send, 2)                         \
+  PRIMITIVE(close, 2)                        \
+  PRIMITIVE(diagnostics, 1)                  \
+  PRIMITIVE(test, 3)                         \
+  PRIMITIVE(open_management, 1)              \
+  PRIMITIVE(tx_power, 3)                     \
 
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(write_on_stdout, 2)              \
@@ -639,7 +651,8 @@ namespace toit {
   PRIMITIVE(ec_verify, 4)                    \
   PRIMITIVE(ec_get_private_key_der, 2)       \
   PRIMITIVE(ec_get_public_key_der, 1)        \
-  PRIMITIVE(ec_compute_shared_secret, 2)
+  PRIMITIVE(ec_compute_shared_secret, 2)     \
+  PRIMITIVE(constant_time_equals, 2)
   
 #define MODULE_CRYPTO_RANDOM(PRIMITIVE)      \
   PRIMITIVE(random, 1)                       \
@@ -1224,6 +1237,8 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_WifiResourceGroup(N, name)   MAKE_UNPACKING_MACRO(WifiResourceGroup, N, name)
 #define _A_T_EthernetResourceGroup(N, name) MAKE_UNPACKING_MACRO(EthernetResourceGroup, N, name)
 #define _A_T_BleResourceGroup(N, name)    MAKE_UNPACKING_MACRO(BleResourceGroup, N, name)
+#define _A_T_BleHciResourceGroup(N, name) MAKE_UNPACKING_MACRO(BleHciResourceGroup, N, name)
+#define _A_T_BleHciResource(N, name)      MAKE_UNPACKING_MACRO(BleHciResource, N, name)
 #define _A_T_X509ResourceGroup(N, name)   MAKE_UNPACKING_MACRO(X509ResourceGroup, N, name)
 #define _A_T_PwmResourceGroup(N, name)    MAKE_UNPACKING_MACRO(PwmResourceGroup, N, name)
 #define _A_T_RpcResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RpcResourceGroup, N, name)

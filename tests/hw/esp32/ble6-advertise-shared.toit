@@ -225,10 +225,8 @@ test-central:
   saw-device := false
   central.scan --duration=(Duration --s=1) --limited-only: | device/RemoteScannedDevice |
     if device.identifier == identifier:
-      // Currently reachable due to https://github.com/espressif/esp-nimble/issues/80.
-      // This block should be unreachable.
       saw-device = true
-  expect saw-device  // Until the issue is fixed, we expect to see the device.
+  expect-not saw-device
   // But we should find the device with general scanning.
   while true:  // Use a loop to be able to break out of the block.
     central.scan --duration=(Duration --s=3): | device/RemoteScannedDevice |

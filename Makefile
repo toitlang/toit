@@ -427,6 +427,9 @@ endif
 
 IDF_PY := "$(IDF_PATH)/tools/idf.py"
 
+ESP32_BUILD_DIR := $(BUILD)/$(ESP32_CHIP)
+ESP32_IDF_ARGS :=
+
 .PHONY: esp32
 esp32:
 	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source '$(IDF_PATH)/export.sh'; fi; \
@@ -434,7 +437,7 @@ esp32:
 
 .PHONY: esp32-no-env
 esp32-no-env: check-env check-esp32-env sdk
-	cmake -E env IDF_TARGET=$(IDF_TARGET) IDF_CCACHE_ENABLE=1 python$(EXE_SUFFIX) $(IDF_PY) -C toolchains/$(ESP32_CHIP) -B $(BUILD)/$(ESP32_CHIP) -p "$(ESP32_PORT)" build
+	cmake -E env IDF_TARGET=$(IDF_TARGET) IDF_CCACHE_ENABLE=1 python$(EXE_SUFFIX) $(IDF_PY) -C toolchains/$(ESP32_CHIP) -B $(ESP32_BUILD_DIR) $(ESP32_IDF_ARGS) -p "$(ESP32_PORT)" build
 
 .PHONY: esp32c3
 esp32c3:

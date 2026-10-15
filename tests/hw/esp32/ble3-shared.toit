@@ -3,17 +3,10 @@
 // be found in the tests/LICENSE file.
 
 /**
-Exercises the GC while using BLE.
-
-Unfortunately it's almost impossible to trigger the GC in the
-  nimBLE callback this way.
+Exercises application-side GC while using the BLE service provider.
 
 Run `ble3-board1.toit` on board1, first.
 Once that one is running, run `ble3-board2.toit` on board2.
-
-As of 2024-04-24 the test is still somewhat flaky. Board2 sometimes gets
-  disconnected which then leads to an NimBLE error it can't recover from
-  leading to a crash in native code.
 */
 
 import ble show *

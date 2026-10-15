@@ -1,0 +1,69 @@
+# Copyright (C) 2026 Toit contributors.
+# Use of this source code is governed by a Zero-Clause BSD license that can
+# be found in the tests/LICENSE file.
+
+name: Optional BLE interoperability
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bumble:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: ./actions/setup-build
+        with:
+          toit-dir: .
+          cache-key-prefix: ble-interop
+      - name: Build host SDK
+        run: |
+          cmake -S . -B build/ble-ci -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_FLAGS_RELEASE=-Os \
+            -DCMAKE_CXX_FLAGS_RELEASE=-Os
+          cmake --build build/ble-ci --target build_envelope -j2
+      - name: Run BLE and crypto host regressions
+        run: |
+          ctest --test-dir build/ble-ci \
+            -R '^tests/(ble-.*|crypto-.*)-test.toit$' \
+            --output-on-failure --output-log build/ble-host-tests.log -j2
+      - name: Install optional peer
+        run: |
+          python3 -m venv build/ble-python
+          build/ble-python/bin/python -m pip install -r tests/ble-interop/requirements.txt
+          build/ble-python/bin/python -m pip freeze > build/ble-peer-packages.txt
+      - name: Check independent radio test helpers without hardware
+        shell: bash
+        run: |
+          set -euo pipefail
+          for test in tests/ble-interop/*-test.py; do
+            echo "Running $test"
+            build/ble-python/bin/python "$test"
+          done 2>&1 | tee build/ble-radio-helper-tests.log
+      - name: Run independent software peer
+        run: |
+          build/ble-python/bin/python tests/ble-interop/run.py \
+            --toit-run build/ble-ci/sdk/lib/toit/bin/toit.run \
+            --output build/ble-interop-results
+      - name: Preserve verdicts and traces
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ble-interop-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build/ble-interop-results/
+            build/ble-peer-packages.txt
+            build/ble-host-tests.log
+            build/ble-radio-helper-tests.log
+          if-no-files-found: warn

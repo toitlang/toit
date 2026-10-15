@@ -257,6 +257,16 @@ menu "Toit"
             help
                 Enables the possibility of allocating Toit heap in the SPIRAM.
 
+        config TOIT_SYSTEM_BLE
+            boolean "Include BLE provider in the system container"
+            default y
+            depends on BT_CONTROLLER_ONLY
+            help
+                Includes the Toit BLE provider in the default system container.
+                Disable this to supply a BLE provider in a separate container.
+                Only available when the native controller-only HCI transport is enabled.
+                Custom TOIT_SYSTEM_SOURCE entry points select their own providers.
+
         config TOIT_SYSTEM_SOURCE
             string "Toit source file for system"
             default "system/extensions/esp32/boot.toit"
@@ -264,6 +274,9 @@ menu "Toit"
                 The Toit source file used to compile the system snapshot. The system is responsible for bringing up
                 basic Toit services. The file should be absolute, relative to the project dir or relative to
                 the Toit root dir (resolved in that order).
+                For the default boot.toit, the build generates an entry point that installs
+                the providers selected by TOIT_SYSTEM_* options. Custom entry points are
+                compiled unchanged and are responsible for installing their own providers.
 
         config TOIT_SYSTEM_SOURCE_PROJECT_ROOT
             string "Project root for system source"

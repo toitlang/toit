@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.11)
 
 set(TOIT_BASE_DIR ${COMPONENT_PATH}/../../../..)
+include("${CMAKE_CURRENT_LIST_DIR}/system-providers.cmake")
 
 # esp_psram is listed explicitly so that a build restricted with -DCOMPONENTS
 # still initializes PSRAM; nothing else pulls it in once lwIP is not built.
@@ -14,6 +15,12 @@ endif()
 # Register without sources, this will create an INTERFACE lib and we can then specify link options later
 idf_component_register(INCLUDE_DIRS "${TOIT_BASE_DIR}/src" "${TOIT_BASE_DIR}/include"
         REQUIRES ${TOIT_COMPONENT_REQUIRES})
+
+if(CONFIG_BT_ENABLED AND NOT CONFIG_BT_CONTROLLER_ONLY)
+    message(FATAL_ERROR
+        "Toit provides the BLE host. NimBLE and Bluedroid are not supported. "
+        "Select CONFIG_BT_CONTROLLER_ONLY=y, or disable CONFIG_BT_ENABLED.")
+endif()
 
 cmake_policy(SET CMP0079 NEW)
 
@@ -88,6 +95,14 @@ function(toit_postprocess)
     add_dependencies(flash firmware)
     resolve_file(BOOT ${CONFIG_TOIT_SYSTEM_SOURCE} ${TOIT_BASE_DIR} "system toit")
     resolve_file(BOOT_PROJECT_ROOT ${CONFIG_TOIT_SYSTEM_SOURCE_PROJECT_ROOT} ${TOIT_BASE_DIR} "")
+
+    get_filename_component(BOOT_REAL_PATH "${BOOT}" REALPATH)
+    get_filename_component(DEFAULT_BOOT "${TOIT_BASE_DIR}/system/extensions/esp32/boot.toit" REALPATH)
+    if(BOOT_REAL_PATH STREQUAL DEFAULT_BOOT)
+        get_filename_component(SYSTEM_DIR "${TOIT_BASE_DIR}/system" ABSOLUTE)
+        toit_generate_system_entry("${CMAKE_BINARY_DIR}/toit-system" "${SYSTEM_DIR}")
+        set(BOOT "${CMAKE_BINARY_DIR}/toit-system/boot.toit")
+    endif()
 
     if (EXISTS ${BOOT_PROJECT_ROOT})
         set(BOOT_PROJECT_ROOT_ARGS "--project-root" "${BOOT_PROJECT_ROOT}")
