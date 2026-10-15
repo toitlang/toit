@@ -87,6 +87,9 @@ static Source::Range class_reference_range(ast::Expression* expression) {
   if (expression->is_Nullable()) {
     return class_reference_range(expression->as_Nullable()->type());
   }
+  if (expression->is_ParameterizedType()) {
+    return class_reference_range(expression->as_ParameterizedType()->type());
+  }
   if (expression->is_Dot()) {
     return expression->as_Dot()->name()->selection_range();
   }

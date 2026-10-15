@@ -1,0 +1,28 @@
+tests/negative/generic-syntax-test.toit:5:13: error: Type parameters can't be empty
+class Empty<>:
+            ^
+tests/negative/generic-syntax-test.toit:7:17: error: Expected ',' or '>' in type parameters
+class Unclosed<T:
+                ^
+tests/negative/generic-syntax-test.toit:9:11: error: Type arguments can't be empty
+foo x/List<> -> none:
+          ^~
+tests/negative/generic-syntax-test.toit:10:16: error: Expected ',' or '>' in type arguments
+bar x/List<int -> none:
+               ^~
+tests/negative/generic-syntax-test.toit:11:16: error: Trailing comma in type arguments
+gee x/List<int,> -> none:
+               ^
+tests/negative/generic-syntax-test.toit:12:28: error: Expected ',' or '>' in type arguments
+missing-comma x/Map<string int> -> none:
+                           ^~~
+tests/negative/generic-syntax-test.toit:12:31: error: Unexpected token: >
+missing-comma x/Map<string int> -> none:
+                              ^
+tests/negative/generic-syntax-test.toit:12:17: error: Class 'Map' expects 2 type arguments, got 1
+missing-comma x/Map<string int> -> none:
+                ^~~
+tests/negative/generic-syntax-test.toit:15:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Compilation failed

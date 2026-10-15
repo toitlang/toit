@@ -16,6 +16,7 @@
 #include "type_check.h"
 
 #include <stdarg.h>
+#include <functional>
 #include <string>
 
 #include "cycle_detector.h"
@@ -198,13 +199,20 @@ class TypeChecker : public ReturningVisitor<Type> {
       check_deprecated(node->range(), field);
     }
     auto value_type = visit(node->value());
-    check(node->range(), field->type(), value_type);
+    check(node->range(), field_type(node->receiver(), field), value_type);
     return value_type;
   }
 
   Type visit_FieldLoad(FieldLoad* node) {
     check_deprecated(node->range(), node->field());
-    return node->field()->type();
+    return field_type(node->receiver(), node->field());
+  }
+
+  /// The type of [field] as seen through [receiver] (usually `this`, which
+  /// may be a subclass of the field's holder with concrete type arguments).
+  Type field_type(Expression* receiver, Field* field) {
+    auto receiver_type = visit(receiver);
+    return field->type().substitute(type_environment(receiver_type, field->holder()));
   }
 
   Type visit_Sequence(Sequence* node) {
@@ -347,6 +355,10 @@ class TypeChecker : public ReturningVisitor<Type> {
     auto target = node->target();
     auto method = target->target();
     check_deprecated(target->range(), method);
+    // Constructors, factories and statics of generic classes have no receiver
+    // to take type arguments from, and there is no inference: the holder's
+    // type parameters are erased to `any`.
+    auto environment = environment_of(method->holder(), List<Type>());
     auto parameters = method->parameters();
     int parameter_offset = node->is_CallConstructor() ? 1 : 0;
     if (arguments.length() + parameter_offset != parameters.length()) {
@@ -355,12 +367,12 @@ class TypeChecker : public ReturningVisitor<Type> {
       for (int i = 0; i < arguments.length(); i++) {
         // TODO(florian): provide more context in the error message.
         auto parameter = parameters[i + parameter_offset];
-        auto parameter_type = parameter->type();
+        auto parameter_type = parameter->type().substitute(environment);
         if (parameter->has_default_value()) parameter_type = parameter_type.to_nullable();
         check_parameter(arguments[i]->range(), parameter, parameter_type, argument_types[i]);
       }
     }
-    return method->return_type();
+    return method->return_type().substitute(environment);
   }
 
   Type visit_Lambda(Lambda* node) { return visit_CallStatic(node); }
@@ -377,7 +389,8 @@ class TypeChecker : public ReturningVisitor<Type> {
     }
     auto arguments = node->arguments();
 
-    if (receiver_type.is_any()) {
+    // Type parameters have no bounds, so nothing is known about their members.
+    if (receiver_type.is_any() || receiver_type.is_type_parameter()) {
       for (auto argument : arguments) visit(argument);
       return Type::any();
     }
@@ -410,6 +423,10 @@ class TypeChecker : public ReturningVisitor<Type> {
 
     check_deprecated(node->range(), method);
 
+    // Members of generic classes are declared in terms of the holder's type
+    // parameters; instantiate them with the receiver's type arguments.
+    auto environment = type_environment(receiver_type, method->holder());
+
     auto parameters = method->parameters();
     int argument_offset = 1;  // For the receiver, which is given as first argument.
     CallBuilder::match_arguments_with_parameters(node->shape(),
@@ -418,7 +435,7 @@ class TypeChecker : public ReturningVisitor<Type> {
       if (argument_pos == 0) return;  // The `this` parameter.
       auto argument = arguments[argument_pos - argument_offset];
       auto argument_type = argument_types[argument_pos - argument_offset];
-      auto parameter_type = parameters[parameter_pos]->type();
+      auto parameter_type = parameters[parameter_pos]->type().substitute(environment);
       if (parameters[parameter_pos]->has_default_value()) parameter_type = parameter_type.to_nullable();
 
       // The interpreter shortcuts the `null` equality, and the argument type thus
@@ -448,7 +465,7 @@ class TypeChecker : public ReturningVisitor<Type> {
         if (argument_types[0] == float_type_) return float_type_;
       }
     }
-    return method->return_type();
+    return method->return_type().substitute(environment);
   }
 
   Type visit_CallBlock(CallBlock* node) { return visit_Call(node); }
@@ -520,7 +537,11 @@ class TypeChecker : public ReturningVisitor<Type> {
 
   Type visit_Return(Return* node) {
     auto value_type = visit(node->value());
-    if (node->depth() == -1) {
+    // The implicit `return null` at the end of a method is a runtime as-check
+    // for class types. Type parameters are erased, so it stays a plain return.
+    bool is_erased_fallthrough = node->is_end_of_method_return() &&
+        method_->return_type().is_type_parameter();
+    if (node->depth() == -1 && !is_erased_fallthrough) {
       check(node->range(), method_->return_type(), value_type);
     }
     return Type::none();
@@ -763,13 +784,28 @@ class TypeChecker : public ReturningVisitor<Type> {
     if (receiver_type.is_nullable() && value_type == null_type_) return;
     if (receiver_type == value_type) return;  // This also covers `Null_` == `null`.
 
+    if (receiver_type.is_type_parameter() || value_type.is_type_parameter()) {
+      // Type parameters are opaque: only `any` and the parameter itself are compatible.
+      if (!receiver_type.is_nullable() && value_type == null_type_) {
+        report_error(range,
+                     "Type mismatch: can't assign 'null' to non-nullable '%s'",
+                     type_name(receiver_type, false).c_str());
+      } else {
+        report_error(range,
+                     "Type mismatch. Expected '%s'. Got '%s'",
+                     type_name(receiver_type, false).c_str(),
+                     type_name(value_type, false).c_str());
+      }
+      return;
+    }
+
     auto receiver_class = receiver_type.klass();
     auto value_class = value_type.klass();
     auto receiver_name = receiver_class->name();
     auto value_name = value_class->name();
     if (!receiver_type.is_nullable() && value_type == null_type_) {
       if (receiver_name.is_valid()) {
-        report_error(range, "Type mismatch: can't assign 'null' to non-nullable '%s'", receiver_name.c_str());
+        report_error(range, "Type mismatch: can't assign 'null' to non-nullable '%s'", type_name(receiver_type, false).c_str());
       } else {
         // The receiver-type has no name.
         ASSERT(method_->is_factory() && receiver_class == method_->holder());
@@ -792,13 +828,20 @@ class TypeChecker : public ReturningVisitor<Type> {
       return;
     }
     ASSERT(receiver_type.is_class() && value_type.is_class());
-    if (is_subtype_of(value_class, receiver_class)) return;
+    if (is_subtype_of(value_class, receiver_class)) {
+      if (arguments_assignable(receiver_type, value_type)) return;
+      report_error(range,
+                   "Type mismatch. Expected '%s'. Got '%s'",
+                   type_name(receiver_type, false).c_str(),
+                   type_name(value_type, false).c_str());
+      return;
+    }
     if (receiver_name.is_valid() && value_name.is_valid()) {
       // TODO(florian); fix internal names (such as "_SmallInteger").
       report_error(range,
                    "Type mismatch. Expected '%s'. Got '%s'",
-                   receiver_name.c_str(),
-                   value_name.c_str());
+                   type_name(receiver_type, false).c_str(),
+                   type_name(value_type, false).c_str());
     } else if (value_name.is_valid()) {
       // The receiver-type has no name.
       ASSERT(method_->is_factory() && receiver_class == method_->holder());
@@ -834,6 +877,78 @@ class TypeChecker : public ReturningVisitor<Type> {
     return false;
   }
 
+  typedef std::function<Type (TypeParameter*)> Environment;
+
+  static List<Type> substitute_all(List<Type> types, const Environment& environment) {
+    if (types.is_empty()) return types;
+    auto result = ListBuilder<Type>::allocate(types.length());
+    for (int i = 0; i < types.length(); i++) {
+      result[i] = types[i].substitute(environment);
+    }
+    return result;
+  }
+
+  /// Maps the type parameters of [klass] to [arguments].
+  /// Raw types (empty [arguments]) map every parameter to `any`.
+  static Environment environment_of(Class* klass, List<Type> arguments) {
+    return [=](TypeParameter* parameter) -> Type {
+      if (parameter->holder() != klass || arguments.is_empty()) return Type::any();
+      return arguments[parameter->index()];
+    };
+  }
+
+  /// Computes the type arguments of `klass<arguments>` as seen from [target],
+  /// a transitive supertype of [klass], by following the declared supertypes
+  /// and substituting along the way.
+  /// Returns false if [target] isn't reachable.
+  static bool arguments_for(Class* klass, List<Type> arguments, Class* target, List<Type>* result) {
+    if (klass == target) {
+      *result = arguments;
+      return true;
+    }
+    auto environment = environment_of(klass, arguments);
+    if (klass->super() != null &&
+        arguments_for(klass->super(), substitute_all(klass->super_arguments(), environment), target, result)) {
+      return true;
+    }
+    for (auto type : klass->declared_interfaces()) {
+      if (arguments_for(type.klass(), substitute_all(type.arguments(), environment), target, result)) return true;
+    }
+    for (auto type : klass->declared_mixins()) {
+      if (arguments_for(type.klass(), substitute_all(type.arguments(), environment), target, result)) return true;
+    }
+    return false;
+  }
+
+  /// The environment for members declared in [holder] when accessed through
+  /// a receiver of type [receiver_type].
+  static Environment type_environment(Type receiver_type, Class* holder) {
+    List<Type> arguments;
+    if (holder != null && receiver_type.is_class()) {
+      arguments_for(receiver_type.klass(), receiver_type.arguments(), holder, &arguments);
+    }
+    return environment_of(holder, arguments);
+  }
+
+  /// Whether the type arguments of [value_type] fit [receiver_type]. Both must
+  /// be class types where the value's class is a subtype of the receiver's.
+  /// Type arguments are covariant, and raw types match everything.
+  bool arguments_assignable(Type receiver_type, Type value_type) {
+    auto receiver_arguments = receiver_type.arguments();
+    if (receiver_arguments.is_empty()) return true;
+    List<Type> value_arguments;
+    if (!arguments_for(value_type.klass(), value_type.arguments(), receiver_type.klass(), &value_arguments)) {
+      // Can't happen when the classes are related; be lenient.
+      return true;
+    }
+    if (value_arguments.is_empty()) return true;
+    if (value_arguments.length() != receiver_arguments.length()) return true;
+    for (int i = 0; i < receiver_arguments.length(); i++) {
+      if (!is_assignable(receiver_arguments[i], value_arguments[i])) return false;
+    }
+    return true;
+  }
+
   /// Whether a value of [value_type] can be used where [receiver_type] is
   /// expected, following the same rules as [check], but without reporting
   /// any diagnostics.
@@ -844,8 +959,10 @@ class TypeChecker : public ReturningVisitor<Type> {
     if (receiver_type.is_none() || value_type.is_none()) return false;
     if (receiver_type == value_type) return true;  // This also covers `Null_` == `null`.
     if (value_type == null_type_) return receiver_type.is_nullable();
+    if (receiver_type.is_type_parameter() || value_type.is_type_parameter()) return false;
     if (value_type == boolean_type_ && is_a_bool(receiver_type)) return true;
-    return is_subtype_of(value_type.klass(), receiver_type.klass());
+    if (!is_subtype_of(value_type.klass(), receiver_type.klass())) return false;
+    return arguments_assignable(receiver_type, value_type);
   }
 
   /// Checks an argument against a parameter, taking `// __TYPE-MIGRATION__`
@@ -894,12 +1011,27 @@ class TypeChecker : public ReturningVisitor<Type> {
                  got.c_str());
   }
 
-  std::string type_name(Type type) {
+  /// The source-like name of [type], including type arguments.
+  /// Existing diagnostics don't print the top-level `?`, so it's optional.
+  std::string type_name(Type type, bool include_nullable = true) {
     if (type.is_any()) return "any";
     if (type.is_none()) return "none";
-    auto klass_name = type.klass()->name();
-    std::string result(klass_name.is_valid() ? klass_name.c_str() : "<unknown>");
-    if (type.is_nullable()) result += "?";
+    std::string result;
+    if (type.is_type_parameter()) {
+      result = type.parameter()->name().c_str();
+    } else {
+      auto klass_name = type.klass()->name();
+      result = klass_name.is_valid() ? klass_name.c_str() : "<unknown>";
+      if (type.has_arguments()) {
+        result += "<";
+        for (int i = 0; i < type.arguments().length(); i++) {
+          if (i != 0) result += ", ";
+          result += type_name(type.arguments()[i]);
+        }
+        result += ">";
+      }
+    }
+    if (include_nullable && type.is_nullable()) result += "?";
     return result;
   }
 

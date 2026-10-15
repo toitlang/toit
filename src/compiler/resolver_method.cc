@@ -344,6 +344,21 @@ ir::Type MethodResolver::resolve_type(ast::Expression* type, bool is_return_type
     return resolved.to_nullable();
   }
 
+  if (type->is_ParameterizedType()) {
+    auto parameterized = type->as_ParameterizedType();
+    auto base = resolve_type(parameterized->type(), is_return_type);
+    if (base.is_type_parameter()) {
+      report_error(type, "Type parameter '%s' can't have type arguments", base.parameter()->name().c_str());
+      return ir::Type::any();
+    }
+    // Errors for unresolved bases have already been reported.
+    if (!base.is_class()) return base;
+    return apply_type_arguments(base.klass(),
+                                parameterized,
+                                [&](ast::Expression* argument) { return resolve_type(argument, false); },
+                                diagnostics());
+  }
+
   {
     // Start by checking that there isn't any `super` or `this` in the type.
     // Linearize the type, so we can check it from left to right.
@@ -382,6 +397,9 @@ ir::Type MethodResolver::resolve_type(ast::Expression* type, bool is_return_type
     type_declaration = lookup(type_name).entry;
     if (type->is_LspSelection()) {
       lsp_->selection_handler()->type(type, scope(), type_declaration, is_return_type);
+    }
+    if (type_declaration.is_type_parameter()) {
+      return ir::Type(type_declaration.type_parameter());
     }
   } else if (type->is_Dot()) {
     auto dot = type->as_Dot();
@@ -475,7 +493,7 @@ void MethodResolver::resolve_fill_field_stub() {
 
   int parameter_index = 0;
   auto this_parameter = zone_new<ir::Parameter>(MethodResolver::this_identifier(),
-                                           ir::Type(holder_),
+                                           holder_->self_type(),
                                            false,  // Not a block.
                                            parameter_index++,
                                            false,
@@ -589,7 +607,7 @@ void MethodResolver::resolve_fill_constructor() {
   std::vector<ir::Expression*> parameter_expressions;
   if (is_synthetic_constructor) {
     auto ir_parameter = zone_new<ir::Parameter>(MethodResolver::this_identifier(),
-                                           ir::Type(holder_),
+                                           holder_->self_type(),
                                            false,  // Not a block.
                                            0,
                                            false,
@@ -1258,7 +1276,7 @@ void MethodResolver::_resolve_parameters(
   if (has_implicit_this) {
     ASSERT(id_offset == 0);
     auto implicit_this = zone_new<ir::Parameter>(MethodResolver::this_identifier(),
-                                            ir::Type(holder_),
+                                            holder_->self_type(),
                                             false,  // Not a block
                                             0,
                                             false,
@@ -1438,8 +1456,8 @@ void MethodResolver::_resolve_parameters(
     }
 
     // No need to typecheck the `any` type, and don't try to typecheck in abstract methods.
-    if (!type.is_any()) {
-      ASSERT(type.is_class());
+    // Type parameters are erased and can't be checked either.
+    if (type.is_class()) {
       auto check = zone_new<ir::Typecheck>(ir::Typecheck::PARAMETER_AS_CHECK,
                                       zone_new<ir::ReferenceLocal>(ir_parameter, 0, parameter->selection_range()),
                                       type,
@@ -3437,9 +3455,18 @@ ir::Expression* MethodResolver::_as_or_is(ast::Binary* node) {
     report_error(ast_right, "'none' is not a valid type for '%s' checks", kind_str);
     type = ir::Type::any();
     type_name = Symbols::none;
+  } else if (type.is_type_parameter()) {
+    // Type parameters are erased.
+    report_error(ast_right, "Can't check type parameter '%s' at runtime", type.parameter()->name().c_str());
+    type = ir::Type::any();
+    type_name = Symbols::any;
   } else if (type.is_any()) {
     type_name = Symbols::any;
   } else {
+    if (!is_as && type.has_arguments()) {
+      // Type arguments are erased, so an `is` check can't verify them.
+      report_error(ast_right, "Type arguments aren't checked at runtime");
+    }
     ASSERT(type.is_class());
     type_name = type.klass()->name();
   }
@@ -3578,8 +3605,7 @@ ir::Expression* MethodResolver::_define(ast::Expression* node,
                            ir_right->is_block(),
                            type,
                            ast_declaration->name()->selection_range());
-    if (type.is_valid() && !type.is_any() && !ir_right->is_LiteralUndefined()) {
-      ASSERT(type.is_class());
+    if (type.is_class() && !ir_right->is_LiteralUndefined()) {
       ir_right = zone_new<ir::Typecheck>(ir::Typecheck::LOCAL_AS_CHECK,
                                     ir_right,
                                     type,

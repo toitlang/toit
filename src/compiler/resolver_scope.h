@@ -127,6 +127,7 @@ class ResolutionEntry {
     NODES,
     PREFIX,
     AMBIGUOUS,
+    TYPE_PARAMETER,
   };
 
   ResolutionEntry() : kind_(NODES), nodes_(List<ir::Node*>()) {}
@@ -136,6 +137,8 @@ class ResolutionEntry {
       : kind_(NODES), nodes_(ListBuilder<ir::Node*>::build(node)) {}
 
   explicit ResolutionEntry(ImportScope* prefix) : kind_(PREFIX), prefix_(prefix) {}
+  explicit ResolutionEntry(ir::TypeParameter* parameter)
+      : kind_(TYPE_PARAMETER), type_parameter_(parameter) {}
 
   // Used for ambiguous nodes.
   explicit ResolutionEntry(Kind kind) : kind_(kind), nodes_(List<ir::Node*>()) {}
@@ -180,11 +183,19 @@ class ResolutionEntry {
     return prefix_;
   }
 
+  bool is_type_parameter() const { return kind_ == TYPE_PARAMETER; }
+
+  ir::TypeParameter* type_parameter() const {
+    ASSERT(kind_ == TYPE_PARAMETER);
+    return type_parameter_;
+  }
+
  private:
   Kind kind_;
   union {
     List<ir::Node*> nodes_;
     ImportScope* prefix_;
+    ir::TypeParameter* type_parameter_;
   };
 };
 
