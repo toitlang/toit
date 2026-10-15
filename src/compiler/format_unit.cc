@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "format_declaration.h"
+#include "format_source.h"
 #include "format_statement.h"
 
 namespace toit {
@@ -24,31 +25,60 @@ class UnitPrinter {
  public:
   UnitPrinter(Source* source,
               const FormatStyle& style,
-              const FormatExpressionOptions& expression_options)
+              const FormatExpressionOptions& expression_options,
+              FormatCommentState* comments)
       : source_(source)
       , style_(style)
-      , expression_options_(expression_options) {}
+      , expression_options_(expression_options)
+      , comments_(comments) {}
 
   bool run(Unit* unit, std::string* result) {
     std::vector<std::string> sections;
     std::vector<std::string> directives;
+    int cursor = 0;
     for (auto import : unit->imports()) {
       std::string text;
-      if (!format_import(import, &text)) return false;
+      if (!leading(import, 0, cursor, &text)) return false;
+      std::string directive;
+      if (has_comment_on_first_line(import)) {
+        directive = verbatim(import, 0);
+      } else if (!format_import(import, &directive)) {
+        return false;
+      }
+      if (!text.empty()) text += "\n";
+      text += directive;
       directives.push_back(std::move(text));
+      cursor = end(import);
     }
     for (auto export_ : unit->exports()) {
       std::string text;
-      if (!format_export(export_, &text)) return false;
+      if (!leading(export_, 0, cursor, &text)) return false;
+      std::string directive;
+      if (has_comment_on_first_line(export_)) {
+        directive = verbatim(export_, 0);
+      } else if (!format_export(export_, &directive)) {
+        return false;
+      }
+      if (!text.empty()) text += "\n";
+      text += directive;
       directives.push_back(std::move(text));
+      cursor = end(export_);
     }
     if (!directives.empty()) sections.push_back(join(directives, "\n"));
 
     for (auto node : unit->declarations()) {
       std::string text;
+      std::string prefix;
+      if (!leading(node, 0, cursor, &prefix)) return false;
       if (!declaration(node, 0, &text)) return false;
+      if (!prefix.empty()) text = prefix + "\n" + text;
       sections.push_back(std::move(text));
+      cursor = end(node);
     }
+    std::string trailing;
+    if (!comments_->render_own_line(
+        cursor, source_->size(), 0, &trailing)) return false;
+    if (!trailing.empty()) sections.push_back(std::move(trailing));
     *result = join(sections, "\n\n");
     if (!result->empty()) result->push_back('\n');
     return true;
@@ -58,6 +88,67 @@ class UnitPrinter {
   Source* source_;
   const FormatStyle& style_;
   const FormatExpressionOptions& expression_options_;
+  FormatCommentState* comments_;
+
+  const FormatSource* facts() const { return comments_->source(); }
+
+  int start(Node* node) const {
+    return source_->offset_in_source(node->full_range().from());
+  }
+
+  int end(Node* node) const {
+    return source_->offset_in_source(node->full_range().to());
+  }
+
+  int original_indentation(Node* node) const {
+    return facts()->lines()[facts()->line_index_at(start(node))].indentation;
+  }
+
+  bool leading(Node* node,
+               int indentation,
+               int cursor,
+               std::string* result) {
+    return comments_->render_own_line(
+        cursor,
+        start(node),
+        indentation - original_indentation(node),
+        result);
+  }
+
+  bool has_comment_on_first_line(Node* node) const {
+    int node_start = start(node);
+    int line = facts()->line_index_at(node_start);
+    return comments_->has_unconsumed_in(
+        node_start, facts()->lines()[line].to);
+  }
+
+  bool offset_is_in_comment(int offset) const {
+    for (const auto& comment : facts()->comments()) {
+      if (comment.from <= offset && offset < comment.to) return true;
+    }
+    return false;
+  }
+
+  int method_header_end(Method* method) const {
+    if (method->body() == null) return end(method);
+    int body_start = method->body()->expressions().is_empty()
+        ? end(method)
+        : start(method->body()->expressions().first());
+    const uint8* bytes = source_->text();
+    for (int offset = body_start - 1; offset >= start(method); offset--) {
+      if (bytes[offset] == ':' && !offset_is_in_comment(offset)) {
+        int line = facts()->line_index_at(offset);
+        return facts()->lines()[line].to;
+      }
+    }
+    return body_start;
+  }
+
+  std::string verbatim(Node* node, int indentation) {
+    int first = facts()->line_index_at(start(node));
+    int last = facts()->line_index_at(std::max(start(node), end(node) - 1));
+    return comments_->render_verbatim(first, last, indentation);
+  }
 
   static std::string indent(int indentation) {
     return std::string(indentation, ' ');
@@ -124,6 +215,12 @@ class UnitPrinter {
   }
 
   bool field(Field* field, int indentation, std::string* result) {
+    if (comments_->has_unconsumed_in(
+        start(field),
+        facts()->lines()[facts()->line_index_at(end(field))].to)) {
+      *result = verbatim(field, indentation);
+      return true;
+    }
     std::string prefix = indent(indentation);
     if (field->is_abstract()) prefix += "abstract ";
     if (field->is_static()) prefix += "static ";
@@ -158,6 +255,11 @@ class UnitPrinter {
   }
 
   bool method(Method* method, int indentation, std::string* result) {
+    int header_to = method_header_end(method);
+    if (comments_->has_unconsumed_in(start(method), header_to)) {
+      *result = verbatim(method, indentation);
+      return true;
+    }
     FormatOutput header;
     if (!format_method_header(method,
                               source_,
@@ -173,13 +275,18 @@ class UnitPrinter {
                            indentation + style_.indentation_step,
                            &body,
                            style_,
-                           expression_options_)) return false;
+                           expression_options_,
+                           comments_)) return false;
       if (!body.empty()) *result += "\n" + body;
     }
     return true;
   }
 
   bool class_(Class* klass, int indentation, std::string* result) {
+    if (has_comment_on_first_line(klass)) {
+      *result = verbatim(klass, indentation);
+      return true;
+    }
     std::string header = indent(indentation);
     if (klass->has_abstract_modifier()) header += "abstract ";
     switch (klass->kind()) {
@@ -215,11 +322,19 @@ class UnitPrinter {
     header += ":";
 
     std::vector<std::string> members;
+    int cursor = facts()->lines()[facts()->line_index_at(start(klass))].to;
     for (auto member : klass->members()) {
       std::string text;
+      std::string prefix;
+      if (!leading(member,
+                   indentation + style_.indentation_step,
+                   cursor,
+                   &prefix)) return false;
       if (!declaration(
           member, indentation + style_.indentation_step, &text)) return false;
+      if (!prefix.empty()) text = prefix + "\n" + text;
       members.push_back(std::move(text));
+      cursor = end(member);
     }
     *result = header;
     if (!members.empty()) *result += "\n" + join(members, "\n\n");
@@ -243,11 +358,11 @@ bool format_unit(Unit* unit,
                  const FormatStyle& style,
                  const FormatExpressionOptions& expression_options) {
   ASSERT(unit != null && source != null && result != null);
-  // Comment ownership is added as a separate review slice. Refusing the unit
-  // is essential: silently dropping trivia would violate the formatter gate.
-  if (!comments.is_empty()) return false;
-  UnitPrinter printer(source, style, expression_options);
-  return printer.run(unit, result);
+  FormatSource facts(source, comments);
+  FormatCommentState comment_state(&facts);
+  UnitPrinter printer(source, style, expression_options, &comment_state);
+  if (!printer.run(unit, result)) return false;
+  return comment_state.all_consumed();
 }
 
 } // namespace compiler
