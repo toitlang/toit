@@ -270,6 +270,7 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
         bool is_abstract = kind == ir::Class::INTERFACE || klass->has_abstract_modifier();
         ir::Class* ir = zone_new<ir::Class>(name, kind, is_abstract, position, klass->outline_range());
         ir_to_ast_map_[ir] = klass;
+        setup_type_parameters(klass, ir);
         if (klass->name()->is_LspSelection()) {
           lsp_->selection_handler()->definition(ir, klass->name()->selection_range());
         }
@@ -1171,6 +1172,118 @@ void Resolver::mark_non_returning(Module* core_module) {
   }
 }
 
+/// The name part of a type, without type arguments.
+static ast::Expression* type_name_of(ast::Expression* type) {
+  while (type->is_ParameterizedType()) type = type->as_ParameterizedType()->type();
+  return type;
+}
+
+ir::Type apply_type_arguments(ir::Class* klass,
+                              ast::ParameterizedType* node,
+                              const std::function<ir::Type (ast::Expression*)>& resolve_argument,
+                              Diagnostics* diagnostics) {
+  auto ast_arguments = node->arguments();
+  // Resolve all arguments, even on arity errors, so they get diagnostics.
+  auto arguments = ListBuilder<ir::Type>::allocate(ast_arguments.length());
+  for (int i = 0; i < ast_arguments.length(); i++) {
+    arguments[i] = resolve_argument(ast_arguments[i]);
+  }
+  int expected = klass->type_parameters().length();
+  if (expected == 0) {
+    diagnostics->report_error(node->selection_range(),
+                              "Class '%s' doesn't have type parameters",
+                              klass->name().c_str());
+    return ir::Type(klass);
+  }
+  if (expected != ast_arguments.length()) {
+    diagnostics->report_error(node->selection_range(),
+                              "Class '%s' expects %d type argument%s, got %d",
+                              klass->name().c_str(),
+                              expected,
+                              expected == 1 ? "" : "s",
+                              ast_arguments.length());
+    return ir::Type(klass);
+  }
+  return ir::Type(klass, arguments);
+}
+
+void Resolver::setup_type_parameters(ast::Class* ast_class, ir::Class* ir_class) {
+  auto ast_parameters = ast_class->type_parameters();
+  if (ast_parameters.is_empty()) return;
+  if (ast_class->is_mixin()) {
+    report_error(ast_parameters[0], "Mixins can't have type parameters");
+    return;
+  }
+  auto parameters = ListBuilder<ir::TypeParameter*>::allocate(ast_parameters.length());
+  for (int i = 0; i < ast_parameters.length(); i++) {
+    auto name = ast_parameters[i]->data();
+    for (int j = 0; j < i; j++) {
+      if (ast_parameters[j]->data() == name) {
+        report_error(ast_parameters[i], "Duplicate type parameter '%s'", name.c_str());
+        break;
+      }
+    }
+    parameters[i] = _new ir::TypeParameter(name, ir_class, i, ast_parameters[i]->selection_range());
+  }
+  ir_class->set_type_parameters(parameters);
+}
+
+ir::Type Resolver::resolve_type_in_class_header(ast::Expression* node, ir::Class* holder, Scope* scope) {
+  if (node->is_Nullable()) {
+    return resolve_type_in_class_header(node->as_Nullable()->type(), holder, scope).to_nullable();
+  }
+  if (node->is_ParameterizedType()) {
+    auto parameterized = node->as_ParameterizedType();
+    auto base = resolve_type_in_class_header(parameterized->type(), holder, scope);
+    if (base.is_type_parameter()) {
+      report_error(node, "Type parameter '%s' can't have type arguments", base.parameter()->name().c_str());
+      return ir::Type::any();
+    }
+    if (!base.is_class()) return base;
+    return apply_type_arguments(base.klass(),
+                                parameterized,
+                                [&](ast::Expression* argument) {
+                                  return resolve_type_in_class_header(argument, holder, scope);
+                                },
+                                diagnostics());
+  }
+  ResolutionEntry entry;
+  Symbol name = Symbol::invalid();
+  if (node->is_Identifier()) {
+    name = node->as_Identifier()->data();
+    if (name == Symbols::any) return ir::Type::any();
+    if (name == Symbols::none) {
+      report_error(node, "Type 'none' is only allowed as return type");
+      return ir::Type::any();
+    }
+    for (auto parameter : holder->type_parameters()) {
+      if (parameter->name() == name) return ir::Type(parameter);
+    }
+    entry = scope->lookup_shallow(name);
+  } else if (node->is_Dot()) {
+    name = node->as_Dot()->name()->data();
+    entry = scope->lookup_prefixed(node);
+  } else if (node->is_Error()) {
+    return ir::Type::any();
+  } else {
+    report_error(node, "Invalid type");
+    return ir::Type::any();
+  }
+  if (entry.is_class()) return ir::Type(entry.klass());
+  report_error(node, "Unresolved type: '%s'", name.c_str());
+  return ir::Type::any();
+}
+
+List<ir::Type> Resolver::resolve_super_type_arguments(ast::Expression* ast_type,
+                                                      ir::Class* resolved,
+                                                      ir::Class* holder,
+                                                      Scope* scope) {
+  if (!ast_type->is_ParameterizedType()) return List<ir::Type>();
+  auto type = resolve_type_in_class_header(ast_type, holder, scope);
+  if (!type.is_class() || type.klass() != resolved) return List<ir::Type>();
+  return type.arguments();
+}
+
 ir::Class* Resolver::resolve_class_interface_or_mixin(ast::Expression* ast_node,
                                                       Scope* scope,
                                                       ir::Class* holder,
@@ -1276,7 +1389,7 @@ void Resolver::setup_inheritance(const std::vector<Module*>& modules, int core_m
       } else {
         bool detected_error = false;
         auto ast_super = ast_class->super();
-        auto ir_super_class = resolve_class_interface_or_mixin(ast_super,
+        auto ir_super_class = resolve_class_interface_or_mixin(type_name_of(ast_super),
                                                                scope,
                                                                klass,
                                                                klass->is_interface(),
@@ -1304,6 +1417,7 @@ void Resolver::setup_inheritance(const std::vector<Module*>& modules, int core_m
             report_error(ast_class->super(), "Cannot extend builtin Monitor class");
           } else if (!detected_error) {
             klass->set_super(ir_super_class);
+            klass->set_super_arguments(resolve_super_type_arguments(ast_super, ir_super_class, klass, scope));
           }
         } else {
           detected_error = true;
@@ -1332,35 +1446,41 @@ void Resolver::setup_inheritance(const std::vector<Module*>& modules, int core_m
         report_error(ast_mixins[0], "Interfaces may not have mixins");
       }
       ListBuilder<ir::Class*> ir_mixins;
+      ListBuilder<ir::Type> declared_mixins;
       for (int i = 0; i < ast_mixins.length(); i++) {
         auto ast_mixin = ast_mixins[i];
-        auto ir_mixin = resolve_class_interface_or_mixin(ast_mixin, scope, klass, false, true);
+        auto ir_mixin = resolve_class_interface_or_mixin(type_name_of(ast_mixin), scope, klass, false, true);
         if (ir_mixin == null) {
           report_error(ast_mixin, "Unresolved mixin");
         } else if (!ir_mixin->is_mixin()) {
           report_error(ast_mixin, "Not a mixin");
         } else {
           ir_mixins.add(ir_mixin);
+          declared_mixins.add(ir::Type(ir_mixin, resolve_super_type_arguments(ast_mixin, ir_mixin, klass, scope)));
           class_hierarchy_references_.push_back({klass, ir_mixin, ast_mixin});
         }
       }
       klass->set_mixins(ir_mixins.build());
+      klass->set_declared_mixins(declared_mixins.build());
 
       auto ast_interfaces = ast_class->interfaces();
       ListBuilder<ir::Class*> ir_interfaces;
+      ListBuilder<ir::Type> declared_interfaces;
       for (int i = 0; i < ast_interfaces.length(); i++) {
         auto ast_interface = ast_interfaces[i];
-        auto ir_interface = resolve_class_interface_or_mixin(ast_interface, scope, klass, true, false);
+        auto ir_interface = resolve_class_interface_or_mixin(type_name_of(ast_interface), scope, klass, true, false);
         if (ir_interface == null) {
           report_error(ast_interface, "Unresolved interface");
         } else if (!ir_interface->is_interface()) {
           report_error(ast_interface, "Not an interface");
         } else {
           ir_interfaces.add(ir_interface);
+          declared_interfaces.add(ir::Type(ir_interface, resolve_super_type_arguments(ast_interface, ir_interface, klass, scope)));
           class_hierarchy_references_.push_back({klass, ir_interface, ast_interface});
         }
       }
       klass->set_interfaces(ir_interfaces.build());
+      klass->set_declared_interfaces(declared_interfaces.build());
     }
   }
 
@@ -2581,6 +2701,16 @@ void Resolver::resolve_fill_class(ir::Class* klass,
     // resolution.
     auto list = ListBuilder<ir::Node*>::build_from_vector(vector);
     class_scope.add(name, ResolutionEntry(list));
+  }
+  for (auto parameter : klass->type_parameters()) {
+    auto existing = class_scope.lookup_shallow(parameter->name());
+    if (existing.is_empty()) {
+      class_scope.add(parameter->name(), ResolutionEntry(parameter));
+    } else if (!existing.is_type_parameter()) {  // Duplicates were already reported.
+      diagnostics()->report_error(parameter->range(),
+                                  "Type parameter '%s' conflicts with a member",
+                                  parameter->name().c_str());
+    }
   }
 
   if (ast_node->toitdoc().is_valid()) {

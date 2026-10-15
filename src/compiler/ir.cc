@@ -152,6 +152,28 @@ void TraversingVisitor::visit_CallVirtual(CallVirtual* node) { visit_Call(node);
 void TraversingVisitor::visit_CallBlock(CallBlock* node) { visit_Call(node); }
 void TraversingVisitor::visit_CallBuiltin(CallBuiltin* node) { visit_Call(node); }
 
+Type Type::substitute(const std::function<Type (TypeParameter*)>& environment) const {
+  if (is_type_parameter()) {
+    auto result = environment(parameter_);
+    return is_nullable_ ? result.to_nullable() : result;
+  }
+  if (!is_class() || arguments_.is_empty()) return *this;
+  auto arguments = ListBuilder<Type>::allocate(arguments_.length());
+  for (int i = 0; i < arguments_.length(); i++) {
+    arguments[i] = arguments_[i].substitute(environment);
+  }
+  return Type(kind_, class_, parameter_, arguments, is_nullable_);
+}
+
+Type Class::self_type() {
+  if (!is_generic()) return Type(this);
+  auto arguments = ListBuilder<Type>::allocate(type_parameters_.length());
+  for (int i = 0; i < type_parameters_.length(); i++) {
+    arguments[i] = Type(type_parameters_[i]);
+  }
+  return Type(this, arguments);
+}
+
 void TraversingVisitor::visit_Typecheck(Typecheck* node) {
   node->expression()->accept(this);
 }
