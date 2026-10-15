@@ -1,0 +1,79 @@
+tests/negative/generic-test.toit:75:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/generic-test.toit:11:28: error: Type mismatch. Expected 'T'. Got 'int'
+  set-bad -> none: value = 42
+                           ^~
+tests/negative/generic-test.toit:19:18: error: Type mismatch. Expected 'string'. Got 'int'
+  bad -> string: return value
+                 ^~~~~~
+tests/negative/generic-test.toit:28:9: error: Type mismatch. Expected 'int'. Got 'string'
+  i/int := box.get
+        ^~
+tests/negative/generic-test.toit:29:11: error: Type mismatch. Expected 'string'. Got 'int'
+  box.set 42
+          ^~
+tests/negative/generic-test.toit:31:20: error: Type mismatch. Expected 'Box<Tag>'. Got 'Box<string>'
+  tag-box/Box<Tag> := box
+                   ^~
+tests/negative/generic-test.toit:33:23: error: Type mismatch. Expected 'Box<string>'. Got 'IntBox'
+  str-box/Box<string> := int-box
+                      ^~
+tests/negative/generic-test.toit:36:12: error: Type mismatch. Expected 'string'. Got 'int'
+  s/string := pair.first
+           ^~
+tests/negative/generic-test.toit:37:9: error: Type mismatch. Expected 'int'. Got 'string'
+  n/int := pair.second
+        ^~
+tests/negative/generic-test.toit:41:9: error: Type mismatch. Expected 'string'. Got 'int'
+  l.add 1
+        ^
+tests/negative/generic-test.toit:42:10: error: Type mismatch. Expected 'string'. Got 'int'
+  l[0] = 2
+         ^
+tests/negative/generic-test.toit:43:9: error: Type mismatch. Expected 'int'. Got 'string'
+  x/int := l[0]
+        ^~
+tests/negative/generic-test.toit:44:16: error: Type mismatch. Expected 'List<int>'. Got 'List<string>'
+  l2/List<int> := l + ["b"]
+               ^~
+tests/negative/generic-test.toit:45:16: error: Type mismatch. Expected 'List<Tag>'. Got 'List<string>'
+  l3/List<Tag> := l.copy
+               ^~
+tests/negative/generic-test.toit:46:13: error: Type mismatch. Expected 'List<int>'. Got 'List<string>'
+  take-ints l
+            ^
+tests/negative/generic-test.toit:49:13: error: Type mismatch. Expected 'List<int>'. Got 'List<string>'
+  take-ints make-strings
+            ^~~~~~~~~~~~
+tests/negative/generic-test.toit:52:5: error: Type mismatch. Expected 'string'. Got 'int'
+  m[1] = 1
+    ^
+tests/negative/generic-test.toit:53:12: error: Type mismatch. Expected 'int'. Got 'string'
+  m["b"] = "c"
+           ^~~
+tests/negative/generic-test.toit:54:12: error: Type mismatch. Expected 'string'. Got 'int'
+  v/string := m["a"]
+           ^~
+tests/negative/generic-test.toit:55:19: error: Type mismatch. Expected 'List<string>'. Got 'List<int>'
+  vs/List<string> := m.values
+                  ^~
+tests/negative/generic-test.toit:57:17: error: Type mismatch. Expected 'List<int>'. Got 'List<string>'
+  nested["l"] = l
+                ^
+tests/negative/generic-test.toit:59:40: error: Type mismatch. Expected 'Map<string, List<string>>'. Got 'Map<string, List<int>>'
+  bad-nested/Map<string, List<string>> := nested
+                                       ^~
+tests/negative/generic-test.toit:62:10: error: Type mismatch. Expected 'int'. Got 'string'
+  st.add "s"
+         ^~~
+tests/negative/generic-test.toit:63:15: error: Type mismatch. Expected 'int'. Got 'string'
+  st.contains "s"
+              ^~~
+tests/negative/generic-test.toit:65:9: error: Type mismatch. Expected 'int'. Got 'string'
+  d.add "s"
+        ^~~
+tests/negative/generic-test.toit:66:19: error: Type mismatch. Expected 'List<string>'. Got 'Deque<int>'
+  dl/List<string> := d
+                  ^~
+Compilation failed

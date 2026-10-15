@@ -1,0 +1,34 @@
+tests/negative/generic-declaration-test.toit:5:14: error: Duplicate type parameter 'T'
+class Dup<T, T>:
+             ^
+tests/negative/generic-declaration-test.toit:9:9: error: Mixins can't have type parameters
+mixin M<T>:
+        ^
+tests/negative/generic-declaration-test.toit:20:7: error: Class 'List' expects 1 type argument, got 2
+bar x/List<int, int> -> none:
+      ^~~~~~~~~~~~~~
+tests/negative/generic-declaration-test.toit:21:7: error: Class 'Tag' doesn't have type parameters
+gee x/Tag<int> -> none:
+      ^~~~~~~~
+tests/negative/generic-declaration-test.toit:22:11: error: Class 'Map' expects 2 type arguments, got 1
+too-few x/Map<string> -> none:
+          ^~~~~~~~~~~
+tests/negative/generic-declaration-test.toit:26:11: error: Type arguments aren't checked at runtime
+  if l is List<int>: print 1
+          ^~~~~~~~~
+tests/negative/generic-declaration-test.toit:28:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/generic-declaration-test.toit:11:16: error: Type parameter 'T' conflicts with a member
+class Conflict<T>:
+               ^
+tests/negative/generic-declaration-test.toit:15:7: error: Type parameter 'T' can't have type arguments
+  bad/T<int>? := null
+      ^~~~~~
+tests/negative/generic-declaration-test.toit:16:32: error: Can't check type parameter 'T' at runtime
+  check x -> bool: return x is T
+                               ^
+tests/negative/generic-declaration-test.toit:17:28: error: Can't check type parameter 'T' at runtime
+  cast x -> T: return x as T
+                           ^
+Compilation failed
