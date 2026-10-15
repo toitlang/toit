@@ -17,17 +17,17 @@ exchange control/FramedChannel command/string expected/string="OK":
 
 main args:
   mode := args.is-empty ? "" : args[0]
-  if not ["dual-i2c-matrix", "uart", "uart-alt", "spi"].contains mode:
+  if not ["dual-i2c-matrix", "dual-i2c-fpc", "uart", "uart-alt", "spi"].contains mode:
     throw "Unknown FPC bus test: $mode"
   port := Ec618.uart1 --baud-rate=115200
   control := FramedChannel port
   try:
     exchange control "PING" "READY"
-    if mode == "dual-i2c-matrix":
-      // Keep PAD19/GPIO1 idle while a DS18B20 is connected there.
+    if mode == "dual-i2c-matrix" or mode == "dual-i2c-fpc":
+      // The FPC variant requires DS18B20 DQ disconnected from PAD19/GPIO1.
       [50_000, 100_000, 400_000].do: |frequency/int|
         [1, 31, 32, 33, 65, 129, 513].do: |size/int|
-          test-dual-i2c control --frequency=frequency --size=size
+          test-dual-i2c control --frequency=frequency --size=size --fpc=(mode == "dual-i2c-fpc")
     else if mode == "uart": test-uart control --mapping=1
     else if mode == "uart-alt": test-uart control --mapping=2
     else if mode == "spi": test-spi control
@@ -36,11 +36,14 @@ main args:
   finally:
     port.close
 
-test-dual-i2c control/FramedChannel --frequency/int --size/int:
+test-dual-i2c control/FramedChannel --frequency/int --size/int --fpc/bool:
   exchange control "I2C-OPEN 0" "READY"
-  exchange control "I2C-OPEN 1 old" "READY"
+  exchange control (fpc ? "I2C-OPEN 1" : "I2C-OPEN 1 old") "READY"
   bus0 := i2c.Bus --sda=wiring.EC618-FPC-I2C0-SDA-PAD --scl=wiring.EC618-FPC-I2C0-SCL-PAD --pull-up
-  bus1 := i2c.Bus --sda=wiring.EC618-I2C1-SDA-PAD --scl=wiring.EC618-I2C1-SCL-PAD --pull-up
+  bus1 := i2c.Bus
+      --sda=(fpc ? wiring.EC618-FPC-I2C1-SDA-PAD : wiring.EC618-I2C1-SDA-PAD)
+      --scl=(fpc ? wiring.EC618-FPC-I2C1-SCL-PAD : wiring.EC618-I2C1-SCL-PAD)
+      --pull-up
   iterations := 50
   try:
     finished := [monitor.Latch, monitor.Latch]

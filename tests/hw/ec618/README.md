@@ -48,6 +48,13 @@ output together. The bus and paired-I2S options require different resident
 S3 firmware and cannot be enabled together. These Toit runners do not add
 a Python dependency or provision either board.
 
+The default concurrent-I2C case uses I2C0 on PAD27/PAD28 and I2C1 on the
+original PAD23/PAD24 route, leaving the DS18B20 clock net idle. With DS18B20
+DQ disconnected, additionally enable `EC618_TEST_I2C_FPC=ON`. This registers
+`fpc-dual-i2c-fpc-ec618`, which runs both controllers concurrently with I2C1
+on breakout PAD19/PAD20. Both cases check 50/100/400 kHz and payload sizes
+1, 31, 32, 33, 65, 129 and 513 bytes, including 2,100 concurrent reads.
+
 ## Paired I2S tests
 
 The three CMake options `EC618_TEST_I2S_RX`, `EC618_TEST_I2S_TX` and

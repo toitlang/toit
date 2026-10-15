@@ -42,7 +42,7 @@ reset-target target/uart.HostPort:
 
 run invocation/cli.Invocation:
   case := invocation["case"]
-  if not ["dual-i2c-matrix", "uart", "uart-alt", "spi"].contains case:
+  if not ["dual-i2c-matrix", "dual-i2c-fpc", "uart", "uart-alt", "spi"].contains case:
     invocation.cli.ui.abort "Unknown FPC test: $case"
   if invocation["expected-base"] == "": invocation.cli.ui.abort "Expected base must not be empty"
   if invocation["port"] == invocation["target-port"]:

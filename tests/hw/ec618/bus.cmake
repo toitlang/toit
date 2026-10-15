@@ -2,6 +2,7 @@
 # Use of this source code is governed by the license in the LICENSE file.
 
 option(EC618_TEST_BUSES "Enable coordinated FPC I2C/UART/SPI tests with resident fixtures" "$ENV{EC618_TEST_BUSES}")
+option(EC618_TEST_I2C_FPC "Test I2C1 on PAD19/PAD20; disconnect DS18B20 DQ first" "$ENV{EC618_TEST_I2C_FPC}")
 set(EC618_BUS_TARGET_PORT "$ENV{EC618_BUS_TARGET_PORT}" CACHE FILEPATH "Persistent S3 FPC fixture console")
 set(EC618_BUS_BRIDGE "$ENV{EC618_BUS_BRIDGE}" CACHE STRING "Classic ESP32 UART1 bridge address")
 if(EC618_TEST_BUSES)
@@ -14,7 +15,11 @@ if(EC618_TEST_BUSES)
   if(NOT bus_lock)
     set(bus_lock "/tmp/toit-ec618-rig.lock")
   endif()
-  foreach(case dual-i2c-matrix uart uart-alt spi)
+  set(bus_cases dual-i2c-matrix uart uart-alt spi)
+  if(EC618_TEST_I2C_FPC)
+    list(APPEND bus_cases dual-i2c-fpc)
+  endif()
+  foreach(case ${bus_cases})
     add_test(NAME "fpc-${case}-ec618"
         COMMAND "${EC618_FLOCK}" -n "${bus_lock}"
             "${TOIT_EXE_HW}" run tests/hw/esp-tester/run-ec618-bus.toit --

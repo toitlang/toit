@@ -42,6 +42,14 @@ qualification in the table above:
 
 Both fixture procedures restore and flash-verify the original S3 application.
 Final exact-base EC618 health and S3/classic peer checks pass.
+The subsequent pad-coverage audit found that the default dual-I2C case keeps
+I2C1 on PAD23/PAD24 for compatibility with a connected DS18B20. With that
+sensor disconnected, the added `EC618_TEST_I2C_FPC` case tests I2C1 on
+PAD19/PAD20 concurrently with I2C0 on PAD27/PAD28. All five bus cases pass
+in 186.10 seconds, including the new case's 21 rate/size combinations and
+2,100 concurrent reads. S3 restoration/flash verification and final EC618
+health pass. Evidence: `base-installed-fpc-i2c-2026-10-15/LastTest.log` and
+`bus-status.txt`. The rig guide now records all seven breakout connections.
 Firmware-writer exclusivity, close/reopen and resource cleanup after a
 container exits with an open writer also pass on this base. The normal
 lifecycle test is now registered in the standalone suite and passes through
