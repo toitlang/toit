@@ -523,10 +523,10 @@ class Ec618:
   Opens UART2 (EC618 controller 2). UART2 has no hardware flow control.
 
   Mapping selector $mapping picks between pin layouts:
-  - 0 (default): TX=GPIO11, RX=GPIO10.
-  - 1:           TX=GPIO13, RX=GPIO12 (the layout Air780EG/EUG modules
+  - 0 (default): TX=PAD26/GPIO11, RX=PAD25/GPIO10.
+  - 1:           TX=PAD28/GPIO13, RX=PAD27/GPIO12 (the layout Air780EG/EUG modules
                  use, because GPIO10/11 are taken by their GNSS subsystem).
-  - 2:           TX=GPIO7, RX=GPIO6 (camera data pads 22 and 21).
+  - 2:           TX=PAD22/GPIO7, RX=PAD21/GPIO6 (camera data pads).
 
   With $mode equal to $uart.Port.MODE-RS485-HALF-DUPLEX, $rs485-de is the
     RS485 direction (DE) pin: the driver raises it just before a
@@ -568,6 +568,11 @@ class Ec618:
     (peripheral-routed at iomux function 2; as GPIOs the same pads are
     GPIO15/GPIO14 at function 4).
 
+  For the camera breakout route, construct $i2c.Bus with `--sda=27 --scl=28`.
+    PAD31/PAD32 is another accepted SDA/SCL route. These routes use the same
+    I2C0 controller; only one can be open at a time. Pad numbers are physical
+    EC618 PAD indices, not connector contact numbers or logical GPIO numbers.
+
   If $pull-up is true, the pads' internal pull-ups are enabled. Most
     sensor breakouts carry their own bus pull-ups.
 
@@ -586,6 +591,11 @@ class Ec618:
 
   SDA=PAD23, SCL=PAD24 (GPIO8/GPIO9) — the module's I2C1/SPI0 pins; one
     peripheral at a time.
+
+  For the camera breakout route, construct $i2c.Bus with `--sda=19 --scl=20`.
+    This uses the same I2C1 controller and shares pads with I2S1 SCK/WS;
+    those functions cannot be open simultaneously. I2C0 on PAD27/PAD28 and
+    I2C1 on PAD19/PAD20 can operate concurrently.
 
   If $pull-up is true, the pads' internal pull-ups are enabled.
 
