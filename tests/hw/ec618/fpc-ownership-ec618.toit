@@ -18,11 +18,18 @@ main:
   check-ownership [28, wiring.EC618-FPC-UART2-RX-PAD]:: Ec618.uart2 --mapping=1 --baud-rate=115200
   check-ownership [wiring.EC618-FPC-UART2-ALT-TX-PAD, wiring.EC618-FPC-UART2-ALT-RX-PAD]::
     Ec618.uart2 --mapping=2 --baud-rate=115200
+  spi := Ec618.spi0
+  try:
+    check-ownership [wiring.EC618-FPC-SPI0-CS-PAD]::
+      spi.device --cs=wiring.EC618-FPC-SPI0-CS-PAD --frequency=100_000
+  finally:
+    spi.close
   check-ownership [wiring.EC618-I2S1-TX-PAD, wiring.EC618-I2S1-RX-PAD,
-      wiring.EC618-I2S1-SCK-PAD, wiring.EC618-I2S1-WS-PAD]::
+      wiring.EC618-I2S1-MCLK-PAD, wiring.EC618-I2S1-SCK-PAD, wiring.EC618-I2S1-WS-PAD]::
     i2s.Bus --no-master
         --tx=wiring.EC618-I2S1-TX-PAD
         --rx=wiring.EC618-I2S1-RX-PAD
+        --mclk=wiring.EC618-I2S1-MCLK-PAD
         --sck=wiring.EC618-I2S1-SCK-PAD
         --ws=wiring.EC618-I2S1-WS-PAD
   print "FPC ownership PASS GPIO conflicts, failed-open cleanup and pad reuse"

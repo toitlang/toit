@@ -9,6 +9,11 @@ never-started channel. The same-base OTA passes smoke testing and validates
 slot B. All eleven standalone cases pass in 217.65 seconds, including the
 previously failing sequence, blocked stop/restart and live-clock stop.
 Evidence: `i2s-unconfigured-close-2026-10-15/`.
+The subsequent PAD18 extension checks GPIO conflicts and release for both
+SPI chip-select and I2S MCLK. It passes in 15.26 seconds with exact-base
+preflight/final health, completing ownership coverage for all seven wired
+breakout pads. Evidence: `ownership-pad18.log` and
+`ownership-pad18-LastTest.log` in that directory.
 
 Post-fix 96-kHz/24-bit duplex checks pass ten seconds of EC618 receive with
 zero over/underruns and approximately two seconds of independent SPI capture
