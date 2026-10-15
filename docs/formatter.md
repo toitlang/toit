@@ -39,6 +39,12 @@ breaks are preserved.  When the comment moves, every physical line is shifted
 by the same indentation delta as its first line; the comment is never
 reflowed.
 
+When a control-flow subtree contains a comment, the current conservative
+policy freezes the complete subtree and shifts it uniformly.  This avoids
+mistaking a nested inline suite's physical line for an independently movable
+line.  The policy can be narrowed when comment slots are modeled for every
+control-flow header and suite.
+
 Every comment is consumed exactly once.  Own-line comments are assigned to
 the following list item, or to the enclosing list when they follow its final
 AST node.  Indentation disambiguates comments in nested statement sequences.
@@ -95,10 +101,32 @@ The AST printers must account for the following Toit grammar rules:
 * Prefix minus is attached while binary minus is surrounded by spaces.
 * Suite-bearing conditions and suite arguments followed by more arguments
   require explicit delimiters.
+* Binary, conditional, nested-call, prefix-`not`, and grouped suite arguments
+  require parentheses in positional or named argument slots where the grammar
+  would otherwise end the argument early.
+* Parenthesized local initializers and parameter defaults retain the grouping
+  required to contain suite-bearing calls and operator expressions.
 * `{}` is an empty set and `{:}` is an empty map.
+* Multiline string continuation whitespace contributes to the literal value.
+  A frozen multiline-string region may move its first physical line, but its
+  continuation bytes must remain unchanged.
 * Parentheses in `(Foo).bar` may affect resolution.  Preserve them without
   resolution data; remove them only when resolution proves that lookup is
   unchanged.
+
+## Test organization
+
+User-visible behavior belongs in `tests/formatter/gold`: each `.toit` input is
+formatted through the public `toit format` command, compared with its `.gold`
+file, and formatted a second time to check idempotence.  Expression,
+declaration, layout, comment, and source-preservation cases should normally be
+added there.
+
+CTest binaries are reserved for mechanisms that cannot be observed through
+the command: AST equivalence diagnostics, atomic replacement failure modes,
+source/comment fact extraction, candidate scoring, and verifier rejection.
+Corpus probes over `lib`, `tools`, and `examples` find interactions that then
+become focused gold cases; they are not substitutes for those cases.
 
 ## Roadmap and review stack
 
