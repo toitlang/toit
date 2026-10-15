@@ -16,6 +16,7 @@
 #include "format_expression.h"
 
 #include <algorithm>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -78,6 +79,14 @@ class ExpressionPrinter {
   bool run(Expression* expression, FormatOutput* result) {
     ASSERT(expression != null && result != null);
     return format(expression, PRECEDENCE_NONE, result);
+  }
+
+  bool run_flat(Expression* expression, std::string* result) {
+    ASSERT(expression != null && result != null);
+    std::string text = flat(expression, PRECEDENCE_NONE);
+    if (!supported_) return false;
+    *result = text;
+    return true;
   }
 
  private:
@@ -160,10 +169,61 @@ class ExpressionPrinter {
     bool had_parentheses = expression->is_Parenthesis();
     Expression* inner = peel_parentheses(expression);
     std::string result = flat(inner, PRECEDENCE_POSTFIX);
-    if (had_parentheses && is_static_receiver_candidate(inner)) {
+    if (had_parentheses &&
+        (is_static_receiver_candidate(inner) || inner->is_Call())) {
       return "(" + flat(inner, PRECEDENCE_NONE) + ")";
     }
     return result;
+  }
+
+  std::string flat_named_argument(NamedArgument* argument) {
+    std::string result = "--";
+    if (argument->inverted()) result += "no-";
+    result += source_text(argument->name());
+    if (argument->expression() != null) {
+      result += "=" + flat(argument->expression(), PRECEDENCE_NONE);
+    }
+    return result;
+  }
+
+  std::string flat_call(Call* call, int outer_precedence) {
+    std::string result = flat(call->target(), PRECEDENCE_POSTFIX);
+    for (auto argument : call->arguments()) {
+      result += " ";
+      if (argument->is_NamedArgument()) {
+        result += flat_named_argument(argument->as_NamedArgument());
+      } else if (peel_parentheses(argument)->is_Call()) {
+        result += "(" + flat(peel_parentheses(argument), PRECEDENCE_NONE) + ")";
+      } else {
+        result += flat(argument, PRECEDENCE_NONE);
+      }
+    }
+    return outer_precedence == PRECEDENCE_NONE
+        ? result
+        : "(" + result + ")";
+  }
+
+  template<typename T>
+  std::string flat_elements(const char* opening,
+                            const char* closing,
+                            T elements) {
+    std::string result = opening;
+    for (int i = 0; i < elements.length(); i++) {
+      if (i > 0) result += ", ";
+      result += flat(elements[i], PRECEDENCE_NONE);
+    }
+    return result + closing;
+  }
+
+  std::string flat_map(LiteralMap* map) {
+    if (map->keys().is_empty()) return "{:}";
+    std::string result = "{";
+    for (int i = 0; i < map->keys().length(); i++) {
+      if (i > 0) result += ", ";
+      result += flat(map->keys()[i], PRECEDENCE_NONE) + ": " +
+          flat(map->values()[i], PRECEDENCE_NONE);
+    }
+    return result + "}";
   }
 
   bool needs_bitwise_parentheses(Token::Kind parent,
@@ -220,6 +280,27 @@ class ExpressionPrinter {
     expression = peel_parentheses(expression);
     if (expression->is_Binary()) {
       return flat_binary(expression->as_Binary(), outer_precedence);
+    }
+    if (expression->is_Call()) {
+      return flat_call(expression->as_Call(), outer_precedence);
+    }
+    if (expression->is_NamedArgument()) {
+      return flat_named_argument(expression->as_NamedArgument());
+    }
+    if (expression->is_LiteralList()) {
+      return flat_elements(
+          "[", "]", expression->as_LiteralList()->elements());
+    }
+    if (expression->is_LiteralByteArray()) {
+      return flat_elements(
+          "#[", "]", expression->as_LiteralByteArray()->elements());
+    }
+    if (expression->is_LiteralSet()) {
+      return flat_elements(
+          "{", "}", expression->as_LiteralSet()->elements());
+    }
+    if (expression->is_LiteralMap()) {
+      return flat_map(expression->as_LiteralMap());
     }
     if (expression->is_Unary()) {
       Unary* unary = expression->as_Unary();
@@ -345,6 +426,199 @@ class ExpressionPrinter {
     return result;
   }
 
+  std::string call_argument(Expression* argument) {
+    if (argument->is_NamedArgument()) {
+      return flat_named_argument(argument->as_NamedArgument());
+    }
+    return flat(argument, PRECEDENCE_NONE);
+  }
+
+  FormatOutput broken_call(Call* call) {
+    FormatOutput result = FormatOutput::single_line(
+        flat(call->target(), PRECEDENCE_POSTFIX));
+    for (auto argument : call->arguments()) {
+      result.add_line(style_.continuation_step, call_argument(argument));
+    }
+    return result;
+  }
+
+  FormatOutput named_suffix_call(Call* call, int first_named) {
+    std::string first = flat(call->target(), PRECEDENCE_POSTFIX);
+    for (int i = 0; i < first_named; i++) {
+      first += " " + call_argument(call->arguments()[i]);
+    }
+    FormatOutput result = FormatOutput::single_line(first);
+    for (int i = first_named; i < call->arguments().length(); i++) {
+      result.add_line(
+          style_.continuation_step, call_argument(call->arguments()[i]));
+    }
+    return result;
+  }
+
+  FormatOutput backslash_call(Call* call, int split_at) {
+    std::string first = flat(call->target(), PRECEDENCE_POSTFIX);
+    for (int i = 0; i < split_at; i++) {
+      first += " " + call_argument(call->arguments()[i]);
+    }
+    first += " \\";
+    std::string second;
+    for (int i = split_at; i < call->arguments().length(); i++) {
+      if (!second.empty()) second += " ";
+      second += call_argument(call->arguments()[i]);
+    }
+    FormatOutput result = FormatOutput::single_line(first);
+    result.add_line(style_.continuation_step, second);
+    return result;
+  }
+
+  int first_named_argument(Call* call) {
+    for (int i = 0; i < call->arguments().length(); i++) {
+      if (call->arguments()[i]->is_NamedArgument()) return i;
+    }
+    return -1;
+  }
+
+  int estimated_call_argument_width(Expression* argument) {
+    return estimated_flat_width(argument);
+  }
+
+  int best_backslash_split(Call* call) {
+    if (call->arguments().length() < 2 || first_named_argument(call) >= 0) {
+      return -1;
+    }
+    int target = estimated_flat_width(call->target());
+    if (target < 0) return -1;
+    std::vector<int> arguments;
+    for (auto argument : call->arguments()) {
+      int width = estimated_call_argument_width(argument);
+      if (width < 0) return -1;
+      arguments.push_back(width);
+    }
+
+    int best_split = -1;
+    int best_extent = std::numeric_limits<int>::max();
+    for (int split = 1; split < static_cast<int>(arguments.size()); split++) {
+      int first = target + 2;
+      for (int i = 0; i < split; i++) first += 1 + arguments[i];
+      int second = style_.continuation_step;
+      for (int i = split; i < static_cast<int>(arguments.size()); i++) {
+        second += (i == split ? 0 : 1) + arguments[i];
+      }
+      int extent = std::max(first, second);
+      if (extent < best_extent) {
+        best_extent = extent;
+        best_split = split;
+      }
+    }
+    return is_flat_acceptable(best_extent,
+                              base_indentation_,
+                              1,
+                              1,
+                              style_.backslash_penalty,
+                              style_)
+        ? best_split
+        : -1;
+  }
+
+  FormatOutput broken_collection(const std::string& opening,
+                                 const std::string& closing,
+                                 const std::vector<std::string>& items) {
+    FormatOutput result = FormatOutput::single_line(opening);
+    std::string row;
+    int available = preferred_extent_at(base_indentation_, style_) -
+        style_.indentation_step;
+    for (const auto& item : items) {
+      std::string addition = item + ",";
+      int addition_width = utf8_code_point_width(addition);
+      int row_width = utf8_code_point_width(row);
+      if (!row.empty() && row_width + 1 + addition_width > available) {
+        result.add_line(style_.indentation_step, row);
+        row.clear();
+      }
+      if (!row.empty()) row += " ";
+      row += addition;
+    }
+    if (!row.empty()) result.add_line(style_.indentation_step, row);
+    result.add_line(0, closing);
+    return result;
+  }
+
+  std::vector<std::string> collection_items(Expression* expression) {
+    std::vector<std::string> result;
+    if (expression->is_LiteralList()) {
+      for (auto element : expression->as_LiteralList()->elements()) {
+        result.push_back(flat(element, PRECEDENCE_NONE));
+      }
+    } else if (expression->is_LiteralByteArray()) {
+      for (auto element : expression->as_LiteralByteArray()->elements()) {
+        result.push_back(flat(element, PRECEDENCE_NONE));
+      }
+    } else if (expression->is_LiteralSet()) {
+      for (auto element : expression->as_LiteralSet()->elements()) {
+        result.push_back(flat(element, PRECEDENCE_NONE));
+      }
+    } else {
+      LiteralMap* map = expression->as_LiteralMap();
+      for (int i = 0; i < map->keys().length(); i++) {
+        result.push_back(flat(map->keys()[i], PRECEDENCE_NONE) + ": " +
+            flat(map->values()[i], PRECEDENCE_NONE));
+      }
+    }
+    return result;
+  }
+
+  std::vector<int> collection_item_widths(Expression* expression) {
+    std::vector<int> result;
+    if (expression->is_LiteralList()) {
+      for (auto element : expression->as_LiteralList()->elements()) {
+        result.push_back(estimated_flat_width(element));
+      }
+    } else if (expression->is_LiteralByteArray()) {
+      for (auto element : expression->as_LiteralByteArray()->elements()) {
+        result.push_back(estimated_flat_width(element));
+      }
+    } else if (expression->is_LiteralSet()) {
+      for (auto element : expression->as_LiteralSet()->elements()) {
+        result.push_back(estimated_flat_width(element));
+      }
+    } else {
+      LiteralMap* map = expression->as_LiteralMap();
+      for (int i = 0; i < map->keys().length(); i++) {
+        int key = estimated_flat_width(map->keys()[i]);
+        int value = estimated_flat_width(map->values()[i]);
+        result.push_back(key < 0 || value < 0 ? -1 : key + 2 + value);
+      }
+    }
+    return result;
+  }
+
+  int estimated_collection_rows(const std::vector<int>& widths) {
+    int available = preferred_extent_at(base_indentation_, style_) -
+        style_.indentation_step;
+    int rows = 0;
+    int row_width = 0;
+    for (int width : widths) {
+      if (width < 0) return widths.size();
+      int addition = width + 1;
+      if (row_width > 0 && row_width + 1 + addition > available) {
+        rows++;
+        row_width = 0;
+      }
+      row_width += (row_width == 0 ? 0 : 1) + addition;
+    }
+    return rows + (row_width == 0 ? 0 : 1);
+  }
+
+  int estimated_collection_width(Expression* expression,
+                                 const std::vector<int>& widths) {
+    int result = expression->is_LiteralByteArray() ? 3 : 2;
+    for (int i = 0; i < static_cast<int>(widths.size()); i++) {
+      if (widths[i] < 0) return -1;
+      result += widths[i] + (i == 0 ? 0 : 2);
+    }
+    return result;
+  }
+
   bool render_flat(Expression* expression,
                    int outer_precedence,
                    FormatOutput* result) {
@@ -377,6 +651,71 @@ class ExpressionPrinter {
         *result = broken_binary(binary, outer_precedence);
         return supported_;
       }
+    } else if (inner->is_Call() && outer_precedence == PRECEDENCE_NONE) {
+      Call* call = inner->as_Call();
+      if (!call->arguments().is_empty()) {
+        int first_named = first_named_argument(call);
+        int backslash_split = best_backslash_split(call);
+        int broken_lines = first_named >= 0
+            ? call->arguments().length() - first_named
+            : backslash_split >= 0 ? 1 : call->arguments().length();
+        int broken_penalty = backslash_split >= 0
+            ? style_.backslash_penalty
+            : 0;
+        if (!is_flat_acceptable(flat_width,
+                                base_indentation_,
+                                broken_lines,
+                                broken_lines,
+                                broken_penalty,
+                                style_)) {
+          if (first_named >= 0) {
+            int prefix_width = estimated_flat_width(call->target());
+            for (int i = 0; i < first_named; i++) {
+              prefix_width += 1 +
+                  estimated_call_argument_width(call->arguments()[i]);
+            }
+            *result = is_flat_acceptable(prefix_width,
+                                         base_indentation_,
+                                         1,
+                                         1,
+                                         0,
+                                         style_)
+                ? named_suffix_call(call, first_named)
+                : broken_call(call);
+          } else if (backslash_split >= 0) {
+            *result = backslash_call(call, backslash_split);
+          } else {
+            *result = broken_call(call);
+          }
+          return supported_;
+        }
+      }
+    } else if (inner->is_LiteralList() ||
+               inner->is_LiteralByteArray() ||
+               inner->is_LiteralSet() ||
+               inner->is_LiteralMap()) {
+      std::vector<int> widths = collection_item_widths(inner);
+      if (!widths.empty()) {
+        int collection_width = estimated_collection_width(inner, widths);
+        int rows = estimated_collection_rows(widths);
+        if (!is_flat_acceptable(collection_width,
+                                base_indentation_,
+                                rows + 1,
+                                widths.size(),
+                                0,
+                                style_)) {
+          std::vector<std::string> items = collection_items(inner);
+          std::string opening = inner->is_LiteralList()
+              ? "["
+              : inner->is_LiteralByteArray() ? "#[" : "{";
+          std::string closing = inner->is_LiteralList() ||
+                  inner->is_LiteralByteArray()
+              ? "]"
+              : "}";
+          *result = broken_collection(opening, closing, items);
+          return supported_;
+        }
+      }
     } else if (inner->is_If()) {
       If* conditional = inner->as_If();
       if (conditional->yes() == null ||
@@ -404,6 +743,15 @@ class ExpressionPrinter {
 };
 
 } // namespace
+
+bool format_expression_flat(Expression* expression,
+                            Source* source,
+                            std::string* result,
+                            const FormatExpressionOptions& options) {
+  ASSERT(source != null);
+  ExpressionPrinter printer(source, 0, FormatStyle(), options);
+  return printer.run_flat(expression, result);
+}
 
 bool format_expression(Expression* expression,
                        Source* source,
