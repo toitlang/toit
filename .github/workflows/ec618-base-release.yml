@@ -25,6 +25,11 @@ name: EC618 base release
 
 on:
   workflow_dispatch:
+    inputs:
+      qualified_base_sha256:
+        description: SHA-256 of the hardware-qualified base.bin
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -36,11 +41,21 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      QUALIFIED_BASE_SHA256: ${{ inputs.qualified_base_sha256 }}
 
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Validate qualified base digest
+        shell: bash
+        run: |
+          [[ "$QUALIFIED_BASE_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+            echo "Supply the lowercase SHA-256 of the hardware-qualified base.bin."
+            exit 1
+          }
 
       - name: Setup build environment
         uses: ./actions/setup-build
@@ -93,6 +108,9 @@ jobs:
       - name: Build + prove universal base
         run: |
           make ec618-base
+          # A successful fresh build is not evidence that its bytes match
+          # the base that passed hardware qualification.
+          echo "$QUALIFIED_BASE_SHA256  build/ec618-base/base.bin" | sha256sum --check -
           make ec618
           mkdir -p build/release-ec618-base
           cp build/ec618-base/base.elf build/release-ec618-base/ec618-base-v$VERSION.elf

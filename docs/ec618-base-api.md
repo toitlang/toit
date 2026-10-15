@@ -52,6 +52,13 @@ binary, identity manifest and API contract. Published-base CI downloads and
 checks all four before using the base. These checks establish artifact
 integrity; they do not replace the export or firmware build gates.
 
+Dispatching the release workflow requires `qualified_base_sha256`: the
+lowercase SHA-256 of the exact `base.bin` that passed hardware qualification.
+The workflow rejects malformed input and verifies the freshly built binary
+against that digest before building the slot or publishing. Do not substitute
+a new build's digest merely to pass this check; a mismatch requires
+investigation and, if the base changes intentionally, renewed qualification.
+
 `make ec618` checks the complete export contract against the selected
 `EC618_BASE_DIR/base.elf` before linking slots. This also covers downloaded
 and previously built bases, including APIs that the current slot does not
