@@ -86,6 +86,10 @@ run-tests -> none:
     port := Ec618.uart2 --mapping=1 --baud-rate=115200
     port.close
 
+  test "uart2-mapping-2-opens":
+    port := Ec618.uart2 --mapping=2 --baud-rate=115200
+    port.close
+
   test "uart2-tx-only-opens":
     port := Ec618.uart2 --no-tx-disabled --rx-disabled --baud-rate=115200
     port.close

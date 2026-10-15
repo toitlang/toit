@@ -81,6 +81,24 @@ namespace toit {
   M(espnow,  MODULE_ESPNOW)                  \
   M(bignum,  MODULE_BIGNUM)                  \
   M(unix_socket, MODULE_UNIX_SOCKET)         \
+  M(one_wire, MODULE_ONE_WIRE)               \
+  M(watchdog, MODULE_WATCHDOG)               \
+
+#define MODULE_WATCHDOG(PRIMITIVE)           \
+  PRIMITIVE(start, 1)                        \
+  PRIMITIVE(feed, 0)                         \
+  PRIMITIVE(stop, 0)                         \
+
+// Dedicated 1-Wire controller operations. Protocol/device logic lives in the
+// one_wire package, which also provides an RMT backend on other platforms.
+#define MODULE_ONE_WIRE(PRIMITIVE)           \
+  PRIMITIVE(capabilities, 1)                 \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(create, 3)                       \
+  PRIMITIVE(close, 2)                        \
+  PRIMITIVE(start, 4)                        \
+  PRIMITIVE(finish, 1)                       \
+  PRIMITIVE(abort, 1)                        \
 
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(write_on_stdout, 2)              \
@@ -517,6 +535,7 @@ namespace toit {
   PRIMITIVE(read_to_buffer, 2)               \
   PRIMITIVE(errors_underrun, 1)              \
   PRIMITIVE(errors_overrun, 1)               \
+  PRIMITIVE(configure_buffered, 14)          \
 
 #define MODULE_SPI(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
@@ -740,6 +759,8 @@ namespace toit {
   PRIMITIVE(get, 2)                         \
   PRIMITIVE(get_raw, 1)                     \
   PRIMITIVE(close, 1)                       \
+  PRIMITIVE(init_group, 0)                  \
+  PRIMITIVE(cancel, 1)                      \
 
 #define MODULE_DAC(PRIMITIVE)               \
   PRIMITIVE(init, 0)                        \
@@ -1226,6 +1247,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_BleResourceGroup(N, name)    MAKE_UNPACKING_MACRO(BleResourceGroup, N, name)
 #define _A_T_X509ResourceGroup(N, name)   MAKE_UNPACKING_MACRO(X509ResourceGroup, N, name)
 #define _A_T_PwmResourceGroup(N, name)    MAKE_UNPACKING_MACRO(PwmResourceGroup, N, name)
+#define _A_T_OneWireResourceGroup(N, name) MAKE_UNPACKING_MACRO(OneWireResourceGroup, N, name)
 #define _A_T_RpcResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RpcResourceGroup, N, name)
 #define _A_T_RmtResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RmtResourceGroup, N, name)
 #define _A_T_PcntUnitResourceGroup(N, name) MAKE_UNPACKING_MACRO(PcntUnitResourceGroup, N, name)
@@ -1283,9 +1305,11 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_SpiTargetResource(N, name)   MAKE_UNPACKING_MACRO(SpiTargetResource, N, name)
 #define _A_T_SpiBufferTargetResource(N, name) MAKE_UNPACKING_MACRO(SpiBufferTargetResource, N, name)
 #define _A_T_AdcResource(N, name)         MAKE_UNPACKING_MACRO(AdcResource, N, name)
+#define _A_T_AdcResourceGroup(N, name)    MAKE_UNPACKING_MACRO(AdcResourceGroup, N, name)
 #define _A_T_DacResource(N, name)         MAKE_UNPACKING_MACRO(DacResource, N, name)
 #define _A_T_PmLockResource(N, name)      MAKE_UNPACKING_MACRO(PmLockResource, N, name)
 #define _A_T_PwmResource(N, name)         MAKE_UNPACKING_MACRO(PwmResource, N, name)
+#define _A_T_OneWireResource(N, name)     MAKE_UNPACKING_MACRO(OneWireResource, N, name)
 #define _A_T_TouchResource(N, name)       MAKE_UNPACKING_MACRO(TouchResource, N, name)
 #define _A_T_PcntUnitResource(N, name)    MAKE_UNPACKING_MACRO(PcntUnitResource, N, name)
 #define _A_T_EspNowResource(N, name)      MAKE_UNPACKING_MACRO(EspNowResource, N, name)
@@ -1431,10 +1455,15 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
   _A_T_##t12(11, n12); \
   _A_T_##t13(12, n13);
 
-#define _OVERRIDE(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, _23, _24, _25, _26, NAME, ...) NAME
+#define _A_28(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6, t7, n7, t8, n8, t9, n9, t10, n10, t11, n11, t12, n12, t13, n13, t14, n14) \
+  _A_26(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6, t7, n7, t8, n8, t9, n9, t10, n10, t11, n11, t12, n12, t13, n13) \
+  _A_T_##t14(13, n14);
+
+#define _OVERRIDE(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, _23, _24, _25, _26, _27, _28, NAME, ...) NAME
 
 #define ARGS(...)        \
   _OVERRIDE(__VA_ARGS__, \
+    _A_28, _ODD,         \
     _A_26, _ODD,         \
     _A_24, _ODD,         \
     _A_22, _ODD,         \

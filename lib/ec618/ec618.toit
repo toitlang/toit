@@ -252,6 +252,10 @@ Returns the reason for the most recent reset of the application processor.
 The result is one of the RESET-* constants ($RESET-POWER-ON,
   $RESET-WATCHDOG-HARDWARE, ...). Use $reset-reason-name to turn it into a
   human-readable string.
+
+Requires a base image that initializes the vendor reset-reason decoder.
+  Early development bases omitted this and reported $RESET-POWER-ON for every
+  cause, including software resets and deep-sleep wakes.
 */
 reset-reason -> int:
   #primitive.ec618.reset-reason
@@ -301,9 +305,8 @@ The result is one of the WAKEUP-* constants ($WAKEUP-POWER-ON,
   $WAKEUP-RTC, ...). Use $wakeup-cause-name to turn it into a
   human-readable string.
 
-The EC618 reports $reset-reason as $RESET-POWER-ON even after a wake
-  from deep sleep, so this is the call that tells a deep-sleep wake
-  (by timer or wakeup pad) apart from a cold boot.
+Use this to identify the wake source (timer, wakeup pad, or power-on);
+  $reset-reason alone does not identify which source ended deep sleep.
 */
 wakeup-cause -> int:
   #primitive.ec618.wakeup-cause
@@ -354,17 +357,20 @@ class Ec618:
   // UART pad layout. Values must match `kUartPads` in pad_table_ec618.cc.
   // Flattened as controller, mapping, then [tx, rx, rts, cts]. 0xff means
   // the corresponding role isn't available on that mapping.
-  static UART-MAPPINGS-PER-CONTROLLER_ ::= 2
+  static UART-MAPPINGS-PER-CONTROLLER_ ::= 3
   static UART-PADS-PER-MAPPING_ ::= 4
   static UART-PADS_/ByteArray ::= #[
     30, 29,   27,   28,  // UART0 mapping 0 — primary.
     32, 31, 0xff, 0xff,  // UART0 mapping 1 — alt; no flow control.
+    0xff, 0xff, 0xff, 0xff,  // UART0 mapping 2 — unavailable.
 
     34, 33,   31,   32,  // UART1 mapping 0 — only TX/RX/RTS route.
     34, 33, 0xff,   22,  // UART1 mapping 1 — alternate CTS.
+    0xff, 0xff, 0xff, 0xff,  // UART1 mapping 2 — unavailable.
 
     26, 25, 0xff, 0xff,  // UART2 mapping 0 — primary.
     28, 27, 0xff, 0xff,  // UART2 mapping 1 — alt 1.
+    22, 21, 0xff, 0xff,  // UART2 mapping 2 — camera data pads.
   ]
 
   /**
@@ -520,6 +526,7 @@ class Ec618:
   - 0 (default): TX=GPIO11, RX=GPIO10.
   - 1:           TX=GPIO13, RX=GPIO12 (the layout Air780EG/EUG modules
                  use, because GPIO10/11 are taken by their GNSS subsystem).
+  - 2:           TX=GPIO7, RX=GPIO6 (camera data pads 22 and 21).
 
   With $mode equal to $uart.Port.MODE-RS485-HALF-DUPLEX, $rs485-de is the
     RS485 direction (DE) pin: the driver raises it just before a
