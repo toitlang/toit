@@ -540,7 +540,17 @@ class Parser {
   // optimistic (can allow more), but must be reasonable from a user's point of
   // view.
   bool peek_type(ParserPeeker* peeker);
+  // [pending_closers] counts the '>' owed to enclosing type-argument lists
+  // when a '>>' or '>>>' token closed more than one level.
+  bool peek_type(ParserPeeker* peeker, int* pending_closers);
   ast::Expression* parse_type(bool is_type_annotation);
+  // Parses a type without the leading '/' or '->'.
+  ast::Expression* parse_type_body(bool allow_nullable);
+  // How many '>' the given token starts with (`>`, `>>`, `>>=`, ...). 0 if none.
+  static int closing_angle_count(Token::Kind kind);
+  // Consumes one '>' of the current token. If the token is longer (like '>>'
+  // or '>='), the current token is replaced with the remainder.
+  void consume_closing_angle();
   ast::Class* parse_class_interface_monitor_or_mixin(bool is_abstract, Source::Range abstract_range);
 
   ast::Sequence* parse_sequence();
