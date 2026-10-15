@@ -23,7 +23,8 @@ embedding a rig pin number in an individual test.
 Configure `tests/hw` with `TOIT_EXE_HW` matching the installed firmware,
 `EC618_BOARD_PORT` set to its persistent UART0 path, and `EC618_EXPECT_BASE`
 set to its exact base identity. Enable `EC618_TEST_STANDALONE` for basics,
-ADC/cellular lifecycle and events, watchdog-stop and integer-width tests.
+ADC/cellular lifecycle and events, watchdog-stop, firmware-writer lifecycle
+and integer-width tests.
 `EC618_TEST_FPC` adds I2S allocation and stop tests. Enable
 `EC618_TEST_I2S_MASTER` only with DS18B20 disconnected and peer clock pins
 left as inputs; it adds the live-clock stop test.

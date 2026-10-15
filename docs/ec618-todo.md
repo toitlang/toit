@@ -1,6 +1,6 @@
 # EC618 open work
 
-## Breakout integration status (2026-10-14)
+## Breakout integration status (2026-10-15)
 
 The original EC618 port and networking were released in alpha.199. This
 checklist covers the subsequent breakout enhancement and remaining platform
@@ -14,25 +14,54 @@ below must not be confused with unpublished package/release dependencies.
 | Area | Evidence and limits |
 | --- | --- |
 | UART, I2C, SPI | The integrated stack-unit correction passes all four FPC bus cases: both UART routes, dual I2C and SPI. Evidence: `stack-units-offline-2026-10-14/bus-status.txt` and its test logs. The subsequent native changes affect only I2S. |
-| Platform lifecycle | All nine standalone cases pass on the current validated bulk-copy firmware in `final-standalone-2026-10-14/ctest.log` and `LastTest.log`: basics, ADC lifecycle/events, cellular lifecycle, watchdog stop, integer widths, I2S stop, buffer capacity and live-clock stop/cancellation. Each case passes exact-base and validated-slot health before and after execution. This supersedes the earlier diagnostic-image-only suite evidence. The final stack correction also has separate basics, GC and 20-KiB TLS echo qualification. |
+| Platform lifecycle | All nine standalone cases pass on the previously validated bulk-copy firmware in `final-standalone-2026-10-14/ctest.log` and `LastTest.log`: basics, ADC lifecycle/events, cellular lifecycle, watchdog stop, integer widths, I2S stop, buffer capacity and live-clock stop/cancellation. Each case passes exact-base and validated-slot health before and after execution. This supersedes the earlier diagnostic-image-only suite evidence. The final stack correction also has separate basics, GC and 20-KiB TLS echo qualification. |
 | I2S memory and transfer | Packed 24-bit rings and bounded block copies are implemented. Default-buffer supported-width captures pass; explicit 100-ms allocations can fail from fragmentation. The API reports allocation failure rather than silently reducing the request. |
 | Sustained I2S | `i2s-bulk-copy-repeat-2026-10-14` passes eight separate ten-second EC618/independent captures, with four native S3 failures. `i2s-long-capture-2026-10-14` passes one uninterrupted 120-second 96-kHz/24-bit EC618 capture (69,120,000 bytes, zero over/underruns), both native S3 receivers and independent SPI. SPI observes approximately two seconds, not the entire EC618 capture. Historical intermittent failures are not erased by these passes. |
-| Base API stability | The 399-symbol/49-header contract gates both base production and selection of an existing base. Current live identity is `base-v5+0a267ba79e218a57efff8eae73f2f665`; the full export check passes. Retained symbols are not hardware qualification for unwired peripherals. |
+| Base API stability | The 399-symbol/49-header contract gates both base production and selection of an existing base. Current live identity is `base-v5+54dcd4c53ba8df5f38479c62e1106e2e`; the full export check passes. Retained symbols are not hardware qualification for unwired peripherals. |
 | External packages | Native 1-Wire has recorded DS18B20 CRC and cancellation/container-cleanup qualification; the sensor is now disconnected for I2S. Package PR [toit-1-wire #38](https://github.com/toitware/toit-1-wire/pull/38) remains open. Shared-watchdog SDK [#3241](https://github.com/toitlang/toit/pull/3241) and package [#18](https://github.com/toitware/toit-watchdog/pull/18) remain open. |
 
 Evidence directories above are under `dev/ec618-rig/` in the bring-up
 workspace. They are local qualification artifacts, not published CI results.
-The two-minute test restores and verifies the original S3 app and passes
-final EC618/peer health. Slot A is validated on the previously qualified base.
-The deterministic object-order change produces candidate fingerprint
-`54dcd4c53ba8df5f38479c62e1106e2e`; two local builds are byte-identical and
-pass the export contract, but CI identity and live qualification are pending.
-Keep the rig on its qualified base until the final candidate is ready.
+The operator installed the Linux base
+`base-v5+54dcd4c53ba8df5f38479c62e1106e2e`. Live preflight confirms validated
+slot A, UART0, and no trial. The following results supersede the older-base
+qualification in the table above:
+
+- All nine standalone cases pass in 190.97 seconds; evidence:
+  `base-identity-2026-10-14/standalone-installed-2026-10-15.log`.
+- All four FPC bus cases pass in 140.15 seconds; evidence:
+  `base-installed-bus-2026-10-15/`. The initial run encountered the restored
+  older S3 fixture's unsupported IDENTIFY command before bus execution.
+  Installing the matching verified fixture permits the complete suite to pass.
+- Default-buffer 96-kHz/24-bit duplex passes a ten-second run on SPI mode 0
+  and a 120-second run on mode 1. The long EC618 receive checks 69,120,000
+  bytes with zero overruns/underruns. Each independent SPI capture checks
+  1,153,944 bytes (about two seconds); both native S3 receivers also pass.
+  Evidence: `base-installed-i2s-2026-10-15/`. These bounded passes do not
+  resolve historical intermittent failures or qualify indefinite streaming.
+
+Both fixture procedures restore and flash-verify the original S3 application.
+Final exact-base EC618 health and S3/classic peer checks pass.
+Firmware-writer exclusivity, close/reopen and resource cleanup after a
+container exits with an open writer also pass on this base. The normal
+lifecycle test is now registered in the standalone suite and passes through
+its standard runner (14.23 seconds). This brings registration to ten cases;
+the original nine and the added case were run separately. Evidence:
+`base-installed-lifecycle-2026-10-15/`, including the leak/reacquisition sequence.
+The selected base matches local and Linux CI builds byte-for-byte. Windows
+and macOS fresh-base/firmware checks pass, but their rebuilt bases have
+different fingerprints. Use the exact selected base for matching OTA images;
+do not substitute a host rebuild with the same version number.
 
 Remaining closure work includes review/publication of the integration and
 package dependencies, publishing v5 and proving the published-base CI path,
 and resolving or explicitly documenting the remaining qualification limits.
-The 2026-10-14 release lookup still returns `release not found` for v5.
+The 2026-10-15 release lookup still returns `release not found` for v5.
+PR #3289 remains a draft at `57ba1b16`. Its Linux published-base check fails
+at the missing-v5 gate. General CI's external-and-flaky aggregation also fails:
+Linux DNS SERVER_FAILURE for digimedia.com and Windows RESUME_FAILED for
+adafruit.com. These failures remain visible; successful matrix jobs alone
+do not establish green CI.
 Do not declare complete bring-up or publication from local commits alone.
 
 ## Runtime and peripherals
