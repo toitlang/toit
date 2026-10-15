@@ -2,6 +2,22 @@
 
 ## Breakout integration status (2026-10-15)
 
+Shared-pad ownership testing exposed an EC618 assertion reset when closing
+unconfigured I2S after I2C/UART use. I2S cleanup now synchronously stops a DMA
+channel only if I2S started it, avoiding the vendor stop-state wait for a
+never-started channel. The same-base OTA passes smoke testing and validates
+slot B. All eleven standalone cases pass in 217.65 seconds, including the
+previously failing sequence, blocked stop/restart and live-clock stop.
+Evidence: `i2s-unconfigured-close-2026-10-15/`.
+
+Post-fix 96-kHz/24-bit duplex checks pass ten seconds of EC618 receive with
+zero over/underruns and approximately two seconds of independent SPI capture
+on each sampling edge. Mode 0 also passes both native S3 receivers; mode 1
+fails those receivers with payload errors. The native failure is retained;
+this is not an all-endpoint streaming pass. S3 restoration/flash verification,
+exact-base final health and peer checks pass. Evidence:
+`i2s-cleanup-streaming-2026-10-15/`.
+
 The original EC618 port and networking were released in alpha.199. This
 checklist covers the subsequent breakout enhancement and remaining platform
 work; it does not reopen the original network qualification.

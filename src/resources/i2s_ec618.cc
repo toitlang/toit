@@ -75,6 +75,7 @@ struct I2sPipe {
   unsigned ring_capacity_bytes = 0;
   uint8_t descriptor_storage[2 * sizeof(DmaDescriptor_t) + 15];
   int channel = -1;
+  bool started = false;
   unsigned block = 0;
   unsigned head = 0;
   unsigned tail = 0;
@@ -98,11 +99,14 @@ struct I2sPipe {
   }
 
   void stop() {
-    if (channel < 0) return;
+    // The vendor's synchronous stop waits for a DMA stop-state bit. A
+    // channel that has never been started need not have that bit set.
+    if (channel < 0 || !started) return;
     // Never free or reuse memory while DMA can still access it.
     if (DMA_stopChannel(DMA_INSTANCE_MP, channel, true) != 0) {
       FATAL("I2S DMA channel failed to stop");
     }
+    started = false;
   }
 
   ~I2sPipe() {
@@ -186,6 +190,7 @@ struct I2sPipe {
       DMA_buildDescriptor(&desc[i], &config, &extra);
     }
     DMA_loadChannelDescriptorAndRun(DMA_INSTANCE_MP, channel, desc);
+    started = true;
   }
 
   void completed(bool tx) {
