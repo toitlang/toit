@@ -77,7 +77,11 @@ class UnitPrinter {
     }
     std::string trailing;
     if (!comments_->render_own_line(
-        cursor, source_->size(), 0, &trailing)) return false;
+        cursor,
+        source_->size(),
+        0,
+        &trailing,
+        style_.max_blank_lines)) return false;
     if (!trailing.empty()) sections.push_back(std::move(trailing));
     *result = join(sections, "\n\n");
     if (!result->empty()) result->push_back('\n');
@@ -112,7 +116,8 @@ class UnitPrinter {
         cursor,
         start(node),
         indentation - original_indentation(node),
-        result);
+        result,
+        style_.max_blank_lines);
   }
 
   bool has_comment_on_first_line(Node* node) const {
