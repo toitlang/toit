@@ -220,17 +220,28 @@ class Type:
 
   static ANY / Type ::= Type.internal_ ANY-KIND null
   static NONE / Type ::= Type.internal_ NONE-KIND null
+  /// A raw block type, without a signature.
   static BLOCK / Type ::= Type.internal_ BLOCK-KIND null
 
   kind / int ::= 0
   class-ref / ToplevelRef? ::= ?
+  /// The parameter types of a typed block (`[block int -> bool]`).
+  /// Null for raw blocks and non-block types.
+  block-parameter-types / List? ::= null
+  /// The return type of a typed block. Null for raw blocks and non-block types.
+  block-return-type / Type? ::= null
 
   constructor .class-ref: kind = 0
   constructor.internal_ .kind .class-ref:
+  constructor.block .block-parameter-types .block-return-type:
+    kind = BLOCK-KIND
+    class-ref = null
 
   is-block -> bool: return kind == BLOCK-KIND
   is-any -> bool: return kind == ANY-KIND
   is-none -> bool: return kind == NONE-KIND
+  /// Whether this is a block type with a signature.
+  is-typed-block -> bool: return is-block and block-parameter-types != null
 
 hash-code-counter_ := 0
 
@@ -748,6 +759,10 @@ class ModuleReader extends ReaderBase:
     id := int.parse line
     if id == -1: return Type.ANY
     if id == -2: return Type.NONE
+    if id == -3:
+      parameter-types := read-list: read-type
+      return-type := read-type
+      return Type.block parameter-types return-type
     return Type (toplevel-ref-from-global-id id)
 
   read-range -> Range:

@@ -452,6 +452,12 @@ void Writer::print_type(ir::Type type) {
     this->printf_external("-2\n");
   } else if (type.is_class()) {
     print_toplevel_ref(type.klass());
+  } else if (type.is_block()) {
+    this->printf_external("-3\n");
+    int parameter_count = type.block_parameter_count();
+    this->printf_external("%d\n", parameter_count);
+    for (int i = 0; i < parameter_count; i++) print_type(type.block_parameter_type(i));
+    print_type(type.block_return_type());
   } else {
     UNREACHABLE();
   }
@@ -544,7 +550,8 @@ void Writer::print_method(ir::Method* method) {
     } else {
       this->printf("0\n");
     }
-    if (is_block) {
+    if (is_block && !parameter->type().is_block()) {
+      // A raw block parameter.
       this->printf_external("[block]\n");
     } else {
       print_type(parameter->type());

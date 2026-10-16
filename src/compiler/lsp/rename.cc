@@ -174,6 +174,7 @@ class FindReferencesVisitor : public ir::TraversingVisitor {
   void visit_CallStatic(ir::CallStatic* node) override;
   void visit_CallVirtual(ir::CallVirtual* node) override;
   void visit_Typecheck(ir::Typecheck* node) override;
+  void visit_Code(ir::Code* node) override;
 
   void emit_range(const Source::Range& range);
 
@@ -190,6 +191,28 @@ class FindReferencesVisitor : public ir::TraversingVisitor {
   LspProtocol* protocol_;
   const VirtualCallFilter& virtual_call_filter_;
 };
+
+// Emits the references to [target_class] in the type annotation [ast_type],
+// which resolved to [type]. Block types reference several classes.
+static void emit_type_references(ir::Type type,
+                                 ast::Expression* ast_type,
+                                 ir::Class* target_class,
+                                 FindReferencesVisitor& visitor) {
+  if (ast_type == null) return;
+  if (type.is_block() && ast_type->is_BlockType()) {
+    auto* block_type = ast_type->as_BlockType();
+    auto ast_parameter_types = block_type->parameter_types();
+    if (ast_parameter_types.length() != type.block_parameter_count()) return;
+    for (int i = 0; i < ast_parameter_types.length(); i++) {
+      emit_type_references(type.block_parameter_type(i), ast_parameter_types[i], target_class, visitor);
+    }
+    emit_type_references(type.block_return_type(), block_type->return_type(), target_class, visitor);
+    return;
+  }
+  if (type.is_class() && type.klass() == target_class) {
+    visitor.emit_range(class_reference_range(ast_type));
+  }
+}
 
 }  // anonymous namespace
 
@@ -850,11 +873,25 @@ void FindReferencesVisitor::visit_Typecheck(ir::Typecheck* node) {
         emit_range(class_reference_range(ast_type->as_Expression()));
       }
     }
-    // For PARAMETER_AS_CHECK, RETURN_AS_CHECK, and FIELD_* checks, the
+    // For PARAMETER_AS_CHECK, BLOCK_ARGUMENT_AS_CHECK, RETURN_AS_CHECK, and FIELD_* checks, the
     // class name range is extracted separately in emit_all_references
     // using direct AST lookups on parameters, return types, and fields.
   }
   TraversingVisitor::visit_Typecheck(node);
+}
+
+// Block and lambda parameters aren't reachable from the method's parameter
+// list; their type annotations are found here.
+void FindReferencesVisitor::visit_Code(ir::Code* node) {
+  if (target_class_ != null) {
+    for (auto* param : node->parameters()) {
+      auto* ast_param = ir_to_ast_map_.lookup(param);
+      if (ast_param != null && ast_param->is_Parameter()) {
+        emit_type_references(param->type(), ast_param->as_Parameter()->type(), target_class_, *this);
+      }
+    }
+  }
+  TraversingVisitor::visit_Code(node);
 }
 
 // Helper functions for find_and_emit_all_references
@@ -939,12 +976,9 @@ static void emit_type_annotation_references(
     FindReferencesVisitor& visitor) {
   auto scan_method_types = [&](ir::Method* method) {
     for (auto* param : method->parameters()) {
-      if (param->type().is_class() && param->type().klass() == target_class) {
-        auto* ast_param = ir_to_ast.lookup(param);
-        if (ast_param != null && ast_param->is_Parameter()) {
-          auto* ast_type = ast_param->as_Parameter()->type();
-          if (ast_type != null) visitor.emit_range(class_reference_range(ast_type));
-        }
+      auto* ast_param = ir_to_ast.lookup(param);
+      if (ast_param != null && ast_param->is_Parameter()) {
+        emit_type_references(param->type(), ast_param->as_Parameter()->type(), target_class, visitor);
       }
     }
     if (method->return_type().is_class() &&
