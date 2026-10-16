@@ -140,6 +140,11 @@ IR_NODES(DECLARE)
   Expression* _replace_expression(Expression* expression);
 };
 
+/// A static type.
+///
+/// Block types (`[block int -> bool]`) describe the parameters a block is
+/// called with and the value it yields. A raw `[block]` parameter has type
+/// `any`. Block types are never nullable.
 class Type {
  public:
   explicit Type(Class* klass) : kind_(kClass), class_(klass), is_nullable_(false) {
@@ -150,9 +155,17 @@ class Type {
   static Type any()  { return Type(kAny, true); }
   static Type invalid() { return Type(kInvalid, false); }
 
+  static Type block(List<Type> parameter_types, Type return_type) {
+    auto types = ListBuilder<Type>::allocate(parameter_types.length() + 1);
+    for (int i = 0; i < parameter_types.length(); i++) types[i] = parameter_types[i];
+    types[parameter_types.length()] = return_type;
+    return Type(kBlock, null, types, false);
+  }
+
   bool is_nullable() const { return is_nullable_; }
 
   bool is_class() const { return kind_ == kClass; }
+  bool is_block() const { return kind_ == kBlock; }
   bool is_none() const { return kind_ == kNone; }
   bool is_any() const { return kind_ == kAny; }
   bool is_valid() const { return kind_ != kInvalid; }
@@ -160,18 +173,37 @@ class Type {
 
   Class* klass() const { return class_; }
 
+  int block_parameter_count() const {
+    ASSERT(is_block());
+    return types_.length() - 1;
+  }
+  Type block_parameter_type(int i) const {
+    ASSERT(is_block() && i < block_parameter_count());
+    return types_[i];
+  }
+  Type block_return_type() const {
+    ASSERT(is_block());
+    return types_[types_.length() - 1];
+  }
+
   Type to_nullable() const {
-    if (is_special()) return *this;
-    return Type(kind_, class_, true);
+    if (is_special() || is_block()) return *this;
+    return Type(kind_, class_, types_, true);
   }
 
   Type to_non_nullable() const {
     if (is_none() || !is_valid()) return *this;
-    return Type(kind_, class_, false);
+    return Type(kind_, class_, types_, false);
   }
 
   bool operator ==(const Type& other) const {
-    return kind_ == other.kind_ && class_ == other.class_;
+    if (kind_ != other.kind_ || class_ != other.class_) return false;
+    if (kind_ != kBlock) return true;
+    if (types_.length() != other.types_.length()) return false;
+    for (int i = 0; i < types_.length(); i++) {
+      if (types_[i] != other.types_[i]) return false;
+    }
+    return true;
   }
   bool operator !=(const Type& other) const {
     return !(*this == other);
@@ -182,18 +214,21 @@ class Type {
   static const int kNone = 1;
   static const int kAny = 2;
   static const int kInvalid = 3;
+  static const int kBlock = 4;
 
   Type(int kind, bool is_nullable)
       : kind_(kind), class_(null), is_nullable_(is_nullable) {}
 
-  Type(int kind, Class* klass, bool is_nullable)
-      : kind_(kind), class_(klass), is_nullable_(is_nullable) {}
+  Type(int kind, Class* klass, List<Type> types, bool is_nullable)
+      : kind_(kind), class_(klass), types_(types), is_nullable_(is_nullable) {}
 
   friend class ListBuilder<Type>;
   Type() {}
 
   int kind_;
   Class* class_;
+  // For block types: the parameter types followed by the return type.
+  List<Type> types_;
   bool is_nullable_;
 };
 
@@ -1803,6 +1838,8 @@ class Typecheck : public Expression {
     IS_CHECK,
     AS_CHECK,
     PARAMETER_AS_CHECK,
+    // The argument of a call to a typed block.
+    BLOCK_ARGUMENT_AS_CHECK,
     LOCAL_AS_CHECK,
     GLOBAL_AS_CHECK,
     RETURN_AS_CHECK,
@@ -1829,6 +1866,7 @@ class Typecheck : public Expression {
         return false;
       case AS_CHECK:
       case PARAMETER_AS_CHECK:
+      case BLOCK_ARGUMENT_AS_CHECK:
       case LOCAL_AS_CHECK:
       case GLOBAL_AS_CHECK:
       case RETURN_AS_CHECK:

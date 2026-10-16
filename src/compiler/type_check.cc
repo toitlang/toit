@@ -281,9 +281,20 @@ class TypeChecker : public ReturningVisitor<Type> {
   }
 
   Type visit_Code(Code* node) {
-    visit(node->body());
-    // TODO(florian); should be a "Block" or "Code" type.
-    return Type::any();
+    auto body_type = visit(node->body());
+    // TODO(florian); lambdas should have a "Lambda" type.
+    if (!node->is_block()) return Type::any();
+    if (body_type == true_type_ || body_type == false_type_) body_type = boolean_type_;
+    // A block that never completes (non-local return, throw, ...) doesn't
+    // yield a value, so it fits any return type. One that completes with a
+    // 'none' expression yields null.
+    if (body_type.is_none()) body_type = diverges(node->body()) ? Type::any() : null_type_;
+    auto parameters = node->parameters();
+    auto parameter_types = ListBuilder<Type>::allocate(parameters.length());
+    for (int i = 0; i < parameters.length(); i++) {
+      parameter_types[i] = parameters[i]->type();
+    }
+    return Type::block(parameter_types, body_type);
   }
 
   Type visit_Reference(Reference* node) { UNREACHABLE(); return Type::invalid(); }
@@ -394,10 +405,6 @@ class TypeChecker : public ReturningVisitor<Type> {
     bool is_equals_call = (node->selector() == Token::symbol(Token::EQ) &&
                            node->shape() == CallShape(1).with_implicit_this());
 
-    auto argument_types = ListBuilder<Type>::allocate(arguments.length());
-    for (int i = 0; i < arguments.length(); i++) {
-      argument_types[i] = visit(arguments[i]);
-    }
     ASSERT(receiver_type.is_class());
     auto klass = receiver_type.klass();
     Selector<CallShape> selector(node->selector(), node->shape());
@@ -405,10 +412,16 @@ class TypeChecker : public ReturningVisitor<Type> {
     auto method = queryable.lookup(selector);
     if (method == null) {
       report_no_such_instance_method(klass, selector, node->range(), diagnostics());
+      for (auto argument : arguments) visit(argument);
       return Type::any();
     }
 
     check_deprecated(node->range(), method);
+
+    auto argument_types = ListBuilder<Type>::allocate(arguments.length());
+    for (int i = 0; i < arguments.length(); i++) {
+      argument_types[i] = visit(arguments[i]);
+    }
 
     auto parameters = method->parameters();
     int argument_offset = 1;  // For the receiver, which is given as first argument.
@@ -451,7 +464,33 @@ class TypeChecker : public ReturningVisitor<Type> {
     return method->return_type();
   }
 
-  Type visit_CallBlock(CallBlock* node) { return visit_Call(node); }
+  Type visit_CallBlock(CallBlock* node) {
+    auto target = node->target();
+    auto block_type = target->is_ReferenceLocal()
+        ? target->as_ReferenceLocal()->target()->type()
+        : Type::any();
+    if (!block_type.is_block()) return visit_Call(node);
+    visit(target);
+    auto arguments = node->arguments();
+    auto argument_types = ListBuilder<Type>::allocate(arguments.length());
+    for (int i = 0; i < arguments.length(); i++) {
+      argument_types[i] = visit(arguments[i]);
+    }
+    int expected = block_type.block_parameter_count();
+    if (arguments.length() != expected) {
+      report_error(node->range(),
+                   "Block of type '%s' expects %d argument%s, but got %d",
+                   type_name(block_type).c_str(),
+                   expected,
+                   expected == 1 ? "" : "s",
+                   arguments.length());
+    } else {
+      for (int i = 0; i < arguments.length(); i++) {
+        check(arguments[i]->range(), block_type.block_parameter_type(i), argument_types[i]);
+      }
+    }
+    return block_type.block_return_type();
+  }
 
   Type visit_CallBuiltin(CallBuiltin* node) {
     if (node->target()->kind() == Builtin::STORE_GLOBAL) {
@@ -505,6 +544,7 @@ class TypeChecker : public ReturningVisitor<Type> {
       case Typecheck::AS_CHECK:
         return node->type();
       case Typecheck::PARAMETER_AS_CHECK:
+      case Typecheck::BLOCK_ARGUMENT_AS_CHECK:
       case Typecheck::LOCAL_AS_CHECK:
       case Typecheck::GLOBAL_AS_CHECK:
       case Typecheck::RETURN_AS_CHECK:
@@ -763,6 +803,15 @@ class TypeChecker : public ReturningVisitor<Type> {
     if (receiver_type.is_nullable() && value_type == null_type_) return;
     if (receiver_type == value_type) return;  // This also covers `Null_` == `null`.
 
+    if (receiver_type.is_block() || value_type.is_block()) {
+      if (is_block_assignable(receiver_type, value_type)) return;
+      report_error(range,
+                   "Type mismatch. Expected '%s'. Got '%s'",
+                   type_name(receiver_type).c_str(),
+                   type_name(value_type).c_str());
+      return;
+    }
+
     auto receiver_class = receiver_type.klass();
     auto value_class = value_type.klass();
     auto receiver_name = receiver_class->name();
@@ -843,9 +892,58 @@ class TypeChecker : public ReturningVisitor<Type> {
     if (receiver_type.is_any() || value_type.is_any()) return true;
     if (receiver_type.is_none() || value_type.is_none()) return false;
     if (receiver_type == value_type) return true;  // This also covers `Null_` == `null`.
+    if (receiver_type.is_block() || value_type.is_block()) {
+      return is_block_assignable(receiver_type, value_type);
+    }
     if (value_type == null_type_) return receiver_type.is_nullable();
     if (value_type == boolean_type_ && is_a_bool(receiver_type)) return true;
     return is_subtype_of(value_type.klass(), receiver_type.klass());
+  }
+
+  /// Whether [node] never completes normally. Mirrors the cases the definite
+  /// assignment analysis treats as terminating.
+  // TODO(girtsf): a bottom type (`never`) returned by visit_Return, the
+  //   throw/exit builtins, visit_LoopBranch and does_not_return() calls would
+  //   propagate through Sequence/If on its own and replace this. Declared on
+  //   methods (`-> never`) it would also cover helpers like `ui.abort` that
+  //   today need a trailing `unreachable`.
+  static bool diverges(Expression* node) {
+    if (node->is_Return() || node->is_LoopBranch()) return true;
+    if (node->is_CallBuiltin()) {
+      auto kind = node->as_CallBuiltin()->target()->kind();
+      return kind == Builtin::THROW || kind == Builtin::EXIT;
+    }
+    if (node->is_CallStatic()) return node->as_CallStatic()->target()->target()->does_not_return();
+    if (node->is_Sequence()) {
+      auto expressions = node->as_Sequence()->expressions();
+      return !expressions.is_empty() && diverges(expressions.last());
+    }
+    if (node->is_If()) {
+      auto if_node = node->as_If();
+      return diverges(if_node->yes()) && diverges(if_node->no());
+    }
+    return false;
+  }
+
+  /// Whether a block of type [value_type] can be passed where a block of
+  /// type [receiver_type] is expected.
+  bool is_block_assignable(Type receiver_type, Type value_type) {
+    if (!receiver_type.is_block() || !value_type.is_block()) return false;
+    int receiver_count = receiver_type.block_parameter_count();
+    int value_count = value_type.block_parameter_count();
+    // A block may declare fewer parameters than it is called with. The
+    // remaining arguments are dropped.
+    if (value_count > receiver_count) return false;
+    for (int i = 0; i < value_count; i++) {
+      // The block receives what the caller passes: parameters are contravariant.
+      if (!is_assignable(value_type.block_parameter_type(i), receiver_type.block_parameter_type(i))) {
+        return false;
+      }
+    }
+    auto receiver_return = receiver_type.block_return_type();
+    // The caller ignores the value.
+    if (receiver_return.is_none()) return true;
+    return is_assignable(receiver_return, value_type.block_return_type());
   }
 
   /// Checks an argument against a parameter, taking `// __TYPE-MIGRATION__`
@@ -897,6 +995,14 @@ class TypeChecker : public ReturningVisitor<Type> {
   std::string type_name(Type type) {
     if (type.is_any()) return "any";
     if (type.is_none()) return "none";
+    if (type == null_type_) return "null";
+    if (type.is_block()) {
+      std::string result("[block");
+      for (int i = 0; i < type.block_parameter_count(); i++) {
+        result += " " + type_name(type.block_parameter_type(i));
+      }
+      return result + " -> " + type_name(type.block_return_type()) + "]";
+    }
     auto klass_name = type.klass()->name();
     std::string result(klass_name.is_valid() ? klass_name.c_str() : "<unknown>");
     if (type.is_nullable()) result += "?";

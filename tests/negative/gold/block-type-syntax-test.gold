@@ -1,0 +1,46 @@
+tests/negative/block-type-syntax-test.toit:5:19: error: Block types must be inside the brackets: '[name types -> type]'
+after-bracket [b] /int: null
+                  ^
+tests/negative/block-type-syntax-test.toit:6:31: error: Missing ']' for block parameter
+missing-bracket [b int -> bool: null
+                              ^
+tests/negative/block-type-syntax-test.toit:10:20: error: Unexpected token while parsing type
+double-arrow [b -> -> int]: null
+                   ^~
+tests/negative/block-type-syntax-test.toit:10:20: error: Missing ']' for block parameter
+double-arrow [b -> -> int]: null
+                   ^~
+tests/negative/block-type-syntax-test.toit:12:24: error: Unexpected token while parsing type
+empty-return [b int -> ]: null
+                       ^
+tests/negative/block-type-syntax-test.toit:13:11: error: Missing ']' for block parameter
+nested [b [c]]: null
+          ^
+tests/negative/block-type-syntax-test.toit:13:14: error: Unexpected token: ]
+nested [b [c]]: null
+             ^
+tests/negative/block-type-syntax-test.toit:14:24: error: Missing ']' for block parameter
+colon-after-type [b int: null
+                       ^
+tests/negative/block-type-syntax-test.toit:23:30: error: Unexpected token while parsing type
+unterminated-at-eof [b int ->
+                             ^
+tests/negative/block-type-syntax-test.toit:23:30: error: Missing ']' for block parameter
+unterminated-at-eof [b int ->
+                             ^
+tests/negative/block-type-syntax-test.toit:23:1: error: Missing body
+unterminated-at-eof [b int ->
+^~~~~~~~~~~~~~~~~~~
+tests/negative/block-type-syntax-test.toit:7:19: error: Type 'none' is only allowed as return type
+none-parameter [b none -> none]: null
+                  ^~~~
+tests/negative/block-type-syntax-test.toit:8:15: error: Unresolved type: 'Foo'
+unresolved [b Foo -> Bar]: null
+              ^~~
+tests/negative/block-type-syntax-test.toit:8:22: error: Unresolved type: 'Bar'
+unresolved [b Foo -> Bar]: null
+                     ^~~
+tests/negative/block-type-syntax-test.toit:11:19: error: Block parameters may not have a default value
+default-with-type [b = 5 int -> int]: null
+                  ^~
+Compilation failed

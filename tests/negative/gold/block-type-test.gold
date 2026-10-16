@@ -1,0 +1,61 @@
+tests/negative/block-type-test.toit:6:18: error: Type mismatch. Expected 'int'. Got 'string'
+  predicate.call "x"
+                 ^~~
+tests/negative/block-type-test.toit:7:3: error: Block of type '[block int -> bool]' expects 1 argument, but got 2
+  predicate.call 1 2
+  ^~~~~~~~~
+tests/negative/block-type-test.toit:8:12: error: Block of type '[block int -> bool]' expects 1 argument, but got 0
+  predicate.call
+           ^~~~~
+tests/negative/block-type-test.toit:9:12: error: Type mismatch. Expected 'string'. Got 'bool'
+  x/string := predicate.call 1
+           ^~
+tests/negative/block-type-test.toit:12:10: error: Type mismatch. Expected '[block int -> bool]'. Got '[block string -> bool]'
+  filter b
+         ^
+tests/negative/block-type-test.toit:15:9: error: Variable can't be initialized with 'none'
+  x := b.call
+        ^~~~~
+tests/negative/block-type-test.toit:21:17: error: Type mismatch: can't assign 'null' to non-nullable 'int'
+  return b.call null
+                ^~~~
+tests/negative/block-type-test.toit:25:10: error: Type mismatch. Expected 'int'. Got 'string'
+  c.call "x"
+         ^~~
+tests/negative/block-type-test.toit:26:10: error: Block of type '[block int -> bool]' expects 1 argument, but got 2
+  return c.call 1 2
+         ^
+tests/negative/block-type-test.toit:33:9: error: Type mismatch. Expected '[block int -> bool]'. Got '[block any -> null]'
+  filter: print it
+        ^~~~~~~~~~
+tests/negative/block-type-test.toit:36:9: error: Type mismatch. Expected '[block int -> bool]'. Got '[block string -> bool]'
+  filter: |x/string| true
+        ^~~~~~~~~~~~~~~~~
+tests/negative/block-type-test.toit:37:9: error: Type mismatch. Expected '[block int -> bool]'. Got '[block any any -> bool]'
+  filter: |x y| true
+        ^~~~~~~~~~~~
+tests/negative/block-type-test.toit:38:9: error: Type mismatch. Expected '[block int -> bool]'. Got '[block int -> int]'
+  filter: |x/int| 42
+        ^~~~~~~~~~~~
+tests/negative/block-type-test.toit:39:9: error: Type mismatch. Expected '[block int -> bool]'. Got '[block -> string]'
+  filter: "str"
+        ^~~~~~~
+tests/negative/block-type-test.toit:41:10: error: Type mismatch. Expected '[block int -> bool]'. Got '[block string -> bool]'
+  filter b
+         ^
+tests/negative/block-type-test.toit:43:10: error: Type mismatch. Expected 'int'. Got 'string'
+  c.call "x"
+         ^~~
+tests/negative/block-type-test.toit:44:4: error: Block of type '[block int -> bool]' expects 1 argument, but got 0
+  c.call
+   ^~~~~
+tests/negative/block-type-test.toit:45:12: error: Type mismatch. Expected '[block -> any]'. Got '[block any -> any]'
+  no-params: |x| x               // Error: the block is called without arguments.
+           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/block-type-test.toit:46:12: error: Type mismatch. Expected '[block -> any]'. Got '[block any -> any]'
+  no-params: it                  // Error: `it` is a parameter too.
+           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/block-type-test.toit:48:18: error: Type mismatch. Expected '[block -> int?]'. Got '[block -> string]'
+  nullable-return: "x"           // Error.
+                 ^~~~~~~~~~~~~~~~~~~~~~~~~
+Compilation failed

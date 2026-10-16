@@ -344,6 +344,19 @@ ir::Type MethodResolver::resolve_type(ast::Expression* type, bool is_return_type
     return resolved.to_nullable();
   }
 
+  if (type->is_BlockType()) {
+    auto block_type = type->as_BlockType();
+    auto ast_parameter_types = block_type->parameter_types();
+    auto parameter_types = ListBuilder<ir::Type>::allocate(ast_parameter_types.length());
+    for (int i = 0; i < ast_parameter_types.length(); i++) {
+      parameter_types[i] = resolve_type(ast_parameter_types[i], false);
+    }
+    auto return_type = block_type->return_type() == null
+        ? ir::Type::any()
+        : resolve_type(block_type->return_type(), true);
+    return ir::Type::block(parameter_types, return_type);
+  }
+
   {
     // Start by checking that there isn't any `super` or `this` in the type.
     // Linearize the type, so we can check it from left to right.
@@ -1412,22 +1425,16 @@ void MethodResolver::_resolve_parameters(
       if (!parameter->is_named()) seen_default_values_in_unnamed = true;
       // If the incoming parameter == null, replace it with the default-value (unless the
       // the default value is `null`, which wouldn't do anything).
-      if (!parameter->default_value()->is_LiteralNull()) {
+      // Block parameters can't have default values (reported above).
+      if (!parameter->is_block() && !parameter->default_value()->is_LiteralNull()) {
         auto ir_default_value = resolve_expression(parameter->default_value(),
                                                   "Default value can't be a block");
 
-        ir::Expression* comparison;
-        if (parameter->is_block()) {
-          // Can't have default values for block parameters.
-          ASSERT(diagnostics()->encountered_error());
-          comparison = zone_new<ir::LiteralBoolean>(false, parameter->selection_range());
-        } else {
-          CallBuilder builder(parameter->selection_range());
-          builder.add_arguments(list_of(
-              zone_new<ir::ReferenceLocal>(ir_parameter, 0, parameter->selection_range()),
-              zone_new<ir::LiteralNull>(parameter->selection_range())));
-          comparison = builder.call_builtin(zone_new<ir::Builtin>(ir::Builtin::IDENTICAL));
-        }
+        CallBuilder builder(parameter->selection_range());
+        builder.add_arguments(list_of(
+            zone_new<ir::ReferenceLocal>(ir_parameter, 0, parameter->selection_range()),
+            zone_new<ir::LiteralNull>(parameter->selection_range())));
+        ir::Expression* comparison = builder.call_builtin(zone_new<ir::Builtin>(ir::Builtin::IDENTICAL));
         auto assignment = zone_new<ir::AssignmentLocal>(ir_parameter, 0, ir_default_value, ir_parameter->range());
         auto ir_if = zone_new<ir::If>(comparison,
                                  assignment,
@@ -1438,8 +1445,8 @@ void MethodResolver::_resolve_parameters(
     }
 
     // No need to typecheck the `any` type, and don't try to typecheck in abstract methods.
-    if (!type.is_any()) {
-      ASSERT(type.is_class());
+    // Block types are checked where the block is called.
+    if (type.is_class()) {
       auto check = zone_new<ir::Typecheck>(ir::Typecheck::PARAMETER_AS_CHECK,
                                       zone_new<ir::ReferenceLocal>(ir_parameter, 0, parameter->selection_range()),
                                       type,
@@ -2842,7 +2849,7 @@ void MethodResolver::_visit_potential_call_dot(ast::Dot* ast_dot,
       report_error(ast_dot, "Can't invoke a block with a named argument");
       push(zone_new<ir::Error>(ast_dot->selection_range(), call_builder.arguments()));
     } else {
-      push(call_builder.call_block(receiver));
+      push(_call_block_with_checks(call_builder.call_block(receiver)));
     }
   } else if (!selector.is_valid()) {
     ASSERT(diagnostics()->encountered_error());
@@ -2866,6 +2873,36 @@ void MethodResolver::_visit_potential_call_dot(ast::Dot* ast_dot,
     }
     push(call_builder.call_instance(ir_dot, ast_dot->name()->selection_range()));
   }
+}
+
+/// Wraps the arguments and the result of a call to a typed block in
+/// as-checks, so that block types are enforced at runtime like other types.
+ir::Expression* MethodResolver::_call_block_with_checks(ir::Expression* call) {
+  if (!call->is_CallBlock()) return call;
+  auto call_block = call->as_CallBlock();
+  auto target = call_block->target();
+  if (!target->is_ReferenceLocal()) return call;
+  auto type = target->as_ReferenceLocal()->target()->type();
+  if (!type.is_block()) return call;
+  auto arguments = call_block->arguments();
+  // Arity mismatches are reported by the type checker.
+  if (arguments.length() != type.block_parameter_count()) return call;
+  for (int i = 0; i < arguments.length(); i++) {
+    auto parameter_type = type.block_parameter_type(i);
+    if (!parameter_type.is_class()) continue;
+    arguments[i] = zone_new<ir::Typecheck>(ir::Typecheck::BLOCK_ARGUMENT_AS_CHECK,
+                                           arguments[i],
+                                           parameter_type,
+                                           parameter_type.klass()->name(),
+                                           arguments[i]->range());
+  }
+  auto return_type = type.block_return_type();
+  if (!return_type.is_class()) return call;
+  return zone_new<ir::Typecheck>(ir::Typecheck::RETURN_AS_CHECK,
+                                 call,
+                                 return_type,
+                                 return_type.klass()->name(),
+                                 call->range());
 }
 
 void MethodResolver::_visit_potential_call_index(ast::Node* ast_target,
