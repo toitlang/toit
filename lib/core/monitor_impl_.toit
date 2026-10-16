@@ -25,7 +25,7 @@ class __Monitor__:
   This should be called from a  locked method.
   The condition is not allowed to change the state, only query it.
   */
-  await [condition]:
+  await [condition -> any]:
     result := try-await_ Task_.current.deadline condition
     if not result: throw DEADLINE-EXCEEDED-ERROR
 
@@ -39,7 +39,7 @@ class __Monitor__:
   This should be called from a locked method.
   The condition is not allowed to change the state, only query it.
   */
-  try-await --deadline/int? [condition]:
+  try-await --deadline/int? [condition -> any]:
     task-deadline := Task_.current.deadline
     if task-deadline:
       if deadline:
@@ -49,7 +49,7 @@ class __Monitor__:
 
     return try-await_ deadline condition
 
-  try-await_ deadline/int? [condition]:
+  try-await_ deadline/int? [condition -> any]:
     self := Task_.current
     timer/Timer_? := null
     if deadline:
@@ -98,7 +98,7 @@ class __Monitor__:
     finally:
       if timer: self.release-timer_ timer
 
-  locked_ [block]:
+  locked_ [block -> none]:
     self := Task_.current
     deadline/int? := null
     timer/Timer_? := null

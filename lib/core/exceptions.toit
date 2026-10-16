@@ -69,7 +69,7 @@ If an exception is thrown during the $block call, then the trace is printed
 If an exception is thrown during the $block call, then unwinding continues if
   the $unwind is true.
 */
-catch --trace/bool=false --unwind/bool=false [block]:
+catch --trace/bool=false --unwind/bool=false [block -> any]:
   return catch
     --trace=: trace
     --unwind=: unwind
@@ -81,7 +81,7 @@ Variant of $(catch [--trace] [--unwind] [block]).
 If an exception is thrown during the $block call, then the trace is printed
   if the $trace is true (and the trace can otherwise be printed).
 */
-catch --trace/bool=false [--unwind] [block]:
+catch --trace/bool=false [--unwind any ByteArray? -> any] [block -> any]:
   return catch
     --trace=: trace
     --unwind=unwind
@@ -93,7 +93,7 @@ Variant of $(catch [--trace] [--unwind] [block]).
 If an exception is thrown during the $block call, then unwinding continues if
   the $unwind is true.
 */
-catch [--trace] --unwind/bool=false [block]:
+catch [--trace any ByteArray? -> any] --unwind/bool=false [block -> any]:
   return catch
     --trace=trace
     --unwind=: unwind
@@ -119,7 +119,7 @@ The $unwind block decides whether unwinding should continue in case of a
   the trace (`unwind.call exception trace`) and should return a boolean
   value. If $unwind call returns true, then unwinding continues.
 */
-catch [--trace] [--unwind] [block]:
+catch [--trace any ByteArray? -> any] [--unwind any ByteArray? -> any] [block -> any]:
   try:
     block.call
     return null

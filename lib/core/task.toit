@@ -225,7 +225,7 @@ class Task_ implements Task:
   stringify:
     return "$name_<$(id_)@$(Process.current.id)>"
 
-  with-deadline_ deadline [block]:
+  with-deadline_ deadline [block int? -> any]:
     assert: Task_.current == this
     if not deadline_ or deadline < deadline_:
       old-deadline := deadline_
@@ -264,7 +264,7 @@ class Task_ implements Task:
     state_ = STATE-RUNNING
     previous-running_ = next-running_ = this
 
-  evaluate_ [code] -> none:
+  evaluate_ [code -> none] -> none:
     try:
       evaluate-and-trace_ code
 
@@ -306,7 +306,7 @@ class Task_ implements Task:
     the unwinding continue, unless it is due to
     cancelation.
   */
-  evaluate-and-trace_ [block] -> none:
+  evaluate-and-trace_ [block -> none] -> none:
     traced := false
     try:
       catch block

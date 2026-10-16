@@ -97,13 +97,13 @@ class Duration implements Comparable:
     return parse str --if-error=: throw it
 
   /** Deprecated. Use $(parse str [--if-error]) instead. */
-  static parse str/string [--on-error] -> Duration?:
+  static parse str/string [--on-error string -> any] -> Duration?:
     return parse str --if-error=on-error
 
   /**
   Variant of $(parse str) that calls $if-error if $str is not a valid duration.
   */
-  static parse str/string [--if-error] -> Duration?:
+  static parse str/string [--if-error string -> any] -> Duration?:
     // Simplifies the handling of '-'.
     str = str.trim
 
@@ -220,7 +220,7 @@ class Duration implements Comparable:
   - `Stopwatch`: Dart
   - `Date` difference: JavaScript
   */
-  constructor.of [block]:
+  constructor.of [block -> none]:
     start ::= Time.monotonic-us
     block.call
     ns_ = (Time.monotonic-us - start) * 1000
@@ -275,7 +275,7 @@ class Duration implements Comparable:
     (because of imprecision, or because the system was busy), then the
     subsequent executions will never catch up with the original schedule.
   */
-  periodic [block] -> none:
+  periodic [block -> none] -> none:
     while true:
       run-time := Duration.of block
       // If runtime passes period we skip to start of period.
@@ -458,7 +458,7 @@ class Duration implements Comparable:
   /**
   See $(Comparable.compare-to other [--if-equal]).
   */
-  compare-to other/Duration [--if-equal] -> int:
+  compare-to other/Duration [--if-equal -> int] -> int:
     return ns_.compare-to other.ns_ --if-equal=if-equal
 
   // Accessors for various time units.
@@ -856,7 +856,7 @@ class Time implements Comparable:
     return parse str
 
   /** Deprecated. Use $(parse str [--if-error]) instead. */
-  static parse str/string [--on-error] -> Time:
+  static parse str/string [--on-error -> any] -> Time:
     return parse str --if-error=on-error
 
   /**
@@ -872,7 +872,7 @@ class Time implements Comparable:
   Calls $if-error if there is an error parsing the string. Then returns the
     result of $if-error.
   */
-  static parse str/string [--if-error] -> Time:
+  static parse str/string [--if-error -> any] -> Time:
     zone-is-adjusted := str.ends-with "Z"
     str = str.trim --right "Z"
     str-to-int ::= : | s/string |
@@ -1011,7 +1011,7 @@ class Time implements Comparable:
 
   Calls $if-equal if this time is equal to the $other.
   */
-  compare-to other/Time [--if-equal] -> int:
+  compare-to other/Time [--if-equal -> int] -> int:
     result := compare-to other
     if result == 0: return if-equal.call
     return result

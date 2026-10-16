@@ -89,7 +89,7 @@ is-leap year/int -> bool:
       year % 100 != 0 or year % 400 == 0
 
 // Normalize high and low with respect to base.
-normalize high/int low/int base/int [block] -> int:
+normalize high/int low/int base/int [block int -> none] -> int:
   if low < 0:
     n ::= (-low - 1)/base + 1
     high -= n

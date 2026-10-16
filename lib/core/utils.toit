@@ -167,7 +167,7 @@ count-leading-zeros value/int:
 Calls the given $block but throws an exception if the $timeout is exceeded.
 If $timeout is null, calls the $block without a timeout.
 */
-with-timeout timeout/Duration? [block]:
+with-timeout timeout/Duration? [block -> any]:
   if timeout:
     return with-timeout --us=timeout.in-us block
   else:
@@ -177,14 +177,14 @@ with-timeout timeout/Duration? [block]:
 Calls the given $block but throws an exception if a timeout of $ms milliseconds
   is exceeded.
 */
-with-timeout --ms/int [block]:
+with-timeout --ms/int [block -> any]:
   return with-timeout --us=ms*1000 block
 
 /**
 Calls the given $block but throws an exception if a timeout of $us microseconds
   is exceeded.
 */
-with-timeout --us/int [block]:
+with-timeout --us/int [block -> any]:
   deadline := Time.monotonic-us + us
   return Task_.current.with-deadline_ deadline block
 
@@ -195,7 +195,7 @@ Within $block, the current task won't be interrupted by cancellation exceptions.
   Instead such exceptions will be delayed until the $block is left. The critical
   $block can be interrupted by a timeout (see $with-timeout) if $respect-deadline is true.
 */
-critical-do --respect-deadline/bool=true [block]:
+critical-do --respect-deadline/bool=true [block -> none]:
   self ::= Task_.current
   deadline/int? := null
   self.critical-count_++
@@ -399,7 +399,7 @@ class Profiler:
     #primitive.core.profiler-uninstall
 
   /** Calls the $block while the profiler is active. */
-  static do [block] -> any:
+  static do [block -> any] -> any:
     try:
       start
       return block.call
@@ -416,7 +416,7 @@ literal-index_ o -> int?:
   #primitive.core.literal-index
 
 /** Deprecated. Use $hex-char-to-value instead. */
-hex-digit char/int [error-block] -> int:
+hex-digit char/int [error-block -> int] -> int:
   return hex-char-to-value char --if-error=error-block
 
 /** Deprecated. Use $hex-char-to-value instead. */
@@ -424,7 +424,7 @@ hex-digit char/int -> int:
   return hex-char-to-value char --if-error=(: throw "INVALID_ARGUMENT")
 
 /** Deprecated. Use $(hex-char-to-value char [--if-error]) instead. */
-hex-char-to-value char/int [--on-error] -> int:
+hex-char-to-value char/int [--on-error -> int] -> int:
   return hex-char-to-value char --if-error=on-error
 
 /**
@@ -433,7 +433,7 @@ Converts a hex digit character $char in the ranges
 Returns the value between 0 and 15.
 Calls the block $if-error on invalid input and returns its return value if any.
 */
-hex-char-to-value char/int [--if-error] -> int:
+hex-char-to-value char/int [--if-error -> int] -> int:
   if '0' <= char <= '9': return char - '0'
   if 'a' <= char <= 'f': return 10 + char - 'a'
   if 'A' <= char <= 'F': return 10 + char - 'A'

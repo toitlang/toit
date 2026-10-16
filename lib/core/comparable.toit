@@ -36,4 +36,4 @@ interface Comparable:
         nanoseconds.compare-to other.nanoseconds
   ```
   */
-  compare-to other/Comparable [--if-equal]
+  compare-to other/Comparable [--if-equal -> int]

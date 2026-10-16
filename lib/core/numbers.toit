@@ -517,7 +517,7 @@ abstract class num implements Comparable:
         nanoseconds.compare-to other.nanoseconds
   ```
   */
-  compare-to other/num [--if-equal] -> int:
+  compare-to other/num [--if-equal -> int] -> int:
     result := compare-to other
     if result == 0: return if-equal.call
     return result
@@ -548,7 +548,7 @@ abstract class num implements Comparable:
     return parse data --if-error=: throw it
 
   /** Deprecated. Use $(parse data [--if-error]) instead. */
-  static parse data/io.Data [--on-error] -> num?:
+  static parse data/io.Data [--on-error string -> num?] -> num?:
     return parse data --if-error=on-error
 
   /**
@@ -556,7 +556,7 @@ abstract class num implements Comparable:
 
   If the data can't be parsed correctly, returns the result of calling the $if-error block.
   */
-  static parse data/io.Data [--if-error] -> num?:
+  static parse data/io.Data [--if-error string -> num?] -> num?:
     return int.parse data --if-error=:
       return float.parse data --if-error=:
         return if-error.call PARSE-ERR_
@@ -669,7 +669,7 @@ abstract class int extends num:
     return parse_ data from to --radix=radix --if-error=: throw it
 
   /** Deprecated. Use $(parse data --radix [--if-error]) instead. */
-  static parse data/io.Data --radix/int?=null [--on-error] -> int?:
+  static parse data/io.Data --radix/int?=null [--on-error string -> int?] -> int?:
     return parse_ data 0 data.byte-size --radix=radix --if-error=on-error
 
   /**
@@ -677,16 +677,16 @@ abstract class int extends num:
 
   If the data can't be parsed correctly, returns the result of calling the $if-error block.
   */
-  static parse data/io.Data --radix/int?=null [--if-error] -> int?:
+  static parse data/io.Data --radix/int?=null [--if-error string -> int?] -> int?:
     return parse_ data 0 data.byte-size --radix=radix --if-error=if-error
 
   /**
   Deprecated. Use $(parse data --radix [--if-error]) with a slice instead.
   */
-  static parse data/io.Data from/int to/int=data.byte-size --radix/int?=null [--on-error] -> int?:
+  static parse data/io.Data from/int to/int=data.byte-size --radix/int?=null [--on-error string -> int?] -> int?:
     return parse_ data from to --radix=radix --if-error=on-error
 
-  static parse_ data/io.Data from/int to/int=data.byte-size --radix/int? [--if-error] -> int?:
+  static parse_ data/io.Data from/int to/int=data.byte-size --radix/int? [--if-error string -> int?] -> int?:
     negative := false
     if radix == null:
       radix = 10
@@ -732,7 +732,7 @@ abstract class int extends num:
     else if 'a' <= c <= 'z': return 10 + c - 'a'
     throw PARSE-ERR_
 
-  static parse-generic-radix_ radix/int data/io.Data from/int to/int --negative/bool [--if-error] -> int?:
+  static parse-generic-radix_ radix/int data/io.Data from/int to/int --negative/bool [--if-error string -> int?] -> int?:
     if not 2 <= radix <= 36: throw "INVALID_RADIX"
 
     max-num := (min radix 10) + '0' - 1
@@ -768,7 +768,7 @@ abstract class int extends num:
       result += value
       continue.generic-parser_ result
 
-  static parse-10_ data/io.Data from/int to/int [--if-error] -> int?:
+  static parse-10_ data/io.Data from/int to/int [--if-error string -> int?] -> int?:
     #primitive.core.int-parse:
       if it == "WRONG_BYTES_TYPE":
         return parse-10_ (ByteArray.from data) from to --if-error=if-error
@@ -782,7 +782,7 @@ abstract class int extends num:
             return if-error.call RANGE-ERR_
           continue.generic-parser_ result * 10 + char - '0'
 
-  static generic-parser_ data from/int to/int --negative/bool [--if-error] [parse-char] -> int?:
+  static generic-parser_ data from/int to/int --negative/bool [--if-error string -> int?] [parse-char int int bool bool -> int] -> int?:
     result := 0
     underscore := false
     size := to - from
@@ -809,7 +809,7 @@ abstract class int extends num:
     // The '_' should not be the first or the last character.
     return (not negative and index == 0) or (negative and index == 1) or index == size - 1
 
-  static parse-16_ data from/int to/int --negative/bool [--if-error] -> int?:
+  static parse-16_ data from/int to/int --negative/bool [--if-error string -> int?] -> int?:
     max-int64-div-radix := MAX / 16
 
     return generic-parser_ data from to --negative=negative --if-error=if-error: | char result is-last negative |
@@ -1097,7 +1097,7 @@ abstract class int extends num:
   print count  // >> 0
   ```
   */
-  repeat [block] -> none:
+  repeat [block int -> none] -> none:
     for index := 0; index < this; index++: block.call index
 
   /**
@@ -1316,7 +1316,7 @@ class SmallInteger_ extends int:
     #primitive.core.smi-to-string-base-10
 
   /** See $super. */
-  repeat [block] -> none:
+  repeat [block int -> none] -> none:
     #primitive.intrinsics.smi-repeat:
       // The intrinsic only fails if we cannot call the block with a single
       // argument. We force this to throw by doing the same here.
@@ -1544,7 +1544,7 @@ class float extends num:
     return parse_ data 0 data.byte-size --if-error=: throw it
 
   /** Deprecated. Use $(parse data [--if-error]) instead. */
-  static parse data/io.Data [--on-error] -> float?:
+  static parse data/io.Data [--on-error string -> float?] -> float?:
     return parse data --if-error=on-error
 
   /**
@@ -1552,7 +1552,7 @@ class float extends num:
 
   If the data can't be parsed correctly, returns the result of calling the $if-error block.
   */
-  static parse data/io.Data [--if-error] -> float?:
+  static parse data/io.Data [--if-error string -> float?] -> float?:
     return parse_ data 0 data.byte-size --if-error=if-error
 
   /**
@@ -1561,7 +1561,7 @@ class float extends num:
   static parse data/io.Data from/int to/int=data.byte-size -> float:
     return parse_ data from to --if-error=: throw it
 
-  static parse_ data/io.Data from/int to/int [--if-error] -> float?:
+  static parse_ data/io.Data from/int to/int [--if-error string -> float?] -> float?:
     #primitive.core.float-parse:
       if it == "WRONG_BYTES_TYPE": return parse_ (ByteArray.from data) from to --if-error=if-error
       if it == "ERROR": return if-error.call "FLOAT_PARSING_ERROR"

@@ -1187,6 +1187,7 @@ build-esp32-image invocation/cli.Invocation envelope/Envelope --config-encoded/B
     else:
       size := int.parse value --if-error=:
         ui.abort "Malformed partition size '$value'."
+        unreachable
       partition-content = ByteArray size
     partition-content = pad partition-content 4096
 

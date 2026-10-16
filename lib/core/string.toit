@@ -216,9 +216,10 @@ abstract class string implements Comparable io.Data:
   # Examples
   ```
   "é".do: print it // 233, null
+  "é".do: | c/int? | if c: print c  // 233
   ```
   */
-  do [block] -> none:
+  do [block int? -> none] -> none:
     for i := 0; i < size; i++: block.call this[i]
 
   /**
@@ -232,7 +233,7 @@ abstract class string implements Comparable io.Data:
   "Amélie".do --runes: print "$(%c it)" // A, m, é, l, i, e
   ```
   */
-  do --runes/True [block] -> none:
+  do --runes/True [block int -> none] -> none:
     for i := 0; i < size; i++:
       rune := this[i]
       if rune: block.call rune
@@ -268,7 +269,7 @@ abstract class string implements Comparable io.Data:
     return str.flat-map: | c | ('A' <= c <= 'Z') ? c - 'A' + 'a' : c
   ```
   */
-  flat-map [block] -> string:
+  flat-map [block int -> any] -> string:
     prefix := ""
     byte-array := ByteArray (min 4 size)
     position := 0
@@ -571,7 +572,7 @@ abstract class string implements Comparable io.Data:
       str-field2.compare-to other.str-field2
   ```
   */
-  compare-to other/string [--if-equal] -> int:
+  compare-to other/string [--if-equal -> int] -> int:
     result := compare-to other
     if result == 0: return if-equal.call
     return result
@@ -811,7 +812,7 @@ abstract class string implements Comparable io.Data:
   "foobarfoo".index_of "foo" 1 8 --if-absent=: 42       // => 42
   ```
   */
-  index-of --last/bool=false needle/string from/int=0 to/int=size [--if-absent]:
+  index-of --last/bool=false needle/string from/int=0 to/int=size [--if-absent string -> any]:
     if not 0 <= from <= to <= size: throw "BAD ARGUMENTS"
     limit := to - needle.size
     if not last:
@@ -924,7 +925,7 @@ abstract class string implements Comparable io.Data:
   str.trim --left "gee" --if-absent=: throw "missing prefix" // ERROR
   ```
   */
-  trim --left/True prefix/string [--if-absent] -> string:
+  trim --left/True prefix/string [--if-absent string -> string] -> string:
     if not starts-with prefix: return if-absent.call this
     return this[prefix.size..]
 
@@ -960,7 +961,7 @@ abstract class string implements Comparable io.Data:
   str.trim --right "gee" --if-absent=: throw "missing suffix" // ERROR
   ```
   */
-  trim --right/True suffix/string [--if-absent] -> string:
+  trim --right/True suffix/string [--if-absent string -> string] -> string:
     if not ends-with suffix: return if-absent.call this
     return this[..size - suffix.size]
 
@@ -1081,7 +1082,7 @@ abstract class string implements Comparable io.Data:
   "afoo".split "foo" --drop-empty: print it                 // prints "a"
   ```
   */
-  split --at-first/bool=false separator/string --drop-empty/bool=false [process-part] -> none:
+  split --at-first/bool=false separator/string --drop-empty/bool=false [process-part string -> none] -> none:
     if drop-empty:
       split --at-first=at-first separator:
         if it != "": process-part.call it
@@ -1154,7 +1155,7 @@ abstract class string implements Comparable io.Data:
       res.add it
     return res
 
-  split-everywhere_ [process-part]:
+  split-everywhere_ [process-part string -> none]:
     subject := this
     size.repeat:
       c := subject[it]
@@ -1198,7 +1199,7 @@ abstract class string implements Comparable io.Data:
 
   This operation only replaces occurrences of $needle that are fully contained in $from-$to.
   */
-  replace --all/bool=false needle/string from/int=0 to/int=size [replacement-callback] -> string:
+  replace --all/bool=false needle/string from/int=0 to/int=size [replacement-callback string -> string] -> string:
     first-index := index-of needle from to
     if first-index < 0: return this
     if not all:
@@ -1267,7 +1268,7 @@ abstract class string implements Comparable io.Data:
   "x {{b}} z".substitute: { "a": "hund", "b": "kat" }[it]  // => "x kat z"
   ```
   */
-  substitute [block] -> string
+  substitute [block string -> any] -> string
       --open/string="{{"
       --close/string="}}":
     input := this

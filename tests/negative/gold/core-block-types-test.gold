@@ -1,0 +1,34 @@
+tests/negative/core-block-types-test.toit:12:18: error: Type mismatch. Expected '[block -> any]'. Got '[block any -> bool]'
+  wait-bad: await: |a| true                // Error: no arguments.
+                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/core-block-types-test.toit:23:14: error: Type mismatch. Expected '[block any -> any]'. Got '[block any any -> bool]'
+  list.filter: |a b| true        // Error: too many parameters.
+             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/core-block-types-test.toit:24:10: error: Type mismatch. Expected '[block any -> none]'. Got '[block any any -> null]'
+  list.do: |a b| null            // Error: too many parameters.
+         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/core-block-types-test.toit:31:17: error: Type mismatch. Expected '[block any -> any]'. Got '[block any any -> bool]'
+  map.any --keys: |k v| true     // Error: --keys passes only the key.
+                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/core-block-types-test.toit:32:9: error: Type mismatch. Expected '[block any any -> none]'. Got '[block any any any -> null]'
+  map.do: |k v extra| null       // Error: too many parameters.
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/core-block-types-test.toit:37:14: error: Type mismatch. Expected '[block int -> any]'. Got '[block string -> bool]'
+  bytes.every: |b/string| true   // Error: elements are ints.
+             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/core-block-types-test.toit:42:36: error: Type mismatch. Expected '[block any any -> any]'. Got '[block any any any -> bool]'
+  list.equals [1] --element-equals=: |a b c| true   // Error: too many parameters.
+                                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/core-block-types-test.toit:48:19: error: Type mismatch. Expected '[block any ByteArray? -> any]'. Got '[block any string -> bool]'
+  catch --unwind=(: |e s/string| true): null  // Error: the stack is a ByteArray?.
+                  ^~~~~~~~~~~~~~~~~~~
+tests/negative/core-block-types-test.toit:58:11: error: Type mismatch. Expected '[block int -> none]'. Got '[block string -> null]'
+  5.repeat: |i/string| null      // Error: index is an int.
+          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/core-block-types-test.toit:59:11: error: Type mismatch. Expected '[block int -> none]'. Got '[block any any -> null]'
+  5.repeat: |a b| null           // Error: too many parameters.
+          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/core-block-types-test.toit:63:12: error: Type mismatch. Expected '[block any any -> num]'. Got '[block int int -> bool]'
+  list.sort: |a/int b/int| a < b // Error: compare must return a num.
+           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Compilation failed

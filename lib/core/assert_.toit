@@ -2,6 +2,6 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-assert_ [condition]:
+assert_ [condition -> any]:
   if condition.call: return
   rethrow ASSERTION-FAILED-ERROR (encode-error_ ASSERTION-FAILED-ERROR "")
