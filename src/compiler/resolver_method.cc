@@ -3567,7 +3567,16 @@ ir::Expression* MethodResolver::_define(ast::Expression* node,
 
   ir::Local* local;
   if (ir_right->is_block()) {
-    local = zone_new<ir::Block>(name, ast_declaration->name()->selection_range());
+    if (ir_right->is_Code()) {
+      local = zone_new<ir::Block>(name, ast_declaration->name()->selection_range());
+    } else {
+      // An alias of an existing block. The slot holds a block reference
+      //   (not the block's method), so it must not be loaded with LOAD_BLOCK.
+      local = zone_new<ir::Local>(name,
+                                  true,  // Final.
+                                  true,  // Block.
+                                  ast_declaration->name()->selection_range());
+    }
     if (type.is_valid()) {
       report_error(ast_declaration->type(),
                    "Can't assign block to a typed local");
@@ -3575,7 +3584,7 @@ ir::Expression* MethodResolver::_define(ast::Expression* node,
   } else {
     local = zone_new<ir::Local>(name,
                            ast_declaration->kind() == Token::DEFINE_FINAL,
-                           ir_right->is_block(),
+                           false,  // Not a block.
                            type,
                            ast_declaration->name()->selection_range());
     if (type.is_valid() && !type.is_any() && !ir_right->is_LiteralUndefined()) {
