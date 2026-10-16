@@ -644,15 +644,14 @@ void FindReferencesVisitor::emit_range(const Source::Range& range) {
   // if not filtered out.
   // The definition is explicitly emitted once (in find_and_emit_all_references),
   // so subsequent emissions with the same range are suppressed.
-  if (definition_emitted_ &&
-      definition_range_.is_valid() &&
-      range.from() == definition_range_.from() &&
-      range.to() == definition_range_.to()) {
-    return;
+  // For parameters, the definition is the name's range, but these references
+  // have the parameter's full range (including `--` or `[`).
+  bool is_definition = definition_range_.is_valid() && range == definition_range_;
+  if (!is_definition && target_ != null && target_->is_Parameter()) {
+    is_definition = range == target_->as_Parameter()->range();
   }
-  if (definition_range_.is_valid() &&
-      range.from() == definition_range_.from() &&
-      range.to() == definition_range_.to()) {
+  if (is_definition) {
+    if (definition_emitted_) return;
     definition_emitted_ = true;
   }
   auto from = source_manager_->compute_location(range.from());
@@ -671,8 +670,8 @@ void FindReferencesVisitor::emit_range(const Source::Range& range) {
   int end_col = utf16_offset_in_line(to);
 
   // The source range may include prefix syntax that is not part of the
-  // renamable identifier — e.g., "[" for block parameters, "--" for named
-  // parameters, "." for dot-access, or "constructor." for named constructors.
+  // renamable identifier -- e.g., "." for dot-access and `prefix.Class`
+  // references, or ".", "this." and "--." for field-storing parameters.
   // Adjust the start column so the emitted range covers exactly the name.
   if (target_name_len_ > 0 &&
       from.line_number == to.line_number &&
@@ -1200,16 +1199,23 @@ void find_and_emit_all_references(
     virtual_call_filter.set_setter(field_setter);
   }
 
-  // For named constructors and factories, ir::Method::range() covers only the
-  // "constructor" keyword (set from ast::Method::selection_range() during
-  // resolution). The actual name (e.g., "my-named-ctor" in
-  // "constructor.my-named-ctor") lives in the ast::Dot node's name()
-  // Identifier. Use its range instead.
-  // TODO(floitsch): Investigate whether ir::Method should store a name range
-  // that covers the named constructor/factory name, so we don't need to go
-  // through the ir_to_ast map here.
   Source::Range definition_range = target_range(target);
-  if (target->is_Method()) {
+  if (target->is_Parameter()) {
+    // The parameter's range covers prefixes and brackets (`--name`, `[name]`);
+    // the AST has the exact range of the name.
+    auto* ast_node = ir_to_ast.lookup(target);
+    if (ast_node != null && ast_node->is_Parameter()) {
+      definition_range = ast_node->as_Parameter()->name()->selection_range();
+    }
+  } else if (target->is_Method()) {
+    // For named constructors and factories, ir::Method::range() covers only the
+    // "constructor" keyword (set from ast::Method::selection_range() during
+    // resolution). The actual name (e.g., "my-named-ctor" in
+    // "constructor.my-named-ctor") lives in the ast::Dot node's name()
+    // Identifier. Use its range instead.
+    // TODO(floitsch): Investigate whether ir::Method should store a name range
+    // that covers the named constructor/factory name, so we don't need to go
+    // through the ir_to_ast map here.
     auto* method = target->as_Method();
     if (is_unnamed_constructor_or_factory(method)) {
       definition_range = method->holder()->range();
