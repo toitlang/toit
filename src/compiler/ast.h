@@ -60,6 +60,7 @@ class Node;
   V(IndexSlice)                 \
   V(Identifier)                 \
   V(Nullable)                   \
+  V(BlockType)                  \
   V(LspSelection)               \
   V(Parameter)                  \
   V(LiteralNull)                \
@@ -390,6 +391,23 @@ class Nullable : public Expression {
 
  private:
   Expression* type_;
+};
+
+/// The type of a block parameter, like `int string -> bool` in
+/// `[block int string -> bool]`.
+/// The [return_type] is null if it was omitted.
+class BlockType : public Expression {
+ public:
+  BlockType(List<Expression*> parameter_types, Expression* return_type)
+      : parameter_types_(parameter_types), return_type_(return_type) {}
+  IMPLEMENTS(BlockType)
+
+  List<Expression*> parameter_types() const { return parameter_types_; }
+  Expression* return_type() const { return return_type_; }
+
+ private:
+  List<Expression*> parameter_types_;
+  Expression* return_type_;
 };
 
 /// The selection of an LSP request.

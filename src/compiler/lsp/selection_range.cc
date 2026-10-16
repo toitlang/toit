@@ -105,6 +105,7 @@ class SelectionRangeCollector : public ast::TraversingVisitor {
   SELECTION_RANGE_OVERRIDE(IndexSlice)
   SELECTION_RANGE_OVERRIDE(Identifier)
   SELECTION_RANGE_OVERRIDE(Nullable)
+  SELECTION_RANGE_OVERRIDE(BlockType)
   SELECTION_RANGE_OVERRIDE(LspSelection)
   SELECTION_RANGE_OVERRIDE(Parameter)
   SELECTION_RANGE_OVERRIDE(LiteralNull)

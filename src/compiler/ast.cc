@@ -171,6 +171,11 @@ void TraversingVisitor::visit_Nullable(Nullable* node) {
   node->type()->accept(this);
 }
 
+void TraversingVisitor::visit_BlockType(BlockType* node) {
+  for (auto type : node->parameter_types()) type->accept(this);
+  if (node->return_type() != null) node->return_type()->accept(this);
+}
+
 void TraversingVisitor::visit_LspSelection(LspSelection* node) {}
 
 void TraversingVisitor::visit_Parameter(Parameter* node) {
@@ -462,6 +467,17 @@ class AstPrinter : public Visitor {
   void visit_Nullable(Nullable* node) {
     visit(node->type());
     printf("?");
+  }
+
+  void visit_BlockType(BlockType* node) {
+    for (auto type : node->parameter_types()) {
+      printf(" ");
+      visit(type);
+    }
+    if (node->return_type() != null) {
+      printf(" -> ");
+      visit(node->return_type());
+    }
   }
 
   void visit_LspSelection(LspSelection* node) {

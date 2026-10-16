@@ -2602,6 +2602,10 @@ Expression* Parser::parse_type(bool is_type_annotation) {
       consume();
     }
   }
+  return parse_type_body(is_type_annotation);
+}
+
+Expression* Parser::parse_type_body(bool allow_nullable) {
   auto start_range = current_range();
   Expression* type = null;
   bool encountered_pseudo_keyword = false;
@@ -2632,7 +2636,7 @@ Expression* Parser::parse_type(bool is_type_annotation) {
   };
   auto type_range = type->selection_range();
   bool is_nullable = false;
-  if (is_type_annotation && is_current_token_attached()) {
+  if (allow_nullable && is_current_token_attached()) {
     if (current_token() == Token::CONDITIONAL) {
       type_range = type_range.extend(current_range());
       consume();
@@ -2648,6 +2652,23 @@ Expression* Parser::parse_type(bool is_type_annotation) {
     return NEW_NODE(zone_new<Nullable>(type), type_range);
   }
   return type;
+}
+
+BlockType* Parser::parse_block_type() {
+  auto range = current_range();
+  ListBuilder<Expression*> parameter_types;
+  while (current_token() == Token::IDENTIFIER) {
+    auto type = parse_type_body(true);
+    range = range.extend(type->selection_range());
+    parameter_types.add(type);
+  }
+  Expression* return_type = null;
+  if (current_token() == Token::RARROW) {
+    consume();
+    return_type = parse_type_body(true);
+    range = range.extend(return_type->selection_range());
+  }
+  return NEW_NODE(zone_new<BlockType>(parameter_types.build(), return_type), range);
 }
 
 bool Parser::peek_block_parameter(ParserPeeker* peeker) {
@@ -2675,6 +2696,7 @@ std::pair<Expression*, List<Parameter*>> Parser::parse_parameters(bool allow_ret
     bool is_bracket_block = false;
     bool is_named = false;
     Identifier* name = null;
+    Expression* type = null;
     Expression* default_value = null;
     if (current_token() == Token::LBRACK) {
       consume();
@@ -2711,6 +2733,9 @@ std::pair<Expression*, List<Parameter*>> Parser::parse_parameters(bool allow_ret
       if (current_token() == Token::ASSIGN) {
         consume();
         default_value = parse_precedence(PRECEDENCE_POSTFIX, true);
+      }
+      if (current_token() == Token::IDENTIFIER || current_token() == Token::RARROW) {
+        type = parse_block_type();
       }
       if (current_token() != Token::RBRACK) {
         report_error("Missing ']' for block parameter");
@@ -2782,9 +2807,13 @@ std::pair<Expression*, List<Parameter*>> Parser::parse_parameters(bool allow_ret
     } else {
       break;
     }
-    Expression* type = null;
     if (current_token() == Token::DIV) {
-      type = parse_type(true);
+      if (is_block) {
+        report_error("Block types must be inside the brackets: '[name types -> type]'");
+        parse_type(true);
+      } else {
+        type = parse_type(true);
+      }
     }
     // The default_value can only be non-null if we encountered it inside the
     // brackets. In that case we will report an error during resolution.
