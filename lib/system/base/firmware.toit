@@ -17,7 +17,7 @@ import system.api.firmware show FirmwareService
 import system.services show ServiceHandler ServiceProvider ServiceResource
 
 abstract class FirmwareServiceProviderBase extends ServiceProvider
-    implements FirmwareService ServiceHandler:
+    implements ServiceHandler:
   constructor name/string --major/int --minor/int:
     super name --major=major --minor=minor
     provides FirmwareService.SELECTOR --handler=this
@@ -69,9 +69,6 @@ abstract class FirmwareServiceProviderBase extends ServiceProvider
 
   abstract content -> ByteArray?
   abstract uri -> string?
-
-  firmware-writer-open from/int to/int -> int:
-    unreachable  // TODO(kasper): Nasty.
 
   abstract firmware-writer-open client/int from/int to/int -> FirmwareWriter
 

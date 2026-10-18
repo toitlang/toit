@@ -186,7 +186,7 @@ class ContainerImageFlash extends ContainerImage:
       manager.image-registry.free allocation
 
 abstract class ContainerServiceProvider extends ServiceProvider
-    implements ContainerService ServiceHandler:
+    implements ServiceHandler:
 
   constructor:
     super "system/containers" --major=0 --minor=2
@@ -241,9 +241,6 @@ abstract class ContainerServiceProvider extends ServiceProvider
       result.add image.data
     return result
 
-  load-image id/uuid.Uuid -> List?:
-    unreachable  // <-- TODO(kasper): Nasty.
-
   load-image client/int id/uuid.Uuid -> List?:
     image/ContainerImage? := lookup-image id
     if not image: return null
@@ -261,9 +258,6 @@ abstract class ContainerServiceProvider extends ServiceProvider
     image/ContainerImage? := lookup-image id
     if not image: return
     image.delete
-
-  image-writer-open size/int -> int:
-    unreachable  // <-- TODO(kasper): Nasty.
 
   image-writer-open client/int size/int -> ServiceResource:
     relocated-size := size - (size / IMAGE-CHUNK-SIZE) * IMAGE-WORD-SIZE
@@ -288,9 +282,6 @@ abstract class ContainerServiceProvider extends ServiceProvider
     allocation := writer.commit --flags=flags --data=data
     image := add-flash-image allocation
     return image.id
-
-  notify-background-state-changed new-state/bool:
-    unreachable  // Here to satisfy the checker.
 
 class ContainerManager extends ContainerServiceProvider implements SystemMessageHandler_:
   image-registry/FlashRegistry ::= ?
