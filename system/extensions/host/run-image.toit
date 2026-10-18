@@ -141,14 +141,16 @@ class FirmwareWriter_ extends services.ServiceResource implements FirmwareWriter
     view_ = image[from..to]
     super provider client
 
-  write bytes/ByteArray from=0 to=bytes.size -> none:
+  write bytes/ByteArray from=0 to=bytes.size -> int:
     view_.replace cursor_ bytes[from..to]
     cursor_ += to - from
+    return to - from
 
-  pad size/int value/int -> none:
+  pad size/int value/int -> int:
     to := cursor_ + size
     view_.fill --from=cursor_ --to=to value
     cursor_ = to
+    return size
 
   flush -> int:
     // Everything is already flushed.

@@ -703,7 +703,7 @@ class VirtualPin extends PinBase:
     if value: set value
 
   /** Not supported. */
-  get: throw "UNSUPPORTED"
+  get -> int: throw "UNSUPPORTED"
 
   /** Not supported. */
   do [block]: throw "UNSUPPORTED"
@@ -712,7 +712,7 @@ class VirtualPin extends PinBase:
   wait-for value: throw "UNSUPPORTED"
 
   /** Not supported. */
-  num: throw "UNSUPPORTED"
+  num -> int: throw "UNSUPPORTED"
 
   /** Not supported. */
   set-open-drain value/bool: throw "UNSUPPORTED"

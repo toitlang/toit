@@ -18,7 +18,7 @@ interface WifiService extends NetworkService:
   establish config/Map? -> List
   static ESTABLISH-INDEX /int ::= 1001
 
-  ap-info handle/int -> int?
+  ap-info handle/int -> List
   static AP-INFO-INDEX /int ::= 1002
 
   scan config/Map -> List
