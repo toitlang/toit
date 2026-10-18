@@ -66,7 +66,7 @@ class FixedPoint implements Comparable:
       return (FixedPoint.private_ decimals 0) + value  // Get at least the right number of decimals.
     throw "INVALID_TYPE"
 
-  common_ other [block] -> any:
+  common_ other [block int num int -> any] -> any:
     if other is int or other is float:
       other *= MULTIPLIERS_[decimals]
       return block.call value other decimals
@@ -97,7 +97,7 @@ class FixedPoint implements Comparable:
     return common_ other: | a b | a.compare-to b
 
   /** See $(Comparable.compare-to other [--if-equal]). */
-  compare-to other [--if-equal] -> int:
+  compare-to other [--if-equal -> int] -> int:
     result := compare-to other
     if result == 0: return if-equal.call
     return result

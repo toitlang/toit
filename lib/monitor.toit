@@ -25,7 +25,7 @@ monitor Mutex:
   Calls the given $block exclusively.
   Other calls to this method are blocked until this method has returned.
   */
-  do [block]: return block.call
+  do [block -> any]: return block.call
 
 /**
 A latch that allows one task to wait until a value (object) has been provided
@@ -34,7 +34,7 @@ A latch that allows one task to wait until a value (object) has been provided
 # Inheritance
 This class must not be extended.
 */
-monitor Latch:
+monitor Latch<T>:
   static STATE-UNSET_         ::= 0
   static STATE-HAS-VALUE_     ::= 1
   static STATE-HAS-EXCEPTION_ ::= 2
@@ -49,7 +49,7 @@ monitor Latch:
     is an exception, it is thrown.
   May be called multiple times.
   */
-  get -> any:
+  get -> T:
     await: state_ != STATE-UNSET_
     value := value_
     if state_ == STATE-HAS-EXCEPTION_:
@@ -150,7 +150,7 @@ monitor Signal:
 
   The condition is re-evaluated (on this task) whenever the signal has been raised.
   */
-  wait [condition] -> none:
+  wait [condition -> any] -> none:
     if condition.call: return
     wait_ condition
 
@@ -169,7 +169,7 @@ monitor Signal:
       current_ = awaited_
 
   // Helper method for condition waiting.
-  wait_ [condition] -> none:
+  wait_ [condition -> any] -> none:
     waiters_++
     try:
       while true:
@@ -247,7 +247,7 @@ Multiple messages (objects) can be sent, and the capacity indicates how many
 # Inheritance
 This class must not be extended.
 */
-monitor Channel:
+monitor Channel<T>:
   buffer_ ::= ?
   start_ := 0
   size_ := 0
@@ -264,7 +264,7 @@ monitor Channel:
   If there are tasks blocked waiting for a value (with $receive), then one of
     them is woken up and receives the $value.
   */
-  send value/any -> none:
+  send value/T -> none:
     await: size_ < buffer_.size
     index := (start_ + size_) % buffer_.size
     buffer_[index] = value
@@ -278,7 +278,7 @@ monitor Channel:
   If there are tasks blocked waiting for a value (with $receive), then one of
     them is woken up and receives the sent value.
   */
-  send [block] -> none:
+  send [block -> T] -> none:
     await: size_ < buffer_.size
     index := (start_ + size_) % buffer_.size
     buffer_[index] = block.call
@@ -292,7 +292,7 @@ monitor Channel:
   Returns true if the message was successfully delivered to the channel. Returns false
     if the channel is full and the message was not delivered
   */
-  try-send value/any -> bool:
+  try-send value/T -> bool:
     if size_ >= buffer_.size: return false
     index := (start_ + size_) % buffer_.size
     buffer_[index] = value
@@ -308,7 +308,7 @@ monitor Channel:
     unblocks one waiting task.
   The order in which waiting tasks are unblocked is unspecified.
   */
-  receive --blocking/bool=true -> any:
+  receive --blocking/bool=true -> T?:
     if not blocking and size_ == 0: return null
     await: size_ > 0
     value := buffer_[start_]

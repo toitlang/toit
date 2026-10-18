@@ -448,6 +448,7 @@ test-board2:
         // target peripheral cannot finish or close it cleanly, so leave cleanup
         // to the test rig's board reset.
         while true: sleep --ms=1_000
+        unreachable
     else:
       throw "Unknown command: $command"
 

@@ -116,7 +116,7 @@ class Signals:
 
   The level of the first signal is $first-level.
   */
-  constructor.alternating --first-level/int periods/List:
+  constructor.alternating --first-level/int periods/List<int>:
     if first-level != 0 and first-level != 1: throw "INVALID_ARGUMENT"
 
     return Signals.alternating periods.size --first-level=first-level: | idx |
@@ -128,7 +128,7 @@ class Signals:
 
   The level of the first signal is $first-level.
   */
-  constructor.alternating --resolution/int --first-level/int --ns-durations/List:
+  constructor.alternating --resolution/int --first-level/int --ns-durations/List<int>:
     if first-level != 0 and first-level != 1: throw "INVALID_ARGUMENT"
 
     return Signals.alternating --resolution=resolution ns-durations.size --first-level=first-level: | idx |
@@ -142,7 +142,7 @@ class Signals:
 
   The level of the first signal is $first-level.
   */
-  constructor.alternating size/int --first-level/int [block]:
+  constructor.alternating size/int --first-level/int [block int int -> int]:
     if first-level != 0 and first-level != 1: throw "INVALID_ARGUMENT"
 
     signals := Signals size
@@ -161,7 +161,7 @@ class Signals:
 
   The level of the first signal is $first-level.
   */
-  constructor.alternating size/int --resolution/int --first-level/int [block]:
+  constructor.alternating size/int --resolution/int --first-level/int [block int int -> int]:
     if first-level != 0 and first-level != 1: throw "INVALID_ARGUMENT"
 
     signals := Signals size --resolution=resolution
@@ -262,7 +262,7 @@ class Signals:
   The block is invoked with the level, period and ns duration of each signal. If
     this instance was created without a $resolution, then the ns duration is null.
   */
-  do [block]:
+  do [block int int int? -> none]:
     size.repeat:
       block.call
         signal-level_ it
@@ -1247,7 +1247,7 @@ class Encoder:
   The $stop signal is emitted when the transmission ends.
   The $msb parameter indicates whether the patterns are MSB first or LSB first.
   */
-  constructor --start/Signals?=null --between/Signals?=null --stop/Signals?=null --msb/bool patterns/Map:
+  constructor --start/Signals?=null --between/Signals?=null --stop/Signals?=null --msb/bool patterns/Map<int, Signals>:
     chunk-size := ?
     if patterns.size == 2:
       chunk-size = 1

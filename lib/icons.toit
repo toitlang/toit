@@ -25,5 +25,5 @@ class Icon:
   Gets the bounding box of the icon.
   Returns [width, height, x-offset, y-offset].
   */
-  icon-extent -> List:
+  icon-extent -> List<int>:
     return font_.text-extent stringify

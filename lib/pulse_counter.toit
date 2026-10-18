@@ -161,7 +161,7 @@ class Unit:
     (12.5 * 1023 = 12_787.5).
   */
   constructor
-      --channels/List
+      --channels/List<Channel>
       --low/int?=null
       --high/int?=null
       --glitch-filter-ns/int?=null

@@ -195,7 +195,7 @@ class Target:
   transfer transmit/ByteArray=#[ ] -> ByteArray
       --receive-size/int=transmit.size
       --fill-byte/int=0xff
-      [--when-armed]:
+      [--when-armed -> none]:
     if receive-size < 0: throw "OUT_OF_RANGE"
     if not 0 <= fill-byte <= 0xff: throw "OUT_OF_RANGE"
     transfer-size := transmit.size > receive-size ? transmit.size : receive-size
@@ -508,7 +508,7 @@ class Bus:
   */
   reservation-mutex_/monitor.Mutex ::= monitor.Mutex
 
-  perform-transfer_ device [block]:
+  perform-transfer_ device [block -> any]:
     if identical reservation-owner_ Task.current:
       if not identical reserved-device_ device: throw "INVALID_STATE"
       return block.call
@@ -744,7 +744,7 @@ interface Device extends serial.Device:
     after the bus has been reserved.
   2. When using the `--keep-cs-active` flag of the $transfer function, the bus must be reserved.
   */
-  with-reserved-bus [block]
+  with-reserved-bus [block -> none]
 
   /** Closes this SPI device and releases resources associated with it. */
   close
@@ -796,7 +796,7 @@ abstract class DeviceBase_ implements Device:
       --address/int=0
       --keep-cs-active/bool=false
 
-  abstract with-reserved-bus [block]
+  abstract with-reserved-bus [block -> none]
 
 
 /** Device connected to an SPI bus. */
@@ -893,7 +893,7 @@ class Device_ extends DeviceBase_:
               state_.clear-state TRANSFER-DONE_
 
   /** See $Device.with-reserved-bus. */
-  with-reserved-bus [block]:
+  with-reserved-bus [block -> none]:
     if owning-bus-task_: throw "INVALID_STATE"
     bus := spi_
     if not bus: throw "CLOSED"
@@ -967,7 +967,7 @@ class DevicePath_ extends DeviceBase_:
     if read: data.replace from in
 
 
-  with-reserved-bus [block]:
+  with-reserved-bus [block -> none]:
     if reserved_: throw "INVALID_STATE"
     try:
       reserved_ = true

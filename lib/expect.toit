@@ -7,7 +7,7 @@ Utilities for expressing expectations in tests.
 */
 
 /** Expects the given $condition to evaluate to true. */
-expect [condition]:
+expect [condition -> bool]:
   expect condition.call
 
 /**
@@ -115,7 +115,7 @@ expect-bytes-equal expected/ByteArray actual/ByteArray:
       expect false --message="Expected <$expected>, but was <$actual> (differ at position $i, expected $expected[i], but was $actual[i])"
 
 /** Expects $throw-block to throw an object equal to the $expected value. */
-expect-throw expected [throw-block]:
+expect-throw expected [throw-block -> any]:
   actual/any := null
   try:
     actual = throw-block.call
@@ -127,6 +127,6 @@ expect-throw expected [throw-block]:
     return
 
 /** Expects $no-throw-block to not throw. */
-expect-no-throw [no-throw-block]:
+expect-no-throw [no-throw-block -> none]:
   res := catch no-throw-block
   if res: expect false --message="Expected no throw, got <$res>"
