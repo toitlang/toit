@@ -111,7 +111,7 @@ void CompletionHandler::call_virtual(ir::CallVirtual* node,
                                      ir::Type type,
                                      List<ir::Class*> classes) {
   bool is_for_named = node->target()->as_LspSelectionDot()->is_for_named();
-  if (type.is_none() || type.is_never()) {
+  if (type.is_none() || type.is_never() || type.is_truthy()) {
     // No completions.
     terminate();
   }

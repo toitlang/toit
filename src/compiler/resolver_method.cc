@@ -412,6 +412,7 @@ ir::Type MethodResolver::resolve_type(ast::Expression* type, bool is_return_type
       return ir::Type::any();
     }
     if (type_name == Symbols::any) return ir::Type::any();
+    if (type_name == Symbols::truthy) return ir::Type::truthy();
     type_declaration = lookup(type_name).entry;
     if (type->is_LspSelection()) {
       lsp_->selection_handler()->type(type, scope(), type_declaration, is_return_type);

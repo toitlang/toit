@@ -79,13 +79,13 @@ interface Collection<E>:
   Whether all elements in the collection satisfy the given $predicate.
   Returns true, if the collection is empty.
   */
-  every [predicate E -> any] -> bool
+  every [predicate E -> truthy] -> bool
 
   /**
   Whether at least one element in the collection satisfies the given $predicate.
   Returns false, if the collection is empty.
   */
-  any [predicate E -> any] -> bool
+  any [predicate E -> truthy] -> bool
 
   /** Whether this instance contains the given $element. */
   contains element/E -> bool
@@ -118,12 +118,12 @@ abstract class CollectionBase<E> implements Collection<E>:
     return size == 0
 
   /// See $Collection.every.
-  every [predicate E -> any] -> bool:
+  every [predicate E -> truthy] -> bool:
     do: if not predicate.call it: return false
     return true
 
   /// See $Collection.any.
-  any [predicate E -> any] -> bool:
+  any [predicate E -> truthy] -> bool:
     do: if predicate.call it: return true
     return false
 
@@ -442,7 +442,7 @@ abstract class List<E> extends CollectionBase<E>:
   Collections do *not* need to ensure that recursive data structures don't lead to
     infinite loops.
   */
-  equals other/List [--element-equals E any -> any] -> bool:
+  equals other/List [--element-equals E any -> truthy] -> bool:
     // TODO(florian): we want to check whether the given [other] is in fact a List of
     // the same type.
     if other is not List: return false
@@ -521,7 +521,7 @@ abstract class List<E> extends CollectionBase<E>:
   The result contains all the elements of this instance for which the $predicate returns
     true.
   */
-  filter --in-place/bool=false [predicate E -> any] -> List<E>:
+  filter --in-place/bool=false [predicate E -> truthy] -> List<E>:
     target := in-place ? this : []
     this-size := size
     target.resize this-size
@@ -1257,13 +1257,13 @@ interface ByteArray extends io.Data:
   Whether all bytes satisfy the given $predicate.
   Returns true, if the byte array is empty.
   */
-  every [predicate int -> any] -> bool
+  every [predicate int -> truthy] -> bool
 
   /**
   Whether there is at least one byte that satisfies the given $predicate.
   Returns false, if the byte array is empty.
   */
-  any [predicate int -> any] -> bool
+  any [predicate int -> truthy] -> bool
 
   /**
   The first element of this instance.
@@ -1484,7 +1484,7 @@ abstract class ByteArrayBase_ implements ByteArray:
   Whether every byte satisfies the given $predicate.
   Returns true, if the collection is empty.
   */
-  every [predicate int -> any] -> bool:
+  every [predicate int -> truthy] -> bool:
     do: if not predicate.call it: return false
     return true
 
@@ -1492,7 +1492,7 @@ abstract class ByteArrayBase_ implements ByteArray:
   Whether there is a byte that satisfies the given $predicate.
   Returns false, if the collection is empty.
   */
-  any [predicate int -> any] -> bool:
+  any [predicate int -> truthy] -> bool:
     do: if predicate.call it: return true
     return false
 
@@ -1823,10 +1823,10 @@ class CowByteArray_ implements ByteArray:
   do --reversed/bool [block int -> none] -> none:
     backing_.do --reversed=reversed block
 
-  every [predicate int -> any] -> bool:
+  every [predicate int -> truthy] -> bool:
     return backing_.every predicate
 
-  any [predicate int -> any] -> bool:
+  any [predicate int -> truthy] -> bool:
     return backing_.any predicate
 
   first -> int:
@@ -2542,7 +2542,7 @@ class Set<E> extends HashedInsertionOrderedCollection_<E> implements Collection<
     the find call returns the found object.  If it returns false
     the search continues.
   */
-  get-by-hash_ hash/int [--initial -> any] [--compare E -> any] -> any:
+  get-by-hash_ hash/int [--initial -> any] [--compare E -> truthy] -> any:
     if not index_:
       if size_ == 0:
         new-entry := initial.call
@@ -2642,7 +2642,7 @@ class Set<E> extends HashedInsertionOrderedCollection_<E> implements Collection<
 
   /** See $Collection.every. */
   // TODO(florian): should be inherited from CollectionBase.
-  every [predicate E -> any] -> bool:
+  every [predicate E -> truthy] -> bool:
     do: if not predicate.call it: return false
     return true
 
@@ -2657,7 +2657,7 @@ class Set<E> extends HashedInsertionOrderedCollection_<E> implements Collection<
 
   /** See $Collection.any. */
   // TODO(florian): should be inherited from CollectionBase.
-  any [predicate E -> any] -> bool:
+  any [predicate E -> truthy] -> bool:
     do: if predicate.call it: return true
     return false
 
@@ -2699,7 +2699,7 @@ class Set<E> extends HashedInsertionOrderedCollection_<E> implements Collection<
 
   Users must not otherwise modify this instance during the operation.
   */
-  filter --in-place/bool=false [predicate E -> any] -> Set<E>:
+  filter --in-place/bool=false [predicate E -> truthy] -> Set<E>:
     if not in-place:
       result := Set
       do: | key | if predicate.call key : result.add key
@@ -3167,7 +3167,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   Whether at least one key in the map satisfies the given $predicate.
   Returns false, if the map is empty.
   */
-  any --keys/True [predicate K -> any] -> bool:
+  any --keys/True [predicate K -> truthy] -> bool:
     do --keys: if predicate.call it: return true
     return false
 
@@ -3175,7 +3175,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   Whether at least one value in the map satisfies the given $predicate.
   Returns false, if the map is empty.
   */
-  any --values/True [predicate V -> any] -> bool:
+  any --values/True [predicate V -> truthy] -> bool:
     do --values: if predicate.call it: return true
     return false
 
@@ -3184,7 +3184,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   The $predicate block is called with two arguments: a key, and its value.
   Returns false, if the map is empty.
   */
-  any [predicate K V -> any] -> bool:
+  any [predicate K V -> truthy] -> bool:
     do: | key value | if predicate.call key value: return true
     return false
 
@@ -3192,7 +3192,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   Whether all keys in the map satisfy the given $predicate.
   Returns true, if the map is empty.
   */
-  every --keys/True [predicate K -> any] -> bool:
+  every --keys/True [predicate K -> truthy] -> bool:
     do --keys: if not predicate.call it: return false
     return true
 
@@ -3200,7 +3200,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   Whether all values in the map satisfy the given $predicate.
   Returns true, if the map is empty.
   */
-  every --values/True [predicate V -> any] -> bool:
+  every --values/True [predicate V -> truthy] -> bool:
     do --values: if not predicate.call it: return false
     return true
 
@@ -3209,7 +3209,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   The $predicate block is called with two arguments: a key, and its value.
   Returns true, if the map is empty.
   */
-  every [predicate K V -> any] -> bool:
+  every [predicate K V -> truthy] -> bool:
     do: | key value | if not predicate.call key value: return false
     return true
 
@@ -3271,7 +3271,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
 
   Users must not otherwise modify this instance during the operation.
   */
-  filter --in-place/bool=false [predicate K V -> any] -> Map<K, V>:
+  filter --in-place/bool=false [predicate K V -> truthy] -> Map<K, V>:
     if not in-place:
       result := Map
       do: | key value | if predicate.call key value: result[key] = value
@@ -3405,11 +3405,11 @@ class Deque<E> extends List<E> implements Collection<E>:
     backing_[start_..end_].do --reversed block
 
   /// See $Collection.any.
-  any [predicate E -> any] -> bool:
+  any [predicate E -> truthy] -> bool:
     return backing_[start_..end_].any predicate
 
   /// See $Collection.every.
-  every [predicate E -> any] -> bool:
+  every [predicate E -> truthy] -> bool:
     return backing_[start_..end_].every predicate
 
   /// See $(Collection.reduce [block]).

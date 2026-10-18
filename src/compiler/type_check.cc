@@ -390,12 +390,29 @@ class TypeChecker : public ReturningVisitor<Type> {
       return visit_Not(node->as_Not(), true);
     }
     auto result = visit(node);
-    if (result.is_none()) {
-      report_error(node->range(), "Condition can't be 'none'");
-    } else if (!result.is_never() && !is_a_bool(result) && !result.is_nullable()) {
-      report_warning(node->range(), "Condition always evaluates to true");
-    }
+    check_condition_value(node->range(), result);
     return result;
+  }
+
+  /// Reports values of [type] that are useless in a `truthy` slot.
+  void check_truthy_value(Source::Range range, Type type) {
+    if (type == null_type_) {
+      report_warning(range, "Condition always evaluates to false");
+    } else {
+      check_condition_value(range, type);
+    }
+  }
+
+  /// Reports values of [type] that are useless as conditions.
+  void check_condition_value(Source::Range range, Type type) {
+    if (type.is_none()) {
+      report_error(range, "Condition can't be 'none'");
+    } else if (!type.is_never() &&
+               !type.is_type_parameter() &&
+               !is_a_bool(type) &&
+               !type.is_nullable()) {
+      report_warning(range, "Condition always evaluates to true");
+    }
   }
 
   Type visit_If(If* node) {
@@ -452,7 +469,25 @@ class TypeChecker : public ReturningVisitor<Type> {
         parameters[i]->set_type(expected.block_parameter_type(i));
       }
     }
-    return visit_Code(node);
+    auto type = visit_Code(node);
+    if (type.is_block() && expected.is_block() && expected.block_return_type().is_truthy()) {
+      auto parameter_types = ListBuilder<Type>::allocate(type.block_parameter_count());
+      for (int i = 0; i < type.block_parameter_count(); i++) {
+        parameter_types[i] = type.block_parameter_type(i);
+      }
+      auto truthy_type = Type::block(parameter_types, Type::truthy());
+      // Mismatches are reported with the block's actual type.
+      if (!is_block_assignable(expected, truthy_type)) return type;
+      // Report useless conditions at the value the block yields, and not
+      // again when the block type is checked.
+      auto last = node->body();
+      while (last->is_Sequence() && !last->as_Sequence()->expressions().is_empty()) {
+        last = last->as_Sequence()->expressions().last();
+      }
+      check_truthy_value(last->range(), type.block_return_type());
+      return truthy_type;
+    }
+    return type;
   }
 
   Type visit_Code(Code* node) {
@@ -594,6 +629,12 @@ class TypeChecker : public ReturningVisitor<Type> {
       lsp_->selection_handler()->call_virtual(node, receiver_type, classes_);
     }
     auto arguments = node->arguments();
+
+    if (receiver_type.is_truthy()) {
+      report_error(node->range(), "Can't call a method on a 'truthy' value");
+      for (auto argument : arguments) visit(argument);
+      return Type::any();
+    }
 
     // Type parameters have no bounds, so nothing is known about their members.
     if (receiver_type.is_any() || receiver_type.is_type_parameter()) {
@@ -797,10 +838,14 @@ class TypeChecker : public ReturningVisitor<Type> {
     // for class types. Type parameters are erased, so it stays a plain return.
     bool is_erased_fallthrough = node->is_end_of_method_return() &&
         method_->return_type().is_type_parameter();
+    // Falling off the end of a `-> truthy` method yields null, which isn't
+    // worth an "always false" warning.
+    bool is_truthy_fallthrough = node->is_end_of_method_return() &&
+        method_->return_type().is_truthy();
     // Returns from `-> never` methods are reported by the resolver
     // (explicit) and the definite-assignment checker (fallthrough).
     bool is_never_method = method_->return_type().is_never();
-    if (node->depth() == -1 && !is_erased_fallthrough && !is_never_method) {
+    if (node->depth() == -1 && !is_erased_fallthrough && !is_truthy_fallthrough && !is_never_method) {
       check(node->range(), method_->return_type(), value_type);
     }
     return Type::never();
@@ -817,6 +862,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     }
     // Logical operators return the last computed value.
     // Frequently this will be the boolean type, but not always.
+    if (left_type.is_truthy() || right_type.is_truthy()) return Type::truthy();
     if (left_type == right_type) return left_type;
     return Type::any();
   }
@@ -1076,6 +1122,15 @@ class TypeChecker : public ReturningVisitor<Type> {
   void check(Source::Range range, Type receiver_type, Type value_type) {
     ASSERT(receiver_type.is_valid());
     ASSERT(value_type.is_valid());
+    if (value_type.is_truthy()) {
+      if (receiver_type.is_truthy() || receiver_type.is_none()) return;
+      report_error(range, "A 'truthy' value can only be used as a condition");
+      return;
+    }
+    if (receiver_type.is_truthy()) {
+      check_truthy_value(range, value_type);
+      return;
+    }
     if (receiver_type.is_any()) return;
     if (value_type.is_any()) return;
     if (receiver_type.is_none()) return;
@@ -1092,7 +1147,12 @@ class TypeChecker : public ReturningVisitor<Type> {
     if (receiver_type == value_type) return;  // This also covers `Null_` == `null`.
 
     if (receiver_type.is_block() || value_type.is_block()) {
-      if (is_block_assignable(receiver_type, value_type)) return;
+      if (is_block_assignable(receiver_type, value_type)) {
+        if (receiver_type.block_return_type().is_truthy()) {
+          check_truthy_value(range, value_type.block_return_type());
+        }
+        return;
+      }
       report_error(range,
                    "Type mismatch. Expected '%s'. Got '%s'",
                    type_name(receiver_type).c_str(),
@@ -1271,6 +1331,8 @@ class TypeChecker : public ReturningVisitor<Type> {
   bool is_assignable(Type receiver_type, Type value_type) {
     ASSERT(receiver_type.is_valid());
     ASSERT(value_type.is_valid());
+    if (value_type.is_truthy()) return receiver_type.is_truthy() || receiver_type.is_none();
+    if (receiver_type.is_truthy()) return !value_type.is_none();
     if (receiver_type.is_any() || value_type.is_any()) return true;
     if (value_type.is_never()) return true;
     if (receiver_type.is_never()) return false;
@@ -1359,6 +1421,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     if (type.is_any()) return "any";
     if (type.is_none()) return "none";
     if (type.is_never()) return "never";
+    if (type.is_truthy()) return "truthy";
     if (type == null_type_) return "null";
     if (type.is_block()) {
       std::string result("[block");
@@ -1389,6 +1452,8 @@ class TypeChecker : public ReturningVisitor<Type> {
   Type merge_types(Type type1, Type type2) {
     if (type1.is_never()) return type2;
     if (type2.is_never()) return type1;
+    // A condition value doesn't escape by merging.
+    if (type1.is_truthy() || type2.is_truthy()) return Type::truthy();
     if (type1 == type2) return type1;
     return Type::any();
   }

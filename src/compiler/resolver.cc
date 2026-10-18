@@ -1241,6 +1241,10 @@ ir::Type Resolver::resolve_type_in_class_header(ast::Expression* node, ir::Class
       report_error(node, "Type '%s' is only allowed as return type", name.c_str());
       return ir::Type::any();
     }
+    if (name == Symbols::truthy) {
+      report_error(node, "Type 'truthy' isn't allowed in class headers");
+      return ir::Type::any();
+    }
     for (auto parameter : holder->type_parameters()) {
       if (parameter->name() == name) return ir::Type(parameter);
     }

@@ -2,9 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-// Predicates are declared `-> any`: truthiness is part of the language, so
-// non-bool results are fine statically. Only arity and parameter types are
-// checked.
+// Predicates are declared `-> truthy`: truthiness is part of the language, so
+// non-bool results are fine. Results that are always true are warned about.
 monitor Latch:
   value_ := null
   wait-good: await: value_ != null         // OK.
@@ -19,7 +18,7 @@ main:
   list.every: it == 1            // OK.
   list.any: x or false           // OK: `or` yields any.
   list.filter: it & 1            // OK: any.
-  list.every: 42                 // OK: truthiness.
+  list.every: 42                 // Warning: always true.
   list.filter: |a b| true        // Error: too many parameters.
   list.do: |a b| null            // Error: too many parameters.
 

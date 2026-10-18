@@ -231,6 +231,7 @@ enum Precedence {
   I(none)                                                                \
   I(any)                                                                 \
   I(never)                                                               \
+  I(truthy)                                                              \
   IN(empty_string, "")                                                   \
   I(assert_)                                                             \
   I(intrinsics)                                                          \

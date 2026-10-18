@@ -452,6 +452,8 @@ void Writer::print_type(ir::Type type) {
     this->printf_external("-2\n");
   } else if (type.is_never()) {
     this->printf_external("-4\n");
+  } else if (type.is_truthy()) {
+    this->printf_external("-5\n");
   } else if (type.is_class()) {
     // Type arguments aren't part of the summary yet.
     print_toplevel_ref(type.klass());

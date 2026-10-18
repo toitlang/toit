@@ -217,11 +217,13 @@ class Type:
   static NONE-KIND ::= -2
   static BLOCK-KIND ::= -3
   static NEVER-KIND ::= -4
+  static TRUTHY-KIND ::= -5
   static CLASS-KIND ::= 0
 
   static ANY / Type ::= Type.internal_ ANY-KIND null
   static NONE / Type ::= Type.internal_ NONE-KIND null
   static NEVER / Type ::= Type.internal_ NEVER-KIND null
+  static TRUTHY / Type ::= Type.internal_ TRUTHY-KIND null
   /// A raw block type, without a signature.
   static BLOCK / Type ::= Type.internal_ BLOCK-KIND null
 
@@ -243,6 +245,7 @@ class Type:
   is-any -> bool: return kind == ANY-KIND
   is-none -> bool: return kind == NONE-KIND
   is-never -> bool: return kind == NEVER-KIND
+  is-truthy -> bool: return kind == TRUTHY-KIND
   /// Whether this is a block type with a signature.
   is-typed-block -> bool: return is-block and block-parameter-types != null
 
@@ -763,6 +766,7 @@ class ModuleReader extends ReaderBase:
     if id == -1: return Type.ANY
     if id == -2: return Type.NONE
     if id == -4: return Type.NEVER
+    if id == -5: return Type.TRUTHY
     if id == -3:
       parameter-types := read-list: read-type
       return-type := read-type
