@@ -6,7 +6,7 @@
 See $(line-wrap text max-width [--compute-width] [--can-split] [--is-space]).
   Trims space (0x20) characters around wrap points.
 */
-line-wrap text/string max-width/num [--compute-width string int int -> num] [--can-split string int -> any] -> List<string>:
+line-wrap text/string max-width/num [--compute-width string int int -> num] [--can-split string int -> truthy] -> List<string>:
   return line-wrap text max-width --compute-width=compute-width --can-split=can-split --is-space=:
     it == ' '
 
@@ -20,7 +20,7 @@ Wraps a line of $text to a given $max-width, and returns the
   The $is-space block takes an integer code point and returns
   true if it should be trimmed.
 */
-line-wrap text/string max-width/num [--compute-width string int int -> num] [--can-split string int -> any] [--is-space int? -> any] -> List<string>:
+line-wrap text/string max-width/num [--compute-width string int int -> num] [--can-split string int -> truthy] [--is-space int? -> truthy] -> List<string>:
   if text == "": return [ "" ]
   result := []
   last-cut := 0
@@ -55,7 +55,7 @@ line-wrap text/string max-width/num [--compute-width string int int -> num] [--c
     last-cut = ok-place
   return result
 
-trim_ text/string [is-space int? -> any] -> string:
+trim_ text/string [is-space int? -> truthy] -> string:
   end := text.size
   while end > 0:
     if not is-space.call text[end - 1]: return text.copy 0 end

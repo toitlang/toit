@@ -323,14 +323,14 @@ abstract class PegParserBase_:
   can-read num/int -> bool:
     return offset_ + num <= bytes_.size
 
-  match-one [block int -> any] -> int?:
+  match-one [block int -> truthy] -> int?:
     if can-read 1:
       if (block.call bytes_[offset_]):
         offset_++
         return bytes_[offset_ - 1]
     return null
 
-  match-many n [block -> any] -> bool:
+  match-many n [block -> truthy] -> bool:
     if can-read n:
       if block.call:
         offset_ += n

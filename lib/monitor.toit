@@ -150,7 +150,7 @@ monitor Signal:
 
   The condition is re-evaluated (on this task) whenever the signal has been raised.
   */
-  wait [condition -> any] -> none:
+  wait [condition -> truthy] -> none:
     if condition.call: return
     wait_ condition
 
@@ -169,7 +169,7 @@ monitor Signal:
       current_ = awaited_
 
   // Helper method for condition waiting.
-  wait_ [condition -> any] -> none:
+  wait_ [condition -> truthy] -> none:
     waiters_++
     try:
       while true:

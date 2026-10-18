@@ -167,7 +167,7 @@ monitor RpcRequestQueue_:
       processing-requests_[task-index] = request
       return request
 
-  cancel [predicate RpcRequest_ -> any] -> none:
+  cancel [predicate RpcRequest_ -> truthy] -> none:
     // First we get rid of any unprocessed request where the 'predicate' block
     // answers true. This is a simple linked list traversal with the usual
     // bookkeeping challenges that come from removing from a linked list with
