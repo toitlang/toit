@@ -93,6 +93,11 @@ class ParserPeeker {
     return parser_->peek_state(n);
   }
 
+  bool is_current_token_attached() {
+    auto state = current_state();
+    return !state.at_newline && state.scanner_state.is_attached();
+  }
+
   void consume() { n++; }
 
  private:
@@ -1108,6 +1113,7 @@ Class* Parser::parse_class_interface_monitor_or_mixin(bool is_abstract, Source::
   int member_indentation = -1;
 
   Identifier* name;
+  ListBuilder<Identifier*> type_parameters;
   Expression* super = null;
   if (current_token() != Token::IDENTIFIER) {
     const char* kind_name = null;
@@ -1137,6 +1143,31 @@ Class* Parser::parse_class_interface_monitor_or_mixin(bool is_abstract, Source::
     }
   } else {
     name = parse_identifier();
+    if (is_current_token_attached() && current_token() == Token::LT) {
+      consume();
+      if (current_token() == Token::GT) {
+        report_error("Type parameters can't be empty");
+        consume();
+      } else {
+        while (true) {
+          if (current_token() != Token::IDENTIFIER) {
+            report_error("Expected type parameter name");
+            break;
+          }
+          type_parameters.add(parse_identifier());
+          if (current_token() == Token::COMMA) {
+            consume();
+            continue;
+          }
+          if (current_token() == Token::GT) {
+            consume();
+          } else {
+            report_error("Expected ',' or '>' in type parameters");
+          }
+          break;
+        }
+      }
+    }
     bool requires_super = false;
     if (at_pseudo(Symbols::extends)) {
       consume();
@@ -1203,6 +1234,7 @@ Class* Parser::parse_class_interface_monitor_or_mixin(bool is_abstract, Source::
   }
   end_multiline_construct(IndentationStack::CLASS, true);
   return NEW_NODE(zone_new<Class>(name,
+                        type_parameters.build(),
                         super,
                         interfaces.build(),
                         mixins.build(),
@@ -1900,7 +1932,13 @@ Expression* Parser::parse_precedence(Precedence precedence,
             consume();
             kind = Token::IS_NOT;
           }
-          right = parse_precedence(static_cast<Precedence>(level + 1), allow_colon);
+          if ((kind == Token::AS || kind == Token::IS || kind == Token::IS_NOT) &&
+              current_token() == Token::IDENTIFIER) {
+            // The right-hand side is a type and may have type arguments.
+            right = parse_type_body(false);
+          } else {
+            right = parse_precedence(static_cast<Precedence>(level + 1), allow_colon);
+          }
         }
         expression = NEW_NODE(zone_new<Binary>(kind, expression, right), range);
       }
@@ -2566,6 +2604,11 @@ Expression* Parser::parse_map_or_set() {
 }
 
 bool Parser::peek_type(ParserPeeker* peeker) {
+  int pending_closers = 0;
+  return peek_type(peeker, &pending_closers) && pending_closers == 0;
+}
+
+bool Parser::peek_type(ParserPeeker* peeker, int* pending_closers) {
   bool expects_identifier = true;
 
   while (true) {
@@ -2583,12 +2626,68 @@ bool Parser::peek_type(ParserPeeker* peeker) {
       expects_identifier = true;
       continue;
     }
-    if (token == Token::CONDITIONAL) {
-      peeker->consume();
-      return true;
-    }
-    return true;
+    break;
   }
+  if (peeker->current_token() == Token::LT && peeker->is_current_token_attached()) {
+    peeker->consume();
+    while (true) {
+      if (!peek_type(peeker, pending_closers)) return false;
+      if (*pending_closers > 0) {
+        // A '>>' of the nested type closed this list as well.
+        (*pending_closers)--;
+        break;
+      }
+      if (peeker->current_token() == Token::COMMA) {
+        peeker->consume();
+        continue;
+      }
+      int count = closing_angle_count(peeker->current_token());
+      if (count == 0) return false;
+      peeker->consume();
+      *pending_closers += count - 1;
+      break;
+    }
+  }
+  if (*pending_closers == 0 && peeker->current_token() == Token::CONDITIONAL) {
+    peeker->consume();
+  }
+  return true;
+}
+
+int Parser::closing_angle_count(Token::Kind kind) {
+  switch (kind) {
+    case Token::GT:
+    case Token::GTE:
+      return 1;
+    case Token::BIT_SHR:
+    case Token::ASSIGN_BIT_SHR:
+      return 2;
+    case Token::BIT_USHR:
+    case Token::ASSIGN_BIT_USHR:
+      return 3;
+    default:
+      return 0;
+  }
+}
+
+void Parser::consume_closing_angle() {
+  Token::Kind remainder;
+  switch (current_token()) {
+    case Token::GT: consume(); return;
+    case Token::GTE: remainder = Token::ASSIGN; break;
+    case Token::BIT_SHR: remainder = Token::GT; break;
+    case Token::ASSIGN_BIT_SHR: remainder = Token::GTE; break;
+    case Token::BIT_USHR: remainder = Token::BIT_SHR; break;
+    case Token::ASSIGN_BIT_USHR: remainder = Token::ASSIGN_BIT_SHR; break;
+    default: UNREACHABLE();
+  }
+  // Keep the current state (the queue still holds the full token) and only
+  // shorten the cached copy. `consume` later drops the full token.
+  ASSERT(current_state_.is_valid());
+  current_state_.token = remainder;
+  auto& scanner_state = current_state_.scanner_state;
+  scanner_state.from++;
+  scanner_state.token_bools_ = Scanner::State::encode_token_bools(remainder, true, false);
 }
 
 Expression* Parser::parse_type(bool is_type_annotation) {
@@ -2635,6 +2734,38 @@ Expression* Parser::parse_type_body(bool allow_nullable) {
     }
   };
   auto type_range = type->selection_range();
+  if (is_current_token_attached() && current_token() == Token::LT) {
+    auto lt_range = current_range();
+    consume();
+    ListBuilder<Expression*> arguments;
+    if (closing_angle_count(current_token()) != 0) {
+      report_error(lt_range.extend(current_range()), "Type arguments can't be empty");
+      consume_closing_angle();
+      // Continue with the raw type.
+    } else {
+      while (true) {
+        arguments.add(parse_type_body(true));
+        if (current_token() == Token::COMMA) {
+          consume();
+          if (closing_angle_count(current_token()) != 0) {
+            report_error("Trailing comma in type arguments");
+            consume_closing_angle();
+            break;
+          }
+          continue;
+        }
+        if (closing_angle_count(current_token()) != 0) {
+          auto from = current_state().scanner_state.from;
+          type_range = type_range.extend(source_->range(from, from + 1));
+          consume_closing_angle();
+        } else {
+          report_error("Expected ',' or '>' in type arguments");
+        }
+        break;
+      }
+      type = NEW_NODE(zone_new<ParameterizedType>(type, arguments.build()), type_range);
+    }
+  }
   bool is_nullable = false;
   if (allow_nullable && is_current_token_attached()) {
     if (current_token() == Token::CONDITIONAL) {

@@ -11,7 +11,7 @@ HASHED-COLLECTION-INITIAL-LENGTH_ ::= 4
 MAX-PRINT-STRING_ ::= 4000
 
 /** A collection of elements. */
-interface Collection:
+interface Collection<E>:
 
   /**
   Invokes the given $block on each element of this instance.
@@ -88,7 +88,7 @@ interface Collection:
   any [predicate any -> any] -> bool
 
   /** Whether this instance contains the given $element. */
-  contains element -> bool
+  contains element/E -> bool
 
   /**
   Takes all elements and combines them using $block.
@@ -105,7 +105,7 @@ interface Collection:
   reduce --initial [block any any -> any]
 
 
-abstract class CollectionBase implements Collection:
+abstract class CollectionBase<E> implements Collection<E>:
   /// See $Collection.do.
   abstract do [block any -> none] -> none
   /// See $Collection.size.
@@ -128,7 +128,7 @@ abstract class CollectionBase implements Collection:
     return false
 
   /// See $Collection.contains.
-  contains element -> bool:
+  contains element/E -> bool:
     return any: it == element
 
   /// See $Collection.reduce.
@@ -156,7 +156,7 @@ A List is an array with constant-time access to numbered elements,
 Lists are mutable and growable.
 See also https://docs.toit.io/language/listsetmap.
 */
-abstract class List extends CollectionBase:
+abstract class List<E> extends CollectionBase<E>:
 
   /**
   Creates an empty list.
@@ -204,14 +204,14 @@ abstract class List extends CollectionBase:
 
   // TODO(florian): document whether it's ok to index with -1 etc.
   */
-  abstract operator [] index/int
+  abstract operator [] index/int -> E
 
   /**
   Stores the given $value in the slot of the given $index.
 
   // TODO(florian): document whether it's ok to index with -1 etc.
   */
-  abstract operator []= index/int value
+  abstract operator []= index/int value/E
 
   /**
   Returns a slice of this list.
@@ -251,7 +251,7 @@ abstract class List extends CollectionBase:
   print list  // => [1, 3, 499, 4, 5]
   ```
   */
-  operator [..] --from=0 --to=size -> List:
+  operator [..] --from=0 --to=size -> List<E>:
     if not 0 <= from <= to <= size: throw "BAD ARGUMENTS"
     return ListSlice_ this from to
 
@@ -274,7 +274,7 @@ abstract class List extends CollectionBase:
     classes that have multiple implementations (say a `SmallCarList` and `LargeCarList`)
     may switch type, *especially* if the individual types are not visible to the users.
   */
-  abstract copy from/int=0 to/int=size -> List
+  abstract copy from/int=0 to/int=size -> List<E>
 
   /** Replaces this[$index..$index+($to-$from)[ with $source[$from..$to[ */
   replace index/int source from/int=0 to/int=source.size -> none:
@@ -293,7 +293,7 @@ abstract class List extends CollectionBase:
   This operation increases the size of this instance.
   It is an error to call this method on lists that can't grow.
   */
-  add value -> none:
+  add value/E -> none:
     #primitive.core.list-add:
       old-size := size
       resize old-size + 1
@@ -304,7 +304,7 @@ abstract class List extends CollectionBase:
   This operation increases the size of this instance.
   It is an error to call this method on lists that can't grow.
   */
-  add-all collection/Collection -> none:
+  add-all collection/Collection<E> -> none:
     old-size := size
     resize old-size + collection.size
     index := old-size
@@ -318,7 +318,7 @@ abstract class List extends CollectionBase:
     runs in `O(n)` and is thus not efficient for insertions that are not near
     the end of the list.
   */
-  insert --at/int value/any -> none:
+  insert --at/int value/E -> none:
     sz := size
     if at == sz:
       add value
@@ -335,7 +335,7 @@ abstract class List extends CollectionBase:
   It is an error to call this method on lists that can't change size.
   It is an error to call this method on empty lists.
   */
-  remove-last:
+  remove-last -> E:
     result := last
     resize size - 1
     return result
@@ -348,7 +348,7 @@ abstract class List extends CollectionBase:
 
   It is an error to call this method on lists that can't change size.
   */
-  remove needle -> none:
+  remove needle/E -> none:
     i := 0
     while i < size and this[i] != needle: i++
     if i != size: remove --at=i
@@ -362,7 +362,7 @@ abstract class List extends CollectionBase:
     the end of the list.
   Returns the value that was removed.
   */
-  remove --at/int -> any:
+  remove --at/int -> E:
     result := this[at]
     if at != size - 1:
       replace at this (at + 1) size
@@ -377,7 +377,7 @@ abstract class List extends CollectionBase:
 
   It is an error to call this method on lists that can't change size.
   */
-  remove --all/True needle -> none:
+  remove --all/True needle/E -> none:
     target-index := 0
     size.repeat:
       entry := this[it]
@@ -393,7 +393,7 @@ abstract class List extends CollectionBase:
 
   It is an error to call this method on lists that can't change size.
   */
-  remove --last/True needle -> none:
+  remove --last/True needle/E -> none:
     for i := size - 1; i >= 0; i--:
       entry := this[i]
       if entry == needle:
@@ -418,7 +418,7 @@ abstract class List extends CollectionBase:
   Subclasses may return a subclass of $List, but should mention this in the documentation
     or in the return-type.
   */
-  operator + other/List -> List:
+  operator + other/List<E> -> List<E>:
     result := []
     result.resize size + other.size
     index := 0
@@ -474,14 +474,14 @@ abstract class List extends CollectionBase:
   The first element of the list.
   The list must not be empty.
   */
-  first:
+  first -> E:
     return this[0]
 
   /**
   The last element of the list.
   The list must not be empty.
   */
-  last:
+  last -> E:
     return this[size - 1]
 
   /**
@@ -521,7 +521,7 @@ abstract class List extends CollectionBase:
   The result contains all the elements of this instance for which the $predicate returns
     true.
   */
-  filter --in-place/bool=false [predicate any -> any] -> List:
+  filter --in-place/bool=false [predicate any -> any] -> List<E>:
     target := in-place ? this : []
     this-size := size
     target.resize this-size
@@ -537,7 +537,7 @@ abstract class List extends CollectionBase:
   /**
   Fills $value into list elements [$from..$to[.
   */
-  fill --from/int=0 --to/int=size value:
+  fill --from/int=0 --to/int=size value/E:
     (to - from).repeat: this[it + from] = value
 
   /**
@@ -599,7 +599,7 @@ abstract class List extends CollectionBase:
   -  0 if `a == b`, and
   -  1 if `a > b`.
   */
-  sort --in-place/bool=false from/int = 0 to/int = size [compare any any -> num] -> List:
+  sort --in-place/bool=false from/int = 0 to/int = size [compare any any -> num] -> List<E>:
     result := in-place ? this : copy
     length := to - from
     if length <= INSERTION-SORT-LIMIT_:
@@ -622,7 +622,7 @@ abstract class List extends CollectionBase:
   Returns this instance if $in-place is true.
   Returns a new list if $in-place is false (the default).
   */
-  sort --in-place/bool=false from/int = 0 to/int = size -> List:
+  sort --in-place/bool=false from/int = 0 to/int = size -> List<E>:
     return sort --in-place=in-place from to: | a b | compare_ a b
 
   /**
@@ -636,7 +636,7 @@ abstract class List extends CollectionBase:
 
   Returns -1 if $needle is not contained in the range.
   */
-  index-of --last/bool=false needle from/int=0 to/int=size -> int:
+  index-of --last/bool=false needle/E from/int=0 to/int=size -> int:
     return index-of --last=last needle from to --if-absent=: -1
 
   /**
@@ -665,7 +665,7 @@ abstract class List extends CollectionBase:
   Searches for $needle in the sorted range $from (inclusive) - $to (exclusive).
   Uses binary search with `<`, `>` and `==` to find the $needle.
   */
-  index-of --binary/True needle from/int=0 to/int=size -> int:
+  index-of --binary/True needle/E from/int=0 to/int=size -> int:
     return index-of --binary needle from to --if-absent=: -1
 
   /**
@@ -859,7 +859,7 @@ A non-growable list.
 This class is the most efficient way of storing elements, but requires the user to
   know the size of the list in advance.
 */
-abstract class Array_ extends List:
+abstract class Array_<E> extends List<E>:
   // Factory methods.
   constructor size/int filler=null:
     // TODO(florian): we are instantiating a SmallArray here. It would be cleaner
@@ -914,7 +914,7 @@ abstract class Array_ extends List:
     throw "COLLECTION_CANNOT_CHANGE_SIZE"
 
   /** See $super. */
-  operator + collection -> Array_:
+  operator + collection -> Array_<E>:
     result := Array_ size + collection.size
     index := 0
     do: result[index++] = it
@@ -922,7 +922,7 @@ abstract class Array_ extends List:
     return result
 
   /** See $super. */
-  copy from/int=0 to/int=size -> Array_:
+  copy from/int=0 to/int=size -> Array_<E>:
     if not 0 <= from <= to <= size: throw "BAD ARGUMENTS"
     result-size := to - from
     result := Array_ result-size
@@ -930,7 +930,7 @@ abstract class Array_ extends List:
     return result
 
 /** An array for limited number of elements. */
-class SmallArray_ extends Array_:
+class SmallArray_<E> extends Array_<E>:
   // TODO(florian) remove the constructor.
   // Currently SmallArrays_ are exclusively allocated through a native call in $Array_.
   constructor.internal_:
@@ -942,11 +942,11 @@ class SmallArray_ extends Array_:
     #primitive.core.array-length
 
   /// Returns the $n'th element in the array.
-  operator [] n/int -> any:
+  operator [] n/int -> E:
     #primitive.core.array-at
 
   /// Updates the $n'th element in the array with $value.
-  operator []= n/int value/any -> any:
+  operator []= n/int value/E -> E:
     #primitive.core.array-at-put
 
   /// Iterates through the array elements up to, but not including, the
@@ -979,7 +979,7 @@ LargeArray_ is used for arrays that cannot be allocated in one page of memory.
 The implementation segments the payload into chunks of at most $ARRAYLET-SIZE
   elements.
 */
-class LargeArray_ extends Array_:
+class LargeArray_<E> extends Array_<E>:
 
   // Just small enough to fit one per page (two per page on 32 bits).
   // Must match objects.h.
@@ -1047,12 +1047,12 @@ class LargeArray_ extends Array_:
   size -> int:
     return size_
 
-  operator [] n/int -> any:
+  operator [] n/int -> E:
     if n is not int: throw "WRONG_OBJECT_TYPE"
     if not 0 <= n < size_: throw "OUT_OF_BOUNDS"
     return vector_[n / ARRAYLET-SIZE][n % ARRAYLET-SIZE]
 
-  operator []= n/int value/any -> any:
+  operator []= n/int value/E -> E:
     if n is not int: throw "WRONG_OBJECT_TYPE"
     if not 0 <= n < size_: throw "OUT_OF_BOUNDS"
     return vector_[n / ARRAYLET-SIZE][n % ARRAYLET-SIZE] = value
@@ -1905,7 +1905,7 @@ class CowByteArray_ implements ByteArray:
   write-to-byte-array target/ByteArray --at/int from/int to/int -> none:
     backing_.write-to-byte-array target --at=at from to
 
-class ListSlice_ extends List:
+class ListSlice_<E> extends List<E>:
   list_ / List
   from_ / int
   to_ / int
@@ -1920,19 +1920,19 @@ class ListSlice_ extends List:
     list_ = sublist
     super.from-subclass
 
-  operator [] index:
+  operator [] index/int -> E:
     actual-index := from_ + index
     if not from_ <= actual-index < to_: throw "OUT_OF_BOUNDS"
     // If the underlying list changed size this might throw.
     return list_[actual-index]
 
-  operator []= index value:
+  operator []= index/int value/E -> E:
     actual-index := from_ + index
     if not from_ <= actual-index < to_: throw "OUT_OF_BOUNDS"
     // If the underlying list changed size this might throw.
     return list_[actual-index] = value
 
-  operator [..] --from=0 --to=size -> List:
+  operator [..] --from=0 --to=size -> List<E>:
     actual-from := from_ + from
     actual-to := from_ + to
     if not from_ <= actual-from <= actual-to <= to_: throw "OUT_OF_BOUNDS"
@@ -1943,7 +1943,7 @@ class ListSlice_ extends List:
   size -> int:
     return to_ - from_
 
-  copy from/int=0 to/int=size -> List:
+  copy from/int=0 to/int=size -> List<E>:
     actual-from := from_ + from
     actual-to := from_ + to
     if not from_ <= actual-from <= actual-to <= to_: throw "OUT_OF_BOUNDS"
@@ -1963,7 +1963,7 @@ class ListSlice_ extends List:
 The implementation class for the standard growable list.
 This class is used for list literals.
 */
-class List_ extends List:
+class List_<E> extends List<E>:
   constructor:
     array_ = Array_ 0
     super.from-subclass
@@ -1983,7 +1983,7 @@ class List_ extends List:
     return array_.do_ size_ block
 
   /** See $super. This is an optimized implementation. */
-  remove-last:
+  remove-last -> E:
     array := array_
     size := size_
     index := size - 1
@@ -2030,13 +2030,13 @@ class List_ extends List:
     size_ = new-size
 
   /** See $super. */
-  operator [] index:
+  operator [] index/int -> E:
     if index is not int: throw "WRONG_OBJECT_TYPE"
     if index >= size_: throw "OUT_OF_BOUNDS"
     return array_[index]
 
   /** See $super. */
-  operator []= index value:
+  operator []= index/int value/E -> E:
     if index is not int: throw "WRONG_OBJECT_TYPE"
     if index >= size_: throw "OUT_OF_BOUNDS"
     return array_[index] = value
@@ -2062,7 +2062,7 @@ class List_ extends List:
       super index source from to
 
   /** See $super. */
-  copy from/int=0 to/int=size -> List:
+  copy from/int=0 to/int=size -> List<E>:
     if not 0 <= from <= to <= size: throw "BAD ARGUMENTS"
     result-size := to - from
     result := List_            // Uses singleton empty array as backing.
@@ -2070,7 +2070,7 @@ class List_ extends List:
     result.array_.replace 0 this.array_ from to
     return result
 
-  sort --in-place/bool=false from/int = 0 to/int = size_ [compare any any -> num] -> List_:
+  sort --in-place/bool=false from/int = 0 to/int = size_ [compare any any -> num] -> List_<E>:
     if from < 0 or from > to or to > size_: throw "OUT_OF_BOUNDS"
     result := in-place ? this : copy
     result.array_.sort --in-place from to compare
@@ -2172,7 +2172,7 @@ Certain access patterns, including repeated removal of the first element,
   behavior.  To avoid this, instances of the Tombstone_ class can contain a
   skip number, indicating that the next n positions are also deleted.
 */
-abstract class HashedInsertionOrderedCollection_:
+abstract class HashedInsertionOrderedCollection_<K>:
   // The offsets of these four fields are used by the hash-find intrinsic in
   // the interpreter, so we can't move them.
   size_ := 0
@@ -2204,12 +2204,12 @@ abstract class HashedInsertionOrderedCollection_:
     return size_ == 0
 
   /** Whether this instance contains the given $key. */
-  contains key -> bool:
+  contains key/K -> bool:
     action := find_ key: return false
     return true
 
   /** Whether this instance contains all elements of $collection. */
-  contains-all collection/Collection -> bool:
+  contains-all collection/Collection<K> -> bool:
     collection.do: if not contains it: return false
     return true
 
@@ -2218,7 +2218,7 @@ abstract class HashedInsertionOrderedCollection_:
 
   The key does not need to be present.
   */
-  remove key -> none:
+  remove key/K -> none:
     remove key --if-absent=: return
 
   /**
@@ -2226,10 +2226,10 @@ abstract class HashedInsertionOrderedCollection_:
 
   If the key is absent, calls $if-absent with the key.
   */
-  abstract remove key [--if-absent any -> none]
+  abstract remove key/K [--if-absent any -> none]
 
   /** Removes all elements of $collection from this instance. */
-  remove-all collection/Collection -> none:
+  remove-all collection/Collection<K> -> none:
     collection.do: remove it --if-absent=: null
 
   /**
@@ -2511,7 +2511,7 @@ Strings, byte arrays, and numbers fulfill these requirements and can be used as
   keys in sets.
 See also https://docs.toit.io/language/listsetmap.
 */
-class Set extends HashedInsertionOrderedCollection_ implements Collection:
+class Set<E> extends HashedInsertionOrderedCollection_<E> implements Collection<E>:
   static STEP_ ::= 1
 
   /**
@@ -2519,7 +2519,7 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
 
   If the key is absent, calls $if-absent with the $key.
   */
-  remove key [--if-absent any -> none] -> none:
+  remove key/E [--if-absent any -> none] -> none:
     position := find_ key:
       if-absent.call key
       return
@@ -2586,7 +2586,7 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
   Adds the given $key to this instance.
   If an equal key is already in this instance, it is overwritten by the new one.
   */
-  add key -> none:
+  add key/E -> none:
     position := find_ key:
       append-position := backing_.size
       backing_.add key
@@ -2598,7 +2598,7 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
   /**
   Adds all elements of the given $collection to this instance.
   */
-  add-all collection/Collection -> none:
+  add-all collection/Collection<E> -> none:
     collection.do: add it
 
   /** See $Collection.do. */
@@ -2652,7 +2652,7 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
   Returns a new instance that has the same values as this instance.
   The copy is shallow and does not clone/copy the elements.
   */
-  copy -> Set:
+  copy -> Set<E>:
     return map: it
 
   /** See $Collection.any. */
@@ -2699,7 +2699,7 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
 
   Users must not otherwise modify this instance during the operation.
   */
-  filter --in-place/bool=false [predicate any -> any] -> Set:
+  filter --in-place/bool=false [predicate any -> any] -> Set<E>:
     if not in-place:
       result := Set
       do: | key | if predicate.call key : result.add key
@@ -2722,7 +2722,7 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
   Returns a new set if $in-place is false (the default).
   Returns this instance, if $in-place is true.
   */
-  intersect --in-place/bool=false other/Set -> Set:
+  intersect --in-place/bool=false other/Set<E> -> Set<E>:
     return filter --in-place=in-place: other.contains it
 
   stringify -> string:
@@ -2732,7 +2732,7 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
   Returns an element that is equal to the $key.
   The key may be a lightweight object that has compatible hash code and equality to the element.
   */
-  get key [--if-absent any -> any]:
+  get key/E [--if-absent any -> any]:
     position := find_ key:
       return if-absent.call key
     return backing_[position]
@@ -2742,7 +2742,7 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
   Returns null if this instance doesn't contain the $key.
   See $(get key [--if-absent]).
   */
-  get key:
+  get key/E -> E?:
     position := find_ key:
       return null
     return backing_[position]
@@ -2751,7 +2751,7 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
   The first element of the set by insertion order.
   Throws an error if the set is empty.
   */
-  first:
+  first -> E:
     do: return it
     throw "Not enough elements"
 
@@ -2759,7 +2759,7 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
   The last element of the set by insertion order.
   Throws an error if the set is empty.
   */
-  last:
+  last -> E:
     do --reversed: return it
     throw "Not enough elements"
 
@@ -2773,7 +2773,7 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
   /**
   Returns a list of the elements of this set.
   */
-  to-list -> List:
+  to-list -> List<E>:
     result := List size
     index := 0
     do:
@@ -2785,7 +2785,7 @@ A set that uses object identity instead of the == operator to test equality
   of elements. This set still uses the hash-code method on elements (see $Set). There is
   no identity hash code operation on arbitrary classes in Toit.
 */
-class IdentitySet extends Set:
+class IdentitySet<E> extends Set<E>:
 
   hash-code_ key:
     return key.hash-code
@@ -2806,7 +2806,7 @@ Strings, byte arrays, and numbers fulfill these requirements and can be used as
   keys in maps.
 See also https://docs.toit.io/language/listsetmap.
 */
-class Map extends HashedInsertionOrderedCollection_:
+class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   static STEP_ ::= 2
 
   /**
@@ -2847,7 +2847,7 @@ class Map extends HashedInsertionOrderedCollection_:
 
   If the key is absent, calls $if-absent with the $key.
   */
-  remove key [--if-absent any -> none] -> none:
+  remove key/K [--if-absent any -> none] -> none:
     position := find_ key:
       if-absent.call key
       return
@@ -2867,7 +2867,7 @@ class Map extends HashedInsertionOrderedCollection_:
   Returns the element stored at location $key.
   The $key must be in the map.
   */
-  operator [] key:
+  operator [] key/K -> V:
     position := find_ key:
       if key is string or key is num:
         throw "key '$key' not found"
@@ -2879,7 +2879,7 @@ class Map extends HashedInsertionOrderedCollection_:
   Stores $value in the location for the given $key.
   If the $key is already present, overrides the previous value.
   */
-  operator []= key value:
+  operator []= key/K value/V -> V:
     action := find_ key:
       append-position := backing_.size
       backing_.add key
@@ -2896,7 +2896,7 @@ class Map extends HashedInsertionOrderedCollection_:
   Returns the value verbatim, if the $key is contained in the map.
   Returns null, otherwise.
   */
-  get key: return get key --if-present=(: it) --if-absent=(: null)
+  get key/K -> V?: return get key --if-present=(: it) --if-absent=(: null)
 
   /**
   Retrieves the value for $key.
@@ -2904,7 +2904,7 @@ class Map extends HashedInsertionOrderedCollection_:
   Returns the value verbatim, if this instance contains the $key.
   Otherwise, calls $if-absent with the $key and returns the result of the call.
   */
-  get key [--if-absent any -> any]:
+  get key/K [--if-absent any -> any]:
     return get key --if-absent=if-absent --if-present=: it
 
   /**
@@ -2914,7 +2914,7 @@ class Map extends HashedInsertionOrderedCollection_:
     value and returns the result.
   Returns null otherwise.
   */
-  get key [--if-present any -> any]:
+  get key/K [--if-present any -> any]:
     return get key --if-present=if-present --if-absent=: null
 
   /**
@@ -2924,7 +2924,7 @@ class Map extends HashedInsertionOrderedCollection_:
     value and returns the result.
   Otherwise, calls $if-absent with the $key and returns the result of the call.
   */
-  get key [--if-present any -> any] [--if-absent any -> any]:
+  get key/K [--if-present any -> any] [--if-absent any -> any]:
     action := find_ key: return if-absent.call key
     assert: action != APPEND_
     return if-present.call backing_[action + 1]
@@ -2935,7 +2935,7 @@ class Map extends HashedInsertionOrderedCollection_:
   Returns the value verbatim, if this instance contains the $key.
   Otherwise, initializes the slot with the result of calling $init first.
   */
-  get key [--init -> any]:
+  get key/K [--init -> any]:
     return get key
       --if-absent=:
         initial-value := init.call
@@ -3086,7 +3086,7 @@ class Map extends HashedInsertionOrderedCollection_:
   This operation instantiates a fresh list and is thus in O(n).
   When possible use $(do --keys [block]) instead.
   */
-  keys -> List:
+  keys -> List<K>:
     result := List size_
     i := 0
     do: |key value| result[i++] = key
@@ -3097,7 +3097,7 @@ class Map extends HashedInsertionOrderedCollection_:
   This operation instantiates a fresh list and is thus in O(n).
   When possible use $(do --values [block]) instead.
   */
-  values -> List:
+  values -> List<V>:
     result := List size_
     i := 0
     do: |key value| result[i++] = value
@@ -3217,7 +3217,7 @@ class Map extends HashedInsertionOrderedCollection_:
   Copies the map.
   The copy is shallow.
   */
-  copy -> Map:
+  copy -> Map<K, V>:
     return map: | _ value | value
 
   /**
@@ -3271,7 +3271,7 @@ class Map extends HashedInsertionOrderedCollection_:
 
   Users must not otherwise modify this instance during the operation.
   */
-  filter --in-place/bool=false [predicate any any -> any] -> Map:
+  filter --in-place/bool=false [predicate any any -> any] -> Map<K, V>:
     if not in-place:
       result := Map
       do: | key value | if predicate.call key value: result[key] = value
@@ -3312,7 +3312,7 @@ A map that uses object identity instead of the == operator to test equality
   of keys. This map still uses the hash-code method on keys (see $Map). There is no
   identity hash code operation on arbitrary classes in Toit.
 */
-class IdentityMap extends Map:
+class IdentityMap<K, V> extends Map<K, V>:
 
   hash-code_ key:
     return key.hash-code
@@ -3330,7 +3330,7 @@ A collection of items, where new items can be added at the end. They can
 A deque is a generalization of a stack and a queue, and can be used for both
   purposes.
 */
-class Deque extends List implements Collection:
+class Deque<E> extends List<E> implements Collection<E>:
   // Traditionally we would have a head index, a tail index and an array
   // backing, used as a circular buffer.  Instead, we use a growable list as
   // backing, copying down when there is enough free space. We use 'start_'
@@ -3372,7 +3372,7 @@ class Deque extends List implements Collection:
   /**
   Adds the given $element to the end of this instance.
   */
-  add element -> none:
+  add element/E -> none:
     if end_ == backing_.size:
       backing_.add element
     else:
@@ -3382,7 +3382,7 @@ class Deque extends List implements Collection:
   /**
   Adds all elements of the given $collection to this instance.
   */
-  add-all collection/Collection -> none:
+  add-all collection/Collection<E> -> none:
     if end_ == backing_.size:
       backing_.add-all collection
       end_ += collection.size
@@ -3421,7 +3421,7 @@ class Deque extends List implements Collection:
     return backing_[start_..end_].reduce --initial=initial block
 
   /// See $Collection.contains.
-  contains element -> bool:
+  contains element/E -> bool:
     return backing_[start_..end_].contains element
 
   /**
@@ -3437,7 +3437,7 @@ class Deque extends List implements Collection:
 
   The deque must not be empty.
   */
-  first -> any:
+  first -> E:
     if start_ == end_: throw "OUT_OF_BOUNDS"
     return backing_[start_]
 
@@ -3446,7 +3446,7 @@ class Deque extends List implements Collection:
 
   The deque must not be empty.
   */
-  last -> any:
+  last -> E:
     if start_ == end_: throw "OUT_OF_BOUNDS"
     return backing_[end_ - 1]
 
@@ -3456,7 +3456,7 @@ class Deque extends List implements Collection:
   Returns the removed element.
   The deque must not be empty.
   */
-  remove-last -> any:
+  remove-last -> E:
     end := end_
     backing := backing_
     if start_ == end: throw "OUT_OF_BOUNDS"
@@ -3476,7 +3476,7 @@ class Deque extends List implements Collection:
   Returns the removed element.
   The deque must not be empty.
   */
-  remove-first -> any:
+  remove-first -> E:
     backing := backing_
     first := start_
     if first == end_: throw "OUT_OF_BOUNDS"
@@ -3489,7 +3489,7 @@ class Deque extends List implements Collection:
   /**
   Inserts the given $element at the beginning of this instance.
   */
-  add-first element -> none:
+  add-first element/E -> none:
     first := start_
     if first == 0:
       padding-size := (end_ >> 1) + 1
@@ -3508,7 +3508,7 @@ class Deque extends List implements Collection:
   /**
   Returns the element at the given $index.
   */
-  operator [] index/int:
+  operator [] index/int -> E:
     if index < 0: throw "OUT_OF_BOUNDS"
     backing-index := start_ + index
     if backing-index >= end_: throw "OUT_OF_BOUNDS"
@@ -3519,7 +3519,7 @@ class Deque extends List implements Collection:
 
   The index must be in the range [0, size).
   */
-  operator []= index/int value:
+  operator []= index/int value/E:
     if index < 0: throw "OUT_OF_BOUNDS"
     backing-index := start_ + index
     if backing-index >= end_: throw "OUT_OF_BOUNDS"
@@ -3528,7 +3528,7 @@ class Deque extends List implements Collection:
   /**
   Returns a new Deque that contains the elements of this.
   */
-  copy from/int=0 to/int=size -> Deque:
+  copy from/int=0 to/int=size -> Deque<E>:
     if from < 0: throw "OUT_OF_BOUNDS"
     if to > size: throw "OUT_OF_BOUNDS"
     return Deque.from backing_[start_ + from .. start_ + to]
@@ -3543,7 +3543,7 @@ class Deque extends List implements Collection:
     runs in `O(n)` and is thus not efficient for insertions that are not near
     the start or end of the deque.
   */
-  insert --at/int value -> none:
+  insert --at/int value/E -> none:
     sz := size
     backing := backing_
     if not 0 <= at <= sz: throw "OUT_OF_BOUNDS"
@@ -3577,7 +3577,7 @@ class Deque extends List implements Collection:
     the start or end of the deque.
   Returns the value that was removed.
   */
-  remove --at/int -> any:
+  remove --at/int -> E:
     if at == 0: return remove-first
     last := size - 1
     if not 0 <= at <= last: throw "OUT_OF_BOUNDS"

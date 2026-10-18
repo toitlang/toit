@@ -451,6 +451,7 @@ void Writer::print_type(ir::Type type) {
   } else if (type.is_none()) {
     this->printf_external("-2\n");
   } else if (type.is_class()) {
+    // Type arguments aren't part of the summary yet.
     print_toplevel_ref(type.klass());
   } else if (type.is_block()) {
     this->printf_external("-3\n");
@@ -458,6 +459,9 @@ void Writer::print_type(ir::Type type) {
     this->printf_external("%d\n", parameter_count);
     for (int i = 0; i < parameter_count; i++) print_type(type.block_parameter_type(i));
     print_type(type.block_return_type());
+  } else if (type.is_type_parameter()) {
+    // Type parameters are erased to 'any' in the summary for now.
+    this->printf_external("-1\n");
   } else {
     UNREACHABLE();
   }

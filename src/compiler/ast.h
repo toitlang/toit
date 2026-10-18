@@ -61,6 +61,7 @@ class Node;
   V(Identifier)                 \
   V(Nullable)                   \
   V(BlockType)                  \
+  V(ParameterizedType)          \
   V(LspSelection)               \
   V(Parameter)                  \
   V(LiteralNull)                \
@@ -277,6 +278,7 @@ class Class : public Node {
 
   // Super is either an identifier or a prefixed identifier (that is, a Dot).
   Class(Identifier* name,
+        List<Identifier*> type_parameters,
         Expression* super,
         List<Expression*> interfaces,
         List<Expression*> mixins,
@@ -285,6 +287,7 @@ class Class : public Node {
         bool has_abstract_modifier,
         Source::Range keywords_range)
       : name_(name)
+      , type_parameters_(type_parameters)
       , super_(super)
       , interfaces_(interfaces)
       , mixins_(mixins)
@@ -297,6 +300,7 @@ class Class : public Node {
   bool has_super() const { return super_ != null; }
 
   Identifier* name() const { return name_; }
+  List<Identifier*> type_parameters() const { return type_parameters_; }
   Expression* super() const { return super_; }
   List<Expression*> interfaces() const { return interfaces_; }
   List<Expression*> mixins() const { return mixins_; }
@@ -327,6 +331,7 @@ class Class : public Node {
 
  private:
   Identifier* name_;
+  List<Identifier*> type_parameters_;
   Expression* super_;
   List<Expression*> interfaces_;
   List<Expression*> mixins_;
@@ -408,6 +413,22 @@ class BlockType : public Expression {
  private:
   List<Expression*> parameter_types_;
   Expression* return_type_;
+};
+
+/// A type with type arguments, like `List<int>` or `Map<string, List<int>?>`.
+/// The [type] is an Identifier or a Dot.
+class ParameterizedType : public Expression {
+ public:
+  ParameterizedType(Expression* type, List<Expression*> arguments)
+      : type_(type), arguments_(arguments) {}
+  IMPLEMENTS(ParameterizedType)
+
+  Expression* type() const { return type_; }
+  List<Expression*> arguments() const { return arguments_; }
+
+ private:
+  Expression* type_;
+  List<Expression*> arguments_;
 };
 
 /// The selection of an LSP request.

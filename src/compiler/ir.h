@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <functional>
+
 #include "zone.h"
 
 #include "list.h"
@@ -140,7 +142,16 @@ IR_NODES(DECLARE)
   Expression* _replace_expression(Expression* expression);
 };
 
+class TypeParameter;
+
 /// A static type.
+///
+/// Class types may carry type arguments (`List<int>`). A class type without
+/// arguments is a "raw" type, where every argument is implicitly `any`.
+/// Type-parameter types (`T` inside `class Box<T>`) are opaque: they are only
+/// assignable to themselves and `any`.
+///
+/// Type arguments are erased at runtime: only the class is checked.
 ///
 /// Block types (`[block int -> bool]`) describe the parameters a block is
 /// called with and the value it yields. A raw `[block]` parameter has type
@@ -149,6 +160,14 @@ class Type {
  public:
   explicit Type(Class* klass) : kind_(kClass), class_(klass), is_nullable_(false) {
     ASSERT(klass != null);
+  }
+  Type(Class* klass, List<Type> arguments)
+      : kind_(kClass), class_(klass), arguments_(arguments), is_nullable_(false) {
+    ASSERT(klass != null);
+  }
+  explicit Type(TypeParameter* parameter)
+      : kind_(kTypeParameter), parameter_(parameter), is_nullable_(false) {
+    ASSERT(parameter != null);
   }
 
   static Type none() { return Type(kNone, false); }
@@ -159,50 +178,72 @@ class Type {
     auto types = ListBuilder<Type>::allocate(parameter_types.length() + 1);
     for (int i = 0; i < parameter_types.length(); i++) types[i] = parameter_types[i];
     types[parameter_types.length()] = return_type;
-    return Type(kBlock, null, types, false);
+    return Type(kBlock, null, null, types, false);
   }
 
   bool is_nullable() const { return is_nullable_; }
 
   bool is_class() const { return kind_ == kClass; }
   bool is_block() const { return kind_ == kBlock; }
+  bool is_type_parameter() const { return kind_ == kTypeParameter; }
   bool is_none() const { return kind_ == kNone; }
   bool is_any() const { return kind_ == kAny; }
   bool is_valid() const { return kind_ != kInvalid; }
   bool is_special() const { return is_none() || is_any() || !is_valid(); }
 
-  Class* klass() const { return class_; }
+  Class* klass() const {
+    ASSERT(is_class());
+    return class_;
+  }
+  TypeParameter* parameter() const {
+    ASSERT(is_type_parameter());
+    return parameter_;
+  }
+
+  /// The type arguments. Empty for raw types.
+  List<Type> arguments() const { return is_class() ? arguments_ : List<Type>(); }
+  bool has_arguments() const { return is_class() && !arguments_.is_empty(); }
 
   int block_parameter_count() const {
     ASSERT(is_block());
-    return types_.length() - 1;
+    return arguments_.length() - 1;
   }
   Type block_parameter_type(int i) const {
     ASSERT(is_block() && i < block_parameter_count());
-    return types_[i];
+    return arguments_[i];
   }
   Type block_return_type() const {
     ASSERT(is_block());
-    return types_[types_.length() - 1];
+    return arguments_[arguments_.length() - 1];
   }
 
   Type to_nullable() const {
     if (is_special() || is_block()) return *this;
-    return Type(kind_, class_, types_, true);
+    return Type(kind_, class_, parameter_, arguments_, true);
   }
 
   Type to_non_nullable() const {
     if (is_none() || !is_valid()) return *this;
-    return Type(kind_, class_, types_, false);
+    return Type(kind_, class_, parameter_, arguments_, false);
   }
 
+  /// Replaces type parameters according to [environment].
+  /// Parameters that aren't found are replaced with `any`.
+  Type substitute(const std::function<Type (TypeParameter*)>& environment) const;
+
+  /// Equality ignores nullability (at every level), matching how the
+  /// type checker treats `int` and `int?` as interchangeable.
   bool operator ==(const Type& other) const {
-    if (kind_ != other.kind_ || class_ != other.class_) return false;
-    if (kind_ != kBlock) return true;
-    if (types_.length() != other.types_.length()) return false;
-    for (int i = 0; i < types_.length(); i++) {
-      if (types_[i] != other.types_[i]) return false;
+    if (kind_ != other.kind_) return false;
+    if (kind_ == kClass || kind_ == kBlock) {
+      if (class_ != other.class_) return false;
+      if (arguments_.length() != other.arguments_.length()) return false;
+      for (int i = 0; i < arguments_.length(); i++) {
+        if (arguments_[i] != other.arguments_[i]) return false;
+      }
+      return true;
     }
+    if (kind_ == kTypeParameter) return parameter_ == other.parameter_;
     return true;
   }
   bool operator !=(const Type& other) const {
@@ -214,22 +255,43 @@ class Type {
   static const int kNone = 1;
   static const int kAny = 2;
   static const int kInvalid = 3;
-  static const int kBlock = 4;
+  static const int kTypeParameter = 4;
+  static const int kBlock = 5;
 
   Type(int kind, bool is_nullable)
-      : kind_(kind), class_(null), is_nullable_(is_nullable) {}
+      : kind_(kind), class_(null), parameter_(null), is_nullable_(is_nullable) {}
 
-  Type(int kind, Class* klass, List<Type> types, bool is_nullable)
-      : kind_(kind), class_(klass), types_(types), is_nullable_(is_nullable) {}
+  Type(int kind, Class* klass, TypeParameter* parameter, List<Type> arguments, bool is_nullable)
+      : kind_(kind), class_(klass), parameter_(parameter), arguments_(arguments), is_nullable_(is_nullable) {}
 
   friend class ListBuilder<Type>;
   Type() {}
 
   int kind_;
-  Class* class_;
+  Class* class_ = null;
+  TypeParameter* parameter_ = null;
+  // For class types: the type arguments.
   // For block types: the parameter types followed by the return type.
-  List<Type> types_;
+  List<Type> arguments_;
   bool is_nullable_;
+};
+
+/// A type parameter of a generic class, like `T` in `class Box<T>`.
+class TypeParameter {
+ public:
+  TypeParameter(Symbol name, Class* holder, int index, Source::Range range)
+      : name_(name), holder_(holder), index_(index), range_(range) {}
+
+  Symbol name() const { return name_; }
+  Class* holder() const { return holder_; }
+  int index() const { return index_; }
+  Source::Range range() const { return range_; }
+
+ private:
+  Symbol name_;
+  Class* holder_;
+  int index_;
+  Source::Range range_;
 };
 
 class Node {
@@ -364,6 +426,31 @@ class Class : public Node {
     ASSERT(super_ == null);
     super_ = klass;
   }
+
+  List<TypeParameter*> type_parameters() const { return type_parameters_; }
+  void set_type_parameters(List<TypeParameter*> parameters) {
+    ASSERT(type_parameters_.is_empty());
+    type_parameters_ = parameters;
+  }
+  bool is_generic() const { return !type_parameters_.is_empty(); }
+
+  /// The type of `this` inside the class: the class applied to its own
+  /// type parameters. Equal to the raw type for non-generic classes.
+  Type self_type();
+
+  /// The type arguments given to the super class in the `extends` clause.
+  /// Empty if the super is raw (or there is no explicit super).
+  List<Type> super_arguments() const { return super_arguments_; }
+  void set_super_arguments(List<Type> arguments) { super_arguments_ = arguments; }
+
+  /// The type arguments given to the directly implemented interfaces and
+  /// mixins, in declaration order. These lists are parallel to the AST
+  /// interfaces/mixins, *not* to the flattened [interfaces]/[mixins].
+  /// Each entry is a (class, arguments) pair.
+  List<Type> declared_interfaces() const { return declared_interfaces_; }
+  void set_declared_interfaces(List<Type> types) { declared_interfaces_ = types; }
+  List<Type> declared_mixins() const { return declared_mixins_; }
+  void set_declared_mixins(List<Type> types) { declared_mixins_ = types; }
   void replace_super(Class* klass) {
     super_ = klass;
   }
@@ -483,6 +570,10 @@ class Class : public Node {
   Class* super_;
   List<Class*> interfaces_;
   List<Class*> mixins_;
+  List<TypeParameter*> type_parameters_;
+  List<Type> super_arguments_;
+  List<Type> declared_interfaces_;
+  List<Type> declared_mixins_;
   Kind kind_;
   bool is_abstract_;
   // Only set for interfaces.
