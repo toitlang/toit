@@ -16,6 +16,7 @@
 #include "type_check.h"
 
 #include <stdarg.h>
+#include <functional>
 #include <string>
 
 #include "cycle_detector.h"
@@ -100,7 +101,118 @@ class TypeChecker : public ReturningVisitor<Type> {
     // Fields don't have any code anymore, since all of the initialization is
     // in the constructors.
     for (auto method: node->methods()) visit(method);
+    check_overrides(node);
     return Type::invalid();
+  }
+
+  /// Reports instance methods of [klass] whose signature is incompatible with
+  /// a method they override in a supertype: return types must be covariant,
+  /// parameter types related (contravariant, or narrowed to a subtype).
+  void check_overrides(Class* klass) {
+    std::vector<Class*> supertypes;
+    UnorderedSet<Class*> seen;
+    std::function<void (Class*)> add_supertypes;
+    add_supertypes = [&](Class* current) {
+      if (current == null || seen.contains(current)) return;
+      seen.insert(current);
+      supertypes.push_back(current);
+      add_supertypes(current->super());
+      for (auto inter : current->interfaces()) add_supertypes(inter);
+      for (auto mixin : current->mixins()) add_supertypes(mixin);
+    };
+    add_supertypes(klass->super());
+    for (auto inter : klass->interfaces()) add_supertypes(inter);
+    for (auto mixin : klass->mixins()) add_supertypes(mixin);
+    if (supertypes.empty()) return;
+
+    for (auto method : klass->methods()) {
+      if (method->kind() != Method::INSTANCE) continue;
+      for (auto supertype : supertypes) {
+        bool reported = false;
+        for (auto overridden : supertype->methods()) {
+          if (overridden->kind() != Method::INSTANCE) continue;
+          if (overridden->name() != method->name()) continue;
+          if (!method->resolution_shape().overlaps_with(overridden->resolution_shape())) continue;
+          if (check_override(method, overridden)) continue;
+          reported = true;
+          break;
+        }
+        // Report each override at most once.
+        if (reported) break;
+      }
+    }
+  }
+
+  /// Checks [method] against the [overridden] method.
+  ///
+  /// Returns false and reports a warning if they are incompatible.
+  bool check_override(Method* method, Method* overridden) {
+    auto report = [&](const std::string& detail) {
+      diagnostics()->start_group();
+      report_warning(method->range(),
+                     "Override of '%s' is incompatible with '%s.%s': %s",
+                     method->name().c_str(),
+                     overridden->holder()->name().c_str(),
+                     overridden->name().c_str(),
+                     detail.c_str());
+      diagnostics()->report_note(overridden->range(), "Overridden method");
+      diagnostics()->end_group();
+      return false;
+    };
+
+    auto check_parameter = [&](int index, int overridden_index) {
+      auto parameter = method->parameters()[index];
+      auto overridden_type = overridden->parameters()[overridden_index]->type();
+      if (!parameter->type().is_valid() || !overridden_type.is_valid()) return true;
+      // Parameters are contravariant. Narrowing to a subtype is allowed too:
+      // the parameter's as-check catches violations at runtime, and it is
+      // common (for example `compare-to other/Time`).
+      if (is_assignable(parameter->type(), overridden_type)) return true;
+      if (is_assignable(overridden_type, parameter->type())) return true;
+      // Field setters have a synthetic parameter name.
+      std::string kind = method->is_FieldStub() ? "field '" : "parameter '";
+      auto name = method->is_FieldStub() ? method->name() : parameter->name();
+      return report(kind + name.c_str() +
+                    "' has type '" + type_name(parameter->type()) +
+                    "', unrelated to '" + type_name(overridden_type) + "'");
+    };
+
+    auto shape = method->resolution_shape();
+    auto overridden_shape = overridden->resolution_shape();
+    // Parameters are ordered: unnamed non-block parameters (starting with
+    // `this`), unnamed blocks, and then named parameters in the order of
+    // the shape's names.
+    int unnamed = std::min(shape.max_unnamed_non_block(), overridden_shape.max_unnamed_non_block());
+    for (int i = 1; i < unnamed; i++) {
+      if (!check_parameter(i, i)) return false;
+    }
+    int blocks_start = shape.max_unnamed_non_block();
+    int overridden_blocks_start = overridden_shape.max_unnamed_non_block();
+    ASSERT(shape.unnamed_block_count() == overridden_shape.unnamed_block_count());
+    for (int i = 0; i < shape.unnamed_block_count(); i++) {
+      if (!check_parameter(blocks_start + i, overridden_blocks_start + i)) return false;
+    }
+    int names_start = blocks_start + shape.unnamed_block_count();
+    int overridden_names_start = overridden_blocks_start + overridden_shape.unnamed_block_count();
+    auto names = shape.names();
+    auto overridden_names = overridden_shape.names();
+    for (int i = 0; i < names.length(); i++) {
+      for (int j = 0; j < overridden_names.length(); j++) {
+        if (names[i] != overridden_names[j]) continue;
+        if (shape.is_block_name(i) != overridden_shape.is_block_name(j)) continue;
+        if (!check_parameter(names_start + i, overridden_names_start + j)) return false;
+      }
+    }
+
+    auto return_type = method->return_type();
+    auto overridden_return_type = overridden->return_type();
+    if (!return_type.is_valid() || !overridden_return_type.is_valid()) return true;
+    // Callers ignore the value of a `none` method.
+    if (overridden_return_type.is_none()) return true;
+    // Return types are covariant.
+    if (is_assignable(overridden_return_type, return_type)) return true;
+    return report("return type '" + type_name(return_type) +
+                  "' isn't assignable to '" + type_name(overridden_return_type) + "'");
   }
 
   Type visit_Field(Field* node) { UNREACHABLE(); return Type::invalid(); }

@@ -1,0 +1,106 @@
+tests/negative/override-signature-test.toit:97:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/override-signature-test.toit:72:12: warning: Override of 'i' is incompatible with 'I.i': return type 'string' isn't assignable to 'int'
+  abstract i x/int -> string  // Warning.
+           ^
+tests/negative/override-signature-test.toit:60:3: note: Overridden method
+  i x/int -> int
+  ^
+tests/negative/override-signature-test.toit:69:3: warning: Override of 'mm' is incompatible with 'M.mm': return type 'string' isn't assignable to 'int'
+  mm -> string: return ""  // Warning.
+  ^~
+tests/negative/override-signature-test.toit:66:3: note: Overridden method
+  mm -> int: return 0
+  ^~
+tests/negative/override-signature-test.toit:63:3: warning: Override of 'i' is incompatible with 'I.i': parameter 'x' has type 'string', unrelated to 'int'
+  i x/string -> int: return 0  // Warning.
+  ^
+tests/negative/override-signature-test.toit:60:3: note: Overridden method
+  i x/int -> int
+  ^
+tests/negative/override-signature-test.toit:56:3: warning: Override of 'm' is incompatible with 'Shapes.m': parameter 'x' has type 'string', unrelated to 'int'
+  m x/string -> none:  // Warning.
+  ^
+tests/negative/override-signature-test.toit:52:3: note: Overridden method
+  m x/int --flag/bool=false -> none:
+  ^
+tests/negative/override-signature-test.toit:57:3: warning: Override of 'n' is incompatible with 'Shapes.n': parameter 'y' has type 'string', unrelated to 'int'
+  n x/int y/string -> none:  // Warning.
+  ^
+tests/negative/override-signature-test.toit:53:3: note: Overridden method
+  n x/int y/int=0 -> none:
+  ^
+tests/negative/override-signature-test.toit:79:3: warning: Override of 'param' is incompatible with 'B.param': parameter 'x' has type 'string', unrelated to 'int'
+  param x/string -> none:  // Warning.
+  ^~~~~
+tests/negative/override-signature-test.toit:9:3: note: Overridden method
+  param x/int -> none:
+  ^~~~~
+tests/negative/override-signature-test.toit:31:3: warning: Override of 'param' is incompatible with 'B.param': parameter 'x' has type 'string', unrelated to 'int'
+  param x/string -> none:  // Warning.
+  ^~~~~
+tests/negative/override-signature-test.toit:9:3: note: Overridden method
+  param x/int -> none:
+  ^~~~~
+tests/negative/override-signature-test.toit:35:3: warning: Override of 'ret-unrelated' is incompatible with 'B.ret-unrelated': return type 'string' isn't assignable to 'A'
+  ret-unrelated -> string: return ""  // Warning.
+  ^~~~~~~~~~~~~
+tests/negative/override-signature-test.toit:13:3: note: Overridden method
+  ret-unrelated -> A: return A
+  ^~~~~~~~~~~~~
+tests/negative/override-signature-test.toit:36:3: warning: Override of 'ret-wider' is incompatible with 'B.ret-wider': return type 'A' isn't assignable to 'A2'
+  ret-wider -> A: return A  // Warning.
+  ^~~~~~~~~
+tests/negative/override-signature-test.toit:14:3: note: Overridden method
+  ret-wider -> A2: return A2
+  ^~~~~~~~~
+tests/negative/override-signature-test.toit:39:3: warning: Override of 'ret-int' is incompatible with 'B.ret-int': return type 'none' isn't assignable to 'int'
+  ret-int -> none:  // Warning.
+  ^~~~~~~
+tests/negative/override-signature-test.toit:17:3: note: Overridden method
+  ret-int -> int: return 1
+  ^~~~~~~
+tests/negative/override-signature-test.toit:42:3: warning: Override of 'defaults' is incompatible with 'B.defaults': parameter 'x' has type 'string', unrelated to 'int'
+  defaults x/string="" --named/string="" -> none:  // Warning.
+  ^~~~~~~~
+tests/negative/override-signature-test.toit:20:3: note: Overridden method
+  defaults x/int=0 --named/string="" -> none:
+  ^~~~~~~~
+tests/negative/override-signature-test.toit:43:3: warning: Override of 'named' is incompatible with 'B.named': parameter 'b' has type 'int', unrelated to 'string'
+  named --b/int --a/int -> none:  // Warning on 'b'.
+  ^~~~~
+tests/negative/override-signature-test.toit:21:3: note: Overridden method
+  named --a/int --b/string -> none:
+  ^~~~~
+tests/negative/override-signature-test.toit:45:3: warning: Override of 'field-getter' is incompatible with 'B.field-getter': return type 'string' isn't assignable to 'int'
+  field-getter/string := ""  // Warning.
+  ^~~~~~~~~~~~
+tests/negative/override-signature-test.toit:23:3: note: Overridden method
+  field-getter -> int: return 0
+  ^~~~~~~~~~~~
+tests/negative/override-signature-test.toit:46:3: warning: Override of 'field-setter' is incompatible with 'B.field-setter': field 'field-setter' has type 'string', unrelated to 'int'
+  field-setter/string := ""  // Warning.
+  ^~~~~~~~~~~~
+tests/negative/override-signature-test.toit:24:3: note: Overridden method
+  field-setter= value/int -> none:
+  ^~~~~~~~~~~~~
+tests/negative/override-signature-test.toit:48:3: warning: Override of 'field-unrelated' is incompatible with 'B.field-unrelated': return type 'string' isn't assignable to 'A'
+  field-unrelated/string := ""  // Warning.
+  ^~~~~~~~~~~~~~~
+tests/negative/override-signature-test.toit:27:3: note: Overridden method
+  field-unrelated -> A: return A
+  ^~~~~~~~~~~~~~~
+tests/negative/override-signature-test.toit:48:3: warning: Override of 'field-unrelated' is incompatible with 'B.field-unrelated': field 'field-unrelated' has type 'string', unrelated to 'A'
+  field-unrelated/string := ""  // Warning.
+  ^~~~~~~~~~~~~~~
+tests/negative/override-signature-test.toit:28:3: note: Overridden method
+  field-unrelated= value/A -> none:
+  ^~~~~~~~~~~~~~~~
+tests/negative/override-signature-test.toit:75:3: warning: Override of 'i' is incompatible with 'I.i': return type 'A' isn't assignable to 'int'
+  i x/int -> A  // Warning.
+  ^
+tests/negative/override-signature-test.toit:60:3: note: Overridden method
+  i x/int -> int
+  ^
+Compilation failed
