@@ -63,7 +63,7 @@ abstract class Reader implements old-reader.Reader:
 
   If this is not possible, invokes $on-end.
   */
-  ensure_ requested/int [on-end] -> none:
+  ensure_ requested/int [on-end -> none] -> none:
     if requested < 0: throw "INVALID_ARGUMENT"
     while buffered-size < requested:
       if not more_: on-end.call
@@ -595,7 +595,7 @@ abstract class Reader implements old-reader.Reader:
 
   See $read-line.
   */
-  read-lines --keep-newlines/bool=false -> List:
+  read-lines --keep-newlines/bool=false -> List<string>:
     result := []
     while line := read-line --keep-newline=keep-newlines:
       result.add line
@@ -606,7 +606,7 @@ abstract class Reader implements old-reader.Reader:
 
   See $read-line.
   */
-  do --lines/True --keep-newlines/bool=false [block] -> none:
+  do --lines/True --keep-newlines/bool=false [block string -> none] -> none:
     while line := read-line --keep-newline=keep-newlines:
       block.call line
 
@@ -1183,6 +1183,6 @@ class ByteArrayList_:
   first -> ByteArray: return head_.value
   last -> ByteArray: return tail_.value
 
-  do [block]:
+  do [block ByteArray -> none]:
     for current := head_; current; current = current.next:
       block.call current.value

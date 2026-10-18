@@ -34,7 +34,7 @@ interface Interface implements udp.Interface tcp.Interface:
   address -> IpAddress
   is-closed -> bool
 
-  resolve host/string -> List /* of IpAddress. */
+  resolve host/string -> List<IpAddress>
 
   udp-open -> udp.Socket
   udp-open --port/int? -> udp.Socket
@@ -83,7 +83,7 @@ class Client extends NetworkResourceProxy implements Interface udp.MulticastInte
     finally:
       socket.close
 
-  resolve host/string -> List /* of IpAddress */:
+  resolve host/string -> List<IpAddress>:
     if is-closed: throw "Network closed"
     if (proxy-mask & NetworkService.PROXY-RESOLVE) != 0: return super host
     return dns-module.dns-lookup-multi host --network=this

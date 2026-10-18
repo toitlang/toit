@@ -40,7 +40,7 @@ class AccessPoint:
   authmode/int
   channel/int
 
-  static WIFI-AUTHMODE-NAME_/List ::= [
+  static WIFI-AUTHMODE-NAME_/List<string> ::= [
     "Open",
     "WEP",
     "WPA PSK",
@@ -104,7 +104,7 @@ open --ssid/string --password/string -> Client
     CONFIG-PASSWORD: password,
   }
 
-open config/Map? -> Client
+open config/Map<string, any>? -> Client
     --name/string?=null
     --save/bool=false:
   service := service_
@@ -133,7 +133,7 @@ establish --ssid/string --password/string -> Client
 Variant of $(establish --ssid --password) that takes a configuration
   map instead of individual arguments.
 */
-establish config/Map? -> Client
+establish config/Map<string, any>? -> Client
     --name/string?=null:
   service := service_
   if not service: throw "WiFi unavailable"
@@ -148,7 +148,7 @@ The $channels must be a byte-array, where each byte represents a
 
 Returns a list of $AccessPoint objects.
 */
-scan channels/ByteArray --passive/bool=false --period-per-channel-ms/int=SCAN-TIMEOUT-MS_ -> List:
+scan channels/ByteArray --passive/bool=false --period-per-channel-ms/int=SCAN-TIMEOUT-MS_ -> List<AccessPoint>:
   if channels.size < 1: throw "Channels are unspecified"
 
   service := service_
@@ -197,7 +197,7 @@ The new defaults will take effect on the next call to $open that
 
 Use $(configure --reset) to reset the stored configuration.
 */
-configure config/Map -> none:
+configure config/Map<string, any> -> none:
   service := service_
   if not service: throw "WiFi unavailable"
   service.configure config

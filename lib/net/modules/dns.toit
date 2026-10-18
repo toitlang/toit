@@ -69,7 +69,7 @@ If there are multiple servers then they are tried in rotation until one
   If we are looking up a name ending in ".local" and no specific client is provided,
   we use the default mDNS client $default-mdns-client.
 */
-dns-lookup-multi -> List
+dns-lookup-multi -> List<net.IpAddress>
     host/string
     --network/udp.Interface
     --server/string?=null
@@ -215,9 +215,9 @@ ERROR-NAMES ::= {
 class DnsQuery_:
   base-id/int
   name/string
-  query-packets/Map  // From record type (int) to packet (ByteArray).
+  query-packets/Map<int, ByteArray>  // From record type (int) to packet (ByteArray).
 
-  constructor .name --record-types/List:
+  constructor .name --record-types/List<int>:
     base-id = random 0x10000
     query-packets = Map
     id-offset := 0
@@ -250,7 +250,7 @@ interface DnsClient:
   If the $record-types contains $RECORD-SRV, the results are instances of $SrvResource (normally only used for mDNS).
   */
   get name -> List
-      --record-types/List
+      --record-types/List<int>
       --network/udp.Interface
       --timeout/Duration=DNS-DEFAULT-TIMEOUT
 
@@ -294,7 +294,7 @@ abstract class DnsClientBase_ implements DnsClient:
   See $(DnsClient.get name --record-types --network).
   */
   get name -> List
-      --record-types/List
+      --record-types/List<int>
       --network/udp.Interface
       --timeout/Duration=DNS-DEFAULT-TIMEOUT:
 
@@ -440,7 +440,7 @@ abstract class DnsClientBase_ implements DnsClient:
     return answers
 
 
-  fetch-loop_ query/DnsQuery_ socket/udp.Socket --mdns/bool=false [--do-send] [--on-timeout] -> List:
+  fetch-loop_ query/DnsQuery_ socket/udp.Socket --mdns/bool=false [--do-send -> none] [--on-timeout -> none] -> List:
     retry-timeout := DNS-RETRY-TIMEOUT
     attempt-counter := 1
     while true:
@@ -474,7 +474,7 @@ abstract class DnsClientBase_ implements DnsClient:
     unreachable
 
 class DnsClient_ extends DnsClientBase_:
-  servers_/List
+  servers_/List<net.SocketAddress>
   current-server-index_/int := ?
 
   /**
@@ -589,7 +589,7 @@ create-query_ name/string query-id/int record-type/int --unicast-response/bool=f
   result.big-endian.write-int16 clas
   return result.bytes
 
-select-random-ip_ name/string list/List -> net.IpAddress:
+select-random-ip_ name/string list/List<net.IpAddress> -> net.IpAddress:
   if list and list.size > 0:
     return list[random list.size]  // Randomize which of the IP's we return.
   throw (DnsException "No name record found" --name=name)
@@ -601,7 +601,7 @@ is-server-reachability-error_ error -> bool:
 Returns a list of results for the given name and type, or null if the
   cache does not contain a valid entry (or it has expired).
 */
-find-in-cache top-cache/Map name type/int -> List?:
+find-in-cache top-cache/Map<int, Map<string, CacheEntry_>> name type/int -> List?:
   map := top-cache.get type --if-absent=: return null
   entry := map.get name --if-absent=: return null
   if entry.valid:
@@ -721,7 +721,7 @@ class CacheEntry_:
     return Time.monotonic-us <= end
 
 /// Limits the size of the cache to avoid using too much memory.
-trim-cache top-cache/Map type/int --max-cache-size/int=MAX-CACHE-SIZE_ -> none:
+trim-cache top-cache/Map<int, Map<string, CacheEntry_>> type/int --max-cache-size/int=MAX-CACHE-SIZE_ -> none:
   cache := top-cache.get type --if-absent=: return
   if cache.size < max-cache-size: return
 
@@ -745,10 +745,10 @@ trim-cache top-cache/Map type/int --max-cache-size/int=MAX-CACHE-SIZE_ -> none:
 class DecodedPacket:
   id/int
   status_bits/int
-  questions/List := []
-  resources/List := []
-  authorities/List := []
-  additionals/List := []
+  questions/List<Question> := []
+  resources/List<Resource> := []
+  authorities/List<Resource> := []
+  additionals/List<Resource> := []
 
   constructor --.id --.status-bits:
     if status-bits & 0x6070 != 0 or opcode > 2:
@@ -823,7 +823,7 @@ class SrvResource extends StringResource:
     super name type ttl flush value
 
 class TxtResource extends Resource:
-  text/List  // Of string.
+  text/List<string>
 
   constructor name/string ttl/int flush/bool .text:
     super name RECORD-TXT ttl flush
@@ -834,7 +834,7 @@ The block is invoked with the index of the next data in the packet.
 
 Deprecated. Use $(decode-name reader packet) instead.
 */
-decode-name packet/ByteArray position/int [position-block] -> string:
+decode-name packet/ByteArray position/int [position-block int -> none] -> string:
   reader := io.Reader packet[position..]
   result := decode-name reader packet
   position-block.call (position + reader.processed)
@@ -851,7 +851,7 @@ decode-name reader/io.Reader packet/ByteArray -> string:
   parts_ reader packet parts
   return parts.join "."
 
-parts_ reader/io.Reader packet/ByteArray parts/List -> none:
+parts_ reader/io.Reader packet/ByteArray parts/List<string> -> none:
   while true:
     size := reader.peek-byte
     if size == 0: break
@@ -870,12 +870,12 @@ parts_ reader/io.Reader packet/ByteArray parts/List -> none:
 /**
 Create a DNS packet for lookups or reponses.
 */
-create-dns-packet queries/List records/List -> ByteArray
+create-dns-packet queries/List<Question> records/List<Resource> -> ByteArray
     --id/int
     --is-response/bool
     --is-authoritative/bool=false
-    --authorities/List=[]
-    --additionals/List=[]:
+    --authorities/List<Resource>=[]
+    --additionals/List<Resource>=[]:
 
   previous-locations := {:}
 
@@ -905,7 +905,7 @@ create-dns-packet queries/List records/List -> ByteArray
     write-resource_ record --locations=previous-locations --buffer=result
   return result.bytes
 
-write-resource_ record/Resource --locations/Map? --buffer/io.Buffer:
+write-resource_ record/Resource --locations/Map<string, int>? --buffer/io.Buffer:
     write-name_ record.name --locations=locations --buffer=buffer
     buffer-be := buffer.big-endian
     type := record.type
@@ -952,7 +952,7 @@ write-resource_ record/Resource --locations/Map? --buffer/io.Buffer:
     else:
       throw "Unknown record type: $record"
 
-write-name_ name/string --locations/Map? --buffer/io.Buffer? -> int:
+write-name_ name/string --locations/Map<string, int>? --buffer/io.Buffer? -> int:
   parts := name.split "."
   length := 0
   pos := 0

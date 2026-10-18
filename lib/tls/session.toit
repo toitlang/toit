@@ -840,7 +840,7 @@ class ToitHandshake_:
 
   // We normally supply the hostname because multiple HTTPS servers can be on
   // the same IP.
-  add-name-extension_ extensions/List -> none:
+  add-name-extension_ extensions/List<ByteArray> -> none:
     hostname := session_.server-name_
     if hostname:
       name-extension := ByteArray hostname.size + 9
@@ -850,7 +850,7 @@ class ToitHandshake_:
       name-extension.replace 9 hostname
       extensions.add name-extension
 
-  add-algorithms-extensions_ extensions/List -> none:
+  add-algorithms-extensions_ extensions/List<ByteArray> -> none:
     // We don't actually have the ability to do elliptic curves in the pure
     // Toit handshake, but if we don't include this, our client hello is
     // rejected.
@@ -887,7 +887,7 @@ class ToitHandshake_:
         0x06, 0x03,  // rsa_secp521r1_sha512.
     ]
 
-  add-session-ticket-extension_ extensions/List -> none:
+  add-session-ticket-extension_ extensions/List<ByteArray> -> none:
     // If we have a ticket send that.  If we don't have a ticket we send
     // an empty ticket extension to indicate we want a ticket for next time.
     // From RFC 5077 appendix A.
@@ -898,7 +898,7 @@ class ToitHandshake_:
     extensions.add ticket-extension
 
 class ServerHello_:
-  extensions /Map
+  extensions /Map<int, ByteArray>
   random /ByteArray
   session-id /ByteArray
   cipher-suite /int
@@ -1132,7 +1132,7 @@ pseudo-random-function_ size/int --block-size/int --secret/ByteArray --label/str
     result-size += part.size
   return (byte-array-join_ result)[..size]
 
-byte-array-join_ arrays/List -> ByteArray:
+byte-array-join_ arrays/List<ByteArray> -> ByteArray:
   arrays-size := arrays.size
   if arrays-size == 0: return #[]
   if arrays-size == 1: return arrays[0]
@@ -1156,7 +1156,7 @@ compare-byte-arrays_ a b -> bool:
 Given a byte array and a list of sizes, partitions the byte array into
   slices with those sizes.
 */
-partition-byte-array_ bytes/ByteArray sizes/List -> List:
+partition-byte-array_ bytes/ByteArray sizes/List<int> -> List<ByteArray>:
   index := 0
   return sizes.map:
     index += it
