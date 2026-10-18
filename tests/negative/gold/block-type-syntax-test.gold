@@ -42,5 +42,5 @@ unresolved [b Foo -> Bar]: null
                      ^~~
 tests/negative/block-type-syntax-test.toit:11:19: error: Block parameters may not have a default value
 default-with-type [b = 5 int -> int]: null
-                  ^~
+                  ^~~~~~~~~~~~~~~~~~
 Compilation failed
