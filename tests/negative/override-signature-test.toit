@@ -15,6 +15,8 @@ class B:
   ret-none -> none:
   ret-any: return 1
   ret-int -> int: return 1
+  ret-diverging -> int: return 1
+  ret-maybe-diverging x -> int: return 1
   untyped x: return x
   typed x/int -> int: return x
   defaults x/int=0 --named/string="" -> none:
@@ -37,6 +39,9 @@ class S extends B:
   ret-none -> int: return 1  // OK.
   ret-any -> string: return ""  // OK.
   ret-int -> none:  // Warning.
+  ret-diverging: unreachable  // OK.
+  ret-maybe-diverging x:  // Warning.
+    if x: unreachable
   untyped x/string -> string: return x  // OK.
   typed x -> any: return x  // OK.
   defaults x/string="" --named/string="" -> none:  // Warning.

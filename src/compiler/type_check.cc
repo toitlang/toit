@@ -227,6 +227,9 @@ class TypeChecker : public ReturningVisitor<Type> {
     if (!return_type.is_valid() || !overridden_return_type.is_valid()) return true;
     // Callers ignore the value of a `none` method.
     if (overridden_return_type.is_none()) return true;
+    // An unannotated method (inferred `none`) that never returns, like
+    // `foo: unreachable`.
+    if (return_type.is_none() && diverging_bodies_.contains(method)) return true;
     // Return types are covariant.
     if (is_assignable(overridden_return_type, return_type)) return true;
     return report("return type '" + type_name(return_type) +
@@ -348,6 +351,9 @@ class TypeChecker : public ReturningVisitor<Type> {
     auto result_type = Type::any();
     bool diverges = false;
     for (auto expr : node->expressions()) {
+      if (diverges && expr->is_Return() && expr->as_Return()->is_end_of_method_return()) {
+        diverging_bodies_.insert(method_);
+      }
       result_type = visit(expr);
       if (result_type.is_never()) diverges = true;
     }
@@ -861,6 +867,9 @@ class TypeChecker : public ReturningVisitor<Type> {
 
   // Virtual calls to `-> never` methods.
   UnorderedSet<CallVirtual*>* never_calls_;
+
+  // Methods whose body doesn't reach the implicit `return null` at its end.
+  UnorderedSet<Method*> diverging_bodies_;
 
   Type boolean_type_;
   Type true_type_;
