@@ -1273,7 +1273,6 @@ ble-add-service_ peripheral-manager uuid:
 ble-add-characteristic_ service uuid properties permission value:
   return ble-run-with-quota-backoff_:
     ble-add-characteristic__ service uuid properties permission value
-  unreachable
 
 ble-add-characteristic__ service uuid properties permission value:
   #primitive.ble.add-characteristic:

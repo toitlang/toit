@@ -471,7 +471,6 @@ abstract class DnsClientBase_ implements DnsClient:
 
       retry-timeout = retry-timeout * 1.5
       attempt-counter++
-    unreachable
 
 class DnsClient_ extends DnsClientBase_:
   servers_/List<net.SocketAddress>
@@ -559,9 +558,8 @@ class MdnsDnsClient extends DnsClientBase_:
     finally:
       if socket: socket.close
 
-protocol-error_ -> none:
+protocol-error_ -> never:
   throw (DnsException "DNS protocol error")
-  unreachable
 
 /**
 Creates a UDP packet to look up the given name.
