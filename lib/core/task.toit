@@ -110,7 +110,7 @@ interface Task:
   print results  // => { 1: 42 }.
   ```
   */
-  static group lambdas/List -> Map
+  static group lambdas/List<Lambda> -> Map<int, any>
       --required/int=lambdas.size:
     return (TaskGroup_ lambdas).run --required=required
 
@@ -135,9 +135,9 @@ interface Task:
   deadline -> int?
 
 class TaskGroup_:
-  lambdas_/List
+  lambdas_/List<Lambda>
   tasks_/Array_
-  results_/Map
+  results_/Map<int, any>
   signal_/monitor.Signal
   is-stopping_/bool := false
   is-canceled_/bool := false
@@ -149,7 +149,7 @@ class TaskGroup_:
     results_ = {:}
     signal_ = monitor.Signal
 
-  run --required/int -> Map:
+  run --required/int -> Map<int, any>:
     count ::= lambdas_.size
     if not (0 <= required <= count):
       throw "Bad Argument"

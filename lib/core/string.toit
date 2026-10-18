@@ -95,7 +95,7 @@ abstract class string implements Comparable io.Data:
   str4 := string.from-runes [7931, 0x20ac]  // -> "☃€"
   ```
   */
-  constructor.from-runes runes/List:
+  constructor.from-runes runes/List<int>:
     length := 0
     runes.do:
       length += utf-8-bytes it
@@ -1149,7 +1149,7 @@ abstract class string implements Comparable io.Data:
   "".split     --at-first ""      // => [""]
   ```
   */
-  split --at-first/bool=false separator/string --drop-empty/bool=false -> List/*<string>*/ :
+  split --at-first/bool=false separator/string --drop-empty/bool=false -> List<string>:
     res := []
     split --at-first=at-first --drop-empty=drop-empty separator:
       res.add it

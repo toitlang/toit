@@ -33,7 +33,7 @@ interface Collection<E>:
   # Categories
   - Iteration
   */
-  do [block any -> none] -> none
+  do [block E -> none] -> none
 
   /**
   The number of elements in this instance.
@@ -79,13 +79,13 @@ interface Collection<E>:
   Whether all elements in the collection satisfy the given $predicate.
   Returns true, if the collection is empty.
   */
-  every [predicate any -> any] -> bool
+  every [predicate E -> any] -> bool
 
   /**
   Whether at least one element in the collection satisfies the given $predicate.
   Returns false, if the collection is empty.
   */
-  any [predicate any -> any] -> bool
+  any [predicate E -> any] -> bool
 
   /** Whether this instance contains the given $element. */
   contains element/E -> bool
@@ -94,7 +94,7 @@ interface Collection<E>:
   Takes all elements and combines them using $block.
   It's an error if this instance does not have at least one element.
   */
-  reduce [block any any -> any]
+  reduce [block E E -> E] -> E
 
   /**
   Takes all elements and combines them using $block.
@@ -102,12 +102,12 @@ interface Collection<E>:
   If this instance contains at least one element calls $block first with
     the $initial value and the first element.
   */
-  reduce --initial [block any any -> any]
+  reduce --initial [block any E -> any]
 
 
 abstract class CollectionBase<E> implements Collection<E>:
   /// See $Collection.do.
-  abstract do [block any -> none] -> none
+  abstract do [block E -> none] -> none
   /// See $Collection.size.
   abstract size -> int
   /// See $Collection.==.
@@ -118,12 +118,12 @@ abstract class CollectionBase<E> implements Collection<E>:
     return size == 0
 
   /// See $Collection.every.
-  every [predicate any -> any] -> bool:
+  every [predicate E -> any] -> bool:
     do: if not predicate.call it: return false
     return true
 
   /// See $Collection.any.
-  any [predicate any -> any] -> bool:
+  any [predicate E -> any] -> bool:
     do: if predicate.call it: return true
     return false
 
@@ -132,7 +132,7 @@ abstract class CollectionBase<E> implements Collection<E>:
     return any: it == element
 
   /// See $Collection.reduce.
-  reduce [block any any -> any]:
+  reduce [block E E -> E] -> E:
     if is-empty: throw "Not enough elements"
     result := null
     is-first := true
@@ -142,7 +142,7 @@ abstract class CollectionBase<E> implements Collection<E>:
     return result
 
   /// See $Collection.reduce.
-  reduce --initial [block any any -> any]:
+  reduce --initial [block any E -> any]:
     result := initial
     do:
       result = block.call result it
@@ -442,7 +442,7 @@ abstract class List<E> extends CollectionBase<E>:
   Collections do *not* need to ensure that recursive data structures don't lead to
     infinite loops.
   */
-  equals other/List [--element-equals any any -> any] -> bool:
+  equals other/List [--element-equals E any -> any] -> bool:
     // TODO(florian): we want to check whether the given [other] is in fact a List of
     // the same type.
     if other is not List: return false
@@ -457,7 +457,7 @@ abstract class List<E> extends CollectionBase<E>:
     return equals other --element-equals=: |a b| a == b
 
   /** See $super. */
-  do [block any -> none] -> none:
+  do [block E -> none] -> none:
     this-size := size
     this-size.repeat: block.call this[it]
     // It is not allowed to change the size of the list while iterating over it.
@@ -466,7 +466,7 @@ abstract class List<E> extends CollectionBase<E>:
   /**
   Iterates over all elements in reverse order and invokes the given $block on each of them.
   */
-  do --reversed/True [block any -> none] -> none:
+  do --reversed/True [block E -> none] -> none:
     l := size - 1
     size.repeat: block.call this[l - it]
 
@@ -487,7 +487,7 @@ abstract class List<E> extends CollectionBase<E>:
   /**
   Invokes the given $block on each element and returns a new list with the results.
   */
-  map [block any -> any] -> List:
+  map [block E -> any] -> List:
     return map_ [] block
 
   /**
@@ -500,10 +500,10 @@ abstract class List<E> extends CollectionBase<E>:
   // We have a second function here, since the `block` has implicitly a different
   // type. It needs to have T->T.
   // That said: would also be convenient to just reuse the list and change its type.
-  map --in-place/bool [block any -> any] -> List:
+  map --in-place/bool [block E -> any] -> List:
     return map_ (in-place ? this : []) block
 
-  map_ target/List [block any -> any] -> List:
+  map_ target/List [block E -> any] -> List:
     this-size := size
     target.resize this-size
     this-size.repeat: target[it] = block.call this[it]
@@ -521,7 +521,7 @@ abstract class List<E> extends CollectionBase<E>:
   The result contains all the elements of this instance for which the $predicate returns
     true.
   */
-  filter --in-place/bool=false [predicate any -> any] -> List<E>:
+  filter --in-place/bool=false [predicate E -> any] -> List<E>:
     target := in-place ? this : []
     this-size := size
     target.resize this-size
@@ -543,7 +543,7 @@ abstract class List<E> extends CollectionBase<E>:
   /**
   Fills values, computed by evaluating $block, into list elements [$from..$to[.
   */
-  fill --from/int=0 --to/int=size [block int -> any]:
+  fill --from/int=0 --to/int=size [block int -> E]:
     (to - from).repeat: this[it + from] = block.call it
 
   /** See $super. */
@@ -573,12 +573,12 @@ abstract class List<E> extends CollectionBase<E>:
   [1, 2].join ", ": "0x$(%02x it)"  // "0x01, 0x02"
   ```
   */
-  join separator/string [stringify any -> any] -> string:
+  join separator/string [stringify E -> any] -> string:
     result := join_ 0 size separator stringify
     if result == "": return result
     return result
 
-  join_ from to separator [stringify any -> any]:
+  join_ from to separator [stringify E -> any]:
     if from == to: return ""
     if from + 1 == to: return stringify.call this[from]
     middle := from + ((to - from) >> 1)
@@ -599,7 +599,7 @@ abstract class List<E> extends CollectionBase<E>:
   -  0 if `a == b`, and
   -  1 if `a > b`.
   */
-  sort --in-place/bool=false from/int = 0 to/int = size [compare any any -> num] -> List<E>:
+  sort --in-place/bool=false from/int = 0 to/int = size [compare E E -> num] -> List<E>:
     result := in-place ? this : copy
     length := to - from
     if length <= INSERTION-SORT-LIMIT_:
@@ -647,7 +647,7 @@ abstract class List<E> extends CollectionBase<E>:
   */
   // TODO(florian): once we have labeled breaks, we could require the
   //   block to return an int, and let users write `break.index-of other-type`.
-  index-of --last/bool=false needle from/int=0 to/int=size [--if-absent -> any]:
+  index-of --last/bool=false needle/E from/int=0 to/int=size [--if-absent -> any]:
     if not 0 <= from <= size: throw "BAD ARGUMENTS"
     if not last:
       for i := from; i < to; i++:
@@ -677,7 +677,7 @@ abstract class List<E> extends CollectionBase<E>:
     the needle) calls $if-absent with $to (where $to was adjusted
     according to the rules in $(index-of --last needle from to)).
   */
-  index-of --binary/True needle from/int=0 to/int=size [--if-absent int -> any]:
+  index-of --binary/True needle/E from/int=0 to/int=size [--if-absent int -> any]:
     comp := : | a b |
       if a < b:      -1
       else if a == b: 0
@@ -691,7 +691,7 @@ abstract class List<E> extends CollectionBase<E>:
   The $binary-compare block always receives one of the list elements as
     first argument, and the $needle as second argument.
   */
-  index-of needle from/int=0 to/int=size [--binary-compare any any -> num] -> int:
+  index-of needle from/int=0 to/int=size [--binary-compare E any -> num] -> int:
     return index-of --binary-compare=binary-compare needle from to --if-absent=: -1
 
   /**
@@ -701,7 +701,7 @@ abstract class List<E> extends CollectionBase<E>:
   The $binary-compare block always receives one of the list elements as
     first argument, and the $needle as second argument.
   */
-  index-of needle from/int=0 to/int=size [--binary-compare any any -> num] [--if-absent int -> any]:
+  index-of needle from/int=0 to/int=size [--binary-compare E any -> num] [--if-absent int -> any]:
     if not 0 <= from <= size: throw "BAD ARGUMENTS"
     if from == to: return if-absent.call from
     last-comp := binary-compare.call this[to - 1] needle
@@ -726,7 +726,7 @@ abstract class List<E> extends CollectionBase<E>:
         if (binary-compare.call this[mid + 1] needle) > 0: break
     return if-absent.call from + 1
 
-  is-sorted [compare any any -> num]:
+  is-sorted [compare E E -> num]:
     if is-empty: return true
     reduce: | a b | if (compare.call a b) > 0: return false else: b
     return true
@@ -739,7 +739,7 @@ abstract class List<E> extends CollectionBase<E>:
     this[i] = this[j]
     this[j] = t
 
-  merge-sort_ from/int to/int buffer/Array_ [compare any any -> num] -> none:
+  merge-sort_ from/int to/int buffer/Array_ [compare E E -> num] -> none:
     if to - from <= INSERTION-SORT-LIMIT_:
       insertion-sort_ from to compare
       return
@@ -784,7 +784,7 @@ abstract class List<E> extends CollectionBase<E>:
           return
         r = this[right]
 
-  insertion-sort_ from/int to/int [compare any any -> num]:
+  insertion-sort_ from/int to/int [compare E E -> num]:
     for i := from + 1; i < to; i++:
       element := this[i]
       if (compare.call element this[i - 1]) < 0:
@@ -885,11 +885,11 @@ abstract class Array_<E> extends List<E>:
   constructor.from-subclass_:
     super.from-subclass
 
-  do [block any -> none] -> none:
+  do [block E -> none] -> none:
     do_ this.size block
 
   // Optimized helper method for iterating over the array elements.
-  abstract do_ end/int [block any -> none] -> none
+  abstract do_ end/int [block E -> none] -> none
 
   /// Create a new array, copying up to $copy-size elements from this array.
   abstract resize-for-list_ copy-size/int new-size/int filler -> Array_
@@ -951,7 +951,7 @@ class SmallArray_<E> extends Array_<E>:
 
   /// Iterates through the array elements up to, but not including, the
   ///   element at the $end index, and invokes $block on them
-  do_ end/int [block any -> none] -> none:
+  do_ end/int [block E -> none] -> none:
     #primitive.intrinsics.array-do:
       // The intrinsic only fails if we cannot call the block with a single
       // argument. We force this to throw by doing the same here.
@@ -1060,7 +1060,7 @@ class LargeArray_<E> extends Array_<E>:
   /// Iterates through the array elements up to, but not including, the
   ///   element at the $end index. Uses $SmallArray_.do_ to make the
   ///   iteration over the parts efficient.
-  do_ end/int [block any -> none] -> none:
+  do_ end/int [block E -> none] -> none:
     if end <= 0: return
     full-arraylets := end / ARRAYLET-SIZE
     remaining := end % ARRAYLET-SIZE
@@ -1979,7 +1979,7 @@ class List_<E> extends List<E>:
     super.from-subclass
 
   /** See $super. This is an optimized implementation. */
-  do [block any -> none]:
+  do [block E -> none]:
     return array_.do_ size_ block
 
   /** See $super. This is an optimized implementation. */
@@ -2070,7 +2070,7 @@ class List_<E> extends List<E>:
     result.array_.replace 0 this.array_ from to
     return result
 
-  sort --in-place/bool=false from/int = 0 to/int = size_ [compare any any -> num] -> List_<E>:
+  sort --in-place/bool=false from/int = 0 to/int = size_ [compare E E -> num] -> List_<E>:
     if from < 0 or from > to or to > size_: throw "OUT_OF_BOUNDS"
     result := in-place ? this : copy
     result.array_.sort --in-place from to compare
@@ -2226,7 +2226,7 @@ abstract class HashedInsertionOrderedCollection_<K>:
 
   If the key is absent, calls $if-absent with the key.
   */
-  abstract remove key/K [--if-absent any -> none]
+  abstract remove key/K [--if-absent K -> none]
 
   /** Removes all elements of $collection from this instance. */
   remove-all collection/Collection<K> -> none:
@@ -2300,7 +2300,7 @@ abstract class HashedInsertionOrderedCollection_<K>:
   ///   found and the block was called.  The caller doesn't strictly need the
   ///   APPEND_ return value, since it knows whether its block was called, but it
   ///   is often more convenient to use the return value.
-  find_ key [not-found]:
+  find_ key [not-found -> int]:
     append-position := null  // Use null/non-null to avoid calling block twice.
 
     // TODO(erik): Multiply by a large prime to mix up bad hash codes, e.g.
@@ -2349,7 +2349,7 @@ abstract class HashedInsertionOrderedCollection_<K>:
   // * deleted-slot (used in NOT-FOUND and AFTER-COMPARE reset in START).
   // * slot (used in NOT-FOUND and AFTER-COMPARE)
   // * position, slot-step, and starting-slot (used in AFTER-COMPARE).
-  find-body_ key hash append-position [not-found] [rebuild] [compare]:
+  find-body_ key hash append-position [not-found -> int] [rebuild int -> none] [compare any any -> any]:
     #primitive.intrinsics.hash-find:
       // State START.
       while true:  // Loop to retry after rebuild.
@@ -2413,7 +2413,7 @@ abstract class HashedInsertionOrderedCollection_<K>:
             break
 
   // Returns how far we got, or null if we are done.
-  hash-do_ step reversed [block]:
+  hash-do_ step reversed [block any any -> none]:
     #primitive.intrinsics.hash-do:
       // If the intrinsic fails, return the start position.  This
       // is very rare because the intrinsic will generally return a
@@ -2519,7 +2519,7 @@ class Set<E> extends HashedInsertionOrderedCollection_<E> implements Collection<
 
   If the key is absent, calls $if-absent with the $key.
   */
-  remove key/E [--if-absent any -> none] -> none:
+  remove key/E [--if-absent E -> none] -> none:
     position := find_ key:
       if-absent.call key
       return
@@ -2542,7 +2542,7 @@ class Set<E> extends HashedInsertionOrderedCollection_<E> implements Collection<
     the find call returns the found object.  If it returns false
     the search continues.
   */
-  get-by-hash_ hash/int [--initial -> any] [--compare any -> any] -> any:
+  get-by-hash_ hash/int [--initial -> any] [--compare E -> any] -> any:
     if not index_:
       if size_ == 0:
         new-entry := initial.call
@@ -2602,7 +2602,7 @@ class Set<E> extends HashedInsertionOrderedCollection_<E> implements Collection<
     collection.do: add it
 
   /** See $Collection.do. */
-  do [block any -> none] -> none:
+  do [block E -> none] -> none:
     i := hash-do_ STEP_ false block
     if not i: return
     assert: backing_
@@ -2619,7 +2619,7 @@ class Set<E> extends HashedInsertionOrderedCollection_<E> implements Collection<
   Variant of $(Collection.do [block]).
   Iterates over the elements of this collection in reverse order.
   */
-  do --reversed/True [block any -> none] -> none:
+  do --reversed/True [block E -> none] -> none:
     i := hash-do_ STEP_ true block
     if not i: return
     assert: backing_
@@ -2642,7 +2642,7 @@ class Set<E> extends HashedInsertionOrderedCollection_<E> implements Collection<
 
   /** See $Collection.every. */
   // TODO(florian): should be inherited from CollectionBase.
-  every [predicate any -> any] -> bool:
+  every [predicate E -> any] -> bool:
     do: if not predicate.call it: return false
     return true
 
@@ -2657,13 +2657,13 @@ class Set<E> extends HashedInsertionOrderedCollection_<E> implements Collection<
 
   /** See $Collection.any. */
   // TODO(florian): should be inherited from CollectionBase.
-  any [predicate any -> any] -> bool:
+  any [predicate E -> any] -> bool:
     do: if predicate.call it: return true
     return false
 
   /** See $(Collection.reduce [block]). */
   // TODO(florian): should be inherited from CollectionBase.
-  reduce [block any any -> any]:
+  reduce [block E E -> E] -> E:
     if is-empty: throw "Not enough elements"
     result := null
     is-first := true
@@ -2674,7 +2674,7 @@ class Set<E> extends HashedInsertionOrderedCollection_<E> implements Collection<
 
   /** See $(Collection.reduce --initial [block]). */
   // TODO(florian): should be inherited from CollectionBase.
-  reduce --initial [block any any -> any]:
+  reduce --initial [block any E -> any]:
     result := initial
     do:
       result = block.call result it
@@ -2683,7 +2683,7 @@ class Set<E> extends HashedInsertionOrderedCollection_<E> implements Collection<
   /**
   Invokes the given $block on each element and returns a new set with the results.
   */
-  map [block any -> any] -> Set:
+  map [block E -> any] -> Set:
     return reduce --initial=Set: | set value |
       set.add (block.call value)
       set
@@ -2699,7 +2699,7 @@ class Set<E> extends HashedInsertionOrderedCollection_<E> implements Collection<
 
   Users must not otherwise modify this instance during the operation.
   */
-  filter --in-place/bool=false [predicate any -> any] -> Set<E>:
+  filter --in-place/bool=false [predicate E -> any] -> Set<E>:
     if not in-place:
       result := Set
       do: | key | if predicate.call key : result.add key
@@ -2732,7 +2732,7 @@ class Set<E> extends HashedInsertionOrderedCollection_<E> implements Collection<
   Returns an element that is equal to the $key.
   The key may be a lightweight object that has compatible hash code and equality to the element.
   */
-  get key/E [--if-absent any -> any]:
+  get key/E [--if-absent E -> any]:
     position := find_ key:
       return if-absent.call key
     return backing_[position]
@@ -2847,7 +2847,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
 
   If the key is absent, calls $if-absent with the $key.
   */
-  remove key/K [--if-absent any -> none] -> none:
+  remove key/K [--if-absent K -> none] -> none:
     position := find_ key:
       if-absent.call key
       return
@@ -2904,7 +2904,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   Returns the value verbatim, if this instance contains the $key.
   Otherwise, calls $if-absent with the $key and returns the result of the call.
   */
-  get key/K [--if-absent any -> any]:
+  get key/K [--if-absent K -> any]:
     return get key --if-absent=if-absent --if-present=: it
 
   /**
@@ -2914,7 +2914,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
     value and returns the result.
   Returns null otherwise.
   */
-  get key/K [--if-present any -> any]:
+  get key/K [--if-present V -> any]:
     return get key --if-present=if-present --if-absent=: null
 
   /**
@@ -2924,7 +2924,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
     value and returns the result.
   Otherwise, calls $if-absent with the $key and returns the result of the call.
   */
-  get key/K [--if-present any -> any] [--if-absent any -> any]:
+  get key/K [--if-present V -> any] [--if-absent K -> any]:
     action := find_ key: return if-absent.call key
     assert: action != APPEND_
     return if-present.call backing_[action + 1]
@@ -2935,7 +2935,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   Returns the value verbatim, if this instance contains the $key.
   Otherwise, initializes the slot with the result of calling $init first.
   */
-  get key/K [--init -> any]:
+  get key/K [--init -> V] -> V:
     return get key
       --if-absent=:
         initial-value := init.call
@@ -2951,7 +2951,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
 
   This instance must contain the $key.
   */
-  update key [updater any -> any]:
+  update key/K [updater V -> V] -> V:
     return update key updater --if-absent=: throw "key not found"
 
   /**
@@ -2963,7 +2963,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   If this instance does not contain the $key, calls $if-absent with the $key instead, and
     stores the result of the call in this instance. Returns the result of the call.
   */
-  update key [updater any -> any] [--if-absent any -> any]:
+  update key/K [updater V -> V] [--if-absent K -> V] -> V:
     new-value := null
     position := find_ key:
       new-value = if-absent.call key
@@ -2985,7 +2985,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
 
   If this instance does not contain the $key, stores $if-absent in this instance. Returns $if-absent.
   */
-  update key [updater any -> any] --if-absent:
+  update key/K [updater V -> V] --if-absent/V -> V:
     return update key updater --if-absent=: if-absent
 
   /**
@@ -2999,7 +2999,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
 
   Returns the result of the call to the $updater.
   */
-  update key [--init any -> any] [updater any -> any]:
+  update key/K [--init K -> V] [updater V -> V] -> V:
     new-value := null
     position := find_ key:
       new-value = updater.call (init.call key)
@@ -3023,7 +3023,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
 
   Returns the result of the call to the $updater.
   */
-  update key --init [updater any -> any]:
+  update key/K --init/V [updater V -> V] -> V:
     return update key updater --init=: init
 
   /**
@@ -3031,7 +3031,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   The key/value pairs are iterated in key insertion order.
   Users must not modify this instance while iterating over it.
   */
-  do [block any any -> none] -> none:
+  do [block K V -> none] -> none:
     i := hash-do_ STEP_ false block
     if not i: return
     assert: backing_
@@ -3049,7 +3049,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   Iterates over all key/value pairs in reverse order.
   Users must not modify this instance while iterating over it.
   */
-  do --reversed/True [block any any -> none] -> none:
+  do --reversed/True [block K V -> none] -> none:
     i := hash-do_ STEP_ true block
     if not i: return
     assert: backing_
@@ -3065,7 +3065,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   Invokes the given $block on each key of this instance.
   Users must not modify this instance while iterating over it.
   */
-  do --keys/True --reversed/bool=false [block any -> none] -> none:
+  do --keys/True --reversed/bool=false [block K -> none] -> none:
     if reversed:
       do --reversed: | key value | block.call key
     else:
@@ -3075,7 +3075,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   Invokes the given $block on each value of this instance.
   Users must not modify this instance while iterating over it.
   */
-  do --values/True --reversed/bool=false [block any -> none] -> none:
+  do --values/True --reversed/bool=false [block V -> none] -> none:
     if reversed:
       do --reversed: | key value | block.call value
     else:
@@ -3107,7 +3107,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   Reduces the values of the map into a single value.
   See $(Collection.reduce [block]).
   */
-  reduce --values/True [block any any -> any]:
+  reduce --values/True [block V V -> V] -> V:
     if is-empty: throw "Not enough elements"
     result := null
     is-first := true
@@ -3120,7 +3120,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   Reduces the values of the map into a single value.
   See $(Collection.reduce --initial [block]).
   */
-  reduce --values/True --initial [block any any -> any]:
+  reduce --values/True --initial [block any V -> any]:
     result := initial
     do --values:
       result = block.call result it
@@ -3130,7 +3130,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   Reduces the keys of the map into a single value.
   See $(Collection.reduce [block]).
   */
-  reduce --keys/True [block any any -> any]:
+  reduce --keys/True [block K K -> K] -> K:
     if is-empty: throw "Not enough elements"
     result := null
     is-first := true
@@ -3143,7 +3143,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   Reduces the keys of the map into a single value.
   See $(Collection.reduce --initial [block]).
   */
-  reduce --keys/True --initial [block any any -> any]:
+  reduce --keys/True --initial [block any K -> any]:
     result := initial
     do --keys:
       result = block.call result it
@@ -3157,7 +3157,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
     3. the value of the current entry.
 
   See $(Collection.reduce --initial [block]). */
-  reduce --initial [block any any any -> any]:
+  reduce --initial [block any K V -> any]:
     result := initial
     do: | key value |
       result = block.call result key value
@@ -3167,7 +3167,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   Whether at least one key in the map satisfies the given $predicate.
   Returns false, if the map is empty.
   */
-  any --keys/True [predicate any -> any] -> bool:
+  any --keys/True [predicate K -> any] -> bool:
     do --keys: if predicate.call it: return true
     return false
 
@@ -3175,7 +3175,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   Whether at least one value in the map satisfies the given $predicate.
   Returns false, if the map is empty.
   */
-  any --values/True [predicate any -> any] -> bool:
+  any --values/True [predicate V -> any] -> bool:
     do --values: if predicate.call it: return true
     return false
 
@@ -3184,7 +3184,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   The $predicate block is called with two arguments: a key, and its value.
   Returns false, if the map is empty.
   */
-  any [predicate any any -> any] -> bool:
+  any [predicate K V -> any] -> bool:
     do: | key value | if predicate.call key value: return true
     return false
 
@@ -3192,7 +3192,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   Whether all keys in the map satisfy the given $predicate.
   Returns true, if the map is empty.
   */
-  every --keys/True [predicate any -> any] -> bool:
+  every --keys/True [predicate K -> any] -> bool:
     do --keys: if not predicate.call it: return false
     return true
 
@@ -3200,7 +3200,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   Whether all values in the map satisfy the given $predicate.
   Returns true, if the map is empty.
   */
-  every --values/True [predicate any -> any] -> bool:
+  every --values/True [predicate V -> any] -> bool:
     do --values: if not predicate.call it: return false
     return true
 
@@ -3209,7 +3209,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   The $predicate block is called with two arguments: a key, and its value.
   Returns true, if the map is empty.
   */
-  every [predicate any any -> any] -> bool:
+  every [predicate K V -> any] -> bool:
     do: | key value | if not predicate.call key value: return false
     return true
 
@@ -3239,7 +3239,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   print prefixed  // => { "a": "a-1", "b": "b-2" }
   ```
   */
-  map [block any any -> any] -> Map:
+  map [block K V -> any] -> Map:
     result := Map
     do: | key value | result[key] = block.call key value
     return result
@@ -3251,7 +3251,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
     the result of the call.
 
   */
-  map --in-place/True [block any any -> any] -> none:
+  map --in-place/True [block K V -> V] -> none:
     limit := backing_ ? backing_.size : 0
     for i := 0; i < limit; i += STEP_:
       key := backing_[i]
@@ -3271,7 +3271,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
 
   Users must not otherwise modify this instance during the operation.
   */
-  filter --in-place/bool=false [predicate any any -> any] -> Map<K, V>:
+  filter --in-place/bool=false [predicate K V -> any] -> Map<K, V>:
     if not in-place:
       result := Map
       do: | key value | if predicate.call key value: result[key] = value
@@ -3295,7 +3295,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   The first key of the map by insertion order.
   Throws an error if the map is empty.
   */
-  first:
+  first -> K:
     do: | key value | return key
     throw "Not enough elements"
 
@@ -3303,7 +3303,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   The last key of the map by insertion order.
   Throws an error if the map is empty.
   */
-  last:
+  last -> K:
     do --reversed: | key value | return key
     throw "Not enough elements"
 
@@ -3393,7 +3393,7 @@ class Deque<E> extends List<E> implements Collection<E>:
       end_ += collection.size
 
   /// See $Collection.do.
-  do [block any -> none]:
+  do [block E -> none]:
     backing_[start_..end_].do block
 
   /**
@@ -3401,23 +3401,23 @@ class Deque<E> extends List<E> implements Collection<E>:
 
   Iterates over the elements of this collection in reverse order.
   */
-  do --reversed/bool [block any -> none] -> none:
+  do --reversed/bool [block E -> none] -> none:
     backing_[start_..end_].do --reversed block
 
   /// See $Collection.any.
-  any [predicate any -> any] -> bool:
+  any [predicate E -> any] -> bool:
     return backing_[start_..end_].any predicate
 
   /// See $Collection.every.
-  every [predicate any -> any] -> bool:
+  every [predicate E -> any] -> bool:
     return backing_[start_..end_].every predicate
 
   /// See $(Collection.reduce [block]).
-  reduce [block any any -> any]:
+  reduce [block E E -> E] -> E:
     return backing_[start_..end_].reduce block
 
   /// See $(Collection.reduce --initial [block]).
-  reduce --initial [block any any -> any]:
+  reduce --initial [block any E -> any]:
     return backing_[start_..end_].reduce --initial=initial block
 
   /// See $Collection.contains.
