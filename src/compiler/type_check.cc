@@ -638,6 +638,7 @@ class TypeChecker : public ReturningVisitor<Type> {
       never_calls_->insert(node);
       return Type::never();
     }
+    if (method->return_type().is_class()) guaranteed_calls_.insert(node);
     return method->return_type().substitute(environment);
   }
 
@@ -778,14 +779,34 @@ class TypeChecker : public ReturningVisitor<Type> {
       local->set_type(Type::any());
     } else if (right_type == true_type_ || right_type == false_type_) {
       local->set_type(boolean_type_);
+      if (is_guaranteed(node->right())) local->mark_guaranteed_inferred_type();
     } else {
       if (node->right()->is_LiteralNull()) {
         local->set_type(Type::any());
       } else {
         local->set_type(right_type);
+        if (is_guaranteed(node->right())) local->mark_guaranteed_inferred_type();
       }
     }
     return right_type;
+  }
+
+  /// Whether the static class of [node]'s type also holds at runtime.
+  /// Types substituted for erased type parameters don't. Conservative.
+  bool is_guaranteed(Expression* node) {
+    if (node->is_Literal()) return true;
+    if (node->is_ReferenceLocal()) return node->as_ReferenceLocal()->target()->has_guaranteed_type();
+    if (node->is_Typecheck()) return node->as_Typecheck()->is_as_check();
+    if (node->is_FieldLoad()) return node->as_FieldLoad()->field()->type().is_class();
+    if (node->is_CallVirtual()) return guaranteed_calls_.contains(node->as_CallVirtual());
+    if (node->is_CallStatic()) {
+      return node->as_CallStatic()->target()->target()->return_type().is_class();
+    }
+    if (node->is_Sequence()) {
+      auto expressions = node->as_Sequence()->expressions();
+      return !expressions.is_empty() && is_guaranteed(expressions.last());
+    }
+    return false;
   }
 
   Type visit_AssignmentLocal(AssignmentLocal* node) {
@@ -870,6 +891,10 @@ class TypeChecker : public ReturningVisitor<Type> {
 
   // Methods whose body doesn't reach the implicit `return null` at its end.
   UnorderedSet<Method*> diverging_bodies_;
+
+  // Virtual calls whose declared return type is a class type, as opposed
+  // to a type parameter. See `is_guaranteed`.
+  UnorderedSet<CallVirtual*> guaranteed_calls_;
 
   Type boolean_type_;
   Type true_type_;

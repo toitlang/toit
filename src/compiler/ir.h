@@ -1513,6 +1513,14 @@ class Local : public Node {
 
   virtual bool has_explicit_type() const { return has_explicit_type_; }
 
+  /// Whether the type also holds at runtime. Explicit types are checked.
+  /// Inferred types hold if the initializer's type does, which isn't the
+  /// case for types from erased type parameters.
+  virtual bool has_guaranteed_type() const {
+    return has_explicit_type_ || has_guaranteed_inferred_type_;
+  }
+  void mark_guaranteed_inferred_type() { has_guaranteed_inferred_type_ = true; }
+
   // The index is required for bytecode generation.
   // The index for parameters is fixed, whereas the one for locals is set
   // during bytecode emission.
@@ -1541,6 +1549,7 @@ class Local : public Node {
   bool is_effectively_final_loop_variable_ = false;
   bool is_block_;
   bool has_explicit_type_;
+  bool has_guaranteed_inferred_type_ = false;
   bool is_captured_ = false;
   Type type_;
 
@@ -1655,6 +1664,7 @@ class CapturedLocal : public Parameter {
 
   bool is_block() const { return captured_->is_block(); }
   bool has_explicit_type() const { return captured_->has_explicit_type(); }
+  bool has_guaranteed_type() const { return captured_->has_guaranteed_type(); }
   Type type() const { return captured_->type(); }
 
   Local* local() const { return captured_; }

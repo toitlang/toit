@@ -116,3 +116,9 @@ main:
   anys/List<any> := l
   expect-equals 2 nullable.size
   expect-equals 2 anys.size
+
+  // Types inferred from erased type arguments don't remove runtime checks.
+  lying/Box<int> := Box "str"
+  inferred := lying.get
+  expect-throw "AS_CHECK_FAILED":
+    checked/int := inferred
