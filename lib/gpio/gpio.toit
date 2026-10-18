@@ -417,7 +417,7 @@ interface Pin:
 
   An edge means a transition from high to low, or low to high.
   */
-  do [block]
+  do [block int -> none]
 
   /**
   Blocks until the Pin reads the value configured.
@@ -536,7 +536,7 @@ abstract class PinBase implements Pin:
   /**
   See $Pin.do.
   */
-  do [block]:
+  do [block int -> none]:
     expected := get ^ 1
     while true:
       wait-for expected
@@ -706,7 +706,7 @@ class VirtualPin extends PinBase:
   get: throw "UNSUPPORTED"
 
   /** Not supported. */
-  do [block]: throw "UNSUPPORTED"
+  do [block int -> none]: throw "UNSUPPORTED"
 
   /** Not supported. */
   wait-for value: throw "UNSUPPORTED"
@@ -801,7 +801,7 @@ class Chip:
 
   The returned list contains paths to the GPIO chips.
   */
-  static list -> List:
+  static list -> List<string>:
     return gpio-linux-list-chips_
 
   /** The name of the GPIO chip. */
@@ -825,7 +825,7 @@ class Chip:
     label_ = info[1]
     line-count_ = info[2]
 
-  pin-names -> List:
+  pin-names -> List<string?>:
     return List pin-count:
       info := gpio-linux-chip-pin-info_ resource_ it
       info[0]

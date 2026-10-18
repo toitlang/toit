@@ -16,7 +16,7 @@ class Peripheral extends Resource_:
   static DEFAULT-INTERVAL ::= Duration --us=46875
   adapter/Adapter
 
-  services_/List := []
+  services_/List<LocalService> := []
 
   deployed_/bool := false
 
@@ -163,7 +163,7 @@ class LocalService extends Resource_ implements Attribute:
 
   deployed_/bool := false
 
-  characteristics_/List := []
+  characteristics_/List<LocalCharacteristic> := []
 
   constructor .peripheral-manager .uuid:
     if peripheral-manager.deployed_: throw "Peripheral is already deployed"
@@ -378,7 +378,7 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   properties/int
   service/LocalService
 
-  descriptors_/List := []
+  descriptors_/List<LocalDescriptor> := []
   read-timeout-ms_/int
 
   constructor .service .uuid .properties .permissions value/io.Data? .read-timeout-ms_:
@@ -461,7 +461,7 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
     returned. In other words, this function takes precedence over the value that was given
     in the constructor or by $set-value/$write.
   */
-  handle-read-request --timeout-ms/int=read-timeout-ms_ [block]:
+  handle-read-request --timeout-ms/int=read-timeout-ms_ [block -> io.Data?]:
     handle-request_ --for-read --timeout-ms=timeout-ms block
 
   /**
@@ -486,7 +486,7 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
     that respond. The BLE stack will send a response only once the called $block has
     returned, thus ensuring that the data has been processed before the response is sent.
   */
-  handle-write-request --timeout-ms/int=LocalService.DEFAULT-WRITE-TIMEOUT-MS [block]:
+  handle-write-request --timeout-ms/int=LocalService.DEFAULT-WRITE-TIMEOUT-MS [block ByteArray -> none]:
     handle-request_ --for-read=false --timeout-ms=timeout-ms block
 
   handle-request_ --for-read/bool --timeout-ms/int [block]:

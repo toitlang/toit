@@ -19,7 +19,7 @@ class Font:
   $unicode-blocks is a list of arrays with byte data, each describing a
     Unicode block.
   */
-  constructor unicode-blocks/List:
+  constructor unicode-blocks/List<ByteArray>:
     // The primitive takes a small array (not a list) of byte arrays, so we
     // convert to that.
     array := Array_.from unicode-blocks

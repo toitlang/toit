@@ -13,7 +13,7 @@ The manager for creating client connections.
 class Central extends Resource_:
   adapter/Adapter
 
-  remotes-devices_/List := []
+  remotes-devices_/List<RemoteDevice> := []
 
   constructor .adapter:
     super (ble-create-central-manager_ adapter.resource_)
@@ -96,7 +96,7 @@ class Central extends Resource_:
       --duration/Duration?=null
       --limited-only/bool=false
       --active/bool=false
-      [block]:
+      [block RemoteScannedDevice -> none]:
     if interval != 0 and not 4 <= interval <= 16384:
       throw "Invalid interval"
     if window != 0 and not 4 <= window <= interval:
@@ -312,7 +312,7 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
   service/RemoteService
   uuid/BleUuid
   properties/int
-  discovered-descriptors_/List := []
+  discovered-descriptors_/List<RemoteDescriptor> := []
 
   constructor.private_ .service .uuid .properties characteristic:
     super service characteristic
@@ -322,7 +322,7 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
 
   Call $discover-descriptors to populate this list.
   */
-  discovered-descriptors -> List:
+  discovered-descriptors -> List<RemoteDescriptor>:
     return discovered-descriptors_.copy
 
   /**
@@ -411,7 +411,7 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
   This method adds all discovered descriptors to the list of discovered descriptors of the
     characteristic, regardless of whether a descriptor with the same UUID already exists in the list.
   */
-  discover-descriptors -> List:
+  discover-descriptors -> List<RemoteDescriptor>:
     resource-state_.clear-state DESCRIPTORS-DISCOVERED-EVENT_
     ble-discover-descriptors_ resource_
     state := wait-for-state-with-oom_ DESCRIPTORS-DISCOVERED-EVENT_
@@ -463,7 +463,7 @@ class RemoteService extends Resource_ implements Attribute:
 
   device/RemoteDevice
 
-  discovered-characteristics/List := []
+  discovered-characteristics/List<RemoteCharacteristic> := []
 
   constructor.private_ .device .uuid service-resource:
     super service-resource
@@ -493,7 +493,7 @@ class RemoteService extends Resource_ implements Attribute:
     already exists in the list.
   */
   // TODO(florian): only add the characteristics that are not already in the list.
-  discover-characteristics characteristic-uuids/List=[] -> List:
+  discover-characteristics characteristic-uuids/List<BleUuid>=[] -> List<RemoteCharacteristic?>:
     resource-state_.clear-state CHARACTERISTIS-DISCOVERED-EVENT_
     raw-characteristics-uuids := characteristic-uuids.map: | uuid/BleUuid | uuid.encode-for-platform_
     ble-discover-characteristics_ resource_ (Array_.ensure raw-characteristics-uuids)
@@ -543,7 +543,7 @@ class RemoteDevice extends Resource_:
   */
   identifier/Object
 
-  discovered-services_/List := []
+  discovered-services_/List<RemoteService> := []
 
   constructor.private_ .manager .identifier secure/bool:
     device-resource := ble-connect_ manager.resource_ identifier secure
@@ -564,7 +564,7 @@ class RemoteDevice extends Resource_:
 
   Call $discover-services to populate this list.
   */
-  discovered-services -> List:
+  discovered-services -> List<RemoteService>:
     return discovered-services_.copy
 
   /**
@@ -579,7 +579,7 @@ class RemoteDevice extends Resource_:
     of size 1. If the platform is limited, this method throws for lists with more than
     one element.
   */
-  discover-services service-uuids/List=[] -> List:
+  discover-services service-uuids/List<BleUuid>=[] -> List<RemoteService?>:
     resource-state_.clear-state SERVICES-DISCOVERED-EVENT_
     raw-service-uuids := service-uuids.map: | uuid/BleUuid | uuid.encode-for-platform_
     ble-discover-services_ resource_ (Array_.ensure raw-service-uuids)
@@ -616,7 +616,7 @@ class RemoteDevice extends Resource_:
   mtu -> int:
     return ble-get-att-mtu_ resource_
 
-order-attributes_ input/List/*<BleUUID>*/ output/List/*<Attribute>*/ -> List:
+order-attributes_ input/List<BleUuid> output/List<Attribute> -> List:
   map := {:}
   if input.is-empty: return output
   output.do: | attribute/Attribute | map[attribute.uuid] = attribute

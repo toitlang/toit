@@ -382,7 +382,7 @@ class PmLock:
   release -> none:
     pm-lock-release_ resource_
 
-  do [block]:
+  do [block -> none]:
     acquire
     try:
       block.call

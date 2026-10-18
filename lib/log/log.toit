@@ -131,9 +131,9 @@ class Logger:
   target_/Target
   level_/int
 
-  names_/List?
+  names_/List<string>?
   keys_/List? ::= null
-  values_/List? ::= null
+  values_/List<string>? ::= null
 
   /**
   Constructs a logger with the given $level_ and $target_.
@@ -189,7 +189,7 @@ class Logger:
 
   The $block is called with the logger as argument.
   */
-  with-level level/int [block] -> none:
+  with-level level/int [block Logger -> none] -> none:
     if level < level_: return
     block.call this
 
@@ -259,7 +259,7 @@ class Logger:
   The new tags in $tags take override any existing key/value pairs
     represented in the lists.
   */
-  static merge-tags_ tags/Map? keys/List? values/List? [block] -> any:
+  static merge-tags_ tags/Map? keys/List? values/List<string>? [block List? List<string>? -> any] -> any:
     if not tags or tags.is-empty: return block.call keys values
     merged-keys := keys ? keys.copy : []
     merged-values := values ? values.copy : []

@@ -290,7 +290,7 @@ class Address:
     return Address.parse str --if-error=: throw it
 
   /** Deprecated. Use $(parse str [--if-error]) instead. */
-  static parse str/string [--on-error] -> Address?:
+  static parse str/string [--on-error string -> Address?] -> Address?:
     return parse str --if-error=on-error
 
   /**
@@ -300,7 +300,7 @@ class Address:
     result of the block is then returned. As such, it must be of type $Address,
     or null.
   */
-  static parse str/string [--if-error] -> Address?:
+  static parse str/string [--if-error string -> Address?] -> Address?:
     parts := str.split ":"
     if parts.size != 6: return if-error.call "INVALID_ARGUMENT"
     mac := ByteArray 6

@@ -71,7 +71,7 @@ abstract class Registers:
 
   Deprecated. Use exception handling instead.
   */
-  read-bytes reg count [failure] -> ByteArray:
+  read-bytes reg count [failure any -> ByteArray] -> ByteArray:
     e := catch:
       return read-bytes reg count
     return failure.call e
@@ -163,7 +163,7 @@ abstract class Registers:
 
   Deprecated. Use exception handling instead.
   */
-  read-u16-be register/int [failure] -> int:
+  read-u16-be register/int [failure any -> int] -> int:
     e := catch:
       bytes := read-bytes register 2
       return BIG-ENDIAN.uint16 bytes 0

@@ -229,7 +229,7 @@ RESET-UNKNOWN ::= 13
 
 // Human-readable names indexed by the RESET-* value. Keep in sync with the
 // constants above (the SDK's LastResetState_e order).
-RESET-REASON-NAMES_/List ::= [
+RESET-REASON-NAMES_/List<string> ::= [
   "power-on",
   "normal",
   "software",
@@ -284,7 +284,7 @@ WAKEUP-CHARGER ::= 6
 
 // Human-readable names indexed by the WAKEUP-* value. Keep in sync with
 // the constants above (the SDK's slpManWakeSrc_e order).
-WAKEUP-CAUSE-NAMES_/List ::= [
+WAKEUP-CAUSE-NAMES_/List<string> ::= [
   "power-on",
   "rtc",
   "pad",

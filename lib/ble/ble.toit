@@ -257,7 +257,7 @@ class DataBlock:
   */
   data/ByteArray
 
-  static encode-uuids_ uuids/List --uuid-byte-size/int -> ByteArray:
+  static encode-uuids_ uuids/List<BleUuid> --uuid-byte-size/int -> ByteArray:
     result := ByteArray uuids.size * uuid-byte-size
     pos := 0
     uuids.do: | uuid/BleUuid |
@@ -267,7 +267,7 @@ class DataBlock:
       pos += uuid-byte-size
     return result
 
-  static decode-uuids_ bytes/ByteArray --uuid-byte-size/int -> List:
+  static decode-uuids_ bytes/ByteArray --uuid-byte-size/int -> List<BleUuid>:
     if bytes.size % uuid-byte-size != 0: throw "INVALID_UUID_SIZE"
     result := []
     (bytes.size / uuid-byte-size).repeat: | i/int |
@@ -275,14 +275,14 @@ class DataBlock:
       result.add (BleUuid.from-reversed uuid-bytes)
     return result
 
-  static encode-service-data_ uuid/BleUuid service-data/io.Data [block] -> none:
+  static encode-service-data_ uuid/BleUuid service-data/io.Data [block int ByteArray -> none] -> none:
     uuid-bytes := uuid.to-byte-array --reversed
     data := ByteArray uuid-bytes.size + service-data.byte-size
     data.replace 0 uuid-bytes
     service-data.write-to-byte-array data --at=uuid-bytes.size 0 service-data.byte-size
     block.call uuid-bytes.size data
 
-  static decode-service-data_ bytes/ByteArray --uuid-byte-size/int [block] -> any:
+  static decode-service-data_ bytes/ByteArray --uuid-byte-size/int [block BleUuid ByteArray -> any] -> any:
     if bytes.size < uuid-byte-size: throw "INVALID_DATA"
     uuid := BleUuid.from-reversed bytes[0 .. uuid-byte-size]
     service-data := bytes[uuid-byte-size ..]
@@ -293,7 +293,7 @@ class DataBlock:
 
   If the data is invalid, a raw data block is created with the remaining data.
   */
-  static decode raw/ByteArray -> List:
+  static decode raw/ByteArray -> List<DataBlock>:
     result := []
     pos := 0
     while pos < raw.size:
@@ -397,7 +397,7 @@ class DataBlock:
     an incomplete list of service UUIDs and the scan response contain the
     complete list.
   */
-  constructor.services-16 uuids/List --incomplete/bool=false:
+  constructor.services-16 uuids/List<BleUuid> --incomplete/bool=false:
     if incomplete:
       type = TYPE-SERVICE-UUIDS-16-INCOMPLETE
     else:
@@ -409,7 +409,7 @@ class DataBlock:
 
   See $DataBlock.services-16 for more information.
   */
-  constructor.services-32 uuids/List --incomplete/bool=false:
+  constructor.services-32 uuids/List<BleUuid> --incomplete/bool=false:
     if incomplete:
       type = TYPE-SERVICE-UUIDS-32-INCOMPLETE
     else:
@@ -421,7 +421,7 @@ class DataBlock:
 
   See $DataBlock.services-16 for more information.
   */
-  constructor.services-128 uuids/List --incomplete/bool=false:
+  constructor.services-128 uuids/List<BleUuid> --incomplete/bool=false:
     if incomplete:
       type = TYPE-SERVICE-UUIDS-128-INCOMPLETE
     else:
@@ -554,7 +554,7 @@ class DataBlock:
 
   See $DataBlock.services-16 for more information.
   */
-  services-16 -> List:
+  services-16 -> List<BleUuid>:
     if not is-services-16: throw "INVALID_TYPE"
     return decode-uuids_ data --uuid-byte-size=2
 
@@ -571,7 +571,7 @@ class DataBlock:
 
   See $services-16.
   */
-  services-32 -> List:
+  services-32 -> List<BleUuid>:
     if not is-services-32: throw "INVALID_TYPE"
     return decode-uuids_ data --uuid-byte-size=4
 
@@ -588,7 +588,7 @@ class DataBlock:
 
   See $services-16.
   */
-  services-128 -> List:
+  services-128 -> List<BleUuid>:
     if not is-services-128: throw "INVALID_TYPE"
     return decode-uuids_ data --uuid-byte-size=16
 
@@ -607,7 +607,7 @@ class DataBlock:
   This is a convenience function that checks all three types of service UUIDs.
   See $services-16, $services-32, and $services-128.
   */
-  services -> List:
+  services -> List<BleUuid>:
     if is-services-16: return services-16
     if is-services-32: return services-32
     if is-services-128: return services-128
@@ -672,7 +672,7 @@ class DataBlock:
 
   See $DataBlock.service-data for more information.
   */
-  service-data [block] -> any:
+  service-data [block BleUuid ByteArray -> any] -> any:
     if not is-service-data: throw "INVALID_TYPE"
     byte-size/int := ?
     if type == TYPE-SERVICE-DATA-16: byte-size = 2
@@ -692,7 +692,7 @@ class DataBlock:
 
   See $DataBlock.manufacturer-specific for more information.
   */
-  manufacturer-specific [block] -> any:
+  manufacturer-specific [block ByteArray ByteArray -> any] -> any:
     if not is-manufacturer-specific: throw "INVALID_TYPE"
     return block.call data[0 .. 2] data[2 ..]
 
@@ -704,13 +704,13 @@ class DataBlock:
     return 2 + data.size
 
   /** Deprecated. Use $(write bytes --at [--if-error]) instead. */
-  write bytes/ByteArray --at/int [--on-error] -> int:
+  write bytes/ByteArray --at/int [--on-error string -> int] -> int:
     return write bytes --at=at --if-error=on-error
 
   /**
   Writes this field into the given $bytes at the given position $at.
   */
-  write bytes/ByteArray --at/int [--if-error] -> int:
+  write bytes/ByteArray --at/int [--if-error string -> int] -> int:
     if type == TYPE-RAW:
       bytes.replace at data
       return at + data.size
@@ -802,7 +802,7 @@ class AdvertisementData extends Advertisement:
   */
   constructor
       --name/string?=null
-      --service-classes/List=[]
+      --service-classes/List<BleUuid>=[]
       --manufacturer-data/io.Data=#[]
       --.connectable=false
       --flags/int=0
@@ -829,7 +829,7 @@ class AdvertisementData extends Advertisement:
 
   Deprecated. Use $Advertisement.services instead.
   */
-  service-classes -> List: return services
+  service-classes -> List<BleUuid>: return services
 
   /**
   Manufacturer data as a byte array.
@@ -853,7 +853,7 @@ The size of an advertisement packet is limited to 31 bytes. This includes the na
 */
 class Advertisement:
   /** The $DataBlock fields of this instance. */
-  data-blocks/List  // Of DataBlock.
+  data-blocks/List<DataBlock>
 
   /**
   Constructs an advertisement data packet with the given data blocks.
@@ -882,7 +882,7 @@ class Advertisement:
   */
   constructor
       --name/string?=null
-      --services/List=[]
+      --services/List<BleUuid>=[]
       --manufacturer-specific/io.Data?=null
       --flags/int?=null
       --check-size/bool=true:
@@ -922,7 +922,7 @@ class Advertisement:
 
   Returns the empty list if no services are present.
   */
-  services -> List?:
+  services -> List<BleUuid>?:
     result := []
     data-blocks.do: | block/DataBlock |
       if block.is-services:
@@ -964,7 +964,7 @@ class Advertisement:
 
   Returns the result of calling the block, or null if no manufacturer specific data is present.
   */
-  manufacturer-specific [block] -> any:
+  manufacturer-specific [block ByteArray ByteArray -> any] -> any:
     data-blocks.do: | data-block/DataBlock |
       if data-block.is-manufacturer-specific:
         return data-block.manufacturer-specific block
@@ -1047,7 +1047,7 @@ On the ESP32 it is the integrated peripheral. On desktops it is provided by
   the operating system, and can be a USB chip, or an integrated chip of laptops.
 */
 class Adapter extends Resource_:
-  static discover-adapter-metadata_ -> List/*<AdapterMetadata>*/:
+  static discover-adapter-metadata_ -> List<AdapterMetadata>:
     return ble-retrieve-adapters_.map:
       AdapterMetadata.private_ it[0] it[1] it[2] it[3] it[4]
 
@@ -1357,7 +1357,7 @@ ble-callback-reply__ resource value for-read:
 ble-get-bonded-peers_ adapter:
   #primitive.ble.get-bonded-peers
 
-ble-run-with-quota-backoff_ [block]:
+ble-run-with-quota-backoff_ [block bool -> any]:
   start := Time.monotonic-us
   while true:
     // The last-attempt boolean is a signal to the block that it may abort the operation
