@@ -27,6 +27,7 @@
 #include "no_such_method.h"
 #include "queryable_class.h"
 #include "toitdoc.h"
+#include "zone.h"
 
 namespace toit {
 namespace compiler {
@@ -49,12 +50,14 @@ class TypeChecker : public ReturningVisitor<Type> {
               List<ir::Class*> classes,
               const UnorderedMap<ir::Class*, QueryableClass>* queryables,
               Lsp* lsp,
+              UnorderedSet<CallVirtual*>* never_calls,
               Diagnostics* diagnostics)
       : classes_(classes)
       , queryables_(queryables)
       , lsp_(lsp)
       , diagnostics_(diagnostics)
       , method_(null)
+      , never_calls_(never_calls)
       , boolean_type_(Type::invalid())
       , true_type_(Type::invalid())
       , false_type_(Type::invalid())
@@ -101,7 +104,45 @@ class TypeChecker : public ReturningVisitor<Type> {
     // Fields don't have any code anymore, since all of the initialization is
     // in the constructors.
     for (auto method: node->methods()) visit(method);
+    check_never_overrides(node);
     return Type::invalid();
+  }
+
+  /// Reports methods of [klass] that override a `-> never` method without
+  /// being `-> never` themselves. Virtual calls to `-> never` methods rely
+  /// on this.
+  // TODO(girtsf): subsume into a general override check.
+  void check_never_overrides(Class* klass) {
+    List<Class*> supertypes;
+    {
+      ListBuilder<Class*> builder;
+      if (klass->super() != null) builder.add(klass->super());
+      builder.add(klass->interfaces());
+      builder.add(klass->mixins());
+      supertypes = builder.build();
+    }
+    if (supertypes.is_empty()) return;
+    UnorderedSet<Method*> reported;
+    auto queryable = queryables_->at(klass);
+    for (auto entry : queryable.methods().underlying_map()) {
+      auto method = entry.second;
+      if (method->holder() != klass) continue;
+      if (method->return_type().is_never()) continue;
+      if (reported.contains(method)) continue;
+      for (auto supertype : supertypes) {
+        if (!queryables_->contains_key(supertype)) continue;
+        auto overridden = queryables_->at(supertype).lookup(entry.first);
+        if (overridden == null || overridden == method) continue;
+        if (!overridden->return_type().is_never()) continue;
+        report_error(method->range(),
+                     "Override of '%s' must have return type 'never', like '%s.%s'",
+                     method->name().c_str(),
+                     overridden->holder()->name().c_str(),
+                     overridden->name().c_str());
+        reported.insert(method);
+        break;
+      }
+    }
   }
 
   Type visit_Field(Field* node) { UNREACHABLE(); return Type::invalid(); }
@@ -158,7 +199,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     if (value_type.is_none()) {
       report_error(ret->value()->range(), "Globals can't be initialized with 'none'");
       node->set_return_type(Type::any());
-    } else if (ret->value()->is_LiteralNull()) {
+    } else if (ret->value()->is_LiteralNull() || value_type.is_never()) {
       node->set_return_type(Type::any());
     } else if (value_type == true_type_ || value_type == false_type_) {
       node->set_return_type(boolean_type_);
@@ -217,10 +258,13 @@ class TypeChecker : public ReturningVisitor<Type> {
 
   Type visit_Sequence(Sequence* node) {
     auto result_type = Type::any();
+    bool diverges = false;
     for (auto expr : node->expressions()) {
       result_type = visit(expr);
+      if (result_type.is_never()) diverges = true;
     }
-    return result_type;
+    // Anything after a diverging expression is dead.
+    return diverges ? Type::never() : result_type;
   }
 
   Type visit_Builtin(Builtin* node) {
@@ -249,7 +293,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     auto result = visit(node);
     if (result.is_none()) {
       report_error(node->range(), "Condition can't be 'none'");
-    } else if (!is_a_bool(result) && !result.is_nullable()) {
+    } else if (!result.is_never() && !is_a_bool(result) && !result.is_nullable()) {
       report_warning(node->range(), "Condition always evaluates to true");
     }
     return result;
@@ -270,7 +314,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     auto value_type = visit(node->value());
     if (value_type.is_none()) {
       report_error(node->value()->range(), "Argument to 'not' can't be 'none'");
-    } else if (warn_if_always_false && !is_a_bool(value_type) && !value_type.is_nullable()) {
+    } else if (warn_if_always_false && !value_type.is_never() && !is_a_bool(value_type) && !value_type.is_nullable()) {
       report_warning(node->range(), "Condition always evaluates to false");
     }
     return boolean_type_;
@@ -278,14 +322,24 @@ class TypeChecker : public ReturningVisitor<Type> {
 
   Type visit_While(While* node) {
     visit_condition(node->condition());
+    bool old_loop_has_break = loop_has_break_;
+    loop_has_break_ = false;
     auto result_type = visit(node->body());
     visit(node->update());
+    bool has_break = loop_has_break_;
+    loop_has_break_ = old_loop_has_break;
+    auto condition = node->condition();
+    if (condition->is_LiteralBoolean() && condition->as_LiteralBoolean()->value() && !has_break) {
+      return Type::never();
+    }
+    // The body may not run at all.
+    if (result_type.is_never()) return Type::none();
     return result_type;
   }
 
   Type visit_LoopBranch(LoopBranch* node) {
-    // TODO(florian): should be 'null'-type.
-    return Type::any();
+    if (node->is_break()) loop_has_break_ = true;
+    return Type::never();
   }
 
   Type visit_Code(Code* node) {
@@ -293,10 +347,11 @@ class TypeChecker : public ReturningVisitor<Type> {
     // TODO(florian); lambdas should have a "Lambda" type.
     if (!node->is_block()) return Type::any();
     if (body_type == true_type_ || body_type == false_type_) body_type = boolean_type_;
-    // A block that never completes (non-local return, throw, ...) doesn't
-    // yield a value, so it fits any return type. One that completes with a
-    // 'none' expression yields null.
-    if (body_type.is_none()) body_type = diverges(node->body()) ? Type::any() : null_type_;
+    // A block that never completes normally can still yield a value with
+    // `continue.label value`, which isn't tracked. It fits any return type.
+    // One that completes with a 'none' expression yields null.
+    if (body_type.is_never()) body_type = Type::any();
+    if (body_type.is_none()) body_type = null_type_;
     auto parameters = node->parameters();
     auto parameter_types = ListBuilder<Type>::allocate(parameters.length());
     for (int i = 0; i < parameters.length(); i++) {
@@ -410,6 +465,11 @@ class TypeChecker : public ReturningVisitor<Type> {
       report_error(node->range(), "Can't invoke method on 'none' type");
       return Type::any();
     }
+    if (receiver_type.is_never()) {
+      // Dead code.
+      for (auto argument : arguments) visit(argument);
+      return Type::never();
+    }
     if (!node->selector().is_valid()) {
       ASSERT(diagnostics()->encountered_error());
       return Type::any();
@@ -478,6 +538,12 @@ class TypeChecker : public ReturningVisitor<Type> {
         if (argument_types[0] == float_type_) return float_type_;
       }
     }
+    if (method->return_type().is_never()) {
+      // The static target doesn't return, but an override might. Trap
+      // after the call (see `NeverTrapInserter`).
+      never_calls_->insert(node);
+      return Type::never();
+    }
     return method->return_type().substitute(environment);
   }
 
@@ -522,8 +588,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     switch (node->target()->kind()) {
       case Builtin::THROW:
       case Builtin::EXIT:
-        // These are not returning.
-        return Type::none();
+        return Type::never();
 
       case Builtin::INVOKE_LAMBDA:
         return Type::any();
@@ -581,10 +646,13 @@ class TypeChecker : public ReturningVisitor<Type> {
     // for class types. Type parameters are erased, so it stays a plain return.
     bool is_erased_fallthrough = node->is_end_of_method_return() &&
         method_->return_type().is_type_parameter();
-    if (node->depth() == -1 && !is_erased_fallthrough) {
+    // Returns from `-> never` methods are reported by the resolver
+    // (explicit) and the definite-assignment checker (fallthrough).
+    bool is_never_method = method_->return_type().is_never();
+    if (node->depth() == -1 && !is_erased_fallthrough && !is_never_method) {
       check(node->range(), method_->return_type(), value_type);
     }
-    return Type::none();
+    return Type::never();
   }
 
   Type visit_LogicalBinary(LogicalBinary* node) {
@@ -609,6 +677,8 @@ class TypeChecker : public ReturningVisitor<Type> {
     auto right_type = visit(node->right());
     if (local->has_explicit_type()) {
       check(node->range(), local->type(), right_type);
+    } else if (right_type.is_never()) {
+      local->set_type(Type::any());
     } else if (right_type.is_none()) {
       report_error(node->right()->range(), "Variable can't be initialized with 'none'");
       local->set_type(Type::any());
@@ -697,6 +767,12 @@ class TypeChecker : public ReturningVisitor<Type> {
 
   // The current method.
   Method* method_;
+
+  // Whether the innermost loop has a `break`.
+  bool loop_has_break_ = false;
+
+  // Virtual calls to `-> never` methods.
+  UnorderedSet<CallVirtual*>* never_calls_;
 
   Type boolean_type_;
   Type true_type_;
@@ -817,8 +893,13 @@ class TypeChecker : public ReturningVisitor<Type> {
     if (receiver_type.is_any()) return;
     if (value_type.is_any()) return;
     if (receiver_type.is_none()) return;
+    if (value_type.is_never()) return;
     if (value_type.is_none()) {
       report_error(range, "Can't use value that is typed 'none'");
+      return;
+    }
+    if (receiver_type.is_never()) {
+      report_error(range, "Type mismatch. Expected 'never'. Got '%s'", type_name(value_type).c_str());
       return;
     }
     if (receiver_type.is_nullable() && value_type == null_type_) return;
@@ -1005,6 +1086,8 @@ class TypeChecker : public ReturningVisitor<Type> {
     ASSERT(receiver_type.is_valid());
     ASSERT(value_type.is_valid());
     if (receiver_type.is_any() || value_type.is_any()) return true;
+    if (value_type.is_never()) return true;
+    if (receiver_type.is_never()) return false;
     if (receiver_type.is_none() || value_type.is_none()) return false;
     if (receiver_type == value_type) return true;  // This also covers `Null_` == `null`.
     if (receiver_type.is_block() || value_type.is_block()) {
@@ -1015,31 +1098,6 @@ class TypeChecker : public ReturningVisitor<Type> {
     if (value_type == boolean_type_ && is_a_bool(receiver_type)) return true;
     if (!is_subtype_of(value_type.klass(), receiver_type.klass())) return false;
     return arguments_assignable(receiver_type, value_type);
-  }
-
-  /// Whether [node] never completes normally. Mirrors the cases the definite
-  /// assignment analysis treats as terminating.
-  // TODO(girtsf): a bottom type (`never`) returned by visit_Return, the
-  //   throw/exit builtins, visit_LoopBranch and does_not_return() calls would
-  //   propagate through Sequence/If on its own and replace this. Declared on
-  //   methods (`-> never`) it would also cover helpers like `ui.abort` that
-  //   today need a trailing `unreachable`.
-  static bool diverges(Expression* node) {
-    if (node->is_Return() || node->is_LoopBranch()) return true;
-    if (node->is_CallBuiltin()) {
-      auto kind = node->as_CallBuiltin()->target()->kind();
-      return kind == Builtin::THROW || kind == Builtin::EXIT;
-    }
-    if (node->is_CallStatic()) return node->as_CallStatic()->target()->target()->does_not_return();
-    if (node->is_Sequence()) {
-      auto expressions = node->as_Sequence()->expressions();
-      return !expressions.is_empty() && diverges(expressions.last());
-    }
-    if (node->is_If()) {
-      auto if_node = node->as_If();
-      return diverges(if_node->yes()) && diverges(if_node->no());
-    }
-    return false;
   }
 
   /// Whether a block of type [value_type] can be passed where a block of
@@ -1078,7 +1136,7 @@ class TypeChecker : public ReturningVisitor<Type> {
       return;
     }
     ASSERT(parameter->type().is_any());
-    if (value_type.is_any()) return;
+    if (value_type.is_any() || value_type.is_never()) return;
     if (value_type.is_none()) {
       report_error(range, "Can't use value that is typed 'none'");
       return;
@@ -1114,6 +1172,7 @@ class TypeChecker : public ReturningVisitor<Type> {
   std::string type_name(Type type, bool include_nullable = true) {
     if (type.is_any()) return "any";
     if (type.is_none()) return "none";
+    if (type.is_never()) return "never";
     if (type == null_type_) return "null";
     if (type.is_block()) {
       std::string result("[block");
@@ -1142,6 +1201,8 @@ class TypeChecker : public ReturningVisitor<Type> {
   }
 
   Type merge_types(Type type1, Type type2) {
+    if (type1.is_never()) return type2;
+    if (type2.is_never()) return type1;
     if (type1 == type2) return type1;
     return Type::any();
   }
@@ -1151,14 +1212,43 @@ class TypeChecker : public ReturningVisitor<Type> {
   }
 };
 
+/// Appends a call to `unreachable` to virtual calls of `-> never` methods,
+/// so that an override that returns normally after all doesn't continue
+/// in code that assumes the call diverged.
+class NeverTrapInserter : public ReplacingVisitor {
+ public:
+  NeverTrapInserter(Method* unreachable, UnorderedSet<CallVirtual*>* never_calls)
+      : unreachable_(unreachable), never_calls_(never_calls) {}
+
+  Node* visit_CallVirtual(CallVirtual* node) {
+    auto result = ReplacingVisitor::visit_CallVirtual(node);
+    if (!never_calls_->contains(node)) return result;
+    auto range = node->range();
+    auto trap = zone_new<CallStatic>(zone_new<ReferenceMethod>(unreachable_, range),
+                                CallShape(0),
+                                List<Expression*>(),
+                                range);
+    return zone_new<Sequence>(ListBuilder<Expression*>::build(result->as_Expression(), trap), range);
+  }
+
+ private:
+  Method* unreachable_;
+  UnorderedSet<CallVirtual*>* never_calls_;
+};
+
 void check_types_and_deprecations(ir::Program* program,
                                   Lsp* lsp,
                                   ToitdocRegistry* toitdocs,
                                   Diagnostics* diagnostics) {
   bool include_abstracts;
   auto queryables = build_queryables_from_resolution_shapes(program, include_abstracts=true);
-  TypeChecker checker(program->literal_types(), program->classes(), &queryables, lsp, diagnostics);
+  UnorderedSet<CallVirtual*> never_calls;
+  TypeChecker checker(program->literal_types(), program->classes(), &queryables, lsp, &never_calls, diagnostics);
   program->accept(&checker);
+  if (!never_calls.empty()) {
+    NeverTrapInserter inserter(program->unreachable(), &never_calls);
+    program->accept(&inserter);
+  }
 }
 
 } // namespace toit::compiler

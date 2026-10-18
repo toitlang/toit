@@ -300,7 +300,9 @@ class DefiniteChecker : public Visitor {
     visit(node->body());
     bool should_check_returns = !node->is_constructor() && !node->return_type().is_none();
     if (should_check_returns && !state_.does_return()) {
-      if (has_seen_return_) {
+      if (node->return_type().is_never()) {
+        report_error(node->range(), "Method with return type 'never' can complete normally");
+      } else if (has_seen_return_) {
         report_error(node->range(), "Method doesn't return a value on all paths");
       } else {
         report_error(node->range(), "Method doesn't return a value");
@@ -443,7 +445,14 @@ class DefiniteChecker : public Visitor {
   }
   void visit_CallVirtual(CallVirtual* node) { visit_Call(node); }
   void visit_CallBlock(CallBlock* node) { visit_Call(node); }
-  void visit_CallBuiltin(CallBuiltin* node) { visit_Call(node); }
+  void visit_CallBuiltin(CallBuiltin* node) {
+    visit_Call(node);
+    auto kind = node->target()->kind();
+    if (kind == Builtin::THROW || kind == Builtin::EXIT) {
+      state_.clear_variables();
+      state_.mark_return();
+    }
+  }
 
   void visit_Typecheck(Typecheck* node) {
     visit(node->expression());

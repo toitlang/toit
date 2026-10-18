@@ -365,6 +365,7 @@ class DocsBuilder implements lsp.ToitdocVisitor:
     if not type: return null
     return Type
         --is-none=type.is-none
+        --is-never=type.is-never
         --is-any=type.is-any
         --is-block=type.is-block
         --reference=build-toplevel-ref type.class-ref
@@ -728,6 +729,7 @@ class Type:
   static TYPE ::= "type"
 
   is-none/bool
+  is-never/bool
   is-any/bool
   is-block/bool
   reference/ToplevelRef?
@@ -735,13 +737,14 @@ class Type:
   block-parameter-types/List?
   block-return-type/Type?
 
-  constructor --.is-none --.is-any --.is-block --.reference
+  constructor --.is-none --.is-never --.is-any --.is-block --.reference
       --.block-parameter-types --.block-return-type:
 
   to-json -> Map:
     result := {
       "object_type": TYPE,
       "is_none": is-none,
+      "is_never": is-never,
       "is_any": is-any,
       "is_block": is-block,
     }

@@ -70,6 +70,14 @@ returns-early list/List -> int:
   filter list: return it
   return -1
 
+// A `while true` without `break` never completes; the block leaves with
+// `continue`.
+loops-until list/List -> int:
+  i := 0
+  return no-params:
+    while true:
+      if list[i++] > 1: continue.no-params i
+
 main:
   expect-equals [2] (filter [1, 2, 3]: it % 2 == 0)
   expect-equals [1, 3] (filter [1, 2, 3]: |x/int| x % 2 == 1)
@@ -107,6 +115,7 @@ main:
   diverging := catch: filter [1]: throw "boom"
   expect-equals "boom" diverging
   expect-equals 1 (returns-early [1, 2])
+  expect-equals 2 (loops-until [1, 2, 3])
   while true:
     filter [1]: break
     break

@@ -36,7 +36,7 @@ Unwinds the stack of this task calling associated finally-blocks. By default,
   task.
 The exception can also be caught with a $(catch [block]).
 */
-throw exception/any -> none:
+throw exception/any -> never:
   trace ::= encode-error_ "EXCEPTION" "$exception"
   __throw__ (Exception_ exception trace)
 
@@ -49,7 +49,7 @@ Works like $throw except it uses the given $trace rather than generating one
 Used to rethrow a caught exception (see $(catch [--trace] [block])) as though
   it wasn't caught.
 */
-rethrow exception/any trace/ByteArray? -> none:
+rethrow exception/any trace/ByteArray? -> never:
   __throw__ (Exception_ exception trace)
 
 /**
@@ -57,7 +57,7 @@ Marks code point as unreachable.
 
 Must not be reached in the program.
 */
-unreachable -> none:
+unreachable -> never:
   throw "Unreachable"
 
 /**
@@ -154,12 +154,12 @@ class Exception_:
 
 // Spontaneous entry points invoked by the interpreter when failure occurs at runtime.
 // We use 'rethrow' to avoid extra frame in trace.
-lookup-failure_ receiver selector-or-selector-offset:
+lookup-failure_ receiver selector-or-selector-offset -> never:
   rethrow "LOOKUP_FAILED"
     encode-error_ "LOOKUP_FAILED"
       create-array_ selector-or-selector-offset (Object.class-id receiver) receiver
 
-uninitialized-global-failure_ global-id:
+uninitialized-global-failure_ global-id -> never:
   rethrow "UNINITIALIZED_GLOBAL"
     encode-error_ "UNINITIALIZED_GLOBAL" global-id
 
@@ -177,7 +177,7 @@ $id might be either:
 - a class name of type $string
 - an absolute BCI of the 'as' check.
 */
-as-check-failure_ receiver id:
+as-check-failure_ receiver id -> never:
   rethrow "AS_CHECK_FAILED"
     encode-error_ "AS_CHECK_FAILED"
       create-array_ receiver id

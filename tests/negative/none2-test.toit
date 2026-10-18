@@ -4,16 +4,6 @@
 
 class A:
 
-test5:
-  while (return 499):
-    throw "bad"
-
-test6:
-  (return 499) or (throw "bad")
-
-test7:
-  (return 499) and (throw "bad")
-
 none-fun -> none:
 
 global := null
@@ -35,8 +25,6 @@ main:
 
   a := A
   a2 := null or a
-
-  a2 = a or unreachable
 
   "" ? 4 : null
   if "":

@@ -98,7 +98,6 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
   build_module_scopes(modules);
 
   mark_runtime(modules[core_index]);
-  mark_non_returning(modules[core_index]);
 
   setup_inheritance(modules, core_index);
 
@@ -196,6 +195,11 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
   auto as_check_failure = as_check_failure_entry.single()->as_Method();
   ASSERT(as_check_failure != null);
 
+  auto unreachable_entry = modules[core_index]->scope()->lookup(Symbols::unreachable).entry;
+  ASSERT(unreachable_entry.is_single());
+  auto unreachable = unreachable_entry.single()->as_Method();
+  ASSERT(unreachable != null);
+
   auto lambda_box = core_module->scope()->lookup(Symbols::Box_).entry.klass();
 
   auto program = zone_new<ir::Program>(all_classes.build(),
@@ -206,6 +210,7 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
                                   literal_types,
                                   lookup_failure,
                                   as_check_failure,
+                                  unreachable,
                                   lambda_box);
 
   return program;
@@ -1152,26 +1157,6 @@ void Resolver::mark_runtime(Module* core_module) {
   mark(core_module);
 }
 
-void Resolver::mark_non_returning(Module* core_module) {
-  // TODO(florian): instead of having an allowlist here, we should mark the methods
-  //   in the source somehow.
-  std::vector<Symbol> non_returning{
-    Symbols::throw_,
-    Symbols::rethrow,
-    Symbols::lookup_failure_,
-    Symbols::as_check_failure_,
-    Symbols::unreachable,
-    Symbols::uninitialized_global_failure_,
-  };
-  for (auto name : non_returning) {
-    auto entry = core_module->scope()->lookup(name).entry;
-    ASSERT(entry.is_single());
-    auto method = entry.single()->as_Method();
-    ASSERT(method != null);
-    method->mark_does_not_return();
-  }
-}
-
 /// The name part of a type, without type arguments.
 static ast::Expression* type_name_of(ast::Expression* type) {
   while (type->is_ParameterizedType()) type = type->as_ParameterizedType()->type();
@@ -1252,8 +1237,8 @@ ir::Type Resolver::resolve_type_in_class_header(ast::Expression* node, ir::Class
   if (node->is_Identifier()) {
     name = node->as_Identifier()->data();
     if (name == Symbols::any) return ir::Type::any();
-    if (name == Symbols::none) {
-      report_error(node, "Type 'none' is only allowed as return type");
+    if (name == Symbols::none || name == Symbols::never) {
+      report_error(node, "Type '%s' is only allowed as return type", name.c_str());
       return ir::Type::any();
     }
     for (auto parameter : holder->type_parameters()) {

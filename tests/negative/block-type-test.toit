@@ -46,6 +46,8 @@ main:
   no-params: it                  // Error: `it` is a parameter too.
   nullable-return: print "x"     // OK: yields null.
   nullable-return: "x"           // Error.
+  filter:                        // Error: the loop can exit, so the block yields null.
+    while true: break
   // OK: fewer parameters, compatible types.
   filter: true
   filter: |x/any| true

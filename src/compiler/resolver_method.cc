@@ -406,6 +406,11 @@ ir::Type MethodResolver::resolve_type(ast::Expression* type, bool is_return_type
       report_error(type->as_Identifier(), "Type 'none' is only allowed as return type");
       return ir::Type::any();
     }
+    if (type_name == Symbols::never) {
+      if (is_return_type) return ir::Type::never();
+      report_error(type->as_Identifier(), "Type 'never' is only allowed as return type");
+      return ir::Type::any();
+    }
     if (type_name == Symbols::any) return ir::Type::any();
     type_declaration = lookup(type_name).entry;
     if (type->is_LspSelection()) {
@@ -1216,6 +1221,7 @@ void MethodResolver::_resolve_fill_return_type() {
 
   if (ast_method->return_type() != null) {
     method_->set_return_type(ir::Type(resolve_type(ast_method->return_type(), true)));
+    if (method_->return_type().is_never()) method_->mark_does_not_return();
   } else if (method_->is_constructor() || method_->is_factory()) {
     method_->set_return_type(ir::Type(holder_));
   } else if (ast_method->body() == null) {
@@ -2915,6 +2921,11 @@ ir::Expression* MethodResolver::_call_block_with_checks(ir::Expression* call) {
                                            arguments[i]->range());
   }
   auto return_type = type.block_return_type();
+  if (return_type.is_never()) {
+    // Trap if the block completes normally after all.
+    auto trap = _call_runtime(Symbols::unreachable, List<ir::Expression*>(), call->range());
+    return zone_new<ir::Sequence>(list_of(call, trap), call->range());
+  }
   if (!return_type.is_class()) return call;
   return zone_new<ir::Typecheck>(ir::Typecheck::RETURN_AS_CHECK,
                                  call,
@@ -3373,6 +3384,9 @@ void MethodResolver::visit_Return(ast::Return* node) {
     return;
   }
 
+  if (method_->return_type().is_never()) {
+    report_error(node, "Can't return from a method with return type 'never'");
+  }
   ir::Expression* return_value = null;
   if (node->value() != null) {
     if (method_->return_type().is_none()) {
@@ -3382,6 +3396,7 @@ void MethodResolver::visit_Return(ast::Return* node) {
     return_value = resolve_expression(node->value(), "Can't return a block", true);
   } else {
     if (!method_->return_type().is_none() &&
+        !method_->return_type().is_never() &&
         ir_to_ast_map_->at(method_)->as_Method()->return_type() != null) {
       diagnostics()->report_warning(node->selection_range(), "Missing return value");
       return_value = zone_new<ir::LiteralUndefined>(node->selection_range());

@@ -58,4 +58,7 @@ tests/negative/block-type-test.toit:46:12: error: Type mismatch. Expected '[bloc
 tests/negative/block-type-test.toit:48:18: error: Type mismatch. Expected '[block -> int?]'. Got '[block -> string]'
   nullable-return: "x"           // Error.
                  ^~~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/block-type-test.toit:49:9: error: Type mismatch. Expected '[block int -> bool]'. Got '[block -> null]'
+  filter:                        // Error: the loop can exit, so the block yields null.
+        ^
 Compilation failed

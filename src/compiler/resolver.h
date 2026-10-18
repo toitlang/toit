@@ -156,7 +156,6 @@ class Resolver {
   void check_future_reserved_globals(const std::vector<Module*>& modules);
 
   void mark_runtime(Module* core_module);
-  void mark_non_returning(Module* core_module);
 
   void setup_inheritance(const std::vector<Module*>& modules, int core_module_index);
   void report_abstract_classes(const std::vector<Module*>& modules);

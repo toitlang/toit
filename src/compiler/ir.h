@@ -156,6 +156,10 @@ class TypeParameter;
 /// Block types (`[block int -> bool]`) describe the parameters a block is
 /// called with and the value it yields. A raw `[block]` parameter has type
 /// `any`. Block types are never nullable.
+///
+/// `never` is the bottom type: the type of expressions that don't complete
+/// normally (return, throw, calls to `-> never` methods, ...). It is
+/// assignable to every type. Only allowed as return type.
 class Type {
  public:
   explicit Type(Class* klass) : kind_(kClass), class_(klass), is_nullable_(false) {
@@ -172,6 +176,7 @@ class Type {
 
   static Type none() { return Type(kNone, false); }
   static Type any()  { return Type(kAny, true); }
+  static Type never() { return Type(kNever, false); }
   static Type invalid() { return Type(kInvalid, false); }
 
   static Type block(List<Type> parameter_types, Type return_type) {
@@ -188,8 +193,9 @@ class Type {
   bool is_type_parameter() const { return kind_ == kTypeParameter; }
   bool is_none() const { return kind_ == kNone; }
   bool is_any() const { return kind_ == kAny; }
+  bool is_never() const { return kind_ == kNever; }
   bool is_valid() const { return kind_ != kInvalid; }
-  bool is_special() const { return is_none() || is_any() || !is_valid(); }
+  bool is_special() const { return is_none() || is_any() || is_never() || !is_valid(); }
 
   Class* klass() const {
     ASSERT(is_class());
@@ -223,7 +229,7 @@ class Type {
   }
 
   Type to_non_nullable() const {
-    if (is_none() || !is_valid()) return *this;
+    if (is_none() || is_never() || !is_valid()) return *this;
     return Type(kind_, class_, parameter_, arguments_, false);
   }
 
@@ -257,6 +263,7 @@ class Type {
   static const int kInvalid = 3;
   static const int kTypeParameter = 4;
   static const int kBlock = 5;
+  static const int kNever = 6;
 
   Type(int kind, bool is_nullable)
       : kind_(kind), class_(null), parameter_(null), is_nullable_(is_nullable) {}
@@ -328,6 +335,7 @@ class Program : public Node {
           List<Type> literal_types,
           Method* lookup_failure,
           Method* as_check_failure,
+          Method* unreachable,
           Class* lambda_box)
       : classes_(classes)
       , methods_(methods)
@@ -337,6 +345,7 @@ class Program : public Node {
       , literal_types_(literal_types)
       , lookup_failure_(lookup_failure)
       , as_check_failure_(as_check_failure)
+      , unreachable_(unreachable)
       , lambda_box_(lambda_box) {}
   IMPLEMENTS(Program)
 
@@ -354,6 +363,7 @@ class Program : public Node {
 
   Method* lookup_failure() const { return lookup_failure_; }
   Method* as_check_failure() const { return as_check_failure_; }
+  Method* unreachable() const { return unreachable_; }
 
   Class* lambda_box() const { return lambda_box_; }
 
@@ -372,6 +382,7 @@ class Program : public Node {
   List<Type> literal_types_;
   Method* lookup_failure_;
   Method* as_check_failure_;
+  Method* unreachable_;
   Class* lambda_box_;
 };
 
