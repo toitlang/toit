@@ -151,6 +151,6 @@ main:
   call-with 1: it
 
   // The value the block yields is checked at runtime.
-  e = catch: yield-any [1]: it
+  e = catch: yield-any [1]: | x/any | x
   expect-equals "AS_CHECK_FAILED" e
   yield-any [1]: it == 1

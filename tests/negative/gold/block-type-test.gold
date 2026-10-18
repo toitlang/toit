@@ -25,13 +25,13 @@ tests/negative/block-type-test.toit:25:10: error: Type mismatch. Expected 'int'.
 tests/negative/block-type-test.toit:26:10: error: Block of type '[block int -> bool]' expects 1 argument, but got 2
   return c.call 1 2
          ^
-tests/negative/block-type-test.toit:33:9: error: Type mismatch. Expected '[block int -> bool]'. Got '[block any -> null]'
+tests/negative/block-type-test.toit:33:9: error: Type mismatch. Expected '[block int -> bool]'. Got '[block int -> null]'
   filter: print it
         ^~~~~~~~~~
 tests/negative/block-type-test.toit:36:9: error: Type mismatch. Expected '[block int -> bool]'. Got '[block string -> bool]'
   filter: |x/string| true
         ^~~~~~~~~~~~~~~~~
-tests/negative/block-type-test.toit:37:9: error: Type mismatch. Expected '[block int -> bool]'. Got '[block any any -> bool]'
+tests/negative/block-type-test.toit:37:9: error: Type mismatch. Expected '[block int -> bool]'. Got '[block int any -> bool]'
   filter: |x y| true
         ^~~~~~~~~~~~
 tests/negative/block-type-test.toit:38:9: error: Type mismatch. Expected '[block int -> bool]'. Got '[block int -> int]'

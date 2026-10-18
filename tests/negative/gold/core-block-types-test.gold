@@ -25,7 +25,7 @@ tests/negative/core-block-types-test.toit:48:19: error: Type mismatch. Expected 
 tests/negative/core-block-types-test.toit:58:11: error: Type mismatch. Expected '[block int -> none]'. Got '[block string -> null]'
   5.repeat: |i/string| null      // Error: index is an int.
           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-tests/negative/core-block-types-test.toit:59:11: error: Type mismatch. Expected '[block int -> none]'. Got '[block any any -> null]'
+tests/negative/core-block-types-test.toit:59:11: error: Type mismatch. Expected '[block int -> none]'. Got '[block int any -> null]'
   5.repeat: |a b| null           // Error: too many parameters.
           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 tests/negative/core-block-types-test.toit:63:12: error: Type mismatch. Expected '[block any any -> num]'. Got '[block int int -> bool]'

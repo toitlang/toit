@@ -122,3 +122,12 @@ main:
   inferred := lying.get
   expect-throw "AS_CHECK_FAILED":
     checked/int := inferred
+
+  // Inferred block parameters are static only: no runtime checks are added,
+  // and they don't remove later checks.
+  lying-list/List<int> := ["str"]
+  lying-list.do: | x |
+    expect-equals "str" x
+    alias := x
+    expect-throw "AS_CHECK_FAILED":
+      checked/int := alias

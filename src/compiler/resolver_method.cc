@@ -1378,6 +1378,7 @@ void MethodResolver::_resolve_parameters(
                                            parameter->default_value() != null,
                                            default_value_range,
                                            parameter->selection_range());
+    if (!has_explicit_type) ir_parameter->mark_without_explicit_type();
 
     (*ir_parameters)[index] = ir_parameter;
 
@@ -2064,6 +2065,7 @@ ir::Code* MethodResolver::_create_code(
                                            false,
                                            Source::Range::invalid(),
                                            node->selection_range());
+    ir_parameter->mark_without_explicit_type();
     it_scope.set_it(ir_parameter);
     scope_ = &it_scope;
   } else {

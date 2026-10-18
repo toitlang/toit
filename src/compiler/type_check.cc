@@ -244,6 +244,11 @@ class TypeChecker : public ReturningVisitor<Type> {
   Type visit_Method(Method* node) {
     method_ = node;
     if (node->has_body()) visit(node->body());
+    // Blocks that were never referenced.
+    while (!pending_blocks_.empty()) {
+      auto local = pending_blocks_.underlying_map().begin()->first;
+      visit_pending_block(local, Type::invalid());
+    }
     return Type::invalid();
   }
   // Globals are handled like methods. As such, they are only visited for the side-effect.
@@ -436,6 +441,20 @@ class TypeChecker : public ReturningVisitor<Type> {
     return Type::never();
   }
 
+  /// Visits the block or lambda [node]. Untyped block parameters take their
+  /// types from the [expected] block type, if valid.
+  Type visit_Code(Code* node, Type expected) {
+    if (node->is_block() && expected.is_block()) {
+      auto parameters = node->parameters();
+      int count = std::min(static_cast<int>(parameters.length()), expected.block_parameter_count());
+      for (int i = 0; i < count; i++) {
+        if (parameters[i]->has_explicit_type()) continue;
+        parameters[i]->set_type(expected.block_parameter_type(i));
+      }
+    }
+    return visit_Code(node);
+  }
+
   Type visit_Code(Code* node) {
     auto body_type = visit(node->body());
     // TODO(florian); lambdas should have a "Lambda" type.
@@ -459,7 +478,30 @@ class TypeChecker : public ReturningVisitor<Type> {
   Type visit_ReferenceClass(ReferenceClass* node) { UNREACHABLE(); return Type::invalid(); }
   Type visit_ReferenceMethod(ReferenceMethod* node) { UNREACHABLE(); return Type::invalid(); }
   Type visit_ReferenceLocal(ReferenceLocal* node) {
+    visit_pending_block(node->target(), Type::invalid());
     return node->target()->type();
+  }
+
+  /// Visits an argument, where the parameter has the [expected] type.
+  Type visit_argument(Expression* argument, Type expected) {
+    if (argument->is_ReferenceBlock()) {
+      visit_pending_block(argument->as_ReferenceBlock()->target(), expected);
+    }
+    return visit(argument);
+  }
+
+  /// Visits the code of the block [local] if its definition was deferred.
+  ///
+  /// Block arguments are hoisted into locals that are defined before the
+  /// call (see `CallBuilder::with_hoisted_args`). Their code is visited
+  /// when the call passes them, so untyped block parameters can be inferred
+  /// from the [expected] parameter type.
+  void visit_pending_block(Local* local, Type expected) {
+    auto probe = pending_blocks_.find(local);
+    if (probe == pending_blocks_.end()) return;
+    auto code = probe->second;
+    pending_blocks_.remove(local);
+    local->set_type(visit_Code(code, expected));
   }
   Type visit_ReferenceBlock(ReferenceBlock* node) { return visit_ReferenceLocal(node); }
   Type visit_ReferenceGlobal(ReferenceGlobal* node) {
@@ -508,10 +550,6 @@ class TypeChecker : public ReturningVisitor<Type> {
 
   Type visit_CallStatic(CallStatic* node) {
     auto arguments = node->arguments();
-    auto argument_types = ListBuilder<Type>::allocate(arguments.length());
-    for (int i = 0; i < arguments.length(); i++) {
-      argument_types[i] = visit(arguments[i]);
-    }
     auto target = node->target();
     auto method = target->target();
     check_deprecated(target->range(), method);
@@ -521,7 +559,15 @@ class TypeChecker : public ReturningVisitor<Type> {
     auto environment = environment_of(method->holder(), List<Type>());
     auto parameters = method->parameters();
     int parameter_offset = node->is_CallConstructor() ? 1 : 0;
-    if (arguments.length() + parameter_offset != parameters.length()) {
+    bool arity_matches = arguments.length() + parameter_offset == parameters.length();
+    auto argument_types = ListBuilder<Type>::allocate(arguments.length());
+    for (int i = 0; i < arguments.length(); i++) {
+      auto expected = arity_matches
+          ? parameters[i + parameter_offset]->type().substitute(environment)
+          : Type::invalid();
+      argument_types[i] = visit_argument(arguments[i], expected);
+    }
+    if (!arity_matches) {
       ASSERT(method->is_setter());  // We already reported an error for this.
     } else {
       for (int i = 0; i < arguments.length(); i++) {
@@ -585,17 +631,26 @@ class TypeChecker : public ReturningVisitor<Type> {
 
     check_deprecated(node->range(), method);
 
-    auto argument_types = ListBuilder<Type>::allocate(arguments.length());
-    for (int i = 0; i < arguments.length(); i++) {
-      argument_types[i] = visit(arguments[i]);
-    }
-
     // Members of generic classes are declared in terms of the holder's type
     // parameters; instantiate them with the receiver's type arguments.
     auto environment = type_environment(receiver_type, method->holder());
 
     auto parameters = method->parameters();
     int argument_offset = 1;  // For the receiver, which is given as first argument.
+
+    auto expected_types = ListBuilder<Type>::allocate(arguments.length());
+    for (int i = 0; i < arguments.length(); i++) expected_types[i] = Type::invalid();
+    CallBuilder::match_arguments_with_parameters(node->shape(),
+                                                 method->resolution_shape(),
+                                                 [&](int argument_pos, int parameter_pos) {
+      if (argument_pos == 0) return;  // The `this` parameter.
+      expected_types[argument_pos - argument_offset] = parameters[parameter_pos]->type().substitute(environment);
+    });
+    auto argument_types = ListBuilder<Type>::allocate(arguments.length());
+    for (int i = 0; i < arguments.length(); i++) {
+      argument_types[i] = visit_argument(arguments[i], expected_types[i]);
+    }
+
     CallBuilder::match_arguments_with_parameters(node->shape(),
                                                  method->resolution_shape(),
                                                  [&](int argument_pos, int parameter_pos) {
@@ -644,6 +699,7 @@ class TypeChecker : public ReturningVisitor<Type> {
 
   Type visit_CallBlock(CallBlock* node) {
     auto target = node->target();
+    if (target->is_ReferenceLocal()) visit_pending_block(target->as_ReferenceLocal()->target(), Type::invalid());
     auto block_type = target->is_ReferenceLocal()
         ? target->as_ReferenceLocal()->target()->type()
         : Type::any();
@@ -769,6 +825,11 @@ class TypeChecker : public ReturningVisitor<Type> {
 
   Type visit_AssignmentDefine(AssignmentDefine* node) {
     auto local = node->local();
+    if (local->is_Block() && node->right()->is_Code()) {
+      ASSERT(node->right()->as_Code()->is_block());
+      pending_blocks_[local] = node->right()->as_Code();
+      return Type::any();
+    }
     auto right_type = visit(node->right());
     if (local->has_explicit_type()) {
       check(node->range(), local->type(), right_type);
@@ -895,6 +956,9 @@ class TypeChecker : public ReturningVisitor<Type> {
   // Virtual calls whose declared return type is a class type, as opposed
   // to a type parameter. See `is_guaranteed`.
   UnorderedSet<CallVirtual*> guaranteed_calls_;
+
+  // Hoisted block arguments whose code hasn't been visited yet.
+  UnorderedMap<Local*, Code*> pending_blocks_;
 
   Type boolean_type_;
   Type true_type_;

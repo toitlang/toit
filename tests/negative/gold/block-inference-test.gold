@@ -1,0 +1,52 @@
+tests/negative/block-inference-test.toit:51:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/block-inference-test.toit:18:15: error: Class 'int' does not have any method 'foo'
+  list.do: it.foo                         // Error.
+              ^~~
+tests/negative/block-inference-test.toit:19:20: error: Class 'int' does not have any method 'foo'
+  list.do: | x | x.foo                    // Error.
+                   ^~~
+tests/negative/block-inference-test.toit:21:24: error: Class 'num' does not have any method 'foo'
+  list.do: | x/num | x.foo                // Error on 'num'.
+                       ^~~
+tests/negative/block-inference-test.toit:22:16: error: Class 'int' does not have any method 'size'
+  list.map: it.size                       // Error.
+               ^~~~
+tests/negative/block-inference-test.toit:23:20: error: Type mismatch. Expected 'int'. Got 'string'
+  list.do: | x | x = "str"                // Error: 'x' is an 'int'.
+                   ^
+tests/negative/block-inference-test.toit:26:21: error: Class 'string' does not have any method 'foo'
+  map.do: | k v | k.foo v.foo             // Error on both.
+                    ^~~
+tests/negative/block-inference-test.toit:26:27: error: Class 'int' does not have any method 'foo'
+  map.do: | k v | k.foo v.foo             // Error on both.
+                          ^~~
+tests/negative/block-inference-test.toit:27:21: error: Class 'string' does not have any method 'foo'
+  map.do --keys: it.foo                   // Error.
+                    ^~~
+tests/negative/block-inference-test.toit:30:16: error: Class 'int' does not have any method 'foo'
+  take-int: it.foo                        // Error.
+               ^~~
+tests/negative/block-inference-test.toit:31:21: error: Class 'int' does not have any method 'foo'
+  take-two: | a | a.foo                   // Error: fewer parameters is fine.
+                    ^~~
+tests/negative/block-inference-test.toit:32:23: error: Class 'string' does not have any method 'foo'
+  take-two: | a b | b.foo                 // Error on 'b'.
+                      ^~~
+tests/negative/block-inference-test.toit:33:14: error: Class 'int' does not have any method 'foo'
+  List 3: it.foo                          // Error.
+             ^~~
+tests/negative/block-inference-test.toit:37:22: error: Class 'string' does not have any method 'foo'
+  box.with-value: it.foo                  // Error.
+                     ^~~
+tests/negative/block-inference-test.toit:38:31: error: Class 'string' does not have any method 'foo'
+  box.maybe --if-present=: it.foo         // Error.
+                              ^~~
+tests/negative/block-inference-test.toit:46:24: error: Class 'string' does not have any method 'foo'
+  nested.do: it.do: it.foo                // Error.
+                       ^~~
+tests/negative/block-inference-test.toit:50:14: error: Type mismatch. Expected 'string'. Got 'int'
+  list.do: s = it                         // Error.
+             ^
+Compilation failed

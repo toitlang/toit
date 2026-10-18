@@ -1512,6 +1512,10 @@ class Local : public Node {
   virtual bool is_block() const { return is_block_; }
 
   virtual bool has_explicit_type() const { return has_explicit_type_; }
+  /// Marks a parameter written without a type. Its type is `any`, but the
+  /// type checker may refine it statically, like the type of an inferred
+  /// local.
+  void mark_without_explicit_type() { has_explicit_type_ = false; }
 
   /// Whether the type also holds at runtime. Explicit types are checked.
   /// Inferred types hold if the initializer's type does, which isn't the
