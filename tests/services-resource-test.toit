@@ -132,7 +132,7 @@ class ResourceProxy extends services.ServiceResourceProxy:
 // ------------------------------------------------------------------
 
 class ResourceServiceProvider extends services.ServiceProvider
-    implements ResourceService services.ServiceHandler:
+    implements services.ServiceHandler:
   resources/Map ::= {:}
 
   constructor:
@@ -148,9 +148,6 @@ class ResourceServiceProvider extends services.ServiceProvider
     if index == ResourceService.CLOSE-COUNT-INDEX:
       return close-count arguments
     unreachable
-
-  open key/string -> int:
-    unreachable  // TODO(kasper): Nasty.
 
   open client/int key/string -> services.ServiceResource:
     resource := Resource this client key

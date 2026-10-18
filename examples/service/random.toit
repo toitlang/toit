@@ -42,7 +42,7 @@ main:
   sleep (Duration --s=10)
   die.close
 
-class RandomServiceClient extends ServiceClient implements RandomService:
+class RandomServiceClient extends ServiceClient:
   static SELECTOR ::= RandomService.SELECTOR
   constructor selector/ServiceSelector=SELECTOR:
     assert: selector.matches SELECTOR
