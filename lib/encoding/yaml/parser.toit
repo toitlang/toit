@@ -208,7 +208,7 @@ abstract class PegParserBase_:
 
     Use this for concatenated productions separated by |.
   */
-  try-parse [block] -> any:
+  try-parse [block -> any] -> any:
     rollback-mark := mark
     result := block.call
     if not result: rollback rollback-mark
@@ -220,14 +220,14 @@ abstract class PegParserBase_:
     and the method will return a boolified version of the return value.
     null and false are considered false values, everything else is true.
   */
-  lookahead [block] -> bool:
+  lookahead [block -> any] -> bool:
     result := try-parse block
     return not (not result) // Boolify the result.
 
   /**
   Evaluates the given $block starting $rune-count amount of runes behind the current offset.
   */
-  lookbehind rune-count [block] -> bool:
+  lookbehind rune-count [block -> bool] -> bool:
     old-offset := offset_
     try:
       rune-count.repeat:
@@ -293,7 +293,7 @@ abstract class PegParserBase_:
 
   Use this for *- and +-productions.
   */
-  repeat --at-least-one/bool=false [block] -> List?:
+  repeat --at-least-one/bool=false [block -> any] -> List?:
     result := []
     while true:
       rollback-mark := mark
@@ -316,21 +316,21 @@ abstract class PegParserBase_:
 
   Use this for ?-productions.
   */
-  optional --or-null/bool=false [block] -> any:
+  optional --or-null/bool=false [block -> any] -> any:
     result := try-parse block
     return result or (or-null ? null : EMPTY-NODE_)
 
   can-read num/int -> bool:
     return offset_ + num <= bytes_.size
 
-  match-one [block] -> int?:
+  match-one [block int -> any] -> int?:
     if can-read 1:
       if (block.call bytes_[offset_]):
         offset_++
         return bytes_[offset_ - 1]
     return null
 
-  match-many n [block] -> bool:
+  match-many n [block -> any] -> bool:
     if can-read n:
       if block.call:
         offset_ += n
@@ -403,7 +403,7 @@ class Parser_ extends PegParserBase_:
     return not (not val)
 
   // Variant of try-parse that converts to boolean.
-  try-parse --as-bool/True [block] -> bool:
+  try-parse --as-bool/True [block -> any] -> bool:
     rollback-mark := mark
     result := block.call
     if not result:
@@ -460,11 +460,11 @@ class Parser_ extends PegParserBase_:
     return result
 
   /** Deprecated. Use $(l-yaml-stream [--if-error]) instead. */
-  l-yaml-stream [--on-error] -> any:
+  l-yaml-stream [--on-error string -> any] -> any:
     return l-yaml-stream --if-error=on-error
 
   // Overall structure.
-  l-yaml-stream [--if-error] -> any:
+  l-yaml-stream [--if-error string -> any] -> any:
     documents := []
     error/ParseError_? := catch --unwind=(: it is not ParseError_):
       repeat: l-document-prefix
@@ -526,7 +526,7 @@ class Parser_ extends PegParserBase_:
   l-document-suffix -> bool:
     return c-document-end and s-l-comments
 
-  allow-forbidden-read [block] -> bool:
+  allow-forbidden-read [block -> bool] -> bool:
     old-forbidden-detected := forbidden-mark
     forbidden-mark = null
     result := block.call
@@ -839,7 +839,7 @@ class Parser_ extends PegParserBase_:
     if c == FLOW-OUT_ or c == FLOW-IN_: return ns-s-flow-map-entries n FLOW-IN_
     return ns-s-flow-map-entries n FLOW-KEY_
 
-  flow-entries n/int c/int [--head] [--tail] -> Deque?:
+  flow-entries n/int c/int [--head -> any] [--tail -> Deque?] -> Deque?:
     try-parse:
       if head-entry := head.call:
         s-separate n c

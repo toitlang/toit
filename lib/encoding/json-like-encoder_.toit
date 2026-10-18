@@ -13,7 +13,7 @@ abstract class EncoderBase_:
 
   constructor .writer_:
 
-  encode obj/any [converter]:
+  encode obj/any [converter any any -> any]:
     if obj is string: encode-string_ obj
     else if obj is num: encode-number_ obj
     else if identical obj true: encode-true_
@@ -36,15 +36,15 @@ abstract class EncoderBase_:
   abstract encode-true_
   abstract encode-false_
   abstract encode-null_
-  abstract encode-map_ map [converter]
-  abstract encode-list_ list [converter]
+  abstract encode-map_ map [converter any any -> any]
+  abstract encode-list_ list [converter any any -> any]
 
   /**
   Outputs a list-like thing to the serialized stream.
   This can be used by converter blocks.
   The generator is called repeatedly with indices from 0 to size - 1.
   */
-  abstract put-list size/int [generator] [converter]
+  abstract put-list size/int [generator int -> any] [converter any any -> any]
 
   put-unicode-escape_ code-point/int:
     writer := writer_

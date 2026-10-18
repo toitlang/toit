@@ -260,7 +260,7 @@ class RsaKey:
     return lines.join "\n"
 
 // Primitive: generates a new RSA key pair and returns [prv_der, pub_der].
-rsa-generate_ bits/int -> List:
+rsa-generate_ bits/int -> List<ByteArray>:
   #primitive.crypto.rsa-generate
 
 // Primitive: sign a digest with a private key DER blob.
@@ -305,7 +305,7 @@ class RsaGenerationResource_:
   wait -> none:
     state_.wait
 
-  finish -> List:
+  finish -> List<ByteArray>:
     return rsa-generate-finish_ state_.resource
 
   close:
@@ -326,7 +326,7 @@ rsa-generate-start_ group bits/int:
   #primitive.crypto.rsa-generate-start
 
 /** Finishes the asynchronous RSA key generation and returns the key pair. */
-rsa-generate-finish_ resource-id -> List:
+rsa-generate-finish_ resource-id -> List<ByteArray>:
   #primitive.crypto.rsa-generate-finish
 
 /** Closes the RSA generation resource group. */

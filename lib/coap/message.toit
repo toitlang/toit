@@ -55,7 +55,7 @@ class Message:
   token/Token? := null
   payload/io.Reader? := null
 
-  options := []
+  options/List<Option> := []
 
   is-empty: return code == 0
 

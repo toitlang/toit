@@ -25,14 +25,14 @@ Generic HKDF implementation.
 The $hasher-creator is a block that creates an HMAC object for a given key.
 The $size is the desired size of the output key in bytes.
 */
-hkdf --ikm/ByteArray --salt/ByteArray? --info/ByteArray? --size/int [hasher-creator] -> ByteArray:
+hkdf --ikm/ByteArray --salt/ByteArray? --info/ByteArray? --size/int [hasher-creator ByteArray -> any] -> ByteArray:
   prk := hkdf-extract --ikm=ikm --salt=salt hasher-creator
   return hkdf-expand --prk=prk --info=info --size=size hasher-creator
 
 /**
 HKDF-Extract step.
 */
-hkdf-extract --ikm/ByteArray --salt/ByteArray? [hasher-creator] -> ByteArray:
+hkdf-extract --ikm/ByteArray --salt/ByteArray? [hasher-creator ByteArray -> any] -> ByteArray:
   // We call the hasher-creator with an empty key to determine the hash size.
   actual-salt := salt or ByteArray (hasher-creator.call #[]).get.size
   hmac := hasher-creator.call actual-salt
@@ -43,7 +43,7 @@ hkdf-extract --ikm/ByteArray --salt/ByteArray? [hasher-creator] -> ByteArray:
 HKDF-Expand step.
 The $size is the desired size of the output key in bytes.
 */
-hkdf-expand --prk/ByteArray --info/ByteArray? --size/int [hasher-creator] -> ByteArray:
+hkdf-expand --prk/ByteArray --info/ByteArray? --size/int [hasher-creator ByteArray -> any] -> ByteArray:
   hash-len := prk.size
   if size > 255 * hash-len: throw "OUT_OF_RANGE"
   

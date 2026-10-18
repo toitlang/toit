@@ -90,7 +90,7 @@ class YamlEncoder extends EncoderBase_:
       indent-buffer_ = indent-buffer_ * (indent_ / indent-buffer_.size + 1)
     writer_.write indent-buffer_ 0 indent_
 
-  encode-sub-value_ value --is-map/bool=false new-indent/int [converter]:
+  encode-sub-value_ value --is-map/bool=false new-indent/int [converter any any -> any]:
     old-indent := indent_
     old-enclosed-in-map := enclosed-in-map_
     indent_ = new-indent
@@ -99,7 +99,7 @@ class YamlEncoder extends EncoderBase_:
     indent_ = old-indent
     enclosed-in-map_ = old-enclosed-in-map
 
-  encode-map_ map/Map [converter]:
+  encode-map_ map/Map [converter any any -> any]:
     if map.size == 0:
       put-value_ "{}"
       return
@@ -118,7 +118,7 @@ class YamlEncoder extends EncoderBase_:
       encode-sub-value_ value --is-map indent_ + 2 converter
       close-element_
 
-  encode-list_ list/List [converter]:
+  encode-list_ list/List [converter any any -> any]:
     put-list list.size (: list[it]) converter
 
   /**
@@ -126,7 +126,7 @@ class YamlEncoder extends EncoderBase_:
   This can be used by converter blocks.
   The generator is called repeatedly with indices from 0 to size - 1.
   */
-  put-list size/int [generator] [converter]:
+  put-list size/int [generator int -> any] [converter any any -> any]:
     if size == 0:
       put-value_ "[]"
       return
