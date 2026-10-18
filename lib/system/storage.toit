@@ -108,13 +108,13 @@ class Bucket extends ServiceResourceProxy:
   get key/string -> any:
     return get key --if-present=(: it) --if-absent=(: null)
 
-  get key/string [--if-absent] -> any:
+  get key/string [--if-absent string -> any] -> any:
     return get key --if-absent=if-absent --if-present=: it
 
-  get key/string [--if-present] -> any:
+  get key/string [--if-present any -> any] -> any:
     return get key --if-present=if-present --if-absent=: null
 
-  get key/string [--if-present] [--if-absent] -> any:
+  get key/string [--if-present any -> any] [--if-absent string -> any] -> any:
     bytes := (client_ as StorageServiceClient).bucket-get handle_ key
     if bytes:
       // Play it safe and handle the case where a bucket ended up
@@ -124,7 +124,7 @@ class Bucket extends ServiceResourceProxy:
       if not exception: return if-present.call decoded
     return if-absent.call key
 
-  get key/string [--init]:
+  get key/string [--init -> any]:
     return get key
       --if-absent=:
         initial-value := init.call
@@ -341,7 +341,7 @@ class Region extends ServiceResourceProxy:
   Returns the $uri for all existing regions with the $SCHEME-FLASH
     scheme as a list of strings.
   */
-  static list --flash/bool -> List:
+  static list --flash/bool -> List<string>:
     if not flash: throw "Bad Argument"
     return list --scheme=SCHEME-FLASH
 
@@ -349,7 +349,7 @@ class Region extends ServiceResourceProxy:
   Returns the $uri for all existing regions with the given
     $scheme as a list of strings.
   */
-  static list --scheme/string -> List:
+  static list --scheme/string -> List<string>:
     client := _client_
     if not client: throw "UNSUPPORTED"
     return client.region-list --scheme=scheme

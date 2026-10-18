@@ -56,10 +56,10 @@ monitor RpcSynchronizer_:
   static EMPTY ::= Object
 
   map_/Map ::= {:}
-  pids_/Map ::= {:}
+  pids_/Map<int, int> ::= {:}
   id_/int := 0
 
-  send pid/int [send] -> any:
+  send pid/int [send int int -> any] -> any:
     id := id_
     id_ = id > 0x3fff_ffff ? 0 : id + 1
 

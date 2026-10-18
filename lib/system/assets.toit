@@ -4,7 +4,7 @@
 
 import io show LITTLE-ENDIAN
 
-decode assets/ByteArray=assets_ -> Map:
+decode assets/ByteArray=assets_ -> Map<string, ByteArray>:
   result := {:}
   if assets.is-empty: return result
   // Run through the entries and build the map.
@@ -27,7 +27,7 @@ decode assets/ByteArray=assets_ -> Map:
     result[name.to-string] = content
   return result
 
-encode entries/Map -> ByteArray:
+encode entries/Map<string, ByteArray> -> ByteArray:
   // First compute the size. This allows us to allocate
   // the resulting byte array in one go.
   size := 8

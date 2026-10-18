@@ -19,7 +19,7 @@ class RpcBroker implements SystemMessageHandler_:
   static MAX-TASKS/int     ::= 16
   static MAX-REQUESTS/int? ::= 64
 
-  procedures_/Map ::= {:}
+  procedures_/Map<int, Lambda> ::= {:}
   queue_/RpcRequestQueue_ ::= RpcRequestQueue_ MAX-TASKS
 
   install:
@@ -167,7 +167,7 @@ monitor RpcRequestQueue_:
       processing-requests_[task-index] = request
       return request
 
-  cancel [predicate] -> none:
+  cancel [predicate RpcRequest_ -> any] -> none:
     // First we get rid of any unprocessed request where the 'predicate' block
     // answers true. This is a simple linked list traversal with the usual
     // bookkeeping challenges that come from removing from a linked list with
