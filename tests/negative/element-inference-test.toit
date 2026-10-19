@@ -65,6 +65,19 @@ main:
   n = ["x"]
   n.first.foo                  // OK: reassignment widened.
 
+  o := List 3: it * 2
+  o.first.foo                  // Error: int.
+
+  p := List 3: null
+  p.first.foo                  // OK: only null seen.
+
+  q := [1]
+  q.map --in-place: "x"        // Writes through the block.
+  q.first.foo                  // OK: any.
+
+  r := Map 2 (: "k$it") (: it)
+  r.do: | k v | k.foo          // Error: string.
+
   // Expressions get precise types too.
   takes-strings [1]            // Error.
   takes-strings ["x"]          // OK.

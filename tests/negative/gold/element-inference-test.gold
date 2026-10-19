@@ -1,4 +1,4 @@
-tests/negative/element-inference-test.toit:73:3: error: Unresolved identifier: 'unresolved'
+tests/negative/element-inference-test.toit:86:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
 tests/negative/element-inference-test.toit:15:11: error: Class 'int' does not have any method 'foo'
@@ -25,7 +25,13 @@ tests/negative/element-inference-test.toit:49:11: error: Class 'int' does not ha
 tests/negative/element-inference-test.toit:62:11: error: Class 'int' does not have any method 'foo'
   m.first.foo                  // Error: int?.
           ^~~
-tests/negative/element-inference-test.toit:69:17: error: Type mismatch. Expected 'List<string>'. Got 'List<int>'
+tests/negative/element-inference-test.toit:69:11: error: Class 'int' does not have any method 'foo'
+  o.first.foo                  // Error: int.
+          ^~~
+tests/negative/element-inference-test.toit:79:19: error: Class 'string' does not have any method 'foo'
+  r.do: | k v | k.foo          // Error: string.
+                  ^~~
+tests/negative/element-inference-test.toit:82:17: error: Type mismatch. Expected 'List<string>'. Got 'List<int>'
   takes-strings [1]            // Error.
                 ^
 Compilation failed

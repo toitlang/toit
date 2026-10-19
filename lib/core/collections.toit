@@ -183,7 +183,7 @@ abstract class List<E> extends CollectionBase<E>:
     return List_.from-array_ (Array_ size initial)
 
   /** Creates a List and initializes each element with the result of invoking the block. */
-  constructor size/int [block int -> any]:
+  constructor size/int [block int -> E]:
     return List_.from-array_ (Array_ size block)
 
   /** Creates a List, containing all elements of the given $collection */
@@ -500,7 +500,7 @@ abstract class List<E> extends CollectionBase<E>:
   // We have a second function here, since the `block` has implicitly a different
   // type. It needs to have T->T.
   // That said: would also be convenient to just reuse the list and change its type.
-  map --in-place/bool [block E -> any] -> List:
+  map --in-place/bool [block E -> E] -> List:
     return map_ (in-place ? this : []) block
 
   map_ target/List [block E -> any] -> List:
@@ -871,7 +871,7 @@ abstract class Array_<E> extends List<E>:
       throw it
 
   /** Creates an array and initializes each element with the result of invoking the block. */
-  constructor size/int [block int -> any]:
+  constructor size/int [block int -> E]:
     result := Array_ size
     size.repeat: result[it] = block.call it
     return result
@@ -2839,7 +2839,7 @@ class Map<K, V> extends HashedInsertionOrderedCollection_<K>:
   Constructs a Map with a given $size.
   For each key-value pair, first the block $get-key and then the block $get-value are called.
   */
-  constructor size [get-key int -> any] [get-value int -> any]:
+  constructor size/int [get-key int -> K] [get-value int -> V]:
     size.repeat: this[get-key.call it] = get-value.call it
 
   /**
