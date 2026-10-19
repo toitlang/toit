@@ -34,7 +34,7 @@ class Stack extends Mirror:
   static tag ::= 'S'
   frames ::= []
 
-  constructor json program/Program? [--if-error]:
+  constructor json program/Program? [--if-error string -> any]:
     if not program: throw "Stack trace can't be decoded without a snapshot"
     frames = json[1].map: decode-json_ it program --if-error=if-error
     super json program
@@ -63,7 +63,7 @@ class Frame extends Mirror:
   method-info/MethodInfo ::= ?
   position/Position ::= ?
 
-  constructor json program/Program [--if-error]:
+  constructor json program/Program [--if-error string -> any]:
     index = json[1]
     absolute-bci = json[2]
     method = program.method-from-absolute-bci absolute-bci
@@ -87,7 +87,7 @@ class Instance extends Mirror:
   static tag ::= 'I'
   class-id/int ::= ?
 
-  constructor json program/Program? [--if-error]:
+  constructor json program/Program? [--if-error string -> any]:
     class-id = json[1]
     super json program
 
@@ -106,7 +106,7 @@ class Array extends Mirror:
   size ::= 0
   content ::= []
 
-  constructor json program/Program? [--if-error]:
+  constructor json program/Program? [--if-error string -> any]:
     size = json[1]
     content = json[2].map: decode-json_ it program --if-error=if-error
     super json program
@@ -122,7 +122,7 @@ class MList extends Mirror:
   size ::= 0
   content ::= []
 
-  constructor json program/Program? [--if-error]:
+  constructor json program/Program? [--if-error string -> any]:
     size = json[1]
     content = json[2].map: decode-json_ it program --if-error=if-error
     super json program
@@ -140,7 +140,7 @@ class Error extends Mirror:
   message ::= ?
   trace := ?
 
-  constructor json program/Program? [--if-error]:
+  constructor json program/Program? [--if-error string -> any]:
     type = decode-json_ json[1] program --if-error=if-error
     message = decode-json_ json[2] program --if-error=if-error
     if program:
@@ -328,7 +328,7 @@ class Profile extends Mirror:
   cutoff ::= 0
   total ::= 0
 
-  constructor json program/Program? [--if-error]:
+  constructor json program/Program? [--if-error string -> any]:
     if not program: throw "Profile can't be decoded without a snapshot"
     pos := 4
     title = decode-json_ json[1] program --if-error=if-error
@@ -367,7 +367,7 @@ class Histogram extends Mirror:
   marker_ /string
   entries /List ::= []
 
-  constructor json program/Program? [--if-error]:
+  constructor json program/Program? [--if-error string -> any]:
     if not program: throw "Histogram can't be decoded without a snapshot"
     assert:   json[0] == tag
     marker_ = json[1]
@@ -397,7 +397,7 @@ class CoreDump extends Mirror:
   static tag ::= 'c'
   core-dump ::= ?
 
-  constructor json program [--if-error]:
+  constructor json program [--if-error string -> any]:
     core-dump = json[1]
     super json program
 
@@ -467,7 +467,7 @@ class MallocReport extends Mirror:
   */
   static MEMORY-PAGE-MERGE-WITH-NEXT_ ::= 1 << 6
 
-  constructor json program [--if-error]:
+  constructor json program [--if-error string -> any]:
     for i := 1; i + 2 < json.size; i += 3:
       uses-list.add       json[i + 0]
       fullnesses-list.add json[i + 1]
@@ -592,7 +592,7 @@ class HeapReport extends Mirror:
   reason := ""
   pages ::= []
 
-  constructor json program/Program? [--if-error]:
+  constructor json program/Program? [--if-error string -> any]:
     reason = json[1]
     pages = json[2].map: decode-json_ it program --if-error=if-error
     pages.sort --in-place: | a b | a.address.compare-to b.address
@@ -647,13 +647,13 @@ class HeapPage extends Mirror:
   static PAGE-HEADER_ ::= 24
   static PAGE_ ::= 4096
 
-  constructor json program [--if-error]:
+  constructor json program [--if-error string -> any]:
     address = json[1]
     map = json[2]
     super json program
 
   // Calls the block with arguments offset size use-character last_flag
-  do [block]:
+  do [block int int int bool -> none]:
     offset := 0
     for i := 0; i < map.size; i++:
       extra := 0
@@ -726,7 +726,7 @@ abstract class UnicodeBlockOutputter_ extends BlockOutputter_:
   previous-usage := null
   buffer := "     $("▁" * 64)\n    ▕"
 
-  increment-atoms last-flag reset [block]:
+  increment-atoms last-flag reset [block -> none]:
     atoms++
     if atoms & 0x7f == 0:
       buffer += last-flag ?  "$reset▏\n     $("▔" * 64)\n" : "$reset▏\n    ▕"
@@ -823,10 +823,10 @@ class ColorBlockOutputter_ extends UnicodeBlockOutputter_:
       foreground = -1
       background = -1
 
-decode json-payload/any program/Program? [--if-error]:
+decode json-payload/any program/Program? [--if-error string -> any]:
   return decode-json_ json-payload program --if-error=if-error
 
-decode-json_ json program/Program? [--if-error]:
+decode-json_ json program/Program? [--if-error string -> any]:
   // First recognize basic types.
   if json is num: return json
   if json is string: return json

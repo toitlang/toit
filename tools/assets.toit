@@ -200,7 +200,7 @@ list-assets invocation/cli.Invocation -> none:
       --title="Assets"
       mapped
 
-update-assets invocation/cli.Invocation [block] -> none:
+update-assets invocation/cli.Invocation [block Map -> none] -> none:
   input-path := invocation[OPTION-ASSETS]
   output-path := invocation[OPTION-OUTPUT]
   if not output-path: output-path = input-path

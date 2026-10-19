@@ -106,13 +106,13 @@ class Program:
   selector-from-dispatch-offset offset/int -> string:
     return selector-from-dispatch-offset offset --if-absent=:"Unknown D$offset"
 
-  selector-from-dispatch-offset offset/int [--if-absent] -> string:
+  selector-from-dispatch-offset offset/int [--if-absent int -> string] -> string:
     return selector-names_.get offset --if-absent=if-absent
 
   method-info-for id/int -> MethodInfo:
     return method-info-for id: throw "Unknown method"
 
-  method-info-for id/int [failure] -> MethodInfo:
+  method-info-for id/int [failure int -> MethodInfo?] -> MethodInfo?:
     return method-table_.get id --if-absent=(: failure.call id)
 
   method-name-for id/int -> string:
@@ -123,7 +123,7 @@ class Program:
   class-info-for id/int -> ClassInfo:
     return class-table_[id]
 
-  class-info-for id/int [failure] -> ClassInfo:
+  class-info-for id/int [failure int -> ClassInfo?] -> ClassInfo?:
     if not 0 <= id < class-table_.size: return failure.call id
     return class-table_[id]
 
@@ -133,10 +133,10 @@ class Program:
   selector-class-for location-id/int -> SelectorClass:
     return selectors_[location-id]
 
-  do --class-infos/True [block]:
+  do --class-infos/True [block ClassInfo -> none] -> none:
     class-table_.do block
 
-  do --method-infos/True [block]:
+  do --method-infos/True [block MethodInfo -> none] -> none:
     method-table_.do --values block
 
   method-from-absolute-bci absolute-bci/int -> ToitMethod:
@@ -393,11 +393,11 @@ class Segment:
     result += byte << shift
     return result
 
-  read-list-int32_ -> List:
+  read-list-int32_ -> List<int>:
     size := read-int32_
     return List size: read-int32_
 
-  read-list-uint16_ -> List:
+  read-list-uint16_ -> List<int>:
     size := read-int32_
     return List size: read-uint16_
 
@@ -685,7 +685,7 @@ class ToitMethod:
   // Helper method to extract values from bytecode stream.
   uint32 offset: return LITTLE-ENDIAN.uint32 bytecodes offset
 
-  do-call bci index program/Program [block]:
+  do-call bci/int index program/Program [block string -> none] -> none:
     opcode := bytecodes[bci]
     bytecode := BYTE-CODES[opcode]
     format := bytecode.format
@@ -706,7 +706,7 @@ class ToitMethod:
         program.selector-from-dispatch-offset
           uint16 bci + 2
 
-  do-calls program [block]:
+  do-calls program/Program [block string -> none] -> none:
     effective := 0
     index := 0
     length := bytecodes.size
@@ -720,7 +720,7 @@ class ToitMethod:
       if opcode != 0: effective = 0;
       index += bc-length
 
-  do-bytecodes [block]:
+  do-bytecodes [block Bytecode int -> none] -> none:
     index := 0
     length := bytecodes.size
     while index < length:
@@ -733,7 +733,7 @@ class ToitMethod:
     output program null: null
     print ""
 
-  output program/Program arguments/List? --show-positions/bool=true [block]:
+  output program/Program arguments/List? --show-positions/bool=true [block int -> any]:
     debug-info := program.method-info-for id
     prefix := show-positions ? "$id: " : ""
     print "$prefix$(debug-info.short-stringify program --show-positions=show-positions)"
@@ -1108,7 +1108,7 @@ abstract class HeapSegment extends Segment:
   parsed_ := false
   parse-result := null
 
-  parse [block]:
+  parse [block -> any]:
     if not parsed_:
       parse-result = block.call
       parsed_ = true

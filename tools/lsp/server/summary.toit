@@ -281,7 +281,7 @@ class Class implements ToplevelElement:
   factories    / List<Method> ::= ?  // Only unnamed factories
 
   fields  / List<Field> ::= ?
-  methods / List ::= ?  // Of Method. Raw, as toitdoc concatenates it with the fields.
+  methods / List<Method> ::= ?
 
   toitdoc / Contents? ::= ?
 
