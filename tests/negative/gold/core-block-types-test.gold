@@ -1,25 +1,28 @@
 tests/negative/core-block-types-test.toit:11:18: error: Type mismatch. Expected '[block -> truthy]'. Got '[block any -> bool]'
   wait-bad: await: |a| true                // Error: no arguments.
                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/core-block-types-test.toit:20:19: warning: Condition always evaluates to true
+  list.filter: it & 1            // Warning: an int is always truthy.
+                  ^
 tests/negative/core-block-types-test.toit:21:15: warning: Condition always evaluates to true
   list.every: 42                 // Warning: always true.
               ^~
-tests/negative/core-block-types-test.toit:22:14: error: Type mismatch. Expected '[block any -> truthy]'. Got '[block any any -> bool]'
+tests/negative/core-block-types-test.toit:22:14: error: Type mismatch. Expected '[block int -> truthy]'. Got '[block int any -> bool]'
   list.filter: |a b| true        // Error: too many parameters.
              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-tests/negative/core-block-types-test.toit:23:10: error: Type mismatch. Expected '[block any -> none]'. Got '[block any any -> null]'
+tests/negative/core-block-types-test.toit:23:10: error: Type mismatch. Expected '[block int -> none]'. Got '[block int any -> null]'
   list.do: |a b| null            // Error: too many parameters.
          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-tests/negative/core-block-types-test.toit:30:17: error: Type mismatch. Expected '[block any -> truthy]'. Got '[block any any -> bool]'
+tests/negative/core-block-types-test.toit:30:17: error: Type mismatch. Expected '[block int -> truthy]'. Got '[block int any -> bool]'
   map.any --keys: |k v| true     // Error: --keys passes only the key.
                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-tests/negative/core-block-types-test.toit:31:9: error: Type mismatch. Expected '[block any any -> none]'. Got '[block any any any -> null]'
+tests/negative/core-block-types-test.toit:31:9: error: Type mismatch. Expected '[block int int -> none]'. Got '[block int int any -> null]'
   map.do: |k v extra| null       // Error: too many parameters.
         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 tests/negative/core-block-types-test.toit:36:14: error: Type mismatch. Expected '[block int -> truthy]'. Got '[block string -> bool]'
   bytes.every: |b/string| true   // Error: elements are ints.
              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-tests/negative/core-block-types-test.toit:41:36: error: Type mismatch. Expected '[block any any -> truthy]'. Got '[block any any any -> bool]'
+tests/negative/core-block-types-test.toit:41:36: error: Type mismatch. Expected '[block int any -> truthy]'. Got '[block int any any -> bool]'
   list.equals [1] --element-equals=: |a b c| true   // Error: too many parameters.
                                    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 tests/negative/core-block-types-test.toit:47:19: error: Type mismatch. Expected '[block any ByteArray? -> truthy]'. Got '[block any string -> bool]'
@@ -31,7 +34,7 @@ tests/negative/core-block-types-test.toit:57:11: error: Type mismatch. Expected 
 tests/negative/core-block-types-test.toit:58:11: error: Type mismatch. Expected '[block int -> none]'. Got '[block int any -> null]'
   5.repeat: |a b| null           // Error: too many parameters.
           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-tests/negative/core-block-types-test.toit:62:12: error: Type mismatch. Expected '[block any any -> num]'. Got '[block int int -> bool]'
+tests/negative/core-block-types-test.toit:62:12: error: Type mismatch. Expected '[block int int -> num]'. Got '[block int int -> bool]'
   list.sort: |a/int b/int| a < b // Error: compare must return a num.
            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Compilation failed

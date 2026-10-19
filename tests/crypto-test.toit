@@ -336,7 +336,7 @@ adler-test:
 
   for i := -1; i < VECTORS.size; i++:
     test := VECTORS[i < 0 ? 0 : i]
-    input := test[0]
+    input/any := test[0]
     if i < 0: input = FakeData input
     output := test[1]
     adler1 := Adler32

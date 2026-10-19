@@ -17,7 +17,7 @@ main:
   // Collection predicates.
   list.every: it == 1            // OK.
   list.any: x or false           // OK: `or` yields any.
-  list.filter: it & 1            // OK: any.
+  list.filter: it & 1            // Warning: an int is always truthy.
   list.every: 42                 // Warning: always true.
   list.filter: |a b| true        // Error: too many parameters.
   list.do: |a b| null            // Error: too many parameters.

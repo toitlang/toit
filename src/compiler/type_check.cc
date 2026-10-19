@@ -243,12 +243,16 @@ class TypeChecker : public ReturningVisitor<Type> {
   // The return-type is extracted when the methods are referenced.
   Type visit_Method(Method* node) {
     method_ = node;
-    if (node->has_body()) visit(node->body());
-    // Blocks that were never referenced.
-    while (!pending_blocks_.empty()) {
-      auto local = pending_blocks_.underlying_map().begin()->first;
-      visit_pending_block(local, Type::invalid());
-    }
+    if (!node->has_body()) return Type::invalid();
+    with_element_inference([&]() {
+      method_ = node;
+      visit(node->body());
+      // Blocks that were never referenced.
+      while (!pending_blocks_.empty()) {
+        auto local = pending_blocks_.underlying_map().begin()->first;
+        visit_pending_block(local, Type::invalid());
+      }
+    });
     return Type::invalid();
   }
   // Globals are handled like methods. As such, they are only visited for the side-effect.
@@ -291,7 +295,16 @@ class TypeChecker : public ReturningVisitor<Type> {
     globals_cycle_detector_.start(node);
     TOIT_CHECK(last->is_Return());
     auto ret = last->as_Return();
-    auto value_type = visit(ret->value());
+    Type value_type = Type::invalid();
+    with_element_inference([&]() {
+      method_ = node;
+      value_type = visit(ret->value());
+    });
+    // Globals are written from other methods: keep the elements of a fresh
+    // collection raw.
+    if (is_fresh_creator(ret->value()) && value_type.is_class() && value_type.has_arguments()) {
+      value_type = Type(value_type.klass());
+    }
     if (value_type.is_none()) {
       report_error(ret->value()->range(), "Globals can't be initialized with 'none'");
       node->set_return_type(Type::any());
@@ -547,6 +560,9 @@ class TypeChecker : public ReturningVisitor<Type> {
     if (target->has_explicit_type() || !method_->is_Global()) {
       return target->return_type();
     }
+    // The first pass of element inference doesn't report diagnostics, so it
+    // mustn't handle other globals.
+    if (collecting_ && !handled_globals_.contains(target)) return Type::any();
     auto current_method = method_;
     visit_Global(target);
     method_ = current_method;
@@ -613,6 +629,10 @@ class TypeChecker : public ReturningVisitor<Type> {
         check_parameter(arguments[i]->range(), parameter, parameter_type, argument_types[i]);
       }
     }
+    if (arity_matches) {
+      auto inferred = infer_creation_type(node, argument_types);
+      if (inferred.is_valid()) return inferred;
+    }
     return method->return_type().substitute(environment);
   }
 
@@ -625,7 +645,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     bool is_lsp_selection = node->target()->is_LspSelectionDot();
 
     auto receiver_type = visit(node->receiver());
-    if (is_lsp_selection) {
+    if (is_lsp_selection && !collecting_) {
       lsp_->selection_handler()->call_virtual(node, receiver_type, classes_);
     }
     auto arguments = node->arguments();
@@ -690,6 +710,20 @@ class TypeChecker : public ReturningVisitor<Type> {
     auto argument_types = ListBuilder<Type>::allocate(arguments.length());
     for (int i = 0; i < arguments.length(); i++) {
       argument_types[i] = visit_argument(arguments[i], expected_types[i]);
+    }
+    if (collecting_) {
+      auto candidate = candidate_of(node->receiver());
+      if (candidate != null) {
+        auto klass = candidates_.at(candidate).klass;
+        auto self_environment = type_environment(klass->self_type(), method->holder());
+        CallBuilder::match_arguments_with_parameters(node->shape(),
+                                                     method->resolution_shape(),
+                                                     [&](int argument_pos, int parameter_pos) {
+          if (argument_pos == 0) return;
+          auto parameter_type = parameters[parameter_pos]->type().substitute(self_environment);
+          add_bounds(candidate, parameter_type, argument_types[argument_pos - argument_offset]);
+        });
+      }
     }
 
     CallBuilder::match_arguments_with_parameters(node->shape(),
@@ -879,6 +913,18 @@ class TypeChecker : public ReturningVisitor<Type> {
       return Type::any();
     }
     auto right_type = visit(node->right());
+    if (!local->has_explicit_type()) {
+      if (collecting_) {
+        if (register_candidate(local, node->right(), right_type)) {
+          local->set_type(Type(right_type.klass()));
+          return right_type;
+        }
+      } else if (final_types_.contains_key(local)) {
+        local->set_type(final_types_.at(local));
+        if (is_guaranteed(node->right())) local->mark_guaranteed_inferred_type();
+        return right_type;
+      }
+    }
     if (local->has_explicit_type()) {
       check(node->range(), local->type(), right_type);
     } else if (right_type.is_never()) {
@@ -898,6 +944,379 @@ class TypeChecker : public ReturningVisitor<Type> {
       }
     }
     return right_type;
+  }
+
+  /// Runs [body] twice to infer the element types of fresh collections
+  /// stored in untyped locals.
+  ///
+  /// `l := [1]` followed by `l.add "x"` makes `l` a `List<any>` instead of
+  /// a `List<int>` that rejects the `add`. The first pass collects lower
+  /// bounds for each candidate local (the initializer's type arguments, and
+  /// every argument passed to a parameter typed with the element type),
+  /// without reporting diagnostics. The second pass checks the body with the
+  /// joined types.
+  void with_element_inference(const std::function<void ()>& body) {
+    auto saved_candidates = std::move(candidates_);
+    auto saved_final_types = std::move(final_types_);
+    bool saved_collecting = collecting_;
+    candidates_.clear();
+    final_types_.clear();
+
+    auto saved_diagnostics = diagnostics_;
+    {
+      NullDiagnostics null_diagnostics(saved_diagnostics);
+      diagnostics_ = &null_diagnostics;
+      collecting_ = true;
+      body();
+      collecting_ = false;
+      diagnostics_ = saved_diagnostics;
+    }
+    pending_blocks_.clear();
+    compute_final_types();
+    body();
+
+    candidates_ = std::move(saved_candidates);
+    final_types_ = std::move(saved_final_types);
+    collecting_ = saved_collecting;
+  }
+
+  /// Whether [node] creates a new value: a list literal, or a constructor or
+  /// factory of a generic class. Elements passed through parameters that
+  /// don't mention the type parameters make its type arguments `any` (see
+  /// `infer_creation_type`).
+  bool is_fresh_creator(Expression* node) {
+    if (!node->is_CallStatic() || node->is_Lambda()) return false;
+    auto method = node->as_CallStatic()->target()->target();
+    auto name = method->name();
+    if (name == Symbols::create_array_ || name == Symbols::create_list_literal_from_array_) {
+      return method->holder() == null;
+    }
+    if (!method->is_constructor() && !method->is_factory()) return false;
+    auto holder = method->holder();
+    if (holder == null || !holder->is_generic()) return false;
+    auto return_type = method->return_type();
+    return return_type.is_class() && return_type.klass() == holder;
+  }
+
+  static bool mentions_type_parameter(Type type, Class* klass) {
+    if (type.is_type_parameter()) return type.parameter()->holder() == klass;
+    if (type.is_block()) {
+      for (int i = 0; i < type.block_parameter_count(); i++) {
+        if (mentions_type_parameter(type.block_parameter_type(i), klass)) return true;
+      }
+      return mentions_type_parameter(type.block_return_type(), klass);
+    }
+    if (type.is_class()) {
+      for (auto argument : type.arguments()) {
+        if (mentions_type_parameter(argument, klass)) return true;
+      }
+    }
+    return false;
+  }
+
+  /// The local whose value [node] evaluates to, looking through the
+  /// desugaring of collection literals.
+  static Local* alias_source(Expression* node) {
+    while (true) {
+      if (node->is_ReferenceLocal()) {
+        auto target = node->as_ReferenceLocal()->target();
+        if (target->is_CapturedLocal()) target = target->as_CapturedLocal()->local();
+        return target;
+      }
+      if (node->is_Sequence()) {
+        auto expressions = node->as_Sequence()->expressions();
+        if (expressions.is_empty()) return null;
+        node = expressions.last();
+        continue;
+      }
+      if (node->is_CallStatic() && !node->is_Lambda()) {
+        auto method = node->as_CallStatic()->target()->target();
+        if (method->name() == Symbols::create_list_literal_from_array_ && method->holder() == null) {
+          node = node->as_CallStatic()->arguments()[0];
+          continue;
+        }
+      }
+      return null;
+    }
+  }
+
+  Local* candidate_root(Local* local) {
+    if (local->is_CapturedLocal()) local = local->as_CapturedLocal()->local();
+    auto probe = candidates_.find(local);
+    if (probe == candidates_.end()) return null;
+    while (probe->second.parent != local) {
+      local = probe->second.parent;
+      probe = candidates_.find(local);
+    }
+    return local;
+  }
+
+  Local* candidate_of(Expression* node) {
+    if (!node->is_ReferenceLocal()) return null;
+    return candidate_root(node->as_ReferenceLocal()->target());
+  }
+
+  /// Registers [local] as a candidate if [right] creates a fresh collection
+  /// or aliases another candidate.
+  bool register_candidate(Local* local, Expression* right, Type right_type) {
+    if (!right_type.is_class() || !right_type.klass()->is_generic()) return false;
+    auto source = alias_source(right);
+    auto source_root = source == null ? null : candidate_root(source);
+    if (source_root == null && !is_fresh_creator(right)) return false;
+    auto klass = right_type.klass();
+    Candidate candidate;
+    candidate.klass = klass;
+    candidate.parent = local;
+    candidate.bounds.resize(klass->type_parameters().length(), Type::invalid());
+    candidates_[local] = candidate;
+    if (source_root != null) unite(local, source_root);
+    // A raw fresh value has no elements yet (its type arguments are `any`
+    // when they are unknown).
+    if (right_type.has_arguments()) add_bounds(local, klass->self_type(), right_type);
+    return true;
+  }
+
+  /// Maps the type parameters of [sub] to those of its supertype [super]:
+  /// entry `i` is the index of [super]'s i-th parameter in [sub], or -1.
+  static std::vector<int> parameter_mapping(Class* sub, Class* super) {
+    std::vector<int> result(super->type_parameters().length(), -1);
+    List<Type> arguments;
+    auto self_arguments = sub->self_type().arguments();
+    if (!arguments_for(sub, self_arguments, super, &arguments)) return result;
+    if (arguments.length() != static_cast<int>(result.size())) return result;
+    for (int i = 0; i < arguments.length(); i++) {
+      auto argument = arguments[i];
+      if (argument.is_type_parameter() && argument.parameter()->holder() == sub) {
+        result[i] = argument.parameter()->index();
+      }
+    }
+    return result;
+  }
+
+  void unite(Local* a, Local* b) {
+    auto root_a = candidate_root(a);
+    auto root_b = candidate_root(b);
+    if (root_a == root_b) return;
+    auto& info_a = candidates_.at(root_a);
+    auto& info_b = candidates_.at(root_b);
+    // The root has the most general class, so that bounds can be mapped to it.
+    if (is_subtype_of(info_b.klass, info_a.klass)) {
+      std::swap(root_a, root_b);
+    } else if (!is_subtype_of(info_a.klass, info_b.klass)) {
+      info_a.is_unknown = true;
+      info_b.is_unknown = true;
+    }
+    // Now [root_b] is the new root, and [root_a]'s class is a subtype of it.
+    auto& from = candidates_.at(root_a);
+    auto& to = candidates_.at(root_b);
+    from.parent = root_b;
+    to.is_unknown = to.is_unknown || from.is_unknown;
+    if (to.is_unknown) return;
+    auto mapping = parameter_mapping(from.klass, to.klass);
+    for (int i = 0; i < static_cast<int>(mapping.size()); i++) {
+      if (mapping[i] == -1) {
+        to.is_unknown = true;
+        return;
+      }
+      to.bounds[i] = join(to.bounds[i], from.bounds[mapping[i]]);
+    }
+  }
+
+  /// Adds the lower bounds that passing [argument] where [parameter_type] is
+  /// expected implies for the candidate [local]. The [parameter_type] is in
+  /// terms of the type parameters of [local]'s class.
+  void add_bounds(Local* local, Type parameter_type, Type argument) {
+    auto own_class = candidates_.at(local->is_CapturedLocal() ? local->as_CapturedLocal()->local() : local).klass;
+    if (!mentions_type_parameter(parameter_type, own_class)) return;
+    std::vector<Type> bounds(own_class->type_parameters().length(), Type::invalid());
+    bool is_unknown = false;
+    collect_bounds(own_class, parameter_type, argument, &bounds, &is_unknown);
+    auto root = candidate_root(local);
+    auto& info = candidates_.at(root);
+    if (is_unknown) {
+      info.is_unknown = true;
+      return;
+    }
+    auto mapping = parameter_mapping(own_class, info.klass);
+    for (int i = 0; i < static_cast<int>(mapping.size()); i++) {
+      if (mapping[i] == -1) {
+        info.is_unknown = true;
+        return;
+      }
+      info.bounds[i] = join(info.bounds[i], bounds[mapping[i]]);
+    }
+  }
+
+  void collect_bounds(Class* klass, Type parameter_type, Type argument,
+                      std::vector<Type>* bounds, bool* is_unknown) {
+    if (!argument.is_valid() || argument.is_none() || argument.is_never()) return;
+    if (parameter_type.is_type_parameter()) {
+      if (parameter_type.parameter()->holder() != klass) return;
+      int index = parameter_type.parameter()->index();
+      (*bounds)[index] = join((*bounds)[index], argument);
+      return;
+    }
+    if (!mentions_type_parameter(parameter_type, klass)) return;
+    if (parameter_type.is_block()) {
+      // Values the block yields end up in the collection.
+      if (argument.is_block()) {
+        collect_bounds(klass, parameter_type.block_return_type(), argument.block_return_type(),
+                       bounds, is_unknown);
+      } else if (mentions_type_parameter(parameter_type.block_return_type(), klass)) {
+        *is_unknown = true;
+      }
+      return;
+    }
+    if (parameter_type.is_class() && argument.is_class()) {
+      List<Type> arguments;
+      if (!arguments_for(argument.klass(), argument.arguments(), parameter_type.klass(), &arguments) ||
+          arguments.is_empty()) {
+        *is_unknown = true;
+        return;
+      }
+      auto parameter_arguments = parameter_type.arguments();
+      for (int i = 0; i < parameter_arguments.length() && i < arguments.length(); i++) {
+        collect_bounds(klass, parameter_arguments[i], arguments[i], bounds, is_unknown);
+      }
+      return;
+    }
+    *is_unknown = true;
+  }
+
+  /// The least common supertype of [a] and [b], following superclasses only.
+  /// `Object` and unrelated types join to `any`.
+  Type join(Type a, Type b) {
+    if (!a.is_valid()) return normalize_element(b);
+    if (!b.is_valid()) return normalize_element(a);
+    a = normalize_element(a);
+    b = normalize_element(b);
+    if (a.is_any() || b.is_any()) return Type::any();
+    if (a == b) return a;
+    if (a == null_type_) return b.is_class() ? b.to_nullable() : Type::any();
+    if (b == null_type_) return a.is_class() ? a.to_nullable() : Type::any();
+    if (!a.is_class() || !b.is_class()) return Type::any();
+    bool is_nullable = a.is_nullable() || b.is_nullable();
+    auto a_class = a.klass();
+    auto b_class = b.klass();
+    Type result = Type::any();
+    if (a_class == b_class) {
+      auto a_arguments = a.arguments();
+      auto b_arguments = b.arguments();
+      if (a_arguments.is_empty() || b_arguments.is_empty()) {
+        result = Type(a_class);
+      } else {
+        auto arguments = ListBuilder<Type>::allocate(a_arguments.length());
+        for (int i = 0; i < a_arguments.length(); i++) {
+          arguments[i] = join(a_arguments[i], b_arguments[i]);
+        }
+        result = Type(a_class, arguments);
+      }
+    } else if (is_subtype_of(a_class, b_class)) {
+      result = Type(b_class);
+    } else if (is_subtype_of(b_class, a_class)) {
+      result = Type(a_class);
+    } else {
+      for (auto current = a_class->super(); current != null; current = current->super()) {
+        if (current->super() == null) break;  // Don't join to Object.
+        if (is_subtype_of(b_class, current)) {
+          result = Type(current);
+          break;
+        }
+      }
+    }
+    if (result.is_any()) return result;
+    return is_nullable ? result.to_nullable() : result;
+  }
+
+  Type normalize_element(Type type) {
+    if (type == true_type_ || type == false_type_) return boolean_type_;
+    if (type.is_truthy() || type.is_block() || type.is_type_parameter()) return Type::any();
+    if (type.is_none() || type.is_never()) return Type::invalid();
+    return type;
+  }
+
+  void compute_final_types() {
+    static bool debug = getenv("TOIT_INFER_DEBUG") != null;
+    for (auto& entry : candidates_) {
+      auto local = entry.first;
+      auto& own = entry.second;
+      auto& info = candidates_.at(candidate_root(local));
+      Type result(own.klass);
+      if (!info.is_unknown) {
+        auto mapping = parameter_mapping(own.klass, info.klass);
+        auto own_parameters = own.klass->type_parameters();
+        auto arguments = ListBuilder<Type>::allocate(own_parameters.length());
+        bool has_bound = false;
+        for (int i = 0; i < arguments.length(); i++) arguments[i] = Type::any();
+        for (int i = 0; i < static_cast<int>(mapping.size()); i++) {
+          if (mapping[i] == -1 || !info.bounds[i].is_valid()) continue;
+          arguments[mapping[i]] = info.bounds[i];
+          has_bound = true;
+        }
+        if (has_bound) result = Type(own.klass, arguments);
+      }
+      final_types_.add(local, result);
+      if (debug && local->name().is_valid() && local->name().c_str()[0] != '<') {
+        report_warning(local->range(), "[infer] '%s': %s%s",
+                       local->name().c_str(), type_name(result).c_str(),
+                       info.is_unknown ? " (unknown elements)" : "");
+      }
+    }
+  }
+
+  /// The type of a list literal or of a constructor call of a generic class,
+  /// with type arguments inferred from the [argument_types].
+  /// Returns an invalid type if there is nothing to infer.
+  Type infer_creation_type(CallStatic* node, List<Type> argument_types) {
+    if (node->is_Lambda()) return Type::invalid();
+    auto method = node->target()->target();
+    auto name = method->name();
+    if (method->holder() == null && name == Symbols::create_array_) {
+      Type element = Type::invalid();
+      for (auto type : argument_types) element = join(element, type);
+      auto array_type = method->return_type();
+      if (!element.is_valid() || !array_type.is_class()) return Type::invalid();
+      auto arguments = ListBuilder<Type>::allocate(1);
+      arguments[0] = element;
+      return Type(array_type.klass(), arguments);
+    }
+    if (method->holder() == null && name == Symbols::create_list_literal_from_array_) {
+      auto list_type = method->return_type();
+      auto array_type = argument_types[0];
+      if (!list_type.is_class() || !array_type.is_class() || !array_type.has_arguments()) {
+        return Type::invalid();
+      }
+      return Type(list_type.klass(), array_type.arguments());
+    }
+    if (!is_fresh_creator(node)) return Type::invalid();
+    auto holder = method->holder();
+    std::vector<Type> bounds(holder->type_parameters().length(), Type::invalid());
+    bool is_unknown = false;
+    int offset = node->is_CallConstructor() ? 1 : 0;
+    auto parameters = method->parameters();
+    for (int i = 0; i < argument_types.length(); i++) {
+      auto type = parameters[i + offset]->type();
+      if (mentions_type_parameter(type, holder)) {
+        collect_bounds(holder, type, argument_types[i], &bounds, &is_unknown);
+      } else if (!(type.is_class() && !type.klass()->is_generic()) &&
+                 argument_types[i] != null_type_) {
+        // Could be an element (like `Array_`'s filler) or a collection of them.
+        is_unknown = true;
+      }
+    }
+    if (is_unknown) {
+      auto arguments = ListBuilder<Type>::allocate(bounds.size());
+      for (int i = 0; i < arguments.length(); i++) arguments[i] = Type::any();
+      return Type(holder, arguments);
+    }
+    bool has_bound = false;
+    auto arguments = ListBuilder<Type>::allocate(bounds.size());
+    for (int i = 0; i < static_cast<int>(bounds.size()); i++) {
+      has_bound = has_bound || bounds[i].is_valid();
+      arguments[i] = bounds[i].is_valid() ? bounds[i] : Type::any();
+    }
+    if (!has_bound) return Type::invalid();
+    return Type(holder, arguments);
   }
 
   /// Whether the static class of [node]'s type also holds at runtime.
@@ -921,6 +1340,16 @@ class TypeChecker : public ReturningVisitor<Type> {
   Type visit_AssignmentLocal(AssignmentLocal* node) {
     auto local = node->local();
     auto right_type = visit(node->right());
+    if (collecting_) {
+      auto candidate = candidate_root(local);
+      if (candidate != null) {
+        auto source = alias_source(node->right());
+        if (source != null && candidates_.find(source) != candidates_.end()) {
+          unite(candidate, source);
+        }
+        add_bounds(candidate, candidates_.at(candidate).klass->self_type(), right_type);
+      }
+    }
     if (local->type().is_any() && right_type.is_none()) {
       // TODO(florian): check that 'none' types aren't used.
       // report_error(node->right()->range(), "Can't use value of type 'none'");
@@ -1007,6 +1436,19 @@ class TypeChecker : public ReturningVisitor<Type> {
 
   // Hoisted block arguments whose code hasn't been visited yet.
   UnorderedMap<Local*, Code*> pending_blocks_;
+
+  // Element inference (see `with_element_inference`).
+  struct Candidate {
+    Class* klass;
+    Local* parent;
+    // Lower bounds per type parameter of [klass]; invalid if none yet.
+    std::vector<Type> bounds;
+    // Elements may come from somewhere we can't see.
+    bool is_unknown = false;
+  };
+  bool collecting_ = false;
+  std::unordered_map<Local*, Candidate> candidates_;
+  UnorderedMap<Local*, Type> final_types_;
 
   Type boolean_type_;
   Type true_type_;

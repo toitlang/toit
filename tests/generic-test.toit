@@ -118,14 +118,14 @@ main:
   expect-equals 2 anys.size
 
   // Types inferred from erased type arguments don't remove runtime checks.
-  lying/Box<int> := Box "str"
+  lying/Box<int> := Box ("str" as any)
   inferred := lying.get
   expect-throw "AS_CHECK_FAILED":
     checked/int := inferred
 
   // Inferred block parameters are static only: no runtime checks are added,
   // and they don't remove later checks.
-  lying-list/List<int> := ["str"]
+  lying-list/List<int> := ["str" as any]
   lying-list.do: | x |
     expect-equals "str" x
     alias := x
