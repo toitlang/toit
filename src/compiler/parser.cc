@@ -2639,7 +2639,7 @@ Expression* Parser::parse_type(bool is_type_annotation) {
       is_nullable = true;
     }
   }
-  if (encountered_pseudo_keyword && type == null) {
+  if (encountered_pseudo_keyword) {
     auto last_identifier = type->is_Dot() ? type->as_Dot()->name() : type;
     auto bad_type_range = start_range.extend(last_identifier->selection_range());
     return NEW_NODE(zone_new<Error>(), bad_type_range);
