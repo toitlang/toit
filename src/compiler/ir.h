@@ -1703,6 +1703,14 @@ class Block : public Local {
   Block(Symbol name, Source::Range range)
       : Local(name, true, true, range) {}
   IMPLEMENTS(Block);
+
+  /// Whether this local holds a block argument that was hoisted out of a
+  /// call (see `CallBuilder::with_hoisted_args`). It is passed exactly once.
+  bool is_hoisted_argument() const { return is_hoisted_argument_; }
+  void mark_hoisted_argument() { is_hoisted_argument_ = true; }
+
+ private:
+  bool is_hoisted_argument_ = false;
 };
 
 class Dot : public Node {

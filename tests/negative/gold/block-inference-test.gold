@@ -1,4 +1,4 @@
-tests/negative/block-inference-test.toit:51:3: error: Unresolved identifier: 'unresolved'
+tests/negative/block-inference-test.toit:56:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
 tests/negative/block-inference-test.toit:18:15: error: Class 'int' does not have any method 'foo'
@@ -43,10 +43,10 @@ tests/negative/block-inference-test.toit:37:22: error: Class 'string' does not h
 tests/negative/block-inference-test.toit:38:31: error: Class 'string' does not have any method 'foo'
   box.maybe --if-present=: it.foo         // Error.
                               ^~~
-tests/negative/block-inference-test.toit:46:24: error: Class 'string' does not have any method 'foo'
+tests/negative/block-inference-test.toit:51:24: error: Class 'string' does not have any method 'foo'
   nested.do: it.do: it.foo                // Error.
                        ^~~
-tests/negative/block-inference-test.toit:50:14: error: Type mismatch. Expected 'string'. Got 'int'
+tests/negative/block-inference-test.toit:55:14: error: Type mismatch. Expected 'string'. Got 'int'
   list.do: s = it                         // Error.
              ^
 Compilation failed

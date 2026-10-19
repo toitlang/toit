@@ -871,8 +871,10 @@ class TypeChecker : public ReturningVisitor<Type> {
 
   Type visit_AssignmentDefine(AssignmentDefine* node) {
     auto local = node->local();
-    if (local->is_Block() && node->right()->is_Code()) {
-      ASSERT(node->right()->as_Code()->is_block());
+    // Named blocks (`b := : ...`) may be passed to several calls, so only
+    // hoisted block arguments take their parameter types from the call.
+    if (local->is_Block() && local->as_Block()->is_hoisted_argument()) {
+      ASSERT(node->right()->is_Code() && node->right()->as_Code()->is_block());
       pending_blocks_[local] = node->right()->as_Code();
       return Type::any();
     }

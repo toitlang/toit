@@ -41,6 +41,11 @@ main:
   raw/Box := box
   raw.with-value: it.foo                  // OK.
 
+  // Named blocks may be passed to several calls: no inference.
+  named := : | x | x.foo                  // OK.
+  list.do named
+  map.do --keys named
+
   // Nested blocks.
   nested/List<List<string>> := []
   nested.do: it.do: it.foo                // Error.
