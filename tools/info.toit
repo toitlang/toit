@@ -166,5 +166,5 @@ escape-path_ path/string -> string:
   [ '<', '>', ':', '"', '|', '?', '*', '\\' ].do:
     escaped-path = escaped-path.replace --all
         (string.from-rune it)
-        "#$(it.stringify 16)"
+        "#$(it.to-string --radix=16)"
   return escaped-path
