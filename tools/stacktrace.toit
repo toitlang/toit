@@ -153,7 +153,7 @@ decode-stacktrace invocation/cli.Invocation:
           print "$star $disassembly-lines[add]"
     if disassemble: print ""
 
-backtrace-do backtrace/string symbols/List [block]:
+backtrace-do backtrace/string symbols/List [block int Symbol? -> none] -> none:
   if not backtrace.starts-with "Backtrace:":
     print "Invalid backtrace: $backtrace. Doesn't start with 'Backtrace:'"
     throw "INVALID_BACKTRACE"

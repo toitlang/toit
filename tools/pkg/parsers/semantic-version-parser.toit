@@ -18,7 +18,7 @@ import encoding.yaml.parser
 class SemanticVersionParseResult:
   triple/TripleParseResult
   pre-releases/List
-  build-numbers/List
+  build-numbers/List<string>
   offset/int
 
   constructor .triple .pre-releases .build-numbers .offset:
@@ -57,18 +57,18 @@ class SemanticVersionParser extends parser.PegParserBase_:
   constructor source/string --.allow-missing-minor/bool=false:
     super source.to-byte-array
 
-  expect-match_ char/int [--on-error] -> int:
+  expect-match_ char/int [--on-error string -> any] -> int:
     if matched := match-char char: return matched
     return on-error.call "expected $(string.from-rune char) at position $current-position"
 
-  expect-numeric [--on-error] -> int:
+  expect-numeric [--on-error string -> any] -> int:
     if number := numeric_: return number
     return on-error.call "expected a numeric value at position $current-position"
 
   semantic-version --consume-all/bool=false -> SemanticVersionParseResult:
     return semantic-version --consume-all=consume-all --on-error=: throw "Parse error: $it"
 
-  semantic-version --consume-all/bool=false [--on-error] -> SemanticVersionParseResult:
+  semantic-version --consume-all/bool=false [--on-error string -> any] -> SemanticVersionParseResult:
     optional: match-string "v"
     triple := version-core_ --on-error=on-error
     pre-releases := pre-releases_ --on-error=on-error
@@ -78,7 +78,7 @@ class SemanticVersionParser extends parser.PegParserBase_:
 
     return SemanticVersionParseResult triple pre-releases build-numbers current-position
 
-  version-core_ [--on-error] -> TripleParseResult:
+  version-core_ [--on-error string -> any] -> TripleParseResult:
     major := expect-numeric --on-error=on-error
     minor/int? := null
     patch/int? := null
@@ -94,7 +94,7 @@ class SemanticVersionParser extends parser.PegParserBase_:
       patch = expect-numeric --on-error=on-error
     return TripleParseResult major minor patch
 
-  pre-releases_ [--on-error] -> List:
+  pre-releases_ [--on-error string -> any] -> List:
     try-parse:
       result := []
       if match-char '-':
@@ -104,7 +104,7 @@ class SemanticVersionParser extends parser.PegParserBase_:
           if not match-char '.': return result
     return []
 
-  build-numbers_ [--on-error] -> List:
+  build-numbers_ [--on-error string -> any] -> List<string>:
     try-parse:
       result := []
       if match-char '+':
@@ -113,12 +113,12 @@ class SemanticVersionParser extends parser.PegParserBase_:
           if not match-char '.': return result
     return []
 
-  pre-release_ [--on-error] -> any:
+  pre-release_ [--on-error string -> any] -> any:
     if alphanumeric-result := alphanumeric_: return alphanumeric-result
     if numeric-result := numeric_: return numeric-result
     return on-error.call "expected an identifier or a number at position $current-position"
 
-  build-number_ [--on-error] -> string:
+  build-number_ [--on-error string -> any] -> string:
     if alphanumeric-result := alphanumeric_: return alphanumeric-result
     try-parse:
       mark := mark

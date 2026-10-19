@@ -361,12 +361,17 @@ class DocsBuilder implements lsp.ToitdocVisitor:
         --type=build-type field.type
         --toitdoc=build-toitdoc field.toitdoc
 
-  build-type type/lsp.Type -> Type:
+  build-type type/lsp.Type? -> Type?:
+    if not type: return null
     return Type
         --is-none=type.is-none
+        --is-never=type.is-never
+        --is-truthy=type.is-truthy
         --is-any=type.is-any
         --is-block=type.is-block
         --reference=build-toplevel-ref type.class-ref
+        --block-parameter-types=type.block-parameter-types and (type.block-parameter-types.map: build-type it)
+        --block-return-type=build-type type.block-return-type
 
   build-parameters parameters/List -> List:
     // Provide the parameters in the same order as the user wrote them.
@@ -725,20 +730,31 @@ class Type:
   static TYPE ::= "type"
 
   is-none/bool
+  is-never/bool
+  is-truthy/bool
   is-any/bool
   is-block/bool
   reference/ToplevelRef?
+  /// The signature of a typed block. Null for raw blocks and non-block types.
+  block-parameter-types/List?
+  block-return-type/Type?
 
-  constructor --.is-none --.is-any --.is-block --.reference:
+  constructor --.is-none --.is-never --.is-truthy --.is-any --.is-block --.reference
+      --.block-parameter-types --.block-return-type:
 
   to-json -> Map:
     result := {
       "object_type": TYPE,
       "is_none": is-none,
+      "is_never": is-never,
+      "is_truthy": is-truthy,
       "is_any": is-any,
       "is_block": is-block,
     }
     if reference: result["reference"] = reference.to-json
+    if block-parameter-types:
+      result["block_parameter_types"] = block-parameter-types.map: it.to-json
+      result["block_return_type"] = block-return-type.to-json
     return result
 
 class Global:

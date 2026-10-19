@@ -67,7 +67,7 @@ class ServiceSelector:
     return true
 
 class ServiceSelectorRestricted extends ServiceSelector:
-  tags_ := {:}    // Map<string, bool>
+  tags_/Map<string, bool> := {:}
   names_ ::= {:}  // Map<string, List<ServiceSelectorRestriction_>>
 
   tags-include-allowed_/bool := false
@@ -86,11 +86,11 @@ class ServiceSelectorRestricted extends ServiceSelector:
 
   allow --tag/string -> ServiceSelectorRestricted:
     return allow --tags=[tag]
-  allow --tags/List -> ServiceSelectorRestricted:
+  allow --tags/List<string> -> ServiceSelectorRestricted:
     return add-tags_ --tags=tags --allow
   deny --tag/string -> ServiceSelectorRestricted:
     return deny --tags=[tag]
-  deny --tags/List -> ServiceSelectorRestricted:
+  deny --tags/List<string> -> ServiceSelectorRestricted:
     return add-tags_ --tags=tags --no-allow
 
   add-name_ --name/string --major/int? --minor/int? --allow/bool -> ServiceSelectorRestricted:
@@ -106,7 +106,7 @@ class ServiceSelectorRestricted extends ServiceSelector:
     restrictions.add (ServiceSelectorRestriction_ allow major minor)
     return this
 
-  add-tags_ --tags/List --allow/bool -> ServiceSelectorRestricted:
+  add-tags_ --tags/List<string> --allow/bool -> ServiceSelectorRestricted:
     tags.do: | tag/string |
       if (tags_.get tag) == (not allow): throw "Cannot allow and deny the same tag"
       if allow: tags-include-allowed_ = true
@@ -202,7 +202,7 @@ class ServiceClient:
   open -> ServiceClient:
     return open --timeout=DEFAULT-OPEN-TIMEOUT --if-absent=: throw "Cannot find service"
 
-  open --timeout/Duration?=null [--if-absent] -> any:
+  open --timeout/Duration?=null [--if-absent -> any] -> any:
     discovered/List? := null
     proxy/DiscoveryProxy_? := null
     changes/DiscoveryChanges_? := null
@@ -391,15 +391,15 @@ class ServiceProvider:
   static PRIORITY-PREFERRED            /int ::= 0xd0
   static PRIORITY-PREFERRED-STRONGLY   /int ::= 0xf0
 
-  _services_/List ::= []
+  _services_/List<Service_> ::= []
   _manager_/ServiceManager_? := null
-  _ids_/List? := null
+  _ids_/List<int>? := null
 
-  _clients_/Set ::= {}  // Set<int>
+  _clients_/Set<int> ::= {}
   _clients-closed_/int := 0
   _clients-closed-signal_ ::= monitor.Signal
 
-  _resources_/Map ::= {:}  // Map<int, Map<int, Object>>
+  _resources_/Map<int, Map<int, ServiceResource>> ::= {:}
   _resource-handle-next_/int := ?
 
   constructor .name --.major --.minor --.patch=0 --.tags=null:
@@ -456,7 +456,7 @@ class ServiceProvider:
   resource client/int handle/int -> ServiceResource:
     return _find-resource_ client handle
 
-  resources-do [block] -> none:
+  resources-do [block any -> none] -> none:
     // Collect the resources into an array, so we can
     // deal nicely with modifications to the resource
     // set that occur while we iterate over it.
@@ -642,7 +642,7 @@ class ServiceSelectorRestriction_:
 
 class ServiceResourceProxyManager_ implements SystemMessageHandler_:
   static instance ::= ServiceResourceProxyManager_
-  static proxies_/Map? := null
+  static proxies_/Map<int, Map<int, ServiceResourceProxy>>? := null
 
   constructor:
     proxies_ = {:}
@@ -705,12 +705,12 @@ class ServiceManager_ implements SystemMessageHandler_:
 
   broker_/broker.RpcBroker ::= broker.RpcBroker
 
-  clients_/Map ::= {:}              // Map<int, int>
-  clients-by-pid_/Map ::= {:}       // Map<int, Set<int>>
+  clients_/Map<int, int> ::= {:}
+  clients-by-pid_/Map<int, Set<int>> ::= {:}
 
-  providers_/Map ::= {:}            // Map<int, ServiceProvider>
-  providers-by-client_/Map ::= {:}  // Map<int, ServiceProvider>
-  handlers-by-client_/Map ::= {:}   // Map<int, ServiceHandler>
+  providers_/Map<int, ServiceProvider> ::= {:}
+  providers-by-client_/Map<int, ServiceProvider> ::= {:}
+  handlers-by-client_/Map<int, ServiceHandler> ::= {:}
 
   constructor:
     TerminationObserver_.instance.manager = this
@@ -763,7 +763,7 @@ class ServiceManager_ implements SystemMessageHandler_:
     if not provider: throw "Unknown service:$id"
     service := provider._validate_ uuid major minor
 
-    clients/Set ::= clients-by-pid_.get pid --init=(: {})
+    clients/Set<int> ::= clients-by-pid_.get pid --init=(: {})
     if clients.is-empty and pid != Process.current.id:
       // From this point forward, we need to be told if the client
       // process goes away so we can clean up.

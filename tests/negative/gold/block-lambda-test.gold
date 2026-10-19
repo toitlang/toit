@@ -1,9 +1,9 @@
 tests/negative/block-lambda-test.toit:6:12: error: Block parameters can't be blocks
   b := (: |[x]| x.call)
-           ^~
+           ^~~
 tests/negative/block-lambda-test.toit:7:13: error: Lambda parameters can't be blocks
   l := (:: |[x]| x.call)
-            ^~
+            ^~~
 tests/negative/block-lambda-test.toit:8:13: warning: Field-storing parameters in non-constructors are deprecated
   b2 := (: |this.x| x)
             ^~~~~~

@@ -1,0 +1,67 @@
+tests/negative/truthy-test.toit:37:29: error: Type 'truthy' isn't allowed in class headers
+class TruthyBox extends Box<truthy>:  // Error.
+                            ^~~~~~
+tests/negative/truthy-test.toit:86:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/truthy-test.toit:16:3: error: A 'truthy' value can only be used as a condition
+  return predicate.call list.first  // Error.
+  ^~~~~~
+tests/negative/truthy-test.toit:19:3: error: A 'truthy' value can only be used as a condition
+  return predicate.call list.first  // Error: unannotated methods return 'any'.
+  ^~~~~~
+tests/negative/truthy-test.toit:48:14: warning: Condition always evaluates to false
+  pick list: null                 // Warning: always false.
+             ^~~~
+tests/negative/truthy-test.toit:49:14: warning: Condition always evaluates to true
+  pick list: 42                   // Warning.
+             ^~
+tests/negative/truthy-test.toit:50:14: warning: Condition always evaluates to true
+  pick list: a                    // Warning.
+             ^
+tests/negative/truthy-test.toit:51:14: warning: Condition always evaluates to false
+  pick list: print it             // Warning: yields null.
+             ^~~~~
+tests/negative/truthy-test.toit:55:22: warning: Condition always evaluates to true
+  pick list: |x/int| "str"        // Warning.
+                     ^~~~~
+tests/negative/truthy-test.toit:56:12: warning: Condition always evaluates to true
+  identity 3                      // Warning.
+           ^
+tests/negative/truthy-test.toit:58:13: error: Condition can't be 'none'
+  identity (print 3)              // Error.
+            ^~~~~
+tests/negative/truthy-test.toit:59:12: warning: Condition always evaluates to true
+  t/truthy := a                   // Warning.
+           ^~
+tests/negative/truthy-test.toit:73:9: error: A 'truthy' value can only be used as a condition
+  print x                         // Error.
+        ^
+tests/negative/truthy-test.toit:75:5: error: Can't call a method on a 'truthy' value
+  x.foo                           // Error.
+    ^~~
+tests/negative/truthy-test.toit:76:5: error: Can't call a method on a 'truthy' value
+  x == null                       // Error.
+    ^~
+tests/negative/truthy-test.toit:77:9: error: A 'truthy' value can only be used as a condition
+  s/any := x                      // Error.
+        ^~
+tests/negative/truthy-test.toit:78:10: error: A 'truthy' value can only be used as a condition
+  b/bool := x                     // Error.
+         ^~
+tests/negative/truthy-test.toit:79:12: error: A 'truthy' value can only be used as a condition
+  list.add x                      // Error.
+           ^
+tests/negative/truthy-test.toit:80:3: error: Can't call a method on a 'truthy' value
+  "$x"                            // Error.
+  ^~
+tests/negative/truthy-test.toit:81:11: error: Type mismatch. Expected '[block any -> any]'. Got '[block any -> truthy]'
+  list.map: identity it           // Error.
+          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/truthy-test.toit:85:9: error: A 'truthy' value can only be used as a condition
+  print m                         // Error.
+        ^
+tests/negative/truthy-test.toit:30:1: error: Method doesn't return a value on all paths
+maybe-falls-through x -> truthy:
+^~~~~~~~~~~~~~~~~~~
+Compilation failed

@@ -36,7 +36,7 @@ Unwinds the stack of this task calling associated finally-blocks. By default,
   task.
 The exception can also be caught with a $(catch [block]).
 */
-throw exception/any -> none:
+throw exception/any -> never:
   trace ::= encode-error_ "EXCEPTION" "$exception"
   __throw__ (Exception_ exception trace)
 
@@ -49,7 +49,7 @@ Works like $throw except it uses the given $trace rather than generating one
 Used to rethrow a caught exception (see $(catch [--trace] [block])) as though
   it wasn't caught.
 */
-rethrow exception/any trace/ByteArray? -> none:
+rethrow exception/any trace/ByteArray? -> never:
   __throw__ (Exception_ exception trace)
 
 /**
@@ -57,7 +57,7 @@ Marks code point as unreachable.
 
 Must not be reached in the program.
 */
-unreachable -> none:
+unreachable -> never:
   throw "Unreachable"
 
 /**
@@ -69,7 +69,7 @@ If an exception is thrown during the $block call, then the trace is printed
 If an exception is thrown during the $block call, then unwinding continues if
   the $unwind is true.
 */
-catch --trace/bool=false --unwind/bool=false [block]:
+catch --trace/bool=false --unwind/bool=false [block -> any]:
   return catch
     --trace=: trace
     --unwind=: unwind
@@ -81,7 +81,7 @@ Variant of $(catch [--trace] [--unwind] [block]).
 If an exception is thrown during the $block call, then the trace is printed
   if the $trace is true (and the trace can otherwise be printed).
 */
-catch --trace/bool=false [--unwind] [block]:
+catch --trace/bool=false [--unwind any ByteArray? -> truthy] [block -> any]:
   return catch
     --trace=: trace
     --unwind=unwind
@@ -93,7 +93,7 @@ Variant of $(catch [--trace] [--unwind] [block]).
 If an exception is thrown during the $block call, then unwinding continues if
   the $unwind is true.
 */
-catch [--trace] --unwind/bool=false [block]:
+catch [--trace any ByteArray? -> truthy] --unwind/bool=false [block -> any]:
   return catch
     --trace=trace
     --unwind=: unwind
@@ -119,7 +119,7 @@ The $unwind block decides whether unwinding should continue in case of a
   the trace (`unwind.call exception trace`) and should return a boolean
   value. If $unwind call returns true, then unwinding continues.
 */
-catch [--trace] [--unwind] [block]:
+catch [--trace any ByteArray? -> truthy] [--unwind any ByteArray? -> truthy] [block -> any]:
   try:
     block.call
     return null
@@ -154,12 +154,12 @@ class Exception_:
 
 // Spontaneous entry points invoked by the interpreter when failure occurs at runtime.
 // We use 'rethrow' to avoid extra frame in trace.
-lookup-failure_ receiver selector-or-selector-offset:
+lookup-failure_ receiver selector-or-selector-offset -> never:
   rethrow "LOOKUP_FAILED"
     encode-error_ "LOOKUP_FAILED"
       create-array_ selector-or-selector-offset (Object.class-id receiver) receiver
 
-uninitialized-global-failure_ global-id:
+uninitialized-global-failure_ global-id -> never:
   rethrow "UNINITIALIZED_GLOBAL"
     encode-error_ "UNINITIALIZED_GLOBAL" global-id
 
@@ -177,7 +177,7 @@ $id might be either:
 - a class name of type $string
 - an absolute BCI of the 'as' check.
 */
-as-check-failure_ receiver id:
+as-check-failure_ receiver id -> never:
   rethrow "AS_CHECK_FAILED"
     encode-error_ "AS_CHECK_FAILED"
       create-array_ receiver id

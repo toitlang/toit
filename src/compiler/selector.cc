@@ -166,6 +166,7 @@ ir::Expression* CallBuilder::with_hoisted_args(ir::Expression* target,
     if (expression->is_Code()) {
       auto code = expression->as_Code();
       auto block = zone_new<ir::Block>(Symbol::synthetic("<block>"), code->range());
+      block->mark_hoisted_argument();
       sequence_exprs.add(zone_new<ir::AssignmentDefine>(block, code, code->range()));
       return (zone_new<ir::ReferenceBlock>(block, 0, expression->range()))->as_Expression();
     }

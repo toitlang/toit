@@ -26,7 +26,7 @@ matching name:
 qualifier:
   return filter == "" ? "" : " (only printing elements matching: \"$filter\")"
 
-print-collection title collection program [filter] [stringify]:
+print-collection title collection program [filter any int -> truthy] [stringify any int -> any]:
   print "$(title)[$(collection.size)]:$qualifier"
   collection.size.repeat:
     | index |
@@ -122,7 +122,7 @@ print-sizes snapshot/SnapshotBundle:
 
 filter := ""
 
-with-filtered-cli-program invocation/cli.Invocation [block]:
+with-filtered-cli-program invocation/cli.Invocation [block Program -> none] -> none:
   filter = invocation["filter"] or ""
   snapshot := SnapshotBundle.from-file invocation["snapshot"]
   program := snapshot.decode

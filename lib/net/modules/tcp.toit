@@ -65,7 +65,7 @@ class TcpSocket_:
       // LSP protocol.
       close
 
-  ensure-state_ bits --error-bits=TOIT-TCP-ERROR_ [--failure]:
+  ensure-state_ bits --error-bits=TOIT-TCP-ERROR_ [--failure string -> any]:
     state := ensure-state_
     state-bits / int? := null
     while state-bits == null:
@@ -112,7 +112,7 @@ class TcpServerSocket extends TcpSocket_ implements tcp.ServerSocket:
   accept:
     return accept: throw it
 
-  accept [failure]:
+  accept [failure string -> any]:
     state := ensure-state_ TOIT-TCP-READ_ --failure=failure
     id := tcp-accept_ state.group state.resource
     if not id:
@@ -151,7 +151,7 @@ class TcpSocket extends TcpSocket_ with io.CloseableInMixin io.CloseableOutMixin
   connect hostname port:
     return connect hostname port: throw it
 
-  connect hostname port [failure]:
+  connect hostname port [failure string -> any]:
     address := dns-lookup hostname --network=network_
     open_ (tcp-connect_ tcp-resource-group_ address.raw port window-size_)
     error := catch:

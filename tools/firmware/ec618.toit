@@ -279,7 +279,7 @@ patch-details_ result/ByteArray
   LITTLE-ENDIAN.put-uint32 result details-offset extension-xip-addr
   result.replace (details-offset + 4) system-uuid.to-byte-array
 
-pointer-offsets_ relocatable/ByteArray --word-size/int [block] -> none:
+pointer-offsets_ relocatable/ByteArray --word-size/int [block int -> none] -> none:
   word-bits := word-size * 8
   chunk-size := (word-bits + 1) * word-size
   relocated-offset := 0

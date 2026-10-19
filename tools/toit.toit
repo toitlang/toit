@@ -312,7 +312,7 @@ Lists the direct subdirectories of $dir.
 
 Returns an empty list if $dir does not exist or cannot be read.
 */
-list-subdirs dir/string -> List:
+list-subdirs dir/string -> List<string>:
   if not file.is-directory dir: return []
   result := []
   exception := catch:
@@ -330,7 +330,7 @@ Completion callback for the `--os` option of `toit compile`.
 
 Suggests the OS names for which vessels are installed.
 */
-complete-cross-os context/cli.CompletionContext -> List:
+complete-cross-os context/cli.CompletionContext -> List<cli.CompletionCandidate>:
   vessels-root := vessels-root-from-context context
   if not vessels-root: return []
   result := []
@@ -345,7 +345,7 @@ Suggests architectures for which vessels are installed. If an `--os`
   has already been provided, restricts to its architectures; otherwise
   returns architectures across all known OSes.
 */
-complete-cross-arch context/cli.CompletionContext -> List:
+complete-cross-arch context/cli.CompletionContext -> List<cli.CompletionCandidate>:
   vessels-root := vessels-root-from-context context
   if not vessels-root: return []
   os-values := context.seen-options.get "os"

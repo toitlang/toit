@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <functional>
+
 #include "zone.h"
 
 #include "list.h"
@@ -140,38 +142,122 @@ IR_NODES(DECLARE)
   Expression* _replace_expression(Expression* expression);
 };
 
+class TypeParameter;
+
+/// A static type.
+///
+/// Class types may carry type arguments (`List<int>`). A class type without
+/// arguments is a "raw" type, where every argument is implicitly `any`.
+/// Type-parameter types (`T` inside `class Box<T>`) are opaque: they are only
+/// assignable to themselves and `any`.
+///
+/// Type arguments are erased at runtime: only the class is checked.
+///
+/// Block types (`[block int -> bool]`) describe the parameters a block is
+/// called with and the value it yields. A raw `[block]` parameter has type
+/// `any`. Block types are never nullable.
+///
+/// `never` is the bottom type: the type of expressions that don't complete
+/// normally (return, throw, calls to `-> never` methods, ...). It is
+/// assignable to every type. Only allowed as return type.
+///
+/// `truthy` is the type of condition values, like the results of predicate
+/// blocks. Every value can be stored in a `truthy` slot (there is no runtime
+/// check), but a `truthy` value can only be used as a condition, or stored in
+/// another `truthy` slot.
 class Type {
  public:
   explicit Type(Class* klass) : kind_(kClass), class_(klass), is_nullable_(false) {
     ASSERT(klass != null);
   }
+  Type(Class* klass, List<Type> arguments)
+      : kind_(kClass), class_(klass), arguments_(arguments), is_nullable_(false) {
+    ASSERT(klass != null);
+  }
+  explicit Type(TypeParameter* parameter)
+      : kind_(kTypeParameter), parameter_(parameter), is_nullable_(false) {
+    ASSERT(parameter != null);
+  }
 
   static Type none() { return Type(kNone, false); }
   static Type any()  { return Type(kAny, true); }
+  static Type never() { return Type(kNever, false); }
+  static Type truthy() { return Type(kTruthy, true); }
   static Type invalid() { return Type(kInvalid, false); }
+
+  static Type block(List<Type> parameter_types, Type return_type) {
+    auto types = ListBuilder<Type>::allocate(parameter_types.length() + 1);
+    for (int i = 0; i < parameter_types.length(); i++) types[i] = parameter_types[i];
+    types[parameter_types.length()] = return_type;
+    return Type(kBlock, null, null, types, false);
+  }
 
   bool is_nullable() const { return is_nullable_; }
 
   bool is_class() const { return kind_ == kClass; }
+  bool is_block() const { return kind_ == kBlock; }
+  bool is_type_parameter() const { return kind_ == kTypeParameter; }
   bool is_none() const { return kind_ == kNone; }
   bool is_any() const { return kind_ == kAny; }
+  bool is_never() const { return kind_ == kNever; }
+  bool is_truthy() const { return kind_ == kTruthy; }
   bool is_valid() const { return kind_ != kInvalid; }
-  bool is_special() const { return is_none() || is_any() || !is_valid(); }
+  bool is_special() const { return is_none() || is_any() || is_never() || is_truthy() || !is_valid(); }
 
-  Class* klass() const { return class_; }
+  Class* klass() const {
+    ASSERT(is_class());
+    return class_;
+  }
+  TypeParameter* parameter() const {
+    ASSERT(is_type_parameter());
+    return parameter_;
+  }
+
+  /// The type arguments. Empty for raw types.
+  List<Type> arguments() const { return is_class() ? arguments_ : List<Type>(); }
+  bool has_arguments() const { return is_class() && !arguments_.is_empty(); }
+
+  int block_parameter_count() const {
+    ASSERT(is_block());
+    return arguments_.length() - 1;
+  }
+  Type block_parameter_type(int i) const {
+    ASSERT(is_block() && i < block_parameter_count());
+    return arguments_[i];
+  }
+  Type block_return_type() const {
+    ASSERT(is_block());
+    return arguments_[arguments_.length() - 1];
+  }
 
   Type to_nullable() const {
-    if (is_special()) return *this;
-    return Type(kind_, class_, true);
+    if (is_special() || is_block()) return *this;
+    return Type(kind_, class_, parameter_, arguments_, true);
   }
 
   Type to_non_nullable() const {
-    if (is_none() || !is_valid()) return *this;
-    return Type(kind_, class_, false);
+    if (is_none() || is_never() || is_truthy() || !is_valid()) return *this;
+    return Type(kind_, class_, parameter_, arguments_, false);
   }
 
+  /// Replaces type parameters according to [environment].
+  /// Parameters that aren't found are replaced with `any`.
+  Type substitute(const std::function<Type (TypeParameter*)>& environment) const;
+
+  /// Equality ignores nullability (at every level), matching how the
+  /// type checker treats `int` and `int?` as interchangeable.
   bool operator ==(const Type& other) const {
-    return kind_ == other.kind_ && class_ == other.class_;
+    if (kind_ != other.kind_) return false;
+    if (kind_ == kClass || kind_ == kBlock) {
+      if (class_ != other.class_) return false;
+      if (arguments_.length() != other.arguments_.length()) return false;
+      for (int i = 0; i < arguments_.length(); i++) {
+        if (arguments_[i] != other.arguments_[i]) return false;
+      }
+      return true;
+    }
+    if (kind_ == kTypeParameter) return parameter_ == other.parameter_;
+    return true;
   }
   bool operator !=(const Type& other) const {
     return !(*this == other);
@@ -182,19 +268,45 @@ class Type {
   static const int kNone = 1;
   static const int kAny = 2;
   static const int kInvalid = 3;
+  static const int kTypeParameter = 4;
+  static const int kBlock = 5;
+  static const int kNever = 6;
+  static const int kTruthy = 7;
 
   Type(int kind, bool is_nullable)
-      : kind_(kind), class_(null), is_nullable_(is_nullable) {}
+      : kind_(kind), class_(null), parameter_(null), is_nullable_(is_nullable) {}
 
-  Type(int kind, Class* klass, bool is_nullable)
-      : kind_(kind), class_(klass), is_nullable_(is_nullable) {}
+  Type(int kind, Class* klass, TypeParameter* parameter, List<Type> arguments, bool is_nullable)
+      : kind_(kind), class_(klass), parameter_(parameter), arguments_(arguments), is_nullable_(is_nullable) {}
 
   friend class ListBuilder<Type>;
   Type() {}
 
   int kind_;
-  Class* class_;
+  Class* class_ = null;
+  TypeParameter* parameter_ = null;
+  // For class types: the type arguments.
+  // For block types: the parameter types followed by the return type.
+  List<Type> arguments_;
   bool is_nullable_;
+};
+
+/// A type parameter of a generic class, like `T` in `class Box<T>`.
+class TypeParameter {
+ public:
+  TypeParameter(Symbol name, Class* holder, int index, Source::Range range)
+      : name_(name), holder_(holder), index_(index), range_(range) {}
+
+  Symbol name() const { return name_; }
+  Class* holder() const { return holder_; }
+  int index() const { return index_; }
+  Source::Range range() const { return range_; }
+
+ private:
+  Symbol name_;
+  Class* holder_;
+  int index_;
+  Source::Range range_;
 };
 
 class Node {
@@ -231,6 +343,7 @@ class Program : public Node {
           List<Type> literal_types,
           Method* lookup_failure,
           Method* as_check_failure,
+          Method* unreachable,
           Class* lambda_box)
       : classes_(classes)
       , methods_(methods)
@@ -240,6 +353,7 @@ class Program : public Node {
       , literal_types_(literal_types)
       , lookup_failure_(lookup_failure)
       , as_check_failure_(as_check_failure)
+      , unreachable_(unreachable)
       , lambda_box_(lambda_box) {}
   IMPLEMENTS(Program)
 
@@ -257,6 +371,7 @@ class Program : public Node {
 
   Method* lookup_failure() const { return lookup_failure_; }
   Method* as_check_failure() const { return as_check_failure_; }
+  Method* unreachable() const { return unreachable_; }
 
   Class* lambda_box() const { return lambda_box_; }
 
@@ -275,6 +390,7 @@ class Program : public Node {
   List<Type> literal_types_;
   Method* lookup_failure_;
   Method* as_check_failure_;
+  Method* unreachable_;
   Class* lambda_box_;
 };
 
@@ -329,6 +445,31 @@ class Class : public Node {
     ASSERT(super_ == null);
     super_ = klass;
   }
+
+  List<TypeParameter*> type_parameters() const { return type_parameters_; }
+  void set_type_parameters(List<TypeParameter*> parameters) {
+    ASSERT(type_parameters_.is_empty());
+    type_parameters_ = parameters;
+  }
+  bool is_generic() const { return !type_parameters_.is_empty(); }
+
+  /// The type of `this` inside the class: the class applied to its own
+  /// type parameters. Equal to the raw type for non-generic classes.
+  Type self_type();
+
+  /// The type arguments given to the super class in the `extends` clause.
+  /// Empty if the super is raw (or there is no explicit super).
+  List<Type> super_arguments() const { return super_arguments_; }
+  void set_super_arguments(List<Type> arguments) { super_arguments_ = arguments; }
+
+  /// The type arguments given to the directly implemented interfaces and
+  /// mixins, in declaration order. These lists are parallel to the AST
+  /// interfaces/mixins, *not* to the flattened [interfaces]/[mixins].
+  /// Each entry is a (class, arguments) pair.
+  List<Type> declared_interfaces() const { return declared_interfaces_; }
+  void set_declared_interfaces(List<Type> types) { declared_interfaces_ = types; }
+  List<Type> declared_mixins() const { return declared_mixins_; }
+  void set_declared_mixins(List<Type> types) { declared_mixins_ = types; }
   void replace_super(Class* klass) {
     super_ = klass;
   }
@@ -448,6 +589,10 @@ class Class : public Node {
   Class* super_;
   List<Class*> interfaces_;
   List<Class*> mixins_;
+  List<TypeParameter*> type_parameters_;
+  List<Type> super_arguments_;
+  List<Type> declared_interfaces_;
+  List<Type> declared_mixins_;
   Kind kind_;
   bool is_abstract_;
   // Only set for interfaces.
@@ -1375,6 +1520,18 @@ class Local : public Node {
   virtual bool is_block() const { return is_block_; }
 
   virtual bool has_explicit_type() const { return has_explicit_type_; }
+  /// Marks a parameter written without a type. Its type is `any`, but the
+  /// type checker may refine it statically, like the type of an inferred
+  /// local.
+  void mark_without_explicit_type() { has_explicit_type_ = false; }
+
+  /// Whether the type also holds at runtime. Explicit types are checked.
+  /// Inferred types hold if the initializer's type does, which isn't the
+  /// case for types from erased type parameters.
+  virtual bool has_guaranteed_type() const {
+    return has_explicit_type_ || has_guaranteed_inferred_type_;
+  }
+  void mark_guaranteed_inferred_type() { has_guaranteed_inferred_type_ = true; }
 
   // The index is required for bytecode generation.
   // The index for parameters is fixed, whereas the one for locals is set
@@ -1404,6 +1561,7 @@ class Local : public Node {
   bool is_effectively_final_loop_variable_ = false;
   bool is_block_;
   bool has_explicit_type_;
+  bool has_guaranteed_inferred_type_ = false;
   bool is_captured_ = false;
   Type type_;
 
@@ -1518,6 +1676,7 @@ class CapturedLocal : public Parameter {
 
   bool is_block() const { return captured_->is_block(); }
   bool has_explicit_type() const { return captured_->has_explicit_type(); }
+  bool has_guaranteed_type() const { return captured_->has_guaranteed_type(); }
   Type type() const { return captured_->type(); }
 
   Local* local() const { return captured_; }
@@ -1544,6 +1703,14 @@ class Block : public Local {
   Block(Symbol name, Source::Range range)
       : Local(name, true, true, range) {}
   IMPLEMENTS(Block);
+
+  /// Whether this local holds a block argument that was hoisted out of a
+  /// call (see `CallBuilder::with_hoisted_args`). It is passed exactly once.
+  bool is_hoisted_argument() const { return is_hoisted_argument_; }
+  void mark_hoisted_argument() { is_hoisted_argument_ = true; }
+
+ private:
+  bool is_hoisted_argument_ = false;
 };
 
 class Dot : public Node {
@@ -1803,6 +1970,8 @@ class Typecheck : public Expression {
     IS_CHECK,
     AS_CHECK,
     PARAMETER_AS_CHECK,
+    // The argument of a call to a typed block.
+    BLOCK_ARGUMENT_AS_CHECK,
     LOCAL_AS_CHECK,
     GLOBAL_AS_CHECK,
     RETURN_AS_CHECK,
@@ -1829,6 +1998,7 @@ class Typecheck : public Expression {
         return false;
       case AS_CHECK:
       case PARAMETER_AS_CHECK:
+      case BLOCK_ARGUMENT_AS_CHECK:
       case LOCAL_AS_CHECK:
       case GLOBAL_AS_CHECK:
       case RETURN_AS_CHECK:

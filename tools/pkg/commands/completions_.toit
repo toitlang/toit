@@ -62,7 +62,7 @@ Silences the default logger: the completion candidates are printed to
   stdout, so any library logging (like the file-lock logging of the
   cache) would corrupt the completion output.
 */
-guarded_ [block] -> List:
+guarded_ [block -> List] -> List:
   log.set-default (log.default.with-level log.FATAL-LEVEL)
   result := []
   catch:

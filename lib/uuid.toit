@@ -22,7 +22,7 @@ SIZE ::= Uuid.SIZE
 NIL ::= Uuid.NIL
 
 /// Deprecated. Use $Uuid.parse instead.
-parse str/string [--on-error] -> Uuid?:
+parse str/string [--on-error -> Uuid?] -> Uuid?:
   return Uuid.parse str --if-error=on-error
 
 /// Deprecated. Use $Uuid.parse instead.
@@ -55,7 +55,7 @@ class Uuid:
   static NIL ::= Uuid (ByteArray SIZE)
 
   /** Deprecated. Use $(parse str [--if-error]) instead. */
-  static parse str/string [--on-error] -> Uuid?:
+  static parse str/string [--on-error -> Uuid?] -> Uuid?:
     return Uuid.parse str --if-error=on-error
 
   /**
@@ -73,7 +73,7 @@ class Uuid:
   parse "123e4567-e89b-12d3-a456-426614174000"
   ```
   */
-  static parse str/string [--if-error] -> Uuid?:
+  static parse str/string [--if-error -> Uuid?] -> Uuid?:
     uuid := ByteArray SIZE
     index := 0
     i := 0

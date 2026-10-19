@@ -26,7 +26,7 @@ import host.pipe
 import io
 import monitor
 
-with-lsp-client [block]
+with-lsp-client [block LspClient -> none]
     --toit/string
     --lsp-server/string?  // Can be null if not spawning.
     --compiler-exe/string = toit
@@ -43,14 +43,14 @@ with-lsp-client [block]
       --spawn-process=spawn-process
       --pre-initialize=(:null)
 
-with-lsp-client [block]
+with-lsp-client [block LspClient -> none]
     --toit/string
     --lsp-server/string?  // Can be null if not spawning.
     --compiler-exe/string = toit
     --supports-config=true
     --needs-server-args=(not supports-config)
     --spawn-process=true
-    [--pre-initialize]:
+    [--pre-initialize LspClient Map -> none]:
   // Clean the given paths, so we use native path separators.
   // This increases test-coverage on Windows.
   toit = fs.clean toit
@@ -188,7 +188,7 @@ class LspClient:
   initialize:
     initialize: null
 
-  initialize [pre-initialize]:
+  initialize [pre-initialize LspClient Map -> none]:
     print "initializing the server"
     initialize-params :=  {
       "capabilities": {
@@ -331,7 +331,7 @@ class LspClient:
   send-completion-request --uri/string line column -> any:
     return send-completion-request --uri=uri line column --id-callback=: null
 
-  send-completion-request --uri/string line column [--id-callback] -> any:
+  send-completion-request --uri/string line column [--id-callback int -> none] -> any:
     result := connection_.request
         --id-callback=id-callback
         "textDocument/completion"

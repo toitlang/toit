@@ -16,7 +16,7 @@ import system.services show ServiceResourceProxy ServiceHandler
 _client_ /ContainerServiceClient ::=
     (ContainerServiceClient).open as ContainerServiceClient
 
-images -> List:
+images -> List<ContainerImage>:
   return _client_.list-images
 
 current -> uuid.Uuid:
@@ -108,7 +108,7 @@ class Container extends ServiceResourceProxy:
   // only reachable through the latch, so without this the GC can collect the
   // {container, latch, task} cluster and the finalizer closes the proxy
   // mid-wait (a spurious CLOSED instead of the exit code).
-  static waited-on_/Set ::= {}
+  static waited-on_/Set<Container> ::= {}
 
   wait -> int:
     code/int? := null

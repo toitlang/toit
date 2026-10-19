@@ -36,7 +36,7 @@ class Description:
 
   cached-version_/SemanticVersion? := null
   cached-sdk-version_/List := []
-  cached-dependencies_/List? := null
+  cached-dependencies_/List<PackageDependency>? := null
 
   /**
   Constructs a description from the given content_.
@@ -71,7 +71,7 @@ class Description:
       --version/SemanticVersion=(SemanticVersion.parse "v1.0.0")
       --ref-hash/string="deadbeef1234567890abcdef1234567890abcdef"
       --min-sdk/SemanticVersion?=null
-      --dependencies/List=[]
+      --dependencies/List<PackageDependency>=[]
       --ui/cli.Ui:
     map := {
       NAME-KEY_: name,
@@ -110,7 +110,7 @@ class Description:
       cached-sdk-version_.add null
     return cached-sdk-version_[0]
 
-  dependencies -> List:
+  dependencies -> List<PackageDependency>:
     if not cached-dependencies_:
       if not content_.contains DEPENDENCIES-KEY_:
         cached-dependencies_ = []

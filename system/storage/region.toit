@@ -94,7 +94,7 @@ class FlashRegionResource extends RegionResource:
         result.add properties["path"]
     return result
 
-  static find-allocation_ registry/FlashRegistry [--if-absent] -> FlashAllocation
+  static find-allocation_ registry/FlashRegistry [--if-absent -> FlashAllocation] -> FlashAllocation
       --id/Uuid:
     registry.do: | allocation/FlashAllocation |
       if allocation.type != FLASH-ALLOCATION-TYPE-REGION: continue.do

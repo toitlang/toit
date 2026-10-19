@@ -279,7 +279,7 @@ class Ecies:
 
 // Primitives
 
-ec-generate-key_ curve/string -> List:
+ec-generate-key_ curve/string -> List<ByteArray>:
   #primitive.crypto.ec-generate-key
 
 ec-sign_ private-key-der/ByteArray digest/io.Data hash/int -> ByteArray:

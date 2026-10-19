@@ -127,7 +127,7 @@ read-file path/string --ui/cli.Ui -> ByteArray:
   ui.abort "Failed to open '$path' for reading ($exception)."
   unreachable
 
-read-file path/string --ui/cli.Ui [block]:
+read-file path/string --ui/cli.Ui [block io.Reader -> none] -> none:
   stream/file.Stream? := null
   exception := catch: stream = file.Stream.for-read path
   if not stream:
@@ -137,7 +137,7 @@ read-file path/string --ui/cli.Ui [block]:
   finally:
     stream.close
 
-write-file path/string --ui/cli.Ui [block] -> none:
+write-file path/string --ui/cli.Ui [block io.Writer -> none] -> none:
   stream/file.Stream? := null
   exception := catch: stream = file.Stream.for-write path
   if not stream:
@@ -666,13 +666,13 @@ property-set invocation/cli.Invocation -> none:
     properties[key] = value
     properties
 
-properties-update envelope/Envelope [block] -> none:
+properties-update envelope/Envelope [block Map? -> Map?] -> none:
   properties/Map? := envelope.entries.get AR-ENTRY-PROPERTIES
       --if-present=: json.decode it
   properties = block.call properties
   if properties: envelope.entries[AR-ENTRY-PROPERTIES] = json.encode properties
 
-properties-update-with-key invocation/cli.Invocation [block] -> none:
+properties-update-with-key invocation/cli.Invocation [block Map? string -> Map?] -> none:
   key/string := invocation["key"]
   if key.starts-with "\$": throw "property keys cannot start with \$"
   if key == "sdk-version": throw "cannot update sdk-version property"
@@ -1096,7 +1096,7 @@ Both stdout and stderr are captured (different esptool versions print the line
   one stream ever emits more than fits in its buffer (which would otherwise
   deadlock the sequential drain).
 */
-detect-flash-size_ esptool/List --port/string --chip/string -> int?:
+detect-flash-size_ esptool/List<string> --port/string --chip/string -> int?:
   command := esptool + ["--port", port, "--chip", chip, "flash-id"]
   output/string? := null
   catch:
@@ -1130,7 +1130,7 @@ Esptool 4 prints both "esptool.py v4.x.y" and "4.x.y", while esptool 5
   similarly uses "esptool v5.x.y". Scan every whitespace-separated word so
   this keeps working with either form.
 */
-esptool-major-version_ esptool/List -> int?:
+esptool-major-version_ esptool/List<string> -> int?:
   output := pipe.backticks (esptool + ["version"])
   (output.split "\n").do: | line/string |
     (line.trim.split " ").do: | word/string |
@@ -1148,7 +1148,7 @@ write-partitions_ output-path/string partitions/Map --flashing/Map --ui/cli.Ui:
     out-image.replace offset content
   write-file output-path --ui=ui: it.write out-image
 
-build-esp32-image invocation/cli.Invocation envelope/Envelope --config-encoded/ByteArray [--write] -> none:
+build-esp32-image invocation/cli.Invocation envelope/Envelope --config-encoded/ByteArray [--write Map string Map -> none] -> none:
   cli := invocation.cli
   ui := cli.ui
 
@@ -1187,6 +1187,7 @@ build-esp32-image invocation/cli.Invocation envelope/Envelope --config-encoded/B
     else:
       size := int.parse value --if-error=:
         ui.abort "Malformed partition size '$value'."
+        unreachable
       partition-content = ByteArray size
     partition-content = pad partition-content 4096
 
@@ -1250,7 +1251,7 @@ build-esp32-image invocation/cli.Invocation envelope/Envelope --config-encoded/B
   chip := binary.chip-name
   write.call partitions chip flashing
 
-find-esptool_ -> List:
+find-esptool_ -> List<string>:
   bin-extension := ?
   bin-name := system.program-path
   if platform == system.PLATFORM-WINDOWS:
@@ -1641,7 +1642,7 @@ extract-container -> ContainerEntry
   flag-bits = flag-bits or 0
   return ContainerEntry header.id name relocatable --flags=flag-bits --assets=assets --word-size=word-size
 
-update-envelope invocation/cli.Invocation [block] -> none:
+update-envelope invocation/cli.Invocation [block Envelope -> none] -> none:
   input-path := invocation[OPTION-ENVELOPE]
   output-path := invocation[OPTION-OUTPUT]
   if not output-path: output-path = input-path
@@ -1802,7 +1803,7 @@ humanize-key_ key/string -> string:
   parts[0] = capitalize_ parts[0]
   return parts.join " "
 
-json-to-human o/any --indentation/int=0 --skip-indentation/bool=false --chain/List=[] [should-humanize] -> string:
+json-to-human o/any --indentation/int=0 --skip-indentation/bool=false --chain/List=[] [should-humanize List -> truthy] -> string:
   result := ""
   if o is Map:
     o.do: | key/string value |
@@ -2315,7 +2316,7 @@ class Esp32Binary:
     extension-size := compute-drom-extension-size_ drom
     transform-drom-segment_ drom: it[..extension-size[0]]
 
-  static compute-drom-extension-size_ drom/Esp32BinarySegment -> List:
+  static compute-drom-extension-size_ drom/Esp32BinarySegment -> List<int>:
     details-offset := find-details-offset-esp32 drom.bits
     unextended-end-address := LITTLE-ENDIAN.uint32 drom.bits details-offset
     if unextended-end-address == 0: return [drom.size, 0, 0]
@@ -2331,7 +2332,7 @@ class Esp32Binary:
     free := LITTLE-ENDIAN.uint32 drom.bits unextended-size + 8
     return [unextended-size, used, free]
 
-  transform-drom-segment_ drom/Esp32BinarySegment [block] -> none:
+  transform-drom-segment_ drom/Esp32BinarySegment [block ByteArray -> ByteArray] -> none:
     // Run through all the segments and transform the DROM one.
     // All segments following that must be displaced in flash if
     // the DROM segment changed size.

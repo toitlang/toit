@@ -1,12 +1,15 @@
 tests/negative/incomplete-type-test.toit:8:13: error: Unexpected token while parsing type
     x / pre.:
             ^
-tests/negative/incomplete-type-test.toit:12:15: error: Incomplete expression
+tests/negative/incomplete-type-test.toit:12:15: error: Unexpected token while parsing type
   null is pre.
               ^
 tests/negative/incomplete-type-test.toit:8:9: error: Prefix can't be used as type: 'pre'
     x / pre.:
         ^~~
+tests/negative/incomplete-type-test.toit:12:11: error: Prefix can't be used as type: 'pre'
+  null is pre.
+          ^~~
 tests/negative/incomplete-type-test.toit:13:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~

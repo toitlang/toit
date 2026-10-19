@@ -141,14 +141,16 @@ class FirmwareWriter_ extends services.ServiceResource implements FirmwareWriter
     view_ = image[from..to]
     super provider client
 
-  write bytes/ByteArray from=0 to=bytes.size -> none:
+  write bytes/ByteArray from=0 to=bytes.size -> int:
     view_.replace cursor_ bytes[from..to]
     cursor_ += to - from
+    return to - from
 
-  pad size/int value/int -> none:
+  pad size/int value/int -> int:
     to := cursor_ + size
     view_.fill --from=cursor_ --to=to value
     cursor_ = to
+    return size
 
   flush -> int:
     // Everything is already flushed.
@@ -200,13 +202,13 @@ class Firmware:
   name-to-uuid-mapping -> Map:
     return ubjson.decode (part_ PART-NAME-TO-UUID-MAPPING_)
 
-  startup-images -> Map:
+  startup-images -> Map<string, ByteArray>:
     return read-images_ (part_ PART-STARTUP-IMAGES_)
 
-  bundled-images -> Map:
+  bundled-images -> Map<string, ByteArray>:
     return read-images_ (part_ PART-BUNDLED-IMAGES_)
 
-  read-images_ part/ByteArray -> Map:
+  read-images_ part/ByteArray -> Map<string, ByteArray>:
     result := {:}
     if part.is-empty: return result
     reader := ar.ArReader (io.Reader part)
@@ -297,7 +299,7 @@ class RunImageContainerManager extends ContainerManager:
   Runs the given block but ensures that no committed image is saved to the
     file system.
   */
-  without-fs-backup-do [block]:
+  without-fs-backup-do [block -> none] -> none:
     save-to-fs_ = false
     try:
       block.call
@@ -343,7 +345,7 @@ main arguments:
 
   exit (boot container-manager)
 
-add-image path/string existing-uuids/Set --run-boot/bool --run-critical/bool -> none:
+add-image path/string existing-uuids/Set<Uuid> --run-boot/bool --run-critical/bool -> none:
   path = path.replace --all "\\" "/"
   last-separator := path.index-of --last "/"
   last-segment := path[last-separator + 1..]
@@ -359,7 +361,7 @@ add-image path/string existing-uuids/Set --run-boot/bool --run-critical/bool -> 
   writer.commit --run-boot=run-boot --run-critical=run-critical
 
 handle-arguments arguments/List container-manager/RunImageContainerManager -> none:
-  existing-uuids/Set := {}
+  existing-uuids/Set<Uuid> := {}
   container-manager.images.do: | image/ContainerImage |
     existing-uuids.add image.id
 

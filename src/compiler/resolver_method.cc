@@ -344,6 +344,34 @@ ir::Type MethodResolver::resolve_type(ast::Expression* type, bool is_return_type
     return resolved.to_nullable();
   }
 
+  if (type->is_BlockType()) {
+    auto block_type = type->as_BlockType();
+    auto ast_parameter_types = block_type->parameter_types();
+    auto parameter_types = ListBuilder<ir::Type>::allocate(ast_parameter_types.length());
+    for (int i = 0; i < ast_parameter_types.length(); i++) {
+      parameter_types[i] = resolve_type(ast_parameter_types[i], false);
+    }
+    auto return_type = block_type->return_type() == null
+        ? ir::Type::any()
+        : resolve_type(block_type->return_type(), true);
+    return ir::Type::block(parameter_types, return_type);
+  }
+
+  if (type->is_ParameterizedType()) {
+    auto parameterized = type->as_ParameterizedType();
+    auto base = resolve_type(parameterized->type(), is_return_type);
+    if (base.is_type_parameter()) {
+      report_error(type, "Type parameter '%s' can't have type arguments", base.parameter()->name().c_str());
+      return ir::Type::any();
+    }
+    // Errors for unresolved bases have already been reported.
+    if (!base.is_class()) return base;
+    return apply_type_arguments(base.klass(),
+                                parameterized,
+                                [&](ast::Expression* argument) { return resolve_type(argument, false); },
+                                diagnostics());
+  }
+
   {
     // Start by checking that there isn't any `super` or `this` in the type.
     // Linearize the type, so we can check it from left to right.
@@ -378,10 +406,19 @@ ir::Type MethodResolver::resolve_type(ast::Expression* type, bool is_return_type
       report_error(type->as_Identifier(), "Type 'none' is only allowed as return type");
       return ir::Type::any();
     }
+    if (type_name == Symbols::never) {
+      if (is_return_type) return ir::Type::never();
+      report_error(type->as_Identifier(), "Type 'never' is only allowed as return type");
+      return ir::Type::any();
+    }
     if (type_name == Symbols::any) return ir::Type::any();
+    if (type_name == Symbols::truthy) return ir::Type::truthy();
     type_declaration = lookup(type_name).entry;
     if (type->is_LspSelection()) {
       lsp_->selection_handler()->type(type, scope(), type_declaration, is_return_type);
+    }
+    if (type_declaration.is_type_parameter()) {
+      return ir::Type(type_declaration.type_parameter());
     }
   } else if (type->is_Dot()) {
     auto dot = type->as_Dot();
@@ -475,7 +512,7 @@ void MethodResolver::resolve_fill_field_stub() {
 
   int parameter_index = 0;
   auto this_parameter = zone_new<ir::Parameter>(MethodResolver::this_identifier(),
-                                           ir::Type(holder_),
+                                           holder_->self_type(),
                                            false,  // Not a block.
                                            parameter_index++,
                                            false,
@@ -589,7 +626,7 @@ void MethodResolver::resolve_fill_constructor() {
   std::vector<ir::Expression*> parameter_expressions;
   if (is_synthetic_constructor) {
     auto ir_parameter = zone_new<ir::Parameter>(MethodResolver::this_identifier(),
-                                           ir::Type(holder_),
+                                           holder_->self_type(),
                                            false,  // Not a block.
                                            0,
                                            false,
@@ -1185,6 +1222,7 @@ void MethodResolver::_resolve_fill_return_type() {
 
   if (ast_method->return_type() != null) {
     method_->set_return_type(ir::Type(resolve_type(ast_method->return_type(), true)));
+    if (method_->return_type().is_never()) method_->mark_does_not_return();
   } else if (method_->is_constructor() || method_->is_factory()) {
     method_->set_return_type(ir::Type(holder_));
   } else if (ast_method->body() == null) {
@@ -1258,7 +1296,7 @@ void MethodResolver::_resolve_parameters(
   if (has_implicit_this) {
     ASSERT(id_offset == 0);
     auto implicit_this = zone_new<ir::Parameter>(MethodResolver::this_identifier(),
-                                            ir::Type(holder_),
+                                            holder_->self_type(),
                                             false,  // Not a block
                                             0,
                                             false,
@@ -1341,6 +1379,7 @@ void MethodResolver::_resolve_parameters(
                                            parameter->default_value() != null,
                                            default_value_range,
                                            parameter->selection_range());
+    if (!has_explicit_type) ir_parameter->mark_without_explicit_type();
 
     (*ir_parameters)[index] = ir_parameter;
 
@@ -1412,22 +1451,16 @@ void MethodResolver::_resolve_parameters(
       if (!parameter->is_named()) seen_default_values_in_unnamed = true;
       // If the incoming parameter == null, replace it with the default-value (unless the
       // the default value is `null`, which wouldn't do anything).
-      if (!parameter->default_value()->is_LiteralNull()) {
+      // Block parameters can't have default values (reported above).
+      if (!parameter->is_block() && !parameter->default_value()->is_LiteralNull()) {
         auto ir_default_value = resolve_expression(parameter->default_value(),
                                                   "Default value can't be a block");
 
-        ir::Expression* comparison;
-        if (parameter->is_block()) {
-          // Can't have default values for block parameters.
-          ASSERT(diagnostics()->encountered_error());
-          comparison = zone_new<ir::LiteralBoolean>(false, parameter->selection_range());
-        } else {
-          CallBuilder builder(parameter->selection_range());
-          builder.add_arguments(list_of(
-              zone_new<ir::ReferenceLocal>(ir_parameter, 0, parameter->selection_range()),
-              zone_new<ir::LiteralNull>(parameter->selection_range())));
-          comparison = builder.call_builtin(zone_new<ir::Builtin>(ir::Builtin::IDENTICAL));
-        }
+        CallBuilder builder(parameter->selection_range());
+        builder.add_arguments(list_of(
+            zone_new<ir::ReferenceLocal>(ir_parameter, 0, parameter->selection_range()),
+            zone_new<ir::LiteralNull>(parameter->selection_range())));
+        ir::Expression* comparison = builder.call_builtin(zone_new<ir::Builtin>(ir::Builtin::IDENTICAL));
         auto assignment = zone_new<ir::AssignmentLocal>(ir_parameter, 0, ir_default_value, ir_parameter->range());
         auto ir_if = zone_new<ir::If>(comparison,
                                  assignment,
@@ -1438,8 +1471,8 @@ void MethodResolver::_resolve_parameters(
     }
 
     // No need to typecheck the `any` type, and don't try to typecheck in abstract methods.
-    if (!type.is_any()) {
-      ASSERT(type.is_class());
+    // Type parameters are erased and can't be checked either.
+    if (type.is_class()) {
       auto check = zone_new<ir::Typecheck>(ir::Typecheck::PARAMETER_AS_CHECK,
                                       zone_new<ir::ReferenceLocal>(ir_parameter, 0, parameter->selection_range()),
                                       type,
@@ -2033,6 +2066,7 @@ ir::Code* MethodResolver::_create_code(
                                            false,
                                            Source::Range::invalid(),
                                            node->selection_range());
+    ir_parameter->mark_without_explicit_type();
     it_scope.set_it(ir_parameter);
     scope_ = &it_scope;
   } else {
@@ -2842,7 +2876,7 @@ void MethodResolver::_visit_potential_call_dot(ast::Dot* ast_dot,
       report_error(ast_dot, "Can't invoke a block with a named argument");
       push(zone_new<ir::Error>(ast_dot->selection_range(), call_builder.arguments()));
     } else {
-      push(call_builder.call_block(receiver));
+      push(_call_block_with_checks(call_builder.call_block(receiver)));
     }
   } else if (!selector.is_valid()) {
     ASSERT(diagnostics()->encountered_error());
@@ -2866,6 +2900,41 @@ void MethodResolver::_visit_potential_call_dot(ast::Dot* ast_dot,
     }
     push(call_builder.call_instance(ir_dot, ast_dot->name()->selection_range()));
   }
+}
+
+/// Wraps the arguments and the result of a call to a typed block in
+/// as-checks, so that block types are enforced at runtime like other types.
+ir::Expression* MethodResolver::_call_block_with_checks(ir::Expression* call) {
+  if (!call->is_CallBlock()) return call;
+  auto call_block = call->as_CallBlock();
+  auto target = call_block->target();
+  if (!target->is_ReferenceLocal()) return call;
+  auto type = target->as_ReferenceLocal()->target()->type();
+  if (!type.is_block()) return call;
+  auto arguments = call_block->arguments();
+  // Arity mismatches are reported by the type checker.
+  if (arguments.length() != type.block_parameter_count()) return call;
+  for (int i = 0; i < arguments.length(); i++) {
+    auto parameter_type = type.block_parameter_type(i);
+    if (!parameter_type.is_class()) continue;
+    arguments[i] = zone_new<ir::Typecheck>(ir::Typecheck::BLOCK_ARGUMENT_AS_CHECK,
+                                           arguments[i],
+                                           parameter_type,
+                                           parameter_type.klass()->name(),
+                                           arguments[i]->range());
+  }
+  auto return_type = type.block_return_type();
+  if (return_type.is_never()) {
+    // Trap if the block completes normally after all.
+    auto trap = _call_runtime(Symbols::unreachable, List<ir::Expression*>(), call->range());
+    return zone_new<ir::Sequence>(list_of(call, trap), call->range());
+  }
+  if (!return_type.is_class()) return call;
+  return zone_new<ir::Typecheck>(ir::Typecheck::RETURN_AS_CHECK,
+                                 call,
+                                 return_type,
+                                 return_type.klass()->name(),
+                                 call->range());
 }
 
 void MethodResolver::_visit_potential_call_index(ast::Node* ast_target,
@@ -3318,6 +3387,9 @@ void MethodResolver::visit_Return(ast::Return* node) {
     return;
   }
 
+  if (method_->return_type().is_never()) {
+    report_error(node, "Can't return from a method with return type 'never'");
+  }
   ir::Expression* return_value = null;
   if (node->value() != null) {
     if (method_->return_type().is_none()) {
@@ -3327,6 +3399,7 @@ void MethodResolver::visit_Return(ast::Return* node) {
     return_value = resolve_expression(node->value(), "Can't return a block", true);
   } else {
     if (!method_->return_type().is_none() &&
+        !method_->return_type().is_never() &&
         ir_to_ast_map_->at(method_)->as_Method()->return_type() != null) {
       diagnostics()->report_warning(node->selection_range(), "Missing return value");
       return_value = zone_new<ir::LiteralUndefined>(node->selection_range());
@@ -3437,9 +3510,18 @@ ir::Expression* MethodResolver::_as_or_is(ast::Binary* node) {
     report_error(ast_right, "'none' is not a valid type for '%s' checks", kind_str);
     type = ir::Type::any();
     type_name = Symbols::none;
+  } else if (type.is_type_parameter()) {
+    // Type parameters are erased.
+    report_error(ast_right, "Can't check type parameter '%s' at runtime", type.parameter()->name().c_str());
+    type = ir::Type::any();
+    type_name = Symbols::any;
   } else if (type.is_any()) {
     type_name = Symbols::any;
   } else {
+    if (!is_as && type.has_arguments()) {
+      // Type arguments are erased, so an `is` check can't verify them.
+      report_error(ast_right, "Type arguments aren't checked at runtime");
+    }
     ASSERT(type.is_class());
     type_name = type.klass()->name();
   }
@@ -3567,7 +3649,16 @@ ir::Expression* MethodResolver::_define(ast::Expression* node,
 
   ir::Local* local;
   if (ir_right->is_block()) {
-    local = zone_new<ir::Block>(name, ast_declaration->name()->selection_range());
+    if (ir_right->is_Code()) {
+      local = zone_new<ir::Block>(name, ast_declaration->name()->selection_range());
+    } else {
+      // An alias of an existing block. The slot holds a block reference
+      //   (not the block's method), so it must not be loaded with LOAD_BLOCK.
+      local = zone_new<ir::Local>(name,
+                                  true,  // Final.
+                                  true,  // Block.
+                                  ast_declaration->name()->selection_range());
+    }
     if (type.is_valid()) {
       report_error(ast_declaration->type(),
                    "Can't assign block to a typed local");
@@ -3575,11 +3666,10 @@ ir::Expression* MethodResolver::_define(ast::Expression* node,
   } else {
     local = zone_new<ir::Local>(name,
                            ast_declaration->kind() == Token::DEFINE_FINAL,
-                           ir_right->is_block(),
+                           false,  // Not a block.
                            type,
                            ast_declaration->name()->selection_range());
-    if (type.is_valid() && !type.is_any() && !ir_right->is_LiteralUndefined()) {
-      ASSERT(type.is_class());
+    if (type.is_class() && !ir_right->is_LiteralUndefined()) {
       ir_right = zone_new<ir::Typecheck>(ir::Typecheck::LOCAL_AS_CHECK,
                                     ir_right,
                                     type,

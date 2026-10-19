@@ -22,7 +22,7 @@ import .protocol.completion
 import .protocol.document
 import .protocol.diagnostic
 import .file-server
-import .summary show SummaryReader
+import .summary show SummaryReader Module
 import .uri-path-translator as translator
 import .utils
 import .verbose
@@ -36,9 +36,9 @@ class HoverDefinition:
   constructor --.path --.start --.end --.text=null:
 
 class AnalysisResult:
-  diagnostics / Map/*<uri/string, Diagnostics>*/ ::= ?
-  diagnostics-without-position / List/*<string>*/ ::= ?
-  summaries / Map?/*<uri/string, Module>*/ ::= ?
+  diagnostics / Map<string, List<Diagnostic>> ::= ?
+  diagnostics-without-position / List<string> ::= ?
+  summaries / Map<string, Module>? ::= ?
 
   constructor .diagnostics .diagnostics-without-position .summaries:
 
@@ -76,7 +76,7 @@ class Compiler:
   Returns whether the call was successful.
   If there was a crash, invokes the stored `on_crash` handler, and returns false.
   */
-  run --project-uri/string? --ignore-crashes/bool=false --compiler-input/string [read-callback] -> bool:
+  run --project-uri/string? --ignore-crashes/bool=false --compiler-input/string [read-callback io.Reader -> none] -> bool:
     flags := build-run-flags --project-uri=project-uri
 
     process := pipe.fork
@@ -158,7 +158,7 @@ class Compiler:
             did-crash = true
     return not did-crash
 
-  analyze --project-uri/string? uris/List -> AnalysisResult?:
+  analyze --project-uri/string? uris/List<string> -> AnalysisResult?:
     // Work around small stack size.
     // TODO(1268): remove work-around
     latch := monitor.Latch
@@ -278,7 +278,7 @@ class Compiler:
       uri/string
       line-number/int
       column-number/int
-      [block]:
+      [block string Range? List<CompletionItem> -> none]:
     path := translator.to-path uri --to-compiler
     // We don't care if the compiler crashed.
     // Just send whatever completions we get.
@@ -302,7 +302,7 @@ class Compiler:
       return
     unreachable
 
-  goto-definition --project-uri/string? uri/string line-number/int column-number/int -> List/*<Location>*/:
+  goto-definition --project-uri/string? uri/string line-number/int column-number/int -> List<Location>:
     path := translator.to-path uri --to-compiler
     // We don't care if the compiler crashed.
     // Just send the definitions we got.
@@ -334,7 +334,7 @@ class Compiler:
   files and can find cross-file references. When null, the cursor file
   itself is used as the entry point.
   */
-  find-references --project-uri/string? --entry-uri/string?=null uri/string line-number/int column-number/int -> List/*<Location>*/:
+  find-references --project-uri/string? --entry-uri/string?=null uri/string line-number/int column-number/int -> List<Location>:
     path := translator.to-path uri --to-compiler
     entry-path := entry-uri != null
         ? (translator.to-path entry-uri --to-compiler)
@@ -450,7 +450,7 @@ class Compiler:
             --text=text
     return result
 
-  parse --project-uri/string? --paths/List/*<string>*/ -> bool:
+  parse --project-uri/string? --paths/List<string> -> bool:
     // Parse all files and fill the fileserver.
     return run
         --project-uri=project-uri
@@ -492,7 +492,7 @@ class Compiler:
     "defaultLibrary",
   ]
 
-  semantic-tokens --project-uri/string? uri/string -> List:
+  semantic-tokens --project-uri/string? uri/string -> List<int>:
     path := translator.to-path uri --to-compiler
     run --project-uri=project-uri
         --compiler-input="SEMANTIC TOKENS\n$path\n":
@@ -511,7 +511,7 @@ class Compiler:
         Position from-line-number from-column-number
         Position to-line-number   to-column-number
 
-  read-dependencies reader/io.Reader -> Map/*<string, Set<string>>*/:
+  read-dependencies reader/io.Reader -> Map<string, Set<string>>:
     entry-count := int.parse reader.read-line
     result := {:}
     entry-count.repeat:
@@ -524,5 +524,5 @@ class Compiler:
 
     return result
 
-  read-summary reader/io.Reader -> Map/*<path, Module>*/:
+  read-summary reader/io.Reader -> Map<string, Module>:
     return (SummaryReader reader).read-summary

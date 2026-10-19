@@ -124,7 +124,7 @@ class QueryString:
   If a query parameter appears multiple times, then the value for that key is a list of
     strings.
   */
-  parameters/Map
+  parameters/Map<string, any>
   /**
   The fragment of the input given to $QueryString.parse.
   The fragment is the part of the URL that follows a '#' character.

@@ -115,7 +115,7 @@ class Project:
           ui_.emit --warning "The following prefixes are only in package.yaml: $(only-in-specification.join ", ")"
         ui_.abort "The package.yaml file and package.lock file are not in sync."
 
-  with-package-cache-lock_ [block]:
+  with-package-cache-lock_ [block Object -> none]:
     assert: not owns-fs-lock_
     ensure-packages-cache-dir_
     fs-lock.with-lock packages-fs-lock-path_ --logger=ui_.logger:
@@ -146,7 +146,7 @@ class Project:
 
   Returns a list of the installed versions.
   */
-  install-remote --prefixes/List --remotes/List --constraints/List --registries/Registries -> List:
+  install-remote --prefixes/List<string> --remotes/List<Description> --constraints/List<Constraint?> --registries/Registries -> List<SemanticVersion>:
     with-package-cache-lock_: | fs-lock-token |
       return install-remote_
           --prefixes=prefixes
@@ -156,10 +156,10 @@ class Project:
           --fs-lock-token=fs-lock-token
     unreachable
 
-  install-remote_ -> List
-      --prefixes/List
-      --remotes/List
-      --constraints/List
+  install-remote_ -> List<SemanticVersion>
+      --prefixes/List<string>
+      --remotes/List<Description>
+      --constraints/List<Constraint?>
       --registries/Registries
       --fs-lock-token/Object:
     assert: prefixes.size == remotes.size
@@ -213,7 +213,7 @@ class Project:
     lock-file.update --remove-prefix=prefix
     save
 
-  update prefixes/List --major/bool=false --registries/Registries -> none:
+  update prefixes/List<string> --major/bool=false --registries/Registries -> none:
     if major and prefixes.is-empty:
       ui_.abort "The '--major' flag requires at least one package prefix."
 
@@ -390,7 +390,7 @@ class Project:
   */
   solve-and-download_ -> Solution
       --update-everything/bool
-      --urls-to-update/Set={}
+      --urls-to-update/Set<string>={}
       --registries/Registries
       --fs-lock-token/Object:
     dependencies := specification.collect-registry-dependencies

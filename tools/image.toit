@@ -177,7 +177,7 @@ class Heap extends Memory:
   Stores the given object o in the heap.
   If the object hasn't been seen before, calls $if-absent to compute an address.
   */
-  store o/snapshot.ToitHeapObject [--if-absent] -> int:
+  store o/snapshot.ToitHeapObject [--if-absent -> int] -> int:
     // Avoid filling the 'already_written_map' with integers.
     if this is not ToitInteger:
       return contained-objects_.get o --init=if-absent

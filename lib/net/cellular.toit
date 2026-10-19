@@ -31,7 +31,7 @@ CONFIG-PRIORITY-HIGH /int ::= 1
 service_/CellularServiceClient? := null
 service-initialized_/bool := false
 
-open config/Map? -> net.Client
+open config/Map<string, any>? -> net.Client
     --name/string?=null:
   if not service-initialized_:
     // We typically run the cellular service in a non-system

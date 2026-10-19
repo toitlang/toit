@@ -24,16 +24,16 @@ class SemanticVersion:
   minor/int
   patch/int
   pre-releases/List
-  build-numbers/List
+  build-numbers/List<string>
 
   static parse version/string -> SemanticVersion:
     return parse version --on-error=: throw "Parse error: $it"
 
-  static parse version/string [--on-error] -> SemanticVersion:
+  static parse version/string [--on-error string -> any] -> SemanticVersion:
     parsed := (SemanticVersionParser version).semantic-version --consume-all --on-error=on-error
     return SemanticVersion.from-parse-result parsed
 
-  constructor --.major/int --.minor/int=0 --.patch/int=0 --.pre-releases/List=[] --.build-numbers/List=[]:
+  constructor --.major/int --.minor/int=0 --.patch/int=0 --.pre-releases/List=[] --.build-numbers/List<string>=[]:
 
   constructor.from-parse-result parsed/SemanticVersionParseResult:
     major = parsed.triple.triple[0]
@@ -42,9 +42,9 @@ class SemanticVersion:
     pre-releases = parsed.pre-releases
     build-numbers = parsed.build-numbers
 
-  triplet -> List: return [major, minor, patch]
+  triplet -> List<int>: return [major, minor, patch]
 
-  static compare-lists_ l1/List l2/List [--if-equal]-> int:
+  static compare-lists_ l1/List l2/List [--if-equal -> int] -> int:
     l1.size.repeat:
       if l2.size <= it: return 1
       comparison := l1[it].compare-to l2[it]
@@ -59,7 +59,7 @@ class SemanticVersion:
       return 1
     return id1.compare-to id2
 
-  static compare-pre-releases_ l1/List l2/List [--if-equal] -> int:
+  static compare-pre-releases_ l1/List l2/List [--if-equal -> int] -> int:
     if l1.is-empty:
       return l2.is-empty ? if-equal.call : 1
     if l2.is-empty: return -1
@@ -89,7 +89,7 @@ class SemanticVersion:
   compare-to other/SemanticVersion -> int:
     return compare-to other --if-equal=: 0
 
-  compare-to other/SemanticVersion [--if-equal] -> int:
+  compare-to other/SemanticVersion [--if-equal -> int] -> int:
     return compare-lists_ triplet other.triplet --if-equal=:
       compare-pre-releases_ pre-releases other.pre-releases --if-equal=if-equal
 

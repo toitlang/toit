@@ -25,7 +25,7 @@ import ..semantic-version
 The solution of the solver.
 */
 class Solution:
-  packages/Map  // From URL to a list of SemanticVersion instances.
+  packages/Map<string, List<SemanticVersion>>  // From URL to versions.
 
   constructor .packages:
 
@@ -55,7 +55,7 @@ class UndoInformation:
   constructor --.working-queue-size:
 
 class UndoStack:
-  stack_/List ::= []  // Of UndoInformation.
+  stack_/List<UndoInformation> ::= []
 
   push undo-information/UndoInformation:
     stack_.add undo-information
@@ -68,7 +68,7 @@ class UndoStack:
   size -> int: return stack_.size
 
 class ContinuationStack:
-  stack_/List ::= []  // Of int.
+  stack_/List<int> ::= []
 
   push index/int:
     stack_.add index
@@ -86,7 +86,7 @@ class SolverState:
 
   From url-major to the precise version.
   */
-  packages/Map ::= {:}
+  packages/Map<string, SemanticVersion> ::= {:}
 
   /**
   The dependencies we are trying to satisfy.
@@ -94,7 +94,7 @@ class SolverState:
   Dependencies on the same package may appear multiple times. In that case
     a later entry will take into account which version was chose earlier.
   */
-  working-queue/List ::= []  // Of PackageDependency.
+  working-queue/List<PackageDependency> ::= []
 
   /**
   Information necessary to continue exploring all possible packages for
@@ -114,7 +114,7 @@ class SolverState:
   /**
   Adds the given $dependencies to the working queue.
   */
-  add-dependencies dependencies/List:
+  add-dependencies dependencies/List<PackageDependency>:
     working-queue.add-all dependencies
 
   /**
@@ -146,7 +146,7 @@ A package that is available for solving.
 */
 class SolverPackage:
   version/SemanticVersion
-  dependencies/List  // Of PackageDependency.
+  dependencies/List<PackageDependency>
   min-sdk-version/SemanticVersion?
 
   constructor --.version --.dependencies --.min-sdk-version:
@@ -156,7 +156,7 @@ A (lazy) database of packages that are available.
 */
 class Database_:
   registries_/Registries
-  entries_/Map ::= {:}  // From url to SolverPackage.
+  entries_/Map<string, List<SolverPackage>> ::= {:}
 
   constructor .registries_:
 
@@ -166,7 +166,7 @@ class Database_:
   The list is initially in descending order of version, but may be
     reordered by the solver by calling $set-preferred.
   */
-  get-solver-packages url/string -> List:
+  get-solver-packages url/string -> List<SolverPackage>:
     return entries_.get url --init=:
       registry-entries := registries_.retrieve-descriptions url
       solver-packages := registry-entries.map: | entry/Description |
@@ -249,7 +249,7 @@ class Solver:
 
   After this call the solver can not be reused.
   */
-  solve dependencies/List --min-sdk-version/SemanticVersion?=null -> Solution?:
+  solve dependencies/List<PackageDependency> --min-sdk-version/SemanticVersion?=null -> Solution?:
     if state_: throw "Solver can only be used once"
     state_ = SolverState
 
@@ -295,7 +295,7 @@ class Solver:
               undo := state_.undos.pop
               apply-undo_ undo
 
-  solve-dependency_ dependency/PackageDependency index/int  [--on-success] [--on-failure]:
+  solve-dependency_ dependency/PackageDependency index/int [--on-success int UndoInformation -> none] [--on-failure -> none]:
     url := dependency.url
     available/List := database_.get-solver-packages url
     if available.is-empty:

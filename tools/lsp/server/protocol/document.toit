@@ -227,7 +227,7 @@ class WorkspaceEdit extends MapWrapper:
   /**
   Creates a workspace edit from a map of URI to list of $TextEdit.
   */
-  constructor --changes/Map/*<string, List<TextEdit>>*/:
+  constructor --changes/Map<string, List<TextEdit>>:
     result := {:}
     changes.do: |uri/string edits/List|
       result[uri] = edits.map: it.map_

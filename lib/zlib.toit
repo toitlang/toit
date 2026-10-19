@@ -505,7 +505,7 @@ class BufferingHistory_ implements InflateHistory:
       buffered_ -= previous_[0].size
       previous_ = previous_.copy 1
 
-  look-back distance/int [block]:
+  look-back distance/int [block ByteArray int -> none]:
     if distance > buffered_:
       throw "Corrupt data"
     start := previous_.size - 1
@@ -526,7 +526,7 @@ interface InflateHistory:
     data starts.  The distance is measured in bytes, backwards from the last
     data returned by the read method.
   */
-  look-back distance/int [block] -> none
+  look-back distance/int [block ByteArray int -> none] -> none
   /**
   The maximum size of the look-back window.  Can be implemented with a public
     field instead of a getter and a setter.

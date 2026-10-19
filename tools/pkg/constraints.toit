@@ -18,7 +18,7 @@ import .parsers.constraint-parser
 import .parsers.semantic-version-parser
 
 class Constraint:
-  simple-constraints/List
+  simple-constraints/List<SimpleConstraint>
   source/string
   hash-code_/int? := null
 
@@ -27,7 +27,7 @@ class Constraint:
   static parse source/string -> Constraint:
     return parse source --on-error=: throw it
 
-  static parse source/string [--on-error] -> Constraint:
+  static parse source/string [--on-error string -> any] -> Constraint:
     parsed := (ConstraintParser source).constraints --consume-all --on-error=on-error
     constraints := []
     parsed.do: | constraint/ConstraintParseResult |
@@ -74,10 +74,10 @@ class Constraint:
         return false
     return true
 
-  filter versions/List -> List:
+  filter versions/List<SemanticVersion> -> List<SemanticVersion>:
     return versions.filter: satisfies it
 
-  first-satisfying versions/List -> SemanticVersion?:
+  first-satisfying versions/List<SemanticVersion> -> SemanticVersion?:
     versions.do: | version/SemanticVersion |
       if satisfies version:
         return version

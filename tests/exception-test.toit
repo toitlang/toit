@@ -84,6 +84,9 @@ invoke-block [b]:
 invoke-block x [b]:
   b.call x
 
+raw-do list/List [b]:
+  list.do b
+
 test-code-exceptions:
   expect-code-failed: invoke-lambda:: it
   expect-code-failed: invoke-lambda 0:: |a b| 0
@@ -91,8 +94,9 @@ test-code-exceptions:
   expect-code-failed: invoke-block: it
   expect-code-failed: invoke-block 0: |a b| 0
   expect-code-failed: invoke-block 0: |a b c| 0
-  expect-code-failed: [12].do: | a b | 0
-  expect-code-failed: [12].do: | a b c | 0
+  // Through a raw block parameter the arity mismatch isn't caught statically.
+  expect-code-failed: raw-do [12]: | a b | 0
+  expect-code-failed: raw-do [12]: | a b c | 0
 
 test-list-exceptions:
   expect-out-of-bounds: List -1

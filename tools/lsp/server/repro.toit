@@ -75,7 +75,7 @@ class FilesystemRepro extends FilesystemBase:
     if not has-content: return null
     return tar-extract --binary archive_ path
 
-  directory-entries path/string -> List:
+  directory-entries path/string -> List<string>:
     return directory-meta_.get path
 
 /**

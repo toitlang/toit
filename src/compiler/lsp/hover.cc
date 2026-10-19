@@ -57,7 +57,7 @@ void HoverHandler::call_virtual(ir::CallVirtual* node,
                                 List<ir::Class*> classes) {
   Symbol selector = node->selector();
 
-  if (type.is_none()) return;
+  if (type.is_none() || type.is_never() || type.is_truthy()) return;
 
   if (type.is_class()) {
     walk_class_hierarchy(type.klass(), classes, [&](ir::Class* current) -> bool {

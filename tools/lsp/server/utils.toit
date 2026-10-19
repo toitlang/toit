@@ -23,7 +23,7 @@ import monitor
 PACKAGE-CACHE-PATH := "toit/tpkg/"
 
 /// Finds the directories where to look for downloaded (cached) packages.
-find-package-cache-paths -> List:
+find-package-cache-paths -> List<string>:
   cache-paths := os.env.get "TOIT_PACKAGE_CACHE_PATHS"
   if cache-paths:
     entries := cache-paths.split ":"

@@ -47,7 +47,7 @@ map: | mapping/FirmwareMapping |
   print "First 128 bytes of firmware: $bytes"
 ```
 */
-map --from/int=0 --to/int?=null [block] -> none:
+map --from/int=0 --to/int?=null [block FirmwareMapping? -> none] -> none:
   mapping/FirmwareMapping_? := null
   if _client_:
     data := firmware-map_ _client_.content
@@ -175,7 +175,7 @@ class FirmwareWriter extends ServiceResourceProxy:
     are performed, the $progress block is invoked and
     passed the non-accumulated number of bytes written.
   */
-  copy mapping/FirmwareMapping [progress] -> none:
+  copy mapping/FirmwareMapping [progress int -> none] -> none:
     flush_
     List.chunk-up 0 mapping.size BUFFER-SIZE_: | from to size |
       buffer := ByteArray BUFFER-SIZE_

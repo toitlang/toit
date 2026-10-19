@@ -65,7 +65,7 @@ class Client:
       return it
     throw "CLIENT_ERROR"
 
-  stream msg/Message --token-id=null [on-message]:
+  stream msg/Message --token-id=null [on-message Message -> none]:
     logger_.debug "sending stream request" --tags={"path": msg.path}
     stream_ msg --token-id=token-id:
       logger_.debug "stream response" --tags={"path": msg.path}
@@ -117,7 +117,7 @@ class Client:
     // estimate.
     return transport_.mtu - 32
 
-  observe path --token-id=null [on-message]:
+  observe path --token-id=null [on-message Message -> none]:
     observing := 0
     unsubscribe := false
     try:
@@ -154,7 +154,7 @@ class Client:
     else:
       throw CLOSED-ERROR
 
-  stream_ msg/Message --token-id=null --use-max-progress-delay=true [on-message]:
+  stream_ msg/Message --token-id=null --use-max-progress-delay=true [on-message Message -> none]:
     token := stream-start --token-id=token-id
     msg.token = token
     try:

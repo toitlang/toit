@@ -30,7 +30,7 @@ class SystemMessage:
 
   constructor --.sdk-version --.sdk-model --.program-uuid --.payload:
 
-decode-system-message bytes/ByteArray [--if-error] -> SystemMessage:
+decode-system-message bytes/ByteArray [--if-error any -> none] -> SystemMessage:
   decoded-json := null
   error ::= catch: decoded-json = ubjson.decode bytes
   if error:

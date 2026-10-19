@@ -192,10 +192,10 @@ class ShapedMap:
 
   operator[] name/string -> List: return map_[name]
 
-  get name/string [--if-absent] -> List:
+  get name/string [--if-absent string -> List] -> List:
     return map_.get name --if-absent=if-absent
 
-  do [block]:
+  do [block string List -> none] -> none:
     map_.do block
 
 class ShadowKey:
@@ -286,7 +286,7 @@ class InheritanceBuilder:
   compute-inherited-for klass/lsp.Class --superclass/lsp.Class --super-inherited/List -> List:
     class-shaped := ShapedMap
 
-    (klass.methods + klass.fields).do: | entry/lsp.ClassMember |
+    ((klass.methods as List<lsp.ClassMember>) + klass.fields).do: | entry/lsp.ClassMember |
       // We initialize the inheritance order to a high value, so that it is
       // always higher than the inheritance order of the super class or mixins.
       // The current class members are discarded at the end of the function, so
@@ -305,7 +305,7 @@ class InheritanceBuilder:
       super-shaped.add member
 
     max-inheritance-order++
-    (superclass.methods + superclass.fields).do: | entry/lsp.ClassMember |
+    ((superclass.methods as List<lsp.ClassMember>) + superclass.fields).do: | entry/lsp.ClassMember |
       // All direct members share the same inheritance order.
       member-order := max-inheritance-order
       member := Member entry --inheritance-order=member-order

@@ -24,7 +24,7 @@ The $converter block is passed an object to be serialized and an instance
   the $converter block can call the $YamlEncoder.encode, $YamlEncoder.put-list,
   or $YamlEncoder.put-unquoted methods on the encoder.
 */
-encode obj [converter] -> ByteArray:
+encode obj [converter any YamlEncoder -> any] -> ByteArray:
   buffer := io.Buffer
   e := YamlEncoder.private_ buffer
   e.encode obj converter
@@ -59,7 +59,7 @@ The $converter block is passed an object to be serialized and an instance
   the $converter block can call the $YamlEncoder.encode, $YamlEncoder.put-list,
   or $YamlEncoder.put-unquoted methods on the encoder.
 */
-encode-stream --writer/io.Writer obj [converter] -> none:
+encode-stream --writer/io.Writer obj [converter any YamlEncoder -> any] -> none:
   e := YamlEncoder.private_ writer
   e.encode obj converter
 
@@ -81,7 +81,7 @@ UTF-8 encoding is used on the writer.
 encode-stream --writer/io.Writer obj -> none:
   encode-stream --writer=writer obj: throw "INVALID_YAML_OBJECT"
 
-decode_ bytes/ByteArray --as-stream/bool=false [--if-error] -> any:
+decode_ bytes/ByteArray --as-stream/bool=false [--if-error string -> any] -> any:
   p := Parser_ bytes
   result := p.l-yaml-stream --if-error=if-error
   if not result is ParseResult_: return result // This happens when if-error is invoked.
@@ -91,7 +91,7 @@ decode_ bytes/ByteArray --as-stream/bool=false [--if-error] -> any:
   return documents[0]
 
 /** Deprecated. Use $(decode bytes [--if-error]) instead. */
-decode bytes/ByteArray [--on-error] -> any:
+decode bytes/ByteArray [--on-error string -> any] -> any:
   return decode bytes --if-error=on-error
 
 /**
@@ -99,7 +99,7 @@ Decodes the $bytes, which is a ByteArray in single document YAML format.
 The result is null, or an instance of int, bool, float, string, List, or Map.
   The list elements and map values will also be one of these types.
 */
-decode bytes/ByteArray [--if-error] -> any:
+decode bytes/ByteArray [--if-error string -> any] -> any:
   return decode_ bytes --if-error=if-error
 
 /**
@@ -111,7 +111,7 @@ decode bytes/ByteArray -> any:
   return decode --if-error=(: throw it) bytes
 
 /** Deprecated. Use $(decode bytes --as-stream [--if-error]) instead. */
-decode bytes/ByteArray --as-stream [--on-error]-> List:
+decode bytes/ByteArray --as-stream [--on-error string -> List] -> List:
   return decode bytes --as-stream --if-error=on-error
 
 /**
@@ -120,7 +120,7 @@ The result is a $List where each elemenet in the list corresponds to a YAML docu
   Each element will be null, or an instance of int, bool, float, string, List, or Map.
   The list elements and map values will also be one of these types.
 */
-decode bytes/ByteArray --as-stream [--if-error] -> List:
+decode bytes/ByteArray --as-stream [--if-error string -> List] -> List:
   if not as-stream: throw "INVALID_ARGUMENT"
   return decode_ --as-stream --if-error=if-error bytes
 
@@ -145,7 +145,7 @@ The $converter block is passed an object to be serialized and an instance
   the $converter block can call the $YamlEncoder.encode, $YamlEncoder.put-list,
   or $YamlEncoder.put-unquoted methods on the encoder.
 */
-stringify obj/any [converter] -> string:
+stringify obj/any [converter any YamlEncoder -> any] -> string:
   buffer := io.Buffer
   e := YamlEncoder.private_ buffer
   e.encode obj converter
@@ -169,7 +169,7 @@ stringify obj/any -> string:
   return stringify obj: throw "INVALID_YAML_OBJECT"
 
 /** Deprecated. Use $(parse str [--if-error]) instead. */
-parse str/string [--on-error] -> any:
+parse str/string [--on-error string -> any] -> any:
   return parse str --if-error=on-error
 
 /**
@@ -177,7 +177,7 @@ Decodes the $str, which is a string in single document YAML format.
 The result is null, or an instance of of int, bool, float, string, List, or Map.
   The list elements and map values will also be one of these types.
 */
-parse str/string [--if-error] -> any:
+parse str/string [--if-error string -> any] -> any:
   return decode_ str.to-byte-array --if-error=if-error
 
 /**
@@ -189,7 +189,7 @@ parse str/string -> any:
   return parse str --if-error=(: throw it )
 
 /** Deprecated. Use $(parse str --as-stream [--if-error]) instead. */
-parse str/string --as-stream [--on-error] -> List:
+parse str/string --as-stream [--on-error string -> List] -> List:
   return parse str --as-stream --if-error=on-error
 
 /**
@@ -198,7 +198,7 @@ The result is a $List where each elemenet in the list corresponds to a YAML docu
   Each element will be null, or an instance of int, bool, float, string, List, or Map.
   The list elements and map values will also be one of these types.
 */
-parse str/string --as-stream [--if-error] -> List:
+parse str/string --as-stream [--if-error string -> List] -> List:
   if not as-stream: throw "INVALID_ARGUMENT"
   return decode_ str.to-byte-array --as-stream --if-error=if-error
 

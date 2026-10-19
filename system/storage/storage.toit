@@ -22,7 +22,7 @@ import .bucket show BucketResource RamBucketResource
 import .region show FlashRegionResource PartitionRegionResource
 
 abstract class StorageServiceProvider extends ServiceProvider
-    implements StorageService ServiceHandler:
+    implements ServiceHandler:
   registry/FlashRegistry
 
   constructor name/string .registry:
@@ -75,18 +75,3 @@ abstract class StorageServiceProvider extends ServiceProvider
   region-list --scheme/string -> List:
     if scheme != Region.SCHEME-FLASH: throw "Unsupported '$scheme:' scheme"
     return FlashRegionResource.list registry
-
-  bucket-open --scheme/string --path/string -> int:
-    unreachable  // TODO(kasper): Nasty.
-
-  bucket-get bucket/int key/string -> ByteArray?:
-    unreachable  // TODO(kasper): Nasty.
-
-  bucket-set bucket/int key/string value/ByteArray -> none:
-    unreachable  // TODO(kasper): Nasty.
-
-  bucket-remove bucket/int key/string -> none:
-    unreachable  // TODO(kasper): Nasty.
-
-  region-open --scheme/string --path/string --capacity/int? --writable/bool -> int:
-    unreachable  // TODO(kasper): Nasty.

@@ -38,6 +38,13 @@ class ToplevelScope;
 class Module;
 class ModuleScope;
 
+/// Builds the type `klass<arguments>` from [node], checking the arity.
+/// Falls back to the raw type on errors.
+ir::Type apply_type_arguments(ir::Class* klass,
+                              ast::ParameterizedType* node,
+                              const std::function<ir::Type (ast::Expression*)>& resolve_argument,
+                              Diagnostics* diagnostics);
+
 class Resolver {
  public:
   Resolver(Lsp* lsp,
@@ -149,7 +156,6 @@ class Resolver {
   void check_future_reserved_globals(const std::vector<Module*>& modules);
 
   void mark_runtime(Module* core_module);
-  void mark_non_returning(Module* core_module);
 
   void setup_inheritance(const std::vector<Module*>& modules, int core_module_index);
   void report_abstract_classes(const std::vector<Module*>& modules);
@@ -191,6 +197,15 @@ class Resolver {
                      Scope* scope,
                      Module* entry_module,
                      Module* core_module);
+  void setup_type_parameters(ast::Class* ast_class, ir::Class* ir_class);
+  /// Resolves a type that appears in a class header (`extends List<E>`).
+  /// The type parameters of [holder] are in scope.
+  ir::Type resolve_type_in_class_header(ast::Expression* node, ir::Class* holder, Scope* scope);
+  /// The type arguments of a supertype clause. Empty if the clause is raw.
+  List<ir::Type> resolve_super_type_arguments(ast::Expression* ast_type,
+                                              ir::Class* resolved,
+                                              ir::Class* holder,
+                                              Scope* scope);
   ir::Class* resolve_class_interface_or_mixin(ast::Expression* ast_node,
                                               Scope* scope,
                                               ir::Class* holder,

@@ -80,7 +80,7 @@ class ResourceProxy extends services.ServiceResourceProxy:
 // ------------------------------------------------------------------
 
 class ResourceServiceProvider extends services.ServiceProvider
-    implements ResourceService services.ServiceHandler:
+    implements services.ServiceHandler:
   resources/Map ::= {:}
 
   constructor:
@@ -94,9 +94,6 @@ class ResourceServiceProvider extends services.ServiceProvider
       resource ::= (resource client arguments[0]) as Resource
       return notify resource arguments[1]
     unreachable
-
-  open key/string -> int:
-    unreachable  // TODO(kasper): Nasty.
 
   open client/int key/string -> services.ServiceResource:
     resource := Resource this client key

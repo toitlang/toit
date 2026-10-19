@@ -81,7 +81,7 @@ class BufferedReader implements Reader:
   Ensures a number of bytes is available.
     If this is not possible, calls $on-end.
   */
-  ensure_ requested [on-end] -> none:
+  ensure_ requested [on-end -> none] -> none:
     if requested < 0: throw "INVALID_ARGUMENT"
     while buffered < requested:
       if not more_: on-end.call
@@ -663,6 +663,6 @@ class ByteArrayList_:
   first -> ByteArray: return head_.value
   last -> ByteArray: return tail_.value
 
-  do [block]:
+  do [block ByteArray -> none]:
     for current := head_; current; current = current.next:
       block.call current.value

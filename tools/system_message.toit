@@ -111,7 +111,7 @@ main args:
   command := build-command --use-old-api
   command.run args
 
-compute-snapshot-dirs -> List:
+compute-snapshot-dirs -> List<string>:
   return [
     fs.join xdg.state-home "toit" "snapshots",
     fs.join xdg.cache-home "jaguar" "snapshots",

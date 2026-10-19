@@ -450,8 +450,22 @@ void Writer::print_type(ir::Type type) {
     this->printf_external("-1\n");
   } else if (type.is_none()) {
     this->printf_external("-2\n");
+  } else if (type.is_never()) {
+    this->printf_external("-4\n");
+  } else if (type.is_truthy()) {
+    this->printf_external("-5\n");
   } else if (type.is_class()) {
+    // Type arguments aren't part of the summary yet.
     print_toplevel_ref(type.klass());
+  } else if (type.is_block()) {
+    this->printf_external("-3\n");
+    int parameter_count = type.block_parameter_count();
+    this->printf_external("%d\n", parameter_count);
+    for (int i = 0; i < parameter_count; i++) print_type(type.block_parameter_type(i));
+    print_type(type.block_return_type());
+  } else if (type.is_type_parameter()) {
+    // Type parameters are erased to 'any' in the summary for now.
+    this->printf_external("-1\n");
   } else {
     UNREACHABLE();
   }
@@ -544,7 +558,8 @@ void Writer::print_method(ir::Method* method) {
     } else {
       this->printf("0\n");
     }
-    if (is_block) {
+    if (is_block && !parameter->type().is_block()) {
+      // A raw block parameter.
       this->printf_external("[block]\n");
     } else {
       print_type(parameter->type());

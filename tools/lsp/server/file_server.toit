@@ -203,7 +203,7 @@ interface Filesystem:
   /**
   The directories in which to look for packages.
   */
-  package-cache-paths -> List
+  package-cache-paths -> List<string>
 
   /**
   Creates a $File entry for the $path.
@@ -215,7 +215,7 @@ interface Filesystem:
   /**
   Returns a list of entries in the given $path directory.
   */
-  directory-entries path/string -> List
+  directory-entries path/string -> List<string>
 
 
 abstract class FilesystemBase implements Filesystem:
@@ -227,14 +227,14 @@ abstract class FilesystemBase implements Filesystem:
     return File does-exist is-reg is-dir content
 
   abstract sdk-path -> string
-  abstract package-cache-paths -> List
+  abstract package-cache-paths -> List<string>
 
   abstract exists path/string -> bool
   /// Whether the file (or the file a symlink is pointing to) is regular.
   abstract is-regular-file path/string -> bool
   abstract is-directory path/string -> bool
   abstract read-contents path/string -> ByteArray
-  abstract directory-entries path/string -> List
+  abstract directory-entries path/string -> List<string>
 
 
 class FilesystemLocal extends FilesystemBase:
@@ -253,14 +253,14 @@ class FilesystemLocal extends FilesystemBase:
     return file.is-directory path
 
   sdk-path -> string: return sdk-path_
-  package-cache-paths -> List:
+  package-cache-paths -> List<string>:
     if not package-cache-paths_:
       package-cache-paths_ = find-package-cache-paths
     return package-cache-paths_
 
   read-contents path/string -> ByteArray: return file.read-contents path
 
-  directory-entries path/string -> List:
+  directory-entries path/string -> List<string>:
     entries := []
     stream := directory.DirectoryStream path
     while entry := stream.next:

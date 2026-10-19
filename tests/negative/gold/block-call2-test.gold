@@ -1,6 +1,4 @@
-Called block with too few arguments.
-Got: 1 Expected: 2.
-Target:
-     main.<block>              tests/negative/block-call2-test.toit:6:12
-
-  0: main                      tests/negative/block-call2-test.toit:7:3
+tests/negative/block-call2-test.toit:7:3: error: Block of type '[block any any -> any]' expects 2 arguments, but got 1
+  block.call 1
+  ^~~~~
+Compilation failed

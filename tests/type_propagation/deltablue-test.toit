@@ -514,7 +514,7 @@ class Planner:
   add-propagate -> bool
       c    /Constraint
       mark /int:
-    todo := [c]
+    todo/List := [c]
     while not todo.is-empty:
       d := todo.remove-last
       if d.output.mark == mark:

@@ -25,7 +25,7 @@ interface FileSystemView:
   Returns the content of the file, if the $path resolves to a leaf node.
   Returns a $FileSystemView, if the $path resolves to an intermediate node.
   */
-  get --path/List -> any
+  get --path/List<string> -> any
 
   /**
   Gets the value of the entry denoted by $key in this FileSystemView.

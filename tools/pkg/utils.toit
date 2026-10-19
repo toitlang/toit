@@ -30,7 +30,7 @@ Parses a package $selector consisting of a name and an optional version.
 
 Calls $on-error with whether the selector has a missing version.
 */
-parse-package-selector selector/string [--on-error] -> PackageSelector:
+parse-package-selector selector/string [--on-error bool -> none] -> PackageSelector:
   parts := selector.split "@"
   if parts.size > 2 or parts[0].is-empty:
     on-error.call false

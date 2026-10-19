@@ -19,7 +19,7 @@ The $converter block is passed an object to be serialized and an instance
   the $converter block can call the $Encoder.encode, $Encoder.put-list,
   or $Encoder.put-unquoted methods on the encoder.
 */
-encode obj [converter] -> ByteArray:
+encode obj [converter any Encoder -> any] -> ByteArray:
   buffer := io.Buffer
   e := Encoder.private_ buffer
   e.encode obj converter
@@ -54,7 +54,7 @@ The $converter block is passed an object to be serialized and an instance
   the $converter block can call the $Encoder.encode, $Encoder.put-list,
   or $Encoder.put-unquoted methods on the encoder.
 */
-encode-stream --writer/io.Writer obj [converter] -> none:
+encode-stream --writer/io.Writer obj [converter any Encoder -> any] -> none:
   e := Encoder.private_ writer
   e.encode obj converter
 
@@ -96,7 +96,7 @@ The $converter block is passed an object to be serialized and an instance
   the $converter block can call the $Encoder.encode, $Encoder.put-list,
   or $Encoder.put-unquoted methods on the encoder.
 */
-stringify obj/any [converter] -> string:
+stringify obj/any [converter any Encoder -> any] -> string:
   buffer := io.Buffer
   e := Encoder.private_ buffer
   e.encode obj converter
@@ -186,7 +186,7 @@ class Encoder extends EncoderBase_:
   encode-null_:
     writer_.write "null"
 
-  encode-map_ map [converter]:
+  encode-map_ map [converter any any -> any]:
     writer_.write-byte '{'
 
     first := true
@@ -201,7 +201,7 @@ class Encoder extends EncoderBase_:
 
     writer_.write-byte '}'
 
-  encode-list_ list [converter]:
+  encode-list_ list [converter any any -> any]:
     put-list list.size (: list[it]) converter
 
   /**
@@ -209,7 +209,7 @@ class Encoder extends EncoderBase_:
   This can be used by converter blocks.
   The generator is called repeatedly with indices from 0 to size - 1.
   */
-  put-list size/int [generator] [converter]:
+  put-list size/int [generator int -> any] [converter any any -> any]:
     writer_.write-byte '['
 
     for i := 0; i < size; i++:

@@ -92,7 +92,7 @@ void GotoDefinitionHandler::call_virtual(ir::CallVirtual* node,
   bool is_for_named = lsp_selection_dot->is_for_named();
   Symbol name = lsp_selection_dot->name();
 
-  if (type.is_none()) {
+  if (type.is_none() || type.is_never() || type.is_truthy()) {
     // We don't terminate() here, as there might be multiple definitions that need to
     //   get resolved. This happens when a getter and setter are both target of a
     //   compound assignment.

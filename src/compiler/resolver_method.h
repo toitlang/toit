@@ -267,6 +267,7 @@ class MethodResolver : public ast::Visitor {
   void _visit_potential_call_dot(ast::Dot* ast_dot,
                                  CallBuilder& call_builder,
                                  ast::LspSelection* named_lsp_selection);
+  ir::Expression* _call_block_with_checks(ir::Expression* call);
   void _visit_potential_call_index(ast::Node* ast_target,
                                    CallBuilder& call_builder);
   void _visit_potential_call_index_slice(ast::Node* ast_target,

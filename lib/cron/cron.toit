@@ -23,7 +23,7 @@ class CronSchedule:
 
   constructor .second .minute .hour .dom .month .dow:
 
-  constructor.from-map map/Map:
+  constructor.from-map map/Map<string, int>:
     second = map["second"]
     minute = map["minute"]
     hour   = map["hour"]

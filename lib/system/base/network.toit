@@ -113,7 +113,7 @@ class NetworkResourceProxy extends ServiceResourceProxy:
     return net.IpAddress
         (client_ as NetworkServiceClientBase).address handle_
 
-  resolve host/string -> List:
+  resolve host/string -> List<net.IpAddress>:
     results := (client_ as NetworkServiceClientBase).resolve handle_ host
     return results.map: net.IpAddress it
 
@@ -213,7 +213,7 @@ monitor NetworkState:
   module -> NetworkModule?:
     return module_
 
-  up [create] -> NetworkModule:
+  up [create -> NetworkModule] -> NetworkModule:
     usage_++
     module := module_
     if module: return module
@@ -231,7 +231,7 @@ monitor NetworkState:
         // failed with an exception.
         if module: module.disconnect
 
-  up [--if-unconnected] -> NetworkModule?:
+  up [--if-unconnected -> none] -> NetworkModule?:
     module := module_
     if module:
       usage_++
@@ -480,7 +480,7 @@ abstract class ProxyingNetworkServiceProvider extends ServiceProvider
   address resource/ServiceResource -> ByteArray:
     return network_.address.to-byte-array
 
-  resolve resource/ServiceResource host/string -> List:
+  resolve resource/ServiceResource host/string -> List<ByteArray>:
     results ::= network_.resolve host
     return results.map: it.to-byte-array
 

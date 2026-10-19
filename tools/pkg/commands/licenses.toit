@@ -94,7 +94,7 @@ class LicensesCommand extends PkgProjectCommand:
     ui.emit --info "Wrote licenses for $entries.size packages to '$output-path'."
     check-license-policy_ entries
 
-  collect-entries_ -> List:
+  collect-entries_ -> List<LicenseEntry_>:
     overrides := load-overrides_
     root-specification := project.specification
     root-name := root-specification.has-name
@@ -166,7 +166,7 @@ class LicensesCommand extends PkgProjectCommand:
     if include-sdk: entries.add sdk-license-entry_
     return entries
 
-  load-overrides_ -> List:
+  load-overrides_ -> List<LicenseOverride_>:
     config-path := fs.join project.root LICENSES-FILE
     if not file.is-file config-path: return []
 
@@ -216,7 +216,7 @@ class LicensesCommand extends PkgProjectCommand:
       ui.abort "Invalid license override: '$key' must be a non-empty string."
     return value
 
-  find-override_ overrides/List url/string version/string -> LicenseOverride_?:
+  find-override_ overrides/List<LicenseOverride_> url/string version/string -> LicenseOverride_?:
     overrides.do: | override/LicenseOverride_ |
       if override.url == url and override.version == version:
         return override
@@ -226,7 +226,7 @@ class LicensesCommand extends PkgProjectCommand:
     path := fs.join root NOTICE-FILE
     return file.is-file path ? path : null
 
-  check-license-policy_ entries/List:
+  check-license-policy_ entries/List<LicenseEntry_>:
     count := 0
     entries.do: | entry/LicenseEntry_ |
       if not entry.check-policy: continue.do

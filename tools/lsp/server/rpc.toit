@@ -30,13 +30,13 @@ class MapWrapper:
   lookup_ key:
     return lookup_ key: it
 
-  lookup_ key [when-present]:
+  lookup_ key [when-present any -> any]:
     return map_.get key --if-present=: when-present.call it
 
   at_ key:
     return at_ key: it
 
-  at_ key [when-present]:
+  at_ key [when-present any -> any]:
     return when-present.call map_[key]
 
 encode-value_ value:
@@ -157,7 +157,7 @@ class RpcConnection:
   request method/string params/any -> any:
     return request method params --id-callback=: null
 
-  request method/string params/any [--id-callback] -> any:
+  request method/string params/any [--id-callback int -> none] -> any:
     id := request-id_++
     channel := monitor.Channel 1
     // Update the map before sending the request, in case there is an extremely fast response.

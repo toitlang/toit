@@ -58,7 +58,7 @@ class CompilerScheduler:
 
   Returns the result of the $block.
   */
-  run --id/string [block] -> any:
+  run --id/string [block -> any] -> any:
     current := Task.current
     if slot-holders_.contains current: return block.call
     verbose: "Waiting for compiler slot: $id"

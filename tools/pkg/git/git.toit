@@ -46,7 +46,7 @@ class Repository:
     refs := protocol_.load-refs url
     return refs[HEAD-INDICATOR_]
 
-  refs -> Map:
+  refs -> Map<string, string>:
     return protocol_.load-refs url
 
 protocol_ ::= GitProtocol_
@@ -81,7 +81,7 @@ class GitProtocol_:
       network_ = null
 
 
-  load-capabilities url/string:
+  load-capabilities url/string -> Map:
     host := url[0..url.index-of "/"]
     return server-capabilities-cache_.get host
         --init=:
@@ -105,7 +105,7 @@ class GitProtocol_:
 
             capabilities
 
-  load-refs url/string -> Map:
+  load-refs url/string -> Map<string, string>:
     refs-response := client_.post (pack-command_ "ls-refs" [] [])
         --uri="$url/git-upload-pack"
         --headers=version-2-header_
@@ -164,7 +164,7 @@ class GitProtocol_:
 
     throw "Missing flush packet from server"
 
-  pack-command_ command/string capabilities/List arguments/List -> ByteArray:
+  pack-command_ command/string capabilities/List<string> arguments/List<string> -> ByteArray:
     buffer := io.Buffer
     pack-line_ buffer "command=$command"
     if not capabilities.is-empty:
@@ -207,7 +207,7 @@ class GitFileSystemView implements FileSystemView:
 
   constructor .content_:
 
-  get --path/List -> any:
+  get --path/List<string> -> any:
     if path.is-empty: return null
     if path.size == 1: return get path[0]
 

@@ -201,7 +201,7 @@ class LazyInitializerBlockedTasks_:
     blocked-last.next-blocked_ = waiting
     blocked-last = waiting
 
-  do-and-clear [block]:
+  do-and-clear [block Task_ -> none]:
     current /Task_? := blocked-first
     while current:
       next := current.next-blocked_

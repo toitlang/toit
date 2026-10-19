@@ -34,8 +34,8 @@ import .services
 class Container:
   image/ContainerImage ::= ?
   gid_/int ::= ?
-  pids_/Set? := null
-  resources/Set ::= {}
+  pids_/Set<int>? := null
+  resources/Set<ContainerResource> ::= {}
 
   constructor .image .gid_:
 
@@ -186,7 +186,7 @@ class ContainerImageFlash extends ContainerImage:
       manager.image-registry.free allocation
 
 abstract class ContainerServiceProvider extends ServiceProvider
-    implements ContainerService ServiceHandler:
+    implements ServiceHandler:
 
   constructor:
     super "system/containers" --major=0 --minor=2
@@ -221,7 +221,7 @@ abstract class ContainerServiceProvider extends ServiceProvider
     unreachable
 
   abstract image-registry -> FlashRegistry
-  abstract images -> List
+  abstract images -> List<ContainerImage>
   abstract add-flash-image allocation/FlashAllocation -> ContainerImage
   abstract lookup-image id/uuid.Uuid -> ContainerImage?
   abstract send-container-event --gid/int event-kind/int event-value/any -> none
@@ -241,9 +241,6 @@ abstract class ContainerServiceProvider extends ServiceProvider
       result.add image.data
     return result
 
-  load-image id/uuid.Uuid -> List?:
-    unreachable  // <-- TODO(kasper): Nasty.
-
   load-image client/int id/uuid.Uuid -> List?:
     image/ContainerImage? := lookup-image id
     if not image: return null
@@ -261,9 +258,6 @@ abstract class ContainerServiceProvider extends ServiceProvider
     image/ContainerImage? := lookup-image id
     if not image: return
     image.delete
-
-  image-writer-open size/int -> int:
-    unreachable  // <-- TODO(kasper): Nasty.
 
   image-writer-open client/int size/int -> ServiceResource:
     relocated-size := size - (size / IMAGE-CHUNK-SIZE) * IMAGE-WORD-SIZE
@@ -289,16 +283,13 @@ abstract class ContainerServiceProvider extends ServiceProvider
     image := add-flash-image allocation
     return image.id
 
-  notify-background-state-changed new-state/bool:
-    unreachable  // Here to satisfy the checker.
-
 class ContainerManager extends ContainerServiceProvider implements SystemMessageHandler_:
   image-registry/FlashRegistry ::= ?
   service-manager_/SystemServiceManager ::= ?
 
-  images_/Map ::= {:}               // Map<uuid.Uuid, ContainerImage>
-  containers-by-id_/Map ::= {:}     // Map<int, Container>
-  containers-by-image_/Map ::= {:}  // Map<uuid.Uuid, Container>
+  images_/Map<uuid.Uuid, ContainerImage> ::= {:}
+  containers-by-id_/Map<int, Container> ::= {:}
+  containers-by-image_/Map<uuid.Uuid, Map<int, Container>> ::= {:}
 
   system-image_/ContainerImage? := null
   done_ ::= monitor.Latch
@@ -324,7 +315,7 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
   system-image -> ContainerImage:
     return system-image_
 
-  images -> List:
+  images -> List<ContainerImage>:
     return images_.values.filter: it != system-image_
 
   lookup-image id/uuid.Uuid -> ContainerImage?:

@@ -229,7 +229,7 @@ class Target:
   */
   serve-read-requests
       --response-timeout-us/int=DEFAULT-TARGET-RESPONSE-TIMEOUT-US
-      [block] -> none:
+      [block -> ByteArray] -> none:
     if response-timeout-us <= 0: throw "INVALID_ARGUMENT"
     write-mutex_.do:
       if not resource_: throw "CLOSED"
@@ -509,7 +509,7 @@ class Bus:
           i2c-bus-close_ resource
           resource_ = null
 
-  perform-controller-operation_ [start] [finish]:
+  perform-controller-operation_ [start -> none] [finish -> any]:
     return mutex_.do:
       if not resource_: throw "CLOSED"
       result := null
@@ -718,7 +718,7 @@ class Device implements serial.Device:
           --byte-order=byte-order
     return registers_
 
-  with-failure-handling_ [block] [--on-failure]:
+  with-failure-handling_ [block -> any] [--on-failure any -> any]:
     e := catch:
       return block.call
     return on-failure.call e
@@ -752,7 +752,7 @@ class Device implements serial.Device:
 
   Deprecated. Use exception handling instead.
   */
-  write bytes/ByteArray [failure]:
+  write bytes/ByteArray [failure any -> none]:
     with-failure-handling_ --on-failure=failure:
       write bytes
 
@@ -776,7 +776,7 @@ class Device implements serial.Device:
 
   Deprecated. Use exception handling instead.
   */
-  write-reg register/int bytes/ByteArray [failure]:
+  write-reg register/int bytes/ByteArray [failure any -> none]:
     with-failure-handling_ --on-failure=failure:
       write-reg register bytes
 
@@ -798,7 +798,7 @@ class Device implements serial.Device:
 
   Deprecated. Use exception handling instead.
   */
-  write-address address/ByteArray bytes/ByteArray [failure]:
+  write-address address/ByteArray bytes/ByteArray [failure any -> none]:
     with-failure-handling_ --on-failure=failure:
       write-address address bytes
 
@@ -841,7 +841,7 @@ class Device implements serial.Device:
 
   Deprecated. Use exception handling instead.
   */
-  read size/int [failure] -> ByteArray:
+  read size/int [failure any -> ByteArray] -> ByteArray:
     return with-failure-handling_ --on-failure=failure:
       read size
 
@@ -863,7 +863,7 @@ class Device implements serial.Device:
 
   Deprecated. Use exception handling instead.
   */
-  read-reg register/int size/int [failure] -> ByteArray:
+  read-reg register/int size/int [failure any -> ByteArray] -> ByteArray:
     return with-failure-handling_ --on-failure=failure:
       read-reg register size
 
@@ -879,7 +879,7 @@ class Device implements serial.Device:
 
   Deprecated. Use exception handling instead.
   */
-  read-address address/ByteArray size/int [failure] -> ByteArray:
+  read-address address/ByteArray size/int [failure any -> ByteArray] -> ByteArray:
     return with-failure-handling_ --on-failure=failure:
       read-address address size
 

@@ -68,7 +68,7 @@ abstract class PackageBase implements Package:
 
   abstract specification --fs-lock-token/Object -> Specification
 
-  cached-repository-dir url/string version/SemanticVersion:
+  cached-repository-dir url/string version/SemanticVersion -> string:
     return project-specification.project.cached-repository-dir_ url version
 
   abstract enrich-map map/Map
@@ -246,7 +246,7 @@ class LockFileBuilder:
 
   project_/Project
   solution_/solver.Solution
-  url-id-prefixes-map_/Map  // A map from url to ID-prefix.
+  url-id-prefixes-map_/Map<string, string>  // A map from url to ID-prefix.
   ui_/Ui
 
   constructor --project/Project --solution/solver.Solution --ui/Ui:
@@ -359,7 +359,7 @@ class LockFileBuilder:
     result[LockFile.PACKAGES-KEY_] = packages
     return LockFile.from-map result project_.specification
 
-  build-prefixes_ deps/Map:
+  build-prefixes_ deps/Map<string, PackageDependency> -> Map<string, string>:
     result := {:}
     deps.keys.sort.do: | prefix/string |
       dep/PackageDependency := deps[prefix]

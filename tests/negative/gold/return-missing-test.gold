@@ -1,12 +1,6 @@
 tests/negative/return-missing-test.toit:51:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-tests/negative/return-missing-test.toit:37:12: error: Logical operation argument can't be 'none'
-  arg and (return 499)
-           ^~~~~~
-tests/negative/return-missing-test.toit:40:11: error: Logical operation argument can't be 'none'
-  arg or (return 499)
-          ^~~~~~
 tests/negative/return-missing-test.toit:12:1: error: Method doesn't return a value
 test1 -> any:
 ^~~~~

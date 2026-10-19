@@ -355,6 +355,10 @@ test-parse-integer:
   expect-equals -1 (int.parse "-0x" --if-error=: -1)
   expect-equals -99 (int.parse "0x-1" --if-error=: -99)
   expect-equals -1 (int.parse "0a" --if-error=: -1)
+  // The error block may return null, also for hex digits.
+  expect-null (int.parse "0xg" --if-error=: null)
+  expect-null (int.parse "g" --radix=16 --if-error=: null)
+  expect-null (int.parse "0x" --if-error=: null)
   expect-equals -1 (int.parse "foo0xbar" 3 5 --on-error=: -1)  // @no-warn
   expect-equals -1 (int.parse "foo0x7bar" 3 5 --on-error=: -1)  // @no-warn
   expect-equals -1 (int.parse "foo0x-7bar" 3 6 --on-error=: -1)  // @no-warn

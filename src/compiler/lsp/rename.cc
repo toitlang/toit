@@ -87,6 +87,9 @@ static Source::Range class_reference_range(ast::Expression* expression) {
   if (expression->is_Nullable()) {
     return class_reference_range(expression->as_Nullable()->type());
   }
+  if (expression->is_ParameterizedType()) {
+    return class_reference_range(expression->as_ParameterizedType()->type());
+  }
   if (expression->is_Dot()) {
     return expression->as_Dot()->name()->selection_range();
   }
@@ -174,6 +177,7 @@ class FindReferencesVisitor : public ir::TraversingVisitor {
   void visit_CallStatic(ir::CallStatic* node) override;
   void visit_CallVirtual(ir::CallVirtual* node) override;
   void visit_Typecheck(ir::Typecheck* node) override;
+  void visit_Code(ir::Code* node) override;
 
   void emit_range(const Source::Range& range);
 
@@ -190,6 +194,28 @@ class FindReferencesVisitor : public ir::TraversingVisitor {
   LspProtocol* protocol_;
   const VirtualCallFilter& virtual_call_filter_;
 };
+
+// Emits the references to [target_class] in the type annotation [ast_type],
+// which resolved to [type]. Block types reference several classes.
+static void emit_type_references(ir::Type type,
+                                 ast::Expression* ast_type,
+                                 ir::Class* target_class,
+                                 FindReferencesVisitor& visitor) {
+  if (ast_type == null) return;
+  if (type.is_block() && ast_type->is_BlockType()) {
+    auto* block_type = ast_type->as_BlockType();
+    auto ast_parameter_types = block_type->parameter_types();
+    if (ast_parameter_types.length() != type.block_parameter_count()) return;
+    for (int i = 0; i < ast_parameter_types.length(); i++) {
+      emit_type_references(type.block_parameter_type(i), ast_parameter_types[i], target_class, visitor);
+    }
+    emit_type_references(type.block_return_type(), block_type->return_type(), target_class, visitor);
+    return;
+  }
+  if (type.is_class() && type.klass() == target_class) {
+    visitor.emit_range(class_reference_range(ast_type));
+  }
+}
 
 }  // anonymous namespace
 
@@ -621,15 +647,14 @@ void FindReferencesVisitor::emit_range(const Source::Range& range) {
   // if not filtered out.
   // The definition is explicitly emitted once (in find_and_emit_all_references),
   // so subsequent emissions with the same range are suppressed.
-  if (definition_emitted_ &&
-      definition_range_.is_valid() &&
-      range.from() == definition_range_.from() &&
-      range.to() == definition_range_.to()) {
-    return;
+  // For parameters, the definition is the name's range, but these references
+  // have the parameter's full range (including `--` or `[`).
+  bool is_definition = definition_range_.is_valid() && range == definition_range_;
+  if (!is_definition && target_ != null && target_->is_Parameter()) {
+    is_definition = range == target_->as_Parameter()->range();
   }
-  if (definition_range_.is_valid() &&
-      range.from() == definition_range_.from() &&
-      range.to() == definition_range_.to()) {
+  if (is_definition) {
+    if (definition_emitted_) return;
     definition_emitted_ = true;
   }
   auto from = source_manager_->compute_location(range.from());
@@ -648,8 +673,8 @@ void FindReferencesVisitor::emit_range(const Source::Range& range) {
   int end_col = utf16_offset_in_line(to);
 
   // The source range may include prefix syntax that is not part of the
-  // renamable identifier — e.g., "[" for block parameters, "--" for named
-  // parameters, "." for dot-access, or "constructor." for named constructors.
+  // renamable identifier -- e.g., "." for dot-access and `prefix.Class`
+  // references, or ".", "this." and "--." for field-storing parameters.
   // Adjust the start column so the emitted range covers exactly the name.
   if (target_name_len_ > 0 &&
       from.line_number == to.line_number &&
@@ -850,11 +875,25 @@ void FindReferencesVisitor::visit_Typecheck(ir::Typecheck* node) {
         emit_range(class_reference_range(ast_type->as_Expression()));
       }
     }
-    // For PARAMETER_AS_CHECK, RETURN_AS_CHECK, and FIELD_* checks, the
+    // For PARAMETER_AS_CHECK, BLOCK_ARGUMENT_AS_CHECK, RETURN_AS_CHECK, and FIELD_* checks, the
     // class name range is extracted separately in emit_all_references
     // using direct AST lookups on parameters, return types, and fields.
   }
   TraversingVisitor::visit_Typecheck(node);
+}
+
+// Block and lambda parameters aren't reachable from the method's parameter
+// list; their type annotations are found here.
+void FindReferencesVisitor::visit_Code(ir::Code* node) {
+  if (target_class_ != null) {
+    for (auto* param : node->parameters()) {
+      auto* ast_param = ir_to_ast_map_.lookup(param);
+      if (ast_param != null && ast_param->is_Parameter()) {
+        emit_type_references(param->type(), ast_param->as_Parameter()->type(), target_class_, *this);
+      }
+    }
+  }
+  TraversingVisitor::visit_Code(node);
 }
 
 // Helper functions for find_and_emit_all_references
@@ -939,12 +978,9 @@ static void emit_type_annotation_references(
     FindReferencesVisitor& visitor) {
   auto scan_method_types = [&](ir::Method* method) {
     for (auto* param : method->parameters()) {
-      if (param->type().is_class() && param->type().klass() == target_class) {
-        auto* ast_param = ir_to_ast.lookup(param);
-        if (ast_param != null && ast_param->is_Parameter()) {
-          auto* ast_type = ast_param->as_Parameter()->type();
-          if (ast_type != null) visitor.emit_range(class_reference_range(ast_type));
-        }
+      auto* ast_param = ir_to_ast.lookup(param);
+      if (ast_param != null && ast_param->is_Parameter()) {
+        emit_type_references(param->type(), ast_param->as_Parameter()->type(), target_class, visitor);
       }
     }
     if (method->return_type().is_class() &&
@@ -1166,16 +1202,23 @@ void find_and_emit_all_references(
     virtual_call_filter.set_setter(field_setter);
   }
 
-  // For named constructors and factories, ir::Method::range() covers only the
-  // "constructor" keyword (set from ast::Method::selection_range() during
-  // resolution). The actual name (e.g., "my-named-ctor" in
-  // "constructor.my-named-ctor") lives in the ast::Dot node's name()
-  // Identifier. Use its range instead.
-  // TODO(floitsch): Investigate whether ir::Method should store a name range
-  // that covers the named constructor/factory name, so we don't need to go
-  // through the ir_to_ast map here.
   Source::Range definition_range = target_range(target);
-  if (target->is_Method()) {
+  if (target->is_Parameter()) {
+    // The parameter's range covers prefixes and brackets (`--name`, `[name]`);
+    // the AST has the exact range of the name.
+    auto* ast_node = ir_to_ast.lookup(target);
+    if (ast_node != null && ast_node->is_Parameter()) {
+      definition_range = ast_node->as_Parameter()->name()->selection_range();
+    }
+  } else if (target->is_Method()) {
+    // For named constructors and factories, ir::Method::range() covers only the
+    // "constructor" keyword (set from ast::Method::selection_range() during
+    // resolution). The actual name (e.g., "my-named-ctor" in
+    // "constructor.my-named-ctor") lives in the ast::Dot node's name()
+    // Identifier. Use its range instead.
+    // TODO(floitsch): Investigate whether ir::Method should store a name range
+    // that covers the named constructor/factory name, so we don't need to go
+    // through the ir_to_ast map here.
     auto* method = target->as_Method();
     if (is_unnamed_constructor_or_factory(method)) {
       definition_range = method->holder()->range();

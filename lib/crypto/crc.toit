@@ -118,7 +118,7 @@ class Crc extends Checksum:
       --xor-result=0xffff_ffff
   ```
   */
-  constructor.little-endian width/int --powers/List --initial-state/int=0 --xor-result/int=0:
+  constructor.little-endian width/int --powers/List<int> --initial-state/int=0 --xor-result/int=0:
     polynomial := 1 << (width - 1)
     powers.do:
       if 0 <= it < width:
@@ -162,7 +162,7 @@ class Crc extends Checksum:
   crc := Crc.big-endian 16 --powers=[16, 12, 5, 0]
   ```
   */
-  constructor.big-endian width/int --powers/List --initial-state/int=0 --xor-result/int=0:
+  constructor.big-endian width/int --powers/List<int> --initial-state/int=0 --xor-result/int=0:
     polynomial := 0
     powers.do:
       if 0 <= it < width:

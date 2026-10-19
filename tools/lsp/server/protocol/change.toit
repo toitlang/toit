@@ -66,7 +66,7 @@ class DidChangeTextDocumentParams extends MapWrapper:
     two content changes c1 and c2 for a document in state S then c1 move the document
     to S' and c2 to S''.
   */
-  content-changes -> List/*<TextDocumentContentChangeEvent>*/:
+  content-changes -> List<TextDocumentContentChangeEvent>:
     return at_ "contentChanges":
       for i := 0; i < it.size; i++:
         it[i] = TextDocumentContentChangeEvent it[i]
