@@ -44,6 +44,28 @@ static bool is_arithmetic_operation(const Selector<CallShape>& selector) {
          name == Token::symbol(Token::MOD);
 }
 
+/// Finds definitions of untyped locals that [is_candidate] accepts.
+class CandidateFinder : public TraversingVisitor {
+ public:
+  explicit CandidateFinder(const std::function<bool (AssignmentDefine*)>& is_candidate)
+      : is_candidate_(is_candidate) {}
+
+  bool found() const { return found_; }
+
+  void visit_AssignmentDefine(AssignmentDefine* node) {
+    if (found_) return;
+    if (is_candidate_(node)) {
+      found_ = true;
+      return;
+    }
+    TraversingVisitor::visit_AssignmentDefine(node);
+  }
+
+ private:
+  std::function<bool (AssignmentDefine*)> is_candidate_;
+  bool found_ = false;
+};
+
 class TypeChecker : public ReturningVisitor<Type> {
  public:
   TypeChecker(List<Type> literal_types,
@@ -244,7 +266,7 @@ class TypeChecker : public ReturningVisitor<Type> {
   Type visit_Method(Method* node) {
     method_ = node;
     if (!node->has_body()) return Type::invalid();
-    with_element_inference([&]() {
+    with_element_inference(node->body(), [&]() {
       method_ = node;
       visit(node->body());
       // Blocks that were never referenced.
@@ -296,7 +318,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     TOIT_CHECK(last->is_Return());
     auto ret = last->as_Return();
     Type value_type = Type::invalid();
-    with_element_inference([&]() {
+    with_element_inference(ret->value(), [&]() {
       method_ = node;
       value_type = visit(ret->value());
     });
@@ -955,7 +977,16 @@ class TypeChecker : public ReturningVisitor<Type> {
   /// every argument passed to a parameter typed with the element type),
   /// without reporting diagnostics. The second pass checks the body with the
   /// joined types.
-  void with_element_inference(const std::function<void ()>& body) {
+  void with_element_inference(Node* root, const std::function<void ()>& body) {
+    // Most methods have no candidates: check them in a single pass.
+    CandidateFinder finder([&](AssignmentDefine* node) {
+      return !node->local()->has_explicit_type() && is_fresh_creator(node->right());
+    });
+    root->accept(&finder);
+    if (!finder.found()) {
+      body();
+      return;
+    }
     auto saved_candidates = std::move(candidates_);
     auto saved_final_types = std::move(final_types_);
     bool saved_collecting = collecting_;
