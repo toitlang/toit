@@ -39,7 +39,10 @@ abstract class LocationCompilerTestRunner:
     for i := 0; i < lines.size; i++:
       line := lines[i]
       is-test-line := false
-      if line.starts-with "/*" and not line.starts-with "/**":
+      // Markers may be indented. The '^' column is absolute.
+      trimmed := line.trim --left
+      if trimmed.starts-with "/*" and not trimmed.starts-with "/**":
+        indentation := line.size - trimmed.size
         test-line-index := i - 1
         test-line := lines[test-line-index]
         if not line.contains "^":
@@ -61,8 +64,8 @@ abstract class LocationCompilerTestRunner:
 
         test-data-lines := []
         i++
-        while not lines[i].starts-with "*/":
-          test-data-lines.add lines[i++]
+        while not (lines[i].trim --left).starts-with "*/":
+          test-data-lines.add (dedent_ lines[i++] indentation)
         test-data := parse-test-lines test-data-lines
 
         client.send-did-change --path=test-path content
@@ -73,3 +76,10 @@ abstract class LocationCompilerTestRunner:
           client.send-did-change --path=test-path alternative-content
           alternative-response := send-request client test-path test-line-index column
           check-result alternative-response test-data locations
+
+/** Removes up to $amount leading spaces from the $line. */
+dedent_ line/string amount/int -> string:
+  removed := 0
+  while removed < amount and removed < line.size and line[removed] == ' ':
+    removed++
+  return line[removed..]
