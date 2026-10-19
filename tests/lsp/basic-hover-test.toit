@@ -24,6 +24,8 @@ class A:
   */
   constructor.named:
 
+  constructor.undocumented-named:
+
 main:
   a := A
   /*   ^
@@ -43,4 +45,9 @@ This is a field.
   b := A.named
   /*     ^
 This is a named constructor.
+  */
+
+  c := A.undocumented-named
+  /*       ^
+This is a class.
   */
