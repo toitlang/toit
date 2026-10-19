@@ -149,6 +149,7 @@ template<typename K, typename V> class Map<K, V*> {
 template<typename K, typename V> class UnorderedMap {
  public:
   typename std::unordered_map<K, V>::iterator find(const K& key) { return map_.find(key); }
+  typename std::unordered_map<K, V>::const_iterator find(const K& key) const { return map_.find(key); }
   typename std::unordered_map<K, V>::iterator end() { return map_.end(); }
 
   bool add(const K& key, V value) {
