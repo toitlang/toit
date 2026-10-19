@@ -111,7 +111,7 @@ class ProjectSpecification extends Specification:
   The $block is only called once for each local dependency.
   The $block is called with "." as path for this project package file.
   */
-  visit-local-specifications [block]:
+  visit-local-specifications [block string string Specification? -> none]:
     entry-dir := fs.dirname (fs.to-absolute file-name)
     already-visited := {}
     relative-paths := {:}
@@ -127,7 +127,7 @@ class ProjectSpecification extends Specification:
       --package-path/string
       --already-visited/Set
       --entry-dir/string
-      [block]:
+      [block string string Specification? -> none]:
     specification.dependencies.do: | prefix/string dep-entry/Map |
       if not dep-entry.contains Specification.PATH-KEY_: continue.do
       path := dep-entry[Specification.PATH-KEY_]
@@ -168,7 +168,7 @@ class ProjectSpecification extends Specification:
 
   This includes dependencies that are transitively added due to local dependencies.
   */
-  collect-registry-dependencies -> List:
+  collect-registry-dependencies -> List<PackageDependency>:
     result := []
     visit-local-specifications: | _ _ dep-specification/Specification? |
       if dep-specification:
@@ -283,7 +283,7 @@ abstract class Specification:
 
     return fs.to-relative my-dir --base=other-dir
 
-  absolute-path-for-dependency path/string:
+  absolute-path-for-dependency path/string -> string:
     if fs.is-absolute path: return path
     if fs.is-rooted path: return fs.to-absolute path
     return fs.to-absolute (fs.join root-dir path)
@@ -319,11 +319,11 @@ abstract class Specification:
         return Constraint.parse environment_[SDK-KEY_]
     return null
 
-  has-package package-name/string:
+  has-package package-name/string -> bool:
     return dependencies.contains package-name
 
   /** Returns a map from prefix to $PackageDependency objects. */
-  registry-dependencies -> Map:
+  registry-dependencies -> Map<string, PackageDependency>:
     dependencies := {:}
     this.dependencies.do: | prefix/string dep-entry/Map |
       if dep-entry.contains URL-KEY_:
@@ -333,7 +333,7 @@ abstract class Specification:
     return dependencies
 
   /** Returns a map of prefix to strings representing the paths of the local packages */
-  local-dependencies -> Map:
+  local-dependencies -> Map<string, string>:
     dependencies := {:}
     this.dependencies.do: | prefix/string dep-entry/Map |
       if dep-entry.contains PATH-KEY_:
@@ -427,7 +427,7 @@ class PackageDependency:
 
   constructor .url --.constraint:
 
-  filter versions/List -> List:
+  filter versions/List<SemanticVersion> -> List<SemanticVersion>:
     return constraint.filter versions
 
   satisfies version/SemanticVersion -> bool:
@@ -442,5 +442,5 @@ class PackageDependency:
     if other is not PackageDependency: return false
     return url == other.url and hash-code == other.hash-code and constraint == other.constraint
 
-  stringify: return "$url:$constraint"
+  stringify -> string: return "$url:$constraint"
 

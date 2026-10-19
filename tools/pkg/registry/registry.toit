@@ -90,8 +90,8 @@ class Registries:
   search -> Description
       --registry-name/string?=null
       search-string/string
-      [--if-absent]
-      [--if-ambiguous]:
+      [--if-absent -> Description?]
+      [--if-ambiguous -> Description?]:
     auto-sync_
     search-results := search_ registry-name search-string
     if search-results.size == 1:
@@ -118,7 +118,7 @@ class Registries:
 
   Returns a list of all descriptions that matches.
   */
-  search --free-text search-string/string -> List:
+  search --free-text search-string/string -> List<Description>:
     auto-sync_
     result := []
     registries.do: | name registry/Registry |
@@ -133,7 +133,7 @@ class Registries:
   Returns a list of matches, where each entry is itself a list containing the
     registry name and the package.
   */
-  search_ registry-name/string? search-string/string -> List:
+  search_ registry-name/string? search-string/string -> List<List>:
     if not registry-name:
       search-results := []
       registries.do: | name/string registry/Registry |
@@ -157,7 +157,7 @@ class Registries:
 
   The descriptions are sorted by version in descending order.
   */
-  retrieve-descriptions url/string -> List:
+  retrieve-descriptions url/string -> List<Description>:
     auto-sync_
     seen-versions := {}
     result := []
@@ -178,7 +178,7 @@ class Registries:
   Returns the versions in the registry for the given url.
   The versions are sorted in descending order.
   */
-  retrieve-versions url/string -> List:
+  retrieve-versions url/string -> List<SemanticVersion>:
     auto-sync_
     all-versions := {}
     registries.do --values: | registry/Registry |
@@ -263,7 +263,7 @@ abstract class Registry:
   constructor .name --ui/cli.Ui:
     ui_ = ui
 
-  constructor.filled .name descriptions/List --ui/cli.Ui:
+  constructor.filled .name descriptions/List<Description> --ui/cli.Ui:
     ui_ = ui
     description-cache_ = DescriptionUrlCache.filled descriptions
 
@@ -285,7 +285,7 @@ abstract class Registry:
       description-cache_ = DescriptionUrlCache content --ui=ui_
     return description-cache_
 
-  list-all-descriptions -> List:
+  list-all-descriptions -> List<Description>:
     return description-cache.all-descriptions
 
   retrieve-description url/string version/SemanticVersion -> Description?:
@@ -295,7 +295,7 @@ abstract class Registry:
   Returns all versions for the given $url.
   The result is *not* sorted.
   */
-  retrieve-versions url/string -> List?:
+  retrieve-versions url/string -> List<SemanticVersion>?:
     return description-cache.get-versions url
 
   /**
@@ -303,7 +303,7 @@ abstract class Registry:
 
   The result is *not* sorted.
   */
-  retrieve-descriptions url/string -> List?:
+  retrieve-descriptions url/string -> List<Description>?:
     return description-cache.get-descriptions url
 
   /**
@@ -312,12 +312,11 @@ abstract class Registry:
   A description matches if the name is the same, or if the url ends with
     the search string.
 
-  Returns a list of pairs, where each pair is a list containing the
-    registry name and the description with the highest version.
+  Returns, for each matching url, the description with the highest version.
   */
-  search search-string/string -> List:
+  search search-string/string -> List<Description>:
     // Initially maps urls to list of descriptions.
-    search-result := description-cache.search search-string
+    search-result/Map := description-cache.search search-string
 
     // Remove empty.
     search-result = search-result.filter: | _ descriptions/List | not descriptions.is-empty
@@ -337,12 +336,12 @@ abstract class Registry:
   A description matches if the $search-string is a substring of the
     name, description or url. The search is case-insensitive.
   */
-  search --free-text/True search-string/string -> List:
+  search --free-text/True search-string/string -> List<Description>:
     search-string = search-string.to-ascii-lower
     return list-all-descriptions.filter: | description/Description |
       description.matches-free-text search-string
 
-  static highest-version_ descriptions/List -> Description:
+  static highest-version_ descriptions/List<Description> -> Description:
     highest/Description := descriptions[0]
     if descriptions.size == 1: return highest
     descriptions[1..].do: | next/Description |

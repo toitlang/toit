@@ -38,10 +38,10 @@ class ConstraintParser extends SemanticVersionParser:
   constructor constraint/string:
     super constraint
 
-  constraints --consume-all/bool=false -> List:
+  constraints --consume-all/bool=false -> List<ConstraintParseResult>:
     return constraints --consume-all=consume-all --on-error=: throw "Parse error: $it"
 
-  constraints --consume-all/bool=false [--on-error]:
+  constraints --consume-all/bool=false [--on-error string -> any] -> List<ConstraintParseResult>:
     result := []
     result.add (constraint_ --on-error=on-error)
 
@@ -58,7 +58,7 @@ class ConstraintParser extends SemanticVersionParser:
 
     return result
 
-  constraint_ [--on-error] -> ConstraintParseResult:
+  constraint_ [--on-error string -> any] -> ConstraintParseResult:
     prefix := prefix_
     version := semantic-version --on-error=on-error
     return ConstraintParseResult prefix version

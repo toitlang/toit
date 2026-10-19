@@ -32,8 +32,9 @@ class PkgCommand:
     ui = invocation.cli.ui
     auto-sync_ = invocation[OPTION-AUTO-SYNC]
 
-  error message/string:
+  error message/string -> never:
     ui.abort message
+    unreachable
 
   warning message/string:
     ui.emit --warning message

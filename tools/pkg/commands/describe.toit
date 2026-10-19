@@ -62,9 +62,9 @@ class DescribeCommand extends PkgCommand:
 
   build-description -> Description
       --is-remote/bool
-      [--check-src-dir]
-      [--load-specification]
-      [--load-license-file]
+      [--check-src-dir -> truthy]
+      [--load-specification -> Specification?]
+      [--load-license-file -> ByteArray?]
       --hash/string
       --version/string
       --url/string:

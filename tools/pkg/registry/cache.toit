@@ -27,16 +27,16 @@ A cache of registry descriptions.
 This class collects all descriptions in a registry and builds and groups them by url.
 */
 class DescriptionUrlCache:
-  cache_/Map := {:} // url -> DescriptionVersionCache.
+  cache_/Map<string, DescriptionVersionCache> := {:}
 
   constructor content/FileSystemView --ui/Ui:
     recurse_ content --path="" --ui=ui
 
-  constructor.filled descriptions/List:
+  constructor.filled descriptions/List<Description>:
     descriptions.do: | description/Description |
       add_ description
 
-  all-descriptions -> List:
+  all-descriptions -> List<Description>:
     result := []
     cache_.values.do: | versions/DescriptionVersionCache |
       result.add-all versions.all-descriptions
@@ -46,18 +46,18 @@ class DescriptionUrlCache:
     version-cache/DescriptionVersionCache? := cache_.get url
     return version-cache and version-cache.get version
 
-  get-versions url/string -> List?:
+  get-versions url/string -> List<SemanticVersion>?:
     version-cache/DescriptionVersionCache? := cache_.get url
     return version-cache and version-cache.all-versions
 
-  get-descriptions url/string -> List?:
+  get-descriptions url/string -> List<Description>?:
     version-cache/DescriptionVersionCache? := cache_.get url
     return version-cache and version-cache.all-descriptions
 
   /**
   Returns a map, mapping urls to lists of descriptions.
   */
-  search needle/string -> Map:
+  search needle/string -> Map<string, List<Description>>:
     result := {:}
     cache_.do: | url/string version-cache/DescriptionVersionCache |
       is-match := url.ends-with needle or
@@ -120,11 +120,11 @@ A cache of registry descriptions for a url.
 This class collects all descriptions for the same url and stores them by version.
 */
 class DescriptionVersionCache:
-  cache_/Map := {:} // version -> description.
+  cache_/Map<SemanticVersion, Description> := {:}
 
   constructor:
 
-  all-descriptions -> List:
+  all-descriptions -> List<Description>:
     return cache_.values
 
   get version/SemanticVersion -> Description?:
@@ -135,10 +135,10 @@ class DescriptionVersionCache:
 
   The returned list is *not* sorted.
   */
-  all-versions -> List?:
+  all-versions -> List<SemanticVersion>:
     return cache_.keys
 
-  filter version-constraint/Constraint -> List:
+  filter version-constraint/Constraint -> List<Description>:
     result := []
     cache_.do: | version/SemanticVersion description |
       if version-constraint.satisfies version:

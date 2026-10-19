@@ -59,7 +59,7 @@ class FileSystemView_ implements FileSystemView:
 
   constructor .root:
 
-  get --path/List -> any:
+  get --path/List<string> -> any:
     if path.is-empty: return null
     if path.size == 1: return get path[0]
 
