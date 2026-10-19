@@ -31,7 +31,7 @@ class WorkspaceEditCapabilities extends MapWrapper:
     support 'create', 'rename' and 'delete' files and folders.
   */
   // TODO(florian): should we make an enum for ResourceOperationKind ?
-  resource-operations -> List/*<string>*/:
+  resource-operations -> List<string>?:
     return lookup_ "resourceOperations"
 
   /**
@@ -74,7 +74,7 @@ class SymbolKindCapabilities extends MapWrapper:
     the symbol kinds from `File` to `Array` as defined in
     the initial version of the protocol.
   */
-  value-set -> List?/*<string>*/:
+  value-set -> List<int>?:
     // TODO(florian) should we create an enum for the SymbolKinds?
     return lookup_ "valueSet"
 
@@ -186,7 +186,7 @@ class CompletionItemCapabilities extends MapWrapper:
   The order describes the preferred format of the client.
   */
   // TODO(florian): this should be an enum.
-  documentation-format -> List?/*<string>*/:
+  documentation-format -> List<string>?:
     return lookup_ "documentationFormat"
 
   /**
@@ -242,7 +242,7 @@ class CompletionItemKindCapabilities extends MapWrapper:
     the initial version of the protocol.
   */
   // TODO(florian): should this be a CompletionItemKind enum ?
-  value-set -> List?/*<int>*/:
+  value-set -> List<int>?:
     return lookup_ "valueSet"
 
 class CompletionListCapabilities extends MapWrapper:
@@ -289,7 +289,7 @@ class HoverCapabilities extends DynamicRegistrationCapability:
   The order describes the preferred format of the client.
   */
   // TODO(florian) this should use an enum.
-  content-format -> List?/*<string>*/:
+  content-format -> List<string>?:
     return lookup_ "contentFormat"
 
 class ParameterInformationCapabilities extends MapWrapper:
@@ -310,7 +310,7 @@ class SignatureInformationCapabilities extends MapWrapper:
   The order describes the preferred format of the client.
   */
   // TODO(florian): this should be an enum. (MarkupKind)
-  documentation-format -> List?/*<string>*/:
+  documentation-format -> List<string>?:
     return lookup_ "documentationFormat"
 
   /**
@@ -401,7 +401,7 @@ class CodeActionKindCapabilities extends MapWrapper:
     to a default value when unknown.
   */
   // TODO(florian): CodeActionKind should be an enum.
-  value-set -> List?/*<string>*/:
+  value-set -> List<string>?:
     return lookup_ "valueSet"
 
 class CodeActionLiteralSupportCapabilities extends MapWrapper:

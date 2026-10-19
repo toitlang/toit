@@ -24,7 +24,7 @@ class ConfigurationParams extends MapWrapper:
   - $items: the requested configurations.
   */
   constructor
-      --items /List/*<ConfigurationItem>*/:
+      --items /List<ConfigurationItem>:
     map_["items"] = items
 
 class ConfigurationItem extends MapWrapper:

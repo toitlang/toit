@@ -19,7 +19,7 @@ abstract class Node:
   abstract accept visitor / ToitdocVisitor
 
 class Contents extends Node:
-  sections / List ::= ?
+  sections / List<Section> ::= ?
 
   constructor .sections:
 
@@ -47,7 +47,7 @@ class CodeSection extends Statement:
     return visitor.visit-CodeSection this
 
 class Itemized extends Statement:
-  items / List ::= ?
+  items / List<Item> ::= ?
 
   constructor .items:
 
@@ -93,7 +93,7 @@ class Shape:
   total-block-count / int ::= -1
   named-block-count / int ::= -1
   is-setter / bool ::= false
-  names / List ::= ?
+  names / List<string> ::= ?
 
   constructor
       --.arity

@@ -29,7 +29,7 @@ safe-name_ name/string -> string:
 class Module:
   uri / string
   external-hash / ByteArray
-  dependencies / List?/*<string>*/
+  dependencies / List<string>?
 
   /**
   The summary bytes.
@@ -42,12 +42,12 @@ class Module:
   module-toplevel-offsets_ / List := ?
   module-uris_ / List := ?
 
-  exported-modules_ / List?/*<string>*/ := null
+  exported-modules_ / List<string>? := null
   is-deprecated_ / bool? := null
-  exports_      / List? := null
-  classes_      / List? := null
-  functions_    / List? := null
-  globals_      / List?/*<Method>*/ := null
+  exports_      / List<Export>? := null
+  classes_      / List<Class>? := null
+  functions_    / List<Method>? := null
+  globals_      / List<Method>? := null
   toitdoc_      / Contents? := null
 
   constructor
@@ -67,11 +67,11 @@ class Module:
       --.uri
       --.external-hash
       --.dependencies
-      --exports/List
-      --exported-modules/List
-      --classes/List
-      --functions/List
-      --globals/List
+      --exports/List<Export>
+      --exported-modules/List<string>
+      --classes/List<Class>
+      --functions/List<Method>
+      --globals/List<Method>
       --toitdoc/Contents?:
     summary-bytes_ = null
     toplevel-offset_ = -1
@@ -88,23 +88,23 @@ class Module:
     if summary-bytes_: parse_
     return is-deprecated_
 
-  exported-modules -> List/*<string>*/:
+  exported-modules -> List<string>:
     if summary-bytes_: parse_
     return exported-modules_
 
-  exports -> List:
+  exports -> List<Export>:
     if summary-bytes_: parse_
     return exports_
 
-  classes -> List/*<Class>*/:
+  classes -> List<Class>:
     if summary-bytes_: parse_
     return classes_
 
-  functions -> List/*<Method>*/:
+  functions -> List<Method>:
     if summary-bytes_: parse_
     return functions_
 
-  globals -> List/*<Method>*/:
+  globals -> List<Method>:
     if summary-bytes_: parse_
     return globals_
 
@@ -115,7 +115,7 @@ class Module:
   equals-external other/Module -> bool:
     return external-hash == other.external-hash
 
-  to-lsp-document-symbol content/string -> List/*<DocumentSymbol>*/:
+  to-lsp-document-symbol content/string -> List<lsp.DocumentSymbol>:
     lines := Lines content
     result := []
     classes.do: result.add (it.to-lsp-document-symbol lines)
@@ -187,7 +187,7 @@ class Export:
 
   name / string ::= ?
   kind / int ::= ?
-  refs / List /* ToplevelRef */ ::= ?
+  refs / List<ToplevelRef> ::= ?
 
   constructor .name .kind .refs:
 
@@ -231,7 +231,7 @@ class Type:
   class-ref / ToplevelRef? ::= ?
   /// The parameter types of a typed block (`[block int -> bool]`).
   /// Null for raw blocks and non-block types.
-  block-parameter-types / List? ::= null
+  block-parameter-types / List<Type>? ::= null
   /// The return type of a typed block. Null for raw blocks and non-block types.
   block-return-type / Type? ::= null
 
@@ -276,12 +276,12 @@ class Class implements ToplevelElement:
   interfaces   / List ::= ?
   mixins       / List ::= ?
 
-  statics      / List ::= ?
-  constructors / List ::= ?  // Only unnamed constructors
-  factories    / List ::= ?  // Only unnamed factories
+  statics      / List<Method> ::= ?
+  constructors / List<Method> ::= ?  // Only unnamed constructors
+  factories    / List<Method> ::= ?  // Only unnamed factories
 
-  fields  / List ::= ?
-  methods / List ::= ?
+  fields  / List<Field> ::= ?
+  methods / List ::= ?  // Of Method. Raw, as toitdoc concatenates it with the fields.
 
   toitdoc / Contents? ::= ?
 
@@ -330,7 +330,7 @@ class Method implements ClassMember ToplevelElement:
   outline-range / Range ::= ?
   toplevel-id   / int   ::= ?
   kind / int ::= 0
-  parameters  / List  ::= ?
+  parameters  / List<Parameter> ::= ?
   return-type / Type? ::= ?
 
   is-abstract   / bool ::= ?
@@ -415,7 +415,7 @@ class ReaderBase:
   read-int -> int:
     return int.parse read-line
 
-  read-list [block] -> List:
+  read-list [block int -> any] -> List:
     count := read-int
     // TODO(1268, florian): remove this work-around and use the commented code instead.
     // return List count block
@@ -434,7 +434,7 @@ class SummaryReader extends ReaderBase:
 
   to-uri_ path / string -> string: return to-uri path --from-compiler
 
-  read-summary -> Map/*<uri, Module>*/:
+  read-summary -> Map<string, Module>:
     module-count := read-int
     module-offset := 0
     module-count.repeat:

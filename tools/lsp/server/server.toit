@@ -64,11 +64,11 @@ This class is a monitor so that the $replace function blocks other method access
 monitor Settings:
   map_ /Map := DEFAULT-SETTINGS
 
-  get_ key [--if-absent]:
+  get_ key [--if-absent -> any] -> any:
     return map_.get key --if-absent=if-absent
 
   // While the new values are fetched, all other requests to the settings are blocked.
-  replace [b] -> none:
+  replace [b Map -> Map?] -> none:
     replacement-map := b.call map_
     // The client is allowed to return `null` if it doesn't have
     // any configuration for the settings we requested.
@@ -416,7 +416,7 @@ class LspServer:
 
   // TODO(florian): The specification supports a list of locations, or Locationlinks..
   // For now just returns one location.
-  goto-definition params/TextDocumentPositionParams -> List/*<Location>*/:
+  goto-definition params/TextDocumentPositionParams -> List<Location>:
     uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
     return scheduler_.run --id="goto-definition":
@@ -517,7 +517,7 @@ class LspServer:
   If $target-uri has no reverse dependencies (i.e., it is itself a top-level
     entry point), the result is a list containing just $target-uri.
   */
-  compilation-entry-points-for_ --project-uri/string --target-uri/string -> List:
+  compilation-entry-points-for_ --project-uri/string --target-uri/string -> List<string>:
     analyzed := documents_.analyzed-documents-for --project-uri=project-uri
 
     // Collect the transitive closure of files that import the target, walking
@@ -574,7 +574,7 @@ class LspServer:
     visitor.visit-Contents toitdoc
     return Hover --contents=visitor.build
 
-  document-symbol params/DocumentSymbolParams -> List/*<DocumentSymbol>*/:
+  document-symbol params/DocumentSymbolParams -> List<DocumentSymbol>:
     uri := translator.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
     analyzed-documents := documents_.analyzed-documents-for --project-uri=project-uri
@@ -623,7 +623,7 @@ class LspServer:
 
   Must be called from within a $CompilerScheduler.run action.
   */
-  analyze uris/List revision/int?=null -> none:
+  analyze uris/List<string> revision/int?=null -> none:
     if uris.is-empty: return
 
     revision = revision or next-analysis-revision_++
@@ -653,7 +653,7 @@ class LspServer:
             list := project-uris.get document-project-uri --init=:[]
             list.add uri
 
-  analyze uris/List --project-uri/string? revision/int -> Set:
+  analyze uris/List<string> --project-uri/string? revision/int -> Set<string>:
     analyzed-documents := documents_.analyzed-documents-for --project-uri=project-uri
 
     assert:

@@ -15,6 +15,6 @@
 
 is-verbose / bool := false
 
-verbose [block]:
+verbose [block -> string]:
   if is-verbose:
     print-on-stderr_ block.call

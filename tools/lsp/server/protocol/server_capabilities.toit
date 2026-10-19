@@ -66,7 +66,7 @@ class CompletionOptions extends MapWrapper:
   */
   constructor
       --resolve-provider   /bool?             = null
-      --trigger-characters /List?/*<string>*/ = null:
+      --trigger-characters /List<string>? = null:
     map_["resolveProvider"]   = resolve-provider
     map_["triggerCharacters"] = trigger-characters
 
@@ -82,7 +82,7 @@ class SignatureHelpOptions extends MapWrapper:
   - $trigger_characters: the characters that trigger signature help automatically.
   */
   constructor
-      trigger-characters /List?/*<string>*/ = null:
+      trigger-characters /List<string>? = null:
     map_["triggerCharacters"] = trigger-characters
 
 /**
@@ -98,7 +98,7 @@ class CodeActionOptions extends MapWrapper:
       may list out every specific kind they provide.
   */
   constructor
-      code-action-kinds /List?/*<string>*/ = null:
+      code-action-kinds /List<string>? = null:
     map_["codeActionKinds"] = code-action-kinds
 
 
@@ -130,7 +130,7 @@ class DocumentOnTypeFormattingOptions extends MapWrapper:
   */
   constructor
       first-trigger-character /string            = null
-      more-trigger-characters /List?/*<string>*/ = null:
+      more-trigger-characters /List<string>? = null:
     map_["firstTriggerCharacter"] = first-trigger-character
     map_["moreTriggerCharacters"] = more-trigger-characters
 
@@ -173,7 +173,7 @@ class ExecuteCommandOptions extends MapWrapper:
   - $commands: the commands to be executed on the server
   */
   constructor
-      commands /List/*<string>*/ = null:
+      commands /List<string>? = null:
     map_["commands"] = commands
 
 /**
@@ -245,8 +245,8 @@ class SemanticTokensLegend extends MapWrapper:
   Creates a response object for semantic-tokens legends options.
   */
   constructor
-      --token-types     /List/*<string>*/
-      --token-modifiers /List/*<string>*/:
+      --token-types     /List<string>
+      --token-modifiers /List<string>:
     map_["tokenTypes"] = token-types
     map_["tokenModifiers"] = token-modifiers
 

@@ -29,7 +29,7 @@ class Documents:
   A map from document uri to opened document.
   During analysis, this map must be used to find the content of a document.
   */
-  opened-documents_ /Map/*<string, OpenedDocument>*/ ::= {:}
+  opened-documents_ /Map<string, OpenedDocument> ::= {:}
 
   /**
   A map from a document URI to its project URI.
@@ -43,13 +43,13 @@ class Documents:
   Internally, a document might be in more than one project, as local dependencies
     can lead to a document being referenced from multiple projects.
   */
-  project-uris_ /Map/*<string, string>*/ ::= {:}
+  project-uris_ /Map<string, string> ::= {:}
 
   /**
   A map from project-uri to a $AnalyzedDocuments object.
   Note that URIs might be in more than one project.
   */
-  analyzed-documents_ /Map/*<string, AnalyzedDocuments>*/ ::= {:}
+  analyzed-documents_ /Map<string, AnalyzedDocuments> ::= {:}
 
   error-reporter_ / Lambda ::= ?
 
@@ -77,7 +77,7 @@ class Documents:
         document-project-uri
     return computed
 
-  project-uris-containing --uri/string -> List:
+  project-uris-containing --uri/string -> List<string>:
     result := []
     analyzed-documents_.do: |project-uri documents/AnalyzedDocuments|
       if documents.get --uri=uri: result.add project-uri
@@ -91,7 +91,7 @@ class Documents:
   analyzed-documents-for --project-uri/string -> AnalyzedDocuments:
     return analyzed-documents_.get project-uri --init=: (AnalyzedDocuments --error-reporter=error-reporter_)
 
-  all-project-uris -> List:
+  all-project-uris -> List<string>:
     return analyzed-documents_.keys
 
   did-open --uri/string content/string? revision/int -> none:
@@ -130,7 +130,7 @@ class Documents:
   get-opened --path/string -> OpenedDocument?:
     return get-opened --uri=(translator.to-uri path)
 
-  do-opened [block] -> none:
+  do-opened [block OpenedDocument -> none] -> none:
     opened-documents_.do: |uri doc| block.call doc
 
   save-as-tar file-name:
@@ -152,7 +152,7 @@ Keeps track of analyzed documents.
 class AnalyzedDocuments:
   // For this instance of analyzed documents a map from a document URI to its document.
   // Note that URIs might be in more than one project and thus $AnalyzedDocuments object.
-  documents_ /Map/*<Map<string, AnalyzedDocument>>*/ ::= {:}
+  documents_ /Map<string, AnalyzedDocument> ::= {:}
 
   error-reporter_ / Lambda ::= ?
 
@@ -274,7 +274,7 @@ class OpenedDocument:
 
 class AnalyzedDocument:
   summary  / Module? := ?
-  reverse-deps / Set := ?
+  reverse-deps / Set<string> := ?
 
   // The revision of the analysis that last ran on this document.
   // -1 if no analysis has been run yet.
