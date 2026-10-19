@@ -79,32 +79,32 @@ class DescriptionUrlCache:
         if name != Description.DESCRIPTION-FILE-NAME:
           continue.do
 
-        path = "$path/$name"
+        entry-path := "$path/$name"
         description/Description? := null
         decoded/any := null
         e := catch:
           decoded = yaml.decode (content.get entry)
         if e:
-          ui.emit --error "Failed to decode $path as YAML."
-          ui.emit --warning "Skipping $path."
+          ui.emit --error "Failed to decode $entry-path as YAML."
+          ui.emit --warning "Skipping $entry-path."
           continue.do
         if decoded is not Map:
           ui.emit --error "Expected a map in path, got $decoded."
-          ui.emit --warning "Skipping $path."
+          ui.emit --warning "Skipping $entry-path."
           continue.do
 
         e = catch:
-          description = Description decoded --path=path --ui=ui
+          description = Description decoded --path=entry-path --ui=ui
         if e:
           // We expect the Description constructor to have reported the error already.
-          ui.emit --warning "Skipping $path."
+          ui.emit --warning "Skipping $entry-path."
           continue.do
 
         e = catch:
           add_ description
         if e:
           ui.emit --warning "Failed to add $description.url@$description.version to index."
-          ui.emit --warning "Skipping $path."
+          ui.emit --warning "Skipping $entry-path."
     if e:
       ui.emit --error "Failed to read $path: $e."
       return
