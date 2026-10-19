@@ -34,8 +34,8 @@ import .services
 class Container:
   image/ContainerImage ::= ?
   gid_/int ::= ?
-  pids_/Set? := null
-  resources/Set ::= {}
+  pids_/Set<int>? := null
+  resources/Set<ContainerResource> ::= {}
 
   constructor .image .gid_:
 
@@ -221,7 +221,7 @@ abstract class ContainerServiceProvider extends ServiceProvider
     unreachable
 
   abstract image-registry -> FlashRegistry
-  abstract images -> List
+  abstract images -> List<ContainerImage>
   abstract add-flash-image allocation/FlashAllocation -> ContainerImage
   abstract lookup-image id/uuid.Uuid -> ContainerImage?
   abstract send-container-event --gid/int event-kind/int event-value/any -> none
@@ -287,9 +287,9 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
   image-registry/FlashRegistry ::= ?
   service-manager_/SystemServiceManager ::= ?
 
-  images_/Map ::= {:}               // Map<uuid.Uuid, ContainerImage>
-  containers-by-id_/Map ::= {:}     // Map<int, Container>
-  containers-by-image_/Map ::= {:}  // Map<uuid.Uuid, Container>
+  images_/Map<uuid.Uuid, ContainerImage> ::= {:}
+  containers-by-id_/Map<int, Container> ::= {:}
+  containers-by-image_/Map<uuid.Uuid, Map<int, Container>> ::= {:}
 
   system-image_/ContainerImage? := null
   done_ ::= monitor.Latch
@@ -315,7 +315,7 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
   system-image -> ContainerImage:
     return system-image_
 
-  images -> List:
+  images -> List<ContainerImage>:
     return images_.values.filter: it != system-image_
 
   lookup-image id/uuid.Uuid -> ContainerImage?:

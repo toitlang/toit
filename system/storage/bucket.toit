@@ -80,7 +80,7 @@ class RtcMemory:
     cache_ = map
     return map
 
-  update [block] -> none:
+  update [block Map -> none] -> none:
     map := cache
     cache_ = null
     block.call map

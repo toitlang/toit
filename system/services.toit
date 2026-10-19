@@ -45,12 +45,12 @@ class DiscoveryResource extends ServiceResource:
 
 class SystemServiceManager extends ServiceProvider
     implements ServiceDiscoveryService ServiceHandler:
-  service-managers_/Map ::= {:}  // Map<int, Set<int>>
+  service-managers_/Map<int, Set<int>> ::= {:}
 
-  services-by-pid_/Map ::= {:}   // Map<int, Map<int, DiscoverableService>>>
-  services-by-uuid_/Map ::= {:}  // Map<string, List<DiscoverableService>>
+  services-by-pid_/Map<int, Map<int, DiscoverableService>> ::= {:}
+  services-by-uuid_/Map<string, List<DiscoverableService>> ::= {:}
 
-  waiting_/Map ::= {:}  // Map<uuid, List<DiscoveryResource>>
+  waiting_/Map<string, List<DiscoveryResource>> ::= {:}
 
   constructor:
     super "system/service-discovery" --major=0 --minor=1 --patch=1

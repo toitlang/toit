@@ -74,7 +74,7 @@ class FirmwareWriter_ extends ServiceResource implements FirmwareWriter:
     return write_ size: | index from to |
       buffer_.fill --from=index --to=(index + to - from) value
 
-  write_ size [block] -> int:
+  write_ size/int [block int int int -> none] -> int:
     // We try to write just enough to get back to writing full pages
     // after an early flush. We do this by computing the fullness level
     // at which we want to flush. If we're already page aligned, we will

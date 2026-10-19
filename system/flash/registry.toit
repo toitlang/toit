@@ -25,15 +25,15 @@ class FlashRegistry:
   static SCAN-HOLE_ ::= 0
   static SCAN-ALLOCATION_ ::= 1
 
-  allocations_/Map ::= {:}  // Map<int, FlashAllocation>
-  holes_/List? := null      // List<FlashHole_>
+  allocations_/Map<int, FlashAllocation> ::= {:}
+  holes_/List<FlashHole_>? := null
 
   constructor.scan:
     // Scan the flash and keep all allocations found.
     holes_ = scan_
 
   // Iterate through the allocations.
-  do [block] -> none:
+  do [block FlashAllocation -> none] -> none:
     allocations_.do --values block
 
   // Reserves a region in the flash.
@@ -81,7 +81,7 @@ class FlashRegistry:
   // actual allocations found. If an allocation exists before and after the scan, we
   // make sure to keep the same allocation object, so existing references to it
   // remain valid.
-  scan_ -> List:
+  scan_ -> List<FlashHole_>:
     found := {:}
     holes := []
     offset/int? := -1
@@ -103,7 +103,7 @@ class FlashRegistry:
     // Return the coalesced list of holes.
     return coalesce_ holes
 
-  static coalesce_ holes/List -> List:
+  static coalesce_ holes/List<FlashHole_> -> List<FlashHole_>:
     if holes.is-empty: return holes
     holes.sort --in-place: | a b | a.offset - b.offset
     // Run through the sorted list of holes and build a new list
@@ -119,7 +119,7 @@ class FlashRegistry:
         last = hole
     return result
 
-  update-allocations_ found/Map -> none:
+  update-allocations_ found/Map<int, FlashAllocation> -> none:
     // Use an extra list for the allocations to be freed because we cannot update
     // the allocations map while iterating over it.
     freed := []

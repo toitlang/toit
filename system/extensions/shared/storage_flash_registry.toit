@@ -98,7 +98,7 @@ class FlashBucket:
   remove key/string -> none:
     update_ --no-extend: it.remove key --if-absent=: return
 
-  update_ --extend/bool [block] -> none:
+  update_ --extend/bool [block Map -> none] -> none:
     entries := cache-entries_
     if not entries:
       if not extend: return
