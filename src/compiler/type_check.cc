@@ -985,6 +985,11 @@ class TypeChecker : public ReturningVisitor<Type> {
   /// don't mention the type parameters make its type arguments `any` (see
   /// `infer_creation_type`).
   bool is_fresh_creator(Expression* node) {
+    // Calls with block arguments are wrapped in a sequence that defines the
+    // blocks first.
+    while (node->is_Sequence() && !node->as_Sequence()->expressions().is_empty()) {
+      node = node->as_Sequence()->expressions().last();
+    }
     if (!node->is_CallStatic() || node->is_Lambda()) return false;
     auto method = node->as_CallStatic()->target()->target();
     auto name = method->name();
@@ -1228,6 +1233,11 @@ class TypeChecker : public ReturningVisitor<Type> {
     return is_nullable ? result.to_nullable() : result;
   }
 
+  /// Only `null` was seen: don't infer the `Null_` class.
+  Type widen_null(Type type) {
+    return type == null_type_ ? Type::any() : type;
+  }
+
   Type normalize_element(Type type) {
     if (type == true_type_ || type == false_type_) return boolean_type_;
     if (type.is_truthy() || type.is_block() || type.is_type_parameter()) return Type::any();
@@ -1250,7 +1260,7 @@ class TypeChecker : public ReturningVisitor<Type> {
         for (int i = 0; i < arguments.length(); i++) arguments[i] = Type::any();
         for (int i = 0; i < static_cast<int>(mapping.size()); i++) {
           if (mapping[i] == -1 || !info.bounds[i].is_valid()) continue;
-          arguments[mapping[i]] = info.bounds[i];
+          arguments[mapping[i]] = widen_null(info.bounds[i]);
           has_bound = true;
         }
         if (has_bound) result = Type(own.klass, arguments);
@@ -1276,6 +1286,7 @@ class TypeChecker : public ReturningVisitor<Type> {
       for (auto type : argument_types) element = join(element, type);
       auto array_type = method->return_type();
       if (!element.is_valid() || !array_type.is_class()) return Type::invalid();
+      element = widen_null(element);
       auto arguments = ListBuilder<Type>::allocate(1);
       arguments[0] = element;
       return Type(array_type.klass(), arguments);
@@ -1313,7 +1324,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     auto arguments = ListBuilder<Type>::allocate(bounds.size());
     for (int i = 0; i < static_cast<int>(bounds.size()); i++) {
       has_bound = has_bound || bounds[i].is_valid();
-      arguments[i] = bounds[i].is_valid() ? bounds[i] : Type::any();
+      arguments[i] = bounds[i].is_valid() ? widen_null(bounds[i]) : Type::any();
     }
     if (!has_bound) return Type::invalid();
     return Type(holder, arguments);
