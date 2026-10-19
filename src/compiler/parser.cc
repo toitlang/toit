@@ -2676,6 +2676,8 @@ std::pair<Expression*, List<Parameter*>> Parser::parse_parameters(bool allow_ret
     bool is_named = false;
     Identifier* name = null;
     Expression* default_value = null;
+    // The ']' of a block parameter, so that the parameter's range covers it.
+    auto closing_bracket_range = Source::Range::invalid();
     if (current_token() == Token::LBRACK) {
       consume();
       is_bracket_block = true;
@@ -2720,7 +2722,10 @@ std::pair<Expression*, List<Parameter*>> Parser::parse_parameters(bool allow_ret
           consume();
         }
       }
-      if (current_token() == Token::RBRACK) consume();
+      if (current_token() == Token::RBRACK) {
+        closing_bracket_range = current_range();
+        consume();
+      }
       // Don't pollute the rest of the compiler with parameter names that are invalid
       //   and drop the parameter so far.
       if (bad_name) continue;
@@ -2799,8 +2804,10 @@ std::pair<Expression*, List<Parameter*>> Parser::parse_parameters(bool allow_ret
       reported_unusual_indentation = true;
     }
     ASSERT(name != null);
+    auto parameter_range = range.extend(name->selection_range());
+    if (closing_bracket_range.is_valid()) parameter_range = parameter_range.extend(closing_bracket_range);
     parameters.add(NEW_NODE(zone_new<Parameter>(name, type, default_value, is_named, is_field_storing, is_block),
-                            range.extend(name->selection_range())));
+                            parameter_range));
   }
   return std::make_pair(return_type, parameters.build());
 }
