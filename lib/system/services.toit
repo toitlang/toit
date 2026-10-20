@@ -622,8 +622,10 @@ abstract class ServiceResourceProxy:
     if not handle: return null
     _handle_ = null
     remove-finalizer this
-    if handle & 1 == 1:
-      ServiceResourceProxyManager_.instance.unregister client_.id handle
+    // A closed client has already unregistered all its proxies.
+    client-id := client_.id
+    if client-id and handle & 1 == 1:
+      ServiceResourceProxyManager_.instance.unregister client-id handle
     return handle
 
 class Service_:
