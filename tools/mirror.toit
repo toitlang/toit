@@ -68,18 +68,17 @@ class Frame extends Mirror:
     absolute-bci = json[2]
     method = program.method-from-absolute-bci absolute-bci
     id = method.id
-    method-info = program.method-info-for id: null
-    bci = method-info and method.bci-from-absolute-bci absolute-bci
-    position = method-info and method-info.position bci
+    method-info = program.method-info-for id
+    bci = method.bci-from-absolute-bci absolute-bci
+    position = method-info.position bci
     stacktrace-method-string = method-info.stacktrace-string program
     super json program
 
   is-user-boundary -> bool:
-    return (method-info != null) and stacktrace-method-string.starts-with "__entry__"
+    return stacktrace-method-string.starts-with "__entry__"
 
   stringify -> string:
     prefix := "$(%3d index): " + stacktrace-method-string
-    if not (method-info and position): return "$(%-30s prefix) method id=$id, bci=$bci"
     return "$(%-30s prefix) $method-info.error-path:$position.line:$position.column"
 
 

@@ -655,8 +655,8 @@ class ToitMethod:
       target-absolute-bci := method.uint32 bci + 2
       target-method := program.method-from-absolute-bci target-absolute-bci
       target-bci := target-method.bci-from-absolute-bci target-absolute-bci
-      target-method-info := program.method-info-for target-method.id: null
-      target-name := target-method-info and (target-method-info.prefix-string program)
+      target-method-info := program.method-info-for target-method.id
+      target-name := target-method-info.prefix-string program
       line += " {$target-name:$target-bci}"
     else if format == OP-SS-SO:
       offset := method.uint16 bci + 3
