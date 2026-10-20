@@ -1,0 +1,46 @@
+OK
+[pkg, init]
+==================
+OK
+[pkg, install, --prefix=old, pkg2@1]
+Package 'localhost:<[*PORT*]>/pkg/pkg2@1.0.0' installed with prefix 'old'.
+==================
+OK
+[pkg, install, pkg2@1]
+Package 'localhost:<[*PORT*]>/pkg/pkg2@1.0.0' installed with prefix 'pkg2'.
+==================
+// Both majors of pkg2 end up in the solution.
+==================
+OK
+[pkg, update, --major, pkg2]
+==================
+// 'pkg2' must use the version the update picked (major 2).
+==================
+== package.yaml
+dependencies:
+  old:
+    url: localhost:<[*PORT*]>/pkg/pkg2
+    version: ^1.0.0
+  pkg2:
+    url: localhost:<[*PORT*]>/pkg/pkg2
+    version: ^2.4.2
+==================
+== package.lock
+prefixes:
+  old: localhost_<[*PORT*]>/pkg/pkg2-1
+  pkg2: localhost_<[*PORT*]>/pkg/pkg2-2
+packages:
+  localhost_<[*PORT*]>/pkg/pkg2-1:
+    hash: <[*HASH*]>
+    url: localhost:<[*PORT*]>/pkg/pkg2
+    version: 1.0.0
+  localhost_<[*PORT*]>/pkg/pkg2-2:
+    hash: <[*HASH*]>
+    prefixes:
+      pre: localhost_<[*PORT*]>/pkg/pkg3-3
+    url: localhost:<[*PORT*]>/pkg/pkg2
+    version: 2.4.2
+  localhost_<[*PORT*]>/pkg/pkg3-3:
+    hash: <[*HASH*]>
+    url: localhost:<[*PORT*]>/pkg/pkg3
+    version: 3.1.2
