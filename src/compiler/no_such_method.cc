@@ -18,20 +18,20 @@
 #include "no_such_method.h"
 
 #include "resolver_scope.h"
-#include "queryable_class.h"
+#include "resolution_queryable_class.h"
 #include "diagnostic.h"
 
 namespace toit {
 namespace compiler {
 
-static void report_no_such_method(List<ir::Node*> candidates,
-                                  ir::Class* klass,
+static void report_no_such_method(List<resolution::Node*> candidates,
+                                  resolution::Class* klass,
                                   bool is_static,
                                   const Selector<CallShape>& selector,
                                   const Source::Range& range,
                                   Diagnostics* diagnostics) {
   // Note that the candidates could contain the super-class separator ClassScope::SUPER_CLASS_SEPARATOR.
-  // All other nodes must be ir::Method* nodes.
+  // All other nodes must be resolution::Method* nodes.
   bool all_separators = true;
   for (auto& candidate : candidates) {
     if (candidate != ClassScope::SUPER_CLASS_SEPARATOR) {
@@ -352,13 +352,13 @@ static void report_no_such_method(List<ir::Node*> candidates,
   }
 }
 
-void report_no_such_instance_method(ir::Class* klass,
+void report_no_such_instance_method(resolution::Class* klass,
                            const Selector<CallShape>& selector,
                            const Source::Range& range,
                            Diagnostics* diagnostics) {
   // TODO(florian): filtering the methods every time is linear and
   // could be too slow. Consider adding a caching mechanism.
-  ListBuilder<ir::Node*> candidates_builder;
+  ListBuilder<resolution::Node*> candidates_builder;
   auto current = klass;
   while (true) {
     for (auto method : current->methods()) {
@@ -381,7 +381,7 @@ void report_no_such_instance_method(ir::Class* klass,
 
 }
 
-void report_no_such_static_method(List<ir::Node*> candidates,
+void report_no_such_static_method(List<resolution::Node*> candidates,
                                   const Selector<CallShape>& selector,
                                   const Source::Range& range,
                                   Diagnostics* diagnostics) {

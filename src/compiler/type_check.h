@@ -18,14 +18,14 @@
 namespace toit {
 namespace compiler {
 
-namespace ir {
+namespace resolution {
 class Program;
 }
 class Lsp;
 class Diagnostics;
 class ToitdocRegistry;
 
-void check_types_and_deprecations(ir::Program* program,
+void check_types_and_deprecations(resolution::Program* program,
                                   Lsp* lsp,
                                   ToitdocRegistry* toitdocs,
                                   Diagnostics* diagnostics);

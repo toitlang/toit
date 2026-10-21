@@ -20,7 +20,7 @@
 
 #include "protocol.h"
 
-#include "../ir.h"
+#include "../resolution.h"
 #include "../map.h"
 #include "../resolver_scope.h"
 #include "../scanner.h"  // For "is_identifier_start"
@@ -51,7 +51,7 @@ struct ToitdocPath {
   Kind kind;
   Module* module;
   // Holder, if the element is inside a class.
-  ir::Class* klass;
+  resolution::Class* klass;
 };
 
 template<typename T> static int length_of(const std::vector<T>& v) { return static_cast<int>(v.size()); }
@@ -64,8 +64,8 @@ static bool is_operator_name(const char* name) {
 
 class ToitdocWriter : public toitdoc::Visitor {
  public:
-  ToitdocWriter(Toitdoc<ir::Node*> toitdoc,
-                const UnorderedMap<ir::Node*, ToitdocPath>& paths,
+  ToitdocWriter(Toitdoc<resolution::Node*> toitdoc,
+                const UnorderedMap<resolution::Node*, ToitdocPath>& paths,
                 LspWriter* lsp_writer)
       : toitdoc_(toitdoc)
       , paths_(paths)
@@ -194,8 +194,8 @@ class ToitdocWriter : public toitdoc::Visitor {
   void visit_Expression(toitdoc::Expression* node) { visit(node); }
 
  private:
-  Toitdoc<ir::Node*> toitdoc_;
-  UnorderedMap<ir::Node*, ToitdocPath> paths_;
+  Toitdoc<resolution::Node*> toitdoc_;
+  UnorderedMap<resolution::Node*, ToitdocPath> paths_;
   LspWriter* lsp_writer_;
 
   template<typename T, typename T2>
@@ -292,7 +292,7 @@ class Writer {
   explicit Writer(const std::vector<Module*>& modules,
                   const ToitdocRegistry& toitdocs,
                   int core_index,
-                  const UnorderedMap<ir::Node*, ToitdocPath>& paths,
+                  const UnorderedMap<resolution::Node*, ToitdocPath>& paths,
                   LspWriter* lsp_writer)
       : modules_(modules)
       , toitdocs_(toitdocs)
@@ -307,8 +307,8 @@ class Writer {
   const std::vector<Module*> modules_;
   ToitdocRegistry toitdocs_;
   int core_index_;
-  UnorderedMap<ir::Node*, ToitdocPath> paths_;
-  UnorderedMap<ir::Node*, int> toplevel_ids_;
+  UnorderedMap<resolution::Node*, ToitdocPath> paths_;
+  UnorderedMap<resolution::Node*, int> toplevel_ids_;
   List<int> module_offsets_;
 
   LspWriter* lsp_writer_;
@@ -318,11 +318,11 @@ class Writer {
   void print_range(const Source::Range& range);
   void safe_print_symbol(Symbol symbol);
   void safe_print_symbol_external(Symbol symbol);
-  void print_toplevel_ref(ir::Node* toplevel_element);
-  void print_type(ir::Type type);
-  void print_method(ir::Method* method);
-  void print_class(ir::Class* klass);
-  void print_field(ir::Field* field);
+  void print_toplevel_ref(resolution::Node* toplevel_element);
+  void print_type(resolution::Type type);
+  void print_method(resolution::Method* method);
+  void print_class(resolution::Class* klass);
+  void print_field(resolution::Field* field);
   void print_export(Symbol id, const ResolutionEntry& entry);
   void print_dependencies(Module* module);
   void print_module(Module* module, Module* core_module);
@@ -420,7 +420,7 @@ void Writer::safe_print_symbol_external(Symbol symbol) {
   }
 }
 
-void Writer::print_toplevel_ref(ir::Node* toplevel_element) {
+void Writer::print_toplevel_ref(resolution::Node* toplevel_element) {
   // Toplevel references are using an ID that is dependent on the current
   // analysis. That is, they are not stable across different runs.
   // As such, we can't just use the `print_external` as we do for other
@@ -439,7 +439,7 @@ void Writer::print_toplevel_ref(ir::Node* toplevel_element) {
   sha1_.processBytes(&toplevel_id, sizeof(toplevel_id));
 }
 
-void Writer::print_type(ir::Type type) {
+void Writer::print_type(resolution::Type type) {
   if (!type.is_valid()) {
     // We would prefer not to have invalid types here, but globals are initially marked
     // with invalid types until their types are inferred in the type-check phase.
@@ -457,7 +457,7 @@ void Writer::print_type(ir::Type type) {
   }
 }
 
-void Writer::print_field(ir::Field* field) {
+void Writer::print_field(resolution::Field* field) {
   safe_print_symbol_external(field->name());
   print_range(field->range());
   print_range(field->outline_range());
@@ -468,7 +468,7 @@ void Writer::print_field(ir::Field* field) {
   print_toitdoc(field);
 }
 
-void Writer::print_method(ir::Method* method) {
+void Writer::print_method(resolution::Method* method) {
   if (method->name().is_valid()) {
     const char* name = method->name().c_str();
     if (method->is_setter()) {
@@ -489,7 +489,7 @@ void Writer::print_method(ir::Method* method) {
   // Don't include it in the external representation.
   this->printf("%d\n", probe == toplevel_ids_.end() ? -1 : probe->second);
   switch (method->kind()) {
-    case ir::Method::INSTANCE:
+    case resolution::Method::INSTANCE:
       if (method->is_FieldStub()) {
         ASSERT(!method->is_abstract());
         this->printf_external("field stub\n");
@@ -499,17 +499,17 @@ void Writer::print_method(ir::Method* method) {
         this->printf_external("instance\n");
       }
       break;
-    case ir::Method::CONSTRUCTOR:
+    case resolution::Method::CONSTRUCTOR:
       if (method->as_Constructor()->is_synthetic()) {
         this->printf_external("default constructor\n");
       } else {
         this->printf_external("constructor\n");
       }
       break;
-    case ir::Method::GLOBAL_FUN: this->printf_external("global fun\n"); break;
-    case ir::Method::GLOBAL_INITIALIZER: this->printf_external("global initializer\n"); break;
-    case ir::Method::FACTORY: this->printf_external("factory\n"); break;
-    case ir::Method::FIELD_INITIALIZER: UNREACHABLE();
+    case resolution::Method::GLOBAL_FUN: this->printf_external("global fun\n"); break;
+    case resolution::Method::GLOBAL_INITIALIZER: this->printf_external("global initializer\n"); break;
+    case resolution::Method::FACTORY: this->printf_external("factory\n"); break;
+    case resolution::Method::FIELD_INITIALIZER: UNREACHABLE();
   }
   this->printf_external("%s\n", method->is_deprecated() ? "deprecated" : "-");
   auto shape = method->resolution_shape();
@@ -554,7 +554,7 @@ void Writer::print_method(ir::Method* method) {
   print_toitdoc(method);
 }
 
-void Writer::print_class(ir::Class* klass) {
+void Writer::print_class(resolution::Class* klass) {
   safe_print_symbol_external(klass->name());
   print_range(klass->range());
   print_range(klass->outline_range());
@@ -563,16 +563,16 @@ void Writer::print_class(ir::Class* klass) {
   this->printf("%d\n", toplevel_ids_.at(klass));
   const char* kind = "";  // Initialize with value to silence compiler warnings.
   switch (klass->kind()) {
-    case ir::Class::CLASS:
+    case resolution::Class::CLASS:
       kind = "class";
       break;
-    case ir::Class::MONITOR:
+    case resolution::Class::MONITOR:
       kind = "class";
       break;
-    case ir::Class::INTERFACE:
+    case resolution::Class::INTERFACE:
       kind = "interface";
       break;
-    case ir::Class::MIXIN:
+    case resolution::Class::MIXIN:
       kind = "mixin";
       break;
   }
@@ -606,7 +606,7 @@ void Writer::print_export(Symbol exported_id, const ResolutionEntry& entry) {
       this->printf_external("NODES\n");
       break;
   }
-  print_list_external(entry.nodes(), [&] (ir::Node* node) {
+  print_list_external(entry.nodes(), [&] (resolution::Node* node) {
     ASSERT(node->is_Class() || node->is_Method());
     print_toplevel_ref(node);
   });
@@ -643,7 +643,7 @@ void Writer::print_modules() {
     module_count++;
   }
   this->printf("%d\n", module_count);
-  UnorderedMap<ir::Node*, int> toplevel_ids;
+  UnorderedMap<resolution::Node*, int> toplevel_ids;
   List<int> module_offsets = ListBuilder<int>::allocate(modules.size());
   int toplevel_id = 0;
   int module_id = 0;
@@ -733,9 +733,9 @@ void Writer::print_module(Module* module, Module* core_module) {
 class ToitdocPathMappingCreator {
  public:
   /// Runs through the program and collects the toitdoc-paths to nodes that are referenced in toitdocs.
-  UnorderedMap<ir::Node*, ToitdocPath> create(const std::vector<Module*>& modules,
+  UnorderedMap<resolution::Node*, ToitdocPath> create(const std::vector<Module*>& modules,
                                               ToitdocRegistry toitdocs) {
-    toitdocs.for_each([&](void* _, Toitdoc<ir::Node*> toitdoc) {
+    toitdocs.for_each([&](void* _, Toitdoc<resolution::Node*> toitdoc) {
       for (auto ref : toitdoc.refs()) {
         if (ref == null) continue;
 
@@ -761,11 +761,11 @@ class ToitdocPathMappingCreator {
   }
 
  private:
-  Set<ir::Node*> ref_targets_;
-  UnorderedMap<ir::Node*, ToitdocPath> mapping_;
+  Set<resolution::Node*> ref_targets_;
+  UnorderedMap<resolution::Node*, ToitdocPath> mapping_;
 
   template<typename Container>
-  void visit_container(ToitdocPath::Kind kind, Module* module, ir::Class* klass, const Container& list) {
+  void visit_container(ToitdocPath::Kind kind, Module* module, resolution::Class* klass, const Container& list) {
     for (auto element : list) {
       if (ref_targets_.contains(element)) {
         mapping_[element] = {

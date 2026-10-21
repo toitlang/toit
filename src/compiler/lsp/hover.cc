@@ -15,7 +15,7 @@
 
 #include "hover.h"
 
-#include "../ir.h"
+#include "../resolution.h"
 #include "../sources.h"
 
 namespace toit {
@@ -36,8 +36,8 @@ void HoverHandler::import_path(const char* path,
 
 void HoverHandler::class_interface_or_mixin(ast::Node* node,
                                             IterableScope* scope,
-                                            ir::Class* holder,
-                                            ir::Node* resolved,
+                                            resolution::Class* holder,
+                                            resolution::Node* resolved,
                                             bool needs_interface,
                                             bool needs_mixin) {
   emit_hover(resolved, null);
@@ -52,16 +52,16 @@ void HoverHandler::type(ast::Node* node,
   }
 }
 
-void HoverHandler::call_virtual(ir::CallVirtual* node,
-                                ir::Type type,
-                                List<ir::Class*> classes) {
+void HoverHandler::call_virtual(resolution::CallVirtual* node,
+                                resolution::Type type,
+                                List<resolution::Class*> classes) {
   Symbol selector = node->selector();
 
   if (type.is_none()) return;
 
   if (type.is_class()) {
-    walk_class_hierarchy(type.klass(), classes, [&](ir::Class* current) -> bool {
-      for (ir::MethodInstance* method : current->methods()) {
+    walk_class_hierarchy(type.klass(), classes, [&](resolution::Class* current) -> bool {
+      for (resolution::MethodInstance* method : current->methods()) {
         if (method->name() == selector && method->resolution_shape().accepts(node->shape())) {
           emit_hover(method, null);
           return true;
@@ -75,9 +75,9 @@ void HoverHandler::call_virtual(ir::CallVirtual* node,
 }
 
 void HoverHandler::call_prefixed(ast::Dot* node,
-                                 ir::Node* resolved1,
-                                 ir::Node* resolved2,
-                                 List<ir::Node*> candidates,
+                                 resolution::Node* resolved1,
+                                 resolution::Node* resolved2,
+                                 List<resolution::Node*> candidates,
                                  IterableScope* scope) {
   if (resolved1 != null && !resolved1->is_Error()) {
     emit_hover(resolved1, null);
@@ -89,10 +89,10 @@ void HoverHandler::call_prefixed(ast::Dot* node,
 }
 
 void HoverHandler::call_class(ast::Dot* node,
-                              ir::Class* klass,
-                              ir::Node* resolved1,
-                              ir::Node* resolved2,
-                              List<ir::Node*> candidates,
+                              resolution::Class* klass,
+                              resolution::Node* resolved1,
+                              resolution::Node* resolved2,
+                              List<resolution::Node*> candidates,
                               IterableScope* scope) {
   if (resolved1 != null && !resolved1->is_Error()) {
     emit_hover(resolved1, null);
@@ -106,11 +106,11 @@ void HoverHandler::call_class(ast::Dot* node,
 }
 
 void HoverHandler::call_static(ast::Node* node,
-                               ir::Node* resolved1,
-                               ir::Node* resolved2,
-                               List<ir::Node*> candidates,
+                               resolution::Node* resolved1,
+                               resolution::Node* resolved2,
+                               List<resolution::Node*> candidates,
                                IterableScope* scope,
-                               ir::Method* surrounding) {
+                               resolution::Method* surrounding) {
   if (resolved1 != null && !resolved1->is_Error()) {
     emit_hover(resolved1, null);
   } else if (resolved2 != null && !resolved2->is_Error()) {
@@ -120,11 +120,11 @@ void HoverHandler::call_static(ast::Node* node,
   }
 }
 
-void HoverHandler::call_block(ast::Dot* node, ir::Node* ir_receiver) {
+void HoverHandler::call_block(ast::Dot* node, resolution::Node* ir_receiver) {
   // No hover for blocks yet.
 }
 
-void HoverHandler::call_static_named(ast::Node* name_node, ir::Node* ir_call_target, List<ir::Node*> candidates) {
+void HoverHandler::call_static_named(ast::Node* name_node, resolution::Node* ir_call_target, List<resolution::Node*> candidates) {
   if (ir_call_target != null) {
     emit_hover(ir_call_target, null);
   }
@@ -136,14 +136,14 @@ void HoverHandler::call_primitive(ast::Node* node, Symbol module_name, Symbol pr
 }
 
 void HoverHandler::field_storing_parameter(ast::Parameter* node,
-                                           List<ir::Field*> fields,
+                                           List<resolution::Field*> fields,
                                            bool field_storing_is_allowed) {
   if (fields.length() == 1) {
     emit_hover(fields.first(), null);
   }
 }
 
-void HoverHandler::this_(ast::Identifier* node, ir::Class* enclosing_class, IterableScope* scope, ir::Method* surrounding) {
+void HoverHandler::this_(ast::Identifier* node, resolution::Class* enclosing_class, IterableScope* scope, resolution::Method* surrounding) {
   emit_hover(enclosing_class, null);
 }
 
@@ -170,14 +170,14 @@ void HoverHandler::return_label(ast::Node* node, int label_index, const std::vec
 }
 
 void HoverHandler::toitdoc_ref(ast::Node* ref,
-                               List<ir::Node*> candidates,
+                               List<resolution::Node*> candidates,
                                ToitdocScopeIterator* iterator,
                                bool is_signature) {
   if (candidates.length() != 1) return;
   emit_hover(candidates.first(), null);
 }
 
-void HoverHandler::emit_hover(ir::Node* node, const char* name) {
+void HoverHandler::emit_hover(resolution::Node* node, const char* name) {
   if (node == null) return;
 
   if (node->is_Reference()) {

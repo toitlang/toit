@@ -19,7 +19,6 @@
 
 #include "map.h"
 #include "queryable_class.h"
-#include "resolver_scope.h"
 #include "set.h"
 #include "token.h"
 #include "tree.h"
@@ -684,9 +683,8 @@ static void shake(Program* program,
     klass->replace_unnamed_constructors(remaining_constructors);
     auto remaining_factories = shake_methods(klass->factories(), grown_methods);
     klass->replace_factories(remaining_factories);
-    klass->statics()->invalidate_resolution_map();
-    auto remaining_statics = shake_methods(klass->statics()->nodes(), grown_methods);
-    klass->statics()->replace_nodes(remaining_statics);
+    auto remaining_statics = shake_methods(klass->statics(), grown_methods);
+    klass->set_statics(remaining_statics);
     auto remaining_methods = shake_methods(klass->methods(), grown_methods);
     total_methods_count += klass->methods().length();
     remaining_methods_count += remaining_methods.length();

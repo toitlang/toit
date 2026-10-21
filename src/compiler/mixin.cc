@@ -21,7 +21,6 @@
 #include "mixin.h"
 #include "set.h"
 #include "shape.h"
-#include "resolver_scope.h"
 
 namespace toit {
 namespace compiler {
@@ -618,7 +617,7 @@ void adjust_super_calls(ir::Class* klass, const Map<ir::Field*, ir::Field*>& fie
   for (auto constructor : klass->unnamed_constructors()) {
     visitor.visit(constructor);
   }
-  for (auto node : klass->statics()->nodes()) {
+  for (auto node : klass->statics()) {
     if (node->is_Method()) {
       auto method = node->as_Method();
       if (method->is_constructor()) {

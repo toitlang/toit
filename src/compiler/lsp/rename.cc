@@ -17,7 +17,7 @@
 
 #include "rename.h"
 #include "../ast.h"
-#include "../ir.h"
+#include "../resolution.h"
 #include "../token.h"
 #include "../sources.h"
 #include "../package.h"
@@ -97,7 +97,7 @@ static Source::Range class_reference_range(ast::Expression* expression) {
 // These use the class name at call sites (e.g., `MyObj 42`), so
 // when renaming the class, these methods' call sites must also be
 // updated.
-static bool is_unnamed_constructor_or_factory(ir::Method* method) {
+static bool is_unnamed_constructor_or_factory(resolution::Method* method) {
   return method != null &&
          (method->is_constructor() || method->is_factory()) &&
          method->holder() != null &&
@@ -106,7 +106,7 @@ static bool is_unnamed_constructor_or_factory(ir::Method* method) {
 
 // Returns whether a class defines an instance method with the given name
 // and a shape that accepts the given call shape.
-static bool class_has_matching_method(ir::Class* klass,
+static bool class_has_matching_method(resolution::Class* klass,
                                       Symbol name,
                                       const CallShape& shape) {
   for (auto method : klass->methods()) {
@@ -125,16 +125,16 @@ namespace {
 // in rename results.  See find_and_emit_all_references for usage.
 class VirtualCallFilter {
  public:
-  static VirtualCallFilter build(ir::Node* target,
-                                 ir::Program* program,
+  static VirtualCallFilter build(resolution::Node* target,
+                                 resolution::Program* program,
                                  SourceManager* source_manager);
 
-  bool should_include(ir::CallVirtual* node) const;
+  bool should_include(resolution::CallVirtual* node) const;
 
-  void set_setter(ir::FieldStub* setter) { setter_ = setter; }
+  void set_setter(resolution::FieldStub* setter) { setter_ = setter; }
   bool is_active() const { return method_ != null; }
-  ir::Method* method() const { return method_; }
-  const Set<ir::Class*>& participating_classes() const {
+  resolution::Method* method() const { return method_; }
+  const Set<resolution::Class*>& participating_classes() const {
     return participating_classes_;
   }
 
@@ -146,12 +146,12 @@ class VirtualCallFilter {
       , target_source_(null)
       , source_manager_(null) {}
 
-  void compute_participating_classes(ir::Program* program);
-  void detect_ambiguity(ir::Program* program);
+  void compute_participating_classes(resolution::Program* program);
+  void detect_ambiguity(resolution::Program* program);
 
-  ir::Method* method_;
-  ir::FieldStub* setter_;
-  Set<ir::Class*> participating_classes_;
+  resolution::Method* method_;
+  resolution::FieldStub* setter_;
+  Set<resolution::Class*> participating_classes_;
   bool is_ambiguous_;
   std::string target_package_id_;
   Source* target_source_;
@@ -160,33 +160,33 @@ class VirtualCallFilter {
 
 // FindReferencesVisitor — traverses IR trees to find references to a target.
 
-class FindReferencesVisitor : public ir::TraversingVisitor {
+class FindReferencesVisitor : public resolution::TraversingVisitor {
  public:
-  FindReferencesVisitor(ir::Node* target,
+  FindReferencesVisitor(resolution::Node* target,
                         Source::Range definition_range,
                         int target_name_len,
                         SourceManager* source_manager,
-                        UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast_map,
+                        UnorderedMap<resolution::Node*, ast::Node*>& ir_to_ast_map,
                         LspProtocol* protocol,
                         const VirtualCallFilter& virtual_call_filter);
 
-  void visit_Reference(ir::Reference* node) override;
-  void visit_CallStatic(ir::CallStatic* node) override;
-  void visit_CallVirtual(ir::CallVirtual* node) override;
-  void visit_Typecheck(ir::Typecheck* node) override;
+  void visit_Reference(resolution::Reference* node) override;
+  void visit_CallStatic(resolution::CallStatic* node) override;
+  void visit_CallVirtual(resolution::CallVirtual* node) override;
+  void visit_Typecheck(resolution::Typecheck* node) override;
 
   void emit_range(const Source::Range& range);
 
  private:
-  void emit_named_argument_reference(ir::Call* node, Symbol param_name);
+  void emit_named_argument_reference(resolution::Call* node, Symbol param_name);
 
-  ir::Node* target_;
-  ir::Class* target_class_;
+  resolution::Node* target_;
+  resolution::Class* target_class_;
   Source::Range definition_range_;
   bool definition_emitted_ = false;
   int target_name_len_;
   SourceManager* source_manager_;
-  UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast_map_;
+  UnorderedMap<resolution::Node*, ast::Node*>& ir_to_ast_map_;
   LspProtocol* protocol_;
   const VirtualCallFilter& virtual_call_filter_;
 };
@@ -197,11 +197,11 @@ class FindReferencesVisitor : public ir::TraversingVisitor {
 
 void FindReferencesHandler::class_interface_or_mixin(ast::Node* node,
                                                      IterableScope* scope,
-                                                     ir::Class* holder,
-                                                     ir::Node* resolved,
+                                                     resolution::Class* holder,
+                                                     resolution::Node* resolved,
                                                      bool needs_interface,
                                                      bool needs_mixin) {
-  // Note: the resolver provides the bare ir::Class* here (not wrapped in a
+  // Note: the resolver provides the bare resolution::Class* here (not wrapped in a
   // Reference), unlike call_static which passes Reference-wrapped nodes.
   // We still unwrap for safety in case this changes in the future.
   if (resolved) {
@@ -220,12 +220,12 @@ void FindReferencesHandler::type(ast::Node* node,
   }
 }
 
-void FindReferencesHandler::call_virtual(ir::CallVirtual* node,
-                                         ir::Type type,
-                                         List<ir::Class*> classes) {
+void FindReferencesHandler::call_virtual(resolution::CallVirtual* node,
+                                         resolution::Type type,
+                                         List<resolution::Class*> classes) {
   Symbol selector = node->selector();
   if (type.is_class()) {
-    walk_class_hierarchy(type.klass(), classes, [&](ir::Class* current) -> bool {
+    walk_class_hierarchy(type.klass(), classes, [&](resolution::Class* current) -> bool {
       for (auto method : current->methods()) {
         if (method->name() == selector &&
             method->resolution_shape().accepts(node->shape())) {
@@ -242,18 +242,18 @@ void FindReferencesHandler::call_virtual(ir::CallVirtual* node,
 }
 
 void FindReferencesHandler::call_prefixed(ast::Dot* node,
-                                          ir::Node* resolved1,
-                                          ir::Node* resolved2,
-                                          List<ir::Node*> candidates,
+                                          resolution::Node* resolved1,
+                                          resolution::Node* resolved2,
+                                          List<resolution::Node*> candidates,
                                           IterableScope* scope) {
   call_static(node, resolved1, resolved2, candidates, scope, null);
 }
 
 void FindReferencesHandler::call_class(ast::Dot* node,
-                                       ir::Class* klass,
-                                       ir::Node* resolved1,
-                                       ir::Node* resolved2,
-                                       List<ir::Node*> candidates,
+                                       resolution::Class* klass,
+                                       resolution::Node* resolved1,
+                                       resolution::Node* resolved2,
+                                       List<resolution::Node*> candidates,
                                        IterableScope* scope) {
   // When the LSP cursor is on the name part of a Class.member expression
   // (e.g., "bar" in "Foo.bar"), the resolver sometimes takes the LspSelection
@@ -273,15 +273,15 @@ void FindReferencesHandler::call_class(ast::Dot* node,
 }
 
 void FindReferencesHandler::call_static(ast::Node* node,
-                                        ir::Node* resolved1,
-                                        ir::Node* resolved2,
-                                        List<ir::Node*> candidates,
+                                        resolution::Node* resolved1,
+                                        resolution::Node* resolved2,
+                                        List<resolution::Node*> candidates,
                                         IterableScope* scope,
-                                        ir::Method* surrounding) {
+                                        resolution::Method* surrounding) {
   // Don't overwrite target if already set (e.g., by class_interface_or_mixin
   // when the cursor is on the class part of a static call like Foo.bar).
   if (target_ != null) return;
-  ir::Node* target = null;
+  resolution::Node* target = null;
   if (resolved2 != null) {
     target = resolved2;
   } else if (resolved1 != null) {
@@ -315,8 +315,8 @@ void FindReferencesHandler::call_static(ast::Node* node,
 }
 
 void FindReferencesHandler::call_static_named(ast::Node* name_node,
-                                              ir::Node* ir_call_target,
-                                              List<ir::Node*> candidates) {
+                                              resolution::Node* ir_call_target,
+                                              List<resolution::Node*> candidates) {
   if (ir_call_target == null || ir_call_target->is_Error()) return;
   if (!ir_call_target->is_ReferenceMethod()) return;
 
@@ -340,11 +340,11 @@ void FindReferencesHandler::call_static_named(ast::Node* name_node,
   auto shape = ir_method->resolution_shape();
   for (int i = 0; i < shape.names().length(); i++) {
     if (shape.names()[i] == name) {
-      // We don't have an ir::Parameter node for this cross-module
+      // We don't have an resolution::Parameter node for this cross-module
       // parameter.  Create a temporary Local that carries the correct
       // name and the call-site range so that emit_prepare_rename can
       // produce a valid response.
-      target_ = zone_new<ir::Local>(name, true, false, cursor_range);
+      target_ = zone_new<resolution::Local>(name, true, false, cursor_range);
       cursor_range_ = cursor_range;
       return;
     }
@@ -352,7 +352,7 @@ void FindReferencesHandler::call_static_named(ast::Node* name_node,
 }
 
 void FindReferencesHandler::field_storing_parameter(ast::Parameter* node,
-                                                    List<ir::Field*> fields,
+                                                    List<resolution::Field*> fields,
                                                     bool field_storing_is_allowed) {
   if (node->name()->is_LspSelection()) {
     auto name = node->name()->data();
@@ -375,7 +375,7 @@ void FindReferencesHandler::expord(ast::Node* node, ResolutionEntry entry, Modul
 }
 
 void FindReferencesHandler::toitdoc_ref(ast::Node* node,
-                                        List<ir::Node*> candidates,
+                                        List<resolution::Node*> candidates,
                                         ToitdocScopeIterator* iterator,
                                         bool is_signature_toitdoc) {
   // When the cursor is on a toitdoc reference like `$helper`, capture the
@@ -387,7 +387,7 @@ void FindReferencesHandler::toitdoc_ref(ast::Node* node,
   cursor_range_ = node->selection_range();
 }
 
-void FindReferencesHandler::definition(ir::Node* ir_node, Source::Range name_range) {
+void FindReferencesHandler::definition(resolution::Node* ir_node, Source::Range name_range) {
   target_ = ir_node;
   cursor_range_ = name_range;
 }
@@ -401,8 +401,8 @@ void FindReferencesHandler::handle_show_or_export(ast::Node* node, ResolutionEnt
 
 // VirtualCallFilter
 
-VirtualCallFilter VirtualCallFilter::build(ir::Node* target,
-                                           ir::Program* program,
+VirtualCallFilter VirtualCallFilter::build(resolution::Node* target,
+                                           resolution::Program* program,
                                            SourceManager* source_manager) {
   VirtualCallFilter filter;
   filter.source_manager_ = source_manager;
@@ -433,7 +433,7 @@ VirtualCallFilter VirtualCallFilter::build(ir::Node* target,
   return filter;
 }
 
-void VirtualCallFilter::compute_participating_classes(ir::Program* program) {
+void VirtualCallFilter::compute_participating_classes(resolution::Program* program) {
   auto* holder = method_->holder();
   Symbol name = method_->name();
   // Build the call shape from the method's resolution shape so we can
@@ -462,10 +462,10 @@ void VirtualCallFilter::compute_participating_classes(ir::Program* program) {
     bool changed = true;
     while (changed) {
       changed = false;
-      Set<ir::Class*> to_add;
+      Set<resolution::Class*> to_add;
       // Collect interfaces/mixins referenced by current participants.
       for (auto* participant : participating_classes_) {
-        auto check_connector = [&](ir::Class* connector) {
+        auto check_connector = [&](resolution::Class* connector) {
           if (participating_classes_.contains(connector)) return;
           if (!class_has_matching_method(connector, name, method_shape)) return;
           to_add.insert(connector);
@@ -540,7 +540,7 @@ void VirtualCallFilter::compute_participating_classes(ir::Program* program) {
   }
 }
 
-void VirtualCallFilter::detect_ambiguity(ir::Program* program) {
+void VirtualCallFilter::detect_ambiguity(resolution::Program* program) {
   Symbol name = method_->name();
   auto method_shape = method_->resolution_shape().to_plain_shape()
                           .to_equivalent_call_shape();
@@ -558,7 +558,7 @@ void VirtualCallFilter::detect_ambiguity(ir::Program* program) {
   is_ambiguous_ = false;
 }
 
-bool VirtualCallFilter::should_include(ir::CallVirtual* node) const {
+bool VirtualCallFilter::should_include(resolution::CallVirtual* node) const {
   if (method_ == null) return false;
 
   if (node->selector() != method_->name()) return false;
@@ -597,11 +597,11 @@ bool VirtualCallFilter::should_include(ir::CallVirtual* node) const {
 
 // FindReferencesVisitor
 
-FindReferencesVisitor::FindReferencesVisitor(ir::Node* target,
+FindReferencesVisitor::FindReferencesVisitor(resolution::Node* target,
                                              Source::Range definition_range,
                                              int target_name_len,
                                              SourceManager* source_manager,
-                                             UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast_map,
+                                             UnorderedMap<resolution::Node*, ast::Node*>& ir_to_ast_map,
                                              LspProtocol* protocol,
                                              const VirtualCallFilter& virtual_call_filter)
     : target_(target)
@@ -661,7 +661,7 @@ void FindReferencesVisitor::emit_range(const Source::Range& range) {
                                      to.line_number - 1, end_col);
 }
 
-void FindReferencesVisitor::visit_Reference(ir::Reference* node) {
+void FindReferencesVisitor::visit_Reference(resolution::Reference* node) {
   bool matches = (node->target() == target_);
 
   // When renaming a class, match references to the class's unnamed
@@ -730,7 +730,7 @@ void FindReferencesVisitor::visit_Reference(ir::Reference* node) {
   }
 }
 
-void FindReferencesVisitor::visit_CallVirtual(ir::CallVirtual* node) {
+void FindReferencesVisitor::visit_CallVirtual(resolution::CallVirtual* node) {
   if (virtual_call_filter_.should_include(node)) {
     // For getter calls, CallVirtual::range() covers the selector name in
     // the source (e.g., "bar" in "foo.bar"), which is the range to rename.
@@ -749,7 +749,7 @@ void FindReferencesVisitor::visit_CallVirtual(ir::CallVirtual* node) {
   TraversingVisitor::visit_CallVirtual(node);
 }
 
-void FindReferencesVisitor::visit_CallStatic(ir::CallStatic* node) {
+void FindReferencesVisitor::visit_CallStatic(resolution::CallStatic* node) {
   auto* method = node->target()->target();
   if (target_class_ != null && method->holder() == target_class_ && !method->is_instance()) {
     auto* ast_node = ir_to_ast_map_.lookup(node);
@@ -819,7 +819,7 @@ void FindReferencesVisitor::visit_CallStatic(ir::CallStatic* node) {
 }
 
 void FindReferencesVisitor::emit_named_argument_reference(
-    ir::Call* node, Symbol param_name) {
+    resolution::Call* node, Symbol param_name) {
   // Look up the AST call expression stored during resolution.
   auto* ast_node = ir_to_ast_map_.lookup(node);
   if (ast_node == null || !ast_node->is_Call()) return;
@@ -834,16 +834,16 @@ void FindReferencesVisitor::emit_named_argument_reference(
   }
 }
 
-void FindReferencesVisitor::visit_Typecheck(ir::Typecheck* node) {
+void FindReferencesVisitor::visit_Typecheck(resolution::Typecheck* node) {
   if (target_class_ != null &&
       node->type().is_class() &&
       node->type().klass() == target_class_) {
     // For IS_CHECK, AS_CHECK, and LOCAL_AS_CHECK, the resolver stores the
     // AST type node in ir_to_ast_map, giving us the exact source range
     // of the class name (e.g., "MyClass" in `x is MyClass` or `y/MyClass`).
-    if (node->kind() == ir::Typecheck::IS_CHECK ||
-        node->kind() == ir::Typecheck::AS_CHECK ||
-        node->kind() == ir::Typecheck::LOCAL_AS_CHECK) {
+    if (node->kind() == resolution::Typecheck::IS_CHECK ||
+        node->kind() == resolution::Typecheck::AS_CHECK ||
+        node->kind() == resolution::Typecheck::LOCAL_AS_CHECK) {
       auto* ast_type = ir_to_ast_map_.lookup(node);
       if (ast_type != null && ast_type->is_Expression()) {
         emit_range(class_reference_range(ast_type->as_Expression()));
@@ -860,9 +860,9 @@ void FindReferencesVisitor::visit_Typecheck(ir::Typecheck* node) {
 
 // Emits override/implementation definitions for virtual methods and fields.
 static void emit_override_definitions(
-    ir::Node* target,
-    ir::FieldStub* field_getter,
-    ir::FieldStub* field_setter,
+    resolution::Node* target,
+    resolution::FieldStub* field_getter,
+    resolution::FieldStub* field_setter,
     const VirtualCallFilter& virtual_call_filter,
     FindReferencesVisitor& visitor) {
   if (!virtual_call_filter.is_active()) return;
@@ -900,13 +900,13 @@ static void emit_override_definitions(
 // For `implements` and `with` clauses, we use the class_hierarchy_references
 // collected during resolution — before the flattening passes replaced the
 // IR interface/mixin lists with their transitive closures.  Each entry
-// maps an (ir::Class* holder, ir::Class* target) pair to the AST expression
+// maps an (resolution::Class* holder, resolution::Class* target) pair to the AST expression
 // in the source clause, giving us exact pointer-identity matching without
 // any text-based or positional heuristics.
 static void emit_class_hierarchy_references(
-    ir::Class* target_class,
-    ir::Program* program,
-    UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast,
+    resolution::Class* target_class,
+    resolution::Program* program,
+    UnorderedMap<resolution::Node*, ast::Node*>& ir_to_ast,
     const std::vector<Resolver::ClassHierarchyReference>& class_hierarchy_references,
     FindReferencesVisitor& visitor) {
   // Extends clauses: the super pointer is 1:1 and never flattened.
@@ -932,11 +932,11 @@ static void emit_class_hierarchy_references(
 
 // Emits type annotation references for a class target.
 static void emit_type_annotation_references(
-    ir::Class* target_class,
-    ir::Program* program,
-    UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast,
+    resolution::Class* target_class,
+    resolution::Program* program,
+    UnorderedMap<resolution::Node*, ast::Node*>& ir_to_ast,
     FindReferencesVisitor& visitor) {
-  auto scan_method_types = [&](ir::Method* method) {
+  auto scan_method_types = [&](resolution::Method* method) {
     for (auto* param : method->parameters()) {
       if (param->type().is_class() && param->type().klass() == target_class) {
         auto* ast_param = ir_to_ast.lookup(param);
@@ -983,12 +983,12 @@ static void emit_type_annotation_references(
 
 // Emits field-storing parameter references (e.g., `--.my-field` in constructors).
 static void emit_field_storing_references(
-    ir::Field* target_field,
-    UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast,
+    resolution::Field* target_field,
+    UnorderedMap<resolution::Node*, ast::Node*>& ir_to_ast,
     FindReferencesVisitor& visitor) {
   if (target_field->holder() == null) return;
 
-  auto check_method_for_field_storing = [&](ir::Method* method) {
+  auto check_method_for_field_storing = [&](resolution::Method* method) {
     for (auto* param : method->parameters()) {
       if (param->name() == target_field->name()) {
         auto* ast_param = ir_to_ast.lookup(param);
@@ -1017,11 +1017,11 @@ static void emit_field_storing_references(
 
 // Emits toitdoc reference ranges for the target.
 static void emit_toitdoc_references(
-    ir::Node* target,
+    resolution::Node* target,
     ToitdocRegistry* toitdocs,
-    UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast,
+    UnorderedMap<resolution::Node*, ast::Node*>& ir_to_ast,
     FindReferencesVisitor& visitor) {
-  toitdocs->for_each([&](void* key, Toitdoc<ir::Node*> ir_toitdoc) {
+  toitdocs->for_each([&](void* key, Toitdoc<resolution::Node*> ir_toitdoc) {
     if (!ir_toitdoc.is_valid()) return;
     auto ir_refs = ir_toitdoc.refs();
 
@@ -1040,7 +1040,7 @@ static void emit_toitdoc_references(
     if (!has_matching_ref) return;
 
     // Look up the AST node to get source ranges for the toitdoc refs.
-    auto* ir_node = static_cast<ir::Node*>(key);
+    auto* ir_node = static_cast<resolution::Node*>(key);
     auto probe = ir_to_ast.find(ir_node);
     if (probe == ir_to_ast.end()) return;
     auto* ast_node = probe->second;
@@ -1088,10 +1088,10 @@ static void emit_toitdoc_references(
 
 // find_and_emit_all_references
 void find_and_emit_all_references(
-    ir::Node* target,
-    ir::Program* program,
+    resolution::Node* target,
+    resolution::Program* program,
     SourceManager* source_manager,
-    UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast,
+    UnorderedMap<resolution::Node*, ast::Node*>& ir_to_ast,
     LspProtocol* protocol,
     ToitdocRegistry* toitdocs,
     const std::vector<Resolver::ShowExportReference>& show_export_references,
@@ -1135,8 +1135,8 @@ void find_and_emit_all_references(
   // for virtual call matching. Field access like `obj.my-field` compiles to
   // a CallVirtual dispatching to the getter/setter, so VirtualCallFilter
   // must target these stubs.
-  ir::FieldStub* field_getter = null;
-  ir::FieldStub* field_setter = null;
+  resolution::FieldStub* field_getter = null;
+  resolution::FieldStub* field_setter = null;
   if (target->is_Field()) {
     auto* field = target->as_Field();
     if (field->holder() != null) {
@@ -1155,7 +1155,7 @@ void find_and_emit_all_references(
   // Build the virtual call filter. For fields, use the getter FieldStub
   // so that `obj.field` call sites are matched.
   auto filter_target = field_getter != null
-      ? static_cast<ir::Node*>(field_getter) : target;
+      ? static_cast<resolution::Node*>(field_getter) : target;
   auto virtual_call_filter = VirtualCallFilter::build(
       filter_target, program, source_manager);
 
@@ -1174,12 +1174,12 @@ void find_and_emit_all_references(
       definition_range = ast_node->as_Parameter()->name()->selection_range();
     }
   } else if (target->is_Method()) {
-    // For named constructors and factories, ir::Method::range() covers only the
+    // For named constructors and factories, resolution::Method::range() covers only the
     // "constructor" keyword (set from ast::Method::selection_range() during
     // resolution). The actual name (e.g., "my-named-ctor" in
     // "constructor.my-named-ctor") lives in the ast::Dot node's name()
     // Identifier. Use its range instead.
-    // TODO(floitsch): Investigate whether ir::Method should store a name range
+    // TODO(floitsch): Investigate whether resolution::Method should store a name range
     // that covers the named constructor/factory name, so we don't need to go
     // through the ir_to_ast map here.
     auto* method = target->as_Method();

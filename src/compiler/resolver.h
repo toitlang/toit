@@ -19,7 +19,7 @@
 #include <functional>
 
 #include "ast.h"
-#include "ir.h"
+#include "resolution.h"
 #include "list.h"
 #include "map.h"
 #include "parser.h"
@@ -49,7 +49,7 @@ class Resolver {
       , lsp_(lsp)
       , toitdocs_(toitdocs) {}
 
-  ir::Program* resolve(const std::vector<ast::Unit*>& units,
+  resolution::Program* resolve(const std::vector<ast::Unit*>& units,
                        int entry_unit_index,
                        int core_unit_index);
 
@@ -75,17 +75,17 @@ class Resolver {
   /// moved into the rename pipeline (FindReferencesPipeline) before the
   /// resolver is destroyed, so the visitor can look up AST ranges during
   /// its IR traversal.
-  UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast_map() { return ir_to_ast_map_; }
+  UnorderedMap<resolution::Node*, ast::Node*>& ir_to_ast_map() { return ir_to_ast_map_; }
 
   /// A reference from a show/export clause to a resolved definition.
   ///
   /// During resolution, each `import ... show Foo` and `export Foo`
-  /// clause resolves the identifier to an ir::Node* target. We collect
+  /// clause resolves the identifier to an resolution::Node* target. We collect
   /// these mappings so that the rename pipeline can find show/export
   /// references to a given definition without needing access to the
   /// module infrastructure (which is local to the resolver).
   struct ShowExportReference {
-    ir::Node* target;       // The resolved definition (e.g., ir::Class*).
+    resolution::Node* target;       // The resolved definition (e.g., resolution::Class*).
     Source::Range range;     // The source range of the identifier in the show/export clause.
   };
 
@@ -97,7 +97,7 @@ class Resolver {
   /// A resolved reference from an `implements` or `with` clause.
   ///
   /// During resolution, each AST expression in a class's `implements` or
-  /// `with` clause is resolved to an `ir::Class*`.  We record these
+  /// `with` clause is resolved to an `resolution::Class*`.  We record these
   /// mappings before the resolver's flattening passes (`flatten_mixins`
   /// and `check_interface_implementations_and_flatten`) replace the IR
   /// interface/mixin lists with their transitive closures.  After
@@ -105,8 +105,8 @@ class Resolver {
   /// is lost, so the rename pipeline needs this explicit mapping to find
   /// the source-level expressions for a given IR class.
   struct ClassHierarchyReference {
-    ir::Class* holder;       // The class containing the implements/with clause.
-    ir::Class* target;       // The resolved interface or mixin.
+    resolution::Class* holder;       // The class containing the implements/with clause.
+    resolution::Class* target;       // The resolved interface or mixin.
     ast::Expression* ast_node;  // The AST expression in the clause.
   };
 
@@ -120,23 +120,23 @@ class Resolver {
   Diagnostics* diagnostics_;
   Lsp* lsp_;
   ToitdocRegistry* toitdocs_;
-  UnorderedMap<ir::Node*, ast::Node*> ir_to_ast_map_;
-  std::vector<ir::AssignmentGlobal*> global_assignments_;
+  UnorderedMap<resolution::Node*, ast::Node*> ir_to_ast_map_;
+  std::vector<resolution::AssignmentGlobal*> global_assignments_;
   std::vector<ShowExportReference> show_export_references_;
   std::vector<ClassHierarchyReference> class_hierarchy_references_;
 
   Diagnostics* diagnostics() const { return diagnostics_; }
 
   void report_error(const ast::Node* position_node, const char* format, ...);
-  void report_error(ir::Node* position_node, const char* format, ...);
+  void report_error(resolution::Node* position_node, const char* format, ...);
   void report_error(const char* format, ...);
   void report_note(const ast::Node* position_node, const char* format, ...);
-  void report_note(ir::Node* position_node, const char* format, ...);
+  void report_note(resolution::Node* position_node, const char* format, ...);
   void report_warning(const ast::Node* position_node, const char* format, ...);
-  void report_warning(ir::Node* position_node, const char* format, ...);
+  void report_warning(resolution::Node* position_node, const char* format, ...);
 
-  ast::Class* ast_for(ir::Class* node) { return ir_to_ast_map_.at(node)->as_Class(); }
-  ast::Method* ast_for(ir::Method* node) { return ir_to_ast_map_.at(node)->as_Method(); }
+  ast::Class* ast_for(resolution::Class* node) { return ir_to_ast_map_.at(node)->as_Class(); }
+  ast::Method* ast_for(resolution::Method* node) { return ir_to_ast_map_.at(node)->as_Method(); }
 
   std::vector<Module*> build_modules(const std::vector<ast::Unit*>& units,
                                      int entry_unit_index,
@@ -144,7 +144,7 @@ class Resolver {
   void resolve_shows_and_exports(std::vector<Module*>& modules);
   void build_module_scopes(std::vector<Module*>& modules);
 
-  void check_clashing_or_conflicting(Symbol name, List<ir::Node*> declarations);
+  void check_clashing_or_conflicting(Symbol name, List<resolution::Node*> declarations);
   void check_clashing_or_conflicting(const std::vector<Module*>& modules);
   void check_future_reserved_globals(const std::vector<Module*>& modules);
 
@@ -155,14 +155,14 @@ class Resolver {
   void report_abstract_classes(const std::vector<Module*>& modules);
   void check_interface_implementations_and_flatten(const std::vector<Module*>& modules);
   void flatten_mixins(const std::vector<Module*>& modules);
-  List<ir::Class*> find_tree_roots(Module* core_module);
-  List<ir::Method*> find_entry_points(Module* core_module);
-  List<ir::Type> find_literal_types(Module* core_module);
-  ir::Constructor* build_default_constructor(ir::Class* klass, bool* detected_error);
-  void check_method(ast::Method* method, ir::Class* holder,
-                    Symbol* name, ir::Method::MethodKind* kind,
+  List<resolution::Class*> find_tree_roots(Module* core_module);
+  List<resolution::Method*> find_entry_points(Module* core_module);
+  List<resolution::Type> find_literal_types(Module* core_module);
+  resolution::Constructor* build_default_constructor(resolution::Class* klass, bool* detected_error);
+  void check_method(ast::Method* method, resolution::Class* holder,
+                    Symbol* name, resolution::Method::MethodKind* kind,
                     bool allow_future_reserved);
-  void check_field(ast::Field* method, ir::Class* holder);
+  void check_field(ast::Field* method, resolution::Class* holder);
   void check_class(ast::Class* klass);
   void fill_classes_with_skeletons(const std::vector<Module*>& modules);
   void resolve_fill_module(Module* module,
@@ -174,26 +174,26 @@ class Resolver {
   void resolve_fill_classes(Module* module,
                             Module* entry_module,
                             Module* core_module);
-  void resolve_fill_class(ir::Class* klass,
+  void resolve_fill_class(resolution::Class* klass,
                           ModuleScope* module_scope,
                           Module* entry_module,
                           Module* core_module);
   void resolve_fill_globals(Module* module,
                             Module* entry_module,
                             Module* core_module);
-  void resolve_fill_method(ir::Method* method,
-                           ir::Class* holder,
+  void resolve_fill_method(resolution::Method* method,
+                           resolution::Class* holder,
                            Scope* scope,
                            Module* entry_module,
                            Module* core_module);
-  void resolve_field(ir::Field* field,
-                     ir::Class* holder,
+  void resolve_field(resolution::Field* field,
+                     resolution::Class* holder,
                      Scope* scope,
                      Module* entry_module,
                      Module* core_module);
-  ir::Class* resolve_class_interface_or_mixin(ast::Expression* ast_node,
+  resolution::Class* resolve_class_interface_or_mixin(ast::Expression* ast_node,
                                               Scope* scope,
-                                              ir::Class* holder,
+                                              resolution::Class* holder,
                                               bool needs_class,
                                               bool needs_mixin);
 
