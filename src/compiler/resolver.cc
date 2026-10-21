@@ -1811,22 +1811,17 @@ void Resolver::fill_classes_with_skeletons(const std::vector<Module*>& modules) 
       ScopeFiller statics_scope_filler;
 
       if (ir_class->is_task_class()) {
-        // Add the implicit stack field.
+        // The runtime stack is an implicit field, described by resolution
+        // information on the class rather than a fabricated field declaration.
         auto stack_field = resolution::make<resolution::FieldInfo>(Symbols::stack_,
                                           ir_class,
                                           false,
                                           ir_class->range(),
-                                          ir_class->range());
+                                          ir_class->range(),
+                                          true);
+        stack_field->set_type(resolution::Type::any());
         fields.add(stack_field);
-        // TODO(florian): find field type for `stack_` field.
-        ir_to_ast_map_[stack_field] =
-            zone_new<ast::Field>(zone_new<ast::Identifier>(Symbols::stack_),
-                            null,    // No type.
-                            zone_new<ast::LiteralNull>(),
-                            false,   // Not static.
-                            false,   // Not abstract.
-                            false,   // Not final.
-                            Source::Range::invalid());
+        ir_to_ast_map_[stack_field] = ast_class;
       }
       for (auto member : ast_class->members()) {
         resolution::Origin member_origin(member);
@@ -2422,6 +2417,7 @@ void Resolver::resolve_field(resolution::FieldView field,
                              Scope* scope,
                              Module* entry_module,
                              Module* core_module) {
+  if (field->is_implicit()) return;
   // We pick a random resolution-shape. It's not used anyway.
   ResolutionShape fake_shape(0);
   auto fake_method = resolution::make<resolution::MethodInstanceInfo>(resolution::MethodInfo::MethodKind::FIELD_INITIALIZER,

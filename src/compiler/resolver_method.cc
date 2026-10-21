@@ -467,8 +467,7 @@ void MethodResolver::resolve_fill_field_stub() {
   if (method_->is_Global()) return;
   auto field_stub = method_->as_FieldStub();
   auto field = field_stub->field();
-  auto ast_field = ir_to_ast_map_->at(field)->as_Field();
-  auto range = ast_field->selection_range();
+  auto range = field->range();
   resolution::Type ir_type = field->type();
 
   ListBuilder<resolution::ParameterView> ir_parameters;
@@ -627,8 +626,8 @@ void MethodResolver::resolve_fill_constructor() {
                                                      field_storing_parameters.end());
 
   for (auto ir_field : klass->fields()) {
-    auto ast_field = ir_to_ast_map_->at(ir_field)->as_Field();
-    Symbol field_name = ast_field->name()->data();
+    auto ast_field = ir_field->is_implicit() ? null : ir_to_ast_map_->at(ir_field)->as_Field();
+    Symbol field_name = ir_field->name();
 
     auto entry = parameter_scope.lookup_shallow(field_name);
     resolution::ExpressionView ir_initial_value = null;
@@ -663,7 +662,10 @@ void MethodResolver::resolve_fill_constructor() {
       NullDiagnostics null_diagnostics(diagnostics_);
       // Don't report errors for fields. That is done outside.
       diagnostics_ = &null_diagnostics;
-      if (ast_field->initializer() == null) {
+      if (ir_field->is_implicit()) {
+        range = ir_field->range();
+        ir_initial_value = resolution::make<resolution::LiteralNullInfo>(range);
+      } else if (ast_field->initializer() == null) {
         range = ast_field->selection_range();
         ir_initial_value = resolution::make<resolution::LiteralUndefinedInfo>(range);
       } else {

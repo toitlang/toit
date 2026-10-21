@@ -729,11 +729,13 @@ class GlobalInfo : public MethodInfo {
 
 class FieldInfo : public NodeInfo {
  public:
-  FieldInfo(Symbol name, ClassView holder, bool is_final, Source::Range range, Source::Range outline_range)
+  FieldInfo(Symbol name, ClassView holder, bool is_final, Source::Range range, Source::Range outline_range,
+            bool is_implicit = false)
       : name_(name)
       , holder_(holder)
       , type_(Type::invalid())
       , is_final_(is_final)
+      , is_implicit_(is_implicit)
       , deprecation_message_(Symbol::invalid())
       , range_(range)
       , outline_range_(outline_range) {}
@@ -745,6 +747,9 @@ class FieldInfo : public NodeInfo {
 
   // Whether the field is marked as final.
   bool is_final() const { return is_final_; }
+
+  // Runtime-provided fields have no source declaration and start as null.
+  bool is_implicit() const { return is_implicit_; }
 
   bool is_deprecated() const { return deprecation_message_.is_valid(); }
   void set_deprecation(Symbol message) { deprecation_message_ = message; }
@@ -764,6 +769,7 @@ class FieldInfo : public NodeInfo {
   ClassView holder_;
   Type type_;
   bool is_final_;
+  bool is_implicit_;
   Symbol deprecation_message_;
   Source::Range range_;
   Source::Range outline_range_;
