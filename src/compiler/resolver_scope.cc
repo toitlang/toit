@@ -27,21 +27,23 @@ constexpr resolution::NodeView ClassScope::SUPER_CLASS_SEPARATOR;
 ///
 /// Returns `null` if the given node is not a [Prefix].
 ImportScope* Scope::_find_import_scope(ast::Node* node) {
-  if (node == find_import_scope_node_cache_) {
-    return find_import_scope_result_cache_;
-  }
   if (!node->is_Identifier()) return null;
-
-  find_import_scope_node_cache_ = node;
-  find_import_scope_result_cache_ = null;
-  auto prefix_name = node->as_Identifier()->data();
-
-  auto lookup_result = lookup(prefix_name);
-  if (!lookup_result.entry.is_prefix()) return null;
-
-  ImportScope* result = lookup_result.entry.prefix();
-  find_import_scope_result_cache_ = result;
-  return result;
+  auto previous = resolution::NodeView(node->resolution());
+  auto entry = lookup(node->as_Identifier()->data()).entry;
+  if (!entry.is_prefix()) {
+    // The same syntax can be resolved again in a different scope. A local
+    // shadowing an import must not retain an earlier prefix interpretation.
+    if (previous != null && previous->is_LibraryPrefix()) node->set_resolution(null);
+    return null;
+  }
+  auto prefix = entry.prefix();
+  if (previous == null || !previous->is_LibraryPrefix() ||
+      previous->as_LibraryPrefix()->prefix() != prefix) {
+    resolution::Origin origin(node);
+    auto information = resolution::make<resolution::LibraryPrefixInfo>(prefix);
+    information.node()->attach(node);
+  }
+  return prefix;
 }
 
 bool Scope::is_prefixed_identifier(ast::Node* node) {

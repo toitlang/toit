@@ -4,6 +4,7 @@
 
 #include "../../src/compiler/ast.h"
 #include "../../src/compiler/resolution.h"
+#include "../../src/compiler/resolver_scope.h"
 
 namespace toit {
 namespace compiler {
@@ -18,6 +19,11 @@ class LiteralVisitor : public resolution::TraversingVisitor {
     syntax = node.syntax();
     value = node->value();
   }
+  void visit_LibraryPrefix(resolution::LibraryPrefixView node) override {
+    syntax = node.syntax();
+    prefix = node->prefix();
+  }
+  ImportScope* prefix = null;
   ast::Node* syntax = null;
   int64 value = 0;
 };
@@ -57,6 +63,28 @@ static void test() {
   visitor.visit(source.resolution());
   check(visitor.value == 43);
   check(first.node() == integer->ast_node() && first->value() == 42);
+
+  auto prefix_name = Symbol::synthetic("library");
+  ImportScope imports(prefix_name);
+  SimpleScope scope(null);
+  scope.add(prefix_name, ResolutionEntry(&imports));
+  ast::Identifier prefix_identifier(prefix_name);
+  ast::Identifier member(Symbol::synthetic("member"));
+  ast::Dot qualified(&prefix_identifier, &member);
+  check(scope.is_prefixed_identifier(&qualified));
+  auto prefix_node = prefix_identifier.resolution();
+  visitor.visit(prefix_node);
+  check(visitor.prefix == &imports && visitor.syntax == &prefix_identifier);
+  check(scope.is_prefixed_identifier(&qualified));
+  check(prefix_identifier.resolution() == prefix_node);
+
+  // Re-resolution must respect shadowing even for the same source identifier.
+  auto local = resolution::make<resolution::LocalInfo>(prefix_name, false, false, range);
+  scope.add(prefix_name, ResolutionEntry(local));
+  check(!scope.is_prefixed_identifier(&qualified));
+  check(prefix_identifier.resolution() == null);
+  // Existing interpretations still retain their own meaning.
+  check(resolution::LibraryPrefixView(prefix_node)->prefix() == &imports);
 }
 
 } // namespace toit::compiler
