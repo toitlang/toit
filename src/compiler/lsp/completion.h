@@ -56,41 +56,41 @@ class CompletionHandler : public LspSelectionHandler {
                    Filesystem* fs);
   void class_interface_or_mixin(ast::Node* node,
                                 IterableScope* scope,
-                                resolution::View<resolution::Class> holder,
-                                resolution::View<resolution::Node> resolved,
+                                resolution::ClassView holder,
+                                resolution::NodeView resolved,
                                 bool needs_interface,
                                 bool needs_mixin);
   void type(ast::Node* node, IterableScope* scope, ResolutionEntry resolved, bool allow_none);
-  void call_virtual(resolution::View<resolution::CallVirtual> node, resolution::Type type, List<resolution::View<resolution::Class>> classes);
+  void call_virtual(resolution::CallVirtualView node, resolution::Type type, List<resolution::ClassView> classes);
   void call_prefixed(ast::Dot* node,
-                     resolution::View<resolution::Node> resolved1,
-                     resolution::View<resolution::Node> resolved2,
-                     List<resolution::View<resolution::Node>> candidates,
+                     resolution::NodeView resolved1,
+                     resolution::NodeView resolved2,
+                     List<resolution::NodeView> candidates,
                      IterableScope* scope);
   void call_class(ast::Dot* node,
-                  resolution::View<resolution::Class> klass,
-                  resolution::View<resolution::Node> resolved1,
-                  resolution::View<resolution::Node> resolved2,
-                  List<resolution::View<resolution::Node>> candidates,
+                  resolution::ClassView klass,
+                  resolution::NodeView resolved1,
+                  resolution::NodeView resolved2,
+                  List<resolution::NodeView> candidates,
                   IterableScope* scope);
   void call_static(ast::Node* node,
-                   resolution::View<resolution::Node> resolved1,
-                   resolution::View<resolution::Node> resolved2,
-                   List<resolution::View<resolution::Node>> candidates,
+                   resolution::NodeView resolved1,
+                   resolution::NodeView resolved2,
+                   List<resolution::NodeView> candidates,
                    IterableScope* scope,
-                   resolution::View<resolution::Method> surrounding);
-  void call_block(ast::Dot* node, resolution::View<resolution::Node> ir_receiver);
+                   resolution::MethodView surrounding);
+  void call_block(ast::Dot* node, resolution::NodeView ir_receiver);
 
-  void call_static_named(ast::Node* name_node, resolution::View<resolution::Node> ir_call_target, List<resolution::View<resolution::Node>> candidates);
+  void call_static_named(ast::Node* name_node, resolution::NodeView ir_call_target, List<resolution::NodeView> candidates);
 
   void call_primitive(ast::Node* node, Symbol module_name, Symbol primitive_name,
                       int module, int primitive, bool on_module);
 
   void field_storing_parameter(ast::Parameter* node,
-                               List<resolution::View<resolution::Field>> fields,
+                               List<resolution::FieldView> fields,
                                bool field_storing_is_allowed);
 
-  void this_(ast::Identifier* node, resolution::View<resolution::Class> enclosing_class, IterableScope* scope, resolution::View<resolution::Method> surrounding);
+  void this_(ast::Identifier* node, resolution::ClassView enclosing_class, IterableScope* scope, resolution::MethodView surrounding);
 
   void show(ast::Node* node, ResolutionEntry entry, ModuleScope* scope);
 
@@ -99,15 +99,15 @@ class CompletionHandler : public LspSelectionHandler {
   void return_label(ast::Node* node, int label_index, const std::vector<std::pair<Symbol, ast::Node*>>& labels);
 
   void toitdoc_ref(ast::Node* node,
-                   List<resolution::View<resolution::Node>> candidates,
+                   List<resolution::NodeView> candidates,
                    ToitdocScopeIterator* iterator,
                    bool is_signature_toitdoc);
 
-  void definition(resolution::View<resolution::Node> ir_node, Source::Range name_range) override {}
+  void definition(resolution::NodeView ir_node, Source::Range name_range) override {}
 
  private:
-  void complete_static_ids(IterableScope* scope, resolution::View<resolution::Method> surrounding);
-  void complete_named_args(resolution::View<resolution::Method> method);
+  void complete_static_ids(IterableScope* scope, resolution::MethodView surrounding);
+  void complete_named_args(resolution::MethodView method);
 
   void complete(Symbol symbol) { complete(symbol.c_str()); }
   void complete(Symbol symbol, CompletionKind kind) { complete(symbol.c_str(), kind); }
@@ -117,7 +117,7 @@ class CompletionHandler : public LspSelectionHandler {
                            CompletionKind kind,
                            const std::string& package_id);
 
-  void complete_method(resolution::View<resolution::Method> method, const std::string& package_id);
+  void complete_method(resolution::MethodView method, const std::string& package_id);
   void complete_entry(Symbol name,
                       const ResolutionEntry& entry,
                       CompletionKind kind_override = CompletionKind::NONE);

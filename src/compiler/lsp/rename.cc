@@ -97,7 +97,7 @@ static Source::Range class_reference_range(ast::Expression* expression) {
 // These use the class name at call sites (e.g., `MyObj 42`), so
 // when renaming the class, these methods' call sites must also be
 // updated.
-static bool is_unnamed_constructor_or_factory(resolution::View<resolution::Method> method) {
+static bool is_unnamed_constructor_or_factory(resolution::MethodView method) {
   return method != null &&
          (method->is_constructor() || method->is_factory()) &&
          method->holder() != null &&
@@ -106,7 +106,7 @@ static bool is_unnamed_constructor_or_factory(resolution::View<resolution::Metho
 
 // Returns whether a class defines an instance method with the given name
 // and a shape that accepts the given call shape.
-static bool class_has_matching_method(resolution::View<resolution::Class> klass,
+static bool class_has_matching_method(resolution::ClassView klass,
                                       Symbol name,
                                       const CallShape& shape) {
   for (auto method : klass->methods()) {
@@ -125,16 +125,16 @@ namespace {
 // in rename results.  See find_and_emit_all_references for usage.
 class VirtualCallFilter {
  public:
-  static VirtualCallFilter build(resolution::View<resolution::Node> target,
-                                 resolution::View<resolution::Program> program,
+  static VirtualCallFilter build(resolution::NodeView target,
+                                 resolution::ProgramView program,
                                  SourceManager* source_manager);
 
-  bool should_include(resolution::View<resolution::CallVirtual> node) const;
+  bool should_include(resolution::CallVirtualView node) const;
 
-  void set_setter(resolution::View<resolution::FieldStub> setter) { setter_ = setter; }
+  void set_setter(resolution::FieldStubView setter) { setter_ = setter; }
   bool is_active() const { return method_ != null; }
-  resolution::View<resolution::Method> method() const { return method_; }
-  const Set<resolution::View<resolution::Class>>& participating_classes() const {
+  resolution::MethodView method() const { return method_; }
+  const Set<resolution::ClassView>& participating_classes() const {
     return participating_classes_;
   }
 
@@ -146,12 +146,12 @@ class VirtualCallFilter {
       , target_source_(null)
       , source_manager_(null) {}
 
-  void compute_participating_classes(resolution::View<resolution::Program> program);
-  void detect_ambiguity(resolution::View<resolution::Program> program);
+  void compute_participating_classes(resolution::ProgramView program);
+  void detect_ambiguity(resolution::ProgramView program);
 
-  resolution::View<resolution::Method> method_;
-  resolution::View<resolution::FieldStub> setter_;
-  Set<resolution::View<resolution::Class>> participating_classes_;
+  resolution::MethodView method_;
+  resolution::FieldStubView setter_;
+  Set<resolution::ClassView> participating_classes_;
   bool is_ambiguous_;
   std::string target_package_id_;
   Source* target_source_;
@@ -162,31 +162,31 @@ class VirtualCallFilter {
 
 class FindReferencesVisitor : public resolution::TraversingVisitor {
  public:
-  FindReferencesVisitor(resolution::View<resolution::Node> target,
+  FindReferencesVisitor(resolution::NodeView target,
                         Source::Range definition_range,
                         int target_name_len,
                         SourceManager* source_manager,
-                        UnorderedMap<resolution::View<resolution::Node>, ast::Node*>& ir_to_ast_map,
+                        UnorderedMap<resolution::NodeView, ast::Node*>& ir_to_ast_map,
                         LspProtocol* protocol,
                         const VirtualCallFilter& virtual_call_filter);
 
-  void visit_Reference(resolution::View<resolution::Reference> node) override;
-  void visit_CallStatic(resolution::View<resolution::CallStatic> node) override;
-  void visit_CallVirtual(resolution::View<resolution::CallVirtual> node) override;
-  void visit_Typecheck(resolution::View<resolution::Typecheck> node) override;
+  void visit_Reference(resolution::ReferenceView node) override;
+  void visit_CallStatic(resolution::CallStaticView node) override;
+  void visit_CallVirtual(resolution::CallVirtualView node) override;
+  void visit_Typecheck(resolution::TypecheckView node) override;
 
   void emit_range(const Source::Range& range);
 
  private:
-  void emit_named_argument_reference(resolution::View<resolution::Call> node, Symbol param_name);
+  void emit_named_argument_reference(resolution::CallView node, Symbol param_name);
 
-  resolution::View<resolution::Node> target_;
-  resolution::View<resolution::Class> target_class_;
+  resolution::NodeView target_;
+  resolution::ClassView target_class_;
   Source::Range definition_range_;
   bool definition_emitted_ = false;
   int target_name_len_;
   SourceManager* source_manager_;
-  UnorderedMap<resolution::View<resolution::Node>, ast::Node*>& ir_to_ast_map_;
+  UnorderedMap<resolution::NodeView, ast::Node*>& ir_to_ast_map_;
   LspProtocol* protocol_;
   const VirtualCallFilter& virtual_call_filter_;
 };
@@ -197,11 +197,11 @@ class FindReferencesVisitor : public resolution::TraversingVisitor {
 
 void FindReferencesHandler::class_interface_or_mixin(ast::Node* node,
                                                      IterableScope* scope,
-                                                     resolution::View<resolution::Class> holder,
-                                                     resolution::View<resolution::Node> resolved,
+                                                     resolution::ClassView holder,
+                                                     resolution::NodeView resolved,
                                                      bool needs_interface,
                                                      bool needs_mixin) {
-  // Note: the resolver provides the bare resolution::View<resolution::Class> here (not wrapped in a
+  // Note: the resolver provides the bare resolution::ClassView here (not wrapped in a
   // Reference), unlike call_static which passes Reference-wrapped nodes.
   // We still unwrap for safety in case this changes in the future.
   if (resolved) {
@@ -220,12 +220,12 @@ void FindReferencesHandler::type(ast::Node* node,
   }
 }
 
-void FindReferencesHandler::call_virtual(resolution::View<resolution::CallVirtual> node,
+void FindReferencesHandler::call_virtual(resolution::CallVirtualView node,
                                          resolution::Type type,
-                                         List<resolution::View<resolution::Class>> classes) {
+                                         List<resolution::ClassView> classes) {
   Symbol selector = node->selector();
   if (type.is_class()) {
-    walk_class_hierarchy(type.klass(), classes, [&](resolution::View<resolution::Class> current) -> bool {
+    walk_class_hierarchy(type.klass(), classes, [&](resolution::ClassView current) -> bool {
       for (auto method : current->methods()) {
         if (method->name() == selector &&
             method->resolution_shape().accepts(node->shape())) {
@@ -242,18 +242,18 @@ void FindReferencesHandler::call_virtual(resolution::View<resolution::CallVirtua
 }
 
 void FindReferencesHandler::call_prefixed(ast::Dot* node,
-                                          resolution::View<resolution::Node> resolved1,
-                                          resolution::View<resolution::Node> resolved2,
-                                          List<resolution::View<resolution::Node>> candidates,
+                                          resolution::NodeView resolved1,
+                                          resolution::NodeView resolved2,
+                                          List<resolution::NodeView> candidates,
                                           IterableScope* scope) {
   call_static(node, resolved1, resolved2, candidates, scope, null);
 }
 
 void FindReferencesHandler::call_class(ast::Dot* node,
-                                       resolution::View<resolution::Class> klass,
-                                       resolution::View<resolution::Node> resolved1,
-                                       resolution::View<resolution::Node> resolved2,
-                                       List<resolution::View<resolution::Node>> candidates,
+                                       resolution::ClassView klass,
+                                       resolution::NodeView resolved1,
+                                       resolution::NodeView resolved2,
+                                       List<resolution::NodeView> candidates,
                                        IterableScope* scope) {
   // When the LSP cursor is on the name part of a Class.member expression
   // (e.g., "bar" in "Foo.bar"), the resolver sometimes takes the LspSelection
@@ -273,15 +273,15 @@ void FindReferencesHandler::call_class(ast::Dot* node,
 }
 
 void FindReferencesHandler::call_static(ast::Node* node,
-                                        resolution::View<resolution::Node> resolved1,
-                                        resolution::View<resolution::Node> resolved2,
-                                        List<resolution::View<resolution::Node>> candidates,
+                                        resolution::NodeView resolved1,
+                                        resolution::NodeView resolved2,
+                                        List<resolution::NodeView> candidates,
                                         IterableScope* scope,
-                                        resolution::View<resolution::Method> surrounding) {
+                                        resolution::MethodView surrounding) {
   // Don't overwrite target if already set (e.g., by class_interface_or_mixin
   // when the cursor is on the class part of a static call like Foo.bar).
   if (target_ != null) return;
-  resolution::View<resolution::Node> target = null;
+  resolution::NodeView target = null;
   if (resolved2 != null) {
     target = resolved2;
   } else if (resolved1 != null) {
@@ -315,8 +315,8 @@ void FindReferencesHandler::call_static(ast::Node* node,
 }
 
 void FindReferencesHandler::call_static_named(ast::Node* name_node,
-                                              resolution::View<resolution::Node> ir_call_target,
-                                              List<resolution::View<resolution::Node>> candidates) {
+                                              resolution::NodeView ir_call_target,
+                                              List<resolution::NodeView> candidates) {
   if (ir_call_target == null || ir_call_target->is_Error()) return;
   if (!ir_call_target->is_ReferenceMethod()) return;
 
@@ -340,11 +340,11 @@ void FindReferencesHandler::call_static_named(ast::Node* name_node,
   auto shape = ir_method->resolution_shape();
   for (int i = 0; i < shape.names().length(); i++) {
     if (shape.names()[i] == name) {
-      // We don't have an resolution::Parameter node for this cross-module
+      // We don't have an resolution::ParameterInfo node for this cross-module
       // parameter.  Create a temporary Local that carries the correct
       // name and the call-site range so that emit_prepare_rename can
       // produce a valid response.
-      target_ = resolution::make<resolution::Local>(name, true, false, cursor_range);
+      target_ = resolution::make<resolution::LocalInfo>(name, true, false, cursor_range);
       cursor_range_ = cursor_range;
       return;
     }
@@ -352,7 +352,7 @@ void FindReferencesHandler::call_static_named(ast::Node* name_node,
 }
 
 void FindReferencesHandler::field_storing_parameter(ast::Parameter* node,
-                                                    List<resolution::View<resolution::Field>> fields,
+                                                    List<resolution::FieldView> fields,
                                                     bool field_storing_is_allowed) {
   if (node->name()->is_LspSelection()) {
     auto name = node->name()->data();
@@ -375,7 +375,7 @@ void FindReferencesHandler::expord(ast::Node* node, ResolutionEntry entry, Modul
 }
 
 void FindReferencesHandler::toitdoc_ref(ast::Node* node,
-                                        List<resolution::View<resolution::Node>> candidates,
+                                        List<resolution::NodeView> candidates,
                                         ToitdocScopeIterator* iterator,
                                         bool is_signature_toitdoc) {
   // When the cursor is on a toitdoc reference like `$helper`, capture the
@@ -387,7 +387,7 @@ void FindReferencesHandler::toitdoc_ref(ast::Node* node,
   cursor_range_ = node->selection_range();
 }
 
-void FindReferencesHandler::definition(resolution::View<resolution::Node> ir_node, Source::Range name_range) {
+void FindReferencesHandler::definition(resolution::NodeView ir_node, Source::Range name_range) {
   target_ = ir_node;
   cursor_range_ = name_range;
 }
@@ -401,8 +401,8 @@ void FindReferencesHandler::handle_show_or_export(ast::Node* node, ResolutionEnt
 
 // VirtualCallFilter
 
-VirtualCallFilter VirtualCallFilter::build(resolution::View<resolution::Node> target,
-                                           resolution::View<resolution::Program> program,
+VirtualCallFilter VirtualCallFilter::build(resolution::NodeView target,
+                                           resolution::ProgramView program,
                                            SourceManager* source_manager) {
   VirtualCallFilter filter;
   filter.source_manager_ = source_manager;
@@ -433,7 +433,7 @@ VirtualCallFilter VirtualCallFilter::build(resolution::View<resolution::Node> ta
   return filter;
 }
 
-void VirtualCallFilter::compute_participating_classes(resolution::View<resolution::Program> program) {
+void VirtualCallFilter::compute_participating_classes(resolution::ProgramView program) {
   auto holder = method_->holder();
   Symbol name = method_->name();
   // Build the call shape from the method's resolution shape so we can
@@ -462,10 +462,10 @@ void VirtualCallFilter::compute_participating_classes(resolution::View<resolutio
     bool changed = true;
     while (changed) {
       changed = false;
-      Set<resolution::View<resolution::Class>> to_add;
+      Set<resolution::ClassView> to_add;
       // Collect interfaces/mixins referenced by current participants.
       for (auto participant : participating_classes_) {
-        auto check_connector = [&](resolution::View<resolution::Class> connector) {
+        auto check_connector = [&](resolution::ClassView connector) {
           if (participating_classes_.contains(connector)) return;
           if (!class_has_matching_method(connector, name, method_shape)) return;
           to_add.insert(connector);
@@ -540,7 +540,7 @@ void VirtualCallFilter::compute_participating_classes(resolution::View<resolutio
   }
 }
 
-void VirtualCallFilter::detect_ambiguity(resolution::View<resolution::Program> program) {
+void VirtualCallFilter::detect_ambiguity(resolution::ProgramView program) {
   Symbol name = method_->name();
   auto method_shape = method_->resolution_shape().to_plain_shape()
                           .to_equivalent_call_shape();
@@ -558,7 +558,7 @@ void VirtualCallFilter::detect_ambiguity(resolution::View<resolution::Program> p
   is_ambiguous_ = false;
 }
 
-bool VirtualCallFilter::should_include(resolution::View<resolution::CallVirtual> node) const {
+bool VirtualCallFilter::should_include(resolution::CallVirtualView node) const {
   if (method_ == null) return false;
 
   if (node->selector() != method_->name()) return false;
@@ -597,11 +597,11 @@ bool VirtualCallFilter::should_include(resolution::View<resolution::CallVirtual>
 
 // FindReferencesVisitor
 
-FindReferencesVisitor::FindReferencesVisitor(resolution::View<resolution::Node> target,
+FindReferencesVisitor::FindReferencesVisitor(resolution::NodeView target,
                                              Source::Range definition_range,
                                              int target_name_len,
                                              SourceManager* source_manager,
-                                             UnorderedMap<resolution::View<resolution::Node>, ast::Node*>& ir_to_ast_map,
+                                             UnorderedMap<resolution::NodeView, ast::Node*>& ir_to_ast_map,
                                              LspProtocol* protocol,
                                              const VirtualCallFilter& virtual_call_filter)
     : target_(target)
@@ -661,7 +661,7 @@ void FindReferencesVisitor::emit_range(const Source::Range& range) {
                                      to.line_number - 1, end_col);
 }
 
-void FindReferencesVisitor::visit_Reference(resolution::View<resolution::Reference> node) {
+void FindReferencesVisitor::visit_Reference(resolution::ReferenceView node) {
   bool matches = (node->target() == target_);
 
   // When renaming a class, match references to the class's unnamed
@@ -730,7 +730,7 @@ void FindReferencesVisitor::visit_Reference(resolution::View<resolution::Referen
   }
 }
 
-void FindReferencesVisitor::visit_CallVirtual(resolution::View<resolution::CallVirtual> node) {
+void FindReferencesVisitor::visit_CallVirtual(resolution::CallVirtualView node) {
   if (virtual_call_filter_.should_include(node)) {
     // For getter calls, CallVirtual::range() covers the selector name in
     // the source (e.g., "bar" in "foo.bar"), which is the range to rename.
@@ -749,7 +749,7 @@ void FindReferencesVisitor::visit_CallVirtual(resolution::View<resolution::CallV
   TraversingVisitor::visit_CallVirtual(node);
 }
 
-void FindReferencesVisitor::visit_CallStatic(resolution::View<resolution::CallStatic> node) {
+void FindReferencesVisitor::visit_CallStatic(resolution::CallStaticView node) {
   auto method = node->target()->target();
   if (target_class_ != null && method->holder() == target_class_ && !method->is_instance()) {
     auto ast_node = ir_to_ast_map_.lookup(node);
@@ -819,7 +819,7 @@ void FindReferencesVisitor::visit_CallStatic(resolution::View<resolution::CallSt
 }
 
 void FindReferencesVisitor::emit_named_argument_reference(
-    resolution::View<resolution::Call> node, Symbol param_name) {
+    resolution::CallView node, Symbol param_name) {
   // Look up the AST call expression stored during resolution.
   auto ast_node = ir_to_ast_map_.lookup(node);
   if (ast_node == null || !ast_node->is_Call()) return;
@@ -834,16 +834,16 @@ void FindReferencesVisitor::emit_named_argument_reference(
   }
 }
 
-void FindReferencesVisitor::visit_Typecheck(resolution::View<resolution::Typecheck> node) {
+void FindReferencesVisitor::visit_Typecheck(resolution::TypecheckView node) {
   if (target_class_ != null &&
       node->type().is_class() &&
       node->type().klass() == target_class_) {
     // For IS_CHECK, AS_CHECK, and LOCAL_AS_CHECK, the resolver stores the
     // AST type node in ir_to_ast_map, giving us the exact source range
     // of the class name (e.g., "MyClass" in `x is MyClass` or `y/MyClass`).
-    if (node->kind() == resolution::Typecheck::IS_CHECK ||
-        node->kind() == resolution::Typecheck::AS_CHECK ||
-        node->kind() == resolution::Typecheck::LOCAL_AS_CHECK) {
+    if (node->kind() == resolution::TypecheckInfo::IS_CHECK ||
+        node->kind() == resolution::TypecheckInfo::AS_CHECK ||
+        node->kind() == resolution::TypecheckInfo::LOCAL_AS_CHECK) {
       auto ast_type = ir_to_ast_map_.lookup(node);
       if (ast_type != null && ast_type->is_Expression()) {
         emit_range(class_reference_range(ast_type->as_Expression()));
@@ -860,9 +860,9 @@ void FindReferencesVisitor::visit_Typecheck(resolution::View<resolution::Typeche
 
 // Emits override/implementation definitions for virtual methods and fields.
 static void emit_override_definitions(
-    resolution::View<resolution::Node> target,
-    resolution::View<resolution::FieldStub> field_getter,
-    resolution::View<resolution::FieldStub> field_setter,
+    resolution::NodeView target,
+    resolution::FieldStubView field_getter,
+    resolution::FieldStubView field_setter,
     const VirtualCallFilter& virtual_call_filter,
     FindReferencesVisitor& visitor) {
   if (!virtual_call_filter.is_active()) return;
@@ -900,13 +900,13 @@ static void emit_override_definitions(
 // For `implements` and `with` clauses, we use the class_hierarchy_references
 // collected during resolution — before the flattening passes replaced the
 // IR interface/mixin lists with their transitive closures.  Each entry
-// maps an (resolution::View<resolution::Class> holder, resolution::View<resolution::Class> target) pair to the AST expression
+// maps an (resolution::ClassView holder, resolution::ClassView target) pair to the AST expression
 // in the source clause, giving us exact pointer-identity matching without
 // any text-based or positional heuristics.
 static void emit_class_hierarchy_references(
-    resolution::View<resolution::Class> target_class,
-    resolution::View<resolution::Program> program,
-    UnorderedMap<resolution::View<resolution::Node>, ast::Node*>& ir_to_ast,
+    resolution::ClassView target_class,
+    resolution::ProgramView program,
+    UnorderedMap<resolution::NodeView, ast::Node*>& ir_to_ast,
     const std::vector<Resolver::ClassHierarchyReference>& class_hierarchy_references,
     FindReferencesVisitor& visitor) {
   // Extends clauses: the super pointer is 1:1 and never flattened.
@@ -932,11 +932,11 @@ static void emit_class_hierarchy_references(
 
 // Emits type annotation references for a class target.
 static void emit_type_annotation_references(
-    resolution::View<resolution::Class> target_class,
-    resolution::View<resolution::Program> program,
-    UnorderedMap<resolution::View<resolution::Node>, ast::Node*>& ir_to_ast,
+    resolution::ClassView target_class,
+    resolution::ProgramView program,
+    UnorderedMap<resolution::NodeView, ast::Node*>& ir_to_ast,
     FindReferencesVisitor& visitor) {
-  auto scan_method_types = [&](resolution::View<resolution::Method> method) {
+  auto scan_method_types = [&](resolution::MethodView method) {
     for (auto param : method->parameters()) {
       if (param->type().is_class() && param->type().klass() == target_class) {
         auto ast_param = ir_to_ast.lookup(param);
@@ -983,12 +983,12 @@ static void emit_type_annotation_references(
 
 // Emits field-storing parameter references (e.g., `--.my-field` in constructors).
 static void emit_field_storing_references(
-    resolution::View<resolution::Field> target_field,
-    UnorderedMap<resolution::View<resolution::Node>, ast::Node*>& ir_to_ast,
+    resolution::FieldView target_field,
+    UnorderedMap<resolution::NodeView, ast::Node*>& ir_to_ast,
     FindReferencesVisitor& visitor) {
   if (target_field->holder() == null) return;
 
-  auto check_method_for_field_storing = [&](resolution::View<resolution::Method> method) {
+  auto check_method_for_field_storing = [&](resolution::MethodView method) {
     for (auto param : method->parameters()) {
       if (param->name() == target_field->name()) {
         auto ast_param = ir_to_ast.lookup(param);
@@ -1017,11 +1017,11 @@ static void emit_field_storing_references(
 
 // Emits toitdoc reference ranges for the target.
 static void emit_toitdoc_references(
-    resolution::View<resolution::Node> target,
+    resolution::NodeView target,
     ToitdocRegistry* toitdocs,
-    UnorderedMap<resolution::View<resolution::Node>, ast::Node*>& ir_to_ast,
+    UnorderedMap<resolution::NodeView, ast::Node*>& ir_to_ast,
     FindReferencesVisitor& visitor) {
-  toitdocs->for_each_node([&](resolution::View<resolution::Node> ir_node, Toitdoc<resolution::View<resolution::Node>> ir_toitdoc) {
+  toitdocs->for_each_node([&](resolution::NodeView ir_node, Toitdoc<resolution::NodeView> ir_toitdoc) {
     if (!ir_toitdoc.is_valid()) return;
     auto ir_refs = ir_toitdoc.refs();
 
@@ -1087,10 +1087,10 @@ static void emit_toitdoc_references(
 
 // find_and_emit_all_references
 void find_and_emit_all_references(
-    resolution::View<resolution::Node> target,
-    resolution::View<resolution::Program> program,
+    resolution::NodeView target,
+    resolution::ProgramView program,
     SourceManager* source_manager,
-    UnorderedMap<resolution::View<resolution::Node>, ast::Node*>& ir_to_ast,
+    UnorderedMap<resolution::NodeView, ast::Node*>& ir_to_ast,
     LspProtocol* protocol,
     ToitdocRegistry* toitdocs,
     const std::vector<Resolver::ShowExportReference>& show_export_references,
@@ -1134,8 +1134,8 @@ void find_and_emit_all_references(
   // for virtual call matching. Field access like `obj.my-field` compiles to
   // a CallVirtual dispatching to the getter/setter, so VirtualCallFilter
   // must target these stubs.
-  resolution::View<resolution::FieldStub> field_getter = null;
-  resolution::View<resolution::FieldStub> field_setter = null;
+  resolution::FieldStubView field_getter = null;
+  resolution::FieldStubView field_setter = null;
   if (target->is_Field()) {
     auto field = target->as_Field();
     if (field->holder() != null) {
@@ -1154,7 +1154,7 @@ void find_and_emit_all_references(
   // Build the virtual call filter. For fields, use the getter FieldStub
   // so that `obj.field` call sites are matched.
   auto filter_target = field_getter != null
-      ? static_cast<resolution::View<resolution::Node>>(field_getter) : target;
+      ? static_cast<resolution::NodeView>(field_getter) : target;
   auto virtual_call_filter = VirtualCallFilter::build(
       filter_target, program, source_manager);
 
@@ -1173,12 +1173,12 @@ void find_and_emit_all_references(
       definition_range = ast_node->as_Parameter()->name()->selection_range();
     }
   } else if (target->is_Method()) {
-    // For named constructors and factories, resolution::Method::range() covers only the
+    // For named constructors and factories, resolution::MethodInfo::range() covers only the
     // "constructor" keyword (set from ast::Method::selection_range() during
     // resolution). The actual name (e.g., "my-named-ctor" in
     // "constructor.my-named-ctor") lives in the ast::Dot node's name()
     // Identifier. Use its range instead.
-    // TODO(floitsch): Investigate whether resolution::Method should store a name range
+    // TODO(floitsch): Investigate whether resolution::MethodInfo should store a name range
     // that covers the named constructor/factory name, so we don't need to go
     // through the ir_to_ast map here.
     auto method = target->as_Method();

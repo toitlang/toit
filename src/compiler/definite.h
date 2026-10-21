@@ -21,11 +21,11 @@ namespace toit {
 namespace compiler {
 
 namespace resolution {
-class Program;
+class ProgramInfo; using ProgramView = View<ProgramInfo>;
 }
 class Diagnostics;
 
-void check_definite_assignments_returns(resolution::View<resolution::Program> program, Diagnostics* diagnostics);
+void check_definite_assignments_returns(resolution::ProgramView program, Diagnostics* diagnostics);
 
 } // namespace toit::compiler
 } // namespace toit

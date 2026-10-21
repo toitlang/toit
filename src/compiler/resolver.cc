@@ -46,7 +46,7 @@ void Resolver::report_error(const ast::Node* position_node, const char* format, 
   va_end(arguments);
 }
 
-void Resolver::report_error(resolution::View<resolution::Node> position_node, const char* format, ...) {
+void Resolver::report_error(resolution::NodeView position_node, const char* format, ...) {
   va_list arguments;
   va_start(arguments, format);
   diagnostics()->report_error(ir_to_ast_map_.at(position_node)->selection_range(), format, arguments);
@@ -60,7 +60,7 @@ void Resolver::report_note(const ast::Node* position_node, const char* format, .
   va_end(arguments);
 }
 
-void Resolver::report_note(resolution::View<resolution::Node> position_node, const char* format, ...) {
+void Resolver::report_note(resolution::NodeView position_node, const char* format, ...) {
   va_list arguments;
   va_start(arguments, format);
   diagnostics()->report_note(ir_to_ast_map_.at(position_node)->selection_range(), format, arguments);
@@ -81,7 +81,7 @@ void Resolver::report_warning(const ast::Node* position_node, const char* format
   va_end(arguments);
 }
 
-void Resolver::report_warning(resolution::View<resolution::Node> position_node, const char* format, ...) {
+void Resolver::report_warning(resolution::NodeView position_node, const char* format, ...) {
   va_list arguments;
   va_start(arguments, format);
   diagnostics()->report_warning(ir_to_ast_map_.at(position_node)->selection_range(), format, arguments);
@@ -89,9 +89,9 @@ void Resolver::report_warning(resolution::View<resolution::Node> position_node, 
 }
 
 // Forward declaration.
-static resolution::View<resolution::Method> resolve_entry_point(Symbol name, int arity, ModuleScope* scope);
+static resolution::MethodView resolve_entry_point(Symbol name, int arity, ModuleScope* scope);
 
-resolution::View<resolution::Program> Resolver::resolve(const std::vector<ast::Unit*>& units,
+resolution::ProgramView Resolver::resolve(const std::vector<ast::Unit*>& units,
                                int entry_index,
                                int core_index) {
   // The optimizing compilation resolves the same parsed units a second time.
@@ -170,9 +170,9 @@ resolution::View<resolution::Program> Resolver::resolve(const std::vector<ast::U
 
   add_global_assignment_typechecks();
 
-  ListBuilder<resolution::View<resolution::Class>> all_classes;
-  ListBuilder<resolution::View<resolution::Method>> all_methods;
-  ListBuilder<resolution::View<resolution::Global>> all_globals;
+  ListBuilder<resolution::ClassView> all_classes;
+  ListBuilder<resolution::MethodView> all_methods;
+  ListBuilder<resolution::GlobalView> all_globals;
   // Move factories, constructors and statics to the program level instead of
   // keeping them in the classes.
   for (auto module : modules) {
@@ -196,7 +196,7 @@ resolution::View<resolution::Program> Resolver::resolve(const std::vector<ast::U
   auto entry_points = find_entry_points(modules[core_index]);
   auto literal_types = find_literal_types(modules[core_index]);
 
-  resolution::View<resolution::Method> lookup_failure = null;
+  resolution::MethodView lookup_failure = null;
   for (auto method : entry_points) {
     if (method->name() == Symbols::lookup_failure) {
       lookup_failure = method;
@@ -212,7 +212,7 @@ resolution::View<resolution::Program> Resolver::resolve(const std::vector<ast::U
 
   auto lambda_box = core_module->scope()->lookup(Symbols::Box_).entry.klass();
 
-  auto program = resolution::make<resolution::Program>(all_classes.build(),
+  auto program = resolution::make<resolution::ProgramInfo>(all_classes.build(),
                                   all_methods.build(),
                                   all_globals.build(),
                                   tree_roots,
@@ -238,24 +238,24 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
 
   std::vector<Module*> modules;
   for (const auto& unit : units) {
-    ListBuilder<resolution::View<resolution::Class>> classes;
-    ListBuilder<resolution::View<resolution::Method>> methods;
-    ListBuilder<resolution::View<resolution::Global>> globals;
+    ListBuilder<resolution::ClassView> classes;
+    ListBuilder<resolution::MethodView> methods;
+    ListBuilder<resolution::GlobalView> globals;
     List<ast::Node*> declarations = unit->declarations();
     for (auto declaration : declarations) {
       resolution::Origin origin(declaration);
       if (auto method = declaration->as_Method()) {
         Symbol name = Symbol::invalid();
-        resolution::Method::MethodKind kind;
+        resolution::MethodInfo::MethodKind kind;
         // For top-level methods we don't weed out future-reserved identifiers
         // at this stage. We are not allowed to give warnings for identifiers that
         // come from the core libraries, and we don't (easily) know yet whether the
         // current method is part of the core libraries.
         bool allow_future_reserved = true;
         check_method(method, null, &name, &kind, allow_future_reserved);
-        ASSERT(kind == resolution::Method::GLOBAL_FUN);
+        ASSERT(kind == resolution::MethodInfo::GLOBAL_FUN);
         auto shape = ResolutionShape::for_static_method(method);
-        resolution::View<resolution::Method> ir = resolution::make<resolution::MethodStatic>(name,
+        resolution::MethodView ir = resolution::make<resolution::MethodStaticInfo>(name,
                                                null,
                                                shape,
                                                kind,
@@ -269,7 +269,7 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
         methods.add(ir);
       } else if (auto global = declaration->as_Field()) {
         check_field(global, null);
-        auto ir = resolution::make<resolution::Global>(global->name()->data(),
+        auto ir = resolution::make<resolution::GlobalInfo>(global->name()->data(),
                                   global->is_final(),
                                   global->selection_range(),
                                   global->outline_range());
@@ -283,15 +283,15 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
         check_class(klass);
         Symbol name = klass->name()->data();
         auto position = klass->selection_range();
-        resolution::Class::Kind kind = resolution::Class::CLASS;  // Initialized with value to silence compiler warnings.
+        resolution::ClassInfo::Kind kind = resolution::ClassInfo::CLASS;  // Initialized with value to silence compiler warnings.
         switch (klass->kind()) {
-          case ast::Class::CLASS: kind = resolution::Class::CLASS; break;
-          case ast::Class::INTERFACE: kind = resolution::Class::INTERFACE; break;
-          case ast::Class::MONITOR: kind = resolution::Class::MONITOR; break;
-          case ast::Class::MIXIN: kind = resolution::Class::MIXIN; break;
+          case ast::Class::CLASS: kind = resolution::ClassInfo::CLASS; break;
+          case ast::Class::INTERFACE: kind = resolution::ClassInfo::INTERFACE; break;
+          case ast::Class::MONITOR: kind = resolution::ClassInfo::MONITOR; break;
+          case ast::Class::MIXIN: kind = resolution::ClassInfo::MIXIN; break;
         }
-        bool is_abstract = kind == resolution::Class::INTERFACE || klass->has_abstract_modifier();
-        resolution::View<resolution::Class> ir = resolution::make<resolution::Class>(name, kind, is_abstract, position, klass->outline_range());
+        bool is_abstract = kind == resolution::ClassInfo::INTERFACE || klass->has_abstract_modifier();
+        resolution::ClassView ir = resolution::make<resolution::ClassInfo>(name, kind, is_abstract, position, klass->outline_range());
         ir_to_ast_map_[ir] = klass;
         ir->ast_node()->attach(klass);
         if (klass->name()->is_LspSelection()) {
@@ -386,9 +386,9 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
 // Returns the method that appears earliest in the code.
 // Assumes that all methods are in the same file, but is still
 // deterministic if they aren't.
-static resolution::View<resolution::Method> find_earliest(const std::vector<resolution::View<resolution::Method>>& methods) {
+static resolution::MethodView find_earliest(const std::vector<resolution::MethodView>& methods) {
   Source::Range earliest_range = Source::Range::invalid();
-  resolution::View<resolution::Method> earliest_method = null;
+  resolution::MethodView earliest_method = null;
   for (auto method : methods) {
     if (!earliest_range.is_valid() || method->range().is_before(earliest_range)) {
       earliest_range = method->range();
@@ -401,9 +401,9 @@ static resolution::View<resolution::Method> find_earliest(const std::vector<reso
 // Sorts the given vector in place by location.
 // Assumes that all methods are in the same file, but is still
 // deterministic if they aren't.
-static void sort_in_place(std::vector<resolution::View<resolution::Method>>& methods) {
+static void sort_in_place(std::vector<resolution::MethodView>& methods) {
   std::sort(methods.begin(), methods.end(),
-            [](const resolution::View<resolution::Method> a, const resolution::View<resolution::Method> b) {
+            [](const resolution::MethodView a, const resolution::MethodView b) {
     return a->range().is_before(b->range());
   });
 }
@@ -416,7 +416,7 @@ static void sort_in_place(std::vector<resolution::View<resolution::Method>>& met
 ///   * a name must be only of one type (no `class A` and function `A`).
 ///
 /// Fields must be declared as [FieldStub].
-void Resolver::check_clashing_or_conflicting(Symbol name, List<resolution::View<resolution::Node>> declarations) {
+void Resolver::check_clashing_or_conflicting(Symbol name, List<resolution::NodeView> declarations) {
   if (!name.is_valid()) return;
   if (declarations.length() <= 1) return;
   // Don't report any errors for '_'. We would have a different error anyway.
@@ -433,11 +433,11 @@ void Resolver::check_clashing_or_conflicting(Symbol name, List<resolution::View<
     // We only do this if there aren't any classes or globals, since we would have
     // conflicting declarations otherwise anyway (leading to an error).
     ASSERT(methods_count > 0);
-    std::vector<resolution::View<resolution::Method>> methods_with_optional_params;
-    Map<Selector<ResolutionShape>, std::vector<resolution::View<resolution::Method>>> declarations_per_selector;
+    std::vector<resolution::MethodView> methods_with_optional_params;
+    Map<Selector<ResolutionShape>, std::vector<resolution::MethodView>> declarations_per_selector;
     for (auto declaration : declarations) {
       ASSERT(declaration->is_Method());
-      resolution::View<resolution::Method> method = declaration->as_Method();
+      resolution::MethodView method = declaration->as_Method();
       // Ignore abstract methods. They are allowed to overlap.
       if (method->is_abstract()) continue;
       // For the purpose of conflict resolution we don't include implicit
@@ -471,7 +471,7 @@ void Resolver::check_clashing_or_conflicting(Symbol name, List<resolution::View<
         }
         if (all_are_setters) continue;  // We report the clashes with the getters.
 
-        resolution::View<resolution::Method> earliest_method = find_earliest(declarations);
+        resolution::MethodView earliest_method = find_earliest(declarations);
         for (auto declaration : declarations) {
           if (declaration == earliest_method) continue;
           diagnostics()->start_group();
@@ -490,7 +490,7 @@ void Resolver::check_clashing_or_conflicting(Symbol name, List<resolution::View<
       // For the purpose of conflict resolution we don't include implicit
       // this arguments.
       auto shape = method->resolution_shape_no_this();
-      std::vector<resolution::View<resolution::Method>> overlapping;
+      std::vector<resolution::MethodView> overlapping;
       // Unfortunately in O(n^2).
       for (size_t j = i + 1; j < methods_with_optional_params.size(); j++) {
         auto other_method = methods_with_optional_params[j];
@@ -567,11 +567,11 @@ void Resolver::check_clashing_or_conflicting(Symbol name, List<resolution::View<
         (classes_count == 0 && methods_count == 0)) {
       is_conflicting = false;
     }
-    resolution::View<resolution::Node> earliest_node = null;
+    resolution::NodeView earliest_node = null;
     Source::Range earliest_range = Source::Range::invalid();
-    std::vector<resolution::View<resolution::Class>> classes;
-    std::vector<resolution::View<resolution::Global>> globals;
-    std::vector<resolution::View<resolution::Method>> methods;
+    std::vector<resolution::ClassView> classes;
+    std::vector<resolution::GlobalView> globals;
+    std::vector<resolution::MethodView> methods;
     for (const auto& declaration : declarations) {
       auto ast_node = ir_to_ast_map_.at(declaration);
       if (!earliest_range.is_valid() || ast_node->selection_range().is_before(earliest_range)) {
@@ -630,13 +630,13 @@ void Resolver::check_clashing_or_conflicting(const std::vector<Module*>& modules
       auto constructors = klass->unnamed_constructors();
       auto factories = klass->factories();
       auto unnamed_factories_and_constructors =
-          ListBuilder<resolution::View<resolution::Node>>::allocate(constructors.length() + factories.length());
+          ListBuilder<resolution::NodeView>::allocate(constructors.length() + factories.length());
       int index = 0;
       for (auto constructor : constructors) unnamed_factories_and_constructors[index++] = constructor;
       for (auto factory : factories) unnamed_factories_and_constructors[index++] = factory;
       check_clashing_or_conflicting(Symbols::constructor, unnamed_factories_and_constructors);
 
-      Map<Symbol, std::vector<resolution::View<resolution::Node>>> member_declarations;
+      Map<Symbol, std::vector<resolution::NodeView>> member_declarations;
       for (auto method : klass->methods()) {
         auto name = method->name();
         member_declarations[name].push_back(method);
@@ -649,7 +649,7 @@ void Resolver::check_clashing_or_conflicting(const std::vector<Module*>& modules
       }
       for (auto name : member_declarations.keys()) {
         auto& vector = member_declarations[name];
-        auto list = ListBuilder<resolution::View<resolution::Node>>::build_from_vector(vector);
+        auto list = ListBuilder<resolution::NodeView>::build_from_vector(vector);
         check_clashing_or_conflicting(name, list);
       }
     }
@@ -1080,7 +1080,7 @@ void Resolver::build_module_scopes(std::vector<Module*>& modules) {
   // Start by collecting all top-level declarations of a module and store it
   // in a ModuleScope.
   for (auto module : modules) {
-    Map<Symbol, std::vector<resolution::View<resolution::Node>>> declarations;
+    Map<Symbol, std::vector<resolution::NodeView>> declarations;
 
     // Build the local module scope.
     ModuleScope* scope = zone_new<ModuleScope>(module, module->export_all());
@@ -1195,9 +1195,9 @@ void Resolver::mark_non_returning(Module* core_module) {
   }
 }
 
-resolution::View<resolution::Class> Resolver::resolve_class_interface_or_mixin(ast::Expression* ast_node,
+resolution::ClassView Resolver::resolve_class_interface_or_mixin(ast::Expression* ast_node,
                                                       Scope* scope,
-                                                      resolution::View<resolution::Class> holder,
+                                                      resolution::ClassView holder,
                                                       bool needs_interface,
                                                       bool needs_mixin) {
   ResolutionEntry type_declaration;
@@ -1205,7 +1205,7 @@ resolution::View<resolution::Class> Resolver::resolve_class_interface_or_mixin(a
     auto type_name = ast_node->as_Identifier()->data();
     type_declaration = scope->lookup_shallow(type_name);
     if (ast_node->is_LspSelection()) {
-      resolution::View<resolution::Node> ir_resolved = type_declaration.is_single() ? type_declaration.single() : null;
+      resolution::NodeView ir_resolved = type_declaration.is_single() ? type_declaration.single() : null;
       lsp_->selection_handler()->class_interface_or_mixin(ast_node,
                                                           scope,
                                                           holder,
@@ -1217,7 +1217,7 @@ resolution::View<resolution::Class> Resolver::resolve_class_interface_or_mixin(a
     auto ast_dot = ast_node->as_Dot();
     type_declaration = scope->lookup_prefixed(ast_dot);
     if (ast_dot->name()->is_LspSelection()) {
-      resolution::View<resolution::Node> ir_resolved = type_declaration.is_single() ? type_declaration.single() : null;
+      resolution::NodeView ir_resolved = type_declaration.is_single() ? type_declaration.single() : null;
       auto prefix_lookup_result = scope->lookup(ast_dot->receiver()->as_Identifier()->data());
       // If the LHS is not a prefix, we just provide an empty scope instead.
       SimpleScope empty_scope(null);
@@ -1233,7 +1233,7 @@ resolution::View<resolution::Class> Resolver::resolve_class_interface_or_mixin(a
     } else if (ast_dot->receiver()->is_LspSelection()) {
       auto receiver_as_type_name = ast_dot->receiver()->as_Identifier()->data();
       auto receiver_as_type_declaration = scope->lookup_shallow(receiver_as_type_name);
-      resolution::View<resolution::Node> ir_resolved = receiver_as_type_declaration.is_single()
+      resolution::NodeView ir_resolved = receiver_as_type_declaration.is_single()
           ? receiver_as_type_declaration.single()
           : null;
       lsp_->selection_handler()->class_interface_or_mixin(ast_node,
@@ -1261,12 +1261,12 @@ resolution::View<resolution::Class> Resolver::resolve_class_interface_or_mixin(a
 void Resolver::setup_inheritance(const std::vector<Module*>& modules, int core_module_index) {
   Module* core_module = modules[core_module_index];
   auto core_scope = core_module->scope();
-  resolution::View<resolution::Class> top = core_scope->lookup_shallow(Symbols::Object).klass();
-  resolution::View<resolution::Class> interface_top = core_scope->lookup_shallow(Symbols::Interface_).klass();
-  resolution::View<resolution::Class> mixin_top = core_scope->lookup_shallow(Symbols::Mixin_).klass();
+  resolution::ClassView top = core_scope->lookup_shallow(Symbols::Object).klass();
+  resolution::ClassView interface_top = core_scope->lookup_shallow(Symbols::Interface_).klass();
+  resolution::ClassView mixin_top = core_scope->lookup_shallow(Symbols::Mixin_).klass();
   ASSERT(top != null);
 
-  resolution::View<resolution::Class> monitor = core_scope->lookup_shallow(Symbols::__Monitor__).klass();
+  resolution::ClassView monitor = core_scope->lookup_shallow(Symbols::__Monitor__).klass();
   ASSERT(monitor != null);
 
   for (auto module : modules) {
@@ -1277,7 +1277,7 @@ void Resolver::setup_inheritance(const std::vector<Module*>& modules, int core_m
       ast::Class* ast_class = ast_for(klass);
 
       // When the class doesn't have a super, or there is an error, the default_super is used.
-      resolution::View<resolution::Class> default_super = null;
+      resolution::ClassView default_super = null;
       switch (ast_class->kind()) {
         case ast::Class::CLASS:
           default_super = top;
@@ -1355,7 +1355,7 @@ void Resolver::setup_inheritance(const std::vector<Module*>& modules, int core_m
       if (klass->is_interface() && !ast_mixins.is_empty()) {
         report_error(ast_mixins[0], "Interfaces may not have mixins");
       }
-      ListBuilder<resolution::View<resolution::Class>> ir_mixins;
+      ListBuilder<resolution::ClassView> ir_mixins;
       for (int i = 0; i < ast_mixins.length(); i++) {
         auto ast_mixin = ast_mixins[i];
         auto ir_mixin = resolve_class_interface_or_mixin(ast_mixin, scope, klass, false, true);
@@ -1371,7 +1371,7 @@ void Resolver::setup_inheritance(const std::vector<Module*>& modules, int core_m
       klass->set_mixins(ir_mixins.build());
 
       auto ast_interfaces = ast_class->interfaces();
-      ListBuilder<resolution::View<resolution::Class>> ir_interfaces;
+      ListBuilder<resolution::ClassView> ir_interfaces;
       for (int i = 0; i < ast_interfaces.length(); i++) {
         auto ast_interface = ast_interfaces[i];
         auto ir_interface = resolve_class_interface_or_mixin(ast_interface, scope, klass, true, false);
@@ -1389,22 +1389,22 @@ void Resolver::setup_inheritance(const std::vector<Module*>& modules, int core_m
   }
 
   // Now check for cycles.
-  UnorderedSet<resolution::View<resolution::Class>> checked_classes;
+  UnorderedSet<resolution::ClassView> checked_classes;
   // Keep track of all classes in cycles.
   // At the end we reset their supers/interfaces, so that we don't trip up the
   // rest of the compiler.
-  UnorderedSet<resolution::View<resolution::Class>> cycling_classes;
-  Set<resolution::View<resolution::Class>> sub_classes;
+  UnorderedSet<resolution::ClassView> cycling_classes;
+  Set<resolution::ClassView> sub_classes;
 
   checked_classes.insert(top);
 
-  std::function<void (resolution::View<resolution::Class>)> check_cycles;
-  check_cycles = [&](resolution::View<resolution::Class> klass) {
+  std::function<void (resolution::ClassView)> check_cycles;
+  check_cycles = [&](resolution::ClassView klass) {
     if (klass == null) return;
     if (checked_classes.contains(klass)) return;
     if (sub_classes.contains(klass)) {
       // Cycle detected.
-      std::vector<resolution::View<resolution::Class>> cycle_nodes;
+      std::vector<resolution::ClassView> cycle_nodes;
       bool in_cycle = false;
       for (auto sub_class : sub_classes) {
         if (sub_class == klass) in_cycle = true;
@@ -1413,14 +1413,14 @@ void Resolver::setup_inheritance(const std::vector<Module*>& modules, int core_m
       diagnostics()->start_group();
       const char* chain_kind = null;
       switch (cycle_nodes[0]->kind()) {
-        case resolution::Class::CLASS:
-        case resolution::Class::MONITOR:
+        case resolution::ClassInfo::CLASS:
+        case resolution::ClassInfo::MONITOR:
           chain_kind = "super";
           break;
-        case resolution::Class::INTERFACE:
+        case resolution::ClassInfo::INTERFACE:
           chain_kind = "interface";
           break;
-        case resolution::Class::MIXIN:
+        case resolution::ClassInfo::MIXIN:
           chain_kind = "mixin";
           break;
       }
@@ -1434,7 +1434,7 @@ void Resolver::setup_inheritance(const std::vector<Module*>& modules, int core_m
         if (next == current->super()) {
           error_range = ast_current->super()->selection_range();
         } else {
-          List<resolution::View<resolution::Class>> ir_nodes;
+          List<resolution::ClassView> ir_nodes;
           List<ast::Expression*> ast_nodes;
           if (next->is_interface()) {
             ir_nodes = current->interfaces();
@@ -1488,7 +1488,7 @@ void Resolver::setup_inheritance(const std::vector<Module*>& modules, int core_m
   }
   for (auto klass : cycling_classes.underlying_set()) {
     // When the class doesn't have a super, or there is an error, the default_super is used.
-    resolution::View<resolution::Class> default_super = null;
+    resolution::ClassView default_super = null;
     if (klass->super() == monitor) {
       default_super = monitor;
     } else if (klass->is_interface()) {
@@ -1499,8 +1499,8 @@ void Resolver::setup_inheritance(const std::vector<Module*>& modules, int core_m
       default_super = top;
     }
     klass->replace_super(default_super);
-    klass->replace_interfaces(List<resolution::View<resolution::Class>>());
-    klass->replace_mixins(List<resolution::View<resolution::Class>>());
+    klass->replace_interfaces(List<resolution::ClassView>());
+    klass->replace_mixins(List<resolution::ClassView>());
   }
 }
 
@@ -1587,8 +1587,8 @@ class HasExplicitReturnVisitor : public ast::TraversingVisitor {
    bool result_ = false;
 };
 
-void Resolver::check_method(ast::Method* method, resolution::View<resolution::Class> holder,
-                            Symbol* name, resolution::Method::MethodKind* kind,
+void Resolver::check_method(ast::Method* method, resolution::ClassView holder,
+                            Symbol* name, resolution::MethodInfo::MethodKind* kind,
                             bool allow_future_reserved) {
   bool is_toplevel = holder == null;
   bool class_is_interface = is_toplevel ? false : holder->is_interface();
@@ -1683,7 +1683,7 @@ void Resolver::check_method(ast::Method* method, resolution::View<resolution::Cl
     }
     if (!is_valid) {
       report_error(name_or_dot, "Invalid name");
-      *kind = resolution::Method::GLOBAL_FUN;
+      *kind = resolution::MethodInfo::GLOBAL_FUN;
     } else {
       if (is_static) {
         report_error(name_or_dot, "Constructors can't be static");
@@ -1706,16 +1706,16 @@ void Resolver::check_method(ast::Method* method, resolution::View<resolution::Cl
         }
       }
       if (has_explicit_return) {
-        *kind = resolution::Method::FACTORY;
+        *kind = resolution::MethodInfo::FACTORY;
       } else {
-        *kind = resolution::Method::CONSTRUCTOR;
+        *kind = resolution::MethodInfo::CONSTRUCTOR;
       }
     }
   } else if (is_static) {
     if (method_is_abstract) {
       report_error(name_or_dot, "Static functions can't be abstract");
     }
-    *kind = resolution::Method::GLOBAL_FUN;
+    *kind = resolution::MethodInfo::GLOBAL_FUN;
 
   // TODO: we shouldn't make synchronization dependent on the first character.
   //       Or if we do, it should be documented.
@@ -1723,7 +1723,7 @@ void Resolver::check_method(ast::Method* method, resolution::View<resolution::Cl
     if (method_is_abstract) {
       report_error(name_or_dot, "Monitor functions can't be abstract");
     }
-    *kind = resolution::Method::INSTANCE;
+    *kind = resolution::MethodInfo::INSTANCE;
   } else {
     if (class_is_interface && method_is_abstract) {
       report_error(name_or_dot, "Interface members can't be declared abstract");
@@ -1736,11 +1736,11 @@ void Resolver::check_method(ast::Method* method, resolution::View<resolution::Cl
     } else if (method_is_abstract && method->body() != null) {
       report_error(name_or_dot, "Abstract members can't have bodies");
     }
-    *kind = resolution::Method::INSTANCE;
+    *kind = resolution::MethodInfo::INSTANCE;
   }
 }
 
-void Resolver::check_field(ast::Field* field, resolution::View<resolution::Class> holder) {
+void Resolver::check_field(ast::Field* field, resolution::ClassView holder) {
   auto name = field->name()->data();
   if (Symbols::is_reserved(name)) {
     report_error(field->name(), "Can't use '%s' as name for a field", name.c_str());
@@ -1785,10 +1785,10 @@ void Resolver::fill_classes_with_skeletons(const std::vector<Module*>& modules) 
       auto ast_class = ast_for(ir_class);
       resolution::Origin class_origin(ast_class);
       Symbol class_name = ast_class->name()->data();
-      ListBuilder<resolution::View<resolution::Method>> constructors;
-      ListBuilder<resolution::View<resolution::Method>> factories;
-      ListBuilder<resolution::View<resolution::MethodInstance>> methods;
-      ListBuilder<resolution::View<resolution::Field>> fields;
+      ListBuilder<resolution::MethodView> constructors;
+      ListBuilder<resolution::MethodView> factories;
+      ListBuilder<resolution::MethodInstanceView> methods;
+      ListBuilder<resolution::FieldView> fields;
 
       bool class_is_interface = ast_class->is_interface();
       bool class_has_constructors = false;
@@ -1798,7 +1798,7 @@ void Resolver::fill_classes_with_skeletons(const std::vector<Module*>& modules) 
 
       if (ir_class->is_task_class()) {
         // Add the implicit stack field.
-        auto stack_field = resolution::make<resolution::Field>(Symbols::stack_,
+        auto stack_field = resolution::make<resolution::FieldInfo>(Symbols::stack_,
                                           ir_class,
                                           false,
                                           ir_class->range(),
@@ -1820,7 +1820,7 @@ void Resolver::fill_classes_with_skeletons(const std::vector<Module*>& modules) 
 
         if (member->is_Method()) {
           Symbol member_name = Symbol::invalid();
-          resolution::Method::MethodKind kind;
+          resolution::MethodInfo::MethodKind kind;
           auto method = member->as_Method();
           auto method_is_abstract = method->is_abstract();
 
@@ -1829,11 +1829,11 @@ void Resolver::fill_classes_with_skeletons(const std::vector<Module*>& modules) 
 
           auto position = method->selection_range();
           auto outline_range = method->outline_range();
-          resolution::View<resolution::Method> ir_method = null;
+          resolution::MethodView ir_method = null;
           switch (kind) {
-            case resolution::Method::CONSTRUCTOR: {
+            case resolution::MethodInfo::CONSTRUCTOR: {
               auto shape = ResolutionShape::for_instance_method(method);
-              ir_method = resolution::make<resolution::Constructor>(member_name, ir_class, shape, position, outline_range);
+              ir_method = resolution::make<resolution::ConstructorInfo>(member_name, ir_class, shape, position, outline_range);
               class_has_constructors = true;
               if (method->name_or_dot()->is_Identifier()) {
                 ASSERT(member_name == class_name || member_name == Symbols::constructor);
@@ -1843,9 +1843,9 @@ void Resolver::fill_classes_with_skeletons(const std::vector<Module*>& modules) 
               }
               break;
             }
-            case resolution::Method::FACTORY: {
+            case resolution::MethodInfo::FACTORY: {
               auto shape = ResolutionShape::for_static_method(method);
-              ir_method = resolution::make<resolution::MethodStatic>(member_name, ir_class, shape, kind, position, outline_range);
+              ir_method = resolution::make<resolution::MethodStaticInfo>(member_name, ir_class, shape, kind, position, outline_range);
               class_has_factories = true;
               if (method->name_or_dot()->is_Identifier()) {
                 ASSERT(member_name == class_name || member_name == Symbols::constructor);
@@ -1855,28 +1855,28 @@ void Resolver::fill_classes_with_skeletons(const std::vector<Module*>& modules) 
               }
               break;
             }
-            case resolution::Method::GLOBAL_FUN: {
+            case resolution::MethodInfo::GLOBAL_FUN: {
               auto shape = ResolutionShape::for_static_method(method);
-              ir_method = resolution::make<resolution::MethodStatic>(member_name, ir_class, shape, kind, position, outline_range);
+              ir_method = resolution::make<resolution::MethodStaticInfo>(member_name, ir_class, shape, kind, position, outline_range);
               statics_scope_filler.add(member_name, ir_method);
               break;
             }
-            case resolution::Method::INSTANCE: {
+            case resolution::MethodInfo::INSTANCE: {
               // TODO: we shouldn't make synchronization dependent on the first character.
               //       Or if we do, it should be documented.
               if (ast_class->is_monitor() && !member_name.is_private_identifier()) {
                 auto shape = ResolutionShape::for_instance_method(method);
-                ir_method = resolution::make<resolution::MonitorMethod>(member_name, ir_class, shape, position, outline_range);
+                ir_method = resolution::make<resolution::MonitorMethodInfo>(member_name, ir_class, shape, position, outline_range);
                 methods.add(ir_method->as_MethodInstance());
               } else {
                 auto shape = ResolutionShape::for_instance_method(method);
-                ir_method = resolution::make<resolution::MethodInstance>(member_name, ir_class, shape, method_is_abstract, position, outline_range);
+                ir_method = resolution::make<resolution::MethodInstanceInfo>(member_name, ir_class, shape, method_is_abstract, position, outline_range);
                 methods.add(ir_method->as_MethodInstance());
               }
               break;
             }
-            case resolution::Method::GLOBAL_INITIALIZER:
-            case resolution::Method::FIELD_INITIALIZER:
+            case resolution::MethodInfo::GLOBAL_INITIALIZER:
+            case resolution::MethodInfo::FIELD_INITIALIZER:
               UNREACHABLE();
           }
           ir_to_ast_map_[ir_method] = member;
@@ -1899,7 +1899,7 @@ void Resolver::fill_classes_with_skeletons(const std::vector<Module*>& modules) 
           auto outline_range = ast_field->outline_range();
           check_field(ast_field, ir_class);
           if (ast_field->is_static()) {
-            auto ir_global = resolution::make<resolution::Global>(member_name,
+            auto ir_global = resolution::make<resolution::GlobalInfo>(member_name,
                                              ir_class,
                                              ast_field->is_final(),
                                              position,
@@ -1911,7 +1911,7 @@ void Resolver::fill_classes_with_skeletons(const std::vector<Module*>& modules) 
             }
             statics_scope_filler.add(ir_global->name(), ir_global);
           } else {
-            auto ir_field = resolution::make<resolution::Field>(member_name,
+            auto ir_field = resolution::make<resolution::FieldInfo>(member_name,
                                            ir_class,
                                            ast_field->is_final(),
                                            ast_field->selection_range(),
@@ -1922,8 +1922,8 @@ void Resolver::fill_classes_with_skeletons(const std::vector<Module*>& modules) 
               lsp_->selection_handler()->definition(ir_field, name_or_dot->selection_range());
             }
             fields.add(ir_field);
-            auto ir_getter = resolution::make<resolution::FieldStub>(ir_field, ir_class, true, position, outline_range);
-            auto ir_setter = resolution::make<resolution::FieldStub>(ir_field, ir_class, false, position, outline_range);
+            auto ir_getter = resolution::make<resolution::FieldStubInfo>(ir_field, ir_class, true, position, outline_range);
+            auto ir_setter = resolution::make<resolution::FieldStubInfo>(ir_field, ir_class, false, position, outline_range);
             methods.add(ir_getter);
             methods.add(ir_setter);
             ir_to_ast_map_[ir_getter] = member;
@@ -1943,8 +1943,8 @@ void Resolver::fill_classes_with_skeletons(const std::vector<Module*>& modules) 
         // Create default-constructor place-holder (which takes `this` as argument).
         auto position = ast_class->selection_range();
         auto outline_range = ast_class->outline_range();
-        resolution::View<resolution::Constructor> constructor =
-            resolution::make<resolution::Constructor>(Symbols::constructor, ir_class, position, outline_range);
+        resolution::ConstructorView constructor =
+            resolution::make<resolution::ConstructorInfo>(Symbols::constructor, ir_class, position, outline_range);
         constructors.add(constructor);
       }
 
@@ -1973,13 +1973,13 @@ void Resolver::fill_classes_with_skeletons(const std::vector<Module*>& modules) 
 ///   optional arguments might not be a complete match but still shadow abstract methods.
 /// Callers of this method thus need to do a more expensive check when it looks like
 ///   an abstract method isn't implemented.
-static void fill_abstract_methods_map(resolution::View<resolution::Class> ir_class,
-                                      UnorderedMap<resolution::View<resolution::Class>, Map<Selector<ResolutionShape>, resolution::View<resolution::Method>>>* abstract_methods,
+static void fill_abstract_methods_map(resolution::ClassView ir_class,
+                                      UnorderedMap<resolution::ClassView, Map<Selector<ResolutionShape>, resolution::MethodView>>* abstract_methods,
                                       Diagnostics* diagnostics) {
   auto probe = abstract_methods->find(ir_class);
   if (probe != abstract_methods->end()) return;
   auto super = ir_class->super();
-  Map<Selector<ResolutionShape>, resolution::View<resolution::Method>> super_abstracts;
+  Map<Selector<ResolutionShape>, resolution::MethodView> super_abstracts;
   // If the super or the class' mixins are not abstract, we assume that this
   //   `ir_class` doesn't need to implement anything from any of its parents.
   //   If necessary, we will provide error messages on the super/mixin, as they
@@ -1997,13 +1997,13 @@ static void fill_abstract_methods_map(resolution::View<resolution::Class> ir_cla
   }
   if (super_abstracts.empty() && all_mixins_are_non_abstract && !ir_class->is_abstract()) {
     // Handle the most common case.
-    (*abstract_methods)[ir_class] = Map<Selector<ResolutionShape>, resolution::View<resolution::Method>>();
+    (*abstract_methods)[ir_class] = Map<Selector<ResolutionShape>, resolution::MethodView>();
     return;
   }
 
-  Map<Selector<ResolutionShape>, resolution::View<resolution::Method>> class_abstracts;
+  Map<Selector<ResolutionShape>, resolution::MethodView> class_abstracts;
   for (const auto& selector : super_abstracts.keys()) {
-    resolution::View<resolution::Method> method = super_abstracts.at(selector);
+    resolution::MethodView method = super_abstracts.at(selector);
     if (method->is_abstract()) {
       class_abstracts[selector] = method;
     }
@@ -2012,7 +2012,7 @@ static void fill_abstract_methods_map(resolution::View<resolution::Class> ir_cla
     fill_abstract_methods_map(mixin, abstract_methods, diagnostics);
     auto mixin_abstracts = abstract_methods->at(mixin);
     for (const auto& selector : mixin_abstracts.keys()) {
-      resolution::View<resolution::Method> method = mixin_abstracts.at(selector);
+      resolution::MethodView method = mixin_abstracts.at(selector);
       class_abstracts[selector] = method;
     }
   }
@@ -2045,7 +2045,7 @@ static bool mixins_are_flattened(const std::vector<Module*>& modules) {
   for (auto module : modules) {
     for (auto klass : module->classes()) {
       if (klass->mixins().is_empty()) continue;
-      UnorderedSet<resolution::View<resolution::Class>> mixins;
+      UnorderedSet<resolution::ClassView> mixins;
       for (auto mixin : klass->mixins()) {
         mixins.insert(mixin);
       }
@@ -2073,11 +2073,11 @@ static bool mixins_are_flattened(const std::vector<Module*>& modules) {
 
 void Resolver::report_abstract_classes(const std::vector<Module*>& modules) {
   ASSERT(mixins_are_flattened(modules));
-  UnorderedMap<resolution::View<resolution::Class>, Map<Selector<ResolutionShape>, resolution::View<resolution::Method>>> abstract_methods;
+  UnorderedMap<resolution::ClassView, Map<Selector<ResolutionShape>, resolution::MethodView>> abstract_methods;
 
-  Map<resolution::View<resolution::Class>, Map<Symbol, std::vector<ResolutionShape>>> all_method_shapes;
+  Map<resolution::ClassView, Map<Symbol, std::vector<ResolutionShape>>> all_method_shapes;
   // Lazily fill the method shapes.
-  auto method_shapes_for = [&](resolution::View<resolution::Class> klass) -> const Map<Symbol, std::vector<ResolutionShape>>& {
+  auto method_shapes_for = [&](resolution::ClassView klass) -> const Map<Symbol, std::vector<ResolutionShape>>& {
     auto probe = all_method_shapes.find(klass);
     if (probe != all_method_shapes.end()) return probe->second;
     auto& result = all_method_shapes[klass];
@@ -2089,16 +2089,16 @@ void Resolver::report_abstract_classes(const std::vector<Module*>& modules) {
     return result;
   };
 
-  UnorderedMap<resolution::View<resolution::Class>, Set<resolution::View<resolution::Class>>> all_contributing;
+  UnorderedMap<resolution::ClassView, Set<resolution::ClassView>> all_contributing;
   // Lazily fill the contributing classes.
-  std::function<Set<resolution::View<resolution::Class>> (resolution::View<resolution::Class>)> contributing_for;
-  contributing_for = [&](resolution::View<resolution::Class> klass) {
+  std::function<Set<resolution::ClassView> (resolution::ClassView)> contributing_for;
+  contributing_for = [&](resolution::ClassView klass) {
     auto probe = all_contributing.find(klass);
     if (probe != all_contributing.end()) return probe->second;
-    Set<resolution::View<resolution::Class>> result;
+    Set<resolution::ClassView> result;
     if (klass->has_super()) {
       auto super_probe = all_contributing.find(klass->super());
-      Set<resolution::View<resolution::Class>> super_contributing = (super_probe != all_contributing.end())
+      Set<resolution::ClassView> super_contributing = (super_probe != all_contributing.end())
           ? super_probe->second
           : contributing_for(klass->super());
 
@@ -2134,7 +2134,7 @@ void Resolver::report_abstract_classes(const std::vector<Module*>& modules) {
       }
       if (!has_abstract_method) continue;
 
-      Map<resolution::View<resolution::Method>, CallShape> missing_methods;
+      Map<resolution::MethodView, CallShape> missing_methods;
 
       // We might have a non-implemented abstract method.
       // Do a more thorough check that handles optional arguments as well.
@@ -2197,14 +2197,14 @@ void Resolver::report_abstract_classes(const std::vector<Module*>& modules) {
 void Resolver::check_interface_implementations_and_flatten(const std::vector<Module*>& modules) {
   ASSERT(mixins_are_flattened(modules));
   // For each interface, the set it represents.
-  UnorderedMap<resolution::View<resolution::Class>, Set<resolution::View<resolution::Class>>> flattened_interfaces;
+  UnorderedMap<resolution::ClassView, Set<resolution::ClassView>> flattened_interfaces;
 
-  std::function<Set<resolution::View<resolution::Class>> (resolution::View<resolution::Class>)> flatten;
-  flatten = [&](resolution::View<resolution::Class> klass) {
+  std::function<Set<resolution::ClassView> (resolution::ClassView)> flatten;
+  flatten = [&](resolution::ClassView klass) {
     auto probe = flattened_interfaces.find(klass);
     if (probe != flattened_interfaces.end()) return probe->second;
 
-    Set<resolution::View<resolution::Class>> flattened;
+    Set<resolution::ClassView> flattened;
     if (klass->is_interface()) flattened.insert(klass);
     if (klass->has_super()) flattened.insert_all(flatten(klass->super()));
     for (auto mixin : klass->mixins()) {
@@ -2222,7 +2222,7 @@ void Resolver::check_interface_implementations_and_flatten(const std::vector<Mod
     }
   }
 
-  UnorderedMap<resolution::View<resolution::Class>, UnorderedSet<Selector<ResolutionShape>>> interface_methods;
+  UnorderedMap<resolution::ClassView, UnorderedSet<Selector<ResolutionShape>>> interface_methods;
 
   for (auto module : modules) {
     for (auto ir_class : module->classes()) {
@@ -2247,7 +2247,7 @@ void Resolver::check_interface_implementations_and_flatten(const std::vector<Mod
       auto current = ir_class;
       while (current != null) {
         for (int i = -1; i < current->mixins().length(); i++) {
-          resolution::View<resolution::Class> current_or_mixin = i == -1
+          resolution::ClassView current_or_mixin = i == -1
               ? current
               : current->mixins()[i];
           for (auto class_method : current_or_mixin->methods()) {
@@ -2320,18 +2320,18 @@ void Resolver::flatten_mixins(const std::vector<Module*>& modules) {
   // Note that mixins may appear multiple times.
   // For mixins their own set does not include the super mixins.
   // In our example the list of mixins for Mix4 is [Mix2, Mix1].
-  UnorderedMap<resolution::View<resolution::Class>, List<resolution::View<resolution::Class>>> flattened_mixins;
+  UnorderedMap<resolution::ClassView, List<resolution::ClassView>> flattened_mixins;
 
   // Recursively flattens the mixins of the given class.
   // Drop any 'Mixin_' class, since it doesn't add anything.
   // If the given class is a mixin, also remembers the full list of
   // mixins that are mixed in in the 'flattened_mixins' map.
-  std::function<List<resolution::View<resolution::Class>> (resolution::View<resolution::Class>)> flatten;
-  flatten = [&](resolution::View<resolution::Class> klass) {
+  std::function<List<resolution::ClassView> (resolution::ClassView)> flatten;
+  flatten = [&](resolution::ClassView klass) {
     auto probe = flattened_mixins.find(klass);
     if (probe != flattened_mixins.end()) return probe->second;
 
-    ListBuilder<resolution::View<resolution::Class>> flattened_builder;
+    ListBuilder<resolution::ClassView> flattened_builder;
     for (int i = klass->mixins().length() - 1; i >= 0; i--) {
       auto ir_mixin = klass->mixins()[i];
       if (!ir_mixin->has_super()) {
@@ -2345,12 +2345,12 @@ void Resolver::flatten_mixins(const std::vector<Module*>& modules) {
     // The map contains all the mixins (including the class and super mixins).
     klass->replace_mixins(flattened_builder.build());
 
-    if (!klass->is_mixin()) return List<resolution::View<resolution::Class>>();
+    if (!klass->is_mixin()) return List<resolution::ClassView>();
 
     if (klass->has_super()) flattened_builder.add(flatten(klass->super()));
     auto flattened = flattened_builder.build();
     // Now add ourselves to the front, unless we are the `Mixin_` class.
-    ListBuilder<resolution::View<resolution::Class>> with_self;
+    ListBuilder<resolution::ClassView> with_self;
     if (klass->has_super()) with_self.add(klass);
     with_self.add(flattened);
     auto flattened_with_self = with_self.build();
@@ -2365,8 +2365,8 @@ void Resolver::flatten_mixins(const std::vector<Module*>& modules) {
   }
 }
 
-void Resolver::resolve_fill_method(resolution::View<resolution::Method> method,
-                                   resolution::View<resolution::Class> holder,
+void Resolver::resolve_fill_method(resolution::MethodView method,
+                                   resolution::ClassView holder,
                                    Scope* scope,
                                    Module* entry_module,
                                    Module* core_module) {
@@ -2403,14 +2403,14 @@ void Resolver::resolve_fill_method(resolution::View<resolution::Method> method,
   }
 }
 
-void Resolver::resolve_field(resolution::View<resolution::Field> field,
-                             resolution::View<resolution::Class> holder,
+void Resolver::resolve_field(resolution::FieldView field,
+                             resolution::ClassView holder,
                              Scope* scope,
                              Module* entry_module,
                              Module* core_module) {
   // We pick a random resolution-shape. It's not used anyway.
   ResolutionShape fake_shape(0);
-  auto fake_method = resolution::make<resolution::MethodInstance>(resolution::Method::MethodKind::FIELD_INITIALIZER,
+  auto fake_method = resolution::make<resolution::MethodInstanceInfo>(resolution::MethodInfo::MethodKind::FIELD_INITIALIZER,
                                  Symbol::synthetic("<field-init>"),
                                  holder,
                                  fake_shape,
@@ -2454,15 +2454,15 @@ void Resolver::resolve_fill_globals(Module* module,
   }
 }
 
-static resolution::View<resolution::Class> resolve_tree_root(Symbol name, ModuleScope* scope) {
+static resolution::ClassView resolve_tree_root(Symbol name, ModuleScope* scope) {
   auto lookup_result = scope->lookup_shallow(name);
   if (!lookup_result.is_class()) FATAL("Missing tree root");
   return lookup_result.klass();
 }
 
-List<resolution::View<resolution::Class>> Resolver::find_tree_roots(Module* core_module) {
+List<resolution::ClassView> Resolver::find_tree_roots(Module* core_module) {
 
-  ListBuilder<resolution::View<resolution::Class>> tree_roots;
+  ListBuilder<resolution::ClassView> tree_roots;
 
   auto core_scope = core_module->scope();
 
@@ -2473,7 +2473,7 @@ TREE_ROOT_CLASSES(T)
   return tree_roots.build();
 }
 
-static resolution::View<resolution::Method> resolve_entry_point(Symbol name, int arity, ModuleScope* scope) {
+static resolution::MethodView resolve_entry_point(Symbol name, int arity, ModuleScope* scope) {
   CallShape shape(arity);
   auto lookup_result = scope->lookup_shallow(name);
   for (auto candidate : lookup_result.nodes()) {
@@ -2486,10 +2486,10 @@ static resolution::View<resolution::Method> resolve_entry_point(Symbol name, int
   return null;
 }
 
-List<resolution::View<resolution::Method>> Resolver::find_entry_points(Module* core_module) {
+List<resolution::MethodView> Resolver::find_entry_points(Module* core_module) {
   auto core_scope = core_module->scope();
 
-  ListBuilder<resolution::View<resolution::Method>> entries;
+  ListBuilder<resolution::MethodView> entries;
 
 #define E(n, lib_name, a) \
   entries.add(resolve_entry_point(Symbols:: n, a, core_scope));
@@ -2549,7 +2549,7 @@ void Resolver::resolve_fill_classes(Module* module,
   }
 }
 
-void Resolver::resolve_fill_class(resolution::View<resolution::Class> klass,
+void Resolver::resolve_fill_class(resolution::ClassView klass,
                                   ModuleScope* module_scope,
                                   Module* entry_module,
                                   Module* core_module) {
@@ -2561,7 +2561,7 @@ void Resolver::resolve_fill_class(resolution::View<resolution::Class> klass,
   // are sorted by inheritance).
   // If this section ever shows up on profiles it would be easy to change.
 
-  Map<Symbol, std::vector<resolution::View<resolution::Node>>> declarations;
+  Map<Symbol, std::vector<resolution::NodeView>> declarations;
 
   for (auto current = klass; current != null; current = current->super()) {
     for (auto method : current->methods()) {
@@ -2608,7 +2608,7 @@ void Resolver::resolve_fill_class(resolution::View<resolution::Class> klass,
     // first), or we skip over them when searching for a valid member.
     // Either way they won't matter, unless we search for them in the super
     // resolution.
-    auto list = ListBuilder<resolution::View<resolution::Node>>::build_from_vector(vector);
+    auto list = ListBuilder<resolution::NodeView>::build_from_vector(vector);
     class_scope.add(name, ResolutionEntry(list));
   }
 
@@ -2650,7 +2650,7 @@ void Resolver::add_global_assignment_typechecks() {
     auto type = global->return_type();
     if (!type.is_class()) continue;
     auto value = assignment->right();
-    value = resolution::make<resolution::Typecheck>(resolution::Typecheck::GLOBAL_AS_CHECK,
+    value = resolution::make<resolution::TypecheckInfo>(resolution::TypecheckInfo::GLOBAL_AS_CHECK,
                                value,
                                type,
                                type.klass()->name(),

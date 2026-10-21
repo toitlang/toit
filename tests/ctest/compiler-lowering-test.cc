@@ -18,38 +18,38 @@ static void test() {
   Zone zone;
   auto range = Source::Range(Source::Position::from_token(0));
   auto name = Symbol::synthetic("test");
-  auto klass = resolution::make<resolution::Class>(name, resolution::Class::CLASS, false, range, range);
+  auto klass = resolution::make<resolution::ClassInfo>(name, resolution::ClassInfo::CLASS, false, range, range);
   auto type = resolution::Type(klass).to_nullable();
-  auto method = resolution::make<resolution::MethodStatic>(name, klass, ResolutionShape(0),
-      resolution::Method::GLOBAL_FUN, range, range);
+  auto method = resolution::make<resolution::MethodStaticInfo>(name, klass, ResolutionShape(0),
+      resolution::MethodInfo::GLOBAL_FUN, range, range);
   method->set_return_type(type);
-  auto global = resolution::make<resolution::Global>(name, true, range, range);
+  auto global = resolution::make<resolution::GlobalInfo>(name, true, range, range);
   global->set_explicit_return_type(type);
   // Both a method cycle and a global cycle must preserve declaration identities.
-  auto self = resolution::make<resolution::ReferenceMethod>(method, range);
-  auto recursive_call = resolution::make<resolution::CallStatic>(self, CallShape(0),
-      List<resolution::View<resolution::Expression>>(), range);
-  global->set_body(resolution::make<resolution::ReferenceGlobal>(global, true, range));
+  auto self = resolution::make<resolution::ReferenceMethodInfo>(method, range);
+  auto recursive_call = resolution::make<resolution::CallStaticInfo>(self, CallShape(0),
+      List<resolution::ExpressionView>(), range);
+  global->set_body(resolution::make<resolution::ReferenceGlobalInfo>(global, true, range));
 
-  auto local = resolution::make<resolution::Local>(name, false, false, range);
+  auto local = resolution::make<resolution::LocalInfo>(name, false, false, range);
   local->set_type(type);  // Inferred, not explicit.
   local->mark_guaranteed_inferred_type();
   local->mark_captured();
-  auto captured = resolution::make<resolution::CapturedLocal>(local, 0, range);
-  auto code = resolution::make<resolution::Code>(name,
-      ListBuilder<resolution::View<resolution::Parameter>>::build(captured),
-      resolution::make<resolution::ReferenceLocal>(captured, 0, range), false, range);
+  auto captured = resolution::make<resolution::CapturedLocalInfo>(local, 0, range);
+  auto code = resolution::make<resolution::CodeInfo>(name,
+      ListBuilder<resolution::ParameterView>::build(captured),
+      resolution::make<resolution::ReferenceLocalInfo>(captured, 0, range), false, range);
   code->set_captured_count(1);
-  auto define = resolution::make<resolution::AssignmentDefine>(local,
-      resolution::make<resolution::LiteralNull>(range), range);
-  auto body = resolution::make<resolution::Sequence>(
-      ListBuilder<resolution::View<resolution::Expression>>::build(define, code, recursive_call), range);
+  auto define = resolution::make<resolution::AssignmentDefineInfo>(local,
+      resolution::make<resolution::LiteralNullInfo>(range), range);
+  auto body = resolution::make<resolution::SequenceInfo>(
+      ListBuilder<resolution::ExpressionView>::build(define, code, recursive_call), range);
   method->set_body(body);
-  auto program = resolution::make<resolution::Program>(ListBuilder<resolution::View<resolution::Class>>::build(klass),
-      ListBuilder<resolution::View<resolution::Method>>::build(method),
-      ListBuilder<resolution::View<resolution::Global>>::build(global),
-      ListBuilder<resolution::View<resolution::Class>>::build(klass),
-      ListBuilder<resolution::View<resolution::Method>>::build(method),
+  auto program = resolution::make<resolution::ProgramInfo>(ListBuilder<resolution::ClassView>::build(klass),
+      ListBuilder<resolution::MethodView>::build(method),
+      ListBuilder<resolution::GlobalView>::build(global),
+      ListBuilder<resolution::ClassView>::build(klass),
+      ListBuilder<resolution::MethodView>::build(method),
       ListBuilder<resolution::Type>::build(type), method, method, klass);
 
   auto lowered = lower_to_ir(program);

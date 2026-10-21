@@ -20,12 +20,12 @@
 namespace toit {
 namespace compiler {
 
-namespace resolution { class Program; }
+namespace resolution { class ProgramInfo; using ProgramView = View<ProgramInfo>; }
 namespace ir { class Program; }
 
 // Materializes backend IR after frontend diagnostics have finished. The result
 // owns its node graph and mutable lists; frontend declarations keep their identity.
-ir::Program* lower_to_ir(resolution::View<resolution::Program> program);
+ir::Program* lower_to_ir(resolution::ProgramView program);
 
 } // namespace toit::compiler
 } // namespace toit

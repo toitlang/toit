@@ -27,7 +27,7 @@ namespace ast { class Node; }
 
 namespace resolution {
 
-class Node;
+class NodeInfo;
 class Type;
 class Visitor;
 template<typename T> class ReturningVisitor;
@@ -37,11 +37,11 @@ template<typename T> class ReturningVisitor;
 // is needed to describe, for example, an implicit receiver or argument temporary.
 class AstNode {
  public:
-  AstNode(ast::Node* syntax, Node* information)
+  AstNode(ast::Node* syntax, NodeInfo* information)
       : syntax_(syntax), information_(information) {}
 
   ast::Node* syntax() const { return syntax_; }
-  Node* information() const { return information_; }
+  NodeInfo* information() const { return information_; }
 
   // Attaches the result to its source node. Re-resolution replaces the source's
   // current result without changing previously constructed interpretations.
@@ -52,7 +52,7 @@ class AstNode {
 
  private:
   ast::Node* syntax_;
-  Node* information_;
+  NodeInfo* information_;
 };
 
 // A typed, non-owning view of an AST interpretation. Constructing or copying a
