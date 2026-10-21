@@ -30,7 +30,7 @@ void GotoDefinitionHandler::_print_range(Source::Range range) {
   protocol()->goto_definition()->emit(range_to_lsp_location(range, source_manager_));
 }
 
-void GotoDefinitionHandler::_print_range(resolution::Node* resolved) {
+void GotoDefinitionHandler::_print_range(resolution::View<resolution::Node> resolved) {
   if (resolved == null || resolved->is_Error()) return;
   if (resolved->is_ReferenceMethod()) {
     _print_range(resolved->as_ReferenceMethod()->target()->range());
@@ -56,7 +56,7 @@ void GotoDefinitionHandler::_print_all(ResolutionEntry entry) {
   _print_all(entry.nodes());
 }
 
-void GotoDefinitionHandler::_print_all(List<resolution::Node*> nodes) {
+void GotoDefinitionHandler::_print_all(List<resolution::View<resolution::Node>> nodes) {
   for (auto resolved_node : nodes) {
     _print_range(resolved_node);
   }
@@ -64,8 +64,8 @@ void GotoDefinitionHandler::_print_all(List<resolution::Node*> nodes) {
 
 void GotoDefinitionHandler::class_interface_or_mixin(ast::Node* node,
                                                      IterableScope* scope,
-                                                     resolution::Class* holder,
-                                                     resolution::Node* resolved,
+                                                     resolution::View<resolution::Class> holder,
+                                                     resolution::View<resolution::Node> resolved,
                                                      bool needs_interface,
                                                      bool needs_mixin) {
   if (resolved != null && resolved->is_Class()) {
@@ -84,9 +84,9 @@ void GotoDefinitionHandler::type(ast::Node* node,
   terminate();
 }
 
-void GotoDefinitionHandler::call_virtual(resolution::CallVirtual* node,
+void GotoDefinitionHandler::call_virtual(resolution::View<resolution::CallVirtual> node,
                                          resolution::Type type,
-                                         List<resolution::Class*> classes) {
+                                         List<resolution::View<resolution::Class>> classes) {
   Symbol selector = node->selector();
   auto lsp_selection_dot = node->target()->as_LspSelectionDot();
   bool is_for_named = lsp_selection_dot->is_for_named();
@@ -122,7 +122,7 @@ void GotoDefinitionHandler::call_virtual(resolution::CallVirtual* node,
   auto klass = type.klass();
 
   // Keep track of the possible candidates, in case we don't find a full match.
-  Map<ResolutionShape, resolution::Method*> candidates;
+  Map<ResolutionShape, resolution::View<resolution::Method>> candidates;
   while (klass != null) {
     for (int i = -1; i < klass->mixins().length(); i++) {
       auto current = i == -1
@@ -165,7 +165,7 @@ void GotoDefinitionHandler::call_virtual(resolution::CallVirtual* node,
   }
 }
 
-void GotoDefinitionHandler::call_statically_resolved(resolution::Node* resolved1, resolution::Node* resolved2, List<resolution::Node*> candidates) {
+void GotoDefinitionHandler::call_statically_resolved(resolution::View<resolution::Node> resolved1, resolution::View<resolution::Node> resolved2, List<resolution::View<resolution::Node>> candidates) {
   bool had_resolved_node = false;
   if (resolved1 != null && !resolved1->is_Error()) {
     _print_range(resolved1);
@@ -186,19 +186,19 @@ void GotoDefinitionHandler::call_statically_resolved(resolution::Node* resolved1
 }
 
 void GotoDefinitionHandler::call_prefixed(ast::Dot* node,
-                                          resolution::Node* resolved1,
-                                          resolution::Node* resolved2,
-                                          List<resolution::Node*> candidates,
+                                          resolution::View<resolution::Node> resolved1,
+                                          resolution::View<resolution::Node> resolved2,
+                                          List<resolution::View<resolution::Node>> candidates,
                                           IterableScope* scope) {
   call_statically_resolved(resolved1, resolved2, candidates);
   terminate();
 }
 
 void GotoDefinitionHandler::call_class(ast::Dot* node,
-                                       resolution::Class* klass,
-                                       resolution::Node* resolved1,
-                                       resolution::Node* resolved2,
-                                       List<resolution::Node*> candidates,
+                                       resolution::View<resolution::Class> klass,
+                                       resolution::View<resolution::Node> resolved1,
+                                       resolution::View<resolution::Node> resolved2,
+                                       List<resolution::View<resolution::Node>> candidates,
                                        IterableScope* scope) {
   call_statically_resolved(resolved1, resolved2, candidates);
   if ((resolved1 == null || resolved1->is_Error()) &&
@@ -211,20 +211,20 @@ void GotoDefinitionHandler::call_class(ast::Dot* node,
 }
 
 void GotoDefinitionHandler::call_static(ast::Node* node,
-                                        resolution::Node* resolved1,
-                                        resolution::Node* resolved2,
-                                        List<resolution::Node*> candidates,
+                                        resolution::View<resolution::Node> resolved1,
+                                        resolution::View<resolution::Node> resolved2,
+                                        List<resolution::View<resolution::Node>> candidates,
                                         IterableScope* scope,
-                                        resolution::Method* surrounding) {
+                                        resolution::View<resolution::Method> surrounding) {
   call_statically_resolved(resolved1, resolved2, candidates);
   terminate();
 }
 
-void GotoDefinitionHandler::call_block(ast::Dot* node, resolution::Node* ir_receiver) {
+void GotoDefinitionHandler::call_block(ast::Dot* node, resolution::View<resolution::Node> ir_receiver) {
   terminate();
 }
 
-void GotoDefinitionHandler::call_static_named(ast::Node* name_node, resolution::Node* ir_call_target, List<resolution::Node*> candidates) {
+void GotoDefinitionHandler::call_static_named(ast::Node* name_node, resolution::View<resolution::Node> ir_call_target, List<resolution::View<resolution::Node>> candidates) {
   if (ir_call_target == null || ir_call_target->is_Error()) terminate();
   if (!ir_call_target->is_ReferenceMethod()) exit(1);
   auto name = name_node->as_LspSelection()->data();
@@ -245,7 +245,7 @@ void GotoDefinitionHandler::call_primitive(ast::Node* node, Symbol module_name, 
 }
 
 void GotoDefinitionHandler::field_storing_parameter(ast::Parameter* node,
-                                                    List<resolution::Field*> fields,
+                                                    List<resolution::View<resolution::Field>> fields,
                                                     bool field_storing_is_allowed) {
   // We will go to definition, even if field-storing parameters aren't allowed.
   auto name = node->name()->data();
@@ -259,9 +259,9 @@ void GotoDefinitionHandler::field_storing_parameter(ast::Parameter* node,
 }
 
 void GotoDefinitionHandler::this_(ast::Identifier* node,
-                                  resolution::Class* enclosing_class,
+                                  resolution::View<resolution::Class> enclosing_class,
                                   IterableScope* scope,
-                                  resolution::Method* surrounding) {
+                                  resolution::View<resolution::Method> surrounding) {
   if (enclosing_class != null) {
     _print_range(enclosing_class);
   }
@@ -295,7 +295,7 @@ void GotoDefinitionHandler::return_label(ast::Node* node, int label_index, const
 }
 
 void GotoDefinitionHandler::toitdoc_ref(ast::Node* node,
-                                        List<resolution::Node*> candidates,
+                                        List<resolution::View<resolution::Node>> candidates,
                                         ToitdocScopeIterator* iterator,
                                         bool is_signature_toitdoc) {
   // We are ok with resolving to many nodes (even ambiguous ones).

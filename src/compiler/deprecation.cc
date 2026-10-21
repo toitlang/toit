@@ -99,7 +99,7 @@ class DeprecationFinder : public toitdoc::Visitor {
 
 }  // anonymous namespace.
 
-Symbol extract_deprecation_message(const Toitdoc<resolution::Node*>& toitdoc) {
+Symbol extract_deprecation_message(const Toitdoc<resolution::View<resolution::Node>>& toitdoc) {
   if (!toitdoc.is_valid()) return Symbol::invalid();
   DeprecationFinder finder;
   finder.visit(toitdoc.contents());

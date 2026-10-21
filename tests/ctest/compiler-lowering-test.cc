@@ -18,38 +18,38 @@ static void test() {
   Zone zone;
   auto range = Source::Range(Source::Position::from_token(0));
   auto name = Symbol::synthetic("test");
-  auto klass = zone_new<resolution::Class>(name, resolution::Class::CLASS, false, range, range);
+  auto klass = resolution::make<resolution::Class>(name, resolution::Class::CLASS, false, range, range);
   auto type = resolution::Type(klass).to_nullable();
-  auto method = zone_new<resolution::MethodStatic>(name, klass, ResolutionShape(0),
+  auto method = resolution::make<resolution::MethodStatic>(name, klass, ResolutionShape(0),
       resolution::Method::GLOBAL_FUN, range, range);
   method->set_return_type(type);
-  auto global = zone_new<resolution::Global>(name, true, range, range);
+  auto global = resolution::make<resolution::Global>(name, true, range, range);
   global->set_explicit_return_type(type);
   // Both a method cycle and a global cycle must preserve declaration identities.
-  auto self = zone_new<resolution::ReferenceMethod>(method, range);
-  auto recursive_call = zone_new<resolution::CallStatic>(self, CallShape(0),
-      List<resolution::Expression*>(), range);
-  global->set_body(zone_new<resolution::ReferenceGlobal>(global, true, range));
+  auto self = resolution::make<resolution::ReferenceMethod>(method, range);
+  auto recursive_call = resolution::make<resolution::CallStatic>(self, CallShape(0),
+      List<resolution::View<resolution::Expression>>(), range);
+  global->set_body(resolution::make<resolution::ReferenceGlobal>(global, true, range));
 
-  auto local = zone_new<resolution::Local>(name, false, false, range);
+  auto local = resolution::make<resolution::Local>(name, false, false, range);
   local->set_type(type);  // Inferred, not explicit.
   local->mark_guaranteed_inferred_type();
   local->mark_captured();
-  auto captured = zone_new<resolution::CapturedLocal>(local, 0, range);
-  auto code = zone_new<resolution::Code>(name,
-      ListBuilder<resolution::Parameter*>::build(captured),
-      zone_new<resolution::ReferenceLocal>(captured, 0, range), false, range);
+  auto captured = resolution::make<resolution::CapturedLocal>(local, 0, range);
+  auto code = resolution::make<resolution::Code>(name,
+      ListBuilder<resolution::View<resolution::Parameter>>::build(captured),
+      resolution::make<resolution::ReferenceLocal>(captured, 0, range), false, range);
   code->set_captured_count(1);
-  auto define = zone_new<resolution::AssignmentDefine>(local,
-      zone_new<resolution::LiteralNull>(range), range);
-  auto body = zone_new<resolution::Sequence>(
-      ListBuilder<resolution::Expression*>::build(define, code, recursive_call), range);
+  auto define = resolution::make<resolution::AssignmentDefine>(local,
+      resolution::make<resolution::LiteralNull>(range), range);
+  auto body = resolution::make<resolution::Sequence>(
+      ListBuilder<resolution::View<resolution::Expression>>::build(define, code, recursive_call), range);
   method->set_body(body);
-  auto program = zone_new<resolution::Program>(ListBuilder<resolution::Class*>::build(klass),
-      ListBuilder<resolution::Method*>::build(method),
-      ListBuilder<resolution::Global*>::build(global),
-      ListBuilder<resolution::Class*>::build(klass),
-      ListBuilder<resolution::Method*>::build(method),
+  auto program = resolution::make<resolution::Program>(ListBuilder<resolution::View<resolution::Class>>::build(klass),
+      ListBuilder<resolution::View<resolution::Method>>::build(method),
+      ListBuilder<resolution::View<resolution::Global>>::build(global),
+      ListBuilder<resolution::View<resolution::Class>>::build(klass),
+      ListBuilder<resolution::View<resolution::Method>>::build(method),
       ListBuilder<resolution::Type>::build(type), method, method, klass);
 
   auto lowered = lower_to_ir(program);

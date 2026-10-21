@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include "../ast_resolution.h"
 #include "selection.h"
 #include "../toitdoc.h"
 
@@ -40,8 +41,8 @@ class HoverHandler : public LspSelectionHandler {
 
   void class_interface_or_mixin(ast::Node* node,
                                 IterableScope* scope,
-                                resolution::Class* holder,
-                                resolution::Node* resolved,
+                                resolution::View<resolution::Class> holder,
+                                resolution::View<resolution::Node> resolved,
                                 bool needs_interface,
                                 bool needs_mixin) override;
 
@@ -50,42 +51,42 @@ class HoverHandler : public LspSelectionHandler {
             ResolutionEntry resolved,
             bool allow_none) override;
 
-  void call_virtual(resolution::CallVirtual* node,
+  void call_virtual(resolution::View<resolution::CallVirtual> node,
                     resolution::Type type,
-                    List<resolution::Class*> classes) override;
+                    List<resolution::View<resolution::Class>> classes) override;
 
   void call_prefixed(ast::Dot* node,
-                     resolution::Node* resolved1,
-                     resolution::Node* resolved2,
-                     List<resolution::Node*> candidates,
+                     resolution::View<resolution::Node> resolved1,
+                     resolution::View<resolution::Node> resolved2,
+                     List<resolution::View<resolution::Node>> candidates,
                      IterableScope* scope) override;
 
   void call_class(ast::Dot* node,
-                  resolution::Class* klass,
-                  resolution::Node* resolved1,
-                  resolution::Node* resolved2,
-                  List<resolution::Node*> candidates,
+                  resolution::View<resolution::Class> klass,
+                  resolution::View<resolution::Node> resolved1,
+                  resolution::View<resolution::Node> resolved2,
+                  List<resolution::View<resolution::Node>> candidates,
                   IterableScope* scope) override;
 
   void call_static(ast::Node* node,
-                   resolution::Node* resolved1,
-                   resolution::Node* resolved2,
-                   List<resolution::Node*> candidates,
+                   resolution::View<resolution::Node> resolved1,
+                   resolution::View<resolution::Node> resolved2,
+                   List<resolution::View<resolution::Node>> candidates,
                    IterableScope* scope,
-                   resolution::Method* surrounding) override;
+                   resolution::View<resolution::Method> surrounding) override;
 
-  void call_block(ast::Dot* node, resolution::Node* ir_receiver) override;
+  void call_block(ast::Dot* node, resolution::View<resolution::Node> ir_receiver) override;
 
-  void call_static_named(ast::Node* name_node, resolution::Node* ir_call_target, List<resolution::Node*> candidates) override;
+  void call_static_named(ast::Node* name_node, resolution::View<resolution::Node> ir_call_target, List<resolution::View<resolution::Node>> candidates) override;
 
   void call_primitive(ast::Node* node, Symbol module_name, Symbol primitive_name,
                       int module, int primitive, bool on_module) override;
 
   void field_storing_parameter(ast::Parameter* node,
-                               List<resolution::Field*> fields,
+                               List<resolution::View<resolution::Field>> fields,
                                bool field_storing_is_allowed) override;
 
-  void this_(ast::Identifier* node, resolution::Class* enclosing_class, IterableScope* scope, resolution::Method* surrounding) override;
+  void this_(ast::Identifier* node, resolution::View<resolution::Class> enclosing_class, IterableScope* scope, resolution::View<resolution::Method> surrounding) override;
 
   void show(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) override;
 
@@ -94,11 +95,11 @@ class HoverHandler : public LspSelectionHandler {
   void return_label(ast::Node* node, int label_index, const std::vector<std::pair<Symbol, ast::Node*>>& labels) override;
 
   void toitdoc_ref(ast::Node* node,
-                   List<resolution::Node*> candidates,
+                   List<resolution::View<resolution::Node>> candidates,
                    ToitdocScopeIterator* iterator,
                    bool is_signature_toitdoc) override;
 
-  void definition(resolution::Node* ir_node, Source::Range name_range) override {
+  void definition(resolution::View<resolution::Node> ir_node, Source::Range name_range) override {
     emit_hover(ir_node, null);
   }
 
@@ -112,9 +113,9 @@ class HoverHandler : public LspSelectionHandler {
  private:
   SourceManager* source_manager_;
   ToitdocRegistry* toitdocs_;
-  resolution::Node* deferred_node_ = null;
+  resolution::View<resolution::Node> deferred_node_ = null;
 
-  void emit_hover(resolution::Node* node, const char* name);
+  void emit_hover(resolution::View<resolution::Node> node, const char* name);
   void emit_hover_for_entry(ResolutionEntry entry);
 };
 

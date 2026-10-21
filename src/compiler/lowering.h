@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include "ast_resolution.h"
+
 namespace toit {
 namespace compiler {
 
@@ -23,7 +25,7 @@ namespace ir { class Program; }
 
 // Materializes backend IR after frontend diagnostics have finished. The result
 // owns its node graph and mutable lists; frontend declarations keep their identity.
-ir::Program* lower_to_ir(resolution::Program* program);
+ir::Program* lower_to_ir(resolution::View<resolution::Program> program);
 
 } // namespace toit::compiler
 } // namespace toit

@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include "../ast_resolution.h"
 #include "selection.h"
 
 #include "../set.h"
@@ -44,8 +45,8 @@ class FindReferencesHandler : public LspSelectionHandler {
 
   void class_interface_or_mixin(ast::Node* node,
                                 IterableScope* scope,
-                                resolution::Class* holder,
-                                resolution::Node* resolved,
+                                resolution::View<resolution::Class> holder,
+                                resolution::View<resolution::Node> resolved,
                                 bool needs_interface,
                                 bool needs_mixin) override;
 
@@ -54,33 +55,33 @@ class FindReferencesHandler : public LspSelectionHandler {
             ResolutionEntry resolved,
             bool allow_none) override;
 
-  void call_virtual(resolution::CallVirtual* node, resolution::Type type, List<resolution::Class*> classes) override;
+  void call_virtual(resolution::View<resolution::CallVirtual> node, resolution::Type type, List<resolution::View<resolution::Class>> classes) override;
 
   void call_prefixed(ast::Dot* node,
-                     resolution::Node* resolved1,
-                     resolution::Node* resolved2,
-                     List<resolution::Node*> candidates,
+                     resolution::View<resolution::Node> resolved1,
+                     resolution::View<resolution::Node> resolved2,
+                     List<resolution::View<resolution::Node>> candidates,
                      IterableScope* scope) override;
 
   void call_class(ast::Dot* node,
-                  resolution::Class* klass,
-                  resolution::Node* resolved1,
-                  resolution::Node* resolved2,
-                  List<resolution::Node*> candidates,
+                  resolution::View<resolution::Class> klass,
+                  resolution::View<resolution::Node> resolved1,
+                  resolution::View<resolution::Node> resolved2,
+                  List<resolution::View<resolution::Node>> candidates,
                   IterableScope* scope) override;
 
   void call_static(ast::Node* node,
-                   resolution::Node* resolved1,
-                   resolution::Node* resolved2,
-                   List<resolution::Node*> candidates,
+                   resolution::View<resolution::Node> resolved1,
+                   resolution::View<resolution::Node> resolved2,
+                   List<resolution::View<resolution::Node>> candidates,
                    IterableScope* scope,
-                   resolution::Method* surrounding) override;
+                   resolution::View<resolution::Method> surrounding) override;
 
-  void call_block(ast::Dot* node, resolution::Node* ir_receiver) override {}
+  void call_block(ast::Dot* node, resolution::View<resolution::Node> ir_receiver) override {}
 
   void call_static_named(ast::Node* name_node,
-                         resolution::Node* ir_call_target,
-                         List<resolution::Node*> candidates) override;
+                         resolution::View<resolution::Node> ir_call_target,
+                         List<resolution::View<resolution::Node>> candidates) override;
 
   void call_primitive(ast::Node* node,
                       Symbol module_name,
@@ -90,13 +91,13 @@ class FindReferencesHandler : public LspSelectionHandler {
                       bool on_module) override {}
 
   void field_storing_parameter(ast::Parameter* node,
-                               List<resolution::Field*> fields,
+                               List<resolution::View<resolution::Field>> fields,
                                bool field_storing_is_allowed) override;
 
   void this_(ast::Identifier* node,
-             resolution::Class* enclosing_class,
+             resolution::View<resolution::Class> enclosing_class,
              IterableScope* scope,
-             resolution::Method* surrounding) override {}
+             resolution::View<resolution::Method> surrounding) override {}
 
   void show(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) override;
   void expord(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) override;
@@ -106,13 +107,13 @@ class FindReferencesHandler : public LspSelectionHandler {
                     const std::vector<std::pair<Symbol, ast::Node*>>& labels) override {}
 
   void toitdoc_ref(ast::Node* node,
-                   List<resolution::Node*> candidates,
+                   List<resolution::View<resolution::Node>> candidates,
                    ToitdocScopeIterator* iterator,
                    bool is_signature_toitdoc) override;
 
-  void definition(resolution::Node* ir_node, Source::Range name_range) override;
+  void definition(resolution::View<resolution::Node> ir_node, Source::Range name_range) override;
 
-  resolution::Node* target() const { return target_; }
+  resolution::View<resolution::Node> target() const { return target_; }
   /// Returns the source range at the cursor position (the usage site).
   ///
   /// This is the range of the identifier the user clicked on, which may
@@ -126,7 +127,7 @@ class FindReferencesHandler : public LspSelectionHandler {
   void handle_show_or_export(ast::Node* node, ResolutionEntry entry);
 
   SourceManager* source_manager_;
-  resolution::Node* target_ = null;
+  resolution::View<resolution::Node> target_ = null;
   Source::Range cursor_range_ = Source::Range::invalid();
 };
 
@@ -140,10 +141,10 @@ class FindReferencesHandler : public LspSelectionHandler {
 ///
 /// Does not return — calls exit(0) after emitting all references.
 void find_and_emit_all_references(
-    resolution::Node* target,
-    resolution::Program* program,
+    resolution::View<resolution::Node> target,
+    resolution::View<resolution::Program> program,
     SourceManager* source_manager,
-    UnorderedMap<resolution::Node*, ast::Node*>& ir_to_ast,
+    UnorderedMap<resolution::View<resolution::Node>, ast::Node*>& ir_to_ast,
     LspProtocol* protocol,
     ToitdocRegistry* toitdocs,
     const std::vector<Resolver::ShowExportReference>& show_export_references,

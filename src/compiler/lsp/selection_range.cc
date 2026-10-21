@@ -128,10 +128,10 @@ void emit_selection_ranges(ast::Unit* unit,
                            const std::vector<std::pair<int, int>>& positions,
                            SourceManager* source_manager,
                            LspProtocol* protocol) {
-  auto* source = unit->source();
+  auto source = unit->source();
   ASSERT(source != null);
 
-  auto* selection_range_protocol = protocol->selection_range();
+  auto selection_range_protocol = protocol->selection_range();
 
   for (const auto& pos : positions) {
     int line = pos.first;    // 1-based.
