@@ -51,6 +51,8 @@ static void test() {
   check(resolution::Origin::current() == null);
   static_assert(sizeof(resolution::LiteralIntegerView) == sizeof(void*),
                 "Typed AST views must remain a single pointer");
+  static_assert(std::is_trivially_copyable<resolution::LiteralIntegerView>::value,
+                "Typed AST views must be trivially copyable");
   resolution::LiteralIntegerView first(source.resolution());
   check(first.syntax() == &source && first->value() == 42);
   LiteralVisitor visitor;
@@ -63,6 +65,11 @@ static void test() {
   visitor.visit(source.resolution());
   check(visitor.value == 43);
   check(first.node() == integer->ast_node() && first->value() == 42);
+  UnorderedMap<resolution::NodeView, int> interpretations;
+  interpretations[first] = 1;
+  interpretations[second] = 2;
+  check(interpretations.size() == 2);
+  check(interpretations.lookup(first) == 1 && interpretations.lookup(second) == 2);
 
   auto prefix_name = Symbol::synthetic("library");
   ImportScope imports(prefix_name);
