@@ -2372,7 +2372,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
 
   bool encountered_error_before_type_checks = diagnostics()->encountered_error();
 
-  if (Flags::print_ir_tree) resolved_program->print(true);
+  if (Flags::print_ir_tree) resolved_program->print();
 
   statistics.switch_phase(PipelineStatistics::TYPE_CHECKS);
   check_types_and_deprecations(resolved_program);
@@ -2389,7 +2389,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
     int instantiated_class_count = 0;
     int method_count = resolved_program->methods().length();
     for (auto klass : resolved_program->classes()) {
-      if (klass->is_instantiated()) instantiated_class_count++;
+      if (!klass->is_mixin()) instantiated_class_count++;
       method_count += klass->methods().length();
     }
     statistics.set(PipelineStatistics::CLASSES, resolved_program->classes().length());

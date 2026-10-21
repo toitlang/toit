@@ -4431,17 +4431,19 @@ resolution::ExpressionView MethodResolver::_binary_operator(ast::Binary* node,
                                      right_args,
                                      node->selection_range());
 
-  ASSERT(INVOKE_GTE - INVOKE_EQ == 4);  // ==, <, <=, >, >=
-  // It is critical that we go through the EQ opcode, as it tests for identity and
-  // null. This must happen even if we have optimizations disabled.
-  // Similarly, we must go through the comparison opcodes, as they handle complicate
-  // corner cases that the source code doesn't.
-  for (int i = INVOKE_EQ; i <= INVOKE_GTE; i++) {
-    Opcode opcode = static_cast<Opcode>(i);
-    if (Symbol::for_invoke(opcode) == op) {
-      result->set_opcode(opcode);
+  // Keep the source-level comparison semantics until IR lowering selects
+  // instructions. In particular equality must check identity and null even
+  // when optimizations are disabled.
+  switch (kind) {
+    case Token::EQ:
+    case Token::LT:
+    case Token::LTE:
+    case Token::GT:
+    case Token::GTE:
+      result->set_comparison_kind(kind);
       break;
-    }
+    default:
+      break;
   }
   if (inverted) return resolution::make<resolution::NotInfo>(result, node->selection_range());
   return result;

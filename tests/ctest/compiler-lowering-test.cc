@@ -42,8 +42,23 @@ static void test() {
   code->set_captured_count(1);
   auto define = resolution::make<resolution::AssignmentDefineInfo>(local,
       resolution::make<resolution::LiteralNullInfo>(range), range);
-  auto body = resolution::make<resolution::SequenceInfo>(
-      ListBuilder<resolution::ExpressionView>::build(define, code, recursive_call), range);
+  ListBuilder<resolution::ExpressionView> expressions;
+  expressions.add(define);
+  expressions.add(code);
+  expressions.add(recursive_call);
+  const Token::Kind comparisons[] = { Token::EQ, Token::LT, Token::LTE, Token::GT, Token::GTE };
+  const Opcode opcodes[] = { INVOKE_EQ, INVOKE_LT, INVOKE_LTE, INVOKE_GT, INVOKE_GTE };
+  auto receiver = resolution::make<resolution::LiteralNullInfo>(range);
+  auto target = resolution::make<resolution::DotInfo>(receiver, name);
+  for (auto comparison : comparisons) {
+    auto call = resolution::make<resolution::CallVirtualInfo>(target,
+        CallShape(0).with_implicit_this(), List<resolution::ExpressionView>(), range);
+    call->set_comparison_kind(comparison);
+    expressions.add(call);
+  }
+  expressions.add(resolution::make<resolution::CallVirtualInfo>(target,
+      CallShape(0).with_implicit_this(), List<resolution::ExpressionView>(), range));
+  auto body = resolution::make<resolution::SequenceInfo>(expressions.build(), range);
   method->set_body(body);
   auto program = resolution::make<resolution::ProgramInfo>(ListBuilder<resolution::ClassView>::build(klass),
       ListBuilder<resolution::MethodView>::build(method),
@@ -58,6 +73,10 @@ static void test() {
   auto lowered_local = lowered_body->expressions()[0]->as_AssignmentDefine()->local();
   auto lowered_code = lowered_body->expressions()[1]->as_Code();
   auto lowered_capture = lowered_code->parameters()[0]->as_CapturedLocal();
+  for (int i = 0; i < 5; i++) {
+    check(lowered_body->expressions()[3 + i]->as_CallVirtual()->opcode() == opcodes[i]);
+  }
+  check(lowered_body->expressions()[8]->as_CallVirtual()->opcode() == INVOKE_VIRTUAL);
   check(lowered_method == lowered->entry_points()[0]);
   check(lowered_method == lowered->lookup_failure());
   check(lowered_method->holder() == lowered->classes()[0]);

@@ -185,9 +185,6 @@ class TypeChecker : public ReturningVisitor<Type> {
   Type visit_MonitorMethod(MonitorMethodView node) { return visit_Method(node); }
   Type visit_MethodStatic(MethodStaticView node) { return visit_Method(node); }
   Type visit_Constructor(ConstructorView node) { return visit_Method(node); }
-  Type visit_AdapterStub(AdapterStubView node) { return visit_Method(node); }
-  Type visit_MixinStub(MixinStubView node) { return visit_Method(node); }
-  Type visit_IsInterfaceOrMixinStub(IsInterfaceOrMixinStubView node) { return visit_Method(node); }
   Type visit_FieldStub(FieldStubView node) { return visit_Method(node); }
 
   Type visit_Expression(ExpressionView node) { UNREACHABLE(); return Type::invalid(); }
