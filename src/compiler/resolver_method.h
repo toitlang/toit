@@ -90,6 +90,8 @@ class MethodResolver : public ast::Visitor {
 
   void resolve_fill();
 
+  void visit(ast::Node* node) override;
+
   /// Resolves the given field, and generates diagnostic messages.
   void resolve_field(resolution::Field* ir_field);
 

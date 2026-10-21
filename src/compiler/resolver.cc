@@ -94,6 +94,20 @@ static resolution::Method* resolve_entry_point(Symbol name, int arity, ModuleSco
 resolution::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
                                int entry_index,
                                int core_index) {
+  // The optimizing compilation resolves the same parsed units a second time.
+  // Keep old interpretations intact, but replace the AST's current attachments.
+  class ClearResolution : public ast::TraversingVisitor {
+   public:
+#define CLEAR(name) \
+    void visit_##name(ast::name* node) override { \
+      node->set_resolution(null); \
+      ast::TraversingVisitor::visit_##name(node); \
+    }
+    NODES(CLEAR)
+#undef CLEAR
+  } clear;
+  for (auto unit : units) unit->accept(&clear);
+
   auto modules = build_modules(units, entry_index, core_index);
   build_module_scopes(modules);
 
@@ -208,6 +222,12 @@ resolution::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
                                   as_check_failure,
                                   lambda_box);
 
+  program->ast_node()->attach(units[entry_index]);
+  for (auto entry : ir_to_ast_map_.underlying_map()) {
+    // Preserve the more precise expression result when several interpretations
+    // (for example a getter and setter) share source syntax.
+    if (entry.second->resolution() == null) entry.first->ast_node()->attach(entry.second);
+  }
   return program;
 }
 
@@ -223,6 +243,7 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
     ListBuilder<resolution::Global*> globals;
     List<ast::Node*> declarations = unit->declarations();
     for (auto declaration : declarations) {
+      resolution::Origin origin(declaration);
       if (auto method = declaration->as_Method()) {
         Symbol name = Symbol::invalid();
         resolution::Method::MethodKind kind;
@@ -241,6 +262,7 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
                                                method->selection_range(),
                                                method->outline_range());
         ir_to_ast_map_[ir] = method;
+        ir->ast_node()->attach(method);
         if (method->name_or_dot()->is_LspSelection()) {
           lsp_->selection_handler()->definition(ir, method->name_or_dot()->selection_range());
         }
@@ -252,6 +274,7 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
                                   global->selection_range(),
                                   global->outline_range());
         ir_to_ast_map_[ir] = global;
+        ir->ast_node()->attach(global);
         if (global->name()->is_LspSelection()) {
           lsp_->selection_handler()->definition(ir, global->name()->selection_range());
         }
@@ -270,6 +293,7 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
         bool is_abstract = kind == resolution::Class::INTERFACE || klass->has_abstract_modifier();
         resolution::Class* ir = zone_new<resolution::Class>(name, kind, is_abstract, position, klass->outline_range());
         ir_to_ast_map_[ir] = klass;
+        ir->ast_node()->attach(klass);
         if (klass->name()->is_LspSelection()) {
           lsp_->selection_handler()->definition(ir, klass->name()->selection_range());
         }
@@ -1759,6 +1783,7 @@ void Resolver::fill_classes_with_skeletons(const std::vector<Module*>& modules) 
     // Fill in all members.
     for (auto ir_class : module->classes()) {
       auto ast_class = ast_for(ir_class);
+      resolution::Origin class_origin(ast_class);
       Symbol class_name = ast_class->name()->data();
       ListBuilder<resolution::Method*> constructors;
       ListBuilder<resolution::Method*> factories;
@@ -1790,6 +1815,7 @@ void Resolver::fill_classes_with_skeletons(const std::vector<Module*>& modules) 
                             Source::Range::invalid());
       }
       for (auto member : ast_class->members()) {
+        resolution::Origin member_origin(member);
         auto name_or_dot = member->name_or_dot();
 
         if (member->is_Method()) {
@@ -1854,6 +1880,7 @@ void Resolver::fill_classes_with_skeletons(const std::vector<Module*>& modules) 
               UNREACHABLE();
           }
           ir_to_ast_map_[ir_method] = member;
+          ir_method->ast_node()->attach(member);
           if (member->name_or_dot()->is_LspSelection()) {
             lsp_->selection_handler()->definition(ir_method, member->name_or_dot()->selection_range());
           } else if (member->name_or_dot()->is_Dot()) {
@@ -1878,6 +1905,7 @@ void Resolver::fill_classes_with_skeletons(const std::vector<Module*>& modules) 
                                              position,
                                              ast_field->outline_range());
             ir_to_ast_map_[ir_global] = member;
+            ir_global->ast_node()->attach(member);
             if (name_or_dot->is_LspSelection()) {
               lsp_->selection_handler()->definition(ir_global, name_or_dot->selection_range());
             }
@@ -1889,6 +1917,7 @@ void Resolver::fill_classes_with_skeletons(const std::vector<Module*>& modules) 
                                            ast_field->selection_range(),
                                            ast_field->outline_range());
             ir_to_ast_map_[ir_field] = member;
+            ir_field->ast_node()->attach(member);
             if (name_or_dot->is_LspSelection()) {
               lsp_->selection_handler()->definition(ir_field, name_or_dot->selection_range());
             }
