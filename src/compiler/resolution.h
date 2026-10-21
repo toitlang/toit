@@ -113,35 +113,23 @@ class Visitor {
   virtual void visit(Node* node);
   virtual void visit(AstNode* node);
 
-#define DECLARE(name) virtual void visit_##name(name* node) = 0;
+#define DECLARE(name) virtual void visit_##name(View<name> node) = 0;
 RESOLUTION_NODES(DECLARE)
 #undef DECLARE
 };
 
 class TraversingVisitor : public Visitor {
  public:
-#define DECLARE(name) virtual void visit_##name(name* node);
+#define DECLARE(name) virtual void visit_##name(View<name> node);
 RESOLUTION_NODES(DECLARE)
 #undef DECLARE
 };
 
 template<typename T> class ReturningVisitor {
  public:
-#define DECLARE(name) virtual T visit_##name(name* node) = 0;
+#define DECLARE(name) virtual T visit_##name(View<name> node) = 0;
 RESOLUTION_NODES(DECLARE)
 #undef DECLARE
-};
-
-class ReplacingVisitor : public ReturningVisitor<Node*> {
- public:
-  virtual Node* visit(Node* node);
-
-#define DECLARE(name) virtual Node* visit_##name(name* node);
-RESOLUTION_NODES(DECLARE)
-#undef DECLARE
-
- private:
-  Expression* _replace_expression(Expression* expression);
 };
 
 class Type {
@@ -209,7 +197,6 @@ class Node {
   static Node* cast(Node* node) { return node; }
 
   void accept(Visitor* visitor) { ast_node_->accept(visitor); }
-  Node* accept(ReturningVisitor<Node*>* visitor) { return ast_node_->accept(visitor); }
   Type accept(ReturningVisitor<Type>* visitor) { return ast_node_->accept(visitor); }
 
 #define DECLARE(name)                              \
@@ -219,7 +206,6 @@ RESOLUTION_NODES(DECLARE)
 #undef DECLARE
 
   virtual void dispatch(Visitor* visitor) = 0;
-  virtual Node* dispatch(ReturningVisitor<Node*>* visitor) = 0;
   virtual Type dispatch(ReturningVisitor<Type>* visitor) = 0;
   virtual const char* node_type() const { return "Node"; }
 
@@ -232,7 +218,6 @@ RESOLUTION_NODES(DECLARE)
 #define IMPLEMENTS(name)                                                 \
   static name* cast(Node* node) { ASSERT(node->is_##name()); return static_cast<name*>(node); } \
   virtual void dispatch(Visitor* visitor) { visitor->visit_##name(this); } \
-  virtual Node* dispatch(ReturningVisitor<Node*>* visitor) { return visitor->visit_##name(this); } \
   virtual Type dispatch(ReturningVisitor<Type>* visitor) { return visitor->visit_##name(this); } \
   virtual bool is_##name() const { return true; }                        \
   virtual name* as_##name() { return this; }                             \

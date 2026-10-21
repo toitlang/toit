@@ -170,10 +170,10 @@ class FindReferencesVisitor : public resolution::TraversingVisitor {
                         LspProtocol* protocol,
                         const VirtualCallFilter& virtual_call_filter);
 
-  void visit_Reference(resolution::Reference* node) override;
-  void visit_CallStatic(resolution::CallStatic* node) override;
-  void visit_CallVirtual(resolution::CallVirtual* node) override;
-  void visit_Typecheck(resolution::Typecheck* node) override;
+  void visit_Reference(resolution::View<resolution::Reference> node) override;
+  void visit_CallStatic(resolution::View<resolution::CallStatic> node) override;
+  void visit_CallVirtual(resolution::View<resolution::CallVirtual> node) override;
+  void visit_Typecheck(resolution::View<resolution::Typecheck> node) override;
 
   void emit_range(const Source::Range& range);
 
@@ -661,7 +661,7 @@ void FindReferencesVisitor::emit_range(const Source::Range& range) {
                                      to.line_number - 1, end_col);
 }
 
-void FindReferencesVisitor::visit_Reference(resolution::Reference* node) {
+void FindReferencesVisitor::visit_Reference(resolution::View<resolution::Reference> node) {
   bool matches = (node->target() == target_);
 
   // When renaming a class, match references to the class's unnamed
@@ -730,7 +730,7 @@ void FindReferencesVisitor::visit_Reference(resolution::Reference* node) {
   }
 }
 
-void FindReferencesVisitor::visit_CallVirtual(resolution::CallVirtual* node) {
+void FindReferencesVisitor::visit_CallVirtual(resolution::View<resolution::CallVirtual> node) {
   if (virtual_call_filter_.should_include(node)) {
     // For getter calls, CallVirtual::range() covers the selector name in
     // the source (e.g., "bar" in "foo.bar"), which is the range to rename.
@@ -749,7 +749,7 @@ void FindReferencesVisitor::visit_CallVirtual(resolution::CallVirtual* node) {
   TraversingVisitor::visit_CallVirtual(node);
 }
 
-void FindReferencesVisitor::visit_CallStatic(resolution::CallStatic* node) {
+void FindReferencesVisitor::visit_CallStatic(resolution::View<resolution::CallStatic> node) {
   auto* method = node->target()->target();
   if (target_class_ != null && method->holder() == target_class_ && !method->is_instance()) {
     auto* ast_node = ir_to_ast_map_.lookup(node);
@@ -834,7 +834,7 @@ void FindReferencesVisitor::emit_named_argument_reference(
   }
 }
 
-void FindReferencesVisitor::visit_Typecheck(resolution::Typecheck* node) {
+void FindReferencesVisitor::visit_Typecheck(resolution::View<resolution::Typecheck> node) {
   if (target_class_ != null &&
       node->type().is_class() &&
       node->type().klass() == target_class_) {

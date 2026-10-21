@@ -186,13 +186,13 @@ class Lowering : public resolution::Visitor {
     result_ = result;
   }
 
-  void visit_Local(resolution::Local* node) override {
+  void visit_Local(resolution::View<resolution::Local> node) override {
     auto type = node->has_explicit_type() ? lower_type(node->type()) : ir::Type::invalid();
     auto result = zone_new<ir::Local>(node->name(), node->is_final(), node->is_block(), type, node->range());
     copy_local_properties(node, result);
   }
 
-  void visit_Parameter(resolution::Parameter* node) override {
+  void visit_Parameter(resolution::View<resolution::Parameter> node) override {
     auto type = node->has_explicit_type() ? lower_type(node->type()) : ir::Type::invalid();
     auto result = zone_new<ir::Parameter>(node->name(), type, node->is_block(),
         node->index(), node->original_index(), node->has_default_value(),
@@ -206,17 +206,17 @@ class Lowering : public resolution::Visitor {
     copy_local_properties(node, result);
   }
 
-  void visit_CapturedLocal(resolution::CapturedLocal* node) override {
+  void visit_CapturedLocal(resolution::View<resolution::CapturedLocal> node) override {
     // Mutation/type state is forwarded to the original local, not copied twice.
     result_ = zone_new<ir::CapturedLocal>(lower(node->local()), node->index(), node->range());
   }
 
-  void visit_Block(resolution::Block* node) override {
+  void visit_Block(resolution::View<resolution::Block> node) override {
     auto result = zone_new<ir::Block>(node->name(), node->range());
     copy_local_properties(node, result);
   }
 
-  void visit_Code(resolution::Code* node) override {
+  void visit_Code(resolution::View<resolution::Code> node) override {
     auto result = zone_new<ir::Code>(node->name(), lower_list(node->parameters()),
         lower(node->body()), node->is_block(), node->range());
     result->set_captured_count(node->captured_count());
@@ -224,7 +224,7 @@ class Lowering : public resolution::Visitor {
     result_ = result;
   }
 
-  void visit_Lambda(resolution::Lambda* node) override {
+  void visit_Lambda(resolution::View<resolution::Lambda> node) override {
     Map<ir::Local*, int> captured;
     node->captured_depths().for_each([&](resolution::Local* local, int depth) {
       captured[lower(local)] = depth;
@@ -235,7 +235,7 @@ class Lowering : public resolution::Visitor {
     result_ = result;
   }
 
-  void visit_CallConstructor(resolution::CallConstructor* node) override {
+  void visit_CallConstructor(resolution::View<resolution::CallConstructor> node) override {
     auto result = zone_new<ir::CallConstructor>(lower(node->target()), node->shape(),
         lower_list(node->arguments()), node->range());
     if (node->is_tail_call()) result->mark_tail_call();
@@ -243,7 +243,7 @@ class Lowering : public resolution::Visitor {
     result_ = result;
   }
 
-  void visit_CallVirtual(resolution::CallVirtual* node) override {
+  void visit_CallVirtual(resolution::View<resolution::CallVirtual> node) override {
     auto result = zone_new<ir::CallVirtual>(lower(node->target()), node->shape(),
         lower_list(node->arguments()), node->range());
     if (node->is_tail_call()) result->mark_tail_call();
@@ -251,7 +251,7 @@ class Lowering : public resolution::Visitor {
     result_ = result;
   }
 
-  void visit_Return(resolution::Return* node) override {
+  void visit_Return(resolution::View<resolution::Return> node) override {
     if (node->is_end_of_method_return()) {
       result_ = zone_new<ir::Return>(lower(node->value()), true, node->range());
     } else {
@@ -259,154 +259,154 @@ class Lowering : public resolution::Visitor {
     }
   }
 
-  void visit_FieldLoad(resolution::FieldLoad* node) override {
+  void visit_FieldLoad(resolution::View<resolution::FieldLoad> node) override {
     auto result = zone_new<ir::FieldLoad>(lower(node->receiver()), lower(node->field()), node->range());
     if (node->is_box_load()) result->mark_box_load();
     result_ = result;
   }
 
-  void visit_FieldStore(resolution::FieldStore* node) override {
+  void visit_FieldStore(resolution::View<resolution::FieldStore> node) override {
     auto result = zone_new<ir::FieldStore>(lower(node->receiver()), lower(node->field()),
         lower(node->value()), node->range());
     if (node->is_box_store()) result->mark_box_store();
     result_ = result;
   }
 
-  void visit_Error(resolution::Error* node) override {
+  void visit_Error(resolution::View<resolution::Error> node) override {
     result_ = zone_new<ir::Error>(node->range(), lower_list(node->nested()));
   }
 
-  void visit_Nop(resolution::Nop* node) override {
+  void visit_Nop(resolution::View<resolution::Nop> node) override {
     result_ = zone_new<ir::Nop>(node->range());
   }
 
-  void visit_Sequence(resolution::Sequence* node) override {
+  void visit_Sequence(resolution::View<resolution::Sequence> node) override {
     result_ = zone_new<ir::Sequence>(lower_list(node->expressions()), node->range());
   }
 
-  void visit_Builtin(resolution::Builtin* node) override {
+  void visit_Builtin(resolution::View<resolution::Builtin> node) override {
     result_ = zone_new<ir::Builtin>(static_cast<ir::Builtin::BuiltinKind>(node->kind()));
   }
 
-  void visit_TryFinally(resolution::TryFinally* node) override {
+  void visit_TryFinally(resolution::View<resolution::TryFinally> node) override {
     result_ = zone_new<ir::TryFinally>(lower(node->body()), lower_list(node->handler_parameters()), lower(node->handler()), node->range());
   }
 
-  void visit_If(resolution::If* node) override {
+  void visit_If(resolution::View<resolution::If> node) override {
     result_ = zone_new<ir::If>(lower(node->condition()), lower(node->yes()), lower(node->no()), node->range());
   }
 
-  void visit_Not(resolution::Not* node) override {
+  void visit_Not(resolution::View<resolution::Not> node) override {
     result_ = zone_new<ir::Not>(lower(node->value()), node->range());
   }
 
-  void visit_While(resolution::While* node) override {
+  void visit_While(resolution::View<resolution::While> node) override {
     result_ = zone_new<ir::While>(lower(node->condition()), lower(node->body()), lower(node->update()), lower(node->loop_variable()), node->range());
   }
 
-  void visit_LoopBranch(resolution::LoopBranch* node) override {
+  void visit_LoopBranch(resolution::View<resolution::LoopBranch> node) override {
     result_ = zone_new<ir::LoopBranch>(node->is_break(), node->block_depth(), node->range());
   }
 
-  void visit_ReferenceClass(resolution::ReferenceClass* node) override {
+  void visit_ReferenceClass(resolution::View<resolution::ReferenceClass> node) override {
     result_ = zone_new<ir::ReferenceClass>(lower(node->target()), node->range());
   }
 
-  void visit_ReferenceMethod(resolution::ReferenceMethod* node) override {
+  void visit_ReferenceMethod(resolution::View<resolution::ReferenceMethod> node) override {
     result_ = zone_new<ir::ReferenceMethod>(lower(node->target()), node->range());
   }
 
-  void visit_ReferenceGlobal(resolution::ReferenceGlobal* node) override {
+  void visit_ReferenceGlobal(resolution::View<resolution::ReferenceGlobal> node) override {
     result_ = zone_new<ir::ReferenceGlobal>(lower(node->target()), node->is_lazy(), node->range());
   }
 
-  void visit_ReferenceLocal(resolution::ReferenceLocal* node) override {
+  void visit_ReferenceLocal(resolution::View<resolution::ReferenceLocal> node) override {
     result_ = zone_new<ir::ReferenceLocal>(lower(node->target()), node->block_depth(), node->range());
   }
 
-  void visit_ReferenceBlock(resolution::ReferenceBlock* node) override {
+  void visit_ReferenceBlock(resolution::View<resolution::ReferenceBlock> node) override {
     result_ = zone_new<ir::ReferenceBlock>(lower(node->target()), node->block_depth(), node->range());
   }
 
-  void visit_Dot(resolution::Dot* node) override {
+  void visit_Dot(resolution::View<resolution::Dot> node) override {
     result_ = zone_new<ir::Dot>(lower(node->receiver()), node->selector());
   }
 
-  void visit_LspSelectionDot(resolution::LspSelectionDot* node) override {
+  void visit_LspSelectionDot(resolution::View<resolution::LspSelectionDot> node) override {
     result_ = zone_new<ir::LspSelectionDot>(lower(node->receiver()), node->selector(), node->name());
   }
 
-  void visit_Super(resolution::Super* node) override {
+  void visit_Super(resolution::View<resolution::Super> node) override {
     result_ = zone_new<ir::Super>(lower(node->expression()), node->is_explicit(), node->is_at_end(), node->range());
   }
 
-  void visit_Typecheck(resolution::Typecheck* node) override {
+  void visit_Typecheck(resolution::View<resolution::Typecheck> node) override {
     result_ = zone_new<ir::Typecheck>(static_cast<ir::Typecheck::Kind>(node->kind()), lower(node->expression()), lower_type(node->type()), node->type_name(), node->range());
   }
 
-  void visit_LogicalBinary(resolution::LogicalBinary* node) override {
+  void visit_LogicalBinary(resolution::View<resolution::LogicalBinary> node) override {
     result_ = zone_new<ir::LogicalBinary>(lower(node->left()), lower(node->right()), static_cast<ir::LogicalBinary::Operator>(node->op()), node->range());
   }
 
-  void visit_AssignmentLocal(resolution::AssignmentLocal* node) override {
+  void visit_AssignmentLocal(resolution::View<resolution::AssignmentLocal> node) override {
     result_ = zone_new<ir::AssignmentLocal>(lower(node->local()), node->block_depth(), lower(node->right()), node->range());
   }
 
-  void visit_AssignmentGlobal(resolution::AssignmentGlobal* node) override {
+  void visit_AssignmentGlobal(resolution::View<resolution::AssignmentGlobal> node) override {
     result_ = zone_new<ir::AssignmentGlobal>(lower(node->global()), lower(node->right()), node->range());
   }
 
-  void visit_AssignmentDefine(resolution::AssignmentDefine* node) override {
+  void visit_AssignmentDefine(resolution::View<resolution::AssignmentDefine> node) override {
     result_ = zone_new<ir::AssignmentDefine>(lower(node->local()), lower(node->right()), node->range());
   }
 
-  void visit_LiteralNull(resolution::LiteralNull* node) override {
+  void visit_LiteralNull(resolution::View<resolution::LiteralNull> node) override {
     result_ = zone_new<ir::LiteralNull>(node->range());
   }
 
-  void visit_LiteralUndefined(resolution::LiteralUndefined* node) override {
+  void visit_LiteralUndefined(resolution::View<resolution::LiteralUndefined> node) override {
     result_ = zone_new<ir::LiteralUndefined>(node->range());
   }
 
-  void visit_LiteralInteger(resolution::LiteralInteger* node) override {
+  void visit_LiteralInteger(resolution::View<resolution::LiteralInteger> node) override {
     result_ = zone_new<ir::LiteralInteger>(node->value(), node->range());
   }
 
-  void visit_LiteralFloat(resolution::LiteralFloat* node) override {
+  void visit_LiteralFloat(resolution::View<resolution::LiteralFloat> node) override {
     result_ = zone_new<ir::LiteralFloat>(node->value(), node->range());
   }
 
-  void visit_LiteralString(resolution::LiteralString* node) override {
+  void visit_LiteralString(resolution::View<resolution::LiteralString> node) override {
     result_ = zone_new<ir::LiteralString>(node->value(), node->length(), node->range());
   }
 
-  void visit_LiteralByteArray(resolution::LiteralByteArray* node) override {
+  void visit_LiteralByteArray(resolution::View<resolution::LiteralByteArray> node) override {
     result_ = zone_new<ir::LiteralByteArray>(node->data(), node->range());
   }
 
-  void visit_LiteralBoolean(resolution::LiteralBoolean* node) override {
+  void visit_LiteralBoolean(resolution::View<resolution::LiteralBoolean> node) override {
     result_ = zone_new<ir::LiteralBoolean>(node->value(), node->range());
   }
 
-  void visit_PrimitiveInvocation(resolution::PrimitiveInvocation* node) override {
+  void visit_PrimitiveInvocation(resolution::View<resolution::PrimitiveInvocation> node) override {
     result_ = zone_new<ir::PrimitiveInvocation>(node->module(), node->primitive(), node->module_index(), node->primitive_index(), node->range());
   }
 
-  void visit_CallStatic(resolution::CallStatic* node) override {
+  void visit_CallStatic(resolution::View<resolution::CallStatic> node) override {
     auto result = zone_new<ir::CallStatic>(lower(node->target()), node->shape(),
         lower_list(node->arguments()), node->range());
     if (node->is_tail_call()) result->mark_tail_call();
     result_ = result;
   }
 
-  void visit_CallBlock(resolution::CallBlock* node) override {
+  void visit_CallBlock(resolution::View<resolution::CallBlock> node) override {
     auto result = zone_new<ir::CallBlock>(lower(node->target()), node->shape(),
         lower_list(node->arguments()), node->range());
     if (node->is_tail_call()) result->mark_tail_call();
     result_ = result;
   }
 
-  void visit_CallBuiltin(resolution::CallBuiltin* node) override {
+  void visit_CallBuiltin(resolution::View<resolution::CallBuiltin> node) override {
     auto result = zone_new<ir::CallBuiltin>(lower(node->target()), node->shape(),
         lower_list(node->arguments()), node->range());
     if (node->is_tail_call()) result->mark_tail_call();
@@ -416,7 +416,7 @@ class Lowering : public resolution::Visitor {
   // Declarations must have been allocated before expression lowering. Backend
   // stubs are introduced later; abstract node categories are never instantiated.
 #define UNEXPECTED(name) \
-  void visit_##name(resolution::name* node) override { UNREACHABLE(); }
+  void visit_##name(resolution::View<resolution::name> node) override { UNREACHABLE(); }
   UNEXPECTED(Program)
   UNEXPECTED(Class)
   UNEXPECTED(Field)
