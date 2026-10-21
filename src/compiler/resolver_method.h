@@ -281,7 +281,8 @@ class MethodResolver : public ast::Visitor {
                                    ast::LspSelection* named_lsp_selection);
   void _visit_potential_call(ast::Expression* potential_call,
                              ast::Node* ast_target,
-                             List<ast::Expression*> ast_arguments = List<ast::Expression*>());
+                             List<ast::Expression*> ast_arguments = List<ast::Expression*>(),
+                              List<Symbol> argument_names = List<Symbol>());
 
   resolution::ExpressionView _instantiate_runtime(Symbol id,
                                        List<resolution::ExpressionView> arguments,
