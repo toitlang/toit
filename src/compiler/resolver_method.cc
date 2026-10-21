@@ -1739,9 +1739,7 @@ void MethodResolver::visit_TryFinally(ast::TryFinally* node) {
       auto throw_value = resolution::make<resolution::LiteralIntegerInfo>(int64(Interpreter::UNWIND_REASON_WHEN_THROWING_EXCEPTION),
                                                  range);
       auto reason_ref = resolution::make<resolution::ReferenceLocalInfo>(ir_handler_parameter, 0, range);
-      ast::Binary comparison(Token::EQ, null, null);
-      comparison.set_range(range);
-      auto ir_comparison = _binary_operator(&comparison, throw_value, reason_ref);
+      auto ir_comparison = _binary_operator(Token::EQ, range, throw_value, reason_ref);
       auto assig = resolution::make<resolution::AssignmentDefineInfo>(local, ir_comparison, range);
       handler_expressions.add(assig);
     } else if (i == 1) {
@@ -3618,7 +3616,22 @@ resolution::ExpressionView MethodResolver::_define(ast::Expression* node,
   return resolution::make<resolution::AssignmentDefineInfo>(local, ir_right, ast_declaration->selection_range());
 }
 
-resolution::ExpressionView MethodResolver::_assign(ast::Binary* node, bool is_postfix) {
+resolution::ExpressionView MethodResolver::_assignment_rhs(const Assignment& assignment,
+                                                            const char* block_error,
+                                                            bool allow_undefined) {
+  if (assignment.right() == null) {
+    return resolution::make<resolution::LiteralIntegerInfo>(int64(1), assignment.selection_range());
+  }
+  return resolve_expression(assignment.right(), block_error, allow_undefined);
+}
+
+resolution::ExpressionView MethodResolver::_compound_assignment(const Assignment& assignment,
+                                                                 resolution::ExpressionView old_value) {
+  auto right = _assignment_rhs(assignment, "Can't use blocks in binary expression");
+  return _binary_operator(assignment.kind(), assignment.selection_range(), old_value, right);
+}
+
+resolution::ExpressionView MethodResolver::_assign(const Assignment& node, bool is_postfix) {
   ListBuilder<resolution::ExpressionView> expressions;
 
   CreateTemp create_temp = [&expressions, node](resolution::ExpressionView value) mutable {
@@ -3626,7 +3639,7 @@ resolution::ExpressionView MethodResolver::_assign(ast::Binary* node, bool is_po
                                     true,  // Final.
                                     false, // Not a block.
                                     Source::Range::invalid());
-    auto define = resolution::make<resolution::AssignmentDefineInfo>(temporary, value, node->selection_range());
+    auto define = resolution::make<resolution::AssignmentDefineInfo>(temporary, value, node.selection_range());
     expressions.add(define);
     return temporary;
   };
@@ -3635,46 +3648,46 @@ resolution::ExpressionView MethodResolver::_assign(ast::Binary* node, bool is_po
   StoreOldValue store_old = [&](resolution::ExpressionView value) mutable {
     if (!is_postfix) return value;
     old_value_tmp = create_temp(value);
-    resolution::ExpressionView result = resolution::make<resolution::ReferenceLocalInfo>(old_value_tmp, 0, node->selection_range());
+    resolution::ExpressionView result = resolution::make<resolution::ReferenceLocalInfo>(old_value_tmp, 0, node.selection_range());
     return result;
   };
 
   resolution::ExpressionView ir_assignment = null;
-  if (node->left()->is_Identifier() ||
-      scope()->is_prefixed_identifier(node->left()) ||
-      scope()->is_static_identifier(node->left())) {
+  if (node.left()->is_Identifier() ||
+      scope()->is_prefixed_identifier(node.left()) ||
+      scope()->is_static_identifier(node.left())) {
     ir_assignment = _assign_identifier(node, store_old);
-  } else if (node->left()->is_Dot()) {
+  } else if (node.left()->is_Dot()) {
     ir_assignment = _assign_dot(node, create_temp, store_old);
-  } else if (node->left()->is_Index()) {
+  } else if (node.left()->is_Index()) {
     ir_assignment = _assign_index(node, create_temp, store_old);
   } else {
     resolution::ExpressionView ir_left = null;
-    if (node->left()->is_LiteralBoolean() ||
-        node->left()->is_LiteralCharacter() ||
-        node->left()->is_LiteralFloat() ||
-        node->left()->is_LiteralInteger() ||
-        node->left()->is_LiteralList() ||
-        node->left()->is_LiteralMap() ||
-        node->left()->is_LiteralNull() ||
-        node->left()->is_LiteralSet() ||
-        node->left()->is_LiteralString() ||
-        node->left()->is_LiteralStringInterpolation()) {
-      report_error(node->left(), "Can't assign to literal");
-    } else if (is_literal_this(node->left())) {
-      report_error(node->left(), "Can't assign to 'this'");
-    } else if (node->left()->is_Expression()) {
+    if (node.left()->is_LiteralBoolean() ||
+        node.left()->is_LiteralCharacter() ||
+        node.left()->is_LiteralFloat() ||
+        node.left()->is_LiteralInteger() ||
+        node.left()->is_LiteralList() ||
+        node.left()->is_LiteralMap() ||
+        node.left()->is_LiteralNull() ||
+        node.left()->is_LiteralSet() ||
+        node.left()->is_LiteralString() ||
+        node.left()->is_LiteralStringInterpolation()) {
+      report_error(node.left(), "Can't assign to literal");
+    } else if (is_literal_this(node.left())) {
+      report_error(node.left(), "Can't assign to 'this'");
+    } else if (node.left()->is_Expression()) {
       // Should cover Binary, Unary and Parenthesis expressions.
-      report_error(node->left(), "Can't assign to expression");
-      ir_left = resolve_expression(node->left(), null);
+      report_error(node.left(), "Can't assign to expression");
+      ir_left = resolve_expression(node.left(), null);
     } else {
       UNREACHABLE();
     }
-    auto ir_right = resolve_expression(node->right(), null, true);
+    auto ir_right = _assignment_rhs(node, null, true);
     if (ir_left == null) {
-      return resolution::make<resolution::ErrorInfo>(node->selection_range(), list_of(ir_right));
+      return resolution::make<resolution::ErrorInfo>(node.selection_range(), list_of(ir_right));
     } else {
-      return resolution::make<resolution::ErrorInfo>(node->selection_range(), list_of(ir_left, ir_right));
+      return resolution::make<resolution::ErrorInfo>(node.selection_range(), list_of(ir_left, ir_right));
     }
   }
 
@@ -3685,21 +3698,20 @@ resolution::ExpressionView MethodResolver::_assign(ast::Binary* node, bool is_po
     if (is_postfix) {
       if (old_value_tmp == null) {
         ASSERT(diagnostics()->encountered_error());
-        expressions.add(resolution::make<resolution::ErrorInfo>(node->selection_range()));
+        expressions.add(resolution::make<resolution::ErrorInfo>(node.selection_range()));
       } else {
-        expressions.add(resolution::make<resolution::ReferenceLocalInfo>(old_value_tmp, 0, node->left()->selection_range()));
+        expressions.add(resolution::make<resolution::ReferenceLocalInfo>(old_value_tmp, 0, node.left()->selection_range()));
       }
     }
-    return resolution::make<resolution::SequenceInfo>(expressions.build(), node->selection_range());
+    return resolution::make<resolution::SequenceInfo>(expressions.build(), node.selection_range());
   }
 }
 
-resolution::ExpressionView MethodResolver::_potentially_store_field(ast::Node* node,
+resolution::ExpressionView MethodResolver::_potentially_store_field(const Assignment& node,
                                                          Symbol name,
                                                          bool lookup_class_scope,
-                                                         ast::Expression* value,
                                                          StoreOldValue& store_old) {
-  bool is_compound = node->is_Binary() && node->as_Binary()->kind() != Token::ASSIGN;
+  bool is_compound = node.kind() != Token::ASSIGN;
 
   ASSERT(resolution_mode_ == CONSTRUCTOR_STATIC ||
          resolution_mode_ == CONSTRUCTOR_INSTANCE ||
@@ -3736,7 +3748,7 @@ resolution::ExpressionView MethodResolver::_potentially_store_field(ast::Node* n
 
     if (resolution_mode_ == CONSTRUCTOR_INSTANCE) {
       if (is_final) {
-        report_error(node, "Can't assign final field in dynamic part of constructor");
+        report_error(node.syntax(), "Can't assign final field in dynamic part of constructor");
         // Don't return here, but actually compile to a field-store.
         // This way we don't get a duplicate error message later when the type checker
         // realizes the same error.
@@ -3757,7 +3769,7 @@ resolution::ExpressionView MethodResolver::_potentially_store_field(ast::Node* n
           // to do anything.
         } else {
           diagnostics()->start_group();
-          report_error(node, "Can't assign final field in dynamic part of constructor");
+          report_error(node.syntax(), "Can't assign final field in dynamic part of constructor");
           report_note(super_forcing_expression_,
                       "Expression that switched to dynamic part");
           diagnostics()->end_group();
@@ -3775,27 +3787,27 @@ resolution::ExpressionView MethodResolver::_potentially_store_field(ast::Node* n
 
     resolution::ExpressionView ir_value;
     if (is_compound) {
-      auto ir_this = _this_ref(node->selection_range(), true);  // Don't care for the resolution-mode.
-      auto old_value = store_old(resolution::make<resolution::FieldLoadInfo>(ir_this, field, node->selection_range()));
-      ir_value = _binary_operator(node->as_Binary(), old_value);
+      auto ir_this = _this_ref(node.selection_range(), true);  // Don't care for the resolution-mode.
+      auto old_value = store_old(resolution::make<resolution::FieldLoadInfo>(ir_this, field, node.selection_range()));
+      ir_value = _compound_assignment(node, old_value);
     } else {
-      ir_value = resolve_expression(value, "Can't store a block in a field", true);
+      ir_value = _assignment_rhs(node, "Can't store a block in a field", true);
     }
 
-    auto ir_this = _this_ref(node->selection_range(), true);  // Don't care for the resolution-mode.
+    auto ir_this = _this_ref(node.selection_range(), true);  // Don't care for the resolution-mode.
     if (field->type().is_class()) {
       ir_value = resolution::make<resolution::TypecheckInfo>(resolution::TypecheckInfo::FIELD_AS_CHECK,
                                     ir_value,
                                     field->type(),
                                     field->type().klass()->name(),
-                                    node->selection_range());
+                                    node.selection_range());
     }
-    auto field_store = resolution::make<resolution::FieldStoreInfo>(ir_this, field, ir_value, node->selection_range());
+    auto field_store = resolution::make<resolution::FieldStoreInfo>(ir_this, field, ir_value, node.selection_range());
     if (field->is_final() &&
        (resolution_mode_ == CONSTRUCTOR_LIMBO_STATIC ||
         resolution_mode_ == CONSTRUCTOR_LIMBO_INSTANCE)) {
       // Store the ast-node, since we might need it for error-reporting.
-      (*ir_to_ast_map_)[field_store] = node;
+      (*ir_to_ast_map_)[field_store] = node.syntax();
     }
     return field_store;
   }
@@ -3839,11 +3851,11 @@ resolution::ExpressionView MethodResolver::_potentially_load_field(Symbol name,
   return null;
 }
 
-resolution::ExpressionView MethodResolver::_assign_dot(ast::Binary* node,
+resolution::ExpressionView MethodResolver::_assign_dot(const Assignment& node,
                                             CreateTemp& create_temp,
                                             StoreOldValue& store_old) {
-  bool is_compound = node->kind() != Token::ASSIGN;
-  auto dot = node->left()->as_Dot();
+  bool is_compound = node.kind() != Token::ASSIGN;
+  auto dot = node.left()->as_Dot();
 
   // `this.x` in a constructor is treated specially in the static part of
   // the constructor.
@@ -3867,7 +3879,7 @@ resolution::ExpressionView MethodResolver::_assign_dot(ast::Binary* node,
       case CONSTRUCTOR_LIMBO_INSTANCE: {
         Symbol name = dot->name()->data();
         auto field_initialization =
-            _potentially_store_field(node, name, true, node->right(), store_old);
+            _potentially_store_field(node, name, true, store_old);
         if (field_initialization != null) return field_initialization;
         break;
       }
@@ -3896,9 +3908,9 @@ resolution::ExpressionView MethodResolver::_assign_dot(ast::Binary* node,
 
   if (!is_compound) {
     auto lhs = create_dot(ir_receiver, dot->name()->data());
-    auto ir_rhs = resolve_expression(node->right(), "Can't assign block to instance member", true);
+    auto ir_rhs = _assignment_rhs(node, "Can't assign block to instance member", true);
     auto args_list = list_of(ir_rhs);
-    auto call = resolution::make<resolution::CallVirtualInfo>(lhs, CallShape::for_instance_setter(), args_list, node->selection_range());
+    auto call = resolution::make<resolution::CallVirtualInfo>(lhs, CallShape::for_instance_setter(), args_list, node.selection_range());
     // Map the setter CallVirtual to the AST name identifier so that the
     // LSP rename visitor can retrieve the field name's source range (e.g.,
     // "is-paused" in "s.is-paused = value") instead of the "=" operator.
@@ -3921,7 +3933,7 @@ resolution::ExpressionView MethodResolver::_assign_dot(ast::Binary* node,
   // instead of using the operator range.
   (*ir_to_ast_map_)[getter_call] = dot->name();
   auto old_value = store_old(getter_call);
-  auto new_value = _binary_operator(node, old_value);
+  auto new_value = _compound_assignment(node, old_value);
   ASSERT(!new_value->is_block());
   auto new_value_args = list_of(new_value);
   // Note that we allow to assign blocks to fields, since getters may invoke them.
@@ -3935,11 +3947,11 @@ resolution::ExpressionView MethodResolver::_assign_dot(ast::Binary* node,
   return setter_call;
 }
 
-resolution::ExpressionView MethodResolver::_assign_index(ast::Binary* node,
+resolution::ExpressionView MethodResolver::_assign_index(const Assignment& node,
                                               CreateTemp& create_temp,
                                               StoreOldValue& store_old) {
-  bool is_compound = node->kind() != Token::ASSIGN;
-  auto index = node->left()->as_Index();
+  bool is_compound = node.kind() != Token::ASSIGN;
+  auto index = node.left()->as_Index();
   auto receiver_range = index->receiver()->selection_range();
 
   resolution::ExpressionView ir_receiver;
@@ -3953,7 +3965,7 @@ resolution::ExpressionView MethodResolver::_assign_index(ast::Binary* node,
 
   List<resolution::ExpressionView> ir_arguments;
   if (!is_compound) {
-    auto new_value = resolve_expression(node->right(), "Can't use []= with a block value", true);
+    auto new_value = _assignment_rhs(node, "Can't use []= with a block value", true);
     ir_arguments_builder.add(new_value);
     ir_arguments = ir_arguments_builder.build();
   } else {
@@ -3980,9 +3992,9 @@ resolution::ExpressionView MethodResolver::_assign_index(ast::Binary* node,
         resolution::make<resolution::CallVirtualInfo>(resolution::make<resolution::DotInfo>(ir_receiver_read, Symbols::index),
                              CallShape::for_instance_call_no_named(args_read),
                              args_read,
-                             node->selection_range()));
+                             node.selection_range()));
 
-    auto new_value = _binary_operator(node, old_value);
+    auto new_value = _compound_assignment(node, old_value);
     arguments_builder_store.add(new_value);
 
     ir_receiver = resolution::make<resolution::ReferenceLocalInfo>(receiver_local, 0, receiver_range);
@@ -3992,16 +4004,16 @@ resolution::ExpressionView MethodResolver::_assign_index(ast::Binary* node,
   return resolution::make<resolution::CallVirtualInfo>(resolution::make<resolution::DotInfo>(ir_receiver, Symbols::index_put),
                               CallShape::for_instance_call_no_named(ir_arguments),
                               ir_arguments,
-                              node->selection_range());
+                              node.selection_range());
 }
 
-resolution::ExpressionView MethodResolver::_assign_instance_member(ast::Binary* node,
+resolution::ExpressionView MethodResolver::_assign_instance_member(const Assignment& node,
                                                         Symbol selector,
                                                         StoreOldValue& store_old) {
-  bool is_compound = node->kind() != Token::ASSIGN;
+  bool is_compound = node.kind() != Token::ASSIGN;
 
   auto create_receiver = [&]() {
-    return resolution::make<resolution::DotInfo>(_this_ref(node->left()->selection_range()), selector);
+    return resolution::make<resolution::DotInfo>(_this_ref(node.left()->selection_range()), selector);
   };
 
   resolution::ExpressionView ir_value;
@@ -4011,31 +4023,31 @@ resolution::ExpressionView MethodResolver::_assign_instance_member(ast::Binary* 
         resolution::make<resolution::CallVirtualInfo>(create_receiver(),
                              CallShape::for_instance_call_no_named(no_args),
                              no_args,
-                             node->selection_range()));
-    ir_value = _binary_operator(node, old_value);
+                             node.selection_range()));
+    ir_value = _compound_assignment(node, old_value);
     if (ir_value->is_block()) {
-      report_error(node->right(), "Can't assign block to instance member");
+      report_error(node.right(), "Can't assign block to instance member");
     }
   } else {
-    ir_value = resolve_expression(node->right(), "Can't assign block to instance member", true);
+    ir_value = _assignment_rhs(node, "Can't assign block to instance member", true);
   }
   auto new_value_args = list_of(ir_value);
   auto setter_call = resolution::make<resolution::CallVirtualInfo>(create_receiver(),
                               CallShape::for_instance_setter(),
                               new_value_args,
-                              node->selection_range());
+                              node.selection_range());
   // Map the setter CallVirtual to the AST left-hand-side node so that the
   // LSP rename visitor can retrieve the field name's source range (e.g.,
   // "field" in "field = value") instead of the "=" operator.
-  (*ir_to_ast_map_)[setter_call] = node->left();
+  (*ir_to_ast_map_)[setter_call] = node.left();
   return setter_call;
 }
 
-bool MethodResolver::_assign_identifier_resolve_left(ast::Binary* node,
+bool MethodResolver::_assign_identifier_resolve_left(const Assignment& node,
                                                      resolution::NodeView* setter_node,
                                                      resolution::NodeView* getter_node,
                                                      int* block_depth) {
-  auto ast_left = node->left();
+  auto ast_left = node.left();
 
   bool is_dotted = ast_left->is_Dot();
   bool is_super = is_literal_super(ast_left);
@@ -4099,7 +4111,7 @@ bool MethodResolver::_assign_identifier_resolve_left(ast::Binary* node,
                  name.c_str());
     return false;
   }
-  bool is_compound = node->kind() != Token::ASSIGN;
+  bool is_compound = node.kind() != Token::ASSIGN;
 
   if (candidates.nodes.is_empty()) {
     report_error(error_position_node, "Can't assign to unknown '%s'", name.c_str());
@@ -4189,15 +4201,15 @@ bool MethodResolver::_assign_identifier_resolve_left(ast::Binary* node,
   return true;
 }
 
-resolution::ExpressionView MethodResolver::_assign_identifier(ast::Binary* node,
+resolution::ExpressionView MethodResolver::_assign_identifier(const Assignment& node,
                                                    StoreOldValue& store_old) {
-  ASSERT(node->left()->is_Identifier() ||
-         scope()->is_prefixed_identifier(node->left()) ||
-         scope()->is_static_identifier(node->left()));
+  ASSERT(node.left()->is_Identifier() ||
+         scope()->is_prefixed_identifier(node.left()) ||
+         scope()->is_static_identifier(node.left()));
 
-  auto ast_left = node->left();
-  auto ast_right = node->right();
-  auto range = node->selection_range();
+  auto ast_left = node.left();
+  auto ast_right = node.right();
+  auto range = node.selection_range();
   // In constructors we have a direct access to fields.
   // We must be in the static section of the constructor, and not
   // "capture" the field.
@@ -4219,7 +4231,7 @@ resolution::ExpressionView MethodResolver::_assign_identifier(ast::Binary* node,
         // Not prefixed.
         auto name = ast_left->as_Identifier()->data();
         auto field_initialization =
-            _potentially_store_field(node, name, false, ast_right, store_old);
+            _potentially_store_field(node, name, false, store_old);
         if (field_initialization != null) return field_initialization;
         break;
       }
@@ -4243,10 +4255,10 @@ resolution::ExpressionView MethodResolver::_assign_identifier(ast::Binary* node,
   }
 
   if (!succeeded) {
-    return resolution::make<resolution::ErrorInfo>(range, list_of(resolve_expression(ast_right, null, true)));
+    return resolution::make<resolution::ErrorInfo>(range, list_of(_assignment_rhs(node, null, true)));
   }
 
-  bool is_compound = node->kind() != Token::ASSIGN;
+  bool is_compound = node.kind() != Token::ASSIGN;
   bool is_super = is_literal_super(ast_left);
 
   if (!is_super &&
@@ -4259,11 +4271,11 @@ resolution::ExpressionView MethodResolver::_assign_identifier(ast::Binary* node,
 
       case CONSTRUCTOR_STATIC:
         report_error(ast_left, "Can't access instance members before `super` call");
-        return resolution::make<resolution::ErrorInfo>(range, list_of(resolve_expression(ast_right, null, true)));
+        return resolution::make<resolution::ErrorInfo>(range, list_of(_assignment_rhs(node, null, true)));
 
       case FIELD:
         report_error(ast_left, "Can't access instance members in field initializers");
-        return resolution::make<resolution::ErrorInfo>(range, list_of(resolve_expression(ast_right, null, true)));
+        return resolution::make<resolution::ErrorInfo>(range, list_of(_assignment_rhs(node, null, true)));
 
       case INSTANCE:
       case CONSTRUCTOR_INSTANCE:
@@ -4274,7 +4286,7 @@ resolution::ExpressionView MethodResolver::_assign_identifier(ast::Binary* node,
       case STATIC: {
         const char* kind = method_->is_factory() ? "factories" : "static contexts";
         report_error(ast_left, "Can't access instance members in %s", kind);
-        return resolution::make<resolution::ErrorInfo>(range, list_of(resolve_expression(ast_right, null, true)));
+        return resolution::make<resolution::ErrorInfo>(range, list_of(_assignment_rhs(node, null, true)));
       }
 
       case CONSTRUCTOR_SUPER:
@@ -4337,13 +4349,13 @@ resolution::ExpressionView MethodResolver::_assign_identifier(ast::Binary* node,
   resolution::ExpressionView ir_value;
   if (is_compound) {
     resolution::ExpressionView old_value = store_old(create_get());
-    ir_value = _binary_operator(node, old_value);
+    ir_value = _compound_assignment(node, old_value);
     if (ir_value->is_block()) {
       report_error(ast_right, "Can't use block value in assignment");
       ir_value = resolution::make<resolution::ErrorInfo>(ast_right->selection_range(), list_of(ir_value));
     }
   } else {
-    ir_value = resolve_expression(ast_right, "Can't use block value in assignment", true);
+    ir_value = _assignment_rhs(node, "Can't use block value in assignment", true);
   }
   auto result = create_set(ir_value);
   if (result->is_AssignmentLocal()) {
@@ -4357,14 +4369,14 @@ resolution::ExpressionView MethodResolver::_assign_identifier(ast::Binary* node,
         for (int i = 0; i < fields.length(); i++) {
           auto field_name = fields[i]->name();
           if (field_name.is_valid() && field_name == local->name()) {
-            diagnostics()->report_warning(node, "Assigning local to itself has no effect. Did you forget 'this.'?");
+            diagnostics()->report_warning(node.syntax(), "Assigning local to itself has no effect. Did you forget 'this.'?");
             reported_warning = true;
             break;
           }
         }
       }
       if (!reported_warning) {
-        diagnostics()->report_warning(node, "Assigning local to itself");
+        diagnostics()->report_warning(node.syntax(), "Assigning local to itself");
       }
     }
   }
@@ -4412,7 +4424,13 @@ resolution::ExpressionView MethodResolver::_binary_operator(ast::Binary* node,
   if (ir_right == null) {
     ir_right = resolve_expression(node->right(), "Can't use blocks in binary expression");
   }
-  auto kind = node->kind();
+  return _binary_operator(node->kind(), node->selection_range(), ir_left, ir_right);
+}
+
+resolution::ExpressionView MethodResolver::_binary_operator(Token::Kind kind,
+                                                           Source::Range range,
+                                                           resolution::ExpressionView ir_left,
+                                                           resolution::ExpressionView ir_right) {
   bool inverted = false;
   if (kind == Token::NE) {
     kind = Token::EQ;
@@ -4423,7 +4441,7 @@ resolution::ExpressionView MethodResolver::_binary_operator(ast::Binary* node,
   auto result = resolution::make<resolution::CallVirtualInfo>(resolution::make<resolution::DotInfo>(ir_left, op),
                                      CallShape::for_instance_call_no_named(right_args),
                                      right_args,
-                                     node->selection_range());
+                                     range);
 
   // Keep the source-level comparison semantics until IR lowering selects
   // instructions. In particular equality must check identity and null even
@@ -4439,7 +4457,7 @@ resolution::ExpressionView MethodResolver::_binary_operator(ast::Binary* node,
     default:
       break;
   }
-  if (inverted) return resolution::make<resolution::NotInfo>(result, node->selection_range());
+  if (inverted) return resolution::make<resolution::NotInfo>(result, range);
   return result;
 }
 
@@ -4564,16 +4582,7 @@ void MethodResolver::visit_Unary(ast::Unary* node) {
     case Token::INCREMENT:
     case Token::DECREMENT: {
       bool is_postfix = !node->prefix();
-      Token::Kind operation = (node->kind() == Token::INCREMENT)
-          ? Token::ASSIGN_ADD
-          : Token::ASSIGN_SUB;
-      // We can't allocate the following nodes on the stack, as
-      // a field-store might retain them to give a better error message.
-      auto one = zone_new<ast::LiteralInteger>(Symbols::one);
-      one->set_range(node->selection_range());
-      auto assign = zone_new<ast::Binary>(operation, node->expression(), one);
-      assign->set_range(node->selection_range());
-      push(_assign(assign, is_postfix));
+      push(_assign(Assignment(node), is_postfix));
       break;
     }
 

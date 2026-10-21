@@ -369,30 +369,57 @@ class MethodResolver : public ast::Visitor {
   resolution::ExpressionView _definition_rhs(ast::Expression* node, Symbol name);
   resolution::ExpressionView _bad_define(ast::Binary* node);
   resolution::ExpressionView _define(ast::Expression* node, resolution::ExpressionView ir_right = null);
-  resolution::ExpressionView _assign(ast::Binary* node, bool is_postfix = false);
-  resolution::ExpressionView _assign_dot(ast::Binary* node,
+  // Assignment semantics can come from a binary assignment or an increment.
+  // Retain the original syntax; increments have an implicit right-hand value.
+  class Assignment {
+   public:
+    Assignment(ast::Binary* node)
+        : syntax_(node), left_(node->left()), right_(node->right()), kind_(node->kind()) {}
+    explicit Assignment(ast::Unary* node)
+        : syntax_(node), left_(node->expression()), right_(null)
+        , kind_(node->kind() == Token::INCREMENT ? Token::ASSIGN_ADD : Token::ASSIGN_SUB) {}
+
+    ast::Expression* syntax() const { return syntax_; }
+    ast::Expression* left() const { return left_; }
+    ast::Expression* right() const { return right_; }
+    Token::Kind kind() const { return kind_; }
+    Source::Range selection_range() const { return syntax_->selection_range(); }
+
+   private:
+    ast::Expression* syntax_;
+    ast::Expression* left_;
+    ast::Expression* right_;
+    Token::Kind kind_;
+  };
+
+  resolution::ExpressionView _assignment_rhs(const Assignment& assignment,
+                                              const char* block_error,
+                                              bool allow_undefined = false);
+  resolution::ExpressionView _compound_assignment(const Assignment& assignment,
+                                                   resolution::ExpressionView old_value);
+  resolution::ExpressionView _assign(const Assignment& node, bool is_postfix = false);
+  resolution::ExpressionView _assign_dot(const Assignment& node,
                               CreateTemp& create_temp,
                               StoreOldValue& store_old);
-  resolution::ExpressionView _assign_index(ast::Binary* node,
+  resolution::ExpressionView _assign_index(const Assignment& node,
                                 CreateTemp& create_temp,
                                 StoreOldValue& store_old);
-  resolution::ExpressionView _assign_instance_member(ast::Binary* node,
+  resolution::ExpressionView _assign_instance_member(const Assignment& node,
                                           Symbol selector,
                                           StoreOldValue& store_old);
   /// Returns whether the operation succeeded.
   ///
   /// Fills [ir_setter_node] and, if compound, the [ir_getter_node].
   /// The [block_depth] node is filled, if the setter/getter is a local.
-  bool _assign_identifier_resolve_left(ast::Binary* node,
+  bool _assign_identifier_resolve_left(const Assignment& node,
                                        resolution::NodeView* ir_setter_node,
                                        resolution::NodeView* ir_getter_node,
                                        int* block_depth);
-  resolution::ExpressionView _assign_identifier(ast::Binary* node,
+  resolution::ExpressionView _assign_identifier(const Assignment& node,
                                      StoreOldValue& store_old);
-  resolution::ExpressionView _potentially_store_field(ast::Node* node,
+  resolution::ExpressionView _potentially_store_field(const Assignment& node,
                                            Symbol field_name,
                                            bool lookup_class_scope,
-                                           ast::Expression* value,
                                            StoreOldValue& store_old);
   resolution::ExpressionView _potentially_load_field(Symbol field_name,
                                           bool lookup_class_scope,
@@ -400,6 +427,10 @@ class MethodResolver : public ast::Visitor {
   resolution::ExpressionView _binary_operator(ast::Binary* node,
                                    resolution::ExpressionView ir_left = null,
                                    resolution::ExpressionView ir_right = null);
+  resolution::ExpressionView _binary_operator(Token::Kind kind,
+                                               Source::Range range,
+                                               resolution::ExpressionView left,
+                                               resolution::ExpressionView right);
   resolution::ExpressionView _binary_comparison_operator(ast::Binary* node,
                                               resolution::LocalView temporary = null);
   resolution::ExpressionView _logical_operator(ast::Binary* node);
