@@ -28,6 +28,7 @@ main:
   test-uninstall
   test-multiple-resources
   test-custom-close
+  test-close-client-first
 
 test-resources --close/bool=false --separate-process/bool=false:
   service := ResourceServiceProvider
@@ -87,6 +88,19 @@ test-custom-close:
   resource.close
   expect.expect-equals 1 (service.close-count "resource")
   client.close
+  service.uninstall --wait
+
+test-close-client-first:
+  service := ResourceServiceProvider
+  service.install
+  client := ResourceServiceClient
+  client.open
+  resource := ResourceProxy client "notifiable-resource"
+  client.close
+  expect.expect-equals 1 (service.close-count "notifiable-resource")
+  // Closing the resource after its client must not throw.
+  resource.close
+  expect.expect-equals 1 (service.close-count "notifiable-resource")
   service.uninstall --wait
 
 test-open key/string close/bool --close-client/bool=false -> ResourceServiceClient:
@@ -169,7 +183,7 @@ class Resource extends services.ServiceResource:
   close-count_/int := 0
 
   constructor provider/services.ServiceProvider client/int .key:
-    super provider client
+    super provider client --notifiable=(key.starts-with "notifiable")
 
   on-closed -> none:
     close-count_++
