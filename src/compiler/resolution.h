@@ -29,6 +29,7 @@ namespace compiler {
 
 class Scope;
 class StaticsScope;
+class ImportScope;
 
 // Resolution information attached to source AST interpretations. Graph edges
 // are typed AST views; backend IR is created separately after diagnostics.
@@ -37,7 +38,7 @@ namespace resolution {
 class NodeInfo;
 using NodeView = View<NodeInfo>;
 
-#define RESOLUTION_NODES(V)      \
+#define RESOLUTION_OPERATIONS(V)      \
   V(Program)                    \
   V(Global)                     \
   V(Class)                      \
@@ -98,6 +99,12 @@ using NodeView = View<NodeInfo>;
   V(Dot)                        \
   V(LspSelectionDot)            \
 
+
+// Operations/declarations have a backend representation. Qualifiers describe
+// source-level name resolution and never become executable IR.
+#define RESOLUTION_NODES(V) \
+  RESOLUTION_OPERATIONS(V) \
+  V(LibraryPrefix)
 
 #define DECLARE(name) class name##Info; using name##View = View<name##Info>;
 RESOLUTION_NODES(DECLARE)
@@ -226,6 +233,17 @@ RESOLUTION_NODES(DECLARE)
   bool is_##name() const override { return true; }                             \
   name##View as_##name() override { return name##View(ast_node()); }            \
   const char* node_type() const override { return #name; }
+
+class LibraryPrefixInfo : public NodeInfo {
+ public:
+  explicit LibraryPrefixInfo(ImportScope* prefix) : prefix_(prefix) {}
+  IMPLEMENTS(LibraryPrefix)
+
+  ImportScope* prefix() const { return prefix_; }
+
+ private:
+  ImportScope* prefix_;
+};
 
 class ProgramInfo : public NodeInfo {
  public:

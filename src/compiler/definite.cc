@@ -352,6 +352,7 @@ class DefiniteChecker : public Visitor {
   }
 
   void visit_Builtin(BuiltinView node) {}
+  void visit_LibraryPrefix(LibraryPrefixView node) {}
 
   void visit_Not(NotView node) {
     visit(node->value());
