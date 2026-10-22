@@ -313,9 +313,6 @@ class DefiniteChecker : public Visitor {
   void visit_MethodStatic(MethodStaticView node) { return visit_Method(node); }
   void visit_Constructor(ConstructorView node) { return visit_Method(node); }
   void visit_Global(GlobalView node) { return visit_Method(node); }
-  void visit_AdapterStub(AdapterStubView node) { return visit_Method(node); }
-  void visit_MixinStub(MixinStubView node) { return visit_Method(node); }
-  void visit_IsInterfaceOrMixinStub(IsInterfaceOrMixinStubView node) { return visit_Method(node); }
   void visit_FieldStub(FieldStubView node) { return visit_Method(node); }
 
   void visit_Expression(ExpressionView node) { UNREACHABLE(); }

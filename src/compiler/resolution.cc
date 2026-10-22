@@ -77,9 +77,6 @@ void TraversingVisitor::visit_MonitorMethod(MonitorMethodView node) { visit_Meth
 void TraversingVisitor::visit_MethodStatic(MethodStaticView node) { visit_Method(node); }
 void TraversingVisitor::visit_Constructor(ConstructorView node) { visit_Method(node); }
 void TraversingVisitor::visit_Global(GlobalView node) { visit_Method(node); }
-void TraversingVisitor::visit_AdapterStub(AdapterStubView node) { visit_Method(node); }
-void TraversingVisitor::visit_MixinStub(MixinStubView node) { visit_Method(node); }
-void TraversingVisitor::visit_IsInterfaceOrMixinStub(IsInterfaceOrMixinStubView node) { visit_Method(node); }
 void TraversingVisitor::visit_FieldStub(FieldStubView node) { visit_Method(node); }
 
 void TraversingVisitor::visit_Expression(ExpressionView node) { UNREACHABLE(); }
@@ -209,8 +206,7 @@ void TraversingVisitor::visit_PrimitiveInvocation(PrimitiveInvocationView node) 
 
 class Printer : public Visitor {
  public:
-  explicit Printer(bool use_resolution_shape)
-      : indentation_(0), use_resolution_shape_(use_resolution_shape) {}
+  Printer() : indentation_(0) {}
 
   template<typename T>
   void _visit_multiple(List<T> nodes, char separation = '\n') {
@@ -305,20 +301,13 @@ class Printer : public Visitor {
     std::vector<bool> optional_named;
     int unnamed_block_count = 0;
     int named_block_count;
-    if (use_resolution_shape_) {
-      auto shape = node->resolution_shape();
-      optional_unnamed = shape.max_unnamed_non_block() - shape.min_unnamed_non_block();
-      names = shape.names();
-      optional_named = shape.optional_names();
-      unnamed_block_count = shape.unnamed_block_count();
-      named_block_count = shape.named_block_count();
-    } else {
-      auto shape = node->plain_shape();
-      names = shape.names();
-      for (int i = 0; i < names.length(); i++) optional_named.push_back(false);
-      unnamed_block_count = shape.unnamed_block_count();
-      named_block_count = shape.named_block_count();
-    }
+    auto shape = node->resolution_shape();
+    optional_unnamed = shape.max_unnamed_non_block() - shape.min_unnamed_non_block();
+    names = shape.names();
+    optional_named = shape.optional_names();
+    unnamed_block_count = shape.unnamed_block_count();
+    named_block_count = shape.named_block_count();
+
     int unnamed_count = parameters.length() - names.length();
     printf("(%s:%s%s (", kind, node->name().c_str(), node->is_setter() ? "=" : "");
     bool is_first = true;
@@ -366,14 +355,9 @@ class Printer : public Visitor {
   void visit_MethodStatic(MethodStaticView node) { visit_Method(node); }
   void visit_Constructor(ConstructorView node) { visit_Method(node); }
   void visit_Global(GlobalView node) { visit_Method(node); }
-  void visit_AdapterStub(AdapterStubView node) { visit_Method(node); }
-  void visit_MixinStub(MixinStubView node) { visit_Method(node); }
   void visit_FieldStub(FieldStubView node) { visit_Method(node); }
 
-  void visit_IsInterfaceOrMixinStub(IsInterfaceOrMixinStubView node) {
-    indent();
-    printf("Is-interface stub: %s\n", node->name().c_str());
-  }
+
 
   void visit_Code(CodeView node) {
     indent();
@@ -493,21 +477,13 @@ class Printer : public Visitor {
   }
 
   void visit_FieldLoad(FieldLoadView node) {
-    if (node->is_box_load()) {
-      printf("(BoxRead (");
-    } else {
-      printf("(FieldRead (");
-    }
+    printf("(FieldRead (");
     node->receiver()->accept(this);
     printf(").%s)", node->field()->name().c_str());
   }
 
   void visit_FieldStore(FieldStoreView node) {
-    if (node->is_box_store()) {
-      printf("(BoxStore (");
-    } else {
-      printf("(FieldStore (");
-    }
+    printf("(FieldStore (");
     node->receiver()->accept(this);
     printf(").%s = \n", node->field()->name().c_str());
     node->value()->accept(this);
@@ -603,13 +579,9 @@ class Printer : public Visitor {
     auto target = node->target();
     int arity;
     int block_count;
-    if (use_resolution_shape_) {
-      arity = target->resolution_shape().max_arity();
-      block_count = target->resolution_shape().total_block_count();
-    } else {
-      arity = target->plain_shape().arity();
-      block_count = target->plain_shape().total_block_count();
-    }
+    arity = target->resolution_shape().max_arity();
+    block_count = target->resolution_shape().total_block_count();
+
     printf("%s (%d, %d)", target->name().c_str(), arity, block_count);
   }
 
@@ -741,7 +713,6 @@ class Printer : public Visitor {
 
  private:
   int indentation_;
-  bool use_resolution_shape_;
 
   void indent() {
     for (int i = 0; i < indentation_; i++) {
@@ -750,8 +721,8 @@ class Printer : public Visitor {
   }
 };
 
-void NodeInfo::print(bool use_resolution_shape) {
-  Printer printer(use_resolution_shape);
+void NodeInfo::print() {
+  Printer printer;
   accept(&printer);
 }
 
