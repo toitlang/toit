@@ -33,7 +33,7 @@ namespace compiler {
 
 using namespace resolution;
 
-static bool is_this_reference(View<Expression> expression, View<Method> method) {
+static bool is_this_reference(ExpressionView expression, MethodView method) {
   if (method->holder() == null) return false;
   if (!(method->is_instance() || method->is_constructor())) return false;
   if (!expression->is_ReferenceLocal()) return false;
@@ -57,8 +57,8 @@ static bool is_arithmetic_operation(const Selector<CallShape>& selector) {
 class TypeChecker : public ReturningVisitor<Type> {
  public:
   TypeChecker(List<Type> literal_types,
-              List<resolution::View<resolution::Class>> classes,
-              const UnorderedMap<resolution::View<resolution::Class>, ResolutionQueryableClass>* queryables,
+              List<resolution::ClassView> classes,
+              const UnorderedMap<resolution::ClassView, ResolutionQueryableClass>* queryables,
               Lsp* lsp,
               Diagnostics* diagnostics)
       : classes_(classes)
@@ -91,12 +91,12 @@ class TypeChecker : public ReturningVisitor<Type> {
     null_type_ = find_type(Symbols::Null_).to_nullable();
   }
 
-  Type visit(View<Node> node) {
+  Type visit(NodeView node) {
     return node->accept(this);
   }
 
 
-  Type visit_Program(View<Program> node) {
+  Type visit_Program(ProgramView node) {
     // Visit globals first.
     // While traversing we are inferring their type which will then be used in the
     // other visits.
@@ -106,7 +106,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     return Type::invalid();
   }
 
-  Type visit_Class(View<Class> node) {
+  Type visit_Class(ClassView node) {
     // Constructors and factories are already visited in `visit_Program` as
     // global methods.
     // Fields don't have any code anymore, since all of the initialization is
@@ -115,12 +115,12 @@ class TypeChecker : public ReturningVisitor<Type> {
     return Type::invalid();
   }
 
-  Type visit_Field(View<Field> node) { UNREACHABLE(); return Type::invalid(); }
+  Type visit_Field(FieldView node) { UNREACHABLE(); return Type::invalid(); }
 
   // Methods are only visited for their side-effect.
   // In theory there should be no user of these types, and they all return `Type::invalid`.
   // The return-type is extracted when the methods are referenced.
-  Type visit_Method(View<Method> node) {
+  Type visit_Method(MethodView node) {
     method_ = node;
     if (node->has_body()) visit(node->body());
     return Type::invalid();
@@ -128,7 +128,7 @@ class TypeChecker : public ReturningVisitor<Type> {
   // Globals are handled like methods. As such, they are only visited for the side-effect.
   // Their return type should not be used and they all return `Type::invalid`.
   // References to globals extract the return-type.
-  Type visit_Global(View<Global> node) {
+  Type visit_Global(GlobalView node) {
     if (handled_globals_.contains(node)) return Type::invalid();
     if (node->has_explicit_type()) {
       visit_Method(node);
@@ -138,7 +138,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     if (reported_cyclic_globals_.contains(node)) {
       return Type::invalid();
     }
-    bool detected_cycle = globals_cycle_detector_.check_cycle(node, [&](const std::vector<resolution::View<resolution::Global>>& cycle) {
+    bool detected_cycle = globals_cycle_detector_.check_cycle(node, [&](const std::vector<resolution::GlobalView>& cycle) {
       report_cyclic_global_types(cycle);
       reported_cyclic_globals_.insert(node);
     });
@@ -181,26 +181,26 @@ class TypeChecker : public ReturningVisitor<Type> {
     return Type::invalid();
   }
 
-  Type visit_MethodInstance(View<MethodInstance> node) { return visit_Method(node); }
-  Type visit_MonitorMethod(View<MonitorMethod> node) { return visit_Method(node); }
-  Type visit_MethodStatic(View<MethodStatic> node) { return visit_Method(node); }
-  Type visit_Constructor(View<Constructor> node) { return visit_Method(node); }
-  Type visit_AdapterStub(View<AdapterStub> node) { return visit_Method(node); }
-  Type visit_MixinStub(View<MixinStub> node) { return visit_Method(node); }
-  Type visit_IsInterfaceOrMixinStub(View<IsInterfaceOrMixinStub> node) { return visit_Method(node); }
-  Type visit_FieldStub(View<FieldStub> node) { return visit_Method(node); }
+  Type visit_MethodInstance(MethodInstanceView node) { return visit_Method(node); }
+  Type visit_MonitorMethod(MonitorMethodView node) { return visit_Method(node); }
+  Type visit_MethodStatic(MethodStaticView node) { return visit_Method(node); }
+  Type visit_Constructor(ConstructorView node) { return visit_Method(node); }
+  Type visit_AdapterStub(AdapterStubView node) { return visit_Method(node); }
+  Type visit_MixinStub(MixinStubView node) { return visit_Method(node); }
+  Type visit_IsInterfaceOrMixinStub(IsInterfaceOrMixinStubView node) { return visit_Method(node); }
+  Type visit_FieldStub(FieldStubView node) { return visit_Method(node); }
 
-  Type visit_Expression(View<Expression> node) { UNREACHABLE(); return Type::invalid(); }
-  Type visit_Error(View<Error> node) {
+  Type visit_Expression(ExpressionView node) { UNREACHABLE(); return Type::invalid(); }
+  Type visit_Error(ErrorView node) {
     for (auto expr : node->nested()) {
       visit(expr);
     }
     return Type::any();
   }
 
-  Type visit_Nop(View<Nop> node) { return Type::any(); }
+  Type visit_Nop(NopView node) { return Type::any(); }
 
-  Type visit_FieldStore(View<FieldStore> node) {
+  Type visit_FieldStore(FieldStoreView node) {
     auto field = node->field();
     if (!method_->is_constructor()) {
       // Don't report warnings for fields that are assigned in the constructor.
@@ -214,12 +214,12 @@ class TypeChecker : public ReturningVisitor<Type> {
     return value_type;
   }
 
-  Type visit_FieldLoad(View<FieldLoad> node) {
+  Type visit_FieldLoad(FieldLoadView node) {
     check_deprecated(node->range(), node->field());
     return node->field()->type();
   }
 
-  Type visit_Sequence(View<Sequence> node) {
+  Type visit_Sequence(SequenceView node) {
     auto result_type = Type::any();
     for (auto expr : node->expressions()) {
       result_type = visit(expr);
@@ -227,12 +227,12 @@ class TypeChecker : public ReturningVisitor<Type> {
     return result_type;
   }
 
-  Type visit_Builtin(View<Builtin> node) {
+  Type visit_Builtin(BuiltinView node) {
     // The `visit_CallBuiltin` will improve the type of the calls.
     return Type::any();
   }
 
-  Type visit_TryFinally(View<TryFinally> node) {
+  Type visit_TryFinally(TryFinallyView node) {
     visit(node->body());
     for (int i = 0; i < node->handler_parameters().length(); i++) {
       auto parameter = node->handler_parameters()[i];
@@ -246,7 +246,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     return Type::any();
   }
 
-  Type visit_condition(View<Expression> node) {
+  Type visit_condition(ExpressionView node) {
     if (node->is_Not()) {
       return visit_Not(node->as_Not(), true);
     }
@@ -259,18 +259,18 @@ class TypeChecker : public ReturningVisitor<Type> {
     return result;
   }
 
-  Type visit_If(View<If> node) {
+  Type visit_If(IfView node) {
     visit_condition(node->condition());
     auto yes_type = visit(node->yes());
     auto no_type = visit(node->no());
     return merge_types(yes_type, no_type);
   }
 
-  Type visit_Not(View<Not> node) {
+  Type visit_Not(NotView node) {
     return visit_Not(node, false);
   }
 
-  Type visit_Not(View<Not> node, bool warn_if_always_false) {
+  Type visit_Not(NotView node, bool warn_if_always_false) {
     auto value_type = visit(node->value());
     if (value_type.is_none()) {
       report_error(node->value()->range(), "Argument to 'not' can't be 'none'");
@@ -280,33 +280,33 @@ class TypeChecker : public ReturningVisitor<Type> {
     return boolean_type_;
   }
 
-  Type visit_While(View<While> node) {
+  Type visit_While(WhileView node) {
     visit_condition(node->condition());
     auto result_type = visit(node->body());
     visit(node->update());
     return result_type;
   }
 
-  Type visit_LoopBranch(View<LoopBranch> node) {
+  Type visit_LoopBranch(LoopBranchView node) {
     // TODO(florian): should be 'null'-type.
     return Type::any();
   }
 
-  Type visit_Code(View<Code> node) {
+  Type visit_Code(CodeView node) {
     visit(node->body());
     // TODO(florian); should be a "Block" or "Code" type.
     return Type::any();
   }
 
-  Type visit_Reference(View<Reference> node) { UNREACHABLE(); return Type::invalid(); }
+  Type visit_Reference(ReferenceView node) { UNREACHABLE(); return Type::invalid(); }
 
-  Type visit_ReferenceClass(View<ReferenceClass> node) { UNREACHABLE(); return Type::invalid(); }
-  Type visit_ReferenceMethod(View<ReferenceMethod> node) { UNREACHABLE(); return Type::invalid(); }
-  Type visit_ReferenceLocal(View<ReferenceLocal> node) {
+  Type visit_ReferenceClass(ReferenceClassView node) { UNREACHABLE(); return Type::invalid(); }
+  Type visit_ReferenceMethod(ReferenceMethodView node) { UNREACHABLE(); return Type::invalid(); }
+  Type visit_ReferenceLocal(ReferenceLocalView node) {
     return node->target()->type();
   }
-  Type visit_ReferenceBlock(View<ReferenceBlock> node) { return visit_ReferenceLocal(node); }
-  Type visit_ReferenceGlobal(View<ReferenceGlobal> node) {
+  Type visit_ReferenceBlock(ReferenceBlockView node) { return visit_ReferenceLocal(node); }
+  Type visit_ReferenceGlobal(ReferenceGlobalView node) {
     check_deprecated(node->range(), node->target());
     auto target = node->target();
     // The second test (whether the method_ is a global) is just a shortcut, as a non-global 'method_'
@@ -325,32 +325,32 @@ class TypeChecker : public ReturningVisitor<Type> {
     return type;
   }
 
-  Type visit_Local(View<Local> node) { UNREACHABLE(); return Type::invalid(); }
-  Type visit_Parameter(View<Parameter> node) { UNREACHABLE(); return Type::invalid(); }
-  Type visit_CapturedLocal(View<CapturedLocal> node) { UNREACHABLE(); return Type::invalid(); }
-  Type visit_Block(View<Block> node) { UNREACHABLE(); return Type::invalid(); }
+  Type visit_Local(LocalView node) { UNREACHABLE(); return Type::invalid(); }
+  Type visit_Parameter(ParameterView node) { UNREACHABLE(); return Type::invalid(); }
+  Type visit_CapturedLocal(CapturedLocalView node) { UNREACHABLE(); return Type::invalid(); }
+  Type visit_Block(BlockView node) { UNREACHABLE(); return Type::invalid(); }
 
-  Type visit_Dot(View<Dot> node) {
+  Type visit_Dot(DotView node) {
     return visit(node->receiver());
   }
 
-  Type visit_LspSelectionDot(View<LspSelectionDot> node) {
+  Type visit_LspSelectionDot(LspSelectionDotView node) {
     // The target must be handled by the virtual call.
     return visit_Dot(node);
   }
 
-  Type visit_Super(View<Super> node) {
+  Type visit_Super(SuperView node) {
     if (node->expression() == null) return Type::any();
     return visit(node->expression());
   }
 
-  Type visit_Call(View<Call> node) {
+  Type visit_Call(CallView node) {
     visit(node->target());
     for (auto argument : node->arguments()) visit(argument);
     return Type::any();
   }
 
-  Type visit_CallStatic(View<CallStatic> node) {
+  Type visit_CallStatic(CallStaticView node) {
     auto arguments = node->arguments();
     auto argument_types = ListBuilder<Type>::allocate(arguments.length());
     for (int i = 0; i < arguments.length(); i++) {
@@ -375,12 +375,12 @@ class TypeChecker : public ReturningVisitor<Type> {
     return method->return_type();
   }
 
-  Type visit_Lambda(View<Lambda> node) { return visit_CallStatic(node); }
-  Type visit_CallConstructor(View<CallConstructor> node) {
+  Type visit_Lambda(LambdaView node) { return visit_CallStatic(node); }
+  Type visit_CallConstructor(CallConstructorView node) {
     return visit_CallStatic(node);
   }
 
-  Type visit_CallVirtual(View<CallVirtual> node) {
+  Type visit_CallVirtual(CallVirtualView node) {
     bool is_lsp_selection = node->target()->is_LspSelectionDot();
 
     auto receiver_type = visit(node->receiver());
@@ -478,7 +478,7 @@ class TypeChecker : public ReturningVisitor<Type> {
   /// type, and nothing requires an override to keep the overridden
   /// method's return type, so otherwise the static return type doesn't
   /// hold at runtime.
-  bool overrides_keep_return_type(View<Class> klass, Selector<CallShape> selector, View<Method> method) {
+  bool overrides_keep_return_type(ClassView klass, Selector<CallShape> selector, MethodView method) {
     Selector<PlainShape> plain(selector.name(), selector.shape().to_plain_shape());
     auto& cache = override_cache_[klass];
     auto probe = cache.find(plain);
@@ -500,10 +500,10 @@ class TypeChecker : public ReturningVisitor<Type> {
     return result;
   }
 
-  const std::vector<View<Class>>& subtypes_of(View<Class> klass) {
+  const std::vector<ClassView>& subtypes_of(ClassView klass) {
     auto probe = subtypes_cache_.find(klass);
     if (probe != subtypes_cache_.end()) return probe->second;
-    std::vector<View<Class>> result;
+    std::vector<ClassView> result;
     for (auto candidate : classes_) {
       if (is_subtype_of(candidate, klass)) result.push_back(candidate);
     }
@@ -511,10 +511,10 @@ class TypeChecker : public ReturningVisitor<Type> {
     return subtypes_cache_[klass];
   }
 
-  Type visit_CallBlock(View<CallBlock> node) { return visit_Call(node); }
+  Type visit_CallBlock(CallBlockView node) { return visit_Call(node); }
 
-  Type visit_CallBuiltin(View<CallBuiltin> node) {
-    if (node->target()->kind() == Builtin::STORE_GLOBAL) {
+  Type visit_CallBuiltin(CallBuiltinView node) {
+    if (node->target()->kind() == BuiltinInfo::STORE_GLOBAL) {
       if (node->arguments().length() == 2) {
         auto index_type = visit(node->arguments()[0]);
         check(node->range(), integer_type_, index_type);
@@ -524,52 +524,52 @@ class TypeChecker : public ReturningVisitor<Type> {
 
     visit_Call(node);
     switch (node->target()->kind()) {
-      case Builtin::THROW:
-      case Builtin::EXIT:
+      case BuiltinInfo::THROW:
+      case BuiltinInfo::EXIT:
         // These are not returning.
         return Type::none();
 
-      case Builtin::INVOKE_LAMBDA:
+      case BuiltinInfo::INVOKE_LAMBDA:
         return Type::any();
 
-      case Builtin::YIELD:
-      case Builtin::RESET:
-      case Builtin::DEEP_SLEEP:
+      case BuiltinInfo::YIELD:
+      case BuiltinInfo::RESET:
+      case BuiltinInfo::DEEP_SLEEP:
         // The result of runtime-control builtins should not be used.
         return Type::none();
 
-      case Builtin::STORE_GLOBAL:
+      case BuiltinInfo::STORE_GLOBAL:
         return Type::none();
 
-      case Builtin::LOAD_GLOBAL:
+      case BuiltinInfo::LOAD_GLOBAL:
         return Type::any();
 
-      case Builtin::INVOKE_INITIALIZER:
+      case BuiltinInfo::INVOKE_INITIALIZER:
         return Type::any();
 
-      case Builtin::GLOBAL_ID:
+      case BuiltinInfo::GLOBAL_ID:
         ASSERT(node->arguments().length() == 1 && node->arguments()[0]->is_ReferenceGlobal());
         return integer_type_;
 
-      case Builtin::IDENTICAL:
+      case BuiltinInfo::IDENTICAL:
         return boolean_type_;
     };
     UNREACHABLE();
   }
 
-  Type visit_Typecheck(View<Typecheck> node) {
+  Type visit_Typecheck(TypecheckView node) {
     auto expression_type = visit(node->expression());
     switch (node->kind()) {
-      case Typecheck::IS_CHECK:
+      case TypecheckInfo::IS_CHECK:
         return boolean_type_;
-      case Typecheck::AS_CHECK:
+      case TypecheckInfo::AS_CHECK:
         return node->type();
-      case Typecheck::PARAMETER_AS_CHECK:
-      case Typecheck::LOCAL_AS_CHECK:
-      case Typecheck::GLOBAL_AS_CHECK:
-      case Typecheck::RETURN_AS_CHECK:
-      case Typecheck::FIELD_INITIALIZER_AS_CHECK:
-      case Typecheck::FIELD_AS_CHECK:
+      case TypecheckInfo::PARAMETER_AS_CHECK:
+      case TypecheckInfo::LOCAL_AS_CHECK:
+      case TypecheckInfo::GLOBAL_AS_CHECK:
+      case TypecheckInfo::RETURN_AS_CHECK:
+      case TypecheckInfo::FIELD_INITIALIZER_AS_CHECK:
+      case TypecheckInfo::FIELD_AS_CHECK:
         // We are not using the type of the check, as we want to give
         //   warnings if the expression type and the checked type don't match.
         return expression_type;
@@ -578,7 +578,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     return Type::invalid();
   }
 
-  Type visit_Return(View<Return> node) {
+  Type visit_Return(ReturnView node) {
     auto value_type = visit(node->value());
     if (node->depth() == -1) {
       check(node->range(), method_->return_type(), value_type);
@@ -586,7 +586,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     return Type::none();
   }
 
-  Type visit_LogicalBinary(View<LogicalBinary> node) {
+  Type visit_LogicalBinary(LogicalBinaryView node) {
     Type left_type = visit(node->left());
     Type right_type = visit(node->right());
     if (left_type.is_none()) {
@@ -601,9 +601,9 @@ class TypeChecker : public ReturningVisitor<Type> {
     return Type::any();
   }
 
-  Type visit_Assignment(View<Assignment> node) { UNREACHABLE(); return Type::invalid(); }
+  Type visit_Assignment(AssignmentView node) { UNREACHABLE(); return Type::invalid(); }
 
-  Type visit_AssignmentDefine(View<AssignmentDefine> node) {
+  Type visit_AssignmentDefine(AssignmentDefineView node) {
     auto local = node->local();
     auto right_type = visit(node->right());
     if (local->has_explicit_type()) {
@@ -627,7 +627,7 @@ class TypeChecker : public ReturningVisitor<Type> {
 
   /// Whether the static class of [node]'s type also holds at runtime.
   /// Conservative.
-  bool is_guaranteed(View<Expression> node) {
+  bool is_guaranteed(ExpressionView node) {
     if (node->is_Literal()) return true;
     if (node->is_ReferenceLocal()) return node->as_ReferenceLocal()->target()->has_guaranteed_type();
     if (node->is_ReferenceGlobal()) {
@@ -655,7 +655,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     return false;
   }
 
-  Type visit_AssignmentLocal(View<AssignmentLocal> node) {
+  Type visit_AssignmentLocal(AssignmentLocalView node) {
     auto local = node->local();
     auto right_type = visit(node->right());
     if (local->type().is_any() && right_type.is_none()) {
@@ -667,7 +667,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     return right_type;
   }
 
-  Type visit_AssignmentGlobal(View<AssignmentGlobal> node) {
+  Type visit_AssignmentGlobal(AssignmentGlobalView node) {
     auto global = node->global();
     check_deprecated(node->range(), global);
     auto right_type = visit(node->right());
@@ -685,57 +685,57 @@ class TypeChecker : public ReturningVisitor<Type> {
     return right_type;
   }
 
-  Type visit_Literal(View<Literal> node) { UNREACHABLE(); return Type::invalid(); }
+  Type visit_Literal(LiteralView node) { UNREACHABLE(); return Type::invalid(); }
 
-  Type visit_LiteralNull(View<LiteralNull> node) {
+  Type visit_LiteralNull(LiteralNullView node) {
     return null_type_;
   }
-  Type visit_LiteralUndefined(View<LiteralUndefined> node) {
+  Type visit_LiteralUndefined(LiteralUndefinedView node) {
     // TODO(florian): should have the type of the corresponding assignments.
     return Type::any();
   }
-  Type visit_LiteralInteger(View<LiteralInteger> node) {
+  Type visit_LiteralInteger(LiteralIntegerView node) {
     return integer_type_;
   }
-  Type visit_LiteralFloat(View<LiteralFloat> node) {
+  Type visit_LiteralFloat(LiteralFloatView node) {
     return float_type_;
   }
-  Type visit_LiteralString(View<LiteralString> node) {
+  Type visit_LiteralString(LiteralStringView node) {
     return string_type_;
   }
-  Type visit_LiteralBoolean(View<LiteralBoolean> node) {
+  Type visit_LiteralBoolean(LiteralBooleanView node) {
     return node->value() ? true_type_ : false_type_;
   }
-  Type visit_LiteralByteArray(View<LiteralByteArray> node) {
+  Type visit_LiteralByteArray(LiteralByteArrayView node) {
     return Type::any();
   }
-  Type visit_PrimitiveInvocation(View<PrimitiveInvocation> node) {
+  Type visit_PrimitiveInvocation(PrimitiveInvocationView node) {
     // TODO(florian): get the type of primitive invocations.
     return Type::any();
   }
 
  private:
-  List<resolution::View<resolution::Class>> classes_;
-  const UnorderedMap<resolution::View<resolution::Class>, ResolutionQueryableClass>* queryables_;
+  List<resolution::ClassView> classes_;
+  const UnorderedMap<resolution::ClassView, ResolutionQueryableClass>* queryables_;
   Lsp* lsp_;
   Diagnostics* diagnostics_;
 
   // Since globals can be visited out of order (recursively), we need to
   // keep track which globals are already fully done.
-  Set<resolution::View<resolution::Global>> handled_globals_;
-  CycleDetector<resolution::View<resolution::Global>> globals_cycle_detector_;
-  UnorderedSet<resolution::View<resolution::Global>> reported_cyclic_globals_;
+  Set<resolution::GlobalView> handled_globals_;
+  CycleDetector<resolution::GlobalView> globals_cycle_detector_;
+  UnorderedSet<resolution::GlobalView> reported_cyclic_globals_;
 
   // The current method.
-  View<Method> method_;
+  MethodView method_;
 
   // Virtual calls whose static type also holds at runtime.
   // See `is_guaranteed`.
-  UnorderedSet<View<CallVirtual>> guaranteed_calls_;
+  UnorderedSet<CallVirtualView> guaranteed_calls_;
   // Results of `overrides_keep_return_type`, by receiver class and selector.
-  UnorderedMap<View<Class>, UnorderedMap<Selector<PlainShape>, bool>> override_cache_;
+  UnorderedMap<ClassView, UnorderedMap<Selector<PlainShape>, bool>> override_cache_;
   // Results of `subtypes_of`.
-  UnorderedMap<View<Class>, std::vector<View<Class>>> subtypes_cache_;
+  UnorderedMap<ClassView, std::vector<ClassView>> subtypes_cache_;
 
   Type boolean_type_;
   Type true_type_;
@@ -761,7 +761,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     va_end(arguments);
   }
 
-  void report_cyclic_global_types(const std::vector<resolution::View<resolution::Global>>& cycle) {
+  void report_cyclic_global_types(const std::vector<resolution::GlobalView>& cycle) {
     for (auto global : cycle) {
       diagnostics()->start_group();
       diagnostics()->report_error(global->range(), "Cyclic type dependency");
@@ -773,12 +773,12 @@ class TypeChecker : public ReturningVisitor<Type> {
     }
   }
 
-  void check_deprecated(Source::Range range, resolution::View<resolution::Node> node) {
+  void check_deprecated(Source::Range range, resolution::NodeView node) {
     // Don't give warnings for synthetic stubs.
     if (method_->is_FieldStub()) return;
     auto name = Symbol::invalid();
     auto holder_name = Symbol::invalid();
-    View<Class> holder;
+    ClassView holder;
     if (node->is_FieldStub()) {
       node = node->as_FieldStub()->field();
     }
@@ -918,8 +918,8 @@ class TypeChecker : public ReturningVisitor<Type> {
     }
   }
 
-  static bool is_subtype_of(View<Class> value_class, View<Class> receiver_class) {
-    for (View<Class> current = value_class; current != null; current = current->super()) {
+  static bool is_subtype_of(ClassView value_class, ClassView receiver_class) {
+    for (ClassView current = value_class; current != null; current = current->super()) {
       if (current == receiver_class) return true;
       for (auto inter : current->interfaces()) {
         // The interfaces list contains a flattened list of all interfaces this class implements.
@@ -954,7 +954,7 @@ class TypeChecker : public ReturningVisitor<Type> {
   /// The [parameter_type] must be the parameter's type, potentially already
   /// adjusted (made nullable) by the caller.
   void check_parameter(Source::Range range,
-                       resolution::View<resolution::Parameter> parameter,
+                       resolution::ParameterView parameter,
                        Type parameter_type,
                        Type value_type) {
     auto migration_types = parameter->migration_types();
@@ -1013,7 +1013,7 @@ class TypeChecker : public ReturningVisitor<Type> {
   }
 };
 
-void check_types_and_deprecations(resolution::View<resolution::Program> program,
+void check_types_and_deprecations(resolution::ProgramView program,
                                   Lsp* lsp,
                                   ToitdocRegistry* toitdocs,
                                   Diagnostics* diagnostics) {

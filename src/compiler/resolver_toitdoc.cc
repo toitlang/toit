@@ -26,7 +26,7 @@
 namespace toit {
 namespace compiler {
 
-static void ensure_has_toitdoc_scope(resolution::View<resolution::Class> klass);
+static void ensure_has_toitdoc_scope(resolution::ClassView klass);
 
 namespace {  // anonymous
 
@@ -39,8 +39,8 @@ class LeftMostIterator : public ToitdocScopeIterator {
  public:
   LeftMostIterator(Scope* scope,
                    ast::Node* holder,
-                   resolution::View<resolution::Class> this_class,
-                   List<resolution::View<resolution::Node>> super_entries)
+                   resolution::ClassView this_class,
+                   List<resolution::NodeView> super_entries)
       : scope_(scope)
       , holder_(holder)
       , this_class_(this_class)
@@ -67,8 +67,8 @@ class LeftMostIterator : public ToitdocScopeIterator {
  private:
   Scope* scope_;
   ast::Node* holder_;
-  resolution::View<resolution::Class> this_class_;
-  List<resolution::View<resolution::Node>> super_entries_;
+  resolution::ClassView this_class_;
+  List<resolution::NodeView> super_entries_;
 };
 
 /**
@@ -78,7 +78,7 @@ It sees both static and dynamic entries.
 */
 class ClassIterator : public ToitdocScopeIterator {
  public:
-  ClassIterator(resolution::View<resolution::Class> klass)
+  ClassIterator(resolution::ClassView klass)
       : class_(klass) {}
 
   void for_each(const std::function<void (Symbol)>& parameter_callback,
@@ -89,7 +89,7 @@ class ClassIterator : public ToitdocScopeIterator {
   }
 
  private:
-  resolution::View<resolution::Class> class_;
+  resolution::ClassView class_;
 };
 
 /**
@@ -111,7 +111,7 @@ class PrefixIterator : public ToitdocScopeIterator {
 
 } // namespace anonymous
 
-static void ensure_has_toitdoc_scope(resolution::View<resolution::Class> klass) {
+static void ensure_has_toitdoc_scope(resolution::ClassView klass) {
   if (klass->toitdoc_scope() != null) return;
   ScopeFiller filler;
   filler.add_all(klass->unnamed_constructors());
@@ -151,7 +151,7 @@ static ResolutionEntry lookup_super(ast::Node* holder, Scope* class_scope) {
   ASSERT(entry.kind() == ResolutionEntry::NODES);
   // TODO(florian): this work here is similar to the one we are doing
   //    in the MethodResolver::_compute_target_candidates.
-  ListBuilder<resolution::View<resolution::Node>> super_entries;
+  ListBuilder<resolution::NodeView> super_entries;
   bool found_super_separator = false;
   for (auto node : entry.nodes()) {
     if (node == ClassScope::SUPER_CLASS_SEPARATOR) {
@@ -235,7 +235,7 @@ static bool left_most_is_selection(ast::Node* ast_target) {
 static void call_lsp_handler(Lsp* lsp,
                              ast::ToitdocReference* ast_ref,
                              ast::Node* holder,
-                             List<resolution::View<resolution::Node>> candidates,
+                             List<resolution::NodeView> candidates,
                              Scope* scope) {
   auto ast_target = ast_ref->target();
   auto class_scope = scope->enclosing_class_scope();
@@ -245,11 +245,11 @@ static void call_lsp_handler(Lsp* lsp,
       // The candidates are only for the last full entry.
       // We could resolve the receiver, but, for now, we just don't provide
       // any goto-definition for it.
-      candidates = List<resolution::View<resolution::Node>>();
+      candidates = List<resolution::NodeView>();
     }
 
-    resolution::View<resolution::Class> this_class = class_scope != null ? class_scope->klass() : null;
-    List<resolution::View<resolution::Node>> super_entries;
+    resolution::ClassView this_class = class_scope != null ? class_scope->klass() : null;
+    List<resolution::NodeView> super_entries;
     if (class_scope != null) super_entries = lookup_super(holder, class_scope).nodes();
 
     LeftMostIterator iterator(scope, holder, this_class, super_entries);
@@ -302,7 +302,7 @@ static void call_lsp_handler(Lsp* lsp,
     // The candidates aren't for this segment, but for the whole ast_ref node.
     // We could look up new candidates, but for now we just provide none.
     lsp->selection_handler()->toitdoc_ref(left_dot->name(),
-                                          List<resolution::View<resolution::Node>>(),
+                                          List<resolution::NodeView>(),
                                           &iterator,
                                           is_signature_reference);
     return;
@@ -318,11 +318,11 @@ static void call_lsp_handler(Lsp* lsp,
 }
 
 
-resolution::View<resolution::Node> resolve_toitdoc_ref(ast::ToitdocReference* ast_ref,
+resolution::NodeView resolve_toitdoc_ref(ast::ToitdocReference* ast_ref,
                               ast::Node* holder,
                               Scope* scope,
                               Lsp* lsp,
-                              const UnorderedMap<resolution::View<resolution::Node>, ast::Node*>& ir_to_ast_map,
+                              const UnorderedMap<resolution::NodeView, ast::Node*>& ir_to_ast_map,
                               Diagnostics* diagnostics) {
   if (ast_ref->is_error()) return null;
 
@@ -333,21 +333,21 @@ resolution::View<resolution::Node> resolve_toitdoc_ref(ast::ToitdocReference* as
     ResolutionCallBuilder call_builder(ast_ref->selection_range());
 
     // Create the fake values we pass to the builder.
-    auto literal_null = resolution::make<resolution::LiteralNull>(ast_ref->selection_range());  // For non-block args.
-    auto fake_block_parameter = resolution::make<resolution::Parameter>(Symbol::synthetic("<fake-param>"),
+    auto literal_null = resolution::make<resolution::LiteralNullInfo>(ast_ref->selection_range());  // For non-block args.
+    auto fake_block_parameter = resolution::make<resolution::ParameterInfo>(Symbol::synthetic("<fake-param>"),
                                        resolution::Type::any(),
                                        true,  // Is block.
                                        0,
                                        false,
                                        Source::Range::invalid(),
                                        ast_ref->selection_range());
-    auto fake_block = resolution::make<resolution::ReferenceLocal>(fake_block_parameter, 0, ast_ref->selection_range());
+    auto fake_block = resolution::make<resolution::ReferenceLocalInfo>(fake_block_parameter, 0, ast_ref->selection_range());
 
     for (auto parameter : ast_ref->parameters()) {
       auto name = parameter->is_named()
           ? parameter->name()->data()
           : Symbol::invalid();
-      resolution::View<resolution::Expression> value = null;
+      resolution::ExpressionView value = null;
       if (parameter->is_block()) {
         value = fake_block;
       } else {
@@ -380,9 +380,9 @@ resolution::View<resolution::Node> resolve_toitdoc_ref(ast::ToitdocReference* as
   // TODO(florian): do the same for parameters. (for example, for completion of named arguments).
   bool is_lsp = is_lsp_selection(ast_target);
 
-  List<resolution::View<resolution::Node>> goto_definition_targets;
+  List<resolution::NodeView> goto_definition_targets;
 
-  resolution::View<resolution::Node> result = null;
+  resolution::NodeView result = null;
   switch (entry.kind()) {
     case ResolutionEntry::PREFIX:
       // TODO(florian): maybe we want to change this, but definitely not for signature-refs.
@@ -420,7 +420,7 @@ resolution::View<resolution::Node> resolve_toitdoc_ref(ast::ToitdocReference* as
       }
       if (!call_shape.is_valid()) {
         if (is_lsp) {
-          ListBuilder<resolution::View<resolution::Node>> candidates;
+          ListBuilder<resolution::NodeView> candidates;
           for (auto node : entry.nodes()) {
             if (node == ClassScope::SUPER_CLASS_SEPARATOR) {
               // If we haven't found a match yet, find them in the super-class entries.
@@ -455,7 +455,7 @@ resolution::View<resolution::Node> resolve_toitdoc_ref(ast::ToitdocReference* as
                                       name.c_str());
           break;
         } else {
-          goto_definition_targets = ListBuilder<resolution::View<resolution::Node>>::build(result);
+          goto_definition_targets = ListBuilder<resolution::NodeView>::build(result);
         }
       }
       if (result->is_FieldStub()) result = result->as_FieldStub()->field();
@@ -471,21 +471,21 @@ resolution::View<resolution::Node> resolve_toitdoc_ref(ast::ToitdocReference* as
   return result;
 }
 
-Toitdoc<resolution::View<resolution::Node>> resolve_toitdoc(Toitdoc<ast::Node*> ast_toitdoc,
+Toitdoc<resolution::NodeView> resolve_toitdoc(Toitdoc<ast::Node*> ast_toitdoc,
                                    ast::Node* holder,
                                    Scope* scope,
                                    Lsp* lsp,
-                                   const UnorderedMap<resolution::View<resolution::Node>, ast::Node*>& ir_to_ast_map,
+                                   const UnorderedMap<resolution::NodeView, ast::Node*>& ir_to_ast_map,
                                    Diagnostics* diagnostics) {
   auto ast_refs = ast_toitdoc.refs();
-  auto resolved = ListBuilder<resolution::View<resolution::Node>>::allocate(ast_refs.length());
+  auto resolved = ListBuilder<resolution::NodeView>::allocate(ast_refs.length());
   for (int i = 0; i < ast_refs.length(); i++) {
     auto ast_node = ast_refs[i];
     ASSERT(ast_node->is_ToitdocReference());
     auto ast_ref = ast_node->as_ToitdocReference();
     resolved[i] = resolve_toitdoc_ref(ast_ref, holder, scope, lsp, ir_to_ast_map, diagnostics);
   }
-  return Toitdoc<resolution::View<resolution::Node>>(ast_toitdoc.contents(), resolved, ast_toitdoc.range());
+  return Toitdoc<resolution::NodeView>(ast_toitdoc.contents(), resolved, ast_toitdoc.range());
 }
 
 } // namespace toit::compiler

@@ -21,13 +21,13 @@ namespace toit {
 namespace compiler {
 
 namespace resolution {
-class Program;
+class ProgramInfo; using ProgramView = View<ProgramInfo>;
 }
 class Lsp;
 class Diagnostics;
 class ToitdocRegistry;
 
-void check_types_and_deprecations(resolution::View<resolution::Program> program,
+void check_types_and_deprecations(resolution::ProgramView program,
                                   Lsp* lsp,
                                   ToitdocRegistry* toitdocs,
                                   Diagnostics* diagnostics);

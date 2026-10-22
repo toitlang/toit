@@ -68,14 +68,14 @@ class Toitdoc {
 
 class ToitdocRegistry {
  public:
-  using ResolvedToitdoc = Toitdoc<resolution::View<resolution::Node>>;
+  using ResolvedToitdoc = Toitdoc<resolution::NodeView>;
 
-  ResolvedToitdoc toitdoc_for(resolution::View<resolution::Node> node) const {
+  ResolvedToitdoc toitdoc_for(resolution::NodeView node) const {
     return lookup(nodes_, node.node());
   }
   ResolvedToitdoc toitdoc_for(Module* module) const { return lookup(modules_, module); }
 
-  void set_toitdoc(resolution::View<resolution::Node> node, ResolvedToitdoc toitdoc) {
+  void set_toitdoc(resolution::NodeView node, ResolvedToitdoc toitdoc) {
     nodes_[node.node()] = toitdoc;
   }
   void set_toitdoc(Module* module, ResolvedToitdoc toitdoc) { modules_[module] = toitdoc; }
@@ -89,7 +89,7 @@ class ToitdocRegistry {
   template<typename F>
   void for_each_node(const F& callback) {
     nodes_.for_each([&](resolution::AstNode* node, ResolvedToitdoc toitdoc) {
-      callback(resolution::View<resolution::Node>(node), toitdoc);
+      callback(resolution::NodeView(node), toitdoc);
     });
   }
 

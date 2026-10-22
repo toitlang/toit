@@ -85,7 +85,7 @@ class TokenVisitor : public resolution::TraversingVisitor {
     }
   }
 
-  void visit_Class(resolution::View<resolution::Class> node) override {
+  void visit_Class(resolution::ClassView node) override {
     bool is_definition = true;
     emit_token(node->range(), node, is_definition);
     // TODO(florian): emit tokens for interfaces, super and mixins.
@@ -96,7 +96,7 @@ class TokenVisitor : public resolution::TraversingVisitor {
   std::vector<SemanticToken> tokens() const { return tokens_; }
 
  private:
-  void emit_token(const Source::Range& range, resolution::View<resolution::Node> node, bool is_definition = false) {
+  void emit_token(const Source::Range& range, resolution::NodeView node, bool is_definition = false) {
     int modifiers = 0;
     if (is_definition) modifiers |= DEFINITION_BIT;
     if (node->is_Local()) {
@@ -109,12 +109,12 @@ class TokenVisitor : public resolution::TraversingVisitor {
       if (klass->is_runtime_class()) modifiers |= DEFAULT_LIBRARY_BIT;
       TokenType token_type = TokenType::CLASS;  // Initialize with a value, to silence compiler warnings.
       switch (klass->kind()) {
-        case resolution::Class::CLASS:
-        case resolution::Class::MONITOR:
-        case resolution::Class::MIXIN:
+        case resolution::ClassInfo::CLASS:
+        case resolution::ClassInfo::MONITOR:
+        case resolution::ClassInfo::MIXIN:
           token_type = TokenType::CLASS;
           break;
-        case resolution::Class::INTERFACE:
+        case resolution::ClassInfo::INTERFACE:
           token_type = TokenType::INTERFACE;
           break;
       }
