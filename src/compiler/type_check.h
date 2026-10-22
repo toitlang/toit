@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include "ast_resolution.h"
+
 namespace toit {
 namespace compiler {
 
@@ -25,7 +27,7 @@ class Lsp;
 class Diagnostics;
 class ToitdocRegistry;
 
-void check_types_and_deprecations(resolution::Program* program,
+void check_types_and_deprecations(resolution::View<resolution::Program> program,
                                   Lsp* lsp,
                                   ToitdocRegistry* toitdocs,
                                   Diagnostics* diagnostics);

@@ -28,18 +28,18 @@ static void test() {
   auto range = Source::Range::invalid();
   ast::LiteralInteger source(Symbol::synthetic("42"));
   ast::LiteralNull nested;
-  resolution::LiteralInteger* integer;
+  resolution::View<resolution::LiteralInteger> integer;
   {
     resolution::Origin origin(&source);
-    integer = zone_new<resolution::LiteralInteger>(42, range);
+    integer = resolution::make<resolution::LiteralInteger>(42, range);
     integer->ast_node()->attach(&source);
     {
       resolution::Origin child(&nested);
-      auto value = zone_new<resolution::LiteralNull>(range);
+      auto value = resolution::make<resolution::LiteralNull>(range);
       check(value->ast_node()->syntax() == &nested);
     }
     // An implicit operation keeps the enclosing syntax after a child resolves.
-    auto implicit = zone_new<resolution::Nop>(range);
+    auto implicit = resolution::make<resolution::Nop>(range);
     check(implicit->ast_node()->syntax() == &source);
   }
   check(resolution::Origin::current() == null);
@@ -52,7 +52,7 @@ static void test() {
   check(visitor.syntax == &source && visitor.value == 42);
 
   // A second resolution updates the AST attachment, not existing views.
-  auto second = zone_new<resolution::LiteralInteger>(43, range);
+  auto second = resolution::make<resolution::LiteralInteger>(43, range);
   second->ast_node()->attach(&source);
   visitor.visit(source.resolution());
   check(visitor.value == 43);

@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include "ast_resolution.h"
+
 namespace toit {
 namespace compiler {
 
@@ -23,7 +25,7 @@ class Program;
 }
 class Diagnostics;
 
-void check_definite_assignments_returns(resolution::Program* program, Diagnostics* diagnostics);
+void check_definite_assignments_returns(resolution::View<resolution::Program> program, Diagnostics* diagnostics);
 
 } // namespace toit::compiler
 } // namespace toit

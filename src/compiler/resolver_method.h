@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include "ast_resolution.h"
 #include "resolution_call_builder.h"
 #include <vector>
 #include <functional>
@@ -52,10 +53,10 @@ class MethodResolver : public ast::Visitor {
   };
 
  public:
-  MethodResolver(resolution::Method* method,
-                 resolution::Class* holder,
+  MethodResolver(resolution::View<resolution::Method> method,
+                 resolution::View<resolution::Class> holder,
                  Scope* scope,
-                 UnorderedMap<resolution::Node*, ast::Node*>* ir_to_ast_map,
+                 UnorderedMap<resolution::View<resolution::Node>, ast::Node*>* ir_to_ast_map,
                  Module* entry_module,
                  Module* core_module,
                  Lsp* lsp,
@@ -93,11 +94,11 @@ class MethodResolver : public ast::Visitor {
   void visit(ast::Node* node) override;
 
   /// Resolves the given field, and generates diagnostic messages.
-  void resolve_field(resolution::Field* ir_field);
+  void resolve_field(resolution::View<resolution::Field> ir_field);
 
   static Symbol this_identifier() { return Symbols::this_; }
 
-  std::vector<resolution::AssignmentGlobal*>& global_assignments() { return global_assignments_; }
+  std::vector<resolution::View<resolution::AssignmentGlobal>>& global_assignments() { return global_assignments_; }
 
  private:
   resolution::Type resolve_type(ast::Expression* node, bool is_return_type);
@@ -107,21 +108,21 @@ class MethodResolver : public ast::Visitor {
   void resolve_fill_method();
 
   int _find_super_invocation(List<ast::Expression*> expressions);
-  resolution::Expression* _accumulate_concatenation(resolution::Expression* lhs, resolution::Expression* rhs, Source::Range range);
+  resolution::View<resolution::Expression> _accumulate_concatenation(resolution::View<resolution::Expression> lhs, resolution::View<resolution::Expression> rhs, Source::Range range);
 
  private:
-  typedef const std::function<resolution::Local* (resolution::Expression*)> CreateTemp;
-  typedef const std::function<resolution::Expression* (resolution::Expression*)> StoreOldValue;
+  typedef const std::function<resolution::View<resolution::Local> (resolution::View<resolution::Expression>)> CreateTemp;
+  typedef const std::function<resolution::View<resolution::Expression> (resolution::View<resolution::Expression>)> StoreOldValue;
 
-  resolution::Method* method_;
-  resolution::Class* holder_;
-  UnorderedMap<resolution::Node*, ast::Node*>* ir_to_ast_map_;
+  resolution::View<resolution::Method> method_;
+  resolution::View<resolution::Class> holder_;
+  UnorderedMap<resolution::View<resolution::Node>, ast::Node*>* ir_to_ast_map_;
   Module* entry_module_;
   Module* core_module_;
   Lsp* lsp_;
   SourceManager* source_manager_;
   Diagnostics* diagnostics_;
-  std::vector<resolution::Node*> stack_;
+  std::vector<resolution::View<resolution::Node>> stack_;
   Scope* scope_;
   ResolutionMode resolution_mode_;
   // The expression that forced to switch the constructor to instance mode.
@@ -154,7 +155,7 @@ class MethodResolver : public ast::Visitor {
   bool has_primitive_invocation_ = false;
   std::vector<std::pair<Symbol, ast::Node*>> break_continue_label_stack_;
 
-  std::vector<resolution::AssignmentGlobal*> global_assignments_;
+  std::vector<resolution::View<resolution::AssignmentGlobal>> global_assignments_;
 
   resolution::Type bool_type_ = resolution::Type::invalid();
   resolution::Type true_type_ = resolution::Type::invalid();
@@ -164,78 +165,78 @@ class MethodResolver : public ast::Visitor {
   Diagnostics* diagnostics() const { return diagnostics_; }
   Scope* scope() const { return scope_; }
 
-  void push(resolution::Node* value) {
+  void push(resolution::View<resolution::Node> value) {
     ASSERT(value != null);
     stack_.push_back(value);
   }
 
-  resolution::Node* pop() {
+  resolution::View<resolution::Node> pop() {
     ASSERT(!stack_.empty());
-    resolution::Node* result = stack_.back();
+    resolution::View<resolution::Node> result = stack_.back();
     stack_.pop_back();
     return result;
   }
 
-  resolution::Expression* resolve_expression(ast::Node* node, const char* error_when_block, bool allow_assignment = false);
-  resolution::Expression* resolve_statement(ast::Node* node, const char* error_when_block);
+  resolution::View<resolution::Expression> resolve_expression(ast::Node* node, const char* error_when_block, bool allow_assignment = false);
+  resolution::View<resolution::Expression> resolve_statement(ast::Node* node, const char* error_when_block);
   // Resolves an expression that was already reported as error.
   // Doesn't restrict the expression to avoid dependent errors.
-  resolution::Expression* resolve_error(ast::Node* node);
+  resolution::View<resolution::Expression> resolve_error(ast::Node* node);
 
   Scope::LookupResult lookup(Symbol name) const { return scope_->lookup(name); }
   Scope::LookupResult lookup(ast::Identifier* id) const { return lookup(id->data()); }
 
   void report_abstract_class_instantiation_error(const ast::Node* position_node,
-                                                 resolution::Class* ir_class);
-  void report_error(resolution::Node* position_node, const char* format, ...);
+                                                 resolution::View<resolution::Class> ir_class);
+  void report_error(resolution::View<resolution::Node> position_node, const char* format, ...);
   void report_error(const ast::Node* position_node, const char* format, ...);
   void report_error(Source::Range range, const char* format, ...);
   void report_error(const char* format, ...);
-  void report_note(resolution::Node* position_node, const char* format, ...);
+  void report_note(resolution::View<resolution::Node> position_node, const char* format, ...);
   void report_note(const ast::Node* position_node, const char* format, ...);
   void report_note(Source::Range range, const char* format, ...);
 
-  void _add_parameters_to_scope(LocalScope* scope, List<resolution::Parameter*> parameters);
-  void _resolve_fill_parameters_return_type(Set<resolution::Parameter*>* field_storing_parameters,
-                                            std::vector<resolution::Expression*>* parameter_expressions,
+  void _add_parameters_to_scope(LocalScope* scope, List<resolution::View<resolution::Parameter>> parameters);
+  void _resolve_fill_parameters_return_type(Set<resolution::View<resolution::Parameter>>* field_storing_parameters,
+                                            std::vector<resolution::View<resolution::Expression>>* parameter_expressions,
                                             bool is_constructor);
   void _resolve_fill_return_type();
   void _resolve_parameters(List<ast::Parameter*> ast_parameters,
                            bool has_implicit_this,
                            // The rest are output parameters.
-                           List<resolution::Parameter*>* ir_parameters,
-                           Set<resolution::Parameter*>* field_storing_parameters,
-                           std::vector<resolution::Expression*>* parameter_expressions,
+                           List<resolution::View<resolution::Parameter>>* ir_parameters,
+                           Set<resolution::View<resolution::Parameter>>* field_storing_parameters,
+                           std::vector<resolution::View<resolution::Expression>>* parameter_expressions,
                            bool is_constructor,
                            int id_offset = 0);
 
-  bool _parameter_has_explicit_type(resolution::Parameter* ir_parameter) const {
+  bool _parameter_has_explicit_type(resolution::View<resolution::Parameter> ir_parameter) const {
     if (!ir_parameter->type().is_any()) return true;
     auto ast_parameter = ir_to_ast_map_->at(ir_parameter)->as_Parameter();
     return ast_parameter->type() != null;
   }
 
-  resolution::Expression* _resolve_constructor_super_target(ast::Node* target_node, CallShape shape);
+  resolution::View<resolution::Expression> _resolve_constructor_super_target(ast::Node* target_node, CallShape shape);
 
   struct Candidates {
     Symbol name;
     int block_depth;
-    List<resolution::Node*> nodes;
+    List<resolution::View<resolution::Node>> nodes;
     // If the name resolved to a single class.
     // The nodes contain the unnamed constructor/factories in this case.
     // Erroneous programs may contain more than one class, in which case this
     //   field is not set.
-    resolution::Class* klass;
+    resolution::View<resolution::Class> klass;
     bool encountered_error;
   };
   Candidates _compute_target_candidates(ast::Node* target_node, Scope* scope);
   // Computes the constructor super candidates for the current [method_].
-  List<resolution::Node*> _compute_constructor_super_candidates(ast::Node* target_node);
-  resolution::Node* _resolve_call_target(ast::Node* target_node,
+  List<resolution::View<resolution::Node>> _compute_constructor_super_candidates(ast::Node* target_node);
+  resolution::View<resolution::Node> _resolve_call_target(ast::Node* target_node,
                                  CallShape shape,
                                  Scope* scope = null);
 
-  resolution::Expression* _this_ref(Source::Range range,
+  resolution::View<resolution::Expression> _this_ref(Source::Range range,
                             bool ignore_resolution_mode = false);
   bool is_literal_this(ast::Node* node) {
     return node->is_Identifier() && node->as_Identifier()->data() == Symbols::this_;
@@ -259,8 +260,8 @@ class MethodResolver : public ast::Visitor {
                             const Source::Range& target_range);
 
 
-  void _handle_lsp_call_dot(ast::Dot* ast_dot, resolution::Expression* ir_receiver);
-  void _handle_lsp_call_identifier(ast::Node* ast_target, resolution::Node* ir_target1, resolution::Node* ir_target2);
+  void _handle_lsp_call_dot(ast::Dot* ast_dot, resolution::View<resolution::Expression> ir_receiver);
+  void _handle_lsp_call_identifier(ast::Node* ast_target, resolution::View<resolution::Node> ir_target1, resolution::View<resolution::Node> ir_target2);
 
   void _visit_potential_call_identifier(ast::Node* ast_target,
                                         ResolutionCallBuilder& call_builder,
@@ -282,41 +283,41 @@ class MethodResolver : public ast::Visitor {
                              ast::Node* ast_target,
                              List<ast::Expression*> ast_arguments = List<ast::Expression*>());
 
-  resolution::Expression* _instantiate_runtime(Symbol id,
-                                       List<resolution::Expression*> arguments,
+  resolution::View<resolution::Expression> _instantiate_runtime(Symbol id,
+                                       List<resolution::View<resolution::Expression>> arguments,
                                        Source::Range range);
 
-  resolution::ReferenceMethod* _resolve_runtime_call(Symbol id, CallShape shape);
-  resolution::Expression* _call_runtime(Symbol id,
-                                List<resolution::Expression*> arguments,
+  resolution::View<resolution::ReferenceMethod> _resolve_runtime_call(Symbol id, CallShape shape);
+  resolution::View<resolution::Expression> _call_runtime(Symbol id,
+                                List<resolution::View<resolution::Expression>> arguments,
                                 Source::Range range);
 
-  resolution::Expression* _create_throw(resolution::Expression* exception,
+  resolution::View<resolution::Expression> _create_throw(resolution::View<resolution::Expression> exception,
                                 Source::Range range);
-  resolution::Expression* _create_array(List<resolution::Expression*> entries,
+  resolution::View<resolution::Expression> _create_array(List<resolution::View<resolution::Expression>> entries,
                                 Source::Range range);
 
-  List<resolution::Expression*> list_of(resolution::Expression* single) {
-    return ListBuilder<resolution::Expression*>::build(single);
+  List<resolution::View<resolution::Expression>> list_of(resolution::View<resolution::Expression> single) {
+    return ListBuilder<resolution::View<resolution::Expression>>::build(single);
   }
-  List<resolution::Expression*> list_of(resolution::Expression* first, resolution::Expression* second) {
-    return ListBuilder<resolution::Expression*>::build(first, second);
+  List<resolution::View<resolution::Expression>> list_of(resolution::View<resolution::Expression> first, resolution::View<resolution::Expression> second) {
+    return ListBuilder<resolution::View<resolution::Expression>>::build(first, second);
   }
-  List<resolution::Expression*> list_of(resolution::Expression* first, resolution::Expression* second, resolution::Expression* third) {
-    return ListBuilder<resolution::Expression*>::build(first, second, third);
+  List<resolution::View<resolution::Expression>> list_of(resolution::View<resolution::Expression> first, resolution::View<resolution::Expression> second, resolution::View<resolution::Expression> third) {
+    return ListBuilder<resolution::View<resolution::Expression>>::build(first, second, third);
   }
 
-  resolution::Code* _create_code(ast::Node* node,
+  resolution::View<resolution::Code> _create_code(ast::Node* node,
                          List<ast::Parameter*> parameters,
                          ast::Sequence* body,
                          bool has_implicit_block_argument,
                          bool has_implicit_it_parameter,
                          Symbol label);
-  resolution::Code* _create_block(ast::Block* node,
+  resolution::View<resolution::Code> _create_block(ast::Block* node,
                           bool has_implicit_it_parameter,
                           bool may_mutate_final,
                           Symbol label);
-  resolution::Expression* _create_lambda(ast::Lambda* node,
+  resolution::View<resolution::Expression> _create_lambda(ast::Lambda* node,
                                  Symbol label);
   void _visit_block(ast::Block* node);
   void visit_Block(ast::Block* node);
@@ -359,22 +360,22 @@ class MethodResolver : public ast::Visitor {
   void visit_LiteralMap(ast::LiteralMap* node);
   void visit_call_main(ast::Call* node);
   void visit_call_primitive(ast::Call* node);
-  resolution::AssignmentLocal* _typed_assign_local(resolution::Local* local,
+  resolution::View<resolution::AssignmentLocal> _typed_assign_local(resolution::View<resolution::Local> local,
                                            int block_depth,
-                                           resolution::Expression* value,
+                                           resolution::View<resolution::Expression> value,
                                            Source::Range range);
-  resolution::Expression* _as_or_is (ast::Binary* node);
-  resolution::Expression* _definition_rhs(ast::Expression* node, Symbol name);
-  resolution::Expression* _bad_define(ast::Binary* node);
-  resolution::Expression* _define(ast::Expression* node, resolution::Expression* ir_right = null);
-  resolution::Expression* _assign(ast::Binary* node, bool is_postfix = false);
-  resolution::Expression* _assign_dot(ast::Binary* node,
+  resolution::View<resolution::Expression> _as_or_is (ast::Binary* node);
+  resolution::View<resolution::Expression> _definition_rhs(ast::Expression* node, Symbol name);
+  resolution::View<resolution::Expression> _bad_define(ast::Binary* node);
+  resolution::View<resolution::Expression> _define(ast::Expression* node, resolution::View<resolution::Expression> ir_right = null);
+  resolution::View<resolution::Expression> _assign(ast::Binary* node, bool is_postfix = false);
+  resolution::View<resolution::Expression> _assign_dot(ast::Binary* node,
                               CreateTemp& create_temp,
                               StoreOldValue& store_old);
-  resolution::Expression* _assign_index(ast::Binary* node,
+  resolution::View<resolution::Expression> _assign_index(ast::Binary* node,
                                 CreateTemp& create_temp,
                                 StoreOldValue& store_old);
-  resolution::Expression* _assign_instance_member(ast::Binary* node,
+  resolution::View<resolution::Expression> _assign_instance_member(ast::Binary* node,
                                           Symbol selector,
                                           StoreOldValue& store_old);
   /// Returns whether the operation succeeded.
@@ -382,25 +383,25 @@ class MethodResolver : public ast::Visitor {
   /// Fills [ir_setter_node] and, if compound, the [ir_getter_node].
   /// The [block_depth] node is filled, if the setter/getter is a local.
   bool _assign_identifier_resolve_left(ast::Binary* node,
-                                       resolution::Node** ir_setter_node,
-                                       resolution::Node** ir_getter_node,
+                                       resolution::View<resolution::Node>* ir_setter_node,
+                                       resolution::View<resolution::Node>* ir_getter_node,
                                        int* block_depth);
-  resolution::Expression* _assign_identifier(ast::Binary* node,
+  resolution::View<resolution::Expression> _assign_identifier(ast::Binary* node,
                                      StoreOldValue& store_old);
-  resolution::Expression* _potentially_store_field(ast::Node* node,
+  resolution::View<resolution::Expression> _potentially_store_field(ast::Node* node,
                                            Symbol field_name,
                                            bool lookup_class_scope,
                                            ast::Expression* value,
                                            StoreOldValue& store_old);
-  resolution::Expression* _potentially_load_field(Symbol field_name,
+  resolution::View<resolution::Expression> _potentially_load_field(Symbol field_name,
                                           bool lookup_class_scope,
                                           Source::Range range);
-  resolution::Expression* _binary_operator(ast::Binary* node,
-                                   resolution::Expression* ir_left = null,
-                                   resolution::Expression* ir_right = null);
-  resolution::Expression* _binary_comparison_operator(ast::Binary* node,
-                                              resolution::Local* temporary = null);
-  resolution::Expression* _logical_operator(ast::Binary* node);
+  resolution::View<resolution::Expression> _binary_operator(ast::Binary* node,
+                                   resolution::View<resolution::Expression> ir_left = null,
+                                   resolution::View<resolution::Expression> ir_right = null);
+  resolution::View<resolution::Expression> _binary_comparison_operator(ast::Binary* node,
+                                              resolution::View<resolution::Local> temporary = null);
+  resolution::View<resolution::Expression> _logical_operator(ast::Binary* node);
 
   void visit_Binary(ast::Binary* node);
   void visit_Unary(ast::Unary* node);

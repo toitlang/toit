@@ -23,7 +23,25 @@ namespace compiler {
 namespace resolution {
 
 
-bool Method::_parameters_have_correct_index(List<Parameter*> parameters) {
+View<Node> Reference::target() const {
+  auto self = const_cast<Reference*>(this);
+  if (is_ReferenceClass()) return self->as_ReferenceClass()->target();
+  if (is_ReferenceMethod()) return self->as_ReferenceMethod()->target();
+  if (is_ReferenceGlobal()) return self->as_ReferenceGlobal()->target();
+  if (is_ReferenceLocal()) return self->as_ReferenceLocal()->target();
+  UNREACHABLE();
+}
+
+View<Node> Call::target() const {
+  auto self = const_cast<Call*>(this);
+  if (is_CallStatic()) return self->as_CallStatic()->target();
+  if (is_CallVirtual()) return self->as_CallVirtual()->target();
+  if (is_CallBlock()) return self->as_CallBlock()->target();
+  if (is_CallBuiltin()) return self->as_CallBuiltin()->target();
+  UNREACHABLE();
+}
+
+bool Method::_parameters_have_correct_index(List<View<Parameter>> parameters) {
   for (int i = 0 ; i < parameters.length(); i++) {
     if (parameters[i]->index() != i) return false;
   }
@@ -31,7 +49,7 @@ bool Method::_parameters_have_correct_index(List<Parameter*> parameters) {
 }
 
 
-void Visitor::visit(Node* node) { node->ast_node()->accept(this); }
+void Visitor::visit(View<Node> node) { node->ast_node()->accept(this); }
 void Visitor::visit(AstNode* node) { node->accept(this); }
 
 void TraversingVisitor::visit_Program(View<Program> node) {
@@ -211,13 +229,13 @@ class Printer : public Visitor {
 
   void visit_Program(View<Program> node) {
     printf("-------- program --------\n");
-    List<Method*> methods = node->methods();
+    List<View<Method>> methods = node->methods();
     for (int i = 0; i < methods.length(); i++) {
       if (i != 0) printf("\n");
       methods[i]->accept(this);
     }
 
-    List<Global*> globals = node->globals();
+    List<View<Global>> globals = node->globals();
     for (auto global : globals) {
       printf("Global %s:\n", global->name().c_str());
       global->accept(this);

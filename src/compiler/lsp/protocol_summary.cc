@@ -51,7 +51,7 @@ struct ToitdocPath {
   Kind kind;
   Module* module;
   // Holder, if the element is inside a class.
-  resolution::Class* klass;
+  resolution::View<resolution::Class> klass;
 };
 
 template<typename T> static int length_of(const std::vector<T>& v) { return static_cast<int>(v.size()); }
@@ -64,8 +64,8 @@ static bool is_operator_name(const char* name) {
 
 class ToitdocWriter : public toitdoc::Visitor {
  public:
-  ToitdocWriter(Toitdoc<resolution::Node*> toitdoc,
-                const UnorderedMap<resolution::Node*, ToitdocPath>& paths,
+  ToitdocWriter(Toitdoc<resolution::View<resolution::Node>> toitdoc,
+                const UnorderedMap<resolution::View<resolution::Node>, ToitdocPath>& paths,
                 LspWriter* lsp_writer)
       : toitdoc_(toitdoc)
       , paths_(paths)
@@ -194,8 +194,8 @@ class ToitdocWriter : public toitdoc::Visitor {
   void visit_Expression(toitdoc::Expression* node) { visit(node); }
 
  private:
-  Toitdoc<resolution::Node*> toitdoc_;
-  UnorderedMap<resolution::Node*, ToitdocPath> paths_;
+  Toitdoc<resolution::View<resolution::Node>> toitdoc_;
+  UnorderedMap<resolution::View<resolution::Node>, ToitdocPath> paths_;
   LspWriter* lsp_writer_;
 
   template<typename T, typename T2>
@@ -292,7 +292,7 @@ class Writer {
   explicit Writer(const std::vector<Module*>& modules,
                   const ToitdocRegistry& toitdocs,
                   int core_index,
-                  const UnorderedMap<resolution::Node*, ToitdocPath>& paths,
+                  const UnorderedMap<resolution::View<resolution::Node>, ToitdocPath>& paths,
                   LspWriter* lsp_writer)
       : modules_(modules)
       , toitdocs_(toitdocs)
@@ -307,8 +307,8 @@ class Writer {
   const std::vector<Module*> modules_;
   ToitdocRegistry toitdocs_;
   int core_index_;
-  UnorderedMap<resolution::Node*, ToitdocPath> paths_;
-  UnorderedMap<resolution::Node*, int> toplevel_ids_;
+  UnorderedMap<resolution::View<resolution::Node>, ToitdocPath> paths_;
+  UnorderedMap<resolution::View<resolution::Node>, int> toplevel_ids_;
   List<int> module_offsets_;
 
   LspWriter* lsp_writer_;
@@ -318,11 +318,11 @@ class Writer {
   void print_range(const Source::Range& range);
   void safe_print_symbol(Symbol symbol);
   void safe_print_symbol_external(Symbol symbol);
-  void print_toplevel_ref(resolution::Node* toplevel_element);
+  void print_toplevel_ref(resolution::View<resolution::Node> toplevel_element);
   void print_type(resolution::Type type);
-  void print_method(resolution::Method* method);
-  void print_class(resolution::Class* klass);
-  void print_field(resolution::Field* field);
+  void print_method(resolution::View<resolution::Method> method);
+  void print_class(resolution::View<resolution::Class> klass);
+  void print_field(resolution::View<resolution::Field> field);
   void print_export(Symbol id, const ResolutionEntry& entry);
   void print_dependencies(Module* module);
   void print_module(Module* module, Module* core_module);
@@ -420,7 +420,7 @@ void Writer::safe_print_symbol_external(Symbol symbol) {
   }
 }
 
-void Writer::print_toplevel_ref(resolution::Node* toplevel_element) {
+void Writer::print_toplevel_ref(resolution::View<resolution::Node> toplevel_element) {
   // Toplevel references are using an ID that is dependent on the current
   // analysis. That is, they are not stable across different runs.
   // As such, we can't just use the `print_external` as we do for other
@@ -457,7 +457,7 @@ void Writer::print_type(resolution::Type type) {
   }
 }
 
-void Writer::print_field(resolution::Field* field) {
+void Writer::print_field(resolution::View<resolution::Field> field) {
   safe_print_symbol_external(field->name());
   print_range(field->range());
   print_range(field->outline_range());
@@ -468,7 +468,7 @@ void Writer::print_field(resolution::Field* field) {
   print_toitdoc(field);
 }
 
-void Writer::print_method(resolution::Method* method) {
+void Writer::print_method(resolution::View<resolution::Method> method) {
   if (method->name().is_valid()) {
     const char* name = method->name().c_str();
     if (method->is_setter()) {
@@ -554,7 +554,7 @@ void Writer::print_method(resolution::Method* method) {
   print_toitdoc(method);
 }
 
-void Writer::print_class(resolution::Class* klass) {
+void Writer::print_class(resolution::View<resolution::Class> klass) {
   safe_print_symbol_external(klass->name());
   print_range(klass->range());
   print_range(klass->outline_range());
@@ -606,7 +606,7 @@ void Writer::print_export(Symbol exported_id, const ResolutionEntry& entry) {
       this->printf_external("NODES\n");
       break;
   }
-  print_list_external(entry.nodes(), [&] (resolution::Node* node) {
+  print_list_external(entry.nodes(), [&] (resolution::View<resolution::Node> node) {
     ASSERT(node->is_Class() || node->is_Method());
     print_toplevel_ref(node);
   });
@@ -643,7 +643,7 @@ void Writer::print_modules() {
     module_count++;
   }
   this->printf("%d\n", module_count);
-  UnorderedMap<resolution::Node*, int> toplevel_ids;
+  UnorderedMap<resolution::View<resolution::Node>, int> toplevel_ids;
   List<int> module_offsets = ListBuilder<int>::allocate(modules.size());
   int toplevel_id = 0;
   int module_id = 0;
@@ -733,9 +733,9 @@ void Writer::print_module(Module* module, Module* core_module) {
 class ToitdocPathMappingCreator {
  public:
   /// Runs through the program and collects the toitdoc-paths to nodes that are referenced in toitdocs.
-  UnorderedMap<resolution::Node*, ToitdocPath> create(const std::vector<Module*>& modules,
+  UnorderedMap<resolution::View<resolution::Node>, ToitdocPath> create(const std::vector<Module*>& modules,
                                               ToitdocRegistry toitdocs) {
-    toitdocs.for_each([&](void* _, Toitdoc<resolution::Node*> toitdoc) {
+    toitdocs.for_each([&](Toitdoc<resolution::View<resolution::Node>> toitdoc) {
       for (auto ref : toitdoc.refs()) {
         if (ref == null) continue;
 
@@ -761,11 +761,11 @@ class ToitdocPathMappingCreator {
   }
 
  private:
-  Set<resolution::Node*> ref_targets_;
-  UnorderedMap<resolution::Node*, ToitdocPath> mapping_;
+  Set<resolution::View<resolution::Node>> ref_targets_;
+  UnorderedMap<resolution::View<resolution::Node>, ToitdocPath> mapping_;
 
   template<typename Container>
-  void visit_container(ToitdocPath::Kind kind, Module* module, resolution::Class* klass, const Container& list) {
+  void visit_container(ToitdocPath::Kind kind, Module* module, resolution::View<resolution::Class> klass, const Container& list) {
     for (auto element : list) {
       if (ref_targets_.contains(element)) {
         mapping_[element] = {

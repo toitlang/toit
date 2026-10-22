@@ -323,7 +323,7 @@ class Pipeline {
   /// Subclasses that only need the parsed AST (e.g. SelectionRangePipeline)
   /// can override this to act on the units and call exit(0).
   virtual void parsed_units(const std::vector<ast::Unit*>& units);
-  virtual void post_resolve(Resolver* resolver, resolution::Program* program);
+  virtual void post_resolve(Resolver* resolver, resolution::View<resolution::Program> program);
   virtual void post_type_check();
 
   virtual List<const char*> adjust_source_paths(List<const char*> source_paths);
@@ -351,11 +351,11 @@ class Pipeline {
                        const PackageLock& package_lock);
   std::vector<ast::Unit*> _parse_units(List<const char*> source_paths,
                                        const PackageLock& package_lock);
-  resolution::Program* resolve(const std::vector<ast::Unit*>& units,
+  resolution::View<resolution::Program> resolve(const std::vector<ast::Unit*>& units,
                        int entry_unit_index,
                        int core_unit_index,
                        bool quiet = false);
-  void check_types_and_deprecations(resolution::Program* program, bool quiet = false);
+  void check_types_and_deprecations(resolution::View<resolution::Program> program, bool quiet = false);
 };
 
 
@@ -468,7 +468,7 @@ class FindReferencesPipeline : public LocationLanguageServerPipeline {
 
  protected:
   void setup_lsp_selection_handler() override;
-  void post_resolve(Resolver* resolver, resolution::Program* program) override;
+  void post_resolve(Resolver* resolver, resolution::View<resolution::Program> program) override;
   void post_type_check() override;
 
   bool is_lsp_selection_identifier() override { return false; }
@@ -477,8 +477,8 @@ class FindReferencesPipeline : public LocationLanguageServerPipeline {
   // State saved during post_resolve for deferred use in post_type_check.
   // When the cursor is on a virtual call site, the target is not available
   // until after type checking (when the call_virtual callback fires).
-  resolution::Program* program_ = null;
-  UnorderedMap<resolution::Node*, ast::Node*> ir_to_ast_map_;
+  resolution::View<resolution::Program> program_ = null;
+  UnorderedMap<resolution::View<resolution::Node>, ast::Node*> ir_to_ast_map_;
 
   // Show/export clause references collected from the resolver.
   // Each entry maps a resolved target definition to the source range
@@ -506,7 +506,7 @@ class PrepareRenamePipeline : public LocationLanguageServerPipeline {
 
  protected:
   void setup_lsp_selection_handler() override;
-  void post_resolve(Resolver* resolver, resolution::Program* program) override;
+  void post_resolve(Resolver* resolver, resolution::View<resolution::Program> program) override;
   void post_type_check() override;
 
   bool is_lsp_selection_identifier() override { return false; }
@@ -517,7 +517,7 @@ class PrepareRenamePipeline : public LocationLanguageServerPipeline {
   /// If [range_override] is valid, it is used instead of the target's own range.
   /// This is needed for named constructors/factories where the IR range points
   /// to the "constructor"/"factory" keyword but we want the name part (e.g., "bar").
-  void emit_prepare_rename(resolution::Node* target,
+  void emit_prepare_rename(resolution::View<resolution::Node> target,
                            Source::Range range_override = Source::Range::invalid());
 };
 
@@ -538,7 +538,7 @@ class HoverPipeline : public LocationLanguageServerPipeline {
     lsp()->setup_hover_handler(source_manager(), toitdocs());
   }
 
-  void post_resolve(Resolver* resolver, resolution::Program* program) override {
+  void post_resolve(Resolver* resolver, resolution::View<resolution::Program> program) override {
     if (lsp() == null || !lsp()->has_selection_handler()) return;
     auto* handler = static_cast<HoverHandler*>(lsp()->selection_handler());
     // Retry emitting hover for nodes that had invalid ranges during
@@ -1224,7 +1224,7 @@ void Pipeline::parsed_units(const std::vector<ast::Unit*>& units) {
   // to act on the parsed AST before resolution.
 }
 
-void Pipeline::post_resolve(Resolver* resolver, resolution::Program* program) {
+void Pipeline::post_resolve(Resolver* resolver, resolution::View<resolution::Program> program) {
   // Do nothing. Subclasses (like HoverPipeline) can override
   // to perform work after all modules have been resolved.
 }
@@ -1234,7 +1234,7 @@ void Pipeline::post_type_check() {
   // to perform work after type checking completes.
 }
 
-resolution::Program* Pipeline::resolve(const std::vector<ast::Unit*>& units,
+resolution::View<resolution::Program> Pipeline::resolve(const std::vector<ast::Unit*>& units,
                                int entry_unit_index,
                                int core_unit_index,
                                bool quiet) {
@@ -1250,7 +1250,7 @@ resolution::Program* Pipeline::resolve(const std::vector<ast::Unit*>& units,
   return result;
 }
 
-void Pipeline::check_types_and_deprecations(resolution::Program* program, bool quiet) {
+void Pipeline::check_types_and_deprecations(resolution::View<resolution::Program> program, bool quiet) {
   NullDiagnostics null_diagnostics(this->diagnostics());
   Diagnostics* diagnostics = quiet ? &null_diagnostics : this->diagnostics();
   ::toit::compiler::check_types_and_deprecations(program, configuration_.lsp, toitdocs(), diagnostics);
@@ -1366,10 +1366,10 @@ void FindReferencesPipeline::setup_lsp_selection_handler() {
   lsp()->setup_find_references_handler(source_manager());
 }
 
-void FindReferencesPipeline::post_resolve(Resolver* resolver, resolution::Program* program) {
+void FindReferencesPipeline::post_resolve(Resolver* resolver, resolution::View<resolution::Program> program) {
   if (lsp() == null || !lsp()->has_selection_handler()) return;
   auto* handler = static_cast<FindReferencesHandler*>(lsp()->selection_handler());
-  auto* target = handler->target();
+  auto target = handler->target();
 
   // Capture resolver data before it goes out of scope.
   show_export_references_ = resolver->show_export_references();
@@ -1394,7 +1394,7 @@ void FindReferencesPipeline::post_resolve(Resolver* resolver, resolution::Progra
 void FindReferencesPipeline::post_type_check() {
   if (lsp() == null || !lsp()->has_selection_handler()) { exit(0); return; }
   auto* handler = static_cast<FindReferencesHandler*>(lsp()->selection_handler());
-  auto* target = handler->target();
+  auto target = handler->target();
 
   if (target != null && program_ != null) {
     find_and_emit_all_references(target, program_, source_manager(),
@@ -1410,10 +1410,10 @@ void PrepareRenamePipeline::setup_lsp_selection_handler() {
   lsp()->setup_find_references_handler(source_manager());
 }
 
-void PrepareRenamePipeline::post_resolve(Resolver* resolver, resolution::Program* program) {
+void PrepareRenamePipeline::post_resolve(Resolver* resolver, resolution::View<resolution::Program> program) {
   if (lsp() == null || !lsp()->has_selection_handler()) return;
   auto* handler = static_cast<FindReferencesHandler*>(lsp()->selection_handler());
-  auto* target = handler->target();
+  auto target = handler->target();
 
   if (target != null) {
     // Use the cursor-site range (from the handler callback) so that the
@@ -1436,7 +1436,7 @@ void PrepareRenamePipeline::post_type_check() {
     return;
   }
   auto* handler = static_cast<FindReferencesHandler*>(lsp()->selection_handler());
-  auto* target = handler->target();
+  auto target = handler->target();
 
   if (target != null) {
     emit_prepare_rename(target, handler->cursor_range());
@@ -1444,7 +1444,7 @@ void PrepareRenamePipeline::post_type_check() {
   exit(0);
 }
 
-void PrepareRenamePipeline::emit_prepare_rename(resolution::Node* target,
+void PrepareRenamePipeline::emit_prepare_rename(resolution::View<resolution::Node> target,
                                                  Source::Range range_override) {
   const char* name = target_name(target);
   Source::Range range = range_override.is_valid() ? range_override : target_range(target);
@@ -2202,11 +2202,11 @@ toit::Program* construct_program(ir::Program* ir_program,
 //   referenced in a `with` clause. Here these are available as `m->mixins()`.
 // - Finally, we have all interfaces.
 //   These are, again, in depth-first order.
-static void sort_classes(List<resolution::Class*> classes) {
-  resolution::Class* top = null;
-  resolution::Class* top_mixin = null;
-  resolution::Class* top_interface = null;
-  UnorderedMap<resolution::Class*, std::vector<resolution::Class*>> subs;
+static void sort_classes(List<resolution::View<resolution::Class>> classes) {
+  resolution::View<resolution::Class> top = null;
+  resolution::View<resolution::Class> top_mixin = null;
+  resolution::View<resolution::Class> top_interface = null;
+  UnorderedMap<resolution::View<resolution::Class>, std::vector<resolution::View<resolution::Class>>> subs;
 
   for (auto klass : classes) {
     if (klass->super() != null) {
@@ -2235,9 +2235,9 @@ static void sort_classes(List<resolution::Class*> classes) {
   ASSERT(top_mixin != null);
   ASSERT(top_interface != null);
 
-  Set<resolution::Class*> done;
+  Set<resolution::View<resolution::Class>> done;
 
-  auto are_all_mixin_parents_done = [&](resolution::Class* klass) -> bool {
+  auto are_all_mixin_parents_done = [&](resolution::View<resolution::Class> klass) -> bool {
     if (!klass->is_mixin()) return true;
     if (klass->has_super() && !done.contains(klass->super())) return false;
     for (auto mixin : klass->mixins()) {
@@ -2246,11 +2246,11 @@ static void sort_classes(List<resolution::Class*> classes) {
     return true;
   };
 
-  auto dfs_traverse = [&](resolution::Class* klass) -> void {
-    std::vector<resolution::Class*> queue;
+  auto dfs_traverse = [&](resolution::View<resolution::Class> klass) -> void {
+    std::vector<resolution::View<resolution::Class>> queue;
     queue.push_back(klass);
     while (!queue.empty()) {
-      resolution::Class* current = queue.back();
+      resolution::View<resolution::Class> current = queue.back();
       queue.pop_back();
       if (done.contains(current)) {
         ASSERT(current->is_mixin());
@@ -2367,7 +2367,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   parsed_units(units);
 
   statistics.switch_phase(PipelineStatistics::RESOLUTION);
-  resolution::Program* resolved_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX);
+  resolution::View<resolution::Program> resolved_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX);
   sort_classes(resolved_program->classes());
 
   bool encountered_error_before_type_checks = diagnostics()->encountered_error();

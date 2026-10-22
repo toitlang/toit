@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include "../ast_resolution.h"
 #include <utility>
 #include <vector>
 #include <string>
@@ -50,17 +51,17 @@ class ToitdocScopeIterator;
 class ToitdocRegistry;
 class Filesystem;
 
-/// Unwraps an resolution::Reference* node to its underlying definition.
-resolution::Node* unwrap_reference(resolution::Node* node);
+/// Unwraps an resolution::View<resolution::Reference> node to its underlying definition.
+resolution::View<resolution::Node> unwrap_reference(resolution::View<resolution::Node> node);
 
 /// Returns the name of the given target node as a C string.
-const char* target_name(resolution::Node* target);
+const char* target_name(resolution::View<resolution::Node> target);
 
 /// Returns the name range of the given target node.
-Source::Range target_range(resolution::Node* target);
+Source::Range target_range(resolution::View<resolution::Node> target);
 
 /// Returns whether the given target node is defined in the SDK.
-bool is_sdk_target(resolution::Node* target, SourceManager* source_manager);
+bool is_sdk_target(resolution::View<resolution::Node> target, SourceManager* source_manager);
 
 /// For some operations, the LSP client sends the server a selection for which it
 /// wants information. This selection is given to the compiler which then detects
@@ -92,8 +93,8 @@ class LspSelectionHandler {
   ///   finding interfaces (in the implements clause).
   virtual void class_interface_or_mixin(ast::Node* node,
                                         IterableScope* scope,
-                                        resolution::Class* holder,
-                                        resolution::Node* resolved,
+                                        resolution::View<resolution::Class> holder,
+                                        resolution::View<resolution::Node> resolved,
                                         bool needs_interface,
                                         bool needs_mixin) = 0;
 
@@ -104,32 +105,32 @@ class LspSelectionHandler {
   virtual void type(ast::Node* node, IterableScope* scope, ResolutionEntry resolved, bool allow_none) = 0;
 
   // This method is also called for `named` selections.
-  virtual void call_virtual(resolution::CallVirtual* node,  // With the receiver being an LspSelectionDot.
+  virtual void call_virtual(resolution::View<resolution::CallVirtual> node,  // With the receiver being an LspSelectionDot.
                             resolution::Type type,
-                            List<resolution::Class*> classes) = 0;
+                            List<resolution::View<resolution::Class>> classes) = 0;
   virtual void call_prefixed(ast::Dot* node,
-                             resolution::Node* resolved1,
-                             resolution::Node* resolved2,
-                             List<resolution::Node*> candidates,
+                             resolution::View<resolution::Node> resolved1,
+                             resolution::View<resolution::Node> resolved2,
+                             List<resolution::View<resolution::Node>> candidates,
                              IterableScope* scope) = 0;
   // Class calls are dotted calls, where the receiver is a Class.
   // They can be static calls, named-constructor calls, or dynamic calls (if the class has
   //   an unnamed constructor).
   virtual void call_class(ast::Dot* node,
-                          resolution::Class* klass,
-                          resolution::Node* resolved1,
-                          resolution::Node* resolved2,
-                          List<resolution::Node*> candidates,
+                          resolution::View<resolution::Class> klass,
+                          resolution::View<resolution::Node> resolved1,
+                          resolution::View<resolution::Node> resolved2,
+                          List<resolution::View<resolution::Node>> candidates,
                           IterableScope* scope) = 0;
   virtual void call_static(ast::Node* node,
-                           resolution::Node* resolved1,
-                           resolution::Node* resolved2,
-                           List<resolution::Node*> candidates,
+                           resolution::View<resolution::Node> resolved1,
+                           resolution::View<resolution::Node> resolved2,
+                           List<resolution::View<resolution::Node>> candidates,
                            IterableScope* scope,
-                           resolution::Method* surrounding) = 0;
-  virtual void call_block(ast::Dot* node, resolution::Node* ir_receiver) = 0;
+                           resolution::View<resolution::Method> surrounding) = 0;
+  virtual void call_block(ast::Dot* node, resolution::View<resolution::Node> ir_receiver) = 0;
 
-  virtual void call_static_named(ast::Node* name_node, resolution::Node* ir_call_target, List<resolution::Node*> candidates) = 0;
+  virtual void call_static_named(ast::Node* name_node, resolution::View<resolution::Node> ir_call_target, List<resolution::View<resolution::Node>> candidates) = 0;
 
   virtual void call_primitive(ast::Node* node, Symbol module_name, Symbol primitive_name,
                               int module, int primitive, bool on_module) = 0;
@@ -137,10 +138,10 @@ class LspSelectionHandler {
   // For simplicity, the field-storing-parameter isn't yet resolved.
   // Since it's only necessary to run through the fields that shouldn't be a problem.
   virtual void field_storing_parameter(ast::Parameter* node,
-                                       List<resolution::Field*> fields,
+                                       List<resolution::View<resolution::Field>> fields,
                                        bool field_storing_is_allowed) = 0;
 
-  virtual void this_(ast::Identifier* node, resolution::Class* enclosing_class, IterableScope* scope, resolution::Method* surrounding) = 0;
+  virtual void this_(ast::Identifier* node, resolution::View<resolution::Class> enclosing_class, IterableScope* scope, resolution::View<resolution::Method> surrounding) = 0;
 
   // The module scope may be null, if the import couldn't be resolved.
   virtual void show(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) = 0;
@@ -151,13 +152,13 @@ class LspSelectionHandler {
   virtual void return_label(ast::Node* node, int label_index, const std::vector<std::pair<Symbol, ast::Node*>>& labels) = 0;
 
   virtual void toitdoc_ref(ast::Node* node,
-                           List<resolution::Node*> candidates,
+                           List<resolution::View<resolution::Node>> candidates,
                            ToitdocScopeIterator* iterator,
                            bool is_signature_toitdoc) = 0;
 
   /// Called when the resolver creates an IR definition node and the cursor
   /// is on the definition's name (i.e. the AST name is an LspSelection).
-  virtual void definition(resolution::Node* ir_node, Source::Range name_range) = 0;
+  virtual void definition(resolution::View<resolution::Node> ir_node, Source::Range name_range) = 0;
 
 
  protected:
@@ -179,13 +180,13 @@ class LspSelectionHandler {
 /// This pattern is used by both the hover handler (to find the method to display)
 /// and the completion handler (to enumerate completable methods).
 template<typename Callback>
-void walk_class_hierarchy(resolution::Class* start_class,
-                          List<resolution::Class*> fallback_classes,
+void walk_class_hierarchy(resolution::View<resolution::Class> start_class,
+                          List<resolution::View<resolution::Class>> fallback_classes,
                           Callback callback) {
-  auto* klass = start_class;
+  auto klass = start_class;
   while (klass != null) {
     for (int i = -1; i < klass->mixins().length(); i++) {
-      auto* current = i == -1 ? klass : klass->mixins()[i];
+      auto current = i == -1 ? klass : klass->mixins()[i];
       if (callback(current)) return;
     }
     if (klass->super() == null && (klass->is_interface() || klass->is_mixin())) {

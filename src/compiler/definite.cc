@@ -69,12 +69,12 @@ class State {
     does_return_ = does_return_ && other.does_return();
   }
 
-  void mark_undefined(Node* variable) {
+  void mark_undefined(View<Node> variable) {
     ASSERT(is_valid());
     map_[variable] = UNDEFINED;
   }
 
-  void mark_all_as_partially_defined(Local* loop_variable = null) {
+  void mark_all_as_partially_defined(View<Local> loop_variable = null) {
     ASSERT(is_valid());
     for (auto& p : map_.underlying_map()) {
       if (p.first != loop_variable) {
@@ -83,18 +83,18 @@ class State {
     }
   }
 
-  void remove(Node* variable) {
+  void remove(View<Node> variable) {
     ASSERT(is_valid());
     map_.remove(variable);
   }
 
-  bool is_completely_undefined(Node* node) {
+  bool is_completely_undefined(View<Node> node) {
     ASSERT(is_valid());
     auto probe = map_.find(node);
     return probe != map_.end() && probe->second == UNDEFINED;
   }
 
-  bool is_undefined(Node* node) {
+  bool is_undefined(View<Node> node) {
     ASSERT(is_valid());
     return map_.find(node) != map_.end();
   }
@@ -136,14 +136,14 @@ class State {
     PARTIALLY_DEFINED,
   };
   // Set of undefined locals and fields.
-  UnorderedMap<Node*, UndefinedKind> map_;
+  UnorderedMap<View<Node>, UndefinedKind> map_;
 
   bool does_return_ = false;
   bool is_valid_ = true;
 };
 
 struct LoopState {
-  explicit LoopState(While* loop)
+  explicit LoopState(View<While> loop)
       : loop(loop)
       , break_state(State::invalid())
       , continue_state(State::invalid()) {}
@@ -154,7 +154,7 @@ struct LoopState {
 
   bool is_valid() const { return loop != null; }
 
-  While* loop;
+  View<While> loop;
   State break_state;
   State continue_state;
 };
@@ -167,7 +167,7 @@ class DefiniteChecker : public Visitor {
       : diagnostics_(diagnostics)
       , loop_state_(LoopState::invalid()) {}
 
-  void visit(Node* node) {
+  void visit(View<Node> node) {
     node->accept(this);
   }
 
@@ -497,20 +497,20 @@ class DefiniteChecker : public Visitor {
 
   // The list of undefined locals that is leaves the scope when we
   //   leave the current sequence.
-  std::vector<Local*> current_locals_;
+  std::vector<View<Local>> current_locals_;
   State state_;
   LoopState loop_state_;
   // Only used for nicer error messages. The `state_` tracks flow-sensitive
   //   `return`s. It is ok to set this variable to true, even if there isn't
   //   any real return.
   bool has_seen_return_ = false;
-  Method* method_;
+  View<Method> method_;
 
   Diagnostics* diagnostics() const { return diagnostics_; }
 
-  void kill(Node* variable) { state_.remove(variable); }
+  void kill(View<Node> variable) { state_.remove(variable); }
 
-  void use(Field* field, Source::Range range) {
+  void use(View<Field> field, Source::Range range) {
     if (state_.is_undefined(field)) {
       report_error(range,
                    "Field '%s' must be initialized before first use",
@@ -518,7 +518,7 @@ class DefiniteChecker : public Visitor {
     }
   }
 
-  void use(Local* local, Source::Range range) {
+  void use(View<Local> local, Source::Range range) {
     if (state_.is_undefined(local)) {
       report_error(range,
                    "Local '%s' must be initialized before first use",
@@ -534,7 +534,7 @@ class DefiniteChecker : public Visitor {
   }
 };
 
-void check_definite_assignments_returns(resolution::Program* program, Diagnostics* diagnostics) {
+void check_definite_assignments_returns(resolution::View<resolution::Program> program, Diagnostics* diagnostics) {
   DefiniteChecker checker(diagnostics);
   program->accept(&checker);
 }

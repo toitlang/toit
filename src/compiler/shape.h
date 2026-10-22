@@ -166,7 +166,7 @@ class CallShape {
   }
 
   template<typename Expression>
-  static CallShape for_static_call_no_named(List<Expression*> arguments) {
+  static CallShape for_static_call_no_named(List<Expression> arguments) {
     int block_count = 0;
     for (auto argument : arguments) {
       if (argument->is_block()) block_count++;
@@ -175,7 +175,7 @@ class CallShape {
   }
 
   template<typename Expression>
-  static CallShape for_instance_call_no_named(List<Expression*> arguments) {
+  static CallShape for_instance_call_no_named(List<Expression> arguments) {
     return for_static_call_no_named(arguments).with_implicit_this();
   }
   static CallShape for_static_setter() { return CallShape(1, 0, List<Symbol>(), 0, true); }

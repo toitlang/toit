@@ -35,15 +35,15 @@ class CallSelectorVisitor : public resolution::TraversingVisitor {
 
 } // namespace anonymous
 
-UnorderedMap<Class*, ResolutionQueryableClass> build_queryables_from_resolution_shapes(Program* program, bool include_abstracts) {
+UnorderedMap<View<Class>, ResolutionQueryableClass> build_queryables_from_resolution_shapes(View<Program> program, bool include_abstracts) {
   CallSelectorVisitor visitor;
   program->accept(&visitor);
   auto invoked_selectors = visitor.selectors;
 
-  resolution::Class* object_class = program->classes()[0];
+  resolution::View<resolution::Class> object_class = program->classes()[0];
   ASSERT(object_class->name() == Symbols::Object);
 
-  UnorderedMap<Class*, ResolutionQueryableClass> result;
+  UnorderedMap<View<Class>, ResolutionQueryableClass> result;
 
   for (int phase = 0; phase < 3; phase++) {
     // Classes are sorted such that all supers are before their subclasses.

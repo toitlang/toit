@@ -19,14 +19,14 @@
 namespace toit {
 namespace compiler {
 
-// Unwraps an resolution::Reference* node to its underlying definition.
+// Unwraps an resolution::View<resolution::Reference> node to its underlying definition.
 //
 // The resolver callbacks provide resolved nodes that may be wrapped in
 // resolution::Reference nodes (ReferenceLocal, ReferenceGlobal, ReferenceMethod,
 // ReferenceClass). This function strips the wrapper to get the actual
 // definition node (Local, Global, Method, Class), which is needed for
 // pointer identity comparisons when searching for references.
-resolution::Node* unwrap_reference(resolution::Node* node) {
+resolution::View<resolution::Node> unwrap_reference(resolution::View<resolution::Node> node) {
   if (node == null) return null;
   if (node->is_Reference()) return node->as_Reference()->target();
   return node;
@@ -36,7 +36,7 @@ resolution::Node* unwrap_reference(resolution::Node* node) {
 //
 // Supports Method, Class, Field, and Local nodes. Returns null for
 // unsupported node types.
-const char* target_name(resolution::Node* target) {
+const char* target_name(resolution::View<resolution::Node> target) {
   if (target == null) return null;
   if (target->is_Method()) return target->as_Method()->name().c_str();
   if (target->is_Class()) return target->as_Class()->name().c_str();
@@ -49,7 +49,7 @@ const char* target_name(resolution::Node* target) {
 //
 // Supports Method, Class, Field, and Local nodes. Returns an invalid
 // range for unsupported node types.
-Source::Range target_range(resolution::Node* target) {
+Source::Range target_range(resolution::View<resolution::Node> target) {
   if (target == null) return Source::Range::invalid();
   if (target->is_Method()) return target->as_Method()->range();
   if (target->is_Class()) return target->as_Class()->range();
@@ -62,10 +62,10 @@ Source::Range target_range(resolution::Node* target) {
 //
 // SDK symbols cannot be renamed because their source files are not
 // user-editable.
-bool is_sdk_target(resolution::Node* target, SourceManager* source_manager) {
+bool is_sdk_target(resolution::View<resolution::Node> target, SourceManager* source_manager) {
   Source::Range range = target_range(target);
   if (!range.is_valid()) return false;
-  auto* source = source_manager->source_for_position(range.from());
+  auto source = source_manager->source_for_position(range.from());
   if (source == null) return false;
   return source->package_id() == Package::SDK_PACKAGE_ID;
 }

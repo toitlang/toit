@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include "ast_resolution.h"
 #include <functional>
 
 #include "ast.h"
@@ -67,30 +68,41 @@ class Toitdoc {
 
 class ToitdocRegistry {
  public:
-  Toitdoc<resolution::Node*> toitdoc_for(resolution::Node* node) const { return toitdoc_for(static_cast<void*>(node)); }
-  Toitdoc<resolution::Node*> toitdoc_for(Module* module) const { return toitdoc_for(static_cast<void*>(module)); }
+  using ResolvedToitdoc = Toitdoc<resolution::View<resolution::Node>>;
 
-  void set_toitdoc(resolution::Node* node, Toitdoc<resolution::Node*> toitdoc) {
-    map_[static_cast<void*>(node)] = toitdoc;
+  ResolvedToitdoc toitdoc_for(resolution::View<resolution::Node> node) const {
+    return lookup(nodes_, node.node());
   }
+  ResolvedToitdoc toitdoc_for(Module* module) const { return lookup(modules_, module); }
 
-  void set_toitdoc(Module* module, Toitdoc<resolution::Node*> toitdoc) {
-    map_[static_cast<void*>(module)] = toitdoc;
+  void set_toitdoc(resolution::View<resolution::Node> node, ResolvedToitdoc toitdoc) {
+    nodes_[node.node()] = toitdoc;
   }
+  void set_toitdoc(Module* module, ResolvedToitdoc toitdoc) { modules_[module] = toitdoc; }
 
   template<typename F>
   void for_each(const F& callback) {
-    map_.for_each(callback);
+    nodes_.for_each([&](resolution::AstNode*, ResolvedToitdoc toitdoc) { callback(toitdoc); });
+    modules_.for_each([&](Module*, ResolvedToitdoc toitdoc) { callback(toitdoc); });
+  }
+
+  template<typename F>
+  void for_each_node(const F& callback) {
+    nodes_.for_each([&](resolution::AstNode* node, ResolvedToitdoc toitdoc) {
+      callback(resolution::View<resolution::Node>(node), toitdoc);
+    });
   }
 
  private:
-  Toitdoc<resolution::Node*> toitdoc_for(void* node) const {
-    auto probe = map_.find(node);
-    if (probe == map_.end()) return Toitdoc<resolution::Node*>::invalid();
+  template<typename Key>
+  static ResolvedToitdoc lookup(const Map<Key, ResolvedToitdoc>& map, Key key) {
+    auto probe = map.find(key);
+    if (probe == map.end()) return ResolvedToitdoc::invalid();
     return probe->second;
   }
 
-  Map<void*, Toitdoc<resolution::Node*>> map_;
+  Map<resolution::AstNode*, ResolvedToitdoc> nodes_;
+  Map<Module*, ResolvedToitdoc> modules_;
 };
 
 } // namespace toit::compiler
