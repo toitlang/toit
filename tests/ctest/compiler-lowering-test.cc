@@ -58,6 +58,8 @@ static void test() {
   }
   expressions.add(resolution::make<resolution::CallVirtualInfo>(target,
       CallShape(0).with_implicit_this(), List<resolution::ExpressionView>(), range));
+  auto bytes = ListBuilder<uint8>::build(uint8(7));
+  expressions.add(resolution::make<resolution::LiteralByteArrayInfo>(bytes, range));
   auto body = resolution::make<resolution::SequenceInfo>(expressions.build(), range);
   method->set_body(body);
   auto program = resolution::make<resolution::ProgramInfo>(ListBuilder<resolution::ClassView>::build(klass),
@@ -95,6 +97,9 @@ static void test() {
   auto second = lower_to_ir(program);
   lowered_body->expressions()[0] = zone_new<ir::Nop>(range);
   lowered_local->register_mutation();
+  lowered_body->expressions()[9]->as_LiteralByteArray()->data()[0] = 99;
+  check(bytes[0] == 7);
+  check(second->methods()[0]->body()->as_Sequence()->expressions()[9]->as_LiteralByteArray()->data()[0] == 7);
   check(body->expressions()[0] == define);
   check(local->mutation_count() == 0);
   check(second->methods()[0]->body()->as_Sequence()->expressions()[0]->is_AssignmentDefine());

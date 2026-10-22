@@ -379,7 +379,9 @@ class Lowering : public resolution::Visitor {
   }
 
   void visit_LiteralByteArray(resolution::LiteralByteArrayView node) override {
-    result_ = zone_new<ir::LiteralByteArray>(node->data(), node->range());
+    auto data = ListBuilder<uint8>::allocate(node->data().length());
+    for (int i = 0; i < data.length(); i++) data[i] = node->data()[i];
+    result_ = zone_new<ir::LiteralByteArray>(data, node->range());
   }
 
   void visit_LiteralBoolean(resolution::LiteralBooleanView node) override {
