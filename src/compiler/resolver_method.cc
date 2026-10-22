@@ -1077,6 +1077,7 @@ static bool has_constant_name(Symbol name) {
 
 void MethodResolver::resolve_field(resolution::Field* ir_field) {
   auto ast_field = ir_to_ast_map_->at(ir_field)->as_Field();
+  resolution::Origin origin(ast_field);
   resolution_mode_ = FIELD;
 
   if (ir_field->is_final() &&
@@ -1106,7 +1107,15 @@ void MethodResolver::resolve_field(resolution::Field* ir_field) {
   scope_ = scope_->outer();
 }
 
+void MethodResolver::visit(ast::Node* node) {
+  resolution::Origin origin(node);
+  ast::Visitor::visit(node);
+}
+
 void MethodResolver::resolve_fill() {
+  auto syntax = ir_to_ast_map_->lookup(method_);
+  if (syntax == null && holder_ != null) syntax = ir_to_ast_map_->lookup(holder_);
+  resolution::Origin origin(syntax);
   if (method_->is_FieldStub()) {
     resolve_fill_field_stub();
   } else if (method_->is_Global()) {
@@ -1389,6 +1398,7 @@ void MethodResolver::_resolve_parameters(
     // prepareRename can extract the precise name range (excluding prefixes
     // like `--` for named params or `[` for block params).
     (*ir_to_ast_map_)[ir_parameter] = parameter;
+    ir_parameter->ast_node()->attach(parameter);
 
     // Resolve the default values.
     if (seen_default_values_in_unnamed
@@ -2489,7 +2499,10 @@ resolution::Expression* MethodResolver::_this_ref(Source::Range range, bool igno
   if (!ignore_resolution_mode) {
     ast::Identifier ast_this(Symbols::this_);
     ast_this.set_range(range);
-    return resolve_expression(&ast_this, null);
+    // The implicit receiver belongs to the enclosing source expression. Do not
+    // attach resolution information to this temporary diagnostic identifier.
+    visit_literal_this(&ast_this);
+    return pop()->as_Expression();
   }
   auto this_lookup = lookup(this_identifier());
   ASSERT(this_lookup.entry.is_single());
@@ -2501,6 +2514,7 @@ resolution::Expression* MethodResolver::_this_ref(Source::Range range, bool igno
 resolution::Expression* MethodResolver::resolve_expression(ast::Node* node,
                                                    const char* error_when_block,
                                                    bool allow_assignment) {
+  resolution::Origin origin(node);
   resolution::Node* ir_node;
   if (allow_assignment && is_assignment(node)) {
     ir_node = _assign(node->as_Binary());
@@ -2518,11 +2532,13 @@ resolution::Expression* MethodResolver::resolve_expression(ast::Node* node,
     report_error(position_node, error_when_block);
     result = zone_new<resolution::Error>(node->selection_range(), list_of(result));
   }
+  result->ast_node()->attach(node);
   return result;
 }
 
 resolution::Expression* MethodResolver::resolve_statement(ast::Node* node,
                                                   const char* error_when_block) {
+  resolution::Origin origin(node);
   resolution::Node* ir_node;
   if (is_assignment(node)) {
     ir_node = _assign(node->as_Binary());
@@ -2542,6 +2558,7 @@ resolution::Expression* MethodResolver::resolve_statement(ast::Node* node,
     report_error(position_node, error_when_block);
     result = zone_new<resolution::Error>(node->selection_range(), list_of(result));
   }
+  result->ast_node()->attach(node);
   return result;
 }
 
