@@ -238,8 +238,12 @@ class WifiModule implements NetworkModule:
       with-timeout WIFI-DHCP-TIMEOUT_: wait-for-dhcp-ip-address_
 
   disconnect -> none:
-    if not resource-group_:
+    resource-group := resource-group_
+    if not resource-group:
       return
+    // Claim the group before anything that can yield, so a concurrent
+    // disconnect (from the other event callback or a client) returns.
+    resource-group_ = null
 
     // If we're disconnecting because of cancelation, we have
     // to make sure we still clean up. Logging and disposing
@@ -254,8 +258,7 @@ class WifiModule implements NetworkModule:
         ip-events_.dispose
         ip-events_ = null
 
-    wifi-close_ resource-group_
-    resource-group_ = null
+    wifi-close_ resource-group
     address_ = null
     service.on-module-closed this
 

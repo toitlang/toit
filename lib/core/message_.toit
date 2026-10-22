@@ -85,6 +85,8 @@ process-messages_:
     while task-has-messages_:
       message := task-receive-message_
       if message is __Monitor__:
+        // Runs inline and must not block: this loop is the only reader
+        // of the messages, including the ones that would unblock it.
         message.notify_
         continue
       else if not message:
