@@ -16,7 +16,7 @@ static void check(bool condition) {
 static void test() {
   AllowThrowingNew allow;
   Zone zone;
-  auto range = Source::Range::invalid();
+  auto range = Source::Range(Source::Position::from_token(0));
   auto name = Symbol::synthetic("test");
   auto klass = zone_new<resolution::Class>(name, resolution::Class::CLASS, false, range, range);
   auto type = resolution::Type(klass).to_nullable();

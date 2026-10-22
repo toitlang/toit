@@ -31,7 +31,6 @@ void AstNode::attach(ast::Node* syntax) {
 }
 
 void AstNode::accept(Visitor* visitor) { information_->dispatch(visitor); }
-Node* AstNode::accept(ReturningVisitor<Node*>* visitor) { return information_->dispatch(visitor); }
 Type AstNode::accept(ReturningVisitor<Type>* visitor) { return information_->dispatch(visitor); }
 
 } // namespace toit::compiler::resolution

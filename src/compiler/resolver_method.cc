@@ -566,7 +566,7 @@ class FindFinalFieldStoreVisitor : public resolution::TraversingVisitor {
 
   resolution::FieldStore* field_store() const { return field_store_; }
 
-  void visit_FieldStore(resolution::FieldStore* node) {
+  void visit_FieldStore(resolution::View<resolution::FieldStore> node) {
     if (field_store_ == null && node->field()->is_final()) {
       field_store_ = node;
     }

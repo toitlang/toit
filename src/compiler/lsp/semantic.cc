@@ -85,7 +85,7 @@ class TokenVisitor : public resolution::TraversingVisitor {
     }
   }
 
-  void visit_Class(resolution::Class* node) override {
+  void visit_Class(resolution::View<resolution::Class> node) override {
     bool is_definition = true;
     emit_token(node->range(), node, is_definition);
     // TODO(florian): emit tokens for interfaces, super and mixins.

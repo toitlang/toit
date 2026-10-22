@@ -34,441 +34,160 @@ bool Method::_parameters_have_correct_index(List<Parameter*> parameters) {
 void Visitor::visit(Node* node) { node->ast_node()->accept(this); }
 void Visitor::visit(AstNode* node) { node->accept(this); }
 
-void TraversingVisitor::visit_Program(Program* node) {
+void TraversingVisitor::visit_Program(View<Program> node) {
   for (auto klass: node->classes()) klass->accept(this);
   for (auto method: node->methods()) method->accept(this);
   for (auto global: node->globals()) global->accept(this);
 }
 
-void TraversingVisitor::visit_Class(Class* node) {
+void TraversingVisitor::visit_Class(View<Class> node) {
   // By default we don't go through the constructors and factories, as they are
   // already being visited in `visit_Program`.
   for (auto field: node->fields()) field->accept(this);
   for (auto method: node->methods()) method->accept(this);
 }
 
-void TraversingVisitor::visit_Field(Field* node) {}
+void TraversingVisitor::visit_Field(View<Field> node) {}
 
-void TraversingVisitor::visit_Method(Method* node) {
+void TraversingVisitor::visit_Method(View<Method> node) {
   for (auto parameter : node->parameters()) parameter->accept(this);
   if (node->has_body()) node->body()->accept(this);
 }
 
-void TraversingVisitor::visit_MethodInstance(MethodInstance* node) { visit_Method(node); }
-void TraversingVisitor::visit_MonitorMethod(MonitorMethod* node) { visit_MethodInstance(node); }
-void TraversingVisitor::visit_MethodStatic(MethodStatic* node) { visit_Method(node); }
-void TraversingVisitor::visit_Constructor(Constructor* node) { visit_Method(node); }
-void TraversingVisitor::visit_Global(Global* node) { visit_Method(node); }
-void TraversingVisitor::visit_AdapterStub(AdapterStub* node) { visit_Method(node); }
-void TraversingVisitor::visit_MixinStub(MixinStub* node) { visit_Method(node); }
-void TraversingVisitor::visit_IsInterfaceOrMixinStub(IsInterfaceOrMixinStub* node) { visit_Method(node); }
-void TraversingVisitor::visit_FieldStub(FieldStub* node) { visit_Method(node); }
+void TraversingVisitor::visit_MethodInstance(View<MethodInstance> node) { visit_Method(node); }
+void TraversingVisitor::visit_MonitorMethod(View<MonitorMethod> node) { visit_MethodInstance(node); }
+void TraversingVisitor::visit_MethodStatic(View<MethodStatic> node) { visit_Method(node); }
+void TraversingVisitor::visit_Constructor(View<Constructor> node) { visit_Method(node); }
+void TraversingVisitor::visit_Global(View<Global> node) { visit_Method(node); }
+void TraversingVisitor::visit_AdapterStub(View<AdapterStub> node) { visit_Method(node); }
+void TraversingVisitor::visit_MixinStub(View<MixinStub> node) { visit_Method(node); }
+void TraversingVisitor::visit_IsInterfaceOrMixinStub(View<IsInterfaceOrMixinStub> node) { visit_Method(node); }
+void TraversingVisitor::visit_FieldStub(View<FieldStub> node) { visit_Method(node); }
 
-void TraversingVisitor::visit_Expression(Expression* node) { UNREACHABLE(); }
+void TraversingVisitor::visit_Expression(View<Expression> node) { UNREACHABLE(); }
 
-void TraversingVisitor::visit_Error(Error* node) {
+void TraversingVisitor::visit_Error(View<Error> node) {
   for (auto nested : node->nested()) {
     nested->accept(this);
   }
 }
 
-void TraversingVisitor::visit_Nop(Nop* node) {}
+void TraversingVisitor::visit_Nop(View<Nop> node) {}
 
-void TraversingVisitor::visit_FieldStore(FieldStore* node) {
+void TraversingVisitor::visit_FieldStore(View<FieldStore> node) {
   node->receiver()->accept(this);
   node->value()->accept(this);
 }
 
-void TraversingVisitor::visit_FieldLoad(FieldLoad* node) {
+void TraversingVisitor::visit_FieldLoad(View<FieldLoad> node) {
   node->receiver()->accept(this);
 }
 
-void TraversingVisitor::visit_Sequence(Sequence* node) {
+void TraversingVisitor::visit_Sequence(View<Sequence> node) {
   for (auto expr : node->expressions()) expr->accept(this);
 }
 
-void TraversingVisitor::visit_Builtin(Builtin* node) {}
+void TraversingVisitor::visit_Builtin(View<Builtin> node) {}
 
-void TraversingVisitor::visit_TryFinally(TryFinally* node) {
+void TraversingVisitor::visit_TryFinally(View<TryFinally> node) {
   node->body()->accept(this);
   for (auto parameter : node->handler_parameters()) parameter->accept(this);
   node->handler()->accept(this);
 }
 
-void TraversingVisitor::visit_If(If* node) {
+void TraversingVisitor::visit_If(View<If> node) {
   node->condition()->accept(this);
   node->yes()->accept(this);
   node->no()->accept(this);
 }
 
-void TraversingVisitor::visit_Not(Not* node) {
+void TraversingVisitor::visit_Not(View<Not> node) {
   node->value()->accept(this);
 }
 
-void TraversingVisitor::visit_While(While* node) {
+void TraversingVisitor::visit_While(View<While> node) {
   node->condition()->accept(this);
   node->body()->accept(this);
   node->update()->accept(this);
 }
 
-void TraversingVisitor::visit_LoopBranch(LoopBranch* node) {}
+void TraversingVisitor::visit_LoopBranch(View<LoopBranch> node) {}
 
-void TraversingVisitor::visit_Code(Code* node) {
+void TraversingVisitor::visit_Code(View<Code> node) {
   for (auto parameter : node->parameters()) parameter->accept(this);
   node->body()->accept(this);
 }
 
-void TraversingVisitor::visit_Reference(Reference* node) {}
+void TraversingVisitor::visit_Reference(View<Reference> node) {}
 
-void TraversingVisitor::visit_ReferenceClass(ReferenceClass* node) { visit_Reference(node); }
-void TraversingVisitor::visit_ReferenceMethod(ReferenceMethod* node) { visit_Reference(node); }
-void TraversingVisitor::visit_ReferenceLocal(ReferenceLocal* node) { visit_Reference(node); }
-void TraversingVisitor::visit_ReferenceBlock(ReferenceBlock* node) { visit_Reference(node); }
-void TraversingVisitor::visit_ReferenceGlobal(ReferenceGlobal* node) { visit_Reference(node); }
+void TraversingVisitor::visit_ReferenceClass(View<ReferenceClass> node) { visit_Reference(node); }
+void TraversingVisitor::visit_ReferenceMethod(View<ReferenceMethod> node) { visit_Reference(node); }
+void TraversingVisitor::visit_ReferenceLocal(View<ReferenceLocal> node) { visit_Reference(node); }
+void TraversingVisitor::visit_ReferenceBlock(View<ReferenceBlock> node) { visit_Reference(node); }
+void TraversingVisitor::visit_ReferenceGlobal(View<ReferenceGlobal> node) { visit_Reference(node); }
 
-void TraversingVisitor::visit_Local(Local* node) {}
-void TraversingVisitor::visit_Parameter(Parameter* node) { visit_Local(node); }
-void TraversingVisitor::visit_CapturedLocal(CapturedLocal* node) { visit_Parameter(node); }
-void TraversingVisitor::visit_Block(Block* node) { visit_Local(node); }
+void TraversingVisitor::visit_Local(View<Local> node) {}
+void TraversingVisitor::visit_Parameter(View<Parameter> node) { visit_Local(node); }
+void TraversingVisitor::visit_CapturedLocal(View<CapturedLocal> node) { visit_Parameter(node); }
+void TraversingVisitor::visit_Block(View<Block> node) { visit_Local(node); }
 
-void TraversingVisitor::visit_Dot(Dot* node) {
+void TraversingVisitor::visit_Dot(View<Dot> node) {
   node->receiver()->accept(this);
 }
 
-void TraversingVisitor::visit_LspSelectionDot(LspSelectionDot* node) { visit_Dot(node); }
+void TraversingVisitor::visit_LspSelectionDot(View<LspSelectionDot> node) { visit_Dot(node); }
 
-void TraversingVisitor::visit_Super(Super* node) {
+void TraversingVisitor::visit_Super(View<Super> node) {
   if (node->expression() != null) visit(node->expression());
 }
 
-void TraversingVisitor::visit_Call(Call* node) {
+void TraversingVisitor::visit_Call(View<Call> node) {
   node->target()->accept(this);
   for (auto argument : node->arguments()) argument->accept(this);
 }
 
-void TraversingVisitor::visit_CallStatic(CallStatic* node) { visit_Call(node); }
-void TraversingVisitor::visit_Lambda(Lambda* node) { visit_CallStatic(node); }
-void TraversingVisitor::visit_CallConstructor(CallConstructor* node) { visit_CallStatic(node); }
-void TraversingVisitor::visit_CallVirtual(CallVirtual* node) { visit_Call(node); }
-void TraversingVisitor::visit_CallBlock(CallBlock* node) { visit_Call(node); }
-void TraversingVisitor::visit_CallBuiltin(CallBuiltin* node) { visit_Call(node); }
+void TraversingVisitor::visit_CallStatic(View<CallStatic> node) { visit_Call(node); }
+void TraversingVisitor::visit_Lambda(View<Lambda> node) { visit_CallStatic(node); }
+void TraversingVisitor::visit_CallConstructor(View<CallConstructor> node) { visit_CallStatic(node); }
+void TraversingVisitor::visit_CallVirtual(View<CallVirtual> node) { visit_Call(node); }
+void TraversingVisitor::visit_CallBlock(View<CallBlock> node) { visit_Call(node); }
+void TraversingVisitor::visit_CallBuiltin(View<CallBuiltin> node) { visit_Call(node); }
 
-void TraversingVisitor::visit_Typecheck(Typecheck* node) {
+void TraversingVisitor::visit_Typecheck(View<Typecheck> node) {
   node->expression()->accept(this);
 }
 
-void TraversingVisitor::visit_Return(Return* node) {
+void TraversingVisitor::visit_Return(View<Return> node) {
   node->value()->accept(this);
 }
 
-void TraversingVisitor::visit_LogicalBinary(LogicalBinary* node) {
+void TraversingVisitor::visit_LogicalBinary(View<LogicalBinary> node) {
   node->left()->accept(this);
   node->right()->accept(this);
 }
 
-void TraversingVisitor::visit_Assignment(Assignment* node) {
+void TraversingVisitor::visit_Assignment(View<Assignment> node) {
   // Don't visit the LHS.
   // For an AssignmentGlobal, the LHS is a global (of type Method), and we
   //   don't want to visit other methods.
   node->right()->accept(this);
 }
 
-void TraversingVisitor::visit_AssignmentDefine(AssignmentDefine* node) { visit_Assignment(node); }
-void TraversingVisitor::visit_AssignmentLocal(AssignmentLocal* node) { visit_Assignment(node); }
-void TraversingVisitor::visit_AssignmentGlobal(AssignmentGlobal* node) { visit_Assignment(node); }
+void TraversingVisitor::visit_AssignmentDefine(View<AssignmentDefine> node) { visit_Assignment(node); }
+void TraversingVisitor::visit_AssignmentLocal(View<AssignmentLocal> node) { visit_Assignment(node); }
+void TraversingVisitor::visit_AssignmentGlobal(View<AssignmentGlobal> node) { visit_Assignment(node); }
 
-void TraversingVisitor::visit_Literal(Literal* node) {}
+void TraversingVisitor::visit_Literal(View<Literal> node) {}
 
-void TraversingVisitor::visit_LiteralNull(LiteralNull* node) { visit_Literal(node); }
-void TraversingVisitor::visit_LiteralUndefined(LiteralUndefined* node) { visit_Literal(node); }
-void TraversingVisitor::visit_LiteralInteger(LiteralInteger* node) { visit_Literal(node); }
-void TraversingVisitor::visit_LiteralFloat(LiteralFloat* node) { visit_Literal(node); }
-void TraversingVisitor::visit_LiteralString(LiteralString* node) { visit_Literal(node); }
-void TraversingVisitor::visit_LiteralByteArray(LiteralByteArray* node) { visit_Literal(node); }
-void TraversingVisitor::visit_LiteralBoolean(LiteralBoolean* node) { visit_Literal(node); }
+void TraversingVisitor::visit_LiteralNull(View<LiteralNull> node) { visit_Literal(node); }
+void TraversingVisitor::visit_LiteralUndefined(View<LiteralUndefined> node) { visit_Literal(node); }
+void TraversingVisitor::visit_LiteralInteger(View<LiteralInteger> node) { visit_Literal(node); }
+void TraversingVisitor::visit_LiteralFloat(View<LiteralFloat> node) { visit_Literal(node); }
+void TraversingVisitor::visit_LiteralString(View<LiteralString> node) { visit_Literal(node); }
+void TraversingVisitor::visit_LiteralByteArray(View<LiteralByteArray> node) { visit_Literal(node); }
+void TraversingVisitor::visit_LiteralBoolean(View<LiteralBoolean> node) { visit_Literal(node); }
 
-void TraversingVisitor::visit_PrimitiveInvocation(PrimitiveInvocation* node) {}
-
-Node* ReplacingVisitor::visit(Node* node) {
-  return node->accept(this);
-}
-
-Node* ReplacingVisitor::visit_Program(Program* node) {
-  auto classes = node->classes();
-  for (int i = 0; i < classes.length(); i++) {
-    auto klass = classes[i];
-    auto new_class = klass->accept(this);
-    ASSERT(new_class->is_Class());
-    classes[i] = new_class->as_Class();
-  }
-  auto methods = node->methods();
-  for (int i = 0; i < methods.length(); i++) {
-    auto method = methods[i];
-    auto new_method = method->accept(this);
-    ASSERT(new_method->is_Method());
-    methods[i] = new_method->as_Method();
-  }
-  auto globals = node->globals();
-  for (int i = 0; i < globals.length(); i++) {
-    auto global = globals[i];
-    auto new_global = global->accept(this);
-    ASSERT(new_global->is_Global());
-    globals[i] = new_global->as_Global();
-  }
-  return node;
-}
-
-Node* ReplacingVisitor::visit_Class(Class* node) {
-  auto methods = node->methods();
-  for (int i = 0; i < methods.length(); i++) {
-    auto method = methods[i];
-    auto new_method = method->accept(this);
-    ASSERT(new_method->is_MethodInstance());
-    methods[i] = new_method->as_MethodInstance();
-  }
-  return node;
-}
-
-Node* ReplacingVisitor::visit_Field(Field* node) { UNREACHABLE(); return null; }
-Node* ReplacingVisitor::visit_Builtin(Builtin* node) { UNREACHABLE(); return null; }
-Node* ReplacingVisitor::visit_Local(Local* node) { UNREACHABLE(); return null; }
-Node* ReplacingVisitor::visit_Parameter(Parameter* node) { return visit_Local(node); }
-Node* ReplacingVisitor::visit_CapturedLocal(CapturedLocal* node) { return visit_Parameter(node); }
-Node* ReplacingVisitor::visit_Block(Block* node) { return visit_Local(node); }
-
-Node* ReplacingVisitor::visit_Method(Method* node) {
-  if (node->has_body()) {
-    auto replacement = this->visit(node->body());
-    ASSERT(replacement->is_Expression());
-    node->replace_body(replacement->as_Expression());
-  }
-
-  return node;
-}
-Node* ReplacingVisitor::visit_MethodInstance(MethodInstance* node) { return visit_Method(node); }
-Node* ReplacingVisitor::visit_MonitorMethod(MonitorMethod* node) { return visit_Method(node); }
-Node* ReplacingVisitor::visit_MethodStatic(MethodStatic* node) { return visit_Method(node); }
-Node* ReplacingVisitor::visit_Constructor(Constructor* node) { return visit_Method(node); }
-Node* ReplacingVisitor::visit_Global(Global* node) { return visit_Method(node); }
-Node* ReplacingVisitor::visit_AdapterStub(AdapterStub* node) { return visit_Method(node); }
-Node* ReplacingVisitor::visit_MixinStub(MixinStub* node) { return visit_Method(node); }
-Node* ReplacingVisitor::visit_IsInterfaceOrMixinStub(IsInterfaceOrMixinStub* node) { return visit_Method(node); }
-Node* ReplacingVisitor::visit_FieldStub(FieldStub* node) { return visit_Method(node); }
-
-Expression* ReplacingVisitor::_replace_expression(Expression* expression) {
-  auto replacement = visit(expression);
-  ASSERT(replacement->is_Expression());
-  return replacement->as_Expression();
-}
-
-Node* ReplacingVisitor::visit_Expression(Expression* node) { return node; }
-
-Node* ReplacingVisitor::visit_Error(Error* node) {
-  auto nested = node->nested();
-  for (int i = 0; i < nested.length(); i++) {
-    nested[i] = _replace_expression(nested[i]);
-  }
-  return visit_Expression(node);
-}
-
-Node* ReplacingVisitor::visit_Nop(Nop* node) { return visit_Expression(node); }
-
-Node* ReplacingVisitor::visit_FieldStore(FieldStore* node) {
-  node->replace_receiver(_replace_expression(node->receiver()));
-  node->replace_value(_replace_expression(node->value()));
-  return visit_Expression(node);
-}
-
-Node* ReplacingVisitor::visit_FieldLoad(FieldLoad* node) {
-  node->replace_receiver(_replace_expression(node->receiver()));
-  return visit_Expression(node);
-}
-
-Node* ReplacingVisitor::visit_Sequence(Sequence* node) {
-  auto expressions = node->expressions();
-  for (int i = 0; i < expressions.length(); i++) {
-    expressions[i] = _replace_expression(expressions[i]);
-  }
-  return visit_Expression(node);
-}
-
-Node* ReplacingVisitor::visit_TryFinally(TryFinally* node) {
-  auto new_body = visit(node->body());
-  ASSERT(new_body->is_Code());
-  node->replace_body(new_body->as_Code());
-
-  node->replace_handler(_replace_expression(node->handler()));
-
-  return visit_Expression(node);
-}
-
-Node* ReplacingVisitor::visit_If(If* node) {
-  node->replace_condition(_replace_expression(node->condition()));
-  node->replace_yes(_replace_expression(node->yes()));
-  node->replace_no(_replace_expression(node->no()));
-
-  return visit_Expression(node);
-}
-
-Node* ReplacingVisitor::visit_Not(Not* node) {
-  node->replace_value(_replace_expression(node->value()));
-
-  return visit_Expression(node);
-}
-
-Node* ReplacingVisitor::visit_While(While* node) {
-  node->replace_condition(_replace_expression(node->condition()));
-  node->replace_body(_replace_expression(node->body()));
-  node->replace_update(_replace_expression(node->update()));
-
-  return visit_Expression(node);
-}
-
-Node* ReplacingVisitor::visit_LoopBranch(LoopBranch* node) {
-  return visit_Expression(node);
-}
-
-Node* ReplacingVisitor::visit_Code(Code* node) {
-  node->replace_body(_replace_expression(node->body()));
-
-  return visit_Expression(node);
-}
-
-Node* ReplacingVisitor::visit_Reference(Reference* node) { return visit_Expression(node); }
-
-Node* ReplacingVisitor::visit_ReferenceClass(ReferenceClass* node) { return visit_Reference(node); }
-Node* ReplacingVisitor::visit_ReferenceMethod(ReferenceMethod* node) { return visit_Reference(node); }
-Node* ReplacingVisitor::visit_ReferenceLocal(ReferenceLocal* node) { return visit_Reference(node); }
-Node* ReplacingVisitor::visit_ReferenceBlock(ReferenceBlock* node) { return visit_Reference(node); }
-Node* ReplacingVisitor::visit_ReferenceGlobal(ReferenceGlobal* node) { return visit_Reference(node); }
-
-Node* ReplacingVisitor::visit_Dot(Dot* node) {
-  node->replace_receiver(_replace_expression(node->receiver()));
-
-  return node;
-}
-
-Node* ReplacingVisitor::visit_LspSelectionDot(LspSelectionDot* node) { return visit_Dot(node); }
-
-/// The "super" visit-calls only happen once the nodes have replaced their own
-/// children. Therefore we don't want to replace target and arguments in `visit_Call`.
-static void replace_arguments(ReplacingVisitor* visitor, Call* node) {
-  auto arguments = node->arguments();
-  for (int i = 0; i < arguments.length(); i++) {
-    auto replacement = visitor->visit(arguments[i]);
-    ASSERT(replacement->is_Expression());
-    arguments[i] = replacement->as_Expression();
-  }
-}
-
-Node* ReplacingVisitor::visit_Super(Super* node) {
-  if (node->expression() != null) {
-    node->replace_expression(_replace_expression(node->expression()));
-  }
-  return visit_Expression(node);
-}
-
-Node* ReplacingVisitor::visit_Call(Call* node) { return visit_Expression(node); }
-
-Node* ReplacingVisitor::visit_CallStatic(CallStatic* node) {
-  auto replacement = visit(node->target());
-  ASSERT(replacement->is_ReferenceMethod());
-  node->replace_method(replacement->as_ReferenceMethod());
-  replace_arguments(this, node);
-
-  return visit_Call(node);
-}
-
-Node* ReplacingVisitor::visit_Lambda(Lambda* node) {
-  return visit_CallStatic(node);
-}
-
-Node* ReplacingVisitor::visit_CallConstructor(CallConstructor* node) {
-  return visit_CallStatic(node);
-}
-
-Node* ReplacingVisitor::visit_CallVirtual(CallVirtual* node) {
-  auto replacement = visit(node->target());
-  ASSERT(replacement->is_Dot());
-  node->replace_target(replacement->as_Dot());
-  replace_arguments(this, node);
-
-  return visit_Call(node);
-}
-
-Node* ReplacingVisitor::visit_CallBlock(CallBlock* node) {
-  auto replacement = visit(node->target());
-  ASSERT(replacement->is_ReferenceLocal() &&
-         replacement->as_ReferenceLocal()->is_block());
-  node->replace_target(replacement->as_ReferenceLocal());
-  replace_arguments(this, node);
-
-  return visit_Call(node);
-}
-
-Node* ReplacingVisitor::visit_CallBuiltin(CallBuiltin* node) {
-  replace_arguments(this, node);
-  return visit_Call(node);
-}
-
-Node* ReplacingVisitor::visit_Typecheck(Typecheck* node) {
-  node->replace_expression(_replace_expression(node->expression()));
-  return visit_Expression(node);
-}
-
-Node* ReplacingVisitor::visit_Return(Return* node) {
-  node->replace_value(_replace_expression(node->value()));
-
-  return visit_Expression(node);
-}
-
-Node* ReplacingVisitor::visit_LogicalBinary(LogicalBinary* node) {
-  node->replace_left(_replace_expression(node->left()));
-  node->replace_right(_replace_expression(node->right()));
-
-  return visit_Expression(node);
-}
-
-/// The "super" visit-calls only happen once the nodes have replaced their own
-/// children. Therefore we don't want to replace the right-side in `visit_Assignment`.
-static Node* replace_assignment(ReplacingVisitor* visitor, Assignment* node) {
-  auto replacement = visitor->visit(node->right());
-  ASSERT(replacement->is_Expression());
-  node->replace_right(replacement->as_Expression());
-  return visitor->visit_Assignment(node);
-}
-
-Node* ReplacingVisitor::visit_Assignment(Assignment* node) {
-  return visit_Expression(node);
-}
-
-Node* ReplacingVisitor::visit_AssignmentLocal(AssignmentLocal* node) {
-  return replace_assignment(this, node);
-}
-
-Node* ReplacingVisitor::visit_AssignmentGlobal(AssignmentGlobal* node) {
-  return replace_assignment(this, node);
-}
-
-Node* ReplacingVisitor::visit_AssignmentDefine(AssignmentDefine* node) {
-  return replace_assignment(this, node);
-}
-
-Node* ReplacingVisitor::visit_Literal(Literal* node) {
-  return visit_Expression(node);
-}
-
-Node* ReplacingVisitor::visit_LiteralNull(LiteralNull* node) { return visit_Literal(node); }
-Node* ReplacingVisitor::visit_LiteralUndefined(LiteralUndefined* node) { return visit_Literal(node); }
-Node* ReplacingVisitor::visit_LiteralInteger(LiteralInteger* node) { return visit_Literal(node); }
-Node* ReplacingVisitor::visit_LiteralFloat(LiteralFloat* node) { return visit_Literal(node); }
-Node* ReplacingVisitor::visit_LiteralString(LiteralString* node) { return visit_Literal(node); }
-Node* ReplacingVisitor::visit_LiteralByteArray(LiteralByteArray* node) { return visit_Literal(node); }
-Node* ReplacingVisitor::visit_LiteralBoolean(LiteralBoolean* node) { return visit_Literal(node); }
-
-Node* ReplacingVisitor::visit_PrimitiveInvocation(PrimitiveInvocation* node) {
-  return visit_Expression(node);
-}
+void TraversingVisitor::visit_PrimitiveInvocation(View<PrimitiveInvocation> node) {}
 
 class Printer : public Visitor {
  public:
@@ -490,7 +209,7 @@ class Printer : public Visitor {
     if (should_indent) indentation_--;
   }
 
-  void visit_Program(Program* node) {
+  void visit_Program(View<Program> node) {
     printf("-------- program --------\n");
     List<Method*> methods = node->methods();
     for (int i = 0; i < methods.length(); i++) {
@@ -510,7 +229,7 @@ class Printer : public Visitor {
     printf("-------------------------\n");
   }
 
-  void visit_Class(Class* node) {
+  void visit_Class(View<Class> node) {
     printf("\nClass %s", node->name().c_str());
     if (node->super() != null) {
       printf(" %s\n", node->super()->name().c_str());
@@ -520,14 +239,14 @@ class Printer : public Visitor {
     for (auto method : node->methods()) visit(method);
     indentation_--;
   }
-  void visit_Field(Field* node) {
+  void visit_Field(View<Field> node) {
     indent();
     printf("Field: %s\n", node->name().c_str());
   }
 
-  void visit_Expression(Expression* node) { UNREACHABLE(); }
+  void visit_Expression(View<Expression> node) { UNREACHABLE(); }
 
-  void visit_Error(Error* node) {
+  void visit_Error(View<Error> node) {
     indent();
     printf("(ERROR:");
     indentation_++;
@@ -541,10 +260,10 @@ class Printer : public Visitor {
     indent();
     printf(")");
   }
-  void visit_Reference(Reference* node) { UNREACHABLE(); }
-  void visit_Literal(Literal* node) { UNREACHABLE(); }
+  void visit_Reference(View<Reference> node) { UNREACHABLE(); }
+  void visit_Literal(View<Literal> node) { UNREACHABLE(); }
 
-  void visit_Method(Method* node) {
+  void visit_Method(View<Method> node) {
     indent();
     const char* kind = "";
     switch (node->kind()) {
@@ -624,21 +343,21 @@ class Printer : public Visitor {
     printf(")\n");
   }
 
-  void visit_MethodInstance(MethodInstance* node) { visit_Method(node); }
-  void visit_MonitorMethod(MonitorMethod* node) { visit_Method(node); }
-  void visit_MethodStatic(MethodStatic* node) { visit_Method(node); }
-  void visit_Constructor(Constructor* node) { visit_Method(node); }
-  void visit_Global(Global* node) { visit_Method(node); }
-  void visit_AdapterStub(AdapterStub* node) { visit_Method(node); }
-  void visit_MixinStub(MixinStub* node) { visit_Method(node); }
-  void visit_FieldStub(FieldStub* node) { visit_Method(node); }
+  void visit_MethodInstance(View<MethodInstance> node) { visit_Method(node); }
+  void visit_MonitorMethod(View<MonitorMethod> node) { visit_Method(node); }
+  void visit_MethodStatic(View<MethodStatic> node) { visit_Method(node); }
+  void visit_Constructor(View<Constructor> node) { visit_Method(node); }
+  void visit_Global(View<Global> node) { visit_Method(node); }
+  void visit_AdapterStub(View<AdapterStub> node) { visit_Method(node); }
+  void visit_MixinStub(View<MixinStub> node) { visit_Method(node); }
+  void visit_FieldStub(View<FieldStub> node) { visit_Method(node); }
 
-  void visit_IsInterfaceOrMixinStub(IsInterfaceOrMixinStub* node) {
+  void visit_IsInterfaceOrMixinStub(View<IsInterfaceOrMixinStub> node) {
     indent();
     printf("Is-interface stub: %s\n", node->name().c_str());
   }
 
-  void visit_Code(Code* node) {
+  void visit_Code(View<Code> node) {
     indent();
     printf("(code:");
     auto parameters = node->parameters();
@@ -657,11 +376,11 @@ class Printer : public Visitor {
     printf(")\n");
   }
 
-  void visit_Nop(Nop* node) {
+  void visit_Nop(View<Nop> node) {
     printf("NOP");
   }
 
-  void visit_TryFinally(TryFinally* node) {
+  void visit_TryFinally(View<TryFinally> node) {
     indent();
     printf("(try:\n");
     indentation_++;
@@ -682,7 +401,7 @@ class Printer : public Visitor {
     printf(")\n");
   }
 
-  void visit_If(If* node) {
+  void visit_If(View<If> node) {
     indent();
     printf("(if ");
     visit(node->condition());
@@ -703,12 +422,12 @@ class Printer : public Visitor {
     printf(")\n");
   }
 
-  void visit_Not(Not* node) {
+  void visit_Not(View<Not> node) {
     printf("!");
     visit(node->value());
   }
 
-  void visit_While(While* node) {
+  void visit_While(View<While> node) {
     indent();
     printf("(while ");
     visit(node->condition());
@@ -728,7 +447,7 @@ class Printer : public Visitor {
     printf(")\n");
   }
 
-  void visit_LoopBranch(LoopBranch* node) {
+  void visit_LoopBranch(View<LoopBranch> node) {
     const char* kind = node->is_break() ? "break" : "continue";
     indent();
     if (node->block_depth() == 0) {
@@ -738,13 +457,13 @@ class Printer : public Visitor {
     }
   }
 
-  void visit_LogicalBinary(LogicalBinary* node) {
+  void visit_LogicalBinary(View<LogicalBinary> node) {
     visit(node->left());
     printf(" %s ", node->op() == LogicalBinary::AND ? "&&" : "||");
     visit(node->right());
   }
 
-  void visit_Sequence(Sequence* node) {
+  void visit_Sequence(View<Sequence> node) {
     indent();
     printf("(sequence:\n");
 
@@ -755,7 +474,7 @@ class Printer : public Visitor {
     printf(")\n");
   }
 
-  void visit_FieldLoad(FieldLoad* node) {
+  void visit_FieldLoad(View<FieldLoad> node) {
     if (node->is_box_load()) {
       printf("(BoxRead (");
     } else {
@@ -765,7 +484,7 @@ class Printer : public Visitor {
     printf(").%s)", node->field()->name().c_str());
   }
 
-  void visit_FieldStore(FieldStore* node) {
+  void visit_FieldStore(View<FieldStore> node) {
     if (node->is_box_store()) {
       printf("(BoxStore (");
     } else {
@@ -777,7 +496,7 @@ class Printer : public Visitor {
     printf(")");
   }
 
-  void visit_Super(Super* node) {
+  void visit_Super(View<Super> node) {
     if (node->expression() == null) {
       printf("super");
     } else {
@@ -787,7 +506,7 @@ class Printer : public Visitor {
     }
   }
 
-  void visit_Call(Call* node) {
+  void visit_Call(View<Call> node) {
     printf("(Call (%d,%d,%d",
            node->shape().arity(),
            node->shape().total_block_count(),
@@ -807,12 +526,12 @@ class Printer : public Visitor {
     printf(")");
   }
 
-  void visit_CallStatic(CallStatic* node) { visit_Call(node); }
-  void visit_CallVirtual(CallVirtual* node) { visit_Call(node); }
-  void visit_CallConstructor(CallConstructor* node) { visit_Call(node); }
-  void visit_CallBuiltin(CallBuiltin* node) { visit_Builtin(node->target()); }
+  void visit_CallStatic(View<CallStatic> node) { visit_Call(node); }
+  void visit_CallVirtual(View<CallVirtual> node) { visit_Call(node); }
+  void visit_CallConstructor(View<CallConstructor> node) { visit_Call(node); }
+  void visit_CallBuiltin(View<CallBuiltin> node) { visit_Builtin(node->target()); }
 
-  void visit_Lambda(Lambda* node) {
+  void visit_Lambda(View<Lambda> node) {
     printf("(Lamba:\n");
     indentation_++;
     visit(node->arguments()[1]);
@@ -827,7 +546,7 @@ class Printer : public Visitor {
     printf(")");
   }
 
-  void visit_CallBlock(CallBlock* node) {
+  void visit_CallBlock(View<CallBlock> node) {
     printf("(Call Block ");
     node->target()->accept(this);
     printf(".call :\n");
@@ -839,7 +558,7 @@ class Printer : public Visitor {
     printf(")");
   }
 
-  void visit_Builtin(Builtin* node) {
+  void visit_Builtin(View<Builtin> node) {
     const char* name = "unknown";
     switch (node->kind()) {
       case Builtin::THROW: name = "throw"; break;
@@ -857,12 +576,12 @@ class Printer : public Visitor {
     printf("Builtin-%s", name);
   }
 
-  void visit_ReferenceClass(ReferenceClass* node) {
+  void visit_ReferenceClass(View<ReferenceClass> node) {
     auto target = node->target();
     printf("%s", target->name().c_str());
   }
 
-  void visit_ReferenceMethod(ReferenceMethod* node) {
+  void visit_ReferenceMethod(View<ReferenceMethod> node) {
     auto target = node->target();
     int arity;
     int block_count;
@@ -876,7 +595,7 @@ class Printer : public Visitor {
     printf("%s (%d, %d)", target->name().c_str(), arity, block_count);
   }
 
-  void visit_ReferenceLocal(ReferenceLocal* node) {
+  void visit_ReferenceLocal(View<ReferenceLocal> node) {
     if (node->block_depth() == 0) {
       printf("%s", node->target()->name().c_str());
     } else {
@@ -884,24 +603,24 @@ class Printer : public Visitor {
     }
   }
 
-  void visit_ReferenceBlock(ReferenceBlock* node) {
+  void visit_ReferenceBlock(View<ReferenceBlock> node) {
     printf("<BlockRef>");
   }
 
-  void visit_ReferenceGlobal(ReferenceGlobal* node) {
+  void visit_ReferenceGlobal(View<ReferenceGlobal> node) {
     printf("%s%s", node->target()->name().c_str(), node->is_lazy() ? "" : "(eager)");
   }
 
-  void visit_Local(Local* node) {
+  void visit_Local(View<Local> node) {
     printf("%s", node->name().c_str());
   }
 
-  void visit_Parameter(Parameter* node) { visit_Local(node); }
-  void visit_CapturedLocal(CapturedLocal* node) { visit_Parameter(node); }
+  void visit_Parameter(View<Parameter> node) { visit_Local(node); }
+  void visit_CapturedLocal(View<CapturedLocal> node) { visit_Parameter(node); }
 
-  void visit_Block(Block* node) { visit_Local(node); }
+  void visit_Block(View<Block> node) { visit_Local(node); }
 
-  void visit_Dot(Dot* node) {
+  void visit_Dot(View<Dot> node) {
     auto receiver = node->receiver();
     if (!receiver->is_Local()) {
       printf("(");
@@ -913,7 +632,7 @@ class Printer : public Visitor {
     printf(".%s", node->selector().c_str());
   }
 
-  void visit_LspSelectionDot(LspSelectionDot* node) {
+  void visit_LspSelectionDot(View<LspSelectionDot> node) {
     auto receiver = node->receiver();
     if (!receiver->is_Local()) {
       printf("(");
@@ -925,11 +644,11 @@ class Printer : public Visitor {
     printf(".<Target: %s>", node->selector().c_str());
   }
 
-  void visit_PrimitiveInvocation(PrimitiveInvocation* node) {
+  void visit_PrimitiveInvocation(View<PrimitiveInvocation> node) {
     printf("{{%s:%s}}", node->module().c_str(), node->primitive().c_str());
   }
 
-  void visit_Typecheck(Typecheck* node) {
+  void visit_Typecheck(View<Typecheck> node) {
     printf("(");
     visit(node->expression());
     printf(" %s %s%s",
@@ -939,17 +658,17 @@ class Printer : public Visitor {
     printf(")");
   }
 
-  void visit_Return(Return* node) {
+  void visit_Return(View<Return> node) {
     printf("(return ");
     node->value()->accept(this);
     printf(")");
   }
 
-  void visit_Assignment(Assignment* node) {
+  void visit_Assignment(View<Assignment> node) {
     UNREACHABLE();
   }
 
-  void visit_AssignmentLocal(AssignmentLocal* node) {
+  void visit_AssignmentLocal(View<AssignmentLocal> node) {
     if (node->block_depth() == 0) {
       printf("%s = ", node->local()->name().c_str());
     } else {
@@ -958,38 +677,38 @@ class Printer : public Visitor {
     node->right()->accept(this);
   }
 
-  void visit_AssignmentGlobal(AssignmentGlobal* node) {
+  void visit_AssignmentGlobal(View<AssignmentGlobal> node) {
     printf("%s = ", node->global()->name().c_str());
     node->right()->accept(this);
   }
 
-  void visit_AssignmentDefine(AssignmentDefine* node) {
+  void visit_AssignmentDefine(View<AssignmentDefine> node) {
     node->left()->accept(this);
     printf(" := ");
     node->right()->accept(this);
   }
 
-  void visit_LiteralNull(LiteralNull* node) {
+  void visit_LiteralNull(View<LiteralNull> node) {
     printf("null");
   }
 
-  void visit_LiteralUndefined(LiteralUndefined* node) {
+  void visit_LiteralUndefined(View<LiteralUndefined> node) {
     printf("<undefined>");
   }
 
-  void visit_LiteralInteger(LiteralInteger* node) {
+  void visit_LiteralInteger(View<LiteralInteger> node) {
     printf("%" PRId64, node->value());
   }
 
-  void visit_LiteralFloat(LiteralFloat* node) {
+  void visit_LiteralFloat(View<LiteralFloat> node) {
     printf("%g", node->value());
   }
 
-  void visit_LiteralString(LiteralString* node) {
+  void visit_LiteralString(View<LiteralString> node) {
     printf("%s", node->value());
   }
 
-  void visit_LiteralByteArray(LiteralByteArray* node) {
+  void visit_LiteralByteArray(View<LiteralByteArray> node) {
     printf("[");
     int length = node->data().length();
     for (int i = 0; i < length; i++) {
@@ -998,7 +717,7 @@ class Printer : public Visitor {
     printf("]");
   }
 
-  void visit_LiteralBoolean(LiteralBoolean* node) {
+  void visit_LiteralBoolean(View<LiteralBoolean> node) {
     printf("%s", node->value() ? "true" : "false");
   }
 

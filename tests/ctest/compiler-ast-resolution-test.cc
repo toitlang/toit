@@ -14,8 +14,7 @@ static void check(bool condition) {
 
 class LiteralVisitor : public resolution::TraversingVisitor {
  public:
-  void visit_LiteralInteger(resolution::LiteralInteger* information) override {
-    resolution::View<resolution::LiteralInteger> node(information);
+  void visit_LiteralInteger(resolution::View<resolution::LiteralInteger> node) override {
     syntax = node.syntax();
     value = node->value();
   }
