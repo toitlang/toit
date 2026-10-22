@@ -18,7 +18,7 @@
 #include <functional>
 
 #include "ast.h"
-#include "ir.h"
+#include "resolution.h"
 #include "list.h"
 #include "map.h"
 #include "scanner.h"
@@ -67,14 +67,14 @@ class Toitdoc {
 
 class ToitdocRegistry {
  public:
-  Toitdoc<ir::Node*> toitdoc_for(ir::Node* node) const { return toitdoc_for(static_cast<void*>(node)); }
-  Toitdoc<ir::Node*> toitdoc_for(Module* module) const { return toitdoc_for(static_cast<void*>(module)); }
+  Toitdoc<resolution::Node*> toitdoc_for(resolution::Node* node) const { return toitdoc_for(static_cast<void*>(node)); }
+  Toitdoc<resolution::Node*> toitdoc_for(Module* module) const { return toitdoc_for(static_cast<void*>(module)); }
 
-  void set_toitdoc(ir::Node* node, Toitdoc<ir::Node*> toitdoc) {
+  void set_toitdoc(resolution::Node* node, Toitdoc<resolution::Node*> toitdoc) {
     map_[static_cast<void*>(node)] = toitdoc;
   }
 
-  void set_toitdoc(Module* module, Toitdoc<ir::Node*> toitdoc) {
+  void set_toitdoc(Module* module, Toitdoc<resolution::Node*> toitdoc) {
     map_[static_cast<void*>(module)] = toitdoc;
   }
 
@@ -84,13 +84,13 @@ class ToitdocRegistry {
   }
 
  private:
-  Toitdoc<ir::Node*> toitdoc_for(void* node) const {
+  Toitdoc<resolution::Node*> toitdoc_for(void* node) const {
     auto probe = map_.find(node);
-    if (probe == map_.end()) return Toitdoc<ir::Node*>::invalid();
+    if (probe == map_.end()) return Toitdoc<resolution::Node*>::invalid();
     return probe->second;
   }
 
-  Map<void*, Toitdoc<ir::Node*>> map_;
+  Map<void*, Toitdoc<resolution::Node*>> map_;
 };
 
 } // namespace toit::compiler

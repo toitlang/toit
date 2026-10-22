@@ -13,6 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "resolution_call_builder.h"
 #include "type_check.h"
 
 #include <stdarg.h>
@@ -21,17 +22,27 @@
 #include "cycle_detector.h"
 #include "deprecation.h"
 #include "diagnostic.h"
-#include "ir.h"
+#include "resolution.h"
 #include "lsp/lsp.h"
 #include "no_such_method.h"
-#include "optimizations/utils.h"
-#include "queryable_class.h"
+#include "resolution_queryable_class.h"
 #include "toitdoc.h"
 
 namespace toit {
 namespace compiler {
 
-using namespace ir;
+using namespace resolution;
+
+static bool is_this_reference(Expression* expression, Method* method) {
+  if (method->holder() == null) return false;
+  if (!(method->is_instance() || method->is_constructor())) return false;
+  if (!expression->is_ReferenceLocal()) return false;
+  auto target = expression->as_ReferenceLocal()->target();
+  if (target->name() != Symbols::this_) return false;
+  if (target->is_CapturedLocal()) target = target->as_CapturedLocal()->local();
+  return target->is_Parameter() && target->as_Parameter()->index() == 0;
+}
+
 
 static bool is_arithmetic_operation(const Selector<CallShape>& selector) {
   if (selector.shape() != CallShape(1).with_implicit_this()) return false;
@@ -46,8 +57,8 @@ static bool is_arithmetic_operation(const Selector<CallShape>& selector) {
 class TypeChecker : public ReturningVisitor<Type> {
  public:
   TypeChecker(List<Type> literal_types,
-              List<ir::Class*> classes,
-              const UnorderedMap<ir::Class*, QueryableClass>* queryables,
+              List<resolution::Class*> classes,
+              const UnorderedMap<resolution::Class*, ResolutionQueryableClass>* queryables,
               Lsp* lsp,
               Diagnostics* diagnostics)
       : classes_(classes)
@@ -127,7 +138,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     if (reported_cyclic_globals_.contains(node)) {
       return Type::invalid();
     }
-    bool detected_cycle = globals_cycle_detector_.check_cycle(node, [&](const std::vector<ir::Global*>& cycle) {
+    bool detected_cycle = globals_cycle_detector_.check_cycle(node, [&](const std::vector<resolution::Global*>& cycle) {
       report_cyclic_global_types(cycle);
       reported_cyclic_globals_.insert(node);
     });
@@ -413,7 +424,7 @@ class TypeChecker : public ReturningVisitor<Type> {
 
     auto parameters = method->parameters();
     int argument_offset = 1;  // For the receiver, which is given as first argument.
-    CallBuilder::match_arguments_with_parameters(node->shape(),
+    ResolutionCallBuilder::match_arguments_with_parameters(node->shape(),
                                                  method->resolution_shape(),
                                                  [&](int argument_pos, int parameter_pos) {
       if (argument_pos == 0) return;  // The `this` parameter.
@@ -628,7 +639,7 @@ class TypeChecker : public ReturningVisitor<Type> {
       auto load = node->as_FieldLoad();
       // Like `compute_guaranteed_type`, don't trust field loads on `this` in
       // constructors.
-      if (method_->is_constructor() && is_This(load->receiver(), method_->holder(), method_)) {
+      if (method_->is_constructor() && is_this_reference(load->receiver(), method_)) {
         return false;
       }
       return load->field()->type().is_class();
@@ -704,16 +715,16 @@ class TypeChecker : public ReturningVisitor<Type> {
   }
 
  private:
-  List<ir::Class*> classes_;
-  const UnorderedMap<ir::Class*, QueryableClass>* queryables_;
+  List<resolution::Class*> classes_;
+  const UnorderedMap<resolution::Class*, ResolutionQueryableClass>* queryables_;
   Lsp* lsp_;
   Diagnostics* diagnostics_;
 
   // Since globals can be visited out of order (recursively), we need to
   // keep track which globals are already fully done.
-  Set<ir::Global*> handled_globals_;
-  CycleDetector<ir::Global*> globals_cycle_detector_;
-  UnorderedSet<ir::Global*> reported_cyclic_globals_;
+  Set<resolution::Global*> handled_globals_;
+  CycleDetector<resolution::Global*> globals_cycle_detector_;
+  UnorderedSet<resolution::Global*> reported_cyclic_globals_;
 
   // The current method.
   Method* method_;
@@ -750,7 +761,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     va_end(arguments);
   }
 
-  void report_cyclic_global_types(const std::vector<ir::Global*>& cycle) {
+  void report_cyclic_global_types(const std::vector<resolution::Global*>& cycle) {
     for (auto global : cycle) {
       diagnostics()->start_group();
       diagnostics()->report_error(global->range(), "Cyclic type dependency");
@@ -762,7 +773,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     }
   }
 
-  void check_deprecated(Source::Range range, ir::Node* node) {
+  void check_deprecated(Source::Range range, resolution::Node* node) {
     // Don't give warnings for synthetic stubs.
     if (method_->is_FieldStub()) return;
     auto name = Symbol::invalid();
@@ -943,7 +954,7 @@ class TypeChecker : public ReturningVisitor<Type> {
   /// The [parameter_type] must be the parameter's type, potentially already
   /// adjusted (made nullable) by the caller.
   void check_parameter(Source::Range range,
-                       ir::Parameter* parameter,
+                       resolution::Parameter* parameter,
                        Type parameter_type,
                        Type value_type) {
     auto migration_types = parameter->migration_types();
@@ -1002,7 +1013,7 @@ class TypeChecker : public ReturningVisitor<Type> {
   }
 };
 
-void check_types_and_deprecations(ir::Program* program,
+void check_types_and_deprecations(resolution::Program* program,
                                   Lsp* lsp,
                                   ToitdocRegistry* toitdocs,
                                   Diagnostics* diagnostics) {

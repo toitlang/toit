@@ -21,13 +21,13 @@
 namespace toit {
 namespace compiler {
 
-namespace ir {
+namespace resolution {
 class Node;
 }
 
 template<typename RefNode> class Toitdoc;
 
-Symbol extract_deprecation_message(const Toitdoc<ir::Node*>& toitdoc);
+Symbol extract_deprecation_message(const Toitdoc<resolution::Node*>& toitdoc);
 
 } // namespace toit::compiler
 } // namespace toit

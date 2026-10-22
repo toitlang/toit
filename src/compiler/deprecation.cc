@@ -18,12 +18,12 @@
 #include "../top.h"
 
 #include "toitdoc_node.h"
-#include "ir.h"
+#include "resolution.h"
 
 namespace toit {
 namespace compiler {
 
-using namespace ir;
+using namespace resolution;
 
 namespace {  // anonymous.
 
@@ -99,7 +99,7 @@ class DeprecationFinder : public toitdoc::Visitor {
 
 }  // anonymous namespace.
 
-Symbol extract_deprecation_message(const Toitdoc<ir::Node*>& toitdoc) {
+Symbol extract_deprecation_message(const Toitdoc<resolution::Node*>& toitdoc) {
   if (!toitdoc.is_valid()) return Symbol::invalid();
   DeprecationFinder finder;
   finder.visit(toitdoc.contents());

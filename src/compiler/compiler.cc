@@ -53,6 +53,7 @@
 #include "optimizations/optimizations.h"
 #include "parser.h"
 #include "propagation/type_database.h"
+#include "lowering.h"
 #include "resolver.h"
 #include "resolver_scope.h"
 #include "../snapshot_bundle.h"
@@ -322,7 +323,7 @@ class Pipeline {
   /// Subclasses that only need the parsed AST (e.g. SelectionRangePipeline)
   /// can override this to act on the units and call exit(0).
   virtual void parsed_units(const std::vector<ast::Unit*>& units);
-  virtual void post_resolve(Resolver* resolver, ir::Program* program);
+  virtual void post_resolve(Resolver* resolver, resolution::Program* program);
   virtual void post_type_check();
 
   virtual List<const char*> adjust_source_paths(List<const char*> source_paths);
@@ -350,11 +351,11 @@ class Pipeline {
                        const PackageLock& package_lock);
   std::vector<ast::Unit*> _parse_units(List<const char*> source_paths,
                                        const PackageLock& package_lock);
-  ir::Program* resolve(const std::vector<ast::Unit*>& units,
+  resolution::Program* resolve(const std::vector<ast::Unit*>& units,
                        int entry_unit_index,
                        int core_unit_index,
                        bool quiet = false);
-  void check_types_and_deprecations(ir::Program* program, bool quiet = false);
+  void check_types_and_deprecations(resolution::Program* program, bool quiet = false);
 };
 
 
@@ -467,7 +468,7 @@ class FindReferencesPipeline : public LocationLanguageServerPipeline {
 
  protected:
   void setup_lsp_selection_handler() override;
-  void post_resolve(Resolver* resolver, ir::Program* program) override;
+  void post_resolve(Resolver* resolver, resolution::Program* program) override;
   void post_type_check() override;
 
   bool is_lsp_selection_identifier() override { return false; }
@@ -476,8 +477,8 @@ class FindReferencesPipeline : public LocationLanguageServerPipeline {
   // State saved during post_resolve for deferred use in post_type_check.
   // When the cursor is on a virtual call site, the target is not available
   // until after type checking (when the call_virtual callback fires).
-  ir::Program* program_ = null;
-  UnorderedMap<ir::Node*, ast::Node*> ir_to_ast_map_;
+  resolution::Program* program_ = null;
+  UnorderedMap<resolution::Node*, ast::Node*> ir_to_ast_map_;
 
   // Show/export clause references collected from the resolver.
   // Each entry maps a resolved target definition to the source range
@@ -505,7 +506,7 @@ class PrepareRenamePipeline : public LocationLanguageServerPipeline {
 
  protected:
   void setup_lsp_selection_handler() override;
-  void post_resolve(Resolver* resolver, ir::Program* program) override;
+  void post_resolve(Resolver* resolver, resolution::Program* program) override;
   void post_type_check() override;
 
   bool is_lsp_selection_identifier() override { return false; }
@@ -516,7 +517,7 @@ class PrepareRenamePipeline : public LocationLanguageServerPipeline {
   /// If [range_override] is valid, it is used instead of the target's own range.
   /// This is needed for named constructors/factories where the IR range points
   /// to the "constructor"/"factory" keyword but we want the name part (e.g., "bar").
-  void emit_prepare_rename(ir::Node* target,
+  void emit_prepare_rename(resolution::Node* target,
                            Source::Range range_override = Source::Range::invalid());
 };
 
@@ -537,7 +538,7 @@ class HoverPipeline : public LocationLanguageServerPipeline {
     lsp()->setup_hover_handler(source_manager(), toitdocs());
   }
 
-  void post_resolve(Resolver* resolver, ir::Program* program) override {
+  void post_resolve(Resolver* resolver, resolution::Program* program) override {
     if (lsp() == null || !lsp()->has_selection_handler()) return;
     auto* handler = static_cast<HoverHandler*>(lsp()->selection_handler());
     // Retry emitting hover for nodes that had invalid ranges during
@@ -1223,7 +1224,7 @@ void Pipeline::parsed_units(const std::vector<ast::Unit*>& units) {
   // to act on the parsed AST before resolution.
 }
 
-void Pipeline::post_resolve(Resolver* resolver, ir::Program* program) {
+void Pipeline::post_resolve(Resolver* resolver, resolution::Program* program) {
   // Do nothing. Subclasses (like HoverPipeline) can override
   // to perform work after all modules have been resolved.
 }
@@ -1233,7 +1234,7 @@ void Pipeline::post_type_check() {
   // to perform work after type checking completes.
 }
 
-ir::Program* Pipeline::resolve(const std::vector<ast::Unit*>& units,
+resolution::Program* Pipeline::resolve(const std::vector<ast::Unit*>& units,
                                int entry_unit_index,
                                int core_unit_index,
                                bool quiet) {
@@ -1249,7 +1250,7 @@ ir::Program* Pipeline::resolve(const std::vector<ast::Unit*>& units,
   return result;
 }
 
-void Pipeline::check_types_and_deprecations(ir::Program* program, bool quiet) {
+void Pipeline::check_types_and_deprecations(resolution::Program* program, bool quiet) {
   NullDiagnostics null_diagnostics(this->diagnostics());
   Diagnostics* diagnostics = quiet ? &null_diagnostics : this->diagnostics();
   ::toit::compiler::check_types_and_deprecations(program, configuration_.lsp, toitdocs(), diagnostics);
@@ -1365,7 +1366,7 @@ void FindReferencesPipeline::setup_lsp_selection_handler() {
   lsp()->setup_find_references_handler(source_manager());
 }
 
-void FindReferencesPipeline::post_resolve(Resolver* resolver, ir::Program* program) {
+void FindReferencesPipeline::post_resolve(Resolver* resolver, resolution::Program* program) {
   if (lsp() == null || !lsp()->has_selection_handler()) return;
   auto* handler = static_cast<FindReferencesHandler*>(lsp()->selection_handler());
   auto* target = handler->target();
@@ -1409,7 +1410,7 @@ void PrepareRenamePipeline::setup_lsp_selection_handler() {
   lsp()->setup_find_references_handler(source_manager());
 }
 
-void PrepareRenamePipeline::post_resolve(Resolver* resolver, ir::Program* program) {
+void PrepareRenamePipeline::post_resolve(Resolver* resolver, resolution::Program* program) {
   if (lsp() == null || !lsp()->has_selection_handler()) return;
   auto* handler = static_cast<FindReferencesHandler*>(lsp()->selection_handler());
   auto* target = handler->target();
@@ -1443,7 +1444,7 @@ void PrepareRenamePipeline::post_type_check() {
   exit(0);
 }
 
-void PrepareRenamePipeline::emit_prepare_rename(ir::Node* target,
+void PrepareRenamePipeline::emit_prepare_rename(resolution::Node* target,
                                                  Source::Range range_override) {
   const char* name = target_name(target);
   Source::Range range = range_override.is_valid() ? range_override : target_range(target);
@@ -2201,11 +2202,11 @@ toit::Program* construct_program(ir::Program* ir_program,
 //   referenced in a `with` clause. Here these are available as `m->mixins()`.
 // - Finally, we have all interfaces.
 //   These are, again, in depth-first order.
-static void sort_classes(List<ir::Class*> classes) {
-  ir::Class* top = null;
-  ir::Class* top_mixin = null;
-  ir::Class* top_interface = null;
-  UnorderedMap<ir::Class*, std::vector<ir::Class*>> subs;
+static void sort_classes(List<resolution::Class*> classes) {
+  resolution::Class* top = null;
+  resolution::Class* top_mixin = null;
+  resolution::Class* top_interface = null;
+  UnorderedMap<resolution::Class*, std::vector<resolution::Class*>> subs;
 
   for (auto klass : classes) {
     if (klass->super() != null) {
@@ -2218,14 +2219,14 @@ static void sort_classes(List<ir::Class*> classes) {
       continue;
     }
     switch (klass->kind()) {
-      case ir::Class::Kind::CLASS:
-      case ir::Class::Kind::MONITOR:
+      case resolution::Class::Kind::CLASS:
+      case resolution::Class::Kind::MONITOR:
         top = klass;
         break;
-      case ir::Class::Kind::MIXIN:
+      case resolution::Class::Kind::MIXIN:
         top_mixin = klass;
         break;
-      case ir::Class::Kind::INTERFACE:
+      case resolution::Class::Kind::INTERFACE:
         top_interface = klass;
         break;
     }
@@ -2234,9 +2235,9 @@ static void sort_classes(List<ir::Class*> classes) {
   ASSERT(top_mixin != null);
   ASSERT(top_interface != null);
 
-  Set<ir::Class*> done;
+  Set<resolution::Class*> done;
 
-  auto are_all_mixin_parents_done = [&](ir::Class* klass) -> bool {
+  auto are_all_mixin_parents_done = [&](resolution::Class* klass) -> bool {
     if (!klass->is_mixin()) return true;
     if (klass->has_super() && !done.contains(klass->super())) return false;
     for (auto mixin : klass->mixins()) {
@@ -2245,11 +2246,11 @@ static void sort_classes(List<ir::Class*> classes) {
     return true;
   };
 
-  auto dfs_traverse = [&](ir::Class* klass) -> void {
-    std::vector<ir::Class*> queue;
+  auto dfs_traverse = [&](resolution::Class* klass) -> void {
+    std::vector<resolution::Class*> queue;
     queue.push_back(klass);
     while (!queue.empty()) {
-      ir::Class* current = queue.back();
+      resolution::Class* current = queue.back();
       queue.pop_back();
       if (done.contains(current)) {
         ASSERT(current->is_mixin());
@@ -2366,17 +2367,17 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   parsed_units(units);
 
   statistics.switch_phase(PipelineStatistics::RESOLUTION);
-  ir::Program* ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX);
-  sort_classes(ir_program->classes());
+  resolution::Program* resolved_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX);
+  sort_classes(resolved_program->classes());
 
   bool encountered_error_before_type_checks = diagnostics()->encountered_error();
 
-  if (Flags::print_ir_tree) ir_program->print(true);
+  if (Flags::print_ir_tree) resolved_program->print(true);
 
   statistics.switch_phase(PipelineStatistics::TYPE_CHECKS);
-  check_types_and_deprecations(ir_program);
+  check_types_and_deprecations(resolved_program);
   post_type_check();
-  check_definite_assignments_returns(ir_program, diagnostics());
+  check_definite_assignments_returns(resolved_program, diagnostics());
 
   bool encountered_error = diagnostics()->encountered_error();
   if (configuration_.werror && diagnostics()->encountered_warning()) {
@@ -2386,15 +2387,15 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   if (configuration_.is_for_analysis) {
     if (encountered_error) exit(1);
     int instantiated_class_count = 0;
-    int method_count = ir_program->methods().length();
-    for (auto klass : ir_program->classes()) {
+    int method_count = resolved_program->methods().length();
+    for (auto klass : resolved_program->classes()) {
       if (klass->is_instantiated()) instantiated_class_count++;
       method_count += klass->methods().length();
     }
-    statistics.set(PipelineStatistics::CLASSES, ir_program->classes().length());
+    statistics.set(PipelineStatistics::CLASSES, resolved_program->classes().length());
     statistics.set(PipelineStatistics::INSTANTIATED_CLASSES, instantiated_class_count);
     statistics.set(PipelineStatistics::METHODS, method_count);
-    statistics.set(PipelineStatistics::GLOBALS, ir_program->globals().length());
+    statistics.set(PipelineStatistics::GLOBALS, resolved_program->globals().length());
     statistics.finish();
     statistics.print();
     return Result::invalid();
@@ -2417,6 +2418,9 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   bool run_optimizations = !diagnostics()->encountered_error() &&
       configuration_.optimization_level >= 1;
 
+  // User-facing analysis is complete. Only backend passes receive IR nodes.
+  ir::Program* ir_program = lower_to_ir(resolved_program);
+
   SourceMapper unoptimized_source_mapper(source_manager());
   auto source_mapper = &unoptimized_source_mapper;
   TypeOracle oracle(source_mapper);
@@ -2433,15 +2437,16 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   if (run_optimizations && configuration_.optimization_level >= 2) {
     statistics.switch_phase(PipelineStatistics::OPTIMIZATION);
     bool quiet = true;
-    ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX, quiet);
-    sort_classes(ir_program->classes());
+    resolved_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX, quiet);
+    sort_classes(resolved_program->classes());
     // We check the types again, because the compiler computes types as
     // a side-effect of this and the types are necessary for the
     // optimizations. This feels a little bit unfortunate, but it is
     // important that the second compilation pass where we use propagated
     // types is based on the same IR nodes, so we need the optimizations
     // to behave the same way for the output to be correct.
-    check_types_and_deprecations(ir_program, quiet);
+    check_types_and_deprecations(resolved_program, quiet);
+    ir_program = lower_to_ir(resolved_program);
     ASSERT(!diagnostics()->encountered_error());
     TypeDatabase* types = TypeDatabase::compute(program, &method_selector_offsets);
     source_mapper = &optimized_source_mapper;

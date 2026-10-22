@@ -24,21 +24,21 @@
 namespace toit {
 namespace compiler {
 
-class QueryableClass;
+class ResolutionQueryableClass;
 class Diagnostics;
 
-namespace ir {
+namespace resolution {
   class Node;
   class Class;
 }
 
-void report_no_such_instance_method(ir::Class* klass,
+void report_no_such_instance_method(resolution::Class* klass,
                                     const Selector<CallShape>& selector,
                                     const Source::Range& range,
                                     Diagnostics* diagnostics);
 
 
-void report_no_such_static_method(List<ir::Node*> candidates,
+void report_no_such_static_method(List<resolution::Node*> candidates,
                                   const Selector<CallShape>& selector,
                                   const Source::Range& range,
                                   Diagnostics* diagnostics);

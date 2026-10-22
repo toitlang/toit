@@ -21,7 +21,7 @@
 namespace toit {
 namespace compiler {
 
-constexpr ir::Node* ClassScope::SUPER_CLASS_SEPARATOR;
+constexpr resolution::Node* ClassScope::SUPER_CLASS_SEPARATOR;
 
 /// Returns the ImportScope for the given node.
 ///
@@ -127,7 +127,7 @@ ResolutionEntry ImportScope::lookup(Symbol name,
 
   // Try to find the identifier in the imported scopes.
   ResolutionEntry entry;
-  Set<ir::Node*> ambiguous_nodes;
+  Set<resolution::Node*> ambiguous_nodes;
   for (auto scope : imported_scopes_) {
     if (is_external && !explicitly_imported_.contains(scope)) continue;
     auto module_entry = scope->lookup_external(name, already_visited);

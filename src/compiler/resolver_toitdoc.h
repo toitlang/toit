@@ -31,11 +31,11 @@ class ToitdocScopeIterator {
 
 };
 
-Toitdoc<ir::Node*> resolve_toitdoc(Toitdoc<ast::Node*> ast_toitdoc,
+Toitdoc<resolution::Node*> resolve_toitdoc(Toitdoc<ast::Node*> ast_toitdoc,
                                    ast::Node* holder,
                                    Scope* scope,
                                    Lsp* lsp,
-                                   const UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast_map,
+                                   const UnorderedMap<resolution::Node*, ast::Node*>& ir_to_ast_map,
                                    Diagnostics* diagnostics);
 
 } // namespace toit::compiler

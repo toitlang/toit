@@ -55,41 +55,41 @@ class CompletionHandler : public LspSelectionHandler {
                    Filesystem* fs);
   void class_interface_or_mixin(ast::Node* node,
                                 IterableScope* scope,
-                                ir::Class* holder,
-                                ir::Node* resolved,
+                                resolution::Class* holder,
+                                resolution::Node* resolved,
                                 bool needs_interface,
                                 bool needs_mixin);
   void type(ast::Node* node, IterableScope* scope, ResolutionEntry resolved, bool allow_none);
-  void call_virtual(ir::CallVirtual* node, ir::Type type, List<ir::Class*> classes);
+  void call_virtual(resolution::CallVirtual* node, resolution::Type type, List<resolution::Class*> classes);
   void call_prefixed(ast::Dot* node,
-                     ir::Node* resolved1,
-                     ir::Node* resolved2,
-                     List<ir::Node*> candidates,
+                     resolution::Node* resolved1,
+                     resolution::Node* resolved2,
+                     List<resolution::Node*> candidates,
                      IterableScope* scope);
   void call_class(ast::Dot* node,
-                  ir::Class* klass,
-                  ir::Node* resolved1,
-                  ir::Node* resolved2,
-                  List<ir::Node*> candidates,
+                  resolution::Class* klass,
+                  resolution::Node* resolved1,
+                  resolution::Node* resolved2,
+                  List<resolution::Node*> candidates,
                   IterableScope* scope);
   void call_static(ast::Node* node,
-                   ir::Node* resolved1,
-                   ir::Node* resolved2,
-                   List<ir::Node*> candidates,
+                   resolution::Node* resolved1,
+                   resolution::Node* resolved2,
+                   List<resolution::Node*> candidates,
                    IterableScope* scope,
-                   ir::Method* surrounding);
-  void call_block(ast::Dot* node, ir::Node* ir_receiver);
+                   resolution::Method* surrounding);
+  void call_block(ast::Dot* node, resolution::Node* ir_receiver);
 
-  void call_static_named(ast::Node* name_node, ir::Node* ir_call_target, List<ir::Node*> candidates);
+  void call_static_named(ast::Node* name_node, resolution::Node* ir_call_target, List<resolution::Node*> candidates);
 
   void call_primitive(ast::Node* node, Symbol module_name, Symbol primitive_name,
                       int module, int primitive, bool on_module);
 
   void field_storing_parameter(ast::Parameter* node,
-                               List<ir::Field*> fields,
+                               List<resolution::Field*> fields,
                                bool field_storing_is_allowed);
 
-  void this_(ast::Identifier* node, ir::Class* enclosing_class, IterableScope* scope, ir::Method* surrounding);
+  void this_(ast::Identifier* node, resolution::Class* enclosing_class, IterableScope* scope, resolution::Method* surrounding);
 
   void show(ast::Node* node, ResolutionEntry entry, ModuleScope* scope);
 
@@ -98,15 +98,15 @@ class CompletionHandler : public LspSelectionHandler {
   void return_label(ast::Node* node, int label_index, const std::vector<std::pair<Symbol, ast::Node*>>& labels);
 
   void toitdoc_ref(ast::Node* node,
-                   List<ir::Node*> candidates,
+                   List<resolution::Node*> candidates,
                    ToitdocScopeIterator* iterator,
                    bool is_signature_toitdoc);
 
-  void definition(ir::Node* ir_node, Source::Range name_range) override {}
+  void definition(resolution::Node* ir_node, Source::Range name_range) override {}
 
  private:
-  void complete_static_ids(IterableScope* scope, ir::Method* surrounding);
-  void complete_named_args(ir::Method* method);
+  void complete_static_ids(IterableScope* scope, resolution::Method* surrounding);
+  void complete_named_args(resolution::Method* method);
 
   void complete(Symbol symbol) { complete(symbol.c_str()); }
   void complete(Symbol symbol, CompletionKind kind) { complete(symbol.c_str(), kind); }
@@ -116,7 +116,7 @@ class CompletionHandler : public LspSelectionHandler {
                            CompletionKind kind,
                            const std::string& package_id);
 
-  void complete_method(ir::Method* method, const std::string& package_id);
+  void complete_method(resolution::Method* method, const std::string& package_id);
   void complete_entry(Symbol name,
                       const ResolutionEntry& entry,
                       CompletionKind kind_override = CompletionKind::NONE);
