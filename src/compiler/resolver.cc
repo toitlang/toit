@@ -91,20 +91,70 @@ void Resolver::report_warning(resolution::NodeView position_node, const char* fo
 // Forward declaration.
 static resolution::MethodView resolve_entry_point(Symbol name, int arity, ModuleScope* scope);
 
+// Resolution attachments also occur in annotations and documentation, which
+// the expression-oriented AST traverser does not visit.
+class ResolutionSyntaxVisitor : public ast::TraversingVisitor {
+ public:
+  void visit_Unit(ast::Unit* node) override {
+    visit_toitdoc(node->toitdoc());
+    ast::TraversingVisitor::visit_Unit(node);
+  }
+
+  void visit_Class(ast::Class* node) override {
+    visit_toitdoc(node->toitdoc());
+    for (auto interface : node->interfaces()) visit(interface);
+    for (auto mixin : node->mixins()) visit(mixin);
+    ast::TraversingVisitor::visit_Class(node);
+  }
+
+  void visit_Declaration(ast::Declaration* node) override {
+    visit_toitdoc(node->toitdoc());
+    ast::TraversingVisitor::visit_Declaration(node);
+  }
+
+  void visit_Field(ast::Field* node) override {
+    if (node->type() != null) visit(node->type());
+    ast::TraversingVisitor::visit_Field(node);
+  }
+
+  void visit_DeclarationLocal(ast::DeclarationLocal* node) override {
+    if (node->type() != null) visit(node->type());
+    ast::TraversingVisitor::visit_DeclarationLocal(node);
+  }
+
+ private:
+  void visit_toitdoc(Toitdoc<ast::Node*> toitdoc) {
+    if (toitdoc.is_valid()) {
+      for (auto ref : toitdoc.refs()) visit(ref);
+    }
+  }
+};
+
 resolution::ProgramView Resolver::resolve(const std::vector<ast::Unit*>& units,
                                int entry_index,
                                int core_index) {
   // The optimizing compilation resolves the same parsed units a second time.
   // Keep old interpretations intact, but replace the AST's current attachments.
-  class ClearResolution : public ast::TraversingVisitor {
+  class ClearResolution : public ResolutionSyntaxVisitor {
    public:
 #define CLEAR(name) \
     void visit_##name(ast::name* node) override { \
-      node->set_resolution(null); \
-      ast::TraversingVisitor::visit_##name(node); \
+      clear(node); \
+      ResolutionSyntaxVisitor::visit_##name(node); \
     }
     NODES(CLEAR)
 #undef CLEAR
+#ifdef TOIT_DEBUG
+    UnorderedSet<ast::Node*> syntax;
+#endif
+
+   private:
+    void clear(ast::Node* node) {
+      node->set_resolution(null);
+#ifdef TOIT_DEBUG
+      syntax.insert(node);
+#endif
+    }
   } clear;
   for (auto unit : units) unit->accept(&clear);
 
@@ -229,17 +279,22 @@ resolution::ProgramView Resolver::resolve(const std::vector<ast::Unit*>& units,
     if (entry.second->resolution() == null) entry.first->ast_node()->attach(entry.second);
   }
 #ifdef TOIT_DEBUG
-  // Every operation, including implicit ones, must retain its source syntax.
+  // Every operation, including implicit ones, must retain original parsed
+  // syntax. A non-null pointer to temporary or fabricated syntax is not enough.
   class CheckOrigins : public resolution::TraversingVisitor {
    public:
+    explicit CheckOrigins(const UnorderedSet<ast::Node*>& syntax) : syntax_(syntax) {}
 #define CHECK(name) \
     void visit_##name(resolution::name##View node) override { \
-      if (node.syntax() == null) FATAL("Missing AST origin for %s", node->node_type()); \
+      if (!syntax_.contains(node.syntax())) FATAL("Missing original AST origin for %s", node->node_type()); \
       resolution::TraversingVisitor::visit_##name(node); \
     }
     RESOLUTION_NODES(CHECK)
 #undef CHECK
-  } check_origins;
+
+   private:
+    const UnorderedSet<ast::Node*>& syntax_;
+  } check_origins(clear.syntax);
   program->accept(&check_origins);
 #endif
   return program;
