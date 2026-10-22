@@ -1854,14 +1854,7 @@ void MethodResolver::visit_loop(ast::Node* node,
     //
     // We move the declaration to the initializer, as if it was a `for` loop.
     auto loop_variable_declaration = ast_condition->as_DeclarationLocal();
-    auto range = loop_variable_declaration->selection_range();
-    auto ast_undefined = zone_new<ast::LiteralUndefined>();
-    ast_undefined->set_range(range);
-    ast_initializer = zone_new<ast::DeclarationLocal>(loop_variable_declaration->kind(),
-                                                 loop_variable_declaration->name(),
-                                                 loop_variable_declaration->type(),
-                                                 ast_undefined);
-    ast_initializer->set_range(range);
+    ast_initializer = loop_variable_declaration;
     ast_condition = loop_variable_declaration->value();
     assign_condition_to_loop_variable = true;
   }
@@ -1872,8 +1865,15 @@ void MethodResolver::visit_loop(ast::Node* node,
     //      x.bar
     auto loop_variable_declaration = ast_initializer->as_DeclarationLocal();
 
-    auto ir_loop_variable_initializer = resolve_expression(loop_variable_declaration->value(),
-                                                           "Loop variables may not be blocks");
+    resolution::Origin origin(loop_variable_declaration);
+    resolution::ExpressionView ir_loop_variable_initializer;
+    if (assign_condition_to_loop_variable) {
+      ir_loop_variable_initializer = resolution::make<resolution::LiteralUndefinedInfo>(
+          loop_variable_declaration->selection_range());
+    } else {
+      ir_loop_variable_initializer = resolve_expression(loop_variable_declaration->value(),
+                                                         "Loop variables may not be blocks");
+    }
     // Define the loop variable.
     ir_initializer = _define(loop_variable_declaration, ir_loop_variable_initializer);
     loop_variable = ir_initializer->as_AssignmentDefine()->local();
@@ -1901,7 +1901,7 @@ void MethodResolver::visit_loop(ast::Node* node,
       // This happens when the left-hand-side wasn't an identifier, and we didn't
       // create a loop variable.
       ASSERT(diagnostics()->encountered_error());
-      ASSERT(!ast_initializer->as_Binary()->left()->is_Identifier());
+      ASSERT(!ast_initializer->as_DeclarationLocal()->name()->is_Identifier());
     } else if (ir_condition->is_LiteralUndefined()) {
       report_error(ast_condition,
                    "Can't assign '?' to condition loop variable");
@@ -3035,7 +3035,8 @@ void MethodResolver::_visit_potential_call_super(ast::Node* ast_target,
 
 void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
                                            ast::Node* ast_target,
-                                           List<ast::Expression*> ast_arguments) {
+                                           List<ast::Expression*> ast_arguments,
+                                           List<Symbol> argument_names) {
   auto range = potential_call->selection_range();
 
   bool is_constructor_super_call = false;
@@ -3107,8 +3108,10 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
   bool has_named_arguments = false;
   ast::LspSelection* named_lsp_selection = null;
   ResolutionCallBuilder call_builder(range);
-  for (auto argument : ast_arguments) {
-    Symbol name = Symbol::invalid();
+  ASSERT(argument_names.is_empty() || argument_names.length() == ast_arguments.length());
+  for (int i = 0; i < ast_arguments.length(); i++) {
+    auto argument = ast_arguments[i];
+    Symbol name = argument_names.is_empty() ? Symbol::invalid() : argument_names[i];
     resolution::ExpressionView ir_argument = null;
     if (argument->is_NamedArgument()) {
       has_named_arguments = true;
@@ -3255,26 +3258,17 @@ void MethodResolver::visit_Index(ast::Index* node) {
 }
 
 void MethodResolver::visit_IndexSlice(ast::IndexSlice* node) {
-  // Takes an ast-expression and wraps it into a named argument node.
-  auto create_named_argument = [](Symbol name, ast::Expression* expr) {
-    // Change it to a named argument.
-    auto identifier = zone_new<ast::Identifier>(name);
-    identifier->set_range(expr->selection_range());
-    auto named = zone_new<ast::NamedArgument>(identifier, false, expr);
-    named->set_range(expr->selection_range());
-    return named;
-  };
-
   ListBuilder<ast::Expression*> arguments;
+  ListBuilder<Symbol> names;
   if (node->from() != null) {
-    // Change it to a named argument.
-    arguments.add(create_named_argument(Symbols::from, node->from()));
+    arguments.add(node->from());
+    names.add(Symbols::from);
   }
   if (node->to() != null) {
-    // Change it to a named argument.
-    arguments.add(create_named_argument(Symbols::to, node->to()));
+    arguments.add(node->to());
+    names.add(Symbols::to);
   }
-  _visit_potential_call(node, node->receiver(), arguments.build());
+  _visit_potential_call(node, node->receiver(), arguments.build(), names.build());
 }
 
 void MethodResolver::visit_labeled_break_continue(ast::BreakContinue* node) {
