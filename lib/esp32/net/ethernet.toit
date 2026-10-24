@@ -15,6 +15,7 @@ import monitor
 import net
 import net.ethernet
 import spi
+import system
 
 import system.api.ethernet show EthernetService
 import system.api.network show NetworkService
@@ -293,6 +294,7 @@ class EthernetModule_ implements NetworkModule:
 
   connect -> none:
     service.on-module-opened this
+    ethernet-set-hostname_ resource-group_ system.hostname
     with-timeout ETHERNET-CONNECT-TIMEOUT: wait-for-connected_
     with-timeout ETHERNET-DHCP-TIMEOUT: wait-for-dhcp-ip-address_
 
@@ -348,3 +350,6 @@ ethernet-disconnect_ resource-group resource:
 
 ethernet-get-ip_ resource:
   #primitive.ethernet.get-ip
+
+ethernet-set-hostname_ resource-group hostname:
+  #primitive.ethernet.set-hostname
