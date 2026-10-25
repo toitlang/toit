@@ -325,8 +325,6 @@ class Scope : public IterableScope {
 
   ImportScope* _find_import_scope(ast::Node* node);
 
-  ast::Node* find_import_scope_node_cache_ = null;
-  ImportScope* find_import_scope_result_cache_ = null;
   ast::Node* lookup_static_node_cache_ = null;
   ResolutionEntry lookup_static_result_cache_;
   ast::Node* lookup_prefix_node_cache_ = null;

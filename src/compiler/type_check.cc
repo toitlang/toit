@@ -224,6 +224,8 @@ class TypeChecker : public ReturningVisitor<Type> {
     return result_type;
   }
 
+  Type visit_LibraryPrefix(LibraryPrefixView node) { return Type::none(); }
+
   Type visit_Builtin(BuiltinView node) {
     // The `visit_CallBuiltin` will improve the type of the calls.
     return Type::any();

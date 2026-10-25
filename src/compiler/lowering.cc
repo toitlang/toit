@@ -103,7 +103,7 @@ class Lowering : public resolution::Visitor {
   ir::name* lower(resolution::name##View node) { \
     return static_cast<ir::name*>(lower_node(node)); \
   }
-  RESOLUTION_NODES(LOWER)
+  RESOLUTION_OPERATIONS(LOWER)
 #undef LOWER
 
   template<typename T>
@@ -412,6 +412,7 @@ class Lowering : public resolution::Visitor {
   // stubs are introduced later; abstract node categories are never instantiated.
 #define UNEXPECTED(name) \
   void visit_##name(resolution::name##View node) override { UNREACHABLE(); }
+  UNEXPECTED(LibraryPrefix)
   UNEXPECTED(Program)
   UNEXPECTED(Class)
   UNEXPECTED(Field)

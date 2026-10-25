@@ -103,6 +103,7 @@ void TraversingVisitor::visit_Sequence(SequenceView node) {
 }
 
 void TraversingVisitor::visit_Builtin(BuiltinView node) {}
+void TraversingVisitor::visit_LibraryPrefix(LibraryPrefixView node) {}
 
 void TraversingVisitor::visit_TryFinally(TryFinallyView node) {
   node->body()->accept(this);
@@ -551,6 +552,8 @@ class Printer : public Visitor {
     indent();
     printf(")");
   }
+
+  void visit_LibraryPrefix(LibraryPrefixView node) { printf("(LibraryPrefix)"); }
 
   void visit_Builtin(BuiltinView node) {
     const char* name = "unknown";
