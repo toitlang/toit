@@ -101,6 +101,9 @@ class Node {
   Node() : range_(Source::Range::invalid()) {}
   virtual void accept(Visitor* visitor) = 0;
 
+  resolution::AstNode* resolution() const { return resolution_; }
+  void set_resolution(resolution::AstNode* resolution) { resolution_ = resolution; }
+
   /// The range that should be selected and revealed when this node is
   /// picked or used for error reporting.
   /// For example, in method calls with bad arguments the ".method" part
@@ -132,6 +135,7 @@ NODES(DECLARE)
 
  private:
   Source::Range range_;
+  resolution::AstNode* resolution_ = null;
 };
 
 #define IMPLEMENTS(name)                                                          \

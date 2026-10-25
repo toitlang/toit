@@ -31,7 +31,8 @@ bool Method::_parameters_have_correct_index(List<Parameter*> parameters) {
 }
 
 
-void Visitor::visit(Node* node) { node->accept(this); }
+void Visitor::visit(Node* node) { node->ast_node()->accept(this); }
+void Visitor::visit(AstNode* node) { node->accept(this); }
 
 void TraversingVisitor::visit_Program(Program* node) {
   for (auto klass: node->classes()) klass->accept(this);
