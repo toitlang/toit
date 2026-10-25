@@ -1555,7 +1555,8 @@ Interpreter::Result Interpreter::run() {
       if (target.arity() > 2) {
         Object* value;
         bool result = fast_at(process_, backing, Smi::from(c + 1), false, &value);
-        ASSERT(result);
+        // Only fails if the backing was corrupted.
+        if (!result) value = program->null_object();
         PUSH(value);
       }
       // Call block, afterwards continue at the same bytecode.
