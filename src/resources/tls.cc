@@ -853,7 +853,7 @@ static int toit_tls_recv(void* ctx, unsigned char * buf, size_t len) {
   auto socket = unvoid_cast<MbedTlsSocket*>(ctx);
 
   int from = socket->from();
-  size_t result = Utils::min(socket->incoming_length() - from, len);
+  size_t result = Utils::min<size_t>(socket->incoming_length() - from, len);
   if (result == 0) {
     return MBEDTLS_ERR_SSL_WANT_READ;
   }

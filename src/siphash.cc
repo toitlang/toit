@@ -13,7 +13,9 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-#if !defined(TOIT_FREERTOS) || defined(CONFIG_TOIT_CRYPTO_EXTRA)
+#include "top.h"
+
+#if !defined(TOIT_EMBEDDED) || defined(CONFIG_TOIT_CRYPTO_EXTRA)
 
 #include "utils.h"
 #include "siphash.h"

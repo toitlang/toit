@@ -20,6 +20,8 @@
 #ifdef TOIT_FREERTOS
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#elif defined(TOIT_ZEPHYR)
+#include <zephyr/kernel.h>
 #else
 #include <errno.h>
 #include <pthread.h>
@@ -33,6 +35,8 @@ class Mutex {
 #ifdef TOIT_FREERTOS
     sem_ = xSemaphoreCreateMutex();
     if (!sem_) FATAL("mutex allocation of semaphore failed")
+#elif defined(TOIT_ZEPHYR)
+    k_mutex_init(&mutex_);
 #else
     pthread_mutex_init(&mutex_, null);
 #endif
@@ -41,6 +45,8 @@ class Mutex {
   ~Mutex() {
 #ifdef TOIT_FREERTOS
     vSemaphoreDelete(sem_);
+#elif defined(TOIT_ZEPHYR)
+    // Zephyr mutex storage is owned by this object.
 #else
     pthread_mutex_destroy(&mutex_);
 #endif
@@ -54,6 +60,8 @@ class Mutex {
     if (xSemaphoreTake(sem_, portMAX_DELAY) != pdTRUE) {
       FATAL("mutex lock failed");
     }
+#elif defined(TOIT_ZEPHYR)
+    if (k_mutex_lock(&mutex_, K_FOREVER) != 0) FATAL("mutex lock failed");
 #else
     int error = pthread_mutex_lock(&mutex_);
     if (error != 0) FATAL("mutex lock failed with error %d", error);
@@ -65,6 +73,8 @@ class Mutex {
     if (xSemaphoreGive(sem_) != pdTRUE) {
       FATAL("mutex unlock failed");
     }
+#elif defined(TOIT_ZEPHYR)
+    if (k_mutex_unlock(&mutex_) != 0) FATAL("mutex unlock failed");
 #else
     int error = pthread_mutex_unlock(&mutex_);
     if (error != 0) FATAL("mutex unlock failed with error %d", error);
@@ -74,6 +84,8 @@ class Mutex {
   bool is_locked() {
 #ifdef TOIT_FREERTOS
     return xSemaphoreGetMutexHolder(sem_) != null;
+#elif defined(TOIT_ZEPHYR)
+    return mutex_.owner != null;
 #else
     int error = pthread_mutex_trylock(&mutex_);
     if (error == 0) {
@@ -90,6 +102,8 @@ class Mutex {
   const char* const name_;
 #ifdef TOIT_FREERTOS
   SemaphoreHandle_t sem_;
+#elif defined(TOIT_ZEPHYR)
+  struct k_mutex mutex_;
 #else
   pthread_mutex_t mutex_;
 #endif

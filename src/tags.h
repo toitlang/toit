@@ -87,6 +87,7 @@ namespace toit {
   fn(BleCentralManagerResource)         \
   fn(BlePeripheralManagerResource)      \
   fn(BleRemoteDeviceResource)           \
+  fn(BleGattAttributeResource)          \
   fn(BleServiceResource)                \
 
 #define BLE_READ_WRITE_CLASSES_DO(fn)   \

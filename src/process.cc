@@ -348,7 +348,14 @@ void Process::_ensure_random_seeded() {
     memset(seed, 0x42, sizeof(seed));
   }
 #else
+#if defined(TOIT_ZEPHYR)
+  // Fail closed when the hardware entropy source is unavailable.
+  if (!EntropyMixer::instance()->get_entropy(seed, sizeof(seed))) {
+    FATAL("hardware entropy source unavailable");
+  }
+#else
   EntropyMixer::instance()->get_entropy(seed, sizeof(seed));
+#endif
 #endif
   random_seed(seed, sizeof(seed));
   random_seeded_ = true;
