@@ -69,12 +69,12 @@ class State {
     does_return_ = does_return_ && other.does_return();
   }
 
-  void mark_undefined(View<Node> variable) {
+  void mark_undefined(NodeView variable) {
     ASSERT(is_valid());
     map_[variable] = UNDEFINED;
   }
 
-  void mark_all_as_partially_defined(View<Local> loop_variable = null) {
+  void mark_all_as_partially_defined(LocalView loop_variable = null) {
     ASSERT(is_valid());
     for (auto& p : map_.underlying_map()) {
       if (p.first != loop_variable) {
@@ -83,18 +83,18 @@ class State {
     }
   }
 
-  void remove(View<Node> variable) {
+  void remove(NodeView variable) {
     ASSERT(is_valid());
     map_.remove(variable);
   }
 
-  bool is_completely_undefined(View<Node> node) {
+  bool is_completely_undefined(NodeView node) {
     ASSERT(is_valid());
     auto probe = map_.find(node);
     return probe != map_.end() && probe->second == UNDEFINED;
   }
 
-  bool is_undefined(View<Node> node) {
+  bool is_undefined(NodeView node) {
     ASSERT(is_valid());
     return map_.find(node) != map_.end();
   }
@@ -136,14 +136,14 @@ class State {
     PARTIALLY_DEFINED,
   };
   // Set of undefined locals and fields.
-  UnorderedMap<View<Node>, UndefinedKind> map_;
+  UnorderedMap<NodeView, UndefinedKind> map_;
 
   bool does_return_ = false;
   bool is_valid_ = true;
 };
 
 struct LoopState {
-  explicit LoopState(View<While> loop)
+  explicit LoopState(WhileView loop)
       : loop(loop)
       , break_state(State::invalid())
       , continue_state(State::invalid()) {}
@@ -154,7 +154,7 @@ struct LoopState {
 
   bool is_valid() const { return loop != null; }
 
-  View<While> loop;
+  WhileView loop;
   State break_state;
   State continue_state;
 };
@@ -167,13 +167,13 @@ class DefiniteChecker : public Visitor {
       : diagnostics_(diagnostics)
       , loop_state_(LoopState::invalid()) {}
 
-  void visit(View<Node> node) {
+  void visit(NodeView node) {
     node->accept(this);
   }
 
   // Nodes that need to be handled specially are first.
 
-  void visit_If(View<If> node) {
+  void visit_If(IfView node) {
     visit(node->condition());
     auto old_state = state_;
     visit(node->yes());
@@ -183,7 +183,7 @@ class DefiniteChecker : public Visitor {
     state_.merge(yes_state);
   }
 
-  void visit_TryFinally(View<TryFinally> node) {
+  void visit_TryFinally(TryFinallyView node) {
     auto old_state = state_;
     // Note that we shortcut the `visit_Code` which would reset the
     //   fields (in particular the `does_return_`), as it can't know
@@ -199,7 +199,7 @@ class DefiniteChecker : public Visitor {
     }
   }
 
-  void visit_While(View<While> node) {
+  void visit_While(WhileView node) {
     visit(node->condition());
     // We assume that the body/update is never executed.
     auto old_state = state_;
@@ -232,7 +232,7 @@ class DefiniteChecker : public Visitor {
     loop_state_ = old_loop_state;
   }
 
-  void visit_LogicalBinary(View<LogicalBinary> node) {
+  void visit_LogicalBinary(LogicalBinaryView node) {
     visit(node->left());
     auto left_state = state_;
     visit(node->right());
@@ -240,7 +240,7 @@ class DefiniteChecker : public Visitor {
     state_ = left_state;
   }
 
-  void visit_Code(View<Code> node) {
+  void visit_Code(CodeView node) {
     auto old_state = state_;
 
     // We have to assume that the block/lambda is executed multiple times.
@@ -253,7 +253,7 @@ class DefiniteChecker : public Visitor {
     state_ = old_state;
   }
 
-  void visit_Return(View<Return> node) {
+  void visit_Return(ReturnView node) {
     if (!node->is_end_of_method_return()) {
       // If we are inside a block/lambda, the `Return` might not leave
       //   the method. For simplicity, we don't track the block depth.
@@ -274,13 +274,13 @@ class DefiniteChecker : public Visitor {
     state_.clear_variables();
   }
 
-  void visit_Program(View<Program> node) {
+  void visit_Program(ProgramView node) {
     for (auto klass: node->classes()) visit(klass);
     for (auto method: node->methods()) visit(method);
     for (auto global: node->globals()) visit(global);
   }
 
-  void visit_Class(View<Class> node) {
+  void visit_Class(ClassView node) {
     // Constructors and factories are already visited in `visit_Program` as
     // global methods.
     // Fields don't have any code anymore, since all of the initialization is
@@ -288,9 +288,9 @@ class DefiniteChecker : public Visitor {
     for (auto method: node->methods()) visit(method);
   }
 
-  void visit_Field(View<Field> node) { UNREACHABLE(); }
+  void visit_Field(FieldView node) { UNREACHABLE(); }
 
-  void visit_Method(View<Method> node) {
+  void visit_Method(MethodView node) {
     if (!node->has_body()) return;
     method_ = node;
     state_.reset();
@@ -308,26 +308,26 @@ class DefiniteChecker : public Visitor {
     }
   }
 
-  void visit_MethodInstance(View<MethodInstance> node) { return visit_Method(node); }
-  void visit_MonitorMethod(View<MonitorMethod> node) { return visit_Method(node); }
-  void visit_MethodStatic(View<MethodStatic> node) { return visit_Method(node); }
-  void visit_Constructor(View<Constructor> node) { return visit_Method(node); }
-  void visit_Global(View<Global> node) { return visit_Method(node); }
-  void visit_AdapterStub(View<AdapterStub> node) { return visit_Method(node); }
-  void visit_MixinStub(View<MixinStub> node) { return visit_Method(node); }
-  void visit_IsInterfaceOrMixinStub(View<IsInterfaceOrMixinStub> node) { return visit_Method(node); }
-  void visit_FieldStub(View<FieldStub> node) { return visit_Method(node); }
+  void visit_MethodInstance(MethodInstanceView node) { return visit_Method(node); }
+  void visit_MonitorMethod(MonitorMethodView node) { return visit_Method(node); }
+  void visit_MethodStatic(MethodStaticView node) { return visit_Method(node); }
+  void visit_Constructor(ConstructorView node) { return visit_Method(node); }
+  void visit_Global(GlobalView node) { return visit_Method(node); }
+  void visit_AdapterStub(AdapterStubView node) { return visit_Method(node); }
+  void visit_MixinStub(MixinStubView node) { return visit_Method(node); }
+  void visit_IsInterfaceOrMixinStub(IsInterfaceOrMixinStubView node) { return visit_Method(node); }
+  void visit_FieldStub(FieldStubView node) { return visit_Method(node); }
 
-  void visit_Expression(View<Expression> node) { UNREACHABLE(); }
-  void visit_Error(View<Error> node) {
+  void visit_Expression(ExpressionView node) { UNREACHABLE(); }
+  void visit_Error(ErrorView node) {
     for (auto expr : node->nested()) {
       visit(expr);
     }
   }
 
-  void visit_Nop(View<Nop> node) {}
+  void visit_Nop(NopView node) {}
 
-  void visit_FieldStore(View<FieldStore> node) {
+  void visit_FieldStore(FieldStoreView node) {
     // First visit the value, before killing it.
     visit(node->value());
     auto field = node->field();
@@ -338,11 +338,11 @@ class DefiniteChecker : public Visitor {
     }
   }
 
-  void visit_FieldLoad(View<FieldLoad> node) {
+  void visit_FieldLoad(FieldLoadView node) {
     use(node->field(), node->range());
   }
 
-  void visit_Sequence(View<Sequence> node) {
+  void visit_Sequence(SequenceView node) {
     auto old_locals = current_locals_;
     current_locals_.clear();
     for (auto expr : node->expressions()) {
@@ -354,13 +354,13 @@ class DefiniteChecker : public Visitor {
     current_locals_ = old_locals;
   }
 
-  void visit_Builtin(View<Builtin> node) {}
+  void visit_Builtin(BuiltinView node) {}
 
-  void visit_Not(View<Not> node) {
+  void visit_Not(NotView node) {
     visit(node->value());
   }
 
-  void visit_LoopBranch(View<LoopBranch> node) {
+  void visit_LoopBranch(LoopBranchView node) {
     if (loop_state_.is_valid()) {
       if (node->is_break()) {
         loop_state_.break_state.merge(state_);
@@ -370,28 +370,28 @@ class DefiniteChecker : public Visitor {
     }
   }
 
-  void visit_Reference(View<Reference> node) { UNREACHABLE(); }
+  void visit_Reference(ReferenceView node) { UNREACHABLE(); }
 
-  void visit_ReferenceClass(View<ReferenceClass> node) { UNREACHABLE(); }
-  void visit_ReferenceMethod(View<ReferenceMethod> node) {}
+  void visit_ReferenceClass(ReferenceClassView node) { UNREACHABLE(); }
+  void visit_ReferenceMethod(ReferenceMethodView node) {}
 
-  void visit_ReferenceLocal(View<ReferenceLocal> node) {
+  void visit_ReferenceLocal(ReferenceLocalView node) {
     use(node->target(), node->range());
   }
 
-  void visit_ReferenceBlock(View<ReferenceBlock> node) { visit_ReferenceLocal(node); }
-  void visit_ReferenceGlobal(View<ReferenceGlobal> node) {}
+  void visit_ReferenceBlock(ReferenceBlockView node) { visit_ReferenceLocal(node); }
+  void visit_ReferenceGlobal(ReferenceGlobalView node) {}
 
-  void visit_Local(View<Local> node) { UNREACHABLE(); }
-  void visit_Parameter(View<Parameter> node) { UNREACHABLE(); }
-  void visit_CapturedLocal(View<CapturedLocal> node) { UNREACHABLE(); }
-  void visit_Block(View<Block> node) { UNREACHABLE(); }
+  void visit_Local(LocalView node) { UNREACHABLE(); }
+  void visit_Parameter(ParameterView node) { UNREACHABLE(); }
+  void visit_CapturedLocal(CapturedLocalView node) { UNREACHABLE(); }
+  void visit_Block(BlockView node) { UNREACHABLE(); }
 
-  void visit_Dot(View<Dot> node) { visit(node->receiver()); }
+  void visit_Dot(DotView node) { visit(node->receiver()); }
 
-  void visit_LspSelectionDot(View<LspSelectionDot> node) { visit_Dot(node); }
+  void visit_LspSelectionDot(LspSelectionDotView node) { visit_Dot(node); }
 
-  void visit_Super(View<Super> node) {
+  void visit_Super(SuperView node) {
     ASSERT(method_->is_constructor());
     if (node->expression() != null) visit(node->expression());
     if (state_.empty()) return;
@@ -420,13 +420,13 @@ class DefiniteChecker : public Visitor {
     }
   }
 
-  void visit_Call(View<Call> node) {
+  void visit_Call(CallView node) {
     visit(node->target());
     for (auto argument : node->arguments()) visit(argument);
   }
 
-  void visit_CallConstructor(View<CallConstructor> node) { visit_Call(node); }
-  void visit_CallStatic(View<CallStatic> node) {
+  void visit_CallConstructor(CallConstructorView node) { visit_Call(node); }
+  void visit_CallStatic(CallStaticView node) {
     visit_Call(node);
     if (node->target()->target()->does_not_return()) {
       // Since we return from the method here, we don't need to worry about
@@ -436,29 +436,29 @@ class DefiniteChecker : public Visitor {
       state_.mark_return();
     }
   }
-  void visit_Lambda(View<Lambda> node) {
+  void visit_Lambda(LambdaView node) {
     // Ignore the captured arguments.
     // We provide error messages only when we encounter the captured variables.
     visit(node->arguments()[0]);
   }
-  void visit_CallVirtual(View<CallVirtual> node) { visit_Call(node); }
-  void visit_CallBlock(View<CallBlock> node) { visit_Call(node); }
-  void visit_CallBuiltin(View<CallBuiltin> node) { visit_Call(node); }
+  void visit_CallVirtual(CallVirtualView node) { visit_Call(node); }
+  void visit_CallBlock(CallBlockView node) { visit_Call(node); }
+  void visit_CallBuiltin(CallBuiltinView node) { visit_Call(node); }
 
-  void visit_Typecheck(View<Typecheck> node) {
+  void visit_Typecheck(TypecheckView node) {
     visit(node->expression());
   }
 
-  void visit_Assignment(View<Assignment> node) { UNREACHABLE(); }
+  void visit_Assignment(AssignmentView node) { UNREACHABLE(); }
 
-  void visit_AssignmentDefine(View<AssignmentDefine> node) {
+  void visit_AssignmentDefine(AssignmentDefineView node) {
     visit(node->right());
     if (node->right()->is_LiteralUndefined()) {
       state_.mark_undefined(node->local());
     }
   }
 
-  void visit_AssignmentLocal(View<AssignmentLocal> node) {
+  void visit_AssignmentLocal(AssignmentLocalView node) {
     auto local = node->local();
     visit(node->right());
     if (node->right()->is_LiteralUndefined()) {
@@ -476,41 +476,41 @@ class DefiniteChecker : public Visitor {
     }
   }
 
-  void visit_AssignmentGlobal(View<AssignmentGlobal> node) {
+  void visit_AssignmentGlobal(AssignmentGlobalView node) {
     visit(node->right());
   }
 
-  void visit_Literal(View<Literal> node) {}
+  void visit_Literal(LiteralView node) {}
 
-  void visit_LiteralNull(View<LiteralNull> node) { visit_Literal(node); }
-  void visit_LiteralUndefined(View<LiteralUndefined> node) { visit_Literal(node); }
-  void visit_LiteralInteger(View<LiteralInteger> node) { visit_Literal(node); }
-  void visit_LiteralFloat(View<LiteralFloat> node) { visit_Literal(node); }
-  void visit_LiteralString(View<LiteralString> node) { visit_Literal(node); }
-  void visit_LiteralBoolean(View<LiteralBoolean> node) { visit_Literal(node); }
-  void visit_LiteralByteArray(View<LiteralByteArray> node) { visit_Literal(node); }
+  void visit_LiteralNull(LiteralNullView node) { visit_Literal(node); }
+  void visit_LiteralUndefined(LiteralUndefinedView node) { visit_Literal(node); }
+  void visit_LiteralInteger(LiteralIntegerView node) { visit_Literal(node); }
+  void visit_LiteralFloat(LiteralFloatView node) { visit_Literal(node); }
+  void visit_LiteralString(LiteralStringView node) { visit_Literal(node); }
+  void visit_LiteralBoolean(LiteralBooleanView node) { visit_Literal(node); }
+  void visit_LiteralByteArray(LiteralByteArrayView node) { visit_Literal(node); }
 
-  void visit_PrimitiveInvocation(View<PrimitiveInvocation> node) {}
+  void visit_PrimitiveInvocation(PrimitiveInvocationView node) {}
 
  private:
   Diagnostics* diagnostics_;
 
   // The list of undefined locals that is leaves the scope when we
   //   leave the current sequence.
-  std::vector<View<Local>> current_locals_;
+  std::vector<LocalView> current_locals_;
   State state_;
   LoopState loop_state_;
   // Only used for nicer error messages. The `state_` tracks flow-sensitive
   //   `return`s. It is ok to set this variable to true, even if there isn't
   //   any real return.
   bool has_seen_return_ = false;
-  View<Method> method_;
+  MethodView method_;
 
   Diagnostics* diagnostics() const { return diagnostics_; }
 
-  void kill(View<Node> variable) { state_.remove(variable); }
+  void kill(NodeView variable) { state_.remove(variable); }
 
-  void use(View<Field> field, Source::Range range) {
+  void use(FieldView field, Source::Range range) {
     if (state_.is_undefined(field)) {
       report_error(range,
                    "Field '%s' must be initialized before first use",
@@ -518,7 +518,7 @@ class DefiniteChecker : public Visitor {
     }
   }
 
-  void use(View<Local> local, Source::Range range) {
+  void use(LocalView local, Source::Range range) {
     if (state_.is_undefined(local)) {
       report_error(range,
                    "Local '%s' must be initialized before first use",
@@ -534,7 +534,7 @@ class DefiniteChecker : public Visitor {
   }
 };
 
-void check_definite_assignments_returns(resolution::View<resolution::Program> program, Diagnostics* diagnostics) {
+void check_definite_assignments_returns(resolution::ProgramView program, Diagnostics* diagnostics) {
   DefiniteChecker checker(diagnostics);
   program->accept(&checker);
 }

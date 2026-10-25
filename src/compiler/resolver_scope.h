@@ -52,9 +52,9 @@ class Module {
   };
 
   Module(ast::Unit* unit,
-         List<resolution::View<resolution::Class>> classes,
-         List<resolution::View<resolution::Method>> methods,
-         List<resolution::View<resolution::Global>> globals,
+         List<resolution::ClassView> classes,
+         List<resolution::MethodView> methods,
+         List<resolution::GlobalView> globals,
          bool export_all,
          const Set<Symbol>& exported_identifiers)
       : unit_(unit)
@@ -68,9 +68,9 @@ class Module {
 
   ast::Unit* unit() const { return unit_; }
 
-  List<resolution::View<resolution::Class>> classes() const { return classes_; }
-  List<resolution::View<resolution::Method>> methods() const { return methods_; }
-  List<resolution::View<resolution::Global>> globals() const { return globals_; }
+  List<resolution::ClassView> classes() const { return classes_; }
+  List<resolution::MethodView> methods() const { return methods_; }
+  List<resolution::GlobalView> globals() const { return globals_; }
 
   // Imported modules are not exported. They may have a prefix.
   //
@@ -95,9 +95,9 @@ class Module {
 
  private:
   ast::Unit* unit_;
-  List<resolution::View<resolution::Class>> classes_;
-  List<resolution::View<resolution::Method>> methods_;
-  List<resolution::View<resolution::Global>> globals_;
+  List<resolution::ClassView> classes_;
+  List<resolution::MethodView> methods_;
+  List<resolution::GlobalView> globals_;
 
   List<PrefixedModule> imported_modules_;
   bool export_all_;
@@ -130,24 +130,24 @@ class ResolutionEntry {
     AMBIGUOUS,
   };
 
-  ResolutionEntry() : kind_(NODES), nodes_(List<resolution::View<resolution::Node>>()) {}
-  explicit ResolutionEntry(List<resolution::View<resolution::Node>> nodes)
+  ResolutionEntry() : kind_(NODES), nodes_(List<resolution::NodeView>()) {}
+  explicit ResolutionEntry(List<resolution::NodeView> nodes)
       : kind_(NODES), nodes_(nodes) {}
-  explicit ResolutionEntry(resolution::View<resolution::Node> node)
-      : kind_(NODES), nodes_(ListBuilder<resolution::View<resolution::Node>>::build(node)) {}
+  explicit ResolutionEntry(resolution::NodeView node)
+      : kind_(NODES), nodes_(ListBuilder<resolution::NodeView>::build(node)) {}
 
   explicit ResolutionEntry(ImportScope* prefix) : kind_(PREFIX), prefix_(prefix) {}
 
   // Used for ambiguous nodes.
-  explicit ResolutionEntry(Kind kind) : kind_(kind), nodes_(List<resolution::View<resolution::Node>>()) {}
+  explicit ResolutionEntry(Kind kind) : kind_(kind), nodes_(List<resolution::NodeView>()) {}
 
   Kind kind() const { return kind_; }
 
-  List<resolution::View<resolution::Node>> nodes() const {
+  List<resolution::NodeView> nodes() const {
     ASSERT(kind_ == NODES || kind_ == AMBIGUOUS);
     return nodes_;
   }
-  void set_nodes(List<resolution::View<resolution::Node>> nodes) {
+  void set_nodes(List<resolution::NodeView> nodes) {
     ASSERT(kind_ == NODES || kind_ == AMBIGUOUS);
     nodes_ = nodes;
   }
@@ -162,14 +162,14 @@ class ResolutionEntry {
         (nodes_[0]->is_Class() || nodes_[0]->is_Constructor());
   }
 
-  resolution::View<resolution::Class> klass() const {
+  resolution::ClassView klass() const {
     ASSERT(is_class());
     if (nodes_[0]->is_Class()) return nodes_[0]->as_Class();
     return nodes_[0]->as_Constructor()->klass();
   }
 
   bool is_single() const { return kind_ == NODES && nodes_.length() == 1; }
-  resolution::View<resolution::Node> single() const {
+  resolution::NodeView single() const {
     ASSERT(is_single());
     return nodes_[0];
   }
@@ -184,7 +184,7 @@ class ResolutionEntry {
  private:
   Kind kind_;
   union {
-    List<resolution::View<resolution::Node>> nodes_;
+    List<resolution::NodeView> nodes_;
     ImportScope* prefix_;
   };
 };
@@ -363,8 +363,8 @@ class StaticsScope : public IterableScope {
     entries_.for_each(callback);
   }
 
-  std::vector<resolution::View<resolution::Method>> nodes() const { return nodes_; }
-  void replace_nodes(const std::vector<resolution::View<resolution::Method>>& new_nodes) {
+  std::vector<resolution::MethodView> nodes() const { return nodes_; }
+  void replace_nodes(const std::vector<resolution::MethodView>& new_nodes) {
     ASSERT(!map_is_valid_);
     nodes_ = new_nodes;
   }
@@ -383,7 +383,7 @@ class StaticsScope : public IterableScope {
   Scope::ResolutionEntryMap entries_;
   // The nodes are redundant (since they are already in the entries_ map), but
   // this simplifies the code a lot.
-  std::vector<resolution::View<resolution::Method>> nodes_;
+  std::vector<resolution::MethodView> nodes_;
 };
 
 /// One or more imported modules with the same prefix.
@@ -686,20 +686,20 @@ class SimpleScope : public Scope {
 /// Includes fields, and super-class members which shadow top-level elements.
 class ClassScope : public SimpleScope {
  public:
-  explicit ClassScope(resolution::View<resolution::Class> klass, Scope* outer) : SimpleScope(outer), class_(klass) {
+  explicit ClassScope(resolution::ClassView klass, Scope* outer) : SimpleScope(outer), class_(klass) {
     ASSERT(outer != null);
   }
 
-  static constexpr resolution::View<resolution::Node> SUPER_CLASS_SEPARATOR = null;
+  static constexpr resolution::NodeView SUPER_CLASS_SEPARATOR = null;
 
   ResolutionEntryMap declarations() { return dictionary(); }
 
   ClassScope* enclosing_class_scope() { return this; }
 
-  resolution::View<resolution::Class> klass() const { return class_; }
+  resolution::ClassView klass() const { return class_; }
 
  private:
-  resolution::View<resolution::Class> class_;
+  resolution::ClassView class_;
 };
 
 /// A scope within a method (or initializer).
@@ -764,10 +764,10 @@ class LambdaScope : public SimpleScope {
     return  outer_result;
   }
 
-  Map<resolution::View<resolution::Local>, int> captured_depths() const { return captured_depths_; }
+  Map<resolution::LocalView, int> captured_depths() const { return captured_depths_; }
 
  private:
-  Map<resolution::View<resolution::Local>, int> captured_depths_;
+  Map<resolution::LocalView, int> captured_depths_;
 };
 
 /// A scope that adds the `it` parameter, and keeps track of whether the parameter was used.
@@ -793,13 +793,13 @@ class ItScope : public Scope {
 
   ClassScope* enclosing_class_scope() { return outer()->enclosing_class_scope(); }
 
-  resolution::View<resolution::Parameter> it() const { return it_; }
-  void set_it(resolution::View<resolution::Parameter> it) { it_ = it; }
+  resolution::ParameterView it() const { return it_; }
+  void set_it(resolution::ParameterView it) { it_ = it; }
 
   bool it_was_used() const { return it_was_used_; }
 
  private:
-  resolution::View<resolution::Parameter> it_;
+  resolution::ParameterView it_;
   bool it_was_used_;
 };
 
@@ -808,7 +808,7 @@ class ScopeFiller {
   explicit ScopeFiller(bool discard_invalid_symbols = false)
       : discard_invalid_(discard_invalid_symbols) {}
 
-  void add(Symbol name, resolution::View<resolution::Node> node) {
+  void add(Symbol name, resolution::NodeView node) {
     if (!name.is_valid() && discard_invalid_) return;
     declarations_[name].push_back(node);
   }
@@ -822,14 +822,14 @@ class ScopeFiller {
   template<typename S> void fill(S scope) {
     for (auto name : declarations_.keys()) {
       auto& vector = declarations_[name];
-      auto list = ListBuilder<resolution::View<resolution::Node>>::build_from_vector(vector);
+      auto list = ListBuilder<resolution::NodeView>::build_from_vector(vector);
       scope->add(name, ResolutionEntry(list));
     }
   }
 
  private:
   bool discard_invalid_;
-  Map<Symbol, std::vector<resolution::View<resolution::Node>>> declarations_;
+  Map<Symbol, std::vector<resolution::NodeView>> declarations_;
 };
 
 } // namespace toit::compiler

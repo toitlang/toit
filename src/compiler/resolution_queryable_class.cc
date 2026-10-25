@@ -27,7 +27,7 @@ class CallSelectorVisitor : public resolution::TraversingVisitor {
  public:
   UnorderedMap<Symbol, Set<CallShape>> selectors;
 
-  void visit_CallVirtual(resolution::View<resolution::CallVirtual> node) {
+  void visit_CallVirtual(resolution::CallVirtualView node) {
     TraversingVisitor::visit_CallVirtual(node);
     selectors[node->selector()].insert(node->shape());
   }
@@ -35,15 +35,15 @@ class CallSelectorVisitor : public resolution::TraversingVisitor {
 
 } // namespace anonymous
 
-UnorderedMap<View<Class>, ResolutionQueryableClass> build_queryables_from_resolution_shapes(View<Program> program, bool include_abstracts) {
+UnorderedMap<ClassView, ResolutionQueryableClass> build_queryables_from_resolution_shapes(ProgramView program, bool include_abstracts) {
   CallSelectorVisitor visitor;
   program->accept(&visitor);
   auto invoked_selectors = visitor.selectors;
 
-  resolution::View<resolution::Class> object_class = program->classes()[0];
+  resolution::ClassView object_class = program->classes()[0];
   ASSERT(object_class->name() == Symbols::Object);
 
-  UnorderedMap<View<Class>, ResolutionQueryableClass> result;
+  UnorderedMap<ClassView, ResolutionQueryableClass> result;
 
   for (int phase = 0; phase < 3; phase++) {
     // Classes are sorted such that all supers are before their subclasses.

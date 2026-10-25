@@ -39,8 +39,8 @@ void CompletionHandler::set_and_emit_prefix(Symbol prefix, const Source::Range& 
 
 void CompletionHandler::class_interface_or_mixin(ast::Node* node,
                                                  IterableScope* scope,
-                                                 resolution::View<resolution::Class> holder,
-                                                 resolution::View<resolution::Node> resolved,
+                                                 resolution::ClassView holder,
+                                                 resolution::NodeView resolved,
                                                  bool needs_interface,
                                                  bool needs_mixin) {
   scope->for_each([&](Symbol name, const ResolutionEntry& entry) {
@@ -57,13 +57,13 @@ void CompletionHandler::class_interface_or_mixin(ast::Node* node,
   terminate();
 }
 
-static CompletionKind completion_kind_for(resolution::View<resolution::Class> klass) {
+static CompletionKind completion_kind_for(resolution::ClassView klass) {
   switch (klass->kind()) {
-    case resolution::Class::CLASS:
-    case resolution::Class::MONITOR:
-    case resolution::Class::MIXIN:
+    case resolution::ClassInfo::CLASS:
+    case resolution::ClassInfo::MONITOR:
+    case resolution::ClassInfo::MIXIN:
       return CompletionKind::CLASS;
-    case resolution::Class::INTERFACE:
+    case resolution::ClassInfo::INTERFACE:
       return CompletionKind::INTERFACE;
       break;
   }
@@ -107,9 +107,9 @@ void CompletionHandler::type(ast::Node* node,
   terminate();
 }
 
-void CompletionHandler::call_virtual(resolution::View<resolution::CallVirtual> node,
+void CompletionHandler::call_virtual(resolution::CallVirtualView node,
                                      resolution::Type type,
-                                     List<resolution::View<resolution::Class>> classes) {
+                                     List<resolution::ClassView> classes) {
   bool is_for_named = node->target()->as_LspSelectionDot()->is_for_named();
   if (type.is_none()) {
     // No completions.
@@ -123,7 +123,7 @@ void CompletionHandler::call_virtual(resolution::View<resolution::CallVirtual> n
   auto klass = type.klass();
   if (is_for_named) {
     auto selector = node->selector();
-    walk_class_hierarchy(klass, classes, [&](resolution::View<resolution::Class> current) -> bool {
+    walk_class_hierarchy(klass, classes, [&](resolution::ClassView current) -> bool {
       for (auto method : current->methods()) {
         if (method->name() == selector) {
           complete_named_args(method);
@@ -134,7 +134,7 @@ void CompletionHandler::call_virtual(resolution::View<resolution::CallVirtual> n
     terminate();
   }
 
-  walk_class_hierarchy(klass, classes, [&](resolution::View<resolution::Class> current) -> bool {
+  walk_class_hierarchy(klass, classes, [&](resolution::ClassView current) -> bool {
     auto class_source = source_manager_->source_for_position(current->range().from());
     auto class_package = class_source->package_id();
     for (auto method : current->methods()) {
@@ -146,7 +146,7 @@ void CompletionHandler::call_virtual(resolution::View<resolution::CallVirtual> n
 }
 
 void CompletionHandler::complete_static_ids(IterableScope* scope,
-                                            resolution::View<resolution::Method> surrounding) {
+                                            resolution::MethodView surrounding) {
   bool has_access_to_this = surrounding == null || surrounding->is_instance() || surrounding->is_constructor();
   scope->for_each([&](Symbol name, const ResolutionEntry& entry) {
     switch (entry.kind()) {
@@ -170,11 +170,11 @@ void CompletionHandler::complete_static_ids(IterableScope* scope,
 }
 
 void CompletionHandler::call_static(ast::Node* node,
-                                    resolution::View<resolution::Node> resolved1,
-                                    resolution::View<resolution::Node> resolved2,
-                                    List<resolution::View<resolution::Node>> candidates,
+                                    resolution::NodeView resolved1,
+                                    resolution::NodeView resolved2,
+                                    List<resolution::NodeView> candidates,
                                     IterableScope* scope,
-                                    resolution::View<resolution::Method> surrounding) {
+                                    resolution::MethodView surrounding) {
   complete("true", CompletionKind::KEYWORD);
   complete("false", CompletionKind::KEYWORD);
   complete("null", CompletionKind::KEYWORD);
@@ -184,9 +184,9 @@ void CompletionHandler::call_static(ast::Node* node,
 }
 
 void CompletionHandler::call_prefixed(ast::Dot* node,
-                                      resolution::View<resolution::Node> resolved1,
-                                      resolution::View<resolution::Node> resolved2,
-                                      List<resolution::View<resolution::Node>> candidates,
+                                      resolution::NodeView resolved1,
+                                      resolution::NodeView resolved2,
+                                      List<resolution::NodeView> candidates,
                                       IterableScope* scope) {
   scope->for_each([&](Symbol name, const ResolutionEntry& entry) {
     switch (entry.kind()) {
@@ -203,10 +203,10 @@ void CompletionHandler::call_prefixed(ast::Dot* node,
 }
 
 void CompletionHandler::call_class(ast::Dot* node,
-                                   resolution::View<resolution::Class> klass,
-                                   resolution::View<resolution::Node> resolved1,
-                                   resolution::View<resolution::Node> resolved2,
-                                   List<resolution::View<resolution::Node>> candidates,
+                                   resolution::ClassView klass,
+                                   resolution::NodeView resolved1,
+                                   resolution::NodeView resolved2,
+                                   List<resolution::NodeView> candidates,
                                    IterableScope* scope) {
   bool has_default_constructor = false;
   CallShape default_constructor_shape(1);  // 1 argument for `this`.
@@ -232,11 +232,11 @@ void CompletionHandler::call_class(ast::Dot* node,
   terminate();
 }
 
-void CompletionHandler::call_block(ast::Dot* node, resolution::View<resolution::Node> ir_receiver) {
+void CompletionHandler::call_block(ast::Dot* node, resolution::NodeView ir_receiver) {
   complete("call", CompletionKind::METHOD);
 }
 
-void CompletionHandler::call_static_named(ast::Node* name_node, resolution::View<resolution::Node> ir_call_target, List<resolution::View<resolution::Node>> candidates) {
+void CompletionHandler::call_static_named(ast::Node* name_node, resolution::NodeView ir_call_target, List<resolution::NodeView> candidates) {
   // For simplicity just run through all candidates and list *all* named options.
   // TODO(florian): only allow valid combinations of names.
   for (auto candidate : candidates) {
@@ -271,7 +271,7 @@ void CompletionHandler::call_primitive(ast::Node* node, Symbol module_name, Symb
 }
 
 void CompletionHandler::field_storing_parameter(ast::Parameter* node,
-                                                List<resolution::View<resolution::Field>> fields,
+                                                List<resolution::FieldView> fields,
                                                 bool field_storing_is_allowed) {
   if (field_storing_is_allowed) {
     for (auto field : fields) {
@@ -284,10 +284,10 @@ void CompletionHandler::field_storing_parameter(ast::Parameter* node,
 }
 
 void CompletionHandler::this_(ast::Identifier* node,
-                              resolution::View<resolution::Class> enclosing_class,
+                              resolution::ClassView enclosing_class,
                               IterableScope* scope,
-                              resolution::View<resolution::Method> surrounding) {
-  call_static(node, null, null, List<resolution::View<resolution::Node>>(), scope, surrounding);
+                              resolution::MethodView surrounding) {
+  call_static(node, null, null, List<resolution::NodeView>(), scope, surrounding);
   terminate();
 }
 
@@ -324,7 +324,7 @@ void CompletionHandler::return_label(ast::Node* node, int label_index, const std
 }
 
 void CompletionHandler::toitdoc_ref(ast::Node* node,
-                                    List<resolution::View<resolution::Node>> candidates,
+                                    List<resolution::NodeView> candidates,
                                     ToitdocScopeIterator* iterator,
                                     bool is_signature_toitdoc) {
   // TODO(florian): prefer parameters.
@@ -373,7 +373,7 @@ static bool is_constant_name(Symbol name) {
   return true;
 }
 
-void CompletionHandler::complete_named_args(resolution::View<resolution::Method> method) {
+void CompletionHandler::complete_named_args(resolution::MethodView method) {
   auto shape = method->resolution_shape();
   for (auto name : shape.names()) {
     // TODO(florian): only insert `=` if it's not a boolean flag.
@@ -390,7 +390,7 @@ bool is_private(Symbol name) {
   return name.c_str()[len - 1] == '_';
 }
 
-void CompletionHandler::complete_method(resolution::View<resolution::Method> method, const std::string& package_id) {
+void CompletionHandler::complete_method(resolution::MethodView method, const std::string& package_id) {
   complete_if_visible(method->name(), CompletionKind::METHOD, package_id);
 }
 

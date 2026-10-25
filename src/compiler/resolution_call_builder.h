@@ -31,24 +31,24 @@ class ResolutionCallBuilder {
       , block_count_(0) {}
 
   CallShape shape();
-  List<resolution::View<resolution::Expression>> arguments() {
-    auto result = ListBuilder<resolution::View<resolution::Expression>>::allocate(args_.size());
+  List<resolution::ExpressionView> arguments() {
+    auto result = ListBuilder<resolution::ExpressionView>::allocate(args_.size());
     for (size_t i = 0; i < args_.size(); i++) {
       result[i] = args_[i].expression;
     }
     return result;
   }
 
-  void prefix_argument(resolution::View<resolution::Expression> arg);
-  void add_argument(resolution::View<resolution::Expression> arg, Symbol name);
-  void add_arguments(List<resolution::View<resolution::Expression>> args);
+  void prefix_argument(resolution::ExpressionView arg);
+  void add_argument(resolution::ExpressionView arg, Symbol name);
+  void add_arguments(List<resolution::ExpressionView> args);
 
-  resolution::View<resolution::Expression> call_constructor(resolution::View<resolution::ReferenceMethod> target);
-  resolution::View<resolution::Expression> call_static(resolution::View<resolution::ReferenceMethod> target);
-  resolution::View<resolution::Expression> call_builtin(resolution::View<resolution::Builtin> builtin);
-  resolution::View<resolution::Expression> call_block(resolution::View<resolution::Expression> block);  // Code or reference to block.
-  resolution::View<resolution::Expression> call_instance(resolution::View<resolution::Dot> dot);
-  resolution::View<resolution::Expression> call_instance(resolution::View<resolution::Dot> dot, Source::Range range);
+  resolution::ExpressionView call_constructor(resolution::ReferenceMethodView target);
+  resolution::ExpressionView call_static(resolution::ReferenceMethodView target);
+  resolution::ExpressionView call_builtin(resolution::BuiltinView builtin);
+  resolution::ExpressionView call_block(resolution::ExpressionView block);  // Code or reference to block.
+  resolution::ExpressionView call_instance(resolution::DotView dot);
+  resolution::ExpressionView call_instance(resolution::DotView dot, Source::Range range);
 
   bool has_block_arguments() const { return block_count_ > 0; }
   bool has_named_arguments() const { return named_count_ > 0; }
@@ -62,10 +62,10 @@ class ResolutionCallBuilder {
  private:
   struct Arg {
     Arg() : expression(null), is_block(false), name(Symbol::invalid()) {}
-    Arg(resolution::View<resolution::Expression> expression, bool is_block, Symbol name)
+    Arg(resolution::ExpressionView expression, bool is_block, Symbol name)
         : expression(expression), is_block(is_block), name(name) {}
 
-    resolution::View<resolution::Expression> expression;
+    resolution::ExpressionView expression;
     bool is_block;
     Symbol name;  // Symbol::invalid() if not given.
 
@@ -86,16 +86,16 @@ class ResolutionCallBuilder {
   //
   // The given [fun] function may freely reorder all arguments without
   // worrying about evaluation order.
-  resolution::View<resolution::Expression> with_hoisted_args(resolution::View<resolution::Expression> target,
-                                    const std::function<resolution::View<resolution::Expression> (resolution::View<resolution::Expression>)>& fun);
+  resolution::ExpressionView with_hoisted_args(resolution::ExpressionView target,
+                                    const std::function<resolution::ExpressionView (resolution::ExpressionView)>& fun);
 
-  resolution::View<resolution::Expression> do_call_static(ResolutionShape shape,
+  resolution::ExpressionView do_call_static(ResolutionShape shape,
                                  bool has_implicit_this,
-                                 const std::function<resolution::View<resolution::Call> (CallShape shape, List<resolution::View<resolution::Expression>>)>& create_call);
-  resolution::View<resolution::Expression> do_call_instance(resolution::View<resolution::Dot> dot,
-                                   const std::function<resolution::View<resolution::Call> (resolution::View<resolution::Dot> dot, CallShape shape, List<resolution::View<resolution::Expression>>)>& create_call);
-  resolution::View<resolution::Expression> do_block_call(resolution::View<resolution::Expression> block,
-                                const std::function<resolution::View<resolution::Call> (resolution::View<resolution::Expression> block, CallShape shape, List<resolution::View<resolution::Expression>>)>& create_call);
+                                 const std::function<resolution::CallView (CallShape shape, List<resolution::ExpressionView>)>& create_call);
+  resolution::ExpressionView do_call_instance(resolution::DotView dot,
+                                   const std::function<resolution::CallView (resolution::DotView dot, CallShape shape, List<resolution::ExpressionView>)>& create_call);
+  resolution::ExpressionView do_block_call(resolution::ExpressionView block,
+                                const std::function<resolution::CallView (resolution::ExpressionView block, CallShape shape, List<resolution::ExpressionView>)>& create_call);
 };
 
 } // namespace toit::compiler

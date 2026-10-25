@@ -23,12 +23,12 @@ namespace toit {
 namespace compiler {
 
 namespace resolution {
-class Node;
+class NodeInfo; using NodeView = View<NodeInfo>;
 }
 
 template<typename RefNode> class Toitdoc;
 
-Symbol extract_deprecation_message(const Toitdoc<resolution::View<resolution::Node>>& toitdoc);
+Symbol extract_deprecation_message(const Toitdoc<resolution::NodeView>& toitdoc);
 
 } // namespace toit::compiler
 } // namespace toit

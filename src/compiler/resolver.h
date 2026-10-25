@@ -50,7 +50,7 @@ class Resolver {
       , lsp_(lsp)
       , toitdocs_(toitdocs) {}
 
-  resolution::View<resolution::Program> resolve(const std::vector<ast::Unit*>& units,
+  resolution::ProgramView resolve(const std::vector<ast::Unit*>& units,
                        int entry_unit_index,
                        int core_unit_index);
 
@@ -76,17 +76,17 @@ class Resolver {
   /// moved into the rename pipeline (FindReferencesPipeline) before the
   /// resolver is destroyed, so the visitor can look up AST ranges during
   /// its IR traversal.
-  UnorderedMap<resolution::View<resolution::Node>, ast::Node*>& ir_to_ast_map() { return ir_to_ast_map_; }
+  UnorderedMap<resolution::NodeView, ast::Node*>& ir_to_ast_map() { return ir_to_ast_map_; }
 
   /// A reference from a show/export clause to a resolved definition.
   ///
   /// During resolution, each `import ... show Foo` and `export Foo`
-  /// clause resolves the identifier to an resolution::View<resolution::Node> target. We collect
+  /// clause resolves the identifier to an resolution::NodeView target. We collect
   /// these mappings so that the rename pipeline can find show/export
   /// references to a given definition without needing access to the
   /// module infrastructure (which is local to the resolver).
   struct ShowExportReference {
-    resolution::View<resolution::Node> target;       // The resolved definition (e.g., resolution::View<resolution::Class>).
+    resolution::NodeView target;       // The resolved definition (e.g., resolution::ClassView).
     Source::Range range;     // The source range of the identifier in the show/export clause.
   };
 
@@ -98,7 +98,7 @@ class Resolver {
   /// A resolved reference from an `implements` or `with` clause.
   ///
   /// During resolution, each AST expression in a class's `implements` or
-  /// `with` clause is resolved to an `resolution::View<resolution::Class>`.  We record these
+  /// `with` clause is resolved to an `resolution::ClassView`.  We record these
   /// mappings before the resolver's flattening passes (`flatten_mixins`
   /// and `check_interface_implementations_and_flatten`) replace the IR
   /// interface/mixin lists with their transitive closures.  After
@@ -106,8 +106,8 @@ class Resolver {
   /// is lost, so the rename pipeline needs this explicit mapping to find
   /// the source-level expressions for a given IR class.
   struct ClassHierarchyReference {
-    resolution::View<resolution::Class> holder;       // The class containing the implements/with clause.
-    resolution::View<resolution::Class> target;       // The resolved interface or mixin.
+    resolution::ClassView holder;       // The class containing the implements/with clause.
+    resolution::ClassView target;       // The resolved interface or mixin.
     ast::Expression* ast_node;  // The AST expression in the clause.
   };
 
@@ -121,23 +121,23 @@ class Resolver {
   Diagnostics* diagnostics_;
   Lsp* lsp_;
   ToitdocRegistry* toitdocs_;
-  UnorderedMap<resolution::View<resolution::Node>, ast::Node*> ir_to_ast_map_;
-  std::vector<resolution::View<resolution::AssignmentGlobal>> global_assignments_;
+  UnorderedMap<resolution::NodeView, ast::Node*> ir_to_ast_map_;
+  std::vector<resolution::AssignmentGlobalView> global_assignments_;
   std::vector<ShowExportReference> show_export_references_;
   std::vector<ClassHierarchyReference> class_hierarchy_references_;
 
   Diagnostics* diagnostics() const { return diagnostics_; }
 
   void report_error(const ast::Node* position_node, const char* format, ...);
-  void report_error(resolution::View<resolution::Node> position_node, const char* format, ...);
+  void report_error(resolution::NodeView position_node, const char* format, ...);
   void report_error(const char* format, ...);
   void report_note(const ast::Node* position_node, const char* format, ...);
-  void report_note(resolution::View<resolution::Node> position_node, const char* format, ...);
+  void report_note(resolution::NodeView position_node, const char* format, ...);
   void report_warning(const ast::Node* position_node, const char* format, ...);
-  void report_warning(resolution::View<resolution::Node> position_node, const char* format, ...);
+  void report_warning(resolution::NodeView position_node, const char* format, ...);
 
-  ast::Class* ast_for(resolution::View<resolution::Class> node) { return ir_to_ast_map_.at(node)->as_Class(); }
-  ast::Method* ast_for(resolution::View<resolution::Method> node) { return ir_to_ast_map_.at(node)->as_Method(); }
+  ast::Class* ast_for(resolution::ClassView node) { return ir_to_ast_map_.at(node)->as_Class(); }
+  ast::Method* ast_for(resolution::MethodView node) { return ir_to_ast_map_.at(node)->as_Method(); }
 
   std::vector<Module*> build_modules(const std::vector<ast::Unit*>& units,
                                      int entry_unit_index,
@@ -145,7 +145,7 @@ class Resolver {
   void resolve_shows_and_exports(std::vector<Module*>& modules);
   void build_module_scopes(std::vector<Module*>& modules);
 
-  void check_clashing_or_conflicting(Symbol name, List<resolution::View<resolution::Node>> declarations);
+  void check_clashing_or_conflicting(Symbol name, List<resolution::NodeView> declarations);
   void check_clashing_or_conflicting(const std::vector<Module*>& modules);
   void check_future_reserved_globals(const std::vector<Module*>& modules);
 
@@ -156,14 +156,14 @@ class Resolver {
   void report_abstract_classes(const std::vector<Module*>& modules);
   void check_interface_implementations_and_flatten(const std::vector<Module*>& modules);
   void flatten_mixins(const std::vector<Module*>& modules);
-  List<resolution::View<resolution::Class>> find_tree_roots(Module* core_module);
-  List<resolution::View<resolution::Method>> find_entry_points(Module* core_module);
+  List<resolution::ClassView> find_tree_roots(Module* core_module);
+  List<resolution::MethodView> find_entry_points(Module* core_module);
   List<resolution::Type> find_literal_types(Module* core_module);
-  resolution::View<resolution::Constructor> build_default_constructor(resolution::View<resolution::Class> klass, bool* detected_error);
-  void check_method(ast::Method* method, resolution::View<resolution::Class> holder,
-                    Symbol* name, resolution::Method::MethodKind* kind,
+  resolution::ConstructorView build_default_constructor(resolution::ClassView klass, bool* detected_error);
+  void check_method(ast::Method* method, resolution::ClassView holder,
+                    Symbol* name, resolution::MethodInfo::MethodKind* kind,
                     bool allow_future_reserved);
-  void check_field(ast::Field* method, resolution::View<resolution::Class> holder);
+  void check_field(ast::Field* method, resolution::ClassView holder);
   void check_class(ast::Class* klass);
   void fill_classes_with_skeletons(const std::vector<Module*>& modules);
   void resolve_fill_module(Module* module,
@@ -175,26 +175,26 @@ class Resolver {
   void resolve_fill_classes(Module* module,
                             Module* entry_module,
                             Module* core_module);
-  void resolve_fill_class(resolution::View<resolution::Class> klass,
+  void resolve_fill_class(resolution::ClassView klass,
                           ModuleScope* module_scope,
                           Module* entry_module,
                           Module* core_module);
   void resolve_fill_globals(Module* module,
                             Module* entry_module,
                             Module* core_module);
-  void resolve_fill_method(resolution::View<resolution::Method> method,
-                           resolution::View<resolution::Class> holder,
+  void resolve_fill_method(resolution::MethodView method,
+                           resolution::ClassView holder,
                            Scope* scope,
                            Module* entry_module,
                            Module* core_module);
-  void resolve_field(resolution::View<resolution::Field> field,
-                     resolution::View<resolution::Class> holder,
+  void resolve_field(resolution::FieldView field,
+                     resolution::ClassView holder,
                      Scope* scope,
                      Module* entry_module,
                      Module* core_module);
-  resolution::View<resolution::Class> resolve_class_interface_or_mixin(ast::Expression* ast_node,
+  resolution::ClassView resolve_class_interface_or_mixin(ast::Expression* ast_node,
                                               Scope* scope,
-                                              resolution::View<resolution::Class> holder,
+                                              resolution::ClassView holder,
                                               bool needs_class,
                                               bool needs_mixin);
 

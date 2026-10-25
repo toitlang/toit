@@ -24,14 +24,14 @@
 namespace toit {
 namespace compiler {
 
-static void report_no_such_method(List<resolution::View<resolution::Node>> candidates,
-                                  resolution::View<resolution::Class> klass,
+static void report_no_such_method(List<resolution::NodeView> candidates,
+                                  resolution::ClassView klass,
                                   bool is_static,
                                   const Selector<CallShape>& selector,
                                   const Source::Range& range,
                                   Diagnostics* diagnostics) {
   // Note that the candidates could contain the super-class separator ClassScope::SUPER_CLASS_SEPARATOR.
-  // All other nodes must be resolution::View<resolution::Method> nodes.
+  // All other nodes must be resolution::MethodView nodes.
   bool all_separators = true;
   for (auto& candidate : candidates) {
     if (candidate != ClassScope::SUPER_CLASS_SEPARATOR) {
@@ -352,13 +352,13 @@ static void report_no_such_method(List<resolution::View<resolution::Node>> candi
   }
 }
 
-void report_no_such_instance_method(resolution::View<resolution::Class> klass,
+void report_no_such_instance_method(resolution::ClassView klass,
                            const Selector<CallShape>& selector,
                            const Source::Range& range,
                            Diagnostics* diagnostics) {
   // TODO(florian): filtering the methods every time is linear and
   // could be too slow. Consider adding a caching mechanism.
-  ListBuilder<resolution::View<resolution::Node>> candidates_builder;
+  ListBuilder<resolution::NodeView> candidates_builder;
   auto current = klass;
   while (true) {
     for (auto method : current->methods()) {
@@ -381,7 +381,7 @@ void report_no_such_instance_method(resolution::View<resolution::Class> klass,
 
 }
 
-void report_no_such_static_method(List<resolution::View<resolution::Node>> candidates,
+void report_no_such_static_method(List<resolution::NodeView> candidates,
                                   const Selector<CallShape>& selector,
                                   const Source::Range& range,
                                   Diagnostics* diagnostics) {

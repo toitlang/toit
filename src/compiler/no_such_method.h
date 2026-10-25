@@ -29,17 +29,17 @@ class ResolutionQueryableClass;
 class Diagnostics;
 
 namespace resolution {
-  class Node;
-  class Class;
+  class NodeInfo; using NodeView = View<NodeInfo>;
+  class ClassInfo; using ClassView = View<ClassInfo>;
 }
 
-void report_no_such_instance_method(resolution::View<resolution::Class> klass,
+void report_no_such_instance_method(resolution::ClassView klass,
                                     const Selector<CallShape>& selector,
                                     const Source::Range& range,
                                     Diagnostics* diagnostics);
 
 
-void report_no_such_static_method(List<resolution::View<resolution::Node>> candidates,
+void report_no_such_static_method(List<resolution::NodeView> candidates,
                                   const Selector<CallShape>& selector,
                                   const Source::Range& range,
                                   Diagnostics* diagnostics);

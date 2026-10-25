@@ -25,20 +25,20 @@
 namespace toit {
 namespace compiler {
 
-void ResolutionCallBuilder::prefix_argument(resolution::View<resolution::Expression> arg) {
+void ResolutionCallBuilder::prefix_argument(resolution::ExpressionView arg) {
   auto old_args = args_;
   args_.clear();
   add_argument(arg, Symbol::invalid());
   args_.insert(args_.end(), old_args.begin(), old_args.end());
 }
 
-void ResolutionCallBuilder::add_argument(resolution::View<resolution::Expression> arg, Symbol name) {
+void ResolutionCallBuilder::add_argument(resolution::ExpressionView arg, Symbol name) {
   args_.push_back(Arg(arg, arg->is_block(), name));
   if (name.is_valid()) named_count_++;
   if (arg->is_block()) block_count_++;
 }
 
-void ResolutionCallBuilder::add_arguments(List<resolution::View<resolution::Expression>> args) {
+void ResolutionCallBuilder::add_arguments(List<resolution::ExpressionView> args) {
   for (auto arg : args) add_argument(arg, Symbol::invalid());
 }
 
@@ -65,39 +65,39 @@ CallShape ResolutionCallBuilder::shape() {
   }
 }
 
-resolution::View<resolution::Expression> ResolutionCallBuilder::call_constructor(resolution::View<resolution::ReferenceMethod> target) {
+resolution::ExpressionView ResolutionCallBuilder::call_constructor(resolution::ReferenceMethodView target) {
   auto method_shape = target->target()->resolution_shape();
   bool has_implicit_this = true;
-  return do_call_static(method_shape, has_implicit_this, [&](CallShape call_shape, List<resolution::View<resolution::Expression>> args) {
-    return resolution::make<resolution::CallConstructor>(target, call_shape, args, range_);
+  return do_call_static(method_shape, has_implicit_this, [&](CallShape call_shape, List<resolution::ExpressionView> args) {
+    return resolution::make<resolution::CallConstructorInfo>(target, call_shape, args, range_);
   });
 }
-resolution::View<resolution::Expression> ResolutionCallBuilder::call_static(resolution::View<resolution::ReferenceMethod> target) {
+resolution::ExpressionView ResolutionCallBuilder::call_static(resolution::ReferenceMethodView target) {
   auto method_shape = target->target()->resolution_shape();
   bool has_implicit_this = false;
-  return do_call_static(method_shape, has_implicit_this, [&](CallShape call_shape, List<resolution::View<resolution::Expression>> args) {
-    return resolution::make<resolution::CallStatic>(target, call_shape, args, range_);
+  return do_call_static(method_shape, has_implicit_this, [&](CallShape call_shape, List<resolution::ExpressionView> args) {
+    return resolution::make<resolution::CallStaticInfo>(target, call_shape, args, range_);
   });
 }
-resolution::View<resolution::Expression> ResolutionCallBuilder::call_builtin(resolution::View<resolution::Builtin> builtin) {
+resolution::ExpressionView ResolutionCallBuilder::call_builtin(resolution::BuiltinView builtin) {
   ResolutionShape method_shape(builtin->arity());
   bool has_implicit_this = false;
-  return do_call_static(method_shape, has_implicit_this, [&](CallShape call_shape, List<resolution::View<resolution::Expression>> args) {
-    return resolution::make<resolution::CallBuiltin>(builtin, call_shape, args, range_);
+  return do_call_static(method_shape, has_implicit_this, [&](CallShape call_shape, List<resolution::ExpressionView> args) {
+    return resolution::make<resolution::CallBuiltinInfo>(builtin, call_shape, args, range_);
   });
 }
-resolution::View<resolution::Expression> ResolutionCallBuilder::call_block(resolution::View<resolution::Expression> block) {
-  return do_block_call(block, [&](resolution::View<resolution::Expression> block, CallShape call_shape, List<resolution::View<resolution::Expression>> args) {
-    return resolution::make<resolution::CallBlock>(block, call_shape, args, range_);
+resolution::ExpressionView ResolutionCallBuilder::call_block(resolution::ExpressionView block) {
+  return do_block_call(block, [&](resolution::ExpressionView block, CallShape call_shape, List<resolution::ExpressionView> args) {
+    return resolution::make<resolution::CallBlockInfo>(block, call_shape, args, range_);
   });
 }
-resolution::View<resolution::Expression> ResolutionCallBuilder::call_instance(resolution::View<resolution::Dot> dot) {
+resolution::ExpressionView ResolutionCallBuilder::call_instance(resolution::DotView dot) {
   return call_instance(dot, Source::Range::invalid());
 }
-resolution::View<resolution::Expression> ResolutionCallBuilder::call_instance(resolution::View<resolution::Dot> dot, Source::Range range) {
+resolution::ExpressionView ResolutionCallBuilder::call_instance(resolution::DotView dot, Source::Range range) {
   if (!range.is_valid()) range = range_;
-  return do_call_instance(dot, [&](resolution::View<resolution::Dot> dot, CallShape call_shape, List<resolution::View<resolution::Expression>> args) {
-    return resolution::make<resolution::CallVirtual>(dot, call_shape, args, range);
+  return do_call_instance(dot, [&](resolution::DotView dot, CallShape call_shape, List<resolution::ExpressionView> args) {
+    return resolution::make<resolution::CallVirtualInfo>(dot, call_shape, args, range);
   });
 }
 
@@ -150,8 +150,8 @@ void ResolutionCallBuilder::sort_arguments(std::vector<Arg>* args) {
 //
 // The given [fun] function may freely reorder all arguments without
 // worrying about evaluation order.
-resolution::View<resolution::Expression> ResolutionCallBuilder::with_hoisted_args(resolution::View<resolution::Expression> target,
-                                               const std::function<resolution::View<resolution::Expression> (resolution::View<resolution::Expression>)>& fun) {
+resolution::ExpressionView ResolutionCallBuilder::with_hoisted_args(resolution::ExpressionView target,
+                                               const std::function<resolution::ExpressionView (resolution::ExpressionView)>& fun) {
 
   // Just a few shortcuts.
   if (target == null || !target->is_block()) {
@@ -159,15 +159,15 @@ resolution::View<resolution::Expression> ResolutionCallBuilder::with_hoisted_arg
     if (block_count_ == 0 && args_.size() <= 1) return fun(target);
   }
 
-  ListBuilder<resolution::View<resolution::Expression>> sequence_exprs;
-  auto create_temporary_if_necessary = [&] (resolution::View<resolution::Expression> expression) {
+  ListBuilder<resolution::ExpressionView> sequence_exprs;
+  auto create_temporary_if_necessary = [&] (resolution::ExpressionView expression) {
     // Block-code can not be in the middle of a call. They must be evaluated separately and
     // get referenced through a `ReferenceBlock`.
     if (expression->is_Code()) {
       auto code = expression->as_Code();
-      auto block = resolution::make<resolution::Block>(Symbol::synthetic("<block>"), code->range());
-      sequence_exprs.add(resolution::make<resolution::AssignmentDefine>(block, code, code->range()));
-      return (resolution::make<resolution::ReferenceBlock>(block, 0, expression->range()))->as_Expression();
+      auto block = resolution::make<resolution::BlockInfo>(Symbol::synthetic("<block>"), code->range());
+      sequence_exprs.add(resolution::make<resolution::AssignmentDefineInfo>(block, code, code->range()));
+      return (resolution::make<resolution::ReferenceBlockInfo>(block, 0, expression->range()))->as_Expression();
     }
     // If there are no named arguments, then we don't need to create temporaries for any
     // other type.
@@ -176,12 +176,12 @@ resolution::View<resolution::Expression> ResolutionCallBuilder::with_hoisted_arg
     if (expression->is_Reference()) return expression;
     if (expression->is_Literal()) return expression;
 
-    auto temporary = resolution::make<resolution::Local>(Symbol::synthetic("<tmp>"),
+    auto temporary = resolution::make<resolution::LocalInfo>(Symbol::synthetic("<tmp>"),
                                     true,   // Final.
                                     expression->is_block(),
                                     expression->range());
-    sequence_exprs.add(resolution::make<resolution::AssignmentDefine>(temporary, expression, expression->range()));
-    return (resolution::make<resolution::ReferenceLocal>(temporary, 0, expression->range()))->as_Expression();
+    sequence_exprs.add(resolution::make<resolution::AssignmentDefineInfo>(temporary, expression, expression->range()));
+    return (resolution::make<resolution::ReferenceLocalInfo>(temporary, 0, expression->range()))->as_Expression();
   };
 
   // Create temporaries, so that we can guarantee the evaluation order.
@@ -195,18 +195,18 @@ resolution::View<resolution::Expression> ResolutionCallBuilder::with_hoisted_arg
   if (sequence_exprs.is_empty()) return fun(target);
 
   sequence_exprs.add(fun(target));
-  return resolution::make<resolution::Sequence>(sequence_exprs.build(), range_);
+  return resolution::make<resolution::SequenceInfo>(sequence_exprs.build(), range_);
 }
 
-resolution::View<resolution::Expression> ResolutionCallBuilder::do_call_static(ResolutionShape shape,
+resolution::ExpressionView ResolutionCallBuilder::do_call_static(ResolutionShape shape,
                                             bool has_implicit_this,
-                                            const std::function<resolution::View<resolution::Call> (CallShape shape, List<resolution::View<resolution::Expression>>)>& create_call) {
-  return with_hoisted_args(null, [&](resolution::View<resolution::Expression> _) {
+                                            const std::function<resolution::CallView (CallShape shape, List<resolution::ExpressionView>)>& create_call) {
+  return with_hoisted_args(null, [&](resolution::ExpressionView _) {
     // For simplicity, remove the implicit this from the shape if necessary.
     if (has_implicit_this) shape = shape.without_implicit_this();
     int provided_count = args_.size();
     int needed_count = shape.max_arity();
-    List<resolution::View<resolution::Expression>> ir_arguments = ListBuilder<resolution::View<resolution::Expression>>::allocate(needed_count);
+    List<resolution::ExpressionView> ir_arguments = ListBuilder<resolution::ExpressionView>::allocate(needed_count);
 
     if (provided_count == needed_count && named_count_ == 0) {
       // Shortcut for the usual case where there are no named arguments, and we don't need to fill
@@ -233,12 +233,12 @@ resolution::View<resolution::Expression> ResolutionCallBuilder::do_call_static(R
       if (argument_index < args_.size()) {
         if (must_be_non_block && args_[argument_index].is_block) {
           // Fill up the non-block arg.
-          return (resolution::make<resolution::LiteralNull>(range_))->as_Expression();
+          return (resolution::make<resolution::LiteralNullInfo>(range_))->as_Expression();
         }
         return args_[argument_index++].expression;
       }
       if (!must_be_non_block) FATAL("Block arguments can't have default value");
-      return (resolution::make<resolution::LiteralNull>(range_))->as_Expression();
+      return (resolution::make<resolution::LiteralNullInfo>(range_))->as_Expression();
     };
 
     int ir_argument_index = 0;
@@ -267,7 +267,7 @@ resolution::View<resolution::Expression> ResolutionCallBuilder::do_call_static(R
         continue;
       }
       if (!shape.optional_names()[i]) FATAL("Not optional argument");
-      ir_arguments[ir_argument_index++] = resolution::make<resolution::LiteralNull>(range_);
+      ir_arguments[ir_argument_index++] = resolution::make<resolution::LiteralNullInfo>(range_);
     }
     ASSERT(used_names_count == named_mapping.size());
 
@@ -278,9 +278,9 @@ resolution::View<resolution::Expression> ResolutionCallBuilder::do_call_static(R
   });
 }
 
-resolution::View<resolution::Expression> ResolutionCallBuilder::do_call_instance(resolution::View<resolution::Dot> dot,
-                                              const std::function<resolution::View<resolution::Call> (resolution::View<resolution::Dot> dot, CallShape shape, List<resolution::View<resolution::Expression>>)>& create_call) {
-  return with_hoisted_args(dot->receiver(), [&](resolution::View<resolution::Expression> new_receiver) {
+resolution::ExpressionView ResolutionCallBuilder::do_call_instance(resolution::DotView dot,
+                                              const std::function<resolution::CallView (resolution::DotView dot, CallShape shape, List<resolution::ExpressionView>)>& create_call) {
+  return with_hoisted_args(dot->receiver(), [&](resolution::ExpressionView new_receiver) {
     dot->replace_receiver(new_receiver);
     int arity = args_.size();
     CallShape call_shape(0);
@@ -301,18 +301,18 @@ resolution::View<resolution::Expression> ResolutionCallBuilder::do_call_instance
       }
       call_shape = CallShape(arity, block_count_, names, named_block_count, false).with_implicit_this();
     }
-    auto ir_arguments = ListBuilder<resolution::View<resolution::Expression>>::allocate(arity);
+    auto ir_arguments = ListBuilder<resolution::ExpressionView>::allocate(arity);
     for (size_t i = 0; i < args_.size(); i++) ir_arguments[i] = args_[i].expression;
 
     return create_call(dot, call_shape, ir_arguments);
   });
 }
 
-resolution::View<resolution::Expression> ResolutionCallBuilder::do_block_call(resolution::View<resolution::Expression> block,
-                                           const std::function<resolution::View<resolution::Call> (resolution::View<resolution::Expression> block, CallShape shape, List<resolution::View<resolution::Expression>>)>& create_call) {
-  return with_hoisted_args(block, [&](resolution::View<resolution::Expression> new_block) {
+resolution::ExpressionView ResolutionCallBuilder::do_block_call(resolution::ExpressionView block,
+                                           const std::function<resolution::CallView (resolution::ExpressionView block, CallShape shape, List<resolution::ExpressionView>)>& create_call) {
+  return with_hoisted_args(block, [&](resolution::ExpressionView new_block) {
     int arity = args_.size();
-    auto ir_arguments = ListBuilder<resolution::View<resolution::Expression>>::allocate(arity);
+    auto ir_arguments = ListBuilder<resolution::ExpressionView>::allocate(arity);
     for (size_t i = 0; i < args_.size(); i++) ir_arguments[i] = args_[i].expression;
     CallShape call_shape = CallShape(arity, block_count_).with_implicit_this();
     return create_call(new_block, call_shape, ir_arguments);
