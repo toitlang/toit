@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 
 /**
-Tests that we can set a value of a descriptor when handling a request.
+Tests write responses, empty values, and fragmented reads at ATT MTU 23.
 
 Run `ble5-board1.toit` on board1, first.
 Once that one is running, run `ble5-board2.toit` on board2.
@@ -19,12 +19,18 @@ import .variants
 
 TEST-SERVICE ::= BleUuid Variant.CURRENT.ble5-service
 TEST-CHARACTERISTIC ::= BleUuid "77d0b04e-bf49-4048-a4cd-fb46be32ebd0"
+LONG-CHARACTERISTIC ::= BleUuid "717b4940-d72f-4b35-8aad-2af778d68e12"
+EMPTY-CHARACTERISTIC ::= BleUuid "717b4941-d72f-4b35-8aad-2af778d68e12"
+
+long-value -> ByteArray:
+  return ByteArray 512: (it * 73 + 19) & 0xff
 
 main-peripheral:
   run-test: test-peripheral
 
 test-peripheral:
   adapter := Adapter
+  adapter.set-preferred-mtu 23
   peripheral := adapter.peripheral
 
   service := peripheral.add-service TEST-SERVICE
@@ -32,6 +38,9 @@ test-peripheral:
       --properties=CHARACTERISTIC-PROPERTY-READ | CHARACTERISTIC-PROPERTY-WRITE
       --permissions=CHARACTERISTIC-PERMISSION-READ | CHARACTERISTIC-PERMISSION-WRITE
       --value=null
+
+  service.add-read-only-characteristic LONG-CHARACTERISTIC --value=long-value
+  service.add-read-only-characteristic EMPTY-CHARACTERISTIC --value=#[]
 
   peripheral.deploy
 
@@ -57,6 +66,7 @@ main-central:
 
 test-central:
   adapter := Adapter
+  adapter.set-preferred-mtu 23
   central := adapter.central
   address := find-device-with-service central TEST-SERVICE
   remote-device := central.connect address
@@ -64,16 +74,25 @@ test-central:
   services := remote-device.discovered-services
 
   characteristic/RemoteCharacteristic? := null
+  long/RemoteCharacteristic? := null
+  empty/RemoteCharacteristic? := null
 
   services.do: | service/RemoteService |
     characteristics := service.discover-characteristics
     characteristics.do: | found/RemoteCharacteristic |
       if found.uuid == TEST-CHARACTERISTIC: characteristic = found
+      if found.uuid == LONG-CHARACTERISTIC: long = found
+      if found.uuid == EMPTY-CHARACTERISTIC: empty = found
 
   10.repeat: | iteration/int |
     print "."
-    ["foo-$iteration", "bar-$iteration", "gee-$iteration"].do: | value |
-      characteristic.write value
-      expect-equals value.to-byte-array characteristic.read
+    expect-equals 23 characteristic.mtu
+    // A 512-byte read takes 24 ATT responses at this MTU. Check the full
+    // payload repeatedly to catch dropped fragments and mbuf exhaustion.
+    expect-equals long-value (with-timeout --ms=5000: long.read)
+    expect-equals #[] (with-timeout --ms=1000: empty.read)
+    ["", "foo-$iteration", "bar-$iteration", "gee-$iteration"].do: | value |
+      with-timeout --ms=1000: characteristic.write value
+      expect-equals value.to-byte-array (with-timeout --ms=1000: characteristic.read)
 
   characteristic.write "done"
