@@ -50,8 +50,7 @@ Instance* ObjectHeap::allocate_instance(Smi* class_id) {
 }
 
 Array* ObjectHeap::allocate_array(word length, Object* filler) {
-  ASSERT(length >= 0);
-  ASSERT(length <= Array::max_length_in_process());
+  if (length < 0 || length > Array::max_length_in_process()) return null;
   HeapObject* result = _allocate_raw(Array::allocation_size(length));
   if (result == null) {
     return null;  // Allocation failure.
@@ -63,9 +62,8 @@ Array* ObjectHeap::allocate_array(word length, Object* filler) {
 }
 
 ByteArray* ObjectHeap::allocate_internal_byte_array(word length) {
-  ASSERT(length >= 0);
   // Byte array should fit within one heap block.
-  ASSERT(length <= ByteArray::max_internal_size_in_process());
+  if (length < 0 || length > ByteArray::max_internal_size_in_process()) return null;
   ByteArray* result = unvoid_cast<ByteArray*>(_allocate_raw(ByteArray::internal_allocation_size(length)));
   if (result == null) return null;  // Allocation failure.
   // Initialize object.
