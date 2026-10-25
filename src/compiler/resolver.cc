@@ -228,6 +228,20 @@ resolution::ProgramView Resolver::resolve(const std::vector<ast::Unit*>& units,
     // (for example a getter and setter) share source syntax.
     if (entry.second->resolution() == null) entry.first->ast_node()->attach(entry.second);
   }
+#ifdef TOIT_DEBUG
+  // Every operation, including implicit ones, must retain its source syntax.
+  class CheckOrigins : public resolution::TraversingVisitor {
+   public:
+#define CHECK(name) \
+    void visit_##name(resolution::name##View node) override { \
+      if (node.syntax() == null) FATAL("Missing AST origin for %s", node->node_type()); \
+      resolution::TraversingVisitor::visit_##name(node); \
+    }
+    RESOLUTION_NODES(CHECK)
+#undef CHECK
+  } check_origins;
+  program->accept(&check_origins);
+#endif
   return program;
 }
 
@@ -2645,6 +2659,7 @@ void Resolver::resolve_fill_class(resolution::ClassView klass,
 
 void Resolver::add_global_assignment_typechecks() {
   for (auto assignment : global_assignments_) {
+    resolution::Origin origin(assignment.syntax());
     auto global = assignment->global();
     if (!global->has_explicit_type()) continue;
     auto type = global->return_type();

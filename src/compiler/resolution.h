@@ -23,14 +23,10 @@
 #include "sources.h"
 #include "selector.h"
 #include "symbol.h"
-#include "../bytecodes.h"
 
 namespace toit {
 namespace compiler {
 
-class DispatchTable;
-class DispatchTableBuilder;
-class Resolver;
 class Scope;
 class StaticsScope;
 
@@ -41,7 +37,7 @@ namespace resolution {
 class NodeInfo;
 using NodeView = View<NodeInfo>;
 
-#define RESOLUTION_NODES(V)             \
+#define RESOLUTION_NODES(V)      \
   V(Program)                    \
   V(Global)                     \
   V(Class)                      \
@@ -51,9 +47,6 @@ using NodeView = View<NodeInfo>;
   V(MonitorMethod)              \
   V(MethodStatic)               \
   V(Constructor)                \
-  V(AdapterStub)                \
-  V(MixinStub)                  \
-  V(IsInterfaceOrMixinStub)     \
   V(FieldStub)                  \
   V(Code)                       \
   V(Block)                      \
@@ -213,19 +206,26 @@ RESOLUTION_NODES(DECLARE)
   virtual Type dispatch(ReturningVisitor<Type>* visitor) = 0;
   virtual const char* node_type() const { return "Node"; }
 
-  void print(bool use_resolution_shape);
+  void print();
 
  private:
   AstNode* ast_node_;
 };
 
-#define IMPLEMENTS(name)                                                 \
-  static name##Info* cast(NodeInfo* node) { ASSERT(node->is_##name()); return static_cast<name##Info*>(node); } \
-  virtual void dispatch(Visitor* visitor) { visitor->visit_##name(name##View(ast_node())); } \
-  virtual Type dispatch(ReturningVisitor<Type>* visitor) { return visitor->visit_##name(name##View(ast_node())); } \
-  virtual bool is_##name() const { return true; }                        \
-  virtual name##View as_##name() { return name##View(ast_node()); }                             \
-  virtual const char* node_type() const { return #name; }
+#define IMPLEMENTS(name)                                                       \
+  static name##Info* cast(NodeInfo* node) {                                    \
+    ASSERT(node->is_##name());                                                 \
+    return static_cast<name##Info*>(node);                                     \
+  }                                                                           \
+  void dispatch(Visitor* visitor) override {                                   \
+    visitor->visit_##name(name##View(ast_node()));                              \
+  }                                                                           \
+  Type dispatch(ReturningVisitor<Type>* visitor) override {                    \
+    return visitor->visit_##name(name##View(ast_node()));                       \
+  }                                                                           \
+  bool is_##name() const override { return true; }                             \
+  name##View as_##name() override { return name##View(ast_node()); }            \
+  const char* node_type() const override { return #name; }
 
 class ProgramInfo : public NodeInfo {
  public:
@@ -302,26 +302,13 @@ class ClassInfo : public NodeInfo {
       , super_(null)
       , kind_(kind)
       , is_abstract_(is_abstract)
-      , typecheck_selector_(Selector<CallShape>(Symbol::invalid(), CallShape::invalid()))
-      , is_instantiated_(kind != MIXIN)
-      , id_(-1)
-      , start_id_(-1)
-      , end_id_(-1)
-      , total_field_count_(-1) {
+      , typecheck_selector_(Selector<CallShape>(Symbol::invalid(), CallShape::invalid())) {
     ASSERT(outline_range.contains(range));
   }
   IMPLEMENTS(Class)
 
   Symbol name() const { return name_; }
   bool has_super() const { return super_ != null; }
-  /// The id of this class.
-  /// This value is only set in the dispatch-table builder and must not be
-  ///   used earlier.
-  int id() const {
-    ASSERT(id_ != -1);
-    return id_;
-  }
-
   bool is_task_class() const { return is_runtime_class_ && name_ == Symbols::Task_; }
   bool is_runtime_class() const { return is_runtime_class_; }
   void mark_runtime_class() { is_runtime_class_ = true; }
@@ -427,10 +414,6 @@ class ClassInfo : public NodeInfo {
   Source::Range range() const { return range_; }
   Source::Range outline_range() const { return outline_range_; }
 
-  /// These functions are set by the tree-shaker.
-  bool is_instantiated() const { return is_instantiated_; }
-  void set_is_instantiated(bool value) { is_instantiated_ = value; }
-
   Selector<CallShape> typecheck_selector() const { return typecheck_selector_; }
   void set_typecheck_selector(Selector<CallShape> selector) {
     ASSERT(is_interface() || is_mixin());
@@ -467,46 +450,7 @@ class ClassInfo : public NodeInfo {
   StaticsScope* statics_ = null;
   Scope* toitdoc_scope_ = null;
 
-  bool is_instantiated_;
 
-  int id_;
-  int start_id_;
-  int end_id_;
-
- public:
-  // Reserved for DispatchTable and the backend:
-
-  /// Every class in the range `start_id` .. `end_id`(exclusive) is a subclass
-  /// of this class. The `start_id` might me the class itself (equal to `id()`).
-  /// When this class is not instantiated, then the start_id does not include this
-  /// class.
-  int start_id() const { return start_id_; }
-  int end_id() const { return end_id_; }
-
-  void set_id(int id) {
-    ASSERT(id_ == -1);
-    id_ = id;
-  }
-
-  void set_start_id(int id) {
-    ASSERT(start_id_ == -1);
-    start_id_ = id;
-  }
-
-  void set_end_id(int end_id) {
-    ASSERT(end_id_ == -1);
-    end_id_ = end_id;
-  }
-
- public:
-  // Reserved for Compiler and ByteGen.
-  int total_field_count() const { return total_field_count_; }
-  void set_total_field_count(int count) {
-    ASSERT(total_field_count_ == -1);
-    total_field_count_ = count;
-  }
-
-  int total_field_count_;
 };
 
 class MethodInfo : public NodeInfo {
@@ -532,9 +476,7 @@ class MethodInfo : public NodeInfo {
       : name_(name)
       , holder_(holder)
       , return_type_(Type::invalid())
-      , use_resolution_shape_(true)
       , resolution_shape_(shape)
-      , plain_shape_(PlainShape::invalid())
       , is_abstract_(is_abstract)
       , does_not_return_(false)
       , is_runtime_method_(false)
@@ -542,31 +484,8 @@ class MethodInfo : public NodeInfo {
       , kind_(kind)
       , range_(range)
       , outline_range_(outline_range)
-      , body_(null)
-      , index_(-1) {}
+      , body_(null) {}
 
-  explicit MethodInfo(Symbol name,
-                  ClassView holder,  // `null` if not inside a class.
-                  const PlainShape& shape,
-                  bool is_abstract,
-                  MethodKind kind,
-                  Source::Range range,
-                  Source::Range outline_range)
-      : name_(name)
-      , holder_(holder)
-      , return_type_(Type::invalid())
-      , use_resolution_shape_(false)
-      , resolution_shape_(ResolutionShape::invalid())
-      , plain_shape_(shape)
-      , is_abstract_(is_abstract)
-      , does_not_return_(false)
-      , is_runtime_method_(false)
-      , deprecation_message_(Symbol::invalid())
-      , kind_(kind)
-      , range_(range)
-      , outline_range_(outline_range)
-      , body_(null)
-      , index_(-1) {}
 
  public:
   IMPLEMENTS(Method)
@@ -579,31 +498,17 @@ class MethodInfo : public NodeInfo {
   /// optional arguments, and all arguments may be used with their respective
   /// names (if they are available).
   ResolutionShape resolution_shape() const {
-    ASSERT(use_resolution_shape_ && resolution_shape_.is_valid());
+    ASSERT(resolution_shape_.is_valid());
     return resolution_shape_;
   }
 
   /// The resolution shape of this method without any implicit this.
   ResolutionShape resolution_shape_no_this() const {
-    ASSERT(use_resolution_shape_ && resolution_shape_.is_valid());
+    ASSERT(resolution_shape_.is_valid());
     if (is_instance() || is_constructor()) {
       return resolution_shape_.without_implicit_this();
     }
     return resolution_shape_;
-  }
-
-  /// The unique shape of this method.
-  ///
-  /// This shape does not contain any optional parameters anymore.
-  /// If it has named arguments, these are required.
-  PlainShape plain_shape() const {
-    ASSERT(!use_resolution_shape_ && plain_shape_.is_valid());
-    return plain_shape_;
-  }
-  void set_plain_shape(const PlainShape& shape) {
-    plain_shape_ = shape;
-    resolution_shape_ = ResolutionShape::invalid();
-    use_resolution_shape_ = false;
   }
 
   MethodKind kind() const { return kind_; }
@@ -615,10 +520,7 @@ class MethodInfo : public NodeInfo {
   bool is_factory() const { return kind() == FACTORY; }
   bool is_initializer() const { return kind() == GLOBAL_INITIALIZER; }
   bool is_field_initializer() const { return kind() == FIELD_INITIALIZER; }
-  bool is_setter() const {
-    if (use_resolution_shape_) return resolution_shape().is_setter();
-    return plain_shape().is_setter();
-  }
+  bool is_setter() const { return resolution_shape().is_setter(); }
 
   bool has_implicit_this() const {
     return is_instance() || is_constructor();
@@ -654,8 +556,6 @@ class MethodInfo : public NodeInfo {
 
   void replace_body(ExpressionView new_body) { body_ = new_body; }
 
-  bool is_dead() const { return is_dead_; }
-  void kill() { is_dead_ = true; }
 
   List<ParameterView> parameters() const { return parameters_; }
   // Use 'set' for the initial setting, and 'replace' for later replacements.
@@ -686,18 +586,9 @@ class MethodInfo : public NodeInfo {
 
   Type return_type_;
 
-  bool use_resolution_shape_;
-
   // The `MethodShape` is used for resolution. It represents all possible
   // shapes a method can take. For example, it can have default-values, ...
   ResolutionShape resolution_shape_;
-
-  // The `InstanceMethodShape` is used after resolution and only valid
-  // for instance methods. Static methods don't need any shape after resolution
-  // anymore.
-  // It represents one (and only one) shape of the possible calling-conventions
-  // of the method-shape.
-  PlainShape plain_shape_;
 
   const bool is_abstract_;
   bool does_not_return_;
@@ -709,28 +600,10 @@ class MethodInfo : public NodeInfo {
 
   List<ParameterView> parameters_;
   ExpressionView body_;
-  bool is_dead_ = false;
 
   static bool _parameters_have_correct_index(List<ParameterView> parameters);
 
- private:
-  friend class ::toit::compiler::DispatchTable;
-  friend class ::toit::compiler::DispatchTableBuilder;
 
-  // The global index during emission.
-  int index_;
-
-  int index() const {
-    ASSERT(index_ != -1);
-    return index_;
-  }
-  bool index_is_set() const {
-    return index_ != -1;
-  }
-  void set_index(int index) {
-    ASSERT(index_ == -1);
-    index_ = index;
-  }
 };
 
 class MethodInstanceInfo : public MethodInfo {
@@ -738,13 +611,6 @@ class MethodInstanceInfo : public MethodInfo {
   MethodInstanceInfo(Symbol name,
                  ClassView holder,
                  const ResolutionShape& shape,
-                 bool is_abstract,
-                 Source::Range range,
-                 Source::Range outline_range)
-      : MethodInfo(name, holder, shape, is_abstract, INSTANCE, range, outline_range) {}
-  MethodInstanceInfo(Symbol name,
-                 ClassView holder,
-                 const PlainShape& shape,
                  bool is_abstract,
                  Source::Range range,
                  Source::Range outline_range)
@@ -769,39 +635,6 @@ class MonitorMethodInfo : public MethodInstanceInfo {
                 Source::Range outline_range)
       : MethodInstanceInfo(name, holder, shape, false, range, outline_range) {}
   IMPLEMENTS(MonitorMethod)
-};
-
-class AdapterStubInfo : public MethodInstanceInfo {
- public:
-  AdapterStubInfo(Symbol name, ClassView holder, const PlainShape& shape, Source::Range range, Source::Range outline_range)
-      : MethodInstanceInfo(name, holder, shape, false, range, outline_range) {}
-  IMPLEMENTS(AdapterStub)
-};
-
-class MixinStubInfo : public MethodInstanceInfo {
- public:
-  MixinStubInfo(Symbol name, ClassView holder, const PlainShape& shape, Source::Range range, Source::Range outline_range)
-      : MethodInstanceInfo(name, holder, shape, false, range, outline_range) {}
-  IMPLEMENTS(MixinStub)
-};
-
-class IsInterfaceOrMixinStubInfo : public MethodInstanceInfo {
- public:
-  IsInterfaceOrMixinStubInfo(Symbol name,
-                         ClassView holder,
-                         const PlainShape& shape,
-                         ClassView interface_or_mixin,
-                         Source::Range range,
-                         Source::Range outline_range)
-      : MethodInstanceInfo(name, holder, shape, false, range, outline_range)
-      , interface_or_mixin_(interface_or_mixin) {}
-
-  IMPLEMENTS(IsInterfaceOrMixinStub);
-
-  resolution::ClassView interface_or_mixin() const { return interface_or_mixin_; }
-
- private:
-  resolution::ClassView interface_or_mixin_;
 };
 
 // TODO(florian): the kind is called "GLOBAL_FUN", but the class is called
@@ -844,14 +677,10 @@ class GlobalInfo : public MethodInfo {
  public:
   GlobalInfo(Symbol name, bool is_final, Source::Range range, Source::Range outline_range)
       : MethodInfo(name, null, ResolutionShape(0), false, GLOBAL_INITIALIZER, range, outline_range)
-      , is_final_(is_final)
-      , is_lazy_(true)
-      , global_id_(-1) {}
+      , is_final_(is_final) {}
   GlobalInfo(Symbol name, ClassView holder, bool is_final, Source::Range range, Source::Range outline_range)
       : MethodInfo(name, holder, ResolutionShape(0), false, GLOBAL_INITIALIZER, range, outline_range)
-      , is_final_(is_final)
-      , is_lazy_(true)
-      , global_id_(-1) {}
+      , is_final_(is_final) {}
   IMPLEMENTS(Global)
 
   // Whether this global is marked to be final.
@@ -874,30 +703,9 @@ class GlobalInfo : public MethodInfo {
     return has_explicit_type_;
   }
 
- public:
-  // Reserved for ByteGen and Compiler.
-  // The ids of globals must be continuous, and should therefore only be set
-  // at the end of the compilation process (in case we can remove some).
-  int global_id() const { return global_id_; }
-  void set_global_id(int id) {
-    ASSERT(global_id_ == -1 && id >= 0);
-    global_id_ = id;
-  }
-
-  void mark_eager() {
-    is_lazy_ = false;
-  }
-
- public:
-  // Reserved for the ByteGen.
-  // This field might be changed at a later point (after optimizations).
-  bool is_lazy() { return is_lazy_; }
-
  private:
   int mutation_count_ = 0;
   bool is_final_;
-  bool is_lazy_;
-  int global_id_;
   bool has_explicit_type_ = false;
 };
 
@@ -909,7 +717,6 @@ class FieldInfo : public NodeInfo {
       , type_(Type::invalid())
       , is_final_(is_final)
       , deprecation_message_(Symbol::invalid())
-      , resolved_index_(-1)
       , range_(range)
       , outline_range_(outline_range) {}
   IMPLEMENTS(Field)
@@ -934,21 +741,12 @@ class FieldInfo : public NodeInfo {
   Source::Range range() const { return range_; }
   Source::Range outline_range() const { return outline_range_; }
 
- public:
-  // Reserved for compiler/bytegen.
-  int resolved_index() const { return resolved_index_; }
-  void set_resolved_index(int index) {
-    ASSERT(resolved_index_ == -1);
-    resolved_index_ = index;
-  }
-
  private:
   Symbol name_;
   ClassView holder_;
   Type type_;
   bool is_final_;
   Symbol deprecation_message_;
-  int resolved_index_;
   Source::Range range_;
   Source::Range outline_range_;
 };
@@ -1043,14 +841,11 @@ class FieldStoreInfo : public ExpressionInfo {
   void replace_receiver(ExpressionView new_receiver) { receiver_ = new_receiver; }
   void replace_value(ExpressionView new_value) { value_ = new_value; }
 
-  bool is_box_store() const { return is_box_store_; }
-  void mark_box_store() { is_box_store_ = true; }
 
  private:
   ExpressionView receiver_;
   FieldView field_;
   ExpressionView value_;
-  bool is_box_store_ = false;
 };
 
 class FieldLoadInfo : public ExpressionInfo {
@@ -1064,13 +859,10 @@ class FieldLoadInfo : public ExpressionInfo {
 
   void replace_receiver(ExpressionView new_receiver) { receiver_ = new_receiver; }
 
-  bool is_box_load() const { return is_box_load_; }
-  void mark_box_load() { is_box_load_ = true; }
 
  private:
   ExpressionView receiver_;
   FieldView field_;
-  bool is_box_load_ = false;
 };
 
 class SequenceInfo : public ExpressionInfo {
@@ -1285,8 +1077,6 @@ class CodeInfo : public ExpressionInfo {
 
   void replace_body(ExpressionView new_body) { body_ = new_body; }
 
-  bool is_dead() const { return is_dead_; }
-  void kill() { is_dead_ = true; }
 
  private:
   Symbol name_;
@@ -1295,7 +1085,6 @@ class CodeInfo : public ExpressionInfo {
   bool is_block_;
   int captured_count_;
 
-  bool is_dead_ = false;
 };
 
 class ReferenceInfo : public ExpressionInfo {
@@ -1353,8 +1142,7 @@ class LocalInfo : public NodeInfo {
       , is_final_(is_final)
       , is_block_(is_block)
       , has_explicit_type_(type.is_valid())
-      , type_(type)
-      , index_(-1) {}
+      , type_(type) {}
   LocalInfo(Symbol name, bool is_final, bool is_block, Source::Range range)
       : LocalInfo(name, is_final, is_block, Type::invalid(), range) {}
   IMPLEMENTS(Local)
@@ -1391,18 +1179,6 @@ class LocalInfo : public NodeInfo {
   }
   void mark_guaranteed_inferred_type() { has_guaranteed_inferred_type_ = true; }
 
-  // The index is required for bytecode generation.
-  // The index for parameters is fixed, whereas the one for locals is set
-  // during bytecode emission.
-  int index() const {
-    ASSERT(!is_Parameter() || index_ != -1);
-    return index_;
-  }
-  void set_index(int index) {
-    ASSERT(!is_Parameter());
-    index_ = index;
-  }
-
   virtual Type type() const { return type_; }
   virtual void set_type(Type type) {
     ASSERT(type.is_valid());
@@ -1423,8 +1199,6 @@ class LocalInfo : public NodeInfo {
   bool is_captured_ = false;
   Type type_;
 
- protected:
-  int index_;
 };
 
 class ParameterInfo : public LocalInfo {
@@ -1482,6 +1256,8 @@ class ParameterInfo : public LocalInfo {
   }
   IMPLEMENTS(Parameter)
 
+  int index() const { return index_; }
+
   /// The range of the default value (if one exists).
   /// This range is used for toitdoc generation and is not maintained during transformations.
   /// Once the summaries have been generated, this value shouldn't be used anymore.
@@ -1503,6 +1279,7 @@ class ParameterInfo : public LocalInfo {
   }
 
  private:
+  int index_;
   bool has_default_value_;
   Source::Range default_value_range_;
   int original_index_;
@@ -1658,13 +1435,10 @@ class CallInfo : public ExpressionInfo {
   List<ExpressionView> arguments() const { return arguments_; }
   CallShape shape() const { return shape_; }
 
-  void mark_tail_call() { is_tail_call_ = true; }
-  bool is_tail_call() const { return is_tail_call_; }
 
  private:
   List<ExpressionView> arguments_;
   CallShape shape_;
-  bool is_tail_call_ = false;
 };
 
 class CallStaticInfo : public CallInfo {
@@ -1731,11 +1505,7 @@ class CallConstructorInfo : public CallStaticInfo {
   ClassView klass() const { return constructor()->klass(); }
   ConstructorView constructor() const { return target()->target()->as_Constructor(); }
 
-  bool is_box_construction() const { return is_box_construction_; }
-  void mark_box_construction() { is_box_construction_ = true; }
 
- private:
-  bool is_box_construction_ = false;
 };
 
 class CallVirtualInfo : public CallInfo {
@@ -1745,22 +1515,10 @@ class CallVirtualInfo : public CallInfo {
               List<ExpressionView> arguments,
               Source::Range range)
       : CallInfo(arguments, shape, range)
-      , target_(target)
-      , opcode_(INVOKE_VIRTUAL) {
+      , target_(target) {
     ASSERT(shape.arity() > 0);
   }
 
-  /// Creates a virtual call with the given opcode.
-  ///
-  /// This constructor is designed for interface is-checks, and therefore
-  /// doesn't take any arguments.
-  CallVirtualInfo(DotView target,
-              Opcode opcode)
-      : CallInfo(List<ExpressionView>(),
-             CallShape(0).with_implicit_this(),
-             Source::Range::invalid())
-      , target_(target)
-      , opcode_(opcode) {}
   IMPLEMENTS(CallVirtual)
 
   DotView target() const { return target_; }
@@ -1769,12 +1527,14 @@ class CallVirtualInfo : public CallInfo {
 
   void replace_target(DotView new_target) { target_ = new_target; }
 
-  Opcode opcode() const { return opcode_; }
-  void set_opcode(Opcode new_opcode) { opcode_ = new_opcode; }
+  // Comparisons have identity/null semantics beyond a normal virtual call.
+  // The backend chooses the corresponding instruction only during lowering.
+  Token::Kind comparison_kind() const { return comparison_kind_; }
+  void set_comparison_kind(Token::Kind kind) { comparison_kind_ = kind; }
 
  private:
   DotView target_;
-  Opcode opcode_;
+  Token::Kind comparison_kind_ = Token::ILLEGAL;
 };
 
 class CallBlockInfo : public CallInfo {

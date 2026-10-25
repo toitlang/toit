@@ -36,7 +36,6 @@ class Lowering : public resolution::Visitor {
       nodes_[klass] = result;
       if (klass->is_runtime_class()) result->mark_runtime_class();
       if (klass->is_deprecated()) result->set_deprecation(klass->get_deprecation_message());
-      result->set_is_instantiated(klass->is_instantiated());
       if (klass->is_interface() || klass->is_mixin()) {
         result->set_typecheck_selector(klass->typecheck_selector());
       }
@@ -135,7 +134,6 @@ class Lowering : public resolution::Visitor {
       auto global = method->as_Global();
       auto lowered = zone_new<ir::Global>(name, holder, global->is_final(), range, outline);
       if (!global->is_effectively_final()) lowered->register_mutation();
-      if (!global->is_lazy()) lowered->mark_eager();
       if (global->has_explicit_type()) lowered->set_explicit_return_type(lower_type(global->return_type()));
       result = lowered;
     } else if (method->is_Constructor()) {
@@ -166,7 +164,6 @@ class Lowering : public resolution::Visitor {
     if (method->does_not_return()) result->mark_does_not_return();
     if (method->is_runtime_method()) result->mark_runtime_method();
     if (method->is_deprecated()) result->set_deprecation(method->get_deprecation_message());
-    if (method->is_dead()) result->kill();
   }
 
   void fill_method(resolution::MethodView method) {
@@ -220,7 +217,6 @@ class Lowering : public resolution::Visitor {
     auto result = zone_new<ir::Code>(node->name(), lower_list(node->parameters()),
         lower(node->body()), node->is_block(), node->range());
     result->set_captured_count(node->captured_count());
-    if (node->is_dead()) result->kill();
     result_ = result;
   }
 
@@ -231,23 +227,27 @@ class Lowering : public resolution::Visitor {
     });
     auto result = zone_new<ir::Lambda>(lower(node->target()), node->shape(),
         lower_list(node->arguments()), captured, node->range());
-    if (node->is_tail_call()) result->mark_tail_call();
     result_ = result;
   }
 
   void visit_CallConstructor(resolution::CallConstructorView node) override {
     auto result = zone_new<ir::CallConstructor>(lower(node->target()), node->shape(),
         lower_list(node->arguments()), node->range());
-    if (node->is_tail_call()) result->mark_tail_call();
-    if (node->is_box_construction()) result->mark_box_construction();
     result_ = result;
   }
 
   void visit_CallVirtual(resolution::CallVirtualView node) override {
     auto result = zone_new<ir::CallVirtual>(lower(node->target()), node->shape(),
         lower_list(node->arguments()), node->range());
-    if (node->is_tail_call()) result->mark_tail_call();
-    result->set_opcode(node->opcode());
+    switch (node->comparison_kind()) {
+      case Token::EQ: result->set_opcode(INVOKE_EQ); break;
+      case Token::LT: result->set_opcode(INVOKE_LT); break;
+      case Token::LTE: result->set_opcode(INVOKE_LTE); break;
+      case Token::GT: result->set_opcode(INVOKE_GT); break;
+      case Token::GTE: result->set_opcode(INVOKE_GTE); break;
+      case Token::ILLEGAL: break;  // Ordinary virtual dispatch.
+      default: UNREACHABLE();
+    }
     result_ = result;
   }
 
@@ -261,14 +261,12 @@ class Lowering : public resolution::Visitor {
 
   void visit_FieldLoad(resolution::FieldLoadView node) override {
     auto result = zone_new<ir::FieldLoad>(lower(node->receiver()), lower(node->field()), node->range());
-    if (node->is_box_load()) result->mark_box_load();
     result_ = result;
   }
 
   void visit_FieldStore(resolution::FieldStoreView node) override {
     auto result = zone_new<ir::FieldStore>(lower(node->receiver()), lower(node->field()),
         lower(node->value()), node->range());
-    if (node->is_box_store()) result->mark_box_store();
     result_ = result;
   }
 
@@ -395,21 +393,18 @@ class Lowering : public resolution::Visitor {
   void visit_CallStatic(resolution::CallStaticView node) override {
     auto result = zone_new<ir::CallStatic>(lower(node->target()), node->shape(),
         lower_list(node->arguments()), node->range());
-    if (node->is_tail_call()) result->mark_tail_call();
     result_ = result;
   }
 
   void visit_CallBlock(resolution::CallBlockView node) override {
     auto result = zone_new<ir::CallBlock>(lower(node->target()), node->shape(),
         lower_list(node->arguments()), node->range());
-    if (node->is_tail_call()) result->mark_tail_call();
     result_ = result;
   }
 
   void visit_CallBuiltin(resolution::CallBuiltinView node) override {
     auto result = zone_new<ir::CallBuiltin>(lower(node->target()), node->shape(),
         lower_list(node->arguments()), node->range());
-    if (node->is_tail_call()) result->mark_tail_call();
     result_ = result;
   }
 
@@ -427,9 +422,6 @@ class Lowering : public resolution::Visitor {
   UNEXPECTED(Constructor)
   UNEXPECTED(Global)
   UNEXPECTED(FieldStub)
-  UNEXPECTED(AdapterStub)
-  UNEXPECTED(MixinStub)
-  UNEXPECTED(IsInterfaceOrMixinStub)
   UNEXPECTED(Expression)
   UNEXPECTED(Reference)
   UNEXPECTED(Call)
