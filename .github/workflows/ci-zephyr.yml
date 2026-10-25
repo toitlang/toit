@@ -1,0 +1,77 @@
+# Copyright (C) 2026 Toit contributors.
+# Use of this source code is governed by a Zero-Clause BSD license in tests/LICENSE.
+name: CI Zephyr
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/ci-zephyr.yml'
+      - 'CMakeLists.txt'
+      - 'src/**'
+      - 'include/**'
+      - 'lib/**'
+      - 'mbedtls/**'
+      - 'system/**'
+      - 'tools/**'
+      - 'toolchains/**'
+      - 'third_party/**'
+      - 'tests/hw/nrf5340/**'
+      - 'tests/zephyr-firmware-test.toit'
+  push:
+    branches: [master, 'floitsch/nrf*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zephyr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: 4
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ gcc-arm-none-eabi \
+            libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
+            python3-venv python3-dev python3-serial device-tree-compiler gperf libyaml-dev \
+            autoconf automake libtool make pkg-config libusb-1.0-0-dev libjim-dev
+          git submodule update --init -- third_party/esp-idf
+          git -C third_party/esp-idf submodule update --init -- components/mbedtls/mbedtls
+      - name: Set up pinned Zephyr dependencies
+        run: bash tools/zephyr/setup.sh
+      - name: Build the pinned SWD debugger
+        run: |
+          mkdir -p build/zephyr-check
+          bash tools/nrf5340/setup.sh --openocd > build/zephyr-check/openocd-build.log 2>&1
+          .cache/nrf5340/openocd/src/openocd --version
+          python3 tools/nrf5340/flash.py --help
+          python3 tools/nrf5340/deploy.py --help
+          python3 tests/hw/nrf5340/test-flash.py
+      - name: Build firmware profiles and run native GATT tests
+        run: bash tools/zephyr/check-build.sh
+      - name: Preserve logs and firmware
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: zephyr-build-check
+          if-no-files-found: warn
+          path: |
+            build/zephyr-check/*.log
+            build/zephyr-check/*/toit.envelope
+            build/zephyr-check/*/extracted.bin
+            build/zephyr-check/*/firmware.tar
+            build/zephyr-check/peripherals.*/prepared/summary.json
+            build/zephyr-check/peripherals.*/prepared/*.log
+            build/zephyr-check/*/zephyr/zephyr.bin
+            build/zephyr-check/*/zephyr/.config
+            build/zephyr-check/*/zephyr/zephyr.dts
