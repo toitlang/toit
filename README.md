@@ -149,6 +149,9 @@ depending on the build host's architecture, see paragraph [ESP32 tools](#esp32-t
 
 For builds targeting RISC-V, ARM32, or ARM64 hardware, see the [Other platforms README](README_OTHERPLATFORMS.md).
 
+For the nRF5340 Ebyte E83-2G4M03S-TB, see the [Zephyr port instructions](docs/nrf5340.md)
+for building, flashing, supported peripherals, and hardware test coverage.
+
 #### Windows
 
 If you are using Windows you can use Chocolatey to install the required dependencies.
