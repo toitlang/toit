@@ -8,12 +8,33 @@ import system.base.firmware show FirmwareServiceProviderBase FirmwareWriter
 
 main:
   test-simple-mapping
+  test-inconsistent-mapping
   test-map
 
 test-simple-mapping:
   bytes := ByteArray 19: it
   mapping := firmware.FirmwareMapping_ bytes
   test-mapping bytes mapping
+
+test-inconsistent-mapping:
+  bytes := ByteArray 8: it
+  buffer := ByteArray 100
+
+  // The mapping claims more bytes than the backing store has.
+  mapping := firmware.FirmwareMapping_ bytes 0 100
+  expect.expect-throw "OUT_OF_BOUNDS": mapping[50]
+  expect.expect-throw "OUT_OF_BOUNDS": mapping.copy 0 64 --into=buffer
+
+  mapping = firmware.FirmwareMapping_ bytes 4 8
+  expect.expect-throw "OUT_OF_BOUNDS": mapping[0]
+  expect.expect-throw "OUT_OF_BOUNDS": mapping.copy 0 8 --into=buffer
+
+  // Negative offsets and sizes are rejected.
+  mapping = firmware.FirmwareMapping_ bytes -4 8
+  expect.expect-throw "OUT_OF_BOUNDS": mapping[0]
+  expect.expect-throw "OUT_OF_BOUNDS": mapping.copy 4 8 --into=buffer
+  mapping = firmware.FirmwareMapping_ bytes 0 -4
+  expect.expect-throw "OUT_OF_BOUNDS": mapping[0]
 
 test-map:
   // TODO(kasper): Find a way to check the behavior
