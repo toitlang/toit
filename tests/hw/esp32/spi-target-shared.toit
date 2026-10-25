@@ -261,7 +261,18 @@ test-board1:
     prepare-target port current
 
     controller-result := current.controller-data.copy
-    device.transfer controller-result --read=true
+    if controller-result.size <= spi.DEFAULT-TARGET-MAX-TRANSFER-SIZE:
+      device.transfer controller-result --read=true
+    else:
+      // The ESP32 controller driver also defaults to a 4092-byte DMA limit.
+      // Keep CS asserted across chunks so the target sees one full transfer.
+      device.with-reserved-bus:
+        from := 0
+        while from < controller-result.size:
+          to := min (from + spi.DEFAULT-TARGET-MAX-TRANSFER-SIZE) controller-result.size
+          device.transfer controller-result --from=from --to=to --read
+              --keep-cs-active=(to < controller-result.size)
+          from = to
     device.close
 
     target-result := read-target-result port
