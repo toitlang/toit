@@ -36,7 +36,7 @@ if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "${CMAKE_HOST_SYSTEM_NAME}") OR
 endif()
 
 set(TOIT_IS_EMBEDDED FALSE)
-if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32" OR "${TOIT_SYSTEM_NAME}" STREQUAL "ec618")
+if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32" OR "${TOIT_SYSTEM_NAME}" STREQUAL "ec618" OR "${TOIT_SYSTEM_NAME}" STREQUAL "zephyr")
   set(TOIT_IS_EMBEDDED TRUE)
 endif()
 
@@ -153,6 +153,8 @@ if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   set(MBEDTLS_C_FLAGS "-DMBEDTLS_CONFIG_FILE=\\\"mbedtls/esp_config.h\\\"")
 elseif ("${TOIT_SYSTEM_NAME}" STREQUAL "ec618")
   set(MBEDTLS_C_FLAGS "-DMBEDTLS_CONFIG_FILE=\\\"${CMAKE_SOURCE_DIR}/mbedtls/include/ec618_config.h\\\"")
+elseif ("${TOIT_SYSTEM_NAME}" STREQUAL "zephyr")
+  set(MBEDTLS_C_FLAGS "-DMBEDTLS_CONFIG_FILE=\\\"${TOIT_SDK_SOURCE_DIR}/mbedtls/include/zephyr_config.h\\\"")
 else()
   # For now we run with the full 16k size in the input buffer on host systems.
   # For devices we still run with a smaller buffer, which saves memory

@@ -129,6 +129,7 @@ endif()
 
 add_library(
   toit_vm
+  ${TOIT_VM_LIBRARY_TYPE}
   ${toit_vm_SRC}
   ${toit_core_SRC}
   )

@@ -17,3 +17,6 @@ tests/font-test.toit -text
 tests/string-large-literal-test.toit -text
 tests/string-trailing-test.toit -text
 tests/string-test.toit -text
+
+# Preserve whitespace in vendored patch context lines.
+*.patch -whitespace

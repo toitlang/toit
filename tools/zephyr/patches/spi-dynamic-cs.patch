@@ -1,0 +1,34 @@
+diff --git a/drivers/spi/Kconfig b/drivers/spi/Kconfig
+index 87e0b2816533c4c6d577107465939a66fb39614b..de93a2f98f3200b80c4531b4245e5a32127e960c 100644
+--- a/drivers/spi/Kconfig
++++ b/drivers/spi/Kconfig
+@@ -13,6 +13,15 @@ menuconfig SPI
+ 
+ if SPI
+ 
++config SPI_DYNAMIC_CS
++	bool "Runtime GPIO chip selects without devicetree chip selects"
++	depends on GPIO
++	help
++	  Retain GPIO chip-select handling when no enabled controller of a
++	  driver declares cs-gpios. Applications can then provide a GPIO
++	  chip select in spi_config at runtime. The application must configure
++	  and manage the lifetime of these GPIOs.
++
+ config SPI_SHELL
+ 	bool "SPI Shell"
+ 	depends on SHELL
+diff --git a/drivers/spi/spi_context.h b/drivers/spi/spi_context.h
+index 25fdbf8d8ad2fbcc18d23f26f78fd6c8a3eecd86..09a9b19503083d8efcd7f562c1d9718955e67e6b 100644
+--- a/drivers/spi/spi_context.h
++++ b/drivers/spi/spi_context.h
+@@ -22,7 +22,8 @@
+ extern "C" {
+ #endif
+ 
+-#if defined(DT_DRV_COMPAT) && !DT_ANY_INST_HAS_PROP_STATUS_OKAY(cs_gpios)
++#if defined(DT_DRV_COMPAT) && !DT_ANY_INST_HAS_PROP_STATUS_OKAY(cs_gpios) && \
++    !defined(CONFIG_SPI_DYNAMIC_CS)
+ #define DT_SPI_CTX_HAS_NO_CS_GPIOS 1
+ #endif
+ 

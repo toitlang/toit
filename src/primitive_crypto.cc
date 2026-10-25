@@ -16,6 +16,8 @@
 #include "top.h"
 #if defined(TOIT_ESP32)
 #include <esp_random.h>
+#elif defined(TOIT_ZEPHYR)
+#include "entropy_mixer.h"
 #elif defined(TOIT_EC618)
 // The hardware TRNG, through the same entry the mbedtls entropy source uses
 // (os_ec618.cc, backed by rngGenRandom).
@@ -350,7 +352,10 @@ word AeadContext::update(word size, const uint8* input_data, uint8* output_data,
   switch (cipher_id_) {
     case MBEDTLS_CIPHER_ID_AES: {
 #if MBEDTLS_VERSION_MAJOR >= 3
-      return mbedtls_gcm_update(&gcm_context_, input_data, size, output_data, size, output_length);
+      size_t written = 0;
+      int result = mbedtls_gcm_update(&gcm_context_, input_data, size, output_data, size, &written);
+      *output_length = written;
+      return result;
 #else
       *output_length = size;
       return mbedtls_gcm_update(&gcm_context_, size, input_data, output_data);
@@ -370,7 +375,7 @@ word AeadContext::finish(uint8* output_data, word size) {
   switch (cipher_id_) {
     case MBEDTLS_CIPHER_ID_AES:
 #if MBEDTLS_VERSION_MAJOR >= 3
-      uword output_length;
+      size_t output_length;
       return mbedtls_gcm_finish(&gcm_context_, null, 0, &output_length, output_data, size);
 #else
       return mbedtls_gcm_finish(&gcm_context_, output_data, size);
@@ -778,6 +783,13 @@ PRIMITIVE(aes_ecb_close) {
 static int rsa_rng(void* /*ctx*/, unsigned char* buffer, size_t len) {
 #if defined(TOIT_ESP32)
   esp_fill_random(buffer, len);
+#elif defined(TOIT_ZEPHYR)
+  while (len != 0) {
+    size_t count = Utils::min(len, static_cast<size_t>(MBEDTLS_ENTROPY_BLOCK_SIZE));
+    if (!EntropyMixer::instance()->get_entropy(buffer, count)) return -1;
+    buffer += count;
+    len -= count;
+  }
 #elif defined(TOIT_EC618)
   // The hardware TRNG (see the declaration at the top of this file);
   // std::random_device on newlib is a deterministically seeded PRNG —
@@ -895,7 +907,8 @@ static ByteArray* rsa_export_der(mbedtls_pk_context* pk, Process* process, bool 
 static const int RSA_PADDING_PKCS1_V15 = 0;
 static const int RSA_PADDING_OAEP_V21  = 1;
 
-#ifdef CONFIG_TOIT_CRYPTO_EXTRA
+// Zephyr does not yet implement the generic async event source lifecycle.
+#if defined(CONFIG_TOIT_CRYPTO_EXTRA) && !defined(TOIT_ZEPHYR)
 
 class RsaGenerationEventSource : public AsyncEventSource {
  public:
@@ -1178,7 +1191,7 @@ PRIMITIVE(rsa_generate_close) {
   FAIL(UNIMPLEMENTED);
 }
 
-#endif // CONFIG_TOIT_CRYPTO_EXTRA
+#endif // CONFIG_TOIT_CRYPTO_EXTRA && !TOIT_ZEPHYR
 
 // rsa_generate returns [private_key_der, public_key_der] as a Toit Array.
 PRIMITIVE(rsa_generate) {

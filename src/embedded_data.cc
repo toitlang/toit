@@ -146,6 +146,14 @@ const EmbeddedDataExtension* EmbeddedData::extension() {
   return EmbeddedDataExtension::cast(reinterpret_cast<const void*>(drom_data.extension));
 }
 
+#elif defined(TOIT_ZEPHYR)
+extern const uint8 toit_program_uuid[] asm("toit_program_uuid");
+extern const uint32 toit_embedded_extension[] asm("toit_embedded_extension");
+const uint8* EmbeddedData::uuid() { return toit_program_uuid; }
+const EmbeddedDataExtension* EmbeddedData::extension() {
+  return EmbeddedDataExtension::cast(toit_embedded_extension);
+}
+
 #else
 
 const uint8* EmbeddedData::uuid() {
