@@ -434,15 +434,16 @@ The current suite also covers 4088, 4092, 4096, 4100, 4104, and 8192-byte DMA
 transfers in both directions. This expanded suite passed 511 fixture requests
 in `build/nrf5340-acceptance/remaining/spi-run.log`.
 
-The combined peripheral run exposed an ESP32 DMA receive boundary issue: an
-exactly 4096-byte receive buffer returned four zero bytes starting at offset
-4092. This is fixed in the ESP32 driver by reserving internal DMA headroom
-([ESP32 SPI fix](https://github.com/toitlang/toit/pull/3320)). Use firmware
-containing that fix for the ESP32 peer. The fixture requests the exact receive
-size and checks the returned length and every payload byte, so it detects a
-regression without compensating for it. The fixed driver passed all 511 checks
+The combined peripheral run exposed an ESP32 DMA receive issue: an exactly
+4096-byte receive buffer lost its final four bytes. An ESP-IDF-only reproducer
+also finds the loss with smaller buffers. The fix adjusts the hardware RX
+limit and length accounting in [ESP-IDF](https://github.com/toitware/esp-idf/pull/138),
+while leaving DMA buffer sizes unchanged. Use ESP32 firmware containing the
+[dependency update](https://github.com/toitlang/toit/pull/3320). The fixture
+requests the exact receive size and checks the returned length and every
+payload byte, so it detects a regression without compensating for it. The fixed driver passed all 511 checks
 with the unchanged nRF test image. Local evidence is in
-`build/pr-stack/spi-run.log`; the original failure is recorded in
+`build/pr-stack/spi-idf-paired.log`; the original failure is recorded in
 `build/nrf5340-acceptance/spi-diagnostic/`.
 
 The original ESP32 uses non-DMA transfers for full duplex, limiting those tests
