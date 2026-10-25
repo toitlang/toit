@@ -3,6 +3,8 @@
 // be found in the tests/LICENSE file.
 
 import crypto.crc
+import crypto.sha256 show sha256
+import encoding.hex
 import esp32
 import expect show *
 import io
@@ -285,6 +287,7 @@ serve port/uart.Port --primary/bool=true -> none:
   status out "ec618 ready reset=$reason wake=$wake active=$(string.from-rune slot.active)"
   // The host's running firmware writer survives across commands.
   writer/firmware.FirmwareWriter? := null
+  firmware-remaining := 0
   arg/string := ""
   while true:
     command := reader.read-byte
@@ -327,16 +330,40 @@ serve port/uart.Port --primary/bool=true -> none:
       out.flush
       cancel-running-test out
     else if command == CMD-FW-BEGIN:
-      size := reader.little-endian.read-int32
-      error := catch: writer = firmware.FirmwareWriter 0 size
+      // A new begin explicitly abandons an older incomplete upload.
+      if writer: writer.close
+      writer = null
+      firmware-remaining = 0
+      size := 0
+      error := catch:
+        size = with-timeout --ms=FW-READ-TIMEOUT-MS: reader.little-endian.read-int32
+        if size <= 0: throw "invalid firmware size"
+        writer = firmware.FirmwareWriter 0 size
+        firmware-remaining = size
+      if error: discard-firmware-input reader
       status out "fw begin size=$size$(error ? " error=$error" : "")"
       out.write #[(error ? ACK-ERROR : ACK-OK)]
     else if command == CMD-FW-WRITE:
-      out.write #[(fw-write reader writer out ? ACK-OK : ACK-ERROR)]
+      errors-before := port.errors
+      error := catch:
+        firmware-remaining -= fw-write reader writer firmware-remaining out
+      if error:
+        if writer: writer.close
+        writer = null
+        firmware-remaining = 0
+        discard-firmware-input reader
+        status out "fw write error=$error rx-errs=$(port.errors - errors-before)"
+      out.write #[(error ? ACK-ERROR : ACK-OK)]
     else if command == CMD-FW-COMMIT:
-      checksum := reader.read-bytes 32
-      error := catch: writer.commit --checksum=checksum
+      error := catch:
+        checksum := with-timeout --ms=FW-READ-TIMEOUT-MS: reader.read-bytes 32
+        if not writer: throw "no active firmware writer"
+        if firmware-remaining != 0: throw "incomplete firmware upload"
+        writer.commit --checksum=checksum
+      if writer: writer.close
       writer = null
+      firmware-remaining = 0
+      if error: discard-firmware-input reader
       status out "fw commit$(error ? " error=$error" : " ok")"
       out.write #[(error ? ACK-ERROR : ACK-OK)]
     else if command == CMD-FW-UPGRADE:
@@ -380,34 +407,73 @@ The wire format starts with `<size:4 LE><crc32:4>`. After ACK-READY, it carries
   has no hardware flow control.
 */
 install-container reader/io.Reader out/io.Writer port/uart.Port -> bool:
-  size := reader.little-endian.read-int32
-  expected-crc := reader.read-bytes 4
-  cleanup-error := clear-containers-ec618
-  if cleanup-error:
-    status out "install cleanup failed $cleanup-error"
-    return false
-  summer := crc.Crc32
-  image-writer := containers.ContainerImageWriter size
-  out.write #[ACK-READY]
+  size := 0
   written := 0
+  progress := ContainerUploadProgress
   errors-before := port.errors
+  image-writer/containers.ContainerImageWriter? := null
   error := catch:
-    while written < size:
-      // Bounded reads: a lost byte otherwise wedges the agent here until
-      // the watchdog (the host sees the error status + ACK-ERROR instead
-      // and can retry), and the rx-errs delta in the status line tells
-      // whether the device-side driver counted drops.
-      length := with-timeout --ms=8_000: reader.big-endian.read-uint32
-      chunk := with-timeout --ms=8_000: reader.read-bytes length
-      watchdog.watchdog-feed  // Each chunk is host contact; a large install stays alive.
-      summer.add chunk
-      image-writer.write chunk
-      written += chunk.size
-      out.write #[ACK-OK]
-    if summer.get != expected-crc: throw "CRC mismatch"
-    image-writer.commit
-  status out "install size=$size written=$written rx-errs=$(port.errors - errors-before)$(error ? " error=$error" : " ok")"
+    try:
+      size = with-timeout --ms=8_000: reader.little-endian.read-int32
+      if size <= 0: throw "invalid container size"
+      progress.stage = "crc-header"
+      expected-crc := with-timeout --ms=8_000: reader.read-bytes 4
+      progress.stage = "cleanup"
+      cleanup-error := clear-containers-ec618
+      if cleanup-error: throw "install cleanup failed $cleanup-error"
+      summer := crc.Crc32
+      progress.stage = "reserve"
+      image-writer = containers.ContainerImageWriter size
+      progress.stage = "ready-ack"
+      out.write #[ACK-READY]
+      while written < size:
+        chunk := read-container-chunk reader (size - written) --progress=progress
+        watchdog.watchdog-feed
+        progress.stage = "write"
+        summer.add chunk
+        image-writer.write chunk
+        written += chunk.size
+        progress.stage = "chunk-ack"
+        out.write #[ACK-OK]
+      progress.stage = "crc-check"
+      if summer.get != expected-crc: throw "CRC mismatch"
+      progress.stage = "commit"
+      image-writer.commit
+    finally:
+      if image-writer: image-writer.close
+  // A timed-out read retains partial payload bytes in Reader. They must never
+  // return to serve as command bytes (including firmware reboot commands).
+  buffered := reader.buffered-size
+  buffered-sha256/string? := null
+  if error and progress.stage == "chunk-payload":
+    // A diagnostic failure must not replace the original upload failure.
+    catch: buffered-sha256 = buffered-upload-checksum reader
+  if error: discard-firmware-input reader
+  status out "install size=$size written=$written rx-errs=$(port.errors - errors-before)$(error ? " stage=$progress.stage chunk-length=$progress.chunk-length buffered=$buffered buffered-sha256=$buffered-sha256 error=$error" : " ok")"
   return error == null
+
+// Consumes only bytes already buffered by a failed upload, without waiting
+// for more input. Recovery still drains the underlying UART afterward.
+buffered-upload-checksum reader/io.Reader -> string:
+  count := reader.buffered-size
+  if count > CONTAINER-CHUNK-SIZE: throw "diagnostic payload too large"
+  return hex.encode (sha256 (reader.read-bytes count))
+
+class ContainerUploadProgress:
+  stage/string := "size-header"
+  chunk-length/int := 0
+
+read-container-chunk reader/io.Reader remaining/int
+    --progress/ContainerUploadProgress?=null -> ByteArray:
+  if progress:
+    progress.stage = "chunk-header"
+    progress.chunk-length = 0
+  length := with-timeout --ms=8_000: reader.big-endian.read-uint32
+  if progress: progress.chunk-length = length
+  if not (0 < length <= CONTAINER-CHUNK-SIZE): throw "invalid container chunk length: $length"
+  if length > remaining: throw "container chunk exceeds remaining image"
+  if progress: progress.stage = "chunk-payload"
+  return with-timeout --ms=8_000: reader.read-bytes length
 
 // The application watchdog is armed for the agent's whole life and fed on
 // every host message: the agent is alive exactly while it services the host.
@@ -516,13 +582,26 @@ Reads one OTA chunk and feeds it to the firmware $writer.
 Each chunk is encoded as `<len:4 BE><bytes>`. Acknowledges readiness before the
   payload so the host paces the transfer.
 */
-fw-write reader/io.Reader writer/firmware.FirmwareWriter? out/io.Writer -> bool:
-  length := reader.big-endian.read-uint32
+fw-write reader/io.Reader writer/firmware.FirmwareWriter? remaining/int out/io.Writer -> int:
+  length := with-timeout --ms=FW-READ-TIMEOUT-MS: reader.big-endian.read-uint32
+  if not writer: throw "no active firmware writer"
+  if not (0 < length <= FW-CHUNK-SIZE): throw "invalid firmware chunk length: $length"
+  if length > remaining: throw "firmware chunk exceeds remaining image"
   out.write #[ACK-READY]
-  chunk := reader.read-bytes length
-  if not writer:
-    status out "fw write: no active writer"
-    return false
-  error := catch: writer.write chunk
-  if error: status out "fw write error=$error"
-  return error == null
+  chunk := with-timeout --ms=FW-READ-TIMEOUT-MS: reader.read-bytes length
+  writer.write chunk
+  return length
+
+// A timed-out read can retain partial bytes in the Reader. Discard those and
+// drain the UART until quiet before acknowledging failure, so payload bytes
+// cannot become commands when the host starts a fresh upload after ACK-ERROR.
+discard-firmware-input reader/io.Reader -> none:
+  reader.clear
+  catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
+    with-timeout --ms=1000:
+      while true:
+        data/ByteArray? := null
+        catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
+          data = with-timeout --ms=100: reader.read
+        if not data: break
+  reader.clear

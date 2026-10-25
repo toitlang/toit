@@ -13,10 +13,12 @@ main args:
   command := cli.Command "run-bus-rig"
       --help="Relay framed EC618 control messages from the ESP32 TCP bridge to the target console."
       --options=[
-        cli.Option "bridge" --required --help="Address of the ESP32 UART1 bridge.",
+        cli.Option "bridge" --help="Address of the ESP32 UART1 bridge.",
         cli.OptionInt "bridge-port" --default=18561 --help="TCP port of the bridge.",
         cli.Option "target-port" --help="Serial device path of the target fixture.",
         cli.Option "s3-port" --hidden --help="Alias for --target-port.",
+        cli.Flag "idle" --help="Reset the target to its idle boot fixture, verify PING, and exit.",
+        cli.Option "expected-target" --help="Require the fixture's IDENTIFY response before proceeding.",
       ]
       --run=:: run it
   command.run args
@@ -24,6 +26,8 @@ main args:
 run invocation/cli.Invocation -> none:
   target-path := invocation["target-port"] or invocation["s3-port"]
   if not target-path: invocation.cli.ui.abort "Missing required option --target-port."
+  if not invocation["idle"] and not invocation["bridge"]:
+    invocation.cli.ui.abort "Missing required option --bridge."
   target := uart.HostPort target-path --baud-rate=115200
   try:
     flags := target.read-control-flags
@@ -34,6 +38,15 @@ run invocation/cli.Invocation -> none:
     sleep --ms=500
     target.set-control-flag uart.HostPort.CONTROL-FLAG-RTS false
     wait-for-target target.in target.out
+    expected := invocation["expected-target"]
+    if expected:
+      with-timeout --ms=5_000:
+        target.out.write "IDENTIFY\n" --flush
+        actual := read-reply target.in
+        if actual != expected: throw "Wrong target fixture: expected=$expected actual=$actual"
+    if invocation["idle"]:
+      print "Target idle and ready"
+      return
     network := net.open
     try:
       socket := with-timeout --ms=180_000:

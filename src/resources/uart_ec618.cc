@@ -37,6 +37,9 @@ extern "C" {
   #include "task.h"
   #include "driver_gpio.h"
   #include "gpio.h"
+  #include "pad.h"
+  #include "clock.h"
+  #include "RTE_Device.h"
   #include "platform_define.h"
   #include "anchor.h"     // Transactional console/control UART selection.
   #include "slpman.h"     // Sleep-vote API used by uart_sleep_vote.
@@ -147,6 +150,36 @@ static bool cmsis_initialized[3] = {};
 static ARM_DRIVER_USART* const kDrivers[3] = {
   &Driver_USART0, &Driver_USART1, &Driver_USART2,
 };
+
+// The frozen base's CMSIS initializer configures its RTE pins even when a
+// caller selected another route. Restore those pads before enabling the
+// UART: leaving two RX inputs muxed to one controller corrupts reception,
+// and the default pins may belong to another Toit peripheral.
+static void initialize_driver(int id, ARM_USART_SignalEvent_t callback) {
+  static const int default_pads[3][4] = {
+    { RTE_UART0_TX_BIT, RTE_UART0_RX_BIT,
+      RTE_UART0_RTS_PIN_EN ? RTE_UART0_RTS_BIT : -1,
+      RTE_UART0_CTS_PIN_EN ? RTE_UART0_CTS_BIT : -1 },
+    { RTE_UART1_TX_BIT, RTE_UART1_RX_BIT,
+      RTE_UART1_RTS_PIN_EN ? RTE_UART1_RTS_BIT : -1,
+      RTE_UART1_CTS_PIN_EN ? RTE_UART1_CTS_BIT : -1 },
+    { RTE_UART2_TX_BIT, RTE_UART2_RX_BIT, -1, -1 },
+  };
+  uint32_t saved[4];
+  CLOCK_clockEnable(PCLK_PAD);
+  for (int i = 0; i < 4; i++) {
+    int pad = default_pads[id][i];
+    if (pad >= 0) saved[i] = PAD->PCR[pad];
+  }
+  CLOCK_clockDisable(PCLK_PAD);
+  kDrivers[id]->Initialize(callback);
+  CLOCK_clockEnable(PCLK_PAD);
+  for (int i = 0; i < 4; i++) {
+    int pad = default_pads[id][i];
+    if (pad >= 0) PAD->PCR[pad] = saved[i];
+  }
+  CLOCK_clockDisable(PCLK_PAD);
+}
 static USART_TypeDef* const kUartRegs[3] = {
   reinterpret_cast<USART_TypeDef*>(MP_UART0_BASE_ADDR),
   reinterpret_cast<USART_TypeDef*>(MP_UART1_BASE_ADDR),
@@ -627,11 +660,11 @@ struct ResolvedPreset {
 
 static bool resolve_preset(int tx_pad, int rx_pad, int rts_pad, int cts_pad,
                            ResolvedPreset* out) {
-  // 3 controllers × at most 2 mappings each (UART0:2, UART1:1, UART2:2).
+  // 3 controllers × at most 3 mappings each (UART0:2, UART1:1, UART2:3).
   // We don't allow alt CTS mapping to be picked implicitly — that's only
   // selected by the caller passing the alt CTS pad.
   for (int uart_id = 0; uart_id <= 2; uart_id++) {
-    for (int mapping = 0; mapping <= 1; mapping++) {
+    for (int mapping = 0; mapping <= 2; mapping++) {
       int tx_mux = -1, rx_mux = -1;
       int expected_tx = uart_pad(uart_id, UartRole::TX, mapping, &tx_mux);
       int expected_rx = uart_pad(uart_id, UartRole::RX, mapping, &rx_mux);
@@ -829,13 +862,6 @@ PRIMITIVE(create) {
   UartResource* resource = _new UartResource(group, id);
   if (resource == null) FAIL(MALLOC_FAILED);
 
-  // Pin muxing — only touch pads the user actually configured.
-  if (tx >= 0)  configure_uart_pad(tx,  preset.tx_mux,  /*pull_up=*/false);
-  if (rx >= 0)  configure_uart_pad(rx,  preset.rx_mux,  /*pull_up=*/true);
-  if (matched_rts >= 0) configure_uart_pad(rts, preset.rts_mux, /*pull_up=*/false);
-  if (cts >= 0) configure_uart_pad(cts, preset.cts_mux, /*pull_up=*/true);
-  if (de_pad >= 0) configure_de_pad(de_pad);
-
   {
     // Every controller runs the open CMSIS driver (see the include
     // comment): TX and RX are DMA mode. RX must continue while flash writes
@@ -876,8 +902,14 @@ PRIMITIVE(create) {
     if (id == current_console()) was_initialized = true;
 #endif
     if (was_initialized) driver->Uninitialize();
-    driver->Initialize(kUartCallbacks[id]);
+    initialize_driver(id, kUartCallbacks[id]);
     cmsis_initialized[id] = true;
+    // Apply the selected route after restoring the initializer's default pads.
+    if (tx >= 0) configure_uart_pad(tx, preset.tx_mux, /*pull_up=*/false);
+    if (rx >= 0) configure_uart_pad(rx, preset.rx_mux, /*pull_up=*/true);
+    if (matched_rts >= 0) configure_uart_pad(rts, preset.rts_mux, /*pull_up=*/false);
+    if (cts >= 0) configure_uart_pad(cts, preset.cts_mux, /*pull_up=*/true);
+    if (de_pad >= 0) configure_de_pad(de_pad);
     // FULL -> OFF -> FULL: the OFF in the middle GPR-resets the UART block.
     // Every close does this reset, but the first open since boot starts
     // from whatever state the ROM left the controller in — that first
@@ -978,11 +1010,17 @@ PRIMITIVE(set_baud_rate) {
     transfer->tx_busy = false;
     transfer->tx_pending_len = 0;
     transfer->tx_waiting_for_empty = false;
+    // Power-off ended transmission, including any RS485 bus ownership.
+    int de = uart_states[id].de_pad;
+    if (de >= 0) set_de_level(de, 0);
     if (driver->Receive(transfer->chunk, sizeof(transfer->chunk)) != ARM_DRIVER_OK) {
       transfer->rearm_fails++;
     }
   }
   uart_states[id].baud_rate = baud_rate;
+  // Writers may already be asleep waiting for the DMA that the power cycle
+  // canceled. Clearing tx_busy alone cannot wake them to retry or finish flush.
+  send_uart_event(id, Event::UART_KIND_TX_DONE);
   return process->null_object();
 }
 
@@ -992,6 +1030,9 @@ PRIMITIVE(write) {
   // sending the data without the requested break.
   if (break_length != 0) FAIL(UNIMPLEMENTED);
   if (from < 0 || to < from || to > data.length()) FAIL(OUT_OF_BOUNDS);
+  // Empty writes must not claim the RS485 bus or start a zero-length Send,
+  // which has no completion callback to release the direction pin.
+  if (from == to) return Smi::from(0);
 
   int id = resource->uart_id();
 
@@ -1035,6 +1076,9 @@ PRIMITIVE(write) {
       // by the print path; a single byte costs one frame time.
       int32_t status32 = kDrivers[id]->SendPolling(data.address() + from, 1);
       written = (status32 == ARM_DRIVER_OK) ? 1 : 0;
+      // SendPolling drains the physical line before returning. There is no
+      // asynchronous completion or drain-task work for this synchronous path.
+      if (de >= 0) set_de_level(de, 0);
     } else {
       int chunk = len;
       if (chunk > (int)transfer->tx_buf_size) chunk = (int)transfer->tx_buf_size;
@@ -1048,6 +1092,7 @@ PRIMITIVE(write) {
       int32_t status32 = kDrivers[id]->Send(transfer->tx_bufs[transfer->tx_active], chunk);
       if (status32 != ARM_DRIVER_OK) {
         transfer->tx_busy = false;
+        if (de >= 0) set_de_level(de, 0);
         written = 0;
       } else {
         written = chunk;

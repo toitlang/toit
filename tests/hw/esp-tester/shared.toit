@@ -52,6 +52,13 @@ ACK-ERROR      ::= 'X'
 ACK-TRIAL-YES  ::= 'Y'
 ACK-TRIAL-NO   ::= 'n'
 
+// EC618 firmware uploads are paced one bounded chunk at a time. A failed
+// command aborts the upload; wait for ACK-ERROR before starting a new one.
+FW-CHUNK-SIZE ::= 4096
+// EC618 container uploads also bound each allocation and acknowledge chunks.
+CONTAINER-CHUNK-SIZE ::= 4096
+FW-READ-TIMEOUT-MS ::= 8_000
+
 // Lead-in for every device status line. The host prints these to its own log
 // (so the device's `[mini-jag] ...` and the firmware's `[toit] ...` chatter
 // shows up) and otherwise ignores them.
