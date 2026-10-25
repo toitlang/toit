@@ -117,6 +117,10 @@ int bind_socket(int fd, const char* address, int port) {
     addr.sin_addr.s_addr = INADDR_ANY;
   } else {
     struct hostent* server = gethostbyname(address);
+    if (server == null || server->h_length != sizeof(addr.sin_addr.s_addr)) {
+      errno = EINVAL;
+      return -1;
+    }
     bcopy((char*)server->h_addr, (char*)&addr.sin_addr.s_addr, server->h_length);
   }
   addr.sin_port = htons(port);
