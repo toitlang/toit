@@ -35,7 +35,7 @@ namespace toit {
 #define _NO_FORK false
 #endif
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_EMBEDDED
 #define TRACE_GC false
 #else
 #define TRACE_GC false
@@ -82,7 +82,7 @@ namespace toit {
 #define DECLARE_DEBUG_FLAG(type, prefix, name, value, doc) static constexpr type name = value;
 #endif
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
 #define DECLARE_DEPLOY_FLAG(type, prefix, name, value, doc) static type name;
 #else
 #define DECLARE_DEPLOY_FLAG(type, prefix, name, value, doc) static constexpr type name = value;
@@ -95,7 +95,7 @@ class Flags {
   static const char* program_name;
   static const char* program_path;
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
   static int process_args(int* argc, char** argv);
 #endif
 };

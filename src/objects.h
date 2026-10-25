@@ -460,7 +460,7 @@ class Array : public HeapObject {
 
   void roots_do(RootCallback* cb);
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
   void write_content(SnapshotWriter* st);
   void read_content(SnapshotReader* st, word length);
 #endif
@@ -624,7 +624,7 @@ class ByteArray : public HeapObject {
     *extra_bytes = raw_length;
   }
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
   static void snapshot_allocation_size(word length, int* word_count, int* extra_bytes) {
     if (length > SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
       return external_allocation_size(word_count, extra_bytes);
@@ -1110,7 +1110,7 @@ class Double : public HeapObject {
      return static_cast<Double*>(value);
   }
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
   void write_content(SnapshotWriter* st);
   void read_content(SnapshotReader* st);
 #endif
@@ -1203,7 +1203,7 @@ class String : public HeapObject {
   static uint16 compute_hash_code_for(const char* str, word str_len);
   static uint16 compute_hash_code_for(const char* str);
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
   void write_content(SnapshotWriter* st);
   void read_content(SnapshotReader* st, word length);
 #endif
@@ -1250,7 +1250,7 @@ class String : public HeapObject {
     *extra_bytes = 0;
   }
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
   static void snapshot_allocation_size(word length, int* word_count, int* extra_bytes) {
     if (length > SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
       return external_allocation_size(word_count, extra_bytes);
@@ -1463,7 +1463,7 @@ class Instance : public HeapObject {
 
   void instance_roots_do(word instance_size, RootCallback* cb);
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
   void write_content(word instance_size, SnapshotWriter* st);
   void read_content(SnapshotReader* st);
 #endif

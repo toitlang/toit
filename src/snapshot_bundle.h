@@ -15,7 +15,7 @@
 
 #pragma once
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
 
 #include <stdio.h>
 
@@ -89,4 +89,4 @@ class SnapshotBundle {
 
 } // namespace toit
 
-#endif  // TOIT_FREERTOS
+#endif  // TOIT_EMBEDDED

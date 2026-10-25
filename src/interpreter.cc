@@ -143,7 +143,7 @@ void Interpreter::prepare_process() {
   store_stack();
 }
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_EMBEDDED
 #define STACK_ENCODING_BUFFER_SIZE (2*1024)
 #else
 #define STACK_ENCODING_BUFFER_SIZE (16*1024)

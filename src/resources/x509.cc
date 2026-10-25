@@ -24,7 +24,7 @@
 #include "tls.h"
 #include "x509.h"
 
-#if !defined(TOIT_FREERTOS) || CONFIG_TOIT_CRYPTO
+#if !defined(TOIT_EMBEDDED) || CONFIG_TOIT_CRYPTO
 namespace toit {
 
 // A simple whitespace detector tuned for PEM format that doesn't accept exotic
@@ -185,4 +185,4 @@ PRIMITIVE(close) {
 
 
 } // namespace toit
-#endif // !defined(TOIT_FREERTOS) || CONFIG_TOIT_CRYPTO
+#endif // !defined(TOIT_EMBEDDED) || CONFIG_TOIT_CRYPTO

@@ -23,7 +23,7 @@ int Program::absolute_bci_from_bcp(uint8* bcp) const {
   return bcp - bytecodes.data();
 }
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
 
 void Program::write(SnapshotWriter* st) {
   st->write_external_list_uint16(class_bits);
@@ -93,7 +93,7 @@ void Program::read(SnapshotReader* st) {
   // kept as `null`.
 }
 
-#endif  // TOIT_FREERTOS
+#endif  // TOIT_EMBEDDED
 
 void Program::do_roots(RootCallback* callback) {
   callback->do_roots(roots_, ROOT_COUNT);
