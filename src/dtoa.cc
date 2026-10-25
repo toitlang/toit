@@ -28,7 +28,7 @@ void double_to_shortest(double value, char* buffer, size_t buffer_size) {
   bool is_negative = signbit(value);
   auto v = jkj::dragonbox::to_decimal(value,
     jkj::dragonbox::policy::sign::ignore
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_EMBEDDED
     , jkj::dragonbox::policy::cache::compact
 #endif
   );

@@ -181,7 +181,7 @@ AlignedMemory::~AlignedMemory() {
   }
 }
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
 
 OS::HeapMemoryRange OS::single_range_ = { 0 };
 
@@ -304,6 +304,6 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
   return single_range_;
 }
 
-#endif  // ndef TOIT_FREERTOS
+#endif  // ndef TOIT_EMBEDDED
 
 } // namespace toit

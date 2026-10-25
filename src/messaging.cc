@@ -340,7 +340,7 @@ bool MessageEncoder::encode_byte_array(ByteArray* object) {
   return true;
 }
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
 bool MessageEncoder::encode_arguments(char** argv, int argc) {
   write_uint8(TAG_ARRAY);
   write_cardinal(argc);

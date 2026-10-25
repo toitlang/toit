@@ -4,7 +4,7 @@
 
 #include "../top.h"
 
-#if !defined(TOIT_FREERTOS)
+#if !defined(TOIT_EMBEDDED)
 
 #ifdef TOIT_WINDOWS
 #include <windows.h>
@@ -149,4 +149,4 @@ void StdinEventSource::entry() {
 
 }  // namespace toit
 
-#endif  // !defined(TOIT_FREERTOS)
+#endif  // !defined(TOIT_EMBEDDED)
