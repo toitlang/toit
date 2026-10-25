@@ -1110,11 +1110,10 @@ PRIMITIVE(token_acquire) {
 }
 
 PRIMITIVE(token_release) {
-  ARGS(ByteArray, proxy);
+  ARGS(TlsHandshakeToken, token);
 
-  TlsHandshakeToken* token = proxy->as_external<TlsHandshakeToken>();
   token->resource_group()->unregister_resource(token);
-  proxy->clear_external_address();
+  token_proxy->clear_external_address();
 
   return process->null_object();
 }
