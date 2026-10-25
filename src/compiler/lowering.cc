@@ -17,6 +17,7 @@
 
 #include "ir.h"
 #include "resolution.h"
+#include "resolver_scope.h"
 
 namespace toit {
 namespace compiler {
@@ -64,6 +65,11 @@ class Lowering : public resolution::Visitor {
       result->set_factories(lower_list(klass->factories()));
       result->set_methods(lower_list(klass->methods()));
       result->set_fields(lower_list(klass->fields()));
+      std::vector<ir::Method*> statics;
+      if (klass->statics() != null) {
+        for (auto method : klass->statics()->nodes()) statics.push_back(lower(method));
+      }
+      result->set_statics(statics);
       // Resolution scopes and Toitdoc scopes belong exclusively to the frontend.
       for (auto method : klass->methods()) fill_method(method);
     }

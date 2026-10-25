@@ -43,10 +43,6 @@
 namespace toit {
 namespace compiler {
 
-namespace ir {
-  class Expression;
-}
-
 namespace ast {
   class Method;
 }
@@ -169,8 +165,19 @@ class CallShape {
     return !(*this == other);
   }
 
-  static CallShape for_static_call_no_named(List<ir::Expression*> arguments);
-  static CallShape for_instance_call_no_named(List<ir::Expression*> arguments);
+  template<typename Expression>
+  static CallShape for_static_call_no_named(List<Expression*> arguments) {
+    int block_count = 0;
+    for (auto argument : arguments) {
+      if (argument->is_block()) block_count++;
+    }
+    return CallShape(arguments.length(), block_count);
+  }
+
+  template<typename Expression>
+  static CallShape for_instance_call_no_named(List<Expression*> arguments) {
+    return for_static_call_no_named(arguments).with_implicit_this();
+  }
   static CallShape for_static_setter() { return CallShape(1, 0, List<Symbol>(), 0, true); }
   static CallShape for_static_getter() { return CallShape(0, 0, List<Symbol>(), 0, false); }
   static CallShape for_instance_setter() { return CallShape(2, 0, List<Symbol>(), 0, true); }

@@ -18,12 +18,12 @@
 namespace toit {
 namespace compiler {
 
-namespace ir {
+namespace resolution {
 class Program;
 }
 class Diagnostics;
 
-void check_definite_assignments_returns(ir::Program* program, Diagnostics* diagnostics);
+void check_definite_assignments_returns(resolution::Program* program, Diagnostics* diagnostics);
 
 } // namespace toit::compiler
 } // namespace toit

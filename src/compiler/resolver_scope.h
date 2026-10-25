@@ -18,7 +18,7 @@
 #include <functional>
 
 #include "ast.h"
-#include "ir.h"
+#include "resolution.h"
 #include "map.h"
 #include "symbol.h"
 #include "set.h"
@@ -51,9 +51,9 @@ class Module {
   };
 
   Module(ast::Unit* unit,
-         List<ir::Class*> classes,
-         List<ir::Method*> methods,
-         List<ir::Global*> globals,
+         List<resolution::Class*> classes,
+         List<resolution::Method*> methods,
+         List<resolution::Global*> globals,
          bool export_all,
          const Set<Symbol>& exported_identifiers)
       : unit_(unit)
@@ -67,9 +67,9 @@ class Module {
 
   ast::Unit* unit() const { return unit_; }
 
-  List<ir::Class*> classes() const { return classes_; }
-  List<ir::Method*> methods() const { return methods_; }
-  List<ir::Global*> globals() const { return globals_; }
+  List<resolution::Class*> classes() const { return classes_; }
+  List<resolution::Method*> methods() const { return methods_; }
+  List<resolution::Global*> globals() const { return globals_; }
 
   // Imported modules are not exported. They may have a prefix.
   //
@@ -94,9 +94,9 @@ class Module {
 
  private:
   ast::Unit* unit_;
-  List<ir::Class*> classes_;
-  List<ir::Method*> methods_;
-  List<ir::Global*> globals_;
+  List<resolution::Class*> classes_;
+  List<resolution::Method*> methods_;
+  List<resolution::Global*> globals_;
 
   List<PrefixedModule> imported_modules_;
   bool export_all_;
@@ -129,24 +129,24 @@ class ResolutionEntry {
     AMBIGUOUS,
   };
 
-  ResolutionEntry() : kind_(NODES), nodes_(List<ir::Node*>()) {}
-  explicit ResolutionEntry(List<ir::Node*> nodes)
+  ResolutionEntry() : kind_(NODES), nodes_(List<resolution::Node*>()) {}
+  explicit ResolutionEntry(List<resolution::Node*> nodes)
       : kind_(NODES), nodes_(nodes) {}
-  explicit ResolutionEntry(ir::Node* node)
-      : kind_(NODES), nodes_(ListBuilder<ir::Node*>::build(node)) {}
+  explicit ResolutionEntry(resolution::Node* node)
+      : kind_(NODES), nodes_(ListBuilder<resolution::Node*>::build(node)) {}
 
   explicit ResolutionEntry(ImportScope* prefix) : kind_(PREFIX), prefix_(prefix) {}
 
   // Used for ambiguous nodes.
-  explicit ResolutionEntry(Kind kind) : kind_(kind), nodes_(List<ir::Node*>()) {}
+  explicit ResolutionEntry(Kind kind) : kind_(kind), nodes_(List<resolution::Node*>()) {}
 
   Kind kind() const { return kind_; }
 
-  List<ir::Node*> nodes() const {
+  List<resolution::Node*> nodes() const {
     ASSERT(kind_ == NODES || kind_ == AMBIGUOUS);
     return nodes_;
   }
-  void set_nodes(List<ir::Node*> nodes) {
+  void set_nodes(List<resolution::Node*> nodes) {
     ASSERT(kind_ == NODES || kind_ == AMBIGUOUS);
     nodes_ = nodes;
   }
@@ -161,14 +161,14 @@ class ResolutionEntry {
         (nodes_[0]->is_Class() || nodes_[0]->is_Constructor());
   }
 
-  ir::Class* klass() const {
+  resolution::Class* klass() const {
     ASSERT(is_class());
     if (nodes_[0]->is_Class()) return nodes_[0]->as_Class();
     return nodes_[0]->as_Constructor()->klass();
   }
 
   bool is_single() const { return kind_ == NODES && nodes_.length() == 1; }
-  ir::Node* single() const {
+  resolution::Node* single() const {
     ASSERT(is_single());
     return nodes_[0];
   }
@@ -183,7 +183,7 @@ class ResolutionEntry {
  private:
   Kind kind_;
   union {
-    List<ir::Node*> nodes_;
+    List<resolution::Node*> nodes_;
     ImportScope* prefix_;
   };
 };
@@ -362,8 +362,8 @@ class StaticsScope : public IterableScope {
     entries_.for_each(callback);
   }
 
-  std::vector<ir::Method*> nodes() const { return nodes_; }
-  void replace_nodes(const std::vector<ir::Method*>& new_nodes) {
+  std::vector<resolution::Method*> nodes() const { return nodes_; }
+  void replace_nodes(const std::vector<resolution::Method*>& new_nodes) {
     ASSERT(!map_is_valid_);
     nodes_ = new_nodes;
   }
@@ -382,7 +382,7 @@ class StaticsScope : public IterableScope {
   Scope::ResolutionEntryMap entries_;
   // The nodes are redundant (since they are already in the entries_ map), but
   // this simplifies the code a lot.
-  std::vector<ir::Method*> nodes_;
+  std::vector<resolution::Method*> nodes_;
 };
 
 /// One or more imported modules with the same prefix.
@@ -685,20 +685,20 @@ class SimpleScope : public Scope {
 /// Includes fields, and super-class members which shadow top-level elements.
 class ClassScope : public SimpleScope {
  public:
-  explicit ClassScope(ir::Class* klass, Scope* outer) : SimpleScope(outer), class_(klass) {
+  explicit ClassScope(resolution::Class* klass, Scope* outer) : SimpleScope(outer), class_(klass) {
     ASSERT(outer != null);
   }
 
-  static constexpr ir::Node* SUPER_CLASS_SEPARATOR = null;
+  static constexpr resolution::Node* SUPER_CLASS_SEPARATOR = null;
 
   ResolutionEntryMap declarations() { return dictionary(); }
 
   ClassScope* enclosing_class_scope() { return this; }
 
-  ir::Class* klass() const { return class_; }
+  resolution::Class* klass() const { return class_; }
 
  private:
-  ir::Class* class_;
+  resolution::Class* class_;
 };
 
 /// A scope within a method (or initializer).
@@ -763,10 +763,10 @@ class LambdaScope : public SimpleScope {
     return  outer_result;
   }
 
-  Map<ir::Local*, int> captured_depths() const { return captured_depths_; }
+  Map<resolution::Local*, int> captured_depths() const { return captured_depths_; }
 
  private:
-  Map<ir::Local*, int> captured_depths_;
+  Map<resolution::Local*, int> captured_depths_;
 };
 
 /// A scope that adds the `it` parameter, and keeps track of whether the parameter was used.
@@ -792,13 +792,13 @@ class ItScope : public Scope {
 
   ClassScope* enclosing_class_scope() { return outer()->enclosing_class_scope(); }
 
-  ir::Parameter* it() const { return it_; }
-  void set_it(ir::Parameter* it) { it_ = it; }
+  resolution::Parameter* it() const { return it_; }
+  void set_it(resolution::Parameter* it) { it_ = it; }
 
   bool it_was_used() const { return it_was_used_; }
 
  private:
-  ir::Parameter* it_;
+  resolution::Parameter* it_;
   bool it_was_used_;
 };
 
@@ -807,7 +807,7 @@ class ScopeFiller {
   explicit ScopeFiller(bool discard_invalid_symbols = false)
       : discard_invalid_(discard_invalid_symbols) {}
 
-  void add(Symbol name, ir::Node* node) {
+  void add(Symbol name, resolution::Node* node) {
     if (!name.is_valid() && discard_invalid_) return;
     declarations_[name].push_back(node);
   }
@@ -821,14 +821,14 @@ class ScopeFiller {
   template<typename S> void fill(S scope) {
     for (auto name : declarations_.keys()) {
       auto& vector = declarations_[name];
-      auto list = ListBuilder<ir::Node*>::build_from_vector(vector);
+      auto list = ListBuilder<resolution::Node*>::build_from_vector(vector);
       scope->add(name, ResolutionEntry(list));
     }
   }
 
  private:
   bool discard_invalid_;
-  Map<Symbol, std::vector<ir::Node*>> declarations_;
+  Map<Symbol, std::vector<resolution::Node*>> declarations_;
 };
 
 } // namespace toit::compiler

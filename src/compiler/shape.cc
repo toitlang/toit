@@ -21,7 +21,6 @@
 #include "shape.h"
 
 #include "ast.h"
-#include "ir.h"
 #include "set.h"
 
 namespace toit {
@@ -434,18 +433,6 @@ ResolutionShape ResolutionShape::for_static_method(ast::Method* method) {
 
 ResolutionShape ResolutionShape::for_instance_method(ast::Method* method) {
   return for_static_method(method).with_implicit_this();
-}
-
-CallShape CallShape::for_static_call_no_named(List<ir::Expression*> arguments) {
-  int block_count = 0;
-  for (auto argument : arguments) {
-    if (argument->is_block()) block_count++;
-  }
-  return CallShape(arguments.length(), block_count);
-}
-
-CallShape CallShape::for_instance_call_no_named(List<ir::Expression*> arguments) {
-  return for_static_call_no_named(arguments).with_implicit_this();
 }
 
 PlainShape CallShape::to_plain_shape() const {

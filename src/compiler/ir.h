@@ -29,9 +29,6 @@ namespace compiler {
 
 class DispatchTable;
 class DispatchTableBuilder;
-class Resolver;
-class Scope;
-class StaticsScope;
 
 namespace ir {
 
@@ -383,17 +380,8 @@ class Class : public Node {
   }
   void replace_factories(List<Method*> new_factories) { factories_ = new_factories; }
 
-  StaticsScope* statics() const { return statics_; }
-  void set_statics(StaticsScope* statics) {
-    ASSERT(statics_ == null);
-    statics_ = statics;
-  }
-
-  /// The elements visible for toitdoc scopes.
-  /// This includes constructors, static/instance methods, static/instance fields all
-  ///   mixed together.
-  Scope* toitdoc_scope() const { return toitdoc_scope_; }
-  void set_toitdoc_scope(Scope* scope) { toitdoc_scope_ = scope; }
+  const std::vector<Method*>& statics() const { return statics_; }
+  void set_statics(const std::vector<Method*>& statics) { statics_ = statics; }
 
   List<MethodInstance*> methods() const { return methods_; }
   void set_methods(List<MethodInstance*> methods) {
@@ -458,8 +446,7 @@ class Class : public Node {
   List<MethodInstance*> methods_;
   List<Field*> fields_;
 
-  StaticsScope* statics_ = null;
-  Scope* toitdoc_scope_ = null;
+  std::vector<Method*> statics_;
 
   bool is_instantiated_;
 

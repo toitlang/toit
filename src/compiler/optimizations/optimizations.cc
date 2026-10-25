@@ -25,7 +25,6 @@
 #include "typecheck.h"
 
 #include "../queryable_class.h"
-#include "../resolver_scope.h"
 #include "../set.h"
 
 namespace toit {
@@ -191,7 +190,7 @@ void optimize(Program* program, TypeOracle* oracle) {
       visitor.visit(constructor);
     }
     // Named constructors are mixed together with the other static entries.
-    for (auto statik : klass->statics()->nodes()) {
+    for (auto statik : klass->statics()) {
       if (!statik->is_constructor()) continue;
       visitor.visit(statik);
     }

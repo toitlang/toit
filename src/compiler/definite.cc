@@ -18,13 +18,13 @@
 #include <stdarg.h>
 
 #include "diagnostic.h"
-#include "ir.h"
+#include "resolution.h"
 #include "map.h"
 
 namespace toit {
 namespace compiler {
 
-using namespace ir;
+using namespace resolution;
 
 namespace {  // anonymous.
 
@@ -534,7 +534,7 @@ class DefiniteChecker : public Visitor {
   }
 };
 
-void check_definite_assignments_returns(ir::Program* program, Diagnostics* diagnostics) {
+void check_definite_assignments_returns(resolution::Program* program, Diagnostics* diagnostics) {
   DefiniteChecker checker(diagnostics);
   program->accept(&checker);
 }

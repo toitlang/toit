@@ -44,8 +44,8 @@ class FindReferencesHandler : public LspSelectionHandler {
 
   void class_interface_or_mixin(ast::Node* node,
                                 IterableScope* scope,
-                                ir::Class* holder,
-                                ir::Node* resolved,
+                                resolution::Class* holder,
+                                resolution::Node* resolved,
                                 bool needs_interface,
                                 bool needs_mixin) override;
 
@@ -54,33 +54,33 @@ class FindReferencesHandler : public LspSelectionHandler {
             ResolutionEntry resolved,
             bool allow_none) override;
 
-  void call_virtual(ir::CallVirtual* node, ir::Type type, List<ir::Class*> classes) override;
+  void call_virtual(resolution::CallVirtual* node, resolution::Type type, List<resolution::Class*> classes) override;
 
   void call_prefixed(ast::Dot* node,
-                     ir::Node* resolved1,
-                     ir::Node* resolved2,
-                     List<ir::Node*> candidates,
+                     resolution::Node* resolved1,
+                     resolution::Node* resolved2,
+                     List<resolution::Node*> candidates,
                      IterableScope* scope) override;
 
   void call_class(ast::Dot* node,
-                  ir::Class* klass,
-                  ir::Node* resolved1,
-                  ir::Node* resolved2,
-                  List<ir::Node*> candidates,
+                  resolution::Class* klass,
+                  resolution::Node* resolved1,
+                  resolution::Node* resolved2,
+                  List<resolution::Node*> candidates,
                   IterableScope* scope) override;
 
   void call_static(ast::Node* node,
-                   ir::Node* resolved1,
-                   ir::Node* resolved2,
-                   List<ir::Node*> candidates,
+                   resolution::Node* resolved1,
+                   resolution::Node* resolved2,
+                   List<resolution::Node*> candidates,
                    IterableScope* scope,
-                   ir::Method* surrounding) override;
+                   resolution::Method* surrounding) override;
 
-  void call_block(ast::Dot* node, ir::Node* ir_receiver) override {}
+  void call_block(ast::Dot* node, resolution::Node* ir_receiver) override {}
 
   void call_static_named(ast::Node* name_node,
-                         ir::Node* ir_call_target,
-                         List<ir::Node*> candidates) override;
+                         resolution::Node* ir_call_target,
+                         List<resolution::Node*> candidates) override;
 
   void call_primitive(ast::Node* node,
                       Symbol module_name,
@@ -90,13 +90,13 @@ class FindReferencesHandler : public LspSelectionHandler {
                       bool on_module) override {}
 
   void field_storing_parameter(ast::Parameter* node,
-                               List<ir::Field*> fields,
+                               List<resolution::Field*> fields,
                                bool field_storing_is_allowed) override;
 
   void this_(ast::Identifier* node,
-             ir::Class* enclosing_class,
+             resolution::Class* enclosing_class,
              IterableScope* scope,
-             ir::Method* surrounding) override {}
+             resolution::Method* surrounding) override {}
 
   void show(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) override;
   void expord(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) override;
@@ -106,13 +106,13 @@ class FindReferencesHandler : public LspSelectionHandler {
                     const std::vector<std::pair<Symbol, ast::Node*>>& labels) override {}
 
   void toitdoc_ref(ast::Node* node,
-                   List<ir::Node*> candidates,
+                   List<resolution::Node*> candidates,
                    ToitdocScopeIterator* iterator,
                    bool is_signature_toitdoc) override;
 
-  void definition(ir::Node* ir_node, Source::Range name_range) override;
+  void definition(resolution::Node* ir_node, Source::Range name_range) override;
 
-  ir::Node* target() const { return target_; }
+  resolution::Node* target() const { return target_; }
   /// Returns the source range at the cursor position (the usage site).
   ///
   /// This is the range of the identifier the user clicked on, which may
@@ -126,7 +126,7 @@ class FindReferencesHandler : public LspSelectionHandler {
   void handle_show_or_export(ast::Node* node, ResolutionEntry entry);
 
   SourceManager* source_manager_;
-  ir::Node* target_ = null;
+  resolution::Node* target_ = null;
   Source::Range cursor_range_ = Source::Range::invalid();
 };
 
@@ -140,10 +140,10 @@ class FindReferencesHandler : public LspSelectionHandler {
 ///
 /// Does not return — calls exit(0) after emitting all references.
 void find_and_emit_all_references(
-    ir::Node* target,
-    ir::Program* program,
+    resolution::Node* target,
+    resolution::Program* program,
     SourceManager* source_manager,
-    UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast,
+    UnorderedMap<resolution::Node*, ast::Node*>& ir_to_ast,
     LspProtocol* protocol,
     ToitdocRegistry* toitdocs,
     const std::vector<Resolver::ShowExportReference>& show_export_references,
