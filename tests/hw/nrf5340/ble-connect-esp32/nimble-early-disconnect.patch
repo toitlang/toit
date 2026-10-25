@@ -1,0 +1,25 @@
+--- a/nimble/host/src/ble_gap.c
++++ b/nimble/host/src/ble_gap.c
+@@ -1624,10 +1624,18 @@
+     event.type = BLE_GAP_EVENT_DISCONNECT;
+     event.disconnect.reason = reason;
+ 
+-    if (send) {
+-        ble_gap_event_listener_call(&event);
+-        ble_gap_call_event_cb(&event, snap.cb, snap.cb_arg);
+-    }
++    if (!send) {
++        /* The link ended before the remote-feature exchange could report
++         * connection success. Report the failed peripheral connection so
++         * the application can restart its connectable advertising.
++         */
++        memset(&event, 0, sizeof event);
++        event.type = BLE_GAP_EVENT_CONNECT;
++        event.connect.status = reason;
++        event.connect.conn_handle = BLE_HS_CONN_HANDLE_NONE;
++    }
++    ble_gap_event_listener_call(&event);
++    ble_gap_call_event_cb(&event, snap.cb, snap.cb_arg);
+ 
+     STATS_INC(ble_gap_stats, disconnect);
+ #endif
