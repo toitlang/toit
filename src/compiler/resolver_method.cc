@@ -286,7 +286,7 @@ static bool is_assignment(ast::Node* node) {
   }
 }
 
-void MethodResolver::report_error(resolution::Node* position_node, const char* format, ...) {
+void MethodResolver::report_error(resolution::View<resolution::Node> position_node, const char* format, ...) {
   auto range = ir_to_ast_map_->at(position_node)->selection_range();
   va_list arguments;
   va_start(arguments, format);
@@ -315,7 +315,7 @@ void MethodResolver::report_error(const char* format, ...) {
   va_end(arguments);
 }
 
-void MethodResolver::report_note(resolution::Node* position_node, const char* format, ...) {
+void MethodResolver::report_note(resolution::View<resolution::Node> position_node, const char* format, ...) {
   auto range = ir_to_ast_map_->at(position_node)->selection_range();
   va_list arguments;
   va_start(arguments, format);
@@ -471,11 +471,11 @@ void MethodResolver::resolve_fill_field_stub() {
   auto range = ast_field->selection_range();
   resolution::Type ir_type = field->type();
 
-  ListBuilder<resolution::Parameter*> ir_parameters;
-  resolution::Sequence* body;
+  ListBuilder<resolution::View<resolution::Parameter>> ir_parameters;
+  resolution::View<resolution::Sequence> body;
 
   int parameter_index = 0;
-  auto this_parameter = zone_new<resolution::Parameter>(MethodResolver::this_identifier(),
+  auto this_parameter = resolution::make<resolution::Parameter>(MethodResolver::this_identifier(),
                                            resolution::Type(holder_),
                                            false,  // Not a block.
                                            parameter_index++,
@@ -484,17 +484,17 @@ void MethodResolver::resolve_fill_field_stub() {
                                            Source::Range::invalid());
   ir_parameters.add(this_parameter);
 
-  auto this_ref = zone_new<resolution::ReferenceLocal>(this_parameter, 0, range);
+  auto this_ref = resolution::make<resolution::ReferenceLocal>(this_parameter, 0, range);
 
   if (field_stub->is_getter()) {
     // Some of the code here is duplicated in the mixin code.
-    body = zone_new<resolution::Sequence>(list_of(zone_new<resolution::Return>(zone_new<resolution::FieldLoad>(this_ref, field, range),
+    body = resolution::make<resolution::Sequence>(list_of(resolution::make<resolution::Return>(resolution::make<resolution::FieldLoad>(this_ref, field, range),
                                                      false,
                                                      range)),
                              range);
   } else {
     // Some of the code here is duplicated in the mixin code.
-    auto new_value_parameter = zone_new<resolution::Parameter>(Symbol::synthetic("<new value>"),
+    auto new_value_parameter = resolution::make<resolution::Parameter>(Symbol::synthetic("<new value>"),
                                                   ir_type,
                                                   false,  // Not a block.
                                                   parameter_index++,
@@ -508,23 +508,23 @@ void MethodResolver::resolve_fill_field_stub() {
       // TODO(florian): Do we just want to throw this string? Probably want to
       // print a message as well. Maybe call a helper method (like `lookup_failed`) ?
       const char* message = "FINAL_FIELD_ASSIGNMENT_FAILED";
-      auto throw_failure = _create_throw(zone_new<resolution::LiteralString>(message, strlen(message), range), range);
-      body = zone_new<resolution::Sequence>(list_of(throw_failure), range);
+      auto throw_failure = _create_throw(resolution::make<resolution::LiteralString>(message, strlen(message), range), range);
+      body = resolution::make<resolution::Sequence>(list_of(throw_failure), range);
     } else {
-      auto store = zone_new<resolution::FieldStore>(this_ref,
+      auto store = resolution::make<resolution::FieldStore>(this_ref,
                                        field,
-                                       zone_new<resolution::ReferenceLocal>(new_value_parameter, 0, range),
+                                       resolution::make<resolution::ReferenceLocal>(new_value_parameter, 0, range),
                                        range);
-      auto ret = zone_new<resolution::Return>(store, false, range);
-      List<resolution::Expression*> expressions;
+      auto ret = resolution::make<resolution::Return>(store, false, range);
+      List<resolution::View<resolution::Expression>> expressions;
       // Some of the code here is duplicated in the mixin code.
       if (field->type().is_class()) {
         auto type = field->type();
         field_stub->set_checked_type(type);
         // We could also use `FIELD_AS_CHECK` here, but we expect parameter checks to be
         //   more optimized than field as-checks.
-        auto check = zone_new<resolution::Typecheck>(resolution::Typecheck::PARAMETER_AS_CHECK,
-                                        zone_new<resolution::ReferenceLocal>(new_value_parameter, 0, range),
+        auto check = resolution::make<resolution::Typecheck>(resolution::Typecheck::PARAMETER_AS_CHECK,
+                                        resolution::make<resolution::ReferenceLocal>(new_value_parameter, 0, range),
                                         type,
                                         type.klass()->name(),
                                         range);
@@ -532,7 +532,7 @@ void MethodResolver::resolve_fill_field_stub() {
       } else {
         expressions = list_of(ret);
       }
-      body = zone_new<resolution::Sequence>(expressions, range);
+      body = resolution::make<resolution::Sequence>(expressions, range);
     }
   }
   method_->set_return_type(ir_type);
@@ -564,7 +564,7 @@ class FindFinalFieldStoreVisitor : public resolution::TraversingVisitor {
  public:
   FindFinalFieldStoreVisitor() : field_store_(null) {}
 
-  resolution::FieldStore* field_store() const { return field_store_; }
+  resolution::View<resolution::FieldStore> field_store() const { return field_store_; }
 
   void visit_FieldStore(resolution::View<resolution::FieldStore> node) {
     if (field_store_ == null && node->field()->is_final()) {
@@ -573,7 +573,7 @@ class FindFinalFieldStoreVisitor : public resolution::TraversingVisitor {
   }
 
  private:
-  resolution::FieldStore* field_store_;
+  resolution::View<resolution::FieldStore> field_store_;
 };
 
 void MethodResolver::resolve_fill_constructor() {
@@ -586,10 +586,10 @@ void MethodResolver::resolve_fill_constructor() {
   bool is_synthetic_constructor = method_->resolution_shape() == synthetic_constructor_shape &&
                                   ir_to_ast_map_->find(method_) == ir_to_ast_map_->end();
 
-  Set<resolution::Parameter*> field_storing_parameters;
-  std::vector<resolution::Expression*> parameter_expressions;
+  Set<resolution::View<resolution::Parameter>> field_storing_parameters;
+  std::vector<resolution::View<resolution::Expression>> parameter_expressions;
   if (is_synthetic_constructor) {
-    auto ir_parameter = zone_new<resolution::Parameter>(MethodResolver::this_identifier(),
+    auto ir_parameter = resolution::make<resolution::Parameter>(MethodResolver::this_identifier(),
                                            resolution::Type(holder_),
                                            false,  // Not a block.
                                            0,
@@ -597,7 +597,7 @@ void MethodResolver::resolve_fill_constructor() {
                                            Source::Range::invalid(),
                                            Source::Range::invalid());
 
-    method_->set_parameters(ListBuilder<resolution::Parameter*>::build(ir_parameter));
+    method_->set_parameters(ListBuilder<resolution::View<resolution::Parameter>>::build(ir_parameter));
     method_->set_return_type(resolution::Type(klass));
   } else {
     auto ast_method = ir_to_ast_map_->at(method_)->as_Method();
@@ -608,7 +608,7 @@ void MethodResolver::resolve_fill_constructor() {
   }
   ASSERT(method_->return_type().is_valid());
 
-  ListBuilder<resolution::Expression*> compiled_expressions;
+  ListBuilder<resolution::View<resolution::Expression>> compiled_expressions;
   for (auto expression : parameter_expressions) {
     compiled_expressions.add(expression);
   }
@@ -622,7 +622,7 @@ void MethodResolver::resolve_fill_constructor() {
     }
   }
 
-  UnorderedSet<resolution::Parameter*> missing_field_storing_parameter_assignments;
+  UnorderedSet<resolution::View<resolution::Parameter>> missing_field_storing_parameter_assignments;
   missing_field_storing_parameter_assignments.insert(field_storing_parameters.begin(),
                                                      field_storing_parameters.end());
 
@@ -631,7 +631,7 @@ void MethodResolver::resolve_fill_constructor() {
     Symbol field_name = ast_field->name()->data();
 
     auto entry = parameter_scope.lookup_shallow(field_name);
-    resolution::Expression* ir_initial_value = null;
+    resolution::View<resolution::Expression> ir_initial_value = null;
     auto range = Source::Range::invalid();
     if (!entry.is_empty()) {
       ASSERT(entry.is_single() && entry.single()->is_Parameter());
@@ -645,11 +645,11 @@ void MethodResolver::resolve_fill_constructor() {
           ir_parameter->set_type(ir_field->type());
         }
         range = ir_to_ast_map_->at(ir_parameter)->selection_range();
-        ir_initial_value = zone_new<resolution::ReferenceLocal>(ir_parameter, 0, range);
+        ir_initial_value = resolution::make<resolution::ReferenceLocal>(ir_parameter, 0, range);
         if (ir_parameter->type().is_class()) {
           // We can't rely on the typecheck of the field below, as FIELD_INITIALIZER_AS_CHECKS
           // can be optimized away, and as the type isn't always the same.
-          ir_initial_value = zone_new<resolution::Typecheck>(resolution::Typecheck::PARAMETER_AS_CHECK,
+          ir_initial_value = resolution::make<resolution::Typecheck>(resolution::Typecheck::PARAMETER_AS_CHECK,
                                                 ir_initial_value,
                                                 ir_parameter->type(),
                                                 ir_parameter->type().klass()->name(),
@@ -665,7 +665,7 @@ void MethodResolver::resolve_fill_constructor() {
       diagnostics_ = &null_diagnostics;
       if (ast_field->initializer() == null) {
         range = ast_field->selection_range();
-        ir_initial_value = zone_new<resolution::LiteralUndefined>(range);
+        ir_initial_value = resolution::make<resolution::LiteralUndefined>(range);
       } else {
         range = ast_field->initializer()->selection_range();
         LocalScope field_initializer_scope(scope_);
@@ -680,16 +680,16 @@ void MethodResolver::resolve_fill_constructor() {
     if (!ir_initial_value->is_LiteralNull() ||
         (ir_field->type().is_class() && !ir_field->type().is_nullable())) {
       ASSERT(range.is_valid());
-      auto this_ref = zone_new<resolution::ReferenceLocal>(method_->parameters()[0], 0, range);
+      auto this_ref = resolution::make<resolution::ReferenceLocal>(method_->parameters()[0], 0, range);
       if (ir_field->type().is_class() && !ir_initial_value->is_LiteralUndefined()) {
-        ir_initial_value = zone_new<resolution::Typecheck>(resolution::Typecheck::FIELD_INITIALIZER_AS_CHECK,
+        ir_initial_value = resolution::make<resolution::Typecheck>(resolution::Typecheck::FIELD_INITIALIZER_AS_CHECK,
                                               ir_initial_value,
                                               ir_field->type(),
                                               ir_field->type().klass()->name(),
                                               range);
       }
       compiled_expressions.add(
-        zone_new<resolution::FieldStore>(this_ref, ir_field, ir_initial_value, range));
+        resolution::make<resolution::FieldStore>(this_ref, ir_field, ir_initial_value, range));
     }
   }
 
@@ -761,7 +761,7 @@ void MethodResolver::resolve_fill_constructor() {
       auto super_call = resolve_statement(expr, null);
       bool is_explicit = true;
       bool is_at_end = false;
-      compiled_expressions.add(zone_new<resolution::Super>(super_call, is_explicit, is_at_end, expr->selection_range()));
+      compiled_expressions.add(resolution::make<resolution::Super>(super_call, is_explicit, is_at_end, expr->selection_range()));
       has_emitted_super_invocation = true;
       resolution_mode_ = CONSTRUCTOR_INSTANCE;
       continue;
@@ -795,10 +795,10 @@ void MethodResolver::resolve_fill_constructor() {
           auto super_call = build_synthetic_super();
           bool is_explicit = false;
           bool is_at_end = false;
-          compiled_expressions.add(zone_new<resolution::Super>(super_call, is_explicit, is_at_end, expr->selection_range()));
+          compiled_expressions.add(resolution::make<resolution::Super>(super_call, is_explicit, is_at_end, expr->selection_range()));
         } else {
           bool is_at_end = false;
-          compiled_expressions.add(zone_new<resolution::Super>(is_at_end, expr->selection_range()));
+          compiled_expressions.add(resolution::make<resolution::Super>(is_at_end, expr->selection_range()));
         }
         has_emitted_super_invocation = true;
       }
@@ -812,17 +812,17 @@ void MethodResolver::resolve_fill_constructor() {
       auto super_call = build_synthetic_super();
       bool is_explicit = false;
       bool is_at_end = true;
-      compiled_expressions.add(zone_new<resolution::Super>(super_call, is_explicit, is_at_end, method_->range()));
+      compiled_expressions.add(resolution::make<resolution::Super>(super_call, is_explicit, is_at_end, method_->range()));
     } else {
       bool is_at_end = true;
-      compiled_expressions.add(zone_new<resolution::Super>(is_at_end, method_->range()));
+      compiled_expressions.add(resolution::make<resolution::Super>(is_at_end, method_->range()));
     }
   }
 
-  auto this_ref = zone_new<resolution::ReferenceLocal>(method_->parameters()[0], 0, method_->range());
-  compiled_expressions.add(zone_new<resolution::Return>(this_ref, false, method_->range()));
+  auto this_ref = resolution::make<resolution::ReferenceLocal>(method_->parameters()[0], 0, method_->range());
+  compiled_expressions.add(resolution::make<resolution::Return>(this_ref, false, method_->range()));
 
-  method_->set_body(zone_new<resolution::Sequence>(compiled_expressions.build(), method_->range()));
+  method_->set_body(resolution::make<resolution::Sequence>(compiled_expressions.build(), method_->range()));
 
   ASSERT(scope_ == &body_scope);
   scope_ = scope_->outer();
@@ -844,11 +844,11 @@ void MethodResolver::resolve_fill_global() {
     // The type of the global will be infered later.
     method_->set_return_type(resolution::Type::invalid());
   }
-  resolution::Expression* initial_value;
+  resolution::View<resolution::Expression> initial_value;
   if (ast_field->initializer() == null) {
     report_error(ast_field, "Global variables must have initializers");
     range = ast_field->selection_range();
-    initial_value = zone_new<resolution::LiteralUndefined>(range);
+    initial_value = resolution::make<resolution::LiteralUndefined>(range);
   } else {
     range = ast_field->initializer()->selection_range();
     initial_value = resolve_expression(ast_field->initializer(),
@@ -857,20 +857,20 @@ void MethodResolver::resolve_fill_global() {
       report_error(ast_field, "Global final variables can't be initialized with '?'");
     }
   }
-  resolution::Expression* body;
+  resolution::View<resolution::Expression> body;
   if (initial_value->is_LiteralUndefined()) {
     // The failure method takes the global id as argument.
     // However, we don't know the id yet, so we use a builtin to extract it at the end.
     ResolutionCallBuilder builder(range);
-    builder.add_argument(zone_new<resolution::ReferenceGlobal>(method_->as_Global(), false, range), Symbol::invalid());
-    auto id_call = builder.call_builtin(zone_new<resolution::Builtin>(resolution::Builtin::GLOBAL_ID));
+    builder.add_argument(resolution::make<resolution::ReferenceGlobal>(method_->as_Global(), false, range), Symbol::invalid());
+    auto id_call = builder.call_builtin(resolution::make<resolution::Builtin>(resolution::Builtin::GLOBAL_ID));
     body = _call_runtime(Symbols::uninitialized_global_failure_,
                          list_of(id_call),
                          range);
   } else {
-    body = zone_new<resolution::Return>(initial_value, false, range);
+    body = resolution::make<resolution::Return>(initial_value, false, range);
   }
-  method_->set_body(zone_new<resolution::Sequence>(list_of(body), range));
+  method_->set_body(resolution::make<resolution::Sequence>(list_of(body), range));
 
   ASSERT(scope_ == &body_scope);
   scope_ = scope_->outer();
@@ -891,8 +891,8 @@ void MethodResolver::resolve_fill_method() {
 
   resolution_mode_ = method_->is_static() ? STATIC : INSTANCE;
 
-  Set<resolution::Parameter*> field_storing_parameters;
-  std::vector<resolution::Expression*> parameter_expressions;
+  Set<resolution::View<resolution::Parameter>> field_storing_parameters;
+  std::vector<resolution::View<resolution::Expression>> parameter_expressions;
   _resolve_fill_parameters_return_type(&field_storing_parameters, &parameter_expressions, false);
 
   if (method_->is_factory() && ast_node->return_type() != null) {
@@ -930,7 +930,7 @@ void MethodResolver::resolve_fill_method() {
     }
   }
 
-  ListBuilder<resolution::Expression*> compiled_expressions;
+  ListBuilder<resolution::View<resolution::Expression>> compiled_expressions;
   for (auto expression : parameter_expressions) {
     compiled_expressions.add(expression);
   }
@@ -962,12 +962,12 @@ void MethodResolver::resolve_fill_method() {
       }
     } else {
       auto this_parameter = method_->parameters()[0];
-      UnorderedSet<resolution::Field*> class_fields;
+      UnorderedSet<resolution::View<resolution::Field>> class_fields;
       class_fields.insert(holder_->fields().begin(), holder_->fields().end());
       for (auto field_storing : field_storing_parameters) {
         auto setter_shape = CallShape::for_instance_setter();
         auto probe = lookup(field_storing->name());
-        resolution::Method* setter = null;
+        resolution::View<resolution::Method> setter = null;
         for (auto candidate : probe.entry.nodes()) {
           // We only look for setters in the same class.
           if (candidate == ClassScope::SUPER_CLASS_SEPARATOR) break;
@@ -995,19 +995,19 @@ void MethodResolver::resolve_fill_method() {
             // Copy over the type of the field as type for the parameter.
             field_storing->set_type(field_type);
           }
-          auto dot = zone_new<resolution::Dot>(zone_new<resolution::ReferenceLocal>(this_parameter, 0, field_storing->range()),
+          auto dot = resolution::make<resolution::Dot>(resolution::make<resolution::ReferenceLocal>(this_parameter, 0, field_storing->range()),
                                   field_storing->name());
           auto ast_node = ir_to_ast_map_->at(field_storing);
-          resolution::Expression* new_field_value = zone_new<resolution::ReferenceLocal>(field_storing, 0, field_storing->range());
+          resolution::View<resolution::Expression> new_field_value = resolution::make<resolution::ReferenceLocal>(field_storing, 0, field_storing->range());
           if (field_type.is_class()) {
-            new_field_value = zone_new<resolution::Typecheck>(resolution::Typecheck::FIELD_AS_CHECK,
+            new_field_value = resolution::make<resolution::Typecheck>(resolution::Typecheck::FIELD_AS_CHECK,
                                                  new_field_value,
                                                  field_type,
                                                  field_type.klass()->name(),
                                                  field_storing->range());
           }
           auto setter_arg_list = list_of(new_field_value);
-          auto update = zone_new<resolution::CallVirtual>(dot,
+          auto update = resolution::make<resolution::CallVirtual>(dot,
                                              setter_shape,
                                              setter_arg_list,
                                              ast_node->selection_range());
@@ -1025,25 +1025,25 @@ void MethodResolver::resolve_fill_method() {
     visit_Sequence(ast_body);
     auto ir_node = pop();
     ASSERT(ir_node->is_Sequence());
-    resolution::Sequence* ir_body = ir_node->as_Sequence();
+    resolution::View<resolution::Sequence> ir_body = ir_node->as_Sequence();
     // Inject the 'return null' expressions into the body sequence to avoid
     // leaving the body sequence (this popping locals) before the return.
-    ListBuilder<resolution::Expression*> extended;
+    ListBuilder<resolution::View<resolution::Expression>> extended;
     extended.add(ir_body->expressions());
-    resolution::Expression* last_expression = null;
+    resolution::View<resolution::Expression> last_expression = null;
     auto return_type = method_->return_type();
     if (return_type.is_class() && !return_type.is_nullable()) {
-      last_expression = zone_new<resolution::Typecheck>(resolution::Typecheck::RETURN_AS_CHECK,
-                                          zone_new<resolution::LiteralNull>(method_range),
+      last_expression = resolution::make<resolution::Typecheck>(resolution::Typecheck::RETURN_AS_CHECK,
+                                          resolution::make<resolution::LiteralNull>(method_range),
                                           method_->return_type(),
                                           method_->return_type().klass()->name(),
                                           method_range);
     } else {
-      last_expression = zone_new<resolution::Return>(zone_new<resolution::LiteralNull>(method_range), true, method_range);
+      last_expression = resolution::make<resolution::Return>(resolution::make<resolution::LiteralNull>(method_range), true, method_range);
     }
     extended.add(last_expression);
-    compiled_expressions.add(zone_new<resolution::Sequence>(extended.build(), method_range));
-    method_->set_body(zone_new<resolution::Sequence>(compiled_expressions.build(), method_range));
+    compiled_expressions.add(resolution::make<resolution::Sequence>(extended.build(), method_range));
+    method_->set_body(resolution::make<resolution::Sequence>(compiled_expressions.build(), method_range));
   } else {
     // Don't set the body.
     // We might miss errors on the default-values, but we would otherwise
@@ -1075,7 +1075,7 @@ static bool has_constant_name(Symbol name) {
   return seen_capital;
 }
 
-void MethodResolver::resolve_field(resolution::Field* ir_field) {
+void MethodResolver::resolve_field(resolution::View<resolution::Field> ir_field) {
   auto ast_field = ir_to_ast_map_->at(ir_field)->as_Field();
   resolution::Origin origin(ast_field);
   resolution_mode_ = FIELD;
@@ -1168,8 +1168,8 @@ class ReturnCollector : public ast::TraversingVisitor {
 };
 
 void MethodResolver::_resolve_fill_parameters_return_type(
-    Set<resolution::Parameter*>* field_storing_parameters,
-    std::vector<resolution::Expression*>* parameter_expressions,
+    Set<resolution::View<resolution::Parameter>>* field_storing_parameters,
+    std::vector<resolution::View<resolution::Expression>>* parameter_expressions,
     bool is_constructor) {
   _resolve_fill_return_type();
 
@@ -1178,8 +1178,8 @@ void MethodResolver::_resolve_fill_parameters_return_type(
 
   bool has_implicit_this = method_->is_instance() || method_->is_constructor();
 
-  std::vector<resolution::Expression*> type_check_expressions;
-  List<resolution::Parameter*> ir_parameters;
+  std::vector<resolution::View<resolution::Expression>> type_check_expressions;
+  List<resolution::View<resolution::Parameter>> ir_parameters;
   _resolve_parameters(ast_method->parameters(),
                       has_implicit_this,
                       &ir_parameters,
@@ -1240,9 +1240,9 @@ void MethodResolver::_resolve_fill_return_type() {
 void MethodResolver::_resolve_parameters(
     List<ast::Parameter*> ast_parameters,
     bool has_implicit_this,
-    List<resolution::Parameter*>* ir_parameters,
-    Set<resolution::Parameter*>* field_storing_parameters,
-    std::vector<resolution::Expression*>* parameter_expressions,
+    List<resolution::View<resolution::Parameter>>* ir_parameters,
+    Set<resolution::View<resolution::Parameter>>* field_storing_parameters,
+    std::vector<resolution::View<resolution::Expression>>* parameter_expressions,
     bool is_constructor,
     int id_offset) {
   ASSERT(parameter_expressions != null);
@@ -1258,7 +1258,7 @@ void MethodResolver::_resolve_parameters(
   }
 
   int ir_parameter_length = ast_parameters.length() + (has_implicit_this ? 1 : 0);
-  *ir_parameters = ListBuilder<resolution::Parameter*>::allocate(ir_parameter_length);
+  *ir_parameters = ListBuilder<resolution::View<resolution::Parameter>>::allocate(ir_parameter_length);
 
 
   LocalScope default_value_scope(scope_);
@@ -1267,7 +1267,7 @@ void MethodResolver::_resolve_parameters(
 
   if (has_implicit_this) {
     ASSERT(id_offset == 0);
-    auto implicit_this = zone_new<resolution::Parameter>(MethodResolver::this_identifier(),
+    auto implicit_this = resolution::make<resolution::Parameter>(MethodResolver::this_identifier(),
                                             resolution::Type(holder_),
                                             false,  // Not a block
                                             0,
@@ -1343,7 +1343,7 @@ void MethodResolver::_resolve_parameters(
     auto default_value_range = parameter->default_value() == null
         ? Source::Range::invalid()
         : parameter->default_value()->full_range();
-    auto ir_parameter = zone_new<resolution::Parameter>(name,
+    auto ir_parameter = resolution::make<resolution::Parameter>(name,
                                            type,
                                            is_block,
                                            index + id_offset,
@@ -1380,7 +1380,7 @@ void MethodResolver::_resolve_parameters(
     }
 
     if (parameter->is_field_storing() && parameter->name()->is_LspSelection()) {
-      List<resolution::Field*> fields;
+      List<resolution::View<resolution::Field>> fields;
       auto holder = method_->holder();
       if (holder != null) {
         fields = holder->fields();
@@ -1427,22 +1427,22 @@ void MethodResolver::_resolve_parameters(
         auto ir_default_value = resolve_expression(parameter->default_value(),
                                                   "Default value can't be a block");
 
-        resolution::Expression* comparison;
+        resolution::View<resolution::Expression> comparison;
         if (parameter->is_block()) {
           // Can't have default values for block parameters.
           ASSERT(diagnostics()->encountered_error());
-          comparison = zone_new<resolution::LiteralBoolean>(false, parameter->selection_range());
+          comparison = resolution::make<resolution::LiteralBoolean>(false, parameter->selection_range());
         } else {
           ResolutionCallBuilder builder(parameter->selection_range());
           builder.add_arguments(list_of(
-              zone_new<resolution::ReferenceLocal>(ir_parameter, 0, parameter->selection_range()),
-              zone_new<resolution::LiteralNull>(parameter->selection_range())));
-          comparison = builder.call_builtin(zone_new<resolution::Builtin>(resolution::Builtin::IDENTICAL));
+              resolution::make<resolution::ReferenceLocal>(ir_parameter, 0, parameter->selection_range()),
+              resolution::make<resolution::LiteralNull>(parameter->selection_range())));
+          comparison = builder.call_builtin(resolution::make<resolution::Builtin>(resolution::Builtin::IDENTICAL));
         }
-        auto assignment = zone_new<resolution::AssignmentLocal>(ir_parameter, 0, ir_default_value, ir_parameter->range());
-        auto ir_if = zone_new<resolution::If>(comparison,
+        auto assignment = resolution::make<resolution::AssignmentLocal>(ir_parameter, 0, ir_default_value, ir_parameter->range());
+        auto ir_if = resolution::make<resolution::If>(comparison,
                                  assignment,
-                                 zone_new<resolution::LiteralNull>(parameter->selection_range()),
+                                 resolution::make<resolution::LiteralNull>(parameter->selection_range()),
                                  parameter->selection_range());
         (*parameter_expressions).push_back(ir_if);
       }
@@ -1451,8 +1451,8 @@ void MethodResolver::_resolve_parameters(
     // No need to typecheck the `any` type, and don't try to typecheck in abstract methods.
     if (!type.is_any()) {
       ASSERT(type.is_class());
-      auto check = zone_new<resolution::Typecheck>(resolution::Typecheck::PARAMETER_AS_CHECK,
-                                      zone_new<resolution::ReferenceLocal>(ir_parameter, 0, parameter->selection_range()),
+      auto check = resolution::make<resolution::Typecheck>(resolution::Typecheck::PARAMETER_AS_CHECK,
+                                      resolution::make<resolution::ReferenceLocal>(ir_parameter, 0, parameter->selection_range()),
                                       type,
                                       type.klass()->name(),
                                       parameter->selection_range());
@@ -1466,13 +1466,13 @@ void MethodResolver::_resolve_parameters(
   scope_ = old_scope;
 }
 
-resolution::Expression* MethodResolver::_instantiate_runtime(Symbol id,
-                                                     List<resolution::Expression*> arguments,
+resolution::View<resolution::Expression> MethodResolver::_instantiate_runtime(Symbol id,
+                                                     List<resolution::View<resolution::Expression>> arguments,
                                                      Source::Range range) {
   ast::Identifier ast_id(id);
   ast_id.set_range(range);
   auto shape_without_implicit_this = CallShape::for_static_call_no_named(arguments);
-  resolution::Node* resolved_target = _resolve_call_target(&ast_id,
+  resolution::View<resolution::Node> resolved_target = _resolve_call_target(&ast_id,
                                                    shape_without_implicit_this,
                                                    core_module_->scope()); // Search in core-library.
   ASSERT(resolved_target->is_ReferenceMethod());
@@ -1487,7 +1487,7 @@ resolution::Expression* MethodResolver::_instantiate_runtime(Symbol id,
   }
 }
 
-resolution::ReferenceMethod* MethodResolver::_resolve_runtime_call(Symbol id, CallShape shape) {
+resolution::View<resolution::ReferenceMethod> MethodResolver::_resolve_runtime_call(Symbol id, CallShape shape) {
   ast::Identifier ast_id(id);
   auto target = _resolve_call_target(&ast_id,
                                      shape,
@@ -1498,8 +1498,8 @@ resolution::ReferenceMethod* MethodResolver::_resolve_runtime_call(Symbol id, Ca
   return target->as_ReferenceMethod();
 }
 
-resolution::Expression* MethodResolver::_call_runtime(Symbol id,
-                                              List<resolution::Expression*> arguments,
+resolution::View<resolution::Expression> MethodResolver::_call_runtime(Symbol id,
+                                              List<resolution::View<resolution::Expression>> arguments,
                                               Source::Range range) {
   auto target = _resolve_runtime_call(id, CallShape::for_static_call_no_named(arguments));
   ResolutionCallBuilder builder(range);
@@ -1507,19 +1507,19 @@ resolution::Expression* MethodResolver::_call_runtime(Symbol id,
   return builder.call_static(target);
 }
 
-resolution::Expression* MethodResolver::_create_throw(resolution::Expression* exception,
+resolution::View<resolution::Expression> MethodResolver::_create_throw(resolution::View<resolution::Expression> exception,
                                               Source::Range range) {
   return _call_runtime(Symbols::throw_, list_of(exception), range);
 }
 
-static bool _contains_no_blocks(List<resolution::Expression*> expressions) {
+static bool _contains_no_blocks(List<resolution::View<resolution::Expression>> expressions) {
   for (auto expression : expressions) {
     if (expression->is_block()) return false;
   }
   return true;
 }
 
-resolution::Expression* MethodResolver::_create_array(List<resolution::Expression*> entries,
+resolution::View<resolution::Expression> MethodResolver::_create_array(List<resolution::View<resolution::Expression>> entries,
                                               Source::Range range) {
   ASSERT(_contains_no_blocks(entries));
   if (0 < entries.length() && entries.length() <= 4) {
@@ -1527,33 +1527,33 @@ resolution::Expression* MethodResolver::_create_array(List<resolution::Expressio
     return _call_runtime(Symbols::create_array_, entries, range);
   }
 
-  ListBuilder<resolution::Expression*> expressions;
+  ListBuilder<resolution::View<resolution::Expression>> expressions;
 
   // The array-allocation will return the canonicalized empty array if the length is 0.
   // This means we don't need to do anything here.
-  auto length_argument = list_of(zone_new<resolution::LiteralInteger>(entries.length(), range));
+  auto length_argument = list_of(resolution::make<resolution::LiteralInteger>(entries.length(), range));
   auto array_construction = _instantiate_runtime(Symbols::Array_, length_argument, range);
 
-  auto temporary = zone_new<resolution::Local>(Symbol::synthetic("<array>"),
+  auto temporary = resolution::make<resolution::Local>(Symbol::synthetic("<array>"),
                                   true,   // Final.
                                   false,  // Not a block.
                                   range);
-  auto define = zone_new<resolution::AssignmentDefine>(temporary, array_construction, range);
+  auto define = resolution::make<resolution::AssignmentDefine>(temporary, array_construction, range);
 
   expressions.add(define);
 
   for (int i = 0 ; i < entries.length(); i++) {
-    auto dot = zone_new<resolution::Dot>(zone_new<resolution::ReferenceLocal>(temporary, 0, range), Symbols::index_put);
-    auto args = list_of(zone_new<resolution::LiteralInteger>(i, range), entries[i]);
-    auto add_call = zone_new<resolution::CallVirtual>(dot,
+    auto dot = resolution::make<resolution::Dot>(resolution::make<resolution::ReferenceLocal>(temporary, 0, range), Symbols::index_put);
+    auto args = list_of(resolution::make<resolution::LiteralInteger>(i, range), entries[i]);
+    auto add_call = resolution::make<resolution::CallVirtual>(dot,
                                          CallShape::for_instance_call_no_named(args),
                                          args,
                                          range);
     expressions.add(add_call);
   }
   // The last expression of the sequence is the return value.
-  expressions.add(zone_new<resolution::ReferenceLocal>(temporary, 0, range));
-  return zone_new<resolution::Sequence>(expressions.build(), range);
+  expressions.add(resolution::make<resolution::ReferenceLocal>(temporary, 0, range));
+  return resolution::make<resolution::Sequence>(expressions.build(), range);
 }
 
 void MethodResolver::visit_Block(ast::Block* node) {
@@ -1569,7 +1569,7 @@ void MethodResolver::visit_Lambda(ast::Lambda* node) {
   push(_create_lambda(node, Symbol::invalid()));
 }
 
-resolution::Expression* MethodResolver::_create_lambda(ast::Lambda* node, Symbol label) {
+resolution::View<resolution::Expression> MethodResolver::_create_lambda(ast::Lambda* node, Symbol label) {
   Scope* old_scope = scope_;
   LambdaScope lambda_scope(scope_);
   scope_ = &lambda_scope;
@@ -1601,20 +1601,20 @@ resolution::Expression* MethodResolver::_create_lambda(ast::Lambda* node, Symbol
   code->set_captured_count(captured_depths.size());
 
   // The captured variables are now arguments to the lambda construction.
-  auto arguments = ListBuilder<resolution::Expression*>::allocate(captured_depths.size());
+  auto arguments = ListBuilder<resolution::View<resolution::Expression>>::allocate(captured_depths.size());
   for (int i = 0; i < arguments.length(); i++) {
     auto captured = captured_depths.keys()[i];
     captured->mark_captured();
     int depth = captured_depths.at(captured);
-    resolution::Expression* captured_value = zone_new<resolution::ReferenceLocal>(captured, depth, node->selection_range());
+    resolution::View<resolution::Expression> captured_value = resolution::make<resolution::ReferenceLocal>(captured, depth, node->selection_range());
     if (captured->is_block()) {
       report_error(node, "Can't capture block variable %s", captured->name().c_str());
-      captured_value = zone_new<resolution::Error>(captured->range(), list_of(captured_value));
+      captured_value = resolution::make<resolution::Error>(captured->range(), list_of(captured_value));
     }
     arguments[i] = captured_value;
   }
 
-  resolution::Expression* captured_args;
+  resolution::View<resolution::Expression> captured_args;
   if (arguments.length() == 1) {
     captured_args = arguments[0];
   } else {
@@ -1626,10 +1626,10 @@ resolution::Expression* MethodResolver::_create_lambda(ast::Lambda* node, Symbol
   // Invoke the top-level `lambda_` function with the code and captured arguments.
   auto lambda_args_list = list_of(code,
                                   captured_args,
-                                  zone_new<resolution::LiteralInteger>(arguments.length(), node->selection_range()));
+                                  resolution::make<resolution::LiteralInteger>(arguments.length(), node->selection_range()));
   auto shape = CallShape::for_static_call_no_named(lambda_args_list);
   auto lambda_ = _resolve_runtime_call(Symbols::lambda__, shape);
-  return zone_new<resolution::Lambda>(lambda_,
+  return resolution::make<resolution::Lambda>(lambda_,
                          shape,
                          lambda_args_list,
                          captured_depths,
@@ -1641,11 +1641,11 @@ void MethodResolver::visit_Sequence(ast::Sequence* node) {
   scope_ = &scope;
 
   List<ast::Expression*> expressions = node->expressions();
-  ListBuilder<resolution::Expression*> ir_expressions;
+  ListBuilder<resolution::View<resolution::Expression>> ir_expressions;
   for (auto expression : expressions) {
     ir_expressions.add(resolve_statement(expression, null));
   }
-  push(zone_new<resolution::Sequence>(ir_expressions.build(), node->selection_range()));
+  push(resolution::make<resolution::Sequence>(ir_expressions.build(), node->selection_range()));
 
   ASSERT(scope_ = &scope);
   scope_ = scope.outer();
@@ -1674,10 +1674,10 @@ void MethodResolver::visit_TryFinally(ast::TryFinally* node) {
   }
 
   // The handler parameters are mapped to locals.
-  auto ir_handler_parameters = ListBuilder<resolution::Local*>::allocate(parameter_count);
-  ListBuilder<resolution::Expression*> handler_expressions;
+  auto ir_handler_parameters = ListBuilder<resolution::View<resolution::Local>>::allocate(parameter_count);
+  ListBuilder<resolution::View<resolution::Expression>> handler_expressions;
   auto first_name = Symbol::invalid();
-  resolution::Local* reason_local = null;
+  resolution::View<resolution::Local> reason_local = null;
   for (int i = 0; i < parameter_count; i++) {
     auto ast_parameter = handler_parameters[i];
     if (ast_parameter->default_value() != null) {
@@ -1717,7 +1717,7 @@ void MethodResolver::visit_TryFinally(ast::TryFinally* node) {
     }
 
     auto range = ast_parameter->selection_range();
-    resolution::Local* local = zone_new<resolution::Local>(name,
+    resolution::View<resolution::Local> local = resolution::make<resolution::Local>(name,
                                       false,  // Final
                                       false,  // Not a block
                                       type,
@@ -1725,39 +1725,39 @@ void MethodResolver::visit_TryFinally(ast::TryFinally* node) {
     if (ast_parameter->name()->is_LspSelection()) {
       lsp_->selection_handler()->definition(local, ast_parameter->name()->selection_range());
     }
-    resolution::Local* ir_handler_parameter = local;
+    resolution::View<resolution::Local> ir_handler_parameter = local;
     if (i == 0) {
       reason_local = local;
       // The interpreter only tells us the unwind reason.
       // We need to make it a boolean.
-      ir_handler_parameter = zone_new<resolution::Local>(Symbol::synthetic("<unwind-reason>"),
+      ir_handler_parameter = resolution::make<resolution::Local>(Symbol::synthetic("<unwind-reason>"),
                                             true,  // Final
                                             false, // Not a block
                                             range);
       // Pass a temporary: zone_new takes its arguments by reference, which
       // would odr-use the constant and fail to link with LTO.
-      auto throw_value = zone_new<resolution::LiteralInteger>(int64(Interpreter::UNWIND_REASON_WHEN_THROWING_EXCEPTION),
+      auto throw_value = resolution::make<resolution::LiteralInteger>(int64(Interpreter::UNWIND_REASON_WHEN_THROWING_EXCEPTION),
                                                  range);
-      auto reason_ref = zone_new<resolution::ReferenceLocal>(ir_handler_parameter, 0, range);
+      auto reason_ref = resolution::make<resolution::ReferenceLocal>(ir_handler_parameter, 0, range);
       ast::Binary comparison(Token::EQ, null, null);
       comparison.set_range(range);
       auto ir_comparison = _binary_operator(&comparison, throw_value, reason_ref);
-      auto assig = zone_new<resolution::AssignmentDefine>(local, ir_comparison, range);
+      auto assig = resolution::make<resolution::AssignmentDefine>(local, ir_comparison, range);
       handler_expressions.add(assig);
     } else if (i == 1) {
       // Depending on whether we are in a throw we need to either use the value
       // from the stack, or assign `null`.
-      ir_handler_parameter = zone_new<resolution::Local>(Symbol::synthetic("<exception>"),
+      ir_handler_parameter = resolution::make<resolution::Local>(Symbol::synthetic("<exception>"),
                                             true,  // Final
                                             false, // Not a block
                                             range);
       // Blank the exception value if we are not throwing.
-      auto null_val = zone_new<resolution::LiteralNull>(range);
-      auto exception_ref = zone_new<resolution::ReferenceLocal>(ir_handler_parameter, 0, range);
-      auto is_throw = zone_new<resolution::ReferenceLocal>(reason_local, 0, range);
+      auto null_val = resolution::make<resolution::LiteralNull>(range);
+      auto exception_ref = resolution::make<resolution::ReferenceLocal>(ir_handler_parameter, 0, range);
+      auto is_throw = resolution::make<resolution::ReferenceLocal>(reason_local, 0, range);
       // Wrap the `is_throw` in an 'as any' to avoid type warnings
       //   ("always evaluates to true") later on.
-      auto iff = zone_new<resolution::If>(zone_new<resolution::Typecheck>(resolution::Typecheck::AS_CHECK,
+      auto iff = resolution::make<resolution::If>(resolution::make<resolution::Typecheck>(resolution::Typecheck::AS_CHECK,
                                                 is_throw,
                                                 resolution::Type::any(),
                                                 Symbols::any,
@@ -1765,13 +1765,13 @@ void MethodResolver::visit_TryFinally(ast::TryFinally* node) {
                              exception_ref,
                              null_val,
                              range);
-      auto exception_assig = zone_new<resolution::AssignmentDefine>(local, iff, range);
+      auto exception_assig = resolution::make<resolution::AssignmentDefine>(local, iff, range);
       handler_expressions.add(exception_assig);
     }
 
     if (type.is_class()) {
-      handler_expressions.add(zone_new<resolution::Typecheck>(resolution::Typecheck::Kind::PARAMETER_AS_CHECK,
-                                                 zone_new<resolution::ReferenceLocal>(local, 0, range),
+      handler_expressions.add(resolution::make<resolution::Typecheck>(resolution::Typecheck::Kind::PARAMETER_AS_CHECK,
+                                                 resolution::make<resolution::ReferenceLocal>(local, 0, range),
                                                  type,
                                                  type.klass()->name(),
                                                  range));
@@ -1785,12 +1785,12 @@ void MethodResolver::visit_TryFinally(ast::TryFinally* node) {
   ASSERT(ir_handler->is_Sequence());
   if (!handler_expressions.is_empty()) {
     handler_expressions.add(ir_handler->as_Sequence());
-    ir_handler = zone_new<resolution::Sequence>(handler_expressions.build(), node->selection_range());
+    ir_handler = resolution::make<resolution::Sequence>(handler_expressions.build(), node->selection_range());
   }
 
   scope_ = handler_scope.outer();
 
-  auto try_ = zone_new<resolution::TryFinally>(ir_body,
+  auto try_ = resolution::make<resolution::TryFinally>(ir_body,
                                   ir_handler_parameters,
                                   ir_handler->as_Sequence(),
                                   node->selection_range());
@@ -1803,28 +1803,28 @@ void MethodResolver::visit_If(ast::If* node) {
 
   auto ast_condition = node->expression();
   bool has_declaring_condition = ast_condition->is_DeclarationLocal();
-  resolution::Expression* ir_condition = resolve_expression(node->expression(),
+  resolution::View<resolution::Expression> ir_condition = resolve_expression(node->expression(),
                                                     "Condition can't be a block");
   auto ast_yes = node->yes();
   auto ir_yes = resolve_expression(ast_yes, "If branches may not evaluate to blocks");
 
-  resolution::Expression* ir_no;
+  resolution::View<resolution::Expression> ir_no;
   auto ast_no = node->no();
   if (ast_no == null) {
-    ir_no = zone_new<resolution::LiteralNull>(node->selection_range());
+    ir_no = resolution::make<resolution::LiteralNull>(node->selection_range());
   } else {
     ir_no = resolve_expression(ast_no, "If branches may not evaluate to blocks");
   }
-  resolution::Expression* result;
+  resolution::View<resolution::Expression> result;
   if (has_declaring_condition) {
     auto declaration = ir_condition->as_AssignmentDefine();
     auto local = declaration->local();
-    auto ref = zone_new<resolution::ReferenceLocal>(local, 0, local->range());
+    auto ref = resolution::make<resolution::ReferenceLocal>(local, 0, local->range());
     // To delimit the visibility of the definition.
-    auto iff = zone_new<resolution::If>(ref, ir_yes, ir_no, node->selection_range());
-    result = zone_new<resolution::Sequence>(list_of(declaration, iff), node->selection_range());
+    auto iff = resolution::make<resolution::If>(ref, ir_yes, ir_no, node->selection_range());
+    result = resolution::make<resolution::Sequence>(list_of(declaration, iff), node->selection_range());
   } else {
-    result = zone_new<resolution::If>(ir_condition, ir_yes, ir_no, node->selection_range());
+    result = resolution::make<resolution::If>(ir_condition, ir_yes, ir_no, node->selection_range());
   }
   scope_ = if_scope.outer();
   push(result);
@@ -1836,12 +1836,12 @@ void MethodResolver::visit_loop(ast::Node* node,
                                 ast::Expression* ast_condition,
                                 ast::Expression* ast_update,
                                 ast::Expression* ast_body) {
-  resolution::Local* loop_variable = null;
+  resolution::View<resolution::Local> loop_variable = null;
   bool assign_condition_to_loop_variable = false;
 
-  resolution::Expression* ir_initializer = null;
-  resolution::Expression* ir_condition = null;
-  resolution::Expression* ir_update = null;
+  resolution::View<resolution::Expression> ir_initializer = null;
+  resolution::View<resolution::Expression> ir_condition = null;
+  resolution::View<resolution::Expression> ir_update = null;
 
   LocalScope loop_scope(scope_);
   scope_ = &loop_scope;
@@ -1894,7 +1894,7 @@ void MethodResolver::visit_loop(ast::Node* node,
       ir_condition = resolve_expression(ast_condition, "Condition may not be a block");
     }
   } else {
-    ir_condition = zone_new<resolution::LiteralBoolean>(true, node->selection_range());
+    ir_condition = resolution::make<resolution::LiteralBoolean>(true, node->selection_range());
   }
   if (assign_condition_to_loop_variable) {
     if (loop_variable == null) {
@@ -1919,7 +1919,7 @@ void MethodResolver::visit_loop(ast::Node* node,
   if (ast_update != null) {
     ir_update = resolve_expression(ast_update, null, true);
   } else {
-    ir_update = zone_new<resolution::Nop>(node->selection_range());
+    ir_update = resolution::make<resolution::Nop>(node->selection_range());
   }
 
   if (loop_variable != null) {
@@ -1944,14 +1944,14 @@ void MethodResolver::visit_loop(ast::Node* node,
     loop_variable->mark_effectively_final_loop_variable();
   }
 
-  auto ir_while = zone_new<resolution::While>(ir_condition, ir_body, ir_update, loop_variable, node->selection_range());
+  auto ir_while = resolution::make<resolution::While>(ir_condition, ir_body, ir_update, loop_variable, node->selection_range());
 
 
-  ListBuilder<resolution::Expression*> expressions;
+  ListBuilder<resolution::View<resolution::Expression>> expressions;
   if (ir_initializer != null) expressions.add(ir_initializer);
   expressions.add(ir_while);
-  expressions.add(zone_new<resolution::LiteralNull>(node->selection_range()));
-  push(zone_new<resolution::Sequence>(expressions.build(), node->selection_range()));
+  expressions.add(resolution::make<resolution::LiteralNull>(node->selection_range()));
+  push(resolution::make<resolution::Sequence>(expressions.build(), node->selection_range()));
 
   ASSERT(scope_ = &loop_scope);
   scope_ = loop_scope.outer();
@@ -1987,7 +1987,7 @@ void MethodResolver::visit_BreakContinue(ast::BreakContinue* node) {
   switch (loop_status_) {
     case NO_LOOP:
       report_error(node, "'%s' must be inside loop", kind);
-      push(zone_new<resolution::Error>(node->selection_range()));
+      push(resolution::make<resolution::Error>(node->selection_range()));
       break;
 
     case IN_LAMBDA_LOOP:
@@ -1995,16 +1995,16 @@ void MethodResolver::visit_BreakContinue(ast::BreakContinue* node) {
       report_error(node, "'%s' can't break out of lambda", kind);
       report_note(current_lambda_, "Location of the lambda that '%s' would break out of", kind);
       diagnostics()->end_group();
-      push(zone_new<resolution::Error>(node->selection_range()));
+      push(resolution::make<resolution::Error>(node->selection_range()));
       break;
 
     case IN_LOOP:
     case IN_BLOCKED_LOOP:
-      push(zone_new<resolution::LoopBranch>(node->is_break(), loop_block_depth_, node->selection_range()));
+      push(resolution::make<resolution::LoopBranch>(node->is_break(), loop_block_depth_, node->selection_range()));
   }
 }
 
-resolution::Code* MethodResolver::_create_code(
+resolution::View<resolution::Code> MethodResolver::_create_code(
     ast::Node* node,
     List<ast::Parameter*> parameters,
     ast::Sequence* body,
@@ -2033,11 +2033,11 @@ resolution::Code* MethodResolver::_create_code(
   ItScope it_scope(scope());
 
   int id_offset = is_block ? 1 : 0;
-  List<resolution::Parameter*> ir_parameters;
-  std::vector<resolution::Expression*> parameter_expressions;
+  List<resolution::View<resolution::Parameter>> ir_parameters;
+  std::vector<resolution::View<resolution::Expression>> parameter_expressions;
 
   if (parameters.is_empty() && has_implicit_it_parameter) {
-    auto ir_parameter = zone_new<resolution::Parameter>(Symbols::it,
+    auto ir_parameter = resolution::make<resolution::Parameter>(Symbols::it,
                                            resolution::Type::any(), // No type.
                                            false,  // Not a block.
                                            id_offset,
@@ -2047,7 +2047,7 @@ resolution::Code* MethodResolver::_create_code(
     it_scope.set_it(ir_parameter);
     scope_ = &it_scope;
   } else {
-    Set<resolution::Parameter*> field_storing_parameters;
+    Set<resolution::View<resolution::Parameter>> field_storing_parameters;
 
     _resolve_parameters(parameters,
                         false,  // No implicit 'this'.
@@ -2092,7 +2092,7 @@ resolution::Code* MethodResolver::_create_code(
 
   if (it_scope.it_was_used()) {
     ASSERT(ir_parameters.is_empty());
-    ir_parameters = ListBuilder<resolution::Parameter*>::build(it_scope.it());
+    ir_parameters = ListBuilder<resolution::View<resolution::Parameter>>::build(it_scope.it());
   }
 
   if (loop_status_ == IN_BLOCKED_LOOP) loop_block_depth_--;
@@ -2103,12 +2103,12 @@ resolution::Code* MethodResolver::_create_code(
   if (!parameter_expressions.empty()) {
     // Prefix the body with the parameter expressions.
     parameter_expressions.push_back(ir_body);
-    ir_body = zone_new<resolution::Sequence>(ListBuilder<resolution::Expression*>::build_from_vector(parameter_expressions),
+    ir_body = resolution::make<resolution::Sequence>(ListBuilder<resolution::View<resolution::Expression>>::build_from_vector(parameter_expressions),
                                 node->selection_range());
   }
 
   auto name = Symbol::synthetic(is_block ? "<block>" : "<lambda>");
-  return zone_new<resolution::Code>(name,
+  return resolution::make<resolution::Code>(name,
                        ir_parameters,
                        ir_body,
                        is_block,
@@ -2116,7 +2116,7 @@ resolution::Code* MethodResolver::_create_code(
 }
 
 
-resolution::Code* MethodResolver::_create_block(ast::Block* node,
+resolution::View<resolution::Code> MethodResolver::_create_block(ast::Block* node,
                                         bool has_implicit_it_parameter,
                                         bool may_mutate_final,
                                         Symbol label) {
@@ -2140,11 +2140,11 @@ resolution::Code* MethodResolver::_create_block(ast::Block* node,
   return result;
 }
 
-List<resolution::Node*> MethodResolver::_compute_constructor_super_candidates(ast::Node* target_node) {
+List<resolution::View<resolution::Node>> MethodResolver::_compute_constructor_super_candidates(ast::Node* target_node) {
   auto constructor = method_->as_Constructor();
   auto super = constructor->klass()->super();
   if (is_literal_super(target_node)) {
-    ListBuilder<resolution::Node*> candidates;
+    ListBuilder<resolution::View<resolution::Node>> candidates;
     for (auto super_constructor : super->unnamed_constructors()) {
       candidates.add(super_constructor);
     }
@@ -2158,14 +2158,14 @@ List<resolution::Node*> MethodResolver::_compute_constructor_super_candidates(as
   }
 }
 
-resolution::Expression* MethodResolver::_resolve_constructor_super_target(ast::Node* target_node, CallShape shape) {
+resolution::View<resolution::Expression> MethodResolver::_resolve_constructor_super_target(ast::Node* target_node, CallShape shape) {
   auto candidates = _compute_constructor_super_candidates(target_node);
   for (auto candidate : candidates) {
     if (!candidate->is_Method()) continue;
     auto method = candidate->as_Method();
     if (!method->is_constructor()) continue;
     if (method->resolution_shape().accepts(shape)) {
-      return zone_new<resolution::ReferenceMethod>(method, target_node->selection_range());
+      return resolution::make<resolution::ReferenceMethod>(method, target_node->selection_range());
     }
   }
   auto constructor = method_->as_Constructor();
@@ -2176,7 +2176,7 @@ resolution::Expression* MethodResolver::_resolve_constructor_super_target(ast::N
   report_error(target_node,
                 "Couldn't find matching constructor in superclass '%s'",
                 super->name().c_str());
-  return zone_new<resolution::Error>(target_node->selection_range());
+  return resolution::make<resolution::Error>(target_node->selection_range());
 }
 
 MethodResolver::Candidates MethodResolver::_compute_target_candidates(ast::Node* target_node, Scope* scope) {
@@ -2230,14 +2230,14 @@ MethodResolver::Candidates MethodResolver::_compute_target_candidates(ast::Node*
   }
   ASSERT(error_position_node != null);
 
-  List<resolution::Node*> candidates;
+  List<resolution::View<resolution::Node>> candidates;
   switch (candidate_entry.kind()) {
     case ResolutionEntry::PREFIX:
       report_error(error_position_node, "Can't use prefix '%s' as an expression", name.c_str());
       return {
         .name = name,
         .block_depth = block_depth,
-        .nodes = List<resolution::Node*>(),
+        .nodes = List<resolution::View<resolution::Node>>(),
         .klass = null,
         .encountered_error = true,
       };
@@ -2254,7 +2254,7 @@ MethodResolver::Candidates MethodResolver::_compute_target_candidates(ast::Node*
       return {
         .name = name,
         .block_depth = block_depth,
-        .nodes = List<resolution::Node*>(),
+        .nodes = List<resolution::View<resolution::Node>>(),
         .klass = null,
         .encountered_error = true,
       };
@@ -2270,13 +2270,13 @@ MethodResolver::Candidates MethodResolver::_compute_target_candidates(ast::Node*
     }
   }
 
-  resolution::Class* klass = null;
+  resolution::View<resolution::Class> klass = null;
   if (candidates_include_class) {
     bool is_single_class = candidates.length() == 1;
 
     // Replace the class with its unnamed constructors/factories.
     // TODO(florian): is this too expensive? Do we need to cache the candidates for classes?
-    ListBuilder<resolution::Node*> candidates_builder;
+    ListBuilder<resolution::View<resolution::Node>> candidates_builder;
     for (int i = starting_index; i < candidates.length(); i++) {
       auto candidate = candidates[i];
       if (candidate == ClassScope::SUPER_CLASS_SEPARATOR ||
@@ -2296,7 +2296,7 @@ MethodResolver::Candidates MethodResolver::_compute_target_candidates(ast::Node*
     }
   }
   if (starting_index != 0 || allow_abstracts) {
-    ListBuilder<resolution::Node*> candidates_builder;
+    ListBuilder<resolution::View<resolution::Node>> candidates_builder;
     for (int i = starting_index; i < candidates.length(); i++) {
       auto candidate = candidates[i];
       if (candidate == ClassScope::SUPER_CLASS_SEPARATOR) continue;
@@ -2347,7 +2347,7 @@ void MethodResolver::check_sdk_protection(Symbol name,
 /// Returns an `Error` node if the target is invalid.
 /// For instance methods returns a `ReferenceMethod` node. The caller must change
 /// this to an instance call (if necessary).
-resolution::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
+resolution::View<resolution::Node> MethodResolver::_resolve_call_target(ast::Node* target_node,
                                                CallShape shape_without_implicit_this,
                                                Scope* lookup_scope) {
   auto range = target_node->selection_range();
@@ -2355,7 +2355,7 @@ resolution::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
   if (lookup_scope == null) lookup_scope = scope();
 
   auto candidates = _compute_target_candidates(target_node, lookup_scope);
-  if (candidates.encountered_error) return zone_new<resolution::Error>(range);
+  if (candidates.encountered_error) return resolution::make<resolution::Error>(range);
 
   if (candidates.klass != null && candidates.nodes.is_empty()) {
     auto klass = candidates.klass;
@@ -2366,7 +2366,7 @@ resolution::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
       report_error(target_node, "Class '%s' only has named constructors",
                    candidates.name.c_str());
     }
-    return zone_new<resolution::Error>(range);
+    return resolution::make<resolution::Error>(range);
   }
 
   Symbol name = candidates.name;
@@ -2374,7 +2374,7 @@ resolution::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
   if (!name.is_valid()) {
     // In this case the parser already reported an error.
     ASSERT(diagnostics()->encountered_error());
-    return zone_new<resolution::Error>(range);
+    return resolution::make<resolution::Error>(range);
   }
 
   auto candidate_nodes = candidates.nodes;
@@ -2383,11 +2383,11 @@ resolution::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
   for (auto candidate : candidate_nodes) {
     if (candidate == ClassScope::SUPER_CLASS_SEPARATOR) {
       continue;
-    } else if (resolution::Block* block_node = candidate->as_Block()) {
-      return zone_new<resolution::ReferenceBlock>(block_node, block_depth, range);
-    } else if (resolution::Local* local_node = candidate->as_Local()) {
-      return zone_new<resolution::ReferenceLocal>(local_node, block_depth, range);
-    } else if (resolution::Global* global_node = candidate->as_Global()) {
+    } else if (resolution::View<resolution::Block> block_node = candidate->as_Block()) {
+      return resolution::make<resolution::ReferenceBlock>(block_node, block_depth, range);
+    } else if (resolution::View<resolution::Local> local_node = candidate->as_Local()) {
+      return resolution::make<resolution::ReferenceLocal>(local_node, block_depth, range);
+    } else if (resolution::View<resolution::Global> global_node = candidate->as_Global()) {
       check_sdk_protection(name, target_node->selection_range(), global_node->range());
       // By default the global reference needs to check for lazy initializers.
       // The bytegen skips cases where the global can be initialized immediately.
@@ -2395,7 +2395,7 @@ resolution::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
       // successive access to the same local don't need to check for the
       // initializer.
       bool is_lazy = true;  // Could be changed in optimizations further down the pipeline.
-      return zone_new<resolution::ReferenceGlobal>(global_node, is_lazy, range);
+      return resolution::make<resolution::ReferenceGlobal>(global_node, is_lazy, range);
     } else if (candidate->is_Method()) {
       ASSERT(!(candidate->is_Method() && candidate->as_Method()->is_initializer()));
       auto method_node = candidate->as_Method();
@@ -2415,9 +2415,9 @@ resolution::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
         // We special case the identical top-level method, because we want to
         // turn calls to that into a special bytecode.
         if (name == Symbols::identical && method_node->is_runtime_method() && method_node->holder() == null) {
-          return zone_new<resolution::Builtin>(resolution::Builtin::IDENTICAL);
+          return resolution::make<resolution::Builtin>(resolution::Builtin::IDENTICAL);
         } else {
-          return zone_new<resolution::ReferenceMethod>(method_node, range);
+          return resolution::make<resolution::ReferenceMethod>(method_node, range);
         }
       }
       // Instance method or field.
@@ -2430,11 +2430,11 @@ resolution::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
 
         case CONSTRUCTOR_STATIC:
           report_error(target_node, "Can't access instance members before `super` call");
-          return zone_new<resolution::Error>(range);
+          return resolution::make<resolution::Error>(range);
 
         case FIELD:
           report_error(target_node, "Can't access instance members in field initializers");
-          return zone_new<resolution::Error>(range);
+          return resolution::make<resolution::Error>(range);
 
         case INSTANCE:
         case CONSTRUCTOR_INSTANCE:
@@ -2445,7 +2445,7 @@ resolution::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
         case STATIC: {
           const char* kind = method_->is_factory() ? "factories" : "static contexts";
           report_error(target_node, "Can't access instance members in %s", kind);
-          return zone_new<resolution::Error>(range);
+          return resolution::make<resolution::Error>(range);
         }
 
         case CONSTRUCTOR_SUPER:
@@ -2455,7 +2455,7 @@ resolution::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
 
       // If the method is an instance method, then the caller must change the call to an
       // instance call.
-      return zone_new<resolution::ReferenceMethod>(method_node, range);
+      return resolution::make<resolution::ReferenceMethod>(method_node, range);
     } else {
       UNREACHABLE();
     }
@@ -2468,7 +2468,7 @@ resolution::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
       return _resolve_runtime_call(Symbols::assert_, shape_without_implicit_this);
     }
     report_error(target_node, "'assert' takes exactly one block");
-    return zone_new<resolution::Error>(range);
+    return resolution::make<resolution::Error>(range);
   }
 
   // If there is no match at all, try to see, whether it's a builtin.
@@ -2480,7 +2480,7 @@ resolution::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
         return builtin;
       }
       report_error(target_node, "Builtin call argument mismatch");
-      return zone_new<resolution::Error>(range);
+      return resolution::make<resolution::Error>(range);
     }
   }
 
@@ -2492,10 +2492,10 @@ resolution::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
     Selector<CallShape> selector(name, shape_without_implicit_this);
     report_no_such_static_method(candidate_nodes, selector, error_node->selection_range(), diagnostics());
   }
-  return zone_new<resolution::Error>(range);
+  return resolution::make<resolution::Error>(range);
 }
 
-resolution::Expression* MethodResolver::_this_ref(Source::Range range, bool ignore_resolution_mode) {
+resolution::View<resolution::Expression> MethodResolver::_this_ref(Source::Range range, bool ignore_resolution_mode) {
   if (!ignore_resolution_mode) {
     ast::Identifier ast_this(Symbols::this_);
     ast_this.set_range(range);
@@ -2506,16 +2506,16 @@ resolution::Expression* MethodResolver::_this_ref(Source::Range range, bool igno
   }
   auto this_lookup = lookup(this_identifier());
   ASSERT(this_lookup.entry.is_single());
-  return zone_new<resolution::ReferenceLocal>(this_lookup.entry.single()->as_Local(),
+  return resolution::make<resolution::ReferenceLocal>(this_lookup.entry.single()->as_Local(),
                                  this_lookup.block_depth,
                                  range);
 }
 
-resolution::Expression* MethodResolver::resolve_expression(ast::Node* node,
+resolution::View<resolution::Expression> MethodResolver::resolve_expression(ast::Node* node,
                                                    const char* error_when_block,
                                                    bool allow_assignment) {
   resolution::Origin origin(node);
-  resolution::Node* ir_node;
+  resolution::View<resolution::Node> ir_node;
   if (allow_assignment && is_assignment(node)) {
     ir_node = _assign(node->as_Binary());
   } else {
@@ -2530,16 +2530,16 @@ resolution::Expression* MethodResolver::resolve_expression(ast::Node* node,
       position_node = position_node->as_Sequence()->expressions().last();
     }
     report_error(position_node, error_when_block);
-    result = zone_new<resolution::Error>(node->selection_range(), list_of(result));
+    result = resolution::make<resolution::Error>(node->selection_range(), list_of(result));
   }
   result->ast_node()->attach(node);
   return result;
 }
 
-resolution::Expression* MethodResolver::resolve_statement(ast::Node* node,
+resolution::View<resolution::Expression> MethodResolver::resolve_statement(ast::Node* node,
                                                   const char* error_when_block) {
   resolution::Origin origin(node);
-  resolution::Node* ir_node;
+  resolution::View<resolution::Node> ir_node;
   if (is_assignment(node)) {
     ir_node = _assign(node->as_Binary());
   } else if (is_definition(node)) {
@@ -2556,22 +2556,22 @@ resolution::Expression* MethodResolver::resolve_statement(ast::Node* node,
       position_node = position_node->as_Sequence()->expressions().last();
     }
     report_error(position_node, error_when_block);
-    result = zone_new<resolution::Error>(node->selection_range(), list_of(result));
+    result = resolution::make<resolution::Error>(node->selection_range(), list_of(result));
   }
   result->ast_node()->attach(node);
   return result;
 }
 
-resolution::Expression* MethodResolver::resolve_error(ast::Node* node) {
+resolution::View<resolution::Expression> MethodResolver::resolve_error(ast::Node* node) {
   // Delimit the node as if it was enclosed in a sequence.
   LocalScope scope(scope_);
   scope_ = &scope;
   auto expression = resolve_statement(node, null);
   scope_ = scope.outer();
-  return zone_new<resolution::Sequence>(list_of(expression), node->selection_range());
+  return resolution::make<resolution::Sequence>(list_of(expression), node->selection_range());
 }
 
-void MethodResolver::_handle_lsp_call_dot(ast::Dot* ast_dot, resolution::Expression* ir_receiver) {
+void MethodResolver::_handle_lsp_call_dot(ast::Dot* ast_dot, resolution::View<resolution::Expression> ir_receiver) {
   ASSERT(!scope_->is_prefixed_identifier(ast_dot));
   ASSERT(!scope_->is_static_identifier(ast_dot));
   // We are not handling virtual call completions here.
@@ -2595,7 +2595,7 @@ void MethodResolver::_handle_lsp_call_dot(ast::Dot* ast_dot, resolution::Express
     auto call_constructor = ir_receiver->as_CallConstructor();
     // The selector doesn't resolve to a static target (otherwise we wouldn't be here), so
     // no need to try to find candidates.
-    List<resolution::Node*> candidates;
+    List<resolution::View<resolution::Node>> candidates;
     lsp_->selection_handler()->call_class(ast_dot,
                                           call_constructor->klass(),
                                           null,
@@ -2617,7 +2617,7 @@ void MethodResolver::_handle_lsp_call_dot(ast::Dot* ast_dot, resolution::Express
     if (class_entry.is_class()) {
       // The selector doesn't resolve to a static target (otherwise we wouldn't be here), so
       // no need to try to find candidates.
-      List<resolution::Node*> candidates;
+      List<resolution::View<resolution::Node>> candidates;
       lsp_->selection_handler()->call_class(ast_dot,
                                             class_entry.klass(),
                                             null,
@@ -2631,8 +2631,8 @@ void MethodResolver::_handle_lsp_call_dot(ast::Dot* ast_dot, resolution::Express
       UnorderedSet<ModuleScope*> visited;
       auto resolved = prefix->lookup(name, &visited);
 
-      resolution::Node* resolved_node = null;
-      List<resolution::Node*> candidates;
+      resolution::View<resolution::Node> resolved_node = null;
+      List<resolution::View<resolution::Node>> candidates;
       if (resolved.kind() == ResolutionEntry::NODES) {
         if (!resolved.nodes().is_empty()) {
           resolved_node = resolved.nodes().first();
@@ -2655,8 +2655,8 @@ void MethodResolver::_handle_lsp_call_dot(ast::Dot* ast_dot, resolution::Express
 static bool contains_lsp_selection(ast::Node* node);
 
 void MethodResolver::_handle_lsp_call_identifier(ast::Node* ast_target,
-                                                 resolution::Node* ir_target1,
-                                                 resolution::Node* ir_target2) {
+                                                 resolution::View<resolution::Node> ir_target1,
+                                                 resolution::View<resolution::Node> ir_target2) {
   ASSERT(contains_lsp_selection(ast_target));
 
   auto candidates = _compute_target_candidates(ast_target, scope());
@@ -2689,7 +2689,7 @@ void MethodResolver::_handle_lsp_call_identifier(ast::Node* ast_target,
     } else {
       class_entry = scope_->lookup_prefixed(receiver);
     }
-    resolution::Class* ir_class = class_entry.klass();
+    resolution::View<resolution::Class> ir_class = class_entry.klass();
     if (ir_class != null &&
         (ast_dot->receiver()->is_LspSelection() ||
          (ast_dot->receiver()->is_Dot() && ast_dot->receiver()->as_Dot()->name()->is_LspSelection()))) {
@@ -2764,7 +2764,7 @@ void MethodResolver::_visit_potential_call_identifier(ast::Node* ast_target,
         name = ir_target->as_ReferenceGlobal()->target()->name().c_str();
       }
       report_error(ast_target, "Can't invoke %s variable '%s'", kind, name);
-      push(zone_new<resolution::Error>(ast_target->selection_range(), call_builder.arguments()));
+      push(resolution::make<resolution::Error>(ast_target->selection_range(), call_builder.arguments()));
     }
   } else if (ir_target->is_ReferenceMethod()) {
     auto ref = ir_target->as_ReferenceMethod();
@@ -2788,7 +2788,7 @@ void MethodResolver::_visit_potential_call_identifier(ast::Node* ast_target,
       }
       push(call_builder.call_constructor(ref));
     } else if (ref->target()->is_instance()) {
-      auto ir_dot = zone_new<resolution::Dot>(_this_ref(ast_target->selection_range()), ref->target()->name());
+      auto ir_dot = resolution::make<resolution::Dot>(_this_ref(ast_target->selection_range()), ref->target()->name());
       push(call_builder.call_instance(ir_dot));
     } else if (ast_target->is_Identifier() &&
                 ast_target->as_Identifier()->data() == Token::symbol(Token::AZZERT) &&
@@ -2797,7 +2797,7 @@ void MethodResolver::_visit_potential_call_identifier(ast::Node* ast_target,
       // assert is used with wrong arguments.
       // We do allow direct calls to `_assert` which is why we check for the token `assert`.
       ASSERT(ref->target()->name() == Symbols::assert_);
-      push(zone_new<resolution::LiteralNull>(ast_target->selection_range()));
+      push(resolution::make<resolution::LiteralNull>(ast_target->selection_range()));
     } else {
       push(call_builder.call_static(ref));
     }
@@ -2840,7 +2840,7 @@ void MethodResolver::_visit_potential_call_dot(ast::Dot* ast_dot,
                     candidates.name.c_str(),
                     ast_dot->name()->data().c_str());
       }
-      push(zone_new<resolution::Error>(ast_dot->selection_range(), call_builder.arguments()));
+      push(resolution::make<resolution::Error>(ast_dot->selection_range(), call_builder.arguments()));
       return;
     }
   }
@@ -2855,32 +2855,32 @@ void MethodResolver::_visit_potential_call_dot(ast::Dot* ast_dot,
   if (receiver->is_block() && selector == Symbols::call) {
     if (call_builder.has_block_arguments()) {
       report_error(ast_dot, "Can't invoke a block with a block argument");
-      push(zone_new<resolution::Error>(ast_dot->selection_range(), call_builder.arguments()));
+      push(resolution::make<resolution::Error>(ast_dot->selection_range(), call_builder.arguments()));
     } else if (call_builder.has_named_arguments()) {
       report_error(ast_dot, "Can't invoke a block with a named argument");
-      push(zone_new<resolution::Error>(ast_dot->selection_range(), call_builder.arguments()));
+      push(resolution::make<resolution::Error>(ast_dot->selection_range(), call_builder.arguments()));
     } else {
       push(call_builder.call_block(receiver));
     }
   } else if (!selector.is_valid()) {
     ASSERT(diagnostics()->encountered_error());
-    ListBuilder<resolution::Expression*> nested;
+    ListBuilder<resolution::View<resolution::Expression>> nested;
     nested.add(receiver);
     nested.add(call_builder.arguments());
-    push(zone_new<resolution::Error>(ast_dot->name()->selection_range(), nested.build()));
+    push(resolution::make<resolution::Error>(ast_dot->name()->selection_range(), nested.build()));
   } else if (receiver->is_block()) {
     report_error(ast_dot, "Can't invoke %s on a block", selector.c_str());
-    push(zone_new<resolution::Error>(ast_dot->selection_range(), call_builder.arguments()));
+    push(resolution::make<resolution::Error>(ast_dot->selection_range(), call_builder.arguments()));
   } else if (is_reserved_identifier(selector)) {
     report_error(ast_dot->name(), "Invalid member name '%s'", selector.c_str());
-    push(zone_new<resolution::Error>(ast_dot->selection_range(), call_builder.arguments()));
+    push(resolution::make<resolution::Error>(ast_dot->selection_range(), call_builder.arguments()));
   } else {
-    resolution::Dot* ir_dot;
+    resolution::View<resolution::Dot> ir_dot;
     if (ast_dot->name()->is_LspSelection() || named_lsp_selection != null) {
       Symbol lsp_name = named_lsp_selection == null ? Symbol::invalid() : named_lsp_selection->data();
-      ir_dot = zone_new<resolution::LspSelectionDot>(receiver, selector, lsp_name);
+      ir_dot = resolution::make<resolution::LspSelectionDot>(receiver, selector, lsp_name);
     } else {
-      ir_dot = zone_new<resolution::Dot>(receiver, selector);
+      ir_dot = resolution::make<resolution::Dot>(receiver, selector);
     }
     push(call_builder.call_instance(ir_dot, ast_dot->name()->selection_range()));
   }
@@ -2890,14 +2890,14 @@ void MethodResolver::_visit_potential_call_index(ast::Node* ast_target,
                                                  ResolutionCallBuilder& call_builder) {
   auto receiver = resolve_expression(ast_target,
                                      "Can't use the index operator on a block");
-  push(call_builder.call_instance(zone_new<resolution::Dot>(receiver, Symbols::index)));
+  push(call_builder.call_instance(resolution::make<resolution::Dot>(receiver, Symbols::index)));
 }
 
 void MethodResolver::_visit_potential_call_index_slice(ast::Node* ast_target,
                                                        ResolutionCallBuilder& call_builder) {
   auto receiver = resolve_expression(ast_target,
                                      "Can't use the slice operator on a block");
-  push(call_builder.call_instance(zone_new<resolution::Dot>(receiver, Symbols::index_slice)));
+  push(call_builder.call_instance(resolution::make<resolution::Dot>(receiver, Symbols::index_slice)));
 }
 
 void MethodResolver::_visit_potential_call_super(ast::Node* ast_target,
@@ -2986,7 +2986,7 @@ void MethodResolver::_visit_potential_call_super(ast::Node* ast_target,
           lsp_->selection_handler()->call_static(ast_target->as_Dot()->receiver(),
                                                  null,
                                                  null,
-                                                 List<resolution::Node*>(),
+                                                 List<resolution::View<resolution::Node>>(),
                                                  scope(),
                                                  method_);
         } else if (named_lsp_selection != null) {
@@ -3014,21 +3014,21 @@ void MethodResolver::_visit_potential_call_super(ast::Node* ast_target,
     case CONSTRUCTOR_LIMBO_INSTANCE:
       report_error(ast_target,
                   "Only one super call at the top-level of a constructor is allowed");
-      push(zone_new<resolution::Error>(ast_target->selection_range(), call_builder.arguments()));
+      push(resolution::make<resolution::Error>(ast_target->selection_range(), call_builder.arguments()));
       break;
     case CONSTRUCTOR_LIMBO_STATIC:
       report_error(ast_target,
                   "Super constructor calls must be at the top-level");
-      push(zone_new<resolution::Error>(ast_target->selection_range(), call_builder.arguments()));
+      push(resolution::make<resolution::Error>(ast_target->selection_range(), call_builder.arguments()));
       break;
     case FIELD:
       report_error(ast_target, "Can't access 'super' in field initializers");
-      push(zone_new<resolution::Error>(ast_target->selection_range(), call_builder.arguments()));
+      push(resolution::make<resolution::Error>(ast_target->selection_range(), call_builder.arguments()));
       break;
     case STATIC:
       auto kind = method_->is_factory() ? "factory" : "static";
       report_error(ast_target, "Can't access 'super' in %s method", kind);
-      push(zone_new<resolution::Error>(ast_target->selection_range(), call_builder.arguments()));
+      push(resolution::make<resolution::Error>(ast_target->selection_range(), call_builder.arguments()));
       break;
   }
 }
@@ -3109,7 +3109,7 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
   ResolutionCallBuilder call_builder(range);
   for (auto argument : ast_arguments) {
     Symbol name = Symbol::invalid();
-    resolution::Expression* ir_argument = null;
+    resolution::View<resolution::Expression> ir_argument = null;
     if (argument->is_NamedArgument()) {
       has_named_arguments = true;
       auto named = argument->as_NamedArgument();
@@ -3119,7 +3119,7 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
       name = named->name()->data();
       argument = named->expression();
       if (argument == null) {
-        ir_argument = zone_new<resolution::LiteralBoolean>(!named->inverted(), named->selection_range());
+        ir_argument = resolution::make<resolution::LiteralBoolean>(!named->inverted(), named->selection_range());
       } else {
         ASSERT(!named->inverted() || diagnostics()->encountered_error());
       }
@@ -3201,10 +3201,10 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
                                   named_lsp_selection);
     } else {
       report_error(ast_target, "Can't call result of evaluating expression");
-      ListBuilder<resolution::Expression*> all_ir_nodes;
+      ListBuilder<resolution::View<resolution::Expression>> all_ir_nodes;
       all_ir_nodes.add(resolve_error(ast_target));
       all_ir_nodes.add(call_builder.arguments());
-      push(zone_new<resolution::Error>(ast_target->selection_range(), all_ir_nodes.build()));
+      push(resolution::make<resolution::Error>(ast_target->selection_range(), all_ir_nodes.build()));
     }
   }
 
@@ -3218,7 +3218,7 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
   bool is_prefixed_call = ast_target->is_Dot() && scope_->is_prefixed_identifier(ast_target);
   if (ir_to_ast_map_ != null && (has_named_arguments || is_prefixed_call) &&
       !stack_.empty() && potential_call->is_Call()) {
-    auto* ir_node = stack_.back();
+    auto ir_node = stack_.back();
     // When block or lambda arguments are present, the call builder hoists
     // them into temporaries and wraps the call in an resolution::Sequence.  The
     // rename visitor traverses the expression tree and encounters the
@@ -3235,7 +3235,7 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
 }
 
 void MethodResolver::visit_Error(ast::Error* node) {
-  push(zone_new<resolution::Error>(node->selection_range()));
+  push(resolution::make<resolution::Error>(node->selection_range()));
 }
 
 void MethodResolver::visit_Call(ast::Call* node) {
@@ -3305,17 +3305,17 @@ void MethodResolver::visit_labeled_break_continue(ast::BreakContinue* node) {
   } else if (crosses_lambda_boundary) {
     report_error(node->label(), "Can't return out of lambda");
   }
-  resolution::Expression* return_value = null;
+  resolution::View<resolution::Expression> return_value = null;
   if (node->value()) {
     return_value = resolve_expression(node->value(), "Can't return a block");
   } else {
-    return_value = zone_new<resolution::LiteralNull>(node->selection_range());
+    return_value = resolution::make<resolution::LiteralNull>(node->selection_range());
   }
   if (label_index == -1) {
-    push(zone_new<resolution::Error>(node->selection_range(), list_of(return_value)));
+    push(resolution::make<resolution::Error>(node->selection_range(), list_of(return_value)));
   } else {
     int return_depth = break_continue_label_stack_.size() - 1 - label_index;
-    push(zone_new<resolution::Return>(return_value, return_depth, node->selection_range()));
+    push(resolution::make<resolution::Return>(return_value, return_depth, node->selection_range()));
   }
 }
 
@@ -3328,15 +3328,15 @@ void MethodResolver::visit_Return(ast::Return* node) {
                                 "Can't return from within a %s initializer",
                                 kind);
     if (node->value() == null) {
-      push(zone_new<resolution::Error>(node->selection_range()));
+      push(resolution::make<resolution::Error>(node->selection_range()));
     } else {
       auto value = resolve_expression(node->value(), null, true);
-      push(zone_new<resolution::Error>(node->selection_range(), list_of(value)));
+      push(resolution::make<resolution::Error>(node->selection_range(), list_of(value)));
     }
     return;
   }
 
-  resolution::Expression* return_value = null;
+  resolution::View<resolution::Expression> return_value = null;
   if (node->value() != null) {
     if (method_->return_type().is_none()) {
       diagnostics()->report_warning(node->selection_range(),
@@ -3347,24 +3347,24 @@ void MethodResolver::visit_Return(ast::Return* node) {
     if (!method_->return_type().is_none() &&
         ir_to_ast_map_->at(method_)->as_Method()->return_type() != null) {
       diagnostics()->report_warning(node->selection_range(), "Missing return value");
-      return_value = zone_new<resolution::LiteralUndefined>(node->selection_range());
+      return_value = resolution::make<resolution::LiteralUndefined>(node->selection_range());
     } else {
-      return_value = zone_new<resolution::LiteralNull>(node->selection_range());
+      return_value = resolution::make<resolution::LiteralNull>(node->selection_range());
     }
   }
   if (current_lambda_ != null) {
     report_error(node, "Can't explicitly return from within a lambda");
-    push(zone_new<resolution::Error>(node->selection_range(), list_of(return_value)));
+    push(resolution::make<resolution::Error>(node->selection_range(), list_of(return_value)));
   } else {
     auto return_type = method_->return_type();
     if (return_type.is_class()) {
-      return_value = zone_new<resolution::Typecheck>(resolution::Typecheck::RETURN_AS_CHECK,
+      return_value = resolution::make<resolution::Typecheck>(resolution::Typecheck::RETURN_AS_CHECK,
                                         return_value,
                                         return_type,
                                         return_type.klass()->name(),
                                         node->selection_range());
     }
-    push(zone_new<resolution::Return>(return_value, false, node->selection_range()));
+    push(resolution::make<resolution::Return>(return_value, false, node->selection_range()));
   }
 }
 
@@ -3390,7 +3390,7 @@ void MethodResolver::visit_literal_this(ast::Identifier* node) {
   switch (resolution_mode_) {
     case CONSTRUCTOR_STATIC:
       report_error(node, "Can't access 'this' before a super call in the constructor");
-      push(zone_new<resolution::Error>(node->selection_range()));
+      push(resolution::make<resolution::Error>(node->selection_range()));
       return;
 
     case CONSTRUCTOR_LIMBO_STATIC:
@@ -3400,7 +3400,7 @@ void MethodResolver::visit_literal_this(ast::Identifier* node) {
 
     case FIELD:
       report_error(node, "Can't access 'this' in a field initializer");
-      push(zone_new<resolution::Error>(node->selection_range()));
+      push(resolution::make<resolution::Error>(node->selection_range()));
       return;
 
     case INSTANCE:
@@ -3411,7 +3411,7 @@ void MethodResolver::visit_literal_this(ast::Identifier* node) {
 
     case STATIC:
       report_error(node, "Can't access 'this' in static method");
-      push(zone_new<resolution::Error>(node->selection_range()));
+      push(resolution::make<resolution::Error>(node->selection_range()));
       return;
 
     case CONSTRUCTOR_SUPER:
@@ -3420,27 +3420,27 @@ void MethodResolver::visit_literal_this(ast::Identifier* node) {
 
   auto this_lookup = lookup(this_identifier());
   ASSERT(this_lookup.entry.is_single());
-  push (zone_new<resolution::ReferenceLocal>(this_lookup.entry.single()->as_Local(),
+  push (resolution::make<resolution::ReferenceLocal>(this_lookup.entry.single()->as_Local(),
                                 this_lookup.block_depth,
                                 node->selection_range()));
 }
 
-resolution::AssignmentLocal* MethodResolver::_typed_assign_local(resolution::Local* local,
+resolution::View<resolution::AssignmentLocal> MethodResolver::_typed_assign_local(resolution::View<resolution::Local> local,
                                                          int block_depth,
-                                                         resolution::Expression* value,
+                                                         resolution::View<resolution::Expression> value,
                                                          Source::Range range) {
   if (local->has_explicit_type() && local->type().is_class()) {
     auto type = local->type();
-    value = zone_new<resolution::Typecheck>(resolution::Typecheck::LOCAL_AS_CHECK,
+    value = resolution::make<resolution::Typecheck>(resolution::Typecheck::LOCAL_AS_CHECK,
                                value,
                                type,
                                type.klass()->name(),
                                range);
   }
-  return zone_new<resolution::AssignmentLocal>(local, block_depth, value, range);
+  return resolution::make<resolution::AssignmentLocal>(local, block_depth, value, range);
 }
 
-resolution::Expression* MethodResolver::_as_or_is(ast::Binary* node) {
+resolution::View<resolution::Expression> MethodResolver::_as_or_is(ast::Binary* node) {
   bool is_as = node->kind() == Token::AS;
   const char* error_message = is_as
       ? "Can't cast a block"
@@ -3463,7 +3463,7 @@ resolution::Expression* MethodResolver::_as_or_is(ast::Binary* node) {
   }
 
   auto kind = is_as ? resolution::Typecheck::AS_CHECK : resolution::Typecheck::IS_CHECK;
-  auto ir_check = zone_new<resolution::Typecheck>(kind,
+  auto ir_check = resolution::make<resolution::Typecheck>(kind,
                                      ir_left,
                                      type,
                                      type_name,
@@ -3472,12 +3472,12 @@ resolution::Expression* MethodResolver::_as_or_is(ast::Binary* node) {
   // right-hand side of the is/as expression). This allows the rename
   // pipeline to extract the exact source range of the class name.
   (*ir_to_ast_map_)[ir_check] = ast_right;
-  resolution::Expression* result = ir_check;
-  if (node->kind() == Token::IS_NOT) result = zone_new<resolution::Not>(result, node->selection_range());
+  resolution::View<resolution::Expression> result = ir_check;
+  if (node->kind() == Token::IS_NOT) result = resolution::make<resolution::Not>(result, node->selection_range());
   return result;
 }
 
-resolution::Expression* MethodResolver::_definition_rhs(ast::Expression* node, Symbol name) {
+resolution::View<resolution::Expression> MethodResolver::_definition_rhs(ast::Expression* node, Symbol name) {
   auto right = _without_parenthesis(node);
   if (right->is_Block()) {
     bool has_implicit_it_parameter;
@@ -3492,23 +3492,23 @@ resolution::Expression* MethodResolver::_definition_rhs(ast::Expression* node, S
 // A definition at a bad place, or with a bad identifier.
 // The node will never be added to the scope.
 // Does not always report an error, but always returns an `Error` node.
-resolution::Expression* MethodResolver::_bad_define(ast::Binary* node) {
+resolution::View<resolution::Expression> MethodResolver::_bad_define(ast::Binary* node) {
   if (node->left()->is_Identifier()) {
     auto name = node->left()->as_Identifier()->data();
     auto ir_right = _definition_rhs(node->right(), name);
-    return zone_new<resolution::Error>(node->selection_range(), list_of(ir_right));
+    return resolution::make<resolution::Error>(node->selection_range(), list_of(ir_right));
   } else {
     report_error(node->left(), "Left-hand side of definition must be an identifier");
     auto ir_left = resolve_expression(node->left(), null);
     auto ir_right = _definition_rhs(node->right(), Symbol::invalid());
-    return zone_new<resolution::Error>(node->selection_range(), list_of(ir_left, ir_right));
+    return resolution::make<resolution::Error>(node->selection_range(), list_of(ir_left, ir_right));
   }
 }
 
 // If `ir_right` is not null, then it should be used as the right-hand side
 // without evaluating the [node]'s right node.
-resolution::Expression* MethodResolver::_define(ast::Expression* node,
-                                        resolution::Expression* ir_right) {
+resolution::View<resolution::Expression> MethodResolver::_define(ast::Expression* node,
+                                        resolution::View<resolution::Expression> ir_right) {
   ASSERT(is_definition(node));
   if (node->is_Binary()) {
     // We come here, either because the lhs of the definition isn't an identifier,
@@ -3583,14 +3583,14 @@ resolution::Expression* MethodResolver::_define(ast::Expression* node,
     ir_right = _definition_rhs(ast_declaration->value(), name);
   }
 
-  resolution::Local* local;
+  resolution::View<resolution::Local> local;
   if (ir_right->is_block()) {
     if (ir_right->is_Code()) {
-      local = zone_new<resolution::Block>(name, ast_declaration->name()->selection_range());
+      local = resolution::make<resolution::Block>(name, ast_declaration->name()->selection_range());
     } else {
       // An alias of an existing block. The slot holds a block reference
       //   (not the block's method), so it must not be loaded with LOAD_BLOCK.
-      local = zone_new<resolution::Local>(name,
+      local = resolution::make<resolution::Local>(name,
                                   true,  // Final.
                                   true,  // Block.
                                   ast_declaration->name()->selection_range());
@@ -3600,14 +3600,14 @@ resolution::Expression* MethodResolver::_define(ast::Expression* node,
                    "Can't assign block to a typed local");
     }
   } else {
-    local = zone_new<resolution::Local>(name,
+    local = resolution::make<resolution::Local>(name,
                            ast_declaration->kind() == Token::DEFINE_FINAL,
                            false,  // Not a block.
                            type,
                            ast_declaration->name()->selection_range());
     if (type.is_valid() && !type.is_any() && !ir_right->is_LiteralUndefined()) {
       ASSERT(type.is_class());
-      ir_right = zone_new<resolution::Typecheck>(resolution::Typecheck::LOCAL_AS_CHECK,
+      ir_right = resolution::make<resolution::Typecheck>(resolution::Typecheck::LOCAL_AS_CHECK,
                                     ir_right,
                                     type,
                                     type.klass()->name(),
@@ -3621,31 +3621,31 @@ resolution::Expression* MethodResolver::_define(ast::Expression* node,
     lsp_->selection_handler()->definition(local, ast_declaration->name()->selection_range());
   }
   scope()->add(name, ResolutionEntry(local));
-  return zone_new<resolution::AssignmentDefine>(local, ir_right, ast_declaration->selection_range());
+  return resolution::make<resolution::AssignmentDefine>(local, ir_right, ast_declaration->selection_range());
 }
 
-resolution::Expression* MethodResolver::_assign(ast::Binary* node, bool is_postfix) {
-  ListBuilder<resolution::Expression*> expressions;
+resolution::View<resolution::Expression> MethodResolver::_assign(ast::Binary* node, bool is_postfix) {
+  ListBuilder<resolution::View<resolution::Expression>> expressions;
 
-  CreateTemp create_temp = [&expressions, node](resolution::Expression* value) mutable {
-    auto temporary = zone_new<resolution::Local>(Symbol::synthetic("<tmp>"),
+  CreateTemp create_temp = [&expressions, node](resolution::View<resolution::Expression> value) mutable {
+    auto temporary = resolution::make<resolution::Local>(Symbol::synthetic("<tmp>"),
                                     true,  // Final.
                                     false, // Not a block.
                                     Source::Range::invalid());
-    auto define = zone_new<resolution::AssignmentDefine>(temporary, value, node->selection_range());
+    auto define = resolution::make<resolution::AssignmentDefine>(temporary, value, node->selection_range());
     expressions.add(define);
     return temporary;
   };
 
-  resolution::Local* old_value_tmp = null;
-  StoreOldValue store_old = [&](resolution::Expression* value) mutable {
+  resolution::View<resolution::Local> old_value_tmp = null;
+  StoreOldValue store_old = [&](resolution::View<resolution::Expression> value) mutable {
     if (!is_postfix) return value;
     old_value_tmp = create_temp(value);
-    resolution::Expression* result = zone_new<resolution::ReferenceLocal>(old_value_tmp, 0, node->selection_range());
+    resolution::View<resolution::Expression> result = resolution::make<resolution::ReferenceLocal>(old_value_tmp, 0, node->selection_range());
     return result;
   };
 
-  resolution::Expression* ir_assignment = null;
+  resolution::View<resolution::Expression> ir_assignment = null;
   if (node->left()->is_Identifier() ||
       scope()->is_prefixed_identifier(node->left()) ||
       scope()->is_static_identifier(node->left())) {
@@ -3655,7 +3655,7 @@ resolution::Expression* MethodResolver::_assign(ast::Binary* node, bool is_postf
   } else if (node->left()->is_Index()) {
     ir_assignment = _assign_index(node, create_temp, store_old);
   } else {
-    resolution::Expression* ir_left = null;
+    resolution::View<resolution::Expression> ir_left = null;
     if (node->left()->is_LiteralBoolean() ||
         node->left()->is_LiteralCharacter() ||
         node->left()->is_LiteralFloat() ||
@@ -3678,9 +3678,9 @@ resolution::Expression* MethodResolver::_assign(ast::Binary* node, bool is_postf
     }
     auto ir_right = resolve_expression(node->right(), null, true);
     if (ir_left == null) {
-      return zone_new<resolution::Error>(node->selection_range(), list_of(ir_right));
+      return resolution::make<resolution::Error>(node->selection_range(), list_of(ir_right));
     } else {
-      return zone_new<resolution::Error>(node->selection_range(), list_of(ir_left, ir_right));
+      return resolution::make<resolution::Error>(node->selection_range(), list_of(ir_left, ir_right));
     }
   }
 
@@ -3691,16 +3691,16 @@ resolution::Expression* MethodResolver::_assign(ast::Binary* node, bool is_postf
     if (is_postfix) {
       if (old_value_tmp == null) {
         ASSERT(diagnostics()->encountered_error());
-        expressions.add(zone_new<resolution::Error>(node->selection_range()));
+        expressions.add(resolution::make<resolution::Error>(node->selection_range()));
       } else {
-        expressions.add(zone_new<resolution::ReferenceLocal>(old_value_tmp, 0, node->left()->selection_range()));
+        expressions.add(resolution::make<resolution::ReferenceLocal>(old_value_tmp, 0, node->left()->selection_range()));
       }
     }
-    return zone_new<resolution::Sequence>(expressions.build(), node->selection_range());
+    return resolution::make<resolution::Sequence>(expressions.build(), node->selection_range());
   }
 }
 
-resolution::Expression* MethodResolver::_potentially_store_field(ast::Node* node,
+resolution::View<resolution::Expression> MethodResolver::_potentially_store_field(ast::Node* node,
                                                          Symbol name,
                                                          bool lookup_class_scope,
                                                          ast::Expression* value,
@@ -3779,10 +3779,10 @@ resolution::Expression* MethodResolver::_potentially_store_field(ast::Node* node
       }
     }
 
-    resolution::Expression* ir_value;
+    resolution::View<resolution::Expression> ir_value;
     if (is_compound) {
       auto ir_this = _this_ref(node->selection_range(), true);  // Don't care for the resolution-mode.
-      auto old_value = store_old(zone_new<resolution::FieldLoad>(ir_this, field, node->selection_range()));
+      auto old_value = store_old(resolution::make<resolution::FieldLoad>(ir_this, field, node->selection_range()));
       ir_value = _binary_operator(node->as_Binary(), old_value);
     } else {
       ir_value = resolve_expression(value, "Can't store a block in a field", true);
@@ -3790,13 +3790,13 @@ resolution::Expression* MethodResolver::_potentially_store_field(ast::Node* node
 
     auto ir_this = _this_ref(node->selection_range(), true);  // Don't care for the resolution-mode.
     if (field->type().is_class()) {
-      ir_value = zone_new<resolution::Typecheck>(resolution::Typecheck::FIELD_AS_CHECK,
+      ir_value = resolution::make<resolution::Typecheck>(resolution::Typecheck::FIELD_AS_CHECK,
                                     ir_value,
                                     field->type(),
                                     field->type().klass()->name(),
                                     node->selection_range());
     }
-    auto field_store = zone_new<resolution::FieldStore>(ir_this, field, ir_value, node->selection_range());
+    auto field_store = resolution::make<resolution::FieldStore>(ir_this, field, ir_value, node->selection_range());
     if (field->is_final() &&
        (resolution_mode_ == CONSTRUCTOR_LIMBO_STATIC ||
         resolution_mode_ == CONSTRUCTOR_LIMBO_INSTANCE)) {
@@ -3808,7 +3808,7 @@ resolution::Expression* MethodResolver::_potentially_store_field(ast::Node* node
   return null;
 }
 
-resolution::Expression* MethodResolver::_potentially_load_field(Symbol name,
+resolution::View<resolution::Expression> MethodResolver::_potentially_load_field(Symbol name,
                                                         bool lookup_class_scope,
                                                         Source::Range range) {
   ASSERT(resolution_mode_ == CONSTRUCTOR_STATIC ||
@@ -3840,12 +3840,12 @@ resolution::Expression* MethodResolver::_potentially_load_field(Symbol name,
 
     auto field = candidate->as_FieldStub()->field();
     auto ir_this = _this_ref(range, true);  // Don't care for the resolution-mode.
-    return zone_new<resolution::FieldLoad>(ir_this, field, range);
+    return resolution::make<resolution::FieldLoad>(ir_this, field, range);
   }
   return null;
 }
 
-resolution::Expression* MethodResolver::_assign_dot(ast::Binary* node,
+resolution::View<resolution::Expression> MethodResolver::_assign_dot(ast::Binary* node,
                                             CreateTemp& create_temp,
                                             StoreOldValue& store_old) {
   bool is_compound = node->kind() != Token::ASSIGN;
@@ -3886,12 +3886,12 @@ resolution::Expression* MethodResolver::_assign_dot(ast::Binary* node,
     }
   }
 
-  auto create_dot = [&](resolution::Expression* receiver, Symbol selector) {
+  auto create_dot = [&](resolution::View<resolution::Expression> receiver, Symbol selector) {
     if (dot->name()->is_LspSelection()) {
-      resolution::Dot* result = zone_new<resolution::LspSelectionDot>(receiver, selector, Symbol::invalid());
+      resolution::View<resolution::Dot> result = resolution::make<resolution::LspSelectionDot>(receiver, selector, Symbol::invalid());
       return result;
     } else {
-      return zone_new<resolution::Dot>(receiver, selector);
+      return resolution::make<resolution::Dot>(receiver, selector);
     }
   };
 
@@ -3904,7 +3904,7 @@ resolution::Expression* MethodResolver::_assign_dot(ast::Binary* node,
     auto lhs = create_dot(ir_receiver, dot->name()->data());
     auto ir_rhs = resolve_expression(node->right(), "Can't assign block to instance member", true);
     auto args_list = list_of(ir_rhs);
-    auto* call = zone_new<resolution::CallVirtual>(lhs, CallShape::for_instance_setter(), args_list, node->selection_range());
+    auto call = resolution::make<resolution::CallVirtual>(lhs, CallShape::for_instance_setter(), args_list, node->selection_range());
     // Map the setter CallVirtual to the AST name identifier so that the
     // LSP rename visitor can retrieve the field name's source range (e.g.,
     // "is-paused" in "s.is-paused = value") instead of the "=" operator.
@@ -3915,9 +3915,9 @@ resolution::Expression* MethodResolver::_assign_dot(ast::Binary* node,
   Symbol selector = dot->name()->data();
 
   auto tmp = create_temp(ir_receiver);
-  auto no_args = List<resolution::Expression*>();
-  auto* getter_call = zone_new<resolution::CallVirtual>(
-      create_dot(zone_new<resolution::ReferenceLocal>(tmp, 0, dot->receiver()->selection_range()),
+  auto no_args = List<resolution::View<resolution::Expression>>();
+  auto getter_call = resolution::make<resolution::CallVirtual>(
+      create_dot(resolution::make<resolution::ReferenceLocal>(tmp, 0, dot->receiver()->selection_range()),
                  selector),
       CallShape::for_instance_call_no_named(no_args),
       no_args,
@@ -3931,8 +3931,8 @@ resolution::Expression* MethodResolver::_assign_dot(ast::Binary* node,
   ASSERT(!new_value->is_block());
   auto new_value_args = list_of(new_value);
   // Note that we allow to assign blocks to fields, since getters may invoke them.
-  auto* setter_call = zone_new<resolution::CallVirtual>(
-      create_dot(zone_new<resolution::ReferenceLocal>(tmp, 0, dot->receiver()->selection_range()),
+  auto setter_call = resolution::make<resolution::CallVirtual>(
+      create_dot(resolution::make<resolution::ReferenceLocal>(tmp, 0, dot->receiver()->selection_range()),
                  selector),
       CallShape::for_instance_setter(),
       new_value_args,
@@ -3941,15 +3941,15 @@ resolution::Expression* MethodResolver::_assign_dot(ast::Binary* node,
   return setter_call;
 }
 
-resolution::Expression* MethodResolver::_assign_index(ast::Binary* node,
+resolution::View<resolution::Expression> MethodResolver::_assign_index(ast::Binary* node,
                                               CreateTemp& create_temp,
                                               StoreOldValue& store_old) {
   bool is_compound = node->kind() != Token::ASSIGN;
   auto index = node->left()->as_Index();
   auto receiver_range = index->receiver()->selection_range();
 
-  resolution::Expression* ir_receiver;
-  ListBuilder<resolution::Expression*> ir_arguments_builder;
+  resolution::View<resolution::Expression> ir_receiver;
+  ListBuilder<resolution::View<resolution::Expression>> ir_arguments_builder;
 
   ir_receiver = resolve_expression(index->receiver(), "Can't use []= operator on a block");
   for (auto argument : index->arguments()) {
@@ -3957,17 +3957,17 @@ resolution::Expression* MethodResolver::_assign_index(ast::Binary* node,
     ir_arguments_builder.add(ir_argument);
   }
 
-  List<resolution::Expression*> ir_arguments;
+  List<resolution::View<resolution::Expression>> ir_arguments;
   if (!is_compound) {
     auto new_value = resolve_expression(node->right(), "Can't use []= with a block value", true);
     ir_arguments_builder.add(new_value);
     ir_arguments = ir_arguments_builder.build();
   } else {
     // The ir_receiver is updated below.
-    resolution::Local* receiver_local = create_temp(ir_receiver);
+    resolution::View<resolution::Local> receiver_local = create_temp(ir_receiver);
 
-    ListBuilder<resolution::Expression*> arguments_builder_read;
-    ListBuilder<resolution::Expression*> arguments_builder_store;
+    ListBuilder<resolution::View<resolution::Expression>> arguments_builder_read;
+    ListBuilder<resolution::View<resolution::Expression>> arguments_builder_store;
     for (auto argument : ir_arguments_builder.build()) {
       if (argument->is_Literal()) {
         arguments_builder_read.add(argument);
@@ -3975,15 +3975,15 @@ resolution::Expression* MethodResolver::_assign_index(ast::Binary* node,
         arguments_builder_store.add(argument);
       } else {
         auto tmp = create_temp(argument);
-        arguments_builder_read.add(zone_new<resolution::ReferenceLocal>(tmp, 0, argument->range()));
-        arguments_builder_store.add(zone_new<resolution::ReferenceLocal>(tmp, 0, argument->range()));
+        arguments_builder_read.add(resolution::make<resolution::ReferenceLocal>(tmp, 0, argument->range()));
+        arguments_builder_store.add(resolution::make<resolution::ReferenceLocal>(tmp, 0, argument->range()));
       }
     }
 
-    auto ir_receiver_read = zone_new<resolution::ReferenceLocal>(receiver_local, 0, receiver_range);
+    auto ir_receiver_read = resolution::make<resolution::ReferenceLocal>(receiver_local, 0, receiver_range);
     auto args_read = arguments_builder_read.build();
     auto old_value = store_old(
-        zone_new<resolution::CallVirtual>(zone_new<resolution::Dot>(ir_receiver_read, Symbols::index),
+        resolution::make<resolution::CallVirtual>(resolution::make<resolution::Dot>(ir_receiver_read, Symbols::index),
                              CallShape::for_instance_call_no_named(args_read),
                              args_read,
                              node->selection_range()));
@@ -3991,30 +3991,30 @@ resolution::Expression* MethodResolver::_assign_index(ast::Binary* node,
     auto new_value = _binary_operator(node, old_value);
     arguments_builder_store.add(new_value);
 
-    ir_receiver = zone_new<resolution::ReferenceLocal>(receiver_local, 0, receiver_range);
+    ir_receiver = resolution::make<resolution::ReferenceLocal>(receiver_local, 0, receiver_range);
     ir_arguments = arguments_builder_store.build();
   }
 
-  return zone_new<resolution::CallVirtual>(zone_new<resolution::Dot>(ir_receiver, Symbols::index_put),
+  return resolution::make<resolution::CallVirtual>(resolution::make<resolution::Dot>(ir_receiver, Symbols::index_put),
                               CallShape::for_instance_call_no_named(ir_arguments),
                               ir_arguments,
                               node->selection_range());
 }
 
-resolution::Expression* MethodResolver::_assign_instance_member(ast::Binary* node,
+resolution::View<resolution::Expression> MethodResolver::_assign_instance_member(ast::Binary* node,
                                                         Symbol selector,
                                                         StoreOldValue& store_old) {
   bool is_compound = node->kind() != Token::ASSIGN;
 
   auto create_receiver = [&]() {
-    return zone_new<resolution::Dot>(_this_ref(node->left()->selection_range()), selector);
+    return resolution::make<resolution::Dot>(_this_ref(node->left()->selection_range()), selector);
   };
 
-  resolution::Expression* ir_value;
+  resolution::View<resolution::Expression> ir_value;
   if (is_compound) {
-    auto no_args = List<resolution::Expression*>();
+    auto no_args = List<resolution::View<resolution::Expression>>();
     auto old_value = store_old(
-        zone_new<resolution::CallVirtual>(create_receiver(),
+        resolution::make<resolution::CallVirtual>(create_receiver(),
                              CallShape::for_instance_call_no_named(no_args),
                              no_args,
                              node->selection_range()));
@@ -4026,7 +4026,7 @@ resolution::Expression* MethodResolver::_assign_instance_member(ast::Binary* nod
     ir_value = resolve_expression(node->right(), "Can't assign block to instance member", true);
   }
   auto new_value_args = list_of(ir_value);
-  auto* setter_call = zone_new<resolution::CallVirtual>(create_receiver(),
+  auto setter_call = resolution::make<resolution::CallVirtual>(create_receiver(),
                               CallShape::for_instance_setter(),
                               new_value_args,
                               node->selection_range());
@@ -4038,8 +4038,8 @@ resolution::Expression* MethodResolver::_assign_instance_member(ast::Binary* nod
 }
 
 bool MethodResolver::_assign_identifier_resolve_left(ast::Binary* node,
-                                                     resolution::Node** setter_node,
-                                                     resolution::Node** getter_node,
+                                                     resolution::View<resolution::Node>* setter_node,
+                                                     resolution::View<resolution::Node>* getter_node,
                                                      int* block_depth) {
   auto ast_left = node->left();
 
@@ -4113,7 +4113,7 @@ bool MethodResolver::_assign_identifier_resolve_left(ast::Binary* node,
   }
 
   // Start by looking at the first node only.
-  resolution::Node* ir_first_node = candidates.nodes[0];
+  resolution::View<resolution::Node> ir_first_node = candidates.nodes[0];
   if (ir_first_node->is_Local() && ir_first_node->as_Local()->is_block()) {
     report_error(error_position_node, "Can't assign to block variable '%s'", name.c_str());
     return false;
@@ -4195,7 +4195,7 @@ bool MethodResolver::_assign_identifier_resolve_left(ast::Binary* node,
   return true;
 }
 
-resolution::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
+resolution::View<resolution::Expression> MethodResolver::_assign_identifier(ast::Binary* node,
                                                    StoreOldValue& store_old) {
   ASSERT(node->left()->is_Identifier() ||
          scope()->is_prefixed_identifier(node->left()) ||
@@ -4238,8 +4238,8 @@ resolution::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
     }
   }
 
-  resolution::Node* ir_setter_node = null;
-  resolution::Node* ir_getter_node = null;
+  resolution::View<resolution::Node> ir_setter_node = null;
+  resolution::View<resolution::Node> ir_getter_node = null;
   int block_depth;
   bool succeeded = _assign_identifier_resolve_left(node, &ir_setter_node, &ir_getter_node, &block_depth);
 
@@ -4249,7 +4249,7 @@ resolution::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
   }
 
   if (!succeeded) {
-    return zone_new<resolution::Error>(range, list_of(resolve_expression(ast_right, null, true)));
+    return resolution::make<resolution::Error>(range, list_of(resolve_expression(ast_right, null, true)));
   }
 
   bool is_compound = node->kind() != Token::ASSIGN;
@@ -4265,11 +4265,11 @@ resolution::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
 
       case CONSTRUCTOR_STATIC:
         report_error(ast_left, "Can't access instance members before `super` call");
-        return zone_new<resolution::Error>(range, list_of(resolve_expression(ast_right, null, true)));
+        return resolution::make<resolution::Error>(range, list_of(resolve_expression(ast_right, null, true)));
 
       case FIELD:
         report_error(ast_left, "Can't access instance members in field initializers");
-        return zone_new<resolution::Error>(range, list_of(resolve_expression(ast_right, null, true)));
+        return resolution::make<resolution::Error>(range, list_of(resolve_expression(ast_right, null, true)));
 
       case INSTANCE:
       case CONSTRUCTOR_INSTANCE:
@@ -4280,7 +4280,7 @@ resolution::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
       case STATIC: {
         const char* kind = method_->is_factory() ? "factories" : "static contexts";
         report_error(ast_left, "Can't access instance members in %s", kind);
-        return zone_new<resolution::Error>(range, list_of(resolve_expression(ast_right, null, true)));
+        return resolution::make<resolution::Error>(range, list_of(resolve_expression(ast_right, null, true)));
       }
 
       case CONSTRUCTOR_SUPER:
@@ -4293,27 +4293,27 @@ resolution::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
     return _assign_instance_member(node, selector, store_old);
   }
 
-  std::function<resolution::Expression* ()> create_get;
-  std::function<resolution::Expression* (resolution::Expression* value)> create_set;
+  std::function<resolution::View<resolution::Expression> ()> create_get;
+  std::function<resolution::View<resolution::Expression> (resolution::View<resolution::Expression> value)> create_set;
 
   if (ir_setter_node->is_Global()) {
     // Don't use locals here, as the closures in this block capture by reference.
     create_get = [&]() {
-      return zone_new<resolution::ReferenceGlobal>(ir_getter_node->as_Global(), true, ast_left->selection_range());
+      return resolution::make<resolution::ReferenceGlobal>(ir_getter_node->as_Global(), true, ast_left->selection_range());
     };
-    create_set = [&](resolution::Expression* value) {
+    create_set = [&](resolution::View<resolution::Expression> value) {
       // At this point the type of the global might not be set yet.
       // If necessary, a typecheck will be inserted later.
-      auto assignment = zone_new<resolution::AssignmentGlobal>(ir_getter_node->as_Global(), value, range);
+      auto assignment = resolution::make<resolution::AssignmentGlobal>(ir_getter_node->as_Global(), value, range);
       global_assignments_.push_back(assignment);
       return assignment;
     };
   } else if (ir_setter_node->is_Local()) {
     // Don't use locals here, as the closures in this block capture by reference.
     create_get = [&]() {
-      return zone_new<resolution::ReferenceLocal>(ir_getter_node->as_Local(), block_depth, ast_left->selection_range());
+      return resolution::make<resolution::ReferenceLocal>(ir_getter_node->as_Local(), block_depth, ast_left->selection_range());
     };
-    create_set = [&](resolution::Expression* value) {
+    create_set = [&](resolution::View<resolution::Expression> value) {
       return _typed_assign_local(ir_getter_node->as_Local(),
                                  block_depth,
                                  value,
@@ -4329,24 +4329,24 @@ resolution::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
       auto getter_method = ir_getter_node->as_Method();
       ResolutionCallBuilder builder(range);
       if (is_super) builder.add_argument(_this_ref(range), Symbol::invalid());
-      return builder.call_static(zone_new<resolution::ReferenceMethod>(getter_method, range));
+      return builder.call_static(resolution::make<resolution::ReferenceMethod>(getter_method, range));
     };
-    create_set = [&](resolution::Expression* value) {
+    create_set = [&](resolution::View<resolution::Expression> value) {
       auto setter_method = ir_setter_node->as_Method();
       ResolutionCallBuilder builder(range);
       if (is_super) builder.add_argument(_this_ref(range), Symbol::invalid());
       builder.add_argument(value, Symbol::invalid());
-      return builder.call_static(zone_new<resolution::ReferenceMethod>(setter_method, range));
+      return builder.call_static(resolution::make<resolution::ReferenceMethod>(setter_method, range));
     };
   }
 
-  resolution::Expression* ir_value;
+  resolution::View<resolution::Expression> ir_value;
   if (is_compound) {
-    resolution::Expression* old_value = store_old(create_get());
+    resolution::View<resolution::Expression> old_value = store_old(create_get());
     ir_value = _binary_operator(node, old_value);
     if (ir_value->is_block()) {
       report_error(ast_right, "Can't use block value in assignment");
-      ir_value = zone_new<resolution::Error>(ast_right->selection_range(), list_of(ir_value));
+      ir_value = resolution::make<resolution::Error>(ast_right->selection_range(), list_of(ir_value));
     }
   } else {
     ir_value = resolve_expression(ast_right, "Can't use block value in assignment", true);
@@ -4409,9 +4409,9 @@ static bool is_binary_comparison(ast::Node* node) {
   }
 }
 
-resolution::Expression* MethodResolver::_binary_operator(ast::Binary* node,
-                                                 resolution::Expression* ir_left,
-                                                 resolution::Expression* ir_right) {
+resolution::View<resolution::Expression> MethodResolver::_binary_operator(ast::Binary* node,
+                                                 resolution::View<resolution::Expression> ir_left,
+                                                 resolution::View<resolution::Expression> ir_right) {
   if (ir_left == null) {
     ir_left = resolve_expression(node->left(), "Can't use blocks in binary expression");
   }
@@ -4426,7 +4426,7 @@ resolution::Expression* MethodResolver::_binary_operator(ast::Binary* node,
   }
   auto op = Token::symbol(compute_effective_operation(kind));
   auto right_args = list_of(ir_right);
-  auto result = zone_new<resolution::CallVirtual>(zone_new<resolution::Dot>(ir_left, op),
+  auto result = resolution::make<resolution::CallVirtual>(resolution::make<resolution::Dot>(ir_left, op),
                                      CallShape::for_instance_call_no_named(right_args),
                                      right_args,
                                      node->selection_range());
@@ -4443,18 +4443,18 @@ resolution::Expression* MethodResolver::_binary_operator(ast::Binary* node,
       break;
     }
   }
-  if (inverted) return zone_new<resolution::Not>(result, node->selection_range());
+  if (inverted) return resolution::make<resolution::Not>(result, node->selection_range());
   return result;
 }
 
-resolution::Expression* MethodResolver::_binary_comparison_operator(ast::Binary* node,
-                                                            resolution::Local* temporary) {
+resolution::View<resolution::Expression> MethodResolver::_binary_comparison_operator(ast::Binary* node,
+                                                            resolution::View<resolution::Local> temporary) {
   ASSERT(is_binary_comparison(node));
   if (!is_binary_comparison(node->left())) {
     auto ir_left = resolve_expression(node->left(), "Can't use blocks in comparison");
     auto ir_right = resolve_expression(node->right(), "Can't use blocks in comparison");
     if (temporary != null) {
-      ir_right = zone_new<resolution::AssignmentLocal>(temporary, 0, ir_right, node->selection_range());
+      ir_right = resolution::make<resolution::AssignmentLocal>(temporary, 0, ir_right, node->selection_range());
     }
     return _binary_operator(node, ir_left, ir_right);
   }
@@ -4462,7 +4462,7 @@ resolution::Expression* MethodResolver::_binary_comparison_operator(ast::Binary*
   bool outer_most = false;
   if (temporary == null) {
     outer_most = true;
-    temporary = zone_new<resolution::Local>(Symbol::synthetic("<tmp_comp>"),
+    temporary = resolution::make<resolution::Local>(Symbol::synthetic("<tmp_comp>"),
                                false,  // Not final.
                                false,  // Not a block.
                                node->selection_range());
@@ -4470,14 +4470,14 @@ resolution::Expression* MethodResolver::_binary_comparison_operator(ast::Binary*
   auto left_comparison = _binary_comparison_operator(node->left()->as_Binary(), temporary);
 
   // Now do the right comparison using the temporary from the left comparison.
-  auto ir_left = zone_new<resolution::ReferenceLocal>(temporary, 0, node->left()->selection_range());
+  auto ir_left = resolution::make<resolution::ReferenceLocal>(temporary, 0, node->left()->selection_range());
   auto ir_right = resolve_expression(node->right(), "Can't use blocks in comparison");
   if (!outer_most) {
-    ir_right = zone_new<resolution::AssignmentLocal>(temporary, 0, ir_right, node->selection_range());
+    ir_right = resolution::make<resolution::AssignmentLocal>(temporary, 0, ir_right, node->selection_range());
   }
   auto right_comparison = _binary_operator(node, ir_left, ir_right);
 
-  auto binary_and = zone_new<resolution::LogicalBinary>(left_comparison,
+  auto binary_and = resolution::make<resolution::LogicalBinary>(left_comparison,
                                            right_comparison,
                                            resolution::LogicalBinary::AND,
                                            node->selection_range());
@@ -4485,17 +4485,17 @@ resolution::Expression* MethodResolver::_binary_comparison_operator(ast::Binary*
 
   // We need to have the definition of the local outside the left-comparison, as
   // we would otherwise pop the value too early.
-  auto define = zone_new<resolution::AssignmentDefine>(temporary, zone_new<resolution::LiteralUndefined>(node->selection_range()), node->selection_range());
-  return zone_new<resolution::Sequence>(list_of(define, binary_and), node->selection_range());
+  auto define = resolution::make<resolution::AssignmentDefine>(temporary, resolution::make<resolution::LiteralUndefined>(node->selection_range()), node->selection_range());
+  return resolution::make<resolution::Sequence>(list_of(define, binary_and), node->selection_range());
 }
 
-resolution::Expression* MethodResolver::_logical_operator(ast::Binary* node) {
+resolution::View<resolution::Expression> MethodResolver::_logical_operator(ast::Binary* node) {
   auto ir_left = resolve_expression(node->left(), "Can't use blocks in logical expression");
   auto ir_right = resolve_expression(node->right(), "Can't use blocks in logical expression");
   auto op = node->kind() == Token::LOGICAL_AND
       ? resolution::LogicalBinary::AND
       : resolution::LogicalBinary::OR;
-  return zone_new<resolution::LogicalBinary>(ir_left, ir_right, op, node->selection_range());
+  return resolution::make<resolution::LogicalBinary>(ir_left, ir_right, op, node->selection_range());
 }
 
 void MethodResolver::visit_Binary(ast::Binary* node) {
@@ -4582,7 +4582,7 @@ void MethodResolver::visit_Unary(ast::Unary* node) {
     }
 
     case Token::NOT: {
-      push(zone_new<resolution::Not>(resolve_expression(node->expression(), "Can't negate blocks"), node->selection_range()));
+      push(resolution::make<resolution::Not>(resolve_expression(node->expression(), "Can't negate blocks"), node->selection_range()));
       break;
     }
 
@@ -4592,8 +4592,8 @@ void MethodResolver::visit_Unary(ast::Unary* node) {
           ? "Can't minus blocks"
           : "Can't bit-not blocks";
       auto receiver = resolve_expression(node->expression(), error_message);
-      auto no_args = List<resolution::Expression*>();
-      push(zone_new<resolution::CallVirtual>(zone_new<resolution::Dot>(receiver, Token::symbol(node->kind())),
+      auto no_args = List<resolution::View<resolution::Expression>>();
+      push(resolution::make<resolution::CallVirtual>(resolution::make<resolution::Dot>(receiver, Token::symbol(node->kind())),
                                 CallShape::for_instance_call_no_named(no_args),
                                 no_args,
                                 node->selection_range()));
@@ -4606,11 +4606,11 @@ void MethodResolver::visit_Unary(ast::Unary* node) {
 }
 
 void MethodResolver::visit_LiteralNull(ast::LiteralNull* node) {
-  push(zone_new<resolution::LiteralNull>(node->selection_range()));
+  push(resolution::make<resolution::LiteralNull>(node->selection_range()));
 }
 
 void MethodResolver::visit_LiteralUndefined(ast::LiteralUndefined* node) {
-  push(zone_new<resolution::LiteralUndefined>(node->selection_range()));
+  push(resolution::make<resolution::LiteralUndefined>(node->selection_range()));
 }
 
 const char* strip_underscores(const char* str) {
@@ -4663,7 +4663,7 @@ void MethodResolver::visit_LiteralInteger(ast::LiteralInteger* node) {
       if (node->is_negated()) value = -value;
     }
   }
-  push(zone_new<resolution::LiteralInteger>(value, node->selection_range()));
+  push(resolution::make<resolution::LiteralInteger>(value, node->selection_range()));
 }
 
 void MethodResolver::visit_LiteralString(ast::LiteralString* node,
@@ -4691,16 +4691,16 @@ void MethodResolver::visit_LiteralString(ast::LiteralString* node,
     report_error(node, "Invalid string: '%s'\n", content);
     result = "";
   }
-  push(zone_new<resolution::LiteralString>(result, length, node->selection_range()));
+  push(resolution::make<resolution::LiteralString>(result, length, node->selection_range()));
 }
 
-resolution::Expression* MethodResolver::_accumulate_concatenation(resolution::Expression* lhs, resolution::Expression* rhs, Source::Range range) {
+resolution::View<resolution::Expression> MethodResolver::_accumulate_concatenation(resolution::View<resolution::Expression> lhs, resolution::View<resolution::Expression> rhs, Source::Range range) {
   if (lhs == null) return rhs;
   if (rhs == null) return lhs;
   auto op = Token::symbol(compute_effective_operation(Token::ADD));
-  auto dot = zone_new<resolution::Dot>(lhs, op);
+  auto dot = resolution::make<resolution::Dot>(lhs, op);
   auto args = list_of(rhs);
-  auto plus = zone_new<resolution::CallVirtual>(dot,
+  auto plus = resolution::make<resolution::CallVirtual>(dot,
                                    CallShape::for_instance_call_no_named(args),
                                    args,
                                    range);
@@ -4738,14 +4738,14 @@ void MethodResolver::visit_LiteralStringInterpolation(ast::LiteralStringInterpol
     auto left_expression = node->parts()[0];
     auto right_expression = node->parts()[1];
 
-    resolution::Expression* left = null;
+    resolution::View<resolution::Expression> left = null;
     if (left_expression->data().c_str()[0] != '\0') {
       visit_LiteralString(left_expression, min_indentation, true);
       auto ir_node = pop();
       ASSERT(ir_node->is_Expression());
       left = ir_node->as_Expression();
     }
-    resolution::Expression* right = null;
+    resolution::View<resolution::Expression> right = null;
     if (right_expression->data().c_str()[0] != '\0') {
       visit_LiteralString(right_expression, min_indentation, false);
       auto ir_node = pop();
@@ -4757,9 +4757,9 @@ void MethodResolver::visit_LiteralStringInterpolation(ast::LiteralStringInterpol
     auto center = resolve_expression(expression,
                                    "Can't have a block as interpolated entry in a string");
     // Just call stringify.
-    auto dot = zone_new<resolution::Dot>(center, Symbols::stringify);
-    List<resolution::Expression*> no_args;
-    auto stringify = zone_new<resolution::CallVirtual>(dot,
+    auto dot = resolution::make<resolution::Dot>(center, Symbols::stringify);
+    List<resolution::View<resolution::Expression>> no_args;
+    auto stringify = resolution::make<resolution::CallVirtual>(dot,
                                           CallShape::for_instance_call_no_named(no_args),
                                           no_args,
                                           node->selection_range());
@@ -4767,12 +4767,12 @@ void MethodResolver::visit_LiteralStringInterpolation(ast::LiteralStringInterpol
     ASSERT(string_entry.is_class());
     auto string_class = string_entry.klass();
     resolution::Type string_type(string_class);
-    auto stringify_as_string = zone_new<resolution::Typecheck>(resolution::Typecheck::AS_CHECK,
+    auto stringify_as_string = resolution::make<resolution::Typecheck>(resolution::Typecheck::AS_CHECK,
                                                   stringify,
                                                   string_type,
                                                   string_type.klass()->name(),
                                                   center->range());
-    resolution::Expression* accumulator = null;
+    resolution::View<resolution::Expression> accumulator = null;
     accumulator = _accumulate_concatenation(accumulator, left, node->selection_range());
     accumulator = _accumulate_concatenation(accumulator, stringify_as_string, node->selection_range());
     accumulator = _accumulate_concatenation(accumulator, right, node->selection_range());
@@ -4780,7 +4780,7 @@ void MethodResolver::visit_LiteralStringInterpolation(ast::LiteralStringInterpol
     return;
   }
 
-  ListBuilder<resolution::Expression*> array_entries;
+  ListBuilder<resolution::View<resolution::Expression>> array_entries;
   visit_LiteralString(parts[0], min_indentation, true);
   auto ir_node = pop();
   ASSERT(ir_node->is_Expression());
@@ -4802,7 +4802,7 @@ void MethodResolver::visit_LiteralStringInterpolation(ast::LiteralStringInterpol
 
     if (has_formats) {
       if (format == null) {
-        array_entries.add(zone_new<resolution::LiteralNull>(node->selection_range()));
+        array_entries.add(resolution::make<resolution::LiteralNull>(node->selection_range()));
       } else {
         visit_LiteralString(format);
         auto ir_entry_node = pop();
@@ -4830,7 +4830,7 @@ void MethodResolver::visit_LiteralStringInterpolation(ast::LiteralStringInterpol
 }
 
 void MethodResolver::visit_LiteralBoolean(ast::LiteralBoolean* node) {
-  push(zone_new<resolution::LiteralBoolean>(node->value(), node->selection_range()));
+  push(resolution::make<resolution::LiteralBoolean>(node->value(), node->selection_range()));
 }
 
 void MethodResolver::visit_LiteralFloat(ast::LiteralFloat* node) {
@@ -4842,7 +4842,7 @@ void MethodResolver::visit_LiteralFloat(ast::LiteralFloat* node) {
     report_error(node, "Floating-point value out of range");
   }
   if (node->is_negated()) value = -value;
-  push(zone_new<resolution::LiteralFloat>(value, node->selection_range()));
+  push(resolution::make<resolution::LiteralFloat>(value, node->selection_range()));
 }
 
 void MethodResolver::visit_LiteralCharacter(ast::LiteralCharacter* node) {
@@ -4875,11 +4875,11 @@ void MethodResolver::visit_LiteralCharacter(ast::LiteralCharacter* node) {
       value = c;
     }
   }
-  push(zone_new<resolution::LiteralInteger>(value, node->selection_range()));
+  push(resolution::make<resolution::LiteralInteger>(value, node->selection_range()));
 }
 
 void MethodResolver::visit_LiteralList(ast::LiteralList* node) {
-  auto ir_elements = ListBuilder<resolution::Expression*>::allocate(node->elements().length());
+  auto ir_elements = ListBuilder<resolution::View<resolution::Expression>>::allocate(node->elements().length());
   int length = node->elements().length();
   for (int i = 0; i < length; i++) {
     auto element = node->elements()[i];
@@ -4893,7 +4893,7 @@ void MethodResolver::visit_LiteralList(ast::LiteralList* node) {
 
 void MethodResolver::visit_LiteralByteArray(ast::LiteralByteArray* node) {
   auto range = node->selection_range();
-  auto ir_elements = ListBuilder<resolution::Expression*>::allocate(node->elements().length());
+  auto ir_elements = ListBuilder<resolution::View<resolution::Expression>>::allocate(node->elements().length());
   bool is_filled_with_literal_ints = true;
   int length = node->elements().length();
   auto data = ListBuilder<uint8>::allocate(length);
@@ -4914,8 +4914,8 @@ void MethodResolver::visit_LiteralByteArray(ast::LiteralByteArray* node) {
   }
 
 
-  auto length_literal = zone_new<resolution::LiteralInteger>(ir_elements.length(), range);
-  resolution::Expression* ir_byte_array;
+  auto length_literal = resolution::make<resolution::LiteralInteger>(ir_elements.length(), range);
+  resolution::View<resolution::Expression> ir_byte_array;
   if (length == 0) {
     ir_byte_array = _instantiate_runtime(Symbols::ByteArray_, list_of(length_literal), range);
   } else if (ir_elements.length() < 4) {
@@ -4924,37 +4924,37 @@ void MethodResolver::visit_LiteralByteArray(ast::LiteralByteArray* node) {
     // If we can see that all values are literal integers we can create a
     // Copy-on-Write byte-array which is backed by read-only data.
     ir_byte_array = _call_runtime(Symbols::create_cow_byte_array_,
-                        list_of(zone_new<resolution::LiteralByteArray>(data, range)),
+                        list_of(resolution::make<resolution::LiteralByteArray>(data, range)),
                         range);
   } else {
     // We don't know whether all elements are integer literals.
     // As such we just build up the Byte-array and fill in the values.
     // If the static types are wrong (like storing a string in it), then the
     // type-checker will complain in a later phase.
-    ListBuilder<resolution::Expression*> expressions;
+    ListBuilder<resolution::View<resolution::Expression>> expressions;
 
     auto array_construction = _instantiate_runtime(Symbols::ByteArray_, list_of(length_literal), range);
 
-    auto temporary = zone_new<resolution::Local>(Symbol::synthetic("<bytes>"),
+    auto temporary = resolution::make<resolution::Local>(Symbol::synthetic("<bytes>"),
                                     true,   // Final.
                                     false,  // Not a block.
                                     range);
-    auto define = zone_new<resolution::AssignmentDefine>(temporary, array_construction, range);
+    auto define = resolution::make<resolution::AssignmentDefine>(temporary, array_construction, range);
 
     expressions.add(define);
 
     for (int i = 0 ; i < ir_elements.length(); i++) {
-      auto dot = zone_new<resolution::Dot>(zone_new<resolution::ReferenceLocal>(temporary, 0, range), Symbols::index_put);
-      auto args = list_of(zone_new<resolution::LiteralInteger>(i, range), ir_elements[i]);
-      auto put_call = zone_new<resolution::CallVirtual>(dot,
+      auto dot = resolution::make<resolution::Dot>(resolution::make<resolution::ReferenceLocal>(temporary, 0, range), Symbols::index_put);
+      auto args = list_of(resolution::make<resolution::LiteralInteger>(i, range), ir_elements[i]);
+      auto put_call = resolution::make<resolution::CallVirtual>(dot,
                                            CallShape::for_instance_call_no_named(args),
                                            args,
                                            range);
       expressions.add(put_call);
     }
     // The last expression of the sequence is the return value.
-    expressions.add(zone_new<resolution::ReferenceLocal>(temporary, 0, range));
-    ir_byte_array = zone_new<resolution::Sequence>(expressions.build(), range);
+    expressions.add(resolution::make<resolution::ReferenceLocal>(temporary, 0, range));
+    ir_byte_array = resolution::make<resolution::Sequence>(expressions.build(), range);
   }
   // We want all these expressions to have the inferred type `ByteArray`.
   auto byte_array_entry = core_module_->scope()->lookup_shallow(Symbols::ByteArray);
@@ -4966,7 +4966,7 @@ void MethodResolver::visit_LiteralByteArray(ast::LiteralByteArray* node) {
   // statically know that the 'ir_byte_array' expression implements the right
   // type. However, it makes the type-inference assign the correct type to
   // the expression.
-  push(zone_new<resolution::Typecheck>(resolution::Typecheck::AS_CHECK,
+  push(resolution::make<resolution::Typecheck>(resolution::Typecheck::AS_CHECK,
                           ir_byte_array,
                           byte_array_type,
                           byte_array_type.klass()->name(),
@@ -4974,41 +4974,41 @@ void MethodResolver::visit_LiteralByteArray(ast::LiteralByteArray* node) {
 }
 
 void MethodResolver::visit_LiteralSet(ast::LiteralSet* node) {
-  ListBuilder<resolution::Expression*> expressions;
+  ListBuilder<resolution::View<resolution::Expression>> expressions;
 
-  auto allocated_set = _instantiate_runtime(Symbols::Set, List<resolution::Expression*>(), node->selection_range());
-  auto temporary = zone_new<resolution::Local>(Symbol::synthetic("<tmp>"),
+  auto allocated_set = _instantiate_runtime(Symbols::Set, List<resolution::View<resolution::Expression>>(), node->selection_range());
+  auto temporary = resolution::make<resolution::Local>(Symbol::synthetic("<tmp>"),
                                   true,   // Final.
                                   false,  // Not a block.
                                   node->selection_range());
-  auto define = zone_new<resolution::AssignmentDefine>(temporary, allocated_set, node->selection_range());
+  auto define = resolution::make<resolution::AssignmentDefine>(temporary, allocated_set, node->selection_range());
   expressions.add(define);
 
   for (auto element : node->elements()) {
     auto ir_expression = resolve_expression(element, "Set elements may not be blocks");
-    auto dot = zone_new<resolution::Dot>(zone_new<resolution::ReferenceLocal>(temporary, 0, node->selection_range()),
+    auto dot = resolution::make<resolution::Dot>(resolution::make<resolution::ReferenceLocal>(temporary, 0, node->selection_range()),
                             Symbols::add);
     auto args = list_of(ir_expression);
-    auto push = zone_new<resolution::CallVirtual>(dot,
+    auto push = resolution::make<resolution::CallVirtual>(dot,
                                      CallShape::for_instance_call_no_named(args),
                                      args,
                                      element->selection_range());
     expressions.add(push);
   }
-  expressions.add(zone_new<resolution::ReferenceLocal>(temporary, 0, node->selection_range()));
+  expressions.add(resolution::make<resolution::ReferenceLocal>(temporary, 0, node->selection_range()));
 
-  push(zone_new<resolution::Sequence>(expressions.build(), node->selection_range()));
+  push(resolution::make<resolution::Sequence>(expressions.build(), node->selection_range()));
 }
 
 void MethodResolver::visit_LiteralMap(ast::LiteralMap* node) {
-  ListBuilder<resolution::Expression*> expressions;
+  ListBuilder<resolution::View<resolution::Expression>> expressions;
 
-  auto allocated_set = _instantiate_runtime(Symbols::Map, List<resolution::Expression*>(), node->selection_range());
-  auto temporary = zone_new<resolution::Local>(Symbol::synthetic("<tmp>"),
+  auto allocated_set = _instantiate_runtime(Symbols::Map, List<resolution::View<resolution::Expression>>(), node->selection_range());
+  auto temporary = resolution::make<resolution::Local>(Symbol::synthetic("<tmp>"),
                                   true,   // Final.
                                   false,  // Not a block.
                                   node->selection_range());
-  auto define = zone_new<resolution::AssignmentDefine>(temporary, allocated_set, node->selection_range());
+  auto define = resolution::make<resolution::AssignmentDefine>(temporary, allocated_set, node->selection_range());
   expressions.add(define);
 
   auto ast_keys = node->keys();
@@ -5016,27 +5016,27 @@ void MethodResolver::visit_LiteralMap(ast::LiteralMap* node) {
   for (int i = 0; i < ast_keys.length(); i++) {
     auto ir_key = resolve_expression(ast_keys[i], "Map keys may not be blocks");
     auto ir_value = resolve_expression(ast_values[i], "Map values may not be blocks");
-    auto dot = zone_new<resolution::Dot>(zone_new<resolution::ReferenceLocal>(temporary, 0, node->selection_range()),
+    auto dot = resolution::make<resolution::Dot>(resolution::make<resolution::ReferenceLocal>(temporary, 0, node->selection_range()),
                             Symbols::index_put);
     auto args = list_of(ir_key, ir_value);
-    auto push = zone_new<resolution::CallVirtual>(dot,
+    auto push = resolution::make<resolution::CallVirtual>(dot,
                                      CallShape::for_instance_call_no_named(args),
                                      args,
                                      ast_values[i]->selection_range());
     expressions.add(push);
   }
-  expressions.add(zone_new<resolution::ReferenceLocal>(temporary, 0, node->selection_range()));
+  expressions.add(resolution::make<resolution::ReferenceLocal>(temporary, 0, node->selection_range()));
 
-  push(zone_new<resolution::Sequence>(expressions.build(), node->selection_range()));
+  push(resolution::make<resolution::Sequence>(expressions.build(), node->selection_range()));
 }
 
 void MethodResolver::visit_call_main(ast::Call* node) {
   if (node->arguments().length() != 1) {
     report_error("Main primitive call must have one arguments");
-    push(zone_new<resolution::Error>(node->selection_range()));
+    push(resolution::make<resolution::Error>(node->selection_range()));
     return;
   }
-  resolution::Method* main_method = null;
+  resolution::View<resolution::Method> main_method = null;
   bool takes_args = false;
   for (int main_arity = 1; main_arity >= 0; main_arity--) {
     auto main_shape = ResolutionShape(main_arity);
@@ -5064,14 +5064,14 @@ void MethodResolver::visit_call_main(ast::Call* node) {
       auto error_path = entry_module_->unit()->error_path();
       report_error("Couldn't find 'main' (with 0 or 1 argument) in entry file '%s'",
                    error_path.c_str());
-      push(zone_new<resolution::Error>(node->selection_range()));
+      push(resolution::make<resolution::Error>(node->selection_range()));
     } else {
-      push(zone_new<resolution::Nop>(node->selection_range()));
+      push(resolution::make<resolution::Nop>(node->selection_range()));
     }
   } else {
-    auto ref = zone_new<resolution::ReferenceMethod>(main_method, node->selection_range());
+    auto ref = resolution::make<resolution::ReferenceMethod>(main_method, node->selection_range());
     ResolutionCallBuilder builder(node->selection_range());
-    resolution::Expression* arg = resolve_expression(node->arguments()[0],
+    resolution::View<resolution::Expression> arg = resolve_expression(node->arguments()[0],
                                              "Argument to main intrinsic must not be a block");
     // The `arg` expression is dropped if `main` doesn't take an argument.
     // This is different from normal calls, since the evaluation at runtime is thus not
@@ -5199,11 +5199,11 @@ void MethodResolver::visit_call_primitive(ast::Call* node) {
     lsp_->selection_handler()->call_primitive(selected_node, module_name, primitive_name, module, index,
                                               selected_node == module_node);
   }
-  resolution::Expression* invocation;
+  resolution::View<resolution::Expression> invocation;
   if (encountered_error) {
-    invocation = zone_new<resolution::Error>(node->selection_range());
+    invocation = resolution::make<resolution::Error>(node->selection_range());
   } else {
-    invocation = zone_new<resolution::PrimitiveInvocation>(module_name, primitive_name, module, index, node->selection_range());
+    invocation = resolution::make<resolution::PrimitiveInvocation>(module_name, primitive_name, module, index, node->selection_range());
     has_primitive_invocation_ = true;
   }
 
@@ -5235,7 +5235,7 @@ void MethodResolver::visit_call_primitive(ast::Call* node) {
 
     LocalScope scope(scope_);
     scope_ = &scope;
-    resolution::Local* parameter_local;
+    resolution::View<resolution::Local> parameter_local;
     if (ast_failure->parameters().length() == 1) {
       auto ast_parameter = ast_failure->parameters()[0];
       if (ast_parameter->is_field_storing()) {
@@ -5248,19 +5248,19 @@ void MethodResolver::visit_call_primitive(ast::Call* node) {
         report_error(ast_parameter, "Failure parameter can't have a default value");
       }
       Symbol name = ast_parameter->name()->data();
-      parameter_local = zone_new<resolution::Local>(name,
+      parameter_local = resolution::make<resolution::Local>(name,
                                        false,  // Not final.
                                        false,  // Not a block.
                                        ast_parameter->selection_range());
     } else {
-      parameter_local = zone_new<resolution::Local>(Symbols::it,
+      parameter_local = resolution::make<resolution::Local>(Symbols::it,
                                        false,  // Not final.
                                        false,  // Not a block.
                                        ast_failure->selection_range());
     }
-    auto define = zone_new<resolution::AssignmentDefine>(parameter_local, invocation, node->selection_range());
+    auto define = resolution::make<resolution::AssignmentDefine>(parameter_local, invocation, node->selection_range());
     scope.add(parameter_local->name(), ResolutionEntry(parameter_local));
-    push(zone_new<resolution::Sequence>(list_of(define, resolve_expression(ast_failure->body(), null)),
+    push(resolution::make<resolution::Sequence>(list_of(define, resolve_expression(ast_failure->body(), null)),
                            node->selection_range()));
     ASSERT(scope_ == &scope);
     scope_ = scope.outer();

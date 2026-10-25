@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include "ast_resolution.h"
 #include "set.h"
 #include "symbol.h"
 
@@ -27,7 +28,7 @@ class Node;
 
 template<typename RefNode> class Toitdoc;
 
-Symbol extract_deprecation_message(const Toitdoc<resolution::Node*>& toitdoc);
+Symbol extract_deprecation_message(const Toitdoc<resolution::View<resolution::Node>>& toitdoc);
 
 } // namespace toit::compiler
 } // namespace toit

@@ -26,7 +26,7 @@ namespace {
 
 class Lowering : public resolution::Visitor {
  public:
-  ir::Program* lower_program(resolution::Program* program) {
+  ir::Program* lower_program(resolution::View<resolution::Program> program) {
     // Allocate declaration identities before following any references. Method
     // bodies, class members, and global initializers may refer to one another.
     for (auto klass : program->classes()) {
@@ -86,10 +86,10 @@ class Lowering : public resolution::Visitor {
   }
 
  private:
-  UnorderedMap<resolution::Node*, ir::Node*> nodes_;
+  UnorderedMap<resolution::View<resolution::Node>, ir::Node*> nodes_;
   ir::Node* result_ = null;
 
-  ir::Node* lower_node(resolution::Node* node) {
+  ir::Node* lower_node(resolution::View<resolution::Node> node) {
     if (node == null) return null;
     auto found = nodes_.find(node);
     if (found != nodes_.end()) return found->second;
@@ -101,15 +101,15 @@ class Lowering : public resolution::Visitor {
   }
 
 #define LOWER(name) \
-  ir::name* lower(resolution::name* node) { \
+  ir::name* lower(resolution::View<resolution::name> node) { \
     return static_cast<ir::name*>(lower_node(node)); \
   }
   RESOLUTION_NODES(LOWER)
 #undef LOWER
 
   template<typename T>
-  auto lower_list(List<T*> input) -> List<decltype(lower(static_cast<T*>(null)))> {
-    typedef decltype(lower(static_cast<T*>(null))) Result;
+  auto lower_list(List<resolution::View<T>> input) -> List<decltype(lower(resolution::View<T>()))> {
+    typedef decltype(lower(resolution::View<T>())) Result;
     auto result = ListBuilder<Result>::allocate(input.length());
     for (int i = 0; i < input.length(); i++) result[i] = lower(input[i]);
     return result;
@@ -123,7 +123,7 @@ class Lowering : public resolution::Visitor {
     return type.is_nullable() ? result.to_nullable() : result;
   }
 
-  void declare_method(resolution::Method* method) {
+  void declare_method(resolution::View<resolution::Method> method) {
     if (nodes_.find(method) != nodes_.end()) return;
     auto holder = lower(method->holder());
     auto name = method->name();
@@ -169,13 +169,13 @@ class Lowering : public resolution::Visitor {
     if (method->is_dead()) result->kill();
   }
 
-  void fill_method(resolution::Method* method) {
+  void fill_method(resolution::View<resolution::Method> method) {
     auto result = lower(method);
     result->set_parameters(lower_list(method->parameters()));
     result->set_body(lower(method->body()));
   }
 
-  void copy_local_properties(resolution::Local* local, ir::Local* result) {
+  void copy_local_properties(resolution::View<resolution::Local> local, ir::Local* result) {
     if (local->type().is_valid()) result->set_type(lower_type(local->type()));
     for (int i = 0; i < local->mutation_count(); i++) result->register_mutation();
     if (local->is_captured()) result->mark_captured();
@@ -226,7 +226,7 @@ class Lowering : public resolution::Visitor {
 
   void visit_Lambda(resolution::View<resolution::Lambda> node) override {
     Map<ir::Local*, int> captured;
-    node->captured_depths().for_each([&](resolution::Local* local, int depth) {
+    node->captured_depths().for_each([&](resolution::View<resolution::Local> local, int depth) {
       captured[lower(local)] = depth;
     });
     auto result = zone_new<ir::Lambda>(lower(node->target()), node->shape(),
@@ -440,7 +440,7 @@ class Lowering : public resolution::Visitor {
 
 } // namespace anonymous
 
-ir::Program* lower_to_ir(resolution::Program* program) {
+ir::Program* lower_to_ir(resolution::View<resolution::Program> program) {
   Lowering lowering;
   return lowering.lower_program(program);
 }

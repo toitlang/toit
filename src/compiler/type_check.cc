@@ -33,7 +33,7 @@ namespace compiler {
 
 using namespace resolution;
 
-static bool is_this_reference(Expression* expression, Method* method) {
+static bool is_this_reference(View<Expression> expression, View<Method> method) {
   if (method->holder() == null) return false;
   if (!(method->is_instance() || method->is_constructor())) return false;
   if (!expression->is_ReferenceLocal()) return false;
@@ -57,8 +57,8 @@ static bool is_arithmetic_operation(const Selector<CallShape>& selector) {
 class TypeChecker : public ReturningVisitor<Type> {
  public:
   TypeChecker(List<Type> literal_types,
-              List<resolution::Class*> classes,
-              const UnorderedMap<resolution::Class*, ResolutionQueryableClass>* queryables,
+              List<resolution::View<resolution::Class>> classes,
+              const UnorderedMap<resolution::View<resolution::Class>, ResolutionQueryableClass>* queryables,
               Lsp* lsp,
               Diagnostics* diagnostics)
       : classes_(classes)
@@ -91,7 +91,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     null_type_ = find_type(Symbols::Null_).to_nullable();
   }
 
-  Type visit(Node* node) {
+  Type visit(View<Node> node) {
     return node->accept(this);
   }
 
@@ -138,7 +138,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     if (reported_cyclic_globals_.contains(node)) {
       return Type::invalid();
     }
-    bool detected_cycle = globals_cycle_detector_.check_cycle(node, [&](const std::vector<resolution::Global*>& cycle) {
+    bool detected_cycle = globals_cycle_detector_.check_cycle(node, [&](const std::vector<resolution::View<resolution::Global>>& cycle) {
       report_cyclic_global_types(cycle);
       reported_cyclic_globals_.insert(node);
     });
@@ -270,7 +270,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     return visit_Not(node, false);
   }
 
-  Type visit_Not(Not* node, bool warn_if_always_false) {
+  Type visit_Not(View<Not> node, bool warn_if_always_false) {
     auto value_type = visit(node->value());
     if (value_type.is_none()) {
       report_error(node->value()->range(), "Argument to 'not' can't be 'none'");
@@ -478,7 +478,7 @@ class TypeChecker : public ReturningVisitor<Type> {
   /// type, and nothing requires an override to keep the overridden
   /// method's return type, so otherwise the static return type doesn't
   /// hold at runtime.
-  bool overrides_keep_return_type(Class* klass, Selector<CallShape> selector, Method* method) {
+  bool overrides_keep_return_type(View<Class> klass, Selector<CallShape> selector, View<Method> method) {
     Selector<PlainShape> plain(selector.name(), selector.shape().to_plain_shape());
     auto& cache = override_cache_[klass];
     auto probe = cache.find(plain);
@@ -500,10 +500,10 @@ class TypeChecker : public ReturningVisitor<Type> {
     return result;
   }
 
-  const std::vector<Class*>& subtypes_of(Class* klass) {
+  const std::vector<View<Class>>& subtypes_of(View<Class> klass) {
     auto probe = subtypes_cache_.find(klass);
     if (probe != subtypes_cache_.end()) return probe->second;
-    std::vector<Class*> result;
+    std::vector<View<Class>> result;
     for (auto candidate : classes_) {
       if (is_subtype_of(candidate, klass)) result.push_back(candidate);
     }
@@ -627,7 +627,7 @@ class TypeChecker : public ReturningVisitor<Type> {
 
   /// Whether the static class of [node]'s type also holds at runtime.
   /// Conservative.
-  bool is_guaranteed(Expression* node) {
+  bool is_guaranteed(View<Expression> node) {
     if (node->is_Literal()) return true;
     if (node->is_ReferenceLocal()) return node->as_ReferenceLocal()->target()->has_guaranteed_type();
     if (node->is_ReferenceGlobal()) {
@@ -715,27 +715,27 @@ class TypeChecker : public ReturningVisitor<Type> {
   }
 
  private:
-  List<resolution::Class*> classes_;
-  const UnorderedMap<resolution::Class*, ResolutionQueryableClass>* queryables_;
+  List<resolution::View<resolution::Class>> classes_;
+  const UnorderedMap<resolution::View<resolution::Class>, ResolutionQueryableClass>* queryables_;
   Lsp* lsp_;
   Diagnostics* diagnostics_;
 
   // Since globals can be visited out of order (recursively), we need to
   // keep track which globals are already fully done.
-  Set<resolution::Global*> handled_globals_;
-  CycleDetector<resolution::Global*> globals_cycle_detector_;
-  UnorderedSet<resolution::Global*> reported_cyclic_globals_;
+  Set<resolution::View<resolution::Global>> handled_globals_;
+  CycleDetector<resolution::View<resolution::Global>> globals_cycle_detector_;
+  UnorderedSet<resolution::View<resolution::Global>> reported_cyclic_globals_;
 
   // The current method.
-  Method* method_;
+  View<Method> method_;
 
   // Virtual calls whose static type also holds at runtime.
   // See `is_guaranteed`.
-  UnorderedSet<CallVirtual*> guaranteed_calls_;
+  UnorderedSet<View<CallVirtual>> guaranteed_calls_;
   // Results of `overrides_keep_return_type`, by receiver class and selector.
-  UnorderedMap<Class*, UnorderedMap<Selector<PlainShape>, bool>> override_cache_;
+  UnorderedMap<View<Class>, UnorderedMap<Selector<PlainShape>, bool>> override_cache_;
   // Results of `subtypes_of`.
-  UnorderedMap<Class*, std::vector<Class*>> subtypes_cache_;
+  UnorderedMap<View<Class>, std::vector<View<Class>>> subtypes_cache_;
 
   Type boolean_type_;
   Type true_type_;
@@ -761,7 +761,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     va_end(arguments);
   }
 
-  void report_cyclic_global_types(const std::vector<resolution::Global*>& cycle) {
+  void report_cyclic_global_types(const std::vector<resolution::View<resolution::Global>>& cycle) {
     for (auto global : cycle) {
       diagnostics()->start_group();
       diagnostics()->report_error(global->range(), "Cyclic type dependency");
@@ -773,12 +773,12 @@ class TypeChecker : public ReturningVisitor<Type> {
     }
   }
 
-  void check_deprecated(Source::Range range, resolution::Node* node) {
+  void check_deprecated(Source::Range range, resolution::View<resolution::Node> node) {
     // Don't give warnings for synthetic stubs.
     if (method_->is_FieldStub()) return;
     auto name = Symbol::invalid();
     auto holder_name = Symbol::invalid();
-    Class* holder;
+    View<Class> holder;
     if (node->is_FieldStub()) {
       node = node->as_FieldStub()->field();
     }
@@ -918,8 +918,8 @@ class TypeChecker : public ReturningVisitor<Type> {
     }
   }
 
-  static bool is_subtype_of(Class* value_class, Class* receiver_class) {
-    for (Class* current = value_class; current != null; current = current->super()) {
+  static bool is_subtype_of(View<Class> value_class, View<Class> receiver_class) {
+    for (View<Class> current = value_class; current != null; current = current->super()) {
       if (current == receiver_class) return true;
       for (auto inter : current->interfaces()) {
         // The interfaces list contains a flattened list of all interfaces this class implements.
@@ -954,7 +954,7 @@ class TypeChecker : public ReturningVisitor<Type> {
   /// The [parameter_type] must be the parameter's type, potentially already
   /// adjusted (made nullable) by the caller.
   void check_parameter(Source::Range range,
-                       resolution::Parameter* parameter,
+                       resolution::View<resolution::Parameter> parameter,
                        Type parameter_type,
                        Type value_type) {
     auto migration_types = parameter->migration_types();
@@ -1013,7 +1013,7 @@ class TypeChecker : public ReturningVisitor<Type> {
   }
 };
 
-void check_types_and_deprecations(resolution::Program* program,
+void check_types_and_deprecations(resolution::View<resolution::Program> program,
                                   Lsp* lsp,
                                   ToitdocRegistry* toitdocs,
                                   Diagnostics* diagnostics) {

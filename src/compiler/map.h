@@ -44,6 +44,12 @@ template<typename K, typename V> class Map {
     }
   }
 
+  // Missing values use their default state (for example, an empty AST view).
+  V lookup(const K& key) const {
+    auto probe = map_.find(key);
+    return probe == map_.end() ? V() : probe->second;
+  }
+
   V& at(const K& key) { return map_.at(key); }
   const V& at(const K& key) const { return map_.at(key); }
 
@@ -148,6 +154,11 @@ template<typename K, typename V> class Map<K, V*> {
 /// and close to how we use it.
 template<typename K, typename V> class UnorderedMap {
  public:
+  V lookup(const K& key) const {
+    auto probe = map_.find(key);
+    return probe == map_.end() ? V() : probe->second;
+  }
+
   typename std::unordered_map<K, V>::iterator find(const K& key) { return map_.find(key); }
   typename std::unordered_map<K, V>::const_iterator find(const K& key) const { return map_.find(key); }
   typename std::unordered_map<K, V>::iterator end() { return map_.end(); }

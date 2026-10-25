@@ -15,9 +15,10 @@
 
 #pragma once
 
+#include <functional>
 #include <type_traits>
 
-#include "../top.h"
+#include "zone.h"
 
 namespace toit {
 namespace compiler {
@@ -60,15 +61,25 @@ class AstNode {
 template<typename Information>
 class View {
  public:
-  explicit View(AstNode* node) : node_(node) { Information::cast(node->information()); }
-  View(Information* information) : node_(information->ast_node()) {}
+  constexpr View() : node_(null) {}
+  constexpr View(std::nullptr_t) : node_(null) {}
+  explicit View(AstNode* node) : node_(node) {
+    if (node != null) Information::cast(node->information());
+  }
 
   template<typename Other,
            typename = typename std::enable_if<std::is_base_of<Information, Other>::value>::type>
   View(const View<Other>& other) : node_(other.node()) {}
 
-  // Transitional conversion for consumers that still store the legacy records.
-  operator Information*() const { return operator->(); }
+  explicit operator bool() const { return node_ != null; }
+
+  bool operator==(std::nullptr_t) const { return node_ == null; }
+  bool operator!=(std::nullptr_t) const { return node_ != null; }
+  template<typename Other> bool operator==(View<Other> other) const { return node_ == other.node(); }
+  template<typename Other> bool operator!=(View<Other> other) const { return node_ != other.node(); }
+  template<typename Other> bool operator<(View<Other> other) const {
+    return std::less<AstNode*>()(node_, other.node());
+  }
 
   AstNode* node() const { return node_; }
   ast::Node* syntax() const { return node_->syntax(); }
@@ -77,6 +88,12 @@ class View {
  private:
   AstNode* node_;
 };
+
+template<typename Information, typename... Args>
+View<Information> make(Args&&... args) {
+  auto information = zone_new<Information>(std::forward<Args>(args)...);
+  return View<Information>(information->ast_node());
+}
 
 // Records the source of implicit operations while resolving a piece of syntax.
 // Nested expressions restore their enclosing source when they finish.
@@ -97,3 +114,12 @@ class Origin {
 } // namespace toit::compiler::resolution
 } // namespace toit::compiler
 } // namespace toit
+
+namespace std {
+  template<typename Information>
+  struct hash<toit::compiler::resolution::View<Information>> {
+    size_t operator()(toit::compiler::resolution::View<Information> view) const {
+      return hash<toit::compiler::resolution::AstNode*>()(view.node());
+    }
+  };
+}

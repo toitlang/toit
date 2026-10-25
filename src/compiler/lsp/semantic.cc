@@ -96,7 +96,7 @@ class TokenVisitor : public resolution::TraversingVisitor {
   std::vector<SemanticToken> tokens() const { return tokens_; }
 
  private:
-  void emit_token(const Source::Range& range, resolution::Node* node, bool is_definition = false) {
+  void emit_token(const Source::Range& range, resolution::View<resolution::Node> node, bool is_definition = false) {
     int modifiers = 0;
     if (is_definition) modifiers |= DEFINITION_BIT;
     if (node->is_Local()) {

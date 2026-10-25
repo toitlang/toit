@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include "ast_resolution.h"
 #include "../top.h"
 #include "list.h"
 #include "selector.h"
@@ -32,13 +33,13 @@ namespace resolution {
   class Class;
 }
 
-void report_no_such_instance_method(resolution::Class* klass,
+void report_no_such_instance_method(resolution::View<resolution::Class> klass,
                                     const Selector<CallShape>& selector,
                                     const Source::Range& range,
                                     Diagnostics* diagnostics);
 
 
-void report_no_such_static_method(List<resolution::Node*> candidates,
+void report_no_such_static_method(List<resolution::View<resolution::Node>> candidates,
                                   const Selector<CallShape>& selector,
                                   const Source::Range& range,
                                   Diagnostics* diagnostics);
