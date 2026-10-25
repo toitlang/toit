@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <type_traits>
+
 #include "../top.h"
 
 namespace toit {
@@ -45,7 +47,6 @@ class AstNode {
   void attach(ast::Node* syntax);
 
   void accept(Visitor* visitor);
-  Node* accept(ReturningVisitor<Node*>* visitor);
   Type accept(ReturningVisitor<Type>* visitor);
 
  private:
@@ -61,6 +62,13 @@ class View {
  public:
   explicit View(AstNode* node) : node_(node) { Information::cast(node->information()); }
   View(Information* information) : node_(information->ast_node()) {}
+
+  template<typename Other,
+           typename = typename std::enable_if<std::is_base_of<Information, Other>::value>::type>
+  View(const View<Other>& other) : node_(other.node()) {}
+
+  // Transitional conversion for consumers that still store the legacy records.
+  operator Information*() const { return operator->(); }
 
   AstNode* node() const { return node_; }
   ast::Node* syntax() const { return node_->syntax(); }

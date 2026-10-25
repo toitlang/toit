@@ -173,7 +173,7 @@ class DefiniteChecker : public Visitor {
 
   // Nodes that need to be handled specially are first.
 
-  void visit_If(If* node) {
+  void visit_If(View<If> node) {
     visit(node->condition());
     auto old_state = state_;
     visit(node->yes());
@@ -183,7 +183,7 @@ class DefiniteChecker : public Visitor {
     state_.merge(yes_state);
   }
 
-  void visit_TryFinally(TryFinally* node) {
+  void visit_TryFinally(View<TryFinally> node) {
     auto old_state = state_;
     // Note that we shortcut the `visit_Code` which would reset the
     //   fields (in particular the `does_return_`), as it can't know
@@ -199,7 +199,7 @@ class DefiniteChecker : public Visitor {
     }
   }
 
-  void visit_While(While* node) {
+  void visit_While(View<While> node) {
     visit(node->condition());
     // We assume that the body/update is never executed.
     auto old_state = state_;
@@ -232,7 +232,7 @@ class DefiniteChecker : public Visitor {
     loop_state_ = old_loop_state;
   }
 
-  void visit_LogicalBinary(LogicalBinary* node) {
+  void visit_LogicalBinary(View<LogicalBinary> node) {
     visit(node->left());
     auto left_state = state_;
     visit(node->right());
@@ -240,7 +240,7 @@ class DefiniteChecker : public Visitor {
     state_ = left_state;
   }
 
-  void visit_Code(Code* node) {
+  void visit_Code(View<Code> node) {
     auto old_state = state_;
 
     // We have to assume that the block/lambda is executed multiple times.
@@ -253,7 +253,7 @@ class DefiniteChecker : public Visitor {
     state_ = old_state;
   }
 
-  void visit_Return(Return* node) {
+  void visit_Return(View<Return> node) {
     if (!node->is_end_of_method_return()) {
       // If we are inside a block/lambda, the `Return` might not leave
       //   the method. For simplicity, we don't track the block depth.
@@ -274,13 +274,13 @@ class DefiniteChecker : public Visitor {
     state_.clear_variables();
   }
 
-  void visit_Program(Program* node) {
+  void visit_Program(View<Program> node) {
     for (auto klass: node->classes()) visit(klass);
     for (auto method: node->methods()) visit(method);
     for (auto global: node->globals()) visit(global);
   }
 
-  void visit_Class(Class* node) {
+  void visit_Class(View<Class> node) {
     // Constructors and factories are already visited in `visit_Program` as
     // global methods.
     // Fields don't have any code anymore, since all of the initialization is
@@ -288,9 +288,9 @@ class DefiniteChecker : public Visitor {
     for (auto method: node->methods()) visit(method);
   }
 
-  void visit_Field(Field* node) { UNREACHABLE(); }
+  void visit_Field(View<Field> node) { UNREACHABLE(); }
 
-  void visit_Method(Method* node) {
+  void visit_Method(View<Method> node) {
     if (!node->has_body()) return;
     method_ = node;
     state_.reset();
@@ -308,26 +308,26 @@ class DefiniteChecker : public Visitor {
     }
   }
 
-  void visit_MethodInstance(MethodInstance* node) { return visit_Method(node); }
-  void visit_MonitorMethod(MonitorMethod* node) { return visit_Method(node); }
-  void visit_MethodStatic(MethodStatic* node) { return visit_Method(node); }
-  void visit_Constructor(Constructor* node) { return visit_Method(node); }
-  void visit_Global(Global* node) { return visit_Method(node); }
-  void visit_AdapterStub(AdapterStub* node) { return visit_Method(node); }
-  void visit_MixinStub(MixinStub* node) { return visit_Method(node); }
-  void visit_IsInterfaceOrMixinStub(IsInterfaceOrMixinStub* node) { return visit_Method(node); }
-  void visit_FieldStub(FieldStub* node) { return visit_Method(node); }
+  void visit_MethodInstance(View<MethodInstance> node) { return visit_Method(node); }
+  void visit_MonitorMethod(View<MonitorMethod> node) { return visit_Method(node); }
+  void visit_MethodStatic(View<MethodStatic> node) { return visit_Method(node); }
+  void visit_Constructor(View<Constructor> node) { return visit_Method(node); }
+  void visit_Global(View<Global> node) { return visit_Method(node); }
+  void visit_AdapterStub(View<AdapterStub> node) { return visit_Method(node); }
+  void visit_MixinStub(View<MixinStub> node) { return visit_Method(node); }
+  void visit_IsInterfaceOrMixinStub(View<IsInterfaceOrMixinStub> node) { return visit_Method(node); }
+  void visit_FieldStub(View<FieldStub> node) { return visit_Method(node); }
 
-  void visit_Expression(Expression* node) { UNREACHABLE(); }
-  void visit_Error(Error* node) {
+  void visit_Expression(View<Expression> node) { UNREACHABLE(); }
+  void visit_Error(View<Error> node) {
     for (auto expr : node->nested()) {
       visit(expr);
     }
   }
 
-  void visit_Nop(Nop* node) {}
+  void visit_Nop(View<Nop> node) {}
 
-  void visit_FieldStore(FieldStore* node) {
+  void visit_FieldStore(View<FieldStore> node) {
     // First visit the value, before killing it.
     visit(node->value());
     auto field = node->field();
@@ -338,11 +338,11 @@ class DefiniteChecker : public Visitor {
     }
   }
 
-  void visit_FieldLoad(FieldLoad* node) {
+  void visit_FieldLoad(View<FieldLoad> node) {
     use(node->field(), node->range());
   }
 
-  void visit_Sequence(Sequence* node) {
+  void visit_Sequence(View<Sequence> node) {
     auto old_locals = current_locals_;
     current_locals_.clear();
     for (auto expr : node->expressions()) {
@@ -354,13 +354,13 @@ class DefiniteChecker : public Visitor {
     current_locals_ = old_locals;
   }
 
-  void visit_Builtin(Builtin* node) {}
+  void visit_Builtin(View<Builtin> node) {}
 
-  void visit_Not(Not* node) {
+  void visit_Not(View<Not> node) {
     visit(node->value());
   }
 
-  void visit_LoopBranch(LoopBranch* node) {
+  void visit_LoopBranch(View<LoopBranch> node) {
     if (loop_state_.is_valid()) {
       if (node->is_break()) {
         loop_state_.break_state.merge(state_);
@@ -370,28 +370,28 @@ class DefiniteChecker : public Visitor {
     }
   }
 
-  void visit_Reference(Reference* node) { UNREACHABLE(); }
+  void visit_Reference(View<Reference> node) { UNREACHABLE(); }
 
-  void visit_ReferenceClass(ReferenceClass* node) { UNREACHABLE(); }
-  void visit_ReferenceMethod(ReferenceMethod* node) {}
+  void visit_ReferenceClass(View<ReferenceClass> node) { UNREACHABLE(); }
+  void visit_ReferenceMethod(View<ReferenceMethod> node) {}
 
-  void visit_ReferenceLocal(ReferenceLocal* node) {
+  void visit_ReferenceLocal(View<ReferenceLocal> node) {
     use(node->target(), node->range());
   }
 
-  void visit_ReferenceBlock(ReferenceBlock* node) { visit_ReferenceLocal(node); }
-  void visit_ReferenceGlobal(ReferenceGlobal* node) {}
+  void visit_ReferenceBlock(View<ReferenceBlock> node) { visit_ReferenceLocal(node); }
+  void visit_ReferenceGlobal(View<ReferenceGlobal> node) {}
 
-  void visit_Local(Local* node) { UNREACHABLE(); }
-  void visit_Parameter(Parameter* node) { UNREACHABLE(); }
-  void visit_CapturedLocal(CapturedLocal* node) { UNREACHABLE(); }
-  void visit_Block(Block* node) { UNREACHABLE(); }
+  void visit_Local(View<Local> node) { UNREACHABLE(); }
+  void visit_Parameter(View<Parameter> node) { UNREACHABLE(); }
+  void visit_CapturedLocal(View<CapturedLocal> node) { UNREACHABLE(); }
+  void visit_Block(View<Block> node) { UNREACHABLE(); }
 
-  void visit_Dot(Dot* node) { visit(node->receiver()); }
+  void visit_Dot(View<Dot> node) { visit(node->receiver()); }
 
-  void visit_LspSelectionDot(LspSelectionDot* node) { visit_Dot(node); }
+  void visit_LspSelectionDot(View<LspSelectionDot> node) { visit_Dot(node); }
 
-  void visit_Super(Super* node) {
+  void visit_Super(View<Super> node) {
     ASSERT(method_->is_constructor());
     if (node->expression() != null) visit(node->expression());
     if (state_.empty()) return;
@@ -420,13 +420,13 @@ class DefiniteChecker : public Visitor {
     }
   }
 
-  void visit_Call(Call* node) {
+  void visit_Call(View<Call> node) {
     visit(node->target());
     for (auto argument : node->arguments()) visit(argument);
   }
 
-  void visit_CallConstructor(CallConstructor* node) { visit_Call(node); }
-  void visit_CallStatic(CallStatic* node) {
+  void visit_CallConstructor(View<CallConstructor> node) { visit_Call(node); }
+  void visit_CallStatic(View<CallStatic> node) {
     visit_Call(node);
     if (node->target()->target()->does_not_return()) {
       // Since we return from the method here, we don't need to worry about
@@ -436,29 +436,29 @@ class DefiniteChecker : public Visitor {
       state_.mark_return();
     }
   }
-  void visit_Lambda(Lambda* node) {
+  void visit_Lambda(View<Lambda> node) {
     // Ignore the captured arguments.
     // We provide error messages only when we encounter the captured variables.
     visit(node->arguments()[0]);
   }
-  void visit_CallVirtual(CallVirtual* node) { visit_Call(node); }
-  void visit_CallBlock(CallBlock* node) { visit_Call(node); }
-  void visit_CallBuiltin(CallBuiltin* node) { visit_Call(node); }
+  void visit_CallVirtual(View<CallVirtual> node) { visit_Call(node); }
+  void visit_CallBlock(View<CallBlock> node) { visit_Call(node); }
+  void visit_CallBuiltin(View<CallBuiltin> node) { visit_Call(node); }
 
-  void visit_Typecheck(Typecheck* node) {
+  void visit_Typecheck(View<Typecheck> node) {
     visit(node->expression());
   }
 
-  void visit_Assignment(Assignment* node) { UNREACHABLE(); }
+  void visit_Assignment(View<Assignment> node) { UNREACHABLE(); }
 
-  void visit_AssignmentDefine(AssignmentDefine* node) {
+  void visit_AssignmentDefine(View<AssignmentDefine> node) {
     visit(node->right());
     if (node->right()->is_LiteralUndefined()) {
       state_.mark_undefined(node->local());
     }
   }
 
-  void visit_AssignmentLocal(AssignmentLocal* node) {
+  void visit_AssignmentLocal(View<AssignmentLocal> node) {
     auto local = node->local();
     visit(node->right());
     if (node->right()->is_LiteralUndefined()) {
@@ -476,21 +476,21 @@ class DefiniteChecker : public Visitor {
     }
   }
 
-  void visit_AssignmentGlobal(AssignmentGlobal* node) {
+  void visit_AssignmentGlobal(View<AssignmentGlobal> node) {
     visit(node->right());
   }
 
-  void visit_Literal(Literal* node) {}
+  void visit_Literal(View<Literal> node) {}
 
-  void visit_LiteralNull(LiteralNull* node) { visit_Literal(node); }
-  void visit_LiteralUndefined(LiteralUndefined* node) { visit_Literal(node); }
-  void visit_LiteralInteger(LiteralInteger* node) { visit_Literal(node); }
-  void visit_LiteralFloat(LiteralFloat* node) { visit_Literal(node); }
-  void visit_LiteralString(LiteralString* node) { visit_Literal(node); }
-  void visit_LiteralBoolean(LiteralBoolean* node) { visit_Literal(node); }
-  void visit_LiteralByteArray(LiteralByteArray* node) { visit_Literal(node); }
+  void visit_LiteralNull(View<LiteralNull> node) { visit_Literal(node); }
+  void visit_LiteralUndefined(View<LiteralUndefined> node) { visit_Literal(node); }
+  void visit_LiteralInteger(View<LiteralInteger> node) { visit_Literal(node); }
+  void visit_LiteralFloat(View<LiteralFloat> node) { visit_Literal(node); }
+  void visit_LiteralString(View<LiteralString> node) { visit_Literal(node); }
+  void visit_LiteralBoolean(View<LiteralBoolean> node) { visit_Literal(node); }
+  void visit_LiteralByteArray(View<LiteralByteArray> node) { visit_Literal(node); }
 
-  void visit_PrimitiveInvocation(PrimitiveInvocation* node) {}
+  void visit_PrimitiveInvocation(View<PrimitiveInvocation> node) {}
 
  private:
   Diagnostics* diagnostics_;

@@ -27,7 +27,7 @@ class CallSelectorVisitor : public resolution::TraversingVisitor {
  public:
   UnorderedMap<Symbol, Set<CallShape>> selectors;
 
-  void visit_CallVirtual(resolution::CallVirtual* node) {
+  void visit_CallVirtual(resolution::View<resolution::CallVirtual> node) {
     TraversingVisitor::visit_CallVirtual(node);
     selectors[node->selector()].insert(node->shape());
   }
