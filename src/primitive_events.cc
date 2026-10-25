@@ -41,6 +41,17 @@ PRIMITIVE(register_monitor_notifier) {
 PRIMITIVE(unregister_monitor_notifier) {
   ARGS(ByteArray, group_proxy, ByteArray, resource_proxy);
 
+  // Don't use the typed unpacking macros, as they fail for closed
+  // resources, and the notifier may be disposed after the resource
+  // has been closed.
+  if (!group_proxy->has_external_address() ||
+      group_proxy->external_tag() < ResourceGroup::tag_min ||
+      group_proxy->external_tag() > ResourceGroup::tag_max ||
+      !resource_proxy->has_external_address() ||
+      resource_proxy->external_tag() < Resource::tag_min ||
+      resource_proxy->external_tag() > Resource::tag_max) {
+    FAIL(WRONG_OBJECT_TYPE);
+  }
   ResourceGroup* group = group_proxy->as_external<ResourceGroup>();
   Resource* resource = resource_proxy->as_external<Resource>();
   if (group && resource) {
