@@ -37,3 +37,7 @@ tedi_test.go
 /toolchains/esp32*/build/
 
 GITIGNORE/
+
+# Python tool caches.
+__pycache__/
+*.pyc
