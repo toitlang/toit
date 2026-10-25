@@ -2259,6 +2259,9 @@ PRIMITIVE(add_finalizer) {
 
 PRIMITIVE(remove_finalizer) {
   ARGS(HeapObject, object)
+  // Objects on the program heap never get a finalizer (see add_finalizer),
+  // and they must not be modified.
+  if (object->on_program_heap(process)) return BOOL(false);
   bool result = object->has_active_finalizer();
   // We don't remove it from the finalizer list, so that must happen at the
   // next GC.
