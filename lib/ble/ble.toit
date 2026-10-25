@@ -1059,7 +1059,10 @@ class Adapter extends Resource_:
 
   constructor.private_ .adapter-metadata:
     super (ble-create-adapter_ resource-group_)
-    resource-state_.wait-for-state STARTED-EVENT_
+    state := resource-state_.wait-for-state STARTED-EVENT_ | START-FAILED-EVENT_
+    if state & START-FAILED-EVENT_ != 0:
+      try: throw-error_
+      finally: close_
 
   close -> none:
     if is-closed: return
@@ -1115,6 +1118,8 @@ MALLOC-FAILED_                        ::= 1 << 22
 
 // Manager lifecycle events
 STARTED-EVENT_                        ::= 1 << 0
+START-FAILED-EVENT_                   ::= 1 << 25
+NOTIFICATION-READY-EVENT_             ::= 1 << 26
 
 // Central Manager Events
 COMPLETED-EVENT_                      ::= 1 << 1
@@ -1187,6 +1192,21 @@ class Resource_:
     throw-error_ --is-oom
     unreachable
 
+  // Operation IDs: discovery = 0, read = 1, write = 2, subscription = 3.
+  wait-for-gatt_ operation/int bits/int -> int:
+    if system.platform != system.PLATFORM-ZEPHYR:
+      return wait-for-state-with-oom_ bits
+    completed := false
+    try:
+      state := wait-for-state-with-oom_ bits | DISCONNECTED-EVENT_
+      if is-closed or state & DISCONNECTED-EVENT_ != 0:
+        throw "BLE disconnected"
+      completed = true
+      return state
+    finally:
+      if not completed and not is-closed:
+        ble-cancel-operation_ resource_ operation
+
 resource-group_ := ble-init_
 
 ble-init_:
@@ -1243,6 +1263,9 @@ ble-request-read_ resource:
 ble-get-value_ characteristic:
   #primitive.ble.get-value
 
+ble-get-notification_ characteristic:
+  #primitive.ble.get-notification
+
 ble-write-value_ characteristic value with-response:
   return ble-run-with-quota-backoff_: | last-attempt/bool |
     ble-write-value__ characteristic value with-response (not last-attempt)
@@ -1256,6 +1279,12 @@ ble-handle_ resource:
   #primitive.ble.handle
 
 ble-set-characteristic-notify_ characteristic value:
+  if system.platform == system.PLATFORM-ZEPHYR:
+    return ble-run-with-quota-backoff_:
+      ble-set-characteristic-notify__ characteristic value
+  return ble-set-characteristic-notify__ characteristic value
+
+ble-set-characteristic-notify__ characteristic value:
   #primitive.ble.set-characteristic-notify
 
 ble-advertise-start_ peripheral-manager name services interval_us connection-mode flags:
@@ -1336,7 +1365,7 @@ ble-clear-error_ characteristic is-oom:
   #primitive.ble.clear-error
 
 ble-platform-requires-uuid-as-byte-array_:
-  return system.platform == system.PLATFORM-FREERTOS
+  return system.platform == system.PLATFORM-FREERTOS or system.platform == system.PLATFORM-ZEPHYR
 
 ble-callback-init_ resource timeout-ms for-read:
   #primitive.ble.toit-callback-init
@@ -1369,3 +1398,6 @@ ble-run-with-quota-backoff_ [block]:
 
 ble-set-gap-device-name_ resource name:
   #primitive.ble.set-gap-device-name
+
+ble-cancel-operation_ resource operation:
+  #primitive.ble.cancel-operation

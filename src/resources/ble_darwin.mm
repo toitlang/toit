@@ -1385,4 +1385,8 @@ PRIMITIVE(set_gap_device_name) {
   FAIL(UNIMPLEMENTED);
 }
 
+// Zephyr uses this private hook to cancel interrupted GATT waits.
+PRIMITIVE(cancel_operation) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(get_notification) { FAIL(UNIMPLEMENTED); }
+
 }

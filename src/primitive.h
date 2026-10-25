@@ -408,6 +408,8 @@ namespace toit {
   PRIMITIVE(toit_callback_deinit, 2)         \
   PRIMITIVE(toit_callback_reply, 3)          \
   PRIMITIVE(set_gap_device_name, 2)          \
+  PRIMITIVE(cancel_operation, 2)             \
+  PRIMITIVE(get_notification, 1)             \
 
 #define MODULE_DHCP(PRIMITIVE)               \
   PRIMITIVE(wait_for_lwip_dhcp_on_linux, 0)  \
@@ -1304,6 +1306,8 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_RmtSyncManagerResource(N, name)  MAKE_UNPACKING_MACRO(RmtSyncManagerResource, N, name)
 #define _A_T_RmtPatternEncoderResource(N, name)  MAKE_UNPACKING_MACRO(RmtPatternEncoderResource, N, name)
 #define _A_T_BleResource(N, name)         MAKE_UNPACKING_MACRO(BleResource, N, name)
+#define _A_T_BleGattResource(N, name)     MAKE_UNPACKING_MACRO(BleGattResource, N, name)
+#define _A_T_BleGattAttributeResource(N, name) MAKE_UNPACKING_MACRO(BleGattAttributeResource, N, name)
 #define _A_T_BleAdapterResource(N, name)  MAKE_UNPACKING_MACRO(BleAdapterResource, N, name)
 #define _A_T_BleReadWriteElement(N, name) MAKE_UNPACKING_MACRO(BleReadWriteElement, N, name)
 #define _A_T_BleCallbackResource(N, name) MAKE_UNPACKING_MACRO(BleCallbackResource, N, name)
