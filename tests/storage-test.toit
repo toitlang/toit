@@ -214,6 +214,10 @@ test-region-flash-is-erased:
   expect (region.is-erased --from=4 --to=28)
 
   region.write --at=3 #[1]
+  // A short unaligned range must not inspect bytes past its end.
+  expect (region.is-erased --from=1 --to=2)
+  expect (region.is-erased --from=1 --to=3)
+  expect (region.is-erased --from=2 --to=3)
   expect-not (region.is-erased --from=1 --to=31)
   expect (region.is-erased --from=4 --to=31)
   expect-not (region.is-erased --from=1 --to=28)
