@@ -45,12 +45,13 @@ class HostBleEventSource: public LazyEventSource, public Thread {
   bool start() override;
   void stop() override;
 
-  [[noreturn]] void entry() override;
+  void entry() override;
 
  private:
   static HostBleEventSource* instance_;
   ConditionVariable* event_queue_updated_;
   BleEventList event_queue_;
+  bool stop_ = false;
 };
 
 class BleEvent: public BleEventList::Element {

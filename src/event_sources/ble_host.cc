@@ -17,11 +17,22 @@ HostBleEventSource* HostBleEventSource::instance_ = null;
 HostBleEventSource::HostBleEventSource()
     : LazyEventSource("BLE Events"), Thread("BLE Events"),
       event_queue_updated_(OS::allocate_condition_variable(mutex())), event_queue_() {
+  ASSERT(instance_ == null);
   instance_ = this;
   spawn();
 }
 
 HostBleEventSource::~HostBleEventSource() {
+  {
+    // The worker may not have entered yet, or may be waiting on the queue.
+    // Keep its mutex and condition variable alive until it has returned.
+    Locker locker(mutex());
+    stop_ = true;
+    OS::signal(event_queue_updated_);
+  }
+  join();
+  while (!event_queue_.is_empty()) delete event_queue_.remove_first();
+  OS::dispose(event_queue_updated_);
   instance_ = null;
 }
 
@@ -37,13 +48,14 @@ void HostBleEventSource::on_event(BleResource* resource, word data) {
   OS::signal(event_queue_updated_);
 }
 
-[[noreturn]] void HostBleEventSource::entry() {
+void HostBleEventSource::entry() {
   Locker locker(mutex());
 
-  while (true) {
+  while (!stop_) {
     while (!event_queue_.is_empty()) {
       BleEvent* event = event_queue_.remove_first();
       dispatch(locker, event->resource(), event->event());
+      delete event;
     }
     OS::wait(event_queue_updated_);
   }
