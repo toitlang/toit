@@ -56,10 +56,13 @@ class TypePrimitive {
   typedef void Entry(Program* program, TypeSet result, TypeSet failure);
   static void set_up();
 
-  // Module-specific primitive lookup. May return null if the primitive isn't linked in.
+  // Module-specific primitive lookup. May return null if the primitive isn't
+  // linked in, or if the module or index is out of range.
   static const TypePrimitiveEntry* at(unsigned module, unsigned index) {
+    if (module >= Primitive::MODULE_COUNT) return null;
     const TypePrimitiveEntry* table = primitives_[module];
-    return (table == null) ? null : &table[index];
+    if (table == null || index >= primitive_counts_[module]) return null;
+    return &table[index];
   }
 
   static bool uses_entry_task(unsigned module, unsigned index);
@@ -67,6 +70,7 @@ class TypePrimitive {
 
  private:
   static const TypePrimitiveEntry* primitives_[];
+  static const unsigned primitive_counts_[];
 };
 
 // ----------------------------------------------------------------------------

@@ -1459,6 +1459,11 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 
 // ----------------------------------------------------------------------------
 
+// Macros to count the modules and the primitives in each module.
+#define MODULE_COUNT_ONE(name, entries) + 1
+#define MODULE_PRIMITIVE_COUNT_ONE(name, arity) + 1
+#define MODULE_PRIMITIVE_COUNT(name, entries) 0 entries(MODULE_PRIMITIVE_COUNT_ONE),
+
 struct PrimitiveEntry {
   void* function;
   int arity;
@@ -1477,10 +1482,15 @@ class Primitive {
   static Object* os_error(int error, Process* process, const char* operation = null);
   static Object* return_not_a_smi(Process* process, Object* value);
 
-  // Module-specific primitive lookup. May return null if the primitive isn't linked in.
+  static const unsigned MODULE_COUNT = 0 MODULES(MODULE_COUNT_ONE);
+
+  // Module-specific primitive lookup. May return null if the primitive isn't
+  // linked in, or if the module or index is out of range.
   static const PrimitiveEntry* at(unsigned module, unsigned index) {
+    if (module >= MODULE_COUNT) return null;
     const PrimitiveEntry* table = primitives_[module];
-    return (table == null) ? null : &table[index];
+    if (table == null || index >= primitive_counts_[module]) return null;
+    return &table[index];
   }
 
   // Allocates or returns allocation failure.
@@ -1495,6 +1505,7 @@ class Primitive {
 
  private:
   static const PrimitiveEntry* primitives_[];
+  static const unsigned primitive_counts_[];
 };
 
 } // namespace toit
