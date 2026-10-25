@@ -1935,11 +1935,14 @@ PRIMITIVE(list_add) {
       if (is_array(array_object = list->at(0))) {
         // Small array backing case.
         Array* array = Array::cast(array_object);
-        word size = Smi::value(list->at(1));
-        if (size < array->length()) {
-          list->at_put(1, Smi::from(size + 1));
-          array->at_put(size, value);
-          return process->null_object();
+        Object* size_object = list->at(1);
+        if (is_smi(size_object)) {
+          word size = Smi::value(size_object);
+          if (0 <= size && size < array->length()) {
+            list->at_put(1, Smi::from(size + 1));
+            array->at_put(size, value);
+            return process->null_object();
+          }
         }
       } else {
         // Large array backing case.
