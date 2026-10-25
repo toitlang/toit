@@ -874,6 +874,12 @@ PRIMITIVE(target_create) {
   size_t driver_max_transfer_size =
       (static_cast<size_t>(max_transfer_size) + buffer_alignment - 1) &
       ~(buffer_alignment - 1);
+#if CONFIG_IDF_TARGET_ESP32
+  // Leave room after the last received word. An exactly full DMA receive
+  // buffer can lose its final word when the transfer crosses a descriptor
+  // boundary (for example, 4096 bytes with 4092-byte descriptors).
+  if (dma && mosi >= 0) driver_max_transfer_size += 16;
+#endif
   if (driver_max_transfer_size < max_transfer_size ||
       driver_max_transfer_size > INT_MAX) FAIL(INVALID_ARGUMENT);
 
@@ -1233,6 +1239,11 @@ PRIMITIVE(target_transfer_start) {
   size_t alignment = resource->buffer_alignment();
   size_t driver_transfer_size =
       (transfer_size + alignment - 1) & ~(alignment - 1);
+#if CONFIG_IDF_TARGET_ESP32
+  // Match the receive headroom reserved when creating the driver. Keep the
+  // caller's receive size unchanged; CS still determines the wire length.
+  if (resource->dma() && receive_size != 0) driver_transfer_size += 16;
+#endif
   ASSERT(driver_transfer_size >= transfer_size);
 
   uint8_t* tx_buffer = resource->transmit_enabled()

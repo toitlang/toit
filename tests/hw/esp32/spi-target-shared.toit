@@ -202,6 +202,20 @@ test-board1:
           --controller-data=(pattern size 0x37)
           --max-transfer-size=4_092)
 
+  // Use exact capacities across DMA descriptor boundaries. Extra capacity
+  // in the test would hide a missing final word in a full receive buffer.
+  [4_088, 4_092, 4_096, 4_100, 4_104, 8_192].do: | size/int |
+    [0, 2].do: | mode/int |
+      [23, 91].do: | seed/int |
+        cases.add (Case "dma-boundary-$(size)-$(mode)-$seed"
+            --frequency=125_000
+            --mode=mode
+            --transmit=#[ ]
+            --controller-data=(pattern size seed)
+            --receive-size=size
+            --max-transfer-size=size
+            --use-miso=false)
+
   cases.add (Case "fill"
       --frequency=1_000_000
       --transmit=#[1, 2, 3]
