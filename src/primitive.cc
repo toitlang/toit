@@ -38,6 +38,10 @@ enum {
   primitives_[INDEX_##name] = name##_primitives_;
 
 const PrimitiveEntry* Primitive::primitives_[COUNT];
+const unsigned Primitive::primitive_counts_[COUNT] = {
+  MODULES(MODULE_PRIMITIVE_COUNT)
+};
+static_assert(Primitive::MODULE_COUNT == COUNT, "Inconsistent module count");
 
 MODULES(MODULE_PRIMITIVES_WEAK)
 void Primitive::set_up() {
