@@ -558,10 +558,17 @@ Object* MessageDecoder::decode_any() {
   switch (tag) {
     case TAG_OVERFLOWN:
       return mark_malformed();
-    case TAG_POSITIVE_SMI:
-      return Smi::from(read_cardinal());
-    case TAG_NEGATIVE_SMI:
-      return Smi::from(-static_cast<word>(read_cardinal()));
+    case TAG_POSITIVE_SMI: {
+      uword value = read_cardinal();
+      if (value > static_cast<uword>(Smi::MAX_SMI_VALUE)) return mark_malformed();
+      return Smi::from(static_cast<word>(value));
+    }
+    case TAG_NEGATIVE_SMI: {
+      uword value = read_cardinal();
+      // The negation of MIN_SMI_VALUE is MAX_SMI_VALUE + 1 and doesn't overflow.
+      if (value > static_cast<uword>(-Smi::MIN_SMI_VALUE)) return mark_malformed();
+      return Smi::from(-static_cast<word>(value));
+    }
     case TAG_NULL:
       return program_->null_object();
     case TAG_TRUE:
@@ -647,6 +654,7 @@ Object* MessageDecoder::decode_string(bool inlined) {
   if (length == 0 && overflown()) return mark_malformed();
   String* result = null;
   if (inlined) {
+    if (length < 0 || length > remaining()) return mark_malformed();
     result = process_->allocate_string(reinterpret_cast<const char*>(&buffer_[cursor_]), length);
     cursor_ += length;
   } else if (decoding_tison()) {
@@ -663,6 +671,10 @@ Object* MessageDecoder::decode_string(bool inlined) {
 Object* MessageDecoder::decode_array() {
   word length = read_cardinal();
   if (length == 0 && overflown()) return mark_malformed();
+  // Every element needs at least one byte.
+  if (length < 0 || length > remaining() || length > Array::max_length_in_process()) {
+    return mark_malformed();
+  }
   Array* result = process_->object_heap()->allocate_array(length, Smi::zero());
   if (result == null) return mark_allocation_failed();
   for (word i = 0; i < length; i++) {
@@ -676,6 +688,10 @@ Object* MessageDecoder::decode_array() {
 Object* MessageDecoder::decode_map() {
   word size = read_cardinal();
   if (size == 0 && overflown()) return mark_malformed();
+  // Every key and every value needs at least one byte.
+  if (size < 0 || size > remaining() / 2 || size > Array::max_length_in_process() / 2) {
+    return mark_malformed();
+  }
   Instance* result = process_->object_heap()->allocate_instance(program_->map_class_id());
   if (result == null) return mark_allocation_failed();
   if (size == 0) {
@@ -704,6 +720,7 @@ Object* MessageDecoder::decode_byte_array(bool inlined) {
   if (length == 0 && overflown()) return mark_malformed();
   ByteArray* result = null;
   if (inlined) {
+    if (length < 0 || length > remaining()) return mark_malformed();
     result = process_->allocate_byte_array(length, false);
     if (result != null) {
       ByteArray::Bytes bytes(result);
