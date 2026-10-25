@@ -528,7 +528,7 @@ PRIMITIVE(string_write_to_byte_array) {
   ARGS(Blob, source_bytes, MutableBlob, dest, word, from, word, to, word, dest_index);
   if (to == from) return _raw_dest;
   if (from < 0 || to > source_bytes.length() || from > to) FAIL(OUT_OF_BOUNDS);
-  if (dest_index + to - from > dest.length()) FAIL(OUT_OF_BOUNDS);
+  if (dest_index < 0 || to - from > dest.length() - dest_index) FAIL(OUT_OF_BOUNDS);
   memcpy(&dest.address()[dest_index], &source_bytes.address()[from], to - from);
   return _raw_dest;
 }
