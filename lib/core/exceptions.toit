@@ -130,7 +130,9 @@ catch [--trace] [--unwind] [block]:
       // If the task is unwinding due to cancelation, don't catch the exception and
       // don't print a stack trace; just unwind.
       self := Task_.current
-      is-canceled-unwind := value == CANCELED-ERROR and self.is-canceled
+      // Loading CANCELED-ERROR can allocate in unoptimized code. Avoid doing
+      // that while handling an out-of-memory exception in a non-canceled task.
+      is-canceled-unwind := self.is-canceled and value == CANCELED-ERROR
       if not is-canceled-unwind:
         if stack and trace.call value stack:
           exception.trace = null  // Avoid reporting the same stack trace multiple times.
