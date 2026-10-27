@@ -71,6 +71,12 @@ test-remove-finalizer:
   expect-not
     remove-finalizer List
 
+  // Literals live on the program heap and never have finalizers.
+  expect-not
+    remove-finalizer "Horse"
+  expect-not
+    remove-finalizer #[1, 2, 3]
+
 test-multiple-add-remove:
   object/List? := List
 

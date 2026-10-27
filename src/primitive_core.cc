@@ -528,7 +528,7 @@ PRIMITIVE(string_write_to_byte_array) {
   ARGS(Blob, source_bytes, MutableBlob, dest, word, from, word, to, word, dest_index);
   if (to == from) return _raw_dest;
   if (from < 0 || to > source_bytes.length() || from > to) FAIL(OUT_OF_BOUNDS);
-  if (dest_index + to - from > dest.length()) FAIL(OUT_OF_BOUNDS);
+  if (dest_index < 0 || to - from > dest.length() - dest_index) FAIL(OUT_OF_BOUNDS);
   memcpy(&dest.address()[dest_index], &source_bytes.address()[from], to - from);
   return _raw_dest;
 }
@@ -1935,11 +1935,14 @@ PRIMITIVE(list_add) {
       if (is_array(array_object = list->at(0))) {
         // Small array backing case.
         Array* array = Array::cast(array_object);
-        word size = Smi::value(list->at(1));
-        if (size < array->length()) {
-          list->at_put(1, Smi::from(size + 1));
-          array->at_put(size, value);
-          return process->null_object();
+        Object* size_object = list->at(1);
+        if (is_smi(size_object)) {
+          word size = Smi::value(size_object);
+          if (0 <= size && size < array->length()) {
+            list->at_put(1, Smi::from(size + 1));
+            array->at_put(size, value);
+            return process->null_object();
+          }
         }
       } else {
         // Large array backing case.
@@ -2256,6 +2259,9 @@ PRIMITIVE(add_finalizer) {
 
 PRIMITIVE(remove_finalizer) {
   ARGS(HeapObject, object)
+  // Objects on the program heap never get a finalizer (see add_finalizer),
+  // and they must not be modified.
+  if (object->on_program_heap(process)) return BOOL(false);
   bool result = object->has_active_finalizer();
   // We don't remove it from the finalizer list, so that must happen at the
   // next GC.
@@ -2731,10 +2737,29 @@ PRIMITIVE(firmware_unmap) {
   return process->null_object();
 }
 
+// Extracts the backing bytes, the offset, and the size of a firmware
+// mapping, and checks that the mapping lies within the backing bytes.
+// Returns null on success, and an error otherwise.
+static Object* firmware_mapping_fields(Process* process, Instance* receiver, Blob* input, word* offset, word* size) {
+  Object* offset_object = receiver->at(1);
+  Object* size_object = receiver->at(2);
+  if (!is_smi(offset_object) || !is_smi(size_object)) FAIL(WRONG_OBJECT_TYPE);
+  if (!receiver->at(0)->byte_content(process->program(), input, STRINGS_OR_BYTE_ARRAYS)) {
+    FAIL(WRONG_OBJECT_TYPE);
+  }
+  *offset = Smi::value(offset_object);
+  *size = Smi::value(size_object);
+  if (*offset < 0 || *size < 0 || *size > input->length() - *offset) FAIL(OUT_OF_BOUNDS);
+  return null;
+}
+
 PRIMITIVE(firmware_mapping_at) {
   ARGS(Instance, receiver, int, index);
-  word offset = Smi::value(receiver->at(1));
-  word size = Smi::value(receiver->at(2));
+  Blob input;
+  word offset;
+  word size;
+  Object* error = firmware_mapping_fields(process, receiver, &input, &offset, &size);
+  if (error != null) return error;
   if (index < 0 || index >= size) FAIL(OUT_OF_BOUNDS);
 
 #ifdef TOIT_EC618
@@ -2742,11 +2767,6 @@ PRIMITIVE(firmware_mapping_at) {
   // not read from the proxy's external address.
   return Smi::from(ec618_active_firmware_at(static_cast<uint32>(offset + index)));
 #else
-  Blob input;
-  if (!receiver->at(0)->byte_content(process->program(), &input, STRINGS_OR_BYTE_ARRAYS)) {
-    FAIL(WRONG_OBJECT_TYPE);
-  }
-
   // Firmware is potentially mapped into memory that only allow word
   // access. We read the full word before masking and shifting. This
   // asssumes that we're running on a little endian platform.
@@ -2760,8 +2780,11 @@ PRIMITIVE(firmware_mapping_at) {
 PRIMITIVE(firmware_mapping_copy) {
   ARGS(Instance, receiver, word, from, word, to, MutableBlob, output, word, index);
   if (index < 0) FAIL(OUT_OF_BOUNDS);
-  word offset = Smi::value(receiver->at(1));
-  word size = Smi::value(receiver->at(2));
+  Blob input;
+  word offset;
+  word size;
+  Object* error = firmware_mapping_fields(process, receiver, &input, &offset, &size);
+  if (error != null) return error;
   if (!Utils::is_aligned(from + offset, sizeof(uint32)) ||
       !Utils::is_aligned(to + offset, sizeof(uint32))) FAIL(INVALID_ARGUMENT);
   if (from > to || from < 0 || to > size) FAIL(OUT_OF_BOUNDS);
@@ -2778,11 +2801,6 @@ PRIMITIVE(firmware_mapping_copy) {
     FAIL(INVALID_ARGUMENT);
   }
 #else
-  Blob input;
-  if (!receiver->at(0)->byte_content(process->program(), &input, STRINGS_OR_BYTE_ARRAYS)) {
-    FAIL(WRONG_OBJECT_TYPE);
-  }
-
   // Firmware is potentially mapped into memory that only allow word
   // access. We use an IRAM safe memcpy alternative that guarantees
   // always reading whole words to avoid issues with this.

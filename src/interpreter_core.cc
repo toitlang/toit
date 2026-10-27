@@ -43,7 +43,10 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
       // The backing storage in a list can be either an array -- or a
       // large array. Only optimize here if it isn't large.
       array = Array::cast(array_object);
-      length = Smi::value(instance->at(Instance::LIST_SIZE_INDEX));
+      Object* size_object = instance->at(Instance::LIST_SIZE_INDEX);
+      if (!is_smi(size_object)) return false;
+      length = Smi::value(size_object);
+      if (length > array->length()) return false;
     } else if (class_id == program->byte_array_slice_class_id()) {
       if (!(is_smi(instance->at(Instance::BYTE_ARRAY_SLICE_FROM_INDEX)) &&
             is_smi(instance->at(Instance::BYTE_ARRAY_SLICE_TO_INDEX  )))) {
@@ -52,19 +55,23 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
 
       word from = Smi::value(instance->at(Instance::BYTE_ARRAY_SLICE_FROM_INDEX));
       word to = Smi::value(instance->at(Instance::BYTE_ARRAY_SLICE_TO_INDEX));
+      if (from < 0) return false;
       n = from + n;
       if (n >= to) return false;
+      // The index is checked against the length of the backing byte array below.
 
       Object* data = instance->at(Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX);
       if (is_byte_array(data)) {
-        byte_array = ByteArray::cast(instance->at(Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX));
+        byte_array = ByteArray::cast(data);
       } else if (is_instance(data)) {
         Instance* data_instance = Instance::cast(data);
         if (data_instance->class_id() != program->byte_array_cow_class_id() ||
             (is_put && data_instance->at(Instance::BYTE_ARRAY_COW_IS_MUTABLE_INDEX) == program->false_object())) {
           return false;
         }
-        byte_array = ByteArray::cast(data_instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX));
+        Object* backing = data_instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX);
+        if (!is_byte_array(backing)) return false;
+        byte_array = ByteArray::cast(backing);
       } else {
         return false;
       }
@@ -77,8 +84,10 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
       } else {
         // List backed by large array.
         size_object = instance->at(Instance::LIST_SIZE_INDEX);
-        Instance* large_array = Instance::cast(instance->at(Instance::LIST_ARRAY_INDEX));
-        ASSERT(large_array->class_id() == program->large_array_class_id());
+        Object* large_array_object = instance->at(Instance::LIST_ARRAY_INDEX);
+        if (!is_instance(large_array_object)) return false;
+        Instance* large_array = Instance::cast(large_array_object);
+        if (large_array->class_id() != program->large_array_class_id()) return false;
         vector_object = large_array->at(Instance::LARGE_ARRAY_VECTOR_INDEX);
       }
       word size;
@@ -88,14 +97,26 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
         return false;
       }
       if (n >= size) return false;
+      if (!is_array(vector_object)) {
+        // Very large arrays have a large array as vector. Require it to be
+        // smaller than this one, so that the recursion terminates.
+        if (!is_instance(vector_object)) return false;
+        Instance* vector = Instance::cast(vector_object);
+        if (vector->class_id() != program->large_array_class_id()) return false;
+        Object* vector_size = vector->at(Instance::LARGE_ARRAY_SIZE_INDEX);
+        if (!is_smi(vector_size) || Smi::value(vector_size) >= size) return false;
+      }
       Object* arraylet;
       if (!fast_at(process, vector_object, Smi::from(n / Array::ARRAYLET_SIZE), /* is_put = */ false, &arraylet)) {
         return false;
       }
+      if (!is_array(arraylet)) return false;
       return fast_at(process, arraylet, Smi::from(n % Array::ARRAYLET_SIZE), is_put, value);
     } else if (class_id == program->byte_array_cow_class_id()) {
       if (is_put && instance->at(Instance::BYTE_ARRAY_COW_IS_MUTABLE_INDEX) == program->false_object()) return false;
-      byte_array = ByteArray::cast(instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX));
+      Object* backing = instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX);
+      if (!is_byte_array(backing)) return false;
+      byte_array = ByteArray::cast(backing);
     } else {
       return false;
     }
@@ -146,7 +167,9 @@ bool Interpreter::fast_size(Process* process, Object* receiver, Smi** result) {
     Smi* class_id = instance->class_id();
     Program* program = process->program();
     if (class_id == program->list_class_id()) {
-      *result = Smi::cast(instance->at(Instance::LIST_SIZE_INDEX));
+      Object* size_object = instance->at(Instance::LIST_SIZE_INDEX);
+      if (!is_smi(size_object)) return false;
+      *result = Smi::cast(size_object);
       return true;
     } else if (class_id == program->byte_array_slice_class_id()) {
       if (!(is_smi(instance->at(Instance::BYTE_ARRAY_SLICE_FROM_INDEX)) &&
@@ -156,6 +179,7 @@ bool Interpreter::fast_size(Process* process, Object* receiver, Smi** result) {
 
       word from = Smi::value(instance->at(Instance::BYTE_ARRAY_SLICE_FROM_INDEX));
       word to = Smi::value(instance->at(Instance::BYTE_ARRAY_SLICE_TO_INDEX));
+      if (from < 0 || from > to) return false;
       *result = Smi::from(to - from);
       return true;
     } else if (class_id == program->large_array_class_id()) {
@@ -164,8 +188,9 @@ bool Interpreter::fast_size(Process* process, Object* receiver, Smi** result) {
       *result = Smi::cast(size_object);
       return true;
     } else if (class_id == program->byte_array_cow_class_id()) {
-      ByteArray* byte_array = ByteArray::cast(instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX));
-      ByteArray::Bytes bytes(byte_array);
+      Object* backing = instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX);
+      if (!is_byte_array(backing)) return false;
+      ByteArray::Bytes bytes(ByteArray::cast(backing));
       *result = Smi::from(bytes.length());
       return true;
     } else {
@@ -322,9 +347,17 @@ Object* Interpreter::hash_do(Program* program, Object* current, Object* backing,
         // Start at the end of the array.
         c = Array::cast(backing)->length() + step;
       }
-    } else if (step < 0) {
-      // Start at the end of the list.
-      c = Smi::value(Instance::cast(backing)->at(Instance::LIST_SIZE_INDEX)) + step;
+    } else {
+      Instance* backing_list = Instance::cast(backing);
+      if (backing_list->class_id() != program->list_class_id()) {
+        return program->null_object();  // We are done.
+      }
+      if (step < 0) {
+        // Start at the end of the list.
+        Object* size = backing_list->at(Instance::LIST_SIZE_INDEX);
+        if (!is_smi(size)) return program->null_object();  // We are done.
+        c = Smi::value(size) + step;
+      }
     }
     Smi* block = Smi::cast(*from_block(Smi::cast(block_on_stack)));
     Method target = Method(program->bytecodes, Smi::value(block));
