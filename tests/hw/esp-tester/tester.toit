@@ -147,7 +147,7 @@ main args:
             --type="path"
             --required,
         cli.Option "port-board2"
-            --help="The path to the UART port of board 2"
+            --help="The UART port of board 2; reset the idle peer for single-board tests"
             --type="path",
         cli.Option "arg"
             --help="The argument to pass to the test"
@@ -289,6 +289,7 @@ run-test invocation/cli.Invocation:
   port-board2 := invocation["port-board2"]
   test-path := invocation["test"]
   test2-path := invocation["test2"]
+  if test2-path and not port-board2: throw "A second test requires --port-board2"
   arg := invocation["arg"]
   flaky := invocation["flaky"]
   use-network := invocation["control"] == "network"
@@ -302,6 +303,18 @@ run-test invocation/cli.Invocation:
       print "\n"
       log "Attempt $(attempt + 1) of $attempts"
       error := catch:
+        if port-board2 and not test2-path:
+          // The peer shares fixture wiring and can retain output levels in
+          // deep sleep after a previous two-board test.
+          log "Resetting unused board2"
+          peer := uart.HostPort port-board2 --baud-rate=CONSOLE-BAUD-RATE
+          try:
+            peer.set-control-flag uart.HostPort.CONTROL-FLAG-DTR false
+            peer.set-control-flag uart.HostPort.CONTROL-FLAG-RTS true
+            sleep --ms=500
+            peer.set-control-flag uart.HostPort.CONTROL-FLAG-RTS false
+          finally:
+            peer.close
         board1 := TestDevice
             --name="board1"
             --port-path=port-board1
@@ -326,7 +339,7 @@ run-test invocation/cli.Invocation:
               board1-ready.set true
             if error: board1-ready.set --exception error
 
-          if port-board2:
+          if test2-path:
             board2 = TestDevice
                 --name="board2"
                 --port-path=port-board2
@@ -347,7 +360,7 @@ run-test invocation/cli.Invocation:
 
           board1.run-test
           board1.wait-until-running
-          if port-board2:
+          if test2-path:
             board2.run-test
             board2.wait-until-running
 

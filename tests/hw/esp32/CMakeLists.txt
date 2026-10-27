@@ -212,6 +212,7 @@ foreach(esp_variant ${VARIANTS})
             --verbose
             --toit-exe "${TOIT_EXE_HW}"
             --port-board1 "$ENV{${ESP_VARIANT}_BOARD1_PORT}"
+            --port-board2 "$ENV{${ESP_VARIANT}_BOARD2_PORT}"
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         CONFIGURATIONS ${esp_variant} hw
         )
