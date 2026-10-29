@@ -22,6 +22,7 @@ import system show platform
 import uuid show *
 
 import encoding.json
+import encoding.hex
 import encoding.ubjson
 import encoding.tison
 
@@ -40,6 +41,7 @@ import tar
 import ..system.extensions.host.run-image-boot-sh
 import .ec618.slot-reloc show SlotRelocTable
 import .firmware.ec618 as firmware-ec618
+import .firmware.zephyr as firmware-zephyr
 import .firmware.image-details as image-details
 import .image
 import .snapshot
@@ -47,6 +49,12 @@ import .snapshot-to-image
 
 ENVELOPE-FORMAT-VERSION-ESP32-HOST ::= 8
 ENVELOPE-FORMAT-VERSION-EC618      ::= 1000
+// 1001 and 1002 are used by the pending RP2350 and RP2040 ports.
+ENVELOPE-FORMAT-VERSION-ZEPHYR     ::= 1003
+ENVELOPE-FORMAT-VERSION-ZEPHYR-NRF5340 ::= 1004
+
+AR-ENTRY-ZEPHYR-FIRMWARE-BIN ::= "\$zephyr-fw.bin"
+AR-ENTRY-ZEPHYR-NETWORK-BIN ::= "\$zephyr-net.bin"
 
 WORD-SIZE-ESP32 ::= 4
 WORD-SIZE-EC618 ::= firmware-ec618.WORD-SIZE
@@ -171,6 +179,7 @@ build-command --legacy-create-layout/bool=false -> cli.Command:
     // uses the unambiguous `toit tool firmware create esp32` hierarchy.
     firmware-cmd.add (create-esp32-cmd --name="create")
     firmware-cmd.add (create-ec618-cmd --name="create-ec618")
+    firmware-cmd.add (create-zephyr-cmd --name="create-zephyr")
   else:
     firmware-cmd.add create-cmd
   firmware-cmd.add extract-cmd
@@ -193,6 +202,7 @@ create-cmd -> cli.Command:
   cmd.add (create-esp32-cmd --name="esp32")
   cmd.add create-ec618-cmd
   cmd.add create-host-cmd
+  cmd.add create-zephyr-cmd
   return cmd
 
 create-esp32-cmd --name/string -> cli.Command:
@@ -316,6 +326,46 @@ create-envelope-ec618 invocation/cli.Invocation -> none:
       --kind=Envelope.KIND-EC618
       --word-size=WORD-SIZE-EC618
   envelope.store output-path --ui=ui
+
+create-zephyr-cmd --name/string="zephyr" -> cli.Command:
+  return cli.Command name
+      --help="Create an envelope from a 32-bit Zephyr firmware with a final Toit extension."
+      --options=[
+        cli.OptionPath "firmware.bin" --required,
+        cli.OptionPath "system.snapshot" --required,
+        cli.OptionPath "network.bin"
+            --help="Include the matching nRF5340 network-core controller.",
+      ]
+      --run=:: create-envelope-zephyr it
+
+create-envelope-zephyr invocation/cli.Invocation -> none:
+  ui := invocation.cli.ui
+  binary := read-file invocation["firmware.bin"] --ui=ui
+  layout := firmware-zephyr.Layout binary
+  content := read-file invocation["system.snapshot"] --ui=ui
+  snapshot := SnapshotBundle content
+  if layout.sdk-uuid != (sdk-version-uuid --sdk-version=snapshot.sdk-version):
+    ui.abort "Zephyr firmware and system snapshot use different SDKs."
+  entries := {
+    AR-ENTRY-ZEPHYR-FIRMWARE-BIN: binary,
+    SYSTEM-CONTAINER-NAME: content,
+    AR-ENTRY-PROPERTIES: json.encode {
+      PROPERTY-CONTAINER-FLAGS: {
+        SYSTEM-CONTAINER-NAME: IMAGE-FLAG-RUN-BOOT | IMAGE-FLAG-RUN-CRITICAL,
+      },
+    },
+  }
+  if network-path := invocation["network.bin"]:
+    if layout.load-address != 0 or layout.limit != 0xdc000:
+      ui.abort "The controller option requires the nRF5340 application layout."
+    network := read-file network-path --ui=ui
+    firmware-zephyr.validate-nrf5340-controller network
+    entries[AR-ENTRY-ZEPHYR-NETWORK-BIN] = network
+  envelope := Envelope.create entries
+      --sdk-version=snapshot.sdk-version
+      --kind=Envelope.KIND-ZEPHYR
+      --word-size=4
+  envelope.store invocation[OPTION-ENVELOPE] --ui=ui
 
 create-host-cmd -> cli.Command:
   return cli.Command "host"
@@ -695,6 +745,12 @@ extract-cmd -> cli.Command:
         - image: the complete flash image (bootloader, partitions, and app).
           Can be flashed to address 0x0 using 'esptool', or run on QEMU/Wokwi.
         - qemu: a deprecated alias for 'image'.
+        For Zephyr:
+        - binary: the native firmware and bundled containers, linked at the
+          load address recorded in its layout descriptor. Available only for
+          application-only envelopes.
+        - tar: an nRF5340 application/controller bundle for the board SWD tool.
+          OTA and configuration are not supported yet.
         For host:
         - tar: a tar ball with a bash script to run the extracted firmware.
         - binary: the binary image of the firmware, which can be used for
@@ -781,6 +837,40 @@ extract invocation/cli.Invocation -> none:
     extract-host invocation envelope --config-encoded=config-encoded
   else if envelope.kind == Envelope.KIND-EC618:
     extract-ec618 invocation envelope --config-encoded=config-encoded
+  else if envelope.kind == Envelope.KIND-ZEPHYR:
+    if config-path: ui.abort "Zephyr firmware configuration is not supported yet."
+    binary := extract-binary-zephyr envelope
+    network := envelope.entries.get AR-ENTRY-ZEPHYR-NETWORK-BIN --if-absent=: null
+    format := invocation["format"]
+    if format == "binary":
+      if network: ui.abort "This envelope includes a network controller; use --format=tar."
+      write-file invocation[OPTION-OUTPUT] --ui=ui: it.write binary
+    else if format == "tar":
+      if not network: ui.abort "A two-core bundle requires a network controller."
+      firmware-zephyr.validate-nrf5340-controller network
+      layout := firmware-zephyr.Layout binary
+      if layout.load-address != 0 or layout.limit != 0xdc000:
+        ui.abort "The controller bundle requires the nRF5340 application layout."
+      manifest := {
+        "format": 1,
+        "target": "nrf5340",
+        "application": {
+          "file": "application.bin", "address": 0, "size": binary.size,
+          "sha256": hex.encode (crypto.sha256 binary),
+        },
+        "network": {
+          "file": "network.bin", "address": 0x01000000, "size": network.size,
+          "sha256": hex.encode (crypto.sha256 network),
+        },
+      }
+      write-file invocation[OPTION-OUTPUT] --ui=ui: |output|
+        writer := tar.Writer output
+        writer.add "manifest.json" (json.encode manifest)
+        writer.add "application.bin" binary
+        writer.add "network.bin" network
+        writer.close
+    else:
+      ui.abort "Zephyr supports binary or tar extraction."
   else:
     throw "unsupported kind: $(envelope.kind)"
 
@@ -1003,6 +1093,47 @@ extract-ec618 -> none
     "binary" : firmware-bin,
   }
   write-file output-path --ui=ui: it.write (ubjson.encode output)
+
+extract-binary-zephyr envelope/Envelope -> ByteArray:
+  if envelope.word-size != 4: throw "Zephyr envelopes require 32-bit images"
+  entries := envelope.entries
+  if not entries.contains SYSTEM-CONTAINER-NAME: throw "Zephyr requires the system container"
+  binary := entries[AR-ENTRY-ZEPHYR-FIRMWARE-BIN]
+  layout := firmware-zephyr.Layout binary
+  if layout.sdk-uuid != (sdk-version-uuid --sdk-version=envelope.sdk-version):
+    throw "Zephyr native firmware SDK does not match envelope metadata"
+  flags := (get-flags envelope) or {:}
+  containers := [null]
+  image-names := {:}
+  names := []
+  entries.keys.do:
+    if it != SYSTEM-CONTAINER-NAME and is-container-name it: names.add it
+  names.add SYSTEM-CONTAINER-NAME
+  names.do: |name/string|
+    container-assets := entries.get "+$name"
+    content := entries[name]
+    if is-snapshot-bundle content:
+      if (SnapshotBundle content).sdk-version != envelope.sdk-version:
+        throw "Zephyr container '$name' uses a different SDK"
+    else:
+      if name == SYSTEM-CONTAINER-NAME: throw "Zephyr requires a system snapshot"
+      if firmware-zephyr.validate-relocatable content layout.sdk-uuid:
+        if entries.contains "+$name":
+          throw "Zephyr container '$name' already includes assets"
+        flags[name] = (flags.get name --if-absent=: 0) | IMAGE-FLAG-HAS-ASSETS
+    if name == SYSTEM-CONTAINER-NAME and not image-names.is-empty:
+      system-assets := container-assets ? (assets.decode container-assets) : {:}
+      system-assets["images"] = tison.encode image-names
+      container-assets = assets.encode system-assets
+    entry := extract-container name flags content
+        --word-size=4
+        --assets=container-assets
+    if name == SYSTEM-CONTAINER-NAME:
+      containers[0] = entry
+    else:
+      containers.add entry
+      image-names[name] = entry.id.to-byte-array
+  return firmware-zephyr.build-image binary containers
 
 extract-binary-ec618 envelope/Envelope --config-encoded/ByteArray --ui/cli.Ui -> ByteArray:
   containers := []
@@ -1759,6 +1890,8 @@ show invocation/cli.Invocation -> none:
     kind-string = Envelope.KIND-STRING-EC618
   else if envelope.kind == Envelope.KIND-HOST:
     kind-string = Envelope.KIND-STRING-HOST
+  else if envelope.kind == Envelope.KIND-ZEPHYR:
+    kind-string = Envelope.KIND-STRING-ZEPHYR
   else:
     unreachable
 
@@ -1848,10 +1981,13 @@ class Envelope:
   static KIND-ESP32 ::= 0
   static KIND-HOST  ::= 1
   static KIND-EC618 ::= 2
+  // 3 and 4 are used by the pending RP2350 and RP2040 ports.
+  static KIND-ZEPHYR ::= 5
 
   static KIND-STRING-ESP32 ::= "esp32"
   static KIND-STRING-HOST  ::= "host"
   static KIND-STRING-EC618 ::= "ec618"
+  static KIND-STRING-ZEPHYR ::= "zephyr"
 
   static INFO-ENTRY-MARKER-OFFSET   ::= 0
   static INFO-ENTRY-VERSION-OFFSET  ::= 4
@@ -1885,6 +2021,8 @@ class Envelope:
             kind = KIND-HOST
           else if kind-string == KIND-STRING-EC618:
             kind = KIND-EC618
+          else if kind-string == KIND-STRING-ZEPHYR:
+            kind = KIND-ZEPHYR
           else:
             throw "unsupported kind: $kind-string"
           word-size = metadata[META-WORD-SIZE]
@@ -1892,11 +2030,22 @@ class Envelope:
           entries[file.name] = file.content
     if version_ == -1: throw "cannot open envelope - missing info entry"
     if sdk-version == "": throw "cannot open envelope - missing or corrupt metadata entry"
+    if kind == KIND-ZEPHYR:
+      if (version_ != ENVELOPE-FORMAT-VERSION-ZEPHYR and
+          version_ != ENVELOPE-FORMAT-VERSION-ZEPHYR-NRF5340) or word-size != 4:
+        throw "Invalid Zephyr envelope version or word size"
+      if (entries.contains AR-ENTRY-ZEPHYR-NETWORK-BIN) !=
+          (version_ == ENVELOPE-FORMAT-VERSION-ZEPHYR-NRF5340):
+        throw "Zephyr envelope version and controller contents disagree"
 
   constructor.create .entries --.sdk-version --.kind --.word-size:
     version_ = kind == KIND-EC618
         ? ENVELOPE-FORMAT-VERSION-EC618
-        : ENVELOPE-FORMAT-VERSION-ESP32-HOST
+        : kind == KIND-ZEPHYR
+            ? (entries.contains AR-ENTRY-ZEPHYR-NETWORK-BIN
+                ? ENVELOPE-FORMAT-VERSION-ZEPHYR-NRF5340
+                : ENVELOPE-FORMAT-VERSION-ZEPHYR)
+            : ENVELOPE-FORMAT-VERSION-ESP32-HOST
 
   store path/string --ui/cli.Ui -> none:
     write-file path --ui=ui: | writer/io.Writer |
@@ -1915,6 +2064,8 @@ class Envelope:
         kind-string = KIND-STRING-HOST
       else if kind == KIND-EC618:
         kind-string = KIND-STRING-EC618
+      else if kind == KIND-ZEPHYR:
+        kind-string = KIND-STRING-ZEPHYR
       else:
         throw "unsupported kind: $(kind)"
 
@@ -1936,8 +2087,11 @@ class Envelope:
     version := LITTLE-ENDIAN.uint32 info 4
     if marker != MARKER:
       throw "cannot open envelope - malformed"
-    if version != ENVELOPE-FORMAT-VERSION-ESP32-HOST and version != ENVELOPE-FORMAT-VERSION-EC618:
-      throw "cannot open envelope - expected version $ENVELOPE-FORMAT-VERSION-ESP32-HOST or $ENVELOPE-FORMAT-VERSION-EC618, was $version"
+    if version != ENVELOPE-FORMAT-VERSION-ESP32-HOST and
+        version != ENVELOPE-FORMAT-VERSION-EC618 and
+        version != ENVELOPE-FORMAT-VERSION-ZEPHYR and
+        version != ENVELOPE-FORMAT-VERSION-ZEPHYR-NRF5340:
+      throw "cannot open envelope - unsupported version $version"
     return version
 
 class RelocationInformation:
@@ -2005,7 +2159,7 @@ class RelocationInformation:
 ceil_ x/int y/int -> int:
   return (x + y - 1) / y
 
-class ContainerEntry implements firmware-ec618.Container:
+class ContainerEntry implements firmware-ec618.Container firmware-zephyr.Container:
   id/Uuid
   name/string
   flags/int
