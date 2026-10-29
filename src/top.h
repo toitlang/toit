@@ -112,7 +112,11 @@
 #define LP64(a,b) a##l##b
 #endif
 
-#ifndef TOIT_FREERTOS
+#if defined(TOIT_FREERTOS)
+#define TOIT_EMBEDDED
+#endif
+
+#ifndef TOIT_EMBEDDED
 // For non-embedded applications, this is where we define configuration options
 // that would be determined by the model-specific sdkconfig file on an embedded
 // device.
@@ -177,7 +181,7 @@ static const int TOIT_PAGE_SIZE_LOG2_32 = 12;  // Page size 4kB.
 // keep it small to fit constrained memory. On 32-bit host builds we have
 // plenty of memory, so use the larger 64-bit page size to give Toit stacks
 // the same headroom as the 64-bit build.
-#if defined(BUILD_64) || !defined(TOIT_FREERTOS)
+#if defined(BUILD_64) || !defined(TOIT_EMBEDDED)
 static const int TOIT_PAGE_SIZE_LOG2 = TOIT_PAGE_SIZE_LOG2_64;
 #else
 static const int TOIT_PAGE_SIZE_LOG2 = TOIT_PAGE_SIZE_LOG2_32;

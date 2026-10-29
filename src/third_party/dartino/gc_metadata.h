@@ -117,7 +117,7 @@ class GcMetadata {
   // rounding up the area to be unprotected.  We choose 2MB as the granularity
   // in order to take advantage of huge pages.
   static void round_metadata_extent(uword* address, uword* size) {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_EMBEDDED
     return;
 #endif
     uword start = reinterpret_cast<uword>(singleton_.metadata_);
@@ -502,7 +502,7 @@ class GcMetadata {
   uword mark_bits_bias_;
   uword overflow_bits_bias_;
   uword cumulative_mark_bits_bias_;
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_EMBEDDED
   int large_heap_heuristics_ = 0;
 #else
   int large_heap_heuristics_ = 100;

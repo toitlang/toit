@@ -92,7 +92,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   // Construction support.
   void set_main_arguments(uint8* arguments);
   void set_spawn_arguments(uint8* arguments);
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
   void set_main_arguments(char** argv);
   void set_spawn_arguments(SnapshotBundle system, SnapshotBundle application);
 #endif

@@ -39,7 +39,7 @@ extern "C" {
 }
 #endif
 
-#if !defined(RAW) && !defined(TOIT_FREERTOS)
+#if !defined(RAW) && !defined(TOIT_EMBEDDED)
 #include "compiler/compiler.h"
 #endif
 
@@ -2314,7 +2314,7 @@ PRIMITIVE(encode_object) {
   return result;
 }
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_EMBEDDED
 #define STACK_ENCODING_BUFFER_SIZE (2*1024)
 #else
 #define STACK_ENCODING_BUFFER_SIZE (16*1024)
@@ -2441,7 +2441,7 @@ PRIMITIVE(get_real_time_clock) {
 }
 
 PRIMITIVE(set_real_time_clock) {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_EMBEDDED
   ARGS(int64, tv_sec, int64, tv_nsec);
   if (sizeof(timespec::tv_sec) == sizeof(long) && (tv_sec < LONG_MIN || tv_sec > LONG_MAX)) FAIL(INVALID_ARGUMENT);
   if (tv_nsec < LONG_MIN || tv_nsec > LONG_MAX) FAIL(INVALID_ARGUMENT);
@@ -2593,7 +2593,7 @@ PRIMITIVE(serial_print_heap_report) {
 }
 
 PRIMITIVE(get_env) {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_EMBEDDED
   // FreeRTOS supports environment variables, but we prefer not to expose them.
   FAIL(UNIMPLEMENTED);
 #else
@@ -2607,7 +2607,7 @@ PRIMITIVE(get_env) {
 }
 
 PRIMITIVE(set_env) {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_EMBEDDED
   // FreeRTOS supports environment variables, but we prefer not to expose them.
   FAIL(UNIMPLEMENTED);
 #else
