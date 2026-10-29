@@ -17,9 +17,6 @@ PRIMITIVE(is_terminal) { FAIL(UNSUPPORTED); }
 PRIMITIVE(enter_raw) { FAIL(UNSUPPORTED); }
 PRIMITIVE(restore) { FAIL(UNSUPPORTED); }
 PRIMITIVE(size) { FAIL(UNSUPPORTED); }
-PRIMITIVE(resize_init) { FAIL(UNSUPPORTED); }
-PRIMITIVE(resize_watch) { FAIL(UNSUPPORTED); }
-PRIMITIVE(resize_unwatch) { FAIL(UNSUPPORTED); }
 
 }  // namespace toit
 
