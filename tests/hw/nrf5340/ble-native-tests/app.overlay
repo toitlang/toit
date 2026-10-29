@@ -1,0 +1,7 @@
+// Copyright (C) 2026 Toit contributors.
+// No controller: these tests exercise actual host database/access callbacks.
+/ {
+  chosen {
+    /delete-property/ zephyr,bt-hci;
+  };
+};

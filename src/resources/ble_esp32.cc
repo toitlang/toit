@@ -3516,6 +3516,10 @@ PRIMITIVE(set_gap_device_name) {
   return process->null_object();
 }
 
+// Zephyr uses this private hook to cancel interrupted GATT waits.
+PRIMITIVE(cancel_operation) { FAIL(UNIMPLEMENTED); }
+PRIMITIVE(get_notification) { FAIL(UNIMPLEMENTED); }
+
 } // namespace toit
 
 #endif // defined(TOIT_ESP32) && defined(CONFIG_BT_ENABLED)

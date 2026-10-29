@@ -61,6 +61,7 @@ class Peripheral extends Resource_:
       --scan-response/Advertisement?=null
       --interval/Duration=DEFAULT-INTERVAL
       --connection-mode/int=BLE-CONNECT-MODE-NONE:
+    resource-state_.clear-state ADVERTISE-START-SUCEEDED-EVENT_ | ADVERTISE-START-FAILED-EVENT_
     if system.platform == system.PLATFORM-MACOS:
       if scan-response: throw "UNSUPPORTED"
       data.data-blocks.do: | block/DataBlock |
@@ -95,7 +96,14 @@ class Peripheral extends Resource_:
           interval.in-us
           connection-mode
 
-    state := resource-state_.wait-for-state ADVERTISE-START-SUCEEDED-EVENT_ | ADVERTISE-START-FAILED-EVENT_
+    completed := false
+    state := 0
+    try:
+      state = resource-state_.wait-for-state ADVERTISE-START-SUCEEDED-EVENT_ | ADVERTISE-START-FAILED-EVENT_
+      completed = true
+    finally:
+      if not completed and system.platform == system.PLATFORM-ZEPHYR and not is-closed:
+        ble-advertise-stop_ resource_
     if state & ADVERTISE-START-FAILED-EVENT_ != 0: throw "Failed to start advertising"
 
   /**
@@ -429,7 +437,8 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
     to false, then this function does nothing.
   */
   write value/io.Data --set-value/bool=true:
-    if permissions & CHARACTERISTIC-PERMISSION-READ == 0: throw "Invalid permission"
+    read-permissions := CHARACTERISTIC-PERMISSION-READ | CHARACTERISTIC-PERMISSION-READ-ENCRYPTED
+    if permissions & read-permissions == 0: throw "Invalid permission"
 
     if (properties & (CHARACTERISTIC-PROPERTY-NOTIFY | CHARACTERISTIC-PROPERTY-INDICATE)) != 0:
       clients := ble-get-subscribed-clients resource_
@@ -445,7 +454,8 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   Waits until a client writes a value.
   */
   read -> ByteArray:
-    if (permissions & CHARACTERISTIC-PERMISSION-WRITE) == 0:
+    write-permissions := CHARACTERISTIC-PERMISSION-WRITE | CHARACTERISTIC-PERMISSION-WRITE-ENCRYPTED
+    if permissions & write-permissions == 0:
       throw "Invalid permission"
     return read_
 
@@ -605,7 +615,8 @@ class LocalDescriptor extends LocalReadWriteElement_ implements Attribute:
     is to set a value without sending out any notification.
   */
   set-value value/io.Data:
-    if (permissions & CHARACTERISTIC-PERMISSION-WRITE) == 0:
+    write-permissions := CHARACTERISTIC-PERMISSION-WRITE | CHARACTERISTIC-PERMISSION-WRITE-ENCRYPTED
+    if permissions & write-permissions == 0:
       throw "Invalid permission"
     ble-set-value_ resource_ value
 
@@ -621,7 +632,8 @@ class LocalDescriptor extends LocalReadWriteElement_ implements Attribute:
   Reads a value that is written to this descriptor.
   */
   read -> ByteArray:
-    if (permissions & CHARACTERISTIC-PERMISSION-WRITE) == 0:
+    write-permissions := CHARACTERISTIC-PERMISSION-WRITE | CHARACTERISTIC-PERMISSION-WRITE-ENCRYPTED
+    if permissions & write-permissions == 0:
       throw "Invalid permission"
     return read_
 
@@ -647,6 +659,8 @@ class LocalReadWriteElement_ extends Resource_:
       resource-state_.wait-for-state DATA-RECEIVED-EVENT_
 
 ble-retrieve-adapters_:
-  if system.platform == system.PLATFORM-FREERTOS or system.platform == system.PLATFORM-MACOS:
+  if system.platform == system.PLATFORM-FREERTOS or
+      system.platform == system.PLATFORM-ZEPHYR or
+      system.platform == system.PLATFORM-MACOS:
     return [["default", #[], true, true, null]]
   throw "Unsupported platform"

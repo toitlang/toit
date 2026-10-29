@@ -18,6 +18,9 @@
 #include "../top.h"
 #include "../resource.h"
 #include "../tags.h"
+#ifdef TOIT_ZEPHYR
+#include "zephyr.h"
+#endif
 
 namespace toit {
 
@@ -47,11 +50,18 @@ enum {
   kBleMallocFailed = 1 << 22,
   kBleDataReadRequest = 1 << 23,
   kBleDataWriteRequest = 1 << 24,
+  kBleStartFailed = 1 << 25,
+  kBleNotificationReady = 1 << 26,
 };
 
 class BleResourceGroup;
 
-class BleResource : public Resource {
+#ifdef TOIT_ZEPHYR
+using BleResourceBase = ZephyrResource;
+#else
+using BleResourceBase = Resource;
+#endif
+class BleResource : public BleResourceBase {
  public:
   TAGS(BleResource);
 
@@ -65,7 +75,7 @@ class BleResource : public Resource {
     DESCRIPTOR
   };
   BleResource(ResourceGroup* group, Kind kind)
-      : Resource(group)
+      : BleResourceBase(group)
       , kind_(kind) {}
 
   Kind kind() const { return kind_; }

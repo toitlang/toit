@@ -20,6 +20,7 @@ class Central extends Resource_:
     resource-state_.wait-for-state STARTED-EVENT_
 
   close:
+    if is-closed: return
     remotes := remotes-devices_
     remotes-devices_ = []
     remotes.do: | remote-device/RemoteDevice | remote-device.close
@@ -35,9 +36,7 @@ class Central extends Resource_:
     peer is bonded.
   */
   connect identifier/any --secure/bool=false -> RemoteDevice:
-    remote-device := RemoteDevice.private_ this identifier secure
-    remotes-devices_.add remote-device
-    return remote-device
+    return RemoteDevice.private_ this identifier secure
 
   /**
   Removes the given $remote-device from the list of connected devices.
@@ -102,12 +101,13 @@ class Central extends Resource_:
     if window != 0 and not 4 <= window <= interval:
       throw "Invalid window"
     duration-us := duration ? (max 0 duration.in-us) : -1
-    resource-state_.clear-state COMPLETED-EVENT_
+    resource-state_.clear-state COMPLETED-EVENT_ | DISCOVERY-OPERATION-FAILED_
     ble-scan-start_ resource_ (not active) duration-us interval window limited-only
     is-macos := system.platform == system.PLATFORM_MACOS
     try:
       while true:
-        state := wait-for-state-with-oom_ DISCOVERY-EVENT_ | COMPLETED-EVENT_
+        state := wait-for-state-with-oom_ DISCOVERY-EVENT_ | COMPLETED-EVENT_ | DISCOVERY-OPERATION-FAILED_
+        if state & DISCOVERY-OPERATION-FAILED_ != 0: throw-error_
         next := ble-scan-next_ resource_
         if not next:
           resource-state_.clear-state DISCOVERY-EVENT_
@@ -356,6 +356,13 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
     if properties & (CHARACTERISTIC-PROPERTY-INDICATE | CHARACTERISTIC-PROPERTY-NOTIFY) == 0:
       throw "Characteristic does not support notifications or indications"
 
+    if system.platform == system.PLATFORM-ZEPHYR:
+      while true:
+        resource-state_.clear-state NOTIFICATION-READY-EVENT_
+        buf := ble-get-notification_ resource_
+        if buf: return buf
+        state := resource-state_.wait-for-state NOTIFICATION-READY-EVENT_ | DISCONNECTED-EVENT_
+        if state & DISCONNECTED-EVENT_ != 0: throw "Disconnected"
     while true:
       resource-state_.clear-state VALUE-DATA-READY-EVENT_
       buf := ble-get-value_ resource_
@@ -399,9 +406,14 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
     if (properties & (CHARACTERISTIC-PROPERTY-INDICATE
                     | CHARACTERISTIC-PROPERTY-NOTIFY)) == 0:
       throw "Characteristic does not support notification or indication"
-    resource-state_.clear-state  SUBSCRIPTION-OPERATION-FAILED_
+    if subscribe and system.platform == system.PLATFORM-ZEPHYR:
+      ccc := BleUuid "2902"
+      found := discovered-descriptors_.any: it.uuid == ccc
+      if not found:
+        discover-descriptors
+    resource-state_.clear-state SUBSCRIPTION-OPERATION-FAILED_ | SUBSCRIPTION-OPERATION-SUCCEEDED_
     ble-set-characteristic-notify_ resource_ subscribe
-    state := resource-state_.wait-for-state SUBSCRIPTION-OPERATION-SUCCEEDED_ | SUBSCRIPTION-OPERATION-FAILED_
+    state := wait-for-gatt_ 3 (SUBSCRIPTION-OPERATION-SUCCEEDED_ | SUBSCRIPTION-OPERATION-FAILED_)
     if state & SUBSCRIPTION-OPERATION-FAILED_ != 0:
       throw-error_
 
@@ -412,9 +424,9 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
     characteristic, regardless of whether a descriptor with the same UUID already exists in the list.
   */
   discover-descriptors -> List:
-    resource-state_.clear-state DESCRIPTORS-DISCOVERED-EVENT_
+    resource-state_.clear-state DESCRIPTORS-DISCOVERED-EVENT_ | DISCOVERY-OPERATION-FAILED_
     ble-discover-descriptors_ resource_
-    state := wait-for-state-with-oom_ DESCRIPTORS-DISCOVERED-EVENT_
+    state := wait-for-gatt_ 0 DESCRIPTORS-DISCOVERED-EVENT_
                                    | DISCONNECTED-EVENT_
                                    | DISCOVERY-OPERATION-FAILED_
     if state & DISCONNECTED-EVENT_ != 0:
@@ -494,10 +506,10 @@ class RemoteService extends Resource_ implements Attribute:
   */
   // TODO(florian): only add the characteristics that are not already in the list.
   discover-characteristics characteristic-uuids/List=[] -> List:
-    resource-state_.clear-state CHARACTERISTIS-DISCOVERED-EVENT_
+    resource-state_.clear-state CHARACTERISTIS-DISCOVERED-EVENT_ | DISCOVERY-OPERATION-FAILED_
     raw-characteristics-uuids := characteristic-uuids.map: | uuid/BleUuid | uuid.encode-for-platform_
     ble-discover-characteristics_ resource_ (Array_.ensure raw-characteristics-uuids)
-    state := wait-for-state-with-oom_ CHARACTERISTIS-DISCOVERED-EVENT_
+    state := wait-for-gatt_ 0 CHARACTERISTIS-DISCOVERED-EVENT_
                                    | DISCONNECTED-EVENT_
                                    | DISCOVERY-OPERATION-FAILED_
     if state & DISCONNECTED-EVENT_ != 0:
@@ -548,10 +560,19 @@ class RemoteDevice extends Resource_:
   constructor.private_ .manager .identifier secure/bool:
     device-resource := ble-connect_ manager.resource_ identifier secure
     super device-resource
-    state := resource-state_.wait-for-state CONNECTED-EVENT_ | CONNECT-FAILED-EVENT_
-    if state & CONNECT-FAILED-EVENT_ != 0:
-      close_
-      throw "BLE connection failed"
+    // Include pending connections so closing the manager can cancel them.
+    manager.remotes-devices_.add this
+    connected := false
+    try:
+      state := resource-state_.wait-for-state CONNECTED-EVENT_ | CONNECT-FAILED-EVENT_ | DISCONNECTED-EVENT_
+      if state & CONNECTED-EVENT_ == 0 or state & (CONNECT-FAILED-EVENT_ | DISCONNECTED-EVENT_) != 0:
+        throw "BLE connection failed"
+      connected = true
+    finally:
+      // Also release the native resource when the caller cancels its wait.
+      if not connected:
+        manager.remove-device_ this
+        close_
 
   /**
   Removes the given $remote-service from the list of discovered services.
@@ -580,10 +601,10 @@ class RemoteDevice extends Resource_:
     one element.
   */
   discover-services service-uuids/List=[] -> List:
-    resource-state_.clear-state SERVICES-DISCOVERED-EVENT_
+    resource-state_.clear-state SERVICES-DISCOVERED-EVENT_ | DISCOVERY-OPERATION-FAILED_
     raw-service-uuids := service-uuids.map: | uuid/BleUuid | uuid.encode-for-platform_
     ble-discover-services_ resource_ (Array_.ensure raw-service-uuids)
-    state := wait-for-state-with-oom_ SERVICES-DISCOVERED-EVENT_
+    state := wait-for-gatt_ 0 SERVICES-DISCOVERED-EVENT_
                                    | DISCONNECTED-EVENT_
                                    | DISCOVERY-OPERATION-FAILED_
     if state & DISCONNECTED-EVENT_ != 0:
@@ -604,6 +625,7 @@ class RemoteDevice extends Resource_:
     method waits until the remote device has acknowledged the disconnection.
   */
   close --force/bool=false -> none:
+    if is-closed: return
     services := discovered-services_
     discovered-services_ = []
     services.do: | service/RemoteService | service.close_
@@ -638,15 +660,15 @@ class RemoteReadWriteElement_ extends Resource_:
       if result == 0:
         return // Write without response success.
       if result == 1: // Write with response.
-        state := resource-state_.wait-for-state VALUE-WRITE-FAILED-EVENT_ | VALUE-WRITE-SUCCEEDED-EVENT_
+        state := wait-for-gatt_ 2 (VALUE-WRITE-FAILED-EVENT_ | VALUE-WRITE-SUCCEEDED-EVENT_)
         if state & VALUE-WRITE-FAILED-EVENT_ != 0: throw-error_
         return
       if result == 2: // Write without response, needs to wait for device ready.
         remote-service_.device.resource-state_.wait-for-state READY-TO-SEND-WITHOUT-RESPONSE-EVENT_
 
   request-read_ -> ByteArray:
-    resource-state_.clear-state VALUE-DATA-READY-EVENT_
+    resource-state_.clear-state VALUE-DATA-READY-EVENT_ | VALUE-DATA-READ-FAILED-EVENT_
     ble-request-read_ resource_
-    state := resource-state_.wait-for-state VALUE-DATA-READY-EVENT_ | VALUE-DATA-READ-FAILED-EVENT_
+    state := wait-for-gatt_ 1 (VALUE-DATA-READY-EVENT_ | VALUE-DATA-READ-FAILED-EVENT_)
     if state & VALUE-DATA-READ-FAILED-EVENT_ != 0: throw-error_
     return ble-get-value_ resource_
