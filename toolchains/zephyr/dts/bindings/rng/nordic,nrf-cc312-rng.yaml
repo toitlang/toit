@@ -1,0 +1,5 @@
+# Copyright (C) 2026 Toit contributors.
+# SPDX-License-Identifier: Apache-2.0
+description: nRF5340 CryptoCell 312 entropy collector
+compatible: "nordic,nrf-cc312-rng"
+include: base.yaml

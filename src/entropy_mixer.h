@@ -32,11 +32,11 @@ namespace toit {
 class EntropyMixer {
  public:
   EntropyMixer()
-#ifndef TOIT_EC618
+#if !defined(TOIT_EC618) && !defined(TOIT_ZEPHYR)
     : mutex_(OS::allocate_mutex(4, "Entropy mutex")) {
     mbedtls_entropy_init(&context_);
 #else
-    // On EC618, static constructors run before FreeRTOS is started,
+    // On these embedded ports, static constructors run before the runtime is ready,
     // so we can't allocate a mutex here. set_up is called during the
     // single-threaded VM startup, after the OS and mbedTLS threading setup.
     : mutex_(null) {
@@ -50,7 +50,7 @@ class EntropyMixer {
     }
   }
 
-#ifdef TOIT_EC618
+#if defined(TOIT_EC618) || defined(TOIT_ZEPHYR)
   void set_up() {
     ASSERT(mutex_ == null);
     mutex_ = OS::allocate_mutex(4, "Entropy mutex");

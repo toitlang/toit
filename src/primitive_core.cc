@@ -132,7 +132,7 @@ static Object* write_on_std(const uint8* bytes, size_t length, bool is_stdout, b
   return process->null_object();
 }
 
-#elif (_POSIX_C_SOURCE >= 199309L || _BSD_SOURCE) && defined(_POSIX_THREAD_SAFE_FUNCTIONS)
+#elif (_POSIX_C_SOURCE >= 199309L || _BSD_SOURCE) && defined(_POSIX_THREAD_SAFE_FUNCTIONS) && !defined(TOIT_ZEPHYR)
 
 static Object* write_on_std(const uint8* bytes, size_t length, bool is_stdout, bool newline, Process* process) {
   FILE* stream = is_stdout ? stdout : stderr;
@@ -2837,6 +2837,9 @@ PRIMITIVE(hostname) {
   return process->allocate_string_or_error(buffer);
 #elif defined(TOIT_EC618)
   return process->allocate_string_or_error("ec618");
+#elif defined(TOIT_ZEPHYR)
+  return process->allocate_string_or_error(CONFIG_BOARD);
+
 #else
 #error "Unsupported platform"
 #endif

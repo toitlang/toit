@@ -1,0 +1,15 @@
+/* Copyright (C) 2026 Toit contributors.
+ * SPDX-License-Identifier: Apache-2.0 */
+/dts-v1/;
+#include <nordic/nrf5340_cpunet_qkaa.dtsi>
+#include <nordic/nrf5340_shared_sram_partition.dtsi>
+
+/ {
+  model = "Ebyte E83-2G4M03S-TB network core";
+  compatible = "ebyte,e83-2g4m03s-tb-cpunet";
+  chosen {
+    zephyr,sram = &sram1;
+    zephyr,flash = &flash1;
+    zephyr,bt-hci-ipc = &ipc0;
+  };
+};

@@ -1,0 +1,45 @@
+# Copyright (C) 2026 Toit contributors.
+# Use of this source code is governed by the LGPL-2.1 license in LICENSE.
+mainmenu "Toit on Zephyr"
+
+config TOIT_CRYPTO
+	bool "Toit cryptographic primitives"
+	default y
+	help
+	  Required for the UUIDs used by the storage service.
+
+config TOIT_CRYPTO_EXTRA
+	bool "Additional Toit cryptographic primitives"
+	depends on TOIT_CRYPTO
+	help
+	  Enables SipHash and Blake2s. Increases firmware size. Asynchronous RSA
+	  key generation is not available on Zephyr.
+
+config TOIT_REBOOT_ON_FATAL_ERROR
+	bool "Reboot after a native fatal error"
+	depends on REBOOT
+	default y
+	help
+	  Reset after a kernel panic, CPU exception, or C abort. Disable this
+	  to retain Zephyr's halt-on-fault policy while debugging.
+
+config TOIT_PSA_CRYPTO
+	bool "Provide Zephyr PSA Crypto through Toit's Mbed TLS library"
+	depends on PSA_CRYPTO_PROVIDER_CUSTOM
+	select PSA_CRYPTO_CLIENT
+	help
+	  Shares one Mbed TLS implementation and configuration between the VM
+	  and Zephyr. Enables the volatile AES and P-256 operations needed by
+	  Bluetooth SMP. This does not provide persistent Bluetooth bond storage.
+
+config TOIT_BLE_SECURITY
+	bool "Toit secure BLE connections"
+	depends on BT_SMP && BT_SETTINGS && TOIT_PSA_CRYPTO
+	select BT_BONDABLE_PER_CONNECTION
+	select BT_SMP_APP_PAIRING_ACCEPT
+	help
+	  Enables secure central connections and peripheral pairing using LE Secure
+	  Connections Just Works. Bonds use the Bluetooth settings backend. Passkey,
+	  numeric comparison and OOB APIs are not available.
+
+source "Kconfig.zephyr"

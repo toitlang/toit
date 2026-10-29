@@ -24,8 +24,8 @@
 #ifdef TOIT_ESP32
 #include "esp_flash.h"
 #include "esp_partition.h"
-#elif defined(TOIT_EC618)
-// EC618 flash operations are handled via FlashRegistry (flash_registry_ec618.cc).
+#elif defined(TOIT_EC618) || defined(TOIT_ZEPHYR)
+// Flash operations are handled by the platform's FlashRegistry backend.
 // No additional includes needed here.
 #else
 #include <string>
@@ -36,7 +36,7 @@ namespace toit {
 
 MODULE_IMPLEMENTATION(flash, MODULE_FLASH_REGISTRY)
 
-#if !defined(TOIT_ESP32) && !defined(TOIT_EC618)
+#if !defined(TOIT_ESP32) && !defined(TOIT_EC618) && !defined(TOIT_ZEPHYR)
 static std::unordered_map<std::string, word*> partitions;
 #endif
 
@@ -278,7 +278,7 @@ PRIMITIVE(revoke_access) {
 PRIMITIVE(partition_find) {
   PRIVILEGED;
   ARGS(cstring, path, int, type, uword, size);
-#ifdef TOIT_EC618
+#if defined(TOIT_EC618) || defined(TOIT_ZEPHYR)
   USE(path); USE(type); USE(size);
   // EC618 doesn't use ESP-style partitions.
   FAIL(FILE_NOT_FOUND);

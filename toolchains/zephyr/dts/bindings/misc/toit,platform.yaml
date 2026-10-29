@@ -1,0 +1,41 @@
+# Copyright (C) 2026 Toit contributors.
+# SPDX-License-Identifier: Apache-2.0
+compatible: "toit,platform"
+description: Toit GPIO numbering and board pin restrictions
+include: base.yaml
+properties:
+  gpio-ports:
+    type: phandles
+    required: true
+    description: Ordered controllers; Toit pin number is 32 * index + pin.
+  reserved-pins:
+    type: array
+    required: true
+    description: Toit pin numbers requiring explicit allow-restricted permission.
+  uart-ports:
+    type: phandles
+    description: UART controllers available to Toit, excluding the console.
+  i2c-ports:
+    type: phandles
+    description: I2C controllers available to Toit, without shared UART/SPI instances.
+  spi-ports:
+    type: phandles
+    description: SPI controllers available to Toit, without shared UART/I2C instances.
+  adc-port:
+    type: phandle
+    description: ADC controller available to Toit.
+  pwm-ports:
+    type: phandles
+    description: Nordic PWM controllers available to Toit; four channels per controller.
+  adc-pins:
+    type: array
+    description: Toit GPIO numbers with analog inputs, paired with adc-inputs.
+  adc-inputs:
+    type: array
+    description: Positive ADC input selectors corresponding to adc-pins.
+  watchdog-port:
+    type: phandle
+    description: Application-controlled watchdog, independent of VM scheduling.
+  storage-partition:
+    type: phandle
+    description: Internal memory-mapped flash storage, including two recovery journal pages.

@@ -33,6 +33,9 @@ BYTES-PER-WORD ::= word-size_
 PLATFORM-FREERTOS ::= "FreeRTOS"
 
 /** Return value from $platform. */
+PLATFORM-ZEPHYR ::= "Zephyr"
+
+/** Return value from $platform. */
 PLATFORM-WINDOWS ::= "Windows"
 
 /** Return value from $platform. */
