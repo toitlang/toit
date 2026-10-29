@@ -81,6 +81,7 @@ namespace toit {
   M(espnow,  MODULE_ESPNOW)                  \
   M(bignum,  MODULE_BIGNUM)                  \
   M(unix_socket, MODULE_UNIX_SOCKET)         \
+  M(signal,  MODULE_SIGNAL)                  \
 
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(write_on_stdout, 2)              \
@@ -853,9 +854,15 @@ namespace toit {
   PRIMITIVE(enter_raw, 2)                    \
   PRIMITIVE(restore, 2)                      \
   PRIMITIVE(size, 1)                         \
-  PRIMITIVE(resize_init, 0)                  \
-  PRIMITIVE(resize_watch, 2)                 \
-  PRIMITIVE(resize_unwatch, 2)               \
+
+#define MODULE_SIGNAL(PRIMITIVE)             \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(watch, 2)                        \
+  PRIMITIVE(unwatch, 2)                      \
+  PRIMITIVE(reset, 1)                        \
+  PRIMITIVE(ignore, 1)                       \
+  PRIMITIVE(raise, 1)                        \
+  PRIMITIVE(number, 1)                       \
 
 #define MODULE_ZLIB(PRIMITIVE)               \
   PRIMITIVE(adler32_start, 1)                \
@@ -1220,7 +1227,6 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_UdpResourceGroup(N, name)    MAKE_UNPACKING_MACRO(UdpResourceGroup, N, name)
 #define _A_T_UartResourceGroup(N, name)   MAKE_UNPACKING_MACRO(UartResourceGroup, N, name)
 #define _A_T_StdinResourceGroup(N, name)  MAKE_UNPACKING_MACRO(StdinResourceGroup, N, name)
-#define _A_T_TerminalResizeResourceGroup(N, name) MAKE_UNPACKING_MACRO(TerminalResizeResourceGroup, N, name)
 #define _A_T_WifiResourceGroup(N, name)   MAKE_UNPACKING_MACRO(WifiResourceGroup, N, name)
 #define _A_T_EthernetResourceGroup(N, name) MAKE_UNPACKING_MACRO(EthernetResourceGroup, N, name)
 #define _A_T_BleResourceGroup(N, name)    MAKE_UNPACKING_MACRO(BleResourceGroup, N, name)
@@ -1272,7 +1278,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_UartResource(N, name)        MAKE_UNPACKING_MACRO(UartResource, N, name)
 #define _A_T_StdinResource(N, name)       MAKE_UNPACKING_MACRO(StdinResource, N, name)
 #define _A_T_TerminalModeResource(N, name) MAKE_UNPACKING_MACRO(TerminalModeResource, N, name)
-#define _A_T_TerminalResizeResource(N, name) MAKE_UNPACKING_MACRO(TerminalResizeResource, N, name)
+#define _A_T_SignalResource(N, name)      MAKE_UNPACKING_MACRO(SignalResource, N, name)
 #define _A_T_UdpSocketResource(N, name)   MAKE_UNPACKING_MACRO(UdpSocketResource, N, name)
 #define _A_T_TcpSocketResource(N, name)   MAKE_UNPACKING_MACRO(TcpSocketResource, N, name)
 #define _A_T_TcpServerSocketResource(N, name)   MAKE_UNPACKING_MACRO(TcpServerSocketResource, N, name)

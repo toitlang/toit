@@ -7,15 +7,16 @@
 #ifdef TOIT_POSIX
 
 #include <errno.h>
+#include <sys/ioctl.h>
 #include <termios.h>
 #include <unistd.h>
 
-#include "../event_sources/terminal_posix.h"
 #include "../objects_inline.h"
 #include "../primitive.h"
 #include "../process.h"
 #include "../resource.h"
 #include "../resource_pool.h"
+#include "terminal.h"
 
 namespace toit {
 
@@ -55,18 +56,15 @@ class TerminalModeResource : public Resource {
   bool active_ = true;
 };
 
-class TerminalResizeResourceGroup : public ResourceGroup {
- public:
-  TAG(TerminalResizeResourceGroup);
-
-  TerminalResizeResourceGroup(Process* process, EventSource* event_source)
-      : ResourceGroup(process, event_source) {}
-
-  uint32_t on_event(Resource* resource, word data, uint32_t state) override {
-    USE(resource);
-    return state | static_cast<uint32_t>(data);
-  }
-};
+int read_terminal_dimensions(int fd, TerminalDimensions* dimensions) {
+  winsize size;
+  if (ioctl(fd, TIOCGWINSZ, &size) != 0) return errno;
+  dimensions->columns = size.ws_col;
+  dimensions->rows = size.ws_row;
+  dimensions->pixel_width = size.ws_xpixel;
+  dimensions->pixel_height = size.ws_ypixel;
+  return 0;
+}
 
 MODULE_IMPLEMENTATION(terminal, MODULE_TERMINAL)
 
@@ -143,53 +141,6 @@ PRIMITIVE(size) {
   result->at_put(2, Smi::from(dimensions.pixel_width));
   result->at_put(3, Smi::from(dimensions.pixel_height));
   return result;
-}
-
-PRIMITIVE(resize_init) {
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) FAIL(ALLOCATION_FAILED);
-
-  TerminalResizeEventSource* event_source = TerminalResizeEventSource::instance();
-  if (!event_source->use()) FAIL(ERROR);
-
-  auto group = _new TerminalResizeResourceGroup(process, event_source);
-  if (group == null) {
-    event_source->unuse();
-    FAIL(MALLOC_FAILED);
-  }
-
-  proxy->set_external_address(group);
-  return proxy;
-}
-
-PRIMITIVE(resize_watch) {
-  ARGS(TerminalResizeResourceGroup, group, int, fd);
-
-  TerminalDimensions dimensions;
-  int error = read_terminal_dimensions(fd, &dimensions);
-  if (error != 0) return Primitive::os_error(error, process);
-
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) FAIL(ALLOCATION_FAILED);
-
-  auto resource = _new TerminalResizeResource(group, fd, dimensions);
-  if (resource == null) FAIL(MALLOC_FAILED);
-  group->register_resource(resource);
-  proxy->set_external_address(resource);
-  return proxy;
-}
-
-PRIMITIVE(resize_unwatch) {
-  ARGS(
-      TerminalResizeResource,
-      resource,
-      TerminalResizeResourceGroup,
-      group);
-  if (resource->resource_group() != group) FAIL(WRONG_OBJECT_TYPE);
-
-  group->unregister_resource(resource);
-  resource_proxy->clear_external_address();
-  return process->null_object();
 }
 
 }  // namespace toit
