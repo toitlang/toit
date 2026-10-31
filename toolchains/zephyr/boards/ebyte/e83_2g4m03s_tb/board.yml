@@ -1,0 +1,8 @@
+# Copyright (C) 2026 Toit contributors.
+# SPDX-License-Identifier: Apache-2.0
+board:
+  name: e83_2g4m03s_tb
+  full_name: Ebyte E83-2G4M03S-TB
+  vendor: ebyte
+  socs:
+  - name: nrf5340

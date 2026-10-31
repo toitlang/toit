@@ -81,6 +81,7 @@ namespace toit {
   M(espnow,  MODULE_ESPNOW)                  \
   M(bignum,  MODULE_BIGNUM)                  \
   M(unix_socket, MODULE_UNIX_SOCKET)         \
+  M(zephyr, MODULE_ZEPHYR)                   \
 
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(write_on_stdout, 2)              \
@@ -466,6 +467,15 @@ namespace toit {
   PRIMITIVE(base_id, 0)                      \
   PRIMITIVE(slot_size, 0)                    \
   PRIMITIVE(console_uart_set, 1)             \
+
+#define MODULE_ZEPHYR(PRIMITIVE)             \
+  PRIMITIVE(reset_reason, 0)                 \
+  PRIMITIVE(supported_reset_reasons, 0)       \
+  PRIMITIVE(watchdog_start, 1)               \
+  PRIMITIVE(watchdog_feed, 0)                \
+  PRIMITIVE(watchdog_stop, 0)                \
+  PRIMITIVE(prepare_poweroff, 2)             \
+  PRIMITIVE(validate_sleep, 1)               \
 
 #define MODULE_CELLULAR(PRIMITIVE)           \
   PRIMITIVE(init, 0)                         \

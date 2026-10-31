@@ -1,0 +1,18 @@
+/* Copyright (C) 2026 Toit contributors.
+ * SPDX-License-Identifier: Apache-2.0 */
+#include <nordic/nrf5340_shared_sram_partition.dtsi>
+/ {
+  ipc {
+    #include <nordic/nrf5340_cpuapp_ipc.dtsi>
+  };
+  chosen {
+    zephyr,bt-hci = &bt_hci_ipc0;
+    zephyr,sram = &toit_app_sram;
+  };
+};
+&sram0 {
+  /* Keep libc, kernel stacks and the Toit heap out of IPC shared RAM. */
+  toit_app_sram: sram@0 {
+    reg = <0x0 0x70000>;
+  };
+};
