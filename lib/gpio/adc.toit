@@ -52,6 +52,9 @@ ADC2: Pins 11-20
 ## ESP32S3
 ADC1: Pins 1-10
 ADC2: Pins 11-20
+
+## nRF5340
+SAADC: Pins 4-7 and 25-28 (P0.04-P0.07 and P0.25-P0.28).
 */
 
 /**
@@ -80,6 +83,16 @@ class Adc:
     used when WiFi is active, and some of the pins are strapping pins.
   By default, ADC2 is disabled, and users need to pass in the
     $allow-restricted flag to allow its use.
+
+  # nRF5340
+  Uses 12-bit single-ended conversions and the internal reference. The
+    $max-voltage selects the smallest range that covers it: 0.15, 0.3, 0.6,
+    1.2, 1.8, 2.4, 3.0, or 3.6 V. Null or zero selects 3.6 V. Negative,
+    non-finite, or greater-than-3.6 V maxima are rejected.
+  The converter range does not change the pin's electrical limits; inputs
+    must remain within the permitted supply-relative GPIO voltage range.
+  Offset calibration runs on the first read after construction. The
+    $allow-restricted flag has no effect on this converter.
 
   Passing a $Pin is deprecated; provide the integer GPIO number instead.
     The $Pin form will be removed in a future release.
@@ -132,6 +145,13 @@ class Adc:
       value := get-chunk_ chunk-size
       result += value * (is-full-chunk ? full-chunk-factor : (chunk-size.to-float / samples))
       sampled += chunk-size
+      // Synchronous backends also need to let timers and cancellation run
+      // between bounded native chunks of a long average.
+      if sampled < samples:
+        yield
+        // Yield alone does not check cancellation or deadlines. A zero sleep
+        // checks both without adding a sampling delay.
+        sleep --ms=0
     return result
 
   get-chunk_ samples/int -> float:
@@ -145,11 +165,12 @@ class Adc:
   /**
   Measures the voltage on the pin and returns the obtained raw value.
 
-  On the ESP32 the ADC readings are 12 bits, so the value will be in the
+  On the ESP32 and nRF5340 the ADC readings are 12 bits, so the value is in the
     range 0-4095.
 
   The returned value is not scaled to the voltage range of the pin.
-  The value is not using the calibration data of the chip.
+  On the ESP32 the value does not use the calibration data of the chip.
+  On the nRF5340 hardware offset calibration also applies to raw readings.
   */
   get --raw/bool -> int:
     result := 0
