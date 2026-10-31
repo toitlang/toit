@@ -62,10 +62,9 @@ Scheduler::Scheduler()
     , max_threads_(OS::num_cores())
     , boot_process_(null) {
   Locker locker(mutex_);
-#ifdef TOIT_FREERTOS
-  // On FreeRTOS we immediately start two threads (the main one and a second
-  // one for the second core) because we don't want to handle allocation
-  // failures when trying to start them later.
+#ifdef TOIT_EMBEDDED
+  // On embedded systems we start the scheduler threads immediately to avoid
+  // handling allocation failures when starting them later.
   while (num_threads_ < max_threads_) {
     start_thread(locker);
   }
@@ -123,7 +122,7 @@ Process* Scheduler::new_boot_process(Locker& locker, Program* program, int group
   return process;
 }
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_EMBEDDED
 
 Scheduler::ExitState Scheduler::run_boot_program(Program* program, int group_id) {
   Locker locker(mutex_);
@@ -728,7 +727,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
       // that the message for the boot process will not be assumed to be handled by
       // the boot process that is going away.
       if (send_system_message(locker, message) != MESSAGE_OK) {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_EMBEDDED
         printf("[message: cannot send termination message for pid %d]\n", id);
 #endif
         delete message;

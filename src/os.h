@@ -89,7 +89,7 @@ class AlignedMemory : public AlignedMemoryBase {
   void* aligned;
 };
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
 class ProtectableAlignedMemory : public AlignedMemoryBase {
  public:
   ProtectableAlignedMemory(size_t size_in_bytes, size_t alignment)

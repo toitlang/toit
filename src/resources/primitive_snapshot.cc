@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
 
 #include "../heap.h"
 #include "../objects_inline.h"
@@ -74,4 +74,4 @@ PRIMITIVE(launch) {
 
 } // namespace toit
 
-#endif // ndef TOIT_FREERTOS
+#endif // ndef TOIT_EMBEDDED

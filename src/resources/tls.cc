@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#if !defined(TOIT_FREERTOS) || CONFIG_TOIT_CRYPTO
+#if !defined(TOIT_EMBEDDED) || CONFIG_TOIT_CRYPTO
 #define MBEDTLS_ALLOW_PRIVATE_ACCESS
 #include <mbedtls/chachapoly.h>
 #include <mbedtls/error.h>
@@ -438,7 +438,7 @@ Object* tls_error(BaseMbedTlsSocket* socket, Process* process, int err) {
   if (((-err) & 0xff80) == -MBEDTLS_ERR_SSL_CA_CHAIN_REQUIRED) {
     strncpy(buffer, "No root certificate provided.\n", BUFFER_LEN);
   }
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_EMBEDDED
   // On small platforms we don't want to pay the 14k to have all the error
   // messages from MbedTLS, so we just print the code and a link to the
   // explanation.
@@ -1031,7 +1031,7 @@ PRIMITIVE(get_random) {
   return process->null_object();
 }
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_EMBEDDED
 // On small platforms we disallow concurrent handshakes
 // to avoid running into memory issues.
 static const int HANDSHAKE_CONCURRENCY = 1;
@@ -1121,4 +1121,4 @@ PRIMITIVE(token_release) {
 
 } // namespace toit
 
-#endif // !defined(TOIT_FREERTOS) || CONFIG_TOIT_CRYPTO
+#endif // !defined(TOIT_EMBEDDED) || CONFIG_TOIT_CRYPTO

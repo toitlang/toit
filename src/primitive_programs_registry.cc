@@ -92,7 +92,7 @@ PRIMITIVE(kill) {
 }
 
 PRIMITIVE(bundled_images) {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_EMBEDDED
   const EmbeddedDataExtension* extension = EmbeddedData::extension();
   word length = extension->images();
   Array* result = process->object_heap()->allocate_array(length * 2, Smi::from(0));

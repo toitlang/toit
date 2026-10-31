@@ -35,7 +35,7 @@ class ProgramImage {
  public:
   ProgramImage(void* address, int size)
       : memory_(null), address_(address), size_(size) {}
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
   ProgramImage(ProtectableAlignedMemory* memory)
       : memory_(memory)
       , address_(memory->address())
@@ -91,7 +91,7 @@ class PointerCallback {
   virtual void c_address(void** p, bool is_sentinel = false) = 0;
 };
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
 
 class Snapshot {
  public:
@@ -262,7 +262,7 @@ class ImageInputStream {
   int index;
 };
 
-#endif  // TOIT_FREERTOS
+#endif  // TOIT_EMBEDDED
 
 // Abstraction to write a Toit image (counter part of ImageInputStream).
 class ImageOutputStream {

@@ -14,7 +14,7 @@
 
 namespace toit {
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_EMBEDDED
 // ESP32 has a cache line of 32 bytes, as does Cortex M7 and Cortex M3.
 static const uword CACHE_LINE = 32;
 #else
