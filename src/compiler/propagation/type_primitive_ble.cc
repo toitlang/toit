@@ -63,6 +63,8 @@ TYPE_PRIMITIVE_ANY(toit_callback_init)
 TYPE_PRIMITIVE_ANY(toit_callback_deinit)
 TYPE_PRIMITIVE_ANY(toit_callback_reply)
 TYPE_PRIMITIVE_NULL(set_gap_device_name)
+TYPE_PRIMITIVE_NULL(cancel_operation)
+TYPE_PRIMITIVE_ANY(get_notification)
 
 }  // namespace toit::compiler
 }  // namespace toit
