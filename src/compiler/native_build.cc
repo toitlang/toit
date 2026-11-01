@@ -51,7 +51,7 @@ bool NativeBuild::prepare(bool needs_sdk) {
   return false;
 }
 
-int NativeBuild::create_executable(const char* out_path, SnapshotBundle bundle, bool optimize_for_size) {
+int NativeBuild::create_executable(const char* out_path, SnapshotBundle bundle) {
   return -1;
 }
 
@@ -187,7 +187,7 @@ int NativeBuild::write_source(const char* out_path, SnapshotBundle bundle) {
   return 0;
 }
 
-int NativeBuild::create_executable(const char* out_path, SnapshotBundle bundle, bool optimize_for_size) {
+int NativeBuild::create_executable(const char* out_path, SnapshotBundle bundle) {
   if (!add_snapshot(bundle)) return -1;
   std::ifstream flags_file(sdk_folder_ + "/" + FLAGS_FILE);
   std::string compile_flags;
@@ -200,12 +200,8 @@ int NativeBuild::create_executable(const char* out_path, SnapshotBundle bundle, 
   std::vector<std::string> command;
   command.push_back(cxx_compiler());
   add_flags(compile_flags, sdk_folder_, &command);
-  if (optimize_for_size) {
-    command.push_back("-Oz");
-    command.push_back("-DNATIVE_ALL_HOT");
-  } else {
-    command.push_back("-O2");
-  }
+  // The generated code marks everything but the hot code as optimize-for-size.
+  command.push_back("-O2");
   command.push_back(code_path_);
   command.push_back("-o");
   command.push_back(out_path);
