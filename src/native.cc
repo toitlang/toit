@@ -16,6 +16,7 @@
 #include "native.h"
 
 #include "bytecodes.h"
+#include "flags.h"
 #include "primitive.h"
 #include "scheduler.h"
 #include "vm.h"
@@ -176,6 +177,7 @@ void NativeRuntime::primitive(NATIVE_PARAMS) {
     PUSH(Smi::from(index));
     CALL(program->primitive_lookup_failure());
   }
+  if (Flags::preempt_a_lot) interpreter->preempt();
   int arity = entry->arity;
   auto function = reinterpret_cast<Primitive::Entry*>(entry->function);
   const int parameter_offset = Interpreter::FRAME_SIZE;
@@ -312,6 +314,11 @@ void NativeRuntime::allocate(NATIVE_PARAMS) {
     NATIVE_TAIL throw_exception(sp, c, null, 0);
   }
   PUSH(result);
+  if (Flags::gc_a_lot) {
+    sp = interpreter->gc(sp, false, 1, false, "'gc a lot'");
+    process->object_heap()->leave_primitive();
+  }
+  if (Flags::preempt_a_lot) interpreter->preempt();
   CONTINUE();
 }
 
