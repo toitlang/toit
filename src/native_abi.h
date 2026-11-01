@@ -49,8 +49,11 @@ struct NativeContext;
 // The 'x' and 'y' parameters are scratch values: The meaning depends on what
 // is being called. Generated code passes them on untouched when they aren't
 // used, because clearing them would take up code on every jump.
-#define NATIVE_PARAMS toit::Object** sp, toit::NativeContext* c, void* x, intptr_t y
-#define NATIVE_ARGS sp, c, x, y
+// The top of the stack is always in 't' and the rest is in memory from 'sp' and
+// up. This is why the runtime and the stack traces can't look at the stack
+// before it has been spilled, and generated code does that before it calls them.
+#define NATIVE_PARAMS toit::Object** sp, toit::NativeContext* c, void* x, intptr_t y, toit::Object* t
+#define NATIVE_ARGS sp, c, x, y, t
 
 typedef void (*NativeFn)(NATIVE_PARAMS);
 
@@ -290,11 +293,16 @@ class NativeRuntime {
   static void call(NativeContext* c, Object** sp, void* next, Method target);
 };
 
-#define PUSH(o)            ({ Object* _o_ = (o); *(--sp) = _o_; })
-#define POP()              (*(sp++))
-#define DROP(n)            (sp += (n))
-#define STACK_AT(n)        (*(sp + (n)))
-#define STACK_AT_PUT(n, o) ({ Object* _o_ = (o); *(sp + (n)) = _o_; })
+#define PUSH(o)            ({ Object* _o_ = (o); *(--sp) = t; t = _o_; })
+#define POP()              ({ Object* _o_ = t; t = *(sp++); _o_; })
+#define DROP(n)            ({ if ((n) != 0) { t = sp[(n) - 1]; sp += (n); } })
+#define STACK_AT(n)        ((n) == 0 ? t : sp[(n) - 1])
+#define STACK_AT_PUT(n, o) ({ Object* _o_ = (o); if ((n) == 0) t = _o_; else sp[(n) - 1] = _o_; })
+// Removes n elements and pushes a new one.
+#define DROP_PUSH(n, o)    ({ Object* _o_ = (o); sp += (n) - 1; t = _o_; })
+// Moves the top of the stack to memory and back.
+#define SPILL()            (*(--sp) = t)
+#define RELOAD()           (t = *(sp++))
 
 inline bool native_are_smis(Object* a, Object* b) {
   return ((native_bits(a) | native_bits(b)) & 1) == 0;
