@@ -52,6 +52,7 @@ class NativeGenerator {
   TypeDatabase* const types_;
   std::vector<MethodInfo> methods_;
   std::set<int> method_ids_;
+  std::set<int> dead_blocks_;  // Blocks that are only called with too few arguments.
   std::set<int> branch_targets_;  // Absolute bcis of non-local branch targets.
   std::stringstream out_;
   uint8* current_end_ = null;
@@ -68,7 +69,6 @@ class NativeGenerator {
   }
   std::string method_label(Method method) const { return method_label(method_id(method)); }
   std::string block_entry_label(int id) const {
-    if (method_ids_.count(id) == 0) return "NativeRuntime::illegal";
     return "e" + std::to_string(id);
   }
   std::string label(uint8* bcp) const {
@@ -106,6 +106,7 @@ class NativeGenerator {
   void emit_declarations();
   void emit_tables();
   void emit_method(const MethodInfo& info);
+  void emit_block_entry(Method method, bool is_dead);
   void emit_block(const MethodInfo& info, uint8* begin, uint8* end);
   void emit_opcode(const MethodInfo& info, uint8* bcp);
 
@@ -323,6 +324,11 @@ void NativeGenerator::emit_declarations() {
       Opcode opcode = static_cast<Opcode>(*bcp);
       if (opcode >= ILLEGAL_END) break;
       if (opcode == NON_LOCAL_BRANCH) branch_targets_.insert(Utils::read_unaligned_uint32(bcp + 2));
+      if (opcode == LOAD_METHOD) {
+        int id = Utils::read_unaligned_uint32(bcp + 1);
+        Method target(program_->bytecodes, id);
+        if (target.is_block_method() && method_ids_.count(id) == 0) dead_blocks_.insert(id);
+      }
       bcp += opcode_length[opcode];
     }
   }
@@ -339,6 +345,7 @@ void NativeGenerator::emit_declarations() {
       if (leader < info.end) out_ << "static void " << label(leader) << "(NATIVE_PARAMS);\n";
     }
   }
+  for (int id : dead_blocks_) out_ << "static void " << block_entry_label(id) << "(NATIVE_PARAMS);\n";
   out_ << "\n";
 }
 
@@ -392,31 +399,41 @@ std::string NativeGenerator::generate() {
   emit_tables();
   out_ << "\n";
   for (auto& info : methods_) emit_method(info);
+  for (int id : dead_blocks_) emit_block_entry(Method(program_->bytecodes, id), true);
   return out_.str();
+}
+
+// Blocks can be called with too many arguments. The caller leaves the
+// number of arguments in y and the return address in x. A block that is
+// dead can still be called, because it is the block that checks the
+// arguments, so it gets the check without the code of the block.
+void NativeGenerator::emit_block_entry(Method method, bool is_dead) {
+  int id = method_id(method);
+  out_ << "static void " << block_entry_label(id) << "(NATIVE_PARAMS) {\n";
+  out_ << "  word extra = y - " << method.arity() << ";\n";
+  out_ << "  if (NATIVE_UNLIKELY(extra < 0)) {\n";
+  out_ << "    PUSH(c->true_object);\n";
+  out_ << "    PUSH(Smi::from(" << method.arity() << "));\n";
+  out_ << "    PUSH(Smi::from(y));\n";
+  out_ << "    PUSH(Smi::from(" << bci(method.entry()) << "));\n";
+  out_ << "    NATIVE_TAIL NativeRuntime::code_failure(NATIVE_ARGS);\n";
+  out_ << "  }\n";
+  if (is_dead) {
+    out_ << "  NATIVE_TAIL NativeRuntime::illegal(NATIVE_ARGS);\n";
+  } else {
+    out_ << "  DROP(extra);\n";
+    out_ << "  PUSH(reinterpret_cast<Object*>(x));\n";
+    out_ << "  PUSH(c->frame_marker);\n";
+    out_ << "  NATIVE_TAIL " << method_label(id) << "(sp, c, null, 0);\n";
+  }
+  out_ << "}\n";
 }
 
 void NativeGenerator::emit_method(const MethodInfo& info) {
   Method method = info.method;
   int id = method_id(method);
   current_end_ = info.end;
-  if (method.is_block_method()) {
-    // Blocks can be called with too many arguments. The caller
-    // leaves the number of arguments in y and the return address in x.
-    out_ << "static void " << block_entry_label(id) << "(NATIVE_PARAMS) {\n";
-    out_ << "  word extra = y - " << method.arity() << ";\n";
-    out_ << "  if (NATIVE_UNLIKELY(extra < 0)) {\n";
-    out_ << "    PUSH(c->true_object);\n";
-    out_ << "    PUSH(Smi::from(" << method.arity() << "));\n";
-    out_ << "    PUSH(Smi::from(y));\n";
-    out_ << "    PUSH(Smi::from(" << bci(method.entry()) << "));\n";
-    out_ << "    NATIVE_TAIL NativeRuntime::code_failure(NATIVE_ARGS);\n";
-    out_ << "  }\n";
-    out_ << "  DROP(extra);\n";
-    out_ << "  PUSH(reinterpret_cast<Object*>(x));\n";
-    out_ << "  PUSH(c->frame_marker);\n";
-    out_ << "  NATIVE_TAIL " << method_label(id) << "(sp, c, null, 0);\n";
-    out_ << "}\n";
-  }
+  if (method.is_block_method()) emit_block_entry(method, false);
   out_ << "static void " << method_label(id) << "(NATIVE_PARAMS) {\n";
   out_ << "  if (NATIVE_UNLIKELY(NativeRuntime::needs_stack_check(c, sp, " << method.max_height() << "))) {\n";
   out_ << "    NATIVE_TAIL NativeRuntime::stack_overflow(sp, c, reinterpret_cast<void*>(&" << method_label(id) << "), " << id << ");\n";
