@@ -166,6 +166,7 @@ class NativeGenerator {
   bool find_targets(uint8* bcp, int stack_offset, int selector_offset, std::set<int>* targets, bool* can_be_null) const;
   bool is_leaf(Method method) const;
   int leaf_target(uint8* bcp) const;
+  bool has_inlined_leaf(const MethodInfo& info) const;
   bool emit_inlined_leaf(const MethodInfo& info, uint8* bcp);
   void emit_virtual(uint8* bcp, uint8* next, int stack_offset, int selector_offset);
   void emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, const char* helper);
@@ -719,6 +720,17 @@ void NativeGenerator::emit_block_entry(Method method, bool is_dead) {
   out_ << "}\n";
 }
 
+bool NativeGenerator::has_inlined_leaf(const MethodInfo& info) const {
+  uint8* bcp = info.method.entry();
+  while (bcp < info.end) {
+    Opcode opcode = static_cast<Opcode>(*bcp);
+    if (opcode >= ILLEGAL_END) break;
+    if (leaf_target(bcp) >= 0) return true;
+    bcp += opcode_length[opcode];
+  }
+  return false;
+}
+
 // The most stack an inlined leaf can use. It has the room for a frame and
 // each of its opcodes pushes at most one value.
 static const int INLINED_STACK_USE = 8;
@@ -743,7 +755,7 @@ void NativeGenerator::emit_method(const MethodInfo& info) {
     out_ << "}\n";
   }
   out_ << "static void " << method_label(id) << "(NATIVE_PARAMS) {\n";
-  out_ << "  if (NATIVE_UNLIKELY(NativeRuntime::needs_stack_check(c, sp, " << (method.max_height() + INLINED_STACK_USE) << "))) {\n";
+  out_ << "  if (NATIVE_UNLIKELY(NativeRuntime::needs_stack_check(c, sp, " << (method.max_height() + (has_inlined_leaf(info) ? INLINED_STACK_USE : 0)) << "))) {\n";
   out_ << "    NATIVE_TAIL NativeRuntime::stack_overflow(sp, c, x, " << pruned_id(id) << ");\n";
   out_ << "  }\n";
   out_ << "  NATIVE_TAIL " << label(method.entry()) << "(NATIVE_ARGS);\n";
