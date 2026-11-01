@@ -74,6 +74,9 @@ TypeScope::TypeScope(BlockTemplate* block, TypeScope* outer, bool linked)
     wrapped_[i] = wrap(stack, false);
   }
 
+  finally_depth_ = outer->finally_depth_;
+  if (block->is_invoked_from_finally()) enter_finally();
+
   Method method = block->method();
   int sp = method.arity() + Interpreter::FRAME_SIZE;
   int size = sp + method.max_height() + EXTRA;
@@ -97,7 +100,9 @@ TypeScope::TypeScope(const TypeScope* source, const TypeScope* target)
     , level_linked_(target->level_linked())
     , method_(target->method())
     , outer_(target->outer())
-    , wrapped_(static_cast<uword*>(malloc((level_ + 1) * sizeof(uword)))) {
+    , wrapped_(static_cast<uword*>(malloc((level_ + 1) * sizeof(uword))))
+    , unwinding_(target->unwinding())
+    , finally_depth_(target->finally_depth_) {
   for (int i = 0; i <= level_; i++) {
     wrapped_[i] = wrap(source->at(i), false);
   }
@@ -108,6 +113,7 @@ TypeScope::~TypeScope() {
     uword wrapped = wrapped_[i];
     if (is_copied(wrapped)) delete unwrap(wrapped);
   }
+  for (TypeStack* stack : replaced_) delete stack;
   free(wrapped_);
 }
 
@@ -139,6 +145,13 @@ TypeScope* TypeScope::copy_lazy(const TypeScope* target) const {
   return new TypeScope(this, target);
 }
 
+void TypeScope::own_stacks() {
+  for (int i = 0; i <= level_; i++) {
+    uword wrapped = wrapped_[i];
+    if (!is_copied(wrapped)) wrapped_[i] = wrap(unwrap(wrapped)->copy(), true);
+  }
+}
+
 TypeStack* TypeScope::copy_top() {
   ASSERT(top_ == null);
   uword wrapped = wrapped_[level_];
@@ -163,6 +176,9 @@ bool TypeScope::merge(const TypeScope* other, MergeKind kind) {
     case MERGE_UNWIND:
       level_target = other->level_linked();
       break;
+    case MERGE_OUTER:
+      level_target = level_;
+      break;
   }
   ASSERT(level_target <= level_);
   bool result = false;
@@ -171,25 +187,21 @@ bool TypeScope::merge(const TypeScope* other, MergeKind kind) {
     TypeStack* stack = unwrap(wrapped);
     TypeStack* addition = other->at(i);
     if (stack == addition) continue;
-    if (!is_copied(wrapped) && stack->merge_required(addition)) {
-      stack = stack->copy();
-      wrapped_[i] = wrap(stack, true);
+    if (i == level_ && is_copied(wrapped)) {
+      // We never share the top stack with others once it is in use.
+      result = stack->merge(addition) || result;
+    } else if (stack->merge_required(addition)) {
+      // Other scopes may be using this stack. If we changed it, they
+      // would see our types without being told that they have changed,
+      // so we replace it and keep the old one alive for them.
+      TypeStack* copy = stack->copy();
+      if (is_copied(wrapped)) replaced_.push_back(stack);
+      wrapped_[i] = wrap(copy, true);
+      copy->merge(addition);
+      result = true;
     }
-    result = stack->merge(addition) || result;
   }
   return result;
-}
-
-void TypeScope::merge_any_locals(Program* program) {
-  for (int i = 0; i <= level_; i++) {
-    uword wrapped = wrapped_[i];
-    TypeStack* stack = unwrap(wrapped);
-    if (!is_copied(wrapped)) {
-      stack = stack->copy();
-      wrapped_[i] = wrap(stack, true);
-    }
-    stack->merge_any(program);
-  }
 }
 
 } // namespace toit::compiler
