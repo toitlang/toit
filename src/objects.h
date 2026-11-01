@@ -758,6 +758,8 @@ class ByteArray : public HeapObject {
 
 class LargeInteger : public HeapObject {
  public:
+  friend class NativeRuntime;
+
   int64 value() { return _int64_at(VALUE_OFFSET); }
 
   static LargeInteger* cast(Object* value) {
@@ -1435,6 +1437,8 @@ class String : public HeapObject {
 
 class Instance : public HeapObject {
  public:
+  friend class NativeRuntime;
+
   Object* at(word index) const {
     return _at(_offset_from(index));
   }

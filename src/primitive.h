@@ -15,11 +15,8 @@
 
 #pragma once
 
-// The SDK has the headers for generated native code, but not the ones for mbedtls.
-#ifndef TOIT_NATIVE_CODE
 #define MBEDTLS_ALLOW_PRIVATE_ACCESS
 #include <mbedtls/aes.h>
-#endif
 
 #include "top.h"
 #include "objects.h"

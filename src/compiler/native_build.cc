@@ -46,12 +46,16 @@ namespace compiler {
 
 NativeBuild::~NativeBuild() {}
 
-bool NativeBuild::prepare() {
+bool NativeBuild::prepare(bool needs_sdk) {
   fprintf(stderr, "Native code isn't supported on this platform\n");
   return false;
 }
 
 int NativeBuild::create_executable(const char* out_path, SnapshotBundle bundle, bool optimize_for_size) {
+  return -1;
+}
+
+int NativeBuild::write_source(const char* out_path, SnapshotBundle bundle) {
   return -1;
 }
 
@@ -103,15 +107,6 @@ static int run_command(const std::vector<std::string>& command) {
   return WEXITSTATUS(status);
 }
 
-static std::string escaped_for_assembler(const std::string& path) {
-  std::string result;
-  for (char c : path) {
-    if (c == '"' || c == '\\') result += '\\';
-    result += c;
-  }
-  return result;
-}
-
 NativeBuild::~NativeBuild() {
   remove_temp_folder();
   active_build = null;
@@ -120,8 +115,6 @@ NativeBuild::~NativeBuild() {
 void NativeBuild::remove_temp_folder() {
   if (temp_folder_.empty()) return;
   unlink(code_path_.c_str());
-  unlink(data_path_.c_str());
-  unlink(snapshot_path_.c_str());
   rmdir(temp_folder_.c_str());
   temp_folder_.clear();
 }
@@ -130,7 +123,7 @@ void NativeBuild::remove_active_temp_folder() {
   if (active_build != null && getpid() == active_build_pid) active_build->remove_temp_folder();
 }
 
-bool NativeBuild::prepare() {
+bool NativeBuild::prepare(bool needs_sdk) {
   if (Flags::native != null) {
     fprintf(stderr, "The --native flag can't be combined with -Xnative\n");
     return false;
@@ -140,7 +133,7 @@ bool NativeBuild::prepare() {
   builder.join(fs.sdk_path(), "lib", "toit", "native");
   sdk_folder_ = builder.buffer();
   std::string flags_path = sdk_folder_ + "/" + FLAGS_FILE;
-  if (access(flags_path.c_str(), R_OK) != 0) {
+  if (needs_sdk && access(flags_path.c_str(), R_OK) != 0) {
     fprintf(stderr, "This SDK doesn't support native code (missing '%s')\n", flags_path.c_str());
     return false;
   }
@@ -157,38 +150,50 @@ bool NativeBuild::prepare() {
   active_build_pid = getpid();
   atexit(&NativeBuild::remove_active_temp_folder);
   code_path_ = temp_folder_ + "/code.cc";
-  data_path_ = temp_folder_ + "/data.cc";
-  snapshot_path_ = temp_folder_ + "/program.snapshot";
   Flags::native = strdup(code_path_.c_str());
   return true;
 }
 
+// The format is the one that is used for patching vessels: the size of
+// the bundle followed by the bundle. All characters are escaped, so
+// the size of the literal doesn't matter much to the C++ compiler.
+bool NativeBuild::add_snapshot(SnapshotBundle bundle) {
+  FILE* file = fopen(code_path_.c_str(), "ab");
+  if (file == null) {
+    perror(code_path_.c_str());
+    return false;
+  }
+  int size = bundle.size();
+  fprintf(file, "\nunsigned char vessel_snapshot_data[] =\n\"");
+  for (int i = 0; i < 4; i++) fprintf(file, "\\%03o", (size >> (i * 8)) & 0xff);
+  for (int i = 0; i < size; i++) {
+    if ((i & 0x3f) == 0) fprintf(file, "\"\n\"");
+    fprintf(file, "\\%03o", bundle.buffer()[i]);
+  }
+  fprintf(file, "\";\n");
+  return fclose(file) == 0;
+}
+
+int NativeBuild::write_source(const char* out_path, SnapshotBundle bundle) {
+  if (!add_snapshot(bundle)) return -1;
+  std::ifstream source(code_path_, std::ios::binary);
+  std::ofstream output(out_path, std::ios::binary);
+  output << source.rdbuf();
+  output.close();
+  if (!output) {
+    fprintf(stderr, "Unable to write '%s'\n", out_path);
+    return -1;
+  }
+  return 0;
+}
+
 int NativeBuild::create_executable(const char* out_path, SnapshotBundle bundle, bool optimize_for_size) {
+  if (!add_snapshot(bundle)) return -1;
   std::ifstream flags_file(sdk_folder_ + "/" + FLAGS_FILE);
   std::string compile_flags;
   std::string link_flags;
   if (!std::getline(flags_file, compile_flags) || !std::getline(flags_file, link_flags)) {
     fprintf(stderr, "Invalid file '%s/%s'\n", sdk_folder_.c_str(), FLAGS_FILE);
-    return -1;
-  }
-
-  if (!bundle.write_to_file(snapshot_path_.c_str())) return -1;
-  // The snapshot is much too big to go through the C++ compiler.
-  // The format is the one that is used for patching vessels: the size
-  // followed by the snapshot.
-  std::ofstream data(data_path_);
-  data << "__asm__(\n"
-       << "#ifdef __APPLE__\n"
-       << "  \".section __DATA,__data\\n.globl _vessel_snapshot_data\\n.p2align 4\\n_vessel_snapshot_data:\\n\"\n"
-       << "#else\n"
-       << "  \".section .data\\n.globl vessel_snapshot_data\\n.p2align 4\\nvessel_snapshot_data:\\n\"\n"
-       << "#endif\n"
-       << "  \".long " << bundle.size() << "\\n\"\n"
-       << "  \".incbin \\\"" << escaped_for_assembler(escaped_for_assembler(snapshot_path_)) << "\\\"\\n\"\n"
-       << "  \".text\\n\");\n";
-  data.close();
-  if (!data) {
-    fprintf(stderr, "Unable to write '%s'\n", data_path_.c_str());
     return -1;
   }
 
@@ -202,7 +207,6 @@ int NativeBuild::create_executable(const char* out_path, SnapshotBundle bundle, 
     command.push_back("-O2");
   }
   command.push_back(code_path_);
-  command.push_back(data_path_);
   command.push_back("-o");
   command.push_back(out_path);
   add_flags(link_flags, sdk_folder_, &command);

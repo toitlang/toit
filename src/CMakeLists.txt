@@ -13,6 +13,14 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
+# The compiler copies the interface for native code into the code it generates.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/native_abi.h")
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/native_abi.h" TOIT_NATIVE_ABI_SOURCE)
+string(MD5 TOIT_NATIVE_ABI_HASH "${TOIT_NATIVE_ABI_SOURCE}")
+string(SUBSTRING "${TOIT_NATIVE_ABI_HASH}" 0 8 TOIT_NATIVE_ABI_HASH)
+configure_file(native_abi_source.h.in "${PROJECT_BINARY_DIR}/generated/native_abi_source.h" @ONLY)
+include_directories("${PROJECT_BINARY_DIR}/generated")
+
 # Must be before the add_subdirectory(compiler) below, as that one
 # uses the UTF_8_MANIFEST_LIB variable.
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "Windows" OR "${CMAKE_SYSTEM_NAME}" MATCHES "MSYS")

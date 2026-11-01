@@ -58,3 +58,15 @@ endforeach()
 foreach(test ${NATIVE_SIZE_TESTS})
   add_native_test("${test}-size" "${CMAKE_CURRENT_SOURCE_DIR}/../${test}.toit" --native-size --strip)
 endforeach()
+
+add_test(
+  NAME "tests/native/source-test"
+  COMMAND "${CMAKE_COMMAND}"
+      "-DTOIT_COMPILE=$<TARGET_FILE:toit.compile>"
+      "-DCXX=${TOIT_NATIVE_CXX}"
+      "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/source-input.toit"
+      "-DNATIVE_SDK=${CMAKE_BINARY_DIR}/sdk/lib/toit/native"
+      "-DWORK_DIR=${NATIVE_DIR}"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/source-test.cmake"
+  CONFIGURATIONS slow
+)
