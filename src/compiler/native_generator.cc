@@ -82,19 +82,23 @@ class NativeGenerator {
     bool left_is_smi = false;
     bool right_is_smi = false;
     bool can_be_smis = true;
+    // Even if we don't know that the integers are smis, knowing that
+    // they are integers means that there is no Toit code to run.
+    bool are_ints = false;
     bool are_smis() const { return left_is_smi && right_is_smi; }
   };
   Operands operands(uint8* bcp) const;
   // The condition for the operands being smis; empty if they always are.
   std::string smi_check(const Operands& operands) const;
   bool is_smi_type(TypeSet type) const;
+  bool is_int_type(TypeSet type) const;
 
   // Returns the method a virtual call goes to if there is only one
   // possible receiver class. Returns -1 otherwise.
   int single_target(uint8* bcp, int arity, int selector_offset) const;
 
   bool ends_block(uint8* bcp) const;
-  bool inlines_smi_operation(uint8* bcp) const;
+  bool stays_in_block(uint8* bcp) const;
   // The code that follows a call. Calls that don't return don't need it.
   uint8* continuation(uint8* bcp, uint8* next) const;
 
@@ -187,6 +191,14 @@ bool NativeGenerator::is_smi_type(TypeSet type) const {
   return type.size(words) == 1 && type.contains(Smi::value(program_->smi_class_id()));
 }
 
+bool NativeGenerator::is_int_type(TypeSet type) const {
+  if (type.is_block()) return false;
+  int words = TypeSet::words_per_type(program_);
+  int count = type.contains(Smi::value(program_->smi_class_id())) ? 1 : 0;
+  if (type.contains(Smi::value(program_->large_integer_class_id()))) count++;
+  return count > 0 && type.size(words) == count;
+}
+
 NativeGenerator::Operands NativeGenerator::operands(uint8* bcp) const {
   Operands result;
   std::vector<TypeSet> input = types_->input(bci(bcp));
@@ -195,6 +207,7 @@ NativeGenerator::Operands NativeGenerator::operands(uint8* bcp) const {
   result.left_is_smi = is_smi_type(input[0]);
   result.right_is_smi = is_smi_type(input[1]);
   result.can_be_smis = input[0].contains(smi_id) && input[1].contains(smi_id);
+  result.are_ints = is_int_type(input[0]) && is_int_type(input[1]);
   return result;
 }
 
@@ -219,15 +232,17 @@ int NativeGenerator::single_target(uint8* bcp, int arity, int selector_offset) c
   return entry;
 }
 
-// Operations on smis that cannot fail are done right
-// where they are, so they don't need a continuation.
-bool NativeGenerator::inlines_smi_operation(uint8* bcp) const {
+// These operations cannot fail or call anything if they are working
+// on integers, so they are done right where they are and they need no
+// continuation. Arithmetic can overflow and the results must be allocated.
+bool NativeGenerator::stays_in_block(uint8* bcp) const {
   switch (static_cast<Opcode>(*bcp)) {
     case INVOKE_EQ:
     case INVOKE_LT:
     case INVOKE_GT:
     case INVOKE_LTE:
     case INVOKE_GTE:
+      return operands(bcp).are_ints;
     case INVOKE_BIT_OR:
     case INVOKE_BIT_XOR:
     case INVOKE_BIT_AND:
@@ -238,7 +253,7 @@ bool NativeGenerator::inlines_smi_operation(uint8* bcp) const {
 }
 
 bool NativeGenerator::ends_block(uint8* bcp) const {
-  return needs_continuation(static_cast<Opcode>(*bcp)) && !inlines_smi_operation(bcp);
+  return needs_continuation(static_cast<Opcode>(*bcp)) && !stays_in_block(bcp);
 }
 
 uint8* NativeGenerator::continuation(uint8* bcp, uint8* next) const {
@@ -510,10 +525,9 @@ void NativeGenerator::emit_virtual(uint8* bcp, uint8* next, int stack_offset, in
 
 void NativeGenerator::emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, const char* helper) {
   Operands info = operands(bcp);
+  std::string check = smi_check(info);
+  if (!check.empty()) check += " && ";
   if (info.can_be_smis) {
-    // Smis can overflow, so this can fail no matter what the types are.
-    std::string check = smi_check(info);
-    if (!check.empty()) check += " && ";
     out_ << "  { Object* result;\n";
     out_ << "    if (NATIVE_LIKELY(" << check << helper << "(STACK_AT(1), STACK_AT(0), &result))) {\n";
     out_ << "      STACK_AT_PUT(1, result);\n";
@@ -525,9 +539,14 @@ void NativeGenerator::emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, co
 }
 
 void NativeGenerator::emit_relational(const MethodInfo& info, uint8* bcp, uint8* next, Opcode opcode, const char* op) {
-  std::string compare = std::string("reinterpret_cast<word>(STACK_AT(1)) ") + op + " reinterpret_cast<word>(STACK_AT(0))";
+  std::string smi_compare = std::string("reinterpret_cast<word>(STACK_AT(1)) ") + op + " reinterpret_cast<word>(STACK_AT(0))";
   Operands operands = this->operands(bcp);
-  if (operands.are_smis()) {
+  if (operands.are_ints) {
+    std::string compare = smi_compare;
+    if (!operands.are_smis()) {
+      compare = "NATIVE_LIKELY(" + smi_check(operands) + ") ? (" + smi_compare + ")"
+          + " : (native_int_value(STACK_AT(1)) " + op + " native_int_value(STACK_AT(0)))";
+    }
     Opcode next_opcode = static_cast<Opcode>(*next);
     bool can_merge = next < info.end && info.leaders.count(next) == 0 &&
         (next_opcode == BRANCH_IF_TRUE || next_opcode == BRANCH_IF_FALSE);
@@ -547,7 +566,7 @@ void NativeGenerator::emit_relational(const MethodInfo& info, uint8* bcp, uint8*
   }
   if (operands.can_be_smis) {
     out_ << "  if (NATIVE_LIKELY(" << smi_check(operands) << ")) {\n";
-    out_ << "    STACK_AT_PUT(1, (" << compare << ") ? c->true_object : c->false_object);\n";
+    out_ << "    STACK_AT_PUT(1, (" << smi_compare << ") ? c->true_object : c->false_object);\n";
     out_ << "    DROP(1);\n";
     out_ << "    NATIVE_TAIL " << label(next) << "(sp, c, null, 0);\n";
     out_ << "  }\n";
@@ -842,7 +861,7 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       emit_relational(info, bcp, next, opcode, ">=");
       break;
     case INVOKE_EQ:
-      if (operands(bcp).are_smis()) {
+      if (operands(bcp).are_ints) {
         emit_relational(info, bcp, next, opcode, "==");
       } else {
         emit_runtime_next("binary", next, opcode);
@@ -857,10 +876,12 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
     case INVOKE_BIT_AND:
       emit_bit_operation(bcp, next, opcode, "&");
       break;
+    case INVOKE_MUL:
+      emit_arithmetic(bcp, next, opcode, "native_mul");
+      break;
     case INVOKE_BIT_SHL:
     case INVOKE_BIT_SHR:
     case INVOKE_BIT_USHR:
-    case INVOKE_MUL:
     case INVOKE_DIV:
     case INVOKE_MOD:
       emit_runtime_next("binary", next, opcode);
