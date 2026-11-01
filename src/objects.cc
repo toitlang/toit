@@ -306,6 +306,8 @@ void Stack::roots_do(Program* program, RootCallback* cb) {
   }
 }
 
+Stack::NativeReturnBci* Stack::native_return_bci_ = null;
+
 int Stack::frames_do(Program* program, FrameCallback* cb) {
   word stack_length = _stack_base_addr() - _stack_sp_addr();
   word frame_no = 0;
@@ -324,8 +326,13 @@ int Stack::frames_do(Program* program, FrameCallback* cb) {
       // Don't report the `throw` frame.
       is_first_frame = false;
     } else {
-      cb->do_frame(this, frame_no, program->absolute_bci_from_bcp(last_return_bcp));
-      frame_no++;
+      int bci = native_return_bci_
+          ? native_return_bci_(program, last_return_bcp)
+          : program->absolute_bci_from_bcp(last_return_bcp);
+      if (bci >= 0) {
+        cb->do_frame(this, frame_no, bci);
+        frame_no++;
+      }
     }
     last_return_bcp = return_bcp;
   }

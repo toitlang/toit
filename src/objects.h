@@ -984,6 +984,10 @@ class Stack : public HeapObject {
 
   void roots_do(Program* program, RootCallback* cb);
 
+  // Native code has the addresses of functions as return addresses.
+  typedef int NativeReturnBci(Program* program, uint8* address);
+  static void set_native_return_bci(NativeReturnBci* function) { native_return_bci_ = function; }
+
   // Iterates over all frames on this stack and returns the number of frames.
   int frames_do(Program* program, FrameCallback* cb);
 
@@ -1008,6 +1012,7 @@ class Stack : public HeapObject {
   }
 
  private:
+  static NativeReturnBci* native_return_bci_;
   // We keep a 'guard zone' of words that must not be touched right after
   // the header of the stack object. The stack grows downwards towards lower
   // addresses. If the stack overflows into the guard zone we will catch the
