@@ -260,7 +260,7 @@ void NativeGenerator::find_leaders(MethodInfo* info) {
   current_end_ = info->end;
   uint8* bcp = info->method.entry();
   info->leaders.insert(bcp);
-  if (bcp == program_->entry_task().entry()) {
+  if (program_->has_entry_task() && bcp == program_->entry_task().entry()) {
     // Tasks start after the first bytecode.
     info->leaders.insert(bcp + LOAD_NULL_LENGTH);
   }
@@ -349,7 +349,7 @@ void NativeGenerator::emit_tables() {
   std::map<int, std::string> entries;
   current_end_ = null;
   for (auto& info : methods_) entries[bci(info.method.entry())] = method_label(info.method);
-  if (method_ids_.count(method_id(program_->entry_task())) != 0) {
+  if (program_->has_entry_task() && method_ids_.count(method_id(program_->entry_task())) != 0) {
     uint8* task = program_->entry_task().entry() + LOAD_NULL_LENGTH;
     entries[bci(task)] = label(task);
   }
