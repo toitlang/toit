@@ -108,6 +108,14 @@ class TypePropagator {
 
   void enqueue(MethodTemplate* method);
 
+  // Instances of a class can only be used if they have been allocated. The
+  // analysis sees classes that are never allocated because the 'any' type and
+  // the type checks on it include all classes, but there are no instances for
+  // the methods on them to work on. If the instances show up later, we go
+  // back to the callers that have asked.
+  bool has_instances(unsigned type, MethodTemplate* caller);
+  void mark_allocated(unsigned type);
+
   void add_input(uint8* site, TypeStack* input, int n);
   void add_output(uint8* site, TypeVariable* output);
 
@@ -119,6 +127,14 @@ class TypePropagator {
  private:
   Program* const program_;
   const MethodSelectorOffsets* method_selector_offsets_;
+
+  std::vector<bool> allocated_;
+  std::vector<std::vector<MethodTemplate*>> waiting_for_allocation_;
+  std::vector<unsigned> newly_allocated_;
+
+  void initialize_allocated();
+  bool enqueue_waiting_for_allocation();
+  void mark_allocated(Object* object);
   int words_per_type_;
 
 #define HAS_ENTRY_POINT(name, symbol, arity) \
