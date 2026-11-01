@@ -80,6 +80,7 @@ class NativeGenerator {
     return "m" + std::to_string(id);
   }
   std::string method_label(Method method) const { return method_label(method_id(method)); }
+  std::string virtual_label(int id) const { return "v" + std::to_string(id); }
 
   std::vector<uint8> pruned_bytecodes_;
   std::map<int, int> pruned_ids_;
@@ -117,6 +118,12 @@ class NativeGenerator {
   // Returns the method a virtual call goes to if there is only one
   // possible receiver class. Returns -1 otherwise.
   int single_target(uint8* bcp, int arity, int selector_offset) const;
+  // Identifies a selector and its arity for the check in the virtual entries.
+  static intptr_t virtual_key(int selector_offset, int stack_offset) {
+    return static_cast<intptr_t>(selector_offset) << 8 | stack_offset;
+  }
+  bool has_virtual_entry(int id) const { return virtual_entries_.count(id) != 0; }
+  std::set<int> virtual_entries_;
 
   bool ends_block(uint8* bcp) const;
   bool stays_in_block(uint8* bcp) const;
@@ -152,6 +159,7 @@ class NativeGenerator {
   }
   bool is_hot_site(uint8* bcp) const { return is_hot_code(*current_info_, bcp); }
   const MethodInfo* current_info_ = null;
+  std::string class_id_expression(const std::string& receiver, bool can_be_smi) const;
   void emit_virtual(uint8* bcp, uint8* next, int stack_offset, int selector_offset);
   void emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, const char* helper);
   void emit_relational(const MethodInfo& info, uint8* bcp, uint8* next, Opcode opcode, const char* op);
@@ -178,6 +186,11 @@ NativeGenerator::NativeGenerator(Program* program, TypeDatabase* types, std::vec
   for (auto& info : methods_) {
     find_leaders(&info);
     find_hot_code(&info);
+  }
+  // Global functions are in the dispatch table too, but they have no selector.
+  for (int entry : program_->dispatch_table) {
+    if (entry < 0 || method_ids_.count(entry) == 0) continue;
+    if (Method(program_->bytecodes, entry).selector_offset() >= 0) virtual_entries_.insert(entry);
   }
   compute_pruned_bytecodes(methods);
 }
@@ -498,6 +511,9 @@ void NativeGenerator::emit_declarations() {
     }
     int id = method_id(info.method);
     out_ << "static " << attributes(info, info.method.entry()) << "void " << method_label(id) << native_declaration(method_label(id));
+    if (has_virtual_entry(id)) {
+      out_ << "static " << attributes(info, info.method.entry()) << "void " << virtual_label(id) << native_declaration(virtual_label(id));
+    }
     if (info.method.is_block_method()) out_ << "static void " << block_entry_label(id) << native_declaration(block_entry_label(id));
     current_end_ = info.end;
     for (uint8* leader : info.leaders) {
@@ -510,24 +526,14 @@ void NativeGenerator::emit_declarations() {
 }
 
 void NativeGenerator::emit_tables() {
-  // The selector check is done in the generated code, so we need both tables.
   List<int32> dispatch_table = program_->dispatch_table;
   out_ << "static const NativeFn vtable[] = {\n";
   for (int i = 0; i < dispatch_table.length(); i++) {
     int entry = dispatch_table[i];
-    bool valid = entry >= 0 && method_ids_.count(entry) != 0;
-    out_ << "  " << (valid ? method_label(entry) : std::string("NativeRuntime::illegal")) << ",\n";
+    bool valid = entry >= 0 && has_virtual_entry(entry);
+    out_ << "  " << (valid ? virtual_label(entry) : std::string("NativeRuntime::virtual_fallback")) << ",\n";
   }
   out_ << "};\n\n";
-  out_ << "static const int selectors[] = {\n";
-  for (int i = 0; i < dispatch_table.length(); i++) {
-    int entry = dispatch_table[i];
-    bool valid = entry >= 0 && method_ids_.count(entry) != 0;
-    int selector = valid ? Method(program_->bytecodes, entry).selector_offset() : -1;
-    out_ << "  " << selector << ",\n";
-  }
-  out_ << "};\n\n";
-
   std::map<int, std::string> entries;
   current_end_ = null;
   for (auto& info : methods_) entries[pruned_entry(method_id(info.method))] = method_label(info.method);
@@ -609,17 +615,9 @@ std::string NativeGenerator::generate() {
     int selector_offset = std::get<0>(thunk);
     int stack_offset = std::get<1>(thunk);
     out_ << "static void " << thunk_label(thunk) << "(NATIVE_PARAMS) {\n";
-    if (std::get<2>(thunk)) {
-      out_ << "  unsigned index = native_class_id(STACK_AT(" << stack_offset << "), SMI_ID) + " << selector_offset << ";\n";
-    } else {
-      out_ << "  unsigned index = native_heap_class_id(STACK_AT(" << stack_offset << ")) + " << selector_offset << ";\n";
-    }
-    out_ << "  if (NATIVE_LIKELY(selectors[index] == " << selector_offset << ")) {\n";
-    out_ << "    PUSH(reinterpret_cast<Object*>(x));\n";
-    out_ << "    PUSH(c->frame_marker);\n";
-    out_ << "    NATIVE_TAIL vtable[index](NATIVE_ARGS);\n";
-    out_ << "  }\n";
-    out_ << "  NATIVE_TAIL NativeRuntime::virtual_fallback(sp, c, x, " << (static_cast<word>(selector_offset) << 8 | stack_offset) << ");\n";
+    std::string receiver = "STACK_AT(" + std::to_string(stack_offset) + ")";
+    out_ << "  NATIVE_TAIL vtable[" << class_id_expression(receiver, std::get<2>(thunk)) << " + " << selector_offset
+         << "](sp, c, x, " << virtual_key(selector_offset, stack_offset) << ");\n";
     out_ << "}\n";
   }
   update_program();
@@ -652,6 +650,19 @@ void NativeGenerator::emit_method(const MethodInfo& info) {
   current_end_ = info.end;
   current_info_ = &info;
   if (method.is_block_method()) emit_block_entry(method, false);
+  if (has_virtual_entry(id)) {
+    // The rows of the dispatch table overlap, so a receiver that doesn't have
+    // the method can end up here. This is where the entry in the table is
+    // checked, which leaves the call sites with nothing but the jump.
+    out_ << "static void " << virtual_label(id) << "(NATIVE_PARAMS) {\n";
+    out_ << "  if (NATIVE_UNLIKELY(y != " << virtual_key(method.selector_offset(), method.arity() - 1) << ")) {\n";
+    out_ << "    NATIVE_TAIL NativeRuntime::virtual_fallback(NATIVE_ARGS);\n";
+    out_ << "  }\n";
+    out_ << "  PUSH(reinterpret_cast<Object*>(x));\n";
+    out_ << "  PUSH(c->frame_marker);\n";
+    out_ << "  NATIVE_TAIL " << method_label(id) << "(NATIVE_ARGS);\n";
+    out_ << "}\n";
+  }
   out_ << "static void " << method_label(id) << "(NATIVE_PARAMS) {\n";
   out_ << "  if (NATIVE_UNLIKELY(NativeRuntime::needs_stack_check(c, sp, " << method.max_height() << "))) {\n";
   out_ << "    NATIVE_TAIL NativeRuntime::stack_overflow(sp, c, x, " << pruned_id(id) << ");\n";
@@ -745,24 +756,22 @@ void NativeGenerator::emit_virtual(uint8* bcp, uint8* next, int stack_offset, in
   bool can_be_smi = static_cast<int>(input.size()) != stack_offset + 1 ||
       input[0].is_block() ||
       input[0].contains(Smi::value(program_->smi_class_id()));
+  std::string address = "reinterpret_cast<void*>(&" + label(next) + ")";
   if (!is_hot_site(bcp)) {
     // Sites that aren't hot share the code for the lookup.
     auto thunk = std::make_tuple(selector_offset, stack_offset, can_be_smi);
     virtual_thunks_.insert(thunk);
-    out_ << "  NATIVE_TAIL " << thunk_label(thunk) << "(sp, c, reinterpret_cast<void*>(&" << label(next) << "), y);\n";
+    out_ << "  NATIVE_TAIL " << thunk_label(thunk) << "(sp, c, " << address << ", y);\n";
     return;
   }
-  if (can_be_smi) {
-    out_ << "  { unsigned index = native_class_id(STACK_AT(" << stack_offset << "), SMI_ID) + " << selector_offset << ";\n";
-  } else {
-    out_ << "  { unsigned index = native_heap_class_id(STACK_AT(" << stack_offset << ")) + " << selector_offset << ";\n";
-  }
-  out_ << "    if (NATIVE_LIKELY(selectors[index] == " << selector_offset << ")) {\n";
-  out_ << "      PUSH(reinterpret_cast<Object*>(&" << label(next) << "));\n";
-  out_ << "      PUSH(c->frame_marker);\n";
-  out_ << "      NATIVE_TAIL vtable[index](NATIVE_ARGS);\n";
-  out_ << "    }\n  }\n";
-  emit_runtime_next("virtual_fallback", next, static_cast<word>(selector_offset) << 8 | stack_offset);
+  std::string receiver = "STACK_AT(" + std::to_string(stack_offset) + ")";
+  out_ << "  NATIVE_TAIL vtable[" << class_id_expression(receiver, can_be_smi) << " + " << selector_offset
+       << "](sp, c, " << address << ", " << virtual_key(selector_offset, stack_offset) << ");\n";
+}
+
+std::string NativeGenerator::class_id_expression(const std::string& receiver, bool can_be_smi) const {
+  if (can_be_smi) return "native_class_id(" + receiver + ", SMI_ID)";
+  return "native_heap_class_id(" + receiver + ")";
 }
 
 void NativeGenerator::emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, const char* helper) {
