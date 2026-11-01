@@ -194,9 +194,9 @@ inline bool native_are_smis(Object* a, Object* b) {
   return is_smi(reinterpret_cast<Object*>(reinterpret_cast<uword>(a) | reinterpret_cast<uword>(b)));
 }
 
+// These expect smis and return false if the result doesn't fit in a smi.
 inline bool native_add(Object* a, Object* b, Object** result) {
   word sum;
-  if (!native_are_smis(a, b)) return false;
   if (__builtin_add_overflow(reinterpret_cast<word>(a), reinterpret_cast<word>(b), &sum)) return false;
   *result = reinterpret_cast<Object*>(sum);
   return true;
@@ -204,10 +204,23 @@ inline bool native_add(Object* a, Object* b, Object** result) {
 
 inline bool native_sub(Object* a, Object* b, Object** result) {
   word difference;
-  if (!native_are_smis(a, b)) return false;
   if (__builtin_sub_overflow(reinterpret_cast<word>(a), reinterpret_cast<word>(b), &difference)) return false;
   *result = reinterpret_cast<Object*>(difference);
   return true;
+}
+
+inline bool native_mul(Object* a, Object* b, Object** result) {
+  word product;
+  if (__builtin_mul_overflow(reinterpret_cast<word>(a), reinterpret_cast<word>(b) >> 1, &product)) return false;
+  *result = reinterpret_cast<Object*>(product);
+  return true;
+}
+
+// Reading an integer doesn't involve any calls. Calls are expensive in native
+// code, even if they are rarely made, because the compiler saves the return
+// address on the hot paths of the functions that make them.
+inline int64 native_int_value(Object* object) {
+  return is_smi(object) ? Smi::value(object) : LargeInteger::cast(object)->value();
 }
 
 inline unsigned native_class_id(Object* object, unsigned smi_class_id) {

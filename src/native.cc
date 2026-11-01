@@ -299,13 +299,6 @@ void NativeRuntime::allocate(NATIVE_PARAMS) {
   CONTINUE();
 }
 
-static bool smi_mul(Object* a, Object* b, Object** result) {
-  word product;
-  if (__builtin_mul_overflow(reinterpret_cast<word>(a), reinterpret_cast<word>(b) >> 1, &product)) return false;
-  *result = reinterpret_cast<Object*>(product);
-  return true;
-}
-
 static bool smi_shl(Object* a, Object* b, Object** result) {
   word bits = Smi::value(b);
   if (bits < 0 || bits >= WORD_BIT_SIZE) return false;
@@ -395,13 +388,13 @@ void NativeRuntime::binary(NATIVE_PARAMS) {
       if (smis && i1 != 0) result = Smi::from(i0 % i1);
       break;
     case INVOKE_ADD:
-      if (!native_add(a0, a1, &result)) floating(&double_add);
+      if (!(smis && native_add(a0, a1, &result))) floating(&double_add);
       break;
     case INVOKE_SUB:
-      if (!native_sub(a0, a1, &result)) floating(&double_sub);
+      if (!(smis && native_sub(a0, a1, &result))) floating(&double_sub);
       break;
     case INVOKE_MUL:
-      if (!(smis && smi_mul(a0, a1, &result))) floating(&double_mul);
+      if (!(smis && native_mul(a0, a1, &result))) floating(&double_mul);
       break;
     case INVOKE_BIT_SHL:
       if (smis && !smi_shl(a0, a1, &result)) result = null;
