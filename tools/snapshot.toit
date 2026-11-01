@@ -905,7 +905,7 @@ BYTE-CODES ::= [
   Bytecode "RETURN"                     3 OP-BS-BU "return",
   Bytecode "RETURN_NULL"                3 OP-BS-BU "return null",
   Bytecode "NON_LOCAL_RETURN"           2 OP-BU "non-local return",
-  Bytecode "NON_LOCAL_RETURN_WIDE"      4 OP-SU-SU "non-local return wide",
+  Bytecode "NON_LOCAL_RETURN_WIDE"      5 OP-SU-SU "non-local return wide",
   Bytecode "NON_LOCAL_BRANCH"           6 OP-BU-WU "non-local branch",
   Bytecode "IDENTICAL"                  1 OP "identical",
   Bytecode "LINK"                       2 OP-BU "link try",
