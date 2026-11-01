@@ -85,6 +85,12 @@ static bool matches_registered_program(Program* program) {
   return matches;
 }
 
+// The compiler has replaced the code of the methods with their original
+// ids. Everything outside the program uses those to find names and positions.
+static int original_bci(uint8* header) {
+  return Utils::read_unaligned_uint32(header + Method::entry_offset()) + Method::entry_offset();
+}
+
 NativeFn NativeRuntime::find_entry(const NativeProgram* native, int bci) {
   const NativeEntry* entries = native->entries;
   int low = 0;
@@ -131,7 +137,10 @@ int NativeRuntime::return_bci(Program* program, uint8* address) {
     if (reinterpret_cast<intptr_t>(offset) + *offset == reinterpret_cast<intptr_t>(fn)) return bci;
   }
   for (int i = 0; i < native->entry_count; i++) {
-    if (native->entries[i].fn() == fn) return native->entries[i].bci;
+    if (native->entries[i].fn() != fn) continue;
+    int entry = native->entries[i].bci;
+    if (entry >= program->bytecodes.length()) return -1;
+    return original_bci(Method::header_from_entry(program->bcp_from_absolute_bci(entry)));
   }
   return -1;
 }
@@ -210,7 +219,7 @@ void NativeRuntime::block_failure(NATIVE_PARAMS) {
   PUSH(c->true_object);
   PUSH(Smi::from(method.arity()));
   PUSH(Smi::from(arguments));
-  PUSH(Smi::from(c->program->absolute_bci_from_bcp(method.entry())));
+  PUSH(Smi::from(original_bci(method.header_bcp())));
   NATIVE_TAIL code_failure(sp, c, x, y);
 }
 
@@ -581,7 +590,7 @@ void NativeRuntime::lambda_tail(NATIVE_PARAMS) {
     PUSH(c->false_object);  // It's not a block.
     PUSH(Smi::from(user_arity));
     PUSH(Smi::from(bci_offset));
-    PUSH(Smi::from(program->absolute_bci_from_bcp(target.entry())));
+    PUSH(Smi::from(original_bci(target.header_bcp())));
     NATIVE_TAIL code_failure(NATIVE_ARGS);
   }
   POP();  // Frame marker.

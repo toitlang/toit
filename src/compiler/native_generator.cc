@@ -80,6 +80,10 @@ class NativeGenerator {
     return "m" + std::to_string(id);
   }
   std::string method_label(Method method) const { return method_label(method_id(method)); }
+
+  std::vector<uint8> pruned_bytecodes_;
+  std::map<int, int> pruned_ids_;
+  std::map<int, int> pruned_branch_targets_;
   std::string block_entry_label(int id) const {
     return "e" + std::to_string(id);
   }
@@ -118,6 +122,12 @@ class NativeGenerator {
   bool stays_in_block(uint8* bcp) const;
   // The code that follows calls that don't return isn't needed.
   bool is_dead_continuation(uint8* bcp, uint8* next) const;
+
+  void compute_pruned_bytecodes(const std::vector<int>& methods);
+  void update_program();
+  int pruned_id(int id) const { return pruned_ids_.at(id); }
+  int pruned_entry(int id) const { return pruned_id(id) + Method::entry_offset(); }
+  int pruned_branch_target(int target);
 
   void find_leaders(MethodInfo* info);
   void find_hot_code(MethodInfo* info);
@@ -169,6 +179,54 @@ NativeGenerator::NativeGenerator(Program* program, TypeDatabase* types, std::vec
     find_leaders(&info);
     find_hot_code(&info);
   }
+  compute_pruned_bytecodes(methods);
+}
+
+// Native code doesn't need the bytecodes, so the program that goes into the
+// snapshot only has the headers of the methods. What used to be the code of a
+// method is the original id, so stack traces can use the source map.
+void NativeGenerator::compute_pruned_bytecodes(const std::vector<int>& methods) {
+  std::set<int> ids(methods.begin(), methods.end());
+  for (int entry : program_->dispatch_table) {
+    if (entry >= 0) ids.insert(entry);
+  }
+  for (int id : ids) {
+    pruned_ids_[id] = pruned_bytecodes_.size();
+    uint8* header = program_->bcp_from_absolute_bci(id);
+    pruned_bytecodes_.insert(pruned_bytecodes_.end(), header, header + Method::entry_offset());
+    for (int i = 0; i < 4; i++) pruned_bytecodes_.push_back((id >> (i * 8)) & 0xff);
+  }
+}
+
+// Targets of non-local branches don't have a place in the pruned bytecodes.
+// They just need to be unique, so they are numbered after the last method.
+int NativeGenerator::pruned_branch_target(int target) {
+  auto probe = pruned_branch_targets_.find(target);
+  if (probe != pruned_branch_targets_.end()) return probe->second;
+  int result = pruned_bytecodes_.size() + pruned_branch_targets_.size();
+  pruned_branch_targets_[target] = result;
+  return result;
+}
+
+void NativeGenerator::update_program() {
+  for (int i = 0; i < program_->dispatch_table.length(); i++) {
+    int entry = program_->dispatch_table[i];
+    if (entry >= 0) program_->dispatch_table[i] = pruned_ids_.at(entry);
+  }
+  // The lazily initialized globals know the id of their initializer.
+  program_->set_heap_writable(true);
+  int initializer_class_id = Smi::value(program_->lazy_initializer_class_id());
+  for (int i = 0; i < program_->global_variables.length(); i++) {
+    Object* value = program_->global_variables.at(i);
+    if (!is_instance(value)) continue;
+    Instance* instance = Instance::cast(value);
+    if (Smi::value(instance->class_id()) != initializer_class_id) continue;
+    instance->at_put_no_write_barrier(0, Smi::from(pruned_ids_.at(Smi::value(instance->at(0)))));
+  }
+  program_->set_heap_writable(false);
+  uint8* bytes = unvoid_cast<uint8*>(malloc(pruned_bytecodes_.size()));
+  memcpy(bytes, pruned_bytecodes_.data(), pruned_bytecodes_.size());
+  program_->bytecodes = List<uint8>(bytes, pruned_bytecodes_.size());
 }
 
 static bool needs_continuation(Opcode opcode) {
@@ -472,12 +530,17 @@ void NativeGenerator::emit_tables() {
 
   std::map<int, std::string> entries;
   current_end_ = null;
-  for (auto& info : methods_) entries[bci(info.method.entry())] = method_label(info.method);
+  for (auto& info : methods_) entries[pruned_entry(method_id(info.method))] = method_label(info.method);
   if (program_->has_entry_task() && method_ids_.count(method_id(program_->entry_task())) != 0) {
     uint8* task = program_->entry_task().entry() + LOAD_NULL_LENGTH;
-    entries[bci(task)] = label(task);
+    // The place in the pruned method isn't used for anything but finding the code.
+    entries[pruned_entry(method_id(program_->entry_task())) + LOAD_NULL_LENGTH] = label(task);
+    // The return address of the outermost frame. Traces need the original bci.
+    return_points_.insert(task);
   }
-  for (int target : branch_targets_) entries[target] = label(program_->bcp_from_absolute_bci(target));
+  for (int target : branch_targets_) {
+    entries[pruned_branch_target(target)] = label(program_->bcp_from_absolute_bci(target));
+  }
 
   std::set<std::string> used;
   for (auto& it : entries) used.insert(it.second);
@@ -507,8 +570,8 @@ void NativeGenerator::emit_tables() {
 
   out_ << "static const NativeProgram native_program = {\n";
   out_ << "  NATIVE_ABI,\n";
-  out_ << "  " << native_fingerprint(program_->bytecodes.data(), program_->bytecodes.length()) << "u,\n";
-  out_ << "  " << program_->bytecodes.length() << ",\n";
+  out_ << "  " << native_fingerprint(pruned_bytecodes_.data(), pruned_bytecodes_.size()) << "u,\n";
+  out_ << "  " << pruned_bytecodes_.size() << ",\n";
   out_ << "  entries,\n";
   out_ << "  " << entries.size() << ",\n";
   out_ << "  returns,\n";
@@ -559,6 +622,7 @@ std::string NativeGenerator::generate() {
     out_ << "  NATIVE_TAIL NativeRuntime::virtual_fallback(sp, c, x, " << (static_cast<word>(selector_offset) << 8 | stack_offset) << ");\n";
     out_ << "}\n";
   }
+  update_program();
   return out_.str();
 }
 
@@ -570,7 +634,7 @@ void NativeGenerator::emit_block_entry(Method method, bool is_dead) {
   int id = method_id(method);
   out_ << "static void " << block_entry_label(id) << "(NATIVE_PARAMS) {\n";
   out_ << "  intptr_t extra = y - " << method.arity() << ";\n";
-  out_ << "  if (NATIVE_UNLIKELY(extra < 0)) NATIVE_TAIL NativeRuntime::block_failure(sp, c, x, (" << id << " << 8) | y);\n";
+  out_ << "  if (NATIVE_UNLIKELY(extra < 0)) NATIVE_TAIL NativeRuntime::block_failure(sp, c, x, (" << pruned_id(id) << " << 8) | y);\n";
   if (is_dead) {
     out_ << "  NATIVE_TAIL NativeRuntime::illegal(NATIVE_ARGS);\n";
   } else {
@@ -590,7 +654,7 @@ void NativeGenerator::emit_method(const MethodInfo& info) {
   if (method.is_block_method()) emit_block_entry(method, false);
   out_ << "static void " << method_label(id) << "(NATIVE_PARAMS) {\n";
   out_ << "  if (NATIVE_UNLIKELY(NativeRuntime::needs_stack_check(c, sp, " << method.max_height() << "))) {\n";
-  out_ << "    NATIVE_TAIL NativeRuntime::stack_overflow(sp, c, x, " << id << ");\n";
+  out_ << "    NATIVE_TAIL NativeRuntime::stack_overflow(sp, c, x, " << pruned_id(id) << ");\n";
   out_ << "  }\n";
   out_ << "  NATIVE_TAIL " << label(method.entry()) << "(NATIVE_ARGS);\n";
   out_ << "}\n";
@@ -784,7 +848,7 @@ void NativeGenerator::emit_branch(uint8* target, const char* condition, bool is_
   out_ << "  if (" << condition << ") {\n";
   if (is_back) {
     out_ << "    if (NATIVE_UNLIKELY(NativeRuntime::is_preempted(c))) {\n  ";
-    emit_runtime("preempt", "reinterpret_cast<void*>(&" + label(target) + ")", bci(entry));
+    emit_runtime("preempt", "reinterpret_cast<void*>(&" + label(target) + ")", pruned_entry(bci(entry) - Method::entry_offset()));
     out_ << "    }\n";
   }
   out_ << "  ";
@@ -926,7 +990,7 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
         // The function pointer looks like a smi to the garbage collector.
         out_ << "  PUSH(reinterpret_cast<Object*>(&" << block_entry_label(id) << "));\n";
       } else {
-        out_ << "  PUSH(native_smi(" << id << "));\n";
+        out_ << "  PUSH(native_smi(" << pruned_id(id) << "));\n";
       }
       break;
     }
@@ -935,7 +999,7 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       out_ << "  PUSH(c->globals[" << arg(LOAD_GLOBAL_VAR_WIDE) << "]);\n";
       break;
     case LOAD_GLOBAL_VAR_DYNAMIC:
-      emit_runtime_next("load_global_dynamic", next, bci(bcp));
+      emit_runtime_next("load_global_dynamic", next, 0);
       break;
     case LOAD_GLOBAL_VAR_LAZY:
     case LOAD_GLOBAL_VAR_LAZY_WIDE: {
@@ -956,7 +1020,7 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       out_ << "  c->globals[" << arg(STORE_GLOBAL_VAR_WIDE) << "] = STACK_AT(0);\n";
       break;
     case STORE_GLOBAL_VAR_DYNAMIC:
-      emit_runtime_next("store_global_dynamic", next, bci(bcp));
+      emit_runtime_next("store_global_dynamic", next, 0);
       break;
     case LOAD_BLOCK:
       out_ << "  PUSH(NativeRuntime::to_block(c, sp + " << byte1 << "));\n";
@@ -1148,7 +1212,7 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       break;
     case NON_LOCAL_BRANCH:
       emit_runtime("non_local_branch",
-          "reinterpret_cast<void*>(" + std::to_string(Utils::read_unaligned_uint32(bcp + 2)) + ")",
+          "reinterpret_cast<void*>(" + std::to_string(pruned_branch_target(Utils::read_unaligned_uint32(bcp + 2))) + ")",
           byte1);
       break;
     case IDENTICAL:

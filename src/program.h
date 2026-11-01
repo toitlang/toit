@@ -212,6 +212,7 @@ class Program : public FlashAllocation {
   // The address of where the program heap starts.
   // The returned address points to the the first block's header.
   void* heap_address() { return heap_.blocks_.first(); }
+  void set_heap_writable(bool value) { heap_.blocks_.set_writable(value); }
 
   ProgramUsage usage();
 

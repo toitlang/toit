@@ -94,13 +94,20 @@ class Program:
     global-table              = snapshot.source-map.global-segment.content
     selectors_                = snapshot.source-map.selectors-segment.content
 
-    // Create the methods list.
-    current-offset := 0
-    methods = List method-table_.size:
-      method-info := method-table_[current-offset]
-      method := ToitMethod all-bytecodes current-offset method-info.bytecode-size
-      current-offset += method.allocation-size
-      method
+    // Create the methods list. Programs that are compiled to native code
+    // have no bytecodes, but stack traces still need to find the methods.
+    size := 0
+    method-table_.do --values: size += ToitMethod.HEADER-SIZE + it.bytecode-size
+    if size != all-bytecodes.size:
+      ids := method-table_.keys.sort
+      methods = List ids.size: ToitMethod.without-bytecodes ids[it]
+    else:
+      current-offset := 0
+      methods = List method-table_.size:
+        method-info := method-table_[current-offset]
+        method := ToitMethod all-bytecodes current-offset method-info.bytecode-size
+        current-offset += method.allocation-size
+        method
 
   // Extract selector name from the dispatch offset used in invoke virtual byte codes.
   selector-from-dispatch-offset offset/int -> string:
@@ -518,6 +525,9 @@ class ToitMethod:
     at += 2
     assert: at - id == HEADER-SIZE
     bytecodes = all-bytecodes.copy at (at + bytecode-size)
+
+  constructor.without-bytecodes .id:
+    bytecodes = #[]
 
   is-normal-method -> bool: return kind == METHOD
   is-field-accessor -> bool: return kind == FIELD-ACCESSOR
