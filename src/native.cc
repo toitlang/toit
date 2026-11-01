@@ -37,6 +37,9 @@ static Method find_method(Program* program, Object* receiver, word offset) {
 }
 
 int NativeRuntime::register_program(const NativeProgram* program) {
+  if (program->abi != native_abi()) {
+    FATAL("Native code was generated for a different version of the runtime");
+  }
   registered_program = program;
   Interpreter::set_native_runner(&NativeRuntime::run, &NativeRuntime::start_address);
   Stack::set_native_return_bci(&NativeRuntime::return_bci);

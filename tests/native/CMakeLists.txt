@@ -4,7 +4,8 @@
 
 # Compiles some of the tests to native code and runs them. Native code relies
 # on tail calls for everything, so we need a compiler that guarantees them.
-if (NOT "${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang" OR ${TOIT_IS_EMBEDDED})
+find_program(TOIT_NATIVE_CXX clang++)
+if (NOT TOIT_NATIVE_CXX OR NOT TARGET toit_native_main OR WIN32)
   return()
 endif()
 
@@ -23,39 +24,37 @@ set(NATIVE_TESTS
   try-finally-test
 )
 
+# These are also compiled for size and without debug information.
+set(NATIVE_SIZE_TESTS
+  exception-test
+  task-test
+)
+
 set(NATIVE_DIR "${CMAKE_BINARY_DIR}/native_test")
 
-foreach(test ${NATIVE_TESTS})
-  set(source "${CMAKE_CURRENT_SOURCE_DIR}/../${test}.toit")
-  set(code "${NATIVE_DIR}/${test}.cc")
-  set(snapshot "${NATIVE_DIR}/${test}.snapshot")
-  set(data "${NATIVE_DIR}/${test}-data.cc")
-  set(target "native-${test}")
-
+function(add_native_test name source)
+  set(executable "${NATIVE_DIR}/${name}")
   add_custom_command(
-    OUTPUT "${code}" "${snapshot}"
+    OUTPUT "${executable}"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${NATIVE_DIR}"
-    COMMAND $<TARGET_FILE:toit.compile> -O2 "-Xnative=${code}" -w "${snapshot}" "${source}"
-    DEPENDS toit.compile "${source}"
+    COMMAND "${CMAKE_COMMAND}" -E env "TOIT_CXX=${TOIT_NATIVE_CXX}"
+        $<TARGET_FILE:toit.compile> ${ARGN} -o "${executable}" "${source}"
+    DEPENDS toit.compile build_native_sdk "${source}"
   )
-  add_custom_command(
-    OUTPUT "${data}"
-    COMMAND "${CMAKE_COMMAND}" "-DSNAPSHOT=${snapshot}" "-DOUTPUT=${data}"
-        -P "${CMAKE_CURRENT_SOURCE_DIR}/embed-snapshot.cmake"
-    DEPENDS "${snapshot}"
-  )
-
-  add_executable("${target}" EXCLUDE_FROM_ALL "${code}" "${data}")
-  # The return addresses in native code must look like smis.
-  target_compile_options("${target}" PRIVATE -falign-functions=4 -w)
-  target_link_libraries("${target}" PRIVATE toit_native_main)
-  set_target_properties("${target}" PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${NATIVE_DIR}")
-  add_dependencies(build_test_assets "${target}")
-
+  add_custom_target("native-${name}" DEPENDS "${executable}")
+  add_dependencies(build_test_assets "native-${name}")
   add_test(
-    NAME "tests/native/${test}"
-    COMMAND "$<TARGET_FILE:${target}>" foo bar gee
+    NAME "tests/native/${name}"
+    COMMAND "${executable}" foo bar gee
     WORKING_DIRECTORY "${TOIT_SDK_SOURCE_DIR}"
     CONFIGURATIONS slow
   )
+endfunction()
+
+foreach(test ${NATIVE_TESTS})
+  add_native_test("${test}" "${CMAKE_CURRENT_SOURCE_DIR}/../${test}.toit" --native)
+endforeach()
+
+foreach(test ${NATIVE_SIZE_TESTS})
+  add_native_test("${test}-size" "${CMAKE_CURRENT_SOURCE_DIR}/../${test}.toit" --native-size --strip)
 endforeach()

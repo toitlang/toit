@@ -21,6 +21,7 @@
 #include "../main_utf_8_helper.h"
 #include "compiler.h"
 #include "executable.h"
+#include "native_build.h"
 
 namespace toit {
 namespace compiler {
@@ -43,6 +44,8 @@ static void print_usage(int exit_code) {
   printf("  [--os <system>]                          // Cross-compilation system target.\n");
   printf("  [--arch <architecture>]                  // Cross-compilation architecture target.\n");
   printf("  [--strip]                                // Strip the output of debug information.\n");
+  printf("  [--native]                               // Compile the executable to native code.\n");
+  printf("  [--native-size]                          // Like --native, but favor small code over speed.\n");
   printf("  [--verbose]                              // Print compiler phase timings.\n");
   printf("  [--verbosity-level {debug|info|verbose|quiet|silent}]\n");
   printf("                                            // Set compiler statistics verbosity.\n");
@@ -112,7 +115,10 @@ int main(int argc, char **argv) {
   const char* cross_os = null;
   const char* cross_arch = null;
   int optimization_level = DEFAULT_OPTIMIZATION_LEVEL;
+  bool optimization_level_is_explicit = false;
   bool should_strip = false;
+  bool native = false;
+  bool native_size = false;
   int verbosity = 0;
 
   int processed_args = 1;  // The executable name has already been processed.
@@ -129,12 +135,15 @@ int main(int argc, char **argv) {
     }
     if (strcmp(argv[processed_args], "-O0") == 0) {
       optimization_level = 0;
+      optimization_level_is_explicit = true;
       processed_args++;
     } else if (strcmp(argv[processed_args], "-O1") == 0) {
       optimization_level = 1;
+      optimization_level_is_explicit = true;
       processed_args++;
     } else if (strcmp(argv[processed_args], "-O2") == 0) {
       optimization_level = 2;
+      optimization_level_is_explicit = true;
       processed_args++;
     } else if (strcmp(argv[processed_args], "-w") == 0) {
       // Bundle writing.
@@ -253,6 +262,13 @@ int main(int argc, char **argv) {
       for_dependencies = true;
       processed_args++;
       ways_to_run++;
+    } else if (strcmp(argv[processed_args], "--native") == 0) {
+      native = true;
+      processed_args++;
+    } else if (strcmp(argv[processed_args], "--native-size") == 0) {
+      native = true;
+      native_size = true;
+      processed_args++;
     } else if (strcmp(argv[processed_args], "--strip") == 0) {
       should_strip = true;
       processed_args++;
@@ -309,6 +325,22 @@ int main(int argc, char **argv) {
       fprintf(stderr, "Toit-file, snapshot, or string-expressions are exclusive\n");
     }
     print_usage(1);
+  }
+
+  if (native) {
+    if (exe_filename == null || bundle_filename != null) {
+      fprintf(stderr, "The --native flag can only be used when compiling executables\n");
+      print_usage(1);
+    }
+    if (cross_os != null || vessels_root != null) {
+      fprintf(stderr, "The --native flag can't be used for cross compilation\n");
+      print_usage(1);
+    }
+    if (optimization_level_is_explicit && optimization_level != 2) {
+      fprintf(stderr, "The --native flag needs optimization level 2\n");
+      print_usage(1);
+    }
+    optimization_level = 2;
   }
 
   if (vessels_root != null && exe_filename == null) {
@@ -393,10 +425,16 @@ int main(int argc, char **argv) {
   } else if (bundle_filename != null || exe_filename != null) {
     auto compiled = SnapshotBundle::invalid();
     compiler::Compiler compiler;
+    NativeBuild native_build;
     auto source_path = source_path_count == 0 ? null : source_paths[0];
     if (SnapshotBundle::is_bundle_file(source_path)) {
+      if (native) {
+        fprintf(stderr, "The --native flag needs a Toit source file; not a snapshot\n");
+        exit(1);
+      }
       compiled = SnapshotBundle::read_from_file(source_path);
     } else {
+      if (native && !native_build.prepare()) exit(1);
       compiled = compiler.compile(source_path,
                                   direct_script,
                                   bundle_filename == null ? exe_filename : bundle_filename,
@@ -413,7 +451,9 @@ int main(int argc, char **argv) {
         print_usage(1);
       }
     } else {
-      exit_state = create_executable(exe_filename, compiled, vessels_root, cross_os, cross_arch);
+      exit_state = native
+          ? native_build.create_executable(exe_filename, compiled, native_size)
+          : create_executable(exe_filename, compiled, vessels_root, cross_os, cross_arch);
     }
     free(compiled.buffer());
   } else {
