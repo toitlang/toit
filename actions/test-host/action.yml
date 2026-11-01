@@ -1,0 +1,398 @@
+# Zero-Clause BSD License
+
+# Copyright (C) 2026 Toit contributors.
+
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted.
+
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+# REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+# FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+# INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+# LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+
+name: Test a shared host build
+description: Restore the host build and run one test shard, preserving release and debug artifacts.
+
+inputs:
+  container:
+    description: The runner label used for the build and shard artifacts.
+    required: true
+  shard:
+    description: The one-based test shard number.
+    required: true
+  shard-count:
+    description: The number of test shards on this platform.
+    required: true
+  toit-version:
+    description: The version embedded in the shared build.
+    required: true
+  ngrok-auth-token:
+    description: The token for an explicitly requested SSH debugging session.
+    required: false
+  repository-dispatch-token:
+    description: The token for requesting a Toit documentation rebuild.
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Set up constants
+      id: constants
+      env:
+        TOIT_GIT_VERSION: ${{ inputs.toit-version }}
+      shell: bash
+      run: |
+        echo "flaky_result=flaky-result/${{ inputs.container }}-${{ inputs.shard }}.txt" >> $GITHUB_OUTPUT
+        echo "flaky_result_name=flaky-result-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.container }}-${{ inputs.shard }}" >> $GITHUB_OUTPUT
+        echo "external_result=external-result/${{ inputs.container }}-${{ inputs.shard }}.txt" >> $GITHUB_OUTPUT
+        echo "external_result_name=external-result-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.container }}-${{ inputs.shard }}" >> $GITHUB_OUTPUT
+        echo "debug_root_dir=debug-ci" >> $GITHUB_OUTPUT
+        echo "debug_dir=debug-ci/$RUNNER_OS-${{ inputs.shard }}" >> $GITHUB_OUTPUT
+        echo "toit_version=$TOIT_GIT_VERSION" >> $GITHUB_OUTPUT
+        echo "TOIT_GIT_VERSION=$TOIT_GIT_VERSION" >> $GITHUB_ENV
+        if [[ "$RUNNER_OS" == "Linux" ]]; then
+          echo "artifact=toit-linux.tar.gz" >> $GITHUB_OUTPUT
+          echo "total_shards=${{ inputs.shard-count }}" >> $GITHUB_OUTPUT
+        elif [[ "$RUNNER_OS" == "macOS" ]]; then
+          echo "artifact=toit-macos.tar.gz" >> $GITHUB_OUTPUT
+          echo "total_shards=${{ inputs.shard-count }}" >> $GITHUB_OUTPUT
+        elif [[ "$RUNNER_OS" == "Windows" ]]; then
+          echo "artifact=toit-windows.tar.gz" >> $GITHUB_OUTPUT
+          echo "total_shards=${{ inputs.shard-count }}" >> $GITHUB_OUTPUT
+        else
+          echo "UNSUPPORTED RUNNER: $RUNNER_OS"
+          exit 1
+        fi
+
+    # Anything in the debug dir will be uploaded as artifact.
+    - name: Setup debug dir
+      shell: sh
+      run: |
+        mkdir -p ${{ steps.constants.outputs.debug_dir }}
+
+    - name: Setup build environment
+      uses: ./actions/setup-build
+      with:
+        toit-dir: .
+        use-ccache: false
+
+    - name: Download shared host build
+      uses: actions/download-artifact@v8
+      with:
+        name: host-build-${{ inputs.container }}
+        path: ${{ runner.temp }}/host-build
+
+    - name: Restore shared host build
+      shell: bash
+      run: python tools/ci/host-build-archive.py unpack "$RUNNER_TEMP/host-build/host-build.tar.gz"
+
+    - name: Setup compilation env
+      shell: bash
+      run: |
+        echo "SHARD_START=${{ inputs.shard }}" >> $GITHUB_ENV
+        echo "SHARD_STRIDE=${{ steps.constants.outputs.total_shards }}" >> $GITHUB_ENV
+
+    # Floor the macOS deployment target so CI-produced binaries run on
+    # Monterey. Exported via GITHUB_ENV so it's visible to CMake's toolchain
+    # detection and the linker.
+    - name: Set macOS deployment target
+      if: runner.os == 'macOS'
+      shell: bash
+      run: echo "MACOSX_DEPLOYMENT_TARGET=12.0" >> $GITHUB_ENV
+
+    - shell: bash
+      if: env.ENABLE_SSH == 'true'
+      run: echo $PATH
+
+    - uses: luchihoratiu/debug-via-ssh@main
+      if: env.ENABLE_SSH == 'true'
+      with:
+        NGROK_AUTH_TOKEN: "${{ inputs.ngrok-auth-token }}"
+        SSH_PASS: "aoeuAOEU0"
+
+    - name: Setup multicast route
+      if: env.DO_TESTS == 'true'
+      shell: bash
+      run: |
+        if [[ "$RUNNER_OS" == "Linux" ]]; then
+          sudo ip link set lo up
+          sudo route add -net 224.0.0.0 netmask 240.0.0.0 dev lo || true
+        elif [[ "$RUNNER_OS" == "macOS" ]]; then
+          sudo ifconfig lo0 up
+          # The default multicast route goes through en0.  Delete it
+          # first so we can re-add it through lo0 for loopback tests.
+          sudo route -n delete -net 224.0.0.0/4 || true
+          sudo route -n add -net 224.0.0.0/4 -interface lo0
+        elif [[ "$RUNNER_OS" == "Windows" ]]; then
+          route add 224.0.0.0 mask 240.0.0.0 127.0.0.1 || true
+        fi
+
+    # make test regenerates CMake with SHARD_START/SHARD_STRIDE. The additional
+    # configurations below do the same with their original compiler flags.
+    - name: Test
+      if: env.DO_TESTS == 'true'
+      shell: bash  # This is crucial, as the powershell doesn't abort when there is an error.
+      run: |
+        make test
+        make test-health
+
+    - name: Test flaky
+      if: env.DO_TESTS == 'true'
+      continue-on-error: true
+      shell: bash # This is crucial, as the powershell doesn't abort when there is an error.
+      run: |
+        mkdir -p $(dirname ${{ steps.constants.outputs.flaky_result }})
+        echo fail > ${{ steps.constants.outputs.flaky_result }}
+        make test-flaky
+        # If we reach here, then the test-flaky target succeeded.
+        echo "SUCCESS"
+        echo success > ${{ steps.constants.outputs.flaky_result }}
+
+    - name: Test type propagator
+      if: env.DO_MORE_TESTS == 'true' && runner.os == 'Linux'
+      shell: bash
+      run: |
+        make HOST=host-ctp TOIT_CHECK_PROPAGATED_TYPES=1 test
+
+    - name: Test 32-bit debug
+      if: env.DO_MORE_TESTS == 'true' && runner.os == 'Linux'
+      shell: bash
+      run: |
+        make HOST=host32 BUILD_TYPE=Debug test
+
+    - name: Test 64-bit debug
+      shell: bash
+      # TODO(florian): fix Windows.
+      if: env.DO_MORE_TESTS == 'true' && runner.os != 'Windows'
+      run: |
+        make BUILD=build-debug BUILD_TYPE=Debug test
+
+    - name: Test -O0 no asserts
+      shell: bash
+      # TODO(florian): Windows is currently too flaky with -O0.
+      if: env.DO_MORE_TESTS == 'true' && runner.os != 'Windows'
+      run: |
+        TOIT_OPTIMIZATION_OVERRIDE=0 TOIT_ASSERT_OVERRIDE=0 make HOST=host-O0 TOOLCHAIN=host test
+
+    - name: Test -O2 with asserts
+      shell: bash
+      # TODO(florian): fix Windows.
+      if: env.DO_MORE_TESTS == 'true' && runner.os != 'Windows'
+      run: |
+        TOIT_OPTIMIZATION_OVERRIDE=2 TOIT_ASSERT_OVERRIDE=1 make HOST=host-O2 TOOLCHAIN=host test
+
+    - name: Test link-time optimizations
+      shell: bash
+      if: env.DO_MORE_TESTS == 'true' && runner.os != 'Windows'
+      run: |
+        make HOST=host-lto TOOLCHAIN=host test
+
+    - name: Test install
+      if : inputs.shard == '1'
+      shell: bash
+      run: |
+        make prefix=$PWD/build/install-out install
+        build/install-out/bin/toit --version
+
+    # Test external code.
+    - name: Test external
+      if: env.DO_TESTS == 'true'
+      # External tests are allowed to fail, but we record them and
+      # fail a non-required job if they do.
+      continue-on-error: true
+      env:
+        IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
+        CCACHE_DIR: ${{ github.workspace }}/.ccache
+        CCACHE_BASEDIR: ${{ github.workspace }}
+        CCACHE_COMPRESS: true
+        CCACHE_COMPRESSLEVEL: '6'
+        CCACHE_MAXSIZE: 400M
+        SHARD_START: ${{ inputs.shard }}
+        SHARD_STRIDE: ${{ steps.constants.outputs.total_shards }}
+      shell: bash
+      run: |
+        # Mark the external test as failing, and update it at the end of this step.
+        mkdir -p $(dirname ${{ steps.constants.outputs.external_result }})
+        echo fail > ${{ steps.constants.outputs.external_result }}
+        make enable-external
+        find external > ${{ steps.constants.outputs.debug_dir }}/${{ inputs.container }}_${{ inputs.shard }}_files_after_enable_external.log
+        make test-external
+        make test-external-health
+        if [[ "$DO_MORE_TESTS" == "true" ]] && [[ "$RUNNER_OS" == "Linux" ]]; then
+          cmake -DTOIT_TEST_EXTERNAL=ON build/host32
+          make HOST=host32 BUILD_TYPE=Debug rebuild-cmake
+          cd build/host32
+          ninja check_external
+          cd ../..
+        fi
+        # If we reach here, all steps of this step succeeded.
+        echo "SUCCESS"
+        echo success > ${{ steps.constants.outputs.external_result }}
+
+    - name: Store flaky test result
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ steps.constants.outputs.flaky_result_name }}
+        path: ${{ steps.constants.outputs.flaky_result }}
+
+    - name: Store external test result
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ steps.constants.outputs.external_result_name }}
+        path: ${{ steps.constants.outputs.external_result }}
+
+    - name: Toitdoc - Linux
+      if: runner.os == 'Linux' && inputs.shard == '1'
+      env:
+        TOIT_VERSION: ${{ steps.constants.outputs.toit_version }}
+        TOIT_BIN: ${{ github.workspace }}/build/host/sdk/bin/toit
+        SDKDIR: ${{ github.workspace }}/build/host/sdk
+      shell: bash
+      run: |
+        JSON_OUT_PATH=${{ github.workspace }}/toitdoc_$TOIT_VERSION.json
+        cd "$SDKDIR"
+        "$TOIT_BIN" doc build --sdk "--sdk-dir=$SDKDIR" "--output=$JSON_OUT_PATH" --version=$TOIT_VERSION
+
+    # We run this test very late to make sure that we don't accidentally rebuild
+    # the Windows SDK without UTF-8 support during other tests.
+    - name: Test Windows code pages
+      if: env.DO_TESTS == 'true' && runner.os == 'Windows' && inputs.shard == '1'
+      shell: pwsh
+      run: |
+        # Run the test script which creates a directory with Thai characters
+        # (using code page 874) and runs Toit inside it.
+        cmd.exe /c tests\test-cp874.cmd
+
+        # Read and check output.
+        $outputContent = Get-Content -Path "output.txt" -Raw
+        Write-Host $outputContent
+        if (-not ($outputContent -match "hello")) {
+          Write-Error "Test failed: 'hello' not found in output"
+          exit 1
+        }
+
+        # Now run Toit from inside the directory (to test the CWD).
+        cd 'เดสก์ท็อป'
+        cmd.exe /c "chcp 874 && ..\build\host\sdk\bin\toit run main.toit > ../output_inside.txt"
+        cd ..
+        $insideContent = Get-Content -Path "output_inside.txt" -Raw
+        Write-Host $insideContent
+        if (-not ($insideContent -match "hello")) {
+          Write-Error "Test failed: 'hello' not found in output_inside"
+          exit 1
+        }
+
+        # Clean up.
+        Remove-Item -Recurse -Force 'เดสก์ท็อป'
+
+    - name: Pack artifacts
+      if: inputs.shard == '1'
+      shell: bash
+      run: |
+        make prefix=build/out/toit install
+        tar -czf build/${{ steps.constants.outputs.artifact }} -C ./build/out toit
+
+    - name: Prepare debug repros
+      if: always()
+      continue-on-error: true
+      shell: bash
+      run: |
+        ls /tmp/lsp_repro-* || true
+        REPRO_DIR=${{ steps.constants.outputs.debug_dir }}/repros
+        mkdir -p $REPRO_DIR
+        find /tmp -maxdepth 1 -name 'lsp_repro-*' -exec cp -r {} $REPRO_DIR \;
+        ls $REPRO_DIR
+
+    - name: Upload debug artifacts
+      if: always()
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: debug-${{ inputs.container }}-${{ inputs.shard }}
+        path: ${{ steps.constants.outputs.debug_root_dir }}
+        retention-days: 5
+        if-no-files-found: ignore
+
+    - name: Upload toitdoc - Linux
+      if: runner.os == 'Linux' && inputs.shard == '1'
+      uses: actions/upload-artifact@v7
+      with:
+        name: toitdoc
+        path: toitdoc_${{ steps.constants.outputs.toit_version }}.json
+
+    - name: Upload toitdoc release artifact - Linux
+      if: |
+        runner.os == 'Linux' && inputs.shard == '1' &&
+        env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang'
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ github.token }}
+        file: toitdoc_${{ steps.constants.outputs.toit_version }}.json
+        asset_name: toitdoc.json
+        tag: ${{ env.TOIT_VERSION }}
+        overwrite: true
+
+    - name: Dispatch toitdoc-dev rebuild - Linux
+      if: |
+        runner.os == 'Linux' && inputs.shard == '1' &&
+        github.ref == 'refs/heads/master' &&
+        github.repository_owner == 'toitlang'
+      uses: actions/github-script@v9
+      with:
+        github-token: ${{ inputs.repository-dispatch-token }}
+        script: |
+          await github.rest.actions.createWorkflowDispatch({
+            owner: 'toitware',
+            repo: 'web-toitdocs',
+            workflow_id: 'ci.yml',
+            ref: 'master',
+            inputs: {
+              'deploy': 'false',
+              'toit-version': '',
+              'toitlang-run-id': '${{ github.run_id }}',
+            },
+          });
+
+    - name: Dispatch toitdoc rebuild - Linux
+      if: |
+        runner.os == 'Linux' && inputs.shard == '1' &&
+        ((env.DO_RELEASE == 'true' && github.repository_owner == 'toitlang') ||
+         env.DISPATCH_TOITDOCS == 'true')
+      uses: actions/github-script@v9
+      with:
+        github-token: ${{ inputs.repository-dispatch-token }}
+        script: |
+          await github.rest.actions.createWorkflowDispatch({
+            owner: 'toitware',
+            repo: 'web-toitdocs',
+            workflow_id: 'ci.yml',
+            ref: 'master',
+            inputs: {
+              'deploy': 'true',
+              'toit-version': '${{ env.TOIT_VERSION }}'
+            },
+          });
+
+    - name: Upload unsigned artifacts - Windows
+      if: runner.os == 'Windows' && inputs.shard == '1'
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ runner.os }}-build-unsigned
+        path: build/${{ steps.constants.outputs.artifact }}
+
+    - name: Upload unsigned artifacts - macOS
+      if: runner.os == 'macOS' && inputs.shard == '1'
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ runner.os }}-build-unsigned-${{ inputs.container }}
+        path: build/${{ steps.constants.outputs.artifact }}
+
+    - name: Upload artifacts - Linux
+      if: runner.os == 'Linux' && inputs.shard == '1'
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ runner.os }}-build
+        path: build/${{ steps.constants.outputs.artifact }}

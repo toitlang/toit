@@ -1,4 +1,5 @@
 name: "Setup the build environment"
+description: "Initialize build submodules and install the host or ESP32 build tools."
 
 inputs:
   toit-dir:
