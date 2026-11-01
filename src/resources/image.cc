@@ -81,8 +81,13 @@ PRIMITIVE(writer_write) {
   ARGS(ImageOutputStream, output, Blob, content_bytes, word, from, word, to);
   if (to < from || from < 0) FAIL(INVALID_ARGUMENT);
   if (to > content_bytes.length()) FAIL(OUT_OF_BOUNDS);
-  const word* data = reinterpret_cast<const word*>(content_bytes.address() + from);
+  // The content must consist of whole words: a word of relocation bits,
+  // followed by at most one word per relocation bit. The words don't
+  // need to be aligned; they are read with unaligned reads.
+  if (!Utils::is_aligned(to - from, WORD_SIZE)) FAIL(INVALID_ARGUMENT);
   word length = (to - from) / WORD_SIZE;
+  if (length < 2 || length > ImageOutputStream::CHUNK_SIZE) FAIL(INVALID_ARGUMENT);
+  const word* data = reinterpret_cast<const word*>(content_bytes.address() + from);
   Object* error = write_image_chunk(process, output, data, length);
   return error ? error : process->null_object();
 }
