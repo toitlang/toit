@@ -249,3 +249,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
 
   set(CMAKE_POLICY_DEFAULT_CMP0076 NEW)
 endif()
+
+if (NOT ${TOIT_IS_EMBEDDED} AND TARGET toit_native_main AND NOT WIN32)
+  include(src/native-sdk.cmake)
+endif()

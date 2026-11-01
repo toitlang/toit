@@ -489,6 +489,7 @@ void NativeGenerator::emit_tables() {
   out_ << "#endif\n\n";
 
   out_ << "static const NativeProgram native_program = {\n";
+  out_ << "  native_abi(),\n";
   out_ << "  " << native_fingerprint(program_->bytecodes.data(), program_->bytecodes.length()) << "u,\n";
   out_ << "  " << program_->bytecodes.length() << ",\n";
   out_ << "  entries,\n";

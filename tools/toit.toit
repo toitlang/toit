@@ -212,6 +212,10 @@ main args/List:
             --help="Compile to a snapshot instead of a binary.",
         cli.Flag "strip"
             --help="Strip the output of debug information.",
+        cli.Flag "native"
+            --help="Compile the binary to native code. Needs clang++, or TOIT_CXX set to a similar compiler.",
+        cli.Flag "native-size"
+            --help="Like --native, but favor small code over speed.",
         cli.Option "os"
             --help="Set the target OS for cross compilation."
             --completion=:: | context/cli.CompletionContext | complete-cross-os context,
@@ -428,6 +432,15 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
   if command == "analyze":
     args.add "--analyze"
   else:
+    native-flag := ""
+    if command == "compile":
+      if invocation["native-size"]: native-flag = "--native-size"
+      else if invocation["native"]: native-flag = "--native"
+    if native-flag != "":
+      if is-snapshot or invocation["snapshot"]:
+        ui.abort "Cannot use $native-flag with snapshots"
+      if invocation["os"] or invocation["arch"] or invocation["vessels-root"]:
+        ui.abort "Cannot use $native-flag for cross compilation"
     if is-snapshot:
       if invocation.parameters.was-provided "optimization-level":
         ui.abort "Cannot set optimization level for snapshots"
@@ -438,6 +451,11 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
     else:
       optimization/int := invocation["optimization-level"]
       if not 0 <= optimization <= 2: ui.abort "Invalid optimization level"
+      if native-flag != "":
+        // The native code generator is built around the fully optimized bytecodes.
+        if invocation.parameters.was-provided "optimization-level" and optimization != 2:
+          ui.abort "Cannot use $native-flag with optimization level $optimization"
+        optimization = 2
       args.add "-O$optimization"
 
       enable-asserts/bool := optimization < 2
@@ -453,6 +471,8 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
         args.add "--force"
 
     if command == "compile":
+      if native-flag != "": args.add native-flag
+
       if invocation["strip"]:
         args.add "--strip"
 

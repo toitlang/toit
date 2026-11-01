@@ -37,6 +37,12 @@ namespace toit {
 
 struct NativeContext;
 
+// Used for checking that generated code and the runtime agree on the layouts.
+constexpr uint32 native_abi() {
+  return static_cast<uint32>((sizeof(Interpreter) << 20) ^ (sizeof(Process) << 10) ^
+      sizeof(Program) ^ (sizeof(Stack) << 26) ^ (sizeof(word) << 16));
+}
+
 // Used for checking that the running program is the one that was compiled.
 inline uint32 native_fingerprint(const uint8* bytes, word length) {
   uint32 hash = 2166136261u;
@@ -76,6 +82,8 @@ struct NativeEntry {
 };
 
 struct NativeProgram {
+  // Generated code knows about the layout of the objects in the runtime.
+  uint32 abi;
   uint32 fingerprint;
   word bytecodes_length;
   const NativeEntry* entries;
