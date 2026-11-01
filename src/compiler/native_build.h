@@ -39,7 +39,7 @@ class NativeBuild {
   bool prepare(bool needs_sdk);
 
   // Returns 0 if the executable was built.
-  int create_executable(const char* out_path, SnapshotBundle bundle, bool optimize_for_size);
+  int create_executable(const char* out_path, SnapshotBundle bundle);
 
   // Writes the C++ program, including the snapshot, without compiling
   // it. The result doesn't depend on anything in the SDK until it is linked

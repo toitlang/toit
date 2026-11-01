@@ -60,7 +60,7 @@ typedef void (*NativeFn)(NATIVE_PARAMS);
 #endif
 
 // Most code runs rarely, so it is optimized for size. Hot code is left alone.
-#if defined(__clang__) && !defined(NATIVE_ALL_HOT)
+#if defined(__clang__)
 #define NATIVE_COLD __attribute__((minsize, noinline))
 #else
 #define NATIVE_COLD

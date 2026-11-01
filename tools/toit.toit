@@ -214,8 +214,6 @@ main args/List:
             --help="Strip the output of debug information.",
         cli.Flag "native"
             --help="Compile the binary to native code. Needs clang++, or TOIT_CXX set to a similar compiler.",
-        cli.Flag "native-size"
-            --help="Like --native, but favor small code over speed.",
         cli.Flag "native-source"
             --help="Write the program as a self-contained C++ file instead of a binary.",
         cli.Option "os"
@@ -437,7 +435,6 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
     native-flag := ""
     if command == "compile":
       if invocation["native-source"]: native-flag = "--native-source"
-      else if invocation["native-size"]: native-flag = "--native-size"
       else if invocation["native"]: native-flag = "--native"
     if native-flag != "":
       if is-snapshot or invocation["snapshot"]:

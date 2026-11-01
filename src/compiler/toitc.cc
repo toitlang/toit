@@ -45,7 +45,6 @@ static void print_usage(int exit_code) {
   printf("  [--arch <architecture>]                  // Cross-compilation architecture target.\n");
   printf("  [--strip]                                // Strip the output of debug information.\n");
   printf("  [--native]                               // Compile the executable to native code.\n");
-  printf("  [--native-size]                          // Like --native, but favor small code over speed.\n");
   printf("  [--native-source]                        // Write the program as C++ instead of an executable.\n");
   printf("  [--verbose]                              // Print compiler phase timings.\n");
   printf("  [--verbosity-level {debug|info|verbose|quiet|silent}]\n");
@@ -119,7 +118,6 @@ int main(int argc, char **argv) {
   bool optimization_level_is_explicit = false;
   bool should_strip = false;
   bool native = false;
-  bool native_size = false;
   bool native_source = false;
   int verbosity = 0;
 
@@ -270,10 +268,6 @@ int main(int argc, char **argv) {
     } else if (strcmp(argv[processed_args], "--native-source") == 0) {
       native = true;
       native_source = true;
-      processed_args++;
-    } else if (strcmp(argv[processed_args], "--native-size") == 0) {
-      native = true;
-      native_size = true;
       processed_args++;
     } else if (strcmp(argv[processed_args], "--strip") == 0) {
       should_strip = true;
@@ -460,7 +454,7 @@ int main(int argc, char **argv) {
       if (native_source) {
         exit_state = native_build.write_source(exe_filename, compiled);
       } else if (native) {
-        exit_state = native_build.create_executable(exe_filename, compiled, native_size);
+        exit_state = native_build.create_executable(exe_filename, compiled);
       } else {
         exit_state = create_executable(exe_filename, compiled, vessels_root, cross_os, cross_arch);
       }

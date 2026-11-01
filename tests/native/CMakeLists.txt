@@ -24,8 +24,8 @@ set(NATIVE_TESTS
   try-finally-test
 )
 
-# These are also compiled for size and without debug information.
-set(NATIVE_SIZE_TESTS
+# These are also compiled without debug information.
+set(NATIVE_STRIPPED_TESTS
   exception-test
   task-test
 )
@@ -55,8 +55,8 @@ foreach(test ${NATIVE_TESTS})
   add_native_test("${test}" "${CMAKE_CURRENT_SOURCE_DIR}/../${test}.toit" --native)
 endforeach()
 
-foreach(test ${NATIVE_SIZE_TESTS})
-  add_native_test("${test}-size" "${CMAKE_CURRENT_SOURCE_DIR}/../${test}.toit" --native-size --strip)
+foreach(test ${NATIVE_STRIPPED_TESTS})
+  add_native_test("${test}-stripped" "${CMAKE_CURRENT_SOURCE_DIR}/../${test}.toit" --native --strip)
 endforeach()
 
 add_test(
