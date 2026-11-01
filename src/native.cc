@@ -37,7 +37,7 @@ static Method find_method(Program* program, Object* receiver, word offset) {
 
 int NativeRuntime::register_program(const NativeProgram* program) {
   registered_program = program;
-  Interpreter::set_native_runner(&NativeRuntime::run);
+  Interpreter::set_native_runner(&NativeRuntime::run, &NativeRuntime::start_address);
   return 0;
 }
 
@@ -53,10 +53,10 @@ static bool matches_registered_program(Program* program) {
   return matches;
 }
 
-NativeFn NativeRuntime::find_entry(NativeContext* c, int bci) {
-  const NativeEntry* entries = c->native->entries;
+NativeFn NativeRuntime::find_entry(const NativeProgram* native, int bci) {
+  const NativeEntry* entries = native->entries;
   int low = 0;
-  int high = c->native->entry_count - 1;
+  int high = native->entry_count - 1;
   while (low <= high) {
     int middle = low + (high - low) / 2;
     int probe = entries[middle].bci;
@@ -70,13 +70,12 @@ NativeFn NativeRuntime::find_entry(NativeContext* c, int bci) {
   FATAL("no native code at %d", bci);
 }
 
-// Tasks and processes start from bytecode addresses, because they are set up
-// by code that doesn't know about native code.
-NativeFn NativeRuntime::resolve(NativeContext* c, Object* address) {
-  uint8* bcp = reinterpret_cast<uint8*>(address);
-  Program* program = c->program;
-  if (!program->bytecodes.is_inside(bcp)) return reinterpret_cast<NativeFn>(address);
-  return find_entry(c, program->absolute_bci_from_bcp(bcp));
+// Processes and tasks are set up with the addresses they start from
+// and that entry methods return to, so native code never sees bytecodes.
+Object* NativeRuntime::start_address(Program* program, uint8* bcp) {
+  if (!matches_registered_program(program)) return reinterpret_cast<Object*>(bcp);
+  int bci = program->absolute_bci_from_bcp(bcp);
+  return reinterpret_cast<Object*>(find_entry(registered_program, bci));
 }
 
 bool NativeRuntime::run(Interpreter* interpreter, Interpreter::Result* result) {
@@ -100,7 +99,7 @@ bool NativeRuntime::run(Interpreter* interpreter, Interpreter::Result* result) {
   Object** sp = interpreter->load_stack();
   POP();  // Frame marker.
   Object* address = POP();
-  resolve(&context, address)(sp, &context, null, 0);
+  reinterpret_cast<NativeFn>(address)(sp, &context, null, 0);
   *result = context.result;
   return true;
 }
@@ -111,7 +110,7 @@ bool NativeRuntime::run(Interpreter* interpreter, Interpreter::Result* result) {
     PUSH(reinterpret_cast<Object*>(x));                               \
     PUSH(c->frame_marker);                                            \
     int _bci_ = c->program->absolute_bci_from_bcp(_target_.entry());  \
-    NATIVE_TAIL find_entry(c, _bci_)(sp, c, null, 0);                 \
+    NATIVE_TAIL find_entry(c->native, _bci_)(sp, c, null, 0);                 \
   } while (false)
 
 #define CONTINUE() NATIVE_TAIL reinterpret_cast<NativeFn>(x)(sp, c, null, 0)
@@ -176,7 +175,7 @@ void NativeRuntime::primitive(NATIVE_PARAMS) {
       DROP(arity);
       PUSH(result);
       process->object_heap()->leave_primitive();
-      NATIVE_TAIL resolve(c, address)(sp, c, null, 0);
+      NATIVE_TAIL reinterpret_cast<NativeFn>(address)(sp, c, null, 0);
     }
     result = Primitive::unmark_from_error(program, result);
     bool malloc_failed = (result == program->malloc_failed());
@@ -237,7 +236,7 @@ void NativeRuntime::unwind(NATIVE_PARAMS) {
     STACK_AT_PUT(link_offset + 3, result_or_height_diff);
     POP();  // Frame marker.
     Object* address = POP();
-    NATIVE_TAIL resolve(c, address)(sp, c, null, 0);
+    NATIVE_TAIL reinterpret_cast<NativeFn>(address)(sp, c, null, 0);
   } else if (tos_value == Interpreter::UNWIND_REASON_WHEN_THROWING_EXCEPTION || (tos_value & 1) == 0) {
     // An exception or a non-local return.
     word arity = (tos_value == Interpreter::UNWIND_REASON_WHEN_THROWING_EXCEPTION) ? 0 : tos_value >> 1;
@@ -249,13 +248,13 @@ void NativeRuntime::unwind(NATIVE_PARAMS) {
     Object* address = POP();
     DROP(arity);
     PUSH(result_or_height_diff);
-    NATIVE_TAIL resolve(c, address)(sp, c, null, 0);
+    NATIVE_TAIL reinterpret_cast<NativeFn>(address)(sp, c, null, 0);
   } else {
     // A non-local branch.
     int bci = tos_value >> 1;
     sp = target_sp;
     DROP(Smi::value(result_or_height_diff));
-    NATIVE_TAIL find_entry(c, bci)(sp, c, null, 0);
+    NATIVE_TAIL find_entry(c->native, bci)(sp, c, null, 0);
   }
 }
 

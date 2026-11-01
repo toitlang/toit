@@ -2464,11 +2464,16 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
     delete types;
   }
 
-  if (Flags::native) {
+  if (Flags::native != null) {
     TypeDatabase* types = TypeDatabase::compute(program, &method_selector_offsets);
     auto code = generate_native_code(program, types, source_mapper->methods());
-    fwrite(code.c_str(), 1, code.size(), stdout);
     delete types;
+    FILE* file = fopen(Flags::native, "wb");
+    if (file == null || fwrite(code.c_str(), 1, code.size(), file) != code.size()) {
+      perror(Flags::native);
+      exit(1);
+    }
+    fclose(file);
   }
 
   int method_count = ir_program->methods().length();

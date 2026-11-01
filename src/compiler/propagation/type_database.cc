@@ -209,6 +209,18 @@ const TypeSet TypeDatabase::output(int position) const {
   }
 }
 
+const std::vector<TypeSet> TypeDatabase::input(int position) const {
+  std::vector<TypeSet> result;
+  auto probe = input_.find(position);
+  if (probe != input_.end()) {
+    TypeStack* arguments = probe->second;
+    for (int i = 0; i < arguments->size(); i++) {
+      result.push_back(arguments->get(i));
+    }
+  }
+  return result;
+}
+
 bool TypeDatabase::is_dead_method(int position) const {
   ASSERT(position >= 0);
   auto probe = methods_.find(position);

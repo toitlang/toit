@@ -218,8 +218,17 @@ class Interpreter {
   typedef bool NativeRunner(Interpreter* interpreter, Result* result);
   static NativeRunner* native_runner_;
 
+  // Translates the addresses that processes and tasks start from.
+  typedef Object* NativeAddress(Program* program, uint8* bcp);
+  static NativeAddress* native_address_;
+
+  Object* start_address(uint8* bcp);
+
  public:
-  static void set_native_runner(NativeRunner* runner) { native_runner_ = runner; }
+  static void set_native_runner(NativeRunner* runner, NativeAddress* address) {
+    native_runner_ = runner;
+    native_address_ = address;
+  }
 };
 
 // We push the exception and two elements for the unwinding implementation
