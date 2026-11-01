@@ -50,7 +50,8 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
 
 SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
                                List<uint8>* source_map_data,
-                               const char* sdk_version) {
+                               const char* sdk_version,
+                               const uint8* uuid) {
   ar::MemoryBuilder builder;
   int status = builder.open();
   if (status != 0) FATAL("Couldn't create snapshot");
@@ -100,6 +101,7 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
   // Fix checksum bytes to make a UUID5-like ID.
   sum[6] = (sum[6] & 0xf) | 0x50;
   sum[8] = (sum[8] & 0x3f) | 0x80;
+  if (uuid != null) memcpy(sum, uuid, UUID_SIZE);
 
   // The order of the following AR-files is important.
   // When reading the snapshot, an iterator is used to find the individual
@@ -148,6 +150,31 @@ bool SnapshotBundle::uuid(uint8* buffer_16) const {
   if (status != 0 || file.byte_size < UUID_SIZE) return false;
   memcpy(buffer_16, file.content(), UUID_SIZE);
   return true;
+}
+
+SnapshotBundle SnapshotBundle::without_snapshot() const {
+  List<uint8> source_map;
+  bool has_source_map = false;
+  const char* sdk_version = null;
+  Defer free_sdk_version { [&] { free(const_cast<char*>(sdk_version)); } };
+  ar::MemoryReader reader(buffer_, size_);
+  ar::File file;
+  while (reader.next(&file) == 0) {
+    if (strcmp(file.name(), SOURCE_MAP_NAME) == 0) {
+      source_map = List<uint8>(const_cast<uint8*>(file.content()), file.byte_size);
+      has_source_map = true;
+    } else if (strcmp(file.name(), SDK_VERSION_NAME) == 0) {
+      int sdk_len = file.byte_size;
+      char* buffer = unvoid_cast<char*>(malloc(sdk_len + 1));
+      memcpy(buffer, file.content(), sdk_len);
+      buffer[sdk_len] = '\0';
+      free(const_cast<char*>(sdk_version));
+      sdk_version = buffer;
+    }
+  }
+  uint8 id[UUID_SIZE];
+  if (!uuid(id)) FATAL("Bundle without an id");
+  return SnapshotBundle(List<uint8>(), has_source_map ? &source_map : null, sdk_version, id);
 }
 
 SnapshotBundle SnapshotBundle::stripped() const {

@@ -18,6 +18,7 @@
 #ifndef TOIT_FREERTOS
 
 #include "../heap.h"
+#include "../native.h"
 #include "../objects_inline.h"
 #include "../primitive.h"
 #include "../process.h"
@@ -53,8 +54,12 @@ PRIMITIVE(launch) {
   USE(ok);
   ASSERT(ok);
 
-  Snapshot snapshot(bytes.address(), bytes.length());
-  auto image = snapshot.read_image(program_id.address());
+  // Programs that are native code come as images.
+  ProgramImage image = NativeRuntime::load_image_with_id(program_id.address());
+  if (!image.is_valid()) {
+    Snapshot snapshot(bytes.address(), bytes.length());
+    image = snapshot.read_image(program_id.address());
+  }
   Program* program = image.program();
   ProcessGroup* process_group = ProcessGroup::create(gid, program, image.memory());
   ASSERT(process_group);  // Allocations only fail on devices.

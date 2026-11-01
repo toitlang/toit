@@ -77,7 +77,7 @@ file(GLOB run_SRC
 )
 
 # Exclude files with a main(), and files that are not used in the compiler.
-list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run|toit_run_image|vessel|vm|objects_runtime).cc$")
+list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run|toit_run_image|vessel|native_main|vm|objects_runtime).cc$")
 list(REMOVE_ITEM toit_core_SRC ${run_SRC})
 
 # The bytecode loop and the replacement for it in executables with native code.
@@ -340,9 +340,8 @@ if (NOT ${TOIT_IS_EMBEDDED})
   add_library(
     toit_native_main
     STATIC
-    vessel.cc
+    native_main.cc
     interpreter_native.cc
-    ${run_SRC}
   )
   target_link_libraries(toit_native_main PUBLIC ${TOIT_LINK_LIBS})
   target_include_directories(toit_native_main PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

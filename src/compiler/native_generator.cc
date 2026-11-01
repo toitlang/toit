@@ -650,6 +650,15 @@ void NativeGenerator::emit_tables() {
   out_ << "extern const int32_t returns[] __asm__(\"toit_native_returns\");\n";
   out_ << "extern const uint8_t return_deltas[] __asm__(\"toit_native_return_deltas\");\n\n";
 
+  // The compiler adds these to the end of the file when the program is done.
+  out_ << "namespace {\n";
+  out_ << "extern const bool native_is_system;\n";
+  out_ << "extern const uint8_t native_uuid[];\n";
+  out_ << "extern const uint8_t native_image[];\n";
+  out_ << "extern const int native_image_size;\n";
+  out_ << "extern const uint8_t native_bundle[];\n";
+  out_ << "extern const int native_bundle_size;\n";
+  out_ << "}\n\n";
   out_ << "static const NativeProgram native_program = {\n";
   out_ << "  NATIVE_ABI,\n";
   out_ << "  " << native_fingerprint(pruned_bytecodes_.data(), pruned_bytecodes_.size()) << "u,\n";
@@ -659,6 +668,12 @@ void NativeGenerator::emit_tables() {
   out_ << "  returns,\n";
   out_ << "  return_deltas,\n";
   out_ << "  " << return_points_.size() << ",\n";
+  out_ << "  native_uuid,\n";
+  out_ << "  native_image,\n";
+  out_ << "  native_image_size,\n";
+  out_ << "  native_bundle,\n";
+  out_ << "  native_bundle_size,\n";
+  out_ << "  native_is_system,\n";
   out_ << "};\n\n";
   out_ << "static int registered = NativeRuntime::register_program(&native_program);\n";
 }

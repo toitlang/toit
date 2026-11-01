@@ -48,7 +48,7 @@ class NativeBuild {
   int write_source(const char* out_path, SnapshotBundle bundle, bool is_boot);
 
  private:
-  bool add_snapshot(SnapshotBundle bundle, bool is_boot);
+  bool add_program(SnapshotBundle bundle, bool is_system);
   void remove_temp_folder();
   static void remove_active_temp_folder();
 

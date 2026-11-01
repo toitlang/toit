@@ -29,7 +29,7 @@ import uuid show Uuid
   ```
 **/
 class Program:
-  header / ProgramHeader ::= ?
+  header / ProgramHeader? ::= ?
   // Program graph.
   roots                     / List ::= ?  // List of ToitObject
   built-in-class-ids        / List ::= ?  // List of integers
@@ -45,8 +45,8 @@ class Program:
   literals                  / List ::= ?  // List of ToitObject
   heap-objects              / List ::= ?  // List of ToitObject
                                           // Contains all objects extracted from program heap.
-  heap32                    / Heap ::= ?
-  heap64                    / Heap ::= ?
+  heap32                    / Heap? ::= ?
+  heap64                    / Heap? ::= ?
   all-bytecodes             / ByteArray ::= ?
   global-max-stack-height   / int ::= ?
 
@@ -94,20 +94,42 @@ class Program:
     global-table              = snapshot.source-map.global-segment.content
     selectors_                = snapshot.source-map.selectors-segment.content
 
-    // Create the methods list. Programs that are compiled to native code
-    // have no bytecodes, but stack traces still need to find the methods.
-    size := 0
-    method-table_.do --values: size += ToitMethod.HEADER-SIZE + it.bytecode-size
-    if size != all-bytecodes.size:
-      ids := method-table_.keys.sort
-      methods = List ids.size: ToitMethod.without-bytecodes ids[it]
-    else:
-      current-offset := 0
-      methods = List method-table_.size:
-        method-info := method-table_[current-offset]
-        method := ToitMethod all-bytecodes current-offset method-info.bytecode-size
-        current-offset += method.allocation-size
-        method
+    // Create the methods list.
+    current-offset := 0
+    methods = List method-table_.size:
+      method-info := method-table_[current-offset]
+      method := ToitMethod all-bytecodes current-offset method-info.bytecode-size
+      current-offset += method.allocation-size
+      method
+
+  // Programs that are compiled to native code are stored as images, so
+  // all we have is the information that is needed for decoding stack traces.
+  constructor.from-source-map source-map/SourceMap:
+    header                    = null
+    roots                     = []
+    built-in-class-ids        = []
+    invoke-bytecode-offsets   = []
+    class-tags                = []
+    class-instance-sizes      = []
+    entry-point-indexes       = []
+    global-variables          = []
+    class-check-ids           = []
+    interface-check-selectors = []
+    dispatch-table            = []
+    literals                  = []
+    heap-objects              = []
+    heap32                    = null
+    heap64                    = null
+    all-bytecodes             = #[]
+    global-max-stack-height   = 0
+    method-table_             = source-map.method-segment.content
+    class-table_              = source-map.class-segment.content
+    primitive-table           = source-map.primitive-segment.content
+    selector-names_           = source-map.selector-names-segment.content
+    global-table              = source-map.global-segment.content
+    selectors_                = source-map.selectors-segment.content
+    ids := method-table_.keys.sort
+    methods = List ids.size: ToitMethod.without-bytecodes ids[it]
 
   // Extract selector name from the dispatch offset used in invoke virtual byte codes.
   selector-from-dispatch-offset offset/int -> string:
@@ -174,7 +196,7 @@ class SnapshotBundle:
 
   bytes            / ByteArray
   file-name        / string?
-  program-snapshot / ProgramSnapshot
+  program-snapshot / ProgramSnapshot?
   source-map       / SourceMap?
   uuid             / Uuid
   sdk-version      / string
@@ -188,7 +210,9 @@ class SnapshotBundle:
   constructor .file-name .bytes:
     if not is-bundle-content bytes: throw "Invalid snapshot bundle"
     program-snapshot-offsets := extract-ar-offsets_ bytes SNAPSHOT-NAME
-    program-snapshot = ProgramSnapshot bytes program-snapshot-offsets.from program-snapshot-offsets.to
+    program-snapshot = program-snapshot-offsets.from == program-snapshot-offsets.to
+        ? null
+        : ProgramSnapshot bytes program-snapshot-offsets.from program-snapshot-offsets.to
     source-map-offsets := extract-ar-offsets_ --silent bytes SOURCE-MAP-NAME
     source-map = source-map-offsets
         ? SourceMap bytes source-map-offsets.from source-map-offsets.to
@@ -217,6 +241,7 @@ class SnapshotBundle:
 
   decode -> Program:
     if not source-map: throw "No source map"
+    if not program-snapshot: return Program.from-source-map source-map
     return Program this
 
   stringify -> string:
