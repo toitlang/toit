@@ -743,7 +743,7 @@ std::string NativeGenerator::generate() {
     out_ << "static void " << thunk_label(thunk) << "(NATIVE_PARAMS) {\n";
     std::string receiver = "STACK_AT(" + std::to_string(stack_offset) + ")";
     out_ << "  NATIVE_TAIL vtable[" << class_id_expression(receiver, std::get<2>(thunk)) << " + " << selector_offset
-         << "](sp, c, x, " << virtual_key(selector_offset, stack_offset) << ");\n";
+         << "](sp, c, x, " << virtual_key(selector_offset, stack_offset) << ", t);\n";
     out_ << "}\n";
   }
   update_program();
@@ -758,7 +758,7 @@ void NativeGenerator::emit_block_entry(Method method, bool is_dead) {
   int id = method_id(method);
   out_ << "static void " << block_entry_label(id) << "(NATIVE_PARAMS) {\n";
   out_ << "  intptr_t extra = y - " << method.arity() << ";\n";
-  out_ << "  if (NATIVE_UNLIKELY(extra < 0)) NATIVE_TAIL NativeRuntime::block_failure(sp, c, x, (" << pruned_id(id) << " << 8) | y);\n";
+  out_ << "  if (NATIVE_UNLIKELY(extra < 0)) {\n    SPILL();\n    NATIVE_TAIL NativeRuntime::block_failure(sp, c, x, (" << pruned_id(id) << " << 8) | y, nullptr);\n  }\n";
   if (is_dead) {
     out_ << "  NATIVE_TAIL NativeRuntime::illegal(NATIVE_ARGS);\n";
   } else {
@@ -797,6 +797,7 @@ void NativeGenerator::emit_method(const MethodInfo& info) {
     // checked, which leaves the call sites with nothing but the jump.
     out_ << "static void " << virtual_label(id) << "(NATIVE_PARAMS) {\n";
     out_ << "  if (NATIVE_UNLIKELY(y != " << virtual_key(method.selector_offset(), method.arity() - 1) << ")) {\n";
+    out_ << "    SPILL();\n";
     out_ << "    NATIVE_TAIL NativeRuntime::virtual_fallback(NATIVE_ARGS);\n";
     out_ << "  }\n";
     out_ << "  PUSH(reinterpret_cast<Object*>(x));\n";
@@ -805,8 +806,9 @@ void NativeGenerator::emit_method(const MethodInfo& info) {
     out_ << "}\n";
   }
   out_ << "static void " << method_label(id) << "(NATIVE_PARAMS) {\n";
-  out_ << "  if (NATIVE_UNLIKELY(NativeRuntime::needs_stack_check(c, sp, " << (method.max_height() + (has_inlined_leaf(info) ? INLINED_STACK_USE : 0)) << "))) {\n";
-  out_ << "    NATIVE_TAIL NativeRuntime::stack_overflow(sp, c, x, " << pruned_id(id) << ");\n";
+  out_ << "  if (NATIVE_UNLIKELY(NativeRuntime::needs_stack_check(c, sp, " << (method.max_height() + (has_inlined_leaf(info) ? INLINED_STACK_USE : 0) + 1) << "))) {\n";
+  out_ << "    SPILL();\n";
+  out_ << "    NATIVE_TAIL NativeRuntime::stack_overflow(sp, c, x, " << pruned_id(id) << ", nullptr);\n";
   out_ << "  }\n";
   out_ << "  NATIVE_TAIL " << label(method.entry()) << "(NATIVE_ARGS);\n";
   out_ << "}\n";
@@ -879,7 +881,7 @@ void NativeGenerator::emit_call(int id, uint8* next) {
 }
 
 void NativeGenerator::emit_runtime(const char* helper, const std::string& x, word y) {
-  out_ << "  NATIVE_TAIL NativeRuntime::" << helper << "(sp, c, " << x << ", " << y << ");\n";
+  out_ << "  { SPILL(); NATIVE_TAIL NativeRuntime::" << helper << "(sp, c, " << x << ", " << y << ", nullptr); }\n";
 }
 
 void NativeGenerator::emit_runtime_next(const char* helper, uint8* next, word y) {
@@ -898,12 +900,12 @@ void NativeGenerator::emit_virtual(uint8* bcp, uint8* next, int stack_offset, in
     // Sites that aren't hot share the code for the lookup.
     auto thunk = std::make_tuple(selector_offset, stack_offset, can_be_smi);
     virtual_thunks_.insert(thunk);
-    out_ << "  NATIVE_TAIL " << thunk_label(thunk) << "(sp, c, " << address << ", y);\n";
+    out_ << "  NATIVE_TAIL " << thunk_label(thunk) << "(sp, c, " << address << ", y, t);\n";
     return;
   }
   std::string receiver = "STACK_AT(" + std::to_string(stack_offset) + ")";
   out_ << "  NATIVE_TAIL vtable[" << class_id_expression(receiver, can_be_smi) << " + " << selector_offset
-       << "](sp, c, " << address << ", " << virtual_key(selector_offset, stack_offset) << ");\n";
+       << "](sp, c, " << address << ", " << virtual_key(selector_offset, stack_offset) << ", t);\n";
 }
 
 // The types often leave us with a single method that can be called, even if
@@ -1039,7 +1041,8 @@ int NativeGenerator::leaf_target(uint8* bcp) const {
 bool NativeGenerator::emit_inlined_leaf(const MethodInfo& info, uint8* bcp) {
   int entry = leaf_target(bcp);
   if (entry < 0) return false;
-  out_ << "  DROP(-" << Interpreter::FRAME_SIZE << ");\n";
+  // Leaves room for the frame.
+  for (int i = 0; i < Interpreter::FRAME_SIZE; i++) out_ << "  PUSH(nullptr);\n";
   uint8* leaf = Method(program_->bytecodes, entry).entry();
   while (*leaf != RETURN && *leaf != RETURN_NULL) {
     emit_opcode(info, leaf);
@@ -1048,12 +1051,10 @@ bool NativeGenerator::emit_inlined_leaf(const MethodInfo& info, uint8* bcp) {
   int drop = leaf[1] + Interpreter::FRAME_SIZE + leaf[2];
   if (*leaf == RETURN) {
     out_ << "  { Object* result = STACK_AT(0);\n";
-    out_ << "    DROP(" << drop << ");\n";
-    out_ << "    PUSH(result);\n";
+    out_ << "    DROP_PUSH(" << drop << ", result);\n";
     out_ << "  }\n";
   } else {
-    out_ << "  DROP(" << drop << ");\n";
-    out_ << "  PUSH(c->null_object);\n";
+    out_ << "  DROP_PUSH(" << drop << ", c->null_object);\n";
   }
   return true;
 }
@@ -1070,8 +1071,7 @@ void NativeGenerator::emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, co
   if (info.can_be_smis && (info.is_likely || is_hot_site(bcp))) {
     out_ << "  { Object* result;\n";
     out_ << "    if (NATIVE_LIKELY(" << check << helper << "(STACK_AT(1), STACK_AT(0), &result))) {\n";
-    out_ << "      STACK_AT_PUT(1, result);\n";
-    out_ << "      DROP(1);\n";
+    out_ << "      DROP_PUSH(2, result);\n";
     out_ << "      NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
     out_ << "    }\n  }\n";
   }
@@ -1099,8 +1099,7 @@ void NativeGenerator::emit_relational(const MethodInfo& info, uint8* bcp, uint8*
       out_ << "  }\n";
       skip_next_opcode_ = true;
     } else {
-      out_ << "  STACK_AT_PUT(1, (" << compare << ") ? c->true_object : c->false_object);\n";
-      out_ << "  DROP(1);\n";
+      out_ << "  DROP_PUSH(2, (" << compare << ") ? c->true_object : c->false_object);\n";
     }
     return;
   }
@@ -1127,16 +1126,14 @@ void NativeGenerator::emit_fast_result(uint8* next, const std::string& result) {
     out_ << "    NATIVE_TAIL " << label(on_true ? fall_through : target) << "(NATIVE_ARGS);\n";
     return;
   }
-  out_ << "    STACK_AT_PUT(1, (" << result << ") ? c->true_object : c->false_object);\n";
-  out_ << "    DROP(1);\n";
+  out_ << "    DROP_PUSH(2, (" << result << ") ? c->true_object : c->false_object);\n";
   out_ << "    NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
 }
 
 void NativeGenerator::emit_bit_operation(uint8* bcp, uint8* next, Opcode opcode, const char* op) {
   if (operands(bcp).are_smis()) {
     // Smis have a zero tag, so we can work directly on the tagged values.
-    out_ << "  STACK_AT_PUT(1, reinterpret_cast<Object*>(reinterpret_cast<intptr_t>(STACK_AT(1)) " << op << " reinterpret_cast<intptr_t>(STACK_AT(0))));\n";
-    out_ << "  DROP(1);\n";
+    out_ << "  DROP_PUSH(2, reinterpret_cast<Object*>(reinterpret_cast<intptr_t>(STACK_AT(1)) " << op << " reinterpret_cast<intptr_t>(STACK_AT(0))));\n";
     return;
   }
   emit_runtime_next("binary", next, opcode);
@@ -1183,13 +1180,15 @@ void NativeGenerator::emit_typecheck(uint8* bcp, Opcode opcode, bool is_as, int 
 }
 
 void NativeGenerator::emit_tail_frame_move(int height, int outer_arity, int call_arity) {
-  out_ << "  { void* return_address = reinterpret_cast<void*>(STACK_AT(" << (height + 1) << "));\n";
   int parameter_start = height + Interpreter::FRAME_SIZE + outer_arity;
+  out_ << "  SPILL();\n";
+  out_ << "  { Object* return_address = sp[" << (height + 1) << "];\n";
   out_ << "    memmove(sp + " << (parameter_start - call_arity) << ", sp, " << call_arity << " * sizeof(Object*));\n";
-  out_ << "    DROP(" << (parameter_start - call_arity) << ");\n";
-  out_ << "    PUSH(reinterpret_cast<Object*>(return_address));\n";
-  out_ << "    PUSH(c->frame_marker);\n";
+  out_ << "    sp += " << (parameter_start - call_arity) << ";\n";
+  out_ << "    *(--sp) = return_address;\n";
+  out_ << "    *(--sp) = c->frame_marker;\n";
   out_ << "  }\n";
+  out_ << "  RELOAD();\n";
 }
 
 void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
@@ -1321,7 +1320,7 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       emit_runtime_next("store_global_dynamic", next, 0);
       break;
     case LOAD_BLOCK:
-      out_ << "  PUSH(NativeRuntime::to_block(c, sp + " << byte1 << "));\n";
+      out_ << "  PUSH(NativeRuntime::to_block(c, sp + " << (byte1 - 1) << "));\n";
       break;
     case LOAD_OUTER_BLOCK:
       out_ << "  STACK_AT_PUT(0, NativeRuntime::to_block(c, &NativeRuntime::from_block(c, STACK_AT(0))[" << byte1 << "]));\n";
@@ -1381,7 +1380,7 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
     }
     case INVOKE_BLOCK:
       out_ << "  { Object** block = NativeRuntime::from_block(c, STACK_AT(" << (byte1 - 1) << "));\n";
-      out_ << "    NATIVE_TAIL reinterpret_cast<NativeFn>(*block)(sp, c, reinterpret_cast<void*>(&" << label(next) << "), " << byte1 << ");\n";
+      out_ << "    NATIVE_TAIL reinterpret_cast<NativeFn>(*block)(sp, c, reinterpret_cast<void*>(&" << label(next) << "), " << byte1 << ", t);\n";
       out_ << "  }\n";
       break;
     case INVOKE_LAMBDA_TAIL:
@@ -1499,8 +1498,7 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       int arity = bcp[2];
       out_ << "  { Object* result = " << (opcode == RETURN ? "STACK_AT(0)" : "c->null_object") << ";\n";
       out_ << "    NativeFn next = reinterpret_cast<NativeFn>(STACK_AT(" << (offset + 1) << "));\n";
-      out_ << "    DROP(" << (offset + Interpreter::FRAME_SIZE + arity) << ");\n";
-      out_ << "    PUSH(result);\n";
+      out_ << "    DROP_PUSH(" << (offset + Interpreter::FRAME_SIZE + arity) << ", result);\n";
       out_ << "    NATIVE_TAIL next(NATIVE_ARGS);\n";
       out_ << "  }\n";
       break;
@@ -1518,12 +1516,13 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
           byte1);
       break;
     case IDENTICAL:
-      out_ << "  STACK_AT_PUT(1, NativeRuntime::identical(c, STACK_AT(1), STACK_AT(0)));\n";
-      out_ << "  DROP(1);\n";
+      out_ << "  DROP_PUSH(2, NativeRuntime::identical(c, STACK_AT(1), STACK_AT(0)));\n";
       break;
     case LINK:
-      out_ << "  DROP(-4);\n";
+      out_ << "  SPILL();\n";
+      out_ << "  sp -= 4;\n";
       out_ << "  NativeRuntime::link(c, sp);\n";
+      out_ << "  RELOAD();\n";
       break;
     case UNLINK:
       out_ << "  NativeRuntime::unlink(c, POP());\n";

@@ -30,6 +30,24 @@
 
 namespace toit {
 
+// The runtime always sees the whole stack in memory. Generated code
+// spills the top of the stack before it calls us, and this is the way back.
+#undef PUSH
+#undef POP
+#undef DROP
+#undef STACK_AT
+#undef STACK_AT_PUT
+#define PUSH(o)            ({ Object* _o_ = (o); *(--sp) = _o_; })
+#define POP()              (*(sp++))
+#define DROP(n)            (sp += (n))
+#define STACK_AT(n)        (*(sp + (n)))
+#define STACK_AT_PUT(n, o) ({ Object* _o_ = (o); *(sp + (n)) = _o_; })
+#define GO(target, x_, y_)                                                                   \
+  do {                                                                                       \
+    Object* _top_ = POP();                                                                   \
+    NATIVE_TAIL reinterpret_cast<NativeFn>(target)(sp, c, x_, y_, _top_);                    \
+  } while (false)
+
 // An executable has the native code of its program and of the system program.
 static const int MAX_REGISTERED_PROGRAMS = 4;
 static const NativeProgram* registered_programs[MAX_REGISTERED_PROGRAMS];
@@ -247,7 +265,8 @@ bool NativeRuntime::run(Interpreter* interpreter, void* result) {
   Object** sp = interpreter->load_stack();
   POP();  // Frame marker.
   Object* address = POP();
-  reinterpret_cast<NativeFn>(address)(sp, &context, null, 0);
+  Object* top = POP();
+  reinterpret_cast<NativeFn>(address)(sp, &context, null, 0, top);
   return true;
 }
 
@@ -257,10 +276,10 @@ bool NativeRuntime::run(Interpreter* interpreter, void* result) {
     PUSH(reinterpret_cast<Object*>(x));                               \
     PUSH(c->frame_marker);                                            \
     int _bci_ = c->program->absolute_bci_from_bcp(_target_.entry());  \
-    NATIVE_TAIL find_entry(c->native, _bci_)(sp, c, null, 0);                 \
+    GO(find_entry(c->native, _bci_), null, 0);                           \
   } while (false)
 
-#define CONTINUE() NATIVE_TAIL reinterpret_cast<NativeFn>(x)(sp, c, null, 0)
+#define CONTINUE() GO(x, null, 0)
 
 void NativeRuntime::stack_overflow(NATIVE_PARAMS) {
   Interpreter* interpreter = c->interpreter;
@@ -284,7 +303,7 @@ void NativeRuntime::stack_overflow(NATIVE_PARAMS) {
     case Interpreter::OVERFLOW_EXCEPTION:
       break;
   }
-  NATIVE_TAIL throw_exception(sp, c, null, 0);
+  NATIVE_TAIL throw_exception(sp, c, null, 0, null);
 }
 
 void NativeRuntime::block_failure(NATIVE_PARAMS) {
@@ -295,7 +314,7 @@ void NativeRuntime::block_failure(NATIVE_PARAMS) {
   PUSH(Smi::from(method.arity()));
   PUSH(Smi::from(arguments));
   PUSH(Smi::from(original_bci(method.header_bcp())));
-  NATIVE_TAIL code_failure(sp, c, x, y);
+  NATIVE_TAIL code_failure(sp, c, x, y, null);
 }
 
 void NativeRuntime::preempt(NATIVE_PARAMS) {
@@ -337,7 +356,7 @@ void NativeRuntime::primitive(NATIVE_PARAMS) {
       DROP(arity);
       PUSH(result);
       process->object_heap()->leave_primitive();
-      NATIVE_TAIL reinterpret_cast<NativeFn>(address)(sp, c, null, 0);
+      GO(address, null, 0);
     }
     result = Primitive::unmark_from_error(program, result);
     bool malloc_failed = (result == program->malloc_failed());
@@ -352,7 +371,7 @@ void NativeRuntime::primitive(NATIVE_PARAMS) {
 
     if (attempts > 3) {
       sp = interpreter->push_error(sp, result, "");
-      NATIVE_TAIL throw_exception(sp, c, null, 0);
+      NATIVE_TAIL throw_exception(sp, c, null, 0, null);
     }
 
     sp = interpreter->gc(sp, malloc_failed, attempts, force_cross_process, "primitive", module, index);
@@ -371,7 +390,7 @@ void NativeRuntime::throw_exception(NATIVE_PARAMS) {
   // The exception is already at the top of the stack.
   PUSH(to_block(c, c->interpreter->base_));
   PUSH(Smi::from(Interpreter::UNWIND_REASON_WHEN_THROWING_EXCEPTION));
-  NATIVE_TAIL unwind(sp, c, x, y);
+  NATIVE_TAIL unwind(sp, c, x, y, null);
 }
 
 void NativeRuntime::unwind(NATIVE_PARAMS) {
@@ -398,7 +417,7 @@ void NativeRuntime::unwind(NATIVE_PARAMS) {
     STACK_AT_PUT(link_offset + 3, result_or_height_diff);
     POP();  // Frame marker.
     Object* address = POP();
-    NATIVE_TAIL reinterpret_cast<NativeFn>(address)(sp, c, null, 0);
+    GO(address, null, 0);
   } else if (tos_value == Interpreter::UNWIND_REASON_WHEN_THROWING_EXCEPTION || (tos_value & 1) == 0) {
     // An exception or a non-local return.
     word arity = (tos_value == Interpreter::UNWIND_REASON_WHEN_THROWING_EXCEPTION) ? 0 : tos_value >> 1;
@@ -410,13 +429,13 @@ void NativeRuntime::unwind(NATIVE_PARAMS) {
     Object* address = POP();
     DROP(arity);
     PUSH(result_or_height_diff);
-    NATIVE_TAIL reinterpret_cast<NativeFn>(address)(sp, c, null, 0);
+    GO(address, null, 0);
   } else {
     // A non-local branch.
     int bci = tos_value >> 1;
     sp = target_sp;
     DROP(Smi::value(result_or_height_diff));
-    NATIVE_TAIL find_entry(c->native, bci)(sp, c, null, 0);
+    GO(find_entry(c->native, bci), null, 0);
   }
 }
 
@@ -429,7 +448,7 @@ void NativeRuntime::non_local_return(NATIVE_PARAMS) {
   PUSH(result);
   PUSH(to_block(c, target_sp));
   PUSH(Smi::from(arity << 1));
-  NATIVE_TAIL unwind(sp, c, x, 0);
+  NATIVE_TAIL unwind(sp, c, x, 0, null);
 }
 
 void NativeRuntime::non_local_branch(NATIVE_PARAMS) {
@@ -440,7 +459,7 @@ void NativeRuntime::non_local_branch(NATIVE_PARAMS) {
   PUSH(Smi::from(y));
   PUSH(to_block(c, target_sp));
   PUSH(Smi::from((bci << 1) | 1));
-  NATIVE_TAIL unwind(sp, c, null, 0);
+  NATIVE_TAIL unwind(sp, c, null, 0, null);
 }
 
 void NativeRuntime::allocate(NATIVE_PARAMS) {
@@ -455,7 +474,7 @@ void NativeRuntime::allocate(NATIVE_PARAMS) {
   process->object_heap()->leave_primitive();
   if (result == null) {
     sp = interpreter->push_error(sp, c->program->allocation_failed(), "");
-    NATIVE_TAIL throw_exception(sp, c, null, 0);
+    NATIVE_TAIL throw_exception(sp, c, null, 0, null);
   }
   PUSH(result);
   if (Flags::gc_a_lot) {
@@ -771,12 +790,12 @@ void NativeRuntime::smi_repeat(NATIVE_PARAMS) {
     NativeFn next = reinterpret_cast<NativeFn>(POP());
     DROP(1);
     STACK_AT_PUT(0, c->null_object);
-    NATIVE_TAIL next(sp, c, null, 0);
+    GO(next, null, 0);
   }
   STACK_AT_PUT(0, Smi::from(Smi::value(current) + 1));
   PUSH(block);
   PUSH(current);
-  NATIVE_TAIL reinterpret_cast<NativeFn>(*from_block(c, block))(sp, c, x, 2);
+  GO(*from_block(c, block), x, 2);
 }
 
 void NativeRuntime::array_do(NATIVE_PARAMS) {
@@ -792,12 +811,12 @@ void NativeRuntime::array_do(NATIVE_PARAMS) {
     NativeFn next = reinterpret_cast<NativeFn>(POP());
     DROP(2);
     STACK_AT_PUT(0, c->null_object);
-    NATIVE_TAIL next(sp, c, null, 0);
+    GO(next, null, 0);
   }
   STACK_AT_PUT(0, Smi::from(current + 1));
   PUSH(block);
   PUSH(backing->at(current));
-  NATIVE_TAIL reinterpret_cast<NativeFn>(*from_block(c, block))(sp, c, x, 2);
+  GO(*from_block(c, block), x, 2);
 }
 
 void NativeRuntime::illegal(NATIVE_PARAMS) {
