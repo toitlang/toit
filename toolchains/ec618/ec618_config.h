@@ -72,23 +72,16 @@
 // Whether to leave the always-on (AON) hardware watchdog running (default) or
 // stop it at boot.
 //
-// The AON watchdog belongs to the PLATFORM, not to Toit (HW-verified
-// 2026-06-10): the boot ROM arms it (~27 s) and the CP core auto-feeds it
-// every couple of seconds for as long as a healthy CP runs — its target
-// register slides forward with no AP-side feeder. It is the whole-chip/CP
-// liveness guard, and Toit neither feeds nor uses it. (Toit's application
-// watchdog is a software watchdog — see lib/ec618/watchdog.toit.)
+// The boot ROM arms it (~27 s). The vendor AP idle task feeds it through
+// xpmuEnterTickless. The VM scheduler also feeds it, including from its tick
+// thread, because healthy CPU-bound code can prevent idle from running.
+// This platform service is independent of the application feed deadline
+// (see lib/ec618/watchdog.toit). Keep this enabled in normal builds; disable
+// it only for debugging that deliberately prevents platform feeding.
 //
-// Consequences:
-//  - With a healthy CP image flashed (the normal case) the AON never fires
-//    and costs nothing. Keep this 1.
-//  - With NO running CP (early bring-up, missing/mismatched CP image) nothing
-//    feeds it and the device reboots every ~27 s. Set this to 0 for such
-//    CP-less debugging: BSP_CustomInit then stops the AON at boot.
-//  - Before hibernate the CP stops feeding while the AON domain keeps
-//    counting, so the deep-sleep path always stops the AON explicitly
-//    (toit_ec618.cc) regardless of this knob; the ROM re-arms it on the wake
-//    reboot and the CP resumes feeding.
+// Before hibernate the deep-sleep path stops the AON explicitly: its clock
+// keeps counting while the software feeders are stopped. The ROM re-arms
+// it on the wake reboot.
 //
 // Note: an AON reset is reported as RESET-POWER-ON, not AONWDT (the reset
 // reason is not preserved), and it may clear RTC memory like a cold boot.

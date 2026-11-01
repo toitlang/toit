@@ -32,6 +32,7 @@ extern "C" {
   #include <stdio.h>
   #include "cmsis_os2.h"
   #include "osasys.h"
+  void slpManAonWdtFeed(void);
 }
 #endif
 
@@ -116,12 +117,18 @@ void OS::reset_monotonic_time() {
 }
 
 void OS::feed_watchdog() {
-  // No-op on every platform. On the EC618 the scheduler used to feed the
-  // always-on (AON) watchdog here as a VM-liveness guard, but that was
-  // measurably pointless: the AON belongs to the platform — the CP core
-  // auto-feeds it every couple of seconds whenever a healthy CP runs (its
-  // target register slides forward with every AP-side feeder silent). The
-  // application watchdog is the software watchdog in primitive_ec618.cc.
+#if defined(TOIT_EC618) && CONFIG_TOIT_EC618_VM_WATCHDOG
+  // The vendor idle task feeds the AON watchdog through xpmuEnterTickless.
+  // A healthy CPU-bound VM can keep that idle task from running. Service the
+  // platform watchdog from the scheduler too; application deadlines remain
+  // the responsibility of watchdog_ec618.cc. Calls are serialized by the
+  // scheduler mutex. Throttle the slow-clock register access to once a second.
+  static uint32_t last_feed = 0;
+  uint32_t now = osKernelGetTickCount();
+  if (static_cast<uint32_t>(now - last_feed) < 1000) return;
+  last_feed = now;
+  slpManAonWdtFeed();
+#endif
 }
 
 #ifdef TOIT_EC618

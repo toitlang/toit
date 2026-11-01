@@ -24,6 +24,8 @@ TYPE_PRIMITIVE_ANY(init)
 TYPE_PRIMITIVE_ANY(get)
 TYPE_PRIMITIVE_ANY(get_raw)
 TYPE_PRIMITIVE_NULL(close)
+TYPE_PRIMITIVE_ANY(init_group)
+TYPE_PRIMITIVE_NULL(cancel)
 
 }  // namespace toit::compiler
 }  // namespace toit

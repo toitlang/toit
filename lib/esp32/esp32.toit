@@ -5,6 +5,8 @@
 import system.trace show send-trace-message
 import system.storage  // For toitdoc.
 
+import system.watchdog  // For toitdoc.
+
 /**
 ESP32 related functionality.
 */
@@ -284,6 +286,8 @@ If there is an interval of $ms milliseconds between calls to $watchdog-reset,
   the ESP32 will reset.
 
 Use $watchdog-deinit to disable the watchdog timer.
+
+Deprecated. Use $watchdog.start instead.
 */
 watchdog-init --ms/int -> none:
   #primitive.esp32.watchdog-init
@@ -292,12 +296,16 @@ watchdog-init --ms/int -> none:
 Resets the watchdog timer.
 
 See $watchdog-init.
+
+Deprecated. Use $watchdog.feed instead.
 */
 watchdog-reset -> none:
   #primitive.esp32.watchdog-reset
 
 /**
 Disables the watchdog timer.
+
+Deprecated. Use $watchdog.stop instead.
 */
 watchdog-deinit -> none:
   #primitive.esp32.watchdog-deinit

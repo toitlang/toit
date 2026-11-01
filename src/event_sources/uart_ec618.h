@@ -20,6 +20,7 @@
 #include "../resource.h"
 #include "../os.h"
 #include "../top.h"
+#include "mailbox_ec618.h"
 
 extern "C" {
   #include "FreeRTOS.h"
@@ -27,54 +28,6 @@ extern "C" {
 }
 
 namespace toit {
-
-// Event types for the shared EC618 event source.
-// UART and GPIO events are dispatched through the same queue.
-struct Event {
-  enum Type {
-    STOP = 0,
-    UART_0,
-    UART_1,
-    UART_2,
-    GPIO_NUM_0,
-    // GPIO_NUM_1 through GPIO_NUM_31 follow sequentially.
-  };
-  Type type;
-  word data;
-
-  // Sub-event encoded in `data` for UART_* events.
-  enum UartKind {
-    UART_KIND_RX = 0,
-    UART_KIND_TX_DONE = 1,
-    UART_KIND_ERROR = 2,
-    UART_KIND_BREAK = 3,
-  };
-
-  static Type gpio_type(int pin) {
-    return static_cast<Type>(GPIO_NUM_0 + pin);
-  }
-
-  static Type uart_type(int id) {
-    return static_cast<Type>(UART_0 + id);
-  }
-
-  // I2C controller completion events (after the 32 GPIO slots).
-  static Type i2c_type(int id) {
-    return static_cast<Type>(GPIO_NUM_0 + 32 + id);
-  }
-
-  // A type no event is ever sent for. Used by resources that must exist
-  // without an event stream (e.g. a Pin on a pad with no GPIO function,
-  // held purely to carry the pad number into a peripheral).
-  static Type none_type() {
-    return static_cast<Type>(GPIO_NUM_0 + 34);
-  }
-
-  // SPI controller completion events (async transfers).
-  static Type spi_type(int id) {
-    return static_cast<Type>(GPIO_NUM_0 + 35 + id);
-  }
-};
 
 // A resource that carries an event type for matching.
 class EventResource : public Resource {
@@ -89,9 +42,8 @@ class EventResource : public Resource {
   Event::Type event_type_;
 };
 
-// Shared event source for UART and GPIO on EC618.
-// ISR handlers push events into a FreeRTOS queue; the event thread
-// dispatches them to matching resources.
+// Shared event source for EC618 peripherals. The queue carries GPIO edges and
+// wake-up tokens for persistent peripheral state retained in the mailbox.
 class Ec618EventSource : public EventSource, public Thread {
  public:
   static Ec618EventSource* instance() { return instance_; }
@@ -110,14 +62,11 @@ class Ec618EventSource : public EventSource, public Thread {
 
  private:
   void entry() override;
-  bool claim_uart_error(Event::Type type, word data, uint32_t* pending_bit);
-  void release_uart_error(uint32_t pending_bit);
+  void dispatch_event(Locker& locker, Event::Type type, word data);
 
   static Ec618EventSource* instance_;
   QueueHandle_t queue_;
-  // One bit per UART. Error counters remain exact, but repeated error
-  // callbacks share one queued notification until it has been dispatched.
-  uint32_t pending_uart_errors_;
+  Ec618EventMailbox mailbox_;
   bool stop_;
 };
 

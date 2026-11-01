@@ -61,7 +61,8 @@ class Adc:
   static MAX-SAMPLES-PER-CALL_ ::= 64
 
   pin/any
-  resource_ := ?
+  resource_ := null
+  events_/monitor.ResourceState_? := null
   mutex_/monitor.Mutex ::= monitor.Mutex
 
   /**
@@ -87,7 +88,7 @@ class Adc:
   // __TYPE-MIGRATION__ pin: Pin. Deprecated. Provide an integer instead.
   // __TYPE-MIGRATION__ pin: int
   constructor .pin --max-voltage/float?=null --allow-restricted/bool=false:
-    resource_ = adc-init_ resource-freeing-module_ (to-pin-num_ pin) allow-restricted (max-voltage ? max-voltage : 0.0)
+    initialize_ (to-pin-num_ pin) allow-restricted max-voltage
 
   /**
   Initializes an Adc unit on a dedicated analog $channel rather than a GPIO pin.
@@ -107,7 +108,18 @@ class Adc:
   */
   constructor.channel channel/int --max-voltage/float?=null:
     pin = null
-    resource_ = adc-init_ resource-freeing-module_ channel false (max-voltage ? max-voltage : 0.0)
+    initialize_ channel false max-voltage
+
+  initialize_ channel/int allow-restricted/bool max-voltage/float? -> none:
+    group := adc-event-group_ or resource-freeing-module_
+    resource_ = adc-init_ group channel allow-restricted (max-voltage ? max-voltage : 0.0)
+    if adc-event-group_:
+      succeeded := false
+      try:
+        events_ = monitor.ResourceState_ group resource_
+        succeeded = true
+      finally:
+        if not succeeded: adc-close_ resource_
 
   /**
   Measures the voltage on the pin.
@@ -121,8 +133,8 @@ class Adc:
     if samples < 1: throw "OUT_OF_BOUNDS"
     if samples <= MAX-SAMPLES-PER-CALL_: return get-chunk_ samples
     // Keep each native request bounded. An asynchronous platform may return
-    // null while a conversion is pending; get-chunk_ yields before polling
-    // again, so other Toit tasks continue to run.
+    // null while a conversion is pending; get-chunk_ waits for its completion
+    // event, so other Toit tasks continue to run.
     full-chunk-factor := MAX-SAMPLES-PER-CALL_.to-float / samples
     result := 0.0
     sampled := 0
@@ -135,12 +147,24 @@ class Adc:
     return result
 
   get-chunk_ samples/int -> float:
-    // TODO: Signal conversion completion through a ResourceState instead of
-    // polling when the platform provides an asynchronous ADC callback.
-    while true:
-      result := adc-get_ resource_ samples
-      if result: return result
-      sleep --ms=1
+    completed := false
+    try:
+      while true:
+        if events_: events_.clear
+        result := adc-get_ resource_ samples
+        if result:
+          completed = true
+          return result
+        wait-for-conversion_
+    finally:
+      if not completed: adc-cancel_ resource_
+
+  wait-for-conversion_ -> none:
+    // The bounded wait also lets native code check its hardware deadline if
+    // a completion notification was lost from a full platform event queue.
+    // A caller timeout that expires before this wait propagates unchanged.
+    catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
+      with-timeout --ms=5: events_.wait
 
   /**
   Measures the voltage on the pin and returns the obtained raw value.
@@ -158,12 +182,17 @@ class Adc:
 
   get-raw-locked_ raw/bool -> int:
     if not raw: throw "INVALID_ARGUMENT"
-    // TODO: Signal conversion completion through a ResourceState instead of
-    // polling when the platform provides an asynchronous ADC callback.
-    while true:
-      result := adc-get-raw_ resource_
-      if result: return result
-      sleep --ms=1
+    completed := false
+    try:
+      while true:
+        if events_: events_.clear
+        result := adc-get-raw_ resource_
+        if result:
+          completed = true
+          return result
+        wait-for-conversion_
+    finally:
+      if not completed: adc-cancel_ resource_
 
   /**
   Closes the ADC unit and releases the associated resources.
@@ -171,6 +200,9 @@ class Adc:
   close:
     mutex_.do:
       if resource_:
+        if events_:
+          events_.dispose
+          events_ = null
         adc-close_ resource_
         resource_ = null
 
@@ -185,3 +217,12 @@ adc-get-raw_ resource:
 
 adc-close_ resource:
   #primitive.adc.close
+
+// A null group denotes a synchronous backend (currently ESP32).
+adc-event-group_ ::= adc-init-group_
+
+adc-init-group_:
+  #primitive.adc.init-group
+
+adc-cancel_ resource:
+  #primitive.adc.cancel
