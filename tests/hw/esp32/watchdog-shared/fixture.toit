@@ -16,7 +16,7 @@ main args:
       if it % 2 == 0:
         watchdog.feed
       else:
-        esp32.watchdog-reset
+        esp32.watchdog-reset  // @no-warn
     watchdog.stop
     return
 
@@ -44,23 +44,23 @@ run-phase command/string:
       expect-equals "INVALID_ARGUMENT" (catch:
         watchdog.start --timeout=(Duration --ms=ms))
     watchdog.start --timeout=(Duration --s=1)
-    expect-equals "ALREADY_IN_USE" (catch: esp32.watchdog-init --ms=5000)
+    expect-equals "ALREADY_IN_USE" (catch: esp32.watchdog-init --ms=5000)  // @no-warn
     12.repeat:
       sleep --ms=250
       if it % 2 == 0:
         watchdog.feed
       else:
-        esp32.watchdog-reset
+        esp32.watchdog-reset  // @no-warn
     watchdog.stop
     watchdog.stop
     watchdog.feed
     sleep --ms=1500
     // Starting through the old API and rearming through the new one must
     // operate on the same singleton, without losing or leaking its owner.
-    esp32.watchdog-init --ms=5000
+    esp32.watchdog-init --ms=5000  // @no-warn
     watchdog.start --timeout=(Duration --s=4)
-    esp32.watchdog-reset
-    esp32.watchdog-deinit
+    esp32.watchdog-reset  // @no-warn
+    esp32.watchdog-deinit  // @no-warn
     watchdog.feed
     watchdog.stop
   else if command == "rearm-long":

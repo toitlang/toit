@@ -21,7 +21,7 @@ import uuid show Uuid
 // EC618 code path is the only one that actually calls into them.
 import ec618
 import ec618.slot
-import ec618.watchdog
+import system.watchdog
 import system.firmware
 
 import .shared
@@ -233,7 +233,7 @@ main-ec618:
   // Arm the application watchdog first, before anything that could wedge (for
   // example, opening the UART). It is fed below on every host message, so if
   // the host goes quiet or our read wedges, it resets into a fresh agent.
-  watchdog.watchdog-start --timeout=WATCHDOG-TIMEOUT
+  watchdog.start --timeout=WATCHDOG-TIMEOUT
   // The VM is kept alive by a SEPARATE "sleeper" container installed alongside us
   // (see the tester's envelope build) — a task here would die with us if we throw.
   // If this agent ever crashes, the sleeper keeps the VM scheduling so it never
@@ -293,7 +293,7 @@ serve port/uart.Port --primary/bool=true -> none:
     command := reader.read-byte
     if primary: primary-contact_ = true
     last-host-contact-us_ = Time.monotonic-us
-    watchdog.watchdog-feed  // The host is talking to us; we are alive.
+    watchdog.feed  // The host is talking to us; we are alive.
     if command == CMD-PING:
       if not test-running_: out.write #[ACK-PONG]  // Silent during a test (keep-alive ping).
     else if command == CMD-ARG:
@@ -428,7 +428,7 @@ install-container reader/io.Reader out/io.Writer port/uart.Port -> bool:
       out.write #[ACK-READY]
       while written < size:
         chunk := read-container-chunk reader (size - written) --progress=progress
-        watchdog.watchdog-feed
+        watchdog.feed
         progress.stage = "write"
         summer.add chunk
         image-writer.write chunk
