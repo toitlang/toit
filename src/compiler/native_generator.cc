@@ -424,7 +424,7 @@ void NativeGenerator::emit_block_entry(Method method, bool is_dead) {
     out_ << "  DROP(extra);\n";
     out_ << "  PUSH(reinterpret_cast<Object*>(x));\n";
     out_ << "  PUSH(c->frame_marker);\n";
-    out_ << "  NATIVE_TAIL " << method_label(id) << "(sp, c, null, 0);\n";
+    out_ << "  NATIVE_TAIL " << method_label(id) << "(NATIVE_ARGS);\n";
   }
   out_ << "}\n";
 }
@@ -499,13 +499,13 @@ void NativeGenerator::emit_block(const MethodInfo& info, uint8* begin, uint8* en
 }
 
 void NativeGenerator::emit_goto(uint8* target) {
-  out_ << "  NATIVE_TAIL " << label(target) << "(sp, c, null, 0);\n";
+  out_ << "  NATIVE_TAIL " << label(target) << "(NATIVE_ARGS);\n";
 }
 
 void NativeGenerator::emit_call(int id, uint8* next) {
   out_ << "  PUSH(reinterpret_cast<Object*>(&" << label(next) << "));\n";
   out_ << "  PUSH(c->frame_marker);\n";
-  out_ << "  NATIVE_TAIL " << method_label(id) << "(sp, c, null, 0);\n";
+  out_ << "  NATIVE_TAIL " << method_label(id) << "(NATIVE_ARGS);\n";
 }
 
 void NativeGenerator::emit_runtime(const char* helper, const std::string& x, word y) {
@@ -535,7 +535,7 @@ void NativeGenerator::emit_virtual(uint8* bcp, uint8* next, int stack_offset, in
   out_ << "    if (NATIVE_LIKELY(selectors[index] == " << selector_offset << ")) {\n";
   out_ << "      PUSH(reinterpret_cast<Object*>(&" << label(next) << "));\n";
   out_ << "      PUSH(c->frame_marker);\n";
-  out_ << "      NATIVE_TAIL vtable[index](sp, c, null, 0);\n";
+  out_ << "      NATIVE_TAIL vtable[index](NATIVE_ARGS);\n";
   out_ << "    }\n  }\n";
   emit_runtime_next("virtual_fallback", next, static_cast<word>(selector_offset) << 8 | stack_offset);
 }
@@ -549,7 +549,7 @@ void NativeGenerator::emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, co
     out_ << "    if (NATIVE_LIKELY(" << check << helper << "(STACK_AT(1), STACK_AT(0), &result))) {\n";
     out_ << "      STACK_AT_PUT(1, result);\n";
     out_ << "      DROP(1);\n";
-    out_ << "      NATIVE_TAIL " << label(next) << "(sp, c, null, 0);\n";
+    out_ << "      NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
     out_ << "    }\n  }\n";
   }
   emit_runtime_next("binary", next, opcode);
@@ -585,7 +585,7 @@ void NativeGenerator::emit_relational(const MethodInfo& info, uint8* bcp, uint8*
     out_ << "  if (NATIVE_LIKELY(" << smi_check(operands) << ")) {\n";
     out_ << "    STACK_AT_PUT(1, (" << smi_compare << ") ? c->true_object : c->false_object);\n";
     out_ << "    DROP(1);\n";
-    out_ << "    NATIVE_TAIL " << label(next) << "(sp, c, null, 0);\n";
+    out_ << "    NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
     out_ << "  }\n";
   }
   emit_runtime_next("binary", next, opcode);
@@ -834,7 +834,7 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       int id = program_->dispatch_table[wide1];
       Method target(program_->bytecodes, id);
       emit_tail_frame_move(bcp[3], bcp[4], target.arity());
-      out_ << "  NATIVE_TAIL " << method_label(id) << "(sp, c, null, 0);\n";
+      out_ << "  NATIVE_TAIL " << method_label(id) << "(NATIVE_ARGS);\n";
       break;
     }
     case INVOKE_BLOCK:
@@ -952,7 +952,7 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       out_ << "    NATIVE_CHECK_TARGET(c, next, " << bci(bcp) << ");\n";
       out_ << "    DROP(" << (offset + Interpreter::FRAME_SIZE + arity) << ");\n";
       out_ << "    PUSH(result);\n";
-      out_ << "    NATIVE_TAIL next(sp, c, null, 0);\n";
+      out_ << "    NATIVE_TAIL next(NATIVE_ARGS);\n";
       out_ << "  }\n";
       break;
     }
