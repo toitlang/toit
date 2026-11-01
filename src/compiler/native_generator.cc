@@ -773,6 +773,9 @@ bool NativeGenerator::emit_direct_calls(uint8* bcp, uint8* next, int stack_offse
     }
   }
   if (targets.size() != 1) return false;
+  // The dispatch table deals with null without any extra code at the call site.
+  // That's slower, but smaller, because the sites can share the lookup.
+  if (can_be_null && !is_hot_site(bcp)) return false;
 
   std::string receiver = "STACK_AT(" + std::to_string(stack_offset) + ")";
   if (can_be_null) {
