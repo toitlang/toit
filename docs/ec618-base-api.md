@@ -6,12 +6,6 @@ drivers can then be added or corrected in an OTA slot without first updating the
 base. Retention is a native linking capability; it does not certify hardware
 behavior or make a peripheral publicly supported.
 
-The previous hand-maintained keep-list was broad but incomplete. Link-time
-garbage collection removed unreferenced functions outside the list. In
-particular, implementing I2S later required fractional clock and MCLK/BCLK exports
-that the deployed base did not contain. Successful tests of existing peripherals
-and networking could not detect this omission.
-
 ## Contract and release checks
 
 `toolchains/ec618/base-api.json` records 399 required symbols across 49 SDK
@@ -76,8 +70,6 @@ When introducing a base version, first review and publish its artifact set
 with the EC618 base release workflow. That workflow proves a full slot build
 before publication and refuses to overwrite an existing version. The
 published-base CI check must then pass before merging the version change.
-Until v5 is published, this additional compatibility check intentionally
-fails; local candidate results do not count as published-base qualification.
 
 Do not regenerate the contract from the current ELF: that would accept precisely
 the omissions this gate is intended to catch. Changes to prebuilt SDK libraries
@@ -106,68 +98,14 @@ This is not a promise to retain every private symbol in the modem SDK. Any futur
 space-driven exclusion must record its measured flash/RAM cost and the capability
 it prevents. Lack of wiring or live tests is not a valid exclusion reason.
 
-## Historical base v5 candidate measurement
+## Base compatibility
 
-These measurements and live results come from the combined EC618 bring-up
-candidate, which also contains other platform changes. They establish the
-candidate's export coverage and observed size, not the fingerprint or full
-build qualification of an isolated base-API patch. Rebuild and validate the
-final reviewed source before publishing its base and matching envelopes.
+Slot OTA requires an exact base identity because native call addresses depend
+on that base. Retaining peripheral APIs reduces the need for base updates;
+it does not make different bases binary compatible. Base OTA requires a
+separate recoverable update design.
 
-Against the preceding `3a0bedaa1309695df5b9ac0a985a1d9c` candidate:
-
-| Allocation | Before | After | Increase |
-| --- | ---: | ---: | ---: |
-| ELF text | 1,439,712 | 1,462,784 | 23,072 bytes |
-| Initialized data | 19,220 | 19,848 | 628 bytes |
-| BSS | 575,358 | 576,894 | 1,536 bytes |
-
-Flash payload growth is 23,700 bytes (text plus initialized data). Static data
-RAM grows by 2,164 bytes; code copied into RAM adds another 2,256 bytes, for about
-4.3 KiB of additional RAM allocation, plus alignment. The frozen XIP text ends
-at `0x98bf80`, leaving 16,512 bytes before the base-id page at `0x990000`.
-The linker enforces that boundary. None of the implemented APIs in this audit
-was excluded for size.
-
-Base v5 candidate fingerprint: `f0ae7c907be49d8af02ea2dbcfa6aecf`.
-The earlier candidate fails the new export gate; v5 passes. Both slot links,
-relocation byte identity, device relocator host checks, provisioning, partition,
-anchor, and firmware export checks pass. The flashed base now passes its live
-boot/identity check on slot A, UART0, with no pending OTA trial. A subsequent
-same-base OTA installed the container-upload recovery fix and validated slot B;
-all 11 platform CTest entries pass afterward. Subsequent tests pass all 90
-permanent I2S receive cases, 24 transmit cases and eight two-second duplex
-cases at 16/48 kHz. See `ec618-todo.md` for their exact scope and the unresolved
-96-kHz duplex and intermittent UART transport findings. Retained but untested
-APIs remain unqualified.
-
-Slot OTA requires an exact base identity because native call addresses depend on
-that base. Expanding the contract prevents many future base updates; it does not
-make different bases binary compatible. Base OTA would additionally need its
-own recoverable update design and is not implemented by this change.
-
-The Xmake project sorts object paths before creating SDK/project archives and
-linking the base. SDK source globs otherwise inherit filesystem enumeration
-order, which can change exported addresses even with identical source and
-compiler versions. This removes that source of variation; it does not promise
-identity across different compilers or build configurations. Consumers must
-still use the published base artifacts and their exact fingerprint. Introducing
-the sorted order changes the candidate base identity and requires qualification
-before publication; historical device results above cover the earlier base.
-
-Build logs and artifact hashes are under
-`dev/ec618-rig/base-interface-audit-2026-10-11/`.
-
-## Current integrated qualification
-
-The subsequently rebuilt integration base has identity
-`base-v5+0a267ba79e218a57efff8eae73f2f665`. It is deployed on the breakout rig
-and passes the full export gate. Later stack-unit, packed-ring and block-copy
-fixes were installed through slot OTA without changing this base. The final
-two-minute I2S qualification leaves validated slot A and the original S3
-application restored; see `ec618-todo.md` for evidence and scope.
-
-These are local candidate results. The `ec618-base-v5` release remains absent
-at the 2026-10-14 audit, so neither published-artifact compatibility CI nor
-public availability is established. The earlier candidate's measurements
-above must not be presented as measurements of this rebuilt base.
+Base builds sort object paths before archiving and linking to avoid variation
+from filesystem enumeration order. Different toolchains and configurations
+can still produce different identities. Consumers must use the exact published
+base artifacts.

@@ -87,82 +87,16 @@ for two seconds by default, rather than establishing indefinite streaming.
 ESP32/S3 I2S has known failures listed in `../esp32/fail.cmake`, so a peer
 failure alone does not identify the EC618 as the faulty endpoint.
 
-The October 14 supported-endpoint run passes all six receive and six
-transmit cases, and five of six duplex cases. The remaining failure is
-96-kHz/24-bit EC618-master duplex at the S3 receiver; the reverse EC618
-capture passes. Native S3 diagnostics reproduce the corruption without
-the S3 Toit runtime. Independent SPI captures, aligned using BCLK counts
-and checked against native DMA frame counts, contain correct data at two
-frames corrupted by native I2S receivers, across separate runs using
-opposite SPI sampling edges. This narrows the failure to receiver behavior
-or electrical timing; it does not qualify all frames or establish timing
-margins. Keep this duplex case failing until it is resolved or independently
-qualified; do not skip it or treat clean sampled windows as a full pass.
-
-Subsequent independent SPI captures verify over two consecutive seconds of
-96-kHz/24-bit EC618 output on each sampling edge while the reverse EC618
-capture verifies ten seconds, with zero capture overruns/underruns. The SPI
-observer rejects a deliberate 100-ms consumer stall after its first DMA
-block, then passes a full capture without reflashing. This provides bounded
-continuous duplex qualification beyond the earlier sampled windows. Native
-S3 receiver failures remain intermittent; one clean recovery run does not
-establish a fix. The independent results do not qualify indefinite streaming,
-first-frame fidelity or electrical timing margins.
-
-The [independent SPI observer](i2s-spi-observer/README.md) contains the pinned
-native fixture, Toit runner, exact-stream checks and host fault tests needed
-to reproduce these independent observations without patching the shared SDK.
-
-On the integrated v5 base, two default-buffer 96-kHz/24-bit duplex runs
-also fail at the EC618 endpoint, with underruns and overruns. These failures
-cannot be assigned solely to the S3 receiver. Subsequent repeats pass the
-complete independent SPI capture on both sampling edges and the ten-second
-EC618 capture; one also passes both native S3 receivers. The intermittency
-remains unresolved. A compiler-control comparison produces byte-identical
-32-bit test images, ruling out changed test code as its explanation.
-
-Before packed 24-bit storage, the default ring holds about 43 ms per
-direction and an explicit 100-ms duplex request needs 153600 ring bytes.
-That request fails with `MALLOC_FAILED`, even after correcting the thread
-stack-size units. All allocation-failure runs recover to a healthy agent.
-
-Packed 24-bit software rings use 32640 bytes by default (about 56 ms at
-96 kHz) and 115200 bytes total for 100-ms duplex. DMA buffers remain unpacked.
-The halfword-plus-byte implementation passes independent continuous SPI
-capture on both sampling edges with both default and 100-ms buffers; all
-four reverse EC618 captures verify ten seconds with zero over/underruns.
-Both mode-1 cases also pass native S3 receive; both mode-0 cases fail there.
-An earlier bytewise packed implementation failed all four EC618 streaming
-cases. These bounded results establish usable 100-ms buffers on this rig,
-but do not establish a cure for the intermittent service stalls.
-A later observer fault/recovery sequence also fails at EC618 with explicit
-100-ms buffers, including a roughly 106-ms write-service gap. The memory
-improvement makes that configuration usable; it does not guarantee lossless
-streaming through these delays. Keep this failure visible alongside passes.
-Failure timing needs care: exception formatting and serial reporting can
-inflate the final loss counts and service gaps. The duplex fixture stops
-at the first observed nonzero DMA counters, before payload-verification
-exceptions, and stops DMA before printing abort diagnostics. Earlier large
-failure-time maxima do not establish the cause of the first loss.
-Evidence is recorded in `docs/ec618-todo.md`, including failed attempts.
-
-Stereo 16/24/32-bit transfers now copy matching application/ring layouts
-directly, retaining the 64-frame critical-section limit. Conversion remains
-for padded 8-bit and channel-selection modes. Host checks cover ring wrap,
-unaligned buffers, untouched bytes and format selection. Live default-buffer
-96-kHz/16-bit, 48-kHz/32-bit and both 96-kHz/24-bit sampling-edge cases pass
-independent capture and ten-second EC618 receive checks. The subsequent
-observer-stall/recovery sequence also passes those EC618 checks. Native S3
-receiver failures and 100-ms allocation failures remain recorded; these
-finite runs do not establish that the intermittent EC618 loss is eliminated.
+Native S3 reception remains intermittent. Independent diagnostic captures are
+not part of this suite; do not interpret a failing peer verdict as a pass or
+claim indefinite streaming from bounded captures.
 
 EC618 Datasheet V1.3, section 7.5 specifies up to 96 kHz for 16/24-bit
 samples and 48 kHz for 32-bit samples. The driver rejects higher 32-bit
 rates in both roles, including explicit buffer-duration configurations.
 The manufacturer-authored document was consulted through a
 [third-party mirror](https://www.scribd.com/document/1060340987/EC618-Datasheet-V1-3),
-not a manufacturer-hosted PDF. Historical 96-kHz/32-bit diagnostics do not
-qualify supported operation.
+not a manufacturer-hosted PDF.
 
 EC618's default software ring targets 200 ms, capped at 32768 bytes per
 direction with a minimum of 512 stereo frames. An explicit

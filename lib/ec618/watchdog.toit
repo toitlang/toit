@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import system.watchdog  // For toitdoc.
+
 /**
 The EC618 watchdog.
 
@@ -62,8 +64,7 @@ A software-watchdog reset prints
   cause is visible on the console. The deadline task requests a software
   reset without recording a distinct watchdog reason. The reset reason alone
   therefore cannot identify this deadline path; use the fatal console message
-  or an application breadcrumb. Early EC618 base images omitted reset-reason
-  initialization and reported power-on for every cause.
+  or an application breadcrumb.
 
 # Example
 
@@ -95,6 +96,8 @@ The $timeout must be between $WATCHDOG-MIN-TIMEOUT and $WATCHDOG-MAX-TIMEOUT
   including light sleep).
 
 Calling this while armed re-arms with the new $timeout.
+
+Deprecated. Use $watchdog.start instead.
 */
 watchdog-start --timeout/Duration -> none:
   seconds := timeout.in-s
@@ -105,6 +108,8 @@ watchdog-start --timeout/Duration -> none:
 Feeds the watchdog, restarting its timeout.
 
 Has no effect if the watchdog is not armed.
+
+Deprecated. Use $watchdog.feed instead.
 */
 watchdog-feed -> none:
   #primitive.ec618.watchdog-feed
@@ -114,6 +119,8 @@ Stops the watchdog.
 
 After this call the watchdog no longer resets the device. Has no effect if
   the watchdog is not armed.
+
+Deprecated. Use $watchdog.stop instead.
 */
 watchdog-stop -> none:
   #primitive.ec618.watchdog-deinit

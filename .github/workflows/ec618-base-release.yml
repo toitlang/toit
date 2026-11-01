@@ -127,7 +127,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "ec618-base-v$VERSION" \
+          gh release create "ec618-base-v$VERSION" --latest=false \
             --target "$GITHUB_SHA" \
             --title "EC618 base v$VERSION" \
             --notes "EC618 base artifact set used by envelope producers to link compatible slots.

@@ -53,27 +53,13 @@ The driver accepts 8-, 16-, 24-, and 32-bit samples in Philips, MSB, or PCM-shor
   are supported; unselected transmit slots contain zeros. It supports master
   and slave operation and an optional generated MCLK. External MCLK input and
   inverted MCLK are unsupported. Sample rates above 48 kHz with 32-bit samples
-  are unsupported; 16/24-bit samples support rates through 96 kHz. Generated clocks
-  require a base image exporting the fractional-clock functions. The clocks
+  are unsupported; 16/24-bit samples support rates through 96 kHz. The clocks
   are enabled by $Bus.start and disabled by $Bus.stop.
 
-Each active direction allocates a software ring targeting 200 ms at
-  the configured sample rate, capped at 32768 bytes by default.
-  The ring stores both wire slots regardless of channel selection, using
-  16-bit storage for 8/16-bit samples, three bytes for 24-bit samples, and
-  four bytes for 32-bit samples. Capacity uses whole 64-frame blocks, with
-  a minimum of 512 frames; the default byte cap is rounded down to a whole block.
-  At 16/48/96 kHz, 8/16-bit samples use 12800/32768/32768 ring bytes per
-  direction, covering 200/170/85 ms respectively. For 24-bit samples,
-  the corresponding sizes are 19200/32640/32640 bytes, covering 200/113/56 ms.
-  For 32-bit samples at 16/48 kHz, the sizes are 25600/32768 bytes,
-  covering 200/85 ms.
-  Each direction also needs two 512-byte DMA blocks. Allocator rounding and
-  metadata can increase the actual RAM requirement.
-  An explicit `--buffer-duration-ms` request to $Bus.configure bypasses the default
-  cap and fails if memory is insufficient; it is never silently reduced.
-  Longer delays can still cause underruns or overruns. Preload
-  transmit data before starting when initial continuity matters.
+Each active direction uses bounded default buffering. Use `--buffer-duration-ms`
+  with $Bus.configure to request more buffering when needed; allocation fails
+  if memory is insufficient. Buffering cannot prevent all underruns or overruns.
+  Preload transmit data before starting when initial continuity matters.
 
 A DMA bus error stops transfer requests and causes reads and writes to throw
   `HARDWARE_ERROR`. Call $Bus.stop before restarting or reconfiguring a failed
@@ -460,16 +446,11 @@ class Bus:
 
   The $format must be one of $FORMAT-MSB, $FORMAT-PHILIPS, $FORMAT-PCM-SHORT.
 
-  On EC618, $buffer-duration-ms optionally requests at least 1–1000 ms of
-    software buffering per active direction. Allocation is rounded to DMA
-    blocks with a minimum of 512 stereo frames. Both directions are allocated
-    before committing configuration; allocation failure preserves the previous
-    configuration and queued data. Growing a ring can temporarily require
-    memory for both old and new rings. A failed configuration may retain
-    storage already grown for one direction. Smaller configurations reuse existing
-    allocations; close the bus to release that memory. ESP32 does not support
-    this option.
-    When omitted, the platform's default buffering is used.
+  On EC618, $buffer-duration-ms requests 1–1000 ms of buffering per active
+    direction. When omitted, the platform's bounded default buffering is used.
+    Insufficient memory causes configuration to fail without changing the
+    previous configuration or queued data. Buffer memory is retained until
+    the bus is closed. ESP32 does not support this option.
   */
   configure
       --mclk-external-frequency/int?=null
@@ -513,7 +494,7 @@ class Bus:
     else:
       mclk-external-frequency = -1
 
-    if buffer-duration-ms != null:
+    if buffer-duration-ms:
       if not 1 <= buffer-duration-ms <= 1000: throw "INVALID_ARGUMENT"
       i2s-configure-buffered_
           i2s_

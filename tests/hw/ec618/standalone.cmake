@@ -1,6 +1,9 @@
 # Copyright (C) 2026 Toit contributors.
 # Use of this source code is governed by the license in the LICENSE file.
 
+# Register opt-in CTest cases for an already provisioned EC618. Select tests by
+# fixture capability, require an exact base identity, and run the Toit runner
+# under a shared rig lock with a bounded timeout. This does not flash firmware.
 option(EC618_TEST_STANDALONE "Enable regressions on an already provisioned EC618" "$ENV{EC618_TEST_STANDALONE}")
 option(EC618_TEST_FPC "Enable I2S allocation and stop tests on the wired FPC rig" "$ENV{EC618_TEST_FPC}")
 option(EC618_TEST_I2S_MASTER "Enable live-clock stop test; disconnect DS18B20 and leave peer clock pins as inputs" "$ENV{EC618_TEST_I2S_MASTER}")

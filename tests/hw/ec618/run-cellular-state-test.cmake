@@ -1,6 +1,10 @@
 # Copyright (C) 2026 Toit contributors.
 # Use of this source code is governed by the license in tests/LICENSE.
 
+# Compile and run the host cellular-state regression with the vendor notification
+# types. Extract include paths and definitions from the configured EC618 compile
+# database, invoke a host C++ compiler, run the test, and remove its executable.
+#
 # Use the configured SDK headers and definitions without requiring Python or
 # substituting host stubs for the modem's notification layout.
 cmake_minimum_required(VERSION 3.20)

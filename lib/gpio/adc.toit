@@ -162,7 +162,7 @@ class Adc:
   wait-for-conversion_ -> none:
     // The bounded wait also lets native code check its hardware deadline if
     // a completion notification was lost from a full platform event queue.
-    // Earlier caller deadlines propagate through catch unchanged.
+    // A caller timeout that expires before this wait propagates unchanged.
     catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
       with-timeout --ms=5: events_.wait
 

@@ -370,7 +370,7 @@ class Ec618:
 
     26, 25, 0xff, 0xff,  // UART2 mapping 0 — primary.
     28, 27, 0xff, 0xff,  // UART2 mapping 1 — alt 1.
-    22, 21, 0xff, 0xff,  // UART2 mapping 2 — camera data pads.
+    22, 21, 0xff, 0xff,  // UART2 mapping 2 — TX=PAD22/GPIO7, RX=PAD21/GPIO6.
   ]
 
   /**
@@ -526,7 +526,7 @@ class Ec618:
   - 0 (default): TX=PAD26/GPIO11, RX=PAD25/GPIO10.
   - 1:           TX=PAD28/GPIO13, RX=PAD27/GPIO12 (the layout Air780EG/EUG modules
                  use, because GPIO10/11 are taken by their GNSS subsystem).
-  - 2:           TX=PAD22/GPIO7, RX=PAD21/GPIO6 (camera data pads).
+  - 2:           TX=PAD22/GPIO7, RX=PAD21/GPIO6.
 
   With $mode equal to $uart.Port.MODE-RS485-HALF-DUPLEX, $rs485-de is the
     RS485 direction (DE) pin: the driver raises it just before a
