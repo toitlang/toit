@@ -67,6 +67,10 @@ class SnapshotBundle {
   // buffer can be safely freed.
   SnapshotBundle stripped() const;
 
+  // Builds a snapshot bundle for a program that isn't stored as a snapshot. It
+  // has the same id as this one and the information for decoding stack traces.
+  SnapshotBundle without_snapshot() const;
+
   /// Whether the given [file] is likely a bundle file.
   /// This function is applying a heuristic to determine whether
   /// the content looks like a bundle file.
@@ -82,7 +86,8 @@ class SnapshotBundle {
   /// The source-maps are optional in this constructor.
   SnapshotBundle(List<uint8> main_snapshot,
                  List<uint8>* main_source_map_data,
-                 const char* sdk_version);
+                 const char* sdk_version,
+                 const uint8* uuid = null);
 
 
 };

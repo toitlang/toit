@@ -42,6 +42,7 @@ class Method;
 class Object;
 class Process;
 class Program;
+class ProgramImage;
 
 struct NativeContext;
 
@@ -104,6 +105,15 @@ struct NativeProgram {
   // The distance from one bci to the next, as LEB128 encoded numbers.
   const uint8_t* return_deltas;
   int return_count;
+  // The program is an image that has to be relocated when it is loaded. The
+  // uuid is the id of the program. The bundle only has what stack traces need.
+  const uint8_t* uuid;
+  const uint8_t* image;
+  int image_size;
+  const uint8_t* bundle;
+  int bundle_size;
+  // Whether this is the system program that the executable boots from.
+  bool is_system;
 };
 
 struct NativeContext {
@@ -193,10 +203,17 @@ class NativeRuntime {
  public:
   // Registers the program that this executable has been compiled from.
   static int register_program(const NativeProgram* program);
+  static const NativeProgram* registered_program(bool is_system);
 
   // Runs the current process if it is running the registered program.
   // The result is an Interpreter::Result, which is not known in here.
   static bool run(Interpreter* interpreter, void* result);
+
+  // Relocates the image of the program into new memory.
+  static ProgramImage load_image(const NativeProgram* program);
+  // Returns the image of the program with the given id. It is
+  // invalid if the id isn't for one of the programs in this executable.
+  static ProgramImage load_image_with_id(const uint8_t* id);
 
   static void stack_overflow(NATIVE_PARAMS);
   static void preempt(NATIVE_PARAMS);

@@ -16,6 +16,8 @@
 #include "native.h"
 
 #include "native_abi_source.h"
+#include "snapshot.h"
+#include "uuid.h"
 #include "third_party/dartino/gc_metadata.h"
 
 #include "bytecodes.h"
@@ -40,6 +42,37 @@ static Method find_method(Program* program, Object* receiver, word offset) {
   Method entry(program->bytecodes, entry_id);
   if (entry.selector_offset() != offset) return Method::invalid();
   return entry;
+}
+
+const NativeProgram* NativeRuntime::registered_program(bool is_system) {
+  for (int i = 0; i < registered_count; i++) {
+    if (registered_programs[i]->is_system == is_system) return registered_programs[i];
+  }
+  return null;
+}
+
+ProgramImage NativeRuntime::load_image(const NativeProgram* program) {
+  // The image has one word of relocation bits for each chunk of words.
+  int image_words = program->image_size / WORD_SIZE;
+  int chunks = (image_words + ImageOutputStream::CHUNK_SIZE - 1) / ImageOutputStream::CHUNK_SIZE;
+  int relocated_size = (image_words - chunks) * WORD_SIZE;
+  auto memory = _new ProtectableAlignedMemory(relocated_size, TOIT_PAGE_SIZE);
+  ProgramImage image(memory);
+  ImageOutputStream output(image);
+  const word* words = reinterpret_cast<const word*>(program->image);
+  for (int i = 0; i < image_words; i += ImageOutputStream::CHUNK_SIZE) {
+    int size = Utils::min(ImageOutputStream::CHUNK_SIZE, image_words - i);
+    output.write(&words[i], size);
+  }
+  memory->mark_read_only();
+  return image;
+}
+
+ProgramImage NativeRuntime::load_image_with_id(const uint8* id) {
+  for (int i = 0; i < registered_count; i++) {
+    if (memcmp(registered_programs[i]->uuid, id, UUID_SIZE) == 0) return load_image(registered_programs[i]);
+  }
+  return ProgramImage::invalid();
 }
 
 static Interpreter::Result& result_of(NativeContext* c) {
