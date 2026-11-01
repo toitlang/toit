@@ -81,6 +81,10 @@ void FlashRegistry::tear_down() {
 void FlashRegistry::flush() {
 }
 
+word FlashRegistry::allocations_scan_end() {
+  return allocations_size();
+}
+
 int FlashRegistry::allocations_size() {
   return static_cast<int>(allocations_partition->size);
 }

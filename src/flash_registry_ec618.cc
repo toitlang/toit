@@ -94,6 +94,10 @@ void FlashRegistry::flush() {
   // No data cache on the EC618 Cortex-M3 — nothing to flush.
 }
 
+word FlashRegistry::allocations_scan_end() {
+  return allocations_size();
+}
+
 int FlashRegistry::allocations_size() {
   return registry_size;
 }

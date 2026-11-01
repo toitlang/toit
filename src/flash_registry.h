@@ -60,6 +60,9 @@ class FlashRegistry {
   // Get the size of the allocations area in bytes.
   static int allocations_size();
 
+  // There are no allocations after this offset.
+  static word allocations_scan_end();
+
  private:
   static uint8* allocations_memory() { return allocations_memory_; }
   static bool is_allocations_set_up() { return allocations_memory_ != null; }

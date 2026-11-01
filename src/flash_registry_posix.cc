@@ -43,6 +43,8 @@ static bool is_file_backed = false;
 static long pagesize = 0;
 static word dirty_start = INT32_MAX;
 static word dirty_end = 0;
+// The end of the part of the registry that has been written to.
+static word written_end = 0;
 
 static bool is_dirty() {
   return dirty_start < dirty_end;
@@ -51,6 +53,7 @@ static bool is_dirty() {
 static void mark_dirty(word offset, word size) {
   dirty_start = Utils::min(dirty_start, offset);
   dirty_end = Utils::max(dirty_end, offset + size);
+  written_end = Utils::max(written_end, offset + size);
 }
 
 void FlashRegistry::set_up() {
@@ -131,6 +134,13 @@ void FlashRegistry::flush() {
 
 int FlashRegistry::allocations_size() {
   return ALLOCATION_SIZE;
+}
+
+word FlashRegistry::allocations_scan_end() {
+  // Anonymous memory is empty until we write to it, and scanning all
+  // of it is by far the most expensive thing we do when booting.
+  if (is_file_backed) return allocations_size();
+  return Utils::min<word>(Utils::round_up(written_end, FLASH_PAGE_SIZE), allocations_size());
 }
 
 int FlashRegistry::erase_chunk(word offset, word size) {

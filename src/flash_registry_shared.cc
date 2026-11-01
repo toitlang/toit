@@ -36,11 +36,14 @@ int FlashRegistry::find_next(word offset, ReservationList::Iterator* it) {
   }
 
   // We are at a hole. Return the first address that is not part of the hole.
-  for (word i = offset + FLASH_PAGE_SIZE; i < allocations_size(); i += FLASH_PAGE_SIZE) {
+  word scan_end = allocations_scan_end();
+  for (word i = offset + FLASH_PAGE_SIZE; i < scan_end; i += FLASH_PAGE_SIZE) {
     if ((*it) != ReservationList::Iterator(null) && (*it)->left() == i) return i;
     const FlashAllocation* probe = reinterpret_cast<const FlashAllocation*>(allocations_memory() + i);
     if (probe->is_valid()) return i;
   }
+  // There can still be a reservation after the part we have looked at.
+  if ((*it) != ReservationList::Iterator(null) && (*it)->left() > offset) return (*it)->left();
   return allocations_size();
 }
 

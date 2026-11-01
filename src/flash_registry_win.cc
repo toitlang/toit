@@ -48,6 +48,10 @@ void FlashRegistry::flush() {
   // No flushing necessary.
 }
 
+word FlashRegistry::allocations_scan_end() {
+  return allocations_size();
+}
+
 int FlashRegistry::allocations_size() {
   return ALLOCATION_SIZE;
 }
