@@ -244,6 +244,7 @@ PRIMITIVE(create_socket) {
 
 PRIMITIVE(bind_socket) {
   ARGS(ByteArray, proxy, UdpSocketResource, resource, Blob, address, int, port);
+  if (address.length() != 4) FAIL(OUT_OF_BOUNDS);
   USE(proxy);
 
   SOCKET socket = resource->socket();
@@ -259,6 +260,7 @@ PRIMITIVE(bind_socket) {
 
 PRIMITIVE(bind) {
   ARGS(UdpResourceGroup, resource_group, Blob, address, int, port);
+  if (address.length() != 4) FAIL(OUT_OF_BOUNDS);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
@@ -315,6 +317,7 @@ PRIMITIVE(bind) {
 
 PRIMITIVE(connect) {
   ARGS(ByteArray, proxy, UdpSocketResource, udp_resource, Blob, address, int, port);
+  if (address.length() != 4) FAIL(OUT_OF_BOUNDS);
   USE(proxy);
 
   ToitSocketAddress socket_address(address.address(), address.length(), port);
@@ -342,6 +345,7 @@ PRIMITIVE(send) {
   if (address != process->null_object()) {
     Blob address_bytes;
     if (!address->byte_content(process->program(), &address_bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
+    if (address_bytes.length() != 4) FAIL(OUT_OF_BOUNDS);
 
     ToitSocketAddress socket_address(address_bytes.address(), address_bytes.length(), port);
     send_result = udp_resource->send(send_buffer, send_size, &socket_address);
