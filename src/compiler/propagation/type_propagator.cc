@@ -228,7 +228,69 @@ void TypePropagator::ensure_run_global_initializer() {
   has_run_global_initializer_ = true;
 }
 
+bool TypePropagator::has_instances(unsigned type, MethodTemplate* caller) {
+  if (allocated_[type]) return true;
+  if (caller == null) return true;  // Entry stubs are not analyzed again.
+  std::vector<MethodTemplate*>& waiting = waiting_for_allocation_[type];
+  if (waiting.empty() || waiting.back() != caller) waiting.push_back(caller);
+  return false;
+}
+
+void TypePropagator::mark_allocated(unsigned type) {
+  if (allocated_[type]) return;
+  allocated_[type] = true;
+  newly_allocated_.push_back(type);
+}
+
+// We analyze the callers that were waiting for allocations when everything
+// else is done. A lot of classes are allocated along the way, so doing it
+// right away would make us analyze the same methods over and over again.
+bool TypePropagator::enqueue_waiting_for_allocation() {
+  for (unsigned type : newly_allocated_) {
+    std::vector<MethodTemplate*>& waiting = waiting_for_allocation_[type];
+    for (MethodTemplate* caller : waiting) enqueue(caller);
+    std::vector<MethodTemplate*>().swap(waiting);
+  }
+  newly_allocated_.clear();
+  return !enqueued_.empty();
+}
+
+void TypePropagator::mark_allocated(Object* object) {
+  if (!is_heap_object(object)) return;
+  mark_allocated(Smi::value(HeapObject::cast(object)->class_id()));
+  if (is_array(object)) {
+    Array* array = Array::cast(object);
+    for (int i = 0; i < array->length(); i++) mark_allocated(array->at(i));
+  }
+}
+
+void TypePropagator::initialize_allocated() {
+  Program* program = this->program();
+  int classes = program->class_bits.length();
+  allocated_.resize(classes, false);
+  waiting_for_allocation_.resize(classes);
+  // Only instances are allocated with the allocate bytecode. The
+  // other kinds of objects are allocated directly by the VM.
+  for (int i = 0; i < classes; i++) {
+    TypeTag tag = Program::class_tag_from_class_bits(program->class_bits[i]);
+    if (tag != INSTANCE_TAG) allocated_[i] = true;
+  }
+  // Small integers aren't allocated at all.
+  allocated_[Smi::value(program->smi_class_id())] = true;
+  // These instances are allocated by the VM or they are in the program image.
+  allocated_[Smi::value(program->task_class_id())] = true;
+  allocated_[Smi::value(program->exception_class_id())] = true;
+  allocated_[Smi::value(program->map_class_id())] = true;
+  allocated_[Smi::value(program->lazy_initializer_class_id())] = true;
+  allocated_[Smi::value(program->null_class_id())] = true;
+  allocated_[Smi::value(program->true_class_id())] = true;
+  allocated_[Smi::value(program->false_class_id())] = true;
+  for (int i = 0; i < program->literals.length(); i++) mark_allocated(program->literals.at(i));
+  for (int i = 0; i < program->global_variables.length(); i++) mark_allocated(program->global_variables.at(i));
+}
+
 void TypePropagator::propagate(TypeDatabase* types) {
+  initialize_allocated();
   TypeStack stack(-1, 1, words_per_type());
 
   // Initialize the types of pre-initialized global variables.
@@ -287,12 +349,14 @@ void TypePropagator::propagate(TypeDatabase* types) {
   ensure_entry_main();
   ensure_program_failure();  // Used in weird situations.
 
-  while (enqueued_.size() != 0) {
-    MethodTemplate* last = enqueued_.back();
-    enqueued_.pop_back();
-    last->clear_enqueued();
-    last->propagate();
-  }
+  do {
+    while (enqueued_.size() != 0) {
+      MethodTemplate* last = enqueued_.back();
+      enqueued_.pop_back();
+      last->clear_enqueued();
+      last->propagate();
+    }
+  } while (enqueue_waiting_for_allocation());
 
   stack.push_empty();
   TypeSet type = stack.get(0);
@@ -442,6 +506,7 @@ void TypePropagator::call_method(MethodTemplate* caller,
     TypeSet::Iterator it(type, words_per_type_);
     while (it.has_next()) {
       unsigned id = it.next();
+      if (!has_instances(id, caller)) continue;
       arguments.push_back(ConcreteType(id));
       call_method(caller, scope, site, target, arguments);
       arguments.pop_back();
@@ -650,6 +715,7 @@ void TypePropagator::call_static(MethodTemplate* caller,
         // Skip ids that are outside the limits.
         continue;
       }
+      if (!has_instances(id, caller)) continue;
       arguments.push_back(ConcreteType(id));
       call_method(caller, scope, site, target, arguments);
       arguments.pop_back();
@@ -677,6 +743,12 @@ void TypePropagator::call_virtual(MethodTemplate* caller,
   TypeSet::Iterator it(receiver, words_per_type_);
   while (it.has_next()) {
     unsigned id = it.next();
+    if (!has_instances(id, caller)) {
+      // The code generated for the call needs the failure method
+      // if there are no methods left that implement the selector.
+      ensure_lookup_failure();
+      continue;
+    }
     int entry_index = id + offset;
     int entry_id = program->dispatch_table[entry_index];
     Method target = (entry_id >= 0)
@@ -1189,6 +1261,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
       stack->pop();
     }
     stack->push_instance(class_index);
+    propagator->mark_allocated(static_cast<unsigned>(class_index));
     // Allocating an instance can throw.
     scope->throw_maybe();
   OPCODE_END();
@@ -1761,7 +1834,7 @@ void MethodTemplate::propagate() {
   // and it expects that the stack looks like we just returned from a
   // call to 'task_transfer'.
   uint8* entry = method_.entry();
-  if (entry == program->entry_task().entry()) {
+  if (program->has_entry_task() && entry == program->entry_task().entry()) {
     entry = method_.bcp_from_bci(LOAD_NULL_LENGTH);
     stack->push_instance(Smi::value(program->task_class_id()));
   }

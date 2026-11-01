@@ -48,12 +48,15 @@ main:
 
   ClassA.static-method
 
+  // This must come before the confused calls, because the setter in
+  // ClassB can only keep the code that follows them alive if there are
+  // instances of ClassB.
+  (ClassB).method-b 1
+
   (confuse ClassA).field-a
   (confuse ClassA).field-a = 499
   (confuse ClassA).final-field
   (confuse ClassA).final-field = 42
-
-  (ClassB).method-b 1
 
   global-method
 
