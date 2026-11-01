@@ -33,23 +33,27 @@ class NativeBuild {
  public:
   ~NativeBuild();
 
-  // Checks that the SDK supports native code and makes the compiler
-  // generate code into a temporary folder. Returns whether it succeeded.
-  // Must be called before compiling the program.
-  bool prepare();
+  // Makes the compiler generate code into a temporary folder, and checks
+  // that the SDK has what is needed for linking if that is going to happen.
+  // Returns whether it succeeded. Must be called before compiling the program.
+  bool prepare(bool needs_sdk);
 
   // Returns 0 if the executable was built.
   int create_executable(const char* out_path, SnapshotBundle bundle, bool optimize_for_size);
 
+  // Writes the C++ program, including the snapshot, without compiling
+  // it. The result doesn't depend on anything in the SDK until it is linked
+  // with the libraries in 'lib/toit/native'. Returns 0 if it succeeded.
+  int write_source(const char* out_path, SnapshotBundle bundle);
+
  private:
+  bool add_snapshot(SnapshotBundle bundle);
   void remove_temp_folder();
   static void remove_active_temp_folder();
 
   std::string sdk_folder_;
   std::string temp_folder_;
   std::string code_path_;
-  std::string data_path_;
-  std::string snapshot_path_;
 };
 
 } // namespace toit::compiler

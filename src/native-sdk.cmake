@@ -13,8 +13,8 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-# Adds what the compiler needs for building native executables to the SDK:
-# The headers for the generated code, the libraries, and a file with the flags.
+# Adds what the compiler needs for building native executables to the SDK: the
+# libraries and a file with the flags. The generated code needs no other files.
 # This must be included after all the libraries have been defined.
 
 set(TOIT_NATIVE_DIR "${CMAKE_BINARY_DIR}/sdk/lib/toit/native")
@@ -66,27 +66,18 @@ endif()
 list(REMOVE_DUPLICATES TOIT_NATIVE_ARCHIVES)
 if (APPLE)
   # There are so many functions that the symbols would dominate the size.
-  list(APPEND TOIT_NATIVE_LINK_FLAGS "-Wl,-x" "-Wl,-S")
+  # Native code has its own unwinding on the Toit stack. The compiler
+  # flags for this don't remove the tables on arm64, so the linker has to.
+  list(APPEND TOIT_NATIVE_LINK_FLAGS "-Wl,-x" "-Wl,-S" "-Wl,-no_compact_unwind")
 else()
   list(APPEND TOIT_NATIVE_LINK_FLAGS "-Wl,--gc-sections" "-s")
-endif()
-
-# The defines must be the ones of the runtime, because they affect the object layouts.
-string(TOUPPER "${CMAKE_BUILD_TYPE}" TOIT_NATIVE_BUILD_TYPE)
-set(TOIT_NATIVE_DEFINES "-DTOIT_DEPLOY")
-if (NOT "${TOIT_NATIVE_BUILD_TYPE}" STREQUAL "RELEASE")
-  set(TOIT_NATIVE_DEFINES "-DTOIT_DEBUG")
-endif()
-if ("${TOIT_NATIVE_BUILD_TYPE}" STREQUAL "ASAN")
-  list(APPEND TOIT_NATIVE_DEFINES "-DTOIT_ASAN")
 endif()
 
 # The return addresses must look like smis, which needs the alignment.
 set(TOIT_NATIVE_COMPILE_FLAGS
   "-std=gnu++11" "-w" "-Wno-unused-command-line-argument" "-fno-exceptions" "-fno-rtti"
   "-ffunction-sections" "-fdata-sections" "-falign-functions=4"
-  "-DTOIT_NATIVE_CODE" ${TOIT_NATIVE_DEFINES}
-  "-I" "@SDK@/include"
+  "-fno-unwind-tables" "-fno-asynchronous-unwind-tables"
 )
 
 string(REPLACE ";" " " TOIT_NATIVE_COMPILE_LINE "${TOIT_NATIVE_COMPILE_FLAGS}")
@@ -96,9 +87,6 @@ file(GENERATE
   CONTENT "${TOIT_NATIVE_COMPILE_LINE}\n${TOIT_NATIVE_LINK_LINE}\n"
 )
 
-file(GLOB TOIT_NATIVE_HEADERS CONFIGURE_DEPENDS "${TOIT_SDK_SOURCE_DIR}/src/*.h")
-file(GLOB TOIT_NATIVE_DARTINO_HEADERS CONFIGURE_DEPENDS "${TOIT_SDK_SOURCE_DIR}/src/third_party/dartino/*.h")
-
 set(TOIT_NATIVE_ARCHIVE_FILES)
 foreach(archive ${TOIT_NATIVE_ARCHIVES})
   list(APPEND TOIT_NATIVE_ARCHIVE_FILES "$<TARGET_FILE:${archive}>")
@@ -106,12 +94,8 @@ endforeach()
 
 add_custom_target(
   build_native_sdk
-  COMMAND "${CMAKE_COMMAND}" -E make_directory
-      "${TOIT_NATIVE_DIR}/lib" "${TOIT_NATIVE_DIR}/include/third_party/dartino"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "${TOIT_NATIVE_DIR}/lib"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${TOIT_NATIVE_ARCHIVE_FILES} "${TOIT_NATIVE_DIR}/lib"
-  COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${TOIT_NATIVE_HEADERS} "${TOIT_NATIVE_DIR}/include"
-  COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${TOIT_NATIVE_DARTINO_HEADERS}
-      "${TOIT_NATIVE_DIR}/include/third_party/dartino"
   VERBATIM
 )
 add_dependencies(build_native_sdk ${TOIT_NATIVE_ARCHIVES})

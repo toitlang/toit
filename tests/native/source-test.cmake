@@ -1,0 +1,35 @@
+# Copyright (C) 2026 Toit contributors.
+# Use of this source code is governed by a Zero-Clause BSD license that can
+# be found in the tests/LICENSE file.
+
+# Checks that the C++ file from --native-source can be built by an external
+# compiler. It only needs the libraries and the flags for linking from the SDK.
+
+execute_process(
+  COMMAND "${TOIT_COMPILE}" --native-source -o "${WORK_DIR}/source-test.cc" "${SOURCE}"
+  COMMAND_ERROR_IS_FATAL ANY
+)
+
+file(STRINGS "${WORK_DIR}/source-test.cc" INCLUDES REGEX "^#include")
+if (NOT "${INCLUDES}" STREQUAL "#include <stdint.h>;#include <string.h>")
+  message(FATAL_ERROR "Unexpected includes: ${INCLUDES}")
+endif()
+
+file(STRINGS "${NATIVE_SDK}/native.flags" FLAGS)
+list(GET FLAGS 1 LINK_FLAGS)
+string(REPLACE "@SDK@" "${NATIVE_SDK}" LINK_FLAGS "${LINK_FLAGS}")
+separate_arguments(LINK_FLAGS)
+
+execute_process(
+  COMMAND "${CXX}" -std=gnu++11 -w -O1 -falign-functions=4
+      "${WORK_DIR}/source-test.cc" -o "${WORK_DIR}/source-test" ${LINK_FLAGS}
+  COMMAND_ERROR_IS_FATAL ANY
+)
+execute_process(
+  COMMAND "${WORK_DIR}/source-test"
+  OUTPUT_VARIABLE OUTPUT
+  COMMAND_ERROR_IS_FATAL ANY
+)
+if (NOT "${OUTPUT}" STREQUAL "hello from native code\n")
+  message(FATAL_ERROR "Unexpected output: ${OUTPUT}")
+endif()

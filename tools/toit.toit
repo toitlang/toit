@@ -216,6 +216,8 @@ main args/List:
             --help="Compile the binary to native code. Needs clang++, or TOIT_CXX set to a similar compiler.",
         cli.Flag "native-size"
             --help="Like --native, but favor small code over speed.",
+        cli.Flag "native-source"
+            --help="Write the program as a self-contained C++ file instead of a binary.",
         cli.Option "os"
             --help="Set the target OS for cross compilation."
             --completion=:: | context/cli.CompletionContext | complete-cross-os context,
@@ -434,7 +436,8 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
   else:
     native-flag := ""
     if command == "compile":
-      if invocation["native-size"]: native-flag = "--native-size"
+      if invocation["native-source"]: native-flag = "--native-source"
+      else if invocation["native-size"]: native-flag = "--native-size"
       else if invocation["native"]: native-flag = "--native"
     if native-flag != "":
       if is-snapshot or invocation["snapshot"]:

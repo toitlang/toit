@@ -15,6 +15,9 @@
 
 #include "native.h"
 
+#include "native_abi_source.h"
+#include "third_party/dartino/gc_metadata.h"
+
 #include "bytecodes.h"
 #include "flags.h"
 #include "primitive.h"
@@ -36,12 +39,36 @@ static Method find_method(Program* program, Object* receiver, word offset) {
   return entry;
 }
 
+static Interpreter::Result& result_of(NativeContext* c) {
+  return *reinterpret_cast<Interpreter::Result*>(c->result);
+}
+
+static bool run_native(Interpreter* interpreter, Interpreter::Result* result) {
+  return NativeRuntime::run(interpreter, result);
+}
+
 int NativeRuntime::register_program(const NativeProgram* program) {
-  if (program->abi != native_abi()) {
+  // The generated code only knows about what is in native_abi.h.
+  static_assert(Object::SMI_TAG_SIZE == NATIVE_SMI_TAG_SIZE, "smi tag");
+  static_assert(Object::HEAP_TAG == NATIVE_HEAP_TAG, "heap tag");
+  static_assert(Object::NON_SMI_TAG_MASK == NATIVE_NON_SMI_TAG_MASK, "non-smi tag");
+  static_assert(static_cast<int>(HeapObject::CLASS_TAG_MASK) == NATIVE_CLASS_TAG_MASK, "class tag");
+  static_assert(HeapObject::CLASS_TAG_OFFSET == 0, "class tag");
+  static_assert(HeapObject::CLASS_ID_OFFSET == NATIVE_CLASS_ID_OFFSET, "class id");
+  static_assert(HeapObject::HEADER_OFFSET == 0, "header");
+  static_assert(INSTANCE_TAG == NATIVE_INSTANCE_TAG, "instance tag");
+  static_assert(DOUBLE_TAG == NATIVE_DOUBLE_TAG, "double tag");
+  static_assert(LargeInteger::VALUE_OFFSET == WORD_SIZE, "large integer");
+  static_assert(GcMetadata::CARD_SIZE_LOG_2 == NATIVE_CARD_SIZE_LOG_2, "card size");
+  static_assert(GcMetadata::NEW_SPACE_POINTERS == NATIVE_NEW_SPACE_POINTERS, "cards");
+  static_assert(sizeof(std::atomic<Object**>) == sizeof(Object**), "watermark");
+  static_assert(Instance::HEADER_SIZE == WORD_SIZE, "instance");
+  static_assert(BLOCK_SALT == NATIVE_BLOCK_SALT, "block salt");
+  if (program->abi != NATIVE_ABI) {
     FATAL("Native code was generated for a different version of the runtime");
   }
   registered_program = program;
-  Interpreter::set_native_runner(&NativeRuntime::run, &NativeRuntime::start_address);
+  Interpreter::set_native_runner(&run_native, &NativeRuntime::start_address);
   Stack::set_native_return_bci(&NativeRuntime::return_bci);
   return 0;
 }
@@ -65,7 +92,7 @@ NativeFn NativeRuntime::find_entry(const NativeProgram* native, int bci) {
   while (low <= high) {
     int middle = low + (high - low) / 2;
     int probe = entries[middle].bci;
-    if (probe == bci) return entries[middle].fn;
+    if (probe == bci) return entries[middle].fn();
     if (probe < bci) {
       low = middle + 1;
     } else {
@@ -89,16 +116,27 @@ int NativeRuntime::return_bci(Program* program, uint8* address) {
   if (!matches_registered_program(program)) return program->absolute_bci_from_bcp(address);
   NativeFn fn = reinterpret_cast<NativeFn>(address);
   const NativeProgram* native = registered_program;
+  // Stack traces are rare and it's the size of the tables that matters.
+  const uint8* deltas = native->return_deltas;
+  int bci = 0;
   for (int i = 0; i < native->return_count; i++) {
-    if (native->returns[i].fn == fn) return native->returns[i].bci;
+    int shift = 0;
+    uint8 byte;
+    do {
+      byte = *deltas++;
+      bci += (byte & 0x7f) << shift;
+      shift += 7;
+    } while ((byte & 0x80) != 0);
+    const int32* offset = &native->returns[i];
+    if (reinterpret_cast<intptr_t>(offset) + *offset == reinterpret_cast<intptr_t>(fn)) return bci;
   }
   for (int i = 0; i < native->entry_count; i++) {
-    if (native->entries[i].fn == fn) return native->entries[i].bci;
+    if (native->entries[i].fn() == fn) return native->entries[i].bci;
   }
   return -1;
 }
 
-bool NativeRuntime::run(Interpreter* interpreter, Interpreter::Result* result) {
+bool NativeRuntime::run(Interpreter* interpreter, void* result) {
   Process* process = interpreter->process_;
   Program* program = process->program();
   if (!matches_registered_program(program)) return false;
@@ -113,14 +151,19 @@ bool NativeRuntime::run(Interpreter* interpreter, Interpreter::Result* result) {
     .frame_marker = program->frame_marker(),
     .literals = program->literals.array(),
     .globals = process->object_heap()->global_variables(),
-    .result = Interpreter::Result(Interpreter::Result::PREEMPTED),
+    .watermark = reinterpret_cast<Object***>(&interpreter->watermark_),
+    .base = &interpreter->base_,
+    .try_sp = &interpreter->try_sp_,
+    .remembered_set_bias = GcMetadata::remembered_set_bias(),
+    .lazy_initializer_class_id = static_cast<int>(Smi::value(program->lazy_initializer_class_id())),
+    .result = result,
   };
+  result_of(&context) = Interpreter::Result(Interpreter::Result::PREEMPTED);
   interpreter->preemption_method_header_bcp_ = null;
   Object** sp = interpreter->load_stack();
   POP();  // Frame marker.
   Object* address = POP();
   reinterpret_cast<NativeFn>(address)(sp, &context, null, 0);
-  *result = context.result;
   return true;
 }
 
@@ -152,7 +195,7 @@ void NativeRuntime::stack_overflow(NATIVE_PARAMS) {
       PUSH(reinterpret_cast<Object*>(x));
       PUSH(c->frame_marker);
       interpreter->store_stack(sp);
-      c->result = Interpreter::Result(Interpreter::Result::PREEMPTED);
+      result_of(c) = Interpreter::Result(Interpreter::Result::PREEMPTED);
       return;
     case Interpreter::OVERFLOW_EXCEPTION:
       break;
@@ -179,7 +222,7 @@ void NativeRuntime::preempt(NATIVE_PARAMS) {
   PUSH(reinterpret_cast<Object*>(x));
   PUSH(c->frame_marker);
   interpreter->store_stack(sp);
-  c->result = Interpreter::Result(Interpreter::Result::PREEMPTED);
+  result_of(c) = Interpreter::Result(Interpreter::Result::PREEMPTED);
 }
 
 void NativeRuntime::primitive(NATIVE_PARAMS) {
@@ -600,13 +643,13 @@ void NativeRuntime::halt(NATIVE_PARAMS) {
     PUSH(reinterpret_cast<Object*>(x));
     PUSH(c->frame_marker);
     interpreter->store_stack(sp);
-    c->result = Interpreter::Result(Interpreter::Result::YIELDED);
+    result_of(c) = Interpreter::Result(Interpreter::Result::YIELDED);
   } else if (y == 1) {
     int exit_value = Smi::value(POP());
     PUSH(reinterpret_cast<Object*>(x));
     PUSH(c->frame_marker);
     interpreter->store_stack(sp);
-    c->result = Interpreter::Result(exit_value);
+    result_of(c) = Interpreter::Result(exit_value);
   } else if (y == 2) {
     Object* duration = POP();
     int64 value = 0;
@@ -620,12 +663,12 @@ void NativeRuntime::halt(NATIVE_PARAMS) {
     PUSH(reinterpret_cast<Object*>(x));
     PUSH(c->frame_marker);
     interpreter->store_stack(sp);
-    c->result = Interpreter::Result(Interpreter::Result::DEEP_SLEEP, value);
+    result_of(c) = Interpreter::Result(Interpreter::Result::DEEP_SLEEP, value);
   } else {
     PUSH(reinterpret_cast<Object*>(x));
     PUSH(c->frame_marker);
     interpreter->store_stack(sp);
-    c->result = Interpreter::Result(Interpreter::Result::RESET);
+    result_of(c) = Interpreter::Result(Interpreter::Result::RESET);
   }
 }
 

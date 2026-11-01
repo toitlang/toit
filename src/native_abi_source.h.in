@@ -1,0 +1,8 @@
+// Generated from native_abi.h.
+
+#pragma once
+
+// Identifies the interface, so we don't run code that was generated for another one.
+#define NATIVE_ABI 0x@TOIT_NATIVE_ABI_HASH@u
+
+static const char NATIVE_ABI_SOURCE[] = R"__toit__(@TOIT_NATIVE_ABI_SOURCE@)__toit__";
