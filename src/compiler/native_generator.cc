@@ -632,11 +632,11 @@ void NativeGenerator::emit_tables() {
   // These are the tables described in native_abi.h.
   out_ << "__asm__(NATIVE_TABLE_SECTION R\"__toit__(\n";
   out_ << ".p2align 2\n";
-  out_ << ".globl toit_native_entries\ntoit_native_entries:\n";
+  out_ << "toit_native_entries:\n";
   for (auto& it : entries) out_ << ".long " << it.first << ", " << it.second << " - .\n";
-  out_ << ".globl toit_native_returns\ntoit_native_returns:\n";
+  out_ << "toit_native_returns:\n";
   for (uint8* bcp : return_points_) out_ << ".long " << label(bcp) << " - .\n";
-  out_ << ".globl toit_native_return_deltas\ntoit_native_return_deltas:\n";
+  out_ << "toit_native_return_deltas:\n";
   int last_bci = 0;
   for (uint8* bcp : return_points_) {
     int delta = bci(bcp) - last_bci;

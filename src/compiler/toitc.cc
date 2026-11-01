@@ -119,6 +119,7 @@ int main(int argc, char **argv) {
   bool should_strip = false;
   bool native = false;
   bool native_source = false;
+  bool native_boot = false;
   int verbosity = 0;
 
   int processed_args = 1;  // The executable name has already been processed.
@@ -264,6 +265,12 @@ int main(int argc, char **argv) {
       ways_to_run++;
     } else if (strcmp(argv[processed_args], "--native") == 0) {
       native = true;
+      processed_args++;
+    } else if (strcmp(argv[processed_args], "--native-boot") == 0) {
+      // Used for building the SDK. Not interesting for users.
+      native = true;
+      native_source = true;
+      native_boot = true;
       processed_args++;
     } else if (strcmp(argv[processed_args], "--native-source") == 0) {
       native = true;
@@ -452,7 +459,7 @@ int main(int argc, char **argv) {
       }
     } else {
       if (native_source) {
-        exit_state = native_build.write_source(exe_filename, compiled);
+        exit_state = native_build.write_source(exe_filename, compiled, native_boot);
       } else if (native) {
         exit_state = native_build.create_executable(exe_filename, compiled);
       } else {

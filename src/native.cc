@@ -28,7 +28,10 @@
 
 namespace toit {
 
-static const NativeProgram* registered_program = null;
+// An executable has the native code of its program and of the system program.
+static const int MAX_REGISTERED_PROGRAMS = 4;
+static const NativeProgram* registered_programs[MAX_REGISTERED_PROGRAMS];
+static int registered_count = 0;
 
 static Method find_method(Program* program, Object* receiver, word offset) {
   Smi* class_id = is_smi(receiver) ? program->smi_class_id() : HeapObject::cast(receiver)->class_id();
@@ -67,22 +70,42 @@ int NativeRuntime::register_program(const NativeProgram* program) {
   if (program->abi != NATIVE_ABI) {
     FATAL("Native code was generated for a different version of the runtime");
   }
-  registered_program = program;
+  if (registered_count == MAX_REGISTERED_PROGRAMS) FATAL("Too many native programs");
+  registered_programs[registered_count++] = program;
   Interpreter::set_native_runner(&run_native, &NativeRuntime::start_address);
   Stack::set_native_return_bci(&NativeRuntime::return_bci);
   return 0;
 }
 
-static bool matches_registered_program(Program* program) {
-  static Program* last_matching = null;
-  static Program* last_different = null;
-  if (program == last_matching) return true;
-  if (program == last_different) return false;
+// Returns the native code for the program or null if it doesn't have any.
+static const NativeProgram* native_program_for(Program* program) {
+  // Programs are looked up all the time and there are very few of them.
+  static const int CACHE_SIZE = 8;
+  static std::atomic<Program*> cached_programs[CACHE_SIZE];
+  static const NativeProgram* cached_natives[CACHE_SIZE];
+  static std::atomic<int> cached_count(0);
+  int count = cached_count.load(std::memory_order_acquire);
+  for (int i = 0; i < count; i++) {
+    if (cached_programs[i].load(std::memory_order_relaxed) == program) return cached_natives[i];
+  }
+  const NativeProgram* result = null;
   word length = program->bytecodes.length();
-  bool matches = length == registered_program->bytecodes_length &&
-      native_fingerprint(program->bytecodes.data(), length) == registered_program->fingerprint;
-  (matches ? last_matching : last_different) = program;
-  return matches;
+  for (int i = 0; i < registered_count; i++) {
+    const NativeProgram* candidate = registered_programs[i];
+    if (length == candidate->bytecodes_length &&
+        native_fingerprint(program->bytecodes.data(), length) == candidate->fingerprint) {
+      result = candidate;
+      break;
+    }
+  }
+  // It is fine to lose a race. It just means that we'll look it up again.
+  int index = count;
+  if (index < CACHE_SIZE && cached_count.compare_exchange_strong(index, -1)) {
+    cached_programs[count].store(program, std::memory_order_relaxed);
+    cached_natives[count] = result;
+    cached_count.store(count + 1, std::memory_order_release);
+  }
+  return result;
 }
 
 // The compiler has replaced the code of the methods with their original
@@ -111,17 +134,18 @@ NativeFn NativeRuntime::find_entry(const NativeProgram* native, int bci) {
 // Processes and tasks are set up with the addresses they start from
 // and that entry methods return to, so native code never sees bytecodes.
 Object* NativeRuntime::start_address(Program* program, uint8* bcp) {
-  if (!matches_registered_program(program)) return reinterpret_cast<Object*>(bcp);
+  const NativeProgram* native = native_program_for(program);
+  if (native == null) return reinterpret_cast<Object*>(bcp);
   int bci = program->absolute_bci_from_bcp(bcp);
-  return reinterpret_cast<Object*>(find_entry(registered_program, bci));
+  return reinterpret_cast<Object*>(find_entry(native, bci));
 }
 
 // Translates the addresses found in frames on the stack to
 // the bcis the interpreter would have found in the same frames.
 int NativeRuntime::return_bci(Program* program, uint8* address) {
-  if (!matches_registered_program(program)) return program->absolute_bci_from_bcp(address);
+  const NativeProgram* native = native_program_for(program);
+  if (native == null) return program->absolute_bci_from_bcp(address);
   NativeFn fn = reinterpret_cast<NativeFn>(address);
-  const NativeProgram* native = registered_program;
   // Stack traces are rare and it's the size of the tables that matters.
   const uint8* deltas = native->return_deltas;
   int bci = 0;
@@ -148,12 +172,13 @@ int NativeRuntime::return_bci(Program* program, uint8* address) {
 bool NativeRuntime::run(Interpreter* interpreter, void* result) {
   Process* process = interpreter->process_;
   Program* program = process->program();
-  if (!matches_registered_program(program)) return false;
+  const NativeProgram* native = native_program_for(program);
+  if (native == null) return false;
   NativeContext context = {
     .interpreter = interpreter,
     .process = process,
     .program = program,
-    .native = registered_program,
+    .native = native,
     .null_object = program->null_object(),
     .true_object = program->true_object(),
     .false_object = program->false_object(),

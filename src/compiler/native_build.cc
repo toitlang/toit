@@ -55,7 +55,7 @@ int NativeBuild::create_executable(const char* out_path, SnapshotBundle bundle) 
   return -1;
 }
 
-int NativeBuild::write_source(const char* out_path, SnapshotBundle bundle) {
+int NativeBuild::write_source(const char* out_path, SnapshotBundle bundle, bool is_boot) {
   return -1;
 }
 
@@ -157,15 +157,23 @@ bool NativeBuild::prepare(bool needs_sdk) {
 // The format is the one that is used for patching vessels: the size of
 // the bundle followed by the bundle. All characters are escaped, so
 // the size of the literal doesn't matter much to the C++ compiler.
-bool NativeBuild::add_snapshot(SnapshotBundle bundle) {
+bool NativeBuild::add_snapshot(SnapshotBundle bundle, bool is_boot) {
   FILE* file = fopen(code_path_.c_str(), "ab");
   if (file == null) {
     perror(code_path_.c_str());
     return false;
   }
   int size = bundle.size();
-  fprintf(file, "\nunsigned char vessel_snapshot_data[] =\n\"");
-  for (int i = 0; i < 4; i++) fprintf(file, "\\%03o", (size >> (i * 8)) & 0xff);
+  if (is_boot) {
+    // The system program takes the place of the snapshot the executables boot from.
+    fprintf(file, "\nextern \"C\" unsigned int toit_run_snapshot_len;\n");
+    fprintf(file, "unsigned int toit_run_snapshot_len = %d;\n", size);
+    fprintf(file, "extern \"C\" unsigned char toit_run_snapshot[];\n");
+    fprintf(file, "unsigned char toit_run_snapshot[] =\n\"");
+  } else {
+    fprintf(file, "\nunsigned char vessel_snapshot_data[] =\n\"");
+    for (int i = 0; i < 4; i++) fprintf(file, "\\%03o", (size >> (i * 8)) & 0xff);
+  }
   for (int i = 0; i < size; i++) {
     if ((i & 0x3f) == 0) fprintf(file, "\"\n\"");
     fprintf(file, "\\%03o", bundle.buffer()[i]);
@@ -174,8 +182,8 @@ bool NativeBuild::add_snapshot(SnapshotBundle bundle) {
   return fclose(file) == 0;
 }
 
-int NativeBuild::write_source(const char* out_path, SnapshotBundle bundle) {
-  if (!add_snapshot(bundle)) return -1;
+int NativeBuild::write_source(const char* out_path, SnapshotBundle bundle, bool is_boot) {
+  if (!add_snapshot(bundle, is_boot)) return -1;
   std::ifstream source(code_path_, std::ios::binary);
   std::ofstream output(out_path, std::ios::binary);
   output << source.rdbuf();
@@ -188,7 +196,7 @@ int NativeBuild::write_source(const char* out_path, SnapshotBundle bundle) {
 }
 
 int NativeBuild::create_executable(const char* out_path, SnapshotBundle bundle) {
-  if (!add_snapshot(bundle)) return -1;
+  if (!add_snapshot(bundle, false)) return -1;
   std::ifstream flags_file(sdk_folder_ + "/" + FLAGS_FILE);
   std::string compile_flags;
   std::string link_flags;

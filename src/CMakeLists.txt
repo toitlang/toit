@@ -80,6 +80,9 @@ file(GLOB run_SRC
 list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run|toit_run_image|vessel|vm|objects_runtime).cc$")
 list(REMOVE_ITEM toit_core_SRC ${run_SRC})
 
+# The bytecode loop and the replacement for it in executables with native code.
+list(FILTER toit_core_SRC EXCLUDE REGEX "/interpreter_(run|native).cc$")
+
 # Files that are used in the VM, but not in the compiler.
 file(GLOB toit_vm_runtime_SRC
   "vm.h"
@@ -139,6 +142,11 @@ add_library(
   toit_vm
   ${toit_vm_SRC}
   ${toit_core_SRC}
+  )
+
+add_library(
+  toit_interpreter
+  interpreter_run.cc
   )
 
 add_library(
@@ -261,6 +269,7 @@ set(TOIT_LINK_LIBS
   ${TOIT_LINK_GC_FLAGS}
   ${TOIT_LINK_GROUP_BEGIN_FLAGS}
   toit_vm
+  toit_interpreter
   ${TOIT_NETWORK_LIBS}
   ${TOIT_LINK_GROUP_END_FLAGS}
   toit_compiler          # TODO(florian): should not be here by default.
@@ -332,7 +341,7 @@ if (NOT ${TOIT_IS_EMBEDDED})
     toit_native_main
     STATIC
     vessel.cc
-    ${EMBEDDED_PROGRAM_SNAPSHOT_CC_toit_run}
+    interpreter_native.cc
     ${run_SRC}
   )
   target_link_libraries(toit_native_main PUBLIC ${TOIT_LINK_LIBS})

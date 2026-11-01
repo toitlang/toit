@@ -25,6 +25,10 @@ set(TOIT_NATIVE_LINK_FLAGS)
 # depend on. Everything that isn't a target is a flag for the linker.
 function(toit_native_collect item)
   string(REGEX REPLACE "^\\$<LINK_ONLY:(.*)>$" "\\1" item "${item}")
+  # Native executables have no bytecodes to interpret.
+  if ("${item}" STREQUAL "toit_interpreter")
+    return()
+  endif()
   if (NOT TARGET "${item}")
     if (NOT "${item}" MATCHES "^(-|/)")
       set(item "-l${item}")
@@ -80,6 +84,40 @@ set(TOIT_NATIVE_COMPILE_FLAGS
   "-fno-unwind-tables" "-fno-asynchronous-unwind-tables"
 )
 
+# The system program is native code too. It goes through the same steps as
+# the programs in the executables, so it is only compiled once if we can.
+set(TOIT_NATIVE_SYSTEM_SOURCE "${TOIT_SDK_SOURCE_DIR}/system/extensions/host/toit.run.toit")
+set(TOIT_NATIVE_SYSTEM_CC "${TOIT_NATIVE_DIR}/system.cc")
+set(TOIT_NATIVE_SYSTEM_OBJECT "${TOIT_NATIVE_DIR}/system.o")
+add_custom_command(
+  OUTPUT "${TOIT_NATIVE_SYSTEM_CC}"
+  DEPENDS toit.compile "${TOIT_NATIVE_SYSTEM_SOURCE}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "${TOIT_NATIVE_DIR}"
+  COMMAND "${CMAKE_COMMAND}" -E env
+      "TOIT_PACKAGE_CACHE_PATHS=${TOIT_SDK_SOURCE_DIR}/system/extensions/host/.packages-bootstrap"
+      $<TARGET_FILE:toit.compile> --native-boot -o "${TOIT_NATIVE_SYSTEM_CC}" "${TOIT_NATIVE_SYSTEM_SOURCE}"
+  VERBATIM
+)
+find_program(TOIT_NATIVE_SDK_CXX clang++)
+if (TOIT_NATIVE_SDK_CXX)
+  set(TOIT_NATIVE_ARCH_FLAGS)
+  foreach(arch ${CMAKE_OSX_ARCHITECTURES})
+    list(APPEND TOIT_NATIVE_ARCH_FLAGS "-arch" "${arch}")
+  endforeach()
+  add_custom_command(
+    OUTPUT "${TOIT_NATIVE_SYSTEM_OBJECT}"
+    DEPENDS "${TOIT_NATIVE_SYSTEM_CC}"
+    COMMAND "${TOIT_NATIVE_SDK_CXX}" ${TOIT_NATIVE_COMPILE_FLAGS} ${TOIT_NATIVE_ARCH_FLAGS} -O2
+        -c "${TOIT_NATIVE_SYSTEM_CC}" -o "${TOIT_NATIVE_SYSTEM_OBJECT}"
+    VERBATIM
+  )
+  list(APPEND TOIT_NATIVE_LINK_FLAGS "@SDK@/system.o")
+  set(TOIT_NATIVE_SYSTEM_OUTPUT "${TOIT_NATIVE_SYSTEM_OBJECT}")
+else()
+  list(APPEND TOIT_NATIVE_LINK_FLAGS "@SDK@/system.cc")
+  set(TOIT_NATIVE_SYSTEM_OUTPUT "${TOIT_NATIVE_SYSTEM_CC}")
+endif()
+
 string(REPLACE ";" " " TOIT_NATIVE_COMPILE_LINE "${TOIT_NATIVE_COMPILE_FLAGS}")
 string(REPLACE ";" " " TOIT_NATIVE_LINK_LINE "${TOIT_NATIVE_LINK_FLAGS}")
 file(GENERATE
@@ -94,11 +132,12 @@ endforeach()
 
 add_custom_target(
   build_native_sdk
+  DEPENDS "${TOIT_NATIVE_SYSTEM_OUTPUT}"
   COMMAND "${CMAKE_COMMAND}" -E make_directory "${TOIT_NATIVE_DIR}/lib"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${TOIT_NATIVE_ARCHIVE_FILES} "${TOIT_NATIVE_DIR}/lib"
   VERBATIM
 )
-add_dependencies(build_native_sdk ${TOIT_NATIVE_ARCHIVES})
+add_dependencies(build_native_sdk ${TOIT_NATIVE_ARCHIVES} build_boot_snapshot)
 add_dependencies(build_vessels build_native_sdk)
 
 install(DIRECTORY "${TOIT_NATIVE_DIR}/" DESTINATION lib/toit/native)
