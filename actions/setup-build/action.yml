@@ -9,6 +9,14 @@ inputs:
     description: "Whether to install build tools for compiling to the ESP32."
     required: false
     default: "false"
+  ec618:
+    description: "Whether the EC618 SDK is needed."
+    required: false
+    default: "false"
+  init-submodules:
+    description: "Initialize submodules unless their sources were restored from a build artifact."
+    required: false
+    default: "true"
   use-ccache:
     description: "Whether to use ccache for caching build artifacts."
     required: false
@@ -26,6 +34,8 @@ runs:
       run: |
         echo "Toit directory: ${{ inputs.toit-dir }}"
         echo "ESP32: ${{ inputs.esp32 }}"
+        echo "EC618: ${{ inputs.ec618 }}"
+        echo "Initialize submodules: ${{ inputs.init-submodules }}"
         echo "Use ccache: ${{ inputs.use-ccache }}"
         echo "Cache key prefix: ${{ inputs.cache-key-prefix }}"
 
@@ -48,18 +58,21 @@ runs:
         done
 
     - name: Initialize top-level build submodules
+      if: inputs.init-submodules == 'true'
       shell: bash
       run: |
         cd ${{inputs.toit-dir}}
-        git submodule sync -- third_party/esp-idf third_party/luatos-soc-ec618
-        git submodule update --init --jobs 2 -- \
-          third_party/esp-idf \
-          third_party/luatos-soc-ec618
+        modules=(third_party/esp-idf)
+        if [[ "${{ inputs.ec618 }}" == 'true' ]]; then
+          modules+=(third_party/luatos-soc-ec618)
+        fi
+        git submodule sync -- "${modules[@]}"
+        git submodule update --init --jobs 2 -- "${modules[@]}"
 
     # Host builds only need mbedTLS from ESP-IDF. Initializing every ESP-IDF
     # component is substantially slower.
     - name: Initialize mbedTLS submodule
-      if: inputs.esp32 == 'false'
+      if: inputs.init-submodules == 'true' && inputs.esp32 == 'false'
       shell: bash
       run: |
         cd ${{inputs.toit-dir}}/third_party/esp-idf
@@ -67,7 +80,7 @@ runs:
         git submodule update --init -- components/mbedtls/mbedtls
 
     - name: Initialize ESP32 submodules
-      if: inputs.esp32 == 'true'
+      if: inputs.init-submodules == 'true' && inputs.esp32 == 'true'
       shell: bash
       run: |
         cd ${{inputs.toit-dir}}/third_party/esp-idf

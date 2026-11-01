@@ -73,12 +73,6 @@ runs:
       run: |
         mkdir -p ${{ steps.constants.outputs.debug_dir }}
 
-    - name: Setup build environment
-      uses: ./actions/setup-build
-      with:
-        toit-dir: .
-        use-ccache: false
-
     - name: Download shared host build
       uses: actions/download-artifact@v8
       with:
@@ -87,13 +81,24 @@ runs:
 
     - name: Restore shared host build
       shell: bash
+      # The archive helper only needs the runner's preinstalled Python.
       run: python tools/ci/host-build-archive.py unpack "$RUNNER_TEMP/host-build/host-build.tar.gz"
+
+    - name: Setup build environment
+      uses: ./actions/setup-build
+      with:
+        toit-dir: .
+        use-ccache: false
+        init-submodules: false
 
     - name: Setup compilation env
       shell: bash
       run: |
         echo "SHARD_START=${{ inputs.shard }}" >> $GITHUB_ENV
         echo "SHARD_STRIDE=${{ steps.constants.outputs.total_shards }}" >> $GITHUB_ENV
+        # The artifact has the pinned sources but deliberately omits Git
+        # metadata. Its workspace and commit were checked before extraction.
+        echo 'IGNORE_SUBMODULE=1' >> $GITHUB_ENV
 
     # Floor the macOS deployment target so CI-produced binaries run on
     # Monterey. Exported via GITHUB_ENV so it's visible to CMake's toolchain
@@ -203,8 +208,9 @@ runs:
       # External tests are allowed to fail, but we record them and
       # fail a non-required job if they do.
       continue-on-error: true
+      # Inherit IDF_PATH from setup-build. Even an equivalent path spelling
+      # changes the include flags and makes Ninja rebuild the SDK and mbedTLS.
       env:
-        IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
         CCACHE_DIR: ${{ github.workspace }}/.ccache
         CCACHE_BASEDIR: ${{ github.workspace }}
         CCACHE_COMPRESS: true

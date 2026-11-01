@@ -90,10 +90,17 @@ install-esptool: sdk
 .PHONY: sdk-no-cmake
 sdk-no-cmake: tools-no-cmake
 
+# Host and ESP32 builds don't use the EC618 SDK. Check only the submodules
+# needed by the requested build, so an unrelated SDK needn't be cloned.
+BUILD_SUBMODULES = third_party/esp-idf
+ifneq ($(filter ec618%,$(MAKECMDGOALS) $(TARGET) $(TOOLCHAIN)),)
+BUILD_SUBMODULES += third_party/luatos-soc-ec618
+endif
+
 .PHONY: check-env
 check-env:
 ifndef IGNORE_SUBMODULE
-	@ if git submodule status | grep '^[-+]' ; then \
+	@ if git submodule status -- $(BUILD_SUBMODULES) | grep '^[-+]' ; then \
 		echo "Submodules not updated or initialized. Did you 'git submodule update --init --recursive'?"; \
 		echo "You can disable this check by setting IGNORE_SUBMODULE=1"; \
 		exit 1; \

@@ -49,8 +49,8 @@ jobs:
           git archive --format=tar --prefix="$prefix" HEAD | tar x
 
           # Archive the relevant submodules.
-          # Initialize the top-level modules but not nested ones. This fills in the esp-idf submodule.
-          git submodule update --depth=1 --init .
+          # The host source tarball only needs ESP-IDF's mbedTLS component.
+          git submodule update --depth=1 --init -- third_party/esp-idf
 
           esp_idf=${{ github.workspace }}/third_party/esp-idf
           # We only need mbedtls of the esp-idf submodule to build the host tools.

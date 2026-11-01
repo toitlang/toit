@@ -36,16 +36,24 @@ class HostBuildArchiveTest(unittest.TestCase):
         self.root.mkdir()
         self.archive = Path(self.temp.name) / "host-build.tar.gz"
         self.run_command("git", "init", "-q")
-        (self.root / ".gitignore").write_text("build/\n.packages-bootstrap/\n")
+        (self.root / ".gitignore").write_text("build/\n.packages-bootstrap/\nthird_party/\n")
+        self.mbedtls = self.root / "third_party/esp-idf/components/mbedtls/mbedtls"
+        (self.mbedtls / "include").mkdir(parents=True)
+        (self.mbedtls / "include/mbedtls-value.h").write_text("#define MBEDTLS_VALUE 0\n")
+        (self.mbedtls / ".git").write_text("gitdir: metadata that must not be transferred\n")
         (self.root / "CMakeLists.txt").write_text('''
 cmake_minimum_required(VERSION 3.20)
 project(archive_test CXX)
 add_executable(hello main.cc)
+target_include_directories(hello PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/third_party/esp-idf/components/mbedtls/mbedtls/include")
 add_custom_target(check
   COMMAND ${CMAKE_COMMAND} -E echo "shard=$ENV{SHARD_START}"
   DEPENDS hello)
 ''')
-        (self.root / "main.cc").write_text('#include "value.h"\nint main() { return VALUE; }\n')
+        (self.root / "main.cc").write_text(
+            '#include "value.h"\n#include "mbedtls-value.h"\n'
+            'int main() { return VALUE + MBEDTLS_VALUE; }\n')
         (self.root / "value.h").write_text("#define VALUE 0\n")
         self.run_command("git", "add", ".")
         self.run_command("git", "-c", "user.name=CI", "-c", "user.email=ci@example.com",
@@ -70,6 +78,7 @@ add_custom_target(check
         self.assertTrue(objects)
         binary = self.root / "build" / ("hello.exe" if os.name == "nt" else "hello")
         build_times = {path: path.stat().st_mtime_ns for path in [*objects, binary]}
+        header_time = (self.mbedtls / "include/mbedtls-value.h").stat().st_mtime_ns
 
         packages = self.root / ".packages-bootstrap"
         packages.mkdir()
@@ -82,6 +91,7 @@ add_custom_target(check
         self.run_command(sys.executable, str(ARCHIVER), "pack", str(self.archive))
         shutil.rmtree(self.root / "build")
         shutil.rmtree(packages)
+        shutil.rmtree(self.root / "third_party")
         # Checkouts set new timestamps even when the contents are identical.
         for name in source_times:
             path = self.root / name
@@ -90,6 +100,8 @@ add_custom_target(check
         for name, mtime in source_times.items():
             self.assertEqual((self.root / name).stat().st_mtime_ns, mtime)
         self.assertEqual(package.stat().st_mtime_ns, package_time)
+        self.assertEqual((self.mbedtls / "include/mbedtls-value.h").stat().st_mtime_ns, header_time)
+        self.assertFalse((self.mbedtls / ".git").exists())
         if os.name != "nt":
             self.assertTrue((self.root / "build" / "source-link").is_symlink())
 
@@ -99,6 +111,8 @@ add_custom_target(check
         for path, mtime in build_times.items():
             self.assertEqual(path.stat().st_mtime_ns, mtime, output)
         self.assertIn("no work to do", self.run_command("ninja", "-C", "build", "-n", "hello"))
+        (self.mbedtls / "include/mbedtls-value.h").write_text("#define MBEDTLS_VALUE 1\n")
+        self.assertNotIn("no work to do", self.run_command("ninja", "-C", "build", "-n", "hello"))
         # Preserving .ninja_deps matters: header changes must still rebuild.
         (self.root / "value.h").write_text("#define VALUE 1\n")
         self.assertNotIn("no work to do", self.run_command("ninja", "-C", "build", "-n", "hello"))

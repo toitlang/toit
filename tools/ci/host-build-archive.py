@@ -33,6 +33,9 @@ import tempfile
 
 METADATA = "host-build-metadata.json"
 BUILD_DIRS = ("build", "build-debug")
+# Host CMake still reads mbedTLS's build scripts and headers in test shards.
+# Transfer the sources without Git metadata instead of cloning ESP-IDF again.
+SOURCE_DIRS = ("third_party/esp-idf/components/mbedtls",)
 
 
 def git(*args):
@@ -50,7 +53,7 @@ def pack(archive):
         if path.is_file() and not path.is_symlink():
             mtimes[path.as_posix()] = path.stat().st_mtime_ns
 
-    paths = [name for name in BUILD_DIRS if Path(name).is_dir()]
+    paths = [name for name in (*BUILD_DIRS, *SOURCE_DIRS) if Path(name).is_dir()]
     # Bootstrap packages are inputs to the embedded SDK programs. Keep their
     # depfile paths and timestamps, as well as ordinary test package downloads.
     for directory, dirs, _ in os.walk("."):
@@ -86,7 +89,7 @@ def pack(archive):
             with archive.open("wb") as output:
                 subprocess.run([
                     "tar", "--format=pax", "-czf", "-",
-                    "--null", "-T", str(file_list),
+                    "--exclude=.git", "--null", "-T", str(file_list),
                 ], stdout=output, check=True)
     finally:
         Path(METADATA).unlink()

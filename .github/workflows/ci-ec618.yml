@@ -43,6 +43,7 @@ jobs:
         uses: ./actions/setup-build
         with:
           toit-dir: .
+          ec618: true
 
       - name: Setup Xmake
         uses: xmake-io/github-action-setup-xmake@v1
