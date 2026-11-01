@@ -160,10 +160,29 @@ class NativeRuntime {
   }
 
  private:
-  static NativeFn find_entry(NativeContext* c, int bci);
-  static NativeFn resolve(NativeContext* c, Object* address);
+  static NativeFn find_entry(const NativeProgram* native, int bci);
+  static Object* start_address(Program* program, uint8* bcp);
   static void call(NativeContext* c, Object** sp, void* next, Method target);
 };
+
+// Define NATIVE_DEBUG when compiling generated code to check
+// the targets of all indirect jumps. The bci says where they are.
+#ifdef NATIVE_DEBUG
+#define NATIVE_CHECK_TARGET(c, target, bci)                                                    \
+  do {                                                                                         \
+    uint8* _bcp_ = reinterpret_cast<uint8*>(target);                                           \
+    if ((c)->program->bytecodes.is_inside(_bcp_)) {                                            \
+      FATAL("jump to bytecode %d from %d", (c)->program->absolute_bci_from_bcp(_bcp_), bci);   \
+    }                                                                                          \
+    if ((reinterpret_cast<uword>(target) & 3) != 0 ||                                          \
+        reinterpret_cast<uword>(target) < 0x100000000 ||                                       \
+        reinterpret_cast<uword>(target) > 0x200000000) {                                       \
+      FATAL("jump to %p from %d", reinterpret_cast<void*>(target), bci);                       \
+    }                                                                                          \
+  } while (false)
+#else
+#define NATIVE_CHECK_TARGET(c, target, bci)
+#endif
 
 #define PUSH(o)            ({ Object* _o_ = (o); *(--sp) = _o_; })
 #define POP()              (*(sp++))
@@ -193,6 +212,11 @@ inline bool native_sub(Object* a, Object* b, Object** result) {
 
 inline unsigned native_class_id(Object* object, unsigned smi_class_id) {
   return is_smi(object) ? smi_class_id : Smi::value(HeapObject::cast(object)->class_id());
+}
+
+// For objects that are known not to be smis.
+inline unsigned native_heap_class_id(Object* object) {
+  return Smi::value(HeapObject::cast(object)->class_id());
 }
 
 inline bool native_is_true(NativeContext* c, Object* value) {

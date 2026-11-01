@@ -28,6 +28,12 @@
 namespace toit {
 
 Interpreter::NativeRunner* Interpreter::native_runner_ = null;
+Interpreter::NativeAddress* Interpreter::native_address_ = null;
+
+Object* Interpreter::start_address(uint8* bcp) {
+  if (native_address_ != null) return native_address_(process_->program(), bcp);
+  return reinterpret_cast<Object*>(bcp);
+}
 
 Interpreter::Interpreter()
     : process_(null)
@@ -92,7 +98,7 @@ void Interpreter::store_stack(Object** sp, Method pending) {
 void Interpreter::prepare_task(Method entry, Instance* code) {
   push(code);
   static_assert(FRAME_SIZE == 2, "Unexpected frame size");
-  push(reinterpret_cast<Object*>(entry.entry()));
+  push(start_address(entry.entry()));
   push(process_->program()->frame_marker());
 
   // Push the arguments to the faked call to 'task_transfer_'.
@@ -100,7 +106,7 @@ void Interpreter::prepare_task(Method entry, Instance* code) {
   push(process_->program()->false_object());  // Argument: detach_stack/bool
 
   static_assert(FRAME_SIZE == 2, "Unexpected frame size");
-  push(reinterpret_cast<Object*>(entry.bcp_from_bci(LOAD_NULL_LENGTH)));
+  push(start_address(entry.bcp_from_bci(LOAD_NULL_LENGTH)));
   push(process_->program()->frame_marker());
 }
 
@@ -135,11 +141,11 @@ void Interpreter::prepare_process() {
 
   Method entry = lookup_entry();
   static_assert(FRAME_SIZE == 2, "Unexpected frame size");
-  push(reinterpret_cast<Object*>(entry.entry()));
+  push(start_address(entry.entry()));
   push(process_->program()->frame_marker());
 
   static_assert(FRAME_SIZE == 2, "Unexpected frame size");
-  push(reinterpret_cast<Object*>(entry.entry()));
+  push(start_address(entry.entry()));
   push(process_->program()->frame_marker());
 
   store_stack();

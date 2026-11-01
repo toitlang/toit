@@ -55,6 +55,7 @@ class NativeGenerator {
   std::set<int> branch_targets_;  // Absolute bcis of non-local branch targets.
   std::stringstream out_;
   uint8* current_end_ = null;
+  bool skip_next_opcode_ = false;
 
   int bci(uint8* bcp) const { return program_->absolute_bci_from_bcp(bcp); }
   int method_id(Method method) const { return bci(method.header_bcp()); }
@@ -62,15 +63,40 @@ class NativeGenerator {
   // The labels of the generated functions. The method functions check the stack
   // and fall into the code of the method.
   std::string method_label(int id) const {
+    if (method_ids_.count(id) == 0) return "NativeRuntime::illegal";
     return "m" + std::to_string(id);
   }
   std::string method_label(Method method) const { return method_label(method_id(method)); }
-  std::string block_entry_label(int id) const { return "e" + std::to_string(id); }
+  std::string block_entry_label(int id) const {
+    if (method_ids_.count(id) == 0) return "NativeRuntime::illegal";
+    return "e" + std::to_string(id);
+  }
   std::string label(uint8* bcp) const {
     // The optimizer can remove the code after calls that don't return.
     if (bcp == current_end_) return "NativeRuntime::illegal";
     return "b" + std::to_string(bci(bcp));
   }
+
+  // What the propagated types tell us about the two operands of a binary operation.
+  struct Operands {
+    bool left_is_smi = false;
+    bool right_is_smi = false;
+    bool can_be_smis = true;
+    bool are_smis() const { return left_is_smi && right_is_smi; }
+  };
+  Operands operands(uint8* bcp) const;
+  // The condition for the operands being smis; empty if they always are.
+  std::string smi_check(const Operands& operands) const;
+  bool is_smi_type(TypeSet type) const;
+
+  // Returns the method a virtual call goes to if there is only one
+  // possible receiver class. Returns -1 otherwise.
+  int single_target(uint8* bcp, int arity, int selector_offset) const;
+
+  bool ends_block(uint8* bcp) const;
+  bool inlines_smi_operation(uint8* bcp) const;
+  // The code that follows a call. Calls that don't return don't need it.
+  uint8* continuation(uint8* bcp, uint8* next) const;
 
   void find_leaders(MethodInfo* info);
   void emit_declarations();
@@ -83,9 +109,10 @@ class NativeGenerator {
   void emit_call(int id, uint8* next);
   void emit_runtime(const char* helper, const std::string& x, word y);
   void emit_runtime_next(const char* helper, uint8* next, word y);
-  void emit_virtual(uint8* next, int stack_offset, int selector_offset);
-  void emit_arithmetic(uint8* next, Opcode opcode, const char* helper);
-  void emit_relational(uint8* next, Opcode opcode, const char* op);
+  void emit_virtual(uint8* bcp, uint8* next, int stack_offset, int selector_offset);
+  void emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, const char* helper);
+  void emit_relational(const MethodInfo& info, uint8* bcp, uint8* next, Opcode opcode, const char* op);
+  void emit_bit_operation(uint8* bcp, uint8* next, Opcode opcode, const char* op);
   void emit_branch(uint8* target, const char* condition, bool is_back, uint8* entry);
   void emit_typecheck(uint8* bcp, Opcode opcode, bool is_as, int encoded, int length);
   void emit_tail_frame_move(int height, int outer_arity, int call_arity);
@@ -97,6 +124,7 @@ NativeGenerator::NativeGenerator(Program* program, TypeDatabase* types, std::vec
   std::sort(methods.begin(), methods.end());
   methods.erase(std::unique(methods.begin(), methods.end()), methods.end());
   for (unsigned i = 0; i < methods.size(); i++) {
+    if (types->is_dead_method(methods[i])) continue;
     uint8* end = (i + 1 == methods.size())
         ? program->bytecodes.data() + program->bytecodes.length()
         : program->bcp_from_absolute_bci(methods[i + 1]);
@@ -153,7 +181,83 @@ static bool needs_continuation(Opcode opcode) {
   }
 }
 
+bool NativeGenerator::is_smi_type(TypeSet type) const {
+  if (type.is_block()) return false;
+  int words = TypeSet::words_per_type(program_);
+  return type.size(words) == 1 && type.contains(Smi::value(program_->smi_class_id()));
+}
+
+NativeGenerator::Operands NativeGenerator::operands(uint8* bcp) const {
+  Operands result;
+  std::vector<TypeSet> input = types_->input(bci(bcp));
+  if (input.size() != 2 || input[0].is_block() || input[1].is_block()) return result;
+  unsigned smi_id = Smi::value(program_->smi_class_id());
+  result.left_is_smi = is_smi_type(input[0]);
+  result.right_is_smi = is_smi_type(input[1]);
+  result.can_be_smis = input[0].contains(smi_id) && input[1].contains(smi_id);
+  return result;
+}
+
+std::string NativeGenerator::smi_check(const Operands& operands) const {
+  if (operands.are_smis()) return "";
+  if (operands.left_is_smi) return "is_smi(STACK_AT(0))";
+  if (operands.right_is_smi) return "is_smi(STACK_AT(1))";
+  return "native_are_smis(STACK_AT(1), STACK_AT(0))";
+}
+
+int NativeGenerator::single_target(uint8* bcp, int arity, int selector_offset) const {
+  std::vector<TypeSet> input = types_->input(bci(bcp));
+  if (static_cast<int>(input.size()) != arity || input[0].is_block()) return -1;
+  int words = TypeSet::words_per_type(program_);
+  if (input[0].size(words) != 1) return -1;
+  TypeSet::Iterator it(input[0], words);
+  int index = it.next() + selector_offset;
+  if (index >= program_->dispatch_table.length()) return -1;
+  int entry = program_->dispatch_table[index];
+  if (entry < 0 || method_ids_.count(entry) == 0) return -1;
+  if (Method(program_->bytecodes, entry).selector_offset() != selector_offset) return -1;
+  return entry;
+}
+
+// Operations on smis that cannot fail are done right
+// where they are, so they don't need a continuation.
+bool NativeGenerator::inlines_smi_operation(uint8* bcp) const {
+  switch (static_cast<Opcode>(*bcp)) {
+    case INVOKE_EQ:
+    case INVOKE_LT:
+    case INVOKE_GT:
+    case INVOKE_LTE:
+    case INVOKE_GTE:
+    case INVOKE_BIT_OR:
+    case INVOKE_BIT_XOR:
+    case INVOKE_BIT_AND:
+      return operands(bcp).are_smis();
+    default:
+      return false;
+  }
+}
+
+bool NativeGenerator::ends_block(uint8* bcp) const {
+  return needs_continuation(static_cast<Opcode>(*bcp)) && !inlines_smi_operation(bcp);
+}
+
+uint8* NativeGenerator::continuation(uint8* bcp, uint8* next) const {
+  switch (static_cast<Opcode>(*bcp)) {
+    case INVOKE_STATIC:
+    case INVOKE_VIRTUAL:
+    case INVOKE_VIRTUAL_WIDE:
+    case INVOKE_VIRTUAL_GET:
+    case INVOKE_VIRTUAL_SET:
+      // The other calls can have their continuation used for other things,
+      // like the code following a try-block that is run when unwinding.
+      return (next < current_end_ && types_->does_not_return(bci(next))) ? current_end_ : next;
+    default:
+      return next;
+  }
+}
+
 void NativeGenerator::find_leaders(MethodInfo* info) {
+  current_end_ = info->end;
   uint8* bcp = info->method.entry();
   info->leaders.insert(bcp);
   if (bcp == program_->entry_task().entry()) {
@@ -165,7 +269,10 @@ void NativeGenerator::find_leaders(MethodInfo* info) {
     if (opcode >= ILLEGAL_END) break;
     int length = opcode_length[opcode];
     uint8* next = bcp + length;
-    if (needs_continuation(opcode) && next < info->end) info->leaders.insert(next);
+    if (ends_block(bcp)) {
+      uint8* target = continuation(bcp, next);
+      if (target < info->end) info->leaders.insert(target);
+    }
     if (opcode == INTRINSIC_SMI_REPEAT || opcode == INTRINSIC_ARRAY_DO) {
       // The blocks return to the intrinsic.
       info->leaders.insert(bcp);
@@ -242,8 +349,10 @@ void NativeGenerator::emit_tables() {
   std::map<int, std::string> entries;
   current_end_ = null;
   for (auto& info : methods_) entries[bci(info.method.entry())] = method_label(info.method);
-  uint8* task = program_->entry_task().entry() + LOAD_NULL_LENGTH;
-  entries[bci(task)] = label(task);
+  if (method_ids_.count(method_id(program_->entry_task())) != 0) {
+    uint8* task = program_->entry_task().entry() + LOAD_NULL_LENGTH;
+    entries[bci(task)] = label(task);
+  }
   for (int target : branch_targets_) entries[target] = label(program_->bcp_from_absolute_bci(target));
 
   out_ << "static const NativeEntry entries[] = {\n";
@@ -326,7 +435,7 @@ static bool is_terminal(Opcode opcode) {
     case INTRINSIC_ARRAY_DO:
       return true;
     default:
-      return needs_continuation(opcode);
+      return false;
   }
 }
 
@@ -339,8 +448,12 @@ void NativeGenerator::emit_block(const MethodInfo& info, uint8* begin, uint8* en
     Opcode opcode = static_cast<Opcode>(*bcp);
     if (opcode >= ILLEGAL_END) break;
     emit_opcode(info, bcp);
-    terminated = is_terminal(opcode);
+    terminated = is_terminal(opcode) || ends_block(bcp);
     bcp += opcode_length[opcode];
+    if (skip_next_opcode_) {
+      skip_next_opcode_ = false;
+      bcp += opcode_length[*bcp];
+    }
     if (terminated) break;
   }
   if (!terminated) {
@@ -371,8 +484,22 @@ void NativeGenerator::emit_runtime_next(const char* helper, uint8* next, word y)
   emit_runtime(helper, "reinterpret_cast<void*>(&" + label(next) + ")", y);
 }
 
-void NativeGenerator::emit_virtual(uint8* next, int stack_offset, int selector_offset) {
-  out_ << "  { unsigned index = native_class_id(STACK_AT(" << stack_offset << "), SMI_ID) + " << selector_offset << ";\n";
+void NativeGenerator::emit_virtual(uint8* bcp, uint8* next, int stack_offset, int selector_offset) {
+  int target = single_target(bcp, stack_offset + 1, selector_offset);
+  if (target >= 0) {
+    emit_call(target, next);
+    return;
+  }
+  // Most receivers cannot be smis, so there is no reason to check for it.
+  std::vector<TypeSet> input = types_->input(bci(bcp));
+  bool can_be_smi = static_cast<int>(input.size()) != stack_offset + 1 ||
+      input[0].is_block() ||
+      input[0].contains(Smi::value(program_->smi_class_id()));
+  if (can_be_smi) {
+    out_ << "  { unsigned index = native_class_id(STACK_AT(" << stack_offset << "), SMI_ID) + " << selector_offset << ";\n";
+  } else {
+    out_ << "  { unsigned index = native_heap_class_id(STACK_AT(" << stack_offset << ")) + " << selector_offset << ";\n";
+  }
   out_ << "    if (NATIVE_LIKELY(selectors[index] == " << selector_offset << ")) {\n";
   out_ << "      PUSH(reinterpret_cast<Object*>(&" << label(next) << "));\n";
   out_ << "      PUSH(c->frame_marker);\n";
@@ -381,23 +508,60 @@ void NativeGenerator::emit_virtual(uint8* next, int stack_offset, int selector_o
   emit_runtime_next("virtual_fallback", next, static_cast<word>(selector_offset) << 8 | stack_offset);
 }
 
-void NativeGenerator::emit_arithmetic(uint8* next, Opcode opcode, const char* helper) {
-  out_ << "  { Object* result;\n";
-  out_ << "    if (NATIVE_LIKELY(" << helper << "(STACK_AT(1), STACK_AT(0), &result))) {\n";
-  out_ << "      STACK_AT_PUT(1, result);\n";
-  out_ << "      DROP(1);\n";
-  out_ << "      NATIVE_TAIL " << label(next) << "(sp, c, null, 0);\n";
-  out_ << "    }\n  }\n";
+void NativeGenerator::emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, const char* helper) {
+  Operands info = operands(bcp);
+  if (info.can_be_smis) {
+    // Smis can overflow, so this can fail no matter what the types are.
+    std::string check = smi_check(info);
+    if (!check.empty()) check += " && ";
+    out_ << "  { Object* result;\n";
+    out_ << "    if (NATIVE_LIKELY(" << check << helper << "(STACK_AT(1), STACK_AT(0), &result))) {\n";
+    out_ << "      STACK_AT_PUT(1, result);\n";
+    out_ << "      DROP(1);\n";
+    out_ << "      NATIVE_TAIL " << label(next) << "(sp, c, null, 0);\n";
+    out_ << "    }\n  }\n";
+  }
   emit_runtime_next("binary", next, opcode);
 }
 
-void NativeGenerator::emit_relational(uint8* next, Opcode opcode, const char* op) {
-  out_ << "  if (NATIVE_LIKELY(native_are_smis(STACK_AT(1), STACK_AT(0)))) {\n";
-  out_ << "    bool result = reinterpret_cast<word>(STACK_AT(1)) " << op << " reinterpret_cast<word>(STACK_AT(0));\n";
-  out_ << "    STACK_AT_PUT(1, result ? c->true_object : c->false_object);\n";
-  out_ << "    DROP(1);\n";
-  out_ << "    NATIVE_TAIL " << label(next) << "(sp, c, null, 0);\n";
-  out_ << "  }\n";
+void NativeGenerator::emit_relational(const MethodInfo& info, uint8* bcp, uint8* next, Opcode opcode, const char* op) {
+  std::string compare = std::string("reinterpret_cast<word>(STACK_AT(1)) ") + op + " reinterpret_cast<word>(STACK_AT(0))";
+  Operands operands = this->operands(bcp);
+  if (operands.are_smis()) {
+    Opcode next_opcode = static_cast<Opcode>(*next);
+    bool can_merge = next < info.end && info.leaders.count(next) == 0 &&
+        (next_opcode == BRANCH_IF_TRUE || next_opcode == BRANCH_IF_FALSE);
+    if (can_merge) {
+      // There is no need to create a boolean just to branch on it.
+      out_ << "  { bool result = " << compare << ";\n";
+      out_ << "    DROP(2);\n";
+      emit_branch(next + Utils::read_unaligned_uint16(next + 1),
+                  next_opcode == BRANCH_IF_TRUE ? "result" : "!result", false, null);
+      out_ << "  }\n";
+      skip_next_opcode_ = true;
+    } else {
+      out_ << "  STACK_AT_PUT(1, (" << compare << ") ? c->true_object : c->false_object);\n";
+      out_ << "  DROP(1);\n";
+    }
+    return;
+  }
+  if (operands.can_be_smis) {
+    out_ << "  if (NATIVE_LIKELY(" << smi_check(operands) << ")) {\n";
+    out_ << "    STACK_AT_PUT(1, (" << compare << ") ? c->true_object : c->false_object);\n";
+    out_ << "    DROP(1);\n";
+    out_ << "    NATIVE_TAIL " << label(next) << "(sp, c, null, 0);\n";
+    out_ << "  }\n";
+  }
+  emit_runtime_next("binary", next, opcode);
+}
+
+void NativeGenerator::emit_bit_operation(uint8* bcp, uint8* next, Opcode opcode, const char* op) {
+  if (operands(bcp).are_smis()) {
+    // Smis have a zero tag, so we can work directly on the tagged values.
+    out_ << "  STACK_AT_PUT(1, reinterpret_cast<Object*>(reinterpret_cast<word>(STACK_AT(1)) " << op << " reinterpret_cast<word>(STACK_AT(0))));\n";
+    out_ << "  DROP(1);\n";
+    return;
+  }
   emit_runtime_next("binary", next, opcode);
 }
 
@@ -628,7 +792,7 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       break;
     }
     case INVOKE_STATIC:
-      emit_call(program_->dispatch_table[wide1], next);
+      emit_call(program_->dispatch_table[wide1], continuation(bcp, next));
       break;
     case INVOKE_STATIC_TAIL: {
       int id = program_->dispatch_table[wide1];
@@ -639,6 +803,7 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
     }
     case INVOKE_BLOCK:
       out_ << "  { Object** block = NativeRuntime::from_block(c, STACK_AT(" << (byte1 - 1) << "));\n";
+      out_ << "    NATIVE_CHECK_TARGET(c, *block, " << bci(bcp) << ");\n";
       out_ << "    NATIVE_TAIL reinterpret_cast<NativeFn>(*block)(sp, c, reinterpret_cast<void*>(&" << label(next) << "), " << byte1 << ");\n";
       out_ << "  }\n";
       break;
@@ -650,36 +815,48 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       break;
     case INVOKE_VIRTUAL:
     case INVOKE_VIRTUAL_WIDE:
-      emit_virtual(next, arg(INVOKE_VIRTUAL_WIDE), Utils::read_unaligned_uint16(bcp + (opcode == INVOKE_VIRTUAL ? 2 : 3)));
+      emit_virtual(bcp, continuation(bcp, next), arg(INVOKE_VIRTUAL_WIDE), Utils::read_unaligned_uint16(bcp + (opcode == INVOKE_VIRTUAL ? 2 : 3)));
       break;
     case INVOKE_VIRTUAL_GET:
-      emit_virtual(next, 0, wide1);
+      emit_virtual(bcp, continuation(bcp, next), 0, wide1);
       break;
     case INVOKE_VIRTUAL_SET:
-      emit_virtual(next, 1, wide1);
+      emit_virtual(bcp, continuation(bcp, next), 1, wide1);
       break;
     case INVOKE_ADD:
-      emit_arithmetic(next, opcode, "native_add");
+      emit_arithmetic(bcp, next, opcode, "native_add");
       break;
     case INVOKE_SUB:
-      emit_arithmetic(next, opcode, "native_sub");
+      emit_arithmetic(bcp, next, opcode, "native_sub");
       break;
     case INVOKE_LT:
-      emit_relational(next, opcode, "<");
+      emit_relational(info, bcp, next, opcode, "<");
       break;
     case INVOKE_LTE:
-      emit_relational(next, opcode, "<=");
+      emit_relational(info, bcp, next, opcode, "<=");
       break;
     case INVOKE_GT:
-      emit_relational(next, opcode, ">");
+      emit_relational(info, bcp, next, opcode, ">");
       break;
     case INVOKE_GTE:
-      emit_relational(next, opcode, ">=");
+      emit_relational(info, bcp, next, opcode, ">=");
       break;
     case INVOKE_EQ:
+      if (operands(bcp).are_smis()) {
+        emit_relational(info, bcp, next, opcode, "==");
+      } else {
+        emit_runtime_next("binary", next, opcode);
+      }
+      break;
     case INVOKE_BIT_OR:
+      emit_bit_operation(bcp, next, opcode, "|");
+      break;
     case INVOKE_BIT_XOR:
+      emit_bit_operation(bcp, next, opcode, "^");
+      break;
     case INVOKE_BIT_AND:
+      emit_bit_operation(bcp, next, opcode, "&");
+      break;
     case INVOKE_BIT_SHL:
     case INVOKE_BIT_SHR:
     case INVOKE_BIT_USHR:
@@ -734,6 +911,7 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       int arity = bcp[2];
       out_ << "  { Object* result = " << (opcode == RETURN ? "STACK_AT(0)" : "c->null_object") << ";\n";
       out_ << "    NativeFn next = reinterpret_cast<NativeFn>(STACK_AT(" << (offset + 1) << "));\n";
+      out_ << "    NATIVE_CHECK_TARGET(c, next, " << bci(bcp) << ");\n";
       out_ << "    DROP(" << (offset + Interpreter::FRAME_SIZE + arity) << ");\n";
       out_ << "    PUSH(result);\n";
       out_ << "    NATIVE_TAIL next(sp, c, null, 0);\n";
