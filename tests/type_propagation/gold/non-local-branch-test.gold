@@ -6,7 +6,45 @@ main tests/type_propagation/non-local-branch-test.toit
   8[053] - invoke static test-continue tests/type_propagation/non-local-branch-test.toit // {Null_}
  11[041] - pop 1
  12[053] - invoke static test-nested tests/type_propagation/non-local-branch-test.toit // {Null_}
- 15[092] - return null S1 0
+ 15[041] - pop 1
+ 16[053] - invoke static test-store-below-target tests/type_propagation/non-local-branch-test.toit // {Null_}
+ 19[041] - pop 1
+ 20[053] - invoke static test-finally-store tests/type_propagation/non-local-branch-test.toit // {Null_}
+ 23[041] - pop 1
+ 24[053] - invoke static test-finally-unchanged tests/type_propagation/non-local-branch-test.toit // {Null_}
+ 27[041] - pop 1
+ 28[053] - invoke static test-two-trys tests/type_propagation/non-local-branch-test.toit // {Null_}
+ 31[041] - pop 1
+ 32[053] - invoke static test-sibling-finally tests/type_propagation/non-local-branch-test.toit // {Null_}
+ 35[041] - pop 1
+ 36[053] - invoke static test-continue-label tests/type_propagation/non-local-branch-test.toit // {Null_}
+ 39[041] - pop 1
+ 40[053] - invoke static test-continue-label-finally tests/type_propagation/non-local-branch-test.toit // {Null_}
+ 43[041] - pop 1
+ 44[053] - invoke static leak-preceding-state tests/type_propagation/non-local-branch-test.toit // {Null_}
+ 47[041] - pop 1
+ 48[053] - invoke static leak-break-vs-continue tests/type_propagation/non-local-branch-test.toit // {Null_}
+ 51[041] - pop 1
+ 52[053] - invoke static leak-two-targets tests/type_propagation/non-local-branch-test.toit // {Null_}
+ 55[041] - pop 1
+ 56[053] - invoke static leak-normal-exit tests/type_propagation/non-local-branch-test.toit // {Null_}
+ 59[041] - pop 1
+ 60[053] - invoke static leak-exception-path tests/type_propagation/non-local-branch-test.toit // {Null_}
+ 63[041] - pop 1
+ 64[053] - invoke static leak-return-vs-break tests/type_propagation/non-local-branch-test.toit // {Null_}
+ 67[041] - pop 1
+ 68[053] - invoke static leak-continue-label-vs-break tests/type_propagation/non-local-branch-test.toit // {Null_}
+ 71[041] - pop 1
+ 72[053] - invoke static leak-nested-trys tests/type_propagation/non-local-branch-test.toit // {Null_}
+ 75[041] - pop 1
+ 76[053] - invoke static leak-callee-try tests/type_propagation/non-local-branch-test.toit // {Null_}
+ 79[041] - pop 1
+ 80[053] - invoke static leak-callee-try-branches tests/type_propagation/non-local-branch-test.toit // {Null_}
+ 83[041] - pop 1
+ 84[053] - invoke static callee-finally-calls-block tests/type_propagation/non-local-branch-test.toit // {Null_}
+ 87[041] - pop 1
+ 88[053] - invoke static no-try-control tests/type_propagation/non-local-branch-test.toit // {Null_}
+ 91[092] - return null S1 0
 
 test-break tests/type_propagation/non-local-branch-test.toit
   0[026] - load smi 42
@@ -40,7 +78,7 @@ test-break-in-try tests/type_propagation/non-local-branch-test.toit
  17[041] - pop 1
  18[085] - branch back T2
  23[014] - load local 0
- 24[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{*}] -> {*}
+ 24[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{SmallInteger_}] -> {SmallInteger_}
  27[092] - return null S2 0
 
 [block] in test-break-in-try tests/type_propagation/non-local-branch-test.toit
@@ -99,8 +137,611 @@ test-nested tests/type_propagation/non-local-branch-test.toit
   1[095] - non-local branch {[block] in test-nested:17}
   7[091] - return S1 1
 
+test-store-below-target tests/type_propagation/non-local-branch-test.toit
+  0[026] - load smi 42
+  2[029] - load method [block] in test-store-below-target tests/type_propagation/non-local-branch-test.toit
+  7[038] - load block 0
+  9[053] - invoke static invoke tests/type_propagation/non-local-branch-test.toit // [[block]] -> {Null_}
+ 12[041] - pop 1
+ 13[002] - pop, load local S0
+ 15[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{String_|SmallInteger_}] -> {String_|SmallInteger_}
+ 18[092] - return null S2 0
+
+[block] in test-store-below-target tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[029] - load method [block] in [block] in test-store-below-target tests/type_propagation/non-local-branch-test.toit
+  5[038] - load block 0
+  7[053] - invoke static invoke tests/type_propagation/non-local-branch-test.toit // [[block]] -> {}
+ 10[040] - pop 2
+ 12[085] - branch back T0
+ 17[022] - load null
+ 18[091] - return S1 1
+
+[block] in [block] in test-store-below-target tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[005] - load outer S3 // [block]
+  3[020] - load literal hest
+  5[006] - store outer S1
+  7[002] - pop, load local S2
+  9[095] - non-local branch {[block] in test-store-below-target:17}
+ 15[091] - return S1 1
+
+test-finally-store tests/type_propagation/non-local-branch-test.toit
+  0[026] - load smi 42
+  2[029] - load method [block] in test-finally-store tests/type_propagation/non-local-branch-test.toit
+  7[097] - link try 0
+  9[038] - load block 4
+ 11[055] - invoke block S1 // [[block]] -> {}
+ 13[041] - pop 1
+ 14[098] - unlink try 0
+ 16[020] - load literal hest
+ 18[004] - store local, pop S5
+ 20[099] - unwind
+ 21[041] - pop 1
+ 22[085] - branch back T2
+ 27[014] - load local 0
+ 28[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{String_}] -> {String_}
+ 31[092] - return null S2 0
+
+[block] in test-finally-store tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[095] - non-local branch {test-finally-store:27}
+  7[091] - return S1 1
+
+test-finally-unchanged tests/type_propagation/non-local-branch-test.toit
+  0[026] - load smi 42
+  2[029] - load method [block] in test-finally-unchanged tests/type_propagation/non-local-branch-test.toit
+  7[097] - link try 0
+  9[038] - load block 4
+ 11[055] - invoke block S1 // [[block]] -> {}
+ 13[041] - pop 1
+ 14[098] - unlink try 0
+ 16[099] - unwind
+ 17[041] - pop 1
+ 18[085] - branch back T2
+ 23[014] - load local 0
+ 24[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{String_}] -> {String_}
+ 27[092] - return null S2 0
+
+[block] in test-finally-unchanged tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[020] - load literal hest
+  3[006] - store outer S1
+  5[002] - pop, load local S2
+  7[095] - non-local branch {test-finally-unchanged:23}
+ 13[091] - return S1 1
+
+test-two-trys tests/type_propagation/non-local-branch-test.toit
+  0[026] - load smi 42
+  2[029] - load method [block] in test-two-trys tests/type_propagation/non-local-branch-test.toit
+  7[097] - link try 0
+  9[038] - load block 4
+ 11[055] - invoke block S1 // [[block]] -> {}
+ 13[041] - pop 1
+ 14[098] - unlink try 0
+ 16[018] - load local 4
+ 17[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{String_|SmallInteger_}] -> {String_|SmallInteger_}
+ 20[041] - pop 1
+ 21[020] - load literal 3.3
+ 23[004] - store local, pop S5
+ 25[099] - unwind
+ 26[041] - pop 1
+ 27[085] - branch back T2
+ 32[014] - load local 0
+ 33[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{float}] -> {float}
+ 36[092] - return null S2 0
+
+[block] in test-two-trys tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[029] - load method [block] in [block] in test-two-trys tests/type_propagation/non-local-branch-test.toit
+  5[097] - link try 0
+  7[038] - load block 4
+  9[055] - invoke block S1 // [[block]] -> {}
+ 11[041] - pop 1
+ 12[098] - unlink try 0
+ 14[000] - load local S6
+ 16[020] - load literal hest
+ 18[006] - store outer S1
+ 20[041] - pop 1
+ 21[099] - unwind
+ 22[041] - pop 1
+ 23[022] - load null
+ 24[091] - return S1 1
+
+[block] in [block] in test-two-trys tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[005] - load outer S3 // [block]
+  3[095] - non-local branch {test-two-trys:32}
+  9[091] - return S1 1
+
+test-sibling-finally tests/type_propagation/non-local-branch-test.toit
+  0[026] - load smi 42
+  2[029] - load method [block] in test-sibling-finally tests/type_propagation/non-local-branch-test.toit
+  7[029] - load method [block] in test-sibling-finally tests/type_propagation/non-local-branch-test.toit
+ 12[038] - load block 1
+ 14[038] - load block 1
+ 16[053] - invoke static invoke-try-both tests/type_propagation/non-local-branch-test.toit // [[block], [block]] -> {}
+ 19[040] - pop 3
+ 21[085] - branch back T2
+ 26[014] - load local 0
+ 27[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{String_|SmallInteger_}] -> {String_|SmallInteger_}
+ 30[092] - return null S2 0
+
+[block] in test-sibling-finally tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[095] - non-local branch {test-sibling-finally:26}
+  7[091] - return S1 1
+
+[block] in test-sibling-finally tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[020] - load literal hest
+  3[006] - store outer S2
+  5[091] - return S1 1
+
+test-continue-label tests/type_propagation/non-local-branch-test.toit
+  0[026] - load smi 42
+  2[029] - load method [block] in test-continue-label tests/type_propagation/non-local-branch-test.toit
+  7[038] - load block 0
+  9[053] - invoke static invoke-outer tests/type_propagation/non-local-branch-test.toit // [[block]] -> {Null_}
+ 12[041] - pop 1
+ 13[002] - pop, load local S0
+ 15[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{String_|SmallInteger_}] -> {String_|SmallInteger_}
+ 18[092] - return null S2 0
+
+[block] in test-continue-label tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[029] - load method [block] in [block] in test-continue-label tests/type_propagation/non-local-branch-test.toit
+  5[038] - load block 0
+  7[053] - invoke static invoke tests/type_propagation/non-local-branch-test.toit // [[block]] -> {}
+ 10[004] - store local, pop S1
+ 12[091] - return S1 1
+
+[block] in [block] in test-continue-label tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[005] - load outer S3 // [block]
+  3[020] - load literal hest
+  5[006] - store outer S1
+  7[041] - pop 1
+  8[022] - load null
+  9[017] - load local 3
+ 10[093] - non-local return 1
+ 12[091] - return S1 1
+
+test-continue-label-finally tests/type_propagation/non-local-branch-test.toit
+  0[026] - load smi 42
+  2[029] - load method [block] in test-continue-label-finally tests/type_propagation/non-local-branch-test.toit
+  7[038] - load block 0
+  9[053] - invoke static invoke-outer tests/type_propagation/non-local-branch-test.toit // [[block]] -> {Null_}
+ 12[041] - pop 1
+ 13[002] - pop, load local S0
+ 15[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{String_|SmallInteger_}] -> {String_|SmallInteger_}
+ 18[092] - return null S2 0
+
+[block] in test-continue-label-finally tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[029] - load method [block] in [block] in test-continue-label-finally tests/type_propagation/non-local-branch-test.toit
+  5[097] - link try 0
+  7[038] - load block 4
+  9[055] - invoke block S1 // [[block]] -> {}
+ 11[041] - pop 1
+ 12[098] - unlink try 0
+ 14[000] - load local S6
+ 16[020] - load literal hest
+ 18[006] - store outer S1
+ 20[041] - pop 1
+ 21[099] - unwind
+ 22[041] - pop 1
+ 23[022] - load null
+ 24[091] - return S1 1
+
+[block] in [block] in test-continue-label-finally tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[022] - load null
+  1[017] - load local 3
+  2[093] - non-local return 1
+  4[091] - return S1 1
+
+leak-preceding-state tests/type_propagation/non-local-branch-test.toit
+  0[026] - load smi 42
+  2[029] - load method [block] in leak-preceding-state tests/type_propagation/non-local-branch-test.toit
+  7[097] - link try 0
+  9[038] - load block 4
+ 11[055] - invoke block S1 // [[block]] -> {}
+ 13[041] - pop 1
+ 14[098] - unlink try 0
+ 16[099] - unwind
+ 17[041] - pop 1
+ 18[085] - branch back T2
+ 23[014] - load local 0
+ 24[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{String_}] -> {String_}
+ 27[092] - return null S2 0
+
+[block] in leak-preceding-state tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[020] - load literal hest
+  3[006] - store outer S1
+  5[002] - pop, load local S2
+  7[095] - non-local branch {leak-preceding-state:23}
+ 13[091] - return S1 1
+
+leak-break-vs-continue tests/type_propagation/non-local-branch-test.toit
+  0[026] - load smi 42
+  2[029] - load method [block] in leak-break-vs-continue tests/type_propagation/non-local-branch-test.toit
+  7[097] - link try 0
+  9[038] - load block 4
+ 11[055] - invoke block S1 // [[block]] -> {}
+ 13[041] - pop 1
+ 14[098] - unlink try 0
+ 16[099] - unwind
+ 17[041] - pop 1
+ 18[026] - load smi 7
+ 20[004] - store local, pop S1
+ 22[085] - branch back T2
+ 27[014] - load local 0
+ 28[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{String_}] -> {String_}
+ 31[092] - return null S2 0
+
+[block] in leak-break-vs-continue tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[053] - invoke static pick tests/type_propagation/non-local-branch-test.toit // {True|False}
+  3[083] - branch if false T19
+  6[016] - load local 2
+  7[020] - load literal hest
+  9[006] - store outer S1
+ 11[002] - pop, load local S2
+ 13[095] - non-local branch {leak-break-vs-continue:27}
+ 19[016] - load local 2
+ 20[020] - load literal 3.3
+ 22[006] - store outer S1
+ 24[002] - pop, load local S2
+ 26[095] - non-local branch {leak-break-vs-continue:22}
+ 32[091] - return S1 1
+
+leak-two-targets tests/type_propagation/non-local-branch-test.toit
+  0[026] - load smi 42
+  2[029] - load method [block] in leak-two-targets tests/type_propagation/non-local-branch-test.toit
+  7[029] - load method [block] in leak-two-targets tests/type_propagation/non-local-branch-test.toit
+ 12[097] - link try 0
+ 14[038] - load block 4
+ 16[055] - invoke block S1 // [[block]] -> {}
+ 18[041] - pop 1
+ 19[098] - unlink try 0
+ 21[099] - unwind
+ 22[041] - pop 1
+ 23[085] - branch back T7
+ 28[015] - load local 1
+ 29[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{String_}] -> {String_}
+ 32[041] - pop 1
+ 33[020] - load literal true
+ 35[004] - store local, pop S2
+ 37[041] - pop 1
+ 38[085] - branch back T2
+ 43[014] - load local 0
+ 44[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{float}] -> {float}
+ 47[092] - return null S2 0
+
+[block] in leak-two-targets tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[020] - load literal 3.3
+  3[006] - store outer S1
+  5[002] - pop, load local S2
+  7[095] - non-local branch {leak-two-targets:43}
+ 13[091] - return S1 1
+
+[block] in leak-two-targets tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[053] - invoke static pick tests/type_propagation/non-local-branch-test.toit // {True|False}
+  3[083] - branch if false T19
+  6[016] - load local 2
+  7[020] - load literal hest
+  9[006] - store outer S2
+ 11[002] - pop, load local S2
+ 13[095] - non-local branch {leak-two-targets:28}
+ 19[016] - load local 2
+ 20[039] - load outer block 1 // [block]
+ 22[055] - invoke block S1 // [[block]] -> {}
+ 24[091] - return S1 1
+
+leak-normal-exit tests/type_propagation/non-local-branch-test.toit
+  0[026] - load smi 42
+  2[029] - load method [block] in leak-normal-exit tests/type_propagation/non-local-branch-test.toit
+  7[097] - link try 0
+  9[038] - load block 4
+ 11[055] - invoke block S1 // [[block]] -> {float}
+ 13[041] - pop 1
+ 14[098] - unlink try 0
+ 16[099] - unwind
+ 17[092] - return null S2 0
+ 20[085] - branch back T2
+ 25[014] - load local 0
+ 26[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{String_}] -> {String_}
+ 29[092] - return null S2 0
+
+[block] in leak-normal-exit tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[053] - invoke static pick tests/type_propagation/non-local-branch-test.toit // {True|False}
+  3[083] - branch if false T19
+  6[016] - load local 2
+  7[020] - load literal hest
+  9[006] - store outer S1
+ 11[002] - pop, load local S2
+ 13[095] - non-local branch {leak-normal-exit:25}
+ 19[016] - load local 2
+ 20[020] - load literal 3.3
+ 22[006] - store outer S1
+ 24[091] - return S1 1
+
+leak-exception-path tests/type_propagation/non-local-branch-test.toit
+  0[026] - load smi 42
+  2[029] - load method [block] in leak-exception-path tests/type_propagation/non-local-branch-test.toit
+  7[097] - link try 0
+  9[038] - load block 4
+ 11[055] - invoke block S1 // [[block]] -> {}
+ 13[041] - pop 1
+ 14[098] - unlink try 0
+ 16[099] - unwind
+ 17[041] - pop 1
+ 18[085] - branch back T2
+ 23[014] - load local 0
+ 24[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{String_}] -> {String_}
+ 27[092] - return null S2 0
+
+[block] in leak-exception-path tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[053] - invoke static pick tests/type_propagation/non-local-branch-test.toit // {True|False}
+  3[083] - branch if false T18
+  6[016] - load local 2
+  7[020] - load literal 3.3
+  9[006] - store outer S1
+ 11[041] - pop 1
+ 12[020] - load literal fisk
+ 14[053] - invoke static throw <sdk>/core/exceptions.toit // [{String_}] -> {}
+ 17[041] - pop 1
+ 18[016] - load local 2
+ 19[020] - load literal hest
+ 21[006] - store outer S1
+ 23[002] - pop, load local S2
+ 25[095] - non-local branch {leak-exception-path:23}
+ 31[091] - return S1 1
+
+leak-return-vs-break tests/type_propagation/non-local-branch-test.toit
+  0[026] - load smi 42
+  2[029] - load method [block] in leak-return-vs-break tests/type_propagation/non-local-branch-test.toit
+  7[097] - link try 0
+  9[038] - load block 4
+ 11[055] - invoke block S1 // [[block]] -> {}
+ 13[041] - pop 1
+ 14[098] - unlink try 0
+ 16[099] - unwind
+ 17[041] - pop 1
+ 18[085] - branch back T2
+ 23[014] - load local 0
+ 24[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{String_}] -> {String_}
+ 27[092] - return null S2 0
+
+[block] in leak-return-vs-break tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[053] - invoke static pick tests/type_propagation/non-local-branch-test.toit // {True|False}
+  3[083] - branch if false T16
+  6[016] - load local 2
+  7[020] - load literal 3.3
+  9[006] - store outer S1
+ 11[041] - pop 1
+ 12[022] - load null
+ 13[017] - load local 3
+ 14[093] - non-local return 16
+ 16[016] - load local 2
+ 17[020] - load literal hest
+ 19[006] - store outer S1
+ 21[002] - pop, load local S2
+ 23[095] - non-local branch {leak-return-vs-break:23}
+ 29[091] - return S1 1
+
+leak-continue-label-vs-break tests/type_propagation/non-local-branch-test.toit
+  0[026] - load smi 42
+  2[029] - load method [block] in leak-continue-label-vs-break tests/type_propagation/non-local-branch-test.toit
+  7[038] - load block 0
+  9[053] - invoke static invoke-outer tests/type_propagation/non-local-branch-test.toit // [[block]] -> {Null_}
+ 12[041] - pop 1
+ 13[002] - pop, load local S0
+ 15[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{float|SmallInteger_}] -> {float|SmallInteger_}
+ 18[092] - return null S2 0
+ 21[085] - branch back T2
+ 26[092] - return null S1 0
+
+[block] in leak-continue-label-vs-break tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[029] - load method [block] in [block] in leak-continue-label-vs-break tests/type_propagation/non-local-branch-test.toit
+  5[097] - link try 0
+  7[038] - load block 4
+  9[055] - invoke block S1 // [[block]] -> {}
+ 11[041] - pop 1
+ 12[098] - unlink try 0
+ 14[099] - unwind
+ 15[041] - pop 1
+ 16[022] - load null
+ 17[091] - return S1 1
+
+[block] in [block] in leak-continue-label-vs-break tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[053] - invoke static pick tests/type_propagation/non-local-branch-test.toit // {True|False}
+  3[083] - branch if false T23
+  6[016] - load local 2
+  7[005] - load outer S3 // [block]
+  9[020] - load literal hest
+ 11[006] - store outer S1
+ 13[002] - pop, load local S2
+ 15[005] - load outer S3 // [block]
+ 17[095] - non-local branch {leak-continue-label-vs-break:26}
+ 23[016] - load local 2
+ 24[005] - load outer S3 // [block]
+ 26[020] - load literal 3.3
+ 28[006] - store outer S1
+ 30[041] - pop 1
+ 31[022] - load null
+ 32[017] - load local 3
+ 33[093] - non-local return 1
+ 35[091] - return S1 1
+
+leak-nested-trys tests/type_propagation/non-local-branch-test.toit
+  0[026] - load smi 42
+  2[029] - load method [block] in leak-nested-trys tests/type_propagation/non-local-branch-test.toit
+  7[097] - link try 0
+  9[038] - load block 4
+ 11[055] - invoke block S1 // [[block]] -> {}
+ 13[041] - pop 1
+ 14[098] - unlink try 0
+ 16[099] - unwind
+ 17[041] - pop 1
+ 18[085] - branch back T2
+ 23[014] - load local 0
+ 24[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{String_}] -> {String_}
+ 27[092] - return null S2 0
+
+[block] in leak-nested-trys tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[029] - load method [block] in [block] in leak-nested-trys tests/type_propagation/non-local-branch-test.toit
+  5[097] - link try 0
+  7[038] - load block 4
+  9[055] - invoke block S1 // [[block]] -> {}
+ 11[041] - pop 1
+ 12[098] - unlink try 0
+ 14[099] - unwind
+ 15[041] - pop 1
+ 16[022] - load null
+ 17[091] - return S1 1
+
+[block] in [block] in leak-nested-trys tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[053] - invoke static pick tests/type_propagation/non-local-branch-test.toit // {True|False}
+  3[083] - branch if false T23
+  6[016] - load local 2
+  7[005] - load outer S3 // [block]
+  9[020] - load literal 3.3
+ 11[006] - store outer S1
+ 13[002] - pop, load local S2
+ 15[005] - load outer S3 // [block]
+ 17[095] - non-local branch {leak-nested-trys:18}
+ 23[016] - load local 2
+ 24[005] - load outer S3 // [block]
+ 26[020] - load literal hest
+ 28[006] - store outer S1
+ 30[002] - pop, load local S2
+ 32[005] - load outer S3 // [block]
+ 34[095] - non-local branch {leak-nested-trys:23}
+ 40[091] - return S1 1
+
+leak-callee-try tests/type_propagation/non-local-branch-test.toit
+  0[026] - load smi 42
+  2[029] - load method [block] in leak-callee-try tests/type_propagation/non-local-branch-test.toit
+  7[038] - load block 0
+  9[053] - invoke static invoke-try tests/type_propagation/non-local-branch-test.toit // [[block]] -> {}
+ 12[040] - pop 2
+ 14[085] - branch back T2
+ 19[014] - load local 0
+ 20[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{String_}] -> {String_}
+ 23[092] - return null S2 0
+
+[block] in leak-callee-try tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[020] - load literal hest
+  3[006] - store outer S1
+  5[002] - pop, load local S2
+  7[095] - non-local branch {leak-callee-try:19}
+ 13[091] - return S1 1
+
+leak-callee-try-branches tests/type_propagation/non-local-branch-test.toit
+  0[026] - load smi 42
+  2[029] - load method [block] in leak-callee-try-branches tests/type_propagation/non-local-branch-test.toit
+  7[038] - load block 0
+  9[053] - invoke static invoke-try tests/type_propagation/non-local-branch-test.toit // [[block]] -> {}
+ 12[040] - pop 2
+ 14[085] - branch back T2
+ 19[014] - load local 0
+ 20[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{String_}] -> {String_}
+ 23[092] - return null S2 0
+
+[block] in leak-callee-try-branches tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[053] - invoke static pick tests/type_propagation/non-local-branch-test.toit // {True|False}
+  3[083] - branch if false T19
+  6[016] - load local 2
+  7[020] - load literal 3.3
+  9[006] - store outer S1
+ 11[002] - pop, load local S2
+ 13[095] - non-local branch {leak-callee-try-branches:14}
+ 19[016] - load local 2
+ 20[020] - load literal hest
+ 22[006] - store outer S1
+ 24[002] - pop, load local S2
+ 26[095] - non-local branch {leak-callee-try-branches:19}
+ 32[091] - return S1 1
+
+callee-finally-calls-block tests/type_propagation/non-local-branch-test.toit
+  0[026] - load smi 42
+  2[029] - load method [block] in callee-finally-calls-block tests/type_propagation/non-local-branch-test.toit
+  7[029] - load method [block] in callee-finally-calls-block tests/type_propagation/non-local-branch-test.toit
+ 12[038] - load block 1
+ 14[038] - load block 1
+ 16[053] - invoke static invoke-try-both tests/type_propagation/non-local-branch-test.toit // [[block], [block]] -> {}
+ 19[040] - pop 3
+ 21[085] - branch back T2
+ 26[014] - load local 0
+ 27[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{String_|SmallInteger_}] -> {String_|SmallInteger_}
+ 30[092] - return null S2 0
+
+[block] in callee-finally-calls-block tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[095] - non-local branch {callee-finally-calls-block:26}
+  7[091] - return S1 1
+
+[block] in callee-finally-calls-block tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[020] - load literal hest
+  3[006] - store outer S2
+  5[091] - return S1 1
+
+no-try-control tests/type_propagation/non-local-branch-test.toit
+  0[026] - load smi 42
+  2[029] - load method [block] in no-try-control tests/type_propagation/non-local-branch-test.toit
+  7[038] - load block 0
+  9[053] - invoke static invoke tests/type_propagation/non-local-branch-test.toit // [[block]] -> {}
+ 12[040] - pop 2
+ 14[085] - branch back T2
+ 19[014] - load local 0
+ 20[053] - invoke static id tests/type_propagation/non-local-branch-test.toit // [{String_}] -> {String_}
+ 23[092] - return null S2 0
+
+[block] in no-try-control tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[053] - invoke static pick tests/type_propagation/non-local-branch-test.toit // {True|False}
+  3[083] - branch if false T19
+  6[016] - load local 2
+  7[020] - load literal 3.3
+  9[006] - store outer S1
+ 11[002] - pop, load local S2
+ 13[095] - non-local branch {no-try-control:14}
+ 19[016] - load local 2
+ 20[020] - load literal hest
+ 22[006] - store outer S1
+ 24[002] - pop, load local S2
+ 26[095] - non-local branch {no-try-control:19}
+ 32[091] - return S1 1
+
 id tests/type_propagation/non-local-branch-test.toit
- - argument 0: {*}
+ - argument 0: {String_|float|SmallInteger_}
   0[016] - load local 2
   1[091] - return S1 1
 
@@ -116,3 +757,49 @@ invoke tests/type_propagation/non-local-branch-test.toit
   0[016] - load local 2
   1[055] - invoke block S1 // [[block]] -> {Null_}
   3[092] - return null S1 1
+
+invoke-outer tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[055] - invoke block S1 // [[block]] -> {Null_}
+  3[092] - return null S1 1
+
+invoke-try tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[029] - load method [block] in invoke-try tests/type_propagation/non-local-branch-test.toit
+  5[097] - link try 0
+  7[038] - load block 4
+  9[055] - invoke block S1 // [[block]] -> {}
+ 11[041] - pop 1
+ 12[098] - unlink try 0
+ 14[099] - unwind
+ 15[092] - return null S1 1
+
+[block] in invoke-try tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[005] - load outer S3 // [block]
+  3[055] - invoke block S1 // [[block]] -> {}
+  5[091] - return S1 1
+
+invoke-try-both tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+ - argument 1: [block]
+  0[029] - load method [block] in invoke-try-both tests/type_propagation/non-local-branch-test.toit
+  5[097] - link try 0
+  7[038] - load block 4
+  9[055] - invoke block S1 // [[block]] -> {}
+ 11[041] - pop 1
+ 12[098] - unlink try 0
+ 14[000] - load local S6
+ 16[055] - invoke block S1 // [[block]] -> {String_}
+ 18[041] - pop 1
+ 19[099] - unwind
+ 20[092] - return null S1 2
+
+[block] in invoke-try-both tests/type_propagation/non-local-branch-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[005] - load outer S4 // [block]
+  3[055] - invoke block S1 // [[block]] -> {}
+  5[091] - return S1 1

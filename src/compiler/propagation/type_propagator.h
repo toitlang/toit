@@ -43,6 +43,35 @@ class MethodTemplate;
 class BlockTemplate;
 class TypeDatabase;
 
+// Where a non-local branch or return is headed while it is unwinding.
+// It corresponds to the information the interpreter stores in the link
+// information on the stack before running the finally code.
+struct UnwindTarget {
+  // Non-local return from the block or method at the level of the block.
+  explicit UnwindTarget(BlockTemplate* block)
+      : block(block), bcp(null), height_diff(0) {}
+  // Non-local branch to the given bcp at the level of the block.
+  UnwindTarget(BlockTemplate* block, uint8* bcp, int height_diff)
+      : block(block), bcp(bcp), height_diff(height_diff) {}
+
+  bool operator==(const UnwindTarget& other) const {
+    return block == other.block && bcp == other.bcp && height_diff == other.height_diff;
+  }
+
+  BlockTemplate* block;
+  uint8* bcp;
+  int height_diff;
+};
+
+// The finally code of a try-block that runs on the way to a target.
+struct Unwinding {
+  Unwinding(const UnwindTarget& target, BlockTemplate* try_block)
+      : target(target), try_block(try_block) {}
+
+  const UnwindTarget target;
+  BlockTemplate* const try_block;
+};
+
 class TypePropagator {
  public:
   TypePropagator(
@@ -59,6 +88,10 @@ class TypePropagator {
   void call_static(MethodTemplate* caller, TypeScope* scope, uint8* site, Method target, std::vector<Worklist*>& worklists);
   void call_virtual(MethodTemplate* caller, TypeScope* scope, uint8* site, int arity, word offset, std::vector<Worklist*>& worklists);
   void call_block(TypeScope* scope, uint8* site, int arity, bool linked, bool own, std::vector<Worklist*>& worklists);
+
+  // Continue a non-local branch or return from the given scope. It
+  // either reaches the target or stops at the innermost try-block.
+  void unwind(TypeScope* scope, const UnwindTarget& target, std::vector<Worklist*>& worklists);
 
   void load_block(MethodTemplate* loader, TypeScope* scope, Method method);
   void load_lambda(TypeScope* scope, Method method);
@@ -198,6 +231,7 @@ class BlockTemplate {
       delete arguments_[i];
     }
     free(arguments_);
+    for (Unwinding* unwinding : unwindings_) delete unwinding;
     delete next_;
   }
 
@@ -210,6 +244,7 @@ class BlockTemplate {
   int arity() const { return method_.arity(); }
   TypeVariable* argument(int index) { return arguments_[index]; }
   bool is_invoked_from_try_block() const { return is_invoked_from_try_block_; }
+  bool is_invoked_from_finally() const { return is_invoked_from_finally_; }
   bool is_analyzing() const { return is_analyzing_; }
 
   bool matches(Method target, int level, MethodTemplate* user) const;
@@ -217,12 +252,22 @@ class BlockTemplate {
 
   TypeSet invoke(TypePropagator* propagator, TypeScope* scope, uint8* site);
   void mark_invoked_from_try_block();
+  void mark_invoked_from_finally();
 
   void ret(TypePropagator* propagator, TypeStack* stack) {
     TypeSet top = stack->local(0);
     result_.merge(propagator, top);
     stack->pop();
   }
+
+  const std::vector<UnwindTarget>& unwind_targets() const { return unwind_targets_; }
+  void add_unwind_target(const UnwindTarget& target);
+
+  // For blocks linked in as try-blocks: The finally code that
+  // follows the try-block and the unwindings that pass through it.
+  uint8* finally_bcp() const { return finally_bcp_; }
+  void set_finally_bcp(uint8* bcp) { finally_bcp_ = bcp; }
+  Unwinding* unwinding(const UnwindTarget& target);
 
   bool propagate(TypeScope* scope, std::vector<Worklist*>& worklists, bool linked);
 
@@ -243,11 +288,20 @@ class BlockTemplate {
 
   bool is_invoked_ = false;
   bool is_invoked_from_try_block_ = false;
+  bool is_invoked_from_finally_ = false;
   bool is_analyzing_ = false;
 
   // All users of this block are various invocations of the same method.
   // These are the surrounding methods that load the block.
   Set<MethodTemplate*> users_;
+
+  // The non-local branches and returns that continue from the code
+  // that follows this block when it is done, because they cannot be
+  // analyzed separately. There are only ever a few of these.
+  std::vector<UnwindTarget> unwind_targets_;
+
+  uint8* finally_bcp_ = null;
+  std::vector<Unwinding*> unwindings_;
 
   // TODO(kasper): We temporarily keep a pointer to one of the
   // users around. It doesn't matter which one, because we're only

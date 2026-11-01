@@ -40,11 +40,28 @@ class Worklist {
   TypeScope* add(uint8* bcp, TypeScope* scope, bool split);
 
  private:
+  // Code that runs while we're unwinding towards a specific target
+  // is analyzed separately from the same code reached in other ways,
+  // so the types only flow to the targets they can reach.
+  struct Key {
+    uint8* bcp;
+    Unwinding* unwinding;
+    bool operator==(const Key& other) const {
+      return bcp == other.bcp && unwinding == other.unwinding;
+    }
+  };
+
+  struct KeyHash {
+    size_t operator()(const Key& key) const {
+      return reinterpret_cast<size_t>(key.bcp) ^ (reinterpret_cast<size_t>(key.unwinding) >> 3);
+    }
+  };
+
   // If this worklist is for a block, contains the value of it. Null otherwise.
   BlockTemplate* const block_;
 
-  std::vector<uint8*> unprocessed_;
-  std::unordered_map<uint8*, TypeScope*> scopes_;
+  std::vector<Key> unprocessed_;
+  std::unordered_map<Key, TypeScope*, KeyHash> scopes_;
 };
 
 } // namespace toit::compiler

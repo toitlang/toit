@@ -460,6 +460,7 @@ void TypePropagator::propagate_blocks(MethodTemplate* caller,
     if (!type.is_block()) continue;
     BlockTemplate* block = type.block();
     if (scope->is_in_try_block()) block->mark_invoked_from_try_block();
+    if (scope->is_in_finally()) block->mark_invoked_from_finally();
     count++;
   }
 
@@ -478,6 +479,16 @@ void TypePropagator::propagate_blocks(MethodTemplate* caller,
     if (own) blocks.insert(block);
   }
 
+  // If finally code in the callee can call one of the blocks, it can
+  // do so while the others are unwinding, so they share the marking.
+  bool invoked_from_finally = false;
+  for (BlockTemplate* block : blocks) {
+    invoked_from_finally = invoked_from_finally || block->is_invoked_from_finally();
+  }
+  if (invoked_from_finally) {
+    for (BlockTemplate* block : blocks) block->mark_invoked_from_finally();
+  }
+
   bool changed = !blocks.empty();
   while (changed) {
     changed = false;
@@ -485,6 +496,91 @@ void TypePropagator::propagate_blocks(MethodTemplate* caller,
       changed = block->propagate(scope, worklists, block->is_invoked_from_try_block()) || changed;
     }
   }
+
+  // Anything unwinding out of the blocks that can run finally code
+  // that calls them continues here, because the types in the scope
+  // reflect everything the blocks can do.
+  for (BlockTemplate* block : blocks) {
+    for (const UnwindTarget& target : block->unwind_targets()) {
+      unwind(scope, target, worklists);
+    }
+  }
+}
+
+void TypePropagator::unwind(TypeScope* scope,
+                            const UnwindTarget& target,
+                            std::vector<Worklist*>& worklists) {
+  int target_level = target.block->level();
+  int level_linked = scope->level_linked();
+  while (target_level <= level_linked) {
+    // We have to get past a try-block to reach the target.
+    TypeScope* outer = scope;
+    while (outer->level() != level_linked) outer = outer->outer();
+    BlockTemplate* linked = scope->at(level_linked + 1)->get(0).block();
+    uint8* finally_bcp = linked->finally_bcp();
+    if (finally_bcp && !outer->is_in_finally()) {
+      // Like the interpreter, we continue as if the try-block had returned
+      // and let the 'unwind' bytecode pick up where we left off. The finally
+      // code is analyzed for this target only, using the types we have here.
+      // We don't do this for try-blocks nested in finally code, because the
+      // cost of analyzing the nested code repeatedly multiplies quickly.
+      TypeScope* finally_scope = scope->copy_lazy(outer);
+      finally_scope->set_unwinding(linked->unwinding(target));
+      TypeStack* top = finally_scope->top();
+      top->pop();  // Pop try-block.
+      top->push_smi(program());  // The result is dropped right away.
+      finally_scope->own_stacks();
+      TypeScope* superfluous =
+          worklists[level_linked]->add(finally_bcp, finally_scope, false);
+      delete superfluous;
+      return;
+    }
+    // The code that follows the block must see our types. It is either
+    // shared finally code or the code after a call to a method with a
+    // try-block, where the finally code can stop us by returning.
+    outer->merge(scope, TypeScope::MERGE_OUTER);
+    if (finally_bcp || linked->is_invoked_from_finally()) {
+      // We continue after that code, or after the blocks have
+      // settled if the finally code in the method can call them.
+      linked->add_unwind_target(target);
+      return;
+    }
+    // The finally code cannot touch our locals. Keep going.
+    level_linked = outer->level_linked();
+  }
+
+  if (!target.bcp) {
+    // Non-local return. We're leaving the block at the target level,
+    // so the code that continues after the call to it must see any
+    // changes we have made to the locals outside that block.
+    if (target_level == 0) return;
+    TypeScope* outer = scope;
+    while (outer->level() >= target_level) outer = outer->outer();
+    outer->merge(scope, TypeScope::MERGE_OUTER);
+    return;
+  }
+
+  // Non-local branch. Find the right outer scope. The outer scope
+  // knows if it is linked and it knows its own outer scope, so it has
+  // the information necessary to continue analysis in the outer
+  // method or block.
+  TypeScope* outer = scope;
+  while (outer->level() != target_level) outer = outer->outer();
+  // Copy the scope using the computed outer scope as the target
+  // and drop the top stack slots as indicated by the height
+  // difference encoded in the bytecode.
+  TypeScope* target_scope = scope->copy_lazy(outer);
+  TypeStack* target_top = target_scope->top();
+  int delta = target_top->sp() - target.block->sp();
+  for (int i = 0; i < target.height_diff + delta; i++) target_top->pop();
+  target_scope->own_stacks();
+  // Add the copied scope to the correct outer worklist. If we
+  // already have a scope registered for the branch target, we
+  // will merge into it and end up with a superfluous scope.
+  // Otherwise, we will get null back.
+  TypeScope* superfluous =
+      worklists[target_level]->add(target.bcp, target_scope, false);
+  delete superfluous;
 }
 
 void TypePropagator::call_static(MethodTemplate* caller,
@@ -629,7 +725,7 @@ void TypePropagator::call_block(TypeScope* scope,
     // TODO(kasper): No need to merge it back here. We just want to continue with
     // the current scope. We'll probably need to return the scope from call_block
     // to make that happen - or overwrite in the passed in scope.
-    block->propagate(scope, worklists, linked || block->is_invoked_from_try_block());
+    block->propagate(scope, worklists, linked);
   }
 
   // Drop the arguments from the stack.
@@ -1169,6 +1265,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     TypeSet receiver = stack->local(index - 1);
     BlockTemplate* block = receiver.block();
     bool own = block->origin()->method().header_bcp() == method->method().header_bcp();
+    if (linked) block->set_finally_bcp(bcp + INVOKE_BLOCK_LENGTH);
     propagator->call_block(scope, bcp, index, linked, own, worklists);
     if (stack->top_is_empty()) {
       if (!linked) return scope;
@@ -1412,7 +1509,8 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_BEGIN(NON_LOCAL_RETURN);
     // For 'continue.label' the pushed block is the block from which the
     // non-local return should return.
-    int level = stack->local(0).block()->level();
+    BlockTemplate* target = stack->local(0).block();
+    int level = target->level();
     stack->pop();  // Pop block.
     if (level == 0) {
       method->ret(propagator, stack);
@@ -1423,12 +1521,13 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
       BlockTemplate* block = worklists[level]->block();
       block->ret(propagator, stack);
     }
-    scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
+    propagator->unwind(scope, UnwindTarget(target), worklists);
     return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(NON_LOCAL_RETURN_WIDE);
-    int level = stack->local(0).block()->level();
+    BlockTemplate* target = stack->local(0).block();
+    int level = target->level();
     stack->pop();  // Pop block.
     if (level == 0) {
       method->ret(propagator, stack);
@@ -1436,51 +1535,16 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
       BlockTemplate* block = worklists[level]->block();
       block->ret(propagator, stack);
     }
-    scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
+    propagator->unwind(scope, UnwindTarget(target), worklists);
     return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(NON_LOCAL_BRANCH);
-    TypeSet block = stack->local(0);
-    int target_level = block.block()->level();
-    bool crosses_try = target_level <= scope->level_linked();
-    if (crosses_try) {
-      // If the non-local branch crosses a try-block, we merge
-      // our current types to the scope containing the try, so
-      // the finally block gets analyzed with the right types.
-      scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
-    }
-    // Decode the branch target and enqueue the processing work
-    // in the worklist associated with the target scope.
     B_ARG1(height_diff);
     uint32 target_bci = Utils::read_unaligned_uint32(bcp + 2);
     uint8* target_bcp = program->bcp_from_absolute_bci(target_bci);
-    // Find the right outer scope. The outer scope knows if it
-    // is linked and it knows its own outer scope, so it has
-    // the information necessary to continue analysis in the
-    // outer method or block.
-    TypeScope* outer = scope;
-    while (outer->level() != target_level) outer = outer->outer();
-    // Copy the scope using the computed outer scope as the target
-    // and drop the top stack slots as indicated by the height
-    // difference encoded in the bytecode.
-    TypeScope* target_scope = scope->copy_lazy(outer);
-    TypeStack* target_top = target_scope->top();
-    int delta = target_top->sp() - block.block()->sp();
-    for (int i = 0; i < height_diff + delta; i++) target_top->pop();
-    // TODO(kasper): There may be finally blocks that get executed
-    // as part of unwinding to the non-local branch target. For now,
-    // we don't know what those blocks might do to locals, so we
-    // have to play it safe and grow the types of all possibly
-    // affected locals to the 'any' type.
-    if (crosses_try) target_scope->merge_any_locals(program);
-    // Add the copied scope to the correct outer worklist. If we
-    // already have a scope registered for the branch target, we
-    // will merge into it and end up with a superfluous scope.
-    // Otherwise, we will get null back.
-    TypeScope* superfluous =
-        worklists[target_level]->add(target_bcp, target_scope, false);
-    delete superfluous;
+    BlockTemplate* target = stack->local(0).block();
+    propagator->unwind(scope, UnwindTarget(target, target_bcp, height_diff), worklists);
     // We're done. Return the scope, so we can deallocate it.
     return scope;
   OPCODE_END();
@@ -1505,6 +1569,12 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 
   OPCODE_BEGIN(LINK);
+    // Linking a try-block again means that a branch out of its
+    // finally code has put an end to the unwinding through it.
+    Unwinding* unwinding = scope->unwinding();
+    if (unwinding && unwinding->try_block == stack->local(0).block()) {
+      scope->set_unwinding(null);
+    }
     stack->push_instance(Smi::value(program->exception_class_id()));
     stack->push_empty();       // Unwind target.
     stack->push_smi(program);  // Unwind reason. Looked at by finally blocks with parameters.
@@ -1520,13 +1590,27 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_BEGIN(UNLINK);
     stack->pop();
     linked = false;
+    scope->enter_finally();
   OPCODE_END();
 
   OPCODE_BEGIN(UNWIND);
+    // If we're unwinding towards a specific target, we continue
+    // going there. The try-block is just below the link information.
+    scope->leave_finally();
+    BlockTemplate* try_block = stack->local(3).block();
+    Unwinding* unwinding = scope->unwinding();
+    if (unwinding && unwinding->try_block == try_block) {
+      scope->set_unwinding(null);
+      propagator->unwind(scope, unwinding->target, worklists);
+      return scope;
+    }
     // Here we continue unwinding if an exception was thrown, so
     // we must make this as a potential throw site to make sure
     // any modifications to outer locals are merged back.
     scope->throw_maybe();
+    for (const UnwindTarget& target : try_block->unwind_targets()) {
+      propagator->unwind(scope, target, worklists);
+    }
     // If the try-block is guaranteed to cause unwinding,
     // we avoid analyzing the bytecodes following this one.
     TypeSet target = stack->local(1);
@@ -1722,7 +1806,26 @@ TypeSet BlockTemplate::invoke(TypePropagator* propagator, TypeScope* scope, uint
   if (scope->is_in_try_block()) {
     mark_invoked_from_try_block();
   }
+  if (scope->is_in_finally()) {
+    mark_invoked_from_finally();
+  }
   return result_.use(propagator, scope->method(), site);
+}
+
+void BlockTemplate::add_unwind_target(const UnwindTarget& target) {
+  for (const UnwindTarget& existing : unwind_targets_) {
+    if (existing == target) return;
+  }
+  unwind_targets_.push_back(target);
+}
+
+Unwinding* BlockTemplate::unwinding(const UnwindTarget& target) {
+  for (Unwinding* existing : unwindings_) {
+    if (existing->target == target) return existing;
+  }
+  Unwinding* result = new Unwinding(target, this);
+  unwindings_.push_back(result);
+  return result;
 }
 
 void BlockTemplate::mark_invoked_from_try_block() {
@@ -1739,6 +1842,19 @@ void BlockTemplate::mark_invoked_from_try_block() {
   // method, so we can track stores to outer locals that
   // may be visible because of caught exceptions or
   // stopped unwinding.
+  for (auto it : users_) {
+    it->propagator()->enqueue(it);
+  }
+}
+
+void BlockTemplate::mark_invoked_from_finally() {
+  if (is_invoked_from_finally_) return;
+  is_invoked_from_finally_ = true;
+  if (!is_invoked_) return;
+
+  // The surrounding method must take into account that the block
+  // can run while something else is unwinding through the finally
+  // code, so we have to analyze it again.
   for (auto it : users_) {
     it->propagator()->enqueue(it);
   }
