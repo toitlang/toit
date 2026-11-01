@@ -1,0 +1,168 @@
+# Zero-Clause BSD License
+
+# Copyright (C) 2026 Toit contributors.
+
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted.
+
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+# REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+# FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+# INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+# LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+
+# Called separately for each platform, so its test shards can start as soon as
+# that platform's build finishes.
+name: Host build
+
+on:
+  workflow_call:
+    inputs:
+      container:
+        required: true
+        type: string
+    outputs:
+      toit-version:
+        description: The version embedded in this build.
+        value: ${{ jobs.compile.outputs.toit-version }}
+
+env:
+  TOIT_VERSION: ${{ github.event.inputs.do-release || github.event.release.tag_name || '' }}
+  DO_RELEASE: ${{ github.event_name == 'release' || startsWith(github.event.inputs.do-release, 'v') }}
+  DO_MORE_TESTS: ${{ github.event_name == 'schedule' || github.event.inputs.tests == 'more' }}
+  DO_TESTS: ${{ github.event.inputs.tests != 'none' }}
+
+jobs:
+  compile:
+    runs-on: ${{ inputs.container }}
+    outputs:
+      toit-version: ${{ steps.version.outputs.toit_version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set version
+        id: version
+        shell: bash
+        run: |
+          if [ -z "$TOIT_VERSION" ]; then
+            TOIT_VERSION=$(cmake -DPRINT_VERSION=1 -P tools/gitversion.cmake)
+          fi
+          echo "toit_version=$TOIT_VERSION" >> $GITHUB_OUTPUT
+          echo "TOIT_GIT_VERSION=$TOIT_VERSION" >> $GITHUB_ENV
+
+      - name: Setup build environment
+        uses: ./actions/setup-build
+        with:
+          toit-dir: .
+
+      - name: Check host build transfer
+        shell: bash
+        run: python tools/ci/host-build-archive-test.py
+
+      # Floor the macOS deployment target so CI-produced binaries run on
+      # Monterey. Exported via GITHUB_ENV so it's visible to CMake's toolchain
+      # detection and the linker.
+      - name: Set macOS deployment target
+        if: runner.os == 'macOS'
+        run: echo "MACOSX_DEPLOYMENT_TARGET=12.0" >> $GITHUB_ENV
+
+      - name: Enable link-time optimizations
+        if: env.DO_RELEASE == 'true'
+        run: |
+          make enable-lto
+
+      # Build using make.
+      - name: Build sdk
+        shell: bash
+        # Note that the TOIT_GIT_VERSION is set. The make step will thus not
+        # compute the version from git.
+        run: |
+          make sdk
+
+      - name: Ccache stats
+        run: ccache -s
+
+      - name: Build test SDKs - Linux only
+        if: env.DO_MORE_TESTS == 'true' && runner.os == 'Linux'
+        run: |
+          make HOST=host32 BUILD_TYPE=Debug sdk
+          make HOST=host-ctp TOOLCHAIN=host TOIT_CHECK_PROPAGATED_TYPES=1 sdk
+
+      - name: Build test SDKs
+        shell: bash
+        if: env.DO_MORE_TESTS == 'true'
+        run: |
+          make BUILD=build-debug BUILD_TYPE=Debug sdk
+          # It's wasteful to rebuild the SDK just to change the optimization level and assert, but
+          # it's the easiest way to make sure all tests are run in that configuration.
+          TOIT_OPTIMIZATION_OVERRIDE=0 TOIT_ASSERT_OVERRIDE=0 make HOST=host-O0 TOOLCHAIN=host sdk
+          TOIT_OPTIMIZATION_OVERRIDE=2 TOIT_ASSERT_OVERRIDE=1 make HOST=host-O2 TOOLCHAIN=host sdk
+          make HOST=host-lto TOOLCHAIN=host enable-lto
+          make HOST=host-lto TOOLCHAIN=host sdk
+
+      - name: Ccache stats
+        run: ccache -s
+
+      # Include native test helpers and generated test assets in the shared
+      # build, so the shards can use the existing Ninja check targets.
+      - name: Build test assets
+        if: env.DO_TESTS == 'true'
+        shell: bash
+        run: make build-test-assets
+
+      - name: Build additional test assets - Linux
+        if: env.DO_MORE_TESTS == 'true' && runner.os == 'Linux'
+        shell: bash
+        run: |
+          make HOST=host32 BUILD_TYPE=Debug build-test-assets
+          make HOST=host-ctp TOOLCHAIN=host TOIT_CHECK_PROPAGATED_TYPES=1 build-test-assets
+
+      - name: Build additional test assets
+        if: env.DO_MORE_TESTS == 'true' && runner.os != 'Windows'
+        shell: bash
+        run: |
+          make BUILD=build-debug BUILD_TYPE=Debug build-test-assets
+          TOIT_OPTIMIZATION_OVERRIDE=0 TOIT_ASSERT_OVERRIDE=0 make HOST=host-O0 TOOLCHAIN=host build-test-assets
+          TOIT_OPTIMIZATION_OVERRIDE=2 TOIT_ASSERT_OVERRIDE=1 make HOST=host-O2 TOOLCHAIN=host build-test-assets
+          make HOST=host-lto TOOLCHAIN=host build-test-assets
+
+      - name: Create ccache debug file
+        if: runner.os == 'Linux'
+        # Create the preprocessed file for the primitive_events.cc file.
+        # This file was chose arbitrarily.
+        run: |
+          mkdir ccache-debug
+          cd build/host
+          /usr/bin/c++ -fdebug-prefix-map=/home/runner/work/toit/toit=. -Wall -ffunction-sections -fdata-sections -fno-exceptions -Os -fno-rtti -std=gnu++11 -fdiagnostics-color=always -I../../include -I../../third_party/esp-idf/components/mbedtls/mbedtls/include -DMBEDTLS_SSL_IN_CONTENT_LEN=7800 -DMBEDTLS_SSL_OUT_CONTENT_LEN=3700 -DMBEDTLS_PLATFORM_MEMORY=1 -DMBEDTLS_X509_TRUSTED_CERTIFICATE_CALLBACK=1 -DTOIT_DEPLOY -MD -MT src/CMakeFiles/toit_core.dir/primitive_events.cc.o -MF src/CMakeFiles/toit_core.dir/primitive_events.cc.o.d -E ../../src/primitive_events.cc > ../../ccache-debug/primitive_events.cc.i
+
+      - name: Upload ccache debug file
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          path: ccache-debug
+          name: ccache-debug
+
+      - name: Strip executables - Linux
+        if: (runner.os == 'Linux' && env.DO_RELEASE == 'true')
+        run: |
+          strip -s build/host/sdk/bin/*
+
+      - name: Pack shared host build
+        shell: bash
+        run: python tools/ci/host-build-archive.py pack "$RUNNER_TEMP/host-build.tar.gz"
+
+      - name: Upload shared host build
+        uses: actions/upload-artifact@v7
+        with:
+          name: host-build-${{ inputs.container }}
+          path: ${{ runner.temp }}/host-build.tar.gz
+          compression-level: 0
+          retention-days: 5
+          # A rerun of the build job replaces its artifact. Rerunning only a
+          # failed shard reuses the original build from the same workflow run.
+          # After artifact expiry, rerun the build job as well.
+          overwrite: true
