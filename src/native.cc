@@ -135,6 +135,9 @@ bool NativeRuntime::run(Interpreter* interpreter, Interpreter::Result* result) {
 void NativeRuntime::stack_overflow(NATIVE_PARAMS) {
   Interpreter* interpreter = c->interpreter;
   Method target(c->program->bytecodes, y);
+  // The generated code doesn't pass the address, because there is
+  // a check in every method and the failures are rare.
+  x = reinterpret_cast<void*>(find_entry(c->native, c->program->absolute_bci_from_bcp(target.entry())));
   Interpreter::OverflowState state;
   sp = interpreter->handle_stack_overflow(sp, &state, target);
   switch (state) {
@@ -152,6 +155,17 @@ void NativeRuntime::stack_overflow(NATIVE_PARAMS) {
       break;
   }
   NATIVE_TAIL throw_exception(sp, c, null, 0);
+}
+
+void NativeRuntime::block_failure(NATIVE_PARAMS) {
+  // The generated code has the method id and the number of arguments in y.
+  Method method(c->program->bytecodes, y >> 8);
+  word arguments = y & 0xff;
+  PUSH(c->true_object);
+  PUSH(Smi::from(method.arity()));
+  PUSH(Smi::from(arguments));
+  PUSH(Smi::from(c->program->absolute_bci_from_bcp(method.entry())));
+  NATIVE_TAIL code_failure(sp, c, x, y);
 }
 
 void NativeRuntime::preempt(NATIVE_PARAMS) {
