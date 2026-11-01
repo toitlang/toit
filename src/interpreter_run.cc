@@ -301,6 +301,11 @@ Interpreter::Result Interpreter::run() {
   // the interpretation.
   process_->object_heap()->leave_primitive();
 
+  if (native_runner_ != null) {
+    Result result(Result::PREEMPTED);
+    if (native_runner_(this, &result)) return result;
+  }
+
   // Interpretation state.
   Program* program = process_->program();
 #ifdef TOIT_CHECK_PROPAGATED_TYPES

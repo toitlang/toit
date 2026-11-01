@@ -25,6 +25,14 @@
 namespace toit {
 namespace compiler {
 
+std::vector<int> SourceMapper::methods() const {
+  std::vector<int> result;
+  for (auto& it : source_information_) {
+    if (it.id >= 0) result.push_back(it.id);
+  }
+  return result;
+}
+
 class SourceInfoCollector;
 
 // String table for canonicalize strings.

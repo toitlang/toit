@@ -29,6 +29,7 @@
 #include <fcntl.h>
 
 #include "compiler.h"
+#include "native_generator.h"
 #include "diagnostic.h"
 #include "definite.h"
 #include "dep_writer.h"
@@ -2460,6 +2461,13 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
     TypeDatabase* types = TypeDatabase::compute(program, &method_selector_offsets);
     auto json = types->as_json();
     printf("%s", json.c_str());
+    delete types;
+  }
+
+  if (Flags::native) {
+    TypeDatabase* types = TypeDatabase::compute(program, &method_selector_offsets);
+    auto code = generate_native_code(program, types, source_mapper->methods());
+    fwrite(code.c_str(), 1, code.size(), stdout);
     delete types;
   }
 

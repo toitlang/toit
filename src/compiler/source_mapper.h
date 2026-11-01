@@ -113,6 +113,9 @@ class SourceMapper {
   }
 
   void add_class_entry(int id, ir::Class* klass);
+
+  // The ids of all methods.
+  std::vector<int> methods() const;
   void add_global_entry(ir::Global* global);
 
   int id_for_class(ir::Class* klass) const {
