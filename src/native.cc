@@ -59,10 +59,27 @@ ProgramImage NativeRuntime::load_image(const NativeProgram* program) {
   auto memory = _new ProtectableAlignedMemory(relocated_size, TOIT_PAGE_SIZE);
   ProgramImage image(memory);
   ImageOutputStream output(image);
-  const word* words = reinterpret_cast<const word*>(program->image);
-  for (int i = 0; i < image_words; i += ImageOutputStream::CHUNK_SIZE) {
-    int size = Utils::min(ImageOutputStream::CHUNK_SIZE, image_words - i);
-    output.write(&words[i], size);
+  const word* stored = reinterpret_cast<const word*>(program->image);
+  word zeros[ImageOutputStream::CHUNK_SIZE] = { 0 };
+  int position = 0;
+  for (int i = 0; i < program->image_range_count; i++) {
+    int skipped = program->image_ranges[i * 2];
+    int read = program->image_ranges[i * 2 + 1];
+    for (int j = 0; j < skipped + read; j++) {
+      int size = Utils::min(ImageOutputStream::CHUNK_SIZE, image_words - position);
+      if (j < skipped) {
+        output.write(zeros, size);
+      } else {
+        output.write(stored, size);
+        stored += size;
+      }
+      position += size;
+    }
+  }
+  while (position < image_words) {
+    int size = Utils::min(ImageOutputStream::CHUNK_SIZE, image_words - position);
+    output.write(zeros, size);
+    position += size;
   }
   memory->mark_read_only();
   return image;

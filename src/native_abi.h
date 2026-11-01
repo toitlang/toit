@@ -105,11 +105,15 @@ struct NativeProgram {
   // The distance from one bci to the next, as LEB128 encoded numbers.
   const uint8_t* return_deltas;
   int return_count;
-  // The program is an image that has to be relocated when it is loaded. The
+  // The program is an image that has to be relocated when it is loaded. Most
+  // of it is padding, so the chunks that are all zeros aren't stored. The ranges
+  // are pairs with the number of chunks to skip and the number to read. The
   // uuid is the id of the program. The bundle only has what stack traces need.
   const uint8_t* uuid;
   const uint8_t* image;
   int image_size;
+  const int32_t* image_ranges;
+  int image_range_count;
   const uint8_t* bundle;
   int bundle_size;
   // Whether this is the system program that the executable boots from.
