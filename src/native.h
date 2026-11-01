@@ -73,6 +73,9 @@ struct NativeProgram {
   word bytecodes_length;
   const NativeEntry* entries;
   int entry_count;
+  // The places calls return to. Used for stack traces.
+  const NativeEntry* returns;
+  int return_count;
 };
 
 struct NativeContext {
@@ -164,6 +167,7 @@ class NativeRuntime {
  private:
   static NativeFn find_entry(const NativeProgram* native, int bci);
   static Object* start_address(Program* program, uint8* bcp);
+  static int return_bci(Program* program, uint8* address);
   static void call(NativeContext* c, Object** sp, void* next, Method target);
 };
 

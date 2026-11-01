@@ -53,6 +53,10 @@ class NativeGenerator {
   std::vector<MethodInfo> methods_;
   std::set<int> method_ids_;
   std::set<int> dead_blocks_;  // Blocks that are only called with too few arguments.
+  // The code following a call can be gone, but we still need something to
+  // use as the return address, because it tells us where the call is.
+  std::set<uint8*> dead_continuations_;
+  std::set<uint8*> return_points_;
   std::set<int> branch_targets_;  // Absolute bcis of non-local branch targets.
   std::stringstream out_;
   uint8* current_end_ = null;
@@ -73,6 +77,7 @@ class NativeGenerator {
   }
   std::string label(uint8* bcp) const {
     // The optimizer can remove the code after calls that don't return.
+    if (dead_continuations_.count(bcp) != 0) return "d" + std::to_string(bci(bcp));
     if (bcp == current_end_) return "NativeRuntime::illegal";
     return "b" + std::to_string(bci(bcp));
   }
@@ -99,8 +104,8 @@ class NativeGenerator {
 
   bool ends_block(uint8* bcp) const;
   bool stays_in_block(uint8* bcp) const;
-  // The code that follows a call. Calls that don't return don't need it.
-  uint8* continuation(uint8* bcp, uint8* next) const;
+  // The code that follows calls that don't return isn't needed.
+  bool is_dead_continuation(uint8* bcp, uint8* next) const;
 
   void find_leaders(MethodInfo* info);
   void emit_declarations();
@@ -257,7 +262,8 @@ bool NativeGenerator::ends_block(uint8* bcp) const {
   return needs_continuation(static_cast<Opcode>(*bcp)) && !stays_in_block(bcp);
 }
 
-uint8* NativeGenerator::continuation(uint8* bcp, uint8* next) const {
+bool NativeGenerator::is_dead_continuation(uint8* bcp, uint8* next) const {
+  if (next >= current_end_) return true;
   switch (static_cast<Opcode>(*bcp)) {
     case INVOKE_STATIC:
     case INVOKE_VIRTUAL:
@@ -266,9 +272,25 @@ uint8* NativeGenerator::continuation(uint8* bcp, uint8* next) const {
     case INVOKE_VIRTUAL_SET:
       // The other calls can have their continuation used for other things,
       // like the code following a try-block that is run when unwinding.
-      return (next < current_end_ && types_->does_not_return(bci(next))) ? current_end_ : next;
+      return types_->does_not_return(bci(next));
     default:
-      return next;
+      return false;
+  }
+}
+
+static bool is_call(Opcode opcode) {
+  if (opcode >= INVOKE_STATIC && opcode <= INVOKE_SIZE) return true;
+  switch (opcode) {
+    case LOAD_GLOBAL_VAR_LAZY:
+    case LOAD_GLOBAL_VAR_LAZY_WIDE:
+    case AS_CLASS:
+    case AS_CLASS_WIDE:
+    case AS_INTERFACE:
+    case AS_INTERFACE_WIDE:
+    case AS_LOCAL:
+      return true;
+    default:
+      return false;
   }
 }
 
@@ -286,12 +308,17 @@ void NativeGenerator::find_leaders(MethodInfo* info) {
     int length = opcode_length[opcode];
     uint8* next = bcp + length;
     if (ends_block(bcp)) {
-      uint8* target = continuation(bcp, next);
-      if (target < info->end) info->leaders.insert(target);
+      if (is_dead_continuation(bcp, next)) {
+        dead_continuations_.insert(next);
+      } else {
+        info->leaders.insert(next);
+      }
+      if (is_call(opcode)) return_points_.insert(next);
     }
     if (opcode == INTRINSIC_SMI_REPEAT || opcode == INTRINSIC_ARRAY_DO) {
       // The blocks return to the intrinsic.
       info->leaders.insert(bcp);
+      return_points_.insert(bcp);
       if (next < info->end) info->leaders.insert(next);
     }
     switch (opcode) {
@@ -314,6 +341,7 @@ void NativeGenerator::find_leaders(MethodInfo* info) {
     }
     bcp = next;
   }
+  for (uint8* leader : info->leaders) dead_continuations_.erase(leader);
 }
 
 void NativeGenerator::emit_declarations() {
@@ -346,6 +374,7 @@ void NativeGenerator::emit_declarations() {
     }
   }
   for (int id : dead_blocks_) out_ << "static void " << block_entry_label(id) << "(NATIVE_PARAMS);\n";
+  for (uint8* bcp : dead_continuations_) out_ << "static void " << label(bcp) << "(NATIVE_PARAMS);\n";
   out_ << "\n";
 }
 
@@ -381,11 +410,24 @@ void NativeGenerator::emit_tables() {
   for (auto& it : entries) out_ << "  { " << it.first << ", " << it.second << " },\n";
   out_ << "};\n\n";
 
+  // The table used for stack traces can be left out to save space.
+  out_ << "#ifdef NATIVE_NO_STACK_TRACES\n";
+  out_ << "static const NativeEntry* const returns = null;\n";
+  out_ << "static const int return_count = 0;\n";
+  out_ << "#else\n";
+  out_ << "static const NativeEntry returns[] = {\n";
+  for (uint8* bcp : return_points_) out_ << "  { " << bci(bcp) << ", " << label(bcp) << " },\n";
+  out_ << "};\n";
+  out_ << "static const int return_count = " << return_points_.size() << ";\n";
+  out_ << "#endif\n\n";
+
   out_ << "static const NativeProgram native_program = {\n";
   out_ << "  " << native_fingerprint(program_->bytecodes.data(), program_->bytecodes.length()) << "u,\n";
   out_ << "  " << program_->bytecodes.length() << ",\n";
   out_ << "  entries,\n";
   out_ << "  " << entries.size() << ",\n";
+  out_ << "  returns,\n";
+  out_ << "  return_count,\n";
   out_ << "};\n\n";
   out_ << "static int registered = NativeRuntime::register_program(&native_program);\n";
 }
@@ -400,6 +442,11 @@ std::string NativeGenerator::generate() {
   out_ << "\n";
   for (auto& info : methods_) emit_method(info);
   for (int id : dead_blocks_) emit_block_entry(Method(program_->bytecodes, id), true);
+  for (uint8* bcp : dead_continuations_) {
+    out_ << "static void " << label(bcp) << "(NATIVE_PARAMS) {\n";
+    out_ << "  NATIVE_TAIL NativeRuntime::illegal(NATIVE_ARGS);\n";
+    out_ << "}\n";
+  }
   return out_.str();
 }
 
@@ -828,7 +875,7 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       break;
     }
     case INVOKE_STATIC:
-      emit_call(program_->dispatch_table[wide1], continuation(bcp, next));
+      emit_call(program_->dispatch_table[wide1], next);
       break;
     case INVOKE_STATIC_TAIL: {
       int id = program_->dispatch_table[wide1];
@@ -851,13 +898,13 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       break;
     case INVOKE_VIRTUAL:
     case INVOKE_VIRTUAL_WIDE:
-      emit_virtual(bcp, continuation(bcp, next), arg(INVOKE_VIRTUAL_WIDE), Utils::read_unaligned_uint16(bcp + (opcode == INVOKE_VIRTUAL ? 2 : 3)));
+      emit_virtual(bcp, next, arg(INVOKE_VIRTUAL_WIDE), Utils::read_unaligned_uint16(bcp + (opcode == INVOKE_VIRTUAL ? 2 : 3)));
       break;
     case INVOKE_VIRTUAL_GET:
-      emit_virtual(bcp, continuation(bcp, next), 0, wide1);
+      emit_virtual(bcp, next, 0, wide1);
       break;
     case INVOKE_VIRTUAL_SET:
-      emit_virtual(bcp, continuation(bcp, next), 1, wide1);
+      emit_virtual(bcp, next, 1, wide1);
       break;
     case INVOKE_ADD:
       emit_arithmetic(bcp, next, opcode, "native_add");

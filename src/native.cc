@@ -38,6 +38,7 @@ static Method find_method(Program* program, Object* receiver, word offset) {
 int NativeRuntime::register_program(const NativeProgram* program) {
   registered_program = program;
   Interpreter::set_native_runner(&NativeRuntime::run, &NativeRuntime::start_address);
+  Stack::set_native_return_bci(&NativeRuntime::return_bci);
   return 0;
 }
 
@@ -76,6 +77,21 @@ Object* NativeRuntime::start_address(Program* program, uint8* bcp) {
   if (!matches_registered_program(program)) return reinterpret_cast<Object*>(bcp);
   int bci = program->absolute_bci_from_bcp(bcp);
   return reinterpret_cast<Object*>(find_entry(registered_program, bci));
+}
+
+// Translates the addresses found in frames on the stack to
+// the bcis the interpreter would have found in the same frames.
+int NativeRuntime::return_bci(Program* program, uint8* address) {
+  if (!matches_registered_program(program)) return program->absolute_bci_from_bcp(address);
+  NativeFn fn = reinterpret_cast<NativeFn>(address);
+  const NativeProgram* native = registered_program;
+  for (int i = 0; i < native->return_count; i++) {
+    if (native->returns[i].fn == fn) return native->returns[i].bci;
+  }
+  for (int i = 0; i < native->entry_count; i++) {
+    if (native->entries[i].fn == fn) return native->entries[i].bci;
+  }
+  return -1;
 }
 
 bool NativeRuntime::run(Interpreter* interpreter, Interpreter::Result* result) {
