@@ -24,9 +24,13 @@
 #include "../program.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <map>
+#include <utility>
+#include <vector>
 #include <set>
 #include <sstream>
+#include <tuple>
 
 namespace toit {
 namespace compiler {
@@ -46,6 +50,9 @@ class NativeGenerator {
     Method method;
     uint8* end;
     std::set<uint8*> leaders;
+    // Code in loops is hot. The whole method is hot if it is small or recursive.
+    bool is_hot;
+    std::vector<std::pair<uint8*, uint8*>> loops;
   };
 
   Program* const program_;
@@ -90,6 +97,10 @@ class NativeGenerator {
     // Even if we don't know that the integers are smis, knowing that
     // they are integers means that there is no Toit code to run.
     bool are_ints = false;
+    // Whether the types are precise enough for us to believe that the
+    // inlined path will be taken. If the operand could be pretty much
+    // anything, it isn't worth paying for code that may never run.
+    bool is_likely = false;
     bool are_smis() const { return left_is_smi && right_is_smi; }
   };
   Operands operands(uint8* bcp) const;
@@ -108,6 +119,9 @@ class NativeGenerator {
   bool is_dead_continuation(uint8* bcp, uint8* next) const;
 
   void find_leaders(MethodInfo* info);
+  void find_hot_code(MethodInfo* info);
+  bool is_hot_code(const MethodInfo& info, uint8* bcp) const;
+  const char* attributes(const MethodInfo& info, uint8* bcp) const;
   void emit_declarations();
   void emit_tables();
   void emit_method(const MethodInfo& info);
@@ -119,10 +133,19 @@ class NativeGenerator {
   void emit_call(int id, uint8* next);
   void emit_runtime(const char* helper, const std::string& x, word y);
   void emit_runtime_next(const char* helper, uint8* next, word y);
+  typedef std::tuple<int, int, bool> VirtualThunk;
+  std::set<VirtualThunk> virtual_thunks_;
+  std::string thunk_label(const VirtualThunk& thunk) const {
+    return "v" + std::to_string(std::get<0>(thunk)) + "_" + std::to_string(std::get<1>(thunk)) +
+        (std::get<2>(thunk) ? "_s" : "");
+  }
+  bool is_hot_site(uint8* bcp) const { return is_hot_code(*current_info_, bcp); }
+  const MethodInfo* current_info_ = null;
   void emit_virtual(uint8* bcp, uint8* next, int stack_offset, int selector_offset);
   void emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, const char* helper);
   void emit_relational(const MethodInfo& info, uint8* bcp, uint8* next, Opcode opcode, const char* op);
   void emit_bit_operation(uint8* bcp, uint8* next, Opcode opcode, const char* op);
+  void emit_fast_result(uint8* next, const std::string& result);
   void emit_branch(uint8* target, const char* condition, bool is_back, uint8* entry);
   void emit_typecheck(uint8* bcp, Opcode opcode, bool is_as, int encoded, int length);
   void emit_tail_frame_move(int height, int outer_arity, int call_arity);
@@ -138,10 +161,13 @@ NativeGenerator::NativeGenerator(Program* program, TypeDatabase* types, std::vec
     uint8* end = (i + 1 == methods.size())
         ? program->bytecodes.data() + program->bytecodes.length()
         : program->bcp_from_absolute_bci(methods[i + 1]);
-    methods_.push_back({ Method(program->bytecodes, methods[i]), end, {} });
+    methods_.push_back({ Method(program->bytecodes, methods[i]), end, {}, false, {} });
     method_ids_.insert(methods[i]);
   }
-  for (auto& info : methods_) find_leaders(&info);
+  for (auto& info : methods_) {
+    find_leaders(&info);
+    find_hot_code(&info);
+  }
 }
 
 static bool needs_continuation(Opcode opcode) {
@@ -214,6 +240,10 @@ NativeGenerator::Operands NativeGenerator::operands(uint8* bcp) const {
   result.right_is_smi = is_smi_type(input[1]);
   result.can_be_smis = input[0].contains(smi_id) && input[1].contains(smi_id);
   result.are_ints = is_int_type(input[0]) && is_int_type(input[1]);
+  // Integers take up two of the classes. That leaves room for null or a float.
+  static const int LIKELY_TYPES = 3;
+  int words = TypeSet::words_per_type(program_);
+  result.is_likely = input[0].size(words) <= LIKELY_TYPES && input[1].size(words) <= LIKELY_TYPES;
   return result;
 }
 
@@ -344,6 +374,43 @@ void NativeGenerator::find_leaders(MethodInfo* info) {
   for (uint8* leader : info->leaders) dead_continuations_.erase(leader);
 }
 
+void NativeGenerator::find_hot_code(MethodInfo* info) {
+  info->is_hot = false;
+  uint8* bcp = info->method.entry();
+  while (bcp < info->end) {
+    Opcode opcode = static_cast<Opcode>(*bcp);
+    if (opcode >= ILLEGAL_END) break;
+    switch (opcode) {
+      case BRANCH_BACK:
+      case BRANCH_BACK_IF_TRUE:
+      case BRANCH_BACK_IF_FALSE:
+      case BRANCH_BACK_IF_NOT_NULL:
+        info->loops.push_back({ bcp - Utils::read_unaligned_uint16(bcp + 1), bcp });
+        break;
+      case INVOKE_STATIC:
+        if (program_->dispatch_table[Utils::read_unaligned_uint16(bcp + 1)] == method_id(info->method)) {
+          info->is_hot = true;
+        }
+        break;
+      default:
+        break;
+    }
+    bcp += opcode_length[opcode];
+  }
+}
+
+bool NativeGenerator::is_hot_code(const MethodInfo& info, uint8* bcp) const {
+  if (info.is_hot) return true;
+  for (auto& loop : info.loops) {
+    if (bcp >= loop.first && bcp <= loop.second) return true;
+  }
+  return false;
+}
+
+const char* NativeGenerator::attributes(const MethodInfo& info, uint8* bcp) const {
+  return is_hot_code(info, bcp) ? "" : "NATIVE_COLD ";
+}
+
 void NativeGenerator::emit_declarations() {
   // Non-local branches go to bytecodes in other methods.
   for (auto& info : methods_) {
@@ -366,11 +433,11 @@ void NativeGenerator::emit_declarations() {
       if (bcp >= info.method.entry() && bcp < info.end) info.leaders.insert(bcp);
     }
     int id = method_id(info.method);
-    out_ << "static void " << method_label(id) << "(NATIVE_PARAMS);\n";
+    out_ << "static " << attributes(info, info.method.entry()) << "void " << method_label(id) << "(NATIVE_PARAMS);\n";
     if (info.method.is_block_method()) out_ << "static void " << block_entry_label(id) << "(NATIVE_PARAMS);\n";
     current_end_ = info.end;
     for (uint8* leader : info.leaders) {
-      if (leader < info.end) out_ << "static void " << label(leader) << "(NATIVE_PARAMS);\n";
+      if (leader < info.end) out_ << "static " << attributes(info, leader) << "void " << label(leader) << "(NATIVE_PARAMS);\n";
     }
   }
   for (int id : dead_blocks_) out_ << "static void " << block_entry_label(id) << "(NATIVE_PARAMS);\n";
@@ -440,11 +507,36 @@ std::string NativeGenerator::generate() {
   emit_declarations();
   emit_tables();
   out_ << "\n";
+  // The thunks are found while emitting the methods, but must be declared first.
+  std::string declarations = out_.str();
+  out_.str("");
   for (auto& info : methods_) emit_method(info);
+  std::string body = out_.str();
+  out_.str("");
+  out_ << declarations;
+  for (auto& thunk : virtual_thunks_) out_ << "static void " << thunk_label(thunk) << "(NATIVE_PARAMS);\n";
+  out_ << body;
   for (int id : dead_blocks_) emit_block_entry(Method(program_->bytecodes, id), true);
   for (uint8* bcp : dead_continuations_) {
     out_ << "static void " << label(bcp) << "(NATIVE_PARAMS) {\n";
     out_ << "  NATIVE_TAIL NativeRuntime::illegal(NATIVE_ARGS);\n";
+    out_ << "}\n";
+  }
+  for (auto& thunk : virtual_thunks_) {
+    int selector_offset = std::get<0>(thunk);
+    int stack_offset = std::get<1>(thunk);
+    out_ << "static void " << thunk_label(thunk) << "(NATIVE_PARAMS) {\n";
+    if (std::get<2>(thunk)) {
+      out_ << "  unsigned index = native_class_id(STACK_AT(" << stack_offset << "), SMI_ID) + " << selector_offset << ";\n";
+    } else {
+      out_ << "  unsigned index = native_heap_class_id(STACK_AT(" << stack_offset << ")) + " << selector_offset << ";\n";
+    }
+    out_ << "  if (NATIVE_LIKELY(selectors[index] == " << selector_offset << ")) {\n";
+    out_ << "    PUSH(reinterpret_cast<Object*>(x));\n";
+    out_ << "    PUSH(c->frame_marker);\n";
+    out_ << "    NATIVE_TAIL vtable[index](NATIVE_ARGS);\n";
+    out_ << "  }\n";
+    out_ << "  NATIVE_TAIL NativeRuntime::virtual_fallback(sp, c, x, " << (static_cast<word>(selector_offset) << 8 | stack_offset) << ");\n";
     out_ << "}\n";
   }
   return out_.str();
@@ -458,13 +550,7 @@ void NativeGenerator::emit_block_entry(Method method, bool is_dead) {
   int id = method_id(method);
   out_ << "static void " << block_entry_label(id) << "(NATIVE_PARAMS) {\n";
   out_ << "  word extra = y - " << method.arity() << ";\n";
-  out_ << "  if (NATIVE_UNLIKELY(extra < 0)) {\n";
-  out_ << "    PUSH(c->true_object);\n";
-  out_ << "    PUSH(Smi::from(" << method.arity() << "));\n";
-  out_ << "    PUSH(Smi::from(y));\n";
-  out_ << "    PUSH(Smi::from(" << bci(method.entry()) << "));\n";
-  out_ << "    NATIVE_TAIL NativeRuntime::code_failure(NATIVE_ARGS);\n";
-  out_ << "  }\n";
+  out_ << "  if (NATIVE_UNLIKELY(extra < 0)) NATIVE_TAIL NativeRuntime::block_failure(sp, c, x, (" << id << " << 8) | y);\n";
   if (is_dead) {
     out_ << "  NATIVE_TAIL NativeRuntime::illegal(NATIVE_ARGS);\n";
   } else {
@@ -480,10 +566,11 @@ void NativeGenerator::emit_method(const MethodInfo& info) {
   Method method = info.method;
   int id = method_id(method);
   current_end_ = info.end;
+  current_info_ = &info;
   if (method.is_block_method()) emit_block_entry(method, false);
   out_ << "static void " << method_label(id) << "(NATIVE_PARAMS) {\n";
   out_ << "  if (NATIVE_UNLIKELY(NativeRuntime::needs_stack_check(c, sp, " << method.max_height() << "))) {\n";
-  out_ << "    NATIVE_TAIL NativeRuntime::stack_overflow(sp, c, reinterpret_cast<void*>(&" << method_label(id) << "), " << id << ");\n";
+  out_ << "    NATIVE_TAIL NativeRuntime::stack_overflow(sp, c, x, " << id << ");\n";
   out_ << "  }\n";
   out_ << "  NATIVE_TAIL " << label(method.entry()) << "(NATIVE_ARGS);\n";
   out_ << "}\n";
@@ -574,6 +661,13 @@ void NativeGenerator::emit_virtual(uint8* bcp, uint8* next, int stack_offset, in
   bool can_be_smi = static_cast<int>(input.size()) != stack_offset + 1 ||
       input[0].is_block() ||
       input[0].contains(Smi::value(program_->smi_class_id()));
+  if (!is_hot_site(bcp)) {
+    // Sites that aren't hot share the code for the lookup.
+    auto thunk = std::make_tuple(selector_offset, stack_offset, can_be_smi);
+    virtual_thunks_.insert(thunk);
+    out_ << "  NATIVE_TAIL " << thunk_label(thunk) << "(sp, c, reinterpret_cast<void*>(&" << label(next) << "), y);\n";
+    return;
+  }
   if (can_be_smi) {
     out_ << "  { unsigned index = native_class_id(STACK_AT(" << stack_offset << "), SMI_ID) + " << selector_offset << ";\n";
   } else {
@@ -591,7 +685,7 @@ void NativeGenerator::emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, co
   Operands info = operands(bcp);
   std::string check = smi_check(info);
   if (!check.empty()) check += " && ";
-  if (info.can_be_smis) {
+  if (info.can_be_smis && (info.is_likely || is_hot_site(bcp))) {
     out_ << "  { Object* result;\n";
     out_ << "    if (NATIVE_LIKELY(" << check << helper << "(STACK_AT(1), STACK_AT(0), &result))) {\n";
     out_ << "      STACK_AT_PUT(1, result);\n";
@@ -628,14 +722,32 @@ void NativeGenerator::emit_relational(const MethodInfo& info, uint8* bcp, uint8*
     }
     return;
   }
-  if (operands.can_be_smis) {
+  if (operands.can_be_smis && (operands.is_likely || is_hot_site(bcp))) {
     out_ << "  if (NATIVE_LIKELY(" << smi_check(operands) << ")) {\n";
-    out_ << "    STACK_AT_PUT(1, (" << smi_compare << ") ? c->true_object : c->false_object);\n";
-    out_ << "    DROP(1);\n";
-    out_ << "    NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
+    out_ << "    bool result = " << smi_compare << ";\n";
+    emit_fast_result(next, "result");
     out_ << "  }\n";
   }
   emit_runtime_next("binary", next, opcode);
+}
+
+// Finishes the fast path of a comparison that can also take a slow path. The
+// slow path produces a boolean and continues at the next bytecode, but
+// if that is a branch, the fast path can go directly to where it goes.
+void NativeGenerator::emit_fast_result(uint8* next, const std::string& result) {
+  Opcode next_opcode = static_cast<Opcode>(*next);
+  if (next < current_end_ && (next_opcode == BRANCH_IF_TRUE || next_opcode == BRANCH_IF_FALSE)) {
+    uint8* target = next + Utils::read_unaligned_uint16(next + 1);
+    uint8* fall_through = next + BRANCH_IF_TRUE_LENGTH;
+    bool on_true = next_opcode == BRANCH_IF_TRUE;
+    out_ << "    DROP(2);\n";
+    out_ << "    if (" << result << ") NATIVE_TAIL " << label(on_true ? target : fall_through) << "(NATIVE_ARGS);\n";
+    out_ << "    NATIVE_TAIL " << label(on_true ? fall_through : target) << "(NATIVE_ARGS);\n";
+    return;
+  }
+  out_ << "    STACK_AT_PUT(1, (" << result << ") ? c->true_object : c->false_object);\n";
+  out_ << "    DROP(1);\n";
+  out_ << "    NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
 }
 
 void NativeGenerator::emit_bit_operation(uint8* bcp, uint8* next, Opcode opcode, const char* op) {
@@ -927,6 +1039,12 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
     case INVOKE_EQ:
       if (operands(bcp).are_ints) {
         emit_relational(info, bcp, next, opcode, "==");
+      } else if (operands(bcp).is_likely || is_hot_site(bcp)) {
+        out_ << "  { int equals = native_equals(c, STACK_AT(1), STACK_AT(0));\n";
+        out_ << "    if (NATIVE_LIKELY(equals >= 0)) {\n";
+        emit_fast_result(next, "equals == 1");
+        out_ << "    }\n  }\n";
+        emit_runtime_next("binary", next, opcode);
       } else {
         emit_runtime_next("binary", next, opcode);
       }

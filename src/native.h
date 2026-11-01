@@ -58,6 +58,13 @@ typedef void (*NativeFn)(NATIVE_PARAMS);
 #define NATIVE_TAIL return
 #endif
 
+// Most code runs rarely, so it is optimized for size. Hot code is left alone.
+#if defined(__clang__) && !defined(NATIVE_ALL_HOT)
+#define NATIVE_COLD __attribute__((minsize, noinline))
+#else
+#define NATIVE_COLD
+#endif
+
 #define NATIVE_LIKELY(x) __builtin_expect(!!(x), 1)
 #define NATIVE_UNLIKELY(x) __builtin_expect(!!(x), 0)
 
@@ -118,6 +125,7 @@ class NativeRuntime {
   static void virtual_fallback(NATIVE_PARAMS);
   static void as_failure(NATIVE_PARAMS);
   static void code_failure(NATIVE_PARAMS);
+  static void block_failure(NATIVE_PARAMS);
   static void program_failure(NATIVE_PARAMS);
   static void primitive_failure(NATIVE_PARAMS);
   static void lambda_tail(NATIVE_PARAMS);
@@ -238,8 +246,20 @@ inline unsigned native_heap_class_id(Object* object) {
   return Smi::value(HeapObject::cast(object)->class_id());
 }
 
+// Decides the cases of == that don't need to look at the objects. Returns
+// 1 or 0 for the result, and -1 if the slow path has to figure it out.
+inline int native_equals(NativeContext* c, Object* a, Object* b);
+
 inline bool native_is_true(NativeContext* c, Object* value) {
   return value != c->false_object && value != c->null_object;
+}
+
+inline int native_equals(NativeContext* c, Object* a, Object* b) {
+  if (native_are_smis(a, b)) return a == b;
+  if (a == c->null_object || b == c->null_object) return a == b;
+  // The same object is equal to itself, except for NaNs.
+  if (a == b && !is_smi(a) && !is_double(a)) return 1;
+  return -1;
 }
 
 }  // namespace toit
