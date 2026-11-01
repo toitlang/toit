@@ -115,9 +115,6 @@ class NativeGenerator {
   bool is_smi_type(TypeSet type) const;
   bool is_int_type(TypeSet type) const;
 
-  // Returns the method a virtual call goes to if there is only one
-  // possible receiver class. Returns -1 otherwise.
-  int single_target(uint8* bcp, int arity, int selector_offset) const;
   // Identifies a selector and its arity for the check in the virtual entries.
   static intptr_t virtual_key(int selector_offset, int stack_offset) {
     return static_cast<intptr_t>(selector_offset) << 8 | stack_offset;
@@ -160,6 +157,7 @@ class NativeGenerator {
   bool is_hot_site(uint8* bcp) const { return is_hot_code(*current_info_, bcp); }
   const MethodInfo* current_info_ = null;
   std::string class_id_expression(const std::string& receiver, bool can_be_smi) const;
+  bool emit_direct_calls(uint8* bcp, uint8* next, int stack_offset, int selector_offset);
   void emit_virtual(uint8* bcp, uint8* next, int stack_offset, int selector_offset);
   void emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, const char* helper);
   void emit_relational(const MethodInfo& info, uint8* bcp, uint8* next, Opcode opcode, const char* op);
@@ -324,20 +322,6 @@ std::string NativeGenerator::smi_check(const Operands& operands) const {
   if (operands.left_is_smi) return "native_is_smi(STACK_AT(0))";
   if (operands.right_is_smi) return "native_is_smi(STACK_AT(1))";
   return "native_are_smis(STACK_AT(1), STACK_AT(0))";
-}
-
-int NativeGenerator::single_target(uint8* bcp, int arity, int selector_offset) const {
-  std::vector<TypeSet> input = types_->input(bci(bcp));
-  if (static_cast<int>(input.size()) != arity || input[0].is_block()) return -1;
-  int words = TypeSet::words_per_type(program_);
-  if (input[0].size(words) != 1) return -1;
-  TypeSet::Iterator it(input[0], words);
-  int index = it.next() + selector_offset;
-  if (index >= program_->dispatch_table.length()) return -1;
-  int entry = program_->dispatch_table[index];
-  if (entry < 0 || method_ids_.count(entry) == 0) return -1;
-  if (Method(program_->bytecodes, entry).selector_offset() != selector_offset) return -1;
-  return entry;
 }
 
 // These operations cannot fail or call anything if they are working
@@ -746,11 +730,7 @@ void NativeGenerator::emit_runtime_next(const char* helper, uint8* next, word y)
 }
 
 void NativeGenerator::emit_virtual(uint8* bcp, uint8* next, int stack_offset, int selector_offset) {
-  int target = single_target(bcp, stack_offset + 1, selector_offset);
-  if (target >= 0) {
-    emit_call(target, next);
-    return;
-  }
+  if (emit_direct_calls(bcp, next, stack_offset, selector_offset)) return;
   // Most receivers cannot be smis, so there is no reason to check for it.
   std::vector<TypeSet> input = types_->input(bci(bcp));
   bool can_be_smi = static_cast<int>(input.size()) != stack_offset + 1 ||
@@ -767,6 +747,75 @@ void NativeGenerator::emit_virtual(uint8* bcp, uint8* next, int stack_offset, in
   std::string receiver = "STACK_AT(" + std::to_string(stack_offset) + ")";
   out_ << "  NATIVE_TAIL vtable[" << class_id_expression(receiver, can_be_smi) << " + " << selector_offset
        << "](sp, c, " << address << ", " << virtual_key(selector_offset, stack_offset) << ");\n";
+}
+
+// The types often leave us with very few methods that can be called. Going
+// directly to them doesn't need the dispatch table or the check of the selector.
+bool NativeGenerator::emit_direct_calls(uint8* bcp, uint8* next, int stack_offset, int selector_offset) {
+  static const int MAX_TARGETS = 3;
+  static const int MAX_CLASS_CHECKS = 4;
+  std::vector<TypeSet> input = types_->input(bci(bcp));
+  if (static_cast<int>(input.size()) != stack_offset + 1 || input[0].is_block()) return false;
+  int smi_id = Smi::value(program_->smi_class_id());
+  int null_id = Smi::value(program_->null_class_id());
+  bool can_be_null = false;
+  std::map<int, std::vector<int>> classes_by_target;
+  TypeSet::Iterator it(input[0], TypeSet::words_per_type(program_));
+  while (it.has_next()) {
+    int id = it.next();
+    int index = id + selector_offset;
+    int entry = index < program_->dispatch_table.length() ? program_->dispatch_table[index] : -1;
+    if (entry >= 0 && method_ids_.count(entry) != 0 &&
+        Method(program_->bytecodes, entry).selector_offset() == selector_offset) {
+      classes_by_target[entry].push_back(id);
+    } else if (id == null_id) {
+      can_be_null = true;
+    } else {
+      return false;
+    }
+  }
+  if (classes_by_target.empty()) return false;
+
+  // The target with the most classes is the one that doesn't need a check.
+  int fall_through = -1;
+  size_t largest = 0;
+  int checks = 0;
+  for (auto& it : classes_by_target) {
+    checks += it.second.size();
+    if (it.second.size() > largest) {
+      largest = it.second.size();
+      fall_through = it.first;
+    }
+  }
+  checks -= largest;
+  if (classes_by_target.size() > 1) {
+    if (!is_hot_site(bcp)) return false;
+    if (static_cast<int>(classes_by_target.size()) > MAX_TARGETS || checks > MAX_CLASS_CHECKS) return false;
+  }
+
+  std::string receiver = "STACK_AT(" + std::to_string(stack_offset) + ")";
+  if (can_be_null) {
+    out_ << "  if (NATIVE_UNLIKELY(" << receiver << " == c->null_object)) {\n  ";
+    emit_runtime_next("virtual_fallback", next, virtual_key(selector_offset, stack_offset));
+    out_ << "  }\n";
+  }
+  if (classes_by_target.size() > 1) {
+    bool can_be_smi = input[0].contains(smi_id);
+    out_ << "  { unsigned id = " << class_id_expression(receiver, can_be_smi) << ";\n";
+    for (auto& it : classes_by_target) {
+      if (it.first == fall_through) continue;
+      out_ << "    if (";
+      for (unsigned i = 0; i < it.second.size(); i++) {
+        out_ << (i == 0 ? "" : " || ") << "id == " << it.second[i];
+      }
+      out_ << ") {\n";
+      emit_call(it.first, next);
+      out_ << "    }\n";
+    }
+    out_ << "  }\n";
+  }
+  emit_call(fall_through, next);
+  return true;
 }
 
 std::string NativeGenerator::class_id_expression(const std::string& receiver, bool can_be_smi) const {
