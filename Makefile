@@ -549,6 +549,7 @@ download-packages-hw-host:
 .PHONY: download-packages-hw
 download-packages-hw: download-packages-hw-pi download-packages-hw-esp32
 	$$TOIT_EXE_HW pkg install --project-root tests/hw/ec618
+	$$TOIT_EXE_HW pkg install --project-root tests/hw/ec618/i2s-spi-observer
 
 .PHONY: download-packages-hw-pi
 download-packages-hw-pi:
