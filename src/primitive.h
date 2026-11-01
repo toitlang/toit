@@ -953,6 +953,7 @@ namespace toit {
 #define MODULE_IMPLEMENTATION_ENTRY(name, arity)                    \
   { (void*) primitive_##name, arity },
 #define MODULE_IMPLEMENTATION(name, entries)                        \
+  char name##_module_linked_ = 0;                                   \
   entries(MODULE_IMPLEMENTATION_PRIMITIVE)                          \
   static const PrimitiveEntry name##_primitive_table[] = {          \
     entries(MODULE_IMPLEMENTATION_ENTRY)                            \

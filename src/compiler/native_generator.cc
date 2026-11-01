@@ -22,6 +22,7 @@
 #include "../native.h"
 #include "native_abi_source.h"
 #include "../objects_inline.h"
+#include "../primitive.h"
 #include "../program.h"
 
 #include <algorithm>
@@ -143,6 +144,7 @@ class NativeGenerator {
   bool is_hot_code(const MethodInfo& info, uint8* bcp) const;
   const char* attributes(const MethodInfo& info, uint8* bcp) const;
   void emit_declarations();
+  void emit_module_references();
   void emit_tables();
   void emit_method(const MethodInfo& info);
   void emit_block_entry(Method method, bool is_dead);
@@ -601,6 +603,34 @@ void NativeGenerator::emit_declarations() {
   out_ << "\n";
 }
 
+// Referencing a module makes the linker include it. Modules that nothing
+// references are left out, and so is everything that only they use. See
+// native_module_stubs.cc for the modules that a platform doesn't have.
+void NativeGenerator::emit_module_references() {
+#define MODULE_NAME(name, entries) #name,
+  static const char* const names[] = { MODULES(MODULE_NAME) };
+#undef MODULE_NAME
+  std::set<int> modules;
+  modules.insert(0);  // The core module has things the runtime depends on.
+  for (auto& info : methods_) {
+    uint8* bcp = info.method.entry();
+    while (bcp < info.end) {
+      Opcode opcode = static_cast<Opcode>(*bcp);
+      if (opcode >= ILLEGAL_END) break;
+      if (opcode == PRIMITIVE) modules.insert(bcp[1]);
+      bcp += opcode_length[opcode];
+    }
+  }
+  std::vector<std::string> linked;
+  for (int module : modules) linked.push_back(std::string(names[module]) + "_module_linked_");
+  out_ << "namespace toit {\n";
+  for (auto& name : linked) out_ << "extern char " << name << ";\n";
+  out_ << "}\n";
+  out_ << "__attribute__((used)) static char* const native_modules[] = {\n";
+  for (auto& name : linked) out_ << "  &toit::" << name << ",\n";
+  out_ << "};\n\n";
+}
+
 void NativeGenerator::emit_tables() {
   List<int32> dispatch_table = program_->dispatch_table;
   out_ << "static const NativeFn vtable[] = {\n";
@@ -688,6 +718,7 @@ std::string NativeGenerator::generate() {
   out_ << NATIVE_ABI_SOURCE << "\n";
   out_ << "using namespace toit;\n\n";
   out_ << "static const unsigned SMI_ID = " << Smi::value(program_->smi_class_id()) << ";\n\n";
+  emit_module_references();
   emit_declarations();
   emit_tables();
   out_ << "\n";
