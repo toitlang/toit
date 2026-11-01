@@ -677,15 +677,11 @@ void ByteGen::visit_CallVirtual(CallVirtual* node) {
     if (offset != -1) {
       __ invoke_virtual(node->opcode(), offset, arity);
     } else {
-      // If this isn't a binary, non-setter method, we just treat it as
-      // an ordinary virtual invocation.
-      if (target_selector == Symbol::for_invoke(INVOKE_EQ) &&
-          shape == CallShape(1).with_implicit_this()) {
-        // The equality checks must go through the opcode bytecode as
-        // it checks for identity and null.
-        UNREACHABLE();
-      }
-      // No method in the whole program implements that selector.
+      // No method in the whole program implements that selector. This
+      // can happen for the equality operator too, if the call cannot be
+      // reached because no instances of the possible receivers are ever
+      // allocated. If it could be reached, even with null as the receiver,
+      // there would be a method for it.
       // Pop all arguments, and push the name of the method on the stack.
       // Then call `lookup_failure`.
 

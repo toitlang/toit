@@ -1,0 +1,58 @@
+[lambda] in A tests/type_propagation/never-allocated-test.toit
+  0[022] - load null
+  1[091] - return S1 0
+
+A tests/type_propagation/never-allocated-test.toit
+ - argument 0: {A}
+  0[016] - load local 2
+  1[022] - load null
+  2[013] - store field, pop 0
+  4[016] - load local 2
+  5[029] - load method [lambda] in A tests/type_propagation/never-allocated-test.toit
+ 10[023] - load smi 0
+ 11[022] - load null
+ 12[053] - invoke static Array_ <sdk>/core/collections.toit // [{SmallInteger_}, {Null_}] -> {LargeArray_|SmallArray_}
+ 15[014] - load local 0
+ 16[004] - store local, pop S1
+ 18[023] - load smi 0
+ 19[053] - invoke static lambda__ <sdk>/core/objects.toit // [{SmallInteger_}, {LargeArray_|SmallArray_}, {SmallInteger_}] -> {Lambda}
+ 22[053] - invoke static Lambda.call <sdk>/core/objects.toit // [{Lambda}] -> {*}
+ 25[013] - store field, pop 1
+ 27[042] - allocate instance Box_
+ 29[023] - load smi 0
+ 30[053] - invoke static Box_ <sdk>/core/objects.toit // [{Box_}, {SmallInteger_}] -> {Box_}
+ 33[017] - load local 3
+ 34[029] - load method [lambda] in A tests/type_propagation/never-allocated-test.toit
+ 39[016] - load local 2
+ 40[025] - load smi 1
+ 41[053] - invoke static lambda__ <sdk>/core/objects.toit // [{SmallInteger_}, {Box_}, {SmallInteger_}] -> {Lambda}
+ 44[013] - store field, pop 0
+ 46[017] - load local 3
+ 47[091] - return S2 1
+
+[lambda] in A tests/type_propagation/never-allocated-test.toit
+ - argument 0: {*}
+  0[009] - load field local 2 // [{*}] -> {*}
+  2[017] - load local 3
+  3[015] - load local 1
+  4[025] - load smi 1
+  5[073] - invoke add // [{*}, {SmallInteger_}] -> {float|LargeInteger_|SmallInteger_}
+  6[013] - store field, pop 0
+  8[014] - load local 0
+  9[004] - store local, pop S1
+ 11[091] - return S1 1
+
+A.method tests/type_propagation/never-allocated-test.toit
+ - argument 0: {A}
+  0[092] - return null S0 1
+
+test tests/type_propagation/never-allocated-test.toit
+ - argument 0: {Null_}
+  0[092] - return null S0 1
+
+main tests/type_propagation/never-allocated-test.toit
+  0[042] - allocate instance A
+  2[053] - invoke static A tests/type_propagation/never-allocated-test.toit // [{A}] -> {A}
+  5[053] - invoke static A.method tests/type_propagation/never-allocated-test.toit // [{A}] -> {Null_}
+  8[053] - invoke static test tests/type_propagation/never-allocated-test.toit // [{Null_}] -> {Null_}
+ 11[092] - return null S1 0

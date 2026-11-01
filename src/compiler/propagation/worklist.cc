@@ -24,8 +24,9 @@ Worklist::Worklist(uint8* entry, TypeScope* scope, BlockTemplate* block)
   // very first bytecode, we should be able to get away
   // with not copying the initial scope at all and
   // just use it as the working scope.
-  scopes_[entry] = scope;
-  unprocessed_.push_back(entry);
+  Key key = { entry, scope->unwinding() };
+  scopes_[key] = scope;
+  unprocessed_.push_back(key);
 }
 
 Worklist::~Worklist() {
@@ -35,28 +36,29 @@ Worklist::~Worklist() {
 }
 
 TypeScope* Worklist::add(uint8* bcp, TypeScope* scope, bool split) {
-  auto probe = scopes_.find(bcp);
+  Key key = { bcp, scope->unwinding() };
+  auto probe = scopes_.find(key);
   if (probe == scopes_.end()) {
-    scopes_[bcp] = scope;
-    unprocessed_.push_back(bcp);
+    scopes_[key] = scope;
+    unprocessed_.push_back(key);
     return split ? scope->copy_lazy() : null;
   } else {
     TypeScope* existing = probe->second;
     if (existing->merge(scope, TypeScope::MERGE_LOCAL)) {
       // TODO(kasper): Try to avoid adding this if it is
       // already in the list of unprocessed items.
-      unprocessed_.push_back(bcp);
+      unprocessed_.push_back(key);
     }
     return scope;
   }
 }
 
 Worklist::Item Worklist::next() {
-  uint8* bcp = unprocessed_.back();
+  Key key = unprocessed_.back();
   unprocessed_.pop_back();
   return Item {
-    .bcp = bcp,
-    .scope = scopes_[bcp]->copy_lazy()
+    .bcp = key.bcp,
+    .scope = scopes_[key]->copy_lazy()
   };
 }
 
