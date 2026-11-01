@@ -45,7 +45,8 @@ inline uint32 native_fingerprint(const uint8* bytes, word length) {
 }
 
 // The 'x' and 'y' parameters are scratch values: The meaning depends on what
-// is being called.
+// is being called. Generated code passes them on untouched when they aren't
+// used, because clearing them would take up code on every jump.
 #define NATIVE_PARAMS Object** sp, NativeContext* c, void* x, word y
 #define NATIVE_ARGS sp, c, x, y
 
@@ -137,11 +138,12 @@ class NativeRuntime {
   }
 
   static bool needs_stack_check(NativeContext* c, Object** sp, int height) {
-    return sp - height < c->interpreter->watermark_;
+    // We only need to see preemption requests eventually.
+    return sp - height < c->interpreter->watermark_.load(std::memory_order_relaxed);
   }
 
   static bool is_preempted(NativeContext* c) {
-    return c->interpreter->watermark_ == c->interpreter->PREEMPTION_MARKER;
+    return c->interpreter->watermark_.load(std::memory_order_relaxed) == c->interpreter->PREEMPTION_MARKER;
   }
 
   static void link(NativeContext* c, Object** sp) {
