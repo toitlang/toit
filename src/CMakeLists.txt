@@ -318,6 +318,18 @@ if (NOT ${TOIT_IS_EMBEDDED})
   )
   add_dependencies(build_tools build_envelope)
 
+  # Programs that have been compiled to native code are linked with
+  # this. They provide the snapshot that the vessels get patched with.
+  add_library(
+    toit_native_main
+    STATIC
+    vessel.cc
+    ${EMBEDDED_PROGRAM_SNAPSHOT_CC_toit_run}
+    ${run_SRC}
+  )
+  target_link_libraries(toit_native_main PUBLIC ${TOIT_LINK_LIBS})
+  target_include_directories(toit_native_main PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
   set(VESSEL_SIZES 128 256 512 1024 8192)
   foreach(VESSEL_SIZE ${VESSEL_SIZES})
     set(VESSEL_TARGET vessel${VESSEL_SIZE})
