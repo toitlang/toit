@@ -749,17 +749,15 @@ void NativeGenerator::emit_virtual(uint8* bcp, uint8* next, int stack_offset, in
        << "](sp, c, " << address << ", " << virtual_key(selector_offset, stack_offset) << ");\n";
 }
 
-// The types often leave us with very few methods that can be called. Going
-// directly to them doesn't need the dispatch table or the check of the selector.
+// The types often leave us with a single method that can be called, even if
+// there are many receiver classes. Going directly to it is smaller and
+// doesn't need the dispatch table or the check of the selector.
 bool NativeGenerator::emit_direct_calls(uint8* bcp, uint8* next, int stack_offset, int selector_offset) {
-  static const int MAX_TARGETS = 3;
-  static const int MAX_CLASS_CHECKS = 4;
   std::vector<TypeSet> input = types_->input(bci(bcp));
   if (static_cast<int>(input.size()) != stack_offset + 1 || input[0].is_block()) return false;
-  int smi_id = Smi::value(program_->smi_class_id());
   int null_id = Smi::value(program_->null_class_id());
   bool can_be_null = false;
-  std::map<int, std::vector<int>> classes_by_target;
+  std::set<int> targets;
   TypeSet::Iterator it(input[0], TypeSet::words_per_type(program_));
   while (it.has_next()) {
     int id = it.next();
@@ -767,31 +765,14 @@ bool NativeGenerator::emit_direct_calls(uint8* bcp, uint8* next, int stack_offse
     int entry = index < program_->dispatch_table.length() ? program_->dispatch_table[index] : -1;
     if (entry >= 0 && method_ids_.count(entry) != 0 &&
         Method(program_->bytecodes, entry).selector_offset() == selector_offset) {
-      classes_by_target[entry].push_back(id);
+      targets.insert(entry);
     } else if (id == null_id) {
       can_be_null = true;
     } else {
       return false;
     }
   }
-  if (classes_by_target.empty()) return false;
-
-  // The target with the most classes is the one that doesn't need a check.
-  int fall_through = -1;
-  size_t largest = 0;
-  int checks = 0;
-  for (auto& it : classes_by_target) {
-    checks += it.second.size();
-    if (it.second.size() > largest) {
-      largest = it.second.size();
-      fall_through = it.first;
-    }
-  }
-  checks -= largest;
-  if (classes_by_target.size() > 1) {
-    if (!is_hot_site(bcp)) return false;
-    if (static_cast<int>(classes_by_target.size()) > MAX_TARGETS || checks > MAX_CLASS_CHECKS) return false;
-  }
+  if (targets.size() != 1) return false;
 
   std::string receiver = "STACK_AT(" + std::to_string(stack_offset) + ")";
   if (can_be_null) {
@@ -799,22 +780,7 @@ bool NativeGenerator::emit_direct_calls(uint8* bcp, uint8* next, int stack_offse
     emit_runtime_next("virtual_fallback", next, virtual_key(selector_offset, stack_offset));
     out_ << "  }\n";
   }
-  if (classes_by_target.size() > 1) {
-    bool can_be_smi = input[0].contains(smi_id);
-    out_ << "  { unsigned id = " << class_id_expression(receiver, can_be_smi) << ";\n";
-    for (auto& it : classes_by_target) {
-      if (it.first == fall_through) continue;
-      out_ << "    if (";
-      for (unsigned i = 0; i < it.second.size(); i++) {
-        out_ << (i == 0 ? "" : " || ") << "id == " << it.second[i];
-      }
-      out_ << ") {\n";
-      emit_call(it.first, next);
-      out_ << "    }\n";
-    }
-    out_ << "  }\n";
-  }
-  emit_call(fall_through, next);
+  emit_call(*targets.begin(), next);
   return true;
 }
 
