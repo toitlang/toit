@@ -177,11 +177,33 @@ bool NativeBuild::add_program(SnapshotBundle bundle, bool is_system) {
   ProgramImage image = bundle.snapshot().read_image(id);
   auto relocation_bits = ImageInputStream::build_relocation_bits(image);
   ImageInputStream input(image, relocation_bits);
+  // The image has big holes, because it is laid out in pages.
   std::vector<word> words;
+  std::vector<int32> ranges;
+  int total_words = 0;
+  int skipped = 0;
+  int read = 0;
   while (!input.eos()) {
     word chunk[ImageOutputStream::CHUNK_SIZE];
     int size = input.read(chunk);
-    words.insert(words.end(), chunk, chunk + size);
+    total_words += size;
+    bool is_zero = true;
+    for (int i = 0; i < size; i++) is_zero = is_zero && chunk[i] == 0;
+    if (is_zero) {
+      if (read != 0) {
+        ranges.push_back(skipped);
+        ranges.push_back(read);
+        skipped = read = 0;
+      }
+      skipped++;
+    } else {
+      words.insert(words.end(), chunk, chunk + size);
+      read++;
+    }
+  }
+  if (read != 0) {
+    ranges.push_back(skipped);
+    ranges.push_back(read);
   }
   delete relocation_bits;
 
@@ -194,6 +216,8 @@ bool NativeBuild::add_program(SnapshotBundle bundle, bool is_system) {
           is_system ? "true" : "false");
   write_bytes(file, "native_uuid", id, UUID_SIZE);
   write_bytes(file, "native_image", reinterpret_cast<const uint8*>(words.data()), words.size() * WORD_SIZE);
+  write_bytes(file, "native_image_ranges", reinterpret_cast<const uint8*>(ranges.data()), ranges.size() * sizeof(int32));
+  fprintf(file, "\nnamespace {\nextern const int native_image_words;\nconst int native_image_words = %d;\n}\n", total_words);
   SnapshotBundle traces = bundle.without_snapshot();
   write_bytes(file, "native_bundle", traces.buffer(), traces.size());
   free(traces.buffer());

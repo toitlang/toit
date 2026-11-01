@@ -655,7 +655,9 @@ void NativeGenerator::emit_tables() {
   out_ << "extern const bool native_is_system;\n";
   out_ << "extern const uint8_t native_uuid[];\n";
   out_ << "extern const uint8_t native_image[];\n";
-  out_ << "extern const int native_image_size;\n";
+  out_ << "extern const int native_image_words;\n";
+  out_ << "extern const uint8_t native_image_ranges[];\n";
+  out_ << "extern const int native_image_ranges_size;\n";
   out_ << "extern const uint8_t native_bundle[];\n";
   out_ << "extern const int native_bundle_size;\n";
   out_ << "}\n\n";
@@ -670,7 +672,9 @@ void NativeGenerator::emit_tables() {
   out_ << "  " << return_points_.size() << ",\n";
   out_ << "  native_uuid,\n";
   out_ << "  native_image,\n";
-  out_ << "  native_image_size,\n";
+  out_ << "  static_cast<int>(native_image_words * sizeof(intptr_t)),\n";
+  out_ << "  reinterpret_cast<const int32_t*>(native_image_ranges),\n";
+  out_ << "  static_cast<int>(native_image_ranges_size / (2 * sizeof(int32_t))),\n";
   out_ << "  native_bundle,\n";
   out_ << "  native_bundle_size,\n";
   out_ << "  native_is_system,\n";
