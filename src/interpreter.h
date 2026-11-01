@@ -211,6 +211,15 @@ class Interpreter {
 
 
   friend class Stack;
+  friend class NativeRuntime;
+
+  // Runs programs that have been compiled to native code. Returns
+  // false if the current process runs something else.
+  typedef bool NativeRunner(Interpreter* interpreter, Result* result);
+  static NativeRunner* native_runner_;
+
+ public:
+  static void set_native_runner(NativeRunner* runner) { native_runner_ = runner; }
 };
 
 // We push the exception and two elements for the unwinding implementation

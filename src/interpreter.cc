@@ -27,6 +27,8 @@
 
 namespace toit {
 
+Interpreter::NativeRunner* Interpreter::native_runner_ = null;
+
 Interpreter::Interpreter()
     : process_(null)
     , limit_(null)
