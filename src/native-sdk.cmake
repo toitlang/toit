@@ -59,6 +59,15 @@ endfunction()
 
 toit_native_collect(toit_native_main)
 
+# The generated code references what it needs, so the
+# linker can leave the rest out. That includes system libraries.
+list(REMOVE_ITEM TOIT_NATIVE_LINK_FLAGS "-Wl,-all_load" "-Wl,--whole-archive" "-Wl,--no-whole-archive")
+if (APPLE)
+  list(APPEND TOIT_NATIVE_LINK_FLAGS "-Wl,-dead_strip_dylibs")
+else()
+  list(PREPEND TOIT_NATIVE_LINK_FLAGS "-Wl,--as-needed")
+endif()
+
 # Static libraries depend on each other, which the
 # linker only handles if it sees them in the right order.
 if (NOT APPLE)
@@ -68,6 +77,10 @@ if (NOT APPLE)
 endif()
 
 list(REMOVE_DUPLICATES TOIT_NATIVE_ARCHIVES)
+
+# This must be the last library on the link line.
+list(APPEND TOIT_NATIVE_ARCHIVES toit_native_stubs)
+list(APPEND TOIT_NATIVE_LINK_FLAGS "@SDK@/lib/$<TARGET_FILE_NAME:toit_native_stubs>")
 if (APPLE)
   # There are so many functions that the symbols would dominate the size.
   # Native code has its own unwinding on the Toit stack. The compiler
@@ -111,10 +124,10 @@ if (TOIT_NATIVE_SDK_CXX)
         -c "${TOIT_NATIVE_SYSTEM_CC}" -o "${TOIT_NATIVE_SYSTEM_OBJECT}"
     VERBATIM
   )
-  list(APPEND TOIT_NATIVE_LINK_FLAGS "@SDK@/system.o")
+  list(PREPEND TOIT_NATIVE_LINK_FLAGS "@SDK@/system.o")
   set(TOIT_NATIVE_SYSTEM_OUTPUT "${TOIT_NATIVE_SYSTEM_OBJECT}")
 else()
-  list(APPEND TOIT_NATIVE_LINK_FLAGS "@SDK@/system.cc")
+  list(PREPEND TOIT_NATIVE_LINK_FLAGS "@SDK@/system.cc")
   set(TOIT_NATIVE_SYSTEM_OUTPUT "${TOIT_NATIVE_SYSTEM_CC}")
 endif()
 

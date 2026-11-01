@@ -77,7 +77,7 @@ file(GLOB run_SRC
 )
 
 # Exclude files with a main(), and files that are not used in the compiler.
-list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run|toit_run_image|vessel|native_main|vm|objects_runtime).cc$")
+list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run|toit_run_image|vessel|native_main|native_module_stubs|vm|objects_runtime).cc$")
 list(REMOVE_ITEM toit_core_SRC ${run_SRC})
 
 # The bytecode loop and the replacement for it in executables with native code.
@@ -337,6 +337,12 @@ if (NOT ${TOIT_IS_EMBEDDED})
 
   # Programs that have been compiled to native code are linked with
   # this. They provide the snapshot that the vessels get patched with.
+  add_library(
+    toit_native_stubs
+    STATIC
+    native_module_stubs.cc
+  )
+
   add_library(
     toit_native_main
     STATIC
