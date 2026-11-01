@@ -133,6 +133,11 @@ class NativeGenerator {
   int pruned_entry(int id) const { return pruned_id(id) + Method::entry_offset(); }
   int pruned_branch_target(int target);
 
+  int accessor_field(uint8* bcp, bool* can_be_null) const;
+  int getter_field(Method target) const;
+  int setter_field(Method target) const;
+  bool emit_inlined_accessor(uint8* bcp, uint8* next);
+
   void find_leaders(MethodInfo* info);
   void find_hot_code(MethodInfo* info);
   bool is_hot_code(const MethodInfo& info, uint8* bcp) const;
@@ -158,6 +163,10 @@ class NativeGenerator {
   const MethodInfo* current_info_ = null;
   std::string class_id_expression(const std::string& receiver, bool can_be_smi) const;
   bool emit_direct_calls(uint8* bcp, uint8* next, int stack_offset, int selector_offset);
+  bool find_targets(uint8* bcp, int stack_offset, int selector_offset, std::set<int>* targets, bool* can_be_null) const;
+  bool is_leaf(Method method) const;
+  int leaf_target(uint8* bcp) const;
+  bool emit_inlined_leaf(const MethodInfo& info, uint8* bcp);
   void emit_virtual(uint8* bcp, uint8* next, int stack_offset, int selector_offset);
   void emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, const char* helper);
   void emit_relational(const MethodInfo& info, uint8* bcp, uint8* next, Opcode opcode, const char* op);
@@ -339,9 +348,91 @@ bool NativeGenerator::stays_in_block(uint8* bcp) const {
     case INVOKE_BIT_XOR:
     case INVOKE_BIT_AND:
       return operands(bcp).are_smis();
+    case INVOKE_VIRTUAL_GET:
+    case INVOKE_VIRTUAL_SET: {
+      // A receiver that can be null needs a way out of the block.
+      bool can_be_null = false;
+      if (accessor_field(bcp, &can_be_null) >= 0 && !can_be_null) return true;
+      return leaf_target(bcp) >= 0;
+    }
+    case INVOKE_STATIC:
+    case INVOKE_VIRTUAL:
+      return leaf_target(bcp) >= 0;
     default:
       return false;
   }
+}
+
+// Returns the field if all methods the types say we can get to at
+// this virtual getter or setter access the same field. Returns -1 otherwise.
+int NativeGenerator::accessor_field(uint8* bcp, bool* can_be_null) const {
+  bool is_getter = static_cast<Opcode>(*bcp) == INVOKE_VIRTUAL_GET;
+  int arity = is_getter ? 1 : 2;
+  int selector_offset = Utils::read_unaligned_uint16(bcp + 1);
+  std::vector<TypeSet> input = types_->input(bci(bcp));
+  if (static_cast<int>(input.size()) != arity || input[0].is_block()) return -1;
+  int null_id = Smi::value(program_->null_class_id());
+  int result = -1;
+  TypeSet::Iterator it(input[0], TypeSet::words_per_type(program_));
+  while (it.has_next()) {
+    int id = it.next();
+    int index = id + selector_offset;
+    int entry = index < program_->dispatch_table.length() ? program_->dispatch_table[index] : -1;
+    bool found = entry >= 0 && method_ids_.count(entry) != 0 &&
+        Method(program_->bytecodes, entry).selector_offset() == selector_offset;
+    if (!found) {
+      if (id != null_id) return -1;
+      *can_be_null = true;
+      continue;
+    }
+    Method target(program_->bytecodes, entry);
+    if (!target.is_field_accessor()) return -1;
+    int field = is_getter ? getter_field(target) : setter_field(target);
+    if (field < 0 || (result >= 0 && field != result)) return -1;
+    result = field;
+  }
+  return result;
+}
+
+int NativeGenerator::getter_field(Method target) const {
+  uint8* entry = target.entry();
+  if (entry[0] == LOAD_FIELD_LOCAL && entry[2] == RETURN) return entry[1] >> 4;
+  if (entry[0] == LOAD_LOCAL_2 && entry[1] == LOAD_FIELD && entry[3] == RETURN) return entry[2];
+  return -1;
+}
+
+int NativeGenerator::setter_field(Method target) const {
+  uint8* entry = target.entry();
+  bool matches = entry[0] == LOAD_LOCAL_3 && entry[1] == LOAD_LOCAL_3 &&
+      entry[2] == STORE_FIELD && entry[4] == RETURN;
+  return matches ? entry[3] : -1;
+}
+
+// Accessors are so small that the call would be much bigger than what it calls.
+bool NativeGenerator::emit_inlined_accessor(uint8* bcp, uint8* next) {
+  bool can_be_null = false;
+  int field = accessor_field(bcp, &can_be_null);
+  if (field < 0) return false;
+  bool is_getter = static_cast<Opcode>(*bcp) == INVOKE_VIRTUAL_GET;
+  int stack_offset = is_getter ? 0 : 1;
+  if (can_be_null) {
+    // It's smaller to let the dispatch table deal with null in cold code.
+    if (!is_hot_site(bcp)) return false;
+    int selector_offset = Utils::read_unaligned_uint16(bcp + 1);
+    out_ << "  if (NATIVE_UNLIKELY(STACK_AT(" << stack_offset << ") == c->null_object)) {\n  ";
+    emit_runtime_next("virtual_fallback", next, virtual_key(selector_offset, stack_offset));
+    out_ << "  }\n";
+  }
+  if (is_getter) {
+    out_ << "  STACK_AT_PUT(0, native_field(STACK_AT(0), " << field << "));\n";
+  } else {
+    out_ << "  { Object* value = POP();\n";
+    out_ << "    native_set_field(c, STACK_AT(0), " << field << ", value);\n";
+    out_ << "    STACK_AT_PUT(0, value);\n";
+    out_ << "  }\n";
+  }
+  if (ends_block(bcp)) emit_goto(next);
+  return true;
 }
 
 bool NativeGenerator::ends_block(uint8* bcp) const {
@@ -628,6 +719,10 @@ void NativeGenerator::emit_block_entry(Method method, bool is_dead) {
   out_ << "}\n";
 }
 
+// The most stack an inlined leaf can use. It has the room for a frame and
+// each of its opcodes pushes at most one value.
+static const int INLINED_STACK_USE = 8;
+
 void NativeGenerator::emit_method(const MethodInfo& info) {
   Method method = info.method;
   int id = method_id(method);
@@ -648,7 +743,7 @@ void NativeGenerator::emit_method(const MethodInfo& info) {
     out_ << "}\n";
   }
   out_ << "static void " << method_label(id) << "(NATIVE_PARAMS) {\n";
-  out_ << "  if (NATIVE_UNLIKELY(NativeRuntime::needs_stack_check(c, sp, " << method.max_height() << "))) {\n";
+  out_ << "  if (NATIVE_UNLIKELY(NativeRuntime::needs_stack_check(c, sp, " << (method.max_height() + INLINED_STACK_USE) << "))) {\n";
   out_ << "    NATIVE_TAIL NativeRuntime::stack_overflow(sp, c, x, " << pruned_id(id) << ");\n";
   out_ << "  }\n";
   out_ << "  NATIVE_TAIL " << label(method.entry()) << "(NATIVE_ARGS);\n";
@@ -752,12 +847,13 @@ void NativeGenerator::emit_virtual(uint8* bcp, uint8* next, int stack_offset, in
 // The types often leave us with a single method that can be called, even if
 // there are many receiver classes. Going directly to it is smaller and
 // doesn't need the dispatch table or the check of the selector.
-bool NativeGenerator::emit_direct_calls(uint8* bcp, uint8* next, int stack_offset, int selector_offset) {
+// Finds the methods the receivers of a virtual call can get to. Returns false
+// if there are receivers other than null that don't have the method.
+bool NativeGenerator::find_targets(uint8* bcp, int stack_offset, int selector_offset,
+                                   std::set<int>* targets, bool* can_be_null) const {
   std::vector<TypeSet> input = types_->input(bci(bcp));
   if (static_cast<int>(input.size()) != stack_offset + 1 || input[0].is_block()) return false;
   int null_id = Smi::value(program_->null_class_id());
-  bool can_be_null = false;
-  std::set<int> targets;
   TypeSet::Iterator it(input[0], TypeSet::words_per_type(program_));
   while (it.has_next()) {
     int id = it.next();
@@ -765,13 +861,23 @@ bool NativeGenerator::emit_direct_calls(uint8* bcp, uint8* next, int stack_offse
     int entry = index < program_->dispatch_table.length() ? program_->dispatch_table[index] : -1;
     if (entry >= 0 && method_ids_.count(entry) != 0 &&
         Method(program_->bytecodes, entry).selector_offset() == selector_offset) {
-      targets.insert(entry);
+      targets->insert(entry);
     } else if (id == null_id) {
-      can_be_null = true;
+      *can_be_null = true;
     } else {
       return false;
     }
   }
+  return true;
+}
+
+// The types often leave us with a single method that can be called, even if
+// there are many receiver classes. Going directly to it is smaller and
+// doesn't need the dispatch table or the check of the selector.
+bool NativeGenerator::emit_direct_calls(uint8* bcp, uint8* next, int stack_offset, int selector_offset) {
+  std::set<int> targets;
+  bool can_be_null = false;
+  if (!find_targets(bcp, stack_offset, selector_offset, &targets, &can_be_null)) return false;
   if (targets.size() != 1) return false;
   // The dispatch table deals with null without any extra code at the call site.
   // That's slower, but smaller, because the sites can share the lookup.
@@ -784,6 +890,109 @@ bool NativeGenerator::emit_direct_calls(uint8* bcp, uint8* next, int stack_offse
     out_ << "  }\n";
   }
   emit_call(*targets.begin(), next);
+  return true;
+}
+
+// A leaf is a short method that doesn't do anything that can call, allocate or
+// throw, so it doesn't need a frame. The bytecode compiler inlines many of
+// these, but not when the target depends on the propagated types.
+bool NativeGenerator::is_leaf(Method method) const {
+  static const int MAX_OPCODES = 6;
+  if (!method.is_normal_method() && !method.is_field_accessor()) return false;
+  uint8* bcp = method.entry();
+  for (int i = 0; i < MAX_OPCODES; i++) {
+    Opcode opcode = static_cast<Opcode>(*bcp);
+    switch (opcode) {
+      case LOAD_LOCAL:
+      case LOAD_LOCAL_WIDE:
+      case LOAD_LOCAL_0:
+      case LOAD_LOCAL_1:
+      case LOAD_LOCAL_2:
+      case LOAD_LOCAL_3:
+      case LOAD_LOCAL_4:
+      case LOAD_LOCAL_5:
+      case POP_LOAD_LOCAL:
+      case STORE_LOCAL:
+      case STORE_LOCAL_POP:
+      case LOAD_FIELD:
+      case LOAD_FIELD_WIDE:
+      case LOAD_FIELD_LOCAL:
+      case POP_LOAD_FIELD_LOCAL:
+      case STORE_FIELD:
+      case STORE_FIELD_WIDE:
+      case STORE_FIELD_POP:
+      case LOAD_LITERAL:
+      case LOAD_LITERAL_WIDE:
+      case LOAD_NULL:
+      case LOAD_SMI_0:
+      case LOAD_SMI_1:
+      case LOAD_SMI_U8:
+      case LOAD_SMI_U16:
+      case LOAD_SMI_U32:
+      case POP:
+      case POP_1:
+        bcp += opcode_length[opcode];
+        break;
+      case RETURN:
+      case RETURN_NULL:
+        return true;
+      default:
+        return false;
+    }
+  }
+  return false;
+}
+
+// Returns the method to inline at a call or -1.
+int NativeGenerator::leaf_target(uint8* bcp) const {
+  int entry = -1;
+  std::set<int> targets;
+  bool can_be_null = false;
+  bool found = true;
+  switch (static_cast<Opcode>(*bcp)) {
+    case INVOKE_STATIC:
+      entry = program_->dispatch_table[Utils::read_unaligned_uint16(bcp + 1)];
+      break;
+    case INVOKE_VIRTUAL:
+      found = find_targets(bcp, bcp[1], Utils::read_unaligned_uint16(bcp + 2), &targets, &can_be_null);
+      break;
+    case INVOKE_VIRTUAL_GET:
+      found = find_targets(bcp, 0, Utils::read_unaligned_uint16(bcp + 1), &targets, &can_be_null);
+      break;
+    case INVOKE_VIRTUAL_SET:
+      found = find_targets(bcp, 1, Utils::read_unaligned_uint16(bcp + 1), &targets, &can_be_null);
+      break;
+    default:
+      return -1;
+  }
+  if (!found || can_be_null || targets.size() > 1) return -1;
+  if (targets.size() == 1) entry = *targets.begin();
+  if (entry < 0 || method_ids_.count(entry) == 0) return -1;
+  return is_leaf(Method(program_->bytecodes, entry)) ? entry : -1;
+}
+
+// The code of the method works as it does in the method itself if we leave
+// room for the frame. Nothing looks at that part of the stack, because
+// leaves can't call anything or let the garbage collector run.
+bool NativeGenerator::emit_inlined_leaf(const MethodInfo& info, uint8* bcp) {
+  int entry = leaf_target(bcp);
+  if (entry < 0) return false;
+  out_ << "  DROP(-" << Interpreter::FRAME_SIZE << ");\n";
+  uint8* leaf = Method(program_->bytecodes, entry).entry();
+  while (*leaf != RETURN && *leaf != RETURN_NULL) {
+    emit_opcode(info, leaf);
+    leaf += opcode_length[*leaf];
+  }
+  int drop = leaf[1] + Interpreter::FRAME_SIZE + leaf[2];
+  if (*leaf == RETURN) {
+    out_ << "  { Object* result = STACK_AT(0);\n";
+    out_ << "    DROP(" << drop << ");\n";
+    out_ << "    PUSH(result);\n";
+    out_ << "  }\n";
+  } else {
+    out_ << "  DROP(" << drop << ");\n";
+    out_ << "  PUSH(c->null_object);\n";
+  }
   return true;
 }
 
@@ -1098,6 +1307,7 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       break;
     }
     case INVOKE_STATIC:
+      if (emit_inlined_leaf(info, bcp)) break;
       emit_call(program_->dispatch_table[wide1], next);
       break;
     case INVOKE_STATIC_TAIL: {
@@ -1120,12 +1330,15 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       break;
     case INVOKE_VIRTUAL:
     case INVOKE_VIRTUAL_WIDE:
+      if (emit_inlined_leaf(info, bcp)) break;
       emit_virtual(bcp, next, arg(INVOKE_VIRTUAL_WIDE), Utils::read_unaligned_uint16(bcp + (opcode == INVOKE_VIRTUAL ? 2 : 3)));
       break;
     case INVOKE_VIRTUAL_GET:
+      if (emit_inlined_accessor(bcp, next) || emit_inlined_leaf(info, bcp)) break;
       emit_virtual(bcp, next, 0, wide1);
       break;
     case INVOKE_VIRTUAL_SET:
+      if (emit_inlined_accessor(bcp, next) || emit_inlined_leaf(info, bcp)) break;
       emit_virtual(bcp, next, 1, wide1);
       break;
     case INVOKE_ADD:
