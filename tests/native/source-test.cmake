@@ -21,7 +21,7 @@ string(REPLACE "@SDK@" "${NATIVE_SDK}" LINK_FLAGS "${LINK_FLAGS}")
 separate_arguments(LINK_FLAGS)
 
 execute_process(
-  COMMAND "${CXX}" -std=gnu++11 -w -O1 -falign-functions=4
+  COMMAND "${CXX}" -std=gnu++11 -w -O1
       "${WORK_DIR}/source-test.cc" -o "${WORK_DIR}/source-test" ${LINK_FLAGS}
   COMMAND_ERROR_IS_FATAL ANY
 )

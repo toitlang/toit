@@ -23,11 +23,11 @@
 // interpreter. All Toit frames live on the Toit stack and the C stack stays
 // flat, because calls, returns and branches between basic blocks are tail
 // calls. This means that the garbage collector, stack growth, tasks and
-// unwinding work the way they do for bytecodes. Return addresses are
-// addresses of functions, which have their low bit clear, so they look like
-// smis to the garbage collector.
+// unwinding work the way they do for bytecodes. Return addresses are addresses
+// of functions, which are declared to have their low bit clear, so they look
+// like smis to the garbage collector.
 //
-// Compile with -falign-functions=4 and a compiler that guarantees tail calls.
+// Compile with a compiler that guarantees tail calls.
 
 #ifndef TOIT_NATIVE_ABI_H_
 #define TOIT_NATIVE_ABI_H_
@@ -69,6 +69,9 @@ typedef void (*NativeFn)(NATIVE_PARAMS);
 #else
 #define NATIVE_COLD
 #endif
+
+// All the functions that have their address on the stack.
+#define NATIVE_ON_STACK __attribute__((aligned(2)))
 
 #define NATIVE_LIKELY(x) __builtin_expect(!!(x), 1)
 #define NATIVE_UNLIKELY(x) __builtin_expect(!!(x), 0)
