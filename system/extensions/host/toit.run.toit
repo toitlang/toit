@@ -26,8 +26,8 @@ import ....tools.snapshot show Program SnapshotBundle
 
 abstract class ContainerImageFromSnapshot extends ContainerImage:
   bundle-bytes_/ByteArray ::= ?
-  bundle_/SnapshotBundle? := null
   program_/Program? := null
+  has-looked-for-source-map_/bool := false
   id/uuid.Uuid? := null
 
   constructor manager/ContainerManager .bundle-bytes_:
@@ -44,10 +44,11 @@ abstract class ContainerImageFromSnapshot extends ContainerImage:
 
   trace encoded/ByteArray -> bool:
     catch:
-      // Parse the snapshot lazily the first time debugging information is needed.
-      if not bundle_:
-        bundle_ = SnapshotBundle bundle-bytes_
-        if bundle_.has-source-map: program_ = bundle_.decode
+      // Parse the source map lazily the first time debugging information is needed.
+      if not has-looked-for-source-map_:
+        has-looked-for-source-map_ = true
+        source-map := SnapshotBundle.source-map-in bundle-bytes_
+        if source-map: program_ = Program.from-source-map source-map
 
       // Decode the stack trace.
       // Without a program we might only get the exception, but no stack trace.

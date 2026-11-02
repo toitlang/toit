@@ -72,6 +72,7 @@ namespace toit {
   FLAG_BOOL(deploy,  migrate_dash_ids,      false, "Prints migration information for dash identifiers")  \
   FLAG_INT(deploy,   max_recursion_depth,   2000,  "Max recursion depth in the parser") \
   FLAG_STRING(deploy, lib_path,             null,  "The library path")              \
+  FLAG_BOOL(deploy,  native_all_cold,       false, "Optimize all native code for size") \
   FLAG_STRING(deploy, native,               null,  "Write the program as C++ code to this file") \
   FLAG_STRING(deploy, archive_entry_path,   null,  "The entry path in an archive")  \
   FLAG_STRING(deploy, sandbox,              null,  "syscall-sandbox: compiler or sandbox")  \
