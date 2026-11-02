@@ -20,27 +20,32 @@ namespace compiler {
 
 MODULE_TYPES(flash, MODULE_FLASH_REGISTRY)
 
-TYPE_PRIMITIVE_ANY(next)
-TYPE_PRIMITIVE_ANY(info)
-TYPE_PRIMITIVE_ANY(erase)
-TYPE_PRIMITIVE_ANY(get_size)
-TYPE_PRIMITIVE_ANY(get_header_page)
-TYPE_PRIMITIVE_ANY(get_all_pages)
-TYPE_PRIMITIVE_ANY(write_non_header_pages)
-TYPE_PRIMITIVE_ANY(reserve_hole)
-TYPE_PRIMITIVE_ANY(cancel_reservation)
-TYPE_PRIMITIVE_ANY(allocate)
-TYPE_PRIMITIVE_ANY(erase_flash_registry)
-TYPE_PRIMITIVE_ANY(grant_access)
+TYPE_PRIMITIVE(next) {
+  result.add_smi(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE_SMI(info)
+TYPE_PRIMITIVE_SMI(erase)
+TYPE_PRIMITIVE_SMI(get_size)
+TYPE_PRIMITIVE_BYTE_ARRAY(get_header_page)
+TYPE_PRIMITIVE_BYTE_ARRAY(get_all_pages)
+TYPE_PRIMITIVE_NULL(write_non_header_pages)
+TYPE_PRIMITIVE_NULL(reserve_hole)
+TYPE_PRIMITIVE_BOOL(cancel_reservation)
+TYPE_PRIMITIVE_NULL(allocate)
+TYPE_PRIMITIVE_BOOL(erase_flash_registry)
+TYPE_PRIMITIVE_NULL(grant_access)
 TYPE_PRIMITIVE_BOOL(is_accessed)
-TYPE_PRIMITIVE_ANY(revoke_access)
+TYPE_PRIMITIVE_NULL(revoke_access)
 TYPE_PRIMITIVE_ARRAY(partition_find)
-TYPE_PRIMITIVE_ANY(region_open)
-TYPE_PRIMITIVE_ANY(region_close)
-TYPE_PRIMITIVE_ANY(region_read)
-TYPE_PRIMITIVE_ANY(region_write)
+TYPE_PRIMITIVE_BYTE_ARRAY(region_open)
+TYPE_PRIMITIVE_NULL(region_close)
+TYPE_PRIMITIVE_NULL(region_read)
+TYPE_PRIMITIVE_NULL(region_write)
 TYPE_PRIMITIVE_BOOL(region_is_erased)
-TYPE_PRIMITIVE_ANY(region_erase)
+TYPE_PRIMITIVE_NULL(region_erase)
 
 }  // namespace toit::compiler
 }  // namespace toit

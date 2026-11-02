@@ -20,12 +20,12 @@ namespace compiler {
 
 MODULE_TYPES(programs_registry, MODULE_PROGRAMS_REGISTRY)
 
-TYPE_PRIMITIVE_ANY(next_group_id)
-TYPE_PRIMITIVE_ANY(is_running)
-TYPE_PRIMITIVE_ANY(kill)
-TYPE_PRIMITIVE_ANY(bundled_images)
-TYPE_PRIMITIVE_ANY(assets)
-TYPE_PRIMITIVE_ANY(config)
+TYPE_PRIMITIVE_SMI(next_group_id)
+TYPE_PRIMITIVE_BOOL(is_running)
+TYPE_PRIMITIVE_BOOL(kill)
+TYPE_PRIMITIVE_ARRAY(bundled_images)
+TYPE_PRIMITIVE_BYTE_ARRAY(assets)
+TYPE_PRIMITIVE_BYTE_ARRAY(config)
 
 TYPE_PRIMITIVE(spawn) {
   result.add_smi(program);

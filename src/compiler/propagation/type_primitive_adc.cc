@@ -20,11 +20,28 @@ namespace compiler {
 
 MODULE_TYPES(adc, MODULE_ADC)
 
-TYPE_PRIMITIVE_ANY(init)
-TYPE_PRIMITIVE_ANY(get)
-TYPE_PRIMITIVE_ANY(get_raw)
+TYPE_PRIMITIVE_BYTE_ARRAY(init)
+
+TYPE_PRIMITIVE(get) {
+  result.add_float(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE(get_raw) {
+  result.add_smi(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
 TYPE_PRIMITIVE_NULL(close)
-TYPE_PRIMITIVE_ANY(init_group)
+
+TYPE_PRIMITIVE(init_group) {
+  result.add_byte_array(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
 TYPE_PRIMITIVE_NULL(cancel)
 
 }  // namespace toit::compiler

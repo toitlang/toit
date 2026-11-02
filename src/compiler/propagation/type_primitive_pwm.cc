@@ -20,14 +20,14 @@ namespace compiler {
 
 MODULE_TYPES(pwm, MODULE_PWM)
 
-TYPE_PRIMITIVE_ANY(init)
-TYPE_PRIMITIVE_ANY(close)
-TYPE_PRIMITIVE_ANY(start)
-TYPE_PRIMITIVE_ANY(factor)
-TYPE_PRIMITIVE_ANY(set_factor)
-TYPE_PRIMITIVE_ANY(frequency)
-TYPE_PRIMITIVE_ANY(set_frequency)
-TYPE_PRIMITIVE_ANY(close_channel)
+TYPE_PRIMITIVE_BYTE_ARRAY(init)
+TYPE_PRIMITIVE_NULL(close)
+TYPE_PRIMITIVE_BYTE_ARRAY(start)
+TYPE_PRIMITIVE_FLOAT(factor)
+TYPE_PRIMITIVE_NULL(set_factor)
+TYPE_PRIMITIVE_INT(frequency)
+TYPE_PRIMITIVE_NULL(set_frequency)
+TYPE_PRIMITIVE_NULL(close_channel)
 
 }  // namespace toit::compiler
 }  // namespace toit

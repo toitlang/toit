@@ -23,23 +23,31 @@ MODULE_TYPES(ec618, MODULE_EC618)
 TYPE_PRIMITIVE_INT(console_uart_id)
 TYPE_PRIMITIVE_INT(slot_active)
 TYPE_PRIMITIVE_INT(slot_size)
-TYPE_PRIMITIVE_ANY(console_uart_set)
-TYPE_PRIMITIVE_ANY(slot_inactive_erase)
-TYPE_PRIMITIVE_ANY(slot_inactive_write)
-TYPE_PRIMITIVE_ANY(slot_reloc_begin)
-TYPE_PRIMITIVE_ANY(slot_reloc_end)
-TYPE_PRIMITIVE_ANY(slot_stage_and_reset)
-TYPE_PRIMITIVE_ANY(slot_stage)
-TYPE_PRIMITIVE_ANY(slot_mark_valid)
-TYPE_PRIMITIVE_ANY(slot_mark_invalid_and_reset)
+TYPE_PRIMITIVE_NULL(console_uart_set)
+TYPE_PRIMITIVE_NULL(slot_inactive_erase)
+TYPE_PRIMITIVE_NULL(slot_inactive_write)
+TYPE_PRIMITIVE_NULL(slot_reloc_begin)
+TYPE_PRIMITIVE_NULL(slot_reloc_end)
+
+TYPE_PRIMITIVE(slot_stage_and_reset) {
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE_NULL(slot_stage)
+TYPE_PRIMITIVE_NULL(slot_mark_valid)
+
+TYPE_PRIMITIVE(slot_mark_invalid_and_reset) {
+  failure.add_string(program);
+}
+
 TYPE_PRIMITIVE_BOOL(slot_trial)
-TYPE_PRIMITIVE_ANY(slot_program_mode)
+TYPE_PRIMITIVE_NULL(slot_program_mode)
 TYPE_PRIMITIVE_INT(reset_reason)
 TYPE_PRIMITIVE_INT(wakeup_cause)
 TYPE_PRIMITIVE_NULL(watchdog_init)
 TYPE_PRIMITIVE_NULL(watchdog_feed)
 TYPE_PRIMITIVE_NULL(watchdog_deinit)
-TYPE_PRIMITIVE_ANY(wakeup_pin_values)
+TYPE_PRIMITIVE_INT(wakeup_pin_values)
 TYPE_PRIMITIVE_NULL(wakeup_pad_configure)
 TYPE_PRIMITIVE_STRING(base_id)
 

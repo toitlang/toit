@@ -20,7 +20,7 @@ namespace compiler {
 
 MODULE_TYPES(debug, MODULE_DEBUG)
 
-TYPE_PRIMITIVE_ANY(object_histogram)
+TYPE_PRIMITIVE_BYTE_ARRAY(object_histogram)
 
 }  // namespace toit::compiler
 }  // namespace toit

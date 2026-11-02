@@ -20,8 +20,8 @@ namespace compiler {
 
 MODULE_TYPES(bignum, MODULE_BIGNUM)
 
-TYPE_PRIMITIVE_ANY(binary_operator)
-TYPE_PRIMITIVE_ANY(exp_mod)
+TYPE_PRIMITIVE_ARRAY(binary_operator)
+TYPE_PRIMITIVE_ARRAY(exp_mod)
 
 }  // namespace toit::compiler
 }  // namespace toit

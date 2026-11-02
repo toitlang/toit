@@ -1,0 +1,94 @@
+main tests/type_propagation/primitive-rules-test.toit
+  0[053] - invoke static test-returns-argument tests/type_propagation/primitive-rules-test.toit // {Null_}
+  3[041] - pop 1
+  4[053] - invoke static test-decoded tests/type_propagation/primitive-rules-test.toit // {Null_}
+  7[041] - pop 1
+  8[053] - invoke static test-always-fails tests/type_propagation/primitive-rules-test.toit // {Null_}
+ 11[092] - return null S1 0
+
+test-returns-argument tests/type_propagation/primitive-rules-test.toit
+  0[025] - load smi 1
+  1[022] - load null
+  2[053] - invoke static Array_ <sdk>/core/collections.toit // [{SmallInteger_}, {Null_}] -> {LargeArray_|SmallArray_}
+  5[023] - load smi 0
+  6[020] - load literal foo
+  8[053] - invoke static at-put_ tests/type_propagation/primitive-rules-test.toit // [{LargeArray_|SmallArray_}, {SmallInteger_}, {String_}] -> {String_}
+ 11[053] - invoke static id tests/type_propagation/primitive-rules-test.toit // [{String_}] -> {String_}
+ 14[041] - pop 1
+ 15[025] - load smi 1
+ 16[022] - load null
+ 17[053] - invoke static Array_ <sdk>/core/collections.toit // [{SmallInteger_}, {Null_}] -> {LargeArray_|SmallArray_}
+ 20[023] - load smi 0
+ 21[020] - load literal 1.5
+ 23[053] - invoke static at-put_ tests/type_propagation/primitive-rules-test.toit // [{LargeArray_|SmallArray_}, {SmallInteger_}, {float}] -> {float}
+ 26[053] - invoke static id tests/type_propagation/primitive-rules-test.toit // [{float}] -> {float}
+ 29[041] - pop 1
+ 30[020] - load literal foo
+ 32[026] - load smi 3
+ 34[022] - load null
+ 35[053] - invoke static ByteArray <sdk>/core/collections.toit // [{SmallInteger_}, {Null_}] -> {ByteArray_}
+ 38[023] - load smi 0
+ 39[026] - load smi 3
+ 41[023] - load smi 0
+ 42[053] - invoke static write-to_ tests/type_propagation/primitive-rules-test.toit // [{String_}, {ByteArray_}, {SmallInteger_}, {SmallInteger_}, {SmallInteger_}] -> {ByteArray_}
+ 45[053] - invoke static id tests/type_propagation/primitive-rules-test.toit // [{ByteArray_}] -> {ByteArray_}
+ 48[092] - return null S1 0
+
+test-decoded tests/type_propagation/primitive-rules-test.toit
+  0[023] - load smi 0
+  1[053] - invoke static create-byte-array_ <sdk>/core/collections.toit // [{SmallInteger_}] -> {ByteArray_}
+  4[053] - invoke static tison-decode_ tests/type_propagation/primitive-rules-test.toit // [{ByteArray_}] -> {String_|Null_|True|False|float|LargeInteger_|SmallInteger_|Map|ByteArray_|SmallArray_}
+  7[053] - invoke static id tests/type_propagation/primitive-rules-test.toit // [{String_|Null_|True|False|float|LargeInteger_|SmallInteger_|Map|ByteArray_|SmallArray_}] -> {*}
+ 10[092] - return null S1 0
+
+test-always-fails tests/type_propagation/primitive-rules-test.toit
+  0[029] - load method [block] in test-always-fails tests/type_propagation/primitive-rules-test.toit
+  5[038] - load block 0
+  7[022] - load null
+  8[022] - load null
+  9[053] - invoke static catch <sdk>/core/exceptions.toit // [[block], {Null_}, {Null_}] -> {*}
+ 12[092] - return null S2 0
+
+[block] in test-always-fails tests/type_propagation/primitive-rules-test.toit
+ - argument 0: [block]
+  0[020] - load literal foo
+  2[053] - invoke static opendir_ tests/type_propagation/primitive-rules-test.toit // [{String_}] -> {}
+  5[041] - pop 1
+  6[026] - load smi 42
+  8[053] - invoke static id tests/type_propagation/primitive-rules-test.toit
+ 11[091] - return S1 1
+
+id tests/type_propagation/primitive-rules-test.toit
+ - argument 0: {*}
+  0[016] - load local 2
+  1[091] - return S1 1
+
+at-put_ tests/type_propagation/primitive-rules-test.toit
+ - argument 0: {LargeArray_|SmallArray_}
+ - argument 1: {SmallInteger_}
+ - argument 2: {String_|float}
+  0[089] - invoke primitive {core::array_at_put}
+  4[053] - invoke static throw <sdk>/core/exceptions.toit // [{String_}] -> {}
+  7[041] - pop 1
+
+write-to_ tests/type_propagation/primitive-rules-test.toit
+ - argument 0: {String_}
+ - argument 1: {ByteArray_}
+ - argument 2: {SmallInteger_}
+ - argument 3: {SmallInteger_}
+ - argument 4: {SmallInteger_}
+  0[089] - invoke primitive {core::string_write_to_byte_array}
+  4[053] - invoke static throw <sdk>/core/exceptions.toit // [{String_}] -> {}
+  7[041] - pop 1
+
+tison-decode_ tests/type_propagation/primitive-rules-test.toit
+ - argument 0: {ByteArray_}
+  0[089] - invoke primitive {encoding::tison_decode}
+  4[053] - invoke static throw <sdk>/core/exceptions.toit // [{String_}] -> {}
+  7[041] - pop 1
+
+opendir_ tests/type_propagation/primitive-rules-test.toit
+ - argument 0: {String_}
+  0[089] - invoke primitive {file::opendir}
+  4[053] - invoke static throw <sdk>/core/exceptions.toit // [{String_}] -> {}
+  7[041] - pop 1

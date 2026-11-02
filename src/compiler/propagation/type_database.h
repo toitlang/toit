@@ -59,6 +59,7 @@ class TypeDatabase {
   void check_top(uint8* bcp, Object* top) const;
   void check_return(uint8* bcp, Object* value) const;
   void check_method_entry(Method method, Object** sp) const;
+  void check_primitive(unsigned module, unsigned index, Object** arguments, Object* value, bool is_failure) const;
 
  private:
   Program* const program_;

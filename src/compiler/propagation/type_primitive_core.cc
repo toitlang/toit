@@ -49,7 +49,11 @@ TYPE_PRIMITIVE(process_stats) {
   failure.add_string(program);
 }
 
-TYPE_PRIMITIVE_ANY(string_write_to_byte_array)  // TODO(kasper): Returns an argument.
+TYPE_PRIMITIVE(string_write_to_byte_array) {
+  arguments.add_to(result, 1);
+  failure.add_string(program);
+}
+
 TYPE_PRIMITIVE_NULL(write_on_stdout)
 TYPE_PRIMITIVE_NULL(write_on_stderr)
 
@@ -86,8 +90,14 @@ TYPE_PRIMITIVE(string_at) {
 }
 
 TYPE_PRIMITIVE_SMI(array_length)
+// The elements of arrays aren't tracked, so they can be anything.
 TYPE_PRIMITIVE_ANY(array_at)
-TYPE_PRIMITIVE_ANY(array_at_put)
+
+TYPE_PRIMITIVE(array_at_put) {
+  arguments.add_to(result, 2);
+  failure.add_string(program);
+}
+
 TYPE_PRIMITIVE_ARRAY(array_new)
 TYPE_PRIMITIVE_ARRAY(array_expand)
 TYPE_PRIMITIVE_NULL(array_replace)
@@ -193,6 +203,8 @@ TYPE_PRIMITIVE_SMI(json_skip_whitespace)
 TYPE_PRIMITIVE_BOOL(compare_simple_json_string)
 
 TYPE_PRIMITIVE_BOOL(task_has_messages)
+// Returns monitors and lambdas, which can't be expressed in terms of the
+// classes known to the primitives yet, in addition to arrays and null.
 TYPE_PRIMITIVE_ANY(task_receive_message)
 TYPE_PRIMITIVE_TASK(task_new)
 
@@ -259,9 +271,17 @@ TYPE_PRIMITIVE(spawn) {
   failure.add_array(program);
 }
 
-TYPE_PRIMITIVE_ANY(main_arguments)
+TYPE_PRIMITIVE(main_arguments) {
+  result.add_decoded(program);
+  failure.add_string(program);
+}
+
 TYPE_PRIMITIVE_SMI(spawn_method)
-TYPE_PRIMITIVE_ANY(spawn_arguments)
+
+TYPE_PRIMITIVE(spawn_arguments) {
+  result.add_decoded(program);
+  failure.add_string(program);
+}
 
 TYPE_PRIMITIVE(program_name) {
   result.add_string(program);
@@ -275,23 +295,46 @@ TYPE_PRIMITIVE(program_path) {
   failure.add_string(program);
 }
 
-TYPE_PRIMITIVE_ANY(get_generic_resource_group)
-TYPE_PRIMITIVE_ANY(profiler_install)
-TYPE_PRIMITIVE_ANY(profiler_start)
-TYPE_PRIMITIVE_ANY(profiler_stop)
-TYPE_PRIMITIVE_ANY(profiler_encode)
-TYPE_PRIMITIVE_ANY(profiler_uninstall)
-TYPE_PRIMITIVE_ANY(set_max_heap_size)
-TYPE_PRIMITIVE_ANY(debug_set_memory_limit)
-TYPE_PRIMITIVE_ANY(dump_heap)
-TYPE_PRIMITIVE_ANY(serial_print_heap_report)
-TYPE_PRIMITIVE_ANY(get_env)
+TYPE_PRIMITIVE_BYTE_ARRAY(get_generic_resource_group)
+TYPE_PRIMITIVE_SMI(profiler_install)
+TYPE_PRIMITIVE_BOOL(profiler_start)
+TYPE_PRIMITIVE_BOOL(profiler_stop)
+TYPE_PRIMITIVE_BYTE_ARRAY(profiler_encode)
+TYPE_PRIMITIVE_NULL(profiler_uninstall)
+TYPE_PRIMITIVE_NULL(set_max_heap_size)
+TYPE_PRIMITIVE_BOOL(debug_set_memory_limit)
+
+TYPE_PRIMITIVE(dump_heap) {
+  result.add_byte_array(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE_NULL(serial_print_heap_report)
+
+TYPE_PRIMITIVE(get_env) {
+  result.add_string(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
 TYPE_PRIMITIVE_NULL(set_env)
-TYPE_PRIMITIVE_ANY(literal_index)
-TYPE_PRIMITIVE_ANY(firmware_map)
-TYPE_PRIMITIVE_ANY(firmware_unmap)
-TYPE_PRIMITIVE_ANY(firmware_mapping_at)
-TYPE_PRIMITIVE_ANY(firmware_mapping_copy)
+
+TYPE_PRIMITIVE(literal_index) {
+  result.add_smi(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE(firmware_map) {
+  arguments.add_to(result, 0);
+  result.add_byte_array(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE_NULL(firmware_unmap)
+TYPE_PRIMITIVE_SMI(firmware_mapping_at)
+TYPE_PRIMITIVE_SMI(firmware_mapping_copy)
 TYPE_PRIMITIVE_BYTE_ARRAY(rtc_user_bytes)
 
 TYPE_PRIMITIVE_STRING(hostname)

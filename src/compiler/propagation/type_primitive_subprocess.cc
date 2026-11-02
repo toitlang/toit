@@ -20,11 +20,11 @@ namespace compiler {
 
 MODULE_TYPES(subprocess, MODULE_SUBPROCESS)
 
-TYPE_PRIMITIVE_ANY(init)
-TYPE_PRIMITIVE_ANY(dont_wait_for)
-TYPE_PRIMITIVE_ANY(wait_for)
-TYPE_PRIMITIVE_ANY(kill)
-TYPE_PRIMITIVE_ANY(strsignal)
+TYPE_PRIMITIVE_BYTE_ARRAY(init)
+TYPE_PRIMITIVE_NULL(dont_wait_for)
+TYPE_PRIMITIVE_NULL(wait_for)
+TYPE_PRIMITIVE_NULL(kill)
+TYPE_PRIMITIVE_STRING(strsignal)
 
 }  // namespace toit::compiler
 }  // namespace toit

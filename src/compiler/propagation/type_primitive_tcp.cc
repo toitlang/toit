@@ -20,19 +20,44 @@ namespace compiler {
 
 MODULE_TYPES(tcp, MODULE_TCP)
 
-TYPE_PRIMITIVE_ANY(init)
-TYPE_PRIMITIVE_ANY(close)
-TYPE_PRIMITIVE_ANY(close_write)
-TYPE_PRIMITIVE_ANY(connect)
-TYPE_PRIMITIVE_ANY(accept)
-TYPE_PRIMITIVE_ANY(listen)
-TYPE_PRIMITIVE_ANY(write)
-TYPE_PRIMITIVE_ANY(read)
-TYPE_PRIMITIVE_ANY(error_number)
-TYPE_PRIMITIVE_ANY(error)
-TYPE_PRIMITIVE_ANY(get_option)
-TYPE_PRIMITIVE_ANY(set_option)
-TYPE_PRIMITIVE_ANY(gc)
+TYPE_PRIMITIVE_BYTE_ARRAY(init)
+TYPE_PRIMITIVE_NULL(close)
+TYPE_PRIMITIVE_NULL(close_write)
+TYPE_PRIMITIVE_BYTE_ARRAY(connect)
+
+TYPE_PRIMITIVE(accept) {
+  result.add_byte_array(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE_BYTE_ARRAY(listen)
+TYPE_PRIMITIVE_SMI(write)
+
+TYPE_PRIMITIVE(read) {
+  result.add_byte_array(program);
+  result.add_smi(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE_SMI(error_number)
+TYPE_PRIMITIVE_STRING(error)
+
+TYPE_PRIMITIVE(get_option) {
+  result.add_string(program);
+  result.add_bool(program);
+  result.add_smi(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE_NULL(set_option)
+
+TYPE_PRIMITIVE(gc) {
+  result.add_bool(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
 
 }  // namespace toit::compiler
 }  // namespace toit

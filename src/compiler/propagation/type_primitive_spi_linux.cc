@@ -20,11 +20,16 @@ namespace compiler {
 
 MODULE_TYPES(spi_linux, MODULE_SPI_LINUX)
 
-TYPE_PRIMITIVE_ANY(init)
-TYPE_PRIMITIVE_ANY(open)
-TYPE_PRIMITIVE_ANY(close)
-TYPE_PRIMITIVE_ANY(transfer_start)
-TYPE_PRIMITIVE_ANY(transfer_finish)
+TYPE_PRIMITIVE_BYTE_ARRAY(init)
+TYPE_PRIMITIVE_BYTE_ARRAY(open)
+TYPE_PRIMITIVE_NULL(close)
+TYPE_PRIMITIVE_BOOL(transfer_start)
+
+TYPE_PRIMITIVE(transfer_finish) {
+  result.add_byte_array(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
 
 }  // namespace toit::compiler
 }  // namespace toit

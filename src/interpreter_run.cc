@@ -196,10 +196,15 @@ Method Program::find_method(Object* receiver, word offset) {
   if (propagated_types) {                             \
     propagated_types->check_return(bcp, *sp);         \
   }
+#define CHECK_PROPAGATED_TYPES_PRIMITIVE(module, index, arguments, value, is_failure) \
+  if (propagated_types) {                                                               \
+    propagated_types->check_primitive(module, index, arguments, value, is_failure);     \
+  }
 #else
 #define CHECK_PROPAGATED_TYPES_METHOD_ENTRY(target)
 #define CHECK_PROPAGATED_TYPES_TOP()
 #define CHECK_PROPAGATED_TYPES_RETURN()
+#define CHECK_PROPAGATED_TYPES_PRIMITIVE(module, index, arguments, value, is_failure)
 #endif
 
 #define CALL_METHOD_WITH_RETURN_ADDRESS(target, return_address)       \
@@ -1141,6 +1146,7 @@ Interpreter::Result Interpreter::run() {
         sp = sp_;
       }
 
+      CHECK_PROPAGATED_TYPES_PRIMITIVE(primitive_module, primitive_index, sp + parameter_offset + arity - 1, result, true);
       // GC might have taken place in object heap but local "method" is from program heap.
       PUSH(result);
       process_->object_heap()->leave_primitive();
@@ -1148,6 +1154,7 @@ Interpreter::Result Interpreter::run() {
       DISPATCH(PRIMITIVE_LENGTH);
 
     done:
+      CHECK_PROPAGATED_TYPES_PRIMITIVE(primitive_module, primitive_index, sp + parameter_offset + arity - 1, result, false);
       static_assert(FRAME_SIZE == 2, "Unexpected frame size");
       Object* frame_marker = POP();
       ASSERT(frame_marker == program->frame_marker());

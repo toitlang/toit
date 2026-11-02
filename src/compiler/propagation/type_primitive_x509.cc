@@ -20,10 +20,16 @@ namespace compiler {
 
 MODULE_TYPES(x509, MODULE_X509)
 
-TYPE_PRIMITIVE_ANY(init)
-TYPE_PRIMITIVE_ANY(parse)
-TYPE_PRIMITIVE_ANY(get_common_name)
-TYPE_PRIMITIVE_ANY(close)
+TYPE_PRIMITIVE_BYTE_ARRAY(init)
+TYPE_PRIMITIVE_BYTE_ARRAY(parse)
+
+TYPE_PRIMITIVE(get_common_name) {
+  result.add_string(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE_NULL(close)
 
 }  // namespace toit::compiler
 }  // namespace toit
