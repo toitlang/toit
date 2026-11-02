@@ -1,0 +1,21 @@
+<pkg:zygote>/setup.toit:245:12: warning: Deprecated 'ResponseWriter.write'. Use 'out'.write instead
+    writer.write (json.encode (access-points.map: { "ssid": it.ssid, "rssi": it.rssi }))
+           ^~~~~
+<pkg:zygote>/setup.toit:258:14: warning: Deprecated 'ResponseWriter.write'. Use 'out'.write instead
+      writer.write (DEFAULT-CONNECTING.substitute: substitutions.get it --if-absent=(: "{{$it}}"))
+             ^~~~~
+<pkg:zygote>/setup.toit:275:14: warning: Deprecated 'ResponseWriter.write'. Use 'out'.write instead
+      writer.write asset
+             ^~~~~
+<pkg:zygote>/setup.toit:281:14: warning: Deprecated 'ResponseWriter.write'. Use 'out'.write instead
+      writer.write (str.substitute: substitutions.get it --if-absent=(: "{{$it}}"))
+             ^~~~~
+<pkg:zygote>/setup.toit:283:14: warning: Deprecated 'ResponseWriter.write'. Use 'out'.write instead
+      writer.write asset
+             ^~~~~
+<pkg:zygote>/setup.toit:289:12: warning: Deprecated 'ResponseWriter.write'. Use 'out'.write instead
+    writer.write "Not found: $resource"
+           ^~~~~
+<pkg:zygote>/setup.toit:297:10: warning: Deprecated 'ResponseWriter.write'. Use 'out'.write instead
+  writer.write (DEFAULT-INDEX.substitute: substitutions.get it --if-absent=(: "{{$it}}"))
+         ^~~~~
