@@ -338,17 +338,12 @@ void NativeRuntime::primitive(NATIVE_PARAMS) {
   Interpreter* interpreter = c->interpreter;
   Process* process = c->process;
   Program* program = c->program;
-  int module = y >> 16;
-  int index = y & 0xffff;
-  const PrimitiveEntry* entry = Primitive::at(module, index);
-  if (entry == null) {
-    PUSH(Smi::from(module));
-    PUSH(Smi::from(index));
-    CALL(program->primitive_lookup_failure());
-  }
+  // Generated code knows the primitive. The numbers are just for reporting.
+  int arity = y & 0xff;
+  int module = (y >> 8) & 0xff;
+  int index = y >> 16;
   if (Flags::preempt_a_lot) interpreter->preempt();
-  int arity = entry->arity;
-  auto function = reinterpret_cast<Primitive::Entry*>(entry->function);
+  auto function = reinterpret_cast<Primitive::Entry*>(t);
   const int parameter_offset = Interpreter::FRAME_SIZE;
 
   interpreter->sp_ = sp;

@@ -147,7 +147,7 @@ class NativeGenerator {
   bool is_hot_code(const MethodInfo& info, uint8* bcp) const;
   const char* attributes(const MethodInfo& info, uint8* bcp) const;
   void emit_declarations();
-  void emit_module_references();
+  void emit_primitive_declarations();
   void emit_tables();
   void emit_method(const MethodInfo& info);
   void emit_block_entry(Method method, bool is_dead);
@@ -658,32 +658,48 @@ void NativeGenerator::emit_declarations() {
   out_ << "\n";
 }
 
-// Referencing a module makes the linker include it. Modules that nothing
-// references are left out, and so is everything that only they use. See
-// native_module_stubs.cc for the modules that a platform doesn't have.
-void NativeGenerator::emit_module_references() {
+struct PrimitiveInfo {
+  const char* name;
+  int arity;
+};
+
+#define PRIMITIVE_INFO(name, arity) { #name, arity },
+#define MODULE_INFO(name, entries) static const PrimitiveInfo name##_infos[] = { entries(PRIMITIVE_INFO) { null, 0 } };
+MODULES(MODULE_INFO)
+#undef MODULE_INFO
+#undef PRIMITIVE_INFO
+
 #define MODULE_NAME(name, entries) #name,
-  static const char* const names[] = { MODULES(MODULE_NAME) };
+static const char* const module_names[] = { MODULES(MODULE_NAME) };
 #undef MODULE_NAME
-  std::set<int> modules;
-  modules.insert(0);  // The core module has things the runtime depends on.
+#define MODULE_INFOS(name, entries) name##_infos,
+static const PrimitiveInfo* const module_infos[] = { MODULES(MODULE_INFOS) };
+#undef MODULE_INFOS
+
+static std::string primitive_name(int module, int index) {
+  return "toit::" + std::string(module_names[module]) + "_module::p_" + module_infos[module][index].name;
+}
+
+// The primitives are called directly, so the linker can see which ones are
+// used and drop the rest of the runtime. See native_module_stubs.cc for the
+// primitives that a platform doesn't have.
+void NativeGenerator::emit_primitive_declarations() {
+  std::set<std::pair<int, int>> primitives;
   for (auto& info : methods_) {
     uint8* bcp = info.method.entry();
     while (bcp < info.end) {
       Opcode opcode = static_cast<Opcode>(*bcp);
       if (opcode >= ILLEGAL_END) break;
-      if (opcode == PRIMITIVE) modules.insert(bcp[1]);
+      if (opcode == PRIMITIVE) primitives.insert({ bcp[1], Utils::read_unaligned_uint16(bcp + 2) });
       bcp += opcode_length[opcode];
     }
   }
-  std::vector<std::string> linked;
-  for (int module : modules) linked.push_back(std::string(names[module]) + "_module_linked_");
   out_ << "namespace toit {\n";
-  for (auto& name : linked) out_ << "extern char " << name << ";\n";
-  out_ << "}\n";
-  out_ << "__attribute__((used)) static char* const native_modules[] = {\n";
-  for (auto& name : linked) out_ << "  &toit::" << name << ",\n";
-  out_ << "};\n\n";
+  for (auto& it : primitives) {
+    out_ << "namespace " << module_names[it.first] << "_module { Object* p_"
+         << module_infos[it.first][it.second].name << "(Process*, Object**); }\n";
+  }
+  out_ << "}\n\n";
 }
 
 void NativeGenerator::emit_tables() {
@@ -773,7 +789,7 @@ std::string NativeGenerator::generate() {
   out_ << NATIVE_ABI_SOURCE << "\n";
   out_ << "using namespace toit;\n\n";
   out_ << "static const unsigned SMI_ID = " << Smi::value(program_->smi_class_id()) << ";\n\n";
-  emit_module_references();
+  emit_primitive_declarations();
   emit_declarations();
   emit_tables();
   out_ << "\n";
@@ -1624,7 +1640,12 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       break;
     }
     case PRIMITIVE:
-      emit_runtime_next("primitive", next, static_cast<word>(byte1) << 16 | Utils::read_unaligned_uint16(bcp + 2));
+    {
+      int index = Utils::read_unaligned_uint16(bcp + 2);
+      word y = (static_cast<word>(index) << 16) | (byte1 << 8) | module_infos[byte1][index].arity;
+      out_ << "  { SPILL(); NATIVE_TAIL NativeRuntime::primitive(sp, c, reinterpret_cast<void*>(&" << label(next) << "), " << y
+           << ", reinterpret_cast<Object*>(&" << primitive_name(byte1, index) << ")); }\n";
+    }
       break;
     case THROW:
       emit_runtime("throw_exception", "nullptr", 0);
