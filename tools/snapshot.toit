@@ -224,6 +224,16 @@ class SnapshotBundle:
         ? bytes[sdk-version-offsets.from..sdk-version-offsets.to].to-string-non-throwing
         : ""
 
+  /**
+  Returns the source map in the given bundle, or null if it doesn't have one.
+
+  The source map is all that is needed for decoding stack traces, so
+    programs that decode them don't need to know how to parse snapshots.
+  */
+  static source-map-in byte-array/ByteArray -> SourceMap?:
+    offsets := extract-ar-offsets_ --silent byte-array SOURCE-MAP-NAME
+    return offsets ? SourceMap byte-array offsets.from offsets.to : null
+
   static is-bundle-content buffer/ByteArray -> bool:
     catch:
       if not has-valid-ar-header buffer: return false

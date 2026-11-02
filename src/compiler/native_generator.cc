@@ -18,6 +18,7 @@
 #include "propagation/type_database.h"
 
 #include "../bytecodes.h"
+#include "../flags.h"
 #include "../interpreter.h"
 #include "../native.h"
 #include "native_abi_source.h"
@@ -538,6 +539,7 @@ void NativeGenerator::find_leaders(MethodInfo* info) {
 
 void NativeGenerator::find_hot_code(MethodInfo* info) {
   info->is_hot = false;
+  if (Flags::native_all_cold) return;
   uint8* bcp = info->method.entry();
   while (bcp < info->end) {
     Opcode opcode = static_cast<Opcode>(*bcp);
@@ -571,6 +573,7 @@ bool NativeGenerator::is_looping(const MethodInfo& info) const {
 // The bodies of 'repeat' and 'do' are blocks, but they are as hot as any loop.
 // The last block loaded before a call is the one that is passed to it.
 void NativeGenerator::find_hot_blocks() {
+  if (Flags::native_all_cold) return;
   std::map<int, const MethodInfo*> by_id;
   for (auto& info : methods_) by_id[method_id(info.method)] = &info;
   std::vector<int> hot;

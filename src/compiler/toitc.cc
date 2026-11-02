@@ -267,10 +267,12 @@ int main(int argc, char **argv) {
       native = true;
       processed_args++;
     } else if (strcmp(argv[processed_args], "--native-boot") == 0) {
-      // Used for building the SDK. Not interesting for users.
+      // Used for building the SDK. Not interesting for users. The system
+      // program mostly waits for things, so it only has to be small.
       native = true;
       native_source = true;
       native_boot = true;
+      Flags::native_all_cold = true;
       processed_args++;
     } else if (strcmp(argv[processed_args], "--native-source") == 0) {
       native = true;
