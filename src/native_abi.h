@@ -155,6 +155,7 @@ static const int NATIVE_CLASS_ID_OFFSET = 5;
 static const int NATIVE_INSTANCE_TAG = 2;
 static const int NATIVE_DOUBLE_TAG = 4;
 static const int NATIVE_ARRAY_TAG = 0;
+static const int NATIVE_ARRAYLET_SIZE = 500;
 static const int NATIVE_BLOCK_SALT = 0x01020304;
 static const int NATIVE_CARD_SIZE_LOG_2 = 5 + (sizeof(void*) == 8 ? 3 : 2);
 static const uint8_t NATIVE_NEW_SPACE_POINTERS = 1;
@@ -389,31 +390,122 @@ inline bool native_mod(Object* a, Object* b, Object** result) {
   return true;
 }
 
+// Arrays have their length as a raw word and then the elements.
+inline Object** native_array_element(Object* array, Object* index) {
+  if (!native_is_smi(index)) return nullptr;
+  uintptr_t n = static_cast<uintptr_t>(native_smi_value(index));
+  if (n >= native_bits(*native_word_address(array, 1))) return nullptr;
+  return native_word_address(array, 2 + n);
+}
+
 // Lists have their backing as the first field and their size as the second.
-// These expect a list, and return false for the cases where the backing isn't
-// a plain array, or where the index isn't a smi that is in range.
-inline Object** native_list_element(Object* list, Object* index) {
+// This returns null if the backing isn't a plain array, or if the index isn't
+// a smi that is in range. The container is what the write barrier needs.
+inline Object** native_list_element(Object* list, Object* index, Object** container) {
   if (!native_is_smi(index)) return nullptr;
   Object* backing = native_field(list, 0);
   if (!native_has_class_tag(backing, NATIVE_ARRAY_TAG)) return nullptr;
   uintptr_t n = static_cast<uintptr_t>(native_smi_value(index));
   if (n >= static_cast<uintptr_t>(native_smi_value(native_field(list, 1)))) return nullptr;
+  *container = backing;
   return native_word_address(backing, 2 + n);
 }
 
+// Big lists have a large array as their backing. It has
+// a vector of arraylets as its second field.
+inline Object** native_large_list_element(Object* list, Object* index, Object** container) {
+  Object** element = native_list_element(list, index, container);
+  if (element != nullptr) return element;
+  if (!native_is_smi(index)) return nullptr;
+  Object* backing = native_field(list, 0);
+  if (!native_has_class_tag(backing, NATIVE_INSTANCE_TAG)) return nullptr;
+  uintptr_t n = static_cast<uintptr_t>(native_smi_value(index));
+  if (n >= static_cast<uintptr_t>(native_smi_value(native_field(list, 1)))) return nullptr;
+  Object* vector = native_field(backing, 1);
+  if (!native_has_class_tag(vector, NATIVE_ARRAY_TAG)) return nullptr;
+  Object* arraylet = *native_word_address(vector, 2 + n / NATIVE_ARRAYLET_SIZE);
+  if (!native_has_class_tag(arraylet, NATIVE_ARRAY_TAG)) return nullptr;
+  *container = arraylet;
+  return native_word_address(arraylet, 2 + n % NATIVE_ARRAYLET_SIZE);
+}
+
+inline void native_store_element(NativeContext* c, Object* container, Object** element, Object* value) {
+  uintptr_t card = native_bits(container) >> NATIVE_CARD_SIZE_LOG_2;
+  *reinterpret_cast<uint8_t*>(card + c->remembered_set_bias) = NATIVE_NEW_SPACE_POINTERS;
+  *element = value;
+}
+
+inline bool native_array_at(Object* array, Object* index, Object** result) {
+  Object** element = native_array_element(array, index);
+  if (element == nullptr) return false;
+  *result = *element;
+  return true;
+}
+
+inline bool native_array_at_put(NativeContext* c, Object* array, Object* index, Object* value) {
+  Object** element = native_array_element(array, index);
+  if (element == nullptr) return false;
+  native_store_element(c, array, element, value);
+  return true;
+}
+
 inline bool native_list_at(Object* list, Object* index, Object** result) {
-  Object** element = native_list_element(list, index);
+  Object* container;
+  Object** element = native_list_element(list, index, &container);
+  if (element == nullptr) return false;
+  *result = *element;
+  return true;
+}
+
+inline bool native_large_list_at(Object* list, Object* index, Object** result) {
+  Object* container;
+  Object** element = native_large_list_element(list, index, &container);
   if (element == nullptr) return false;
   *result = *element;
   return true;
 }
 
 inline bool native_list_at_put(NativeContext* c, Object* list, Object* index, Object* value) {
-  Object** element = native_list_element(list, index);
+  Object* container;
+  Object** element = native_list_element(list, index, &container);
   if (element == nullptr) return false;
-  uintptr_t card = native_bits(native_field(list, 0)) >> NATIVE_CARD_SIZE_LOG_2;
-  *reinterpret_cast<uint8_t*>(card + c->remembered_set_bias) = NATIVE_NEW_SPACE_POINTERS;
-  *element = value;
+  native_store_element(c, container, element, value);
+  return true;
+}
+
+inline bool native_large_list_at_put(NativeContext* c, Object* list, Object* index, Object* value) {
+  Object* container;
+  Object** element = native_large_list_element(list, index, &container);
+  if (element == nullptr) return false;
+  native_store_element(c, container, element, value);
+  return true;
+}
+
+// Byte arrays have their length as a raw word, which is
+// negative if the bytes are somewhere else. Those are left to the runtime.
+inline uint8_t* native_byte_element(Object* bytes, Object* index) {
+  if (!native_is_smi(index)) return nullptr;
+  intptr_t length = reinterpret_cast<intptr_t>(*native_word_address(bytes, 1));
+  if (length < 0) return nullptr;
+  uintptr_t n = static_cast<uintptr_t>(native_smi_value(index));
+  if (n >= static_cast<uintptr_t>(length)) return nullptr;
+  return reinterpret_cast<uint8_t*>(native_word_address(bytes, 2)) + n;
+}
+
+inline bool native_byte_array_at(Object* bytes, Object* index, Object** result) {
+  uint8_t* element = native_byte_element(bytes, index);
+  if (element == nullptr) return false;
+  *result = native_smi(*element);
+  return true;
+}
+
+inline bool native_byte_array_at_put(Object* bytes, Object* index, Object* value, Object** result) {
+  if (!native_is_smi(value)) return false;
+  uint8_t* element = native_byte_element(bytes, index);
+  if (element == nullptr) return false;
+  uint8_t byte = static_cast<uint8_t>(native_smi_value(value));
+  *element = byte;
+  *result = native_smi(byte);
   return true;
 }
 

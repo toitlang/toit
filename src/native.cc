@@ -131,6 +131,8 @@ int NativeRuntime::register_program(const NativeProgram* program) {
   static_assert(DOUBLE_TAG == NATIVE_DOUBLE_TAG, "double tag");
   static_assert(ARRAY_TAG == NATIVE_ARRAY_TAG, "array tag");
   static_assert(Array::HEADER_SIZE == 2 * WORD_SIZE, "array");
+  static_assert(Array::ARRAYLET_SIZE == NATIVE_ARRAYLET_SIZE, "arraylets");
+  static_assert(Instance::LARGE_ARRAY_VECTOR_INDEX == 1, "large array");
   static_assert(Instance::LIST_ARRAY_INDEX == 0, "list");
   static_assert(Instance::LIST_SIZE_INDEX == 1, "list");
   static_assert(LargeInteger::VALUE_OFFSET == WORD_SIZE, "large integer");
