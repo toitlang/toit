@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <cstring>
 #include <map>
 #include <utility>
 #include <vector>
@@ -141,6 +142,8 @@ class NativeGenerator {
 
   void find_leaders(MethodInfo* info);
   void find_hot_code(MethodInfo* info);
+  bool is_looping(const MethodInfo& info) const;
+  void find_hot_blocks();
   bool is_hot_code(const MethodInfo& info, uint8* bcp) const;
   const char* attributes(const MethodInfo& info, uint8* bcp) const;
   void emit_declarations();
@@ -174,8 +177,11 @@ class NativeGenerator {
   void emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, const char* helper);
   void emit_relational(const MethodInfo& info, uint8* bcp, uint8* next, Opcode opcode, const char* op);
   void emit_bit_operation(uint8* bcp, uint8* next, Opcode opcode, const char* op, const char* helper);
-  bool needs_list_check(uint8* bcp, int stack_offset, bool* is_list) const;
-  std::string list_check(uint8* bcp, int stack_offset, bool needs_check) const;
+  struct Collection {
+    const char* name;
+    std::string guard;
+  };
+  std::vector<Collection> collections_at(uint8* bcp, int stack_offset) const;
   void emit_at(uint8* bcp, uint8* next);
   void emit_at_put(uint8* bcp, uint8* next);
   void emit_size(uint8* bcp, uint8* next, int selector);
@@ -202,6 +208,7 @@ NativeGenerator::NativeGenerator(Program* program, TypeDatabase* types, std::vec
     find_leaders(&info);
     find_hot_code(&info);
   }
+  find_hot_blocks();
   // Global functions are in the dispatch table too, but they have no selector.
   for (int entry : program_->dispatch_table) {
     if (entry < 0 || method_ids_.count(entry) == 0) continue;
@@ -551,6 +558,49 @@ void NativeGenerator::find_hot_code(MethodInfo* info) {
         break;
     }
     bcp += opcode_length[opcode];
+  }
+}
+
+// Returns whether the method can call the blocks it gets over and over.
+bool NativeGenerator::is_looping(const MethodInfo& info) const {
+  if (!info.loops.empty()) return true;
+  uint8* bcp = info.method.entry();
+  return bcp < info.end && (*bcp == INTRINSIC_SMI_REPEAT || *bcp == INTRINSIC_ARRAY_DO);
+}
+
+// The bodies of 'repeat' and 'do' are blocks, but they are as hot as any loop.
+// The last block loaded before a call is the one that is passed to it.
+void NativeGenerator::find_hot_blocks() {
+  std::map<int, const MethodInfo*> by_id;
+  for (auto& info : methods_) by_id[method_id(info.method)] = &info;
+  std::vector<int> hot;
+  for (auto& info : methods_) {
+    int block = -1;
+    uint8* bcp = info.method.entry();
+    while (bcp < info.end) {
+      Opcode opcode = static_cast<Opcode>(*bcp);
+      if (opcode >= ILLEGAL_END) break;
+      if (opcode == LOAD_METHOD) {
+        block = Utils::read_unaligned_uint32(bcp + 1);
+      } else if (block >= 0 && is_call(opcode)) {
+        std::set<int> targets;
+        bool can_be_null = false;
+        if (opcode == INVOKE_STATIC) {
+          targets.insert(program_->dispatch_table[Utils::read_unaligned_uint16(bcp + 1)]);
+        } else if (opcode == INVOKE_VIRTUAL) {
+          find_targets(bcp, bcp[1], Utils::read_unaligned_uint16(bcp + 2), &targets, &can_be_null);
+        }
+        for (int target : targets) {
+          auto probe = by_id.find(target);
+          if (probe != by_id.end() && is_looping(*probe->second)) hot.push_back(block);
+        }
+        block = -1;
+      }
+      bcp += opcode_length[opcode];
+    }
+  }
+  for (auto& info : methods_) {
+    if (std::find(hot.begin(), hot.end(), method_id(info.method)) != hot.end()) info.is_hot = true;
   }
 }
 
@@ -1108,7 +1158,8 @@ void NativeGenerator::emit_relational(const MethodInfo& info, uint8* bcp, uint8*
     }
     return;
   }
-  if (operands.can_be_smis && (operands.is_likely || is_hot_site(bcp))) {
+  // Comparisons are too small for the check to matter for the size.
+  if (operands.can_be_smis) {
     out_ << "  if (NATIVE_LIKELY(" << smi_check(operands) << ")) {\n";
     out_ << "    bool result = " << smi_compare << ";\n";
     emit_fast_result(next, "result");
@@ -1145,48 +1196,54 @@ void NativeGenerator::emit_bit_operation(uint8* bcp, uint8* next, Opcode opcode,
 }
 
 // The runtime has to look at the class of the receiver to find out what it is
-// dealing with. The propagated types often tell us that it's a list, and
-// then the check isn't needed. If it is merely likely to be one, we still
-// avoid going through the runtime for the cost of checking the class.
-bool NativeGenerator::needs_list_check(uint8* bcp, int stack_offset, bool* is_list) const {
-  *is_list = false;
+// dealing with. The propagated types tell us which kinds of collections the
+// receiver can be, so we only generate code for those. If there is just one
+// possibility, it doesn't even need a check.
+std::vector<NativeGenerator::Collection> NativeGenerator::collections_at(uint8* bcp, int stack_offset) const {
+  std::vector<Collection> result;
   std::vector<TypeSet> input = types_->input(bci(bcp));
-  if (static_cast<int>(input.size()) != stack_offset + 1 || input[0].is_block()) return false;
-  if (!input[0].contains(Smi::value(program_->list_class_id()))) return false;
-  int count = input[0].size(TypeSet::words_per_type(program_));
-  if (count == 1) {
-    *is_list = true;
-    return false;
-  }
-  static const int LIKELY_LIST_TYPES = 3;
-  *is_list = count <= LIKELY_LIST_TYPES || is_hot_site(bcp);
-  return *is_list;
-}
-
-std::string NativeGenerator::list_check(uint8* bcp, int stack_offset, bool needs_check) const {
-  if (!needs_check) return "";
-  return "native_class_id(STACK_AT(" + std::to_string(stack_offset) + "), SMI_ID) == " +
-      std::to_string(Smi::value(program_->list_class_id())) + " && ";
+  if (static_cast<int>(input.size()) != stack_offset + 1 || input[0].is_block()) return result;
+  bool is_certain = input[0].size(TypeSet::words_per_type(program_)) == 1;
+  // It's worth the code in hot places, and everywhere the types are precise
+  // enough for it to be small.
+  if (!is_certain && !is_hot_site(bcp)) return result;
+  std::string receiver = "STACK_AT(" + std::to_string(stack_offset) + ")";
+  auto add = [&](Smi* id, const char* name) {
+    int class_id = Smi::value(id);
+    if (!input[0].contains(class_id)) return;
+    std::string guard = is_certain
+        ? std::string()
+        : "native_class_id(" + receiver + ", SMI_ID) == " + std::to_string(class_id) + " && ";
+    result.push_back({ name, guard });
+  };
+  add(program_->list_class_id(), is_hot_site(bcp) ? "large_list" : "list");
+  add(program_->array_class_id(), "array");
+  add(program_->byte_array_class_id(), "byte_array");
+  return result;
 }
 
 void NativeGenerator::emit_at(uint8* bcp, uint8* next) {
-  bool is_list;
-  bool needs_check = needs_list_check(bcp, 1, &is_list);
-  if (is_list) {
+  for (auto& collection : collections_at(bcp, 1)) {
     out_ << "  { Object* result;\n";
-    out_ << "    if (NATIVE_LIKELY(" << list_check(bcp, 1, needs_check) << "native_list_at(STACK_AT(1), STACK_AT(0), &result))) {\n";
+    out_ << "    if (NATIVE_LIKELY(" << collection.guard << "native_" << collection.name << "_at(STACK_AT(1), STACK_AT(0), &result))) {\n";
     out_ << "      DROP_PUSH(2, result);\n";
-    out_ << "      " << "NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
+    out_ << "      NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
     out_ << "    }\n  }\n";
   }
   emit_runtime_next("at", next, 0);
 }
 
 void NativeGenerator::emit_at_put(uint8* bcp, uint8* next) {
-  bool is_list;
-  bool needs_check = needs_list_check(bcp, 2, &is_list);
-  if (is_list) {
-    out_ << "  if (NATIVE_LIKELY(" << list_check(bcp, 2, needs_check) << "native_list_at_put(c, STACK_AT(2), STACK_AT(1), STACK_AT(0)))) {\n";
+  for (auto& collection : collections_at(bcp, 2)) {
+    if (strcmp(collection.name, "byte_array") == 0) {
+      out_ << "  { Object* result;\n";
+      out_ << "    if (NATIVE_LIKELY(" << collection.guard << "native_byte_array_at_put(STACK_AT(2), STACK_AT(1), STACK_AT(0), &result))) {\n";
+      out_ << "      DROP_PUSH(3, result);\n";
+      out_ << "      NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
+      out_ << "    }\n  }\n";
+      continue;
+    }
+    out_ << "  if (NATIVE_LIKELY(" << collection.guard << "native_" << collection.name << "_at_put(c, STACK_AT(2), STACK_AT(1), STACK_AT(0)))) {\n";
     out_ << "    DROP_PUSH(3, STACK_AT(0));\n";
     out_ << "    NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
     out_ << "  }\n";
@@ -1195,14 +1252,18 @@ void NativeGenerator::emit_at_put(uint8* bcp, uint8* next) {
 }
 
 void NativeGenerator::emit_size(uint8* bcp, uint8* next, int selector) {
-  bool is_list;
-  bool needs_check = needs_list_check(bcp, 0, &is_list);
-  if (is_list) {
-    if (needs_check) out_ << "  if (NATIVE_LIKELY(" << "native_class_id(STACK_AT(0), SMI_ID) == " << Smi::value(program_->list_class_id()) << ")) {\n";
+  for (auto& collection : collections_at(bcp, 0)) {
+    // The size of a list is a field. It's the same for big lists.
+    if (strcmp(collection.name, "list") != 0 && strcmp(collection.name, "large_list") != 0) continue;
+    if (collection.guard.empty()) {
+      out_ << "  STACK_AT_PUT(0, native_field(STACK_AT(0), 1));\n";
+      out_ << "  NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
+      return;
+    }
+    out_ << "  if (NATIVE_LIKELY(" << collection.guard << "true)) {\n";
     out_ << "    STACK_AT_PUT(0, native_field(STACK_AT(0), 1));\n";
     out_ << "    NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
-    if (needs_check) out_ << "  }\n";
-    if (!needs_check) return;
+    out_ << "  }\n";
   }
   emit_runtime_next("size", next, selector);
 }
