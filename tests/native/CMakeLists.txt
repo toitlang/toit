@@ -46,11 +46,12 @@ set(NATIVE_DIR "${CMAKE_BINARY_DIR}/native_test")
 
 function(add_native_test name source)
   set(executable "${NATIVE_DIR}/${name}")
+  # The tests only use the SDK, so they don't need the packages of the other tests.
   add_custom_command(
     OUTPUT "${executable}"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${NATIVE_DIR}"
     COMMAND "${CMAKE_COMMAND}" -E env "TOIT_CXX=${TOIT_NATIVE_CXX}"
-        $<TARGET_FILE:toit.compile> ${ARGN} -o "${executable}" "${source}"
+        $<TARGET_FILE:toit.compile> --project-root "${CMAKE_CURRENT_SOURCE_DIR}" ${ARGN} -o "${executable}" "${source}"
     DEPENDS toit.compile build_native_sdk "${source}"
   )
   add_custom_target("native-${name}" DEPENDS "${executable}")

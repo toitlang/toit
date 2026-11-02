@@ -6,7 +6,7 @@
 # compiler. It only needs the libraries and the flags for linking from the SDK.
 
 execute_process(
-  COMMAND "${TOIT_COMPILE}" --native-source -o "${WORK_DIR}/source-test.cc" "${SOURCE}"
+  COMMAND "${TOIT_COMPILE}" --project-root "${CMAKE_CURRENT_LIST_DIR}" --native-source -o "${WORK_DIR}/source-test.cc" "${SOURCE}"
   COMMAND_ERROR_IS_FATAL ANY
 )
 
