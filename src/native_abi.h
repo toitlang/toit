@@ -523,7 +523,7 @@ inline bool native_are_smis(Object* a, Object* b) {
 // These expect smis and return false if the result doesn't fit in a smi.
 inline bool native_add(Object* a, Object* b, Object** result) {
   intptr_t sum = 0;
-  if (__builtin_add_overflow(reinterpret_cast<intptr_t>(a), reinterpret_cast<intptr_t>(b), &sum))
+  if (NATIVE_UNLIKELY(__builtin_add_overflow(reinterpret_cast<intptr_t>(a), reinterpret_cast<intptr_t>(b), &sum)))
     return false;
   *result = reinterpret_cast<Object*>(sum);
   return true;
@@ -531,8 +531,8 @@ inline bool native_add(Object* a, Object* b, Object** result) {
 
 inline bool native_sub(Object* a, Object* b, Object** result) {
   intptr_t difference;
-  if (__builtin_sub_overflow(reinterpret_cast<intptr_t>(a), reinterpret_cast<intptr_t>(b),
-                             &difference))
+  if (NATIVE_UNLIKELY(__builtin_sub_overflow(reinterpret_cast<intptr_t>(a), reinterpret_cast<intptr_t>(b),
+                             &difference)))
     return false;
   *result = reinterpret_cast<Object*>(difference);
   return true;
@@ -540,8 +540,8 @@ inline bool native_sub(Object* a, Object* b, Object** result) {
 
 inline bool native_mul(Object* a, Object* b, Object** result) {
   intptr_t product = 0;
-  if (__builtin_mul_overflow(reinterpret_cast<intptr_t>(a), reinterpret_cast<intptr_t>(b) >> 1,
-                             &product))
+  if (NATIVE_UNLIKELY(__builtin_mul_overflow(reinterpret_cast<intptr_t>(a), reinterpret_cast<intptr_t>(b) >> 1,
+                             &product)))
     return false;
   *result = reinterpret_cast<Object*>(product);
   return true;

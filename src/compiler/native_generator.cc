@@ -409,6 +409,7 @@ class NativeGenerator {
 
   void declare(const char* attributes, const std::string& name);
   void emit_goto(uint8* target);
+  void emit_frame(const std::string& return_address, bool is_hot);
   void emit_call(int id, uint8* next);
   void emit_runtime_next(const char* helper, uint8* next, word y);
   typedef std::tuple<int, int, bool> VirtualThunk;
@@ -1424,8 +1425,7 @@ void NativeGenerator::emit_block_entry(Method method, bool is_dead) {
     if (is_dead) {
       tail_call("NativeRuntime::illegal");
     } else {
-      push("NATIVE_OBJECT(x)");
-      push("NATIVE_FRAME_MARKER");
+      emit_frame("NATIVE_OBJECT(x)", is_hot_code(*current_info_, method.entry()));
       tail_call(method_label(id));
     }
   });
@@ -1450,8 +1450,7 @@ void NativeGenerator::emit_method(const MethodInfo& info) {
         spill();
         tail_call("NativeRuntime::virtual_fallback");
       });
-      push("NATIVE_OBJECT(x)");
-      push("NATIVE_FRAME_MARKER");
+      emit_frame("NATIVE_OBJECT(x)", is_hot_code(info, method.entry()));
       tail_call(method_label(id));
     });
   }
@@ -1487,6 +1486,15 @@ void NativeGenerator::emit_block(const MethodInfo& info, uint8* begin) {
   }
 }
 
+// Pushes the two words of a frame. The callee is likely to load its arguments
+// right away, so in hot code they are kept out of the paired store with the frame.
+void NativeGenerator::emit_frame(const std::string& return_address, bool is_hot) {
+  if (is_hot) line("NATIVE_SPLIT_STORES();");
+  push(return_address);
+  if (is_hot) line("NATIVE_SPLIT_STORES();");
+  push("NATIVE_FRAME_MARKER");
+}
+
 void NativeGenerator::emit_goto(uint8* target) {
   auto probe = current_info_->blocks.find(target);
   if (probe != current_info_->blocks.end() && probe->second.is_nested) {
@@ -1499,9 +1507,7 @@ void NativeGenerator::emit_goto(uint8* target) {
 }
 
 void NativeGenerator::emit_call(int id, uint8* next) {
-  if (is_hot_site(next)) line("NATIVE_SPLIT_STORES();");
-  push(return_address(label(next)));
-  push("NATIVE_FRAME_MARKER");
+  emit_frame(return_address(label(next)), is_hot_site(next));
   tail_call(method_label(id));
 }
 
@@ -1801,14 +1807,10 @@ void NativeGenerator::emit_float_operation(uint8* bcp, const char* float_op) {
   tracked_.push_back({ -1, name, true });
 }
 
-// Boxing only needs the runtime when new space is full. We don't spend
-// any code on making that fast outside of hot code.
+// Boxing only needs the runtime when new space is full. Code that isn't marked
+// as hot can still be called from loops, and the stub is much slower than this.
 void NativeGenerator::emit_box(const std::string& value) {
   std::string slow_path = cat("NATIVE_RUNTIME_CALL(native_call_double_stub(sp, c, ", value, "));");
-  if (current_bcp_ == null || !is_hot_site(current_bcp_)) {
-    line(slow_path);
-    return;
-  }
   scope([&] {
     line("Object* box = nullptr;");
     line(cat("if (NATIVE_LIKELY(native_box_double(c, ", value, ", &box))) {"));
