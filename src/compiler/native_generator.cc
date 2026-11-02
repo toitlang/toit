@@ -15,6 +15,8 @@
 
 #include "native_generator.h"
 
+#include "native_code_writer.h"
+
 #include "propagation/type_database.h"
 
 #include "../bytecodes.h"
@@ -44,63 +46,18 @@ namespace compiler {
 static const int opcode_length[] { BYTECODES(BYTECODE_LENGTH) -1 };
 #undef BYTECODE_LENGTH
 
-static void append(std::ostream&) {}
-
-template<typename T, typename... Rest>
-static void append(std::ostream& out, const T& first, const Rest&... rest) {
-  out << first;
-  append(out, rest...);
-}
-
-// Concatenates strings and numbers.
-template<typename... Parts>
-static std::string cat(const Parts&... parts) {
-  std::ostringstream out;
-  append(out, parts...);
-  return out.str();
-}
-
-// Expressions in the generated code.
-static std::string stack_at(int index) { return cat("STACK_AT(", index, ")"); }
-static std::string smi(word value) { return cat("native_smi(", value, ")"); }
-static std::string field_of(const std::string& object, int index) { return cat("native_field(", object, ", ", index, ")"); }
-static std::string address_of(const std::string& label) { return "NATIVE_ADDRESS(" + label + ")"; }
-static std::string return_address(const std::string& label) { return "NATIVE_OBJECT(&" + label + ")"; }
-static std::string boolean(const std::string& condition) { return "NATIVE_BOOLEAN(" + condition + ")"; }
-
-// Writes a line of generated code at the given column. Long lines are broken
-// after the least nested comma or operator that fits, and the rest is aligned
-// with the opening parenthesis around it.
-static const int COLUMN_LIMIT = 100;
-
-static void write_wrapped(std::ostream& out, std::string text, int column) {
-  while (column + static_cast<int>(text.size()) > COLUMN_LIMIT) {
-    std::vector<int> parentheses;
-    int best_end = -1;
-    int best_depth = 0;
-    int best_column = 0;
-    for (int i = 0; column + i < COLUMN_LIMIT && i < static_cast<int>(text.size()); i++) {
-      char ch = text[i];
-      if (ch == '(') parentheses.push_back(i);
-      if (ch == ')' && !parentheses.empty()) parentheses.pop_back();
-      bool is_comma = ch == ',' && text[i + 1] == ' ';
-      bool is_and = text.compare(i, 4, " && ") == 0;
-      if (!is_comma && !is_and) continue;
-      int depth = parentheses.size();
-      if (best_end >= 0 && depth > best_depth) continue;
-      best_end = i + (is_and ? 3 : 1);
-      best_depth = depth;
-      best_column = parentheses.empty() ? column + 4 : column + parentheses.back() + 1;
-    }
-    if (best_end < 0) break;
-    out << text.substr(0, best_end) << "\n" << std::string(best_column, ' ');
-    text = text.substr(best_end + 1);
-    column = best_column;
-  }
-  out << text;
-}
-
-class NativeGenerator {
+// Generates C++ for a program. Each basic block of bytecodes becomes a function
+// that ends in a tail call, and the top of the stack is in a register.
+//
+// This happens in two passes. The analysis finds out what can run, which basic
+// blocks that leaves, what is hot and what to inline, and nothing changes after
+// that. Emitting the code just reads the results, so the two passes can't
+// disagree on the shape of the code.
+//
+// While emitting a block, values that are cheap to get to are tracked instead of
+// being written to the stack, and known floats stay unboxed. That lets
+// the operations work directly on them. See keep_on_top for how they get written.
+class NativeGenerator : private NativeCodeWriter {
  public:
   NativeGenerator(Program* program, TypeDatabase* types, std::vector<int> methods);
 
@@ -155,7 +112,6 @@ class NativeGenerator {
   std::set<uint8*> dead_continuations_;
   std::set<uint8*> return_points_;
   std::set<int> branch_targets_;  // Absolute bcis of non-local branch targets.
-  std::stringstream out_;
   uint8* current_end_ = null;
   int nesting_ = 0;
 
@@ -240,7 +196,6 @@ class NativeGenerator {
   void find_successors(MethodInfo* info);
   bool branches_after_comparison(uint8* next) const;
   void find_hot_code(MethodInfo* info);
-  bool is_looping(const MethodInfo& info) const;
   void find_hot_blocks();
   bool is_hot_code(const MethodInfo& info, uint8* bcp) const;
   const char* attributes(const MethodInfo& info, uint8* bcp) const;
@@ -251,60 +206,6 @@ class NativeGenerator {
   void emit_block_entry(Method method, bool is_dead);
   void emit_block(const MethodInfo& info, uint8* begin);
   void emit_opcode(const MethodInfo& info, uint8* bcp);
-
-  // Writing generated code. Everything goes through line, which keeps track of
-  // the indentation, so the blocks can nest without knowing where they end up.
-  int indentation_ = 0;
-  void line(const std::string& text) {
-    if (!text.empty()) {
-      // Namespaces don't indent what's in them.
-      bool is_namespace = text.rfind("namespace", 0) == 0 || text.rfind("}  // namespace", 0) == 0;
-      if (text[0] == '}' && !is_namespace) indentation_--;
-      out_ << std::string(indentation_ * 2, ' ');
-      write_wrapped(out_, text, indentation_ * 2);
-      if (text.back() == '{' && !is_namespace) indentation_++;
-    }
-    out_ << "\n";
-  }
-
-  // The entries of initializer lists are indented by the width of a continuation.
-  void entry(const std::string& text) { line("  " + text + ","); }
-
-  template<typename Body>
-  void block(const std::string& header, Body body) {
-    line(header + " {");
-    body();
-    line("}");
-  }
-  template<typename Body>
-  void function(const std::string& name, Body body) {
-    std::string header = "static void " + name + "(NATIVE_PARAMS)";
-    std::stringstream code;
-    out_.swap(code);
-    indentation_++;
-    body();
-    indentation_--;
-    out_.swap(code);
-    std::string text = code.str();
-    bool is_single_line = text.find('\n') == text.size() - 1;
-    std::string statement = is_single_line ? text.substr(2, text.size() - 3) : "";
-    if (is_single_line && header.size() + statement.size() + 5 <= COLUMN_LIMIT) {
-      line(header + " { " + statement + " }");
-    } else {
-      line(header + " {");
-      out_ << text;
-      line("}");
-    }
-    line("");
-  }
-  template<typename Body> void scope(Body body) {
-    line("{");
-    body();
-    line("}");
-  }
-  template<typename Body> void if_(const std::string& condition, Body body) { block("if (" + condition + ")", body); }
-  template<typename Body> void if_likely(const std::string& condition, Body body) { if_("NATIVE_LIKELY(" + condition + ")", body); }
-  template<typename Body> void if_unlikely(const std::string& condition, Body body) { if_("NATIVE_UNLIKELY(" + condition + ")", body); }
 
   void push(const std::string& value) { line("PUSH(" + value + ");"); }
   void drop(int count) { line(cat("DROP(", count, ");")); }
@@ -337,70 +238,19 @@ class NativeGenerator {
   std::vector<TrackedValue> tracked_;
   int pending_drops_ = 0;
   int double_count_ = 0;
-  uint8* current_bcp_ = null;
 
-  void track(const std::string& text) { tracked_.push_back({ -1, text, false }); }
-  void track_local(int index) {
-    int size = static_cast<int>(tracked_.size());
-    if (index < size) {
-      tracked_.push_back(tracked_[size - 1 - index]);
-    } else {
-      tracked_.push_back({ index - size + pending_drops_, "", false });
-    }
-  }
-  void pop_tracked(int count) {
-    while (count > 0 && !tracked_.empty()) {
-      tracked_.pop_back();
-      count--;
-    }
-    pending_drops_ += count;
-  }
-  // Writes everything but the given number of values to the stack. Returns how
-  // many values are left, which is less if the rest are on the stack already.
-  // Most code can't use unboxed doubles, so it has to say that it can.
-  int keep_on_top(int count, bool allow_doubles = false) {
-    int size = static_cast<int>(tracked_.size());
-    int kept = std::min(count, size);
-    if (!allow_doubles) {
-      for (int i = size - kept; i < size; i++) {
-        if (tracked_[i].is_double) kept = 0;
-      }
-    }
-    int written = size - kept;
-    if (pending_drops_ != 0) drop(pending_drops_);
-    for (int i = 0; i < written; i++) {
-      if (tracked_[i].is_double) {
-        emit_box(tracked_[i].text);
-      } else {
-        push(tracked_[i].at(i - pending_drops_));
-      }
-    }
-    tracked_.erase(tracked_.begin(), tracked_.begin() + written);
-    for (auto& value : tracked_) {
-      if (value.slot >= 0) value.slot += written - pending_drops_;
-    }
-    pending_drops_ = 0;
-    return kept;
-  }
-  void flush_stack() { keep_on_top(0); }
-  // The value at the given index after a call to keep_on_top.
-  std::string operand(int index, int kept) const {
-    if (index < kept) return tracked_[tracked_.size() - 1 - index].at(0);
-    return stack_at(index - kept);
-  }
-  // The double at the given index after a call to keep_on_top.
-  std::string double_operand(int index, int kept) const {
-    if (index < kept && tracked_[tracked_.size() - 1 - index].is_double) {
-      return tracked_[tracked_.size() - 1 - index].text;
-    }
-    return cat("native_double_value(", operand(index, kept), ")");
-  }
+  void track(const std::string& text);
+  void track_local(int index);
+  void pop_tracked(int count);
+  int keep_on_top(int count, bool allow_doubles = false);
+  void flush_stack();
+  std::string operand(int index, int kept) const;
+  std::string double_operand(int index, int kept) const;
   void emit_box(const std::string& value);
   void emit_int_operation(uint8* bcp, Opcode opcode, const char* helper);
   void emit_float_operation(uint8* bcp, const char* float_op);
   bool uses_tracked_stack(const MethodInfo& info, uint8* bcp) const;
-  void emit_branch_on_top(uint8* target, const char* prefix, const char* suffix);
-  void emit_branch_on_truth(uint8* bcp, uint8* target, bool on_true);
+  std::string pop_for_branch();
   std::string truth_of(uint8* bcp, const std::string& value) const;
   bool needs_write_barrier(uint8* bcp, int index) const;
   void emit_loop_intrinsic(uint8* bcp, bool is_array);
@@ -439,7 +289,7 @@ class NativeGenerator {
   void emit_at_put(uint8* bcp, uint8* next);
   void emit_size(uint8* bcp, uint8* next, int selector);
   void emit_fast_result(uint8* next, const std::string& result);
-  void emit_branch(uint8* target, const char* condition, bool is_back, uint8* entry);
+  void emit_branch(uint8* target, const std::string& condition, bool is_back, uint8* entry);
   void emit_typecheck(uint8* bcp, Opcode opcode, bool is_as, int encoded, int length);
   void emit_tail_frame_move(int height, int outer_arity, int call_arity);
 };
@@ -778,6 +628,8 @@ static bool is_terminal(Opcode opcode) {
       return false;
   }
 }
+
+// The analysis.
 
 // Non-local branches go to bytecodes in other methods.
 void NativeGenerator::find_branch_targets() {
@@ -1148,11 +1000,6 @@ void NativeGenerator::find_inlined_calls(MethodInfo* info) {
   }
 }
 
-// Returns whether the method can call the blocks it gets over and over.
-bool NativeGenerator::is_looping(const MethodInfo& info) const {
-  return info.has_loops;
-}
-
 // The bodies of 'repeat' and 'do' are blocks, but they are as hot as any loop.
 // The last block loaded before a call is the one that is passed to it.
 void NativeGenerator::find_hot_blocks() {
@@ -1178,7 +1025,7 @@ void NativeGenerator::find_hot_blocks() {
         }
         for (int target : targets) {
           auto probe = by_id.find(target);
-          if (probe != by_id.end() && is_looping(*probe->second)) hot.push_back(block);
+          if (probe != by_id.end() && probe->second->has_loops) hot.push_back(block);
         }
         block = -1;
       }
@@ -1199,6 +1046,8 @@ bool NativeGenerator::is_hot_code(const MethodInfo& info, uint8* bcp) const {
 const char* NativeGenerator::attributes(const MethodInfo& info, uint8* bcp) const {
   return is_hot_code(info, bcp) ? "" : "NATIVE_COLD ";
 }
+
+// Emitting the program.
 
 // The tables are written in assembler, which needs to know the symbols.
 void NativeGenerator::declare(const char* attributes, const std::string& name) {
@@ -1435,6 +1284,8 @@ void NativeGenerator::emit_block_entry(Method method, bool is_dead) {
 // each of its opcodes pushes at most one value.
 static const int INLINED_STACK_USE = 8;
 
+// Emitting methods and blocks.
+
 void NativeGenerator::emit_method(const MethodInfo& info) {
   Method method = info.method;
   int id = method_id(method);
@@ -1546,9 +1397,6 @@ void NativeGenerator::emit_virtual(uint8* bcp, uint8* next, int stack_offset, in
   tail_call(cat("vtable[", class_id_expression(receiver, can_be_smi), " + ", selector_offset, "]"), address, virtual_key(selector_offset, stack_offset), "t");
 }
 
-// The types often leave us with a single method that can be called, even if
-// there are many receiver classes. Going directly to it is smaller and
-// doesn't need the dispatch table or the check of the selector.
 // Finds the methods the receivers of a virtual call can get to. Returns false
 // if there are receivers other than null that don't have the method.
 bool NativeGenerator::find_targets(uint8* bcp, int stack_offset, int selector_offset,
@@ -1749,6 +1597,75 @@ void NativeGenerator::emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, co
   emit_runtime_next("binary", next, opcode);
 }
 
+// The values that are tracked instead of being on the stack.
+
+void NativeGenerator::track(const std::string& text) {
+  tracked_.push_back({ -1, text, false });
+}
+
+void NativeGenerator::track_local(int index) {
+  int size = static_cast<int>(tracked_.size());
+  if (index < size) {
+    tracked_.push_back(tracked_[size - 1 - index]);
+  } else {
+    tracked_.push_back({ index - size + pending_drops_, "", false });
+  }
+}
+
+void NativeGenerator::pop_tracked(int count) {
+  while (count > 0 && !tracked_.empty()) {
+    tracked_.pop_back();
+    count--;
+  }
+  pending_drops_ += count;
+}
+
+// Writes everything but the given number of values to the stack. Returns how
+// many values are left, which is less if the rest are on the stack already.
+// Most code can't use unboxed doubles, so it has to say that it can.
+int NativeGenerator::keep_on_top(int count, bool allow_doubles) {
+  int size = static_cast<int>(tracked_.size());
+  int kept = std::min(count, size);
+  if (!allow_doubles) {
+    for (int i = size - kept; i < size; i++) {
+      if (tracked_[i].is_double) kept = 0;
+    }
+  }
+  int written = size - kept;
+  if (pending_drops_ != 0) drop(pending_drops_);
+  for (int i = 0; i < written; i++) {
+    if (tracked_[i].is_double) {
+      emit_box(tracked_[i].text);
+    } else {
+      push(tracked_[i].at(i - pending_drops_));
+    }
+  }
+  tracked_.erase(tracked_.begin(), tracked_.begin() + written);
+  for (auto& value : tracked_) {
+    if (value.slot >= 0) value.slot += written - pending_drops_;
+  }
+  pending_drops_ = 0;
+  return kept;
+}
+
+void NativeGenerator::flush_stack() {
+  keep_on_top(0);
+}
+
+// The value at the given index after a call to keep_on_top.
+std::string NativeGenerator::operand(int index, int kept) const {
+  if (index < kept) return tracked_[tracked_.size() - 1 - index].at(0);
+  return stack_at(index - kept);
+}
+
+// The double at the given index after a call to keep_on_top.
+std::string NativeGenerator::double_operand(int index, int kept) const {
+  if (index < kept && tracked_[tracked_.size() - 1 - index].is_double) {
+    return tracked_[tracked_.size() - 1 - index].text;
+  }
+  return cat("native_double_value(", operand(index, kept), ")");
+}
+
 // Integers are done right here. Overflowing into a large integer needs the
 // runtime, but it doesn't run any Toit code, so it's a plain call.
 void NativeGenerator::emit_int_operation(uint8* bcp, Opcode opcode, const char* helper) {
@@ -1845,7 +1762,7 @@ void NativeGenerator::emit_relational(uint8* bcp, uint8* next, Opcode opcode, co
         pop_tracked(kept);
         if (kept != 2) drop(2 - kept);
         std::string condition = next_opcode == BRANCH_IF_TRUE ? taken : "!" + taken;
-        emit_branch(next + Utils::read_unaligned_uint16(next + 1), condition.c_str(), false, null);
+        emit_branch(next + Utils::read_unaligned_uint16(next + 1), condition, false, null);
       });
     } else if (operands.are_floats) {
       scope([&] {
@@ -1965,7 +1882,7 @@ void NativeGenerator::emit_size(uint8* bcp, uint8* next, int selector) {
   emit_runtime_next("size", next, selector);
 }
 
-void NativeGenerator::emit_branch(uint8* target, const char* condition, bool is_back, uint8* entry) {
+void NativeGenerator::emit_branch(uint8* target, const std::string& condition, bool is_back, uint8* entry) {
   auto branch = [&] {
     if (is_back) {
       if_unlikely("NativeRuntime::is_preempted(c)", [&] {
@@ -1974,7 +1891,7 @@ void NativeGenerator::emit_branch(uint8* target, const char* condition, bool is_
     }
     emit_goto(target);
   };
-  if (condition == null) {
+  if (condition.empty()) {
     branch();
   } else {
     if_(condition, branch);
@@ -1992,20 +1909,12 @@ std::string NativeGenerator::truth_of(uint8* bcp, const std::string& value) cons
   return cat(value, can_be_false ? " != c->false_object" : " != c->null_object");
 }
 
-void NativeGenerator::emit_branch_on_truth(uint8* bcp, uint8* target, bool on_true) {
+// Returns the value on top of the stack for a branch that consumes it.
+std::string NativeGenerator::pop_for_branch() {
   int kept = keep_on_top(1);
   std::string value = kept == 1 ? operand(0, 1) : "POP()";
   pop_tracked(kept);
-  std::string truth = truth_of(bcp, value);
-  std::string condition = on_true ? truth : cat("!(", truth, ")");
-  emit_branch(target, condition.c_str(), false, null);
-}
-
-void NativeGenerator::emit_branch_on_top(uint8* target, const char* prefix, const char* suffix) {
-  int kept = keep_on_top(1);
-  std::string value = kept == 1 ? operand(0, 1) : "POP()";
-  pop_tracked(kept);
-  emit_branch(target, (prefix + value + suffix).c_str(), false, null);
+  return value;
 }
 
 // Stores only need to tell the garbage collector about pointers to new objects.
@@ -2177,7 +2086,6 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
   // Some of the bytecodes have a wide variant that only differs in the encoding.
   auto arg = [&](Opcode wide) { return (opcode == wide) ? wide1 : byte1; };
 
-  current_bcp_ = bcp;
   if (!uses_tracked_stack(info, bcp)) flush_stack();
 
   switch (opcode) {
@@ -2462,24 +2370,23 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       emit_goto(bcp + wide1);
       break;
     case BRANCH_IF_TRUE:
-      emit_branch_on_truth(bcp, bcp + wide1, true);
+      emit_branch(bcp + wide1, truth_of(bcp, pop_for_branch()), false, null);
       break;
     case BRANCH_IF_FALSE:
-      emit_branch_on_truth(bcp, bcp + wide1, false);
+      emit_branch(bcp + wide1, cat("!(", truth_of(bcp, pop_for_branch()), ")"), false, null);
       break;
     case BRANCH_IF_NOT_NULL:
-      emit_branch_on_top(bcp + wide1, "", " != c->null_object");
+      emit_branch(bcp + wide1, pop_for_branch() + " != c->null_object", false, null);
       break;
     case BRANCH_BACK:
     case BRANCH_BACK_IF_TRUE:
     case BRANCH_BACK_IF_FALSE:
     case BRANCH_BACK_IF_NOT_NULL: {
       uint8* entry = bcp - Utils::read_unaligned_uint16(bcp + 3);
-      const char* condition = null;
       std::string truth = truth_of(bcp, "POP()");
-      std::string falseness = cat("!(", truth, ")");
-      if (opcode == BRANCH_BACK_IF_TRUE) condition = truth.c_str();
-      if (opcode == BRANCH_BACK_IF_FALSE) condition = falseness.c_str();
+      std::string condition;
+      if (opcode == BRANCH_BACK_IF_TRUE) condition = truth;
+      if (opcode == BRANCH_BACK_IF_FALSE) condition = cat("!(", truth, ")");
       if (opcode == BRANCH_BACK_IF_NOT_NULL) condition = "POP() != c->null_object";
       emit_branch(bcp - wide1, condition, true, entry);
       break;
