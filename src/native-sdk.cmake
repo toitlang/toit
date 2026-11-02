@@ -113,9 +113,11 @@ add_custom_command(
 find_program(TOIT_NATIVE_SDK_CXX clang++)
 if (TOIT_NATIVE_SDK_CXX)
   set(TOIT_NATIVE_ARCH_FLAGS)
-  foreach(arch ${CMAKE_OSX_ARCHITECTURES})
-    list(APPEND TOIT_NATIVE_ARCH_FLAGS "-arch" "${arch}")
-  endforeach()
+  if (APPLE)
+    foreach(arch ${CMAKE_OSX_ARCHITECTURES})
+      list(APPEND TOIT_NATIVE_ARCH_FLAGS "-arch" "${arch}")
+    endforeach()
+  endif()
   add_custom_command(
     OUTPUT "${TOIT_NATIVE_SYSTEM_OBJECT}"
     DEPENDS "${TOIT_NATIVE_SYSTEM_CC}"
