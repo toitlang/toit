@@ -309,6 +309,15 @@ class NativeRuntime {
   }
 
  private:
+  struct OverflowResult {
+    Object** sp;
+    int state;
+  };
+  static OverflowResult handle_overflow(NativeContext* c, Object** sp, Method target);
+  static Object* binary_result(NativeContext* c, Object* a0, Object* a1, int bytecode);
+  static Object* at_result(NativeContext* c, Object* receiver, Object* index, Object* value,
+                           bool is_put);
+  static Object* size_result(NativeContext* c, Object* receiver);
   static NativeFn find_entry(const NativeProgram* native, int bci);
   static Object* start_address(Program* program, uint8_t* bcp);
   static int return_bci(Program* program, uint8_t* address);
