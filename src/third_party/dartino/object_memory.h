@@ -301,6 +301,10 @@ class SemiSpace : public Space {
   // Allocate raw object without trying very hard.
   inline uword try_allocate(uword size);
 
+  // For the code that allocates without going through here.
+  uword* top_address() { return &top_; }
+  uword* limit_address() { return &limit_; }
+
   // For the mutable heap.
   void start_scavenge();
   bool complete_scavenge(ScavengeVisitor* visitor);

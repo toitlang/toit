@@ -1120,6 +1120,7 @@ class Double : public HeapObject {
   }
 
  private:
+  friend class NativeRuntime;
   static const word VALUE_OFFSET = HeapObject::SIZE;
   static const word SIZE = VALUE_OFFSET + DOUBLE_SIZE;
 
@@ -1344,6 +1345,7 @@ class String : public HeapObject {
   };
 
  private:
+  friend class NativeRuntime;
   // Two representations
   // in heap content:  [class:w][hash_code:h][length:h][content:byte*length][0][padding]
   // off heap content: [class:w][hash_code:h][-1:h]    [length:w][external_address:w]

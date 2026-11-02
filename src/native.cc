@@ -135,6 +135,11 @@ int NativeRuntime::register_program(const NativeProgram* program) {
   static_assert(HeapObject::CLASS_TAG_OFFSET == 0, "class tag");
   static_assert(HeapObject::CLASS_ID_OFFSET == NATIVE_CLASS_ID_OFFSET, "class id");
   static_assert(HeapObject::HEADER_OFFSET == 0, "header");
+  static_assert(Double::SIZE == NATIVE_DOUBLE_SIZE, "double size");
+  static_assert(Double::VALUE_OFFSET == WORD_SIZE, "double value");
+  static_assert(String::SENTINEL == NATIVE_STRING_LENGTH_SENTINEL, "string sentinel");
+  static_assert(String::INTERNAL_LENGTH_OFFSET == WORD_SIZE + 4, "string length");
+  static_assert(String::INTERNAL_HEADER_SIZE == 2 * WORD_SIZE, "string content");
   static_assert(INSTANCE_TAG == NATIVE_INSTANCE_TAG, "instance tag");
   static_assert(DOUBLE_TAG == NATIVE_DOUBLE_TAG, "double tag");
   static_assert(ARRAY_TAG == NATIVE_ARRAY_TAG, "array tag");
@@ -271,6 +276,9 @@ bool NativeRuntime::run(Interpreter* interpreter, void* result) {
     .base = &interpreter->base_,
     .try_sp = &interpreter->try_sp_,
     .remembered_set_bias = GcMetadata::remembered_set_bias(),
+    .allocation_top = process->object_heap()->new_space()->top_address(),
+    .allocation_limit = process->object_heap()->new_space()->limit_address(),
+    .chunk_end_sentinel = reinterpret_cast<uintptr_t>(chunk_end_sentinel()),
     .lazy_initializer_class_id = static_cast<unsigned>(Smi::value(program->lazy_initializer_class_id())),
     .large_array_class_id = static_cast<int>(Smi::value(program->large_array_class_id())),
     .result = result,

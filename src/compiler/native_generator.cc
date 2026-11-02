@@ -136,6 +136,9 @@ class NativeGenerator {
     // Comparisons of integers that are done as a part of the branch that follows them.
     std::set<uint8*> merged_comparisons;
     std::map<uint8*, InlinedCall> inlined_calls;
+    // Float operations that can overwrite an operand instead of allocating.
+    // The value is the index of the operand on the stack.
+    std::map<uint8*, int> reused_floats;
     bool has_inlined_leaf;
     // Code in loops is hot. The whole method is hot if it is small or recursive.
     bool is_hot;
@@ -193,6 +196,10 @@ class NativeGenerator {
     // inlined path will be taken. If the operand could be pretty much
     // anything, it isn't worth paying for code that may never run.
     bool is_likely = false;
+    // Floats need no checks if we know that it's what they are, and it's
+    // only worth checking for them if it can be the case for both of them.
+    bool are_floats = false;
+    bool can_be_floats = false;
     bool are_smis() const { return left_is_smi && right_is_smi; }
   };
   Operands operands(uint8* bcp) const;
@@ -229,6 +236,7 @@ class NativeGenerator {
   void find_blocks(MethodInfo* info);
   void find_nested_blocks(MethodInfo* info);
   void find_inlined_calls(MethodInfo* info);
+  void find_float_temporaries(MethodInfo* info);
   void find_successors(MethodInfo* info);
   bool branches_after_comparison(uint8* next) const;
   void find_hot_code(MethodInfo* info);
@@ -366,6 +374,7 @@ class NativeGenerator {
   }
   bool uses_tracked_stack(const MethodInfo& info, uint8* bcp) const;
   void emit_branch_on_top(uint8* target, const char* prefix, const char* suffix);
+  void emit_loop_intrinsic(uint8* bcp, bool is_array);
   void emit_load_field(int field);
 
   void declare(const char* attributes, const std::string& name);
@@ -387,7 +396,7 @@ class NativeGenerator {
   int leaf_target(uint8* bcp) const;
   bool emit_inlined_leaf(const MethodInfo& info, uint8* bcp);
   void emit_virtual(uint8* bcp, uint8* next, int stack_offset, int selector_offset);
-  void emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, const char* helper);
+  void emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, const char* helper, const char* float_op = null);
   void emit_relational(uint8* bcp, uint8* next, Opcode opcode, const char* op);
   void emit_bit_operation(uint8* bcp, uint8* next, Opcode opcode, const char* op, const char* helper);
   struct Collection {
@@ -414,7 +423,7 @@ NativeGenerator::NativeGenerator(Program* program, TypeDatabase* types, std::vec
     uint8* end = (i + 1 == methods.size())
         ? program->bytecodes.data() + program->bytecodes.length()
         : program->bcp_from_absolute_bci(methods[i + 1]);
-    methods_.push_back({ Method(program->bytecodes, methods[i]), end, {}, {}, {}, {}, false, false, false });
+    methods_.push_back({ Method(program->bytecodes, methods[i]), end, {}, {}, {}, {}, {}, false, false, false });
     method_ids_.insert(methods[i]);
   }
   find_branch_targets();
@@ -427,6 +436,7 @@ NativeGenerator::NativeGenerator(Program* program, TypeDatabase* types, std::vec
   for (auto& info : methods_) {
     find_inlined_calls(&info);
     find_nested_blocks(&info);
+    find_float_temporaries(&info);
   }
   // Global functions are in the dispatch table too, but they have no selector.
   for (int entry : program_->dispatch_table) {
@@ -553,6 +563,11 @@ NativeGenerator::Operands NativeGenerator::operands(uint8* bcp) const {
   result.right_is_smi = is_smi_type(input[1]);
   result.can_be_smis = input[0].contains(smi_id) && input[1].contains(smi_id);
   result.are_ints = is_int_type(input[0]) && is_int_type(input[1]);
+  unsigned double_id = Smi::value(program_->double_class_id());
+  int words_per_type = TypeSet::words_per_type(program_);
+  auto is_float = [&](TypeSet type) { return type.size(words_per_type) == 1 && type.contains(double_id); };
+  result.are_floats = is_float(input[0]) && is_float(input[1]);
+  result.can_be_floats = input[0].contains(double_id) && input[1].contains(double_id);
   // Integers take up two of the classes. That leaves room for null or a float.
   static const int LIKELY_TYPES = 3;
   int words = TypeSet::words_per_type(program_);
@@ -577,7 +592,7 @@ bool NativeGenerator::stays_in_block(uint8* bcp) const {
     case INVOKE_GT:
     case INVOKE_LTE:
     case INVOKE_GTE:
-      return operands(bcp).are_ints;
+      return operands(bcp).are_ints || operands(bcp).are_floats;
     case INVOKE_BIT_OR:
     case INVOKE_BIT_XOR:
     case INVOKE_BIT_AND:
@@ -954,6 +969,8 @@ void NativeGenerator::find_hot_code(MethodInfo* info) {
     bool is_call_to_self = *bcp == INVOKE_STATIC &&
         program_->dispatch_table[Utils::read_unaligned_uint16(bcp + 1)] == method_id(info->method);
     if (is_call_to_self) info->is_hot = true;
+    // The loops of 'repeat' and 'do' are in these methods.
+    if (*bcp == INTRINSIC_SMI_REPEAT || *bcp == INTRINSIC_ARRAY_DO) info->is_hot = true;
   }
   std::map<uint8*, std::vector<uint8*>> predecessors;
   for (auto& it : info->blocks) {
@@ -972,6 +989,95 @@ void NativeGenerator::find_hot_code(MethodInfo* info) {
         for (uint8* predecessor : predecessors[bcp]) pending.push_back(predecessor);
       }
       for (uint8* bcp : body) info->blocks.at(bcp).is_hot = true;
+    }
+  }
+}
+
+// The result of an operation on floats is a new object, no matter which path
+// it takes. Until something else gets a reference to it, the only reference is
+// the one on the stack, so the operation that consumes it can reuse the object.
+// This follows the top of the stack through code without branches and it
+// forgets everything at any bytecode it doesn't know about.
+void NativeGenerator::find_float_temporaries(MethodInfo* info) {
+  std::vector<bool> stack;  // Whether the elements are temporaries. Below it, nothing is.
+  uint8* continuation = null;
+  auto pop = [&](int count) {
+    while (count-- > 0 && !stack.empty()) stack.pop_back();
+  };
+  auto load_local = [&](int index) {
+    int size = static_cast<int>(stack.size());
+    if (index < size) stack[size - 1 - index] = false;
+    stack.push_back(false);
+  };
+  for (uint8* bcp : info->reachable) {
+    Opcode opcode = static_cast<Opcode>(*bcp);
+    auto block = info->blocks.find(bcp);
+    if (block != info->blocks.end()) {
+      // Only the operation that leaves a temporary can get to its continuation.
+      bool is_target = branch_targets_.count(bci(bcp)) != 0;
+      if (bcp != continuation || block->second.entries != 0 || is_target) stack.clear();
+    }
+    continuation = null;
+    switch (opcode) {
+      case LOAD_LOCAL:
+        load_local(bcp[1]);
+        break;
+      case LOAD_LOCAL_WIDE:
+        load_local(Utils::read_unaligned_uint16(bcp + 1));
+        break;
+      case LOAD_LOCAL_0:
+      case LOAD_LOCAL_1:
+      case LOAD_LOCAL_2:
+      case LOAD_LOCAL_3:
+      case LOAD_LOCAL_4:
+      case LOAD_LOCAL_5:
+        load_local(opcode - LOAD_LOCAL_0);
+        break;
+      case LOAD_LITERAL:
+      case LOAD_LITERAL_WIDE:
+      case LOAD_NULL:
+      case LOAD_SMI_0:
+      case LOAD_SMI_1:
+      case LOAD_SMI_U8:
+      case LOAD_SMI_U16:
+      case LOAD_SMI_U32:
+        stack.push_back(false);
+        break;
+      case LOAD_FIELD:
+      case LOAD_FIELD_WIDE:
+        pop(1);
+        stack.push_back(false);
+        break;
+      case POP:
+        pop(bcp[1]);
+        break;
+      case POP_1:
+        pop(1);
+        break;
+      case INVOKE_ADD:
+      case INVOKE_SUB:
+      case INVOKE_MUL:
+      case INVOKE_DIV: {
+        if (!operands(bcp).are_floats) {
+          stack.clear();
+          break;
+        }
+        int size = static_cast<int>(stack.size());
+        bool right_is_temporary = size >= 1 && stack[size - 1];
+        bool left_is_temporary = size >= 2 && stack[size - 2];
+        if (left_is_temporary) {
+          info->reused_floats[bcp] = 1;
+        } else if (right_is_temporary) {
+          info->reused_floats[bcp] = 0;
+        }
+        pop(2);
+        stack.push_back(true);
+        continuation = bcp + opcode_length[opcode];
+        break;
+      }
+      default:
+        stack.clear();
+        break;
     }
   }
 }
@@ -1355,6 +1461,7 @@ void NativeGenerator::emit_goto(uint8* target) {
 }
 
 void NativeGenerator::emit_call(int id, uint8* next) {
+  if (is_hot_site(next)) line("NATIVE_SPLIT_STORES();");
   push(return_address(label(next)));
   push("c->frame_marker");
   tail_call(method_label(id));
@@ -1554,24 +1661,55 @@ std::string NativeGenerator::class_id_expression(const std::string& receiver, bo
   return "native_heap_class_id(" + receiver + ")";
 }
 
-void NativeGenerator::emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, const char* helper) {
+void NativeGenerator::emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, const char* helper, const char* float_op) {
   Operands info = operands(bcp);
-  if (info.can_be_smis && (info.is_likely || is_hot_site(bcp))) {
+  auto reused = current_info_->reused_floats.find(bcp);
+  if (reused != current_info_->reused_floats.end()) {
+    // Temporaries are always on the real stack, because they come from here.
     int kept = keep_on_top(2);
     std::string left = operand(1, kept);
     std::string right = operand(0, kept);
-    std::string check = smi_check(info, left, right);
-    if (!check.empty()) check += " && ";
+    std::string value = cat("native_double_value(", left, ") ", float_op, " native_double_value(", right, ")");
+    bool reuses_left = reused->second == 1;
+    line(cat("native_set_double_value(", reuses_left ? left : right, ", ", value, ");"));
+    if (reuses_left) {
+      if (kept == 0) drop(1);
+      pop_tracked(kept);
+    } else {
+      stack_at_put(1, stack_at(0));
+      drop(1);
+    }
+    emit_goto(next);
+    return;
+  }
+  bool is_hot = is_hot_site(bcp);
+  bool use_smis = info.can_be_smis && (info.is_likely || is_hot);
+  // Boxing the result takes more code than calling the runtime.
+  bool use_floats = float_op != null && info.can_be_floats && is_hot;
+  if (use_smis || use_floats) {
+    int kept = keep_on_top(2);
+    std::string left = operand(1, kept);
+    std::string right = operand(0, kept);
+    auto finish = [&] {
+      if (kept == 2) {
+        push("result");
+      } else {
+        drop_push(2 - kept, "result");
+      }
+      emit_goto(next);
+    };
     scope([&] {
       line("Object* result = nullptr;");
-      if_likely(cat(check, helper, "(", left, ", ", right, ", &result)"), [&] {
-        if (kept == 2) {
-          push("result");
-        } else {
-          drop_push(2 - kept, "result");
-        }
-        emit_goto(next);
-      });
+      if (use_smis) {
+        std::string check = smi_check(info, left, right);
+        if (!check.empty()) check += " && ";
+        if_likely(cat(check, helper, "(", left, ", ", right, ", &result)"), finish);
+      }
+      if (use_floats) {
+        std::string check = info.are_floats ? "" : cat("native_are_doubles(", left, ", ", right, ") && ");
+        std::string value = cat("native_double_value(", left, ") ", float_op, " native_double_value(", right, ")");
+        if_likely(cat(check, "native_box_double(c, ", left, ", ", value, ", &result)"), finish);
+      }
     });
   }
   flush_stack();
@@ -1585,9 +1723,11 @@ void NativeGenerator::emit_relational(uint8* bcp, uint8* next, Opcode opcode, co
   std::string left = operand(1, kept);
   std::string right = operand(0, kept);
   std::string smi_compare = cat("NATIVE_COMPARE_SMIS(", left, ", ", op, ", ", right, ")");
-  if (operands.are_ints) {
+  if (operands.are_ints || operands.are_floats) {
     std::string compare = smi_compare;
-    if (!operands.are_smis()) {
+    if (operands.are_floats) {
+      compare = cat("native_double_value(", left, ") ", op, " native_double_value(", right, ")");
+    } else if (!operands.are_smis()) {
       compare = cat("NATIVE_COMPARE_INTS(", smi_check(operands, left, right), ", ", left, ", ", op, ", ", right, ")");
     }
     if (is_merged) {
@@ -1670,6 +1810,7 @@ std::vector<NativeGenerator::Collection> NativeGenerator::collections_at(uint8* 
   add(program_->list_class_id(), is_hot_site(bcp) ? "large_list" : "list");
   add(program_->array_class_id(), "array");
   add(program_->byte_array_class_id(), "byte_array");
+  add(program_->string_class_id(), "string");
   return result;
 }
 
@@ -1682,6 +1823,7 @@ void NativeGenerator::emit_at(uint8* bcp, uint8* next) {
 
 void NativeGenerator::emit_at_put(uint8* bcp, uint8* next) {
   for (auto& collection : collections_at(bcp, 2)) {
+    if (strcmp(collection.name, "string") == 0) continue;
     if (strcmp(collection.name, "byte_array") == 0) {
       emit_result_if(cat(collection.guard, "native_byte_array_at_put(STACK_AT(2), STACK_AT(1), STACK_AT(0), &result)"), 3, next);
       continue;
@@ -1696,6 +1838,10 @@ void NativeGenerator::emit_at_put(uint8* bcp, uint8* next) {
 
 void NativeGenerator::emit_size(uint8* bcp, uint8* next, int selector) {
   for (auto& collection : collections_at(bcp, 0)) {
+    if (strcmp(collection.name, "string") == 0) {
+      emit_result_if(cat(collection.guard, "native_string_size(STACK_AT(0), &result)"), 1, next);
+      continue;
+    }
     // The size of a list is a field. It's the same for big lists.
     if (strcmp(collection.name, "list") != 0 && strcmp(collection.name, "large_list") != 0) continue;
     if_likely(cat(collection.guard, "native_is_smi(native_field(STACK_AT(0), 1))"), [&] {
@@ -1737,6 +1883,35 @@ void NativeGenerator::emit_load_field(int field) {
   } else {
     stack_at_put(0, field_of(stack_at(0), field));
   }
+}
+
+// The bodies of 'repeat' and 'do' are blocks. The code here runs each time the
+// block returns, which leaves its result on top of the stack. Below that is
+// the current index, the frame and the arguments.
+void NativeGenerator::emit_loop_intrinsic(uint8* bcp, bool is_array) {
+  int arguments = 1 + Interpreter::FRAME_SIZE;
+  drop(1);
+  scope([&] {
+    line("Object* current = STACK_AT(0);");
+    line(cat("Object* block = ", stack_at(arguments), ";"));
+    if_(cat("NATIVE_WORD(current) >= NATIVE_WORD(", stack_at(arguments + 1), ")"), [&] {
+      drop(1);
+      line("POP();  // The frame marker.");
+      line("NativeFn next = NATIVE_FN(POP());");
+      drop(is_array ? 2 : 1);
+      stack_at_put(0, "c->null_object");
+      tail_call("next");
+    });
+    stack_at_put(0, "NATIVE_OBJECT(NATIVE_WORD(current) + NATIVE_WORD(native_smi(1)))");
+    if (is_array) {
+      line(cat("Object* element = *native_array_slot(", stack_at(arguments + 2), ", static_cast<uintptr_t>(native_smi_value(current)));"));
+    }
+    push("block");
+    line("NATIVE_SPLIT_STORES();");
+    push(is_array ? "element" : "current");
+    line("NativeFn target = NATIVE_FN(*NativeRuntime::from_block(c, block));");
+    tail_call("target", address_of(label(bcp)), 2, "t");
+  });
 }
 
 void NativeGenerator::emit_typecheck(uint8* bcp, Opcode opcode, bool is_as, int encoded, int length) {
@@ -2060,10 +2235,10 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       emit_virtual(bcp, next, 1, wide1);
       break;
     case INVOKE_ADD:
-      emit_arithmetic(bcp, next, opcode, "native_add");
+      emit_arithmetic(bcp, next, opcode, "native_add", "+");
       break;
     case INVOKE_SUB:
-      emit_arithmetic(bcp, next, opcode, "native_sub");
+      emit_arithmetic(bcp, next, opcode, "native_sub", "-");
       break;
     case INVOKE_LT:
       emit_relational(bcp, next, opcode, "<");
@@ -2078,7 +2253,7 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       emit_relational(bcp, next, opcode, ">=");
       break;
     case INVOKE_EQ:
-      if (operands(bcp).are_ints) {
+      if (operands(bcp).are_ints || operands(bcp).are_floats) {
         emit_relational(bcp, next, opcode, "==");
       } else if (operands(bcp).is_likely || is_hot_site(bcp)) {
         scope([&] {
@@ -2102,7 +2277,7 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       emit_bit_operation(bcp, next, opcode, "&", "native_bit_and");
       break;
     case INVOKE_MUL:
-      emit_arithmetic(bcp, next, opcode, "native_mul");
+      emit_arithmetic(bcp, next, opcode, "native_mul", "*");
       break;
     case INVOKE_BIT_SHL:
       emit_arithmetic(bcp, next, opcode, "native_shl");
@@ -2114,7 +2289,7 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       emit_arithmetic(bcp, next, opcode, "native_ushr");
       break;
     case INVOKE_DIV:
-      emit_arithmetic(bcp, next, opcode, "native_div");
+      emit_arithmetic(bcp, next, opcode, "native_div", "/");
       break;
     case INVOKE_MOD:
       emit_arithmetic(bcp, next, opcode, "native_mod");
@@ -2206,10 +2381,10 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       emit_runtime_next("halt", next, byte1);
       break;
     case INTRINSIC_SMI_REPEAT:
-      emit_runtime_next("smi_repeat", bcp, 0);
+      emit_loop_intrinsic(bcp, false);
       break;
     case INTRINSIC_ARRAY_DO:
-      emit_runtime_next("array_do", bcp, 0);
+      emit_loop_intrinsic(bcp, true);
       break;
     case INTRINSIC_HASH_DO:
       // These are optimizations. If they fail, the code that follows does the work.
