@@ -1115,11 +1115,13 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(STORE_FIELD, field_index);
+    propagator->add_input(bcp, stack, 2);
     propagator->store_field(method, stack, field_index);
   OPCODE_END();
 
   OPCODE_BEGIN(STORE_FIELD_POP);
     B_ARG1(field_index);
+    propagator->add_input(bcp, stack, 2);
     propagator->store_field(method, stack, field_index);
     stack->pop();
   OPCODE_END();
@@ -1422,6 +1424,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_IF_TRUE);
+    propagator->add_input(bcp, stack, 1);
     TypeSet top = stack->local(0);
     bool can_be_falsy = top.can_be_falsy(program);
     bool can_be_truthy = top.can_be_truthy(program);
@@ -1439,6 +1442,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_IF_FALSE);
+    propagator->add_input(bcp, stack, 1);
     TypeSet top = stack->local(0);
     bool can_be_falsy = top.can_be_falsy(program);
     bool can_be_truthy = top.can_be_truthy(program);
@@ -1475,6 +1479,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_BACK_IF_TRUE);
+    propagator->add_input(bcp, stack, 1);
     TypeSet top = stack->local(0);
     bool can_be_falsy = top.can_be_falsy(program);
     bool can_be_truthy = top.can_be_truthy(program);
@@ -1492,6 +1497,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_BACK_IF_FALSE);
+    propagator->add_input(bcp, stack, 1);
     TypeSet top = stack->local(0);
     bool can_be_falsy = top.can_be_falsy(program);
     bool can_be_truthy = top.can_be_truthy(program);
