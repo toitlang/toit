@@ -1241,7 +1241,7 @@ std::vector<NativeGenerator::Collection> NativeGenerator::collections_at(uint8* 
 void NativeGenerator::emit_at(uint8* bcp, uint8* next) {
   for (auto& collection : collections_at(bcp, 1)) {
     out_ << "  { Object* result;\n";
-    out_ << "    if (NATIVE_LIKELY(" << collection.guard << "native_" << collection.name << "_at(STACK_AT(1), STACK_AT(0), &result))) {\n";
+    out_ << "    if (NATIVE_LIKELY(" << collection.guard << "native_" << collection.name << "_at(c, STACK_AT(1), STACK_AT(0), &result))) {\n";
     out_ << "      DROP_PUSH(2, result);\n";
     out_ << "      NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
     out_ << "    }\n  }\n";
@@ -1271,12 +1271,7 @@ void NativeGenerator::emit_size(uint8* bcp, uint8* next, int selector) {
   for (auto& collection : collections_at(bcp, 0)) {
     // The size of a list is a field. It's the same for big lists.
     if (strcmp(collection.name, "list") != 0 && strcmp(collection.name, "large_list") != 0) continue;
-    if (collection.guard.empty()) {
-      out_ << "  STACK_AT_PUT(0, native_field(STACK_AT(0), 1));\n";
-      out_ << "  NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
-      return;
-    }
-    out_ << "  if (NATIVE_LIKELY(" << collection.guard << "true)) {\n";
+    out_ << "  if (NATIVE_LIKELY(" << collection.guard << "native_is_smi(native_field(STACK_AT(0), 1)))) {\n";
     out_ << "    STACK_AT_PUT(0, native_field(STACK_AT(0), 1));\n";
     out_ << "    NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
     out_ << "  }\n";

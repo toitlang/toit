@@ -144,6 +144,7 @@ struct NativeContext {
   Object*** try_sp;
   uintptr_t remembered_set_bias;
   int lazy_initializer_class_id;
+  int large_array_class_id;
   void* result;
 };
 
@@ -391,42 +392,58 @@ inline bool native_mod(Object* a, Object* b, Object** result) {
 }
 
 // Arrays have their length as a raw word and then the elements.
-inline Object** native_array_element(Object* array, Object* index) {
-  if (!native_is_smi(index)) return nullptr;
-  uintptr_t n = static_cast<uintptr_t>(native_smi_value(index));
+inline Object** native_array_slot(Object* array, uintptr_t n) {
   if (n >= native_bits(*native_word_address(array, 1))) return nullptr;
   return native_word_address(array, 2 + n);
 }
 
-// Lists have their backing as the first field and their size as the second.
-// This returns null if the backing isn't a plain array, or if the index isn't
-// a smi that is in range. The container is what the write barrier needs.
-inline Object** native_list_element(Object* list, Object* index, Object** container) {
+inline Object** native_array_element(Object* array, Object* index) {
   if (!native_is_smi(index)) return nullptr;
-  Object* backing = native_field(list, 0);
-  if (!native_has_class_tag(backing, NATIVE_ARRAY_TAG)) return nullptr;
-  uintptr_t n = static_cast<uintptr_t>(native_smi_value(index));
-  if (n >= static_cast<uintptr_t>(native_smi_value(native_field(list, 1)))) return nullptr;
-  *container = backing;
-  return native_word_address(backing, 2 + n);
+  return native_array_slot(array, static_cast<uintptr_t>(native_smi_value(index)));
 }
 
-// Big lists have a large array as their backing. It has
-// a vector of arraylets as its second field.
-inline Object** native_large_list_element(Object* list, Object* index, Object** container) {
+// Lists have their backing as the first field and their size as the second.
+// The runtime doesn't trust either of them, so we can't do that here either.
+// Returns false if the size isn't a smi or if the index is out of range.
+inline bool native_list_index(Object* list, Object* index, uintptr_t* n) {
+  Object* size = native_field(list, 1);
+  if (!native_are_smis(index, size)) return false;
+  *n = static_cast<uintptr_t>(native_smi_value(index));
+  return *n < static_cast<uintptr_t>(native_smi_value(size));
+}
+
+// Returns null if the backing isn't a plain array, or if the index isn't a smi
+// that is in range. The container is what the write barrier needs.
+inline Object** native_list_element(Object* list, Object* index, Object** container) {
+  uintptr_t n;
+  if (!native_list_index(list, index, &n)) return nullptr;
+  Object* backing = native_field(list, 0);
+  if (!native_has_class_tag(backing, NATIVE_ARRAY_TAG)) return nullptr;
+  *container = backing;
+  return native_array_slot(backing, n);
+}
+
+// Big lists have a large array as their backing. It has a vector of arraylets
+// as its second field. Very large arrays have more levels, which are left to
+// the runtime.
+inline Object** native_large_list_element(NativeContext* c, Object* list, Object* index, Object** container) {
   Object** element = native_list_element(list, index, container);
   if (element != nullptr) return element;
-  if (!native_is_smi(index)) return nullptr;
+  uintptr_t n;
+  if (!native_list_index(list, index, &n)) return nullptr;
   Object* backing = native_field(list, 0);
-  if (!native_has_class_tag(backing, NATIVE_INSTANCE_TAG)) return nullptr;
-  uintptr_t n = static_cast<uintptr_t>(native_smi_value(index));
-  if (n >= static_cast<uintptr_t>(native_smi_value(native_field(list, 1)))) return nullptr;
+  if (!native_is_instance(backing) ||
+      static_cast<int>(native_heap_class_id(backing)) != c->large_array_class_id) {
+    return nullptr;
+  }
   Object* vector = native_field(backing, 1);
   if (!native_has_class_tag(vector, NATIVE_ARRAY_TAG)) return nullptr;
-  Object* arraylet = *native_word_address(vector, 2 + n / NATIVE_ARRAYLET_SIZE);
+  Object** slot = native_array_slot(vector, n / NATIVE_ARRAYLET_SIZE);
+  if (slot == nullptr) return nullptr;
+  Object* arraylet = *slot;
   if (!native_has_class_tag(arraylet, NATIVE_ARRAY_TAG)) return nullptr;
   *container = arraylet;
-  return native_word_address(arraylet, 2 + n % NATIVE_ARRAYLET_SIZE);
+  return native_array_slot(arraylet, n % NATIVE_ARRAYLET_SIZE);
 }
 
 inline void native_store_element(NativeContext* c, Object* container, Object** element, Object* value) {
@@ -435,7 +452,7 @@ inline void native_store_element(NativeContext* c, Object* container, Object** e
   *element = value;
 }
 
-inline bool native_array_at(Object* array, Object* index, Object** result) {
+inline bool native_array_at(NativeContext* c, Object* array, Object* index, Object** result) {
   Object** element = native_array_element(array, index);
   if (element == nullptr) return false;
   *result = *element;
@@ -449,7 +466,7 @@ inline bool native_array_at_put(NativeContext* c, Object* array, Object* index, 
   return true;
 }
 
-inline bool native_list_at(Object* list, Object* index, Object** result) {
+inline bool native_list_at(NativeContext* c, Object* list, Object* index, Object** result) {
   Object* container;
   Object** element = native_list_element(list, index, &container);
   if (element == nullptr) return false;
@@ -457,9 +474,9 @@ inline bool native_list_at(Object* list, Object* index, Object** result) {
   return true;
 }
 
-inline bool native_large_list_at(Object* list, Object* index, Object** result) {
+inline bool native_large_list_at(NativeContext* c, Object* list, Object* index, Object** result) {
   Object* container;
-  Object** element = native_large_list_element(list, index, &container);
+  Object** element = native_large_list_element(c, list, index, &container);
   if (element == nullptr) return false;
   *result = *element;
   return true;
@@ -475,7 +492,7 @@ inline bool native_list_at_put(NativeContext* c, Object* list, Object* index, Ob
 
 inline bool native_large_list_at_put(NativeContext* c, Object* list, Object* index, Object* value) {
   Object* container;
-  Object** element = native_large_list_element(list, index, &container);
+  Object** element = native_large_list_element(c, list, index, &container);
   if (element == nullptr) return false;
   native_store_element(c, container, element, value);
   return true;
@@ -492,7 +509,7 @@ inline uint8_t* native_byte_element(Object* bytes, Object* index) {
   return reinterpret_cast<uint8_t*>(native_word_address(bytes, 2)) + n;
 }
 
-inline bool native_byte_array_at(Object* bytes, Object* index, Object** result) {
+inline bool native_byte_array_at(NativeContext* c, Object* bytes, Object* index, Object** result) {
   uint8_t* element = native_byte_element(bytes, index);
   if (element == nullptr) return false;
   *result = native_smi(*element);
