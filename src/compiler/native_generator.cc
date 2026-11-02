@@ -331,18 +331,21 @@ class NativeGenerator {
   struct TrackedValue {
     int slot;          // The element of the real stack or -1.
     std::string text;  // The value if it isn't on the stack.
+    bool is_double;    // The value is a double that hasn't been boxed.
     std::string at(int adjustment) const { return slot >= 0 ? stack_at(slot + adjustment) : text; }
   };
   std::vector<TrackedValue> tracked_;
   int pending_drops_ = 0;
+  int double_count_ = 0;
+  uint8* current_bcp_ = null;
 
-  void track(const std::string& text) { tracked_.push_back({ -1, text }); }
+  void track(const std::string& text) { tracked_.push_back({ -1, text, false }); }
   void track_local(int index) {
     int size = static_cast<int>(tracked_.size());
     if (index < size) {
       tracked_.push_back(tracked_[size - 1 - index]);
     } else {
-      tracked_.push_back({ index - size + pending_drops_, "" });
+      tracked_.push_back({ index - size + pending_drops_, "", false });
     }
   }
   void pop_tracked(int count) {
@@ -354,11 +357,24 @@ class NativeGenerator {
   }
   // Writes everything but the given number of values to the stack. Returns how
   // many values are left, which is less if the rest are on the stack already.
-  int keep_on_top(int count) {
-    int kept = std::min(count, static_cast<int>(tracked_.size()));
-    int written = static_cast<int>(tracked_.size()) - kept;
+  // Most code can't use unboxed doubles, so it has to say that it can.
+  int keep_on_top(int count, bool allow_doubles = false) {
+    int size = static_cast<int>(tracked_.size());
+    int kept = std::min(count, size);
+    if (!allow_doubles) {
+      for (int i = size - kept; i < size; i++) {
+        if (tracked_[i].is_double) kept = 0;
+      }
+    }
+    int written = size - kept;
     if (pending_drops_ != 0) drop(pending_drops_);
-    for (int i = 0; i < written; i++) push(tracked_[i].at(i - pending_drops_));
+    for (int i = 0; i < written; i++) {
+      if (tracked_[i].is_double) {
+        emit_box(tracked_[i].text);
+      } else {
+        push(tracked_[i].at(i - pending_drops_));
+      }
+    }
     tracked_.erase(tracked_.begin(), tracked_.begin() + written);
     for (auto& value : tracked_) {
       if (value.slot >= 0) value.slot += written - pending_drops_;
@@ -372,6 +388,16 @@ class NativeGenerator {
     if (index < kept) return tracked_[tracked_.size() - 1 - index].at(0);
     return stack_at(index - kept);
   }
+  // The double at the given index after a call to keep_on_top.
+  std::string double_operand(int index, int kept) const {
+    if (index < kept && tracked_[tracked_.size() - 1 - index].is_double) {
+      return tracked_[tracked_.size() - 1 - index].text;
+    }
+    return cat("native_double_value(", operand(index, kept), ")");
+  }
+  void emit_box(const std::string& value);
+  void emit_int_operation(uint8* bcp, Opcode opcode, const char* helper);
+  void emit_float_operation(uint8* bcp, const char* float_op);
   bool uses_tracked_stack(const MethodInfo& info, uint8* bcp) const;
   void emit_branch_on_top(uint8* target, const char* prefix, const char* suffix);
   void emit_branch_on_truth(uint8* bcp, uint8* target, bool on_true);
@@ -597,6 +623,13 @@ bool NativeGenerator::stays_in_block(uint8* bcp) const {
     case INVOKE_LTE:
     case INVOKE_GTE:
       return operands(bcp).are_ints || operands(bcp).are_floats;
+    case INVOKE_ADD:
+    case INVOKE_SUB:
+    case INVOKE_MUL:
+      // The slow case is a plain call, because no Toit code has to run.
+      return operands(bcp).are_ints || operands(bcp).are_floats;
+    case INVOKE_DIV:
+      return operands(bcp).are_floats;
     case INVOKE_BIT_OR:
     case INVOKE_BIT_XOR:
     case INVOKE_BIT_AND:
@@ -975,7 +1008,10 @@ void NativeGenerator::find_hot_code(MethodInfo* info) {
         program_->dispatch_table[Utils::read_unaligned_uint16(bcp + 1)] == method_id(info->method);
     if (is_call_to_self) info->is_hot = true;
     // The loops of 'repeat' and 'do' are in these methods.
-    if (*bcp == INTRINSIC_SMI_REPEAT || *bcp == INTRINSIC_ARRAY_DO || *bcp == INTRINSIC_HASH_DO) info->is_hot = true;
+    if (*bcp == INTRINSIC_SMI_REPEAT || *bcp == INTRINSIC_ARRAY_DO || *bcp == INTRINSIC_HASH_DO) {
+      info->is_hot = true;
+      info->has_loops = true;
+    }
   }
   std::map<uint8*, std::vector<uint8*>> predecessors;
   for (auto& it : info->blocks) {
@@ -1113,9 +1149,7 @@ void NativeGenerator::find_inlined_calls(MethodInfo* info) {
 
 // Returns whether the method can call the blocks it gets over and over.
 bool NativeGenerator::is_looping(const MethodInfo& info) const {
-  if (info.has_loops) return true;
-  uint8* bcp = info.method.entry();
-  return bcp < info.end && (*bcp == INTRINSIC_SMI_REPEAT || *bcp == INTRINSIC_ARRAY_DO || *bcp == INTRINSIC_HASH_DO);
+  return info.has_loops;
 }
 
 // The bodies of 'repeat' and 'do' are blocks, but they are as hot as any loop.
@@ -1667,23 +1701,12 @@ std::string NativeGenerator::class_id_expression(const std::string& receiver, bo
 
 void NativeGenerator::emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, const char* helper, const char* float_op) {
   Operands info = operands(bcp);
-  auto reused = current_info_->reused_floats.find(bcp);
-  if (reused != current_info_->reused_floats.end()) {
-    // Temporaries are always on the real stack, because they come from here.
-    int kept = keep_on_top(2);
-    std::string left = operand(1, kept);
-    std::string right = operand(0, kept);
-    std::string value = cat("native_double_value(", left, ") ", float_op, " native_double_value(", right, ")");
-    bool reuses_left = reused->second == 1;
-    line(cat("native_set_double_value(", reuses_left ? left : right, ", ", value, ");"));
-    if (reuses_left) {
-      if (kept == 0) drop(1);
-      pop_tracked(kept);
+  if (stays_in_block(bcp)) {
+    if (info.are_floats) {
+      emit_float_operation(bcp, float_op);
     } else {
-      stack_at_put(1, stack_at(0));
-      drop(1);
+      emit_int_operation(bcp, opcode, helper);
     }
-    emit_goto(next);
     return;
   }
   bool is_hot = is_hot_site(bcp);
@@ -1712,7 +1735,7 @@ void NativeGenerator::emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, co
       if (use_floats) {
         std::string check = info.are_floats ? "" : cat("native_are_doubles(", left, ", ", right, ") && ");
         std::string value = cat("native_double_value(", left, ") ", float_op, " native_double_value(", right, ")");
-        if_likely(cat(check, "native_box_double(c, ", left, ", ", value, ", &result)"), finish);
+        if_likely(cat(check, "native_box_double(c, ", value, ", &result)"), finish);
       }
     });
   }
@@ -1720,17 +1743,93 @@ void NativeGenerator::emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, co
   emit_runtime_next("binary", next, opcode);
 }
 
+// Integers are done right here. Overflowing into a large integer needs the
+// runtime, but it doesn't run any Toit code, so it's a plain call.
+void NativeGenerator::emit_int_operation(uint8* bcp, Opcode opcode, const char* helper) {
+  Operands info = operands(bcp);
+  int kept = keep_on_top(2);
+  auto slow_path = [&] {
+    auto saved = tracked_;
+    flush_stack();
+    line(cat("NATIVE_RUNTIME_CALL(native_call_int_stub(sp, c, ", opcode, "));"));
+    tracked_ = saved;
+  };
+  if (info.can_be_smis && (info.is_likely || is_hot_site(bcp))) {
+    std::string left = operand(1, kept);
+    std::string right = operand(0, kept);
+    std::string check = smi_check(info, left, right);
+    if (!check.empty()) check += " && ";
+    scope([&] {
+      line("Object* result = nullptr;");
+      line(cat("if (NATIVE_LIKELY(", check, helper, "(", left, ", ", right, ", &result))) {"));
+      if (kept == 2) {
+        push("result");
+      } else {
+        drop_push(2 - kept, "result");
+      }
+      line("} else {");
+      slow_path();
+      line("}");
+    });
+  } else {
+    slow_path();
+  }
+  pop_tracked(kept);
+}
+
+// Known floats stay unboxed for as long as nothing else needs to see them. If
+// an operand is an object nobody else can see, we keep the result in that.
+void NativeGenerator::emit_float_operation(uint8* bcp, const char* float_op) {
+  int kept = keep_on_top(2, true);
+  std::string value = cat(double_operand(1, kept), " ", float_op, " ", double_operand(0, kept));
+  auto reused = current_info_->reused_floats.find(bcp);
+  if (reused != current_info_->reused_floats.end() && reused->second >= kept) {
+    bool reuses_left = reused->second == 1;
+    line(cat("native_set_double_value(", operand(reused->second, kept), ", ", value, ");"));
+    if (reuses_left) {
+      if (kept == 0) drop(1);
+      pop_tracked(kept);
+    } else {
+      stack_at_put(1, stack_at(0));
+      drop(1);
+    }
+    return;
+  }
+  std::string name = cat("d", double_count_++);
+  line(cat("double ", name, " = ", value, ";"));
+  pop_tracked(2);
+  tracked_.push_back({ -1, name, true });
+}
+
+// Boxing only needs the runtime when new space is full. We don't spend
+// any code on making that fast outside of hot code.
+void NativeGenerator::emit_box(const std::string& value) {
+  std::string slow_path = cat("NATIVE_RUNTIME_CALL(native_call_double_stub(sp, c, ", value, "));");
+  if (current_bcp_ == null || !is_hot_site(current_bcp_)) {
+    line(slow_path);
+    return;
+  }
+  scope([&] {
+    line("Object* box = nullptr;");
+    line(cat("if (NATIVE_LIKELY(native_box_double(c, ", value, ", &box))) {"));
+    push("box");
+    line("} else {");
+    line(slow_path);
+    line("}");
+  });
+}
+
 void NativeGenerator::emit_relational(uint8* bcp, uint8* next, Opcode opcode, const char* op) {
   Operands operands = this->operands(bcp);
   bool is_merged = current_info_->merged_comparisons.count(bcp) != 0;
-  int kept = is_merged ? keep_on_top(2) : 0;
+  int kept = (is_merged || operands.are_floats) ? keep_on_top(2, operands.are_floats) : 0;
   std::string left = operand(1, kept);
   std::string right = operand(0, kept);
   std::string smi_compare = cat("NATIVE_COMPARE_SMIS(", left, ", ", op, ", ", right, ")");
   if (operands.are_ints || operands.are_floats) {
     std::string compare = smi_compare;
     if (operands.are_floats) {
-      compare = cat("native_double_value(", left, ") ", op, " native_double_value(", right, ")");
+      compare = cat(double_operand(1, kept), " ", op, " ", double_operand(0, kept));
     } else if (!operands.are_smis()) {
       compare = cat("NATIVE_COMPARE_INTS(", smi_check(operands, left, right), ", ", left, ", ", op, ", ", right, ")");
     }
@@ -1745,6 +1844,13 @@ void NativeGenerator::emit_relational(uint8* bcp, uint8* next, Opcode opcode, co
         if (kept != 2) drop(2 - kept);
         std::string condition = next_opcode == BRANCH_IF_TRUE ? taken : "!" + taken;
         emit_branch(next + Utils::read_unaligned_uint16(next + 1), condition.c_str(), false, null);
+      });
+    } else if (operands.are_floats) {
+      scope([&] {
+        line(cat("bool result = ", compare, ";"));
+        pop_tracked(2);
+        flush_stack();
+        push(boolean("result"));
       });
     } else {
       drop_push(2, boolean(compare));
@@ -1832,7 +1938,8 @@ void NativeGenerator::emit_at_put(uint8* bcp, uint8* next) {
       emit_result_if(cat(collection.guard, "native_byte_array_at_put(STACK_AT(2), STACK_AT(1), STACK_AT(0), &result)"), 3, next);
       continue;
     }
-    if_likely(cat(collection.guard, "native_", collection.name, "_at_put(c, STACK_AT(2), STACK_AT(1), STACK_AT(0))"), [&] {
+    if_likely(cat(collection.guard, "native_", collection.name, "_at_put(c, STACK_AT(2), STACK_AT(1), STACK_AT(0), ",
+        needs_write_barrier(bcp, 2) ? "true" : "false", ")"), [&] {
       drop_push(3, "STACK_AT(0)");
       emit_goto(next);
     });
@@ -2052,7 +2159,7 @@ bool NativeGenerator::uses_tracked_stack(const MethodInfo& info, uint8* bcp) con
     case INVOKE_LTE:
     case INVOKE_GT:
     case INVOKE_GTE:
-      return info.merged_comparisons.count(bcp) != 0;
+      return info.merged_comparisons.count(bcp) != 0 || operands(bcp).are_floats;
     default:
       return false;
   }
@@ -2068,6 +2175,7 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
   // Some of the bytecodes have a wide variant that only differs in the encoding.
   auto arg = [&](Opcode wide) { return (opcode == wide) ? wide1 : byte1; };
 
+  current_bcp_ = bcp;
   if (!uses_tracked_stack(info, bcp)) flush_stack();
 
   switch (opcode) {

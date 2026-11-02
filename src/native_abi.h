@@ -162,6 +162,7 @@ struct NativeContext {
   uintptr_t* allocation_top;
   uintptr_t* allocation_limit;
   uintptr_t chunk_end_sentinel;
+  Object* double_header;
   unsigned lazy_initializer_class_id;
   int large_array_class_id;
   void* result;
@@ -285,6 +286,13 @@ class NativeRuntime {
   static void smi_repeat(NATIVE_PARAMS);
   static void array_do(NATIVE_PARAMS);
   static void hash_do(NATIVE_PARAMS);
+  static void pending_exception(NATIVE_PARAMS);
+
+  // These are for the rare cases that don't run any Toit code, so native code
+  // calls them and carries on. They work on the stack in memory and return
+  // the new top of the stack, which can move, or null for an exception.
+  static Object** int_arithmetic(Object** sp, NativeContext* c, int opcode);
+  static Object** push_double(Object** sp, NativeContext* c, double value);
   static void halt(NATIVE_PARAMS);
   static void illegal(NATIVE_PARAMS);
 
@@ -403,16 +411,15 @@ inline bool native_are_doubles(Object* a, Object* b) {
   return native_is_double(a) && native_is_double(b);
 }
 
-// Boxes a value in new space. The header comes from another float, because it
-// is the same for all of them. If there is no room, the runtime has to do it.
-inline bool native_box_double(NativeContext* c, Object* other, double value, Object** result) {
+// Boxes a value in new space. If there is no room, the runtime has to do it.
+inline bool native_box_double(NativeContext* c, double value, Object** result) {
   uintptr_t top = *c->allocation_top;
   if (*c->allocation_limit - top <= NATIVE_DOUBLE_SIZE) return false;
   uintptr_t end = top + NATIVE_DOUBLE_SIZE;
   *c->allocation_top = end;
   *reinterpret_cast<uintptr_t*>(end) = c->chunk_end_sentinel;
   Object* box = reinterpret_cast<Object*>(top + NATIVE_HEAP_TAG);
-  *native_word_address(box, 0) = *native_word_address(other, 0);
+  *native_word_address(box, 0) = c->double_header;
   __builtin_memcpy(native_word_address(box, 1), &value, sizeof(double));
   *result = box;
   return true;
@@ -442,6 +449,72 @@ inline bool native_string_at(NativeContext* /*c*/, Object* string, Object* index
   *result = native_smi(character);
   return true;
 }
+
+// The rare cases that don't run any Toit code are plain calls. If the compiler
+// knew about that, it would save registers on entry to the function, also when
+// the call isn't made, so the stubs save everything and it looks like an
+// instruction. The result is the new stack pointer.
+#define NATIVE_STRINGIFY_(x) #x
+#define NATIVE_STRINGIFY(x) NATIVE_STRINGIFY_(x)
+#define NATIVE_SYMBOL(name) NATIVE_STRINGIFY(__USER_LABEL_PREFIX__) #name
+
+#if defined(__aarch64__)
+
+inline __attribute__((always_inline)) Object** native_call_int_stub(Object** sp_, NativeContext* c_, intptr_t opcode) {
+  register Object** r0 __asm__("x0") = sp_;
+  register NativeContext* r1 __asm__("x1") = c_;
+  register intptr_t r2 __asm__("x2") = opcode;
+  __asm__ volatile("mov x16, x30\n"
+                   "bl " NATIVE_SYMBOL(toit_native_int_stub) "\n"
+                   "mov x30, x16\n"
+                   : "+r"(r0) : "r"(r1), "r"(r2) : "x16", "x17", "cc", "memory");
+  return r0;
+}
+
+inline __attribute__((always_inline)) Object** native_call_double_stub(Object** sp_, NativeContext* c_, double value) {
+  register Object** r0 __asm__("x0") = sp_;
+  register NativeContext* r1 __asm__("x1") = c_;
+  register double d0 __asm__("d0") = value;
+  __asm__ volatile("mov x16, x30\n"
+                   "bl " NATIVE_SYMBOL(toit_native_double_stub) "\n"
+                   "mov x30, x16\n"
+                   : "+r"(r0) : "r"(r1), "w"(d0) : "x16", "x17", "cc", "memory");
+  return r0;
+}
+
+#elif defined(__x86_64__)
+
+// The code doesn't have frames, so it can have things in the red zone.
+inline __attribute__((always_inline)) Object** native_call_int_stub(Object** sp_, NativeContext* c_, intptr_t opcode) {
+  Object** result;
+  __asm__ volatile("lea -128(%%rsp), %%rsp\n"
+                   "call " NATIVE_SYMBOL(toit_native_int_stub) "\n"
+                   "lea 128(%%rsp), %%rsp\n"
+                   : "=a"(result) : "D"(sp_), "S"(c_), "d"(opcode) : "cc", "memory");
+  return result;
+}
+
+inline __attribute__((always_inline)) Object** native_call_double_stub(Object** sp_, NativeContext* c_, double value) {
+  Object** result;
+  __asm__ volatile("lea -128(%%rsp), %%rsp\n"
+                   "call " NATIVE_SYMBOL(toit_native_double_stub) "\n"
+                   "lea 128(%%rsp), %%rsp\n"
+                   : "=a"(result) : "D"(sp_), "S"(c_), "Yz"(value) : "cc", "memory");
+  return result;
+}
+
+#endif
+
+#define NATIVE_RUNTIME_CALL(call)                                \
+  do {                                                           \
+    SPILL();                                                     \
+    Object** _sp_ = (call);                                      \
+    if (NATIVE_UNLIKELY(_sp_ == nullptr)) {                      \
+      NATIVE_TAIL NativeRuntime::pending_exception(NATIVE_ARGS); \
+    }                                                            \
+    sp = _sp_;                                                   \
+    RELOAD();                                                    \
+  } while (false)
 
 inline bool native_are_smis(Object* a, Object* b) {
   return ((native_bits(a) | native_bits(b)) & 1) == 0;
@@ -588,9 +661,11 @@ inline Object** native_large_list_element(NativeContext* c, Object* list, Object
 }
 
 inline void native_store_element(NativeContext* c, Object* container, Object** element,
-                                 Object* value) {
-  uintptr_t card = native_bits(container) >> NATIVE_CARD_SIZE_LOG_2;
-  *reinterpret_cast<uint8_t*>(card + c->remembered_set_bias) = NATIVE_NEW_SPACE_POINTERS;
+                                 Object* value, bool needs_barrier) {
+  if (needs_barrier) {
+    uintptr_t card = native_bits(container) >> NATIVE_CARD_SIZE_LOG_2;
+    *reinterpret_cast<uint8_t*>(card + c->remembered_set_bias) = NATIVE_NEW_SPACE_POINTERS;
+  }
   *element = value;
 }
 
@@ -601,10 +676,11 @@ inline bool native_array_at(NativeContext* /*c*/, Object* array, Object* index, 
   return true;
 }
 
-inline bool native_array_at_put(NativeContext* c, Object* array, Object* index, Object* value) {
+inline bool native_array_at_put(NativeContext* c, Object* array, Object* index, Object* value,
+                                 bool needs_barrier) {
   Object** element = native_array_element(array, index);
   if (element == nullptr) return false;
-  native_store_element(c, array, element, value);
+  native_store_element(c, array, element, value, needs_barrier);
   return true;
 }
 
@@ -624,19 +700,21 @@ inline bool native_large_list_at(NativeContext* c, Object* list, Object* index, 
   return true;
 }
 
-inline bool native_list_at_put(NativeContext* c, Object* list, Object* index, Object* value) {
+inline bool native_list_at_put(NativeContext* c, Object* list, Object* index, Object* value,
+                                 bool needs_barrier) {
   Object* container = nullptr;
   Object** element = native_list_element(list, index, &container);
   if (element == nullptr) return false;
-  native_store_element(c, container, element, value);
+  native_store_element(c, container, element, value, needs_barrier);
   return true;
 }
 
-inline bool native_large_list_at_put(NativeContext* c, Object* list, Object* index, Object* value) {
+inline bool native_large_list_at_put(NativeContext* c, Object* list, Object* index, Object* value,
+                                 bool needs_barrier) {
   Object* container = nullptr;
   Object** element = native_large_list_element(c, list, index, &container);
   if (element == nullptr) return false;
-  native_store_element(c, container, element, value);
+  native_store_element(c, container, element, value, needs_barrier);
   return true;
 }
 
