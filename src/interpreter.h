@@ -237,13 +237,7 @@ class Interpreter {
 // reflected in the max-height of the called method. We do not keep track
 // of where in a method we might do a call, so we conservatively assume
 // that it will happen at max-height and reserve space for that.
-#ifdef TOIT_HAS_NATIVE
-// Native code leaves out the stack check in methods that are small and don't
-// call anything, so they need the room for what they push and for the runtime.
-const int RESERVED_STACK_FOR_CALLS = Interpreter::FRAME_SIZE + 9;
-#else
 const int RESERVED_STACK_FOR_CALLS = Interpreter::FRAME_SIZE + 3;
-#endif
 
 class ProcessRunner {
  public:
