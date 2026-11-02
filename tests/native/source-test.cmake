@@ -15,6 +15,18 @@ if (NOT "${INCLUDES}" STREQUAL "#include <stdint.h>;#include <string.h>")
   message(FATAL_ERROR "Unexpected includes: ${INCLUDES}")
 endif()
 
+# The generated code is supposed to be clean. Only clang knows all the attributes.
+# Compiler wrappers (like Nix's) may add linker flags that -fsyntax-only doesn't
+# use, so don't let them fail the check.
+if ("${CXX}" MATCHES "clang")
+  execute_process(
+    COMMAND "${CXX}" -std=gnu++11 -fsyntax-only -Wall -Wextra -Wpedantic -Werror
+        -Wno-unused-command-line-argument
+        "${WORK_DIR}/source-test.cc"
+    COMMAND_ERROR_IS_FATAL ANY
+  )
+endif()
+
 file(STRINGS "${NATIVE_SDK}/native.flags" FLAGS)
 list(GET FLAGS 1 LINK_FLAGS)
 string(REPLACE "@SDK@" "${NATIVE_SDK}" LINK_FLAGS "${LINK_FLAGS}")

@@ -43,6 +43,62 @@ namespace compiler {
 static const int opcode_length[] { BYTECODES(BYTECODE_LENGTH) -1 };
 #undef BYTECODE_LENGTH
 
+static void append(std::ostream&) {}
+
+template<typename T, typename... Rest>
+static void append(std::ostream& out, const T& first, const Rest&... rest) {
+  out << first;
+  append(out, rest...);
+}
+
+// Concatenates strings and numbers.
+template<typename... Parts>
+static std::string cat(const Parts&... parts) {
+  std::ostringstream out;
+  append(out, parts...);
+  return out.str();
+}
+
+// Expressions in the generated code.
+static std::string stack_at(int index) { return cat("STACK_AT(", index, ")"); }
+static std::string smi(word value) { return cat("native_smi(", value, ")"); }
+static std::string field_of(const std::string& object, int index) { return cat("native_field(", object, ", ", index, ")"); }
+static std::string address_of(const std::string& label) { return "NATIVE_ADDRESS(" + label + ")"; }
+static std::string return_address(const std::string& label) { return "NATIVE_OBJECT(&" + label + ")"; }
+static std::string boolean(const std::string& condition) { return "NATIVE_BOOLEAN(" + condition + ")"; }
+
+// Writes a line of generated code at the given column. Long lines are broken
+// after the least nested comma or operator that fits, and the rest is aligned
+// with the opening parenthesis around it.
+static const int COLUMN_LIMIT = 100;
+
+static void write_wrapped(std::ostream& out, std::string text, int column) {
+  while (column + static_cast<int>(text.size()) > COLUMN_LIMIT) {
+    std::vector<int> parentheses;
+    int best_end = -1;
+    int best_depth = 0;
+    int best_column = 0;
+    for (int i = 0; column + i < COLUMN_LIMIT && i < static_cast<int>(text.size()); i++) {
+      char ch = text[i];
+      if (ch == '(') parentheses.push_back(i);
+      if (ch == ')' && !parentheses.empty()) parentheses.pop_back();
+      bool is_comma = ch == ',' && text[i + 1] == ' ';
+      bool is_and = text.compare(i, 4, " && ") == 0;
+      if (!is_comma && !is_and) continue;
+      int depth = parentheses.size();
+      if (best_end >= 0 && depth > best_depth) continue;
+      best_end = i + (is_and ? 3 : 1);
+      best_depth = depth;
+      best_column = parentheses.empty() ? column + 4 : column + parentheses.back() + 1;
+    }
+    if (best_end < 0) break;
+    out << text.substr(0, best_end) << "\n" << std::string(best_column, ' ');
+    text = text.substr(best_end + 1);
+    column = best_column;
+  }
+  out << text;
+}
+
 class NativeGenerator {
  public:
   NativeGenerator(Program* program, TypeDatabase* types, std::vector<int> methods);
@@ -53,6 +109,7 @@ class NativeGenerator {
   struct MethodInfo {
     Method method;
     uint8* end;
+    std::set<uint8*> reachable;
     std::set<uint8*> leaders;
     // Code in loops is hot. The whole method is hot if it is small or recursive.
     bool is_hot;
@@ -141,6 +198,8 @@ class NativeGenerator {
   int setter_field(Method target) const;
   bool emit_inlined_accessor(uint8* bcp, uint8* next);
 
+  void find_branch_targets();
+  void find_reachable(MethodInfo* info);
   void find_leaders(MethodInfo* info);
   void find_hot_code(MethodInfo* info);
   bool is_looping(const MethodInfo& info) const;
@@ -155,9 +214,81 @@ class NativeGenerator {
   void emit_block(const MethodInfo& info, uint8* begin, uint8* end);
   void emit_opcode(const MethodInfo& info, uint8* bcp);
 
+  // Writing generated code. Everything goes through line, which keeps track of
+  // the indentation, so the blocks can nest without knowing where they end up.
+  int indentation_ = 0;
+  void line(const std::string& text) {
+    if (!text.empty()) {
+      // Namespaces don't indent what's in them.
+      bool is_namespace = text.rfind("namespace", 0) == 0 || text.rfind("}  // namespace", 0) == 0;
+      if (text[0] == '}' && !is_namespace) indentation_--;
+      out_ << std::string(indentation_ * 2, ' ');
+      write_wrapped(out_, text, indentation_ * 2);
+      if (text.back() == '{' && !is_namespace) indentation_++;
+    }
+    out_ << "\n";
+  }
+
+  // The entries of initializer lists are indented by the width of a continuation.
+  void entry(const std::string& text) { line("  " + text + ","); }
+
+  template<typename Body>
+  void block(const std::string& header, Body body) {
+    line(header + " {");
+    body();
+    line("}");
+  }
+  template<typename Body>
+  void function(const std::string& name, Body body) {
+    std::string header = "static void " + name + "(NATIVE_PARAMS)";
+    std::stringstream code;
+    out_.swap(code);
+    indentation_++;
+    body();
+    indentation_--;
+    out_.swap(code);
+    std::string text = code.str();
+    bool is_single_line = text.find('\n') == text.size() - 1;
+    std::string statement = is_single_line ? text.substr(2, text.size() - 3) : "";
+    if (is_single_line && header.size() + statement.size() + 5 <= COLUMN_LIMIT) {
+      line(header + " { " + statement + " }");
+    } else {
+      line(header + " {");
+      out_ << text;
+      line("}");
+    }
+    line("");
+  }
+  template<typename Body> void scope(Body body) {
+    line("{");
+    body();
+    line("}");
+  }
+  template<typename Body> void if_(const std::string& condition, Body body) { block("if (" + condition + ")", body); }
+  template<typename Body> void if_likely(const std::string& condition, Body body) { if_("NATIVE_LIKELY(" + condition + ")", body); }
+  template<typename Body> void if_unlikely(const std::string& condition, Body body) { if_("NATIVE_UNLIKELY(" + condition + ")", body); }
+
+  void push(const std::string& value) { line("PUSH(" + value + ");"); }
+  void drop(int count) { line(cat("DROP(", count, ");")); }
+  void drop_push(int count, const std::string& value) { line(cat("DROP_PUSH(", count, ", ", value, ");")); }
+  void stack_at_put(int index, const std::string& value) { line(cat("STACK_AT_PUT(", index, ", ", value, ");")); }
+  void spill() { line("SPILL();"); }
+  void reload() { line("RELOAD();"); }
+  void tail_call(const std::string& target) { line("NATIVE_TAIL " + target + "(NATIVE_ARGS);"); }
+  template<typename X, typename Y>
+  void tail_call(const std::string& target, const X& x, const Y& y, const std::string& t) {
+    line(cat("NATIVE_TAIL ", target, "(sp, c, ", x, ", ", y, ", ", t, ");"));
+  }
+  template<typename Y>
+  void emit_runtime(const char* helper, const std::string& x, const Y& y) {
+    spill();
+    tail_call(cat("NativeRuntime::", helper), x, y, "nullptr");
+  }
+  void emit_result_if(const std::string& condition, int count, uint8* next);
+
+  void declare(const char* attributes, const std::string& name);
   void emit_goto(uint8* target);
   void emit_call(int id, uint8* next);
-  void emit_runtime(const char* helper, const std::string& x, word y);
   void emit_runtime_next(const char* helper, uint8* next, word y);
   typedef std::tuple<int, int, bool> VirtualThunk;
   std::set<VirtualThunk> virtual_thunks_;
@@ -202,10 +333,12 @@ NativeGenerator::NativeGenerator(Program* program, TypeDatabase* types, std::vec
     uint8* end = (i + 1 == methods.size())
         ? program->bytecodes.data() + program->bytecodes.length()
         : program->bcp_from_absolute_bci(methods[i + 1]);
-    methods_.push_back({ Method(program->bytecodes, methods[i]), end, {}, false, {} });
+    methods_.push_back({ Method(program->bytecodes, methods[i]), end, {}, {}, false, {} });
     method_ids_.insert(methods[i]);
   }
+  find_branch_targets();
   for (auto& info : methods_) {
+    find_reachable(&info);
     find_leaders(&info);
     find_hot_code(&info);
   }
@@ -435,17 +568,18 @@ bool NativeGenerator::emit_inlined_accessor(uint8* bcp, uint8* next) {
     // It's smaller to let the dispatch table deal with null in cold code.
     if (!is_hot_site(bcp)) return false;
     int selector_offset = Utils::read_unaligned_uint16(bcp + 1);
-    out_ << "  if (NATIVE_UNLIKELY(STACK_AT(" << stack_offset << ") == c->null_object)) {\n  ";
-    emit_runtime_next("virtual_fallback", next, virtual_key(selector_offset, stack_offset));
-    out_ << "  }\n";
+    if_unlikely(cat(stack_at(stack_offset), " == c->null_object"), [&] {
+      emit_runtime_next("virtual_fallback", next, virtual_key(selector_offset, stack_offset));
+    });
   }
   if (is_getter) {
-    out_ << "  STACK_AT_PUT(0, native_field(STACK_AT(0), " << field << "));\n";
+    stack_at_put(0, field_of(stack_at(0), field));
   } else {
-    out_ << "  { Object* value = POP();\n";
-    out_ << "    native_set_field(c, STACK_AT(0), " << field << ", value);\n";
-    out_ << "    STACK_AT_PUT(0, value);\n";
-    out_ << "  }\n";
+    scope([&] {
+      line("Object* value = POP();");
+      line(cat("native_set_field(c, STACK_AT(0), ", field, ", value);"));
+      stack_at_put(0, "value");
+    });
   }
   if (ends_block(bcp)) emit_goto(next);
   return true;
@@ -487,17 +621,104 @@ static bool is_call(Opcode opcode) {
   }
 }
 
+static bool is_terminal(Opcode opcode) {
+  switch (opcode) {
+    case BRANCH:
+    case BRANCH_BACK:
+    case THROW:
+    case RETURN:
+    case RETURN_NULL:
+    case NON_LOCAL_RETURN:
+    case NON_LOCAL_RETURN_WIDE:
+    case NON_LOCAL_BRANCH:
+    case INVOKE_STATIC_TAIL:
+    case INVOKE_LAMBDA_TAIL:
+    case INVOKE_INITIALIZER_TAIL:
+    case INTRINSIC_SMI_REPEAT:
+    case INTRINSIC_ARRAY_DO:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Non-local branches go to bytecodes in other methods.
+void NativeGenerator::find_branch_targets() {
+  for (auto& info : methods_) {
+    uint8* bcp = info.method.entry();
+    while (bcp < info.end) {
+      Opcode opcode = static_cast<Opcode>(*bcp);
+      if (opcode >= ILLEGAL_END) break;
+      if (opcode == NON_LOCAL_BRANCH) branch_targets_.insert(Utils::read_unaligned_uint32(bcp + 2));
+      bcp += opcode_length[opcode];
+    }
+  }
+}
+
+// Finds the bytecodes that can run. Code that follows a call that doesn't
+// return is often left behind, and it would keep what it calls alive through
+// the tables of return addresses.
+void NativeGenerator::find_reachable(MethodInfo* info) {
+  current_end_ = info->end;
+  uint8* entry = info->method.entry();
+  std::vector<uint8*> pending = { entry };
+  if (program_->has_entry_task() && entry == program_->entry_task().entry()) {
+    // Tasks start after the first bytecode.
+    pending.push_back(entry + LOAD_NULL_LENGTH);
+  }
+  for (int target : branch_targets_) {
+    uint8* bcp = program_->bcp_from_absolute_bci(target);
+    if (bcp >= entry && bcp < info->end) pending.push_back(bcp);
+  }
+  while (!pending.empty()) {
+    uint8* bcp = pending.back();
+    pending.pop_back();
+    while (bcp < info->end && info->reachable.count(bcp) == 0) {
+      Opcode opcode = static_cast<Opcode>(*bcp);
+      if (opcode >= ILLEGAL_END) break;
+      info->reachable.insert(bcp);
+      uint8* next = bcp + opcode_length[opcode];
+      if (ends_block(bcp) && is_dead_continuation(bcp, next)) break;
+      switch (opcode) {
+        case BRANCH_IF_TRUE:
+        case BRANCH_IF_FALSE:
+        case BRANCH_IF_NOT_NULL:
+          pending.push_back(bcp + Utils::read_unaligned_uint16(bcp + 1));
+          break;
+        case BRANCH_BACK_IF_TRUE:
+        case BRANCH_BACK_IF_FALSE:
+        case BRANCH_BACK_IF_NOT_NULL:
+          pending.push_back(bcp - Utils::read_unaligned_uint16(bcp + 1));
+          break;
+        case BRANCH:
+          pending.push_back(bcp + Utils::read_unaligned_uint16(bcp + 1));
+          break;
+        case BRANCH_BACK:
+          pending.push_back(bcp - Utils::read_unaligned_uint16(bcp + 1));
+          break;
+        default:
+          break;
+      }
+      if (is_terminal(opcode)) break;
+      bcp = next;
+    }
+  }
+}
+
 void NativeGenerator::find_leaders(MethodInfo* info) {
   current_end_ = info->end;
-  uint8* bcp = info->method.entry();
-  info->leaders.insert(bcp);
-  if (program_->has_entry_task() && bcp == program_->entry_task().entry()) {
+  uint8* entry = info->method.entry();
+  info->leaders.insert(entry);
+  if (program_->has_entry_task() && entry == program_->entry_task().entry()) {
     // Tasks start after the first bytecode.
-    info->leaders.insert(bcp + LOAD_NULL_LENGTH);
+    info->leaders.insert(entry + LOAD_NULL_LENGTH);
   }
-  while (bcp < info->end) {
+  for (int target : branch_targets_) {
+    uint8* bcp = program_->bcp_from_absolute_bci(target);
+    if (bcp >= entry && bcp < info->end) info->leaders.insert(bcp);
+  }
+  for (uint8* bcp : info->reachable) {
     Opcode opcode = static_cast<Opcode>(*bcp);
-    if (opcode >= ILLEGAL_END) break;
     int length = opcode_length[opcode];
     uint8* next = bcp + length;
     if (ends_block(bcp)) {
@@ -512,7 +733,7 @@ void NativeGenerator::find_leaders(MethodInfo* info) {
       // The blocks return to the intrinsic.
       info->leaders.insert(bcp);
       return_points_.insert(bcp);
-      if (next < info->end) info->leaders.insert(next);
+      if (info->reachable.count(next) != 0) info->leaders.insert(next);
     }
     switch (opcode) {
       case BRANCH:
@@ -520,19 +741,18 @@ void NativeGenerator::find_leaders(MethodInfo* info) {
       case BRANCH_IF_FALSE:
       case BRANCH_IF_NOT_NULL:
         info->leaders.insert(bcp + Utils::read_unaligned_uint16(bcp + 1));
-        if (next < info->end) info->leaders.insert(next);
+        if (info->reachable.count(next) != 0) info->leaders.insert(next);
         break;
       case BRANCH_BACK:
       case BRANCH_BACK_IF_TRUE:
       case BRANCH_BACK_IF_FALSE:
       case BRANCH_BACK_IF_NOT_NULL:
         info->leaders.insert(bcp - Utils::read_unaligned_uint16(bcp + 1));
-        if (next < info->end) info->leaders.insert(next);
+        if (info->reachable.count(next) != 0) info->leaders.insert(next);
         break;
       default:
         break;
     }
-    bcp = next;
   }
   for (uint8* leader : info->leaders) dead_continuations_.erase(leader);
 }
@@ -620,18 +840,16 @@ const char* NativeGenerator::attributes(const MethodInfo& info, uint8* bcp) cons
 }
 
 // The tables are written in assembler, which needs to know the symbols.
-static std::string native_declaration(const std::string& name) {
-  return "(NATIVE_PARAMS) __asm__(\"" + name + "\") NATIVE_ON_STACK;\n";
+void NativeGenerator::declare(const char* attributes, const std::string& name) {
+  line(cat("static ", attributes, "void ", name, "(NATIVE_PARAMS) __asm__(\"", name, "\") NATIVE_ON_STACK;"));
 }
 
 void NativeGenerator::emit_declarations() {
-  // Non-local branches go to bytecodes in other methods.
   for (auto& info : methods_) {
     uint8* bcp = info.method.entry();
     while (bcp < info.end) {
       Opcode opcode = static_cast<Opcode>(*bcp);
       if (opcode >= ILLEGAL_END) break;
-      if (opcode == NON_LOCAL_BRANCH) branch_targets_.insert(Utils::read_unaligned_uint32(bcp + 2));
       if (opcode == LOAD_METHOD) {
         int id = Utils::read_unaligned_uint32(bcp + 1);
         Method target(program_->bytecodes, id);
@@ -641,24 +859,20 @@ void NativeGenerator::emit_declarations() {
     }
   }
   for (auto& info : methods_) {
-    for (int target : branch_targets_) {
-      uint8* bcp = program_->bcp_from_absolute_bci(target);
-      if (bcp >= info.method.entry() && bcp < info.end) info.leaders.insert(bcp);
-    }
     int id = method_id(info.method);
-    out_ << "static " << attributes(info, info.method.entry()) << "void " << method_label(id) << native_declaration(method_label(id));
+    declare(attributes(info, info.method.entry()), method_label(id));
     if (has_virtual_entry(id)) {
-      out_ << "static " << attributes(info, info.method.entry()) << "void " << virtual_label(id) << native_declaration(virtual_label(id));
+      declare(attributes(info, info.method.entry()), virtual_label(id));
     }
-    if (info.method.is_block_method()) out_ << "static void " << block_entry_label(id) << native_declaration(block_entry_label(id));
+    if (info.method.is_block_method()) declare("", block_entry_label(id));
     current_end_ = info.end;
     for (uint8* leader : info.leaders) {
-      if (leader < info.end) out_ << "static " << attributes(info, leader) << "void " << label(leader) << native_declaration(label(leader));
+      if (leader < info.end) declare(attributes(info, leader), label(leader));
     }
   }
-  for (int id : dead_blocks_) out_ << "static void " << block_entry_label(id) << native_declaration(block_entry_label(id));
-  for (uint8* bcp : dead_continuations_) out_ << "static void " << label(bcp) << native_declaration(label(bcp));
-  out_ << "\n";
+  for (int id : dead_blocks_) declare("", block_entry_label(id));
+  for (uint8* bcp : dead_continuations_) declare("", label(bcp));
+  line("");
 }
 
 struct PrimitiveInfo {
@@ -689,31 +903,35 @@ static std::string primitive_name(int module, int index) {
 void NativeGenerator::emit_primitive_declarations() {
   std::set<std::pair<int, int>> primitives;
   for (auto& info : methods_) {
-    uint8* bcp = info.method.entry();
-    while (bcp < info.end) {
-      Opcode opcode = static_cast<Opcode>(*bcp);
-      if (opcode >= ILLEGAL_END) break;
-      if (opcode == PRIMITIVE) primitives.insert({ bcp[1], Utils::read_unaligned_uint16(bcp + 2) });
-      bcp += opcode_length[opcode];
+    for (uint8* bcp : info.reachable) {
+      if (*bcp == PRIMITIVE) primitives.insert({ bcp[1], Utils::read_unaligned_uint16(bcp + 2) });
     }
   }
-  out_ << "namespace toit {\n";
+  line("namespace toit {");
+  int current_module = -1;
   for (auto& it : primitives) {
-    out_ << "namespace " << module_names[it.first] << "_module { Object* p_"
-         << module_infos[it.first][it.second].name << "(Process*, Object**); }\n";
+    if (it.first != current_module) {
+      if (current_module >= 0) line(cat("}  // namespace ", module_names[current_module], "_module"));
+      current_module = it.first;
+      line(cat("namespace ", module_names[current_module], "_module {"));
+    }
+    line(cat("Object* p_", module_infos[it.first][it.second].name, "(Process*, Object**);"));
   }
-  out_ << "}\n\n";
+  if (current_module >= 0) line(cat("}  // namespace ", module_names[current_module], "_module"));
+  line("}  // namespace toit");
+  line("");
 }
 
 void NativeGenerator::emit_tables() {
   List<int32> dispatch_table = program_->dispatch_table;
-  out_ << "static const NativeFn vtable[] = {\n";
+  line("static const NativeFn vtable[] = {");
   for (int i = 0; i < dispatch_table.length(); i++) {
     int entry = dispatch_table[i];
     bool valid = entry >= 0 && has_virtual_entry(entry);
-    out_ << "  " << (valid ? virtual_label(entry) : std::string("NativeRuntime::virtual_fallback")) << ",\n";
+    this->entry(valid ? virtual_label(entry) : std::string("NativeRuntime::virtual_fallback"));
   }
-  out_ << "};\n\n";
+  line("};");
+  line("");
   std::map<int, std::string> entries;
   current_end_ = null;
   for (auto& info : methods_) entries[pruned_entry(method_id(info.method))] = method_label(info.method);
@@ -731,71 +949,79 @@ void NativeGenerator::emit_tables() {
   std::set<std::string> used;
   for (auto& it : entries) used.insert(it.second);
   for (uint8* bcp : return_points_) used.insert(label(bcp));
-  for (auto& name : used) out_ << "NATIVE_USED(" << name << ");\n";
+  for (auto& name : used) line("NATIVE_USED(" + name + ");");
+  line("");
 
   // These are the tables described in native_abi.h.
-  out_ << "__asm__(NATIVE_TABLE_SECTION R\"__toit__(\n";
-  out_ << ".p2align 2\n";
-  out_ << "toit_native_entries:\n";
-  for (auto& it : entries) out_ << ".long " << it.first << ", " << it.second << " - .\n";
-  out_ << "toit_native_returns:\n";
-  for (uint8* bcp : return_points_) out_ << ".long " << label(bcp) << " - .\n";
-  out_ << "toit_native_return_deltas:\n";
+  line("__asm__(NATIVE_TABLE_SECTION R\"__toit__(");
+  line(".p2align 2");
+  line("toit_native_entries:");
+  for (auto& it : entries) line(cat(".long ", it.first, ", ", it.second, " - ."));
+  line("toit_native_returns:");
+  for (uint8* bcp : return_points_) line(cat(".long ", label(bcp), " - ."));
+  line("toit_native_return_deltas:");
   int last_bci = 0;
   for (uint8* bcp : return_points_) {
     int delta = bci(bcp) - last_bci;
     last_bci = bci(bcp);
-    out_ << ".byte ";
-    for (; delta >= 0x80; delta >>= 7) out_ << ((delta & 0x7f) | 0x80) << ", ";
-    out_ << delta << "\n";
+    std::string bytes = ".byte ";
+    for (; delta >= 0x80; delta >>= 7) bytes += cat((delta & 0x7f) | 0x80, ", ");
+    line(bytes + std::to_string(delta));
   }
-  out_ << ".text\n)__toit__\");\n\n";
-  out_ << "extern const NativeEntry entries[] __asm__(\"toit_native_entries\");\n";
-  out_ << "extern const int32_t returns[] __asm__(\"toit_native_returns\");\n";
-  out_ << "extern const uint8_t return_deltas[] __asm__(\"toit_native_return_deltas\");\n\n";
+  line(".text\n)__toit__\");");
+  line("");
+  line("extern const NativeEntry entries[] __asm__(\"toit_native_entries\");");
+  line("extern const int32_t returns[] __asm__(\"toit_native_returns\");");
+  line("extern const uint8_t return_deltas[] __asm__(\"toit_native_return_deltas\");");
+  line("");
 
   // The compiler adds these to the end of the file when the program is done.
-  out_ << "namespace {\n";
-  out_ << "extern const bool native_is_system;\n";
-  out_ << "extern const uint8_t native_uuid[];\n";
-  out_ << "extern const uint8_t native_image[];\n";
-  out_ << "extern const int native_image_words;\n";
-  out_ << "extern const uint8_t native_image_ranges[];\n";
-  out_ << "extern const int native_image_ranges_size;\n";
-  out_ << "extern const uint8_t native_bundle[];\n";
-  out_ << "extern const int native_bundle_size;\n";
-  out_ << "}\n\n";
-  out_ << "static const NativeProgram native_program = {\n";
-  out_ << "  NATIVE_ABI,\n";
-  out_ << "  " << native_fingerprint(pruned_bytecodes_.data(), pruned_bytecodes_.size()) << "u,\n";
-  out_ << "  " << pruned_bytecodes_.size() << ",\n";
-  out_ << "  entries,\n";
-  out_ << "  " << entries.size() << ",\n";
-  out_ << "  returns,\n";
-  out_ << "  return_deltas,\n";
-  out_ << "  " << return_points_.size() << ",\n";
-  out_ << "  native_uuid,\n";
-  out_ << "  native_image,\n";
-  out_ << "  static_cast<int>(native_image_words * sizeof(intptr_t)),\n";
-  out_ << "  reinterpret_cast<const int32_t*>(native_image_ranges),\n";
-  out_ << "  static_cast<int>(native_image_ranges_size / (2 * sizeof(int32_t))),\n";
-  out_ << "  native_bundle,\n";
-  out_ << "  native_bundle_size,\n";
-  out_ << "  native_is_system,\n";
-  out_ << "};\n\n";
-  out_ << "static int registered = NativeRuntime::register_program(&native_program);\n";
+  line("namespace {");
+  line("extern const bool native_is_system;");
+  line("extern const uint8_t native_uuid[];");
+  line("extern const uint8_t native_image[];");
+  line("extern const int native_image_words;");
+  line("extern const uint8_t native_image_ranges[];");
+  line("extern const int native_image_ranges_size;");
+  line("extern const uint8_t native_bundle[];");
+  line("extern const int native_bundle_size;");
+  line("}  // namespace");
+  line("");
+  line("static const NativeProgram native_program = {");
+  entry("NATIVE_ABI");
+  entry(cat(native_fingerprint(pruned_bytecodes_.data(), pruned_bytecodes_.size()), "u"));
+  entry(std::to_string(pruned_bytecodes_.size()));
+  entry("entries");
+  entry(std::to_string(entries.size()));
+  entry("returns");
+  entry("return_deltas");
+  entry(std::to_string(return_points_.size()));
+  entry("native_uuid");
+  entry("native_image");
+  entry("native_image_words * static_cast<int>(sizeof(intptr_t))");
+  entry("reinterpret_cast<const int32_t*>(native_image_ranges)");
+  entry("native_image_ranges_size / static_cast<int>(2 * sizeof(int32_t))");
+  entry("native_bundle");
+  entry("native_bundle_size");
+  entry("native_is_system");
+  line("};");
+  line("");
+  line("static int registered = NativeRuntime::register_program(&native_program);");
 }
 
 std::string NativeGenerator::generate() {
-  out_ << "// Generated by the Toit compiler.\n";
-  out_ << "#define NATIVE_ABI " << NATIVE_ABI << "u\n";
-  out_ << NATIVE_ABI_SOURCE << "\n";
-  out_ << "using namespace toit;\n\n";
-  out_ << "static const unsigned SMI_ID = " << Smi::value(program_->smi_class_id()) << ";\n\n";
+  line("// Generated by the Toit compiler.");
+  line(cat("#define NATIVE_ABI ", NATIVE_ABI, "u"));
+  out_ << NATIVE_ABI_SOURCE;
+  line("");
+  line("using namespace toit;");
+  line("");
+  line(cat("static const unsigned SMI_ID = ", Smi::value(program_->smi_class_id()), ";"));
+  line("");
   emit_primitive_declarations();
   emit_declarations();
   emit_tables();
-  out_ << "\n";
+  line("");
   // The thunks are found while emitting the methods, but must be declared first.
   std::string declarations = out_.str();
   out_.str("");
@@ -803,22 +1029,22 @@ std::string NativeGenerator::generate() {
   std::string body = out_.str();
   out_.str("");
   out_ << declarations;
-  for (auto& thunk : virtual_thunks_) out_ << "static void " << thunk_label(thunk) << "(NATIVE_PARAMS);\n";
+  for (auto& thunk : virtual_thunks_) line("static void " + thunk_label(thunk) + "(NATIVE_PARAMS);");
+  line("");
   out_ << body;
   for (int id : dead_blocks_) emit_block_entry(Method(program_->bytecodes, id), true);
   for (uint8* bcp : dead_continuations_) {
-    out_ << "static void " << label(bcp) << "(NATIVE_PARAMS) {\n";
-    out_ << "  NATIVE_TAIL NativeRuntime::illegal(NATIVE_ARGS);\n";
-    out_ << "}\n";
+    function(label(bcp), [&] {
+      tail_call("NativeRuntime::illegal");
+    });
   }
   for (auto& thunk : virtual_thunks_) {
-    int selector_offset = std::get<0>(thunk);
-    int stack_offset = std::get<1>(thunk);
-    out_ << "static void " << thunk_label(thunk) << "(NATIVE_PARAMS) {\n";
-    std::string receiver = "STACK_AT(" + std::to_string(stack_offset) + ")";
-    out_ << "  NATIVE_TAIL vtable[" << class_id_expression(receiver, std::get<2>(thunk)) << " + " << selector_offset
-         << "](sp, c, x, " << virtual_key(selector_offset, stack_offset) << ", t);\n";
-    out_ << "}\n";
+    function(thunk_label(thunk), [&] {
+      int selector_offset = std::get<0>(thunk);
+      int stack_offset = std::get<1>(thunk);
+      std::string table_entry = cat("vtable[", class_id_expression(stack_at(stack_offset), std::get<2>(thunk)), " + ", selector_offset, "]");
+      tail_call(table_entry, "x", virtual_key(selector_offset, stack_offset), "t");
+    });
   }
   update_program();
   return out_.str();
@@ -830,18 +1056,20 @@ std::string NativeGenerator::generate() {
 // arguments, so it gets the check without the code of the block.
 void NativeGenerator::emit_block_entry(Method method, bool is_dead) {
   int id = method_id(method);
-  out_ << "static void " << block_entry_label(id) << "(NATIVE_PARAMS) {\n";
-  out_ << "  intptr_t extra = y - " << method.arity() << ";\n";
-  out_ << "  if (NATIVE_UNLIKELY(extra < 0)) {\n    SPILL();\n    NATIVE_TAIL NativeRuntime::block_failure(sp, c, x, (" << pruned_id(id) << " << 8) | y, nullptr);\n  }\n";
-  if (is_dead) {
-    out_ << "  NATIVE_TAIL NativeRuntime::illegal(NATIVE_ARGS);\n";
-  } else {
-    out_ << "  DROP(extra);\n";
-    out_ << "  PUSH(reinterpret_cast<Object*>(x));\n";
-    out_ << "  PUSH(c->frame_marker);\n";
-    out_ << "  NATIVE_TAIL " << method_label(id) << "(NATIVE_ARGS);\n";
-  }
-  out_ << "}\n";
+  function(block_entry_label(id), [&] {
+    line(cat("intptr_t extra = y - ", method.arity(), ";"));
+    if_unlikely("extra < 0", [&] {
+      emit_runtime("block_failure", "x", cat("(", pruned_id(id), " << 8) | y"));
+    });
+    if (is_dead) {
+      tail_call("NativeRuntime::illegal");
+    } else {
+      line("DROP(extra);");
+      push("NATIVE_OBJECT(x)");
+      push("c->frame_marker");
+      tail_call(method_label(id));
+    }
+  });
 }
 
 bool NativeGenerator::has_inlined_leaf(const MethodInfo& info) const {
@@ -869,23 +1097,23 @@ void NativeGenerator::emit_method(const MethodInfo& info) {
     // The rows of the dispatch table overlap, so a receiver that doesn't have
     // the method can end up here. This is where the entry in the table is
     // checked, which leaves the call sites with nothing but the jump.
-    out_ << "static void " << virtual_label(id) << "(NATIVE_PARAMS) {\n";
-    out_ << "  if (NATIVE_UNLIKELY(y != " << virtual_key(method.selector_offset(), method.arity() - 1) << ")) {\n";
-    out_ << "    SPILL();\n";
-    out_ << "    NATIVE_TAIL NativeRuntime::virtual_fallback(NATIVE_ARGS);\n";
-    out_ << "  }\n";
-    out_ << "  PUSH(reinterpret_cast<Object*>(x));\n";
-    out_ << "  PUSH(c->frame_marker);\n";
-    out_ << "  NATIVE_TAIL " << method_label(id) << "(NATIVE_ARGS);\n";
-    out_ << "}\n";
+    function(virtual_label(id), [&] {
+      if_unlikely(cat("y != ", virtual_key(method.selector_offset(), method.arity() - 1)), [&] {
+        spill();
+        tail_call("NativeRuntime::virtual_fallback");
+      });
+      push("NATIVE_OBJECT(x)");
+      push("c->frame_marker");
+      tail_call(method_label(id));
+    });
   }
-  out_ << "static void " << method_label(id) << "(NATIVE_PARAMS) {\n";
-  out_ << "  if (NATIVE_UNLIKELY(NativeRuntime::needs_stack_check(c, sp, " << (method.max_height() + (has_inlined_leaf(info) ? INLINED_STACK_USE : 0) + 1) << "))) {\n";
-  out_ << "    SPILL();\n";
-  out_ << "    NATIVE_TAIL NativeRuntime::stack_overflow(sp, c, x, " << pruned_id(id) << ", nullptr);\n";
-  out_ << "  }\n";
-  out_ << "  NATIVE_TAIL " << label(method.entry()) << "(NATIVE_ARGS);\n";
-  out_ << "}\n";
+  function(method_label(id), [&] {
+    if_unlikely(cat("NativeRuntime::needs_stack_check(c, sp, ", (method.max_height() + (has_inlined_leaf(info) ? INLINED_STACK_USE : 0) + 1), ")"), [&] {
+      spill();
+      tail_call("NativeRuntime::stack_overflow", "x", pruned_id(id), "nullptr");
+    });
+    tail_call(label(method.entry()));
+  });
 
   std::vector<uint8*> leaders;
   for (uint8* leader : info.leaders) {
@@ -896,70 +1124,57 @@ void NativeGenerator::emit_method(const MethodInfo& info) {
   }
 }
 
-static bool is_terminal(Opcode opcode) {
-  switch (opcode) {
-    case BRANCH:
-    case BRANCH_BACK:
-    case THROW:
-    case RETURN:
-    case RETURN_NULL:
-    case NON_LOCAL_RETURN:
-    case NON_LOCAL_RETURN_WIDE:
-    case NON_LOCAL_BRANCH:
-    case INVOKE_STATIC_TAIL:
-    case INVOKE_LAMBDA_TAIL:
-    case INVOKE_INITIALIZER_TAIL:
-    case INTRINSIC_SMI_REPEAT:
-    case INTRINSIC_ARRAY_DO:
-      return true;
-    default:
-      return false;
-  }
-}
-
 void NativeGenerator::emit_block(const MethodInfo& info, uint8* begin, uint8* end) {
   current_end_ = info.end;
-  out_ << "static void " << label(begin) << "(NATIVE_PARAMS) {\n";
-  uint8* bcp = begin;
-  bool terminated = false;
-  while (bcp < end) {
-    Opcode opcode = static_cast<Opcode>(*bcp);
-    if (opcode >= ILLEGAL_END) break;
-    emit_opcode(info, bcp);
-    terminated = is_terminal(opcode) || ends_block(bcp);
-    bcp += opcode_length[opcode];
-    if (skip_next_opcode_) {
-      skip_next_opcode_ = false;
-      bcp += opcode_length[*bcp];
+  function(label(begin), [&] {
+    uint8* bcp = begin;
+    bool terminated = false;
+    while (bcp < end) {
+      Opcode opcode = static_cast<Opcode>(*bcp);
+      if (opcode >= ILLEGAL_END) break;
+      emit_opcode(info, bcp);
+      terminated = is_terminal(opcode) || ends_block(bcp);
+      bcp += opcode_length[opcode];
+      if (skip_next_opcode_) {
+        skip_next_opcode_ = false;
+        bcp += opcode_length[*bcp];
+      }
+      if (terminated) break;
     }
-    if (terminated) break;
-  }
-  if (!terminated) {
-    if (end != info.end) {
-      emit_goto(end);
-    } else {
-      out_ << "  NATIVE_TAIL NativeRuntime::illegal(NATIVE_ARGS);\n";
+    if (!terminated) {
+      if (end != info.end) {
+        emit_goto(end);
+      } else {
+        tail_call("NativeRuntime::illegal");
+      }
     }
-  }
-  out_ << "}\n";
+  });
 }
 
 void NativeGenerator::emit_goto(uint8* target) {
-  out_ << "  NATIVE_TAIL " << label(target) << "(NATIVE_ARGS);\n";
+  tail_call(label(target));
 }
 
 void NativeGenerator::emit_call(int id, uint8* next) {
-  out_ << "  PUSH(reinterpret_cast<Object*>(&" << label(next) << "));\n";
-  out_ << "  PUSH(c->frame_marker);\n";
-  out_ << "  NATIVE_TAIL " << method_label(id) << "(NATIVE_ARGS);\n";
+  push(return_address(label(next)));
+  push("c->frame_marker");
+  tail_call(method_label(id));
 }
 
-void NativeGenerator::emit_runtime(const char* helper, const std::string& x, word y) {
-  out_ << "  { SPILL(); NATIVE_TAIL NativeRuntime::" << helper << "(sp, c, " << x << ", " << y << ", nullptr); }\n";
+// Leaves the result of the condition on the stack if it worked. Otherwise, the
+// code continues with what comes next, which is the slow path.
+void NativeGenerator::emit_result_if(const std::string& condition, int count, uint8* next) {
+  scope([&] {
+    line("Object* result = nullptr;");
+    if_likely(condition, [&] {
+      drop_push(count, "result");
+      emit_goto(next);
+    });
+  });
 }
 
 void NativeGenerator::emit_runtime_next(const char* helper, uint8* next, word y) {
-  emit_runtime(helper, "reinterpret_cast<void*>(&" + label(next) + ")", y);
+  emit_runtime(helper, address_of(label(next)), y);
 }
 
 void NativeGenerator::emit_virtual(uint8* bcp, uint8* next, int stack_offset, int selector_offset) {
@@ -969,17 +1184,16 @@ void NativeGenerator::emit_virtual(uint8* bcp, uint8* next, int stack_offset, in
   bool can_be_smi = static_cast<int>(input.size()) != stack_offset + 1 ||
       input[0].is_block() ||
       input[0].contains(Smi::value(program_->smi_class_id()));
-  std::string address = "reinterpret_cast<void*>(&" + label(next) + ")";
+  std::string address = address_of(label(next));
   if (!is_hot_site(bcp)) {
     // Sites that aren't hot share the code for the lookup.
     auto thunk = std::make_tuple(selector_offset, stack_offset, can_be_smi);
     virtual_thunks_.insert(thunk);
-    out_ << "  NATIVE_TAIL " << thunk_label(thunk) << "(sp, c, " << address << ", y, t);\n";
+    tail_call(thunk_label(thunk), address, "y", "t");
     return;
   }
-  std::string receiver = "STACK_AT(" + std::to_string(stack_offset) + ")";
-  out_ << "  NATIVE_TAIL vtable[" << class_id_expression(receiver, can_be_smi) << " + " << selector_offset
-       << "](sp, c, " << address << ", " << virtual_key(selector_offset, stack_offset) << ", t);\n";
+  std::string receiver = stack_at(stack_offset);
+  tail_call(cat("vtable[", class_id_expression(receiver, can_be_smi), " + ", selector_offset, "]"), address, virtual_key(selector_offset, stack_offset), "t");
 }
 
 // The types often leave us with a single method that can be called, even if
@@ -1021,11 +1235,11 @@ bool NativeGenerator::emit_direct_calls(uint8* bcp, uint8* next, int stack_offse
   // That's slower, but smaller, because the sites can share the lookup.
   if (can_be_null && !is_hot_site(bcp)) return false;
 
-  std::string receiver = "STACK_AT(" + std::to_string(stack_offset) + ")";
+  std::string receiver = stack_at(stack_offset);
   if (can_be_null) {
-    out_ << "  if (NATIVE_UNLIKELY(" << receiver << " == c->null_object)) {\n  ";
-    emit_runtime_next("virtual_fallback", next, virtual_key(selector_offset, stack_offset));
-    out_ << "  }\n";
+    if_unlikely(cat(receiver, " == c->null_object"), [&] {
+      emit_runtime_next("virtual_fallback", next, virtual_key(selector_offset, stack_offset));
+    });
   }
   emit_call(*targets.begin(), next);
   return true;
@@ -1116,7 +1330,7 @@ bool NativeGenerator::emit_inlined_leaf(const MethodInfo& info, uint8* bcp) {
   int entry = leaf_target(bcp);
   if (entry < 0) return false;
   // Leaves room for the frame.
-  for (int i = 0; i < Interpreter::FRAME_SIZE; i++) out_ << "  PUSH(nullptr);\n";
+  for (int i = 0; i < Interpreter::FRAME_SIZE; i++) push("nullptr");
   uint8* leaf = Method(program_->bytecodes, entry).entry();
   while (*leaf != RETURN && *leaf != RETURN_NULL) {
     emit_opcode(info, leaf);
@@ -1124,11 +1338,12 @@ bool NativeGenerator::emit_inlined_leaf(const MethodInfo& info, uint8* bcp) {
   }
   int drop = leaf[1] + Interpreter::FRAME_SIZE + leaf[2];
   if (*leaf == RETURN) {
-    out_ << "  { Object* result = STACK_AT(0);\n";
-    out_ << "    DROP_PUSH(" << drop << ", result);\n";
-    out_ << "  }\n";
+    scope([&] {
+      line("Object* result = STACK_AT(0);");
+      drop_push(drop, "result");
+    });
   } else {
-    out_ << "  DROP_PUSH(" << drop << ", c->null_object);\n";
+    drop_push(drop, "c->null_object");
   }
   return true;
 }
@@ -1143,46 +1358,40 @@ void NativeGenerator::emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, co
   std::string check = smi_check(info);
   if (!check.empty()) check += " && ";
   if (info.can_be_smis && (info.is_likely || is_hot_site(bcp))) {
-    out_ << "  { Object* result;\n";
-    out_ << "    if (NATIVE_LIKELY(" << check << helper << "(STACK_AT(1), STACK_AT(0), &result))) {\n";
-    out_ << "      DROP_PUSH(2, result);\n";
-    out_ << "      NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
-    out_ << "    }\n  }\n";
+    emit_result_if(cat(check, helper, "(STACK_AT(1), STACK_AT(0), &result)"), 2, next);
   }
   emit_runtime_next("binary", next, opcode);
 }
 
 void NativeGenerator::emit_relational(const MethodInfo& info, uint8* bcp, uint8* next, Opcode opcode, const char* op) {
-  std::string smi_compare = std::string("reinterpret_cast<intptr_t>(STACK_AT(1)) ") + op + " reinterpret_cast<intptr_t>(STACK_AT(0))";
+  std::string smi_compare = cat("NATIVE_COMPARE_SMIS(", op, ")");
   Operands operands = this->operands(bcp);
   if (operands.are_ints) {
     std::string compare = smi_compare;
-    if (!operands.are_smis()) {
-      compare = "NATIVE_LIKELY(" + smi_check(operands) + ") ? (" + smi_compare + ")"
-          + " : (native_int_value(STACK_AT(1)) " + op + " native_int_value(STACK_AT(0)))";
-    }
+    if (!operands.are_smis()) compare = cat("NATIVE_COMPARE_INTS(", smi_check(operands), ", ", op, ")");
     Opcode next_opcode = static_cast<Opcode>(*next);
     bool can_merge = next < info.end && info.leaders.count(next) == 0 &&
         (next_opcode == BRANCH_IF_TRUE || next_opcode == BRANCH_IF_FALSE);
     if (can_merge) {
       // There is no need to create a boolean just to branch on it.
-      out_ << "  { bool result = " << compare << ";\n";
-      out_ << "    DROP(2);\n";
-      emit_branch(next + Utils::read_unaligned_uint16(next + 1),
-                  next_opcode == BRANCH_IF_TRUE ? "result" : "!result", false, null);
-      out_ << "  }\n";
+      scope([&] {
+        line(cat("bool result = ", compare, ";"));
+        drop(2);
+        emit_branch(next + Utils::read_unaligned_uint16(next + 1),
+                    next_opcode == BRANCH_IF_TRUE ? "result" : "!result", false, null);
+      });
       skip_next_opcode_ = true;
     } else {
-      out_ << "  DROP_PUSH(2, (" << compare << ") ? c->true_object : c->false_object);\n";
+      drop_push(2, boolean(compare));
     }
     return;
   }
   // Comparisons are too small for the check to matter for the size.
   if (operands.can_be_smis) {
-    out_ << "  if (NATIVE_LIKELY(" << smi_check(operands) << ")) {\n";
-    out_ << "    bool result = " << smi_compare << ";\n";
-    emit_fast_result(next, "result");
-    out_ << "  }\n";
+    if_likely(smi_check(operands), [&] {
+      line(cat("bool result = ", smi_compare, ";"));
+      emit_fast_result(next, "result");
+    });
   }
   emit_runtime_next("binary", next, opcode);
 }
@@ -1196,19 +1405,21 @@ void NativeGenerator::emit_fast_result(uint8* next, const std::string& result) {
     uint8* target = next + Utils::read_unaligned_uint16(next + 1);
     uint8* fall_through = next + BRANCH_IF_TRUE_LENGTH;
     bool on_true = next_opcode == BRANCH_IF_TRUE;
-    out_ << "    DROP(2);\n";
-    out_ << "    if (" << result << ") NATIVE_TAIL " << label(on_true ? target : fall_through) << "(NATIVE_ARGS);\n";
-    out_ << "    NATIVE_TAIL " << label(on_true ? fall_through : target) << "(NATIVE_ARGS);\n";
+    drop(2);
+    if_(result, [&] {
+      emit_goto(on_true ? target : fall_through);
+    });
+    tail_call(label(on_true ? fall_through : target));
     return;
   }
-  out_ << "    DROP_PUSH(2, (" << result << ") ? c->true_object : c->false_object);\n";
-  out_ << "    NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
+  drop_push(2, boolean(result));
+  emit_goto(next);
 }
 
 void NativeGenerator::emit_bit_operation(uint8* bcp, uint8* next, Opcode opcode, const char* op, const char* helper) {
   if (operands(bcp).are_smis()) {
     // Smis have a zero tag, so we can work directly on the tagged values.
-    out_ << "  DROP_PUSH(2, reinterpret_cast<Object*>(reinterpret_cast<intptr_t>(STACK_AT(1)) " << op << " reinterpret_cast<intptr_t>(STACK_AT(0))));\n";
+    drop_push(2, cat("NATIVE_OBJECT(NATIVE_WORD(STACK_AT(1)) ", op, " NATIVE_WORD(STACK_AT(0)))"));
     return;
   }
   emit_arithmetic(bcp, next, opcode, helper);
@@ -1226,7 +1437,7 @@ std::vector<NativeGenerator::Collection> NativeGenerator::collections_at(uint8* 
   // It's worth the code in hot places, and everywhere the types are precise
   // enough for it to be small.
   if (!is_certain && !is_hot_site(bcp)) return result;
-  std::string receiver = "STACK_AT(" + std::to_string(stack_offset) + ")";
+  std::string receiver = stack_at(stack_offset);
   auto add = [&](Smi* id, const char* name) {
     int class_id = Smi::value(id);
     if (!input[0].contains(class_id)) return;
@@ -1243,11 +1454,7 @@ std::vector<NativeGenerator::Collection> NativeGenerator::collections_at(uint8* 
 
 void NativeGenerator::emit_at(uint8* bcp, uint8* next) {
   for (auto& collection : collections_at(bcp, 1)) {
-    out_ << "  { Object* result;\n";
-    out_ << "    if (NATIVE_LIKELY(" << collection.guard << "native_" << collection.name << "_at(c, STACK_AT(1), STACK_AT(0), &result))) {\n";
-    out_ << "      DROP_PUSH(2, result);\n";
-    out_ << "      NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
-    out_ << "    }\n  }\n";
+    emit_result_if(cat(collection.guard, "native_", collection.name, "_at(c, STACK_AT(1), STACK_AT(0), &result)"), 2, next);
   }
   emit_runtime_next("at", next, 0);
 }
@@ -1255,17 +1462,13 @@ void NativeGenerator::emit_at(uint8* bcp, uint8* next) {
 void NativeGenerator::emit_at_put(uint8* bcp, uint8* next) {
   for (auto& collection : collections_at(bcp, 2)) {
     if (strcmp(collection.name, "byte_array") == 0) {
-      out_ << "  { Object* result;\n";
-      out_ << "    if (NATIVE_LIKELY(" << collection.guard << "native_byte_array_at_put(STACK_AT(2), STACK_AT(1), STACK_AT(0), &result))) {\n";
-      out_ << "      DROP_PUSH(3, result);\n";
-      out_ << "      NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
-      out_ << "    }\n  }\n";
+      emit_result_if(cat(collection.guard, "native_byte_array_at_put(STACK_AT(2), STACK_AT(1), STACK_AT(0), &result)"), 3, next);
       continue;
     }
-    out_ << "  if (NATIVE_LIKELY(" << collection.guard << "native_" << collection.name << "_at_put(c, STACK_AT(2), STACK_AT(1), STACK_AT(0)))) {\n";
-    out_ << "    DROP_PUSH(3, STACK_AT(0));\n";
-    out_ << "    NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
-    out_ << "  }\n";
+    if_likely(cat(collection.guard, "native_", collection.name, "_at_put(c, STACK_AT(2), STACK_AT(1), STACK_AT(0))"), [&] {
+      drop_push(3, "STACK_AT(0)");
+      emit_goto(next);
+    });
   }
   emit_runtime_next("at_put", next, 0);
 }
@@ -1274,24 +1477,28 @@ void NativeGenerator::emit_size(uint8* bcp, uint8* next, int selector) {
   for (auto& collection : collections_at(bcp, 0)) {
     // The size of a list is a field. It's the same for big lists.
     if (strcmp(collection.name, "list") != 0 && strcmp(collection.name, "large_list") != 0) continue;
-    out_ << "  if (NATIVE_LIKELY(" << collection.guard << "native_is_smi(native_field(STACK_AT(0), 1)))) {\n";
-    out_ << "    STACK_AT_PUT(0, native_field(STACK_AT(0), 1));\n";
-    out_ << "    NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
-    out_ << "  }\n";
+    if_likely(cat(collection.guard, "native_is_smi(native_field(STACK_AT(0), 1))"), [&] {
+      stack_at_put(0, "native_field(STACK_AT(0), 1)");
+      emit_goto(next);
+    });
   }
   emit_runtime_next("size", next, selector);
 }
 
 void NativeGenerator::emit_branch(uint8* target, const char* condition, bool is_back, uint8* entry) {
-  out_ << "  if (" << condition << ") {\n";
-  if (is_back) {
-    out_ << "    if (NATIVE_UNLIKELY(NativeRuntime::is_preempted(c))) {\n  ";
-    emit_runtime("preempt", "reinterpret_cast<void*>(&" + label(target) + ")", pruned_entry(bci(entry) - Method::entry_offset()));
-    out_ << "    }\n";
+  auto branch = [&] {
+    if (is_back) {
+      if_unlikely("NativeRuntime::is_preempted(c)", [&] {
+        emit_runtime("preempt", address_of(label(target)), pruned_entry(bci(entry) - Method::entry_offset()));
+      });
+    }
+    emit_goto(target);
+  };
+  if (condition == null) {
+    branch();
+  } else {
+    if_(condition, branch);
   }
-  out_ << "  ";
-  emit_goto(target);
-  out_ << "  }\n";
 }
 
 void NativeGenerator::emit_typecheck(uint8* bcp, Opcode opcode, bool is_as, int encoded, int length) {
@@ -1299,39 +1506,46 @@ void NativeGenerator::emit_typecheck(uint8* bcp, Opcode opcode, bool is_as, int 
   int index = encoded >> 1;
   bool is_interface = opcode == IS_INTERFACE || opcode == IS_INTERFACE_WIDE ||
       opcode == AS_INTERFACE || opcode == AS_INTERFACE_WIDE;
-  out_ << "  { Object* value = STACK_AT(0);\n";
-  out_ << "    bool result = " << (is_nullable ? "value == c->null_object" : "false") << ";\n";
-  if (is_interface) {
-    int offset = program_->interface_check_offsets[index];
-    out_ << "    if (!result) result = NativeRuntime::is_interface(c, value, " << offset << ");\n";
-  } else {
-    int start = program_->class_check_ids[2 * index];
-    int end = program_->class_check_ids[2 * index + 1];
-    out_ << "    if (!result) {\n";
-    out_ << "      int id = native_class_id(value, SMI_ID);\n";
-    out_ << "      result = " << start << " <= id && id < " << end << ";\n";
-    out_ << "    }\n";
-  }
-  if (is_as) {
-    out_ << "    if (NATIVE_UNLIKELY(!result)) {\n  ";
-    emit_runtime_next("as_failure", bcp + length, bci(bcp + length));
-    out_ << "    }\n";
-  } else {
-    out_ << "    STACK_AT_PUT(0, result ? c->true_object : c->false_object);\n";
-  }
-  out_ << "  }\n";
+  auto check = [&](const char* target) {
+    if (is_interface) {
+      int offset = program_->interface_check_offsets[index];
+      line(cat(target, "NativeRuntime::is_interface(c, value, ", offset, ");"));
+    } else {
+      int start = program_->class_check_ids[2 * index];
+      int end = program_->class_check_ids[2 * index + 1];
+      line("unsigned id = native_class_id(value, SMI_ID);");
+      line(cat(target, start, " <= id && id < ", end, ";"));
+    }
+  };
+  scope([&] {
+    line("Object* value = STACK_AT(0);");
+    if (is_nullable) {
+      line("bool result = value == c->null_object;");
+      if_("!result", [&] { check("result = "); });
+    } else {
+      check("bool result = ");
+    }
+    if (is_as) {
+      if_unlikely("!result", [&] {
+        emit_runtime_next("as_failure", bcp + length, bci(bcp + length));
+      });
+    } else {
+      stack_at_put(0, boolean("result"));
+    }
+  });
 }
 
 void NativeGenerator::emit_tail_frame_move(int height, int outer_arity, int call_arity) {
   int parameter_start = height + Interpreter::FRAME_SIZE + outer_arity;
-  out_ << "  SPILL();\n";
-  out_ << "  { Object* return_address = sp[" << (height + 1) << "];\n";
-  out_ << "    memmove(sp + " << (parameter_start - call_arity) << ", sp, " << call_arity << " * sizeof(Object*));\n";
-  out_ << "    sp += " << (parameter_start - call_arity) << ";\n";
-  out_ << "    *(--sp) = return_address;\n";
-  out_ << "    *(--sp) = c->frame_marker;\n";
-  out_ << "  }\n";
-  out_ << "  RELOAD();\n";
+  spill();
+  scope([&] {
+    line(cat("Object* return_address = sp[", (height + 1), "];"));
+    line(cat("memmove(sp + ", (parameter_start - call_arity), ", sp, ", call_arity, " * sizeof(Object*));"));
+    line(cat("sp += ", (parameter_start - call_arity), ";"));
+    line("*(--sp) = return_address;");
+    line("*(--sp) = c->frame_marker;");
+  });
+  reload();
 }
 
 void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
@@ -1347,7 +1561,7 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
   switch (opcode) {
     case LOAD_LOCAL:
     case LOAD_LOCAL_WIDE:
-      out_ << "  PUSH(STACK_AT(" << arg(LOAD_LOCAL_WIDE) << "));\n";
+      push(stack_at(arg(LOAD_LOCAL_WIDE)));
       break;
     case LOAD_LOCAL_0:
     case LOAD_LOCAL_1:
@@ -1355,88 +1569,91 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
     case LOAD_LOCAL_3:
     case LOAD_LOCAL_4:
     case LOAD_LOCAL_5:
-      out_ << "  PUSH(STACK_AT(" << (opcode - LOAD_LOCAL_0) << "));\n";
+      push(stack_at((opcode - LOAD_LOCAL_0)));
       break;
     case POP_LOAD_LOCAL:
-      out_ << "  STACK_AT_PUT(0, STACK_AT(" << (byte1 + 1) << "));\n";
+      stack_at_put(0, stack_at((byte1 + 1)));
       break;
     case STORE_LOCAL:
-      out_ << "  STACK_AT_PUT(" << byte1 << ", STACK_AT(0));\n";
+      stack_at_put(byte1, stack_at(0));
       break;
     case STORE_LOCAL_POP:
-      out_ << "  STACK_AT_PUT(" << byte1 << ", STACK_AT(0));\n";
-      out_ << "  DROP(1);\n";
+      stack_at_put(byte1, stack_at(0));
+      drop(1);
       break;
     case LOAD_OUTER:
-      out_ << "  STACK_AT_PUT(0, NativeRuntime::from_block(c, STACK_AT(0))[" << byte1 << "]);\n";
+      line(cat("STACK_AT_PUT(0, NativeRuntime::from_block(c, STACK_AT(0))[", byte1, "]);"));
       break;
     case STORE_OUTER:
-      out_ << "  { Object* value = POP();\n";
-      out_ << "    NativeRuntime::from_block(c, STACK_AT(0))[" << byte1 << "] = value;\n";
-      out_ << "    STACK_AT_PUT(0, value);\n";
-      out_ << "  }\n";
+      scope([&] {
+        line("Object* value = POP();");
+        line(cat("NativeRuntime::from_block(c, STACK_AT(0))[", byte1, "] = value;"));
+        stack_at_put(0, "value");
+      });
       break;
     case LOAD_FIELD:
     case LOAD_FIELD_WIDE:
-      out_ << "  STACK_AT_PUT(0, native_field(STACK_AT(0), " << arg(LOAD_FIELD_WIDE) << "));\n";
+      stack_at_put(0, field_of(stack_at(0), arg(LOAD_FIELD_WIDE)));
       break;
     case LOAD_FIELD_LOCAL:
-      out_ << "  PUSH(native_field(STACK_AT(" << (byte1 & 0x0f) << "), " << (byte1 >> 4) << "));\n";
+      push(field_of(stack_at(byte1 & 0x0f), byte1 >> 4));
       break;
     case POP_LOAD_FIELD_LOCAL:
-      out_ << "  STACK_AT_PUT(0, native_field(STACK_AT(" << ((byte1 & 0x0f) + 1) << "), " << (byte1 >> 4) << "));\n";
+      stack_at_put(0, field_of(stack_at((byte1 & 0x0f) + 1), byte1 >> 4));
       break;
     case STORE_FIELD:
     case STORE_FIELD_WIDE:
-      out_ << "  { Object* value = POP();\n";
-      out_ << "    native_set_field(c, STACK_AT(0), " << arg(STORE_FIELD_WIDE) << ", value);\n";
-      out_ << "    STACK_AT_PUT(0, value);\n";
-      out_ << "  }\n";
+      scope([&] {
+        line("Object* value = POP();");
+        line(cat("native_set_field(c, STACK_AT(0), ", arg(STORE_FIELD_WIDE), ", value);"));
+        stack_at_put(0, "value");
+      });
       break;
     case STORE_FIELD_POP:
-      out_ << "  { Object* value = POP();\n";
-      out_ << "    native_set_field(c, POP(), " << byte1 << ", value);\n";
-      out_ << "  }\n";
+      scope([&] {
+        line("Object* value = POP();");
+        line(cat("native_set_field(c, POP(), ", byte1, ", value);"));
+      });
       break;
     case LOAD_LITERAL:
     case LOAD_LITERAL_WIDE:
-      out_ << "  PUSH(c->literals[" << arg(LOAD_LITERAL_WIDE) << "]);\n";
+      line(cat("PUSH(c->literals[", arg(LOAD_LITERAL_WIDE), "]);"));
       break;
     case LOAD_NULL:
-      out_ << "  PUSH(c->null_object);\n";
+      push("c->null_object");
       break;
     case LOAD_SMI_0:
-      out_ << "  PUSH(native_smi(0));\n";
+      push(smi(0));
       break;
     case LOAD_SMIS_0:
-      for (int i = 0; i < byte1; i++) out_ << "  PUSH(native_smi(0));\n";
+      for (int i = 0; i < byte1; i++) push(smi(0));
       break;
     case LOAD_SMI_1:
-      out_ << "  PUSH(native_smi(1));\n";
+      push(smi(1));
       break;
     case LOAD_SMI_U8:
-      out_ << "  PUSH(native_smi(" << byte1 << "));\n";
+      push(smi(byte1));
       break;
     case LOAD_SMI_U16:
-      out_ << "  PUSH(native_smi(" << wide1 << "));\n";
+      push(smi(wide1));
       break;
     case LOAD_SMI_U32:
-      out_ << "  PUSH(native_smi(" << Utils::read_unaligned_uint32(bcp + 1) << "));\n";
+      push(smi(Utils::read_unaligned_uint32(bcp + 1)));
       break;
     case LOAD_METHOD: {
       int id = Utils::read_unaligned_uint32(bcp + 1);
       Method target(program_->bytecodes, id);
       if (target.is_block_method()) {
         // The function pointer looks like a smi to the garbage collector.
-        out_ << "  PUSH(reinterpret_cast<Object*>(&" << block_entry_label(id) << "));\n";
+        push(return_address(block_entry_label(id)));
       } else {
-        out_ << "  PUSH(native_smi(" << pruned_id(id) << "));\n";
+        push(smi(pruned_id(id)));
       }
       break;
     }
     case LOAD_GLOBAL_VAR:
     case LOAD_GLOBAL_VAR_WIDE:
-      out_ << "  PUSH(c->globals[" << arg(LOAD_GLOBAL_VAR_WIDE) << "]);\n";
+      line(cat("PUSH(c->globals[", arg(LOAD_GLOBAL_VAR_WIDE), "]);"));
       break;
     case LOAD_GLOBAL_VAR_DYNAMIC:
       emit_runtime_next("load_global_dynamic", next, 0);
@@ -1444,35 +1661,36 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
     case LOAD_GLOBAL_VAR_LAZY:
     case LOAD_GLOBAL_VAR_LAZY_WIDE: {
       int index = arg(LOAD_GLOBAL_VAR_LAZY_WIDE);
-      out_ << "  { Object* value = c->globals[" << index << "];\n";
-      out_ << "    if (native_is_instance(value) && native_heap_class_id(value) == c->lazy_initializer_class_id) {\n";
-      out_ << "      PUSH(native_smi(" << index << "));\n";
-      out_ << "      PUSH(value);\n  ";
-      emit_call(method_id(program_->run_global_initializer()), next);
-      out_ << "    }\n";
-      out_ << "    PUSH(value);\n";
-      out_ << "  }\n";
+      scope([&] {
+        line(cat("Object* value = c->globals[", index, "];"));
+        if_("native_is_instance(value) && native_heap_class_id(value) == c->lazy_initializer_class_id", [&] {
+          push(smi(index));
+          push("value");
+          emit_call(method_id(program_->run_global_initializer()), next);
+        });
+        push("value");
+      });
       emit_goto(next);
       break;
     }
     case STORE_GLOBAL_VAR:
     case STORE_GLOBAL_VAR_WIDE:
-      out_ << "  c->globals[" << arg(STORE_GLOBAL_VAR_WIDE) << "] = STACK_AT(0);\n";
+      line(cat("c->globals[", arg(STORE_GLOBAL_VAR_WIDE), "] = STACK_AT(0);"));
       break;
     case STORE_GLOBAL_VAR_DYNAMIC:
       emit_runtime_next("store_global_dynamic", next, 0);
       break;
     case LOAD_BLOCK:
-      out_ << "  PUSH(NativeRuntime::to_block(c, sp + " << (byte1 - 1) << "));\n";
+      line(cat("PUSH(NativeRuntime::to_block(c, sp + ", (byte1 - 1), "));"));
       break;
     case LOAD_OUTER_BLOCK:
-      out_ << "  STACK_AT_PUT(0, NativeRuntime::to_block(c, &NativeRuntime::from_block(c, STACK_AT(0))[" << byte1 << "]));\n";
+      line(cat("STACK_AT_PUT(0, NativeRuntime::to_block(c, &NativeRuntime::from_block(c, STACK_AT(0))[", byte1, "]));"));
       break;
     case POP:
-      out_ << "  DROP(" << byte1 << ");\n";
+      drop(byte1);
       break;
     case POP_1:
-      out_ << "  DROP(1);\n";
+      drop(1);
       break;
     case ALLOCATE:
     case ALLOCATE_WIDE:
@@ -1501,12 +1719,14 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       int index = byte1 & 0x1f;
       int start = program_->class_check_ids[2 * index];
       int end = program_->class_check_ids[2 * index + 1];
-      out_ << "  { Object* value = STACK_AT(" << local << ");\n";
-      out_ << "    int id = native_class_id(value, SMI_ID);\n";
-      out_ << "    if (NATIVE_UNLIKELY(!(" << start << " <= id && id < " << end << "))) {\n";
-      out_ << "      PUSH(value);\n  ";
-      emit_runtime_next("as_failure", next, bci(next));
-      out_ << "    }\n  }\n";
+      scope([&] {
+        line(cat("Object* value = STACK_AT(", local, ");"));
+        line("unsigned id = native_class_id(value, SMI_ID);");
+        if_unlikely(cat("id < ", start, " || id >= ", end), [&] {
+          push("value");
+          emit_runtime_next("as_failure", next, bci(next));
+        });
+      });
       emit_goto(next);
       break;
     }
@@ -1518,13 +1738,15 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       int id = program_->dispatch_table[wide1];
       Method target(program_->bytecodes, id);
       emit_tail_frame_move(bcp[3], bcp[4], target.arity());
-      out_ << "  NATIVE_TAIL " << method_label(id) << "(NATIVE_ARGS);\n";
+      tail_call(method_label(id));
       break;
     }
     case INVOKE_BLOCK:
-      out_ << "  { Object** block = NativeRuntime::from_block(c, STACK_AT(" << (byte1 - 1) << "));\n";
-      out_ << "    NATIVE_TAIL reinterpret_cast<NativeFn>(*block)(sp, c, reinterpret_cast<void*>(&" << label(next) << "), " << byte1 << ", t);\n";
-      out_ << "  }\n";
+      scope([&] {
+        line(cat("Object** block = NativeRuntime::from_block(c, STACK_AT(", (byte1 - 1), "));"));
+        line("NativeFn target = NATIVE_FN(*block);");
+      tail_call("target", address_of(label(next)), byte1, "t");
+      });
       break;
     case INVOKE_LAMBDA_TAIL:
       emit_runtime("lambda_tail", "nullptr", byte1);
@@ -1567,10 +1789,12 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       if (operands(bcp).are_ints) {
         emit_relational(info, bcp, next, opcode, "==");
       } else if (operands(bcp).is_likely || is_hot_site(bcp)) {
-        out_ << "  { int equals = native_equals(c, STACK_AT(1), STACK_AT(0));\n";
-        out_ << "    if (NATIVE_LIKELY(equals >= 0)) {\n";
-        emit_fast_result(next, "equals == 1");
-        out_ << "    }\n  }\n";
+        scope([&] {
+          line("int equals = native_equals(c, STACK_AT(1), STACK_AT(0));");
+          if_likely("equals >= 0", [&] {
+            emit_fast_result(next, "equals == 1");
+          });
+        });
         emit_runtime_next("binary", next, opcode);
       } else {
         emit_runtime_next("binary", next, opcode);
@@ -1629,20 +1853,19 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
     case BRANCH_BACK_IF_FALSE:
     case BRANCH_BACK_IF_NOT_NULL: {
       uint8* entry = bcp - Utils::read_unaligned_uint16(bcp + 3);
-      const char* condition = "true";
+      const char* condition = null;
       if (opcode == BRANCH_BACK_IF_TRUE) condition = "native_is_true(c, POP())";
       if (opcode == BRANCH_BACK_IF_FALSE) condition = "!native_is_true(c, POP())";
       if (opcode == BRANCH_BACK_IF_NOT_NULL) condition = "POP() != c->null_object";
       emit_branch(bcp - wide1, condition, true, entry);
-      if (opcode == BRANCH_BACK) out_ << "  __builtin_unreachable();\n";
       break;
     }
     case PRIMITIVE:
     {
       int index = Utils::read_unaligned_uint16(bcp + 2);
       word y = (static_cast<word>(index) << 16) | (byte1 << 8) | module_infos[byte1][index].arity;
-      out_ << "  { SPILL(); NATIVE_TAIL NativeRuntime::primitive(sp, c, reinterpret_cast<void*>(&" << label(next) << "), " << y
-           << ", reinterpret_cast<Object*>(&" << primitive_name(byte1, index) << ")); }\n";
+      spill();
+      tail_call("NativeRuntime::primitive", address_of(label(next)), y, "NATIVE_OBJECT(&" + primitive_name(byte1, index) + ")");
     }
       break;
     case THROW:
@@ -1652,11 +1875,12 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
     case RETURN_NULL: {
       int offset = byte1;
       int arity = bcp[2];
-      out_ << "  { Object* result = " << (opcode == RETURN ? "STACK_AT(0)" : "c->null_object") << ";\n";
-      out_ << "    NativeFn next = reinterpret_cast<NativeFn>(STACK_AT(" << (offset + 1) << "));\n";
-      out_ << "    DROP_PUSH(" << (offset + Interpreter::FRAME_SIZE + arity) << ", result);\n";
-      out_ << "    NATIVE_TAIL next(NATIVE_ARGS);\n";
-      out_ << "  }\n";
+      scope([&] {
+        line(cat("Object* result = ", (opcode == RETURN ? "STACK_AT(0)" : "c->null_object"), ";"));
+        line(cat("NativeFn next = NATIVE_FN(", stack_at(offset + 1), ");"));
+        drop_push((offset + Interpreter::FRAME_SIZE + arity), "result");
+        tail_call("next");
+      });
       break;
     }
     case NON_LOCAL_RETURN:
@@ -1672,16 +1896,16 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
           byte1);
       break;
     case IDENTICAL:
-      out_ << "  DROP_PUSH(2, NativeRuntime::identical(c, STACK_AT(1), STACK_AT(0)));\n";
+      drop_push(2, "NativeRuntime::identical(c, STACK_AT(1), STACK_AT(0))");
       break;
     case LINK:
-      out_ << "  SPILL();\n";
-      out_ << "  sp -= 4;\n";
-      out_ << "  NativeRuntime::link(c, sp);\n";
-      out_ << "  RELOAD();\n";
+      spill();
+      line("sp -= 4;");
+      line("NativeRuntime::link(c, sp);");
+      reload();
       break;
     case UNLINK:
-      out_ << "  NativeRuntime::unlink(c, POP());\n";
+      line("NativeRuntime::unlink(c, POP());");
       break;
     case UNWIND:
       emit_runtime_next("unwind", next, 0);
@@ -1697,10 +1921,10 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       break;
     case INTRINSIC_HASH_DO:
       // These are optimizations. If they fail, the code that follows does the work.
-      out_ << "  DROP(1);\n";
+      drop(1);
       break;
     case INTRINSIC_HASH_FIND:
-      out_ << "  DROP(7);\n";
+      drop(7);
       break;
     case ILLEGAL_END:
       UNREACHABLE();
