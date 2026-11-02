@@ -22,6 +22,8 @@
 #include "../primitive.h"
 #include "../process.h"
 #include "../resource.h"
+#include "cellular_state_ec618.h"
+#include "cellular_modem_ec618.h"
 
 extern "C" {
   // networkmgr.h (included by ps_lib_api.h) needs these defines
@@ -41,46 +43,42 @@ extern "C" {
 
 namespace toit {
 
-static const int CELLULAR_DETACHED = 1;
-static const int CELLULAR_ATTACHED = 2;
-
 class CellularEvents : public Resource {
  public:
   TAG(CellularEvents);
   CellularEvents(ResourceGroup* group)
-    : Resource(group)
-    , state_(0) {}
+    : Resource(group) {}
 
-  int state() const { return state_; }
-  void set_state(int state) { state_ = state; }
+  CellularNetworkState& network_state() { return network_state_; }
 
  private:
-  int state_;
+  CellularNetworkState network_state_;
 };
 
-static bool modem_initialized = false;
-static CellularEvents* active_connection = null;
+static CellularModemState modem;
 
-static void initialize_modem() {
+static int32_t initialize_modem() {
   Locker locker(OS::global_mutex());
-  if (modem_initialized) return;
-  appSetCFUN(0);
-  modem_initialized = true;
+  return modem.initialize(appSetCFUN);
 }
 
-static bool activate_modem(CellularEvents* events) {
+static CellularModemState::ConnectResult activate_modem(CellularEvents* events) {
   Locker locker(OS::global_mutex());
-  if (active_connection != null) return false;
-  active_connection = events;
-  appSetCFUN(1);
-  return true;
+  return modem.activate(events, appSetCFUN);
 }
 
-static void deactivate_modem(CellularEvents* events) {
+static int32_t deactivate_modem(CellularEvents* events) {
   Locker locker(OS::global_mutex());
-  if (active_connection != events) return;
-  appSetCFUN(0);
-  active_connection = null;
+  return modem.deactivate(events, appSetCFUN);
+}
+
+static Object* modem_error(Process* process, const char* operation, int32_t error) {
+  char message[96];
+  snprintf(message, sizeof(message), "cellular %s failed (CMS error %ld)",
+           operation, static_cast<long>(error));
+  String* result = process->allocate_string(message);
+  if (result == null) FAIL(ALLOCATION_FAILED);
+  return Error::from(result);
 }
 
 class CellularResourceGroup : public ResourceGroup {
@@ -99,18 +97,9 @@ class CellularResourceGroup : public ResourceGroup {
 
     switch (event->event_id) {
       case PS_URC_ID_PS_NETINFO: {
-        if (event->param == null) break;
-        NmAtiNetInfoInd* info = static_cast<NmAtiNetInfoInd*>(event->param);
-        uint8 status = info->netifInfo.netStatus;
-        if (status == NM_NETIF_ACTIVATED) {
-          events->set_state(CELLULAR_ATTACHED);
-          ipv4_addr_ = info->netifInfo.ipv4Info.ipv4Addr.addr;
-          state |= CELLULAR_ATTACHED;
-        } else if (status == NM_NO_NETIF_OR_DEACTIVATED) {
-          events->set_state(CELLULAR_DETACHED);
-          ipv4_addr_ = 0;
-          state |= CELLULAR_DETACHED;
-        }
+        auto& network = events->network_state();
+        state = network.on_net_info(event->param, event->param_len, state);
+        ipv4_addr_ = network.ipv4_address();
         break;
       }
       default:
@@ -121,7 +110,15 @@ class CellularResourceGroup : public ResourceGroup {
 
  protected:
   void on_unregister_resource(Resource* resource) override {
-    deactivate_modem(static_cast<CellularEvents*>(resource));
+    int32_t error = deactivate_modem(static_cast<CellularEvents*>(resource));
+    if (error != CMS_RET_SUCC) {
+      // Forced container cleanup cannot throw. Keep the failure visible and
+      // let the next activation retry the failed shutdown before enabling.
+      printf("[cellular] disable failed (CMS error %ld)\n", static_cast<long>(error));
+    }
+    // A failed second connect can unregister a temporary resource while the
+    // group's original connection is still alive.
+    if (resources().is_empty()) ipv4_addr_ = 0;
   }
 
  private:
@@ -136,7 +133,8 @@ PRIMITIVE(init) {
 
   // Ensure the modem starts from a clean state, without letting a later
   // resource group disrupt an existing connection.
-  initialize_modem();
+  int32_t error = initialize_modem();
+  if (error != CMS_RET_SUCC) return modem_error(process, "initialize", error);
 
   CellularEventSource* event_source = CellularEventSource::instance();
   if (event_source == null) FAIL(ALREADY_CLOSED);
@@ -184,7 +182,9 @@ PRIMITIVE(connect) {
   group->register_resource(events);
   AutoUnregisteringResource<CellularEvents> allocation(group, events);
 
-  if (!activate_modem(events)) FAIL(ALREADY_IN_USE);
+  auto result = activate_modem(events);
+  if (result.already_in_use) FAIL(ALREADY_IN_USE);
+  if (result.error != CMS_RET_SUCC) return modem_error(process, "enable", result.error);
 
   allocation.set_external_address(proxy);
   return proxy;
@@ -192,22 +192,32 @@ PRIMITIVE(connect) {
 
 PRIMITIVE(disconnect) {
   ARGS(CellularResourceGroup, group, CellularEvents, events);
+  if (events->resource_group() != group) FAIL(INVALID_ARGUMENT);
+  int32_t error = deactivate_modem(events);
   group->unregister_resource(events);
   events_proxy->clear_external_address();
+  if (error != CMS_RET_SUCC) return modem_error(process, "disable", error);
   return process->null_object();
 }
 
 PRIMITIVE(disconnect_reason) {
   ARGS(CellularEvents, events);
-  USE(events);
-  // TODO: Track and return actual disconnect reason.
-  return Smi::from(0);
+  char reason[80];
+  {
+    Locker locker(events->resource_group()->event_source()->mutex());
+    events->network_state().format_disconnect_reason(reason, sizeof(reason));
+  }
+  return process->allocate_string_or_error(reason);
 }
 
 PRIMITIVE(get_ip) {
   ARGS(CellularResourceGroup, group, int, index);
-  USE(index);
-  uint32 addr = group->ipv4_addr();
+  if (index != 0) FAIL(INVALID_ARGUMENT);
+  uint32 addr;
+  {
+    Locker locker(group->event_source()->mutex());
+    addr = group->ipv4_addr();
+  }
   if (addr == 0) return process->null_object();
 
   // Return as a 4-byte byte array.

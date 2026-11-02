@@ -40,7 +40,9 @@ main args:
       progress++
       sleep --ms=1
   try:
-    adc0.get --samples=64
+    // Event-driven sampling need not take 64 milliseconds. Use enough work
+    // to observe scheduling without asserting the old polling latency.
+    adc0.get --samples=4096
   finally:
     keep-running = false
   if progress < 10:

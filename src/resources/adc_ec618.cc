@@ -17,6 +17,7 @@
 
 #ifdef TOIT_EC618
 
+#include "../event_sources/uart_ec618.h"
 #include "../objects_inline.h"
 #include "../primitive.h"
 #include "../process.h"
@@ -25,6 +26,7 @@
 
 extern "C" {
   #include "adc.h"
+  #include "cmsis_os2.h"
   // hal_adc.h / hal_trim.h / bsp.h are not self-contained (dangling
   // extern "C" / heavy includes), so declare the helpers we need directly.
   uint32_t HAL_ADC_CalibrateRawCode(uint32_t input);
@@ -51,15 +53,43 @@ static AdcChannel_e aio_channel(int channel) {
   return channel == 0 ? ADC_CHANNEL_AIO3 : ADC_CHANNEL_AIO4;
 }
 
-// Conversion results, filled from the ADC ISR callback. A primitive invocation
-// starts or harvests one conversion and returns null while it is pending; the
-// Toit library yields before polling again. The vendor driver serializes
-// requests across channels, so one result slot per channel is enough.
-static volatile uint32_t conversion_result[kNumChannels] = {0, 0};
-static volatile bool conversion_done[kNumChannels] = {false, false};
+// Callbacks may arrive after a request was canceled or its resource closed.
+// Keep ISR state outside resources; never dereference a resource from the ISR.
+struct AdcChannelState {
+  volatile uint32_t result;
+  volatile uint32_t generation;
+  volatile bool in_flight;
+  volatile bool done;
+  volatile bool retiring;
+};
+static AdcChannelState channels[kNumChannels] = {};
 
-static void adc_callback_0(uint32_t result) { conversion_result[0] = result; conversion_done[0] = true; }
-static void adc_callback_1(uint32_t result) { conversion_result[1] = result; conversion_done[1] = true; }
+class AdcIrqGuard {
+ public:
+  AdcIrqGuard() : mask_(__get_PRIMASK()) { __disable_irq(); }
+  ~AdcIrqGuard() { __DSB(); __ISB(); __set_PRIMASK(mask_); }
+ private:
+  uint32_t mask_;
+};
+
+static void adc_callback(int channel, uint32_t result) {
+  auto& state = channels[channel];
+  state.result = result;
+  state.done = true;
+  state.in_flight = false;
+  if (state.retiring) {
+    // The vendor explicitly supports deinitializing from its callback. It
+    // cannot remove a queued request, so close defers this until completion.
+    ADC_channelDeInit(aio_channel(channel), ADC_USER_APP);
+    state.done = false;
+    state.retiring = false;
+    return;
+  }
+  Ec618EventSource::send_event_from_isr(Event::adc_type(channel), state.generation);
+}
+
+static void adc_callback_0(uint32_t result) { adc_callback(0, result); }
+static void adc_callback_1(uint32_t result) { adc_callback(1, result); }
 
 // AIO measurement ranges. `max_volts` is the largest input the range can read;
 // `ratio` scales the calibrated core voltage (0..1.2 V) back up to the input
@@ -94,7 +124,7 @@ static const AioRange* select_range(double max_volts) {
   return &ALL_RANGES[NUM_RANGES - 1];  // Widest; the chip can't read above 3.8 V.
 }
 
-class AdcResource : public SimpleResource {
+class AdcResource : public EventResource {
  public:
   enum RequestKind {
     REQUEST_NONE,
@@ -103,8 +133,8 @@ class AdcResource : public SimpleResource {
   };
 
   TAG(AdcResource);
-  AdcResource(SimpleResourceGroup* group, int channel, float ratio)
-      : SimpleResource(group)
+  AdcResource(ResourceGroup* group, int channel, float ratio)
+      : EventResource(group, Event::adc_type(channel))
       , channel_(channel)
       , ratio_(ratio)
       , request_kind_(REQUEST_NONE)
@@ -114,9 +144,23 @@ class AdcResource : public SimpleResource {
       , deadline_us_(0) {}
 
   ~AdcResource() override {
+    // Usually the conversion has already completed. Allow a short bounded
+    // drain for close immediately after start, without holding a mutex or
+    // masking interrupts. A stuck conversion quarantines the channel until
+    // its callback arrives rather than giving its result to a new owner.
+    int64 deadline = OS::get_monotonic_time() + 5000;
+    while (channels[channel_].in_flight && OS::get_monotonic_time() < deadline) {
+      osDelay(1);
+    }
     {
       Locker locker(OS::global_mutex());
-      ADC_channelDeInit(aio_channel(channel_), ADC_USER_APP);
+      AdcIrqGuard guard;
+      if (channels[channel_].in_flight) {
+        channels[channel_].retiring = true;
+      } else {
+        ADC_channelDeInit(aio_channel(channel_), ADC_USER_APP);
+        channels[channel_].done = false;
+      }
     }
     adc_channels.put(channel_);
   }
@@ -129,6 +173,8 @@ class AdcResource : public SimpleResource {
   int remaining_samples() const { return remaining_samples_; }
   double sum() const { return sum_; }
   int64 deadline_us() const { return deadline_us_; }
+  bool conversion_started() const { return conversion_started_; }
+  void set_conversion_started(bool value) { conversion_started_ = value; }
 
   void begin_request(RequestKind kind, int samples) {
     ASSERT(request_kind_ == REQUEST_NONE);
@@ -152,6 +198,7 @@ class AdcResource : public SimpleResource {
     remaining_samples_ = 0;
     sum_ = 0.0;
     deadline_us_ = 0;
+    conversion_started_ = false;
   }
 
  private:
@@ -162,24 +209,79 @@ class AdcResource : public SimpleResource {
   int remaining_samples_;
   double sum_;
   int64 deadline_us_;
+  bool conversion_started_ = false;
 };
 
 static const int64 kConversionTimeoutUs = 5000;
 
-// Starts one conversion and records its deadline. The vendor ADC driver
-// serializes requests from different channels in its IRQ-safe queue.
+// The driver has no per-request abort. If a canceled conversion is still
+// running, wait for its callback before submitting a fresh request. Its value
+// is never used by the new request.
 static bool start_conversion(AdcResource* resource) {
-  int channel = resource->channel();
-  conversion_done[channel] = false;
-  if (ADC_startConversion(aio_channel(channel), ADC_USER_APP) != 0) return false;
   resource->set_deadline(OS::get_monotonic_time() + kConversionTimeoutUs);
+  AdcIrqGuard guard;
+  auto& state = channels[resource->channel()];
+  resource->set_conversion_started(false);
+  if (state.in_flight) return true;
+  state.done = false;
+  state.generation++;
+  state.in_flight = true;
+  if (ADC_startConversion(aio_channel(resource->channel()), ADC_USER_APP) != 0) {
+    state.in_flight = false;
+    return false;
+  }
+  resource->set_conversion_started(true);
   return true;
 }
 
+enum ConversionStatus { PENDING, COMPLETED, FAILED };
+
+static ConversionStatus poll_conversion(AdcResource* resource, uint32_t* result) {
+  auto& state = channels[resource->channel()];
+  if (!resource->conversion_started()) {
+    if (!state.in_flight) return start_conversion(resource) ? PENDING : FAILED;
+  } else if (state.done) {
+    *result = state.result;
+    return COMPLETED;
+  }
+  return OS::get_monotonic_time() > resource->deadline_us() ? FAILED : PENDING;
+}
+
+class AdcResourceGroup : public ResourceGroup {
+ public:
+  TAG(AdcResourceGroup);
+  AdcResourceGroup(Process* process, EventSource* source) : ResourceGroup(process, source) {}
+
+  uint32_t on_event(Resource* r, word data, uint32_t state) override {
+    auto resource = static_cast<AdcResource*>(r);
+    auto& channel = channels[resource->channel()];
+    // Discard notifications queued before a subsequent conversion started.
+    if (!channel.done || static_cast<uint32_t>(data) != channel.generation) return state;
+    return state | 1;
+  }
+};
+
 MODULE_IMPLEMENTATION(adc, MODULE_ADC)
 
+PRIMITIVE(init_group) {
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+  auto source = Ec618EventSource::instance();
+  if (source == null) FAIL(ALREADY_CLOSED);
+  auto group = _new AdcResourceGroup(process, source);
+  if (group == null) FAIL(MALLOC_FAILED);
+  proxy->set_external_address(group);
+  return proxy;
+}
+
+PRIMITIVE(cancel) {
+  ARGS(AdcResource, resource);
+  resource->reset_request();
+  return process->null_object();
+}
+
 PRIMITIVE(init) {
-  ARGS(SimpleResourceGroup, group, int, channel, bool, allow_restricted, double, max);
+  ARGS(AdcResourceGroup, group, int, channel, bool, allow_restricted, double, max);
   USE(allow_restricted);
   if (channel < 0 || channel >= kNumChannels) FAIL(INVALID_ARGUMENT);
   if (max < 0.0) FAIL(INVALID_ARGUMENT);
@@ -192,6 +294,10 @@ PRIMITIVE(init) {
   Defer release_channel { [&] {
     if (!channel_handed_to_resource) adc_channels.put(channel);
   } };
+
+  // A timed-out destructor can leave a retiring vendor request. Its static
+  // callback releases the hardware; until then this channel must not reopen.
+  if (channels[channel].retiring || channels[channel].in_flight) FAIL(ALREADY_IN_USE);
 
   const AioRange* range = select_range(max);
 
@@ -206,11 +312,15 @@ PRIMITIVE(init) {
       trim_loaded = true;
     }
 
+    AdcIrqGuard guard;
+    channels[channel].done = false;
     AdcConfig_t config;
     ADC_getDefaultConfig(&config);
     config.channelConfig.aioResDiv = range->resdiv;
-    ADC_channelInit(aio_channel(channel), ADC_USER_APP, &config,
-                    channel == 0 ? adc_callback_0 : adc_callback_1);
+    if (ADC_channelInit(aio_channel(channel), ADC_USER_APP, &config,
+                        channel == 0 ? adc_callback_0 : adc_callback_1) != 0) {
+      FAIL(HARDWARE_ERROR);
+    }
   }
 
   AdcResource* resource = _new AdcResource(group, channel, range->ratio);
@@ -221,6 +331,7 @@ PRIMITIVE(init) {
   }
 
   channel_handed_to_resource = true;
+  group->register_resource(resource);
   proxy->set_external_address(resource);
   return proxy;
 }
@@ -242,18 +353,17 @@ PRIMITIVE(get) {
     FAIL(ALREADY_IN_USE);
   }
 
-  int channel = resource->channel();
-  if (!conversion_done[channel]) {
-    if (OS::get_monotonic_time() > resource->deadline_us()) {
-      resource->reset_request();
-      FAIL(HARDWARE_ERROR);
-    }
-    return process->null_object();
+  uint32_t result;
+  auto status = poll_conversion(resource, &result);
+  if (status == FAILED) {
+    resource->reset_request();
+    FAIL(HARDWARE_ERROR);
   }
+  if (status == PENDING) return process->null_object();
 
   // CalibrateRawCode returns the core ADC voltage in microvolts (0..1.2e6);
   // the range ratio scales it back to the (divided-down) input.
-  uint32_t core_uv = HAL_ADC_CalibrateRawCode(conversion_result[channel]);
+  uint32_t core_uv = HAL_ADC_CalibrateRawCode(result);
   resource->add_sample(((double)core_uv * resource->ratio()) / 1e6);
   if (resource->remaining_samples() > 0) {
     if (!start_conversion(resource)) {
@@ -281,19 +391,17 @@ PRIMITIVE(get_raw) {
   }
   if (resource->request_kind() != AdcResource::REQUEST_RAW) FAIL(ALREADY_IN_USE);
 
-  int channel = resource->channel();
-  if (!conversion_done[channel]) {
-    if (OS::get_monotonic_time() > resource->deadline_us()) {
-      resource->reset_request();
-      FAIL(HARDWARE_ERROR);
-    }
-    return process->null_object();
+  uint32_t result;
+  auto status = poll_conversion(resource, &result);
+  if (status == FAILED) {
+    resource->reset_request();
+    FAIL(HARDWARE_ERROR);
   }
+  if (status == PENDING) return process->null_object();
 
   // The raw conversion register is 12 bits.
-  word result = conversion_result[channel] & 0xFFF;
   resource->reset_request();
-  return Smi::from(result);
+  return Smi::from(result & 0xFFF);
 }
 
 PRIMITIVE(close) {

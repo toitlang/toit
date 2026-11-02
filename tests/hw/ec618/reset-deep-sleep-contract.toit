@@ -5,6 +5,8 @@
 /**
 Verifies the EC618 reset and minimum-duration deep-sleep contracts.
 
+Requires a base that initializes the vendor reset-reason decoder. Early bases
+  omitted this initialization and returned POR regardless of the reset cause.
 The test is self-verifying across the two reboots it requests. Install it as a
   boot-triggered container. A flash-backed state byte distinguishes the three
   stages and is cleared after the final result, making the test re-runnable.
@@ -39,7 +41,7 @@ main:
   if state == 2:
     // A zero-duration request is clamped to the hardware minimum and remains
     // a real timer-backed deep sleep. It must not look like a software reset.
-    assert-equals ec618.RESET-POWER-ON ec618.reset-reason
+    assert-equals ec618.RESET-NORMAL ec618.reset-reason
     assert-equals ec618.WAKEUP-RTC ec618.wakeup-cause
     bucket[STATE-KEY] = #[0]
     bucket.close

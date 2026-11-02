@@ -10,8 +10,12 @@
 // current slot: removing an entry saves little but can force deployed devices
 // to take a full base reflash instead of an OTA.
 //
-// Do not generate this list from every symbol in the SDK. Additions must have
-// a foreseeable slot use and are base-contract changes; obsolete entries may
+// Retain implemented peripheral APIs even when pins are not exposed or live
+// tests are unavailable. base-api.json records the reviewed chip/HAL surface;
+// check-base-api.toit verifies its headers and linked exports before stamping.
+// Exclusions need an explicit reason (for example an absent SDK implementation
+// or measured excessive cost). This is not a dump of every modem SDK symbol.
+// Additions are base-contract changes; obsolete entries may
 // be removed only when publishing a new base version. Low-level entries here
 // are native link capabilities, not public Toit APIs. Toit-facing mutation
 // primitives still need their own privilege checks.
@@ -136,6 +140,8 @@ extern void GPIO_interruptConfig(void);
 extern void GPIO_pinConfig(void);
 extern void GPIO_pinRead(void);
 extern void GPIO_pinWrite(void);
+// I2S generated clocks: retain the fractional dividers and MCLK/BCLK routing.
+extern void GPR_BclkEnable(void);
 extern void GPR_Is51MClockInUse(void);
 extern void GPR_USBCHRST_ResetReq_SetVal(void);
 extern void GPR_USBCPhy_ResetReq_SetVal(void);
@@ -160,16 +166,26 @@ extern void GPR_csmbAccessExit(void);
 extern void GPR_flashClockDisable(void);
 extern void GPR_flashClockEnable(void);
 extern void GPR_flashSWReset(void);
+extern void GPR_fracDivOutCLkEnable(void);
+extern void GPR_fracDivOutClkDisable(void);
 extern void GPR_getClockFreq(void);
 extern void GPR_getSystickClk(void);
 extern void GPR_initialize(void);
 extern void GPR_lockUpActionCtrl(void);
+extern void GPR_mclkDisable(void);
+extern void GPR_mclkEnable(void);
 extern void GPR_rmiHrstRel(void);
 extern void GPR_setApbGprAcg(void);
+extern void GPR_setBclkDiv(void);
+extern void GPR_setBclkSrc(void);
 extern void GPR_setClockDiv(void);
 extern void GPR_setClockSrc(void);
 extern void GPR_setFlashClockDiv(void);
 extern void GPR_setFlashClockSrc(void);
+extern void GPR_setFracDivConfig(void);
+extern void GPR_setFracDivOutClkDiv(void);
+extern void GPR_setMclkDiv(void);
+extern void GPR_setMclkSrc(void);
 extern void GPR_swReset(void);
 extern void GPR_swResetModule(void);
 extern void GPR_switchSystickClk(void);
@@ -543,8 +559,15 @@ extern void xTaskGenericNotify(void);
 extern void xTaskGetCurrentTaskHandle(void);
 extern void xTaskNotifyWait(void);
 
+#define EC618_BASE_API(symbol) extern void symbol(void);
+#include "peripheral_keep.inc"
+#undef EC618_BASE_API
+
 __attribute__((used, section(".rodata.toit_plat_keep")))
 const void* const toit_plat_keep[] = {
+#define EC618_BASE_API(symbol) (const void*)&symbol,
+#include "peripheral_keep.inc"
+#undef EC618_BASE_API
   (const void*)&Driver_I2C0,
   (const void*)&Driver_I2C1,
   (const void*)&Driver_USART0,
@@ -646,6 +669,7 @@ const void* const toit_plat_keep[] = {
   (const void*)&GPIO_pinConfig,
   (const void*)&GPIO_pinRead,
   (const void*)&GPIO_pinWrite,
+  (const void*)&GPR_BclkEnable,
   (const void*)&GPR_Is51MClockInUse,
   (const void*)&GPR_USBCHRST_ResetReq_SetVal,
   (const void*)&GPR_USBCPhy_ResetReq_SetVal,
@@ -670,16 +694,26 @@ const void* const toit_plat_keep[] = {
   (const void*)&GPR_flashClockDisable,
   (const void*)&GPR_flashClockEnable,
   (const void*)&GPR_flashSWReset,
+  (const void*)&GPR_fracDivOutCLkEnable,
+  (const void*)&GPR_fracDivOutClkDisable,
   (const void*)&GPR_getClockFreq,
   (const void*)&GPR_getSystickClk,
   (const void*)&GPR_initialize,
   (const void*)&GPR_lockUpActionCtrl,
+  (const void*)&GPR_mclkDisable,
+  (const void*)&GPR_mclkEnable,
   (const void*)&GPR_rmiHrstRel,
   (const void*)&GPR_setApbGprAcg,
+  (const void*)&GPR_setBclkDiv,
+  (const void*)&GPR_setBclkSrc,
   (const void*)&GPR_setClockDiv,
   (const void*)&GPR_setClockSrc,
   (const void*)&GPR_setFlashClockDiv,
   (const void*)&GPR_setFlashClockSrc,
+  (const void*)&GPR_setFracDivConfig,
+  (const void*)&GPR_setFracDivOutClkDiv,
+  (const void*)&GPR_setMclkDiv,
+  (const void*)&GPR_setMclkSrc,
   (const void*)&GPR_swReset,
   (const void*)&GPR_swResetModule,
   (const void*)&GPR_switchSystickClk,

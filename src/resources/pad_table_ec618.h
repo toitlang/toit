@@ -135,11 +135,10 @@ class PadGpioLock {
 };
 
 // UART function lookup. `mapping` selects between alternate routings:
-//   UART0:  0 = primary (TX=PAD30 RX=PAD29), 1 = alt (TX=PAD24 RX=PAD23)
-//   UART1:  0 = only mapping (TX=PAD34 RX=PAD33)
+//   UART0:  0 = primary (TX=PAD30 RX=PAD29), 1 = alt (TX=PAD32 RX=PAD31)
+//   UART1:  0 = primary (TX=PAD34 RX=PAD33), 1 = alternate CTS on PAD22
 //   UART2:  0 = primary (TX=PAD26 RX=PAD25), 1 = alt1 (TX=PAD28 RX=PAD27),
-//                                            2 = alt2 (TX/RX on PADs of
-//                                            GPIO7/GPIO6 — TBD per chip docs)
+//                                            2 = alt2 (TX=PAD22 RX=PAD21)
 //
 // Returns the pad index, or -1 if no such mapping exists. *out_mux gets
 // the iomux selector to write into the pad's PCR.

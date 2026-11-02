@@ -378,6 +378,17 @@ class AdcResource : public SimpleResource {
 
 MODULE_IMPLEMENTATION(adc, MODULE_ADC)
 
+PRIMITIVE(init_group) {
+  // ESP32 conversions are synchronous and use the generic resource group.
+  return process->null_object();
+}
+
+PRIMITIVE(cancel) {
+  ARGS(AdcResource, resource);
+  USE(resource);
+  return process->null_object();
+}
+
 PRIMITIVE(init) {
   ARGS(SimpleResourceGroup, group, int, pin, bool, allow_restricted, double, max);
 

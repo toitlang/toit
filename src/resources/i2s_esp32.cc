@@ -490,6 +490,10 @@ PRIMITIVE(configure) {
   return process->null_object();
 }
 
+PRIMITIVE(configure_buffered) {
+  FAIL(UNSUPPORTED);
+}
+
 PRIMITIVE(start) {
   ARGS(I2sResource, resource);
   if (resource->state() != I2sResource::STOPPED) FAIL(INVALID_STATE);

@@ -126,10 +126,17 @@ void TypeStack::push_instance(unsigned id) {
 
 void TypeStack::push(Program* program, Object* object) {
   TypeSet type = push_empty();
-  if (is_heap_object(object)) {
-    type.add(Smi::value(HeapObject::cast(object)->class_id()));
+  if (is_smi(object) || is_large_integer(object)) {
+    // Snapshots can be loaded on a VM with a different word size. An integer
+    // literal outside the 32-bit Smi range can change representation there;
+    // retaining only its compiler-host class can remove needed dispatches.
+    int64 value = is_smi(object)
+        ? Smi::value(object)
+        : LargeInteger::cast(object)->value();
+    if (Smi::is_valid64(value)) type.add_smi(program);
+    if (!Smi::is_valid32(value)) type.add_instance(program->large_integer_class_id());
   } else {
-    type.add(Smi::value(program->smi_class_id()));
+    type.add(Smi::value(HeapObject::cast(object)->class_id()));
   }
 }
 

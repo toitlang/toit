@@ -225,6 +225,15 @@ void Thread::_boot() {
 }
 
 bool Thread::spawn(int stack_size, int core) {
+  if (stack_size == 0) stack_size = DEFAULT_STACK_SIZE;
+  if (stack_size < 0) return false;
+  // Thread stack sizes are bytes. Unlike ESP-IDF, the EC618 FreeRTOS ABI
+  // takes a count of StackType_t words; passing bytes allocates four times
+  // the requested RAM. Round up and check the vendor's 16-bit depth limit.
+  unsigned stack_words = (static_cast<unsigned>(stack_size) + sizeof(StackType_t) - 1)
+      / sizeof(StackType_t);
+  if (stack_words > UINT16_MAX) return false;
+
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + THREAD_SPAWN_MALLOC_TAG);
   ThreadData* thread = _new ThreadData();
   if (thread == null) return false;
@@ -235,12 +244,10 @@ bool Thread::spawn(int stack_size, int core) {
   }
   handle_ = void_cast(thread);
 
-  if (stack_size == 0) stack_size = DEFAULT_STACK_SIZE;
-
   BaseType_t res = xTaskCreate(
     ec618_thread_start,
     name_,
-    stack_size,
+    static_cast<uint16_t>(stack_words),
     this,
     tskIDLE_PRIORITY + 1,
     &thread->handle);

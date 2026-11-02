@@ -16,8 +16,21 @@
 name: CI EC618
 
 on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "lib/**"
+      - "system/**"
+      - "toolchains/ec618/**"
+      - "tools/ec618/**"
+      - "tests/ctest/**"
+      - "Makefile"
+      - "actions/setup-build/**"
+      - ".github/workflows/ci-ec618.yml"
+      - ".github/workflows/ec618-base-release.yml"
   push:
     branches:
+      - "master"
       - "floitsch/ec618"
       - "floitsch/formatter.*"
   workflow_dispatch:
@@ -114,4 +127,70 @@ jobs:
 
       - name: Build EC618 firmware (slot vs base + guards + envelope)
         shell: bash
-        run: make ec618
+        run: |
+          make ec618
+          test -s build/ec618/firmware.envelope
+          test -s build/ec618/toit.binpkg
+
+      - name: Record EC618 base build inputs
+        shell: bash
+        run: |
+          {
+            git rev-parse HEAD
+            git submodule status third_party/luatos-soc-ec618
+            arm-none-eabi-gcc --version
+            xmake --version
+          } > build/ec618-base/build-inputs.txt
+          cp toolchains/ec618/base-api.json build/ec618-base/base-api.json
+
+      # Preserve the exact bytes even when the following published-base gate
+      # fails, so a locally qualified base can be compared with the CI build.
+      - name: Preserve EC618 base candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: ec618-base-${{ runner.os }}-${{ github.sha }}
+          path: |
+            build/ec618-base/base.elf
+            build/ec618-base/base.bin
+            build/ec618-base/base-manifest.json
+            build/ec618-base/base-api.json
+            build/ec618-base/build-inputs.txt
+          if-no-files-found: error
+
+      # A fresh base can hide an export missing from the deployed release.
+      # Require the versioned release too; never fall back to the local build.
+      - name: Download published EC618 base
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: toitlang/toit
+        run: |
+          set -euo pipefail
+          version=$(tr -d '[:space:]' < toolchains/ec618/base-version)
+          [[ "$version" =~ ^[0-9]+$ ]]
+          tag="ec618-base-v$version"
+          destination="$RUNNER_TEMP/ec618-published-base"
+          mkdir -p "$destination"
+          if ! gh release view "$tag" > /dev/null; then
+            echo "::error::Required base release $tag is unavailable. Publish and prove this version before merging; a fresh local base is not a compatibility check."
+            exit 1
+          fi
+          gh release download "$tag" --dir "$destination" \
+            --pattern "$tag.elf" --pattern "$tag.bin" --pattern "$tag.json" \
+            --pattern "$tag-api.json" --pattern "$tag-SHA256SUMS"
+          (
+            cd "$destination"
+            sha256sum --check "$tag-SHA256SUMS"
+          )
+          mv "$destination/$tag.elf" "$destination/base.elf"
+          mv "$destination/$tag.bin" "$destination/base.bin"
+          mv "$destination/$tag.json" "$destination/base-manifest.json"
+          test -s "$destination/base.elf"
+          test -s "$destination/base.bin"
+          test -s "$destination/base-manifest.json"
+
+      - name: Prove firmware against published EC618 base
+        if: runner.os == 'Linux'
+        shell: bash
+        run: make ec618 EC618_BASE_DIR="$RUNNER_TEMP/ec618-published-base"

@@ -44,14 +44,11 @@ namespace toit {
 //    exact luat_wdt_setup sequence: armed at 10 s, feeds stopped, 72 s of
 //    idle — no reset.
 //
-//  - The always-on (AON) watchdog belongs to the platform, not to us. The
-//    boot ROM arms it (~27 s) and the CP core then auto-feeds it every couple
-//    of seconds (its target register 0x4D020318 slides forward, target-now
-//    pinned at ~20 s, with every AP-side feeder provably silent). It guards
-//    whole-chip/CP liveness. It only ever fires when no healthy CP runs —
-//    the early-bring-up ~27 s reboot loops (CONFIG_TOIT_EC618_VM_WATCHDOG=0
-//    stops it at boot for CP-less debugging) — and it must be stopped before
-//    hibernate, where the CP stops feeding (toit_ec618.cc does).
+//  - The always-on (AON) watchdog is fed by the vendor AP idle task and the
+//    VM scheduler independently of application feeds. The scheduler tick
+//    keeps it alive during healthy CPU-bound work that prevents idle from
+//    running. The boot ROM arms it (~27 s); toit_ec618.cc stops it before
+//    hibernate, when software feeders stop but the AON clock keeps counting.
 //
 // So the real timeout is enforced in software: a dedicated FreeRTOS task
 // (independent of the Toit scheduler thread, so it survives a wedged VM;
@@ -84,8 +81,11 @@ static void watchdog_task(void* arg) {
   (void)arg;
   while (true) {
     uint32_t sleep_ms = WD_MAX_SLEEP_MS;
+    // The hardware backstop stays enabled after deinit. Keep servicing it
+    // while the task is healthy, even when no application deadline is armed;
+    // otherwise ordinary CPU work after watchdog-stop causes a hardware reset.
+    WDT_kick();
     if (wd_armed) {
-      WDT_kick();
       int32_t remain = static_cast<int32_t>(wd_deadline - osKernelGetTickCount());
       if (remain <= 0) {
 #if CONFIG_TOIT_EC618_WATCHDOG_FATAL_PAD >= 0
