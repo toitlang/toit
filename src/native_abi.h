@@ -82,6 +82,11 @@ typedef void (*NativeFn)(NATIVE_PARAMS);
 #define NATIVE_WORD(object) reinterpret_cast<intptr_t>(object)
 #define NATIVE_FN(object) reinterpret_cast<toit::NativeFn>(object)
 
+// Keeps the compiler from combining the stores on either side of this into a
+// paired store. A value that is loaded right after a paired store takes much
+// longer to get on some CPUs, and arguments are loaded right after the call.
+#define NATIVE_SPLIT_STORES() __asm__ volatile("" : : : "memory")
+
 #define NATIVE_LIKELY(x) __builtin_expect(!!(x), 1)
 #define NATIVE_UNLIKELY(x) __builtin_expect(!!(x), 0)
 
@@ -152,6 +157,10 @@ struct NativeContext {
   Object*** base;
   Object*** try_sp;
   uintptr_t remembered_set_bias;
+  // Where new objects go. Space runs out when the top gets to the limit.
+  uintptr_t* allocation_top;
+  uintptr_t* allocation_limit;
+  uintptr_t chunk_end_sentinel;
   unsigned lazy_initializer_class_id;
   int large_array_class_id;
   void* result;
@@ -368,6 +377,63 @@ inline Object* native_pop(Object*** sp, Object** t) {
 #define NATIVE_COMPARE_INTS(are_smis, a, op, b) \
   (NATIVE_LIKELY(are_smis) ? NATIVE_COMPARE_SMIS(a, op, b) : (native_int_value(a) op native_int_value(b)))
 #define NATIVE_BOOLEAN(condition) ((condition) ? c->true_object : c->false_object)
+
+static const int NATIVE_DOUBLE_SIZE = 16;
+static const int NATIVE_STRING_LENGTH_SENTINEL = 65535;
+
+inline double native_double_value(Object* object) {
+  double result;
+  __builtin_memcpy(&result, native_word_address(object, 1), sizeof(double));
+  return result;
+}
+
+inline void native_set_double_value(Object* object, double value) {
+  __builtin_memcpy(native_word_address(object, 1), &value, sizeof(double));
+}
+
+inline bool native_are_doubles(Object* a, Object* b) {
+  return native_is_double(a) && native_is_double(b);
+}
+
+// Boxes a value in new space. The header comes from another float, because it
+// is the same for all of them. If there is no room, the runtime has to do it.
+inline bool native_box_double(NativeContext* c, Object* other, double value, Object** result) {
+  uintptr_t top = *c->allocation_top;
+  if (*c->allocation_limit - top <= NATIVE_DOUBLE_SIZE) return false;
+  uintptr_t end = top + NATIVE_DOUBLE_SIZE;
+  *c->allocation_top = end;
+  *reinterpret_cast<uintptr_t*>(end) = c->chunk_end_sentinel;
+  Object* box = reinterpret_cast<Object*>(top + NATIVE_HEAP_TAG);
+  *native_word_address(box, 0) = *native_word_address(other, 0);
+  __builtin_memcpy(native_word_address(box, 1), &value, sizeof(double));
+  *result = box;
+  return true;
+}
+
+// Strings have their content in the object, unless they are very long.
+inline int native_string_length(Object* string) {
+  return reinterpret_cast<int32_t*>(native_word_address(string, 1))[1];
+}
+
+inline bool native_string_size(Object* string, Object** result) {
+  int length = native_string_length(string);
+  if (length == NATIVE_STRING_LENGTH_SENTINEL) return false;
+  *result = native_smi(length);
+  return true;
+}
+
+// Only ASCII characters are this simple. The rest are left to the primitive.
+inline bool native_string_at(NativeContext* /*c*/, Object* string, Object* index, Object** result) {
+  if (!native_is_smi(index)) return false;
+  int length = native_string_length(string);
+  if (length == NATIVE_STRING_LENGTH_SENTINEL) return false;
+  uintptr_t n = static_cast<uintptr_t>(native_smi_value(index));
+  if (n >= static_cast<uintptr_t>(length)) return false;
+  uint8_t character = reinterpret_cast<uint8_t*>(native_word_address(string, 2))[n];
+  if (character > 0x7f) return false;
+  *result = native_smi(character);
+  return true;
+}
 
 inline bool native_are_smis(Object* a, Object* b) {
   return ((native_bits(a) | native_bits(b)) & 1) == 0;

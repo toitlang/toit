@@ -179,6 +179,8 @@ class ObjectHeap {
   // allocated memory just after the previous GC.
   word update_pending_limit();
 
+  SemiSpace* new_space() { return two_space_heap_.new_space(); }
+
  private:
   Program* const program_;
   HeapObject* _allocate_raw(word byte_size) {
