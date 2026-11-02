@@ -387,6 +387,7 @@ class Program : public FlashAllocation {
   friend class ProgramHeap;
   friend class ImageAllocator;
   friend class compiler::ProgramBuilder;
+  friend class compiler::NativeGenerator;
   friend class ProgramImage;
 };
 

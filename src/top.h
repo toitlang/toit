@@ -316,6 +316,7 @@ class SystemMessage;
 // the compiler's program builder class.
 namespace compiler {
   class ProgramBuilder;
+  class NativeGenerator;
 }
 
 class Array;

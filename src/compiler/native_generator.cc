@@ -360,10 +360,16 @@ int NativeGenerator::pruned_branch_target(int target) {
 }
 
 void NativeGenerator::update_program() {
-  for (int i = 0; i < program_->dispatch_table.length(); i++) {
-    int entry = program_->dispatch_table[i];
-    if (entry >= 0) program_->dispatch_table[i] = pruned_ids_.at(entry);
+  // Dispatching goes through the generated table, so all the program needs
+  // is what it takes to find the entry points.
+  int32* entry_points = unvoid_cast<int32*>(malloc(Program::ENTRY_POINTS_COUNT * sizeof(int32)));
+  for (int i = 0; i < Program::ENTRY_POINTS_COUNT; i++) {
+    int index = program_->entry_point_indexes_[i];
+    int entry = index >= 0 ? program_->dispatch_table[index] : -1;
+    entry_points[i] = entry >= 0 ? pruned_ids_.at(entry) : -1;
+    program_->_set_entry_point_index(i, i);
   }
+  program_->set_dispatch_table(List<int32>(entry_points, Program::ENTRY_POINTS_COUNT));
   // The lazily initialized globals know the id of their initializer.
   program_->set_heap_writable(true);
   int initializer_class_id = Smi::value(program_->lazy_initializer_class_id());
@@ -1148,6 +1154,15 @@ void NativeGenerator::emit_tables() {
   }
   line("};");
   line("");
+  line("static const uint16_t selectors[] = {");
+  for (int i = 0; i < dispatch_table.length(); i++) {
+    int entry = dispatch_table[i];
+    // Interface checks use entries that are never called, so they have no code.
+    int selector = entry >= 0 ? Method(program_->bytecodes, entry).selector_offset() : -1;
+    this->entry(selector >= 0 ? std::to_string(selector) : "NATIVE_NO_SELECTOR");
+  }
+  line("};");
+  line("");
   std::map<int, std::string> entries;
   current_end_ = null;
   for (auto& info : methods_) entries[pruned_entry(method_id(info.method))] = method_label(info.method);
@@ -1208,6 +1223,9 @@ void NativeGenerator::emit_tables() {
   entry(std::to_string(pruned_bytecodes_.size()));
   entry("entries");
   entry(std::to_string(entries.size()));
+  entry("vtable");
+  entry("selectors");
+  entry("static_cast<int>(sizeof(vtable) / sizeof(vtable[0]))");
   entry("returns");
   entry("return_deltas");
   entry(std::to_string(return_points_.size()));

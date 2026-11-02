@@ -114,11 +114,18 @@ struct NativeEntry {
   }
 };
 
+static const uint16_t NATIVE_NO_SELECTOR = 0xffff;
+
 struct NativeProgram {
   uint32_t abi;
   intptr_t bytecodes_length;
   const NativeEntry* entries;
   int entry_count;
+  // The dispatch table, and the selector that each of its entries is for. The
+  // entries that aren't in use have NATIVE_NO_SELECTOR.
+  const NativeFn* dispatch_table;
+  const uint16_t* selectors;
+  int dispatch_length;
   // The places calls return to, used for stack traces. They are sorted by
   // bci, and the entries are offsets, relative to themselves, to the code.
   const int32_t* returns;
