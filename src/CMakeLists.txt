@@ -80,8 +80,12 @@ file(GLOB run_SRC
 list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run|toit_run_image|vessel|native_main|native_module_stubs|vm|objects_runtime).cc$")
 list(REMOVE_ITEM toit_core_SRC ${run_SRC})
 
-# The bytecode loop and the replacement for it in executables with native code.
-list(FILTER toit_core_SRC EXCLUDE REGEX "/(interpreter_run|interpreter_native|primitive_tables).cc$")
+# Executables with native code have a replacement for the bytecode loop, and they
+# don't need the primitive tables, so they are in a library of their own.
+list(FILTER toit_core_SRC EXCLUDE REGEX "/interpreter_native.cc$")
+if (TOIT_NATIVE_SUPPORTED)
+  list(FILTER toit_core_SRC EXCLUDE REGEX "/(interpreter_run|primitive_tables).cc$")
+endif()
 
 # Files that are used in the VM, but not in the compiler.
 file(GLOB toit_vm_runtime_SRC
@@ -144,11 +148,14 @@ add_library(
   ${toit_core_SRC}
   )
 
-add_library(
-  toit_interpreter
-  interpreter_run.cc
-  primitive_tables.cc
-  )
+if (TOIT_NATIVE_SUPPORTED)
+  add_library(
+    toit_interpreter
+    interpreter_run.cc
+    primitive_tables.cc
+    )
+  set(TOIT_INTERPRETER_LIB toit_interpreter)
+endif()
 
 add_library(
   toit_porting
@@ -270,7 +277,7 @@ set(TOIT_LINK_LIBS
   ${TOIT_LINK_GC_FLAGS}
   ${TOIT_LINK_GROUP_BEGIN_FLAGS}
   toit_vm
-  toit_interpreter
+  ${TOIT_INTERPRETER_LIB}
   ${TOIT_NETWORK_LIBS}
   ${TOIT_LINK_GROUP_END_FLAGS}
   toit_compiler          # TODO(florian): should not be here by default.
