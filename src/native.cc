@@ -59,13 +59,16 @@ static const int MAX_REGISTERED_PROGRAMS = 4;
 static const NativeProgram* registered_programs[MAX_REGISTERED_PROGRAMS];
 static int registered_count = 0;
 
-static Method find_method(Program* program, Object* receiver, word offset) {
+// Returns the place in the dispatch table for calling the selector on the
+// receiver, or -1 if it doesn't have the method. The rows of the table overlap,
+// so the slot has to be for the right selector.
+static int dispatch_index(NativeContext* c, Object* receiver, word offset) {
+  Program* program = c->program;
   Smi* class_id = is_smi(receiver) ? program->smi_class_id() : HeapObject::cast(receiver)->class_id();
-  int entry_id = program->dispatch_table[Smi::value(class_id) + offset];
-  if (entry_id == -1) return Method::invalid();
-  Method entry(program->bytecodes, entry_id);
-  if (entry.selector_offset() != offset) return Method::invalid();
-  return entry;
+  word index = Smi::value(class_id) + offset;
+  const NativeProgram* native = c->native;
+  if (index >= native->dispatch_length || native->selectors[index] != offset) return -1;
+  return index;
 }
 
 const NativeProgram* NativeRuntime::registered_program(bool is_system) {
@@ -671,16 +674,16 @@ void NativeRuntime::size(NATIVE_PARAMS) {
 // The selector offset is in the upper bits of y and the
 // stack offset of the receiver is in the lower 8 bits.
 void NativeRuntime::virtual_fallback(NATIVE_PARAMS) {
-  Program* program = c->program;
   word offset = y >> 8;
   Object* receiver = STACK_AT(y & 0xff);
-  Method target = find_method(program, receiver, offset);
-  if (!target.is_valid()) {
-    PUSH(receiver);
-    PUSH(Smi::from(offset));
-    target = program->lookup_failure();
+  int index = dispatch_index(c, receiver, offset);
+  // The entries for interface checks have no code. This is where they end up.
+  if (index >= 0 && c->native->dispatch_table[index] != virtual_fallback) {
+    GO(c->native->dispatch_table[index], x, y);
   }
-  CALL(target);
+  PUSH(receiver);
+  PUSH(Smi::from(offset));
+  CALL(c->program->lookup_failure());
 }
 
 // The value is on the stack and the bci to report is in y.
@@ -1086,7 +1089,7 @@ Object* NativeRuntime::identical(NativeContext* c, Object* a0, Object* a1) {
 }
 
 bool NativeRuntime::is_interface(NativeContext* c, Object* value, word offset) {
-  return find_method(c->program, value, offset).is_valid();
+  return dispatch_index(c, value, offset) >= 0;
 }
 
 }  // namespace toit
