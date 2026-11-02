@@ -25,32 +25,6 @@
 
 namespace toit {
 
-#define MODULE_ENUM(name, entries) INDEX_##name,
-enum {
-  MODULES(MODULE_ENUM)
-  COUNT
-};
-#undef MODULE_ENUM
-
-#define MODULE_PRIMITIVES_WEAK(name, entries) \
-  const PrimitiveEntry* name##_primitives_ __attribute__((weak)) = null;
-#define MODULE_PRIMITIVES(name, entries) \
-  primitives_[INDEX_##name] = name##_primitives_;
-
-const PrimitiveEntry* Primitive::primitives_[COUNT];
-const unsigned Primitive::primitive_counts_[COUNT] = {
-  MODULES(MODULE_PRIMITIVE_COUNT)
-};
-static_assert(Primitive::MODULE_COUNT == COUNT, "Inconsistent module count");
-
-MODULES(MODULE_PRIMITIVES_WEAK)
-void Primitive::set_up() {
-  MODULES(MODULE_PRIMITIVES)
-}
-
-#undef MODULE_PRIMITIVES_WEAK
-#undef MODULE_PRIMITIVES
-
 // ----------------------------------------------------------------------------
 
 Object* Primitive::allocate_double(double value, Process* process) {

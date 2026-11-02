@@ -952,9 +952,18 @@ namespace toit {
   static Object* primitive_##name(Process*, Object**);
 #define MODULE_IMPLEMENTATION_ENTRY(name, arity)                    \
   { (void*) primitive_##name, arity },
+// Native code calls the primitives directly through these.
+#ifdef TOIT_FREERTOS
+#define MODULE_IMPLEMENTATION_EXPORT(name, arity)
+#else
+#define MODULE_IMPLEMENTATION_EXPORT(name, arity)                   \
+  Object* p_##name(Process* process, Object** args) {               \
+    return primitive_##name(process, args);                         \
+  }
+#endif
 #define MODULE_IMPLEMENTATION(name, entries)                        \
-  char name##_module_linked_ = 0;                                   \
   entries(MODULE_IMPLEMENTATION_PRIMITIVE)                          \
+  namespace name##_module { entries(MODULE_IMPLEMENTATION_EXPORT) } \
   static const PrimitiveEntry name##_primitive_table[] = {          \
     entries(MODULE_IMPLEMENTATION_ENTRY)                            \
   };                                                                \

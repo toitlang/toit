@@ -14,15 +14,21 @@
 // directory of this repository.
 
 #include "primitive.h"
+#include "objects_inline.h"
+#include "process.h"
 
 namespace toit {
 
-// Generated native code references the primitive modules it uses, which
-// makes the linker include them. This is the last library on the link line,
-// so these definitions are only used for the modules that the platform
-// doesn't have. Calling the primitives of those modules fails at runtime.
-#define MODULE_STUB(name, entries) __attribute__((weak)) char name##_module_linked_ = 0;
+// Generated native code calls the primitives it uses directly. This is the
+// last library on the link line, so these are only used for the primitives
+// that the platform doesn't have. Calling them fails when the program runs.
+#define PRIMITIVE_STUB(name, arity)                                                    \
+  __attribute__((weak)) Object* p_##name(Process* process, Object** __args) {          \
+    return Primitive::mark_as_error(process->program()->unimplemented());              \
+  }
+#define MODULE_STUB(name, entries) namespace name##_module { entries(PRIMITIVE_STUB) }
 MODULES(MODULE_STUB)
 #undef MODULE_STUB
+#undef PRIMITIVE_STUB
 
 }  // namespace toit

@@ -19,6 +19,9 @@
 
 namespace toit {
 
+// Native code doesn't use the primitive tables.
+void Primitive::set_up() {}
+
 // Executables that are compiled to native code don't have the bytecode
 // loop from interpreter_run.cc, because all their programs are native code.
 Interpreter::Result Interpreter::run() {

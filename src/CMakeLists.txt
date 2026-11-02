@@ -81,7 +81,7 @@ list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run|toit_run_image|vessel|n
 list(REMOVE_ITEM toit_core_SRC ${run_SRC})
 
 # The bytecode loop and the replacement for it in executables with native code.
-list(FILTER toit_core_SRC EXCLUDE REGEX "/interpreter_(run|native).cc$")
+list(FILTER toit_core_SRC EXCLUDE REGEX "/(interpreter_run|interpreter_native|primitive_tables).cc$")
 
 # Files that are used in the VM, but not in the compiler.
 file(GLOB toit_vm_runtime_SRC
@@ -147,6 +147,7 @@ add_library(
 add_library(
   toit_interpreter
   interpreter_run.cc
+  primitive_tables.cc
   )
 
 add_library(
