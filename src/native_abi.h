@@ -80,6 +80,7 @@ typedef void (*NativeFn)(NATIVE_PARAMS);
 #define NATIVE_ADDRESS(label) reinterpret_cast<void*>(&label)
 #define NATIVE_OBJECT(value) reinterpret_cast<toit::Object*>(value)
 #define NATIVE_WORD(object) reinterpret_cast<intptr_t>(object)
+#define NATIVE_FRAME_MARKER NATIVE_OBJECT(toit::NATIVE_FRAME_MARKER_VALUE)
 #define NATIVE_FN(object) reinterpret_cast<toit::NativeFn>(object)
 
 // Keeps the compiler from combining the stores on either side of this into a
@@ -168,6 +169,7 @@ struct NativeContext {
 
 static const int NATIVE_SMI_TAG_SIZE = 1;
 static const uintptr_t NATIVE_HEAP_TAG = 1;
+static const uintptr_t NATIVE_FRAME_MARKER_VALUE = 3;
 static const uintptr_t NATIVE_NON_SMI_TAG_MASK = 3;
 static const int NATIVE_CLASS_TAG_MASK = 15;
 static const int NATIVE_CLASS_ID_OFFSET = 5;
@@ -282,6 +284,7 @@ class NativeRuntime {
   static void store_global_dynamic(NATIVE_PARAMS);
   static void smi_repeat(NATIVE_PARAMS);
   static void array_do(NATIVE_PARAMS);
+  static void hash_do(NATIVE_PARAMS);
   static void halt(NATIVE_PARAMS);
   static void illegal(NATIVE_PARAMS);
 

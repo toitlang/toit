@@ -182,7 +182,7 @@ class Interpreter {
   Object** push_error(Object** sp, Object* type, const char* message);
   Object** push_out_of_memory_error(Object** sp);
 
-  Object* hash_do(Program* program, Object* current, Object* backing, int step, Object* block, Object** entry_return) INTERPRETER_HELPER;
+  Object* hash_do(Program* program, Object* current, Object* backing, int step, Object* block, Object** entry_return, bool check_block = true) INTERPRETER_HELPER;
   Object** hash_find(Object** sp, Program* program, HashFindAction* action_return, Method* block_return, Object** result_return) INTERPRETER_HELPER;
 
   inline bool is_true_value(Program* program, Object* value) const;
@@ -237,7 +237,13 @@ class Interpreter {
 // reflected in the max-height of the called method. We do not keep track
 // of where in a method we might do a call, so we conservatively assume
 // that it will happen at max-height and reserve space for that.
+#ifdef TOIT_HAS_NATIVE
+// Native code leaves out the stack check in methods that are small and don't
+// call anything, so they need the room for what they push and for the runtime.
+const int RESERVED_STACK_FOR_CALLS = Interpreter::FRAME_SIZE + 9;
+#else
 const int RESERVED_STACK_FOR_CALLS = Interpreter::FRAME_SIZE + 3;
+#endif
 
 class ProcessRunner {
  public:

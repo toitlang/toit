@@ -135,6 +135,7 @@ int NativeRuntime::register_program(const NativeProgram* program) {
   static_assert(HeapObject::CLASS_TAG_OFFSET == 0, "class tag");
   static_assert(HeapObject::CLASS_ID_OFFSET == NATIVE_CLASS_ID_OFFSET, "class id");
   static_assert(HeapObject::HEADER_OFFSET == 0, "header");
+  static_assert(Object::MARKED_TAG == NATIVE_FRAME_MARKER_VALUE, "frame marker");
   static_assert(Double::SIZE == NATIVE_DOUBLE_SIZE, "double size");
   static_assert(Double::VALUE_OFFSET == WORD_SIZE, "double value");
   static_assert(String::SENTINEL == NATIVE_STRING_LENGTH_SENTINEL, "string sentinel");
@@ -269,7 +270,7 @@ bool NativeRuntime::run(Interpreter* interpreter, void* result) {
     .null_object = program->null_object(),
     .true_object = program->true_object(),
     .false_object = program->false_object(),
-    .frame_marker = Smi::from(0),
+    .frame_marker = reinterpret_cast<Object*>(NATIVE_FRAME_MARKER_VALUE),
     .literals = program->literals.array(),
     .globals = process->object_heap()->global_variables(),
     .watermark = reinterpret_cast<Object***>(&interpreter->watermark_),
@@ -868,6 +869,48 @@ void NativeRuntime::array_do(NATIVE_PARAMS) {
   PUSH(block);
   PUSH(backing->at(current));
   GO(*from_block(c, block), x, 2);
+}
+
+// This runs each time the block returns, like the bytecode does in the
+// interpreter. Maps always pass the key and the value to the block, and it
+// drops the value if it doesn't take it.
+void NativeRuntime::hash_do(NATIVE_PARAMS) {
+  enum { BLOCK, REVERSED, STEP, COLLECTION, NUMBER_OF_ARGUMENTS };
+  Program* program = c->program;
+  DROP(1);  // Drop last result of calling the block (or initial discardable value).
+  int parameter_offset = 1 + Interpreter::FRAME_SIZE;
+  Instance* collection = Instance::cast(STACK_AT(parameter_offset + COLLECTION));
+  Object* backing = collection->at(Instance::MAP_BACKING_INDEX);
+  int step = Smi::value(STACK_AT(parameter_offset + STEP));
+  if (program->true_object() == STACK_AT(parameter_offset + REVERSED)) step = -step;
+  Object* block = STACK_AT(parameter_offset + BLOCK);
+  Object* entry;
+  Object* result = c->interpreter->hash_do(program, STACK_AT(0), backing, step, block, &entry, false);
+  if (is_smi(result) && Smi::value(result) < 0) {
+    // Negative Smi means call the block.
+    word index = -(Smi::value(result) + 1);
+    STACK_AT_PUT(0, Smi::from(index));
+    PUSH(block);
+    PUSH(entry);
+    word arguments = 2;
+    if ((step & 1) == 0) {
+      Object* value;
+      // Only fails if the backing was corrupted.
+      if (!Interpreter::fast_at(c->process, backing, Smi::from(index + 1), false, &value)) {
+        value = program->null_object();
+      }
+      PUSH(value);
+      arguments = 3;
+    }
+    GO(*from_block(c, block), x, arguments);
+  }
+  // Return from the method, just like primitives do.
+  DROP(1);
+  POP();  // Frame marker.
+  NativeFn next = reinterpret_cast<NativeFn>(POP());
+  DROP(NUMBER_OF_ARGUMENTS - 1);
+  STACK_AT_PUT(0, result);
+  GO(next, null, 0);
 }
 
 void NativeRuntime::illegal(NATIVE_PARAMS) {

@@ -73,6 +73,9 @@ static std::string boolean(const std::string& condition) { return "NATIVE_BOOLEA
 // with the opening parenthesis around it.
 static const int COLUMN_LIMIT = 100;
 
+// The space for this comes out of RESERVED_STACK_FOR_CALLS.
+static const int MAX_UNCHECKED_HEIGHT = 4;
+
 static void write_wrapped(std::ostream& out, std::string text, int column) {
   while (column + static_cast<int>(text.size()) > COLUMN_LIMIT) {
     std::vector<int> parentheses;
@@ -140,6 +143,9 @@ class NativeGenerator {
     // The value is the index of the operand on the stack.
     std::map<uint8*, int> reused_floats;
     bool has_inlined_leaf;
+    // Methods that don't call anything are small enough to use the stack that
+    // is reserved past the limit, and they cannot be stuck in a loop either.
+    bool can_skip_stack_check;
     // Code in loops is hot. The whole method is hot if it is small or recursive.
     bool is_hot;
     bool has_loops;
@@ -427,7 +433,7 @@ NativeGenerator::NativeGenerator(Program* program, TypeDatabase* types, std::vec
     uint8* end = (i + 1 == methods.size())
         ? program->bytecodes.data() + program->bytecodes.length()
         : program->bcp_from_absolute_bci(methods[i + 1]);
-    methods_.push_back({ Method(program->bytecodes, methods[i]), end, {}, {}, {}, {}, {}, false, false, false });
+    methods_.push_back({ Method(program->bytecodes, methods[i]), end, {}, {}, {}, {}, {}, false, false, false, false });
     method_ids_.insert(methods[i]);
   }
   find_branch_targets();
@@ -738,6 +744,7 @@ static bool is_terminal(Opcode opcode) {
     case INVOKE_INITIALIZER_TAIL:
     case INTRINSIC_SMI_REPEAT:
     case INTRINSIC_ARRAY_DO:
+    case INTRINSIC_HASH_DO:
       return true;
     default:
       return false;
@@ -858,7 +865,7 @@ void NativeGenerator::find_blocks(MethodInfo* info) {
         entered_from(next + BRANCH_IF_TRUE_LENGTH, bcp);
       }
     }
-    if (opcode == INTRINSIC_SMI_REPEAT || opcode == INTRINSIC_ARRAY_DO) {
+    if (opcode == INTRINSIC_SMI_REPEAT || opcode == INTRINSIC_ARRAY_DO || opcode == INTRINSIC_HASH_DO) {
       // The blocks return to the intrinsic.
       has_label(bcp);
       return_points_.insert(bcp);
@@ -974,7 +981,7 @@ void NativeGenerator::find_hot_code(MethodInfo* info) {
         program_->dispatch_table[Utils::read_unaligned_uint16(bcp + 1)] == method_id(info->method);
     if (is_call_to_self) info->is_hot = true;
     // The loops of 'repeat' and 'do' are in these methods.
-    if (*bcp == INTRINSIC_SMI_REPEAT || *bcp == INTRINSIC_ARRAY_DO) info->is_hot = true;
+    if (*bcp == INTRINSIC_SMI_REPEAT || *bcp == INTRINSIC_ARRAY_DO || *bcp == INTRINSIC_HASH_DO) info->is_hot = true;
   }
   std::map<uint8*, std::vector<uint8*>> predecessors;
   for (auto& it : info->blocks) {
@@ -1108,13 +1115,29 @@ void NativeGenerator::find_inlined_calls(MethodInfo* info) {
       info->has_inlined_leaf = true;
     }
   }
+  // The loops of 'repeat' and 'do' have no check of their own, so the only way
+  // to preempt them is through the check in the block they are calling.
+  info->can_skip_stack_check = !info->has_inlined_leaf && !info->method.is_block_method() &&
+      info->method.max_height() <= MAX_UNCHECKED_HEIGHT;
+  for (uint8* bcp : info->reachable) {
+    Opcode opcode = static_cast<Opcode>(*bcp);
+    bool is_back_branch = opcode == BRANCH_BACK || opcode == BRANCH_BACK_IF_TRUE ||
+        opcode == BRANCH_BACK_IF_FALSE || opcode == BRANCH_BACK_IF_NOT_NULL;
+    bool continues_after_runtime = ends_block(bcp) && !is_terminal(opcode);
+    bool leaves_method = opcode == INVOKE_STATIC_TAIL || opcode == INVOKE_LAMBDA_TAIL ||
+        opcode == INVOKE_INITIALIZER_TAIL || opcode == INTRINSIC_SMI_REPEAT || opcode == INTRINSIC_ARRAY_DO ||
+        opcode == INTRINSIC_HASH_DO;
+    if (is_back_branch || continues_after_runtime || leaves_method || opcode == PRIMITIVE) {
+      info->can_skip_stack_check = false;
+    }
+  }
 }
 
 // Returns whether the method can call the blocks it gets over and over.
 bool NativeGenerator::is_looping(const MethodInfo& info) const {
   if (info.has_loops) return true;
   uint8* bcp = info.method.entry();
-  return bcp < info.end && (*bcp == INTRINSIC_SMI_REPEAT || *bcp == INTRINSIC_ARRAY_DO);
+  return bcp < info.end && (*bcp == INTRINSIC_SMI_REPEAT || *bcp == INTRINSIC_ARRAY_DO || *bcp == INTRINSIC_HASH_DO);
 }
 
 // The bodies of 'repeat' and 'do' are blocks, but they are as hot as any loop.
@@ -1390,7 +1413,7 @@ void NativeGenerator::emit_block_entry(Method method, bool is_dead) {
       tail_call("NativeRuntime::illegal");
     } else {
       push("NATIVE_OBJECT(x)");
-      push(smi(0));  // The frame marker.
+      push("NATIVE_FRAME_MARKER");
       tail_call(method_label(id));
     }
   });
@@ -1416,15 +1439,17 @@ void NativeGenerator::emit_method(const MethodInfo& info) {
         tail_call("NativeRuntime::virtual_fallback");
       });
       push("NATIVE_OBJECT(x)");
-      push(smi(0));  // The frame marker.
+      push("NATIVE_FRAME_MARKER");
       tail_call(method_label(id));
     });
   }
   function(method_label(id), [&] {
-    if_unlikely(cat("NativeRuntime::needs_stack_check(c, sp, ", (method.max_height() + (info.has_inlined_leaf ? INLINED_STACK_USE : 0) + 1), ")"), [&] {
-      spill();
-      tail_call("NativeRuntime::stack_overflow", "x", pruned_id(id), "t");
-    });
+    if (!info.can_skip_stack_check) {
+      if_unlikely(cat("NativeRuntime::needs_stack_check(c, sp, ", (method.max_height() + (info.has_inlined_leaf ? INLINED_STACK_USE : 0) + 1), ")"), [&] {
+        spill();
+        tail_call("NativeRuntime::stack_overflow", "x", pruned_id(id), "t");
+      });
+    }
     tail_call(label(method.entry()));
   });
 
@@ -1466,7 +1491,7 @@ void NativeGenerator::emit_goto(uint8* target) {
 void NativeGenerator::emit_call(int id, uint8* next) {
   if (is_hot_site(next)) line("NATIVE_SPLIT_STORES();");
   push(return_address(label(next)));
-  push(smi(0));  // The frame marker.
+  push("NATIVE_FRAME_MARKER");
   tail_call(method_label(id));
 }
 
@@ -2433,10 +2458,10 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       emit_loop_intrinsic(bcp, true);
       break;
     case INTRINSIC_HASH_DO:
-      // These are optimizations. If they fail, the code that follows does the work.
-      drop(1);
+      emit_runtime_next("hash_do", bcp, 0);
       break;
     case INTRINSIC_HASH_FIND:
+      // This is an optimization. If it fails, the code that follows does the work.
       drop(7);
       break;
     case ILLEGAL_END:
