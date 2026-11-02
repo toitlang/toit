@@ -364,11 +364,9 @@ inline Object* native_pop(Object*** sp, Object** t) {
 #define SPILL() (*(--sp) = t)
 #define RELOAD() (t = *(sp++))
 
-// Compares the two elements on top of the stack.
-#define NATIVE_COMPARE_SMIS(op) (NATIVE_WORD(STACK_AT(1)) op NATIVE_WORD(STACK_AT(0)))
-#define NATIVE_COMPARE_INTS(are_smis, op)            \
-  (NATIVE_LIKELY(are_smis) ? NATIVE_COMPARE_SMIS(op) \
-                           : (native_int_value(STACK_AT(1)) op native_int_value(STACK_AT(0))))
+#define NATIVE_COMPARE_SMIS(a, op, b) (NATIVE_WORD(a) op NATIVE_WORD(b))
+#define NATIVE_COMPARE_INTS(are_smis, a, op, b) \
+  (NATIVE_LIKELY(are_smis) ? NATIVE_COMPARE_SMIS(a, op, b) : (native_int_value(a) op native_int_value(b)))
 #define NATIVE_BOOLEAN(condition) ((condition) ? c->true_object : c->false_object)
 
 inline bool native_are_smis(Object* a, Object* b) {

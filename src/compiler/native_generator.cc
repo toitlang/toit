@@ -197,7 +197,7 @@ class NativeGenerator {
   };
   Operands operands(uint8* bcp) const;
   // The condition for the operands being smis; empty if they always are.
-  std::string smi_check(const Operands& operands) const;
+  std::string smi_check(const Operands& operands, const std::string& left = "STACK_AT(1)", const std::string& right = "STACK_AT(0)") const;
   bool is_smi_type(TypeSet type) const;
   bool is_int_type(TypeSet type) const;
 
@@ -315,6 +315,58 @@ class NativeGenerator {
     tail_call(cat("NativeRuntime::", helper), x, y, "nullptr");
   }
   void emit_result_if(const std::string& condition, int count, uint8* next);
+
+  // Within a block, loading locals and constants doesn't need any code until
+  // something needs the values on the stack. The tracked values go on top of
+  // the real stack, which doesn't change while there are any, except that the
+  // elements that are dropped first are still there until they are written.
+  struct TrackedValue {
+    int slot;          // The element of the real stack or -1.
+    std::string text;  // The value if it isn't on the stack.
+    std::string at(int adjustment) const { return slot >= 0 ? stack_at(slot + adjustment) : text; }
+  };
+  std::vector<TrackedValue> tracked_;
+  int pending_drops_ = 0;
+
+  void track(const std::string& text) { tracked_.push_back({ -1, text }); }
+  void track_local(int index) {
+    int size = static_cast<int>(tracked_.size());
+    if (index < size) {
+      tracked_.push_back(tracked_[size - 1 - index]);
+    } else {
+      tracked_.push_back({ index - size + pending_drops_, "" });
+    }
+  }
+  void pop_tracked(int count) {
+    while (count > 0 && !tracked_.empty()) {
+      tracked_.pop_back();
+      count--;
+    }
+    pending_drops_ += count;
+  }
+  // Writes everything but the given number of values to the stack. Returns how
+  // many values are left, which is less if the rest are on the stack already.
+  int keep_on_top(int count) {
+    int kept = std::min(count, static_cast<int>(tracked_.size()));
+    int written = static_cast<int>(tracked_.size()) - kept;
+    if (pending_drops_ != 0) drop(pending_drops_);
+    for (int i = 0; i < written; i++) push(tracked_[i].at(i - pending_drops_));
+    tracked_.erase(tracked_.begin(), tracked_.begin() + written);
+    for (auto& value : tracked_) {
+      if (value.slot >= 0) value.slot += written - pending_drops_;
+    }
+    pending_drops_ = 0;
+    return kept;
+  }
+  void flush_stack() { keep_on_top(0); }
+  // The value at the given index after a call to keep_on_top.
+  std::string operand(int index, int kept) const {
+    if (index < kept) return tracked_[tracked_.size() - 1 - index].at(0);
+    return stack_at(index - kept);
+  }
+  bool uses_tracked_stack(const MethodInfo& info, uint8* bcp) const;
+  void emit_branch_on_top(uint8* target, const char* prefix, const char* suffix);
+  void emit_load_field(int field);
 
   void declare(const char* attributes, const std::string& name);
   void emit_goto(uint8* target);
@@ -508,11 +560,11 @@ NativeGenerator::Operands NativeGenerator::operands(uint8* bcp) const {
   return result;
 }
 
-std::string NativeGenerator::smi_check(const Operands& operands) const {
+std::string NativeGenerator::smi_check(const Operands& operands, const std::string& left, const std::string& right) const {
   if (operands.are_smis()) return "";
-  if (operands.left_is_smi) return "native_is_smi(STACK_AT(0))";
-  if (operands.right_is_smi) return "native_is_smi(STACK_AT(1))";
-  return "native_are_smis(STACK_AT(1), STACK_AT(0))";
+  if (operands.left_is_smi) return "native_is_smi(" + right + ")";
+  if (operands.right_is_smi) return "native_is_smi(" + left + ")";
+  return "native_are_smis(" + left + ", " + right + ")";
 }
 
 // These operations cannot fail or call anything if they are working
@@ -1282,6 +1334,7 @@ void NativeGenerator::emit_block(const MethodInfo& info, uint8* begin) {
     bcp += opcode_length[*bcp];
     if (is_merged) bcp += opcode_length[*bcp];
   }
+  flush_stack();
   if (!block.falls_through) return;
   if (info.blocks.count(block.end) != 0) {
     emit_goto(block.end);
@@ -1483,6 +1536,7 @@ bool NativeGenerator::emit_inlined_leaf(const MethodInfo& info, uint8* bcp) {
     emit_opcode(info, leaf);
     leaf += opcode_length[*leaf];
   }
+  flush_stack();
   int drop = leaf[1] + Interpreter::FRAME_SIZE + leaf[2];
   if (*leaf == RETURN) {
     scope([&] {
@@ -1502,28 +1556,49 @@ std::string NativeGenerator::class_id_expression(const std::string& receiver, bo
 
 void NativeGenerator::emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, const char* helper) {
   Operands info = operands(bcp);
-  std::string check = smi_check(info);
-  if (!check.empty()) check += " && ";
   if (info.can_be_smis && (info.is_likely || is_hot_site(bcp))) {
-    emit_result_if(cat(check, helper, "(STACK_AT(1), STACK_AT(0), &result)"), 2, next);
+    int kept = keep_on_top(2);
+    std::string left = operand(1, kept);
+    std::string right = operand(0, kept);
+    std::string check = smi_check(info, left, right);
+    if (!check.empty()) check += " && ";
+    scope([&] {
+      line("Object* result = nullptr;");
+      if_likely(cat(check, helper, "(", left, ", ", right, ", &result)"), [&] {
+        if (kept == 2) {
+          push("result");
+        } else {
+          drop_push(2 - kept, "result");
+        }
+        emit_goto(next);
+      });
+    });
   }
+  flush_stack();
   emit_runtime_next("binary", next, opcode);
 }
 
 void NativeGenerator::emit_relational(uint8* bcp, uint8* next, Opcode opcode, const char* op) {
-  std::string smi_compare = cat("NATIVE_COMPARE_SMIS(", op, ")");
   Operands operands = this->operands(bcp);
+  bool is_merged = current_info_->merged_comparisons.count(bcp) != 0;
+  int kept = is_merged ? keep_on_top(2) : 0;
+  std::string left = operand(1, kept);
+  std::string right = operand(0, kept);
+  std::string smi_compare = cat("NATIVE_COMPARE_SMIS(", left, ", ", op, ", ", right, ")");
   if (operands.are_ints) {
     std::string compare = smi_compare;
-    if (!operands.are_smis()) compare = cat("NATIVE_COMPARE_INTS(", smi_check(operands), ", ", op, ")");
-    if (current_info_->merged_comparisons.count(bcp) != 0) {
+    if (!operands.are_smis()) {
+      compare = cat("NATIVE_COMPARE_INTS(", smi_check(operands, left, right), ", ", left, ", ", op, ", ", right, ")");
+    }
+    if (is_merged) {
       // There is no need to create a boolean just to branch on it. The code
       // that is branched to can be right here, where it could shadow the name.
       Opcode next_opcode = static_cast<Opcode>(*next);
       std::string taken = cat("taken", nesting_);
       scope([&] {
         line(cat("bool ", taken, " = ", compare, ";"));
-        drop(2);
+        pop_tracked(kept);
+        if (kept != 2) drop(2 - kept);
         std::string condition = next_opcode == BRANCH_IF_TRUE ? taken : "!" + taken;
         emit_branch(next + Utils::read_unaligned_uint16(next + 1), condition.c_str(), false, null);
       });
@@ -1647,6 +1722,23 @@ void NativeGenerator::emit_branch(uint8* target, const char* condition, bool is_
   }
 }
 
+void NativeGenerator::emit_branch_on_top(uint8* target, const char* prefix, const char* suffix) {
+  int kept = keep_on_top(1);
+  std::string value = kept == 1 ? operand(0, 1) : "POP()";
+  pop_tracked(kept);
+  emit_branch(target, (prefix + value + suffix).c_str(), false, null);
+}
+
+void NativeGenerator::emit_load_field(int field) {
+  if (keep_on_top(1) == 1) {
+    std::string object = operand(0, 1);
+    pop_tracked(1);
+    push(field_of(object, field));
+  } else {
+    stack_at_put(0, field_of(stack_at(0), field));
+  }
+}
+
 void NativeGenerator::emit_typecheck(uint8* bcp, Opcode opcode, bool is_as, int encoded, int length) {
   bool is_nullable = (encoded & 1) != 0;
   int index = encoded >> 1;
@@ -1694,6 +1786,58 @@ void NativeGenerator::emit_tail_frame_move(int height, int outer_arity, int call
   reload();
 }
 
+// Returns whether the code for the bytecode knows about values that haven't
+// been written to the stack. All other bytecodes get to see the whole stack.
+bool NativeGenerator::uses_tracked_stack(const MethodInfo& info, uint8* bcp) const {
+  switch (static_cast<Opcode>(*bcp)) {
+    case LOAD_LOCAL:
+    case LOAD_LOCAL_WIDE:
+    case LOAD_LOCAL_0:
+    case LOAD_LOCAL_1:
+    case LOAD_LOCAL_2:
+    case LOAD_LOCAL_3:
+    case LOAD_LOCAL_4:
+    case LOAD_LOCAL_5:
+    case LOAD_LITERAL:
+    case LOAD_LITERAL_WIDE:
+    case LOAD_NULL:
+    case LOAD_SMI_0:
+    case LOAD_SMIS_0:
+    case LOAD_SMI_1:
+    case LOAD_SMI_U8:
+    case LOAD_SMI_U16:
+    case LOAD_SMI_U32:
+    case LOAD_FIELD:
+    case LOAD_FIELD_WIDE:
+    case POP:
+    case POP_1:
+    case BRANCH_IF_TRUE:
+    case BRANCH_IF_FALSE:
+    case BRANCH_IF_NOT_NULL:
+    case INVOKE_ADD:
+    case INVOKE_SUB:
+    case INVOKE_MUL:
+    case INVOKE_BIT_SHL:
+    case INVOKE_BIT_SHR:
+    case INVOKE_BIT_USHR:
+    case INVOKE_DIV:
+    case INVOKE_MOD:
+      return true;
+    case INVOKE_BIT_OR:
+    case INVOKE_BIT_XOR:
+    case INVOKE_BIT_AND:
+      return !operands(bcp).are_smis();
+    case INVOKE_EQ:
+    case INVOKE_LT:
+    case INVOKE_LTE:
+    case INVOKE_GT:
+    case INVOKE_GTE:
+      return info.merged_comparisons.count(bcp) != 0;
+    default:
+      return false;
+  }
+}
+
 void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
   Opcode opcode = static_cast<Opcode>(*bcp);
   int length = opcode_length[opcode];
@@ -1704,10 +1848,12 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
   // Some of the bytecodes have a wide variant that only differs in the encoding.
   auto arg = [&](Opcode wide) { return (opcode == wide) ? wide1 : byte1; };
 
+  if (!uses_tracked_stack(info, bcp)) flush_stack();
+
   switch (opcode) {
     case LOAD_LOCAL:
     case LOAD_LOCAL_WIDE:
-      push(stack_at(arg(LOAD_LOCAL_WIDE)));
+      track_local(arg(LOAD_LOCAL_WIDE));
       break;
     case LOAD_LOCAL_0:
     case LOAD_LOCAL_1:
@@ -1715,7 +1861,7 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
     case LOAD_LOCAL_3:
     case LOAD_LOCAL_4:
     case LOAD_LOCAL_5:
-      push(stack_at((opcode - LOAD_LOCAL_0)));
+      track_local(opcode - LOAD_LOCAL_0);
       break;
     case POP_LOAD_LOCAL:
       stack_at_put(0, stack_at((byte1 + 1)));
@@ -1739,7 +1885,7 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       break;
     case LOAD_FIELD:
     case LOAD_FIELD_WIDE:
-      stack_at_put(0, field_of(stack_at(0), arg(LOAD_FIELD_WIDE)));
+      emit_load_field(arg(LOAD_FIELD_WIDE));
       break;
     case LOAD_FIELD_LOCAL:
       push(field_of(stack_at(byte1 & 0x0f), byte1 >> 4));
@@ -1763,28 +1909,28 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       break;
     case LOAD_LITERAL:
     case LOAD_LITERAL_WIDE:
-      line(cat("PUSH(c->literals[", arg(LOAD_LITERAL_WIDE), "]);"));
+      track(cat("c->literals[", arg(LOAD_LITERAL_WIDE), "]"));
       break;
     case LOAD_NULL:
-      push("c->null_object");
+      track("c->null_object");
       break;
     case LOAD_SMI_0:
-      push(smi(0));
+      track(smi(0));
       break;
     case LOAD_SMIS_0:
-      for (int i = 0; i < byte1; i++) push(smi(0));
+      for (int i = 0; i < byte1; i++) track(smi(0));
       break;
     case LOAD_SMI_1:
-      push(smi(1));
+      track(smi(1));
       break;
     case LOAD_SMI_U8:
-      push(smi(byte1));
+      track(smi(byte1));
       break;
     case LOAD_SMI_U16:
-      push(smi(wide1));
+      track(smi(wide1));
       break;
     case LOAD_SMI_U32:
-      push(smi(Utils::read_unaligned_uint32(bcp + 1)));
+      track(smi(Utils::read_unaligned_uint32(bcp + 1)));
       break;
     case LOAD_METHOD: {
       int id = Utils::read_unaligned_uint32(bcp + 1);
@@ -1833,10 +1979,10 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       line(cat("STACK_AT_PUT(0, NativeRuntime::to_block(c, &NativeRuntime::from_block(c, STACK_AT(0))[", byte1, "]));"));
       break;
     case POP:
-      drop(byte1);
+      pop_tracked(byte1);
       break;
     case POP_1:
-      drop(1);
+      pop_tracked(1);
       break;
     case ALLOCATE:
     case ALLOCATE_WIDE:
@@ -1986,13 +2132,13 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       emit_goto(bcp + wide1);
       break;
     case BRANCH_IF_TRUE:
-      emit_branch(bcp + wide1, "native_is_true(c, POP())", false, null);
+      emit_branch_on_top(bcp + wide1, "native_is_true(c, ", ")");
       break;
     case BRANCH_IF_FALSE:
-      emit_branch(bcp + wide1, "!native_is_true(c, POP())", false, null);
+      emit_branch_on_top(bcp + wide1, "!native_is_true(c, ", ")");
       break;
     case BRANCH_IF_NOT_NULL:
-      emit_branch(bcp + wide1, "POP() != c->null_object", false, null);
+      emit_branch_on_top(bcp + wide1, "", " != c->null_object");
       break;
     case BRANCH_BACK:
     case BRANCH_BACK_IF_TRUE:
