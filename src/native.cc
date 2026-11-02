@@ -269,7 +269,7 @@ bool NativeRuntime::run(Interpreter* interpreter, void* result) {
     .null_object = program->null_object(),
     .true_object = program->true_object(),
     .false_object = program->false_object(),
-    .frame_marker = program->frame_marker(),
+    .frame_marker = Smi::from(0),
     .literals = program->literals.array(),
     .globals = process->object_heap()->global_variables(),
     .watermark = reinterpret_cast<Object***>(&interpreter->watermark_),
