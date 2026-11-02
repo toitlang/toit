@@ -154,6 +154,7 @@ static const int NATIVE_CLASS_TAG_MASK = 15;
 static const int NATIVE_CLASS_ID_OFFSET = 5;
 static const int NATIVE_INSTANCE_TAG = 2;
 static const int NATIVE_DOUBLE_TAG = 4;
+static const int NATIVE_ARRAY_TAG = 0;
 static const int NATIVE_BLOCK_SALT = 0x01020304;
 static const int NATIVE_CARD_SIZE_LOG_2 = 5 + (sizeof(void*) == 8 ? 3 : 2);
 static const uint8_t NATIVE_NEW_SPACE_POINTERS = 1;
@@ -330,6 +331,89 @@ inline bool native_mul(Object* a, Object* b, Object** result) {
   intptr_t product;
   if (__builtin_mul_overflow(reinterpret_cast<intptr_t>(a), reinterpret_cast<intptr_t>(b) >> 1, &product)) return false;
   *result = reinterpret_cast<Object*>(product);
+  return true;
+}
+
+inline bool native_bit_and(Object* a, Object* b, Object** result) {
+  *result = reinterpret_cast<Object*>(native_bits(a) & native_bits(b));
+  return true;
+}
+
+inline bool native_bit_or(Object* a, Object* b, Object** result) {
+  *result = reinterpret_cast<Object*>(native_bits(a) | native_bits(b));
+  return true;
+}
+
+inline bool native_bit_xor(Object* a, Object* b, Object** result) {
+  *result = reinterpret_cast<Object*>(native_bits(a) ^ native_bits(b));
+  return true;
+}
+
+inline bool native_shift_is_small(Object* bits) {
+  return static_cast<uintptr_t>(native_smi_value(bits)) < sizeof(void*) * 8;
+}
+
+inline bool native_shl(Object* a, Object* b, Object** result) {
+  if (!native_shift_is_small(b)) return false;
+  intptr_t bits = native_smi_value(b);
+  intptr_t shifted = static_cast<intptr_t>(native_bits(a) << bits);
+  if ((shifted >> bits) != reinterpret_cast<intptr_t>(a)) return false;
+  *result = reinterpret_cast<Object*>(shifted);
+  return true;
+}
+
+inline bool native_shr(Object* a, Object* b, Object** result) {
+  if (!native_shift_is_small(b)) return false;
+  *result = native_smi(native_smi_value(a) >> native_smi_value(b));
+  return true;
+}
+
+inline bool native_ushr(Object* a, Object* b, Object** result) {
+  if (!native_shift_is_small(b) || native_smi_value(a) < 0) return false;
+  *result = native_smi(native_smi_value(a) >> native_smi_value(b));
+  return true;
+}
+
+// Dividing by -1 can overflow, so that is left to the slow case.
+inline bool native_div(Object* a, Object* b, Object** result) {
+  intptr_t divisor = native_smi_value(b);
+  if (divisor == 0 || divisor == -1) return false;
+  *result = native_smi(native_smi_value(a) / divisor);
+  return true;
+}
+
+inline bool native_mod(Object* a, Object* b, Object** result) {
+  intptr_t divisor = native_smi_value(b);
+  if (divisor == 0 || divisor == -1) return false;
+  *result = native_smi(native_smi_value(a) % divisor);
+  return true;
+}
+
+// Lists have their backing as the first field and their size as the second.
+// These expect a list, and return false for the cases where the backing isn't
+// a plain array, or where the index isn't a smi that is in range.
+inline Object** native_list_element(Object* list, Object* index) {
+  if (!native_is_smi(index)) return nullptr;
+  Object* backing = native_field(list, 0);
+  if (!native_has_class_tag(backing, NATIVE_ARRAY_TAG)) return nullptr;
+  uintptr_t n = static_cast<uintptr_t>(native_smi_value(index));
+  if (n >= static_cast<uintptr_t>(native_smi_value(native_field(list, 1)))) return nullptr;
+  return native_word_address(backing, 2 + n);
+}
+
+inline bool native_list_at(Object* list, Object* index, Object** result) {
+  Object** element = native_list_element(list, index);
+  if (element == nullptr) return false;
+  *result = *element;
+  return true;
+}
+
+inline bool native_list_at_put(NativeContext* c, Object* list, Object* index, Object* value) {
+  Object** element = native_list_element(list, index);
+  if (element == nullptr) return false;
+  uintptr_t card = native_bits(native_field(list, 0)) >> NATIVE_CARD_SIZE_LOG_2;
+  *reinterpret_cast<uint8_t*>(card + c->remembered_set_bias) = NATIVE_NEW_SPACE_POINTERS;
+  *element = value;
   return true;
 }
 
