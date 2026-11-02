@@ -333,7 +333,7 @@ int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
 //     We should return from the entire method with this value.
 //       A positive Smi indicates our progress so far.
 //       A null indicates we are done.
-Object* Interpreter::hash_do(Program* program, Object* current, Object* backing, int step, Object* block_on_stack, Object** entry_return) {
+Object* Interpreter::hash_do(Program* program, Object* current, Object* backing, int step, Object* block_on_stack, Object** entry_return, bool check_block) {
   word c = 0;
   if (!is_smi(current)) {
     // First time.
@@ -359,19 +359,22 @@ Object* Interpreter::hash_do(Program* program, Object* current, Object* backing,
         c = Smi::value(size) + step;
       }
     }
-    Smi* block = Smi::cast(*from_block(Smi::cast(block_on_stack)));
-    Method target = Method(program->bytecodes, Smi::value(block));
-    if ((step & 1) != 0) {
-      ASSERT(step == 1 || step == -1);
-      // Block for set should take 1 argument.
-      if (target.arity() != 2) {
-        return Smi::from(c);  // Bail out at this point.
-      }
-    } else {
-      ASSERT(step == 2 || step == -2);
-      // Block for map should take 1 or two arguments.
-      if (!(2 <= target.arity() && target.arity() <= 3)) {
-        return Smi::from(c);  // Bail out at this point.
+    // Native blocks drop the arguments they don't need when they are called.
+    if (check_block) {
+      Smi* block = Smi::cast(*from_block(Smi::cast(block_on_stack)));
+      Method target = Method(program->bytecodes, Smi::value(block));
+      if ((step & 1) != 0) {
+        ASSERT(step == 1 || step == -1);
+        // Block for set should take 1 argument.
+        if (target.arity() != 2) {
+          return Smi::from(c);  // Bail out at this point.
+        }
+      } else {
+        ASSERT(step == 2 || step == -2);
+        // Block for map should take 1 or two arguments.
+        if (!(2 <= target.arity() && target.arity() <= 3)) {
+          return Smi::from(c);  // Bail out at this point.
+        }
       }
     }
   } else {

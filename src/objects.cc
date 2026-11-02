@@ -248,6 +248,13 @@ void Array::roots_do(RootCallback* cb) {
   cb->do_roots(_root_at(_offset_from(0)), length());
 }
 
+Stack::NativeReturnBci* Stack::native_return_bci_ = null;
+
+// The marker of the frames in native code. It's a constant, because loading the
+// one from the program takes code and time at every call. The tag makes it
+// different from all real values, so it can't be confused with anything.
+static Object* const NATIVE_FRAME_MARKER = reinterpret_cast<Object*>(Object::MARKED_TAG);
+
 word Stack::absolute_bci_at_preemption(Program* program) {
   // Check that the stack has both words.
   if (_stack_sp_addr() + 1 >= _stack_base_addr()) return -1;
@@ -302,11 +309,11 @@ void Stack::roots_do(Program* program, RootCallback* cb) {
   for (word i = 0; i < used_length; i++) {
     Object* root_object = roots[i];
     if (bytecodes_from <= root_object && root_object < bytecodes_to) continue;
+    if (root_object == NATIVE_FRAME_MARKER) continue;
     cb->do_root(&roots[i]);
   }
 }
 
-Stack::NativeReturnBci* Stack::native_return_bci_ = null;
 
 int Stack::frames_do(Program* program, FrameCallback* cb) {
   word stack_length = _stack_base_addr() - _stack_sp_addr();
@@ -317,14 +324,7 @@ int Stack::frames_do(Program* program, FrameCallback* cb) {
   bool is_first_frame = true;
   for (word index = 0; index < stack_length - 1; index++) {
     Object* probe = at(index);
-    if (native_return_bci_ != null) {
-      // Native frames have a zero followed by a return address. Native code
-      // doesn't load the marker, because it would do that for every call.
-      if (probe != Smi::from(0) || !is_smi(at(index + 1)) || at(index + 1) == Smi::from(0)) continue;
-      if (native_return_bci_(program, reinterpret_cast<uint8*>(at(index + 1))) < 0) continue;
-    } else if (probe != program->frame_marker()) {
-      continue;
-    }
+    if (probe != program->frame_marker() && probe != NATIVE_FRAME_MARKER) continue;
     uint8* return_bcp = reinterpret_cast<uint8*>(at(index + 1));
     if (last_return_bcp == null) {
       // Drop the primitive call.
