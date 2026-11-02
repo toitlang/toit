@@ -22,6 +22,9 @@ if (NOT TOIT_NATIVE_CXX)
 endif()
 
 set(NATIVE_TESTS
+  float-temporary-test
+  hash-do-mutation-test
+  typed-arithmetic-test
   catch-test
   exception-test
   lambda-test
