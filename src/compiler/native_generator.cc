@@ -31,6 +31,7 @@
 #include <cstring>
 #include <map>
 #include <utility>
+#include <iterator>
 #include <vector>
 #include <set>
 #include <sstream>
@@ -106,14 +107,39 @@ class NativeGenerator {
   std::string generate();
 
  private:
+  // The result of analyzing the code of a method, which is all that the
+  // emission of the code goes by.
+  struct BasicBlock {
+    uint8* end;
+    bool falls_through;       // Continues at the end without a jump in the code of the last bytecode.
+    bool has_label;           // Something other than the code of the method can get here.
+    int entries;              // The number of places in the method that get here.
+    uint8* last_entry;        // The bytecode that gets here. Fall-throughs are from the last in a block.
+    bool is_nested;           // Emitted where it's entered, so it isn't a function.
+    bool is_hot;              // Part of a loop.
+    uint8* last;              // The last bytecode.
+    std::vector<uint8*> successors;
+  };
+
+  // A call that is replaced by the code of what it calls.
+  struct InlinedCall {
+    int field;        // The field of an accessor or -1.
+    bool can_be_null;
+    int leaf;         // The method of a leaf or -1.
+  };
+
   struct MethodInfo {
     Method method;
     uint8* end;
     std::set<uint8*> reachable;
-    std::set<uint8*> leaders;
+    std::map<uint8*, BasicBlock> blocks;
+    // Comparisons of integers that are done as a part of the branch that follows them.
+    std::set<uint8*> merged_comparisons;
+    std::map<uint8*, InlinedCall> inlined_calls;
+    bool has_inlined_leaf;
     // Code in loops is hot. The whole method is hot if it is small or recursive.
     bool is_hot;
-    std::vector<std::pair<uint8*, uint8*>> loops;
+    bool has_loops;
   };
 
   Program* const program_;
@@ -128,7 +154,7 @@ class NativeGenerator {
   std::set<int> branch_targets_;  // Absolute bcis of non-local branch targets.
   std::stringstream out_;
   uint8* current_end_ = null;
-  bool skip_next_opcode_ = false;
+  int nesting_ = 0;
 
   int bci(uint8* bcp) const { return program_->absolute_bci_from_bcp(bcp); }
   int method_id(Method method) const { return bci(method.header_bcp()); }
@@ -200,7 +226,11 @@ class NativeGenerator {
 
   void find_branch_targets();
   void find_reachable(MethodInfo* info);
-  void find_leaders(MethodInfo* info);
+  void find_blocks(MethodInfo* info);
+  void find_nested_blocks(MethodInfo* info);
+  void find_inlined_calls(MethodInfo* info);
+  void find_successors(MethodInfo* info);
+  bool branches_after_comparison(uint8* next) const;
   void find_hot_code(MethodInfo* info);
   bool is_looping(const MethodInfo& info) const;
   void find_hot_blocks();
@@ -211,7 +241,7 @@ class NativeGenerator {
   void emit_tables();
   void emit_method(const MethodInfo& info);
   void emit_block_entry(Method method, bool is_dead);
-  void emit_block(const MethodInfo& info, uint8* begin, uint8* end);
+  void emit_block(const MethodInfo& info, uint8* begin);
   void emit_opcode(const MethodInfo& info, uint8* bcp);
 
   // Writing generated code. Everything goes through line, which keeps track of
@@ -303,11 +333,10 @@ class NativeGenerator {
   bool find_targets(uint8* bcp, int stack_offset, int selector_offset, std::set<int>* targets, bool* can_be_null) const;
   bool is_leaf(Method method) const;
   int leaf_target(uint8* bcp) const;
-  bool has_inlined_leaf(const MethodInfo& info) const;
   bool emit_inlined_leaf(const MethodInfo& info, uint8* bcp);
   void emit_virtual(uint8* bcp, uint8* next, int stack_offset, int selector_offset);
   void emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, const char* helper);
-  void emit_relational(const MethodInfo& info, uint8* bcp, uint8* next, Opcode opcode, const char* op);
+  void emit_relational(uint8* bcp, uint8* next, Opcode opcode, const char* op);
   void emit_bit_operation(uint8* bcp, uint8* next, Opcode opcode, const char* op, const char* helper);
   struct Collection {
     const char* name;
@@ -333,16 +362,20 @@ NativeGenerator::NativeGenerator(Program* program, TypeDatabase* types, std::vec
     uint8* end = (i + 1 == methods.size())
         ? program->bytecodes.data() + program->bytecodes.length()
         : program->bcp_from_absolute_bci(methods[i + 1]);
-    methods_.push_back({ Method(program->bytecodes, methods[i]), end, {}, {}, false, {} });
+    methods_.push_back({ Method(program->bytecodes, methods[i]), end, {}, {}, {}, {}, false, false, false });
     method_ids_.insert(methods[i]);
   }
   find_branch_targets();
   for (auto& info : methods_) {
     find_reachable(&info);
-    find_leaders(&info);
+    find_blocks(&info);
     find_hot_code(&info);
   }
   find_hot_blocks();
+  for (auto& info : methods_) {
+    find_inlined_calls(&info);
+    find_nested_blocks(&info);
+  }
   // Global functions are in the dispatch table too, but they have no selector.
   for (int entry : program_->dispatch_table) {
     if (entry < 0 || method_ids_.count(entry) == 0) continue;
@@ -559,14 +592,12 @@ int NativeGenerator::setter_field(Method target) const {
 
 // Accessors are so small that the call would be much bigger than what it calls.
 bool NativeGenerator::emit_inlined_accessor(uint8* bcp, uint8* next) {
-  bool can_be_null = false;
-  int field = accessor_field(bcp, &can_be_null);
-  if (field < 0) return false;
+  auto probe = current_info_->inlined_calls.find(bcp);
+  if (probe == current_info_->inlined_calls.end() || probe->second.field < 0) return false;
+  int field = probe->second.field;
   bool is_getter = static_cast<Opcode>(*bcp) == INVOKE_VIRTUAL_GET;
   int stack_offset = is_getter ? 0 : 1;
-  if (can_be_null) {
-    // It's smaller to let the dispatch table deal with null in cold code.
-    if (!is_hot_site(bcp)) return false;
+  if (probe->second.can_be_null) {
     int selector_offset = Utils::read_unaligned_uint16(bcp + 1);
     if_unlikely(cat(stack_at(stack_offset), " == c->null_object"), [&] {
       emit_runtime_next("virtual_fallback", next, virtual_key(selector_offset, stack_offset));
@@ -705,87 +736,221 @@ void NativeGenerator::find_reachable(MethodInfo* info) {
   }
 }
 
-void NativeGenerator::find_leaders(MethodInfo* info) {
+static bool is_comparison(Opcode opcode) {
+  return opcode == INVOKE_EQ || opcode == INVOKE_LT || opcode == INVOKE_LTE ||
+      opcode == INVOKE_GT || opcode == INVOKE_GTE;
+}
+
+// The fast path of a comparison that can also take a slow path doesn't need
+// to create a boolean if the next bytecode branches on it.
+bool NativeGenerator::branches_after_comparison(uint8* next) const {
+  Opcode opcode = static_cast<Opcode>(*next);
+  return next < current_end_ && (opcode == BRANCH_IF_TRUE || opcode == BRANCH_IF_FALSE);
+}
+
+// Finds the basic blocks of the code that can run, and how they are entered.
+void NativeGenerator::find_blocks(MethodInfo* info) {
   current_end_ = info->end;
+  auto& blocks = info->blocks;
+  auto entered_from = [&](uint8* target, uint8* from) {
+    BasicBlock& block = blocks[target];
+    block.entries++;
+    block.last_entry = from;
+  };
+  auto has_label = [&](uint8* target) { blocks[target].has_label = true; };
+
   uint8* entry = info->method.entry();
-  info->leaders.insert(entry);
+  has_label(entry);
   if (program_->has_entry_task() && entry == program_->entry_task().entry()) {
     // Tasks start after the first bytecode.
-    info->leaders.insert(entry + LOAD_NULL_LENGTH);
+    has_label(entry + LOAD_NULL_LENGTH);
   }
   for (int target : branch_targets_) {
     uint8* bcp = program_->bcp_from_absolute_bci(target);
-    if (bcp >= entry && bcp < info->end) info->leaders.insert(bcp);
+    if (bcp >= entry && bcp < info->end) has_label(bcp);
   }
+
   for (uint8* bcp : info->reachable) {
     Opcode opcode = static_cast<Opcode>(*bcp);
-    int length = opcode_length[opcode];
-    uint8* next = bcp + length;
-    if (ends_block(bcp)) {
+    uint8* next = bcp + opcode_length[opcode];
+    if (ends_block(bcp) && !is_terminal(opcode)) {
       if (is_dead_continuation(bcp, next)) {
         dead_continuations_.insert(next);
       } else {
-        info->leaders.insert(next);
+        has_label(next);
       }
       if (is_call(opcode)) return_points_.insert(next);
+      if (is_comparison(opcode) && branches_after_comparison(next)) {
+        // The fast path goes where the branch goes.
+        uint8* target = next + Utils::read_unaligned_uint16(next + 1);
+        entered_from(target, bcp);
+        entered_from(next + BRANCH_IF_TRUE_LENGTH, bcp);
+      }
     }
     if (opcode == INTRINSIC_SMI_REPEAT || opcode == INTRINSIC_ARRAY_DO) {
       // The blocks return to the intrinsic.
-      info->leaders.insert(bcp);
+      has_label(bcp);
       return_points_.insert(bcp);
-      if (info->reachable.count(next) != 0) info->leaders.insert(next);
     }
     switch (opcode) {
-      case BRANCH:
       case BRANCH_IF_TRUE:
       case BRANCH_IF_FALSE:
       case BRANCH_IF_NOT_NULL:
-        info->leaders.insert(bcp + Utils::read_unaligned_uint16(bcp + 1));
-        if (info->reachable.count(next) != 0) info->leaders.insert(next);
+        blocks[next];  // The fall-through is found below.
+        [[fallthrough]];
+      case BRANCH:
+        entered_from(bcp + Utils::read_unaligned_uint16(bcp + 1), bcp);
         break;
-      case BRANCH_BACK:
       case BRANCH_BACK_IF_TRUE:
       case BRANCH_BACK_IF_FALSE:
       case BRANCH_BACK_IF_NOT_NULL:
-        info->leaders.insert(bcp - Utils::read_unaligned_uint16(bcp + 1));
-        if (info->reachable.count(next) != 0) info->leaders.insert(next);
+        blocks[next];  // The fall-through is found below.
+        [[fallthrough]];
+      case BRANCH_BACK:
+        entered_from(bcp - Utils::read_unaligned_uint16(bcp + 1), bcp);
         break;
       default:
         break;
     }
   }
-  for (uint8* leader : info->leaders) dead_continuations_.erase(leader);
+
+  // A call that doesn't return still passes its return address.
+  for (uint8* bcp : dead_continuations_) {
+    auto probe = blocks.find(bcp);
+    if (probe != blocks.end()) probe->second.has_label = true;
+  }
+  for (auto& it : blocks) dead_continuations_.erase(it.first);
+
+  BasicBlock* current = null;
+  bool can_continue = false;
+  uint8* last = null;
+  for (uint8* bcp : info->reachable) {
+    Opcode opcode = static_cast<Opcode>(*bcp);
+    uint8* next = bcp + opcode_length[opcode];
+    auto probe = blocks.find(bcp);
+    if (probe != blocks.end()) {
+      if (can_continue) {
+        current->falls_through = true;
+        entered_from(bcp, last);
+      }
+      current = &probe->second;
+    }
+    current->end = next;
+    current->last = bcp;
+    bool is_branch = opcode == BRANCH || opcode == BRANCH_BACK;
+    can_continue = !is_terminal(opcode) && !ends_block(bcp) && !is_branch;
+    last = bcp;
+    if (can_continue && is_comparison(opcode) && branches_after_comparison(next) && blocks.count(next) == 0) {
+      info->merged_comparisons.insert(bcp);
+    }
+  }
+  if (can_continue) current->falls_through = true;
+  // Targets that are never reached have no code.
+  for (auto it = blocks.begin(); it != blocks.end();) {
+    it = it->second.last == null ? blocks.erase(it) : std::next(it);
+  }
+  find_successors(info);
 }
 
-void NativeGenerator::find_hot_code(MethodInfo* info) {
-  info->is_hot = false;
-  if (Flags::native_all_cold) return;
-  uint8* bcp = info->method.entry();
-  while (bcp < info->end) {
-    Opcode opcode = static_cast<Opcode>(*bcp);
-    if (opcode >= ILLEGAL_END) break;
+void NativeGenerator::find_successors(MethodInfo* info) {
+  for (auto& it : info->blocks) {
+    BasicBlock& block = it.second;
+    uint8* last = block.last;
+    Opcode opcode = static_cast<Opcode>(*last);
+    uint8* next = last + opcode_length[opcode];
+    auto add = [&](uint8* target) {
+      if (info->blocks.count(target) != 0) block.successors.push_back(target);
+    };
     switch (opcode) {
-      case BRANCH_BACK:
+      case BRANCH_IF_TRUE:
+      case BRANCH_IF_FALSE:
+      case BRANCH_IF_NOT_NULL:
+      case BRANCH:
+        add(last + Utils::read_unaligned_uint16(last + 1));
+        break;
       case BRANCH_BACK_IF_TRUE:
       case BRANCH_BACK_IF_FALSE:
       case BRANCH_BACK_IF_NOT_NULL:
-        info->loops.push_back({ bcp - Utils::read_unaligned_uint16(bcp + 1), bcp });
-        break;
-      case INVOKE_STATIC:
-        if (program_->dispatch_table[Utils::read_unaligned_uint16(bcp + 1)] == method_id(info->method)) {
-          info->is_hot = true;
-        }
+      case BRANCH_BACK:
+        add(last - Utils::read_unaligned_uint16(last + 1));
         break;
       default:
         break;
     }
-    bcp += opcode_length[opcode];
+    bool is_jump = opcode == BRANCH || opcode == BRANCH_BACK;
+    if (!is_jump && !(is_terminal(opcode) && !block.falls_through)) add(next);
+  }
+}
+
+// Code that can only be reached from one place doesn't need its own function.
+// Hot and cold code is compiled differently, so that has to be kept apart.
+void NativeGenerator::find_nested_blocks(MethodInfo* info) {
+  for (auto& it : info->blocks) {
+    uint8* begin = it.first;
+    BasicBlock& block = it.second;
+    block.is_nested = !block.has_label && block.entries == 1 && block.last_entry < begin &&
+        is_hot_code(*info, begin) == is_hot_code(*info, block.last_entry);
+  }
+}
+
+// The body of a loop is what can get to the branch back without going through
+// the head of the loop, which leaves out the paths that leave the loop.
+void NativeGenerator::find_hot_code(MethodInfo* info) {
+  info->is_hot = false;
+  if (Flags::native_all_cold) return;
+  for (uint8* bcp : info->reachable) {
+    bool is_call_to_self = *bcp == INVOKE_STATIC &&
+        program_->dispatch_table[Utils::read_unaligned_uint16(bcp + 1)] == method_id(info->method);
+    if (is_call_to_self) info->is_hot = true;
+  }
+  std::map<uint8*, std::vector<uint8*>> predecessors;
+  for (auto& it : info->blocks) {
+    for (uint8* successor : it.second.successors) predecessors[successor].push_back(it.first);
+  }
+  for (auto& it : info->blocks) {
+    for (uint8* head : it.second.successors) {
+      if (head > it.first) continue;
+      info->has_loops = true;
+      std::set<uint8*> body = { head };
+      std::vector<uint8*> pending = { it.first };
+      while (!pending.empty()) {
+        uint8* bcp = pending.back();
+        pending.pop_back();
+        if (!body.insert(bcp).second) continue;
+        for (uint8* predecessor : predecessors[bcp]) pending.push_back(predecessor);
+      }
+      for (uint8* bcp : body) info->blocks.at(bcp).is_hot = true;
+    }
+  }
+}
+
+// Decides which calls to replace with the code of what they call. It's a
+// question of size, so it's worth more in hot code.
+void NativeGenerator::find_inlined_calls(MethodInfo* info) {
+  for (uint8* bcp : info->reachable) {
+    Opcode opcode = static_cast<Opcode>(*bcp);
+    bool is_accessor_call = opcode == INVOKE_VIRTUAL_GET || opcode == INVOKE_VIRTUAL_SET;
+    if (!is_accessor_call && opcode != INVOKE_VIRTUAL && opcode != INVOKE_STATIC) continue;
+    if (is_accessor_call) {
+      bool can_be_null = false;
+      int field = accessor_field(bcp, &can_be_null);
+      // It's smaller to let the dispatch table deal with null in cold code.
+      if (field >= 0 && (!can_be_null || is_hot_code(*info, bcp))) {
+        info->inlined_calls[bcp] = { field, can_be_null, -1 };
+        continue;
+      }
+    }
+    int leaf = leaf_target(bcp);
+    if (leaf >= 0) {
+      info->inlined_calls[bcp] = { -1, false, leaf };
+      info->has_inlined_leaf = true;
+    }
   }
 }
 
 // Returns whether the method can call the blocks it gets over and over.
 bool NativeGenerator::is_looping(const MethodInfo& info) const {
-  if (!info.loops.empty()) return true;
+  if (info.has_loops) return true;
   uint8* bcp = info.method.entry();
   return bcp < info.end && (*bcp == INTRINSIC_SMI_REPEAT || *bcp == INTRINSIC_ARRAY_DO);
 }
@@ -829,10 +994,8 @@ void NativeGenerator::find_hot_blocks() {
 
 bool NativeGenerator::is_hot_code(const MethodInfo& info, uint8* bcp) const {
   if (info.is_hot) return true;
-  for (auto& loop : info.loops) {
-    if (bcp >= loop.first && bcp <= loop.second) return true;
-  }
-  return false;
+  auto probe = info.blocks.upper_bound(bcp);
+  return probe != info.blocks.begin() && std::prev(probe)->second.is_hot;
 }
 
 const char* NativeGenerator::attributes(const MethodInfo& info, uint8* bcp) const {
@@ -866,8 +1029,8 @@ void NativeGenerator::emit_declarations() {
     }
     if (info.method.is_block_method()) declare("", block_entry_label(id));
     current_end_ = info.end;
-    for (uint8* leader : info.leaders) {
-      if (leader < info.end) declare(attributes(info, leader), label(leader));
+    for (auto& it : info.blocks) {
+      if (!it.second.is_nested) declare(attributes(info, it.first), label(it.first));
     }
   }
   for (int id : dead_blocks_) declare("", block_entry_label(id));
@@ -1072,17 +1235,6 @@ void NativeGenerator::emit_block_entry(Method method, bool is_dead) {
   });
 }
 
-bool NativeGenerator::has_inlined_leaf(const MethodInfo& info) const {
-  uint8* bcp = info.method.entry();
-  while (bcp < info.end) {
-    Opcode opcode = static_cast<Opcode>(*bcp);
-    if (opcode >= ILLEGAL_END) break;
-    if (leaf_target(bcp) >= 0) return true;
-    bcp += opcode_length[opcode];
-  }
-  return false;
-}
-
 // The most stack an inlined leaf can use. It has the room for a frame and
 // each of its opcodes pushes at most one value.
 static const int INLINED_STACK_USE = 8;
@@ -1108,51 +1260,45 @@ void NativeGenerator::emit_method(const MethodInfo& info) {
     });
   }
   function(method_label(id), [&] {
-    if_unlikely(cat("NativeRuntime::needs_stack_check(c, sp, ", (method.max_height() + (has_inlined_leaf(info) ? INLINED_STACK_USE : 0) + 1), ")"), [&] {
+    if_unlikely(cat("NativeRuntime::needs_stack_check(c, sp, ", (method.max_height() + (info.has_inlined_leaf ? INLINED_STACK_USE : 0) + 1), ")"), [&] {
       spill();
       tail_call("NativeRuntime::stack_overflow", "x", pruned_id(id), "nullptr");
     });
     tail_call(label(method.entry()));
   });
 
-  std::vector<uint8*> leaders;
-  for (uint8* leader : info.leaders) {
-    if (leader < info.end) leaders.push_back(leader);
-  }
-  for (unsigned i = 0; i < leaders.size(); i++) {
-    emit_block(info, leaders[i], (i + 1 == leaders.size()) ? info.end : leaders[i + 1]);
+  for (auto& it : info.blocks) {
+    if (it.second.is_nested) continue;
+    function(label(it.first), [&] { emit_block(info, it.first); });
   }
 }
 
-void NativeGenerator::emit_block(const MethodInfo& info, uint8* begin, uint8* end) {
-  current_end_ = info.end;
-  function(label(begin), [&] {
-    uint8* bcp = begin;
-    bool terminated = false;
-    while (bcp < end) {
-      Opcode opcode = static_cast<Opcode>(*bcp);
-      if (opcode >= ILLEGAL_END) break;
-      emit_opcode(info, bcp);
-      terminated = is_terminal(opcode) || ends_block(bcp);
-      bcp += opcode_length[opcode];
-      if (skip_next_opcode_) {
-        skip_next_opcode_ = false;
-        bcp += opcode_length[*bcp];
-      }
-      if (terminated) break;
-    }
-    if (!terminated) {
-      if (end != info.end) {
-        emit_goto(end);
-      } else {
-        tail_call("NativeRuntime::illegal");
-      }
-    }
-  });
+void NativeGenerator::emit_block(const MethodInfo& info, uint8* begin) {
+  const BasicBlock& block = info.blocks.at(begin);
+  uint8* bcp = begin;
+  while (bcp < block.end) {
+    bool is_merged = info.merged_comparisons.count(bcp) != 0;
+    emit_opcode(info, bcp);
+    bcp += opcode_length[*bcp];
+    if (is_merged) bcp += opcode_length[*bcp];
+  }
+  if (!block.falls_through) return;
+  if (info.blocks.count(block.end) != 0) {
+    emit_goto(block.end);
+  } else {
+    tail_call("NativeRuntime::illegal");
+  }
 }
 
 void NativeGenerator::emit_goto(uint8* target) {
-  tail_call(label(target));
+  auto probe = current_info_->blocks.find(target);
+  if (probe != current_info_->blocks.end() && probe->second.is_nested) {
+    nesting_++;
+    emit_block(*current_info_, target);
+    nesting_--;
+  } else {
+    tail_call(label(target));
+  }
 }
 
 void NativeGenerator::emit_call(int id, uint8* next) {
@@ -1327,8 +1473,9 @@ int NativeGenerator::leaf_target(uint8* bcp) const {
 // room for the frame. Nothing looks at that part of the stack, because
 // leaves can't call anything or let the garbage collector run.
 bool NativeGenerator::emit_inlined_leaf(const MethodInfo& info, uint8* bcp) {
-  int entry = leaf_target(bcp);
-  if (entry < 0) return false;
+  auto probe = current_info_->inlined_calls.find(bcp);
+  if (probe == current_info_->inlined_calls.end() || probe->second.leaf < 0) return false;
+  int entry = probe->second.leaf;
   // Leaves room for the frame.
   for (int i = 0; i < Interpreter::FRAME_SIZE; i++) push("nullptr");
   uint8* leaf = Method(program_->bytecodes, entry).entry();
@@ -1363,24 +1510,23 @@ void NativeGenerator::emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, co
   emit_runtime_next("binary", next, opcode);
 }
 
-void NativeGenerator::emit_relational(const MethodInfo& info, uint8* bcp, uint8* next, Opcode opcode, const char* op) {
+void NativeGenerator::emit_relational(uint8* bcp, uint8* next, Opcode opcode, const char* op) {
   std::string smi_compare = cat("NATIVE_COMPARE_SMIS(", op, ")");
   Operands operands = this->operands(bcp);
   if (operands.are_ints) {
     std::string compare = smi_compare;
     if (!operands.are_smis()) compare = cat("NATIVE_COMPARE_INTS(", smi_check(operands), ", ", op, ")");
-    Opcode next_opcode = static_cast<Opcode>(*next);
-    bool can_merge = next < info.end && info.leaders.count(next) == 0 &&
-        (next_opcode == BRANCH_IF_TRUE || next_opcode == BRANCH_IF_FALSE);
-    if (can_merge) {
-      // There is no need to create a boolean just to branch on it.
+    if (current_info_->merged_comparisons.count(bcp) != 0) {
+      // There is no need to create a boolean just to branch on it. The code
+      // that is branched to can be right here, where it could shadow the name.
+      Opcode next_opcode = static_cast<Opcode>(*next);
+      std::string taken = cat("taken", nesting_);
       scope([&] {
-        line(cat("bool result = ", compare, ";"));
+        line(cat("bool ", taken, " = ", compare, ";"));
         drop(2);
-        emit_branch(next + Utils::read_unaligned_uint16(next + 1),
-                    next_opcode == BRANCH_IF_TRUE ? "result" : "!result", false, null);
+        std::string condition = next_opcode == BRANCH_IF_TRUE ? taken : "!" + taken;
+        emit_branch(next + Utils::read_unaligned_uint16(next + 1), condition.c_str(), false, null);
       });
-      skip_next_opcode_ = true;
     } else {
       drop_push(2, boolean(compare));
     }
@@ -1401,7 +1547,7 @@ void NativeGenerator::emit_relational(const MethodInfo& info, uint8* bcp, uint8*
 // if that is a branch, the fast path can go directly to where it goes.
 void NativeGenerator::emit_fast_result(uint8* next, const std::string& result) {
   Opcode next_opcode = static_cast<Opcode>(*next);
-  if (next < current_end_ && (next_opcode == BRANCH_IF_TRUE || next_opcode == BRANCH_IF_FALSE)) {
+  if (branches_after_comparison(next)) {
     uint8* target = next + Utils::read_unaligned_uint16(next + 1);
     uint8* fall_through = next + BRANCH_IF_TRUE_LENGTH;
     bool on_true = next_opcode == BRANCH_IF_TRUE;
@@ -1774,20 +1920,20 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       emit_arithmetic(bcp, next, opcode, "native_sub");
       break;
     case INVOKE_LT:
-      emit_relational(info, bcp, next, opcode, "<");
+      emit_relational(bcp, next, opcode, "<");
       break;
     case INVOKE_LTE:
-      emit_relational(info, bcp, next, opcode, "<=");
+      emit_relational(bcp, next, opcode, "<=");
       break;
     case INVOKE_GT:
-      emit_relational(info, bcp, next, opcode, ">");
+      emit_relational(bcp, next, opcode, ">");
       break;
     case INVOKE_GTE:
-      emit_relational(info, bcp, next, opcode, ">=");
+      emit_relational(bcp, next, opcode, ">=");
       break;
     case INVOKE_EQ:
       if (operands(bcp).are_ints) {
-        emit_relational(info, bcp, next, opcode, "==");
+        emit_relational(bcp, next, opcode, "==");
       } else if (operands(bcp).is_likely || is_hot_site(bcp)) {
         scope([&] {
           line("int equals = native_equals(c, STACK_AT(1), STACK_AT(0));");
