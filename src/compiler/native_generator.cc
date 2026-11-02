@@ -563,7 +563,7 @@ const char* NativeGenerator::attributes(const MethodInfo& info, uint8* bcp) cons
 
 // The tables are written in assembler, which needs to know the symbols.
 static std::string native_declaration(const std::string& name) {
-  return "(NATIVE_PARAMS) __asm__(\"" + name + "\");\n";
+  return "(NATIVE_PARAMS) __asm__(\"" + name + "\") NATIVE_ON_STACK;\n";
 }
 
 void NativeGenerator::emit_declarations() {

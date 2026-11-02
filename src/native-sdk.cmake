@@ -90,10 +90,9 @@ else()
   list(APPEND TOIT_NATIVE_LINK_FLAGS "-Wl,--gc-sections" "-s")
 endif()
 
-# The return addresses must look like smis, which needs the alignment.
 set(TOIT_NATIVE_COMPILE_FLAGS
   "-std=gnu++11" "-w" "-Wno-unused-command-line-argument" "-fno-exceptions" "-fno-rtti"
-  "-ffunction-sections" "-fdata-sections" "-falign-functions=4"
+  "-ffunction-sections" "-fdata-sections"
   "-fno-unwind-tables" "-fno-asynchronous-unwind-tables"
 )
 
