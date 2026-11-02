@@ -52,7 +52,10 @@ struct NativeContext;
 // The top of the stack is always in 't' and the rest is in memory from 'sp' and
 // up. This is why the runtime and the stack traces can't look at the stack
 // before it has been spilled, and generated code does that before it calls them.
-#define NATIVE_PARAMS toit::Object** sp, toit::NativeContext* c, void* x, intptr_t y, toit::Object* t
+// All the code has the same signature, so not all of it needs everything.
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#define NATIVE_PARAMS \
+  toit::Object **sp, toit::NativeContext *c, void *x, intptr_t y, toit::Object *t
 #define NATIVE_ARGS sp, c, x, y, t
 
 typedef void (*NativeFn)(NATIVE_PARAMS);
@@ -72,6 +75,12 @@ typedef void (*NativeFn)(NATIVE_PARAMS);
 
 // All the functions that have their address on the stack.
 #define NATIVE_ON_STACK __attribute__((aligned(2)))
+
+// Code addresses and tagged values are all words to the generated code.
+#define NATIVE_ADDRESS(label) reinterpret_cast<void*>(&label)
+#define NATIVE_OBJECT(value) reinterpret_cast<toit::Object*>(value)
+#define NATIVE_WORD(object) reinterpret_cast<intptr_t>(object)
+#define NATIVE_FN(object) reinterpret_cast<toit::NativeFn>(object)
 
 #define NATIVE_LIKELY(x) __builtin_expect(!!(x), 1)
 #define NATIVE_UNLIKELY(x) __builtin_expect(!!(x), 0)
@@ -143,7 +152,7 @@ struct NativeContext {
   Object*** base;
   Object*** try_sp;
   uintptr_t remembered_set_bias;
-  int lazy_initializer_class_id;
+  unsigned lazy_initializer_class_id;
   int large_array_class_id;
   void* result;
 };
@@ -174,21 +183,28 @@ inline intptr_t native_smi_value(Object* smi) {
 }
 
 inline Object** native_word_address(Object* object, int index) {
-  return reinterpret_cast<Object**>(native_bits(object) - NATIVE_HEAP_TAG + index * sizeof(void*));
+  return reinterpret_cast<Object**>(native_bits(object) - NATIVE_HEAP_TAG +
+                                    static_cast<uintptr_t>(index) * sizeof(void*));
 }
 
 inline bool native_is_heap_object(Object* object) {
   return (native_bits(object) & NATIVE_NON_SMI_TAG_MASK) == NATIVE_HEAP_TAG;
 }
 
-inline intptr_t native_header(Object* object) { return native_smi_value(*native_word_address(object, 0)); }
+inline intptr_t native_header(Object* object) {
+  return native_smi_value(*native_word_address(object, 0));
+}
 
 inline bool native_has_class_tag(Object* object, int tag) {
   return native_is_heap_object(object) && (native_header(object) & NATIVE_CLASS_TAG_MASK) == tag;
 }
 
-inline bool native_is_instance(Object* object) { return native_has_class_tag(object, NATIVE_INSTANCE_TAG); }
-inline bool native_is_double(Object* object) { return native_has_class_tag(object, NATIVE_DOUBLE_TAG); }
+inline bool native_is_instance(Object* object) {
+  return native_has_class_tag(object, NATIVE_INSTANCE_TAG);
+}
+inline bool native_is_double(Object* object) {
+  return native_has_class_tag(object, NATIVE_DOUBLE_TAG);
+}
 
 // For objects that are known not to be smis.
 inline unsigned native_heap_class_id(Object* object) {
@@ -299,16 +315,52 @@ class NativeRuntime {
   static void call(NativeContext* c, Object** sp, void* next, Method target);
 };
 
-#define PUSH(o)            ({ Object* _o_ = (o); *(--sp) = t; t = _o_; })
-#define POP()              ({ Object* _o_ = t; t = *(sp++); _o_; })
-#define DROP(n)            ({ if ((n) != 0) { t = sp[(n) - 1]; sp += (n); } })
-#define STACK_AT(n)        ((n) == 0 ? t : sp[(n) - 1])
-#define STACK_AT_PUT(n, o) ({ Object* _o_ = (o); if ((n) == 0) t = _o_; else sp[(n) - 1] = _o_; })
+inline Object* native_pop(Object*** sp, Object** t) {
+  Object* result = *t;
+  *t = *((*sp)++);
+  return result;
+}
+
+#define PUSH(o)        \
+  do {                 \
+    Object* _o_ = (o); \
+    *(--sp) = t;       \
+    t = _o_;           \
+  } while (false)
+#define POP() native_pop(&sp, &t)
+#define DROP(n)        \
+  do {                 \
+    if ((n) != 0) {    \
+      t = sp[(n) - 1]; \
+      sp += (n);       \
+    }                  \
+  } while (false)
+#define STACK_AT(n) ((n) == 0 ? t : sp[(n) - 1])
+#define STACK_AT_PUT(n, o) \
+  do {                     \
+    Object* _o_ = (o);     \
+    if ((n) == 0)          \
+      t = _o_;             \
+    else                   \
+      sp[(n) - 1] = _o_;   \
+  } while (false)
 // Removes n elements and pushes a new one.
-#define DROP_PUSH(n, o)    ({ Object* _o_ = (o); sp += (n) - 1; t = _o_; })
+#define DROP_PUSH(n, o) \
+  do {                  \
+    Object* _o_ = (o);  \
+    sp += (n) - 1;      \
+    t = _o_;            \
+  } while (false)
 // Moves the top of the stack to memory and back.
-#define SPILL()            (*(--sp) = t)
-#define RELOAD()           (t = *(sp++))
+#define SPILL() (*(--sp) = t)
+#define RELOAD() (t = *(sp++))
+
+// Compares the two elements on top of the stack.
+#define NATIVE_COMPARE_SMIS(op) (NATIVE_WORD(STACK_AT(1)) op NATIVE_WORD(STACK_AT(0)))
+#define NATIVE_COMPARE_INTS(are_smis, op)            \
+  (NATIVE_LIKELY(are_smis) ? NATIVE_COMPARE_SMIS(op) \
+                           : (native_int_value(STACK_AT(1)) op native_int_value(STACK_AT(0))))
+#define NATIVE_BOOLEAN(condition) ((condition) ? c->true_object : c->false_object)
 
 inline bool native_are_smis(Object* a, Object* b) {
   return ((native_bits(a) | native_bits(b)) & 1) == 0;
@@ -316,22 +368,27 @@ inline bool native_are_smis(Object* a, Object* b) {
 
 // These expect smis and return false if the result doesn't fit in a smi.
 inline bool native_add(Object* a, Object* b, Object** result) {
-  intptr_t sum;
-  if (__builtin_add_overflow(reinterpret_cast<intptr_t>(a), reinterpret_cast<intptr_t>(b), &sum)) return false;
+  intptr_t sum = 0;
+  if (__builtin_add_overflow(reinterpret_cast<intptr_t>(a), reinterpret_cast<intptr_t>(b), &sum))
+    return false;
   *result = reinterpret_cast<Object*>(sum);
   return true;
 }
 
 inline bool native_sub(Object* a, Object* b, Object** result) {
   intptr_t difference;
-  if (__builtin_sub_overflow(reinterpret_cast<intptr_t>(a), reinterpret_cast<intptr_t>(b), &difference)) return false;
+  if (__builtin_sub_overflow(reinterpret_cast<intptr_t>(a), reinterpret_cast<intptr_t>(b),
+                             &difference))
+    return false;
   *result = reinterpret_cast<Object*>(difference);
   return true;
 }
 
 inline bool native_mul(Object* a, Object* b, Object** result) {
-  intptr_t product;
-  if (__builtin_mul_overflow(reinterpret_cast<intptr_t>(a), reinterpret_cast<intptr_t>(b) >> 1, &product)) return false;
+  intptr_t product = 0;
+  if (__builtin_mul_overflow(reinterpret_cast<intptr_t>(a), reinterpret_cast<intptr_t>(b) >> 1,
+                             &product))
+    return false;
   *result = reinterpret_cast<Object*>(product);
   return true;
 }
@@ -394,7 +451,7 @@ inline bool native_mod(Object* a, Object* b, Object** result) {
 // Arrays have their length as a raw word and then the elements.
 inline Object** native_array_slot(Object* array, uintptr_t n) {
   if (n >= native_bits(*native_word_address(array, 1))) return nullptr;
-  return native_word_address(array, 2 + n);
+  return native_word_address(array, 2 + static_cast<int>(n));
 }
 
 inline Object** native_array_element(Object* array, Object* index) {
@@ -415,7 +472,7 @@ inline bool native_list_index(Object* list, Object* index, uintptr_t* n) {
 // Returns null if the backing isn't a plain array, or if the index isn't a smi
 // that is in range. The container is what the write barrier needs.
 inline Object** native_list_element(Object* list, Object* index, Object** container) {
-  uintptr_t n;
+  uintptr_t n = 0;
   if (!native_list_index(list, index, &n)) return nullptr;
   Object* backing = native_field(list, 0);
   if (!native_has_class_tag(backing, NATIVE_ARRAY_TAG)) return nullptr;
@@ -426,8 +483,9 @@ inline Object** native_list_element(Object* list, Object* index, Object** contai
 // Big lists have a large array as their backing. It has a vector of arraylets
 // as its second field. Very large arrays have more levels, which are left to
 // the runtime.
-inline Object** native_large_list_element(NativeContext* c, Object* list, Object* index, Object** container) {
-  uintptr_t n;
+inline Object** native_large_list_element(NativeContext* c, Object* list, Object* index,
+                                          Object** container) {
+  uintptr_t n = 0;
   if (!native_list_index(list, index, &n)) return nullptr;
   Object* backing = native_field(list, 0);
   if (native_has_class_tag(backing, NATIVE_ARRAY_TAG)) {
@@ -448,13 +506,14 @@ inline Object** native_large_list_element(NativeContext* c, Object* list, Object
   return native_array_slot(arraylet, n % NATIVE_ARRAYLET_SIZE);
 }
 
-inline void native_store_element(NativeContext* c, Object* container, Object** element, Object* value) {
+inline void native_store_element(NativeContext* c, Object* container, Object** element,
+                                 Object* value) {
   uintptr_t card = native_bits(container) >> NATIVE_CARD_SIZE_LOG_2;
   *reinterpret_cast<uint8_t*>(card + c->remembered_set_bias) = NATIVE_NEW_SPACE_POINTERS;
   *element = value;
 }
 
-inline bool native_array_at(NativeContext* c, Object* array, Object* index, Object** result) {
+inline bool native_array_at(NativeContext* /*c*/, Object* array, Object* index, Object** result) {
   Object** element = native_array_element(array, index);
   if (element == nullptr) return false;
   *result = *element;
@@ -468,8 +527,8 @@ inline bool native_array_at_put(NativeContext* c, Object* array, Object* index, 
   return true;
 }
 
-inline bool native_list_at(NativeContext* c, Object* list, Object* index, Object** result) {
-  Object* container;
+inline bool native_list_at(NativeContext* /*c*/, Object* list, Object* index, Object** result) {
+  Object* container = nullptr;
   Object** element = native_list_element(list, index, &container);
   if (element == nullptr) return false;
   *result = *element;
@@ -477,7 +536,7 @@ inline bool native_list_at(NativeContext* c, Object* list, Object* index, Object
 }
 
 inline bool native_large_list_at(NativeContext* c, Object* list, Object* index, Object** result) {
-  Object* container;
+  Object* container = nullptr;
   Object** element = native_large_list_element(c, list, index, &container);
   if (element == nullptr) return false;
   *result = *element;
@@ -485,7 +544,7 @@ inline bool native_large_list_at(NativeContext* c, Object* list, Object* index, 
 }
 
 inline bool native_list_at_put(NativeContext* c, Object* list, Object* index, Object* value) {
-  Object* container;
+  Object* container = nullptr;
   Object** element = native_list_element(list, index, &container);
   if (element == nullptr) return false;
   native_store_element(c, container, element, value);
@@ -493,7 +552,7 @@ inline bool native_list_at_put(NativeContext* c, Object* list, Object* index, Ob
 }
 
 inline bool native_large_list_at_put(NativeContext* c, Object* list, Object* index, Object* value) {
-  Object* container;
+  Object* container = nullptr;
   Object** element = native_large_list_element(c, list, index, &container);
   if (element == nullptr) return false;
   native_store_element(c, container, element, value);
@@ -511,7 +570,7 @@ inline uint8_t* native_byte_element(Object* bytes, Object* index) {
   return reinterpret_cast<uint8_t*>(native_word_address(bytes, 2)) + n;
 }
 
-inline bool native_byte_array_at(NativeContext* c, Object* bytes, Object* index, Object** result) {
+inline bool native_byte_array_at(NativeContext* /*c*/, Object* bytes, Object* index, Object** result) {
   uint8_t* element = native_byte_element(bytes, index);
   if (element == nullptr) return false;
   *result = native_smi(*element);
@@ -533,7 +592,7 @@ inline bool native_byte_array_at_put(Object* bytes, Object* index, Object* value
 // address on the hot paths of the functions that make them.
 inline int64_t native_int_value(Object* object) {
   if (native_is_smi(object)) return native_smi_value(object);
-  int64_t value;
+  int64_t value = 0;
   memcpy(&value, native_word_address(object, 1), sizeof(value));
   return value;
 }

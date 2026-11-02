@@ -271,7 +271,7 @@ bool NativeRuntime::run(Interpreter* interpreter, void* result) {
     .base = &interpreter->base_,
     .try_sp = &interpreter->try_sp_,
     .remembered_set_bias = GcMetadata::remembered_set_bias(),
-    .lazy_initializer_class_id = static_cast<int>(Smi::value(program->lazy_initializer_class_id())),
+    .lazy_initializer_class_id = static_cast<unsigned>(Smi::value(program->lazy_initializer_class_id())),
     .large_array_class_id = static_cast<int>(Smi::value(program->large_array_class_id())),
     .result = result,
   };

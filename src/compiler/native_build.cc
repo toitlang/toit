@@ -156,17 +156,23 @@ bool NativeBuild::prepare(bool needs_sdk) {
   return true;
 }
 
-static void write_bytes(FILE* file, const char* name, const uint8* bytes, int size) {
+// The lines of bytes fit in 80 columns.
+static const int BYTES_PER_LINE = 16;
+
+static void write_bytes(FILE* file, const char* name, const uint8* bytes, int size, bool with_size) {
   // All characters are escaped, so the C++ compiler doesn't care much
   // about the size. The anonymous namespace is where the code expects them.
-  fprintf(file, "\nnamespace {\nextern const int %s_size;\nconst int %s_size = %d;\n", name, name, size);
+  fprintf(file, "\nnamespace {\n");
+  if (with_size) fprintf(file, "extern const int %s_size;\nconst int %s_size = %d;\n", name, name, size);
   fprintf(file, "extern const uint8_t %s[];\n", name);
-  fprintf(file, "__attribute__((aligned(16))) const uint8_t %s[] =\n\"", name);
-  for (int i = 0; i < size; i++) {
-    if ((i & 0x3f) == 0) fprintf(file, "\"\n\"");
-    fprintf(file, "\\%03o", bytes[i]);
+  fprintf(file, "__attribute__((aligned(16))) const uint8_t %s[] =", name);
+  if (size == 0) fprintf(file, "\n    \"\"");
+  for (int i = 0; i < size; i += BYTES_PER_LINE) {
+    fprintf(file, "\n    \"");
+    for (int j = i; j < i + BYTES_PER_LINE && j < size; j++) fprintf(file, "\\%03o", bytes[j]);
+    fprintf(file, "\"");
   }
-  fprintf(file, "\";\n}\n");
+  fprintf(file, ";\n}  // namespace\n");
 }
 
 // Native programs are stored as images, and the code
@@ -212,14 +218,14 @@ bool NativeBuild::add_program(SnapshotBundle bundle, bool is_system) {
     perror(code_path_.c_str());
     return false;
   }
-  fprintf(file, "\nnamespace {\nextern const bool native_is_system;\nconst bool native_is_system = %s;\n}\n",
+  fprintf(file, "\nnamespace {\nextern const bool native_is_system;\nconst bool native_is_system = %s;\n}  // namespace\n",
           is_system ? "true" : "false");
-  write_bytes(file, "native_uuid", id, UUID_SIZE);
-  write_bytes(file, "native_image", reinterpret_cast<const uint8*>(words.data()), words.size() * WORD_SIZE);
-  write_bytes(file, "native_image_ranges", reinterpret_cast<const uint8*>(ranges.data()), ranges.size() * sizeof(int32));
-  fprintf(file, "\nnamespace {\nextern const int native_image_words;\nconst int native_image_words = %d;\n}\n", total_words);
+  write_bytes(file, "native_uuid", id, UUID_SIZE, false);
+  write_bytes(file, "native_image", reinterpret_cast<const uint8*>(words.data()), words.size() * WORD_SIZE, false);
+  write_bytes(file, "native_image_ranges", reinterpret_cast<const uint8*>(ranges.data()), ranges.size() * sizeof(int32), true);
+  fprintf(file, "\nnamespace {\nextern const int native_image_words;\nconst int native_image_words = %d;\n}  // namespace\n", total_words);
   SnapshotBundle traces = bundle.without_snapshot();
-  write_bytes(file, "native_bundle", traces.buffer(), traces.size());
+  write_bytes(file, "native_bundle", traces.buffer(), traces.size(), true);
   free(traces.buffer());
   return fclose(file) == 0;
 }
