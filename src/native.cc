@@ -129,6 +129,10 @@ int NativeRuntime::register_program(const NativeProgram* program) {
   static_assert(HeapObject::HEADER_OFFSET == 0, "header");
   static_assert(INSTANCE_TAG == NATIVE_INSTANCE_TAG, "instance tag");
   static_assert(DOUBLE_TAG == NATIVE_DOUBLE_TAG, "double tag");
+  static_assert(ARRAY_TAG == NATIVE_ARRAY_TAG, "array tag");
+  static_assert(Array::HEADER_SIZE == 2 * WORD_SIZE, "array");
+  static_assert(Instance::LIST_ARRAY_INDEX == 0, "list");
+  static_assert(Instance::LIST_SIZE_INDEX == 1, "list");
   static_assert(LargeInteger::VALUE_OFFSET == WORD_SIZE, "large integer");
   static_assert(GcMetadata::CARD_SIZE_LOG_2 == NATIVE_CARD_SIZE_LOG_2, "card size");
   static_assert(GcMetadata::NEW_SPACE_POINTERS == NATIVE_NEW_SPACE_POINTERS, "cards");

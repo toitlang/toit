@@ -414,6 +414,8 @@ class HeapObject : public Object {
 
 class Array : public HeapObject {
  public:
+  friend class NativeRuntime;
+
   word length() const { return _word_at(LENGTH_OFFSET); }
 
   static INLINE word max_length_in_process();

@@ -173,7 +173,12 @@ class NativeGenerator {
   void emit_virtual(uint8* bcp, uint8* next, int stack_offset, int selector_offset);
   void emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, const char* helper);
   void emit_relational(const MethodInfo& info, uint8* bcp, uint8* next, Opcode opcode, const char* op);
-  void emit_bit_operation(uint8* bcp, uint8* next, Opcode opcode, const char* op);
+  void emit_bit_operation(uint8* bcp, uint8* next, Opcode opcode, const char* op, const char* helper);
+  bool needs_list_check(uint8* bcp, int stack_offset, bool* is_list) const;
+  std::string list_check(uint8* bcp, int stack_offset, bool needs_check) const;
+  void emit_at(uint8* bcp, uint8* next);
+  void emit_at_put(uint8* bcp, uint8* next);
+  void emit_size(uint8* bcp, uint8* next, int selector);
   void emit_fast_result(uint8* next, const std::string& result);
   void emit_branch(uint8* target, const char* condition, bool is_back, uint8* entry);
   void emit_typecheck(uint8* bcp, Opcode opcode, bool is_as, int encoded, int length);
@@ -1130,13 +1135,76 @@ void NativeGenerator::emit_fast_result(uint8* next, const std::string& result) {
   out_ << "    NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
 }
 
-void NativeGenerator::emit_bit_operation(uint8* bcp, uint8* next, Opcode opcode, const char* op) {
+void NativeGenerator::emit_bit_operation(uint8* bcp, uint8* next, Opcode opcode, const char* op, const char* helper) {
   if (operands(bcp).are_smis()) {
     // Smis have a zero tag, so we can work directly on the tagged values.
     out_ << "  DROP_PUSH(2, reinterpret_cast<Object*>(reinterpret_cast<intptr_t>(STACK_AT(1)) " << op << " reinterpret_cast<intptr_t>(STACK_AT(0))));\n";
     return;
   }
-  emit_runtime_next("binary", next, opcode);
+  emit_arithmetic(bcp, next, opcode, helper);
+}
+
+// The runtime has to look at the class of the receiver to find out what it is
+// dealing with. The propagated types often tell us that it's a list, and
+// then the check isn't needed. If it is merely likely to be one, we still
+// avoid going through the runtime for the cost of checking the class.
+bool NativeGenerator::needs_list_check(uint8* bcp, int stack_offset, bool* is_list) const {
+  *is_list = false;
+  std::vector<TypeSet> input = types_->input(bci(bcp));
+  if (static_cast<int>(input.size()) != stack_offset + 1 || input[0].is_block()) return false;
+  if (!input[0].contains(Smi::value(program_->list_class_id()))) return false;
+  int count = input[0].size(TypeSet::words_per_type(program_));
+  if (count == 1) {
+    *is_list = true;
+    return false;
+  }
+  static const int LIKELY_LIST_TYPES = 3;
+  *is_list = count <= LIKELY_LIST_TYPES || is_hot_site(bcp);
+  return *is_list;
+}
+
+std::string NativeGenerator::list_check(uint8* bcp, int stack_offset, bool needs_check) const {
+  if (!needs_check) return "";
+  return "native_class_id(STACK_AT(" + std::to_string(stack_offset) + "), SMI_ID) == " +
+      std::to_string(Smi::value(program_->list_class_id())) + " && ";
+}
+
+void NativeGenerator::emit_at(uint8* bcp, uint8* next) {
+  bool is_list;
+  bool needs_check = needs_list_check(bcp, 1, &is_list);
+  if (is_list) {
+    out_ << "  { Object* result;\n";
+    out_ << "    if (NATIVE_LIKELY(" << list_check(bcp, 1, needs_check) << "native_list_at(STACK_AT(1), STACK_AT(0), &result))) {\n";
+    out_ << "      DROP_PUSH(2, result);\n";
+    out_ << "      " << "NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
+    out_ << "    }\n  }\n";
+  }
+  emit_runtime_next("at", next, 0);
+}
+
+void NativeGenerator::emit_at_put(uint8* bcp, uint8* next) {
+  bool is_list;
+  bool needs_check = needs_list_check(bcp, 2, &is_list);
+  if (is_list) {
+    out_ << "  if (NATIVE_LIKELY(" << list_check(bcp, 2, needs_check) << "native_list_at_put(c, STACK_AT(2), STACK_AT(1), STACK_AT(0)))) {\n";
+    out_ << "    DROP_PUSH(3, STACK_AT(0));\n";
+    out_ << "    NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
+    out_ << "  }\n";
+  }
+  emit_runtime_next("at_put", next, 0);
+}
+
+void NativeGenerator::emit_size(uint8* bcp, uint8* next, int selector) {
+  bool is_list;
+  bool needs_check = needs_list_check(bcp, 0, &is_list);
+  if (is_list) {
+    if (needs_check) out_ << "  if (NATIVE_LIKELY(" << "native_class_id(STACK_AT(0), SMI_ID) == " << Smi::value(program_->list_class_id()) << ")) {\n";
+    out_ << "    STACK_AT_PUT(0, native_field(STACK_AT(0), 1));\n";
+    out_ << "    NATIVE_TAIL " << label(next) << "(NATIVE_ARGS);\n";
+    if (needs_check) out_ << "  }\n";
+    if (!needs_check) return;
+  }
+  emit_runtime_next("size", next, selector);
 }
 
 void NativeGenerator::emit_branch(uint8* target, const char* condition, bool is_back, uint8* entry) {
@@ -1434,32 +1502,40 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       }
       break;
     case INVOKE_BIT_OR:
-      emit_bit_operation(bcp, next, opcode, "|");
+      emit_bit_operation(bcp, next, opcode, "|", "native_bit_or");
       break;
     case INVOKE_BIT_XOR:
-      emit_bit_operation(bcp, next, opcode, "^");
+      emit_bit_operation(bcp, next, opcode, "^", "native_bit_xor");
       break;
     case INVOKE_BIT_AND:
-      emit_bit_operation(bcp, next, opcode, "&");
+      emit_bit_operation(bcp, next, opcode, "&", "native_bit_and");
       break;
     case INVOKE_MUL:
       emit_arithmetic(bcp, next, opcode, "native_mul");
       break;
     case INVOKE_BIT_SHL:
+      emit_arithmetic(bcp, next, opcode, "native_shl");
+      break;
     case INVOKE_BIT_SHR:
+      emit_arithmetic(bcp, next, opcode, "native_shr");
+      break;
     case INVOKE_BIT_USHR:
+      emit_arithmetic(bcp, next, opcode, "native_ushr");
+      break;
     case INVOKE_DIV:
+      emit_arithmetic(bcp, next, opcode, "native_div");
+      break;
     case INVOKE_MOD:
-      emit_runtime_next("binary", next, opcode);
+      emit_arithmetic(bcp, next, opcode, "native_mod");
       break;
     case INVOKE_AT:
-      emit_runtime_next("at", next, 0);
+      emit_at(bcp, next);
       break;
     case INVOKE_AT_PUT:
-      emit_runtime_next("at_put", next, 0);
+      emit_at_put(bcp, next);
       break;
     case INVOKE_SIZE:
-      emit_runtime_next("size", next, wide1);
+      emit_size(bcp, next, wide1);
       break;
     case BRANCH:
       emit_goto(bcp + wide1);
