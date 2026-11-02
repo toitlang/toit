@@ -585,7 +585,8 @@ class ToitMethod:
     // For method calls the return-bci is just after the call. If a method
     // is known not to return, then there might not be any bytecodes left and
     // the bci is equal to the bytecode size.
-    assert: 0 <= bci <= bytecodes.size
+    // Programs that are made from source maps have no bytecodes.
+    assert: 0 <= bci and (bytecodes.is-empty or bci <= bytecodes.size)
     return bci
 
   absolute-bci-from-bci bci/int -> int:
