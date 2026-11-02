@@ -156,6 +156,13 @@ runs:
         echo "SUCCESS"
         echo success > ${{ steps.constants.outputs.flaky_result }}
 
+    # All tests as native code. They are compared to bytecodes, so the
+    # expectations don't need to be repeated, but it takes a while.
+    - name: Test native code
+      if: env.DO_MORE_TESTS == 'true' && runner.os == 'Linux' && inputs.shard == '1'
+      shell: bash
+      run: python3 benchmarks/compare_tests.py tests
+
     - name: Test type propagator
       if: env.DO_MORE_TESTS == 'true' && runner.os == 'Linux'
       shell: bash

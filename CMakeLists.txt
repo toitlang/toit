@@ -190,6 +190,14 @@ add_custom_target(
 set(EXTERNAL_TOIT_LIBS)
 include(tools/external.cmake)
 
+# Native code is built for the host with the SDK, and for now
+# it is only supported for the normal 64-bit release builds.
+set(TOIT_NATIVE_SUPPORTED FALSE)
+if (NOT ${TOIT_IS_EMBEDDED} AND NOT ${TOIT_IS_CROSS} AND NOT WIN32 AND NOT ENABLE_LTO AND
+    "${CMAKE_BUILD_TYPE}" STREQUAL "Release" AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+  set(TOIT_NATIVE_SUPPORTED TRUE)
+endif()
+
 add_subdirectory(src)
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
   add_subdirectory(third_party/libgpiod)
@@ -250,6 +258,6 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   set(CMAKE_POLICY_DEFAULT_CMP0076 NEW)
 endif()
 
-if (NOT ${TOIT_IS_EMBEDDED} AND TARGET toit_native_main AND NOT WIN32)
+if (TOIT_NATIVE_SUPPORTED AND TARGET toit_native_main)
   include(src/native-sdk.cmake)
 endif()

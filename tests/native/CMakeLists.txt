@@ -5,7 +5,19 @@
 # Compiles some of the tests to native code and runs them. Native code relies
 # on tail calls for everything, so we need a compiler that guarantees them.
 find_program(TOIT_NATIVE_CXX clang++)
-if (NOT TOIT_NATIVE_CXX OR NOT TARGET toit_native_main OR WIN32)
+if (NOT TOIT_NATIVE_SUPPORTED OR NOT TARGET toit_native_main)
+  return()
+endif()
+# These configurations are for testing other things.
+if (DEFINED ENV{TOIT_CHECK_PROPAGATED_TYPES} OR DEFINED ENV{TOIT_OPTIMIZATION_OVERRIDE} OR
+    DEFINED ENV{TOIT_ASSERT_OVERRIDE})
+  return()
+endif()
+if (NOT TOIT_NATIVE_CXX)
+  # Don't let CI pass because it silently skipped everything.
+  if (DEFINED ENV{CI})
+    message(FATAL_ERROR "Testing native code needs clang++")
+  endif()
   return()
 endif()
 
@@ -57,6 +69,32 @@ endforeach()
 
 foreach(test ${NATIVE_STRIPPED_TESTS})
   add_native_test("${test}-stripped" "${CMAKE_CURRENT_SOURCE_DIR}/../${test}.toit" --native --strip)
+endforeach()
+
+# The benchmarks cover a lot of ground, and they are quick to run once. This
+# isn't about how fast they are: they must print what they do with bytecodes.
+set(NATIVE_BENCHMARKS_DIR "${TOIT_SDK_SOURCE_DIR}/benchmarks")
+file(GLOB NATIVE_BENCHMARKS CONFIGURE_DEPENDS "${NATIVE_BENCHMARKS_DIR}/*.toit")
+foreach(source ${NATIVE_BENCHMARKS})
+  get_filename_component(name "${source}" NAME_WE)
+  set(executable "${NATIVE_DIR}/benchmark-${name}")
+  add_custom_command(
+    OUTPUT "${executable}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${NATIVE_DIR}"
+    COMMAND "${CMAKE_COMMAND}" -E env "TOIT_CXX=${TOIT_NATIVE_CXX}"
+        $<TARGET_FILE:toit.compile> --native -o "${executable}" "${source}"
+    DEPENDS toit.compile build_native_sdk "${source}"
+  )
+  add_custom_target("native-benchmark-${name}" DEPENDS "${executable}")
+  add_dependencies(build_test_assets "native-benchmark-${name}")
+  add_test(
+    NAME "tests/native/benchmark-${name}"
+    COMMAND "${CMAKE_COMMAND}"
+        "-DEXECUTABLE=${executable}"
+        "-DGOLD=${NATIVE_BENCHMARKS_DIR}/gold/${name}.gold"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/benchmark-test.cmake"
+    CONFIGURATIONS slow
+  )
 endforeach()
 
 add_test(

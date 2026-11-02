@@ -61,8 +61,7 @@ def main():
       results[name] = {"i": interpreted_time, "n": native_time}
       line = f"{name:14}{interpreted_time * 1000:7.0f}ms{native_time * 1000:7.0f}ms{interpreted_time / native_time:9.2f}x"
       if name in previous: line += f"  {100 * (previous[name]['n'] / native_time - 1):+.0f}%"
-      # The fib benchmark prints how long it took.
-      if interpreted_output != native_output and name != "fib": line += "  OUTPUT DIFFERS"
+      if interpreted_output != native_output: line += "  OUTPUT DIFFERS"
       print(line, flush=True)
   if args.save: json.dump(results, open(args.save, "w"))
 
