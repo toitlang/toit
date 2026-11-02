@@ -36,7 +36,21 @@ test-keys-only:
   map.do --keys: sum += it
   expect-equals 45 sum
 
+test-zero-values:
+  // A zero that is stored or found must not be mistaken for a missing value.
+  map := {0: 0, 1: 0}
+  count := 0
+  map.do: | key value |
+    expect-equals 0 value
+    count++
+  expect-equals 2 count
+  list := [0, 0, 0]
+  list[1] = 0
+  expect-equals 0 list[1]
+  expect-equals 3 list.size
+
 main:
+  test-zero-values
   test-set
   test-map
   test-keys-only
