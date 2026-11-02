@@ -280,6 +280,7 @@ bool NativeRuntime::run(Interpreter* interpreter, void* result) {
     .allocation_top = process->object_heap()->new_space()->top_address(),
     .allocation_limit = process->object_heap()->new_space()->limit_address(),
     .chunk_end_sentinel = reinterpret_cast<uintptr_t>(chunk_end_sentinel()),
+    .double_header = Smi::from((Smi::value(program->double_class_id()) << HeapObject::CLASS_ID_OFFSET) | DOUBLE_TAG),
     .lazy_initializer_class_id = static_cast<unsigned>(Smi::value(program->lazy_initializer_class_id())),
     .large_array_class_id = static_cast<int>(Smi::value(program->large_array_class_id())),
     .result = result,
@@ -912,6 +913,175 @@ void NativeRuntime::hash_do(NATIVE_PARAMS) {
   STACK_AT_PUT(0, result);
   GO(next, null, 0);
 }
+
+void NativeRuntime::pending_exception(NATIVE_PARAMS) {
+  NATIVE_TAIL throw_exception(c->interpreter->sp_, c, null, 0, null);
+}
+
+static int64 int_value(Object* value) {
+  return is_smi(value) ? Smi::value(value) : LargeInteger::cast(value)->value();
+}
+
+Object** NativeRuntime::int_arithmetic(Object** sp, NativeContext* c, int opcode) {
+  Interpreter* interpreter = c->interpreter;
+  uint64 left = int_value(STACK_AT(1));
+  uint64 right = int_value(STACK_AT(0));
+  DROP(2);
+  // Integers wrap around, which only works on unsigned integers in C++.
+  int64 value;
+  switch (static_cast<Opcode>(opcode)) {
+    case INVOKE_ADD: value = left + right; break;
+    case INVOKE_SUB: value = left - right; break;
+    case INVOKE_MUL: value = left * right; break;
+    default: UNREACHABLE();
+  }
+  if (Smi::is_valid(value)) {
+    PUSH(Smi::from(value));
+    return sp;
+  }
+  LargeInteger* result = c->process->object_heap()->allocate_large_integer(value);
+  for (int attempts = 1; result == null && attempts < 4; attempts++) {
+    sp = interpreter->gc(sp, false, attempts, false, "'allocate integer'", opcode);
+    result = c->process->object_heap()->allocate_large_integer(value);
+  }
+  c->process->object_heap()->leave_primitive();
+  if (result == null) {
+    interpreter->sp_ = interpreter->push_error(sp, c->program->allocation_failed(), "");
+    return null;
+  }
+  PUSH(result);
+  return sp;
+}
+
+Object** NativeRuntime::push_double(Object** sp, NativeContext* c, double value) {
+  Interpreter* interpreter = c->interpreter;
+  Double* result = c->process->object_heap()->allocate_double(value);
+  for (int attempts = 1; result == null && attempts < 4; attempts++) {
+    sp = interpreter->gc(sp, false, attempts, false, "'allocate float'", 0);
+    result = c->process->object_heap()->allocate_double(value);
+  }
+  c->process->object_heap()->leave_primitive();
+  if (result == null) {
+    interpreter->sp_ = interpreter->push_error(sp, c->program->allocation_failed(), "");
+    return null;
+  }
+  PUSH(result);
+  return sp;
+}
+
+extern "C" {
+
+__attribute__((used)) Object** toit_native_int_arithmetic(Object** sp, NativeContext* c, intptr_t opcode) {
+  return NativeRuntime::int_arithmetic(sp, c, opcode);
+}
+
+__attribute__((used)) Object** toit_native_push_double(Object** sp, NativeContext* c, double value) {
+  return NativeRuntime::push_double(sp, c, value);
+}
+
+}  // extern "C"
+
+// These save everything that the calls can change, except for the result. See
+// the comment in native_abi.h for why.
+#define STUB(name, target) STUB_BODY(NATIVE_SYMBOL(name), NATIVE_SYMBOL(target))
+
+#if defined(__aarch64__)
+#define STUB_BODY(name, target)                  \
+  __asm__(                                       \
+    ".text\n"                                    \
+    ".globl " name "\n"                          \
+    ".p2align 2\n"                               \
+    name ":\n"                                   \
+    "stp x29, x30, [sp, #-16]!\n"                \
+    "mov x29, sp\n"                              \
+    "stp x1, x2, [sp, #-16]!\n"                  \
+    "stp x3, x4, [sp, #-16]!\n"                  \
+    "stp x5, x6, [sp, #-16]!\n"                  \
+    "stp x7, x8, [sp, #-16]!\n"                  \
+    "stp x9, x10, [sp, #-16]!\n"                 \
+    "stp x11, x12, [sp, #-16]!\n"                \
+    "stp x13, x14, [sp, #-16]!\n"                \
+    "stp x15, x16, [sp, #-16]!\n"                \
+    "stp q0, q1, [sp, #-32]!\n"                  \
+    "stp q2, q3, [sp, #-32]!\n"                  \
+    "stp q4, q5, [sp, #-32]!\n"                  \
+    "stp q6, q7, [sp, #-32]!\n"                  \
+    "stp q16, q17, [sp, #-32]!\n"                \
+    "stp q18, q19, [sp, #-32]!\n"                \
+    "stp q20, q21, [sp, #-32]!\n"                \
+    "stp q22, q23, [sp, #-32]!\n"                \
+    "stp q24, q25, [sp, #-32]!\n"                \
+    "stp q26, q27, [sp, #-32]!\n"                \
+    "stp q28, q29, [sp, #-32]!\n"                \
+    "stp q30, q31, [sp, #-32]!\n"                \
+    "bl " target "\n"                            \
+    "ldp q30, q31, [sp], #32\n"                  \
+    "ldp q28, q29, [sp], #32\n"                  \
+    "ldp q26, q27, [sp], #32\n"                  \
+    "ldp q24, q25, [sp], #32\n"                  \
+    "ldp q22, q23, [sp], #32\n"                  \
+    "ldp q20, q21, [sp], #32\n"                  \
+    "ldp q18, q19, [sp], #32\n"                  \
+    "ldp q16, q17, [sp], #32\n"                  \
+    "ldp q6, q7, [sp], #32\n"                    \
+    "ldp q4, q5, [sp], #32\n"                    \
+    "ldp q2, q3, [sp], #32\n"                    \
+    "ldp q0, q1, [sp], #32\n"                    \
+    "ldp x15, x16, [sp], #16\n"                  \
+    "ldp x13, x14, [sp], #16\n"                  \
+    "ldp x11, x12, [sp], #16\n"                  \
+    "ldp x9, x10, [sp], #16\n"                   \
+    "ldp x7, x8, [sp], #16\n"                    \
+    "ldp x5, x6, [sp], #16\n"                    \
+    "ldp x3, x4, [sp], #16\n"                    \
+    "ldp x1, x2, [sp], #16\n"                    \
+    "ldp x29, x30, [sp], #16\n"                  \
+    "ret\n")
+#elif defined(__x86_64__)
+#define SAVE_XMM(n, offset) "movups %xmm" #n ", " #offset "(%rsp)\n"
+#define LOAD_XMM(n, offset) "movups " #offset "(%rsp), %xmm" #n "\n"
+#define STUB_BODY(name, target)                  \
+  __asm__(                                       \
+    ".text\n"                                    \
+    ".globl " name "\n"                          \
+    ".p2align 4\n"                               \
+    name ":\n"                                   \
+    "pushq %rbp\n"                               \
+    "movq %rsp, %rbp\n"                          \
+    "pushq %rcx\n"                               \
+    "pushq %rdx\n"                               \
+    "pushq %rsi\n"                               \
+    "pushq %rdi\n"                               \
+    "pushq %r8\n"                                \
+    "pushq %r9\n"                                \
+    "pushq %r10\n"                               \
+    "pushq %r11\n"                               \
+    "subq $256, %rsp\n"                          \
+    "andq $-16, %rsp\n"                          \
+    SAVE_XMM(0, 0) SAVE_XMM(1, 16) SAVE_XMM(2, 32) SAVE_XMM(3, 48)         \
+    SAVE_XMM(4, 64) SAVE_XMM(5, 80) SAVE_XMM(6, 96) SAVE_XMM(7, 112)       \
+    SAVE_XMM(8, 128) SAVE_XMM(9, 144) SAVE_XMM(10, 160) SAVE_XMM(11, 176)  \
+    SAVE_XMM(12, 192) SAVE_XMM(13, 208) SAVE_XMM(14, 224) SAVE_XMM(15, 240) \
+    "call " target "\n"                          \
+    LOAD_XMM(0, 0) LOAD_XMM(1, 16) LOAD_XMM(2, 32) LOAD_XMM(3, 48)         \
+    LOAD_XMM(4, 64) LOAD_XMM(5, 80) LOAD_XMM(6, 96) LOAD_XMM(7, 112)       \
+    LOAD_XMM(8, 128) LOAD_XMM(9, 144) LOAD_XMM(10, 160) LOAD_XMM(11, 176)  \
+    LOAD_XMM(12, 192) LOAD_XMM(13, 208) LOAD_XMM(14, 224) LOAD_XMM(15, 240) \
+    "leaq -64(%rbp), %rsp\n"                     \
+    "popq %r11\n"                                \
+    "popq %r10\n"                                \
+    "popq %r9\n"                                 \
+    "popq %r8\n"                                 \
+    "popq %rdi\n"                                \
+    "popq %rsi\n"                                \
+    "popq %rdx\n"                                \
+    "popq %rcx\n"                                \
+    "popq %rbp\n"                                \
+    "ret\n")
+#endif
+
+STUB(toit_native_int_stub, toit_native_int_arithmetic);
+STUB(toit_native_double_stub, toit_native_push_double);
 
 void NativeRuntime::illegal(NATIVE_PARAMS) {
   FATAL("illegal native code reached");
