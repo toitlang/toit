@@ -427,11 +427,13 @@ inline Object** native_list_element(Object* list, Object* index, Object** contai
 // as its second field. Very large arrays have more levels, which are left to
 // the runtime.
 inline Object** native_large_list_element(NativeContext* c, Object* list, Object* index, Object** container) {
-  Object** element = native_list_element(list, index, container);
-  if (element != nullptr) return element;
   uintptr_t n;
   if (!native_list_index(list, index, &n)) return nullptr;
   Object* backing = native_field(list, 0);
+  if (native_has_class_tag(backing, NATIVE_ARRAY_TAG)) {
+    *container = backing;
+    return native_array_slot(backing, n);
+  }
   if (!native_is_instance(backing) ||
       static_cast<int>(native_heap_class_id(backing)) != c->large_array_class_id) {
     return nullptr;
