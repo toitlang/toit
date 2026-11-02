@@ -1390,7 +1390,7 @@ void NativeGenerator::emit_block_entry(Method method, bool is_dead) {
       tail_call("NativeRuntime::illegal");
     } else {
       push("NATIVE_OBJECT(x)");
-      push("c->frame_marker");
+      push(smi(0));  // The frame marker.
       tail_call(method_label(id));
     }
   });
@@ -1416,7 +1416,7 @@ void NativeGenerator::emit_method(const MethodInfo& info) {
         tail_call("NativeRuntime::virtual_fallback");
       });
       push("NATIVE_OBJECT(x)");
-      push("c->frame_marker");
+      push(smi(0));  // The frame marker.
       tail_call(method_label(id));
     });
   }
@@ -1466,7 +1466,7 @@ void NativeGenerator::emit_goto(uint8* target) {
 void NativeGenerator::emit_call(int id, uint8* next) {
   if (is_hot_site(next)) line("NATIVE_SPLIT_STORES();");
   push(return_address(label(next)));
-  push("c->frame_marker");
+  push(smi(0));  // The frame marker.
   tail_call(method_label(id));
 }
 

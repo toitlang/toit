@@ -317,7 +317,14 @@ int Stack::frames_do(Program* program, FrameCallback* cb) {
   bool is_first_frame = true;
   for (word index = 0; index < stack_length - 1; index++) {
     Object* probe = at(index);
-    if (probe != program->frame_marker()) continue;
+    if (native_return_bci_ != null) {
+      // Native frames have a zero followed by a return address. Native code
+      // doesn't load the marker, because it would do that for every call.
+      if (probe != Smi::from(0) || !is_smi(at(index + 1)) || at(index + 1) == Smi::from(0)) continue;
+      if (native_return_bci_(program, reinterpret_cast<uint8*>(at(index + 1))) < 0) continue;
+    } else if (probe != program->frame_marker()) {
+      continue;
+    }
     uint8* return_bcp = reinterpret_cast<uint8*>(at(index + 1));
     if (last_return_bcp == null) {
       // Drop the primitive call.
