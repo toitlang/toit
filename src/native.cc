@@ -648,19 +648,21 @@ void NativeRuntime::binary(NATIVE_PARAMS) {
   NATIVE_TAIL virtual_fallback(NATIVE_ARGS);
 }
 
-Object* TAIL_SAFE_HELPER NativeRuntime::at_result(NativeContext* c, Object* receiver, Object* index, Object* value, bool is_put) {
-  return Interpreter::fast_at(c->process, receiver, index, is_put, &value) ? value : null;
+NativeRuntime::ValueResult TAIL_SAFE_HELPER NativeRuntime::at_result(NativeContext* c, Object* receiver, Object* index, Object* value, bool is_put) {
+  bool is_done = Interpreter::fast_at(c->process, receiver, index, is_put, &value);
+  return { value, is_done };
 }
 
-Object* TAIL_SAFE_HELPER NativeRuntime::size_result(NativeContext* c, Object* receiver) {
-  Smi* result;
-  return Interpreter::fast_size(c->process, receiver, &result) ? result : null;
+NativeRuntime::ValueResult TAIL_SAFE_HELPER NativeRuntime::size_result(NativeContext* c, Object* receiver) {
+  Smi* result = null;
+  bool is_done = Interpreter::fast_size(c->process, receiver, &result);
+  return { result, is_done };
 }
 
 void NativeRuntime::at(NATIVE_PARAMS) {
-  Object* value = at_result(c, STACK_AT(1), STACK_AT(0), null, false);
-  if (value != null) {
-    STACK_AT_PUT(1, value);
+  ValueResult result = at_result(c, STACK_AT(1), STACK_AT(0), null, false);
+  if (result.is_done) {
+    STACK_AT_PUT(1, result.value);
     DROP(1);
     CONTINUE();
   }
@@ -669,9 +671,9 @@ void NativeRuntime::at(NATIVE_PARAMS) {
 }
 
 void NativeRuntime::at_put(NATIVE_PARAMS) {
-  Object* value = at_result(c, STACK_AT(2), STACK_AT(1), STACK_AT(0), true);
-  if (value != null) {
-    STACK_AT_PUT(2, value);
+  ValueResult result = at_result(c, STACK_AT(2), STACK_AT(1), STACK_AT(0), true);
+  if (result.is_done) {
+    STACK_AT_PUT(2, result.value);
     DROP(2);
     CONTINUE();
   }
@@ -680,9 +682,9 @@ void NativeRuntime::at_put(NATIVE_PARAMS) {
 }
 
 void NativeRuntime::size(NATIVE_PARAMS) {
-  Object* result = size_result(c, STACK_AT(0));
-  if (result != null) {
-    STACK_AT_PUT(0, result);
+  ValueResult result = size_result(c, STACK_AT(0));
+  if (result.is_done) {
+    STACK_AT_PUT(0, result.value);
     CONTINUE();
   }
   y = y << 8;
@@ -872,6 +874,13 @@ void NativeRuntime::array_do(NATIVE_PARAMS) {
   GO(*from_block(c, block), x, 2);
 }
 
+NativeRuntime::HashDoResult TAIL_SAFE_HELPER NativeRuntime::hash_do_step(
+    NativeContext* c, Object* current, Object* backing, word step, Object* block) {
+  Object* entry = null;
+  Object* result = c->interpreter->hash_do(c->program, current, backing, step, block, &entry, false);
+  return { result, entry };
+}
+
 // This runs each time the block returns, like the bytecode does in the
 // interpreter. Maps always pass the key and the value to the block, and it
 // drops the value if it doesn't take it.
@@ -885,22 +894,19 @@ void NativeRuntime::hash_do(NATIVE_PARAMS) {
   int step = Smi::value(STACK_AT(parameter_offset + STEP));
   if (program->true_object() == STACK_AT(parameter_offset + REVERSED)) step = -step;
   Object* block = STACK_AT(parameter_offset + BLOCK);
-  Object* entry;
-  Object* result = c->interpreter->hash_do(program, STACK_AT(0), backing, step, block, &entry, false);
+  HashDoResult found = hash_do_step(c, STACK_AT(0), backing, step, block);
+  Object* result = found.result;
   if (is_smi(result) && Smi::value(result) < 0) {
     // Negative Smi means call the block.
     word index = -(Smi::value(result) + 1);
     STACK_AT_PUT(0, Smi::from(index));
     PUSH(block);
-    PUSH(entry);
+    PUSH(found.entry);
     word arguments = 2;
     if ((step & 1) == 0) {
-      Object* value;
       // Only fails if the backing was corrupted.
-      if (!Interpreter::fast_at(c->process, backing, Smi::from(index + 1), false, &value)) {
-        value = program->null_object();
-      }
-      PUSH(value);
+      ValueResult value = at_result(c, backing, Smi::from(index + 1), null, false);
+      PUSH(value.is_done ? value.value : program->null_object());
       arguments = 3;
     }
     GO(*from_block(c, block), x, arguments);

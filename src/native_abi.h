@@ -338,11 +338,22 @@ class NativeRuntime {
     Object** sp;
     int state;
   };
+  struct HashDoResult {
+    Object* result;
+    Object* entry;
+  };
+  static HashDoResult hash_do_step(NativeContext* c, Object* current, Object* backing, intptr_t step,
+                                   Object* block);
   static OverflowResult handle_overflow(NativeContext* c, Object** sp, Method target);
   static Object* binary_result(NativeContext* c, Object* a0, Object* a1, int bytecode);
-  static Object* at_result(NativeContext* c, Object* receiver, Object* index, Object* value,
-                           bool is_put);
-  static Object* size_result(NativeContext* c, Object* receiver);
+  // A smi that is zero looks like a null pointer, so that can't mean failure.
+  struct ValueResult {
+    Object* value;
+    bool is_done;
+  };
+  static ValueResult at_result(NativeContext* c, Object* receiver, Object* index, Object* value,
+                               bool is_put);
+  static ValueResult size_result(NativeContext* c, Object* receiver);
   static NativeFn find_entry(const NativeProgram* native, int bci);
   static Object* start_address(Program* program, uint8_t* bcp);
   static int return_bci(Program* program, uint8_t* address);
