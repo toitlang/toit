@@ -296,15 +296,26 @@ bool NativeRuntime::run(Interpreter* interpreter, void* result) {
 
 #define CONTINUE() GO(x, null, 0)
 
+// GCC gives up on tail calls in functions that have locals that have their
+// address taken, and the runtime has to tail call to not use up the C stack.
+// That's why these helpers are separate functions that cannot be inlined.
+#define TAIL_SAFE_HELPER __attribute__((noinline))
+
+NativeRuntime::OverflowResult TAIL_SAFE_HELPER NativeRuntime::handle_overflow(NativeContext* c, Object** sp, Method target) {
+  Interpreter::OverflowState state;
+  sp = c->interpreter->handle_stack_overflow(sp, &state, target);
+  return { sp, state };
+}
+
 void NativeRuntime::stack_overflow(NATIVE_PARAMS) {
   Interpreter* interpreter = c->interpreter;
   Method target(c->program->bytecodes, y);
   // The generated code doesn't pass the address, because there is
   // a check in every method and the failures are rare.
   x = reinterpret_cast<void*>(find_entry(c->native, c->program->absolute_bci_from_bcp(target.entry())));
-  Interpreter::OverflowState state;
-  sp = interpreter->handle_stack_overflow(sp, &state, target);
-  switch (state) {
+  OverflowResult overflow = handle_overflow(c, sp, target);
+  sp = overflow.sp;
+  switch (overflow.state) {
     case Interpreter::OVERFLOW_RESUME:
       // Enter the method again, so we get the check done again.
       CONTINUE();
@@ -524,11 +535,9 @@ static bool are_floats(Object* a, Object* b) {
   return HeapObject::cast(a)->has_class_tag(DOUBLE_TAG) && HeapObject::cast(b)->has_class_tag(DOUBLE_TAG);
 }
 
-void NativeRuntime::binary(NATIVE_PARAMS) {
+Object* TAIL_SAFE_HELPER NativeRuntime::binary_result(NativeContext* c, Object* a0, Object* a1, int bytecode) {
   Program* program = c->program;
-  Object* a0 = STACK_AT(1);
-  Object* a1 = STACK_AT(0);
-  Opcode opcode = static_cast<Opcode>(y);
+  Opcode opcode = static_cast<Opcode>(bytecode);
   Object* result = null;
   bool smis = native_are_smis(a0, a1);
   word i0 = smis ? Smi::value(a0) : 0;
@@ -604,19 +613,33 @@ void NativeRuntime::binary(NATIVE_PARAMS) {
     default:
       UNREACHABLE();
   }
+  return result;
+}
 
+void NativeRuntime::binary(NATIVE_PARAMS) {
+  Opcode opcode = static_cast<Opcode>(y);
+  Object* result = binary_result(c, STACK_AT(1), STACK_AT(0), opcode);
   if (result != null) {
     STACK_AT_PUT(1, result);
     DROP(1);
     CONTINUE();
   }
-  y = program->invoke_bytecode_offset(opcode) << 8 | 1;
+  y = c->program->invoke_bytecode_offset(opcode) << 8 | 1;
   NATIVE_TAIL virtual_fallback(NATIVE_ARGS);
 }
 
+Object* TAIL_SAFE_HELPER NativeRuntime::at_result(NativeContext* c, Object* receiver, Object* index, Object* value, bool is_put) {
+  return Interpreter::fast_at(c->process, receiver, index, is_put, &value) ? value : null;
+}
+
+Object* TAIL_SAFE_HELPER NativeRuntime::size_result(NativeContext* c, Object* receiver) {
+  Smi* result;
+  return Interpreter::fast_size(c->process, receiver, &result) ? result : null;
+}
+
 void NativeRuntime::at(NATIVE_PARAMS) {
-  Object* value = null;
-  if (Interpreter::fast_at(c->process, STACK_AT(1), STACK_AT(0), false, &value)) {
+  Object* value = at_result(c, STACK_AT(1), STACK_AT(0), null, false);
+  if (value != null) {
     STACK_AT_PUT(1, value);
     DROP(1);
     CONTINUE();
@@ -626,8 +649,8 @@ void NativeRuntime::at(NATIVE_PARAMS) {
 }
 
 void NativeRuntime::at_put(NATIVE_PARAMS) {
-  Object* value = STACK_AT(0);
-  if (Interpreter::fast_at(c->process, STACK_AT(2), STACK_AT(1), true, &value)) {
+  Object* value = at_result(c, STACK_AT(2), STACK_AT(1), STACK_AT(0), true);
+  if (value != null) {
     STACK_AT_PUT(2, value);
     DROP(2);
     CONTINUE();
@@ -637,8 +660,8 @@ void NativeRuntime::at_put(NATIVE_PARAMS) {
 }
 
 void NativeRuntime::size(NATIVE_PARAMS) {
-  Smi* result;
-  if (Interpreter::fast_size(c->process, STACK_AT(0), &result)) {
+  Object* result = size_result(c, STACK_AT(0));
+  if (result != null) {
     STACK_AT_PUT(0, result);
     CONTINUE();
   }
