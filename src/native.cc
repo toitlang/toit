@@ -340,6 +340,16 @@ void NativeRuntime::stack_overflow(NATIVE_PARAMS) {
   NATIVE_TAIL throw_exception(sp, c, null, 0, null);
 }
 
+// Blocks ignore the arguments they don't need. The generated code has the
+// method id and the number of arguments in y.
+void NativeRuntime::block_arguments(NATIVE_PARAMS) {
+  Method method(c->program->bytecodes, y >> 8);
+  word extra = (y & 0xff) - method.arity();
+  if (extra < 0) NATIVE_TAIL block_failure(NATIVE_ARGS);
+  DROP(extra);
+  CALL(method);
+}
+
 void NativeRuntime::block_failure(NATIVE_PARAMS) {
   // The generated code has the method id and the number of arguments in y.
   Method method(c->program->bytecodes, y >> 8);

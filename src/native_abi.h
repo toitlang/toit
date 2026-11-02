@@ -228,6 +228,10 @@ inline Object* native_field(Object* instance, int index) {
   return *native_word_address(instance, index + 1);
 }
 
+inline void native_set_field_no_barrier(Object* instance, int index, Object* value) {
+  *native_word_address(instance, index + 1) = value;
+}
+
 inline void native_set_field(NativeContext* c, Object* instance, int index, Object* value) {
   uintptr_t card = native_bits(instance) >> NATIVE_CARD_SIZE_LOG_2;
   *reinterpret_cast<uint8_t*>(card + c->remembered_set_bias) = NATIVE_NEW_SPACE_POINTERS;
@@ -269,6 +273,7 @@ class NativeRuntime {
   static void as_failure(NATIVE_PARAMS);
   static void code_failure(NATIVE_PARAMS);
   static void block_failure(NATIVE_PARAMS);
+  static void block_arguments(NATIVE_PARAMS);
   static void program_failure(NATIVE_PARAMS);
   static void primitive_failure(NATIVE_PARAMS);
   static void lambda_tail(NATIVE_PARAMS);

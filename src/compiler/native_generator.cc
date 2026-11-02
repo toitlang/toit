@@ -320,7 +320,7 @@ class NativeGenerator {
   template<typename Y>
   void emit_runtime(const char* helper, const std::string& x, const Y& y) {
     spill();
-    tail_call(cat("NativeRuntime::", helper), x, y, "nullptr");
+    tail_call(cat("NativeRuntime::", helper), x, y, "t");  // Unused, but setting it takes code.
   }
   void emit_result_if(const std::string& condition, int count, uint8* next);
 
@@ -374,7 +374,11 @@ class NativeGenerator {
   }
   bool uses_tracked_stack(const MethodInfo& info, uint8* bcp) const;
   void emit_branch_on_top(uint8* target, const char* prefix, const char* suffix);
+  void emit_branch_on_truth(uint8* bcp, uint8* target, bool on_true);
+  std::string truth_of(uint8* bcp, const std::string& value) const;
+  bool needs_write_barrier(uint8* bcp, int index) const;
   void emit_loop_intrinsic(uint8* bcp, bool is_array);
+  void emit_store_field(const char* instance, int field, bool needs_barrier);
   void emit_load_field(int field);
 
   void declare(const char* attributes, const std::string& name);
@@ -675,7 +679,7 @@ bool NativeGenerator::emit_inlined_accessor(uint8* bcp, uint8* next) {
   } else {
     scope([&] {
       line("Object* value = POP();");
-      line(cat("native_set_field(c, STACK_AT(0), ", field, ", value);"));
+      emit_store_field("STACK_AT(0)", field, needs_write_barrier(bcp, 1));
       stack_at_put(0, "value");
     });
   }
@@ -1378,14 +1382,13 @@ std::string NativeGenerator::generate() {
 void NativeGenerator::emit_block_entry(Method method, bool is_dead) {
   int id = method_id(method);
   function(block_entry_label(id), [&] {
-    line(cat("intptr_t extra = y - ", method.arity(), ";"));
-    if_unlikely("extra < 0", [&] {
-      emit_runtime("block_failure", "x", cat("(", pruned_id(id), " << 8) | y"));
+    // Calls with too few arguments fail, and calls with too many are rare.
+    if_unlikely(cat("y != ", method.arity()), [&] {
+      emit_runtime(is_dead ? "block_failure" : "block_arguments", "x", cat("(", pruned_id(id), " << 8) | y"));
     });
     if (is_dead) {
       tail_call("NativeRuntime::illegal");
     } else {
-      line("DROP(extra);");
       push("NATIVE_OBJECT(x)");
       push("c->frame_marker");
       tail_call(method_label(id));
@@ -1420,7 +1423,7 @@ void NativeGenerator::emit_method(const MethodInfo& info) {
   function(method_label(id), [&] {
     if_unlikely(cat("NativeRuntime::needs_stack_check(c, sp, ", (method.max_height() + (info.has_inlined_leaf ? INLINED_STACK_USE : 0) + 1), ")"), [&] {
       spill();
-      tail_call("NativeRuntime::stack_overflow", "x", pruned_id(id), "nullptr");
+      tail_call("NativeRuntime::stack_overflow", "x", pruned_id(id), "t");
     });
     tail_call(label(method.entry()));
   });
@@ -1868,11 +1871,47 @@ void NativeGenerator::emit_branch(uint8* target, const char* condition, bool is_
   }
 }
 
+// Returns the code for finding out if the value is true. Most of the time
+// the types leave only one way to be false.
+std::string NativeGenerator::truth_of(uint8* bcp, const std::string& value) const {
+  std::vector<TypeSet> input = types_->input(bci(bcp));
+  if (input.size() != 1 || input[0].is_block()) return cat("native_is_true(c, ", value, ")");
+  bool can_be_false = input[0].contains(Smi::value(program_->false_class_id()));
+  bool can_be_null = input[0].contains(Smi::value(program_->null_class_id()));
+  if (can_be_false && can_be_null) return cat("native_is_true(c, ", value, ")");
+  return cat(value, can_be_false ? " != c->false_object" : " != c->null_object");
+}
+
+void NativeGenerator::emit_branch_on_truth(uint8* bcp, uint8* target, bool on_true) {
+  int kept = keep_on_top(1);
+  std::string value = kept == 1 ? operand(0, 1) : "POP()";
+  pop_tracked(kept);
+  std::string truth = truth_of(bcp, value);
+  std::string condition = on_true ? truth : cat("!(", truth, ")");
+  emit_branch(target, condition.c_str(), false, null);
+}
+
 void NativeGenerator::emit_branch_on_top(uint8* target, const char* prefix, const char* suffix) {
   int kept = keep_on_top(1);
   std::string value = kept == 1 ? operand(0, 1) : "POP()";
   pop_tracked(kept);
   emit_branch(target, (prefix + value + suffix).c_str(), false, null);
+}
+
+// Stores only need to tell the garbage collector about pointers to new objects.
+bool NativeGenerator::needs_write_barrier(uint8* bcp, int index) const {
+  std::vector<TypeSet> input = types_->input(bci(bcp));
+  if (static_cast<int>(input.size()) <= index || input[index].is_block()) return true;
+  TypeSet::Iterator it(input[index], TypeSet::words_per_type(program_));
+  while (it.has_next()) {
+    int id = it.next();
+    bool is_immediate = id == Smi::value(program_->smi_class_id()) ||
+        id == Smi::value(program_->null_class_id()) ||
+        id == Smi::value(program_->true_class_id()) ||
+        id == Smi::value(program_->false_class_id());
+    if (!is_immediate) return true;
+  }
+  return false;
 }
 
 void NativeGenerator::emit_load_field(int field) {
@@ -1912,6 +1951,11 @@ void NativeGenerator::emit_loop_intrinsic(uint8* bcp, bool is_array) {
     line("NativeFn target = NATIVE_FN(*NativeRuntime::from_block(c, block));");
     tail_call("target", address_of(label(bcp)), 2, "t");
   });
+}
+
+void NativeGenerator::emit_store_field(const char* instance, int field, bool needs_barrier) {
+  const char* store = needs_barrier ? "native_set_field(c, " : "native_set_field_no_barrier(";
+  line(cat(store, instance, ", ", field, ", value);"));
 }
 
 void NativeGenerator::emit_typecheck(uint8* bcp, Opcode opcode, bool is_as, int encoded, int length) {
@@ -2072,14 +2116,14 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
     case STORE_FIELD_WIDE:
       scope([&] {
         line("Object* value = POP();");
-        line(cat("native_set_field(c, STACK_AT(0), ", arg(STORE_FIELD_WIDE), ", value);"));
+        emit_store_field("STACK_AT(0)", arg(STORE_FIELD_WIDE), needs_write_barrier(bcp, 1));
         stack_at_put(0, "value");
       });
       break;
     case STORE_FIELD_POP:
       scope([&] {
         line("Object* value = POP();");
-        line(cat("native_set_field(c, POP(), ", byte1, ", value);"));
+        emit_store_field("POP()", byte1, needs_write_barrier(bcp, 1));
       });
       break;
     case LOAD_LITERAL:
@@ -2307,10 +2351,10 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       emit_goto(bcp + wide1);
       break;
     case BRANCH_IF_TRUE:
-      emit_branch_on_top(bcp + wide1, "native_is_true(c, ", ")");
+      emit_branch_on_truth(bcp, bcp + wide1, true);
       break;
     case BRANCH_IF_FALSE:
-      emit_branch_on_top(bcp + wide1, "!native_is_true(c, ", ")");
+      emit_branch_on_truth(bcp, bcp + wide1, false);
       break;
     case BRANCH_IF_NOT_NULL:
       emit_branch_on_top(bcp + wide1, "", " != c->null_object");
@@ -2321,8 +2365,10 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
     case BRANCH_BACK_IF_NOT_NULL: {
       uint8* entry = bcp - Utils::read_unaligned_uint16(bcp + 3);
       const char* condition = null;
-      if (opcode == BRANCH_BACK_IF_TRUE) condition = "native_is_true(c, POP())";
-      if (opcode == BRANCH_BACK_IF_FALSE) condition = "!native_is_true(c, POP())";
+      std::string truth = truth_of(bcp, "POP()");
+      std::string falseness = cat("!(", truth, ")");
+      if (opcode == BRANCH_BACK_IF_TRUE) condition = truth.c_str();
+      if (opcode == BRANCH_BACK_IF_FALSE) condition = falseness.c_str();
       if (opcode == BRANCH_BACK_IF_NOT_NULL) condition = "POP() != c->null_object";
       emit_branch(bcp - wide1, condition, true, entry);
       break;
