@@ -338,20 +338,22 @@ if (NOT ${TOIT_IS_EMBEDDED})
 
   # Programs that have been compiled to native code are linked with
   # this. They provide the snapshot that the vessels get patched with.
-  add_library(
-    toit_native_stubs
-    STATIC
-    native_module_stubs.cc
-  )
+  if (TOIT_NATIVE_SUPPORTED)
+    add_library(
+      toit_native_stubs
+      STATIC
+      native_module_stubs.cc
+    )
 
-  add_library(
-    toit_native_main
-    STATIC
-    native_main.cc
-    interpreter_native.cc
-  )
-  target_link_libraries(toit_native_main PUBLIC ${TOIT_LINK_LIBS})
-  target_include_directories(toit_native_main PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+    add_library(
+      toit_native_main
+      STATIC
+      native_main.cc
+      interpreter_native.cc
+    )
+    target_link_libraries(toit_native_main PUBLIC ${TOIT_LINK_LIBS})
+    target_include_directories(toit_native_main PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+  endif()
 
   set(VESSEL_SIZES 128 256 512 1024 8192)
   foreach(VESSEL_SIZE ${VESSEL_SIZES})

@@ -13,6 +13,14 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#ifdef TOIT_HAS_NATIVE
+
+// Everything here depends on tail calls. Clang guarantees them, and for
+// GCC we have to make sure that the optimization is on.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC optimize ("optimize-sibling-calls")
+#endif
+
 #include "native.h"
 
 #include "native_abi_source.h"
@@ -845,3 +853,5 @@ bool NativeRuntime::is_interface(NativeContext* c, Object* value, word offset) {
 }
 
 }  // namespace toit
+
+#endif  // TOIT_HAS_NATIVE
