@@ -13,9 +13,18 @@ import concurrent.futures
 import glob
 import os
 import subprocess
+import sys
 import tempfile
 
 ARGUMENTS = ["foo", "bar", "gee"]
+
+# These look at how they are run, or print timings. The first two
+# behave the same way in executables that have bytecodes.
+EXPECTED_DIFFERENCES = {
+  "tests/program-name-test.toit",
+  "tests/program-path-test.toit",
+  "tests/rpc-test.toit",
+}
 
 def run(command):
   try:
@@ -43,7 +52,8 @@ def main():
   parser.add_argument("directories", nargs="+")
   args = parser.parse_args()
   toit = os.path.join(args.sdk, "bin", "toit")
-  tests = [t for d in args.directories for t in sorted(glob.glob(f"{d}/*-test.toit"))]
+  tests = [t for d in args.directories for t in sorted(glob.glob(f"{d}/*-test.toit"))
+           if t not in EXPECTED_DIFFERENCES]
   good = 0
   with tempfile.TemporaryDirectory() as out:
     with concurrent.futures.ThreadPoolExecutor(6) as executor:
@@ -53,6 +63,7 @@ def main():
         else:
           print(f"{test}: {result}", flush=True)
   print(f"{good}/{len(tests)} match the interpreter")
+  if good != len(tests): sys.exit(1)
 
 if __name__ == "__main__":
   main()

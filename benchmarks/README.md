@@ -6,6 +6,9 @@ Benchmarks for native code, and the scripts used for working on it:
 - `compare_tests.py` checks that tests behave the same as native code.
 - `fuzz/run.py` compares generated programs as bytecodes and as native code.
 
+The `gold` folder has what the benchmarks print. They are also tests: see
+`tests/native`.
+
 
 | Files | Origin | License |
 |---|---|---|
