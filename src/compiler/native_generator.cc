@@ -233,7 +233,12 @@ class NativeGenerator : private NativeCodeWriter {
     int slot;          // The element of the real stack or -1.
     std::string text;  // The value if it isn't on the stack.
     bool is_double;    // The value is a double that hasn't been boxed.
-    std::string at(int adjustment) const { return slot >= 0 ? stack_at(slot + adjustment) : text; }
+    int outer;         // The slot holds a block and this is the local in its frame, or -1.
+    std::string at(int adjustment) const {
+      if (slot < 0) return text;
+      if (outer < 0) return stack_at(slot + adjustment);
+      return cat("NativeRuntime::from_block(c, ", stack_at(slot + adjustment), ")[", outer, "]");
+    }
   };
   std::vector<TrackedValue> tracked_;
   int pending_drops_ = 0;
@@ -253,6 +258,7 @@ class NativeGenerator : private NativeCodeWriter {
   std::string pop_for_branch();
   std::string truth_of(uint8* bcp, const std::string& value) const;
   bool needs_write_barrier(uint8* bcp, int index) const;
+  bool next_is_float_operation(uint8* next) const;
   void emit_loop_intrinsic(uint8* bcp, bool is_array);
   void emit_store_field(const char* instance, int field, bool needs_barrier);
   void emit_load_field(int field);
@@ -1600,7 +1606,7 @@ void NativeGenerator::emit_arithmetic(uint8* bcp, uint8* next, Opcode opcode, co
 // The values that are tracked instead of being on the stack.
 
 void NativeGenerator::track(const std::string& text) {
-  tracked_.push_back({ -1, text, false });
+  tracked_.push_back({ -1, text, false, -1 });
 }
 
 void NativeGenerator::track_local(int index) {
@@ -1608,7 +1614,7 @@ void NativeGenerator::track_local(int index) {
   if (index < size) {
     tracked_.push_back(tracked_[size - 1 - index]);
   } else {
-    tracked_.push_back({ index - size + pending_drops_, "", false });
+    tracked_.push_back({ index - size + pending_drops_, "", false, -1 });
   }
 }
 
@@ -1703,7 +1709,9 @@ void NativeGenerator::emit_int_operation(uint8* bcp, Opcode opcode, const char* 
 // Known floats stay unboxed for as long as nothing else needs to see them. If
 // an operand is an object nobody else can see, we keep the result in that.
 void NativeGenerator::emit_float_operation(uint8* bcp, const char* float_op) {
-  int kept = keep_on_top(2, true);
+  // If both operands are tracked, the stack doesn't change, so what's below them
+  // can stay where it is too.
+  int kept = tracked_.size() > 2 ? 2 : keep_on_top(2, true);
   std::string value = cat(double_operand(1, kept), " ", float_op, " ", double_operand(0, kept));
   auto reused = current_info_->reused_floats.find(bcp);
   if (reused != current_info_->reused_floats.end() && reused->second >= kept) {
@@ -1721,7 +1729,7 @@ void NativeGenerator::emit_float_operation(uint8* bcp, const char* float_op) {
   std::string name = cat("d", double_count_++);
   line(cat("double ", name, " = ", value, ";"));
   pop_tracked(2);
-  tracked_.push_back({ -1, name, true });
+  tracked_.push_back({ -1, name, true, -1 });
 }
 
 // Boxing only needs the runtime when new space is full. Code that isn't marked
@@ -1898,6 +1906,12 @@ void NativeGenerator::emit_branch(uint8* target, const std::string& condition, b
   }
 }
 
+bool NativeGenerator::next_is_float_operation(uint8* next) const {
+  Opcode opcode = static_cast<Opcode>(*next);
+  bool is_arithmetic = opcode == INVOKE_ADD || opcode == INVOKE_SUB || opcode == INVOKE_MUL || opcode == INVOKE_DIV;
+  return next < current_end_ && is_arithmetic && operands(next).are_floats;
+}
+
 // Returns the code for finding out if the value is true. Most of the time
 // the types leave only one way to be false.
 std::string NativeGenerator::truth_of(uint8* bcp, const std::string& value) const {
@@ -2047,6 +2061,7 @@ bool NativeGenerator::uses_tracked_stack(const MethodInfo& info, uint8* bcp) con
     case LOAD_SMI_U32:
     case LOAD_FIELD:
     case LOAD_FIELD_WIDE:
+    case LOAD_OUTER:
     case POP:
     case POP_1:
     case BRANCH_IF_TRUE:
@@ -2112,7 +2127,14 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
       drop(1);
       break;
     case LOAD_OUTER:
-      line(cat("STACK_AT_PUT(0, NativeRuntime::from_block(c, STACK_AT(0))[", byte1, "]);"));
+      // Only floats read their operands once, which makes it worth it to leave it
+      // to the operation to load it.
+      if (next_is_float_operation(next) && !tracked_.empty() && tracked_.back().slot >= 0 && tracked_.back().outer < 0) {
+        tracked_.back().outer = byte1;
+      } else {
+        flush_stack();
+        line(cat("STACK_AT_PUT(0, NativeRuntime::from_block(c, STACK_AT(0))[", byte1, "]);"));
+      }
       break;
     case STORE_OUTER:
       scope([&] {
