@@ -62,6 +62,46 @@ const char* compute_package_cache_path_from_home(const char* home, Filesystem* f
 
 
 
+PackageLock PackageLock::merge(const std::vector<PackageLock>& locks,
+                               const std::vector<std::string>& root_paths) {
+  ASSERT(!locks.empty() && locks.size() == root_paths.size());
+  const PackageLock& main = locks[0];
+  Map<std::string, Package> packages = main.packages_;
+  bool has_errors = main.has_errors_;
+  for (size_t i = 1; i < locks.size(); i++) {
+    const PackageLock& lock = locks[i];
+    has_errors = has_errors || lock.has_errors_;
+    std::string name_space = "@" + std::to_string(i) + "/";
+    auto rename = [&](const std::string& id) -> std::string {
+      if (id == Package::SDK_PACKAGE_ID || id == Package::VIRTUAL_PACKAGE_ID ||
+          id == Package::ERROR_PACKAGE_ID || id == Package::INVALID_PACKAGE_ID) {
+        return id;
+      }
+      return name_space + id;
+    };
+    for (const auto& id : lock.packages_.keys()) {
+      if (rename(id) == id) continue;  // Shared by all programs.
+      const Package& package = lock.packages_.at(id);
+      Map<std::string, std::string> prefixes;
+      for (const auto& prefix : package.prefixes_.keys()) {
+        prefixes[prefix] = rename(package.prefixes_.at(prefix));
+      }
+      bool is_entry = id == Package::ENTRY_PACKAGE_ID;
+      Package renamed(rename(id),
+                      package.name_,
+                      is_entry ? root_paths[i] : package.absolute_path_,
+                      package.absolute_error_path_,
+                      package.relative_error_path_,
+                      package.error_state_,
+                      prefixes,
+                      package.is_path_package_);
+      renamed.diagnostic_id_ = package.diagnostic_id_;
+      packages[rename(id)] = renamed;
+    }
+  }
+  return PackageLock(main.lock_file_source_, main.sdk_constraint_, packages, main.sdk_prefixes_, has_errors);
+}
+
 Package PackageLock::resolve_prefix(const Package& package,
                                     const std::string& prefix) const {
   auto prefix_probe = package.prefixes_.find(prefix);

@@ -30,7 +30,9 @@ std::string Package::build_error_path(Filesystem* fs, const std::string& path) c
     return path;
   }
   auto relative = fs->relative(path, absolute_error_path_);
-  if (id_ == ENTRY_PACKAGE_ID) {
+  // The roots of applications that are compiled with the program have entry
+  // packages too, with ids of their own.
+  if (diagnostic_id_ == ENTRY_PACKAGE_ID) {
     PathBuilder builder(fs);
     builder.join(relative_error_path_, relative);
     builder.canonicalize();

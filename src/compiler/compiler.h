@@ -73,6 +73,9 @@ class Compiler {
     /// Controls compiler statistics: 0 disables them, 1 prints timings,
     /// and 2 also prints compilation and output metrics.
     int verbosity;
+    /// Applications that are compiled together with the program. Their main
+    /// methods are entry points too. See the app-main intrinsic.
+    List<const char*> apps;
   };
 
   Compiler();

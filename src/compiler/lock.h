@@ -28,6 +28,8 @@
 #include "sources.h"
 #include "filesystem.h"
 
+#include <vector>
+
 namespace toit {
 namespace compiler {
 
@@ -46,6 +48,14 @@ class PackageLock {
                           SourceManager* source_manager,
                           Filesystem* fs,
                           Diagnostics* diagnostics);
+
+  // Merges the locks of programs that are compiled together. The files in the
+  // root folder of each program, but not in its packages, are in its own entry
+  // package, so they resolve their imports through its own lock. The packages
+  // of the later locks get ids of their own, because two programs can depend
+  // on different versions of the same package. The first lock is the main one.
+  static PackageLock merge(const std::vector<PackageLock>& locks,
+                           const std::vector<std::string>& root_paths);
 
   bool has_errors() const { return has_errors_; }
 

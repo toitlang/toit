@@ -33,5 +33,11 @@ TYPE_PRIMITIVE(spawn) {
   failure.add_array(program);
 }
 
+TYPE_PRIMITIVE(spawn_entry) {
+  result.add_smi(program);
+  failure.add_string(program);
+  failure.add_array(program);
+}
+
 }  // namespace toit::compiler
 }  // namespace toit

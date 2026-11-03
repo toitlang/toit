@@ -73,6 +73,49 @@ PRIMITIVE(spawn) {
   return Smi::from(pid);
 }
 
+// Starts a container that is an entry point of the running program. It has
+// a process group of its own, so it is tracked like any other container.
+PRIMITIVE(spawn_entry) {
+  PRIVILEGED;
+  ARGS(int, method_id, int, group_id, Object, arguments);
+  Program* program = process->program();
+  Method method(program->bytecodes, method_id);
+
+  unsigned message_size = 0;
+  { MessageEncoder size_encoder(process, null);
+    if (!size_encoder.encode(arguments)) return size_encoder.create_error_object(process);
+    message_size = size_encoder.size();
+  }
+
+  uint8* buffer = null;
+  { HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
+    buffer = unvoid_cast<uint8*>(malloc(message_size));
+    if (buffer == null) FAIL(MALLOC_FAILED);
+  }
+
+  MessageEncoder encoder(process, buffer);  // Takes over buffer.
+  if (!encoder.encode(arguments)) {
+    return encoder.create_error_object(process);
+  }
+
+  InitialMemoryManager initial_memory_manager;
+  if (!initial_memory_manager.allocate()) FAIL(ALLOCATION_FAILED);
+
+  ProcessGroup* process_group = ProcessGroup::create(group_id, program);
+  if (!process_group) FAIL(MALLOC_FAILED);
+  AllocationManager free_process_group(process, process_group);
+
+  initial_memory_manager.global_variables = program->global_variables.copy();
+  if (!initial_memory_manager.global_variables) FAIL(MALLOC_FAILED);
+
+  // Takes over the encoder and the initial_memory_manager.
+  int pid = VM::current()->scheduler()->spawn(
+      program, process_group, -1, method, &encoder, &initial_memory_manager, true);
+  if (pid == Scheduler::INVALID_PROCESS_ID) FAIL(MALLOC_FAILED);
+  free_process_group.keep_result();
+  return Smi::from(pid);
+}
+
 PRIMITIVE(is_running) {
   ARGS(int, offset);
   const FlashAllocation* allocation = FlashRegistry::allocation(offset);

@@ -62,3 +62,12 @@ spawn-method_ -> int:
 
 spawn-arguments_ -> any:
   #primitive.core.spawn-arguments
+
+// Programs can combine several applications, and the main methods of the
+// applications are entry points too. These are used by the system program
+// to start them.
+app-count_ -> int:
+  #primitive.intrinsics.app-count
+
+app-main_ index/int arguments -> any:
+  #primitive.intrinsics.app-main index arguments

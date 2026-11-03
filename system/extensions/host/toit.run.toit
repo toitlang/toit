@@ -100,19 +100,42 @@ class ApplicationContainerImage extends ContainerImageFromSnapshot:
   static launch-snapshot_ snapshot/ByteArray gid/int id/ByteArray arguments/any -> int:
     #primitive.snapshot.launch
 
+// An application that is compiled into the system program. It shares the
+// program, and with it the debugging information, with the system.
+class AppEntryContainerImage extends ContainerImageFromSnapshot:
+  index/int
+  flags ::= ContainerService.FLAG-RUN-BOOT | ContainerService.FLAG-RUN-CRITICAL
+  default-arguments/any
+
+  constructor manager/ContainerManager system-bundle/ByteArray .index .default-arguments:
+    super manager system-bundle
+    // The images must have different ids, so the applications don't get the
+    // id of the system program.
+    id = uuid.Uuid.uuid5 "toit-app-entry" "$id/$index"
+
+  spawn container/Container arguments/any -> int:
+    return spawn-app-entry index container.id arguments
+
 main arguments:
   // The snapshot bundles for the system and application programs are passed in the
-  // spawn arguments.
+  // spawn arguments. Programs that have applications compiled into them don't
+  // need the application bundle.
   bundles/Array_ ::= spawn-arguments_
   system-bundle ::= bundles[0]
   application-bundle ::= bundles[1]
-  if application-bundle is not ByteArray:
+  app-count := app-count_
+  if app-count == 0 and application-bundle is not ByteArray:
     print-on-stderr_ "toit.run.toit must be provided a snapshot"
     exit 1
 
   container-manager/ContainerManager := initialize-host
   container-manager.register-system-image
       SystemContainerImage container-manager system-bundle
-  container-manager.register-image
-      ApplicationContainerImage container-manager application-bundle arguments
+  if app-count == 0:
+    container-manager.register-image
+        ApplicationContainerImage container-manager application-bundle arguments
+  else:
+    app-count.repeat: | index |
+      container-manager.register-image
+          AppEntryContainerImage container-manager system-bundle index arguments
   exit (boot container-manager)

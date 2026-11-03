@@ -57,6 +57,7 @@ class MethodResolver : public ast::Visitor {
                  UnorderedMap<ir::Node*, ast::Node*>* ir_to_ast_map,
                  Module* entry_module,
                  Module* core_module,
+                 const std::vector<Module*>* app_modules,
                  Lsp* lsp,
                  SourceManager* source_manager,
                  Diagnostics* diagnostics)
@@ -65,6 +66,7 @@ class MethodResolver : public ast::Visitor {
       , ir_to_ast_map_(ir_to_ast_map)
       , entry_module_(entry_module)
       , core_module_(core_module)
+      , app_modules_(app_modules)
       , lsp_(lsp)
       , source_manager_(source_manager)
       , diagnostics_(diagnostics)
@@ -115,6 +117,7 @@ class MethodResolver : public ast::Visitor {
   UnorderedMap<ir::Node*, ast::Node*>* ir_to_ast_map_;
   Module* entry_module_;
   Module* core_module_;
+  const std::vector<Module*>* app_modules_;
   Lsp* lsp_;
   SourceManager* source_manager_;
   Diagnostics* diagnostics_;
@@ -355,6 +358,9 @@ class MethodResolver : public ast::Visitor {
   void visit_LiteralSet(ast::LiteralSet* node);
   void visit_LiteralMap(ast::LiteralMap* node);
   void visit_call_main(ast::Call* node);
+  void visit_call_app_main(ast::Call* node);
+  ir::Method* find_main(Module* module, bool* takes_args);
+  ir::Expression* call_main(ir::Method* main, bool takes_args, ast::Expression* arguments, Source::Range range);
   void visit_call_primitive(ast::Call* node);
   ir::AssignmentLocal* _typed_assign_local(ir::Local* local,
                                            int block_depth,

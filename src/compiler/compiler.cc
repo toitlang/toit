@@ -102,6 +102,8 @@ struct PipelineConfiguration {
   int optimization_level;
   /// Controls compiler timing and statistics output.
   int verbosity;
+  /// Applications that are compiled together with the program.
+  List<const char*> apps;
 };
 
 class PipelineStatistics {
@@ -1096,6 +1098,11 @@ SnapshotBundle Compiler::compile(const char* source_path,
     .optimization_level = compiler_config.optimization_level,
     .verbosity = compiler_config.verbosity,
   };
+  ListBuilder<const char*> apps;
+  for (int i = 0; i < compiler_config.apps.length(); i++) {
+    apps.add(Zone::current()->own_malloc(FilesystemLocal::to_local_path(compiler_config.apps[i])));
+  }
+  configuration.apps = apps.build();
 
   return compile(source_path, configuration);
 }
@@ -1242,6 +1249,7 @@ ir::Program* Pipeline::resolve(const std::vector<ast::Unit*>& units,
   NullDiagnostics null_diagnostics(this->diagnostics());
   Diagnostics* diagnostics = quiet ? &null_diagnostics : this->diagnostics();
   Resolver resolver(lsp(), source_manager(), diagnostics, &toitdoc_registry_);
+  resolver.set_app_count(configuration_.apps.length());
   auto result = resolver.resolve(units,
                                  entry_unit_index,
                                  core_unit_index);
@@ -1273,11 +1281,28 @@ PackageLock Pipeline::load_package_lock(const List<const char*> source_paths) {
   } else {
     lock_file = find_lock_file(entry_path, filesystem());
   }
-  return PackageLock::read(lock_file,
-                           entry_path,
-                           source_manager(),
-                           filesystem(),
-                           diagnostics());
+  auto lock = PackageLock::read(lock_file,
+                                entry_path,
+                                source_manager(),
+                                filesystem(),
+                                diagnostics());
+  if (configuration_.apps.is_empty()) return lock;
+  // Each application has its own lock, and its folder is its root.
+  std::vector<PackageLock> locks = { lock };
+  std::vector<std::string> roots = { std::string() };
+  for (int i = 0; i < configuration_.apps.length(); i++) {
+    const char* app = configuration_.apps[i];
+    std::string app_lock_file = find_lock_file(app, filesystem());
+    locks.push_back(PackageLock::read(app_lock_file, app, source_manager(), filesystem(), diagnostics()));
+    PathBuilder root(filesystem());
+    const char* file = app_lock_file.empty() ? app : app_lock_file.c_str();
+    if (!filesystem()->is_absolute(file)) root.join(filesystem()->cwd());
+    root.join(file);
+    root.join("..");
+    root.canonicalize();
+    roots.push_back(root.buffer());
+  }
+  return PackageLock::merge(locks, roots);
 }
 
 ast::Unit* LocationLanguageServerPipeline::parse(Source* source) {
@@ -2303,6 +2328,14 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   auto fs = configuration_.filesystem;
   fs->initialize(diagnostics());
   source_paths = adjust_source_paths(source_paths);
+  if (!configuration_.apps.is_empty()) {
+    // The applications come right after the entry and the core library.
+    ListBuilder<const char*> builder;
+    builder.add(source_paths[0]);
+    for (int i = 0; i < configuration_.apps.length(); i++) builder.add(configuration_.apps[i]);
+    for (int i = 1; i < source_paths.length(); i++) builder.add(source_paths[i]);
+    source_paths = builder.build();
+  }
   auto package_lock = load_package_lock(source_paths);
 
   if (package_lock.sdk_constraint() != "") {
