@@ -27,7 +27,9 @@ namespace compiler {
 class TypeDatabase;
 
 // Generates C++ code for all the given methods. See native.h.
-std::string generate_native_code(Program* program, TypeDatabase* types, std::vector<int> methods);
+// The cold methods are always optimized for size.
+std::string generate_native_code(Program* program, TypeDatabase* types, std::vector<int> methods,
+                                 const std::vector<int>& cold_methods);
 
 } // namespace toit::compiler
 } // namespace toit

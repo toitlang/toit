@@ -25,6 +25,16 @@
 namespace toit {
 namespace compiler {
 
+std::vector<int> SourceMapper::methods_in_files(const std::set<std::string>& absolute_paths) const {
+  std::vector<int> result;
+  for (auto& it : source_information_) {
+    if (it.id >= 0 && it.absolute_path != null && absolute_paths.count(it.absolute_path) != 0) {
+      result.push_back(it.id);
+    }
+  }
+  return result;
+}
+
 std::vector<int> SourceMapper::methods() const {
   std::vector<int> result;
   for (auto& it : source_information_) {

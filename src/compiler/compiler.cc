@@ -1155,10 +1155,13 @@ SnapshotBundle Compiler::compile(const char* source_path,
     pipeline_main_result.free_all();
     return SnapshotBundle::invalid();
   }
+  // A program with applications compiled into it is a system program
+  // that runs on its own.
   SnapshotBundle result(List<uint8>(pipeline_main_result.snapshot,
                                     pipeline_main_result.snapshot_size),
                         List<uint8>(pipeline_main_result.source_map_data,
-                                    pipeline_main_result.source_map_size));
+                                    pipeline_main_result.source_map_size),
+                        !configuration.apps.is_empty());
   pipeline_main_result.statistics.set(PipelineStatistics::BUNDLE_BYTES, result.size());
   pipeline_main_result.statistics.print();
   // The snapshot bundle copies all given data. It's thus safe to free
@@ -2499,7 +2502,20 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
 
   if (Flags::native != null) {
     TypeDatabase* types = TypeDatabase::compute(program, &method_selector_offsets);
-    auto code = generate_native_code(program, types, source_mapper->methods());
+    // The system program mostly waits for things, so when applications are
+    // compiled into it, only their code and the libraries are optimized for
+    // speed. The files of the system program are in the first entry package.
+    std::vector<int> cold_methods;
+    if (!configuration_.apps.is_empty()) {
+      std::set<std::string> system_files;
+      for (auto unit : units) {
+        if (unit->source() == null) continue;
+        if (unit->source()->package_id() != Package::ENTRY_PACKAGE_ID) continue;
+        system_files.insert(unit->source()->absolute_path());
+      }
+      cold_methods = source_mapper->methods_in_files(system_files);
+    }
+    auto code = generate_native_code(program, types, source_mapper->methods(), cold_methods);
     delete types;
     FILE* file = fopen(Flags::native, "wb");
     if (file == null || fwrite(code.c_str(), 1, code.size(), file) != code.size()) {

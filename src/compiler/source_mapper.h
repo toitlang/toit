@@ -17,6 +17,7 @@
 
 #include <string>
 #include <map>
+#include <set>
 #include <vector>
 
 #include "../top.h"
@@ -116,6 +117,8 @@ class SourceMapper {
 
   // The ids of all methods.
   std::vector<int> methods() const;
+  // The ids of the methods that are in the given files.
+  std::vector<int> methods_in_files(const std::set<std::string>& absolute_paths) const;
   void add_global_entry(ir::Global* global);
 
   int id_for_class(ir::Class* klass) const {

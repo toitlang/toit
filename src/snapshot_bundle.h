@@ -33,7 +33,8 @@ class SnapshotBundle {
   /// Returns a new SnapshotBundle, where the buffer is allocated with 'malloc'.
   /// The given data is not reused and can be freed.
   SnapshotBundle(List<uint8> main_snapshot,
-                 List<uint8> main_source_map_data);
+                 List<uint8> main_source_map_data,
+                 bool is_boot = false);
 
   static SnapshotBundle invalid() { return SnapshotBundle(null, 0); }
 
@@ -51,6 +52,10 @@ class SnapshotBundle {
   bool write_to_file(const char* path, bool silent = false);
 
   bool is_valid() const { return buffer_ != null; }
+
+  // Whether this is a system program that has the applications compiled into
+  // it, so it runs on its own instead of starting another program.
+  bool is_boot() const;
 
   Snapshot snapshot();
 
@@ -87,7 +92,8 @@ class SnapshotBundle {
   SnapshotBundle(List<uint8> main_snapshot,
                  List<uint8>* main_source_map_data,
                  const char* sdk_version,
-                 const uint8* uuid = null);
+                 const uint8* uuid = null,
+                 bool is_boot = false);
 
 
 };

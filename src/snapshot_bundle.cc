@@ -36,6 +36,7 @@ static const char* const UUID_NAME = "uuid";
 static const char* const SDK_VERSION_NAME = "sdk-version";
 static const char* const SNAPSHOT_NAME = "snapshot";
 static const char* const SOURCE_MAP_NAME = "source-map";
+static const char* const BOOT_NAME = "boot";
 
 static void update_sha256(mbedtls_sha256_context* context, const uint8* bytes, size_t length) {
   uint8 length_bytes[sizeof(uint32)];
@@ -45,13 +46,15 @@ static void update_sha256(mbedtls_sha256_context* context, const uint8* bytes, s
 }
 
 SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
-                               List<uint8> source_map_data)
-    : SnapshotBundle(snapshot, &source_map_data, vm_git_version()) {}
+                               List<uint8> source_map_data,
+                               bool is_boot)
+    : SnapshotBundle(snapshot, &source_map_data, vm_git_version(), null, is_boot) {}
 
 SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
                                List<uint8>* source_map_data,
                                const char* sdk_version,
-                               const uint8* uuid) {
+                               const uint8* uuid,
+                               bool is_boot) {
   ar::MemoryBuilder builder;
   int status = builder.open();
   if (status != 0) FATAL("Couldn't create snapshot");
@@ -109,6 +112,7 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
   add(SNAPSHOT_NAME, snapshot);
   add(UUID_NAME, List<uint8>(sum, UUID_SIZE));
   if (source_map_data != null) add(SOURCE_MAP_NAME, *source_map_data);
+  if (is_boot) add(BOOT_NAME, List<uint8>());
 
   builder.close(&buffer_, &size_);
 }
@@ -174,7 +178,13 @@ SnapshotBundle SnapshotBundle::without_snapshot() const {
   }
   uint8 id[UUID_SIZE];
   if (!uuid(id)) FATAL("Bundle without an id");
-  return SnapshotBundle(List<uint8>(), has_source_map ? &source_map : null, sdk_version, id);
+  return SnapshotBundle(List<uint8>(), has_source_map ? &source_map : null, sdk_version, id, is_boot());
+}
+
+bool SnapshotBundle::is_boot() const {
+  ar::MemoryReader reader(buffer_, size_);
+  ar::File file;
+  return reader.find(BOOT_NAME, &file) == 0;
 }
 
 SnapshotBundle SnapshotBundle::stripped() const {
@@ -198,7 +208,7 @@ SnapshotBundle SnapshotBundle::stripped() const {
       sdk_version = buffer;
     }
   }
-  return SnapshotBundle(snapshot_bytes, null, sdk_version);
+  return SnapshotBundle(snapshot_bytes, null, sdk_version, null, is_boot());
 }
 
 SnapshotBundle SnapshotBundle::read_from_file(const char* bundle_filename, bool silent) {

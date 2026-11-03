@@ -59,7 +59,8 @@ static const int opcode_length[] { BYTECODES(BYTECODE_LENGTH) -1 };
 // the operations work directly on them. See keep_on_top for how they get written.
 class NativeGenerator : private NativeCodeWriter {
  public:
-  NativeGenerator(Program* program, TypeDatabase* types, std::vector<int> methods);
+  NativeGenerator(Program* program, TypeDatabase* types, std::vector<int> methods,
+                  const std::vector<int>& cold_methods);
 
   std::string generate();
 
@@ -106,6 +107,12 @@ class NativeGenerator : private NativeCodeWriter {
   TypeDatabase* const types_;
   std::vector<MethodInfo> methods_;
   std::set<int> method_ids_;
+  // The methods that are always optimized for size, like the ones of the
+  // system program that the applications are compiled into.
+  std::set<int> cold_methods_;
+  bool is_cold(const MethodInfo& info) const {
+    return Flags::native_all_cold || cold_methods_.count(method_id(info.method)) != 0;
+  }
   std::set<int> dead_blocks_;  // Blocks that are only called with too few arguments.
   // The code following a call can be gone, but we still need something to
   // use as the return address, because it tells us where the call is.
@@ -300,9 +307,11 @@ class NativeGenerator : private NativeCodeWriter {
   void emit_tail_frame_move(int height, int outer_arity, int call_arity);
 };
 
-NativeGenerator::NativeGenerator(Program* program, TypeDatabase* types, std::vector<int> methods)
+NativeGenerator::NativeGenerator(Program* program, TypeDatabase* types, std::vector<int> methods,
+                                 const std::vector<int>& cold_methods)
     : program_(program)
-    , types_(types) {
+    , types_(types)
+    , cold_methods_(cold_methods.begin(), cold_methods.end()) {
   std::sort(methods.begin(), methods.end());
   methods.erase(std::unique(methods.begin(), methods.end()), methods.end());
   for (unsigned i = 0; i < methods.size(); i++) {
@@ -872,7 +881,7 @@ void NativeGenerator::find_nested_blocks(MethodInfo* info) {
 // the head of the loop, which leaves out the paths that leave the loop.
 void NativeGenerator::find_hot_code(MethodInfo* info) {
   info->is_hot = false;
-  if (Flags::native_all_cold) return;
+  if (is_cold(*info)) return;
   for (uint8* bcp : info->reachable) {
     bool is_call_to_self = *bcp == INVOKE_STATIC &&
         program_->dispatch_table[Utils::read_unaligned_uint16(bcp + 1)] == method_id(info->method);
@@ -1050,6 +1059,7 @@ void NativeGenerator::find_hot_blocks() {
     }
   }
   for (auto& info : methods_) {
+    if (is_cold(info)) continue;
     if (std::find(hot.begin(), hot.end(), method_id(info.method)) != hot.end()) info.is_hot = true;
   }
 }
@@ -2516,8 +2526,9 @@ void NativeGenerator::emit_opcode(const MethodInfo& info, uint8* bcp) {
   }
 }
 
-std::string generate_native_code(Program* program, TypeDatabase* types, std::vector<int> methods) {
-  NativeGenerator generator(program, types, methods);
+std::string generate_native_code(Program* program, TypeDatabase* types, std::vector<int> methods,
+                                 const std::vector<int>& cold_methods) {
+  NativeGenerator generator(program, types, methods, cold_methods);
   return generator.generate();
 }
 
