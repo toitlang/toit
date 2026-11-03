@@ -228,7 +228,8 @@ class Interpreter {
   // walks stacks.
   static int return_bci(Program* program, uint8* return_address);
 
-  // The image of a program that is spawned from a snapshot.
+  // The image of a program that is spawned from a snapshot. It is invalid if
+  // the engine can't run the program.
   static ProgramImage spawn_image(const uint8* id, const uint8* snapshot, word length);
 };
 

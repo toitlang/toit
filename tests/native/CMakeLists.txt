@@ -71,6 +71,9 @@ foreach(test ${NATIVE_TESTS})
   add_native_test("${test}" "${CMAKE_CURRENT_SOURCE_DIR}/../${test}.toit" --native)
 endforeach()
 
+# Tests that only make sense for native code.
+add_native_test("unsupported-launch-test" "${CMAKE_CURRENT_SOURCE_DIR}/unsupported-launch-test.toit" --native)
+
 foreach(test ${NATIVE_STRIPPED_TESTS})
   add_native_test("${test}-stripped" "${CMAKE_CURRENT_SOURCE_DIR}/../${test}.toit" --native --strip)
 endforeach()

@@ -41,6 +41,10 @@ PRIMITIVE(launch) {
     size = size_encoder.size();
   }
 
+  // Native executables can only run the programs that are compiled into them.
+  ProgramImage image = Interpreter::spawn_image(program_id.address(), bytes.address(), bytes.length());
+  if (!image.is_valid()) FAIL(UNSUPPORTED);
+
   uint8* buffer = null;
   { HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
     buffer = unvoid_cast<uint8*>(malloc(size));
@@ -54,7 +58,6 @@ PRIMITIVE(launch) {
   USE(ok);
   ASSERT(ok);
 
-  ProgramImage image = Interpreter::spawn_image(program_id.address(), bytes.address(), bytes.length());
   Program* program = image.program();
   ProcessGroup* process_group = ProcessGroup::create(gid, program, image.memory());
   ASSERT(process_group);  // Allocations only fail on devices.
