@@ -247,7 +247,8 @@ class EthernetServiceProvider extends EthernetServiceProviderBase_:
     finally: | is-exception exception |
       // If we're not returning a network resource to the client, we
       // must take care to decrement the usage count correctly.
-      if is-exception: state_.down
+      if is-exception:
+        critical-do: state_.down
 
   address resource/NetworkResource -> ByteArray:
     return (state_.module as EthernetModule_).address.to-byte-array
@@ -299,12 +300,15 @@ class EthernetModule_ implements NetworkModule:
     with-timeout ETHERNET-DHCP-TIMEOUT: wait-for-dhcp-ip-address_
 
   disconnect -> none:
-    if not resource-group_: return
-    logger_.debug "closing"
-    ethernet-close_ resource-group_
+    resource-group := resource-group_
+    if not resource-group: return
     resource-group_ = null
+    // Close before anything that can yield or throw. We may be running in a
+    // canceled task, and logging is an RPC to a service that may be gone.
+    ethernet-close_ resource-group
     address_ = null
     service.on-module-closed this
+    critical-do: logger_.debug "closed"
 
   wait-for-connected_ -> none:
     logger_.debug "connecting"
