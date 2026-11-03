@@ -46,7 +46,7 @@ static void print_usage(int exit_code) {
   printf("  [--strip]                                // Strip the output of debug information.\n");
   printf("  [--native]                               // Compile the executable to native code.\n");
   printf("  [--native-source]                        // Write the program as C++ instead of an executable.\n");
-  printf("  [--app <path>]...                         // Compile an application into the program as an entry point.\n");
+  printf("  [--app <path>]...                        // Compile an application into the system program.\n");
   printf("  [--verbose]                              // Print compiler phase timings.\n");
   printf("  [--verbosity-level {debug|info|verbose|quiet|silent}]\n");
   printf("                                            // Set compiler statistics verbosity.\n");
