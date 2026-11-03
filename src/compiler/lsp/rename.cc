@@ -81,16 +81,19 @@ static bool range_matches_name(const Source::Range& range,
   return true;
 }
 
+// Returns the range of the name in an assignment target or member access.
+static Source::Range name_range(ast::Node* node) {
+  if (node->is_Dot()) return node->as_Dot()->name()->selection_range();
+  return node->selection_range();
+}
+
 static Source::Range class_reference_range(ast::Expression* expression) {
   if (expression == null) return Source::Range::invalid();
   // `Foo?` wraps the type; the reference is the inner name.
   if (expression->is_Nullable()) {
     return class_reference_range(expression->as_Nullable()->type());
   }
-  if (expression->is_Dot()) {
-    return expression->as_Dot()->name()->selection_range();
-  }
-  return expression->selection_range();
+  return name_range(expression);
 }
 
 // Returns whether the method is an unnamed constructor or factory.
@@ -174,11 +177,15 @@ class FindReferencesVisitor : public ir::TraversingVisitor {
   void visit_CallStatic(ir::CallStatic* node) override;
   void visit_CallVirtual(ir::CallVirtual* node) override;
   void visit_Typecheck(ir::Typecheck* node) override;
+  void visit_Lambda(ir::Lambda* node) override;
+  void visit_AssignmentLocal(ir::AssignmentLocal* node) override;
+  void visit_AssignmentGlobal(ir::AssignmentGlobal* node) override;
 
   void emit_range(const Source::Range& range);
 
  private:
   void emit_named_argument_reference(ir::Call* node, Symbol param_name);
+  void emit_assignment_target(ir::Assignment* node);
 
   ir::Node* target_;
   ir::Class* target_class_;
@@ -695,9 +702,7 @@ void FindReferencesVisitor::visit_Reference(ir::Reference* node) {
           if (candidate->is_Dot()) {
             auto* receiver = candidate->as_Dot()->receiver();
             if (receiver->is_Identifier() || receiver->is_Dot()) {
-              auto range = receiver->is_Identifier()
-                  ? receiver->selection_range()
-                  : receiver->as_Dot()->name()->selection_range();
+              auto range = name_range(receiver);
               if (range_matches_name(range, target_class_->name().c_str(), source_manager_)) {
                 emit_range(range);
                 return true;
@@ -728,6 +733,32 @@ void FindReferencesVisitor::visit_Reference(ir::Reference* node) {
       emit_range(node->range());
     }
   }
+}
+
+void FindReferencesVisitor::visit_Lambda(ir::Lambda* node) {
+  // The captured arguments are compiler-generated references that have the
+  // range of the whole lambda. Only the lambda's code has source references.
+  node->code()->accept(this);
+}
+
+void FindReferencesVisitor::emit_assignment_target(ir::Assignment* node) {
+  // The IR range is the operator ("=", "+=", ...), so use the left-hand side
+  // from the map. Only identifier assignments are in the map.
+  // For compound assignments the read of the old value is a reference with
+  // the same range, so the range is emitted twice. The LSP server
+  // deduplicates locations.
+  auto* ast_left = ir_to_ast_map_.lookup(node);
+  if (ast_left != null) emit_range(name_range(ast_left));
+}
+
+void FindReferencesVisitor::visit_AssignmentLocal(ir::AssignmentLocal* node) {
+  if (node->local() == target_) emit_assignment_target(node);
+  TraversingVisitor::visit_AssignmentLocal(node);
+}
+
+void FindReferencesVisitor::visit_AssignmentGlobal(ir::AssignmentGlobal* node) {
+  if (node->global() == target_) emit_assignment_target(node);
+  TraversingVisitor::visit_AssignmentGlobal(node);
 }
 
 void FindReferencesVisitor::visit_CallVirtual(ir::CallVirtual* node) {

@@ -230,14 +230,15 @@ test client/LspClient test-path/string -> none:
               start-char := start["character"]
               end-line := end["line"]
               end-char := end["character"]
+              // Identifiers never span multiple lines.
+              expect-equals start-line end-line
               // Verify the edited range covers the original name.
               if fc-lines:
-                if start-line == end-line:
-                  old-text := fc-lines[start-line][start-char..end-char]
-                  // In Toit, underscores and hyphens are interchangeable
-                  //   in identifiers. Normalize before comparing.
-                  normalized := old-text.replace --all "_" "-"
-                  expect-equals expected-name normalized
+                old-text := fc-lines[start-line][start-char..end-char]
+                // In Toit, underscores and hyphens are interchangeable
+                //   in identifiers. Normalize before comparing.
+                normalized := old-text.replace --all "_" "-"
+                expect-equals expected-name normalized
               if source-path:
                 actual-locations.add (Location source-path start-line start-char)
 

@@ -1743,7 +1743,7 @@ void MethodResolver::visit_TryFinally(ast::TryFinally* node) {
       // Blank the exception value if we are not throwing.
       auto null_val = zone_new<ir::LiteralNull>(range);
       auto exception_ref = zone_new<ir::ReferenceLocal>(ir_handler_parameter, 0, range);
-      auto is_throw = zone_new<ir::ReferenceLocal>(reason_local, 0, range);
+      auto is_throw = zone_new<ir::ReferenceLocal>(reason_local, 0, reason_local->range());
       // Wrap the `is_throw` in an 'as any' to avoid type warnings
       //   ("always evaluates to true") later on.
       auto iff = zone_new<ir::If>(zone_new<ir::Typecheck>(ir::Typecheck::AS_CHECK,
@@ -4288,6 +4288,9 @@ ir::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
       // If necessary, a typecheck will be inserted later.
       auto assignment = zone_new<ir::AssignmentGlobal>(ir_getter_node->as_Global(), value, range);
       global_assignments_.push_back(assignment);
+      // The IR range is the operator ("=", "+=", ...). Record the left-hand side
+      // so that the LSP rename visitor can find the name's range.
+      (*ir_to_ast_map_)[assignment] = ast_left;
       return assignment;
     };
   } else if (ir_setter_node->is_Local()) {
@@ -4296,10 +4299,14 @@ ir::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
       return zone_new<ir::ReferenceLocal>(ir_getter_node->as_Local(), block_depth, ast_left->selection_range());
     };
     create_set = [&](ir::Expression* value) {
-      return _typed_assign_local(ir_getter_node->as_Local(),
-                                 block_depth,
-                                 value,
-                                 range);
+      auto assignment = _typed_assign_local(ir_getter_node->as_Local(),
+                                            block_depth,
+                                            value,
+                                            range);
+      // The IR range is the operator ("=", "+=", ...). Record the left-hand side
+      // so that the LSP rename visitor can find the name's range.
+      (*ir_to_ast_map_)[assignment] = ast_left;
+      return assignment;
     };
   } else {
     ASSERT(ir_setter_node->is_Method());
