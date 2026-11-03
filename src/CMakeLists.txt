@@ -82,7 +82,7 @@ list(REMOVE_ITEM toit_core_SRC ${run_SRC})
 
 # Executables with native code have a replacement for the bytecode loop, and they
 # don't need the primitive tables, so they are in a library of their own.
-list(FILTER toit_core_SRC EXCLUDE REGEX "/interpreter_native.cc$")
+list(FILTER toit_core_SRC EXCLUDE REGEX "/(interpreter_native|native).cc$")
 if (TOIT_NATIVE_SUPPORTED)
   list(FILTER toit_core_SRC EXCLUDE REGEX "/(interpreter_run|primitive_tables).cc$")
 endif()
@@ -357,6 +357,7 @@ if (NOT ${TOIT_IS_EMBEDDED})
       STATIC
       native_main.cc
       interpreter_native.cc
+      native.cc
     )
     target_link_libraries(toit_native_main PUBLIC ${TOIT_LINK_LIBS})
     target_include_directories(toit_native_main PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

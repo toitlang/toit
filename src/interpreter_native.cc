@@ -14,8 +14,10 @@
 // directory of this repository.
 
 #include "interpreter.h"
+#include "native.h"
 #include "objects_inline.h"
 #include "process.h"
+#include "snapshot.h"
 
 namespace toit {
 
@@ -24,13 +26,30 @@ void Primitive::set_up() {}
 
 // Executables that are compiled to native code don't have the bytecode
 // loop from interpreter_run.cc, because all their programs are native code.
+// This is their side of the interface that the engines implement.
 Interpreter::Result Interpreter::run() {
   process_->object_heap()->leave_primitive();
   Result result(Result::PREEMPTED);
-  if (native_runner_ == null || !native_runner_(this, &result)) {
+  if (!NativeRuntime::run(this, &result)) {
     FATAL("Native executables can only run native programs");
   }
   return result;
+}
+
+Object* Interpreter::start_address(uint8* bcp) {
+  return NativeRuntime::start_address(process_->program(), bcp);
+}
+
+// Replaces the default for bytecodes in objects.cc.
+int Interpreter::return_bci(Program* program, uint8* return_address) {
+  return NativeRuntime::return_bci(program, return_address);
+}
+
+// The programs in the executable have their images compiled in.
+ProgramImage Interpreter::spawn_image(const uint8* id, const uint8* snapshot, word length) {
+  ProgramImage image = NativeRuntime::load_image_with_id(id);
+  if (image.is_valid()) return image;
+  return Snapshot(snapshot, length).read_image(id);
 }
 
 }  // namespace toit

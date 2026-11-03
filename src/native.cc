@@ -13,8 +13,6 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-#ifdef TOIT_HAS_NATIVE
-
 // Everything here depends on tail calls. Clang guarantees them, and for
 // GCC we have to make sure that the optimization is on.
 #if defined(__GNUC__) && !defined(__clang__)
@@ -122,10 +120,6 @@ static Interpreter::Result& result_of(NativeContext* c) {
   return *reinterpret_cast<Interpreter::Result*>(c->result);
 }
 
-static bool run_native(Interpreter* interpreter, Interpreter::Result* result) {
-  return NativeRuntime::run(interpreter, result);
-}
-
 int NativeRuntime::register_program(const NativeProgram* program) {
   // The generated code only knows about what is in native_abi.h.
   static_assert(Object::SMI_TAG_SIZE == NATIVE_SMI_TAG_SIZE, "smi tag");
@@ -160,40 +154,23 @@ int NativeRuntime::register_program(const NativeProgram* program) {
   }
   if (registered_count == MAX_REGISTERED_PROGRAMS) FATAL("Too many native programs");
   registered_programs[registered_count++] = program;
-  Interpreter::set_native_runner(&run_native, &NativeRuntime::start_address);
-  Stack::set_native_return_bci(&NativeRuntime::return_bci);
   return 0;
 }
 
 // Returns the native code for the program or null if it doesn't have any.
+// The image of a native program has the uuid of the program it was compiled
+// from, and its bytecodes are only the headers of the methods. Interpreted
+// programs from the same snapshot have the same uuid, but not the same
+// bytecodes, so the length tells them apart.
 static const NativeProgram* native_program_for(Program* program) {
-  // Programs are looked up all the time and there are very few of them.
-  static const int CACHE_SIZE = 8;
-  static std::atomic<Program*> cached_programs[CACHE_SIZE];
-  static const NativeProgram* cached_natives[CACHE_SIZE];
-  static std::atomic<int> cached_count(0);
-  int count = cached_count.load(std::memory_order_acquire);
-  for (int i = 0; i < count; i++) {
-    if (cached_programs[i].load(std::memory_order_relaxed) == program) return cached_natives[i];
-  }
-  const NativeProgram* result = null;
-  word length = program->bytecodes.length();
   for (int i = 0; i < registered_count; i++) {
     const NativeProgram* candidate = registered_programs[i];
-    if (length == candidate->bytecodes_length &&
-        native_fingerprint(program->bytecodes.data(), length) == candidate->fingerprint) {
-      result = candidate;
-      break;
+    if (memcmp(candidate->uuid, program->snapshot_uuid(), UUID_SIZE) == 0 &&
+        candidate->bytecodes_length == program->bytecodes.length()) {
+      return candidate;
     }
   }
-  // It is fine to lose a race. It just means that we'll look it up again.
-  int index = count;
-  if (index < CACHE_SIZE && cached_count.compare_exchange_strong(index, -1)) {
-    cached_programs[count].store(program, std::memory_order_relaxed);
-    cached_natives[count] = result;
-    cached_count.store(count + 1, std::memory_order_release);
-  }
-  return result;
+  return null;
 }
 
 // The compiler has replaced the code of the methods with their original
@@ -1114,4 +1091,3 @@ bool NativeRuntime::is_interface(NativeContext* c, Object* value, word offset) {
 
 }  // namespace toit
 
-#endif  // TOIT_HAS_NATIVE

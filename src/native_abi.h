@@ -116,7 +116,6 @@ struct NativeEntry {
 
 struct NativeProgram {
   uint32_t abi;
-  uint32_t fingerprint;
   intptr_t bytecodes_length;
   const NativeEntry* entries;
   int entry_count;
@@ -260,6 +259,11 @@ class NativeRuntime {
   // invalid if the id isn't for one of the programs in this executable.
   static ProgramImage load_image_with_id(const uint8_t* id);
 
+  // The native side of the interface that the engines implement. See
+  // interpreter.h.
+  static Object* start_address(Program* program, uint8_t* bcp);
+  static int return_bci(Program* program, uint8_t* address);
+
   static void stack_overflow(NATIVE_PARAMS);
   static void preempt(NATIVE_PARAMS);
   static void primitive(NATIVE_PARAMS);
@@ -355,8 +359,6 @@ class NativeRuntime {
                                bool is_put);
   static ValueResult size_result(NativeContext* c, Object* receiver);
   static NativeFn find_entry(const NativeProgram* native, int bci);
-  static Object* start_address(Program* program, uint8_t* bcp);
-  static int return_bci(Program* program, uint8_t* address);
   static void call(NativeContext* c, Object** sp, void* next, Method target);
 };
 
