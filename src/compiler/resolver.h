@@ -53,6 +53,10 @@ class Resolver {
                        int entry_unit_index,
                        int core_unit_index);
 
+  // The applications of a program that combines several of them come right
+  // after the core unit. Their main methods are entry points.
+  void set_app_count(int count) { app_count_ = count; }
+
   ToitdocRegistry* toitdocs() { return toitdocs_; }
 
   /// Maps IR nodes to their originating AST nodes.
@@ -116,6 +120,9 @@ class Resolver {
   }
 
  private:
+  int app_count_ = 0;
+  std::vector<Module*> app_modules_;
+
   SourceManager* source_manager_;
   Diagnostics* diagnostics_;
   Lsp* lsp_;

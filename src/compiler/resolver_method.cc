@@ -5019,17 +5019,11 @@ void MethodResolver::visit_LiteralMap(ast::LiteralMap* node) {
   push(zone_new<ir::Sequence>(expressions.build(), node->selection_range()));
 }
 
-void MethodResolver::visit_call_main(ast::Call* node) {
-  if (node->arguments().length() != 1) {
-    report_error("Main primitive call must have one arguments");
-    push(zone_new<ir::Error>(node->selection_range()));
-    return;
-  }
-  ir::Method* main_method = null;
-  bool takes_args = false;
+// Finds the main method of the module. It may take the arguments or not.
+ir::Method* MethodResolver::find_main(Module* module, bool* takes_args) {
   for (int main_arity = 1; main_arity >= 0; main_arity--) {
     auto main_shape = ResolutionShape(main_arity);
-    auto main_entry = entry_module_->scope()->lookup_module(Symbols::main);
+    auto main_entry = module->scope()->lookup_module(Symbols::main);
     switch (main_entry.kind()) {
       case ResolutionEntry::PREFIX:
       case ResolutionEntry::AMBIGUOUS:
@@ -5041,13 +5035,38 @@ void MethodResolver::visit_call_main(ast::Call* node) {
           if (!candidate->is_Method()) continue;
           auto method = candidate->as_Method();
           if (method->resolution_shape() == main_shape) {
-            takes_args = (main_arity == 1);
-            main_method = method;
-            break;
+            *takes_args = (main_arity == 1);
+            return method;
           }
         }
     }
   }
+  return null;
+}
+
+// The argument expression is dropped if main doesn't take an argument. This
+// is different from normal calls, since the evaluation at runtime is thus not
+// guaranteed. However, here this is exactly what we want, as we don't want to
+// waste time building the arguments, if main doesn't need them anyway.
+ir::Expression* MethodResolver::call_main(ir::Method* main,
+                                          bool takes_args,
+                                          ast::Expression* arguments,
+                                          Source::Range range) {
+  auto ref = zone_new<ir::ReferenceMethod>(main, range);
+  CallBuilder builder(range);
+  ir::Expression* arg = resolve_expression(arguments, "Argument to main intrinsic must not be a block");
+  if (takes_args) builder.add_argument(arg, Symbol::invalid());
+  return builder.call_static(ref);
+}
+
+void MethodResolver::visit_call_main(ast::Call* node) {
+  if (node->arguments().length() != 1) {
+    report_error("Main primitive call must have one arguments");
+    push(zone_new<ir::Error>(node->selection_range()));
+    return;
+  }
+  bool takes_args = false;
+  ir::Method* main_method = find_main(entry_module_, &takes_args);
   if (main_method == null) {
     if (diagnostics()->should_report_missing_main()) {
       auto error_path = entry_module_->unit()->error_path();
@@ -5058,20 +5077,43 @@ void MethodResolver::visit_call_main(ast::Call* node) {
       push(zone_new<ir::Nop>(node->selection_range()));
     }
   } else {
-    auto ref = zone_new<ir::ReferenceMethod>(main_method, node->selection_range());
-    CallBuilder builder(node->selection_range());
-    ir::Expression* arg = resolve_expression(node->arguments()[0],
-                                             "Argument to main intrinsic must not be a block");
-    // The `arg` expression is dropped if `main` doesn't take an argument.
-    // This is different from normal calls, since the evaluation at runtime is thus not
-    // guaranteed.
-    // However, here this is exactly what we want, as we don't want to waste time
-    // building the args-array, if the user doesn't need it anyway.
-    if (takes_args) {
-      builder.add_argument(arg, Symbol::invalid());
-    }
-    push(builder.call_static(ref));
+    push(call_main(main_method, takes_args, node->arguments()[0], node->selection_range()));
   }
+}
+
+// Calls the main method of the application with the given index. A program
+// can combine several applications, which are entry points like the main
+// method of the program itself. The index has to be a local, because it is
+// used once for each application. Returns null for indexes that aren't for
+// an application.
+void MethodResolver::visit_call_app_main(ast::Call* node) {
+  auto range = node->selection_range();
+  if (node->arguments().length() != 2 || !node->arguments()[0]->is_Identifier()) {
+    report_error("The app-main primitive call takes a local and the arguments");
+    push(zone_new<ir::Error>(range));
+    return;
+  }
+  ir::Expression* result = zone_new<ir::LiteralNull>(range);
+  for (int i = static_cast<int>(app_modules_->size()) - 1; i >= 0; i--) {
+    Module* app = (*app_modules_)[i];
+    bool takes_args = false;
+    ir::Method* main_method = find_main(app, &takes_args);
+    if (main_method == null) {
+      report_error("Couldn't find 'main' (with 0 or 1 argument) in application '%s'",
+                   app->unit()->error_path().c_str());
+      continue;
+    }
+    CallBuilder builder(range);
+    builder.add_arguments(list_of(
+        resolve_expression(node->arguments()[0], "The index can't be a block"),
+        zone_new<ir::LiteralInteger>(i, range)));
+    auto is_app = builder.call_builtin(zone_new<ir::Builtin>(ir::Builtin::IDENTICAL));
+    result = zone_new<ir::If>(is_app,
+                              call_main(main_method, takes_args, node->arguments()[1], range),
+                              result,
+                              range);
+  }
+  push(zone_new<ir::Return>(result, false, range));
 }
 
 void MethodResolver::visit_call_primitive(ast::Call* node) {
@@ -5131,12 +5173,24 @@ void MethodResolver::visit_call_primitive(ast::Call* node) {
         primitive_name != Symbols::hash_find &&
         primitive_name != Symbols::hash_do &&
         primitive_name != Symbols::smi_repeat &&
-        primitive_name != Symbols::main) {
+        primitive_name != Symbols::main &&
+        primitive_name != Symbols::app_main &&
+        primitive_name != Symbols::app_count) {
       report_error(primitive_node, "Unknown intrinsic '%s'\n", primitive_name.c_str());
       encountered_error = true;
     }
     if (primitive_name == Symbols::main) {
       visit_call_main(node);
+      return;
+    }
+    if (primitive_name == Symbols::app_main) {
+      visit_call_app_main(node);
+      return;
+    }
+    if (primitive_name == Symbols::app_count) {
+      auto range = node->selection_range();
+      auto count = zone_new<ir::LiteralInteger>(static_cast<int64>(app_modules_->size()), range);
+      push(zone_new<ir::Return>(count, false, range));
       return;
     }
   } else {

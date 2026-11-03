@@ -116,6 +116,9 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
 
   auto entry_module = modules[entry_index];
   auto core_module = modules[core_index];
+  for (int i = 0; i < app_count_; i++) {
+    app_modules_.push_back(modules[core_index + 1 + i]);
+  }
   // We want to run through the entry_module first.
   for (int i = -1; i < static_cast<int>(modules.size()); i++) {
     if (i == entry_index) continue;
@@ -2348,7 +2351,7 @@ void Resolver::resolve_fill_method(ir::Method* method,
   }
 
   MethodResolver resolver(method, holder, scope, &ir_to_ast_map_, entry_module, core_module,
-                          lsp_, source_manager_, diagnostics_);
+                          &app_modules_, lsp_, source_manager_, diagnostics_);
   resolver.resolve_fill();
   auto& new_assignments = resolver.global_assignments();
   global_assignments_.insert(global_assignments_.end(),
@@ -2389,7 +2392,7 @@ void Resolver::resolve_field(ir::Field* field,
                                  field->range(),
                                  field->outline_range());
   MethodResolver resolver(&fake_method, holder, scope, &ir_to_ast_map_, entry_module, core_module,
-                          lsp_, source_manager_, diagnostics_);
+                          &app_modules_, lsp_, source_manager_, diagnostics_);
   resolver.resolve_field(field);
 
   auto ast_node = ir_to_ast_map_.at(field)->as_Declaration();

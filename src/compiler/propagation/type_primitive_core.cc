@@ -38,6 +38,14 @@ PRIMITIVE_INDEXES(MODULE_CORE)
   };
 };
 
+class ProgramsRegistryIndexes {
+ public:
+  enum Enum {
+PRIMITIVE_INDEXES(MODULE_PROGRAMS_REGISTRY)
+    count
+  };
+};
+
 #undef PRIMITIVE_INDEX
 #undef PRIMITIVE_INDEXES
 
@@ -344,7 +352,8 @@ bool TypePrimitive::uses_entry_task(unsigned module, unsigned index) {
 }
 
 bool TypePrimitive::uses_entry_spawn(unsigned module, unsigned index) {
-  return module == INDEX_core && index == CoreIndexes::spawn;
+  return (module == INDEX_core && index == CoreIndexes::spawn) ||
+      (module == INDEX_programs_registry && index == ProgramsRegistryIndexes::spawn_entry);
 }
 
 }  // namespace toit::compiler

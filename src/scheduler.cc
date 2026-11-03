@@ -334,7 +334,8 @@ bool Scheduler::signal_process(Process* sender, int target_id, Process::Signal s
 }
 
 int Scheduler::spawn(Program* program, ProcessGroup* process_group, int priority,
-                     Method method, MessageEncoder* arguments, InitialMemoryManager* initial_memory) {
+                     Method method, MessageEncoder* arguments, InitialMemoryManager* initial_memory,
+                     bool is_new_group) {
   Locker locker(mutex_);
 
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, process_group->id());
@@ -354,6 +355,7 @@ int Scheduler::spawn(Program* program, ProcessGroup* process_group, int priority
     delete process;
     return INVALID_PROCESS_ID;
   }
+  if (is_new_group) groups_.append(process_group);
   int pid = process->id();
   spawned->set_pid(pid);
   // Send the SPAWNED message before returning from the call to spawn. This is necessary

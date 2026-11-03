@@ -46,6 +46,7 @@ static void print_usage(int exit_code) {
   printf("  [--strip]                                // Strip the output of debug information.\n");
   printf("  [--native]                               // Compile the executable to native code.\n");
   printf("  [--native-source]                        // Write the program as C++ instead of an executable.\n");
+  printf("  [--app <path>]...                         // Compile an application into the program as an entry point.\n");
   printf("  [--verbose]                              // Print compiler phase timings.\n");
   printf("  [--verbosity-level {debug|info|verbose|quiet|silent}]\n");
   printf("                                            // Set compiler statistics verbosity.\n");
@@ -120,6 +121,9 @@ int main(int argc, char **argv) {
   bool native = false;
   bool native_source = false;
   bool native_boot = false;
+  // The compiler isn't set up yet, so this can't allocate with new.
+  auto apps = unvoid_cast<const char**>(malloc(argc * sizeof(const char*)));
+  int app_count = 0;
   int verbosity = 0;
 
   int processed_args = 1;  // The executable name has already been processed.
@@ -266,6 +270,13 @@ int main(int argc, char **argv) {
     } else if (strcmp(argv[processed_args], "--native") == 0) {
       native = true;
       processed_args++;
+    } else if (strcmp(argv[processed_args], "--app") == 0) {
+      processed_args++;
+      if (processed_args == argc) {
+        fprintf(stderr, "Missing argument to '--app'\n");
+        print_usage(1);
+      }
+      apps[app_count++] = argv[processed_args++];
     } else if (strcmp(argv[processed_args], "--native-boot") == 0) {
       // Used for building the SDK. Not interesting for users. The system
       // program mostly waits for things, so it only has to be small.
@@ -421,6 +432,7 @@ int main(int argc, char **argv) {
     .print_diagnostics_on_stdout = true,
     .optimization_level = optimization_level,
     .verbosity = for_language_server ? 0 : verbosity,
+    .apps = List<const char*>(apps, app_count),
   };
 
   if (for_language_server) {

@@ -106,7 +106,8 @@ class Scheduler {
 
   // Takes over the arguments and the initial memory.
   int spawn(Program* program, ProcessGroup* process_group, int priority,
-            Method method, MessageEncoder* arguments, InitialMemoryManager* initial_memory);
+            Method method, MessageEncoder* arguments, InitialMemoryManager* initial_memory,
+            bool is_new_group = false);
 
   // Returns a new process id (only called from Process constructor).
   int next_process_id();

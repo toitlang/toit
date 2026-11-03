@@ -148,6 +148,23 @@ abstract class ContainerImage:
   abstract stop-all -> none
   abstract delete -> none
 
+/**
+Starts the application with the given $index in a container with the given
+  $gid.
+
+Programs can have applications compiled into them. Their main methods are
+  entry points of the program, so they run in processes of their own, like
+  other containers, but they share the code of the program.
+*/
+spawn-app-entry index/int gid/int arguments/any -> int:
+  // The lambda only captures plain values, because they are sent to
+  // the new process.
+  code := :: app-main_ index arguments
+  return spawn-entry_ code.method_ gid code.arguments_
+
+spawn-entry_ method/int gid/int arguments/any -> int:
+  #primitive.programs-registry.spawn-entry
+
 class ContainerImageFlash extends ContainerImage:
   allocation_/FlashAllocation? := ?
 
