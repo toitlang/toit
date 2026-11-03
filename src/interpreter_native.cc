@@ -17,7 +17,6 @@
 #include "native.h"
 #include "objects_inline.h"
 #include "process.h"
-#include "snapshot.h"
 
 namespace toit {
 
@@ -45,11 +44,10 @@ int Interpreter::return_bci(Program* program, uint8* return_address) {
   return NativeRuntime::return_bci(program, return_address);
 }
 
-// The programs in the executable have their images compiled in.
+// The programs in the executable have their images compiled in. The image is
+// invalid for any other program, because there is no code for it.
 ProgramImage Interpreter::spawn_image(const uint8* id, const uint8* snapshot, word length) {
-  ProgramImage image = NativeRuntime::load_image_with_id(id);
-  if (image.is_valid()) return image;
-  return Snapshot(snapshot, length).read_image(id);
+  return NativeRuntime::load_image_with_id(id);
 }
 
 }  // namespace toit
