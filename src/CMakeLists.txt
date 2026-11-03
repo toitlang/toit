@@ -457,6 +457,22 @@ if (NOT ${TOIT_IS_EMBEDDED})
     endforeach()
   endif()
 
+  # The SDK has the sources of the system program, so applications can be
+  # compiled into it.
+  if (NOT ${TOIT_IS_CROSS})
+    set(SYSTEM_SOURCES_DIR "${CMAKE_BINARY_DIR}/sdk/lib/toit/system-sources")
+    add_custom_target(
+      build_system_sources
+      COMMAND "${CMAKE_COMMAND}"
+          "-DSOURCE_DIR=${TOIT_SDK_SOURCE_DIR}"
+          "-DTARGET_DIR=${SYSTEM_SOURCES_DIR}"
+          -P "${TOIT_SDK_SOURCE_DIR}/tools/copy-system-sources.cmake"
+    )
+    add_dependencies(build_system_sources download_embedded_program_packages)
+    add_dependencies(build_tools build_system_sources)
+    install(DIRECTORY "${SYSTEM_SOURCES_DIR}/" DESTINATION lib/toit/system-sources)
+  endif()
+
   foreach (embedded_program ${EMBEDDED_TOIT_PROGRAMS})
     set(embedded_source "${EMBEDDED_PROGRAM_SOURCE_${embedded_program}}")
     set(embedded_snapshot "${EMBEDDED_PROGRAM_SNAPSHOT_${embedded_program}}")
