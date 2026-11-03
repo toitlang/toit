@@ -28,5 +28,16 @@
 
 namespace toit {
 
+// Native programs don't have bytecodes. Each method is replaced by a record of
+// the same size: the method header followed by the original id of the method,
+// which stack traces use to find names and positions. The targets of
+// non-local branches get records too, with -1 as their original id. Ids and
+// entries keep pointing into these records, so the index of the record is all
+// it takes to find the code.
+inline word native_record_size() { return Method::entry_offset() + sizeof(int32); }
+
+inline word native_record_index(word entry_bci) {
+  return (entry_bci - Method::entry_offset()) / native_record_size();
+}
 
 }  // namespace toit

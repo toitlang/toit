@@ -341,22 +341,27 @@ void NativeGenerator::compute_pruned_bytecodes(const std::vector<int>& methods) 
   for (int entry : program_->dispatch_table) {
     if (entry >= 0) ids.insert(entry);
   }
+  auto add_record = [&](const uint8* header, int original_id) {
+    if (header == null) {
+      pruned_bytecodes_.insert(pruned_bytecodes_.end(), Method::entry_offset(), 0);
+    } else {
+      pruned_bytecodes_.insert(pruned_bytecodes_.end(), header, header + Method::entry_offset());
+    }
+    for (int i = 0; i < 4; i++) pruned_bytecodes_.push_back((original_id >> (i * 8)) & 0xff);
+  };
   for (int id : ids) {
     pruned_ids_[id] = pruned_bytecodes_.size();
-    uint8* header = program_->bcp_from_absolute_bci(id);
-    pruned_bytecodes_.insert(pruned_bytecodes_.end(), header, header + Method::entry_offset());
-    for (int i = 0; i < 4; i++) pruned_bytecodes_.push_back((id >> (i * 8)) & 0xff);
+    add_record(program_->bcp_from_absolute_bci(id), id);
+  }
+  // Targets of non-local branches only need a record to be found.
+  for (int target : branch_targets_) {
+    pruned_branch_targets_[target] = pruned_bytecodes_.size() + Method::entry_offset();
+    add_record(null, -1);
   }
 }
 
-// Targets of non-local branches don't have a place in the pruned bytecodes.
-// They just need to be unique, so they are numbered after the last method.
 int NativeGenerator::pruned_branch_target(int target) {
-  auto probe = pruned_branch_targets_.find(target);
-  if (probe != pruned_branch_targets_.end()) return probe->second;
-  int result = pruned_bytecodes_.size() + pruned_branch_targets_.size();
-  pruned_branch_targets_[target] = result;
-  return result;
+  return pruned_branch_targets_.at(target);
 }
 
 void NativeGenerator::update_program() {
@@ -1163,22 +1168,28 @@ void NativeGenerator::emit_tables() {
   }
   line("};");
   line("");
-  std::map<int, std::string> entries;
+  // The code for each record in the pruned bytecodes, in order.
+  std::vector<std::string> code(pruned_bytecodes_.size() / native_record_size());
   current_end_ = null;
-  for (auto& info : methods_) entries[pruned_entry(method_id(info.method))] = method_label(info.method);
+  for (auto& info : methods_) {
+    code[native_record_index(pruned_entry(method_id(info.method)))] = method_label(info.method);
+  }
+  for (int target : branch_targets_) {
+    code[native_record_index(pruned_branch_target(target))] = label(program_->bcp_from_absolute_bci(target));
+  }
+  std::string task_start;
   if (program_->has_entry_task() && method_ids_.count(method_id(program_->entry_task())) != 0) {
     uint8* task = program_->entry_task().entry() + LOAD_NULL_LENGTH;
-    // The place in the pruned method isn't used for anything but finding the code.
-    entries[pruned_entry(method_id(program_->entry_task())) + LOAD_NULL_LENGTH] = label(task);
+    task_start = label(task);
     // The return address of the outermost frame. Traces need the original bci.
     return_points_.insert(task);
   }
-  for (int target : branch_targets_) {
-    entries[pruned_branch_target(target)] = label(program_->bcp_from_absolute_bci(target));
-  }
 
   std::set<std::string> used;
-  for (auto& it : entries) used.insert(it.second);
+  for (auto& name : code) {
+    if (!name.empty()) used.insert(name);
+  }
+  if (!task_start.empty()) used.insert(task_start);
   for (uint8* bcp : return_points_) used.insert(label(bcp));
   for (auto& name : used) line("NATIVE_USED(" + name + ");");
   line("");
@@ -1186,8 +1197,10 @@ void NativeGenerator::emit_tables() {
   // These are the tables described in native_abi.h.
   line("__asm__(NATIVE_TABLE_SECTION R\"__toit__(");
   line(".p2align 2");
-  line("toit_native_entries:");
-  for (auto& it : entries) line(cat(".long ", it.first, ", ", it.second, " - ."));
+  line("toit_native_code:");
+  for (auto& name : code) line(name.empty() ? std::string(".long 0") : cat(".long ", name, " - ."));
+  line("toit_native_task_start:");
+  line(task_start.empty() ? std::string(".long 0") : cat(".long ", task_start, " - ."));
   line("toit_native_returns:");
   for (uint8* bcp : return_points_) line(cat(".long ", label(bcp), " - ."));
   line("toit_native_return_deltas:");
@@ -1201,7 +1214,8 @@ void NativeGenerator::emit_tables() {
   }
   line(".text\n)__toit__\");");
   line("");
-  line("extern const NativeEntry entries[] __asm__(\"toit_native_entries\");");
+  line("extern const int32_t code[] __asm__(\"toit_native_code\");");
+  line("extern const int32_t task_start[] __asm__(\"toit_native_task_start\");");
   line("extern const int32_t returns[] __asm__(\"toit_native_returns\");");
   line("extern const uint8_t return_deltas[] __asm__(\"toit_native_return_deltas\");");
   line("");
@@ -1221,8 +1235,9 @@ void NativeGenerator::emit_tables() {
   line("static const NativeProgram native_program = {");
   entry("NATIVE_ABI");
   entry(std::to_string(pruned_bytecodes_.size()));
-  entry("entries");
-  entry(std::to_string(entries.size()));
+  entry("code");
+  entry(std::to_string(code.size()));
+  entry("task_start");
   entry("vtable");
   entry("selectors");
   entry("static_cast<int>(sizeof(vtable) / sizeof(vtable[0]))");

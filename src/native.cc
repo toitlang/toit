@@ -183,20 +183,18 @@ static int original_bci(uint8* header) {
 }
 
 NativeFn NativeRuntime::find_entry(const NativeProgram* native, int bci) {
-  const NativeEntry* entries = native->entries;
-  int low = 0;
-  int high = native->entry_count - 1;
-  while (low <= high) {
-    int middle = low + (high - low) / 2;
-    int probe = entries[middle].bci;
-    if (probe == bci) return entries[middle].fn();
-    if (probe < bci) {
-      low = middle + 1;
-    } else {
-      high = middle - 1;
+  word index = native_record_index(bci);
+  word offset = bci - Method::entry_offset() - index * native_record_size();
+  NativeFn result = nullptr;
+  if (0 <= index && index < native->code_count) {
+    if (offset == 0) {
+      result = native_code_at(&native->code[index]);
+    } else if (offset == LOAD_NULL_LENGTH) {
+      result = native_code_at(native->task_start);
     }
   }
-  FATAL("no native code at %d", bci);
+  if (result == nullptr) FATAL("no native code at %d", bci);
+  return result;
 }
 
 // Processes and tasks are set up with the addresses they start from
@@ -228,11 +226,12 @@ int NativeRuntime::return_bci(Program* program, uint8* address) {
     const int32* offset = &native->returns[i];
     if (reinterpret_cast<intptr_t>(offset) + *offset == reinterpret_cast<intptr_t>(fn)) return bci;
   }
-  for (int i = 0; i < native->entry_count; i++) {
-    if (native->entries[i].fn() != fn) continue;
-    int entry = native->entries[i].bci;
-    if (entry >= program->bytecodes.length()) return -1;
-    return original_bci(Method::header_from_entry(program->bcp_from_absolute_bci(entry)));
+  for (int i = 0; i < native->code_count; i++) {
+    if (native_code_at(&native->code[i]) != fn) continue;
+    uint8* header = program->bytecodes.data() + i * native_record_size();
+    // The targets of non-local branches have no original id.
+    if (static_cast<int32>(Utils::read_unaligned_uint32(header + Method::entry_offset())) < 0) return -1;
+    return original_bci(header);
   }
   return -1;
 }

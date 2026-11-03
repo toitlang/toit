@@ -102,25 +102,24 @@ typedef void (*NativeFn)(NATIVE_PARAMS);
 #define NATIVE_TABLE_SECTION ".section .rodata\n"
 #endif
 
-// Code that can be entered from the outside: method entries, the targets of
-// non-local branches and the place where tasks start. Sorted by bci. The
-// offset is relative to the field itself.
-struct NativeEntry {
-  int32_t bci;
-  int32_t offset;
-
-  NativeFn fn() const {
-    return reinterpret_cast<NativeFn>(reinterpret_cast<intptr_t>(&offset) + offset);
-  }
-};
+// Offsets to code are relative to where they are stored. Zero means that
+// there is no code.
+inline NativeFn native_code_at(const int32_t* offset) {
+  if (*offset == 0) return nullptr;
+  return reinterpret_cast<NativeFn>(reinterpret_cast<intptr_t>(offset) + *offset);
+}
 
 static const uint16_t NATIVE_NO_SELECTOR = 0xffff;
 
 struct NativeProgram {
   uint32_t abi;
   intptr_t bytecodes_length;
-  const NativeEntry* entries;
-  int entry_count;
+  // The code for each record in the pruned bytecodes: the methods and the
+  // targets of non-local branches. The task start is where tasks begin, in the
+  // middle of the entry task method.
+  const int32_t* code;
+  int code_count;
+  const int32_t* task_start;
   // The dispatch table, and the selector that each of its entries is for. The
   // entries that aren't in use have NATIVE_NO_SELECTOR.
   const NativeFn* dispatch_table;
