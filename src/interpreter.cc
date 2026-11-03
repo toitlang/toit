@@ -27,14 +27,6 @@
 
 namespace toit {
 
-Interpreter::NativeRunner* Interpreter::native_runner_ = null;
-Interpreter::NativeAddress* Interpreter::native_address_ = null;
-
-Object* Interpreter::start_address(uint8* bcp) {
-  if (native_address_ != null) return native_address_(process_->program(), bcp);
-  return reinterpret_cast<Object*>(bcp);
-}
-
 Interpreter::Interpreter()
     : process_(null)
     , limit_(null)

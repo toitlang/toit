@@ -1205,7 +1205,6 @@ void NativeGenerator::emit_tables() {
   line("");
   line("static const NativeProgram native_program = {");
   entry("NATIVE_ABI");
-  entry(cat(native_fingerprint(pruned_bytecodes_.data(), pruned_bytecodes_.size()), "u"));
   entry(std::to_string(pruned_bytecodes_.size()));
   entry("entries");
   entry(std::to_string(entries.size()));

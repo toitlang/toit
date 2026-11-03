@@ -14,6 +14,7 @@
 // directory of this repository.
 
 #include "flags.h"
+#include "interpreter.h"
 #include "memory.h"
 #include "objects_inline.h"
 #include "encoder.h"
@@ -248,13 +249,6 @@ void Array::roots_do(RootCallback* cb) {
   cb->do_roots(_root_at(_offset_from(0)), length());
 }
 
-Stack::NativeReturnBci* Stack::native_return_bci_ = null;
-
-// The marker of the frames in native code. It's a constant, because loading the
-// one from the program takes code and time at every call. The tag makes it
-// different from all real values, so it can't be confused with anything.
-static Object* const NATIVE_FRAME_MARKER = reinterpret_cast<Object*>(Object::MARKED_TAG);
-
 word Stack::absolute_bci_at_preemption(Program* program) {
   // Check that the stack has both words.
   if (_stack_sp_addr() + 1 >= _stack_base_addr()) return -1;
@@ -309,11 +303,17 @@ void Stack::roots_do(Program* program, RootCallback* cb) {
   for (word i = 0; i < used_length; i++) {
     Object* root_object = roots[i];
     if (bytecodes_from <= root_object && root_object < bytecodes_to) continue;
-    if (root_object == NATIVE_FRAME_MARKER) continue;
+    if (root_object == native_frame_marker()) continue;
     cb->do_root(&roots[i]);
   }
 }
 
+// The bytecode engine's translation from return addresses to bcis, which is
+// what the compiler and the interpreter use. Native executables replace it
+// with the one in interpreter_native.cc.
+__attribute__((weak)) int Interpreter::return_bci(Program* program, uint8* return_address) {
+  return program->absolute_bci_from_bcp(return_address);
+}
 
 int Stack::frames_do(Program* program, FrameCallback* cb) {
   word stack_length = _stack_base_addr() - _stack_sp_addr();
@@ -324,7 +324,7 @@ int Stack::frames_do(Program* program, FrameCallback* cb) {
   bool is_first_frame = true;
   for (word index = 0; index < stack_length - 1; index++) {
     Object* probe = at(index);
-    if (probe != program->frame_marker() && probe != NATIVE_FRAME_MARKER) continue;
+    if (probe != program->frame_marker() && probe != native_frame_marker()) continue;
     uint8* return_bcp = reinterpret_cast<uint8*>(at(index + 1));
     if (last_return_bcp == null) {
       // Drop the primitive call.
@@ -333,9 +333,7 @@ int Stack::frames_do(Program* program, FrameCallback* cb) {
       // Don't report the `throw` frame.
       is_first_frame = false;
     } else {
-      int bci = native_return_bci_
-          ? native_return_bci_(program, last_return_bcp)
-          : program->absolute_bci_from_bcp(last_return_bcp);
+      int bci = Interpreter::return_bci(program, last_return_bcp);
       if (bci >= 0) {
         cb->do_frame(this, frame_no, bci);
         frame_no++;

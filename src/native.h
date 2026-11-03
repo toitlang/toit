@@ -28,11 +28,5 @@
 
 namespace toit {
 
-// Used for checking that the running program is the one that was compiled.
-inline uint32 native_fingerprint(const uint8* bytes, word length) {
-  uint32 hash = 2166136261u;
-  for (word i = 0; i < length; i++) hash = (hash ^ bytes[i]) * 16777619u;
-  return hash;
-}
 
 }  // namespace toit

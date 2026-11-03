@@ -14,6 +14,7 @@
 // directory of this repository.
 
 #include "interpreter.h"
+#include "snapshot.h"
 
 #include <math.h>
 
@@ -282,6 +283,17 @@ inline bool intrinsic_ushr(Object* a, Object* b, Smi** result) {
   return true;
 }
 
+// Bytecodes start where the code of the method starts.
+Object* Interpreter::start_address(uint8* bcp) {
+  return reinterpret_cast<Object*>(bcp);
+}
+
+#ifndef TOIT_FREERTOS
+ProgramImage Interpreter::spawn_image(const uint8* id, const uint8* snapshot, word length) {
+  return Snapshot(snapshot, length).read_image(id);
+}
+#endif
+
 Interpreter::Result Interpreter::run() {
 #define LABEL(opcode, length, format, print) &&interpret_##opcode,
   // On EC618 (no data cache), place the dispatch table in RAM for fast access.
@@ -300,11 +312,6 @@ Interpreter::Result Interpreter::run() {
   // pending heap limit installed. Do it here before starting
   // the interpretation.
   process_->object_heap()->leave_primitive();
-
-  if (native_runner_ != null) {
-    Result result(Result::PREEMPTED);
-    if (native_runner_(this, &result)) return result;
-  }
 
   // Interpretation state.
   Program* program = process_->program();

@@ -42,6 +42,8 @@
 
 namespace toit {
 
+class ProgramImage;
+
 typedef double (double_op)(double a, double b);
 
 class Interpreter {
@@ -213,22 +215,21 @@ class Interpreter {
   friend class Stack;
   friend class NativeRuntime;
 
-  // Runs programs that have been compiled to native code. Returns
-  // false if the current process runs something else.
-  typedef bool NativeRunner(Interpreter* interpreter, Result* result);
-  static NativeRunner* native_runner_;
+  // The rest is implemented by the engine that runs the code. Executables
+  // have one of them: the bytecode loop in interpreter_run.cc, or native code
+  // in interpreter_native.cc. Run above is also part of it.
 
-  // Translates the addresses that processes and tasks start from.
-  typedef Object* NativeAddress(Program* program, uint8* bcp);
-  static NativeAddress* native_address_;
-
+  // The return address that processes and tasks start from.
   Object* start_address(uint8* bcp);
 
  public:
-  static void set_native_runner(NativeRunner* runner, NativeAddress* address) {
-    native_runner_ = runner;
-    native_address_ = address;
-  }
+  // The bci that stack traces show for a return address in a frame. The one
+  // for bytecodes is a weak default in objects.cc, because the compiler also
+  // walks stacks.
+  static int return_bci(Program* program, uint8* return_address);
+
+  // The image of a program that is spawned from a snapshot.
+  static ProgramImage spawn_image(const uint8* id, const uint8* snapshot, word length);
 };
 
 // We push the exception and two elements for the unwinding implementation
