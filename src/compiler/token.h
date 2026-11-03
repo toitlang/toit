@@ -237,8 +237,8 @@ enum Precedence {
   IN(hash_find, "hash-find")                                             \
   IN(hash_do, "hash-do")                                                 \
   IN(smi_repeat, "smi-repeat")                                           \
-  IN(app_main, "app-main")                                               \
-  IN(app_count, "app-count")                                             \
+  IN(combined_main, "combined-main")                                     \
+  IN(combined_count, "combined-count")                                   \
   I(value_)                                                              \
   IN(index, "[]")                                                        \
   IN(index_put, "[]=")                                                   \

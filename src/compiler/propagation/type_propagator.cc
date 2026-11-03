@@ -124,6 +124,18 @@ void TypePropagator::ensure_entry_spawn() {
   has_entry_spawn_ = true;
 }
 
+void TypePropagator::ensure_entry_combined() {
+  if (has_entry_combined_) return;
+  TypeScope scope(1, words_per_type());
+  TypeStack* stack = scope.top();
+  stack->push_instance(Smi::value(program()->task_class_id()));
+  Method target = program()->entry_combined();
+  std::vector<Worklist*> worklists;
+  call_static(null, &scope, null, target, worklists);
+  ASSERT(worklists.empty());
+  has_entry_combined_ = true;
+}
+
 void TypePropagator::ensure_entry_task() {
   if (has_entry_task_) return;
   TypeScope scope(1, words_per_type());
@@ -1550,6 +1562,9 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     if (stack->top_is_empty()) return scope;
     if (TypePrimitive::uses_entry_task(module, index)) {
       propagator->ensure_entry_task();
+    }
+    if (TypePrimitive::uses_entry_combined(module, index)) {
+      propagator->ensure_entry_combined();
     }
     if (TypePrimitive::uses_entry_spawn(module, index)) {
       propagator->ensure_entry_spawn();

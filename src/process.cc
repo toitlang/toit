@@ -87,9 +87,9 @@ Process::Process(Program* program, ProcessGroup* group, SystemMessage* terminati
   entry_ = program->entry_main();
 }
 
-Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, InitialMemoryManager* initial_memory)
+Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method entry, Method method, InitialMemoryManager* initial_memory)
     : Process(program, null, group, termination, initial_memory) {
-  entry_ = program->entry_spawn();
+  entry_ = entry;
   spawn_method_ = method;
 }
 

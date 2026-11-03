@@ -13,7 +13,7 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-# Copies the sources of the system program into the SDK, so applications can
+# Copies the sources of the system program into the SDK, so programs can
 # be compiled into it. The layout is the one of the repository, because the
 # sources import each other with relative paths. The packages of the host
 # system program are put where its package lock looks for them first.

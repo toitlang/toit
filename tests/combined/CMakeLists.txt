@@ -13,12 +13,12 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-file(GLOB APPS_TESTS RELATIVE "${TOIT_SDK_SOURCE_DIR}" "*-test.toit")
+file(GLOB COMBINED_TESTS RELATIVE "${TOIT_SDK_SOURCE_DIR}" "*-test.toit")
 
-set(SYSTEM_SOURCE "${TOIT_SDK_SOURCE_DIR}/system/extensions/host/toit.run.toit")
+set(SYSTEM_SOURCE "${TOIT_SDK_SOURCE_DIR}/system/extensions/host/toit.run-combined.toit")
 set(SYSTEM_PACKAGES "${TOIT_SDK_SOURCE_DIR}/system/extensions/host/.packages-bootstrap")
 
-foreach(file ${APPS_TESTS})
+foreach(file ${COMBINED_TESTS})
   add_test(
     NAME ${file}
     COMMAND $<TARGET_FILE:toit.run> "${TOIT_SDK_SOURCE_DIR}/${file}"

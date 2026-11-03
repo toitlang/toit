@@ -102,8 +102,8 @@ struct PipelineConfiguration {
   int optimization_level;
   /// Controls compiler timing and statistics output.
   int verbosity;
-  /// Applications that are compiled together with the program.
-  List<const char*> apps;
+  /// Programs that are combined with the program.
+  List<const char*> combined;
 };
 
 class PipelineStatistics {
@@ -1098,11 +1098,11 @@ SnapshotBundle Compiler::compile(const char* source_path,
     .optimization_level = compiler_config.optimization_level,
     .verbosity = compiler_config.verbosity,
   };
-  ListBuilder<const char*> apps;
-  for (int i = 0; i < compiler_config.apps.length(); i++) {
-    apps.add(Zone::current()->own_malloc(FilesystemLocal::to_local_path(compiler_config.apps[i])));
+  ListBuilder<const char*> combined;
+  for (int i = 0; i < compiler_config.combined.length(); i++) {
+    combined.add(Zone::current()->own_malloc(FilesystemLocal::to_local_path(compiler_config.combined[i])));
   }
-  configuration.apps = apps.build();
+  configuration.combined = combined.build();
 
   return compile(source_path, configuration);
 }
@@ -1155,13 +1155,13 @@ SnapshotBundle Compiler::compile(const char* source_path,
     pipeline_main_result.free_all();
     return SnapshotBundle::invalid();
   }
-  // A program with applications compiled into it is a system program
+  // A program with other programs combined with it is a system program
   // that runs on its own.
   SnapshotBundle result(List<uint8>(pipeline_main_result.snapshot,
                                     pipeline_main_result.snapshot_size),
                         List<uint8>(pipeline_main_result.source_map_data,
                                     pipeline_main_result.source_map_size),
-                        !configuration.apps.is_empty());
+                        !configuration.combined.is_empty());
   pipeline_main_result.statistics.set(PipelineStatistics::BUNDLE_BYTES, result.size());
   pipeline_main_result.statistics.print();
   // The snapshot bundle copies all given data. It's thus safe to free
@@ -1252,7 +1252,7 @@ ir::Program* Pipeline::resolve(const std::vector<ast::Unit*>& units,
   NullDiagnostics null_diagnostics(this->diagnostics());
   Diagnostics* diagnostics = quiet ? &null_diagnostics : this->diagnostics();
   Resolver resolver(lsp(), source_manager(), diagnostics, &toitdoc_registry_);
-  resolver.set_app_count(configuration_.apps.length());
+  resolver.set_combined_count(configuration_.combined.length());
   auto result = resolver.resolve(units,
                                  entry_unit_index,
                                  core_unit_index);
@@ -1278,11 +1278,11 @@ List<const char*> Pipeline::adjust_source_paths(List<const char*> source_paths) 
 
 PackageLock Pipeline::load_package_lock(const List<const char*> source_paths) {
   auto entry_path = source_paths.first();
-  // When applications are compiled into the system program, the project
-  // root is the one of the first application.
-  bool has_apps = !configuration_.apps.is_empty();
+  // When programs are combined with the system program, the project
+  // root is the one of the first program.
+  bool has_combined = !configuration_.combined.is_empty();
   std::string lock_file;
-  if (configuration_.project_root != null && !has_apps) {
+  if (configuration_.project_root != null && !has_combined) {
     lock_file = find_lock_file_at(configuration_.project_root, filesystem());
   } else {
     lock_file = find_lock_file(entry_path, filesystem());
@@ -1292,18 +1292,18 @@ PackageLock Pipeline::load_package_lock(const List<const char*> source_paths) {
                                 source_manager(),
                                 filesystem(),
                                 diagnostics());
-  if (!has_apps) return lock;
-  // Each application has its own lock, and its folder is its root.
+  if (!has_combined) return lock;
+  // Each program has its own lock, and its folder is its root.
   std::vector<PackageLock> locks = { lock };
   std::vector<std::string> roots = { std::string() };
-  for (int i = 0; i < configuration_.apps.length(); i++) {
-    const char* app = configuration_.apps[i];
-    std::string app_lock_file = (i == 0 && configuration_.project_root != null)
+  for (int i = 0; i < configuration_.combined.length(); i++) {
+    const char* path = configuration_.combined[i];
+    std::string path_lock_file = (i == 0 && configuration_.project_root != null)
         ? find_lock_file_at(configuration_.project_root, filesystem())
-        : find_lock_file(app, filesystem());
-    locks.push_back(PackageLock::read(app_lock_file, app, source_manager(), filesystem(), diagnostics()));
+        : find_lock_file(path, filesystem());
+    locks.push_back(PackageLock::read(path_lock_file, path, source_manager(), filesystem(), diagnostics()));
     PathBuilder root(filesystem());
-    const char* file = app_lock_file.empty() ? app : app_lock_file.c_str();
+    const char* file = path_lock_file.empty() ? path : path_lock_file.c_str();
     if (!filesystem()->is_absolute(file)) root.join(filesystem()->cwd());
     root.join(file);
     root.join("..");
@@ -2336,11 +2336,11 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   auto fs = configuration_.filesystem;
   fs->initialize(diagnostics());
   source_paths = adjust_source_paths(source_paths);
-  if (!configuration_.apps.is_empty()) {
-    // The applications come right after the entry and the core library.
+  if (!configuration_.combined.is_empty()) {
+    // The combined programs come right after the entry and the core library.
     ListBuilder<const char*> builder;
     builder.add(source_paths[0]);
-    for (int i = 0; i < configuration_.apps.length(); i++) builder.add(configuration_.apps[i]);
+    for (int i = 0; i < configuration_.combined.length(); i++) builder.add(configuration_.combined[i]);
     for (int i = 1; i < source_paths.length(); i++) builder.add(source_paths[i]);
     source_paths = builder.build();
   }
@@ -2507,11 +2507,11 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
 
   if (Flags::native != null) {
     TypeDatabase* types = TypeDatabase::compute(program, &method_selector_offsets);
-    // The system program mostly waits for things, so when applications are
+    // The system program mostly waits for things, so when programs are
     // compiled into it, only their code and the libraries are optimized for
     // speed. The files of the system program are in the first entry package.
     std::vector<int> cold_methods;
-    if (!configuration_.apps.is_empty()) {
+    if (!configuration_.combined.is_empty()) {
       std::set<std::string> system_files;
       for (auto unit : units) {
         if (unit->source() == null) continue;

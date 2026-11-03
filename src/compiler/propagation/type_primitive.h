@@ -88,6 +88,7 @@ class TypePrimitive {
   }
 
   static bool uses_entry_task(unsigned module, unsigned index);
+  static bool uses_entry_combined(unsigned module, unsigned index);
   static bool uses_entry_spawn(unsigned module, unsigned index);
 
  private:

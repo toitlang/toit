@@ -45,6 +45,15 @@ class SystemImage extends ContainerImage:
     unreachable  // Not implemented yet.
 
 main:
+  run-system
+
+/**
+Runs the system program.
+
+With $combined, it also starts the applications that are compiled into it. See
+  boot-combined.toit.
+*/
+run-system --combined/bool=false -> none:
   registry ::= FlashRegistry.scan
   service-manager ::= SystemServiceManager
   (FirmwareServiceProvider).install
@@ -53,4 +62,5 @@ main:
   container-manager := ContainerManager registry service-manager
   system-image := SystemImage container-manager
   container-manager.register-system-image system-image
+  if combined: register-combined container-manager
   exit (boot container-manager)

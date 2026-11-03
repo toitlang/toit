@@ -22,6 +22,7 @@ namespace toit {
   E(entry_main,               "__entry__main", 1)                   \
   E(entry_spawn,              "__entry__spawn", 1)                  \
   E(entry_task,               "__entry__task", 1)                   \
+  E(entry_combined,           "__entry__combined", 1)               \
   E(lookup_failure,           "lookup-failure_", 2)                 \
   E(as_check_failure,         "as-check-failure_", 2)               \
   E(primitive_lookup_failure, "primitive-lookup-failure_", 2)       \

@@ -389,7 +389,7 @@ tool-path sdk-dir/string? tool/string -> string:
 system-source-path sdk-dir/string? -> string:
   lib-dir := sdk-dir ? fs.join sdk-dir "lib" "toit" : fs.join (fs.dirname system.program-path) ".." "lib" "toit"
   sources-dir := fs.join lib-dir "system-sources" "system"
-  return fs.join sources-dir "extensions" "host" "toit.run.toit"
+  return fs.join sources-dir "extensions" "host" "toit.run-combined.toit"
 
 toit-path sdk-dir/string? -> string:
   // Use ourself as the toit command.
@@ -526,7 +526,7 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
     if is-snapshot: ui.abort "Cannot combine a snapshot with the system program"
     if invocation["os"] or invocation["arch"]: ui.abort "Cannot combine programs for cross compilation"
     // The application is compiled into the system program from the SDK.
-    args.add "--app"
+    args.add "--combine"
     args.add sources[0]
     sources = [system-source-path invocation["sdk-dir"]]
 

@@ -83,8 +83,9 @@ class Process : public ProcessListFromProcessGroup::Element,
   // Constructor for an internal process based on Toit code.
   Process(Program* program, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory);
 
-  // Constructor for an internal process spawned from Toit code.
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, InitialMemoryManager* initial_memory);
+  // Constructor for an internal process spawned from Toit code. It starts
+  // at the given entry, which gets the method and the spawn arguments.
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method entry, Method method, InitialMemoryManager* initial_memory);
 
   // Constructor for an external process with no Toit code.
   Process(ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination);

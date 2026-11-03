@@ -105,9 +105,11 @@ class Scheduler {
   bool signal_process(Process* sender, int target_id, Process::Signal signal);
 
   // Takes over the arguments and the initial memory.
+  // Spawns a process that starts at the given entry. The method and the
+  // arguments are for the entry.
   int spawn(Program* program, ProcessGroup* process_group, int priority,
-            Method method, MessageEncoder* arguments, InitialMemoryManager* initial_memory,
-            bool is_new_group = false);
+            Method entry, Method method, MessageEncoder* arguments,
+            InitialMemoryManager* initial_memory, bool is_new_group = false);
 
   // Returns a new process id (only called from Process constructor).
   int next_process_id();
