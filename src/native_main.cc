@@ -42,8 +42,9 @@ static SnapshotBundle copy_bundle(const NativeProgram* program) {
 
 static int run_native_programs(char** argv) {
   const NativeProgram* system = NativeRuntime::registered_program(true);
+  // The application is missing when it is compiled into the system program.
   const NativeProgram* application = NativeRuntime::registered_program(false);
-  if (system == null || application == null) FATAL("Missing native programs");
+  if (system == null) FATAL("Missing native programs");
   ProgramImage system_image = NativeRuntime::load_image(system);
   while (true) {
     Scheduler::ExitState exit;
@@ -52,7 +53,11 @@ static int run_native_programs(char** argv) {
       create_and_start_external_message_handlers(&vm);
       int group_id = vm.scheduler()->next_group_id();
       exit = vm.scheduler()->run_boot_program(
-          system_image.program(), copy_bundle(system), copy_bundle(application), argv, group_id);
+          system_image.program(),
+          copy_bundle(system),
+          application == null ? SnapshotBundle::invalid() : copy_bundle(application),
+          argv,
+          group_id);
     }
     switch (exit.reason) {
       case Scheduler::EXIT_NONE:

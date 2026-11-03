@@ -5019,9 +5019,10 @@ void MethodResolver::visit_LiteralMap(ast::LiteralMap* node) {
   push(zone_new<ir::Sequence>(expressions.build(), node->selection_range()));
 }
 
-// Finds the main method of the module. It may take the arguments or not.
+// Finds the main method of the module. It may take the arguments or not, and
+// the one without arguments wins if there are both.
 ir::Method* MethodResolver::find_main(Module* module, bool* takes_args) {
-  for (int main_arity = 1; main_arity >= 0; main_arity--) {
+  for (int main_arity = 0; main_arity <= 1; main_arity++) {
     auto main_shape = ResolutionShape(main_arity);
     auto main_entry = module->scope()->lookup_module(Symbols::main);
     switch (main_entry.kind()) {

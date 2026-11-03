@@ -43,6 +43,10 @@ ProgramImage read_image_from_bundle(SnapshotBundle bundle) {
 }
 
 int run_program(const char* boot_bundle_path, SnapshotBundle application_bundle, char** argv) {
+  if (boot_bundle_path == null && application_bundle.is_boot()) {
+    // The bundle is a system program with its applications compiled in.
+    return run_program(application_bundle, SnapshotBundle::invalid(), argv);
+  }
   if (boot_bundle_path != null) {
     auto boot_bundle = SnapshotBundle::read_from_file(boot_bundle_path, true);
     int result = run_program(boot_bundle, application_bundle, argv);

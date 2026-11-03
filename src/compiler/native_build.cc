@@ -79,11 +79,17 @@ static const char* cxx_compiler() {
   return (compiler != null && compiler[0] != '\0') ? compiler : "clang++";
 }
 
-static void add_flags(const std::string& line, const std::string& sdk_folder, std::vector<std::string>* result) {
+// The system program of the SDK is linked in, unless the program is a system
+// program itself.
+static const char* SYSTEM_OBJECTS[] = { "@SDK@/system.o", "@SDK@/system.cc" };
+
+static void add_flags(const std::string& line, const std::string& sdk_folder,
+                      std::vector<std::string>* result, bool has_system = false) {
   std::istringstream stream(line);
   std::string flag;
   size_t prefix_length = strlen(SDK_PREFIX);
   while (stream >> flag) {
+    if (has_system && (flag == SYSTEM_OBJECTS[0] || flag == SYSTEM_OBJECTS[1])) continue;
     if (flag.compare(0, prefix_length, SDK_PREFIX) == 0) {
       flag = sdk_folder + "/" + flag.substr(prefix_length);
     }
@@ -231,7 +237,7 @@ bool NativeBuild::add_program(SnapshotBundle bundle, bool is_system) {
 }
 
 int NativeBuild::write_source(const char* out_path, SnapshotBundle bundle, bool is_boot) {
-  if (!add_program(bundle, is_boot)) return -1;
+  if (!add_program(bundle, is_boot || bundle.is_boot())) return -1;
   std::ifstream source(code_path_, std::ios::binary);
   std::ofstream output(out_path, std::ios::binary);
   output << source.rdbuf();
@@ -244,7 +250,10 @@ int NativeBuild::write_source(const char* out_path, SnapshotBundle bundle, bool 
 }
 
 int NativeBuild::create_executable(const char* out_path, SnapshotBundle bundle) {
-  if (!add_program(bundle, false)) return -1;
+  // A system program with the applications compiled into it replaces the one
+  // from the SDK.
+  bool is_system = bundle.is_boot();
+  if (!add_program(bundle, is_system)) return -1;
   std::ifstream flags_file(sdk_folder_ + "/" + FLAGS_FILE);
   std::string compile_flags;
   std::string link_flags;
@@ -261,7 +270,7 @@ int NativeBuild::create_executable(const char* out_path, SnapshotBundle bundle) 
   command.push_back(code_path_);
   command.push_back("-o");
   command.push_back(out_path);
-  add_flags(link_flags, sdk_folder_, &command);
+  add_flags(link_flags, sdk_folder_, &command, is_system);
 
   int result = run_command(command);
   if (result == 0) return 0;
