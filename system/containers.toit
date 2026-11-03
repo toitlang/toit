@@ -149,21 +149,70 @@ abstract class ContainerImage:
   abstract delete -> none
 
 /**
-Starts the application with the given $index in a container with the given
+Starts the combined program with the given $index in a container with the given
   $gid.
 
-Programs can have applications compiled into them. Their main methods are
+Programs can have other programs combined with them. Their main methods are
   entry points of the program, so they run in processes of their own, like
   other containers, but they share the code of the program.
 */
-spawn-app-entry index/int gid/int arguments/any -> int:
-  // The lambda only captures plain values, because they are sent to
-  // the new process.
-  code := :: app-main_ index arguments
-  return spawn-entry_ code.method_ gid code.arguments_
+spawn-combined index/int gid/int arguments/any -> int:
+  // The new process starts at the entry for combined programs, which calls
+  // the main method of the program with the given index.
+  return spawn-entry_ gid [index, arguments]
 
-spawn-entry_ method/int gid/int arguments/any -> int:
+spawn-entry_ gid/int arguments/any -> int:
   #primitive.programs-registry.spawn-entry
+
+/**
+Registers the containers that run programs that are combined with the
+  system program.
+
+The firmware tooling describes them in the "combined" system asset, as a list
+  with the name of each container, the index of its program in the order the
+  programs are combined with the system program, and its flags. Several
+  containers can run the same program.
+*/
+register-combined manager/ContainerManager -> none:
+  encoded := assets.decode.get "combined"
+  if not encoded: return
+  described := tison.decode encoded
+  count := combined-count_
+  for i := 0; i < described.size; i += 3:
+    index := described[i + 1]
+    if not 0 <= index < count:
+      throw "The system program has $count combined programs, but a container runs program $index"
+    manager.register-image
+        ContainerImageCombined manager index --name=described[i] --flags=described[i + 2]
+
+/**
+The id of the container with the given $name that runs a combined program.
+
+The firmware tooling computes the same ids.
+*/
+combined-id name/string -> uuid.Uuid:
+  return uuid.Uuid.uuid5 "toit-combined" name
+
+// A container that runs a program that is combined with the system program.
+// It runs in a container of its own, but it shares the code with the
+// system program.
+class ContainerImageCombined extends ContainerImage:
+  index/int
+  id/uuid.Uuid
+  flags/int
+
+  constructor manager/ContainerManager .index --name/string --.flags:
+    id = combined-id name
+    super manager
+
+  spawn container/Container arguments/any -> int:
+    return spawn-combined index container.id arguments
+
+  stop-all -> none:
+    unreachable  // Not implemented yet.
+
+  delete -> none:
+    throw "Programs combined with the system program can't be uninstalled"
 
 class ContainerImageFlash extends ContainerImage:
   allocation_/FlashAllocation? := ?

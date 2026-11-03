@@ -255,6 +255,7 @@ PRIMITIVE(spawn) {
       process->program(),
       process->group(),
       priority,
+      process->program()->entry_spawn(),
       method,
       &encoder,                  // Takes over encoder.
       &initial_memory_manager);  // Takes over initial memory.

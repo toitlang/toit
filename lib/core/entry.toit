@@ -63,11 +63,21 @@ spawn-method_ -> int:
 spawn-arguments_ -> any:
   #primitive.core.spawn-arguments
 
-// Programs can combine several applications, and the main methods of the
-// applications are entry points too. These are used by the system program
-// to start them.
-app-count_ -> int:
-  #primitive.intrinsics.app-count
+__entry__combined task -> none:
+  // First we set the current task variable. We must do this early,
+  // because other parts of the core library code might rely on it.
+  // As an example, accessing a lazily initialized global variable
+  // requires access to the task.
+  Task_.current = task
+  task.evaluate_:
+    task.initialize-entry-task_
+    // Programs can combine several other programs, and the main methods
+    // of those programs are entry points too. The system program starts
+    // them with their index and their arguments.
+    spawned := spawn-arguments_
+    index := spawned[0]
+    #primitive.intrinsics.combined-main index spawned[1]
 
-app-main_ index/int arguments -> any:
-  #primitive.intrinsics.app-main index arguments
+// The number of programs that are combined with this one.
+combined-count_ -> int:
+  #primitive.intrinsics.combined-count

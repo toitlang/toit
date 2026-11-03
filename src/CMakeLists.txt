@@ -457,7 +457,7 @@ if (NOT ${TOIT_IS_EMBEDDED})
     endforeach()
   endif()
 
-  # The SDK has the sources of the system program, so applications can be
+  # The SDK has the sources of the system program, so programs can be
   # compiled into it. The default build keeps them up to date.
   if (NOT ${TOIT_IS_CROSS})
     set(SYSTEM_SOURCES_DIR "${CMAKE_BINARY_DIR}/sdk/lib/toit/system-sources")

@@ -352,8 +352,11 @@ bool TypePrimitive::uses_entry_task(unsigned module, unsigned index) {
 }
 
 bool TypePrimitive::uses_entry_spawn(unsigned module, unsigned index) {
-  return (module == INDEX_core && index == CoreIndexes::spawn) ||
-      (module == INDEX_programs_registry && index == ProgramsRegistryIndexes::spawn_entry);
+  return module == INDEX_core && index == CoreIndexes::spawn;
+}
+
+bool TypePrimitive::uses_entry_combined(unsigned module, unsigned index) {
+  return module == INDEX_programs_registry && index == ProgramsRegistryIndexes::spawn_entry;
 }
 
 }  // namespace toit::compiler

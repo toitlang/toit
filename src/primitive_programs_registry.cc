@@ -77,9 +77,8 @@ PRIMITIVE(spawn) {
 // a process group of its own, so it is tracked like any other container.
 PRIMITIVE(spawn_entry) {
   PRIVILEGED;
-  ARGS(int, method_id, int, group_id, Object, arguments);
+  ARGS(int, group_id, Object, arguments);
   Program* program = process->program();
-  Method method(program->bytecodes, method_id);
 
   unsigned message_size = 0;
   { MessageEncoder size_encoder(process, null);
@@ -109,8 +108,11 @@ PRIMITIVE(spawn_entry) {
   if (!initial_memory_manager.global_variables) FAIL(MALLOC_FAILED);
 
   // Takes over the encoder and the initial_memory_manager.
+  // The process starts at the entry for combined programs, which gets the
+  // index of the program and its arguments.
   int pid = VM::current()->scheduler()->spawn(
-      program, process_group, -1, method, &encoder, &initial_memory_manager, true);
+      program, process_group, -1, program->entry_combined(), Method::invalid(),
+      &encoder, &initial_memory_manager, true);
   if (pid == Scheduler::INVALID_PROCESS_ID) FAIL(MALLOC_FAILED);
   free_process_group.keep_result();
   return Smi::from(pid);

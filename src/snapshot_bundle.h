@@ -53,7 +53,7 @@ class SnapshotBundle {
 
   bool is_valid() const { return buffer_ != null; }
 
-  // Whether this is a system program that has the applications compiled into
+  // Whether this is a system program that has other programs combined with
   // it, so it runs on its own instead of starting another program.
   bool is_boot() const;
 

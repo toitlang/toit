@@ -5082,26 +5082,26 @@ void MethodResolver::visit_call_main(ast::Call* node) {
   }
 }
 
-// Calls the main method of the application with the given index. A program
-// can combine several applications, which are entry points like the main
+// Calls the main method of the combined program with the given index. A
+// program can combine several programs, which are entry points like the main
 // method of the program itself. The index has to be a local, because it is
-// used once for each application. Returns null for indexes that aren't for
-// an application.
-void MethodResolver::visit_call_app_main(ast::Call* node) {
+// used once for each program. Evaluates to null for indexes that aren't for
+// a combined program.
+void MethodResolver::visit_call_combined_main(ast::Call* node) {
   auto range = node->selection_range();
   if (node->arguments().length() != 2 || !node->arguments()[0]->is_Identifier()) {
-    report_error("The app-main primitive call takes a local and the arguments");
+    report_error("The combined-main primitive call takes a local and the arguments");
     push(zone_new<ir::Error>(range));
     return;
   }
   ir::Expression* result = zone_new<ir::LiteralNull>(range);
-  for (int i = static_cast<int>(app_modules_->size()) - 1; i >= 0; i--) {
-    Module* app = (*app_modules_)[i];
+  for (int i = static_cast<int>(combined_modules_->size()) - 1; i >= 0; i--) {
+    Module* module = (*combined_modules_)[i];
     bool takes_args = false;
-    ir::Method* main_method = find_main(app, &takes_args);
+    ir::Method* main_method = find_main(module, &takes_args);
     if (main_method == null) {
-      report_error("Couldn't find 'main' (with 0 or 1 argument) in application '%s'",
-                   app->unit()->error_path().c_str());
+      report_error("Couldn't find 'main' (with 0 or 1 argument) in combined program '%s'",
+                   module->unit()->error_path().c_str());
       continue;
     }
     CallBuilder builder(range);
@@ -5114,7 +5114,7 @@ void MethodResolver::visit_call_app_main(ast::Call* node) {
                               result,
                               range);
   }
-  push(zone_new<ir::Return>(result, false, range));
+  push(result);
 }
 
 void MethodResolver::visit_call_primitive(ast::Call* node) {
@@ -5175,8 +5175,8 @@ void MethodResolver::visit_call_primitive(ast::Call* node) {
         primitive_name != Symbols::hash_do &&
         primitive_name != Symbols::smi_repeat &&
         primitive_name != Symbols::main &&
-        primitive_name != Symbols::app_main &&
-        primitive_name != Symbols::app_count) {
+        primitive_name != Symbols::combined_main &&
+        primitive_name != Symbols::combined_count) {
       report_error(primitive_node, "Unknown intrinsic '%s'\n", primitive_name.c_str());
       encountered_error = true;
     }
@@ -5184,13 +5184,13 @@ void MethodResolver::visit_call_primitive(ast::Call* node) {
       visit_call_main(node);
       return;
     }
-    if (primitive_name == Symbols::app_main) {
-      visit_call_app_main(node);
+    if (primitive_name == Symbols::combined_main) {
+      visit_call_combined_main(node);
       return;
     }
-    if (primitive_name == Symbols::app_count) {
+    if (primitive_name == Symbols::combined_count) {
       auto range = node->selection_range();
-      auto count = zone_new<ir::LiteralInteger>(static_cast<int64>(app_modules_->size()), range);
+      auto count = zone_new<ir::LiteralInteger>(static_cast<int64>(combined_modules_->size()), range);
       push(zone_new<ir::Return>(count, false, range));
       return;
     }

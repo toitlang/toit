@@ -790,7 +790,7 @@ namespace toit {
 #define MODULE_PROGRAMS_REGISTRY(PRIMITIVE)  \
   PRIMITIVE(next_group_id, 0)                \
   PRIMITIVE(spawn, 3)                        \
-  PRIMITIVE(spawn_entry, 3)                  \
+  PRIMITIVE(spawn_entry, 2)                  \
   PRIMITIVE(is_running, 1)                   \
   PRIMITIVE(kill, 1)                         \
   PRIMITIVE(bundled_images, 0)               \

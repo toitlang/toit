@@ -19,10 +19,10 @@ main args:
   system := args[3]
   is-native := args.size > 4 and args[4] == "--native"
 
-  tmp-dir := directory.mkdtemp "/tmp/toit-apps-test-"
+  tmp-dir := directory.mkdtemp "/tmp/toit-combined-test-"
   try:
     program := is-native ? "$tmp-dir/system" : "$tmp-dir/system.snapshot"
-    arguments := [compiler, "--app", "$input/a/a.toit", "--app", "$input/b/b.toit"]
+    arguments := [compiler, "--combine", "$input/a/a.toit", "--combine", "$input/b/b.toit"]
     if is-native:
       arguments.add-all ["--native", "-o", program]
     else:

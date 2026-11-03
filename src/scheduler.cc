@@ -334,15 +334,15 @@ bool Scheduler::signal_process(Process* sender, int target_id, Process::Signal s
 }
 
 int Scheduler::spawn(Program* program, ProcessGroup* process_group, int priority,
-                     Method method, MessageEncoder* arguments, InitialMemoryManager* initial_memory,
-                     bool is_new_group) {
+                     Method entry, Method method, MessageEncoder* arguments,
+                     InitialMemoryManager* initial_memory, bool is_new_group) {
   Locker locker(mutex_);
 
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, process_group->id());
   if (!termination) return INVALID_PROCESS_ID;
 
   // Takes over the initial_memory.
-  Process* process = _new Process(program, process_group, termination, method, initial_memory);
+  Process* process = _new Process(program, process_group, termination, entry, method, initial_memory);
   if (!process) {
     delete termination;
     return INVALID_PROCESS_ID;

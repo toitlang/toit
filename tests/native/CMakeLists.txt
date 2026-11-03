@@ -74,15 +74,15 @@ endforeach()
 
 # A system program with applications compiled into it, as a native executable.
 add_test(
-  NAME "tests/native/apps-test"
+  NAME "tests/native/combined-test"
   COMMAND "${CMAKE_COMMAND}" -E env "TOIT_CXX=${TOIT_NATIVE_CXX}"
       "TOIT_PACKAGE_CACHE_PATHS=${TOIT_SDK_SOURCE_DIR}/system/extensions/host/.packages-bootstrap"
-      $<TARGET_FILE:toit.run> "${TOIT_SDK_SOURCE_DIR}/tests/apps/apps-test.toit"
-      "${TOIT_SDK_SOURCE_DIR}/tests/apps/input" $<TARGET_FILE:toit.compile> $<TARGET_FILE:toit.run>
-      "${TOIT_SDK_SOURCE_DIR}/system/extensions/host/toit.run.toit" --native
+      $<TARGET_FILE:toit.run> "${TOIT_SDK_SOURCE_DIR}/tests/combined/combined-test.toit"
+      "${TOIT_SDK_SOURCE_DIR}/tests/combined/input" $<TARGET_FILE:toit.compile> $<TARGET_FILE:toit.run>
+      "${TOIT_SDK_SOURCE_DIR}/system/extensions/host/toit.run-combined.toit" --native
   CONFIGURATIONS slow
 )
-set_tests_properties("tests/native/apps-test" PROPERTIES TIMEOUT 300)
+set_tests_properties("tests/native/combined-test" PROPERTIES TIMEOUT 300)
 
 # Tests that only make sense for native code.
 add_native_test("unsupported-launch-test" "${CMAKE_CURRENT_SOURCE_DIR}/unsupported-launch-test.toit" --native)
