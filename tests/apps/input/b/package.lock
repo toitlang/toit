@@ -1,0 +1,5 @@
+prefixes:
+  foo: pkg-foo
+packages:
+  pkg-foo:
+    path: ../foo-b
