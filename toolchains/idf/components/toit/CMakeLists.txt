@@ -37,10 +37,16 @@ set(TOIT_NATIVE_EMBEDDED FALSE)
 if (TOIT_NATIVE_SUPPORT)
     set(TOIT_NATIVE_EMBEDDED TRUE)
 endif()
-# The flags that generated code is compiled with.
+# The flags that generated code is compiled with. The ESP32-C3 has no atomic
+# instructions, so Clang calls the library for atomic loads, which takes a
+# lock. With forced atomics it loads and stores words directly, like GCC does
+# for the rest of the firmware. Clang still warns that the loads aren't lock
+# free, because the warning doesn't know about forced atomics.
 set(TOIT_NATIVE_CXX_FLAGS
     --target=riscv32-esp-elf -march=rv32imc_zicsr_zifencei -mabi=ilp32
-    -std=gnu++11 -w -ffreestanding -fno-exceptions -fno-rtti -ffunction-sections -fdata-sections
+    -Xclang -target-feature -Xclang +forced-atomics -Wno-atomic-alignment
+    -Wno-missing-multilib
+    -std=gnu++11 -ffreestanding -fno-exceptions -fno-rtti -ffunction-sections -fdata-sections
     -O2)
 
 add_subdirectory(${TOIT_BASE_DIR} toit EXCLUDE_FROM_ALL)
