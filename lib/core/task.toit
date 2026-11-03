@@ -242,7 +242,11 @@ class Task_ implements Task:
   // Mark the task for cancellation, at the next idle operation.
   cancel -> none:
     is-canceled_ = true
-    if monitor_ and critical-count_ == 0: monitor_.notify_
+    // Always notify: message processing can raise the critical count of a task
+    // that entered a noncritical wait. The wait uses the critical state captured
+    // before suspending to decide whether to throw for cancelation. A wait entered
+    // in a critical region ignores cancelation and re-checks its condition.
+    if monitor_: monitor_.notify_
 
   is-canceled -> bool: return is-canceled_
 
