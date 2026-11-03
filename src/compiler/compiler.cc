@@ -1278,8 +1278,11 @@ List<const char*> Pipeline::adjust_source_paths(List<const char*> source_paths) 
 
 PackageLock Pipeline::load_package_lock(const List<const char*> source_paths) {
   auto entry_path = source_paths.first();
+  // When applications are compiled into the system program, the project
+  // root is the one of the first application.
+  bool has_apps = !configuration_.apps.is_empty();
   std::string lock_file;
-  if (configuration_.project_root != null) {
+  if (configuration_.project_root != null && !has_apps) {
     lock_file = find_lock_file_at(configuration_.project_root, filesystem());
   } else {
     lock_file = find_lock_file(entry_path, filesystem());
@@ -1289,13 +1292,15 @@ PackageLock Pipeline::load_package_lock(const List<const char*> source_paths) {
                                 source_manager(),
                                 filesystem(),
                                 diagnostics());
-  if (configuration_.apps.is_empty()) return lock;
+  if (!has_apps) return lock;
   // Each application has its own lock, and its folder is its root.
   std::vector<PackageLock> locks = { lock };
   std::vector<std::string> roots = { std::string() };
   for (int i = 0; i < configuration_.apps.length(); i++) {
     const char* app = configuration_.apps[i];
-    std::string app_lock_file = find_lock_file(app, filesystem());
+    std::string app_lock_file = (i == 0 && configuration_.project_root != null)
+        ? find_lock_file_at(configuration_.project_root, filesystem())
+        : find_lock_file(app, filesystem());
     locks.push_back(PackageLock::read(app_lock_file, app, source_manager(), filesystem(), diagnostics()));
     PathBuilder root(filesystem());
     const char* file = app_lock_file.empty() ? app : app_lock_file.c_str();

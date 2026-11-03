@@ -216,6 +216,11 @@ main args/List:
             --help="Compile the binary to native code. Needs clang++, or TOIT_CXX set to a similar compiler.",
         cli.Flag "native-source"
             --help="Write the program as a self-contained C++ file instead of a binary.",
+        cli.Flag "combine"
+            --help="""
+              Compile the application into the system program, so they are one program.
+              They share the code of the libraries, which makes native binaries smaller,
+              but the system program is compiled every time.""",
         cli.Option "os"
             --help="Set the target OS for cross compilation."
             --completion=:: | context/cli.CompletionContext | complete-cross-os context,
@@ -380,6 +385,12 @@ tool-path sdk-dir/string? tool/string -> string:
 
   return fs.join tool-bin-dir tool
 
+// The system program that applications are compiled into with --combine.
+system-source-path sdk-dir/string? -> string:
+  lib-dir := sdk-dir ? fs.join sdk-dir "lib" "toit" : fs.join (fs.dirname system.program-path) ".." "lib" "toit"
+  sources-dir := fs.join lib-dir "system-sources" "system"
+  return fs.join sources-dir "extensions" "host" "toit.run.toit"
+
 toit-path sdk-dir/string? -> string:
   // Use ourself as the toit command.
   if sdk-dir:
@@ -510,6 +521,14 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
     assert: args.is-empty
     // Just in case that's not true and we are running without asserts set the args to empty.
     args = []
+
+  if command == "compile" and invocation["combine"]:
+    if is-snapshot: ui.abort "Cannot combine a snapshot with the system program"
+    if invocation["os"] or invocation["arch"]: ui.abort "Cannot combine programs for cross compilation"
+    // The application is compiled into the system program from the SDK.
+    args.add "--app"
+    args.add sources[0]
+    sources = [system-source-path invocation["sdk-dir"]]
 
   args.add-all sources
   if command == "run":
