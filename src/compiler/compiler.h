@@ -76,6 +76,9 @@ class Compiler {
     /// Programs that are combined with the program. Their main
     /// methods are entry points too. See the combined-main intrinsic.
     List<const char*> combined;
+    /// For each combined program, the folder its sources were unpacked to,
+    /// or null. Its files are shown with the paths they had before.
+    List<const char*> combined_roots;
   };
 
   Compiler();

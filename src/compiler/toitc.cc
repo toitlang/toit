@@ -47,6 +47,7 @@ static void print_usage(int exit_code) {
   printf("  [--native]                               // Compile the executable to native code.\n");
   printf("  [--native-source]                        // Write the program as C++ instead of an executable.\n");
   printf("  [--combine <path>]...                    // Combine a program with the system program.\n");
+  printf("  [--combine-root <dir>]                   // The folder the next combined program was unpacked to.\n");
   printf("  [--verbose]                              // Print compiler phase timings.\n");
   printf("  [--verbosity-level {debug|info|verbose|quiet|silent}]\n");
   printf("                                            // Set compiler statistics verbosity.\n");
@@ -123,7 +124,9 @@ int main(int argc, char **argv) {
   bool native_boot = false;
   // The compiler isn't set up yet, so this can't allocate with new.
   auto combined = unvoid_cast<const char**>(malloc(argc * sizeof(const char*)));
+  auto combined_roots = unvoid_cast<const char**>(malloc(argc * sizeof(const char*)));
   int combined_count = 0;
+  const char* combined_root = null;
   int verbosity = 0;
 
   int processed_args = 1;  // The executable name has already been processed.
@@ -276,7 +279,18 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Missing argument to '--combine'\n");
         print_usage(1);
       }
+      combined_roots[combined_count] = combined_root;
       combined[combined_count++] = argv[processed_args++];
+      combined_root = null;
+    } else if (strcmp(argv[processed_args], "--combine-root") == 0) {
+      // The sources of the next combined program were unpacked to this
+      // folder, so their paths are shown as if it was the root.
+      processed_args++;
+      if (processed_args == argc) {
+        fprintf(stderr, "Missing argument to '--combine-root'\n");
+        print_usage(1);
+      }
+      combined_root = argv[processed_args++];
     } else if (strcmp(argv[processed_args], "--native-boot") == 0) {
       // Used for building the SDK. Not interesting for users. The system
       // program mostly waits for things, so it only has to be small.
@@ -433,6 +447,7 @@ int main(int argc, char **argv) {
     .optimization_level = optimization_level,
     .verbosity = for_language_server ? 0 : verbosity,
     .combined = List<const char*>(combined, combined_count),
+    .combined_roots = List<const char*>(combined_roots, combined_count),
   };
 
   if (for_language_server) {

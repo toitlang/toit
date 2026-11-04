@@ -63,8 +63,10 @@ const char* compute_package_cache_path_from_home(const char* home, Filesystem* f
 
 
 PackageLock PackageLock::merge(const std::vector<PackageLock>& locks,
-                               const std::vector<std::string>& root_paths) {
+                               const std::vector<std::string>& root_paths,
+                               const std::vector<std::string>& unpacked_roots) {
   ASSERT(!locks.empty() && locks.size() == root_paths.size());
+  ASSERT(locks.size() == unpacked_roots.size());
   const PackageLock& main = locks[0];
   Map<std::string, Package> packages = main.packages_;
   bool has_errors = main.has_errors_;
@@ -96,6 +98,12 @@ PackageLock PackageLock::merge(const std::vector<PackageLock>& locks,
                       prefixes,
                       package.is_path_package_);
       renamed.diagnostic_id_ = package.diagnostic_id_;
+      if (is_entry && !unpacked_roots[i].empty()) {
+        // Show the files of the program with the paths they had before
+        // they were unpacked.
+        renamed.absolute_error_path_ = unpacked_roots[i];
+        renamed.relative_error_path_ = "/";
+      }
       packages[rename(id)] = renamed;
     }
   }
