@@ -186,7 +186,7 @@ class Program : public FlashAllocation {
     return instance_size_from_class_bits(class_bits[value]);
   }
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
   // Snapshot operations.
   void write(SnapshotWriter* st);
   void read(SnapshotReader* st);
@@ -249,7 +249,7 @@ class Program : public FlashAllocation {
     T* array() const { return array_; }
     int length() const { return length_; }
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
     void read(SnapshotReader* st) {
       array_ = reinterpret_cast<T*>(st->read_external_object_table(&length_));
     }

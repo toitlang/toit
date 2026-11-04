@@ -50,7 +50,7 @@ const FlashAllocation* FlashRegistry::allocation(word offset) {
     FlashAllocation* probe = reinterpret_cast<FlashAllocation*>(region(offset, 0));
     if (probe->is_valid()) result = probe;
   } else {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_EMBEDDED
     const EmbeddedDataExtension* extension = EmbeddedData::extension();
     const Program* probe = const_cast<Program*>(extension->program(offset - 1));
     if (probe->is_valid_embedded()) result = probe;

@@ -66,7 +66,7 @@ class Scheduler {
   Scheduler();
   ~Scheduler();
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_EMBEDDED
   // Run the boot program and wait for all processes to run to completion.
   ExitState run_boot_program(Program* program, int group_id);
 #else
@@ -198,7 +198,7 @@ class Scheduler {
   SystemMessage* new_process_message(SystemMessage::Type type, int gid);
 
   static const int TICK_PERIOD_US = 100 * 1000;          // 100 ms.
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_EMBEDDED
   static const int TICK_PERIOD_PROFILING_US = 10 * 100;  // 10 ms.
 #else
   static const int TICK_PERIOD_PROFILING_US = 500;       // 0.5 ms.

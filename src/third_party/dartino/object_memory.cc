@@ -232,7 +232,7 @@ void Chunk::find(uword word, const char* name) {
 #endif
 
 Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_EMBEDDED
   static const int UNUSABLE_SIZE = 50;
   void* unusable_pages[UNUSABLE_SIZE];
   size = Utils::round_up(size, TOIT_PAGE_SIZE);

@@ -160,7 +160,7 @@ class EncodeVisitor : public Visitor {
   int level_;
 };
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_EMBEDDED
 #define MAX_NUMBER_OF_STACK_FRAMES  40  // About 629 bytes of stack trace, max.
 #else
 #define MAX_NUMBER_OF_STACK_FRAMES 100

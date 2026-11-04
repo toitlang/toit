@@ -4,7 +4,7 @@
 
 #include "../top.h"
 
-#if !defined(TOIT_FREERTOS)
+#if !defined(TOIT_EMBEDDED)
 
 #ifdef TOIT_WINDOWS
 #include "../error_win.h"
@@ -106,4 +106,4 @@ PRIMITIVE(stdin_read) {
 
 }  // namespace toit
 
-#endif  // !defined(TOIT_FREERTOS)
+#endif  // !defined(TOIT_EMBEDDED)

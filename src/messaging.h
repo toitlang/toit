@@ -195,7 +195,7 @@ class MessageEncoder {
                                  bool is_exception, const char* exception,
                                  void* data, word length, bool free_on_failure);
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
   bool encode_arguments(char** argv, int argc);
   bool encode_bundles(SnapshotBundle system, SnapshotBundle application);
 #endif

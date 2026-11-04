@@ -427,7 +427,7 @@ void PromotedTrack::zap() {
   }
 }
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
 
 void Array::write_content(SnapshotWriter* st) {
   word len = length();
@@ -523,7 +523,7 @@ void ByteArray::read_content(SnapshotReader* st, word len) {
   }
 }
 
-#endif  // TOIT_FREERTOS
+#endif  // TOIT_EMBEDDED
 
 word ByteArray::max_internal_size() {
   return Utils::max(max_internal_size_in_process(), max_internal_size_in_program());

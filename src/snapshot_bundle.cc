@@ -23,7 +23,7 @@
 #include "top.h"
 #include "uuid.h"
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_EMBEDDED
 
 #include "snapshot_bundle.h"
 #include "ar.h"
@@ -224,4 +224,4 @@ bool SnapshotBundle::write_to_file(const char* bundle_filename, bool silent) {
 
 } // namespace toit
 
-#endif  // TOIT_FREERTOS
+#endif  // TOIT_EMBEDDED
