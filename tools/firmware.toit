@@ -24,11 +24,13 @@ import uuid show *
 import encoding.json
 import encoding.ubjson
 import encoding.tison
+import encoding.yaml
 
 import system.assets
 
 import ar
 import cli
+import fs
 import host.directory
 import host.file
 import host.os
@@ -42,6 +44,12 @@ import .ec618.slot-reloc show SlotRelocTable
 import .firmware.ec618 as firmware-ec618
 import .firmware.image-details as image-details
 import .image
+import .lsp.server.compiler as lsp
+import .lsp.server.documents show Documents
+import .lsp.server.file-server show FileServerProtocol
+import .lsp.server.project-uri show compute-project-uri
+import .lsp.server.repro show write-repro
+import .lsp.server.uri-path-translator as translator
 import .snapshot
 import .snapshot-to-image
 
@@ -107,6 +115,10 @@ OPTION-OUTPUT       ::= "output"
 OPTION-OUTPUT-SHORT ::= "o"
 
 PROPERTY-CONTAINER-FLAGS ::= "\$container-flags"
+// The sources of the containers that are installed from source, as a map
+// from container names to source archives. They can be combined with the
+// system program when the firmware is extracted (see 'extract --combine').
+AR-ENTRY-CONTAINER-SOURCES ::= "\$sources"
 
 IMAGE-FLAG-RUN-BOOT     ::= 1 << 0
 IMAGE-FLAG-RUN-CRITICAL ::= 1 << 1
@@ -365,7 +377,16 @@ container-cmd -> cli.Command:
 
   cmd.add
       cli.Command "install"
-          --help="Add a container to the envelope."
+          --help="""
+            Add a container to the envelope.
+
+            The container runs a snapshot, an image, or a program that is compiled
+              from source. The envelope keeps the sources of programs and of the
+              packages they use, unless they are installed with --strip, so they can
+              be combined with the system program when the firmware is extracted.
+              See 'extract --combine'. Anyone who gets the envelope can read the
+              sources.
+            """
           --aliases=["add"]
           --options=[
             option-output,
@@ -376,11 +397,14 @@ container-cmd -> cli.Command:
                 --default="boot",
             cli.Flag "critical"
                 --help="Reboot system if the container terminates.",
+            cli.Flag "strip"
+                --help="Don't keep the sources of a program, so it can't be combined with the system program when the firmware is extracted.",
           ]
           --rest=[
             option-name,
             cli.OptionPath "image"
-                --required
+                --help="A snapshot, an image, or the source of a program (.toit)."
+                --required,
           ]
           --run=:: container-install it
 
@@ -466,9 +490,24 @@ is-container-name name/string -> bool:
 container-install invocation/cli.Invocation -> none:
   ui := invocation.cli.ui
   name := get-container-name invocation
+  if name == SYSTEM-CONTAINER-NAME: ui.abort "Cannot replace the system container."
   image-path := invocation["image"]
   assets-path := invocation["assets"]
-  image-data := read-file image-path --ui=ui
+  flag-bits := 0
+  if invocation["trigger"] == "boot": flag-bits |= IMAGE-FLAG-RUN-BOOT
+  if invocation["critical"]: flag-bits |= IMAGE-FLAG-RUN-CRITICAL
+
+  // Programs are compiled to snapshots, and the envelope keeps their sources.
+  source/ByteArray? := null
+  image-data/ByteArray := ?
+  if image-path.ends-with ".toit":
+    if not file.is-file image-path: ui.abort "Program source not found: $image-path"
+    image-data = compile-snapshot_ image-path --ui=ui
+    if not invocation["strip"]: source = create-source-archive image-path --ui=ui
+  else:
+    if invocation["strip"]:
+      ui.abort "Only programs that are installed from source can be stripped of their sources."
+    image-data = read-file image-path --ui=ui
   assets-data := read-assets assets-path --ui=ui
   is-snapshot := is-snapshot-bundle image-data
 
@@ -491,10 +530,11 @@ container-install invocation/cli.Invocation -> none:
     envelope.entries[name] = image-data
     if assets-data: envelope.entries["+$name"] = assets-data
     else: envelope.entries.remove "+$name"
+    sources := envelope.container-sources
+    if source: sources[name] = source
+    else: sources.remove name
+    envelope.container-sources = sources
 
-    flag-bits := 0
-    if invocation["trigger"] == "boot": flag-bits |= IMAGE-FLAG-RUN-BOOT
-    if invocation["critical"]: flag-bits |= IMAGE-FLAG-RUN-CRITICAL
     properties-update envelope: | properties/Map? |
       properties = properties or {:}
       flags := properties.get PROPERTY-CONTAINER-FLAGS --init=: {:}
@@ -518,6 +558,10 @@ container-uninstall invocation/cli.Invocation -> none:
   update-envelope invocation: | envelope/Envelope |
     envelope.entries.remove name
     envelope.entries.remove "+$name"
+
+    sources := envelope.container-sources
+    sources.remove name
+    envelope.container-sources = sources
 
     properties-update envelope: | properties/Map? |
       flags := properties and properties.get PROPERTY-CONTAINER-FLAGS
@@ -552,6 +596,9 @@ container-list invocation/cli.Invocation -> none:
 build-entries-json entries/Map --word-size/int -> Map:
   properties/Map? := entries.get AR-ENTRY-PROPERTIES
       --if-present=: json.decode it
+  sources := entries.get AR-ENTRY-CONTAINER-SOURCES
+      --if-present=: tison.decode it
+      --if-absent=: {:}
   flags := properties and properties.get PROPERTY-CONTAINER-FLAGS
   containers := {:}
   entries.do: | name/string content/ByteArray |
@@ -565,6 +612,8 @@ build-entries-json entries/Map --word-size/int -> Map:
     }
     if assets:
       map["assets"] = { "size": assets.size }
+    if sources.contains name:
+      map["source"] = true
     if entry.flags != 0:
       flag-names := []
       if (entry.flags & IMAGE-FLAG-RUN-BOOT) != 0:
@@ -583,6 +632,276 @@ build-entries-json entries/Map --word-size/int -> Map:
     "containers": containers,
     "entries": other-entries,
   }
+
+/**
+Creates a source archive for the program at the given $path.
+
+The archive has the sources of the program and of the packages it uses,
+  but not the sources of the SDK, so the program can be compiled again when
+  the firmware is extracted.
+*/
+create-source-archive path/string --ui/cli.Ui -> ByteArray:
+  sdk-lib := find-sdk-lib_
+  compiler := compiler-path_ sdk-lib
+  entry := fs.to-slash (fs.to-absolute path)
+  // The SDK is the folder that has the 'lib/toit' folder.
+  sdk-path := fs.dirname (fs.dirname (fs.to-absolute sdk-lib))
+  protocol := FileServerProtocol.local compiler sdk-path Documents
+  analyzer := lsp.Compiler compiler 30_000 --protocol=protocol
+  entry-uri := translator.to-uri entry
+  project-uri := compute-project-uri --uri=entry-uri
+  result := analyzer.analyze [entry-uri] --project-uri=project-uri
+  if not result: ui.abort "Analyzing $path failed."
+  if not result.diagnostics-without-position.is-empty:
+    ui.abort "Analyzing $path failed: $(result.diagnostics-without-position.join "\n")"
+  buffer := io.Buffer
+  write-repro
+      --writer=buffer
+      --compiler-flags=(analyzer.build-run-flags --project-uri=project-uri)
+      --compiler-input=(json.stringify [entry])
+      --info="toit/archive"
+      --protocol=protocol
+      --cwd-path=(fs.to-slash directory.cwd)
+      --include-sdk=false
+  return prune-lock-files_ buffer.bytes
+
+/**
+Removes the packages that the program doesn't use from the lock files in the
+  source $archive.
+
+The archive only has the files that the program uses, but the lock files can
+  have more packages, for example when the program shares the lock file of
+  a project with other programs. The compiler reports packages that it can't
+  find, even if they aren't used, so they are removed. A package is used if
+  the archive has files in its source folder.
+*/
+prune-lock-files_ archive/ByteArray -> ByteArray:
+  entries := []  // Of [name, content] pairs.
+  (tar.Reader (io.Reader archive)).do: | header/tar.Header content/ByteArray |
+    entries.add [header.name, content]
+  files := entries.filter: | entry/List | entry[0].starts-with "/" and not entry[0].starts-with "/<"
+  file-names := files.map: | entry/List | entry[0]
+  changed := false
+  entries.do: | entry/List |
+    name/string := entry[0]
+    if not name.ends-with "/package.lock": continue.do
+    pruned := prune-lock-file_ entry[1] --lock-dir=(fs.dirname name) --file-names=file-names
+    if pruned:
+      entry[1] = pruned
+      changed = true
+  if not changed: return archive
+  buffer := io.Buffer
+  writer := tar.Writer buffer
+  entries.do: | entry/List | writer.add entry[0] entry[1]
+  writer.close
+  return buffer.bytes
+
+/**
+Returns the $lock file without the packages that don't have files in the
+  given $file-names, or null if it doesn't change.
+*/
+prune-lock-file_ lock/ByteArray --lock-dir/string --file-names/List -> ByteArray?:
+  decoded := yaml.decode lock
+  if decoded is not Map: return null
+  packages := decoded.get "packages"
+  if packages is not Map: return null
+  has-files := : | prefix/string | file-names.any: | name/string | name.starts-with prefix
+  used := {}
+  packages.do: | id/string entry |
+    if entry is not Map: continue.do
+    if path := entry.get "path":
+      if has-files.call "$(fs.clean "$lock-dir/$path/src")/": used.add id
+    else if (entry.contains "url") and (entry.contains "version"):
+      folder := "/$entry["url"]/$entry["version"]/src/"
+      found := file-names.any: | name/string | name.contains folder
+      if found: used.add id
+  if used.size == packages.size: return null
+  keep-prefixes := : | prefixes |
+    result := {:}
+    if prefixes is Map:
+      prefixes.do: | prefix target |
+        if used.contains target: result[prefix] = target
+    result
+  result := {:}
+  decoded.do: | key value |
+    if key == "packages":
+      kept := {:}
+      packages.do: | id/string entry |
+        if not used.contains id: continue.do
+        if entry is Map and entry.contains "prefixes":
+          entry = entry.copy
+          entry["prefixes"] = keep-prefixes.call entry["prefixes"]
+        kept[id] = entry
+      result[key] = kept
+    else if key == "prefixes":
+      result[key] = keep-prefixes.call value
+    else:
+      result[key] = value
+  return yaml.encode result
+
+/**
+Compiles the system program of the $envelope with the programs in the
+  given $sources combined with it, and returns the snapshot.
+
+The $sources map container names to source archives. They are unpacked
+  into a directory of their own, so they don't clash, and their package
+  caches are moved along with them.
+*/
+compile-system-with-programs sources/Map --envelope/Envelope --ui/cli.Ui -> ByteArray:
+  tmp-dir := directory.mkdtemp "/tmp/toit-firmware-programs-"
+  try:
+    output := "$tmp-dir/system.snapshot"
+    compile-system-with-programs_ sources --tmp-dir=tmp-dir --ui=ui ["-w", output]
+    return read-system-snapshot_ output --envelope=envelope --ui=ui
+  finally:
+    directory.rmdir --recursive tmp-dir
+
+/**
+Compiles the system program with the programs in the given $sources
+  combined with it, using the given $output-arguments, like '-w <path>'.
+*/
+compile-system-with-programs_ sources/Map --tmp-dir/string --ui/cli.Ui output-arguments/List -> none:
+  sdk-lib := find-sdk-lib_
+  system-source := "$sdk-lib/system-sources/system/extensions/esp32/boot-combined.toit"
+  if not file.is-file system-source:
+    ui.abort "The SDK doesn't have the sources of the system program ($system-source)."
+  arguments := [compiler-path_ sdk-lib, "-O2"]
+  cache-paths := []
+  sources.do: | name/string archive/ByteArray |
+    root := "$tmp-dir/sources/$name"
+    unpacked := unpack-source-archive_ archive --root=root
+    arguments.add-all ["--combine", "$root$unpacked["entry"]"]
+    unpacked["package-cache-paths"].do: cache-paths.add "$root$it"
+  arguments.add-all output-arguments
+  arguments.add system-source
+  // Packages with the same URL and version are the same, so all programs
+  // can use all the package caches.
+  environment := cache-paths.is-empty
+      ? null
+      : { "TOIT_PACKAGE_CACHE_PATHS": cache-paths.join (platform == system.PLATFORM-WINDOWS ? ";" : ":") }
+  exit-code := pipe.run-program --environment=environment arguments
+  if exit-code != 0: ui.abort "Compiling the system program failed."
+
+read-system-snapshot_ path/string --envelope/Envelope --ui/cli.Ui -> ByteArray:
+  snapshot := file.read-contents path
+  bundle := SnapshotBundle SYSTEM-CONTAINER-NAME snapshot
+  if bundle.sdk-version != envelope.sdk-version:
+    ui.abort "The SDK is $bundle.sdk-version, but the envelope is for $envelope.sdk-version."
+  return snapshot
+
+/**
+Unpacks the source $archive below the $root directory, and returns its
+  entry path and its package cache paths, relative to the $root.
+*/
+unpack-source-archive_ archive/ByteArray --root/string -> Map:
+  entry/string? := null
+  cache-paths/List := []
+  reader := tar.Reader (io.Reader archive)
+  reader.do: | header/tar.Header content/ByteArray |
+    name := header.name
+    if name == "/<compiler-input>":
+      entry = (json.decode content)[0]
+    else if name == "/<package-cache-paths>":
+      cache-paths = (content.to-string.split "\n").filter: it != ""
+    else if name.starts-with "/" and not name.starts-with "/<" and not name.contains "/../":
+      path := "$root$name"
+      directory.mkdir --recursive (fs.dirname path)
+      file.write-contents content --path=path
+  if not entry: throw "Source archive without an entry"
+  return { "entry": entry, "package-cache-paths": cache-paths }
+
+/**
+Combines the containers of the $envelope that have their sources with the
+  system program. They run from the system program instead of their own
+  snapshots. The envelope isn't changed on disk.
+*/
+combine-containers_ envelope/Envelope --combine/bool --ui/cli.Ui -> none:
+  if not combine: return
+  entries := envelope.entries
+  sources := envelope.container-sources
+  combined := {:}
+  sources.do: | name/string source/ByteArray |
+    if entries.contains "+$name":
+      // The system program doesn't give assets to combined containers yet.
+      ui.emit --warning "Container '$name' has assets, so it isn't combined."
+    else:
+      combined[name] = source
+  if combined.is-empty:
+    ui.emit --warning "There are no containers with sources to combine."
+    return
+  check-system-program_ envelope --ui=ui
+  // The combined containers run from the system program.
+  combined.do --keys: entries.remove it
+  envelope.combined-containers = combined.keys
+  entries[SYSTEM-CONTAINER-NAME] = compile-system-with-programs combined --envelope=envelope --ui=ui
+
+/**
+Checks that the system program of the $envelope is the one in the SDK.
+
+Combining containers compiles the system program of the SDK again, so it
+  would replace other system programs. The envelope's system program is
+  compiled with 'toit compile --snapshot -O2', so compiling the one in the
+  SDK the same way gives the same snapshot.
+*/
+check-system-program_ envelope/Envelope --ui/cli.Ui -> none:
+  system := envelope.entries.get SYSTEM-CONTAINER-NAME
+  if not system or not is-snapshot-bundle system:
+    ui.abort "The envelope has no system program to compile again."
+  tmp-dir := directory.mkdtemp "/tmp/toit-firmware-system-"
+  try:
+    output := "$tmp-dir/system.snapshot"
+    exit-code := pipe.run-program [
+      toit-path_ find-sdk-lib_, "compile", "--snapshot", "-O2", "-o", output, system-source-path_,
+    ]
+    if exit-code != 0: ui.abort "Compiling the system program of the SDK failed."
+    expected := (SnapshotBundle SYSTEM-CONTAINER-NAME (file.read-contents output)).uuid
+    if (SnapshotBundle SYSTEM-CONTAINER-NAME system).uuid != expected:
+      ui.abort "The envelope has a system program of its own. Only envelopes with the system program of the SDK can combine containers."
+  finally:
+    directory.rmdir --recursive tmp-dir
+
+/**
+Compiles the program at the given $path to a snapshot with the compiler of
+  the SDK, and returns it.
+
+The snapshot is the one 'toit compile --snapshot -O2' makes. Containers in
+  firmware stay in flash, so they are optimized for size and speed.
+*/
+compile-snapshot_ path/string --ui/cli.Ui -> ByteArray:
+  tmp-dir := directory.mkdtemp "/tmp/toit-firmware-snapshot-"
+  try:
+    output := "$tmp-dir/program.snapshot"
+    exit-code := pipe.run-program [toit-path_ find-sdk-lib_, "compile", "--snapshot", "-O2", "-o", output, path]
+    if exit-code != 0: ui.abort "Compiling $path failed."
+    return file.read-contents output
+  finally:
+    directory.rmdir --recursive tmp-dir
+
+// The source of the system program of the SDK for the ESP32.
+system-source-path_ -> string:
+  return "$find-sdk-lib_/system-sources/system/extensions/esp32/boot.toit"
+
+toit-path_ sdk-lib/string -> string:
+  return "$sdk-lib/../../bin/toit$(platform == system.PLATFORM-WINDOWS ? ".exe" : "")"
+
+compiler-path_ sdk-lib/string -> string:
+  return "$sdk-lib/bin/toit.compile$(platform == system.PLATFORM-WINDOWS ? ".exe" : "")"
+
+// Finds the 'lib/toit' folder of the SDK. The executable is supposed to live
+// in 'bin', so it is next to it.
+find-sdk-lib_ -> string:
+  if sdk-lib := os.env.get "TOIT_SDK_LIB":
+    return sdk-lib
+  bin-name := system.program-path
+  if platform == system.PLATFORM-WINDOWS: bin-name = bin-name.replace --all "\\" "/"
+  list := bin-name.split "/"
+  dir := list[..list.size - 1].join "/"
+  return "$dir/../lib/toit"
+
+// The id of a container that runs a combined program. The system program
+// computes the same ids.
+combined-id name/string -> Uuid:
+  return Uuid.uuid5 "toit-combined" name
 
 property-cmd -> cli.Command:
   cmd := cli.Command "property"
@@ -750,6 +1069,9 @@ extract-cmd -> cli.Command:
             --help="Replace the content of a partition or add a custom partition to the flashed image."
             --split-commas
             --multi,
+        cli.Flag "combine"
+            --help="Combine the containers that have their sources with the system program, so they share code."
+            --default=false,
       ]
       --run=:: extract it
 
@@ -776,7 +1098,10 @@ extract invocation/cli.Invocation -> none:
     if exception: config-encoded = ubjson.encode (json.decode config-encoded)
 
   if envelope.kind == Envelope.KIND-ESP32:
+    combine-containers_ envelope --combine=invocation["combine"] --ui=ui
     extract-esp32 invocation envelope --config-encoded=config-encoded
+  else if invocation["combine"]:
+    ui.abort "Only ESP32 envelopes support combining containers."
   else if envelope.kind == Envelope.KIND-HOST:
     extract-host invocation envelope --config-encoded=config-encoded
   else if envelope.kind == Envelope.KIND-EC618:
@@ -1401,6 +1726,9 @@ flash-cmd -> cli.Command:
             --help="Replace the content of a partition or add a custom partition to the flashed image."
             --split-commas
             --multi,
+        cli.Flag "combine"
+            --help="Combine the containers that have their sources with the system program, so they share code."
+            --default=false,
         cli.OptionPath "partitions"
             --help="Override the partition table.",
       ]
@@ -1442,6 +1770,7 @@ flash invocation/cli.Invocation -> none:
     exception := catch: ubjson.decode config-encoded
     if exception: config-encoded = ubjson.encode (json.decode config-encoded)
 
+  combine-containers_ envelope --combine=invocation["combine"] --ui=ui
   build-esp32-image invocation envelope --config-encoded=config-encoded
       --write=: | partitions/Map chip/string flashing/Map |
         tmp := directory.mkdtemp "/tmp/toit-flash-"
@@ -1598,6 +1927,19 @@ extract-binary-esp32 envelope/Envelope --config-encoded/ByteArray -> ByteArray:
     system-assets := {:}
     // Encode any WiFi information.
     properties.get "wifi" --if-present=: system-assets["wifi"] = tison.encode it
+    // The combined containers are described with the index of their program
+    // in the system program.
+    combined := envelope.combined-containers
+    if not combined.is-empty:
+      container-flags := (properties.get PROPERTY-CONTAINER-FLAGS) or {:}
+      description := []
+      combined.size.repeat: | index/int |
+        container := combined[index]
+        description.add container
+        description.add index
+        description.add ((container-flags.get container) or 0)
+        non-system-images[container] = (combined-id container).to-byte-array
+      system-assets["combined"] = tison.encode description
     // Encode any non-system image names.
     if not non-system-images.is-empty: system-assets["images"] = tison.encode non-system-images
     // Encode the system assets and add them to the container.
@@ -1892,6 +2234,23 @@ class Envelope:
           entries[file.name] = file.content
     if version_ == -1: throw "cannot open envelope - missing info entry"
     if sdk-version == "": throw "cannot open envelope - missing or corrupt metadata entry"
+
+  // The source archives of the containers that are installed from source,
+  // as a map from container names to archives.
+  container-sources -> Map:
+    result := {:}
+    entries.get AR-ENTRY-CONTAINER-SOURCES --if-present=: | encoded/ByteArray |
+      // Decoded maps can't grow, so we copy them.
+      (tison.decode encoded).do: | name/string source/ByteArray | result[name] = source
+    return result
+
+  container-sources= sources/Map -> none:
+    if sources.is-empty: entries.remove AR-ENTRY-CONTAINER-SOURCES
+    else: entries[AR-ENTRY-CONTAINER-SOURCES] = tison.encode sources
+
+  // The containers that are combined with the system program when the
+  // firmware is extracted, in the order they are combined in.
+  combined-containers / List := []
 
   constructor.create .entries --.sdk-version --.kind --.word-size:
     version_ = kind == KIND-EC618

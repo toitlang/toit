@@ -76,6 +76,10 @@ class EnvelopeTest:
     compile --path=tmp-snapshot-path --source-path=source-path
     install --name=name --snapshot-path=tmp-snapshot-path --boot=boot --assets=assets
 
+  // Runs 'toit tool firmware' with the given arguments on the envelope.
+  firmware arguments/List --allow-fail/bool=false -> int:
+    return run-program_ [toit-bin, "tool", "firmware", "-e", envelope] + arguments --allow-fail=allow-fail
+
   extract --path/string --format/string="binary" --config/ByteArray?=null -> none:
     cmd := [toit-bin, "tool", "firmware", "-e", envelope, "extract", "--format", format, "-o", path]
     if config:
