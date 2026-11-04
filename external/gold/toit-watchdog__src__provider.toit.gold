@@ -1,0 +1,9 @@
+toit-watchdog/src/esp32.toit:11:10: warning: Deprecated 'watchdog-init'. Use 'watchdog.start' instead
+    esp32.watchdog-init --ms=ms
+         ^~~~~~~~~~~~~~
+toit-watchdog/src/esp32.toit:14:10: warning: Deprecated 'watchdog-reset'. Use 'watchdog.feed' instead
+    esp32.watchdog-reset
+         ^~~~~~~~~~~~~~~
+toit-watchdog/src/esp32.toit:17:10: warning: Deprecated 'watchdog-deinit'. Use 'watchdog.stop' instead
+    esp32.watchdog-deinit
+         ^~~~~~~~~~~~~~~~
