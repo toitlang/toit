@@ -76,6 +76,7 @@ namespace toit {
   fn(AeadContext)                       \
   fn(TlsHandshakeToken)                 \
   fn(EspNowResource)                    \
+  fn(UsbHostResource)                   \
   fn(MbedTlsSocket)                     \
   fn(RsaGenerationResource)             \
   fn(CellularEvents)                    \
@@ -130,6 +131,7 @@ namespace toit {
   fn(OneWireResourceGroup)              \
   fn(TouchResourceGroup)                \
   fn(EspNowResourceGroup)               \
+  fn(UsbHostResourceGroup)              \
   fn(CellularResourceGroup)             \
   fn(UnixSocketResourceGroup)           \
 
