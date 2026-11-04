@@ -227,7 +227,10 @@ class ExpressionPrinter {
     }
     result += " " + std::string(Token::symbol(declaration->kind()).c_str());
     if (declaration->value() != null) {
-      result += " " + flat(declaration->value(), PRECEDENCE_NONE);
+      Expression* value = declaration->value();
+      std::string value_text = flat(value, PRECEDENCE_NONE);
+      if (value->is_Parenthesis()) value_text = "(" + value_text + ")";
+      result += " " + value_text;
     }
     return result;
   }
