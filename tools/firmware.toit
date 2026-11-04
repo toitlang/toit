@@ -31,6 +31,7 @@ import system.assets
 import ar
 import cli
 import fs
+import fs.xdg
 import host.directory
 import host.file
 import host.os
@@ -834,6 +835,7 @@ combine-containers_ envelope/Envelope --combine/bool --ui/cli.Ui -> none:
   combined.do --keys: entries.remove it
   envelope.combined-containers = combined.keys
   entries[SYSTEM-CONTAINER-NAME] = compile-system-with-programs combined --envelope=envelope --ui=ui
+  save-snapshot-for-decoding_ entries[SYSTEM-CONTAINER-NAME] --ui=ui
 
 /**
 Checks that the system program of the $envelope is the one in the SDK.
@@ -859,6 +861,25 @@ check-system-program_ envelope/Envelope --ui/cli.Ui -> none:
       ui.abort "The envelope has a system program of its own. Only envelopes with the system program of the SDK can combine containers."
   finally:
     directory.rmdir --recursive tmp-dir
+
+/**
+Saves the $snapshot where 'toit decode' looks for snapshots, so it can decode
+  the stack traces of the programs in it. Combined containers run in the
+  system program, which is compiled when the firmware is extracted, so this
+  is the only place where its snapshot exists.
+*/
+save-snapshot-for-decoding_ snapshot/ByteArray --ui/cli.Ui -> none:
+  state-home := xdg.state-home
+  if not state-home: return
+  dir := fs.join state-home "toit" "snapshots"
+  path := fs.join dir "$((SnapshotBundle SYSTEM-CONTAINER-NAME snapshot).uuid).snapshot"
+  exception := catch:
+    directory.mkdir --recursive dir
+    file.write-contents snapshot --path=path
+  if exception:
+    ui.emit --warning "Couldn't save the snapshot of the system program for decoding ($exception)."
+  else:
+    ui.emit --verbose "Saved the snapshot of the system program for decoding: $path"
 
 /**
 Compiles the program at the given $path to a snapshot with the compiler of
