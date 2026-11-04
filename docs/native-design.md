@@ -121,13 +121,29 @@ Containers can be installed in firmware envelopes from source, and the
 envelope keeps their sources, unless they are installed with `--strip`. When
 the firmware is extracted with `--combine`, these containers are compiled
 together with the system program, so they share the code of the libraries.
+With `--native`, the system program and the combined containers are compiled
+to native code.
 Without `--combine`, the containers run their snapshots, like any other:
 
 ```
 toit tool firmware -e firmware.envelope container install hello hello.toit
 toit tool firmware -e firmware.envelope extract --format=image -o snapshots.img
 toit tool firmware -e firmware.envelope extract --combine --format=image -o combined.img
+toit tool firmware -e firmware.envelope extract --combine --native --format=image -o native.img
 ```
+
+Native extraction is only for the ESP32-C3, and it needs an envelope with
+native support, which `make esp32c3 ESP32_NATIVE_SUPPORT=1` builds. `toit tool
+firmware show` tells whether an envelope has it. The native support comes from
+a second build of the firmware with the native runtime and without generated
+code. It has the libraries without debug information, the linker scripts, and
+a recipe with the commands to compile the generated code, link it, and make
+the firmware image (`toolchains/idf/components/toit/native_support.py`). The
+firmware tool runs the recipe with esp-clang, the ESP-IDF linker, and esptool,
+which it finds in the ESP-IDF tools, or through `TOIT_NATIVE_CXX`,
+`TOIT_NATIVE_LINKER`, and `ESPTOOL_PATH`. Native firmware has the bytecode
+loop too, so it runs the containers that aren't combined as bytecodes, and
+containers can still be installed on it.
 
 A combined container has the id it would have if it ran from its snapshot:
 the image id, which is computed from the uuid of the snapshot and the
@@ -161,4 +177,5 @@ firmware's image, with its flags, is installed again.
 | `src/interpreter_no_bytecodes.cc` | The stub for executables without the bytecode loop. |
 | `src/native_main.cc` | `main` for native executables. |
 | `src/native-sdk.cmake` | What the SDK ships for building native code. |
+| `toolchains/idf/components/toit/native_support.py` | Packs the native support of firmware builds. |
 | `tests/native/` | Tests that are compiled to native code. |

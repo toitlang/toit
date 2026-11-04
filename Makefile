@@ -35,6 +35,12 @@ ESP32_PORT=
 # The system process is started from its own entry point.
 ESP32_SYSTEM_ENTRY=system/extensions/esp32/boot.toit
 
+# Use 'make esp32c3 ESP32_NATIVE_SUPPORT=1' to build an envelope that also
+# supports extracting native firmware ('toit tool firmware extract --native').
+# The native support is built in a build directory of its own.
+ESP32_NATIVE_SUPPORT ?=
+ESP32_NATIVE_SUPPORT_BUILD_DIR = $(BUILD)/$(ESP32_CHIP)-native-support
+
 ifeq ($(ESP32_CHIP),esp32s3-spiram-octo)
 	IDF_TARGET=esp32s3
 else ifeq ($(ESP32_CHIP),esp32-eth-clk-out17)
@@ -457,7 +463,13 @@ esp32:
 
 .PHONY: esp32-no-env
 esp32-no-env: check-env check-esp32-env sdk
+ifneq ($(ESP32_NATIVE_SUPPORT),)
+	cmake -E env IDF_TARGET=$(IDF_TARGET) IDF_CCACHE_ENABLE=1 TOIT_NATIVE_SUPPORT=1 python$(EXE_SUFFIX) $(IDF_PY) -C toolchains/$(ESP32_CHIP) -B $(ESP32_NATIVE_SUPPORT_BUILD_DIR) build
+endif
 	cmake -E env IDF_TARGET=$(IDF_TARGET) IDF_CCACHE_ENABLE=1 python$(EXE_SUFFIX) $(IDF_PY) -C toolchains/$(ESP32_CHIP) -B $(BUILD)/$(ESP32_CHIP) -p "$(ESP32_PORT)" build
+ifneq ($(ESP32_NATIVE_SUPPORT),)
+	$(TOIT_BIN) tool firmware -e $(BUILD)/$(ESP32_CHIP)/firmware.envelope native-support add $(ESP32_NATIVE_SUPPORT_BUILD_DIR)/native-support.tar.gz
+endif
 
 .PHONY: esp32c3
 esp32c3:

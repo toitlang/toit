@@ -29,6 +29,20 @@ set(TOIT_SDK_DIR ${TOIT_SDK_DIR} PARENT_SCOPE)
 set(TOIT ${TOIT_SDK_DIR}/bin/toit)
 set(CMAKE_BUILD_TYPE Release)
 
+# A native support build has the native runtime, but no generated code. It packs
+# what it takes to link firmware with generated code later, so the firmware
+# tool can extract native firmware from an envelope with the native support.
+set(TOIT_NATIVE_SUPPORT "$ENV{TOIT_NATIVE_SUPPORT}")
+set(TOIT_NATIVE_EMBEDDED FALSE)
+if (TOIT_NATIVE_SUPPORT)
+    set(TOIT_NATIVE_EMBEDDED TRUE)
+endif()
+# The flags that generated code is compiled with.
+set(TOIT_NATIVE_CXX_FLAGS
+    --target=riscv32-esp-elf -march=rv32imc_zicsr_zifencei -mabi=ilp32
+    -std=gnu++11 -w -ffreestanding -fno-exceptions -fno-rtti -ffunction-sections -fdata-sections
+    -O2)
+
 add_subdirectory(${TOIT_BASE_DIR} toit EXCLUDE_FROM_ALL)
 
 # Add the include directories from the required components to the imported toit_vm target.
@@ -63,6 +77,13 @@ target_compile_options(toit_vm PRIVATE
 target_link_libraries(${COMPONENT_LIB} INTERFACE toit_vm)
 target_link_options(${COMPONENT_LIB} INTERFACE "SHELL: -Wl,--whole-archive $<TARGET_FILE:toit_vm> -Wl,--no-whole-archive")
 
+if (TOIT_NATIVE_EMBEDDED AND NOT CONFIG_IDF_TARGET_ESP32C3)
+    message(FATAL_ERROR "Firmware with native code is only supported for the ESP32-C3")
+endif()
+
+idf_component_set_property(${COMPONENT_NAME} TOIT_NATIVE_SUPPORT "${TOIT_NATIVE_SUPPORT}")
+idf_component_set_property(${COMPONENT_NAME} TOIT_NATIVE_CXX_FLAGS "${TOIT_NATIVE_CXX_FLAGS}")
+
 idf_component_set_property(${COMPONENT_NAME} TOIT_SDK_DIR ${TOIT_SDK_DIR})
 idf_component_set_property(${COMPONENT_NAME} SYSTEM_SNAPSHOT ${CMAKE_BINARY_DIR}/system.snapshot)
 idf_component_set_property(${COMPONENT_NAME} TOIT ${TOIT})
@@ -77,6 +98,7 @@ function(toit_postprocess)
     idf_component_get_property(TOIT ${TOIT_COMPONENT_NAME} TOIT)
     idf_component_get_property(TOIT_BASE_DIR ${TOIT_COMPONENT_NAME} TOIT_BASE_DIR)
     idf_component_get_property(SYSTEM_SNAPSHOT ${TOIT_COMPONENT_NAME} SYSTEM_SNAPSHOT)
+    idf_component_get_property(NATIVE_SUPPORT ${TOIT_COMPONENT_NAME} TOIT_NATIVE_SUPPORT)
 
     idf_build_get_property(EXECUTABLE_NAME EXECUTABLE_NAME)
 
@@ -93,6 +115,37 @@ function(toit_postprocess)
         set(BOOT_PROJECT_ROOT_ARGS "--project-root" "${BOOT_PROJECT_ROOT}")
     else()
         message(WARNING "Missing project root for system toit file: ${CONFIG_TOIT_SYSTEM_SOURCE_PROJECT_ROOT}. Build might fail")
+    endif()
+
+    if (NATIVE_SUPPORT)
+        # A native support build only packs the native support. Its firmware has no program.
+        idf_build_get_property(PYTHON PYTHON)
+        idf_build_get_property(IDF_PATH IDF_PATH)
+        idf_build_get_property(IDF_TARGET IDF_TARGET)
+        idf_component_get_property(NATIVE_CXX_FLAGS ${TOIT_COMPONENT_NAME} TOIT_NATIVE_CXX_FLAGS)
+        string(REPLACE ";" " " NATIVE_CXX_FLAGS "${NATIVE_CXX_FLAGS}")
+        # The toolchain's strip is next to its objcopy.
+        get_filename_component(OBJCOPY_DIR "${CMAKE_OBJCOPY}" DIRECTORY)
+        get_filename_component(OBJCOPY_NAME "${CMAKE_OBJCOPY}" NAME)
+        string(REPLACE "objcopy" "strip" STRIP_NAME "${OBJCOPY_NAME}")
+        set(STRIP "${OBJCOPY_DIR}/${STRIP_NAME}")
+        add_custom_command(
+                TARGET firmware
+                POST_BUILD
+                COMMAND "${PYTHON}" "${TOIT_BASE_DIR}/toolchains/idf/components/toit/native_support.py"
+                        "--build-dir=${CMAKE_BINARY_DIR}"
+                        "--idf-path=${IDF_PATH}"
+                        "--ninja=${CMAKE_MAKE_PROGRAM}"
+                        "--strip=${STRIP}"
+                        "--elf=${EXECUTABLE_NAME}.elf"
+                        "--binary-target=.bin_timestamp"
+                        "--chip=${IDF_TARGET}"
+                        "--cxx-flags=${NATIVE_CXX_FLAGS}"
+                        "--toit=${TOIT}"
+                        "-o" "${CMAKE_BINARY_DIR}/native-support.tar.gz"
+                COMMAND echo native support: created
+                VERBATIM)
+        return()
     endif()
 
     add_custom_command(
