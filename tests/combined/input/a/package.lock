@@ -1,5 +1,10 @@
 prefixes:
   foo: pkg-foo
+  unused: pkg-unused
 packages:
   pkg-foo:
     path: ../foo-a
+    prefixes:
+      unused: pkg-unused
+  pkg-unused:
+    path: ../foo-b
