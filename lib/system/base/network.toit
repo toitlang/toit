@@ -228,8 +228,10 @@ monitor NetworkState:
         // to produce a working module.
         usage_--
         // Disconnect the module if it was created, but connecting
-        // failed with an exception.
-        if module: module.disconnect
+        // failed with an exception. That exception may be a cancelation,
+        // and disconnecting is allowed to yield.
+        if module:
+          critical-do: module.disconnect
 
   up [--if-unconnected] -> NetworkModule?:
     module := module_
