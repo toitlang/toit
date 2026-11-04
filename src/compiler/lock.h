@@ -54,8 +54,11 @@ class PackageLock {
   // package, so they resolve their imports through its own lock. The packages
   // of the later locks get ids of their own, because two programs can depend
   // on different versions of the same package. The first lock is the main one.
+  // The unpacked roots are the folders the sources of the programs were
+  // unpacked to, or empty. Their files are shown as if they were the root.
   static PackageLock merge(const std::vector<PackageLock>& locks,
-                           const std::vector<std::string>& root_paths);
+                           const std::vector<std::string>& root_paths,
+                           const std::vector<std::string>& unpacked_roots);
 
   bool has_errors() const { return has_errors_; }
 

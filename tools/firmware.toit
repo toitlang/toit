@@ -771,7 +771,8 @@ compile-system-with-programs_ sources/Map --tmp-dir/string --ui/cli.Ui output-ar
   sources.do: | name/string archive/ByteArray |
     root := "$tmp-dir/sources/$name"
     unpacked := unpack-source-archive_ archive --root=root
-    arguments.add-all ["--combine", "$root$unpacked["entry"]"]
+    // The sources are shown with the paths they had when they were installed.
+    arguments.add-all ["--combine-root", root, "--combine", "$root$unpacked["entry"]"]
     unpacked["package-cache-paths"].do: cache-paths.add "$root$it"
   arguments.add-all output-arguments
   arguments.add system-source

@@ -104,6 +104,7 @@ struct PipelineConfiguration {
   int verbosity;
   /// Programs that are combined with the program.
   List<const char*> combined;
+  List<const char*> combined_roots;
 };
 
 class PipelineStatistics {
@@ -1099,10 +1100,14 @@ SnapshotBundle Compiler::compile(const char* source_path,
     .verbosity = compiler_config.verbosity,
   };
   ListBuilder<const char*> combined;
+  ListBuilder<const char*> combined_roots;
   for (int i = 0; i < compiler_config.combined.length(); i++) {
     combined.add(Zone::current()->own_malloc(FilesystemLocal::to_local_path(compiler_config.combined[i])));
+    const char* root = i < compiler_config.combined_roots.length() ? compiler_config.combined_roots[i] : null;
+    combined_roots.add(root == null ? null : Zone::current()->own_malloc(FilesystemLocal::to_local_path(root)));
   }
   configuration.combined = combined.build();
+  configuration.combined_roots = combined_roots.build();
 
   return compile(source_path, configuration);
 }
@@ -1296,6 +1301,7 @@ PackageLock Pipeline::load_package_lock(const List<const char*> source_paths) {
   // Each program has its own lock, and its folder is its root.
   std::vector<PackageLock> locks = { lock };
   std::vector<std::string> roots = { std::string() };
+  std::vector<std::string> unpacked_roots = { std::string() };
   for (int i = 0; i < configuration_.combined.length(); i++) {
     const char* path = configuration_.combined[i];
     std::string path_lock_file = (i == 0 && configuration_.project_root != null)
@@ -1309,8 +1315,10 @@ PackageLock Pipeline::load_package_lock(const List<const char*> source_paths) {
     root.join("..");
     root.canonicalize();
     roots.push_back(root.buffer());
+    const char* unpacked = configuration_.combined_roots.is_empty() ? null : configuration_.combined_roots[i];
+    unpacked_roots.push_back(unpacked == null ? std::string() : std::string(unpacked));
   }
-  return PackageLock::merge(locks, roots);
+  return PackageLock::merge(locks, roots, unpacked_roots);
 }
 
 ast::Unit* LocationLanguageServerPipeline::parse(Source* source) {
