@@ -138,6 +138,13 @@ class Program : public FlashAllocation {
   ENTRY_POINTS(DECLARE_ENTRY_POINT_ACCESSOR)
   #undef DECLARE_ENTRY_POINT_ACCESSOR
 
+  // Entry points that cannot be reached are removed from the program.
+  #define DECLARE_HAS_ENTRY_POINT_ACCESSOR(name, lib_name, arity) bool has_##name() { \
+    int dispatch_index = entry_point_indexes_[name##_INDEX]; \
+    return dispatch_index >= 0 && dispatch_table[dispatch_index] >= 0; }
+  ENTRY_POINTS(DECLARE_HAS_ENTRY_POINT_ACCESSOR)
+  #undef DECLARE_HAS_ENTRY_POINT_ACCESSOR
+
   Smi* class_id(int index) const { ASSERT(index >= 0 && index < BUILTIN_CLASS_IDS_COUNT); return _builtin_class_ids[index]; }
 
   #define DECLARE_BUILTIN_CLASS_ID_ACCESSOR(name) Smi* name() const { return _builtin_class_ids[name##_INDEX]; }
