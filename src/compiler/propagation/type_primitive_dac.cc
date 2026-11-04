@@ -20,11 +20,11 @@ namespace compiler {
 
 MODULE_TYPES(dac, MODULE_DAC)
 
-TYPE_PRIMITIVE_ANY(init)
-TYPE_PRIMITIVE_ANY(use)
-TYPE_PRIMITIVE_ANY(unuse)
-TYPE_PRIMITIVE_ANY(set)
-TYPE_PRIMITIVE_ANY(cosine_wave)
+TYPE_PRIMITIVE_BYTE_ARRAY(init)
+TYPE_PRIMITIVE_BYTE_ARRAY(use)
+TYPE_PRIMITIVE_NULL(unuse)
+TYPE_PRIMITIVE_NULL(set)
+TYPE_PRIMITIVE_NULL(cosine_wave)
 
 }  // namespace toit::compiler
 }  // namespace toit

@@ -20,11 +20,16 @@ namespace compiler {
 
 MODULE_TYPES(font, MODULE_FONT)
 
-TYPE_PRIMITIVE_ANY(get_font)
-TYPE_PRIMITIVE_ANY(get_text_size)
-TYPE_PRIMITIVE_ANY(get_nonbuiltin)
-TYPE_PRIMITIVE_ANY(delete_font)
-TYPE_PRIMITIVE_ANY(contains)
+TYPE_PRIMITIVE(get_font) {
+  result.add_byte_array(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE_SMI(get_text_size)
+TYPE_PRIMITIVE_BYTE_ARRAY(get_nonbuiltin)
+TYPE_PRIMITIVE_NULL(delete_font)
+TYPE_PRIMITIVE_BOOL(contains)
 
 }  // namespace toit::compiler
 }  // namespace toit

@@ -20,13 +20,19 @@ namespace compiler {
 
 MODULE_TYPES(ethernet, MODULE_ETHERNET)
 
-TYPE_PRIMITIVE_ANY(init)
-TYPE_PRIMITIVE_ANY(init_spi)
-TYPE_PRIMITIVE_ANY(close)
-TYPE_PRIMITIVE_ANY(connect)
-TYPE_PRIMITIVE_ANY(setup_ip)
-TYPE_PRIMITIVE_ANY(disconnect)
-TYPE_PRIMITIVE_ANY(get_ip)
+TYPE_PRIMITIVE_BYTE_ARRAY(init)
+TYPE_PRIMITIVE_BYTE_ARRAY(init_spi)
+TYPE_PRIMITIVE_NULL(close)
+TYPE_PRIMITIVE_BYTE_ARRAY(connect)
+TYPE_PRIMITIVE_BYTE_ARRAY(setup_ip)
+TYPE_PRIMITIVE_NULL(disconnect)
+
+TYPE_PRIMITIVE(get_ip) {
+  result.add_byte_array(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
 TYPE_PRIMITIVE_NULL(set_hostname)
 
 }  // namespace toit::compiler

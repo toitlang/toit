@@ -20,11 +20,10 @@ namespace compiler {
 
 MODULE_TYPES(timer, MODULE_TIMER)
 
-TYPE_PRIMITIVE_ANY(init)
-TYPE_PRIMITIVE_ANY(create)
-TYPE_PRIMITIVE_ANY(arm)
-TYPE_PRIMITIVE_ANY(delete)
-
+TYPE_PRIMITIVE_BYTE_ARRAY(init)
+TYPE_PRIMITIVE_BYTE_ARRAY(create)
+TYPE_PRIMITIVE_NULL(arm)
+TYPE_PRIMITIVE_NULL(delete)
 
 }  // namespace toit::compiler
 }  // namespace toit

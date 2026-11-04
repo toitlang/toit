@@ -20,7 +20,7 @@ namespace compiler {
 
 MODULE_TYPES(dhcp, MODULE_DHCP)
 
-TYPE_PRIMITIVE_ANY(wait_for_lwip_dhcp_on_linux)
+TYPE_PRIMITIVE_NULL(wait_for_lwip_dhcp_on_linux)
 
 }  // namespace toit::compiler
 }  // namespace toit

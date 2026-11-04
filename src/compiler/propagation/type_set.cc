@@ -114,6 +114,17 @@ bool TypeSet::add_bool(Program* program) {
   return result;
 }
 
+void TypeSet::add_decoded(Program* program) {
+  add_int(program);
+  add_float(program);
+  add_bool(program);
+  add_null(program);
+  add_string(program);
+  add_array(program);
+  add_byte_array(program);
+  add_map(program);
+}
+
 void TypeSet::add_range(unsigned start, unsigned end) {
   int size = end - start;
   int from = start + 1;

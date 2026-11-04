@@ -20,13 +20,19 @@ namespace compiler {
 
 MODULE_TYPES(espnow, MODULE_ESPNOW)
 
-TYPE_PRIMITIVE_ANY(init)
-TYPE_PRIMITIVE_ANY(create)
-TYPE_PRIMITIVE_ANY(close)
-TYPE_PRIMITIVE_ANY(send)
+TYPE_PRIMITIVE_BYTE_ARRAY(init)
+TYPE_PRIMITIVE_BYTE_ARRAY(create)
+TYPE_PRIMITIVE_NULL(close)
+TYPE_PRIMITIVE_NULL(send)
 TYPE_PRIMITIVE_BOOL(send_succeeded)
-TYPE_PRIMITIVE_ANY(receive)
-TYPE_PRIMITIVE_ANY(add_peer)
+
+TYPE_PRIMITIVE(receive) {
+  result.add_array(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE_NULL(add_peer)
 TYPE_PRIMITIVE_NULL(remove_peer)
 
 }  // namespace toit::compiler

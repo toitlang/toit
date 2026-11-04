@@ -22,21 +22,27 @@ MODULE_TYPES(rmt, MODULE_RMT)
 
 TYPE_PRIMITIVE_INT(bytes_per_memory_block)
 TYPE_PRIMITIVE_BOOL(supports_dma)
-TYPE_PRIMITIVE_ANY(init)
-TYPE_PRIMITIVE_ANY(channel_new)
-TYPE_PRIMITIVE_ANY(channel_delete)
+TYPE_PRIMITIVE_BYTE_ARRAY(init)
+TYPE_PRIMITIVE_BYTE_ARRAY(channel_new)
+TYPE_PRIMITIVE_NULL(channel_delete)
 TYPE_PRIMITIVE_NULL(enable)
 TYPE_PRIMITIVE_NULL(disable)
-TYPE_PRIMITIVE_ANY(transmit)
-TYPE_PRIMITIVE_ANY(transmit_with_encoder)
+TYPE_PRIMITIVE_BOOL(transmit)
+TYPE_PRIMITIVE_BOOL(transmit_with_encoder)
 TYPE_PRIMITIVE_BOOL(is_transmit_done)
-TYPE_PRIMITIVE_BOOL(start_receive)
-TYPE_PRIMITIVE_ANY(receive)
+TYPE_PRIMITIVE_NULL(start_receive)
+
+TYPE_PRIMITIVE(receive) {
+  result.add_byte_array(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
 TYPE_PRIMITIVE_NULL(apply_carrier)
-TYPE_PRIMITIVE_ANY(sync_manager_new)
+TYPE_PRIMITIVE_BYTE_ARRAY(sync_manager_new)
 TYPE_PRIMITIVE_NULL(sync_manager_delete)
 TYPE_PRIMITIVE_NULL(sync_manager_reset)
-TYPE_PRIMITIVE_ANY(encoder_new)
+TYPE_PRIMITIVE_BYTE_ARRAY(encoder_new)
 TYPE_PRIMITIVE_NULL(encoder_delete)
 
 }  // namespace toit::compiler

@@ -1538,7 +1538,8 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     TypePrimitive::Entry* entry = reinterpret_cast<TypePrimitive::Entry*>(primitive->function);
     stack->push_empty();
     stack->push_empty();
-    entry(program, stack->local(0), stack->local(1));
+    TypePrimitiveArguments arguments(stack, propagator->words_per_type());
+    entry(program, arguments, stack->local(0), stack->local(1));
     method->ret(propagator, stack);
     if (stack->top_is_empty()) return scope;
     if (TypePrimitive::uses_entry_task(module, index)) {

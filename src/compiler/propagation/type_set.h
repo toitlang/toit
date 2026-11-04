@@ -159,9 +159,12 @@ class TypeSet {
   bool add_string(Program* program) { return add_instance(program->string_class_id()); }
   bool add_task(Program* program) { return add_instance(program->task_class_id()); }
   bool add_list(Program* program) { return add_instance(program->list_class_id()); }
+  bool add_map(Program* program) { return add_instance(program->map_class_id()); }
 
   bool add_int(Program* program);
   bool add_bool(Program* program);
+  // Adds the types of the values the message decoder can produce.
+  void add_decoded(Program* program);
   void add_range(unsigned start, unsigned end);
 
   void add_all_also_blocks(TypeSet other, int words);

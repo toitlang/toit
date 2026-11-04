@@ -20,11 +20,17 @@ namespace compiler {
 
 MODULE_TYPES(flash_kv, MODULE_FLASH_KV)
 
-TYPE_PRIMITIVE_ANY(init)
-TYPE_PRIMITIVE_ANY(read_bytes)
-TYPE_PRIMITIVE_ANY(write_bytes)
-TYPE_PRIMITIVE_ANY(delete)
-TYPE_PRIMITIVE_ANY(erase)
+TYPE_PRIMITIVE_BYTE_ARRAY(init)
+
+TYPE_PRIMITIVE(read_bytes) {
+  result.add_byte_array(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE_NULL(write_bytes)
+TYPE_PRIMITIVE_NULL(delete)
+TYPE_PRIMITIVE_NULL(erase)
 
 }  // namespace toit::compiler
 }  // namespace toit

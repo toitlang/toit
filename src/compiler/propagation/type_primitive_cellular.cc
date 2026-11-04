@@ -20,14 +20,25 @@ namespace compiler {
 
 MODULE_TYPES(cellular, MODULE_CELLULAR)
 
-TYPE_PRIMITIVE_ANY(init)
-TYPE_PRIMITIVE_ANY(close)
-TYPE_PRIMITIVE_ANY(configure)
-TYPE_PRIMITIVE_ANY(connect)
-TYPE_PRIMITIVE_ANY(disconnect)
-TYPE_PRIMITIVE_ANY(disconnect_reason)
-TYPE_PRIMITIVE_ANY(get_ip)
-TYPE_PRIMITIVE_ANY(get_cell_info)
+TYPE_PRIMITIVE_BYTE_ARRAY(init)
+TYPE_PRIMITIVE_NULL(close)
+TYPE_PRIMITIVE_NULL(configure)
+TYPE_PRIMITIVE_BYTE_ARRAY(connect)
+TYPE_PRIMITIVE_NULL(disconnect)
+TYPE_PRIMITIVE_STRING(disconnect_reason)
+
+TYPE_PRIMITIVE(get_ip) {
+  result.add_byte_array(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE(get_cell_info) {
+  result.add_array(program);
+  result.add_smi(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
 
 }  // namespace compiler
 }  // namespace toit

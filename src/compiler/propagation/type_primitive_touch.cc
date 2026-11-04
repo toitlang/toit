@@ -20,12 +20,12 @@ namespace compiler {
 
 MODULE_TYPES(touch, MODULE_TOUCH)
 
-TYPE_PRIMITIVE_ANY(init)
-TYPE_PRIMITIVE_ANY(use)
-TYPE_PRIMITIVE_ANY(unuse)
-TYPE_PRIMITIVE_ANY(read)
-TYPE_PRIMITIVE_ANY(get_threshold)
-TYPE_PRIMITIVE_ANY(set_threshold)
+TYPE_PRIMITIVE_BYTE_ARRAY(init)
+TYPE_PRIMITIVE_BYTE_ARRAY(use)
+TYPE_PRIMITIVE_NULL(unuse)
+TYPE_PRIMITIVE_SMI(read)
+TYPE_PRIMITIVE_SMI(get_threshold)
+TYPE_PRIMITIVE_NULL(set_threshold)
 
 }  // namespace toit::compiler
 }  // namespace toit

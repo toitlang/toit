@@ -20,17 +20,29 @@ namespace compiler {
 
 MODULE_TYPES(pipe, MODULE_PIPE)
 
-TYPE_PRIMITIVE_ANY(init)
-TYPE_PRIMITIVE_ANY(close)
-TYPE_PRIMITIVE_ANY(create_pipe)
-TYPE_PRIMITIVE_ANY(fd_to_pipe)
-TYPE_PRIMITIVE_ANY(write)
-TYPE_PRIMITIVE_ANY(write_result)
-TYPE_PRIMITIVE_ANY(read)
-TYPE_PRIMITIVE_ANY(fork)
-TYPE_PRIMITIVE_ANY(fork2)
-TYPE_PRIMITIVE_ANY(fd)
-TYPE_PRIMITIVE_ANY(is_a_tty)
+TYPE_PRIMITIVE_BYTE_ARRAY(init)
+TYPE_PRIMITIVE_NULL(close)
+TYPE_PRIMITIVE_ARRAY(create_pipe)
+TYPE_PRIMITIVE_BYTE_ARRAY(fd_to_pipe)
+TYPE_PRIMITIVE_SMI(write)
+
+TYPE_PRIMITIVE(write_result) {
+  result.add_smi(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE(read) {
+  result.add_byte_array(program);
+  result.add_smi(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE_BYTE_ARRAY(fork)
+TYPE_PRIMITIVE_BYTE_ARRAY(fork2)
+TYPE_PRIMITIVE_SMI(fd)
+TYPE_PRIMITIVE_BOOL(is_a_tty)
 
 }  // namespace toit::compiler
 }  // namespace toit
