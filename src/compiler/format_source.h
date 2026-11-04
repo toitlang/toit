@@ -106,12 +106,21 @@ class FormatCommentState {
   bool render_own_line(int from,
                        int to,
                        int indentation_delta,
-                       std::string* result);
+                       std::string* result,
+                       int max_blank_lines = 2);
 
   // Reproduces and consumes a closed physical-line region.
   std::string render_verbatim(int first_line,
                               int last_line,
                               int new_first_indentation);
+
+  // Reproduces and consumes a closed physical-line region while changing
+  // only its first line's indentation. This is used for multiline strings,
+  // whose continuation whitespace is part of the literal value.
+  std::string render_verbatim_preserving_continuations(
+      int first_line,
+      int last_line,
+      int new_first_indentation);
 
  private:
   const FormatSource* source_;
