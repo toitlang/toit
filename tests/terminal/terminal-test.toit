@@ -2,48 +2,43 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import expect show *
 import io
-import monitor
 
-RESIZE-EVENT ::= 1 << 0
+WINCH ::= signal-number_ "WINCH"
 
 main:
-  assert: terminal-is-terminal_ 0
-  assert: terminal-is-terminal_ 1
-  assert: not (terminal-is-terminal_ -1)
-  assert-size_ 1 80 24
+  expect (terminal-is-terminal_ 0)
+  expect (terminal-is-terminal_ 1)
+  expect-not (terminal-is-terminal_ -1)
+  expect-size 80 24
 
-  mode-group := terminal-init_
-  mode-resource := terminal-enter-raw_ mode-group 0
+  group := terminal-init_
+  resource := terminal-enter-raw_ group 0
   print "RAW"
   input := io.stdin.read
-  assert: input and input.size == 1 and input[0] == 'x'
+  expect (input and input.size == 1 and input[0] == 'x')
 
-  second-mode-group := terminal-init_
-  assert: (catch: terminal-enter-raw_ second-mode-group 0) == "ALREADY_IN_USE"
-  terminal-restore_ mode-resource mode-group
+  expect-equals "ALREADY_IN_USE" (catch: terminal-enter-raw_ group 0)
+  terminal-restore_ resource group
 
-  second-mode-resource := terminal-enter-raw_ second-mode-group 0
-  terminal-restore_ second-mode-resource second-mode-group
+  resource = terminal-enter-raw_ group 0
+  terminal-restore_ resource group
   print "RESTORED"
 
-  resize-group := terminal-resize-init_
-  resize-resource := terminal-resize-watch_ resize-group 1
-  resize-state := monitor.ResourceState_ resize-group resize-resource
+  signal-group := signal-init_
+  signal-resource := signal-watch_ signal-group (Array_.ensure [WINCH])
+  state := ResourceState_ signal-group signal-resource
   print "WATCHING"
-  assert: (resize-state.wait-for-state RESIZE-EVENT) == RESIZE-EVENT
-  assert-size_ 1 100 30
-  resize-state.dispose
-  terminal-resize-unwatch_ resize-resource resize-group
+  expect-equals 1 (state.wait-for-state 1)
+  expect-size 100 30
+  state.dispose
+  signal-unwatch_ signal-resource signal-group
   print "DONE"
 
-assert-size_ fd/int expected-columns/int expected-rows/int -> none:
-  size := terminal-size_ fd
-  assert: size.size == 4
-  assert: size[0] == expected-columns
-  assert: size[1] == expected-rows
-  assert: size[2] == 0
-  assert: size[3] == 0
+expect-size expected-columns/int expected-rows/int -> none:
+  size := terminal-size_ 1
+  expect-list-equals [expected-columns, expected-rows, 0, 0] size
 
 terminal-init_:
   #primitive.terminal.init
@@ -60,11 +55,14 @@ terminal-restore_ resource group:
 terminal-size_ fd/int:
   #primitive.terminal.size
 
-terminal-resize-init_:
-  #primitive.terminal.resize-init
+signal-init_:
+  #primitive.signal.init
 
-terminal-resize-watch_ group fd/int:
-  #primitive.terminal.resize-watch
+signal-watch_ group numbers:
+  #primitive.signal.watch
 
-terminal-resize-unwatch_ resource group:
-  #primitive.terminal.resize-unwatch
+signal-unwatch_ resource group:
+  #primitive.signal.unwatch
+
+signal-number_ name/string:
+  #primitive.signal.number
