@@ -39,6 +39,7 @@ import host.pipe
 import partition-table show *
 import semver
 import tar
+import zlib
 
 import ..system.extensions.host.run-image-boot-sh
 import .ec618.slot-reloc show SlotRelocTable
@@ -120,6 +121,10 @@ PROPERTY-CONTAINER-FLAGS ::= "\$container-flags"
 // from container names to source archives. They can be combined with the
 // system program when the firmware is extracted (see 'extract --combine').
 AR-ENTRY-CONTAINER-SOURCES ::= "\$sources"
+// The native support, which has what it takes to link native firmware.
+// Envelopes with it support extracting native firmware. It is a gzipped
+// tar file.
+AR-ENTRY-NATIVE-SUPPORT ::= "\$native-support"
 
 IMAGE-FLAG-RUN-BOOT     ::= 1 << 0
 IMAGE-FLAG-RUN-CRITICAL ::= 1 << 1
@@ -189,6 +194,7 @@ build-command --legacy-create-layout/bool=false -> cli.Command:
   firmware-cmd.add extract-cmd
   firmware-cmd.add flash-cmd
   firmware-cmd.add container-cmd
+  firmware-cmd.add native-support-cmd
   firmware-cmd.add property-cmd
   firmware-cmd.add show-cmd
   firmware-cmd.add tool-cmd
@@ -384,9 +390,9 @@ container-cmd -> cli.Command:
             The container runs a snapshot, an image, or a program that is compiled
               from source. The envelope keeps the sources of programs and of the
               packages they use, unless they are installed with --strip, so they can
-              be combined with the system program when the firmware is extracted.
-              See 'extract --combine'. Anyone who gets the envelope can read the
-              sources.
+              be combined with the system program and compiled to native code when
+              the firmware is extracted. See 'extract --combine'. Anyone who gets the
+              envelope can read the sources.
             """
           --aliases=["add"]
           --options=[
@@ -399,7 +405,7 @@ container-cmd -> cli.Command:
             cli.Flag "critical"
                 --help="Reboot system if the container terminates.",
             cli.Flag "strip"
-                --help="Don't keep the sources of a program, so it can't be combined with the system program when the firmware is extracted.",
+                --help="Don't keep the sources of a program, so it can't be combined with the system program or compiled to native code when the firmware is extracted.",
           ]
           --rest=[
             option-name,
@@ -792,6 +798,211 @@ read-system-snapshot_ path/string --envelope/Envelope --ui/cli.Ui -> ByteArray:
   return snapshot
 
 /**
+Builds native firmware for the $envelope, with the programs in the given
+  $sources combined with the system program and compiled to native code.
+
+The generated code is linked with the native support of the envelope, and the
+  firmware, its ELF file, and the system program in the envelope are
+  replaced. The envelope isn't changed on disk.
+*/
+build-native-firmware_ envelope/Envelope sources/Map --ui/cli.Ui -> none:
+  entries := envelope.entries
+  if envelope.kind != Envelope.KIND-ESP32:
+    ui.abort "Only ESP32 envelopes support native firmware."
+  support := entries.get AR-ENTRY-NATIVE-SUPPORT
+  if not support:
+    ui.abort "The envelope doesn't have native support. Build it with 'ESP32_NATIVE_SUPPORT=1'."
+  recipe := native-support-recipe_ support
+  check-native-support_ recipe --envelope=envelope --ui=ui
+  // Find the tools before doing any of the work.
+  cxx := find-native-tool_ "TOIT_NATIVE_CXX" "esp-clang/*/esp-clang/bin/clang++"
+      --name="esp-clang"
+      --install="Install it with 'idf_tools.py install esp-clang' from ESP-IDF"
+      --ui=ui
+  linker := find-native-tool_ "TOIT_NATIVE_LINKER" "riscv32-esp-elf/*/riscv32-esp-elf/bin/$recipe["linker"]"
+      --name="the RISC-V toolchain of ESP-IDF"
+      --install="Install the tools of ESP-IDF"
+      --ui=ui
+  esptool/List? := null
+  catch: esptool = find-esptool_
+  if not esptool:
+    ui.abort "Native firmware needs esptool. Install it, or set ESPTOOL_PATH."
+
+  tmp-dir := directory.mkdtemp "/tmp/toit-firmware-native-"
+  try:
+    support-dir := "$tmp-dir/native-support"
+    directory.mkdir support-dir
+    unpack-native-support_ support --directory=support-dir
+
+    native-cc := "$tmp-dir/native.cc"
+    native-o := "$tmp-dir/native.o"
+    snapshot-path := "$tmp-dir/system.snapshot"
+    elf := "$tmp-dir/firmware.elf"
+    bin := "$tmp-dir/firmware.bin"
+    compile-system-with-programs_ sources --tmp-dir=tmp-dir --ui=ui [
+      "--native-firmware", snapshot-path, "-o", native-cc,
+    ]
+
+    run-native-tool_ [cxx] + recipe["compile"] + ["-c", native-cc, "-o", native-o] --ui=ui
+
+    link := recipe["link"].map: | argument/string |
+      substitute_ argument { "{support}": support-dir, "{native}": native-o, "{output}": elf }
+    // The link command is long, so it is passed in a response file.
+    response := "$tmp-dir/link.rsp"
+    file.write-contents --path=response
+        (link.map: quote-response-argument_ it).join "\n"
+    run-native-tool_ [linker, "@$response"] --ui=ui
+
+    elf2image := recipe["elf2image"].map: | argument/string |
+      substitute_ argument { "{elf}": elf, "{output}": bin }
+    run-native-tool_ esptool + elf2image --ui=ui
+
+    entries[AR-ENTRY-ESP32-FIRMWARE-BIN] = file.read-contents bin
+    entries[AR-ENTRY-ESP32-FIRMWARE-ELF] = file.read-contents elf
+    entries[SYSTEM-CONTAINER-NAME] = read-system-snapshot_ snapshot-path --envelope=envelope --ui=ui
+  finally:
+    directory.rmdir --recursive tmp-dir
+
+// Quotes an argument for a GCC response file, where a backslash escapes
+// the next character, also in quotes.
+quote-response-argument_ argument/string -> string:
+  escaped := (argument.replace --all "\\" "\\\\").replace --all "'" "\\'"
+  return "'$escaped'"
+
+substitute_ argument/string replacements/Map -> string:
+  replacements.do: | from/string to/string |
+    argument = argument.replace --all from to
+  return argument
+
+run-native-tool_ arguments/List --ui/cli.Ui -> none:
+  exit-code := pipe.run-program arguments
+  if exit-code != 0: ui.abort "Building native firmware failed: $(arguments[0])"
+
+/**
+Finds a tool for building native firmware.
+
+The tool is given by the environment variable $variable, or it is found
+  in the ESP-IDF tools, using the $pattern, which can have one '*' for a
+  version. The newest version is used. If it isn't found, the message tells
+  how to $install the tool with the given $name.
+*/
+find-native-tool_ variable/string pattern/string --name/string --install/string --ui/cli.Ui -> string:
+  if path := os.env.get variable: return path
+  tools := os.env.get "IDF_TOOLS_PATH"
+  if not tools:
+    home := os.env.get "HOME"
+    tools = home ? "$home/.espressif" : null
+  if tools:
+    star := pattern.index-of "*"
+    base := "$tools/tools/$pattern[..star]"
+    rest := pattern[star + 1..]
+    if file.is-directory base:
+      versions := []
+      stream := directory.DirectoryStream base
+      try:
+        while version := stream.next:
+          if file.is-file "$base$version$rest": versions.add version
+      finally:
+        stream.close
+      if not versions.is-empty:
+        versions.sort --in-place
+        return "$base$versions.last$rest"
+  ui.abort "Native firmware needs $name. $install, or set $variable."
+  unreachable
+
+/**
+Unpacks the native $support into the given $directory, and returns its recipe.
+*/
+unpack-native-support_ support/ByteArray --directory/string -> Map:
+  decoder := zlib.GzipDecoder
+  writer := task::
+    try:
+      decoder.out.write support
+    finally:
+      decoder.out.close
+  try:
+    tar.extract --reader=decoder.in --directory=directory
+  finally:
+    decoder.in.close
+    writer.cancel
+  return json.decode (file.read-contents "$directory/recipe.json")
+
+/**
+Returns the recipe of the native $support without unpacking the rest.
+*/
+native-support-recipe_ support/ByteArray -> Map:
+  decoder := zlib.GzipDecoder
+  // The recipe is the first file, so the reader stops before the writer has
+  // written everything, and the writer must not wait for it forever.
+  writer := task::
+    try:
+      decoder.out.write support
+    finally:
+      decoder.out.close
+  try:
+    reader := tar.Reader decoder.in
+    reader.do: | header/tar.Header content/ByteArray |
+      if header.name == "recipe.json": return json.decode content
+  finally:
+    decoder.in.close
+    writer.cancel
+  throw "Native support without a recipe"
+
+NATIVE-SUPPORT-VERSION ::= 1
+
+check-native-support_ recipe/Map --envelope/Envelope --ui/cli.Ui -> none:
+  if recipe["version"] != NATIVE-SUPPORT-VERSION:
+    ui.abort "The native support has version $recipe["version"], but $NATIVE-SUPPORT-VERSION is supported."
+  if recipe["sdk-version"] != envelope.sdk-version:
+    ui.abort "The native support is for $recipe["sdk-version"], but the envelope is for $envelope.sdk-version."
+  chip := (Esp32Binary envelope.entries[AR-ENTRY-ESP32-FIRMWARE-BIN]).chip-name
+  if recipe["chip"] != chip:
+    ui.abort "The native support is for $recipe["chip"], but the envelope is for $chip."
+
+native-support-cmd -> cli.Command:
+  cmd := cli.Command "native-support"
+      --help="""
+        Manage the native support of a firmware envelope.
+
+        Envelopes with native support can extract native firmware, where the
+          installed programs and the system program are compiled to native code
+          (see 'extract --native'). Build it with 'make esp32c3 ESP32_NATIVE_SUPPORT=1'.
+        """
+  option-output := cli.OptionPath OPTION-OUTPUT
+      --short-name=OPTION-OUTPUT-SHORT
+      --help="Set the output envelope."
+  cmd.add
+      cli.Command "add"
+          --help="Add native support to the envelope."
+          --options=[ option-output ]
+          --rest=[
+            cli.OptionPath "file"
+                --help="The native support (native-support.tar.gz)."
+                --required,
+          ]
+          --run=:: native-support-add it
+  cmd.add
+      cli.Command "remove"
+          --help="Remove the native support from the envelope."
+          --options=[ option-output ]
+          --run=:: native-support-remove it
+  return cmd
+
+native-support-add invocation/cli.Invocation -> none:
+  ui := invocation.cli.ui
+  support := read-file invocation["file"] --ui=ui
+  recipe := native-support-recipe_ support
+  update-envelope invocation: | envelope/Envelope |
+    if envelope.kind != Envelope.KIND-ESP32:
+      ui.abort "Only ESP32 envelopes support native firmware."
+    check-native-support_ recipe --envelope=envelope --ui=ui
+    envelope.entries[AR-ENTRY-NATIVE-SUPPORT] = support
+
+native-support-remove invocation/cli.Invocation -> none:
+  update-envelope invocation: | envelope/Envelope |
+    envelope.entries.remove AR-ENTRY-NATIVE-SUPPORT
+
+/**
 Unpacks the source $archive below the $root directory, and returns its
   entry path and its package cache paths, relative to the $root.
 */
@@ -814,16 +1025,19 @@ unpack-source-archive_ archive/ByteArray --root/string -> Map:
 
 /**
 Combines the containers of the $envelope that have their sources with the
-  system program. They run from the system program instead of their own
-  snapshots. The envelope isn't changed on disk.
+  system program, if $combine is true. They run from the system program
+  instead of their own snapshots. With $native, the system program and the
+  combined containers are compiled to native code. Native firmware has the
+  bytecode loop too, so it runs the other containers as bytecodes. The
+  envelope isn't changed on disk.
 */
-combine-containers_ envelope/Envelope --combine/bool --ui/cli.Ui -> none:
-  if not combine: return
+combine-containers_ envelope/Envelope --combine/bool --native/bool --ui/cli.Ui -> none:
+  if not combine and not native: return
   entries := envelope.entries
-  combined := envelope.container-sources
-  if combined.is-empty:
+  combined := combine ? envelope.container-sources : {:}
+  if combine and combined.is-empty:
     ui.emit --warning "There are no containers with sources to combine."
-    return
+    if not native: return
   check-system-program_ envelope --ui=ui
   // The combined containers run from the system program, but they keep the
   // ids they have when they run from their snapshots.
@@ -833,16 +1047,19 @@ combine-containers_ envelope/Envelope --combine/bool --ui/cli.Ui -> none:
         --snapshot-uuid=snapshot-uuid
         --assets=entries.get "+$name"
     entries.remove name
-  entries[SYSTEM-CONTAINER-NAME] = compile-system-with-programs combined --envelope=envelope --ui=ui
+  if native:
+    build-native-firmware_ envelope combined --ui=ui
+  else:
+    entries[SYSTEM-CONTAINER-NAME] = compile-system-with-programs combined --envelope=envelope --ui=ui
   save-snapshot-for-decoding_ entries[SYSTEM-CONTAINER-NAME] --ui=ui
 
 /**
 Checks that the system program of the $envelope is the one in the SDK.
 
-Combining containers compiles the system program of the SDK again, so it
-  would replace other system programs. The envelope's system program is
-  compiled with 'toit compile --snapshot -O2', so compiling the one in the
-  SDK the same way gives the same snapshot.
+Combining containers and compiling to native code compile the system program
+  of the SDK again, so they would replace other system programs. The
+  envelope's system program is compiled with 'toit compile --snapshot -O2',
+  so compiling the one in the SDK the same way gives the same snapshot.
 */
 check-system-program_ envelope/Envelope --ui/cli.Ui -> none:
   system := envelope.entries.get SYSTEM-CONTAINER-NAME
@@ -857,7 +1074,7 @@ check-system-program_ envelope/Envelope --ui/cli.Ui -> none:
     if exit-code != 0: ui.abort "Compiling the system program of the SDK failed."
     expected := (SnapshotBundle SYSTEM-CONTAINER-NAME (file.read-contents output)).uuid
     if (SnapshotBundle SYSTEM-CONTAINER-NAME system).uuid != expected:
-      ui.abort "The envelope has a system program of its own. Only envelopes with the system program of the SDK can combine containers."
+      ui.abort "The envelope has a system program of its own. Only envelopes with the system program of the SDK can combine containers or be compiled to native code."
   finally:
     directory.rmdir --recursive tmp-dir
 
@@ -1090,6 +1307,9 @@ extract-cmd -> cli.Command:
         cli.Flag "combine"
             --help="Combine the containers that have their sources with the system program, so they share code."
             --default=false,
+        cli.Flag "native"
+            --help="Compile the system program and the combined containers to native code. The envelope must have native support."
+            --default=false,
       ]
       --run=:: extract it
 
@@ -1116,10 +1336,10 @@ extract invocation/cli.Invocation -> none:
     if exception: config-encoded = ubjson.encode (json.decode config-encoded)
 
   if envelope.kind == Envelope.KIND-ESP32:
-    combine-containers_ envelope --combine=invocation["combine"] --ui=ui
+    combine-containers_ envelope --combine=invocation["combine"] --native=invocation["native"] --ui=ui
     extract-esp32 invocation envelope --config-encoded=config-encoded
-  else if invocation["combine"]:
-    ui.abort "Only ESP32 envelopes support combining containers."
+  else if invocation["combine"] or invocation["native"]:
+    ui.abort "Only ESP32 envelopes support combining containers and native firmware."
   else if envelope.kind == Envelope.KIND-HOST:
     extract-host invocation envelope --config-encoded=config-encoded
   else if envelope.kind == Envelope.KIND-EC618:
@@ -1747,6 +1967,9 @@ flash-cmd -> cli.Command:
         cli.Flag "combine"
             --help="Combine the containers that have their sources with the system program, so they share code."
             --default=false,
+        cli.Flag "native"
+            --help="Compile the system program and the combined containers to native code. The envelope must have native support."
+            --default=false,
         cli.OptionPath "partitions"
             --help="Override the partition table.",
       ]
@@ -1788,7 +2011,7 @@ flash invocation/cli.Invocation -> none:
     exception := catch: ubjson.decode config-encoded
     if exception: config-encoded = ubjson.encode (json.decode config-encoded)
 
-  combine-containers_ envelope --combine=invocation["combine"] --ui=ui
+  combine-containers_ envelope --combine=invocation["combine"] --native=invocation["native"] --ui=ui
   build-esp32-image invocation envelope --config-encoded=config-encoded
       --write=: | partitions/Map chip/string flashing/Map |
         tmp := directory.mkdtemp "/tmp/toit-flash-"
@@ -2135,6 +2358,8 @@ show invocation/cli.Invocation -> none:
     firmware-bin := extract-binary-esp32 envelope --config-encoded=#[]
     binary := Esp32Binary firmware-bin
     result["chip"] = binary.chip-name
+    // Native firmware can be extracted from envelopes with native support.
+    result["native"] = (envelope.entries.contains AR-ENTRY-NATIVE-SUPPORT) ? "supported" : "not supported"
 
   // Add the containers after the chip name for esthetical reasons.
   entries-json := build-entries-json envelope.entries --word-size=envelope.word-size
