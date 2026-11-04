@@ -22,9 +22,7 @@ bool format_method_header(ast::Method* method,
                           Source* source,
                           int base_indentation,
                           FormatOutput* result,
-                          const FormatStyle& style = FormatStyle(),
-                          const FormatExpressionOptions& expression_options =
-                              FormatExpressionOptions());
+                          const FormatStyle& style = FormatStyle());
 
 } // namespace compiler
 } // namespace toit
