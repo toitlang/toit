@@ -803,9 +803,10 @@ Builds native firmware for the $envelope, with the programs in the given
 
 The generated code is linked with the native support of the envelope, and the
   firmware, its ELF file, and the system program in the envelope are
-  replaced. The envelope isn't changed on disk.
+  replaced. The firmware has the bytecode interpreter, unless $interpreter
+  is false. The envelope isn't changed on disk.
 */
-build-native-firmware_ envelope/Envelope sources/Map --ui/cli.Ui -> none:
+build-native-firmware_ envelope/Envelope sources/Map --interpreter/bool --ui/cli.Ui -> none:
   entries := envelope.entries
   if envelope.kind != Envelope.KIND-ESP32:
     ui.abort "Only ESP32 envelopes support native firmware."
@@ -845,7 +846,11 @@ build-native-firmware_ envelope/Envelope sources/Map --ui/cli.Ui -> none:
 
     run-native-tool_ [cxx] + recipe["compile"] + ["-c", native-cc, "-o", native-o] --ui=ui
 
+    // The firmware is linked with the bytecode loop, or the stub that
+    // replaces it.
+    bytecodes := recipe["bytecodes"]
     link := recipe["link"].map: | argument/string |
+      if not interpreter and argument == bytecodes["library"]: argument = bytecodes["stub"]
       substitute_ argument { "{support}": support-dir, "{native}": native-o, "{output}": elf }
     // The link command is long, so it is passed in a response file.
     response := "$tmp-dir/link.rsp"
@@ -948,7 +953,7 @@ native-support-recipe_ support/ByteArray -> Map:
     writer.cancel
   throw "Native support without a recipe"
 
-NATIVE-SUPPORT-VERSION ::= 1
+NATIVE-SUPPORT-VERSION ::= 2
 
 check-native-support_ recipe/Map --envelope/Envelope --ui/cli.Ui -> none:
   if recipe["version"] != NATIVE-SUPPORT-VERSION:
@@ -1027,14 +1032,21 @@ unpack-source-archive_ archive/ByteArray --root/string -> Map:
 Combines the containers of the $envelope that have their sources with the
   system program, if $combine is true. They run from the system program
   instead of their own snapshots. With $native, the system program and the
-  combined containers are compiled to native code. Native firmware has the
-  bytecode loop too, so it runs the other containers as bytecodes. The
-  envelope isn't changed on disk.
+  combined containers are compiled to native code. Native firmware keeps
+  the bytecode interpreter, so it can run the other containers, unless
+  $interpreter is false. The envelope isn't changed on disk.
 */
-combine-containers_ envelope/Envelope --combine/bool --native/bool --ui/cli.Ui -> none:
+combine-containers_ envelope/Envelope --combine/bool --native/bool --interpreter/bool --ui/cli.Ui -> none:
+  if not interpreter and not native:
+    ui.abort "Only native firmware can leave out the interpreter. Use --native too."
   if not combine and not native: return
   entries := envelope.entries
   combined := combine ? envelope.container-sources : {:}
+  if not interpreter:
+    entries.do --keys: | name/string |
+      if is-container-name name and name != SYSTEM-CONTAINER-NAME and not combined.contains name:
+        reason := envelope.container-sources.contains name ? "isn't combined (use --combine)" : "has no sources"
+        ui.abort "Firmware without the interpreter can only run combined containers, but '$name' $reason."
   if combine and combined.is-empty:
     ui.emit --warning "There are no containers with sources to combine."
     if not native: return
@@ -1048,7 +1060,7 @@ combine-containers_ envelope/Envelope --combine/bool --native/bool --ui/cli.Ui -
         --assets=entries.get "+$name"
     entries.remove name
   if native:
-    build-native-firmware_ envelope combined --ui=ui
+    build-native-firmware_ envelope combined --interpreter=interpreter --ui=ui
   else:
     entries[SYSTEM-CONTAINER-NAME] = compile-system-with-programs combined --envelope=envelope --ui=ui
   save-snapshot-for-decoding_ entries[SYSTEM-CONTAINER-NAME] --ui=ui
@@ -1310,6 +1322,9 @@ extract-cmd -> cli.Command:
         cli.Flag "native"
             --help="Compile the system program and the combined containers to native code. The envelope must have native support."
             --default=false,
+        cli.Flag "interpreter"
+            --help="Keep the bytecode interpreter in native firmware, so it can run the containers that aren't combined and install new ones. With --no-interpreter, all containers must be combined."
+            --default=true,
       ]
       --run=:: extract it
 
@@ -1336,9 +1351,13 @@ extract invocation/cli.Invocation -> none:
     if exception: config-encoded = ubjson.encode (json.decode config-encoded)
 
   if envelope.kind == Envelope.KIND-ESP32:
-    combine-containers_ envelope --combine=invocation["combine"] --native=invocation["native"] --ui=ui
+    combine-containers_ envelope
+        --combine=invocation["combine"]
+        --native=invocation["native"]
+        --interpreter=invocation["interpreter"]
+        --ui=ui
     extract-esp32 invocation envelope --config-encoded=config-encoded
-  else if invocation["combine"] or invocation["native"]:
+  else if invocation["combine"] or invocation["native"] or not invocation["interpreter"]:
     ui.abort "Only ESP32 envelopes support combining containers and native firmware."
   else if envelope.kind == Envelope.KIND-HOST:
     extract-host invocation envelope --config-encoded=config-encoded
@@ -1970,6 +1989,9 @@ flash-cmd -> cli.Command:
         cli.Flag "native"
             --help="Compile the system program and the combined containers to native code. The envelope must have native support."
             --default=false,
+        cli.Flag "interpreter"
+            --help="Keep the bytecode interpreter in native firmware, so it can run the containers that aren't combined and install new ones. With --no-interpreter, all containers must be combined."
+            --default=true,
         cli.OptionPath "partitions"
             --help="Override the partition table.",
       ]
@@ -2011,7 +2033,11 @@ flash invocation/cli.Invocation -> none:
     exception := catch: ubjson.decode config-encoded
     if exception: config-encoded = ubjson.encode (json.decode config-encoded)
 
-  combine-containers_ envelope --combine=invocation["combine"] --native=invocation["native"] --ui=ui
+  combine-containers_ envelope
+      --combine=invocation["combine"]
+      --native=invocation["native"]
+      --interpreter=invocation["interpreter"]
+      --ui=ui
   build-esp32-image invocation envelope --config-encoded=config-encoded
       --write=: | partitions/Map chip/string flashing/Map |
         tmp := directory.mkdtemp "/tmp/toit-flash-"

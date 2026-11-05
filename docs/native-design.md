@@ -143,7 +143,11 @@ firmware tool runs the recipe with esp-clang, the ESP-IDF linker, and esptool,
 which it finds in the ESP-IDF tools, or through `TOIT_NATIVE_CXX`,
 `TOIT_NATIVE_LINKER`, and `ESPTOOL_PATH`. Native firmware has the bytecode
 loop too, so it runs the containers that aren't combined as bytecodes, and
-containers can still be installed on it.
+containers can still be installed on it. With `--no-interpreter`, the
+firmware is linked with the stub instead, which makes it smaller, but then
+all its containers must be combined, and containers that aren't in the
+firmware can't be installed. The recipe names the library with the bytecode
+loop and the stub that replaces it.
 
 A combined container has the id it would have if it ran from its snapshot:
 the image id, which is computed from the uuid of the snapshot and the

@@ -51,37 +51,53 @@ set(TOIT_NATIVE_CXX_FLAGS
 
 add_subdirectory(${TOIT_BASE_DIR} toit EXCLUDE_FROM_ALL)
 
-# Add the include directories from the required components to the imported toit_vm target.
-target_include_directories(toit_vm PRIVATE "$<TARGET_PROPERTY:${COMPONENT_LIB},INTERFACE_INCLUDE_DIRECTORIES>")
-if(CONFIG_TOIT_ENABLE_SPI_TARGET AND CONFIG_SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE)
-    target_include_directories(toit_vm PRIVATE "$<TARGET_PROPERTY:idf::esp_mm,INTERFACE_INCLUDE_DIRECTORIES>")
+# Firmware with native code has the bytecode loop in a library of its own, so
+# the firmware tool can leave it out (see 'extract --no-interpreter').
+set(TOIT_VM_TARGETS toit_vm)
+if (TOIT_NATIVE_EMBEDDED)
+    list(APPEND TOIT_VM_TARGETS toit_bytecodes toit_no_bytecodes)
 endif()
 
-# idf cmake does not honor the CMAKE_BUILD_TARGET, so we can not use the CMAKE_C(XX)?_FLAGS.
-# Add the required flags and defines with target_compile_* commands.
-target_compile_definitions(toit_vm PUBLIC
-        -DDEPLOY=1
-        -DTOIT_DEPLOY
-        -DESP32
-        -D__FREERTOS__
-        -DRAW)
+foreach(TARGET ${TOIT_VM_TARGETS})
+    # Add the include directories from the required components to the VM targets.
+    target_include_directories(${TARGET} PRIVATE "$<TARGET_PROPERTY:${COMPONENT_LIB},INTERFACE_INCLUDE_DIRECTORIES>")
+    if(CONFIG_TOIT_ENABLE_SPI_TARGET AND CONFIG_SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE)
+        target_include_directories(${TARGET} PRIVATE "$<TARGET_PROPERTY:idf::esp_mm,INTERFACE_INCLUDE_DIRECTORIES>")
+    endif()
 
-if (CONFIG_IDF_TARGET_ARCH_XTENSA)
-    set(TOIT_ARCH_COMPILE_OPTIONS -mlongcalls)
-else()
-    set(TOIT_ARCH_COMPILE_OPTIONS -fpermissive -Wno-error=all)
-endif()
+    # idf cmake does not honor the CMAKE_BUILD_TARGET, so we can not use the CMAKE_C(XX)?_FLAGS.
+    # Add the required flags and defines with target_compile_* commands.
+    target_compile_definitions(${TARGET} PUBLIC
+            -DDEPLOY=1
+            -DTOIT_DEPLOY
+            -DESP32
+            -D__FREERTOS__
+            -DRAW)
 
-# The idf cmake system adds some compile flags that if not undone causes the toit compile to fail.
-# -Wextra combined with -Werror=all causes the Toit code to not compile.
-target_compile_options(toit_vm PRIVATE
-        -fjump-tables                   # idf (cmake) sets no-jump-tables which was not set by make.
-        -ftree-switch-conversion        # idf (cmake) sets no-tree-switch-conversion which was not set by make.
-        ${TOIT_ARCH_COMPILE_OPTIONS}
-        )
+    if (CONFIG_IDF_TARGET_ARCH_XTENSA)
+        set(TOIT_ARCH_COMPILE_OPTIONS -mlongcalls)
+    else()
+        set(TOIT_ARCH_COMPILE_OPTIONS -fpermissive -Wno-error=all)
+    endif()
+
+    # The idf cmake system adds some compile flags that if not undone causes the toit compile to fail.
+    # -Wextra combined with -Werror=all causes the Toit code to not compile.
+    target_compile_options(${TARGET} PRIVATE
+            -fjump-tables                   # idf (cmake) sets no-jump-tables which was not set by make.
+            -ftree-switch-conversion        # idf (cmake) sets no-tree-switch-conversion which was not set by make.
+            ${TOIT_ARCH_COMPILE_OPTIONS}
+            )
+endforeach()
 
 target_link_libraries(${COMPONENT_LIB} INTERFACE toit_vm)
 target_link_options(${COMPONENT_LIB} INTERFACE "SHELL: -Wl,--whole-archive $<TARGET_FILE:toit_vm> -Wl,--no-whole-archive")
+if (TOIT_NATIVE_EMBEDDED)
+    # The native support links the bytecode loop. The stub that replaces it is
+    # built too, so the native support can have both.
+    target_link_libraries(${COMPONENT_LIB} INTERFACE toit_bytecodes)
+    target_link_options(${COMPONENT_LIB} INTERFACE "SHELL: -Wl,--whole-archive $<TARGET_FILE:toit_bytecodes> -Wl,--no-whole-archive")
+    add_dependencies(${COMPONENT_LIB} toit_no_bytecodes)
+endif()
 
 if (TOIT_NATIVE_EMBEDDED AND NOT CONFIG_IDF_TARGET_ESP32C3)
     message(FATAL_ERROR "Firmware with native code is only supported for the ESP32-C3")
