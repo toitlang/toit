@@ -48,6 +48,7 @@ namespace toit {
 #define DROP(n)            (sp += (n))
 #define STACK_AT(n)        (*(sp + (n)))
 #define STACK_AT_PUT(n, o) ({ Object* _o_ = (o); *(sp + (n)) = _o_; })
+#pragma GCC diagnostic ignored "-Wunused-value"
 #define GO(target, x_, y_)                                                                   \
   do {                                                                                       \
     Object* _top_ = POP();                                                                   \
@@ -77,6 +78,8 @@ const NativeProgram* NativeRuntime::registered_program(bool is_system) {
   }
   return null;
 }
+
+#ifndef TOIT_NATIVE_EMBEDDED
 
 ProgramImage NativeRuntime::load_image(const NativeProgram* program) {
   // The image has one word of relocation bits for each chunk of words.
@@ -119,6 +122,8 @@ ProgramImage NativeRuntime::load_image_with_id(const uint8* id) {
   return ProgramImage::invalid();
 }
 
+#endif  // TOIT_NATIVE_EMBEDDED
+
 static Interpreter::Result& result_of(NativeContext* c) {
   return *reinterpret_cast<Interpreter::Result*>(c->result);
 }
@@ -136,7 +141,7 @@ int NativeRuntime::register_program(const NativeProgram* program) {
   static_assert(Double::SIZE == NATIVE_DOUBLE_SIZE, "double size");
   static_assert(Double::VALUE_OFFSET == WORD_SIZE, "double value");
   static_assert(String::SENTINEL == NATIVE_STRING_LENGTH_SENTINEL, "string sentinel");
-  static_assert(String::INTERNAL_LENGTH_OFFSET == WORD_SIZE + 4, "string length");
+  static_assert(String::INTERNAL_LENGTH_OFFSET == WORD_SIZE + WORD_SIZE / 2, "string length");
   static_assert(String::INTERNAL_HEADER_SIZE == 2 * WORD_SIZE, "string content");
   static_assert(INSTANCE_TAG == NATIVE_INSTANCE_TAG, "instance tag");
   static_assert(DOUBLE_TAG == NATIVE_DOUBLE_TAG, "double tag");
@@ -1025,6 +1030,47 @@ __attribute__((used)) Object** toit_native_push_double(Object** sp, NativeContex
     "ldp x3, x4, [sp], #16\n"                    \
     "ldp x1, x2, [sp], #16\n"                    \
     "ldp x29, x30, [sp], #16\n"                  \
+    "ret\n")
+#elif defined(__riscv)
+#define STUB_BODY(name, target)                  \
+  __asm__(                                       \
+    ".text\n"                                    \
+    ".globl " name "\n"                          \
+    ".p2align 1\n"                               \
+    name ":\n"                                   \
+    "addi sp, sp, -64\n"                         \
+    "sw ra, 60(sp)\n"                            \
+    "sw a1, 56(sp)\n"                            \
+    "sw a2, 52(sp)\n"                            \
+    "sw a3, 48(sp)\n"                            \
+    "sw a4, 44(sp)\n"                            \
+    "sw a5, 40(sp)\n"                            \
+    "sw a6, 36(sp)\n"                            \
+    "sw a7, 32(sp)\n"                            \
+    "sw t0, 28(sp)\n"                            \
+    "sw t1, 24(sp)\n"                            \
+    "sw t2, 20(sp)\n"                            \
+    "sw t3, 16(sp)\n"                            \
+    "sw t4, 12(sp)\n"                            \
+    "sw t5, 8(sp)\n"                             \
+    "sw t6, 4(sp)\n"                             \
+    "call " target "\n"                          \
+    "lw t6, 4(sp)\n"                             \
+    "lw t5, 8(sp)\n"                             \
+    "lw t4, 12(sp)\n"                            \
+    "lw t3, 16(sp)\n"                            \
+    "lw t2, 20(sp)\n"                            \
+    "lw t1, 24(sp)\n"                            \
+    "lw t0, 28(sp)\n"                            \
+    "lw a7, 32(sp)\n"                            \
+    "lw a6, 36(sp)\n"                            \
+    "lw a5, 40(sp)\n"                            \
+    "lw a4, 44(sp)\n"                            \
+    "lw a3, 48(sp)\n"                            \
+    "lw a2, 52(sp)\n"                            \
+    "lw a1, 56(sp)\n"                            \
+    "lw ra, 60(sp)\n"                            \
+    "addi sp, sp, 64\n"                          \
     "ret\n")
 #elif defined(__x86_64__)
 #define SAVE_XMM(n, offset) "movups %xmm" #n ", " #offset "(%rsp)\n"

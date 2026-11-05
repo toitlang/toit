@@ -47,6 +47,11 @@ class NativeBuild {
   // If 'is_boot' is true, then the program is the one that executables boot from.
   int write_source(const char* out_path, SnapshotBundle bundle, bool is_boot);
 
+  // Makes the C++ program for firmware, which has the program in flash. The
+  // code doesn't have the image or the debugging information, and the
+  // snapshot for the firmware envelope is written to the given path.
+  void set_firmware_snapshot(const char* path) { firmware_snapshot_path_ = path; }
+
  private:
   bool add_program(SnapshotBundle bundle, bool is_system);
   void remove_temp_folder();
@@ -55,6 +60,7 @@ class NativeBuild {
   std::string sdk_folder_;
   std::string temp_folder_;
   std::string code_path_;
+  const char* firmware_snapshot_path_ = null;
 };
 
 } // namespace toit::compiler

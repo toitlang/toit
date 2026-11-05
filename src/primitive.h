@@ -954,7 +954,7 @@ namespace toit {
 #define MODULE_IMPLEMENTATION_ENTRY(name, arity)                    \
   { (void*) primitive_##name, arity },
 // Native code calls the primitives directly through these.
-#ifdef TOIT_FREERTOS
+#if defined(TOIT_FREERTOS) && !defined(TOIT_NATIVE_EMBEDDED)
 #define MODULE_IMPLEMENTATION_EXPORT(name, arity)
 #else
 #define MODULE_IMPLEMENTATION_EXPORT(name, arity)                   \

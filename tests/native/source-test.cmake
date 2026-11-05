@@ -11,7 +11,7 @@ execute_process(
 )
 
 file(STRINGS "${WORK_DIR}/source-test.cc" INCLUDES REGEX "^#include")
-if (NOT "${INCLUDES}" STREQUAL "#include <stdint.h>;#include <string.h>")
+if (NOT "${INCLUDES}" STREQUAL "#include <stdint.h>")
   message(FATAL_ERROR "Unexpected includes: ${INCLUDES}")
 endif()
 

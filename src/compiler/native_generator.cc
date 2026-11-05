@@ -2072,7 +2072,7 @@ void NativeGenerator::emit_tail_frame_move(int height, int outer_arity, int call
   spill();
   scope([&] {
     line(cat("Object* return_address = sp[", (height + 1), "];"));
-    line(cat("memmove(sp + ", (parameter_start - call_arity), ", sp, ", call_arity, " * sizeof(Object*));"));
+    line(cat("__builtin_memmove(sp + ", (parameter_start - call_arity), ", sp, ", call_arity, " * sizeof(Object*));"));
     line(cat("sp += ", (parameter_start - call_arity), ";"));
     line("*(--sp) = return_address;");
     line("*(--sp) = c->frame_marker;");
