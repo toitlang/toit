@@ -106,6 +106,39 @@ The `returns` table of the `NativeProgram` maps the return addresses of calls
 to the bcis of the original call sites, delta encoded. It's only used for
 stack traces, so it is optimized for size.
 
+## Firmware
+
+Containers can be installed in firmware envelopes from source, and the
+envelope keeps their sources, unless they are installed with `--strip`. When
+the firmware is extracted with `--combine`, these containers are compiled
+together with the system program, so they share the code of the libraries.
+Without `--combine`, the containers run their snapshots, like any other:
+
+```
+toit tool firmware -e firmware.envelope container install hello hello.toit
+toit tool firmware -e firmware.envelope extract --format=image -o snapshots.img
+toit tool firmware -e firmware.envelope extract --combine --format=image -o combined.img
+```
+
+A combined container has the id it would have if it ran from its snapshot:
+the image id, which is computed from the uuid of the snapshot and the
+assets (`image-id` in `tools/image.toit`). The firmware tool compiles the
+sources with `toit compile --snapshot -O2`, so the ids are the same as the
+ids of images of the same program that are compiled the same way and
+installed in other ways, like with `jag container install -O2`. The ids are
+in the `combined` system asset, so the system program doesn't compute any.
+
+Containers in the firmware, bundled or combined, can still be uninstalled.
+That writes a mark, an allocation in the flash registry of the type
+`FLASH_ALLOCATION_TYPE_UNINSTALLED` with the id of the image. Marks are
+written and freed like programs, and like programs, they are stamped with the
+uuid of the firmware, so they are valid exactly as long as installed programs
+are. If the firmware changes, but keeps its uuid, an image that is in both
+firmwares stays uninstalled, and the marks of images that aren't in the new
+firmware are freed at boot. Installing an image with the id of an image in
+the firmware frees the mark and erases the new image again, so the
+firmware's image, with its flags, is installed again.
+
 ## Where to look
 
 | File | What it has |

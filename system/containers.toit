@@ -57,6 +57,12 @@ class Container:
     image.manager.on-container-stop_ this 0
     resources.do: it.on-container-stop 0
 
+  // Kills the processes of the container, and returns whether there were any.
+  kill-processes_ -> bool:
+    if not pids_ or pids_.is-empty: return false
+    pids_.do: container-kill-pid_ it
+    return true
+
   send-event event/any:
     if not pids_: throw "Not started"
     if pids_.is-empty: return
@@ -167,58 +173,75 @@ spawn-entry_ gid/int id/ByteArray arguments/any assets/ByteArray? -> int:
   #primitive.programs-registry.spawn-entry
 
 /**
-Registers the containers that run programs that are combined with the
-  system program.
+Returns the images of the containers that run programs that are combined
+  with the system program.
 
 The firmware tooling describes them in the "combined" system asset, as a list
   with the name of each container, the index of its program in the order the
-  programs are combined with the system program, its flags, and its assets,
-  or null.
+  programs are combined with the system program, its flags, its assets or
+  null, and its id. The id is computed from the snapshot of its program and
+  its assets, like the ids of other images, so the container has the same id
+  as when it runs from its snapshot.
 */
-register-combined manager/ContainerManager -> none:
+combined-images_ manager/ContainerManager -> List:
   encoded := assets.decode.get "combined"
-  if not encoded: return
+  if not encoded: return []
   described := tison.decode encoded
   count := combined-count_
-  for i := 0; i < described.size; i += 4:
+  images := []
+  for i := 0; i < described.size; i += 5:
     index := described[i + 1]
     if not 0 <= index < count:
       throw "The system program has $count combined programs, but a container runs program $index"
-    manager.register-image
+    images.add
         ContainerImageCombined manager index
-            --name=described[i]
             --flags=described[i + 2]
             --assets=described[i + 3]
+            --id=uuid.Uuid described[i + 4]
+  return images
 
 /**
-The id of the container with the given $name that runs a combined program.
+A container that runs a program that is combined with the system program.
+  It runs in a container of its own, but it shares the code with the
+  system program.
 
-The firmware tooling computes the same ids.
+It is part of the firmware, so uninstalling it only marks it as uninstalled.
+  See $ContainerManager.uninstall-firmware-image.
 */
-combined-id name/string -> uuid.Uuid:
-  return uuid.Uuid.uuid5 "toit-combined" name
-
-// A container that runs a program that is combined with the system program.
-// It runs in a container of its own, but it shares the code with the
-// system program.
 class ContainerImageCombined extends ContainerImage:
   index/int
   id/uuid.Uuid
   flags/int
   assets/ByteArray?
 
-  constructor manager/ContainerManager .index --name/string --.flags --.assets:
-    id = combined-id name
+  constructor manager/ContainerManager .index --.flags --.assets --.id:
     super manager
 
   spawn container/Container arguments/any -> int:
     return spawn-combined index container.id arguments --id=id --assets=assets
 
   stop-all -> none:
-    unreachable  // Not implemented yet.
+    // The processes stop asynchronously, so we wait until they have.
+    while manager.kill-containers_ this: sleep --ms=10
+    manager.on-image-stop-all_ this
 
   delete -> none:
-    throw "Programs combined with the system program can't be uninstalled"
+    stop-all
+    manager.uninstall-firmware-image this
+
+/**
+A container image that is bundled with the firmware.
+
+It is part of the firmware, so uninstalling it only marks it as uninstalled.
+  See $ContainerManager.uninstall-firmware-image.
+*/
+class ContainerImageBundled extends ContainerImageFlash:
+  constructor manager/ContainerManager allocation/FlashAllocation:
+    super manager allocation
+
+  delete -> none:
+    stop-all
+    manager.uninstall-firmware-image this
 
 class ContainerImageFlash extends ContainerImage:
   allocation_/FlashAllocation? := ?
@@ -296,6 +319,8 @@ abstract class ContainerServiceProvider extends ServiceProvider
   abstract images -> List
   abstract add-flash-image allocation/FlashAllocation -> ContainerImage
   abstract lookup-image id/uuid.Uuid -> ContainerImage?
+  abstract lookup-firmware-image id/uuid.Uuid -> ContainerImage?
+  abstract reinstall-firmware-image image/ContainerImage -> none
   abstract send-container-event --gid/int event-kind/int event-value/any -> none
 
   list-images -> List:
@@ -358,6 +383,13 @@ abstract class ContainerServiceProvider extends ServiceProvider
 
   image-writer-commit writer/ContainerImageWriter flags/int data/int -> uuid.Uuid:
     allocation := writer.commit --flags=flags --data=data
+    if firmware-image := lookup-firmware-image allocation.id:
+      // The firmware has the image already, so we use that instead and
+      // throw the new one away. The id covers the program and its assets,
+      // so they are the same.
+      image-registry.free allocation
+      reinstall-firmware-image firmware-image
+      return firmware-image.id
     image := add-flash-image allocation
     return image.id
 
@@ -369,6 +401,10 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
   service-manager_/SystemServiceManager ::= ?
 
   images_/Map ::= {:}               // Map<uuid.Uuid, ContainerImage>
+  // The images in the firmware that can be uninstalled, whether they are
+  // installed or not, and the marks of the ones that are uninstalled.
+  firmware-images_/Map ::= {:}      // Map<uuid.Uuid, ContainerImage>
+  uninstalled_/Map ::= {:}          // Map<uuid.Uuid, FlashAllocation>
   containers-by-id_/Map ::= {:}     // Map<int, Container>
   containers-by-image_/Map ::= {:}  // Map<uuid.Uuid, Container>
 
@@ -381,17 +417,22 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
     set-system-message-handler_ SYSTEM-TRACE_ this
 
     image-registry.do: | allocation/FlashAllocation |
-      if allocation.type != FLASH-ALLOCATION-TYPE-PROGRAM: continue.do
-      add-flash-image allocation
+      if allocation.type == FLASH-ALLOCATION-TYPE-PROGRAM:
+        add-flash-image allocation
+      else if allocation.type == FLASH-ALLOCATION-TYPE-UNINSTALLED:
+        uninstalled_[allocation.id] = allocation
 
-    // Run through the bundled images in the VM, but skip the
-    // first one which is always the system image. Every image
-    // takes up two entries in the $bundled array: The first
+    // The images in the firmware are the bundled images in the VM and the
+    // images of the programs that are combined with the system program.
+    // Skip the first bundled image, which is always the system image.
+    // Every image takes up two entries in the $bundled array: The first
     // entry is the address and the second is the size.
+    firmware-images := []
     bundled := container-bundled-images_
     for i := 2; i < bundled.size; i += 2:
-      allocation := FlashAllocation bundled[i]
-      if not images_.contains allocation.id: add-flash-image allocation
+      firmware-images.add (ContainerImageBundled this (FlashAllocation bundled[i]))
+    firmware-images.add-all (combined-images_ this)
+    register-firmware-images_ firmware-images
 
   system-image -> ContainerImage:
     return system-image_
@@ -411,6 +452,67 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
 
   unregister-image id/uuid.Uuid -> none:
     images_.remove id
+
+  /**
+  Registers the $images that are part of the firmware, except for the ones
+    that are marked as uninstalled, and the ones that are also installed in
+    flash.
+
+  The marks are valid as long as installed programs are, so they can be
+    from an earlier firmware with the same uuid. The marks of images that
+    aren't in this firmware are freed, so they don't take up space forever.
+  */
+  register-firmware-images_ images/List -> none:
+    images.do: | image/ContainerImage |
+      firmware-images_[image.id] = image
+      if uninstalled_.contains image.id or images_.contains image.id: continue.do
+      register-image image
+    unknown := uninstalled_.keys.filter: not firmware-images_.contains it
+    unknown.do: | id/uuid.Uuid |
+      image-registry.free (uninstalled_.get id)
+      uninstalled_.remove id
+
+  lookup-firmware-image id/uuid.Uuid -> ContainerImage?:
+    return firmware-images_.get id
+
+  /**
+  Marks the firmware $image as uninstalled.
+
+  The mark is an allocation in the flash registry, so it is written like
+    other allocations: the header is written last, and the mark is only
+    valid when all of it is written. Freeing it reinstalls the image.
+  */
+  uninstall-firmware-image image/ContainerImage -> none:
+    if uninstalled_.contains image.id: return
+    reservation := image-registry.reserve FLASH-REGISTRY-PAGE-SIZE
+    if not reservation: throw "No space left in flash"
+    uninstalled_[image.id] = image-registry.allocate reservation
+        --type=FLASH-ALLOCATION-TYPE-UNINSTALLED
+        --id=image.id
+        --metadata=#[0, 0, 0, 0, 0]
+    unregister-image image.id
+
+  /**
+  Reinstalls the firmware $image by freeing the mark that says that it is
+    uninstalled.
+  */
+  reinstall-firmware-image image/ContainerImage -> none:
+    mark/FlashAllocation? := uninstalled_.get image.id
+    if not mark: return
+    print_ "[toit] INFO: reinstalling container image $image.id from the firmware"
+    image-registry.free mark
+    uninstalled_.remove image.id
+    register-image image
+
+  // Kills the processes of the containers that run the $image, and returns
+  // whether there were any.
+  kill-containers_ image/ContainerImage -> bool:
+    containers/Map? := containers-by-image_.get image.id
+    if not containers: return false
+    killed := false
+    containers.do --values: | container/Container |
+      if container.kill-processes_: killed = true
+    return killed
 
   lookup-container id/int -> Container?:
     return containers-by-id_.get id
