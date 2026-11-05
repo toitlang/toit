@@ -60,6 +60,10 @@ class PackageLock {
                            const std::vector<std::string>& root_paths,
                            const std::vector<std::string>& unpacked_roots);
 
+  // Returns the lock of a program whose sources were unpacked to the given
+  // root. Its files are shown as if it was the root.
+  PackageLock with_unpacked_root(const std::string& unpacked_root) const;
+
   bool has_errors() const { return has_errors_; }
 
   // Resolves the prefix inside the given package.

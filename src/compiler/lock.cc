@@ -110,6 +110,18 @@ PackageLock PackageLock::merge(const std::vector<PackageLock>& locks,
   return PackageLock(main.lock_file_source_, main.sdk_constraint_, packages, main.sdk_prefixes_, has_errors);
 }
 
+PackageLock PackageLock::with_unpacked_root(const std::string& unpacked_root) const {
+  Map<std::string, Package> packages = packages_;
+  auto probe = packages.find(Package::ENTRY_PACKAGE_ID);
+  if (probe != packages.end()) {
+    Package entry = probe->second;
+    entry.absolute_error_path_ = unpacked_root;
+    entry.relative_error_path_ = "/";
+    packages[Package::ENTRY_PACKAGE_ID] = entry;
+  }
+  return PackageLock(lock_file_source_, sdk_constraint_, packages, sdk_prefixes_, has_errors_);
+}
+
 Package PackageLock::resolve_prefix(const Package& package,
                                     const std::string& prefix) const {
   auto prefix_probe = package.prefixes_.find(prefix);

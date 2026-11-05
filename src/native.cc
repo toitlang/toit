@@ -55,8 +55,9 @@ namespace toit {
     NATIVE_TAIL reinterpret_cast<NativeFn>(target)(sp, c, x_, y_, _top_);                    \
   } while (false)
 
-// An executable has the native code of its program and of the system program.
-static const int MAX_REGISTERED_PROGRAMS = 4;
+// An executable has the native code of the system program and of its other
+// programs. Firmware can have the native code of many containers.
+static const int MAX_REGISTERED_PROGRAMS = 32;
 static const NativeProgram* registered_programs[MAX_REGISTERED_PROGRAMS];
 static int registered_count = 0;
 
