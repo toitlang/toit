@@ -24,6 +24,10 @@ that it generates when it extracts native firmware from an envelope.
 Paths in the recipe are relative to the native support and start with
 '{support}/'. The generated object is '{native}' and the linked ELF file is
 '{output}'.
+
+The firmware is linked with the bytecode loop, so it can also run programs
+that aren't native code. The recipe names the library that has it and the
+stub that replaces it, so the firmware tool can leave it out.
 """
 
 import argparse
@@ -35,7 +39,7 @@ import subprocess
 import tarfile
 import tempfile
 
-SUPPORT_VERSION = 1
+SUPPORT_VERSION = 2
 
 def ninja_command(ninja, build_dir, target):
   output = subprocess.run([ninja, "-C", build_dir, "-t", "commands", target],
@@ -87,6 +91,10 @@ class NativeSupport:
             path = stripped
           tar.add(path, arcname=support_path)
 
+# The library with the bytecode loop, and the stub that replaces it.
+BYTECODES_LIBRARY = "libtoit_bytecodes.a"
+NO_BYTECODES_LIBRARY = "libtoit_no_bytecodes.a"
+
 def link_recipe(support, command, elf_name):
   args = shlex.split(command)
   # Ninja wraps the link command in ': && ... && :'.
@@ -94,6 +102,7 @@ def link_recipe(support, command, elf_name):
   while args and args[-1] in [":", "&&"]: args.pop()
   linker = os.path.basename(args.pop(0))
   result = []
+  bytecodes = None
   added_native = False
   i = 0
   while i < len(args):
@@ -113,10 +122,17 @@ def link_recipe(support, command, elf_name):
         # The generated code registers itself, so nothing refers to it.
         result += ["-Wl,--whole-archive", "{native}", "-Wl,--no-whole-archive"]
         added_native = True
-      result.append(support.add_file(arg))
+      path = support.add_file(arg)
+      if os.path.basename(arg) == BYTECODES_LIBRARY:
+        bytecodes = {
+          "library": path,
+          "stub": support.add_file(os.path.join(os.path.dirname(arg), NO_BYTECODES_LIBRARY)),
+        }
+      result.append(path)
       continue
     result.append(arg)
-  return linker, result
+  if not bytecodes: raise Exception("The firmware isn't linked with " + BYTECODES_LIBRARY)
+  return linker, result, bytecodes
 
 def elf2image_recipe(command):
   args = shlex.split(command.split("&&")[1] if command.startswith("cd ") else command)
@@ -148,7 +164,7 @@ def main():
   args = parser.parse_args()
 
   support = NativeSupport(args.build_dir, args.idf_path, args.strip)
-  linker, link = link_recipe(support, ninja_command(args.ninja, args.build_dir, args.elf), args.elf)
+  linker, link, bytecodes = link_recipe(support, ninja_command(args.ninja, args.build_dir, args.elf), args.elf)
   elf2image = elf2image_recipe(ninja_command(args.ninja, args.build_dir, args.binary_target))
   recipe = {
     "version": SUPPORT_VERSION,
@@ -157,6 +173,7 @@ def main():
     "compile": shlex.split(args.cxx_flags),
     "linker": linker,
     "link": link,
+    "bytecodes": bytecodes,
     "elf2image": elf2image,
   }
   support.write(args.output, recipe)

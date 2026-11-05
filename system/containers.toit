@@ -390,6 +390,11 @@ abstract class ContainerServiceProvider extends ServiceProvider
       image-registry.free allocation
       reinstall-firmware-image firmware-image
       return firmware-image.id
+    if not container-has-bytecodes_:
+      // Native firmware can leave out the bytecode interpreter, and then it
+      // can only run the containers in the firmware.
+      image-registry.free allocation
+      throw "This firmware can only run the containers in it"
     image := add-flash-image allocation
     return image.id
 
@@ -627,3 +632,6 @@ container-kill-pid_ pid/int -> bool:
 
 container-bundled-images_ -> Array_:
   #primitive.programs-registry.bundled-images
+
+container-has-bytecodes_ -> bool:
+  #primitive.programs-registry.has-bytecodes

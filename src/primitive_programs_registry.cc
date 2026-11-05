@@ -219,4 +219,8 @@ PRIMITIVE(config) {
   return result;
 }
 
+PRIMITIVE(has_bytecodes) {
+  return BOOL(Interpreter::has_bytecodes());
+}
+
 } // namespace toit

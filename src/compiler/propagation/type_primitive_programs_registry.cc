@@ -26,6 +26,7 @@ TYPE_PRIMITIVE_BOOL(kill)
 TYPE_PRIMITIVE_ARRAY(bundled_images)
 TYPE_PRIMITIVE_BYTE_ARRAY(assets)
 TYPE_PRIMITIVE_BYTE_ARRAY(config)
+TYPE_PRIMITIVE_BOOL(has_bytecodes)
 
 TYPE_PRIMITIVE(spawn) {
   result.add_smi(program);

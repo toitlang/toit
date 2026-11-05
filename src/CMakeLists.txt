@@ -85,11 +85,10 @@ list(REMOVE_ITEM toit_core_SRC ${run_SRC})
 # leave the loop and the primitive tables out, and have a stub instead. They
 # are in libraries of their own, so executables can pick.
 list(FILTER toit_core_SRC EXCLUDE REGEX "/(interpreter_native|native|interpreter_no_bytecodes).cc$")
-if (TOIT_NATIVE_SUPPORTED)
+if (TOIT_NATIVE_SUPPORTED OR TOIT_NATIVE_EMBEDDED)
   list(FILTER toit_core_SRC EXCLUDE REGEX "/(interpreter_run|primitive_tables).cc$")
 endif()
-# Firmware with native code has the native engine in the VM itself, and the
-# bytecode loop, so it can also run programs that aren't native.
+# Firmware with native code has the native engine in the VM itself.
 if (TOIT_NATIVE_EMBEDDED)
   list(APPEND toit_core_SRC interpreter_native.cc native.cc native_module_stubs.cc)
 endif()
@@ -162,6 +161,20 @@ if (TOIT_NATIVE_SUPPORTED)
     primitive_tables.cc
     )
   set(TOIT_INTERPRETER_LIB toit_interpreter)
+endif()
+
+# Firmware with native code links one of these: the bytecode loop, so it can
+# also run programs that aren't native, or the stub that leaves it out.
+if (TOIT_NATIVE_EMBEDDED)
+  add_library(
+    toit_bytecodes
+    interpreter_run.cc
+    primitive_tables.cc
+    )
+  add_library(
+    toit_no_bytecodes
+    interpreter_no_bytecodes.cc
+    )
 endif()
 
 add_library(
