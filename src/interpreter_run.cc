@@ -283,6 +283,19 @@ inline bool intrinsic_ushr(Object* a, Object* b, Smi** result) {
   return true;
 }
 
+bool Interpreter::has_bytecodes() {
+  return true;
+}
+
+// Firmware with native code has the native engine, which uses the bytecode
+// loop for the programs that aren't native code. Other executables only run
+// bytecodes.
+#ifndef TOIT_NATIVE_EMBEDDED
+
+bool Interpreter::can_run(Program* program) {
+  return true;
+}
+
 // Bytecodes start where the code of the method starts.
 Object* Interpreter::start_address(uint8* bcp) {
   return reinterpret_cast<Object*>(bcp);
@@ -295,6 +308,12 @@ ProgramImage Interpreter::spawn_image(const uint8* id, const uint8* snapshot, wo
 #endif
 
 Interpreter::Result Interpreter::run() {
+  return run_bytecodes();
+}
+
+#endif  // TOIT_NATIVE_EMBEDDED
+
+Interpreter::Result Interpreter::run_bytecodes() {
 #define LABEL(opcode, length, format, print) &&interpret_##opcode,
   // On EC618 (no data cache), place the dispatch table in RAM for fast access.
 #ifdef TOIT_EC618

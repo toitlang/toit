@@ -40,4 +40,7 @@ inline word native_record_index(word entry_bci) {
   return (entry_bci - Method::entry_offset()) / native_record_size();
 }
 
+// Whether the executable has native code for the program.
+bool is_native_program(Program* program);
+
 }  // namespace toit
