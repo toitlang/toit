@@ -759,7 +759,7 @@ compile-system-with-programs sources/Map --envelope/Envelope --ui/cli.Ui -> Byte
   try:
     output := "$tmp-dir/system.snapshot"
     compile-system-with-programs_ sources --tmp-dir=tmp-dir --ui=ui ["-w", output]
-    return read-system-snapshot_ output --envelope=envelope --ui=ui
+    return read-compiled-snapshot_ output --envelope=envelope --ui=ui
   finally:
     directory.rmdir --recursive tmp-dir
 
@@ -790,7 +790,7 @@ compile-system-with-programs_ sources/Map --tmp-dir/string --ui/cli.Ui output-ar
   exit-code := pipe.run-program --environment=environment arguments
   if exit-code != 0: ui.abort "Compiling the system program failed."
 
-read-system-snapshot_ path/string --envelope/Envelope --ui/cli.Ui -> ByteArray:
+read-compiled-snapshot_ path/string --envelope/Envelope --ui/cli.Ui -> ByteArray:
   snapshot := file.read-contents path
   bundle := SnapshotBundle SYSTEM-CONTAINER-NAME snapshot
   if bundle.sdk-version != envelope.sdk-version:
@@ -806,7 +806,10 @@ The generated code is linked with the native support of the envelope, and the
   replaced. The firmware has the bytecode interpreter, unless $interpreter
   is false. The envelope isn't changed on disk.
 */
-build-native-firmware_ envelope/Envelope sources/Map --interpreter/bool --ui/cli.Ui -> none:
+build-native-firmware_ envelope/Envelope sources/Map
+    --separate/Map
+    --interpreter/bool
+    --ui/cli.Ui -> none:
   entries := envelope.entries
   if envelope.kind != Envelope.KIND-ESP32:
     ui.abort "Only ESP32 envelopes support native firmware."
@@ -845,13 +848,45 @@ build-native-firmware_ envelope/Envelope sources/Map --interpreter/bool --ui/cli
     ]
 
     run-native-tool_ [cxx] + recipe["compile"] + ["-c", native-cc, "-o", native-o] --ui=ui
+    objects := [native-o]
+
+    // The other containers are compiled to native code on their own. Their
+    // snapshots replace the ones in the envelope, because their images have
+    // the headers of the methods instead of the bytecodes.
+    separate.do: | name/string archive/ByteArray |
+      root := "$tmp-dir/separate/$name"
+      unpacked := unpack-source-archive_ archive --root=root
+      container-cc := "$tmp-dir/$(name).cc"
+      container-o := "$tmp-dir/$(name).o"
+      container-snapshot := "$tmp-dir/$(name).snapshot"
+      arguments := [
+        compiler-path_ find-sdk-lib_, "-O2",
+        // The sources are shown with the paths they had when they were installed.
+        "--source-root", root,
+        "--native-firmware", container-snapshot, "-o", container-cc,
+        "$root$unpacked["entry"]",
+      ]
+      cache-paths := unpacked["package-cache-paths"].map: "$root$it"
+      environment := cache-paths.is-empty
+          ? null
+          : { "TOIT_PACKAGE_CACHE_PATHS": cache-paths.join (platform == system.PLATFORM-WINDOWS ? ";" : ":") }
+      exit-code := pipe.run-program --environment=environment arguments
+      if exit-code != 0: ui.abort "Compiling container '$name' to native code failed."
+      run-native-tool_ [cxx] + recipe["compile"] + ["-c", container-cc, "-o", container-o] --ui=ui
+      objects.add container-o
+      entries[name] = read-compiled-snapshot_ container-snapshot --envelope=envelope --ui=ui
+      save-snapshot-for-decoding_ entries[name] --ui=ui
 
     // The firmware is linked with the bytecode loop, or the stub that
     // replaces it.
     bytecodes := recipe["bytecodes"]
-    link := recipe["link"].map: | argument/string |
+    link := []
+    recipe["link"].do: | argument/string |
       if not interpreter and argument == bytecodes["library"]: argument = bytecodes["stub"]
-      substitute_ argument { "{support}": support-dir, "{native}": native-o, "{output}": elf }
+      if argument == "{native}":
+        link.add-all objects
+      else:
+        link.add (substitute_ argument { "{support}": support-dir, "{output}": elf })
     // The link command is long, so it is passed in a response file.
     response := "$tmp-dir/link.rsp"
     file.write-contents --path=response
@@ -864,7 +899,7 @@ build-native-firmware_ envelope/Envelope sources/Map --interpreter/bool --ui/cli
 
     entries[AR-ENTRY-ESP32-FIRMWARE-BIN] = file.read-contents bin
     entries[AR-ENTRY-ESP32-FIRMWARE-ELF] = file.read-contents elf
-    entries[SYSTEM-CONTAINER-NAME] = read-system-snapshot_ snapshot-path --envelope=envelope --ui=ui
+    entries[SYSTEM-CONTAINER-NAME] = read-compiled-snapshot_ snapshot-path --envelope=envelope --ui=ui
   finally:
     directory.rmdir --recursive tmp-dir
 
@@ -1041,26 +1076,36 @@ combine-containers_ envelope/Envelope --combine/bool --native/bool --interpreter
     ui.abort "Only native firmware can leave out the interpreter. Use --native too."
   if not combine and not native: return
   entries := envelope.entries
-  combined := combine ? envelope.container-sources : {:}
+  sources := envelope.container-sources
+  combined := combine ? sources : {:}
+  // With --native, the containers that have their sources, but aren't
+  // combined, are compiled to native code on their own.
+  separate := {:}
+  if native:
+    sources.do: | name/string archive/ByteArray |
+      if not combined.contains name: separate[name] = archive
   if not interpreter:
     entries.do --keys: | name/string |
-      if is-container-name name and name != SYSTEM-CONTAINER-NAME and not combined.contains name:
-        reason := envelope.container-sources.contains name ? "isn't combined (use --combine)" : "has no sources"
-        ui.abort "Firmware without the interpreter can only run combined containers, but '$name' $reason."
+      if is-container-name name and name != SYSTEM-CONTAINER-NAME and not sources.contains name:
+        ui.abort "Firmware without the interpreter can only run containers that are compiled to native code, but '$name' has no sources."
   if combine and combined.is-empty:
     ui.emit --warning "There are no containers with sources to combine."
     if not native: return
   check-system-program_ envelope --ui=ui
-  // The combined containers run from the system program, but they keep the
+  // The containers that run native code or from the system program keep the
   // ids they have when they run from their snapshots.
-  combined.do --keys: | name/string |
-    snapshot-uuid := (SnapshotBundle name entries[name]).uuid
-    envelope.combined-containers[name] = image-id
-        --snapshot-uuid=snapshot-uuid
+  sources.do --keys: | name/string |
+    if not combined.contains name and not separate.contains name: continue.do
+    id := image-id
+        --snapshot-uuid=(SnapshotBundle name entries[name]).uuid
         --assets=entries.get "+$name"
-    entries.remove name
+    if combined.contains name:
+      envelope.combined-containers[name] = id
+      entries.remove name
+    else:
+      envelope.native-containers[name] = id
   if native:
-    build-native-firmware_ envelope combined --interpreter=interpreter --ui=ui
+    build-native-firmware_ envelope combined --separate=separate --interpreter=interpreter --ui=ui
   else:
     entries[SYSTEM-CONTAINER-NAME] = compile-system-with-programs combined --envelope=envelope --ui=ui
   save-snapshot-for-decoding_ entries[SYSTEM-CONTAINER-NAME] --ui=ui
@@ -1320,10 +1365,10 @@ extract-cmd -> cli.Command:
             --help="Combine the containers that have their sources with the system program, so they share code."
             --default=false,
         cli.Flag "native"
-            --help="Compile the system program and the combined containers to native code. The envelope must have native support."
+            --help="Compile the system program and the containers that have their sources to native code. The envelope must have native support."
             --default=false,
         cli.Flag "interpreter"
-            --help="Keep the bytecode interpreter in native firmware, so it can run the containers that aren't combined and install new ones. With --no-interpreter, all containers must be combined."
+            --help="Keep the bytecode interpreter in native firmware, so it can run the containers that don't have their sources and install new ones. With --no-interpreter, all containers must have their sources."
             --default=true,
       ]
       --run=:: extract it
@@ -1987,10 +2032,10 @@ flash-cmd -> cli.Command:
             --help="Combine the containers that have their sources with the system program, so they share code."
             --default=false,
         cli.Flag "native"
-            --help="Compile the system program and the combined containers to native code. The envelope must have native support."
+            --help="Compile the system program and the containers that have their sources to native code. The envelope must have native support."
             --default=false,
         cli.Flag "interpreter"
-            --help="Keep the bytecode interpreter in native firmware, so it can run the containers that aren't combined and install new ones. With --no-interpreter, all containers must be combined."
+            --help="Keep the bytecode interpreter in native firmware, so it can run the containers that don't have their sources and install new ones. With --no-interpreter, all containers must have their sources."
             --default=true,
         cli.OptionPath "partitions"
             --help="Override the partition table.",
@@ -2183,7 +2228,12 @@ extract-binary-esp32 envelope/Envelope --config-encoded/ByteArray -> ByteArray:
     if name == SYSTEM-CONTAINER-NAME or not is-container-name name:
       continue.do  // Skip.
     assets := entries.get "+$name"
-    entry := extract-container name flags content --assets=assets --word-size=envelope.word-size
+    // Containers that are compiled to native code keep the ids they have
+    // when they run their bytecodes.
+    entry := extract-container name flags content
+        --assets=assets
+        --word-size=envelope.word-size
+        --id=(envelope.native-containers.get name)
     containers.add entry
     non-system-images[name] = entry.id.to-byte-array
 
@@ -2231,8 +2281,17 @@ extract-binary-esp32 envelope/Envelope --config-encoded/ByteArray -> ByteArray:
       --system-uuid=system-uuid
       --config-encoded=config-encoded
 
+/**
+Extracts the container with the given $name and $content.
+
+The image of a snapshot gets an id that is computed from the snapshot and
+  its $assets, unless it is given as $id.
+*/
 extract-container -> ContainerEntry
-    name/string flags/Map? content/ByteArray --word-size/int --assets/ByteArray?:
+    name/string flags/Map? content/ByteArray
+    --word-size/int
+    --assets/ByteArray?
+    --id/Uuid?=null:
   header/ImageHeader := ?
   relocatable/ByteArray := ?
   if is-snapshot-bundle content:
@@ -2242,7 +2301,7 @@ extract-container -> ContainerEntry
     image := build-image program word-size
         --system-uuid=Uuid.NIL
         --snapshot-uuid=snapshot-uuid
-        --assets=assets
+        --id=(id or (image-id --snapshot-uuid=snapshot-uuid --assets=assets))
     header = ImageHeader image.all-memory --word-size=word-size
     if header.snapshot-uuid != snapshot-uuid: throw "corrupt snapshot uuid encoding"
     relocatable = image.build-relocatable
@@ -2524,6 +2583,10 @@ class Envelope:
   // firmware is extracted, in the order they are combined in, with their
   // image ids.
   combined-containers / Map := {:}  // Map<string, Uuid>.
+
+  // The containers that are compiled to native code on their own when the
+  // firmware is extracted, with their image ids.
+  native-containers / Map := {:}  // Map<string, Uuid>.
 
   constructor.create .entries --.sdk-version --.kind --.word-size:
     version_ = kind == KIND-EC618

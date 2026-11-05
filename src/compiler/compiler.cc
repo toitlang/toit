@@ -105,6 +105,8 @@ struct PipelineConfiguration {
   /// Programs that are combined with the program.
   List<const char*> combined;
   List<const char*> combined_roots;
+  /// The folder the sources of the program were unpacked to, or null.
+  const char* source_root;
 };
 
 class PipelineStatistics {
@@ -1108,6 +1110,9 @@ SnapshotBundle Compiler::compile(const char* source_path,
   }
   configuration.combined = combined.build();
   configuration.combined_roots = combined_roots.build();
+  configuration.source_root = compiler_config.source_root == null
+      ? null
+      : Zone::current()->own_malloc(FilesystemLocal::to_local_path(compiler_config.source_root));
 
   return compile(source_path, configuration);
 }
@@ -1297,7 +1302,10 @@ PackageLock Pipeline::load_package_lock(const List<const char*> source_paths) {
                                 source_manager(),
                                 filesystem(),
                                 diagnostics());
-  if (!has_combined) return lock;
+  if (!has_combined) {
+    if (configuration_.source_root == null) return lock;
+    return lock.with_unpacked_root(configuration_.source_root);
+  }
   // Each program has its own lock, and its folder is its root.
   std::vector<PackageLock> locks = { lock };
   std::vector<std::string> roots = { std::string() };

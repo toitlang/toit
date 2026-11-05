@@ -79,6 +79,9 @@ class Compiler {
     /// For each combined program, the folder its sources were unpacked to,
     /// or null. Its files are shown with the paths they had before.
     List<const char*> combined_roots;
+    /// The folder the sources of the program were unpacked to, or null.
+    /// Its files are shown with the paths they had before.
+    const char* source_root;
   };
 
   Compiler();

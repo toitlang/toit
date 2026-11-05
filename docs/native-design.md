@@ -121,15 +121,18 @@ Containers can be installed in firmware envelopes from source, and the
 envelope keeps their sources, unless they are installed with `--strip`. When
 the firmware is extracted with `--combine`, these containers are compiled
 together with the system program, so they share the code of the libraries.
-With `--native`, the system program and the combined containers are compiled
-to native code.
-Without `--combine`, the containers run their snapshots, like any other:
+Without `--combine`, the containers run their snapshots, like any other. With
+`--native`, the system program and the containers with sources are compiled to
+native code, whether they are combined or not. Containers that aren't combined
+are compiled on their own, so they don't share code with the system program,
+but their images are still separate, like the images of other containers:
 
 ```
 toit tool firmware -e firmware.envelope container install hello hello.toit
 toit tool firmware -e firmware.envelope extract --format=image -o snapshots.img
 toit tool firmware -e firmware.envelope extract --combine --format=image -o combined.img
-toit tool firmware -e firmware.envelope extract --combine --native --format=image -o native.img
+toit tool firmware -e firmware.envelope extract --native --format=image -o native.img
+toit tool firmware -e firmware.envelope extract --combine --native --format=image -o both.img
 ```
 
 Native extraction is only for the ESP32-C3, and it needs an envelope with
@@ -142,12 +145,18 @@ the firmware image (`toolchains/idf/components/toit/native_support.py`). The
 firmware tool runs the recipe with esp-clang, the ESP-IDF linker, and esptool,
 which it finds in the ESP-IDF tools, or through `TOIT_NATIVE_CXX`,
 `TOIT_NATIVE_LINKER`, and `ESPTOOL_PATH`. Native firmware has the bytecode
-loop too, so it runs the containers that aren't combined as bytecodes, and
+loop too, so it runs the containers without sources as bytecodes, and
 containers can still be installed on it. With `--no-interpreter`, the
 firmware is linked with the stub instead, which makes it smaller, but then
-all its containers must be combined, and containers that aren't in the
-firmware can't be installed. The recipe names the library with the bytecode
-loop and the stub that replaces it.
+all its containers must have their sources, and containers that aren't in
+the firmware can't be installed. The recipe names the library with the
+bytecode loop and the stub that replaces it.
+
+The native code of each program registers itself with the runtime, which
+matches it with the image of the program by the uuid of its snapshot. A
+container that is compiled to native code on its own is in the firmware with
+the image of its native snapshot, but it keeps the id it has when it runs its
+bytecodes, so installing its bytecodes again finds it in the firmware.
 
 A combined container has the id it would have if it ran from its snapshot:
 the image id, which is computed from the uuid of the snapshot and the

@@ -49,6 +49,7 @@ static void print_usage(int exit_code) {
   printf("  [--native-firmware <snapshot>]           // Write the C++ program for firmware, and its snapshot.\n");
   printf("  [--combine <path>]...                    // Combine a program with the system program.\n");
   printf("  [--combine-root <dir>]                   // The folder the next combined program was unpacked to.\n");
+  printf("  [--source-root <dir>]                    // The folder the program was unpacked to.\n");
   printf("  [--verbose]                              // Print compiler phase timings.\n");
   printf("  [--verbosity-level {debug|info|verbose|quiet|silent}]\n");
   printf("                                            // Set compiler statistics verbosity.\n");
@@ -129,6 +130,7 @@ int main(int argc, char **argv) {
   auto combined_roots = unvoid_cast<const char**>(malloc(argc * sizeof(const char*)));
   int combined_count = 0;
   const char* combined_root = null;
+  const char* source_root = null;
   int verbosity = 0;
 
   int processed_args = 1;  // The executable name has already been processed.
@@ -284,6 +286,15 @@ int main(int argc, char **argv) {
       combined_roots[combined_count] = combined_root;
       combined[combined_count++] = argv[processed_args++];
       combined_root = null;
+    } else if (strcmp(argv[processed_args], "--source-root") == 0) {
+      // The sources of the program were unpacked to this folder, so their
+      // paths are shown as if it was the root.
+      processed_args++;
+      if (processed_args == argc) {
+        fprintf(stderr, "Missing argument to '--source-root'\n");
+        print_usage(1);
+      }
+      source_root = argv[processed_args++];
     } else if (strcmp(argv[processed_args], "--combine-root") == 0) {
       // The sources of the next combined program were unpacked to this
       // folder, so their paths are shown as if it was the root.
@@ -460,6 +471,7 @@ int main(int argc, char **argv) {
     .verbosity = for_language_server ? 0 : verbosity,
     .combined = List<const char*>(combined, combined_count),
     .combined_roots = List<const char*>(combined_roots, combined_count),
+    .source_root = source_root,
   };
 
   if (for_language_server) {
