@@ -209,6 +209,26 @@ run_uart_sharing_test() {
   echo "PASS: ESP32 io.stdin and uart.Port.console sharing"
 }
 
+# Installs two programs from source, and combines them with the system
+# program when the image is extracted. They have package locks of their
+# own, with different versions of the same package.
+run_combined_test() {
+  local image=combined
+  local envelope="${TEMP_DIR}/${image}.envelope"
+  local input="${ROOT_DIR}/tests/combined/input"
+  cp "${UART_ENVELOPE}" "${envelope}"
+  "${TOIT}" tool firmware --envelope="${envelope}" container install a "${input}/a/a.toit"
+  "${TOIT}" tool firmware --envelope="${envelope}" container install b "${input}/b/b.toit"
+  "${TOIT}" tool firmware --envelope="${envelope}" extract --combine \
+    --format=image -o "${TEMP_DIR}/${image}.bin"
+
+  start_qemu esp32 "${image}" uart
+  wait_for "a: [] foo version a"
+  wait_for "b: foo version b"
+  stop_qemu
+  echo "PASS: ESP32 containers installed from source and combined"
+}
+
 make_image stdio.toit "${UART_ENVELOPE}" stdio-uart
 make_image stdio-uart-console.toit "${UART_ENVELOPE}" uart-share
 make_image stdio.toit "${USB_ENVELOPE}" stdio-usb
@@ -220,3 +240,4 @@ run_uart_sharing_test
 run_stdio_test esp32s3 stdio-usb usb-serial-jtag
 run_stdio_test esp32s3 stdio-mixed uart
 run_stdio_test esp32s3 stdio-mixed usb-serial-jtag
+run_combined_test
