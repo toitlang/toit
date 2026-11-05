@@ -17,6 +17,7 @@
 #include "../objects_inline.h"
 #include "../primitive.h"
 #include "../process.h"
+#include "../process_group.h"
 #include "../os.h"
 #include "../flash_registry.h"
 
@@ -25,7 +26,10 @@ namespace toit {
 MODULE_IMPLEMENTATION(image, MODULE_IMAGE)
 
 PRIMITIVE(current_id) {
-  const uint8* id = process->program()->id();
+  // Programs that are combined with the system program run in containers
+  // with ids of their own.
+  const uint8* id = process->group()->image_id();
+  if (id == null) id = process->program()->id();
   ByteArray* result = process->object_heap()->allocate_external_byte_array(
       Program::Header::ID_SIZE, const_cast<uint8*>(id), false, false);
   if (!result) FAIL(ALLOCATION_FAILED);

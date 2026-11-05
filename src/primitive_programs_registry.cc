@@ -77,7 +77,8 @@ PRIMITIVE(spawn) {
 // a process group of its own, so it is tracked like any other container.
 PRIMITIVE(spawn_entry) {
   PRIVILEGED;
-  ARGS(int, group_id, Object, arguments, Object, assets);
+  ARGS(int, group_id, Blob, id, Object, arguments, Object, assets);
+  if (id.length() != 16) FAIL(INVALID_ARGUMENT);
   Program* program = process->program();
 
   // The assets of the program that the new process runs, if any.
@@ -120,6 +121,8 @@ PRIMITIVE(spawn_entry) {
     memcpy(copy, assets_blob.address(), assets_blob.length());
   }
   process_group->set_assets(copy, assets_blob.length());
+  // The processes in the group run the image of the container.
+  process_group->set_image_id(id.address());
 
   initial_memory_manager.global_variables = program->global_variables.copy();
   if (!initial_memory_manager.global_variables) FAIL(MALLOC_FAILED);

@@ -45,6 +45,15 @@ class ProcessGroup : public ProcessGroupList::Element {
 
   ProcessListFromProcessGroup& processes() { return processes_; }
 
+  // The id of the image the processes in the group run, if it isn't the id
+  // of the program. Programs that are combined with the system program run
+  // in containers with ids of their own.
+  const uint8* image_id() const { return has_image_id_ ? image_id_ : null; }
+  void set_image_id(const uint8* id) {
+    memcpy(image_id_, id, sizeof(image_id_));
+    has_image_id_ = true;
+  }
+
   // Whether the processes in the group have assets of their own, instead of
   // the assets of the program. Programs that are combined with the system
   // program run in groups of their own with their own assets, which may be
@@ -70,6 +79,8 @@ class ProcessGroup : public ProcessGroupList::Element {
 
   ProcessListFromProcessGroup processes_;
 
+  bool has_image_id_ = false;
+  uint8 image_id_[16];
   bool has_own_assets_ = false;
   uint8* assets_ = null;
   word assets_size_ = 0;
