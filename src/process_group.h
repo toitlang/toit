@@ -45,6 +45,21 @@ class ProcessGroup : public ProcessGroupList::Element {
 
   ProcessListFromProcessGroup& processes() { return processes_; }
 
+  // Whether the processes in the group have assets of their own, instead of
+  // the assets of the program. Programs that are combined with the system
+  // program run in groups of their own with their own assets, which may be
+  // empty.
+  bool has_own_assets() const { return has_own_assets_; }
+  const uint8* assets() const { return assets_; }
+  word assets_size() const { return assets_size_; }
+  // Takes over the malloc'ed assets, which may be null if they are empty.
+  void set_assets(uint8* assets, word size) {
+    free(assets_);
+    assets_ = assets;
+    assets_size_ = size;
+    has_own_assets_ = true;
+  }
+
  private:
   const int id_;
   Program* const program_;
@@ -54,6 +69,10 @@ class ProcessGroup : public ProcessGroupList::Element {
   AlignedMemoryBase* const memory_;
 
   ProcessListFromProcessGroup processes_;
+
+  bool has_own_assets_ = false;
+  uint8* assets_ = null;
+  word assets_size_ = 0;
 
   ProcessGroup(int id, Program* program, AlignedMemoryBase* memory);
 

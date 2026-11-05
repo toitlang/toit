@@ -30,6 +30,7 @@ ProcessGroup::ProcessGroup(int id, Program* program, AlignedMemoryBase* memory)
 
 ProcessGroup::~ProcessGroup() {
   delete memory_;
+  free(assets_);
 }
 
 ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* memory) {
