@@ -77,8 +77,15 @@ PRIMITIVE(spawn) {
 // a process group of its own, so it is tracked like any other container.
 PRIMITIVE(spawn_entry) {
   PRIVILEGED;
-  ARGS(int, group_id, Object, arguments);
+  ARGS(int, group_id, Object, arguments, Object, assets);
   Program* program = process->program();
+
+  // The assets of the program that the new process runs, if any.
+  Blob assets_blob;
+  if (assets != process->null_object() &&
+      !assets->byte_content(program, &assets_blob, STRINGS_OR_BYTE_ARRAYS)) {
+    FAIL(WRONG_OBJECT_TYPE);
+  }
 
   unsigned message_size = 0;
   { MessageEncoder size_encoder(process, null);
@@ -103,6 +110,16 @@ PRIMITIVE(spawn_entry) {
   ProcessGroup* process_group = ProcessGroup::create(group_id, program);
   if (!process_group) FAIL(MALLOC_FAILED);
   AllocationManager free_process_group(process, process_group);
+
+  // The program has the assets of the system program, so the new process
+  // gets its own, even if they are empty.
+  uint8* copy = null;
+  if (assets_blob.length() > 0) {
+    copy = unvoid_cast<uint8*>(malloc(assets_blob.length()));
+    if (copy == null) FAIL(MALLOC_FAILED);
+    memcpy(copy, assets_blob.address(), assets_blob.length());
+  }
+  process_group->set_assets(copy, assets_blob.length());
 
   initial_memory_manager.global_variables = program->global_variables.copy();
   if (!initial_memory_manager.global_variables) FAIL(MALLOC_FAILED);
@@ -165,7 +182,14 @@ PRIMITIVE(assets) {
   word size;
   uint8* bytes;
   Object* result = null;
-  if (program->program_assets_size(&bytes, &size) == 0) {
+  ProcessGroup* group = process->group();
+  if (group->has_own_assets()) {
+    // The group runs a program that is combined with the system program.
+    result = group->assets_size() == 0
+        ? process->object_heap()->allocate_internal_byte_array(0)
+        : process->object_heap()->allocate_external_byte_array(
+              group->assets_size(), const_cast<uint8*>(group->assets()), false, false);
+  } else if (program->program_assets_size(&bytes, &size) == 0) {
     result = process->object_heap()->allocate_internal_byte_array(0);
   } else {
     result = process->object_heap()->allocate_external_byte_array(size, bytes, false, false);

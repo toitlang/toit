@@ -820,14 +820,7 @@ Combines the containers of the $envelope that have their sources with the
 combine-containers_ envelope/Envelope --combine/bool --ui/cli.Ui -> none:
   if not combine: return
   entries := envelope.entries
-  sources := envelope.container-sources
-  combined := {:}
-  sources.do: | name/string source/ByteArray |
-    if entries.contains "+$name":
-      // The system program doesn't give assets to combined containers yet.
-      ui.emit --warning "Container '$name' has assets, so it isn't combined."
-    else:
-      combined[name] = source
+  combined := envelope.container-sources
   if combined.is-empty:
     ui.emit --warning "There are no containers with sources to combine."
     return
@@ -1960,6 +1953,8 @@ extract-binary-esp32 envelope/Envelope --config-encoded/ByteArray -> ByteArray:
         description.add container
         description.add index
         description.add ((container-flags.get container) or 0)
+        // The system program gives the containers their assets.
+        description.add (entries.get "+$container")
         non-system-images[container] = (combined-id container).to-byte-array
       system-assets["combined"] = tison.encode description
     // Encode any non-system image names.

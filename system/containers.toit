@@ -156,12 +156,14 @@ Programs can have other programs combined with them. Their main methods are
   entry points of the program, so they run in processes of their own, like
   other containers, but they share the code of the program.
 */
-spawn-combined index/int gid/int arguments/any -> int:
+spawn-combined index/int gid/int arguments/any --assets/ByteArray?=null -> int:
   // The new process starts at the entry for combined programs, which calls
-  // the main method of the program with the given index.
-  return spawn-entry_ gid [index, arguments]
+  // the main method of the program with the given index. The assets are
+  // the assets of the container, because the program has no assets of its
+  // own.
+  return spawn-entry_ gid [index, arguments] assets
 
-spawn-entry_ gid/int arguments/any -> int:
+spawn-entry_ gid/int arguments/any assets/ByteArray? -> int:
   #primitive.programs-registry.spawn-entry
 
 /**
@@ -170,20 +172,23 @@ Registers the containers that run programs that are combined with the
 
 The firmware tooling describes them in the "combined" system asset, as a list
   with the name of each container, the index of its program in the order the
-  programs are combined with the system program, and its flags. Several
-  containers can run the same program.
+  programs are combined with the system program, its flags, and its assets,
+  or null.
 */
 register-combined manager/ContainerManager -> none:
   encoded := assets.decode.get "combined"
   if not encoded: return
   described := tison.decode encoded
   count := combined-count_
-  for i := 0; i < described.size; i += 3:
+  for i := 0; i < described.size; i += 4:
     index := described[i + 1]
     if not 0 <= index < count:
       throw "The system program has $count combined programs, but a container runs program $index"
     manager.register-image
-        ContainerImageCombined manager index --name=described[i] --flags=described[i + 2]
+        ContainerImageCombined manager index
+            --name=described[i]
+            --flags=described[i + 2]
+            --assets=described[i + 3]
 
 /**
 The id of the container with the given $name that runs a combined program.
@@ -200,13 +205,14 @@ class ContainerImageCombined extends ContainerImage:
   index/int
   id/uuid.Uuid
   flags/int
+  assets/ByteArray?
 
-  constructor manager/ContainerManager .index --name/string --.flags:
+  constructor manager/ContainerManager .index --name/string --.flags --.assets:
     id = combined-id name
     super manager
 
   spawn container/Container arguments/any -> int:
-    return spawn-combined index container.id arguments
+    return spawn-combined index container.id arguments --assets=assets
 
   stop-all -> none:
     unreachable  // Not implemented yet.
