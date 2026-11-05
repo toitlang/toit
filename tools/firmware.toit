@@ -763,7 +763,7 @@ Compiles the system program with the programs in the given $sources
 */
 compile-system-with-programs_ sources/Map --tmp-dir/string --ui/cli.Ui output-arguments/List -> none:
   sdk-lib := find-sdk-lib_
-  system-source := "$sdk-lib/system-sources/system/extensions/esp32/boot-combined.toit"
+  system-source := system-source-path_
   if not file.is-file system-source:
     ui.abort "The SDK doesn't have the sources of the system program ($system-source)."
   arguments := [compiler-path_ sdk-lib, "-O2"]
@@ -825,9 +825,14 @@ combine-containers_ envelope/Envelope --combine/bool --ui/cli.Ui -> none:
     ui.emit --warning "There are no containers with sources to combine."
     return
   check-system-program_ envelope --ui=ui
-  // The combined containers run from the system program.
-  combined.do --keys: entries.remove it
-  envelope.combined-containers = combined.keys
+  // The combined containers run from the system program, but they keep the
+  // ids they have when they run from their snapshots.
+  combined.do --keys: | name/string |
+    snapshot-uuid := (SnapshotBundle name entries[name]).uuid
+    envelope.combined-containers[name] = image-id
+        --snapshot-uuid=snapshot-uuid
+        --assets=entries.get "+$name"
+    entries.remove name
   entries[SYSTEM-CONTAINER-NAME] = compile-system-with-programs combined --envelope=envelope --ui=ui
   save-snapshot-for-decoding_ entries[SYSTEM-CONTAINER-NAME] --ui=ui
 
@@ -880,7 +885,10 @@ Compiles the program at the given $path to a snapshot with the compiler of
   the SDK, and returns it.
 
 The snapshot is the one 'toit compile --snapshot -O2' makes. Containers in
-  firmware stay in flash, so they are optimized for size and speed.
+  firmware stay in flash, so they are optimized for size and speed. Their ids
+  are the ids of the images of these snapshots, so installing the same
+  program compiled the same way, for example with
+  'jag container install -O2', finds the image in the firmware.
 */
 compile-snapshot_ path/string --ui/cli.Ui -> ByteArray:
   tmp-dir := directory.mkdtemp "/tmp/toit-firmware-snapshot-"
@@ -912,11 +920,6 @@ find-sdk-lib_ -> string:
   list := bin-name.split "/"
   dir := list[..list.size - 1].join "/"
   return "$dir/../lib/toit"
-
-// The id of a container that runs a combined program. The system program
-// computes the same ids.
-combined-id name/string -> Uuid:
-  return Uuid.uuid5 "toit-combined" name
 
 property-cmd -> cli.Command:
   cmd := cli.Command "property"
@@ -1948,14 +1951,15 @@ extract-binary-esp32 envelope/Envelope --config-encoded/ByteArray -> ByteArray:
     if not combined.is-empty:
       container-flags := (properties.get PROPERTY-CONTAINER-FLAGS) or {:}
       description := []
-      combined.size.repeat: | index/int |
-        container := combined[index]
+      index := 0
+      combined.do: | container/string id/Uuid |
         description.add container
-        description.add index
+        description.add index++
         description.add ((container-flags.get container) or 0)
         // The system program gives the containers their assets.
         description.add (entries.get "+$container")
-        non-system-images[container] = (combined-id container).to-byte-array
+        description.add id.to-byte-array
+        non-system-images[container] = id.to-byte-array
       system-assets["combined"] = tison.encode description
     // Encode any non-system image names.
     if not non-system-images.is-empty: system-assets["images"] = tison.encode non-system-images
@@ -2266,8 +2270,9 @@ class Envelope:
     else: entries[AR-ENTRY-CONTAINER-SOURCES] = tison.encode sources
 
   // The containers that are combined with the system program when the
-  // firmware is extracted, in the order they are combined in.
-  combined-containers / List := []
+  // firmware is extracted, in the order they are combined in, with their
+  // image ids.
+  combined-containers / Map := {:}  // Map<string, Uuid>.
 
   constructor.create .entries --.sdk-version --.kind --.word-size:
     version_ = kind == KIND-EC618

@@ -83,15 +83,17 @@ bool FlashAllocation::Header::is_valid(bool embedded) const {
   if (marker_ != FORMAT_MARKER || size_in_pages_ == 0) return false;
   if (embedded) {
     // All programs embedded in the binary have a zero checksum.
-    if (checksum_ != 0) return false;
+    if (checksum_ != 0 || type_ != FLASH_ALLOCATION_TYPE_PROGRAM) return false;
   } else {
     uint32 checksum = compute_checksum(this);
     if (checksum_ != checksum) return false;
     if (type_ == FLASH_ALLOCATION_TYPE_REGION) {
       return memcmp(uuid_, DATA_UUID, UUID_SIZE) == 0;
     }
+    if (type_ != FLASH_ALLOCATION_TYPE_PROGRAM && type_ != FLASH_ALLOCATION_TYPE_UNINSTALLED) {
+      return false;
+    }
   }
-  if (type_ != FLASH_ALLOCATION_TYPE_PROGRAM) return false;
   return memcmp(uuid_, EmbeddedData::uuid(), UUID_SIZE) == 0;
 }
 

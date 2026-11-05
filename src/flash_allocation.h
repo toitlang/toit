@@ -24,6 +24,10 @@ namespace toit {
 // Keep in sync with system/flash/allocation.toit.
 static const uint8 FLASH_ALLOCATION_TYPE_PROGRAM = 0;
 static const uint8 FLASH_ALLOCATION_TYPE_REGION = 1;
+// Marks an image that is part of the firmware as uninstalled. Like programs,
+// the marks are stamped with the uuid of the firmware, so they are valid
+// exactly as long as installed programs are.
+static const uint8 FLASH_ALLOCATION_TYPE_UNINSTALLED = 2;
 
 static const int FLASH_PAGE_SIZE_LOG2 = 12;
 static const int FLASH_PAGE_SIZE = 1 << FLASH_PAGE_SIZE_LOG2;

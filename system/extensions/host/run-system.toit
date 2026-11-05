@@ -110,7 +110,10 @@ class CombinedContainerImage extends ContainerImageFromSnapshot:
   constructor manager/ContainerManager system-bundle/ByteArray .index .default-arguments:
     super manager system-bundle
     // The images must have different ids, so the applications don't get the
-    // id of the system program.
+    // id of the system program. On devices, combined containers have the ids
+    // of the images of their own snapshots, but executables only have the
+    // snapshot of the system program, and their containers can't be
+    // installed again, so they get ids that are derived from it.
     id = uuid.Uuid.uuid5 "toit-combined-entry" "$id/$index"
 
   spawn container/Container arguments/any -> int:

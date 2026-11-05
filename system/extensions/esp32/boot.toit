@@ -44,16 +44,9 @@ class SystemImage extends ContainerImage:
   delete -> none:
     unreachable  // Not implemented yet.
 
+// The firmware tooling can compile other programs into the system program.
+// The container manager finds them and starts them, like other containers.
 main:
-  run-system
-
-/**
-Runs the system program.
-
-With $combined, it also starts the applications that are compiled into it. See
-  boot-combined.toit.
-*/
-run-system --combined/bool=false -> none:
   registry ::= FlashRegistry.scan
   service-manager ::= SystemServiceManager
   (FirmwareServiceProvider).install
@@ -62,5 +55,4 @@ run-system --combined/bool=false -> none:
   container-manager := ContainerManager registry service-manager
   system-image := SystemImage container-manager
   container-manager.register-system-image system-image
-  if combined: register-combined container-manager
   exit (boot container-manager)
