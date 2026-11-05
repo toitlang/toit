@@ -144,8 +144,11 @@ foreach(archive ${TOIT_NATIVE_ARCHIVES})
   list(APPEND TOIT_NATIVE_ARCHIVE_FILES "$<TARGET_FILE:${archive}>")
 endforeach()
 
+# The default build keeps the native SDK up to date, so native code is never
+# linked with an old runtime.
 add_custom_target(
   build_native_sdk
+  ALL
   DEPENDS "${TOIT_NATIVE_SYSTEM_OUTPUT}"
   COMMAND "${CMAKE_COMMAND}" -E make_directory "${TOIT_NATIVE_DIR}/lib"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${TOIT_NATIVE_ARCHIVE_FILES} "${TOIT_NATIVE_DIR}/lib"
