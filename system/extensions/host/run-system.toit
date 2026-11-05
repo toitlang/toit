@@ -114,7 +114,7 @@ class CombinedContainerImage extends ContainerImageFromSnapshot:
     id = uuid.Uuid.uuid5 "toit-combined-entry" "$id/$index"
 
   spawn container/Container arguments/any -> int:
-    return spawn-combined index container.id arguments
+    return spawn-combined index container.id arguments --id=id
 
 /**
 Runs the system program.

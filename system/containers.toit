@@ -156,14 +156,14 @@ Programs can have other programs combined with them. Their main methods are
   entry points of the program, so they run in processes of their own, like
   other containers, but they share the code of the program.
 */
-spawn-combined index/int gid/int arguments/any --assets/ByteArray?=null -> int:
+spawn-combined index/int gid/int arguments/any --id/uuid.Uuid --assets/ByteArray?=null -> int:
   // The new process starts at the entry for combined programs, which calls
-  // the main method of the program with the given index. The assets are
-  // the assets of the container, because the program has no assets of its
-  // own.
-  return spawn-entry_ gid [index, arguments] assets
+  // the main method of the program with the given index. The id and the
+  // assets are the ones of the container, because the program is the
+  // system program.
+  return spawn-entry_ gid id.to-byte-array [index, arguments] assets
 
-spawn-entry_ gid/int arguments/any assets/ByteArray? -> int:
+spawn-entry_ gid/int id/ByteArray arguments/any assets/ByteArray? -> int:
   #primitive.programs-registry.spawn-entry
 
 /**
@@ -212,7 +212,7 @@ class ContainerImageCombined extends ContainerImage:
     super manager
 
   spawn container/Container arguments/any -> int:
-    return spawn-combined index container.id arguments --assets=assets
+    return spawn-combined index container.id arguments --id=id --assets=assets
 
   stop-all -> none:
     unreachable  // Not implemented yet.
