@@ -32,8 +32,9 @@
 #ifndef TOIT_NATIVE_ABI_H_
 #define TOIT_NATIVE_ABI_H_
 
+// Only the headers that freestanding compilers have. The memory functions are
+// used through the builtins, so the code doesn't need the C library headers.
 #include <stdint.h>
-#include <string.h>
 
 namespace toit {
 
@@ -413,7 +414,7 @@ inline Object* native_pop(Object*** sp, Object** t) {
   (NATIVE_LIKELY(are_smis) ? NATIVE_COMPARE_SMIS(a, op, b) : (native_int_value(a) op native_int_value(b)))
 #define NATIVE_BOOLEAN(condition) ((condition) ? c->true_object : c->false_object)
 
-static const int NATIVE_DOUBLE_SIZE = 16;
+static const int NATIVE_DOUBLE_SIZE = sizeof(void*) + sizeof(double);
 static const int NATIVE_STRING_LENGTH_SENTINEL = 65535;
 
 inline double native_double_value(Object* object) {
@@ -446,6 +447,8 @@ inline bool native_box_double(NativeContext* c, double value, Object** result) {
 
 // Strings have their content in the object, unless they are very long.
 inline int native_string_length(Object* string) {
+  // The hash code and the length take up half a word each.
+  if (sizeof(void*) == 4) return reinterpret_cast<uint16_t*>(native_word_address(string, 1))[1];
   return reinterpret_cast<int32_t*>(native_word_address(string, 1))[1];
 }
 
@@ -498,6 +501,34 @@ inline __attribute__((always_inline)) Object** native_call_double_stub(Object** 
                    "bl " NATIVE_SYMBOL(toit_native_double_stub) "\n"
                    "mov x30, x16\n"
                    : "+r"(r0) : "r"(r1), "w"(d0) : "x16", "x17", "cc", "memory");
+  return r0;
+}
+
+#elif defined(__riscv)
+
+inline __attribute__((always_inline)) Object** native_call_int_stub(Object** sp_, NativeContext* c_, intptr_t opcode) {
+  register Object** r0 __asm__("a0") = sp_;
+  register NativeContext* r1 __asm__("a1") = c_;
+  register intptr_t r2 __asm__("a2") = opcode;
+  __asm__ volatile("mv t6, ra\n"
+                   "call " NATIVE_SYMBOL(toit_native_int_stub) "\n"
+                   "mv ra, t6\n"
+                   : "+r"(r0) : "r"(r1), "r"(r2) : "t6", "memory");
+  return r0;
+}
+
+// Doubles are passed in a pair of integer registers.
+inline __attribute__((always_inline)) Object** native_call_double_stub(Object** sp_, NativeContext* c_, double value) {
+  uint32_t words[2];
+  __builtin_memcpy(words, &value, sizeof(value));
+  register Object** r0 __asm__("a0") = sp_;
+  register NativeContext* r1 __asm__("a1") = c_;
+  register uint32_t r2 __asm__("a2") = words[0];
+  register uint32_t r3 __asm__("a3") = words[1];
+  __asm__ volatile("mv t6, ra\n"
+                   "call " NATIVE_SYMBOL(toit_native_double_stub) "\n"
+                   "mv ra, t6\n"
+                   : "+r"(r0) : "r"(r1), "r"(r2), "r"(r3) : "t6", "memory");
   return r0;
 }
 
@@ -771,7 +802,7 @@ inline bool native_byte_array_at_put(Object* bytes, Object* index, Object* value
 inline int64_t native_int_value(Object* object) {
   if (native_is_smi(object)) return native_smi_value(object);
   int64_t value = 0;
-  memcpy(&value, native_word_address(object, 1), sizeof(value));
+  __builtin_memcpy(&value, native_word_address(object, 1), sizeof(value));
   return value;
 }
 

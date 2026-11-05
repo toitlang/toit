@@ -96,11 +96,17 @@ class Program:
 
     // Create the methods list.
     current-offset := 0
-    methods = List method-table_.size:
-      method-info := method-table_[current-offset]
-      method := ToitMethod all-bytecodes current-offset method-info.bytecode-size
-      current-offset += method.allocation-size
-      method
+    // The bytecodes of native programs are gone, apart from the method headers.
+    total-size := 0
+    method-table_.do --values: | info/MethodInfo | total-size += ToitMethod.HEADER-SIZE + info.bytecode-size
+    if total-size > all-bytecodes.size:
+      methods = []
+    else:
+      methods = List method-table_.size:
+        method-info := method-table_[current-offset]
+        method := ToitMethod all-bytecodes current-offset method-info.bytecode-size
+        current-offset += method.allocation-size
+        method
 
   // Programs that are compiled to native code are stored as images, so
   // all we have is the information that is needed for decoding stack traces.

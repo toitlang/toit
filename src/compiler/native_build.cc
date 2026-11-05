@@ -226,13 +226,24 @@ bool NativeBuild::add_program(SnapshotBundle bundle, bool is_system) {
   }
   fprintf(file, "\nnamespace {\nextern const bool native_is_system;\nconst bool native_is_system = %s;\n}  // namespace\n",
           is_system ? "true" : "false");
+  // Firmware has the program in flash, so all it needs here is the code.
+  bool is_firmware = firmware_snapshot_path_ != null;
+  if (is_firmware) {
+    words.clear();
+    ranges.clear();
+    if (!bundle.write_to_file(firmware_snapshot_path_)) return false;
+  }
   write_bytes(file, "native_uuid", id, UUID_SIZE, false);
   write_bytes(file, "native_image", reinterpret_cast<const uint8*>(words.data()), words.size() * WORD_SIZE, false);
   write_bytes(file, "native_image_ranges", reinterpret_cast<const uint8*>(ranges.data()), ranges.size() * sizeof(int32), true);
   fprintf(file, "\nnamespace {\nextern const int native_image_words;\nconst int native_image_words = %d;\n}  // namespace\n", total_words);
-  SnapshotBundle traces = bundle.without_snapshot();
-  write_bytes(file, "native_bundle", traces.buffer(), traces.size(), true);
-  free(traces.buffer());
+  if (is_firmware) {
+    write_bytes(file, "native_bundle", null, 0, true);
+  } else {
+    SnapshotBundle traces = bundle.without_snapshot();
+    write_bytes(file, "native_bundle", traces.buffer(), traces.size(), true);
+    free(traces.buffer());
+  }
   return fclose(file) == 0;
 }
 

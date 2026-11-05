@@ -88,6 +88,11 @@ list(FILTER toit_core_SRC EXCLUDE REGEX "/(interpreter_native|native|interpreter
 if (TOIT_NATIVE_SUPPORTED)
   list(FILTER toit_core_SRC EXCLUDE REGEX "/(interpreter_run|primitive_tables).cc$")
 endif()
+# Firmware with native code has the native engine in the VM itself, and the
+# bytecode loop, so it can also run programs that aren't native.
+if (TOIT_NATIVE_EMBEDDED)
+  list(APPEND toit_core_SRC interpreter_native.cc native.cc native_module_stubs.cc)
+endif()
 
 # Files that are used in the VM, but not in the compiler.
 file(GLOB toit_vm_runtime_SRC

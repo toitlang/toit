@@ -198,6 +198,15 @@ if (NOT ${TOIT_IS_EMBEDDED} AND NOT ${TOIT_IS_CROSS} AND NOT WIN32 AND NOT ENABL
   set(TOIT_NATIVE_SUPPORTED TRUE)
 endif()
 
+# Firmware with native code has the generated code linked in, instead of the
+# bytecode interpreter. The ESP32 component turns this on for native builds.
+if (NOT DEFINED TOIT_NATIVE_EMBEDDED)
+  set(TOIT_NATIVE_EMBEDDED FALSE)
+endif()
+if (TOIT_NATIVE_EMBEDDED)
+  add_compile_definitions(TOIT_NATIVE_EMBEDDED)
+endif()
+
 add_subdirectory(src)
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
   add_subdirectory(third_party/libgpiod)

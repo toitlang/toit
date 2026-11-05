@@ -46,6 +46,7 @@ static void print_usage(int exit_code) {
   printf("  [--strip]                                // Strip the output of debug information.\n");
   printf("  [--native]                               // Compile the executable to native code.\n");
   printf("  [--native-source]                        // Write the program as C++ instead of an executable.\n");
+  printf("  [--native-firmware <snapshot>]           // Write the C++ program for firmware, and its snapshot.\n");
   printf("  [--combine <path>]...                    // Combine a program with the system program.\n");
   printf("  [--combine-root <dir>]                   // The folder the next combined program was unpacked to.\n");
   printf("  [--verbose]                              // Print compiler phase timings.\n");
@@ -122,6 +123,7 @@ int main(int argc, char **argv) {
   bool native = false;
   bool native_source = false;
   bool native_boot = false;
+  const char* native_firmware_snapshot = null;
   // The compiler isn't set up yet, so this can't allocate with new.
   auto combined = unvoid_cast<const char**>(malloc(argc * sizeof(const char*)));
   auto combined_roots = unvoid_cast<const char**>(malloc(argc * sizeof(const char*)));
@@ -303,6 +305,16 @@ int main(int argc, char **argv) {
       native = true;
       native_source = true;
       processed_args++;
+    } else if (strcmp(argv[processed_args], "--native-firmware") == 0) {
+      // The C++ program for firmware, and the snapshot for its envelope.
+      processed_args++;
+      if (processed_args == argc) {
+        fprintf(stderr, "Missing argument to '--native-firmware'\n");
+        print_usage(1);
+      }
+      native = true;
+      native_source = true;
+      native_firmware_snapshot = argv[processed_args++];
     } else if (strcmp(argv[processed_args], "--strip") == 0) {
       should_strip = true;
       processed_args++;
@@ -471,6 +483,7 @@ int main(int argc, char **argv) {
       compiled = SnapshotBundle::read_from_file(source_path);
     } else {
       if (native && !native_build.prepare(!native_source)) exit(1);
+      if (native_firmware_snapshot != null) native_build.set_firmware_snapshot(native_firmware_snapshot);
       compiled = compiler.compile(source_path,
                                   direct_script,
                                   bundle_filename == null ? exe_filename : bundle_filename,
