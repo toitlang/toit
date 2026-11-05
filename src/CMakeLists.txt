@@ -80,9 +80,11 @@ file(GLOB run_SRC
 list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run|toit_run_image|vessel|native_main|native_module_stubs|vm|objects_runtime).cc$")
 list(REMOVE_ITEM toit_core_SRC ${run_SRC})
 
-# Executables with native code have a replacement for the bytecode loop, and they
-# don't need the primitive tables, so they are in a library of their own.
-list(FILTER toit_core_SRC EXCLUDE REGEX "/(interpreter_native|native).cc$")
+# Executables with native code have the native engine. It runs the bytecodes
+# of programs that aren't native with the bytecode loop, but executables can
+# leave the loop and the primitive tables out, and have a stub instead. They
+# are in libraries of their own, so executables can pick.
+list(FILTER toit_core_SRC EXCLUDE REGEX "/(interpreter_native|native|interpreter_no_bytecodes).cc$")
 if (TOIT_NATIVE_SUPPORTED)
   list(FILTER toit_core_SRC EXCLUDE REGEX "/(interpreter_run|primitive_tables).cc$")
 endif()
@@ -358,6 +360,7 @@ if (NOT ${TOIT_IS_EMBEDDED})
       native_main.cc
       interpreter_native.cc
       native.cc
+      interpreter_no_bytecodes.cc
     )
     target_link_libraries(toit_native_main PUBLIC ${TOIT_LINK_LIBS})
     target_include_directories(toit_native_main PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

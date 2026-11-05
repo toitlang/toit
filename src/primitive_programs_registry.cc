@@ -21,6 +21,7 @@
 #include "embedded_data.h"
 #include "scheduler.h"
 #include "vm.h"
+#include "interpreter.h"
 
 namespace toit {
 
@@ -38,6 +39,8 @@ PRIMITIVE(spawn) {
   if (!allocation) FAIL(OUT_OF_BOUNDS);
   if (allocation->type() != FLASH_ALLOCATION_TYPE_PROGRAM) FAIL(INVALID_ARGUMENT);
   Program* program = const_cast<Program*>(static_cast<const Program*>(allocation));
+  // Executables with native code can leave out the bytecode loop.
+  if (!Interpreter::can_run(program)) FAIL(UNSUPPORTED);
 
   unsigned message_size = 0;
   { MessageEncoder size_encoder(process, null);

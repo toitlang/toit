@@ -213,7 +213,7 @@ main args/List:
         cli.Flag "strip"
             --help="Strip the output of debug information.",
         cli.Flag "native"
-            --help="Compile the binary to native code. Needs clang++, or TOIT_CXX set to a similar compiler.",
+            --help="Compile the binary to native code. It can only run the program it is compiled from. Needs clang++, or TOIT_CXX set to a similar compiler.",
         cli.Flag "native-source"
             --help="Write the program as a self-contained C++ file instead of a binary.",
         cli.Flag "combine"

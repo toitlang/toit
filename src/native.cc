@@ -176,6 +176,10 @@ static const NativeProgram* native_program_for(Program* program) {
   return null;
 }
 
+bool is_native_program(Program* program) {
+  return native_program_for(program) != null;
+}
+
 // The compiler has replaced the code of the methods with their original
 // ids. Everything outside the program uses those to find names and positions.
 static int original_bci(uint8* header) {

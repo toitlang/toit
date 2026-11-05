@@ -216,13 +216,26 @@ class Interpreter {
   friend class NativeRuntime;
 
   // The rest is implemented by the engine that runs the code. Executables
-  // have one of them: the bytecode loop in interpreter_run.cc, or native code
-  // in interpreter_native.cc. Run above is also part of it.
+  // that only run bytecodes have the bytecode loop in interpreter_run.cc.
+  // Executables with native code have the native engine in
+  // interpreter_native.cc, which runs the native programs, and runs the
+  // bytecodes of other programs with the bytecode loop, if the executable
+  // has it. Run above is also part of it.
 
   // The return address that processes and tasks start from.
   Object* start_address(uint8* bcp);
 
+  // The bytecode loop. Executables without it have a stub that fails.
+  Result run_bytecodes() INTERPRETER_CORE;
+
  public:
+  // Whether the executable has the bytecode loop, so it can run programs
+  // that aren't native code.
+  static bool has_bytecodes();
+
+  // Whether the executable can run the given program.
+  static bool can_run(Program* program);
+
   // The bci that stack traces show for a return address in a frame. The one
   // for bytecodes is a weak default in objects.cc, because the compiler also
   // walks stacks.

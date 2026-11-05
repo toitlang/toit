@@ -18,24 +18,33 @@ The C++ compiler has to guarantee tail calls, which Clang does. `TOIT_CXX`
 selects a different one. Native code is supported for 64-bit release builds
 on the host, except on Windows.
 
-## One engine per executable
+## Engines
 
-An executable runs either bytecodes or native code, never both. The two
-engines implement the same small interface, declared at the end of the
-`Interpreter` class in `src/interpreter.h`:
+Programs run as bytecodes or as native code. The engines implement the same
+small interface, declared at the end of the `Interpreter` class in
+`src/interpreter.h`:
 
 - `run`: runs the current process until it yields, stops or is preempted.
 - `start_address`: the return address that processes and tasks start from.
 - `return_bci`: the bci that stack traces show for a return address.
 - `spawn_image`: the image of a program that is spawned from a snapshot.
+- `can_run`: whether the executable can run a program.
 
-The bytecode engine is `src/interpreter_run.cc`, and the native engine is
-`src/interpreter_native.cc`. The linker picks one: interpreter executables
-link `toit_interpreter`, and native executables link `toit_native_main`,
-which also has the native runtime (`src/native.cc`) and `main`
-(`src/native_main.cc`). Everything else is shared. The bytecode version of
-`return_bci` is a weak default in `src/objects.cc`, because the compiler also
-walks stacks.
+Executables that only run bytecodes have the bytecode engine,
+`src/interpreter_run.cc`. Executables with native code have the native engine,
+`src/interpreter_native.cc`, which runs the programs they have native code
+for, and runs other programs with the bytecode loop (`run_bytecodes` in
+`src/interpreter_run.cc`). Each process runs one program, so bytecode frames
+and native frames are never on the same stack. Executables can leave the
+bytecode loop and the primitive tables out, and have a stub instead
+(`src/interpreter_no_bytecodes.cc`). Then they can only run their native
+programs, and spawning other programs fails.
+
+Interpreter executables link `toit_interpreter`, and native executables link
+`toit_native_main`, which also has the native runtime (`src/native.cc`), the
+stub, and `main` (`src/native_main.cc`). Everything else is shared. The
+bytecode version of `return_bci` is a weak default in `src/objects.cc`,
+because the compiler also walks stacks.
 
 ## The ABI
 
@@ -149,6 +158,7 @@ firmware's image, with its flags, is installed again.
 | `src/native_abi.h` | The interface between generated code and the runtime. |
 | `src/native.cc` | The runtime for native code. |
 | `src/interpreter_native.cc` | The native engine. |
+| `src/interpreter_no_bytecodes.cc` | The stub for executables without the bytecode loop. |
 | `src/native_main.cc` | `main` for native executables. |
 | `src/native-sdk.cmake` | What the SDK ships for building native code. |
 | `tests/native/` | Tests that are compiled to native code. |

@@ -17,24 +17,27 @@
 #include "native.h"
 #include "objects_inline.h"
 #include "process.h"
+#include "snapshot.h"
 
 namespace toit {
 
-// Native code doesn't use the primitive tables.
-void Primitive::set_up() {}
-
-// Executables that are compiled to native code don't have the bytecode
-// loop from interpreter_run.cc, because all their programs are native code.
+// Executables with native code run the native programs natively. The
+// bytecodes of other programs run in the bytecode loop, if the executable
+// has it. Each process runs one program, so the two never share a stack.
 // This is their side of the interface that the engines implement.
 Interpreter::Result Interpreter::run() {
   process_->object_heap()->leave_primitive();
   Result result(Result::PREEMPTED);
-  if (!NativeRuntime::run(this, &result)) {
-    FATAL("Native executables can only run native programs");
-  }
-  return result;
+  if (NativeRuntime::run(this, &result)) return result;
+  return run_bytecodes();
 }
 
+bool Interpreter::can_run(Program* program) {
+  return has_bytecodes() || is_native_program(program);
+}
+
+// Native code starts at the function for the method. Bytecodes start where
+// the code of the method starts.
 Object* Interpreter::start_address(uint8* bcp) {
   return NativeRuntime::start_address(process_->program(), bcp);
 }
@@ -44,10 +47,14 @@ int Interpreter::return_bci(Program* program, uint8* return_address) {
   return NativeRuntime::return_bci(program, return_address);
 }
 
-// The programs in the executable have their images compiled in. The image is
-// invalid for any other program, because there is no code for it.
+#ifndef TOIT_FREERTOS
+// The programs in the executable have their images compiled in. Other
+// programs can only run as bytecodes.
 ProgramImage Interpreter::spawn_image(const uint8* id, const uint8* snapshot, word length) {
-  return NativeRuntime::load_image_with_id(id);
+  ProgramImage image = NativeRuntime::load_image_with_id(id);
+  if (image.is_valid() || !has_bytecodes()) return image;
+  return Snapshot(snapshot, length).read_image(id);
 }
+#endif
 
 }  // namespace toit
