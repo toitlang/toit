@@ -278,9 +278,7 @@ static void slot_reloc_clear() {
 // OTA write ordering: the body is written front-to-back after this call, with a
 // lazy per-sector erase. To keep that erase from clobbering the trailer, the
 // body and the trailer must live in disjoint flash sectors — enforced below.
-PRIMITIVE(slot_reloc_begin) {
-  PRIVILEGED;
-  ARGS(Blob, table);
+static Object* begin_slot_relocation(Process* process, const Blob& table, bool resume) {
   slot_reloc_clear();
   int length = table.length();
   uint8_t* copy = unvoid_cast<uint8_t*>(malloc(length));
@@ -329,11 +327,31 @@ PRIMITIVE(slot_reloc_begin) {
   // .data init image that rides after it (data_size) — both are streamed
   // front-to-back with a lazy per-sector erase, so the whole front must clear
   // the trailer's sectors.
+  if (slot_reloc_table.body_size > slot_size() ||
+      slot_reloc_table.data_size > slot_size() - slot_reloc_table.body_size) {
+    free(copy);
+    FAIL(OUT_OF_BOUNDS);
+  }
   const uint32_t front = slot_reloc_table.body_size + slot_reloc_table.data_size;
   const uint32_t front_sectors_end = Utils::round_up(front, FLASH_SECTOR_SIZE);
   if (front_sectors_end > trailer_first_sector) {
     free(copy);
     FAIL(OUT_OF_BOUNDS);  // Body + .data and trailer would share a sector.
+  }
+  if (resume) {
+    // Preserve the already durable trailer. Erasing it here would make an
+    // otherwise resumable prefix unrecoverable on a power loss during open.
+    SlotFirmware existing;
+    const uint8_t* slot = reinterpret_cast<const uint8_t*>(dest_base);
+    if (!existing.open(slot, dest_base, slot_size()) ||
+        existing.canonical_size() != 4 + static_cast<uint32_t>(length) + front ||
+        memcmp(slot + slot_size() - 4 - length, copy, length) != 0) {
+      free(copy);
+      FAIL(INVALID_ARGUMENT);
+    }
+    slot_reloc_blob = copy;
+    slot_reloc_armed = true;
+    return process->null_object();
   }
   uint8_t* block = unvoid_cast<uint8_t*>(malloc(block_size));
   if (block == null) { free(copy); FAIL(MALLOC_FAILED); }
@@ -367,6 +385,47 @@ PRIMITIVE(slot_reloc_begin) {
 
   slot_reloc_blob = copy;
   slot_reloc_armed = true;
+  return process->null_object();
+}
+
+PRIMITIVE(slot_reloc_begin) {
+  PRIVILEGED;
+  ARGS(Blob, table);
+  return begin_slot_relocation(process, table, false);
+}
+
+PRIMITIVE(slot_reloc_resume) {
+  PRIVILEGED;
+  ARGS(Blob, table);
+  return begin_slot_relocation(process, table, true);
+}
+
+// Reconstruct canonical bytes from the inactive slot when resuming an update.
+// The caller may only rely on its durable checkpoint prefix, not later bytes.
+PRIMITIVE(slot_inactive_read) {
+  PRIVILEGED;
+  ARGS(int, offset, MutableBlob, output);
+  if (offset < 0) FAIL(INVALID_ARGUMENT);
+  const uint32_t base = inactive_slot_base();
+  SlotFirmware view;
+  if (!view.open(reinterpret_cast<const uint8_t*>(base), base, slot_size())) {
+    FAIL(INVALID_ARGUMENT);
+  }
+  uint32_t from = static_cast<uint32_t>(offset);
+  const uint32_t length = static_cast<uint32_t>(output.length());
+  if (from > view.canonical_size() || length > view.canonical_size() - from) {
+    FAIL(OUT_OF_BOUNDS);
+  }
+  const uint32_t to = from + length;
+  uint8_t* dest = output.address();
+  while (from < to && (from & 3) != 0) *dest++ = view.at(from++);
+  const uint32_t aligned_end = Utils::round_down(to, 4);
+  if (from < aligned_end) {
+    if (!view.copy(from, aligned_end, dest)) FAIL(INVALID_ARGUMENT);
+    dest += aligned_end - from;
+    from = aligned_end;
+  }
+  while (from < to) *dest++ = view.at(from++);
   return process->null_object();
 }
 
@@ -606,10 +665,8 @@ extern "C" int toit_capture_boot_wakeup_src() {
 }
 
 // Returns what woke the chip at the most recent boot as a slpManWakeSrc_e
-// value (see lib/ec618 WAKEUP-* constants). The AP reset reason reads
-// power-on even after a hibernate wake (HW-verified), so this is the call
-// that tells a deep-sleep wake (RTC timer / wakeup pad) apart from a cold
-// boot.
+// value (see lib/ec618 WAKEUP-* constants). Unlike the AP reset reason,
+// this identifies which source (RTC timer or wakeup pad) ended deep sleep.
 PRIMITIVE(wakeup_cause) {
   return Smi::from(boot_wakeup_src_);
 }

@@ -700,6 +700,12 @@ extract-cmd -> cli.Command:
         - binary: the binary image of the firmware, which can be used for
           firmware upgrades.
         - ubjson: a UBJSON encoding suitable for incremental updates.
+        For EC618:
+        - binary: the canonical slot image used by firmware.map and OTA.
+        - ubjson: the same canonical binary, its part ranges, and a separate
+          SHA-256 'checksum' for FirmwareWriter.commit. The checksum is not
+          part of the binary stream.
+        - image: a flashable binpkg containing the AP and modem images.
 
         The '--partition-table' and '--partition' option can only be used
         for ESP32 envelopes with format 'image'. The '--partition-table'
@@ -983,24 +989,20 @@ extract-ec618 -> none
     write-file output-path --ui=ui: it.write binpkg
     return
 
+  // All OTA exports describe the same canonical stream as firmware.map.
+  // The flashable whole-AP image remains the separate image/binpkg format.
+  reloc-table := envelope.entries.get AR-ENTRY-EC618-RELOC
+      --if-present=: SlotRelocTable.parse it
+      --if-absent=: ui.abort "EC618 envelope is missing its SRL3 relocation table."
+  canonical := firmware-ec618.canonical-firmware firmware-bin reloc-table
   if format == "binary":
-    // The OTA payload: the active slot's CANONICAL firmware (table-first,
-    // [ size ][ table ][ VM body + extension ]) — the exact bytes firmware.map
-    // returns and the device FirmwareWriter consumes (relocate-on-write). This
-    // matches the standard contract where `extract --format binary` is the
-    // image that is OTA'd. The flashable whole-AP image is the 'image'/binpkg
-    // format.
-    reloc-table := envelope.entries.get AR-ENTRY-EC618-RELOC
-        --if-present=: SlotRelocTable.parse it
-        --if-absent=: ui.abort "EC618 envelope is missing its SRL3 relocation table."
-    output := firmware-ec618.canonical-firmware firmware-bin reloc-table
-    write-file output-path --ui=ui: it.write output
+    write-file output-path --ui=ui: it.write canonical
     return
 
-  parts := firmware-ec618.parts firmware-bin
   output := {
-    "parts"  : parts,
-    "binary" : firmware-bin,
+    "parts"    : firmware-ec618.parts canonical,
+    "binary"   : canonical,
+    "checksum" : crypto.sha256 canonical,
   }
   write-file output-path --ui=ui: it.write (ubjson.encode output)
 
@@ -1382,7 +1384,11 @@ flash-cmd -> cli.Command:
           that are specified in the (potentially overridden) partition table.
           Newly added partitions are of type 0x41, subtype 0, and have no flags.
 
-          Uses Espressif's esptool.py to flash the image. Use
+          EC618 images use the layout embedded in their envelope and do not
+          accept '--partition' or '--partitions' overrides. They are flashed
+          through ectool; 'ECTOOL_PATH' selects that executable.
+
+          ESP32 images use Espressif's esptool.py to flash the image. Use
           'ESPTOOL_PATH' to specify the path to the esptool.py script if you don't
           want to use the bundled version.
           """
@@ -1501,6 +1507,9 @@ flash-ec618 invocation/cli.Invocation envelope/Envelope -> none:
   ui := invocation.cli.ui
   config-path := invocation["config"]
   port := invocation["port"]
+
+  if invocation["partitions"] or not invocation["partition"].is-empty:
+    ui.abort "EC618 flashing uses the partition layout embedded in the envelope; partition overrides are not supported."
 
   // Resolve the external tool before building the image or creating the
   // temporary binpkg, so a missing ectool fails without leaving file output.

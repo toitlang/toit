@@ -484,6 +484,8 @@ namespace toit {
   PRIMITIVE(base_id, 0)                      \
   PRIMITIVE(slot_size, 0)                    \
   PRIMITIVE(console_uart_set, 1)             \
+  PRIMITIVE(slot_reloc_resume, 1)            \
+  PRIMITIVE(slot_inactive_read, 2)           \
 
 #define MODULE_CELLULAR(PRIMITIVE)           \
   PRIMITIVE(init, 0)                         \
