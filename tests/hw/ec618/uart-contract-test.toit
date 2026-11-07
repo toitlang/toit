@@ -271,14 +271,33 @@ run-tests -> none:
     p := Ec618.gpio 0
     p.close
 
+  test "ec618-gpio-direction-options":
+    // GPIO4 is PAD19 on the FPC connector. No fixture should drive this pad.
+    input := Ec618.gpio 4 --input
+    input.close
+    output := Ec618.gpio 4 --output --value=1
+    output.close
+    both := Ec618.gpio 4 --input --output --value=0
+    try:
+      expect-equals 0 both.get
+      both.set 1
+      expect-equals 1 both.get
+    finally:
+      both.close
+    deferred := Ec618.gpio 4 --no-input --no-output
+    try:
+      deferred.configure --input --output --value=0
+      expect-equals 0 deferred.get
+      deferred.set 1
+      expect-equals 1 deferred.get
+    finally:
+      deferred.close
+
   test "ec618-pad-out-of-range-rejected":
-    // Constructing a Pin for an unknown pad fails when the resource is
-    // actually used (the GPIO primitive validates on `use`, not on the
-    // Toit-side constructor).
-    expect-throws:
+    // Construction reserves the pad and validates its physical index.
+    expect-throws "OUT_OF_RANGE":
       p := Ec618.pad PAD-OUT-OF-RANGE
-      // Force the primitive to validate.
-      p.configure --output
+      p.close
 
 test name/string [block] -> none:
   caught := catch: block.call
@@ -299,6 +318,9 @@ expect-throws expected/string [block] -> none:
 expect-throws [block] -> none:
   caught := catch: block.call
   if caught == null: throw "expected exception, nothing was thrown"
+
+expect-equals expected/int actual/int -> none:
+  if expected != actual: throw "expected $expected, got $actual"
 
 emit line/string -> none:
   if console-uart-id_ >= 0:

@@ -16,7 +16,8 @@ Opens a UART RX-only on IO27 (where the EC618's UART2 TX is wired) at the baud
   AND content at that baud — at a wrong baud the bytes would be garbage and never
   match. RX-only (no TX pin), so the ESP32 drives nothing on the shared wire.
 
-Produces a single "uart2-esp32: PASS ..." / "... FAIL ..." verdict line.
+Prints "uart2-esp32: PASS ..." on success; throws a "... FAIL ..." exception
+  when too few matching lines arrive. Other reader errors propagate.
 */
 
 DEFAULT-BAUD ::= 115200
@@ -31,11 +32,18 @@ main args:
   expect := "$TOKEN $baud "
   port := uart.Port --tx=null --rx=wiring.ESP32-UART2-RX-PIN --baud-rate=baud
   print "uart2-esp32: RX-only on IO$(wiring.ESP32-UART2-RX-PIN) at $baud baud, want >= $MIN-LINES lines \"$expect<n>\" (up to $(WAIT.in-s)s)"
+  try:
+    check-lines port baud
+  finally:
+    port.close
 
+// The duck-typed port allows host fault injection against this actual observer.
+check-lines port/any baud/int --timeout/Duration=WAIT -> none:
+  expect := "$TOKEN $baud "
   good := 0
   buffer := #[]
-  err := catch:
-    with-timeout WAIT:
+  err := catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
+    with-timeout timeout:
       while good < MIN-LINES:
         chunk := port.in.read
         if chunk == null: throw "uart closed"
@@ -49,9 +57,7 @@ main args:
         // Bound the buffer; keep a tail in case a line spans the boundary.
         if buffer.size > 4096: buffer = buffer[buffer.size - 256 ..]
 
-  port.close
-
   if good >= MIN-LINES:
     print "uart2-esp32: PASS baud=$baud received $good cleanly-framed lines"
   else:
-    print "uart2-esp32: FAIL baud=$baud only $good/$MIN-LINES clean lines (err=$err)"
+    throw "uart2-esp32: FAIL baud=$baud only $good/$MIN-LINES clean lines (err=$err)"

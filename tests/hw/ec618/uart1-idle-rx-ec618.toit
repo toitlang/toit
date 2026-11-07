@@ -2,7 +2,6 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import gpio
 import uart
 
 import .wiring as wiring
@@ -32,30 +31,32 @@ main:
       --rx=wiring.EC618-UART1-RX-PAD
       --tx=wiring.EC618-UART1-TX-PAD
       --baud-rate=115200
+  try:
+    check-idle-rx port
+  finally:
+    port.close
+
+// Keep the reader and phase observer in one group: read failures propagate,
+// and finishing the observation cancels and joins the pending read.
+// The duck-typed port allows host fault injection against this same observer.
+check-idle-rx port/any --phases/int=PHASES --phase/Duration=(Duration --ms=PHASE-MS):
   total := 0
-  reader := task::
-    catch:  // Closing the port unblocks the read with an exception.
+  gains := []
+  Task.group --required=1 [
+    ::
       while data := port.in.read:
         total += data.size
-
-  counts := []
-  PHASES.repeat: | phase/int |
-    sleep --ms=PHASE-MS
-    counts.add total
-    print "uart1-idle-rx: phase $phase total=$total"
-
-  port.close
-
-  // Per-phase gains: the ESP32 sends ~6 markers (~54 bytes) per phase.
-  gains := []
-  PHASES.repeat: | i/int |
-    gains.add (counts[i] - (i == 0 ? 0 : counts[i - 1]))
+      throw "uart1-idle-rx: FAIL reader closed during observation",
+    ::
+      previous := 0
+      phases.repeat: |index/int|
+        sleep phase
+        gained := total - previous
+        gains.add gained
+        previous = total
+        print "uart1-idle-rx: phase $index total=$total gained=$gained"
+        if gained == 0:
+          throw "uart1-idle-rx: FAIL no RX progress in phase $index",
+  ]
   print "uart1-idle-rx: gains=$gains"
-
-  if counts.last == 0:
-    print "uart1-idle-rx: FAIL nothing received at all (helper running? wiring?)"
-    exit 1
-  if gains.last == 0:
-    print "uart1-idle-rx: FAIL RX went deaf (early phases received, later flatlined) — reproduced"
-    exit 1
-  print "uart1-idle-rx: PASS RX alive through all $PHASES phases"
+  print "uart1-idle-rx: PASS RX alive through all $phases phases"

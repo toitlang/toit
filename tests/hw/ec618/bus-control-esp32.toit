@@ -30,13 +30,17 @@ main:
       done := monitor.Latch
       upstream := task::
         try:
-          while data := port.in.read:
-            socket.out.write data --flush
+          error := catch:
+            while data := port.in.read:
+              socket.out.write data --flush
+          if error: print "BUS-CONTROL upstream disconnected: $error"
         finally:
           critical-do: done.set true
       try:
-        while data := socket.in.read:
-          port.out.write data --flush
+        error := catch:
+          while data := socket.in.read:
+            port.out.write data --flush
+        if error: print "BUS-CONTROL downstream disconnected: $error"
       finally:
         upstream.cancel
         done.get
