@@ -3,6 +3,8 @@
 // be found in the tests/LICENSE file.
 
 import system.storage
+import system.containers
+import system
 import encoding.tison
 import expect show *
 import .io-utils show FakeData
@@ -14,6 +16,7 @@ main:
   test-bucket-flash
   test-bucket-flash-multi
   test-bucket-flash-large
+  test-bucket-flash-out-of-space
 
   test-region-flash-open
   test-region-flash-double-open
@@ -33,6 +36,44 @@ main:
   test-region-partition
   test-region-partition-no-writable
 
+
+test-bucket-flash-out-of-space:
+  bucket := storage.Bucket.open --flash "out-of-space"
+  alias := storage.Bucket.open --flash "out-of-space"
+  writers := []
+  try:
+    bucket["keep"] = 42
+    bucket["value"] = "original"
+    // Reserve the remaining flash without installing programs or deleting
+    // existing storage. Finish with single pages to exhaust fragmented holes.
+    [64 * 1024, 4096].do: | size/int |
+      while true:
+        error := catch:
+          writers.add (containers.ContainerImageWriter (size + size / system.BITS-PER-WORD))
+        if error:
+          expect-equals "No space left in flash" error
+          break
+    expect-throw "OUT_OF_SPACE": bucket["value"] = "rejected"
+    expect-equals "original" alias["value"]
+    expect-throw "OUT_OF_SPACE": bucket["new"] = 99
+    expect-equals null (alias.get "new")
+    expect-throw "OUT_OF_SPACE": bucket.remove "keep"
+    expect-equals 42 alias["keep"]
+  finally:
+    writers.do: it.close
+    alias.close
+    bucket.close
+  bucket = storage.Bucket.open --flash "out-of-space"
+  try:
+    expect-equals "original" bucket["value"]
+    expect-equals 42 bucket["keep"]
+    expect-equals null (bucket.get "new")
+    bucket["value"] = "replacement"
+    expect-equals "replacement" bucket["value"]
+    bucket.remove "value"
+    bucket.remove "keep"
+  finally:
+    bucket.close
 
 test-bucket-ram:
   a := storage.Bucket.open --ram "bucket-a"

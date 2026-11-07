@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_POSIX) || defined(TOIT_WINDOWS) || defined(TOIT_ESP32)
+#if defined(TOIT_POSIX) || defined(TOIT_WINDOWS) || defined(TOIT_ESP32) || defined(TOIT_PICO)
 
 #include "async.h"
 
@@ -27,11 +27,14 @@ AsyncEventThread::AsyncEventThread(const char* name, AsyncEventSource* event_sou
     , mutex_(OS::allocate_mutex(20, name))
     , queue_cond_(OS::allocate_condition_variable(mutex_)) {}
 
-void AsyncEventThread::start() {
-  spawn();
+bool AsyncEventThread::start() {
+  ASSERT(!started_);
+  started_ = spawn();
+  return started_;
 }
 
 void AsyncEventThread::stop() {
+  if (!started_) return;
   { Locker locker(mutex_);
     if (state_ == STOPPED) return;
     if (state_ == RUNNING) {

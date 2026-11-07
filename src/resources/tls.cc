@@ -24,7 +24,7 @@
 #include <mbedtls/pem.h>
 #include <mbedtls/platform.h>
 #if MBEDTLS_VERSION_MAJOR >= 3
-#ifndef TOIT_RP2350
+#ifndef TOIT_PICO
 #include <../library/ssl_misc.h>
 #else
 #include "tls_rp2350.h"
@@ -67,7 +67,7 @@ void BaseMbedTlsSocket::uninit_certs() {
 #if MBEDTLS_VERSION_MAJOR >= 3
 static int random_generator(void* arg, unsigned char* output, size_t len) {
   auto mixer = reinterpret_cast<EntropyMixer*>(arg);
-  return mixer->get_entropy(output, len);
+  return mixer->get_random(output, len) ? 0 : MBEDTLS_ERR_ENTROPY_SOURCE_FAILED;
 }
 #endif
 
@@ -923,7 +923,7 @@ static bool known_cipher_info(const mbedtls_cipher_info_t* info, size_t key_bitl
   return true;
 }
 
-#ifndef TOIT_RP2350
+#ifndef TOIT_PICO
 static bool known_transform(mbedtls_ssl_transform* transform, size_t iv_len) {
   if (transform->taglen != 16) return false;
   if (transform->ivlen != iv_len) return false;
@@ -933,7 +933,7 @@ static bool known_transform(mbedtls_ssl_transform* transform, size_t iv_len) {
 
 PRIMITIVE(get_internals) {
   ARGS(BaseMbedTlsSocket, socket);
-#ifdef TOIT_RP2350
+#ifdef TOIT_PICO
   ToitTlsTransforms transforms;
   int status = toit_tls_get_transforms(&socket->ssl, &transforms);
   if (status < 0) return Smi::from(42);
@@ -1047,7 +1047,7 @@ PRIMITIVE(get_internals) {
 
 PRIMITIVE(get_random) {
   ARGS(MutableBlob, destination);
-  EntropyMixer::instance()->get_entropy(destination.address(), destination.length());
+  if (!EntropyMixer::instance()->get_random(destination.address(), destination.length())) FAIL(ERROR);
   return process->null_object();
 }
 

@@ -30,12 +30,18 @@ extern "C" {
 #endif
 
 const EmbeddedDataExtension* EmbeddedDataExtension::cast(const void* pointer) {
-#ifdef TOIT_RP2350
-  // ROM maps the selected 4 MiB firmware slot at this logical XIP address.
+#ifdef TOIT_PICO
   // Check the descriptor before reading it, including envelope-patched bases.
   const uword address = reinterpret_cast<uword>(pointer);
+#ifdef TOIT_RP2040
+  const uword firmware_start = 0x10020000;
+  const uword firmware_end = 0x10110000;
+#else
+  // RP2350 ROM maps the selected 4 MiB slot at the logical XIP address.
+  const uword firmware_start = 0x10000000;
   const uword firmware_end = 0x10400000;
-  if ((address & 3) != 0 || address < 0x10000000 ||
+#endif
+  if ((address & 3) != 0 || address < firmware_start ||
       address > firmware_end - HEADER_WORDS * sizeof(uint32)) return null;
 #endif
   const uint32* header = reinterpret_cast<const uint32*>(pointer);
@@ -44,7 +50,7 @@ const EmbeddedDataExtension* EmbeddedDataExtension::cast(const void* pointer) {
   uint32 checksum = 0;
   for (int i = 0; i < HEADER_WORDS; i++) checksum ^= header[i];
   if (checksum != HEADER_CHECKSUM) return null;
-#ifdef TOIT_RP2350
+#ifdef TOIT_PICO
   uint32 used = header[HEADER_INDEX_USED];
   uint32 free = header[HEADER_INDEX_FREE];
   uint32 count = header[HEADER_INDEX_IMAGE_COUNT];
@@ -137,7 +143,7 @@ const Program* EmbeddedDataExtension::program(uword offset) const {
   return reinterpret_cast<const Program*>(reinterpret_cast<uword>(this) + offset);
 }
 
-#if defined(TOIT_ESP32) || defined(TOIT_EC618) || defined(TOIT_RP2350)
+#if defined(TOIT_ESP32) || defined(TOIT_EC618) || defined(TOIT_PICO)
 
 struct DromData {
   // The data between magic1 and magic2 must be less than 256 bytes, otherwise the
@@ -154,14 +160,14 @@ struct DromData {
 // we don't want that.  But it's still const because it goes in a flash section.
 #ifdef TOIT_ESP32
 DromData drom_data __attribute__((section(".rodata_custom_desc")));
-#elif defined(TOIT_EC618) || defined(TOIT_RP2350)
+#elif defined(TOIT_EC618) || defined(TOIT_PICO)
 DromData drom_data __attribute__((section(".rodata")));
 #else
 #error "DromData section is not defined for this platform"
 #endif
 
 const uint8* EmbeddedData::uuid() {
-#ifdef TOIT_RP2350
+#ifdef TOIT_PICO
   extern const uint8 toit_program_uuid[] asm("toit_program_uuid");
   if (drom_data.extension == 0) return toit_program_uuid;
 #endif
@@ -169,7 +175,7 @@ const uint8* EmbeddedData::uuid() {
 }
 
 const EmbeddedDataExtension* EmbeddedData::extension() {
-#ifdef TOIT_RP2350
+#ifdef TOIT_PICO
   extern const uint32 toit_embedded_extension[] asm("toit_embedded_extension");
   if (drom_data.extension == 0) return EmbeddedDataExtension::cast(toit_embedded_extension);
 #endif

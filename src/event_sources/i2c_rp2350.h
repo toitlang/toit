@@ -17,7 +17,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_RP2350
+#ifdef TOIT_PICO
 
 namespace toit {
 
@@ -29,4 +29,4 @@ EventSource* create_rp2350_i2c_event_source();
 
 }  // namespace toit
 
-#endif  // TOIT_RP2350
+#endif  // TOIT_PICO

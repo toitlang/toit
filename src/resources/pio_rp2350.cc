@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Toit contributors.
 // Use of this source code is governed by the LGPL-2.1 license in LICENSE.
 #include "../top.h"
-#ifdef TOIT_RP2350
+#ifdef TOIT_PICO
 #include "hardware/clocks.h"
 #include "hardware/dma.h"
 #include "hardware/gpio.h"
@@ -286,6 +286,9 @@ PRIMITIVE(create) {
       (c[17] != 0 && c[17] != 1 && c[17] != 2 && c[17] != 4 && c[17] != 8 && c[17] != 12) ||
       c[18] < 256 || c[18] > 65536 * 256 || c[19] < 0 || c[19] > 2 || c[20] < 0 || c[20] > 31 ||
       c[21] < 0 || c[21] >= length || c[22] < 0 || c[34] < 0 || c[34] > 15) FAIL(INVALID_ARGUMENT);
+#if PICO_PIO_VERSION == 0
+  if (c[17] > 2 || c[19] > 1 || (c[2] & 4)) FAIL(UNSUPPORTED);
+#endif
   uint64_t pins = uint32_t(c[28]) | uint64_t(uint32_t(c[29])) << 32;
   uint64_t outputs = uint32_t(c[30]) | uint64_t(uint32_t(c[31])) << 32;
   uint64_t highs = uint32_t(c[32]) | uint64_t(uint32_t(c[33])) << 32;
@@ -346,7 +349,10 @@ PRIMITIVE(create) {
     for (auto& p : programs) {
       if (p.users && p.pio == pio && p.program.length == length &&
           p.program.origin == c[0] && p.program.pio_version == c[1] &&
-          p.program.used_gpio_ranges == c[2] && !memcmp(p.code, instructions, length * 2)) {
+#if PICO_PIO_VERSION > 0
+          p.program.used_gpio_ranges == c[2] &&
+#endif
+          !memcmp(p.code, instructions, length * 2)) {
         loaded = &p; break;
       }
     }
@@ -354,7 +360,11 @@ PRIMITIVE(create) {
       if (p.users) continue;
       memcpy(p.code, instructions, length * 2);
       p.program = {p.code, static_cast<uint8_t>(length), static_cast<int8_t>(c[0]),
-                   static_cast<uint8_t>(c[1]), static_cast<uint8_t>(c[2])};
+                   static_cast<uint8_t>(c[1])
+#if PICO_PIO_VERSION > 0
+                   , static_cast<uint8_t>(c[2])
+#endif
+      };
       if (!pio_can_add_program(pio, &p.program)) break;
       p.offset = pio_add_program(pio, &p.program);
       if (p.offset < 0) break;
@@ -370,7 +380,12 @@ PRIMITIVE(create) {
   auto sc = pio_get_default_sm_config();
   sm_config_set_wrap(&sc, loaded->offset + c[3], loaded->offset + c[4]);
   sm_config_set_clkdiv_int_frac8(&sc, divider >> 8, divider & 255);
-  if (c[8]) { sm_config_set_in_pin_base(&sc, c[23]); sm_config_set_in_pin_count(&sc, c[8]); }
+  if (c[8]) {
+    sm_config_set_in_pin_base(&sc, c[23]);
+#if PICO_PIO_VERSION > 0
+    sm_config_set_in_pin_count(&sc, c[8]);
+#endif
+  }
   if (c[9]) sm_config_set_out_pins(&sc, c[24], c[9]);
   if (c[10]) sm_config_set_set_pins(&sc, c[25], c[10]);
   if (c[5]) { sm_config_set_sideset(&sc, c[5] + c[6], c[6], c[7]); sm_config_set_sideset_pin_base(&sc, c[26]); }
@@ -431,8 +446,11 @@ PRIMITIVE(submit) {
   Locker locker(PioEventSource::instance->mutex());
   auto& t = resource->transfers_[direction];
   if (t.data) FAIL(ALREADY_IN_USE);
-  uint32_t join = resource->config_.shiftctrl & (PIO_SM0_SHIFTCTRL_FJOIN_RX_BITS | PIO_SM0_SHIFTCTRL_FJOIN_TX_BITS |
-      PIO_SM0_SHIFTCTRL_FJOIN_RX_GET_BITS | PIO_SM0_SHIFTCTRL_FJOIN_RX_PUT_BITS);
+  uint32_t join_mask = PIO_SM0_SHIFTCTRL_FJOIN_RX_BITS | PIO_SM0_SHIFTCTRL_FJOIN_TX_BITS;
+#if PICO_PIO_VERSION > 0
+  join_mask |= PIO_SM0_SHIFTCTRL_FJOIN_RX_GET_BITS | PIO_SM0_SHIFTCTRL_FJOIN_RX_PUT_BITS;
+#endif
+  uint32_t join = resource->config_.shiftctrl & join_mask;
   if ((direction == 0 && (join & PIO_SM0_SHIFTCTRL_FJOIN_RX_BITS)) ||
       (direction == 1 && join && !(join & PIO_SM0_SHIFTCTRL_FJOIN_RX_BITS))) FAIL(INVALID_STATE);
   int channel = dma_claim_unused_channel(false);
@@ -510,6 +528,9 @@ PRIMITIVE(take) {
   } else {
     result = process->object_heap()->allocate_external_byte_array(t.size, t.data, true, false);
     if (!result) FAIL(ALLOCATION_FAILED);
+    // The transfer owned this native buffer outside the process heap. Its
+    // finalizer will subtract the length when the returned byte array dies.
+    process->register_external_allocation(t.size);
     t.data = null;
   }
   __atomic_fetch_and(&dma_channels, ~(1u << t.channel), __ATOMIC_ACQ_REL);

@@ -17,7 +17,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_RP2350
+#ifdef TOIT_PICO
 
 #include "event_rp2350.h"
 
@@ -52,4 +52,4 @@ class Rp2350StdinEventSource : public Rp2350PeripheralEventSource {
 
 }  // namespace toit
 
-#endif  // TOIT_RP2350
+#endif  // TOIT_PICO

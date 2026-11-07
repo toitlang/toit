@@ -33,6 +33,20 @@ Stops all containers and releases their native resources before rebooting.
 reset -> none:
   __reset__
 
+/**
+Sets the software wall clock to $time.
+
+The new time is immediately visible through $Time.now and is used for TLS
+  certificate validity checks. Initialize it from a trusted source before
+  opening TLS connections. Ordinary resets clear the clock; deep sleep
+  preserves it. The monotonic clock is unaffected.
+*/
+set-real-time-clock time/Time -> none:
+  set-real-time-clock_ time.s-since-epoch time.ns-part
+
+set-real-time-clock_ seconds/int ns/int -> none:
+  #primitive.core.set-real-time-clock
+
 /** The shortest duration supported by $deep-sleep. */
 DEEP-SLEEP-MIN-DURATION ::= Duration --s=1
 

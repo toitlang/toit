@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Toit contributors.
 // Use of this source code is governed by the Zero-Clause BSD license in tests/LICENSE.
 
-// Linked only when TOIT_RP2350_TEST_FAULT is explicitly enabled. No test
+// Linked only when the platform's test-fault option is explicitly enabled. No test
 // command or native fault-injection primitive is exposed by normal firmware.
 #include <stdlib.h>
 #include <stdio.h>
@@ -45,7 +45,7 @@ static void inject_failure(void*) {
   if (strcmp(TOIT_RP2350_TEST_FAULT, "xip-fault") == 0) inject_xip_failure();
   if (strcmp(TOIT_RP2350_TEST_FAULT, "watchdog-hang") == 0) {
     // No panic, ROM reboot, RTOS tick, or feeder can rescue this loop. Only
-    // the application watchdog armed before entering it may reset the chip.
+    // the hardware watchdog armed before entering it may reset the chip.
     save_and_disable_interrupts();
     for (;;) __asm volatile("nop");
   }
@@ -57,8 +57,8 @@ static void inject_failure(void*) {
 }
 
 void schedule_rp2350_failure_test() {
-  // Called only on a trial boot. An auto-validated test image will therefore
-  // restart normally once, without injecting the fault again on later boots.
+  // RP2350 calls this only during a trial; RP2040 stays in recovery after a
+  // fault. Normal builds do not compile this source or expose an injector.
   if (xTaskCreate(inject_failure, "fault-test", 1024, nullptr, 1, nullptr) != pdPASS) {
     panic("unable to start failure test");
   }

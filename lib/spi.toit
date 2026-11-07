@@ -116,9 +116,9 @@ class Target:
     trailing one to three bytes are discarded and are not returned by
     $transfer.
 
-  On RP2350, the PL022 target peripheral supports transaction-wide CS only in
+  On RP2040 and RP2350, the PL022 target peripheral supports transaction-wide CS only in
     modes 1 and 3. Modes 0 and 2 are rejected because PL022 requires CS to
-    pulse between individual frames in those modes. The RP2350 returns only
+    pulse between individual frames in those modes. Both chips return only
     complete bytes; trailing clock bits before CS rises are discarded.
   */
   constructor
@@ -319,7 +319,7 @@ On the classic ESP32, SPI target interrupts are not placed in IRAM in the Toit
   during flash erase or write must use a separate ready signal or a newer ESP32
   variant.
 
-On RP2350, modes 0 and 2 are unavailable for targets, and partial trailing
+On RP2040 and RP2350, modes 0 and 2 are unavailable for targets, and partial trailing
   bytes are discarded, as described by $Target. A controller transaction that
   exceeds the configured buffer is capped safely at the buffer size and is not
   allowed to consume data from the next transaction.
@@ -533,8 +533,8 @@ class Bus:
   Passing a $gpio.Pin is deprecated; provide the integer GPIO number instead.
     The $gpio.Pin form will be removed in a future release.
 
-  RP2350 requires integer GP numbers, and EC618 requires integer pad numbers.
-    The deprecated $gpio.Pin form is not available on either platform.
+  RP2040 and RP2350 require integer GP numbers; EC618 requires integer pad
+    numbers. The deprecated $gpio.Pin form is not available on these platforms.
   */
   // __TYPE-MIGRATION__ mosi: gpio.Pin. Deprecated. Provide an integer instead.
   // __TYPE-MIGRATION__ mosi: int?
@@ -593,8 +593,8 @@ class Bus:
   Passing a $gpio.Pin as $cs or $dc is deprecated; provide the integer GPIO
     number instead. The $gpio.Pin form will be removed in a future release.
 
-  RP2350 requires integer GP numbers, and EC618 requires integer pad numbers.
-    The deprecated $gpio.Pin form is not available on either platform.
+  RP2040 and RP2350 require integer GP numbers; EC618 requires integer pad
+    numbers. The deprecated $gpio.Pin form is not available on these platforms.
 
   $cs-setup-cycles requests that CS be active for the given number of SPI clock
     cycles before the first clock edge. ESP-IDF only supports this option for
@@ -603,7 +603,7 @@ class Bus:
     Setup must be between 0 and 16. Hold must be between 0 and 16, except on the
     classic ESP32 where the maximum is 15.
 
-  On RP2350, the sum of $command-bits and $address-bits must be byte-aligned.
+  On RP2040 and RP2350, the sum of $command-bits and $address-bits must be byte-aligned.
     Nonzero $cs-setup-cycles or $cs-hold-cycles are not supported and throw
     `UNIMPLEMENTED`.
 

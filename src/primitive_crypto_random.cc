@@ -17,6 +17,8 @@
 
 #if defined(TOIT_ESP32)
 #include <esp_random.h>
+#elif defined(TOIT_PICO)
+#include "entropy_mixer.h"
 #elif defined(TOIT_EC618)
 // The hardware TRNG, through the same entry the mbedtls entropy source uses
 // (os_ec618.cc, backed by rngGenRandom).
@@ -51,6 +53,8 @@ PRIMITIVE(random) {
   // We should eventually try to use std::random_device here too.
   // https://github.com/espressif/esp-idf/issues/11398
   esp_fill_random(bytes.address(), size);
+#elif defined(TOIT_PICO)
+  if (!EntropyMixer::instance()->get_random(bytes.address(), size)) FAIL(ERROR);
 #elif defined(TOIT_EC618)
   // The hardware TRNG. std::random_device is NOT an option here: on newlib
   // it degenerates to a deterministically seeded PRNG.

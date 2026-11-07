@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_RP2350
+#ifdef TOIT_PICO
 
 #include <string.h>
 
@@ -164,14 +164,7 @@ static int pins_to_controller(int sda, int scl) {
   return sda_controller == scl_controller ? sda_controller : -1;
 }
 
-static bool is_restricted_pin(int pin) {
-#ifdef PICO_PSRAM_CS_PIN
-  return pin == PICO_PSRAM_CS_PIN;
-#else
-  USE(pin);
-  return false;
-#endif
-}
+extern bool is_restricted_pin(int pin);
 
 static bool frequency_is_supported(uint32_t frequency) {
   if (frequency == 0 || frequency > kMaximumFrequency) return false;
@@ -1724,4 +1717,4 @@ PRIMITIVE(register_target_dropped_write_count) {
 
 }  // namespace toit
 
-#endif  // TOIT_RP2350
+#endif  // TOIT_PICO

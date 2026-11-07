@@ -16,6 +16,11 @@ Supported timeout ranges depend on the platform. ESP32 supports positive
   Toit scheduler and continues timing during light sleep; deep sleep ends
   monitoring and waking starts a fresh boot.
 
+RP2040 supports 1 through 8 seconds. While the application watchdog is stopped,
+  the runtime maintains an eight-second health deadline. Starting the application
+  watchdog gives it exclusive control of the timer; runtime health checks cannot
+  feed it. Stopping it restores runtime health monitoring.
+
 The platform-specific watchdog APIs operate on this same watchdog. Other
   containers that feed or reconfigure it can interfere with monitoring.
   Host platforms throw `UNIMPLEMENTED`.

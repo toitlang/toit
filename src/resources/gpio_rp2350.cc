@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_RP2350
+#ifdef TOIT_PICO
 
 #include "hardware/gpio.h"
 
@@ -41,6 +41,19 @@ static bool gpio_is_valid(int pin) {
 }
 
 bool is_restricted_pin(int pin) {
+#if defined(TOIT_RP2040) && defined(RASPBERRYPI_PICO)
+  // The original Pico and W-2023 connect these pads to supply circuitry.
+  if (pin == 23 || pin == 24 || pin == 29) return true;
+#endif
+#ifdef TOIT_PICO_W_2023
+  // GP0/GP1 belong to the onboard modem. UART explicitly permits their TX/RX
+  // roles; arbitrary GPIO, PIO and other peripheral use remains restricted.
+  if (pin == 0 || pin == 1 || pin == 23 || pin == 24 || pin == 29) return true;
+#endif
+#if defined(TOIT_RP2040) && defined(RASPBERRYPI_PICO_W)
+  // Pico W routes these pads to the radio and its power/supply circuitry.
+  if (pin == 23 || pin == 24 || pin == 25 || pin == 29) return true;
+#endif
 #ifdef PICO_PSRAM_CS_PIN
   // XIP flash has its own QSPI bank. Boards with a second XIP device use a
   // bank-0 GPIO for CS1; changing that pin can break PSRAM accesses.
@@ -283,4 +296,4 @@ PRIMITIVE(set_pull) {
 
 }  // namespace toit
 
-#endif  // TOIT_RP2350
+#endif  // TOIT_PICO

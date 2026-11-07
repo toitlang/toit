@@ -75,7 +75,8 @@ class FlashRegistry:
     allocations_.remove allocation.offset
     // Erasing the first page removes the full header. This is enough
     // to fully invalidate the allocation.
-    flash-registry-erase_ allocation.offset FLASH-REGISTRY-PAGE-SIZE
+    if (flash-registry-erase_ allocation.offset FLASH-REGISTRY-PAGE-SIZE) < FLASH-REGISTRY-PAGE-SIZE:
+      throw "Unable to erase flash at $allocation.offset"
 
   // Scan through the flash and update the given allocations map to reflect that
   // actual allocations found. If an allocation exists before and after the scan, we

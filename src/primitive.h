@@ -85,6 +85,14 @@ namespace toit {
   M(watchdog, MODULE_WATCHDOG)               \
   M(rp2350,  MODULE_RP2350)                  \
   M(pio, MODULE_PIO)                         \
+  M(rp2040, MODULE_RP2040)                  \
+
+#define MODULE_RP2040(PRIMITIVE)            \
+  PRIMITIVE(unique_id, 0)                   \
+  PRIMITIVE(system_watchdog_feed, 0)        \
+  PRIMITIVE(firmware_submit, 3)             \
+  PRIMITIVE(firmware_status, 0)             \
+  PRIMITIVE(recovery_requested, 0)          \
 
 #define MODULE_WATCHDOG(PRIMITIVE)           \
   PRIMITIVE(start, 1)                        \

@@ -57,6 +57,6 @@ add_dependencies(build_tools rp2350_host_tools)
 # Include the same files in `make install` and release archives.
 install(DIRECTORY "${CMAKE_BINARY_DIR}/sdk/lib/toit/bin/"
   DESTINATION lib/toit/bin USE_SOURCE_PERMISSIONS
-  FILES_MATCHING PATTERN "picotool*" PATTERN "ota-upload*" PATTERN "libusb-1.0*")
+  FILES_MATCHING PATTERN "picotool*" PATTERN "ota-upload*" PATTERN "rp2040-ota-upload*" PATTERN "libusb-1.0*")
 install(DIRECTORY "${CMAKE_BINARY_DIR}/sdk/lib/toit/rp2350/"
   DESTINATION lib/toit/rp2350 USE_SOURCE_PERMISSIONS)

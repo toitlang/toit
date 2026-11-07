@@ -2,7 +2,7 @@
 // Use of this source code is governed by the LGPL-2.1 license that can be
 // found in the LICENSE file.
 #include "top.h"
-#ifdef TOIT_RP2350
+#ifdef TOIT_PICO
 #include "vm.h"
 #include "event_sources/timer.h"
 #include "event_sources/tls.h"
@@ -13,6 +13,9 @@
 #include "event_sources/spi_rp2350.h"
 #include "event_sources/pio_rp2350.h"
 #include "event_sources/stdio_rp2350.h"
+#ifdef TOIT_RP2040
+#include "event_sources/firmware_rp2040.h"
+#endif
 namespace toit {
 void VM::load_platform_event_sources() {
   event_manager()->add_event_source(_new TimerEventSource());
@@ -27,6 +30,9 @@ void VM::load_platform_event_sources() {
   event_manager()->add_event_source(create_rp2350_spi_event_source());
   event_manager()->add_event_source(_new Rp2350StdinEventSource());
   event_manager()->add_event_source(create_rp2350_pio_event_source());
+#ifdef TOIT_RP2040
+  event_manager()->add_event_source(_new Rp2040FirmwareWorker());
+#endif
   dispatcher->start();
 }
 }  // namespace toit

@@ -87,7 +87,7 @@ class Pwm:
   The $max-frequency is limited to 40MHz.
   The lowest acceptable frequency is 1Hz.
 
-  On RP2350, frequencies must also be representable by the hardware's 16-bit
+  On RP2040 and RP2350, frequencies must also be representable by the hardware's 16-bit
     period and 8.4-bit clock divider at the current system clock. Construction
     or a frequency update throws `INVALID_ARGUMENT` when it cannot represent
     the requested timing, so the effective minimum can be higher than 1Hz.
@@ -121,10 +121,10 @@ class Pwm:
   Passing a $Pin is deprecated; provide the integer GPIO number instead.
     The $Pin form will be removed in a future release.
 
-  RP2350 requires an integer GP number, and EC618 requires an integer pad
-    number. The deprecated $Pin form is not available on either platform.
+  RP2040 and RP2350 require an integer GP number; EC618 requires an integer
+    pad number. The deprecated $Pin form is not available on these platforms.
 
-  On RP2350, two channels on the same hardware PWM slice can be used together
+  On RP2040 and RP2350, two channels on the same hardware PWM slice can be used together
     only when they belong to the same $Pwm instance, because both channels
     share the slice frequency. A pin that aliases an already-used slice channel
     is also unavailable until that channel is closed.

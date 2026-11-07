@@ -49,6 +49,7 @@ add_subdirectory("${rp2350_picotool_SOURCE_DIR}" "${rp2350_picotool_BINARY_DIR}"
 add_dependencies(picotool usb-1.0)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 add_subdirectory("${TOIT_ROOT}/tools/rp2350/ota-upload" ota-upload EXCLUDE_FROM_ALL)
+add_subdirectory("${TOIT_ROOT}/tools/rp2040/ota-upload" rp2040-ota-upload EXCLUDE_FROM_ALL)
 
 if(APPLE)
   set_target_properties(picotool PROPERTIES INSTALL_RPATH "@loader_path")
@@ -65,8 +66,8 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_link_options(usb-1.0 PRIVATE -static)
   endif()
 endif()
-add_custom_target(rp2350-host-tools ALL DEPENDS picotool ota-upload usb-1.0)
-install(TARGETS picotool ota-upload usb-1.0
+add_custom_target(rp2350-host-tools ALL DEPENDS picotool ota-upload rp2040-ota-upload usb-1.0)
+install(TARGETS picotool ota-upload rp2040-ota-upload usb-1.0
   RUNTIME DESTINATION lib/toit/bin
   LIBRARY DESTINATION lib/toit/bin
   ARCHIVE DESTINATION lib/toit/rp2350)
