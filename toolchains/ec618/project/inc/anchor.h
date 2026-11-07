@@ -105,10 +105,14 @@ uint8_t anchor_console_for_slot(uint8_t slot);
 bool anchor_set_pending_console(uint8_t console);
 
 // Reads the current valid record (higher seq) into `out`. Returns true if
-// a stored record was found; false if neither sector held a valid record
-// (fresh flash) in which case `out` is filled with the defaults
+// a usable record was found; false if neither sector held a valid record
+// or a CRC-valid record contains a malformed table. On failure `out` has defaults
 // active='A', pending=0, state=NONE. `out` is always fully populated.
 // Pure flash reads (XIP) — safe at early boot, needs no program mode.
+// Both stored configurations must cover flash contiguously with aligned,
+// bounded entries, valid names/types and the required boot geometry. The base
+// and anchor must match this binary's linker symbols. A CRC-valid malformed
+// table fails closed rather than selecting a possibly stale older layout.
 bool anchor_read(slot_record* out);
 
 // Copies the configuration attached to `slot` into out[0..max) and returns
@@ -152,7 +156,7 @@ bool anchor_rollback(void);
 // internally (saved and restored).
 //
 // Writes the initial known-good slot/configuration. `pending` must be zero,
-// `state` must be NONE, and `count` must be <= ANCHOR_MAX_ENTRIES. This is the
+// `state` must be NONE, and the complete table must pass validation. This is the
 // provisioning path used by the host-generated record and anchor tests.
 bool anchor_write_table(uint8_t active,
                         uint8_t pending,
