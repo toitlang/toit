@@ -22,6 +22,9 @@
 #include "process_group.h"
 #include "scheduler.h"
 #include "vm.h"
+#ifdef TOIT_RP2040
+#include "heap_rp2040.h"
+#endif
 
 #include  <stdio.h>
 #include  <signal.h>
@@ -572,6 +575,9 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
 #ifdef TOIT_ESP32
   multi_heap_info_t info;
   heap_caps_get_info(&info, MALLOC_CAP_8BIT);
+#elif defined(TOIT_RP2040)
+  multi_heap_info_t info;
+  toit_rp2040_heap_info(&info);
 #else
   struct multi_heap_info_t {
       uword total_free_bytes;

@@ -1,0 +1,153 @@
+# Copyright (C) 2026 Toit contributors.
+# Use of this source code is governed by the LGPL-2.1 license in LICENSE.
+name: CI RP2040
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ci-rp2040.yml'
+      - '.gitmodules'
+      - 'Makefile'
+      - 'CMakeLists.txt'
+      - 'docs/rp2040-envelope-bundle.md'
+      - 'src/**'
+      - 'lib/**'
+      - 'system/**'
+      - 'mbedtls/**'
+      - 'tests/hw/rp2040/**'
+      - 'tests/CMakeLists.txt'
+      - 'tests/storage-recovery/**'
+      - 'tests/ctest/CMakeLists.txt'
+      - 'tests/ctest/entropy-mixer-test.cc'
+      - 'third_party/pico-sdk'
+      - 'third_party/FreeRTOS-Kernel'
+      - 'toolchains/rp2040/**'
+      - 'toolchains/rp2350/**'
+      - 'tools/rp2040/**'
+      - 'tools/pico/**'
+      - 'tools/firmware.toit'
+      - 'tools/firmware/**'
+      - 'tools/rp2040-envelope-test-helper.toit'
+      - 'tools/rp2350/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        board: [pico, pico_w, pico_w_2023]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./actions/setup-build
+        with:
+          toit-dir: .
+      - name: Install cross compiler and host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build pkg-config libusb-1.0-0-dev \
+            gcc-multilib gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
+            python3-serial
+      - name: Prepare pinned SDK and picotool
+        run: make rp2040-setup
+      - name: Test recovery and uploader on host
+        run: |
+          TOIT_RP2040_TEST_32_BIT=1 make rp2040-test
+          python3 tests/hw/rp2040/external-runner-test.py
+      - name: Build recovery and VM
+        run: |
+          make rp2040-recovery RP2040_BOARD=${{ matrix.board }}
+          make rp2040 RP2040_BOARD=${{ matrix.board }}
+          build/host/sdk/bin/toit analyze tests/hw/rp2040/platform-smoke.toit \
+            tests/hw/rp2040/watchdog-smoke.toit \
+            tests/hw/rp2040/storage-write-rp2040.toit \
+            tests/hw/rp2040/storage-read-rp2040.toit \
+            tests/hw/rp2040/firmware-self-update.toit \
+            tests/hw/rp2040/firmware-stream.toit \
+            tests/hw/rp2040/firmware-stream-received.toit \
+            tests/hw/rp2040/stdio-rp2040.toit \
+            tests/hw/rp2040/usb-stress.toit \
+            tests/hw/rp2040/usb-backpressure.toit \
+            tests/hw/rp2040/usb-observer-esp32.toit \
+            tests/hw/rp2040/recovery-exception.toit \
+            tests/hw/rp2040/storage-exhaustion.toit \
+            tests/hw/rp2040/container-child.toit \
+            tests/hw/rp2040/container-install.toit \
+            tests/hw/rp2040/container-persistence.toit \
+            tests/hw/rp2040/storage-interruption.toit \
+            tests/hw/rp2040/crypto-rp2040.toit \
+            tests/hw/rp2040/tls-rp2040.toit \
+            tests/hw/rp2040/envelope-rp2040.toit \
+            tests/hw/rp2040/pio-lifecycle.toit \
+            tests/hw/rp2040/uart-stress.toit \
+            tests/hw/rp2040/memory-pressure.toit \
+            tests/hw/rp2040/system-oom.toit \
+            tests/hw/rp2040/pwm-gpio.toit \
+            tests/hw/rp2040/peripheral-lifecycle.toit \
+            tests/hw/rp2040/peripheral-wiring.toit \
+            tests/hw/rp2040/peripheral-wiring-esp32.toit \
+            tests/hw/rp2040/external-peripherals.toit \
+            tests/hw/rp2040/external-peripherals-esp32.toit
+          build/host/sdk/bin/toit run --project-root tests/hw/rp2040 \
+            tests/hw/rp2040/modem/dns-fixture-test.toit
+          build/host/sdk/bin/toit analyze tests/hw/rp2040/tcp-gc-esp32.toit
+      - name: Test entropy failure handling
+        run: |
+          cmake --build build/host --target entropy-mixer-test --parallel
+          ctest --test-dir build/host -R '^tests/ctest/entropy-mixer-test.cc$' --output-on-failure --no-tests=error
+      - name: Test interrupted storage recovery
+        run: ctest --test-dir build/host -R '^tests/storage-recovery$' --output-on-failure --no-tests=error
+      - name: Check application selection and dependency tracking
+        env:
+          RP2040_BOARD: ${{ matrix.board }}
+        run: |
+          if test -f tools/.packages-bootstrap/package-timestamp; then
+            export TOIT_PACKAGE_CACHE_PATHS="$PWD/tools/.packages-bootstrap"
+          fi
+          python3 tools/rp2040/tests/check-build.py "build/rp2040-$RP2040_BOARD-vm"
+          python3 tools/rp2040/tests/check-build-mode.py "build/rp2040-$RP2040_BOARD-vm"
+          make rp2040 RP2040_PROGRAM="$PWD/tests/hw/rp2040/pio-smoke.toit"
+      - name: Compile the native failure fixture and restore an ordinary image
+        env:
+          RP2040_BOARD: ${{ matrix.board }}
+        run: |
+          make rp2040 RP2040_PROGRAM="$PWD/tests/hw/rp2040/native-failure.toit" \
+            RP2040_CMAKE_FLAGS=-DTOIT_RP2040_TEST_FAULT=watchdog-hang
+          make rp2040 RP2040_CMAKE_FLAGS=-DTOIT_RP2040_TEST_FAULT=
+          make rp2040 RP2040_PROGRAM="$PWD/tests/hw/rp2040/storage-interruption.toit" \
+            RP2040_CMAKE_FLAGS=-DTOIT_RP2040_TEST_STORAGE_INTERRUPTION=ON
+          make rp2040
+      - name: Inspect recovery metadata and validate application layout
+        env:
+          RP2040_BOARD: ${{ matrix.board }}
+        run: |
+          .cache/rp2350/install/bin/picotool info -a \
+            "build/rp2040-$RP2040_BOARD-recovery/toit-rp2040-recovery.uf2"
+          python3 - "build/rp2040-$RP2040_BOARD-vm/toit-rp2040.bin" <<'PY'
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, "tools/rp2040")
+          from upload import validate_image
+          validate_image(Path(sys.argv[1]).read_bytes())
+          assert b"rp2040_storage_test_" not in Path(sys.argv[1]).with_suffix(".elf").read_bytes()
+          PY
+      - name: Build and test firmware envelope tooling
+        env:
+          RP2040_BOARD: ${{ matrix.board }}
+        run: |
+          make rp2040-bundle
+          python3 tools/rp2040/tests/envelope-test.py "build/rp2040-$RP2040_BOARD-envelope"
+          python3 tools/rp2040/tests/bundle-test.py \
+            "build/rp2040-$RP2040_BOARD-envelope/toit-rp2040-$RP2040_BOARD-linux-x86_64.tar.gz"
+      - name: Upload distributable envelope bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: toit-rp2040-${{ matrix.board }}-linux-x86_64
+          path: build/rp2040-${{ matrix.board }}-envelope/toit-rp2040-${{ matrix.board }}-linux-x86_64.tar.gz
+          if-no-files-found: error

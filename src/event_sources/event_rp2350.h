@@ -2,7 +2,7 @@
 // Use of this source code is governed by the LGPL-2.1 license in LICENSE.
 #pragma once
 #include "../top.h"
-#ifdef TOIT_RP2350
+#ifdef TOIT_PICO
 #include "../os.h"
 #include "../resource.h"
 #include "FreeRTOS.h"

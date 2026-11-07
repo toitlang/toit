@@ -44,7 +44,7 @@ All supported ESP32 variants can use $Target. The target features differ:
 - ESP32-C3, ESP32-C6, ESP32-P4, and ESP32-S3 support 7-bit and 10-bit
   addresses, general-call broadcast, and response-time clock stretching.
 
-RP2350 supports $Target and $RegisterTarget with 7-bit and 10-bit addresses,
+RP2040 and RP2350 support $Target and $RegisterTarget with 7-bit and 10-bit addresses,
   general-call broadcast, and response-time clock stretching.
 
 General-call broadcast cannot be combined with a 10-bit target address.
@@ -93,7 +93,7 @@ class Target:
   /**
   Constructs an I2C target on the $sda and $scl GPIOs.
 
-  The pins are integer GPIO numbers. On RP2350 they are GP numbers; the
+  The pins are integer GPIO numbers. On RP2040 and RP2350 they are GP numbers; the
     deprecated $gpio.Pin form is not accepted.
 
   The $address is either a 7-bit or 10-bit address, selected with
@@ -336,7 +336,7 @@ class RegisterTarget:
   /**
   Constructs a register-backed I2C target on the $sda and $scl GPIOs.
 
-  The pins are integer GPIO numbers. On RP2350 they are GP numbers; the
+  The pins are integer GPIO numbers. On RP2040 and RP2350 they are GP numbers; the
     deprecated $gpio.Pin form is not accepted.
 
   $register-count is the number of native register bytes. The
@@ -492,8 +492,8 @@ class Bus:
   Passing a $gpio.Pin as $sda or $scl is deprecated; provide the integer GPIO
     number instead. The $gpio.Pin form will be removed in a future release.
 
-  RP2350 requires integer GP numbers. EC618 requires integer pad numbers. The
-    deprecated $gpio.Pin form is not available on either platform.
+  RP2040 and RP2350 require integer GP numbers. EC618 requires integer pad
+    numbers. The deprecated $gpio.Pin form is not available on these platforms.
   */
   // __TYPE-MIGRATION__ sda: gpio.Pin. Deprecated. Provide an integer instead.
   // __TYPE-MIGRATION__ sda: int
@@ -557,7 +557,7 @@ class Bus:
   Waits at most $timeout-ms for a response on each address. If the bus is very
     slow, increase the timeout.
 
-  RP2350 cannot issue an address-only transfer, so this method throws
+  RP2040 and RP2350 cannot issue an address-only transfer, so this method throws
     `UNIMPLEMENTED` there.
   */
   scan --timeout-ms/int=100 -> Set:
@@ -577,7 +577,7 @@ class Bus:
   Waits at most $timeout-ms for a response. If the bus is very slow, increase
     the timeout.
 
-  RP2350 cannot issue an address-only transfer, so this method throws
+  RP2040 and RP2350 cannot issue an address-only transfer, so this method throws
     `UNIMPLEMENTED` there.
   */
   test address --timeout-ms/int=100 -> bool:
@@ -616,13 +616,13 @@ class Bus:
   /**
   Creates the device connected on the $i2c-address.
 
-  $address-bit-size selects a 7-bit or 10-bit address. RP2350 and EC618
-    controllers currently support only 7-bit device addresses. RP2350 target
-    mode supports both address sizes.
+  $address-bit-size selects a 7-bit or 10-bit address. RP2040, RP2350 and EC618
+    controllers currently support only 7-bit device addresses. RP2040 and RP2350 target
+    modes support both address sizes.
 
   $timeout-us is the maximum SCL clock-stretching interval tolerated by the
     controller. If omitted or null, the platform default is used: 100 ms on
-    ESP32 and RP2350, and no hardware timeout on EC618. EC618 does not support
+    ESP32, RP2040 and RP2350, and no hardware timeout on EC618. EC618 does not support
     a custom clock-stretching timeout and rejects a non-null $timeout-us with
     `UNIMPLEMENTED`. Use `with-timeout` to bound the whole operation.
 

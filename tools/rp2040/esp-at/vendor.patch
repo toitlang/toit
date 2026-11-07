@@ -1,0 +1,52 @@
+diff --git a/components/customized_partitions/raw_data/factory_param/factory_param_data.csv b/components/customized_partitions/raw_data/factory_param/factory_param_data.csv
+index cb04942..e33ebb2 100644
+--- a/components/customized_partitions/raw_data/factory_param/factory_param_data.csv
++++ b/components/customized_partitions/raw_data/factory_param/factory_param_data.csv
+@@ -8,7 +8,7 @@ PLATFORM_ESP32,ESP32-D2WD,"2MB flash, No OTA",0xfcfc,3,0,78,1,1,13,CN,115200,22,
+ PLATFORM_ESP32,ESP32_QCLOUD,QCLOUD TX:17 RX:16,0xfcfc,3,0,78,1,1,13,CN,115200,17,16,15,14,-1,-1
+ PLATFORM_ESP8266,WROOM-02,TX:15 RX:13,0xfcfc,3,0,78,0,1,13,CN,115200,15,13,3,1,5,-1
+ PLATFORM_ESP8266,WROOM-5V2L,5V UART level,0xfcfc,3,0,78,0,1,13,CN,115200,15,13,3,1,5,-1
+-PLATFORM_ESP8266,ESP8266_1MB,No OTA,0xfcfc,3,0,78,0,1,13,CN,115200,15,13,3,1,5,-1
++PLATFORM_ESP8266,ESP8266_1MB,No OTA,0xfcfc,3,0,78,0,1,13,CN,115200,1,3,-1,-1,-1,-1
+ PLATFORM_ESP8266,WROOM-02-N,TX:1 RX:3,0xfcfc,3,0,78,0,1,13,CN,115200,1,3,-1,-1,-1,-1
+ PLATFORM_ESP8266,WROOM-S2,,0xfcfc,3,0,78,0,1,13,CN,115200,15,13,3,1,-1,-1
+ PLATFORM_ESP8266,ESP8266_QCLOUD,QCLOUD TX:15 RX:13,0xfcfc,3,0,78,0,1,13,CN,115200,15,13,3,1,5,-1
+diff --git a/main/app_main.c b/main/app_main.c
+index 17fd5f4..7f7bfd6 100644
+--- a/main/app_main.c
++++ b/main/app_main.c
+@@ -139,6 +139,12 @@ void app_main()
+     }
+ #endif
+ 
++    // Experimental Toit datagram receive extension; ordinary AT stays intact.
++    extern bool toit_udp_cmd_register(void);
++    if (!toit_udp_cmd_register()) {
++        printf("regist Toit UDP cmd fail\r\n");
++    }
++
+ #ifdef CONFIG_AT_MQTT_COMMAND_SUPPORT
+     if(esp_at_mqtt_cmd_regist() == false) {
+         printf("regist mqtt cmd fail\r\n");
+diff --git a/module_config/module_esp8266_1mb/sdkconfig.defaults b/module_config/module_esp8266_1mb/sdkconfig.defaults
+index c43fb35..8020f41 100644
+--- a/module_config/module_esp8266_1mb/sdkconfig.defaults
++++ b/module_config/module_esp8266_1mb/sdkconfig.defaults
+@@ -6,8 +6,8 @@ CONFIG_IDF_TARGET_ESP8266=y
+ # Serial flasher config
+ CONFIG_ESPTOOLPY_FLASHMODE_DOUT=y
+ CONFIG_ESPTOOLPY_FLASHMODE="dout"
+-CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+-CONFIG_ESPTOOLPY_FLASHFREQ="80m"
++CONFIG_ESPTOOLPY_FLASHFREQ_40M=y
++CONFIG_ESPTOOLPY_FLASHFREQ="40m"
+ CONFIG_ESPTOOLPY_FLASHSIZE_1MB=y
+ CONFIG_ESPTOOLPY_MONITOR_BAUD_115200B=y
+ 
+@@ -111,3 +111,6 @@ CONFIG_LOG_DEFAULT_LEVEL_ERROR=y
+ 
+ # ESP HTTPS OTA
+ CONFIG_OTA_ALLOW_HTTP=y
++
++# Pico W-2023 has only modem TX/RX connected, no hardware flow control.
++CONFIG_AT_UART_DEFAULT_FLOW_CONTROL=0

@@ -36,7 +36,7 @@ if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "${CMAKE_HOST_SYSTEM_NAME}") OR
 endif()
 
 set(TOIT_IS_EMBEDDED FALSE)
-if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32" OR "${TOIT_SYSTEM_NAME}" STREQUAL "ec618" OR "${TOIT_SYSTEM_NAME}" STREQUAL "rp2350")
+if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32" OR "${TOIT_SYSTEM_NAME}" STREQUAL "ec618" OR "${TOIT_SYSTEM_NAME}" MATCHES "^rp(2040|2350)$")
   set(TOIT_IS_EMBEDDED TRUE)
 endif()
 
@@ -116,7 +116,7 @@ endif()
 
 set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wall -ffunction-sections -fdata-sections")
 
-if ("${TOIT_SYSTEM_NAME}" STREQUAL "rp2350")
+if ("${TOIT_SYSTEM_NAME}" MATCHES "^rp(2040|2350)$")
   set(TOIT_MBEDTLS_DIR "${PICO_SDK_PATH}/lib/mbedtls")
 else()
   set(TOIT_MBEDTLS_DIR "${IDF_PATH}/components/mbedtls/mbedtls")
@@ -157,7 +157,7 @@ if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   # However, we need to include the esp32 config file to make sure that Toit and the compiled
   # MbedTLS sources agree on the defines.
   set(MBEDTLS_C_FLAGS "-DMBEDTLS_CONFIG_FILE=\\\"mbedtls/esp_config.h\\\"")
-elseif ("${TOIT_SYSTEM_NAME}" STREQUAL "rp2350")
+elseif ("${TOIT_SYSTEM_NAME}" MATCHES "^rp(2040|2350)$")
   set(MBEDTLS_C_FLAGS "-DMBEDTLS_CONFIG_FILE=\\\"${TOIT_SDK_SOURCE_DIR}/mbedtls/include/rp2350_config.h\\\"")
 elseif ("${TOIT_SYSTEM_NAME}" STREQUAL "ec618")
   set(MBEDTLS_C_FLAGS "-DMBEDTLS_CONFIG_FILE=\\\"${CMAKE_SOURCE_DIR}/mbedtls/include/ec618_config.h\\\"")

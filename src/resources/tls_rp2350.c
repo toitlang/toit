@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Toit contributors.
 // Use of this source code is governed by the LGPL-2.1 license in LICENSE.
 
-#ifdef TOIT_RP2350
+#if defined(TOIT_RP2350) || defined(TOIT_RP2040)
 #define MBEDTLS_ALLOW_PRIVATE_ACCESS
 #include "tls_rp2350.h"
 #include <../library/ssl_misc.h>

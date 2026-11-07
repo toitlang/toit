@@ -23,7 +23,11 @@
 #define configUSE_RECURSIVE_MUTEXES 1
 #define configUSE_COUNTING_SEMAPHORES 1
 #define configUSE_TASK_NOTIFICATIONS 1
+#if PICO_RP2040
+#define configNUM_THREAD_LOCAL_STORAGE_POINTERS 2  // VM thread and allocation tag.
+#else
 #define configNUM_THREAD_LOCAL_STORAGE_POINTERS 1
+#endif
 #define configSUPPORT_STATIC_ALLOCATION 1
 #define configKERNEL_PROVIDED_STATIC_MEMORY 1
 #define configSUPPORT_DYNAMIC_ALLOCATION 1
@@ -40,7 +44,11 @@
 #define configUSE_CORE_AFFINITY 0
 #define configSUPPORT_PICO_SYNC_INTEROP 1
 #define configSUPPORT_PICO_TIME_INTEROP 1
+#if PICO_RP2040
+#define configENABLE_FPU 0
+#else
 #define configENABLE_FPU 1
+#endif
 #define configENABLE_MPU 0
 #define configENABLE_TRUSTZONE 0
 #define configRUN_FREERTOS_SECURE_ONLY 1

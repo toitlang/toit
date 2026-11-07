@@ -696,6 +696,10 @@ PRIMITIVE(write) {
   if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_RANGE);
   if (break_length < 0 || break_length >= 256) FAIL(OUT_OF_RANGE);
 
+  uint32_t baud_rate;
+  esp_err_t baud_error = uart_get_baudrate(uart->port(), &baud_rate);
+  if (baud_error != ESP_OK) return Primitive::os_error(baud_error, process);
+
   size_t to_write = to - from;
   size_t MAX_CHUNK_SIZE = uart->tx_buffer_size() / 4;
   size_t written = 0;
@@ -722,6 +726,13 @@ PRIMITIVE(write) {
       err = uart_write_bytes_with_break(uart->port(), src, chunk_size, break_length);
     }
     if (err < 0) return Primitive::os_error(err, process);
+    // IDF restores its ten-byte TX threshold on every write. At 2.5 Mbaud
+    // that leaves only 36 us (7N1) for the ISR, causing measured gaps in LED
+    // frames under Wi-Fi/audio load. Request refill with half the FIFO left.
+    if (baud_rate >= kHighSpeedBaudRate) {
+      esp_err_t threshold_error = uart_set_tx_empty_threshold(uart->port(), UART_HW_FIFO_LEN(uart->port()) / 2);
+      if (threshold_error != ESP_OK) return Primitive::os_error(threshold_error, process);
+    }
     written += chunk_size;
   }
   return Smi::from(written);

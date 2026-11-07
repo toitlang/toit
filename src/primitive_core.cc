@@ -13,6 +13,9 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#ifdef TOIT_RP2040
+#include "../toolchains/rp2040/update.h"
+#endif
 #include "dtoa.h"
 #include "encoder.h"
 #include "entropy_mixer.h"
@@ -2441,7 +2444,7 @@ PRIMITIVE(set_real_time_clock) {
   if (sizeof(timespec::tv_sec) == sizeof(long) && (tv_sec < LONG_MIN || tv_sec > LONG_MAX)) FAIL(INVALID_ARGUMENT);
   if (tv_nsec < LONG_MIN || tv_nsec > LONG_MAX) FAIL(INVALID_ARGUMENT);
   struct timespec time = {
-    .tv_sec = static_cast<long>(tv_sec),
+    .tv_sec = static_cast<decltype(timespec::tv_sec)>(tv_sec),
     .tv_nsec = static_cast<long>(tv_nsec),
   };
   static_assert(sizeof(time.tv_nsec) == sizeof(long), "Unexpected size of timespec field");
@@ -2580,10 +2583,10 @@ PRIMITIVE(dump_heap) {
 }
 
 PRIMITIVE(serial_print_heap_report) {
-#ifdef TOIT_CMPCTMALLOC
+#if defined(TOIT_CMPCTMALLOC) || defined(TOIT_PICO)
   ARGS(cstring, marker, int, max_pages);
   OS::heap_summary_report(max_pages, marker, process);
-#endif // def TOIT_CMPCTMALLOC
+#endif
   return process->null_object();
 }
 
@@ -2688,6 +2691,15 @@ PRIMITIVE(firmware_map) {
   proxy->set_external_address(
       current_partition->size,
       const_cast<uint8*>(reinterpret_cast<const uint8*>(mapped_to)));
+  return proxy;
+#elif defined(TOIT_RP2040)
+  if (bytes != process->null_object()) return bytes;
+  UpdateImage image;
+  memcpy(&image, reinterpret_cast<const void*>(0x10000000u + UPDATE_INSTALLED), sizeof(image));
+  if (!update_descriptor_valid(&image)) FAIL(ERROR);
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+  proxy->set_external_address(image.size, reinterpret_cast<uint8*>(0x10000000u + UPDATE_APP));
   return proxy;
 #elif defined(TOIT_EC618)
   if (bytes != process->null_object()) {
@@ -2841,6 +2853,8 @@ PRIMITIVE(hostname) {
   return process->allocate_string_or_error("ec618");
 #elif defined(TOIT_RP2350)
   return process->allocate_string_or_error("rp2350");
+#elif defined(TOIT_RP2040)
+  return process->allocate_string_or_error("rp2040");
 #else
 #error "Unsupported platform"
 #endif

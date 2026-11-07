@@ -12,7 +12,12 @@ The watchdog is shared by all containers. Once started, the device resets if
 
 Supported timeout ranges depend on the platform. ESP32 supports millisecond
   timeouts, EC618 supports up to 60 seconds with one-second granularity, and
-  RP2350 supports 1 through 16 seconds.
+  RP2350 supports 1 through 16 seconds. RP2040 supports 1 through 8 seconds.
+
+On RP2040, the runtime maintains a separate eight-second health deadline while
+  the application watchdog is stopped. Starting the application watchdog gives
+  it exclusive control of the hardware timer; runtime health checks cannot feed
+  it. Stopping the application watchdog restores runtime health monitoring.
 
 On RP2350, an OTA image must call $firmware.validate before $start. Starting
   during the trial period throws `INVALID_STATE`; $feed and $stop leave the

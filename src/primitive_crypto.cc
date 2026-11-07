@@ -16,7 +16,9 @@
 #include "top.h"
 #if defined(TOIT_ESP32)
 #include <esp_random.h>
-#elif defined(TOIT_EC618) || defined(TOIT_RP2350)
+#elif defined(TOIT_PICO)
+#include "entropy_mixer.h"
+#elif defined(TOIT_EC618)
 // Use the platform entropy source shared with mbedtls.
 extern "C" int mbedtls_hardware_poll(void* data, unsigned char* output,
                                      size_t len, size_t* olen);
@@ -773,7 +775,9 @@ PRIMITIVE(aes_ecb_close) {
 static int rsa_rng(void* /*ctx*/, unsigned char* buffer, size_t len) {
 #if defined(TOIT_ESP32)
   esp_fill_random(buffer, len);
-#elif defined(TOIT_EC618) || defined(TOIT_RP2350)
+#elif defined(TOIT_PICO)
+  if (!EntropyMixer::instance()->get_random(buffer, len)) return -1;
+#elif defined(TOIT_EC618)
   // The hardware TRNG (see the declaration at the top of this file);
   // std::random_device on newlib is a deterministically seeded PRNG —
   // unusable for RSA. Any nonzero return aborts the mbedtls operation.
@@ -890,7 +894,7 @@ static ByteArray* rsa_export_der(mbedtls_pk_context* pk, Process* process, bool 
 static const int RSA_PADDING_PKCS1_V15 = 0;
 static const int RSA_PADDING_OAEP_V21  = 1;
 
-#ifdef CONFIG_TOIT_CRYPTO_EXTRA
+#if defined(CONFIG_TOIT_CRYPTO_EXTRA) || defined(TOIT_PICO)
 
 class RsaGenerationEventSource : public AsyncEventSource {
  public:
@@ -902,7 +906,10 @@ class RsaGenerationEventSource : public AsyncEventSource {
   AsyncEventThread* thread() {
     if (thread_ == null) {
       thread_ = _new AsyncEventThread("RSA Gen", this);
-      if (thread_) thread_->start();
+      if (thread_ && !thread_->start()) {
+        delete thread_;
+        thread_ = null;
+      }
     }
     return thread_;
   }

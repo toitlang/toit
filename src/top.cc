@@ -16,7 +16,7 @@
 #include "top.h"
 #include "flags.h"
 #include <stdarg.h>
-#ifdef TOIT_RP2350
+#ifdef TOIT_PICO
 #include "panic_rp2350.h"
 #endif
 #ifdef TOIT_POSIX
@@ -54,7 +54,7 @@ void print_stacktrace() {
 void fail(const char* file, int line, const char* format, ...) {
   va_list arguments;
   va_start(arguments, format);
-#ifdef TOIT_RP2350
+#ifdef TOIT_PICO
   toit_rp2350_vpanic(file, line, format, arguments);
 #else
   fprintf(stderr, "%s:%d: fatal: ", file, line);
@@ -71,7 +71,7 @@ void fail(const char* file, int line, const char* format, ...) {
 void fail(const char* format, ...) {
   va_list arguments;
   va_start(arguments, format);
-#ifdef TOIT_RP2350
+#ifdef TOIT_PICO
   toit_rp2350_vpanic(nullptr, 0, format, arguments);
 #else
   fprintf(stderr, "fatal: ");

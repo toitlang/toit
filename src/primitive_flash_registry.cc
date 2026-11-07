@@ -98,6 +98,18 @@ PRIMITIVE(info) {
 PRIMITIVE(erase) {
   PRIVILEGED;
   ARGS(word, offset, word, size);
+  if (offset < 0 || size < 0 || (offset & (FLASH_PAGE_SIZE - 1)) ||
+      offset > FlashRegistry::allocations_size() ||
+      size > FlashRegistry::allocations_size() - offset) FAIL(INVALID_ARGUMENT);
+  if (size != 0 && FlashRegistry::allocation(offset) != null) {
+    // Invalidate the header before erasing any payload. An interrupted erase
+    // must not leave an intact header referring to partially erased contents.
+    uint32 invalid_marker = 0;
+    if (!FlashRegistry::write_chunk(&invalid_marker, offset, sizeof(invalid_marker))) {
+      FAIL(HARDWARE_ERROR);
+    }
+    FlashRegistry::flush();
+  }
   return Smi::from(FlashRegistry::erase_chunk(offset, size));
 }
 

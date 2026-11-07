@@ -83,6 +83,14 @@ namespace toit {
   M(rp2350,  MODULE_RP2350)                  \
   M(watchdog, MODULE_WATCHDOG)               \
   M(pio, MODULE_PIO)                         \
+  M(rp2040, MODULE_RP2040)                  \
+
+#define MODULE_RP2040(PRIMITIVE)            \
+  PRIMITIVE(unique_id, 0)                   \
+  PRIMITIVE(system_watchdog_feed, 0)        \
+  PRIMITIVE(firmware_submit, 3)             \
+  PRIMITIVE(firmware_status, 0)             \
+  PRIMITIVE(recovery_requested, 0)          \
 
 #define MODULE_RP2350(PRIMITIVE)             \
   PRIMITIVE(boot_partition, 0)               \

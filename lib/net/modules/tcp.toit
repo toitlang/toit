@@ -71,6 +71,8 @@ class TcpSocket_:
     while state-bits == null:
       state-bits = state.wait-for-state (bits | error-bits | TOIT-TCP-NEEDS-GC_)
       if state-bits & TOIT-TCP-NEEDS-GC_ != 0:
+        // Consume this request before collecting so a new request can wake us.
+        state.clear-state TOIT-TCP-NEEDS-GC_
         state-bits = null
         tcp-gc_ state.group
     if state-bits == 0:

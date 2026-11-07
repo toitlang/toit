@@ -40,6 +40,7 @@ void LwipSocket::tear_down() {
     if (kind_ == LwipSocket::kConnection) {
       tcp_recv(tpcb_, null);
       tcp_sent(tpcb_, null);
+      tcp_poll(tpcb_, null, 0);
     } else {
       tcp_accept(tpcb_, null);
     }
@@ -146,6 +147,7 @@ void LwipSocket::on_read(pbuf* p, err_t err) {
 
 void LwipSocket::on_wrote(word length) {
   send_pending_ -= length;
+  if (send_pending_ == 0) tcp_poll(tpcb_, null, 0);
 
   if (send_closed_ && send_pending_ == 0) {
     err_t err = tcp_shutdown(tpcb_, 0, 1);
@@ -155,6 +157,17 @@ void LwipSocket::on_wrote(word length) {
 
   // All done, send event.
   send_state();
+}
+
+void LwipSocket::on_poll() {
+  // Timer-driven output and window splitting can run out of memory after
+  // write has queued the bytes. Wake blocked writers to request GC.
+  if (send_pending_ == 0) return;
+  err_t err = tcp_output(tpcb_);
+  if (LwipEventSource::take_allocation_failure() || err == ERR_MEM) needs_gc = true;
+  // Another socket may already have consumed the native notification. Publish
+  // the shared request until a waiting Toit task acknowledges it and runs GC.
+  if (needs_gc) send_state();
 }
 
 void LwipSocket::on_error(err_t err) {
@@ -469,10 +482,17 @@ PRIMITIVE(write) {
     if (err == ERR_OK) {
       // tcp_write only queues data. tcp_output applies Nagle and sends
       // whatever the current window and algorithm permit.
-      tcp_output(capture.socket->tpcb());
+      err_t output_err = tcp_output(capture.socket->tpcb());
+      if (output_err == ERR_MEM) {
+        // The bytes are already queued. Retrying this primitive after GC
+        // would enqueue them twice, so request GC through the socket event.
+        // lwIP's timer retries output after memory has been reclaimed.
+        capture.socket->socket_error(output_err);
+      }
 
       capture.socket->set_send_pending(capture.socket->send_pending() + to);
       tcp_sent(capture.socket->tpcb(), LwipSocket::on_wrote);
+      tcp_poll(capture.socket->tpcb(), LwipSocket::on_poll, 2);
     } else if (err == ERR_MEM) {
       // If send queue is empty, we know the internal allocation failed. Be sure to
       // trigger GC and retry, as there will be no tcp_sent event.

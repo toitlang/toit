@@ -1,0 +1,7 @@
+name: rp2040-modem-hardware-tests
+dependencies:
+  cellular:
+    path: ../../../../../cellular
+  http:
+    url: github.com/toitlang/pkg-http
+    version: ^2.12.0

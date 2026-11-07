@@ -79,6 +79,7 @@ ARCHITECTURE-EC618 ::= "ec618"
 
 /** Return value from $architecture. */
 ARCHITECTURE-RP2350 ::= "rp2350"
+ARCHITECTURE-RP2040 ::= "rp2040"
 
 /** Returns a string identifying the underlying architecture. */
 architecture -> string:

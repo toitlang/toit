@@ -21,7 +21,11 @@ On the ESP32, the function is mapped to `esp_random`
   As such, the numbers are only truly random if the RF subsystem (WiFi or Bluetooth) is enabled.
   Otherwise, the numbers should be considered pseudo-random.
 
-On other platforms, the function uses `std::random_device` (see
+On Pico targets, the function uses mbedTLS CTR-DRBG seeded through the platform
+  entropy collector. RP2040's source is the Pico SDK generator, which mixes
+  ring-oscillator samples and system state; RP2350 also has a hardware TRNG.
+
+On host platforms, the function uses `std::random_device` (see
   https://en.cppreference.com/w/cpp/numeric/random/random_device). On Linux
   and macOS, this uses `/dev/urandom` as a source of randomness. On Windows,
   it uses the Windows Cryptographic API (CAPI) to generate random numbers.

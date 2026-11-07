@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_RP2350
+#ifdef TOIT_PICO
 
 #include <limits.h>
 #include <string.h>
@@ -78,14 +78,7 @@ static bool is_valid_pin(int pin) {
   return pin >= 0 && pin < static_cast<int>(NUM_BANK0_GPIOS);
 }
 
-static bool is_restricted_pin(int pin) {
-#ifdef PICO_PSRAM_CS_PIN
-  return pin == PICO_PSRAM_CS_PIN;
-#else
-  USE(pin);
-  return false;
-#endif
-}
+extern bool is_restricted_pin(int pin);
 
 // RP2350B repeats the SPI routes every 16 GPIOs. Within each group of four,
 // RX, CSn, SCK, and TX occupy offsets 0, 1, 2, and 3. Blocks of eight select
@@ -2117,4 +2110,4 @@ PRIMITIVE(buffer_target_dropped_receive_count) {
 
 }  // namespace toit
 
-#endif  // TOIT_RP2350
+#endif  // TOIT_PICO

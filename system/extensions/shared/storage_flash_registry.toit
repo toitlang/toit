@@ -14,6 +14,7 @@
 // directory of this repository.
 
 import system.assets
+import io show LITTLE-ENDIAN
 import uuid show *
 
 import ...flash.allocation show
@@ -52,6 +53,7 @@ The $FlashBucket represents a single bucket in flash. It is shared
 */
 class FlashBucket:
   static NAMESPACE ::= "flash:bucket"
+  static GENERATION-FORMAT_ ::= 1
 
   id/Uuid
   registry/FlashRegistry
@@ -63,7 +65,27 @@ class FlashBucket:
   static instances_ := {:}  // Map<string, FlashBucket>
 
   constructor.internal_ --.id --.registry:
-    allocation := find-allocation_ --id=id --registry=registry
+    candidates := []
+    registry.do: | candidate/FlashAllocation |
+      if candidate.type == FLASH-ALLOCATION-TYPE-REGION and candidate.id == id:
+        candidates.add candidate
+    allocation/FlashAllocation? := null
+    generation/int? := null
+    candidates.do: | candidate/FlashAllocation |
+      candidate-generation := generation_ candidate
+      if not allocation:
+        allocation = candidate
+        generation = candidate-generation
+      else if candidate-generation == generation:
+        // Legacy duplicates cannot be ordered: do not silently discard data.
+        throw "Ambiguous bucket generations"
+      else if candidate-generation:
+        if generation:
+          difference := (candidate-generation - generation) & 0xffff_ffff
+          if difference == 0x8000_0000: throw "Ambiguous bucket generations"
+          if difference > 0x8000_0000: continue.do
+        allocation = candidate
+        generation = candidate-generation
     if allocation:
       cache-allocation_ = allocation
       pages := flash-get-all-pages_ allocation.offset
@@ -71,6 +93,10 @@ class FlashBucket:
       // The found entry values point into flash. Copy them to RAM before the
       // currently cached allocation can be freed.
       cache-entries_ = entries.map: | key value | value.copy
+      // A reset after publishing the new header can leave its predecessor
+      // behind. Keep the winner intact while reclaiming every stale copy.
+      candidates.do: | candidate/FlashAllocation |
+        if candidate != allocation: registry.free candidate
 
   constructor root/string --registry/FlashRegistry:
     instance := instances_.get root --init=:
@@ -103,36 +129,44 @@ class FlashBucket:
     if not entries:
       if not extend: return
       entries = {:}
-      cache-entries_ = entries
+    else:
+      // A rejected write must not change what existing bucket handles read.
+      // Entry values are immutable here; only the map needs a private copy.
+      entries = entries.copy
     block.call entries
     existing := cache-allocation_
     if entries.is-empty:
-      cache-entries_ = null
       cache-allocation_ = null
     else:
       encoded := assets.encode entries
       size := FLASH-ALLOCATION-HEADER-SIZE + encoded.size
       reservation := registry.reserve size
       if not reservation: throw "OUT_OF_SPACE"
-      metadata := ByteArray 5: 0xff
-      cutoff := FLASH-REGISTRY-PAGE-SIZE - FLASH-ALLOCATION-HEADER-SIZE
-      if encoded.size > cutoff:
-        flash-write-non-header-pages_ reservation.offset encoded[cutoff..]
-      else:
-        cutoff = encoded.size
-      cache-allocation_ = registry.allocate reservation
-          --type=FLASH-ALLOCATION-TYPE-REGION
-          --id=id
-          --metadata=metadata
-          --content=encoded[..cutoff]
+      try:
+        metadata := ByteArray 5
+        metadata[0] = GENERATION-FORMAT_
+        generation := existing and (generation_ existing)
+        LITTLE-ENDIAN.put-uint32 metadata 1 (((generation or 0) + 1) & 0xffff_ffff)
+        cutoff := FLASH-REGISTRY-PAGE-SIZE - FLASH-ALLOCATION-HEADER-SIZE
+        if encoded.size > cutoff:
+          flash-write-non-header-pages_ reservation.offset encoded[cutoff..]
+        else:
+          cutoff = encoded.size
+        cache-allocation_ = registry.allocate reservation
+            --type=FLASH-ALLOCATION-TYPE-REGION
+            --id=id
+            --metadata=metadata
+            --content=encoded[..cutoff]
+      finally:
+        reservation.close
+    cache-entries_ = entries.is-empty ? null : entries
     if existing: registry.free existing
 
-  static find-allocation_ --id/Uuid --registry/FlashRegistry -> FlashAllocation?:
-    registry.do: | allocation/FlashAllocation |
-      if allocation.type != FLASH-ALLOCATION-TYPE-REGION: continue.do
-      // Buckets and regions use separate UUID namespaces.
-      if allocation.id == id: return allocation
-    return null
+  static generation_ allocation/FlashAllocation -> int?:
+    metadata := allocation.metadata
+    if metadata == #[0xff, 0xff, 0xff, 0xff, 0xff]: return null
+    if metadata[0] != GENERATION-FORMAT_: throw "Unsupported bucket metadata"
+    return LITTLE-ENDIAN.uint32 metadata 1
 
 // --------------------------------------------------------------------------
 

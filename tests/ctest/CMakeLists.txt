@@ -19,6 +19,12 @@ file(GLOB C_TESTS "*-test.c")
 file(GLOB CC_TESTS "*-test.cc")
 file(GLOB TOIT_TESTS "*-test.toit")
 
+# Entropy failure injection uses GNU ld's symbol wrapping, without hooks in
+# production code. Other hosts still run the ordinary crypto/TLS regressions.
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(REMOVE_ITEM CC_FILES "${CMAKE_CURRENT_SOURCE_DIR}/entropy-mixer-test.cc")
+endif()
+
 set(CTEST_DIR ${CMAKE_BINARY_DIR}/ctest)
 set(CTEST_BIN_DIR ${CMAKE_BINARY_DIR}/ctest/lib/toit/bin)
 set(CTEST_LIB_DIR ${CMAKE_BINARY_DIR}/ctest/lib/toit/lib)
@@ -101,6 +107,9 @@ foreach(MODE positive negative)
     endif()
 
     set_target_properties(${exe} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CTEST_BIN_DIR})
+    if (exe STREQUAL "entropy-mixer-test")
+      target_link_options(${exe} PRIVATE "-Wl,--wrap=mbedtls_entropy_func")
+    endif()
     add_dependencies(${exe} generate-ctest-lib-symlink)
 
     target_link_libraries(

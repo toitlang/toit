@@ -56,6 +56,10 @@ ADC2: Pins 11-20
 ## RP2350
 RP2350A: GP26-GP29
 RP2350B: GP40-GP47
+
+## RP2040
+GP26-GP29. Board-reserved pins (including GP29 on Pico boards) are restricted
+  by default.
 */
 
 /**
@@ -88,7 +92,7 @@ class Adc:
   Passing a $Pin is deprecated; provide the integer GPIO number instead.
     The $Pin form will be removed in a future release.
 
-  RP2350 requires an integer GP number; the deprecated $Pin form is not
+  RP2040 and RP2350 require an integer GP number; the deprecated $Pin form is not
     available. It uses a fixed nominal 3.3V range and 12-bit conversion, so
     $max-voltage does not select attenuation or change voltage scaling.
   */
@@ -154,7 +158,7 @@ class Adc:
   /**
   Measures the voltage on the pin and returns the obtained raw value.
 
-  On ESP32 and RP2350 the ADC readings are 12 bits, so the value will be in
+  On ESP32, RP2040 and RP2350 the ADC readings are 12 bits, so the value will be in
     the range 0-4095.
 
   The returned value is not scaled to the voltage range of the pin.

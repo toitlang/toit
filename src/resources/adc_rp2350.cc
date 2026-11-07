@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_RP2350
+#ifdef TOIT_PICO
 
 #include "hardware/adc.h"
 #include "hardware/gpio.h"
@@ -32,6 +32,7 @@ namespace toit {
 // GPIO numbers only and reserve their own pads.
 bool gpio_pool_take(int pin);
 void gpio_pool_put(int pin);
+bool is_restricted_pin(int pin);
 
 static const int kExternalAdcChannels = static_cast<int>(NUM_ADC_CHANNELS) - 1;
 static const int kSettleSamples = 16;
@@ -90,7 +91,6 @@ MODULE_IMPLEMENTATION(adc, MODULE_ADC)
 PRIMITIVE(init) {
   ARGS(SimpleResourceGroup, group, int, pin, bool, allow_restricted,
        double, max_voltage);
-  USE(allow_restricted);
   if (max_voltage < 0.0) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -99,6 +99,7 @@ PRIMITIVE(init) {
   // Negative encodings represent the deprecated gpio.Pin API.
   if (pin < 0) FAIL(INVALID_ARGUMENT);
   if (!is_adc_pin(pin)) FAIL(OUT_OF_RANGE);
+  if (!allow_restricted && is_restricted_pin(pin)) FAIL(PERMISSION_DENIED);
   if (!gpio_pool_take(pin)) FAIL(ALREADY_IN_USE);
 
   AdcResource* resource = _new AdcResource(group, pin);
@@ -157,4 +158,4 @@ PRIMITIVE(close) {
 
 }  // namespace toit
 
-#endif  // TOIT_RP2350
+#endif  // TOIT_PICO

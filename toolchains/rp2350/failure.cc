@@ -11,15 +11,33 @@
 #include "hardware/sync.h"
 #include "boot/picoboot_constants.h"
 #include "panic_rp2350.h"
+#if PICO_RP2040
+#include "hardware/structs/watchdog.h"
+#include "hardware/structs/psm.h"
+#include "update.h"
+#endif
 
 // Failure recovery must not allocate, acquire a scheduler lock, or depend on
 // USB progress. A normal ROM reboot rejects an unconfirmed trial and restarts
 // confirmed firmware. In particular, don't select the failing slot again.
 static void __not_in_flash_func(arm_failure_reboot)(uint32_t delay_ms) {
+#if PICO_RP2040
+  // Do not depend on an existing timer, tick source, or reset selection after
+  // a native failure. Force a full watchdog reset using only SRAM code and
+  // peripheral registers, including when XIP and interrupts are unavailable.
+  // RP2040 prioritizes recovery over a delayed attempt at USB diagnostics.
+  (void) delay_ms;
+  watchdog_hw->ctrl = 0;
+  watchdog_hw->scratch[0] = UPDATE_REQUEST;
+  watchdog_hw->scratch[4] = 0;
+  psm_hw->wdsel = PSM_WDSEL_BITS & ~(PSM_WDSEL_ROSC_BITS | PSM_WDSEL_XOSC_BITS);
+  watchdog_hw->ctrl = WATCHDOG_CTRL_TRIGGER_BITS;
+#else
   // Use the forced-inline lookup directly. The SDK's ordinary inline
   // rom_reboot wrapper can be outlined into flash by the compiler.
   auto reboot = reinterpret_cast<rom_reboot_fn>(rom_func_lookup_inline(ROM_FUNC_REBOOT));
   reboot(REBOOT2_FLAG_REBOOT_TYPE_NORMAL, delay_ms, BOOT_PARTITION_NONE, 0);
+#endif
 }
 
 static void __attribute__((noreturn)) __not_in_flash_func(wait_for_failure_reboot)() {
@@ -85,8 +103,10 @@ void __attribute__((noreturn)) __not_in_flash_func(toit_rp2350_fault_reboot)() {
 void __attribute__((naked, noreturn)) __not_in_flash_func(isr_hardfault)() {
   __asm volatile(
       "cpsid i\n"
+#if !PICO_RP2040
       "movs r0, #0\n"
       "msr msplim, r0\n"
+#endif
       "ldr r0, =toit_rp2350_fault_stack + 1024\n"
       "msr msp, r0\n"
       "b toit_rp2350_fault_reboot\n");

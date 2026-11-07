@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_RP2350
+#ifdef TOIT_PICO
 
 #include "hardware/clocks.h"
 #include "hardware/gpio.h"
@@ -84,14 +84,7 @@ static bool is_valid_pin(int pin) {
   return pin >= 0 && pin < static_cast<int>(NUM_BANK0_GPIOS);
 }
 
-static bool is_restricted_pin(int pin) {
-#ifdef PICO_PSRAM_CS_PIN
-  return pin == PICO_PSRAM_CS_PIN;
-#else
-  USE(pin);
-  return false;
-#endif
-}
+extern bool is_restricted_pin(int pin);
 
 class PwmResource : public Resource {
  public:
@@ -337,4 +330,4 @@ PRIMITIVE(close_channel) {
 
 }  // namespace toit
 
-#endif  // TOIT_RP2350
+#endif  // TOIT_PICO

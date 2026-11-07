@@ -190,3 +190,19 @@ for small objects that are only 2 words long, but these objects can only contain
 a single pointer so they can be scanned without pushing them on the marking
 stack, using iteration.  This lets them go straight from white to black without
 an intermediate grey stage.
+
+## Native page allocator
+
+`cmpctmalloc.c` and `cmpctmalloc.h` are the page-aware native allocator used by
+Pico. They derive from `toolchains/ec618/project/src/cmpctmalloc`, itself adapted
+from Toit's ESP32/Dartino allocator. The algorithm is retained, with platform
+locking and allocation tags supplied through hooks so the same source can run
+under host sanitizers. The Pico integration owns the linker-defined heap region
+and routes libc, newlib reentrant calls, FreeRTOS and VM page allocations to it.
+
+The portable copy also checks allocation-size overflow and zero alignment,
+handles zero-sized aligned requests without a zero-page allocation, counts
+free page runs once in heap statistics, and updates the destination tag after
+a page realloc moves backwards. Host regressions include mixed allocations,
+realloc data preservation, exhaustion, isolated-page reuse and complete cleanup
+on both 32-bit and 64-bit builds under address/undefined-behavior sanitizers.

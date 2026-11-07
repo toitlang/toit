@@ -48,6 +48,10 @@ class LwipEventSource : public EventSource {
   LwipEventSource();
   ~LwipEventSource();
 
+  // Consume the allocation-failure notification from ESP-IDF. The callback
+  // only records it; the lwIP thread publishes the existing Toit GC event.
+  static bool take_allocation_failure();
+
   // Calls a closure on the LwIP thread, while temporarily blocking the thread
   // that calls call_on_thread. The LwIP thread code runs for a short time and
   // should never block.  Because we are blocking the calling thread it is OK

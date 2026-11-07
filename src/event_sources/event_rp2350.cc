@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Toit contributors.
 // Use of this source code is governed by the LGPL-2.1 license in LICENSE.
 #include "../top.h"
-#ifdef TOIT_RP2350
+#ifdef TOIT_PICO
 #include "event_rp2350.h"
 
 namespace toit {

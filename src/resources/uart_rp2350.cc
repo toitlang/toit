@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_RP2350
+#ifdef TOIT_PICO
 
 #include <atomic>
 #include <stdlib.h>
@@ -63,12 +63,7 @@ static bool is_valid_pin(int pin) {
   return pin >= 0 && pin < static_cast<int>(NUM_BANK0_GPIOS);
 }
 
-static bool is_restricted_pin(int pin) {
-#ifdef PICO_PSRAM_CS_PIN
-  if (pin == PICO_PSRAM_CS_PIN) return true;
-#endif
-  return false;
-}
+extern bool is_restricted_pin(int pin);
 
 enum UartPinRole {
   UART_PIN_TX,
@@ -92,12 +87,22 @@ static bool uart_pin_mapping(int pin, UartPinRole role,
   gpio_function_t function;
   switch (role) {
     case UART_PIN_TX:
+#if PICO_RP2040
+      if (position != 0) return false;
+      function = GPIO_FUNC_UART;
+#else
       if (position != 0 && position != 2) return false;
       function = position == 0 ? GPIO_FUNC_UART : GPIO_FUNC_UART_AUX;
+#endif
       break;
     case UART_PIN_RX:
+#if PICO_RP2040
+      if (position != 1) return false;
+      function = GPIO_FUNC_UART;
+#else
       if (position != 1 && position != 3) return false;
       function = position == 1 ? GPIO_FUNC_UART : GPIO_FUNC_UART_AUX;
+#endif
       break;
     case UART_PIN_RTS:
       if (position != 3) return false;
@@ -470,7 +475,12 @@ PRIMITIVE(create) {
   for (int i = 0; i < 4; i++) {
     if (!decode_pin(encoded[i], &pins[i])) FAIL(INVALID_ARGUMENT);
     if (pins[i] >= 0 && !is_valid_pin(pins[i])) FAIL(INVALID_ARGUMENT);
-    if (pins[i] >= 0 && is_restricted_pin(pins[i])) FAIL(PERMISSION_DENIED);
+    bool restricted = pins[i] >= 0 && is_restricted_pin(pins[i]);
+#ifdef TOIT_PICO_W_2023
+    // The board's modem intentionally uses UART0 TX=GP0 and RX=GP1.
+    if ((i == 0 && pins[i] == 0) || (i == 1 && pins[i] == 1)) restricted = false;
+#endif
+    if (restricted) FAIL(PERMISSION_DENIED);
     for (int previous = 0; previous < i; previous++) {
       if (pins[i] >= 0 && pins[i] == pins[previous]) FAIL(INVALID_ARGUMENT);
     }
@@ -653,4 +663,4 @@ PRIMITIVE(errors) {
 
 }  // namespace toit
 
-#endif  // TOIT_RP2350
+#endif  // TOIT_PICO

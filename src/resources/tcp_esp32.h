@@ -68,6 +68,12 @@ class LwipSocket : public Resource, public BacklogSocketList::Element {
   }
   void on_wrote(word length);
 
+  static err_t on_poll(void* arg, tcp_pcb* tpcb) {
+    unvoid_cast<LwipSocket*>(arg)->on_poll();
+    return ERR_OK;
+  }
+  void on_poll();
+
   static void on_error(void* arg, err_t err) {
     // Ignore if already deleted.
     if (arg == null) return;

@@ -18,6 +18,8 @@
 #ifdef TOIT_ESP32
 
 #include <esp_netif.h>
+#include <esp_attr.h>
+#include <esp_heap_caps.h>
 
 #elif defined(TOIT_EC618)
 
@@ -64,6 +66,18 @@
 namespace toit {
 
 bool needs_gc = false;
+
+#ifdef TOIT_ESP32
+// IDF allocation failures can occur in Wi-Fi drivers and lwIP timers, outside
+// Toit primitive calls. The hook must also be safe with interrupts/cache off.
+static uint32_t allocation_failed = 0;
+// Only the store runs in the hook; the exchange runs on the lwIP task.
+
+static void IRAM_ATTR on_allocation_failed(size_t size, uint32_t caps, const char* function) {
+  __atomic_store_n(&allocation_failed, 1, __ATOMIC_RELAXED);
+}
+#endif
+
 
 #if defined(TOIT_ESP32) || defined(TOIT_EC618) || defined(TOIT_USE_LWIP)
 
@@ -185,11 +199,20 @@ PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
 #endif
 
 
+bool LwipEventSource::take_allocation_failure() {
+#ifdef TOIT_ESP32
+  return __atomic_exchange_n(&allocation_failed, 0, __ATOMIC_RELAXED) != 0;
+#else
+  return false;
+#endif
+}
+
 LwipEventSource::LwipEventSource()
     : EventSource("LwIP", 1)
     , call_done_(OS::allocate_condition_variable(mutex())) {
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + LWIP_MALLOC_TAG);
 #if defined(TOIT_ESP32)
+  ESP_ERROR_CHECK(heap_caps_register_failed_alloc_callback(on_allocation_failed));
   // Create the LWIP thread.
   esp_netif_init();
 #elif defined(TOIT_EC618)
