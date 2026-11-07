@@ -30,6 +30,7 @@ extern uint32_t toit_ap_image_modify_end;
 // Linker-script symbol: XIP base of the two-sector .toit_anchor region.
 // Declared as an array so referring to it yields its address.
 extern uint8_t __toit_anchor_start[];
+extern uint8_t __toit_base_id_start[];
 
 #define ANCHOR_SECTOR_SIZE 0x1000u
 #define ANCHOR_HEADER_SIZE 16u
@@ -62,7 +63,9 @@ _Static_assert(sizeof(partition_entry) == 32,
 #define ANCHOR_MAX_RECORD_SIZE                                             \
   (ANCHOR_HEADER_SIZE + 2 * ANCHOR_MAX_ENTRIES * sizeof(partition_entry) + \
    ANCHOR_TRAILER_SIZE)
-static uint8_t anchor_staging[ANCHOR_MAX_RECORD_SIZE];
+_Static_assert(ANCHOR_MAX_RECORD_SIZE <= ANCHOR_SECTOR_SIZE,
+               "maximum anchor record must fit one sector");
+static uint8_t anchor_staging[ANCHOR_MAX_RECORD_SIZE] __attribute__((aligned(4)));
 
 // Standard CRC-32 (poly 0xEDB88320), computed bitwise — record-sized
 // inputs at boot/OTA frequency don't justify a table in .rodata.
@@ -86,6 +89,109 @@ static bool valid_console(uint8_t console) {
   return console <= 2 || console == ANCHOR_CONSOLE_OFF;
 }
 
+// Version-3 partition tables cover the EC618's physical flash, in order.
+#define ANCHOR_FLASH_END 0x400000u
+#define ANCHOR_AP_OFFSET 0x24000u
+
+// Names are nonempty UTF-8 followed by NUL padding, at most 15 bytes.
+// Keep the decoder bounded: these bytes may have come directly from flash.
+static bool valid_name(const char name[16]) {
+  unsigned len = 0;
+  while (len < 16 && name[len] != 0) len++;
+  if (len == 0 || len == 16) return false;
+  for (unsigned i = len; i < 16; i++) {
+    if (name[i] != 0) return false;
+  }
+  for (unsigned i = 0; i < len;) {
+    uint8_t first = (uint8_t)name[i++];
+    if (first < 0x80) continue;
+    unsigned remaining;
+    uint32_t value, minimum;
+    if (first >= 0xc2 && first <= 0xdf) {
+      remaining = 1; value = first & 0x1f; minimum = 0x80;
+    } else if (first >= 0xe0 && first <= 0xef) {
+      remaining = 2; value = first & 0x0f; minimum = 0x800;
+    } else if (first >= 0xf0 && first <= 0xf4) {
+      remaining = 3; value = first & 7; minimum = 0x10000;
+    } else {
+      return false;
+    }
+    if (remaining > len - i) return false;
+    while (remaining-- != 0) {
+      uint8_t next = (uint8_t)name[i++];
+      if ((next & 0xc0) != 0x80) return false;
+      value = (value << 6) | (next & 0x3f);
+    }
+    if (value < minimum || value > 0x10ffff ||
+        (value >= 0xd800 && value <= 0xdfff)) return false;
+  }
+  return true;
+}
+
+static bool valid_table(const partition_entry* table, int count) {
+  if (table == NULL || count <= 0 || count > ANCHOR_MAX_ENTRIES) return false;
+  const partition_entry* base = NULL;
+  const partition_entry* base_id = NULL;
+  const partition_entry* anchor = NULL;
+  const partition_entry* slots[2] = {NULL, NULL};
+  const partition_entry* registry = NULL;
+  int slot_count = 0;
+  uint32_t cursor = 0;
+  for (int i = 0; i < count; i++) {
+    const partition_entry* p = &table[i];
+    if (!valid_name(p->name) || p->type < PARTITION_TYPE_LOCKED ||
+        p->type > PARTITION_TYPE_FREE) return false;
+    for (int j = 0; j < i; j++) {
+      if (strcmp(p->name, table[j].name) == 0) return false;
+    }
+    if (p->offset != cursor || p->size == 0 ||
+        p->offset % ANCHOR_SECTOR_SIZE != 0 ||
+        p->size % ANCHOR_SECTOR_SIZE != 0 ||
+        p->size > ANCHOR_FLASH_END - cursor) return false;
+    cursor += p->size;  // The subtraction above bounds this sum.
+    switch (p->type) {
+      case PARTITION_TYPE_BASE:
+        if (base != NULL || strcmp(p->name, "base") != 0) return false;
+        base = p;
+        break;
+      case PARTITION_TYPE_BASE_ID:
+        if (base_id != NULL || strcmp(p->name, "base-id") != 0) return false;
+        base_id = p;
+        break;
+      case PARTITION_TYPE_ANCHOR:
+        if (anchor != NULL || strcmp(p->name, "anchor") != 0) return false;
+        anchor = p;
+        break;
+      case PARTITION_TYPE_SLOT:
+        if (slot_count == 2) return false;
+        slots[slot_count++] = p;
+        break;
+    }
+    if (strcmp(p->name, "registry") == 0) {
+      if (p->type != PARTITION_TYPE_DATA) return false;
+      registry = p;
+    }
+  }
+  if (cursor != ANCHOR_FLASH_END || base == NULL || base_id == NULL ||
+      anchor == NULL || slot_count != 2 || registry == NULL) return false;
+  // The base and anchor are tied to this binary's linker symbols. A table
+  // cannot move either of them even if its arithmetic is self-consistent.
+  uint32_t base_id_phys =
+      (uint32_t)(uintptr_t)__toit_base_id_start - AP_FLASH_XIP_ADDR;
+  uint32_t anchor_phys =
+      (uint32_t)(uintptr_t)__toit_anchor_start - AP_FLASH_XIP_ADDR;
+  return base->offset == ANCHOR_AP_OFFSET &&
+         base_id->offset == base->offset + base->size &&
+         base_id->offset == base_id_phys &&
+         base_id->size == ANCHOR_SECTOR_SIZE &&
+         anchor->offset == anchor_phys &&
+         anchor->size == 2 * ANCHOR_SECTOR_SIZE &&
+         anchor->offset >= base_id->offset + base_id->size &&
+         slots[0]->offset >= anchor->offset + anchor->size &&
+         slots[0]->size == slots[1]->size &&
+         registry->offset >= slots[1]->offset + slots[1]->size;
+}
+
 // XIP address of sector `idx` (0 or 1) of the marker region.
 static const uint8_t* anchor_sector_xip(int idx) {
   return (const uint8_t*)((uintptr_t)__toit_anchor_start +
@@ -107,7 +213,7 @@ static bool anchor_read_sector(int idx, anchor_header* out) {
     return false;
   if (!valid_slot(out->active) || !valid_console(out->active_console))
     return false;
-  if (out->active_count > ANCHOR_MAX_ENTRIES ||
+  if (out->active_count == 0 || out->active_count > ANCHOR_MAX_ENTRIES ||
       out->pending_count > ANCHOR_MAX_ENTRIES) {
     return false;
   }
@@ -132,12 +238,24 @@ static bool anchor_read_sector(int idx, anchor_header* out) {
   return anchor_crc32(xip, size - ANCHOR_TRAILER_SIZE) == stored_crc;
 }
 
-// Returns the sector index holding the current valid record (higher seq),
-// or -1 if neither sector is valid. Fills `out` with its header.
+// Returns the current valid sector (higher seq), or -1 if neither is valid
+// or a CRC-valid record contains a malformed table. Fills `out` on success.
 static int anchor_current(anchor_header* out) {
   anchor_header h0, h1;
   bool v0 = anchor_read_sector(0, &h0);
   bool v1 = anchor_read_sector(1, &h1);
+  // A CRC-valid but semantically invalid record is not a torn write.
+  // Refuse the configuration rather than booting an older layout whose
+  // data may already have been superseded by a transaction.
+  for (int i = 0; i < 2; i++) {
+    if (!(i == 0 ? v0 : v1)) continue;
+    const anchor_header* h = i == 0 ? &h0 : &h1;
+    const partition_entry* table = (const partition_entry*)(
+        anchor_sector_xip(i) + ANCHOR_HEADER_SIZE);
+    if (!valid_table(table, h->active_count) ||
+        (h->pending_count != 0 &&
+         !valid_table(table + h->active_count, h->pending_count))) return -1;
+  }
   if (v0 && (!v1 || h0.seq >= h1.seq)) {
     *out = h0;
     return 0;
@@ -182,7 +300,8 @@ bool anchor_read(slot_record* out) {
     return true;
   }
 
-  // Fresh flash (both sectors erased/garbage): default to slot A, no trial.
+  // No usable configuration: default boot state, but table reads return
+  // zero so the dispatcher halts instead of using an implicit flash layout.
   memset(out, 0, sizeof(*out));
   out->state = SLOT_STATE_NONE;
   out->seq = 0;
@@ -250,9 +369,16 @@ static bool anchor_write_full(uint8_t active,
     }
   }
 
+  if (!valid_table(active_table, active_count) ||
+      (pending_count != 0 && !valid_table(pending_table, pending_count)))
+    return false;
+
   anchor_header current_header;
   int current = anchor_current(&current_header);
   uint32_t max_seq = current >= 0 ? current_header.seq : 0;
+  // Wrapping to zero would leave the older UINT32_MAX record selected
+  // even though the caller was told that its transition succeeded.
+  if (max_seq == UINT32_MAX) return false;
   // Write to the sector that is NOT current valid, so the live record
   // survives a torn erase/write. (current == -1 => sector 0.)
   int target = current == 0 ? 1 : 0;
