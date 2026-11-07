@@ -398,6 +398,9 @@ class ServiceProvider:
   _clients_/Set ::= {}  // Set<int>
   _clients-closed_/int := 0
   _clients-closed-signal_ ::= monitor.Signal
+  _pending_/int := 0
+  _pending-signal_ ::= monitor.Signal
+  _draining_/bool := false
 
   _resources_/Map ::= {:}  // Map<int, Map<int, Object>>
   _resource-handle-next_/int := ?
@@ -437,17 +440,31 @@ class ServiceProvider:
     if _manager_: throw "Already installed"
     _manager_ = ServiceManager_.instance
     _clients-closed_ = 0
+    _draining_ = false
     // TODO(kasper): Handle the case where one of the calls
     // to listen fails.
     _ids_ = Array_ _services_.size: _manager_.listen _services_[it] this
 
-  uninstall --wait/bool=false -> none:
+  /**
+  Uninstalls this provider and closes its clients.
+
+  If $wait is true, waits for at least one client to connect and all clients
+    to close before uninstalling.
+  If $drain is true, rejects new clients and calls, and waits for active calls
+    and resource and client callbacks to finish. Do not use $drain from a
+    handler or callback belonging to this provider.
+  */
+  uninstall --wait/bool=false --drain/bool=false -> none:
     if wait:
       _clients-closed-signal_.wait:
         _clients-closed_ > 0 and _clients_.is-empty
-    if not _manager_: return
-    _clients_.do: _manager_.close it
-    if _manager_: _uninstall_
+    if drain: _draining_ = true
+    if _manager_:
+      _clients_.do: _manager_.close it
+      if drain: _pending-signal_.wait: _pending_ == 0
+      if _manager_: _uninstall_
+    else if drain:
+      _pending-signal_.wait: _pending_ == 0
 
   pid --client/int -> int?:
     if not _manager_: return null
@@ -475,10 +492,14 @@ class ServiceProvider:
 
   _open_ client/int -> List:
     _clients_.add client
-    catch --trace: on-opened client
+    catch --trace: _with-operation_: on-opened client
     return [ client, name, major, minor, patch, tags ]
 
   _close_ client/int -> none:
+    _with-operation_:
+      _close-client_ client
+
+  _close-client_ client/int -> none:
     resources ::= _resources_.get client
     if resources:
       // Iterate over a copy of the values, so we can remove
@@ -493,6 +514,15 @@ class ServiceProvider:
     _clients-closed-signal_.raise
     // Finally, let the service know that the client is now closed.
     catch --trace: on-closed client
+
+  _with-operation_ [action] -> any:
+    _pending_++
+    try:
+      return action.call
+    finally:
+      critical-do:
+        _pending_--
+        _pending-signal_.raise
 
   _register-resource_ client/int resource/ServiceResource notifiable/bool -> int:
     handle ::= _new-resource-handle_ notifiable
@@ -586,7 +616,7 @@ abstract class ServiceResource implements rpc.RpcSerializable:
     // Keep the handle retryable if unregistering fails before removal. Once it
     // succeeds, close callbacks observe closure and cannot run more than once.
     _handle_ = _provider_ = null
-    on-closed
+    provider._with-operation_: on-closed
 
   serialize-for-rpc -> int:
     return _handle_
@@ -725,7 +755,10 @@ class ServiceManager_ implements SystemMessageHandler_:
       client/int ::= arguments[0]
       check-client-owner_ client pid
       handler/ServiceHandler ::= handlers-by-client_.get client --if-absent=(: throw "HANDLER_NOT_FOUND")
-      handler.handle arguments[1] arguments[2] --gid=gid --client=client
+      provider/ServiceProvider := providers-by-client_[client]
+      if provider._draining_: throw "Service is shutting down"
+      provider._with-operation_:
+        handler.handle arguments[1] arguments[2] --gid=gid --client=client
     broker_.register-procedure RPC-SERVICES-CLOSE-RESOURCE_:: | arguments _ pid |
       client/int ::= arguments[0]
       check-client-owner_ client pid
@@ -763,6 +796,7 @@ class ServiceManager_ implements SystemMessageHandler_:
   open pid/int id/int uuid/string major/int minor/int -> List:
     provider/ServiceProvider? ::= providers_.get id
     if not provider: throw "Unknown service:$id"
+    if provider._draining_: throw "Service is shutting down"
     service := provider._validate_ uuid major minor
 
     clients/Set ::= clients-by-pid_.get pid --init=(: {})
@@ -771,6 +805,8 @@ class ServiceManager_ implements SystemMessageHandler_:
       // process goes away so we can clean up.
       _client_.watch pid
 
+    // Watching a remote client can yield while this provider starts draining.
+    if provider._draining_: throw "Service is shutting down"
     client ::= assign-id_ null clients_ pid
     clients.add client
     providers-by-client_[client] = provider

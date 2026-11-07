@@ -25,6 +25,7 @@ import ...boot
 import ...containers
 import ...flash.registry
 import ...services
+import ...shutdown
 
 // TODO(kasper): It feels annoying to have to put this here. Maybe we
 // can have some sort of reasonable default in the ContainerManager?
@@ -47,10 +48,11 @@ class SystemImage extends ContainerImage:
 main:
   registry ::= FlashRegistry.scan
   service-manager ::= SystemServiceManager
-  (FirmwareServiceProvider).install
-  (StorageServiceProviderEsp32 registry).install
-  (WifiServiceProvider).install
   container-manager := ContainerManager registry service-manager
+  shutdown := ShutdownCoordinator (:: container-manager.shutdown)
+  shutdown.install (FirmwareServiceProvider shutdown)
+  shutdown.install (StorageServiceProviderEsp32 registry)
+  shutdown.install WifiServiceProvider
   system-image := SystemImage container-manager
   container-manager.register-system-image system-image
   exit (boot container-manager)

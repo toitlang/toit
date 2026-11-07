@@ -30,7 +30,7 @@ import system.base.network show NetworkModule NetworkResource NetworkState
 
 import ..shared.network-base
 
-// Keep in sync with the definitions in CellularResourceGroup.
+// Keep in sync with the definitions in CellularNetworkState.
 CELLULAR-DETACHED_ ::= 1
 CELLULAR-ATTACHED_ ::= 2
 
@@ -113,15 +113,18 @@ class CellularModule implements NetworkModule:
     with-timeout CONNECT-TIMEOUT_:
       while true:
         state := events_.wait
+        events_.clear-state CELLULAR-ATTACHED_ | CELLULAR-DETACHED_
         if (state & CELLULAR-ATTACHED_) != 0:
-          events_.clear-state CELLULAR-ATTACHED_
-          ip := (cellular-get-ip_ resource-group_ 0) or #[0, 0, 0, 0]
-          address_ = net.IpAddress ip
-          logger_.info "connected" --tags={"ip": address_}
-          events_.set-callback:: on-event_ it
-          return
+          // The monitor may have accumulated both notifications. Consult
+          // the latest address rather than returning a stale attachment.
+          ip := cellular-get-ip_ resource-group_ 0
+          if ip:
+            address_ = net.IpAddress ip
+            logger_.info "connected" --tags={"ip": address_}
+            events_.set-callback:: on-event_ it
+            return
         if (state & CELLULAR-DETACHED_) != 0:
-          events_.clear-state CELLULAR-DETACHED_
+          logger_.debug "not attached" --tags={"reason": cellular-disconnect-reason_ resource}
           // Keep waiting for attachment.
 
   disconnect -> none:
@@ -140,7 +143,9 @@ class CellularModule implements NetworkModule:
     service.on-module-closed this
 
   on-event_ state/int:
-    if (state & CELLULAR-DETACHED_) != 0: disconnect
+    if (state & CELLULAR-DETACHED_) != 0:
+      logger_.info "disconnected" --tags={"reason": cellular-disconnect-reason_ events_.resource}
+      disconnect
 
 // ----------------------------------------------------------------------------
 
@@ -158,6 +163,9 @@ cellular-connect_ resource-group:
 
 cellular-disconnect_ resource-group resource:
   #primitive.cellular.disconnect
+
+cellular-disconnect-reason_ resource -> string:
+  #primitive.cellular.disconnect-reason
 
 cellular-get-ip_ resource-group index/int -> ByteArray?:
   #primitive.cellular.get-ip

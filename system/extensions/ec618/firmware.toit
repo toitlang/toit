@@ -18,6 +18,8 @@ import system.base.firmware show FirmwareWriter
 
 import ec618
 import ec618.slot
+import system.watchdog
+import ...shutdown show ShutdownCoordinator
 
 import crypto.sha256 show Sha256
 import io show Buffer LITTLE-ENDIAN
@@ -53,8 +55,8 @@ slot-stage_ -> none:
 class FirmwareServiceProvider extends EmbeddedFirmwareServiceProviderBase:
   writer_/FirmwareWriter_? := null
 
-  constructor:
-    super "system/firmware/ec618"
+  constructor shutdown/ShutdownCoordinator:
+    super "system/firmware/ec618" shutdown
 
   // A freshly written slot boots on trial; the running image must validate
   // itself or the next reset rolls back. So validation is pending exactly when
@@ -77,9 +79,9 @@ class FirmwareServiceProvider extends EmbeddedFirmwareServiceProviderBase:
 
   upgrade -> none:
     // The new slot was staged by FirmwareWriter_.commit; reboot into it.
-    // TODO(kasper): Before resetting, shut down other containers and system
-    // services, including network connections, properly.
-    ec618.reset
+    // Keep a recovery deadline while terminating applications and services.
+    watchdog.start --timeout=(Duration --s=60)
+    shutdown.reboot:: ec618.reset
 
   uri -> string?:
     return "flash:ec618"

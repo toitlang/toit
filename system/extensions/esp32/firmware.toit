@@ -17,12 +17,13 @@ import system.services show ServiceProvider ServiceResource
 import system.base.firmware show FirmwareWriter
 
 import esp32
+import ...shutdown show ShutdownCoordinator
 
 import ..shared.firmware show EmbeddedFirmwareServiceProviderBase
 
 class FirmwareServiceProvider extends EmbeddedFirmwareServiceProviderBase:
-  constructor:
-    super "system/firmware/esp32"
+  constructor shutdown/ShutdownCoordinator:
+    super "system/firmware/esp32" shutdown
 
   is-validation-pending -> bool:
     return (ota-state_ & OTA-STATE-VALIDATION-PENDING_) != 0
@@ -38,9 +39,7 @@ class FirmwareServiceProvider extends EmbeddedFirmwareServiceProviderBase:
 
   upgrade -> none:
     // TODO(kasper): Verify that we have a new firmware installed?
-    // TODO(kasper): Before resetting, shut down other containers and system
-    // services, including network connections, properly.
-    esp32.reset
+    shutdown.reboot:: esp32.reset
 
   uri -> string?:
     return "partition:$ota-current-partition-name_"
