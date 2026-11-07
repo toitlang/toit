@@ -11,10 +11,8 @@
       "description": "The JSON schema of the partition-table descriptor."
     },
     "xip-offset": {
-      "type": "integer",
-      "minimum": 0,
-      "multipleOf": 4096,
-      "description": "The address added to a raw flash offset to obtain its XIP address."
+      "const": 8388608,
+      "description": "The EC618 XIP mapping adds 0x800000 to raw flash addresses."
     },
     "partitions": {
       "type": "array",
@@ -40,7 +38,8 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 15,
-          "description": "The unique name stored in the anchor table."
+          "description": "The unique NUL-free name stored in the anchor table (at most 15 UTF-8 bytes; checked by the loader).",
+          "pattern": "^[^\\u0000]+$"
         },
         "type": {
           "enum": [
