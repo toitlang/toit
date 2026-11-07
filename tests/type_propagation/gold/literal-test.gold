@@ -4,7 +4,19 @@ main tests/type_propagation/literal-test.toit
   4[053] - invoke static get-string tests/type_propagation/literal-test.toit // {String_}
   7[041] - pop 1
   8[053] - invoke static get-smi-or-string tests/type_propagation/literal-test.toit // {String_|SmallInteger_}
- 11[092] - return null S1 0
+ 11[041] - pop 1
+ 12[053] - invoke static get-max-smi32 tests/type_propagation/literal-test.toit // {SmallInteger_}
+ 15[041] - pop 1
+ 16[053] - invoke static get-min-smi32 tests/type_propagation/literal-test.toit // {SmallInteger_}
+ 19[041] - pop 1
+ 20[053] - invoke static get-above-smi32 tests/type_propagation/literal-test.toit // {LargeInteger_|SmallInteger_}
+ 23[041] - pop 1
+ 24[053] - invoke static get-below-smi32 tests/type_propagation/literal-test.toit // {LargeInteger_|SmallInteger_}
+ 27[041] - pop 1
+ 28[053] - invoke static get-above-smi64 tests/type_propagation/literal-test.toit // {LargeInteger_}
+ 31[041] - pop 1
+ 32[053] - invoke static get-below-smi64 tests/type_propagation/literal-test.toit // {LargeInteger_}
+ 35[092] - return null S1 0
 
 get-smi tests/type_propagation/literal-test.toit
   0[026] - load smi 42
@@ -12,6 +24,30 @@ get-smi tests/type_propagation/literal-test.toit
 
 get-string tests/type_propagation/literal-test.toit
   0[020] - load literal hest
+  2[091] - return S1 0
+
+get-max-smi32 tests/type_propagation/literal-test.toit
+  0[028] - load smi 1073741823
+  5[091] - return S1 0
+
+get-min-smi32 tests/type_propagation/literal-test.toit
+  0[020] - load literal -1073741824
+  2[091] - return S1 0
+
+get-above-smi32 tests/type_propagation/literal-test.toit
+  0[020] - load literal 1073741824
+  2[091] - return S1 0
+
+get-below-smi32 tests/type_propagation/literal-test.toit
+  0[020] - load literal -1073741825
+  2[091] - return S1 0
+
+get-above-smi64 tests/type_propagation/literal-test.toit
+  0[020] - load literal 4611686018427387904
+  2[091] - return S1 0
+
+get-below-smi64 tests/type_propagation/literal-test.toit
+  0[020] - load literal -4611686018427387905
   2[091] - return S1 0
 
 get-smi-or-string tests/type_propagation/literal-test.toit
