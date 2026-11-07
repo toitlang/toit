@@ -450,12 +450,10 @@ static uint32 prepare_deep_sleep(int64 sleep_ms) {
   soc_power_mode(3, 0);
 
 #if CONFIG_TOIT_EC618_VM_WATCHDOG
-  // Stop the platform's always-on (AON) watchdog before hibernating: the CP
-  // — which auto-feeds it during normal operation — stops in hibernate while
-  // the AON domain keeps counting, so left running it would reset the chip
-  // ~20s into deep sleep. The wake reboot re-arms it (boot ROM) and the CP
-  // resumes feeding. Doing this last — after the teardown above — means a
-  // wedged shutdown is still caught.
+  // Stop the platform's always-on (AON) watchdog before hibernating: software
+  // feeders stop while the AON domain keeps counting. Left running it would
+  // reset the chip ~20s into deep sleep. The boot ROM re-arms it on wake.
+  // Doing this after teardown keeps the watchdog active during shutdown.
   slpManAonWdtStop();
 #endif
 
@@ -494,10 +492,9 @@ static void start() {
   // Run C++ static initializers (the linker script must capture .init_array).
   run_static_initializers();
 
-  // Log the previous reset reason. After a HardFault dump-and-reset
-  // (see toit_hardfault_dump below) this prints "ap=HARDFAULT", but it
-  // also catches watchdog/lockup/assert/POR resets that bypass our
-  // handler.
+  // Log the vendor's previous-reset classification, initialized by the base
+  // BSP. Our custom HardFault dumper requests SYSRESETREQ without recording
+  // a distinct reason; its console dump is needed to identify that path.
   {
     LastResetState_e ap = LAST_RESET_UNKNOWN;
     LastResetState_e cp = LAST_RESET_UNKNOWN;
@@ -591,8 +588,8 @@ static void start() {
     // do a hard chip reset so the dispatcher (toit_main.c) trial-boots the staged
     // slot, exactly like ESP32 calls esp_restart() on a firmware update. Done here
     // — before the VM destructor and OS::tear_down() — because EC618's external
-    // handler teardown can block. Gracefully stopping containers and system
-    // services before this request remains a firmware-service TODO.
+    // handler teardown can block. The firmware service coordinates application
+    // and platform-service shutdown before requesting this reset.
     reset_into_staged_slot_if_needed();
   }
 
