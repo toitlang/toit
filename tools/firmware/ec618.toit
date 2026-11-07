@@ -19,6 +19,7 @@ import uuid show Uuid
 
 import ..ec618.partitions show find-anchor-table
 import ..ec618.slot-reloc show SlotRelocTable TO-SLOT TO-CANONICAL
+import .container show Container
 import .image-details as image-details
 
 WORD-SIZE ::= 4
@@ -26,14 +27,6 @@ WORD-SIZE ::= 4
 XIP-BASE_       ::= 0x00800000
 AP-LOAD-OFFSET_ ::= 0x00024000
 FLASH-SECTOR-SIZE_ ::= 4096
-
-/**
-Container operations needed by the EC618 image builder.
-*/
-interface Container:
-  relocatable -> ByteArray
-  relocated-size -> int
-  relocate --relocation-base/int --attach-assets/bool --system-uuid/Uuid -> ByteArray
 
 pad_ bits/ByteArray alignment/int -> ByteArray:
   padded-size := round-up bits.size alignment
