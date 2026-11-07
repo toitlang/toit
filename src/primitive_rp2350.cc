@@ -56,19 +56,19 @@ static bool verify_image(const rp2350::Partition& slot, uint32 size, const uint8
     uint32 length = info.ranges[i].size;
     if (first != null && offset < 4096) {
       uint32 count = length < 4096 - offset ? length : 4096 - offset;
-      sha.add(first + offset, count);
+      if (sha.add(first + offset, count) != 0) return false;
       offset += count;
       length -= count;
     }
-    sha.add(bytes + offset, length);
+    if (sha.add(bytes + offset, length) != 0) return false;
   }
   uint8 block[384];
   if (info.block_hash_size > sizeof(block)) return false;
   memcpy(block, bytes + info.block_offset, info.block_hash_size);
   block[7] &= 0x7f;  // ROM hashing excludes the mutable TBYB flag.
-  sha.add(block, info.block_hash_size);
+  if (sha.add(block, info.block_hash_size) != 0) return false;
   uint8 digest[32];
-  sha.get(digest);
+  if (sha.get(digest) != 0) return false;
   return memcmp(digest, bytes + info.digest_offset, sizeof(digest)) == 0;
 }
 

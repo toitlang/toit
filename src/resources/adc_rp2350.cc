@@ -87,6 +87,17 @@ static void select_and_settle(AdcResource* resource) {
 
 MODULE_IMPLEMENTATION(adc, MODULE_ADC)
 
+PRIMITIVE(init_group) {
+  // RP2350 conversions are synchronous and use the generic resource group.
+  return process->null_object();
+}
+
+PRIMITIVE(cancel) {
+  ARGS(AdcResource, resource);
+  USE(resource);
+  return process->null_object();
+}
+
 PRIMITIVE(init) {
   ARGS(SimpleResourceGroup, group, int, pin, bool, allow_restricted,
        double, max_voltage);

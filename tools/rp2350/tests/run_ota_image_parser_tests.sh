@@ -5,7 +5,11 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/../../.." && pwd)"
-export TOIT_PACKAGE_CACHE_PATHS="${TOIT_PACKAGE_CACHE_PATHS:-$root/tools/.packages-bootstrap}"
+package_cache="$root/tools/.packages"
+if [[ -f "$root/tools/.packages-bootstrap/package-timestamp" ]]; then
+  package_cache="$root/tools/.packages-bootstrap"
+fi
+export TOIT_PACKAGE_CACHE_PATHS="${TOIT_PACKAGE_CACHE_PATHS:-$package_cache}"
 temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT
 

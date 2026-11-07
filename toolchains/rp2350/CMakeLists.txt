@@ -176,7 +176,7 @@ if (TOIT_RP2350_BUILD_VM)
     COMMAND "${TOIT_HOST}" compile -s -o boot.snapshot boot.toit
     COMMAND "${TOIT_HOST}" tool snapshot-to-image --format=binary -m32 ${TOIT_BOOT_ASSET_ARGS} -o boot.image boot.snapshot
     ${TOIT_APPLICATION_COMMANDS}
-    COMMAND "${TOIT_HOST}" run "${TOIT_ROOT}/tools/rp2350/image-to-assembly.toit" -- boot.image boot.S ${TOIT_BUNDLED_IMAGES}
+    COMMAND "${TOIT_HOST}" run --project-root "${TOIT_ROOT}/tools" "${TOIT_ROOT}/tools/rp2350/image-to-assembly.toit" -- boot.image boot.S ${TOIT_BUNDLED_IMAGES}
     DEPENDS "${TOIT_RP2350_PROGRAM}" ${TOIT_LIBRARY_SOURCES} ${TOIT_RP2350_TEST_SOURCES}
       "${CMAKE_CURRENT_BINARY_DIR}/boot.toit" "${TOIT_ROOT}/system/services.toit"
       ${TOIT_APPLICATION_DEPENDENCIES}

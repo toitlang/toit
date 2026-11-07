@@ -5,11 +5,15 @@
 # Exercises the ROM flashing command without opening a USB device.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../../.." && pwd)"
+package_cache="$root/tools/.packages"
+if [[ -f "$root/tools/.packages-bootstrap/package-timestamp" ]]; then
+  package_cache="$root/tools/.packages-bootstrap"
+fi
 base="${1:-$root/build/rp2350-envelope-base/toit-rp2350.bin}"
 system_snapshot="${2:-$root/.cache/rp2350/system.snapshot}"
 partitions="${3:-$root/build/rp2350/partitions-experimental.uf2}"
 toit="${TOIT:-$root/build/host/sdk/bin/toit}"
-export TOIT_PACKAGE_CACHE_PATHS="${TOIT_PACKAGE_CACHE_PATHS:-$root/tools/.packages-bootstrap}"
+export TOIT_PACKAGE_CACHE_PATHS="${TOIT_PACKAGE_CACHE_PATHS:-$package_cache}"
 temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT
 firmware=("$toit" run "$root/tools/firmware.toit" --)

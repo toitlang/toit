@@ -45,6 +45,9 @@ if(BUILD_TESTING AND UNIX)
     if(EXISTS "${TOIT_ROOT}/tools/.packages-bootstrap/package-timestamp")
       set_tests_properties(ota-upload-pty PROPERTIES
         ENVIRONMENT "TOIT_PACKAGE_CACHE_PATHS=${TOIT_ROOT}/tools/.packages-bootstrap")
+    else()
+      set_tests_properties(ota-upload-pty PROPERTIES
+        ENVIRONMENT "TOIT_PACKAGE_CACHE_PATHS=${TOIT_ROOT}/tools/.packages")
     endif()
     set_tests_properties(ota-upload-pty PROPERTIES TIMEOUT 30)
   endif()

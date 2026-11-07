@@ -28,7 +28,6 @@
 #include "watchdog.h"
 #include "sha.h"
 #include "slot_reloc_ec618.h"
-#include "watchdog.h"
 #include "watchdog_ec618.h"
 #include "wakeup_ec618.h"
 

@@ -260,7 +260,7 @@ RP2350_PICOTOOL ?= $(CURDIR)/.cache/rp2350/install/bin/picotool
 RP2350_BUNDLE_PLATFORM ?= $(shell uname -s | tr '[:upper:]' '[:lower:]')-$(shell uname -m)
 RP2350_ENVELOPE_DIST ?= $(RP2350_ENVELOPE_BUILD)/toit-rp2350-$(RP2350_BUNDLE_PLATFORM)
 RP2350_ENVELOPE_ARCHIVE ?= $(RP2350_ENVELOPE_BUILD)/toit-rp2350-$(RP2350_BUNDLE_PLATFORM).tar.gz
-RP2350_PACKAGE_CACHE_PATHS ?= $(if $(wildcard $(CURDIR)/tools/.packages-bootstrap/package-timestamp),$(CURDIR)/tools/.packages-bootstrap,)
+RP2350_PACKAGE_CACHE_PATHS ?= $(if $(wildcard $(CURDIR)/tools/.packages-bootstrap/package-timestamp),$(CURDIR)/tools/.packages-bootstrap,$(CURDIR)/tools/.packages)
 RP2350_TOIT_ENV = $(if $(RP2350_PACKAGE_CACHE_PATHS),TOIT_PACKAGE_CACHE_PATHS="$(RP2350_PACKAGE_CACHE_PATHS)",)
 
 .PHONY: rp2350 rp2350-flasher rp2350-ota-upload

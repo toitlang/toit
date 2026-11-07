@@ -34,8 +34,8 @@ command is:
 
 Set `TOIT` to
 choose the host SDK executable and `PICOTOOL` to choose picotool. The script
-defaults `TOIT_PACKAGE_CACHE_PATHS` to `tools/.packages-bootstrap`, so it uses
-the repository's bootstrapped package cache without downloading packages.
+defaults `TOIT_PACKAGE_CACHE_PATHS` to `tools/.packages-bootstrap` when present,
+or to `tools/.packages` populated by `make download-packages`.
 `REQUIRE_PICOTOOL=1` is used for the derived-image check. A C++17 compiler is
 required for the sanitizer-enabled native parser test.
 

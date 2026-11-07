@@ -5,11 +5,15 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/../../.." && pwd)"
+package_cache="$root/tools/.packages"
+if [[ -f "$root/tools/.packages-bootstrap/package-timestamp" ]]; then
+  package_cache="$root/tools/.packages-bootstrap"
+fi
 base="${1:-$root/build/rp2350-envelope-base/toit-rp2350.bin}"
 system_snapshot="${2:-$root/.cache/rp2350/system.snapshot}"
 partition_table="${3:-}"
 toit="${TOIT:-$root/build/host/sdk/bin/toit}"
-package_cache="${TOIT_PACKAGE_CACHE_PATHS:-$root/tools/.packages-bootstrap}"
+package_cache="${TOIT_PACKAGE_CACHE_PATHS:-$package_cache}"
 temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT
 
