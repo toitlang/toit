@@ -1,0 +1,39 @@
+; Copyright (C) 2026 Toit contributors.
+; Use of this source code is governed by an MIT-style license in lib/LICENSE.
+.program echo
+.wrap_target
+    pull block
+    mov isr, osr
+    push block
+.wrap
+
+.program capture
+.pio_version 1
+.in 1 left auto 32
+.fifo rx
+    wait 1 pin 0
+.wrap_target
+    in pins, 1
+.wrap
+
+.program output_bits
+.out 1 left auto 32
+.fifo tx
+.wrap_target
+    out pins, 1
+.wrap
+
+.program signal
+    irq wait 0
+.wrap_target
+    jmp 1
+.wrap
+
+.program loopback
+.pio_version 1
+.in 1 right auto 32
+.out 1 right auto 32
+.wrap_target
+    out pins, 1 [3]
+    in pins, 1
+.wrap

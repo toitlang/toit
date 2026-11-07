@@ -3,6 +3,7 @@
 .packages-bootstrap/
 /version.cmake
 /.cache/
+__pycache__/
 **/.vscode/
 tedi_test.go
 /lib/protogen

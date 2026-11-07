@@ -17,7 +17,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_POSIX) || defined(TOIT_WINDOWS) || defined(TOIT_ESP32)
+#if defined(TOIT_POSIX) || defined(TOIT_WINDOWS) || defined(TOIT_ESP32) || defined(TOIT_PICO)
 
 #include "../linked.h"
 #include "../resource.h"
@@ -35,6 +35,7 @@ class AsyncEventThread : public Thread {
     // Stop might take the mutex, so the mutex must not be disposed before the
     // stop() call.
     stop();
+    OS::dispose(queue_cond_);
     OS::dispose(mutex_);
   }
 
@@ -46,7 +47,7 @@ class AsyncEventThread : public Thread {
   /// The functions are run in the order they are enqueued.
   void enqueue(Resource* resource, const std::function<word (Resource*)>& func);
 
-  void start();
+  bool start();
   // It is safe to call stop() multiple times.
   void stop();
 
@@ -71,6 +72,7 @@ class AsyncEventThread : public Thread {
   ConditionVariable* queue_cond_;
   Queue queue_;
   State state_ = IDLE;
+  bool started_ = false;
 
   void entry() override;
   void enqueue(const Locker& locker, Resource* resource, const std::function<word (Resource*)>& func);

@@ -84,6 +84,15 @@ namespace toit {
   M(one_wire, MODULE_ONE_WIRE)               \
   M(watchdog, MODULE_WATCHDOG)               \
   M(rp2350,  MODULE_RP2350)                  \
+  M(pio, MODULE_PIO)                         \
+  M(rp2040, MODULE_RP2040)                  \
+
+#define MODULE_RP2040(PRIMITIVE)            \
+  PRIMITIVE(unique_id, 0)                   \
+  PRIMITIVE(system_watchdog_feed, 0)        \
+  PRIMITIVE(firmware_submit, 3)             \
+  PRIMITIVE(firmware_status, 0)             \
+  PRIMITIVE(recovery_requested, 0)          \
 
 #define MODULE_WATCHDOG(PRIMITIVE)           \
   PRIMITIVE(start, 1)                        \
@@ -117,6 +126,20 @@ namespace toit {
   PRIMITIVE(watchdog_stop, 0)                \
   PRIMITIVE(watchdog_caused_reset, 0)        \
   PRIMITIVE(woke_from_deep_sleep, 0)         \
+
+#define MODULE_PIO(PRIMITIVE)               \
+  PRIMITIVE(init, 0)                        \
+  PRIMITIVE(create, 3)                      \
+  PRIMITIVE(close, 1)                       \
+  PRIMITIVE(control, 2)                     \
+  PRIMITIVE(frequency, 1)                   \
+  PRIMITIVE(submit, 5)                      \
+  PRIMITIVE(status, 2)                      \
+  PRIMITIVE(transferred, 2)                 \
+  PRIMITIVE(cancel, 2)                      \
+  PRIMITIVE(take, 3)                        \
+  PRIMITIVE(discard, 2)                     \
+  PRIMITIVE(irq_clear, 2)                   \
 
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(write_on_stdout, 2)              \
@@ -1237,6 +1260,8 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 
 #define _A_T_SimpleResourceGroup(N, name) MAKE_UNPACKING_MACRO(SimpleResourceGroup, N, name)
 #define _A_T_DacResourceGroup(N, name)    MAKE_UNPACKING_MACRO(DacResourceGroup, N, name)
+#define _A_T_PioResourceGroup(N, name)    MAKE_UNPACKING_MACRO(PioResourceGroup, N, name)
+#define _A_T_PioResource(N, name)         MAKE_UNPACKING_MACRO(PioResource, N, name)
 #define _A_T_GpioResourceGroup(N, name)   MAKE_UNPACKING_MACRO(GpioResourceGroup, N, name)
 #define _A_T_TouchResourceGroup(N, name)  MAKE_UNPACKING_MACRO(TouchResourceGroup, N, name)
 #define _A_T_I2cResourceGroup(N, name)    MAKE_UNPACKING_MACRO(I2cResourceGroup, N, name)

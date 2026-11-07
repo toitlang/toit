@@ -13,7 +13,7 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-file(GLOB TOIT_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*-test.toit" "regress/*-test.toit")
+file(GLOB TOIT_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*-test.toit" "regress/*-test.toit" "pio/*-test.toit")
 file(GLOB TOIT_SLOW_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*-test-slow.toit" "regress/*-test-slow.toit")
 file(GLOB TOIT_FORCE_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*-test-force.toit" "regress/*-test-force.toit")
 file(GLOB TOIT_NO_BOOT_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*-test-no-boot.toit" "regress/*-test-no-boot.toit")
@@ -186,6 +186,7 @@ add_subdirectory(toitdoc)
 add_subdirectory(dependencies)
 add_subdirectory(stdio)
 add_subdirectory(terminal)
+add_subdirectory(storage-recovery)
 
 # Add the pi-tests so that its packages are downloaded.
 # This is only necessary for the health tests, since the tests themselves

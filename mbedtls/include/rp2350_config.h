@@ -13,9 +13,10 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-// mbedTLS configuration for RP2350 (Cortex-M33, FreeRTOS).
+// mbedTLS configuration for RP2350 (Cortex-M33) and RP2040 (Cortex-M0+),
+// both using FreeRTOS.
 // This is used instead of the ESP-IDF esp_config.h when cross-compiling
-// for the RP2350 target.
+// for these targets.
 
 #ifndef MBEDTLS_RP2350_CONFIG_H
 #define MBEDTLS_RP2350_CONFIG_H
@@ -23,13 +24,15 @@
 // Platform
 #define MBEDTLS_HAVE_ASM
 #define MBEDTLS_HAVE_TIME
+#define MBEDTLS_HAVE_TIME_DATE
+#define MBEDTLS_PLATFORM_TIME_ALT
 #define MBEDTLS_PLATFORM_MS_TIME_ALT
 
 // Threading via FreeRTOS
 #define MBEDTLS_THREADING_C
 #define MBEDTLS_THREADING_ALT
 
-// Hardware entropy
+// Platform entropy collector
 #define MBEDTLS_ENTROPY_HARDWARE_ALT
 #define MBEDTLS_NO_PLATFORM_ENTROPY
 
@@ -82,6 +85,10 @@
 #define MBEDTLS_MD_CAN_SHA256
 
 // --- ECP curves ---
+// Use mbedTLS's standard NIST-prime reduction routines. Generic division makes
+// certificate verification slow enough to exceed peer handshake deadlines on
+// Cortex-M0+.
+#define MBEDTLS_ECP_NIST_OPTIM
 #define MBEDTLS_ECP_DP_SECP256R1_ENABLED
 #define MBEDTLS_ECP_DP_SECP384R1_ENABLED
 #define MBEDTLS_ECP_DP_SECP521R1_ENABLED

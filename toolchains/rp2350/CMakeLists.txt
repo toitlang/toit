@@ -111,7 +111,7 @@ if (TOIT_RP2350_BUILD_VM)
     set_property(TARGET ${target} PROPERTY C_STANDARD 11)
     target_link_libraries(${target} PRIVATE pico_stdlib_headers hardware_clocks_headers hardware_sync_headers)
   endforeach()
-  target_link_libraries(toit_vm PRIVATE pico_rand_headers pico_bootrom_headers boot_picobin_headers pico_stdio_usb_headers hardware_adc_headers hardware_uart_headers hardware_i2c_headers hardware_spi_headers hardware_dma_headers hardware_pwm_headers hardware_powman_headers)
+  target_link_libraries(toit_vm PRIVATE pico_rand_headers pico_bootrom_headers boot_picobin_headers pico_stdio_usb_headers hardware_adc_headers hardware_uart_headers hardware_i2c_headers hardware_spi_headers hardware_dma_headers hardware_pwm_headers hardware_pio_headers hardware_powman_headers)
 
   set(TOIT_HOST "${TOIT_ROOT}/build/host/sdk/bin/toit" CACHE FILEPATH "Matching host Toit compiler")
   set(TOIT_RP2350_PROGRAM "${TOIT_ROOT}/tests/hw/rp2350/vm-smoke.toit" CACHE FILEPATH "Boot program")
@@ -214,7 +214,7 @@ if (TOIT_RP2350_BUILD_VM)
     PICO_STDIO_USB_STDOUT_TIMEOUT_US=1000)
   target_link_libraries(toit-rp2350 PRIVATE
     -Wl,--whole-archive toit_vm -Wl,--no-whole-archive
-    mbedtls mbedx509 mbedcrypto pico_stdlib pico_rand pico_unique_id pico_low_power hardware_adc hardware_uart hardware_i2c hardware_spi hardware_dma hardware_pwm
+    mbedtls mbedx509 mbedcrypto pico_stdlib pico_rand pico_unique_id pico_low_power hardware_adc hardware_uart hardware_i2c hardware_spi hardware_dma hardware_pwm hardware_pio
     FreeRTOS-Kernel-Heap3)
   pico_enable_stdio_usb(toit-rp2350 1)
   pico_enable_stdio_uart(toit-rp2350 0)

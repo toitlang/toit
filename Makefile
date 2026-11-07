@@ -352,6 +352,81 @@ rp2350-flash-bringup:
 		"$(RP2350_BUILD)/toit-rp2350-bringup.uf2" --ser "$(RP2350_SERIAL)" \
 		$(RP2350_FLASH_FLAGS)
 
+# RP2040 uses the same pinned SDK and host tools as RP2350. Keep the board
+# variable separate so the RP2350 default cannot leak into an RP2040 build.
+RP2040_BOARD ?= pico
+RP2040_VM_BUILD ?= $(BUILD)/rp2040-$(RP2040_BOARD)-vm
+RP2040_ENVELOPE_BUILD ?= $(BUILD)/rp2040-$(RP2040_BOARD)-envelope
+RP2040_RECOVERY_BUILD ?= $(BUILD)/rp2040-$(RP2040_BOARD)-recovery
+RP2040_PROGRAM ?= $(CURDIR)/tests/hw/rp2040/vm-smoke.toit
+RP2040_PROJECT_ROOT ?= $(dir $(abspath $(RP2040_PROGRAM)))
+RP2040_OTA_UPLOAD_BUILD ?= $(BUILD)/rp2040-ota-upload
+RP2040_BUNDLE_PLATFORM ?= $(RP2350_BUNDLE_PLATFORM)
+RP2040_BUNDLE_DIR ?= $(RP2040_ENVELOPE_BUILD)/toit-rp2040-$(RP2040_BOARD)-$(RP2040_BUNDLE_PLATFORM)
+RP2040_BUNDLE_ARCHIVE ?= $(RP2040_BUNDLE_DIR).tar.gz
+RP2040_CMAKE_FLAGS ?=
+
+.PHONY: rp2040 rp2040-setup rp2040-recovery rp2040-test
+rp2040-setup: rp2350-setup
+
+rp2040: rp2350-prerequisites host-tools rp2350-packages
+	cmake -S toolchains/rp2040 -B "$(RP2040_VM_BUILD)" -G Ninja \
+		-DCMAKE_BUILD_TYPE="$(BUILD_TYPE)" -DTOIT_RP2040_BUILD_VM=ON \
+		-DTOIT_RP2040_ENVELOPE_BASE=OFF \
+		-DPICO_SDK_PATH="$(PICO_SDK_PATH)" -DPICO_BOARD="$(RP2040_BOARD)" \
+		-DTOIT_HOST="$(abspath $(TOIT_BIN))" \
+		-DTOIT_RP2040_PROGRAM="$(abspath $(RP2040_PROGRAM))" \
+		-DTOIT_RP2040_PROJECT_ROOT="$(abspath $(RP2040_PROJECT_ROOT))" \
+		-DTOIT_RP2040_TEST_FAULT= -DTOIT_RP2040_TEST_STORAGE_INTERRUPTION=OFF \
+		$(RP2040_CMAKE_FLAGS)
+	$(RP2350_TOIT_ENV) cmake --build "$(RP2040_VM_BUILD)" --target toit-rp2040 --parallel
+
+# Produces an application envelope for the persistent RP2040 recovery loader.
+.PHONY: rp2040-envelope
+rp2040-envelope: rp2350-prerequisites host-tools rp2350-packages
+	cmake -S toolchains/rp2040 -B "$(RP2040_ENVELOPE_BUILD)" -G Ninja \
+		-DCMAKE_BUILD_TYPE="$(BUILD_TYPE)" -DTOIT_RP2040_BUILD_VM=ON \
+		-DTOIT_RP2040_ENVELOPE_BASE=ON -DPICO_SDK_PATH="$(PICO_SDK_PATH)" \
+		-DPICO_BOARD="$(RP2040_BOARD)" -DTOIT_HOST="$(abspath $(TOIT_BIN))" \
+		-DTOIT_RP2040_TEST_FAULT= -DTOIT_RP2040_TEST_STORAGE_INTERRUPTION=OFF \
+		$(RP2040_CMAKE_FLAGS)
+	$(RP2350_TOIT_ENV) cmake --build "$(RP2040_ENVELOPE_BUILD)" --target toit-rp2040 system-snapshot --parallel
+	$(RP2350_TOIT_ENV) $(TOIT_BIN) run --project-root tools tools/firmware.toit -- \
+		-e "$(RP2040_ENVELOPE_BUILD)/firmware.envelope" create-rp2040 \
+		--firmware.bin "$(RP2040_ENVELOPE_BUILD)/toit-rp2040.bin" \
+		--system.snapshot "$(RP2040_ENVELOPE_BUILD)/boot.snapshot"
+	$(RP2350_TOIT_ENV) $(TOIT_BIN) run --project-root tools tools/firmware.toit -- \
+		-e "$(RP2040_ENVELOPE_BUILD)/firmware.envelope" extract --format=binary \
+		--output "$(RP2040_ENVELOPE_BUILD)/firmware.bin"
+
+rp2040-recovery: rp2350-prerequisites
+	cmake -S toolchains/rp2040 -B "$(RP2040_RECOVERY_BUILD)" -G Ninja \
+		-DCMAKE_BUILD_TYPE=MinSizeRel -DTOIT_RP2040_BUILD_VM=OFF \
+		-DPICO_SDK_PATH="$(PICO_SDK_PATH)" -DPICO_BOARD="$(RP2040_BOARD)" \
+		$(RP2040_CMAKE_FLAGS)
+	cmake --build "$(RP2040_RECOVERY_BUILD)" --parallel
+
+.PHONY: rp2040-bundle
+rp2040-bundle: rp2040-envelope rp2040-recovery rp2040-ota-upload
+	cmake -E make_directory "$(RP2040_BUNDLE_DIR)"
+	cmake -E copy "$(RP2040_ENVELOPE_BUILD)/firmware.envelope" \
+		"$(RP2040_ENVELOPE_BUILD)/firmware.bin" \
+		"$(RP2040_OTA_UPLOAD_BUILD)/rp2040-ota-upload$(EXE_SUFFIX)" \
+		"$(CURDIR)/LICENSE" "$(RP2040_BUNDLE_DIR)"
+	cmake -E copy "$(RP2040_RECOVERY_BUILD)/toit-rp2040-recovery.uf2" "$(RP2040_BUNDLE_DIR)/recovery.uf2"
+	cmake -E copy "$(CURDIR)/docs/rp2040-envelope-bundle.md" "$(RP2040_BUNDLE_DIR)/README.md"
+	(cd "$(dir $(RP2040_BUNDLE_DIR))" && cmake -E tar czf "$(abspath $(RP2040_BUNDLE_ARCHIVE))" \
+		--format=gnutar "$(notdir $(RP2040_BUNDLE_DIR))")
+
+.PHONY: rp2040-ota-upload
+rp2040-ota-upload:
+	cmake -S tools/rp2040/ota-upload -B "$(RP2040_OTA_UPLOAD_BUILD)" -DCMAKE_BUILD_TYPE="$(BUILD_TYPE)"
+	cmake --build "$(RP2040_OTA_UPLOAD_BUILD)" --parallel
+
+rp2040-test:
+	bash tools/rp2040/tests/run.sh
+	python3 -m unittest discover -s tools/rp2040/tests -p 'test_*.py'
+
 # EC618
 EC618_SDK = $(CURDIR)/third_party/luatos-soc-ec618
 EC618_GCC_PATH ?= $(HOME)/.xmake/packages/g/gnu_rm/2021.10/69b9a9c7bd56401fb164f28701b1431e

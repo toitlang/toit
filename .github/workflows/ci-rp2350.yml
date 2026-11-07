@@ -21,6 +21,7 @@ on:
       - 'third_party/FreeRTOS-Kernel'
       - 'toolchains/rp2350/**'
       - 'tools/rp2350/**'
+      - 'tools/pico/**'
       - 'tools/firmware/**'
       - 'tools/firmware.toit'
       - 'tools/rp2350-envelope-test-helper.toit'

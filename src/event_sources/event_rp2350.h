@@ -2,7 +2,7 @@
 // Use of this source code is governed by the LGPL-2.1 license in LICENSE.
 #pragma once
 #include "../top.h"
-#ifdef TOIT_RP2350
+#ifdef TOIT_PICO
 #include "../os.h"
 #include "../resource.h"
 #include "FreeRTOS.h"
@@ -17,7 +17,7 @@ class Rp2350PeripheralEventSource;
 // cannot lose events or overflow an interrupt queue.
 class Rp2350EventDispatcher : public EventSource, public Thread {
  public:
-  enum Source { GPIO, UART, I2C, STDIO, SPI, SOURCE_COUNT };
+  enum Source { GPIO, UART, I2C, STDIO, SPI, PIO, SOURCE_COUNT };
   static Rp2350EventDispatcher* instance() { return instance_; }
   Rp2350EventDispatcher();
   ~Rp2350EventDispatcher() override;

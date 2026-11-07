@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_RP2350
+#ifdef TOIT_PICO
 
 #include "../event_sources/stdio_rp2350.h"
 #include "../objects_inline.h"
@@ -98,4 +98,4 @@ PRIMITIVE(stdin_read) {
 
 }  // namespace toit
 
-#endif  // TOIT_RP2350
+#endif  // TOIT_PICO
