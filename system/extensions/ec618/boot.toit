@@ -24,6 +24,7 @@ import ...boot
 import ...containers
 import ...flash.registry
 import ...services
+import ...shutdown
 
 class SystemImage extends ContainerImage:
   id ::= containers.current
@@ -44,10 +45,11 @@ class SystemImage extends ContainerImage:
 main:
   registry := FlashRegistry.scan
   service-manager := SystemServiceManager
-  (FirmwareServiceProvider).install
-  (StorageServiceProviderEc618 registry).install
-  (CellularServiceProvider).install
   container-manager := ContainerManager registry service-manager
+  shutdown := ShutdownCoordinator (:: container-manager.shutdown)
+  shutdown.install (FirmwareServiceProvider shutdown)
+  shutdown.install (StorageServiceProviderEc618 registry)
+  shutdown.install CellularServiceProvider
   system-image := SystemImage container-manager
   container-manager.register-system-image system-image
   exit (boot container-manager)
