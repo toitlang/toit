@@ -20,9 +20,9 @@
 //      emitted by `firmware extract` ends after slot A and therefore becomes
 //      canonical on its first pass.
 //
-// The writer refuses to move partitions that could carry live data
-// (type `data`): until a migration journal exists, layout changes may
-// only move slots and free space.
+// The writer preserves all fixed partitions: until a migration journal
+// exists, layout changes may only move slots and free space. The AP
+// checksum must be valid, and all bytes following slot A must be erased.
 //
 // Round-trip property (checked by the acceptance test): retargeting to a
 // shifted descriptor and back reproduces the original image byte for
@@ -87,30 +87,45 @@ run invocation/cli.Invocation -> none:
 /**
 Retargets the AP image in $input and returns the same container type.
 
-The AP image may be raw or embedded in a binpkg. Every other binpkg zone is
-  preserved byte for byte.
+The AP image may be raw or embedded in a binpkg and must have a valid SHA-256
+  trailer, as emitted by firmware extraction. Every other binpkg zone is
+  preserved byte for byte. A binpkg must contain complete zone records and
+  exactly one AP zone. Its structure is validated before retargeting that zone.
 */
 retarget-container input/ByteArray target/Partitions --ui/cli.Ui --console/int?=null -> ByteArray:
   // A binpkg starts with its zero-filled 52-byte file header; a raw AP
   // image starts with SDK image content.
-  is-binpkg := input.size > BINPKG-HEADER-SIZE and (input[..BINPKG-HEADER-SIZE].every: it == 0)
+  is-binpkg := input.size >= BINPKG-HEADER-SIZE and (input[..BINPKG-HEADER-SIZE].every: it == 0)
   out/ByteArray := ?
   if is-binpkg:
-    out = input[..BINPKG-HEADER-SIZE].copy
     pos := BINPKG-HEADER-SIZE
-    retargeted := false
-    while pos + ZONE-HEADER-SIZE <= input.size:
-      header := input.copy pos (pos + ZONE-HEADER-SIZE)
+    zones := []
+    ap-index/int? := null
+    while pos < input.size:
+      if input.size - pos < ZONE-HEADER-SIZE:
+        ui.abort "truncated binpkg zone header at byte $pos"
+      header := input[pos .. pos + ZONE-HEADER-SIZE]
       size := LITTLE-ENDIAN.uint32 header 76
-      data := input.copy (pos + ZONE-HEADER-SIZE) (pos + ZONE-HEADER-SIZE + size)
-      subsystem := header[336..340]
-      if subsystem[0] == 'A' and subsystem[1] == 'P':
+      data-start := pos + ZONE-HEADER-SIZE
+      if size > input.size - data-start:
+        ui.abort "truncated binpkg zone data at byte $data-start: need $size bytes, have $(input.size - data-start)"
+      data := input[data-start .. data-start + size]
+      if header[336..340] == #['A', 'P', 0, 0]:
+        if ap-index != null: ui.abort "multiple AP zones in the binpkg"
+        ap-index = zones.size
+      zones.add [header, data]
+      pos = data-start + size
+    if ap-index == null: ui.abort "no AP zone in the binpkg"
+    out = input[..BINPKG-HEADER-SIZE].copy
+    zones.size.repeat: |index/int|
+      zone := zones[index]
+      header/ByteArray := zone[0]
+      data/ByteArray := zone[1]
+      if index == ap-index:
         data = retarget data target --ui=ui --console=console
+        header = header.copy
         LITTLE-ENDIAN.put-uint32 header 76 data.size
-        retargeted = true
       out += header + data
-      pos += ZONE-HEADER-SIZE + size
-    if not retargeted: ui.abort "no AP zone in the binpkg"
   else:
     out = retarget input target --ui=ui --console=console
   return out
@@ -120,9 +135,22 @@ Retargets the raw AP $image (its slots and anchor record) to the $target
   descriptor and returns the new image.
 */
 retarget image/ByteArray target/Partitions --ui/cli.Ui --console/int?=null -> ByteArray:
-  input-entries := find-anchor-table image
-  if input-entries == null:
+  if image.size < 32 or (sha256 image[..image.size - 32]) != image[image.size - 32..]:
+    ui.abort "AP image SHA-256 checksum mismatch"
+  // Exclude the hash from every content bound: a truncated reservation
+  // must not borrow its final bytes from the checksum trailer.
+  image = image[..image.size - 32]
+  if image.size > FLASH-END - 0x24000:
+    ui.abort "AP image exceeds EC618 flash"
+  input-record/AnchorRecord? := null
+  error := catch: input-record = find-provisioning-anchor image
+  if error: ui.abort "invalid AP anchor: $error"
+  if input-record == null:
     ui.abort "no anchor record in the AP image — provision the default layout first (gen-anchor.toit)"
+  input-entries := input-record.parts.entries
+  anchor-file := input-record.parts["anchor"].offset - input-record.parts["base"].offset
+  if console != null and console != ANCHOR-CONSOLE-OFF and not 0 <= console <= 2:
+    ui.abort "console UART must be 0, 1, 2, or $ANCHOR-CONSOLE-OFF"
 
   input-base := first-of input-entries "base"
   input-slot := first-of input-entries "slot"
@@ -135,8 +163,8 @@ retarget image/ByteArray target/Partitions --ui/cli.Ui --console/int?=null -> By
   slots := target.entries.filter: it.type == "slot"
 
   // Guardrails: the frozen territory must not move, slot sizes must
-  // match (the image is built for its reservation), and data partitions
-  // must not move relative to the source (they may hold live bytes).
+  // match (the image is built for its reservation). Every fixed entry must
+  // retain its name, type and geometry, including vendor and live-data regions.
   if target-base.offset != input-base.offset or target-base.size != input-base.size:
     ui.abort "the base partition cannot move (frozen contract)"
   if (target["anchor"].offset) != input-anchor.offset:
@@ -144,10 +172,10 @@ retarget image/ByteArray target/Partitions --ui/cli.Ui --console/int?=null -> By
   if target-slot.size != input-slot.size:
     ui.abort "slot size 0x$(%x target-slot.size) != image's 0x$(%x input-slot.size) — rebuild, don't retarget"
   input-entries.do: | p/Partition |
-    if p.type == "data":
+    if p.type != "slot" and p.type != "free":
       t := target.entries.filter: it.name == p.name
-      if t.is-empty or t[0].offset != p.offset or t[0].size != p.size:
-        ui.abort "refusing to move/resize data partition '$p.name' (may hold live data; no migration journal yet)"
+      if t.is-empty or t[0].type != p.type or t[0].offset != p.offset or t[0].size != p.size:
+        ui.abort "refusing to move/resize/retype fixed partition '$p.name' ($p.type)"
 
   // Lift the slot-A reservation and read the merged relocation table at
   // its tail: [ table ][ size : last u32 ].
@@ -155,11 +183,23 @@ retarget image/ByteArray target/Partitions --ui/cli.Ui --console/int?=null -> By
   slot-size := input-slot.size
   if src-file + slot-size > image.size:
     ui.abort "image ($image.size bytes) does not span the source slot reservation"
+  content := src-file + slot-size
+  if not (image[content..].every: it == 0xff):
+    ui.abort "non-erased data after slot A: provisioning cannot discard a populated second slot or live data"
   slot-bytes := image.copy src-file (src-file + slot-size)
   table-length := LITTLE-ENDIAN.uint32 slot-bytes (slot-size - 4)
   if not (0 < table-length <= slot-size - 4):
     ui.abort "no merged relocation table at the source slot tail"
-  merged := SlotRelocTable.parse (slot-bytes.copy (slot-size - 4 - table-length) (slot-size - 4))
+  merged/SlotRelocTable? := null
+  error = catch:
+    merged = SlotRelocTable.parse (slot-bytes.copy (slot-size - 4 - table-length) (slot-size - 4))
+  if error: ui.abort "invalid source relocation table: $error"
+  if merged.slot-size != slot-size:
+    ui.abort "source relocation table slot size does not match the anchor reservation"
+  tgt-file := target-slot.offset - target-base.offset
+  prefix-end := min (tgt-file + slot-size) src-file
+  if tgt-file < prefix-end and not (image[tgt-file..prefix-end].every: it == 0xff):
+    ui.abort "target slot would overwrite non-erased data before source slot A"
 
   // Un-relocate the body to canonical, re-relocate to the target slot.
   // The .data init and the tail trailer are position-independent and ride
@@ -171,13 +211,11 @@ retarget image/ByteArray target/Partitions --ui/cli.Ui --console/int?=null -> By
   merged.apply body --base=0 --delta=(tgt-xip - merged.link-base) --direction=TO-SLOT
 
   // Assemble: the image proper ends at the source slot-A reservation
-  // (this tool handles single-populated-slot images; anything after —
-  // extract's whole-image SHA trailer or padding — is dropped and
-  // re-derived). Erase the source reservation, place the retargeted
+  // (this tool handles single-populated-slot images; only verified erased
+  // padding may follow). Erase the source reservation, place the retargeted
   // slot, normalize to the end of the LAST target slot reservation
   // (erased slot B), write the target record, and append a fresh trailer
   // for parity with what `firmware extract` emits.
-  content := src-file + slot-size
   last-slot := slots.last
   normalized-size := last-slot.offset + last-slot.size - target-base.offset
   if content > normalized-size:
@@ -185,12 +223,10 @@ retarget image/ByteArray target/Partitions --ui/cli.Ui --console/int?=null -> By
   out := ByteArray normalized-size --initial=0xff
   out.replace 0 image[..content]
   out.fill --from=src-file --to=(src-file + slot-size) 0xff
-  tgt-file := target-slot.offset - target-base.offset
   out.replace tgt-file slot-bytes
-  anchor-file := input-anchor.offset - input-base.offset
   // Known-good console: explicit override, else preserved from the input
   // image. This is static provisioning, not a live-device OTA transaction.
-  effective-console := console or (find-anchor-console image) or 0
+  effective-console := console or input-record.console
   out.replace anchor-file (encode-anchor-region target --console=effective-console)
 
   print "provision: slot A 0x$(%x input-slot.offset) -> 0x$(%x target-slot.offset)"

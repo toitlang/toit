@@ -40,12 +40,13 @@ static void store_le32(uint8_t* p, uint32_t v) {
 }
 
 // Decodes one unsigned LEB128 varint at `p` (< `end`). Returns the byte after
-// the varint, or null on truncation.
+// the varint, or null on truncation or uint32 overflow.
 static const uint8_t* decode_varint(const uint8_t* p, const uint8_t* end, uint32_t* out) {
   uint32_t value = 0;
   int shift = 0;
   while (p < end) {
     uint8_t b = *p++;
+    if (shift == 28 && b > 0x0f) return null;
     value |= static_cast<uint32_t>(b & 0x7f) << shift;
     if ((b & 0x80) == 0) {
       *out = value;
@@ -96,6 +97,45 @@ static void thumb_branch_encode(uint8_t* p, int32_t imm) {
   p[3] = static_cast<uint8_t>(hi >> 8);
 }
 
+// Each site spans four bytes. Validate before accumulating, so neither the
+// offset arithmetic nor the later applier can wrap or leave the body.
+static bool valid_site(uint32_t previous, uint32_t delta, uint32_t body_size,
+                       uint32_t alignment, bool first) {
+  if (body_size < 4 || previous > body_size - 4 ||
+      delta > body_size - 4 - previous) return false;
+  return ((previous + delta) % alignment) == 0 && (first || delta >= 4);
+}
+
+// Both streams have already been checked individually. Merge their sorted
+// sites to reject patches that would modify the same bytes twice.
+static bool disjoint_streams(const uint8_t* a, uint32_t ac, uint32_t ax,
+                             const uint8_t* b, uint32_t bc, uint32_t bx,
+                             const uint8_t* end) {
+  uint32_t ao = 0, bo = 0;
+  bool advance_a = true, advance_b = true;
+  while (ac != 0 && bc != 0) {
+    uint32_t step;
+    if (advance_a) {
+      a = decode_varint(a, end, &step);
+      if (a == null) return false;
+      ao += step;
+      a += ax;
+    }
+    if (advance_b) {
+      b = decode_varint(b, end, &step);
+      if (b == null) return false;
+      bo += step;
+      b += bx;
+    }
+    if (ao < bo + 4 && bo < ao + 4) return false;
+    advance_a = ao < bo;
+    advance_b = !advance_a;
+    if (advance_a) ac--;
+    else bc--;
+  }
+  return true;
+}
+
 bool slot_reloc_parse(const uint8_t* blob, size_t len, SlotRelocTable* table) {
   if (len < SRL3_HEADER_SIZE) return false;
   if (memcmp(blob, SRL3_MAGIC, sizeof(SRL3_MAGIC)) != 0) return false;
@@ -108,32 +148,51 @@ bool slot_reloc_parse(const uint8_t* blob, size_t len, SlotRelocTable* table) {
   table->straddle_count = load_le32(blob + 28);
   table->base_version = load_le32(blob + 32);
   table->base_fp = blob + 36;  // 16 bytes.
+  if (table->slot_size < 4 || len > table->slot_size - 4) return false;
+  uint32_t front_limit = table->slot_size - 4 - static_cast<uint32_t>(len);
+  if (table->body_size > front_limit ||
+      table->data_size > front_limit - table->body_size) return false;
   table->end = blob + len;
   const uint8_t* p = blob + SRL3_HEADER_SIZE;
   table->abs32_varints = p;
+  uint32_t previous = 0;
   // Walk the ABS32 stream to locate the start of the branch stream.
   for (uint32_t i = 0; i < table->abs32_count; i++) {
     uint32_t delta;
     p = decode_varint(p, table->end, &delta);
-    if (p == null) return false;
+    if (p == null || !valid_site(previous, delta, table->body_size, 4, i == 0)) return false;
+    previous += delta;
   }
   table->thmbl_varints = p;
+  previous = 0;
   // Walk the branch stream to locate the start of the straddle stream.
   for (uint32_t i = 0; i < table->thmbl_count; i++) {
     uint32_t delta;
     p = decode_varint(p, table->end, &delta);
-    if (p == null) return false;
+    if (p == null || !valid_site(previous, delta, table->body_size, 2, i == 0)) return false;
+    previous += delta;
   }
   table->straddle_entries = p;
+  previous = 0;
   // Validate the straddle stream (delta-varint offset + 4 canonical site
   // bytes per entry) is well-formed and fully contained.
   for (uint32_t i = 0; i < table->straddle_count; i++) {
     uint32_t delta;
     p = decode_varint(p, table->end, &delta);
-    if (p == null || p + 4 > table->end) return false;
+    if (p == null || table->end - p < 4 ||
+        !valid_site(previous, delta, table->body_size, 2, i == 0)) return false;
+    previous += delta;
     p += 4;
   }
-  return true;
+  size_t padding = table->end - p;
+  if (padding != 0 && padding != ((4 - ((p - blob) & 3)) & 3)) return false;
+  while (p < table->end) if (*p++ != 0) return false;
+  return disjoint_streams(table->abs32_varints, table->abs32_count, 0,
+                         table->thmbl_varints, table->thmbl_count, 0, table->end) &&
+         disjoint_streams(table->abs32_varints, table->abs32_count, 0,
+                         table->straddle_entries, table->straddle_count, 4, table->end) &&
+         disjoint_streams(table->thmbl_varints, table->thmbl_count, 0,
+                         table->straddle_entries, table->straddle_count, 4, table->end);
 }
 
 bool slot_reloc_parse_trailer(const uint8_t* slot, uint32_t slot_size, SlotRelocTable* table) {
@@ -141,12 +200,14 @@ bool slot_reloc_parse_trailer(const uint8_t* slot, uint32_t slot_size, SlotReloc
   uint32_t n = load_le32(slot + slot_size - 4);
   // An erased tail reads as 0xffffffff; reject that and any implausible size.
   if (n < SRL3_HEADER_SIZE || n > slot_size - 4) return false;
-  return slot_reloc_parse(slot + slot_size - 4 - n, n, table);
+  if (!slot_reloc_parse(slot + slot_size - 4 - n, n, table)) return false;
+  uint32_t front_limit = slot_size - 4 - n;
+  return table->body_size <= front_limit && table->data_size <= front_limit - table->body_size;
 }
 
 bool slot_reloc_build_trailer(const uint8_t* table_blob, uint32_t len,
                               uint8_t* out, uint32_t out_size) {
-  if (out_size < len + 4) return false;
+  if (out_size < 4 || len > out_size - 4) return false;
   uint32_t pad = out_size - len - 4;
   memset(out, 0xff, pad);  // Leave the lead as erased.
   memcpy(out + pad, table_blob, len);
@@ -241,7 +302,7 @@ bool SlotFirmware::open(const uint8_t* slot, uint32_t slot_base_addr, uint32_t s
   // starts on a 4-byte boundary — required for word-granular un-relocation.
   if ((n & 3) != 0) return false;
   const uint8_t* blob = slot + slot_size - 4 - n;
-  if (!slot_reloc_parse(blob, n, &table_)) return false;
+  if (!slot_reloc_parse_trailer(slot, slot_size, &table_)) return false;
   slot_ = slot;
   slot_size_ = slot_size;
   table_blob_ = blob;
