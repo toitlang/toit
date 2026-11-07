@@ -52,8 +52,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build pkg-config libusb-1.0-0-dev \
-            gcc-multilib gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
-            python3-serial
+            gcc-multilib gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
+          python3 -m pip install pyserial
       - name: Prepare pinned SDK and picotool
         run: make rp2040-setup
       - name: Test recovery and uploader on host
