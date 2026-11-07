@@ -19,12 +19,9 @@ import system.base.firmware show FirmwareWriter
 import ec618
 import ec618.slot
 
-import crypto.sha256 show Sha256
-import io show Buffer LITTLE-ENDIAN
+import .firmware-writer show SlotFirmwareWriter SlotWriterBackend
 
 import ..shared.firmware show EmbeddedFirmwareServiceProviderBase
-
-SECTOR-SIZE_ ::= 0x1000
 
 slot-program-mode_ on/int -> none:
   #primitive.ec618.slot-program-mode
@@ -37,6 +34,12 @@ slot-mark-invalid-and-reset_ -> none:
 
 slot-reloc-begin_ table/ByteArray -> none:
   #primitive.ec618.slot-reloc-begin
+
+slot-reloc-resume_ table/ByteArray -> none:
+  #primitive.ec618.slot-reloc-resume
+
+slot-read-inactive_ offset/int bytes/ByteArray -> none:
+  #primitive.ec618.slot-inactive-read
 
 slot-reloc-end_ -> none:
   #primitive.ec618.slot-reloc-end
@@ -52,6 +55,7 @@ slot-stage_ -> none:
 
 class FirmwareServiceProvider extends EmbeddedFirmwareServiceProviderBase:
   writer_/FirmwareWriter_? := null
+  opening_/bool := false
 
   constructor:
     super "system/firmware/ec618"
@@ -85,153 +89,85 @@ class FirmwareServiceProvider extends EmbeddedFirmwareServiceProviderBase:
     return "flash:ec618"
 
   firmware-writer-open client/int from/int to/int -> FirmwareWriter:
-    if writer_: throw "ALREADY_IN_USE"
+    if writer_ or opening_: throw "ALREADY_IN_USE"
     // Firmware-sector program/erase mode and relocation are global too. Enter
     // program mode before publishing the resource and unwind it if resource
     // construction/registration fails. The modem stays on: with a matched CP
     // the flash is CP-safe, and a cellular OTA needs the link up.
-    slot-program-mode_ 1
+    // Rehashing a resumed prefix can yield before the resource is registered.
+    // Reserve ownership throughout construction as well as its whole lifetime.
+    opening_ = true
+    programming := false
     opened := false
     try:
+      slot-program-mode_ 1
+      programming = true
       writer := FirmwareWriter_ this client from to
       writer_ = writer
       opened = true
       return writer
     finally:
-      if not opened: slot-program-mode_ 0
+      try:
+        if not opened and programming:
+          try:
+            slot-reloc-end_
+          finally:
+            slot-program-mode_ 0
+      finally:
+        opening_ = false
 
   on-writer-closed_ writer/FirmwareWriter_ -> none:
     if writer_ == writer: writer_ = null
 
-/**
-Writes a new firmware image to the INACTIVE VM slot via relocate-on-write.
-
-The stream is the standard CANONICAL firmware image, table-first:
-
-```
-[ table-size : u32 ][ SRL3 reloc table ][ VM body + extension ]
-```
-
-The writer accumulates the leading `[ size ][ table ]` and arms relocation
-  (the relocation setup also lays the slot's self-locating tail trailer),
-  then streams the body+extension into the slot — the VM relocates each chunk
-  onto the destination slot transparently, so this code never sees slot
-  addresses. $commit verifies the canonical SHA-256 and stages the slot as a
-  trial; `firmware.upgrade` reboots into it, and the new image must
-  `firmware.validate` or the next reset rolls back.
-
-Runs in the system (firmware service) process, so it may call the PRIVILEGED
-  slot primitives.
-*/
+// Owns the global native relocation context until explicit close or client death.
 class FirmwareWriter_ extends ServiceResource implements FirmwareWriter:
-  static SECTOR ::= SECTOR-SIZE_  // 4 KB erase unit.
-  static SEGMENT ::= 16               // Flash write granularity.
-
-  // Header phase: accumulate [ size:4 ][ table:N ] before arming relocation.
-  header_/Buffer? := Buffer
-  header-length_/int := 0
-  table-length_/int := -1             // N; known once 4 bytes are in.
-  armed_/bool := false
-
-  // Body phase: buffer a sector, flush it whole, lazily erase ahead of writes.
-  body_/ByteArray := ByteArray SECTOR
-  fullness_/int := 0
-  slot-offset_/int := 0               // Next body offset within the slot.
-  erased-until_/int := 0              // Sectors [0, erased-until_) are erased.
-
-  sha_/Sha256 := Sha256               // Over the whole canonical image.
-  staged_/bool := false
+  writer_/SlotFirmwareWriter
   service_/FirmwareServiceProvider
 
   constructor .service_ client/int from/int to/int:
+    writer_ = SlotFirmwareWriter (NativeSlotWriterBackend_) from to
     super service_ client
 
   write bytes/ByteArray -> int:
-    sha_.add bytes
-    consume_ bytes 0 bytes.size
-    return bytes.size
+    return writer_.write bytes
 
   pad size/int value/int -> int:
-    chunk := ByteArray (min size SECTOR)
-    chunk.fill value
-    remaining := size
-    while remaining > 0:
-      n := min remaining chunk.size
-      sha_.add chunk 0 n
-      consume_ chunk 0 n
-      remaining -= n
-    return size
+    return writer_.pad size value
 
-  // Routes `bytes[from..to)`: header bytes accumulate until the table is
-  // complete (then relocation is armed), everything after is body.
-  consume_ bytes/ByteArray from/int to/int -> none:
-    while from < to and not armed_:
-      header_.write-byte bytes[from]
-      from++
-      header-length_++
-      if header-length_ == 4:
-        table-length_ = LITTLE-ENDIAN.uint32 header_.bytes 0
-        if not (0 < table-length_ <= slot.SLOT-SIZE - 4):
-          throw "firmware: invalid relocation table size"
-      else if table-length_ >= 0 and header-length_ == 4 + table-length_:
-        full := header_.bytes
-        slot-reloc-begin_ full[4 .. 4 + table-length_]
-        armed_ = true
-        header_ = null
-    if from < to: write-body_ bytes from to
-
-  write-body_ bytes/ByteArray from/int to/int -> none:
-    while from < to:
-      n := min (body_.size - fullness_) (to - from)
-      body_.replace fullness_ bytes from (from + n)
-      fullness_ += n
-      from += n
-      if fullness_ == body_.size: flush-full-sector_
-
-  // Writes one full (sector-aligned) sector and advances. Sector alignment
-  // guarantees no relocation site straddles the write window.
-  flush-full-sector_ -> none:
-    ensure-erased_ (slot-offset_ + SECTOR)
-    slot-write-inactive_ slot-offset_ body_
-    slot-offset_ += SECTOR
-    fullness_ = 0
-
-  ensure-erased_ end/int -> none:
-    target := round-up end SECTOR
-    while erased-until_ < target:
-      slot-erase-inactive-sector_ erased-until_
-      erased-until_ += SECTOR
-
-  // Only full sectors are written eagerly; the sub-sector remainder is held and
-  // written by $commit. So flush just reports the still-buffered byte count.
   flush -> int:
-    return fullness_
+    return writer_.flush
 
   commit checksum/ByteArray? -> none:
-    if not armed_: throw "firmware: incomplete image (no relocation table)"
-    // Write the final sub-sector remainder, padded to the segment size. The pad
-    // lands in the slot's free region (past the populated bytes) and is not part
-    // of the canonical image.
-    if fullness_ > 0:
-      padded := round-up fullness_ SEGMENT
-      body_.fill --from=fullness_ --to=padded 0
-      ensure-erased_ (slot-offset_ + padded)
-      slot-write-inactive_ slot-offset_ body_[..padded]
-      slot-offset_ += fullness_
-      fullness_ = 0
-    digest := sha_.get
-    if checksum and checksum != digest:
-      slot-reloc-end_
-      throw "firmware: checksum mismatch"
-    slot-reloc-end_
-    slot-stage_  // Stage as a trial; firmware.upgrade reboots into it.
-    staged_ = true
+    writer_.commit checksum
 
   on-closed -> none:
     try:
-      if not staged_: slot-reloc-end_
+      writer_.close
     finally:
       try:
         slot-program-mode_ 0
       finally:
         service_.on-writer-closed_ this
+
+class NativeSlotWriterBackend_ implements SlotWriterBackend:
+  slot-size -> int:
+    return slot.SLOT-SIZE
+
+  begin table/ByteArray --resume/bool -> none:
+    if resume: slot-reloc-resume_ table
+    else: slot-reloc-begin_ table
+
+  read offset/int bytes/ByteArray -> none:
+    slot-read-inactive_ offset bytes
+
+  erase offset/int -> none:
+    slot-erase-inactive-sector_ offset
+
+  write offset/int bytes/ByteArray -> none:
+    slot-write-inactive_ offset bytes
+
+  end -> none:
+    slot-reloc-end_
+
+  stage -> none:
+    slot-stage_

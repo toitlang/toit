@@ -440,6 +440,13 @@ ec618: ec618-relocations
 	$(TOIT_BIN) run --project-root tools tools/ec618/slot-reloc-test.toit
 	$(TOIT_BIN) run --project-root tools tools/ec618/partitions-test.toit
 	$(TOIT_BIN) run --project-root tools tools/ec618/anchor-test.toit
+	$(TOIT_BIN) tool firmware -e $(EC618_ENVELOPE) extract --format=binary \
+		--config=tools/ec618/firmware-test-config.json -o $(BUILD)/ec618/test-export.bin
+	$(TOIT_BIN) tool firmware -e $(EC618_ENVELOPE) extract --format=ubjson \
+		--config=tools/ec618/firmware-test-config.json -o $(BUILD)/ec618/test-export.ubjson
+	$(TOIT_BIN) run --project-root tools tools/ec618/firmware-export-test.toit -- \
+		$(BUILD)/ec618/test-export.ubjson $(BUILD)/ec618/test-export.bin \
+		tools/ec618/firmware-test-config.json $(BUILD)/ec618/slot-data.bin
 	@echo Envelope: $(EC618_ENVELOPE)
 	@echo Binpkg: $(EC618_BINPKG)
 	@echo Reloc: $(BUILD)/ec618/slot-reloc.bin

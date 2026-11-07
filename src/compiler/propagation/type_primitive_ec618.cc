@@ -27,6 +27,8 @@ TYPE_PRIMITIVE_NULL(console_uart_set)
 TYPE_PRIMITIVE_NULL(slot_inactive_erase)
 TYPE_PRIMITIVE_NULL(slot_inactive_write)
 TYPE_PRIMITIVE_NULL(slot_reloc_begin)
+TYPE_PRIMITIVE_NULL(slot_reloc_resume)
+TYPE_PRIMITIVE_NULL(slot_inactive_read)
 TYPE_PRIMITIVE_NULL(slot_reloc_end)
 
 TYPE_PRIMITIVE(slot_stage_and_reset) {
