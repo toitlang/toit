@@ -54,12 +54,16 @@ def code_size(dump):
   return 0
 
 
-def method_count(dump):
+def body_size(dump):
+  """The bytes of the method bodies (from the debug names' `m` lines)."""
+  total = 0
   with open(dump) as f:
     for line in f:
-      if line.startswith("methods "):
-        return int(line.split()[1])
-  return 0
+      if line.startswith("m "):
+        total += int(line.split()[2])
+      elif line.startswith("dispatch "):
+        break
+  return total
 
 
 def main():
@@ -83,21 +87,21 @@ def main():
     for fut in concurrent.futures.as_completed(futures):
       t, i = futures[fut]
       totals[i].update(fut.result())
-  methods = [0, 0]
+  bodies = [0, 0]
   for t, (d1, d2) in dumps.items():
     sizes[0] += code_size(d1)
     sizes[1] += code_size(d2)
-    methods[0] += method_count(d1)
-    methods[1] += method_count(d2)
+    bodies[0] += body_size(d1)
+    bodies[1] += body_size(d2)
   s1 = sum(totals[0].values())
   s2 = sum(totals[1].values())
   print("tests: %d" % len(tests))
   print("steps: format 1 %d, format 2 %d (%+.1f%%)" % (s1, s2, 100.0 * (s2 - s1) / s1))
   print("bytecodes (sum over tests, incl. headers): format 1 %d, format 2 %d (%+.1f%%)"
         % (sizes[0], sizes[1], 100.0 * (sizes[1] - sizes[0]) / sizes[0]))
-  bodies = [sizes[0] - 4 * methods[0], sizes[1] - 16 * methods[1] - 4 * len(tests)]
-  print("method bodies only: format 1 %d, format 2 %d (%+.1f%%); headers: %d -> %d bytes"
-        % (bodies[0], bodies[1], 100.0 * (bodies[1] - bodies[0]) / bodies[0], 4 * methods[0], 16 * methods[1]))
+  print("method bodies only: format 1 %d, format 2 %d (%+.1f%%); headers (and tag): %d -> %d bytes"
+        % (bodies[0], bodies[1], 100.0 * (bodies[1] - bodies[0]) / bodies[0],
+           sizes[0] - bodies[0], sizes[1] - bodies[1]))
   groups = [
     ("checked field loads", ["LOAD_FIELD", "LOAD_FIELD_WIDE", "LOAD_FIELD_LOCAL", "POP_LOAD_FIELD_LOCAL"]),
     ("unchecked field loads (this)", ["LOAD_FIELD_THIS"]),

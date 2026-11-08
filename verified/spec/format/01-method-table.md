@@ -25,8 +25,10 @@ the VM nor a verifier knows the extent of a method without the source map.
 ## Decision
 
 Method `i` is the `i`-th method in the bytecodes. The bytecodes start with
-the tag `TBC2`, then the methods back to back, each a 16-byte header and
-its body:
+the tag `TBC2`, then the methods back to back, each a header and its
+body. The header holds arity, kind, body length, selector, receiver range
+and aux; its encoding (two bytes plus LEB128 numbers, 5.2 bytes on
+average) is in note 15. The first encoding was a fixed 16 bytes:
 
     arity u8 | kind u8 | max height u16 | selector u16 | aux u16
     | receiver range start u16 | end u16 | body length u32
@@ -58,6 +60,7 @@ Run time: one indirection more per call in a VM that keeps code in flash
 (`methods[id].entry`) unless the table is kept in RAM (12-16 bytes per
 method; 750 methods for hello world, ~12 KB) or calls are resolved to
 addresses at load time, which the verified loader can do since it knows
-the table. Interpretation itself is unchanged. Code size: see note 13 (the
-16-byte header costs 3.4 MB vs 0.9 MB of headers over the test suite; an
-8-byte encoding is enough).
+the table. Interpretation itself is unchanged. Code size: see notes 13 and 15 (the
+16-byte header cost 3.4 MB vs 0.9 MB of headers over the test suite; the
+variable-length header of note 15 costs 1.1 MB, and format 2 as a whole is
+smaller than format 1).
