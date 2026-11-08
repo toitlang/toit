@@ -206,6 +206,13 @@ if (NOT ${TOIT_IS_EMBEDDED})
 endif()
 target_include_directories(toit_vm PRIVATE "${TOIT_SDK_SOURCE_DIR}/third_party/dragonbox/include")
 
+# The Verus-verified interpreter core (see verified/CMakeLists.txt).
+if (TOIT_VERIFIED_CORE_ENABLED)
+  target_compile_definitions(toit_vm PRIVATE TOIT_VERIFIED_CORE)
+  target_link_libraries(toit_vm PRIVATE toit_verified_core)
+  add_dependencies(toit_vm toit_verified_core_layout)
+endif()
+
 # On linux, we need to link statically against libgcc as well.
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
   if (NOT ${TOIT_IS_EMBEDDED})

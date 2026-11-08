@@ -190,6 +190,8 @@ add_custom_target(
 set(EXTERNAL_TOIT_LIBS)
 include(tools/external.cmake)
 
+# Must come before src: defines the verified core targets and options.
+add_subdirectory(verified)
 add_subdirectory(src)
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
   add_subdirectory(third_party/libgpiod)
