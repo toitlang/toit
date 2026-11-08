@@ -36,6 +36,7 @@
 //     warnings (errors with VerifierOptions::strict).
 
 #include "verifier.h"
+#include "primitive_policy.h"
 
 #if !defined(TOIT_FREERTOS)
 
@@ -2136,18 +2137,28 @@ bool Verifier::is_enabled() {
   return Flags::verify || (env != null && env[0] != '\0' && env[0] != '0');
 }
 
-bool Verifier::verify_if_enabled(Program* program, bool untrusted) {
-  if (!is_enabled()) return true;
+static bool verify_and_report(Program* program, bool untrusted) {
   const char* verbose = getenv("TOIT_VERIFY_VERBOSE");
   VerifierOptions options;
   options.verbosity = verbose != null ? atoi(verbose) : 0;
   options.untrusted = untrusted;
   VerifierStats stats;
-  if (!verify(program, &stats, options)) {
-    fprintf(stderr, "verifier: program rejected (%d errors)\n", stats.errors);
+  if (!Verifier::verify(program, &stats, options)) {
+    fprintf(stderr, "verifier: %sprogram rejected (%d errors)\n",
+            untrusted ? "untrusted " : "", stats.errors);
     return false;
   }
   return true;
+}
+
+bool Verifier::verify_if_enabled(Program* program, bool untrusted) {
+  if (!is_enabled()) return true;
+  return verify_and_report(program, untrusted);
+}
+
+bool Verifier::verify_for_policy(Program* program, const PrimitivePolicy* policy) {
+  if (policy->is_untrusted()) return verify_and_report(program, true);
+  return verify_if_enabled(program, false);
 }
 
 void Verifier::set_bytecodes_for_testing(Program* program, uint8* bytes, int length) {
@@ -2180,6 +2191,11 @@ bool Verifier::is_enabled() {
 
 bool Verifier::verify_if_enabled(Program* program, bool untrusted) {
   return true;
+}
+
+// Without the verifier, untrusted programs can not be admitted.
+bool Verifier::verify_for_policy(Program* program, const PrimitivePolicy* policy) {
+  return !policy->is_untrusted();
 }
 
 void Verifier::set_bytecodes_for_testing(Program* program, uint8* bytes, int length) {}

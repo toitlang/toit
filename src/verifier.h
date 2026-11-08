@@ -20,6 +20,7 @@
 namespace toit {
 
 class Program;
+class PrimitivePolicy;
 
 // Statistics collected by the verifier. All counts refer to the last
 // verification pass (the verifier may run several passes to infer which
@@ -94,16 +95,23 @@ class Verifier {
   // to stderr.
   static bool verify(Program* program, VerifierStats* stats, const VerifierOptions& options);
 
-  // Whether programs should be verified when they are loaded: -Xverify or the
-  // TOIT_VERIFY environment variable.
-  // TODO(sandbox): verify every program that is launched as untrusted, once
-  // the process-group policy exists, instead of relying on a VM flag.
+  // Whether trusted programs should be verified when they are loaded:
+  // -Xverify or the TOIT_VERIFY environment variable.
   static bool is_enabled();
 
   // Verifies the program if verification is enabled. Returns false if the
   // program is rejected (the errors have been printed).
   // 'untrusted' selects the rules for untrusted programs (see VerifierOptions).
   static bool verify_if_enabled(Program* program, bool untrusted);
+
+  // Install-time verification of a program that is about to run in a new
+  // process group with the given policy. Programs launched with the
+  // untrusted policy are always verified, with the untrusted rules,
+  // independent of -Xverify/TOIT_VERIFY. Other programs are verified with
+  // the trusted rules only if verification is enabled. Returns false if the
+  // program must not run (the errors have been printed). Builds without the
+  // verifier (devices) refuse every untrusted program.
+  static bool verify_for_policy(Program* program, const PrimitivePolicy* policy);
 
   // Testing hook: replaces the program's bytecodes with a writable copy.
   static void set_bytecodes_for_testing(Program* program, uint8* bytes, int length);

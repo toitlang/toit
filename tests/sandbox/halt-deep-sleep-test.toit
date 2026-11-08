@@ -4,9 +4,13 @@
 
 import .sandbox
 import esp32
-import system.containers
 
-// Deep sleep (HALT 2) terminates the sandboxed process instead of the device.
+// An untrusted program that uses deep sleep (HALT 2) is rejected by the
+// verifier when it is launched: starting the container fails and the
+// program never runs. The image of this test contains the HALT 2, so
+// the untrusted container is refused before the attack can run.
+// (A sandboxed process that reaches HALT 2 anyway is terminated with
+// containers.EXIT-DEVICE-HALT instead of halting the device.)
 main args:
-  sandbox-test args --exit=containers.EXIT-DEVICE-HALT: | arguments/Map |
+  sandbox-test args --refused="VERIFICATION_FAILED": | arguments/Map |
     esp32.deep-sleep (Duration --ms=100)

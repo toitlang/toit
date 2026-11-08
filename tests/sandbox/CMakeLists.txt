@@ -36,11 +36,14 @@ endforeach()
 
 # Programs run directly as untrusted containers with 'toit.run --untrusted'.
 set(UNTRUSTED_RUN_TESTS
-  # Name, program, expected exit code, expected output (regex).
+  # Name, program, expected exit code, expected output (regex),
+  # optionally output that must not appear (regex).
   "print|print-main.toit|0|hello from the sandbox"
   "denied|denied-main.toit|0|hostname: PERMISSION_DENIED.*file: PRIMITIVE_LOOKUP_FAILED"
   "uncaught|uncaught-main.toit|1|PERMISSION_DENIED"
-  "deep-sleep|deep-sleep-main.toit|242|before deep sleep"
+  # The verifier rejects deep sleep in untrusted programs at launch; the
+  # program never runs.
+  "deep-sleep|deep-sleep-main.toit|1|HALT 2.*VERIFICATION_FAILED|before deep sleep"
 )
 
 foreach(entry ${UNTRUSTED_RUN_TESTS})
@@ -49,6 +52,11 @@ foreach(entry ${UNTRUSTED_RUN_TESTS})
   list(GET fields 1 program)
   list(GET fields 2 exit_code)
   list(GET fields 3 output)
+  set(unexpected "")
+  list(LENGTH fields field_count)
+  if(field_count GREATER 4)
+    list(GET fields 4 unexpected)
+  endif()
   foreach(mode source snapshot)
     set(test_name "tests/sandbox/cli/${name}-${mode}")
     add_test(
@@ -59,6 +67,7 @@ foreach(entry ${UNTRUSTED_RUN_TESTS})
           -DMODE=${mode}
           -DEXPECTED_EXIT=${exit_code}
           "-DEXPECTED_OUTPUT=${output}"
+          "-DUNEXPECTED_OUTPUT=${unexpected}"
           -DTMP=${CMAKE_CURRENT_BINARY_DIR}/cli-${name}-${mode}
           -P ${CMAKE_CURRENT_SOURCE_DIR}/run-untrusted.cmake
       )

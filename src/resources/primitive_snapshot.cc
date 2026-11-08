@@ -32,6 +32,14 @@ namespace toit {
 
 MODULE_IMPLEMENTATION(snapshot, MODULE_SNAPSHOT)
 
+// Returns an error with the given text, so the system process can tell a
+// refused program apart from bad arguments.
+static Object* launch_error(Process* process, const char* text) {
+  String* error = process->allocate_string(text);
+  if (error == null) FAIL(ALLOCATION_FAILED);
+  return Error::from(error);
+}
+
 PRIMITIVE(launch) {
   // Launching a program from bytes is reserved for the system process. The
   // system process decides the policy of the launched program group.
@@ -73,14 +81,16 @@ PRIMITIVE(launch) {
 
   Snapshot snapshot(bytes.address(), bytes.length());
   auto image = snapshot.read_image(program_id.address());
-  if (!image.is_valid()) FAIL(INVALID_ARGUMENT);
+  // The snapshot reader rejects malformed snapshots with an invalid image.
+  if (!image.is_valid()) return launch_error(process, "INVALID_SNAPSHOT");
   Program* program = image.program();
-  // Install-time structural verification of the launched snapshot.
-  // TODO(sandbox): use the untrusted ruleset (reject HALT 2/3) for programs
-  // whose process group policy says they are untrusted.
-  if (!Verifier::verify_if_enabled(program, /* untrusted= */ false)) {
+  // Install-time structural verification of the launched snapshot. Untrusted
+  // programs are always verified with the untrusted rules (no HALT 2/3);
+  // trusted ones only with -Xverify/TOIT_VERIFY. A rejected program never
+  // runs.
+  if (!Verifier::verify_for_policy(program, policy)) {
     image.release();
-    FAIL(INVALID_ARGUMENT);
+    return launch_error(process, "VERIFICATION_FAILED");
   }
   ProcessGroup* process_group = ProcessGroup::create(gid, program, image.memory(), policy_holder.take());
   ASSERT(process_group);  // Allocations only fail on devices.

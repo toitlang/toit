@@ -27,5 +27,12 @@ boot container-manager/ContainerManager -> int:
   // track of the number of running processes.
   container-manager.system-image.load.start
   container-manager.images.do: | image/ContainerImage |
-    if image.run-boot: image.load.start
+    if image.run-boot:
+      // A container the VM refuses to run (for example an untrusted
+      // program the verifier rejects) must not keep the others from
+      // booting. The container manager decides whether the refusal is
+      // fatal (see ContainerManager.on-container-refused_).
+      exception := catch: image.load.start
+      if exception:
+        print-on-stderr_ "Failed to start container $image.id: $exception"
   return container-manager.wait-until-done

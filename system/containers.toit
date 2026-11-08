@@ -67,7 +67,14 @@ class Container:
     explicitly-untrusted := policy != null and kind == ContainerService.POLICY-UNTRUSTED
     this.policy = validated
     critical = image.run-critical and not explicitly-untrusted
-    pids_ = {image.spawn this arguments}
+    pids_ = {}
+    try:
+      pids_.add (image.spawn this arguments)
+    finally: | is-exception exception |
+      // The VM refused to run the program (for example because the
+      // verifier rejected an untrusted program). It never ran, so the
+      // manager must not wait for it.
+      if is-exception: image.manager.on-container-refused_ this
 
   static validate-policy_ policy/any -> any:
     kind := policy is List ? (policy.is-empty ? null : policy[0]) : policy
@@ -394,6 +401,18 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
     containers/Map ::= containers-by-image_.get container.image.id --init=: {:}
     containers[container.id] = container
     containers-by-id_[container.id] = container
+
+  on-container-refused_ container/Container -> none:
+    containers-by-id_.remove container.id
+    containers-by-image_.get container.image.id --if-present=: | containers/Map |
+      containers.remove container.id
+    // A refused run-critical container is a fatal error, like a critical
+    // container that fails.
+    if container.critical:
+      if not done_.has-value: done_.set 1
+      return
+    remaining ::= containers-by-id_.size
+    if remaining <= 1 and not done_.has-value: done_.set 0
 
   on-container-stop_ container/Container error/int -> none:
     containers-by-id_.remove container.id

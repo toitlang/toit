@@ -4,6 +4,7 @@
 
 # Runs PROGRAM with 'toit.run --untrusted', either from source or compiled
 # to a snapshot first (MODE), and checks the exit code and the output.
+# If UNEXPECTED_OUTPUT is not empty, the output must not match it.
 
 if(MODE STREQUAL "snapshot")
   file(MAKE_DIRECTORY "${TMP}")
@@ -36,4 +37,8 @@ endif()
 
 if(NOT output MATCHES "${EXPECTED_OUTPUT}")
   message(FATAL_ERROR "Output doesn't match '${EXPECTED_OUTPUT}'")
+endif()
+
+if(NOT "${UNEXPECTED_OUTPUT}" STREQUAL "" AND output MATCHES "${UNEXPECTED_OUTPUT}")
+  message(FATAL_ERROR "Output matches '${UNEXPECTED_OUTPUT}'")
 endif()

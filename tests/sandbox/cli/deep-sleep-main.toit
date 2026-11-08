@@ -4,8 +4,9 @@
 
 import esp32
 
-// Run with 'toit run --untrusted'. Deep sleep from a sandbox terminates the
-// program with exit code 242 instead of putting the VM to sleep.
+// Run with 'toit run --untrusted'. The verifier rejects deep sleep (HALT 2)
+// in untrusted programs when they are launched, so the program never runs
+// and neither line is printed.
 main:
   print "before deep sleep"
   esp32.deep-sleep (Duration --ms=10)
