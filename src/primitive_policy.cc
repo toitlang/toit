@@ -55,9 +55,10 @@ static const unsigned BITMAP_COUNT = 0 MODULE_BITMAP(PRIMITIVE_COUNT);
 
 // The core primitives an untrusted program may call. This is the measured
 // set the core library needs (see docs/sandbox-policy.md) plus the remaining
-// pure, process-local primitives. Anything that reaches the host, flash,
-// RTC, the environment, other processes (beyond process_send, which is
-// gated separately) or VM-global settings is not in this list.
+// pure, process-local primitives and read-only clock access. Anything that
+// reaches the host, flash, the environment, other processes (beyond
+// process_send, which is gated separately), writes the clock, or changes
+// VM-global settings is not in this list.
 static const uint16 UNTRUSTED_CORE[] = {
   // Measured set.
   CoreIndex::add_finalizer,
@@ -180,6 +181,12 @@ static const uint16 UNTRUSTED_CORE[] = {
   CoreIndex::put_uint_little_endian,
   CoreIndex::put_float_64_little_endian,
   CoreIndex::put_float_32_little_endian,
+
+  // Read-only clock access (Time.now, Time.local). Setting the clock or the
+  // time zone stays denied.
+  CoreIndex::get_real_time_clock,
+  CoreIndex::time_info,
+  CoreIndex::seconds_since_epoch_local,
 
   // Remaining pure, process-local primitives.
   CoreIndex::raw_to_float,

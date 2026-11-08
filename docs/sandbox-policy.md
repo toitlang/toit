@@ -55,6 +55,9 @@ module and the index. For the untrusted policy:
   `compare_simple_json_string`, `hash_simple_json_string`,
   `json_skip_whitespace`, `size_of_json_number`, `int_parse`,
   `float_parse`, `read_*_endian`, `put_*_endian`.
+- core, read-only clock access (`Time.now`, `Time.local`,
+  `Time.monotonic-us`): `get_real_time_clock`, `time_info`,
+  `seconds_since_epoch_local`.
 - core, remaining pure and process-local primitives: `raw_to_float`,
   `raw32_to_float`, `uint64_to_string`, `printf_style_int64_to_string`,
   `popcount`, `int_vector_equals`, `string_from_rune`, `string_to_utf_16`,
@@ -71,9 +74,8 @@ module and the index. For the untrusted policy:
 
 Everything else is denied, in particular: `spawn`, `write_on_stdout`,
 `write_on_stderr`, `get_env`, `set_env`, `hostname`, `program_name`,
-`program_path`, `vm_sdk_info`, `set_tz`, `time_info`,
-`seconds_since_epoch_local` (time zone), `get_real_time_clock` and
-`set_real_time_clock` (RTC; so `Time.now` throws), `firmware_*`,
+`program_path`, `vm_sdk_info`, `set_tz` and `set_real_time_clock` (the
+clock and time zone can be read but not changed), `firmware_*`,
 `rtc_user_bytes`, `process_signal_kill`, `process_get_priority`,
 `process_set_priority`, `process_stats`, `pid_for_external_id`,
 `process_policy`, `process_grant_send`, `add_entropy`, `profiler_*`,
@@ -213,7 +215,6 @@ mechanism. `tests/sandbox/cli/` holds programs run directly with
   interpreter hardening (block and method-id validation) and on a
   verifier being in place; without them a malicious snapshot can bypass
   the primitive table.
-- `Time.now` is not available to untrusted code (RTC denied).
 - A sandbox can make the system process print a warning for every
   unhandled message it sends (rate bounded only by the mailbox quota and
   the system process' speed).
