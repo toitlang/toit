@@ -177,7 +177,10 @@ main args/List:
 
   run-command := cli.Command "run"
       --help="Runs the given Toit source or snapshot file."
-      --options=compile-analyze-run-options + compile-run-options
+      --options=compile-analyze-run-options + compile-run-options + [
+        cli.Flag "untrusted"
+            --help="Run the program as an untrusted (sandboxed) container.",
+      ]
       --rest=[
         cli.OptionPath "source"
           --help="The source file to run."
@@ -494,6 +497,8 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
   args.add-all sources
   if command == "run":
     args.add-all invocation["arg"]
+    if invocation["untrusted"]:
+      args = ["--untrusted"] + args
 
   exe := command == "run" ? "toit.run" : "toit.compile"
   exit-code := run invocation["sdk-dir"] exe args
