@@ -21,8 +21,7 @@ pub mod spec;
 pub mod prim;
 pub mod exec;
 pub mod verifier;
-// Excluded from verification until the checker proof lands.
-#[cfg(not(verus_keep_ghost))]
+#[allow(unused_variables)]
 pub mod check;
 #[cfg(not(verus_keep_ghost))]
 pub mod infer;
