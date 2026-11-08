@@ -137,7 +137,9 @@ Snapshot SnapshotBundle::snapshot() {
   ar::MemoryReader reader(buffer_, size_);
   ar::File file;
   int status = reader.find("snapshot", &file);
-  if (status != 0) FATAL("Invalid SnapshotBundle");
+  // Bundles can come from untrusted sources. Reading an invalid snapshot
+  // yields an invalid image.
+  if (status != 0) return Snapshot::invalid();
   return Snapshot(file.content(), file.byte_size);
 }
 
