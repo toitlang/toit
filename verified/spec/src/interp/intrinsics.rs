@@ -388,20 +388,25 @@ impl Machine {
         };
         let hash = match hash_obj { Value::Smi(h) => h, _ => return Err(NotSmi) };
         if state == 1 {
-            // NOT_FOUND: enter the new entry into the index.
+            // NOT_FOUND: enter the new entry into the index (hf_not_found).
             self.put(12, block_result);
-            let (ap, deleted, slot) = match (block_result, self.at(2)?, self.at(3)?) {
-                (Value::Smi(a), Value::Smi(d), Value::Smi(s)) => (a, d, s),
+            let (ap, deleted) = match (block_result, self.at(2)?) {
+                (Value::Smi(a), Value::Smi(d)) => (a, d),
                 _ => return Err(NotSmi),
             };
-            let left = match self.fields(coll).unwrap()[1] { Value::Smi(l) => l, _ => return Err(NotSmi) };
             let new_hap = (ap as i128 + 1) * 4096 + (hash & 0xfff) as i128;
             if !self.smi_ok(new_hap) { return Err(NotSmi); }
-            let idx = if deleted < 0 { slot & mask } else { deleted & mask };
-            if deleted < 0 {
+            let idx = if deleted < 0 {
+                let (slot, left) = match (self.at(3)?, self.fields(coll).unwrap()[1]) {
+                    (Value::Smi(s), Value::Smi(l)) => (s, l),
+                    _ => return Err(NotSmi),
+                };
                 let w = self.smi_wrap(left as i128 - 1);
                 self.set_field_pub(coll, 1, Value::Smi(w));
-            }
+                slot & mask
+            } else {
+                deleted & mask
+            };
             if self.obj(coll).unwrap().ro { return Err(NotSmi); }
             if let Some(e) = self.elements(index) {
                 if !(0 <= idx && (idx as usize) < e.len()) || self.obj(index).unwrap().ro { return Err(NotSmi); }

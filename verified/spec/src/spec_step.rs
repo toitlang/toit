@@ -1202,35 +1202,48 @@ pub open spec fn hash_find_loop(
     }
 }
 
-/// The NOT_FOUND state: enter the appended entry into the index.
+/// Stores `index_[idx] = new_hap` (the array case, or through fast_at for
+/// a large-array index, whose failure the C++ VM only asserts against).
+pub open spec fn hf_store(p: Program, s2: State, coll: Value, index: Value, idx: int, new_hap: int) -> Option<State> {
+    if obj(s2, coll).ro {
+        None
+    } else if is_array(s2, index) {
+        if !(0 <= idx < elements(s2, index).len()) || obj(s2, index).ro {
+            None
+        } else {
+            let o = obj(s2, index);
+            Some(set_obj(s2, obj_id(index),
+                HeapObj { body: Body::Array(elements(s2, index).update(idx, smi(new_hap))), ..o }))
+        }
+    } else {
+        match fast_at(p, s2, index, smi(idx), true, smi(new_hap), FAST_AT_FUEL) {
+            FastAt::Put(s3, _) => Some(s3),
+            FastAt::Stuck(_) => None,
+            _ => Some(s2),
+        }
+    }
+}
+
+/// The NOT_FOUND state: enter the appended entry into the index. The slot
+/// and the spaces-left field are only read when no deleted slot was found.
 pub open spec fn hf_not_found(p: Program, s: State, block_result: Value, index: Value, mask: int, hash: int) -> Option<State> {
     let coll = at(s, 15);
     let s1 = put(s, 12, block_result);
-    match (block_result, at(s1, 2), at(s1, 3), fields(s1, coll)[1]) {
-        (Value::Smi(ap), Value::Smi(deleted), Value::Smi(slot), Value::Smi(left)) => {
+    match (block_result, at(s1, 2)) {
+        (Value::Smi(ap), Value::Smi(deleted)) => {
             let new_hap = (ap as int + 1) * 4096 + band(hash, 0xfff);
             if !smi_ok(p, new_hap) {
                 None
-            } else {
-                let idx = if deleted < 0 { band(slot as int, mask) } else { band(deleted as int, mask) };
-                let s2 = if deleted < 0 { set_field(s1, coll, 1, smi(smi_wrap(p, left - 1))) } else { s1 };
-                if obj(s2, coll).ro {
-                    None
-                } else if is_array(s2, index) {
-                    if !(0 <= idx < elements(s2, index).len()) || obj(s2, index).ro {
-                        None
-                    } else {
-                        let o = obj(s2, index);
-                        Some(set_obj(s2, obj_id(index),
-                            HeapObj { body: Body::Array(elements(s2, index).update(idx, smi(new_hap))), ..o }))
-                    }
-                } else {
-                    match fast_at(p, s2, index, smi(idx), true, smi(new_hap), FAST_AT_FUEL) {
-                        FastAt::Put(s3, _) => Some(s3),
-                        FastAt::Stuck(_) => None,
-                        _ => Some(s2),  // The C++ VM only asserts success.
-                    }
+            } else if deleted < 0 {
+                match (at(s1, 3), fields(s1, coll)[1]) {
+                    (Value::Smi(slot), Value::Smi(left)) => {
+                        let s2 = set_field(s1, coll, 1, smi(smi_wrap(p, left - 1)));
+                        hf_store(p, s2, coll, index, band(slot as int, mask), new_hap)
+                    },
+                    _ => None,
                 }
+            } else {
+                hf_store(p, s1, coll, index, band(deleted as int, mask), new_hap)
             }
         },
         _ => None,
