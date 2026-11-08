@@ -137,6 +137,9 @@ pub proof fn lemma_wf_task_heap(p: Program2, c: Cert, s: State2, h2: Seq<HeapObj
     reveal(wf_task);
     reveal(frame_ok);
     let s2 = with_heap(s, h2);
+    assert forall|fi: int| 0 <= fi && fi + 1 < s2.frames.len() implies #[trigger] base_step(s2, fi) by {
+        assert(base_step(s, fi));
+    }
     assert forall|fi: int| 0 <= fi < s2.frames.len() implies #[trigger] frame_ok(p, c, s2, fi) by {
         assert(frame_ok(p, c, s, fi));
         assert(kinds_of(p, c, s2, fi) == kinds_of(p, c, s, fi));
@@ -195,7 +198,7 @@ pub proof fn lemma_bases_mono(s: State2, a: int, b: int)
     decreases b - a,
 {
     if a < b {
-        assert(s.frames[a].base <= s.frames[a + 1].base);
+        assert(base_step(s, a));
         lemma_bases_mono(s, a + 1, b);
     }
 }
@@ -212,6 +215,7 @@ pub proof fn lemma_limit_below(s: State2, g: int, fi: int)
     ensures limit(s, g) <= fbase(s, fi), fbase(s, g) <= limit(s, g),
 {
     lemma_bases_mono(s, g + 1, fi);
+    assert(base_step(s, g));
 }
 
 /// The context chain from frame `fi` only reads frames `0..=fi`.

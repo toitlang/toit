@@ -130,9 +130,9 @@ pub proof fn lemma_call_shape(p: Program2, c: Cert, trusted: bool, s: State2, s1
     assert(s2.frames[t0 + 1].base == nb);
     assert(s2.frames[t0] == s.frames[t0]);
     assert(bases_ok(s2)) by {
-        assert forall|fi: int| 0 <= fi && fi + 1 < s2.frames.len() implies (#[trigger] s2.frames[fi]).base <= s2.frames[fi + 1].base by {
+        assert forall|fi: int| 0 <= fi && fi + 1 < s2.frames.len() implies #[trigger] base_step(s2, fi) by {
             if fi + 1 < s.frames.len() {
-                assert(s.frames[fi].base <= s.frames[fi + 1].base);
+                assert(base_step(s, fi));
             }
         }
     }

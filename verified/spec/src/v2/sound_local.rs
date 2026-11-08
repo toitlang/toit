@@ -162,6 +162,7 @@ pub proof fn lemma_top_kinds_local(p: Program2, c: Cert, s: State2, s2: State2, 
     assert(k2.subrange(0, k2.len() as int) =~= k2);
 }
 
+#[verifier::spinoff_prover]
 pub proof fn lemma_local_same_below(p: Program2, c: Cert, s: State2, s2: State2, k2: Seq<Kind>)
     requires
         wf_task(p, c, s), top_i(s) > 0,
@@ -172,14 +173,23 @@ pub proof fn lemma_local_same_below(p: Program2, c: Cert, s: State2, s2: State2,
         heap_ext(s.heap, s2.heap),
     ensures same_below(s, s2, top_i(s) - 1), bases_ok(s2),
 {
-    lemma_task_basics(p, c, s);
+    lemma_task_bases(p, c, s);
     let t = top_i(s);
-    assert forall|g: int| 0 <= g <= t - 1 implies #[trigger] try_frame(s2, g) == try_frame(s, g) by {}
+    assert forall|g: int| 0 <= g <= t - 1 implies #[trigger] try_frame(s2, g) == try_frame(s, g) by {
+        assert(s2.tries == s.tries);
+    }
     assert(bases_ok(s2)) by {
-        assert forall|fi: int| 0 <= fi && fi + 1 < s2.frames.len() implies (#[trigger] s2.frames[fi]).base <= s2.frames[fi + 1].base by {
-            assert(s.frames[fi].base <= s.frames[fi + 1].base);
+        assert forall|fi: int| 0 <= fi && fi + 1 < s2.frames.len() implies #[trigger] base_step(s2, fi) by {
+            assert(base_step(s, fi));
         }
     }
+}
+
+pub proof fn lemma_task_bases(p: Program2, c: Cert, s: State2)
+    requires wf_task(p, c, s),
+    ensures s.frames.len() > 0, bases_ok(s), fbase(s, top_i(s)) <= s.stack.len(),
+{
+    reveal(wf_task);
 }
 
 pub proof fn lemma_conf_top_unchanged(p: Program2, c: Cert, trusted: bool, s: State2, s2: State2, k2: Seq<Kind>, j: int)
@@ -343,8 +353,8 @@ pub proof fn lemma_local_step(p: Program2, c: Cert, trusted: bool, s: State2, s2
         lemma_local_same_below(p, c, s, s2, k2);
     }
     assert(bases_ok(s2)) by {
-        assert forall|fi: int| 0 <= fi && fi + 1 < s2.frames.len() implies (#[trigger] s2.frames[fi]).base <= s2.frames[fi + 1].base by {
-            assert(s.frames[fi].base <= s.frames[fi + 1].base);
+        assert forall|fi: int| 0 <= fi && fi + 1 < s2.frames.len() implies #[trigger] base_step(s2, fi) by {
+            assert(base_step(s, fi));
         }
     }
     assert forall|fi: int| 0 <= fi < s2.frames.len() implies #[trigger] frame_ok(p, c, s2, fi) by {

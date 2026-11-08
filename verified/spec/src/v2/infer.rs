@@ -222,6 +222,12 @@ impl<'a> Analysis<'a> {
                     }
                 }
             }
+            // x_post's precondition: a frame of bounded height (the checker
+            // rejects anything above arity + max_height anyway).
+            if h > 0x10_0000 {
+                self.errors.push((m, off, "frame too high".into()));
+                return false;
+            }
             let post = x_post(p, c, m, off, &k, self.trusted);
             let term = matches!(op, RETURN | RETURN_NULL | THROW | BRANCH | BRANCH_BACK | INVOKE_STATIC_TAIL
                 | INVOKE_LAMBDA_TAIL | INVOKE_INITIALIZER_TAIL | NON_LOCAL_RETURN | NON_LOCAL_BRANCH);

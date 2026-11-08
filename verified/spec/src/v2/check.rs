@@ -14,12 +14,18 @@
 // directory of this repository.
 
 //! The executable structural verifier: `verify(p, c, trusted)` is proven
-//! to return exactly `v2::verifier::accepts(p, c, trusted)`.
+//! to return exactly `v2::verifier::accepts(p, c, trusted)` (zero
+//! `assume`/`admit`).
 //!
 //! The certificate is computed by `v2::infer` (untrusted). The checker
 //! works one method at a time, one instruction at a time; it does not
 //! recurse and allocates only the successor kinds of the instruction it
 //! checks. The certificate is an array per method indexed by offset.
+//!
+//! `x_post` is exact except for one corner: a LOAD_OUTER whose depth sum
+//! does not fit a u32 yields a kind no certificate can hold; `x_post` then
+//! returns `None` (`post_rel`), and `x_instr_ok` still agrees with
+//! `instr_ok` because no map can equal such a successor.
 
 use vstd::prelude::*;
 use crate::types::*;
@@ -100,7 +106,76 @@ impl View for XCert {
 }
 
 // ---------------------------------------------------------------------------
+// Representable kinds.
+
+/// The kinds the certificate can hold: depths, slots and method ids fit in
+/// a u32.
+pub open spec fn representable(s: Seq<Kind>) -> bool {
+    forall|i: int| 0 <= i < s.len() ==> match #[trigger] s[i] {
+        Kind::Method(t) => 0 <= t <= u32::MAX as int,
+        Kind::Block(d, x) => 0 <= d <= u32::MAX as int && 0 <= x <= u32::MAX as int,
+        _ => true,
+    }
+}
+
+pub proof fn lemma_representable(k: Vec<XKind>)
+    ensures representable(kv(k)),
+{
+    assert forall|i: int| 0 <= i < kv(k).len() implies match #[trigger] kv(k)[i] {
+        Kind::Method(t) => 0 <= t <= u32::MAX as int,
+        Kind::Block(d, x) => 0 <= d <= u32::MAX as int && 0 <= x <= u32::MAX as int,
+        _ => true,
+    } by {
+        assert(kv(k)[i] == k@[i]@);
+    }
+}
+
+pub proof fn lemma_map_repr(c: &XCert, m: int, o: int)
+    ensures map_at(c@, m, o) is Some ==> representable(map_at(c@, m, o)->0),
+{
+    if map_at(c@, m, o) is Some {
+        let v = c.maps@[m]@[o]->0;
+        assert(map_at(c@, m, o) == okv(c.maps@[m]@[o]));
+        lemma_representable(v);
+    }
+}
+
+/// `x_post`'s result: exact, except that a kind the certificate cannot
+/// hold is reported as `None`.
+pub open spec fn post_rel(r: Option<Vec<XKind>>, o: Option<Seq<Kind>>) -> bool {
+    match r {
+        Some(k2) => o == Some(kv(k2)),
+        None => o is None || !representable(o->0),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Small helpers.
+
+pub fn x_kind_eq(a: XKind, b: XKind) -> (r: bool)
+    ensures r == (a@ == b@), r == (a == b),
+{
+    match (a, b) {
+        (XKind::Val, XKind::Val) => true,
+        (XKind::Method(x), XKind::Method(y)) => x == y,
+        (XKind::Block(x1, x2), XKind::Block(y1, y2)) => x1 == y1 && x2 == y2,
+        (XKind::Param, XKind::Param) => true,
+        (XKind::Token, XKind::Token) => true,
+        _ => false,
+    }
+}
+
+pub fn x_is_token(a: XKind) -> (r: bool)
+    ensures r == (a@ is Token),
+{
+    match a { XKind::Token => true, _ => false }
+}
+
+pub fn x_is_plain(a: XKind) -> (r: bool)
+    ensures r == (a@ is Val),
+{
+    match a { XKind::Val => true, _ => false }
+}
 
 pub fn x_kinds_eq(a: &Vec<XKind>, b: &Vec<XKind>) -> (r: bool)
     ensures r == (kv(*a) == kv(*b)),
@@ -109,13 +184,86 @@ pub fn x_kinds_eq(a: &Vec<XKind>, b: &Vec<XKind>) -> (r: bool)
         return false;
     }
     let mut i = 0;
-    while i < a.len() {
-        if a[i] != b[i] {
+    while i < a.len()
+        invariant
+            a.len() == b.len(),
+            0 <= i <= a.len(),
+            forall|j: int| 0 <= j < i ==> (#[trigger] a@[j])@ == b@[j]@,
+        decreases a.len() - i,
+    {
+        if !x_kind_eq(a[i], b[i]) {
+            proof { assert(kv(*a)[i as int] != kv(*b)[i as int]); }
             return false;
         }
         i += 1;
     }
+    proof { assert(kv(*a) =~= kv(*b)); }
     true
+}
+
+pub fn x_copy(k: &Vec<XKind>) -> (r: Vec<XKind>)
+    ensures r@ == k@, kv(r) == kv(*k),
+{
+    let mut r: Vec<XKind> = Vec::new();
+    let mut i = 0;
+    while i < k.len()
+        invariant 0 <= i <= k.len(), r@ == k@.subrange(0, i as int),
+        decreases k.len() - i,
+    {
+        r.push(k[i]);
+        proof { assert(r@ =~= k@.subrange(0, i + 1)); }
+        i += 1;
+    }
+    proof { assert(r@ =~= k@); }
+    r
+}
+
+pub fn x_push(k: &Vec<XKind>, v: XKind) -> (r: Vec<XKind>)
+    ensures kv(r) == kv(*k).push(v@),
+{
+    let mut r = x_copy(k);
+    r.push(v);
+    proof { assert(kv(r) =~= kv(*k).push(v@)); }
+    r
+}
+
+pub fn x_prefix(k: &Vec<XKind>, n: usize) -> (r: Vec<XKind>)
+    requires n <= k.len(),
+    ensures kv(r) == kv(*k).subrange(0, n as int),
+{
+    let mut r: Vec<XKind> = Vec::new();
+    let mut i = 0;
+    while i < n
+        invariant n <= k.len(), 0 <= i <= n, r@ == k@.subrange(0, i as int),
+        decreases n - i,
+    {
+        r.push(k[i]);
+        proof { assert(r@ =~= k@.subrange(0, i + 1)); }
+        i += 1;
+    }
+    proof { assert(kv(r) =~= kv(*k).subrange(0, n as int)); }
+    r
+}
+
+pub fn x_update(k: &Vec<XKind>, i: usize, v: XKind) -> (r: Vec<XKind>)
+    requires i < k.len(),
+    ensures kv(r) == kv(*k).update(i as int, v@),
+{
+    let mut r = x_copy(k);
+    r.set(i, v);
+    proof { assert(kv(r) =~= kv(*k).update(i as int, v@)); }
+    r
+}
+
+/// `pop_push(k, n, Some(v))`.
+pub fn x_pop_push(k: &Vec<XKind>, n: usize, v: XKind) -> (r: Vec<XKind>)
+    requires n <= k.len(),
+    ensures kv(r) == pop_push(kv(*k), n as int, Some(v@)),
+{
+    let mut r = x_prefix(k, k.len() - n);
+    r.push(v);
+    proof { assert(kv(r) =~= kv(*k).subrange(0, k.len() - n).push(v@)); }
+    r
 }
 
 pub fn x_info(p: &ExecProgram, m: usize) -> (r: MethodInfo)
@@ -139,22 +287,29 @@ pub fn x_u32(p: &ExecProgram, i: usize) -> (r: i64)
     x_u16(p, i) + 65536 * x_u16(p, i + 2)
 }
 
-pub fn x_class_count(p: &ExecProgram) -> (r: i64)
+pub fn x_class_count(p: &ExecProgram) -> (r: usize)
     ensures r as int == class_count(pview2(p)),
 {
-    p.class_bits.len() as i64
+    p.class_bits.len()
+}
+
+/// `class_count(p) + extra <= p.dispatch.len()` without overflow.
+pub fn x_row_fits(p: &ExecProgram, extra: usize) -> (r: bool)
+    ensures r == (class_count(pview2(p)) + extra <= p.dispatch.len()),
+{
+    extra <= p.dispatch.len() && p.class_bits.len() <= p.dispatch.len() - extra
 }
 
 pub fn x_is_instance_class(p: &ExecProgram, cl: i64) -> (r: bool)
     ensures r == is_instance_class(pview2(p), cl as int),
 {
-    0 <= cl && cl < p.class_bits.len() as i64 && (p.class_bits[cl as usize] & 0xf) == 2
+    0 <= cl && (cl as u64) < (p.class_bits.len() as u64) && (p.class_bits[cl as usize] & 0xf) == 2
 }
 
 pub fn x_is_field_class(p: &ExecProgram, cl: i64) -> (r: bool)
     ensures r == is_field_class(pview2(p), cl as int),
 {
-    0 <= cl && cl < p.class_bits.len() as i64
+    0 <= cl && (cl as u64) < (p.class_bits.len() as u64)
         && ((p.class_bits[cl as usize] & 0xf) == 2 || (p.class_bits[cl as usize] & 0xf) == 8)
 }
 
@@ -173,9 +328,9 @@ pub fn x_smi_ok(p: &ExecProgram, v: i64) -> (r: bool)
 }
 
 pub fn x_valid(p: &ExecProgram, t: i64) -> (r: bool)
-    ensures r == valid_method(pview2(p), t as int),
+    ensures r == valid_method(pview2(p), t as int), r ==> (t as usize) as int == t as int,
 {
-    0 <= t && t < p.methods.len() as i64
+    0 <= t && (t as u64) < (p.methods.len() as u64)
 }
 
 pub fn x_is_val(k: XKind) -> (r: bool)
@@ -209,15 +364,22 @@ pub fn x_ctx_of(c: &XCert, t: usize) -> (r: Option<&XContext>)
     }
 }
 
+pub fn x_dispatch_target(p: &ExecProgram, d: i64) -> (r: i64)
+    ensures r as int == dispatch_target(pview2(p), d as int),
+{
+    if 0 <= d && (d as u64) < (p.dispatch.len() as u64) { p.dispatch[d as usize] as i64 } else { -1 }
+}
+
 // ---------------------------------------------------------------------------
 // Block slots and contexts.
 
 pub fn x_block_slot(p: &ExecProgram, c: &XCert, om: i64, fk: &Vec<XKind>, i: i64) -> (r: bool)
     ensures r == block_slot(pview2(p), c@, om as int, kv(*fk), i as int),
 {
-    if i < 0 || i as usize >= fk.len() {
+    if i < 0 || (i as u64) >= (fk.len() as u64) {
         return false;
     }
+    proof { assert(kv(*fk)[i as int] == fk@[i as int]@); }
     match fk[i as usize] {
         XKind::Method(t) => {
             if !(x_valid(p, t as i64) && p.methods[t as usize].kind == 3) {
@@ -225,6 +387,27 @@ pub fn x_block_slot(p: &ExecProgram, c: &XCert, om: i64, fk: &Vec<XKind>, i: i64
             }
             match x_ctx_of(c, t as usize) {
                 Some(ctx) => ctx.outer as i64 == om && ctx.slot as i64 == i,
+                None => false,
+            }
+        },
+        _ => false,
+    }
+}
+
+pub fn x_block_slot_u(p: &ExecProgram, c: &XCert, om: i64, fk: &Vec<XKind>, i: usize) -> (r: bool)
+    ensures r == block_slot(pview2(p), c@, om as int, kv(*fk), i as int),
+{
+    if i >= fk.len() {
+        return false;
+    }
+    proof { assert(kv(*fk)[i as int] == fk@[i as int]@); }
+    match fk[i] {
+        XKind::Method(t) => {
+            if !(x_valid(p, t as i64) && p.methods[t as usize].kind == 3) {
+                return false;
+            }
+            match x_ctx_of(c, t as usize) {
+                Some(ctx) => ctx.outer as i64 == om && ctx.slot as u64 == i as u64,
                 None => false,
             }
         },
@@ -241,14 +424,21 @@ pub fn x_ctx_kinds<'a>(c: &'a XCert, m: i64, depth: u32) -> (r: (Option<&'a Vec<
 {
     let mut cur = m;
     let mut d = depth;
-    loop {
-        if cur < 0 || cur as usize >= c.contexts.len() {
+    loop
+        invariant
+            d >= 1,
+            ctx_kinds(c@, m as int, depth as nat) == ctx_kinds(c@, cur as int, d as nat),
+            ctx_method(c@, m as int, depth as nat) == ctx_method(c@, cur as int, d as nat),
+        decreases d,
+    {
+        if cur < 0 || (cur as u64) >= (c.contexts.len() as u64) {
             return (None, -1);
         }
         match &c.contexts[cur as usize] {
             None => return (None, -1),
             Some(ctx) => {
                 if d == 1 {
+                    proof { assert(ctx_method(c@, ctx.outer as int, 0) == ctx.outer as int); }
                     return (Some(&ctx.kinds), ctx.outer as i64);
                 }
                 cur = ctx.outer as i64;
@@ -262,49 +452,70 @@ pub fn x_wf_kinds(p: &ExecProgram, c: &XCert, m: i64, k: &Vec<XKind>) -> (r: boo
     ensures r == wf_kinds(pview2(p), c@, m as int, kv(*k)),
 {
     let mut j = 0;
-    while j < k.len() {
+    while j < k.len()
+        invariant 0 <= j <= k.len(), forall|jj: int| 0 <= jj < j ==> #[trigger] wf_kind(pview2(p), c@, m as int, kv(*k), jj),
+        decreases k.len() - j,
+    {
+        proof { assert(kv(*k)[j as int] == k@[j as int]@); }
         match k[j] {
             XKind::Block(d, i) => {
                 if d == 0 {
                     if !((i as usize) < j && x_block_slot(p, c, m, k, i as i64)) {
+                        proof { assert(!wf_kind(pview2(p), c@, m as int, kv(*k), j as int)); }
                         return false;
                     }
                 } else {
                     let (fk, om) = x_ctx_kinds(c, m, d);
                     match fk {
-                        None => return false,
-                        Some(fk) => if !x_block_slot(p, c, om, fk, i as i64) { return false; },
+                        None => {
+                            proof { assert(!wf_kind(pview2(p), c@, m as int, kv(*k), j as int)); }
+                            return false;
+                        },
+                        Some(fk) => if !x_block_slot(p, c, om, fk, i as i64) {
+                            proof { assert(!wf_kind(pview2(p), c@, m as int, kv(*k), j as int)); }
+                            return false;
+                        },
                     }
                 }
             },
             _ => {},
         }
+        proof { assert(wf_kind(pview2(p), c@, m as int, kv(*k), j as int)); }
         j += 1;
     }
     true
 }
 
+#[verifier::loop_isolation(false)]
 pub fn x_ctx_ok_at(p: &ExecProgram, c: &XCert, m: i64, k: &Vec<XKind>, i: usize) -> (r: bool)
     requires i < k.len(),
     ensures r == ctx_ok_at(pview2(p), c@, m as int, kv(*k), i as int),
 {
-    if !x_block_slot(p, c, m, k, i as i64) {
+    if !x_block_slot_u(p, c, m, k, i) {
         return true;
     }
     let t = match k[i] { XKind::Method(t) => t, _ => 0 };
+    proof { assert(kv(*k)[i as int] == k@[i as int]@); assert(kind_method(kv(*k)[i as int]) == t as int); }
     match x_ctx_of(c, t as usize) {
         Some(ctx) => {
             let ck = &ctx.kinds;
             if ck.len() != i + 1 {
+                proof { assert(kv(*k).subrange(0, i + 1).len() != kv(*ck).len()); }
                 return false;
             }
             let mut j = 0;
-            while j <= i {
-                if k[j] != ck[j] {
+            while j <= i
+                invariant ck.len() == i + 1, i < k.len(), 0 <= j <= i + 1,
+                    forall|jj: int| 0 <= jj < j ==> (#[trigger] k@[jj])@ == ck@[jj]@,
+                decreases i + 1 - j,
+            {
+                if !x_kind_eq(k[j], ck[j]) {
+                    proof { assert(kv(*k).subrange(0, i + 1)[j as int] != kv(*ck)[j as int]); }
                     return false;
                 }
                 j += 1;
             }
+            proof { assert(kv(*k).subrange(0, i + 1) =~= kv(*ck)); }
             true
         },
         None => true,
@@ -315,7 +526,11 @@ pub fn x_ctx_ok_upto(p: &ExecProgram, c: &XCert, m: i64, k: &Vec<XKind>, n: usiz
     ensures r == ctx_ok_upto(pview2(p), c@, m as int, kv(*k), n as int),
 {
     let mut i = 0;
-    while i <= n && i < k.len() {
+    while i <= n && i < k.len()
+        invariant 0 <= i <= k.len(), i <= n + 1,
+            forall|ii: int| 0 <= ii < i ==> #[trigger] ctx_ok_at(pview2(p), c@, m as int, kv(*k), ii),
+        decreases k.len() - i,
+    {
         if !x_ctx_ok_at(p, c, m, k, i) {
             return false;
         }
@@ -324,31 +539,93 @@ pub fn x_ctx_ok_upto(p: &ExecProgram, c: &XCert, m: i64, k: &Vec<XKind>, n: usiz
     true
 }
 
+/// The slot a local block reference points to, or -1.
+pub open spec fn lref(kd: Kind) -> int {
+    match kd { Kind::Block(d, s) => if d == 0 && s >= 0 { s } else { -1 }, _ => -1 }
+}
+
 pub fn x_ctx_ok(p: &ExecProgram, c: &XCert, m: i64, k: &Vec<XKind>) -> (r: bool)
     ensures r == ctx_ok(pview2(p), c@, m as int, kv(*k)),
 {
     // The highest slot a reference of this frame points to.
     let mut top: i64 = -1;
     let mut j = 0;
-    while j < k.len() {
+    while j < k.len()
+        invariant
+            0 <= j <= k.len(), -1 <= top <= u32::MAX,
+            forall|jj: int| 0 <= jj < j ==> lref(#[trigger] kv(*k)[jj]) <= top,
+            top >= 0 ==> exists|jj: int| 0 <= jj < j && lref(#[trigger] kv(*k)[jj]) == top,
+        decreases k.len() - j,
+    {
+        proof { assert(kv(*k)[j as int] == k@[j as int]@); }
+        let ghost old_top = top;
         match k[j] {
-            XKind::Block(0, s) => if s as i64 > top { top = s as i64; },
+            XKind::Block(0, s) => {
+                if s as i64 > top {
+                    top = s as i64;
+                }
+            },
             _ => {},
+        }
+        proof {
+            if top >= 0 && top != old_top {
+                assert(lref(kv(*k)[j as int]) == top);
+            } else if top >= 0 {
+                let w = choose|jj: int| 0 <= jj < j && lref(#[trigger] kv(*k)[jj]) == old_top;
+                assert(0 <= w < j + 1 && lref(kv(*k)[w]) == top);
+            }
         }
         j += 1;
     }
+    let ghost kk = kv(*k);
+    let ghost pv = pview2(p);
     if top < 0 {
+        proof {
+            assert forall|i: int| 0 <= i < kk.len() && live_from(kk, i) implies #[trigger] ctx_ok_at(pv, c@, m as int, kk, i) by {
+                let w = choose|w: int| 0 <= w < kk.len() && match #[trigger] kk[w] { Kind::Block(d, s) => d == 0 && s >= i, _ => false };
+                assert(lref(kk[w]) <= top);
+            }
+        }
         return true;
     }
-    x_ctx_ok_upto(p, c, m, k, top as usize)
+    let r = x_ctx_ok_upto(p, c, m, k, top as usize);
+    proof {
+        if r {
+            assert forall|i: int| 0 <= i < kk.len() && live_from(kk, i) implies #[trigger] ctx_ok_at(pv, c@, m as int, kk, i) by {
+                let w = choose|w: int| 0 <= w < kk.len() && match #[trigger] kk[w] { Kind::Block(d, s) => d == 0 && s >= i, _ => false };
+                assert(lref(kk[w]) <= top);
+            }
+        } else {
+            let i = choose|i: int| 0 <= i <= top && i < kk.len() && !#[trigger] ctx_ok_at(pv, c@, m as int, kk, i);
+            let w = choose|jj: int| 0 <= jj < k.len() && lref(#[trigger] kv(*k)[jj]) == top;
+            assert(match kk[w] { Kind::Block(d, s) => d == 0 && s >= i, _ => false });
+            assert(live_from(kk, i));
+        }
+    }
+    r
 }
 
 pub fn x_referenced(k: &Vec<XKind>, i: usize) -> (r: bool)
     ensures r == referenced(kv(*k), i as int),
 {
+    if i as u64 >= 0x1_0000_0000u64 {
+        proof {
+            if referenced(kv(*k), i as int) {
+                let j = choose|j: int| 0 <= j < kv(*k).len() && #[trigger] kv(*k)[j] == Kind::Block(0, i as int);
+                assert(kv(*k)[j] == k@[j]@);
+            }
+        }
+        return false;
+    }
+    let target = XKind::Block(0, i as u32);
     let mut j = 0;
-    while j < k.len() {
-        if (i as u64) < 0x1_0000_0000u64 && k[j] == XKind::Block(0, i as u32) {
+    while j < k.len()
+        invariant 0 <= j <= k.len(), i < 0x1_0000_0000, target == XKind::Block(0, i as u32),
+            forall|jj: int| 0 <= jj < j ==> kv(*k)[jj] != Kind::Block(0, i as int),
+        decreases k.len() - j,
+    {
+        proof { assert(kv(*k)[j as int] == k@[j as int]@); }
+        if x_kind_eq(k[j], target) {
             return true;
         }
         j += 1;
@@ -359,9 +636,16 @@ pub fn x_referenced(k: &Vec<XKind>, i: usize) -> (r: bool)
 pub fn x_below_token(k: &Vec<XKind>, i: usize) -> (r: bool)
     ensures r == below_token(kv(*k), i as int),
 {
+    if i >= k.len() {
+        return false;
+    }
     let mut j = i + 1;
-    while j < k.len() {
-        if k[j] == XKind::Token {
+    while j < k.len()
+        invariant i < j <= k.len(), forall|jj: int| i < jj < j ==> !(kv(*k)[jj] is Token),
+        decreases k.len() - j,
+    {
+        proof { assert(kv(*k)[j as int] == k@[j as int]@); }
+        if x_is_token(k[j]) {
             return true;
         }
         j += 1;
@@ -381,10 +665,11 @@ pub fn x_writable(p: &ExecProgram, m: usize, k: &Vec<XKind>, i: usize, v: XKind)
     ensures r == writable(pview2(p), m as int, kv(*k), i as int, v@),
 {
     if i >= k.len() { return false; }
+    proof { assert(kv(*k)[i as int] == k@[i as int]@); }
     if i == 0 && x_pinned0(p, m) { return false; }
     if x_referenced(k, i) { return false; }
-    if k[i] == XKind::Token || v == XKind::Token { return false; }
-    if x_below_token(k, i) && !(k[i] == XKind::Val && v == XKind::Val) { return false; }
+    if x_is_token(k[i]) || x_is_token(v) { return false; }
+    if x_below_token(k, i) && !(x_is_plain(k[i]) && x_is_plain(v)) { return false; }
     true
 }
 
@@ -401,17 +686,32 @@ pub fn x_args_ok(c: &XCert, t: usize, k: &Vec<XKind>, n: usize) -> (r: bool)
     if n > k.len() { return false; }
     let base = k.len() - n;
     let mut x = 0;
-    while x < n {
+    while x < n
+        invariant n <= k.len(), base == k.len() - n, 0 <= x <= n,
+            forall|xx: int| 0 <= xx < x ==> #[trigger] arg_ok(c@, t as int, kv(*k), n as int, xx),
+        decreases n - x,
+    {
         let kd = k[base + x];
+        proof { assert(kv(*k)[base + x] == kd@); }
         if x_is_block_param(c, t, x) {
-            if !x_is_ref(kd) { return false; }
+            if !x_is_ref(kd) {
+                proof { assert(!arg_ok(c@, t as int, kv(*k), n as int, x as int)); }
+                return false;
+            }
         } else {
-            if !x_is_val(kd) { return false; }
+            if !x_is_val(kd) {
+                proof { assert(!arg_ok(c@, t as int, kv(*k), n as int, x as int)); }
+                return false;
+            }
         }
         match kd {
-            XKind::Block(d, i) => if d == 0 && (i as usize) >= base { return false; },
+            XKind::Block(d, i) => if d == 0 && (i as usize) >= base {
+                proof { assert(!arg_ok(c@, t as int, kv(*k), n as int, x as int)); }
+                return false;
+            },
             _ => {},
         }
+        proof { assert(arg_ok(c@, t as int, kv(*k), n as int, x as int)); }
         x += 1;
     }
     true
@@ -422,8 +722,15 @@ pub fn x_value_operands(k: &Vec<XKind>, n: usize) -> (r: bool)
 {
     if n > k.len() { return false; }
     let mut i = 0;
-    while i < n {
-        if !x_is_val(k[k.len() - 1 - i]) { return false; }
+    while i < n
+        invariant n <= k.len(), 0 <= i <= n, forall|ii: int| 0 <= ii < i ==> is_val(#[trigger] top_kind(kv(*k), ii)),
+        decreases n - i,
+    {
+        proof { assert(kv(*k)[k.len() - 1 - i] == k@[k.len() - 1 - i]@); }
+        if !x_is_val(k[k.len() - 1 - i]) {
+            proof { assert(!is_val(top_kind(kv(*k), i as int))); }
+            return false;
+        }
         i += 1;
     }
     true
@@ -435,11 +742,15 @@ pub fn x_sel_ok(p: &ExecProgram, c: &XCert, sel: i64, n: usize, k: &Vec<XKind>) 
     if !(1 <= n && n <= k.len()) { return false; }
     if !(0 <= sel && sel < 0xffff) { return false; }
     if sel as usize >= c.sel_rep.len() { return false; }
-    if (p.class_bits.len() as u64) + (sel as u64) > p.dispatch.len() as u64 { return false; }
+    if !x_row_fits(p, sel as usize) { return false; }
+    proof { assert(kv(*k)[k.len() - n] == k@[k.len() - n]@); }
     if !x_is_val(k[k.len() - n]) { return false; }
     let r = c.sel_rep[sel as usize];
     if r == -1 { return true; }
-    x_valid(p, r) && p.methods[r as usize].arity as usize == n && x_args_ok(c, r as usize, k, n)
+    if !x_valid(p, r) { return false; }
+    let ru = r as usize;
+    proof { assert(ru as int == r as int); }
+    p.methods[ru].arity as usize == n && x_args_ok(c, ru, k, n)
 }
 
 pub fn x_typecheck_index_ok(p: &ExecProgram, op: u8, enc: i64) -> (r: bool)
@@ -466,7 +777,11 @@ pub fn x_this_field_ok(p: &ExecProgram, m: usize, f: i64) -> (r: bool)
         return false;
     }
     let mut cl = i.recv_start;
-    while cl < i.recv_end {
+    while cl < i.recv_end
+        invariant i == p.methods[m as int], i.recv_start <= cl,
+            forall|c2: int| i.recv_start <= c2 < cl ==> #[trigger] is_field_class(pview2(p), c2) && f < ifc(pview2(p), c2),
+        decreases i.recv_end - cl,
+    {
         if !x_is_field_class(p, cl as i64) || !(f < x_ifc(p, cl as usize)) {
             return false;
         }
@@ -475,38 +790,10 @@ pub fn x_this_field_ok(p: &ExecProgram, m: usize, f: i64) -> (r: bool)
     true
 }
 
-pub fn x_push(k: &Vec<XKind>, v: XKind) -> (r: Vec<XKind>)
-    ensures kv(r) == kv(*k).push(v@),
-{
-    let mut r = k.clone();
-    r.push(v);
-    r
-}
-
-pub fn x_prefix(k: &Vec<XKind>, n: usize) -> (r: Vec<XKind>)
-    requires n <= k.len(),
-    ensures kv(r) == kv(*k).subrange(0, n as int),
-{
-    let mut r = Vec::with_capacity(n);
-    let mut i = 0;
-    while i < n {
-        r.push(k[i]);
-        i += 1;
-    }
-    r
-}
-
-pub fn x_update(k: &Vec<XKind>, i: usize, v: XKind) -> (r: Vec<XKind>)
-    requires i < k.len(),
-    ensures kv(r) == kv(*k).update(i as int, v@),
-{
-    let mut r = k.clone();
-    r.set(i, v);
-    r
-}
-
 pub fn x_shift(k: XKind, d: u32) -> (r: Option<XKind>)
-    ensures r is Some ==> r->0@ == shift(k@, d as int),
+    ensures
+        r is Some ==> r->0@ == shift(k@, d as int),
+        r is None ==> match k@ { Kind::Block(d1, _) => d1 + d > u32::MAX, _ => false },
 {
     match k {
         XKind::Block(d1, s) => if d1 <= u32::MAX - d { Some(XKind::Block(d1 + d, s)) } else { None },
@@ -515,51 +802,119 @@ pub fn x_shift(k: XKind, d: u32) -> (r: Option<XKind>)
     }
 }
 
-pub fn x_dispatch_target(p: &ExecProgram, d: i64) -> (r: i64)
-    ensures r as int == dispatch_target(pview2(p), d as int),
-{
-    if 0 <= d && (d as usize) < p.dispatch.len() { p.dispatch[d as usize] as i64 } else { -1 }
-}
-
 // ---------------------------------------------------------------------------
 // Instructions.
 
-/// `post`: the fall-through successor kinds.
-pub fn x_post(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
+/// The precondition of the transfer functions: a valid instruction inside
+/// the method, and a frame of bounded height.
+pub open spec fn post_pre(p: &ExecProgram, m: usize, off: usize, k: &Vec<XKind>) -> bool {
+    &&& wf_program2(pview2(p))
+    &&& m < p.methods.len()
+    &&& p.methods[m as int].entry + off + opcode_length2(p.bytecodes[p.methods[m as int].entry + off]) <= p.methods[m as int].end
+    &&& p.bytecodes[p.methods[m as int].entry + off] < OPCODE_COUNT2
+    &&& k.len() <= 0x10_0000
+}
+
+/// Decodes the instruction at offset `off` of `m`.
+pub fn x_decode(p: &ExecProgram, m: usize, off: usize) -> (r: (usize, u8, usize, i64, i64))
     requires
         wf_program2(pview2(p)),
         m < p.methods.len(),
         p.methods[m as int].entry + off + opcode_length2(p.bytecodes[p.methods[m as int].entry + off]) <= p.methods[m as int].end,
-        p.bytecodes[p.methods[m as int].entry + off] < OPCODE_COUNT2,
-    ensures okv(r) == post(pview2(p), c@, m as int, off as int, kv(*k), trusted),
+    ensures ({
+        let (bci, op, len, b1, w1) = r;
+        let pv = pview2(p);
+        &&& bci as int == instr_at(pv, m as int, off as int)
+        &&& op == op_of(pv, m as int, off as int)
+        &&& len as int == opcode_length2(op)
+        &&& bci + len <= p.methods[m as int].end
+        &&& p.methods[m as int].end <= p.bytecodes.len()
+        &&& p.bytecodes.len() < 0x1000_0000
+        &&& 0 <= b1 < 256 && 0 <= w1 < 0x10000
+        &&& (len >= 2 ==> b1 as int == b1_of(pv, m as int, off as int))
+        &&& (len >= 3 ==> w1 as int == w1_of(pv, m as int, off as int))
+    }),
 {
     let bci = p.methods[m].entry + off;
     let op = p.bytecodes[bci];
-    let len = crate::v2::bytecodes::exec_opcode_length2(op);
+    let len = exec_opcode_length2(op);
     let b1: i64 = if len >= 2 { p.bytecodes[bci + 1] as i64 } else { 0 };
     let w1: i64 = if len >= 3 { x_u16(p, bci + 1) } else { 0 };
+    (bci, op, len, b1, w1)
+}
+
+pub fn x_post_locals(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
+    requires
+        post_pre(p, m, off, k),
+        ({ let op = op_of(pview2(p), m as int, off as int);
+           op == LOAD_LOCAL || op == LOAD_LOCAL_WIDE || (LOAD_LOCAL_0 <= op && op <= LOAD_LOCAL_5)
+           || op == POP_LOAD_LOCAL || op == STORE_LOCAL || op == STORE_LOCAL_POP }),
+    ensures post_rel(r, post(pview2(p), c@, m as int, off as int, kv(*k), trusted)),
+{
+    let (bci, op, len, b1, w1) = x_decode(p, m, off);
     let h = k.len();
     if op == LOAD_LOCAL || op == LOAD_LOCAL_WIDE || (LOAD_LOCAL_0 <= op && op <= LOAD_LOCAL_5) {
         let n = if op == LOAD_LOCAL { b1 } else if op == LOAD_LOCAL_WIDE { w1 } else { (op - LOAD_LOCAL_0) as i64 };
-        if (n as usize) < h && k[h - 1 - n as usize] != XKind::Token { Some(x_push(k, k[h - 1 - n as usize])) } else { None }
+        if (n as usize) < h {
+            proof { assert(kv(*k)[h - 1 - n] == k@[h - 1 - n]@); }
+            if !x_is_token(k[h - 1 - n as usize]) {
+                Some(x_push(k, k[h - 1 - n as usize]))
+            } else { None }
+        } else {
+            None
+        }
     } else if op == POP_LOAD_LOCAL {
-        if (b1 as usize) + 1 < h && k[h - 2 - b1 as usize] != XKind::Token { Some(x_update(k, h - 1, k[h - 2 - b1 as usize])) } else { None }
-    } else if op == STORE_LOCAL || op == STORE_LOCAL_POP {
+        if (b1 as usize) + 1 < h {
+            proof { assert(kv(*k)[h - 2 - b1] == k@[h - 2 - b1]@); }
+            if !x_is_token(k[h - 2 - b1 as usize]) {
+                Some(x_update(k, h - 1, k[h - 2 - b1 as usize]))
+            } else { None }
+        } else {
+            None
+        }
+    } else {
         if 1 <= b1 && (b1 as usize) < h {
             let i = h - 1 - b1 as usize;
             let v = k[h - 1];
+            proof { assert(kv(*k)[h - 1] == v@); }
             if x_writable(p, m, k, i, v) {
-                let mut k1 = x_update(k, i, v);
-                if op == STORE_LOCAL_POP { k1.pop(); }
-                Some(k1)
+                let k1 = x_update(k, i, v);
+                if op == STORE_LOCAL_POP {
+                    let k2 = x_prefix(&k1, k1.len() - 1);
+                    Some(k2)
+                } else {
+                    Some(k1)
+                }
             } else { None }
         } else { None }
-    } else if op == LOAD_OUTER || op == STORE_OUTER || op == LOAD_OUTER_BLOCK {
+    }
+}
+
+pub fn x_post_outer(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
+    requires
+        post_pre(p, m, off, k),
+        ({ let op = op_of(pview2(p), m as int, off as int);
+           op == LOAD_OUTER || op == STORE_OUTER || op == LOAD_OUTER_BLOCK || op == LOAD_BLOCK }),
+    ensures post_rel(r, post(pview2(p), c@, m as int, off as int, kv(*k), trusted)),
+{
+    let (bci, op, len, b1, w1) = x_decode(p, m, off);
+    let h = k.len();
+    let ghost pv = pview2(p);
+    let ghost kk = kv(*k);
+    if op == LOAD_BLOCK {
+        let i = h as i64 - 1 - b1;
+        if x_block_slot(p, c, m as i64, k, i) { Some(x_push(k, XKind::Block(0, i as u32))) } else { None }
+    } else {
         let r: usize = if op == STORE_OUTER { 1 } else { 0 };
         if r >= h { return None; }
+        proof { assert(kk[h - 1 - r] == k@[h - 1 - r]@); }
         match k[h - 1 - r] {
             XKind::Block(d, j) => {
                 let (fk, om): (Option<&Vec<XKind>>, i64) = if d == 0 { (Some(k), m as i64) } else { x_ctx_kinds(c, m as i64, d) };
+                proof {
+                    assert(okv(match fk { Some(x) => Some(*x), None => None }) == ref_kinds(c@, m as int, kk, d as int));
+                    assert(om as int == ref_method(c@, m as int, d as int));
+                }
                 match fk {
                     None => None,
                     Some(fk) => {
@@ -567,47 +922,94 @@ pub fn x_post(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, 
                             return None;
                         }
                         let i = (j as i64 - b1) as usize;
+                        proof { assert(kv(*fk)[i as int] == fk@[i as int]@); }
                         if op == LOAD_OUTER {
-                            if fk[i] == XKind::Token { None } else {
+                            if x_is_token(fk[i]) { None } else {
                                 match x_shift(fk[i], d) {
                                     Some(sk) => Some(x_update(k, h - 1, sk)),
-                                    None => None,
+                                    None => {
+                                        proof {
+                                            let s2 = kk.update(h - 1, shift(kv(*fk)[i as int], d as int));
+                                            assert(post(pv, c@, m as int, off as int, kk, trusted) == Some(s2));
+                                            assert(!match #[trigger] s2[h - 1] {
+                                                Kind::Method(t) => 0 <= t <= u32::MAX as int,
+                                                Kind::Block(d, x) => 0 <= d <= u32::MAX as int && 0 <= x <= u32::MAX as int,
+                                                _ => true,
+                                            });
+                                        }
+                                        None
+                                    },
                                 }
                             }
                         } else if op == LOAD_OUTER_BLOCK {
                             if x_block_slot(p, c, om, fk, i as i64) { Some(x_update(k, h - 1, XKind::Block(d, i as u32))) } else { None }
-                        } else if d >= 1 && fk[i] == XKind::Val && x_is_val(k[h - 1]) && x_valid(p, om)
-                                && !(i == 0 && x_pinned0(p, om as usize)) {
-                            let mut k1 = x_prefix(k, h - 2);
-                            k1.push(XKind::Val);
-                            Some(k1)
-                        } else { None }
+                        } else {
+                            proof { assert(kk[h - 1] == k@[h - 1]@); }
+                            if d >= 1 && x_is_plain(fk[i]) && x_is_val(k[h - 1]) && x_valid(p, om)
+                                    && !(i == 0 && x_pinned0(p, om as usize)) {
+                                Some(x_pop_push(k, 2, XKind::Val))
+                            } else {
+                                None
+                            }
+                        }
                     },
                 }
             },
             _ => None,
         }
-    } else if op == LOAD_BLOCK {
-        let i = h as i64 - 1 - b1;
-        if x_block_slot(p, c, m as i64, k, i) { Some(x_push(k, XKind::Block(0, i as u32))) } else { None }
-    } else if op == LOAD_FIELD || op == LOAD_FIELD_WIDE {
+    }
+}
+
+pub fn x_post_fields(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
+    requires
+        post_pre(p, m, off, k),
+        ({ let op = op_of(pview2(p), m as int, off as int);
+           op == LOAD_FIELD || op == LOAD_FIELD_WIDE || op == LOAD_FIELD_LOCAL || op == POP_LOAD_FIELD_LOCAL
+           || op == STORE_FIELD || op == STORE_FIELD_WIDE || op == STORE_FIELD_POP
+           || op == LOAD_FIELD_THIS || op == STORE_FIELD_THIS }),
+    ensures post_rel(r, post(pview2(p), c@, m as int, off as int, kv(*k), trusted)),
+{
+    let (bci, op, len, b1, w1) = x_decode(p, m, off);
+    let h = k.len();
+    if op == LOAD_FIELD || op == LOAD_FIELD_WIDE {
         if x_value_operands(k, 1) { Some(x_update(k, h - 1, XKind::Val)) } else { None }
     } else if op == LOAD_FIELD_LOCAL || op == POP_LOAD_FIELD_LOCAL {
         let slot = if op == POP_LOAD_FIELD_LOCAL { (b1 % 16 + 1) as usize } else { (b1 % 16) as usize };
-        if slot < h && x_is_val(k[h - 1 - slot]) {
-            Some(if op == LOAD_FIELD_LOCAL { x_push(k, XKind::Val) } else { x_update(k, h - 1, XKind::Val) })
-        } else { None }
+        if slot < h {
+            proof { assert(kv(*k)[h - 1 - slot] == k@[h - 1 - slot]@); }
+            if x_is_val(k[h - 1 - slot]) {
+                Some(if op == LOAD_FIELD_LOCAL { x_push(k, XKind::Val) } else { x_update(k, h - 1, XKind::Val) })
+            } else { None }
+        } else {
+            None
+        }
     } else if op == STORE_FIELD || op == STORE_FIELD_WIDE || op == STORE_FIELD_POP {
         if x_value_operands(k, 2) {
-            let mut k1 = x_prefix(k, h - 2);
-            if op != STORE_FIELD_POP { k1.push(XKind::Val); }
-            Some(k1)
+            if op == STORE_FIELD_POP {
+                let k1 = x_prefix(k, h - 2);
+                Some(k1)
+            } else {
+                Some(x_pop_push(k, 2, XKind::Val))
+            }
         } else { None }
     } else if op == LOAD_FIELD_THIS {
         if x_this_field_ok(p, m, b1) { Some(x_push(k, XKind::Val)) } else { None }
-    } else if op == STORE_FIELD_THIS {
-        if x_this_field_ok(p, m, b1) && x_value_operands(k, 1) { Some(k.clone()) } else { None }
-    } else if op == LOAD_LITERAL || op == LOAD_LITERAL_WIDE {
+    } else {
+        if x_this_field_ok(p, m, b1) && x_value_operands(k, 1) { Some(x_copy(k)) } else { None }
+    }
+}
+
+pub fn x_post_consts(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
+    requires
+        post_pre(p, m, off, k),
+        ({ let op = op_of(pview2(p), m as int, off as int);
+           (LOAD_LITERAL <= op && op <= STORE_GLOBAL_VAR_DYNAMIC) || op == POP || op == POP_1
+           || op == ALLOCATE || op == ALLOCATE_WIDE || (IS_CLASS <= op && op <= AS_LOCAL) }),
+    ensures post_rel(r, post(pview2(p), c@, m as int, off as int, kv(*k), trusted)),
+{
+    let (bci, op, len, b1, w1) = x_decode(p, m, off);
+    let h = k.len();
+    if op == LOAD_LITERAL || op == LOAD_LITERAL_WIDE {
         let i = if op == LOAD_LITERAL { b1 } else { w1 };
         if (i as usize) < p.literals.len() { Some(x_push(k, XKind::Val)) } else { None }
     } else if op == LOAD_NULL || op == LOAD_SMI_0 || op == LOAD_SMI_1 || op == LOAD_SMI_U8 || op == LOAD_SMI_U16 {
@@ -615,10 +1017,19 @@ pub fn x_post(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, 
     } else if op == LOAD_SMI_U32 {
         if x_smi_ok(p, x_u32(p, bci + 1)) { Some(x_push(k, XKind::Val)) } else { None }
     } else if op == LOAD_SMIS_0 {
-        let mut k1 = k.clone();
-        let mut i = 0;
-        while i < b1 {
+        let mut k1 = x_copy(k);
+        let mut i: i64 = 0;
+        while i < b1
+            invariant 0 <= i <= b1, b1 < 256, kv(k1) == kv(*k) + Seq::new(i as nat, |x: int| Kind::Val),
+            decreases b1 - i,
+        {
+            let ghost before = kv(k1);
             k1.push(XKind::Val);
+            proof {
+                assert(kv(k1) =~= before.push(Kind::Val));
+                assert(kv(*k) + Seq::new((i + 1) as nat, |x: int| Kind::Val)
+                    =~= (kv(*k) + Seq::new(i as nat, |x: int| Kind::Val)).push(Kind::Val));
+            }
             i += 1;
         }
         Some(k1)
@@ -631,7 +1042,7 @@ pub fn x_post(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, 
         if (w1 as u64) < c.global_count { Some(x_push(k, XKind::Val)) } else { None }
     } else if op == STORE_GLOBAL_VAR || op == STORE_GLOBAL_VAR_WIDE {
         let g = if op == STORE_GLOBAL_VAR { b1 } else { w1 };
-        if (g as u64) < c.global_count && x_value_operands(k, 1) { Some(k.clone()) } else { None }
+        if (g as u64) < c.global_count && x_value_operands(k, 1) { Some(x_copy(k)) } else { None }
     } else if op == LOAD_GLOBAL_VAR_DYNAMIC {
         if x_value_operands(k, 1) { Some(x_update(k, h - 1, XKind::Val)) } else { None }
     } else if op == STORE_GLOBAL_VAR_DYNAMIC {
@@ -644,60 +1055,86 @@ pub fn x_post(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, 
         if x_is_instance_class(p, cl) && x_ifc(p, cl as usize) >= 0 { Some(x_push(k, XKind::Val)) } else { None }
     } else if IS_CLASS <= op && op <= AS_INTERFACE_WIDE {
         if x_value_operands(k, 1) && x_typecheck_index_ok(p, op, if op % 2 == 0 { b1 } else { w1 }) {
-            Some(if op <= IS_INTERFACE_WIDE { x_update(k, h - 1, XKind::Val) } else { k.clone() })
+            Some(if op <= IS_INTERFACE_WIDE { x_update(k, h - 1, XKind::Val) } else { x_copy(k) })
         } else { None }
-    } else if op == AS_LOCAL {
-        if ((b1 / 32) as usize) < h && x_is_val(k[h - 1 - (b1 / 32) as usize]) && ((2 * (b1 % 32) + 1) as usize) < p.class_check_ids.len() {
-            Some(k.clone())
-        } else { None }
-    } else if op == INVOKE_STATIC {
+    } else {
+        if ((b1 / 32) as usize) < h {
+            proof { assert(kv(*k)[h - 1 - b1 / 32] == k@[h - 1 - b1 / 32]@); }
+            if x_is_val(k[h - 1 - (b1 / 32) as usize]) && ((2 * (b1 % 32) + 1) as usize) < p.class_check_ids.len() {
+                Some(x_copy(k))
+            } else { None }
+        } else {
+            None
+        }
+    }
+}
+
+pub fn x_post_calls(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
+    requires
+        post_pre(p, m, off, k),
+        ({ let op = op_of(pview2(p), m as int, off as int);
+           op == INVOKE_STATIC || op == INVOKE_BLOCK || (INVOKE_VIRTUAL <= op && op <= INVOKE_SIZE) || op == IDENTICAL }),
+    ensures post_rel(r, post(pview2(p), c@, m as int, off as int, kv(*k), trusted)),
+{
+    let (bci, op, len, b1, w1) = x_decode(p, m, off);
+    let h = k.len();
+    if op == INVOKE_STATIC {
         let t = x_dispatch_target(p, w1);
         if x_valid(p, t) && x_args_ok(c, t as usize, k, p.methods[t as usize].arity as usize)
             && x_leaves0(p, m, h, p.methods[t as usize].arity as usize) {
             let a = p.methods[t as usize].arity as usize;
-            let mut k1 = x_prefix(k, h - a);
-            k1.push(XKind::Val);
-            Some(k1)
+            Some(x_pop_push(k, a, XKind::Val))
         } else { None }
     } else if op == INVOKE_BLOCK {
-        if 1 <= b1 && (b1 as usize) <= h && x_is_ref(k[h - b1 as usize]) && x_value_operands(k, (b1 - 1) as usize)
-            && x_leaves0(p, m, h, b1 as usize)
-            && match k[h - b1 as usize] { XKind::Block(d, i) => !(d == 0 && (i as usize) >= h - b1 as usize), _ => true } {
-            let mut k1 = x_prefix(k, h - b1 as usize);
-            k1.push(XKind::Val);
-            Some(k1)
+        if 1 <= b1 && (b1 as usize) <= h {
+            let kd = k[h - b1 as usize];
+            proof { assert(kv(*k)[h - b1] == kd@); }
+            if x_is_ref(kd) && x_value_operands(k, (b1 - 1) as usize) && x_leaves0(p, m, h, b1 as usize)
+                && match kd { XKind::Block(d, i) => !(d == 0 && (i as usize) >= h - b1 as usize), _ => true } {
+                Some(x_pop_push(k, b1 as usize, XKind::Val))
+            } else { None }
         } else { None }
     } else if op == INVOKE_VIRTUAL || op == INVOKE_VIRTUAL_WIDE {
         let n = if op == INVOKE_VIRTUAL { b1 + 1 } else { w1 + 1 };
         let sel = if op == INVOKE_VIRTUAL { x_u16(p, bci + 2) } else { x_u16(p, bci + 3) };
         if x_sel_ok(p, c, sel, n as usize, k) && x_leaves0(p, m, h, n as usize) {
-            let mut k1 = x_prefix(k, h - n as usize);
-            k1.push(XKind::Val);
-            Some(k1)
+            Some(x_pop_push(k, n as usize, XKind::Val))
         } else { None }
     } else if op == INVOKE_VIRTUAL_GET || op == INVOKE_SIZE {
         if x_sel_ok(p, c, w1, 1, k) && x_leaves0(p, m, h, 1) { Some(x_update(k, h - 1, XKind::Val)) } else { None }
     } else if op == INVOKE_VIRTUAL_SET {
         if x_value_operands(k, 2) && x_sel_ok(p, c, w1, 2, k) && x_leaves0(p, m, h, 2) {
-            let mut k1 = x_prefix(k, h - 2);
-            k1.push(XKind::Val);
-            Some(k1)
+            Some(x_pop_push(k, 2, XKind::Val))
         } else { None }
     } else if INVOKE_EQ <= op && op <= INVOKE_AT_PUT {
         let n: usize = if op == INVOKE_AT_PUT { 3 } else { 2 };
         let sel = p.invoke_offsets[(op - INVOKE_EQ) as usize] as i64;
         if x_value_operands(k, n) && (sel < 0 || x_sel_ok(p, c, sel, n, k)) && x_leaves0(p, m, h, n) {
-            let mut k1 = x_prefix(k, h - n);
-            k1.push(XKind::Val);
-            Some(k1)
+            Some(x_pop_push(k, n, XKind::Val))
         } else { None }
-    } else if op == IDENTICAL {
-        if x_value_operands(k, 2) {
-            let mut k1 = x_prefix(k, h - 2);
-            k1.push(XKind::Val);
-            Some(k1)
-        } else { None }
-    } else if (BRANCH_IF_TRUE <= op && op <= BRANCH_IF_NOT_NULL) || (BRANCH_BACK_IF_TRUE <= op && op <= BRANCH_BACK_IF_NOT_NULL) {
+    } else {
+        if x_value_operands(k, 2) { Some(x_pop_push(k, 2, XKind::Val)) } else { None }
+    }
+}
+
+pub fn x_post_misc(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
+    requires
+        post_pre(p, m, off, k),
+        ({ let op = op_of(pview2(p), m as int, off as int);
+           !(op == LOAD_LOCAL || op == LOAD_LOCAL_WIDE || (LOAD_LOCAL_0 <= op && op <= LOAD_LOCAL_5)
+             || op == POP_LOAD_LOCAL || op == STORE_LOCAL || op == STORE_LOCAL_POP)
+           && !(op == LOAD_OUTER || op == STORE_OUTER || op == LOAD_OUTER_BLOCK || op == LOAD_BLOCK)
+           && !(op == LOAD_FIELD || op == LOAD_FIELD_WIDE || op == LOAD_FIELD_LOCAL || op == POP_LOAD_FIELD_LOCAL
+             || op == STORE_FIELD || op == STORE_FIELD_WIDE || op == STORE_FIELD_POP
+             || op == LOAD_FIELD_THIS || op == STORE_FIELD_THIS)
+           && !((LOAD_LITERAL <= op && op <= STORE_GLOBAL_VAR_DYNAMIC) || op == POP || op == POP_1
+             || op == ALLOCATE || op == ALLOCATE_WIDE || (IS_CLASS <= op && op <= AS_LOCAL))
+           && !(op == INVOKE_STATIC || op == INVOKE_BLOCK || (INVOKE_VIRTUAL <= op && op <= INVOKE_SIZE) || op == IDENTICAL) }),
+    ensures post_rel(r, post(pview2(p), c@, m as int, off as int, kv(*k), trusted)),
+{
+    let (bci, op, len, b1, w1) = x_decode(p, m, off);
+    let h = k.len();
+    if (BRANCH_IF_TRUE <= op && op <= BRANCH_IF_NOT_NULL) || (BRANCH_BACK_IF_TRUE <= op && op <= BRANCH_BACK_IF_NOT_NULL) {
         if x_value_operands(k, 1) { Some(x_prefix(k, h - 1)) } else { None }
     } else if op == PRIMITIVE {
         let index = x_u16(p, bci + 2);
@@ -713,24 +1150,56 @@ pub fn x_post(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, 
     } else if op == TRY {
         if 1 <= h && x_block_slot(p, c, m as i64, k, (h - 1) as i64) {
             let t = match k[h - 1] { XKind::Method(t) => t, _ => 0 };
+            proof { assert(kv(*k)[h - 1] == k@[h - 1]@); assert(kind_method(kv(*k)[h - 1]) == t as int); }
             if p.methods[t as usize].arity == 1 && x_ctx_ok_upto(p, c, m as i64, k, h - 1) {
-                let mut k1 = k.clone();
-                k1.push(XKind::Val);
-                k1.push(XKind::Token);
-                k1.push(XKind::Val);
-                Some(k1)
+                let k1 = x_push(k, XKind::Val);
+                let k2 = x_push(&k1, XKind::Token);
+                let k3 = x_push(&k2, XKind::Val);
+                Some(k3)
             } else { None }
         } else { None }
     } else if op == UNWIND {
-        if 3 <= h && k[h - 2] == XKind::Token { Some(x_prefix(k, h - 3)) } else { None }
+        if 3 <= h {
+            proof { assert(kv(*k)[h - 2] == k@[h - 2]@); }
+            if x_is_token(k[h - 2]) {
+                Some(x_prefix(k, h - 3))
+            } else { None }
+        } else {
+            None
+        }
     } else if op == HALT {
         if b1 == 0 { Some(x_push(k, XKind::Val)) }
         else if b1 == 1 && x_value_operands(k, 1) { Some(x_prefix(k, h - 1)) }
         else if trusted && b1 == 2 && 1 <= h { Some(x_prefix(k, h - 1)) }
-        else if trusted && b1 >= 3 { Some(k.clone()) }
+        else if trusted && b1 >= 3 { Some(x_copy(k)) }
         else { None }
     } else {
         None
+    }
+}
+
+/// `post`: the fall-through successor kinds.
+pub fn x_post(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
+    requires post_pre(p, m, off, k),
+    ensures post_rel(r, post(pview2(p), c@, m as int, off as int, kv(*k), trusted)),
+{
+    let op = p.bytecodes[p.methods[m].entry + off];
+    if op == LOAD_LOCAL || op == LOAD_LOCAL_WIDE || (LOAD_LOCAL_0 <= op && op <= LOAD_LOCAL_5)
+        || op == POP_LOAD_LOCAL || op == STORE_LOCAL || op == STORE_LOCAL_POP {
+        x_post_locals(p, c, m, off, k, trusted)
+    } else if op == LOAD_OUTER || op == STORE_OUTER || op == LOAD_OUTER_BLOCK || op == LOAD_BLOCK {
+        x_post_outer(p, c, m, off, k, trusted)
+    } else if op == LOAD_FIELD || op == LOAD_FIELD_WIDE || op == LOAD_FIELD_LOCAL || op == POP_LOAD_FIELD_LOCAL
+        || op == STORE_FIELD || op == STORE_FIELD_WIDE || op == STORE_FIELD_POP
+        || op == LOAD_FIELD_THIS || op == STORE_FIELD_THIS {
+        x_post_fields(p, c, m, off, k, trusted)
+    } else if (LOAD_LITERAL <= op && op <= STORE_GLOBAL_VAR_DYNAMIC) || op == POP || op == POP_1
+        || op == ALLOCATE || op == ALLOCATE_WIDE || (IS_CLASS <= op && op <= AS_LOCAL) {
+        x_post_consts(p, c, m, off, k, trusted)
+    } else if op == INVOKE_STATIC || op == INVOKE_BLOCK || (INVOKE_VIRTUAL <= op && op <= INVOKE_SIZE) || op == IDENTICAL {
+        x_post_calls(p, c, m, off, k, trusted)
+    } else {
+        x_post_misc(p, c, m, off, k, trusted)
     }
 }
 
@@ -745,7 +1214,7 @@ pub fn x_is_terminator(op: u8) -> (r: bool)
 pub fn x_map_at<'a>(c: &'a XCert, m: i64, off: i64) -> (r: Option<&'a Vec<XKind>>)
     ensures okv(match r { Some(k) => Some(*k), None => None }) == map_at(c@, m as int, off as int),
 {
-    if 0 <= m && (m as usize) < c.maps.len() && 0 <= off && (off as usize) < c.maps[m as usize].len() {
+    if 0 <= m && (m as u64) < (c.maps.len() as u64) && 0 <= off && (off as u64) < (c.maps[m as usize].len() as u64) {
         match &c.maps[m as usize][off as usize] {
             Some(k) => Some(k),
             None => None,
@@ -764,6 +1233,7 @@ pub fn x_map_is(c: &XCert, m: i64, off: i64, k: &Vec<XKind>) -> (r: bool)
     }
 }
 
+#[verifier::loop_isolation(false)]
 pub fn x_terminator_ok(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>) -> (r: bool)
     requires
         wf_program2(pview2(p)),
@@ -772,56 +1242,87 @@ pub fn x_terminator_ok(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec
         p.bytecodes[p.methods[m as int].entry + off] < OPCODE_COUNT2,
     ensures r == terminator_ok(pview2(p), c@, m as int, off as int, kv(*k)),
 {
-    let bci = p.methods[m].entry + off;
-    let op = p.bytecodes[bci];
+    let (bci, op, len, b1, w1) = x_decode(p, m, off);
     let h = k.len();
+    let ghost kk = kv(*k);
     if op == RETURN {
+        if 1 <= h { proof { assert(kk[h - 1] == k@[h - 1]@); } }
         1 <= h && x_is_val(k[h - 1])
     } else if op == RETURN_NULL {
         true
     } else if op == THROW {
         x_value_operands(k, 1)
     } else if op == INVOKE_STATIC_TAIL {
-        let t = x_dispatch_target(p, x_u16(p, bci + 1));
+        let t = x_dispatch_target(p, w1);
         if !x_valid(p, t) { return false; }
         let a = p.methods[t as usize].arity as usize;
         if !x_args_ok(c, t as usize, k, a) { return false; }
         let mut j = h - a;
-        while j < h {
-            match k[j] { XKind::Block(0, _) => return false, _ => {} }
+        while j < h
+            invariant a <= h, h == k.len(), h - a <= j <= h, kk == kv(*k),
+                forall|jj: int| h - a <= jj < j ==> !is_local_ref(#[trigger] kk[jj]),
+            decreases h - j,
+        {
+            proof { assert(kk[j as int] == k@[j as int]@); }
+            match k[j] {
+                XKind::Block(0, _) => {
+                    proof { assert(is_local_ref(kk[j as int])); }
+                    return false;
+                },
+                _ => {},
+            }
             j += 1;
         }
         true
     } else if op == INVOKE_LAMBDA_TAIL {
         if !(p.methods[m].kind == 0 && h == p.methods[m].arity as usize && h >= 1) { return false; }
         let mut i = 0;
-        while i < h {
-            if !x_is_val(k[i]) { return false; }
+        while i < h
+            invariant h == k.len(), 0 <= i <= h, kk == kv(*k), forall|ii: int| 0 <= ii < i ==> is_val(#[trigger] kk[ii]),
+            decreases h - i,
+        {
+            proof { assert(kk[i as int] == k@[i as int]@); }
+            if !x_is_val(k[i]) {
+                proof { assert(!is_val(kk[i as int])); }
+                return false;
+            }
             i += 1;
         }
         true
     } else if op == INVOKE_INITIALIZER_TAIL {
         x_value_operands(k, 1)
     } else if op == NON_LOCAL_RETURN {
+        if 2 <= h { proof { assert(kk[h - 1] == k@[h - 1]@); assert(kk[h - 2] == k@[h - 2]@); } }
         2 <= h && x_is_val(k[h - 2]) && match k[h - 1] { XKind::Block(d, _) => d >= 1, _ => false }
     } else if op == NON_LOCAL_BRANCH {
         if h < 1 { return false; }
+        proof { assert(kk[h - 1] == k@[h - 1]@); }
         match k[h - 1] {
             XKind::Block(d, j) => {
                 if d < 1 { return false; }
                 let (fk, om) = x_ctx_kinds(c, m as i64, d);
-                let b1 = p.bytecodes[bci + 1] as i64;
                 let target = x_u32(p, bci + 2);
                 match (fk, x_map_at(c, om, target)) {
                     (Some(fk), Some(t)) => {
                         if !(x_valid(p, om) && b1 <= j as i64 + 1 && (j as usize) < fk.len()) { return false; }
                         let n = (j as i64 + 1 - b1) as usize;
-                        if t.len() != n { return false; }
+                        if t.len() != n {
+                            proof { assert(kv(*t).len() != kv(*fk).subrange(0, n as int).len()); }
+                            return false;
+                        }
                         let mut i = 0;
-                        while i < n {
-                            if t[i] != fk[i] { return false; }
+                        while i < n
+                            invariant n == t.len(), n <= fk.len(), 0 <= i <= n,
+                                forall|ii: int| 0 <= ii < i ==> (#[trigger] t@[ii])@ == fk@[ii]@,
+                            decreases n - i,
+                        {
+                            if !x_kind_eq(t[i], fk[i]) {
+                                proof { assert(kv(*t)[i as int] != kv(*fk).subrange(0, n as int)[i as int]); }
+                                return false;
+                            }
                             i += 1;
                         }
+                        proof { assert(kv(*t) =~= kv(*fk).subrange(0, n as int)); }
                         true
                     },
                     _ => false,
@@ -843,8 +1344,9 @@ pub fn x_shape_ok(p: &ExecProgram, c: &XCert, m: usize, k: &Vec<XKind>) -> (r: b
     if x_pinned0(p, m) && p.methods[m].arity >= 1 && k.len() < 1 { return false; }
     if p.methods[m].kind == 3 {
         if k.len() < 1 { return false; }
+        proof { assert(kv(*k)[0] == k@[0]@); }
         match x_ctx_of(c, m) {
-            Some(ctx) => k[0] == XKind::Block(1, ctx.slot),
+            Some(ctx) => x_kind_eq(k[0], XKind::Block(1, ctx.slot)),
             None => false,
         }
     } else {
@@ -861,13 +1363,14 @@ pub fn x_instr_ok(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKin
     let bci = i.entry + off;
     let op = p.bytecodes[bci];
     if op >= OPCODE_COUNT2 { return false; }
-    let len = crate::v2::bytecodes::exec_opcode_length2(op);
+    let len = exec_opcode_length2(op);
     if bci + len > i.end { return false; }
+    if k.len() > i.arity as usize + i.max_height as usize { return false; }
     if !x_wf_kinds(p, c, m as i64, k) || !x_ctx_ok(p, c, m as i64, k) || !x_shape_ok(p, c, m, k) {
         return false;
     }
-    if k.len() > i.arity as usize + i.max_height as usize { return false; }
     let post = x_post(p, c, m, off, k, trusted);
+    proof { lemma_map_repr(c, m as int, (off + len) as int); }
     if x_is_terminator(op) {
         if !x_terminator_ok(p, c, m, off, k) { return false; }
     } else if post.is_none() {
@@ -897,9 +1400,16 @@ pub fn x_entry_kinds(p: &ExecProgram, c: &XCert, m: usize) -> (r: Vec<XKind>)
     ensures kv(r) == entry_kinds(pview2(p), c@, m as int),
 {
     let a = p.methods[m].arity as usize;
-    let mut r = Vec::with_capacity(a);
+    let ghost e = entry_kinds(pview2(p), c@, m as int);
+    let mut r: Vec<XKind> = Vec::new();
     let mut i = 0;
-    while i < a {
+    while i < a
+        invariant m < p.methods.len(), a == p.methods[m as int].arity, e == entry_kinds(pview2(p), c@, m as int),
+            0 <= i <= a, r.len() == i, forall|ii: int| 0 <= ii < i ==> #[trigger] kv(r)[ii] == e[ii],
+        decreases a - i,
+    {
+        let ghost before = r@;
+        let ghost before_k = kv(r);
         if p.methods[m].kind == 3 {
             if i == 0 {
                 match x_ctx_of(c, m) {
@@ -914,13 +1424,55 @@ pub fn x_entry_kinds(p: &ExecProgram, c: &XCert, m: usize) -> (r: Vec<XKind>)
         } else {
             r.push(XKind::Val);
         }
+        proof {
+            assert(kv(r)[i as int] == r@[i as int]@);
+            assert(kv(r)[i as int] == e[i as int]);
+            assert forall|ii: int| 0 <= ii < i + 1 implies #[trigger] kv(r)[ii] == e[ii] by {
+                if ii < i {
+                    assert(r@[ii] == before[ii]);
+                    assert(kv(r)[ii] == r@[ii]@);
+                    assert(before_k[ii] == before[ii]@);
+                    assert(before_k[ii] == e[ii]);
+                }
+            }
+        }
         i += 1;
     }
+    proof { assert(kv(r) =~= e); }
     r
 }
 
+/// Every mapped instruction of `m` is accepted.
+pub fn x_method_body_ok(p: &ExecProgram, c: &XCert, m: usize, trusted: bool) -> (r: bool)
+    requires wf_program2(pview2(p)), m < p.methods.len(), m < c.maps.len(),
+    ensures r == forall|o: int| 0 <= o < c@.maps[m as int].len() && (#[trigger] c@.maps[m as int][o]) is Some ==>
+        instr_ok(pview2(p), c@, m as int, o, c@.maps[m as int][o]->0, trusted),
+{
+    let mut off = 0;
+    while off < c.maps[m].len()
+        invariant
+            wf_program2(pview2(p)), m < p.methods.len(), m < c.maps.len(),
+            0 <= off <= c.maps[m as int].len(),
+            forall|o: int| 0 <= o < off && (#[trigger] c@.maps[m as int][o]) is Some ==>
+                instr_ok(pview2(p), c@, m as int, o, c@.maps[m as int][o]->0, trusted),
+        decreases c.maps[m as int].len() - off,
+    {
+        match &c.maps[m][off] {
+            Some(k) => if !x_instr_ok(p, c, m, off, k, trusted) {
+                proof { assert(c@.maps[m as int][off as int] == Some(kv(*k))); }
+                return false;
+            },
+            None => {},
+        }
+        off += 1;
+    }
+    true
+}
+
 pub fn x_method_ok(p: &ExecProgram, c: &XCert, m: usize, trusted: bool) -> (r: bool)
-    requires wf_program2(pview2(p)), m < p.methods.len(), tables_ok(pview2(p), c@),
+    requires
+        wf_program2(pview2(p)), m < p.methods.len(),
+        c.maps.len() == p.methods.len(), c.block_params.len() == p.methods.len(), c.contexts.len() == p.methods.len(),
     ensures r == method_ok(pview2(p), c@, m as int, trusted),
 {
     let i = p.methods[m];
@@ -931,27 +1483,27 @@ pub fn x_method_ok(p: &ExecProgram, c: &XCert, m: usize, trusted: bool) -> (r: b
     if i.kind == 3 && c.contexts[m].is_none() { return true; }
     let e = x_entry_kinds(p, c, m);
     if !x_map_is(c, m as i64, 0, &e) { return false; }
-    let mut off = 0;
-    while off < c.maps[m].len() {
-        match &c.maps[m][off] {
-            Some(k) => if !x_instr_ok(p, c, m, off, k, trusted) { return false; },
-            None => {},
-        }
-        off += 1;
-    }
-    true
+    x_method_body_ok(p, c, m, trusted)
 }
 
 // ---------------------------------------------------------------------------
 // Tables.
 
+#[verifier::loop_isolation(false)]
 pub fn x_no_block_params(c: &XCert, m: usize) -> (r: bool)
     requires m < c.block_params.len(),
     ensures r == no_block_params(c@, m as int),
 {
     let mut i = 0;
-    while i < c.block_params[m].len() {
-        if c.block_params[m][i] { return false; }
+    while i < c.block_params[m].len()
+        invariant m < c.block_params.len(), 0 <= i <= c.block_params[m as int].len(),
+            forall|ii: int| 0 <= ii < i ==> !(#[trigger] c@.block_params[m as int][ii]),
+        decreases c.block_params[m as int].len() - i,
+    {
+        if c.block_params[m][i] {
+            proof { assert(c@.block_params[m as int][i as int]); }
+            return false;
+        }
         i += 1;
     }
     true
@@ -962,7 +1514,7 @@ pub fn x_machine_class_ok(p: &ExecProgram, k: usize) -> (r: bool)
     ensures r == machine_class_ok(pview2(p), k as int),
 {
     let cl = p.builtin[k] as i64;
-    0 <= cl && (cl as usize) < p.class_bits.len() && !(x_is_field_class(p, cl) && x_ifc(p, cl as usize) >= 1)
+    0 <= cl && (cl as u64) < (p.class_bits.len() as u64) && !(x_is_field_class(p, cl) && x_ifc(p, cl as usize) >= 1)
 }
 
 pub fn x_entry_method(p: &ExecProgram, k: usize) -> (r: i64)
@@ -970,7 +1522,7 @@ pub fn x_entry_method(p: &ExecProgram, k: usize) -> (r: i64)
     ensures r as int == entry_method(pview2(p), k as int),
 {
     let d = p.entry_points[k] as i64;
-    if 0 <= d && (d as usize) < p.dispatch.len() { p.dispatch[d as usize] as i64 } else { -1 }
+    if 0 <= d && (d as u64) < (p.dispatch.len() as u64) { p.dispatch[d as usize] as i64 } else { -1 }
 }
 
 pub fn x_entry_ok(p: &ExecProgram, c: &XCert, k: usize, a: u8) -> (r: bool)
@@ -983,7 +1535,7 @@ pub fn x_entry_ok(p: &ExecProgram, c: &XCert, k: usize, a: u8) -> (r: bool)
 }
 
 pub fn x_dispatch_entry_ok(p: &ExecProgram, d: usize) -> (r: bool)
-    requires d < p.dispatch.len(),
+    requires d < p.dispatch.len(), p.dispatch.len() < 0x1000_0000,
     ensures r == dispatch_entry_ok(pview2(p), d as int),
 {
     let t = p.dispatch[d] as i64;
@@ -992,7 +1544,7 @@ pub fn x_dispatch_entry_ok(p: &ExecProgram, d: usize) -> (r: bool)
     let i = p.methods[t as usize];
     if !(i.kind == 0 || i.kind == 1) { return false; }
     let cl = d as i64 - i.selector as i64;
-    if i.selector != 0xffff && 0 <= cl && cl < p.class_bits.len() as i64 && i.recv_start != 0xffff {
+    if i.selector != 0xffff && 0 <= cl && (cl as u64) < (p.class_bits.len() as u64) && i.recv_start != 0xffff {
         i.recv_start as i64 <= cl && cl < i.recv_end as i64
     } else {
         true
@@ -1004,10 +1556,14 @@ pub fn x_bools_eq(a: &Vec<bool>, b: &Vec<bool>) -> (r: bool)
 {
     if a.len() != b.len() { return false; }
     let mut i = 0;
-    while i < a.len() {
+    while i < a.len()
+        invariant a.len() == b.len(), 0 <= i <= a.len(), forall|j: int| 0 <= j < i ==> a@[j] == b@[j],
+        decreases a.len() - i,
+    {
         if a[i] != b[i] { return false; }
         i += 1;
     }
+    proof { assert(a@ =~= b@); }
     true
 }
 
@@ -1026,7 +1582,7 @@ pub fn x_method_table_ok(p: &ExecProgram, c: &XCert, m: usize) -> (r: bool)
         let r = c.sel_rep[s];
         if !(x_valid(p, r) && p.methods[r as usize].arity == i.arity
             && x_bools_eq(&c.block_params[r as usize], &c.block_params[m])
-            && (p.class_bits.len() as u64) + (s as u64) <= p.dispatch.len() as u64) {
+            && x_row_fits(p, s)) {
             return false;
         }
     }
@@ -1043,28 +1599,47 @@ pub fn x_tables_ok(p: &ExecProgram, c: &XCert) -> (r: bool)
     requires wf_program2(pview2(p)),
     ensures r == tables_ok(pview2(p), c@),
 {
+    let ghost pv = pview2(p);
     let n = p.methods.len();
     if !(c.maps.len() == n && c.block_params.len() == n && c.contexts.len() == n) { return false; }
     if c.sel_rep.len() > 0xffff { return false; }
     let mut s = 0;
-    while s < c.sel_rep.len() {
+    while s < c.sel_rep.len()
+        invariant 0 <= s <= c.sel_rep.len(), pv == pview2(p), forall|ss: int| 0 <= ss < s ==> #[trigger] sel_rep_ok(pv, c@, ss),
+        decreases c.sel_rep.len() - s,
+    {
         let r = c.sel_rep[s];
-        if !(r == -1 || (x_valid(p, r) && p.methods[r as usize].selector as usize == s)) { return false; }
+        if !(r == -1 || (x_valid(p, r) && p.methods[r as usize].selector as usize == s)) {
+            proof { assert(!sel_rep_ok(pv, c@, s as int)); }
+            return false;
+        }
         s += 1;
     }
     let mut d = 0;
-    while d < p.dispatch.len() {
+    while d < p.dispatch.len()
+        invariant wf_program2(pv), pv == pview2(p), 0 <= d <= p.dispatch.len(),
+            forall|dd: int| 0 <= dd < d ==> #[trigger] dispatch_entry_ok(pv, dd),
+        decreases p.dispatch.len() - d,
+    {
         if !x_dispatch_entry_ok(p, d) { return false; }
         d += 1;
     }
     let mut m = 0;
-    while m < n {
+    while m < n
+        invariant n == p.methods.len(), c.block_params.len() == n, c.contexts.len() == n, 0 <= m <= n, pv == pview2(p),
+            forall|mm: int| 0 <= mm < m ==> #[trigger] method_table_ok(pv, c@, mm),
+        decreases n - m,
+    {
         if !x_method_table_ok(p, c, m) { return false; }
         m += 1;
     }
     let mut k = 0;
-    while k < p.interface_check_offsets.len() {
-        if (p.class_bits.len() as u64) + (p.interface_check_offsets[k] as u64) > p.dispatch.len() as u64 { return false; }
+    while k < p.interface_check_offsets.len()
+        invariant 0 <= k <= p.interface_check_offsets.len(), pv == pview2(p),
+            forall|kk: int| 0 <= kk < k ==> class_count(pv) + (#[trigger] pv.interface_check_offsets[kk]) as int <= pv.dispatch.len(),
+        decreases p.interface_check_offsets.len() - k,
+    {
+        if !x_row_fits(p, p.interface_check_offsets[k] as usize) { return false; }
         k += 1;
     }
     if !(x_machine_class_ok(p, 15) && x_machine_class_ok(p, 11) && x_machine_class_ok(p, 16) && x_machine_class_ok(p, 18)) {
@@ -1074,11 +1649,14 @@ pub fn x_tables_ok(p: &ExecProgram, c: &XCert) -> (r: bool)
     if !(x_is_field_class(p, ex) && x_ifc(p, ex as usize) >= 2) { return false; }
     let tc = p.builtin[19] as i64;
     if !(x_is_field_class(p, tc) && x_ifc(p, tc as usize) >= 2) { return false; }
-    if !(x_entry_ok(p, c, 0, 1) && p.methods[x_entry_method(p, 0) as usize].recv_start == 0xffff) { return false; }
-    if !(x_entry_ok(p, c, 2, 1) && p.methods[x_entry_method(p, 2) as usize].recv_start == 0xffff) { return false; }
-    let mut two = Vec::new();
+    if !x_entry_ok(p, c, 0, 1) { return false; }
+    if p.methods[x_entry_method(p, 0) as usize].recv_start != 0xffff { return false; }
+    if !x_entry_ok(p, c, 2, 1) { return false; }
+    if p.methods[x_entry_method(p, 2) as usize].recv_start != 0xffff { return false; }
+    let mut two: Vec<XKind> = Vec::new();
     two.push(XKind::Val);
     two.push(XKind::Val);
+    proof { assert(kv(two) =~= seq![Kind::Val, Kind::Val]); }
     if !x_map_is(c, x_entry_method(p, 2), 1, &two) { return false; }
     x_entry_ok(p, c, 8, 2)
 }
@@ -1091,7 +1669,11 @@ pub fn x_wf_program2(p: &ExecProgram) -> (r: bool)
         return false;
     }
     let mut m = 0;
-    while m < p.methods.len() {
+    while m < p.methods.len()
+        invariant 0 <= m <= p.methods.len(),
+            forall|mm: int| 0 <= mm < m ==> #[trigger] p.methods@[mm].entry <= p.methods@[mm].end <= p.bytecodes.len(),
+        decreases p.methods.len() - m,
+    {
         if !(p.methods[m].entry <= p.methods[m].end && p.methods[m].end <= p.bytecodes.len()) { return false; }
         m += 1;
     }
@@ -1106,7 +1688,11 @@ pub fn verify(p: &ExecProgram, c: &XCert, trusted: bool) -> (r: bool)
     if !x_wf_program2(p) { return false; }
     if !x_tables_ok(p, c) { return false; }
     let mut m = 0;
-    while m < p.methods.len() {
+    while m < p.methods.len()
+        invariant wf_program2(pview2(p)), tables_ok(pview2(p), c@), 0 <= m <= p.methods.len(),
+            forall|mm: int| 0 <= mm < m ==> #[trigger] method_ok(pview2(p), c@, mm, trusted),
+        decreases p.methods.len() - m,
+    {
         if !x_method_ok(p, c, m, trusted) { return false; }
         m += 1;
     }

@@ -159,8 +159,12 @@ pub open spec fn try_frame(s: State2, g: int) -> bool {
     exists|x: int| 0 <= x < s.tries.len() && (#[trigger] s.tries[x]).frame as int == g
 }
 
+pub open spec fn base_step(s: State2, fi: int) -> bool {
+    s.frames[fi].base <= s.frames[fi + 1].base
+}
+
 pub open spec fn bases_ok(s: State2) -> bool {
-    &&& forall|fi: int| 0 <= fi && fi + 1 < s.frames.len() ==> (#[trigger] s.frames[fi]).base <= s.frames[fi + 1].base
+    &&& forall|fi: int| 0 <= fi && fi + 1 < s.frames.len() ==> #[trigger] base_step(s, fi)
     &&& s.frames.len() > 0 ==> s.frames.last().base <= s.stack.len()
 }
 
