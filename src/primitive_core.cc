@@ -2350,7 +2350,11 @@ PRIMITIVE(rebuild_hash_index) {
   if (!is_array(o) || !is_array(n)) FAIL(OUT_OF_RANGE);
   Array* old_array = Array::cast(o);
   Array* new_array = Array::cast(n);
-  word index_mask = new_array->length() - 1;
+  word new_length = new_array->length();
+  // The probing below only stays in bounds and terminates for a non-empty
+  // power-of-two index array.
+  if (new_length == 0 || !Utils::is_power_of_two(new_length)) FAIL(INVALID_ARGUMENT);
+  word index_mask = new_length - 1;
   word length = old_array->length();
   for (word i = 0; i < length; i++) {
     Object* o = old_array->at(i);
@@ -2364,7 +2368,11 @@ PRIMITIVE(rebuild_hash_index) {
     }
     word slot = hash_and_position & index_mask;
     word step = 1;
+    // Triangular probing visits every slot of a power-of-two array within
+    // new_length steps. If there is no free slot, fail instead of looping
+    // forever.
     while (new_array->at(slot) != 0) {
+      if (step > new_length) FAIL(INVALID_ARGUMENT);
       slot = (slot + step) & index_mask;
       step++;
     }
