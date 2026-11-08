@@ -2358,21 +2358,27 @@ PRIMITIVE(rebuild_hash_index) {
   if (!is_array(o) || !is_array(n)) FAIL(OUT_OF_RANGE);
   Array* old_array = Array::cast(o);
   Array* new_array = Array::cast(n);
-  word index_mask = new_array->length() - 1;
+  word new_length = new_array->length();
+  // The arguments come from Toit code. An empty or non-power-of-two index
+  // would make the mask index out of bounds or the probing never end.
+  if (new_length == 0 || !Utils::is_power_of_two(new_length)) FAIL(OUT_OF_RANGE);
+  word index_mask = new_length - 1;
   word length = old_array->length();
+  // Check all entries first, so that the Toit fallback starts from a clean
+  // index. Large integers (possible in the 32-bit VM) are left to the Toit
+  // fallback, too.
   for (word i = 0; i < length; i++) {
-    Object* o = old_array->at(i);
-    word hash_and_position;
-    if (is_smi(o)) {
-      hash_and_position = Smi::value(o);
-    } else if (is_large_integer(o)) {
-      hash_and_position = LargeInteger::cast(o)->value();
-    } else {
-      FAIL(INVALID_ARGUMENT);
-    }
+    if (!is_smi(old_array->at(i))) FAIL(INVALID_ARGUMENT);
+  }
+  for (word i = 0; i < length; i++) {
+    word hash_and_position = Smi::value(old_array->at(i));
+    if (hash_and_position == 0) continue;  // Empty slot.
     word slot = hash_and_position & index_mask;
     word step = 1;
+    // Triangular probing visits every slot of a power-of-two table within
+    // new_length steps; a full table is invalid input.
     while (new_array->at(slot) != 0) {
+      if (step > new_length) FAIL(OUT_OF_RANGE);
       slot = (slot + step) & index_mask;
       step++;
     }
