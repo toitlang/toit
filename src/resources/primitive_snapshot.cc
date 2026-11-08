@@ -55,6 +55,7 @@ PRIMITIVE(launch) {
 
   Snapshot snapshot(bytes.address(), bytes.length());
   auto image = snapshot.read_image(program_id.address());
+  if (!image.is_valid()) FAIL(INVALID_ARGUMENT);
   Program* program = image.program();
   ProcessGroup* process_group = ProcessGroup::create(gid, program, image.memory());
   ASSERT(process_group);  // Allocations only fail on devices.

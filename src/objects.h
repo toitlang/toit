@@ -1454,7 +1454,8 @@ class Instance : public HeapObject {
 
 #ifndef TOIT_FREERTOS
   void write_content(word instance_size, SnapshotWriter* st);
-  void read_content(SnapshotReader* st);
+  // The number of fields must match the allocated size.
+  void read_content(SnapshotReader* st, word expected_fields);
 #endif
 
   // Returns the number of fields in an instance of the given size.

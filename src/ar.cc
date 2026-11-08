@@ -207,6 +207,8 @@ static int parse_ar_file_header(const uint8* data, File* file) {
       return AR_FORMAT_ERROR;
     }
   }
+  // The byte_size field is an int.
+  if (byte_size > INT32_MAX) return AR_FORMAT_ERROR;
   file->byte_size = byte_size;
 
   char name[FILE_NAME_SIZE + 1];
@@ -245,7 +247,8 @@ int MemoryReader::next(File* file) {
   int result = parse_ar_file_header(&buffer_[offset_], file);
   if (result != 0) return result;
   offset_ += FILE_HEADER_SIZE;
-  if (offset_ + file->byte_size > size_) return AR_FORMAT_ERROR;
+  // The size comes from untrusted input; avoid int overflow in the check.
+  if (file->byte_size > size_ - offset_) return AR_FORMAT_ERROR;
   file->set_content(&buffer_[offset_], AR_DONT_FREE);
   offset_ += file->byte_size;
   if (needs_padding(file->byte_size)) offset_++;
