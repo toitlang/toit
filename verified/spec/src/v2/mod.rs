@@ -21,3 +21,10 @@ pub mod spec;
 pub mod prim;
 pub mod exec;
 pub mod verifier;
+// Excluded from verification until the checker proof lands.
+#[cfg(not(verus_keep_ghost))]
+pub mod check;
+#[cfg(not(verus_keep_ghost))]
+pub mod infer;
+pub mod heap_check;
+pub mod prim_arity;
