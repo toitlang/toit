@@ -222,6 +222,12 @@ if (NOT ${TOIT_IS_EMBEDDED})
     add_subdirectory(tests)
   endif()
 
+  # libFuzzer harnesses (opt-in; see tests/fuzz/README.md).
+  option(TOIT_BUILD_FUZZERS "Build the libFuzzer harnesses in tests/fuzz (requires clang)" OFF)
+  if (TOIT_BUILD_FUZZERS)
+    add_subdirectory(tests/fuzz)
+  endif()
+
   add_subdirectory(examples)
   # External Toit packages and projects.
   add_subdirectory(external)
