@@ -31,6 +31,16 @@
 namespace toit {
 namespace compiler {
 
+// The class-id range [start, end) of the receiver of a method, declared in
+// format-2 method headers.
+struct ReceiverRange {
+  ReceiverRange() : start(-1), end(-1) {}
+  ReceiverRange(int start, int end) : start(start), end(end) {}
+  int start;
+  int end;
+  bool is_valid() const { return start >= 0; }
+};
+
 // The builder class is used for installing and manipulating the program.
 // A simple stack avoids the need for handles to survive garbage collection.
 class ProgramBuilder {
@@ -66,10 +76,19 @@ class ProgramBuilder {
 
   // Removes the top 'len' elements and replaces them with an array containing those elements.
   void create_class(int id, const char* name, int instance_size, bool is_runtime);
-  int create_method(word selector_offset, bool is_field_stub, int arity, List<uint8> codes, int max_height);
+  // In bytecode format 2 the receiver range and the field index of a field
+  // accessor go into the method header (see bytecode_format.h); format 1
+  // ignores them.
+  // Returns the method id: the offset of the method in the bytecodes in
+  // format 1, the index in the method table in format 2.
+  int create_method(word selector_offset, bool is_field_stub, int arity, List<uint8> codes, int max_height,
+                    ReceiverRange receiver = ReceiverRange(), int field_index = 0);
   int create_lambda(int captured_count, int arity, List<uint8> codes, int max_height);
   int create_block(int arity, List<uint8> codes, int max_height);
   int absolute_bci_for(int method_id);
+  // The id under which a method is registered in the source map: the offset
+  // of its header in the bytecodes (in both formats).
+  int source_id_for(int method_id);
   void patch_uint32_at(int absolute_bci, uint32 value);
 
   void create_class_bits_table(int size);
@@ -106,6 +125,8 @@ class ProgramBuilder {
 
  private:
   void allocate_method(int bytecode_size, int max_height, int* method_id, Method* method);
+  int create_method_v2(int kind, int arity, int max_height, int selector, int aux,
+                       ReceiverRange receiver, List<uint8> bytecodes);
 
   void set_builtin_class_id(const char* name, int id);
 
@@ -139,6 +160,8 @@ class ProgramBuilder {
   std::vector<Object*> literals_;
 
   std::vector<uint8> all_bytecodes_;
+  // Format 2: offsets of the method headers in all_bytecodes_, by method id.
+  std::vector<int> v2_method_offsets_;
 
   // The biggest max stack-height of all functions.
   int global_max_stack_height_ = 0;

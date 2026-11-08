@@ -14,6 +14,7 @@
 // directory of this repository.
 
 #include "emitter.h"
+#include "bytecode_format.h"
 #include "../objects_inline.h"
 #include "../interpreter.h"
 #include "limits.h"
@@ -25,6 +26,13 @@ static const int MIN_BYTECODE_VALUE = 0;
 static const int MAX_BYTECODE_VALUE = UCHAR_MAX;
 // TODO(Lau): Inline max value:
 static const int MAX_USHORT_VALUE   = USHRT_MAX;
+
+// Number of words between the parameters and the locals of a frame. In
+// format 2 the return address and frame marker live on a separate frame
+// stack, so the parameters are directly below the locals.
+static int frame_size() {
+  return is_format2() ? 0 : Interpreter::FRAME_SIZE;
+}
 
 inline void Emitter::emit(Opcode opcode, int value) {
   ASSERT(MIN_BYTECODE_VALUE <= value && value <= MAX_BYTECODE_VALUE);
@@ -252,8 +260,7 @@ void Emitter::load_outer_local(int n, Emitter* outer_emitter) {
 
 void Emitter::load_parameter(int n, ExpressionStack::Type type) {
   ASSERT(n >= 0 && n < arity());
-  int frame_size = Interpreter::FRAME_SIZE;
-  int offset = height() + frame_size + (arity() - n - 1);
+  int offset = height() + frame_size() + (arity() - n - 1);
   stack_.push(type);
   emit_load_local(offset);
 }
@@ -261,8 +268,7 @@ void Emitter::load_parameter(int n, ExpressionStack::Type type) {
 void Emitter::load_outer_parameter(int n, ExpressionStack::Type type, Emitter* outer_emitter) {
   ASSERT(n >= 0 && n < outer_emitter->arity());
   ASSERT(outer_emitter->stack_.type(0) == ExpressionStack::BLOCK_CONSTRUCTION_TOKEN);
-  int frame_size = Interpreter::FRAME_SIZE;
-  int offset = outer_emitter->height() + frame_size + (outer_emitter->arity() - n - 1);
+  int offset = outer_emitter->height() + frame_size() + (outer_emitter->arity() - n - 1);
   emit(LOAD_OUTER, offset);
   stack_.pop();  // The block reference.
   stack_.push(type);
@@ -285,16 +291,14 @@ void Emitter::store_outer_local(int n, Emitter* outer_emitter) {
 void Emitter::store_parameter(int n) {
   ASSERT(n >= 0 && n < arity());
   int offset = arity() - n - 1;
-  int frame_size = Interpreter::FRAME_SIZE;
-  emit(STORE_LOCAL, offset + height() + frame_size);
+  emit(STORE_LOCAL, offset + height() + frame_size());
 }
 
 void Emitter::store_outer_parameter(int n, Emitter* outer_emitter) {
   ASSERT(n >= 0 && n < outer_emitter->arity());
   ASSERT(outer_emitter->stack_.type(0) == ExpressionStack::BLOCK_CONSTRUCTION_TOKEN);
   int offset = outer_emitter->arity() - n - 1;
-  int frame_size = Interpreter::FRAME_SIZE;
-  emit(STORE_OUTER, offset + outer_emitter->height() + frame_size);
+  emit(STORE_OUTER, offset + outer_emitter->height() + frame_size());
   stack_.pop();
 }
 
@@ -362,7 +366,8 @@ void Emitter::invoke_global(int index, int arity, bool is_tail_call) {
   ASSERT(index >= 0);
   emit_opcode(is_tail_call ? INVOKE_STATIC_TAIL : INVOKE_STATIC);
   emit_uint16(index);
-  if (is_tail_call) {
+  // Format 2 replaces the frame: the frame stack knows its height and arity.
+  if (is_tail_call && !is_format2()) {
     emit_uint8(height());
     emit_uint8(this->arity());
   }
@@ -397,8 +402,10 @@ void Emitter::invoke_virtual(Opcode opcode, int offset, int arity) {
 
 void Emitter::invoke_initializer_tail() {
   emit_opcode(INVOKE_INITIALIZER_TAIL);
-  emit_uint8(height());
-  emit_uint8(this->arity());
+  if (!is_format2()) {
+    emit_uint8(height());
+    emit_uint8(this->arity());
+  }
   stack_.pop();
 }
 
@@ -417,8 +424,7 @@ int Emitter::typecheck_local(int n, int index) {
 
 int Emitter::typecheck_parameter(int n, int index) {
   ASSERT(n >= 0 && n < arity());
-  int frame_size = Interpreter::FRAME_SIZE;
-  int offset = height() + frame_size + (arity() - n - 1);
+  int offset = height() + frame_size() + (arity() - n - 1);
   return typecheck_local_at_offset(offset, index);
 }
 
@@ -467,7 +473,8 @@ void Emitter::branch(Condition condition, Label* label) {
     ASSERT(offset >= 0);
     emit_opcode(op);
     emit_uint16(offset);
-    emit_uint16(position);
+    // Format 2 finds the method from the frame stack.
+    if (!is_format2()) emit_uint16(position);
   } else {
     label->use(position, height());
     emit_opcode(op);
@@ -477,17 +484,38 @@ void Emitter::branch(Condition condition, Label* label) {
 
 void Emitter::invoke_lambda_tail(int parameters, int max_capture_count) {
   stack_.reserve(max_capture_count);
-  emit(INVOKE_LAMBDA_TAIL, parameters);
+  if (is_format2()) {
+    // The arguments are the parameters of the frame.
+    ASSERT(parameters == arity() - 1);
+    emit_opcode(INVOKE_LAMBDA_TAIL);
+  } else {
+    emit(INVOKE_LAMBDA_TAIL, parameters);
+  }
 }
 
 void Emitter::ret() {
   emit_opcode(RETURN);
+  if (is_format2()) return;
   emit_uint8(height());
   emit_uint8(arity());
 }
 
 void Emitter::ret_null() {
   int value;
+  if (is_format2()) {
+    // A return drops the whole frame, so a pop right before it is redundant.
+    if (previous_opcode() == POP_1) {
+      ASSERT(builder_.last() == POP_1);
+      builder_.last() = RETURN_NULL;
+    } else if (last_is(POP, &value)) {
+      int last_pos = opcode_positions_.last();
+      builder_[last_pos] = RETURN_NULL;
+      builder_.remove_last();
+    } else {
+      emit_opcode(RETURN_NULL);
+    }
+    return;
+  }
   if (previous_opcode() == POP_1) {
     ASSERT(builder_.last() == POP_1);
     builder_.last() = RETURN_NULL;
@@ -507,6 +535,12 @@ void Emitter::ret_null() {
 }
 
 void Emitter::nlr(int height, int arity) {
+  if (is_format2()) {
+    // The block reference identifies the frame to return from.
+    emit_opcode(NON_LOCAL_RETURN);
+    stack_.pop();
+    return;
+  }
   if (height >= 0x0f || arity >= 0x0f) {
     ASSERT(height <= MAX_USHORT_VALUE);
     ASSERT(arity <= MAX_USHORT_VALUE);
@@ -534,12 +568,58 @@ void Emitter::nl_branch(AbsoluteLabel* label, int height_diff) {
 }
 
 void Emitter::_throw() {
-  emit(THROW, 0);
+  if (is_format2()) {
+    emit_opcode(THROW);
+  } else {
+    emit(THROW, 0);
+  }
 }
 
 void Emitter::link() {
+  ASSERT(!is_format2());
   emit(LINK, 0);
   remember(4);
+}
+
+void Emitter::try_finally() {
+  ASSERT(is_format2());
+  ASSERT(stack_.type(0) == ExpressionStack::OBJECT);  // The try block's method.
+  emit_opcode(V2_TRY);
+  // The finally code starts with the exception (or null), the unwinding
+  // token and the reason.
+  remember(3);
+}
+
+void Emitter::load_field_this(int n) {
+  ASSERT(is_format2());
+  ASSERT(n >= 0 && n <= MAX_BYTECODE_VALUE);
+  emit(V2_LOAD_FIELD_THIS, n);
+  stack_.push(ExpressionStack::OBJECT);
+}
+
+void Emitter::store_field_this(int n) {
+  ASSERT(is_format2());
+  ASSERT(n >= 0 && n <= MAX_BYTECODE_VALUE);
+  emit(V2_STORE_FIELD_THIS, n);
+  // The value stays on the stack.
+}
+
+bool Emitter::ends_with_terminator() {
+  switch (previous_opcode()) {
+    case RETURN:
+    case RETURN_NULL:
+    case THROW:
+    case BRANCH:
+    case BRANCH_BACK:
+    case INVOKE_STATIC_TAIL:
+    case INVOKE_LAMBDA_TAIL:
+    case INVOKE_INITIALIZER_TAIL:
+    case NON_LOCAL_RETURN:
+    case NON_LOCAL_BRANCH:
+      return true;
+    default:
+      return false;
+  }
 }
 
 void Emitter::unlink() {

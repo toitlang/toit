@@ -14,6 +14,7 @@
 // directory of this repository.
 
 #include "program_builder.h"
+#include "bytecode_format.h"
 #include "token.h"
 #include "tree_roots.h"
 #include "../flags.h"
@@ -25,6 +26,15 @@
 
 namespace toit {
 namespace compiler {
+
+static int current_bytecode_format = 1;
+
+int bytecode_format() { return current_bytecode_format; }
+
+void set_bytecode_format(int format) {
+  ASSERT(format == 1 || format == 2);
+  current_bytecode_format = format;
+}
 
 ProgramBuilder::ProgramBuilder(
     Program* program,
@@ -138,11 +148,69 @@ void ProgramBuilder::push_lazy_initializer_id(int id) {
   push(lazy_initializer);
 }
 
+int ProgramBuilder::create_method_v2(int kind,
+                                     int arity,
+                                     int max_height,
+                                     int selector,
+                                     int aux,
+                                     ReceiverRange receiver,
+                                     List<uint8> bytecodes) {
+  if (all_bytecodes_.empty()) {
+    for (int i = 0; i < V2_TAG_SIZE; i++) all_bytecodes_.push_back(V2_TAG[i]);
+  }
+  ASSERT(0 <= arity && arity < 0x100);
+  ASSERT(0 <= max_height && max_height <= 0xffff);
+  ASSERT(0 <= selector && selector <= 0xffff);
+  ASSERT(0 <= aux && aux <= 0xffff);
+  int offset = all_bytecodes_.size();
+  int id = v2_method_offsets_.size();
+  v2_method_offsets_.push_back(offset);
+  auto u16 = [&](int value) {
+    all_bytecodes_.push_back(value & 0xff);
+    all_bytecodes_.push_back((value >> 8) & 0xff);
+  };
+  all_bytecodes_.push_back(arity);
+  all_bytecodes_.push_back(kind);
+  u16(max_height);
+  u16(selector);
+  u16(aux);
+  if (receiver.is_valid()) {
+    ASSERT(receiver.start < receiver.end && receiver.end < V2_NO_VALUE);
+    u16(receiver.start);
+    u16(receiver.end);
+  } else {
+    u16(V2_NO_VALUE);
+    u16(V2_NO_VALUE);
+  }
+  word length = bytecodes.length();
+  u16(length & 0xffff);
+  u16((length >> 16) & 0xffff);
+  ASSERT(static_cast<int>(all_bytecodes_.size()) == offset + V2_HEADER_SIZE);
+  for (int i = 0; i < bytecodes.length(); i++) all_bytecodes_.push_back(bytecodes[i]);
+  global_max_stack_height_ = Utils::max(global_max_stack_height_, max_height);
+  return id;
+}
+
+int ProgramBuilder::source_id_for(int method_id) {
+  if (is_format2()) return v2_method_offsets_[method_id];
+  return method_id;
+}
+
 int ProgramBuilder::create_method(word selector_offset,
                                   bool is_field_accessor,
                                   int arity,
                                   List<uint8> bytecodes,
-                                  int max_height) {
+                                  int max_height,
+                                  ReceiverRange receiver,
+                                  int field_index) {
+  if (is_format2()) {
+    int kind = is_field_accessor ? V2_KIND_FIELD_ACCESSOR : V2_KIND_METHOD;
+    int selector = selector_offset >= 0 ? selector_offset : V2_NO_VALUE;
+    int aux = is_field_accessor ? field_index : 0;
+    int id = create_method_v2(kind, arity, max_height, selector, aux, receiver, bytecodes);
+    (*method_selector_offsets_)[source_id_for(id)] = selector_offset;
+    return id;
+  }
   int method_id;
   auto method = Method::invalid();
   allocate_method(bytecodes.length(), max_height, &method_id, &method);
@@ -153,6 +221,10 @@ int ProgramBuilder::create_method(word selector_offset,
 }
 
 int ProgramBuilder::create_lambda(int captured_count, int arity, List<uint8> bytecodes, int max_height) {
+  if (is_format2()) {
+    return create_method_v2(V2_KIND_LAMBDA, arity, max_height, V2_NO_VALUE, captured_count,
+                            ReceiverRange(), bytecodes);
+  }
   int method_id;
   auto method = Method::invalid();
   allocate_method(bytecodes.length(), max_height, &method_id, &method);
@@ -161,6 +233,10 @@ int ProgramBuilder::create_lambda(int captured_count, int arity, List<uint8> byt
 }
 
 int ProgramBuilder::create_block(int arity, List<uint8> bytecodes, int max_height) {
+  if (is_format2()) {
+    return create_method_v2(V2_KIND_BLOCK, arity, max_height, V2_NO_VALUE, 0,
+                            ReceiverRange(), bytecodes);
+  }
   int method_id;
   auto method = Method::invalid();
   allocate_method(bytecodes.length(), max_height, &method_id, &method);
@@ -169,6 +245,7 @@ int ProgramBuilder::create_block(int arity, List<uint8> bytecodes, int max_heigh
 }
 
 int ProgramBuilder::absolute_bci_for(int method_id) {
+  if (is_format2()) return v2_method_offsets_[method_id] + V2_HEADER_SIZE;
   Method method(&all_bytecodes_[method_id]);
   return method.bcp_from_bci(0) - &all_bytecodes_[0];
 }
@@ -291,6 +368,12 @@ void ProgramBuilder::set_up_skeleton_program() {
   // Bind default literals.
   literals_.push_back(program_->true_object());
   literals_.push_back(program_->false_object());
+  if (is_format2()) {
+    // The values of the exceptions the format-2 machine raises itself.
+    #define ADD_FAILURE_STRING(name) add_string(#name);
+    V2_FAILURE_STRINGS(ADD_FAILURE_STRING)
+    #undef ADD_FAILURE_STRING
+  }
 
   // Predefined symbols used for primitive failures.
   #define SET_ERROR_STRING(name, upper_name) \

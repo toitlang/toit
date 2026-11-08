@@ -29,6 +29,7 @@
 #include <fcntl.h>
 
 #include "compiler.h"
+#include "bytecode_format.h"
 #include "diagnostic.h"
 #include "definite.h"
 #include "dep_writer.h"
@@ -2422,15 +2423,27 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   TypeOracle oracle(source_mapper);
   MethodSelectorOffsets method_selector_offsets;
   statistics.switch_phase(PipelineStatistics::CODE_GENERATION);
+  int requested_format = Flags::bytecode_format;
+  if (requested_format != 1 && requested_format != 2) {
+    FATAL("Unsupported bytecode format %d", requested_format);
+  }
+  if (requested_format == 2 && propagate) {
+    FATAL("Type propagation needs bytecode format 1");
+  }
+  bool second_pass = run_optimizations && configuration_.optimization_level >= 2;
+  // The type propagator of the second pass interprets the program of the
+  // first pass, so that one is always generated in format 1.
+  set_bytecode_format(second_pass ? 1 : requested_format);
   auto program = construct_program(ir_program,
                                    source_mapper,
                                    &oracle,
                                    null,
                                    run_optimizations,
                                    &method_selector_offsets);
+  set_bytecode_format(requested_format);
 
   SourceMapper optimized_source_mapper(source_manager());
-  if (run_optimizations && configuration_.optimization_level >= 2) {
+  if (second_pass) {
     statistics.switch_phase(PipelineStatistics::OPTIMIZATION);
     bool quiet = true;
     ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX, quiet);

@@ -49,6 +49,9 @@ class Program:
   heap64                    / Heap ::= ?
   all-bytecodes             / ByteArray ::= ?
   global-max-stack-height   / int ::= ?
+  // The bytecode format: 1 (the VM's) or 2 (the revised format of
+  //   verified/spec, whose bytecodes start with the tag 'TBC2').
+  format                    / int ::= ?
 
   // Debugging information.
   method-table_  / Map      ::= ?       // Map of MethodInfo
@@ -94,13 +97,29 @@ class Program:
     global-table              = snapshot.source-map.global-segment.content
     selectors_                = snapshot.source-map.selectors-segment.content
 
+    format = Program.format-of all-bytecodes
     // Create the methods list.
-    current-offset := 0
+    current-offset := format == 2 ? ToitMethod.V2-TAG-SIZE : 0
     methods = List method-table_.size:
       method-info := method-table_[current-offset]
-      method := ToitMethod all-bytecodes current-offset method-info.bytecode-size
+      method := ToitMethod all-bytecodes current-offset method-info.bytecode-size --format=format
       current-offset += method.allocation-size
       method
+
+  static format-of bytecodes/ByteArray -> int:
+    if bytecodes.size >= 4 and bytecodes[0] == 'T' and bytecodes[1] == 'B'
+        and bytecodes[2] == 'C' and bytecodes[3] == '2':
+      return 2
+    return 1
+
+  /**
+  The id (the header offset, as used by the source map) of the method
+    with the given method id in the bytecodes: in format 2 method ids are
+    indices into the method table.
+  */
+  method-id-for-target target/int -> int:
+    if format == 2: return methods[target].id
+    return target
 
   // Extract selector name from the dispatch offset used in invoke virtual byte codes.
   selector-from-dispatch-offset offset/int -> string:
@@ -492,6 +511,8 @@ class ToitByteArray extends ToitHeapObject:
 
 class ToitMethod:
   static HEADER-SIZE ::= 4
+  static V2-HEADER-SIZE ::= 16
+  static V2-TAG-SIZE ::= 4
 
   static METHOD ::= 0
   static FIELD-ACCESSOR ::= 1
@@ -505,19 +526,41 @@ class ToitMethod:
   value  ::= 0
   bytecodes / ByteArray := ?
   is-statically-resolved-instance-method / bool := false
+  format / int
+  header-size / int
+  // Format 2 only.
+  aux / int := 0
+  receiver-start / int? := null
+  receiver-end / int? := null
 
-  constructor all-bytecodes/ByteArray at/int bytecode-size/int:
+  constructor all-bytecodes/ByteArray at/int bytecode-size/int --.format/int=1:
     id = at
-    arity-and-flags := all-bytecodes[at++]
-    kind-height := all-bytecodes[at++]
-    kind       = kind-height & 0x3
-    max-height = (kind-height >> 2) * 4
-    value = LITTLE-ENDIAN.uint16 all-bytecodes at
-    is-statically-resolved-instance-method = (arity-and-flags & 0x80) != 0
-    arity = arity-and-flags & 0x7f
-    at += 2
-    assert: at - id == HEADER-SIZE
-    bytecodes = all-bytecodes.copy at (at + bytecode-size)
+    if format == 2:
+      // See src/compiler/bytecode_format.h.
+      header-size = V2-HEADER-SIZE
+      arity = all-bytecodes[at]
+      kind = all-bytecodes[at + 1]
+      max-height = LITTLE-ENDIAN.uint16 all-bytecodes at + 2
+      value = LITTLE-ENDIAN.uint16 all-bytecodes at + 4
+      aux = LITTLE-ENDIAN.uint16 all-bytecodes at + 6
+      start := LITTLE-ENDIAN.uint16 all-bytecodes at + 8
+      if start != 0xffff:
+        receiver-start = start
+        receiver-end = LITTLE-ENDIAN.uint16 all-bytecodes at + 10
+      assert: (LITTLE-ENDIAN.uint32 all-bytecodes at + 12) == bytecode-size
+      bytecodes = all-bytecodes.copy (at + V2-HEADER-SIZE) (at + V2-HEADER-SIZE + bytecode-size)
+    else:
+      header-size = HEADER-SIZE
+      arity-and-flags := all-bytecodes[at++]
+      kind-height := all-bytecodes[at++]
+      kind       = kind-height & 0x3
+      max-height = (kind-height >> 2) * 4
+      value = LITTLE-ENDIAN.uint16 all-bytecodes at
+      is-statically-resolved-instance-method = (arity-and-flags & 0x80) != 0
+      arity = arity-and-flags & 0x7f
+      at += 2
+      assert: at - id == HEADER-SIZE
+      bytecodes = all-bytecodes.copy at (at + bytecode-size)
 
   is-normal-method -> bool: return kind == METHOD
   is-field-accessor -> bool: return kind == FIELD-ACCESSOR
@@ -525,7 +568,7 @@ class ToitMethod:
   is-block -> bool: return kind == BLOCK
 
   allocation-size -> int:
-    return HEADER-SIZE + bytecodes.size
+    return header-size + bytecodes.size
 
   selector-offset:
     if is-statically-resolved-instance-method: return -value
@@ -533,10 +576,14 @@ class ToitMethod:
     return value
 
   absolute-entry-bci -> int:
-    return id + HEADER-SIZE
+    return id + header-size
+
+  /// The bytecode table of this method's format.
+  table -> List:
+    return format == 2 ? BYTE-CODES-V2 : BYTE-CODES
 
   bci-from-absolute-bci absolute-bci/int -> int:
-    bci := absolute-bci - id - HEADER-SIZE
+    bci := absolute-bci - id - header-size
     // For method calls the return-bci is just after the call. If a method
     // is known not to return, then there might not be any bytecodes left and
     // the bci is equal to the bytecode size.
@@ -545,12 +592,12 @@ class ToitMethod:
 
   absolute-bci-from-bci bci/int -> int:
     assert: 0 <= bci < bytecodes.size
-    return bci + id + HEADER-SIZE
+    return bci + id + header-size
 
   // bytecode_string is static to support future byte code tracing.
   static bytecode-string method/ToitMethod bci index program/Program --show-positions/bool=true:
     opcode := method.bytecodes[bci]
-    bytecode := BYTE-CODES[opcode]
+    bytecode := method.table[opcode]
     line := "[$(%03d opcode)] - $bytecode.description"
     format := bytecode.format
     if format == OP:
@@ -583,7 +630,7 @@ class ToitMethod:
       line += " T$(bci + index)"
     else if format == OP-SF:
       line += " T$(bci + (method.uint16 bci + 1))"
-    else if format == OP-SB-SB:
+    else if format == OP-SB-SB or format == OP-SB:
       line += " T$(bci - (method.uint16 bci + 1))"
     else if format == OP-BCI:
       is-nullable := (index & 1) != 0
@@ -623,7 +670,7 @@ class ToitMethod:
     else if format == OP-SD:
       dispatch-index := method.uint16 bci + 1
       target := program.dispatch-table[dispatch-index]
-      debug-info := program.method-info-for target
+      debug-info := program.method-info-for (program.method-id-for-target target)
       line += " $(debug-info.short-stringify program --show-positions=show-positions)"
     else if format == OP-SO:
       offset := method.uint16 bci + 1
@@ -631,7 +678,7 @@ class ToitMethod:
     else if format == OP-WU:
       value := method.uint32 bci + 1
       if bytecode.name == "LOAD_METHOD":
-        debug-info := program.method-info-for value
+        debug-info := program.method-info-for (program.method-id-for-target value)
         line += " $(debug-info.short-stringify program --show-positions=show-positions)"
       else:
         line += " $value"
@@ -661,6 +708,10 @@ class ToitMethod:
     else if format == OP-SS-SO:
       offset := method.uint16 bci + 3
       line += " $(program.selector-from-dispatch-offset offset)"
+    else if format == OP-BU-WR:
+      // The target is relative to the entry of the method of the frame the
+      // block reference points to.
+      line += " {outer+$(method.uint32 bci + 2)} S$index"
     else if format == OP-SU-SU:
       arity := method.uint16 bci + 1
       height := method.uint16 bci + 3
@@ -687,21 +738,21 @@ class ToitMethod:
 
   do-call bci index program/Program [block]:
     opcode := bytecodes[bci]
-    bytecode := BYTE-CODES[opcode]
-    format := bytecode.format
-    if format == OP-SD:
+    bytecode := table[opcode]
+    operand-format := bytecode.format
+    if operand-format == OP-SD:
       target := program.dispatch-table[uint16 bci + 1]
-      debug-info := program.method-info-for target
+      debug-info := program.method-info-for (program.method-id-for-target target)
       block.call debug-info.name
-    else if format == OP-SO:
+    else if operand-format == OP-SO:
       block.call
         program.selector-from-dispatch-offset
           uint16 bci + 1
-    else if format == OP-BS-SO:
+    else if operand-format == OP-BS-SO:
       block.call
         program.selector-from-dispatch-offset
           uint16 bci + 2
-    else if format == OP-BU-SO:
+    else if operand-format == OP-BU-SO:
       block.call
         program.selector-from-dispatch-offset
           uint16 bci + 2
@@ -712,7 +763,7 @@ class ToitMethod:
     length := bytecodes.size
     while index < length:
       opcode := bytecodes[index]
-      bc-length := BYTE-CODES[opcode].size
+      bc-length := table[opcode].size
       if bc-length > 1:
         argument := bytecodes[index + 1]
         effective = (effective << 8) | argument;
@@ -725,8 +776,8 @@ class ToitMethod:
     length := bytecodes.size
     while index < length:
       opcode := bytecodes[index]
-      block.call BYTE-CODES[opcode] index
-      bc-length := BYTE-CODES[opcode].size
+      block.call table[opcode] index
+      bc-length := table[opcode].size
       index += bc-length
 
   output program/Program:
@@ -747,7 +798,7 @@ class ToitMethod:
       line := "$(%3d index)"
       if show-positions: line += "/$(%4d absolute-bci) "
       opcode := bytecodes[index]
-      bc-length := BYTE-CODES[opcode].size
+      bc-length := table[opcode].size
       argument := 0;
       if bc-length > 1:
         argument = bytecodes[index + 1]
@@ -800,6 +851,8 @@ OP-SCI   ::= 27
 OP-SII   ::= 28
 OP-SB-SB ::= 29
 OP-SU-SU ::= 30
+OP-SB    ::= 31  // Format 2.
+OP-BU-WR ::= 32  // Format 2.
 
 class Bytecode:
   name        ::= ""
@@ -916,6 +969,111 @@ BYTE-CODES ::= [
   Bytecode "INTRINSIC_ARRAY_DO"         1 OP "intrinsic array do",
   Bytecode "INTRINSIC_HASH_FIND"        1 OP "intrinsic hash find",
   Bytecode "INTRINSIC_HASH_DO"          1 OP "intrinsic hash do",
+]
+
+// Format 2 (src/compiler/bytecode_format.h, verified/spec/src/v2).
+BYTE-CODES-V2 ::= [
+  Bytecode "LOAD_LOCAL"                 2 OP-BS "load local",
+  Bytecode "LOAD_LOCAL_WIDE"            3 OP-SS "load local wide",
+  Bytecode "POP_LOAD_LOCAL"             2 OP-BS "pop, load local",
+  Bytecode "STORE_LOCAL"                2 OP-BS "store local",
+  Bytecode "STORE_LOCAL_POP"            2 OP-BS "store local, pop",
+  Bytecode "LOAD_OUTER"                 2 OP-BS "load outer",
+  Bytecode "STORE_OUTER"                2 OP-BS "store outer",
+  Bytecode "LOAD_FIELD"                 2 OP-BU "load field",
+  Bytecode "LOAD_FIELD_WIDE"            3 OP-SU "load field wide",
+  Bytecode "LOAD_FIELD_LOCAL"           2 OP-BU "load field local",
+  Bytecode "POP_LOAD_FIELD_LOCAL"       2 OP-BU "pop, load field local",
+  Bytecode "STORE_FIELD"                2 OP-BU "store field",
+  Bytecode "STORE_FIELD_WIDE"           3 OP-SU "store field wide",
+  Bytecode "STORE_FIELD_POP"            2 OP-BU "store field, pop",
+  Bytecode "LOAD_LOCAL_0"               1 OP "load local 0",
+  Bytecode "LOAD_LOCAL_1"               1 OP "load local 1",
+  Bytecode "LOAD_LOCAL_2"               1 OP "load local 2",
+  Bytecode "LOAD_LOCAL_3"               1 OP "load local 3",
+  Bytecode "LOAD_LOCAL_4"               1 OP "load local 4",
+  Bytecode "LOAD_LOCAL_5"               1 OP "load local 5",
+  Bytecode "LOAD_LITERAL"               2 OP-BL "load literal",
+  Bytecode "LOAD_LITERAL_WIDE"          3 OP-SL "load literal wide",
+  Bytecode "LOAD_NULL"                  1 OP "load null",
+  Bytecode "LOAD_SMI_0"                 1 OP "load smi 0",
+  Bytecode "LOAD_SMIS_0"                2 OP-BU "load smis 0",
+  Bytecode "LOAD_SMI_1"                 1 OP "load smi 1",
+  Bytecode "LOAD_SMI_U8"                2 OP-BU "load smi",
+  Bytecode "LOAD_SMI_U16"               3 OP-SU "load smi",
+  Bytecode "LOAD_SMI_U32"               5 OP-WU "load smi",
+  Bytecode "LOAD_METHOD"                5 OP-WU "load method",  // Has specialized stringification.
+  Bytecode "LOAD_GLOBAL_VAR"            2 OP-BG "load global var",
+  Bytecode "LOAD_GLOBAL_VAR_WIDE"       3 OP-SG "load global var wide",
+  Bytecode "LOAD_GLOBAL_VAR_LAZY"       2 OP-BG "load global var lazy",
+  Bytecode "LOAD_GLOBAL_VAR_LAZY_WIDE"  3 OP-SG "load global var lazy wide",
+  Bytecode "LOAD_GLOBAL_VAR_DYNAMIC"    1 OP "load global var dynamic",
+  Bytecode "STORE_GLOBAL_VAR"           2 OP-BG "store global var",
+  Bytecode "STORE_GLOBAL_VAR_WIDE"      3 OP-SG "store global var wide",
+  Bytecode "STORE_GLOBAL_VAR_DYNAMIC"   1 OP "store global var dynamic",
+  Bytecode "LOAD_BLOCK"                 2 OP-BU "load block",
+  Bytecode "LOAD_OUTER_BLOCK"           2 OP-BU "load outer block",
+  Bytecode "POP"                        2 OP-BU "pop",
+  Bytecode "POP_1"                      1 OP "pop 1",
+  Bytecode "ALLOCATE"                   2 OP-BC "allocate instance",
+  Bytecode "ALLOCATE_WIDE"              3 OP-SC "allocate instance wide",
+  Bytecode "IS_CLASS"                   2 OP-BCI "is class",
+  Bytecode "IS_CLASS_WIDE"              3 OP-SCI "is class wide",
+  Bytecode "IS_INTERFACE"               2 OP-BII "is interface",
+  Bytecode "IS_INTERFACE_WIDE"          3 OP-SII "is interface wide",
+  Bytecode "AS_CLASS"                   2 OP-BCI "as class",
+  Bytecode "AS_CLASS_WIDE"              3 OP-SCI "as class wide",
+  Bytecode "AS_INTERFACE"               2 OP-BII "as interface",
+  Bytecode "AS_INTERFACE_WIDE"          3 OP-SII "as interface wide",
+  Bytecode "AS_LOCAL"                   2 OP-BLC "load local, as class, pop",
+  Bytecode "INVOKE_STATIC"              3 OP-SD "invoke static",
+  Bytecode "INVOKE_STATIC_TAIL"         3 OP-SD "invoke static tail",
+  Bytecode "INVOKE_BLOCK"               2 OP-BS "invoke block",
+  Bytecode "INVOKE_LAMBDA_TAIL"         1 OP "invoke lambda tail",
+  Bytecode "INVOKE_INITIALIZER_TAIL"    1 OP "invoke initializer tail",
+  Bytecode "INVOKE_VIRTUAL"             4 OP-BS-SO "invoke virtual",
+  Bytecode "INVOKE_VIRTUAL_WIDE"        5 OP-SS-SO "invoke virtual wide",
+  Bytecode "INVOKE_VIRTUAL_GET"         3 OP-SO "invoke virtual get",
+  Bytecode "INVOKE_VIRTUAL_SET"         3 OP-SO "invoke virtual set",
+  Bytecode "INVOKE_EQ"                  1 OP "invoke eq",
+  Bytecode "INVOKE_LT"                  1 OP "invoke lt",
+  Bytecode "INVOKE_GT"                  1 OP "invoke gt",
+  Bytecode "INVOKE_LTE"                 1 OP "invoke lte",
+  Bytecode "INVOKE_GTE"                 1 OP "invoke gte",
+  Bytecode "INVOKE_BIT_OR"              1 OP "invoke bit or",
+  Bytecode "INVOKE_BIT_XOR"             1 OP "invoke bit xor",
+  Bytecode "INVOKE_BIT_AND"             1 OP "invoke bit and",
+  Bytecode "INVOKE_BIT_SHL"             1 OP "invoke bit shl",
+  Bytecode "INVOKE_BIT_SHR"             1 OP "invoke bit shr",
+  Bytecode "INVOKE_BIT_USHR"            1 OP "invoke bit ushr",
+  Bytecode "INVOKE_ADD"                 1 OP "invoke add",
+  Bytecode "INVOKE_SUB"                 1 OP "invoke sub",
+  Bytecode "INVOKE_MUL"                 1 OP "invoke mul",
+  Bytecode "INVOKE_DIV"                 1 OP "invoke div",
+  Bytecode "INVOKE_MOD"                 1 OP "invoke mod",
+  Bytecode "INVOKE_AT"                  1 OP "invoke at",
+  Bytecode "INVOKE_AT_PUT"              1 OP "invoke at_put",
+  Bytecode "INVOKE_SIZE"                3 OP-SO "invoke size",
+  Bytecode "BRANCH"                     3 OP-SF "branch",
+  Bytecode "BRANCH_IF_TRUE"             3 OP-SF "branch if true",
+  Bytecode "BRANCH_IF_FALSE"            3 OP-SF "branch if false",
+  Bytecode "BRANCH_IF_NOT_NULL"         3 OP-SF "branch if not null",
+  Bytecode "BRANCH_BACK"                3 OP-SB "branch back",
+  Bytecode "BRANCH_BACK_IF_TRUE"        3 OP-SB "branch back if true",
+  Bytecode "BRANCH_BACK_IF_FALSE"       3 OP-SB "branch back if false",
+  Bytecode "BRANCH_BACK_IF_NOT_NULL"    3 OP-SB "branch back if not null",
+  Bytecode "PRIMITIVE"                  4 OP-BU-SU "invoke primitive",
+  Bytecode "THROW"                      1 OP "throw",
+  Bytecode "RETURN"                     1 OP "return",
+  Bytecode "RETURN_NULL"                1 OP "return null",
+  Bytecode "NON_LOCAL_RETURN"           1 OP "non-local return",
+  Bytecode "STORE_FIELD_THIS"           2 OP-BU "store field this",
+  Bytecode "NON_LOCAL_BRANCH"           6 OP-BU-WR "non-local branch",
+  Bytecode "IDENTICAL"                  1 OP "identical",
+  Bytecode "TRY"                        1 OP "try",
+  Bytecode "LOAD_FIELD_THIS"            2 OP-BU "load field this",
+  Bytecode "UNWIND"                     1 OP "unwind",
+  Bytecode "HALT"                       2 OP-BU "halt",
 ]
 
 
@@ -1595,7 +1753,9 @@ class SpecDump:
     out_.add "$name $values.size $(values.join " ")".trim
 
   dump -> string:
-    out_.add "toit-spec-dump 1"
+    // Format 2 programs carry their method table in the bytecodes; the
+    //   reader builds it from the method headers.
+    out_.add "toit-spec-dump $program_.format"
     out_.add "bytecodes $program_.all-bytecodes.size $(hex_ program_.all-bytecodes)"
     out_.add "methods $program_.methods.size"
     program_.methods.do: | method/ToitMethod |
