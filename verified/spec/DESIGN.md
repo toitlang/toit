@@ -61,7 +61,9 @@ A stack slot, global or field holds a `Value`:
   -2^62..2^62-1. Integers outside the range are LargeInteger objects (the
   loader decides per word size). `Smi::from` of an out-of-range value
   wraps (`smi_wrap`), exactly like the C++ VM; this is used for
-  LOAD_SMI_U32/LOAD_METHOD and INVOKE_DIV.
+  LOAD_SMI_U32/LOAD_METHOD. INVOKE_DIV's fast path only applies when the
+  quotient is a smi (MIN_SMI / -1 takes the slow path, as in the VM since
+  c5d7adec).
 * **Block references are stack heights**: `Block(h)` refers to
   `stack[h-1]`; `block_ptr[k]` is `stack[h-1-k]`; THROW's target (`base`)
   is `Block(0)`. The salt disappears.
@@ -240,15 +242,17 @@ About 55-60% of executed steps run through the verified code.
 
 ## Findings in the current VM
 
-* **INVOKE_DIV with MIN_SMI / -1** computes `Smi::from(MIN_SMI / -1)`,
-  which wraps back to MIN_SMI on 64-bit: `-(1 << 62) / -1` prints
-  `-4611686018427387904` instead of `4611686018427387904`
-  (`tests/toit/smi_edges.toit`). The spec reproduces it.
-* **INTRINSIC_HASH_FIND, REBUILD state**: `PUSH(rebuild_block);
-  PUSH(STACK_AT(OLD_SIZE))` reads `OLD_SIZE` after the first push, so the
-  rebuild block receives the state slot (always 0) instead of the old size.
-  Harmless for correctness (only the index size heuristic), reproduced in
-  the spec.
+Both were fixed in the VM (commit c5d7adec) and the spec follows:
+
+* **INVOKE_DIV with MIN_SMI / -1** computed `Smi::from(MIN_SMI / -1)`,
+  which wrapped back to MIN_SMI on 64-bit.
+* **INTRINSIC_HASH_FIND, REBUILD state** read `OLD_SIZE` after the first
+  push, so the rebuild block received the state slot instead of the old
+  size.
+
+Phase 2 validation (see `VM-BUGS.md` and "Validation at scale" below) found
+no further VM bugs; all discrepancies were in the reference interpreter's
+primitives and world emulation.
 
 ## Places where the current bytecode format made the spec awkward
 

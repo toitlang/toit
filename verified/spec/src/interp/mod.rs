@@ -146,6 +146,11 @@ pub struct Machine {
     pub steps: u64,
     pub verified_steps: u64,
     pub trace: bool,
+    /// Print every THROW with the thrown value and a backtrace.
+    pub trace_throw: bool,
+    /// Print the absolute bci of every step (for comparison with the debug
+    /// VM's `-Xtrace` output).
+    pub trace_bci: bool,
     /// Use the verified `exec_step` for the opcodes it covers.
     pub use_verified: bool,
 }
@@ -178,6 +183,8 @@ impl Machine {
             steps: 0,
             verified_steps: 0,
             trace: false,
+            trace_throw: false,
+            trace_bci: false,
             use_verified: true,
         };
         let entry = m.entry_method(ENTRY_MAIN);
@@ -220,6 +227,31 @@ impl Machine {
         out.join("\n  ")
     }
 
+    /// A short description of a value for diagnostics.
+    pub fn describe(&self, v: Value) -> String {
+        match v {
+            Value::Obj(id) if id < self.s.heap.len() => {
+                let o = &self.s.heap[id];
+                let class = self.names.class_name(o.class_id as usize);
+                match &o.body {
+                    ExecBody::Str(b) => format!("\"{}\"", String::from_utf8_lossy(b)),
+                    ExecBody::Instance(f) => {
+                        let fs: Vec<String> = f.iter().take(4).map(|x| match x {
+                            Value::Obj(i) if *i < self.s.heap.len() => match &self.s.heap[*i].body {
+                                ExecBody::Str(b) => format!("\"{}\"", String::from_utf8_lossy(b)),
+                                _ => format!("{:?}", x),
+                            },
+                            _ => format!("{:?}", x),
+                        }).collect();
+                        format!("{}({})", class, fs.join(", "))
+                    }
+                    _ => format!("{}@{}", class, id),
+                }
+            }
+            _ => format!("{:?}", v),
+        }
+    }
+
     pub fn run(&mut self, max_steps: u64) -> End {
         loop {
             if self.steps >= max_steps {
@@ -231,6 +263,13 @@ impl Machine {
                 let name = crate::bytecodes::OPCODE_NAMES.get(op as usize).copied().unwrap_or("?");
                 eprintln!("[{}] {} {} sp={} top={:?}", self.steps, self.location(self.s.bci), name,
                     self.s.stack.len(), self.s.stack.last());
+            }
+            if self.trace_bci {
+                eprintln!("B {} {}", self.s.bci, self.p.bytecodes.get(self.s.bci).copied().unwrap_or(255));
+            }
+            if self.trace_throw && self.p.bytecodes.get(self.s.bci) == Some(&crate::bytecodes::THROW) {
+                let v = self.s.stack.last().copied();
+                eprintln!("[spec] throw {} at\n  {}", v.map(|v| self.describe(v)).unwrap_or_default(), self.backtrace());
             }
             match self.step() {
                 Ok(Step::Next) => {}

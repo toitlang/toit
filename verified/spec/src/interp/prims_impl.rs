@@ -113,15 +113,28 @@ impl Machine {
     /// Writable byte storage for `MutableBlob` arguments: a byte array, a
     /// mutable copy-on-write byte array, or a byte-array slice of those.
     /// Returns the object holding the bytes and the window.
-    fn mutable_blob(&self, v: Value) -> Option<(Value, usize, usize)> {
+    /// `Object::mutable_byte_content`. An immutable copy-on-write byte
+    /// array is made mutable on the way (a fresh backing with a copy of the
+    /// content), like the C++ VM does.
+    fn mutable_blob(&mut self, v: Value) -> Option<(Value, usize, usize)> {
         if let Some(b) = self.byte_array(v) {
             return Some((v, 0, b.len()));
         }
-        let f = self.fields(v)?;
+        let f = self.fields(v)?.clone();
         let cid = self.class_of(v)?;
         if cid == self.builtin(BYTE_ARRAY_COW_CLASS) {
-            if f[1] == self.false_v() {
-                return None;
+            if f[1] != self.true_v() {
+                let content = self.blob(f[0], false)?;
+                if self.obj(v).map(|o| o.ro).unwrap_or(true) {
+                    return None;
+                }
+                let backing = self.new_bytes(content);
+                let t = self.true_v();
+                if let Some(ExecObj { body: ExecBody::Instance(fs), .. }) = self.obj_mut(v) {
+                    fs[0] = backing;
+                    fs[1] = t;
+                }
+                return self.mutable_blob(backing);
             }
             return self.mutable_blob(f[0]);
         }
@@ -213,10 +226,14 @@ fn core(m: &mut Machine, name: &str, a: &[Value]) -> P {
         "task_new" => return task_new(m, a[0]),
         "task_transfer" => return task_transfer(m, a[0], a[1]),
         "task_has_messages" => {
+            m.world.deliver_due(m.steps);
             let b = !m.world.mailbox.is_empty();
             PR::Ok(m.boolean(b))
         }
-        "task_receive_message" => PR::Ok(m.receive_message()),
+        "task_receive_message" => {
+            m.world.deliver_due(m.steps);
+            PR::Ok(m.receive_message())
+        }
 
         // --- Process and system.
         "process_current_id" => PR::Ok(Value::Smi(system::OWN_PID)),
@@ -229,8 +246,14 @@ fn core(m: &mut Machine, name: &str, a: &[Value]) -> P {
                 None => return Ok(m.fail("WRONG_OBJECT_TYPE")),
             };
             if pid == system::SYSTEM_PID || pid < 0 {
-                let ok = m.world.send_to_system(ty, msg);
-                PR::Ok(m.boolean(ok))
+                m.world.now_steps = m.steps;
+                match m.world.send_to_system(ty, msg) {
+                    Ok(ok) => PR::Ok(m.boolean(ok)),
+                    Err(what) => PR::UnimplementedNamed(what),
+                }
+            } else if pid == system::OWN_PID {
+                m.world.mailbox.push_back(system::Message::System(ty, system::OWN_GID, system::OWN_PID, msg));
+                PR::Ok(m.true_v())
             } else {
                 PR::Ok(m.false_v())
             }
@@ -828,6 +851,9 @@ fn core(m: &mut Machine, name: &str, a: &[Value]) -> P {
         }
         "raw32_to_float" => {
             let x = arg!(m.a_int64(a[0]));
+            if (x as u64) >> 32 != 0 {
+                return Ok(m.fail("OUT_OF_RANGE"));
+            }
             m.dbl(f32::from_bits(x as u32) as f64)
         }
         "float_to_string" => {
@@ -1082,7 +1108,11 @@ fn core(m: &mut Machine, name: &str, a: &[Value]) -> P {
         "vm_sdk_info" | "app_sdk_info" => PR::Ok(m.p.roots[6]),
         "platform" => PR::Ok(m.str_value("Linux")),
         "architecture" => PR::Ok(m.str_value("x86_64")),
-        "program_name" | "program_path" => PR::Ok(m.null()),
+        "program_name" => match m.world.program_name.clone() {
+            Some(n) => PR::Ok(m.str_value(&n)),
+            None => PR::Ok(m.null()),
+        },
+        "program_path" => PR::Ok(m.null()),
         "literal_index" => PR::Ok(match m.p.literals.iter().position(|v| *v == a[0]) {
             Some(i) => Value::Smi(i as i64),
             None => m.null(),
@@ -1255,7 +1285,7 @@ fn timer(m: &mut Machine, name: &str, a: &[Value]) -> P {
         "create" => {
             let id = m.world.next_resource_id;
             m.world.next_resource_id += 1;
-            m.world.timers.push(system::Timer { id, deadline: None, monitor: None });
+            m.world.timers.push(system::Timer { id, deadline: None, monitor: None, state: 0 });
             PR::Ok(Value::Smi(id))
         }
         "arm" => {
@@ -1296,7 +1326,15 @@ fn events(m: &mut Machine, name: &str, a: &[Value]) -> P {
             }
             PR::Ok(m.null())
         }
-        "read_state" => PR::Ok(Value::Smi(0)),
+        "read_state" => {
+            // (resource_group, resource): read and clear the state bits.
+            let id = arg!(m.a_word(a[1]));
+            let state = match m.world.timers.iter_mut().find(|t| t.id == id) {
+                Some(t) => std::mem::replace(&mut t.state, 0),
+                None => 0,
+            };
+            PR::Ok(Value::Smi(state as i64))
+        }
         _ => PR::Unimplemented,
     })
 }

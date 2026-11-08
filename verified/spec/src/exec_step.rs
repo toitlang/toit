@@ -787,7 +787,7 @@ pub fn x_smi_arith(p: &ExecProgram, op: u8, a: i64, b: i64) -> (r: Option<i64>)
             None
         } else {
             let (q, _) = x_tdiv_trem(a, b);
-            Some(x_smi_wrap_i128(p, q))
+            if min <= q && q <= max { Some(q as i64) } else { None }
         }
     } else if op == INVOKE_MOD {
         if b == 0 {

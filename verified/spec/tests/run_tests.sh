@@ -60,7 +60,7 @@ for name in "${TESTS[@]}"; do
   "$TOIT" run "$DUMPER" -- "$base.snapshot" "$base.dump" || { echo "FAIL $name (dump)"; fail=$((fail + 1)); failed+=("$name"); continue; }
   ok=1
   for bits in 64 32; do
-    "$RUNNER" --word-bits $bits --stats "$base.dump" > "$base.spec$bits.out" 2> "$base.spec$bits.err"
+    "$RUNNER" --word-bits $bits --max-steps 100000000 --stats "$base.dump" > "$base.spec$bits.out" 2> "$base.spec$bits.err"
     echo "exit $?" >> "$base.spec$bits.out"
     # The host VM is 64-bit. Programs whose output depends on the smi size
     # have a hand-checked expectation for 32-bit smis.
@@ -74,7 +74,7 @@ for name in "${TESTS[@]}"; do
     fi
   done
   # The unverified mirror alone must agree with the verified+unverified mix.
-  "$RUNNER" --no-verified "$base.dump" > "$base.specu.out" 2> "$base.specu.err"
+  "$RUNNER" --no-verified --max-steps 100000000 "$base.dump" > "$base.specu.out" 2> "$base.specu.err"
   echo "exit $?" >> "$base.specu.out"
   if ! diff -q "$base.spec64.out" "$base.specu.out" > /dev/null; then
     ok=0

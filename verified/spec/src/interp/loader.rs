@@ -39,6 +39,10 @@ impl Names {
             .map(|(id, (_, name))| (*id, name.as_str()))
     }
 
+    pub fn class_name(&self, id: usize) -> String {
+        self.classes.get(&(id as u16)).cloned().unwrap_or_else(|| format!("class#{}", id))
+    }
+
     pub fn primitive(&self, module: u8, index: u16) -> String {
         match self.primitives.get(module as usize) {
             Some((m, names)) => match names.get(index as usize) {

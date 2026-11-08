@@ -35,6 +35,9 @@ pub enum PR {
     Missing,
     /// The primitive exists in the C++ VM but has no Rust implementation.
     Unimplemented,
+    /// The primitive needs something from the outside world the emulation
+    /// does not provide (e.g. a system service).
+    UnimplementedNamed(String),
     /// The primitive already completed the step (task primitives).
     Done,
 }
@@ -78,6 +81,7 @@ pub fn call(m: &mut Machine, module: u8, index: u16) -> Result<(), End> {
             m.call_with(t, ret)
         }
         PR::Unimplemented => return Err(End::Unimplemented(name)),
+        PR::UnimplementedNamed(what) => return Err(End::Unimplemented(what)),
         PR::Done => Ok(Step::Next),
     };
     match step {
@@ -234,9 +238,9 @@ impl Machine {
         match self.world.mailbox.pop_front() {
             None => self.null(),
             Some(Message::Monitor(mon)) => mon,
-            Some(Message::System(ty, payload)) => {
+            Some(Message::System(ty, gid, pid, payload)) => {
                 let p = self.decode_message(&payload);
-                let elems = vec![Value::Smi(ty), Value::Smi(0), Value::Smi(system::SYSTEM_PID), p];
+                let elems = vec![Value::Smi(ty), Value::Smi(gid), Value::Smi(pid), p];
                 self.new_array(elems)
             }
         }

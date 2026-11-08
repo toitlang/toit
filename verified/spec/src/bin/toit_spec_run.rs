@@ -16,8 +16,9 @@
 //! Runs a program dumped by `tools/spec_dump.toit` on the reference
 //! interpreter.
 //!
-//! Usage: toit-spec-run [--word-bits 32|64] [--trace] [--no-verified]
-//!                      [--max-steps N] [--stats] <dump> [-- args...]
+//! Usage: toit-spec-run [--word-bits 32|64] [--trace] [--trace-throw] [--trace-bci]
+//!                      [--no-verified] [--max-steps N] [--stats]
+//!                      [--program-name NAME] <dump> [-- args...]
 
 #[allow(unused_imports)]
 use vstd::prelude::*;
@@ -27,6 +28,9 @@ use toit_spec::interp::{loader, End, Machine};
 fn main() {
     let mut word_bits = 64u8;
     let mut trace = false;
+    let mut trace_throw = false;
+    let mut trace_bci = false;
+    let mut program_name = None;
     let mut use_verified = true;
     let mut stats = false;
     let mut max_steps = u64::MAX;
@@ -37,6 +41,9 @@ fn main() {
         match arg.as_str() {
             "--word-bits" => word_bits = it.next().and_then(|v| v.parse().ok()).expect("--word-bits 32|64"),
             "--trace" => trace = true,
+            "--trace-throw" => trace_throw = true,
+            "--trace-bci" => trace_bci = true,
+            "--program-name" => program_name = it.next(),
             "--no-verified" => use_verified = false,
             "--stats" => stats = true,
             "--max-steps" => max_steps = it.next().and_then(|v| v.parse().ok()).expect("--max-steps N"),
@@ -65,6 +72,9 @@ fn main() {
     });
     let mut m = Machine::new(loaded, program_args);
     m.trace = trace;
+    m.trace_throw = trace_throw;
+    m.trace_bci = trace_bci;
+    m.world.program_name = program_name;
     m.use_verified = use_verified;
     let end = m.run(max_steps);
     if stats {

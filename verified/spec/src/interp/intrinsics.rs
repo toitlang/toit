@@ -354,9 +354,9 @@ impl Machine {
             self.put(0, Value::Smi(0));
             let rb = self.at(10)?;
             let target = self.block_method(rb).map_err(|_| NotBlock)?;
+            let old_size = self.at(1)?;
             self.push(rb);
-            let v = self.at(1)?;  // Faithful to the C++ VM: the state slot.
-            self.push(v);
+            self.push(old_size);
             return self.call_with(target as i64, bci);
         }
         let coll = self.at(15)?;
