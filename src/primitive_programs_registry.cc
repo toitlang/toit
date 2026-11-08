@@ -20,6 +20,7 @@
 #include "flash_registry.h"
 #include "embedded_data.h"
 #include "scheduler.h"
+#include "verifier.h"
 #include "vm.h"
 
 namespace toit {
@@ -38,6 +39,9 @@ PRIMITIVE(spawn) {
   if (!allocation) FAIL(OUT_OF_BOUNDS);
   if (allocation->type() != FLASH_ALLOCATION_TYPE_PROGRAM) FAIL(INVALID_ARGUMENT);
   Program* program = const_cast<Program*>(static_cast<const Program*>(allocation));
+  // TODO(sandbox): decide with the policy of the new process group instead
+  // of the -Xverify flag.
+  if (!Verifier::verify_if_enabled(program, true)) FAIL(INVALID_ARGUMENT);
 
   unsigned message_size = 0;
   { MessageEncoder size_encoder(process, null);

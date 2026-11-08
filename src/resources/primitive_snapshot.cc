@@ -25,6 +25,7 @@
 #include "../vm.h"
 #include "../process_group.h"
 #include "../scheduler.h"
+#include "../verifier.h"
 
 namespace toit {
 
@@ -56,6 +57,13 @@ PRIMITIVE(launch) {
   Snapshot snapshot(bytes.address(), bytes.length());
   auto image = snapshot.read_image(program_id.address());
   Program* program = image.program();
+  // Launched programs are treated as untrusted when verification is enabled.
+  // TODO(sandbox): decide with the policy of the launched process group
+  // instead of the -Xverify flag.
+  if (!Verifier::verify_if_enabled(program, true)) {
+    image.release();
+    FAIL(INVALID_ARGUMENT);
+  }
   ProcessGroup* process_group = ProcessGroup::create(gid, program, image.memory());
   ASSERT(process_group);  // Allocations only fail on devices.
 

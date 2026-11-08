@@ -409,7 +409,8 @@ Interpreter::Result Interpreter::run() {
 
   OPCODE_BEGIN(LOAD_OUTER);
     B_ARG1(stack_offset);
-    Object** block_ptr = checked_from_block(POP(), sp, stack_offset);
+    Object* block = POP();
+    Object** block_ptr = checked_from_block(block, sp, stack_offset);
     if (block_ptr == null) goto PROGRAM_FAILURE;
     PUSH(block_ptr[stack_offset]);
     CHECK_PROPAGATED_TYPES_TOP();
@@ -418,7 +419,8 @@ Interpreter::Result Interpreter::run() {
   OPCODE_BEGIN(STORE_OUTER);
     B_ARG1(stack_offset);
     Object* value = POP();
-    Object** block_ptr = checked_from_block(POP(), sp, stack_offset);
+    Object* block = POP();
+    Object** block_ptr = checked_from_block(block, sp, stack_offset);
     if (block_ptr == null) goto PROGRAM_FAILURE;
     block_ptr[stack_offset] = value;
     PUSH(value);
@@ -577,7 +579,8 @@ Interpreter::Result Interpreter::run() {
 
   OPCODE_BEGIN(LOAD_OUTER_BLOCK);
     B_ARG1(index);
-    Object** block_ptr = checked_from_block(POP(), sp, index);
+    Object* block = POP();
+    Object** block_ptr = checked_from_block(block, sp, index);
     if (block_ptr == null) goto PROGRAM_FAILURE;
     PUSH(to_block(&block_ptr[index]));
   OPCODE_END();
