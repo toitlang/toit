@@ -213,3 +213,23 @@ test-crafted-input:
   expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-POSITIVE-SMI] + two-63)
   expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-NEGATIVE-SMI] + two-62-plus-1)
   expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-NEGATIVE-SMI] + two-63)
+
+  // Cardinals that are longer than a word (used to shift past 64 bits).
+  overlong := ByteArray 12: it == 11 ? 0x01 : 0x80
+  expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-POSITIVE-SMI] + overlong)
+  expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison #[TAG-STRING-INLINE] + overlong)
+
+  // Deeply nested arrays and maps must not exhaust the native stack.
+  [TAG-ARRAY, TAG-MAP].do: | tag/int |
+    depth := 1_000_000
+    level := tag == TAG-ARRAY ? #[tag, 1] : #[tag, 1, TAG-NULL]
+    payload := ByteArray depth * level.size + 1
+    depth.repeat: payload.replace (it * level.size) level
+    payload[depth * level.size] = TAG-NULL
+    expect-throw "WRONG_OBJECT_TYPE": tison.decode (make-tison payload)
+  // Moderate nesting is still accepted.
+  // (The encoder is stricter and only produces 8 levels.)
+  nested := null
+  20.repeat: nested = [nested]
+  payload := ByteArray 41: it == 40 ? TAG-NULL : (it % 2 == 0 ? TAG-ARRAY : 1)
+  expect-structural-equals nested (tison.decode (make-tison payload))
