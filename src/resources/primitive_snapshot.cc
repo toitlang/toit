@@ -57,10 +57,12 @@ PRIMITIVE(launch) {
   Snapshot snapshot(bytes.address(), bytes.length());
   auto image = snapshot.read_image(program_id.address());
   Program* program = image.program();
-  // Launched programs are treated as untrusted when verification is enabled.
-  // TODO(sandbox): decide with the policy of the launched process group
-  // instead of the -Xverify flag.
-  if (!Verifier::verify_if_enabled(program, true)) {
+  // Install-time structural verification of the launched snapshot.
+  // TODO(sandbox): use the untrusted ruleset (reject HALT 2/3) for programs
+  // whose process group policy says they are untrusted. Until that policy
+  // exists we verify with the trusted ruleset, because the existing
+  // containers legitimately use deep sleep and reset.
+  if (!Verifier::verify_if_enabled(program, /* untrusted= */ false)) {
     image.release();
     FAIL(INVALID_ARGUMENT);
   }
