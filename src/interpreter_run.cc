@@ -887,7 +887,10 @@ Interpreter::Result Interpreter::run() {
   OPCODE_BEGIN(opcode);                                                \
     Object* a0 = STACK_AT(1);                                          \
     Object* a1 = STACK_AT(0);                                          \
-    if (are_smis(a0, a1) && (a1 != Smi::zero())) {                     \
+    /* MIN_SMI / -1 is not a smi. Leave it to the slow path. */        \
+    bool min_by_minus_one =                                            \
+        a0 == Smi::from(Smi::MIN_SMI_VALUE) && a1 == Smi::from(-1);    \
+    if (are_smis(a0, a1) && a1 != Smi::zero() && !min_by_minus_one) {  \
       word i0 = Smi::value(a0);                                        \
       word i1 = Smi::value(a1);                                        \
       STACK_AT_PUT(1, Smi::from(i0 op i1));                            \
