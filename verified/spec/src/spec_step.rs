@@ -680,11 +680,13 @@ pub open spec fn smi_arith(p: Program, op: u8, a: int, b: int) -> Option<int> {
             Some(a * vstd::arithmetic::power2::pow2(b as nat))
         } else { None }
     }
+    // Smi::from(value >> bits): arithmetic shift of the (sign-extended)
+    // value, as on the C++ `word`.
     else if op == INVOKE_BIT_SHR {
-        if 0 <= b < word_bit_size(p) { Some(shr(a, b as nat)) } else { None }
+        if 0 <= b < word_bit_size(p) { Some(((a as i64) >> (b as u64)) as int) } else { None }
     }
     else {  // INVOKE_BIT_USHR
-        if 0 <= b < word_bit_size(p) && a >= 0 { Some(shr(a, b as nat)) } else { None }
+        if 0 <= b < word_bit_size(p) && a >= 0 { Some(((a as i64) >> (b as u64)) as int) } else { None }
     }
 }
 
@@ -1334,6 +1336,7 @@ pub open spec fn binary_ok(s: State) -> bool {
     has_slot(s, 1) && is_value(at(s, 0)) && is_value(at(s, 1))
 }
 
+#[verifier::opaque]
 pub open spec fn step(p: Program, s: State) -> Outcome {
     let bci = s.bci as int;
     if !instruction_ok(p, bci) {

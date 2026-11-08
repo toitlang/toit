@@ -154,6 +154,12 @@ impl Machine {
     /// Builds the initial state (`spec_prim::initial_state`).
     pub fn new(loaded: loader::Loaded, args: Vec<String>) -> Machine {
         let loader::Loaded { program, mut heap, globals, names } = loaded;
+        // `exec_step::wf_program`, the precondition of the verified step.
+        assert!(program.word_bits == 32 || program.word_bits == 64);
+        assert!(program.method_start.len() == program.bytecodes.len());
+        assert!(program.bytecodes.len() < 0x1000_0000 && program.dispatch.len() < 0x1000_0000);
+        assert!(program.roots.len() == 35 && program.invoke_offsets.len() == 19);
+        assert!(program.builtin.len() == 23 && program.entry_points.len() == 9);
         let stack_id = heap.len();
         heap.push(ExecObj { class_id: program.builtin[STACK_CLASS], ro: false, body: ExecBody::Stack(Vec::new(), 0) });
         let task_class = program.builtin[TASK_CLASS] as usize;

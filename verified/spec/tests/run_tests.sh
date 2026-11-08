@@ -73,6 +73,13 @@ for name in "${TESTS[@]}"; do
       tail -5 "$base.spec$bits.err"
     fi
   done
+  # The unverified mirror alone must agree with the verified+unverified mix.
+  "$RUNNER" --no-verified "$base.dump" > "$base.specu.out" 2> "$base.specu.err"
+  echo "exit $?" >> "$base.specu.out"
+  if ! diff -q "$base.spec64.out" "$base.specu.out" > /dev/null; then
+    ok=0
+    echo "--- $name: verified and unverified step differ"
+  fi
   steps=$(grep -o 'steps: [0-9]*, verified steps: [0-9]*' "$base.spec64.err" | head -1)
   if [ $ok = 1 ]; then
     echo "PASS $name ($steps)"
