@@ -1,0 +1,82 @@
+# The revised bytecode format (format 2)
+
+Phase 2 of `07-verified-sandbox-plan.md`. Format 2 is the bytecode format
+of the verified core. It is specified in `src/v2` (Verus), produced by the
+compiler with `-Xbytecode_format=2` (`src/compiler/bytecode_format.h`),
+decoded by `tools/snapshot.toit`, and run by the reference interpreter
+(`src/interp/exec2.rs`, with 72 opcodes running through the verified
+`src/v2/exec.rs`). The C++ interpreter does not run it; format 1 stays the
+compiler's default until the verified core replaces the interpreter.
+
+## Decisions
+
+One note per decision, each with the alternative considered, the effect
+on the spec and on the soundness obligations, and the cost.
+
+| # | Note | Decision |
+|---|---|---|
+| 1 | [method-table](01-method-table.md) | Method ids are indices into a method table decoded from 16-byte headers that carry the body length, the receiver range and the accessor's field. |
+| 2 | [frame-stack](02-frame-stack.md) | Return addresses live on a separate frame stack; the object stack holds only values; every local access is bounded by the frame. |
+| 3 | [block-references](03-block-references.md) | A block reference is `(frame, slot)`, no salt; non-local return and branch name their frame through it. |
+| 4 | [try](04-try.md) | One `TRY` instruction with a handler stack; the finally code gets an unforgeable unwinding token; `UNWIND` resumes it. |
+| 5 | [raised-failures](05-raised-failures.md) | Lookup, as-check, code-invocation, invalid-program and primitive-lookup failures are exceptions raised by the machine. |
+| 6 | [tail-calls](06-tail-calls.md) | Tail calls replace the top frame; no height/arity operands. |
+| 7 | [field-access](07-field-access.md) | Field access is checked; `LOAD_FIELD_THIS`/`STORE_FIELD_THIS` are unchecked, backed by the method's declared receiver range, a receiver check at static calls and a dispatch-table check. |
+| 8 | [terminators](08-terminators.md) | Every method body ends in a terminator; execution never leaves a method's body. |
+| 9 | [branches](09-branches.md) | Forward branches with offset 0 are illegal; branch targets stay in the method; `BRANCH_BACK` loses its second operand. |
+| 10 | [interface-stubs](10-interface-stubs.md) | Interface-check stubs get a real (throwing) body. |
+| 11 | [intrinsics](11-intrinsics.md) | The four intrinsics are removed (added candidate). |
+| 12 | [heap-method-ids](12-heap-method-ids.md) | Method ids read from the heap or a block slot are checked at run time (index, kind, captures). |
+| 13 | [encoding](13-encoding.md) | Smaller operand changes, opcode numbering, no silent wrapping. |
+| 14 | [rejected](14-rejected.md) | Candidates rejected or deferred: block masks in headers, unique frame ids, runtime dispatch bounds, shipped stack maps. |
+
+## Verifier versus run time
+
+The structural verifier (`src/v2/verifier.rs`, soundness stated, proof in
+Phase 3) proves:
+
+* stack discipline: heights at every instruction, all slot accesses
+  inside the current frame, no frame's slots below its base;
+* block references: only created from block slots, never stored in the
+  heap or a global, never returned, never left dangling (a block slot is
+  not popped or overwritten while referenced), non-local returns and
+  branches only to outer frames, at instruction boundaries of the outer
+  method with the right height;
+* try/finally: tokens only in finally slots, `UNWIND` only on a token;
+* branch targets, terminators, operand ranges (literals, globals,
+  classes, typecheck tables, method ids of `LOAD_METHOD`);
+* `this` field accesses: the receiver range has the field, parameter 0 is
+  never overwritten; dispatch-table entries respect receiver ranges;
+* table shapes: dispatch entries are methods, selectors fit the table,
+  methods sharing a selector agree on arity and block parameters.
+
+The machine checks at run time (and raises an exception, never stuck):
+method ids from lambdas, lazy initializers and block slots (index, kind,
+arity, captures), field receivers and indices of the checked field
+instructions, writes to read-only (program-heap) objects, dynamic global
+indices, receiver classes of static calls with a declared range, the
+selectors of the operators (a tree-shaken operator is a lookup failure),
+and every fast path that reads Toit-level collection fields (a corrupted
+collection falls back to the virtual call).
+
+## Measured effect
+
+On the 268 tests of the repository's suite that run on the reference
+interpreter in both formats (`tests/measure.py target/suite-both.json`):
+
+| | format 1 | format 2 | |
+|---|---|---|---|
+| executed instructions | 72.8 M | 83.0 M | +13.9 % (intrinsics, note 11) |
+| method bodies (bytes) | 6.96 M | 6.24 M | -10.3 % |
+| method headers (bytes) | 0.88 M | 3.37 M | 4 -> 16 bytes (note 13: 8 suffice) |
+| checked field loads / unchecked (`this`) | 2.14 M / 0 | 0.19 M / 2.40 M | |
+| checked field stores / unchecked (`this`) | 0.53 M / 0 | 0.06 M / 0.51 M | |
+| try setups (LINK+UNLINK / TRY) | 126 k | 64 k | |
+| steps through verified code | 65 % | 85 % | 47 -> 72 proven opcodes |
+
+Spec size (non-comment lines): format 1 `spec_step.rs` 1242 + shared
+vocabulary; format 2 `v2/spec.rs` 1074 + `v2/prim.rs` 128 + `v2/types.rs`
+97, reusing the heap vocabulary of format 1. The intrinsics alone were 428
+lines of format 1. Proofs: `exec_step.rs` (format 1, 47 opcodes) 986
+lines, `v2/exec.rs` (72 opcodes, including the unwinding loop) 1615 lines;
+both verify with zero admits (340 items, about 5 s).

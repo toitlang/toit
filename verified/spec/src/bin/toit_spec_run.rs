@@ -16,7 +16,7 @@
 //! Runs a program dumped by `tools/spec_dump.toit` on the reference
 //! interpreter.
 //!
-//! Usage: toit-spec-run [--word-bits 32|64] [--trace] [--trace-throw] [--trace-bci]
+//! Usage: toit-spec-run [--word-bits 32|64] [--trace] [--trace-throw] [--trace-bci] [--histogram]
 //!                      [--no-verified] [--max-steps N] [--stats]
 //!                      [--program-name NAME] <dump> [-- args...]
 
@@ -30,6 +30,7 @@ fn main() {
     let mut trace = false;
     let mut trace_throw = false;
     let mut trace_bci = false;
+    let mut histogram = false;
     let mut program_name = None;
     let mut use_verified = true;
     let mut stats = false;
@@ -43,6 +44,7 @@ fn main() {
             "--trace" => trace = true,
             "--trace-throw" => trace_throw = true,
             "--trace-bci" => trace_bci = true,
+            "--histogram" => histogram = true,
             "--program-name" => program_name = it.next(),
             "--no-verified" => use_verified = false,
             "--stats" => stats = true,
@@ -77,6 +79,14 @@ fn main() {
     m.world.program_name = program_name;
     m.use_verified = use_verified;
     let end = m.run(max_steps);
+    if histogram {
+        let names: &[&str] = if m.format == 2 { &toit_spec::v2::bytecodes::OPCODE_NAMES2 } else { &toit_spec::bytecodes::OPCODE_NAMES };
+        for (op, n) in m.histogram.iter().enumerate() {
+            if *n > 0 {
+                eprintln!("[histogram] {} {}", names.get(op).copied().unwrap_or("?"), n);
+            }
+        }
+    }
     if stats {
         eprintln!("[spec] steps: {}, verified steps: {}, heap objects: {}", m.steps, m.verified_steps, m.s.heap.len());
     }

@@ -166,6 +166,8 @@ pub struct Machine {
     /// Print the absolute bci of every step (for comparison with the debug
     /// VM's `-Xtrace` output).
     pub trace_bci: bool,
+    /// Executions per opcode (for `--histogram`).
+    pub histogram: Vec<u64>,
     /// Use the verified `exec_step` for the opcodes it covers.
     pub use_verified: bool,
 }
@@ -205,6 +207,7 @@ impl Machine {
             trace: false,
             trace_throw: false,
             trace_bci: false,
+            histogram: vec![0; 256],
             use_verified: true,
         };
         let entry = m.entry_method(ENTRY_MAIN);
@@ -307,6 +310,9 @@ impl Machine {
                 };
                 eprintln!("[{}] {} {} sp={} top={:?}", self.steps, self.location(self.s.bci), name,
                     self.s.stack.len(), self.s.stack.last());
+            }
+            if let Some(&op) = self.p.bytecodes.get(self.s.bci) {
+                self.histogram[op as usize] += 1;
             }
             if self.trace_bci {
                 eprintln!("B {} {}", self.s.bci, self.p.bytecodes.get(self.s.bci).copied().unwrap_or(255));

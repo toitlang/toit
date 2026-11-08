@@ -75,6 +75,7 @@ impl Machine {
             trace: false,
             trace_throw: false,
             trace_bci: false,
+            histogram: vec![0; 256],
             use_verified: true,
         };
         let entry = m.entry_method2(ENTRY_MAIN).expect("no entry point");

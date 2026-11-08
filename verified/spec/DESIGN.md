@@ -1,10 +1,19 @@
 # Executable specification of the Toit bytecode machine
 
-Phase 0, part 2 of the verified-sandbox plan
+Phases 0 and 2 of the verified-sandbox plan
 (`opentoit-sandboxing-reports/07-verified-sandbox-plan.md`). This crate is
 the reference that Phase 3 proves verifier soundness against and that
-Phase 4 refines. It specifies the *current* 105-opcode bytecode set as
-implemented by `src/interpreter_run.cc` and `src/interpreter_core.cc`.
+Phase 4 refines. It specifies two bytecode formats:
+
+* **format 1**, the current 105-opcode bytecode set as implemented by
+  `src/interpreter_run.cc` and `src/interpreter_core.cc` (`src/spec_*.rs`,
+  `src/exec_step.rs`); it stays until the compiler's default changes, so
+  that the differential tests against the C++ VM keep working;
+* **format 2**, the revised format of Phase 2 (`src/v2`), which replaces
+  it in the verified core. The decisions are in `format/README.md` and one
+  note per change in `format/`; the compiler emits it with
+  `-Xbytecode_format=2`. Most of this document describes format 1; the
+  section "Format 2" at the end summarizes what differs.
 
 ## Layout
 
@@ -18,12 +27,27 @@ implemented by `src/interpreter_run.cc` and `src/interpreter_core.cc`.
 | `src/spec_prim.rs` | Verus spec | Completion of PRIMITIVE steps, `task_new`/`task_transfer`, initial state. |
 | `src/exec_step.rs` | Verus exec + proof | Verified implementation of 47 opcodes, proven equal to `step`. |
 | `src/interp/` | plain Rust | Reference interpreter: loader, unverified mirror of the spec for the remaining opcodes, primitives, emulated system process, scheduler loop. |
-| `src/bin/toit_spec_run.rs` | plain Rust | CLI: `toit-spec-run [--word-bits 32\|64] [--trace] [--no-verified] [--stats] <dump>`. |
-| `tests/run_tests.sh` | | Runs `tests/toit/*.toit` on the C++ VM and on the interpreter (64-bit, 32-bit, unverified-only) and diffs. |
+| `src/v2/bytecodes.rs` | Verus | Format 2: opcode numbers and lengths (checked against `tools/snapshot.toit` by `tests/opcode_table.rs`). |
+| `src/v2/types.rs` | Verus | Format 2: `Program2` (method table), `State2` (frame stack, handlers), `Outcome2`; views of the shared exec structs; adapters to the format-1 heap vocabulary. |
+| `src/v2/spec.rs` | Verus spec | Format 2: `op_*` for all 101 opcodes, calls, returns, unwinding, raised failures, `step`. |
+| `src/v2/prim.rs` | Verus spec | Format 2: primitive completion, task primitives, initial state. |
+| `src/v2/exec.rs` | Verus exec + proof | Format 2: verified implementation of 72 opcodes, proven equal to `v2::spec::step`. |
+| `src/v2/verifier.rs` | Verus spec | Format 2: the structural verifier (certificate checking) and the statement of its soundness theorem. |
+| `src/interp/` | plain Rust | Reference interpreter for both formats; `exec2.rs` is the unverified mirror of `v2/spec.rs`. |
+| `src/bin/toit_spec_run.rs` | plain Rust | CLI: `toit-spec-run [--word-bits 32\|64] [--trace] [--trace-throw] [--trace-bci] [--histogram] [--no-verified] [--stats] [--program-name P] <dump>`. |
+| `tests/run_tests.sh` | | Runs `tests/toit/*.toit` on the C++ VM and on the interpreter (format 1: 64-bit, 32-bit, unverified-only; format 2: 64-bit, 32-bit) and diffs. |
 | `tests/run_one.sh` | | Same for one file, for debugging. |
+| `tests/run_suite.py` | | Differential test on the repository's whole test suite (both formats). |
+| `tests/compare_trace.py` | | Compares the debug VM's `-Xtrace` with the interpreter's instruction trace. |
+| `tests/measure.py` | | Executed-instruction and code-size comparison of the two formats. |
+| `format/` | | The format-2 decisions. |
+| `VM-BUGS.md` | | C++ VM findings. |
 
 Commands: `cargo verus verify` (proofs), `cargo build --release`,
-`cargo test --release`, `tests/run_tests.sh` (needs `make sdk`).
+`cargo test --release`, `tests/run_tests.sh` (needs `make sdk`),
+`tests/run_suite.py --format both` (needs `make download-packages`),
+`tests/compare_trace.py <program>` (needs a debug build in `build/dbg`,
+`make BUILD=build/dbg BUILD_TYPE=Debug sdk`).
 
 ## Abstract state
 
@@ -230,15 +254,54 @@ same results as the verified mix.
 
 ## Testing
 
+### Validation at scale (Phase 2)
+
+`tests/run_suite.py` discovers every `tests/*-test.toit`,
+`tests/regress/*-test.toit`, `-test-slow` and `-test-force` program (418),
+compiles it, dumps it, runs it on the interpreter, and when the
+interpreter does not stop at an unimplemented primitive or a system
+service the emulation does not provide, compares stdout and exit code with
+the C++ VM (run like ctest: from the repository root, arguments `foo bar
+gee`). Each runnable test runs with 64-bit and 32-bit smis and with the
+verified step disabled; a test whose VM output differs between two VM
+runs is classified as nondeterministic. Result (format 1): 269 runnable,
+269 pass; 133 not runnable (unimplemented primitives or system services:
+22 network, 16 other system RPCs, 7 spawn, ...); 10 exceed the 50 M step
+limit (with 3 G steps 4 of them pass, 2 stop at an unimplemented
+primitive, and 4 do not finish: `finalizer-test` waits for a GC, and the
+spec models neither GC nor stack overflow); 2 nondeterministic (`block-test`
+prints identity hashes, `rpc-test`); 4 `-force` tests do not compile
+without `--force`. Discrepancies found and fixed: all in the
+interpreter's primitives and world (raw32-to-float range, copy-on-write
+byte arrays in MutableBlob arguments, the timer event state,
+process-send to the own process, the program name, the timing of system
+replies, service discovery of services the host system provides), plus
+the spec following the VM fixes of c5d7adec. No VM bug (see `VM-BUGS.md`).
+
+`tests/compare_trace.py` runs a program on the debug VM with `-Xtrace` (on
+one scheduler thread) and on the interpreter with `--trace-bci`, and
+compares bci and opcode of every instruction of the program's process,
+skipping the system process's instructions in between (the program may
+only switch processes after a call, backward branch, primitive or yield,
+and must resume where the interpreter continues). It stops at the first
+branch on a primitive result that depends on the outside world
+(`task_has_messages` when the first system reply arrives). Compared:
+1,037,023 consecutive instructions of `tests/trace/sort.toit`, 159,856 of
+`maps.toit`, 230,449 of `control.toit`, 22,764 of `numbers.toit`
+(1,450,092 in total), no divergence.
+
+### Spec test programs
+
 `tests/run_tests.sh` compiles each `tests/toit/*.toit` with this tree's
 compiler, runs it on the C++ VM, dumps it, runs the interpreter with 64-bit
 and 32-bit smis and with the verified step disabled, and diffs stdout plus
 exit code. 14 programs: hello, collections, strings, blocks, non_local,
 try_finally, exceptions, large_ints, floats, tasks (monitors, channels,
 mutex, semaphore, Task.group), sleep_timers, maps, classes, smi_edges. All
-pass. The host VM is 64-bit only; `smi_edges.expected32` holds the
-hand-checked 32-bit expectation for the one line that legitimately differs.
-About 55-60% of executed steps run through the verified code.
+pass, in both formats. The host VM is 64-bit only; `smi_edges.expected32`
+holds the hand-checked 32-bit expectation for the one line that
+legitimately differs. About 55-60% of executed steps run through the
+verified code in format 1, 85-92% in format 2.
 
 ## Findings in the current VM
 
@@ -256,7 +319,14 @@ primitives and world emulation.
 
 ## Places where the current bytecode format made the spec awkward
 
-Input to the Phase 2 format revision.
+Input to the Phase 2 format revision; each item is resolved in format 2
+(note numbers refer to `format/`): 1 -> notes 1 and 12; 2 -> note 3; 3 ->
+notes 2 and 6; 4 -> note 4; 5 -> note 5; 6 -> note 1 (accessor field in
+the header); 7 -> note 11; 8 -> note 5 (a tree-shaken operator is a
+lookup failure); 9 -> note 2 (primitive success is a frame return) and
+`v2::prim` (task state with frames); 10 -> note 14 (table check); 11 ->
+note 13; 12 -> note 7 (checked stores, STORE_FIELD_THIS checks read-only
+objects); 13 -> note 12.
 
 1. **Method ids are byte offsets.** Validity of a call target cannot be
    decided from the bytecodes; the spec needs the method table from the
@@ -302,3 +372,55 @@ Input to the Phase 2 format revision.
     paths; the spec makes such writes stuck.
 13. **Lambda captures** are either an Array or a single value in field 1,
     distinguished by type at run time.
+
+## Format 2
+
+`src/v2` specifies the revised format (decisions in `format/`). The state
+adds a frame stack (`Frame { method, ret, base }`) and a handler stack
+(`Handler { frame, height, bci }`) to the object stack, which holds only
+values (`Smi`, `Obj`, `BlockRef(frame, slot)`); a suspended task is a
+`Body::Stack2` (object stack, frames, handlers, bci), an unwinding in
+progress through a finally code is a `Body::Pending(Unwind)` heap object.
+The program has a method table (`MethodInfo`) decoded by the trusted
+loader from the method headers; every instruction fetch is checked
+against the current frame's method.
+
+Shared with format 1: values, heap objects and the heap vocabulary
+(typechecks, `compare_numbers`, `fast_at`, `fast_size`, smi arithmetic),
+reached through the adapters `as1`/`p1`; the primitives of the
+interpreter. The interpreter's `Machine` runs either format (`format`);
+`ExecState` and `ExecProgram` carry the format-2 fields (`frames`, `tries`,
+`methods`), which the format-1 views ignore.
+
+Proofs: `v2::exec::step_verified` is proven equal to `v2::spec::step` for
+72 opcodes (zero `assume`/`admit`): LOAD_LOCAL (all forms), POP_LOAD_LOCAL,
+STORE_LOCAL(_POP), the constants (LOAD_LITERAL(_WIDE), LOAD_NULL,
+LOAD_SMI_0/1/U8/U16/U32, LOAD_SMIS_0, LOAD_METHOD), POP, POP_1, the eight
+branches, the sixteen arithmetic and comparison operators with their
+fallback (lookup, arity check, call, raised LOOKUP_FAILED), INVOKE_STATIC
+(with the receiver check), INVOKE_STATIC_TAIL, INVOKE_VIRTUAL(_WIDE),
+RETURN, RETURN_NULL, THROW, LOAD_BLOCK, LOAD_OUTER, STORE_OUTER,
+LOAD_OUTER_BLOCK, INVOKE_BLOCK, NON_LOCAL_RETURN, NON_LOCAL_BRANCH, TRY,
+UNWIND (with the unwinding loop, entry into finally code and the raised
+exceptions), LOAD_FIELD(_WIDE), LOAD_FIELD_LOCAL, POP_LOAD_FIELD_LOCAL,
+STORE_FIELD(_WIDE,_POP), LOAD_FIELD_THIS, STORE_FIELD_THIS, and the
+invalid instruction. Open (spec written, `interp/exec2.rs` mirrors it):
+globals, ALLOCATE, IS/AS, INVOKE_LAMBDA_TAIL, INVOKE_INITIALIZER_TAIL,
+INVOKE_VIRTUAL_GET/SET, INVOKE_AT/AT_PUT/SIZE, IDENTICAL, PRIMITIVE, HALT,
+and the primitive and task completions. 85 % of the format-2 instructions
+executed by the test suite run through verified code.
+
+The structural verifier is specified in `v2/verifier.rs` as a checker of
+a certificate (stack maps of slot kinds, block-parameter masks, block
+contexts) with per-instruction rules, method and table checks, the
+conformance invariant `conforms`, and `soundness()`, the theorem Phase 3
+proves (stated as a spec predicate; nothing assumes it). The
+interpreter's loader runs three of its table checks on every format-2
+program (receiver ranges against the dispatch table, fields of
+LOAD_FIELD_THIS/STORE_FIELD_THIS, terminators); they hold for all test
+programs.
+
+Validation: all 14 spec test programs and all 268 runnable suite tests
+produce the C++ VM's (format-1) output when compiled to format 2 and run
+on the interpreter (64-bit and 32-bit smis; verified and unverified
+step agree).
