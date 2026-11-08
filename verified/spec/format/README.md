@@ -15,7 +15,7 @@ on the spec and on the soundness obligations, and the cost.
 
 | # | Note | Decision |
 |---|---|---|
-| 1 | [method-table](01-method-table.md) | Method ids are indices into a method table decoded from 16-byte headers that carry the body length, the receiver range and the accessor's field. |
+| 1 | [method-table](01-method-table.md) | Method ids are indices into a method table decoded from method headers that carry the body length, the receiver range and the accessor's field. |
 | 2 | [frame-stack](02-frame-stack.md) | Return addresses live on a separate frame stack; the object stack holds only values; every local access is bounded by the frame. |
 | 3 | [block-references](03-block-references.md) | A block reference is `(frame, slot)`, no salt; non-local return and branch name their frame through it. |
 | 4 | [try](04-try.md) | One `TRY` instruction with a handler stack; the finally code gets an unforgeable unwinding token; `UNWIND` resumes it. |
@@ -29,6 +29,8 @@ on the spec and on the soundness obligations, and the cost.
 | 12 | [heap-method-ids](12-heap-method-ids.md) | Method ids read from the heap or a block slot are checked at run time (index, kind, captures). |
 | 13 | [encoding](13-encoding.md) | Smaller operand changes, opcode numbering, no silent wrapping. |
 | 14 | [rejected](14-rejected.md) | Candidates rejected or deferred: block masks in headers, unique frame ids, runtime dispatch bounds, shipped stack maps. |
+| 15 | [header](15-header.md) | The method header is two bytes plus LEB128 fields (5.2 bytes on average instead of 16); format 2 is 4.2 % smaller than format 1. |
+| 16 | [hash-find](16-hash-find.md) | Recommendation: bring `HASH_FIND` back in Phase 4 as a non-re-entrant verified built-in; decide a `REPEAT` instruction on the same benchmark; keep HASH_DO and ARRAY_DO out. |
 
 ## Verifier versus run time
 
@@ -66,9 +68,9 @@ interpreter in both formats (`tests/measure.py target/suite-both.json`):
 
 | | format 1 | format 2 | |
 |---|---|---|---|
-| executed instructions | 72.8 M | 83.0 M | +13.9 % (intrinsics, note 11) |
+| executed instructions | 72.8 M | 83.0 M | +13.9 % (intrinsics, notes 11 and 16; 259.9 M -> 317.4 M, +22.1 %, over the 272 tests of the later suite) |
 | method bodies (bytes) | 6.96 M | 6.24 M | -10.3 % |
-| method headers (bytes) | 0.88 M | 3.37 M | 4 -> 16 bytes (note 13: 8 suffice) |
+| method headers (bytes) | 0.88 M | 3.37 M | 4 -> 16 bytes; 1.12 M with the header of note 15 |
 | checked field loads / unchecked (`this`) | 2.14 M / 0 | 0.19 M / 2.40 M | |
 | checked field stores / unchecked (`this`) | 0.53 M / 0 | 0.06 M / 0.51 M | |
 | try setups (LINK+UNLINK / TRY) | 126 k | 64 k | |
