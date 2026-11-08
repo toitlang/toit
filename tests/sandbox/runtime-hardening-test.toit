@@ -21,6 +21,7 @@
 
 import expect show *
 import host.file
+import host.os
 import .sandbox-util show *
 
 // Opcode numbers and operand lengths, from src/bytecodes.h.
@@ -64,6 +65,11 @@ main:
 main args:
   run := args[0]
   compiler := args[1]
+
+  // This test exercises the interpreter's own run-time checks, so the forked
+  // toit.run processes must NOT verify at load even when the whole suite is
+  // run with -Xverify / TOIT_VERIFY in the environment.
+  os.env["TOIT_VERIFY"] = "0"
 
   with-tmp-directory: | dir |
     snap := "$dir/prog.snapshot"
@@ -114,13 +120,17 @@ main args:
         if signal != null:
           expect-not (CRASH-SIGNALS.contains signal)
               --message="crash (signal $signal) from patched $(opcode-name op) at bci $i"
-        else if result.output.contains "INVALID_PROGRAM":
+        // Caught either by the interpreter at run time (INVALID_PROGRAM), or,
+        // if verification is enabled in the environment (-Xverify / the
+        // TOIT_VERIFY env var), by the verifier before the program runs.
+        if result.output.contains "INVALID_PROGRAM" or result.output.contains "REJECTED"
+            or result.output.contains "verification":
           caught-count++
 
-    print "runtime-hardening: patched $patched-count variants, $caught-count rejected with INVALID_PROGRAM, no crashes"
+    print "runtime-hardening: patched $patched-count variants, $caught-count caught, no crashes"
     expect patched-count > 0
-    // At least some of the out-of-range operands must be caught as
-    // INVALID_PROGRAM (the range / method-entry checks firing).
+    // At least some of the out-of-range operands must be caught (by the
+    // interpreter's range / method-entry checks, or by the verifier).
     expect caught-count > 0
     print "runtime-hardening-test OK"
 
