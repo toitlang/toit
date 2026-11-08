@@ -21,6 +21,9 @@ pub mod spec;
 pub mod prim;
 pub mod exec;
 pub mod verifier;
+pub mod sound;
+pub mod sound_frames;
+pub mod sound_local;
 // Excluded from verification until the checker proof lands.
 #[cfg(not(verus_keep_ghost))]
 pub mod check;

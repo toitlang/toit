@@ -100,6 +100,16 @@ pub open spec fn has_stack2(s: State2, task: Value) -> bool {
     obj_ok(as1(s), st) && obj(as1(s), st).body is Stack2
 }
 
+/// A transfer to the task can resume it: it was suspended (has frames) or
+/// never ran and has its code. Toit code can store any value in a task's
+/// stack field, so this is checked at run time.
+pub open spec fn resumable(s: State2, task: Value) -> bool {
+    match obj(as1(s), task_stack_ref(s, task)).body {
+        Body::Stack2(words, frames, _, _) => frames.len() > 0 || words.len() >= 1,
+        _ => false,
+    }
+}
+
 /// The state a task continues in after a transfer to it: a suspended task
 /// continues after its PRIMITIVE; a new task gets the frames of
 /// `__entry__task(code)` having called the transferring method (whose
@@ -142,9 +152,11 @@ pub open spec fn task_transfer_step(p: Program2, s: State2, to: Value, detach: V
         prim_failure(s, s.heap, wrong_object_type(p))
     } else if from == to {
         prim_failure(s, s.heap, to)
-    } else if !has_stack2(s, to) {
+    } else if !has_stack2(s, to) || !resumable(s, to) || !is_task(p, s, from) || !has_stack2(s, from) {
+        // The target or the running task lost its stack (a program can
+        // overwrite a task's stack field): the transfer fails.
         prim_failure(s, s.heap, p.roots[12])  // ERROR
-    } else if !is_task(p, s, from) || !has_stack2(s, from) || s.frames.len() == 0 {
+    } else if s.frames.len() == 0 {
         stuck(Stuck::Fatal)
     } else {
         let from_stack = task_stack_ref(s, from);

@@ -1442,9 +1442,19 @@ fn task_transfer(m: &mut Machine, to: Value, detach: Value) -> P {
     };
     let from_stack = match (is_task(m, from), stack_of(m, from)) {
         (true, Some(s)) => s,
+        // Format 2 (`v2::prim::task_transfer_step`): a running task whose
+        // stack field was overwritten makes the transfer fail.
+        _ if m.format == 2 => return Ok(m.fail("ERROR")),
         _ => return Err(Stuck::Fatal),
     };
     if m.format == 2 {
+        let resumable = match &m.obj(to_stack).unwrap().body {
+            ExecBody::Stack2(w, f, _, _) => !f.is_empty() || !w.is_empty(),
+            _ => false,
+        };
+        if !resumable {
+            return Ok(m.fail("ERROR"));
+        }
         return task_transfer2(m, from, from_stack, to, to_stack, detach);
     }
     let words = std::mem::take(&mut m.s.stack);
