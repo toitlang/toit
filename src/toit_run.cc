@@ -104,7 +104,9 @@ static void print_verify_usage() {
       "  --system               Verify the embedded system snapshot.\n"
       "  --corrupt=<bci>:<byte> Patch one byte of the bytecodes before verifying.\n"
       "  --fuzz=<n>             Verify n single-byte mutations of the bytecodes.\n"
-      "  --dump=<method id>     Disassemble a method.\n");
+      "  --dump=<method id>     Disassemble a method.\n"
+      "  --emit-bytecodes=<f>   Write the raw program bytecodes to the file and exit.\n"
+      "  --emit-coverage=<f>    Write per-byte reachability (1=opcode, 2=operand) and exit.\n");
 }
 
 // Loads the snapshot, optionally corrupts bytecodes, and runs the verifier.
@@ -118,6 +120,8 @@ static int verify_snapshot(int argc, char** argv) {
   int corrupt_value = 0;
   int fuzz = 0;
   int dump = -1;
+  const char* emit_bytecodes = null;
+  const char* emit_coverage = null;
   const char* path = null;
   for (int i = 0; i < argc; i++) {
     if (strcmp(argv[i], "-q") == 0) options.verbosity = 0;
@@ -136,6 +140,8 @@ static int verify_snapshot(int argc, char** argv) {
     }
     else if (strncmp(argv[i], "--fuzz=", 7) == 0) fuzz = atoi(argv[i] + 7);
     else if (strncmp(argv[i], "--dump=", 7) == 0) dump = atoi(argv[i] + 7);
+    else if (strncmp(argv[i], "--emit-bytecodes=", 17) == 0) emit_bytecodes = argv[i] + 17;
+    else if (strncmp(argv[i], "--emit-coverage=", 16) == 0) emit_coverage = argv[i] + 16;
     else if (argv[i][0] == '-') {
       print_verify_usage();
       return 2;
@@ -168,6 +174,37 @@ static int verify_snapshot(int argc, char** argv) {
   uint8* copy = unvoid_cast<uint8*>(malloc(length));
   memcpy(copy, program->bytecodes.data(), length);
   Verifier::set_bytecodes_for_testing(program, copy, length);
+
+  if (emit_bytecodes != null) {
+    // Writes the raw bytecodes so a test can locate them in the snapshot
+    // file and patch them (see tests/sandbox).
+    FILE* file = fopen(emit_bytecodes, "wb");
+    if (file == null) { fprintf(stderr, "Could not open %s\n", emit_bytecodes); return 2; }
+    size_t written = fwrite(copy, 1, length, file);
+    fclose(file);
+    return written == static_cast<size_t>(length) ? 0 : 2;
+  }
+
+  if (emit_coverage != null) {
+    // Writes the reachability of every byte (1 = instruction start, 2 =
+    // operand byte, 0 = unreached) so a test can patch only real instruction
+    // operands (see tests/sandbox).
+    uint8* coverage = unvoid_cast<uint8*>(calloc(length, 1));
+    Verifier::set_coverage_for_testing(coverage);
+    VerifierOptions quiet = options;
+    quiet.verbosity = 0;
+    quiet.print_primitives = false;
+    VerifierStats stats;
+    bool ok = Verifier::verify(program, &stats, quiet);
+    Verifier::set_coverage_for_testing(null);
+    if (!ok) { free(coverage); fprintf(stderr, "could not verify to compute coverage\n"); return 1; }
+    FILE* file = fopen(emit_coverage, "wb");
+    if (file == null) { free(coverage); fprintf(stderr, "Could not open %s\n", emit_coverage); return 2; }
+    size_t written = fwrite(coverage, 1, length, file);
+    fclose(file);
+    free(coverage);
+    return written == static_cast<size_t>(length) ? 0 : 2;
+  }
 
   if (dump >= 0) {
     // Disassembles the method with the given id (we do not know where it
