@@ -77,13 +77,15 @@ class SystemContainerImage extends ContainerImageFromSnapshot:
 
 class ApplicationContainerImage extends ContainerImageFromSnapshot:
   snapshot/ByteArray? := null
-  flags ::= ContainerService.FLAG-RUN-BOOT | ContainerService.FLAG-RUN-CRITICAL
+  flags/int
 
   // Arguments passed to main in the system process are automatically
   // forwarded to the application process on boot.
   default-arguments/any
 
-  constructor manager/ContainerManager bundle/ByteArray .default-arguments:
+  constructor manager/ContainerManager bundle/ByteArray .default-arguments --untrusted/bool=false:
+    flags = ContainerService.FLAG-RUN-BOOT | ContainerService.FLAG-RUN-CRITICAL
+    if untrusted: flags |= ContainerService.FLAG-UNTRUSTED
     super manager bundle
 
   initialize reader/ArReader -> none:
@@ -94,9 +96,9 @@ class ApplicationContainerImage extends ContainerImageFromSnapshot:
     super reader
 
   spawn container/Container arguments/any -> int:
-    return launch-snapshot_ snapshot container.id id.to-byte-array arguments
+    return launch-snapshot_ snapshot container.id id.to-byte-array arguments container.policy
 
-  static launch-snapshot_ snapshot/ByteArray gid/int id/ByteArray arguments/any -> int:
+  static launch-snapshot_ snapshot/ByteArray gid/int id/ByteArray arguments/any policy/any -> int:
     #primitive.snapshot.launch
 
 main arguments:

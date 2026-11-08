@@ -17,6 +17,7 @@
 #include "objects_inline.h"
 #include "primitive.h"
 #include "process.h"
+#include "process_group.h"
 #include "flash_registry.h"
 #include "embedded_data.h"
 #include "scheduler.h"
@@ -27,12 +28,16 @@ namespace toit {
 MODULE_IMPLEMENTATION(programs_registry, MODULE_PROGRAMS_REGISTRY)
 
 PRIMITIVE(next_group_id) {
+  PRIVILEGED;
   int group_id = VM::current()->scheduler()->next_group_id();
   return Smi::from(group_id);
 }
 
 PRIMITIVE(spawn) {
-  ARGS(int, offset, int, group_id, Object, arguments);
+  // Starting containers is reserved for the system process. The system
+  // process decides the policy of the new process group.
+  PRIVILEGED;
+  ARGS(int, offset, int, group_id, Object, arguments, Object, policy_description);
 
   const FlashAllocation* allocation = FlashRegistry::allocation(offset);
   if (!allocation) FAIL(OUT_OF_BOUNDS);
@@ -59,17 +64,26 @@ PRIMITIVE(spawn) {
   InitialMemoryManager initial_memory_manager;
   if (!initial_memory_manager.allocate()) FAIL(ALLOCATION_FAILED);
 
-  ProcessGroup* process_group = ProcessGroup::create(group_id, program);
+  Object* policy_error = null;
+  const PrimitivePolicy* policy = PrimitivePolicy::from_description(policy_description, process, &policy_error);
+  if (policy == null) return policy_error;
+
+  // Takes over the policy, also on failure.
+  ProcessGroup* process_group = ProcessGroup::create(group_id, program, null, policy);
   if (!process_group) FAIL(MALLOC_FAILED);
-  AllocationManager free_process_group(process, process_group);
 
   initial_memory_manager.global_variables = program->global_variables.copy();
-  if (!initial_memory_manager.global_variables) FAIL(MALLOC_FAILED);
+  if (!initial_memory_manager.global_variables) {
+    delete process_group;
+    FAIL(MALLOC_FAILED);
+  }
 
   // Takes over the encoder and the initial_memory_manager.
   int pid = VM::current()->scheduler()->run_program(program, &encoder, process_group, &initial_memory_manager);
-  if (pid == Scheduler::INVALID_PROCESS_ID) FAIL(MALLOC_FAILED);
-  free_process_group.keep_result();
+  if (pid == Scheduler::INVALID_PROCESS_ID) {
+    delete process_group;
+    FAIL(MALLOC_FAILED);
+  }
   return Smi::from(pid);
 }
 
@@ -83,6 +97,7 @@ PRIMITIVE(is_running) {
 }
 
 PRIMITIVE(kill) {
+  PRIVILEGED;
   ARGS(int, offset);
   const FlashAllocation* allocation = FlashRegistry::allocation(offset);
   if (!allocation) FAIL(OUT_OF_BOUNDS);
