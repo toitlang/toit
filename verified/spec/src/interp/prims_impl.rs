@@ -31,6 +31,7 @@ pub fn dispatch(m: &mut Machine, name: &str, a: &[Value]) -> P {
         "timer" => timer(m, prim, a),
         "events" => events(m, prim, a),
         "math" => math(m, prim, a),
+        "bitmap" if prim == "blit" => blit(m, a),
         _ => Ok(PR::Unimplemented),
     }
 }
@@ -1053,9 +1054,24 @@ fn core(m: &mut Machine, name: &str, a: &[Value]) -> P {
             m.bool_pr(had)
         }
         "gc_count" => PR::Ok(Value::Smi(0)),
+        "encode_error" | "encode_object" => {
+            // The C++ VM encodes the error (and the stack trace) for the
+            // system process. The emulation returns an opaque byte array with
+            // the stringified arguments; programs only pass it on.
+            let mut bytes = b"spec-trace:".to_vec();
+            for v in a {
+                if let Some(s) = m.blob(*v, true) {
+                    bytes.extend(s);
+                }
+                bytes.push(b';');
+            }
+            PR::Ok(m.new_bytes(bytes))
+        }
         "time" => {
             let since_wakeup = arg!(m.a_bool(a[0]));
-            let t = if since_wakeup { m.world.clock_us } else { m.world.clock_us + 1_700_000_000_000_000 };
+            // Both clocks are the virtual monotonic clock (timers use the same one).
+            let _ = since_wakeup;
+            let t = m.world.clock_us;
             m.int_pr(t)
         }
         "random" => {
@@ -1109,6 +1125,99 @@ fn parse_strtod(s: &str) -> Option<f64> {
         body.parse::<f64>().ok()?
     };
     Some(if neg { -v } else { v })
+}
+
+/// `bitmap.blit` (primitive_bitmap.cc).
+fn blit(m: &mut Machine, a: &[Value]) -> P {
+    let (dest, start, end) = match m.mutable_blob(a[0]) {
+        Some(d) => d,
+        None => return Ok(m.fail("WRONG_OBJECT_TYPE")),
+    };
+    let dest_pixel_stride = arg!(m.a_word(a[1]));
+    let dest_line_stride = arg!(m.a_word(a[2]));
+    let src = arg!(m.a_blob(a[3]));
+    let src_pixel_stride = arg!(m.a_word(a[4]));
+    let src_line_stride = arg!(m.a_word(a[5]));
+    let pixels_per_line = arg!(m.a_word(a[6]));
+    let lut = a[7];
+    let shift = arg!(m.a_word(a[8]));
+    let mask = arg!(m.a_word(a[9]));
+    let operation = arg!(m.a_word(a[10]));
+    if !(0..6).contains(&operation) {
+        return Ok(m.fail("OUT_OF_BOUNDS"));
+    }
+    if ((dest_line_stride | src_line_stride | pixels_per_line) & -0x800000) != 0 {
+        return Ok(m.fail("INVALID_ARGUMENT"));
+    }
+    if (src_pixel_stride & -0x80) != 0 {
+        return Ok(m.fail("INVALID_ARGUMENT"));
+    }
+    if !(-0x80 < dest_pixel_stride && dest_pixel_stride <= 0x80) {
+        return Ok(m.fail("INVALID_ARGUMENT"));
+    }
+    let lookup: Vec<u8> = if lut == m.null() {
+        (0..=255u8).collect()
+    } else {
+        let b = arg!(m.a_blob(lut));
+        if b.len() < 0x100 {
+            return Ok(m.fail("INVALID_ARGUMENT"));
+        }
+        b
+    };
+    let abs_dest_pixel_stride = dest_pixel_stride.abs();
+    if dest_line_stride == 0 && src_line_stride == 0 {
+        return Ok(m.fail("INVALID_ARGUMENT"));
+    }
+    let mut d: Vec<u8> = match &m.obj(dest).unwrap().body {
+        ExecBody::Bytes(b) => b[start..end].to_vec(),
+        _ => unreachable!(),
+    };
+    let mut src_offset: i64 = 0;
+    let mut dest_offset: i64 = 0;
+    let src_read_width = (pixels_per_line - 1) * src_pixel_stride;
+    let mut dest_write_width = (pixels_per_line - 1) * abs_dest_pixel_stride;
+    if abs_dest_pixel_stride != dest_pixel_stride {
+        if operation == 3 {
+            return Ok(m.fail("INVALID_ARGUMENT"));
+        }
+        dest_offset += dest_write_width;
+        dest_write_width = 0;
+    }
+    if operation == 3 {
+        dest_write_width += 1;
+    }
+    let (src_len, dest_len) = (src.len() as i64, d.len() as i64);
+    while src_offset + src_read_width < src_len && dest_offset + dest_write_width < dest_len {
+        let mut si = src_offset;
+        let mut di = dest_offset;
+        for _ in 0..pixels_per_line {
+            let pixel = src[si as usize];
+            let mut looked_up: u16 = lookup[pixel as usize] as u16;
+            looked_up |= looked_up << 8;
+            looked_up >>= shift & 7;
+            looked_up &= mask as u16;
+            let i = di as usize;
+            match operation {
+                0 => d[i] = looked_up as u8,
+                1 => d[i] |= looked_up as u8,
+                2 => d[i] = std::cmp::min(d[i] as u16 + looked_up, 0xff) as u8,
+                4 => d[i] &= looked_up as u8,
+                5 => d[i] ^= looked_up as u8,
+                _ => {
+                    let v = (d[i] as u32 | ((d[i + 1] as u32) << 8)) + looked_up as u32;
+                    let v = std::cmp::min(v, 0xffff);
+                    d[i] = v as u8;
+                    d[i + 1] = (v >> 8) as u8;
+                }
+            }
+            si += src_pixel_stride;
+            di += dest_pixel_stride;
+        }
+        src_offset += src_line_stride;
+        dest_offset += dest_line_stride;
+    }
+    m.write_bytes(dest, start, &d)?;
+    Ok(PR::Ok(m.null()))
 }
 
 fn math(m: &mut Machine, name: &str, a: &[Value]) -> P {

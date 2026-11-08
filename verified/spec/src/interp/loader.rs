@@ -222,7 +222,7 @@ pub fn load(text: &str, word_bits: u8) -> Result<Loaded, String> {
     // read-only LargeInteger objects appended after the program heap.
     let mut heap: Vec<ExecObj> = Vec::with_capacity(object_count);
     let mut extra: Vec<ExecObj> = Vec::new();
-    let mut resolve = |v: Raw, extra: &mut Vec<ExecObj>| -> Value {
+    let resolve = |v: Raw, extra: &mut Vec<ExecObj>| -> Value {
         match v {
             Raw::Obj(id) => Value::Obj(id),
             Raw::Int(i) if min <= i && i <= max => Value::Smi(i),
