@@ -248,7 +248,7 @@ impl Machine {
 
     pub fn location(&self, bci: usize) -> String {
         match self.names.method_at(bci) {
-            Some((id, name)) => format!("{}+{} (bci {})", name, bci as i64 - id as i64 - 4, bci),
+            Some((_, entry, name)) => format!("{}+{} (bci {})", name, bci as i64 - entry as i64, bci),
             None => format!("bci {}", bci),
         }
     }
