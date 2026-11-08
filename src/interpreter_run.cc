@@ -943,7 +943,9 @@ Interpreter::Result Interpreter::run() {
   OPCODE_BEGIN(opcode);                                                \
     Object* a0 = STACK_AT(1);                                          \
     Object* a1 = STACK_AT(0);                                          \
-    if (are_smis(a0, a1) && (a1 != Smi::zero())) {                     \
+    /* MIN_SMI_VALUE / -1 does not fit in a smi; take the slow path. */ \
+    if (are_smis(a0, a1) && (a1 != Smi::zero()) &&                     \
+        !(a1 == Smi::from(-1) && a0 == Smi::from(Smi::MIN_SMI_VALUE))) { \
       word i0 = Smi::value(a0);                                        \
       word i1 = Smi::value(a1);                                        \
       STACK_AT_PUT(1, Smi::from(i0 op i1));                            \
