@@ -24,6 +24,7 @@
 #include "vm.h"
 
 #include "objects_inline.h"
+#include "verified_core.h"
 
 #if defined(TOIT_FREERTOS)
 #undef TOIT_CHECK_PROPAGATED_TYPES
@@ -106,8 +107,9 @@ Method Program::find_method(Object* receiver, word offset) {
     { ASSERT(program->bytecodes.data() <= bcp + n);                                \
       ASSERT(bcp + n < program->bytecodes.data() + program->bytecodes.length());   \
       ASSERT(!process_->object_heap()->has_pending_limit());                       \
-      Opcode next = static_cast<Opcode>(bcp[n]);                                   \
       bcp += n;                                                                    \
+      VERIFIED_CORE_HOOK();                                                        \
+      Opcode next = static_cast<Opcode>(*bcp);                                     \
       OPCODE_TRACE()                                                               \
       goto *dispatch_table[next];                                                  \
     }
