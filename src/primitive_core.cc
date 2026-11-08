@@ -741,8 +741,7 @@ PRIMITIVE(smi_divide) {
   if (is_smi(arg)) {
     word other = Smi::value(arg);
     if (other == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
-    // The smallest smi divided by -1 is not a smi.
-    return Primitive::integer(static_cast<int64>(receiver) / other, process);
+    return Smi::from(receiver / other);
   }
   if (!is_large_integer(arg)) FAIL(WRONG_OBJECT_TYPE);
   int64 other = is_smi(arg) ? (int64) Smi::value(arg) : LargeInteger::cast(arg)->value();
