@@ -24,6 +24,7 @@ pub mod verifier;
 pub mod sound;
 pub mod sound_frames;
 pub mod sound_local;
+pub mod sound_call;
 // Excluded from verification until the checker proof lands.
 #[cfg(not(verus_keep_ghost))]
 pub mod check;

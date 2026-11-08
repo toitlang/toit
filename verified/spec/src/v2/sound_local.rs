@@ -86,6 +86,25 @@ pub proof fn lemma_top_kinds(p: Program2, c: Cert, s: State2)
     assert(fmap(p, c, s, top_i(s)).subrange(0, slots(s, top_i(s))) =~= fmap(p, c, s, top_i(s)));
 }
 
+pub proof fn lemma_wf_parts(p: Program2, c: Cert, s: State2)
+    requires wf(p, c, s),
+    ensures heap_ok(p, c, s.heap), globals_ok(c, s), consts_ok(p, s.heap), wf_task(p, c, s),
+{
+    reveal(wf);
+}
+
+/// A mapped offset is inside its method, inside the bytecodes.
+pub proof fn lemma_map_bound(p: Program2, c: Cert, trusted: bool, m: int, off: int)
+    requires accepts(p, c, trusted), valid_method(p, m), map_at(c, m, off) is Some,
+    ensures
+        0 <= off < info(p, m).end - info(p, m).entry,
+        info(p, m).entry + off < p.bytecodes.len(),
+        p.bytecodes.len() < 0x1000_0000,
+{
+    assert(method_ok(p, c, m, trusted));
+    assert(tables_ok(p, c));
+}
+
 pub proof fn lemma_task_basics(p: Program2, c: Cert, s: State2)
     requires wf_task(p, c, s),
     ensures

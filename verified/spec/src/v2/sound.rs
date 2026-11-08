@@ -340,10 +340,10 @@ pub open spec fn wf(p: Program2, c: Cert, s: State2) -> bool {
 
 /// Sizes far from the machine word (the machine has finite memory).
 pub open spec fn small(s: State2) -> bool {
-    &&& s.heap.len() < 0x100_0000_0000_0000
-    &&& s.stack.len() < 0x100_0000_0000_0000
-    &&& s.frames.len() < 0x100_0000_0000_0000
-    &&& s.tries.len() < 0x100_0000_0000_0000
+    &&& s.heap.len() < 0x4000_0000
+    &&& s.stack.len() < 0x4000_0000
+    &&& s.frames.len() < 0x4000_0000
+    &&& s.tries.len() < 0x4000_0000
 }
 
 /// The program `p` with certificate `c` is accepted.
@@ -360,7 +360,7 @@ pub open spec fn accepted(p: Program2, c: Cert) -> bool {
 /// and every object stays well formed.
 pub open spec fn prim_heap_ok(p: Program2, h: Seq<HeapObj>, h2: Seq<HeapObj>) -> bool {
     &&& h.len() <= h2.len()
-    &&& h2.len() < 0x100_0000_0000_0000
+    &&& h2.len() < 0x4000_0000
     &&& forall|i: int| 0 <= i < h.len() ==> {
         &&& (#[trigger] h2[i]).class_id == h[i].class_id
         &&& (h[i].body is Stack2 || h[i].body is Pending) ==> h2[i].body == h[i].body
@@ -372,7 +372,7 @@ pub open spec fn prim_heap_ok(p: Program2, h: Seq<HeapObj>, h2: Seq<HeapObj>) ->
 
 /// What the loader guarantees about the program heap and globals.
 pub open spec fn loaded_ok(p: Program2, c: Cert, heap0: Seq<HeapObj>, globals0: Seq<Value>) -> bool {
-    &&& heap0.len() < 0x10_0000_0000_0000
+    &&& heap0.len() < 0x2000_0000
     &&& forall|i: int| 0 <= i < heap0.len() ==> basic_obj_ok(p, heap0, #[trigger] heap0[i])
             && !(heap0[i].body is Stack2 || heap0[i].body is Pending)
     &&& globals0.len() == c.global_count
