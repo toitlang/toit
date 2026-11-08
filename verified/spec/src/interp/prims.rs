@@ -52,6 +52,9 @@ const ERROR_NAMES: [&str; 28] = [
 ];
 
 pub fn call(m: &mut Machine, module: u8, index: u16) -> Result<(), End> {
+    if m.format == 2 {
+        return call2(m, module, index);
+    }
     let name = m.names.primitive(module, index);
     let arity = match m.names.method_at(m.s.bci) {
         Some((id, _)) => m.method_arity(id),
@@ -85,6 +88,45 @@ pub fn call(m: &mut Machine, module: u8, index: u16) -> Result<(), End> {
         PR::Done => Ok(Step::Next),
     };
     match step {
+        Ok(_) => Ok(()),
+        Err(stuck) => Err(End::Stuck(stuck, m.backtrace())),
+    }
+}
+
+/// Format 2 (`v2::prim`): the arguments are the parameters of the top
+/// frame; success returns from the frame, failure continues after the
+/// PRIMITIVE with the error pushed, a missing primitive raises
+/// PRIMITIVE_LOOKUP_FAILED.
+fn call2(m: &mut Machine, module: u8, index: u16) -> Result<(), End> {
+    let name = m.names.primitive(module, index);
+    let frame = match m.top_frame() {
+        Ok(f) => f,
+        Err(stuck) => return Err(End::Stuck(stuck, m.backtrace())),
+    };
+    let arity = m.p.methods[frame.method].arity as usize;
+    if m.s.stack.len() != frame.base + arity {
+        return Err(End::Stuck(Stuck::StackRange, m.backtrace()));
+    }
+    let args: Vec<Value> = m.s.stack[frame.base..].to_vec();
+    let r = match super::prims_impl::dispatch(m, &name, &args) {
+        Ok(r) => r,
+        Err(stuck) => return Err(End::Stuck(stuck, format!("in primitive {}\n  {}", name, m.backtrace()))),
+    };
+    let step = match r {
+        PR::Ok(v) => m.return2(v),
+        PR::Fail(e) => {
+            m.push(e);
+            m.s.bci += 4;
+            Ok(Step::Next)
+        }
+        PR::Missing => m.raise(super::exec2::PRIMITIVE_LOOKUP_FAILED),
+        PR::Unimplemented => return Err(End::Unimplemented(name)),
+        PR::UnimplementedNamed(what) => return Err(End::Unimplemented(what)),
+        PR::Done => Ok(Step::Next),
+    };
+    match step {
+        Ok(Step::Halt(Halt::Uncaught(v))) => Err(End::Uncaught(m.describe(v))),
+        Ok(Step::Halt(Halt::TaskReturned)) => Err(End::TaskReturned),
         Ok(_) => Ok(()),
         Err(stuck) => Err(End::Stuck(stuck, m.backtrace())),
     }

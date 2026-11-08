@@ -50,6 +50,70 @@ pub enum Value {
     Block(usize),
     /// A try/finally chain link: the previous `try_h`.
     Link(usize),
+    /// Format 2: a block reference `(frame, slot)`: the block's method id is
+    /// in `stack[slot]`, a slot of the frame `frames[frame]` that created the
+    /// block. Only LOAD_BLOCK, LOAD_OUTER_BLOCK and TRY create them.
+    BlockRef(usize, usize),
+}
+
+/// Format 2: an activation on the frame stack. The object stack holds only
+/// values; the frame stack holds the return addresses.
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub struct Frame {
+    /// Index of the method in the program's method table.
+    pub method: usize,
+    /// Absolute bci in the caller to continue at after the return.
+    pub ret: usize,
+    /// Object-stack index of the first parameter. The frame owns
+    /// `stack[base..]` up to the next frame's base.
+    pub base: usize,
+}
+
+/// Format 2: an active try/finally handler, installed by TRY in frame
+/// `frame` while the try block runs.
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub struct Handler {
+    pub frame: usize,
+    /// Object-stack height at the TRY (the try block's method is the top
+    /// slot below it).
+    pub height: usize,
+    /// Absolute bci of the finally code (right after the TRY).
+    pub bci: usize,
+}
+
+/// Format 2: an unwinding in progress, kept in a heap object while the
+/// finally code of a handler it passes runs.
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum Unwind {
+    /// An exception: unwind to the next handler; uncaught at the bottom.
+    Throw(Value),
+    /// A non-local return of `value` from frame `frame`.
+    Return(usize, Value),
+    /// A non-local branch into frame `frame`: continue at absolute bci `bci`
+    /// with object-stack height `height`.
+    Branch(usize, usize, usize),
+}
+
+/// Format 2: an entry of the method table, decoded from the method headers
+/// by the (trusted) loader.
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub struct MethodInfo {
+    pub arity: u8,
+    /// 0 method, 1 field accessor, 2 lambda, 3 block.
+    pub kind: u8,
+    pub max_height: u16,
+    /// Selector offset, 0xffff for none.
+    pub selector: u16,
+    /// Captured count (lambda), field index (field accessor).
+    pub aux: u16,
+    /// Declared receiver class-id range `[recv_start, recv_end)`;
+    /// `recv_start == 0xffff` for none.
+    pub recv_start: u16,
+    pub recv_end: u16,
+    /// Absolute bci of the first instruction.
+    pub entry: usize,
+    /// Absolute bci after the last instruction.
+    pub end: usize,
 }
 
 /// Payload of a heap object.
@@ -65,6 +129,12 @@ pub enum Body {
     Oddball,
     /// A suspended task stack: words (bottom first) and try height.
     Stack(Seq<Value>, usize),
+    /// Format 2: a suspended task: object stack, frame stack, handlers, and
+    /// the bci it is suspended at. A task that never ran has no frames and
+    /// the code to run as its only stack slot.
+    Stack2(Seq<Value>, Seq<Frame>, Seq<Handler>, usize),
+    /// Format 2: the unwinding a finally code continues when it ends.
+    Pending(Unwind),
 }
 
 pub struct HeapObj {
@@ -154,6 +224,10 @@ pub enum Stuck {
     /// Iteration bound of a fuel-limited helper exceeded (the C++ VM may
     /// loop forever on corrupted collections).
     OutOfFuel,
+    /// Format 2: a call whose target's arity differs from the call site's.
+    BadArity,
+    /// Format 2: UNWIND without an unwinding token in its slot.
+    NotUnwind,
 }
 
 pub enum HaltKind {
@@ -192,6 +266,8 @@ pub enum ExecBody {
     LargeInt(i64),
     Oddball,
     Stack(Vec<Value>, usize),
+    Stack2(Vec<Value>, Vec<Frame>, Vec<Handler>, usize),
+    Pending(Unwind),
 }
 
 pub struct ExecObj {
@@ -212,6 +288,8 @@ impl View for ExecBody {
             ExecBody::LargeInt(i) => Body::LargeInt(*i),
             ExecBody::Oddball => Body::Oddball,
             ExecBody::Stack(v, h) => Body::Stack(v@, *h),
+            ExecBody::Stack2(v, f, t, b) => Body::Stack2(v@, f@, t@, *b),
+            ExecBody::Pending(u) => Body::Pending(*u),
         }
     }
 }
@@ -236,6 +314,9 @@ pub struct ExecProgram {
     pub builtin: Vec<u16>,
     pub roots: Vec<Value>,
     pub literals: Vec<Value>,
+    /// Format 2: the method table (empty for format 1). Not part of the
+    /// format-1 view.
+    pub methods: Vec<MethodInfo>,
 }
 
 impl View for ExecProgram {
@@ -266,6 +347,10 @@ pub struct ExecState {
     pub bci: usize,
     pub task: usize,
     pub next_task_id: i64,
+    /// Format 2: the frame stack and the active handlers (empty for format
+    /// 1). Not part of the format-1 view.
+    pub frames: Vec<Frame>,
+    pub tries: Vec<Handler>,
 }
 
 impl View for ExecState {

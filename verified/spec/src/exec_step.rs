@@ -136,6 +136,7 @@ pub fn x_value_eq(a: Value, b: Value) -> (r: bool)
         (Value::FrameMarker, Value::FrameMarker) => true,
         (Value::Block(x), Value::Block(y)) => x == y,
         (Value::Link(x), Value::Link(y)) => x == y,
+        (Value::BlockRef(x1, x2), Value::BlockRef(y1, y2)) => x1 == y1 && x2 == y2,
         _ => false,
     }
 }

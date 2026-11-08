@@ -27,6 +27,8 @@ pub struct Names {
     pub classes: BTreeMap<u16, String>,
     /// Module name and primitive names, by module index.
     pub primitives: Vec<(String, Vec<String>)>,
+    /// Size of a method header (4 in format 1, 16 in format 2).
+    pub header_size: usize,
 }
 
 impl Names {
@@ -35,7 +37,7 @@ impl Names {
         self.methods
             .range(..=bci)
             .next_back()
-            .filter(|(id, (size, _))| bci <= **id + 4 + *size)
+            .filter(|(id, (size, _))| bci <= **id + self.header_size + *size)
             .map(|(id, (_, name))| (*id, name.as_str()))
     }
 
@@ -55,6 +57,8 @@ impl Names {
 }
 
 pub struct Loaded {
+    /// Bytecode format: 1 or 2.
+    pub format: u8,
     pub program: ExecProgram,
     /// Program heap followed by large integers created for literals.
     pub heap: Vec<ExecObj>,
@@ -132,15 +136,18 @@ pub fn smi_range(word_bits: u8) -> (i64, i64) {
 pub fn load(text: &str, word_bits: u8) -> Result<Loaded, String> {
     let mut r = Reader { lines: text.lines().peekable() };
     let header = r.line("toit-spec-dump")?;
-    if header.get(1) != Some(&"1") {
-        return err("unsupported dump version");
-    }
+    let format: u8 = match header.get(1) {
+        Some(&"1") => 1,
+        Some(&"2") => 2,
+        _ => return err("unsupported dump version"),
+    };
     let bc = r.line("bytecodes")?;
     let bytecodes = hex(bc[2])?;
     if bytecodes.len() != bc[1].parse::<usize>().unwrap_or(usize::MAX) {
         return err("bytecode length mismatch");
     }
     let mut names = Names::default();
+    names.header_size = if format == 2 { V2_HEADER_SIZE } else { 4 };
     let methods = r.line("methods")?;
     let method_count: usize = methods[1].parse().map_err(|_| "bad method count")?;
     let mut method_start = vec![false; bytecodes.len()];
@@ -151,9 +158,14 @@ pub fn load(text: &str, word_bits: u8) -> Result<Loaded, String> {
         if id >= bytecodes.len() {
             return err("method id out of range");
         }
-        method_start[id] = true;
+        // Format 2 has no method-start bitmap: method ids are indices into
+        // the method table, which is read from the bytecodes below.
+        if format == 1 {
+            method_start[id] = true;
+        }
         names.methods.insert(id, (size, m.get(4).unwrap_or(&"?").to_string()));
     }
+    let method_table = if format == 2 { method_table_v2(&bytecodes)? } else { Vec::new() };
     let dispatch: Vec<i32> = r.ints("dispatch")?;
     let class_bits: Vec<u16> = r.ints("class_bits")?;
     let class_check_ids: Vec<u16> = r.ints("class_check_ids")?;
@@ -275,6 +287,76 @@ pub fn load(text: &str, word_bits: u8) -> Result<Loaded, String> {
         builtin,
         roots,
         literals,
+        methods: method_table,
     };
-    Ok(Loaded { program, heap, globals, names })
+    if format == 2 {
+        check_tables_v2(&program)?;
+    }
+    Ok(Loaded { format, program, heap, globals, names })
+}
+
+/// Size of a format-2 method header (src/compiler/bytecode_format.h).
+pub const V2_HEADER_SIZE: usize = 16;
+pub const V2_TAG: &[u8; 4] = b"TBC2";
+
+/// Decodes the method table of a format-2 program from its method headers.
+/// Method `i` is the `i`-th method in the bytecodes.
+pub fn method_table_v2(bytecodes: &[u8]) -> Result<Vec<MethodInfo>, String> {
+    if bytecodes.len() < 4 || &bytecodes[0..4] != V2_TAG {
+        return err("format-2 bytecodes must start with the tag TBC2");
+    }
+    let u16_at = |i: usize| bytecodes[i] as u16 | (bytecodes[i + 1] as u16) << 8;
+    let mut methods = Vec::new();
+    let mut at = 4;
+    while at < bytecodes.len() {
+        if at + V2_HEADER_SIZE > bytecodes.len() {
+            return err("truncated method header");
+        }
+        let length = u16_at(at + 12) as usize | (u16_at(at + 14) as usize) << 16;
+        let entry = at + V2_HEADER_SIZE;
+        let end = entry + length;
+        if end > bytecodes.len() {
+            return err("truncated method body");
+        }
+        let kind = bytecodes[at + 1];
+        if kind > 3 {
+            return err("bad method kind");
+        }
+        let recv_start = u16_at(at + 8);
+        let recv_end = u16_at(at + 10);
+        if recv_start != 0xffff && recv_start >= recv_end {
+            return err("bad receiver range");
+        }
+        methods.push(MethodInfo {
+            arity: bytecodes[at],
+            kind,
+            max_height: u16_at(at + 2),
+            selector: u16_at(at + 4),
+            aux: u16_at(at + 6),
+            recv_start,
+            recv_end,
+            entry,
+            end,
+        });
+        at = end;
+    }
+    Ok(methods)
+}
+
+/// The loader's part of the well-formedness of a format-2 program
+/// (`v2::wf_program`): table shapes and method references in the tables.
+/// Everything else is the structural verifier's job.
+fn check_tables_v2(p: &ExecProgram) -> Result<(), String> {
+    if p.methods.is_empty() || p.methods.len() >= 0x1000_0000 {
+        return err("bad method count");
+    }
+    for &d in &p.dispatch {
+        if d != -1 && !(0 <= d && (d as usize) < p.methods.len()) {
+            return err("dispatch entry is not a method index");
+        }
+    }
+    if p.literals.len() < 7 {
+        return err("format-2 programs have the failure strings as literals 2..6");
+    }
+    Ok(())
 }

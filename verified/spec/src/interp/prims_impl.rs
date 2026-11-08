@@ -1346,6 +1346,9 @@ fn task_new(m: &mut Machine, code: Value) -> P {
     if m.fields(code).is_none() {
         return Ok(m.fail("WRONG_OBJECT_TYPE"));
     }
+    if m.format == 2 {
+        return task_new2(m, code);
+    }
     let entry = m.entry_method(ENTRY_TASK);
     let task_class = m.builtin(TASK_CLASS) as usize;
     if !m.valid_method(entry) || task_class >= m.p.class_bits.len() {
@@ -1379,6 +1382,30 @@ fn task_new(m: &mut Machine, code: Value) -> P {
     Ok(PR::Ok(task))
 }
 
+/// Format 2 (`v2::prim::task_new_step`): a task that never ran has an
+/// empty frame stack and its code as the only stack slot.
+fn task_new2(m: &mut Machine, code: Value) -> P {
+    let task_class = m.builtin(TASK_CLASS) as usize;
+    if m.entry_method2(ENTRY_TASK).is_none() || task_class >= m.p.class_bits.len() {
+        return Err(Stuck::Fatal);
+    }
+    let field_count = ((m.p.class_bits[task_class] >> 5) & 0x7ff) as i64 - 1;
+    if field_count < 2 {
+        return Err(Stuck::Fatal);
+    }
+    let stack_id = m.s.heap.len();
+    let task = Value::Obj(stack_id + 1);
+    let stack_class = m.builtin(STACK_CLASS);
+    m.alloc(ExecObj { class_id: stack_class, ro: false, body: ExecBody::Stack2(vec![code], Vec::new(), Vec::new(), 0) });
+    let null = m.null();
+    let mut fields = vec![null; field_count as usize];
+    fields[0] = Value::Obj(stack_id);
+    fields[1] = Value::Smi(m.s.next_task_id);
+    m.alloc(ExecObj { class_id: task_class as u16, ro: false, body: ExecBody::Instance(fields) });
+    m.s.next_task_id += 1;
+    Ok(PR::Ok(task))
+}
+
 fn is_task(m: &Machine, v: Value) -> bool {
     m.is_class(v, TASK_CLASS) && m.fields(v).map(|f| f.len() >= 2).unwrap_or(false)
 }
@@ -1386,7 +1413,8 @@ fn is_task(m: &Machine, v: Value) -> bool {
 fn stack_of(m: &Machine, task: Value) -> Option<Value> {
     let st = m.fields(task)?[0];
     match m.obj(st) {
-        Some(ExecObj { body: ExecBody::Stack(..), .. }) => Some(st),
+        Some(ExecObj { body: ExecBody::Stack(..), .. }) if m.format == 1 => Some(st),
+        Some(ExecObj { body: ExecBody::Stack2(..), .. }) if m.format == 2 => Some(st),
         _ => None,
     }
 }
@@ -1407,6 +1435,9 @@ fn task_transfer(m: &mut Machine, to: Value, detach: Value) -> P {
         (true, Some(s)) => s,
         _ => return Err(Stuck::Fatal),
     };
+    if m.format == 2 {
+        return task_transfer2(m, from, from_stack, to, to_stack, detach);
+    }
     let words = std::mem::take(&mut m.s.stack);
     let try_h = m.s.try_h;
     m.obj_mut(from_stack).unwrap().body = ExecBody::Stack(words, try_h);
@@ -1425,5 +1456,55 @@ fn task_transfer(m: &mut Machine, to: Value, detach: Value) -> P {
     };
     m.push(to);
     m.s.bci += 4;
+    Ok(PR::Done)
+}
+
+/// Format 2 (`v2::prim::task_transfer_step`). The running task is saved
+/// with its frame stack, suspended at the PRIMITIVE. The target continues
+/// after its PRIMITIVE with itself pushed (the failure path of
+/// `task-transfer-to_`). A task that never ran gets the frames of
+/// `__entry__task(code)` having called `task-transfer-to_(task, false)`
+/// from its bci 1, like `Interpreter::prepare_task`.
+fn task_transfer2(m: &mut Machine, from: Value, from_stack: Value, to: Value, to_stack: Value, detach: Value) -> P {
+    let current = match m.top_frame() {
+        Ok(f) => f.method,
+        Err(_) => return Err(Stuck::Fatal),
+    };
+    let words = std::mem::take(&mut m.s.stack);
+    let frames = std::mem::take(&mut m.s.frames);
+    let tries = std::mem::take(&mut m.s.tries);
+    let bci = m.s.bci;
+    m.obj_mut(from_stack).unwrap().body = ExecBody::Stack2(words, frames, tries, bci);
+    if detach == m.true_v() {
+        m.set_field_pub(from, 0, Value::Smi(0));
+    }
+    let (words, frames, tries, saved_bci) = match &m.obj(to_stack).unwrap().body {
+        ExecBody::Stack2(w, f, t, b) => (w.clone(), f.clone(), t.clone(), *b),
+        _ => return Err(Stuck::Fatal),
+    };
+    if frames.is_empty() {
+        // A new task.
+        let code = match words.first() { Some(c) => *c, None => return Err(Stuck::Fatal) };
+        let entry = match m.entry_method2(ENTRY_TASK) { Some(e) => e, None => return Err(Stuck::Fatal) };
+        let entry_bci = m.p.methods[entry].entry;
+        let false_v = m.false_v();
+        m.s.stack = vec![code, to, false_v];
+        m.s.frames = vec![
+            Frame { method: entry, ret: entry_bci, base: 0 },
+            Frame { method: current, ret: entry_bci + 1, base: 1 },
+        ];
+        m.s.tries = Vec::new();
+        m.s.bci = bci + 4;
+    } else {
+        m.s.stack = words;
+        m.s.frames = frames;
+        m.s.tries = tries;
+        m.s.bci = saved_bci + 4;
+    }
+    m.s.task = match to {
+        Value::Obj(id) => id,
+        _ => unreachable!(),
+    };
+    m.push(to);
     Ok(PR::Done)
 }

@@ -50,6 +50,7 @@ import sys
 CRATE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO = os.path.dirname(os.path.dirname(CRATE))
 TOIT = os.environ.get("TOIT", os.path.join(REPO, "build/host/sdk/bin/toit"))
+TOIT_COMPILE = os.path.join(os.path.dirname(os.path.dirname(TOIT)), "lib/toit/bin/toit.compile")
 RUNNER = os.path.join(CRATE, "target/release/toit-spec-run")
 TEST_ARGS = ["foo", "bar", "gee"]
 ENV = dict(os.environ, TOIT_TEST_ENV_ENTRY="TOIT_TEST_ENV_VALUE")
@@ -114,8 +115,11 @@ def one(test, fmt, opts):
   # The C++ VM always runs the old format.
   vm_snapshot = os.path.join(opts.out, "f1", name + ".snapshot")
   snapshot = base + ".snapshot"
-  compile_flags = [] if fmt == 1 else ["-Xbytecode_format=2"]
-  rc, _, err = run([TOIT, "compile", "--snapshot"] + compile_flags + ["-o", snapshot, test], 300, base + ".compile")
+  if fmt == 1:
+    cmd = [TOIT, "compile", "--snapshot", "-o", snapshot, test]
+  else:
+    cmd = [TOIT_COMPILE, "-Xbytecode_format=2", "-w", snapshot, test]
+  rc, _, err = run(cmd, 300, base + ".compile")
   if rc != 0:
     result["status"] = "compile-error"
     return result
