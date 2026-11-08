@@ -295,14 +295,20 @@ pub open spec fn pinned0(p: Program2, m: int) -> bool {
 /// Slot `i` may be overwritten with a value of kind `v`: it is not pinned,
 /// not referenced, not a token; below a token (inside a finally code that
 /// may resume a non-local branch to this frame) only plain value slots are
-/// overwritten, with values.
+/// overwritten, with plain values, so the kinds below a token never change.
 pub open spec fn writable(p: Program2, m: int, k: Seq<Kind>, i: int, v: Kind) -> bool {
     &&& 0 <= i < k.len()
     &&& !(i == 0 && pinned0(p, m))
     &&& !referenced(k, i)
     &&& !(k[i] is Token)
     &&& !(v is Token)
-    &&& (below_token(k, i) ==> k[i] is Val && is_val(v))
+    &&& (below_token(k, i) ==> k[i] is Val && v is Val)
+}
+
+/// A call that takes the top `n` slots as arguments leaves a pinned
+/// parameter 0 in the frame.
+pub open spec fn leaves0(p: Program2, m: int, h: int, n: int) -> bool {
+    pinned0(p, m) && arity(p, m) >= 1 ==> h - n >= 1
 }
 
 /// The arguments on top of `k` fit the parameters of `t`; block arguments
@@ -463,26 +469,26 @@ pub open spec fn post(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, trus
         if b1 / 32 < h && is_val(top_kind(k, b1 / 32)) && 2 * (b1 % 32) + 1 < p.class_check_ids.len() { Some(k) } else { None }
     } else if op == INVOKE_STATIC {
         let t = dispatch_target(p, w1);
-        if valid_method(p, t) && args_ok(c, t, k, arity(p, t)) {
+        if valid_method(p, t) && args_ok(c, t, k, arity(p, t)) && leaves0(p, m, h, arity(p, t)) {
             Some(pop_push(k, arity(p, t), Some(Kind::Val)))
         } else { None }
     } else if op == INVOKE_BLOCK {
-        if 1 <= b1 <= h && is_ref(top_kind(k, b1 - 1)) && value_operands(k, b1 - 1)
+        if 1 <= b1 <= h && is_ref(top_kind(k, b1 - 1)) && value_operands(k, b1 - 1) && leaves0(p, m, h, b1)
             && match top_kind(k, b1 - 1) { Kind::Block(d, i) => d == 0 ==> i < h - b1, _ => true } {
             Some(pop_push(k, b1, Some(Kind::Val)))
         } else { None }
     } else if op == INVOKE_VIRTUAL || op == INVOKE_VIRTUAL_WIDE {
         let n = if op == INVOKE_VIRTUAL { b1 + 1 } else { w1 + 1 };
         let sel = if op == INVOKE_VIRTUAL { u16_at(p1(p), instr_at(p, m, off) + 2) } else { u16_at(p1(p), instr_at(p, m, off) + 3) };
-        if sel_ok(p, c, sel, n, k) { Some(pop_push(k, n, Some(Kind::Val))) } else { None }
+        if sel_ok(p, c, sel, n, k) && leaves0(p, m, h, n) { Some(pop_push(k, n, Some(Kind::Val))) } else { None }
     } else if op == INVOKE_VIRTUAL_GET || op == INVOKE_SIZE {
-        if sel_ok(p, c, w1, 1, k) { Some(k.update(h - 1, Kind::Val)) } else { None }
+        if sel_ok(p, c, w1, 1, k) && leaves0(p, m, h, 1) { Some(k.update(h - 1, Kind::Val)) } else { None }
     } else if op == INVOKE_VIRTUAL_SET {
-        if value_operands(k, 2) && sel_ok(p, c, w1, 2, k) { Some(pop_push(k, 2, Some(Kind::Val))) } else { None }
+        if value_operands(k, 2) && sel_ok(p, c, w1, 2, k) && leaves0(p, m, h, 2) { Some(pop_push(k, 2, Some(Kind::Val))) } else { None }
     } else if INVOKE_EQ <= op && op <= INVOKE_AT_PUT {
         let n = if op == INVOKE_AT_PUT { 3int } else { 2int };
         let sel = p.invoke_offsets[op - INVOKE_EQ] as int;
-        if value_operands(k, n) && (sel < 0 || sel_ok(p, c, sel, n, k)) {
+        if value_operands(k, n) && (sel < 0 || sel_ok(p, c, sel, n, k)) && leaves0(p, m, h, n) {
             Some(pop_push(k, n, Some(Kind::Val)))
         } else { None }
     } else if op == IDENTICAL {

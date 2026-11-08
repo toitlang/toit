@@ -384,8 +384,15 @@ pub fn x_writable(p: &ExecProgram, m: usize, k: &Vec<XKind>, i: usize, v: XKind)
     if i == 0 && x_pinned0(p, m) { return false; }
     if x_referenced(k, i) { return false; }
     if k[i] == XKind::Token || v == XKind::Token { return false; }
-    if x_below_token(k, i) && !(k[i] == XKind::Val && x_is_val(v)) { return false; }
+    if x_below_token(k, i) && !(k[i] == XKind::Val && v == XKind::Val) { return false; }
     true
+}
+
+pub fn x_leaves0(p: &ExecProgram, m: usize, h: usize, n: usize) -> (r: bool)
+    requires m < p.methods.len(),
+    ensures r == leaves0(pview2(p), m as int, h as int, n as int),
+{
+    !(x_pinned0(p, m) && p.methods[m].arity >= 1) || (n < h && h - n >= 1)
 }
 
 pub fn x_args_ok(c: &XCert, t: usize, k: &Vec<XKind>, n: usize) -> (r: bool)
@@ -645,7 +652,8 @@ pub fn x_post(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, 
         } else { None }
     } else if op == INVOKE_STATIC {
         let t = x_dispatch_target(p, w1);
-        if x_valid(p, t) && x_args_ok(c, t as usize, k, p.methods[t as usize].arity as usize) {
+        if x_valid(p, t) && x_args_ok(c, t as usize, k, p.methods[t as usize].arity as usize)
+            && x_leaves0(p, m, h, p.methods[t as usize].arity as usize) {
             let a = p.methods[t as usize].arity as usize;
             let mut k1 = x_prefix(k, h - a);
             k1.push(XKind::Val);
@@ -653,6 +661,7 @@ pub fn x_post(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, 
         } else { None }
     } else if op == INVOKE_BLOCK {
         if 1 <= b1 && (b1 as usize) <= h && x_is_ref(k[h - b1 as usize]) && x_value_operands(k, (b1 - 1) as usize)
+            && x_leaves0(p, m, h, b1 as usize)
             && match k[h - b1 as usize] { XKind::Block(d, i) => !(d == 0 && (i as usize) >= h - b1 as usize), _ => true } {
             let mut k1 = x_prefix(k, h - b1 as usize);
             k1.push(XKind::Val);
@@ -661,15 +670,15 @@ pub fn x_post(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, 
     } else if op == INVOKE_VIRTUAL || op == INVOKE_VIRTUAL_WIDE {
         let n = if op == INVOKE_VIRTUAL { b1 + 1 } else { w1 + 1 };
         let sel = if op == INVOKE_VIRTUAL { x_u16(p, bci + 2) } else { x_u16(p, bci + 3) };
-        if x_sel_ok(p, c, sel, n as usize, k) {
+        if x_sel_ok(p, c, sel, n as usize, k) && x_leaves0(p, m, h, n as usize) {
             let mut k1 = x_prefix(k, h - n as usize);
             k1.push(XKind::Val);
             Some(k1)
         } else { None }
     } else if op == INVOKE_VIRTUAL_GET || op == INVOKE_SIZE {
-        if x_sel_ok(p, c, w1, 1, k) { Some(x_update(k, h - 1, XKind::Val)) } else { None }
+        if x_sel_ok(p, c, w1, 1, k) && x_leaves0(p, m, h, 1) { Some(x_update(k, h - 1, XKind::Val)) } else { None }
     } else if op == INVOKE_VIRTUAL_SET {
-        if x_value_operands(k, 2) && x_sel_ok(p, c, w1, 2, k) {
+        if x_value_operands(k, 2) && x_sel_ok(p, c, w1, 2, k) && x_leaves0(p, m, h, 2) {
             let mut k1 = x_prefix(k, h - 2);
             k1.push(XKind::Val);
             Some(k1)
@@ -677,7 +686,7 @@ pub fn x_post(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, 
     } else if INVOKE_EQ <= op && op <= INVOKE_AT_PUT {
         let n: usize = if op == INVOKE_AT_PUT { 3 } else { 2 };
         let sel = p.invoke_offsets[(op - INVOKE_EQ) as usize] as i64;
-        if x_value_operands(k, n) && (sel < 0 || x_sel_ok(p, c, sel, n, k)) {
+        if x_value_operands(k, n) && (sel < 0 || x_sel_ok(p, c, sel, n, k)) && x_leaves0(p, m, h, n) {
             let mut k1 = x_prefix(k, h - n);
             k1.push(XKind::Val);
             Some(k1)
