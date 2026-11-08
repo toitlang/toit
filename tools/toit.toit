@@ -251,6 +251,29 @@ main args/List:
   kebabify-cmd := kebabify.build-command --toitc-from-args=toitc-from-args
   tool-command.add kebabify-cmd
 
+  tool-verify-command := cli.Command "verify"
+      --help="""
+        Verifies the bytecodes of a snapshot.
+
+        Runs the structural bytecode verifier on the snapshot and prints the
+          verdict and the primitives the program references. Exits with a
+          non-zero exit code if the snapshot is rejected."""
+      --options=[
+        cli.Flag "trusted"
+            --help="Use the rules for trusted programs (allows deep sleep and reset).",
+        cli.Flag "strict"
+            --help="Treat unproven field receivers as errors.",
+        cli.Flag "verbose-warnings"
+            --help="Print the warnings of the verifier.",
+      ]
+      --rest=[
+        cli.OptionPath "snapshot"
+            --help="The snapshot to verify."
+            --required,
+      ]
+      --run=:: run-verify it
+  tool-command.add tool-verify-command
+
   // TODO(florian): add more lsp subcommands, like creating a repro, ...
   tool-lsp-command := cli.Command "lsp"
       --help="Start the language server."
@@ -502,6 +525,15 @@ compile-or-analyze-or-run --command/string invocation/cli.Invocation:
 
   exe := command == "run" ? "toit.run" : "toit.compile"
   exit-code := run invocation["sdk-dir"] exe args
+  exit exit-code
+
+run-verify invocation/cli.Invocation:
+  args := ["--verify", "--primitives"]
+  if invocation["trusted"]: args.add "--trusted"
+  if invocation["strict"]: args.add "--strict"
+  if invocation["verbose-warnings"]: args.add "-vv"
+  args.add invocation["snapshot"]
+  exit-code := run invocation["sdk-dir"] "toit.run" args
   exit exit-code
 
 run-lsp-server invocation/cli.Invocation:

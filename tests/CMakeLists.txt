@@ -180,13 +180,13 @@ add_subdirectory(lock_file)
 add_subdirectory(vessels)
 add_subdirectory(valgrind)
 add_subdirectory(strip)
+add_subdirectory(sandbox)
 add_subdirectory(pkg)
 add_subdirectory(envelope)
 add_subdirectory(toitdoc)
 add_subdirectory(dependencies)
 add_subdirectory(stdio)
 add_subdirectory(terminal)
-add_subdirectory(sandbox)
 
 # Add the pi-tests so that its packages are downloaded.
 # This is only necessary for the health tests, since the tests themselves

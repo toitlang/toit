@@ -387,6 +387,7 @@ class Program : public FlashAllocation {
   friend class ImageAllocator;
   friend class compiler::ProgramBuilder;
   friend class ProgramImage;
+  friend class VerifierImpl;
 };
 
 #undef PROGRAM_ROOTS

@@ -30,6 +30,7 @@ ProcessGroup::ProcessGroup(int id, Program* program, AlignedMemoryBase* memory, 
     , policy_(policy) {}
 
 ProcessGroup::~ProcessGroup() {
+  delete method_entries_;
   delete memory_;
   free(grants_);
   PrimitivePolicy::release(policy_);
@@ -38,8 +39,21 @@ ProcessGroup::~ProcessGroup() {
 ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* memory,
                                    const PrimitivePolicy* policy) {
   ASSERT(policy != null);
+  MethodEntryTable* entries = null;
+  if (program != null) {
+    entries = MethodEntryTable::compute(program);
+    if (entries == null) {
+      PrimitivePolicy::release(policy);
+      return null;
+    }
+  }
   ProcessGroup* result = _new ProcessGroup(id, program, memory, policy);
-  if (result == null) PrimitivePolicy::release(policy);
+  if (result == null) {
+    delete entries;
+    PrimitivePolicy::release(policy);
+    return null;
+  }
+  result->method_entries_ = entries;
   return result;
 }
 

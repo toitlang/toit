@@ -21,6 +21,8 @@ always-return tests/type_propagation/nlr-test.toit
   5[038] - load block 0
   7[053] - invoke static invoke tests/type_propagation/nlr-test.toit // [[block]] -> {}
  10[041] - pop 1
+ 11[022] - load null
+ 12[090] - throw 0
 
 [block] in always-return tests/type_propagation/nlr-test.toit
  - argument 0: [block]
@@ -60,6 +62,8 @@ stop-unwinding tests/type_propagation/nlr-test.toit
  17[091] - return S6 0
  20[099] - unwind
  21[041] - pop 1
+ 22[022] - load null
+ 23[090] - throw 0
 
 [block] in stop-unwinding tests/type_propagation/nlr-test.toit
  - argument 0: [block]
@@ -96,6 +100,8 @@ stop-unwinding-alternative tests/type_propagation/nlr-test.toit
  17[091] - return S6 0
  20[099] - unwind
  21[041] - pop 1
+ 22[022] - load null
+ 23[090] - throw 0
 
 [block] in stop-unwinding-alternative tests/type_propagation/nlr-test.toit
  - argument 0: [block]

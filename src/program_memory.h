@@ -211,6 +211,7 @@ class ProgramRawHeap {
 
  protected:
   ProgramBlockList blocks_;
+  friend class VerifierImpl;
 
  private:
   friend class ImageAllocator;

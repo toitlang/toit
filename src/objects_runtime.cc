@@ -23,6 +23,11 @@ namespace toit {
 
 bool Object::mutable_byte_content(Process* process, uint8** content, word* length, Error** error) {
   *error = Error::from(process->program()->wrong_object_type());  // Default error if we return false.
+  // Objects on the program heap are shared and read-only.
+  if (is_heap_object(this) && HeapObject::cast(this)->on_program_heap(process)) {
+    *error = Error::from(process->program()->permission_denied());
+    return false;
+  }
   if (is_byte_array(this)) {
     auto byte_array = ByteArray::cast(this);
     // External byte arrays can have structs in them. This is captured in the external tag.

@@ -17,6 +17,7 @@
 
 #include <atomic>
 
+#include "method_entries.h"
 #include "objects.h"
 #include "primitive.h"
 
@@ -168,6 +169,9 @@ class Interpreter {
   // Preemption method.
   uint8* preemption_method_header_bcp_;
 
+  // The legal method entries of the current program. Set in 'run'.
+  const MethodEntryTable* method_entries_ = null;
+
   void trace(uint8* bcp);
   Method lookup_entry();
 
@@ -182,7 +186,7 @@ class Interpreter {
   Object** push_error(Object** sp, Object* type, const char* message);
   Object** push_out_of_memory_error(Object** sp);
 
-  Object* hash_do(Program* program, Object* current, Object* backing, int step, Object* block, Object** entry_return) INTERPRETER_HELPER;
+  Object* hash_do(Program* program, Object** sp, Object* current, Object* backing, int step, Object* block, Object** entry_return) INTERPRETER_HELPER;
   Object** hash_find(Object** sp, Program* program, HashFindAction* action_return, Method* block_return, Object** result_return) INTERPRETER_HELPER;
 
   inline bool is_true_value(Program* program, Object* value) const;
@@ -205,6 +209,52 @@ class Interpreter {
 
   Smi* to_block(Object** pointer) const {
     return Smi::from(base_ - pointer + BLOCK_SALT);
+  }
+
+  // Block references, try-link chains and unwind targets are stack pointers
+  // encoded as smis relative to the stack base. A malformed program can put
+  // any value into the slots that hold them, so the interpreter decodes them
+  // with these checked variants.
+
+  // Decodes a block reference. Returns null if the value is not a smi or if
+  // the pointer and the 'extra' words above it are not inside the live part
+  // of the stack, [sp, base_).
+  Object** checked_from_block(Object* block, Object** sp, word extra = 0) const {
+    if (!is_smi(block)) return null;
+    word distance = Smi::value(block) - BLOCK_SALT;  // base_ - pointer.
+    if (distance <= extra || distance > base_ - sp) return null;
+    return base_ - distance;
+  }
+
+  // Decodes an unwind target, which may also be the base of the stack.
+  // Returns null if the value is not a smi or the pointer is outside of
+  // [sp, base_].
+  Object** checked_unwind_target(Object* block, Object** sp) const {
+    if (!is_smi(block)) return null;
+    word distance = Smi::value(block) - BLOCK_SALT;  // base_ - pointer.
+    if (distance < 0 || distance > base_ - sp) return null;
+    return base_ - distance;
+  }
+
+  // Returns the method that the given method id refers to, if the id is a
+  // legal method entry of the current program. Otherwise returns an invalid
+  // method.
+  Method checked_method(Program* program, Object* id) const {
+    if (!is_smi(id)) return Method::invalid();
+    word value = Smi::value(id);
+    if (!method_entries_->is_entry(value)) return Method::invalid();
+    return Method(program->bytecodes, value);
+  }
+
+  // Returns the block method of the given block reference, or an invalid
+  // method if the reference or the method id in the referenced slot is
+  // not legal.
+  Method checked_block_method(Program* program, Object* block, Object** sp) const {
+    Object** block_ptr = checked_from_block(block, sp);
+    if (block_ptr == null) return Method::invalid();
+    Method result = checked_method(program, *block_ptr);
+    if (!result.is_valid() || !result.is_block_method()) return Method::invalid();
+    return result;
   }
 
   static Object* float_op(Process* process, Object* a, Object* b, double_op* op);

@@ -16,6 +16,7 @@
 #pragma once
 
 #include "linked.h"
+#include "method_entries.h"
 #include "primitive_policy.h"
 #include "process.h"
 #include "top.h"
@@ -58,6 +59,9 @@ class ProcessGroup : public ProcessGroupList::Element {
   // lock held.
   word process_count();
 
+  // The legal method entries of the program (null if there is no program).
+  const MethodEntryTable* method_entries() const { return method_entries_; }
+
   Process* lookup(int process_id);
   void add(Process* process);
 
@@ -74,6 +78,8 @@ class ProcessGroup : public ProcessGroupList::Element {
   // If the process groups owns memory, it is automatically deleted
   // when the process group goes away.
   AlignedMemoryBase* const memory_;
+
+  MethodEntryTable* method_entries_ = null;
 
   ProcessListFromProcessGroup processes_;
 

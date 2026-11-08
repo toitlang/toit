@@ -2,17 +2,36 @@
 # Use of this source code is governed by an MIT-style license that can be
 # found in the lib/LICENSE file.
 
-# Each sandbox test is a trusted driver that starts an untrusted container
+# Most sandbox tests are a trusted driver that starts an untrusted container
 # (and a trusted sibling) from its own image. See sandbox.toit.
+# The tests of the structural verifier and the interpreter hardening fork
+# toit.run and toit.compile, so they take both as arguments.
+set(TOOL_TESTS
+  "tests/sandbox/runtime-hardening-test.toit"
+  "tests/sandbox/verify-reject-test.toit"
+  "tests/sandbox/verify-launch-test.toit"
+)
 file(GLOB SANDBOX_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*-test.toit")
 
 foreach(file ${SANDBOX_TESTS})
-  add_test(
-    NAME ${file}
-    COMMAND $<TARGET_FILE:toit.run> ${file}
-    WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
-    )
-  set_tests_properties(${file} PROPERTIES TIMEOUT 40)
+  if("${file}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
+  if("${file}" IN_LIST TOOL_TESTS)
+    add_test(
+      NAME ${file}
+      COMMAND $<TARGET_FILE:toit.run> ${file} $<TARGET_FILE:toit.run> $<TARGET_FILE:toit.compile>
+      WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
+      )
+    set_tests_properties(${file} PROPERTIES TIMEOUT 120)
+  else()
+    add_test(
+      NAME ${file}
+      COMMAND $<TARGET_FILE:toit.run> ${file}
+      WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
+      )
+    set_tests_properties(${file} PROPERTIES TIMEOUT 40)
+  endif()
 endforeach()
 
 # Programs run directly as untrusted containers with 'toit.run --untrusted'.

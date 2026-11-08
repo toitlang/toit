@@ -26,6 +26,7 @@
 #include "../primitive_policy.h"
 #include "../process_group.h"
 #include "../scheduler.h"
+#include "../verifier.h"
 
 namespace toit {
 
@@ -73,6 +74,13 @@ PRIMITIVE(launch) {
   Snapshot snapshot(bytes.address(), bytes.length());
   auto image = snapshot.read_image(program_id.address());
   Program* program = image.program();
+  // Install-time structural verification of the launched snapshot.
+  // TODO(sandbox): use the untrusted ruleset (reject HALT 2/3) for programs
+  // whose process group policy says they are untrusted.
+  if (!Verifier::verify_if_enabled(program, /* untrusted= */ false)) {
+    image.release();
+    FAIL(INVALID_ARGUMENT);
+  }
   ProcessGroup* process_group = ProcessGroup::create(gid, program, image.memory(), policy_holder.take());
   ASSERT(process_group);  // Allocations only fail on devices.
 
