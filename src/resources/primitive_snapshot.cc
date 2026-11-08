@@ -73,6 +73,7 @@ PRIMITIVE(launch) {
 
   Snapshot snapshot(bytes.address(), bytes.length());
   auto image = snapshot.read_image(program_id.address());
+  if (!image.is_valid()) FAIL(INVALID_ARGUMENT);
   Program* program = image.program();
   // Install-time structural verification of the launched snapshot.
   // TODO(sandbox): use the untrusted ruleset (reject HALT 2/3) for programs

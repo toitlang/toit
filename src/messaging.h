@@ -55,6 +55,9 @@ enum {
   MESSAGING_PROCESS_MESSAGE_SIZE = 3,
 
   MESSAGING_ENCODING_MAX_NESTING      = 8,
+  // The decoder is more lenient than the encoder, but must bound the
+  // recursion: TISON input is untrusted.
+  MESSAGING_DECODING_MAX_NESTING      = 64,
   MESSAGING_ENCODING_MAX_EXTERNALS    = 8,
   MESSAGING_ENCODING_MAX_INLINED_SIZE = 128,
 
@@ -364,6 +367,7 @@ class MessageDecoder {
   const MessageFormat format_ = MESSAGE_FORMAT_IPC;
 
   word cursor_ = 0;
+  int nesting_ = 0;
   Status status_ = DECODE_SUCCESS;
 
   unsigned externals_count_ = 0;

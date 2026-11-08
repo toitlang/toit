@@ -472,9 +472,13 @@ void Double::write_content(SnapshotWriter* st) {
   st->write_double(value());
 }
 
-void Instance::read_content(SnapshotReader* st) {
+void Instance::read_content(SnapshotReader* st, word expected_fields) {
   word len = st->read_cardinal();
-  for (word index = 0; index < len; index++) {
+  if (len != expected_fields) {
+    st->fail("instance field count does not match its size");
+    return;
+  }
+  for (word index = 0; index < len && !st->failed(); index++) {
     // Only used to read snapshots onto the program heap, which has no write barrier.
     at_put_no_write_barrier(index, st->read_object());
   }
@@ -484,7 +488,13 @@ void String::read_content(SnapshotReader* st, word len) {
   if (len > String::SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
     _set_external_length(len);
     auto external_bytes = st->read_external_list_uint8();
-    ASSERT(external_bytes.length() == len + 1);  // TODO(florian): we shouldn't have a '\0'.
+    // TODO(florian): we shouldn't have a '\0'.
+    if (external_bytes.length() != len + 1 || external_bytes.data()[len] != '\0') {
+      st->fail("invalid external string");
+      _set_external_length(0);
+      _set_external_address(null);
+      return;
+    }
     _set_external_address(external_bytes.data());
     _assign_hash_code();
   } else {
@@ -504,14 +514,22 @@ void Double::read_content(SnapshotReader* st) {
 void Array::read_content(SnapshotReader* st, word len) {
   _set_length(len);
   // Only used to read snapshots onto the program heap, which has no write barrier.
-  for (word index = 0; index < len; index++) at_put_no_write_barrier(index, st->read_object());
+  for (word index = 0; index < len; index++) {
+    at_put_no_write_barrier(index, st->failed() ? Smi::zero() : st->read_object());
+  }
 }
 
 void ByteArray::read_content(SnapshotReader* st, word len) {
   if (len > SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
     _set_external_length(len);
     auto external_bytes = st->read_external_list_uint8();
-    ASSERT(external_bytes.length() == len);
+    if (external_bytes.length() != len) {
+      st->fail("invalid external byte array");
+      _set_external_length(0);
+      _set_external_tag(RawByteTag);
+      _set_external_address(null);
+      return;
+    }
     _set_external_tag(RawByteTag);
     _set_external_address(external_bytes.data());
   } else {

@@ -934,29 +934,37 @@ PRIMITIVE(large_integer_multiply) {
   return Primitive::integer(result, process);
 }
 
+// Ints wrap around. Dividing int.MIN by -1 traps on x86 (SIGFPE, taking
+// down the whole VM), so division by -1 is handled separately.
+static int64 wrapping_negate(int64 value) {
+  return static_cast<int64>(0 - static_cast<uint64>(value));
+}
+
 PRIMITIVE(large_integer_divide) {
   ARGS(LargeInteger, receiver, Object, arg);
   int64 result = receiver->value();
+  int64 divisor;
   if (is_smi(arg)) {
-    if (Smi::value(arg) == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
-    result /= Smi::value(arg);
+    divisor = Smi::value(arg);
   } else if (is_large_integer(arg)) {
-    ASSERT(LargeInteger::cast(arg)->value() != 0LL);
-    result /= LargeInteger::cast(arg)->value();
+    divisor = LargeInteger::cast(arg)->value();
   } else FAIL(WRONG_OBJECT_TYPE);
+  if (divisor == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
+  result = (divisor == -1) ? wrapping_negate(result) : result / divisor;
   return Primitive::integer(result, process);
 }
 
 PRIMITIVE(large_integer_mod) {
   ARGS(LargeInteger, receiver, Object, arg);
   int64 result = receiver->value();
+  int64 divisor;
   if (is_smi(arg)) {
-    if (Smi::value(arg) == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
-    result %= Smi::value(arg);
+    divisor = Smi::value(arg);
   } else if (is_large_integer(arg)) {
-    ASSERT(LargeInteger::cast(arg)->value() != 0LL);
-    result %= LargeInteger::cast(arg)->value();
+    divisor = LargeInteger::cast(arg)->value();
   } else FAIL(WRONG_OBJECT_TYPE);
+  if (divisor == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
+  result = (divisor == -1) ? 0 : result % divisor;
   return Primitive::integer(result, process);
 }
 
@@ -2404,16 +2412,15 @@ PRIMITIVE(rebuild_hash_index) {
   if (new_length == 0 || !Utils::is_power_of_two(new_length)) FAIL(INVALID_ARGUMENT);
   word index_mask = new_length - 1;
   word length = old_array->length();
+  // Check all entries first, so that the Toit fallback starts from a clean
+  // index. Large integers (possible in the 32-bit VM) are left to the Toit
+  // fallback, too.
   for (word i = 0; i < length; i++) {
-    Object* o = old_array->at(i);
-    word hash_and_position;
-    if (is_smi(o)) {
-      hash_and_position = Smi::value(o);
-    } else if (is_large_integer(o)) {
-      hash_and_position = LargeInteger::cast(o)->value();
-    } else {
-      FAIL(INVALID_ARGUMENT);
-    }
+    if (!is_smi(old_array->at(i))) FAIL(INVALID_ARGUMENT);
+  }
+  for (word i = 0; i < length; i++) {
+    word hash_and_position = Smi::value(old_array->at(i));
+    if (hash_and_position == 0) continue;  // Empty slot.
     word slot = hash_and_position & index_mask;
     word step = 1;
     // Triangular probing visits every slot of a power-of-two array within
