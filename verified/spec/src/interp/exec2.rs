@@ -176,7 +176,7 @@ impl Machine {
         let arity = info.arity as usize;
         if arity > self.frame_height() { return Err(StackRange); }
         if info.recv_start != 0xffff {
-            if arity == 0 { return Err(BadArity); }
+            if arity == 0 { return Err(NotObject); }
             let receiver = self.at2(arity - 1)?;
             if self.receiver_fails(&info, receiver)? {
                 return self.raise(AS_CHECK_FAILED);
@@ -192,6 +192,7 @@ impl Machine {
         let fi = self.s.frames.len() - 1;
         if self.s.tries.last().map(|h| h.frame == fi).unwrap_or(false) { return Err(BadFrame); }
         if fi == 0 { return Ok(Step::Halt(Halt::TaskReturned)); }
+        if f.base > self.s.stack.len() { return Err(StackRange); }
         self.s.stack.truncate(f.base);
         self.s.stack.push(result);
         self.s.frames.pop();
@@ -243,6 +244,7 @@ impl Machine {
                     return self.enter_finally(h, Some(u));
                 }
             }
+            if self.s.frames[fi].base > self.s.stack.len() { return Err(StackRange); }
             match u {
                 Unwind::Return(f, v) if f == fi => return self.return2(v),
                 Unwind::Branch(f, bci, height) if f == fi => {
@@ -329,7 +331,7 @@ impl Machine {
     fn this2(&self, f: usize) -> Result<Value, Stuck> {
         let frame = self.top_frame()?;
         let info = self.info(frame.method)?;
-        if info.recv_start == 0xffff || info.arity == 0 { return Err(NotInstance); }
+        if info.recv_start == 0xffff || info.arity == 0 || frame.base >= self.s.stack.len() { return Err(NotInstance); }
         let this = self.s.stack[frame.base];
         if !self.checked_field(this, f) { return Err(NotInstance); }
         Ok(this)
@@ -392,6 +394,7 @@ impl Machine {
                 let (f, slot) = self.block_ref(self.at2(1)?)?;
                 if b1 > slot || slot - b1 < self.s.frames[f].base { return Err(StackRange); }
                 self.drop2(2)?;
+                if slot - b1 >= self.s.stack.len() { return Err(StackRange); }
                 self.s.stack[slot - b1] = v;
                 self.s.stack.push(v);
                 self.next2(2)
@@ -735,7 +738,7 @@ impl Machine {
         let arity = info.arity as usize;
         if arity > self.frame_height() { return Err(StackRange); }
         if info.recv_start != 0xffff {
-            if arity == 0 { return Err(BadArity); }
+            if arity == 0 { return Err(NotObject); }
             let receiver = self.at2(arity - 1)?;
             if self.receiver_fails(&info, receiver)? { return self.raise(AS_CHECK_FAILED); }
         }

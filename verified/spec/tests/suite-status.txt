@@ -51,8 +51,8 @@
 2 pass tests/ble-advertisement-test.toit
 1 pass tests/block-alias-test.toit
 2 pass tests/block-alias-test.toit
-1 nondeterministic tests/block-test.toit
-2 nondeterministic tests/block-test.toit
+1 nondeterministic tests/block-test.toit prints identity hash codes
+2 nondeterministic tests/block-test.toit prints identity hash codes
 1 pass tests/block2-test.toit
 2 pass tests/block2-test.toit
 1 pass tests/block3-test.toit
@@ -579,8 +579,8 @@
 2 unimplemented tests/rmt-signals-test.toit core::read_uint_little_endian
 1 unimplemented tests/rpc-reply-owner-test.toit core::spawn
 2 unimplemented tests/rpc-reply-owner-test.toit core::spawn
-1 nondeterministic tests/rpc-test.toit
-2 nondeterministic tests/rpc-test.toit
+1 nondeterministic tests/rpc-test.toit prints the measured time per RPC
+2 nondeterministic tests/rpc-test.toit prints the measured time per RPC
 1 unimplemented tests/rpc-unowned-external-test.toit core::rtc_user_bytes
 2 unimplemented tests/rpc-unowned-external-test.toit core::rtc_user_bytes
 1 unimplemented tests/serialization-test.toit encoding::tison_encode

@@ -56,6 +56,14 @@ TEST_ARGS = ["foo", "bar", "gee"]
 ENV = dict(os.environ, TOIT_TEST_ENV_ENTRY="TOIT_TEST_ENV_VALUE")
 
 
+# Tests whose output depends on timing or object identity even when two
+# VM runs happen to agree.
+NONDETERMINISTIC = {
+  "tests/rpc-test.toit": "prints the measured time per RPC",
+  "tests/block-test.toit": "prints identity hash codes",
+}
+
+
 def run(cmd, timeout, out_path=None, cwd=REPO):
   try:
     p = subprocess.run(cmd, cwd=cwd, env=ENV, capture_output=True, timeout=timeout)
@@ -164,6 +172,10 @@ def one(test, fmt, opts):
       with open(exp32, "rb") as f: exp = (f.read(), vm_rc)
     if (out, str(rc)) != exp:
       failures.append(tag)
+  if test in NONDETERMINISTIC:
+    result["status"] = "nondeterministic"
+    result["detail"] = NONDETERMINISTIC[test]
+    return result
   if failures:
     # Tests whose output depends on timing, addresses or the environment
     # are not comparable: run the VM again and see whether it agrees with
