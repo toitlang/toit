@@ -147,7 +147,9 @@ monitor MessageProcessor_:
 
   static invoke-handler type/int message/Array_ -> none:
     handler ::= system-message-handlers_.get type --if-absent=:
-      print_ "WARNING: unhandled system message $type"
+      // Sandboxed processes can't write to stdout; they just drop the
+      // message.
+      catch: print_ "WARNING: unhandled system message $type"
       return
     gid ::= message[1]
     pid ::= message[2]

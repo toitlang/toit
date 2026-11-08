@@ -37,6 +37,21 @@ class Container:
   pids_/Set? := null
   resources/Set ::= {}
 
+  /**
+  The policy the container runs with: a policy kind (see
+    $ContainerService.POLICY-TRUSTED) or a list of a policy kind followed
+    by quotas. Determined when the container is started.
+  */
+  policy/any := ContainerService.POLICY-TRUSTED
+
+  /**
+  Whether an error in this container terminates the system. Containers
+    from run-critical images are critical, unless they were explicitly
+    started as untrusted: sandboxed code must not be able to bring down
+    the system by failing.
+  */
+  critical/bool := false
+
   constructor .image .gid_:
 
   id -> int:
@@ -45,9 +60,24 @@ class Container:
   is-process-running pid/int -> bool:
     return pids_.contains pid
 
-  start arguments/any=image.default-arguments -> none:
+  start arguments/any=image.default-arguments --policy/any=null -> none:
     if pids_: throw "Already started"
+    validated := validate-policy_ (policy or image.default-policy)
+    kind := validated is Array_ ? validated[0] : validated
+    explicitly-untrusted := policy != null and kind == ContainerService.POLICY-UNTRUSTED
+    this.policy = validated
+    critical = image.run-critical and not explicitly-untrusted
     pids_ = {image.spawn this arguments}
+
+  static validate-policy_ policy/any -> any:
+    kind := policy is List ? (policy.is-empty ? null : policy[0]) : policy
+    if kind != ContainerService.POLICY-TRUSTED and kind != ContainerService.POLICY-UNTRUSTED:
+      throw "INVALID_ARGUMENT"
+    if policy is List:
+      if policy.size > 9: throw "INVALID_ARGUMENT"
+      policy.do: if it is not int: throw "WRONG_OBJECT_TYPE"
+      return Array_.from policy
+    return policy
 
   stop -> none:
     if not pids_: throw "Not started"
@@ -138,6 +168,12 @@ abstract class ContainerImage:
   run-critical -> bool:
     return flags & ContainerService.FLAG-RUN-CRITICAL != 0
 
+  untrusted -> bool:
+    return flags & ContainerService.FLAG-UNTRUSTED != 0
+
+  default-policy -> int:
+    return untrusted ? ContainerService.POLICY-UNTRUSTED : ContainerService.POLICY-TRUSTED
+
   default-arguments -> any:
     // TODO(kasper): For now, the default arguments passed
     // to a container on start is an empty list. We could
@@ -164,7 +200,7 @@ class ContainerImageFlash extends ContainerImage:
     return LITTLE-ENDIAN.uint32 allocation_.metadata 1
 
   spawn container/Container arguments/any:
-    return container-spawn_ allocation_.offset container.id arguments
+    return container-spawn_ allocation_.offset container.id arguments container.policy
 
   stop-all -> none:
     attempts := 0
@@ -200,7 +236,8 @@ abstract class ContainerServiceProvider extends ServiceProvider
       return load-image client (uuid.Uuid arguments)
     if index == ContainerService.START-CONTAINER-INDEX:
       resource ::= (resource client arguments[0]) as ContainerResource
-      return start-container resource arguments[1]
+      policy := arguments.size > 2 ? arguments[2] : null
+      return start-container resource arguments[1] --policy=policy
     if index == ContainerService.STOP-CONTAINER-INDEX:
       resource ::= (resource client arguments) as ContainerResource
       return stop-container resource
@@ -251,8 +288,8 @@ abstract class ContainerServiceProvider extends ServiceProvider
     resource := ContainerResource container this client
     return [resource.serialize-for-rpc, container.id]
 
-  start-container resource/ContainerResource arguments/any -> none:
-    resource.container.start arguments
+  start-container resource/ContainerResource arguments/any --policy/any=null -> none:
+    resource.container.start arguments --policy=policy
 
   stop-container resource/ContainerResource -> none:
     resource.container.stop
@@ -362,7 +399,7 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
     containers-by-id_.remove container.id
     // If we've got an error in an image that run with the run.critical
     // flag, we treat that as a fatal error and terminate the system process.
-    if error != 0 and container.image.run-critical:
+    if error != 0 and container.critical:
       done_.set error
       return
     // TODO(kasper): We are supposed to always have a running system process. Maybe
@@ -436,7 +473,7 @@ trace-find-origin-id trace/ByteArray -> uuid.Uuid?:
 
 // ----------------------------------------------------------------------------
 
-container-spawn_ offset gid arguments -> int:
+container-spawn_ offset gid arguments policy -> int:
   #primitive.programs-registry.spawn
 
 container-is-running_ offset -> bool:

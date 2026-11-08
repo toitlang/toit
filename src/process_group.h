@@ -16,6 +16,7 @@
 #pragma once
 
 #include "linked.h"
+#include "primitive_policy.h"
 #include "process.h"
 #include "top.h"
 
@@ -31,10 +32,31 @@ class ProcessGroup : public ProcessGroupList::Element {
  public:
   ~ProcessGroup();
 
-  static ProcessGroup* create(int id, Program* program, AlignedMemoryBase* memory = null);
+  // Creates a process group with the given policy. If the policy is owned
+  // (see PrimitivePolicy::is_owned) the group takes it over, also when the
+  // creation fails.
+  static ProcessGroup* create(int id, Program* program, AlignedMemoryBase* memory = null,
+                              const PrimitivePolicy* policy = PrimitivePolicy::trusted());
 
   int id() const { return id_; }
   Program* program() const { return program_; }
+
+  // The policy of the group. It is immutable and shared by all processes in
+  // the group, including the ones spawned from inside the group.
+  const PrimitivePolicy* policy() const { return policy_; }
+
+  // The allowed-target set: process ids that processes of a group with a
+  // messaging-restricted policy may send to, in addition to the system
+  // process and their own group. Grants are issued by the system process
+  // (service discovery) and by the scheduler when a process of this group
+  // receives an RPC request (so it can reply). Must be called with the
+  // scheduler lock held.
+  bool may_send_to(int pid) const;
+  void grant_send_to(int pid);
+
+  // The number of processes in the group. Must be called with the scheduler
+  // lock held.
+  word process_count();
 
   Process* lookup(int process_id);
   void add(Process* process);
@@ -55,7 +77,14 @@ class ProcessGroup : public ProcessGroupList::Element {
 
   ProcessListFromProcessGroup processes_;
 
-  ProcessGroup(int id, Program* program, AlignedMemoryBase* memory);
+  const PrimitivePolicy* const policy_;
+
+  // Ring buffer of granted target pids. Allocated on the first grant.
+  int* grants_ = null;
+  word grants_count_ = 0;
+  word grants_next_ = 0;
+
+  ProcessGroup(int id, Program* program, AlignedMemoryBase* memory, const PrimitivePolicy* policy);
 
   friend class Scheduler;
 };

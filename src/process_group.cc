@@ -23,17 +23,57 @@
 
 namespace toit {
 
-ProcessGroup::ProcessGroup(int id, Program* program, AlignedMemoryBase* memory)
+ProcessGroup::ProcessGroup(int id, Program* program, AlignedMemoryBase* memory, const PrimitivePolicy* policy)
     : id_(id)
     , program_(program)
-    , memory_(memory) {}
+    , memory_(memory)
+    , policy_(policy) {}
 
 ProcessGroup::~ProcessGroup() {
   delete memory_;
+  free(grants_);
+  PrimitivePolicy::release(policy_);
 }
 
-ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* memory) {
-  return _new ProcessGroup(id, program, memory);
+ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* memory,
+                                   const PrimitivePolicy* policy) {
+  ASSERT(policy != null);
+  ProcessGroup* result = _new ProcessGroup(id, program, memory, policy);
+  if (result == null) PrimitivePolicy::release(policy);
+  return result;
+}
+
+bool ProcessGroup::may_send_to(int pid) const {
+  ASSERT(VM::current()->scheduler()->is_locked());
+  for (word i = 0; i < grants_count_; i++) {
+    if (grants_[i] == pid) return true;
+  }
+  return false;
+}
+
+void ProcessGroup::grant_send_to(int pid) {
+  ASSERT(VM::current()->scheduler()->is_locked());
+  if (may_send_to(pid)) return;
+  word capacity = policy_->quotas().max_send_grants;
+  if (capacity <= 0) return;
+  if (grants_ == null) {
+    grants_ = unvoid_cast<int*>(malloc(capacity * sizeof(int)));
+    if (grants_ == null) return;  // Grant is not recorded; sends will be denied.
+  }
+  // When the set is full the oldest grant is evicted.
+  grants_[grants_next_] = pid;
+  grants_next_ = (grants_next_ + 1) % capacity;
+  if (grants_count_ < capacity) grants_count_++;
+}
+
+word ProcessGroup::process_count() {
+  ASSERT(VM::current()->scheduler()->is_locked());
+  word count = 0;
+  for (auto process : processes_) {
+    USE(process);
+    count++;
+  }
+  return count;
 }
 
 Process* ProcessGroup::lookup(int process_id) {
