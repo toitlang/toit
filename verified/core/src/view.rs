@@ -13,170 +13,308 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-//! TRUSTED: the only place that touches raw pointers.
+//! TRUSTED: the only module that touches raw memory.
 //!
 //! Each view wraps memory owned by the C++ VM and exposes it to verified
-//! code as a ghost sequence. Every `external_body` item here is listed with
-//! its assumed contract in `TRUSTED.md`. Keep this file small.
+//! code as a ghost sequence with small contracts. Every `external_body`
+//! item is listed with its contract in `TRUSTED.md`.
+//!
+//! Views of process memory (`StackMem`) are invalidated by every call that
+//! may garbage collect: those calls (`Runtime`) take the view by value and
+//! the caller derives a new one afterwards (`Runtime::stack`), so no view
+//! survives a GC point (enforced by the type system: a moved-from view
+//! cannot be used). Object references read from memory are plain words;
+//! that none of them is used after a GC point without being re-read from a
+//! root is the GC-safety discipline (DESIGN.md).
 
 use vstd::prelude::*;
+use core::sync::atomic::{AtomicUsize, Ordering};
+use crate::layout::*;
 
 verus! {
 
-/// The stack object's word array `[limit_, base_)`.
+/// A read-only table of `T` (program data: immutable while the program
+/// runs).
 #[verifier::external_body]
-pub struct StackView {
-    ptr: *mut usize,
+#[verifier::reject_recursive_types(T)]
+pub struct Table<T> {
+    ptr: *const T,
     len: usize,
 }
 
-impl StackView {
-    /// Ghost contents of the stack array.
-    pub uninterp spec fn view(&self) -> Seq<usize>;
+impl<T: Copy> Table<T> {
+    pub uninterp spec fn view(&self) -> Seq<T>;
 
     #[verifier::external_body]
+    #[inline(always)]
     pub fn len(&self) -> (r: usize)
-        ensures
-            r == self@.len(),
+        ensures r == self@.len(),
     {
         self.len
     }
 
     #[verifier::external_body]
-    pub fn read(&self, i: usize) -> (r: usize)
-        requires
-            i < self@.len(),
-        ensures
-            r == self@[i as int],
+    #[inline(always)]
+    pub fn at(&self, i: usize) -> (r: T)
+        requires i < self@.len(),
+        ensures r == self@[i as int],
+    {
+        unsafe { *self.ptr.add(i) }
+    }
+}
+
+/// The global variables of the process (mutable words, GC roots).
+#[verifier::external_body]
+pub struct Globals {
+    ptr: *mut usize,
+    len: usize,
+}
+
+impl Globals {
+    pub uninterp spec fn view(&self) -> Seq<usize>;
+
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn len(&self) -> (r: usize)
+        ensures r == self@.len(),
+    {
+        self.len
+    }
+
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn at(&self, i: usize) -> (r: usize)
+        requires i < self@.len(),
+        ensures r == self@[i as int],
     {
         unsafe { *self.ptr.add(i) }
     }
 
     #[verifier::external_body]
-    pub fn write(&mut self, i: usize, v: usize)
-        requires
-            i < old(self)@.len(),
-        ensures
-            final(self)@ == old(self)@.update(i as int, v),
+    #[inline(always)]
+    pub fn set(&mut self, i: usize, v: usize)
+        requires i < old(self)@.len(),
+        ensures final(self)@ == old(self)@.update(i as int, v),
     {
         unsafe { *self.ptr.add(i) = v }
     }
 }
 
-/// The program's bytecodes (read only).
+/// The array of the running task's Stack object: frame records at the
+/// bottom, the object stack at the top. Only valid until the next call that
+/// may GC (those consume it).
 #[verifier::external_body]
-pub struct CodeView {
-    ptr: *const u8,
+pub struct StackMem {
+    /// Untagged address of the Stack object.
+    object: *mut usize,
+    /// Address of array element 0.
+    array: *mut usize,
     len: usize,
 }
 
-impl CodeView {
-    pub uninterp spec fn view(&self) -> Seq<u8>;
+impl StackMem {
+    pub uninterp spec fn view(&self) -> Seq<usize>;
 
     #[verifier::external_body]
+    #[inline(always)]
     pub fn len(&self) -> (r: usize)
-        ensures
-            r == self@.len(),
+        ensures r == self@.len(),
     {
         self.len
     }
 
     #[verifier::external_body]
-    pub fn byte(&self, i: usize) -> (r: u8)
+    #[inline(always)]
+    pub fn read(&self, i: usize) -> (r: usize)
+        requires i < self@.len(),
+        ensures r == self@[i as int],
+    {
+        unsafe { *self.array.add(i) }
+    }
+
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn write(&mut self, i: usize, v: usize)
+        requires i < old(self)@.len(),
+        ensures final(self)@ == old(self)@.update(i as int, v),
+    {
+        unsafe { *self.array.add(i) = v }
+    }
+
+    /// Copies `n` words from `from..from+n` to `to..to+n` (memmove).
+    #[verifier::external_body]
+    pub fn copy_within(&mut self, from: usize, to: usize, n: usize)
         requires
-            i < self@.len(),
+            from + n <= old(self)@.len(),
+            to + n <= old(self)@.len(),
         ensures
-            r == self@[i as int],
+            final(self)@.len() == old(self)@.len(),
+            forall|i: int| 0 <= i < final(self)@.len() ==> #[trigger] final(self)@[i] ==
+                (if to <= i < to + n { old(self)@[i - to + from] } else { old(self)@[i] }),
     {
-        unsafe { *self.ptr.add(i) }
+        unsafe { core::ptr::copy(self.array.add(from), self.array.add(to), n) }
+    }
+
+    /// The header fields the core keeps up to date (top, frame top, bci).
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn header(&self, word: usize) -> (r: usize) {
+        unsafe { *self.object.add(word) }
+    }
+
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn set_header(&mut self, word: usize, v: usize)
+        ensures final(self)@ == old(self)@,
+    {
+        unsafe { *self.object.add(word) = v }
     }
 }
 
-/// The program's dispatch table (read only).
+/// Access to heap objects. A word with the heap tag that the core reads
+/// from a root (the object stack, a global, a program table) or from a
+/// field of such an object designates a live object (the GC maintains this;
+/// TRUSTED.md, "heap integrity"). Valid until the next call that may GC
+/// (holds no pointers itself, but the words it is given do).
 #[verifier::external_body]
-pub struct DispatchView {
-    ptr: *const i32,
-    len: usize,
+pub struct Heap {
+    remembered_set_bias: usize,
 }
 
-impl DispatchView {
-    pub uninterp spec fn view(&self) -> Seq<i32>;
-
+impl Heap {
+    /// The header word of a heap object.
     #[verifier::external_body]
-    pub fn len(&self) -> (r: usize)
-        ensures
-            r == self@.len(),
+    #[inline(always)]
+    pub fn header(&self, obj: usize) -> (r: usize)
+        requires obj & 3 == 1,
     {
-        self.len
+        unsafe { *((obj - HEAP_TAG) as *const usize) }
+    }
+
+    /// Word `k` of a heap object (k >= 1), within the object.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn word(&self, obj: usize, k: usize) -> (r: usize)
+        requires obj & 3 == 1,
+    {
+        unsafe { *((obj - HEAP_TAG) as *const usize).add(k) }
+    }
+
+    /// Stores into word `k` of an object of the process heap, with the
+    /// write barrier.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn set_word(&mut self, obj: usize, k: usize, v: usize)
+        requires obj & 3 == 1,
+    {
+        unsafe {
+            *((obj - HEAP_TAG) as *mut usize).add(k) = v;
+            let card = ((obj - HEAP_TAG) >> CARD_SIZE_LOG_2).wrapping_add(self.remembered_set_bias);
+            *(card as *mut u8) = NEW_SPACE_POINTERS;
+        }
+    }
+
+    /// Byte `i` at byte offset `offset` of a heap object, or of the external
+    /// memory at address `address` if `address != 0`.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn byte(&self, obj: usize, address: usize, offset: usize) -> (r: u8) {
+        unsafe {
+            if address != 0 {
+                *(address as *const u8).add(offset)
+            } else {
+                *((obj - HEAP_TAG) as *const u8).add(offset)
+            }
+        }
     }
 
     #[verifier::external_body]
-    pub fn at(&self, i: usize) -> (r: i32)
-        requires
-            i < self@.len(),
-        ensures
-            r == self@[i as int],
-    {
-        unsafe { *self.ptr.add(i) }
+    #[inline(always)]
+    pub fn set_byte(&mut self, obj: usize, address: usize, offset: usize, v: u8) {
+        unsafe {
+            if address != 0 {
+                *(address as *mut u8).add(offset) = v;
+            } else {
+                *((obj - HEAP_TAG) as *mut u8).add(offset) = v;
+            }
+        }
+    }
+
+    /// The 32-bit word at byte offset `offset` of a heap object.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn u32_at(&self, obj: usize, offset: usize) -> (r: u32) {
+        unsafe { *(((obj - HEAP_TAG) as *const u8).add(offset) as *const u32) }
     }
 }
 
-/// The interpreter's stack-overflow/preemption watermark. Read with the
-/// same comparison as CHECK_STACK_OVERFLOW. No contract: its answer is
-/// treated as environment nondeterminism by the spec.
+/// The preemption flag: the interpreter's watermark, set to
+/// `PREEMPTION_MARKER` by the scheduler from another thread. No contract:
+/// its value is environment nondeterminism.
 #[verifier::external_body]
-pub struct RoomOracle {
-    limit: *mut usize,
-    watermark: *const core::sync::atomic::AtomicUsize,
+pub struct Preemption {
+    watermark: *const AtomicUsize,
 }
 
-impl RoomOracle {
-    /// True if `sp - max_height >= watermark_` where `sp` is the address of
-    /// stack index `new_sp`.
+impl Preemption {
     #[verifier::external_body]
-    pub fn has_room(&self, new_sp: usize, max_height: usize) -> (r: bool) {
-        let watermark = unsafe { (*self.watermark).load(core::sync::atomic::Ordering::Relaxed) };
-        let word = core::mem::size_of::<usize>();
-        let sp = (self.limit as usize).wrapping_add(new_sp.wrapping_mul(word));
-        let lowest = sp.wrapping_sub(max_height.wrapping_mul(word));
-        // Pointer comparison as in C++; guard against wrap-around below 0.
-        lowest <= sp && lowest >= watermark
+    #[inline(always)]
+    pub fn requested(&self) -> bool {
+        unsafe { (*self.watermark).load(Ordering::Relaxed) == PREEMPTION_MARKER }
+    }
+
+    #[verifier::external_body]
+    pub fn clear(&self) {
+        unsafe { (*self.watermark).store(0, Ordering::Relaxed) }
+    }
+
+    #[verifier::external_body]
+    pub fn request(&self) {
+        unsafe { (*self.watermark).store(PREEMPTION_MARKER, Ordering::Relaxed) }
     }
 }
 
 } // verus!
 
-// Constructors are invisible to the verifier (they create the ghost views).
-impl StackView {
+// Constructors are invisible to the verifier (they create the views).
+impl<T> Table<T> {
     /// # Safety
-    /// `ptr..ptr+len` must be valid, writable, word-aligned, and not
-    /// accessed by anyone else for the lifetime of the view.
+    /// `ptr..ptr+len` must be valid, aligned and immutable while the view
+    /// lives.
+    pub unsafe fn from_raw(ptr: *const T, len: usize) -> Self {
+        Table { ptr, len }
+    }
+}
+
+impl Globals {
+    /// # Safety
+    /// `ptr..ptr+len` must be the process' global variables.
     pub unsafe fn from_raw(ptr: *mut usize, len: usize) -> Self {
-        StackView { ptr, len }
+        Globals { ptr, len }
     }
 }
 
-impl CodeView {
+impl StackMem {
     /// # Safety
-    /// `ptr..ptr+len` must be valid and immutable for the lifetime of the view.
-    pub unsafe fn from_raw(ptr: *const u8, len: usize) -> Self {
-        CodeView { ptr, len }
+    /// `stack` must be the tagged pointer of the running task's Stack object
+    /// and `array_word` the word offset of its array.
+    pub unsafe fn from_stack(stack: usize, array_word: usize) -> Self {
+        let object = (stack - HEAP_TAG) as *mut usize;
+        let len = *object.add(STACK_LENGTH_WORD);
+        StackMem { object, array: object.add(array_word), len }
     }
 }
 
-impl DispatchView {
-    /// # Safety
-    /// `ptr..ptr+len` must be valid, aligned and immutable for the lifetime
-    /// of the view.
-    pub unsafe fn from_raw(ptr: *const i32, len: usize) -> Self {
-        DispatchView { ptr, len }
+impl Heap {
+    pub fn new(remembered_set_bias: usize) -> Self {
+        Heap { remembered_set_bias }
     }
 }
 
-impl RoomOracle {
+impl Preemption {
     /// # Safety
     /// `watermark` must point to the interpreter's `std::atomic<Object**>`.
-    pub unsafe fn from_raw(limit: *mut usize, watermark: *const core::sync::atomic::AtomicUsize) -> Self {
-        RoomOracle { limit, watermark }
+    pub unsafe fn from_raw(watermark: *const AtomicUsize) -> Self {
+        Preemption { watermark }
     }
 }

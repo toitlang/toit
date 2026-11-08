@@ -31,6 +31,7 @@ ProcessGroup::ProcessGroup(int id, Program* program, AlignedMemoryBase* memory, 
 
 ProcessGroup::~ProcessGroup() {
   delete method_entries_;
+  delete v2_methods_;
   delete memory_;
   free(grants_);
   PrimitivePolicy::release(policy_);
@@ -40,7 +41,14 @@ ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* 
                                    const PrimitivePolicy* policy) {
   ASSERT(policy != null);
   MethodEntryTable* entries = null;
-  if (program != null) {
+  V2MethodTable* v2_methods = null;
+  if (program != null && program->is_format2()) {
+    v2_methods = V2MethodTable::compute(program, policy->is_untrusted());
+    if (v2_methods == null) {
+      PrimitivePolicy::release(policy);
+      return null;
+    }
+  } else if (program != null) {
     entries = MethodEntryTable::compute(program);
     if (entries == null) {
       PrimitivePolicy::release(policy);
@@ -50,10 +58,12 @@ ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* 
   ProcessGroup* result = _new ProcessGroup(id, program, memory, policy);
   if (result == null) {
     delete entries;
+    delete v2_methods;
     PrimitivePolicy::release(policy);
     return null;
   }
   result->method_entries_ = entries;
+  result->v2_methods_ = v2_methods;
   return result;
 }
 

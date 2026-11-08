@@ -313,6 +313,23 @@ class Program : public FlashAllocation {
 
   int global_max_stack_height() const { return global_max_stack_height_; }
 
+  // The bytecode format of the program: 2 if the bytecodes start with the
+  // format-2 tag "TBC2" (verified/spec/format/README.md), 1 otherwise.
+  // Format-1 programs run on the C++ interpreter (interpreter_run.cc),
+  // format-2 programs on the verified core (interpreter_v2.cc).
+  bool is_format2() const {
+    return bytecodes.length() >= 4 &&
+        bytecodes.data()[0] == 'T' && bytecodes.data()[1] == 'B' &&
+        bytecodes.data()[2] == 'C' && bytecodes.data()[3] == '2';
+  }
+  int bytecode_format() const { return is_format2() ? 2 : 1; }
+
+  // Raw views of the program tables, for the verified core (format 2).
+  const int* invoke_bytecode_offsets() const { return invoke_bytecode_offsets_; }
+  const int* entry_point_indexes() const { return entry_point_indexes_; }
+  Smi* const* builtin_class_ids() const { return _builtin_class_ids; }
+  Object* const* roots() const { return roots_; }
+
  public:
   Table<Object*> global_variables;
   Table<Object*> literals;

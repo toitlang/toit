@@ -25,7 +25,6 @@
 #include "vm.h"
 
 #include "objects_inline.h"
-#include "verified_core.h"
 
 #if defined(TOIT_FREERTOS)
 #undef TOIT_CHECK_PROPAGATED_TYPES
@@ -109,7 +108,6 @@ Method Program::find_method(Object* receiver, word offset) {
       ASSERT(bcp + n < program->bytecodes.data() + program->bytecodes.length());   \
       ASSERT(!process_->object_heap()->has_pending_limit());                       \
       bcp += n;                                                                    \
-      VERIFIED_CORE_HOOK();                                                        \
       Opcode next = static_cast<Opcode>(*bcp);                                     \
       OPCODE_TRACE()                                                               \
       goto *dispatch_table[next];                                                  \
@@ -323,6 +321,8 @@ Interpreter::Result Interpreter::run() {
     BYTECODES(LABEL)
   };
 #undef LABEL
+
+  if (process_->program()->is_format2()) return run_v2();
 
   // We sometimes suspend processes and collect their garbage
   // from the outside. In that case, we are not calling the GC

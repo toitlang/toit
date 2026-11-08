@@ -14,6 +14,7 @@
 // directory of this repository.
 
 #include "flags.h"
+#include "interpreter_v2.h"
 #include "memory.h"
 #include "objects_inline.h"
 #include "encoder.h"
@@ -249,6 +250,10 @@ void Array::roots_do(RootCallback* cb) {
 }
 
 word Stack::absolute_bci_at_preemption(Program* program) {
+  if (program->is_format2()) {
+    word bci = v2_bci();
+    return (0 <= bci && bci < program->bytecodes.length()) ? bci : -1;
+  }
   // Check that the stack has both words.
   if (_stack_sp_addr() + 1 >= _stack_base_addr()) return -1;
   // Check that the frame marker is correct.
@@ -274,6 +279,28 @@ void Stack::roots_do(Program* program, RootCallback* cb) {
   // compiler kept track of the maximum space that any function could need, so
   // we can use that.
   word minimum_space = program->global_max_stack_height() + RESERVED_STACK_FOR_CALLS;
+  if (program->is_format2()) {
+    // Format 2: the frame records at the bottom stay where they are; the
+    // object stack moves down. The verified core needs room for a frame
+    // and the reserve above the frames (verified/core/src/layout.rs).
+    word frame_top = v2_frame_top();
+    minimum_space += frame_top + V2_FRAME_WORDS + V2_STACK_RESERVE;
+    if (top > minimum_space && (Flags::shrink_stacks_a_lot || (cb->shrink_stacks() && top > length() >> 1))) {
+      word reduction = top - minimum_space;
+      if (Flags::shrink_stacks_a_lot || reduction >= 8) {
+        word used = length() - top;
+        memmove(_array_address(top - reduction), _array_address(top), used << WORD_SIZE_LOG_2);
+        word len = length() - reduction;
+        top -= reduction;
+        _set_length(len);
+        _set_top(top);
+        for (word i = 0; i < reduction; i++) {
+          auto one_word = static_cast<FreeListRegion*>(HeapObject::cast(_array_address(len + i)));
+          one_word->_set_header(Smi::from(SINGLE_FREE_WORD_CLASS_ID), SINGLE_FREE_WORD_TAG);
+        }
+      }
+    }
+  } else
   // Don't shrink the stack unless we can halve the size.  The growing algo
   // grows it by 50%, to try to avoid too much churn.
   if (top > minimum_space && (Flags::shrink_stacks_a_lot || (cb->shrink_stacks() && top > length() >> 1))) {
@@ -306,7 +333,40 @@ void Stack::roots_do(Program* program, RootCallback* cb) {
   }
 }
 
+thread_local int Stack::v2_frames_skip_ = 2;
+
+int Stack::v2_frames_do(Program* program, FrameCallback* cb) {
+  // The locations, top frame first: the bci the task is suspended at, then
+  // the return bci of each frame (a location in the frame below it), except
+  // the bottom frame's (not a call site). As for format 1, the top two
+  // (the primitive and the `throw`) are not reported, unless the machine
+  // raised the exception itself (v2_frames_skip_ is 0 then).
+  word frames = v2_frame_top() / V2_FRAME_WORDS;
+  int frame_no = 0;
+  int skip = v2_frames_skip_;
+  for (word k = frames; k >= 1; k--) {
+    word bci;
+    if (k == frames) {
+      // As a return address: the location after the raising instruction.
+      bci = v2_bci();
+      if (0 <= bci && bci < program->bytecodes.length() && program->bytecodes[bci] < V2_OPCODE_COUNT) {
+        bci += V2_OPCODE_LENGTHS[program->bytecodes[bci]];
+      }
+    } else {
+      bci = v2_word_at(k * V2_FRAME_WORDS + V2_FRAME_RET);
+    }
+    if (skip > 0) {
+      skip--;
+      continue;
+    }
+    cb->do_frame(this, frame_no, bci);
+    frame_no++;
+  }
+  return frame_no;
+}
+
 int Stack::frames_do(Program* program, FrameCallback* cb) {
+  if (program->is_format2()) return v2_frames_do(program, cb);
   word stack_length = _stack_base_addr() - _stack_sp_addr();
   word frame_no = 0;
   // The last return address we encountered. Represents the location inside the

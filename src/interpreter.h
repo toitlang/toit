@@ -129,6 +129,11 @@ class Interpreter {
   // Boot the interpreter on the current process.
   void prepare_process();
 
+  // Format-2 processes run on the verified core (interpreter_v2.cc).
+  Result run_v2();
+  void prepare_process_v2();
+  static Object* v2_task_transfer(Process* process, Task* to, bool detach_stack);
+
   // Run the interpreter. Returns a result that indicates if the process was
   // terminated or stopped for other reasons.
   Result run() INTERPRETER_CORE;

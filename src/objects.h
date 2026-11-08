@@ -990,6 +990,48 @@ class Stack : public HeapObject {
   static INLINE word initial_length() { return 64; }
   static INLINE word max_length();
 
+  // Format 2 (the verified core, interpreter_v2.cc and verified/core).
+  //
+  // The array holds the frame records at the bottom, in [0, v2_frame_top()),
+  // V2_FRAME_WORDS words per frame, and the object stack at the top, in
+  // [top(), length()), growing towards each other. Frame records hold no
+  // object references (method index, return bci, base, handler), so the GC,
+  // which only visits [top(), length()), never sees them. Object-stack
+  // positions are counted from the bottom (length() - 1 is index 0), so they
+  // survive stack growth and shrinking. The try-top field holds the frame
+  // top and the pending-stack-check field the absolute bci the task is
+  // suspended at. See verified/core/DESIGN.md.
+  static const word V2_FRAME_WORDS = 4;
+  static const word V2_FRAME_METHOD = 0;
+  static const word V2_FRAME_RET = 1;
+  static const word V2_FRAME_BASE = 2;
+  // 0 for no handler, otherwise (height | bci << 32) of the frame's TRY.
+  static const word V2_FRAME_HANDLER = 3;
+  // Words the core keeps free above a method's max height (for the slots of
+  // a finally block entered while unwinding and a primitive's failure value).
+  static const word V2_STACK_RESERVE = 8;
+  // The word offset of array element 0 from the untagged address.
+  static word v2_array_word() { return HEADER_SIZE / WORD_SIZE; }
+  word v2_frame_top() const { return _word_at(TRY_TOP_OFFSET); }
+  void v2_set_frame_top(word value) { _set_try_top(value); }
+  word v2_bci() const { return _word_at(PENDING_STACK_CHECK_METHOD_OFFSET); }
+  void v2_set_bci(word value) { _word_at_put(PENDING_STACK_CHECK_METHOD_OFFSET, value); }
+  void v2_set_top(word value) { _set_top(value); }
+  uword v2_word_at(word index) { return *_array_address(index); }
+  void v2_word_at_put(word index, uword value) { *_array_address(index) = value; }
+  // The address of the object-stack slot at [position], counted from the
+  // bottom.
+  Object** v2_slot_address(word position) {
+    return reinterpret_cast<Object**>(_array_address(length() - 1 - position));
+  }
+  // A task that never ran: its code as the only object-stack slot, no frames.
+  void v2_initialize_new_task(Object* code);
+  // Copies the frames and the object stack into the (larger) other stack.
+  void v2_copy_to(Stack* other);
+  int v2_frames_do(Program* program, FrameCallback* cb);
+  // The number of top locations v2_frames_do does not report.
+  static thread_local int v2_frames_skip_;
+
   static Stack* cast(Object* stack) {
     ASSERT(is_stack(stack));
     return static_cast<Stack*>(stack);
