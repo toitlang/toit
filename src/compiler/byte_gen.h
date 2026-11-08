@@ -21,6 +21,7 @@
 #include "emitter.h"
 #include "ir.h"
 #include "list.h"
+#include "program_builder.h"
 #include "source_mapper.h"
 
 namespace toit {
@@ -70,6 +71,18 @@ class ByteGen : private ir::Visitor {
                                 bool is_block,
                                 int captured_count,   // Only used if it is a lambda.
                                 SourceMapper::MethodMapper method_mapper);
+
+  // Format 2: the class-id range of the receiver (parameter 0) declared in
+  // the header of `method`, if any.
+  ReceiverRange receiver_range(ir::Method* method);
+  // Format 2: whether `node` is `this` of the method being generated, with
+  // a declared receiver range, so that the unchecked field instructions
+  // apply.
+  bool is_declared_this(ir::Expression* node);
+  // Format 2: appends a terminator if control could fall off the end.
+  void terminate_body();
+  // Format 2: the intrinsics are generated as bytecode loops or not at all.
+  void generate_intrinsic_v2(ir::PrimitiveInvocation* node);
 
   void update_absolute_positions(int absolute_entry_bci,
                                  const List<AbsoluteUse*>& uses,

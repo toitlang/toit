@@ -22,6 +22,7 @@
 
 pub mod loader;
 pub mod exec;
+pub mod exec2;
 pub mod intrinsics;
 pub mod prims;
 pub mod prims_impl;
@@ -73,6 +74,10 @@ pub enum Halt {
     Exit(i64),
     DeepSleep,
     Reset,
+    /// Format 2: an exception unwound past the bottom frame.
+    Uncaught(Value),
+    /// Format 2: the bottom frame returned.
+    TaskReturned,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -91,6 +96,7 @@ impl std::fmt::Debug for Value {
             Value::FrameMarker => write!(f, "FM"),
             Value::Block(h) => write!(f, "block:{}", h),
             Value::Link(h) => write!(f, "link:{}", h),
+            Value::BlockRef(fr, slot) => write!(f, "block:{}/{}", fr, slot),
         }
     }
 }
@@ -117,6 +123,8 @@ impl std::fmt::Debug for Stuck {
             Stuck::Fatal => "Fatal",
             Stuck::SmiRange => "SmiRange",
             Stuck::OutOfFuel => "OutOfFuel",
+            Stuck::BadArity => "BadArity",
+            Stuck::NotUnwind => "NotUnwind",
         };
         f.write_str(s)
     }
@@ -135,10 +143,17 @@ pub enum End {
     Unimplemented(String),
     /// All tasks are blocked and nothing can wake them.
     Deadlock,
+    /// Format 2: an uncaught exception (the format-1 entry code catches all
+    /// exceptions, so this means the program is broken).
+    Uncaught(String),
+    /// Format 2: a task's bottom frame returned.
+    TaskReturned,
     StepLimit,
 }
 
 pub struct Machine {
+    /// Bytecode format: 1 (the VM's) or 2 (the revised format, `v2`).
+    pub format: u8,
     pub p: ExecProgram,
     pub s: ExecState,
     pub names: loader::Names,
@@ -146,6 +161,13 @@ pub struct Machine {
     pub steps: u64,
     pub verified_steps: u64,
     pub trace: bool,
+    /// Print every THROW with the thrown value and a backtrace.
+    pub trace_throw: bool,
+    /// Print the absolute bci of every step (for comparison with the debug
+    /// VM's `-Xtrace` output).
+    pub trace_bci: bool,
+    /// Executions per opcode (for `--histogram`).
+    pub histogram: Vec<u64>,
     /// Use the verified `exec_step` for the opcodes it covers.
     pub use_verified: bool,
 }
@@ -153,7 +175,10 @@ pub struct Machine {
 impl Machine {
     /// Builds the initial state (`spec_prim::initial_state`).
     pub fn new(loaded: loader::Loaded, args: Vec<String>) -> Machine {
-        let loader::Loaded { program, mut heap, globals, names } = loaded;
+        if loaded.format == 2 {
+            return Machine::new2(loaded, args);
+        }
+        let loader::Loaded { program, mut heap, globals, names, .. } = loaded;
         // `exec_step::wf_program`, the precondition of the verified step.
         assert!(program.word_bits == 32 || program.word_bits == 64);
         assert!(program.method_start.len() == program.bytecodes.len());
@@ -172,12 +197,17 @@ impl Machine {
         let task = stack_id + 1;
         let mut m = Machine {
             p: program,
-            s: ExecState { heap, globals, stack: Vec::new(), try_h: 0, bci: 0, task, next_task_id: 1 },
+            s: ExecState { heap, globals, stack: Vec::new(), try_h: 0, bci: 0, task, next_task_id: 1,
+                frames: Vec::new(), tries: Vec::new() },
+            format: 1,
             names,
             world: system::World::new(args),
             steps: 0,
             verified_steps: 0,
             trace: false,
+            trace_throw: false,
+            trace_bci: false,
+            histogram: vec![0; 256],
             use_verified: true,
         };
         let entry = m.entry_method(ENTRY_MAIN);
@@ -190,6 +220,20 @@ impl Machine {
 
     /// One step of the running task.
     pub fn step(&mut self) -> Result<Step, Stuck> {
+        if self.format == 2 {
+            if self.use_verified {
+                if let Some(r) = crate::v2::exec::step_verified(&self.p, &mut self.s) {
+                    self.verified_steps += 1;
+                    return match r {
+                        crate::v2::exec::ExecOutcome2::Next => Ok(Step::Next),
+                        crate::v2::exec::ExecOutcome2::Stuck(s) => Err(s),
+                        crate::v2::exec::ExecOutcome2::Uncaught(v) => Ok(Step::Halt(Halt::Uncaught(v))),
+                        crate::v2::exec::ExecOutcome2::TaskReturned => Ok(Step::Halt(Halt::TaskReturned)),
+                    };
+                }
+            }
+            return self.step2_unverified();
+        }
         if self.use_verified {
             if let Some(r) = crate::exec_step::step_verified(&self.p, &mut self.s) {
                 self.verified_steps += 1;
@@ -212,12 +256,43 @@ impl Machine {
     /// A rough stack trace from the return addresses on the stack.
     pub fn backtrace(&self) -> String {
         let mut out = vec![self.location(self.s.bci)];
+        if self.format == 2 {
+            for f in self.s.frames.iter().rev() {
+                out.push(self.location(f.ret));
+            }
+            return out.join("\n  ");
+        }
         for v in self.s.stack.iter().rev() {
             if let Value::RetAddr(r) = v {
                 out.push(self.location(*r));
             }
         }
         out.join("\n  ")
+    }
+
+    /// A short description of a value for diagnostics.
+    pub fn describe(&self, v: Value) -> String {
+        match v {
+            Value::Obj(id) if id < self.s.heap.len() => {
+                let o = &self.s.heap[id];
+                let class = self.names.class_name(o.class_id as usize);
+                match &o.body {
+                    ExecBody::Str(b) => format!("\"{}\"", String::from_utf8_lossy(b)),
+                    ExecBody::Instance(f) => {
+                        let fs: Vec<String> = f.iter().take(4).map(|x| match x {
+                            Value::Obj(i) if *i < self.s.heap.len() => match &self.s.heap[*i].body {
+                                ExecBody::Str(b) => format!("\"{}\"", String::from_utf8_lossy(b)),
+                                _ => format!("{:?}", x),
+                            },
+                            _ => format!("{:?}", x),
+                        }).collect();
+                        format!("{}({})", class, fs.join(", "))
+                    }
+                    _ => format!("{}@{}", class, id),
+                }
+            }
+            _ => format!("{:?}", v),
+        }
     }
 
     pub fn run(&mut self, max_steps: u64) -> End {
@@ -228,9 +303,24 @@ impl Machine {
             self.steps += 1;
             if self.trace {
                 let op = self.p.bytecodes.get(self.s.bci).copied().unwrap_or(255);
-                let name = crate::bytecodes::OPCODE_NAMES.get(op as usize).copied().unwrap_or("?");
+                let name = if self.format == 2 {
+                    crate::v2::bytecodes::OPCODE_NAMES2.get(op as usize).copied().unwrap_or("?")
+                } else {
+                    crate::bytecodes::OPCODE_NAMES.get(op as usize).copied().unwrap_or("?")
+                };
                 eprintln!("[{}] {} {} sp={} top={:?}", self.steps, self.location(self.s.bci), name,
                     self.s.stack.len(), self.s.stack.last());
+            }
+            if let Some(&op) = self.p.bytecodes.get(self.s.bci) {
+                self.histogram[op as usize] += 1;
+            }
+            if self.trace_bci {
+                eprintln!("B {} {}", self.s.bci, self.p.bytecodes.get(self.s.bci).copied().unwrap_or(255));
+            }
+            if self.trace_throw && self.p.bytecodes.get(self.s.bci) == Some(&crate::bytecodes::THROW)
+                    && (self.format == 1 || self.s.frames.last().map(|f| self.p.methods[f.method].end > self.s.bci).unwrap_or(false)) {
+                let v = self.s.stack.last().copied();
+                eprintln!("[spec] throw {} at\n  {}", v.map(|v| self.describe(v)).unwrap_or_default(), self.backtrace());
             }
             match self.step() {
                 Ok(Step::Next) => {}
@@ -247,6 +337,8 @@ impl Machine {
                 Ok(Step::Halt(Halt::Exit(v))) => return End::Exit(v),
                 Ok(Step::Halt(Halt::DeepSleep)) => return End::DeepSleep,
                 Ok(Step::Halt(Halt::Reset)) => return End::Reset,
+                Ok(Step::Halt(Halt::Uncaught(v))) => return End::Uncaught(self.describe(v)),
+                Ok(Step::Halt(Halt::TaskReturned)) => return End::TaskReturned,
                 Err(stuck) => return End::Stuck(stuck, self.backtrace()),
             }
         }

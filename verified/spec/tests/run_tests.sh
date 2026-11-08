@@ -16,7 +16,9 @@
 
 # Runs every program in tests/toit on the C++ VM and on the reference
 # interpreter of the spec (64-bit and 32-bit smis) and diffs stdout and the
-# exit code.
+# exit code. Each program also runs in the revised bytecode format (format
+# 2, compiled with -Xbytecode_format=2) on the interpreter, against the same
+# C++ VM output of the format-1 build.
 #
 # Usage: tests/run_tests.sh [test-name...]
 # Environment: TOIT (default: <repo>/build/host/sdk/bin/toit),
@@ -27,6 +29,7 @@ set -u
 CRATE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO="$(cd "$CRATE/../.." && pwd)"
 TOIT="${TOIT:-$REPO/build/host/sdk/bin/toit}"
+TOIT_COMPILE="$(dirname "$(dirname "$TOIT")")/lib/toit/bin/toit.compile"
 OUT="${OUT:-$CRATE/target/spec-tests}"
 RUNNER="$CRATE/target/release/toit-spec-run"
 
@@ -60,7 +63,7 @@ for name in "${TESTS[@]}"; do
   "$TOIT" run "$DUMPER" -- "$base.snapshot" "$base.dump" || { echo "FAIL $name (dump)"; fail=$((fail + 1)); failed+=("$name"); continue; }
   ok=1
   for bits in 64 32; do
-    "$RUNNER" --word-bits $bits --stats "$base.dump" > "$base.spec$bits.out" 2> "$base.spec$bits.err"
+    "$RUNNER" --word-bits $bits --max-steps 100000000 --stats "$base.dump" > "$base.spec$bits.out" 2> "$base.spec$bits.err"
     echo "exit $?" >> "$base.spec$bits.out"
     # The host VM is 64-bit. Programs whose output depends on the smi size
     # have a hand-checked expectation for 32-bit smis.
@@ -73,16 +76,38 @@ for name in "${TESTS[@]}"; do
       tail -5 "$base.spec$bits.err"
     fi
   done
+  # The revised format.
+  if ! "$TOIT_COMPILE" -Xbytecode_format=2 -w "$base.v2.snapshot" "$src" 2> "$base.v2.compile.err"; then
+    ok=0
+    echo "--- $name: format-2 compilation failed"
+  elif ! "$TOIT" run "$DUMPER" -- "$base.v2.snapshot" "$base.v2.dump"; then
+    ok=0
+    echo "--- $name: format-2 dump failed"
+  else
+    for bits in 64 32; do
+      "$RUNNER" --word-bits $bits --max-steps 100000000 --stats "$base.v2.dump" > "$base.v2spec$bits.out" 2> "$base.v2spec$bits.err"
+      echo "exit $?" >> "$base.v2spec$bits.out"
+      expected="$base.vm.out"
+      [ $bits = 32 ] && [ -f "$CRATE/tests/toit/$name.expected32" ] && expected="$CRATE/tests/toit/$name.expected32"
+      if ! diff -q "$expected" "$base.v2spec$bits.out" > /dev/null; then
+        ok=0
+        echo "--- $name: expected vs format-2 spec ($bits-bit) differ:"
+        diff "$expected" "$base.v2spec$bits.out" | head -20
+        tail -5 "$base.v2spec$bits.err"
+      fi
+    done
+  fi
   # The unverified mirror alone must agree with the verified+unverified mix.
-  "$RUNNER" --no-verified "$base.dump" > "$base.specu.out" 2> "$base.specu.err"
+  "$RUNNER" --no-verified --max-steps 100000000 "$base.dump" > "$base.specu.out" 2> "$base.specu.err"
   echo "exit $?" >> "$base.specu.out"
   if ! diff -q "$base.spec64.out" "$base.specu.out" > /dev/null; then
     ok=0
     echo "--- $name: verified and unverified step differ"
   fi
   steps=$(grep -o 'steps: [0-9]*, verified steps: [0-9]*' "$base.spec64.err" | head -1)
+  steps2=$(grep -o 'steps: [0-9]*, verified steps: [0-9]*' "$base.v2spec64.err" | head -1)
   if [ $ok = 1 ]; then
-    echo "PASS $name ($steps)"
+    echo "PASS $name (format 1: $steps; format 2: $steps2)"
     pass=$((pass + 1))
   else
     echo "FAIL $name"

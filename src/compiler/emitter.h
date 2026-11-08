@@ -170,6 +170,13 @@ class Emitter {
 
   void _throw();
   void link();
+  // Format 2: TRY on the try block's method on top of the stack.
+  void try_finally();
+  void load_field_this(int n);
+  void store_field_this(int n);
+  // Whether the code ends with an instruction that does not continue with
+  // the next one, and no label is bound after it.
+  bool ends_with_terminator();
   void unlink();
   void unwind();
 

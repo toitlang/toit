@@ -16,6 +16,7 @@
 #include <string>
 
 #include "byte_gen.h"
+#include "bytecode_format.h"
 #include "emitter.h"
 #include "program_builder.h"
 
@@ -62,17 +63,24 @@ int ByteGen::assemble_function(ir::Method* function,
   emitter_ = &emitter;
 
   visit(function);
+  terminate_body();
 
   auto bytecodes = emitter.bytecodes();
   int max_height = emitter.max_height();
 
+  int field_index = 0;
+  if (is_field_accessor) {
+    field_index = function->as_FieldStub()->field()->resolved_index();
+  }
   int id = program_builder_->create_method(dispatch_offset,
                                            is_field_accessor,
                                            arity,
                                            bytecodes,
-                                           max_height);
+                                           max_height,
+                                           receiver_range(function),
+                                           field_index);
 
-  method_mapper_.finalize(id, bytecodes.length());
+  method_mapper_.finalize(program_builder_->source_id_for(id), bytecodes.length());
 
   update_absolute_positions(program_builder_->absolute_bci_for(id),
                             emitter.build_absolute_uses(),
@@ -127,6 +135,7 @@ int ByteGen::_assemble_nested_function(Node* body,
 
   visit_for_value(body);
   __ ret();
+  terminate_body();
 
   List<uint8> bytecodes = nested_emitter.bytecodes();
   int max_height = nested_emitter.max_height();
@@ -136,7 +145,7 @@ int ByteGen::_assemble_nested_function(Node* body,
   } else {
     id = program_builder()->create_lambda(captured_count, arity, bytecodes, max_height);
   }
-  method_mapper_.finalize(id, bytecodes.length());
+  method_mapper_.finalize(program_builder_->source_id_for(id), bytecodes.length());
 
   update_absolute_positions(program_builder_->absolute_bci_for(id),
                             nested_emitter.build_absolute_uses(),
@@ -160,13 +169,46 @@ void ByteGen::update_absolute_positions(int absolute_entry_bci,
   // Compute the positions, and patch all uses.
   for (auto ref : references) {
     int absolute_label_bci = ref.absolute_position(absolute_entry_bci);
+    // Format 2 encodes the target of a non-local branch relative to the
+    // entry of the method it branches into (the method of the target
+    // frame).
+    int encoded = is_format2() ? absolute_label_bci - absolute_entry_bci : absolute_label_bci;
     for (auto label_use : ref.absolute_uses()) {
       ASSERT(label_use->has_absolute_position());
-      program_builder_->patch_uint32_at(label_use->absolute_position(),
-                                        absolute_label_bci);
+      program_builder_->patch_uint32_at(label_use->absolute_position(), encoded);
     }
     ref.free_absolute_uses();
   }
+}
+
+ReceiverRange ByteGen::receiver_range(Method* method) {
+  if (!is_format2() || method == null || !method->has_implicit_this()) return ReceiverRange();
+  auto holder = method->holder();
+  if (holder == null) return ReceiverRange();
+  if (holder->kind() != Class::CLASS && holder->kind() != Class::MONITOR) return ReceiverRange();
+  if (holder->start_id() < 0 || holder->end_id() <= holder->start_id()) return ReceiverRange();
+  return ReceiverRange(holder->start_id(), holder->end_id());
+}
+
+bool ByteGen::is_declared_this(Expression* node) {
+  if (!is_format2()) return false;
+  if (!outer_emitters_stack_.empty()) return false;  // In a block or lambda.
+  if (!receiver_range(method_).is_valid()) return false;
+  if (!node->is_ReferenceLocal()) return false;
+  auto ref = node->as_ReferenceLocal();
+  if (ref->block_depth() != 0) return false;
+  if (!ref->target()->is_Parameter()) return false;
+  return ref->target()->as_Parameter()->index() == 0;
+}
+
+void ByteGen::terminate_body() {
+  if (!is_format2()) return;
+  if (emitter()->ends_with_terminator()) return;
+  // Only reachable if a method the compiler knows not to return does
+  // return, or for the bodies of interface-check stubs, which are never
+  // called. Every format-2 method ends in a terminator.
+  __ load_null();
+  __ _throw();
 }
 
 void ByteGen::visit(Node* node) {
@@ -378,19 +420,28 @@ void ByteGen::visit_TryFinally(TryFinally* node) {
   int block_slot = emitter_->height();
   visit_for_value(node->body());
 
-  __ link();
-  int link_height = emitter_->height();
+  if (is_format2()) {
+    // TRY calls the try block with a handler, and continues with the
+    // finally code when the block returns or is unwound. The finally code
+    // finds the exception (or null), a token for the unwinding in
+    // progress, and the reason on the stack, in the same slots as the
+    // result, target and reason of format 1.
+    __ try_finally();
+  } else {
+    __ link();
+    int link_height = emitter_->height();
 
-  __ load_block(block_slot);
-  int after_body_height = emitter_->height();
-  // The unwind code relies on the fact that there is only one stack-slot used
-  // between the block-call and the pushed link information.
-  ASSERT(after_body_height == link_height + 1);
-  __ invoke_block(1);
-  __ pop(1);
+    __ load_block(block_slot);
+    int after_body_height = emitter_->height();
+    // The unwind code relies on the fact that there is only one stack-slot used
+    // between the block-call and the pushed link information.
+    ASSERT(after_body_height == link_height + 1);
+    __ invoke_block(1);
+    __ pop(1);
 
-  // Unlink, invoke finally block, and continue unwinding.
-  __ unlink();
+    // Unlink, invoke finally block, and continue unwinding.
+    __ unlink();
+  }
 
   int old_locals_count = locals_count_;
   auto handler_parameters = node->handler_parameters();
@@ -565,17 +616,29 @@ void ByteGen::visit_LogicalBinary(LogicalBinary* node) {
 }
 
 void ByteGen::visit_FieldLoad(FieldLoad* node) {
+  int index = node->field()->resolved_index();
+  if (index <= 0xff && is_declared_this(node->receiver())) {
+    if (is_for_value()) __ load_field_this(index);
+    return;
+  }
   visit_for_value(node->receiver());
-  __ load_field(node->field()->resolved_index());
+  __ load_field(index);
   if (is_for_effect()) {
     __ pop(1);
   }
 }
 
 void ByteGen::visit_FieldStore(FieldStore* node) {
+  int index = node->field()->resolved_index();
+  if (index <= 0xff && is_declared_this(node->receiver())) {
+    visit_for_value(node->value());
+    __ store_field_this(index);
+    if (is_for_effect()) __ pop(1);
+    return;
+  }
   visit_for_value(node->receiver());
   visit_for_value(node->value());
-  __ store_field(node->field()->resolved_index());
+  __ store_field(index);
   if (is_for_effect()) {
     __ pop(1);
   }
@@ -1063,7 +1126,9 @@ void ByteGen::visit_PrimitiveInvocation(PrimitiveInvocation* node) {
     FATAL("Primitive calls must be on empty stack");
   }
 
-  if (node->module() == Symbols::intrinsics) {
+  if (node->module() == Symbols::intrinsics && is_format2()) {
+    generate_intrinsic_v2(node);
+  } else if (node->module() == Symbols::intrinsics) {
     if (node->primitive() == Symbols::smi_repeat) {
       __ load_integer(0);  // Start index.
       // The intrinsic always discards the top value (result of last block execution), so
@@ -1104,6 +1169,53 @@ void ByteGen::visit_PrimitiveInvocation(PrimitiveInvocation* node) {
   }
 
   if (is_for_effect()) __ pop(1);
+}
+
+void ByteGen::generate_intrinsic_v2(PrimitiveInvocation* node) {
+  ASSERT(emitter()->height() == 0);
+  // Format 2 has no intrinsic instructions. `smi-repeat` and `array-do`
+  // become loops in bytecode; the hash-collection intrinsics fall back to
+  // the Toit implementation in their failure block, which receives null.
+  bool is_repeat = node->primitive() == Symbols::smi_repeat;
+  bool is_do = node->primitive() == Symbols::array_do;
+  if (!is_repeat && !is_do) {
+    ASSERT(node->primitive() == Symbols::hash_find || node->primitive() == Symbols::hash_do);
+    __ load_null();
+    return;
+  }
+  // repeat [block]: this is the count, the block is parameter 1.
+  // do_ end [block]: this is the backing array, the end parameter 1 and
+  //   the block parameter 2. The block receives the element.
+  int end_parameter = is_repeat ? 0 : 1;
+  int block_parameter = is_repeat ? 1 : 2;
+  Label loop, done;
+  __ load_integer(0);  // The index, local 0.
+  __ bind(&loop);
+  __ load_local(0);
+  __ load_parameter(end_parameter, ExpressionStack::OBJECT);
+  __ invoke_virtual(INVOKE_LT, 0, 2);
+  __ branch(Emitter::IF_FALSE, &done);
+  __ load_parameter(block_parameter, ExpressionStack::BLOCK);
+  if (is_repeat) {
+    __ load_local(0);
+  } else {
+    __ load_parameter(0, ExpressionStack::OBJECT);
+    __ load_local(0);
+    __ invoke_virtual(INVOKE_AT, 0, 2);
+  }
+  // A block that takes no argument ignores the extra one.
+  __ invoke_block(2);
+  __ pop(1);
+  __ load_local(0);
+  __ load_integer(1);
+  __ invoke_virtual(INVOKE_ADD, 0, 2);
+  __ store_local(0);
+  __ pop(1);
+  __ branch(Emitter::UNCONDITIONAL, &loop);
+  __ bind(&done);
+  __ ret_null();
+  // The failure block that follows is unreachable; it starts with the index
+  // in the place of the failure value.
 }
 
 } // namespace toit::compiler
