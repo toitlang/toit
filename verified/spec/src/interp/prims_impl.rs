@@ -1002,22 +1002,31 @@ fn core(m: &mut Machine, name: &str, a: &[Value]) -> P {
                 Some(n) => n.clone(),
                 None => return Ok(m.fail("OUT_OF_RANGE")),
             };
-            let mask = new.len() as i64 - 1;
+            // A non-empty power-of-two index and smi entries are required;
+            // anything else fails before the index is touched.
+            let len = new.len() as i64;
+            if len == 0 || (len & (len - 1)) != 0 {
+                return Ok(m.fail("INVALID_ARGUMENT"));
+            }
+            let mask = len - 1;
+            let mut entries = Vec::with_capacity(old.len());
             for o in old {
-                let hap = match m.int_of(o) {
-                    Some(h) => h,
-                    None => return Ok(m.fail("INVALID_ARGUMENT")),
-                };
+                match o {
+                    Value::Smi(h) => entries.push(h),
+                    _ => return Ok(m.fail("INVALID_ARGUMENT")),
+                }
+            }
+            for hap in entries {
+                if hap == 0 { continue; }  // Empty slot.
                 let mut slot = hap & mask;
                 let mut step = 1;
-                let mut fuel = 0u64;
                 while new[slot as usize] != Value::Smi(0) {
+                    // A full index fails instead of probing forever.
+                    if step > len {
+                        return Ok(m.fail("INVALID_ARGUMENT"));
+                    }
                     slot = (slot + step) & mask;
                     step += 1;
-                    fuel += 1;
-                    if fuel > 1 << 32 {
-                        return Err(Stuck::OutOfFuel);
-                    }
                 }
                 new[slot as usize] = Value::Smi(hap);
             }

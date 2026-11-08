@@ -887,8 +887,10 @@ impl Machine {
             INVOKE_SUB => a2 - b2,
             INVOKE_MUL => a2 * b2,
             INVOKE_DIV => {
+                // MIN_SMI / -1 is not a smi; the range check below leaves it
+                // to the slow path.
                 if b == 0 { return None; }
-                return Some(self.smi_wrap(a2 / b2));
+                a2 / b2
             }
             INVOKE_MOD => {
                 if b == 0 { return None; }

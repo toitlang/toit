@@ -672,8 +672,8 @@ pub open spec fn smi_arith(p: Program, op: u8, a: int, b: int) -> Option<int> {
     else if op == INVOKE_ADD { if smi_ok(p, a + b) { Some(a + b) } else { None } }
     else if op == INVOKE_SUB { if smi_ok(p, a - b) { Some(a - b) } else { None } }
     else if op == INVOKE_MUL { if smi_ok(p, a * b) { Some(a * b) } else { None } }
-    // Smi::from(i0 / i1) wraps for MIN_SMI / -1 (see DESIGN.md).
-    else if op == INVOKE_DIV { if b != 0 { Some(smi_wrap(p, tdiv(a, b))) } else { None } }
+    // MIN_SMI / -1 is not a smi; the VM leaves it to the slow path.
+    else if op == INVOKE_DIV { if b != 0 && smi_ok(p, tdiv(a, b)) { Some(tdiv(a, b)) } else { None } }
     else if op == INVOKE_MOD { if b != 0 { Some(trem(a, b)) } else { None } }
     else if op == INVOKE_BIT_SHL {
         if 0 <= b < word_bit_size(p) && smi_ok(p, a * vstd::arithmetic::power2::pow2(b as nat)) {
@@ -1260,16 +1260,15 @@ pub open spec fn op_hash_find(p: Program, s0: State) -> Outcome {
         match at(s, 0) {
             Value::Smi(state) => {
                 if state == 2 {
-                    // REBUILD: call the rebuild block. Note: the C++ VM pushes
-                    // STACK_AT(OLD_SIZE) *after* pushing the block, so the block
-                    // receives the state slot (now 0), not old_size.
+                    // REBUILD: call the rebuild block with old_size (read
+                    // before the block is pushed).
                     let s1 = put(put(s, 12, block_result), 0, smi(0));
                     let rb = at(s1, 10);
                     if !block_ok(p, s1, rb) {
                         stuck(Stuck::NotBlock)
                     } else {
                         let s2 = push(s1, rb);
-                        call_with(p, push(s2, at(s2, 1)), block_method(p, s1, rb), bci)
+                        call_with(p, push(s2, at(s1, 1)), block_method(p, s1, rb), bci)
                     }
                 } else {
                     let coll = at(s, 15);

@@ -674,30 +674,6 @@ pub fn x_tdiv_trem(a: i64, b: i64) -> (r: (i128, i128))
     (qs, rs)
 }
 
-/// `smi_wrap` of a value within twice the 64-bit smi range.
-pub fn x_smi_wrap_i128(p: &ExecProgram, v: i128) -> (r: i64)
-    requires wf_program(p@), -0x8000_0000_0000_0000 <= v <= 0x8000_0000_0000_0000,
-    ensures r as int == smi_wrap(p@, v as int),
-{
-    let m: i128 = if p.word_bits == 32 { 0x4000_0000 } else { 0x4000_0000_0000_0000 };
-    assert(m as int == smi_max(p@) + 1);
-    // Shift by a multiple of 2m (at least 2^64) so that the dividend is
-    // non-negative.
-    let c: i128 = if p.word_bits == 32 { 0x2_0000_0000 } else { 2 };
-    let k: i128 = 2 * m * c;
-    assert(k == 0x1_0000_0000_0000_0000) by {
-        if p.word_bits == 32 { assert(m == 0x4000_0000); } else { assert(m == 0x4000_0000_0000_0000); }
-    }
-    let x: i128 = v + m + k;
-    let w: u128 = (x as u128) % ((2 * m) as u128);
-    proof {
-        vstd::arithmetic::div_mod::lemma_mod_multiples_vanish(c as int, (v + m) as int, (2 * m) as int);
-        assert((x as int) == (2 * m) as int * (c as int) + ((v + m) as int));
-        vstd::arithmetic::div_mod::lemma_mod_pos_bound(x as int, (2 * m) as int);
-    }
-    ((w as i128) - m) as i64
-}
-
 /// Shifts `a` left by `b` bits if the result is a smi (`a * 2^b`).
 pub fn x_shl(p: &ExecProgram, a: i64, b: i64) -> (r: Option<i64>)
     requires wf_program(p@), 0 <= b < word_bit_size(p@),
@@ -787,7 +763,7 @@ pub fn x_smi_arith(p: &ExecProgram, op: u8, a: i64, b: i64) -> (r: Option<i64>)
             None
         } else {
             let (q, _) = x_tdiv_trem(a, b);
-            Some(x_smi_wrap_i128(p, q))
+            if min <= q && q <= max { Some(q as i64) } else { None }
         }
     } else if op == INVOKE_MOD {
         if b == 0 {

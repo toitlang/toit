@@ -6,10 +6,9 @@
 
 main:
   min := -(1 << 62)  // MIN_SMI on 64-bit.
-  // The INVOKE_DIV fast path computes Smi::from(MIN_SMI / -1), which wraps
-  // back to MIN_SMI on 64-bit (the mathematically correct result is
-  // 2^62, a large integer). The spec reproduces this (smi_wrap in
-  // smi_arith); see DESIGN.md.
+  // MIN_SMI / -1 is 2^62, a large integer. The INVOKE_DIV fast path used to
+  // wrap it back to MIN_SMI on 64-bit; it now leaves it to the slow path
+  // (see DESIGN.md).
   print min / -1
   print min % -1
   print min * -1
