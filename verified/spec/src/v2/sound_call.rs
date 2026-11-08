@@ -86,7 +86,7 @@ pub open spec fn call_args(p: Program2, c: Cert, s1: State2, t: int, ret: int) -
     let s2 = call_state(p, s1, t, ret);
     let tn = top_i(s2);
     &&& forall|x: int| 0 <= x < arity(p, t) ==>
-            #[trigger] conf(p, c, s2, tn, x, entry_kinds(p, c, t)[x], s2.stack[fbase(s2, tn) + x])
+            #[trigger] conf(p, c, s2, tn, kinds_of(p, c, s2, tn), x, entry_kinds(p, c, t)[x], s2.stack[fbase(s2, tn) + x])
     &&& receiver_ok(p, s2, tn)
 }
 
@@ -180,7 +180,7 @@ pub proof fn lemma_call_caller_conf(p: Program2, c: Cert, trusted: bool, s: Stat
     ensures ({
         let s2 = call_state(p, s1, t, ret);
         let t0 = top_i(s);
-        conf(p, c, s2, t0, j, kinds_of(p, c, s2, t0)[j], s2.stack[fbase(s2, t0) + j])
+        conf(p, c, s2, t0, kinds_of(p, c, s2, t0), j, kinds_of(p, c, s2, t0)[j], s2.stack[fbase(s2, t0) + j])
     }),
 {
     reveal(conf);
@@ -200,7 +200,7 @@ pub proof fn lemma_call_caller_conf(p: Program2, c: Cert, trusted: bool, s: Stat
     let v = s.stack[b + j];
     assert(s2.stack[b + j] == v);
     assert(kinds_of(p, c, s2, t0)[j] == k[j]);
-    assert(conf(p, c, s, t0, j, k[j], v)) by {
+    assert(conf(p, c, s, t0, kinds_of(p, c, s, t0), j, k[j], v)) by {
         reveal(wf);
         reveal(wf_task);
         reveal(frame_ok);
@@ -264,6 +264,8 @@ pub proof fn lemma_call_caller_conf(p: Program2, c: Cert, trusted: bool, s: Stat
                                             lemma_kinds_below(p, c, s, s2, f as int, t0 - 1);
                                         } else {
                                             let tt = map_at(c, m, bci as int - info(p, m).entry)->0;
+                                            assert(frame_kinds_from(p, c, s, t0, k, f as int) == k);
+                                            assert(frame_kinds_from(p, c, s2, t0, kinds_of(p, c, s2, t0), f as int) == kinds_of(p, c, s2, t0));
                                             assert(tt == k.subrange(0, tt.len() as int));
                                             assert(kinds_of(p, c, s2, t0).subrange(0, tt.len() as int) =~= k.subrange(0, tt.len() as int));
                                         }
@@ -314,7 +316,7 @@ pub proof fn lemma_call(p: Program2, c: Cert, trusted: bool, s: State2, s1: Stat
             assert(frame_shape_ok(p, c, s, t0));
             assert(frame_shape_ok(p, c, s2, t0));
             assert forall|j: int| 0 <= j < slots(s2, t0) implies
-                #[trigger] conf(p, c, s2, t0, j, kinds_of(p, c, s2, t0)[j], s2.stack[fbase(s2, t0) + j]) by {
+                #[trigger] conf(p, c, s2, t0, kinds_of(p, c, s2, t0), j, kinds_of(p, c, s2, t0)[j], s2.stack[fbase(s2, t0) + j]) by {
                 lemma_call_caller_conf(p, c, trusted, s, s1, t, ret, is_try, j);
             }
             let i = info(p, m);
@@ -340,8 +342,8 @@ pub proof fn lemma_call(p: Program2, c: Cert, trusted: bool, s: State2, s1: Stat
             assert(kinds_of(p, c, s2, fi) =~= entry_kinds(p, c, t));
             assert(frame_shape_ok(p, c, s2, fi));
             assert forall|j: int| 0 <= j < slots(s2, fi) implies
-                #[trigger] conf(p, c, s2, fi, j, kinds_of(p, c, s2, fi)[j], s2.stack[fbase(s2, fi) + j]) by {
-                assert(conf(p, c, s2, fi, j, entry_kinds(p, c, t)[j], s2.stack[fbase(s2, fi) + j]));
+                #[trigger] conf(p, c, s2, fi, kinds_of(p, c, s2, fi), j, kinds_of(p, c, s2, fi)[j], s2.stack[fbase(s2, fi) + j]) by {
+                assert(conf(p, c, s2, fi, kinds_of(p, c, s2, fi), j, entry_kinds(p, c, t)[j], s2.stack[fbase(s2, fi) + j]));
             }
         }
     }

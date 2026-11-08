@@ -214,8 +214,14 @@ pub open spec fn good_ref(p: Program2, c: Cert, s: State2, f: int, slot: int) ->
 }
 
 /// An unwinding held by a token in slot `i` of frame `g`.
+/// The kinds of frame `f` as seen from a token of frame `g` whose own
+/// kinds are `kg`.
+pub open spec fn frame_kinds_from(p: Program2, c: Cert, s: State2, g: int, kg: Seq<Kind>, f: int) -> Seq<Kind> {
+    if f == g { kg } else { kinds_of(p, c, s, f) }
+}
+
 #[verifier::opaque]
-pub open spec fn pending_ok(p: Program2, c: Cert, s: State2, g: int, i: int, u: Unwind) -> bool {
+pub open spec fn pending_ok(p: Program2, c: Cert, s: State2, g: int, kg: Seq<Kind>, i: int, u: Unwind) -> bool {
     match u {
         Unwind::Throw(v) => good(s.heap, v),
         Unwind::Return(f, v) => (f as int) <= g && good(s.heap, v),
@@ -223,13 +229,14 @@ pub open spec fn pending_ok(p: Program2, c: Cert, s: State2, g: int, i: int, u: 
             let fi = f as int;
             let m = fmethod(s, fi);
             let off = bci as int - info(p, m).entry;
-            &&& fi <= g
+            let kf = frame_kinds_from(p, c, s, g, kg, fi);
+            &&& 0 <= fi <= g
             &&& match map_at(c, m, off) {
                 Some(t) => {
                     &&& 0 <= off
                     &&& hb as int == fbase(s, fi) + t.len()
-                    &&& t.len() <= slots(s, fi)
-                    &&& t == kinds_of(p, c, s, fi).subrange(0, t.len() as int)
+                    &&& t.len() <= kf.len()
+                    &&& t == kf.subrange(0, t.len() as int)
                     &&& (fi == g ==> t.len() + 1 <= i)
                 },
                 None => false,
@@ -240,7 +247,7 @@ pub open spec fn pending_ok(p: Program2, c: Cert, s: State2, g: int, i: int, u: 
 
 /// Value `v` in slot `j` of frame `fi` conforms to kind `k`.
 #[verifier::opaque]
-pub open spec fn conf(p: Program2, c: Cert, s: State2, fi: int, j: int, k: Kind, v: Value) -> bool {
+pub open spec fn conf(p: Program2, c: Cert, s: State2, fi: int, kf: Seq<Kind>, j: int, k: Kind, v: Value) -> bool {
     match k {
         Kind::Val => good(s.heap, v),
         Kind::Method(t) => v == Value::Smi(t as i64),
@@ -265,7 +272,7 @@ pub open spec fn conf(p: Program2, c: Cert, s: State2, fi: int, j: int, k: Kind,
         },
         Kind::Token => v == null2(p) || match v {
             Value::Obj(id) => (id as int) < s.heap.len() && match s.heap[id as int].body {
-                Body::Pending(u) => pending_ok(p, c, s, fi, j, u),
+                Body::Pending(u) => pending_ok(p, c, s, fi, kf, j, u),
                 _ => false,
             },
             _ => false,
@@ -275,7 +282,7 @@ pub open spec fn conf(p: Program2, c: Cert, s: State2, fi: int, j: int, k: Kind,
 
 pub open spec fn frame_conf(p: Program2, c: Cert, s: State2, fi: int) -> bool {
     forall|j: int| 0 <= j < slots(s, fi) ==>
-        #[trigger] conf(p, c, s, fi, j, kinds_of(p, c, s, fi)[j], s.stack[fbase(s, fi) + j])
+        #[trigger] conf(p, c, s, fi, kinds_of(p, c, s, fi), j, kinds_of(p, c, s, fi)[j], s.stack[fbase(s, fi) + j])
 }
 
 /// `this` of a method with a receiver range is in the range.

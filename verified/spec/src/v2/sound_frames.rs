@@ -62,9 +62,9 @@ pub open spec fn with_heap(s: State2, h2: Seq<HeapObj>) -> State2 {
     State2 { heap: h2, ..s }
 }
 
-pub proof fn lemma_conf_heap(p: Program2, c: Cert, s: State2, h2: Seq<HeapObj>, fi: int, j: int, k: Kind, v: Value)
-    requires conf(p, c, s, fi, j, k, v), heap_ext(s.heap, h2),
-    ensures conf(p, c, with_heap(s, h2), fi, j, k, v),
+pub proof fn lemma_conf_heap(p: Program2, c: Cert, s: State2, h2: Seq<HeapObj>, fi: int, kf: Seq<Kind>, j: int, k: Kind, v: Value)
+    requires conf(p, c, s, fi, kf, j, k, v), heap_ext(s.heap, h2),
+    ensures conf(p, c, with_heap(s, h2), fi, kf, j, k, v),
 {
     reveal(conf);
     reveal(pending_ok);
@@ -101,6 +101,9 @@ pub proof fn lemma_conf_heap(p: Program2, c: Cert, s: State2, h2: Seq<HeapObj>, 
                                 match u {
                                     Unwind::Branch(f, bci, hb) => {
                                         assert(kinds_of(p, c, s2, f as int) == kinds_of(p, c, s, f as int));
+                                        assert(frame_kinds_from(p, c, s2, fi, kf, f as int) == frame_kinds_from(p, c, s, fi, kf, f as int));
+                                        assert(fmethod(s2, f as int) == fmethod(s, f as int));
+                                        assert(fbase(s2, f as int) == fbase(s, f as int));
                                     },
                                     _ => {},
                                 }
@@ -145,9 +148,9 @@ pub proof fn lemma_wf_task_heap(p: Program2, c: Cert, s: State2, h2: Seq<HeapObj
         assert(kinds_of(p, c, s2, fi) == kinds_of(p, c, s, fi));
         assert(try_frame(s2, fi) == try_frame(s, fi));
         assert forall|j: int| 0 <= j < slots(s2, fi) implies
-            #[trigger] conf(p, c, s2, fi, j, kinds_of(p, c, s2, fi)[j], s2.stack[fbase(s2, fi) + j]) by {
-            assert(conf(p, c, s, fi, j, kinds_of(p, c, s, fi)[j], s.stack[fbase(s, fi) + j]));
-            lemma_conf_heap(p, c, s, h2, fi, j, kinds_of(p, c, s, fi)[j], s.stack[fbase(s, fi) + j]);
+            #[trigger] conf(p, c, s2, fi, kinds_of(p, c, s2, fi), j, kinds_of(p, c, s2, fi)[j], s2.stack[fbase(s2, fi) + j]) by {
+            assert(conf(p, c, s, fi, kinds_of(p, c, s, fi), j, kinds_of(p, c, s, fi)[j], s.stack[fbase(s, fi) + j]));
+            lemma_conf_heap(p, c, s, h2, fi, kinds_of(p, c, s, fi), j, kinds_of(p, c, s, fi)[j], s.stack[fbase(s, fi) + j]);
         }
         let m = fmethod(s, fi);
         let i = info(p, m);
@@ -273,13 +276,13 @@ pub proof fn lemma_ref_ok_below(s: State2, s2: State2, fi: int, f: int, slot: in
     lemma_bases_mono(s2, f + 1, fi + 1);
 }
 
-pub proof fn lemma_conf_below(p: Program2, c: Cert, s: State2, s2: State2, fi: int, j: int, k: Kind, v: Value)
+pub proof fn lemma_conf_below(p: Program2, c: Cert, s: State2, s2: State2, fi: int, kf: Seq<Kind>, j: int, k: Kind, v: Value)
     requires
-        conf(p, c, s, fi, j, k, v),
+        conf(p, c, s, fi, kf, j, k, v),
         same_below(s, s2, fi),
         bases_ok(s), bases_ok(s2),
         0 <= j < slots(s, fi),
-    ensures conf(p, c, s2, fi, j, k, v),
+    ensures conf(p, c, s2, fi, kf, j, k, v),
 {
     reveal(conf);
     reveal(good_ref);
@@ -324,8 +327,12 @@ pub proof fn lemma_conf_below(p: Program2, c: Cert, s: State2, s2: State2, fi: i
                             Body::Pending(u) => {
                                 match u {
                                     Unwind::Branch(f, bci, hb) => {
-                                        lemma_kinds_below(p, c, s, s2, f as int, fi);
-                                        assert(pending_ok(p, c, s2, fi, j, u) == pending_ok(p, c, s, fi, j, u));
+                                        if (f as int) < fi {
+                                            lemma_kinds_below(p, c, s, s2, f as int, fi);
+                                        } else if f as int == fi {
+                                            assert(s2.frames[fi] == s.frames[fi]);
+                                        }
+                                        assert(frame_kinds_from(p, c, s2, fi, kf, f as int) == frame_kinds_from(p, c, s, fi, kf, f as int));
                                     },
                                     _ => {},
                                 }
@@ -372,11 +379,11 @@ pub proof fn lemma_frame_below(p: Program2, c: Cert, s: State2, s2: State2, fi: 
     lemma_kinds_below(p, c, s, s2, fi, fi);
     assert(try_frame(s2, fi) == try_frame(s, fi));
     assert forall|j: int| 0 <= j < slots(s2, fi) implies
-        #[trigger] conf(p, c, s2, fi, j, kinds_of(p, c, s2, fi)[j], s2.stack[fbase(s2, fi) + j]) by {
-        assert(conf(p, c, s, fi, j, kinds_of(p, c, s, fi)[j], s.stack[fbase(s, fi) + j]));
+        #[trigger] conf(p, c, s2, fi, kinds_of(p, c, s2, fi), j, kinds_of(p, c, s2, fi)[j], s2.stack[fbase(s2, fi) + j]) by {
+        assert(conf(p, c, s, fi, kinds_of(p, c, s, fi), j, kinds_of(p, c, s, fi)[j], s.stack[fbase(s, fi) + j]));
         lemma_limit_below(s, fi, fi + 1);
         assert(s2.stack[fbase(s, fi) + j] == s.stack[fbase(s, fi) + j]);
-        lemma_conf_below(p, c, s, s2, fi, j, kinds_of(p, c, s, fi)[j], s.stack[fbase(s, fi) + j]);
+        lemma_conf_below(p, c, s, s2, fi, kinds_of(p, c, s, fi), j, kinds_of(p, c, s, fi)[j], s.stack[fbase(s, fi) + j]);
     }
     let m = fmethod(s, fi);
     let i = info(p, m);

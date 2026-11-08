@@ -129,7 +129,7 @@ pub open spec fn local_step(p: Program2, c: Cert, s: State2, s2: State2, k2: Seq
     &&& s2.stack.len() == b + k2.len()
     &&& forall|x: int| 0 <= x < b ==> #[trigger] s2.stack[x] == s.stack[x]
     &&& forall|j: int| 0 <= j < k2.len() ==>
-            #[trigger] unchanged(p, c, s, s2, k2, j) || conf(p, c, s2, t, j, k2[j], s2.stack[b + j])
+            #[trigger] unchanged(p, c, s, s2, k2, j) || conf(p, c, s2, t, kinds_of(p, c, s2, t), j, k2[j], s2.stack[b + j])
     &&& forall|j: int| 0 <= j < k2.len() && #[trigger] unchanged(p, c, s, s2, k2, j) && k2[j] is Token ==>
             k2.subrange(0, j) == k.subrange(0, j)
     &&& (pinned0(p, m) && arity(p, m) >= 1 ==> k2.len() >= 1 && s2.stack[b] == s.stack[b])
@@ -199,7 +199,7 @@ pub proof fn lemma_conf_top_unchanged(p: Program2, c: Cert, trusted: bool, s: St
         local_step(p, c, s, s2, k2),
         0 <= j < k2.len(),
         unchanged(p, c, s, s2, k2, j),
-    ensures conf(p, c, s2, top_i(s), j, k2[j], s2.stack[fbase(s, top_i(s)) + j]),
+    ensures conf(p, c, s2, top_i(s), kinds_of(p, c, s2, top_i(s)), j, k2[j], s2.stack[fbase(s, top_i(s)) + j]),
 {
     reveal(conf);
     reveal(pending_ok);
@@ -215,7 +215,7 @@ pub proof fn lemma_conf_top_unchanged(p: Program2, c: Cert, trusted: bool, s: St
     lemma_top_kinds(p, c, s);
     lemma_top_kinds_local(p, c, s, s2, k2);
     assert(frame_ok(p, c, s, t));
-    assert(conf(p, c, s, t, j, k[j], v));
+    assert(conf(p, c, s, t, kinds_of(p, c, s, t), j, k[j], v));
     let off2 = s2.bci - info(p, m).entry;
     lemma_map_instr(p, c, trusted, m, off2);
     assert(wf_kind(p, c, m, k2, j));
@@ -277,6 +277,8 @@ pub proof fn lemma_conf_top_unchanged(p: Program2, c: Cert, trusted: bool, s: St
                                         } else {
                                             let tt = map_at(c, m, bci as int - info(p, m).entry)->0;
                                             assert(k2.subrange(0, j) == k.subrange(0, j));
+                                            assert(frame_kinds_from(p, c, s, t, k, f as int) == k);
+                                            assert(frame_kinds_from(p, c, s2, t, k2, f as int) == k2);
                                             assert(tt == k.subrange(0, tt.len() as int));
                                             assert(k2.subrange(0, tt.len() as int) =~= k2.subrange(0, j).subrange(0, tt.len() as int));
                                             assert(k.subrange(0, tt.len() as int) =~= k.subrange(0, j).subrange(0, tt.len() as int));
@@ -315,7 +317,7 @@ pub proof fn lemma_local_top(p: Program2, c: Cert, trusted: bool, s: State2, s2:
     lemma_map_instr(p, c, trusted, m, s2.bci - info(p, m).entry);
     assert(frame_shape_ok(p, c, s2, t));
     assert forall|j: int| 0 <= j < slots(s2, t) implies
-        #[trigger] conf(p, c, s2, t, j, kinds_of(p, c, s2, t)[j], s2.stack[fbase(s2, t) + j]) by {
+        #[trigger] conf(p, c, s2, t, kinds_of(p, c, s2, t), j, kinds_of(p, c, s2, t)[j], s2.stack[fbase(s2, t) + j]) by {
         if unchanged(p, c, s, s2, k2, j) {
             lemma_conf_top_unchanged(p, c, trusted, s, s2, k2, j);
         }
