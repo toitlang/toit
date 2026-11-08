@@ -1556,3 +1556,90 @@ class StringSegment extends ListSegment:
 
   stringify:
     return "string: $super"
+
+/**
+Writes a flat, line-based description of a decoded $Program.
+
+The format is consumed by the executable specification of the bytecode
+  machine in `verified/spec` (see `verified/spec/DESIGN.md`). It contains
+  the program tables, the bytecodes, the method boundaries (taken from the
+  source map), the primitive names, and the complete program heap.
+
+Values are written as `i<decimal>` for integers (the consumer decides
+  whether an integer is a smi or a large integer for its word size) and
+  `o<id>` for references to program-heap objects, where `<id>` is the index
+  of the object in the `objects` section.
+*/
+class SpecDump:
+  program_ / Program
+  ids_ / Map ::= {:}  // From ToitHeapObject to dense id.
+  out_ / List ::= []  // Of strings, one per line.
+
+  constructor .program_:
+    program_.heap-objects.do: | object/ToitHeapObject |
+      ids_[object] = ids_.size
+
+  static hex_ bytes/ByteArray -> string:
+    if bytes.is-empty: return "-"
+    return (List bytes.size: "$(%02x bytes[it])").join ""
+
+  value_ value -> string:
+    if value is ToitInteger: return "i$value.value"
+    if value is ToitHeapObject: return "o$(ids_[value])"
+    throw "Unexpected value: $value"
+
+  values_ name/string values/List -> none:
+    out_.add "$name $values.size $((values.map: value_ it).join " ")".trim
+
+  ints_ name/string values/List -> none:
+    out_.add "$name $values.size $(values.join " ")".trim
+
+  dump -> string:
+    out_.add "toit-spec-dump 1"
+    out_.add "bytecodes $program_.all-bytecodes.size $(hex_ program_.all-bytecodes)"
+    out_.add "methods $program_.methods.size"
+    program_.methods.do: | method/ToitMethod |
+      info := program_.method-info-for method.id
+      name := info.holder-name ? "$info.holder-name.$info.name" : info.name
+      out_.add "m $method.id $method.bytecodes.size $info.type $(name.replace --all " " "_")"
+    ints_ "dispatch" program_.dispatch-table
+    class-bits := List program_.class-tags.size:
+        program_.class-tags[it] | (program_.class-instance-sizes[it] << Program.CLASS-ID-OFFSET_)
+    ints_ "class_bits" class-bits
+    ints_ "class_check_ids" program_.class-check-ids
+    ints_ "interface_check_offsets" program_.interface-check-selectors
+    ints_ "invoke_bytecode_offsets" program_.invoke-bytecode-offsets
+    ints_ "entry_points" program_.entry-point-indexes
+    values_ "builtin_class_ids" program_.built-in-class-ids
+    values_ "roots" program_.roots
+    values_ "globals" program_.global-variables
+    values_ "literals" program_.literals
+    out_.add "global_max_stack_height $program_.global-max-stack-height"
+    out_.add "primitive_modules $program_.primitive-table.size"
+    program_.primitive-table.do: | module/PrimitiveModuleInfo |
+      out_.add "pm $module.name $module.primitives.size $(module.primitives.join " ")".trim
+    out_.add "class_names $program_.class-table_.size"
+    program_.class-table_.do: | info/ClassInfo |
+      out_.add "c $info.id $(info.name.replace --all " " "_")"
+    out_.add "objects $program_.heap-objects.size"
+    program_.heap-objects.do: | object/ToitHeapObject |
+      prefix := "o $(ids_[object]) $object.class-id"
+      if object is ToitInstance:
+        values_ "$prefix instance" (object as ToitInstance).fields
+      else if object is ToitArray:
+        values_ "$prefix array" (object as ToitArray).content
+      else if object is ToitByteArray:
+        content := (object as ToitByteArray).content
+        out_.add "$prefix bytes $content.size $(hex_ content)"
+      else if object is ToitString:
+        content := (object as ToitString).content
+        out_.add "$prefix string $content.size $(hex_ content)"
+      else if object is ToitFloat:
+        bits := (object as ToitFloat).value.bits
+        out_.add "$prefix double $bits"
+      else if object is ToitOddball:
+        out_.add "$prefix oddball"
+      else:
+        throw "Unexpected heap object: $object"
+    out_.add "end"
+    return (out_.join "\n") + "\n"
