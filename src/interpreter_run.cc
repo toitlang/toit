@@ -1699,8 +1699,10 @@ Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::Hash
     // Call the rebuild block with old_size as argument.
     Smi* rebuild_block = Smi::cast(STACK_AT(parameter_offset + REBUILD));
     Method rebuild_target = Method(program->bytecodes, Smi::value(*from_block(rebuild_block)));
+    // Read the old size before pushing: the push shifts the stack offsets.
+    Object* old_size = STACK_AT(OLD_SIZE);
     PUSH(rebuild_block);
-    PUSH(STACK_AT(OLD_SIZE));
+    PUSH(old_size);
     *block_to_call = rebuild_target;
     *action_return = kCallBlockThenRestartBytecode;
     return sp;
