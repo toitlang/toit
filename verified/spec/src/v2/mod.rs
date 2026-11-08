@@ -16,3 +16,7 @@
 //! The revised bytecode format (format 2). See `format/README.md`.
 
 pub mod bytecodes;
+pub mod types;
+pub mod spec;
+pub mod prim;
+pub mod exec;

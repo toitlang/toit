@@ -218,6 +218,17 @@ impl Machine {
     /// One step of the running task.
     pub fn step(&mut self) -> Result<Step, Stuck> {
         if self.format == 2 {
+            if self.use_verified {
+                if let Some(r) = crate::v2::exec::step_verified(&self.p, &mut self.s) {
+                    self.verified_steps += 1;
+                    return match r {
+                        crate::v2::exec::ExecOutcome2::Next => Ok(Step::Next),
+                        crate::v2::exec::ExecOutcome2::Stuck(s) => Err(s),
+                        crate::v2::exec::ExecOutcome2::Uncaught(v) => Ok(Step::Halt(Halt::Uncaught(v))),
+                        crate::v2::exec::ExecOutcome2::TaskReturned => Ok(Step::Halt(Halt::TaskReturned)),
+                    };
+                }
+            }
             return self.step2_unverified();
         }
         if self.use_verified {
