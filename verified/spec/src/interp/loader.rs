@@ -358,5 +358,53 @@ fn check_tables_v2(p: &ExecProgram) -> Result<(), String> {
     if p.literals.len() < 7 {
         return err("format-2 programs have the failure strings as literals 2..6");
     }
+    // Two of the verifier's table checks (`v2::verifier::tables_ok`,
+    // `this_field_ok`), done here so that every program the tests load
+    // exercises them: virtual dispatch respects declared receiver ranges,
+    // and the classes of a receiver range have the fields LOAD_FIELD_THIS
+    // and STORE_FIELD_THIS use. Also: every method body is a sequence of
+    // whole instructions.
+    let class_count = p.class_bits.len() as i64;
+    for (d, &t) in p.dispatch.iter().enumerate() {
+        if t < 0 { continue; }
+        let info = p.methods[t as usize];
+        if info.selector == 0xffff || info.recv_start == 0xffff { continue; }
+        let cl = d as i64 - info.selector as i64;
+        if 0 <= cl && cl < class_count && !(info.recv_start as i64 <= cl && cl < info.recv_end as i64) {
+            return err(format!("dispatch entry {} (class {}) outside the receiver range of method {}", d, cl, t));
+        }
+    }
+    for (m, info) in p.methods.iter().enumerate() {
+        let mut bci = info.entry;
+        let mut last = 0xff;
+        while bci < info.end {
+            let op = p.bytecodes[bci];
+            last = op;
+            if op as usize >= crate::v2::bytecodes::OPCODE_LENGTHS2.len() {
+                return err(format!("bad opcode {} in method {}", op, m));
+            }
+            if op == crate::v2::bytecodes::LOAD_FIELD_THIS || op == crate::v2::bytecodes::STORE_FIELD_THIS {
+                let f = p.bytecodes[bci + 1] as i64;
+                if info.recv_start == 0xffff {
+                    return err(format!("method {} uses this without a receiver range", m));
+                }
+                for cl in info.recv_start as i64..(info.recv_end as i64).min(class_count) {
+                    let fields = ((p.class_bits[cl as usize] >> 5) & 0x7ff) as i64 - 1;
+                    if f >= fields {
+                        return err(format!("method {}: class {} has no field {}", m, cl, f));
+                    }
+                }
+            }
+            bci += crate::v2::bytecodes::OPCODE_LENGTHS2[op as usize] as usize;
+        }
+        if bci != info.end {
+            return err(format!("method {}: the last instruction crosses the end", m));
+        }
+        use crate::v2::bytecodes::*;
+        if ![RETURN, RETURN_NULL, THROW, BRANCH, BRANCH_BACK, INVOKE_STATIC_TAIL, INVOKE_LAMBDA_TAIL,
+             INVOKE_INITIALIZER_TAIL, NON_LOCAL_RETURN, NON_LOCAL_BRANCH].contains(&last) {
+            return err(format!("method {} does not end in a terminator", m));
+        }
+    }
     Ok(())
 }

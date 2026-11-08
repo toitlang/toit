@@ -20,3 +20,4 @@ pub mod types;
 pub mod spec;
 pub mod prim;
 pub mod exec;
+pub mod verifier;
