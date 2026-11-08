@@ -1,0 +1,30 @@
+[package]
+name = "toit_spec"
+version = "0.1.0"
+edition = "2021"
+description = "Executable specification of the Toit bytecode machine (Verus spec + reference interpreter)."
+license = "LGPL-2.1-only"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "toit-spec-run"
+path = "src/bin/toit_spec_run.rs"
+
+[dependencies]
+vstd = "=0.0.0-2026-11-01-0251"
+
+[package.metadata.verus]
+verify = true
+
+[profile.release]
+debug = 1
+
+[lints.rust]
+# Ghost items imported via `use` do not exist during a normal `cargo build`;
+# the `verus_only` cfg is set by Verus during verification.
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(verus_only)',
+] }
