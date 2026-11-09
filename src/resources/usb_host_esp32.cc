@@ -48,6 +48,9 @@
 // state to move from the resource into a per-device object.
 
 #include "../top.h"
+#include "../objects_inline.h"
+#include "../primitive.h"
+#include "../process.h"
 
 #if defined(TOIT_ESP32) && defined(CONFIG_TOIT_ENABLE_USB_HOST)
 
@@ -66,8 +69,6 @@
 
 #include "../byte_ring.h"
 
-#include "../objects_inline.h"
-#include "../process.h"
 #include "../resource.h"
 
 #include "../event_sources/ev_queue_esp32.h"
@@ -1590,5 +1591,18 @@ PRIMITIVE(in_stream_stop) {
 }
 
 } // namespace toit
+
+#else  // !(defined(TOIT_ESP32) && defined(CONFIG_TOIT_ENABLE_USB_HOST))
+
+namespace toit {
+
+MODULE_IMPLEMENTATION(usb_host, MODULE_USB_HOST)
+
+#define USB_HOST_UNIMPLEMENTED(name, arity) \
+  PRIMITIVE(name) { FAIL(UNIMPLEMENTED); }
+MODULE_USB_HOST(USB_HOST_UNIMPLEMENTED)
+#undef USB_HOST_UNIMPLEMENTED
+
+}  // namespace toit
 
 #endif  // defined(TOIT_ESP32) && defined(CONFIG_TOIT_ENABLE_USB_HOST)

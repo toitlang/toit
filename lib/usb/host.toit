@@ -808,7 +808,10 @@ parse-interfaces_ bytes/ByteArray -> List:
   return result
 
 usb-host-init_:
-  #primitive.usb_host.init
+  #primitive.usb_host.init: | error |
+    if error == "UNIMPLEMENTED":
+      throw "USB host not supported (requires ESP32-S2/S3 firmware with CONFIG_TOIT_ENABLE_USB_HOST)"
+    throw error
 
 usb-host-create_ group:
   #primitive.usb_host.create
