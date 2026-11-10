@@ -260,3 +260,12 @@ context chain to the frames.
   step limit, 74 deadlocked (all tasks blocked), 13 called an
   unimplemented primitive, 12 ended with an uncaught exception, 3 tasks
   returned. **None got stuck or panicked the interpreter.**
+* Spec validation after the last change (the step function is unchanged
+  by this phase; rerun after merging the header shrink):
+  `run_suite.py --format 2` over 421 suite tests: 272 produce the C++
+  VM's output on the reference interpreter (64- and 32-bit), 134 use an
+  unimplemented primitive, 8 hit the step limit, 2 are nondeterministic,
+  4 do not compile, and 1 differs: `events-primitive-group-test` (new on
+  the integration branch), which tests resource-group checks of the
+  `events.*` primitives that the interpreter's primitive emulation does
+  not model (a primitive-oracle difference, not a step difference).
