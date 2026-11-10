@@ -161,8 +161,11 @@ def one(args, prepared, index, work):
     return name, description, "rejected", b""
   rc, out = run([args.run, "--untrusted", path], args.timeout)
   outcome = classify(rc, out)
-  if outcome == "crash":
-    keep = os.path.join(args.out, f"crash-{index}.snapshot")
+  # Crashes are bugs; a stuck state or a refusal of a program the verified
+  # verifier accepted is a disagreement between the verifier and the core
+  # or its loader, kept for inspection too.
+  if outcome in ("crash", "stuck", "refused"):
+    keep = os.path.join(args.out, f"{outcome}-{index}.snapshot")
     os.replace(path, keep)
     with open(keep + ".txt", "wb") as f:
       f.write(f"{name}: {description}\n".encode() + out)
@@ -208,9 +211,10 @@ def main():
         for future in done:
           name, description, outcome, _ = future.result()
           counts[outcome] = counts.get(outcome, 0) + 1
+          if outcome in ("crash", "stuck", "refused"):
+            print(f"{outcome.upper()} {name}: {description}", flush=True)
           if outcome == "crash":
             crashes.append(f"{name}: {description}")
-            print(f"CRASH {name}: {description}", flush=True)
     summary = {
       "seconds": round(time.time() - start),
       "seed": args.seed,

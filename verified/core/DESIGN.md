@@ -181,4 +181,51 @@ Scripts: build/bench/ir.sh (instruction counts), build/bench/hot.sh
 
 ## 8. Measurement tables
 
-(Filled in by the measurement run; see PROGRESS.md for the date.)
+Measured 2026-11-10 at commit 8d533501 (+ this table), release build,
+x86-64 (32 cores shared with other jobs). Wall: time per iteration as the
+benchmark prints it, minimum of 5 runs. Ir: callgrind instruction count of
+the whole run (startup about 6 M).
+
+| Benchmark | f1 wall ms | f2 wall ms | ratio | f1 Ir | f2 Ir | ratio |
+|---|---|---|---|---|---|---|
+| richards | 14.22 | 30.25 | 2.13 | 1,031 M | 3,953 M | 3.83 |
+| deltablue | 8.17 | 21.21 | 2.60 | 655 M | 2,705 M | 4.13 |
+| pystone | 9.55 | 28.54 | 2.99 | 770 M | 2,660 M | 3.46 |
+
+The plan allows 20 percent; the core is 2.1-3.0x slower in wall time and
+executes 3.5-4.1x the instructions. History of the run loop (richards,
+f2 wall ms from single runs under varying load, so only indicative):
+70.5 (first version, state in memory, 24-byte `Ctl` returned through
+memory, out-of-line operator handlers) -> 31.3 (inlined fast paths,
+16-byte `Ctl`, one-comparison prologue, `cold!` trampolines) -> about 25
+(frame cache kept in memory). Loop microbenchmark (`for` loop with an
+addition, 15 bytecodes per iteration): format 1 141 instructions per
+iteration, format 2 first version 830, now about 640.
+
+Where the time goes (richards: 71.6 M format-2 instructions executed, 55
+machine instructions each; pystone: 49.3 M, 54 each; the C++ interpreter
+needs about 14 per format-1 instruction):
+
+- Dispatch and loop overhead, about 15-20 per instruction: the prologue
+  (`bci < mfast`), the jump table, the `Ctl` result test and the loop
+  back edge; the C++ interpreter's threaded dispatch is 5-7.
+- Run-time checks the spec makes stuck states, 10-15 per instruction:
+  `has_slot` on every stack access (`n < lim - top`, both loaded),
+  `push` room checks, field checks (`field_ok`: tag, class id range,
+  class_bits lookup, field count) on every field access including
+  LOAD_FIELD_THIS (whose receiver the loader already checked), method
+  range checks on branches.
+- Program tables read through two indirections (`env.p` then the table
+  pointer) because `env` escapes into the cold paths: about 5 per
+  instruction (`Table::at` is 15 percent of all instructions).
+- Format 2 has no intrinsics (note 11): `SmallInteger.repeat` and similar
+  loops are ordinary bytecode, so format 2 executes more instructions
+  than format 1 for the same program.
+
+Next steps for the performance pass, in expected order of effect: keep
+`top`/`bci`/the code pointer in run-loop locals passed to the handlers;
+drop checks the verifier makes redundant once untrusted launches run the
+verified verifier (receiver of LOAD_FIELD_THIS, branch target range, room
+checks that `global_max_height` already covers); cache table pointers in
+the machine; tail-call threading if the toolchain supports it
+(`become`); the REPEAT instruction of note 16.

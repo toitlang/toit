@@ -29,8 +29,9 @@ OBLIGATIONS.md. Trusted base: TRUSTED.md.
 
 ## In progress / next
 
-1. Performance: the core executes 3.5-4x the instructions of the C++
-   interpreter on the benchmarks (1.6-1.9x wall time). Next: keep `top`
+1. Performance: the core executes 3.5-4.1x the instructions of the C++
+   interpreter on the benchmarks and is 2.1-3.0x slower in wall time
+   (DESIGN.md section 8). Next: keep `top`
    and `bci` in locals of the run loop (handlers take them by value and
    return them), cache `code`/`methods` table pointers in registers,
    specialize LOAD_FIELD_THIS (receiver checked at call time), and measure
