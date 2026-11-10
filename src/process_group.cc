@@ -65,19 +65,19 @@ bool ProcessGroup::may_send_to(int pid) const {
   return false;
 }
 
-void ProcessGroup::grant_send_to(int pid) {
+bool ProcessGroup::grant_send_to(int pid) {
   ASSERT(VM::current()->scheduler()->is_locked());
-  if (may_send_to(pid)) return;
+  if (may_send_to(pid)) return true;
   word capacity = policy_->quotas().max_send_grants;
-  if (capacity <= 0) return;
+  // Evicting an older grant would silently break a capability the group
+  // is using, so a full set refuses new grants.
+  if (grants_count_ >= capacity) return false;
   if (grants_ == null) {
     grants_ = unvoid_cast<int*>(malloc(capacity * sizeof(int)));
-    if (grants_ == null) return;  // Grant is not recorded; sends will be denied.
+    if (grants_ == null) return false;
   }
-  // When the set is full the oldest grant is evicted.
-  grants_[grants_next_] = pid;
-  grants_next_ = (grants_next_ + 1) % capacity;
-  if (grants_count_ < capacity) grants_count_++;
+  grants_[grants_count_++] = pid;
+  return true;
 }
 
 word ProcessGroup::process_count() {

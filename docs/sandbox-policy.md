@@ -115,8 +115,15 @@ Grants to the allowed-target set are issued:
 - by the scheduler, when a process of an untrusted group receives an RPC
   request: the requester's pid is granted so the provider can reply.
 
-The set is a ring buffer of `max_send_grants` entries (oldest grant
-evicted). Pids are never reused, so grants for dead processes are inert.
+The set holds at most `max_send_grants` pids, and grants are never
+evicted: evicting an older grant would silently break a capability the
+container uses. The system process and processes of the own group don't
+take up room. When the set is full, a discovery that would grant a new
+provider fails with `QUOTA_EXCEEDED` (the client sees the exception), and
+an RPC request from a new requester to a provider in the container is
+refused like a request to a full mailbox (`process_send` returns false for
+a trusted sender). Pids are never reused, so grants for dead processes are
+inert, but they keep their room.
 
 Services in the system process are reachable by every process, so they
 reject untrusted clients unless the provider opts in

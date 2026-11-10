@@ -314,29 +314,41 @@ message_err_t Scheduler::send_message_from(Process* sender, int process_id, Syst
     delete message;
     return MESSAGE_NO_SUCH_RECEIVER;
   }
-  if (!receiver->_append_message(message)) {
-    delete message;
-    return MESSAGE_QUOTA_EXCEEDED;
-  }
   // A process in a messaging-restricted group that receives an RPC request
-  // may reply to the requester.
+  // may reply to the requester (it may always send to the system process).
+  // If its allowed-target set is full, the request is refused like a
+  // request to a full mailbox.
   ProcessGroup* receiver_group = receiver->group();
   if (receiver_group != sender->group() &&
       receiver_group->policy()->restricts_messaging() &&
-      message->type() == SYSTEM_RPC_REQUEST) {
-    receiver_group->grant_send_to(sender->id());
+      message->type() == SYSTEM_RPC_REQUEST &&
+      sender != boot_process_ &&
+      !receiver_group->grant_send_to(sender->id())) {
+    delete message;
+    return MESSAGE_QUOTA_EXCEEDED;
+  }
+  if (!receiver->_append_message(message)) {
+    delete message;
+    return MESSAGE_QUOTA_EXCEEDED;
   }
   process_ready(locker, receiver);
   return MESSAGE_OK;
 }
 
-bool Scheduler::grant_send(int pid, int target) {
+Scheduler::GrantResult Scheduler::grant_send(int pid, int target) {
   Locker locker(mutex_);
   Process* process = find_process(locker, pid);
-  if (process == null) return false;
+  if (process == null) return GRANT_NO_SUCH_PROCESS;
   ProcessGroup* group = process->group();
-  if (group->policy()->restricts_messaging()) group->grant_send_to(target);
-  return true;
+  if (!group->policy()->restricts_messaging()) return GRANT_OK;
+  // The system process and the own group are always allowed targets, so
+  // they don't take up room in the allowed-target set.
+  Process* target_process = find_process(locker, target);
+  if (target_process != null &&
+      (target_process == boot_process_ || target_process->group() == group)) {
+    return GRANT_OK;
+  }
+  return group->grant_send_to(target) ? GRANT_OK : GRANT_QUOTA_EXCEEDED;
 }
 
 int Scheduler::policy_kind(int pid) {

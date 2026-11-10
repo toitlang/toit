@@ -105,8 +105,9 @@ class Scheduler {
 
   // Adds [target] to the allowed-target set of the group of the process
   // with id [pid]. Does nothing for groups whose policy doesn't restrict
-  // messaging. Returns false if there is no such process.
-  bool grant_send(int pid, int target);
+  // messaging. Fails if there is no such process or if the set is full.
+  enum GrantResult { GRANT_OK, GRANT_NO_SUCH_PROCESS, GRANT_QUOTA_EXCEEDED };
+  GrantResult grant_send(int pid, int target);
 
   // Returns the policy kind of the process with the given id, or -1 if there
   // is no such process.
