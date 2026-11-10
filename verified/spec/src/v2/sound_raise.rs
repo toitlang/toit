@@ -28,13 +28,16 @@ use crate::v2::sound_upto::*;
 use crate::v2::sound_unwind::*;
 use crate::v2::sound_return::*;
 #[cfg(verus_only)]
+use crate::v2::sound_prim::lemma_prim_heap;
+use crate::v2::prim::*;
+#[cfg(verus_only)]
 use crate::spec_common::{class_id_ok, class_id_of, builtin, instance_field_count, EXCEPTION_CLASS};
 
 verus! {
 
-/// Unwinding never ends in a PRIMITIVE outcome.
+/// Unwinding never ends in a PRIMITIVE outcome or a raise.
 pub proof fn lemma_unwind_not_prim(p: Program2, s: State2, u: Unwind)
-    ensures !(unwind(p, s, u) is Primitive),
+    ensures !(unwind(p, s, u) is Primitive), !(unwind(p, s, u) is Raise),
     decreases s.frames.len(),
 {
     if s.frames.len() == 0 {
@@ -257,6 +260,94 @@ pub proof fn lemma_unwind(p: Program2, c: Cert, trusted: bool, s: State2, kt: Se
     lemma_unwind(p, c, trusted, s1, k1, u);
 }
 
+/// Throwing a new exception with value `v` and trace `tr` after the heap
+/// grew to `h2` (one completion of a raise), from an unwinding state.
+pub proof fn lemma_throw(p: Program2, c: Cert, trusted: bool, s: State2, kt: Seq<Kind>, h2: Seq<HeapObj>, v: Value, tr: Value)
+    requires
+        accepts(p, c, trusted),
+        unw_ok(p, c, s, kt),
+        s.stack.len() < 0x7000_0000,
+        good(s.heap, v),
+        heap_extended(p, s.heap, h2),
+        good(h2, tr),
+    ensures final_ok(p, c, throw_exception(p, with_heap2(s, h2), v, tr)),
+{
+    let cid = builtin(p1(p), EXCEPTION_CLASS);
+    assert(tables_ok(p, c));
+    assert(is_field_class(p, cid) && ifc(p, cid) >= 2);
+    lemma_prim_heap(p, c, s.heap, h2);
+    lemma_unw_heap(p, c, s, kt, h2);
+    let s1 = with_heap(s, h2);
+    assert(with_heap2(s, h2) == s1);
+    let o = exception_obj2(p, v, tr);
+    let h3 = h2.push(o);
+    assert(consts_ok(p, h2));
+    assert(good(h2, null2(p)));
+    assert(good(h2, v));
+    assert(basic_obj_ok(p, h3, o)) by {
+        match o.body {
+            Body::Instance(f) => {
+                assert forall|i: int| 0 <= i < f.len() implies good(h3, #[trigger] f[i]) by {}
+            },
+            _ => {},
+        }
+    }
+    assert(obj_ok(p, c, h3, o));
+    lemma_heap_push(p, c, h2, o);
+    let s2 = alloc2(s1, o);
+    assert(s2 == with_heap(s1, h3));
+    lemma_unw_heap(p, c, s1, kt, h3);
+    assert(unw_arg_ok(p, c, s2, kt, Unwind::Throw(new_ref2(s1)))) by { reveal(pending_ok); }
+    lemma_unwind(p, c, trusted, s2, kt, Unwind::Throw(new_ref2(s1)));
+    lemma_unwind_not_prim(p, s2, Unwind::Throw(new_ref2(s1)));
+}
+
+/// Throwing the out-of-memory error after the heap grew to `h2` (the other
+/// completion of a raise, and the resource throws), from an unwinding
+/// state.
+pub proof fn lemma_throw_oom(p: Program2, c: Cert, trusted: bool, s: State2, kt: Seq<Kind>, h2: Seq<HeapObj>)
+    requires
+        accepts(p, c, trusted),
+        unw_ok(p, c, s, kt),
+        s.stack.len() < 0x7000_0000,
+        heap_extended(p, s.heap, h2),
+    ensures final_ok(p, c, unwind(p, with_heap2(s, h2), Unwind::Throw(out_of_memory(p)))),
+{
+    lemma_prim_heap(p, c, s.heap, h2);
+    lemma_unw_heap(p, c, s, kt, h2);
+    let s1 = with_heap(s, h2);
+    assert(with_heap2(s, h2) == s1);
+    assert(crate::v2::exec::wf_program2(p));
+    assert(consts_ok(p, h2));
+    assert(good(h2, p.roots[ROOT_OUT_OF_MEMORY]));
+    assert(unw_arg_ok(p, c, s1, kt, Unwind::Throw(out_of_memory(p)))) by { reveal(pending_ok); }
+    lemma_unwind(p, c, trusted, s1, kt, Unwind::Throw(out_of_memory(p)));
+    lemma_unwind_not_prim(p, s1, Unwind::Throw(out_of_memory(p)));
+}
+
+/// Every completion of raising `v` from an unwinding state is good.
+pub proof fn lemma_raised(p: Program2, c: Cert, trusted: bool, s: State2, kt: Seq<Kind>, v: Value)
+    requires
+        accepts(p, c, trusted),
+        unw_ok(p, c, s, kt),
+        s.stack.len() < 0x7000_0000,
+        good(s.heap, v),
+    ensures outcome_ok(p, c, Outcome2::Raise(s, v)),
+{
+    assert forall|o2: Outcome2| #[trigger] raised(p, s, v, o2) implies final_ok(p, c, o2) by {
+        if exists|h2: Seq<HeapObj>, trace: Value| heap_extended(p, s.heap, h2) && good(h2, trace)
+            && o2 == #[trigger] throw_exception(p, with_heap2(s, h2), v, trace) {
+            let (h2, trace) = choose|h2: Seq<HeapObj>, trace: Value| heap_extended(p, s.heap, h2) && good(h2, trace)
+                && o2 == #[trigger] throw_exception(p, with_heap2(s, h2), v, trace);
+            lemma_throw(p, c, trusted, s, kt, h2, v, trace);
+        } else {
+            let h2 = choose|h2: Seq<HeapObj>| heap_extended(p, s.heap, h2)
+                && o2 == #[trigger] unwind(p, with_heap2(s, h2), Unwind::Throw(out_of_memory(p)));
+            lemma_throw_oom(p, c, trusted, s, kt, h2);
+        }
+    }
+}
+
 /// Raising a machine exception from an unwinding state.
 pub proof fn lemma_raise_unw(p: Program2, c: Cert, trusted: bool, s: State2, kt: Seq<Kind>, k: int)
     requires
@@ -267,29 +358,10 @@ pub proof fn lemma_raise_unw(p: Program2, c: Cert, trusted: bool, s: State2, kt:
         0 <= k < 5,
     ensures outcome_ok(p, c, raise(p, s, k)), !(raise(p, s, k) is Primitive),
 {
-    let cid = builtin(p1(p), EXCEPTION_CLASS);
-    assert(tables_ok(p, c));
-    assert(is_field_class(p, cid) && ifc(p, cid) >= 2);
-    let o = exception_obj(p, k);
-    let h2 = s.heap.push(o);
+    assert(crate::v2::exec::wf_program2(p));
     assert(consts_ok(p, s.heap));
     assert(good(s.heap, p.literals[2 + k]));
-    assert(good(s.heap, null2(p)));
-    assert(basic_obj_ok(p, h2, o)) by {
-        match o.body {
-            Body::Instance(f) => {
-                assert forall|i: int| 0 <= i < f.len() implies good(h2, #[trigger] f[i]) by {}
-            },
-            _ => {},
-        }
-    }
-    assert(obj_ok(p, c, h2, o));
-    lemma_heap_push(p, c, s.heap, o);
-    let s1 = alloc2(s, o);
-    assert(s1 == with_heap(s, h2));
-    lemma_unw_heap(p, c, s, kt, h2);
-    assert(unw_arg_ok(p, c, s1, kt, Unwind::Throw(new_ref2(s)))) by { reveal(pending_ok); }
-    lemma_unwind(p, c, trusted, s1, kt, Unwind::Throw(new_ref2(s)));
+    lemma_raised(p, c, trusted, s, kt, failure_value(p, k));
 }
 
 /// Raising a machine exception from a well-formed state.
@@ -299,6 +371,36 @@ pub proof fn lemma_raise(p: Program2, c: Cert, trusted: bool, s: State2, k: int)
 {
     lemma_wf_unw(p, c, trusted, s);
     lemma_raise_unw(p, c, trusted, s, kinds_of(p, c, s, top_i(s)), k);
+}
+
+/// Raising `v` from a well-formed state.
+pub proof fn lemma_raise_value(p: Program2, c: Cert, trusted: bool, s: State2, v: Value)
+    requires accepts(p, c, trusted), wf(p, c, s), small(s), good(s.heap, v),
+    ensures outcome_ok(p, c, Outcome2::Raise(s, v)),
+{
+    lemma_wf_unw(p, c, trusted, s);
+    lemma_raised(p, c, trusted, s, kinds_of(p, c, s, top_i(s)), v);
+}
+
+/// The reference interpreter's completion of a raise (`raise_null`: no
+/// trace, no other allocation) is a completion.
+pub proof fn lemma_raise_null(p: Program2, c: Cert, s: State2, k: int)
+    requires crate::v2::exec::wf_program2(p), heap_ok(p, c, s.heap), consts_ok(p, s.heap), s.heap.len() < 0x4000_0000,
+    ensures raised(p, s, failure_value(p, k), raise_null(p, s, k)),
+{
+    reveal(heap_ok);
+    let h = s.heap;
+    assert(prim_heap_ok(p, h, h)) by {
+        assert forall|i: int| 0 <= i < h.len() && #[trigger] h[i].class_id as int == task_class(p) implies
+            task_fields_kept(h[i], h[i]) by { lemma_kept_refl(h[i]); }
+        assert forall|i: int| 0 <= i < h.len() implies basic_obj_ok(p, h, #[trigger] h[i]) by {
+            assert(obj_ok(p, c, h, h[i]));
+        }
+    }
+    assert(h.subrange(0, h.len() as int) =~= h);
+    assert(with_heap2(s, h) == s);
+    assert(good(h, null2(p)));
+    assert(raise_null(p, s, k) == throw_exception(p, with_heap2(s, h), failure_value(p, k), null2(p)));
 }
 
 /// Unwinding from a well-formed state.

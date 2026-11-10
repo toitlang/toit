@@ -21,11 +21,16 @@
 //! in any number of transitions makes a step that is not stuck, and every
 //! completion of a PRIMITIVE step is not stuck either. No `Stuck` variant
 //! remains. The objects the machine interprets itself keep the meaning it
-//! gives them (`machine_objects_ok`: the tasks' stacks and ids). The defined failures are not stuck outcomes: machine-raised
-//! exceptions (lookup, as-check, code invocation, invalid program, missing
-//! or unimplemented primitive: `raise`), an uncaught exception, task end,
-//! exit, deep sleep and reset (`Outcome2::Halt`), and out-of-memory (no
-//! transition to a state beyond `small`).
+//! gives them (`machine_objects_ok`: the tasks' stacks and ids). The
+//! defined failures are not stuck outcomes: machine-raised exceptions
+//! (lookup, as-check, code invocation, invalid program, missing or
+//! unimplemented primitive: `raise`, completed by `prim::raised` with the
+//! machine's trace or the out-of-memory error), the resource throws
+//! (`prim::resource_throw`: stack overflow and out of memory, at the
+//! instructions where the machine grows its stack or allocates), an
+//! uncaught exception, task end, exit, deep sleep and reset
+//! (`Outcome2::Halt`), and out-of-memory (no transition to a state beyond
+//! `small`).
 //!
 //! The untrusted claim is the instance `trusted == false`, under which the
 //! verifier rejects HALT 2 and 3 (deep sleep, reset); `trusted == true`
@@ -52,17 +57,16 @@ use crate::v2::prim::*;
 verus! {
 
 /// The outcomes a PRIMITIVE `(module, index)` step to state `s` may
-/// complete with: success or failure with any heap and result the oracle
-/// may produce, a missing (unimplemented or denied) primitive, and the
-/// task primitives, which the machine completes itself (task switching).
+/// complete with (the protocol of `v2::prim`): a missing (unimplemented or
+/// denied) primitive; the continuation after a call that returned a heap
+/// and result the primitive's contract allows (`prim_returns`: success,
+/// failure, out of memory); and the task primitives, which the machine
+/// completes itself (task creation and switching).
 pub open spec fn completion(p: Program2, s: State2, module: u8, index: u16, o: Outcome2) -> bool {
-    let args = s.frames[s.frames.len() - 1].base as int;
-    ||| exists|h2: Seq<HeapObj>, v: Value| prim_heap_ok(p, s.heap, h2) && good(h2, v)
-            && (o == prim_success(p, s, h2, v) || o == prim_failure(s, h2, v))
     ||| o == prim_missing(p, s)
-    ||| (module == 0 && index as int == PRIM_TASK_NEW && o == task_new_step(p, s, s.stack[args]))
-    ||| (module == 0 && index as int == PRIM_TASK_TRANSFER
-            && o == task_transfer_step(p, s, s.stack[args], s.stack[args + 1]))
+    ||| exists|h2: Seq<HeapObj>, r: PrimRet| #[trigger] prim_returns(p, s, module, index, h2, r)
+            && o == prim_complete(p, s, h2, r)
+    ||| machine_completed(module, index) && o == task_step(p, s, index)
 }
 
 /// The machine continues in `s2` after outcome `o`: a next state, or the
@@ -71,16 +75,27 @@ pub open spec fn continues(o: Outcome2, s2: State2) -> bool {
     o == Outcome2::Next(s2) || o == Outcome2::Halt(s2, Halt2::Yield)
 }
 
-/// One transition: a step, or a step to a PRIMITIVE followed by any of
-/// its completions. There is no transition to a state beyond the memory
-/// bound `small`: the machine stops with out-of-memory instead.
+/// The outcomes of the machine in state `s`, oracle steps completed: the
+/// step's outcome, a raise completed by `raised` (the machine allocates the
+/// exception and its trace), every completion of a PRIMITIVE step, and the
+/// resource throws at the instructions where the machine can run out of
+/// stack or memory (`resource_throw`); each completed if it raises.
+pub open spec fn outcome(p: Program2, s: State2, o: Outcome2) -> bool {
+    ||| completes(p, step(p, s), o)
+    ||| match step(p, s) {
+            Outcome2::Primitive(s1, module, index) =>
+                exists|o1: Outcome2| #[trigger] completion(p, s1, module, index, o1) && completes(p, o1, o),
+            _ => false,
+        }
+    ||| exists|o1: Outcome2| #[trigger] resource_throw(p, s, o1) && completes(p, o1, o)
+}
+
+/// One transition: an outcome of `s` that continues in `s2`. There is no
+/// transition to a state beyond the memory bound `small`: the machine
+/// stops with out-of-memory instead.
 pub open spec fn transition(p: Program2, s: State2, s2: State2) -> bool {
     &&& small(s2)
-    &&& (continues(step(p, s), s2) || match step(p, s) {
-            Outcome2::Primitive(s1, module, index) =>
-                exists|o: Outcome2| completion(p, s1, module, index, o) && continues(o, s2),
-            _ => false,
-        })
+    &&& exists|o: Outcome2| #[trigger] outcome(p, s, o) && continues(o, s2)
 }
 
 /// A run of the process with loaded heap `heap0` and globals `globals0`:
@@ -114,16 +129,48 @@ pub proof fn lemma_run_wf(p: Program2, c: Cert, trusted: bool, heap0: Seq<HeapOb
         let s = tr[i];
         assert(transition(p, tr[i - 1], tr[i - 1 + 1]));
         lemma_run_wf(p, c, trusted, heap0, globals0, tr, i - 1);
-        crate::v2::sound_step::lemma_step(p, c, trusted, s0);
-        if !continues(step(p, s0), s) {
-            match step(p, s0) {
-                Outcome2::Primitive(s1, module, index) => {
-                    let o = choose|o: Outcome2| completion(p, s1, module, index, o) && continues(o, s);
-                    assert(completions_ok(p, c, s1, module, index));
-                    lemma_completion_ok(p, c, s1, module, index, o);
-                },
-                _ => {},
-            }
+        let o = choose|o: Outcome2| #[trigger] outcome(p, s0, o) && continues(o, s);
+        lemma_outcome_ok(p, c, trusted, s0, o);
+    }
+}
+
+/// A completion of a good outcome is good, and not an oracle step.
+pub proof fn lemma_completes_ok(p: Program2, c: Cert, o1: Outcome2, o: Outcome2)
+    requires outcome_ok(p, c, o1), completes(p, o1, o),
+    ensures outcome_ok(p, c, o), !(o is Raise), !(o is Stuck),
+        o is Next || o is Halt ==> final_ok(p, c, o),
+{
+    match o1 {
+        Outcome2::Raise(s1, v) => {
+            assert(raised(p, s1, v, o));
+            assert(final_ok(p, c, o));
+        },
+        _ => {},
+    }
+}
+
+/// Every outcome of a well-formed state is good.
+pub proof fn lemma_outcome_ok(p: Program2, c: Cert, trusted: bool, s: State2, o: Outcome2)
+    requires accepts(p, c, trusted), wf(p, c, s), small(s), outcome(p, s, o),
+    ensures outcome_ok(p, c, o), !(o is Raise), !(o is Stuck),
+        o is Next || o is Halt ==> final_ok(p, c, o),
+{
+    crate::v2::sound_step::lemma_step(p, c, trusted, s);
+    if completes(p, step(p, s), o) {
+        lemma_completes_ok(p, c, step(p, s), o);
+    } else if exists|o1: Outcome2| #[trigger] resource_throw(p, s, o1) && completes(p, o1, o) {
+        let o1 = choose|o1: Outcome2| #[trigger] resource_throw(p, s, o1) && completes(p, o1, o);
+        crate::v2::sound_resource::lemma_resource(p, c, trusted, s, o1);
+        lemma_completes_ok(p, c, o1, o);
+    } else {
+        match step(p, s) {
+            Outcome2::Primitive(s1, module, index) => {
+                let o1 = choose|o1: Outcome2| #[trigger] completion(p, s1, module, index, o1) && completes(p, o1, o);
+                assert(completions_ok(p, c, s1, module, index));
+                lemma_completion_ok(p, c, s1, module, index, o1);
+                lemma_completes_ok(p, c, o1, o);
+            },
+            _ => {},
         }
     }
 }
@@ -146,11 +193,12 @@ pub proof fn lemma_completion_ok(p: Program2, c: Cert, s: State2, module: u8, in
     requires completions_ok(p, c, s, module, index), completion(p, s, module, index, o),
     ensures outcome_ok(p, c, o),
 {
-    if exists|h2: Seq<HeapObj>, v: Value| prim_heap_ok(p, s.heap, h2) && good(h2, v)
-            && (o == prim_success(p, s, h2, v) || o == prim_failure(s, h2, v)) {
-        let (h2, v) = choose|h2: Seq<HeapObj>, v: Value| prim_heap_ok(p, s.heap, h2) && good(h2, v)
-            && (o == prim_success(p, s, h2, v) || o == prim_failure(s, h2, v));
-        assert(outcome_ok(p, c, prim_success(p, s, h2, v)));
+    if exists|h2: Seq<HeapObj>, r: PrimRet| #[trigger] prim_returns(p, s, module, index, h2, r)
+            && o == prim_complete(p, s, h2, r) {
+        let (h2, r) = choose|h2: Seq<HeapObj>, r: PrimRet| #[trigger] prim_returns(p, s, module, index, h2, r)
+            && o == prim_complete(p, s, h2, r);
+        lemma_prim_spec_default(p, module, index, prim_args(p, s), s.heap, h2, r);
+        assert(outcome_ok(p, c, prim_complete(p, s, h2, r)));
     }
 }
 
@@ -189,6 +237,7 @@ pub proof fn theorem_soundness(p: Program2, c: Cert, trusted: bool, heap0: Seq<H
         forall|s1: State2, module: u8, index: u16, o: Outcome2|
             step(p, s) == Outcome2::Primitive(s1, module, index) && #[trigger] completion(p, s1, module, index, o)
                 ==> !(o is Stuck),
+        forall|o: Outcome2| #[trigger] outcome(p, s, o) ==> !(o is Stuck) && !(o is Raise),
         machine_objects_ok(p, s),
 {
     lemma_reachable_wf(p, c, trusted, heap0, globals0, s);
@@ -198,6 +247,9 @@ pub proof fn theorem_soundness(p: Program2, c: Cert, trusted: bool, heap0: Seq<H
         step(p, s) == Outcome2::Primitive(s1, module, index) && #[trigger] completion(p, s1, module, index, o)
             implies !(o is Stuck) by {
         lemma_completion_ok(p, c, s1, module, index, o);
+    }
+    assert forall|o: Outcome2| #[trigger] outcome(p, s, o) implies !(o is Stuck) && !(o is Raise) by {
+        lemma_outcome_ok(p, c, trusted, s, o);
     }
 }
 

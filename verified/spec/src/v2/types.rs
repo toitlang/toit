@@ -90,6 +90,11 @@ pub enum Outcome2 {
     /// A PRIMITIVE (module, index): completed by `v2::prim`.
     Primitive(State2, u8, u16),
     Halt(State2, Halt2),
+    /// The machine raises an exception with value `v` in state `s`: it
+    /// allocates an `Exception_` holding `v` and a trace of its choosing (a
+    /// GC point that may run out of memory) and unwinds. Completed by
+    /// `v2::prim::raised`; `v2::spec::throw_exception` is one completion.
+    Raise(State2, Value),
 }
 
 pub open spec fn pview2(p: &ExecProgram) -> Program2 {

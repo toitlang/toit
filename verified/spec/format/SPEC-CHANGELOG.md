@@ -4,6 +4,130 @@ One entry per change of `src/v2/spec.rs`, `src/v2/prim.rs`, `src/v2/types.rs`
 or the verifier's rules (`src/v2/verifier.rs`) that an implementation of
 the spec (the verified core, the VM's loader) must follow. Newest first.
 
+## 2026-11-10: the PRIMITIVE protocol and per-primitive contracts (S1)
+
+What: `prim.rs` states the call/return protocol the machine implements
+(comment "The PRIMITIVE protocol"), and `theorem::completion` is exactly
+it. After the step's `Outcome2::Primitive(s, m, i)` (the top frame holds
+exactly the method's parameters, `prim_args(p, s)`):
+
+* `prim_missing(p, s)`: not implemented, denied by the policy, or an arity
+  other than the method's (a raise of PRIMITIVE_LOOKUP_FAILED);
+* a call returning heap `h2` and `r: PrimRet` with
+  `prim_returns(p, s, m, i, h2, r)`, continued by `prim_complete(p, s,
+  h2, r)`: `Success(v)` returns `v` from the frame (`prim_success`),
+  `Failure(v)` pushes `v` and continues at bci + 4 (`prim_failure`),
+  `OutOfMemory(v)` (the call's THROW status: memory ran out after the
+  GC's retries; `resource_error(p, v)`: roots 7, 17, 18) is
+  `Outcome2::Raise(with_heap2(s, h2), v)`;
+* core.task_new / core.task_transfer (`machine_completed(m, i)`, 0:115 and
+  0:116): `task_step(p, s, i)` (`task_new_step`, `task_transfer_step`), or
+  a call returning only `OutOfMemory`. The generic success/failure
+  oracle no longer applies to them.
+
+`prim_returns` = `prim_spec(p, m, i, prim_args(p, s), s.heap, h2, r)`
+(and `OutOfMemory` for the task primitives). `prim_spec` (the set of
+allowed `(h2, r)`, as a predicate) is `prim_default(p, h, h2, r)` (the
+hypothesis-2 contract: `prim_heap_ok`, results are values of `h2`,
+out-of-memory values are resource errors) and
+`prim_refined(p, m, i, args, h, h2, r)`, which is `true` except for three
+examples: `smi_add_spec` (0:51), `array_at_spec` (0:14),
+`array_at_put_spec` (0:15) (wrong types, bounds, read-only arrays, the
+stored element; other cases default). `sound.rs::completions_ok`
+quantifies over `prim_default`, so the theorem needs only the default
+(`lemma_prim_spec_default`); `sound_prim_spec.rs` shows the three
+refinements are satisfiable on well-formed heaps.
+
+Why: S1 (OBLIGATIONS.md): the core's `op_primitive_cold` (lookup, arity
+check, `toit_v2_call_primitive` with statuses SUCCESS, FAILURE, THROW)
+can now refine PRIMITIVE step by step; before, the THROW status (raising
+an allocation-failed error) was not a transition. A primitive ported to
+Rust is proven against `prim_spec`.
+
+Opcodes: PRIMITIVE.
+
+## 2026-11-10: resource throws are transitions (core request R6)
+
+What: `prim.rs`: `resource_throw(p, s, o)`, the outcomes the machine may
+produce instead of the step in state `s` when its stack or memory runs
+out. They start from `s` itself (the instruction has not run) and exist
+only at these opcodes (`op = p.bytecodes[s.bci]`):
+
+* `grows_stack(op)`: INVOKE_STATIC, INVOKE_STATIC_TAIL, INVOKE_BLOCK,
+  INVOKE_LAMBDA_TAIL, INVOKE_INITIALIZER_TAIL, INVOKE_VIRTUAL(_WIDE),
+  INVOKE_VIRTUAL_GET/SET, INVOKE_EQ..INVOKE_SIZE (operators, INVOKE_AT,
+  INVOKE_AT_PUT, INVOKE_SIZE), TRY, LOAD_GLOBAL_VAR_LAZY(_WIDE): either
+  `unwind(p, s, Throw(out_of_memory(p)))` (roots[4], nothing allocated) or
+  `Outcome2::Raise(s, p.roots[ROOT_STACK_OVERFLOW])` (roots[28]; an
+  `Exception_` with the machine's trace, completed by `raised`);
+* `allocates_instance(op)`: ALLOCATE(_WIDE): `unwind(p, s,
+  Throw(out_of_memory(p)))`;
+* `allocates_double(p, s, op)`: INVOKE_ADD/SUB/MUL with two doubles:
+  `operator_fallback(p, s, op)` (the result could not be allocated; the
+  operator's method is called, as the core does).
+
+`theorem.rs`: `outcome(p, s, o)` also includes every completed resource
+throw; the theorem is unchanged otherwise (`sound_resource.rs`:
+`lemma_resource`). A primitive's own out-of-memory is a PRIMITIVE
+completion (entry "the PRIMITIVE protocol"), a raise's a completion of
+the raise.
+
+Why: core request R6. The core's `grow_cold` (stack overflow: raise of
+roots[28]; out of memory: throw of roots[4]), ALLOCATE's failed
+allocation (throw of roots[4]) and the failed double allocation of
+`op_invoke_arith_slow_cold` (operator fallback) are now instances of spec
+transitions, so `step::resource_throw` and `exception_like` can be
+replaced by `prim::resource_throw` (completed by `prim::completes`).
+
+Opcodes: those listed above.
+
+## 2026-11-10: raising is an oracle step (core request R7)
+
+What: `types.rs`: `Outcome2` has a new variant `Raise(State2, Value)`.
+`spec.rs`: `raise(p, s, k)` is now `Outcome2::Raise(s, failure_value(p, k))`
+(`failure_value(p, k) == p.literals[2 + k]`); the old deterministic
+outcome is `raise_null(p, s, k)`. New: `exception_obj2(p, value, trace)`
+(an `Exception_` with value, trace, null elsewhere; `exception_obj(p, k)`
+is `exception_obj2(p, literals[2 + k], null)`), `throw_exception(p, s,
+value, trace)` (allocate it at the end of the heap, then unwind; `Fatal`
+if the exception class has fewer than two fields, as before). `prim.rs`:
+`raised(p, s, value, o)` completes a raise:
+
+* `o == throw_exception(p, with_heap2(s, h2), value, trace)` for any heap
+  `h2` with `heap_extended(p, s.heap, h2)` (`prim_heap_ok` plus `s.heap`
+  is a prefix: objects only added, under the primitive's heap contract)
+  and any `trace` with `good(h2, trace)`; or
+* `o == unwind(p, with_heap2(s, h2), Throw(out_of_memory(p)))` for any such
+  `h2` (`out_of_memory(p) == roots[4]`): the exception's allocation failed.
+
+`completes(p, o, o2)`: `raised` for a `Raise`, else `o2 == o`.
+`theorem.rs`: `outcome(p, s, o)` = `completes(p, step(p, s), o)` or a
+completed `completion` of a PRIMITIVE step; `transition` is `small(s2)`
+and some `outcome` continuing in `s2`; the theorem also states that no
+`outcome` of a reachable state is `Stuck` or `Raise`. `exec.rs`:
+`ExecOutcome2::Raise(v)`, `x_raise` returns it without changing the state,
+`x_throw_null` is the verified reference completion (the interpreter
+calls it). Proofs: `lemma_raised`, `lemma_throw`, `lemma_throw_oom`,
+`lemma_raise_value`, `lemma_raise_null` (`raise_null` is a completion).
+
+Why: core request R7 (OBLIGATIONS.md section 3). The VM's exception
+carries an encoded stack trace and the format-1 message (PHASE4-REQUESTS
+R2), allocated by C++ (`toit_v2_allocate_exception`: a GC point that may
+fail), so the machine's raise did not refine the old deterministic one.
+The core's `raise_value_msg_cold` is now an instance: the trace byte array
+(or null) is the extension and the trace, `allocate_instance` failing is
+the out-of-memory completion.
+
+Opcodes: every raised failure: LOAD_FIELD(_WIDE), LOAD_FIELD_LOCAL,
+POP_LOAD_FIELD_LOCAL, STORE_FIELD(_WIDE,_POP), STORE_FIELD_THIS,
+LOAD/STORE_GLOBAL_VAR_DYNAMIC, AS_*, IS/AS checks of INVOKE_STATIC(_TAIL)
+and lazy globals (receiver ranges), INVOKE_VIRTUAL*, the operator
+fallbacks, INVOKE_BLOCK, TRY, INVOKE_LAMBDA_TAIL, INVOKE_INITIALIZER_TAIL,
+HALT 1, PRIMITIVE (missing primitive). The core's proven handlers are
+unaffected (their `step` results are `Next`); a handler proving a raise
+path shows `step(p, g0) == Outcome2::Raise(g, v)` and that its machine
+continues in an outcome `o` with `raised(p, g, v, o)`.
+
 ## 2026-11-10: a verified check of the loader's contract (R4)
 
 What: `sound.rs` splits `loaded_ok` into `loaded_heap_ok` (heap size, every
