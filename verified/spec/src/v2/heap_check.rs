@@ -18,7 +18,7 @@
 //! trusted loader): object classes exist, instances of instance classes
 //! have their class's field count, every reference in the heap, the roots,
 //! the literals and the globals is in range, and the heap has no machine
-//! objects (suspended stacks, unwinding tokens).
+//! objects (suspended stacks, unwinding tokens, tasks).
 
 use crate::interp::loader::Loaded;
 use crate::types::*;
@@ -39,6 +39,9 @@ pub fn check_heap(l: &Loaded) -> Result<(), String> {
         let cl = o.class_id as usize;
         if cl >= class_count {
             return Err(format!("object {} has class {} outside the class table", id, cl));
+        }
+        if cl == p.builtin[19] as usize {
+            return Err(format!("object {} is a task", id));
         }
         let bits = p.class_bits[cl];
         let fields = ((bits >> 5) & 0x7ff) as i64 - 1;

@@ -67,6 +67,7 @@ pub open spec fn unw_ok(p: Program2, c: Cert, s: State2, kt: Seq<Kind>) -> bool 
     &&& heap_ok(p, c, s.heap)
     &&& globals_ok(c, s)
     &&& consts_ok(p, s.heap)
+    &&& running_ok(p, s)
     &&& s.frames.len() > 0
     &&& bases_ok(s)
     &&& roomy(s)
@@ -198,7 +199,7 @@ pub proof fn lemma_finally(p: Program2, c: Cert, trusted: bool, s: State2, kt: S
         }
     }
     // Heap.
-    assert(heap_ext(s.heap, s2h) && heap_ok(p, c, s2h)) by {
+    assert(heap_ext(p, s.heap, s2h) && heap_ok(p, c, s2h)) by {
         match uo {
             None => {},
             Some(w) => {
@@ -377,7 +378,7 @@ pub proof fn lemma_pending_finally(p: Program2, c: Cert, trusted: bool, s: State
         unw_ok(p, c, s, kt),
         unw_arg_ok(p, c, s, kt, w),
         s2.frames == s.frames,
-        heap_ext(s.heap, s2.heap),
+        heap_ext(p, s.heap, s2.heap),
         top_i(s) > 0 ==> same_below(s, s2, top_i(s) - 1),
         kinds_of(p, c, s2, top_i(s)) == finally_kinds(kt),
     ensures pending_ok(p, c, s2, top_i(s), kinds_of(p, c, s2, top_i(s)), kt.len() as int + 1, w),

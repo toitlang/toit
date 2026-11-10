@@ -369,6 +369,23 @@ pub open spec fn this_field_ok(p: Program2, m: int, f: int) -> bool {
             #[trigger] is_field_class(p, cl) && f < ifc(p, cl)
 }
 
+/// The receiver range of `i` includes the task class.
+pub open spec fn range_has_task(p: Program2, i: MethodInfo) -> bool {
+    i.recv_start as int <= builtin(p1(p), TASK_CLASS) < i.recv_end as int
+}
+
+/// LOAD_FIELD_THIS f: `this` has field `f`, which is not the stack of a
+/// task (`v2::spec::field_readable`).
+pub open spec fn this_load_ok(p: Program2, m: int, f: int) -> bool {
+    this_field_ok(p, m, f) && !(range_has_task(p, info(p, m)) && f == TASK_STACK_FIELD)
+}
+
+/// STORE_FIELD_THIS f: `this` has field `f`, which is not a field of a
+/// task the machine owns (`v2::spec::field_writable`).
+pub open spec fn this_store_ok(p: Program2, m: int, f: int) -> bool {
+    this_field_ok(p, m, f) && !(range_has_task(p, info(p, m)) && f <= TASK_ID_FIELD)
+}
+
 pub open spec fn branch_kind(op: u8) -> int {
     if BRANCH <= op && op <= BRANCH_IF_NOT_NULL { op - BRANCH } else { op - BRANCH_BACK }
 }
@@ -431,9 +448,9 @@ pub open spec fn post(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, trus
             Some(if op == STORE_FIELD_POP { pop_push(k, 2, None) } else { pop_push(k, 2, Some(Kind::Val)) })
         } else { None }
     } else if op == LOAD_FIELD_THIS {
-        if this_field_ok(p, m, b1) { Some(k.push(Kind::Val)) } else { None }
+        if this_load_ok(p, m, b1) { Some(k.push(Kind::Val)) } else { None }
     } else if op == STORE_FIELD_THIS {
-        if this_field_ok(p, m, b1) && value_operands(k, 1) { Some(k) } else { None }
+        if this_store_ok(p, m, b1) && value_operands(k, 1) { Some(k) } else { None }
     } else if op == LOAD_LITERAL || op == LOAD_LITERAL_WIDE {
         if (if op == LOAD_LITERAL { b1 } else { w1 }) < p.literals.len() { Some(k.push(Kind::Val)) } else { None }
     } else if op == LOAD_NULL || op == LOAD_SMI_0 || op == LOAD_SMI_1 || op == LOAD_SMI_U8 || op == LOAD_SMI_U16 {
@@ -678,6 +695,17 @@ pub open spec fn entry_ok(p: Program2, c: Cert, k: int, a: int) -> bool {
     valid_method(p, e) && info(p, e).kind == KIND_METHOD && arity(p, e) == a && no_block_params(c, e)
 }
 
+/// The task class is the only class with the machine's `TASK_TAG` (the
+/// machine recognizes tasks by their tag, the spec by the builtin class
+/// id), so ALLOCATE cannot create a task.
+pub open spec fn task_class_ok(p: Program2) -> bool {
+    let tc = builtin(p1(p), TASK_CLASS);
+    &&& 0 <= tc < class_count(p)
+    &&& class_tag(p1(p), tc) == TASK_TAG
+    &&& builtin(p1(p), EXCEPTION_CLASS) != tc
+    &&& forall|cl: int| 0 <= cl < class_count(p) && #[trigger] class_tag(p1(p), cl) == TASK_TAG ==> cl == tc
+}
+
 pub open spec fn dispatch_entry_ok(p: Program2, d: int) -> bool {
     let t = p.dispatch[d] as int;
     t == -1 || (valid_method(p, t) && (info(p, t).kind == KIND_METHOD || info(p, t).kind == KIND_FIELD_ACCESSOR) && {
@@ -730,6 +758,7 @@ pub open spec fn tables_ok(p: Program2, c: Cert) -> bool {
     &&& machine_class_ok(p, SMI_CLASS)
     &&& is_field_class(p, builtin(p1(p), EXCEPTION_CLASS)) && ifc(p, builtin(p1(p), EXCEPTION_CLASS)) >= 2
     &&& is_field_class(p, builtin(p1(p), TASK_CLASS)) && ifc(p, builtin(p1(p), TASK_CLASS)) >= 2
+    &&& task_class_ok(p)
     // The entry points the machine calls: main(task), the task entry
     // (resumed after its first instruction, LOAD_NULL), and the lazy
     // global initializer (id, initializer).

@@ -53,10 +53,11 @@ pub open spec fn call_pre(p: Program2, c: Cert, s: State2, s1: State2, t: int, r
     let nb = s1.stack.len() - arity(p, t);
     let keep = nb - b;
     &&& s1.frames == s.frames
+    &&& s1.task == s.task
     &&& s1.stack.len() < 0x8000_0000
     &&& small(s)
     &&& (if is_try { s1.tries == s.tries.push(new_handler(s, nb, ret)) } else { s1.tries == s.tries })
-    &&& heap_ext(s.heap, s1.heap)
+    &&& heap_ext(p, s.heap, s1.heap)
     &&& heap_ok(p, c, s1.heap)
     &&& globals_ok(c, s1)
     &&& consts_ok(p, s1.heap)
@@ -360,6 +361,7 @@ pub proof fn lemma_call(p: Program2, c: Cert, trusted: bool, s: State2, s1: Stat
         }
     }
     assert(wf_task(p, c, s2)) by { reveal(wf_task); }
+    lemma_running_heap(p, s, s2);
     assert(wf(p, c, s2)) by { reveal(wf); }
 }
 

@@ -28,30 +28,94 @@ use crate::spec_common::{class_id_ok, class_id_of, obj, obj_ok};
 
 verus! {
 
-/// The heap grows; classes and unwinding tokens stay.
-pub open spec fn heap_ext(h: Seq<HeapObj>, h2: Seq<HeapObj>) -> bool {
+/// The heap grows; classes, unwinding tokens and stack objects (as such)
+/// stay.
+pub open spec fn heap_grows(h: Seq<HeapObj>, h2: Seq<HeapObj>) -> bool {
     &&& h.len() <= h2.len()
     &&& forall|i: int| 0 <= i < h.len() ==> {
         &&& (#[trigger] h2[i]).class_id == h[i].class_id
         &&& h[i].body is Pending ==> h2[i].body == h[i].body
+        &&& h[i].body is Stack2 ==> h2[i].body is Stack2
     }
 }
 
-pub proof fn lemma_heap_ext_refl(h: Seq<HeapObj>)
-    ensures heap_ext(h, h),
-{}
+/// The heap grows, and the fields of tasks the machine owns stay.
+pub open spec fn heap_ext(p: Program2, h: Seq<HeapObj>, h2: Seq<HeapObj>) -> bool {
+    &&& heap_grows(h, h2)
+    &&& forall|i: int| 0 <= i < h.len() && h[i].class_id as int == task_class(p) ==>
+            task_fields_kept(h[i], #[trigger] h2[i])
+}
 
-pub proof fn lemma_heap_ext_trans(h1: Seq<HeapObj>, h2: Seq<HeapObj>, h3: Seq<HeapObj>)
-    requires heap_ext(h1, h2), heap_ext(h2, h3),
-    ensures heap_ext(h1, h3),
+pub proof fn lemma_heap_ext_refl(p: Program2, h: Seq<HeapObj>)
+    ensures heap_ext(p, h, h),
+{
+    assert forall|i: int| 0 <= i < h.len() && h[i].class_id as int == task_class(p) implies
+        task_fields_kept(h[i], #[trigger] h[i]) by {
+        match h[i].body {
+            Body::Instance(f) => {},
+            _ => {},
+        }
+    }
+}
+
+pub proof fn lemma_heap_ext_trans(p: Program2, h1: Seq<HeapObj>, h2: Seq<HeapObj>, h3: Seq<HeapObj>)
+    requires heap_ext(p, h1, h2), heap_ext(p, h2, h3),
+    ensures heap_ext(p, h1, h3),
 {
     assert forall|i: int| 0 <= i < h1.len() implies {
         &&& (#[trigger] h3[i]).class_id == h1[i].class_id
         &&& h1[i].body is Pending ==> h3[i].body == h1[i].body
+        &&& h1[i].body is Stack2 ==> h3[i].body is Stack2
     } by {
         assert(h2[i].class_id == h1[i].class_id);
     }
+    assert forall|i: int| 0 <= i < h1.len() && h1[i].class_id as int == task_class(p) implies
+        task_fields_kept(h1[i], #[trigger] h3[i]) by {
+        assert(h2[i].class_id == h1[i].class_id);
+        assert(task_fields_kept(h1[i], h2[i]));
+        assert(task_fields_kept(h2[i], h3[i]));
+    }
 }
+
+pub proof fn lemma_kept_refl(o: HeapObj)
+    ensures task_fields_kept(o, o),
+{
+    match o.body {
+        Body::Instance(f) => {},
+        _ => {},
+    }
+}
+
+/// The running task keeps its stack when the heap is extended.
+pub proof fn lemma_running_heap(p: Program2, s: State2, s2: State2)
+    requires running_ok(p, s), heap_ext(p, s.heap, s2.heap), s2.task == s.task,
+    ensures running_ok(p, s2),
+{
+    let t = s.task as int;
+    assert(s2.heap[t].class_id == s.heap[t].class_id);
+    assert(task_fields_kept(s.heap[t], s2.heap[t]));
+    match s.heap[t].body {
+        Body::Instance(f) => {
+            match s2.heap[t].body {
+                Body::Instance(f2) => {
+                    assert(f2[0] == f[0]);
+                    match f[0] {
+                        Value::Obj(id) => { assert(s2.heap[id as int].body is Stack2); },
+                        _ => {},
+                    }
+                },
+                _ => {},
+            }
+        },
+        _ => {},
+    }
+}
+
+/// `heap_ext` without the tasks.
+pub proof fn lemma_heap_ext_grows(p: Program2, h: Seq<HeapObj>, h2: Seq<HeapObj>)
+    requires heap_ext(p, h, h2),
+    ensures heap_grows(h, h2),
+{}
 
 pub proof fn lemma_good_mono(h: Seq<HeapObj>, h2: Seq<HeapObj>, v: Value)
     requires good(h, v), h.len() <= h2.len(),
@@ -63,7 +127,7 @@ pub open spec fn with_heap(s: State2, h2: Seq<HeapObj>) -> State2 {
 }
 
 pub proof fn lemma_conf_heap(p: Program2, c: Cert, s: State2, h2: Seq<HeapObj>, fi: int, kf: Seq<Kind>, j: int, k: Kind, v: Value)
-    requires conf(p, c, s, fi, kf, j, k, v), heap_ext(s.heap, h2),
+    requires conf(p, c, s, fi, kf, j, k, v), heap_grows(s.heap, h2),
     ensures conf(p, c, with_heap(s, h2), fi, kf, j, k, v),
 {
     reveal(conf);
@@ -134,7 +198,7 @@ pub proof fn lemma_context_frame_same(s: State2, s2: State2, fi: int, d: nat)
 }
 
 pub proof fn lemma_wf_task_heap(p: Program2, c: Cert, s: State2, h2: Seq<HeapObj>)
-    requires wf_task(p, c, s), heap_ext(s.heap, h2),
+    requires wf_task(p, c, s), heap_grows(s.heap, h2),
     ensures wf_task(p, c, with_heap(s, h2)),
 {
     reveal(wf_task);
@@ -182,7 +246,7 @@ pub open spec fn same_below(s: State2, s2: State2, fi: int) -> bool {
     &&& s2.frames[fi + 1].base <= s2.stack.len()
     &&& forall|x: int| 0 <= x < s.frames[fi + 1].base ==> #[trigger] s2.stack[x] == s.stack[x]
     &&& forall|g: int| 0 <= g <= fi ==> #[trigger] try_frame(s2, g) == try_frame(s, g)
-    &&& heap_ext(s.heap, s2.heap)
+    &&& heap_grows(s.heap, s2.heap)
 }
 
 pub proof fn lemma_same_below_down(s: State2, s2: State2, fi: int, g: int)

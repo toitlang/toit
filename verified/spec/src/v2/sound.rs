@@ -96,8 +96,43 @@ pub open spec fn susp_ok(p: Program2, c: Cert, heap: Seq<HeapObj>, w: Seq<Value>
     }
 }
 
+/// The class of tasks.
+pub open spec fn task_class(p: Program2) -> int {
+    crate::spec_common::builtin(p1(p), crate::spec_common::TASK_CLASS)
+}
+
+/// `v` refers to a suspended stack (a `Stack2` object).
+pub open spec fn stack_ref(heap: Seq<HeapObj>, v: Value) -> bool {
+    match v {
+        Value::Obj(id) => (id as int) < heap.len() && heap[id as int].body is Stack2,
+        _ => false,
+    }
+}
+
+/// The fields of a task the machine owns (`v2::spec::TASK_STACK_FIELD`,
+/// `TASK_ID_FIELD`): its stack field refers to a stack object, or is the
+/// smi 0 once the task has terminated (detached); its id is a smi.
+pub open spec fn task_obj_ok(heap: Seq<HeapObj>, o: HeapObj) -> bool {
+    match o.body {
+        Body::Instance(f) => f.len() >= 2 && f[1] is Smi && (f[0] == Value::Smi(0) || stack_ref(heap, f[0])),
+        _ => false,
+    }
+}
+
+/// The machine's view of the stack field of the running task: it refers
+/// to a stack object (the stack the machine runs on).
+pub open spec fn running_ok(p: Program2, s: State2) -> bool {
+    &&& (s.task as int) < s.heap.len()
+    &&& s.heap[s.task as int].class_id as int == task_class(p)
+    &&& match s.heap[s.task as int].body {
+        Body::Instance(f) => f.len() >= 2 && stack_ref(s.heap, f[0]),
+        _ => false,
+    }
+}
+
 pub open spec fn obj_ok(p: Program2, c: Cert, heap: Seq<HeapObj>, o: HeapObj) -> bool {
     &&& basic_obj_ok(p, heap, o)
+    &&& o.class_id as int == task_class(p) ==> task_obj_ok(heap, o)
     &&& match o.body {
         Body::Stack2(w, fr, tr, b) => susp_ok(p, c, heap, w, fr, tr, b),
         _ => true,
@@ -350,6 +385,7 @@ pub open spec fn wf(p: Program2, c: Cert, s: State2) -> bool {
     &&& globals_ok(c, s)
     &&& consts_ok(p, s.heap)
     &&& wf_task(p, c, s)
+    &&& running_ok(p, s)
 }
 
 /// Sizes far from the machine word (the machine has finite memory).
@@ -377,10 +413,20 @@ pub open spec fn accepted(p: Program2, c: Cert) -> bool {
 // ---------------------------------------------------------------------------
 // Oracle and loader assumptions.
 
+/// The fields a task's machine owns are the same in `o2` as in `o`.
+pub open spec fn task_fields_kept(o: HeapObj, o2: HeapObj) -> bool {
+    match (o.body, o2.body) {
+        (Body::Instance(f), Body::Instance(f2)) => f.len() >= 2 ==> f2.len() >= 2 && f2[0] == f[0] && f2[1] == f[1],
+        (Body::Instance(_), _) => false,
+        _ => true,
+    }
+}
+
 /// What a primitive may do to the heap (the oracle assumption): objects
 /// are only added, classes do not change, the machine's own objects
-/// (suspended stacks, unwinding tokens) are neither touched nor created,
-/// and every object stays well formed.
+/// (suspended stacks, unwinding tokens, tasks) are not created and their
+/// machine-owned parts are not touched, and every object stays well
+/// formed.
 pub open spec fn prim_heap_ok(p: Program2, h: Seq<HeapObj>, h2: Seq<HeapObj>) -> bool {
     &&& h.len() <= h2.len()
     &&& h2.len() < 0x4000_0000
@@ -388,8 +434,10 @@ pub open spec fn prim_heap_ok(p: Program2, h: Seq<HeapObj>, h2: Seq<HeapObj>) ->
         &&& (#[trigger] h2[i]).class_id == h[i].class_id
         &&& (h[i].body is Stack2 || h[i].body is Pending) ==> h2[i].body == h[i].body
         &&& !(h[i].body is Stack2 || h[i].body is Pending) ==> !(h2[i].body is Stack2 || h2[i].body is Pending)
+        &&& h[i].class_id as int == task_class(p) ==> task_fields_kept(h[i], h2[i])
     }
     &&& forall|i: int| h.len() <= i < h2.len() ==> !((#[trigger] h2[i]).body is Stack2 || h2[i].body is Pending)
+            && h2[i].class_id as int != task_class(p)
     &&& forall|i: int| 0 <= i < h2.len() ==> basic_obj_ok(p, h2, #[trigger] h2[i])
 }
 
@@ -398,6 +446,7 @@ pub open spec fn loaded_ok(p: Program2, c: Cert, heap0: Seq<HeapObj>, globals0: 
     &&& heap0.len() < 0x2000_0000
     &&& forall|i: int| 0 <= i < heap0.len() ==> basic_obj_ok(p, heap0, #[trigger] heap0[i])
             && !(heap0[i].body is Stack2 || heap0[i].body is Pending)
+            && heap0[i].class_id as int != task_class(p)
     &&& globals0.len() == c.global_count
     &&& forall|g: int| 0 <= g < globals0.len() ==> good(heap0, #[trigger] globals0[g])
     &&& consts_ok(p, heap0)

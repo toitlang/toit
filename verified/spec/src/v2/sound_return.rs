@@ -56,6 +56,7 @@ pub open spec fn popped(s: State2, s1: State2) -> bool {
     &&& s1.tries == s.tries
     &&& s1.heap == s.heap
     &&& s1.globals == s.globals
+    &&& s1.task == s.task
     &&& fbase(s, t) <= s1.stack.len()
     &&& forall|x: int| 0 <= x < fbase(s, t) ==> #[trigger] s1.stack[x] == s.stack[x]
 }
@@ -259,6 +260,7 @@ pub proof fn lemma_unw_extra(p: Program2, c: Cert, s: State2, s1: State2, kt: Se
     requires
         unw_ok(p, c, s, kt),
         s1.frames == s.frames, s1.tries == s.tries, s1.heap == s.heap, s1.globals == s.globals,
+        s1.task == s.task,
         s.stack.len() <= s1.stack.len(), s1.stack.len() < 0x8000_0000,
         forall|x: int| 0 <= x < s.stack.len() ==> #[trigger] s1.stack[x] == s.stack[x],
     ensures unw_ok(p, c, s1, kt),

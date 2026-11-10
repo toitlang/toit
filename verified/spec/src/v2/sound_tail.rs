@@ -106,7 +106,7 @@ pub proof fn lemma_tail_shape(p: Program2, c: Cert, trusted: bool, s: State2, t:
         lemma_base_le_len(s, t0);
         assert(same_below(s, s2, t0 - 1)) by {
             assert forall|g: int| 0 <= g <= t0 - 1 implies #[trigger] try_frame(s2, g) == try_frame(s, g) by {}
-            lemma_heap_ext_refl(s.heap);
+            lemma_heap_ext_refl(p, s.heap);
         }
     }
 }

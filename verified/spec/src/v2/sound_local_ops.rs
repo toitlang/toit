@@ -44,12 +44,13 @@ pub open spec fn lframe0(p: Program2, c: Cert, s: State2, s2: State2, k2: Seq<Ki
     let m = cur_m(s);
     &&& s2.frames == s.frames
     &&& s2.tries == s.tries
+    &&& s2.task == s.task
     &&& info(p, m).entry <= s2.bci
     &&& map_at(c, m, s2.bci - info(p, m).entry) == Some(k2)
     &&& s2.stack.len() == b + k2.len()
     &&& forall|x: int| 0 <= x < b ==> #[trigger] s2.stack[x] == s.stack[x]
     &&& (pinned0(p, m) && arity(p, m) >= 1 ==> k2.len() >= 1 && s2.stack[b] == s.stack[b])
-    &&& heap_ext(s.heap, s2.heap)
+    &&& heap_ext(p, s.heap, s2.heap)
 }
 
 /// A local step that keeps the bottom `q` slots of the top frame.
@@ -210,6 +211,7 @@ pub proof fn lemma_pop_push(p: Program2, c: Cert, trusted: bool, s: State2, s2: 
         n == 0 || leaves0(p, cur_m(s), cur_k(p, c, s).len() as int, n),
         s2.frames == s.frames,
         s2.tries == s.tries,
+        s2.task == s.task,
         s2.heap == s.heap,
         s2.globals == s.globals,
         s2.stack == s.stack.subrange(0, s.stack.len() - n).push(v),
@@ -228,7 +230,7 @@ pub proof fn lemma_pop_push(p: Program2, c: Cert, trusted: bool, s: State2, s2: 
     let h = k.len() as int;
     let q = h - n;
     let k2 = k.subrange(0, q).push(kd);
-    lemma_heap_ext_refl(s.heap);
+    lemma_heap_ext_refl(p, s.heap);
     assert(pinned0(p, m) && arity(p, m) >= 1 ==> q >= 1);
     assert(s2.stack[b + q] == v);
     assert forall|x: int| 0 <= x < b + q implies #[trigger] s2.stack[x] == s.stack[x] by {}
@@ -262,6 +264,7 @@ pub proof fn lemma_drop(p: Program2, c: Cert, trusted: bool, s: State2, s2: Stat
         0 <= n <= cur_k(p, c, s).len(),
         s2.frames == s.frames,
         s2.tries == s.tries,
+        s2.task == s.task,
         s2.heap == s.heap,
         globals_ok(c, s2),
         s2.stack == s.stack.subrange(0, s.stack.len() - n),
@@ -277,7 +280,7 @@ pub proof fn lemma_drop(p: Program2, c: Cert, trusted: bool, s: State2, s2: Stat
     let h = k.len() as int;
     let q = h - n;
     let k2 = k.subrange(0, q);
-    lemma_heap_ext_refl(s.heap);
+    lemma_heap_ext_refl(p, s.heap);
     lemma_map_instr(p, c, trusted, m, s2.bci - info(p, m).entry);
     assert(shape_ok(p, c, m, k2));
     assert forall|x: int| 0 <= x < b + q implies #[trigger] s2.stack[x] == s.stack[x] by {}
@@ -387,7 +390,7 @@ pub proof fn lemma_step_store_local(p: Program2, c: Cert, trusted: bool, s: Stat
     assert forall|x: int| 0 <= x < b + h && x != b + i && (!pop || x < b + h - 1) implies #[trigger] s2.stack[x] == s.stack[x] by {}
     assert forall|j: int| 0 <= j < k2.len() && j != i implies #[trigger] k2[j] == k[j] by {}
     assert(k2[i] == kv);
-    lemma_heap_ext_refl(s.heap);
+    lemma_heap_ext_refl(p, s.heap);
     assert(lframe0(p, c, s, s2, k2)) by {
         if pinned0(p, m) && arity(p, m) >= 1 {
             assert(i != 0);
@@ -494,7 +497,7 @@ pub proof fn lemma_step_load_smis_0(p: Program2, c: Cert, trusted: bool, s: Stat
     assert(post(p, c, m, off, k, trusted) == Some(k2));
     let s2 = State2 { stack: s.stack + Seq::new(n as nat, |i: int| Value::Smi(0)), bci: (s.bci + 2) as usize, ..s };
     assert(step(p, s) == Outcome2::Next(s2));
-    lemma_heap_ext_refl(s.heap);
+    lemma_heap_ext_refl(p, s.heap);
     assert forall|x: int| 0 <= x < b + h implies #[trigger] s2.stack[x] == s.stack[x] by {}
     assert forall|j: int| 0 <= j < h implies #[trigger] k2[j] == k[j] by {}
     assert(lframe0(p, c, s, s2, k2)) by {

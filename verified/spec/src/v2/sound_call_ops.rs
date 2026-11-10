@@ -250,7 +250,7 @@ pub proof fn lemma_invoke_static_call(p: Program2, c: Cert, trusted: bool, s: St
     let nb = s.stack.len() - a;
     let keep = nb - b;
     let kr = pop_push(k, a, Some(Kind::Val));
-    lemma_heap_ext_refl(s.heap);
+    lemma_heap_ext_refl(p, s.heap);
     assert(kr.subrange(0, keep) =~= k.subrange(0, keep));
     assert(ret - info(p, m).entry == cur_off(p, s) + 3);
     assert(call_pre(p, c, s, s, t, ret, false));
@@ -352,7 +352,7 @@ pub proof fn lemma_lazy_call(p: Program2, c: Cert, trusted: bool, s: State2, g: 
     }
     let nb = s.stack.len() as int;
     let kr = k.push(Kind::Val);
-    lemma_heap_ext_refl(s.heap);
+    lemma_heap_ext_refl(p, s.heap);
     assert(s1.stack.len() - arity(p, e) == nb);
     assert(kr.subrange(0, k.len() as int) =~= k.subrange(0, k.len() as int));
     assert(ret - info(p, m).entry == cur_off(p, s) + len);
@@ -412,7 +412,7 @@ pub proof fn lemma_step_lazy(p: Program2, c: Cert, trusted: bool, s: State2)
     } else {
         let s2 = goto(push(s, s.globals[g]), s.bci + len);
         let k2 = k.push(Kind::Val);
-        lemma_heap_ext_refl(s.heap);
+        lemma_heap_ext_refl(p, s.heap);
         assert(good(s.heap, s.globals[g]));
         assert(s2.bci - info(p, m).entry == off + len);
         assert forall|j: int| 0 <= j < k2.len() implies
@@ -517,7 +517,7 @@ pub proof fn lemma_invoke_block_call(p: Program2, c: Cert, trusted: bool, s: Sta
     let nb = s.stack.len() - n;
     let keep = h - n;
     let kr = pop_push(k, n, Some(Kind::Val));
-    lemma_heap_ext_refl(s.heap);
+    lemma_heap_ext_refl(p, s.heap);
     assert(s1.stack.len() - a == nb);
     assert(nb - b == keep);
     assert(kr.subrange(0, keep) =~= k.subrange(0, keep));
@@ -658,7 +658,7 @@ pub proof fn lemma_try_call(p: Program2, c: Cert, trusted: bool, s: State2, tt: 
     lemma_block_method(p, c, trusted, tt);
     let ctx = ctx_of(c, tt)->0;
     assert(ctx.outer == m && ctx.slot == h - 1);
-    lemma_heap_ext_refl(s.heap);
+    lemma_heap_ext_refl(p, s.heap);
     assert(s1.stack.len() - arity(p, tt) == nb);
     assert(new_handler(s, nb, ret) == hd);
     let kr = k.push(Kind::Val).push(Kind::Token).push(Kind::Val);

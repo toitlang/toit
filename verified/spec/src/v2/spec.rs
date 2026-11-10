@@ -32,7 +32,8 @@
 //!   checked at run time (index and kind) and raise INVALID_PROGRAM;
 //! * field access is checked (raises INVALID_PROGRAM) except for
 //!   LOAD_FIELD_THIS/STORE_FIELD_THIS, whose receiver is guaranteed by the
-//!   method's declared receiver range;
+//!   method's declared receiver range; the fields of a task the machine
+//!   owns (its stack, its id) are not writable, the stack not readable;
 //! * the intrinsics are gone.
 //!
 //! `Stuck` remains for what the structural verifier must exclude
@@ -47,7 +48,7 @@ use crate::spec_common::INSTANCE_TAG;
 use crate::spec_common::{
     smi, smi_ok, u16_at, u32_at, builtin, class_tag, instance_field_count, is_instance, fields,
     obj, obj_id, is_array, elements, class_id_ok, class_id_of, class_of_obj, new_double,
-    LAZY_INITIALIZER_CLASS, EXCEPTION_CLASS, ENTRY_MAIN, ENTRY_TASK, RUN_GLOBAL_INITIALIZER,
+    LAZY_INITIALIZER_CLASS, EXCEPTION_CLASS, TASK_CLASS, ENTRY_MAIN, ENTRY_TASK, RUN_GLOBAL_INITIALIZER,
 };
 use crate::spec_helpers::{Check, FastAt, COMPARE_FLAG_EQUAL};
 #[cfg(verus_only)]
@@ -210,6 +211,30 @@ pub open spec fn new_ref2(s: State2) -> Value {
 /// Field `f` of an instance exists.
 pub open spec fn field_ok(s: State2, inst: Value, f: int) -> bool {
     is_instance(as1(s), inst) && 0 <= f < fields(as1(s), inst).len()
+}
+
+/// The fields of a task the machine owns: field 0 holds the task's stack
+/// (`Task::STACK_INDEX`; the scheduler, the task switch and the collector
+/// use it as the task's stack) and is neither readable nor writable by the
+/// program; field 1 holds the task's id (`Task::ID_INDEX`, a smi) and is
+/// read-only. Only the task primitives (`v2::prim`) change them.
+pub spec const TASK_STACK_FIELD: int = 0;
+pub spec const TASK_ID_FIELD: int = 1;
+
+/// `inst` is a task: an instance of the builtin task class.
+pub open spec fn is_task_obj(p: Program2, s: State2, inst: Value) -> bool {
+    is_instance(as1(s), inst) && class_of_obj(as1(s), inst) == builtin(p1(p), TASK_CLASS)
+}
+
+/// Field `f` of `inst` exists and the program may read it.
+pub open spec fn field_readable(p: Program2, s: State2, inst: Value, f: int) -> bool {
+    field_ok(s, inst, f) && !(is_task_obj(p, s, inst) && f == TASK_STACK_FIELD)
+}
+
+/// Field `f` of `inst` exists and the program may write it: not in the
+/// read-only program heap, not a field the machine owns.
+pub open spec fn field_writable(p: Program2, s: State2, inst: Value, f: int) -> bool {
+    field_ok(s, inst, f) && !is_ro(s, inst) && !(is_task_obj(p, s, inst) && f <= TASK_ID_FIELD)
 }
 
 pub open spec fn field(s: State2, inst: Value, f: int) -> Value {
@@ -699,7 +724,7 @@ pub open spec fn op_unwind(p: Program2, s: State2) -> Outcome2 {
 pub open spec fn op_load_field(p: Program2, s: State2, f: int, len: int) -> Outcome2 {
     if !has_slot(s, 0) {
         stuck(Stuck::StackRange)
-    } else if !field_ok(s, at(s, 0), f) {
+    } else if !field_readable(p, s, at(s, 0), f) {
         raise(p, s, INVALID_PROGRAM)
     } else {
         next(put(s, 0, field(s, at(s, 0), f)), len)
@@ -714,7 +739,7 @@ pub open spec fn op_load_field_local(p: Program2, s: State2, enc: int, pop: bool
     let slot = if pop { local + 1 } else { local };
     if !has_slot(s, slot) {
         stuck(Stuck::StackRange)
-    } else if !field_ok(s, at(s, slot), f) {
+    } else if !field_readable(p, s, at(s, slot), f) {
         raise(p, s, INVALID_PROGRAM)
     } else {
         let v = field(s, at(s, slot), f);
@@ -728,7 +753,7 @@ pub open spec fn op_store_field(p: Program2, s: State2, f: int, len: int, keep: 
     } else {
         let v = at(s, 0);
         let inst = at(s, 1);
-        if !field_ok(s, inst, f) || is_ro(s, inst) {
+        if !field_writable(p, s, inst, f) {
             raise(p, s, INVALID_PROGRAM)
         } else {
             let s1 = set_field2(drop(s, 2), inst, f, v);
@@ -739,7 +764,8 @@ pub open spec fn op_store_field(p: Program2, s: State2, f: int, len: int, keep: 
 
 /// `this` of the top frame: parameter 0 of a method with a declared
 /// receiver range. Its field accesses are not checked at run time; the
-/// verifier proves them (`v2::verifier`).
+/// verifier proves them (`v2::verifier`), including that they do not touch
+/// the fields of a task the machine owns.
 pub open spec fn this_ok(p: Program2, s: State2, f: int) -> bool {
     &&& s.frames.len() > 0
     &&& valid_method(p, top(s).method as int)
@@ -750,7 +776,7 @@ pub open spec fn this_ok(p: Program2, s: State2, f: int) -> bool {
 }
 
 pub open spec fn op_load_field_this(p: Program2, s: State2, f: int) -> Outcome2 {
-    if !this_ok(p, s, f) {
+    if !this_ok(p, s, f) || (is_task_obj(p, s, s.stack[top(s).base as int]) && f == TASK_STACK_FIELD) {
         stuck(Stuck::NotInstance)
     } else {
         next(push(s, field(s, s.stack[top(s).base as int], f)), 2)
@@ -762,7 +788,7 @@ pub open spec fn op_load_field_this(p: Program2, s: State2, f: int) -> Outcome2 
 pub open spec fn op_store_field_this(p: Program2, s: State2, f: int) -> Outcome2 {
     if !has_slot(s, 0) {
         stuck(Stuck::StackRange)
-    } else if !this_ok(p, s, f) {
+    } else if !this_ok(p, s, f) || (is_task_obj(p, s, s.stack[top(s).base as int]) && f <= TASK_ID_FIELD) {
         stuck(Stuck::NotInstance)
     } else {
         let this = s.stack[top(s).base as int];
@@ -1049,7 +1075,7 @@ pub open spec fn op_invoke_virtual_get(p: Program2, s: State2, sel: int) -> Outc
                 let f = info(p, t).aux as int;
                 if arity(p, t) != 1 {
                     stuck(Stuck::BadArity)
-                } else if info(p, t).kind == KIND_FIELD_ACCESSOR && field_ok(s, recv, f) {
+                } else if info(p, t).kind == KIND_FIELD_ACCESSOR && field_readable(p, s, recv, f) {
                     next(put(s, 0, field(s, recv, f)), 3)
                 } else {
                     call(p, s, t, s.bci + 3)
@@ -1072,7 +1098,7 @@ pub open spec fn op_invoke_virtual_set(p: Program2, s: State2, sel: int) -> Outc
                 let f = info(p, t).aux as int;
                 if arity(p, t) != 2 {
                     stuck(Stuck::BadArity)
-                } else if info(p, t).kind == KIND_FIELD_ACCESSOR && field_ok(s, recv, f) && !is_ro(s, recv) {
+                } else if info(p, t).kind == KIND_FIELD_ACCESSOR && field_writable(p, s, recv, f) {
                     next(push(set_field2(drop(s, 2), recv, f, v), v), 3)
                 } else {
                     call(p, s, t, s.bci + 3)
