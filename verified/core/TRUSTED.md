@@ -16,7 +16,7 @@ Opaque structs holding raw pointers into VM memory. Their ghost content
 | `Table<T>` | an immutable program table `ptr[0..len)` (bytecodes, method table, dispatch table, class tables, roots, literals) | `len() == view.len()`; `at(i)` requires `i < len`, returns `view[i]` |
 | `Globals` | the process' global variables | `at`/`set` require `i < len`; `set` updates `view[i]` |
 | `StackMem` | the array of the current task's `Stack` object | `read`/`write` require `i < len`; `copy_within` is a memmove with an exact contract; `header`/`set_header` access the Stack header words (top, frame top, bci), modelled by the uninterpreted `hdr(word)` |
-| `Heap` | process and program heap objects | no ghost content: `header`, `word`, `byte`, `u32_at`, `set_word`, `set_byte` access the object a tagged word designates; `set_word` applies the write barrier (card mark) |
+| `Heap` | process and program heap objects | the heap model (`objs`, `addrs`, `class_bits`; `abs::obj_model_ok`: instances and arrays agree with their class tag, field count, length and encodable contents): `class_id`, `class_tag`, `field`/`set_field`, `array_length`, `element`/`set_element` relate memory to it; without ghost content: `header`, `word`, `byte`, `u32_at`, `set_word`, `set_byte` access the object a tagged word designates; the setters apply the write barrier (card mark) |
 | `Preemption` | `Interpreter::watermark_` | `requested`/`clear`/`request`: environment nondeterminism, no contract |
 
 Assumptions behind the views:

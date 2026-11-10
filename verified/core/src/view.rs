@@ -282,6 +282,63 @@ impl Heap {
         }
     }
 
+    /// The length of the array `id` (its length word).
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn array_length(&self, obj: usize, Ghost(id): Ghost<int>) -> (r: usize)
+        requires
+            0 <= id < self.objs().len(),
+            self.addrs().len() == self.objs().len(),
+            obj == self.addrs()[id],
+            self.objs()[id].body is Array,
+        ensures r == self.objs()[id].body->Array_0.len(),
+    {
+        unsafe { *((obj - HEAP_TAG) as *const usize).add(ARRAY_LENGTH_WORD) }
+    }
+
+    /// Element `i` of the array `id`: the encoding of the abstract element.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn element(&self, obj: usize, i: usize, Ghost(id): Ghost<int>) -> (r: usize)
+        requires
+            0 <= id < self.objs().len(),
+            self.addrs().len() == self.objs().len(),
+            obj == self.addrs()[id],
+            self.objs()[id].body is Array,
+            i < self.objs()[id].body->Array_0.len(),
+        ensures r == crate::abs::enc(self.addrs(), self.objs()[id].body->Array_0[i as int]),
+    {
+        unsafe { *((obj - HEAP_TAG) as *const usize).add(ARRAY_ELEMENTS_WORD + i) }
+    }
+
+    /// Stores the encoding `w` of `v` into element `i` of the array `id`
+    /// (with the write barrier): the model's element becomes `v`.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn set_element(&mut self, obj: usize, i: usize, w: usize, Ghost(id): Ghost<int>, Ghost(v): Ghost<Value>)
+        requires
+            0 <= id < old(self).objs().len(),
+            old(self).addrs().len() == old(self).objs().len(),
+            obj == old(self).addrs()[id],
+            old(self).objs()[id].body is Array,
+            i < old(self).objs()[id].body->Array_0.len(),
+            !old(self).objs()[id].ro,
+            w == crate::abs::enc(old(self).addrs(), v),
+        ensures
+            final(self).objs() == old(self).objs().update(id, HeapObj {
+                body: Body::Array(old(self).objs()[id].body->Array_0.update(i as int, v)),
+                ..old(self).objs()[id]
+            }),
+            final(self).addrs() == old(self).addrs(),
+            final(self).class_bits() == old(self).class_bits(),
+    {
+        unsafe {
+            *((obj - HEAP_TAG) as *mut usize).add(ARRAY_ELEMENTS_WORD + i) = w;
+            let card = ((obj - HEAP_TAG) >> CARD_SIZE_LOG_2).wrapping_add(self.remembered_set_bias);
+            *(card as *mut u8) = NEW_SPACE_POINTERS;
+        }
+    }
+
     /// The header word of a heap object.
     #[verifier::external_body]
     #[inline(always)]

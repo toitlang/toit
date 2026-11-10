@@ -531,6 +531,22 @@ justification = "Heap model: address of each abstract object; related to memory 
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
+item = "Heap::array_length"
+kind = "external_body"
+count = 1
+justification = "Heap accessor: the length word of an array is the length of the model's element sequence (TRUSTED.md, heap model)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::array_length"
+kind = "unsafe"
+count = 1
+justification = "Reads the length word of a live array (heap integrity, TRUSTED.md V2)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
 item = "Heap::byte"
 kind = "external_body"
 count = 1
@@ -583,6 +599,22 @@ item = "Heap::class_tag"
 kind = "unsafe"
 count = 1
 justification = "Reads the header word of a live object (heap integrity, TRUSTED.md V2): obj is the model address of an object."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::element"
+kind = "external_body"
+count = 1
+justification = "Heap accessor: an array element word is the encoding of the model's element (i < length) (TRUSTED.md, heap model)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::element"
+kind = "unsafe"
+count = 1
+justification = "Reads element i < length of a live array (heap integrity, TRUSTED.md V2)."
 
 [[trusted]]
 crate = "core"
@@ -647,6 +679,22 @@ item = "Heap::set_byte"
 kind = "unsafe"
 count = 1
 justification = "Raw access of Heap::set_byte; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::set_element"
+kind = "external_body"
+count = 1
+justification = "Heap accessor: storing an element word updates the model's element (non-ro array, i < length); applies the write barrier (TRUSTED.md, heap model)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::set_element"
+kind = "unsafe"
+count = 1
+justification = "Writes element i < length of a live process-heap array and marks its card (heap integrity, TRUSTED.md V2)."
 
 [[trusted]]
 crate = "core"

@@ -79,6 +79,7 @@ pub open spec fn verified_op(op: u8) -> bool {
     ||| op == 100        // HALT
     ||| 32 <= op <= 34 || op == 37  // LOAD_GLOBAL_VAR_LAZY(_WIDE), LOAD/STORE_GLOBAL_VAR_DYNAMIC
     ||| op == 42 || op == 43  // ALLOCATE(_WIDE)
+    ||| 78 <= op <= 80   // INVOKE_AT, INVOKE_AT_PUT, INVOKE_SIZE (array fast paths)
 }
 
 /// The machine continues from a state the spec reaches from `g0`: the same
@@ -743,6 +744,9 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
             let c = code_u16(p, bci + 1);
             proof { assert(sp::step(ap, g) == sp::op_allocate(ap, g, c as int, 3)) by { reveal(sp::step); } }
             return crate::alloc::op_allocate(m, env, bci, opcode, c, 3);
+        },
+        78..=80 => {
+            return crate::arrays::op_array(m, env, bci, opcode);
         },
         100 => {
             let code = p.code.at(bci + 1) as usize;
