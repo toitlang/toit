@@ -14,8 +14,36 @@ Top-level theorems: crate core (0)
 ==============================================================================
 
 ==============================================================================
-Top-level theorems: crate spec (0)
+Top-level theorems: crate spec (4)
 ==============================================================================
+
+--- lemma_good_mono  (spec/src/v2/sound_frames.rs)
+pub proof fn lemma_good_mono(h: Seq<HeapObj>, h2: Seq<HeapObj>, v: Value)
+    requires good(h, v), h.len() <= h2.len(),
+    ensures good(h2, v),
+
+--- lemma_below_upto  (spec/src/v2/sound_upto.rs)
+pub proof fn lemma_below_upto(s: State2, s2: State2, fi: int)
+    requires same_below(s, s2, fi), bases_ok(s),
+    ensures same_upto(s, s2, fi, slots(s, fi)),
+
+--- theorem_soundness  (spec/src/v2/theorem.rs)
+pub proof fn theorem_soundness(p: Program2, c: Cert, trusted: bool, heap0: Seq<HeapObj>, globals0: Seq<Value>, s: State2)
+    requires
+        accepts(p, c, trusted),
+        loaded_ok(p, c, heap0, globals0),
+        reachable(p, heap0, globals0, s),
+    ensures
+        !(step(p, s) is Stuck),
+        forall|s1: State2, module: u8, index: u16, o: Outcome2|
+            step(p, s) == Outcome2::Primitive(s1, module, index) && #[trigger] completion(p, s1, module, index, o)
+                ==> !(o is Stuck),
+
+--- theorem_initial  (spec/src/v2/theorem.rs)
+pub proof fn theorem_initial(p: Program2, c: Cert, trusted: bool, heap0: Seq<HeapObj>, globals0: Seq<Value>)
+    requires accepts(p, c, trusted), loaded_ok(p, c, heap0, globals0),
+    ensures reachable(p, heap0, globals0, initial_state(p, heap0, globals0)),
+        wf(p, c, initial_state(p, heap0, globals0)),
 
 ==============================================================================
 Verified exec entry points: crate core (2)
@@ -37,7 +65,7 @@ pub fn entry(st: &mut VState, e: &Env, fuel: usize) -> (r: (Outcome, usize))
                 #[trigger] spec_run(e.cfg(), old(st)@, rooms) == Some(final(st)@) && rooms.len() == r.1,
 
 ==============================================================================
-Verified exec entry points: crate spec (3)
+Verified exec entry points: crate spec (6)
 ==============================================================================
 
 --- step_verified  (spec/src/exec_step.rs)
@@ -48,6 +76,19 @@ pub fn step_verified(p: &ExecProgram, s: &mut ExecState) -> (r: Option<ExecOutco
             Some(o) => matches(step(p@, old(s)@), o, final(s)@),
             None => final(s)@ == old(s)@,
         },
+
+--- x_info  (spec/src/v2/check.rs)
+pub fn x_info(p: &ExecProgram, m: usize) -> (r: MethodInfo)
+    requires m < p.methods.len(),
+    ensures r == info(pview2(p), m as int),
+
+--- x_class_count  (spec/src/v2/check.rs)
+pub fn x_class_count(p: &ExecProgram) -> (r: usize)
+    ensures r as int == class_count(pview2(p)),
+
+--- verify  (spec/src/v2/check.rs)
+pub fn verify(p: &ExecProgram, c: &XCert, trusted: bool) -> (r: bool)
+    ensures r == accepts(pview2(p), c@, trusted),
 
 --- x_frame_height  (spec/src/v2/exec.rs)
 pub fn x_frame_height(s: &ExecState) -> (r: i64)

@@ -306,11 +306,27 @@ justification = "Raw pointer access inside the trusted body; in bounds by requir
 
 [[trusted]]
 crate = "spec"
+file = "src/bin/toit_spec_mutate.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Test tool (mutation campaign driver); not part of any claim."
+
+[[trusted]]
+crate = "spec"
 file = "src/bin/toit_spec_run.rs"
 item = "*"
 kind = "plain_rust_file"
 count = 1
 justification = "CLI driver of the reference interpreter; test tooling, not part of any proof."
+
+[[trusted]]
+crate = "spec"
+file = "src/bin/toit_spec_verify.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Command-line driver around the verified check::verify; TRUSTED: it must pass the loaded program unchanged and report the verdict faithfully."
 
 [[trusted]]
 crate = "spec"
@@ -479,3 +495,35 @@ item = "OPCODE_NAMES2"
 kind = "plain_rust_item"
 count = 1
 justification = "Format-2 opcode names for tracing and the table test; no semantic role."
+
+[[trusted]]
+crate = "spec"
+file = "src/v2/heap_check.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "TRUSTED and to be verified in Phase 4: executable check of the theorem hypothesis loaded_ok (initial heap and globals); an error here voids the soundness theorem."
+
+[[trusted]]
+crate = "spec"
+file = "src/v2/infer.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Untrusted by design: computes the certificate; the verified checker check::verify decides acceptance, so a wrong certificate can only cause rejection."
+
+[[trusted]]
+crate = "spec"
+file = "src/v2/mod.rs"
+item = "infer"
+kind = "cfg"
+count = 1
+justification = "cfg that keeps the unverified inference module out of the Verus build; see infer.rs."
+
+[[trusted]]
+crate = "spec"
+file = "src/v2/prim_arity.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "TRUSTED and to be discharged in Phase 4: table of primitive arities the verifier and the primitive-completion model rely on; must equal the arities of the primitives the core actually links."
