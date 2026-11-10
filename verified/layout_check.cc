@@ -97,7 +97,14 @@ uword toit_v2_allocate_double(void*, uint64) { abort(); }
 uword toit_v2_allocate_exception(void*, uword, uword, const uword*, uword) { abort(); }
 uword toit_v2_allocate_array(void*, uword, uword) { abort(); }
 uword toit_v2_grow_stack(void*, uword) { abort(); }
-uword toit_v2_lookup_primitive(void*, uword, uword, const void**, uword*) { abort(); }
+uword toit_v2_lookup_primitive(void*, uword, uword, const void**, uword*, uword*) { abort(); }
+uword toit_v2_try_allocate_large_integer(void*, int64) { abort(); }
+uword toit_v2_try_allocate_double(void*, uint64) { abort(); }
+uword toit_v2_try_allocate_array(void*, uword, uword) { abort(); }
+uword toit_v2_try_allocate_string(void*, uword) { abort(); }
+uword toit_v2_try_allocate_byte_array(void*, uword) { abort(); }
+void toit_v2_primitive_gc(void*, uword) { abort(); }
+void toit_v2_leave_primitive(void*) { abort(); }
 uword toit_v2_call_primitive(void*, const void*, uword, uword, uword*) { abort(); }
 void toit_v2_report(void*, uword, uword, uword) { abort(); }
 }
@@ -258,11 +265,28 @@ int main() {
     { "ROOT_OUT_OF_MEMORY_ERROR", Program::out_of_memory_error_INDEX, false },
     { "ROOT_ERROR", Program::ERROR_INDEX, false },
     { "ROOT_STACK_OVERFLOW", Program::STACK_OVERFLOW_INDEX, false },
+    { "ROOT_EMPTY_ARRAY", Program::empty_array_INDEX, false },
+    { "ROOT_ALLOCATION_FAILED", Program::ALLOCATION_FAILED_INDEX, false },
+    { "ROOT_DIVISION_BY_ZERO", Program::DIVISION_BY_ZERO_INDEX, false },
+    { "ROOT_ILLEGAL_UTF_8", Program::ILLEGAL_UTF_8_INDEX, false },
+    { "ROOT_INVALID_ARGUMENT", Program::INVALID_ARGUMENT_INDEX, false },
+    { "ROOT_NEGATIVE_ARGUMENT", Program::NEGATIVE_ARGUMENT_INDEX, false },
+    { "ROOT_OUT_OF_BOUNDS", Program::OUT_OF_BOUNDS_INDEX, false },
+    { "ROOT_OUT_OF_RANGE", Program::OUT_OF_RANGE_INDEX, false },
+    { "ROOT_PERMISSION_DENIED", Program::PERMISSION_DENIED_INDEX, false },
+    { "ROOT_WRONG_OBJECT_TYPE", Program::WRONG_OBJECT_TYPE_INDEX, false },
+    { "ROOT_WRONG_BYTES_TYPE", Program::WRONG_BYTES_TYPE_INDEX, false },
     { "ROOT_COUNT", Program::ROOT_COUNT, false },
     { "BUILTIN_COUNT", Program::BUILTIN_CLASS_IDS_COUNT, false },
     { "ENTRY_POINT_COUNT", Program::ENTRY_POINTS_COUNT, false },
     { "INVOKE_OFFSET_COUNT", static_cast<uword>(INVOKE_SIZE - INVOKE_EQ + 1), false },
+    { "BUILTIN_STRING", Program::string_class_id_INDEX, false },
     { "BUILTIN_ARRAY", Program::array_class_id_INDEX, false },
+    { "BUILTIN_BYTE_ARRAY", Program::byte_array_class_id_INDEX, false },
+    { "BUILTIN_STRING_SLICE", Program::string_slice_class_id_INDEX, false },
+    { "BUILTIN_STRING_BYTE_SLICE", Program::string_byte_slice_class_id_INDEX, false },
+    { "BUILTIN_DOUBLE", Program::double_class_id_INDEX, false },
+    { "BUILTIN_LARGE_INTEGER", Program::large_integer_class_id_INDEX, false },
     { "BUILTIN_BYTE_ARRAY_COW", Program::byte_array_cow_class_id_INDEX, false },
     { "BUILTIN_BYTE_ARRAY_SLICE", Program::byte_array_slice_class_id_INDEX, false },
     { "BUILTIN_LIST", Program::list_class_id_INDEX, false },
@@ -376,6 +400,28 @@ int main() {
   if (HeapObject::CLASS_ID_MASK != static_cast<uword>(-1)) {
     printf("FAIL: CLASS_ID_MASK\n");
     failures++;
+  }
+  // The core module's primitive table (verified/core/src/prims/index.rs).
+  {
+    struct Prim { const char* name; int arity; };
+    static const Prim prims[] = {
+#define PRIM(name, arity) { #name, arity },
+      MODULE_CORE(PRIM)
+#undef PRIM
+    };
+    const uword prim_count = sizeof(prims) / sizeof(prims[0]);
+    if (toit_vcore_prim_count() != prim_count) fail("core primitive count", toit_vcore_prim_count(), prim_count);
+    for (uword i = 0; i < toit_vcore_prim_count(); i++) {
+      const char* name;
+      uword index, arity;
+      if (!toit_vcore_prim_entry(i, &name, &index, &arity) || index >= prim_count ||
+          strcmp(prims[index].name, name) != 0) {
+        printf("FAIL: core primitive entry %lu\n", static_cast<unsigned long>(i));
+        failures++;
+      } else if (static_cast<uword>(prims[index].arity) != arity) {
+        fail(name, arity, prims[index].arity);
+      }
+    }
   }
   // Opcode lengths.
   for (int op = 0; op < V2_OPCODE_COUNT; op++) {

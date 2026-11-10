@@ -406,6 +406,307 @@ impl Heap {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Primitives (src/prims): numbers, strings and byte arrays. The heap model
+// `obj_model_ok` (abs.rs) relates only instances and arrays to memory; the
+// accessors below relate the other bodies the primitives read and write.
+
+/// The bytes of a string or byte array.
+pub open spec fn content(o: HeapObj) -> Seq<u8> {
+    match o.body {
+        Body::Str(s) => s,
+        Body::Bytes(b) => b,
+        _ => Seq::empty(),
+    }
+}
+
+pub open spec fn is_blob(o: HeapObj) -> bool {
+    o.body is Str || o.body is Bytes
+}
+
+/// `o` with its bytes replaced by `s` (same kind of body).
+pub open spec fn with_content(o: HeapObj, s: Seq<u8>) -> HeapObj {
+    HeapObj {
+        body: match o.body {
+            Body::Str(_) => Body::Str(s),
+            Body::Bytes(_) => Body::Bytes(s),
+            b => b,
+        },
+        ..o
+    }
+}
+
+/// The class tag of class `cid` (`abs::tag_bits`).
+pub open spec fn class_tag_of(cb: Seq<u16>, cid: int) -> int {
+    (cb[cid] & 0xfu16) as int
+}
+
+/// The bytes of a string or byte array (`Heap::string_content`,
+/// `Heap::byte_array_content`): the object `id()` of the heap model,
+/// `slen()` bytes. Valid until the next GC point: primitives never reach
+/// one (they report an allocation failure instead, `prims::PrimOutcome`),
+/// so a `Content` never outlives the primitive call that created it.
+#[verifier::external_body]
+pub struct Content {
+    ptr: *mut u8,
+    len: usize,
+}
+
+impl Content {
+    pub uninterp spec fn id(&self) -> int;
+
+    pub uninterp spec fn slen(&self) -> nat;
+
+    /// The bytes may be written: a string or a byte array with inline or
+    /// raw external bytes, outside the program heap.
+    pub uninterp spec fn writable(&self) -> bool;
+
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn len(&self) -> (r: usize)
+        ensures r == self.slen(),
+    {
+        self.len
+    }
+}
+
+/// A content view of object `c.id()` of the heap: its bytes are `c.slen()`
+/// long.
+pub open spec fn content_ok(h: &Heap, c: &Content) -> bool {
+    &&& 0 <= c.id() < h.objs().len()
+    &&& is_blob(h.objs()[c.id()])
+    &&& content(h.objs()[c.id()]).len() == c.slen()
+}
+
+/// `new` is `old` with one object appended at the tagged address `r`, which
+/// is new and outside the program heap (`ro_start..ro_start+ro_size`); the
+/// model stays below 2^30 objects.
+pub open spec fn appended(old: &Heap, new: &Heap, r: usize, ro_start: usize, ro_size: usize) -> bool {
+    let n = old.objs().len();
+    &&& new.objs().len() == n + 1
+    &&& new.addrs().len() == n + 1
+    &&& old.addrs().len() == n
+    &&& new.objs().subrange(0, n as int) == old.objs()
+    &&& new.addrs().subrange(0, n as int) == old.addrs()
+    &&& new.addrs()[n as int] == r
+    &&& new.class_bits() == old.class_bits()
+    &&& r & 3 == 1
+    &&& forall|i: int| 0 <= i < n ==> #[trigger] old.addrs()[i] != r
+    &&& !(ro_start <= r && r < ro_start + ro_size)
+    &&& !new.objs()[n as int].ro
+    &&& n + 1 < 0x4000_0000
+}
+
+impl Heap {
+    /// TRUSTED (heap integrity V2, for the bodies `obj_model_ok` leaves
+    /// open): an object is a string, byte array, double or large integer
+    /// exactly if its class has that tag (the tag in its header).
+    #[verifier::external_body]
+    pub proof fn lemma_body_tag(&self, id: int)
+        requires
+            0 <= id < self.objs().len(),
+            (self.objs()[id].class_id as int) < self.class_bits().len(),
+        ensures ({
+            let o = self.objs()[id];
+            let t = class_tag_of(self.class_bits(), o.class_id as int);
+            &&& (o.body is Str) == (t == STRING_TAG as int)
+            &&& (o.body is Bytes) == (t == BYTE_ARRAY_TAG as int)
+            &&& (o.body is Double) == (t == DOUBLE_TAG as int)
+            &&& (o.body is LargeInt) == (t == LARGE_INTEGER_TAG as int)
+        }),
+    {
+    }
+
+    /// The value of the large integer `id`.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn large_integer_value(&self, obj: usize, Ghost(id): Ghost<int>) -> (r: i64)
+        requires
+            0 <= id < self.objs().len(),
+            self.addrs().len() == self.objs().len(),
+            obj == self.addrs()[id],
+            self.objs()[id].body is LargeInt,
+        ensures r == self.objs()[id].body->LargeInt_0,
+    {
+        unsafe { *((obj - HEAP_TAG) as *const i64).add(LARGE_INTEGER_VALUE_WORD) }
+    }
+
+    /// The bits of the double `id`.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn double_bits(&self, obj: usize, Ghost(id): Ghost<int>) -> (r: u64)
+        requires
+            0 <= id < self.objs().len(),
+            self.addrs().len() == self.objs().len(),
+            obj == self.addrs()[id],
+            self.objs()[id].body is Double,
+        ensures r == self.objs()[id].body->Double_0,
+    {
+        unsafe { *((obj - HEAP_TAG) as *const u64).add(DOUBLE_VALUE_WORD) }
+    }
+
+    /// The bytes of the string `id` (inline or external). Writable exactly
+    /// when the string is not in the program heap.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn string_content(&self, obj: usize, Ghost(id): Ghost<int>) -> (r: Content)
+        requires
+            0 <= id < self.objs().len(),
+            self.addrs().len() == self.objs().len(),
+            obj == self.addrs()[id],
+            self.objs()[id].body is Str,
+        ensures
+            r.id() == id,
+            r.slen() == content(self.objs()[id]).len(),
+            r.writable() == !self.objs()[id].ro,
+    {
+        unsafe {
+            let base = (obj - HEAP_TAG) as *mut u8;
+            let internal = *(base.add(STRING_INTERNAL_LENGTH_BYTE) as *const u32) as usize;
+            if internal != STRING_SENTINEL {
+                Content { ptr: base.add(STRING_CONTENT_BYTE), len: internal }
+            } else {
+                let words = base as *const usize;
+                Content {
+                    ptr: *words.add(STRING_EXTERNAL_ADDRESS_WORD) as *mut u8,
+                    len: *words.add(STRING_EXTERNAL_LENGTH_WORD),
+                }
+            }
+        }
+    }
+
+    /// The bytes of the byte array `id` if they are plain bytes: inline, or
+    /// external with the raw-bytes tag, or (only if `!for_write`) the
+    /// mapped-file tag (`ByteArray::Bytes` as `byte_array_at` and
+    /// `byte_array_at_put` accept them). None for external structs (the
+    /// resource proxies) and a corrupt external array (no address but a
+    /// length). Writable when `for_write` and not in the program heap.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn byte_array_content(&self, obj: usize, Ghost(id): Ghost<int>, for_write: bool) -> (r: Option<Content>)
+        requires
+            0 <= id < self.objs().len(),
+            self.addrs().len() == self.objs().len(),
+            obj == self.addrs()[id],
+            self.objs()[id].body is Bytes,
+        ensures
+            r is Some ==> r->Some_0.id() == id
+                && r->Some_0.slen() == content(self.objs()[id]).len()
+                && r->Some_0.writable() == (for_write && !self.objs()[id].ro),
+    {
+        unsafe {
+            let base = (obj - HEAP_TAG) as *mut u8;
+            let words = base as *const usize;
+            let raw = *words.add(BYTE_ARRAY_LENGTH_WORD) as i64;
+            if raw >= 0 {
+                return Some(Content { ptr: base.add(BYTE_ARRAY_CONTENT_BYTE), len: raw as usize });
+            }
+            let tag = *words.add(BYTE_ARRAY_EXTERNAL_TAG_WORD);
+            if tag != RAW_BYTE_TAG && (for_write || tag != MAPPED_FILE_TAG) { return None; }
+            let address = *words.add(BYTE_ARRAY_EXTERNAL_ADDRESS_WORD);
+            let len = (-1 - raw) as usize;
+            if address == 0 && len != 0 { return None; }
+            Some(Content { ptr: address as *mut u8, len })
+        }
+    }
+
+    /// Byte `i` of a content view.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn content_at(&self, c: &Content, i: usize) -> (r: u8)
+        requires content_ok(self, c), i < c.slen(),
+        ensures r == content(self.objs()[c.id()])[i as int],
+    {
+        unsafe { *c.ptr.add(i) }
+    }
+
+    /// Stores byte `i` of a writable content view.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn content_set(&mut self, c: &Content, i: usize, v: u8)
+        requires content_ok(old(self), c), i < c.slen(), c.writable(),
+        ensures
+            final(self).objs() == old(self).objs().update(c.id(),
+                with_content(old(self).objs()[c.id()], content(old(self).objs()[c.id()]).update(i as int, v))),
+            final(self).addrs() == old(self).addrs(),
+            final(self).class_bits() == old(self).class_bits(),
+    {
+        unsafe { *c.ptr.add(i) = v }
+    }
+
+    /// memmove of `n` bytes from `src[from..]` to `dst[to..]` (`dst`
+    /// writable; the views may be of the same object).
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn content_copy(&mut self, dst: &Content, to: usize, src: &Content, from: usize, n: usize)
+        requires
+            content_ok(old(self), dst), content_ok(old(self), src), dst.writable(),
+            to + n <= dst.slen(), from + n <= src.slen(),
+        ensures
+            final(self).objs() == old(self).objs().update(dst.id(),
+                with_content(old(self).objs()[dst.id()], Seq::new(dst.slen(), |k: int|
+                    if to <= k < to + n { content(old(self).objs()[src.id()])[k - to + from] }
+                    else { content(old(self).objs()[dst.id()])[k] }))),
+            final(self).addrs() == old(self).addrs(),
+            final(self).class_bits() == old(self).class_bits(),
+    {
+        unsafe { core::ptr::copy(src.ptr.add(from), dst.ptr.add(to), n) }
+    }
+
+    /// memset of `n` bytes at `dst[to..]`.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn content_fill(&mut self, dst: &Content, to: usize, n: usize, v: u8)
+        requires content_ok(old(self), dst), dst.writable(), to + n <= dst.slen(),
+        ensures
+            final(self).objs() == old(self).objs().update(dst.id(),
+                with_content(old(self).objs()[dst.id()], Seq::new(dst.slen(), |k: int|
+                    if to <= k < to + n { v } else { content(old(self).objs()[dst.id()])[k] }))),
+            final(self).addrs() == old(self).addrs(),
+            final(self).class_bits() == old(self).class_bits(),
+    {
+        unsafe { core::ptr::write_bytes(dst.ptr.add(to), v, n) }
+    }
+
+    /// memmove of `n` elements from `src[from..]` to `dst[to..]` of two
+    /// arrays (possibly the same), with the write barrier on `dst`.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn array_copy(&mut self, dst: usize, to: usize, src: usize, from: usize, n: usize,
+                      Ghost(d): Ghost<int>, Ghost(s): Ghost<int>)
+        requires
+            0 <= d < old(self).objs().len(),
+            0 <= s < old(self).objs().len(),
+            old(self).addrs().len() == old(self).objs().len(),
+            dst == old(self).addrs()[d],
+            src == old(self).addrs()[s],
+            old(self).objs()[d].body is Array,
+            old(self).objs()[s].body is Array,
+            !old(self).objs()[d].ro,
+            to + n <= old(self).objs()[d].body->Array_0.len(),
+            from + n <= old(self).objs()[s].body->Array_0.len(),
+        ensures
+            final(self).objs() == old(self).objs().update(d, HeapObj {
+                body: Body::Array(Seq::new(old(self).objs()[d].body->Array_0.len(), |k: int|
+                    if to <= k < to + n { old(self).objs()[s].body->Array_0[k - to + from] }
+                    else { old(self).objs()[d].body->Array_0[k] })),
+                ..old(self).objs()[d]
+            }),
+            final(self).addrs() == old(self).addrs(),
+            final(self).class_bits() == old(self).class_bits(),
+    {
+        unsafe {
+            let d = ((dst - HEAP_TAG) as *mut usize).add(ARRAY_ELEMENTS_WORD);
+            let s = ((src - HEAP_TAG) as *const usize).add(ARRAY_ELEMENTS_WORD);
+            core::ptr::copy(s.add(from), d.add(to), n);
+            if n != 0 {
+                let card = ((dst - HEAP_TAG) >> CARD_SIZE_LOG_2).wrapping_add(self.remembered_set_bias);
+                *(card as *mut u8) = NEW_SPACE_POINTERS;
+            }
+        }
+    }
+}
+
 /// The preemption flag: the interpreter's watermark, set to
 /// `PREEMPTION_MARKER` by the scheduler from another thread. No contract:
 /// its value is environment nondeterminism.

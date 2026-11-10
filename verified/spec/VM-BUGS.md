@@ -141,6 +141,19 @@ encoder-cyclic-array-stack-overflow.snapshot). Fix: bound the nesting
 depth: https://github.com/toitlang/toit/pull/3374 (also fixes an
 over-read in `core.encode_object` when its 1 KB buffer overflows).
 
+## `smi_subtract` misses overflow for a non-negative receiver (primitive port)
+
+Found by comparing the Rust port of the integer primitives
+(verified/core/src/prims/ints.rs) with the C++ (core/primitives).
+`PRIMITIVE(smi_subtract)` (src/primitive_core.cc) checks overflow with
+`receiver < 0 && other > MAX + receiver` and
+`receiver > 0 && other < MIN + receiver`. The second bound is off by one
+and receiver 0 is not covered, so `0 - MIN_SMI` and
+`MAX_SMI - (-1)` (both 2^62) become `Smi::from(2^62)`, which wraps to
+-2^62. Format 1 and 2: `print 0 - (-4611686018427387904)` prints
+-4611686018427387904. Fix: compute `(int64) receiver - other` (it cannot
+overflow 64 bits) and return `Primitive::integer` of it.
+
 ## Observations (not bugs today)
 
 * `Object::mutable_byte_content` (`src/objects_runtime.cc`) makes an

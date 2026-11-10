@@ -22,6 +22,7 @@ use core::ffi::c_void;
 use core::sync::atomic::AtomicUsize;
 use crate::layout::*;
 use crate::view::*;
+use toit_spec::types::{HeapObj, Body, Value};
 
 verus! {
 
@@ -94,7 +95,14 @@ extern "C" {
     fn toit_v2_allocate_array(process: *mut c_void, length: usize, filler: usize) -> usize;
     fn toit_v2_grow_stack(process: *mut c_void, needed: usize) -> usize;
     fn toit_v2_lookup_primitive(process: *mut c_void, module: usize, index: usize,
-                                entry: *mut *const c_void, arity: *mut usize) -> usize;
+                                entry: *mut *const c_void, arity: *mut usize, rust: *mut usize) -> usize;
+    fn toit_v2_try_allocate_large_integer(process: *mut c_void, value: i64) -> usize;
+    fn toit_v2_try_allocate_double(process: *mut c_void, bits: u64) -> usize;
+    fn toit_v2_try_allocate_array(process: *mut c_void, length: usize, filler: usize) -> usize;
+    fn toit_v2_try_allocate_string(process: *mut c_void, length: usize) -> usize;
+    fn toit_v2_try_allocate_byte_array(process: *mut c_void, length: usize) -> usize;
+    fn toit_v2_primitive_gc(process: *mut c_void, attempt: usize);
+    fn toit_v2_leave_primitive(process: *mut c_void);
     fn toit_v2_call_primitive(process: *mut c_void, entry: *const c_void, arity: usize,
                               first_argument: usize, result: *mut usize) -> usize;
     fn toit_v2_report(process: *mut c_void, kind: usize, bci: usize, detail: usize);
@@ -102,10 +110,22 @@ extern "C" {
 
 verus! {
 
-/// A C++ primitive found in the process' policy.
+/// A C++ primitive found in the process' policy. `rust`: the policy
+/// resolves it to the VM's own primitive (not a denying stub) and the Rust
+/// primitives are enabled (`TOIT_V2_RUST_PRIMITIVES=1`), so the core may run
+/// its Rust port (src/prims) instead.
 #[verifier::external_body]
 pub struct PrimitiveRef {
     entry: *const c_void,
+    rust: bool,
+}
+
+impl PrimitiveRef {
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn rust(&self) -> bool {
+        self.rust
+    }
 }
 
 /// The C++ functions the core calls (src/interpreter_v2.h). Each that may
@@ -176,8 +196,31 @@ impl Runtime {
     pub fn lookup_primitive(&self, module: usize, index: usize) -> (r: Option<(PrimitiveRef, usize)>) {
         let mut entry: *const c_void = core::ptr::null();
         let mut arity: usize = 0;
-        let found = unsafe { toit_v2_lookup_primitive(self.process, module, index, &mut entry, &mut arity) };
-        if found == V2_PRIMITIVE_FOUND { Some((PrimitiveRef { entry }, arity)) } else { None }
+        let mut rust: usize = 0;
+        let found = unsafe { toit_v2_lookup_primitive(self.process, module, index, &mut entry, &mut arity, &mut rust) };
+        if found == V2_PRIMITIVE_FOUND { Some((PrimitiveRef { entry, rust: rust != 0 }, arity)) } else { None }
+    }
+
+    /// The allocator of the Rust primitives (allocation without GC).
+    #[verifier::external_body]
+    pub fn allocator(&self) -> Allocator {
+        Allocator { process: self.process }
+    }
+
+    /// MAY GC. The collection a primitive asks for when an allocation
+    /// failed (`attempt` 1..3, as the C++ primitive path); attempt 3 only
+    /// reports. The stack view is replaced.
+    #[verifier::external_body]
+    pub fn primitive_gc(&self, stack: &mut StackMem, attempt: usize) {
+        unsafe { toit_v2_primitive_gc(self.process, attempt) };
+        *stack = self.stack();
+    }
+
+    /// Installs a heap limit a GC during a primitive deferred
+    /// (`ObjectHeap::leave_primitive`).
+    #[verifier::external_body]
+    pub fn leave_primitive(&self) {
+        unsafe { toit_v2_leave_primitive(self.process) }
     }
 
     /// MAY GC, may switch the current task. Calls the primitive with its
@@ -193,6 +236,93 @@ impl Runtime {
     #[verifier::external_body]
     pub fn report(&self, kind: usize, bci: usize, detail: usize) {
         unsafe { toit_v2_report(self.process, kind, bci, detail) }
+    }
+}
+
+/// Allocation for the Rust primitives (src/prims). Never collects garbage:
+/// when the heap is full (or the process is over its limit, or malloc
+/// fails for external bytes) the result is 0 and the heap is unchanged; the
+/// primitive then reports `PrimOutcome::NeedsGc` and the caller collects
+/// and retries the whole primitive (the C++ `ALLOCATION_FAILED` protocol).
+/// TRUSTED: each allocation appends exactly one object of the program's
+/// builtin class (`p.ap@.builtin[k]`) at a fresh address outside the
+/// program heap (`view::appended`), with the stated body; the memory of
+/// every other object is untouched.
+#[verifier::external_body]
+pub struct Allocator {
+    process: *mut c_void,
+}
+
+impl Allocator {
+    /// `Primitive::allocate_large_integer` without the error marking.
+    #[verifier::external_body]
+    pub fn large_integer(&self, heap: &mut Heap, p: &crate::exec::Program, v: i64) -> (r: usize)
+        ensures
+            r == 0 ==> *final(heap) == *old(heap),
+            r != 0 ==> appended(old(heap), final(heap), r, p.ro_start, p.ro_size)
+                && final(heap).objs().last() == (HeapObj {
+                    class_id: p.ap@.builtin[BUILTIN_LARGE_INTEGER as int], ro: false, body: Body::LargeInt(v) }),
+    {
+        unsafe { toit_v2_try_allocate_large_integer(self.process, v) }
+    }
+
+    /// A double with the given bits.
+    #[verifier::external_body]
+    pub fn double(&self, heap: &mut Heap, p: &crate::exec::Program, bits: u64) -> (r: usize)
+        ensures
+            r == 0 ==> *final(heap) == *old(heap),
+            r != 0 ==> appended(old(heap), final(heap), r, p.ro_start, p.ro_size)
+                && final(heap).objs().last() == (HeapObj {
+                    class_id: p.ap@.builtin[BUILTIN_DOUBLE as int], ro: false, body: Body::Double(bits) }),
+    {
+        unsafe { toit_v2_try_allocate_double(self.process, bits) }
+    }
+
+    /// An array of `length` elements (at most `ARRAYLET_SIZE`), each the
+    /// value `fv` encoded by `filler`.
+    #[verifier::external_body]
+    pub fn array(&self, heap: &mut Heap, p: &crate::exec::Program, length: usize, filler: usize,
+                 Ghost(fv): Ghost<Value>) -> (r: usize)
+        requires
+            length <= ARRAYLET_SIZE,
+            filler == crate::abs::enc(old(heap).addrs(), fv),
+        ensures
+            r == 0 ==> *final(heap) == *old(heap),
+            r != 0 ==> appended(old(heap), final(heap), r, p.ro_start, p.ro_size)
+                && final(heap).objs().last() == (HeapObj {
+                    class_id: p.ap@.builtin[BUILTIN_ARRAY as int], ro: false,
+                    body: Body::Array(Seq::new(length as nat, |i: int| fv)) }),
+    {
+        unsafe { toit_v2_try_allocate_array(self.process, length, filler) }
+    }
+
+    /// A string of `length` bytes (`Process::allocate_string`: inline, or
+    /// external malloced memory for long strings); its bytes are
+    /// uninitialized: the primitive writes all of them before returning.
+    #[verifier::external_body]
+    pub fn string(&self, heap: &mut Heap, p: &crate::exec::Program, length: usize) -> (r: usize)
+        ensures
+            r == 0 ==> *final(heap) == *old(heap),
+            r != 0 ==> appended(old(heap), final(heap), r, p.ro_start, p.ro_size)
+                && final(heap).objs().last().class_id == p.ap@.builtin[BUILTIN_STRING as int]
+                && final(heap).objs().last().body is Str
+                && content(final(heap).objs().last()).len() == length,
+    {
+        unsafe { toit_v2_try_allocate_string(self.process, length) }
+    }
+
+    /// A byte array of `length` zero bytes (`Process::allocate_byte_array`:
+    /// inline, or external raw bytes for long arrays).
+    #[verifier::external_body]
+    pub fn byte_array(&self, heap: &mut Heap, p: &crate::exec::Program, length: usize) -> (r: usize)
+        ensures
+            r == 0 ==> *final(heap) == *old(heap),
+            r != 0 ==> appended(old(heap), final(heap), r, p.ro_start, p.ro_size)
+                && final(heap).objs().last() == (HeapObj {
+                    class_id: p.ap@.builtin[BUILTIN_BYTE_ARRAY as int], ro: false,
+                    body: Body::Bytes(Seq::new(length as nat, |i: int| 0u8)) }),
+    {
+        unsafe { toit_v2_try_allocate_byte_array(self.process, length) }
     }
 }
 
@@ -292,7 +422,12 @@ layout_table!(
     FRAME_WORDS, FRAME_METHOD, FRAME_RET, FRAME_BASE, FRAME_HANDLER, STACK_RESERVE,
     FIN_WORDS, FIN_FRAME, FIN_HEIGHT, FIN_RESUME, FIN_TARGET,
     ROOT_NULL, ROOT_TRUE, ROOT_FALSE, ROOT_OUT_OF_MEMORY_ERROR, ROOT_ERROR, ROOT_STACK_OVERFLOW,
+    ROOT_EMPTY_ARRAY, ROOT_ALLOCATION_FAILED, ROOT_DIVISION_BY_ZERO, ROOT_ILLEGAL_UTF_8,
+    ROOT_INVALID_ARGUMENT, ROOT_NEGATIVE_ARGUMENT, ROOT_OUT_OF_BOUNDS, ROOT_OUT_OF_RANGE,
+    ROOT_PERMISSION_DENIED, ROOT_WRONG_OBJECT_TYPE, ROOT_WRONG_BYTES_TYPE,
     ROOT_COUNT, BUILTIN_COUNT, ENTRY_POINT_COUNT, INVOKE_OFFSET_COUNT,
+    BUILTIN_STRING, BUILTIN_BYTE_ARRAY, BUILTIN_STRING_SLICE, BUILTIN_STRING_BYTE_SLICE,
+    BUILTIN_DOUBLE, BUILTIN_LARGE_INTEGER,
     BUILTIN_ARRAY, BUILTIN_BYTE_ARRAY_COW, BUILTIN_BYTE_ARRAY_SLICE, BUILTIN_LIST, BUILTIN_OBJECT,
     BUILTIN_SMI, BUILTIN_TASK, BUILTIN_LARGE_ARRAY, BUILTIN_LAZY_INITIALIZER, BUILTIN_EXCEPTION,
     ENTRY_MAIN, ENTRY_SPAWN, ENTRY_TASK, ENTRY_RUN_GLOBAL_INITIALIZER, ARRAYLET_SIZE,
@@ -401,6 +536,30 @@ pub unsafe extern "C" fn toit_vcore_layout_entry(i: usize, name: *mut *const u8,
         Some((n, v)) => {
             *name = n.as_ptr();
             *value = *v;
+            true
+        }
+    }
+}
+
+/// Number of entries of the core module's primitive table the Rust
+/// primitives use (src/prims/index.rs), for the layout check.
+#[no_mangle]
+pub extern "C" fn toit_vcore_prim_count() -> usize {
+    crate::prims::index::TABLE.len()
+}
+
+/// Primitive table entry `i`: its NUL-terminated name, index and arity.
+///
+/// # Safety
+/// `name`, `index` and `arity` must be valid for writes.
+#[no_mangle]
+pub unsafe extern "C" fn toit_vcore_prim_entry(i: usize, name: *mut *const u8, index: *mut usize, arity: *mut usize) -> bool {
+    match crate::prims::index::TABLE.get(i) {
+        None => false,
+        Some((n, x, a)) => {
+            *name = n.as_ptr();
+            *index = *x;
+            *arity = *a;
             true
         }
     }
