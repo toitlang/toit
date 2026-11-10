@@ -30,7 +30,7 @@ use std::collections::BTreeMap;
 use std::io::Write;
 use toit_spec::interp::{loader, prims, system, End, Halt, Machine, Step};
 use toit_spec::v2::bytecodes::OPCODE_LENGTHS2;
-use toit_spec::v2::{check, infer};
+use toit_spec::v2::infer;
 
 struct Rng(u64);
 
@@ -204,8 +204,7 @@ fn main() {
             loaded.program.bytecodes = bytes;
             loaded.program.method_start = vec![false; loaded.program.bytecodes.len()];
             loaded.program.methods = table;
-            let inferred = infer::infer(&loaded.program, globals, false);
-            if !check::verify(&loaded.program, &inferred.cert, false) {
+            if !infer::verify_exec(&loaded.program, globals as u64, false) {
                 *totals.entry("rejected".into()).or_default() += 1;
                 continue;
             }

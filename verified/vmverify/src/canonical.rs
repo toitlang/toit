@@ -26,8 +26,8 @@
 
 use std::collections::HashMap;
 use std::fmt::Write;
-use toit_spec::interp::loader::Loaded;
-use toit_spec::types::{ExecBody, Value};
+use toit_spec::types::{ExecBody, ExecObj, Value};
+use toit_spec::v2::vprog::VProgram;
 
 fn hex(out: &mut String, bytes: &[u8]) {
     if bytes.is_empty() {
@@ -47,7 +47,7 @@ fn list<T: std::fmt::Display>(out: &mut String, name: &str, values: &[T]) {
 }
 
 struct Numbering<'a> {
-    l: &'a Loaded,
+    heap: &'a [ExecObj],
     ids: HashMap<usize, usize>,
     order: Vec<usize>,
 }
@@ -57,7 +57,7 @@ impl<'a> Numbering<'a> {
         match v {
             Value::Smi(i) => { let _ = write!(out, " i{}", i); }
             Value::Obj(id) => {
-                if let Some(o) = self.l.heap.get(*id) {
+                if let Some(o) = self.heap.get(*id) {
                     if let ExecBody::LargeInt(i) = o.body {
                         let _ = write!(out, " L{}", i);
                         return;
@@ -83,39 +83,38 @@ impl<'a> Numbering<'a> {
 
 /// The canonical form. `prim_arity` is the primitive table the verifier
 /// uses for this program.
-pub fn canonical(l: &Loaded, prim_arity: &[Vec<u8>]) -> String {
-    let p = &l.program;
+pub fn canonical(p: &VProgram, heap: &[ExecObj], globals: &[Value], prim_arity: &[Vec<u8>]) -> String {
     let mut out = String::new();
-    let _ = writeln!(out, "format {} word_bits {}", l.format, p.word_bits);
+    let _ = writeln!(out, "format {} word_bits {}", 2, p.word_bits);
     let _ = write!(out, "bytecodes {} ", p.bytecodes.len());
     hex(&mut out, &p.bytecodes);
     out.push('\n');
     let _ = writeln!(out, "methods {}", p.methods.len());
-    for m in &p.methods {
-        let _ = writeln!(out, "m {} {} {} {} {} {} {} {} {}", m.arity, m.kind, m.max_height, m.selector, m.aux,
+    for m in p.methods {
+        let _ = writeln!(out, "m {} {} {} {} {} {} {} {} {}", m.arity, m.kind, p.max_height, m.selector, m.aux,
                          m.recv_start, m.recv_end, m.entry, m.end);
     }
-    list(&mut out, "dispatch", &p.dispatch);
-    list(&mut out, "class_bits", &p.class_bits);
-    list(&mut out, "class_check_ids", &p.class_check_ids);
-    list(&mut out, "interface_check_offsets", &p.interface_check_offsets);
-    list(&mut out, "invoke_offsets", &p.invoke_offsets);
-    list(&mut out, "entry_points", &p.entry_points);
-    list(&mut out, "builtin", &p.builtin);
+    list(&mut out, "dispatch", p.dispatch);
+    list(&mut out, "class_bits", p.class_bits);
+    list(&mut out, "class_check_ids", p.class_check_ids);
+    list(&mut out, "interface_check_offsets", p.interface_check_offsets);
+    list(&mut out, "invoke_offsets", p.invoke_offsets);
+    list(&mut out, "entry_points", p.entry_points);
+    list(&mut out, "builtin", p.builtin);
     let _ = writeln!(out, "primitive_modules {}", prim_arity.len());
     for a in prim_arity {
         list(&mut out, "pm", a);
     }
-    let mut n = Numbering { l, ids: HashMap::new(), order: Vec::new() };
-    n.values(&mut out, "roots", &p.roots);
-    n.values(&mut out, "globals", &l.globals);
-    n.values(&mut out, "literals", &p.literals);
+    let mut n = Numbering { heap, ids: HashMap::new(), order: Vec::new() };
+    n.values(&mut out, "roots", p.roots);
+    n.values(&mut out, "globals", globals);
+    n.values(&mut out, "literals", p.literals);
     // Breadth first: printing an object numbers the objects it references.
     let mut objects = String::new();
     let mut next = 0;
     while next < n.order.len() {
         let id = n.order[next];
-        let o = &l.heap[id];
+        let o = &heap[id];
         let _ = write!(objects, "o {} {} {}", next, o.class_id, o.ro);
         match &o.body {
             ExecBody::Instance(f) => n.values(&mut objects, " instance", f),

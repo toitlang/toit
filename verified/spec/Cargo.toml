@@ -35,4 +35,5 @@ debug = 1
 # the `verus_only` cfg is set by Verus during verification.
 unexpected_cfgs = { level = "warn", check-cfg = [
   'cfg(verus_only)',
+  'cfg(verus_keep_ghost)',
 ] }

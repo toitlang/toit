@@ -15,38 +15,67 @@
 
 //! Certificate inference for the structural verifier (untrusted).
 //!
-//! Computes the stack maps, block-parameter masks, block contexts and
-//! selector representatives of `v2::verifier::Cert` by abstract
-//! interpretation, using the verified transfer function `x_post`. Nothing
-//! here is trusted: `v2::check::verify` checks the result, and a wrong
-//! certificate can only make the verifier reject.
+//! Computes a certificate for `v2::check::verify` by abstract
+//! interpretation with the verified transfer function `x_post`. Nothing
+//! here is trusted: the checker decides whatever this produces, and a
+//! wrong certificate can only make it reject.
 //!
-//! Per method the analysis is a worklist over instruction offsets with one
-//! map per offset (arrays, no recursion). Block-parameter masks are a
-//! fixpoint over the whole program: a parameter becomes a block parameter
-//! when a block is passed for it or when the method invokes it. Block
-//! methods are analyzed after the method that creates them, whose maps
-//! give their context.
+//! Memory is bounded by the largest method, not the program:
+//!
+//! 1. `infer_global` computes the global part of the certificate
+//!    (`XGlobal`: block-parameter masks, contexts, selector
+//!    representatives, pins). Block-parameter masks are a fixpoint over
+//!    the whole program (a parameter becomes a block parameter when a block
+//!    is passed for it or when the method invokes it); block methods are
+//!    analyzed after the method that creates them, whose maps give their
+//!    context; non-local branches seed the maps of outer methods. Every
+//!    method's maps are computed and dropped right away; only the global
+//!    facts survive a method.
+//! 2. `Oracle` (a `check::MapOracle`) recomputes one method's maps at a
+//!    time for the checker, with the global part frozen.
+//!
+//! Per method the analysis is a worklist over instruction offsets; the
+//! map at an offset is a node of a list of kinds that shares its bottom
+//! with the maps it came from (`XMaps`), so a method with `i` instructions
+//! costs about 4 bytes per bytecode byte plus 17 bytes per new slot.
+//!
+//! The inference is total: it never indexes without a bounds check and
+//! calls the verified functions only within their preconditions; any
+//! malformed input ends in an error (and a rejection by the checker), not
+//! a panic.
 
-use crate::types::*;
+use alloc::collections::BTreeMap;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use crate::v2::bytecodes::*;
 use crate::v2::check::*;
-
-pub struct Inferred {
-    pub cert: XCert,
-    /// Why the analysis could not build a certificate the checker accepts
-    /// (method, offset, message). Empty when it found one.
-    pub errors: Vec<(usize, usize, String)>,
-    /// Rounds of the block-parameter fixpoint.
-    pub rounds: usize,
-}
+use crate::v2::vprog::*;
 
 const KIND_BLOCK: u8 = 3;
+/// At most this many inference errors are kept (diagnostics only).
+const MAX_ERRORS: usize = 16;
+/// The block-parameter fixpoint gives up after this many rounds.
+const MAX_ROUNDS: usize = 64;
+const NO_ORIGIN: u8 = 0xff;
 
-fn u16_at(p: &ExecProgram, i: usize) -> usize {
-    p.bytecodes[i] as usize | (p.bytecodes[i + 1] as usize) << 8
+fn u16_at(p: &VProgram, i: usize) -> Option<usize> {
+    let lo = *p.bytecodes.get(i)? as usize;
+    let hi = *p.bytecodes.get(i.checked_add(1)?)? as usize;
+    Some(lo | hi << 8)
 }
 
+fn byte_at(p: &VProgram, i: usize) -> Option<usize> {
+    p.bytecodes.get(i).map(|b| *b as usize)
+}
+
+fn method<'a>(p: &VProgram<'a>, m: usize) -> Option<&'a VMethod> {
+    p.methods.get(m)
+}
+
+/// The join of two kinds lists of the same height (method ids that differ
+/// become values); `None` if they are incompatible.
 fn join(a: &[XKind], b: &[XKind]) -> Option<Vec<XKind>> {
     if a.len() != b.len() {
         return None;
@@ -65,329 +94,531 @@ fn join(a: &[XKind], b: &[XKind]) -> Option<Vec<XKind>> {
     Some(r)
 }
 
-struct Analysis<'a> {
-    p: &'a ExecProgram,
-    trusted: bool,
-    /// Methods sharing each selector offset.
-    groups: Vec<Vec<usize>>,
-    errors: Vec<(usize, usize, String)>,
-    /// Block methods that would need a block parameter (unsupported).
+/// Seeds: maps of outer methods at the targets of non-local branches.
+pub type Seeds = BTreeMap<(u32, u32), Vec<Vec<XKind>>>;
+
+/// The result of the global phase.
+pub struct Global {
+    pub g: XGlobal,
+    /// Methods analyzed in the last round (blocks nobody creates are not).
+    pub done: Vec<bool>,
+    pub seeds: Seeds,
+    /// Why the analysis could not build a certificate the checker accepts
+    /// (method, offset, message); at most `MAX_ERRORS`.
+    pub errors: Vec<(usize, usize, String)>,
+    /// Rounds of the block-parameter fixpoint.
+    pub rounds: usize,
+}
+
+/// What the analysis of one method does to the global facts.
+trait Facts {
+    fn g(&self) -> &XGlobal;
+    /// Block method `t` is created at slot `slot` of `m` with `kinds`.
+    fn context(&mut self, t: usize, m: usize, slot: usize, kinds: &[XKind]);
+    /// Parameter `x` of `t` (and its selector group) is a block parameter.
+    fn mark(&mut self, t: usize, x: usize);
+    /// A non-local branch enters `om` at `target` with `kinds`.
+    fn seed(&mut self, om: usize, target: usize, kinds: Vec<XKind>);
+    fn tracks_origins(&self) -> bool;
+    /// The seeds of method `m`: (offset, kinds).
+    fn seeds_of(&self, m: usize) -> Vec<(usize, Vec<XKind>)>;
+}
+
+fn seeds_in(seeds: &Seeds, m: usize) -> Vec<(usize, Vec<XKind>)> {
+    if m > u32::MAX as usize { return Vec::new(); }
+    seeds.range((m as u32, 0)..=(m as u32, u32::MAX))
+        .filter_map(|(&(_, t), list)| list.first().map(|k| (t as usize, k.clone())))
+        .collect()
+}
+
+/// The global phase: mutates the facts.
+struct Building<'a> {
+    p: &'a VProgram<'a>,
+    g: XGlobal,
+    /// Methods with a selector, sorted by (selector, method).
+    by_sel: Vec<u32>,
+    seeds: Seeds,
     block_marks: Vec<(usize, usize)>,
-    /// Entry points of non-local branches into each method: (offset, kinds).
-    seeds: Vec<Vec<(usize, Vec<XKind>)>>,
-    cur: (usize, usize),
-    /// A block-parameter mask changed: the round must be redone.
     changed: bool,
 }
 
-impl<'a> Analysis<'a> {
-    fn mark(&mut self, c: &mut XCert, t: usize, x: usize) {
-        let sel = self.p.methods[t].selector as usize;
-        let targets: Vec<usize> = if self.p.methods[t].selector != 0xffff { self.groups[sel].clone() } else { vec![t] };
-        for t in targets {
-            if self.p.methods[t].kind == KIND_BLOCK {
-                if !self.block_marks.contains(&(t, x)) {
+impl<'a> Facts for Building<'a> {
+    fn g(&self) -> &XGlobal {
+        &self.g
+    }
+
+    fn context(&mut self, t: usize, m: usize, slot: usize, kinds: &[XKind]) {
+        let g = &mut self.g;
+        let Some(&i) = g.ctx_idx.get(t) else { return };
+        if (i as usize) < g.ctxs.len() {
+            let ctx = &mut g.ctxs[i as usize];
+            if ctx.outer as usize == m && ctx.slot as usize == slot {
+                ctx.kinds.clear();
+                ctx.kinds.extend_from_slice(kinds);
+            }
+        } else if g.ctxs.len() < u32::MAX as usize && m <= u32::MAX as usize && slot <= u32::MAX as usize {
+            g.ctx_idx[t] = g.ctxs.len() as u32;
+            g.ctxs.push(XContext { outer: m as u32, slot: slot as u32, kinds: kinds.to_vec() });
+        }
+    }
+
+    fn mark(&mut self, t: usize, x: usize) {
+        let p = self.p;
+        let Some(info) = method(p, t) else { return };
+        let (lo, hi) = if info.selector != 0xffff {
+            let s = info.selector as u32;
+            let key = |&id: &u32| p.methods.get(id as usize).map(|i| i.selector as u32).unwrap_or(u32::MAX);
+            let lo = self.by_sel.partition_point(|id| key(id) < s);
+            let hi = self.by_sel.partition_point(|id| key(id) <= s);
+            (lo, hi)
+        } else {
+            (0, 0)
+        };
+        let single = [t as u32];
+        let targets: &[u32] = if lo < hi { &self.by_sel[lo..hi] } else { &single };
+        for &t in targets {
+            let t = t as usize;
+            let Some(info) = method(p, t) else { continue };
+            if info.kind == KIND_BLOCK {
+                if !self.block_marks.contains(&(t, x)) && self.block_marks.len() < MAX_ERRORS {
                     self.block_marks.push((t, x));
                 }
                 continue;
             }
-            if x < c.block_params[t].len() && !c.block_params[t][x] {
-                c.block_params[t][x] = true;
-                self.changed = true;
-                if std::env::var("INFER_DEBUG").is_ok() { eprintln!("mark {} {} at {:?}", t, x, self.cur); }
-            }
-        }
-    }
-
-    /// Marks the parameters of `t` that receive blocks, and the
-    /// parameters of `m` that are passed on unchanged for block parameters.
-    fn mark_args(&mut self, c: &mut XCert, m: usize, t: usize, k: &[XKind], org: &[Option<u8>], n: usize) {
-        if n > k.len() { return; }
-        for x in 0..n {
-            let i = k.len() - n + x;
-            if matches!(k[i], XKind::Block(..) | XKind::Param) {
-                self.mark(c, t, x);
-            } else if x < c.block_params[t].len() && c.block_params[t][x] && k[i] == XKind::Val {
-                if let Some(j) = org[i] {
-                    self.mark(c, m, j as usize);
-                }
-            }
-        }
-    }
-
-    /// Analyzes method `m`; returns false when it hit an error (recorded)
-    /// or a mask changed.
-    fn method(&mut self, c: &mut XCert, m: usize) -> bool {
-        let p = self.p;
-        let info = p.methods[m];
-        let size = info.end - info.entry;
-        let mut maps: Vec<Option<Vec<XKind>>> = vec![None; size];
-        // The parameter a slot is an unchanged copy of (for inferring
-        // block parameters that are invoked).
-        let mut origins: Vec<Option<Vec<Option<u8>>>> = vec![None; size];
-        let entry = x_entry_kinds(p, c, m);
-        let a = entry.len();
-        origins[0] = Some((0..a).map(|i| Some(i as u8)).collect());
-        maps[0] = Some(entry);
-        let mut work: Vec<usize> = vec![0];
-        let mut queued = vec![false; size];
-        queued[0] = true;
-        for (t, kt) in self.seeds[m].clone() {
-            if t >= size || t == 0 { continue; }
-            maps[t] = Some(kt.clone());
-            origins[t] = Some(vec![None; kt.len()]);
-            if !queued[t] {
-                queued[t] = true;
-                work.push(t);
-            }
-        }
-        while let Some(off) = work.pop() {
-            queued[off] = false;
-            let k = maps[off].clone().unwrap();
-            let org = origins[off].clone().unwrap();
-            let bci = info.entry + off;
-            let op = p.bytecodes[bci];
-            if op >= 101 {
-                self.errors.push((m, off, format!("invalid opcode {}", op)));
-                return false;
-            }
-            let len = OPCODE_LENGTHS2[op as usize] as usize;
-            if bci + len > info.end {
-                self.errors.push((m, off, "instruction crosses the method end".into()));
-                return false;
-            }
-            let h = k.len();
-            self.cur = (m, off);
-            // Contexts: a block method pushed at slot h is created here.
-            if op == LOAD_METHOD {
-                let t = p.bytecodes[bci + 1] as usize | (u16_at(p, bci + 3) << 16) | ((p.bytecodes[bci + 2] as usize) << 8);
-                if t < p.methods.len() && p.methods[t].kind == KIND_BLOCK {
-                    let mut kinds = k.clone();
-                    kinds.push(XKind::Method(t as u32));
-                    match &mut c.contexts[t] {
-                        None => c.contexts[t] = Some(XContext { outer: m as u32, slot: h as u32, kinds }),
-                        Some(ctx) => if ctx.outer as usize == m && ctx.slot as usize == h { ctx.kinds = kinds; },
+            let g = &mut self.g;
+            let (Some(&a), Some(&b)) = (g.bp_off.get(t), g.bp_off.get(t + 1)) else { continue };
+            let (a, b) = (a as usize, b as usize);
+            if x < b.saturating_sub(a) {
+                if let Some(bit) = g.bp.get_mut(a + x) {
+                    if !*bit {
+                        *bit = true;
+                        self.changed = true;
                     }
                 }
             }
-            // Block parameters.
+        }
+    }
+
+    fn seed(&mut self, om: usize, target: usize, kinds: Vec<XKind>) {
+        if om > u32::MAX as usize || target > u32::MAX as usize {
+            return;
+        }
+        let list = self.seeds.entry((om as u32, target as u32)).or_default();
+        if !list.contains(&kinds) {
+            list.push(kinds);
+            self.changed = true;
+        }
+    }
+
+    fn tracks_origins(&self) -> bool {
+        true
+    }
+
+    fn seeds_of(&self, m: usize) -> Vec<(usize, Vec<XKind>)> {
+        seeds_in(&self.seeds, m)
+    }
+}
+
+/// The checking phase: the facts are frozen.
+struct Frozen<'a> {
+    g: &'a XGlobal,
+    seeds: &'a Seeds,
+}
+
+impl<'a> Facts for Frozen<'a> {
+    fn g(&self) -> &XGlobal {
+        self.g
+    }
+    fn context(&mut self, _t: usize, _m: usize, _slot: usize, _kinds: &[XKind]) {}
+    fn mark(&mut self, _t: usize, _x: usize) {}
+    fn seed(&mut self, _om: usize, _target: usize, _kinds: Vec<XKind>) {}
+    fn tracks_origins(&self) -> bool {
+        false
+    }
+    fn seeds_of(&self, m: usize) -> Vec<(usize, Vec<XKind>)> {
+        seeds_in(self.seeds, m)
+    }
+}
+
+/// The maps of one method under construction.
+struct Maps {
+    idx: Vec<u32>,
+    nodes: Vec<XNode>,
+    /// The parameter a node's slot is an unchanged copy of (for inferring
+    /// block parameters that are invoked or passed on), or `NO_ORIGIN`.
+    org: Vec<u8>,
+}
+
+impl Maps {
+    /// The kinds, origins and node ids of the map with top node `top`,
+    /// bottom first.
+    fn read(&self, top: u32, k: &mut Vec<XKind>, o: &mut Vec<u8>, ids: &mut Vec<u32>) {
+        k.clear();
+        o.clear();
+        ids.clear();
+        let mut cur = top as usize;
+        while let Some(nd) = self.nodes.get(cur) {
+            k.push(nd.kind);
+            o.push(self.org.get(cur).copied().unwrap_or(NO_ORIGIN));
+            ids.push(cur as u32);
+            let par = nd.parent as usize;
+            if par >= cur { break; }
+            cur = par;
+        }
+        k.reverse();
+        o.reverse();
+        ids.reverse();
+    }
+
+    /// The top node of the map `(k, o)`, sharing the first `share` slots
+    /// with the map whose node ids are `ids`. `None` if the arena is full.
+    fn intern(&mut self, ids: &[u32], share: usize, k: &[XKind], o: &[u8]) -> Option<u32> {
+        let share = share.min(ids.len()).min(k.len());
+        let mut top = if share == 0 { EMPTY_MAP } else { ids[share - 1] };
+        for i in share..k.len() {
+            let id = self.nodes.len();
+            if id >= EMPTY_MAP as usize {
+                return None;
+            }
+            self.nodes.push(XNode { parent: if top == EMPTY_MAP { id as u32 } else { top }, kind: k[i] });
+            self.org.push(o.get(i).copied().unwrap_or(NO_ORIGIN));
+            top = id as u32;
+        }
+        Some(top)
+    }
+}
+
+/// The length of the common prefix of `(k1, o1)` and `(k2, o2)`.
+fn common(k1: &[XKind], o1: &[u8], k2: &[XKind], o2: &[u8]) -> usize {
+    let mut i = 0;
+    while i < k1.len() && i < k2.len() && k1[i] == k2[i] && o1.get(i) == o2.get(i) {
+        i += 1;
+    }
+    i
+}
+
+type Error = (usize, String);
+
+/// Analyzes method `m`: its maps, or the offset and reason of the first
+/// problem. Calls `x_post` and `x_terminator_ok` only within their
+/// preconditions (the program is `wf_program2`, checked by the caller).
+fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result<Maps, Error> {
+    let Some(info) = method(p, m).copied() else { return Err((0, "no such method".into())) };
+    let (entry, end) = (info.entry as usize, info.end as usize);
+    if !(entry < end && end <= p.bytecodes.len()) {
+        return Err((0, "empty method body or body outside the bytecodes".into()));
+    }
+    let size = end - entry;
+    let limit = info.arity as usize + p.max_height as usize;
+    let origins = f.tracks_origins();
+    let empty = XMaps { idx: Vec::new(), nodes: Vec::new() };
+    let mut maps = Maps { idx: vec![NO_MAP; size], nodes: Vec::new(), org: Vec::new() };
+    let mut queued = vec![false; size];
+    let mut work: Vec<u32> = Vec::new();
+    // The entry map.
+    let e = {
+        let c = XCert { g: f.g(), cur: m, maps: &empty };
+        x_entry_kinds(p, &c, m)
+    };
+    if e.len() > limit {
+        return Err((0, "too many parameters".into()));
+    }
+    let eo: Vec<u8> = (0..e.len()).map(|i| if origins && i < NO_ORIGIN as usize { i as u8 } else { NO_ORIGIN }).collect();
+    maps.idx[0] = maps.intern(&[], 0, &e, &eo).ok_or((0, String::from("maps too large")))?;
+    queued[0] = true;
+    work.push(0);
+    for (t, kt) in f.seeds_of(m) {
+        if t >= size || t == 0 || kt.len() > limit { continue; }
+        let ot = vec![NO_ORIGIN; kt.len()];
+        maps.idx[t] = maps.intern(&[], 0, &kt, &ot).ok_or((t, String::from("maps too large")))?;
+        if !queued[t] {
+            queued[t] = true;
+            work.push(t as u32);
+        }
+    }
+    let (mut k, mut org, mut ids) = (Vec::new(), Vec::new(), Vec::new());
+    let (mut k_old, mut o_old, mut ids_old) = (Vec::new(), Vec::new(), Vec::new());
+    while let Some(off) = work.pop() {
+        let off = off as usize;
+        queued[off] = false;
+        maps.read(maps.idx[off], &mut k, &mut org, &mut ids);
+        let bci = entry + off;
+        let op = p.bytecodes[bci];
+        if op >= OPCODE_COUNT2 {
+            return Err((off, format!("invalid opcode {}", op)));
+        }
+        let len = OPCODE_LENGTHS2[op as usize] as usize;
+        if bci + len > end {
+            return Err((off, "instruction crosses the method end".into()));
+        }
+        let h = k.len();
+        // Contexts: a block method pushed at slot h is created here.
+        if op == LOAD_METHOD {
+            let t = byte_at(p, bci + 1).unwrap_or(0) | byte_at(p, bci + 2).unwrap_or(0) << 8
+                | u16_at(p, bci + 3).unwrap_or(0) << 16;
+            if method(p, t).is_some_and(|i| i.kind == KIND_BLOCK) && t <= u32::MAX as usize {
+                let mut kinds = k.clone();
+                kinds.push(XKind::Method(t as u32));
+                f.context(t, m, h, &kinds);
+            }
+        }
+        // Block parameters.
+        if origins {
             match op {
                 INVOKE_BLOCK => {
-                    let n = p.bytecodes[bci + 1] as usize;
-                    if 1 <= n && n <= h && k[h - n] == XKind::Val {
-                        if let Some(j) = org[h - n] {
-                            self.mark(c, m, j as usize);
-                        }
+                    let n = byte_at(p, bci + 1).unwrap_or(0);
+                    if 1 <= n && n <= h && k[h - n] == XKind::Val && org[h - n] != NO_ORIGIN {
+                        f.mark(m, org[h - n] as usize);
                     }
                 }
                 INVOKE_STATIC | INVOKE_STATIC_TAIL => {
-                    let d = u16_at(p, bci + 1);
-                    if d < p.dispatch.len() && p.dispatch[d] >= 0 {
-                        let t = p.dispatch[d] as usize;
-                        self.mark_args(c, m, t, &k, &org, p.methods[t].arity as usize);
+                    if let Some(d) = u16_at(p, bci + 1) {
+                        if let Some(&t) = p.dispatch.get(d) {
+                            if t >= 0 {
+                                if let Some(ti) = method(p, t as usize) {
+                                    mark_args(f, m, t as usize, &k, &org, ti.arity as usize);
+                                }
+                            }
+                        }
                     }
                 }
                 INVOKE_VIRTUAL | INVOKE_VIRTUAL_WIDE => {
-                    let (n, sel) = if op == INVOKE_VIRTUAL {
-                        (p.bytecodes[bci + 1] as usize + 1, u16_at(p, bci + 2))
+                    let ns = if op == INVOKE_VIRTUAL {
+                        byte_at(p, bci + 1).map(|b| b + 1).zip(u16_at(p, bci + 2))
                     } else {
-                        (u16_at(p, bci + 1) + 1, u16_at(p, bci + 3))
+                        u16_at(p, bci + 1).map(|w| w + 1).zip(u16_at(p, bci + 3))
                     };
-                    if sel < self.groups.len() {
-                        if let Some(&t) = self.groups[sel].first() {
-                            if p.methods[t].arity as usize == n {
-                                self.mark_args(c, m, t, &k, &org, n);
+                    if let Some((n, sel)) = ns {
+                        if sel < 0xffff {
+                            let r = x_sel_rep(&XCert { g: f.g(), cur: m, maps: &empty }, sel);
+                            if r >= 0 {
+                                if let Some(ri) = method(p, r as usize) {
+                                    if ri.arity as usize == n {
+                                        mark_args(f, m, r as usize, &k, &org, n);
+                                    }
+                                }
                             }
                         }
                     }
                 }
                 _ => {}
             }
-            if op == NON_LOCAL_BRANCH && h >= 1 {
-                if let XKind::Block(d, j) = k[h - 1] {
-                    if d >= 1 {
-                        let (fk, om) = x_ctx_kinds(c, m as i64, d);
-                        let hd = p.bytecodes[bci + 1] as usize;
-                        let target = u16_at(p, bci + 2) | u16_at(p, bci + 4) << 16;
-                        if let Some(fk) = fk {
-                            if om >= 0 && (j as usize) < fk.len() && hd <= j as usize + 1 {
-                                let t = fk[..j as usize + 1 - hd].to_vec();
-                                let om = om as usize;
-                                if !self.seeds[om].iter().any(|(o, kt)| *o == target && *kt == t) {
-                                    self.seeds[om].push((target, t));
-                                    self.changed = true;
-                                }
-                            }
+        }
+        if op == NON_LOCAL_BRANCH && h >= 1 {
+            if let XKind::Block(d, j) = k[h - 1] {
+                if d >= 1 {
+                    let c = XCert { g: f.g(), cur: m, maps: &empty };
+                    let (fk, om) = x_ctx_kinds(&c, m as i64, d);
+                    let hd = byte_at(p, bci + 1).unwrap_or(usize::MAX);
+                    let target = u16_at(p, bci + 2).zip(u16_at(p, bci + 4)).map(|(lo, hi)| lo | hi << 16);
+                    if let (Some(fk), Some(target)) = (fk, target) {
+                        let j = j as usize;
+                        if om >= 0 && j < fk.len() && hd <= j + 1 {
+                            let t = fk[..j + 1 - hd].to_vec();
+                            f.seed(om as usize, target, t);
                         }
                     }
-                }
-            }
-            // x_post's precondition: a frame of bounded height (the checker
-            // rejects anything above arity + max_height anyway).
-            if h > 0x10_0000 {
-                self.errors.push((m, off, "frame too high".into()));
-                return false;
-            }
-            let post = x_post(p, c, m, off, &k, self.trusted);
-            let term = matches!(op, RETURN | RETURN_NULL | THROW | BRANCH | BRANCH_BACK | INVOKE_STATIC_TAIL
-                | INVOKE_LAMBDA_TAIL | INVOKE_INITIALIZER_TAIL | NON_LOCAL_RETURN | NON_LOCAL_BRANCH);
-            if term {
-                if !matches!(op, BRANCH | BRANCH_BACK | NON_LOCAL_BRANCH) && !x_terminator_ok(p, c, m, off, &k) {
-                    self.errors.push((m, off, format!("{} rejected with kinds {:?}", OPCODE_NAMES2[op as usize], k)));
-                    return false;
-                }
-            } else if post.is_none() {
-                self.errors.push((m, off, format!("{} rejected with kinds {:?}", OPCODE_NAMES2[op as usize], k)));
-                return false;
-            }
-            let mut succ: Vec<(usize, Vec<XKind>, Vec<Option<u8>>)> = Vec::new();
-            if let Some(k2) = post {
-                let o2 = transfer_origins(p, bci, &org, &k, &k2);
-                succ.push((off + len, k2, o2));
-            }
-            if (BRANCH..=BRANCH_BACK_IF_NOT_NULL).contains(&op) {
-                let w = u16_at(p, bci + 1) as i64;
-                let t = if op <= BRANCH_IF_NOT_NULL { off as i64 + w } else { off as i64 - w };
-                let cond = !(op == BRANCH || op == BRANCH_BACK);
-                if h < cond as usize {
-                    self.errors.push((m, off, "branch without condition".into()));
-                    return false;
-                }
-                let kt = if cond { k[..h - 1].to_vec() } else { k.clone() };
-                let ot = if cond { org[..h - 1].to_vec() } else { org.clone() };
-                if t < 0 {
-                    self.errors.push((m, off, "branch before the method".into()));
-                    return false;
-                }
-                succ.push((t as usize, kt, ot));
-            }
-            for (t, k2, o2) in succ {
-                if t >= size {
-                    self.errors.push((m, off, "successor outside the method".into()));
-                    return false;
-                }
-                let merged = match &maps[t] {
-                    None => Some(k2),
-                    Some(old) => {
-                        if *old == k2 {
-                            None
-                        } else {
-                            match join(old, &k2) {
-                                Some(j) => if j == *old { None } else { Some(j) },
-                                None => {
-                                    self.errors.push((m, t, format!("incompatible kinds at merge: {:?} and {:?}", old, k2)));
-                                    return false;
-                                }
-                            }
-                        }
-                    }
-                };
-                let o_new = match &origins[t] {
-                    None => o2,
-                    Some(o) => o.iter().zip(o2.iter()).map(|(x, y)| if x == y { *x } else { None }).collect(),
-                };
-                let o_changed = origins[t].as_ref() != Some(&o_new);
-                origins[t] = Some(o_new);
-                let k_changed = merged.is_some();
-                if let Some(j) = merged {
-                    maps[t] = Some(j);
-                }
-                if (k_changed || o_changed) && !queued[t] {
-                    queued[t] = true;
-                    work.push(t);
                 }
             }
         }
-        c.maps[m] = maps;
-        true
+        // x_post's precondition: a frame of bounded height (the checker
+        // rejects anything above arity + max_height anyway).
+        if h > limit {
+            return Err((off, "frame too high".into()));
+        }
+        let (post, term_ok) = {
+            let c = XCert { g: f.g(), cur: m, maps: &empty };
+            let post = x_post(p, &c, m, off, &k, trusted);
+            let term = matches!(op, RETURN | RETURN_NULL | THROW | BRANCH | BRANCH_BACK | INVOKE_STATIC_TAIL
+                | INVOKE_LAMBDA_TAIL | INVOKE_INITIALIZER_TAIL | NON_LOCAL_RETURN | NON_LOCAL_BRANCH);
+            let term_ok = if term {
+                Some(matches!(op, BRANCH | BRANCH_BACK | NON_LOCAL_BRANCH) || x_terminator_ok(p, &c, m, off, &k))
+            } else {
+                None
+            };
+            (post, term_ok)
+        };
+        match term_ok {
+            Some(false) => return Err((off, format!("{} rejected with kinds {:?}", OPCODE_NAMES2[op as usize], k))),
+            None if post.is_none() => return Err((off, format!("{} rejected with kinds {:?}", OPCODE_NAMES2[op as usize], k))),
+            _ => {}
+        }
+        let mut succ: Vec<(usize, Vec<XKind>, Vec<u8>)> = Vec::new();
+        if let Some(k2) = post {
+            let o2 = if origins { transfer_origins(p, bci, &org, &k, &k2) } else { vec![NO_ORIGIN; k2.len()] };
+            succ.push((off + len, k2, o2));
+        }
+        if (BRANCH..=BRANCH_BACK_IF_NOT_NULL).contains(&op) {
+            let w = u16_at(p, bci + 1).unwrap_or(0);
+            let t = if op <= BRANCH_IF_NOT_NULL { off.checked_add(w) } else { off.checked_sub(w) };
+            let cond = !(op == BRANCH || op == BRANCH_BACK);
+            if h < cond as usize {
+                return Err((off, "branch without condition".into()));
+            }
+            let Some(t) = t else { return Err((off, "branch before the method".into())) };
+            let kt = if cond { k[..h - 1].to_vec() } else { k.clone() };
+            let ot = if cond { org[..h - 1].to_vec() } else { org.clone() };
+            succ.push((t, kt, ot));
+        }
+        for (t, k2, o2) in succ {
+            if t >= size {
+                return Err((off, "successor outside the method".into()));
+            }
+            if k2.len() > limit {
+                return Err((off, "frame too high".into()));
+            }
+            let new_top = if maps.idx[t] == NO_MAP {
+                let share = common(&k, &org, &k2, &o2);
+                Some(maps.intern(&ids, share, &k2, &o2).ok_or((t, String::from("maps too large")))?)
+            } else {
+                maps.read(maps.idx[t], &mut k_old, &mut o_old, &mut ids_old);
+                let Some(j) = join(&k_old, &k2) else {
+                    return Err((t, format!("incompatible kinds at merge: {:?} and {:?}", k_old, k2)));
+                };
+                let o_new: Vec<u8> = o_old.iter().zip(o2.iter()).map(|(x, y)| if x == y { *x } else { NO_ORIGIN }).collect();
+                if j == k_old && o_new == o_old {
+                    None
+                } else {
+                    let share = common(&k_old, &o_old, &j, &o_new);
+                    Some(maps.intern(&ids_old, share, &j, &o_new).ok_or((t, String::from("maps too large")))?)
+                }
+            };
+            if let Some(top) = new_top {
+                maps.idx[t] = top;
+                if !queued[t] {
+                    queued[t] = true;
+                    work.push(t as u32);
+                }
+            }
+        }
+    }
+    Ok(maps)
+}
+
+/// Marks the parameters of `t` that receive blocks, and the parameters of
+/// `m` that are passed on unchanged for block parameters.
+fn mark_args<F: Facts>(f: &mut F, m: usize, t: usize, k: &[XKind], org: &[u8], n: usize) {
+    if n > k.len() { return; }
+    let empty = XMaps { idx: Vec::new(), nodes: Vec::new() };
+    for x in 0..n {
+        let i = k.len() - n + x;
+        if matches!(k[i], XKind::Block(..) | XKind::Param) {
+            f.mark(t, x);
+        } else if k[i] == XKind::Val && org.get(i).is_some_and(|o| *o != NO_ORIGIN)
+            && x_is_block_param(&XCert { g: f.g(), cur: m, maps: &empty }, t, x) {
+            f.mark(m, org[i] as usize);
+        }
     }
 }
 
 /// Parameter origins after an instruction: copies of a local keep it,
 /// everything else is new.
-fn transfer_origins(p: &ExecProgram, bci: usize, org: &[Option<u8>], k: &[XKind], k2: &[XKind]) -> Vec<Option<u8>> {
-    let op = p.bytecodes[bci];
+fn transfer_origins(p: &VProgram, bci: usize, org: &[u8], k: &[XKind], k2: &[XKind]) -> Vec<u8> {
+    let op = p.bytecodes.get(bci).copied().unwrap_or(0);
     let h = k.len();
     let h2 = k2.len();
+    let mut o: Vec<u8> = org.to_vec();
+    o.resize(h, NO_ORIGIN);
     if op == POP_LOAD_LOCAL {
-        let n = p.bytecodes[bci + 1] as usize;
-        let mut o = org.to_vec();
-        if n + 2 <= h && h2 == h {
-            o[h - 1] = org[h - 2 - n];
+        let n = byte_at(p, bci + 1).unwrap_or(usize::MAX);
+        if n < h && n + 2 <= h && h2 == h {
+            o[h - 1] = o[h - 2 - n];
         }
+        o.resize(h2, NO_ORIGIN);
         return o;
     }
     let preserving = matches!(op, AS_CLASS | AS_CLASS_WIDE | AS_INTERFACE | AS_INTERFACE_WIDE | AS_LOCAL
         | STORE_FIELD_THIS | STORE_GLOBAL_VAR | STORE_GLOBAL_VAR_WIDE | HALT);
     if k == k2 && preserving {
-        return org.to_vec();
+        return o;
     }
     if op == STORE_LOCAL || op == STORE_LOCAL_POP {
-        let n = p.bytecodes[bci + 1] as usize;
-        let mut o = org.to_vec();
-        if n < h {
-            o[h - 1 - n] = org[h - 1];
+        let n = byte_at(p, bci + 1).unwrap_or(usize::MAX);
+        if n < h && h >= 1 {
+            o[h - 1 - n] = o[h - 1];
         }
-        o.truncate(h2);
+        o.resize(h2, NO_ORIGIN);
         return o;
     }
     if h2 > h && k2[..h] == *k {
-        let mut o = org.to_vec();
-        while o.len() < h2 {
-            o.push(None);
-        }
+        o.resize(h2, NO_ORIGIN);
         if (op == LOAD_LOCAL || op == LOAD_LOCAL_WIDE || (LOAD_LOCAL_0..=LOAD_LOCAL_5).contains(&op)) && h2 == h + 1 {
-            o[h] = load_local_origin(p, bci, org);
+            let n = if op == LOAD_LOCAL { byte_at(p, bci + 1) } else if op == LOAD_LOCAL_WIDE { u16_at(p, bci + 1) } else { Some((op - LOAD_LOCAL_0) as usize) };
+            o[h] = match n { Some(n) if n < h => o[h - 1 - n], _ => NO_ORIGIN };
         }
         return o;
     }
-    let mut o: Vec<Option<u8>> = Vec::with_capacity(h2);
+    let mut r: Vec<u8> = Vec::with_capacity(h2);
     for i in 0..h2 {
-        o.push(if i + 1 < h2 && i < h && k[i] == k2[i] { org[i] } else { None });
+        r.push(if i + 1 < h2 && i < h && k[i] == k2[i] { o[i] } else { NO_ORIGIN });
     }
-    o
+    r
 }
 
-/// Sets the origin of a LOAD_LOCAL's pushed slot.
-fn load_local_origin(p: &ExecProgram, bci: usize, org: &[Option<u8>]) -> Option<u8> {
-    let op = p.bytecodes[bci];
-    let n = if op == LOAD_LOCAL { p.bytecodes[bci + 1] as usize } else if op == LOAD_LOCAL_WIDE { u16_at(p, bci + 1) } else { (op - LOAD_LOCAL_0) as usize };
-    if n < org.len() { org[org.len() - 1 - n] } else { None }
+fn push_error(errors: &mut Vec<(usize, usize, String)>, m: usize, off: usize, msg: String) {
+    if errors.len() < MAX_ERRORS {
+        errors.push((m, off, msg));
+    }
 }
 
-pub fn infer(p: &ExecProgram, global_count: usize, trusted: bool) -> Inferred {
+/// The global part of the certificate (phase 1). `global_count` and
+/// `prim_arity` are the trusted inputs (the program's globals, the VM's
+/// primitive table).
+pub fn infer_global(p: &VProgram, global_count: u64, prim_arity: Vec<Vec<u8>>, trusted: bool) -> Global {
     let n = p.methods.len();
-    let mut sel_rep = vec![-1i64; 0xffff];
-    let mut groups: Vec<Vec<usize>> = vec![Vec::new(); 0xffff];
-    for (m, info) in p.methods.iter().enumerate() {
-        if info.selector != 0xffff {
-            let s = info.selector as usize;
-            if sel_rep[s] == -1 {
-                sel_rep[s] = m as i64;
-            }
-            groups[s].push(m);
+    let mut g = XGlobal {
+        n,
+        bp_off: Vec::new(),
+        bp: Vec::new(),
+        ctx_idx: Vec::new(),
+        ctxs: Vec::new(),
+        sel_rep: Vec::new(),
+        global_count,
+        prim_arity,
+        pins: Vec::new(),
+    };
+    let mut errors = Vec::new();
+    // The analysis needs well-formed tables (and so does the checker,
+    // which rejects without them).
+    if !x_wf_program2(p) || n >= u32::MAX as usize {
+        errors.push((0, 0, String::from("malformed program tables (wf_program2)")));
+        return Global { g, done: vec![false; n], seeds: Seeds::new(), errors, rounds: 0 };
+    }
+    let mut total = 0usize;
+    g.bp_off.reserve_exact(n + 1);
+    for info in p.methods {
+        g.bp_off.push(total as u32);
+        total += info.arity as usize;
+    }
+    if total > u32::MAX as usize {
+        errors.push((0, 0, String::from("too many parameters")));
+        return Global { g, done: vec![false; n], seeds: Seeds::new(), errors, rounds: 0 };
+    }
+    g.bp_off.push(total as u32);
+    g.bp = vec![false; total];
+    g.ctx_idx = vec![NO_MAP; n];
+    let mut by_sel: Vec<u32> = (0..n as u32).filter(|&m| p.methods[m as usize].selector != 0xffff).collect();
+    by_sel.sort_by_key(|&m| (p.methods[m as usize].selector, m));
+    if let Some(&last) = by_sel.last() {
+        g.sel_rep = vec![-1; p.methods[last as usize].selector as usize + 1];
+        for &m in by_sel.iter().rev() {
+            g.sel_rep[p.methods[m as usize].selector as usize] = m as i32;
         }
     }
-    let mut c = XCert {
-        maps: (0..n).map(|_| Vec::new()).collect(),
-        block_params: p.methods.iter().map(|i| vec![false; i.arity as usize]).collect(),
-        contexts: (0..n).map(|_| None).collect(),
-        sel_rep,
-        global_count: global_count as u64,
-        prim_arity: crate::v2::prim_arity::PRIM_TABLE.iter()
-            .map(|(_, prims)| prims.iter().map(|(_, a)| *a).collect()).collect(),
-    };
-    let mut a = Analysis { p, trusted, groups, errors: Vec::new(), block_marks: Vec::new(), seeds: vec![Vec::new(); n], cur: (0, 0), changed: false };
+    let task_entry = p.entry_points.get(2).and_then(|&d| usize::try_from(d).ok())
+        .and_then(|d| p.dispatch.get(d)).and_then(|&t| usize::try_from(t).ok());
+    let mut b = Building { p, g, by_sel, seeds: Seeds::new(), block_marks: Vec::new(), changed: false };
     let mut rounds = 0;
+    let mut done = vec![false; n];
+    let mut pins: Vec<XPin> = Vec::new();
     loop {
         rounds += 1;
-        a.changed = false;
-        a.errors.clear();
-        for m in 0..n {
-            c.maps[m] = Vec::new();
-            c.contexts[m] = None;
-        }
-        let mut done = vec![false; n];
+        b.changed = false;
+        errors.clear();
+        b.g.ctxs.clear();
+        b.g.ctx_idx.iter_mut().for_each(|i| *i = NO_MAP);
+        pins.clear();
+        done.iter_mut().for_each(|d| *d = false);
         // Methods first, then blocks once their creator is done.
         let mut progress = true;
         while progress {
@@ -395,62 +626,139 @@ pub fn infer(p: &ExecProgram, global_count: usize, trusted: bool) -> Inferred {
             for m in 0..n {
                 if done[m] { continue; }
                 if p.methods[m].kind == KIND_BLOCK {
-                    let ready = match &c.contexts[m] {
-                        Some(ctx) => done[ctx.outer as usize],
+                    let ready = match b.g.ctx_idx.get(m).and_then(|&i| b.g.ctxs.get(i as usize)) {
+                        Some(ctx) => done.get(ctx.outer as usize).copied().unwrap_or(false),
                         None => false,
                     };
                     if !ready { continue; }
                 }
                 done[m] = true;
                 progress = true;
-                let ok = a.method(&mut c, m);
-                if ok {
-                    fill_contexts(&mut c, p, m);
-                }
-            }
-        }
-        if !a.changed {
-            // Blocks no analyzed code creates are dead: no maps.
-            for m in 0..n {
-                if !done[m] {
-                    c.maps[m] = vec![None; p.methods[m].end - p.methods[m].entry];
-                }
-            }
-            break;
-        }
-        if rounds > 64 {
-            a.errors.push((0, 0, "block parameter inference does not converge".into()));
-            break;
-        }
-    }
-    for (t, x) in &a.block_marks {
-        a.errors.push((*t, 0, format!("block method with a block parameter {}", x)));
-    }
-    Inferred { cert: c, errors: a.errors, rounds }
-}
-
-/// The contexts of the blocks method `m` creates: the kinds below and at
-/// the block's slot where the slot holds it (the first such map).
-fn fill_contexts(c: &mut XCert, p: &ExecProgram, m: usize) {
-    let mut found: Vec<(usize, Vec<XKind>)> = Vec::new();
-    for k in c.maps[m].iter().flatten() {
-        for (i, kd) in k.iter().enumerate() {
-            if let XKind::Method(t) = kd {
-                let t = *t as usize;
-                if t < p.methods.len() && p.methods[t].kind == KIND_BLOCK {
-                    if let Some(ctx) = &c.contexts[t] {
-                        if ctx.outer as usize == m && ctx.slot as usize == i && ctx.kinds.is_empty()
-                            && !found.iter().any(|(x, _)| *x == t) {
-                            found.push((t, k[..=i].to_vec()));
+                match analyze(p, &mut b, m, trusted) {
+                    Err((off, msg)) => push_error(&mut errors, m, off, msg),
+                    Ok(maps) => {
+                        // Pins: the maps other methods look up.
+                        let mut want: Vec<usize> = b.seeds_of(m).into_iter().map(|(t, _)| t).collect();
+                        if task_entry == Some(m) { want.push(1); }
+                        for t in want {
+                            if let Some(&top) = maps.idx.get(t) {
+                                if top != NO_MAP && t <= u32::MAX as usize {
+                                    pins.push(XPin { m: m as u32, off: t as u32, kinds: x_chain(&maps.nodes, top) });
+                                }
+                            }
                         }
                     }
                 }
             }
         }
-    }
-    for (t, kinds) in found {
-        if let Some(ctx) = &mut c.contexts[t] {
-            ctx.kinds = kinds;
+        if !b.changed || rounds >= MAX_ROUNDS {
+            if b.changed {
+                push_error(&mut errors, 0, 0, String::from("block parameter inference does not converge"));
+            }
+            break;
         }
     }
+    for &(t, x) in &b.block_marks {
+        push_error(&mut errors, t, 0, format!("block method with a block parameter {}", x));
+    }
+    pins.sort_by_key(|x| (x.m, x.off));
+    pins.dedup_by_key(|x| (x.m, x.off));
+    b.g.pins = pins;
+    Global { g: b.g, done, seeds: b.seeds, errors, rounds }
+}
+
+/// The checker's source of maps (phase 2): recomputes one method's maps at
+/// a time with the global part frozen.
+pub struct Oracle<'a> {
+    p: &'a VProgram<'a>,
+    frozen: Frozen<'a>,
+    done: &'a [bool],
+    trusted: bool,
+    wf: bool,
+    /// The last method whose maps were asked for (the checker goes in
+    /// order and stops at the first rejected method).
+    pub last: Option<usize>,
+}
+
+impl<'a> Oracle<'a> {
+    pub fn new(p: &'a VProgram<'a>, global: &'a Global, trusted: bool) -> Oracle<'a> {
+        Oracle {
+            p,
+            frozen: Frozen { g: &global.g, seeds: &global.seeds },
+            done: &global.done,
+            trusted,
+            wf: x_wf_program2(p),
+            last: None,
+        }
+    }
+
+    fn maps(&mut self, m: usize) -> Result<Maps, Error> {
+        if !self.wf || !self.done.get(m).copied().unwrap_or(false) {
+            return Err((0, String::from("not analyzed (no context, or the creator was rejected)")));
+        }
+        analyze(self.p, &mut self.frozen, m, self.trusted)
+    }
+}
+
+impl<'a> MapOracle for Oracle<'a> {
+    fn method_maps(&mut self, m: usize) -> XMaps {
+        self.last = Some(m);
+        match self.maps(m) {
+            Ok(maps) => XMaps { idx: maps.idx, nodes: maps.nodes },
+            Err(_) => {
+                let size = method(self.p, m).map(|i| (i.end as usize).saturating_sub(i.entry as usize)).unwrap_or(0);
+                XMaps { idx: vec![NO_MAP; size.min(self.p.bytecodes.len())], nodes: Vec::new() }
+            }
+        }
+    }
+}
+
+/// The verdict of the proven checker (`check::verify`) on the certificate
+/// of `global`, and the method it stopped at when it rejected one.
+pub fn check(p: &VProgram, global: &Global, trusted: bool) -> (bool, Option<usize>) {
+    let mut o = Oracle::new(p, global, trusted);
+    let (ok, _) = crate::v2::check::verify(p, &global.g, &mut o, trusted);
+    (ok, if ok { None } else { o.last })
+}
+
+/// Why method `m` is rejected: the offset of the first instruction the
+/// inference or the checker rejects, and a reason (diagnostics only).
+pub fn diagnose(p: &VProgram, global: &Global, m: usize, trusted: bool) -> (Option<usize>, String) {
+    if let Some((_, off, msg)) = global.errors.iter().find(|e| e.0 == m) {
+        return (Some(*off), msg.clone());
+    }
+    let mut o = Oracle::new(p, global, trusted);
+    let maps = match o.maps(m) {
+        Err((off, msg)) => return (Some(off), msg),
+        Ok(maps) => XMaps { idx: maps.idx, nodes: maps.nodes },
+    };
+    if !o.wf || m >= p.methods.len() || !x_pins_sorted(&global.g) || global.g.n != p.methods.len() {
+        return (None, String::from("malformed tables or certificate"));
+    }
+    let c = XCert { g: &global.g, cur: m, maps: &maps };
+    for (off, &top) in maps.idx.iter().enumerate() {
+        if top == NO_MAP { continue; }
+        let k = x_chain(&maps.nodes, top);
+        if !x_instr_ok(p, &c, m, off, &k, trusted) {
+            return (Some(off), format!("rejected by the checker with kinds {:?}", k));
+        }
+    }
+    let at = global.g.pins.partition_point(|x| (x.m as usize) < m);
+    match x_pins_agree(&global.g, m, &maps, at) {
+        None => (None, String::from("a pinned map differs from the method's map")),
+        Some(_) => (None, String::from("entry kinds or certificate shape rejected by the checker")),
+    }
+}
+
+/// Infers and checks a program given as an `ExecProgram` (the dump path)
+/// with the verifier's generated primitive table: `check::verify`'s
+/// verdict (the heap is not checked here).
+pub fn verify_exec(e: &crate::types::ExecProgram, global_count: u64, trusted: bool) -> bool {
+    let h = max_height_of(e);
+    let Some(methods) = vmethods_of(e, h) else { return false };
+    let p = vprogram_of(e, &methods, h);
+    let prim_arity: Vec<Vec<u8>> = crate::v2::prim_arity::PRIM_TABLE.iter()
+        .map(|(_, prims)| prims.iter().map(|(_, a)| *a).collect()).collect();
+    let global = infer_global(&p, global_count, prim_arity, trusted);
+    check(&p, &global, trusted).0
 }

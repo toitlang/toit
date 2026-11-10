@@ -18,10 +18,13 @@
 //!
 //! The input is the `toit_v2_program` struct the VM hands to `toit_v2_run`
 //! (filled by the same C++ function, `v2_program_tables`), with the
-//! program's initial global values. Every table is copied as is; object
-//! references in the roots, globals and literals are followed through the
-//! program image, breadth first (a work list, no recursion), and every
-//! reachable object becomes one `ExecObj`. Nothing is interpreted beyond
+//! program's initial global values. The tables are borrowed, not copied
+//! (`Converted::program` is a `VProgram` of slices into the VM's memory;
+//! the method table is the VM's `V2Method` array, whose layout `VMethod`
+//! repeats, checked below); only the 23 builtin class ids are decoded.
+//! Object references in the roots, globals and literals are followed
+//! through the program image, breadth first (a work list, no recursion),
+//! and every reachable object becomes one `ExecObj`. Nothing is interpreted beyond
 //! what the core itself reads: an object's kind is its header's class tag
 //! (which must agree with its class), an instance has the field count of
 //! its class (`class_bits`), as the core's `instance_fields` computes it.
@@ -36,10 +39,68 @@
 //! suite program (canonical.rs).
 
 use std::collections::HashMap;
-use toit_spec::interp::loader::{Loaded, Names};
-use toit_spec::types::{ExecBody, ExecObj, ExecProgram, MethodInfo, Value};
+use toit_spec::types::{ExecBody, ExecObj, Value};
+use toit_spec::v2::vprog::{VMethod, VProgram};
 use toit_verified_core::ffi::{ProgramTables, V2Method};
 use toit_verified_core::layout::*;
+
+// `VMethod` (the verifier's view of the method table) has the layout of
+// `V2Method` (the core's, and `toit::V2Method`): the table is borrowed as is.
+const _: () = {
+    use core::mem::{align_of, offset_of, size_of};
+    assert!(size_of::<VMethod>() == size_of::<V2Method>());
+    assert!(align_of::<VMethod>() == align_of::<V2Method>());
+    assert!(offset_of!(VMethod, entry) == offset_of!(V2Method, entry));
+    assert!(offset_of!(VMethod, end) == offset_of!(V2Method, end));
+    assert!(offset_of!(VMethod, selector) == offset_of!(V2Method, selector));
+    assert!(offset_of!(VMethod, aux) == offset_of!(V2Method, aux));
+    assert!(offset_of!(VMethod, recv_start) == offset_of!(V2Method, recv_start));
+    assert!(offset_of!(VMethod, recv_end) == offset_of!(V2Method, recv_end));
+    assert!(offset_of!(VMethod, arity) == offset_of!(V2Method, arity));
+    assert!(offset_of!(VMethod, kind) == offset_of!(V2Method, kind));
+    assert!(offset_of!(VMethod, unused) == offset_of!(V2Method, unused));
+};
+
+/// The program as converted from VM memory: borrowed tables, the decoded
+/// builtin class ids, roots, literals, globals and the program heap.
+pub struct Converted<'a> {
+    pub bytecodes: &'a [u8],
+    pub methods: &'a [VMethod],
+    pub max_height: u16,
+    pub dispatch: &'a [i32],
+    pub class_bits: &'a [u16],
+    pub class_check_ids: &'a [u16],
+    pub interface_check_offsets: &'a [u16],
+    pub invoke_offsets: &'a [i32],
+    pub entry_points: &'a [i32],
+    pub builtin: Vec<u16>,
+    pub roots: Vec<Value>,
+    pub literals: Vec<Value>,
+    pub globals: Vec<Value>,
+    pub heap: Vec<ExecObj>,
+    /// The VM's primitive table (arities by module).
+    pub prim_arity: Vec<Vec<u8>>,
+}
+
+impl<'a> Converted<'a> {
+    pub fn program(&self) -> VProgram<'_> {
+        VProgram {
+            word_bits: (WORD_SIZE * 8) as u8,
+            max_height: self.max_height,
+            bytecodes: self.bytecodes,
+            methods: self.methods,
+            dispatch: self.dispatch,
+            class_bits: self.class_bits,
+            class_check_ids: self.class_check_ids,
+            interface_check_offsets: self.interface_check_offsets,
+            invoke_offsets: self.invoke_offsets,
+            entry_points: self.entry_points,
+            builtin: &self.builtin,
+            roots: &self.roots,
+            literals: &self.literals,
+        }
+    }
+}
 
 /// Why the memory could not be converted. `detail` is a table index or an
 /// offset into the program image.
@@ -214,9 +275,9 @@ impl<'a> Converter<'a> {
 ///
 /// # Safety
 /// Every pointer of `p` must be valid for its length (the fixed-size
-/// tables for their layout.rs counts), and the program image must be
-/// mapped and unchanged during the call.
-pub unsafe fn convert(p: &ProgramTables, prims: &PrimitiveArities) -> Result<(Loaded, Vec<Vec<u8>>), Malformed> {
+/// tables for their layout.rs counts), and the tables and the program
+/// image must be mapped and unchanged while the result lives.
+pub unsafe fn convert<'a>(p: &ProgramTables, prims: &PrimitiveArities) -> Result<Converted<'a>, Malformed> {
     if p.roots_length != ROOT_COUNT {
         return bad("unexpected number of roots", p.roots_length);
     }
@@ -224,6 +285,8 @@ pub unsafe fn convert(p: &ProgramTables, prims: &PrimitiveArities) -> Result<(Lo
         return bad("global max stack height too large", p.global_max_height);
     }
     let methods: &[V2Method] = table(p.methods, p.methods_length);
+    // SAFETY: same layout (checked above).
+    let methods: &'a [VMethod] = std::slice::from_raw_parts(methods.as_ptr() as *const VMethod, methods.len());
     let builtin_words: &[usize] = table(p.builtin_class_ids, BUILTIN_COUNT);
     let mut builtin = Vec::with_capacity(BUILTIN_COUNT);
     for (i, &w) in builtin_words.iter().enumerate() {
@@ -254,32 +317,6 @@ pub unsafe fn convert(p: &ProgramTables, prims: &PrimitiveArities) -> Result<(Lo
         heap.push(c.object(addr)?);
         next += 1;
     }
-    let program = ExecProgram {
-        word_bits: (WORD_SIZE * 8) as u8,
-        bytecodes: table(p.bytecodes, p.bytecodes_length).to_vec(),
-        // Format 2 has no method-start bitmap.
-        method_start: Vec::new(),
-        dispatch: table(p.dispatch, p.dispatch_length).to_vec(),
-        class_bits: c.class_bits.to_vec(),
-        class_check_ids: table(p.class_check_ids, p.class_check_ids_length).to_vec(),
-        interface_check_offsets: table(p.interface_check_offsets, p.interface_check_offsets_length).to_vec(),
-        invoke_offsets: table(p.invoke_offsets, INVOKE_OFFSET_COUNT).to_vec(),
-        entry_points: table(p.entry_points, ENTRY_POINT_COUNT).to_vec(),
-        builtin,
-        roots,
-        literals,
-        methods: methods.iter().map(|m| MethodInfo {
-            arity: m.arity,
-            kind: m.kind,
-            max_height: p.global_max_height as u16,
-            selector: m.selector,
-            aux: m.aux,
-            recv_start: m.recv_start,
-            recv_end: m.recv_end,
-            entry: m.entry as usize,
-            end: m.end as usize,
-        }).collect(),
-    };
     let mut arity = Vec::with_capacity(prims.counts.len());
     let mut at = 0usize;
     for (module, &n) in prims.counts.iter().enumerate() {
@@ -290,8 +327,23 @@ pub unsafe fn convert(p: &ProgramTables, prims: &PrimitiveArities) -> Result<(Lo
         }
         at += n;
     }
-    let loaded = Loaded { format: 2, program, heap, globals, names: Names::default() };
-    Ok((loaded, arity))
+    Ok(Converted {
+        bytecodes: table(p.bytecodes, p.bytecodes_length),
+        methods,
+        max_height: p.global_max_height as u16,
+        dispatch: table(p.dispatch, p.dispatch_length),
+        class_bits: c.class_bits,
+        class_check_ids: table(p.class_check_ids, p.class_check_ids_length),
+        interface_check_offsets: table(p.interface_check_offsets, p.interface_check_offsets_length),
+        invoke_offsets: table(p.invoke_offsets, INVOKE_OFFSET_COUNT),
+        entry_points: table(p.entry_points, ENTRY_POINT_COUNT),
+        builtin,
+        roots,
+        literals,
+        globals,
+        heap,
+        prim_arity: arity,
+    })
 }
 
 #[cfg(test)]
@@ -382,9 +434,9 @@ mod tests {
             }
         }
 
-        fn convert(&self) -> Result<Loaded, Malformed> {
+        fn convert(&self) -> Result<Converted<'_>, Malformed> {
             let prims = PrimitiveArities { counts: &[], arities: &[] };
-            unsafe { convert(&self.tables(), &prims) }.map(|(l, _)| l)
+            unsafe { convert(&self.tables(), &prims) }
         }
     }
 
@@ -396,7 +448,7 @@ mod tests {
         // literal byte array 1, the array (reached through the instance) 2.
         assert_eq!(l.heap.len(), 3);
         assert!(matches!(l.globals[0], Value::Obj(0)));
-        assert!(matches!(l.program.literals[0], Value::Obj(1)));
+        assert!(matches!(l.literals[0], Value::Obj(1)));
         match &l.heap[0].body {
             ExecBody::Instance(fields) => {
                 assert!(matches!(fields[..], [Value::Smi(7), Value::Obj(2)]));

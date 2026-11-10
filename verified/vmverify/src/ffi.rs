@@ -108,9 +108,9 @@ pub unsafe extern "C" fn toit_vmverify_verify(input: *const VerifyInput, result:
                 v.message.truncate(MESSAGE_SIZE - 1);
                 (v, 0, convert_ns)
             }
-            Ok((loaded, prim_arity)) => {
-                let objects = loaded.heap.len();
-                (verify::verify(&loaded, prim_arity, input.trusted != 0), objects, convert_ns)
+            Ok(converted) => {
+                let objects = converted.heap.len();
+                (verify::verify(&converted, input.trusted != 0), objects, convert_ns)
             }
         }
     }));
@@ -148,8 +148,8 @@ pub unsafe extern "C" fn toit_vmverify_canonical(input: *const VerifyInput, path
             eprintln!("cannot convert the program: {} ({})", e.what, e.detail);
             1
         }
-        Ok((loaded, prim_arity)) => {
-            let text = crate::canonical::canonical(&loaded, &prim_arity);
+        Ok(c) => {
+            let text = crate::canonical::canonical(&c.program(), &c.heap, &c.globals, &c.prim_arity);
             if std::fs::write(&path, text).is_ok() { 0 } else { 2 }
         }
     }

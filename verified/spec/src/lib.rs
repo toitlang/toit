@@ -27,6 +27,8 @@
 
 #![allow(unused_imports)]
 
+extern crate alloc;
+
 pub mod types;
 pub mod bytecodes;
 pub mod spec_common;
