@@ -224,6 +224,28 @@ Method Program::find_method(Object* receiver, word offset) {
 #define ON_PROGRAM_HEAP(object) \
   (reinterpret_cast<uword>(object) - program_heap_start < program_heap_size)
 
+// Optional run-time check of field accesses (TOIT_CHECKED_FIELD_ACCESS). The
+// receiver must be an instance (or a task) and the field index must be inside
+// the instance. With this build option a malformed access becomes a Toit
+// exception (via program_failure) instead of a read or write past the end of
+// an object.
+#ifdef TOIT_CHECKED_FIELD_ACCESS
+// Kept minimal: a tag test on the pointer, one header load, one class-bits
+// load, two compares. The header holds the class tag in its low bits and the
+// class id above them; the class bits hold the instance size in words.
+static inline bool field_access_ok(const uint16* class_bits, Object* object, word index) {
+  if (!is_heap_object(object)) return false;
+  word header = Smi::value(HeapObject::cast(object)->header());
+  word tag = header & HeapObject::CLASS_TAG_MASK;
+  if (tag != INSTANCE_TAG && tag != TASK_TAG) return false;
+  word size_in_words = (class_bits[header >> HeapObject::CLASS_ID_OFFSET] >> HeapObject::CLASS_ID_OFFSET) & Program::INSTANCE_SIZE_MASK;
+  return static_cast<uword>(index) + (HeapObject::SIZE / WORD_SIZE) < static_cast<uword>(size_in_words);
+}
+#define FIELD_ACCESS_OK(object, index) field_access_ok(class_bits_data, object, index)
+#else
+#define FIELD_ACCESS_OK(object, index) true
+#endif
+
 inline word bit_or(word a, word b) { return a | b; }
 inline word bit_xor(word a, word b) { return a ^ b; }
 inline word bit_and(word a, word b) { return a & b; }
@@ -311,6 +333,9 @@ Interpreter::Result Interpreter::run() {
   method_entries_ = process_->group()->method_entries();
   const uword program_heap_start = reinterpret_cast<uword>(program);
   const uword program_heap_size = program->size_no_assets();
+#ifdef TOIT_CHECKED_FIELD_ACCESS
+  const uint16* class_bits_data = program->class_bits.data();
+#endif
 #ifdef TOIT_CHECK_PROPAGATED_TYPES
   compiler::TypeDatabase* propagated_types = compiler::TypeDatabase::compute(program);
 #endif
@@ -401,7 +426,9 @@ Interpreter::Result Interpreter::run() {
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_FIELD, field_index);
-    Instance* instance = Instance::cast(POP());
+    Object* object = POP();
+    if (!FIELD_ACCESS_OK(object, field_index)) goto PROGRAM_FAILURE;
+    Instance* instance = Instance::cast(object);
     PUSH(instance->at(field_index));
     CHECK_PROPAGATED_TYPES_TOP();
   OPCODE_END();
@@ -410,7 +437,9 @@ Interpreter::Result Interpreter::run() {
     B_ARG1(encoded);
     int local = encoded & 0x0f;
     int field = encoded >> 4;
-    Instance* instance = Instance::cast(STACK_AT(local));
+    Object* object = STACK_AT(local);
+    if (!FIELD_ACCESS_OK(object, field)) goto PROGRAM_FAILURE;
+    Instance* instance = Instance::cast(object);
     PUSH(instance->at(field));
     CHECK_PROPAGATED_TYPES_TOP();
   OPCODE_END();
@@ -419,7 +448,9 @@ Interpreter::Result Interpreter::run() {
     B_ARG1(encoded);
     int local = encoded & 0x0f;
     int field = encoded >> 4;
-    Instance* instance = Instance::cast(STACK_AT(local + 1));
+    Object* object = STACK_AT(local + 1);
+    if (!FIELD_ACCESS_OK(object, field)) goto PROGRAM_FAILURE;
+    Instance* instance = Instance::cast(object);
     STACK_AT_PUT(0, instance->at(field));
     CHECK_PROPAGATED_TYPES_TOP();
   OPCODE_END();
@@ -427,6 +458,7 @@ Interpreter::Result Interpreter::run() {
   OPCODE_BEGIN_WITH_WIDE(STORE_FIELD, field_index);
     Object* value = STACK_AT(0);
     Object* object = STACK_AT(1);
+    if (!FIELD_ACCESS_OK(object, field_index)) goto PROGRAM_FAILURE;
     // The program heap is shared and read-only.
     if (ON_PROGRAM_HEAP(object)) goto PROGRAM_FAILURE;
     DROP(2);
@@ -439,6 +471,7 @@ Interpreter::Result Interpreter::run() {
     B_ARG1(field_index)
     Object* value = STACK_AT(0);
     Object* object = STACK_AT(1);
+    if (!FIELD_ACCESS_OK(object, field_index)) goto PROGRAM_FAILURE;
     // The program heap is shared and read-only.
     if (ON_PROGRAM_HEAP(object)) goto PROGRAM_FAILURE;
     DROP(2);
@@ -1217,8 +1250,8 @@ Interpreter::Result Interpreter::run() {
 
   PROGRAM_FAILURE: {
     // The program violated an invariant that the interpreter checks at run
-    // time (a malformed block reference, method id, try link or a store
-    // into the program heap). Report it as a Toit exception with the bci of
+    // time (a malformed block reference, method id, try link, field access
+    // or a store into the program heap). Report it as a Toit exception with the bci of
     // the failing instruction. The program_failure entry point never
     // returns, so the return address does not matter.
     PUSH(Smi::from(program->absolute_bci_from_bcp(bcp)));
