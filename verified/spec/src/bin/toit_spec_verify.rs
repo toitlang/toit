@@ -93,8 +93,8 @@ fn main() {
     let ok = check::verify(p, &inferred.cert, trusted);
     let t_check = t2.elapsed();
     for (m, off, msg) in inferred.errors.iter().take(20) {
-        let name = loaded.names.methods.get(&(p.methods[*m].entry - loader::V2_HEADER_SIZE))
-            .map(|(_, n)| n.clone()).unwrap_or_default();
+        let name = loaded.names.method_at(p.methods[*m].entry)
+            .map(|(_, _, n)| n.to_string()).unwrap_or_default();
         reasons.push(format!("method {} ({}) +{}: {}", m, name, off, msg));
     }
     if !ok && inferred.errors.is_empty() {
@@ -103,8 +103,8 @@ fn main() {
         } else {
             for m in 0..p.methods.len() {
                 if !check::x_method_ok(p, &inferred.cert, m, trusted) {
-                    let name = loaded.names.methods.get(&(p.methods[m].entry - loader::V2_HEADER_SIZE))
-                        .map(|(_, n)| n.clone()).unwrap_or_default();
+                    let name = loaded.names.method_at(p.methods[m].entry)
+                        .map(|(_, _, n)| n.to_string()).unwrap_or_default();
                     reasons.push(format!("method {} ({}) rejected by the checker: {}", m, name, diagnose(p, &inferred.cert, m, trusted)));
                     if reasons.len() > 20 { break; }
                 }

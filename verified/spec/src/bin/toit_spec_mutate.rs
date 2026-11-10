@@ -130,6 +130,7 @@ fn main() {
         let text = std::fs::read_to_string(path).unwrap();
         let base = loader::load(&text, 64).unwrap();
         let globals = base.globals.len();
+        let global_max_height = base.program.methods.first().map(|m| m.max_height).unwrap_or(0);
         // Coverage of the original run.
         let mut cov = vec![false; base.program.bytecodes.len()];
         let mut m0 = Machine::new(loader::load(&text, 64).unwrap(), args());
@@ -184,7 +185,8 @@ fn main() {
                 // A byte of the header of an executed method.
                 if methods.is_empty() { continue; }
                 let mi = base.program.methods[methods[rng.below(methods.len())]];
-                let at = mi.entry - loader::V2_HEADER_SIZE + rng.below(loader::V2_HEADER_SIZE);
+                let header = base.names.method_at(mi.entry).map(|(id, _, _)| id).unwrap_or(mi.entry - 2);
+                let at = header + rng.below(mi.entry - header);
                 let mut v = rng.below(256) as u8;
                 if v == bytes[at] { v = v.wrapping_add(1); }
                 bytes[at] = v;
@@ -192,7 +194,7 @@ fn main() {
             };
             *totals.entry(format!("{} mutants", kind)).or_default() += 1;
             let mut loaded = loader::load(&text, 64).unwrap();
-            let table = match loader::method_table_v2(&bytes) {
+            let table = match loader::method_table_v2(&bytes, global_max_height) {
                 Ok(t) => t,
                 Err(_) => {
                     *totals.entry("rejected (method table)".into()).or_default() += 1;
