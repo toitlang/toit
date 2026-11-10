@@ -15,7 +15,7 @@
 
 //! The loader's contract `loaded_ok` (`v2::sound`), checked on a loaded
 //! program. `x_loaded_ok` (Verus) is proven to return exactly
-//! `loaded_ok(pview2(p), c@, heap, globals)`: object classes exist,
+//! `loaded_ok(vview(p), c@, heap, globals)`: object classes exist,
 //! instances of classes with fields have their class's field count, every
 //! reference in the heap, the roots, the literals and the globals is in
 //! range, and the heap has no machine objects (suspended stacks, tasks).
@@ -28,7 +28,8 @@ use crate::types::*;
 use crate::v2::types::*;
 use crate::v2::sound::*;
 use crate::v2::verifier::*;
-use crate::v2::check::{XCert, x_is_field_class, x_ifc};
+use crate::v2::check::{x_is_field_class, x_ifc};
+use crate::v2::vprog::*;
 #[cfg(verus_only)]
 use crate::v2::exec::wf_program2;
 
@@ -52,7 +53,7 @@ pub fn x_good(Ghost(h): Ghost<Seq<HeapObj>>, n: usize, v: Value) -> (r: bool)
 }
 
 /// Every element of `vs` is a value of a heap with `n` objects.
-pub fn x_all_good(Ghost(h): Ghost<Seq<HeapObj>>, n: usize, vs: &Vec<Value>) -> (r: bool)
+pub fn x_all_good(Ghost(h): Ghost<Seq<HeapObj>>, n: usize, vs: &[Value]) -> (r: bool)
     requires h.len() == n,
     ensures r == forall|i: int| 0 <= i < vs@.len() ==> good(h, #[trigger] vs@[i]),
 {
@@ -70,11 +71,11 @@ pub fn x_all_good(Ghost(h): Ghost<Seq<HeapObj>>, n: usize, vs: &Vec<Value>) -> (
 }
 
 /// An object of the program heap (`loaded_obj_ok`).
-pub fn x_loaded_obj_ok(p: &ExecProgram, Ghost(h): Ghost<Seq<HeapObj>>, n: usize, o: &ExecObj) -> (r: bool)
-    requires wf_program2(pview2(p)), h.len() == n,
-    ensures r == loaded_obj_ok(pview2(p), h, o@),
+pub fn x_loaded_obj_ok(p: &VProgram, Ghost(h): Ghost<Seq<HeapObj>>, n: usize, o: &ExecObj) -> (r: bool)
+    requires wf_program2(vview(p)), h.len() == n,
+    ensures r == loaded_obj_ok(vview(p), h, o@),
 {
-    let ghost pv = pview2(p);
+    let ghost pv = vview(p);
     let cl = o.class_id as usize;
     if cl >= p.class_bits.len() {
         return false;
@@ -89,13 +90,13 @@ pub fn x_loaded_obj_ok(p: &ExecProgram, Ghost(h): Ghost<Seq<HeapObj>>, n: usize,
             if fc && f.len() as u64 != x_ifc(p, cl) as u64 {
                 return false;
             }
-            x_all_good(Ghost(h), n, f)
+            x_all_good(Ghost(h), n, f.as_slice())
         },
         ExecBody::Array(e) => {
             if fc {
                 return false;
             }
-            x_all_good(Ghost(h), n, e)
+            x_all_good(Ghost(h), n, e.as_slice())
         },
         ExecBody::Stack(_, _) => false,
         ExecBody::Stack2(_, _, _, _, _) => false,
@@ -105,9 +106,9 @@ pub fn x_loaded_obj_ok(p: &ExecProgram, Ghost(h): Ghost<Seq<HeapObj>>, n: usize,
 
 /// The heap part of the loader's contract. `Err(i)` names a failing
 /// object, `Err(u64::MAX)` a heap too large or a bad root or literal.
-pub fn x_loaded_heap_ok(p: &ExecProgram, heap: &Vec<ExecObj>) -> (r: Result<(), u64>)
-    requires wf_program2(pview2(p)),
-    ensures r is Ok <==> loaded_heap_ok(pview2(p), hview(heap)),
+pub fn x_loaded_heap_ok(p: &VProgram, heap: &Vec<ExecObj>) -> (r: Result<(), u64>)
+    requires wf_program2(vview(p)),
+    ensures r is Ok <==> loaded_heap_ok(vview(p), hview(heap)),
 {
     let ghost h = hview(heap);
     let n = heap.len();
@@ -117,8 +118,8 @@ pub fn x_loaded_heap_ok(p: &ExecProgram, heap: &Vec<ExecObj>) -> (r: Result<(), 
     let mut i = 0;
     while i < n
         invariant
-            wf_program2(pview2(p)), h == hview(heap), n == heap.len(), h.len() == n, 0 <= i <= n,
-            forall|j: int| 0 <= j < i ==> loaded_obj_ok(pview2(p), h, #[trigger] h[j]),
+            wf_program2(vview(p)), h == hview(heap), n == heap.len(), h.len() == n, 0 <= i <= n,
+            forall|j: int| 0 <= j < i ==> loaded_obj_ok(vview(p), h, #[trigger] h[j]),
         decreases n - i,
     {
         proof { assert(h[i as int] == heap@[i as int]@); }
@@ -127,22 +128,23 @@ pub fn x_loaded_heap_ok(p: &ExecProgram, heap: &Vec<ExecObj>) -> (r: Result<(), 
         }
         i += 1;
     }
-    if !(x_all_good(Ghost(h), n, &p.roots) && x_all_good(Ghost(h), n, &p.literals)) {
+    if !(x_all_good(Ghost(h), n, p.roots) && x_all_good(Ghost(h), n, p.literals)) {
         return Err(u64::MAX);
     }
     Ok(())
 }
 
-/// The loader's contract `loaded_ok` for the certificate's global count.
-pub fn x_loaded_ok(p: &ExecProgram, c: &XCert, heap: &Vec<ExecObj>, globals: &Vec<Value>) -> (r: bool)
-    requires wf_program2(pview2(p)),
-    ensures r == loaded_ok(pview2(p), c@, hview(heap), globals@),
+/// The loader's contract `loaded_ok` for a certificate with global count
+/// `global_count` (the only part of the certificate it reads).
+pub fn x_loaded_ok(p: &VProgram, global_count: u64, heap: &Vec<ExecObj>, globals: &Vec<Value>) -> (r: bool)
+    requires wf_program2(vview(p)),
+    ensures forall|c: Cert| c.global_count == global_count as int ==> r == #[trigger] loaded_ok(vview(p), c, hview(heap), globals@),
 {
     let ghost h = hview(heap);
     if x_loaded_heap_ok(p, heap).is_err() {
         return false;
     }
-    globals.len() as u64 == c.global_count && x_all_good(Ghost(h), heap.len(), globals)
+    globals.len() as u64 == global_count && x_all_good(Ghost(h), heap.len(), globals.as_slice())
 }
 
 } // verus!
@@ -150,12 +152,11 @@ pub fn x_loaded_ok(p: &ExecProgram, c: &XCert, heap: &Vec<ExecObj>, globals: &Ve
 /// `toit_spec_verify`'s early check of the heap part of the loader's
 /// contract, for the rejection message; the verdict uses `x_loaded_ok`.
 #[cfg(not(verus_keep_ghost))]
-pub fn check_heap(l: &crate::interp::loader::Loaded) -> Result<(), String> {
-    let p = &l.program;
+pub fn check_heap(p: &VProgram, heap: &Vec<ExecObj>) -> Result<(), String> {
     if !crate::v2::check::x_wf_program2(p) {
         return Err("malformed program tables".to_string());
     }
-    match x_loaded_heap_ok(p, &l.heap) {
+    match x_loaded_heap_ok(p, heap) {
         Err(i) if i == u64::MAX => Err("heap too large, or a bad reference in the roots or literals".to_string()),
         Err(i) => Err(format!("object {} is malformed, a machine object or dangling", i)),
         Ok(()) => Ok(()),

@@ -88,7 +88,7 @@ pub open spec fn with_maps(g: GCert, maps: Seq<Maps>) -> Cert {
 }
 
 pub open spec fn pin_at(g: GCert, m: int, o: int) -> Option<Seq<Kind>> {
-    if 0 <= o < PIN_SPAN { (g.pins)(m, o) } else { None }
+    (g.pins)(m, o)
 }
 
 /// Every method's maps hold only its pins.
