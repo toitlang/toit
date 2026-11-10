@@ -9,6 +9,7 @@
 
 import expect show *
 import host.file
+import host.os
 import .sandbox-util show *
 
 // Opcode numbers, from src/bytecodes.h. Only used to locate a branch in the
@@ -56,6 +57,13 @@ verify run/string snap/string args/List -> RunResult:
 main args:
   run := args[0]
   compiler := args[1]
+
+  // This test exercises the structural verifier of format 1 (its options,
+  // output and fuzzer). Format-2 programs are checked by the format-2
+  // loader until the verified format-2 verifier is integrated
+  // (verified/core/DESIGN.md), so the programs are compiled in format 1
+  // even when the suite runs with TOIT_BYTECODE_FORMAT=2.
+  os.env["TOIT_BYTECODE_FORMAT"] = "1"
 
   with-tmp-directory: | dir |
     valid := "$dir/valid.snapshot"

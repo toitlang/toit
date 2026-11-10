@@ -26,11 +26,435 @@
 
 [[trusted]]
 crate = "core"
-file = "src/ffi.rs"
-item = "*"
-kind = "plain_rust_file"
+file = "src/exec.rs"
+item = "Machine::op_load_block"
+kind = "plain_rust_item"
 count = 1
-justification = "C ABI glue, not processed by Verus: builds the views from toit_vcore_state and copies three words back; TRUSTED.md section 2."
+justification = "Block family handler not yet verified (block references are smis; needs the ghost slot-kind map, OBLIGATIONS.md B1); run-time checks keep it memory safe."
+
+[[trusted]]
+crate = "core"
+file = "src/exec.rs"
+item = "Machine::op_load_field"
+kind = "plain_rust_item"
+count = 1
+justification = "Field family not yet verified: needs a heap abstraction (OBLIGATIONS.md F1); field_ok checks tag, class id and field count first."
+
+[[trusted]]
+crate = "core"
+file = "src/exec.rs"
+item = "Machine::op_load_field_local"
+kind = "plain_rust_item"
+count = 1
+justification = "Field family not yet verified (OBLIGATIONS.md F1); field_ok checks the access first."
+
+[[trusted]]
+crate = "core"
+file = "src/exec.rs"
+item = "Machine::op_load_field_this"
+kind = "plain_rust_item"
+count = 1
+justification = "Field family not yet verified (OBLIGATIONS.md F1); checks the receiver's fields at run time although the loader checked the range."
+
+[[trusted]]
+crate = "core"
+file = "src/exec.rs"
+item = "Machine::op_load_outer"
+kind = "plain_rust_item"
+count = 1
+justification = "Block family handler not yet verified (OBLIGATIONS.md B1); block_ref checks the frame and slot before the access."
+
+[[trusted]]
+crate = "core"
+file = "src/exec.rs"
+item = "Machine::op_load_outer_block"
+kind = "plain_rust_item"
+count = 1
+justification = "Block family handler not yet verified (OBLIGATIONS.md B1); block_ref checks the frame and slot."
+
+[[trusted]]
+crate = "core"
+file = "src/exec.rs"
+item = "Machine::op_store_field"
+kind = "plain_rust_item"
+count = 1
+justification = "Field family not yet verified (OBLIGATIONS.md F1); field_ok and the program-heap check precede the store."
+
+[[trusted]]
+crate = "core"
+file = "src/exec.rs"
+item = "Machine::op_store_field_this"
+kind = "plain_rust_item"
+count = 1
+justification = "Field family not yet verified (OBLIGATIONS.md F1); field_ok and the program-heap check precede the store."
+
+[[trusted]]
+crate = "core"
+file = "src/exec.rs"
+item = "Machine::op_store_outer"
+kind = "plain_rust_item"
+count = 1
+justification = "Block family handler not yet verified (OBLIGATIONS.md B1); block_ref checks the frame and slot before the access."
+
+[[trusted]]
+crate = "core"
+file = "src/exec.rs"
+item = "Program::boolean"
+kind = "plain_rust_item"
+count = 1
+justification = "Plain accessor of the program tables (true/false roots); trivially correct, verified with the handlers that use it later."
+
+[[trusted]]
+crate = "core"
+file = "src/exec.rs"
+item = "Program::dispatch_target"
+kind = "plain_rust_item"
+count = 1
+justification = "Bounds-checked dispatch-table read (returns -1 out of range); outside verus! until the call family is verified (OBLIGATIONS.md C1)."
+
+[[trusted]]
+crate = "core"
+file = "src/exec.rs"
+item = "Program::entry_method"
+kind = "plain_rust_item"
+count = 1
+justification = "Entry-point lookup through dispatch_target; entry_points has ENTRY_POINT_COUNT entries (layout check); call family, OBLIGATIONS.md C1."
+
+[[trusted]]
+crate = "core"
+file = "src/exec.rs"
+item = "Program::instance_field_count"
+kind = "plain_rust_item"
+count = 1
+justification = "Decodes the instance size from class_bits (layout-checked constants); callers bound cid; field family, OBLIGATIONS.md F1."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Context"
+kind = "plain_rust_item"
+count = 1
+justification = "repr(C) mirror of toit_v2_context; size and every field offset are machine-checked by verified/layout_check.cc."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "OPCODES"
+kind = "plain_rust_item"
+count = 1
+justification = "Opcode numbers exported for verified/layout_check.cc, which compares them with src/bytecodes.h."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "PrimitiveRef"
+kind = "external_body"
+count = 1
+justification = "Opaque handle of a C++ PrimitiveEntry found in the process policy; only passed back to toit_v2_call_primitive."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "ProgramTables"
+kind = "plain_rust_item"
+count = 1
+justification = "repr(C) mirror of toit_v2_program; size and field offsets machine-checked by verified/layout_check.cc."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime"
+kind = "external_body"
+count = 1
+justification = "Opaque holder of the Process pointer and the Stack array offset used by the FFI wrappers (TRUSTED.md section 2)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::allocate_array"
+kind = "external_body"
+count = 1
+justification = "Wrapper of toit_v2_allocate_array: MAY GC, takes the stack view by &mut and replaces it with a fresh one (GC safety by construction, DESIGN.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::allocate_array"
+kind = "unsafe"
+count = 1
+justification = "FFI call to toit_v2_allocate_array (src/interpreter_v2.cc); arguments are plain words; contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::allocate_double"
+kind = "external_body"
+count = 1
+justification = "Wrapper of toit_v2_allocate_double: MAY GC, takes the stack view by &mut and replaces it with a fresh one (GC safety by construction, DESIGN.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::allocate_double"
+kind = "unsafe"
+count = 1
+justification = "FFI call to toit_v2_allocate_double (src/interpreter_v2.cc); arguments are plain words; contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::allocate_exception"
+kind = "external_body"
+count = 1
+justification = "Wrapper of toit_v2_allocate_exception: MAY GC, takes the stack view by &mut and replaces it with a fresh one (GC safety by construction, DESIGN.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::allocate_exception"
+kind = "unsafe"
+count = 1
+justification = "FFI call to toit_v2_allocate_exception (src/interpreter_v2.cc); arguments are plain words; contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::allocate_instance"
+kind = "external_body"
+count = 1
+justification = "Wrapper of toit_v2_allocate_instance: MAY GC, takes the stack view by &mut and replaces it with a fresh one (GC safety by construction, DESIGN.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::allocate_instance"
+kind = "unsafe"
+count = 1
+justification = "FFI call to toit_v2_allocate_instance (src/interpreter_v2.cc); arguments are plain words; contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::call_primitive"
+kind = "external_body"
+count = 1
+justification = "Wrapper of toit_v2_call_primitive: MAY GC, takes the stack view by &mut and replaces it with a fresh one (GC safety by construction, DESIGN.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::call_primitive"
+kind = "unsafe"
+count = 1
+justification = "FFI call to toit_v2_call_primitive (src/interpreter_v2.cc); arguments are plain words; contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::grow_stack"
+kind = "external_body"
+count = 1
+justification = "Wrapper of toit_v2_grow_stack: MAY GC, takes the stack view by &mut and replaces it with a fresh one (GC safety by construction, DESIGN.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::grow_stack"
+kind = "unsafe"
+count = 1
+justification = "FFI call to toit_v2_grow_stack (src/interpreter_v2.cc); arguments are plain words; contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::lookup_primitive"
+kind = "external_body"
+count = 1
+justification = "Wrapper of toit_v2_lookup_primitive: no GC; contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::lookup_primitive"
+kind = "unsafe"
+count = 1
+justification = "FFI call to toit_v2_lookup_primitive (src/interpreter_v2.cc); arguments are plain words; contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::new"
+kind = "plain_rust_item"
+count = 1
+justification = "Constructor of the opaque FFI holder; called once by toit_v2_run."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::report"
+kind = "external_body"
+count = 1
+justification = "Wrapper of toit_v2_report: no GC; contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::report"
+kind = "unsafe"
+count = 1
+justification = "FFI call to toit_v2_report (src/interpreter_v2.cc); arguments are plain words; contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::stack"
+kind = "external_body"
+count = 1
+justification = "Wrapper of toit_v2_stack: no GC; contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::stack"
+kind = "unsafe"
+count = 1
+justification = "FFI call to toit_v2_stack (src/interpreter_v2.cc); arguments are plain words; contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "STRUCT_LAYOUT"
+kind = "plain_rust_item"
+count = 1
+justification = "FFI struct offsets exported for verified/layout_check.cc."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "extern"
+kind = "plain_rust_item"
+count = 1
+justification = "Declarations of the C++ functions of src/interpreter_v2.cc; contracts in TRUSTED.md section 2 and DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "layout_table!"
+kind = "plain_rust_item"
+count = 1
+justification = "Exports the layout.rs constants by name for verified/layout_check.cc."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "macro_rules!"
+kind = "plain_rust_item"
+count = 1
+justification = "Macro generating the layout and opcode tables for the layout check."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_v2_allocate_array"
+kind = "plain_rust_item"
+count = 1
+justification = "Rust declaration of a C++ function of src/interpreter_v2.cc (extern block); contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_v2_allocate_double"
+kind = "plain_rust_item"
+count = 1
+justification = "Rust declaration of a C++ function of src/interpreter_v2.cc (extern block); contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_v2_allocate_exception"
+kind = "plain_rust_item"
+count = 1
+justification = "Rust declaration of a C++ function of src/interpreter_v2.cc (extern block); contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_v2_allocate_instance"
+kind = "plain_rust_item"
+count = 1
+justification = "Rust declaration of a C++ function of src/interpreter_v2.cc (extern block); contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_v2_call_primitive"
+kind = "plain_rust_item"
+count = 1
+justification = "Rust declaration of a C++ function of src/interpreter_v2.cc (extern block); contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_v2_current_stack"
+kind = "plain_rust_item"
+count = 1
+justification = "Rust declaration of a C++ function of src/interpreter_v2.cc (extern block); contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_v2_grow_stack"
+kind = "plain_rust_item"
+count = 1
+justification = "Rust declaration of a C++ function of src/interpreter_v2.cc (extern block); contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_v2_lookup_primitive"
+kind = "plain_rust_item"
+count = 1
+justification = "Rust declaration of a C++ function of src/interpreter_v2.cc (extern block); contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_v2_report"
+kind = "plain_rust_item"
+count = 1
+justification = "Rust declaration of a C++ function of src/interpreter_v2.cc (extern block); contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_v2_run"
+kind = "plain_rust_item"
+count = 1
+justification = "C entry point: builds Program, views and Runtime from the context Interpreter::run_v2 filled; checks table sizes; DESIGN.md run-loop contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_v2_run"
+kind = "unsafe"
+count = 1
+justification = "C entry point: builds Program, views and Runtime from the context Interpreter::run_v2 filled; checks table sizes; DESIGN.md run-loop contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_vcore_layout_count"
+kind = "plain_rust_item"
+count = 1
+justification = "Layout-check export (count of constants); no effect on the VM."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_vcore_layout_entry"
+kind = "plain_rust_item"
+count = 1
+justification = "Layout-check export of one constant; no effect on the VM."
 
 [[trusted]]
 crate = "core"
@@ -43,266 +467,506 @@ justification = "Writes name/value through caller pointers for the layout check 
 [[trusted]]
 crate = "core"
 file = "src/ffi.rs"
-item = "toit_vcore_run"
-kind = "unsafe"
+item = "toit_vcore_opcode_length"
+kind = "plain_rust_item"
 count = 1
-justification = "FFI entry: dereferences the caller's toit_vcore_state and creates views; entry re-checks every index; TRUSTED.md section 2."
+justification = "Layout-check export of the opcode length table; no effect on the VM."
 
 [[trusted]]
 crate = "core"
-file = "src/lib.rs"
+file = "src/machine.rs"
 item = "*"
 kind = "plain_rust_file"
 count = 1
-justification = "Module list plus panic_handler and rust_eh_personality for the no_std staticlib; both unreachable; TRUSTED.md section 2."
+justification = "Run loop and handlers not yet verified (calls, operators, type checks, unwinding, primitives); listed per opcode in OBLIGATIONS.md; every spec stuck state is a run-time check."
 
 [[trusted]]
 crate = "core"
-file = "src/lib.rs"
-item = "panic"
-kind = "cfg"
-count = 1
-justification = "panic_handler is compiled only for the staticlib (not with toit_vcore_hosted, which the Verus run sets); unreachable, see TRUSTED.md section 2."
-
-[[trusted]]
-crate = "core"
-file = "src/lib.rs"
-item = "panic"
+file = "src/machine.rs"
+item = "macro_rules!"
 kind = "unsafe"
-count = 1
-justification = "Calls libc abort() from the unreachable panic_handler."
+count = 2
+justification = "cold! moves the Machine into cold_run by value and back (ptr::read/write, no destructor, panic=abort) so LLVM keeps the hot state in registers; DESIGN.md run loop."
 
 [[trusted]]
 crate = "core"
-file = "src/lib.rs"
-item = "rust_eh_personality"
-kind = "cfg"
-count = 1
-justification = "Empty personality stub for the staticlib only (hidden from the hosted Verus build); never called; TRUSTED.md section 2."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "CodeView"
-kind = "external_body"
-count = 1
-justification = "Opaque view of the immutable bytecodes; TRUSTED.md section 1."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "CodeView::byte"
-kind = "external_body"
-count = 1
-justification = "Assumed contract: requires i < len; ensures r == self@[i]; TRUSTED.md section 1."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "CodeView::byte"
-kind = "unsafe"
-count = 1
-justification = "Raw pointer access inside the trusted body; in bounds by requires i < len."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "CodeView::from_raw"
-kind = "plain_rust_item"
-count = 1
-justification = "Constructor invisible to Verus, called by the FFI glue; creates the ghost view from a raw pointer and length."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "CodeView::from_raw"
-kind = "unsafe"
-count = 1
-justification = "unsafe fn: the caller (FFI glue) guarantees the pointer validity stated in its # Safety comment."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "CodeView::len"
-kind = "external_body"
-count = 1
-justification = "Assumed contract: ensures r == self@.len(); TRUSTED.md section 1."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "CodeView::view"
+file = "src/obligations.rs"
+item = "abstracts"
 kind = "uninterp"
 count = 1
-justification = "Ghost contents of the view; no assumption by itself (the external_body contracts relate it to memory); TRUSTED.md section 1."
+justification = "Placeholder for the machine-to-State2 abstraction function (OBLIGATIONS.md E2E); only used in the unproven statement."
 
 [[trusted]]
 crate = "core"
-file = "src/view.rs"
-item = "DispatchView"
-kind = "external_body"
-count = 1
-justification = "Opaque view of the immutable dispatch table; TRUSTED.md section 1."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "DispatchView::at"
-kind = "external_body"
-count = 1
-justification = "Assumed contract: requires i < len; ensures r == self@[i]; TRUSTED.md section 1."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "DispatchView::at"
-kind = "unsafe"
-count = 1
-justification = "Raw pointer access inside the trusted body; in bounds by requires i < len."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "DispatchView::from_raw"
-kind = "plain_rust_item"
-count = 1
-justification = "Constructor invisible to Verus, called by the FFI glue; creates the ghost view from a raw pointer and length."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "DispatchView::from_raw"
-kind = "unsafe"
-count = 1
-justification = "unsafe fn: the caller (FFI glue) guarantees the pointer validity stated in its # Safety comment."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "DispatchView::len"
-kind = "external_body"
-count = 1
-justification = "Assumed contract: ensures r == self@.len(); TRUSTED.md section 1."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "DispatchView::view"
+file = "src/obligations.rs"
+item = "accepted"
 kind = "uninterp"
 count = 1
-justification = "Ghost contents of the view; no assumption by itself (the external_body contracts relate it to memory); TRUSTED.md section 1."
+justification = "Placeholder for toit_spec v2 accepts (the core crate cannot import the spec crate yet); only used in the unproven statement."
 
 [[trusted]]
 crate = "core"
-file = "src/view.rs"
-item = "RoomOracle"
+file = "src/obligations.rs"
+item = "end_to_end_no_fatal"
 kind = "external_body"
 count = 1
-justification = "Holds limit_ and &watermark_; TRUSTED.md section 1."
+justification = "UNPROVEN obligation E2E (OBLIGATIONS.md): the end-to-end statement written down for the proof half; nothing uses it as an axiom."
 
 [[trusted]]
 crate = "core"
-file = "src/view.rs"
-item = "RoomOracle::from_raw"
-kind = "plain_rust_item"
-count = 1
-justification = "Constructor invisible to Verus, called by the FFI glue; creates the ghost view from a raw pointer and length."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "RoomOracle::from_raw"
-kind = "unsafe"
-count = 1
-justification = "unsafe fn: the caller (FFI glue) guarantees the pointer validity stated in its # Safety comment."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "RoomOracle::has_room"
-kind = "external_body"
-count = 1
-justification = "Assumed contract: none (nondeterministic oracle, modelled as the spec's room input); TRUSTED.md section 1."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "RoomOracle::has_room"
-kind = "unsafe"
-count = 1
-justification = "Relaxed load of the interpreter's watermark atomic through a raw pointer."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "StackView"
-kind = "external_body"
-count = 1
-justification = "Opaque view of the stack word array [limit_, base_); TRUSTED.md section 1."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "StackView::from_raw"
-kind = "plain_rust_item"
-count = 1
-justification = "Constructor invisible to Verus, called by the FFI glue; creates the ghost view from a raw pointer and length."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "StackView::from_raw"
-kind = "unsafe"
-count = 1
-justification = "unsafe fn: the caller (FFI glue) guarantees the pointer validity stated in its # Safety comment."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "StackView::len"
-kind = "external_body"
-count = 1
-justification = "Assumed contract: ensures r == self@.len(); TRUSTED.md section 1."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "StackView::read"
-kind = "external_body"
-count = 1
-justification = "Assumed contract: requires i < len; ensures r == self@[i]; TRUSTED.md section 1."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "StackView::read"
-kind = "unsafe"
-count = 1
-justification = "Raw pointer access inside the trusted body; in bounds by requires i < len."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "StackView::view"
+file = "src/obligations.rs"
+item = "loaded"
 kind = "uninterp"
 count = 1
-justification = "Ghost contents of the view; no assumption by itself (the external_body contracts relate it to memory); TRUSTED.md section 1."
+justification = "Placeholder for loaded_ok of verified/spec/SOUNDNESS.md; only used in the unproven statement."
+
+[[trusted]]
+crate = "core"
+file = "src/obligations.rs"
+item = "next_step_not_stuck"
+kind = "uninterp"
+count = 1
+justification = "Placeholder for 'the next handler takes no Ctl::Stuck path'; only used in the unproven statement."
+
+[[trusted]]
+crate = "core"
+file = "src/obligations.rs"
+item = "reachable"
+kind = "uninterp"
+count = 1
+justification = "Placeholder for spec-reachability of the abstract state; only used in the unproven statement."
 
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "StackView::write"
+item = "Globals"
 kind = "external_body"
 count = 1
-justification = "Assumed contract: requires i < len; ensures final(self)@ == old(self)@.update(i, v); TRUSTED.md section 1."
+justification = "Opaque Globals view over VM memory (raw pointer and length); TRUSTED.md section 1."
 
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "StackView::write"
+item = "Globals::at"
+kind = "external_body"
+count = 1
+justification = "Trusted contract of Globals::at (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Globals::at"
 kind = "unsafe"
 count = 1
-justification = "Raw pointer access inside the trusted body; in bounds by requires i < len."
+justification = "Raw access of Globals::at; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Globals::from_raw"
+kind = "plain_rust_item"
+count = 1
+justification = "Constructor of the Globals view from C++ pointers, called only by toit_v2_run / Runtime::stack (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Globals::from_raw"
+kind = "unsafe"
+count = 1
+justification = "Constructor of the Globals view from C++ pointers, called only by toit_v2_run / Runtime::stack (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Globals::len"
+kind = "external_body"
+count = 1
+justification = "Trusted contract of Globals::len (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Globals::set"
+kind = "external_body"
+count = 1
+justification = "Trusted contract of Globals::set (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Globals::set"
+kind = "unsafe"
+count = 1
+justification = "Raw access of Globals::set; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Globals::view"
+kind = "uninterp"
+count = 1
+justification = "Ghost content of the Globals view; only related to memory through the external_body contracts (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap"
+kind = "external_body"
+count = 1
+justification = "Opaque Heap view over VM memory (raw pointer and length); TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::byte"
+kind = "external_body"
+count = 1
+justification = "Trusted contract of Heap::byte (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::byte"
+kind = "unsafe"
+count = 1
+justification = "Raw access of Heap::byte; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::header"
+kind = "external_body"
+count = 1
+justification = "Trusted contract of Heap::header (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::header"
+kind = "unsafe"
+count = 1
+justification = "Raw access of Heap::header; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::new"
+kind = "plain_rust_item"
+count = 1
+justification = "Constructor of the Heap view from C++ pointers, called only by toit_v2_run / Runtime::stack (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::set_byte"
+kind = "external_body"
+count = 1
+justification = "Trusted contract of Heap::set_byte (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::set_byte"
+kind = "unsafe"
+count = 1
+justification = "Raw access of Heap::set_byte; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::set_word"
+kind = "external_body"
+count = 1
+justification = "Trusted contract of Heap::set_word (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::set_word"
+kind = "unsafe"
+count = 1
+justification = "Raw access of Heap::set_word; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::u32_at"
+kind = "external_body"
+count = 1
+justification = "Trusted contract of Heap::u32_at (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::u32_at"
+kind = "unsafe"
+count = 1
+justification = "Raw access of Heap::u32_at; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::word"
+kind = "external_body"
+count = 1
+justification = "Trusted contract of Heap::word (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::word"
+kind = "unsafe"
+count = 1
+justification = "Raw access of Heap::word; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Preemption"
+kind = "external_body"
+count = 1
+justification = "Opaque Preemption view over VM memory (raw pointer and length); TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Preemption::clear"
+kind = "external_body"
+count = 1
+justification = "Trusted contract of Preemption::clear (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Preemption::clear"
+kind = "unsafe"
+count = 1
+justification = "Raw access of Preemption::clear; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Preemption::from_raw"
+kind = "plain_rust_item"
+count = 1
+justification = "Constructor of the Preemption view from C++ pointers, called only by toit_v2_run / Runtime::stack (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Preemption::from_raw"
+kind = "unsafe"
+count = 1
+justification = "Constructor of the Preemption view from C++ pointers, called only by toit_v2_run / Runtime::stack (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Preemption::request"
+kind = "external_body"
+count = 1
+justification = "Trusted contract of Preemption::request (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Preemption::request"
+kind = "unsafe"
+count = 1
+justification = "Raw access of Preemption::request; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Preemption::requested"
+kind = "external_body"
+count = 1
+justification = "Trusted contract of Preemption::requested (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Preemption::requested"
+kind = "unsafe"
+count = 1
+justification = "Raw access of Preemption::requested; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackMem"
+kind = "external_body"
+count = 1
+justification = "Opaque StackMem view over VM memory (raw pointer and length); TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackMem::copy_within"
+kind = "external_body"
+count = 1
+justification = "Trusted contract of StackMem::copy_within (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackMem::copy_within"
+kind = "unsafe"
+count = 1
+justification = "Raw access of StackMem::copy_within; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackMem::from_stack"
+kind = "plain_rust_item"
+count = 1
+justification = "Constructor of the StackMem view from C++ pointers, called only by toit_v2_run / Runtime::stack (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackMem::from_stack"
+kind = "unsafe"
+count = 1
+justification = "Constructor of the StackMem view from C++ pointers, called only by toit_v2_run / Runtime::stack (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackMem::header"
+kind = "external_body"
+count = 1
+justification = "Trusted contract of StackMem::header (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackMem::header"
+kind = "unsafe"
+count = 1
+justification = "Raw access of StackMem::header; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackMem::len"
+kind = "external_body"
+count = 1
+justification = "Trusted contract of StackMem::len (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackMem::read"
+kind = "external_body"
+count = 1
+justification = "Trusted contract of StackMem::read (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackMem::read"
+kind = "unsafe"
+count = 1
+justification = "Raw access of StackMem::read; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackMem::set_header"
+kind = "external_body"
+count = 1
+justification = "Trusted contract of StackMem::set_header (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackMem::set_header"
+kind = "unsafe"
+count = 1
+justification = "Raw access of StackMem::set_header; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackMem::view"
+kind = "uninterp"
+count = 1
+justification = "Ghost content of the StackMem view; only related to memory through the external_body contracts (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackMem::write"
+kind = "external_body"
+count = 1
+justification = "Trusted contract of StackMem::write (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackMem::write"
+kind = "unsafe"
+count = 1
+justification = "Raw access of StackMem::write; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Table"
+kind = "external_body"
+count = 1
+justification = "Opaque Table view over VM memory (raw pointer and length); TRUSTED.md section 1."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Table::at"
+kind = "external_body"
+count = 1
+justification = "Trusted contract of Table::at (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Table::at"
+kind = "unsafe"
+count = 1
+justification = "Raw access of Table::at; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Table::from_raw"
+kind = "plain_rust_item"
+count = 1
+justification = "Constructor of the Table view from C++ pointers, called only by toit_v2_run / Runtime::stack (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Table::from_raw"
+kind = "unsafe"
+count = 1
+justification = "Constructor of the Table view from C++ pointers, called only by toit_v2_run / Runtime::stack (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Table::len"
+kind = "external_body"
+count = 1
+justification = "Trusted contract of Table::len (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Table::view"
+kind = "uninterp"
+count = 1
+justification = "Ghost content of the Table view; only related to memory through the external_body contracts (TRUSTED.md section 1)."
 
 [[trusted]]
 crate = "spec"

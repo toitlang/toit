@@ -24,16 +24,22 @@ foreach(file ${SANDBOX_TESTS})
       COMMAND $<TARGET_FILE:toit.run> ${file} $<TARGET_FILE:toit.run> $<TARGET_FILE:toit.compile>
       WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
       )
-    set_tests_properties(${file} PROPERTIES TIMEOUT 120)
+    set_tests_properties(${file} PROPERTIES TIMEOUT 120 ENVIRONMENT "TOIT_BYTECODE_FORMAT=2")
   else()
     add_test(
       NAME ${file}
       COMMAND $<TARGET_FILE:toit.run> ${file}
       WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
       )
-    set_tests_properties(${file} PROPERTIES TIMEOUT 40)
+    set_tests_properties(${file} PROPERTIES TIMEOUT 40 ENVIRONMENT "TOIT_BYTECODE_FORMAT=2")
   endif()
 endforeach()
+
+# The sandbox tests start their untrusted containers from their own image,
+# so the whole test is compiled in format 2 (TOIT_BYTECODE_FORMAT=2): the
+# untrusted containers (and the trusted drivers) run on the verified core.
+# Untrusted containers must be in format 2 unless -Xuntrusted_format1 or
+# TOIT_UNTRUSTED_FORMAT1=1 is given (verified/core/DESIGN.md).
 
 # Programs run directly as untrusted containers with 'toit.run --untrusted'.
 set(UNTRUSTED_RUN_TESTS
@@ -74,6 +80,36 @@ foreach(entry ${UNTRUSTED_RUN_TESTS})
           -DTMP=${CMAKE_CURRENT_BINARY_DIR}/cli-${name}-${mode}
           -P ${CMAKE_CURRENT_SOURCE_DIR}/run-untrusted.cmake
       )
-    set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
+    set_tests_properties(${test_name} PROPERTIES TIMEOUT 40 ENVIRONMENT "TOIT_BYTECODE_FORMAT=2")
   endforeach()
+endforeach()
+
+# A format-1 snapshot is refused as an untrusted container by default, and
+# runs (on the C++ interpreter) when format 1 is allowed.
+foreach(variant refused allowed)
+  if(variant STREQUAL "refused")
+    set(env "TOIT_BYTECODE_FORMAT=1")
+    set(exit_code 1)
+    set(output "FORMAT_2_REQUIRED")
+    set(unexpected "hello from the sandbox")
+  else()
+    set(env "TOIT_BYTECODE_FORMAT=1;TOIT_UNTRUSTED_FORMAT1=1")
+    set(exit_code 0)
+    set(output "hello from the sandbox")
+    set(unexpected "")
+  endif()
+  set(test_name "tests/sandbox/cli/format1-${variant}-snapshot")
+  add_test(
+    NAME ${test_name}
+    COMMAND ${CMAKE_COMMAND}
+        -DTOIT_RUN=$<TARGET_FILE:toit.run>
+        -DPROGRAM=${CMAKE_CURRENT_SOURCE_DIR}/cli/print-main.toit
+        -DMODE=snapshot
+        -DEXPECTED_EXIT=${exit_code}
+        "-DEXPECTED_OUTPUT=${output}"
+        "-DUNEXPECTED_OUTPUT=${unexpected}"
+        -DTMP=${CMAKE_CURRENT_BINARY_DIR}/cli-format1-${variant}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/run-untrusted.cmake
+    )
+  set_tests_properties(${test_name} PROPERTIES TIMEOUT 40 ENVIRONMENT "${env}")
 endforeach()

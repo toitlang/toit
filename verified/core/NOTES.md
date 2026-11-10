@@ -1,5 +1,8 @@
 # Verified core, Phase 0 spike: notes
 
+> Historical: the Phase 0 per-opcode hook described here is gone. The
+> current core runs whole format-2 processes; see DESIGN.md.
+
 Phase 0, part 1 of `07-verified-sandbox-plan.md`: a Verus-verified Rust
 core that executes a handful of opcodes inside the existing C++ VM.
 

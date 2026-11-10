@@ -153,6 +153,30 @@ void Stack::copy_to(Stack* other) {
   GcMetadata::insert_into_remembered_set(other);
 }
 
+void Stack::v2_initialize_new_task(Object* code) {
+  word len = length();
+  ASSERT(len >= V2_FRAME_WORDS + 1);
+  *reinterpret_cast<Object**>(_array_address(len - 1)) = code;
+  _set_top(len - 1);
+  v2_set_frame_top(0);
+  v2_set_bci(0);
+  GcMetadata::insert_into_remembered_set(this);
+}
+
+void Stack::v2_copy_to(Stack* other) {
+  word used = length() - top();
+  word frames = v2_frame_top();
+  ASSERT(other->length() >= used + frames);
+  word displacement = other->length() - length();
+  memcpy(other->_array_address(0), _array_address(0), frames * WORD_SIZE);
+  memcpy(other->_array_address(top() + displacement), _array_address(top()), used * WORD_SIZE);
+  other->_set_top(displacement + top());
+  other->v2_set_frame_top(frames);
+  other->v2_set_bci(v2_bci());
+  // See copy_to.
+  GcMetadata::insert_into_remembered_set(other);
+}
+
 void Stack::transfer_to_interpreter(Interpreter* interpreter) {
   if (is_guard_zone_touched()) FATAL("stack overflow detected");
   ASSERT(top() >= 0);

@@ -52,6 +52,7 @@
 #include "entry_points.h"
 #include "flags.h"
 #include "interpreter.h"
+#include "interpreter_v2.h"
 #include "method_entries.h"
 #include "objects.h"
 #include "objects_inline.h"
@@ -2144,6 +2145,10 @@ bool Verifier::is_enabled() {
 }
 
 static bool verify_and_report(Program* program, bool untrusted) {
+  // Format 2: the loader's table checks stand in for the structural
+  // verifier until the verified format-2 verifier (Phase 3) is integrated.
+  // See verified/core/DESIGN.md.
+  if (program->is_format2()) return V2MethodTable::verify(program, untrusted);
   const char* verbose = getenv("TOIT_VERIFY_VERBOSE");
   VerifierOptions options;
   options.verbosity = verbose != null ? atoi(verbose) : 0;
@@ -2174,6 +2179,9 @@ void Verifier::set_bytecodes_for_testing(Program* program, uint8* bytes, int len
 bool Verifier::verify(Program* program, VerifierStats* stats, const VerifierOptions& options) {
   VerifierStats local;
   if (stats == null) stats = &local;
+  // Format 2: the loader's table checks stand in for the structural
+  // verifier (see verify_and_report).
+  if (program->is_format2()) return V2MethodTable::verify(program, options.untrusted);
   AllowThrowingNew allow;
   VerifierImpl impl(program, stats, options);
   return impl.run();

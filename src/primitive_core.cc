@@ -212,6 +212,12 @@ PRIMITIVE(spawn_arguments) {
 
 PRIMITIVE(spawn_method) {
   Method method = process->spawn_method();
+  if (process->program()->is_format2()) {
+    // Format 2: the method index (the spawn method points at its entry).
+    if (!method.is_valid()) return Smi::from(-1);
+    word entry = process->program()->absolute_bci_from_bcp(method.header_bcp());
+    return Smi::from(process->group()->v2_methods()->index_of_entry(entry));
+  }
   int id = method.is_valid()
       ? process->program()->absolute_bci_from_bcp(method.header_bcp())
       : -1;
@@ -226,9 +232,20 @@ PRIMITIVE(spawn) {
   // The method id comes from a 'Lambda_' object, which the program can
   // modify. It must be a legal lambda method of the program.
   word method_id = Smi::value(entry);
-  if (!process->group()->method_entries()->is_entry(method_id)) FAIL(INVALID_ARGUMENT);
-  Method method(process->program()->bytecodes, method_id);
-  if (!method.is_lambda_method()) FAIL(INVALID_ARGUMENT);
+  Method method = Method::invalid();
+  if (process->program()->is_format2()) {
+    // Format 2: an index into the method table. The new process' spawn
+    // method points at the method's entry.
+    const V2MethodTable* table = process->group()->v2_methods();
+    if (!table->is_valid(method_id) || table->at(method_id).kind != V2_KIND_LAMBDA) {
+      FAIL(INVALID_ARGUMENT);
+    }
+    method = Method(process->program()->bytecodes, table->at(method_id).entry);
+  } else {
+    if (!process->group()->method_entries()->is_entry(method_id)) FAIL(INVALID_ARGUMENT);
+    method = Method(process->program()->bytecodes, method_id);
+    if (!method.is_lambda_method()) FAIL(INVALID_ARGUMENT);
+  }
 
   InitialMemoryManager initial_memory_manager;
   if (!initial_memory_manager.allocate()) FAIL(ALLOCATION_FAILED);
@@ -2120,6 +2137,12 @@ PRIMITIVE(task_new) {
   ARGS(Instance, code);
   Task* task = process->object_heap()->allocate_task();
   if (task == null) FAIL(ALLOCATION_FAILED);
+  if (process->program()->is_format2()) {
+    // Format 2 (v2::prim::task_new_step): the new task's stack holds the
+    // code; the first transfer to it builds the entry frames.
+    task->stack()->v2_initialize_new_task(code);
+    return task;
+  }
   Method entry = process->program()->entry_task();
   if (!entry.is_valid()) FATAL("Cannot locate task entry method");
   Task* current = process->object_heap()->task();
@@ -2140,6 +2163,9 @@ PRIMITIVE(task_new) {
 
 PRIMITIVE(task_transfer) {
   ARGS(Task, to, bool, detach_stack);
+  if (process->program()->is_format2()) {
+    return Interpreter::v2_task_transfer(process, to, detach_stack);
+  }
   Task* from = process->object_heap()->task();
   if (from != to) {
     // Make sure we don't transfer to a dead task.
@@ -2263,6 +2289,9 @@ PRIMITIVE(task_receive_message) {
   }
 
   Message* message = process->peek_message();
+  // The library only calls this when task_has_messages is true, but a
+  // program can call it at any time (found by verified/core/fuzz).
+  if (message == null) return process->null_object();
   MessageType message_type = message->message_type();
   Object* result = process->null_object();
 

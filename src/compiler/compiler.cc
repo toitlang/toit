@@ -2424,6 +2424,14 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   MethodSelectorOffsets method_selector_offsets;
   statistics.switch_phase(PipelineStatistics::CODE_GENERATION);
   int requested_format = Flags::bytecode_format;
+  // TOIT_BYTECODE_FORMAT=2 replaces the default format 1 by format 2 (for
+  // running the test suite on the verified core). Type propagation, which
+  // needs format 1, keeps format 1.
+  const char* format_override = getenv("TOIT_BYTECODE_FORMAT");
+  if (requested_format == 1 && format_override != null && strcmp(format_override, "2") == 0 &&
+      !propagate) {
+    requested_format = 2;
+  }
   if (requested_format != 1 && requested_format != 2) {
     FATAL("Unsupported bytecode format %d", requested_format);
   }

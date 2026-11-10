@@ -27,6 +27,7 @@
 #include "snapshot.h"
 #include "snapshot_bundle.h"
 #include "verifier.h"
+#include "interpreter_v2.h"
 #include "bytecodes.h"
 #include "utils.h"
 #include "main_utf_8_helper.h"
@@ -191,6 +192,29 @@ static int verify_snapshot(int argc, char** argv) {
     // operand byte, 0 = unreached) so a test can patch only real instruction
     // operands (see tests/sandbox).
     uint8* coverage = unvoid_cast<uint8*>(calloc(length, 1));
+    if (program->is_format2()) {
+      // Format 2: every instruction of every method body (the method table
+      // checks of the loader stand in for the verifier, see
+      // verified/core/DESIGN.md).
+      V2MethodTable* table = V2MethodTable::compute(program, options.untrusted);
+      if (table == null) { free(coverage); fprintf(stderr, "could not verify to compute coverage\n"); return 1; }
+      for (word m = 0; m < table->length(); m++) {
+        word bci = table->at(m).entry;
+        while (bci < static_cast<word>(table->at(m).end)) {
+          int op = program->bytecodes.data()[bci];
+          coverage[bci] = 1;
+          for (int i = 1; i < V2_OPCODE_LENGTHS[op]; i++) coverage[bci + i] = 2;
+          bci += V2_OPCODE_LENGTHS[op];
+        }
+      }
+      delete table;
+      FILE* file = fopen(emit_coverage, "wb");
+      if (file == null) { free(coverage); fprintf(stderr, "Could not open %s\n", emit_coverage); return 2; }
+      size_t written = fwrite(coverage, 1, length, file);
+      fclose(file);
+      free(coverage);
+      return written == static_cast<size_t>(length) ? 0 : 2;
+    }
     Verifier::set_coverage_for_testing(coverage);
     VerifierOptions quiet = options;
     quiet.verbosity = 0;
@@ -240,6 +264,13 @@ static int verify_snapshot(int argc, char** argv) {
     // many mutations the verifier rejects. Deterministic seed.
     // The coverage of the unmutated program classifies accepted mutations.
     uint8* coverage = unvoid_cast<uint8*>(calloc(length, 1));
+    if (program->is_format2()) {
+      // The single-byte fuzzer drives the format-1 verifier; format-2
+      // mutations are exercised by verified/core/fuzz.
+      free(coverage);
+      fprintf(stderr, "--fuzz is not supported for format-2 programs\n");
+      return 2;
+    }
     Verifier::set_coverage_for_testing(coverage);
     VerifierOptions quiet = options;
     quiet.verbosity = 0;
@@ -344,6 +375,9 @@ int main(int argc, char **argv) {
     argv += 1;
     if (argc < 2) print_usage(1);
   }
+  // Untrusted programs run on the verified core, which needs bytecode
+  // format 2 (see verified/core/DESIGN.md, "Format dispatch").
+  if (Flags::untrusted) Flags::bytecode_format = 2;
 
   // Help must be used on its own.
   if (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {

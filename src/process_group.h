@@ -16,6 +16,7 @@
 #pragma once
 
 #include "linked.h"
+#include "interpreter_v2.h"
 #include "method_entries.h"
 #include "primitive_policy.h"
 #include "process.h"
@@ -64,6 +65,9 @@ class ProcessGroup : public ProcessGroupList::Element {
   // The legal method entries of the program (null if there is no program).
   const MethodEntryTable* method_entries() const { return method_entries_; }
 
+  // The method table of a format-2 program (null otherwise).
+  const V2MethodTable* v2_methods() const { return v2_methods_; }
+
   Process* lookup(int process_id);
   void add(Process* process);
 
@@ -82,6 +86,7 @@ class ProcessGroup : public ProcessGroupList::Element {
   AlignedMemoryBase* const memory_;
 
   MethodEntryTable* method_entries_ = null;
+  V2MethodTable* v2_methods_ = null;
 
   ProcessListFromProcessGroup processes_;
 

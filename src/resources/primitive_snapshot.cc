@@ -27,6 +27,7 @@
 #include "../process_group.h"
 #include "../scheduler.h"
 #include "../verifier.h"
+#include "../interpreter_v2.h"
 
 namespace toit {
 
@@ -87,12 +88,23 @@ PRIMITIVE(launch) {
   // programs are always verified with the untrusted rules (no HALT 2/3);
   // trusted ones only with -Xverify/TOIT_VERIFY. A rejected program never
   // runs.
+  // Untrusted programs run on the verified core: format 2 only, unless
+  // format 1 is explicitly allowed (interpreter_v2.h).
+  if (policy->is_untrusted() && !program->is_format2() && !V2MethodTable::untrusted_format1_allowed()) {
+    image.release();
+    return launch_error(process, "FORMAT_2_REQUIRED");
+  }
   if (!Verifier::verify_for_policy(program, policy)) {
     image.release();
     return launch_error(process, "VERIFICATION_FAILED");
   }
   ProcessGroup* process_group = ProcessGroup::create(gid, program, image.memory(), policy_holder.take());
-  ASSERT(process_group);  // Allocations only fail on devices.
+  // Fails for a malformed format-2 program (no method table; the reason is
+  // on stderr). Allocations only fail on devices.
+  if (process_group == null) {
+    image.release();
+    return launch_error(process, "INVALID_SNAPSHOT");
+  }
 
   initial_memory_manager.global_variables = program->global_variables.copy();
   ASSERT(initial_memory_manager.global_variables);

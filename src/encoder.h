@@ -132,6 +132,9 @@ class ProgramOrientedEncoder : public Encoder {
 
   bool encode_error(Object* type, Object* message, Stack* stack);
   bool encode_error(Object* type, const char* message, Stack* stack);
+  // As encode_error with an array message, without allocating the array
+  // (format-2 failures raised by the verified core, interpreter_v2.cc).
+  bool encode_error(Object* type, Object* const* elements, word count, Stack* stack);
 
   bool encode_profile(Profiler* profile, String* title, int cutoff);
 

@@ -54,6 +54,8 @@ Method Interpreter::lookup_entry() {
 }
 
 Object** Interpreter::load_stack(Method* pending) {
+  // The verified core keeps format-2 stacks up to date itself.
+  if (process_->program()->is_format2()) return null;
   Stack* stack = process_->task()->stack();
   stack->transfer_to_interpreter(this);
   if (pending) {
@@ -71,6 +73,7 @@ Object** Interpreter::load_stack(Method* pending) {
 }
 
 void Interpreter::store_stack(Object** sp, Method pending) {
+  if (process_->program()->is_format2()) return;
   if (sp != null) sp_ = sp;
   Stack* stack = process_->task()->stack();
   stack->transfer_from_interpreter(this);
@@ -128,6 +131,10 @@ Object** Interpreter::gc(
 }
 
 void Interpreter::prepare_process() {
+  if (process_->program()->is_format2()) {
+    prepare_process_v2();
+    return;
+  }
   load_stack();
   push(process_->task());
 

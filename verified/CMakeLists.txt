@@ -15,9 +15,11 @@
 
 # The Verus-verified interpreter core (verified/core).
 #
-# TOIT_VERIFIED_CORE (default ON for native host builds, OFF for embedded and
-# cross builds) links the core into toit_vm. Without cargo the option is
-# ignored with a warning, so the C++-only build keeps working.
+# TOIT_VERIFIED_CORE (default ON for native 64-bit host builds, OFF for
+# embedded and cross builds) links the core into toit_vm; it runs every
+# format-2 program (src/interpreter_v2.cc). Without cargo the option is
+# ignored with a warning, so the C++-only build keeps working (and refuses
+# format-2 programs).
 #
 # Targets:
 #   toit_verified_core         imported static library (built with cargo).
@@ -31,7 +33,7 @@ set(TOIT_VERIFIED_CORE_DEFAULT OFF)
 if (NOT ${TOIT_IS_EMBEDDED} AND NOT ${TOIT_IS_CROSS} AND CMAKE_SIZEOF_VOID_P EQUAL 8)
   set(TOIT_VERIFIED_CORE_DEFAULT ON)
 endif()
-option(TOIT_VERIFIED_CORE "Run covered opcodes in the Verus-verified Rust core" ${TOIT_VERIFIED_CORE_DEFAULT})
+option(TOIT_VERIFIED_CORE "Run format-2 programs on the Verus-verified Rust core" ${TOIT_VERIFIED_CORE_DEFAULT})
 
 set(TOIT_VERIFIED_CORE_ENABLED OFF CACHE INTERNAL "")
 if (NOT TOIT_VERIFIED_CORE)
@@ -64,13 +66,20 @@ add_custom_command(
 add_custom_target(toit_verified_core_build DEPENDS "${VCORE_LIB}")
 
 add_library(toit_verified_core STATIC IMPORTED GLOBAL)
-set_target_properties(toit_verified_core PROPERTIES IMPORTED_LOCATION "${VCORE_LIB}")
+# The core links Rust's std (the spec crate it is proven against uses it).
+set_target_properties(toit_verified_core PROPERTIES
+  IMPORTED_LOCATION "${VCORE_LIB}"
+  INTERFACE_LINK_LIBRARIES "${CMAKE_DL_LIBS};pthread;m")
 add_dependencies(toit_verified_core toit_verified_core_build)
 
 # Layout contract: compares every constant the Rust side assumes against the
 # C++ headers. Runs at build time (toit_vm depends on it) and as a ctest.
 add_executable(toit_verified_core_layout_check layout_check.cc)
 target_include_directories(toit_verified_core_layout_check PRIVATE "${TOIT_SDK_SOURCE_DIR}/src")
+# The check uses only inline accessors of the headers; built as in a release
+# build so that it does not need the VM's ASSERT support (debug and ASan
+# builds).
+target_compile_options(toit_verified_core_layout_check PRIVATE -UTOIT_DEBUG -DTOIT_DEPLOY)
 target_link_libraries(toit_verified_core_layout_check PRIVATE toit_verified_core)
 set_target_properties(toit_verified_core_layout_check PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${VCORE_TARGET_DIR}")

@@ -18,6 +18,7 @@
 #include "primitive.h"
 #include "process.h"
 #include "process_group.h"
+#include "interpreter_v2.h"
 #include "flash_registry.h"
 #include "embedded_data.h"
 #include "scheduler.h"
@@ -73,6 +74,16 @@ PRIMITIVE(spawn) {
   // untrusted rules before they run. The program is already in flash, so
   // this happens on every start rather than once at install time.
   // Trusted containers from flash keep running unverified.
+  // Untrusted containers run on the verified core, which runs format-2
+  // programs only. -Xuntrusted_format1 (or TOIT_UNTRUSTED_FORMAT1=1) keeps
+  // running format-1 untrusted containers on the C++ interpreter.
+  if (policy->is_untrusted() && !program->is_format2() && !V2MethodTable::untrusted_format1_allowed()) {
+    PrimitivePolicy::release(policy);
+    fprintf(stderr, "untrusted containers must be in bytecode format 2 (use -Xuntrusted_format1 to allow format 1)\n");
+    String* error = process->allocate_string("FORMAT_2_REQUIRED");
+    if (error == null) FAIL(ALLOCATION_FAILED);
+    return Error::from(error);
+  }
   if (policy->is_untrusted() && !Verifier::verify_for_policy(program, policy)) {
     PrimitivePolicy::release(policy);
     String* error = process->allocate_string("VERIFICATION_FAILED");
@@ -82,7 +93,16 @@ PRIMITIVE(spawn) {
 
   // Takes over the policy, also on failure.
   ProcessGroup* process_group = ProcessGroup::create(group_id, program, null, policy);
-  if (!process_group) FAIL(MALLOC_FAILED);
+  if (!process_group) {
+    // A malformed format-2 program has no method table (the reason is on
+    // stderr); otherwise the allocation failed.
+    if (program->is_format2()) {
+      String* error = process->allocate_string("INVALID_SNAPSHOT");
+      if (error == null) FAIL(ALLOCATION_FAILED);
+      return Error::from(error);
+    }
+    FAIL(MALLOC_FAILED);
+  }
 
   initial_memory_manager.global_variables = program->global_variables.copy();
   if (!initial_memory_manager.global_variables) {

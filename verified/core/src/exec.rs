@@ -13,617 +13,683 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-//! Verified opcode handlers. Each handler's postcondition states that the
-//! abstracted post-state is exactly the spec step of the abstracted
-//! pre-state (or the state is unchanged when the spec says Fallback/Trap).
+//! The machine state and the verified opcode handlers.
 
 use vstd::prelude::*;
 use crate::layout::*;
-#[allow(unused_imports)]
-use crate::spec::*;
+use crate::ffi::V2Method;
 use crate::view::*;
 
 verus! {
 
-pub struct VState {
-    pub stack: StackView,
-    pub sp: usize,
-    pub try_sp: usize,
-    pub bcp: usize,
-}
-
-impl VState {
-    pub open spec fn view(&self) -> AState {
-        AState {
-            stack: self.stack@,
-            sp: self.sp as int,
-            try_sp: self.try_sp as int,
-            bcp: self.bcp as int,
-        }
-    }
-
-    pub open spec fn wf(&self) -> bool {
-        wf_state(self@)
-    }
-}
-
-pub struct Env {
-    pub code: CodeView,
-    pub dispatch: DispatchView,
-    pub code_base: usize,
-    pub frame_marker: usize,
+/// The program tables (read only) and values derived from them at entry.
+pub struct Program {
+    pub code: Table<u8>,
+    pub methods: Table<V2Method>,
+    pub dispatch: Table<i32>,
+    pub class_bits: Table<u16>,
+    pub class_check_ids: Table<u16>,
+    pub interface_check_offsets: Table<u16>,
+    pub invoke_offsets: Table<i32>,
+    pub entry_points: Table<i32>,
+    pub builtin: Table<usize>,
+    pub roots: Table<usize>,
+    pub literals: Table<usize>,
+    pub ro_start: usize,
+    pub ro_size: usize,
+    pub max_height: usize,
     pub preempt_a_lot: bool,
-    pub room: RoomOracle,
+    pub null: usize,
+    pub true_: usize,
+    pub false_: usize,
+    pub smi_class_id: i64,
+    pub list_class_id: i64,
+    pub byte_array_slice_class_id: i64,
+    pub byte_array_cow_class_id: i64,
+    pub large_array_class_id: i64,
+    pub lazy_initializer_class_id: i64,
 }
 
-impl Env {
-    pub open spec fn cfg(&self) -> Cfg {
-        Cfg {
-            code: self.code@,
-            code_base: self.code_base as int,
-            dispatch: self.dispatch@,
-            frame_marker: self.frame_marker,
-            preempt_a_lot: self.preempt_a_lot,
-        }
-    }
-
-    pub open spec fn wf(&self) -> bool {
-        wf_cfg(self.cfg())
-    }
+/// The state of the running task. The object stack is `mem[top..len]`
+/// (spec index `i` at array index `len - 1 - i`), the frame records are
+/// `mem[0..ftop]`. `base`, `lim`, `method` and `mend` cache the top frame:
+/// its base, `len - base` (slot `n` exists iff `top + n < lim`), its method
+/// and the end of its body.
+pub struct Machine {
+    pub mem: StackMem,
+    pub globals: Globals,
+    pub heap: Heap,
+    pub len: usize,
+    pub top: usize,
+    pub ftop: usize,
+    pub bci: usize,
+    pub base: usize,
+    pub lim: usize,
+    pub method: usize,
+    pub mend: usize,
+    /// `mend - MAX_INSTRUCTION_LENGTH` (saturating): an instruction starting
+    /// below it ends inside the method, whatever its opcode.
+    pub mfast: usize,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub enum Outcome {
+/// How the run loop continues after a step.
+pub enum Ctl {
+    /// Next instruction (at `bci`).
     Next,
-    Fallback,
-    Trap,
+    /// Leave the run loop with an `Interpreter::Result` state and value.
+    /// (The state is a u32 so that `Ctl` fits in two registers.)
+    Exit(u32, i64),
+    /// A stuck state of the spec (or an implementation limit): the process
+    /// is terminated.
+    Stuck(usize),
 }
 
-/// The refinement relation for one step.
-pub open spec fn refines(r: Outcome, step: Step, pre: AState, post: AState) -> bool {
-    match step {
-        Step::Next(s2) => r == Outcome::Next && post == s2,
-        Step::Fallback => r == Outcome::Fallback && post == pre,
-        Step::Trap => r == Outcome::Trap && post == pre,
-    }
+/// `spec::branch_taken` on words: kind 0 always, 1 if true, 2 if false, 3
+/// if not null (true is everything but false and null).
+pub open spec fn branch_taken(p: &Program, kind: usize, v: usize) -> bool {
+    if kind == 0 { true }
+    else if kind == 1 { v != p.false_ && v != p.null }
+    else if kind == 2 { !(v != p.false_ && v != p.null) }
+    else { v != p.null }
 }
 
-/// Common precondition of the handlers.
-pub open spec fn pre(st: &VState, e: &Env) -> bool {
-    st.wf() && e.wf() && st.bcp < e.code@.len()
+/// The branch target lies inside the method (`spec::branch_to`).
+pub open spec fn target_ok(p: &Program, method: usize, target: usize) -> bool {
+    &&& method < p.methods@.len()
+    &&& p.methods@[method as int].entry as usize <= target
+    &&& target < p.methods@[method as int].end as usize
 }
 
-// ---------------------------------------------------------------------------
-// Small verified helpers.
-
-fn push_word(st: &mut VState, v: usize)
-    requires
-        old(st).wf(),
-        old(st).sp >= 1,
-    ensures
-        final(st).wf(),
-        final(st)@ == push(old(st)@, v),
-{
-    st.stack.write(st.sp - 1, v);
-    st.sp = st.sp - 1;
+pub open spec fn smi_word(v: int) -> usize {
+    (v * 2) as usize
 }
 
-/// Exec version of `block_target`; returns stack.len() + 1 for "none".
-fn block_target_exec(st: &VState, w: usize) -> (r: Option<usize>)
-    requires
-        st.wf(),
-    ensures
-        match block_target(st@, w) {
-            None => r.is_none(),
-            Some(t) => r == Some(t as usize) && 0 <= t <= st.stack@.len(),
-        },
-{
-    let len = st.stack.len();
-    let v = w / SMI_SCALE;
-    if w % SMI_SCALE == 0 && v >= BLOCK_SALT && v - BLOCK_SALT <= len {
-        Some(len - (v - BLOCK_SALT))
-    } else {
-        None
+impl Machine {
+    /// The words of the object stack, bottom first.
+    pub open spec fn words(&self) -> Seq<usize> {
+        Seq::new((self.len - self.top) as nat, |i: int| self.mem@[self.len - 1 - i])
     }
-}
 
-/// Method::max_height() for the header byte at KIND_HEIGHT_OFFSET.
-pub fn method_max_height(kind_height: u8) -> (r: usize)
-    ensures
-        r == (kind_height as int / METHOD_KIND_BITS_DIVISOR as int) * METHOD_HEIGHT_SCALE as int,
-{
-    ((kind_height / METHOD_KIND_BITS_DIVISOR) as usize) * METHOD_HEIGHT_SCALE
-}
+    /// Height of the object stack.
+    pub open spec fn height(&self) -> int {
+        self.len - self.top
+    }
 
-/// The opcodes the core executes (same as spec `covers`).
-pub fn covers_exec(op: u8) -> (r: bool)
-    ensures
-        r == covers(op),
-{
-    op == OP_LOAD_LOCAL || op == OP_LOAD_LOCAL_WIDE || op == OP_LOAD_LOCAL_0
-        || op == OP_LOAD_LOCAL_1 || op == OP_LOAD_LOCAL_2 || op == OP_LOAD_LOCAL_3
-        || op == OP_LOAD_LOCAL_4 || op == OP_LOAD_LOCAL_5 || op == OP_STORE_LOCAL
-        || op == OP_POP || op == OP_POP_1 || op == OP_LOAD_SMI_U8 || op == OP_INVOKE_STATIC
-        || op == OP_RETURN || op == OP_LOAD_OUTER || op == OP_STORE_OUTER
-        || op == OP_NON_LOCAL_RETURN || op == OP_NON_LOCAL_RETURN_WIDE || op == OP_LINK
-        || op == OP_UNLINK
-}
+    /// Everything but the object stack, the stack memory and the bci is
+    /// unchanged (the frame cache, the views of the program and globals).
+    pub open spec fn same_frame(&self, other: &Machine) -> bool {
+        &&& self.len == other.len
+        &&& self.ftop == other.ftop
+        &&& self.base == other.base
+        &&& self.lim == other.lim
+        &&& self.method == other.method
+        &&& self.mend == other.mend
+        &&& self.mfast == other.mfast
+        &&& self.globals@ == other.globals@
+        // The frame records (below ftop) are unchanged.
+        &&& forall|i: int| 0 <= i < self.ftop ==> #[trigger] self.mem@[i] == other.mem@[i]
+    }
 
-fn u16_exec(e: &Env, i: usize) -> (r: usize)
-    requires
-        e.wf(),
-        i + 1 < e.code@.len(),
-    ensures
-        r as int == u16_at(e.cfg(), i as int),
-{
-    let lo = e.code.byte(i) as usize;
-    let hi = e.code.byte(i + 1) as usize;
-    lo + 256 * hi
-}
+    pub open spec fn stack_ok(&self) -> bool {
+        &&& self.len == self.mem@.len()
+        &&& self.ftop <= self.top <= self.len
+        &&& self.base <= self.len
+        &&& self.lim == self.len - self.base
+        // The top frame's slots exist (its base is at or below the top).
+        &&& self.top <= self.lim
+        // Block references encode slots in BLOCK_SLOT_BITS (reload checks).
+        &&& self.len < 0x10_0000
+    }
 
-// ---------------------------------------------------------------------------
-// Opcode handlers.
-
-pub fn exec_load_local(st: &mut VState, e: &Env, n: usize, len: usize) -> (r: Outcome)
-    requires
-        pre(old(st), e),
-        n <= 0xffff,
-        1 <= len <= 5,
-    ensures
-        final(st).wf(),
-        refines(r, spec_load_local(e.cfg(), old(st)@, n as int, len as int), old(st)@, final(st)@),
-{
-    if !(st.bcp + len < e.code.len()) || !(st.sp >= 1 && st.sp + n < st.stack.len()) {
-        return Outcome::Trap;
-    }
-    let v = st.stack.read(st.sp + n);
-    push_word(st, v);
-    st.bcp = st.bcp + len;
-    Outcome::Next
-}
-
-pub fn exec_store_local(st: &mut VState, e: &Env, n: usize) -> (r: Outcome)
-    requires
-        pre(old(st), e),
-        n <= 0xff,
-    ensures
-        final(st).wf(),
-        refines(r, spec_store_local(e.cfg(), old(st)@, n as int), old(st)@, final(st)@),
-{
-    if !(st.bcp + LEN_STORE_LOCAL < e.code.len()) || !(st.sp + n < st.stack.len()) {
-        return Outcome::Trap;
-    }
-    let v = st.stack.read(st.sp);
-    st.stack.write(st.sp + n, v);
-    st.bcp = st.bcp + LEN_STORE_LOCAL;
-    Outcome::Next
-}
-
-pub fn exec_pop(st: &mut VState, e: &Env, n: usize, len: usize) -> (r: Outcome)
-    requires
-        pre(old(st), e),
-        n <= 0xff,
-        1 <= len <= 5,
-    ensures
-        final(st).wf(),
-        refines(r, spec_pop(e.cfg(), old(st)@, n as int, len as int), old(st)@, final(st)@),
-{
-    if e.preempt_a_lot {
-        return Outcome::Fallback;
-    }
-    if !(st.bcp + len < e.code.len()) || !(st.sp + n <= st.stack.len()) {
-        return Outcome::Trap;
-    }
-    st.sp = st.sp + n;
-    st.bcp = st.bcp + len;
-    Outcome::Next
-}
-
-pub fn exec_load_smi_u8(st: &mut VState, e: &Env) -> (r: Outcome)
-    requires
-        pre(old(st), e),
-    ensures
-        final(st).wf(),
-        refines(r, spec_load_smi_u8(e.cfg(), old(st)@), old(st)@, final(st)@),
-{
-    if !(st.bcp + LEN_LOAD_SMI_U8 < e.code.len()) || !(st.sp >= 1) {
-        return Outcome::Trap;
-    }
-    let b = e.code.byte(st.bcp + 1) as usize;
-    push_word(st, b * SMI_SCALE);
-    st.bcp = st.bcp + LEN_LOAD_SMI_U8;
-    Outcome::Next
-}
-
-pub fn exec_load_outer(st: &mut VState, e: &Env, k: usize) -> (r: Outcome)
-    requires
-        pre(old(st), e),
-        k <= 0xff,
-    ensures
-        final(st).wf(),
-        refines(r, spec_load_outer(e.cfg(), old(st)@, k as int), old(st)@, final(st)@),
-{
-    if !(st.bcp + LEN_LOAD_OUTER < e.code.len()) || !(st.sp < st.stack.len()) {
-        return Outcome::Trap;
-    }
-    let w = st.stack.read(st.sp);
-    match block_target_exec(st, w) {
-        None => Outcome::Trap,
-        Some(t) => {
-            if !(st.sp + 1 <= t + k && t + k < st.stack.len()) {
-                return Outcome::Trap;
-            }
-            let v = st.stack.read(t + k);
-            st.sp = st.sp + 1;
-            push_word(st, v);
-            st.bcp = st.bcp + LEN_LOAD_OUTER;
-            Outcome::Next
-        },
-    }
-}
-
-pub fn exec_store_outer(st: &mut VState, e: &Env, k: usize) -> (r: Outcome)
-    requires
-        pre(old(st), e),
-        k <= 0xff,
-    ensures
-        final(st).wf(),
-        refines(r, spec_store_outer(e.cfg(), old(st)@, k as int), old(st)@, final(st)@),
-{
-    if !(st.bcp + LEN_STORE_OUTER < e.code.len()) || !(st.sp + 1 < st.stack.len()) {
-        return Outcome::Trap;
-    }
-    let value = st.stack.read(st.sp);
-    let w = st.stack.read(st.sp + 1);
-    match block_target_exec(st, w) {
-        None => Outcome::Trap,
-        Some(t) => {
-            if !(st.sp + 2 <= t + k && t + k < st.stack.len()) {
-                return Outcome::Trap;
-            }
-            st.sp = st.sp + 2;
-            st.stack.write(t + k, value);
-            push_word(st, value);
-            st.bcp = st.bcp + LEN_STORE_OUTER;
-            Outcome::Next
-        },
-    }
-}
-
-pub fn exec_invoke_static(st: &mut VState, e: &Env) -> (r: (Outcome, Ghost<bool>))
-    requires
-        pre(old(st), e),
-    ensures
-        final(st).wf(),
-        refines(r.0, spec_invoke_static(e.cfg(), old(st)@, r.1@), old(st)@, final(st)@),
-{
-    if !(st.bcp + LEN_INVOKE_STATIC <= e.code.len()) {
-        return (Outcome::Trap, Ghost(false));
-    }
-    let d = u16_exec(e, st.bcp + 1);
-    if !(d < e.dispatch.len()) {
-        return (Outcome::Trap, Ghost(false));
-    }
-    let m = e.dispatch.at(d);
-    if !(0 <= m && (m as usize) + METHOD_ENTRY_OFFSET < e.code.len()) {
-        return (Outcome::Trap, Ghost(false));
-    }
-    let m = m as usize;
-    if !(st.sp >= FRAME_SIZE) {
-        return (Outcome::Fallback, Ghost(false));
-    }
-    let max_height = method_max_height(e.code.byte(m + METHOD_KIND_HEIGHT_OFFSET));
-    let room = e.room.has_room(st.sp - FRAME_SIZE, max_height);
-    if !room {
-        return (Outcome::Fallback, Ghost(false));
-    }
-    let ra = e.code_base + st.bcp + LEN_INVOKE_STATIC;
-    push_word(st, ra);
-    push_word(st, e.frame_marker);
-    st.bcp = m + METHOD_ENTRY_OFFSET;
-    (Outcome::Next, Ghost(true))
-}
-
-/// Pops a frame at stack index `f` (frame marker, return address) and returns
-/// the bci of the return address, or None if the frame is malformed.
-fn frame_return_bci(st: &VState, e: &Env, f: usize) -> (r: Option<usize>)
-    requires
-        st.wf(),
-        e.wf(),
-        f + 1 < st.stack@.len(),
-    ensures
-        r.is_some() <==> (st.stack@[f + FRAME_MARKER_SLOT] == e.frame_marker
-            && is_return_address(e.cfg(), st.stack@[f + RETURN_ADDRESS_SLOT])),
-        r.is_some() ==> r.unwrap() as int == bci_of(e.cfg(), st.stack@[f + RETURN_ADDRESS_SLOT])
-            && r.unwrap() < e.code@.len(),
-{
-    if st.stack.read(f + FRAME_MARKER_SLOT) != e.frame_marker {
-        return None;
-    }
-    let ra = st.stack.read(f + RETURN_ADDRESS_SLOT);
-    if ra >= e.code_base && ra - e.code_base < e.code.len() {
-        Some(ra - e.code_base)
-    } else {
-        None
-    }
-}
-
-pub fn exec_return(st: &mut VState, e: &Env) -> (r: Outcome)
-    requires
-        pre(old(st), e),
-    ensures
-        final(st).wf(),
-        refines(r, spec_return(e.cfg(), old(st)@), old(st)@, final(st)@),
-{
-    if !(st.bcp + LEN_RETURN <= e.code.len()) || !(st.sp < st.stack.len()) {
-        return Outcome::Trap;
-    }
-    let h = e.code.byte(st.bcp + 1) as usize;
-    let a = e.code.byte(st.bcp + 2) as usize;
-    let f = st.sp + h;
-    if !(f + 1 < st.stack.len()) {
-        return Outcome::Trap;
-    }
-    let bci = match frame_return_bci(st, e, f) {
-        None => { return Outcome::Trap; },
-        Some(b) => b,
-    };
-    let new_sp = f + FRAME_SIZE + a;
-    if !(new_sp <= st.stack.len()) {
-        return Outcome::Trap;
-    }
-    let result = st.stack.read(st.sp);
-    st.sp = new_sp;
-    push_word(st, result);
-    st.bcp = bci;
-    Outcome::Next
-}
-
-pub fn exec_nlr(st: &mut VState, e: &Env, arity: usize, h: usize, len: usize) -> (r: Outcome)
-    requires
-        pre(old(st), e),
-        arity <= 0xffff,
-        h <= 0xffff,
-        1 <= len <= 5,
-    ensures
-        final(st).wf(),
-        refines(r, spec_nlr(e.cfg(), old(st)@, arity as int, h as int, len as int), old(st)@, final(st)@),
-{
-    if !(st.bcp + len <= e.code.len()) || !(st.sp + 1 < st.stack.len()) {
-        return Outcome::Trap;
-    }
-    let w = st.stack.read(st.sp);
-    let result = st.stack.read(st.sp + 1);
-    let t = match block_target_exec(st, w) {
-        None => { return Outcome::Trap; },
-        Some(t) => t,
-    };
-    let target = t + h + 1;
-    let reason = arity * 2 * SMI_SCALE;
-    if !(target + 1 < st.stack.len()) {
-        return Outcome::Trap;
-    }
-    if target > st.try_sp {
-        // Hit unwind protect.
-        if !(st.try_sp >= 1 + FRAME_SIZE && st.try_sp + LINK_RESULT_SLOT < st.stack.len()) {
-            return Outcome::Trap;
-        }
-        let f = st.try_sp - 1 - FRAME_SIZE;
-        let bci = match frame_return_bci(st, e, f) {
-            None => { return Outcome::Trap; },
-            Some(b) => b,
-        };
-        let ghost s0 = st@;
-        let target_block = (st.stack.len() - target + BLOCK_SALT) * SMI_SCALE;
-        st.stack.write(st.try_sp + LINK_REASON_SLOT, reason);
-        st.stack.write(st.try_sp + LINK_TARGET_SLOT, target_block);
-        st.stack.write(st.try_sp + LINK_RESULT_SLOT, result);
-        st.sp = f + FRAME_SIZE;
-        st.bcp = bci;
-        proof {
-            assert(target_block == to_block(s0, target as int));
-        }
-        Outcome::Next
-    } else {
-        let bci = match frame_return_bci(st, e, target) {
-            None => { return Outcome::Trap; },
-            Some(b) => b,
-        };
-        let new_sp = target + FRAME_SIZE + arity;
-        if !(new_sp <= st.stack.len()) {
-            return Outcome::Trap;
-        }
-        st.sp = new_sp;
-        push_word(st, result);
-        st.bcp = bci;
-        Outcome::Next
-    }
-}
-
-pub fn exec_link(st: &mut VState, e: &Env) -> (r: Outcome)
-    requires
-        pre(old(st), e),
-    ensures
-        final(st).wf(),
-        refines(r, spec_link(e.cfg(), old(st)@), old(st)@, final(st)@),
-{
-    if !(st.bcp + LEN_LINK < e.code.len()) || !(st.sp >= LINK_WORDS) {
-        return Outcome::Trap;
-    }
-    let chain = (st.stack.len() - st.try_sp) * SMI_SCALE;
-    push_word(st, SMI_LINK_RESULT_INIT);
-    push_word(st, SMI_LINK_TARGET_INIT);
-    push_word(st, SMI_LINK_REASON_INIT);
-    push_word(st, chain);
-    st.try_sp = st.sp;
-    st.bcp = st.bcp + LEN_LINK;
-    Outcome::Next
-}
-
-pub fn exec_unlink(st: &mut VState, e: &Env) -> (r: Outcome)
-    requires
-        pre(old(st), e),
-    ensures
-        final(st).wf(),
-        refines(r, spec_unlink(e.cfg(), old(st)@), old(st)@, final(st)@),
-{
-    if !(st.bcp + LEN_UNLINK < e.code.len()) || !(st.sp < st.stack.len()) {
-        return Outcome::Trap;
-    }
-    let w = st.stack.read(st.sp);
-    let v = w / SMI_SCALE;
-    if !(w % SMI_SCALE == 0 && v <= st.stack.len()) {
-        return Outcome::Trap;
-    }
-    st.try_sp = st.stack.len() - v;
-    st.sp = st.sp + 1;
-    st.bcp = st.bcp + LEN_UNLINK;
-    Outcome::Next
-}
-
-// ---------------------------------------------------------------------------
-// Dispatch.
-
-/// Executes one instruction. `room` is the ghost room-oracle value the step
-/// observed (irrelevant for all opcodes but INVOKE_STATIC).
-pub fn step(st: &mut VState, e: &Env) -> (r: (Outcome, Ghost<bool>))
-    requires
-        old(st).wf(),
-        e.wf(),
-    ensures
-        final(st).wf(),
-        refines(r.0, spec_step(e.cfg(), old(st)@, r.1@), old(st)@, final(st)@),
-{
-    if !(st.bcp < e.code.len()) {
-        return (Outcome::Trap, Ghost(false));
-    }
-    let op = e.code.byte(st.bcp);
-    let has_b1 = st.bcp + 1 < e.code.len();
-    if op == OP_LOAD_LOCAL {
-        if !has_b1 { return (Outcome::Trap, Ghost(false)); }
-        let n = e.code.byte(st.bcp + 1) as usize;
-        (exec_load_local(st, e, n, LEN_LOAD_LOCAL), Ghost(false))
-    } else if op == OP_LOAD_LOCAL_WIDE {
-        if !(st.bcp + 2 < e.code.len()) { return (Outcome::Trap, Ghost(false)); }
-        let n = u16_exec(e, st.bcp + 1);
-        (exec_load_local(st, e, n, LEN_LOAD_LOCAL_WIDE), Ghost(false))
-    } else if OP_LOAD_LOCAL_0 <= op && op <= OP_LOAD_LOCAL_5 {
-        (exec_load_local(st, e, (op - OP_LOAD_LOCAL_0) as usize, LEN_LOAD_LOCAL_N), Ghost(false))
-    } else if op == OP_STORE_LOCAL {
-        if !has_b1 { return (Outcome::Trap, Ghost(false)); }
-        let n = e.code.byte(st.bcp + 1) as usize;
-        (exec_store_local(st, e, n), Ghost(false))
-    } else if op == OP_POP {
-        if !has_b1 { return (Outcome::Trap, Ghost(false)); }
-        let n = e.code.byte(st.bcp + 1) as usize;
-        (exec_pop(st, e, n, LEN_POP), Ghost(false))
-    } else if op == OP_POP_1 {
-        (exec_pop(st, e, 1, LEN_POP_1), Ghost(false))
-    } else if op == OP_LOAD_SMI_U8 {
-        (exec_load_smi_u8(st, e), Ghost(false))
-    } else if op == OP_INVOKE_STATIC {
-        exec_invoke_static(st, e)
-    } else if op == OP_RETURN {
-        (exec_return(st, e), Ghost(false))
-    } else if op == OP_LOAD_OUTER {
-        if !has_b1 { return (Outcome::Trap, Ghost(false)); }
-        let k = e.code.byte(st.bcp + 1) as usize;
-        (exec_load_outer(st, e, k), Ghost(false))
-    } else if op == OP_STORE_OUTER {
-        if !has_b1 { return (Outcome::Trap, Ghost(false)); }
-        let k = e.code.byte(st.bcp + 1) as usize;
-        (exec_store_outer(st, e, k), Ghost(false))
-    } else if op == OP_NON_LOCAL_RETURN {
-        if !has_b1 { return (Outcome::Trap, Ghost(false)); }
-        let encoded = e.code.byte(st.bcp + 1);
-        let arity = (encoded % 16) as usize;
-        let h = (encoded / 16) as usize;
-        (exec_nlr(st, e, arity, h, LEN_NON_LOCAL_RETURN), Ghost(false))
-    } else if op == OP_NON_LOCAL_RETURN_WIDE {
-        if !(st.bcp + 4 < e.code.len()) { return (Outcome::Trap, Ghost(false)); }
-        let arity = u16_exec(e, st.bcp + 1);
-        let h = u16_exec(e, st.bcp + 3);
-        (exec_nlr(st, e, arity, h, LEN_NON_LOCAL_RETURN_WIDE), Ghost(false))
-    } else if op == OP_LINK {
-        (exec_link(st, e), Ghost(false))
-    } else if op == OP_UNLINK {
-        (exec_unlink(st, e), Ghost(false))
-    } else {
-        (Outcome::Fallback, Ghost(false))
-    }
-}
-
-/// Runs up to `fuel` covered instructions. Returns Fallback when the next
-/// instruction must be executed by the C++ interpreter (or fuel ran out),
-/// Trap when the next instruction violates a safety check. In both cases
-/// the state is the one reached by the executed steps.
-pub fn run(st: &mut VState, e: &Env, fuel: usize) -> (r: (Outcome, usize, Ghost<Seq<bool>>))
-    requires
-        old(st).wf(),
-        e.wf(),
-    ensures
-        final(st).wf(),
-        r.0 != Outcome::Next,
-        spec_run(e.cfg(), old(st)@, r.2@) == Some(final(st)@),
-        r.1 == r.2@.len(),
-        r.0 == Outcome::Trap ==> exists|room: bool| spec_step(e.cfg(), final(st)@, room) == Step::Trap,
-{
-    let ghost s0 = st@;
-    let ghost mut rooms: Seq<bool> = Seq::empty();
-    let mut i: usize = 0;
-    while i < fuel
-        invariant
-            st.wf(),
-            e.wf(),
-            s0 == old(st)@,
-            spec_run(e.cfg(), s0, rooms) == Some(st@),
-            i == rooms.len(),
-        decreases fuel - i,
+    #[inline(always)]
+    pub fn has_slot(&self, n: usize) -> (r: bool)
+        requires self.stack_ok(),
+        ensures r == (self.top + n < self.lim),
     {
-        let ghost before = st@;
-        let (r, Ghost(room)) = step(st, e);
-        match r {
-            Outcome::Next => {
-                proof {
-                    let old_rooms = rooms;
-                    rooms = rooms.push(room);
-                    assert(rooms.drop_last() =~= old_rooms);
-                    assert(rooms.last() == room);
-                }
-                i = i + 1;
-            },
-            _ => {
-                assert(st@ == before);
-                return (r, i, Ghost(rooms));
-            },
-        }
+        n < self.lim - self.top
     }
-    (Outcome::Fallback, i, Ghost(rooms))
-}
 
-/// Entry point used by the FFI layer: validates the inputs (so that the
-/// views' ghost state is well formed) and runs.
-pub fn entry(st: &mut VState, e: &Env, fuel: usize) -> (r: (Outcome, usize))
-    ensures
-        r.0 != Outcome::Next,
-        // The state is touched only if the inputs are well formed, and then
-        // it is a spec run from the initial state.
-        (old(st).wf() && e.wf()) || final(st)@ == old(st)@,
-        old(st).wf() && e.wf() ==> final(st).wf() && exists|rooms: Seq<bool>|
-                #[trigger] spec_run(e.cfg(), old(st)@, rooms) == Some(final(st)@) && rooms.len() == r.1,
-{
-    let len = st.stack.len();
-    let code_len = e.code.len();
-    if !(len <= MAX_STACK_WORDS && st.sp <= len && st.try_sp <= len
-        && code_len <= MAX_CODE_BYTES && e.dispatch.len() <= MAX_CODE_BYTES
-        && e.code_base <= usize::MAX - code_len) {
-        return (Outcome::Fallback, 0);
+    /// `STACK_AT(n)`.
+    #[inline(always)]
+    pub fn at(&self, n: usize) -> (r: usize)
+        requires self.stack_ok(), self.top + n < self.lim,
+        ensures
+            r == self.mem@[self.top + n],
+            r == self.words()[self.height() - 1 - n],
+    {
+        self.mem.read(self.top + n)
     }
-    proof {
-        assert(spec_run(e.cfg(), st@, Seq::<bool>::empty()) == Some(st@));
+
+    #[inline(always)]
+    pub fn put(&mut self, n: usize, v: usize)
+        requires old(self).stack_ok(), old(self).top + n < old(self).lim,
+        ensures
+            final(self).stack_ok(),
+            final(self).mem@ == old(self).mem@.update(old(self).top + n, v),
+            final(self).top == old(self).top,
+            final(self).bci == old(self).bci,
+            final(self).same_frame(old(self)),
+            final(self).words() == old(self).words().update(old(self).height() - 1 - n, v),
+    {
+        let i = self.top + n;
+        self.mem.write(i, v);
+        assert(self.words() =~= old(self).words().update(old(self).height() - 1 - n, v));
     }
-    let (r, n, Ghost(rooms)) = run(st, e, fuel);
-    (r, n)
+
+    /// Pushes `v`; false (and no change) if the object stack would run into
+    /// the frame records.
+    #[inline(always)]
+    pub fn push(&mut self, v: usize) -> (r: bool)
+        requires old(self).stack_ok(),
+        ensures
+            final(self).stack_ok(),
+            r == (old(self).top > old(self).ftop),
+            r ==> final(self).top == old(self).top - 1
+                && final(self).mem@ == old(self).mem@.update(old(self).top - 1, v),
+            !r ==> final(self).mem@ == old(self).mem@ && final(self).top == old(self).top,
+            final(self).bci == old(self).bci,
+            final(self).same_frame(old(self)),
+            r ==> final(self).words() == old(self).words().push(v),
+            !r ==> final(self).words() == old(self).words(),
+    {
+        if self.top <= self.ftop {
+            return false;
+        }
+        self.top = self.top - 1;
+        let t = self.top;
+        self.mem.write(t, v);
+        assert(self.words() =~= old(self).words().push(v));
+        true
+    }
+
+    #[inline(always)]
+    pub fn drop(&mut self, n: usize)
+        requires old(self).stack_ok(), old(self).top + n <= old(self).lim,
+        ensures
+            final(self).stack_ok(),
+            final(self).top == old(self).top + n,
+            final(self).mem@ == old(self).mem@,
+            final(self).bci == old(self).bci,
+            final(self).same_frame(old(self)),
+            final(self).words() == old(self).words().subrange(0, old(self).height() - n),
+    {
+        self.top = self.top + n;
+        assert(self.words() =~= old(self).words().subrange(0, old(self).height() - n));
+    }
+
+    /// Pushes `v` and continues after an instruction of length `len`.
+    #[inline(always)]
+    pub fn push_next(&mut self, v: usize, len: usize) -> (r: Ctl)
+        requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
+        ensures
+            final(self).stack_ok(),
+            final(self).same_frame(old(self)),
+            old(self).top > old(self).ftop ==> r == Ctl::Next
+                && final(self).words() == old(self).words().push(v)
+                && final(self).bci == old(self).bci + len,
+            old(self).top <= old(self).ftop ==> r == Ctl::Stuck(100),
+    {
+        if !self.push(v) {
+            return Ctl::Stuck(100);
+        }
+        self.bci = self.bci + len;
+        Ctl::Next
+    }
+
+    /// Replaces the two operands by `v` (`binary_result`).
+    #[inline(always)]
+    pub fn binary_result(&mut self, v: usize) -> (r: Ctl)
+        requires
+            old(self).stack_ok(), old(self).top + 1 < old(self).lim,
+            old(self).bci + 1 < usize::MAX,
+        ensures
+            final(self).stack_ok(),
+            final(self).same_frame(old(self)),
+            r == Ctl::Next,
+            final(self).words() == old(self).words().subrange(0, old(self).height() - 2).push(v),
+            final(self).bci == old(self).bci + 1,
+    {
+        self.put(1, v);
+        self.drop(1);
+        self.bci = self.bci + 1;
+        assert(self.words() =~= old(self).words().subrange(0, old(self).height() - 2).push(v));
+        Ctl::Next
+    }
+
+    // --- Locals ---------------------------------------------------------
+
+    #[inline(always)]
+    pub fn op_load_local(&mut self, n: usize, len: usize) -> (r: Ctl)
+        requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
+        ensures
+            final(self).stack_ok(),
+            final(self).same_frame(old(self)),
+            // `spec::op_load_local`: the slot must belong to the frame.
+            !(old(self).top + n < old(self).lim) ==> r == Ctl::Stuck(1),
+            old(self).top + n < old(self).lim && old(self).top > old(self).ftop ==> r == Ctl::Next
+                && final(self).words() == old(self).words().push(old(self).words()[old(self).height() - 1 - n])
+                && final(self).bci == old(self).bci + len,
+    {
+        if !self.has_slot(n) {
+            return Ctl::Stuck(1);
+        }
+        let v = self.at(n);
+        self.push_next(v, len)
+    }
+
+    #[inline(always)]
+    pub fn op_pop_load_local(&mut self, n: usize) -> (r: Ctl)
+        requires old(self).stack_ok(), old(self).bci + 2 < usize::MAX, n < 256,
+        ensures
+            final(self).stack_ok(),
+            final(self).same_frame(old(self)),
+            !(old(self).top + n + 1 < old(self).lim) ==> r == Ctl::Stuck(1),
+            old(self).top + n + 1 < old(self).lim ==> r == Ctl::Next
+                && final(self).words() == old(self).words().update(old(self).height() - 1,
+                    old(self).words()[old(self).height() - 2 - n])
+                && final(self).bci == old(self).bci + 2,
+    {
+        if !self.has_slot(n + 1) {
+            return Ctl::Stuck(1);
+        }
+        let v = self.at(n + 1);
+        self.put(0, v);
+        self.bci = self.bci + 2;
+        Ctl::Next
+    }
+
+    #[inline(always)]
+    pub fn op_store_local(&mut self, n: usize) -> (r: Ctl)
+        requires old(self).stack_ok(), old(self).bci + 2 < usize::MAX,
+        ensures
+            final(self).stack_ok(),
+            final(self).same_frame(old(self)),
+            !(old(self).top + n < old(self).lim) ==> r == Ctl::Stuck(1),
+            old(self).top + n < old(self).lim ==> r == Ctl::Next
+                && final(self).words() == old(self).words().update(old(self).height() - 1 - n,
+                    old(self).words()[old(self).height() - 1])
+                && final(self).bci == old(self).bci + 2,
+    {
+        if !self.has_slot(n) {
+            return Ctl::Stuck(1);
+        }
+        let v = self.at(0);
+        self.put(n, v);
+        self.bci = self.bci + 2;
+        Ctl::Next
+    }
+
+    #[inline(always)]
+    pub fn op_store_local_pop(&mut self, n: usize) -> (r: Ctl)
+        requires old(self).stack_ok(), old(self).bci + 2 < usize::MAX,
+        ensures
+            final(self).stack_ok(),
+            final(self).same_frame(old(self)),
+            !(1 <= n && old(self).top + n < old(self).lim) ==> r == Ctl::Stuck(1),
+            1 <= n && old(self).top + n < old(self).lim ==> r == Ctl::Next
+                && final(self).words() == old(self).words().update(old(self).height() - 1 - n,
+                    old(self).words()[old(self).height() - 1]).subrange(0, old(self).height() - 1)
+                && final(self).bci == old(self).bci + 2,
+    {
+        if n < 1 || !self.has_slot(n) {
+            return Ctl::Stuck(1);
+        }
+        let v = self.at(0);
+        self.drop(1);
+        self.put(n - 1, v);
+        self.bci = self.bci + 2;
+        assert(self.words() =~= old(self).words().update(old(self).height() - 1 - n,
+            old(self).words()[old(self).height() - 1]).subrange(0, old(self).height() - 1));
+        Ctl::Next
+    }
+
+    // --- Constants, globals, pops -------------------------------------------
+
+    #[inline(always)]
+    pub fn op_load_literal(&mut self, p: &Program, i: usize, len: usize) -> (r: Ctl)
+        requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
+        ensures
+            final(self).stack_ok(),
+            final(self).same_frame(old(self)),
+            i >= p.literals@.len() ==> r == Ctl::Stuck(12),
+            i < p.literals@.len() && old(self).top > old(self).ftop ==> r == Ctl::Next
+                && final(self).words() == old(self).words().push(p.literals@[i as int])
+                && final(self).bci == old(self).bci + len,
+    {
+        if i >= p.literals.len() {
+            return Ctl::Stuck(12);
+        }
+        let v = p.literals.at(i);
+        self.push_next(v, len)
+    }
+
+    #[inline(always)]
+    pub fn op_load_smis_0(&mut self, n: usize) -> (r: Ctl)
+        requires old(self).stack_ok(), old(self).bci + 2 < usize::MAX,
+        ensures
+            final(self).stack_ok(),
+            final(self).same_frame(old(self)),
+            old(self).top < old(self).ftop + n ==> r == Ctl::Stuck(100),
+            old(self).top >= old(self).ftop + n ==> r == Ctl::Next
+                && final(self).words() == old(self).words() + Seq::new(n as nat, |i: int| 0usize)
+                && final(self).bci == old(self).bci + 2,
+    {
+        if self.top - self.ftop < n {
+            return Ctl::Stuck(100);
+        }
+        let mut i: usize = 0;
+        while i < n
+            invariant
+                self.stack_ok(),
+                i <= n,
+                self.top >= self.ftop + (n - i),
+                self.bci == old(self).bci,
+                self.same_frame(old(self)),
+                self.words() == old(self).words() + Seq::new(i as nat, |j: int| 0usize),
+            decreases n - i,
+        {
+            let ghost before = self.words();
+            let ok = self.push(0);
+            i = i + 1;
+            assert(self.words() =~= old(self).words() + Seq::new(i as nat, |j: int| 0usize));
+        }
+        self.bci = self.bci + 2;
+        Ctl::Next
+    }
+
+    #[inline(always)]
+    pub fn op_load_global(&mut self, g: usize, len: usize) -> (r: Ctl)
+        requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
+        ensures
+            final(self).stack_ok(),
+            final(self).same_frame(old(self)),
+            g >= old(self).globals@.len() ==> r == Ctl::Stuck(12),
+            g < old(self).globals@.len() && old(self).top > old(self).ftop ==> r == Ctl::Next
+                && final(self).words() == old(self).words().push(old(self).globals@[g as int])
+                && final(self).bci == old(self).bci + len,
+    {
+        if g >= self.globals.len() {
+            return Ctl::Stuck(12);
+        }
+        let v = self.globals.at(g);
+        self.push_next(v, len)
+    }
+
+    #[inline(always)]
+    pub fn op_store_global(&mut self, g: usize, len: usize) -> (r: Ctl)
+        requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
+        ensures
+            final(self).stack_ok(),
+            g >= old(self).globals@.len() ==> r == Ctl::Stuck(12),
+            g < old(self).globals@.len() && !(old(self).top < old(self).lim) ==> r == Ctl::Stuck(1),
+            g < old(self).globals@.len() && old(self).top < old(self).lim ==> r == Ctl::Next
+                && final(self).words() == old(self).words()
+                && final(self).globals@ == old(self).globals@.update(g as int, old(self).words()[old(self).height() - 1])
+                && final(self).bci == old(self).bci + len,
+    {
+        if g >= self.globals.len() {
+            return Ctl::Stuck(12);
+        }
+        if !self.has_slot(0) {
+            return Ctl::Stuck(1);
+        }
+        let v = self.at(0);
+        self.globals.set(g, v);
+        self.bci = self.bci + len;
+        Ctl::Next
+    }
+
+    #[inline(always)]
+    pub fn op_pop(&mut self, n: usize, len: usize) -> (r: Ctl)
+        requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
+        ensures
+            final(self).stack_ok(),
+            final(self).same_frame(old(self)),
+            !(old(self).top + n <= old(self).lim) ==> r == Ctl::Stuck(1),
+            old(self).top + n <= old(self).lim ==> r == Ctl::Next
+                && final(self).words() == old(self).words().subrange(0, old(self).height() - n)
+                && final(self).bci == old(self).bci + len,
+    {
+        if n > self.lim - self.top {
+            return Ctl::Stuck(1);
+        }
+        self.drop(n);
+        self.bci = self.bci + len;
+        Ctl::Next
+    }
+
+    // --- Branches -----------------------------------------------------------
+
+    /// kind: 0 always, 1 if true, 2 if false, 3 if not null.
+    #[inline(always)]
+    pub fn op_branch(&mut self, p: &Program, kind: usize, target: usize, len: usize) -> (r: Ctl)
+        requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
+        ensures
+            final(self).stack_ok(),
+            final(self).same_frame(old(self)),
+            // The condition (if any) is popped.
+            kind != 0 && !(old(self).top < old(self).lim) ==> r == Ctl::Stuck(1),
+            kind != 0 && old(self).top < old(self).lim ==>
+                final(self).words() == old(self).words().subrange(0, old(self).height() - 1),
+            kind == 0 ==> final(self).words() == old(self).words(),
+            ({
+                let taken = kind == 0 || branch_taken(p, kind, old(self).words()[old(self).height() - 1]);
+                (kind == 0 || old(self).top < old(self).lim) ==> {
+                    &&& !taken ==> r == Ctl::Next && final(self).bci == old(self).bci + len
+                    &&& taken && target_ok(p, old(self).method, target) ==> r == Ctl::Next && final(self).bci == target
+                    &&& taken && !target_ok(p, old(self).method, target) ==> r == Ctl::Stuck(14)
+                }
+            }),
+    {
+        if kind != 0 {
+            if !self.has_slot(0) {
+                return Ctl::Stuck(1);
+            }
+            let v = self.at(0);
+            self.drop(1);
+            let taken = if kind == 1 {
+                v != p.false_ && v != p.null
+            } else if kind == 2 {
+                !(v != p.false_ && v != p.null)
+            } else {
+                v != p.null
+            };
+            if !taken {
+                self.bci = self.bci + len;
+                return Ctl::Next;
+            }
+        }
+        if self.method >= p.methods.len() {
+            return Ctl::Stuck(14);
+        }
+        let m = p.methods.at(self.method);
+        if !((m.entry as usize) <= target && target < (m.end as usize)) {
+            return Ctl::Stuck(14);
+        }
+        self.bci = target;
+        Ctl::Next
+    }
+
 }
 
 } // verus!
+
+impl Machine {
+    // --- Blocks ---------------------------------------------------------------
+
+    #[inline(always)]
+    pub fn op_load_block(&mut self, k: usize) -> Ctl {
+        if !self.has_slot(k) || self.ftop < FRAME_WORDS {
+            return Ctl::Stuck(1);
+        }
+        let height = self.len - self.top;
+        let slot = height - 1 - k;
+        let f = self.ftop / FRAME_WORDS - 1;
+        if f >= 0x100_0000_0000 {
+            return Ctl::Stuck(100);
+        }
+        let v = Machine::block_value(f, slot);
+        self.push_next(v, 2)
+    }
+
+    // --- Fields -------------------------------------------------------------
+
+    #[inline(always)]
+    pub fn op_load_field_this(&mut self, p: &Program, f: usize) -> Ctl {
+        // The receiver range of the method guarantees the field (checked by
+        // the loader); the run-time check below makes the access safe for
+        // every program.
+        if self.base >= self.len - self.top || self.method >= p.methods.len() {
+            return Ctl::Stuck(8);
+        }
+        let this = self.mem.read(self.len - 1 - self.base);
+        if !self.field_ok(p, this, f) {
+            return Ctl::Stuck(8);
+        }
+        let v = self.field(this, f);
+        self.push_next(v, 2)
+    }
+
+    #[inline(always)]
+    pub fn op_load_outer(&mut self, k: usize) -> Ctl {
+        if !self.has_slot(0) { return Ctl::Stuck(1); }
+        let (f, slot) = match self.block_ref(self.at(0)) {
+            None => return Ctl::Stuck(9),
+            Some(r) => r,
+        };
+        let fbase = self.mem.read(f * FRAME_WORDS + FRAME_BASE);
+        if slot < k || slot - k < fbase { return Ctl::Stuck(1); }
+        let v = self.slot(slot - k);
+        self.put(0, v);
+        self.bci += 2;
+        Ctl::Next
+    }
+
+    #[inline(always)]
+    pub fn op_store_outer(&mut self, k: usize) -> Ctl {
+        if !self.has_slot(1) { return Ctl::Stuck(1); }
+        let v = self.at(0);
+        let (f, slot) = match self.block_ref(self.at(1)) {
+            None => return Ctl::Stuck(9),
+            Some(r) => r,
+        };
+        let fbase = self.mem.read(f * FRAME_WORDS + FRAME_BASE);
+        if slot < k || slot - k < fbase { return Ctl::Stuck(1); }
+        let i = slot - k;
+        self.drop(2);
+        if i >= self.len - self.top { return Ctl::Stuck(1); }
+        let index = self.len - 1 - i;
+        self.mem.write(index, v);
+        if !self.push(v) { return Ctl::Stuck(100); }
+        self.bci += 2;
+        Ctl::Next
+    }
+
+    #[inline(always)]
+    pub fn op_load_outer_block(&mut self, k: usize) -> Ctl {
+        if !self.has_slot(0) { return Ctl::Stuck(1); }
+        let (f, slot) = match self.block_ref(self.at(0)) {
+            None => return Ctl::Stuck(9),
+            Some(r) => r,
+        };
+        let fbase = self.mem.read(f * FRAME_WORDS + FRAME_BASE);
+        if slot < k || slot - k < fbase { return Ctl::Stuck(1); }
+        self.put(0, Machine::block_value(f, slot - k));
+        self.bci += 2;
+        Ctl::Next
+    }
+
+    #[inline(always)]
+    pub fn op_load_field(&mut self, env: &crate::machine::Env, f: usize, len: usize) -> Ctl {
+        if !self.has_slot(0) { return Ctl::Stuck(1); }
+        let obj = self.at(0);
+        if !self.field_ok(env.p, obj, f) {
+            return self.raise(env, crate::machine::INVALID_PROGRAM);
+        }
+        let v = self.field(obj, f);
+        self.put(0, v);
+        self.bci += len;
+        Ctl::Next
+    }
+
+    #[inline(always)]
+    pub fn op_load_field_local(&mut self, env: &crate::machine::Env, enc: usize, pop: bool) -> Ctl {
+        let local = enc % 16;
+        let f = enc / 16;
+        let slot = if pop { local + 1 } else { local };
+        if !self.has_slot(slot) { return Ctl::Stuck(1); }
+        let obj = self.at(slot);
+        if !self.field_ok(env.p, obj, f) {
+            return self.raise(env, crate::machine::INVALID_PROGRAM);
+        }
+        let v = self.field(obj, f);
+        if pop {
+            self.put(0, v);
+            self.bci += 2;
+            Ctl::Next
+        } else {
+            self.push_next(v, 2)
+        }
+    }
+
+    #[inline(always)]
+    pub fn op_store_field(&mut self, env: &crate::machine::Env, f: usize, len: usize, keep: bool) -> Ctl {
+        if !self.has_slot(1) { return Ctl::Stuck(1); }
+        let v = self.at(0);
+        let obj = self.at(1);
+        if !self.field_store_ok(env.p, obj, f) || self.is_ro(env.p, obj) {
+            return self.raise(env, crate::machine::INVALID_PROGRAM);
+        }
+        self.drop(2);
+        self.heap.set_word(obj, INSTANCE_FIELDS_WORD + f, v);
+        if keep {
+            self.push_next(v, len)
+        } else {
+            self.bci += len;
+            Ctl::Next
+        }
+    }
+
+    #[inline(always)]
+    pub fn op_store_field_this(&mut self, env: &crate::machine::Env, f: usize) -> Ctl {
+        let p = env.p;
+        if !self.has_slot(0) { return Ctl::Stuck(1); }
+        if self.base >= self.len - self.top { return Ctl::Stuck(8); }
+        let this = self.mem.read(self.len - 1 - self.base);
+        if !self.field_store_ok(p, this, f) { return Ctl::Stuck(8); }
+        if self.is_ro(p, this) {
+            return self.raise(env, crate::machine::INVALID_PROGRAM);
+        }
+        let v = self.at(0);
+        self.heap.set_word(this, INSTANCE_FIELDS_WORD + f, v);
+        self.bci += 2;
+        Ctl::Next
+    }
+}
+
+impl Program {
+    /// `instance_field_count`: the instance size in words minus the header.
+    #[inline(always)]
+    pub fn instance_field_count(&self, cid: usize) -> i64 {
+        (((self.class_bits.at(cid) >> CLASS_ID_OFFSET) & INSTANCE_SIZE_MASK) as i64) - 1
+    }
+
+    /// `dispatch_target`.
+    #[inline(always)]
+    pub fn dispatch_target(&self, d: usize) -> i64 {
+        if d < self.dispatch.len() { self.dispatch.at(d) as i64 } else { -1 }
+    }
+
+    /// `entry_method`.
+    #[inline(always)]
+    pub fn entry_method(&self, k: usize) -> i64 {
+        let d = self.entry_points.at(k);
+        if d < 0 { return -1; }
+        self.dispatch_target(d as usize)
+    }
+
+    #[inline(always)]
+    pub fn boolean(&self, b: bool) -> usize {
+        if b { self.true_ } else { self.false_ }
+    }
+}
