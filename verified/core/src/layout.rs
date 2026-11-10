@@ -86,6 +86,8 @@ pub const MAPPED_FILE_TAG: usize = 2;
 pub const STRING_INTERNAL_LENGTH_BYTE: usize = 12;
 pub const STRING_CONTENT_BYTE: usize = 16;
 pub const STRING_SENTINEL: usize = 65535;
+pub const STRING_HASH_CODE_BYTE: usize = 8;
+pub const STRING_NO_HASH_CODE: u16 = 0xffff;
 pub const STRING_EXTERNAL_LENGTH_WORD: usize = 2;
 pub const STRING_EXTERNAL_ADDRESS_WORD: usize = 3;
 

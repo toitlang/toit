@@ -180,6 +180,23 @@ int main() {
     string_external_address_word = g.word_of(s.address());
     string_external_length_word = g.word_of(reinterpret_cast<void*>(s.length()));
   }
+  // The cached hash code: a 32-bit field holding 16 bits; find it by
+  // planting a value. An empty string whose field holds NO_HASH_CODE
+  // computes its hash (0) instead.
+  int string_hash_code_byte = -1;
+  uword string_no_hash_code = 0;
+  for (int offset = 8; offset < 16 && string_hash_code_byte < 0; offset += 4) {
+    Fake f;
+    memset(f.words, 0, sizeof(f.words));
+    *reinterpret_cast<uint32*>(reinterpret_cast<uint8*>(f.words) + offset) = 0x1234;
+    if (static_cast<String*>(f.object())->hash_code() == 0x1234) string_hash_code_byte = offset;
+  }
+  if (string_hash_code_byte >= 0) {
+    Fake f;
+    memset(f.words, 0, sizeof(f.words));
+    *reinterpret_cast<uint32*>(reinterpret_cast<uint8*>(f.words) + string_hash_code_byte) = 0xFFFF;
+    if (static_cast<String*>(f.object())->hash_code() == 0) string_no_hash_code = 0xFFFF;
+  }
   int stack_length_word, stack_top_word, stack_record_top_word, stack_bci_word;
   bool stack_records_ok;
   { Fake f;
@@ -239,6 +256,8 @@ int main() {
     { "STRING_INTERNAL_LENGTH_BYTE", static_cast<uword>(string_internal_length_byte), false },
     { "STRING_CONTENT_BYTE", static_cast<uword>(string_content_byte), false },
     { "STRING_SENTINEL", 65535, false },
+    { "STRING_HASH_CODE_BYTE", static_cast<uword>(string_hash_code_byte), false },
+    { "STRING_NO_HASH_CODE", string_no_hash_code, false },
     { "STRING_EXTERNAL_LENGTH_WORD", static_cast<uword>(string_external_length_word), false },
     { "STRING_EXTERNAL_ADDRESS_WORD", static_cast<uword>(string_external_address_word), false },
     { "CARD_SIZE_LOG_2", static_cast<uword>(GcMetadata::CARD_SIZE_LOG_2), false },

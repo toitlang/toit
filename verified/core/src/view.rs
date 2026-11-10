@@ -576,19 +576,20 @@ impl Heap {
     }
 
     /// The bytes of the byte array `id` if they are plain bytes: inline, or
-    /// external with the raw-bytes tag, or (only if `!for_write`) the
-    /// mapped-file tag (`ByteArray::Bytes` as `byte_array_at` and
-    /// `byte_array_at_put` accept them). None for external structs (the
-    /// resource proxies) and a corrupt external array (no address but a
-    /// length). Writable when `for_write` and not in the program heap.
+    /// external with the raw-bytes tag, or (only if `allow_mapped`) the
+    /// mapped-file tag (`byte_array_at` accepts it, `Object::byte_content`
+    /// does not). None for external structs (the resource proxies) and a
+    /// corrupt external array (no address but a length). Writable when
+    /// `for_write` and not in the program heap.
     #[verifier::external_body]
     #[inline(always)]
-    pub fn byte_array_content(&self, obj: usize, Ghost(id): Ghost<int>, for_write: bool) -> (r: Option<Content>)
+    pub fn byte_array_content(&self, obj: usize, Ghost(id): Ghost<int>, allow_mapped: bool, for_write: bool) -> (r: Option<Content>)
         requires
             0 <= id < self.objs().len(),
             self.addrs().len() == self.objs().len(),
             obj == self.addrs()[id],
             self.objs()[id].body is Bytes,
+            !(allow_mapped && for_write),
         ensures
             r is Some ==> r->Some_0.id() == id
                 && r->Some_0.slen() == content(self.objs()[id]).len()
@@ -602,12 +603,60 @@ impl Heap {
                 return Some(Content { ptr: base.add(BYTE_ARRAY_CONTENT_BYTE), len: raw as usize });
             }
             let tag = *words.add(BYTE_ARRAY_EXTERNAL_TAG_WORD);
-            if tag != RAW_BYTE_TAG && (for_write || tag != MAPPED_FILE_TAG) { return None; }
+            if tag != RAW_BYTE_TAG && !(allow_mapped && tag == MAPPED_FILE_TAG) { return None; }
             let address = *words.add(BYTE_ARRAY_EXTERNAL_ADDRESS_WORD);
             let len = (-1 - raw) as usize;
             if address == 0 && len != 0 { return None; }
             Some(Content { ptr: address as *mut u8, len })
         }
+    }
+
+    /// The byte array `id` holds raw bytes: inline, or external with the
+    /// raw-bytes tag (`byte_array_is_raw_bytes`). No model content.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn byte_array_is_raw(&self, obj: usize, Ghost(id): Ghost<int>) -> bool
+        requires
+            0 <= id < self.objs().len(),
+            self.addrs().len() == self.objs().len(),
+            obj == self.addrs()[id],
+            self.objs()[id].body is Bytes,
+    {
+        unsafe {
+            let words = (obj - HEAP_TAG) as *const usize;
+            (*words.add(BYTE_ARRAY_LENGTH_WORD) as i64) >= 0 || *words.add(BYTE_ARRAY_EXTERNAL_TAG_WORD) == RAW_BYTE_TAG
+        }
+    }
+
+    /// The hash code cached in the string `id` (`String::NO_HASH_CODE` if
+    /// not computed yet; a 32-bit field holding 16 bits, as
+    /// `String::_raw_hash_code`). Not in the model: any value.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn string_hash_field(&self, obj: usize, Ghost(id): Ghost<int>) -> u16
+        requires
+            0 <= id < self.objs().len(),
+            self.addrs().len() == self.objs().len(),
+            obj == self.addrs()[id],
+            self.objs()[id].body is Str,
+    {
+        unsafe { *(((obj - HEAP_TAG) as *const u8).add(STRING_HASH_CODE_BYTE) as *const u32) as u16 }
+    }
+
+    /// Caches the hash code of the string `id` (not in the program heap).
+    /// The model does not include it, so it is unchanged.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn set_string_hash_field(&mut self, obj: usize, Ghost(id): Ghost<int>, v: u16)
+        requires
+            0 <= id < old(self).objs().len(),
+            old(self).addrs().len() == old(self).objs().len(),
+            obj == old(self).addrs()[id],
+            old(self).objs()[id].body is Str,
+            !old(self).objs()[id].ro,
+        ensures *final(self) == *old(self),
+    {
+        unsafe { *(((obj - HEAP_TAG) as *mut u8).add(STRING_HASH_CODE_BYTE) as *mut u32) = v as u32 }
     }
 
     /// Byte `i` of a content view.

@@ -292,6 +292,16 @@ pub fn fail(p: &Program, h: &Heap, k: usize) -> (r: (PrimOutcome, Ghost<Value>))
     (PrimOutcome::Failure(w), v)
 }
 
+/// A failure with error root `k` after the heap changed from `h0`.
+#[inline(always)]
+pub fn fail_post(p: &Program, Ghost(h0): Ghost<Heap>, h: &Heap, k: usize) -> (r: (PrimOutcome, Ghost<Value>))
+    requires heap_post(p, &h0, h), k < ROOT_COUNT,
+    ensures r.0 is Failure, prim_post(p, &h0, h, r.0, r.1@), r.1@ == p.ap@.roots[k as int],
+{
+    let (w, v) = root(p, h, k);
+    (PrimOutcome::Failure(w), v)
+}
+
 /// A success with the encoded value `(w, v)` and the heap unchanged.
 #[inline(always)]
 pub fn ok(p: &Program, h: &Heap, w: usize, Ghost(v): Ghost<Value>) -> (r: (PrimOutcome, Ghost<Value>))
