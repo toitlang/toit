@@ -43,4 +43,8 @@ pub mod fields;
 pub mod types;
 pub mod blocks;
 pub mod ops;
+pub mod halt;
+pub mod globals;
+pub mod alloc;
+pub mod arrays;
 pub mod theorem;

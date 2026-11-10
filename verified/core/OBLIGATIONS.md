@@ -5,8 +5,8 @@ Phase 4. "Proven" means: Verus, zero `assume`/`admit`, with only the
 trusted items of TRUSTED.md and verified/TRUSTED.toml. Run
 `verified/check.sh` (the merge gate) to reproduce.
 
-Current result: `core 128 verified, 0 errors` (Verus 0.2026.11.02, about
-1.4 s wall). See DESIGN.md for the run loop the obligations refer to.
+Current result: `core 282 verified, 0 errors` (Verus 0.2026.11.02, about
+11 s wall). See DESIGN.md for the run loop the obligations refer to.
 
 ## 1. What is proven now
 
@@ -70,11 +70,11 @@ obligations below would prove.
 | C1 calls | INVOKE_STATIC(_TAIL), INVOKE_VIRTUAL(_WIDE/_GET/_SET), INVOKE_LAMBDA_TAIL, INVOKE_INITIALIZER_TAIL, RETURN, RETURN_NULL | needs R2/R3; `call`, `replace_frame`, `return_from` and the preemption point |
 | T1 try/unwind | TRY, UNWIND, THROW | needs R2 and the heap (the token is a 5-element array); `unwind` is a loop over frames, `enter_finally` allocates |
 | Y1 type checks | AS_*, AS_LOCAL raising AS_CHECK_FAILED | the checks and the IS_*/AS_* successes are verified (`src/types.rs`); the failing AS path goes through `step_unverified`: needs `raise` (allocates the exception, then `unwind`, see T1/A1) |
-| O1 operators | INVOKE_EQ..INVOKE_SIZE, IDENTICAL | smi fast paths of INVOKE_EQ..INVOKE_MOD and IDENTICAL proven (src/ops.rs); left: INVOKE_AT, INVOKE_AT_PUT, INVOKE_SIZE, and the other paths (doubles, which allocate; large integers; `compare_numbers`, i.e. `spec_helpers::compare_mixed`, uninterpreted in the spec; IDENTICAL of distinct heap objects; the virtual-call fallback) |
-| A1 allocation | ALLOCATE(_WIDE) | GC point (see G below) |
+| O1 operators | INVOKE_EQ..INVOKE_SIZE, IDENTICAL | smi fast paths of INVOKE_EQ..INVOKE_MOD and IDENTICAL proven (src/ops.rs); plain-array fast paths of INVOKE_AT, INVOKE_AT_PUT, INVOKE_SIZE proven (src/arrays.rs); left: their other receivers (lists, byte arrays, slices, large arrays, copy-on-write byte arrays, stores into the program heap), and the other paths (doubles, which allocate; large integers; `compare_numbers`, i.e. `spec_helpers::compare_mixed`, uninterpreted in the spec; IDENTICAL of distinct heap objects; the virtual-call fallback) |
+| A1 allocation | ALLOCATE(_WIDE) out of memory | verified (src/alloc.rs) against the ASSUMED contract of `gc_allocate_instance` (the GC preserves the abstraction, the allocation appends the spec's instance; TRUSTED.md section 2); save and reload are proven. Out of memory goes through `step_unverified` (retry, then the `OUT_OF_MEMORY` throw of `resource_throw`) |
 | P1 primitives | PRIMITIVE | calls C++ (see FFI in DESIGN.md); P2 below |
-| H1 halt | HALT 0..3 | simple; result values of the run loop |
-| G1 globals (lazy, dynamic) | LOAD_GLOBAL_VAR_LAZY(_WIDE), LOAD_GLOBAL_VAR_DYNAMIC, STORE_GLOBAL_VAR_DYNAMIC | calls the initializer entry point (C1) |
+| H1 halt | HALT 1 raising INVALID_PROGRAM | HALT 0 (yield), 1 (exit), 2 (deep sleep), 3 (reset) are verified (src/halt.rs); a heap object as exit value goes through `step_unverified`: needs `raise` (see Y1) |
+| G1 globals (lazy, dynamic) | the INVALID_PROGRAM raise of LOAD/STORE_GLOBAL_VAR_DYNAMIC; the AS_CHECK_FAILED raise of LOAD_GLOBAL_VAR_LAZY(_WIDE) | the fast paths and the initializer call are verified (src/globals.rs); the raises need `raise` (see Y1) |
 
 ### G. GC safety
 

@@ -34,6 +34,14 @@ justification = "usize is 64 bits (TRUSTED.md V4): Verus assumes it for the bit-
 
 [[trusted]]
 crate = "core"
+file = "src/alloc.rs"
+item = "gc_allocate_instance"
+kind = "external_body"
+count = 1
+justification = "ASSUMED: toit_v2_allocate_instance (may GC) keeps the abstract state the stack, header, globals and heap model represent and appends exactly the spec's null-filled instance (or keeps it unchanged on out of memory); TRUSTED.md, GC and allocation."
+
+[[trusted]]
+crate = "core"
 file = "src/ffi.rs"
 item = "Context"
 kind = "plain_rust_item"
@@ -523,6 +531,22 @@ justification = "Heap model: address of each abstract object; related to memory 
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
+item = "Heap::array_length"
+kind = "external_body"
+count = 1
+justification = "Heap accessor: the length word of an array is the length of the model's element sequence (TRUSTED.md, heap model)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::array_length"
+kind = "unsafe"
+count = 1
+justification = "Reads the length word of a live array (heap integrity, TRUSTED.md V2)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
 item = "Heap::byte"
 kind = "external_body"
 count = 1
@@ -575,6 +599,22 @@ item = "Heap::class_tag"
 kind = "unsafe"
 count = 1
 justification = "Reads the header word of a live object (heap integrity, TRUSTED.md V2): obj is the model address of an object."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::element"
+kind = "external_body"
+count = 1
+justification = "Heap accessor: an array element word is the encoding of the model's element (i < length) (TRUSTED.md, heap model)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::element"
+kind = "unsafe"
+count = 1
+justification = "Reads element i < length of a live array (heap integrity, TRUSTED.md V2)."
 
 [[trusted]]
 crate = "core"
@@ -639,6 +679,22 @@ item = "Heap::set_byte"
 kind = "unsafe"
 count = 1
 justification = "Raw access of Heap::set_byte; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::set_element"
+kind = "external_body"
+count = 1
+justification = "Heap accessor: storing an element word updates the model's element (non-ro array, i < length); applies the write barrier (TRUSTED.md, heap model)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::set_element"
+kind = "unsafe"
+count = 1
+justification = "Writes element i < length of a live process-heap array and marks its card (heap integrity, TRUSTED.md V2)."
 
 [[trusted]]
 crate = "core"
@@ -815,6 +871,14 @@ item = "StackMem::from_stack"
 kind = "unsafe"
 count = 1
 justification = "Constructor of the StackMem view from C++ pointers, called only by toit_v2_run / Runtime::stack (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackMem::hdr"
+kind = "uninterp"
+count = 1
+justification = "Ghost model of the Stack header words (top, frame top, bci), related to memory only by header/set_header (TRUSTED.md section 1)."
 
 [[trusted]]
 crate = "core"

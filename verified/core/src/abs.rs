@@ -103,14 +103,19 @@ pub open spec fn tag_bits(cb: Seq<u16>, cid: int) -> int {
 /// TRUSTED (heap integrity, TRUSTED.md "Heap model"): an object of the
 /// model agrees with its header and contents: its class exists; it is an
 /// instance exactly if its class has the instance or task tag, with the
-/// class' field count; its fields are encodable values.
+/// class' field count; it is an array exactly if its class has the array
+/// tag, with the length in its length word (below 2^30); its fields and
+/// elements are encodable values.
 pub open spec fn obj_model_ok(o: HeapObj, cb: Seq<u16>, addr: Seq<usize>) -> bool {
     let cid = o.class_id as int;
     &&& cid < cb.len()
     &&& (o.body is Instance) == (tag_bits(cb, cid) == INSTANCE_TAG as int || tag_bits(cb, cid) == TASK_TAG as int)
+    &&& (o.body is Array) == (tag_bits(cb, cid) == ARRAY_TAG as int)
     &&& match o.body {
         Body::Instance(f) => f.len() == ifc_bits(cb, cid)
             && forall|i: int| 0 <= i < f.len() ==> #[trigger] encodable(addr, f[i]),
+        Body::Array(e) => e.len() < 0x4000_0000
+            && forall|i: int| 0 <= i < e.len() ==> #[trigger] encodable(addr, e[i]),
         _ => true,
     }
 }

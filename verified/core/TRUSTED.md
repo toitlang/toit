@@ -15,8 +15,8 @@ Opaque structs holding raw pointers into VM memory. Their ghost content
 |---|---|---|
 | `Table<T>` | an immutable program table `ptr[0..len)` (bytecodes, method table, dispatch table, class tables, roots, literals) | `len() == view.len()`; `at(i)` requires `i < len`, returns `view[i]` |
 | `Globals` | the process' global variables | `at`/`set` require `i < len`; `set` updates `view[i]` |
-| `StackMem` | the array of the current task's `Stack` object | `read`/`write` require `i < len`; `copy_within` is a memmove with an exact contract; `header`/`set_header` access the Stack header words (top, frame top, bci) |
-| `Heap` | process and program heap objects | a ghost heap model: `objs()` (the abstract heap, `State2::heap`), `addrs()` (each object's tagged address), `class_bits()`. Model accessors for verified code: `class_id`, `class_tag` (the header's class id and tag are the model object's class id and its class' tag), `field` (an instance field word is `enc` of the model's field), `set_field` (storing the encoding of `v` makes the model field `v`; write barrier). Raw accessors without ghost content for the checked handlers: `header`, `word`, `byte`, `u32_at`, `set_word`, `set_byte` |
+| `StackMem` | the array of the current task's `Stack` object | `read`/`write` require `i < len`; `copy_within` is a memmove with an exact contract; `header`/`set_header` access the Stack header words (top, frame top, bci), modelled by the uninterpreted `hdr(word)` |
+| `Heap` | process and program heap objects | the heap model (`objs`, `addrs`, `class_bits`; `abs::obj_model_ok`: instances and arrays agree with their class tag, field count, length and encodable contents): `class_id`, `class_tag`, `field`/`set_field`, `array_length`, `element`/`set_element` relate memory to it; without ghost content: `header`, `word`, `byte`, `u32_at`, `set_word`, `set_byte` access the object a tagged word designates; the setters apply the write barrier (card mark) |
 | `Preemption` | `Interpreter::watermark_` | `requested`/`clear`/`request`: environment nondeterminism, no contract |
 
 Assumptions behind the views:
@@ -48,6 +48,22 @@ fresh view of the current task's stack; the caller has stored its state
 re-derives everything after (`Machine::reload`). The full contract, with
 the precondition the core discharges for each function, is in DESIGN.md,
 "FFI contract".
+
+GC and allocation: `alloc::gc_allocate_instance` (ALLOCATE) is the one
+may-GC call with a contract in terms of the abstraction. Before the call
+the views represent the ghost state `g`: `alloc::reloaded(m, g).refines(p)`,
+where `reloaded` re-derives the machine's cached fields (length, top, frame
+top, bci, the top frame's base and method) from the stack view and its
+header words. ASSUMED: afterwards the views represent `g` with the spec's
+new instance (class `c`, every field null, outside the program heap)
+appended and the result is its address; or `g` itself if the result is 0
+(out of memory). This is "the GC preserves the abstraction" (it moves
+objects and rewrites every root: object-stack slots, globals; it keeps the
+frame records and the header, possibly moving or shrinking the Stack
+object) plus "allocation appends exactly one object". The save before and
+the reload after are proven (`Machine::save`, `alloc::reload`); the other
+may-GC calls still go through the assumed bridges (`step_unverified`,
+`grow_bridge`).
 
 `toit_v2_run` builds the program view from the context
 `Interpreter::run_v2` fills and checks the table sizes it relies on

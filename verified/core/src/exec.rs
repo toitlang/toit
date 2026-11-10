@@ -648,6 +648,9 @@ impl Machine {
     #[inline(always)]
     pub fn save(&mut self)
         ensures
+            final(self).mem.hdr(STACK_TOP_WORD) == old(self).top,
+            final(self).mem.hdr(STACK_FRAME_TOP_WORD) == old(self).ftop,
+            final(self).mem.hdr(STACK_BCI_WORD) == old(self).bci,
             final(self).mem@ == old(self).mem@,
             final(self).mem@.len() == old(self).mem@.len(),
             final(self).top == old(self).top,
