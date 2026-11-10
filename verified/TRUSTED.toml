@@ -654,7 +654,7 @@ file = "src/prims/fp.rs"
 item = "binop"
 kind = "external_body"
 count = 1
-justification = "IEEE-754 add/sub/mul/div/fmod on bit patterns (Rust std, same as the C++ operators and fmod); no contract, compared bit for bit by verified/core/tests/prim_diff.py."
+justification = "IEEE-754 add/sub/mul/div/fmod on bit patterns (Rust std, same as the C++ operators and fmod); no contract, compared bit for bit by verified/core/tests/prim_diff.sh."
 
 [[trusted]]
 crate = "core"
@@ -742,7 +742,7 @@ file = "src/prims/index.rs"
 item = "TABLE"
 kind = "plain_rust_item"
 count = 1
-justification = "Generated (verified/tools/gen_prim_index.py) name/index/arity table, compared with MODULE_CORE by the layout check."
+justification = "Generated (verified/tools/gen_prim_index.sh) name/index/arity table, compared with MODULE_CORE by the layout check."
 
 [[trusted]]
 crate = "core"

@@ -32,7 +32,7 @@ pub fn binop(op: u8, x: u64, y: u64) -> u64 {
     // Two NaN operands: x86 returns the first operand of the instruction,
     // quieted. IEEE leaves the payload open, and the compilers commute the
     // operands of + and * freely: the reference (gcc) build computes
-    // `arg + receiver` and `arg * receiver` (found by prim_diff.py), so
+    // `arg + receiver` and `arg * receiver` (found by prim_diff.sh), so
     // match it explicitly.
     if op <= 3 && a.is_nan() && b.is_nan() {
         let pick = if op == 0 || op == 2 { y } else { x };

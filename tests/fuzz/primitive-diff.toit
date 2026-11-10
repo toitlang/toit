@@ -9,7 +9,7 @@ arguments of primitive-fuzz.toit and prints a running checksum of every
 result, thrown error and argument afterwards (arguments are mutated by
 some primitives). Run it once with the C++ primitives and once with
 TOIT_V2_RUST_PRIMITIVES=1 (format 2: `toit.run --untrusted`) and compare
-the outputs; verified/core/tests/prim_diff.py does that.
+the outputs; verified/core/tests/prim_diff.sh does that.
 
 Usage: primitive-diff.toit <seed> <iterations> [<trace-from> [<trace-to>]]
 

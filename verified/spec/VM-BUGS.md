@@ -158,7 +158,7 @@ core/primitives; upstream: https://github.com/toitlang/toit/pull/3375.
 ## `string_write_to_byte_array` copies overlapping bytes with `memcpy`
 
 Found by the differential test of the primitive port
-(verified/core/tests/prim_diff.py, seeds 1 and 5). `PRIMITIVE(
+(verified/core/tests/prim_diff.sh, seeds 1 and 5). `PRIMITIVE(
 string_write_to_byte_array)` (src/primitive_core.cc) copies with `memcpy`
 although the source blob and the destination may be the same byte array
 (or overlapping slices of it): undefined behavior, and with glibc the
