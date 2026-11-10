@@ -216,6 +216,21 @@ run-critical container ends the system with exit code 1 (so `toit run
 Builds without the verifier (FreeRTOS devices) refuse all untrusted
 programs.
 
+## Field accesses
+
+The verifier does not prove the receivers of field accesses, so the
+interpreter checks every field access of an untrusted process at run time,
+in every build. Such processes run with their own dispatch table, which
+sends the seven field bytecodes (`LOAD_FIELD`, `LOAD_FIELD_WIDE`,
+`LOAD_FIELD_LOCAL`, `POP_LOAD_FIELD_LOCAL`, `STORE_FIELD`,
+`STORE_FIELD_WIDE`, `STORE_FIELD_POP`) to entries that check that the
+receiver is an instance (or task) with enough fields, and which calls field
+accessors from `INVOKE_VIRTUAL_GET`/`INVOKE_VIRTUAL_SET` instead of
+inlining them. A failing access throws `INVALID_PROGRAM`. Other processes
+use the unchecked table and don't pay for the check. Builds configured with
+`TOIT_CHECKED_FIELD_ACCESS` in the environment check the field accesses of
+every process.
+
 ## Tests
 
 `tests/sandbox/` contains the negative suite. Each `*-test.toit` is a

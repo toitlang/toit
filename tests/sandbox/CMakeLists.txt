@@ -7,6 +7,7 @@
 # The tests of the structural verifier and the interpreter hardening fork
 # toit.run and toit.compile, so they take both as arguments.
 set(TOOL_TESTS
+  "tests/sandbox/field-access-test.toit"
   "tests/sandbox/runtime-hardening-test.toit"
   "tests/sandbox/verify-reject-test.toit"
   "tests/sandbox/verify-launch-test.toit"
