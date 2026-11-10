@@ -420,14 +420,14 @@ pub open spec fn post(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, trus
         let i = h - 1 - b1;
         if block_slot(p, c, m, k, i) { Some(k.push(Kind::Block(0, i))) } else { None }
     } else if op == LOAD_FIELD || op == LOAD_FIELD_WIDE {
-        if value_operands(k, 1) { Some(k.update(h - 1, Kind::Val)) } else { None }
+        if value_operands(k, 1) && leaves0(p, m, h, 1) { Some(k.update(h - 1, Kind::Val)) } else { None }
     } else if op == LOAD_FIELD_LOCAL || op == POP_LOAD_FIELD_LOCAL {
         let slot = if op == POP_LOAD_FIELD_LOCAL { b1 % 16 + 1 } else { b1 % 16 };
         if slot < h && is_val(top_kind(k, slot)) {
             Some(if op == LOAD_FIELD_LOCAL { k.push(Kind::Val) } else { k.update(h - 1, Kind::Val) })
         } else { None }
     } else if op == STORE_FIELD || op == STORE_FIELD_WIDE || op == STORE_FIELD_POP {
-        if value_operands(k, 2) {
+        if value_operands(k, 2) && leaves0(p, m, h, 2) {
             Some(if op == STORE_FIELD_POP { pop_push(k, 2, None) } else { pop_push(k, 2, Some(Kind::Val)) })
         } else { None }
     } else if op == LOAD_FIELD_THIS {

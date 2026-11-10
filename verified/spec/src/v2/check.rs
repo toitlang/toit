@@ -972,7 +972,7 @@ pub fn x_post_fields(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<X
     let (bci, op, len, b1, w1) = x_decode(p, m, off);
     let h = k.len();
     if op == LOAD_FIELD || op == LOAD_FIELD_WIDE {
-        if x_value_operands(k, 1) { Some(x_update(k, h - 1, XKind::Val)) } else { None }
+        if x_value_operands(k, 1) && x_leaves0(p, m, h, 1) { Some(x_update(k, h - 1, XKind::Val)) } else { None }
     } else if op == LOAD_FIELD_LOCAL || op == POP_LOAD_FIELD_LOCAL {
         let slot = if op == POP_LOAD_FIELD_LOCAL { (b1 % 16 + 1) as usize } else { (b1 % 16) as usize };
         if slot < h {
@@ -984,7 +984,7 @@ pub fn x_post_fields(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<X
             None
         }
     } else if op == STORE_FIELD || op == STORE_FIELD_WIDE || op == STORE_FIELD_POP {
-        if x_value_operands(k, 2) {
+        if x_value_operands(k, 2) && x_leaves0(p, m, h, 2) {
             if op == STORE_FIELD_POP {
                 let k1 = x_prefix(k, h - 2);
                 Some(k1)

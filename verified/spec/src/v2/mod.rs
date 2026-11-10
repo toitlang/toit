@@ -38,6 +38,10 @@ pub mod sound_prim;
 pub mod sound_call_ops;
 pub mod sound_virtual;
 pub mod sound_local_ops;
+pub mod sound_field;
+pub mod sound_block;
+pub mod sound_step;
+pub mod theorem;
 #[allow(unused_variables)]
 pub mod check;
 #[cfg(not(verus_keep_ghost))]
