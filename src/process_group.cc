@@ -29,11 +29,23 @@ ProcessGroup::ProcessGroup(int id, Program* program, AlignedMemoryBase* memory)
     , memory_(memory) {}
 
 ProcessGroup::~ProcessGroup() {
+  delete method_entries_;
   delete memory_;
 }
 
 ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* memory) {
-  return _new ProcessGroup(id, program, memory);
+  MethodEntryTable* entries = null;
+  if (program != null) {
+    entries = MethodEntryTable::compute(program);
+    if (entries == null) return null;
+  }
+  ProcessGroup* result = _new ProcessGroup(id, program, memory);
+  if (result == null) {
+    delete entries;
+    return null;
+  }
+  result->method_entries_ = entries;
+  return result;
 }
 
 Process* ProcessGroup::lookup(int process_id) {
