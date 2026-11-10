@@ -63,6 +63,7 @@ pub open spec fn verified_op(op: u8) -> bool {
     ||| 14 <= op <= 31   // LOAD_LOCAL_0..5, literals, smis, LOAD_METHOD, LOAD_GLOBAL_VAR(_WIDE)
     ||| op == 35 || op == 36  // STORE_GLOBAL_VAR(_WIDE)
     ||| op == 40 || op == 41  // POP, POP_1
+    ||| 44 <= op <= 52   // IS_CLASS*, IS_INTERFACE*, AS_CLASS*, AS_INTERFACE*, AS_LOCAL
     ||| 81 <= op <= 88   // BRANCH*, BRANCH_BACK*
     ||| op == 53         // INVOKE_STATIC
     ||| op == 58 || op == 59  // INVOKE_VIRTUAL(_WIDE)
@@ -432,6 +433,60 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
             if p.preempt_a_lot { env.pre.request(); }
             proof { assert(sp::step(ap, g) == sp::op_pop(g, 1, 1)) by { reveal(sp::step); } }
             m.op_pop(p, 1, 1)
+        },
+        44 => {
+            // IS_CLASS.
+            let enc = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_is(ap, g, enc as int, false, 2)) by { reveal(sp::step); } }
+            return crate::types::op_is(m, env, bci, opcode, enc, false, 2);
+        },
+        45 => {
+            // IS_CLASS_WIDE.
+            let enc = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_is(ap, g, enc as int, false, 3)) by { reveal(sp::step); } }
+            return crate::types::op_is(m, env, bci, opcode, enc, false, 3);
+        },
+        46 => {
+            // IS_INTERFACE.
+            let enc = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_is(ap, g, enc as int, true, 2)) by { reveal(sp::step); } }
+            return crate::types::op_is(m, env, bci, opcode, enc, true, 2);
+        },
+        47 => {
+            // IS_INTERFACE_WIDE.
+            let enc = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_is(ap, g, enc as int, true, 3)) by { reveal(sp::step); } }
+            return crate::types::op_is(m, env, bci, opcode, enc, true, 3);
+        },
+        48 => {
+            // AS_CLASS.
+            let enc = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_as(ap, g, enc as int, false, 2)) by { reveal(sp::step); } }
+            return crate::types::op_as(m, env, bci, opcode, enc, false, 2);
+        },
+        49 => {
+            // AS_CLASS_WIDE.
+            let enc = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_as(ap, g, enc as int, false, 3)) by { reveal(sp::step); } }
+            return crate::types::op_as(m, env, bci, opcode, enc, false, 3);
+        },
+        50 => {
+            // AS_INTERFACE.
+            let enc = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_as(ap, g, enc as int, true, 2)) by { reveal(sp::step); } }
+            return crate::types::op_as(m, env, bci, opcode, enc, true, 2);
+        },
+        51 => {
+            // AS_INTERFACE_WIDE.
+            let enc = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_as(ap, g, enc as int, true, 3)) by { reveal(sp::step); } }
+            return crate::types::op_as(m, env, bci, opcode, enc, true, 3);
+        },
+        52 => {
+            // AS_LOCAL.
+            let enc = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_as_local(ap, g, enc as int)) by { reveal(sp::step); } }
+            return crate::types::op_as_local(m, env, bci, opcode, enc);
         },
         81..=84 => {
             let d = code_u16(p, bci + 1);
