@@ -260,7 +260,7 @@ same results as the verified mix.
 
 ### Validation at scale (Phase 2)
 
-`../tools/run_suite.toit` discovers every `tests/*-test.toit`,
+`verified/tools/run_suite.toit` discovers every `tests/*-test.toit`,
 `tests/regress/*-test.toit`, `-test-slow` and `-test-force` program (418),
 compiles it, dumps it, runs it on the interpreter, and when the
 interpreter does not stop at an unimplemented primitive or a system
