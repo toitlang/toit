@@ -1317,6 +1317,17 @@ pub fn run(p: &Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preempti
         env.rt.report(V2_REPORT_STUCK, m.bci, stuck::FATAL);
         return (RESULT_TERMINATED, 1);
     }
+    // Register allocation: the fields that change with every instruction
+    // (top, bci) and the stack view stay in registers; the frame cache and
+    // the other views, which change only on calls, returns and cold paths,
+    // stay in memory (their addresses escape here, so LLVM does not
+    // promote them). Promoting everything costs more in register shuffles
+    // at the loop head than it saves in loads.
+    core::hint::black_box((
+        &mut m.len as *mut usize, &mut m.ftop as *mut usize, &mut m.base as *mut usize,
+        &mut m.lim as *mut usize, &mut m.method as *mut usize, &mut m.mend as *mut usize,
+        &mut m.globals as *mut Globals, &mut m.heap as *mut Heap,
+    ));
     loop {
         match m.step(&env) {
             Ctl::Next => {}
@@ -1371,7 +1382,6 @@ impl Machine {
     #[inline(always)]
     fn dispatch(&mut self, env: &Env, bci: usize, opcode: u8) -> Ctl {
         let p = env.p;
-        if opcode as usize >= OPCODE_LENGTHS.len() { return Ctl::Stuck(stuck::BAD_INSTRUCTION); }
         // Operands are decoded in the arms (the opcode is a constant there,
         // so the length folds too).
         macro_rules! len { () => { OPCODE_LENGTHS[opcode as usize] as usize } }
@@ -1525,7 +1535,9 @@ impl Machine {
             }
             op::LOAD_FIELD_THIS => self.op_load_field_this(p, b1!()),
             op::UNWIND => self.op_unwind(env),
-            _ => self.op_halt(env, b1!()),
+            op::HALT => self.op_halt(env, b1!()),
+            // Opcodes 101..255 (the length table covers only 0..100).
+            _ => Ctl::Stuck(stuck::BAD_INSTRUCTION),
         }
     }
 
