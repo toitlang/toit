@@ -82,6 +82,8 @@ pub struct Context {
     pub watermark: *const AtomicUsize,
     pub preempt_a_lot: usize,
     pub accepted: usize,
+    pub core_arities: *const u8,
+    pub core_arities_length: usize,
     pub result_state: usize,
     pub result_value: i64,
 }
@@ -95,14 +97,12 @@ extern "C" {
     fn toit_v2_allocate_array(process: *mut c_void, length: usize, filler: usize) -> usize;
     fn toit_v2_grow_stack(process: *mut c_void, needed: usize) -> usize;
     fn toit_v2_lookup_primitive(process: *mut c_void, module: usize, index: usize,
-                                entry: *mut *const c_void, arity: *mut usize, rust: *mut usize) -> usize;
+                                entry: *mut *const c_void, arity: *mut usize) -> usize;
     fn toit_v2_try_allocate_large_integer(process: *mut c_void, value: i64) -> usize;
     fn toit_v2_try_allocate_double(process: *mut c_void, bits: u64) -> usize;
     fn toit_v2_try_allocate_array(process: *mut c_void, length: usize, filler: usize) -> usize;
     fn toit_v2_try_allocate_string(process: *mut c_void, length: usize) -> usize;
     fn toit_v2_try_allocate_byte_array(process: *mut c_void, length: usize) -> usize;
-    fn toit_v2_primitive_gc(process: *mut c_void, attempt: usize);
-    fn toit_v2_leave_primitive(process: *mut c_void);
     fn toit_v2_call_primitive(process: *mut c_void, entry: *const c_void, arity: usize,
                               first_argument: usize, result: *mut usize) -> usize;
     fn toit_v2_report(process: *mut c_void, kind: usize, bci: usize, detail: usize);
@@ -122,22 +122,10 @@ pub struct Accepted {
     _private: (),
 }
 
-/// A C++ primitive found in the process' policy. `rust`: the policy
-/// resolves it to the VM's own primitive (not a denying stub) and the Rust
-/// primitives are enabled (`TOIT_V2_RUST_PRIMITIVES=1`), so the core may run
-/// its Rust port (src/prims) instead.
+/// A C++ primitive found in the process' policy.
 #[verifier::external_body]
 pub struct PrimitiveRef {
     entry: *const c_void,
-    rust: bool,
-}
-
-impl PrimitiveRef {
-    #[verifier::external_body]
-    #[inline(always)]
-    pub fn rust(&self) -> bool {
-        self.rust
-    }
 }
 
 /// The C++ functions the core calls (src/interpreter_v2.h). Each that may
@@ -208,31 +196,14 @@ impl Runtime {
     pub fn lookup_primitive(&self, module: usize, index: usize) -> (r: Option<(PrimitiveRef, usize)>) {
         let mut entry: *const c_void = core::ptr::null();
         let mut arity: usize = 0;
-        let mut rust: usize = 0;
-        let found = unsafe { toit_v2_lookup_primitive(self.process, module, index, &mut entry, &mut arity, &mut rust) };
-        if found == V2_PRIMITIVE_FOUND { Some((PrimitiveRef { entry, rust: rust != 0 }, arity)) } else { None }
+        let found = unsafe { toit_v2_lookup_primitive(self.process, module, index, &mut entry, &mut arity) };
+        if found == V2_PRIMITIVE_FOUND { Some((PrimitiveRef { entry }, arity)) } else { None }
     }
 
     /// The allocator of the Rust primitives (allocation without GC).
     #[verifier::external_body]
     pub fn allocator(&self) -> Allocator {
         Allocator { process: self.process }
-    }
-
-    /// MAY GC. The collection a primitive asks for when an allocation
-    /// failed (`attempt` 1..3, as the C++ primitive path); attempt 3 only
-    /// reports. The stack view is replaced.
-    #[verifier::external_body]
-    pub fn primitive_gc(&self, stack: &mut StackMem, attempt: usize) {
-        unsafe { toit_v2_primitive_gc(self.process, attempt) };
-        *stack = self.stack();
-    }
-
-    /// Installs a heap limit a GC during a primitive deferred
-    /// (`ObjectHeap::leave_primitive`).
-    #[verifier::external_body]
-    pub fn leave_primitive(&self) {
-        unsafe { toit_v2_leave_primitive(self.process) }
     }
 
     /// MAY GC, may switch the current task. Calls the primitive with its
@@ -398,13 +369,16 @@ pub unsafe extern "C" fn toit_v2_run(context: *mut Context) -> usize {
     let globals = Globals::from_raw(p.globals, p.globals_length);
     let heap = Heap::new(p.remembered_set_bias);
     let preemption = Preemption::from_raw(c.watermark);
+    // The policy's core arities (PrimitivePolicy::core_arities): the core
+    // primitives it resolves to the VM's own, which the core runs as Rust.
+    let core_arities = Table::from_raw(c.core_arities, if c.core_arities.is_null() { 0 } else { c.core_arities_length });
     // The verified run loop needs an `Accepted` token, which exists only
     // here and only for a context whose table the launch-time verifier
     // accepted (TOIT_V2_ACCEPTED, set by Interpreter::run_v2 from
     // V2MethodTable::verified, which only V2Verifier::verify's accept path
     // sets).
     let accepted = if c.accepted == V2_ACCEPTED { Some(Accepted { _private: () }) } else { None };
-    let (state, value) = crate::machine::run(&program, runtime, globals, heap, preemption, accepted);
+    let (state, value) = crate::machine::run(&program, runtime, globals, heap, preemption, core_arities, accepted);
     c.result_state = state;
     c.result_value = value;
     state
@@ -494,6 +468,8 @@ const STRUCT_LAYOUT: &[(&[u8], usize)] = &[
     (b"CONTEXT_watermark\0", core::mem::offset_of!(Context, watermark)),
     (b"CONTEXT_preempt_a_lot\0", core::mem::offset_of!(Context, preempt_a_lot)),
     (b"CONTEXT_accepted\0", core::mem::offset_of!(Context, accepted)),
+    (b"CONTEXT_core_arities\0", core::mem::offset_of!(Context, core_arities)),
+    (b"CONTEXT_core_arities_length\0", core::mem::offset_of!(Context, core_arities_length)),
     (b"CONTEXT_result_state\0", core::mem::offset_of!(Context, result_state)),
     (b"CONTEXT_result_value\0", core::mem::offset_of!(Context, result_value)),
 ];

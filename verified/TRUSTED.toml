@@ -163,14 +163,6 @@ justification = "Opaque handle of a C++ PrimitiveEntry found in the process poli
 [[trusted]]
 crate = "core"
 file = "src/ffi.rs"
-item = "PrimitiveRef::rust"
-kind = "external_body"
-count = 1
-justification = "Reads the flag toit_v2_lookup_primitive set: the policy resolved the VM's own primitive and the Rust primitives are enabled; no contract (a choice, not a fact the proof uses)."
-
-[[trusted]]
-crate = "core"
-file = "src/ffi.rs"
 item = "ProgramTables"
 kind = "plain_rust_item"
 count = 1
@@ -291,22 +283,6 @@ justification = "FFI call to toit_v2_grow_stack (src/interpreter_v2.cc); argumen
 [[trusted]]
 crate = "core"
 file = "src/ffi.rs"
-item = "Runtime::leave_primitive"
-kind = "external_body"
-count = 1
-justification = "ObjectHeap::leave_primitive after a primitive that needed a GC (installs the deferred heap limit); no heap-model effect."
-
-[[trusted]]
-crate = "core"
-file = "src/ffi.rs"
-item = "Runtime::leave_primitive"
-kind = "unsafe"
-count = 1
-justification = "FFI call of toit_v2_leave_primitive with the process the runtime was created for."
-
-[[trusted]]
-crate = "core"
-file = "src/ffi.rs"
 item = "Runtime::lookup_primitive"
 kind = "external_body"
 count = 1
@@ -327,22 +303,6 @@ item = "Runtime::new"
 kind = "plain_rust_item"
 count = 1
 justification = "Constructor of the opaque FFI holder; called once by toit_v2_run."
-
-[[trusted]]
-crate = "core"
-file = "src/ffi.rs"
-item = "Runtime::primitive_gc"
-kind = "external_body"
-count = 1
-justification = "MAY GC: the collection of the C++ primitive retry protocol (v2_gc); replaces the stack view like the other may-GC calls; only used by the plain-Rust bridge after the machine state was saved."
-
-[[trusted]]
-crate = "core"
-file = "src/ffi.rs"
-item = "Runtime::primitive_gc"
-kind = "unsafe"
-count = 1
-justification = "FFI call of toit_v2_primitive_gc with the process the runtime was created for."
 
 [[trusted]]
 crate = "core"
@@ -467,26 +427,10 @@ justification = "Rust declaration of a C++ function of src/interpreter_v2.cc (ex
 [[trusted]]
 crate = "core"
 file = "src/ffi.rs"
-item = "toit_v2_leave_primitive"
-kind = "plain_rust_item"
-count = 1
-justification = "FFI declaration of a C++ helper of src/interpreter_v2.h (signature checked by the layout check's stubs)."
-
-[[trusted]]
-crate = "core"
-file = "src/ffi.rs"
 item = "toit_v2_lookup_primitive"
 kind = "plain_rust_item"
 count = 1
 justification = "Rust declaration of a C++ function of src/interpreter_v2.cc (extern block); contract in DESIGN.md FFI contract."
-
-[[trusted]]
-crate = "core"
-file = "src/ffi.rs"
-item = "toit_v2_primitive_gc"
-kind = "plain_rust_item"
-count = 1
-justification = "FFI declaration of a C++ helper of src/interpreter_v2.h (signature checked by the layout check's stubs)."
 
 [[trusted]]
 crate = "core"
@@ -647,22 +591,6 @@ item = "gc_call_primitive"
 kind = "external_body"
 count = 1
 justification = "ASSUMED: toit_v2_call_primitive (may GC, may switch the task) of the primitive the lookup found, with the method's arity, ends in one of the spec's completions of the step (theorem::completion: prim_default/prim_spec for every C++ primitive of the policy, task_step for task_new/task_transfer); TRUSTED.md, Primitives."
-
-[[trusted]]
-crate = "core"
-file = "src/prims/bridge.rs"
-item = "*"
-kind = "plain_rust_file"
-count = 1
-justification = "TEMPORARY opt-in hook (TOIT_V2_RUST_PRIMITIVES=1) at the C++ bridge call site of the checked PRIMITIVE handler; replaced by the verified PRIMITIVE handler (core/refinement-2); TRUSTED.md section 8."
-
-[[trusted]]
-crate = "core"
-file = "src/prims/bridge.rs"
-item = "bridge"
-kind = "assume_new"
-count = 1
-justification = "The arguments' abstract values for prims::call: the checked handler has no ghost state; the verified PRIMITIVE handler passes the state's prim_args instead."
 
 [[trusted]]
 crate = "core"

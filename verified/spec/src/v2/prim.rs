@@ -273,15 +273,25 @@ pub open spec fn prim_refined(p: Program2, module: u8, index: u16, args: Seq<Val
     }
 }
 
+/// The arguments hold no block references. A primitive method may have
+/// block parameters (`int.parse`'s `--if-error`, for which `int_parse`
+/// takes an ignored argument); the primitive sees a block reference as the
+/// word that encodes it, so the precise contracts, which are stated over
+/// values, apply only to arguments without block references.
+pub open spec fn plain_args(args: Seq<Value>) -> bool {
+    forall|i: int| 0 <= i < args.len() ==> !(#[trigger] args[i] is BlockRef)
+}
+
 /// The set of what primitive `(module, index)` may return for `args` in
 /// heap `h`, as a predicate: `(h2, r)` is in it if it satisfies the default
-/// contract, refined where stated (`prim_refined`). So every element
-/// satisfies `prim_default` (`lemma_prim_spec_default`), which is all the
-/// theorem uses.
+/// contract, refined where stated (`prim_refined`) for plain arguments. So
+/// every element satisfies `prim_default` (`lemma_prim_spec_default`),
+/// which is all the theorem uses.
 pub open spec fn prim_spec(p: Program2, module: u8, index: u16, args: Seq<Value>, h: Seq<HeapObj>,
     h2: Seq<HeapObj>, r: PrimRet) -> bool
 {
-    prim_default(p, h, h2, r) && prim_refined(p, module, index, args, h, h2, r)
+    &&& prim_default(p, h, h2, r)
+    &&& plain_args(args) ==> prim_refined(p, module, index, args, h, h2, r)
 }
 
 pub proof fn lemma_prim_spec_default(p: Program2, module: u8, index: u16, args: Seq<Value>, h: Seq<HeapObj>,

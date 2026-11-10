@@ -178,6 +178,11 @@ struct toit_v2_context {
   // guarantees instead of run-time checks; otherwise it runs the checked
   // handlers (verified/core/DESIGN.md, "Accepted programs").
   uword accepted;
+  // PrimitivePolicy::core_arities of the process' policy: entry i is the arity
+  // of core primitive i plus one if the policy resolves it to the VM's own
+  // primitive (the core may run its Rust port), else 0.
+  const uint8* core_arities;
+  uword core_arities_length;
   // Out.
   uword result_state;               // Interpreter::Result::State.
   int64 result_value;
@@ -245,15 +250,15 @@ uword toit_v2_allocate_array(void* process, uword length, uword filler);
 // MAY GC. Replaces the current task's stack by one with at least [needed]
 // free words between the frames and the object stack.
 uword toit_v2_grow_stack(void* process, uword needed);
-// Looks up primitive (module, index) in the process' policy. [rust] is set
-// to 1 if the policy resolves it to the VM's own primitive (not a denying
-// stub) and the Rust primitives are enabled (TOIT_V2_RUST_PRIMITIVES=1):
-// the core may then run its Rust port (verified/core/src/prims).
+// Looks up primitive (module, index) in the process' policy (the C++
+// primitive; the core decides whether to run a Rust port from the policy's
+// core arities, toit_v2_context::core_arities).
 uword toit_v2_lookup_primitive(void* process, uword module, uword index,
-                               const void** entry, uword* arity, uword* rust);
+                               const void** entry, uword* arity);
 // Allocation for the Rust primitives. Never GCs: 0 when the heap is full
-// (the primitive then asks for a GC with toit_v2_primitive_gc and is
-// retried). Each allocates one object of the program's builtin class.
+// (the Rust primitive then reports that it needs a GC and the core calls the
+// C++ primitive, which collects and retries). Each allocates one object of
+// the program's builtin class.
 uword toit_v2_try_allocate_large_integer(void* process, int64 value);
 uword toit_v2_try_allocate_double(void* process, uint64 bits);
 // [length] <= Array::ARRAYLET_SIZE; every element [filler].
@@ -262,11 +267,6 @@ uword toit_v2_try_allocate_array(void* process, uword length, uword filler);
 uword toit_v2_try_allocate_string(void* process, uword length);
 // Zeroed bytes (Process::allocate_byte_array).
 uword toit_v2_try_allocate_byte_array(void* process, uword length);
-// MAY GC. The collection after a failed allocation of a primitive, attempt
-// 1..3 (as the C++ primitive path; attempt 3 only reports).
-void toit_v2_primitive_gc(void* process, uword attempt);
-// ObjectHeap::leave_primitive, after a primitive that needed a GC.
-void toit_v2_leave_primitive(void* process);
 // MAY GC. Calls the C++ primitive whose arguments start at object-stack
 // position [first_argument] (counted from the bottom). May switch the
 // current task (task_transfer).

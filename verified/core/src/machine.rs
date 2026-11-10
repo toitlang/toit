@@ -1375,7 +1375,7 @@ fn compare_num(a: Num, b: Num) -> u8 {
 /// verification, else on the checked handlers (`run_checked`). TRUSTED glue:
 /// the ghost state is the one the run loop's precondition names
 /// (theorem.rs); `reload` checks the stack object.
-pub fn run(p: &Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preemption,
+pub fn run(p: &Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preemption, core_arities: Table<u8>,
            accepted: Option<crate::ffi::Accepted>) -> (usize, i64) {
     let mem = rt.stack();
     let mut m = Machine {
@@ -1383,7 +1383,7 @@ pub fn run(p: &Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preempti
         len: 0, top: 0, ftop: 0, rtop: 0, bci: 0, base: 0, lim: 0, method: 0,
         g: Ghost::assume_new(),
     };
-    let env = Env { p, rt, pre };
+    let env = Env { p, rt, pre, core_arities };
     if !m.reload(p) || m.ftop < FRAME_WORDS {
         env.rt.report(V2_REPORT_STUCK, m.bci, stuck::FATAL);
         return (RESULT_TERMINATED, 1);
@@ -1999,7 +1999,7 @@ impl Machine {
             return self.raise_msg(env, PRIMITIVE_LOOKUP_FAILED, Msg::primitive(module, index));
         }
         self.save();
-        let (status, result) = crate::prims::bridge::bridge(&mut self.mem, &mut self.heap, env, &primitive, module, index, arity, self.base);
+        let (status, result) = env.rt.call_primitive(&mut self.mem, &primitive, arity, self.base);
         if !self.reload(p) { return Ctl::Stuck(stuck::FATAL); }
         if status == V2_PRIMITIVE_SUCCESS {
             self.return_from(env, result)

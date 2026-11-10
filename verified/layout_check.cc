@@ -97,14 +97,12 @@ uword toit_v2_allocate_double(void*, uint64) { abort(); }
 uword toit_v2_allocate_exception(void*, uword, uword, const uword*, uword) { abort(); }
 uword toit_v2_allocate_array(void*, uword, uword) { abort(); }
 uword toit_v2_grow_stack(void*, uword) { abort(); }
-uword toit_v2_lookup_primitive(void*, uword, uword, const void**, uword*, uword*) { abort(); }
+uword toit_v2_lookup_primitive(void*, uword, uword, const void**, uword*) { abort(); }
 uword toit_v2_try_allocate_large_integer(void*, int64) { abort(); }
 uword toit_v2_try_allocate_double(void*, uint64) { abort(); }
 uword toit_v2_try_allocate_array(void*, uword, uword) { abort(); }
 uword toit_v2_try_allocate_string(void*, uword) { abort(); }
 uword toit_v2_try_allocate_byte_array(void*, uword) { abort(); }
-void toit_v2_primitive_gc(void*, uword) { abort(); }
-void toit_v2_leave_primitive(void*) { abort(); }
 uword toit_v2_call_primitive(void*, const void*, uword, uword, uword*) { abort(); }
 void toit_v2_report(void*, uword, uword, uword) { abort(); }
 }
@@ -382,6 +380,7 @@ int main() {
     FIELD("CONTEXT_", toit_v2_context, process) FIELD("CONTEXT_", toit_v2_context, program)
     FIELD("CONTEXT_", toit_v2_context, watermark) FIELD("CONTEXT_", toit_v2_context, preempt_a_lot)
     FIELD("CONTEXT_", toit_v2_context, accepted)
+    FIELD("CONTEXT_", toit_v2_context, core_arities) FIELD("CONTEXT_", toit_v2_context, core_arities_length)
     FIELD("CONTEXT_", toit_v2_context, result_state) FIELD("CONTEXT_", toit_v2_context, result_value)
 #undef FIELD
   };

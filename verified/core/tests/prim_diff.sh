@@ -17,9 +17,10 @@
 # Differential test of the Rust primitives (verified/core/src/prims)
 # against the C++ ones.
 #
-# Runs tests/fuzz/primitive-diff.toit untrusted (format 2, on the verified
-# core) for each seed twice, with the C++ primitives and with
-# TOIT_V2_RUST_PRIMITIVES=1, and compares the outputs (a checksum line per
+# Runs tests/fuzz/primitive-diff.toit in format 2 for each seed twice: trusted
+# without verification (the core's checked loop, which calls the C++
+# primitives) and untrusted (the verified loop, which runs the Rust ports),
+# and compares the outputs (a checksum line per
 # 10,000 calls). On a difference it reruns the first differing window with
 # a trace and prints the first differing call.
 #
@@ -40,8 +41,11 @@ trap 'rm -rf "$OUT"' EXIT
 
 run() {  # seed rust iterations [trace-from trace-to]
   local seed="$1" rust="$2"; shift 2
-  (cd "$REPO" && env -u TOIT_BYTECODE_FORMAT TOIT_V2_RUST_PRIMITIVES="$rust" \
-    "$RUN" --untrusted "$DRIVER" "$seed" "$@")
+  if [ "$rust" = 1 ]; then
+    (cd "$REPO" && env -u TOIT_BYTECODE_FORMAT -u TOIT_VERIFY "$RUN" --untrusted "$DRIVER" "$seed" "$@")
+  else
+    (cd "$REPO" && env -u TOIT_VERIFY TOIT_BYTECODE_FORMAT=2 "$RUN" "$DRIVER" "$seed" "$@")
+  fi
 }
 
 one() {  # seed

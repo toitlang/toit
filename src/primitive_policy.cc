@@ -280,6 +280,25 @@ PrimitivePolicy PrimitivePolicy::system_;
 PrimitivePolicy PrimitivePolicy::trusted_;
 PrimitivePolicy PrimitivePolicy::untrusted_;
 
+// The core arities of the standard policies (core_arities()); derived
+// policies share their base's.
+static uint8 system_core_arities[CORE_COUNT];
+static uint8 trusted_core_arities[CORE_COUNT];
+static uint8 untrusted_core_arities[CORE_COUNT];
+
+void PrimitivePolicy::initialize_core_arities(uint8* table) {
+  unsigned length = lengths_[MODULE_INDEX_core];
+  for (unsigned i = 0; i < CORE_COUNT; i++) {
+    const PrimitiveEntry* original = Primitive::at(MODULE_INDEX_core, i);
+    bool own = i < length && original != null && original->function != null &&
+        tables_[MODULE_INDEX_core][i].function == original->function;
+    ASSERT(original == null || (0 <= original->arity && original->arity < 255));
+    table[i] = own ? static_cast<uint8>(original->arity + 1) : 0;
+  }
+  core_arities_ = table;
+  core_arities_length_ = CORE_COUNT;
+}
+
 void PrimitivePolicy::initialize_all(Kind kind) {
   kind_ = kind;
   owned_ = false;
@@ -328,6 +347,9 @@ void PrimitivePolicy::set_up() {
   system_.initialize_all(SYSTEM);
   trusted_.initialize_all(TRUSTED);
   untrusted_.initialize_untrusted();
+  system_.initialize_core_arities(system_core_arities);
+  trusted_.initialize_core_arities(trusted_core_arities);
+  untrusted_.initialize_core_arities(untrusted_core_arities);
 }
 
 const PrimitivePolicy* PrimitivePolicy::launchable(int kind) {

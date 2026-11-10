@@ -44,8 +44,9 @@
 //!
 //! The families: `ints` (smi and large-integer arithmetic, comparison and
 //! bit operations), `array` (arrays and `list_add`), `blob` (byte arrays,
-//! strings, blob helpers), `float` (doubles). `bridge` (plain Rust) is the
-//! temporary hook at the C++ bridge call site.
+//! strings, blob helpers), `float` (doubles). The verified PRIMITIVE handler
+//! (`primitive::op_primitive`) calls `call` where the policy resolves the VM's
+//! own primitive.
 
 use vstd::prelude::*;
 use crate::layout::*;
@@ -78,7 +79,6 @@ pub mod array;
 pub mod blob;
 pub mod float;
 pub mod fp;
-pub mod bridge;
 
 verus! {
 
@@ -155,7 +155,7 @@ pub open spec fn prim_post(p: &Program, h0: &Heap, h1: &Heap, r: PrimOutcome, v:
     match r {
         PrimOutcome::Success(w) => heap_post(p, h0, h1) && res_ok(h1, w, v),
         PrimOutcome::Failure(w) => heap_post(p, h0, h1) && res_ok(h1, w, v),
-        PrimOutcome::NeedsGc => heap_post(p, h0, h1),
+        PrimOutcome::NeedsGc => *h1 == *h0,
         PrimOutcome::NotPorted => *h1 == *h0,
     }
 }
@@ -261,9 +261,10 @@ pub fn call(module: u8, index: u16, mem: &StackMem, at: usize, n: usize, heap: &
 
 /// The contract implies the spec's default contract.
 pub proof fn lemma_default(p: &Program, h0: &Heap, h1: &Heap, r: PrimOutcome, v: Value)
-    requires prim_post(p, h0, h1, r, v), !(r is NotPorted),
+    requires heap_inv(p, h0), prim_post(p, h0, h1, r, v), !(r is NotPorted),
     ensures prim_default(p.ap@, h0.objs(), h1.objs(), ret_of(p, r, v)),
 {
+    if r is NeedsGc { lemma_post_refl(p, h0); }
 }
 
 /// The per-primitive contracts imply the spec's examples (`prim_refined`),

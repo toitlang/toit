@@ -319,13 +319,24 @@ impl<'a> Objects<'a> {
                 ExecBody::Array(e)
             }
             BYTE_ARRAY_TAG => {
+                // The core's heap model (verified/core/TRUSTED.md V5): a byte
+                // array is `Bytes` exactly when it is internal, or external
+                // with the raw-bytes tag at a non-null address (whose content
+                // must then lie in the image); any other external byte array
+                // (a mapped file, a resource proxy) is an opaque object
+                // without contents, as `Heap::bytes_len` sees it.
                 let raw = self.image.word(addr, BYTE_ARRAY_LENGTH_WORD)? as isize;
                 if raw >= 0 {
                     ExecBody::Bytes(self.image.bytes(addr + BYTE_ARRAY_CONTENT_BYTE, raw as usize)?)
                 } else {
                     let length = (-1 - raw) as usize;
+                    let tag = self.image.word(addr, BYTE_ARRAY_EXTERNAL_TAG_WORD)?;
                     let content = self.image.word(addr, BYTE_ARRAY_EXTERNAL_ADDRESS_WORD)?;
-                    ExecBody::Bytes(self.image.bytes(content, length)?)
+                    if tag == RAW_BYTE_TAG && content != 0 {
+                        ExecBody::Bytes(self.image.bytes(content, length)?)
+                    } else {
+                        ExecBody::Oddball
+                    }
                 }
             }
             STRING_TAG => {
@@ -452,8 +463,13 @@ mod tests {
         /// ref to the array]; word 3 an array of length 2 [smi 1, ref to
         /// the instance]; word 7 a byte array of 3 bytes.
         fn new() -> Fixture {
+            Fixture::sized(10)
+        }
+
+        /// As `new`, with `words` words of image (at least 10).
+        fn sized(words: usize) -> Fixture {
             let mut f = Fixture {
-                image: vec![0; 10],
+                image: vec![0; words],
                 roots: vec![smi(0); ROOT_COUNT],
                 builtin: vec![smi(0); BUILTIN_COUNT],
                 invoke: vec![0; INVOKE_OFFSET_COUNT],
@@ -568,6 +584,39 @@ mod tests {
         let mut f = Fixture::new();
         f.image[8] = (-1i64 - 3) as usize;  // External, content address 0.
         f.image[9] = 0;
+        assert!(f.convert().is_err());
+    }
+
+    #[test]
+    fn models_external_byte_arrays_as_the_core() {
+        // Word 7: an external byte array of 3 bytes (address word 9, tag
+        // word 10); its content at word 11.
+        let external = |tag: usize, content: bool| {
+            let mut f = Fixture::sized(12);
+            let base = f.image.as_ptr() as usize;
+            f.image[8] = (-1i64 - 3) as usize;
+            f.image[9] = if content { base + 11 * WORD_SIZE } else { 0 };
+            f.image[10] = tag;
+            f.image[11] = usize::from_ne_bytes([4, 5, 6, 0, 0, 0, 0, 0]);
+            f
+        };
+        // Raw bytes in the image: a byte array of the model.
+        let f = external(RAW_BYTE_TAG, true);
+        let (_, heap) = f.convert().unwrap();
+        match &heap[1].body {
+            ExecBody::Bytes(b) => assert_eq!(b, &vec![4, 5, 6]),
+            _ => panic!("not bytes"),
+        }
+        // A mapped file or another external tag, or raw bytes without an
+        // address: opaque (TRUSTED.md V5), never bytes.
+        for (tag, content) in [(MAPPED_FILE_TAG, true), (1, true), (RAW_BYTE_TAG, false)] {
+            let f = external(tag, content);
+            let (_, heap) = f.convert().unwrap();
+            assert!(matches!(heap[1].body, ExecBody::Oddball), "tag {} content {}", tag, content);
+        }
+        // Raw bytes whose content lies outside the image: rejected.
+        let mut f = external(RAW_BYTE_TAG, true);
+        f.image[9] = 8;
         assert!(f.convert().is_err());
     }
 

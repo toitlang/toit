@@ -325,6 +325,10 @@ Interpreter::Result Interpreter::run_v2() {
   uword verified = table->verified();
   bool accepted = verified == 1 || (verified == 2 && !process_->policy()->is_untrusted());
   context.accepted = accepted ? TOIT_V2_ACCEPTED : 0;
+  // The core runs the Rust port of a core primitive only where the policy
+  // resolves it to the VM's own primitive (never a denying stub).
+  context.core_arities = process_->policy()->core_arities();
+  context.core_arities_length = context.core_arities == null ? 0 : process_->policy()->core_arities_length();
 
   v2_validate(process_, "run entry");
   toit_v2_run(&context);
@@ -559,28 +563,14 @@ uword toit_v2_grow_stack(void* raw_process, uword needed) {
   return TOIT_V2_OK;
 }
 
-static bool v2_rust_primitives_enabled() {
-  static int enabled = -1;
-  if (enabled < 0) {
-    const char* value = getenv("TOIT_V2_RUST_PRIMITIVES");
-    enabled = (value != null && strcmp(value, "1") == 0) ? 1 : 0;
-  }
-  return enabled == 1;
-}
-
 uword toit_v2_lookup_primitive(void* raw_process, uword module, uword index,
-                               const void** entry, uword* arity, uword* rust) {
+                               const void** entry, uword* arity) {
   Process* process = v2_process(raw_process);
   const PrimitiveEntry* primitive = process->policy()->at(module, index);
   if (Flags::primitives) printf("[invoking primitive %d::%d]\n", static_cast<int>(module), static_cast<int>(index));
   if (primitive == null) return TOIT_V2_PRIMITIVE_MISSING;
   *entry = primitive;
   *arity = primitive->arity;
-  // The Rust port may only replace the VM's own primitive, never a stub of
-  // the policy (primitive_denied).
-  const PrimitiveEntry* original = Primitive::at(module, index);
-  *rust = (v2_rust_primitives_enabled() && original != null &&
-           original->function == primitive->function) ? 1 : 0;
   return TOIT_V2_PRIMITIVE_FOUND;
 }
 
@@ -607,14 +597,6 @@ uword toit_v2_try_allocate_string(void* raw_process, uword length) {
 uword toit_v2_try_allocate_byte_array(void* raw_process, uword length) {
   if (static_cast<word>(length) < 0) return 0;
   return reinterpret_cast<uword>(v2_process(raw_process)->allocate_byte_array(length));
-}
-
-void toit_v2_primitive_gc(void* raw_process, uword attempt) {
-  v2_gc(v2_process(raw_process), false, static_cast<int>(attempt), false, "primitive");
-}
-
-void toit_v2_leave_primitive(void* raw_process) {
-  v2_process(raw_process)->object_heap()->leave_primitive();
 }
 
 uword toit_v2_call_primitive(void* raw_process, const void* raw_entry, uword arity,

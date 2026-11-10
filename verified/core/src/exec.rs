@@ -140,6 +140,11 @@ pub struct Env<'a> {
     pub p: &'a Program,
     pub rt: Runtime,
     pub pre: Preemption,
+    /// The core primitives the process' policy resolves to the VM's own: entry
+    /// `i` is the arity of core primitive `i` plus one, else 0
+    /// (`PrimitivePolicy::core_arities`). The core runs the Rust port
+    /// (`prims::call`) of such a primitive.
+    pub core_arities: Table<u8>,
 }
 
 /// `Smi::from(v)`.
