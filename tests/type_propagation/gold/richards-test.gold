@@ -331,6 +331,8 @@ Scheduler.release tests/type_propagation/richards-test.toit
  35[081] - branch T43
  38[009] - load field local 68 // [{Scheduler}] -> {*}
  40[091] - return S2 2
+ 43[022] - load null
+ 44[090] - throw 0
 
 Scheduler.queue tests/type_propagation/richards-test.toit
  - argument 0: {Scheduler}
@@ -610,6 +612,8 @@ IdleTask.run tests/type_propagation/richards-test.toit
  71[026] - load smi 5
  73[053] - invoke static Scheduler.release tests/type_propagation/richards-test.toit // [{Null_|Scheduler}, {SmallInteger_}] -> {*}
  76[091] - return S1 2
+ 79[022] - load null
+ 80[090] - throw 0
 
 DeviceTask tests/type_propagation/richards-test.toit
  - argument 0: {DeviceTask}
@@ -646,6 +650,8 @@ DeviceTask.run tests/type_propagation/richards-test.toit
  39[009] - load field local 3 // [{DeviceTask}] -> {Null_|Scheduler}
  41[053] - invoke static Scheduler.hold-current tests/type_propagation/richards-test.toit // [{Null_|Scheduler}] -> {Null_|Packet|TaskControlBlock}
  44[091] - return S1 2
+ 47[022] - load null
+ 48[090] - throw 0
 
 WorkerTask tests/type_propagation/richards-test.toit
  - argument 0: {WorkerTask}

@@ -9,6 +9,8 @@ test-simple tests/type_propagation/non-local-return-test.toit
   5[038] - load block 0
   7[053] - invoke static invoke tests/type_propagation/non-local-return-test.toit // [[block]] -> {}
  10[041] - pop 1
+ 11[022] - load null
+ 12[090] - throw 0
 
 [block] in test-simple tests/type_propagation/non-local-return-test.toit
  - argument 0: [block]

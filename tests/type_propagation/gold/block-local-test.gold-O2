@@ -149,6 +149,8 @@ foo tests/type_propagation/block-local-test.toit
  21[038] - load block 1
  23[053] - invoke static foo tests/type_propagation/block-local-test.toit // [{LargeInteger_|SmallInteger_}, [block]] -> {}
  26[040] - pop 2
+ 28[022] - load null
+ 29[090] - throw 0
 
 [block] in foo tests/type_propagation/block-local-test.toit
  - argument 0: [block]

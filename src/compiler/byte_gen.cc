@@ -277,6 +277,18 @@ void ByteGen::_generate_method(Method* node) {
   if (node->is_IsInterfaceOrMixinStub()) return;
   ASSERT(!node->is_dead());
   visit_for_effect(node->body());
+  // Bodies that end in a call to a non-returning method (or a monitor
+  // method's call to 'locked_') would otherwise fall off the end of the
+  // method into the next method's header. The method-entry computation of
+  // the VM requires an explicit terminator.
+  // The emitter's height is not reliable here (block tokens of such calls
+  // are forgotten rather than popped), so use a terminator that does not
+  // encode the height.
+  Opcode last = emitter()->previous_opcode();
+  if (last != RETURN && last != RETURN_NULL && last != INVOKE_STATIC_TAIL) {
+    __ load_null();
+    __ _throw();
+  }
 }
 
 void ByteGen::visit_MethodInstance(MethodInstance* node) { _generate_method(node); }

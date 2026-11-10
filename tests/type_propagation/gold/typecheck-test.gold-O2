@@ -71,6 +71,8 @@ foo tests/type_propagation/typecheck-test.toit
 bar tests/type_propagation/typecheck-test.toit
  - argument 0: {SmallInteger_}
   0[052] - load local, as class, pop 2 - StringSlice_(10 - 12) // {False}
+  2[022] - load null
+  3[090] - throw 0
 
 is-int tests/type_propagation/typecheck-test.toit
  - argument 0: {String_|Null_|float|SmallInteger_}

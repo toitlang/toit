@@ -72,6 +72,8 @@ Strength.next-weaker tests/type_propagation/deltablue-test.toit
  73[091] - return S1 1
  76[053] - invoke static unreachable <sdk>/core/exceptions.toit // {}
  79[041] - pop 1
+ 80[022] - load null
+ 81[090] - throw 0
 
 REQUIRED tests/type_propagation/deltablue-test.toit
   0[042] - allocate instance Strength
@@ -156,6 +158,8 @@ weakest tests/type_propagation/deltablue-test.toit
  16[081] - branch T23
  19[016] - load local 2
  20[091] - return S1 2
+ 23[022] - load null
+ 24[090] - throw 0
 
 Constraint.strength tests/type_propagation/deltablue-test.toit
  - argument 0: {EqualityConstraint|ScaleConstraint|EditConstraint|StayConstraint}
