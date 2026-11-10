@@ -18,6 +18,7 @@
 #include <math.h>
 
 #include "flags.h"
+#include "primitive_policy.h"
 #include "printing.h"
 #include "process.h"
 #include "process_group.h"
@@ -224,12 +225,18 @@ Method Program::find_method(Object* receiver, word offset) {
 #define ON_PROGRAM_HEAP(object) \
   (reinterpret_cast<uword>(object) - program_heap_start < program_heap_size)
 
-// Optional run-time check of field accesses (TOIT_CHECKED_FIELD_ACCESS). The
-// receiver must be an instance (or a task) and the field index must be inside
-// the instance. With this build option a malformed access becomes a Toit
-// exception (via program_failure) instead of a read or write past the end of
-// an object.
-#ifdef TOIT_CHECKED_FIELD_ACCESS
+// Run-time check of field accesses. The receiver must be an instance (or a
+// task) and the field index must be inside the instance. The structural
+// verifier does not prove the receivers of field accesses, so the field
+// accesses of every process whose policy is untrusted are checked (of every
+// process in builds with TOIT_CHECKED_FIELD_ACCESS): a malformed access
+// becomes a Toit exception (via program_failure) instead of a read or write
+// past the end of an object.
+//
+// Such processes run with a dispatch table that sends the field bytecodes
+// and the field accessor calls to entries that check the access first (see
+// Interpreter::run), so the other processes don't pay for the check.
+//
 // Kept minimal: a tag test on the pointer, one header load, one class-bits
 // load, two compares. The header holds the class tag in its low bits and the
 // class id above them; the class bits hold the instance size in words.
@@ -241,10 +248,19 @@ static inline bool field_access_ok(const uint16* class_bits, Object* object, wor
   word size_in_words = (class_bits[header >> HeapObject::CLASS_ID_OFFSET] >> HeapObject::CLASS_ID_OFFSET) & Program::INSTANCE_SIZE_MASK;
   return static_cast<uword>(index) + (HeapObject::SIZE / WORD_SIZE) < static_cast<uword>(size_in_words);
 }
-#define FIELD_ACCESS_OK(object, index) field_access_ok(class_bits_data, object, index)
-#else
-#define FIELD_ACCESS_OK(object, index) true
-#endif
+
+// The entry of the checked dispatch table for the given opcode.
+#define CHECKED_DISPATCH_TARGET(opcode)                                       \
+  (opcode == LOAD_FIELD             ? &&checked_LOAD_FIELD             :      \
+   opcode == LOAD_FIELD_WIDE        ? &&checked_LOAD_FIELD_WIDE        :      \
+   opcode == LOAD_FIELD_LOCAL       ? &&checked_LOAD_FIELD_LOCAL       :      \
+   opcode == POP_LOAD_FIELD_LOCAL   ? &&checked_POP_LOAD_FIELD_LOCAL   :      \
+   opcode == STORE_FIELD            ? &&checked_STORE_FIELD            :      \
+   opcode == STORE_FIELD_WIDE       ? &&checked_STORE_FIELD_WIDE       :      \
+   opcode == STORE_FIELD_POP        ? &&checked_STORE_FIELD_POP        :      \
+   opcode == INVOKE_VIRTUAL_GET     ? &&checked_INVOKE_VIRTUAL_GET     :      \
+   opcode == INVOKE_VIRTUAL_SET     ? &&checked_INVOKE_VIRTUAL_SET     :      \
+   &&interpret_##opcode)
 
 inline word bit_or(word a, word b) { return a | b; }
 inline word bit_xor(word a, word b) { return a ^ b; }
@@ -313,10 +329,17 @@ Interpreter::Result Interpreter::run() {
 #define LABEL(opcode, length, format, print) &&interpret_##opcode,
   // On EC618 (no data cache), place the dispatch table in RAM for fast access.
 #ifdef TOIT_EC618
-  static void* dispatch_table[] __attribute__((section(".data"))) = {
+  static void* unchecked_dispatch_table[] __attribute__((section(".data"))) = {
 #else
-  static void* dispatch_table[] = {
+  static void* unchecked_dispatch_table[] = {
 #endif
+    BYTECODES(LABEL)
+  };
+#undef LABEL
+  // The dispatch table of processes whose field accesses are checked (see
+  // field_access_ok).
+#define LABEL(opcode, length, format, print) CHECKED_DISPATCH_TARGET(opcode),
+  static void* const checked_dispatch_table[] = {
     BYTECODES(LABEL)
   };
 #undef LABEL
@@ -333,9 +356,13 @@ Interpreter::Result Interpreter::run() {
   method_entries_ = process_->group()->method_entries();
   const uword program_heap_start = reinterpret_cast<uword>(program);
   const uword program_heap_size = program->size_no_assets();
-#ifdef TOIT_CHECKED_FIELD_ACCESS
   const uint16* class_bits_data = program->class_bits.data();
+  // The policy of a process never changes.
+  bool check_field_accesses = process_->policy()->is_untrusted();
+#ifdef TOIT_CHECKED_FIELD_ACCESS
+  check_field_accesses = true;
 #endif
+  void* const* dispatch_table = check_field_accesses ? checked_dispatch_table : unchecked_dispatch_table;
 #ifdef TOIT_CHECK_PROPAGATED_TYPES
   compiler::TypeDatabase* propagated_types = compiler::TypeDatabase::compute(program);
 #endif
@@ -425,9 +452,38 @@ Interpreter::Result Interpreter::run() {
     PUSH(value);
   OPCODE_END();
 
+  // The entries of the checked dispatch table for the field bytecodes check
+  // the access and continue with the bytecode.
+  checked_LOAD_FIELD:
+    if (!field_access_ok(class_bits_data, STACK_AT(0), bcp[1])) goto PROGRAM_FAILURE;
+    goto interpret_LOAD_FIELD;
+
+  checked_LOAD_FIELD_WIDE:
+    if (!field_access_ok(class_bits_data, STACK_AT(0), Utils::read_unaligned_uint16(bcp + 1))) goto PROGRAM_FAILURE;
+    goto interpret_LOAD_FIELD_WIDE;
+
+  checked_LOAD_FIELD_LOCAL:
+    if (!field_access_ok(class_bits_data, STACK_AT(bcp[1] & 0x0f), bcp[1] >> 4)) goto PROGRAM_FAILURE;
+    goto interpret_LOAD_FIELD_LOCAL;
+
+  checked_POP_LOAD_FIELD_LOCAL:
+    if (!field_access_ok(class_bits_data, STACK_AT((bcp[1] & 0x0f) + 1), bcp[1] >> 4)) goto PROGRAM_FAILURE;
+    goto interpret_POP_LOAD_FIELD_LOCAL;
+
+  checked_STORE_FIELD:
+    if (!field_access_ok(class_bits_data, STACK_AT(1), bcp[1])) goto PROGRAM_FAILURE;
+    goto interpret_STORE_FIELD;
+
+  checked_STORE_FIELD_POP:
+    if (!field_access_ok(class_bits_data, STACK_AT(1), bcp[1])) goto PROGRAM_FAILURE;
+    goto interpret_STORE_FIELD_POP;
+
+  checked_STORE_FIELD_WIDE:
+    if (!field_access_ok(class_bits_data, STACK_AT(1), Utils::read_unaligned_uint16(bcp + 1))) goto PROGRAM_FAILURE;
+    goto interpret_STORE_FIELD_WIDE;
+
   OPCODE_BEGIN_WITH_WIDE(LOAD_FIELD, field_index);
     Object* object = POP();
-    if (!FIELD_ACCESS_OK(object, field_index)) goto PROGRAM_FAILURE;
     Instance* instance = Instance::cast(object);
     PUSH(instance->at(field_index));
     CHECK_PROPAGATED_TYPES_TOP();
@@ -438,7 +494,6 @@ Interpreter::Result Interpreter::run() {
     int local = encoded & 0x0f;
     int field = encoded >> 4;
     Object* object = STACK_AT(local);
-    if (!FIELD_ACCESS_OK(object, field)) goto PROGRAM_FAILURE;
     Instance* instance = Instance::cast(object);
     PUSH(instance->at(field));
     CHECK_PROPAGATED_TYPES_TOP();
@@ -449,7 +504,6 @@ Interpreter::Result Interpreter::run() {
     int local = encoded & 0x0f;
     int field = encoded >> 4;
     Object* object = STACK_AT(local + 1);
-    if (!FIELD_ACCESS_OK(object, field)) goto PROGRAM_FAILURE;
     Instance* instance = Instance::cast(object);
     STACK_AT_PUT(0, instance->at(field));
     CHECK_PROPAGATED_TYPES_TOP();
@@ -458,7 +512,6 @@ Interpreter::Result Interpreter::run() {
   OPCODE_BEGIN_WITH_WIDE(STORE_FIELD, field_index);
     Object* value = STACK_AT(0);
     Object* object = STACK_AT(1);
-    if (!FIELD_ACCESS_OK(object, field_index)) goto PROGRAM_FAILURE;
     // The program heap is shared and read-only.
     if (ON_PROGRAM_HEAP(object)) goto PROGRAM_FAILURE;
     DROP(2);
@@ -471,7 +524,6 @@ Interpreter::Result Interpreter::run() {
     B_ARG1(field_index)
     Object* value = STACK_AT(0);
     Object* object = STACK_AT(1);
-    if (!FIELD_ACCESS_OK(object, field_index)) goto PROGRAM_FAILURE;
     // The program heap is shared and read-only.
     if (ON_PROGRAM_HEAP(object)) goto PROGRAM_FAILURE;
     DROP(2);
@@ -770,6 +822,22 @@ Interpreter::Result Interpreter::run() {
     CALL_METHOD(target, _length_);
   OPCODE_END();
 
+  // The entries of the checked dispatch table for the virtual getter and
+  // setter calls don't inline field accessors: they call them, so that the
+  // field bytecode of the accessor checks the access.
+  // INVOKE_SIZE continues here, too.
+  checked_INVOKE_VIRTUAL_GET: {
+    Method target = program->find_method(STACK_AT(0), Utils::read_unaligned_uint16(bcp + 1));
+    if (!target.is_valid() || !target.is_field_accessor()) goto interpret_INVOKE_VIRTUAL_GET;
+    CALL_METHOD(target, INVOKE_VIRTUAL_GET_LENGTH);
+  }
+
+  checked_INVOKE_VIRTUAL_SET: {
+    Method target = program->find_method(STACK_AT(1), Utils::read_unaligned_uint16(bcp + 1));
+    if (!target.is_valid() || !target.is_field_accessor()) goto interpret_INVOKE_VIRTUAL_SET;
+    CALL_METHOD(target, INVOKE_VIRTUAL_SET_LENGTH);
+  }
+
   OPCODE_BEGIN(INVOKE_VIRTUAL_GET);
     Object* receiver = STACK_AT(0);
     word offset = Utils::read_unaligned_uint16(bcp + 1);
@@ -1045,7 +1113,8 @@ Interpreter::Result Interpreter::run() {
       STACK_AT_PUT(0, result);
       DISPATCH(INVOKE_SIZE_LENGTH);
     }
-    DISPATCH_TO(INVOKE_VIRTUAL_GET);
+    // Through the dispatch table, which may check field accessors.
+    goto *dispatch_table[INVOKE_VIRTUAL_GET];
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH);

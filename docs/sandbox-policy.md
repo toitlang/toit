@@ -207,6 +207,20 @@ trusted policy (only its quotas are used). Running a container from an
 unflagged image untrusted is up to the caller. Existing images are
 unaffected.
 
+## Field accesses
+
+The interpreter checks every field access of an untrusted process at run
+time, in every build. Such processes run with their own dispatch table,
+which sends the seven field bytecodes (`LOAD_FIELD`, `LOAD_FIELD_WIDE`,
+`LOAD_FIELD_LOCAL`, `POP_LOAD_FIELD_LOCAL`, `STORE_FIELD`,
+`STORE_FIELD_WIDE`, `STORE_FIELD_POP`) to entries that check that the
+receiver is an instance (or task) with enough fields, and which calls field
+accessors from `INVOKE_VIRTUAL_GET`/`INVOKE_VIRTUAL_SET` instead of
+inlining them. A failing access throws `INVALID_PROGRAM`. Other processes
+use the unchecked table and don't pay for the check. Builds configured with
+`TOIT_CHECKED_FIELD_ACCESS` in the environment check the field accesses of
+every process.
+
 ## Tests
 
 `tests/sandbox/` contains the negative suite. Each `*-test.toit` is a

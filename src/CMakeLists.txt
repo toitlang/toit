@@ -142,9 +142,9 @@ if (DEFINED ENV{TOIT_CHECK_PROPAGATED_TYPES})
   set(TOIT_INTERPRETER_FLAGS "${TOIT_INTERPRETER_FLAGS};-DTOIT_CHECK_PROPAGATED_TYPES")
 endif()
 
-# Run-time checked field accesses: LOAD_FIELD*, STORE_FIELD* check that the
-# receiver is an instance with enough fields. The structural verifier does
-# not prove the receivers of field accesses.
+# Run-time checked field accesses for every process: LOAD_FIELD*,
+# STORE_FIELD* check that the receiver is an instance with enough fields.
+# Without this option only processes with the untrusted policy are checked.
 if (DEFINED ENV{TOIT_CHECKED_FIELD_ACCESS})
   set(TOIT_INTERPRETER_FLAGS "${TOIT_INTERPRETER_FLAGS};-DTOIT_CHECKED_FIELD_ACCESS")
 endif()

@@ -18,6 +18,7 @@
 # The tests of the interpreter hardening fork toit.run and toit.compile, so
 # they take both as arguments.
 set(TOOL_TESTS
+  "tests/sandbox/field-access-test.toit"
   "tests/sandbox/runtime-hardening-test.toit"
 )
 file(GLOB SANDBOX_TESTS RELATIVE "${TOIT_SDK_SOURCE_DIR}" "*-test.toit")
