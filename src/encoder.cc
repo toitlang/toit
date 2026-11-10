@@ -42,6 +42,10 @@ class EncodeVisitor : public Visitor {
   const word MAX_NOF_STRING_ELEMENTS = 255;
   const word MAX_NOF_BYTEARRAY_ELEMENTS = 40;
   const word MAX_NOF_ARRAY_ELEMENTS = 10;
+  // Collections nested deeper than this are encoded like opaque instances.
+  // This keeps the native stack bounded for deeply nested or cyclic
+  // collections.
+  const int MAX_NESTING_LEVEL = 8;
 
   void visit_smi(Smi* smi) {
     encoder_->write_int(Smi::value(smi));
@@ -72,6 +76,10 @@ class EncodeVisitor : public Visitor {
   }
 
   void visit_array(Array* array) {
+    if (level_ >= MAX_NESTING_LEVEL) {
+      write_opaque(array);
+      return;
+    }
     encoder_->write_header(2, 'A');
     encoder_->write_int(array->length());
     encoder_->write_byte('[');
@@ -80,6 +88,9 @@ class EncodeVisitor : public Visitor {
     encoder_->write_int(limit);
     EncodeVisitor sub(encoder_, level_ + 1);
     for (int i = 0; i < limit; i++) {
+      // Once the buffer has overflowed, the encoding is discarded. Stop early,
+      // so that wide cyclic collections don't take exponential time.
+      if (encoder_->buffer()->has_overflow()) return;
       sub.accept(array->at(i));
     }
   }
@@ -100,6 +111,10 @@ class EncodeVisitor : public Visitor {
   void visit_stack(Stack* stack);
 
   void visit_list(Instance* instance, Array* backing_array, word size) {
+    if (level_ >= MAX_NESTING_LEVEL) {
+      write_opaque(instance);
+      return;
+    }
     encoder_->write_header(2, 'L');
     encoder_->write_int(size);
     encoder_->write_byte('[');
@@ -108,6 +123,7 @@ class EncodeVisitor : public Visitor {
     encoder_->write_int(limit);
     EncodeVisitor sub(encoder_, level_ + 1);
     for (int i = 0; i < limit; i++) {
+      if (encoder_->buffer()->has_overflow()) return;
       sub.accept(backing_array->at(i));
     }
   }
@@ -123,9 +139,14 @@ class EncodeVisitor : public Visitor {
           Array::cast(instance->at(Instance::LIST_ARRAY_INDEX)),
           Smi::value(instance->at(Instance::LIST_SIZE_INDEX)));
     } else {
-      encoder_->write_header(1, 'I');
-      encoder_->write_int(Smi::value(class_id));
+      write_opaque(instance);
     }
+  }
+
+  // Encodes the object as an instance of its class, without any content.
+  void write_opaque(HeapObject* object) {
+    encoder_->write_header(1, 'I');
+    encoder_->write_int(Smi::value(object->class_id()));
   }
 
   void visit_oddball(HeapObject* oddball) {
@@ -247,7 +268,7 @@ ProgramOrientedEncoder::ProgramOrientedEncoder(Program* program, Buffer* buffer)
 bool ProgramOrientedEncoder::encode(Object* object) {
   EncodeVisitor visitor(this);
   visitor.accept(object);
-  return true;
+  return !buffer()->has_overflow();
 }
 
 bool ProgramOrientedEncoder::encode_error(Object* type, Object* message, Stack* stack) {
