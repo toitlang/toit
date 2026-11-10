@@ -452,7 +452,7 @@ pub open spec fn post(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, trus
     } else if op == STORE_GLOBAL_VAR || op == STORE_GLOBAL_VAR_WIDE {
         if (if op == STORE_GLOBAL_VAR { b1 } else { w1 }) < c.global_count && value_operands(k, 1) { Some(k) } else { None }
     } else if op == LOAD_GLOBAL_VAR_DYNAMIC {
-        if value_operands(k, 1) { Some(k.update(h - 1, Kind::Val)) } else { None }
+        if value_operands(k, 1) && leaves0(p, m, h, 1) { Some(k.update(h - 1, Kind::Val)) } else { None }
     } else if op == STORE_GLOBAL_VAR_DYNAMIC {
         if value_operands(k, 2) { Some(pop_push(k, 2, None)) } else { None }
     } else if op == POP || op == POP_1 {
@@ -462,7 +462,9 @@ pub open spec fn post(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, trus
         let cl = if op == ALLOCATE { b1 } else { w1 };
         if is_instance_class(p, cl) && ifc(p, cl) >= 0 { Some(k.push(Kind::Val)) } else { None }
     } else if IS_CLASS <= op && op <= AS_INTERFACE_WIDE {
-        if value_operands(k, 1) && typecheck_index_ok(p, op, if op % 2 == 0 { b1 } else { w1 }) {
+        // IS_* replaces the operand: not a pinned parameter 0.
+        if value_operands(k, 1) && (op > IS_INTERFACE_WIDE || leaves0(p, m, h, 1))
+            && typecheck_index_ok(p, op, if op % 2 == 0 { b1 } else { w1 }) {
             Some(if op <= IS_INTERFACE_WIDE { k.update(h - 1, Kind::Val) } else { k })
         } else { None }
     } else if op == AS_LOCAL {
@@ -492,7 +494,7 @@ pub open spec fn post(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, trus
             Some(pop_push(k, n, Some(Kind::Val)))
         } else { None }
     } else if op == IDENTICAL {
-        if value_operands(k, 2) { Some(pop_push(k, 2, Some(Kind::Val))) } else { None }
+        if value_operands(k, 2) && leaves0(p, m, h, 2) { Some(pop_push(k, 2, Some(Kind::Val))) } else { None }
     } else if (BRANCH_IF_TRUE <= op && op <= BRANCH_IF_NOT_NULL) || (BRANCH_BACK_IF_TRUE <= op && op <= BRANCH_BACK_IF_NOT_NULL) {
         if value_operands(k, 1) { Some(k.drop_last()) } else { None }
     } else if op == PRIMITIVE {

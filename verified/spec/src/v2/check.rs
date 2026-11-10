@@ -1044,7 +1044,7 @@ pub fn x_post_consts(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<X
         let g = if op == STORE_GLOBAL_VAR { b1 } else { w1 };
         if (g as u64) < c.global_count && x_value_operands(k, 1) { Some(x_copy(k)) } else { None }
     } else if op == LOAD_GLOBAL_VAR_DYNAMIC {
-        if x_value_operands(k, 1) { Some(x_update(k, h - 1, XKind::Val)) } else { None }
+        if x_value_operands(k, 1) && x_leaves0(p, m, h, 1) { Some(x_update(k, h - 1, XKind::Val)) } else { None }
     } else if op == STORE_GLOBAL_VAR_DYNAMIC {
         if x_value_operands(k, 2) { Some(x_prefix(k, h - 2)) } else { None }
     } else if op == POP || op == POP_1 {
@@ -1054,7 +1054,8 @@ pub fn x_post_consts(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<X
         let cl = if op == ALLOCATE { b1 } else { w1 };
         if x_is_instance_class(p, cl) && x_ifc(p, cl as usize) >= 0 { Some(x_push(k, XKind::Val)) } else { None }
     } else if IS_CLASS <= op && op <= AS_INTERFACE_WIDE {
-        if x_value_operands(k, 1) && x_typecheck_index_ok(p, op, if op % 2 == 0 { b1 } else { w1 }) {
+        if x_value_operands(k, 1) && (op > IS_INTERFACE_WIDE || x_leaves0(p, m, h, 1))
+            && x_typecheck_index_ok(p, op, if op % 2 == 0 { b1 } else { w1 }) {
             Some(if op <= IS_INTERFACE_WIDE { x_update(k, h - 1, XKind::Val) } else { x_copy(k) })
         } else { None }
     } else {
@@ -1113,7 +1114,7 @@ pub fn x_post_calls(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XK
             Some(x_pop_push(k, n, XKind::Val))
         } else { None }
     } else {
-        if x_value_operands(k, 2) { Some(x_pop_push(k, 2, XKind::Val)) } else { None }
+        if x_value_operands(k, 2) && x_leaves0(p, m, h, 2) { Some(x_pop_push(k, 2, XKind::Val)) } else { None }
     }
 }
 
