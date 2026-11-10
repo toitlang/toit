@@ -23,14 +23,26 @@ For every seed program the driver
      starts and operand bytes) and locates the bytecodes in the snapshot,
   3. applies one mutation per mutant: a random opcode byte, or an operand
      byte set to a random or boundary value (0x00, 0x01, 0x7f, 0x80, 0xff),
-  4. keeps the mutants the verified structural verifier accepts: the
-     snapshot is dumped with tools/spec_dump.toit and checked by
-     `toit_spec_verify` (verified/spec, `check::verify`, proven equal to
-     `accepts`; untrusted rules). With --filter=loader the C++ loader's
-     table checks (`toit.run --verify`) are used instead,
+  4. keeps the mutants the verified structural verifier accepts. The
+     default filter (--filter=launch) is the VM's own launch-time
+     verification: the mutant is launched as an untrusted container
+     (`toit.run --untrusted`) on the sanitizer build, the VM builds the
+     abstract program from its memory and runs the verifier
+     (verified/vmverify), and a refusal (VERIFICATION_FAILED,
+     INVALID_SNAPSHOT) counts as rejected. --filter=spec uses the external
+     path instead (tools/spec_dump.toit and `toit_spec_verify`), and
+     --filter=loader `toit.run --verify`,
   5. runs each kept mutant as an untrusted container
      (`toit.run --untrusted`) on a sanitizer build with a time limit and
-     classifies the outcome.
+     classifies the outcome (with --filter=launch, steps 4 and 5 are the
+     same run).
+
+Besides instruction bytes, a tenth of the mutations hit the other bytes of
+the bytecodes (method headers), which the VM's header decoder and the
+verifier must reject or handle.
+
+A panic of the verifier inside the VM ("verifier failure") rejects the
+program but is a bug: it is kept as a finding.
 
 A crash is a run that ends by a signal or prints an AddressSanitizer or
 UndefinedBehaviorSanitizer report. Everything else (normal exit, Toit
@@ -109,9 +121,15 @@ def prepare(seed, check_run, work):
 
 
 def mutate(rng, data, offset, coverage):
-  positions = [i for i, c in enumerate(coverage) if c in (1, 2)]
-  i = rng.choice(positions)
-  if coverage[i] == 1:
+  if rng.random() < 0.1:
+    positions = [i for i, c in enumerate(coverage) if c == 0]
+  else:
+    positions = [i for i, c in enumerate(coverage) if c in (1, 2)]
+  i = rng.choice(positions or range(len(coverage)))
+  if coverage[i] == 0:
+    value = rng.choice(BOUNDARY) if rng.random() < 0.5 else rng.randrange(256)
+    kind = "header"
+  elif coverage[i] == 1:
     value = rng.randrange(256)
     kind = "opcode"
   else:
@@ -134,6 +152,8 @@ def classify(rc, out):
     return "crash"
   if "stuck state" in text:
     return "stuck"
+  if "verifier failure" in text or "panicked" in text:
+    return "verifier-panic"
   if "FORMAT_2_REQUIRED" in text or "VERIFICATION_FAILED" in text or "INVALID_SNAPSHOT" in text:
     return "refused"
   return "exit-%s" % rc
@@ -145,6 +165,13 @@ def one(args, prepared, index, work):
   mutant, description = mutate(rng, data, offset, coverage)
   path = os.path.join(work, f"m{index}.snapshot")
   with open(path, "wb") as f: f.write(mutant)
+  if args.filter == "launch":
+    rc, out = run([args.run, "--untrusted", path], args.timeout)
+    outcome = classify(rc, out)
+    if outcome == "refused":
+      os.unlink(path)
+      return name, description, "rejected", b""
+    return keep_finding(args, path, index, name, description, outcome, out)
   if args.filter == "spec":
     dump = path + ".dump"
     rc, _ = run([args.toit, "run", os.path.join(REPO, "tools/spec_dump.toit"), "--", path, dump], 60)
@@ -161,10 +188,18 @@ def one(args, prepared, index, work):
     return name, description, "rejected", b""
   rc, out = run([args.run, "--untrusted", path], args.timeout)
   outcome = classify(rc, out)
+  return keep_finding(args, path, index, name, description, outcome, out)
+
+
+FINDINGS = ("crash", "stuck", "refused", "verifier-panic")
+
+
+def keep_finding(args, path, index, name, description, outcome, out):
   # Crashes are bugs; a stuck state or a refusal of a program the verified
   # verifier accepted is a disagreement between the verifier and the core
-  # or its loader, kept for inspection too.
-  if outcome in ("crash", "stuck", "refused"):
+  # or its loader, and a verifier panic a bug of the verifier: kept for
+  # inspection. Timeouts are only counted (mutants may loop forever).
+  if outcome in FINDINGS:
     keep = os.path.join(args.out, f"{outcome}-{index}.snapshot")
     os.replace(path, keep)
     with open(keep + ".txt", "wb") as f:
@@ -189,7 +224,7 @@ def main():
   parser.add_argument("--check-run", default=host)
   parser.add_argument("--toit", default=os.path.join(REPO, "build/host/sdk/bin/toit"))
   parser.add_argument("--spec-verify", default=os.path.join(REPO, "verified/spec/target/release/toit_spec_verify"))
-  parser.add_argument("--filter", choices=["spec", "loader"], default="spec")
+  parser.add_argument("--filter", choices=["launch", "spec", "loader"], default="launch")
   parser.add_argument("programs", nargs="*")
   args = parser.parse_args()
   os.makedirs(args.out, exist_ok=True)
@@ -216,7 +251,7 @@ def main():
         for future in done:
           name, description, outcome, _ = future.result()
           counts[outcome] = counts.get(outcome, 0) + 1
-          if outcome in ("crash", "stuck", "refused"):
+          if outcome in FINDINGS:
             print(f"{outcome.upper()} {name}: {description}", flush=True)
           if outcome == "crash":
             crashes.append(f"{name}: {description}")
@@ -224,7 +259,11 @@ def main():
       "seconds": round(time.time() - start),
       "seed": args.seed,
       "run": args.run,
-      "filter": "toit_spec_verify (verified check::verify, untrusted rules)" if args.filter == "spec" else "toit.run --verify (format-2 loader table checks)",
+      "filter": {
+        "launch": "the VM's launch-time verification (toit.run --untrusted, verified/vmverify)",
+        "spec": "toit_spec_verify (verified check::verify, untrusted rules)",
+        "loader": "toit.run --verify",
+      }[args.filter],
       "seeds": [p[0] for p in prepared],
       "first": args.start,
       "mutants": index - args.start,

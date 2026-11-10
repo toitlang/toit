@@ -1,0 +1,7 @@
+task-test: header bci 8851: 0x03 -> 0x00
+
+thread '<unnamed>' (3651068) panicked at /home/flo/work/opentoit-sandbox/.claude/worktrees/agent-af2bd3a841c743557/verified/spec/src/v2/infer.rs:130:16:
+index out of bounds: the len is 0 but the index is 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+verifier: untrusted program rejected: verifier failure: verifier failed
+Failed to start container ced44d85-d3ff-5da9-b07e-cdebd16facea: VERIFICATION_FAILED

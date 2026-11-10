@@ -42,6 +42,20 @@ class EncodeVisitor : public Visitor {
   const word MAX_NOF_STRING_ELEMENTS = 255;
   const word MAX_NOF_BYTEARRAY_ELEMENTS = 40;
   const word MAX_NOF_ARRAY_ELEMENTS = 10;
+  // Arrays and lists can contain themselves. Deeper ones are encoded as null.
+  const int MAX_NESTING_LEVEL = 16;
+
+  // Whether an array or list at this level is left out. Once the buffer has
+  // overflowed, the result is discarded, so stop visiting; this also bounds
+  // the work for collections that contain themselves several times.
+  bool skip_collection() {
+    if (encoder_->buffer()->has_overflow()) return true;
+    if (level_ >= MAX_NESTING_LEVEL) {
+      encoder_->write_byte('Z');
+      return true;
+    }
+    return false;
+  }
 
   void visit_smi(Smi* smi) {
     encoder_->write_int(Smi::value(smi));
@@ -72,6 +86,7 @@ class EncodeVisitor : public Visitor {
   }
 
   void visit_array(Array* array) {
+    if (skip_collection()) return;
     encoder_->write_header(2, 'A');
     encoder_->write_int(array->length());
     encoder_->write_byte('[');
@@ -99,7 +114,19 @@ class EncodeVisitor : public Visitor {
 
   void visit_stack(Stack* stack);
 
+  // Whether the given List_ has an array as backing and a size within it.
+  // The fields are ordinary instance fields that Toit code can set to
+  // anything; other lists are encoded as plain instances.
+  static bool is_valid_list(Instance* instance) {
+    Object* backing = instance->at(Instance::LIST_ARRAY_INDEX);
+    Object* size = instance->at(Instance::LIST_SIZE_INDEX);
+    if (!is_array(backing) || !is_smi(size)) return false;
+    word value = Smi::value(size);
+    return 0 <= value && value <= Array::cast(backing)->length();
+  }
+
   void visit_list(Instance* instance, Array* backing_array, word size) {
+    if (skip_collection()) return;
     encoder_->write_header(2, 'L');
     encoder_->write_int(size);
     encoder_->write_byte('[');
@@ -114,7 +141,7 @@ class EncodeVisitor : public Visitor {
 
   void visit_instance(Instance* instance) {
     Smi* class_id = instance->class_id();
-    if (class_id == encoder_->program()->list_class_id() && is_array(instance->at(Instance::LIST_ARRAY_INDEX))) {
+    if (class_id == encoder_->program()->list_class_id() && is_valid_list(instance)) {
       // The backing storage in a list can be either an array -- or a
       // large array. Only optimize if it isn't large.
       // We use the same layout assumptions for List_ as the interpreter.
@@ -247,7 +274,8 @@ ProgramOrientedEncoder::ProgramOrientedEncoder(Program* program, Buffer* buffer)
 bool ProgramOrientedEncoder::encode(Object* object) {
   EncodeVisitor visitor(this);
   visitor.accept(object);
-  return true;
+  // The size of an overflowed buffer is larger than its content.
+  return !buffer()->has_overflow();
 }
 
 bool ProgramOrientedEncoder::encode_error(Object* type, Object* message, Stack* stack) {

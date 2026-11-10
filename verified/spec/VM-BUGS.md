@@ -125,6 +125,22 @@ and only a byte array, string or COW array (one level) as the wrapped
 object of a slice, or bound the recursion depth (2 suffices for compiler
 output).
 
+## The object encoder recurses without bound (vm/verifier-link fuzz)
+
+Found by the launch-filter fuzz run (verified/core/fuzz, seed 9): a
+verified mutant of tests/exception-test.toit crashed the ASan VM with a
+native stack overflow in `EncodeVisitor::visit_array`
+(src/encoder.cc). The encoder tracks `level_` but never limits it, so a
+cyclic (or very deep) array or list passed to `encode_error` or
+`encode_object` recurses until the thread's stack overflows and the
+whole VM dies. Not a verifier or core bug (the C++ primitives are the
+primitive contract's side), and it is in the format-1 VM too: trusted
+or untrusted, format 1 or 2, `verified/core/fuzz/findings/
+encoder-cyclic-array.toit` segfaults `toit run` (reproducer snapshot:
+encoder-cyclic-array-stack-overflow.snapshot). Fix: bound the nesting
+depth: https://github.com/toitlang/toit/pull/3374 (also fixes an
+over-read in `core.encode_object` when its 1 KB buffer overflows).
+
 ## Observations (not bugs today)
 
 * `Object::mutable_byte_content` (`src/objects_runtime.cc`) makes an

@@ -108,9 +108,16 @@ test-patched-branch run/string snap/string dir/string -> none:
   snapshot-bytes := file.read-contents snap
   blob-offset := find-bytecodes snapshot-bytes bytecodes
   expect blob-offset >= 0
+  // Only instruction starts (coverage 1): in format 2 a byte with a branch's
+  // opcode number may also be part of a method header or an operand.
+  coverage-file := "$dir/coverage.bin"
+  result = run-process [run, "--verify", "-q", "--emit-coverage=$coverage-file", snap]
+  expect-equals 0 result.exit-code
+  coverage := file.read-contents coverage-file
 
   branch-bci := -1
   for i := 0; i < bytecodes.size - 3; i++:
+    if coverage[i] != 1: continue
     op := bytecodes[i]
     if op == BRANCH or op == BRANCH-IF-TRUE or op == BRANCH-IF-FALSE:
       offset := bytecodes[i + 1] | (bytecodes[i + 2] << 8)
@@ -127,4 +134,6 @@ test-patched-branch run/string snap/string dir/string -> none:
 
   result = run-untrusted run patched-snap
   expect-refused result "VERIFICATION_FAILED"
-  expect (result.output.contains "zero offset")
+  // The verifier names the rejected instruction with its operands.
+  expect (result.output.contains "BRANCH")
+  expect (result.output.contains " 0 0: ")

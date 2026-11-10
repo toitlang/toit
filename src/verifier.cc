@@ -53,6 +53,7 @@
 #include "flags.h"
 #include "interpreter.h"
 #include "interpreter_v2.h"
+#include "verifier_v2.h"
 #include "method_entries.h"
 #include "objects.h"
 #include "objects_inline.h"
@@ -2145,10 +2146,8 @@ bool Verifier::is_enabled() {
 }
 
 static bool verify_and_report(Program* program, bool untrusted) {
-  // Format 2: the loader's table checks stand in for the structural
-  // verifier until the verified format-2 verifier (Phase 3) is integrated.
-  // See verified/core/DESIGN.md.
-  if (program->is_format2()) return V2MethodTable::verify(program, untrusted);
+  // Format 2: the verified structural verifier (verifier_v2.h).
+  if (program->is_format2()) return V2Verifier::verify(program, !untrusted);
   const char* verbose = getenv("TOIT_VERIFY_VERBOSE");
   VerifierOptions options;
   options.verbosity = verbose != null ? atoi(verbose) : 0;
@@ -2167,9 +2166,14 @@ bool Verifier::verify_if_enabled(Program* program, bool untrusted) {
   return verify_and_report(program, untrusted);
 }
 
-bool Verifier::verify_for_policy(Program* program, const PrimitivePolicy* policy) {
-  if (policy->is_untrusted()) return verify_and_report(program, true);
-  return verify_if_enabled(program, false);
+bool Verifier::verify_for_policy(Program* program, const PrimitivePolicy* policy,
+                                 const V2MethodTable* v2_methods) {
+  bool untrusted = policy->is_untrusted();
+  if (!untrusted && !is_enabled()) return true;
+  if (program->is_format2() && v2_methods != null) {
+    return V2Verifier::verify(program, v2_methods, !untrusted);
+  }
+  return verify_and_report(program, untrusted);
 }
 
 void Verifier::set_bytecodes_for_testing(Program* program, uint8* bytes, int length) {
@@ -2179,9 +2183,8 @@ void Verifier::set_bytecodes_for_testing(Program* program, uint8* bytes, int len
 bool Verifier::verify(Program* program, VerifierStats* stats, const VerifierOptions& options) {
   VerifierStats local;
   if (stats == null) stats = &local;
-  // Format 2: the loader's table checks stand in for the structural
-  // verifier (see verify_and_report).
-  if (program->is_format2()) return V2MethodTable::verify(program, options.untrusted);
+  // Format 2: the verified structural verifier (verifier_v2.h).
+  if (program->is_format2()) return V2Verifier::verify(program, !options.untrusted);
   AllowThrowingNew allow;
   VerifierImpl impl(program, stats, options);
   return impl.run();
@@ -2208,7 +2211,8 @@ bool Verifier::verify_if_enabled(Program* program, bool untrusted) {
 }
 
 // Without the verifier, untrusted programs can not be admitted.
-bool Verifier::verify_for_policy(Program* program, const PrimitivePolicy* policy) {
+bool Verifier::verify_for_policy(Program* program, const PrimitivePolicy* policy,
+                                 const V2MethodTable* v2_methods) {
   return !policy->is_untrusted();
 }
 

@@ -36,9 +36,12 @@ class ProcessGroup : public ProcessGroupList::Element {
 
   // Creates a process group with the given policy. If the policy is owned
   // (see PrimitivePolicy::is_owned) the group takes it over, also when the
-  // creation fails.
+  // creation fails. A format-2 program's group runs [v2_methods] (taken
+  // over, also on failure): the method table the launch verified. Without
+  // one, the table is decoded here (trusted programs).
   static ProcessGroup* create(int id, Program* program, AlignedMemoryBase* memory = null,
-                              const PrimitivePolicy* policy = PrimitivePolicy::trusted());
+                              const PrimitivePolicy* policy = PrimitivePolicy::trusted(),
+                              V2MethodTable* v2_methods = null);
 
   int id() const { return id_; }
   Program* program() const { return program_; }

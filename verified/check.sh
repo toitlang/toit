@@ -157,6 +157,25 @@ if [ "$RUN_TESTS" = 1 ]; then
     echo "SKIP: $BUILD_DIR/sdk/bin/toit missing (make sdk)"
   fi
 
+  section "Verifier in the VM (verified/vmverify): unit tests, differential sample"
+  if (cd "$VERIFIED/vmverify" && cargo test --release --quiet > "$LOGS/vmverify.log" 2>&1); then
+    grep -E '^test result' "$LOGS/vmverify.log" | head -3
+  else
+    tail -40 "$LOGS/vmverify.log"
+    fail "vmverify unit tests"
+  fi
+  if [ -x "$BUILD_DIR/sdk/bin/toit" ]; then
+    # The full run (every suite program) is
+    # `verified/vmverify/tests/differential.py`; a sample keeps the gate fast.
+    if ! TOIT="$BUILD_DIR/sdk/bin/toit" python3 "$VERIFIED/vmverify/tests/differential.py" \
+        --filter tests/class-id-test --filter tests/lambda-test --filter tests/string-test.toit \
+        --filter tests/exception-test --out "$LOGS/differential"; then
+      fail "vmverify differential sample"
+    fi
+  else
+    echo "SKIP: $BUILD_DIR/sdk/bin/toit missing (make sdk)"
+  fi
+
   section "Sandbox ctests"
   if [ -f "$BUILD_DIR/CTestTestfile.cmake" ] && [ -x "$BUILD_DIR/sdk/bin/toit" ]; then
     if ! ctest --test-dir "$BUILD_DIR" -R '^tests/sandbox/' -j "$(nproc)" --output-on-failure; then

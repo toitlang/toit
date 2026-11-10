@@ -94,6 +94,17 @@ class Object {
 
   // Encode this object using the encoder
   bool encode_on(ProgramOrientedEncoder* encoder);
+
+ private:
+  // Slices and copy-on-write byte arrays wrap another object in an ordinary
+  // instance field, so a program can build chains of them (or, with crafted
+  // bytecode, cycles). The core library nests at most two (a slice of a
+  // copy-on-write byte array); longer chains are rejected instead of
+  // recursing without bound.
+  static const int MAX_BYTE_CONTENT_DEPTH = 8;
+
+  bool byte_content(Program* program, const uint8** content, word* length, BlobKind strings_only, int depth) const;
+  bool mutable_byte_content(Process* process, uint8** content, word* length, Error** error, int depth);
 };
 
 // A struct that is only used to get a different overload of the constructor.

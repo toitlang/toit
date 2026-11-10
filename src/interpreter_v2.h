@@ -79,27 +79,23 @@ static const uint8 V2_OPCODE_LENGTHS[V2_OPCODE_COUNT] = {
 };
 
 // The decoded method table of a format-2 program, owned by its process
-// group. Decoding is the trusted loader of format note 15 plus the table
-// checks of the reference loader (verified/spec/src/interp/loader.rs,
-// method_table_v2 and check_tables_v2).
+// group. Decoding is the trusted loader of format note 15 (the reference
+// is method_table_v2 in verified/spec/src/interp/loader.rs). It checks
+// only what is needed to build the table; the structural verifier
+// (verifier_v2.h) checks the program, on this table, before an untrusted
+// program runs.
 class V2MethodTable {
  public:
   ~V2MethodTable();
 
-  // Decodes and checks the method table. Returns null (and prints the reason
-  // to stderr) if the program is malformed or the allocation fails. With
-  // [untrusted], HALT 2 and HALT 3 are rejected, as the format-1 verifier
-  // does for untrusted programs.
-  static V2MethodTable* compute(Program* program, bool untrusted = false);
+  // Decodes the method table. Returns null (and prints the reason to
+  // stderr) if the headers are malformed or the allocation fails.
+  static V2MethodTable* compute(Program* program);
 
   // Whether untrusted containers may be in format 1 (and run on the C++
   // interpreter): -Xuntrusted_format1 or TOIT_UNTRUSTED_FORMAT1=1. By
   // default untrusted containers must be in format 2.
   static bool untrusted_format1_allowed();
-
-  // The format-2 stand-in for the structural verifier until the Phase 3
-  // verifier is integrated: decodes and checks the table, then frees it.
-  static bool verify(Program* program, bool untrusted);
 
   const V2Method* methods() const { return methods_; }
   word length() const { return length_; }
@@ -243,3 +239,17 @@ uword toit_v2_call_primitive(void* process, const void* entry, uword arity,
 void toit_v2_report(void* process, uword kind, uword bci, uword detail);
 
 }  // extern "C"
+
+namespace toit {
+
+class Object;
+
+// Fills [out] with the tables of [program] and its method [table] as the
+// core executes them, with [globals] as the global variables (the
+// process' globals for a run, the program's initial values for the
+// verifier). The one place that describes a program to Rust: the core and
+// the verifier (verifier_v2.h) see the same tables.
+void v2_program_tables(Program* program, const V2MethodTable* table, Object** globals,
+                       toit_v2_program* out);
+
+}  // namespace toit

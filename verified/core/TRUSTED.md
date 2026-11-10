@@ -71,7 +71,9 @@ may-GC calls still go through the assumed bridges (`step_unverified`,
 trusted to fill it from the process' program and method table.
 
 Trusted C++ the core depends on (src/interpreter_v2.cc): the method-table
-loader and its checks, `prepare_process_v2` (initial frame), the task
+decoder (`V2MethodTable::compute`, V3), `v2_program_tables` (the tables
+the core and the verifier get, verified/vmverify), `prepare_process_v2`
+(initial frame), the task
 start and transfer glue (`v2_start_task`, `v2_task_transfer`), stack
 growth (`toit_v2_grow_stack`, `Stack::v2_copy_to`), the GC and shrinking
 of format-2 stacks (`Stack::roots_do`, `Stack::v2_frames_do`), the

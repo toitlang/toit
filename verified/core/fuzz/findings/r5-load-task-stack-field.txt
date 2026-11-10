@@ -1,0 +1,2 @@
+list-test: operand bci 18354: 0x0c -> 0x00
+verified core: stuck state 8 at bci 18353: terminating the process

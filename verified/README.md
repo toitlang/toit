@@ -21,6 +21,7 @@ directory of this repository.
 |---|---|
 | `core/` | Verus-verified interpreter core linked into the VM (see `core/NOTES.md`, `core/TRUSTED.md`). |
 | `spec/` | Executable specification of the bytecode machine, verified opcode implementations, format 2 and its verifier (see `spec/DESIGN.md`). |
+| `vmverify/` | The format-2 verifier as the VM runs it at untrusted launch (trusted conversion from VM memory, plain Rust, audited), and the one Rust static library the VM links (see `vmverify/README.md`). |
 | `check.sh` | The merge gate (below). |
 | `TRUSTED.toml` | Allowlist of every place where code is trusted instead of proven. |
 | `THEOREMS.txt` | Generated list of what the crates claim, for review. |

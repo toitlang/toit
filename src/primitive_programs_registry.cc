@@ -19,6 +19,7 @@
 #include "process.h"
 #include "process_group.h"
 #include "interpreter_v2.h"
+#include "verifier_v2.h"
 #include "flash_registry.h"
 #include "embedded_data.h"
 #include "scheduler.h"
@@ -71,8 +72,10 @@ PRIMITIVE(spawn) {
   if (policy == null) return policy_error;
 
   // Programs started as untrusted containers are always verified with the
-  // untrusted rules before they run. The program is already in flash, so
-  // this happens on every start rather than once at install time.
+  // untrusted rules before they run. The program is already in flash; on
+  // the host the verdict is remembered until the allocation is written
+  // again (FlashRegistry::is_verified), devices verify on every start
+  // (TODO(Phase 5): verify at install time on devices).
   // Trusted containers from flash keep running unverified.
   // Untrusted containers run on the verified core, which runs format-2
   // programs only. -Xuntrusted_format1 (or TOIT_UNTRUSTED_FORMAT1=1) keeps
@@ -84,25 +87,33 @@ PRIMITIVE(spawn) {
     if (error == null) FAIL(ALLOCATION_FAILED);
     return Error::from(error);
   }
-  if (policy->is_untrusted() && !Verifier::verify_for_policy(program, policy)) {
-    PrimitivePolicy::release(policy);
-    String* error = process->allocate_string("VERIFICATION_FAILED");
-    if (error == null) FAIL(ALLOCATION_FAILED);
-    return Error::from(error);
-  }
-
-  // Takes over the policy, also on failure.
-  ProcessGroup* process_group = ProcessGroup::create(group_id, program, null, policy);
-  if (!process_group) {
-    // A malformed format-2 program has no method table (the reason is on
-    // stderr); otherwise the allocation failed.
-    if (program->is_format2()) {
+  // Format 2: the method table the group runs, which is the one verified.
+  V2MethodTable* v2_methods = null;
+  if (program->is_format2()) {
+    v2_methods = V2MethodTable::compute(program);
+    if (v2_methods == null) {
+      // Malformed method headers (the reason is on stderr).
+      PrimitivePolicy::release(policy);
       String* error = process->allocate_string("INVALID_SNAPSHOT");
       if (error == null) FAIL(ALLOCATION_FAILED);
       return Error::from(error);
     }
-    FAIL(MALLOC_FAILED);
   }
+  if (policy->is_untrusted()) {
+    bool cached = program->is_format2() && FlashRegistry::is_verified(allocation);
+    if (!cached && !Verifier::verify_for_policy(program, policy, v2_methods)) {
+      delete v2_methods;
+      PrimitivePolicy::release(policy);
+      String* error = process->allocate_string("VERIFICATION_FAILED");
+      if (error == null) FAIL(ALLOCATION_FAILED);
+      return Error::from(error);
+    }
+    if (!cached && program->is_format2()) FlashRegistry::set_verified(allocation);
+  }
+
+  // Takes over the policy and the method table, also on failure.
+  ProcessGroup* process_group = ProcessGroup::create(group_id, program, null, policy, v2_methods);
+  if (!process_group) FAIL(MALLOC_FAILED);
 
   initial_memory_manager.global_variables = program->global_variables.copy();
   if (!initial_memory_manager.global_variables) {
