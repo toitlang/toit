@@ -65,7 +65,7 @@ obligations below would prove.
 
 | Family | Opcodes | Reason not yet verified |
 |---|---|---|
-| B1 blocks | LOAD_BLOCK, LOAD_OUTER, STORE_OUTER, LOAD_OUTER_BLOCK, INVOKE_BLOCK, NON_LOCAL_RETURN, NON_LOCAL_BRANCH | needs R1 (block references); LOAD_BLOCK's encoding needs a 64-bit `usize`, which the gate does not admit (`global size_of`); move to u64 arithmetic |
+| B1 blocks | NON_LOCAL_RETURN, NON_LOCAL_BRANCH; INVOKE_BLOCK's CODE_INVOCATION_FAILED path | unwinding over frames (`spec::unwind`); raising allocates. LOAD_BLOCK, LOAD_OUTER, STORE_OUTER, LOAD_OUTER_BLOCK and INVOKE_BLOCK are verified (src/blocks.rs) |
 | F1 fields | LOAD_FIELD(_WIDE), LOAD_FIELD_LOCAL, POP_LOAD_FIELD_LOCAL, STORE_FIELD(_WIDE/_POP), LOAD_FIELD_THIS, STORE_FIELD_THIS | needs a heap view with a contract (`Heap` is a raw view today): object header, class id, field count, program-heap range, write barrier |
 | C1 calls | INVOKE_STATIC(_TAIL), INVOKE_VIRTUAL(_WIDE/_GET/_SET), INVOKE_LAMBDA_TAIL, INVOKE_INITIALIZER_TAIL, RETURN, RETURN_NULL | needs R2/R3; `call`, `replace_frame`, `return_from` and the preemption point |
 | T1 try/unwind | TRY, UNWIND, THROW | needs R2 and the heap (the token is a 5-element array); `unwind` is a loop over frames, `enter_finally` allocates |
