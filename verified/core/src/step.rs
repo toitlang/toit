@@ -100,6 +100,7 @@ pub open spec fn step_post(p: &Program, m0: Machine, m1: Machine, r: Ctl) -> boo
 /// refine the spec is tested (untrusted suite, fuzzing), not proven.
 /// OBLIGATIONS.md lists the missing proofs per opcode family.
 #[verifier::external_body]
+#[inline(always)]
 pub fn step_unverified(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     requires
         old(m).inv(env.p),
@@ -151,53 +152,7 @@ proof fn lemma_small(p: &Program, m: &Machine)
     assert(g.frames.len() * 4 <= m.len);
 }
 
-/// One step: executes the instruction at the bci (`spec::step`).
-#[inline(always)]
-pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
-    requires old(m).inv(env.p),
-    ensures step_post(env.p, *old(m), *final(m), r),
-{
-    let p = env.p;
-    let ghost ap = p.ap@;
-    let ghost g = m.g@;
-    proof {
-        lemma_small(p, m);
-        toit_spec::v2::sound_step::lemma_step(ap, p.cert@, p.trusted@, g);
-        lemma_instr(ap, p.cert@, p.trusted@, g);
-    }
-    let bci = m.bci;
-    let opcode = p.code.at(bci);
-    if !verified_op_exec(opcode) {
-        return step_unverified(m, env, bci, opcode);
-    }
-    let ghost m0 = *m;
-    let r = dispatch_local(m, env, bci, opcode);
-    r
-}
 
-#[inline(always)]
-pub fn verified_op_exec(op: u8) -> (r: bool)
-    ensures r == verified_op(op),
-{
-    op <= 4 || (14 <= op && op <= 31) || op == 35 || op == 36 || op == 40 || op == 41
-        || (81 <= op && op <= 88)
-}
-
-/// The facts the dispatch of a verified opcode uses.
-pub open spec fn dispatch_pre(p: &Program, m: Machine, bci: usize, opcode: u8) -> bool {
-    let ap = p.ap@;
-    let g = m.g@;
-    &&& m.inv(p)
-    &&& small(g)
-    &&& step_ok(ap, p.cert@, g)
-    &&& sp::instruction_ok(ap, g)
-    &&& bci == m.bci
-    &&& bci == g.bci
-    &&& opcode == ap.bytecodes[bci as int]
-    &&& bci + opcode_length2(opcode) <= ap.bytecodes.len()
-    &&& ap.bytecodes.len() < 0x1000_0000
-    &&& verified_op(opcode)
-}
 
 /// A handler's result for the instruction: `Next` with the spec's next
 /// state, or out of room.
@@ -255,128 +210,164 @@ proof fn lemma_back_branch(p: &Program, g: State2)
     assert(map_at(c, mi, off - w1_of(ap, mi, off)) is Some);
 }
 
-/// The opcodes of the top frame: locals, constants, globals, pops and
-/// branches.
+/// One step: executes the instruction at the bci (`spec::step`). The
+/// opcodes of the top frame (locals, constants, globals, pops, branches)
+/// are verified here; the others go through `step_unverified`.
 #[inline(always)]
-fn dispatch_local(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
-    requires dispatch_pre(env.p, *old(m), bci, opcode),
+pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
+    requires old(m).inv(env.p),
     ensures step_post(env.p, *old(m), *final(m), r),
 {
     let p = env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
-    proof { reveal_with_fuel(opcode_length2, 1); }
-    let r = if opcode == 0 {
-        let n = p.code.at(bci + 1) as usize;
-        proof { assert(sp::step(ap, g) == sp::op_load_local(g, n as int, 2)) by { reveal(sp::step); } }
-        m.op_load_local(p, n, 2)
-    } else if opcode == 1 {
-        let n = code_u16(p, bci + 1);
-        proof { assert(sp::step(ap, g) == sp::op_load_local(g, n as int, 3)) by { reveal(sp::step); } }
-        m.op_load_local(p, n, 3)
-    } else if opcode == 2 {
-        let n = p.code.at(bci + 1) as usize;
-        proof { assert(sp::step(ap, g) == sp::op_pop_load_local(g, n as int)) by { reveal(sp::step); } }
-        m.op_pop_load_local(p, n)
-    } else if opcode == 3 {
-        let n = p.code.at(bci + 1) as usize;
-        proof { assert(sp::step(ap, g) == sp::op_store_local(g, n as int)) by { reveal(sp::step); } }
-        m.op_store_local(p, n)
-    } else if opcode == 4 {
-        let n = p.code.at(bci + 1) as usize;
-        proof { assert(sp::step(ap, g) == sp::op_store_local_pop(g, n as int)) by { reveal(sp::step); } }
-        m.op_store_local_pop(p, n)
-    } else if opcode <= 19 {
-        let n = (opcode - 14) as usize;
-        proof { assert(sp::step(ap, g) == sp::op_load_local(g, n as int, 1)) by { reveal(sp::step); } }
-        m.op_load_local(p, n, 1)
-    } else if opcode == 20 {
-        let i = p.code.at(bci + 1) as usize;
-        proof { assert(sp::step(ap, g) == sp::op_load_literal(ap, g, i as int, 2)) by { reveal(sp::step); } }
-        m.op_load_literal(p, i, 2)
-    } else if opcode == 21 {
-        let i = code_u16(p, bci + 1);
-        proof { assert(sp::step(ap, g) == sp::op_load_literal(ap, g, i as int, 3)) by { reveal(sp::step); } }
-        m.op_load_literal(p, i, 3)
-    } else if opcode == 22 {
-        proof { assert(sp::step(ap, g) == sp::next(sp::push(g, sp::null2(ap)), 1)) by { reveal(sp::step); } }
-        m.op_load_null(p, 1)
-    } else if opcode == 23 {
-        proof { assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(0)), 1)) by { reveal(sp::step); } }
-        m.op_load_smi(p, 0, 1)
-    } else if opcode == 24 {
-        let n = p.code.at(bci + 1) as usize;
-        proof { assert(sp::step(ap, g) == sp::op_load_smis_0(g, n as int)) by { reveal(sp::step); } }
-        m.op_load_smis_0(p, n)
-    } else if opcode == 25 {
-        proof { assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(1)), 1)) by { reveal(sp::step); } }
-        m.op_load_smi(p, 1, 1)
-    } else if opcode == 26 {
-        let v = p.code.at(bci + 1) as usize;
-        proof { assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(v as i64)), 2)) by { reveal(sp::step); } }
-        m.op_load_smi(p, v, 2)
-    } else if opcode == 27 {
-        let v = code_u16(p, bci + 1);
-        proof { assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(v as i64)), 3)) by { reveal(sp::step); } }
-        m.op_load_smi(p, v, 3)
-    } else if opcode == 28 {
-        let v = code_u32(p, bci + 1);
-        proof { assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(v as i64)), 5)) by { reveal(sp::step); } }
-        m.op_load_smi(p, v, 5)
-    } else if opcode == 29 {
-        let v = code_u32(p, bci + 1);
-        proof { assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(v as i64)), 5)) by { reveal(sp::step); } }
-        m.op_load_smi(p, v, 5)
-    } else if opcode == 30 {
-        let i = p.code.at(bci + 1) as usize;
-        proof { assert(sp::step(ap, g) == sp::op_load_global(g, i as int, 2)) by { reveal(sp::step); } }
-        m.op_load_global(p, i, 2)
-    } else if opcode == 31 {
-        let i = code_u16(p, bci + 1);
-        proof { assert(sp::step(ap, g) == sp::op_load_global(g, i as int, 3)) by { reveal(sp::step); } }
-        m.op_load_global(p, i, 3)
-    } else if opcode == 35 {
-        let i = p.code.at(bci + 1) as usize;
-        proof { assert(sp::step(ap, g) == sp::op_store_global(g, i as int, 2)) by { reveal(sp::step); } }
-        m.op_store_global(p, i, 2)
-    } else if opcode == 36 {
-        let i = code_u16(p, bci + 1);
-        proof { assert(sp::step(ap, g) == sp::op_store_global(g, i as int, 3)) by { reveal(sp::step); } }
-        m.op_store_global(p, i, 3)
-    } else if opcode == 40 {
-        if p.preempt_a_lot { env.pre.request(); }
-        let n = p.code.at(bci + 1) as usize;
-        proof { assert(sp::step(ap, g) == sp::op_pop(g, n as int, 2)) by { reveal(sp::step); } }
-        m.op_pop(p, n, 2)
-    } else if opcode == 41 {
-        if p.preempt_a_lot { env.pre.request(); }
-        proof { assert(sp::step(ap, g) == sp::op_pop(g, 1, 1)) by { reveal(sp::step); } }
-        m.op_pop(p, 1, 1)
-    } else if opcode <= 84 {
-        let d = code_u16(p, bci + 1);
-        let kind = (opcode - 81) as usize;
-        proof {
-            assert(sp::step(ap, g) == (if d == 0 { sp::stuck(toit_spec::types::Stuck::BadBranch) }
-                else { sp::op_branch(ap, g, kind as int, bci + d, 3) })) by { reveal(sp::step); }
-            if kind != 0 { lemma_branch_cond(p, g); }
-        }
-        m.op_branch(p, kind, bci + d, 3)
-    } else {
-        // BRANCH_BACK*: the preemption point of loops.
-        if env.pre.requested() {
-            env.pre.clear();
-            return Ctl::Exit(RESULT_PREEMPTED as u32, 0);
-        }
-        let d = code_u16(p, bci + 1);
-        let kind = (opcode - 85) as usize;
-        proof {
-            assert(sp::step(ap, g) == sp::op_branch(ap, g, kind as int, bci - d, 3)) by { reveal(sp::step); }
-            if kind != 0 { lemma_branch_cond(p, g); }
-            // The target's offset is mapped by the verifier, so not negative.
-            lemma_back_branch(p, g);
-        }
-        m.op_branch(p, kind, bci - d, 3)
+    proof {
+        lemma_small(p, m);
+        toit_spec::v2::sound_step::lemma_step(ap, p.cert@, p.trusted@, g);
+        lemma_instr(ap, p.cert@, p.trusted@, g);
+        reveal_with_fuel(opcode_length2, 1);
+    }
+    let bci = m.bci;
+    let opcode = p.code.at(bci);
+    let r = match opcode {
+        0 => {
+            let n = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_local(g, n as int, 2)) by { reveal(sp::step); } }
+            m.op_load_local(p, n, 2)
+        },
+        1 => {
+            let n = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_load_local(g, n as int, 3)) by { reveal(sp::step); } }
+            m.op_load_local(p, n, 3)
+        },
+        2 => {
+            let n = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_pop_load_local(g, n as int)) by { reveal(sp::step); } }
+            m.op_pop_load_local(p, n)
+        },
+        3 => {
+            let n = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_store_local(g, n as int)) by { reveal(sp::step); } }
+            m.op_store_local(p, n)
+        },
+        4 => {
+            let n = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_store_local_pop(g, n as int)) by { reveal(sp::step); } }
+            m.op_store_local_pop(p, n)
+        },
+        14..=19 => {
+            let n = (opcode - 14) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_local(g, n as int, 1)) by { reveal(sp::step); } }
+            m.op_load_local(p, n, 1)
+        },
+        20 => {
+            let i = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_literal(ap, g, i as int, 2)) by { reveal(sp::step); } }
+            m.op_load_literal(p, i, 2)
+        },
+        21 => {
+            let i = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_load_literal(ap, g, i as int, 3)) by { reveal(sp::step); } }
+            m.op_load_literal(p, i, 3)
+        },
+        22 => {
+            proof { assert(sp::step(ap, g) == sp::next(sp::push(g, sp::null2(ap)), 1)) by { reveal(sp::step); } }
+            m.op_load_null(p, 1)
+        },
+        23 => {
+            proof { assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(0)), 1)) by { reveal(sp::step); } }
+            m.op_load_smi(p, 0, 1)
+        },
+        24 => {
+            let n = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_smis_0(g, n as int)) by { reveal(sp::step); } }
+            m.op_load_smis_0(p, n)
+        },
+        25 => {
+            proof { assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(1)), 1)) by { reveal(sp::step); } }
+            m.op_load_smi(p, 1, 1)
+        },
+        26 => {
+            let v = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(v as i64)), 2)) by { reveal(sp::step); } }
+            m.op_load_smi(p, v, 2)
+        },
+        27 => {
+            let v = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(v as i64)), 3)) by { reveal(sp::step); } }
+            m.op_load_smi(p, v, 3)
+        },
+        28 => {
+            let v = code_u32(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(v as i64)), 5)) by { reveal(sp::step); } }
+            m.op_load_smi(p, v, 5)
+        },
+        29 => {
+            let v = code_u32(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::next(sp::push(g, Value::Smi(v as i64)), 5)) by { reveal(sp::step); } }
+            m.op_load_smi(p, v, 5)
+        },
+        30 => {
+            let i = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_global(g, i as int, 2)) by { reveal(sp::step); } }
+            m.op_load_global(p, i, 2)
+        },
+        31 => {
+            let i = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_load_global(g, i as int, 3)) by { reveal(sp::step); } }
+            m.op_load_global(p, i, 3)
+        },
+        35 => {
+            let i = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_store_global(g, i as int, 2)) by { reveal(sp::step); } }
+            m.op_store_global(p, i, 2)
+        },
+        36 => {
+            let i = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_store_global(g, i as int, 3)) by { reveal(sp::step); } }
+            m.op_store_global(p, i, 3)
+        },
+        40 => {
+            if p.preempt_a_lot { env.pre.request(); }
+            let n = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_pop(g, n as int, 2)) by { reveal(sp::step); } }
+            m.op_pop(p, n, 2)
+        },
+        41 => {
+            if p.preempt_a_lot { env.pre.request(); }
+            proof { assert(sp::step(ap, g) == sp::op_pop(g, 1, 1)) by { reveal(sp::step); } }
+            m.op_pop(p, 1, 1)
+        },
+        81..=84 => {
+            let d = code_u16(p, bci + 1);
+            let kind = (opcode - 81) as usize;
+            proof {
+                assert(sp::step(ap, g) == (if d == 0 { sp::stuck(toit_spec::types::Stuck::BadBranch) }
+                    else { sp::op_branch(ap, g, kind as int, bci + d, 3) })) by { reveal(sp::step); }
+                if kind != 0 { lemma_branch_cond(p, g); }
+            }
+            m.op_branch(p, kind, bci + d, 3)
+        },
+        85..=88 => {
+            // BRANCH_BACK*: the preemption point of loops.
+            if env.pre.requested() {
+                env.pre.clear();
+                return Ctl::Exit(RESULT_PREEMPTED as u32, 0);
+            }
+            let d = code_u16(p, bci + 1);
+            let kind = (opcode - 85) as usize;
+            proof {
+                assert(sp::step(ap, g) == sp::op_branch(ap, g, kind as int, bci - d, 3)) by { reveal(sp::step); }
+                if kind != 0 { lemma_branch_cond(p, g); }
+                // The target's offset is mapped by the verifier, so not negative.
+                lemma_back_branch(p, g);
+            }
+            m.op_branch(p, kind, bci - d, 3)
+        },
+        _ => {
+            return step_unverified(m, env, bci, opcode);
+        },
     };
     proof { lemma_local_post(p, m0, *m, r); }
     r
