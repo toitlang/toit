@@ -1145,7 +1145,11 @@ pub fn x_post_misc(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKi
             return None;
         }
         if b1 == 0 && index == X_PRIM_TASK_NEW as i64 && a != 1 { return None; }
-        if b1 == 0 && index == X_PRIM_TASK_TRANSFER as i64 && a != 2 { return None; }
+        if b1 == 0 && index == X_PRIM_TASK_TRANSFER as i64 {
+            if a != 2 { return None; }
+            proof { assert(kv(*k)[0] == k@[0]@); assert(kv(*k)[1] == k@[1]@); }
+            if !(x_is_plain(k[0]) && x_is_plain(k[1]) && p.methods[m].recv_start == 0xffff) { return None; }
+        }
         Some(x_push(k, XKind::Val))
     } else if op == TRY {
         if 1 <= h && x_block_slot(p, c, m as i64, k, (h - 1) as i64) {

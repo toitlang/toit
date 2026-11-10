@@ -504,7 +504,10 @@ pub open spec fn post(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, trus
             && 0 <= module < c.prim_arity.len() && 0 <= index < c.prim_arity[module].len()
             && c.prim_arity[module][index] == arity(p, m)
             && (module == PRIM_CORE && index == PRIM_TASK_NEW ==> arity(p, m) == 1)
-            && (module == PRIM_CORE && index == PRIM_TASK_TRANSFER ==> arity(p, m) == 2) {
+            // A new task resumes the transferring frame with fresh arguments
+            // (`v2::prim::resume`): its parameters must be plain values.
+            && (module == PRIM_CORE && index == PRIM_TASK_TRANSFER ==>
+                    arity(p, m) == 2 && k[0] is Val && k[1] is Val && !has_receiver_range(info(p, m))) {
             Some(k.push(Kind::Val))
         } else { None }
     } else if op == TRY {
