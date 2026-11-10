@@ -2287,6 +2287,9 @@ PRIMITIVE(task_receive_message) {
   }
 
   Message* message = process->peek_message();
+  // The library only calls this when task_has_messages is true, but a
+  // program can call it at any time (found by verified/core/fuzz).
+  if (message == null) return process->null_object();
   MessageType message_type = message->message_type();
   Object* result = process->null_object();
 

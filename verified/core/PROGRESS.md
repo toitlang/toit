@@ -60,17 +60,40 @@ OBLIGATIONS.md. Trusted base: TRUSTED.md.
   task interleaving format 1 does not hit with its preemption timing. A
   library race, not a core bug (not investigated further).
 
+## Timing-sensitive sandbox test
+
+tests/sandbox/flood-system-test expects the untrusted container to hit
+the mailbox quota while flooding the system process with 200 KB messages.
+On the core the sender is slower than the system process drains the
+mailbox when the machine is idle, so no quota is hit and the test reports
+"ATTACK SUCCEEDED" (it passed in the loaded B1 runs, fails 6 of 6 on an
+idle machine at the end of the session). Not a safety problem (the quota
+works when it is reached); the test needs a pacing-independent attack.
+
 ## Fuzz findings (verified/core/fuzz)
 
-- No crash: 14,537 mutants in 10 minutes (seed 1, 11 seeds), 2,042 of
-  them accepted by `toit_spec_verify` and run untrusted on the ASan build.
-- 14 accepted mutants are refused by the VM's loader: the loader checks
-  branch targets of every instruction, the verifier only of reachable
-  ones (mutated unreachable code). Harmless, but the loader and the
-  verifier should agree once `check::verify` runs in the VM.
-- 1 accepted mutant (index 6388, seed 1) reached a stuck state: it
-  overwrote field 0 of a task (the task's Stack, owned by the VM) and the
-  core then found a malformed stack. A real hole (the scheduler could use
-  an arbitrary value as a stack). Fixed in the core (task fields 0 and 1
-  are protected); spec change request R5. Re-running the full index range
-  of run 1 (6266..14536) after the fix: see build/fuzz3.log.
+Filter: `toit_spec_verify` (verified `check::verify`, untrusted rules).
+Runs on the ASan build, 11 seed programs, single-byte opcode and operand
+mutations.
+
+| Run | Seed | Mutants | Accepted and run | Crash | Stuck | Refused by loader |
+|---|---|---|---|---|---|---|
+| 1 (10 min) | 1 | 14,537 | 2,042 | 0 | 1 | 14 |
+| 2 (10 min) | 1 | 6,266 | 867 | 0 | 0 | 8 |
+| 4 (8 min, after the task-field fix) | 2 | 8,787 | 1,220 | 1 | 1 | 8 |
+
+- Stuck (run 1 index 6388, run 4 index 1728): the mutant overwrites field
+  0 of a task (the task's Stack, owned by the VM). Before the fix the
+  scheduler could use an arbitrary value as a stack (a real hole); now the
+  core refuses the access (stuck state 8, process terminated). Spec change
+  request R5.
+- Crash (run 4 index 786): a NULL dereference in the C++ primitive
+  `task_receive_message` when called without a pending message (the
+  library never does that, a program can). Fixed in src/primitive_core.cc
+  (returns null); the bug exists in format 1 too and should go upstream.
+- Refused: accepted mutants the VM's loader refuses (branch targets of
+  unreachable instructions; the verifier checks reachable code only).
+  Harmless; the loader and the verifier should agree once
+  `check::verify` runs in the VM.
+- Run 3 (index range 6266.. of seed 1) aborted when build/host was
+  rebuilt under it.
