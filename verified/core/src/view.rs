@@ -156,17 +156,28 @@ impl StackMem {
         unsafe { core::ptr::copy(self.array.add(from), self.array.add(to), n) }
     }
 
+    /// The header words of the Stack object (outside the array): word
+    /// `word` of the object. The core keeps the task's top, frame top and
+    /// bci there (`STACK_TOP_WORD`, `STACK_FRAME_TOP_WORD`,
+    /// `STACK_BCI_WORD`) across calls that may GC.
+    pub uninterp spec fn hdr(&self, word: usize) -> usize;
+
     /// The header fields the core keeps up to date (top, frame top, bci).
     #[verifier::external_body]
     #[inline(always)]
-    pub fn header(&self, word: usize) -> (r: usize) {
+    pub fn header(&self, word: usize) -> (r: usize)
+        ensures r == self.hdr(word),
+    {
         unsafe { *self.object.add(word) }
     }
 
     #[verifier::external_body]
     #[inline(always)]
     pub fn set_header(&mut self, word: usize, v: usize)
-        ensures final(self)@ == old(self)@,
+        ensures
+            final(self)@ == old(self)@,
+            final(self).hdr(word) == v,
+            forall|w: usize| w != word ==> #[trigger] final(self).hdr(w) == old(self).hdr(w),
     {
         unsafe { *self.object.add(word) = v }
     }

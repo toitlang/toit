@@ -34,6 +34,14 @@ justification = "usize is 64 bits (TRUSTED.md V4): Verus assumes it for the bit-
 
 [[trusted]]
 crate = "core"
+file = "src/alloc.rs"
+item = "gc_allocate_instance"
+kind = "external_body"
+count = 1
+justification = "ASSUMED: toit_v2_allocate_instance (may GC) keeps the abstract state the stack, header, globals and heap model represent and appends exactly the spec's null-filled instance (or keeps it unchanged on out of memory); TRUSTED.md, GC and allocation."
+
+[[trusted]]
+crate = "core"
 file = "src/ffi.rs"
 item = "Context"
 kind = "plain_rust_item"
@@ -815,6 +823,14 @@ item = "StackMem::from_stack"
 kind = "unsafe"
 count = 1
 justification = "Constructor of the StackMem view from C++ pointers, called only by toit_v2_run / Runtime::stack (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "StackMem::hdr"
+kind = "uninterp"
+count = 1
+justification = "Ghost model of the Stack header words (top, frame top, bci), related to memory only by header/set_header (TRUSTED.md section 1)."
 
 [[trusted]]
 crate = "core"

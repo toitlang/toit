@@ -351,6 +351,15 @@ impl Machine {
         if r == 0 { None } else { Some(r) }
     }
 
+    /// Allocates an instance (MAY GC), without saving or reloading the
+    /// task state: the verified ALLOCATE does both around it
+    /// (`alloc::gc_allocate_instance`). 0 if out of memory.
+    /// Cold path: runs out of line on a copy of the machine (see `cold!`).
+    #[inline(always)]
+    pub fn allocate_instance_raw(&mut self, env: &Env, class_id: usize) -> usize {
+        cold!(self, |m| env.rt.allocate_instance(&mut m.mem, class_id))
+    }
+
     /// Cold path: runs out of line on a copy of the machine (see `cold!`).
     #[inline(always)]
     pub fn alloc_double(&mut self, env: &Env, bits: u64) -> Option<usize> {

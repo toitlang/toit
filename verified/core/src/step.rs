@@ -78,6 +78,7 @@ pub open spec fn verified_op(op: u8) -> bool {
     ||| op == 96         // IDENTICAL
     ||| op == 100        // HALT
     ||| 32 <= op <= 34 || op == 37  // LOAD_GLOBAL_VAR_LAZY(_WIDE), LOAD/STORE_GLOBAL_VAR_DYNAMIC
+    ||| op == 42 || op == 43  // ALLOCATE(_WIDE)
 }
 
 /// The machine continues from a state the spec reaches from `g0`: the same
@@ -732,6 +733,16 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
         37 => {
             proof { assert(sp::step(ap, g) == sp::op_store_global_dynamic(ap, g)) by { reveal(sp::step); } }
             return crate::globals::op_store_global_dynamic(m, env, bci, opcode);
+        },
+        42 => {
+            let c = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_allocate(ap, g, c as int, 2)) by { reveal(sp::step); } }
+            return crate::alloc::op_allocate(m, env, bci, opcode, c, 2);
+        },
+        43 => {
+            let c = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_allocate(ap, g, c as int, 3)) by { reveal(sp::step); } }
+            return crate::alloc::op_allocate(m, env, bci, opcode, c, 3);
         },
         100 => {
             let code = p.code.at(bci + 1) as usize;
