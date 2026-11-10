@@ -2414,15 +2414,16 @@ PRIMITIVE(rebuild_hash_index) {
   if (new_array->on_program_heap(process)) FAIL(PERMISSION_DENIED);
   word index_mask = new_length - 1;
   word length = old_array->length();
-  // Check all entries first, so that the Toit fallback starts from a clean
-  // index. Large integers (possible in the 32-bit VM) are left to the Toit
-  // fallback, too.
   for (word i = 0; i < length; i++) {
-    if (!is_smi(old_array->at(i))) FAIL(INVALID_ARGUMENT);
-  }
-  for (word i = 0; i < length; i++) {
-    word hash_and_position = Smi::value(old_array->at(i));
-    if (hash_and_position == 0) continue;  // Empty slot.
+    Object* o = old_array->at(i);
+    word hash_and_position;
+    if (is_smi(o)) {
+      hash_and_position = Smi::value(o);
+    } else if (is_large_integer(o)) {
+      hash_and_position = LargeInteger::cast(o)->value();
+    } else {
+      FAIL(INVALID_ARGUMENT);
+    }
     word slot = hash_and_position & index_mask;
     word step = 1;
     // Triangular probing visits every slot of a power-of-two array within

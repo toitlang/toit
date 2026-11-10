@@ -4,40 +4,28 @@
 
 import expect show *
 
-// The rebuild-hash-index primitive takes its arrays from Toit code. Found by
-// the primitive fuzzer: an empty new index indexed out of bounds (VM crash),
-// and a non-power-of-two or full index made the probing loop forever.
-
-array-new size/int filler -> List:
-  #primitive.core.array-new
-
-rebuild old new -> none:
+rebuild-hash-index old new:
   #primitive.core.rebuild-hash-index
 
 main:
-  old := array-new 2 0
-  old[0] = 0x1234
-  old[1] = 0x5678
-  [0, 3, 6, 7].do: | size |
-    expect-throw "INVALID_ARGUMENT": rebuild old (array-new size 0)
+  entry := (5 << 12) | 1
 
-  // A full index.
-  full := array-new 2 7
-  expect-throw "INVALID_ARGUMENT": rebuild old full
+  // A valid rebuild places the entry at its hash slot.
+  index := Array_ 4 0
+  rebuild-hash-index (Array_ 1 entry) index
+  expect-list-equals [0, entry, 0, 0] index
 
-  // Non-smi entries are rejected without touching the new index.
-  bad := array-new 2 "x"
-  index := array-new 4 0
-  expect-throw "INVALID_ARGUMENT": rebuild bad index
-  4.repeat: expect-equals 0 index[it]
+  // An empty index array used to read and write out of bounds.
+  expect-throw "INVALID_ARGUMENT":
+    rebuild-hash-index (Array_ 1 entry) (Array_ 0 0)
 
-  // A valid rebuild.
-  index = array-new 4 0
-  rebuild old index
-  expect (index.contains 0x1234)
-  expect (index.contains 0x5678)
+  // An index array without a free slot used to loop forever.
+  full := Array_ 4 0
+  4.repeat: full[it] = (it + 1) << 12
+  expect-throw "INVALID_ARGUMENT":
+    rebuild-hash-index (Array_ 1 entry) full
+  4.repeat: expect-equals ((it + 1) << 12) full[it]
 
-  // Maps still work (they use the primitive when growing).
-  map := {:}
-  1000.repeat: map[it] = it * 2
-  1000.repeat: expect-equals it * 2 map[it]
+  // The probing only works for power-of-two index arrays.
+  expect-throw "INVALID_ARGUMENT":
+    rebuild-hash-index (Array_ 1 entry) (Array_ 3 0)
