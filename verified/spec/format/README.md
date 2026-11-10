@@ -34,8 +34,8 @@ on the spec and on the soundness obligations, and the cost.
 
 ## Verifier versus run time
 
-The structural verifier (`src/v2/verifier.rs`, soundness stated, proof in
-Phase 3) proves:
+The structural verifier (`src/v2/verifier.rs`, soundness proven in
+Phase 3, see `SOUNDNESS.md`) proves:
 
 * stack discipline: heights at every instruction, all slot accesses
   inside the current frame, no frame's slots below its base;

@@ -19,7 +19,7 @@
 //! The certificate is not shipped with the program: the compiler emits no
 //! annotations, and `v2::infer` (untrusted, plain Rust) computes one by
 //! abstract interpretation. `v2::check::verify` (Verus) is proven to
-//! return exactly `accepts(p, c, trusted)`; `v2::soundness` proves that an
+//! return exactly `accepts(p, c, trusted)`; `v2::theorem` proves that an
 //! accepted program never reaches a stuck state. A wrong certificate can
 //! only lead to a rejection, never to an unsound acceptance.
 //!
