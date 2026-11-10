@@ -321,6 +321,21 @@ impl Machine {
         matches!(self.fields(inst), Some(fs) if f < fs.len())
     }
 
+    /// `v2::spec::is_task_obj`.
+    fn is_task2(&self, inst: Value) -> bool {
+        self.fields(inst).is_some() && self.is_class(inst, TASK_CLASS)
+    }
+
+    /// `v2::spec::field_readable`: a task's stack field is not readable.
+    fn readable_field(&self, inst: Value, f: usize) -> bool {
+        self.checked_field(inst, f) && !(f == 0 && self.is_task2(inst))
+    }
+
+    /// `v2::spec::field_writable`: not read-only, not a task's stack or id.
+    fn writable_field(&self, inst: Value, f: usize) -> bool {
+        self.checked_field(inst, f) && !self.obj(inst).unwrap().ro && !(f <= 1 && self.is_task2(inst))
+    }
+
     fn set_field2(&mut self, inst: Value, f: usize, v: Value) {
         if let Some(ExecObj { body: ExecBody::Instance(fs), .. }) = self.obj_mut(inst) {
             fs[f] = v;
@@ -406,7 +421,7 @@ impl Machine {
                 let (local, f) = (b1 % 16, b1 / 16);
                 let inst = self.at2(if pop { local + 1 } else { local })?;
                 if pop { self.at2(0)?; }
-                if !self.checked_field(inst, f) { return self.raise(INVALID_PROGRAM); }
+                if !self.readable_field(inst, f) { return self.raise(INVALID_PROGRAM); }
                 let v = self.fields(inst).unwrap()[f];
                 if pop { self.put(0, v) } else { self.s.stack.push(v) }
                 self.next2(2)
@@ -644,6 +659,7 @@ impl Machine {
             TRY => self.op2_try(),
             LOAD_FIELD_THIS => {
                 let this = self.this2(b1)?;
+                if b1 == 0 && self.is_task2(this) { return Err(NotInstance); }
                 let v = self.fields(this).unwrap()[b1];
                 self.s.stack.push(v);
                 self.next2(2)
@@ -651,6 +667,7 @@ impl Machine {
             STORE_FIELD_THIS => {
                 let v = self.at2(0)?;
                 let this = self.this2(b1)?;
+                if b1 <= 1 && self.is_task2(this) { return Err(NotInstance); }
                 if self.obj(this).unwrap().ro { return self.raise(INVALID_PROGRAM); }
                 self.set_field2(this, b1, v);
                 self.next2(2)
@@ -681,7 +698,7 @@ impl Machine {
 
     fn op2_load_field(&mut self, f: usize, len: usize) -> R {
         let inst = self.at2(0)?;
-        if !self.checked_field(inst, f) { return self.raise(INVALID_PROGRAM); }
+        if !self.readable_field(inst, f) { return self.raise(INVALID_PROGRAM); }
         let v = self.fields(inst).unwrap()[f];
         self.put(0, v);
         self.next2(len)
@@ -690,7 +707,7 @@ impl Machine {
     fn op2_store_field(&mut self, f: usize, len: usize, keep: bool) -> R {
         let v = self.at2(0)?;
         let inst = self.at2(1)?;
-        if !self.checked_field(inst, f) || self.obj(inst).unwrap().ro { return self.raise(INVALID_PROGRAM); }
+        if !self.writable_field(inst, f) { return self.raise(INVALID_PROGRAM); }
         self.drop2(2)?;
         self.set_field2(inst, f, v);
         if keep { self.s.stack.push(v); }
@@ -820,7 +837,7 @@ impl Machine {
                 let info = self.info(t)?;
                 if info.arity != 1 { return Err(BadArity); }
                 let f = info.aux as usize;
-                if info.kind == KIND_FIELD_ACCESSOR && self.checked_field(recv, f) {
+                if info.kind == KIND_FIELD_ACCESSOR && self.readable_field(recv, f) {
                     let v = self.fields(recv).unwrap()[f];
                     self.put(0, v);
                     self.next2(3)
@@ -841,7 +858,7 @@ impl Machine {
                 let info = self.info(t)?;
                 if info.arity != 2 { return Err(BadArity); }
                 let f = info.aux as usize;
-                if info.kind == KIND_FIELD_ACCESSOR && self.checked_field(recv, f) && !self.obj(recv).unwrap().ro {
+                if info.kind == KIND_FIELD_ACCESSOR && self.writable_field(recv, f) {
                     self.set_field2(recv, f, v);
                     self.drop2(2)?;
                     self.s.stack.push(v);

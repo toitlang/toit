@@ -20,7 +20,8 @@
 //! and globals (`loaded_ok`, the loader's contract), every state reachable
 //! in any number of transitions makes a step that is not stuck, and every
 //! completion of a PRIMITIVE step is not stuck either. No `Stuck` variant
-//! remains. The defined failures are not stuck outcomes: machine-raised
+//! remains. The objects the machine interprets itself keep the meaning it
+//! gives them (`machine_objects_ok`: the tasks' stacks and ids). The defined failures are not stuck outcomes: machine-raised
 //! exceptions (lookup, as-check, code invocation, invalid program, missing
 //! or unimplemented primitive: `raise`), an uncaught exception, task end,
 //! exit, deep sleep and reset (`Outcome2::Halt`), and out-of-memory (no
@@ -153,6 +154,30 @@ pub proof fn lemma_completion_ok(p: Program2, c: Cert, s: State2, module: u8, in
     }
 }
 
+/// The objects the machine gives a meaning the program cannot see: every
+/// task's stack field refers to a stack object (or is the smi 0 once the
+/// task has terminated) and its id is a smi, and the running task's stack
+/// field refers to a stack object (the stack the machine runs on). A
+/// program can neither read a task's stack field nor write it or the id
+/// (`v2::spec::field_readable`, `field_writable`).
+pub open spec fn machine_objects_ok(p: Program2, s: State2) -> bool {
+    &&& running_ok(p, s)
+    &&& forall|i: int| 0 <= i < s.heap.len() && (#[trigger] s.heap[i]).class_id as int == task_class(p) ==>
+            task_obj_ok(s.heap, s.heap[i])
+}
+
+pub proof fn lemma_machine_objects(p: Program2, c: Cert, s: State2)
+    requires wf(p, c, s),
+    ensures machine_objects_ok(p, s),
+{
+    reveal(wf);
+    reveal(heap_ok);
+    assert forall|i: int| 0 <= i < s.heap.len() && (#[trigger] s.heap[i]).class_id as int == task_class(p) implies
+        task_obj_ok(s.heap, s.heap[i]) by {
+        assert(obj_ok(p, c, s.heap, s.heap[i]));
+    }
+}
+
 /// The soundness theorem.
 pub proof fn theorem_soundness(p: Program2, c: Cert, trusted: bool, heap0: Seq<HeapObj>, globals0: Seq<Value>, s: State2)
     requires
@@ -164,8 +189,10 @@ pub proof fn theorem_soundness(p: Program2, c: Cert, trusted: bool, heap0: Seq<H
         forall|s1: State2, module: u8, index: u16, o: Outcome2|
             step(p, s) == Outcome2::Primitive(s1, module, index) && #[trigger] completion(p, s1, module, index, o)
                 ==> !(o is Stuck),
+        machine_objects_ok(p, s),
 {
     lemma_reachable_wf(p, c, trusted, heap0, globals0, s);
+    lemma_machine_objects(p, c, s);
     crate::v2::sound_step::lemma_step(p, c, trusted, s);
     assert forall|s1: State2, module: u8, index: u16, o: Outcome2|
         step(p, s) == Outcome2::Primitive(s1, module, index) && #[trigger] completion(p, s1, module, index, o)

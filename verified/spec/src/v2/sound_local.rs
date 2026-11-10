@@ -88,7 +88,7 @@ pub proof fn lemma_top_kinds(p: Program2, c: Cert, s: State2)
 
 pub proof fn lemma_wf_parts(p: Program2, c: Cert, s: State2)
     requires wf(p, c, s),
-    ensures heap_ok(p, c, s.heap), globals_ok(c, s), consts_ok(p, s.heap), wf_task(p, c, s),
+    ensures heap_ok(p, c, s.heap), globals_ok(c, s), consts_ok(p, s.heap), wf_task(p, c, s), running_ok(p, s),
 {
     reveal(wf);
 }
@@ -124,6 +124,7 @@ pub open spec fn local_step(p: Program2, c: Cert, s: State2, s2: State2, k2: Seq
     let k = kinds_of(p, c, s, t);
     &&& s2.frames == s.frames
     &&& s2.tries == s.tries
+    &&& s2.task == s.task
     &&& info(p, m).entry <= s2.bci
     &&& map_at(c, m, s2.bci - info(p, m).entry) == Some(k2)
     &&& s2.stack.len() == b + k2.len()
@@ -133,7 +134,7 @@ pub open spec fn local_step(p: Program2, c: Cert, s: State2, s2: State2, k2: Seq
     &&& forall|j: int| 0 <= j < k2.len() && #[trigger] unchanged(p, c, s, s2, k2, j) && k2[j] is Token ==>
             k2.subrange(0, j) == k.subrange(0, j)
     &&& (pinned0(p, m) && arity(p, m) >= 1 ==> k2.len() >= 1 && s2.stack[b] == s.stack[b])
-    &&& heap_ext(s.heap, s2.heap)
+    &&& heap_ext(p, s.heap, s2.heap)
     &&& heap_ok(p, c, s2.heap)
     &&& globals_ok(c, s2)
     &&& consts_ok(p, s2.heap)
@@ -170,7 +171,7 @@ pub proof fn lemma_local_same_below(p: Program2, c: Cert, s: State2, s2: State2,
         s2.tries == s.tries,
         s2.stack.len() >= fbase(s, top_i(s)),
         forall|x: int| 0 <= x < fbase(s, top_i(s)) ==> #[trigger] s2.stack[x] == s.stack[x],
-        heap_ext(s.heap, s2.heap),
+        heap_grows(s.heap, s2.heap),
     ensures same_below(s, s2, top_i(s) - 1), bases_ok(s2),
 {
     lemma_task_bases(p, c, s);
@@ -371,6 +372,7 @@ pub proof fn lemma_local_step(p: Program2, c: Cert, trusted: bool, s: State2, s2
         reveal(wf_task);
         assert(try_ok(s, x));
     }
+    lemma_running_heap(p, s, s2);
     reveal(wf_task);
 }
 

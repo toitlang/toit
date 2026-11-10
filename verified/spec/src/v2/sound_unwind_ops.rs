@@ -234,7 +234,7 @@ pub proof fn lemma_step_unwind_op(p: Program2, c: Cert, trusted: bool, s: State2
         assert(op_unwind(p, s) == Outcome2::Next(s2));
         assert(local_step(p, c, s, s2, k2)) by {
             lemma_wf_parts(p, c, s);
-            lemma_heap_ext_refl(s.heap);
+            lemma_heap_ext_refl(p, s.heap);
             assert forall|j: int| 0 <= j < k2.len() implies #[trigger] unchanged(p, c, s, s2, k2, j) by {}
             assert forall|j: int| 0 <= j < k2.len() && #[trigger] unchanged(p, c, s, s2, k2, j) && k2[j] is Token implies
                 k2.subrange(0, j) == k.subrange(0, j) by {

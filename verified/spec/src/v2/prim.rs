@@ -101,8 +101,10 @@ pub open spec fn has_stack2(s: State2, task: Value) -> bool {
 }
 
 /// A transfer to the task can resume it: it was suspended (has frames) or
-/// never ran and has its code. Toit code can store any value in a task's
-/// stack field, so this is checked at run time.
+/// never ran and has its code. A terminated task has no stack (its stack
+/// field is the smi 0 after a detaching transfer), so this is checked at
+/// run time. The program cannot write a task's stack field
+/// (`v2::spec::field_writable`).
 pub open spec fn resumable(s: State2, task: Value) -> bool {
     match obj(as1(s), task_stack_ref(s, task)).body {
         Body::Stack2(words, frames, _, _) => frames.len() > 0 || words.len() >= 1,
@@ -152,12 +154,13 @@ pub open spec fn task_transfer_step(p: Program2, s: State2, to: Value, detach: V
         prim_failure(s, s.heap, wrong_object_type(p))
     } else if from == to {
         prim_failure(s, s.heap, to)
-    } else if !has_stack2(s, to) || !resumable(s, to) || !is_task(p, s, from) || !has_stack2(s, from) {
-        // The target or the running task lost its stack (a program can
-        // overwrite a task's stack field): the transfer fails.
-        prim_failure(s, s.heap, p.roots[12])  // ERROR
-    } else if s.frames.len() == 0 {
+    } else if !is_task(p, s, from) || !has_stack2(s, from) || s.frames.len() == 0 {
+        // The machine runs on the running task's stack; the invariant
+        // (`v2::sound::running_ok`) excludes this.
         stuck(Stuck::Fatal)
+    } else if !has_stack2(s, to) || !resumable(s, to) {
+        // The target has terminated: the transfer fails.
+        prim_failure(s, s.heap, p.roots[12])  // ERROR
     } else {
         let from_stack = task_stack_ref(s, from);
         let saved = HeapObj { body: Body::Stack2(s.stack, s.frames, s.tries, s.bci), ..obj(as1(s), from_stack) };

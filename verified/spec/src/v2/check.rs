@@ -790,6 +790,60 @@ pub fn x_this_field_ok(p: &ExecProgram, m: usize, f: i64) -> (r: bool)
     true
 }
 
+pub fn x_range_has_task(p: &ExecProgram, m: usize) -> (r: bool)
+    requires m < p.methods.len(), wf_program2(pview2(p)),
+    ensures r == range_has_task(pview2(p), p.methods@[m as int]),
+{
+    let i = p.methods[m];
+    let tc = p.builtin[19];
+    i.recv_start <= tc && tc < i.recv_end
+}
+
+pub fn x_this_load_ok(p: &ExecProgram, m: usize, f: i64) -> (r: bool)
+    requires m < p.methods.len(), wf_program2(pview2(p)),
+    ensures r == this_load_ok(pview2(p), m as int, f as int),
+{
+    x_this_field_ok(p, m, f) && !(x_range_has_task(p, m) && f == 0)
+}
+
+pub fn x_this_store_ok(p: &ExecProgram, m: usize, f: i64) -> (r: bool)
+    requires m < p.methods.len(), wf_program2(pview2(p)),
+    ensures r == this_store_ok(pview2(p), m as int, f as int),
+{
+    x_this_field_ok(p, m, f) && !(x_range_has_task(p, m) && f <= 1)
+}
+
+pub fn x_task_class_ok(p: &ExecProgram) -> (r: bool)
+    requires wf_program2(pview2(p)),
+    ensures r == task_class_ok(pview2(p)),
+{
+    let ghost pv = pview2(p);
+    let tc = p.builtin[19] as usize;
+    assert(tc as int == builtin(p1(pv), TASK_CLASS));
+    if !(tc < p.class_bits.len() && (p.class_bits[tc] & 0xf) == 8) {
+        proof {
+            if tc < p.class_bits.len() { assert(class_tag(p1(pv), tc as int) == p.class_bits[tc as int] & 0xf); }
+        }
+        return false;
+    }
+    assert(class_tag(p1(pv), tc as int) == TASK_TAG);
+    if p.builtin[22] as usize == tc { return false; }
+    let mut cl = 0;
+    while cl < p.class_bits.len()
+        invariant 0 <= cl <= p.class_bits.len(), tc as int == builtin(p1(pv), TASK_CLASS), pv == pview2(p),
+            forall|c2: int| 0 <= c2 < cl && #[trigger] class_tag(p1(pv), c2) == TASK_TAG ==> c2 == tc,
+        decreases p.class_bits.len() - cl,
+    {
+        if (p.class_bits[cl] & 0xf) == 8 && cl != tc {
+            proof { assert(class_tag(p1(pv), cl as int) == TASK_TAG); }
+            return false;
+        }
+        proof { assert(class_tag(p1(pv), cl as int) == p.class_bits[cl as int] & 0xf); }
+        cl += 1;
+    }
+    true
+}
+
 pub fn x_shift(k: XKind, d: u32) -> (r: Option<XKind>)
     ensures
         r is Some ==> r->0@ == shift(k@, d as int),
@@ -993,9 +1047,9 @@ pub fn x_post_fields(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<X
             }
         } else { None }
     } else if op == LOAD_FIELD_THIS {
-        if x_this_field_ok(p, m, b1) { Some(x_push(k, XKind::Val)) } else { None }
+        if x_this_load_ok(p, m, b1) { Some(x_push(k, XKind::Val)) } else { None }
     } else {
-        if x_this_field_ok(p, m, b1) && x_value_operands(k, 1) { Some(x_copy(k)) } else { None }
+        if x_this_store_ok(p, m, b1) && x_value_operands(k, 1) { Some(x_copy(k)) } else { None }
     }
 }
 
@@ -1654,6 +1708,7 @@ pub fn x_tables_ok(p: &ExecProgram, c: &XCert) -> (r: bool)
     if !(x_is_field_class(p, ex) && x_ifc(p, ex as usize) >= 2) { return false; }
     let tc = p.builtin[19] as i64;
     if !(x_is_field_class(p, tc) && x_ifc(p, tc as usize) >= 2) { return false; }
+    if !x_task_class_ok(p) { return false; }
     if !x_entry_ok(p, c, 0, 1) { return false; }
     if p.methods[x_entry_method(p, 0) as usize].recv_start != 0xffff { return false; }
     if !x_entry_ok(p, c, 2, 1) { return false; }

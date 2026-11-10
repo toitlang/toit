@@ -280,6 +280,48 @@ pub fn x_field(s: &ExecState, inst: Value, f: usize) -> (r: Option<Value>)
     }
 }
 
+/// Whether `inst` is a task (an instance of the builtin task class).
+pub fn x_is_task(p: &ExecProgram, s: &ExecState, inst: Value) -> (r: bool)
+    requires wf_program2(pview2(p)),
+    ensures r == is_task_obj(pview2(p), view2(s), inst),
+{
+    match inst {
+        Value::Obj(id) => {
+            if id < s.heap.len() {
+                proof { lemma_heap_index(s, id as int); }
+                match &s.heap[id].body {
+                    ExecBody::Instance(_) => s.heap[id].class_id == p.builtin[19],
+                    _ => false,
+                }
+            } else {
+                false
+            }
+        },
+        _ => false,
+    }
+}
+
+/// Field `f` of `inst` if the program may read it.
+pub fn x_field_readable(p: &ExecProgram, s: &ExecState, inst: Value, f: usize) -> (r: Option<Value>)
+    requires wf_program2(pview2(p)),
+    ensures
+        r is Some <==> field_readable(pview2(p), view2(s), inst, f as int),
+        r is Some ==> r->0 == field(view2(s), inst, f as int),
+{
+    match x_field(s, inst, f) {
+        None => None,
+        Some(v) => if f == 0 && x_is_task(p, s, inst) { None } else { Some(v) },
+    }
+}
+
+/// Field `f` of `inst` exists and the program may write it.
+pub fn x_field_writable(p: &ExecProgram, s: &ExecState, inst: Value, f: usize) -> (r: bool)
+    requires wf_program2(pview2(p)),
+    ensures r == field_writable(pview2(p), view2(s), inst, f as int),
+{
+    x_field(s, inst, f).is_some() && !x_is_ro(s, inst) && !(f <= 1 && x_is_task(p, s, inst))
+}
+
 /// Whether the object `inst` (an instance) is read-only.
 pub fn x_is_ro(s: &ExecState, inst: Value) -> (r: bool)
     requires is_instance(as1(view2(s)), inst),
@@ -974,7 +1016,7 @@ pub fn x_load_field(p: &ExecProgram, s: &mut ExecState, f: usize, len: usize) ->
     if !x_has_slot(s, 0) {
         return ExecOutcome2::Stuck(Stuck::StackRange);
     }
-    match x_field(s, x_at(s, 0), f) {
+    match x_field_readable(p, s, x_at(s, 0), f) {
         None => x_raise(p, s, 3),
         Some(v) => {
             x_put(s, 0, v);
@@ -993,7 +1035,7 @@ pub fn x_load_field_local(p: &ExecProgram, s: &mut ExecState, enc: usize, pop: b
     if !x_has_slot(s, slot) {
         return ExecOutcome2::Stuck(Stuck::StackRange);
     }
-    match x_field(s, x_at(s, slot), f) {
+    match x_field_readable(p, s, x_at(s, slot), f) {
         None => x_raise(p, s, 3),
         Some(v) => {
             if pop { x_put(s, 0, v); } else { x_push(s, v); }
@@ -1011,7 +1053,7 @@ pub fn x_store_field(p: &ExecProgram, s: &mut ExecState, f: usize, len: usize, k
     }
     let v = x_at(s, 0);
     let inst = x_at(s, 1);
-    if x_field(s, inst, f).is_none() || x_is_ro(s, inst) {
+    if !x_field_writable(p, s, inst, f) {
         return x_raise(p, s, 3);
     }
     x_drop(s, 2);
@@ -1053,6 +1095,9 @@ pub fn x_load_field_this(p: &ExecProgram, s: &mut ExecState, f: usize) -> (r: Ex
     match x_this(p, s, f) {
         None => ExecOutcome2::Stuck(Stuck::NotInstance),
         Some(this) => {
+            if f == 0 && x_is_task(p, s, this) {
+                return ExecOutcome2::Stuck(Stuck::NotInstance);
+            }
             let v = match x_field(s, this, f) { Some(v) => v, None => this };
             x_push(s, v);
             x_next(s, 2)
@@ -1070,6 +1115,9 @@ pub fn x_store_field_this(p: &ExecProgram, s: &mut ExecState, f: usize) -> (r: E
     match x_this(p, s, f) {
         None => ExecOutcome2::Stuck(Stuck::NotInstance),
         Some(this) => {
+            if f <= 1 && x_is_task(p, s, this) {
+                return ExecOutcome2::Stuck(Stuck::NotInstance);
+            }
             if x_is_ro(s, this) {
                 return x_raise(p, s, 3);
             }

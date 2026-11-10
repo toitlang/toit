@@ -207,7 +207,7 @@ pub proof fn lemma_prim_facts(p: Program2, c: Cert, trusted: bool, s: State2)
 pub proof fn lemma_failure(p: Program2, c: Cert, trusted: bool, s: State2, h2: Seq<HeapObj>, v: Value)
     requires
         accepts(p, c, trusted), wf(p, c, s), cur_op(p, s) == PRIMITIVE,
-        heap_ok(p, c, h2), heap_ext(s.heap, h2), good(h2, v),
+        heap_ok(p, c, h2), heap_ext(p, s.heap, h2), good(h2, v),
     ensures
         wf(p, c, goto(push(with_heap(s, h2), v), s.bci + 4)),
         outcome_ok(p, c, prim_failure(s, h2, v)),
@@ -249,8 +249,8 @@ pub proof fn lemma_success(p: Program2, c: Cert, trusted: bool, s: State2, s1: S
     requires
         accepts(p, c, trusted), wf(p, c, s), small(s),
         s1.stack == s.stack, s1.frames == s.frames, s1.tries == s.tries, s1.bci == s.bci,
-        s1.globals == s.globals,
-        heap_ext(s.heap, s1.heap), heap_ok(p, c, s1.heap), good(s1.heap, v),
+        s1.globals == s.globals, s1.task == s.task,
+        heap_ext(p, s.heap, s1.heap), heap_ok(p, c, s1.heap), good(s1.heap, v),
         s1.heap.len() < 0x8000_0000,
     ensures outcome_ok(p, c, return_from(p, s1, v)),
 {
@@ -272,9 +272,10 @@ pub proof fn lemma_success(p: Program2, c: Cert, trusted: bool, s: State2, s1: S
 /// What the oracle may do to the heap keeps it well formed.
 pub proof fn lemma_prim_heap(p: Program2, c: Cert, h: Seq<HeapObj>, h2: Seq<HeapObj>)
     requires heap_ok(p, c, h), prim_heap_ok(p, h, h2),
-    ensures heap_ok(p, c, h2), heap_ext(h, h2),
+    ensures heap_ok(p, c, h2), heap_ext(p, h, h2),
 {
-    assert(heap_ext(h, h2));
+    assert(heap_grows(h, h2));
+    assert(heap_ext(p, h, h2));
     reveal(heap_ok);
     assert forall|i: int| 0 <= i < h2.len() implies #[trigger] obj_ok(p, c, h2, h2[i]) by {
         assert(basic_obj_ok(p, h2, h2[i]));
@@ -282,6 +283,25 @@ pub proof fn lemma_prim_heap(p: Program2, c: Cert, h: Seq<HeapObj>, h2: Seq<Heap
             assert(obj_ok(p, c, h, h[i]));
             lemma_obj_ok_mono(p, c, h, h2, h[i]);
             assert(h2[i].body == h[i].body);
+        }
+        if h2[i].class_id as int == task_class(p) {
+            assert(i < h.len());
+            assert(h[i].class_id == h2[i].class_id);
+            assert(obj_ok(p, c, h, h[i]));
+            assert(task_obj_ok(h, h[i]));
+            assert(task_fields_kept(h[i], h2[i]));
+            match (h[i].body, h2[i].body) {
+                (Body::Instance(f), Body::Instance(f2)) => {
+                    match f[0] {
+                        Value::Obj(j) => if (j as int) < h.len() && h[j as int].body is Stack2 {
+                            assert(h2[j as int].body is Stack2);
+                        },
+                        _ => {},
+                    }
+                    assert(task_obj_ok(h2, h2[i]));
+                },
+                _ => {},
+            }
         }
     }
 }
@@ -311,12 +331,12 @@ pub proof fn lemma_consts_good(p: Program2, h: Seq<HeapObj>, i: int)
 /// Appending the stack object of a task that never ran and its task.
 pub proof fn lemma_new_task_heap(p: Program2, c: Cert, trusted: bool, h: Seq<HeapObj>, w: Seq<Value>, ntid: int)
     requires
-        accepts(p, c, trusted), heap_ok(p, c, h), consts_ok(p, h),
+        accepts(p, c, trusted), heap_ok(p, c, h), consts_ok(p, h), h.len() < 0x8000_0000,
         w.len() <= 1, w.len() == 1 ==> good(h, w[0]),
     ensures ({
         let h2 = h.push(stack_obj2(p, w, Seq::empty(), Seq::empty(), 0)).push(new_task_obj2(p, h.len() as int, ntid));
         &&& heap_ok(p, c, h2)
-        &&& heap_ext(h, h2)
+        &&& heap_ext(p, h, h2)
         &&& h2.len() == h.len() + 2
     }),
 {
@@ -327,6 +347,7 @@ pub proof fn lemma_new_task_heap(p: Program2, c: Cert, trusted: bool, h: Seq<Hea
     let scl = builtin(p1(p), STACK_CLASS);
     assert(machine_class_ok(p, STACK_CLASS));
     assert(so.class_id as int == scl);
+    assert(scl != task_class(p));
     assert(basic_obj_ok(p, h1, so));
     assert(obj_ok(p, c, h1, so));
     lemma_heap_push(p, c, h, so);
@@ -340,9 +361,17 @@ pub proof fn lemma_new_task_heap(p: Program2, c: Cert, trusted: bool, h: Seq<Hea
         assert(f.len() == ifc(p, cid));
         assert forall|i: int| 0 <= i < f.len() implies good(h2, #[trigger] f[i]) by {}
     }
+    assert(task_obj_ok(h2, to)) by {
+        let f = to.body->Instance_0;
+        assert(f.len() >= 2);
+        assert(f[0] == Value::Obj(h.len() as usize));
+        assert(f[1] == smi(ntid));
+        assert(h2[h.len() as int] == so);
+        assert(stack_ref(h2, f[0]));
+    }
     assert(obj_ok(p, c, h2, to));
     lemma_heap_push(p, c, h1, to);
-    lemma_heap_ext_trans(h, h1, h2);
+    lemma_heap_ext_trans(p, h, h1, h2);
 }
 
 pub proof fn lemma_task_new(p: Program2, c: Cert, trusted: bool, s: State2)
@@ -404,6 +433,44 @@ pub open spec fn transfer_ready(p: Program2, s: State2, to: Value, detach: Value
     &&& has_stack2(s, from)
 }
 
+/// Detaching the running task's stack (its stack field becomes the smi 0)
+/// keeps the heap well formed.
+pub proof fn lemma_detach_heap(p: Program2, c: Cert, s: State2)
+    requires heap_ok(p, c, s.heap), running_ok(p, s),
+    ensures ({
+        let hd = detached_heap(p, s, true2(p));
+        &&& heap_ok(p, c, hd)
+        &&& heap_grows(s.heap, hd)
+        &&& hd.len() == s.heap.len()
+        &&& forall|i: int| 0 <= i < hd.len() && i != s.task as int ==> #[trigger] hd[i] == s.heap[i]
+    }),
+{
+    let t = s.task as int;
+    let from = Value::Obj(s.task);
+    let o = s.heap[t];
+    let fs = fields(as1(s), from);
+    let fs2 = fs.update(0, smi(0));
+    let o2 = HeapObj { body: Body::Instance(fs2), ..o };
+    let hd = s.heap.update(t, o2);
+    assert(obj(as1(s), from) == o);
+    assert(detached_heap(p, s, true2(p)) == hd);
+    reveal(heap_ok);
+    assert(obj_ok(p, c, s.heap, o));
+    assert(heap_grows(s.heap, hd));
+    assert forall|i: int| 0 <= i < hd.len() implies #[trigger] obj_ok(p, c, hd, hd[i]) by {
+        if i != t {
+            assert(obj_ok(p, c, s.heap, s.heap[i]));
+            lemma_obj_ok_mono(p, c, s.heap, hd, s.heap[i]);
+        } else {
+            assert forall|j: int| 0 <= j < fs2.len() implies good(hd, #[trigger] fs2[j]) by {
+                if j != 0 { assert(good(s.heap, fs[j])); }
+            }
+            assert(basic_obj_ok(p, hd, o2));
+            assert(task_obj_ok(hd, o2));
+        }
+    }
+}
+
 /// The heap after the transfer is well formed: the saved state is a
 /// well-formed task at its task_transfer.
 #[verifier::spinoff_prover]
@@ -418,15 +485,17 @@ pub proof fn lemma_transfer_heap(p: Program2, c: Cert, trusted: bool, s: State2,
         let hd = detached_heap(p, s, detach);
         let hf = hd.update(fsid, saved_obj(s));
         &&& heap_ok(p, c, hf)
-        &&& heap_ext(s.heap, hf)
+        &&& heap_grows(s.heap, hf)
         &&& hf.len() == s.heap.len()
         &&& 0 <= fsid < s.heap.len()
         &&& s.heap[fsid].body is Stack2
         &&& s.heap[s.task as int].body is Instance
+        &&& forall|i: int| 0 <= i < hf.len() && i != s.task as int && i != fsid ==> #[trigger] hf[i] == s.heap[i]
     }),
 {
     lemma_instr(p, c, trusted, s);
     lemma_prim_facts(p, c, trusted, s);
+    lemma_wf_parts(p, c, s);
     let from = Value::Obj(s.task);
     let fromid = s.task as int;
     let fsid = obj_id(task_stack_ref(s, from));
@@ -435,20 +504,18 @@ pub proof fn lemma_transfer_heap(p: Program2, c: Cert, trusted: bool, s: State2,
     let hf = hd.update(fsid, saved);
     // The detached heap.
     if detach == true2(p) {
-        assert(field_ok(s, from, 0));
-        lemma_set_field2(p, c, s, from, 0, smi(0));
-        assert(set_field2(s, from, 0, smi(0)).heap == hd);
+        lemma_detach_heap(p, c, s);
     } else {
-        lemma_heap_ext_refl(s.heap);
+        lemma_heap_ext_refl(p, s.heap);
     }
-    assert(heap_ok(p, c, hd) && heap_ext(s.heap, hd) && hd.len() == s.heap.len());
+    assert(heap_ok(p, c, hd) && heap_grows(s.heap, hd) && hd.len() == s.heap.len());
+    assert(forall|i: int| 0 <= i < hd.len() && i != fromid ==> #[trigger] hd[i] == s.heap[i]);
     assert(fsid != fromid);
     assert(hd[fsid] == s.heap[fsid]);
-    assert(heap_ext(hd, hf));
-    lemma_heap_ext_trans(s.heap, hd, hf);
+    assert(heap_grows(hd, hf));
+    assert(heap_grows(s.heap, hf));
     // The saved state.
     let ss = susp_state(s.heap, s.stack, s.frames, s.tries, s.bci);
-    lemma_wf_parts(p, c, s);
     lemma_wf_task_same(p, c, s, ss);
     lemma_wf_task_heap(p, c, ss, hf);
     assert(with_heap(ss, hf) == susp_state(hf, s.stack, s.frames, s.tries, s.bci));
@@ -456,6 +523,9 @@ pub proof fn lemma_transfer_heap(p: Program2, c: Cert, trusted: bool, s: State2,
     reveal(heap_ok);
     assert(obj_ok(p, c, s.heap, s.heap[fsid]));
     assert(basic_obj_ok(p, hf, saved));
+    assert(saved.class_id as int != task_class(p)) by {
+        assert(obj_ok(p, c, s.heap, s.heap[fsid]));
+    }
     assert(obj_ok(p, c, hf, saved));
     assert forall|i: int| 0 <= i < hf.len() implies #[trigger] obj_ok(p, c, hf, hf[i]) by {
         if i != fsid {
@@ -472,7 +542,8 @@ pub proof fn lemma_resume_new(p: Program2, c: Cert, trusted: bool, s: State2, s2
         accepts(p, c, trusted), wf(p, c, s), cur_op(p, s) == PRIMITIVE,
         p.bytecodes[s.bci + 1] == 0, u16_at(p1(p), s.bci + 2) == PRIM_TASK_TRANSFER,
         s2.frames == s.frames, s2.bci == s.bci, s2.globals == s.globals,
-        heap_ok(p, c, s2.heap), heap_ext(s.heap, s2.heap),
+        heap_ok(p, c, s2.heap), heap_grows(s.heap, s2.heap),
+        running_ok(p, State2 { task: obj_id(to) as usize, ..s2 }),
         good(s2.heap, to), words.len() >= 1, good(s2.heap, words[0]),
     ensures outcome_ok(p, c, resume(p, s2, to, words, Seq::empty(), Seq::empty(), 0)),
 {
@@ -554,6 +625,7 @@ pub proof fn lemma_resume_susp(p: Program2, c: Cert, trusted: bool, s2: State2, 
     requires
         accepts(p, c, trusted),
         heap_ok(p, c, s2.heap), globals_ok(c, s2), consts_ok(p, s2.heap),
+        running_ok(p, State2 { task: obj_id(to) as usize, ..s2 }),
         frames.len() > 0,
         susp_ok(p, c, s2.heap, words, frames, tries, bci),
         good(s2.heap, to),
@@ -564,7 +636,7 @@ pub proof fn lemma_resume_susp(p: Program2, c: Cert, trusted: bool, s2: State2, 
     lemma_wf_task_same(p, c, susp_state(hf, words, frames, tries, bci), r0);
     assert(wf(p, c, r0)) by { reveal(wf); }
     assert(cur_op(p, r0) == PRIMITIVE);
-    lemma_heap_ext_refl(hf);
+    lemma_heap_ext_refl(p, hf);
     lemma_failure(p, c, trusted, r0, hf, to);
     assert(with_heap(r0, hf) == r0);
     assert(resume(p, s2, to, words, frames, tries, bci as int) == prim_failure(r0, hf, to));
@@ -611,6 +683,10 @@ pub proof fn lemma_transfer_main(p: Program2, c: Cert, trusted: bool, s: State2,
     assert(0 <= tid < hf.len());
     let tobj = hf[tid];
     assert(obj(as1(s2), ts) == tobj);
+    assert(running_ok(p, State2 { task: obj_id(to) as usize, ..s2 })) by {
+        assert(s.heap[toid].class_id as int == task_class(p));
+        if tid == fsid { assert(hf[tid] == saved); } else { assert(hf[tid] == s.heap[tid]); }
+    }
     reveal(heap_ok);
     assert(obj_ok(p, c, hf, tobj));
     lemma_globals_heap(c, s, hf);
@@ -654,14 +730,19 @@ pub proof fn lemma_task_transfer(p: Program2, c: Cert, trusted: bool, s: State2)
     let from = Value::Obj(s.task);
     if !is_task(p, s, to) || !(detach == true2(p) || detach == false2(p)) {
         lemma_consts_good(p, s.heap, 30);
-        lemma_heap_ext_refl(s.heap);
+        lemma_heap_ext_refl(p, s.heap);
         lemma_failure(p, c, trusted, s, s.heap, wrong_object_type(p));
     } else if from == to {
-        lemma_heap_ext_refl(s.heap);
+        lemma_heap_ext_refl(p, s.heap);
         lemma_failure(p, c, trusted, s, s.heap, to);
-    } else if !has_stack2(s, to) || !resumable(s, to) || !is_task(p, s, from) || !has_stack2(s, from) {
+    } else if !is_task(p, s, from) || !has_stack2(s, from) || s.frames.len() == 0 {
+        // The running task has its stack.
+        assert(running_ok(p, s));
+        lemma_task_basics(p, c, s);
+        assert(false);
+    } else if !has_stack2(s, to) || !resumable(s, to) {
         lemma_consts_good(p, s.heap, 12);
-        lemma_heap_ext_refl(s.heap);
+        lemma_heap_ext_refl(p, s.heap);
         lemma_failure(p, c, trusted, s, s.heap, p.roots[12]);
     } else {
         lemma_transfer_main(p, c, trusted, s, to, detach);
