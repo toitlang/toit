@@ -217,7 +217,7 @@ Scripts: build/bench/ir.sh (instruction counts), build/bench/hot.sh
   on the core. Two CLI tests cover the format-1 refusal and the switch.
   verify-reject-test pins format 1 (it tests the format-1 verifier's
   options and fuzzer).
-- verified/core/tests/untrusted_suite.py: every program the reference
+- verified/tools/untrusted_suite.toit: every program the reference
   interpreter can run (run_suite.py status `pass` or `steplimit`) runs
   untrusted in format 2 and trusted in format 1; stdout and exit code
   must match.
