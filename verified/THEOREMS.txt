@@ -138,8 +138,12 @@ Top-level theorems: crate vmverify (0)
 ==============================================================================
 
 ==============================================================================
-Verified exec entry points: crate core (0)
+Verified exec entry points: crate core (1)
 ==============================================================================
+
+--- PrimOutcome::not_ported  (core/src/prims/mod.rs)
+pub fn not_ported(&self) -> (r: bool)
+    ensures r == (*self is NotPorted),
 
 ==============================================================================
 Verified exec entry points: crate spec (8)

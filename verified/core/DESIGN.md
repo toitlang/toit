@@ -177,7 +177,11 @@ top, the finally-record count and length).
 | `toit_v2_report(process, kind, bci, detail)` | no | none | message on stderr |
 
 The C++ primitive path is unverified and outside the security boundary
-(TRUSTED.md section 2). Ported primitives: none yet. For untrusted
+(TRUSTED.md section 2). Ported primitives: src/prims (TRUSTED.md section
+7, PROGRESS.md "Primitives"), run through a temporary opt-in bridge
+(`TOIT_V2_RUST_PRIMITIVES=1`) until the verified PRIMITIVE handler calls
+`prims::call`; the C++ helpers they use are `toit_v2_try_allocate_*` (no GC),
+`toit_v2_primitive_gc` and `toit_v2_leave_primitive`. For untrusted
 programs the policy resolves only the allowed set of
 docs/sandbox-policy.md; all of them currently run as C++ (open work: port
 them to Rust with `prim_heap_ok`, OBLIGATIONS.md S1). Timer and event glue
