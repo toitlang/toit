@@ -38,8 +38,8 @@ Phase 4 refines. It specifies two bytecode formats:
 | `src/bin/toit_spec_run.rs` | plain Rust | CLI: `toit-spec-run [--word-bits 32\|64] [--trace] [--trace-throw] [--trace-bci] [--histogram] [--no-verified] [--stats] [--program-name P] <dump>`. |
 | `tests/run_tests.sh` | | Runs `tests/toit/*.toit` on the C++ VM and on the interpreter (format 1: 64-bit, 32-bit, unverified-only; format 2: 64-bit, 32-bit) and diffs. |
 | `tests/run_one.sh` | | Same for one file, for debugging. |
-| `../tools/run_suite.toit` | | Differential test on the repository's whole test suite (both formats). |
-| `tests/compare_trace.py` | | Compares the debug VM's `-Xtrace` with the interpreter's instruction trace. |
+| `verified/tools/run_suite.toit` | | Differential test on the repository's whole test suite (both formats). |
+| `verified/tools/compare_trace.toit` | | Compares the debug VM's `-Xtrace` with the interpreter's instruction trace. |
 | `verified/tools/measure.toit` | | Executed-instruction and code-size comparison of the two formats (on the dumps of `run_suite --format both`). |
 | `verified/tools/code_size.toit` | | Code size of the two formats on the system snapshots and ten tests (format note 15). |
 | `verified/tools/method_steps.toit` | | Executed instructions per method in both formats (format note 16). |
@@ -48,10 +48,10 @@ Phase 4 refines. It specifies two bytecode formats:
 
 Commands: `cargo verus verify` (proofs), `cargo build --release`,
 `cargo test --release`, `tests/run_tests.sh` (needs `make sdk`),
-`toit run ../tools/run_suite.toit -- --format both` (needs
+`toit run verified/tools/run_suite.toit -- --format both` (needs
 `make download-packages`),
-`tests/compare_trace.py <program>` (needs a debug build in `build/dbg`,
-`make BUILD=build/dbg BUILD_TYPE=Debug sdk`).
+`toit run verified/tools/compare_trace.toit -- <program>` (needs a debug
+build in `build/dbg`, `make BUILD=build/dbg BUILD_TYPE=Debug sdk`).
 
 ## Abstract state
 
@@ -282,8 +282,9 @@ process-send to the own process, the program name, the timing of system
 replies, service discovery of services the host system provides), plus
 the spec following the VM fixes of c5d7adec. No VM bug (see `VM-BUGS.md`).
 
-`tests/compare_trace.py` runs a program on the debug VM with `-Xtrace` (on
-one scheduler thread) and on the interpreter with `--trace-bci`, and
+`verified/tools/compare_trace.toit` runs a program on the debug VM with
+`-Xtrace` (on one scheduler thread) and on the interpreter with
+`--trace-bci`, and
 compares bci and opcode of every instruction of the program's process,
 skipping the system process's instructions in between (the program may
 only switch processes after a call, backward branch, primitive or yield,
