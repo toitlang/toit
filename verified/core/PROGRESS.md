@@ -21,7 +21,7 @@ OBLIGATIONS.md. Trusted base: TRUSTED.md.
 - Performance pass 1 (obvious wins): inlined fast paths, one-comparison
   dispatch prologue, `cold!` trampolines keeping the machine in registers.
 - Verus: the stack, local, constant, global and branch handlers have
-  functional contracts (126 verified, 0 errors); `verified/check.sh`
+  functional contracts (128 verified, 0 errors); `verified/check.sh`
   passes; the end-to-end obligation is stated (unproven).
 - Layout check covers every constant the core assumes (237 + behavioral).
 - Fuzz harness (verified/core/fuzz) with `toit_spec_verify` as filter and

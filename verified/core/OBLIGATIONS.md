@@ -5,7 +5,7 @@ Phase 4. "Proven" means: Verus, zero `assume`/`admit`, with only the
 trusted items of TRUSTED.md and verified/TRUSTED.toml. Run
 `verified/check.sh` (the merge gate) to reproduce.
 
-Current result: `core 126 verified, 0 errors` (Verus 0.2026.11.02, about
+Current result: `core 128 verified, 0 errors` (Verus 0.2026.11.02, about
 1.4 s wall). See DESIGN.md for the run loop the obligations refer to.
 
 ## 1. What is proven now
