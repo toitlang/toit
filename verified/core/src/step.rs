@@ -77,7 +77,7 @@ pub open spec fn verified_op(op: u8) -> bool {
     ||| 62 <= op <= 77   // INVOKE_EQ, relational, arithmetic and bit operators (smi fast paths)
     ||| op == 96         // IDENTICAL
     ||| op == 100        // HALT
-    ||| op == 34 || op == 37  // LOAD_GLOBAL_VAR_DYNAMIC, STORE_GLOBAL_VAR_DYNAMIC
+    ||| 32 <= op <= 34 || op == 37  // LOAD_GLOBAL_VAR_LAZY(_WIDE), LOAD/STORE_GLOBAL_VAR_DYNAMIC
 }
 
 /// The machine continues from a state the spec reaches from `g0`: the same
@@ -169,7 +169,7 @@ pub fn grow_bridge(m: &mut Machine, env: &Env, needed: usize) -> (r: Ctl)
 pub fn ensure_room(m: &mut Machine, env: &Env) -> (r: Option<Ctl>)
     requires old(m).inv(env.p),
     ensures
-        r is None ==> *final(m) == *old(m) && final(m).top - final(m).ftop >= FRAME_WORDS,
+        r is None ==> *final(m) == *old(m) && final(m).top - final(m).ftop >= FRAME_WORDS + STACK_RESERVE,
         r is Some ==> step_post(env.p, *old(m), *final(m), r->0),
 {
     proof { assert(env.p.max_height < 0x1_0000); }
@@ -714,6 +714,16 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
             let k = p.code.at(bci + 1) as usize;
             proof { assert(sp::step(ap, g) == sp::op_invoke_block(ap, g, k as int)) by { reveal(sp::step); } }
             return crate::blocks::op_invoke_block(m, env, bci, opcode, k);
+        },
+        32 => {
+            let i = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_global_lazy(ap, g, i as int, 2)) by { reveal(sp::step); } }
+            return crate::globals::op_load_global_lazy(m, env, bci, opcode, i, 2);
+        },
+        33 => {
+            let i = code_u16(p, bci + 1);
+            proof { assert(sp::step(ap, g) == sp::op_load_global_lazy(ap, g, i as int, 3)) by { reveal(sp::step); } }
+            return crate::globals::op_load_global_lazy(m, env, bci, opcode, i, 3);
         },
         34 => {
             proof { assert(sp::step(ap, g) == sp::op_load_global_dynamic(ap, g)) by { reveal(sp::step); } }
