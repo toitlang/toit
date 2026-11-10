@@ -38,6 +38,8 @@
 
 #include "third_party/dartino/gc_metadata.h"
 
+static void v2_validate(toit::Process* process, const char* where);
+
 namespace toit {
 
 
@@ -422,7 +424,9 @@ Interpreter::Result Interpreter::run_v2() {
   context.watermark = &watermark_;
   context.preempt_a_lot = Flags::preempt_a_lot ? 1 : 0;
 
+  v2_validate(process_, "run entry");
   toit_v2_run(&context);
+  v2_validate(process_, "run exit");
 
   GcMetadata::insert_into_remembered_set(process_->task()->stack());
   Object** watermark = watermark_;
@@ -459,6 +463,44 @@ static Process* v2_process(void* process) {
   return static_cast<Process*>(process);
 }
 
+// Debugging aid (TOIT_V2_VALIDATE=1): checks that every object-stack slot
+// of the current task is a smi or points to something with a plausible
+// header.
+static void v2_validate(Process* process, const char* where) {
+  static int enabled = -1;
+  if (enabled < 0) enabled = getenv("TOIT_V2_VALIDATE") != null ? 1 : 0;
+  if (!enabled) return;
+  Program* program = process->program();
+  auto check = [&](Stack* stack, const char* which) {
+  word length = stack->length();
+  word top = stack->top();
+  uword from = reinterpret_cast<uword>(program->bytecodes.data());
+  uword to = from + program->bytecodes.length();
+  for (word i = top; i < length; i++) {
+    uword w = stack->v2_word_at(i);
+    if ((w & 1) == 0) continue;
+    if (from <= w && w < to) continue;
+    uword header = *reinterpret_cast<uword*>(w - 1);
+    word tag = (header >> 1) & 15;
+    if ((header & 1) != 0 || (w & 3) != 1 || tag > 9) {
+      fprintf(stderr, "v2_validate(%s, %s stack %p): bad slot %ld (position %ld) = %p header %p; top %ld length %ld frame top %ld bci %ld\n",
+              where, which, reinterpret_cast<void*>(stack), i, length - 1 - i, reinterpret_cast<void*>(w), reinterpret_cast<void*>(header),
+              top, length, stack->v2_frame_top(), stack->v2_bci());
+      abort();
+    }
+  }
+  };
+  Stack* current = process->task()->stack();
+  check(current, "current");
+  process->object_heap()->do_objects([&](HeapObject* object) {
+    if (!is_task(object)) return;
+    Task* task = Task::cast(object);
+    if (!task->has_stack()) return;
+    Stack* stack = task->stack();
+    if (stack != current) check(stack, "other task's");
+  });
+}
+
 // As Interpreter::gc, without moving the interpreter's stack pointers (the
 // core has stored its state into the stack object).
 static void v2_gc(Process* process, bool malloc_failed, int attempts, bool force_cross_process,
@@ -476,7 +518,9 @@ static void v2_gc(Process* process, bool malloc_failed, int attempts, bool force
     return;
   }
   GcMetadata::insert_into_remembered_set(process->task()->stack());
+  v2_validate(process, "gc");
   VM::current()->scheduler()->gc(process, malloc_failed, attempts > 1 || force_cross_process);
+  v2_validate(process, "after gc");
 }
 
 template <typename F>
@@ -625,6 +669,7 @@ uword toit_v2_call_primitive(void* raw_process, const void* raw_entry, uword ari
   const PrimitiveEntry* primitive = static_cast<const PrimitiveEntry*>(raw_entry);
   Primitive::Entry* entry = reinterpret_cast<Primitive::Entry*>(primitive->function);
   GcMetadata::insert_into_remembered_set(process->task()->stack());
+  v2_validate(process, "primitive entry");
   Stack* stack = process->task()->stack();
   Object* result = entry(process, stack->v2_slot_address(first_argument));
   for (int attempts = 1; true; attempts++) {
