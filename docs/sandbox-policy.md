@@ -252,6 +252,28 @@ code); the driver then checks that the sibling still answers requests.
 mechanism. `tests/sandbox/cli/` holds programs run directly with
 `toit.run --untrusted`, from source and from a snapshot.
 
+## Open for devices
+
+Devices can't run untrusted programs yet:
+
+- The structural verifier (`src/verifier.cc`) is host-only. It uses the STL
+  (`std::vector`, `std::unordered_map`, `std::string`) and allocates with
+  throwing `new` (under `AllowThrowingNew`), and it is not compiled for
+  FreeRTOS. Without it, `Verifier::verify_for_policy` refuses every
+  untrusted program, so `programs_registry.spawn` with the untrusted policy
+  (or an image with `FLAG-UNTRUSTED`) fails with `VERIFICATION_FAILED` on
+  ESP32 and other FreeRTOS devices.
+- Untrusted containers in flash are verified on every start: the result
+  of the verification is not recorded with the image, so a device would
+  pay for it at every boot.
+
+The C++ verifier will not be ported to FreeRTOS. The plan is that untrusted
+programs move to bytecode format 2, whose verifier is written in Rust
+(`verified/`) and verified against the bytecode specification, for the
+host and for install time on the device. The device verifies an image once,
+when it is installed, and keeps the verdict in the flash allocation
+metadata. Until then, untrusted containers are a host-only feature.
+
 ## Known gaps
 
 - The untrusted policy is a dispatch-time gate only. It relies on the
@@ -259,7 +281,8 @@ mechanism. `tests/sandbox/cli/` holds programs run directly with
   verifier, which is not proven sound yet; a verifier bug lets a
   malicious snapshot bypass the primitive table.
 - Untrusted containers in flash are verified on every start, not once at
-  install time, and not at all on devices (which refuse them).
+  install time, and not at all on devices (which refuse them; see "Open
+  for devices").
 - A sandbox can make the system process print a warning for every
   unhandled message it sends (rate bounded only by the mailbox quota and
   the system process' speed).
