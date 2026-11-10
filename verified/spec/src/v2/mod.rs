@@ -19,6 +19,7 @@ pub mod bytecodes;
 pub mod types;
 pub mod spec;
 pub mod prim;
+#[cfg(any(feature = "std", verus_keep_ghost))]
 pub mod exec;
 pub mod verifier;
 pub mod sound;

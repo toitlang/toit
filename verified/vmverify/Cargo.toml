@@ -29,17 +29,26 @@ crate-type = ["staticlib", "rlib"]
 [[bin]]
 name = "toit_vmverify_canonical"
 path = "src/bin/toit_vmverify_canonical.rs"
+required-features = ["std"]
 
 [[bin]]
 name = "toit_vmverify_mem"
 path = "src/bin/toit_vmverify_mem.rs"
+required-features = ["std"]
 
 [[bin]]
 name = "toit_vmverify_fuzz"
 path = "src/bin/toit_vmverify_fuzz.rs"
+required-features = ["std"]
+
+[features]
+# `std`: hosts (panics are caught and reject, phase times, counting
+# allocator, test support). Without it: `no_std` + `alloc` for devices.
+default = ["std"]
+std = ["toit_spec/std"]
 
 [dependencies]
-toit_spec = { path = "../spec" }
+toit_spec = { path = "../spec", default-features = false }
 toit_verified_core = { path = "../core" }
 
 # This crate's profiles are the ones used when the VM's static library is

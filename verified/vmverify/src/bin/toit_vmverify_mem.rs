@@ -28,7 +28,7 @@ use std::time::Instant;
 use toit_spec::interp::loader;
 use toit_spec::v2::check::{self, MapOracle, XMaps};
 use toit_spec::v2::{heap_check, infer, vprog};
-use toit_vmverify::alloc;
+use toit_vmverify::counting;
 
 /// The oracle, recording the largest maps it handed out.
 struct Sized<'a> {
@@ -79,20 +79,20 @@ fn main() {
         let mut line = String::new();
         for _ in 0..runs {
             let pa = prim_arity.clone();
-            let base = alloc::start_peak();
+            let base = counting::start_peak();
             let t0 = Instant::now();
             let heap_ok = heap_check::check_heap(p, &loaded.heap).is_ok();
-            if std::env::var("MEM_DEBUG").is_ok() { eprintln!("heap check peak {}", alloc::peak_since(base)); }
+            if std::env::var("MEM_DEBUG").is_ok() { eprintln!("heap check peak {}", counting::peak_since(base)); }
             let global = infer::infer_global(p, loaded.globals.len() as u64, pa, trusted);
-            let global_bytes = alloc::current().saturating_sub(base);
-            let peak1 = alloc::peak_since(base);
-            let base2 = alloc::start_peak();
+            let global_bytes = counting::current().saturating_sub(base);
+            let peak1 = counting::peak_since(base);
+            let base2 = counting::start_peak();
             let t1 = Instant::now();
             let mut o = Sized { inner: infer::Oracle::new(p, &global, trusted), max_maps: 0, max_method: 0, ns: 0 };
             let (ok, _) = check::verify(p, &global.g, &mut o, trusted);
             let loaded_ok = heap_check::x_loaded_ok(p, global.g.global_count, &loaded.heap, &loaded.globals);
             let t2 = Instant::now();
-            let peak2 = alloc::peak_since(base2);
+            let peak2 = counting::peak_since(base2);
             let peak = peak1.max(base2 - base + peak2);
             if std::env::var("MEM_DEBUG").is_ok() {
                 let g = &global.g;

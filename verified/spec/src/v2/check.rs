@@ -28,6 +28,7 @@
 //! `instr_ok` because no map can equal such a successor.
 
 use vstd::prelude::*;
+use alloc::vec::Vec;
 use crate::types::*;
 use crate::v2::types::*;
 use crate::v2::spec::*;

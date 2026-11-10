@@ -24,6 +24,7 @@
 //! words the rejection.
 
 use vstd::prelude::*;
+use alloc::vec::Vec;
 use crate::types::*;
 use crate::v2::types::*;
 use crate::v2::sound::*;
@@ -152,13 +153,13 @@ pub fn x_loaded_ok(p: &VProgram, global_count: u64, heap: &Vec<ExecObj>, globals
 /// `toit_spec_verify`'s early check of the heap part of the loader's
 /// contract, for the rejection message; the verdict uses `x_loaded_ok`.
 #[cfg(not(verus_keep_ghost))]
-pub fn check_heap(p: &VProgram, heap: &Vec<ExecObj>) -> Result<(), String> {
+pub fn check_heap(p: &VProgram, heap: &Vec<ExecObj>) -> Result<(), alloc::string::String> {
     if !crate::v2::check::x_wf_program2(p) {
-        return Err("malformed program tables".to_string());
+        return Err(alloc::string::String::from("malformed program tables"));
     }
     match x_loaded_heap_ok(p, heap) {
-        Err(i) if i == u64::MAX => Err("heap too large, or a bad reference in the roots or literals".to_string()),
-        Err(i) => Err(format!("object {} is malformed, a machine object or dangling", i)),
+        Err(i) if i == u64::MAX => Err(alloc::string::String::from("heap too large, or a bad reference in the roots or literals")),
+        Err(i) => Err(alloc::format!("object {} is malformed, a machine object or dangling", i)),
         Ok(()) => Ok(()),
     }
 }

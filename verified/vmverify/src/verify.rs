@@ -32,8 +32,10 @@
 //! unverified `check_heap` only gives an early, readable rejection.
 //! Everything after the verdict is diagnostics.
 
-use std::time::Instant;
+use alloc::format;
+use alloc::string::{String, ToString};
 use toit_spec::v2::check::{self, MapOracle, XMaps};
+use crate::clock::Clock;
 use toit_spec::v2::{heap_check, infer};
 use crate::from_vm::Converted;
 
@@ -68,10 +70,6 @@ impl Verdict {
     }
 }
 
-fn ns(t: Instant) -> u64 {
-    t.elapsed().as_nanos() as u64
-}
-
 /// The inference's oracle, timed.
 struct Timed<'a> {
     inner: infer::Oracle<'a>,
@@ -80,9 +78,9 @@ struct Timed<'a> {
 
 impl<'a> MapOracle for Timed<'a> {
     fn method_maps(&mut self, m: usize) -> XMaps {
-        let t = Instant::now();
+        let t = Clock::start();
         let r = self.inner.method_maps(m);
-        self.ns += ns(t);
+        self.ns += t.ns();
         r
     }
 }
@@ -94,28 +92,28 @@ pub fn verify(c: &Converted, trusted: bool) -> Verdict {
     if !check::x_wf_program2(p) {
         return Verdict::new(TABLES, "table sizes or method bounds (wf_program2)".into());
     }
-    let t = Instant::now();
+    let t = Clock::start();
     if let Err(e) = heap_check::check_heap(p, &c.heap) {
         let mut v = Verdict::new(HEAP, e);
-        v.heap_ns = ns(t);
+        v.heap_ns = t.ns();
         return v;
     }
-    let mut heap_ns = ns(t);
-    let t = Instant::now();
+    let mut heap_ns = t.ns();
+    let t = Clock::start();
     let mut global = infer::infer_global(p, c.globals.len() as u64, c.prim_arity.clone(), trusted);
-    let mut infer_ns = ns(t);
+    let mut infer_ns = t.ns();
     // The trusted fields of the certificate.
     global.g.global_count = c.globals.len() as u64;
     global.g.prim_arity = c.prim_arity.clone();
-    let t = Instant::now();
+    let t = Clock::start();
     let mut oracle = Timed { inner: infer::Oracle::new(p, &global, trusted), ns: 0 };
     let (ok, _) = check::verify(p, &global.g, &mut oracle, trusted);
     let at = oracle.inner.last;
-    let check_ns = ns(t).saturating_sub(oracle.ns);
+    let check_ns = t.ns().saturating_sub(oracle.ns);
     infer_ns += oracle.ns;
-    let t = Instant::now();
+    let t = Clock::start();
     let loaded_ok = heap_check::x_loaded_ok(p, global.g.global_count, &c.heap, &c.globals);
-    heap_ns += ns(t);
+    heap_ns += t.ns();
     let mut v = if !ok {
         diagnose(c, &global, at, trusted)
     } else if !loaded_ok {

@@ -38,7 +38,8 @@
 //! toit_spec::interp::loader) is tested by tests/differential.py on every
 //! suite program (canonical.rs).
 
-use std::collections::HashMap;
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 use toit_spec::types::{ExecBody, ExecObj, Value};
 use toit_spec::v2::vprog::{VMethod, VProgram};
 use toit_verified_core::ffi::{ProgramTables, V2Method};
@@ -125,7 +126,7 @@ pub struct PrimitiveArities<'a> {
 /// # Safety
 /// `ptr..ptr+len` must be readable and unchanged while the slice lives.
 unsafe fn table<'a, T>(ptr: *const T, len: usize) -> &'a [T] {
-    if len == 0 { &[] } else { std::slice::from_raw_parts(ptr, len) }
+    if len == 0 { &[] } else { core::slice::from_raw_parts(ptr, len) }
 }
 
 /// The program image: all reads of objects go through it.
@@ -165,7 +166,7 @@ struct Converter<'a> {
     image: Image,
     class_bits: &'a [u16],
     /// Untagged address -> object id (index into `queue`).
-    ids: HashMap<usize, usize>,
+    ids: BTreeMap<usize, usize>,
     /// Untagged addresses, in id order.
     queue: Vec<usize>,
 }
@@ -286,7 +287,7 @@ pub unsafe fn convert<'a>(p: &ProgramTables, prims: &PrimitiveArities) -> Result
     }
     let methods: &[V2Method] = table(p.methods, p.methods_length);
     // SAFETY: same layout (checked above).
-    let methods: &'a [VMethod] = std::slice::from_raw_parts(methods.as_ptr() as *const VMethod, methods.len());
+    let methods: &'a [VMethod] = core::slice::from_raw_parts(methods.as_ptr() as *const VMethod, methods.len());
     let builtin_words: &[usize] = table(p.builtin_class_ids, BUILTIN_COUNT);
     let mut builtin = Vec::with_capacity(BUILTIN_COUNT);
     for (i, &w) in builtin_words.iter().enumerate() {
@@ -303,7 +304,7 @@ pub unsafe fn convert<'a>(p: &ProgramTables, prims: &PrimitiveArities) -> Result
                 .ok_or(Malformed { what: "program image wraps around", detail: 0 })?,
         },
         class_bits: table(p.class_bits, p.class_bits_length),
-        ids: HashMap::new(),
+        ids: BTreeMap::new(),
         queue: Vec::new(),
     };
     // The order of the dump: roots, globals, literals.

@@ -26,6 +26,9 @@
 //! See DESIGN.md.
 
 #![allow(unused_imports)]
+// Without the `std` feature: the verifier only (no reference interpreter),
+// for devices (`no_std` + `alloc`).
+#![cfg_attr(not(any(feature = "std", verus_keep_ghost)), no_std)]
 
 extern crate alloc;
 
@@ -35,6 +38,10 @@ pub mod spec_common;
 pub mod spec_helpers;
 pub mod spec_step;
 pub mod spec_prim;
+// Format 1 exec steps and the format-2 exec step use the reference
+// interpreter's float helpers: std only.
+#[cfg(any(feature = "std", verus_keep_ghost))]
 pub mod exec_step;
 pub mod v2;
+#[cfg(any(feature = "std", verus_keep_ghost))]
 pub mod interp;

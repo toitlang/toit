@@ -28,6 +28,7 @@
 //! the VM.
 
 use vstd::prelude::*;
+use alloc::vec::Vec;
 use crate::types::*;
 use crate::v2::types::*;
 

@@ -14,7 +14,7 @@
 // directory of this repository.
 
 //! A counting global allocator: the high-water mark of the Rust heap during
-//! a verification (`VerifyResult::peak_bytes`). One relaxed atomic add per
+//! a verification (`VerifyResult::peak_bytes`). Host builds only (`std`). One relaxed atomic add per
 //! allocation and free; the verified core does not allocate on its paths.
 
 use std::alloc::{GlobalAlloc, Layout, System};
