@@ -59,7 +59,8 @@ void TimerEventSource::arm(Timer* timer, int64_t timeout) {
 
   // Get current timeout, if any.
   auto head = timers_.first();
-  int64_t old_timeout = head ? head->timeout() : timeout + 1;
+  // Avoid computing 'timeout + 1', which overflows for the maximal timeout.
+  bool should_signal = head == null || timeout < head->timeout();
 
   // Remove in case it was already enqueued.
   if (is_linked) {
@@ -72,7 +73,7 @@ void TimerEventSource::arm(Timer* timer, int64_t timeout) {
 
   timers_.insert_before(timer, [&timer](Timer* t) { return timer->timeout() < t->timeout(); });
 
-  if (timeout < old_timeout) {
+  if (should_signal) {
     // Signal if new timeout is less the the old.
     // This means we don't re-arm even if the first timer
     // was removed. This simply means we avoid waking up NOW, but instead
@@ -111,8 +112,10 @@ void TimerEventSource::entry() {
     int64 time = OS::get_system_time();  // Must match Time.monotonic-us.
     do {
       Timer* next = timers_.first();
-      int64 delay_us = next->timeout() - time;
-      if (delay_us > 0) {
+      // The timeout comes from user code and can be any int64, so we
+      // compare before subtracting to avoid overflowing.
+      if (next->timeout() > time) {
+        int64 delay_us = next->timeout() - time;
         // If we've already dispatched timers, we want
         // to get a better timestamp before we compute
         // the effective delay. In that case, we avoid

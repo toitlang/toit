@@ -165,7 +165,11 @@ class OS {
   static ConditionVariable* allocate_condition_variable(Mutex* mutex);
   static void wait(ConditionVariable* condition_variable);
   // Returns false if a timeout occurs.
+  // Waits longer than MAX_WAIT_US are shortened to MAX_WAIT_US. Callers
+  // must already handle spurious wakeups, so they see a shortened wait as
+  // an early timeout and wait again.
   static bool wait_us(ConditionVariable* condition_variable, int64 us);
+  static const int64 MAX_WAIT_US = 365LL * 24 * 60 * 60 * 1000000;  // A year.
   static void signal(ConditionVariable* condition_variable);
   static void signal_all(ConditionVariable* condition_variable);
   static void dispose(ConditionVariable* condition_variable);

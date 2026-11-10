@@ -74,6 +74,9 @@ class ConditionVariable {
 
   bool wait_us(int64 us) {
     if (us <= 0LL) return false;
+    // Avoid overflowing the nanosecond computation below. The delay can
+    // come from user code (for example a timer deadline of int.MAX).
+    if (us > OS::MAX_WAIT_US) us = OS::MAX_WAIT_US;
 
     // TODO: We really should use monotonic time here.
     struct timespec deadline = { 0, };
