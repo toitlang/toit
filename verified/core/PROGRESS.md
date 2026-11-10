@@ -21,7 +21,7 @@ OBLIGATIONS.md. Trusted base: TRUSTED.md.
 - Performance pass 1 (obvious wins): inlined fast paths, one-comparison
   dispatch prologue, `cold!` trampolines keeping the machine in registers.
 - Verus: the stack, local, constant, global and branch handlers have
-  functional contracts (124 verified, 0 errors); `verified/check.sh`
+  functional contracts (126 verified, 0 errors); `verified/check.sh`
   passes; the end-to-end obligation is stated (unproven).
 - Layout check covers every constant the core assumes (237 + behavioral).
 - Fuzz harness (verified/core/fuzz) with `toit_spec_verify` as filter and
@@ -54,3 +54,21 @@ OBLIGATIONS.md. Trusted base: TRUSTED.md.
   `SmallInteger.repeat` intrinsic makes `repeat` invisible in profiles;
   in format 2 it is ordinary bytecode and shows up.
 - version, reader, udp-reuse-port-test: environmental, as in format 1.
+- services-network-test fails intermittently (1 in 3 to 1 in 10 runs):
+  `ServiceProvider.uninstall` iterates `_clients_` with `Set.do` while
+  the close callbacks remove clients (OUT_OF_BOUNDS in `List_.[]`); a
+  task interleaving format 1 does not hit with its preemption timing. A
+  library race, not a core bug (not investigated further).
+
+## Fuzz findings (verified/core/fuzz)
+
+- No crash: 14,537 mutants in 10 minutes (seed 1, 11 seeds), 2,042 of
+  them accepted by `toit_spec_verify` and run untrusted on the ASan build.
+- 14 accepted mutants are refused by the VM's loader: the loader checks
+  branch targets of every instruction, the verifier only of reachable
+  ones (mutated unreachable code). Harmless, but the loader and the
+  verifier should agree once `check::verify` runs in the VM.
+- 1 accepted mutant reached a stuck state in the core (run 1; not kept:
+  the harness kept only crashes then). Either a gap between the verifier
+  and the core's checks or a core check stricter than the spec; the
+  harness now keeps such mutants (build/fuzz/stuck-*.snapshot). Open.
