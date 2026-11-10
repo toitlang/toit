@@ -39,8 +39,9 @@ OBLIGATIONS.md. Trusted base: TRUSTED.md.
    code moves to the core only after this.
 2. Proofs: the refinement to `spec::step` (abstraction function, R1-R4),
    then the call, try/unwind and field families (OBLIGATIONS.md).
-3. Link `check::verify` into the VM for untrusted format-2 launches
-   (today the C++ loader checks stand in).
+3. Done (branch vm/verifier-link): `check::verify` runs in the VM at every
+   untrusted format-2 launch (verified/vmverify); the C++ loader only
+   decodes the method headers.
 4. Port the allowed primitives to Rust with `prim_heap_ok`.
 5. Spec change request R1 (unwinding without a heap token).
 

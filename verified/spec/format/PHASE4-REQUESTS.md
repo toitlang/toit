@@ -112,3 +112,20 @@ heap check that replaces heap_check.rs (R4), so that the glue only calls
 proven code. vmverify builds the heap from VM memory with the same
 `Loaded` type, so a verified check with the signature
 `check_heap(&Loaded) -> Result<(), String>` (or a bool) drops in.
+
+## R8. Certificate memory (vm/verifier-link)
+
+Problem: the VM now verifies at every untrusted launch, and Phase 5 must
+verify on the device at install time. `XCert::maps` holds one
+`Option<Vec<XKind>>` (24 bytes) per byte of every method body plus a
+vector of kinds at every reachable instruction start, for the whole
+program at once. Measured high-water marks of the verification
+(verified/vmverify/README.md, "Cost"): 3.6 MB for a 25 KB hello world,
+24 MB for the toit CLI (323 KB of bytecodes), i.e. 75 to 150 bytes per
+bytecode byte. The inference takes 85 to 90 % of the time.
+
+Request: a certificate representation that is linear in the number of
+instruction starts rather than bytes (a sparse map, or offsets sorted per
+method), with interned or shared kind vectors (consecutive maps mostly
+differ in the top slots). Keeping `accepts` unchanged and only changing
+`XCert` and its view should leave the proof's statement intact.

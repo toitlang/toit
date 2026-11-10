@@ -22,7 +22,9 @@
 # format-2 programs).
 #
 # Targets:
-#   toit_verified_core         imported static library (built with cargo).
+#   toit_verified_core         imported static library (built with cargo):
+#                              verified/vmverify, which contains the core and
+#                              the format-2 verifier (vmverify/README.md).
 #   toit_verified_core_layout  runs the layout contract check; toit_vm
 #                              depends on it, so a mismatch fails the build.
 #   verified_core_verify       runs `cargo verus verify` (not part of ALL;

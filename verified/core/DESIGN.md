@@ -13,18 +13,19 @@ OBLIGATIONS.md. Trusted base: TRUSTED.md and verified/TRUSTED.toml.
   (`Program::is_format2`). The compiler emits format 2 with
   `-Xbytecode_format=2`, with `TOIT_BYTECODE_FORMAT=2` in the environment
   (test runs), and always for `toit.run --untrusted` (source programs).
-- When a process group is created for a format-2 program,
-  `V2MethodTable::compute` (src/interpreter_v2.cc) decodes the method
-  headers (note 15) into a table of `V2Method` and checks it: dispatch
-  entries are method indices and inside the receiver range of their
-  method, every body ends in a terminator and no instruction crosses its
-  end, opcodes are valid, this-field accesses are inside the fields of
-  every class of the receiver range, branch targets are inside the method
-  (forward branches non-zero), and, for untrusted programs, no HALT 2/3.
-  A failing program gets no group (`INVALID_SNAPSHOT` /
-  `VERIFICATION_FAILED`). For format 2, `Verifier::verify` and
-  `verify_for_policy` run these checks (the verified format-2 verifier,
-  `check::verify` of verified/spec, is not linked into the VM yet: open).
+- `V2MethodTable::compute` (src/interpreter_v2.cc) decodes the method
+  headers (note 15) into a table of `V2Method`; it checks only the header
+  encoding and that every body lies inside the bytecodes
+  (`entry <= end <= bytecodes.len()`, TRUSTED.md V3). Malformed headers:
+  `INVALID_SNAPSHOT`.
+- Untrusted launches decode the table once, run the verified structural
+  verifier on it (verified/vmverify: `check::verify` and the heap check,
+  untrusted rules, on the abstract program built from the very tables
+  this section's `toit_v2_program` describes) and hand that table to the
+  process group; a rejected program never runs (`VERIFICATION_FAILED`,
+  the reason on stderr). Trusted format-2 programs are verified only with
+  `-Xverify`/`TOIT_VERIFY` (trusted rules); unverified, they rely on the
+  core's run-time checks of every stuck state.
 - `Interpreter::run` and `prepare_process` hand format-2 processes to
   `run_v2` / `prepare_process_v2`; the scheduler is unchanged (it calls
   `Interpreter::run` as before). `load_stack`/`store_stack` are no-ops for
@@ -172,8 +173,9 @@ Scripts: build/bench/ir.sh (instruction counts), build/bench/hot.sh
   interpreter can run (run_suite.py status `pass` or `steplimit`) runs
   untrusted in format 2 and trusted in format 1; stdout and exit code
   must match.
-- verified/core/fuzz/fuzz.py: mutates format-2 snapshots, keeps what
-  `toit_spec_verify` accepts and runs it untrusted on an ASan build.
+- verified/core/fuzz/fuzz.py: mutates format-2 snapshots, launches each
+  untrusted on an ASan build; the VM's launch-time verifier is the
+  filter (`--filter=spec` uses `toit_spec_verify` on a dump instead).
 - The whole suite with `TOIT_BYTECODE_FORMAT=2` (not required any more,
   still useful): see PROGRESS.md for the current failures and why.
 - `TOIT_V2_VALIDATE=1` (debugging aid) checks every object-stack slot of
