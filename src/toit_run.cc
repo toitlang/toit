@@ -46,6 +46,7 @@ static void print_usage(int exit_code) {
   printf("toit\n");
   printf("  [-h] [--help]                        // This help message.\n");
   printf("  [--version]                          // Prints version information.\n");
+  printf("  [--untrusted]                        // Run the program as an untrusted (sandboxed) container.\n");
   printf("  [-O<level>]                          // Set optimization level (default = 1).\n");
   printf("  [-X<flag>]*                          // Provide a compiler flag.\n");
   printf("  [--dependency-file <file>]           // Write a dependency file ('-' for stdout).\n");
@@ -101,6 +102,15 @@ int main(int argc, char **argv) {
     strcpy(boot_bundle_path, argv[2]);
     argc -= 2;
     argv += 2;
+  }
+
+  // Run the application as an untrusted (sandboxed) container. Equivalent
+  // to -Xuntrusted.
+  if (argc >= 2 && strcmp(argv[1], "--untrusted") == 0) {
+    Flags::untrusted = true;
+    argc -= 1;
+    argv += 1;
+    if (argc < 2) print_usage(1);
   }
 
   // Help must be used on its own.
