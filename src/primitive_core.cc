@@ -2369,6 +2369,8 @@ PRIMITIVE(rebuild_hash_index) {
   // The probing below only stays in bounds and terminates for a non-empty
   // power-of-two index array.
   if (new_length == 0 || !Utils::is_power_of_two(new_length)) FAIL(INVALID_ARGUMENT);
+  // Arrays on the program heap are shared and read-only.
+  if (new_array->on_program_heap(process)) FAIL(PERMISSION_DENIED);
   word index_mask = new_length - 1;
   word length = old_array->length();
   for (word i = 0; i < length; i++) {
