@@ -195,6 +195,7 @@ pub proof fn lemma_div_neg(n: int, d: int)
 }
 
 /// Rust's division and remainder of integers are C's (`tdiv`, `trem`).
+#[verifier::spinoff_prover]
 pub proof fn lemma_rust_div(a: int, b: int)
     requires b != 0,
     ensures

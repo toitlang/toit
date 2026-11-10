@@ -202,6 +202,10 @@ impl Machine {
         &&& self.words() == enc_seq(addr, g.stack)
         &&& forall|i: int| 0 <= i < g.stack.len() ==> #[trigger] encodable(addr, g.stack[i])
         &&& g.frames.len() > 0
+        // The finally records (format note 17) are not represented in the
+        // frame records yet: the core still keeps a pending unwinding in a
+        // heap token (machine.rs), whose paths are not verified.
+        &&& g.fins.len() < 0x4000_0000
         &&& self.ftop == FRAME_WORDS * g.frames.len()
         &&& frames_rel(self.mem@, g.frames, g.tries)
         &&& self.bci == g.bci
@@ -241,6 +245,7 @@ impl Machine {
         &&& g1.heap == g0.heap
         &&& g1.frames == g0.frames
         &&& g1.tries == g0.tries
+        &&& g1.fins == g0.fins
         &&& m.words() == enc_seq(addr, g1.stack)
         &&& forall|i: int| 0 <= i < g1.stack.len() ==> #[trigger] encodable(addr, g1.stack[i])
         &&& m.bci == g1.bci

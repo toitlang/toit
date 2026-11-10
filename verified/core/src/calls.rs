@@ -119,6 +119,16 @@ pub proof fn lemma_frames_pop(mem: Seq<usize>, frames: Seq<Frame>, tries: Seq<Ha
     assert(FRAME_WORDS * f2.len() <= mem.len());
 }
 
+/// Cutting finally records never adds any.
+pub proof fn lemma_cut_fins_len(fins: Seq<toit_spec::types::Fin>, g: int, lim: int)
+    ensures sp::cut_fins(fins, g, lim).len() <= fins.len(),
+    decreases fins.len(),
+{
+    if fins.len() > 0 && (fins.last().frame as int > g || (fins.last().frame as int == g && fins.last().height as int >= lim)) {
+        lemma_cut_fins_len(fins.drop_last(), g, lim);
+    }
+}
+
 /// Handlers of distinct frames below `m`: at most `m` of them.
 pub proof fn lemma_tries_len(tries: Seq<Handler>, m: int)
     requires
@@ -398,6 +408,7 @@ impl Machine {
         let ghost g1 = State2 {
             stack: g0.stack.subrange(0, sp::top(g0).base as int).push(v),
             frames: g0.frames.drop_last(),
+            fins: sp::fins_popped(g0),
             bci: sp::top(g0).ret,
             ..g0
         };
@@ -409,6 +420,7 @@ impl Machine {
             assert(sp::base(g1) == g0.frames[n - 2].base);
             assert(toit_spec::v2::sound::base_step(g0, n - 2));
             lemma_frames_pop(m0.mem@, g0.frames, g0.tries);
+            lemma_cut_fins_len(g0.fins, sp::top_index(g0), 0);
             lemma_frames_rel_write(m0.mem@, t as int, w, g1.frames, g1.tries);
             let b = sp::top(g0).base as int;
             assert(self.words() =~= m0.words().subrange(0, b).push(w));
