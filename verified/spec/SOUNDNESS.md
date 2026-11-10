@@ -498,7 +498,7 @@ the streaming checker (R8, branch spec/verifier-memory):
   Phase 4: 37.6 ms in total (load 1.6 ms, inference 33.0 ms, check
   4.6 ms); the largest (toit) 198 ms (not remeasured: the machines were
   loaded during this run).
-* `tests/mutation_campaign.py --count 18000 --seed 3` (streaming checker;
+* `verified/tools/mutation_campaign.toit --count 18000 --seed 3` (streaming checker;
   results in `tests/mutation-results.txt`): 18,000 single-byte and
   single-operand mutants of 60 programs (8,982 random instruction bytes,
   7,197 operands, 1,821 method-header bytes), verified with `trusted =
