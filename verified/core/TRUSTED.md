@@ -164,8 +164,8 @@ nothing about the VM; it is wrong only if Verus' proof of the caller is.
 
 verified/spec/src/v2/spec.rs is the definition the handlers follow. That it
 matches the format-1 VM's observable behavior is validated by the
-differential tests of verified/spec (run_suite.py) and by
-verified/core/tests/untrusted_suite.py, not proven. Known differences of
+differential tests of verified/spec (run_suite.toit) and by
+verified/tools/untrusted_suite.toit, not proven. Known differences of
 the core from the spec, all outside the spec's model:
 
 - (Now spec transitions, `prim::resource_throw`.) Allocation can fail:

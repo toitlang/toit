@@ -17,3 +17,5 @@ include(toit.cmake)
 
 toit_project(lsp "${CMAKE_CURRENT_LIST_DIR}/lsp/server")
 toit_project(tools "${CMAKE_CURRENT_LIST_DIR}")
+# The drivers and the escape-hatch audit of verified/ (verified/tools).
+toit_project(verified_tools "${CMAKE_SOURCE_DIR}/verified/tools")

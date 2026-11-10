@@ -1,0 +1,6 @@
+error: assume not allowed with --no-cheating
+  --> src/lib.rs:54:5
+error: rejected without a hatch the scanner knows (--no-cheating)
+  --> src/lib.rs:46:1
+error[E0001]: with a code and a path with spaces (--no-cheating)
+  --> src/my file.rs:3:1

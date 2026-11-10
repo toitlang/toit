@@ -79,9 +79,9 @@ or the entry offsets (4 bytes per method) and decodes a header on use.
 Arity and flags stay at fixed offsets.
 
 Size, three system snapshots (`-O2`, as the build embeds them) and ten
-test programs, measured with `tests/code_size.py`. Bytecodes include the
-headers and the 4-byte tag; "snapshot" is the program snapshot (the
-`snapshot` member of the bundle, without the source map). Format 1 and
+test programs, measured with `verified/tools/code_size.toit`. Bytecodes
+include the headers and the 4-byte tag; "snapshot" is the program snapshot
+(the `snapshot` member of the bundle, without the source map). Format 1 and
 "after" were measured on the same tree; "before" (16-byte headers) on the
 tree before this change, whose `tools/snapshot.toit` had two methods
 fewer (329 bytes of the `toit` bodies).
@@ -111,6 +111,6 @@ small methods of many classes, each with a selector and a receiver range;
 it is +1.1 %.
 
 Over the 272 tests of the suite that run in both formats
-(`run_suite.py --format both`): bytecodes 8.04 MB in format 1, 9.76 MB
+(`run_suite.toit --format both`): bytecodes 8.04 MB in format 1, 9.76 MB
 before (+21.4 %), 7.46 MB after (-7.3 %); headers 0.89 MB, 3.43 MB, 1.12
 MB.

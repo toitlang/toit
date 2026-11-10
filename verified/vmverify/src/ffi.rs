@@ -143,8 +143,8 @@ unsafe fn run(input: &VerifyInput) -> (verify::Verdict, usize, u64) {
 /// Writes the canonical form (canonical.rs) of the program described by
 /// `input` to the file `path`. Returns 0 on success, 1 if the memory could
 /// not be converted, 2 if the file could not be written. Test support for
-/// tests/differential.py. A path ending in `.tables` gets the raw input
-/// instead (tables.rs, for the fuzz driver).
+/// verified/tools/vmverify_differential.toit. A path ending in `.tables`
+/// gets the raw input instead (tables.rs, for the fuzz driver).
 ///
 /// # Safety
 /// As `toit_vmverify_verify`; `path` must be a NUL-terminated string.

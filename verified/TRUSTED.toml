@@ -15,7 +15,7 @@
 
 # Allowlist of Verus escape hatches in verified/core and verified/spec:
 # every place where code is trusted instead of proven. Checked by
-# verified/check.sh (verified/tools/trust_audit.py); unlisted occurrences,
+# verified/check.sh (verified/tools/trust_audit.toit); unlisted occurrences,
 # count changes and stale entries fail the check. Regenerate the skeleton
 # with `verified/check.sh --update-allowlist` (keeps justifications, new
 # entries get TODO, which fails until replaced). This list must only shrink.
@@ -1878,7 +1878,7 @@ file = "Cargo.toml"
 item = "metadata.verus.verify"
 kind = "cargo_metadata"
 count = 1
-justification = "Plain Rust crate, not run through Verus: the trusted conversion from VM memory and the glue around the verified check::verify (vmverify/README.md); kept small and covered by tests/differential.py."
+justification = "Plain Rust crate, not run through Verus: the trusted conversion from VM memory and the glue around the verified check::verify (vmverify/README.md); kept small and covered by verified/tools/vmverify_differential.toit."
 
 [[trusted]]
 crate = "vmverify"
@@ -1886,7 +1886,7 @@ file = "src/bin/toit_vmverify_canonical.rs"
 item = "*"
 kind = "plain_rust_file"
 count = 1
-justification = "Test tool (dump side of tests/differential.py): canonical form of a dump read with the reference loader; not linked into the VM."
+justification = "Test tool (dump side of verified/tools/vmverify_differential.toit): canonical form of a dump read with the reference loader; not linked into the VM."
 
 [[trusted]]
 crate = "vmverify"
@@ -2038,7 +2038,7 @@ file = "src/from_vm.rs"
 item = "*"
 kind = "plain_rust_file"
 count = 1
-justification = "TRUSTED: builds the abstract program and heap from the tables the core executes (the tables borrowed as slices, plus a bounds-checked breadth-first walk of the program image); equal to the dump path's on every suite program (tests/differential.py)."
+justification = "TRUSTED: builds the abstract program and heap from the tables the core executes (the tables borrowed as slices, plus a bounds-checked breadth-first walk of the program image); equal to the dump path's on every suite program (verified/tools/vmverify_differential.toit)."
 
 [[trusted]]
 crate = "vmverify"

@@ -14,9 +14,9 @@
 // directory of this repository.
 
 //! A canonical text form of an abstract program, its heap and globals, for
-//! the differential test (tests/differential.py) of the two ways to build
-//! them: from VM memory (`from_vm`) and from a dump (`toit_spec::interp::
-//! loader`). Test code, not on the verification path.
+//! the differential test (verified/tools/vmverify_differential.toit) of the
+//! two ways to build them: from VM memory (`from_vm`) and from a dump
+//! (`toit_spec::interp::loader`). Test code, not on the verification path.
 //!
 //! Object ids are renumbered breadth first from the roots, the globals and
 //! the literals (in that order), so the numbering and objects nothing

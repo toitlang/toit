@@ -126,9 +126,10 @@ The heap check is verified (`x_loaded_ok_stream`; `x_loaded_ok` for a heap
 in memory is proven equal to `loaded_ok`, including the bound of 2^29
 objects).
 
-Correspondence with the dump path: `tests/differential.py` compiles every
-suite program in format 2 and compares the canonical form of the program
-built from VM memory (`toit.run --verify --emit-canonical`, which
+Correspondence with the dump path:
+`verified/tools/vmverify_differential.toit` compiles every suite program
+in format 2 and compares the canonical form of the program built from VM
+memory (`toit.run --verify --emit-canonical`, which
 converts every object with `collect_heap`) with the one the reference
 loader builds from `tools/spec_dump.toit`'s dump
 (`toit_vmverify_canonical`). Objects are renumbered breadth first from the
@@ -201,10 +202,12 @@ unwinding) and the unwind tables of `panic = "unwind"`.
 
 ## End-to-end fuzzing with the launch path
 
-`verified/core/fuzz/fuzz.py --filter=launch` (the default) launches each
-mutant as an untrusted container on the ASan build; the VM's own
+`verified/tools/core_fuzz.toit --filter=launch` (the default) launches
+each mutant as an untrusted container on the ASan build; the VM's own
 verifier decides. Runs on 2026-11-10 (16 jobs, logs in
-verified/core/fuzz/findings/launch-run-*):
+verified/core/fuzz/findings/launch-run-*; made with the earlier Python
+driver, whose mutants for a seed differ from the Toit driver's, so the
+seeds do not reproduce them; the findings' snapshots do):
 
 | Run | Build | Minutes | Mutants | Accepted and run | Crash | Stuck | Verifier panic (rejected) |
 |---|---|---|---|---|---|---|---|

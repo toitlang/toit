@@ -1,0 +1,9 @@
+# Fixture: no [package.metadata.verus] at all.
+
+[package]
+name = "fixture_vmverify"
+version = "0.1.0"
+
+[[bin]]
+name = "broken"
+path = "src/bin/broken.rs"

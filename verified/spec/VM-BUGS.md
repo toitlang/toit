@@ -1,7 +1,7 @@
 # C++ VM findings from the spec validation
 
 Phase 2 validation of the executable spec against the C++ VM
-(`tests/run_suite.py`, `tests/compare_trace.py`, see DESIGN.md
+(`verified/tools/run_suite.toit`, `verified/tools/compare_trace.toit`, see DESIGN.md
 "Validation at scale"). Each entry: where, what, how to reproduce, and a
 suggested fix. Entries are for another agent to turn into upstream PRs.
 
@@ -177,7 +177,7 @@ https://github.com/toitlang/toit/pull/3376.
   instances in the program heap (checked on the dumps of the 414 test programs that compile); the program-heap write guard of Phase 1 should cover the path.
 * The debug VM's `-Xtrace` output does not say which process a line
   belongs to, and preemption switches processes without a marker line.
-  `tests/compare_trace.py` works around it by forcing a single scheduler
-  thread (`get_nprocs` preloaded to 1) and resynchronizing on the
+  `verified/tools/compare_trace.toit` works around it by forcing a single
+  scheduler thread (`get_nprocs` preloaded to 1) and resynchronizing on the
   reference interpreter's trace. A process id in the trace line would
   make the comparison exact.

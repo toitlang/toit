@@ -468,12 +468,12 @@ protocol (core requests R7, R6, S1; 2026-11-10, branch
 spec/raise-and-resources): `verified/check.sh --tests` passed (Verus spec
 718 / core 328 verified, 0 errors; escape-hatch audit passed, no new
 allowlist entries; layout check; run_tests.sh 15/15; vmverify tests;
-sandbox ctests 93/93). `run_suite.py --format 2` over 428 tests: 274 pass
+sandbox ctests 93/93). `run_suite.toit --format 2` over 428 tests: 274 pass
 (the 273 below plus the new byte-content-depth-test), 137 unimplemented
 primitive, 8 step limit, 2 nondeterministic, 4 compile errors, 3
 primitive-oracle differences (events-primitive-group-test, and the new
 object-encoder-limits/-list tests: the interpreter does not emulate the
-program-oriented encoder). `verify_suite.py`: 443 sources, 439 accepted,
+program-oriented encoder). `verify_suite.toit`: 443 sources, 439 accepted,
 4 do not compile. System snapshots: all three accepted (toit 176, toit.run
 106, run-image 116 primitives; toit.run 36.5 ms). Mutation campaign
 (`--count 18000 --seed 3`): 11,100 mutants, 8,091 rejected (703 by the
@@ -485,7 +485,7 @@ Numbers after the Phase 4 changes (R5, R1, R4; 2026-11-10):
 Numbers after the Phase 4 changes (R5, R1, R4; 2026-11-10), updated for
 the streaming checker (R8, branch spec/verifier-memory):
 
-* `tests/verify_suite.py`: every program found by `run_suite.py` and the
+* `verified/tools/verify_suite.toit`: every program found by `run_suite.toit` and the
   spec test programs (443 sources) compiled with `-Xbytecode_format=2`:
   439 accepted (verdict `verify && x_loaded_ok`), 4 do not compile (the
   `-force` negative compiler tests); the same programs as with the
@@ -498,7 +498,7 @@ the streaming checker (R8, branch spec/verifier-memory):
   Phase 4: 37.6 ms in total (load 1.6 ms, inference 33.0 ms, check
   4.6 ms); the largest (toit) 198 ms (not remeasured: the machines were
   loaded during this run).
-* `tests/mutation_campaign.py --count 18000 --seed 3` (streaming checker;
+* `verified/tools/mutation_campaign.toit --count 18000 --seed 3` (streaming checker;
   results in `tests/mutation-results.txt`): 18,000 single-byte and
   single-operand mutants of 60 programs (8,982 random instruction bytes,
   7,197 operands, 1,821 method-header bytes), verified with `trusted =
@@ -513,7 +513,7 @@ the streaming checker (R8, branch spec/verifier-memory):
   `finally_records`, try/finally inside finally code, breaks out of
   finally code, the value slot) produce the C++ VM's output in format 1
   and format 2, 64- and 32-bit.
-* `run_suite.py --format 2` over 423 suite tests: 273 produce the C++
+* `run_suite.toit --format 2` over 423 suite tests: 273 produce the C++
   VM's output on the reference interpreter (64- and 32-bit; the 268 of
   the previous run among them), 135 use an unimplemented primitive, 8 hit
   the step limit, 2 are nondeterministic, 4 do not compile, and 1

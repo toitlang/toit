@@ -44,8 +44,9 @@ class V2Verifier {
   // As above, with a method table decoded for the call.
   static bool verify(Program* program, bool trusted);
 
-  // Test support (tests/differential.py): writes the canonical form of the
-  // abstract program the verifier builds from VM memory to [path].
+  // Test support (verified/tools/vmverify_differential.toit): writes the
+  // canonical form of the abstract program the verifier builds from VM
+  // memory to [path].
   static bool write_canonical(Program* program, const V2MethodTable* table, const char* path);
 };
 

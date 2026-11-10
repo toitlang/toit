@@ -1,0 +1,152 @@
+Escape-hatch audit: 6 files, 78 occurrences in 72 (item, kind) groups.
+  core  admit                               1
+  core  assume                              2
+  core  assume_new                          2
+  core  assume_specification                1
+  core  assume_termination                  2
+  core  axiom                               1
+  core  bodiless_spec                       1
+  core  cfg                                 7
+  core  exec_allows_no_decreases_clause     1
+  core  external                            1
+  core  external_body                       7
+  core  external_derive                     1
+  core  external_fn_specification           1
+  core  external_trait_extension            1
+  core  external_trait_specification        1
+  core  external_type_specification         1
+  core  ghost_wrapper                       1
+  core  global_layout                       1
+  core  inline_air                          1
+  core  inner_attr                          3
+  core  plain_rust_file                     1
+  core  plain_rust_item                     8
+  core  some_future_attribute               1
+  core  tracked_swap_primitive              1
+  core  tracked_take_option_primitive       1
+  core  truncate                            2
+  core  uninterp                            1
+  core  unsafe                              5
+  core  verus_attr                          1
+  core  verus_internal                      1
+  core  when_used_as_spec                   1
+  spec  assume                              1
+  spec  cargo_metadata                      4
+  spec  cfg                                 1
+  spec  external_body                       3
+  spec  plain_rust_item                     1
+  spec  unsafe                              2
+  vmverify cargo_metadata                      1
+  vmverify plain_rust_file                     2
+  vmverify unsafe                              3
+Cross-check with `verus --no-cheating` (core): 4 rejected locations, 2 not found by the scanner.
+Cross-check with `verus --no-cheating` (spec): 2 rejected locations, 1 not found by the scanner.
+Cross-check with `verus --no-cheating` (bogus): 2 rejected locations, 2 not found by the scanner.
+
+Allowlisted items not mentioned in the crate's trust document (report only) (64):
+  core/TRUSTED.md: does not mention `<module>` (cfg, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `<module>` (inner_attr, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `Alias` (plain_rust_item, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `COUNTER` (plain_rust_item, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `Derived` (external_derive, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `ExPoint` (external_type_specification, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `ExTrait` (external_trait_specification, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `Extended` (external_trait_extension, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `LIMIT` (plain_rust_item, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `assume_in_body` (admit, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `assume_in_body` (assume, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `assume_in_body` (assume_new, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `assume_in_body` (cfg, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `assume_in_body` (inline_air, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `assume_in_body` (truncate, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `assume_in_body` (unsafe, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `axiom_fact` (axiom, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `bodiless` (bodiless_spec, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `c_function` (plain_rust_item, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `cfg_attr_hatch` (cfg, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `cfg_attr_hatch` (external_body, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `cfg_on_a_string` (cfg, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `core::mem::swap::<u8>` (assume_specification, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `ex_spec` (external_fn_specification, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `extern` (plain_rust_item, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `hosted_only` (cfg, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `ignored` (external, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `inner::deeper::deep` (external_body, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `inner::in_module` (unsafe, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `internal_attr` (verus_internal, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `internal_primitives` (ghost_wrapper, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `internal_primitives` (tracked_swap_primitive, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `internal_primitives` (tracked_take_option_primitive, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `len` (when_used_as_spec, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `macro_rules!` (plain_rust_item, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `macro_rules!` (unsafe, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `no_decreases` (exec_allows_no_decreases_clause, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `old_style` (external_body, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `only_for_verus` (cfg, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `outside_verus` (external_body, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `outside_verus` (plain_rust_item, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `plain_rust_function` (plain_rust_item, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `plain_rust_function` (unsafe, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `size_of` (global_layout, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `truncating` (truncate, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `unknown_attribute_fails_closed` (some_future_attribute, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `verus_attr` (verus_attr, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `verus_spec_form` (assume_termination, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `verus_verify_form` (external_body, core/src/lib.rs)
+  core/TRUSTED.md: does not mention `*` (plain_rust_file, core/src/plain.rs)
+  core/TRUSTED.md: does not mention `plain_with_verus_cfg` (cfg, core/src/plain.rs)
+  spec/DESIGN.md: does not mention `metadata.verus.extra-args` (cargo_metadata, spec/Cargo.toml)
+  spec/DESIGN.md: does not mention `metadata.verus.rlimit` (cargo_metadata, spec/Cargo.toml)
+  spec/DESIGN.md: does not mention `metadata.verus.verify` (cargo_metadata, spec/Cargo.toml)
+  spec/DESIGN.md: does not mention `<module>` (cfg, spec/src/lib.rs)
+  spec/DESIGN.md: does not mention `count_changed` (external_body, spec/src/lib.rs)
+  spec/DESIGN.md: does not mention `count_changed` (unsafe, spec/src/lib.rs)
+  spec/DESIGN.md: does not mention `interp_helper` (plain_rust_item, spec/src/lib.rs)
+  spec/DESIGN.md: does not mention `no_justification` (external_body, spec/src/lib.rs)
+  spec/DESIGN.md: does not mention `rejected_and_flagged` (assume, spec/src/lib.rs)
+  vmverify/README.md: does not mention `metadata.verus.verify` (cargo_metadata, vmverify/Cargo.toml)
+  vmverify/README.md: does not mention `*` (plain_rust_file, vmverify/src/lib.rs)
+  vmverify/README.md: does not mention `safe_wrapper` (unsafe, vmverify/src/lib.rs)
+  vmverify/README.md: does not mention `*` (plain_rust_file, vmverify/src/tables.rs)
+
+Closed spec fns (report only) (2):
+  core/src/lib.rs:187 closed_one
+  core/src/sub/nested.rs:36 closed_nested
+
+Opaque spec fns (report only) (1):
+  core/src/lib.rs:192 opaque_one
+
+Proof fns with an empty body and a non-trivial ensures (report only) (3):
+  core/src/lib.rs:205 empty_with_ensures
+  core/src/lib.rs:216 lemma_helper
+  core/src/sub/nested.rs:31 nested_theorem
+
+rlimit overrides (report only) (1):
+  core/src/lib.rs:197 heavy_proof
+
+Parser warnings outside verus! (report only) (1):
+  PARSE     core/src/plain.rs:26: unrecognized item at `unrecognized_item_here`
+
+Theorems: core: 5 top-level proof fns, 2 exec entry points, spec: 2 top-level proof fns, 2 exec entry points, vmverify: 0 top-level proof fns, 0 exec entry points
+Wrote verified/THEOREMS.txt (CHANGED: review and commit it).
+
+ESCAPE-HATCH AUDIT FAILED (19):
+  PARSE     core/src/lib.rs:292: unrecognized item at `layout` (inside verus!)
+  PARSE     core/src/sub/nested.rs:23: unrecognized item at `unknown_inside_verus` (inside verus!)
+  PARSE     vmverify/src/unbalanced.rs: src/unbalanced.rs:19: unbalanced ')'
+  PARSE     vmverify/src/bin/broken.rs: line 19: unterminated string
+  TRUSTED.toml: duplicate entry ('spec', 'src/lib.rs', 'listed', 'external_body')
+  TRUSTED.toml: entry {'crate': 'spec', 'file': 'src/lib.rs', 'item': 'rejected_and_flagged', 'kind': 'assume', 'count': 1} lacks justification
+  NOJUSTIFY core/src/lib.rs:137: cfg in `hosted_only` has no justification
+  COUNT     spec/src/lib.rs:33: unsafe in `count_changed`: allowlist says 1, found 2 (lines 33, 34)
+  NOJUSTIFY spec/src/lib.rs:38: external_body in `no_justification` has no justification
+  COUNT     vmverify/src/lib.rs:20: unsafe in `raw_read`: allowlist says 1, found 1 (lines 20)
+  UNLISTED  vmverify/src/tables.rs:32: unsafe in `Reader::vec` (1x; lines 32)
+  STALE     core/src/sub/nested.rs: bodiless_spec in `closed_nested` is allowlisted but no longer occurs; remove the entry
+  STALE     core/src/gone.rs: external_body in `removed_fn` is allowlisted but no longer occurs; remove the entry
+  STALE     other/src/x.rs: unsafe in `x` is allowlisted but no longer occurs; remove the entry
+  --no-cheating: Verus rejects core/src/lib.rs:209 but the scanner found no escape hatch there (error: proof fn without a hatch, rejected anyway (--no-cheating))
+  --no-cheating: core/src/missing.rs:3: file not scanned (error: a file the audit did not scan (--no-cheating))
+  --no-cheating: Verus rejects spec/src/lib.rs:46 but the scanner found no escape hatch there (error: rejected without a hatch the scanner knows (--no-cheating))
+  --no-cheating: bogus/src/lib.rs:54: file not scanned (error: assume not allowed with --no-cheating)
+  --no-cheating: bogus/src/lib.rs:46: file not scanned (error: rejected without a hatch the scanner knows (--no-cheating))

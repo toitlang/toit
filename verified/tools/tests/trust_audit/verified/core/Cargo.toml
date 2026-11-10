@@ -1,0 +1,18 @@
+# Fixture of verified/tools/tests/trust_audit_test.sh.
+
+[package]
+name = "fixture_core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vstd = { version = "=0.0.0", default-features = false, features = ["alloc"] }
+
+[package.metadata.verus]
+verify = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(verus_only)',
+  'cfg(toit_vcore_hosted)',  # A comment inside an array.
+] }

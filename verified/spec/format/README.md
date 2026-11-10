@@ -65,7 +65,8 @@ collection falls back to the virtual call).
 ## Measured effect
 
 On the 268 tests of the repository's suite that run on the reference
-interpreter in both formats (`tests/measure.py target/suite-both.json`):
+interpreter in both formats (`toit run verified/tools/measure.toit --
+target/suite-both.json`):
 
 | | format 1 | format 2 | |
 |---|---|---|---|

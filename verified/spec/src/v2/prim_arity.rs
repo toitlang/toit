@@ -15,9 +15,10 @@
 
 //! The VM's primitive table: for each module (in module-number order) its
 //! name and its primitives' names and arities. Generated from
-//! `src/primitive.h` by `tests/gen_prim_arity.py`; `tests/prim_table.rs`
-//! checks that it is up to date. Part of the verifier's trusted input: a
-//! PRIMITIVE is only accepted in a method whose arity is the primitive's.
+//! `src/primitive.h` by `verified/tools/gen_prim_arity.toit`;
+//! `tests/prim_table.rs` checks that it is up to date. Part of the
+//! verifier's trusted input: a PRIMITIVE is only accepted in a method whose
+//! arity is the primitive's.
 
 pub const PRIM_TABLE: &[(&str, &[(&str, u8)])] = &[
     ("core", &[
