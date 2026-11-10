@@ -17,10 +17,7 @@ import monitor
 import system.services show ServiceProvider ServiceHandler ServiceResource
 import system.api.service-discovery show ServiceDiscoveryService
 import system.api.print show PrintService
-
-// Policy kind of sandboxed processes. Keep in sync with
-// PrimitivePolicy::Kind in src/primitive_policy.h.
-POLICY-UNTRUSTED_ /int ::= 2
+import system.api.containers show ContainerService
 
 /**
 Services with this tag that are provided by the system process are only
@@ -170,7 +167,7 @@ class SystemServiceManager extends ServiceProvider
     return [array-of-services_ services, resource-serialized]
 
   static is-untrusted_ pid/int -> bool:
-    return (process-policy_ pid) == POLICY-UNTRUSTED_
+    return (process-policy_ pid) == ContainerService.POLICY-UNTRUSTED
 
   // TODO(kasper): Consider keeping the list of
   // services in a form that is ready to send
@@ -255,7 +252,11 @@ class SandboxPrintServiceProvider extends ServiceProvider implements PrintServic
 
   print message/string -> none:
     if message.size > MAX-MESSAGE-SIZE:
-      message = message[..MAX-MESSAGE-SIZE] + "..."
+      // Cut at a character boundary. UTF-8 continuation bytes are
+      // 0b10xx_xxxx.
+      end := MAX-MESSAGE-SIZE
+      while end > 0 and (message.at --raw end) & 0xc0 == 0x80: end--
+      message = message[..end] + "..."
     write-on-stdout_ message true
 
 /**
@@ -268,6 +269,9 @@ process-policy_ pid/int -> int:
 /**
 Allows the process with the given $pid to send messages to $target, if the
   policy of $pid restricts messaging. Only the system process may call this.
+
+Throws QUOTA_EXCEEDED if the allowed-target set of the process' group is
+  full.
 */
 process-grant-send_ pid/int target/int -> bool:
   #primitive.core.process-grant-send

@@ -1963,6 +1963,14 @@ Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::Hash
       *action_return = kBail;
       return sp;
     }
+    // Objects on the program heap are shared and read-only. The Toit
+    // fallback fails on them.
+    if (collection->on_program_heap(process_) ||
+        (is_array(index_object) && HeapObject::cast(index_object)->on_program_heap(process_))) {
+      DROP(NUMBER_OF_BYTECODE_LOCALS - 1);
+      *action_return = kBail;
+      return sp;
+    }
     STACK_AT_PUT(parameter_offset + APPEND_POSITION, append_position);
     // Update free position in index with new entry.
     word new_hash_and_position = ((Smi::value(append_position) + 1) << HASH_SHIFT_) | (hash & HASH_MASK_);

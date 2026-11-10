@@ -50,10 +50,12 @@ class ProcessGroup : public ProcessGroupList::Element {
   // messaging-restricted policy may send to, in addition to the system
   // process and their own group. Grants are issued by the system process
   // (service discovery) and by the scheduler when a process of this group
-  // receives an RPC request (so it can reply). Must be called with the
-  // scheduler lock held.
+  // receives an RPC request (so it can reply). The set holds at most
+  // max_send_grants pids; grants are never evicted. grant_send_to returns
+  // false if the pid is not in the set and the set is full. Must be called
+  // with the scheduler lock held.
   bool may_send_to(int pid) const;
-  void grant_send_to(int pid);
+  bool grant_send_to(int pid);
 
   // The number of processes in the group. Must be called with the scheduler
   // lock held.
@@ -85,10 +87,9 @@ class ProcessGroup : public ProcessGroupList::Element {
 
   const PrimitivePolicy* const policy_;
 
-  // Ring buffer of granted target pids. Allocated on the first grant.
+  // The granted target pids. Allocated on the first grant.
   int* grants_ = null;
   word grants_count_ = 0;
-  word grants_next_ = 0;
 
   ProcessGroup(int id, Program* program, AlignedMemoryBase* memory, const PrimitivePolicy* policy);
 

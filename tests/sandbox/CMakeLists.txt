@@ -47,6 +47,8 @@ endforeach()
 set(UNTRUSTED_RUN_TESTS
   # Name, program, expected exit code, expected output (regex).
   "print|print-main.toit|0|hello from the sandbox"
+  # Long messages are truncated at a character boundary.
+  "print-long|print-long-main.toit|0|é[.][.][.].*done printing"
   "denied|denied-main.toit|0|hostname: PERMISSION_DENIED.*file: PRIMITIVE_LOOKUP_FAILED"
   "uncaught|uncaught-main.toit|1|PERMISSION_DENIED"
   "deep-sleep|deep-sleep-main.toit|242|before deep sleep"
