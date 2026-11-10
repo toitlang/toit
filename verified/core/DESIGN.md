@@ -280,6 +280,36 @@ checks that `global_max_height` already covers); cache table pointers in
 the machine; tail-call threading if the toolchain supports it
 (`become`); the REPEAT instruction of note 16.
 
+### After the proof half (2026-11-10, branch core/refinement)
+
+Verified loop (accepted programs; the benchmarks run with TOIT_VERIFY=1,
+which verifies them at launch). Ir counted inside the interpreters only
+(callgrind `--toggle-collect` of `toit::Interpreter::run` resp.
+`toit_v2_run`, callees such as GC and primitives included; startup and
+launch verification excluded). Wall: per-iteration time, minimum of 5,
+machine load about 7 (noisy: two runs gave richards 1.73 and 1.98).
+"before" is the core at sandbox-integration 18588de3 measured on the same
+build.
+
+| Benchmark | f1 Ir | f2 Ir before | f2 Ir after | ratio before | ratio after | wall f2 before ms | wall f2 after ms | wall ratio after |
+|---|---|---|---|---|---|---|---|---|
+| richards | 1,024 M | 4,029 M | 2,495 M | 3.94 | 2.44 | 25.1 | 18.6-19.4 | 1.7-2.0 |
+| deltablue | 650 M | 2,725 M | 1,897 M | 4.19 | 2.92 | 18.4 | 14.9-15.1 | 2.3-2.5 |
+| pystone | 762 M | 2,669 M | 2,189 M | 3.50 | 2.87 | 17.8 | 17.5-17.7 | 2.3-2.6 |
+
+Where it came from: the removed checks (instruction in method and the
+`mend`/`mfast` cache, slots, indices, branch targets, arity, lookup
+ranges, the `this` field checks, block reference decoding), and keeping
+the checked dispatch out of line on slow paths (inlining a copy of it at
+each slow path had cost 14% on richards). Programs not accepted run the
+checked loop, which is now slower than before (5,280 M on richards: no
+`mfast` cache any more); only unverified trusted format-2 programs use it.
+pystone gains little wall time although its instruction count fell 18%:
+its double arithmetic takes the slow path, which copies the machine into
+the out-of-line checked dispatch (`cold!`) and redoes the decoding; the
+double fast paths (verified, with a double heap accessor) are the next
+step. Raw numbers: /home/flo/work/opentoit-sandbox-artifacts/core-refinement/.
+
 ## 9. Proofs: abstraction, refinement, the end-to-end theorem
 
 The core is proven against the format-2 specification of verified/spec

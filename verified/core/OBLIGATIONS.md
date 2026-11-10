@@ -88,7 +88,12 @@ contract is assumed:
 ### Other open items
 
 - The `cold!` trampoline (`ptr::read`/`ptr::write` of the machine) is
-  trusted; listed in TRUSTED.toml.
+  trusted; listed in TRUSTED.toml. Its comment assumes panic = abort; the
+  VM's library (verified/vmverify) is built with panic = unwind. The
+  machine has no destructor, so an unwinding panic inside a cold path
+  leaves a stale but valid copy; the core's own code does not panic
+  (verified code cannot; the checked handlers index only checked arrays).
+  Review or switch the core's paths to abort.
 - GC safety of words held across a GC point in the checked handlers is by
   review (the verified handlers hold none: a GC point re-derives every
   word from the model).

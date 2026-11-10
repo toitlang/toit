@@ -40,8 +40,34 @@ Milestones (newest last):
    loader hypotheses are established by the VM at untrusted launch.
    Gate: core 282 verified, 0 errors.
 
-Measurements and the final status: see the end of this section after
-the last gate run (benchmark, fuzz, suite).
+10. Merged core/refinement-r1 (finally records); the alloc reload
+    decodes the new header (record top, bci word with the record count).
+
+Final status (2026-11-10, after merging sandbox-integration 7a69e0b4):
+
+- Gate: `verified/check.sh --tests` passes; core 328 verified, 0 errors
+  (Verus about 9-15 s wall), spec 690. No assume/admit.
+- Proven refinement: every opcode except INVOKE_STATIC_TAIL,
+  INVOKE_LAMBDA_TAIL, INVOKE_INITIALIZER_TAIL and PRIMITIVE; within the
+  verified opcodes the raising paths and the slow operator/collection
+  paths are assumed (OBLIGATIONS.md section 2).
+- End-to-end theorem proven (`src/theorem.rs`), given TRUSTED.md
+  section 6.
+- Tests: tests/sandbox 93/93 (field-access-test green since the
+  integration merge); untrusted suite 279/281 identical (the two known
+  differences program-name-test and set-map-remove-first-test; before:
+  276/279); channel-retention-test and
+  services-resource-close-pressure-test pass in format 2.
+- Fuzz (ASan, verified/core/fuzz): 15 min spec filter (11,852 mutants,
+  1,650 run), 16 min launch filter (49,687 mutants, 7,070 run), final
+  16 min launch filter on the final code (59,910 mutants, 8,627 run): no
+  crash, no stuck state.
+- Benchmarks: DESIGN.md section 8, "After the proof half".
+
+Next: verified `raise` (needs spec R7) and `replace_frame` (tail calls);
+PRIMITIVE's completion contract and ported primitives (S1); double fast
+paths (pystone); the checked loop's speed for unverified trusted
+programs; the 6% the verified unwinding costs in the loop head.
 
 9. Finally records (spec change R1, format note 17, branch
    core/refinement-r1): entering finally code with an unwinding writes a
