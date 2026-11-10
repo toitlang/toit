@@ -1,0 +1,637 @@
+# Copyright (C) 2026 Toit contributors.
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; version
+# 2.1 only.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# The license can be found in the file `LICENSE` in the top level
+# directory of this repository.
+
+# Allowlist of Verus escape hatches in verified/core and verified/spec:
+# every place where code is trusted instead of proven. Checked by
+# verified/check.sh (verified/tools/trust_audit.toit); unlisted occurrences,
+# count changes and stale entries fail the check. Regenerate the skeleton
+# with `verified/check.sh --update-allowlist` (keeps justifications, new
+# entries get TODO, which fails until replaced). This list must only shrink.
+#
+# Fields: crate, file (relative to the crate), item (qualified name),
+# kind (see verified/README.md), count (occurrences of that kind in that
+# item), justification (one line).
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "<module>"
+kind = "cfg"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "<module>"
+kind = "inner_attr"
+count = 3
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "Alias"
+kind = "plain_rust_item"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "COUNTER"
+kind = "plain_rust_item"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "Derived"
+kind = "external_derive"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "ExPoint"
+kind = "external_type_specification"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "ExTrait"
+kind = "external_trait_specification"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "Extended"
+kind = "external_trait_extension"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "LIMIT"
+kind = "plain_rust_item"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "Point"
+kind = "unsafe"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "Point::method"
+kind = "external_body"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "assume_in_body"
+kind = "admit"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "assume_in_body"
+kind = "assume"
+count = 2
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "assume_in_body"
+kind = "assume_new"
+count = 2
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "assume_in_body"
+kind = "cfg"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "assume_in_body"
+kind = "inline_air"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "assume_in_body"
+kind = "truncate"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "assume_in_body"
+kind = "unsafe"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "axiom_fact"
+kind = "axiom"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "bodiless"
+kind = "bodiless_spec"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "c_function"
+kind = "plain_rust_item"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "cfg_attr_hatch"
+kind = "cfg"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "cfg_attr_hatch"
+kind = "external_body"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "cfg_on_a_string"
+kind = "cfg"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "core::mem::swap::<u8>"
+kind = "assume_specification"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "ex_spec"
+kind = "external_fn_specification"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "extern"
+kind = "plain_rust_item"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "hosted_only"
+kind = "cfg"
+count = 1
+justification = "  todo later"
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "ignored"
+kind = "external"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "inner::deeper::deep"
+kind = "external_body"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "inner::in_module"
+kind = "unsafe"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "internal_attr"
+kind = "verus_internal"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "internal_primitives"
+kind = "ghost_wrapper"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "internal_primitives"
+kind = "tracked_swap_primitive"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "internal_primitives"
+kind = "tracked_take_option_primitive"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "len"
+kind = "when_used_as_spec"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "loops_forever"
+kind = "assume_termination"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "macro_rules!"
+kind = "plain_rust_item"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "macro_rules!"
+kind = "unsafe"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "no_decreases"
+kind = "exec_allows_no_decreases_clause"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "old_style"
+kind = "external_body"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "only_for_verus"
+kind = "cfg"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "opaque_value"
+kind = "uninterp"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "outside_verus"
+kind = "external_body"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "outside_verus"
+kind = "plain_rust_item"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "plain_rust_function"
+kind = "plain_rust_item"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "plain_rust_function"
+kind = "unsafe"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "size_of"
+kind = "global_layout"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "truncating"
+kind = "truncate"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "trusted_add"
+kind = "external_body"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "unknown_attribute_fails_closed"
+kind = "some_future_attribute"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "verus_attr"
+kind = "verus_attr"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "verus_spec_form"
+kind = "assume_termination"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/lib.rs"
+item = "verus_verify_form"
+kind = "external_body"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/plain.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/plain.rs"
+item = "plain_with_verus_cfg"
+kind = "cfg"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "core"
+file = "src/sub/nested.rs"
+item = "closed_nested"
+kind = "bodiless_spec"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "spec"
+file = "Cargo.toml"
+item = "metadata.verus.extra-args"
+kind = "cargo_metadata"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "spec"
+file = "Cargo.toml"
+item = "metadata.verus.rlimit"
+kind = "cargo_metadata"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "spec"
+file = "Cargo.toml"
+item = "metadata.verus.verify"
+kind = "cargo_metadata"
+count = 2
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "spec"
+file = "src/lib.rs"
+item = "<module>"
+kind = "cfg"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "spec"
+file = "src/lib.rs"
+item = "count_changed"
+kind = "external_body"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "spec"
+file = "src/lib.rs"
+item = "count_changed"
+kind = "unsafe"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "spec"
+file = "src/lib.rs"
+item = "interp_helper"
+kind = "plain_rust_item"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "spec"
+file = "src/lib.rs"
+item = "listed"
+kind = "external_body"
+count = 1
+justification = "Documented in \"DESIGN.md\" \\ café."
+
+[[trusted]]
+crate = "spec"
+file = "src/lib.rs"
+item = "no_justification"
+kind = "external_body"
+count = 1
+justification = "TODO: write one"
+
+[[trusted]]
+crate = "spec"
+file = "src/lib.rs"
+item = "rejected_and_flagged"
+kind = "assume"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "vmverify"
+file = "Cargo.toml"
+item = "metadata.verus.verify"
+kind = "cargo_metadata"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/lib.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/lib.rs"
+item = "raw_read"
+kind = "unsafe"
+count = "1"
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/lib.rs"
+item = "safe_wrapper"
+kind = "unsafe"
+count = 1
+justification = "Fixture: allowed."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/tables.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Fixture: allowed."
+
+# Removed on purpose: the unsafe in Reader::vec is UNLISTED.
+
+# Stale: no longer occurs.
+[[trusted]]
+crate = "core"
+file = "src/gone.rs"
+item = "removed_fn"
+kind = "external_body"
+count = 1
+justification = "Was trusted once."
+
+# Duplicate of the entry for `listed`.
+[[trusted]]
+crate = "spec"
+file = "src/lib.rs"
+item = "listed"
+kind = "external_body"
+justification = 'A literal string: no \escapes.'
+
+# Lacks a justification.
+[[trusted]]
+crate = "spec"
+file = "src/lib.rs"
+item = "rejected_and_flagged"
+kind = "assume"
+count = 1
+
+# A crate the audit does not know.
+[[trusted]]
+crate = "other"
+file = "src/x.rs"
+item = "x"
+kind = "unsafe"
+count = 2
+justification = "Stale in an unknown crate."

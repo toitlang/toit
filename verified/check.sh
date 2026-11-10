@@ -19,7 +19,8 @@
 #   1. Verus on verified/core and verified/spec: 0 errors required.
 #   2. Escape-hatch audit against verified/TRUSTED.toml (and a cross-check
 #      with `verus --no-cheating`); writes verified/THEOREMS.txt.
-#   3. With --tests: layout check, spec differential tests, sandbox ctests.
+#   3. With --tests: the audit's regression test, layout check, spec
+#      differential tests, sandbox ctests.
 #
 # Usage: verified/check.sh [--tests] [--update-allowlist] [--build DIR]
 # Exit code is non-zero on any failure.
@@ -58,7 +59,7 @@ section() {
 }
 
 # Crate name, directory, extra Verus arguments. Keep in sync with CRATES in
-# verified/tools/trust_audit.py. Commands from verified/core/NOTES.md and
+# verified/tools/trust_audit.toit. Commands from verified/core/NOTES.md and
 # verified/spec/DESIGN.md. The spec crate is verified first and exports its
 # Verus metadata and an rlib; the core imports both (it is proven against
 # the spec's definitions, verified/core/DESIGN.md section 9).
@@ -120,7 +121,7 @@ verify_crate() {
   if command -v verus > /dev/null; then
     (cd "$dir" && verus --crate-type=lib "${args[@]}" src/lib.rs --no-cheating --no-verify) \
       > "$LOGS/$name.nocheat.log" 2>&1
-    AUDIT_ARGS+=(--no-cheating-log "$name=$LOGS/$name.nocheat.log")
+    AUDIT_ARGS+=(--verus-no-cheating-log "$name=$LOGS/$name.nocheat.log")
   fi
 }
 
@@ -129,12 +130,35 @@ for c in "${CRATES[@]}"; do
   verify_crate "$c"
 done
 
+# The tools in verified/tools are Toit programs: they need a toit executable
+# (the build's SDK, else one on the PATH) and the packages of the
+# verified/tools project (installed by `make download-packages`, or here).
+TOIT_BIN="$BUILD_DIR/sdk/bin/toit"
+[ -x "$TOIT_BIN" ] || TOIT_BIN="$(command -v toit || true)"
+tools_ready() {
+  if [ -z "$TOIT_BIN" ]; then
+    echo "no toit executable: run 'make sdk' or put toit on the PATH"
+    return 1
+  fi
+  if [ ! -f "$VERIFIED/tools/.packages/contents.json" ] \
+      || [ "$VERIFIED/tools/package.lock" -nt "$VERIFIED/tools/.packages/contents.json" ]; then
+    "$TOIT_BIN" pkg install --project-root "$VERIFIED/tools" || return 1
+  fi
+}
+
 section "Escape-hatch audit"
-if ! python3 -I "$VERIFIED/tools/trust_audit.py" --root "$VERIFIED" "${AUDIT_ARGS[@]}"; then
+if ! tools_ready; then
+  fail "escape-hatch audit: cannot run verified/tools/trust_audit.toit"
+elif ! "$TOIT_BIN" run "$VERIFIED/tools/trust_audit.toit" -- --root "$VERIFIED" "${AUDIT_ARGS[@]}"; then
   fail "escape-hatch audit (see above)"
 fi
 
 if [ "$RUN_TESTS" = 1 ]; then
+  section "Escape-hatch audit regression test (verified/tools/tests/trust_audit_test.sh)"
+  if ! tools_ready || ! TOIT="$TOIT_BIN" "$VERIFIED/tools/tests/trust_audit_test.sh"; then
+    fail "escape-hatch audit regression test"
+  fi
+
   section "Layout check"
   if [ -f "$BUILD_DIR/build.ninja" ]; then
     if ninja -C "$BUILD_DIR" toit_verified_core_layout_check > "$LOGS/layout.log" 2>&1 \

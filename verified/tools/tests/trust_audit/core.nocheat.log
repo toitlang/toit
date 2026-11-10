@@ -1,0 +1,22 @@
+note: verifying crate fixture_core (a fixture of `verus --no-cheating` output)
+error: external_body not allowed with --no-cheating
+  --> src/lib.rs:41:1
+   |
+41 | pub fn trusted_add(a: u32, b: u32) -> (r: u32)
+   |
+error: the attribute line counts for the item it precedes (--no-cheating)
+ --> ./src/lib.rs:40:1
+error: proof fn without a hatch, rejected anyway (--no-cheating)
+  --> src/lib.rs:209:7
+error: a file the audit did not scan (--no-cheating)
+  --> src/missing.rs:3:1
+error: the location is too far below (--no-cheating)
+   |
+   |
+   |
+  --> src/lib.rs:209:1
+error: not about cheating
+  --> src/lib.rs:12:1
+warning: --no-cheating mentioned in a warning only
+  --> src/lib.rs:13:1
+error: aborting due to 4 previous errors

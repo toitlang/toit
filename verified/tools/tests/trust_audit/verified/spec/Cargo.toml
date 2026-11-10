@@ -1,0 +1,10 @@
+# Fixture: options other than verify = true are cargo_metadata hatches.
+
+[package]
+name = "fixture_spec"
+version = "0.1.0"
+
+[package.metadata.verus]
+verify = false
+extra-args = ["--no-lifetime", "it's", 'C:\path']
+rlimit = 30

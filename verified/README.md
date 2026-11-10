@@ -25,7 +25,7 @@ directory of this repository.
 | `check.sh` | The merge gate (below). |
 | `TRUSTED.toml` | Allowlist of every place where code is trusted instead of proven. |
 | `THEOREMS.txt` | Generated list of what the crates claim, for review. |
-| `tools/trust_audit.py` | The escape-hatch scanner used by `check.sh`. |
+| `tools/` | Toit tools (a Toit project; `make download-packages` installs its packages): the escape-hatch scanner `trust_audit.toit` used by `check.sh` (regression test: `tools/tests/trust_audit_test.sh`), the test drivers and their shared `harness.toit`. Run them with `toit run verified/tools/NAME.toit -- ARGS`. |
 
 ## The gate: `verified/check.sh`
 
@@ -49,8 +49,10 @@ It fails (non-zero exit) unless:
    tokenizes Rust (comments and strings never count), tracks `verus!`
    regions and attaches attributes to the item that follows. As an
    independent check, every location `verus --no-cheating` rejects must be
-   one the scanner flagged.
-3. With `--tests`: the layout check (`verified_core_layout`),
+   one the scanner flagged. The audit is `tools/trust_audit.toit`; it needs
+   a `toit` executable (the build's SDK, else one on the `PATH`).
+3. With `--tests`: the audit's regression test
+   (`tools/tests/trust_audit_test.sh`), the layout check (`verified_core_layout`),
    `spec/tests/run_tests.sh` and `ctest -R '^tests/sandbox/'` in
    `build/host` (or `--build DIR`); skipped when there is no build.
 

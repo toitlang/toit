@@ -15,7 +15,7 @@
 
 # Allowlist of Verus escape hatches in verified/core and verified/spec:
 # every place where code is trusted instead of proven. Checked by
-# verified/check.sh (verified/tools/trust_audit.py); unlisted occurrences,
+# verified/check.sh (verified/tools/trust_audit.toit); unlisted occurrences,
 # count changes and stale entries fail the check. Regenerate the skeleton
 # with `verified/check.sh --update-allowlist` (keeps justifications, new
 # entries get TODO, which fails until replaced). This list must only shrink.
