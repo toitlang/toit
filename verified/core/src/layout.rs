@@ -179,6 +179,13 @@ pub const NO_VALUE: u16 = 0xffff;
 /// BLOCK_SLOT_BITS`.
 pub const BLOCK_SLOT_BITS: usize = 20;
 
+/// Format 2: literals 0..7 are true, false and the values of the five
+/// failures the machine raises (format note 5); toit_v2_run checks the
+/// table has at least that many.
+pub const FAILURE_LITERALS: usize = 7;
+/// The longest format-2 instruction (NON_LOCAL_BRANCH).
+pub const MAX_INSTRUCTION_LENGTH: usize = 6;
+
 /// Size limits the core imposes on the program tables (checked at entry).
 pub const MAX_TABLE: usize = 0x1000_0000;
 

@@ -214,7 +214,7 @@ pub unsafe extern "C" fn toit_v2_run(context: *mut Context) -> usize {
     let c = &mut *context;
     let p = &c.program;
     let builtin = |k: usize| -> i64 { (*p.builtin_class_ids.add(k) as i64) >> 1 };
-    if p.roots_length < ROOT_COUNT || p.literals_length < 7 || p.methods_length == 0
+    if p.roots_length < ROOT_COUNT || p.literals_length < FAILURE_LITERALS || p.methods_length == 0
         || p.methods_length >= MAX_TABLE || p.bytecodes_length >= MAX_TABLE {
         c.result_state = RESULT_TERMINATED;
         c.result_value = 1;
@@ -296,6 +296,7 @@ layout_table!(
     V2_REPORT_UNCAUGHT, V2_REPORT_TASK_RETURNED,
     V2_MESSAGE_NONE, V2_MESSAGE_WORD, V2_MESSAGE_ARRAY, V2_MESSAGE_PRIMITIVE, V2_MESSAGE_MAX_WORDS,
     KIND_METHOD, KIND_FIELD_ACCESSOR, KIND_LAMBDA, KIND_BLOCK, NO_VALUE, BLOCK_SLOT_BITS,
+    FAILURE_LITERALS, MAX_INSTRUCTION_LENGTH, MAX_TABLE,
 );
 
 /// The C ABI of the FFI structs.

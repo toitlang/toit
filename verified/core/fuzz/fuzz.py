@@ -23,10 +23,11 @@ For every seed program the driver
      starts and operand bytes) and locates the bytecodes in the snapshot,
   3. applies one mutation per mutant: a random opcode byte, or an operand
      byte set to a random or boundary value (0x00, 0x01, 0x7f, 0x80, 0xff),
-  4. keeps the mutants the structural checks accept (`toit.run --verify`
-     with the untrusted rules: for format 2 these are the loader's method
-     table checks, interpreter_v2.cc, until the verified format-2 verifier
-     is integrated),
+  4. keeps the mutants the verified structural verifier accepts: the
+     snapshot is dumped with tools/spec_dump.toit and checked by
+     `toit_spec_verify` (verified/spec, `check::verify`, proven equal to
+     `accepts`; untrusted rules). With --filter=loader the C++ loader's
+     table checks (`toit.run --verify`) are used instead,
   5. runs each kept mutant as an untrusted container
      (`toit.run --untrusted`) on a sanitizer build with a time limit and
      classifies the outcome.
@@ -144,8 +145,18 @@ def one(args, prepared, index, work):
   mutant, description = mutate(rng, data, offset, coverage)
   path = os.path.join(work, f"m{index}.snapshot")
   with open(path, "wb") as f: f.write(mutant)
-  rc, _ = run([args.check_run, "--verify", "-q", path], 30)
-  if rc != 0:
+  if args.filter == "spec":
+    dump = path + ".dump"
+    rc, _ = run([args.toit, "run", os.path.join(REPO, "tools/spec_dump.toit"), "--", path, dump], 60)
+    accepted = False
+    if rc == 0:
+      rc, out = run([args.spec_verify, "--quiet", dump], 60)
+      accepted = rc == 0 and out.startswith(b"accepted")
+    if os.path.exists(dump): os.unlink(dump)
+  else:
+    rc, _ = run([args.check_run, "--verify", "-q", path], 30)
+    accepted = rc == 0
+  if not accepted:
     os.unlink(path)
     return name, description, "rejected", b""
   rc, out = run([args.run, "--untrusted", path], args.timeout)
@@ -171,6 +182,9 @@ def main():
   host = os.path.join(REPO, "build/host/sdk/lib/toit/bin/toit.run")
   parser.add_argument("--run", default=asan if os.path.exists(asan) else host)
   parser.add_argument("--check-run", default=host)
+  parser.add_argument("--toit", default=os.path.join(REPO, "build/host/sdk/bin/toit"))
+  parser.add_argument("--spec-verify", default=os.path.join(REPO, "verified/spec/target/release/toit_spec_verify"))
+  parser.add_argument("--filter", choices=["spec", "loader"], default="spec")
   parser.add_argument("programs", nargs="*")
   args = parser.parse_args()
   os.makedirs(args.out, exist_ok=True)
@@ -201,7 +215,7 @@ def main():
       "seconds": round(time.time() - start),
       "seed": args.seed,
       "run": args.run,
-      "filter": "toit.run --verify (format-2 loader table checks, untrusted rules)",
+      "filter": "toit_spec_verify (verified check::verify, untrusted rules)" if args.filter == "spec" else "toit.run --verify (format-2 loader table checks)",
       "seeds": [p[0] for p in prepared],
       "mutants": index,
       "outcomes": counts,

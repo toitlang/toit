@@ -146,9 +146,6 @@ pub const OPCODE_LENGTHS: [u8; 101] = [
     4, 1, 1, 1, 1, 2, 6, 1, 1, 2, 1, 2,
 ];
 
-/// The longest instruction (NON_LOCAL_BRANCH).
-pub const MAX_INSTRUCTION_LENGTH: usize = 6;
-
 pub fn opcode_length(op: u8) -> usize {
     OPCODE_LENGTHS[op as usize] as usize
 }
@@ -470,7 +467,7 @@ impl Machine {
 
     #[inline(never)]
     fn raise_msg_cold(&mut self, env: &Env, k: usize, msg: Msg) -> Ctl {
-        if env.p.literals.len() < 7 { return Ctl::Stuck(stuck::FATAL); }
+        if env.p.literals.len() < FAILURE_LITERALS { return Ctl::Stuck(stuck::FATAL); }
         let value = env.p.literals.at(2 + k);
         self.raise_value_msg(env, value, msg)
     }

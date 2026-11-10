@@ -101,6 +101,10 @@ void toit_v2_report(void*, uword, uword, uword) { abort(); }
 }
 
 int main() {
+  uword max_instruction_length = 0;
+  for (int op = 0; op < V2_OPCODE_COUNT; op++) {
+    if (V2_OPCODE_LENGTHS[op] > max_instruction_length) max_instruction_length = V2_OPCODE_LENGTHS[op];
+  }
   // Behavioral offsets.
   int instance_fields_word;
   { Fake f; instance_fields_word = marker_index(reinterpret_cast<uword>(Instance::cast(f.object())->at(0))); }
@@ -282,6 +286,9 @@ int main() {
     { "KIND_BLOCK", V2_KIND_BLOCK, false },
     { "NO_VALUE", V2_NO_VALUE, false },
     { "BLOCK_SLOT_BITS", 20, false },
+    { "FAILURE_LITERALS", V2_FAILURE_LITERALS, false },
+    { "MAX_INSTRUCTION_LENGTH", max_instruction_length, false },
+    { "MAX_TABLE", V2_MAX_TABLE, false },
     { "V2METHOD_SIZE", sizeof(V2Method), false },
 #define FIELD(prefix, type, name) { prefix #name, offsetof(type, name), false },
     FIELD("V2METHOD_", V2Method, entry) FIELD("V2METHOD_", V2Method, end)

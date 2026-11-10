@@ -48,7 +48,6 @@ static const int V2_KIND_MASK = 0x3;
 static const int V2_HAS_SELECTOR = 1 << 2;
 static const int V2_HAS_RECEIVER = 1 << 3;
 static const int V2_MAX_LEB_BYTES = 4;
-static const int V2_FAILURE_LITERALS = 7;  // true, false and the five failure strings.
 
 // Format-2 opcodes that end a method body (format note 8).
 static bool v2_is_terminator(int op) {
@@ -110,7 +109,7 @@ V2MethodTable* V2MethodTable::compute(Program* program, bool untrusted) {
   const uint8* bytes = program->bytecodes.data();
   word length = program->bytecodes.length();
   if (!program->is_format2()) return v2_fail("missing tag");
-  if (length >= 0x10000000) return v2_fail("bytecodes too large");
+  if (length >= V2_MAX_TABLE) return v2_fail("bytecodes too large");
   // First pass: count the methods.
   word count = 0;
   for (int pass = 0; pass < 2; pass++) {

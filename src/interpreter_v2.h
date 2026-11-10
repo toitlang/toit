@@ -56,6 +56,10 @@ static const int V2_KIND_BLOCK = 3;
 static const int V2_NO_VALUE = 0xffff;
 static const int V2_OPCODE_COUNT = 101;
 static const int V2_PRIMITIVE_LENGTH = 4;
+// Literals 0..7: true, false and the five failure values (format note 5).
+static const int V2_FAILURE_LITERALS = 7;
+// The core and the loader refuse bytecodes and method tables this large.
+static const int V2_MAX_TABLE = 0x10000000;
 
 // Instruction lengths of format 2, in opcode order
 // (verified/spec/src/v2/bytecodes.rs, OPCODE_LENGTHS2).
