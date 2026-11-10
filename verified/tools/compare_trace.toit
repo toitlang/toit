@@ -20,8 +20,9 @@ Compares the bytecode trace of the debug VM (`toit.run -Xtrace`) with the
 
 The debug VM prints `[<absolute bci>] <bytecode>` for every bytecode it
   dispatches, for all processes of the VM (run on a single scheduler
-  thread), and a `[yield from interpretation]`/`[exit interpretation ...]`
-  line whenever a process leaves the interpreter. The trace is cut into
+  thread), and a `[yield from interpretation]`/`[preempted from
+  interpretation]`/`[exit interpretation ...]` line whenever a process
+  leaves the interpreter. The trace is cut into
   segments at those lines. The program's process runs in segments whose
   bcis continue the reference interpreter's trace; segments of the system
   process (a different program) are skipped. Within a matching segment
@@ -45,21 +46,6 @@ import .harness
 
 ONE-CORE ::= "int get_nprocs(void) { return 1; }\nint get_nprocs_conf(void) { return 1; }\n"
 
-// Opcodes after which the program may leave the interpreter (calls,
-// backward branches, primitives, yields).
-SWITCH-POINTS ::= {
-  "INVOKE_STATIC", "INVOKE_STATIC_TAIL", "INVOKE_BLOCK", "INVOKE_LAMBDA_TAIL",
-  "INVOKE_INITIALIZER_TAIL", "INVOKE_VIRTUAL", "INVOKE_VIRTUAL_WIDE",
-  "INVOKE_VIRTUAL_GET", "INVOKE_VIRTUAL_SET", "INVOKE_EQ", "INVOKE_LT", "INVOKE_GT",
-  "INVOKE_LTE", "INVOKE_GTE", "INVOKE_BIT_OR", "INVOKE_BIT_XOR", "INVOKE_BIT_AND",
-  "INVOKE_BIT_SHL", "INVOKE_BIT_SHR", "INVOKE_BIT_USHR", "INVOKE_ADD", "INVOKE_SUB",
-  "INVOKE_MUL", "INVOKE_DIV", "INVOKE_MOD", "INVOKE_AT", "INVOKE_AT_PUT", "INVOKE_SIZE",
-  "BRANCH_BACK", "BRANCH_BACK_IF_TRUE", "BRANCH_BACK_IF_FALSE", "BRANCH_BACK_IF_NOT_NULL",
-  "HALT", "PRIMITIVE", "LOAD_GLOBAL_VAR_LAZY", "LOAD_GLOBAL_VAR_LAZY_WIDE",
-  "AS_CLASS", "AS_CLASS_WIDE", "AS_INTERFACE", "AS_INTERFACE_WIDE", "AS_LOCAL",
-  "INTRINSIC_SMI_REPEAT", "INTRINSIC_ARRAY_DO", "INTRINSIC_HASH_FIND", "INTRINSIC_HASH_DO",
-  "LOAD_GLOBAL_VAR_DYNAMIC", "STORE_GLOBAL_VAR_DYNAMIC", "RETURN", "RETURN_NULL",
-}
 
 main arguments:
   command := cli.Command "compare_trace"
@@ -163,9 +149,10 @@ trace-line line/string -> List?:
 
 /**
 Walks the VM trace, attributing lines to the program while they continue
-  the reference interpreter's trace. The program may only leave the
-  interpreter (switch to another process) after a call, a backward branch,
-  a primitive or a yield; it must resume exactly where the reference
+  the reference interpreter's trace. The VM prints a marker line (null
+  here) whenever a process leaves the interpreter, including on
+  preemption, so within a segment every line of the program must match;
+  after a marker the program must resume exactly where the reference
   interpreter continues. Returns [matched steps, switches, divergence or
   null, note or null].
 */
@@ -194,12 +181,8 @@ compare spec/List vm/List table/List -> List:
       recent := spec[(max 0 i - 3)..i].map: table[it[1]][0]
       if (recent.contains "PRIMITIVE") and table[spec[i - 1][1]][0].starts-with "BRANCH":
         return [i, switches, null, "stopped at an environment-dependent primitive result before step $i"]
-      // The program left the interpreter without a marker (preemption).
       prev := i > 0 ? table[spec[i - 1][1]][0] : null
-      if not SWITCH-POINTS.contains prev:
-        return [i, switches, "step $i: VM $(py-repr-line line), spec bci $spec[i][0] ($table[spec[i][1]][0]) after $(prev or "None")", null]
-      switches++
-      in-program = false
+      return [i, switches, "step $i: VM $(py-repr-line line), spec bci $spec[i][0] ($table[spec[i][1]][0]) after $(prev or "None")", null]
   if i < spec.size:
     return [i, switches, "step $i: spec continues at bci $spec[i][0], the VM does not", null]
   return [i, switches, null, null]

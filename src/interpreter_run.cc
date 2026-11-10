@@ -167,6 +167,7 @@ Method Program::find_method(Object* receiver, word offset) {
         PUSH(reinterpret_cast<Object*>(target.entry()));              \
         PUSH(program->frame_marker());                                \
         store_stack(sp, target);                                      \
+        if (Flags::trace) printf("[preempted from interpretation]\n"); \
         return Result(Result::PREEMPTED);                             \
       case OVERFLOW_EXCEPTION:                                        \
         goto THROW_IMPLEMENTATION;                                    \
@@ -182,6 +183,7 @@ Method Program::find_method(Object* receiver, word offset) {
     PUSH(reinterpret_cast<Object*>(bcp));                             \
     PUSH(program->frame_marker());                                    \
     store_stack(sp);                                                  \
+    if (Flags::trace) printf("[preempted from interpretation]\n");    \
     return Result(Result::PREEMPTED);                                 \
   }
 
