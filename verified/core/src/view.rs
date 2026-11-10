@@ -30,7 +30,7 @@
 use vstd::prelude::*;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use crate::layout::*;
-use toit_spec::types::HeapObj;
+use toit_spec::types::{HeapObj, Body};
 
 verus! {
 
@@ -191,6 +191,57 @@ impl Heap {
     /// the accessors and of the calls that may GC (`ffi::Runtime`) relate
     /// memory to this model (TRUSTED.md, "Heap model").
     pub uninterp spec fn addrs(&self) -> Seq<usize>;
+
+    /// The program's class bits (class tag and instance size per class id),
+    /// which the objects' headers follow.
+    pub uninterp spec fn class_bits(&self) -> Seq<u16>;
+
+    /// The class id of object `id` (`obj` is its address): the header's
+    /// class id.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn class_id(&self, obj: usize, Ghost(id): Ghost<int>) -> (r: usize)
+        requires
+            0 <= id < self.objs().len(),
+            self.addrs().len() == self.objs().len(),
+            obj == self.addrs()[id],
+        ensures r == self.objs()[id].class_id,
+    {
+        let header = unsafe { *((obj - HEAP_TAG) as *const usize) };
+        (((header as isize) >> 1) as usize) >> CLASS_ID_OFFSET
+    }
+
+    /// The class tag of object `id`: the header's tag, which is its class'
+    /// tag in the class bits.
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn class_tag(&self, obj: usize, Ghost(id): Ghost<int>) -> (r: usize)
+        requires
+            0 <= id < self.objs().len(),
+            self.addrs().len() == self.objs().len(),
+            obj == self.addrs()[id],
+            (self.objs()[id].class_id as int) < self.class_bits().len(),
+        ensures r == (self.class_bits()[self.objs()[id].class_id as int] & 0xf) as usize,
+    {
+        let header = unsafe { *((obj - HEAP_TAG) as *const usize) };
+        (((header as isize) >> 1) as usize) & CLASS_TAG_MASK
+    }
+
+    /// Field `f` of the instance `id`: the encoding of the abstract field
+    /// (`crate::abs::enc`).
+    #[verifier::external_body]
+    #[inline(always)]
+    pub fn field(&self, obj: usize, f: usize, Ghost(id): Ghost<int>) -> (r: usize)
+        requires
+            0 <= id < self.objs().len(),
+            self.addrs().len() == self.objs().len(),
+            obj == self.addrs()[id],
+            self.objs()[id].body is Instance,
+            f < self.objs()[id].body->Instance_0.len(),
+        ensures r == crate::abs::enc(self.addrs(), self.objs()[id].body->Instance_0[f as int]),
+    {
+        unsafe { *((obj - HEAP_TAG) as *const usize).add(INSTANCE_FIELDS_WORD + f) }
+    }
 
     /// The header word of a heap object.
     #[verifier::external_body]

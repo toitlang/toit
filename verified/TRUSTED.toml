@@ -459,6 +459,14 @@ justification = "Placeholder for spec-reachability of the abstract state; only u
 [[trusted]]
 crate = "core"
 file = "src/step.rs"
+item = "grow_bridge"
+kind = "external_body"
+count = 1
+justification = "ASSUMED: stack growth and the GC it may run preserve the abstraction (the ghost state is unchanged); a failed growth throws (resource_throw, PHASE4-REQUESTS.md R6). TRUSTED.md, GC and stack growth."
+
+[[trusted]]
+crate = "core"
+file = "src/step.rs"
 item = "run_loop"
 kind = "exec_allows_no_decreases_clause"
 count = 1
@@ -575,6 +583,62 @@ item = "Heap::byte"
 kind = "unsafe"
 count = 1
 justification = "Raw access of Heap::byte; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::class_bits"
+kind = "uninterp"
+count = 1
+justification = "Heap model: the class bits the object headers follow; refines ties it to the program's class_bits table."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::class_id"
+kind = "external_body"
+count = 1
+justification = "Heap accessor: the header's class id is the model object's class id (TRUSTED.md, heap model)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::class_id"
+kind = "unsafe"
+count = 1
+justification = "Reads the header word of a live object (heap integrity, TRUSTED.md V2): obj is the model address of an object."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::class_tag"
+kind = "external_body"
+count = 1
+justification = "Heap accessor: the header's tag is the class tag of the object's class (TRUSTED.md, heap model)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::class_tag"
+kind = "unsafe"
+count = 1
+justification = "Reads the header word of a live object (heap integrity, TRUSTED.md V2): obj is the model address of an object."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::field"
+kind = "external_body"
+count = 1
+justification = "Heap accessor: an instance field word is the encoding of the model's field value (TRUSTED.md, heap model)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::field"
+kind = "unsafe"
+count = 1
+justification = "Reads field f < field count of a live instance (heap integrity, TRUSTED.md V2)."
 
 [[trusted]]
 crate = "core"

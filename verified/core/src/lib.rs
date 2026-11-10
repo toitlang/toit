@@ -35,4 +35,5 @@ pub mod ffi;
 pub mod exec;
 pub mod machine;
 pub mod step;
+pub mod calls;
 pub mod obligations;

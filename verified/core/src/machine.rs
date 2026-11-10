@@ -403,7 +403,7 @@ impl Machine {
 
     /// Cold path: runs out of line on a copy of the machine (see `cold!`).
     #[inline(always)]
-    fn grow(&mut self, env: &Env, needed: usize) -> Ctl {
+    pub fn grow(&mut self, env: &Env, needed: usize) -> Ctl {
         cold!(self, |m| m.grow_cold(env, needed))
     }
 

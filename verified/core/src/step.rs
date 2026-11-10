@@ -33,7 +33,7 @@ use vstd::prelude::*;
 use crate::layout::*;
 use crate::abs::*;
 use crate::exec::*;
-use toit_spec::types::Value;
+use toit_spec::types::{Value, HeapObj, Unwind};
 use toit_spec::v2::types::{State2, Program2, Outcome2, Halt2};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::spec as sp;
@@ -64,6 +64,9 @@ pub open spec fn verified_op(op: u8) -> bool {
     ||| op == 35 || op == 36  // STORE_GLOBAL_VAR(_WIDE)
     ||| op == 40 || op == 41  // POP, POP_1
     ||| 81 <= op <= 88   // BRANCH*, BRANCH_BACK*
+    ||| op == 53         // INVOKE_STATIC
+    ||| op == 58 || op == 59  // INVOKE_VIRTUAL(_WIDE)
+    ||| op == 91 || op == 92  // RETURN, RETURN_NULL
 }
 
 /// The machine continues from a state the spec reaches from `g0`: the same
@@ -79,6 +82,27 @@ pub open spec fn advances(ap: Program2, g0: State2, g1: State2) -> bool {
                 exists|o: Outcome2| completion(ap, s1, module, index, o) && continues(o, g1),
             _ => false,
         }
+    ||| resource_throw(ap, g0, g1)
+}
+
+/// The machine ran out of a resource the spec does not bound (the stack
+/// could not grow, an allocation failed) and throws instead of executing
+/// the instruction: an `Exception_` holding the root error (stack
+/// overflow), or the out-of-memory error itself. Not a step of the spec,
+/// whose memory is unbounded (SOUNDNESS.md hypothesis 3 asks for a stop or
+/// an out-of-memory throw; PHASE4-REQUESTS.md R6 asks the spec to model
+/// it). Only the assumed bridges produce it.
+pub open spec fn resource_throw(ap: Program2, g0: State2, g1: State2) -> bool {
+    ||| continues(sp::unwind(ap, g0, Unwind::Throw(ap.roots[ROOT_OUT_OF_MEMORY_ERROR as int])), g1)
+    ||| exists|exc: HeapObj| #[trigger] exception_like(ap, exc)
+            && continues(sp::unwind(ap, sp::alloc2(g0, exc), Unwind::Throw(sp::new_ref2(g0))), g1)
+}
+
+/// An exception object the machine creates: an `Exception_` instance.
+pub open spec fn exception_like(ap: Program2, exc: HeapObj) -> bool {
+    &&& exc.class_id as int == ap.builtin[22] as int
+    &&& exc.body is Instance
+    &&& !exc.ro
 }
 
 /// The outcome of one step: a next state that is again a well-formed state
@@ -94,22 +118,55 @@ pub open spec fn step_post(p: &Program, m0: Machine, m1: Machine, r: Ctl) -> boo
     }
 }
 
-/// The refinement contract of the handlers of the opcodes not proven yet:
-/// the same guarantee as a verified step. ASSUMED (external_body): their
-/// run-time checks keep them memory safe for every program, but that they
-/// refine the spec is tested (untrusted suite, fuzzing), not proven.
-/// OBLIGATIONS.md lists the missing proofs per opcode family.
+/// The refinement contract of the checked handlers of machine.rs, which
+/// execute the opcodes not proven yet and the paths of verified opcodes
+/// not proven yet (raising an exception; the verified handler hands the
+/// whole instruction over before changing anything): the same guarantee
+/// as a verified step. ASSUMED (external_body): their run-time checks keep
+/// them memory safe for every program, but that they refine the spec is
+/// tested (untrusted suite, fuzzing), not proven. OBLIGATIONS.md lists the
+/// missing proofs per opcode family.
 #[verifier::external_body]
 #[inline(always)]
 pub fn step_unverified(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     requires
         old(m).inv(env.p),
-        !verified_op(opcode),
         bci == old(m).bci,
         opcode == env.p.ap@.bytecodes[bci as int],
     ensures step_post(env.p, *old(m), *final(m), r),
 {
     m.dispatch_unverified(env, bci, opcode)
+}
+
+/// Grows the stack (a GC point) so that `needed` words are free; the
+/// instruction runs again afterwards. On stack overflow or out of memory
+/// it throws (`resource_throw`). ASSUMED contract: stack growth and the GC
+/// preserve the abstraction (TRUSTED.md, "GC and stack growth").
+#[verifier::external_body]
+#[inline(always)]
+pub fn grow_bridge(m: &mut Machine, env: &Env, needed: usize) -> (r: Ctl)
+    requires old(m).inv(env.p),
+    ensures step_post(env.p, *old(m), *final(m), r),
+{
+    m.grow(env, needed)
+}
+
+/// Room for a call: a frame record and the callee's slots. `None`: there is
+/// room. `Some(r)`: the instruction did not run (it runs again after the
+/// stack grew), or a stack overflow was thrown.
+#[inline(always)]
+pub fn ensure_room(m: &mut Machine, env: &Env) -> (r: Option<Ctl>)
+    requires old(m).inv(env.p),
+    ensures
+        r is None ==> *final(m) == *old(m) && final(m).top - final(m).ftop >= FRAME_WORDS,
+        r is Some ==> step_post(env.p, *old(m), *final(m), r->0),
+{
+    proof { assert(env.p.max_height < 0x1_0000); }
+    let needed = FRAME_WORDS + env.p.max_height + STACK_RESERVE;
+    if m.top - m.ftop >= needed {
+        return None;
+    }
+    Some(grow_bridge(m, env, needed))
 }
 
 // ---------------------------------------------------------------------------
@@ -153,6 +210,43 @@ proof fn lemma_small(p: &Program, m: &Machine)
 }
 
 
+
+/// The machine's result `r` (with machine `m1` after it) implements the
+/// spec outcome `o`: the next state; a preemption right after a call (the
+/// next state, to continue later); a yield; a terminal halt (exit, task
+/// end, uncaught exception, deep sleep, reset); or out of room.
+pub open spec fn matches(p: &Program, o: Outcome2, m1: Machine, r: Ctl) -> bool {
+    match r {
+        Ctl::Next => m1.refines(p) && o == Outcome2::Next(m1.g@),
+        Ctl::Exit(st, _) =>
+            if st == RESULT_PREEMPTED {
+                m1.refines(p) && o == Outcome2::Next(m1.g@)
+            } else if st == RESULT_YIELDED {
+                m1.refines(p) && o == Outcome2::Halt(m1.g@, Halt2::Yield)
+            } else {
+                o is Halt && !(o->Halt_1 is Yield)
+            },
+        Ctl::Stuck(reason) => reason == stuck::LIMIT,
+    }
+}
+
+pub proof fn lemma_matches(p: &Program, m0: Machine, m1: Machine, r: Ctl)
+    requires
+        m0.inv(p),
+        step_ok(p.ap@, p.cert@, m0.g@),
+        matches(p, sp::step(p.ap@, m0.g@), m1, r),
+    ensures step_post(p, m0, m1, r),
+{
+    let o = sp::step(p.ap@, m0.g@);
+    assert(outcome_ok(p.ap@, p.cert@, o));
+    match r {
+        Ctl::Next => { assert(continues(o, m1.g@)); },
+        Ctl::Exit(st, _) => {
+            if st == RESULT_PREEMPTED || st == RESULT_YIELDED { assert(continues(o, m1.g@)); }
+        },
+        _ => {},
+    }
+}
 
 /// A handler's result for the instruction: `Next` with the spec's next
 /// state, or out of room.
@@ -364,6 +458,48 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
                 lemma_back_branch(p, g);
             }
             m.op_branch(p, kind, bci - d, 3)
+        },
+        53 => {
+            let d = code_u16(p, bci + 1);
+            proof {
+                assert(sp::step(ap, g) == sp::call_static(ap, g, sp::dispatch_target(ap, d as int), 3)) by {
+                    reveal(sp::step);
+                }
+            }
+            return crate::calls::op_invoke_static(m, env, bci, opcode, d);
+        },
+        58 => {
+            let n = p.code.at(bci + 1) as usize;
+            let sel = code_u16(p, bci + 2);
+            proof {
+                assert(sp::step(ap, g) == sp::invoke_virtual(ap, g, sel as int, n + 1, 4)) by { reveal(sp::step); }
+            }
+            return crate::calls::op_invoke_virtual(m, env, bci, opcode, sel, n + 1, 4);
+        },
+        59 => {
+            let n = code_u16(p, bci + 1);
+            let sel = code_u16(p, bci + 3);
+            proof {
+                assert(sp::step(ap, g) == sp::invoke_virtual(ap, g, sel as int, n + 1, 5)) by { reveal(sp::step); }
+            }
+            return crate::calls::op_invoke_virtual(m, env, bci, opcode, sel, n + 1, 5);
+        },
+        91 => {
+            proof {
+                assert(sp::step(ap, g) == (if !sp::has_slot(g, 0) { sp::stuck(toit_spec::types::Stuck::StackRange) }
+                    else { sp::return_from(ap, g, sp::at(g, 0)) })) by { reveal(sp::step); }
+                assert(outcome_ok(ap, p.cert@, sp::step(ap, g)));
+                m.lemma_at(p, 0);
+            }
+            let w = m.at(0);
+            return crate::calls::op_return(m, env, w, Ghost(sp::at(g, 0)));
+        },
+        92 => {
+            proof {
+                assert(sp::step(ap, g) == sp::return_from(ap, g, sp::null2(ap))) by { reveal(sp::step); }
+                assert(const_ok(g.heap, ap.roots[0]));
+            }
+            return crate::calls::op_return(m, env, p.null, Ghost(sp::null2(ap)));
         },
         _ => {
             return step_unverified(m, env, bci, opcode);

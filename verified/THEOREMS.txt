@@ -10,22 +10,17 @@
 # numbers are omitted so that the diff of this file shows only claim changes.
 
 ==============================================================================
-Top-level theorems: crate core (2)
+Top-level theorems: crate core (0)
 ==============================================================================
 
---- lemma_obj_not_smi  (core/src/abs.rs)
-pub proof fn lemma_obj_not_smi(objs: Seq<HeapObj>, addr: Seq<usize>, id: usize)
-    requires addrs_ok(objs, addr), id < addr.len(),
-    ensures enc(addr, Value::Obj(id)) & 1 == 1, enc(addr, Value::Obj(id)) & 3 == 1,
-
---- lemma_frames_rel_write  (core/src/abs.rs)
-pub proof fn lemma_frames_rel_write(mem: Seq<usize>, i: int, v: usize, frames: Seq<Frame>, tries: Seq<Handler>)
-    requires frames_rel(mem, frames, tries), FRAME_WORDS * frames.len() <= i < mem.len(),
-    ensures frames_rel(mem.update(i, v), frames, tries),
-
 ==============================================================================
-Top-level theorems: crate spec (4)
+Top-level theorems: crate spec (5)
 ==============================================================================
+
+--- lemma_heap_ext_grows  (spec/src/v2/sound_frames.rs)
+pub proof fn lemma_heap_ext_grows(p: Program2, h: Seq<HeapObj>, h2: Seq<HeapObj>)
+    requires heap_ext(p, h, h2),
+    ensures heap_grows(h, h2),
 
 --- lemma_good_mono  (spec/src/v2/sound_frames.rs)
 pub proof fn lemma_good_mono(h: Seq<HeapObj>, h2: Seq<HeapObj>, v: Value)
@@ -48,6 +43,7 @@ pub proof fn theorem_soundness(p: Program2, c: Cert, trusted: bool, heap0: Seq<H
         forall|s1: State2, module: u8, index: u16, o: Outcome2|
             step(p, s) == Outcome2::Primitive(s1, module, index) && #[trigger] completion(p, s1, module, index, o)
                 ==> !(o is Stuck),
+        machine_objects_ok(p, s),
 
 --- theorem_initial  (spec/src/v2/theorem.rs)
 pub proof fn theorem_initial(p: Program2, c: Cert, trusted: bool, heap0: Seq<HeapObj>, globals0: Seq<Value>)

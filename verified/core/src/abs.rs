@@ -35,7 +35,7 @@ use vstd::prelude::*;
 use crate::layout::*;
 use crate::ffi::V2Method;
 use crate::view::*;
-use toit_spec::types::{Value, Frame, Handler, MethodInfo, HeapObj};
+use toit_spec::types::{Value, Frame, Handler, MethodInfo, HeapObj, Body};
 use toit_spec::v2::types::{State2, Program2};
 use toit_spec::v2::verifier::Cert;
 #[cfg(verus_keep_ghost)]
@@ -88,6 +88,36 @@ pub open spec fn addrs_ok(objs: Seq<HeapObj>, addr: Seq<usize>) -> bool {
     &&& forall|i: int| 0 <= i < addr.len() ==> #[trigger] addr[i] & 3 == 1
     &&& forall|i: int, j: int| 0 <= i < addr.len() && 0 <= j < addr.len() && i != j
             ==> #[trigger] addr[i] != #[trigger] addr[j]
+}
+
+/// Instance field count and class tag of class `cid` by the class bits
+/// (`spec_common::instance_field_count`, `class_tag`).
+pub open spec fn ifc_bits(cb: Seq<u16>, cid: int) -> int {
+    (((cb[cid] >> 5u16) & 0x7ffu16) as int) - 1
+}
+
+pub open spec fn tag_bits(cb: Seq<u16>, cid: int) -> int {
+    (cb[cid] & 0xfu16) as int
+}
+
+/// TRUSTED (heap integrity, TRUSTED.md "Heap model"): an object of the
+/// model agrees with its header and contents: its class exists; it is an
+/// instance exactly if its class has the instance or task tag, with the
+/// class' field count; its fields are encodable values.
+pub open spec fn obj_model_ok(o: HeapObj, cb: Seq<u16>, addr: Seq<usize>) -> bool {
+    let cid = o.class_id as int;
+    &&& cid < cb.len()
+    &&& (o.body is Instance) == (tag_bits(cb, cid) == INSTANCE_TAG as int || tag_bits(cb, cid) == TASK_TAG as int)
+    &&& match o.body {
+        Body::Instance(f) => f.len() == ifc_bits(cb, cid)
+            && forall|i: int| 0 <= i < f.len() ==> #[trigger] encodable(addr, f[i]),
+        _ => true,
+    }
+}
+
+pub open spec fn heap_model_ok(objs: Seq<HeapObj>, addr: Seq<usize>, cb: Seq<u16>) -> bool {
+    &&& addrs_ok(objs, addr)
+    &&& forall|i: int| 0 <= i < objs.len() ==> #[trigger] obj_model_ok(objs[i], cb, addr)
 }
 
 /// The encodable values (all values of a well-formed format-2 state are).
@@ -249,6 +279,13 @@ pub open spec fn prog_rel(p: &crate::exec::Program, objs: Seq<HeapObj>, addr: Se
     &&& p.true_ == p.roots@[1]
     &&& p.false_ == p.roots@[2]
     &&& p.code@.len() < 0x1000_0000
+    // The builtin class ids the handlers use.
+    &&& p.smi_class_id == ap.builtin[BUILTIN_SMI as int] as i64
+    &&& p.list_class_id == ap.builtin[BUILTIN_LIST as int] as i64
+    &&& p.byte_array_slice_class_id == ap.builtin[BUILTIN_BYTE_ARRAY_SLICE as int] as i64
+    &&& p.byte_array_cow_class_id == ap.builtin[BUILTIN_BYTE_ARRAY_COW as int] as i64
+    &&& p.large_array_class_id == ap.builtin[BUILTIN_LARGE_ARRAY as int] as i64
+    &&& p.lazy_initializer_class_id == ap.builtin[BUILTIN_LAZY_INITIALIZER as int] as i64
 }
 
 // ---------------------------------------------------------------------------
@@ -269,11 +306,9 @@ pub open spec fn rec(mem: Seq<usize>, fi: int, k: usize) -> usize {
 /// handler words the handlers (one per frame at most).
 pub open spec fn frames_rel(mem: Seq<usize>, frames: Seq<Frame>, tries: Seq<Handler>) -> bool {
     &&& FRAME_WORDS * frames.len() <= mem.len()
-    &&& forall|fi: int| 0 <= fi < frames.len() ==> {
-        &&& #[trigger] rec(mem, fi, FRAME_METHOD) == frames[fi].method
-        &&& rec(mem, fi, FRAME_RET) == frames[fi].ret
-        &&& rec(mem, fi, FRAME_BASE) == frames[fi].base
-    }
+    &&& forall|fi: int| 0 <= fi < frames.len() ==> #[trigger] rec(mem, fi, FRAME_METHOD) == frames[fi].method
+    &&& forall|fi: int| 0 <= fi < frames.len() ==> #[trigger] rec(mem, fi, FRAME_RET) == frames[fi].ret
+    &&& forall|fi: int| 0 <= fi < frames.len() ==> #[trigger] rec(mem, fi, FRAME_BASE) == frames[fi].base
     &&& tries.len() <= frames.len()
     &&& forall|x: int| 0 <= x < tries.len() ==> {
         &&& (#[trigger] tries[x]).frame < frames.len()
@@ -285,25 +320,53 @@ pub open spec fn frames_rel(mem: Seq<usize>, frames: Seq<Frame>, tries: Seq<Hand
             ==> exists|x: int| 0 <= x < tries.len() && tries[x].frame == fi
 }
 
+/// Record words lie below `FRAME_WORDS * n`.
+pub proof fn lemma_rec_index(n: int, fi: int, k: usize)
+    requires 0 <= fi < n, k < FRAME_WORDS,
+    ensures 0 <= FRAME_WORDS * fi + k < FRAME_WORDS * n,
+{
+    assert(FRAME_WORDS * fi + k < FRAME_WORDS * n) by (nonlinear_arith)
+        requires 0 <= fi < n, k < FRAME_WORDS;
+}
+
+/// The frame records depend only on `mem[0..FRAME_WORDS * frames.len()]`.
+pub proof fn lemma_frames_rel_same(mem: Seq<usize>, mem2: Seq<usize>, frames: Seq<Frame>, tries: Seq<Handler>)
+    requires
+        frames_rel(mem, frames, tries),
+        FRAME_WORDS * frames.len() <= mem2.len(),
+        forall|i: int| 0 <= i < FRAME_WORDS * frames.len() ==> #[trigger] mem2[i] == mem[i],
+    ensures frames_rel(mem2, frames, tries),
+{
+    let n = frames.len() as int;
+    assert forall|fi: int| 0 <= fi < n implies #[trigger] rec(mem2, fi, FRAME_METHOD) == frames[fi].method by {
+        lemma_rec_index(n, fi, FRAME_METHOD);
+        assert(rec(mem, fi, FRAME_METHOD) == frames[fi].method);
+    }
+    assert forall|fi: int| 0 <= fi < n implies #[trigger] rec(mem2, fi, FRAME_RET) == frames[fi].ret by {
+        lemma_rec_index(n, fi, FRAME_RET);
+        assert(rec(mem, fi, FRAME_RET) == frames[fi].ret);
+    }
+    assert forall|fi: int| 0 <= fi < n implies #[trigger] rec(mem2, fi, FRAME_BASE) == frames[fi].base by {
+        lemma_rec_index(n, fi, FRAME_BASE);
+        assert(rec(mem, fi, FRAME_BASE) == frames[fi].base);
+    }
+    assert forall|x: int| 0 <= x < tries.len() implies
+        rec(mem2, (#[trigger] tries[x]).frame as int, FRAME_HANDLER) == handler_word(tries[x]) by {
+        lemma_rec_index(n, tries[x].frame as int, FRAME_HANDLER);
+    }
+    assert forall|fi: int| 0 <= fi < n && #[trigger] rec(mem2, fi, FRAME_HANDLER) != 0
+            implies exists|x: int| 0 <= x < tries.len() && tries[x].frame == fi by {
+        lemma_rec_index(n, fi, FRAME_HANDLER);
+        assert(rec(mem2, fi, FRAME_HANDLER) == rec(mem, fi, FRAME_HANDLER));
+    }
+}
+
 /// Writes above the frame records keep them.
 pub proof fn lemma_frames_rel_write(mem: Seq<usize>, i: int, v: usize, frames: Seq<Frame>, tries: Seq<Handler>)
     requires frames_rel(mem, frames, tries), FRAME_WORDS * frames.len() <= i < mem.len(),
     ensures frames_rel(mem.update(i, v), frames, tries),
 {
-    let m2 = mem.update(i, v);
-    assert forall|fi: int| 0 <= fi < frames.len() implies
-        #[trigger] rec(m2, fi, FRAME_METHOD) == rec(mem, fi, FRAME_METHOD)
-        && rec(m2, fi, FRAME_RET) == rec(mem, fi, FRAME_RET)
-        && rec(m2, fi, FRAME_BASE) == rec(mem, fi, FRAME_BASE)
-        && rec(m2, fi, FRAME_HANDLER) == rec(mem, fi, FRAME_HANDLER) by {}
-    assert forall|x: int| 0 <= x < tries.len() implies
-        rec(m2, (#[trigger] tries[x]).frame as int, FRAME_HANDLER) == handler_word(tries[x]) by {
-        assert(rec(m2, tries[x].frame as int, FRAME_HANDLER) == rec(mem, tries[x].frame as int, FRAME_HANDLER));
-    }
-    assert forall|fi: int| 0 <= fi < frames.len() && #[trigger] rec(m2, fi, FRAME_HANDLER) != 0
-            implies exists|x: int| 0 <= x < tries.len() && tries[x].frame == fi by {
-        assert(rec(m2, fi, FRAME_HANDLER) == rec(mem, fi, FRAME_HANDLER));
-    }
+    lemma_frames_rel_same(mem, mem.update(i, v), frames, tries);
 }
 
 } // verus!

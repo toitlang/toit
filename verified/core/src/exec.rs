@@ -187,7 +187,8 @@ impl Machine {
         let g = self.g@;
         let addr = self.heap.addrs();
         &&& self.stack_ok()
-        &&& addrs_ok(self.heap.objs(), addr)
+        &&& heap_model_ok(self.heap.objs(), addr, self.heap.class_bits())
+        &&& self.heap.class_bits() == p.class_bits@
         &&& g.heap == self.heap.objs()
         &&& prog_rel(p, g.heap, addr)
         &&& self.words() == enc_seq(addr, g.stack)
@@ -227,6 +228,7 @@ impl Machine {
         &&& m.method == self.method
         &&& m.heap.addrs() == addr
         &&& m.heap.objs() == self.heap.objs()
+        &&& m.heap.class_bits() == self.heap.class_bits()
         &&& forall|i: int| 0 <= i < self.ftop ==> #[trigger] m.mem@[i] == self.mem@[i]
         &&& g1.heap == g0.heap
         &&& g1.frames == g0.frames
@@ -244,25 +246,7 @@ impl Machine {
     {
         let g0 = self.g@;
         let g1 = m.g@;
-        let n = g0.frames.len();
-        assert forall|fi: int| 0 <= fi < n implies
-            #[trigger] rec(m.mem@, fi, FRAME_METHOD) == rec(self.mem@, fi, FRAME_METHOD)
-            && rec(m.mem@, fi, FRAME_RET) == rec(self.mem@, fi, FRAME_RET)
-            && rec(m.mem@, fi, FRAME_BASE) == rec(self.mem@, fi, FRAME_BASE)
-            && rec(m.mem@, fi, FRAME_HANDLER) == rec(self.mem@, fi, FRAME_HANDLER) by {
-            assert(FRAME_WORDS * fi + FRAME_HANDLER < self.ftop) by (nonlinear_arith)
-                requires 0 <= fi < n, self.ftop == FRAME_WORDS * n;
-        }
-        assert forall|x: int| 0 <= x < g1.tries.len() implies
-            rec(m.mem@, (#[trigger] g1.tries[x]).frame as int, FRAME_HANDLER) == handler_word(g1.tries[x]) by {
-            assert(rec(m.mem@, g0.tries[x].frame as int, FRAME_HANDLER)
-                == rec(self.mem@, g0.tries[x].frame as int, FRAME_HANDLER));
-        }
-        assert forall|fi: int| 0 <= fi < n && #[trigger] rec(m.mem@, fi, FRAME_HANDLER) != 0
-                implies exists|x: int| 0 <= x < g1.tries.len() && g1.tries[x].frame == fi by {
-            assert(rec(m.mem@, fi, FRAME_HANDLER) == rec(self.mem@, fi, FRAME_HANDLER));
-        }
-        assert(frames_rel(m.mem@, g1.frames, g1.tries));
+        lemma_frames_rel_same(self.mem@, m.mem@, g0.frames, g0.tries);
     }
 
     /// The top frame's height is `lim - top`.
@@ -334,6 +318,7 @@ impl Machine {
         &&& self.globals@ == other.globals@
         &&& self.heap.addrs() == other.heap.addrs()
         &&& self.heap.objs() == other.heap.objs()
+        &&& self.heap.class_bits() == other.heap.class_bits()
         &&& self.g == other.g
         &&& self.mem@.len() == other.mem@.len()
         // The frame records (below ftop) are unchanged.
@@ -382,6 +367,39 @@ impl Machine {
     }
 
     // --- Refinement of the simple handlers -------------------------------------
+
+    /// Pushes the encoding of `v` (`spec::push`); false (and no change) for
+    /// lack of room.
+    #[inline(always)]
+    pub fn push_val(&mut self, p: &Program, w: usize, Ghost(v): Ghost<Value>) -> (r: bool)
+        requires
+            old(self).refines(p),
+            w == enc(old(self).addr(), v),
+            encodable(old(self).addr(), v),
+        ensures
+            r ==> final(self).refines(p) && final(self).g@ == sp::push(old(self).g@, v),
+            !r ==> *final(self) == *old(self),
+            final(self).bci == old(self).bci,
+            final(self).ftop == old(self).ftop,
+            final(self).base == old(self).base,
+            final(self).method == old(self).method,
+    {
+        let ghost m0 = *self;
+        if self.top <= self.ftop {
+            return false;
+        }
+        self.push(w);
+        let ghost g1 = sp::push(m0.g@, v);
+        self.g = Ghost(g1);
+        proof {
+            assert(self.words() =~= enc_seq(m0.addr(), g1.stack));
+            assert forall|i: int| 0 <= i < g1.stack.len() implies #[trigger] encodable(m0.addr(), g1.stack[i]) by {
+                if i < m0.g@.stack.len() { assert(g1.stack[i] == m0.g@.stack[i]); }
+            }
+            m0.lemma_local_step(p, self);
+        }
+        true
+    }
 
     /// Pushes the encoding of `v` and continues at `bci + len`: refines
     /// `next(push(g, v), len)`. Fails only for lack of room.
@@ -509,11 +527,22 @@ impl Machine {
         proof { self.lemma_at(p, n as int); self.lemma_at(p, 0); }
         let v = self.at(0);
         self.drop(1);
+        let ghost w1 = self.words();
         self.put(n - 1, v);
         self.bci = self.bci + 2;
         let ghost g1 = sp::goto(sp::put(sp::drop(g0, 1), n - 1, sp::at(g0, 0)), g0.bci + 2);
         self.g = Ghost(g1);
         proof {
+            let h = g0.stack.len();
+            assert(w1 == m0.words().subrange(0, h - 1));
+            assert(self.words() == w1.update(h - 1 - n, v));
+            assert(g1.stack == g0.stack.subrange(0, h - 1).update(h - 1 - n, sp::at(g0, 0)));
+            assert forall|i: int| 0 <= i < h - 1 implies #[trigger] self.words()[i] == enc(m0.addr(), g1.stack[i]) by {
+                if i != h - 1 - n {
+                    assert(self.words()[i] == m0.words()[i]);
+                    assert(m0.words()[i] == enc_seq(m0.addr(), g0.stack)[i]);
+                }
+            }
             assert(self.words() =~= enc_seq(m0.addr(), g1.stack));
             assert forall|i: int| 0 <= i < g1.stack.len() implies #[trigger] encodable(m0.addr(), g1.stack[i]) by {
                 if i != g0.stack.len() - 1 - n { assert(g1.stack[i] == g0.stack[i]); }
