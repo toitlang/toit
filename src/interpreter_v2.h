@@ -88,6 +88,11 @@ class V2MethodTable {
   // does for untrusted programs.
   static V2MethodTable* compute(Program* program, bool untrusted = false);
 
+  // Whether untrusted containers may be in format 1 (and run on the C++
+  // interpreter): -Xuntrusted_format1 or TOIT_UNTRUSTED_FORMAT1=1. By
+  // default untrusted containers must be in format 2.
+  static bool untrusted_format1_allowed();
+
   // The format-2 stand-in for the structural verifier until the Phase 3
   // verifier is integrated: decodes and checks the table, then frees it.
   static bool verify(Program* program, bool untrusted);

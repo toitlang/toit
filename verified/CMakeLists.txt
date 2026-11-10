@@ -76,6 +76,10 @@ add_dependencies(toit_verified_core toit_verified_core_build)
 # C++ headers. Runs at build time (toit_vm depends on it) and as a ctest.
 add_executable(toit_verified_core_layout_check layout_check.cc)
 target_include_directories(toit_verified_core_layout_check PRIVATE "${TOIT_SDK_SOURCE_DIR}/src")
+# The check uses only inline accessors of the headers; built as in a release
+# build so that it does not need the VM's ASSERT support (debug and ASan
+# builds).
+target_compile_options(toit_verified_core_layout_check PRIVATE -UTOIT_DEBUG -DTOIT_DEPLOY)
 target_link_libraries(toit_verified_core_layout_check PRIVATE toit_verified_core)
 set_target_properties(toit_verified_core_layout_check PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${VCORE_TARGET_DIR}")

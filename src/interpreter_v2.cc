@@ -262,6 +262,12 @@ V2MethodTable* V2MethodTable::compute(Program* program, bool untrusted) {
   UNREACHABLE();
 }
 
+bool V2MethodTable::untrusted_format1_allowed() {
+  if (Flags::untrusted_format1) return true;
+  const char* env = getenv("TOIT_UNTRUSTED_FORMAT1");
+  return env != null && strcmp(env, "1") == 0;
+}
+
 bool V2MethodTable::verify(Program* program, bool untrusted) {
   V2MethodTable* table = compute(program, untrusted);
   if (table == null) return false;
