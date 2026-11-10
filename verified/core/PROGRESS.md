@@ -52,7 +52,13 @@ no save/reload) 122, 114, 117, 213, 148.
 Gates: `verified/check.sh --tests` passes (spec 842, core 780 verified, 0
 errors); ctest -j16 1160/1163 (version, reader, udp-reuse-port-test);
 untrusted suite 280 identical, the two known differences; prim_diff.sh 10
-seeds x 1,000,000 calls identical; fuzz: see below.
+seeds x 1,000,000 calls identical; fuzz (ASan build of 2c901d48, launch
+filter, seed 11, 20 min, 11 seed programs): 76,625 mutants, 10,718
+accepted and run (8,772 exit 0, 1,354 exit 1, 562 exit 255, 30 timeouts),
+no crash (artifacts prims-integration/fuzz1).
+
+**Part 1 complete: commit 87cf044b** (merge 46fad52c, wiring 2c901d48,
+documentation 87cf044b); it can be merged without the performance pass.
 
 Trusted items of the core (TRUSTED.toml occurrences): integration 143
 (external_body 55, unsafe 48, plain_rust_item 26, uninterp 7, assume_new
