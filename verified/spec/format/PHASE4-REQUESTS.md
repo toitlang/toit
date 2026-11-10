@@ -92,7 +92,7 @@ write field 1 (LOAD_FIELD/STORE_FIELD raise INVALID_PROGRAM, the `this`
 variants stop the process with a stuck state). The format-1 interpreter
 has the same hole for unverified programs; not changed here.
 
-## R6. The inference must not panic on malformed programs (vm/verifier-link)
+## R6. The inference must not panic on malformed programs (vm/verifier-link): done
 
 Problem (found by the launch-time fuzz mode of verified/core/fuzz, header
 mutations; reproducers in verified/core/fuzz/findings/infer-panic-*):
@@ -118,6 +118,26 @@ indexing without a bounds check; reject instead). A fuzz target that runs
 Meanwhile: vmverify checks `x_wf_program2` before the inference, catches
 panics and rejects (`INTERNAL`, "verifier failure").
 
+Status (spec/verifier-memory, 2026-11-10): `infer.rs` was rewritten for R8
+and is total: it checks `x_wf_program2` itself, never indexes without a
+bounds check or an established bound, uses checked arithmetic on offsets
+from the bytecodes, and calls the verified functions only within their
+preconditions (`post_pre`, `pins_sorted`, `depth >= 1`, ...); any
+malformed input ends in an error (and a rejection), and per-method memory
+budgets stop runaway allocation. Regression: `verified/vmverify/tests/
+findings.sh` (in `check.sh --tests`) runs `toit.run --verify` on every
+reproducer of verified/core/fuzz/findings: no panic, `infer-panic-*` and
+`r5-*` rejected. Fuzzing of the launch-time entry point in-process:
+`toit_vmverify_fuzz` (`tests/fuzz_tables.sh`) mutates copies of the exact
+FFI input the VM hands `toit_vmverify_verify` (tables, image, globals,
+primitive table; saved with `toit.run --emit-canonical=X.tables`); see
+verified/vmverify/README.md for the 15-minute run. vmverify keeps
+`panic = "unwind"` and `catch_unwind` on hosts (defense in depth: the
+inference and the conversion are unverified Rust whose panic freedom is
+argued and fuzzed, not proven); the `no_std` build for devices has no
+unwinding, so there a panic would abort, which is why the inference must
+be total.
+
 ## R7. The heap check and `loaded_ok`'s object bound (vm/verifier-link): done
 
 Resolved by the verified `heap_check::x_loaded_ok` (merged with
@@ -132,7 +152,7 @@ proven code. vmverify builds the heap from VM memory with the same
 `Loaded` type, so a verified check with the signature
 `check_heap(&Loaded) -> Result<(), String>` (or a bool) drops in.
 
-## R8. Certificate memory (vm/verifier-link)
+## R8. Certificate memory (vm/verifier-link): done
 
 Problem: the VM now verifies at every untrusted launch, and Phase 5 must
 verify on the device at install time. `XCert::maps` holds one
@@ -148,3 +168,27 @@ instruction starts rather than bytes (a sparse map, or offsets sorted per
 method), with interned or shared kind vectors (consecutive maps mostly
 differ in the top slots). Keeping `accepts` unchanged and only changing
 `XCert` and its view should leave the proof's statement intact.
+
+Status (spec/verifier-memory, 2026-11-10): done, with `accepts` and the
+theorem unchanged and zero admits. The verifier no longer holds a whole
+certificate:
+
+* `v2/split.rs`: `split_ok(p, g, ms, t)` checks each method against its
+  own maps and the global part `g` (with `pins`, the few maps other
+  methods look up: NON_LOCAL_BRANCH targets and the task entry's offset
+  1). Proven: `split_ok ==> accepts(with_maps(g, ms))` and every accepted
+  certificate splits (`exists c. accepts` iff `exists g, ms. split_ok`);
+  `theorem_soundness_split`.
+* `check::verify(p, g, oracle, t)` returns exactly `pins_sorted(g) &&
+  split_ok(vview(p), g@, ms, t)` for the maps `ms` the oracle yields one
+  method at a time; maps are lists of kinds sharing their bottoms
+  (`XMaps`), dropped after their method.
+* The program is borrowed (`v2/vprog.rs`, `VProgram`); vmverify no longer
+  copies the VM's tables, and the heap is checked one object at a time
+  (`x_loaded_ok_stream`).
+* The inference computes the global part first (`infer_global`, maps
+  dropped per method) and recomputes each method's maps for the checker
+  (`infer::Oracle`).
+
+Peak memory and time: verified/vmverify/README.md, "Cost" (hello world
+3.6 MB -> about 46 KB, the toit CLI 24.7 MB -> about 0.43 MB).

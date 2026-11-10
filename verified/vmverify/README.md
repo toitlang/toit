@@ -18,12 +18,14 @@ directory of this repository.
 # The format-2 verifier in the VM
 
 Untrusted programs are verified by the structural verifier of format 2
-(verified/spec: `v2::check::verify`, proven equal to the specification's
-`accepts`; `theorem_soundness` in `v2/theorem.rs`) before any of their
-bytecode runs. This crate runs that verifier inside the VM, on the program
-**as the VM will execute it**: the abstract program is built directly from
-the tables the verified core gets, not from a second parse of the snapshot
-bytes.
+(verified/spec: `v2::check::verify`, proven to decide `split_ok`, the
+per-method form of the specification's `accepts`; `theorem_soundness_split`
+in `v2/split.rs`) before any of their bytecode runs. This crate runs that
+verifier inside the VM, on the program **as the VM will execute it**: the
+abstract program is the tables the verified core gets, borrowed in place,
+not a second parse of the snapshot bytes. Its memory is bounded by the
+largest method plus small per-method tables, not by the program (see
+"Memory").
 
 ## One Rust library
 
@@ -39,11 +41,17 @@ the core before (the CMake target keeps its name, `toit_verified_core`).
 
 The profile is `panic = "unwind"` (the core alone uses `abort`): the
 inference runs on untrusted input, and a panic must reject the program,
-not abort the VM (`ffi.rs` wraps the verification in `catch_unwind`). The
-fuzz harness has already found such panics (PHASE4-REQUESTS.md R6). The
-core's handlers do not unwind; benchmarks (richards, deltablue, pystone in
-format 2, minimum of 5 alternating runs, machine under load) were within
-noise of the `abort` build (-13 % to +5 %).
+not abort the VM (`ffi.rs` wraps the verification in `catch_unwind` on
+hosts). The inference is now total (PHASE4-REQUESTS.md R6: bounds-checked
+everywhere, verified functions called within their preconditions, fuzzed;
+see "Fuzzing"), and the verified checker cannot panic on indexing or
+arithmetic (Verus proves it). `catch_unwind` stays anyway: the inference
+(about 750 lines) and the conversion are plain Rust whose panic freedom is
+argued and tested, not proven, and on hosts the catch costs nothing
+measurable (the core's handlers do not unwind; benchmarks of richards,
+deltablue, pystone in format 2 were within noise of the `abort` build,
+-13 % to +5 %). Without `std` (devices) there is no unwinding: a panic
+aborts.
 
 ## The C ABI (src/verifier_v2.h)
 
@@ -106,25 +114,28 @@ Trusted format-2 programs are verified only with `-Xverify`/`TOIT_VERIFY`
 
 | File | Role |
 |---|---|
-| `src/from_vm.rs` | Builds `ExecProgram`, the heap (`Vec<ExecObj>`) and the globals from VM memory: tables copied as they are; roots, globals, literals followed breadth first through the program image (work list, no recursion). An object's kind is its header's class tag, which must equal its class's tag; an instance has its class's field count (`class_bits`), as the core's `instance_fields` reads it; strings and byte arrays (internal or external) must lie in the image. Every read is bounds-checked against `[program_heap_start, +program_heap_size)`. |
-| `src/verify.rs` | The verdict, the four duties of spec/SOUNDNESS.md "What the VM checks outside the verifier": `x_wf_program2` (the inference and `x_loaded_ok` require it), the untrusted `infer`, then the certificate's trusted fields (`global_count` = the globals' count, `prim_arity` = the VM's table) are overwritten, and the program is accepted iff the proven `check::verify` (= `accepts`, untrusted rules) and the proven `heap_check::x_loaded_ok` (= `loaded_ok`) both accept. The unverified `check_heap` only gives an early, readable rejection; the rest is diagnostics. |
-| `src/ffi.rs` | C ABI; panics reject. |
-| `src/alloc.rs` | Counting allocator (measurement). |
+| `src/from_vm.rs` | Views VM memory as the abstract program: the tables are borrowed as slices (`Converted::program()`/`split()` give a `VProgram`; the `V2Method` array is viewed as `VMethod`, whose layout is asserted equal at compile time); the 23 builtin class ids are decoded; roots, globals, literals are converted to values and followed breadth first through the program image (work list, no recursion), one object at a time (`Objects`, a `heap_check::ObjStream`). An object's kind is its header's class tag, which must equal its class's tag; an instance has its class's field count (`class_bits`), as the core's `instance_fields` reads it; strings and byte arrays (internal or external) must lie in the image. Every read is bounds-checked against `[program_heap_start, +program_heap_size)`. |
+| `src/verify.rs` | The verdict, the duties of spec/SOUNDNESS.md "What the VM checks outside the verifier": `x_wf_program2` (the inference and the heap check require it); the proven `heap_check::x_loaded_ok_stream` over the converted objects (accepts only if their heap satisfies `loaded_ok`), and the conversion must complete without error; the untrusted `infer::infer_global`, whose trusted fields (`global_count` = the globals' count, `prim_arity` = the VM's table) are set here; and the proven `check::verify` with the inference's oracle (= `pins_sorted && split_ok`, which implies `accepts` of the assembled certificate, untrusted rules). The rest is diagnostics. |
+| `src/ffi.rs` | C ABI; panics reject (hosts). |
+| `src/counting.rs`, `src/clock.rs` | Counting allocator and phase times (measurement; hosts). |
 
-Not trusted: `canonical.rs`, the `toit_vmverify_canonical` tool (tests).
+Not trusted: `canonical.rs`, `tables.rs`, the `toit_vmverify_canonical`,
+`toit_vmverify_mem` and `toit_vmverify_fuzz` tools (tests).
 `v2/infer.rs` stays untrusted (it only produces the certificate).
-The heap check is verified (`heap_check::x_loaded_ok`, proven equal to
-`loaded_ok`, including the bound of 2^29 objects).
+The heap check is verified (`x_loaded_ok_stream`; `x_loaded_ok` for a heap
+in memory is proven equal to `loaded_ok`, including the bound of 2^29
+objects).
 
 Correspondence with the dump path: `tests/differential.py` compiles every
 suite program in format 2 and compares the canonical form of the program
-built from VM memory (`toit.run --verify --emit-canonical`) with the one
-the reference loader builds from `tools/spec_dump.toit`'s dump
+built from VM memory (`toit.run --verify --emit-canonical`, which
+converts every object with `collect_heap`) with the one the reference
+loader builds from `tools/spec_dump.toit`'s dump
 (`toit_vmverify_canonical`). Objects are renumbered breadth first from the
 roots, globals and literals; large integers compare by value. Result
-(2026-11-10): **434 of 434** compilable programs identical (the 4 others
-are negative compile tests). `verified/check.sh --tests` runs the unit
-tests and a sample of the differential test.
+(2026-11-10, borrowed tables and object stream): **DIFF_RESULT**.
+`verified/check.sh --tests` runs the unit tests, a sample of the
+differential test and the fuzz reproducers (`tests/findings.sh`).
 
 ## What the C++ format-2 loader still checks
 

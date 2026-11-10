@@ -1686,10 +1686,92 @@ pub fn x_map_at(c: &XCert, m: i64, off: i64) -> (r: Option<Vec<XKind>>)
     }
 }
 
+/// `chain(nodes, i) == kv(k)`, without building the chain.
+pub fn x_chain_is(nodes: &Vec<XNode>, i: u32, k: &Vec<XKind>) -> (r: bool)
+    ensures r == (chain(nodes@, i as int) == kv(*k)),
+{
+    let ghost s = kv(*k);
+    let mut j = k.len();
+    let mut cur = i as usize;
+    let mut done = cur >= nodes.len();
+    proof {
+        assert(s.subrange(0, j as int) =~= s);
+        if done {
+            assert(chain(nodes@, i as int) =~= Seq::<Kind>::empty());
+            if j > 0 { assert(s.len() > 0); }
+            else { assert(s =~= Seq::<Kind>::empty()); }
+        }
+    }
+    while !done
+        invariant
+            0 <= j <= k@.len(), s == kv(*k),
+            done ==> (chain(nodes@, i as int) == s) == (j == 0),
+            !done ==> cur < nodes@.len()
+                && (chain(nodes@, i as int) == s) == (chain(nodes@, cur as int) == s.subrange(0, j as int)),
+        decreases (if done { 0int } else { cur as int + 1 }),
+    {
+        let nd = nodes[cur];
+        let ghost par = nd.parent as int;
+        let ghost base = if par < cur { chain(nodes@, par) } else { Seq::<Kind>::empty() };
+        assert(chain(nodes@, cur as int) == base.push(nd.kind@));
+        if j == 0 {
+            assert(chain(nodes@, cur as int).len() > 0);
+            assert(chain(nodes@, cur as int) != s.subrange(0, 0));
+            return false;
+        }
+        assert(s[j - 1] == k@[j - 1]@);
+        if !x_kind_eq(nd.kind, k[j - 1]) {
+            proof {
+                assert(chain(nodes@, cur as int)[base.len() as int] == nd.kind@);
+                if chain(nodes@, cur as int) == s.subrange(0, j as int) {
+                    assert(base.len() == j - 1);
+                    assert(s.subrange(0, j as int)[j - 1] == s[j - 1]);
+                }
+            }
+            return false;
+        }
+        proof {
+            let full = chain(nodes@, cur as int);
+            let pre = s.subrange(0, j as int);
+            if base == s.subrange(0, j - 1) {
+                assert(full =~= pre);
+            }
+            if full == pre {
+                assert(base =~= full.drop_last());
+                assert(pre.drop_last() =~= s.subrange(0, j - 1));
+            }
+        }
+        j -= 1;
+        if (nd.parent as usize) < cur {
+            cur = nd.parent as usize;
+        } else {
+            proof {
+                if j == 0 { assert(s.subrange(0, 0) =~= Seq::<Kind>::empty()); }
+                else { assert(s.subrange(0, j as int).len() > 0); }
+            }
+            done = true;
+        }
+    }
+    j == 0
+}
+
 pub fn x_map_is(c: &XCert, m: i64, off: i64, k: &Vec<XKind>) -> (r: bool)
     requires pins_sorted(c.g),
     ensures r == (map_at(c@, m as int, off as int) == Some(kv(*k))),
 {
+    let ghost cc = c@;
+    if c.cur < c.g.n && m >= 0 && (m as u64) < (c.g.n as u64) && m as usize == c.cur && off >= 0 {
+        // The current method's maps: compare in place.
+        assert(cc.maps.len() == c.g.n);
+        assert(cc.maps[m as int] == mapsv(c.maps));
+        if (off as u64) >= (c.maps.idx.len() as u64) {
+            return false;
+        }
+        assert(cc.maps[m as int][off as int] == map_view(c.maps, off as int));
+        let i = c.maps.idx[off as usize];
+        if i == NO_MAP { return false; }
+        return x_chain_is(&c.maps.nodes, i, k);
+    }
     match x_map_at(c, m, off) {
         Some(k2) => x_kinds_eq(&k2, k),
         None => false,
