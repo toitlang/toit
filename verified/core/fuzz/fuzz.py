@@ -178,6 +178,8 @@ def main():
   parser = argparse.ArgumentParser()
   parser.add_argument("--seconds", type=int, default=300)
   parser.add_argument("--seed", type=int, default=1)
+  parser.add_argument("--start", type=int, default=0, help="first mutant index (mutants are deterministic per seed and index)")
+  parser.add_argument("--count", type=int, default=0, help="stop after this many mutants (0: only --seconds limits)")
   parser.add_argument("--jobs", type=int, default=8)
   parser.add_argument("--timeout", type=int, default=10)
   parser.add_argument("--out", default=os.path.join(REPO, "build/fuzz"))
@@ -200,11 +202,14 @@ def main():
     counts = {}
     crashes = []
     start = time.time()
-    index = 0
+    index = args.start
+    def more():
+      if args.count and index >= args.start + args.count: return False
+      return time.time() - start < args.seconds
     with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
       pending = set()
-      while time.time() - start < args.seconds or pending:
-        while time.time() - start < args.seconds and len(pending) < 2 * args.jobs:
+      while more() or pending:
+        while more() and len(pending) < 2 * args.jobs:
           pending.add(pool.submit(one, args, prepared, index, work))
           index += 1
         done, pending = concurrent.futures.wait(pending, return_when=concurrent.futures.FIRST_COMPLETED)
@@ -221,7 +226,8 @@ def main():
       "run": args.run,
       "filter": "toit_spec_verify (verified check::verify, untrusted rules)" if args.filter == "spec" else "toit.run --verify (format-2 loader table checks)",
       "seeds": [p[0] for p in prepared],
-      "mutants": index,
+      "first": args.start,
+      "mutants": index - args.start,
       "outcomes": counts,
       "crashes": crashes,
     }
