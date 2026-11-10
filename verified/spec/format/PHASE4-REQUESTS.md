@@ -56,3 +56,23 @@ performance pass.
 heap_check.rs checks. Request: a verified executable check of the heap
 part, so that the VM can run it on untrusted launches next to
 `check::verify`.
+
+## R5. The fields of a task the VM owns
+
+Problem (found by verified/core/fuzz): a mutant of tests/class-id-test.toit
+that `check::verify` accepts changes `STORE_FIELD_THIS 9` to
+`STORE_FIELD_THIS 0` in `Task_.initialize-entry-task_`. Field 0 of a task
+is the task's `Stack` (`Task::STACK_INDEX`) and field 1 its id; the VM
+reads them (scheduler, task switch, GC). The spec treats them as ordinary
+fields of the instance (the class' field count includes them), so the
+program may overwrite the stack reference and the VM then uses an
+arbitrary value as a stack.
+
+Request: model a task's first two fields as not accessible (or as
+read-only for the id) in `spec::step` and in the verifier's receiver-range
+check, for example by giving the `Task_` class a field base of 2.
+
+Meanwhile: the core refuses to read or write field 0 of a task and to
+write field 1 (LOAD_FIELD/STORE_FIELD raise INVALID_PROGRAM, the `this`
+variants stop the process with a stuck state). The format-1 interpreter
+has the same hole for unverified programs; not changed here.

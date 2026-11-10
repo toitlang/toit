@@ -68,7 +68,9 @@ OBLIGATIONS.md. Trusted base: TRUSTED.md.
   branch targets of every instruction, the verifier only of reachable
   ones (mutated unreachable code). Harmless, but the loader and the
   verifier should agree once `check::verify` runs in the VM.
-- 1 accepted mutant reached a stuck state in the core (run 1; not kept:
-  the harness kept only crashes then). Either a gap between the verifier
-  and the core's checks or a core check stricter than the spec; the
-  harness now keeps such mutants (build/fuzz/stuck-*.snapshot). Open.
+- 1 accepted mutant (index 6388, seed 1) reached a stuck state: it
+  overwrote field 0 of a task (the task's Stack, owned by the VM) and the
+  core then found a malformed stack. A real hole (the scheduler could use
+  an arbitrary value as a stack). Fixed in the core (task fields 0 and 1
+  are protected); spec change request R5. Re-running the full index range
+  of run 1 (6266..14536) after the fix: see build/fuzz3.log.

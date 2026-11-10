@@ -844,12 +844,24 @@ impl Machine {
         if n < 0 { None } else { Some(n as usize) }
     }
 
+    /// Field `f` of `v` may be read. A task's field TASK_STACK_FIELD holds
+    /// its Stack, which the VM owns: no program may read or write it
+    /// (PHASE4-REQUESTS.md R5; found by the fuzz harness: a verified
+    /// program overwrote it and the scheduler then used the value as a
+    /// stack).
     #[inline(always)]
     pub fn field_ok(&self, p: &Program, v: usize, f: usize) -> bool {
         match self.instance_fields(p, v) {
-            Some(n) => f < n,
+            Some(n) => f < n && !(f == TASK_STACK_FIELD && self.tag(v) == TASK_TAG),
             None => false,
         }
+    }
+
+    /// Field `f` of `v` may be written: readable, and not a task's id
+    /// (TASK_ID_FIELD, set by the VM).
+    #[inline(always)]
+    pub fn field_store_ok(&self, p: &Program, v: usize, f: usize) -> bool {
+        self.field_ok(p, v, f) && !(f == TASK_ID_FIELD && self.tag(v) == TASK_TAG)
     }
 
     #[inline(always)]
@@ -1801,7 +1813,7 @@ impl Machine {
                 let info = p.methods.at(t);
                 if info.arity != 2 { return Ctl::Stuck(stuck::BAD_ARITY); }
                 let f = info.aux as usize;
-                if info.kind == KIND_FIELD_ACCESSOR && self.field_ok(p, recv, f) && !self.is_ro(p, recv) {
+                if info.kind == KIND_FIELD_ACCESSOR && self.field_store_ok(p, recv, f) && !self.is_ro(p, recv) {
                     self.heap.set_word(recv, INSTANCE_FIELDS_WORD + f, v);
                     self.drop(1);
                     self.put(0, v);

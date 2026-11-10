@@ -289,6 +289,8 @@ int main() {
     { "FAILURE_LITERALS", V2_FAILURE_LITERALS, false },
     { "MAX_INSTRUCTION_LENGTH", max_instruction_length, false },
     { "MAX_TABLE", V2_MAX_TABLE, false },
+    { "TASK_STACK_FIELD", static_cast<uword>(Task::STACK_INDEX), false },
+    { "TASK_ID_FIELD", static_cast<uword>(Task::ID_INDEX), false },
     { "V2METHOD_SIZE", sizeof(V2Method), false },
 #define FIELD(prefix, type, name) { prefix #name, offsetof(type, name), false },
     FIELD("V2METHOD_", V2Method, entry) FIELD("V2METHOD_", V2Method, end)

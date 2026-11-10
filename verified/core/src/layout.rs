@@ -59,6 +59,10 @@ pub const LARGE_INTEGER_TAG: usize = 6;
 pub const STACK_TAG: usize = 7;
 pub const TASK_TAG: usize = 8;
 
+/// The fields of a task the VM owns (`Task::STACK_INDEX`, `Task::ID_INDEX`).
+pub const TASK_STACK_FIELD: usize = 0;
+pub const TASK_ID_FIELD: usize = 1;
+
 /// Word offset of field 0 of an instance (`Instance::_offset_from(0)`).
 pub const INSTANCE_FIELDS_WORD: usize = 1;
 /// Array: length word and element 0 (`Array::LENGTH_OFFSET`, `_offset_from(0)`).

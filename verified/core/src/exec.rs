@@ -637,7 +637,7 @@ impl Machine {
         if !self.has_slot(1) { return Ctl::Stuck(1); }
         let v = self.at(0);
         let obj = self.at(1);
-        if !self.field_ok(env.p, obj, f) || self.is_ro(env.p, obj) {
+        if !self.field_store_ok(env.p, obj, f) || self.is_ro(env.p, obj) {
             return self.raise(env, crate::machine::INVALID_PROGRAM);
         }
         self.drop(2);
@@ -656,7 +656,7 @@ impl Machine {
         if !self.has_slot(0) { return Ctl::Stuck(1); }
         if self.base >= self.len - self.top { return Ctl::Stuck(8); }
         let this = self.mem.read(self.len - 1 - self.base);
-        if !self.field_ok(p, this, f) { return Ctl::Stuck(8); }
+        if !self.field_store_ok(p, this, f) { return Ctl::Stuck(8); }
         if self.is_ro(p, this) {
             return self.raise(env, crate::machine::INVALID_PROGRAM);
         }
