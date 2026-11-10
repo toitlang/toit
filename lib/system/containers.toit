@@ -30,9 +30,9 @@ Starts a new container from the image with the given $id.
 
 If $untrusted is true, the container runs with the untrusted (sandbox)
   policy: it can only call the allowed set of primitives. If $untrusted is
-  false (the default), the container runs with the image's default policy,
-  which is the trusted policy unless the image was installed with
-  $ContainerService.FLAG-UNTRUSTED.
+  false (the default), the container runs with the trusted policy, unless
+  the image was installed with $ContainerService.FLAG-UNTRUSTED: containers
+  from such images always run with the untrusted policy.
 */
 start id/uuid.Uuid arguments/any=[] -> Container
     --on-event/Lambda?=null
