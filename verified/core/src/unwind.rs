@@ -910,4 +910,62 @@ pub fn op_try(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     r
 }
 
+// ---------------------------------------------------------------------------
+// Throwing the out-of-memory error.
+
+/// Unwinding never raises (it allocates nothing).
+pub proof fn lemma_unwind_not_raise(ap: Program2, s: State2, u: Unwind)
+    ensures !(sp::unwind(ap, s, u) is Raise),
+    decreases s.frames.len(),
+{
+    if s.frames.len() > 0 && !sp::has_handler(s) && !(sp::top(s).base as int > s.stack.len()) {
+        lemma_unwind_not_raise(ap, sp::pop_frame(s), u);
+        match u {
+            Unwind::Return(f, v) => {
+                if f as int == sp::top_index(s) {
+                    let s1 = State2 {
+                        stack: s.stack.subrange(0, sp::top(s).base as int).push(v),
+                        frames: s.frames.drop_last(),
+                        fins: sp::fins_popped(s),
+                        bci: sp::top(s).ret,
+                        ..s
+                    };
+                    assert(!(sp::return_from(ap, s, v) is Raise));
+                }
+            },
+            _ => {},
+        }
+    }
+}
+
+/// Throws the out-of-memory error (`prim::out_of_memory`, roots[4]; nothing
+/// is allocated): `spec::unwind(g, Throw(out_of_memory))`, where that is a
+/// source of outcomes (a resource throw).
+#[inline(always)]
+pub fn throw_oom(m: &mut Machine, env: &Env) -> (r: Ctl)
+    requires
+        old(m).inv(env.p),
+        source(env.p.ap@, old(m).g@,
+            sp::unwind(env.p.ap@, old(m).g@, Unwind::Throw(toit_spec::v2::prim::out_of_memory(env.p.ap@)))),
+    ensures step_post(env.p, *old(m), *final(m), r),
+{
+    let p = env.p;
+    let ghost ap = p.ap@;
+    let ghost g = m.g@;
+    let ghost m0 = *m;
+    let ghost u = Unwind::Throw(ap.roots[ROOT_OUT_OF_MEMORY_ERROR as int]);
+    proof {
+        lemma_unwind_not_raise(ap, g, u);
+        lemma_source_outcome(p, m0, sp::unwind(ap, g, u));
+        lemma_shape(p, g);
+        assert(ap.roots.len() == 35);
+        assert(p.roots@[ROOT_OUT_OF_MEMORY_ERROR as int] == enc(m0.addr(), ap.roots[ROOT_OUT_OF_MEMORY_ERROR as int])
+            && const_ok(g.heap, ap.roots[ROOT_OUT_OF_MEMORY_ERROR as int]));
+    }
+    let w = p.roots.at(ROOT_OUT_OF_MEMORY_ERROR);
+    let r = m.do_unwind(env, Unw::Throw(w), Ghost(u));
+    proof { lemma_outcome_matches(p, m0, *m, r, sp::unwind(ap, g, u)); }
+    r
+}
+
 } // verus!

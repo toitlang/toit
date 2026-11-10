@@ -774,7 +774,7 @@ impl Machine {
 }
 
 /// Replacing an object by one with the same `ro` keeps the constants.
-proof fn lemma_prog_rel_update(p: &Program, objs: Seq<HeapObj>, a: Seq<usize>, id: int, o: HeapObj)
+pub proof fn lemma_prog_rel_update(p: &Program, objs: Seq<HeapObj>, a: Seq<usize>, id: int, o: HeapObj)
     requires prog_rel(p, objs, a), 0 <= id < objs.len(), o.ro == objs[id].ro,
     ensures prog_rel(p, objs.update(id, o), a),
 {

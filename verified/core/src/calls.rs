@@ -827,6 +827,21 @@ pub fn op_invoke_virtual(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel
         bci + len < 0x1000_0000,
     ensures step_post(env.p, *old(m), *final(m), r),
 {
+    proof { lemma_source_step(env.p.ap@, m.g@); }
+    do_invoke_virtual(m, env, bci, opcode, sel, n, len)
+}
+
+/// `spec::invoke_virtual(g, sel, n, len)` where it is a source of outcomes
+/// of the state (the step, or a resource throw's fallback).
+#[inline(always)]
+pub fn do_invoke_virtual(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel: i64, n: usize, len: usize) -> (r: Ctl)
+    requires
+        handler_pre(env.p, *old(m), bci, opcode),
+        source(env.p.ap@, old(m).g@, sp::invoke_virtual(env.p.ap@, old(m).g@, sel as int, n as int, len as int)),
+        -0x8000_0000 <= sel < 0x8000_0000,
+        bci + len < 0x1000_0000,
+    ensures step_post(env.p, *old(m), *final(m), r),
+{
     if let Some(c) = ensure_room(m, env) {
         return c;
     }
@@ -834,8 +849,9 @@ pub fn op_invoke_virtual(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
+    let ghost vo = sp::invoke_virtual(ap, g, sel as int, n as int, len as int);
     proof {
-        assert(outcome_ok(ap, p.cert@, sp::step(ap, g)));
+        lemma_source_not_stuck(p, m0, vo);
         m.lemma_frame(p);
         m.lemma_at(p, n - 1);
     }
@@ -843,8 +859,9 @@ pub fn op_invoke_virtual(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel
     match m.lookup(p, receiver, Ghost(sp::at(g, n - 1)), sel) {
         VLookup::Missing => step_unverified(m, env, bci, opcode, false),
         VLookup::Found(t) => {
+            proof { lemma_source_outcome(p, m0, vo); }
             let r = m.push_call(env, t, bci + len);
-            proof { lemma_matches(p, m0, *m, r); }
+            proof { lemma_outcome_matches(p, m0, *m, r, vo); }
             r
         },
     }
@@ -861,10 +878,25 @@ pub fn op_operator_fallback(m: &mut Machine, env: &Env, bci: usize, opcode: u8) 
         bci + 1 < 0x1000_0000,
     ensures step_post(env.p, *old(m), *final(m), r),
 {
+    proof { lemma_source_step(env.p.ap@, m.g@); }
+    fallback_src(m, env, bci, opcode)
+}
+
+/// `spec::operator_fallback` where it is a source of outcomes (the step,
+/// or the resource throw of a failed double allocation).
+#[inline(always)]
+pub fn fallback_src(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
+    requires
+        handler_pre(env.p, *old(m), bci, opcode),
+        62 <= opcode <= 79,
+        source(env.p.ap@, old(m).g@, sp::operator_fallback(env.p.ap@, old(m).g@, opcode)),
+        bci + 1 < 0x1000_0000,
+    ensures step_post(env.p, *old(m), *final(m), r),
+{
     proof { assert(env.p.ap@.invoke_offsets.len() == 19); }
     let sel = env.p.invoke_offsets.at((opcode - 62) as usize) as i64;
     let n = if opcode == 79 { 3 } else { 2 };
-    op_invoke_virtual(m, env, bci, opcode, sel, n, 1)
+    do_invoke_virtual(m, env, bci, opcode, sel, n, 1)
 }
 
 /// RETURN and RETURN_NULL (`spec::return_from`) with the result `w`.

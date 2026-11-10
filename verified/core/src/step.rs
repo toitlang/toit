@@ -46,7 +46,9 @@ use toit_spec::v2::verifier::{accepts, value_operands, instr_ok, is_branch, map_
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::types::p1;
 #[cfg(verus_keep_ghost)]
-use toit_spec::v2::theorem::{completion, continues};
+use toit_spec::v2::theorem::{completion, continues, outcome};
+#[cfg(verus_keep_ghost)]
+use toit_spec::v2::prim::completes;
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::bytecodes::opcode_length2;
 #[cfg(verus_keep_ghost)]
@@ -86,38 +88,54 @@ pub open spec fn verified_op(op: u8) -> bool {
 
 /// The machine continues from a state the spec reaches from `g0`: the same
 /// state (the instruction has not run: preemption before a backward
-/// branch, stack growth before a call), the next state of `step`, or a
-/// completion of a PRIMITIVE step (`theorem::transition` without the size
+/// branch, stack growth before a call), or a state an outcome of `g0`
+/// continues in (`theorem::outcome`: the step, a raise completed by
+/// `prim::raised`, a completed PRIMITIVE step, or a completed resource
+/// throw `prim::resource_throw`; `theorem::transition` without the size
 /// bound, which `refines` implies).
 pub open spec fn advances(ap: Program2, g0: State2, g1: State2) -> bool {
     ||| g1 == g0
-    ||| continues(sp::step(ap, g0), g1)
-    ||| match sp::step(ap, g0) {
-            Outcome2::Primitive(s1, module, index) =>
-                exists|o: Outcome2| completion(ap, s1, module, index, o) && continues(o, g1),
-            _ => false,
-        }
-    ||| resource_throw(ap, g0, g1)
+    ||| exists|o: Outcome2| #[trigger] outcome(ap, g0, o) && continues(o, g1)
 }
 
-/// The machine ran out of a resource the spec does not bound (the stack
-/// could not grow, an allocation failed) and throws instead of executing
-/// the instruction: an `Exception_` holding the root error (stack
-/// overflow), or the out-of-memory error itself. Not a step of the spec,
-/// whose memory is unbounded (SOUNDNESS.md hypothesis 3 asks for a stop or
-/// an out-of-memory throw; PHASE4-REQUESTS.md R6 asks the spec to model
-/// it). Only the assumed bridges produce it.
-pub open spec fn resource_throw(ap: Program2, g0: State2, g1: State2) -> bool {
-    ||| continues(sp::unwind(ap, g0, Unwind::Throw(ap.roots[ROOT_OUT_OF_MEMORY_ERROR as int])), g1)
-    ||| exists|exc: HeapObj| #[trigger] exception_like(ap, exc)
-            && continues(sp::unwind(ap, sp::alloc2(g0, exc), Unwind::Throw(sp::new_ref2(g0))), g1)
+/// Every completion of `o` (`prim::completes`: a raise completed by
+/// `raised`, anything else itself) is an outcome of `g`: `o` is the step's
+/// outcome, or a resource throw of `g`. The handlers of a path that is one
+/// of the spec's alternatives take this instead of `step == o`.
+pub open spec fn source(ap: Program2, g: State2, o: Outcome2) -> bool {
+    forall|o2: Outcome2| completes(ap, o, o2) ==> #[trigger] outcome(ap, g, o2)
 }
 
-/// An exception object the machine creates: an `Exception_` instance.
-pub open spec fn exception_like(ap: Program2, exc: HeapObj) -> bool {
-    &&& exc.class_id as int == ap.builtin[22] as int
-    &&& exc.body is Instance
-    &&& !exc.ro
+pub proof fn lemma_source_step(ap: Program2, g: State2)
+    ensures source(ap, g, sp::step(ap, g)),
+{
+}
+
+pub proof fn lemma_source_resource(ap: Program2, g: State2, o1: Outcome2)
+    requires toit_spec::v2::prim::resource_throw(ap, g, o1),
+    ensures source(ap, g, o1),
+{
+    assert forall|o2: Outcome2| completes(ap, o1, o2) implies #[trigger] outcome(ap, g, o2) by {
+        assert(toit_spec::v2::prim::resource_throw(ap, g, o1) && completes(ap, o1, o2));
+    }
+}
+
+/// A source that is not a raise is an outcome itself.
+pub proof fn lemma_source_outcome(p: &Program, m: Machine, o: Outcome2)
+    requires m.inv(p), source(p.ap@, m.g@, o), !(o is Raise),
+    ensures outcome(p.ap@, m.g@, o), toit_spec::v2::sound::outcome_ok(p.ap@, p.cert@, o), !(o is Stuck),
+{
+    assert(completes(p.ap@, o, o));
+    lemma_small(p, &m);
+    toit_spec::v2::theorem::lemma_outcome_ok(p.ap@, p.cert@, p.trusted@, m.g@, o);
+}
+
+/// A source is not stuck.
+pub proof fn lemma_source_not_stuck(p: &Program, m: Machine, o: Outcome2)
+    requires m.inv(p), source(p.ap@, m.g@, o),
+    ensures !(o is Stuck),
+{
+    if !(o is Raise) { lemma_source_outcome(p, m, o); }
 }
 
 /// The outcome of one step: a next state that is again a well-formed state
@@ -255,7 +273,26 @@ pub proof fn lemma_matches(p: &Program, m0: Machine, m1: Machine, r: Ctl)
     ensures step_post(p, m0, m1, r),
 {
     let o = sp::step(p.ap@, m0.g@);
-    assert(outcome_ok(p.ap@, p.cert@, o));
+    if !(r is Stuck) {
+        assert(!(o is Raise));
+        assert(completes(p.ap@, o, o));
+        assert(outcome(p.ap@, m0.g@, o));
+        lemma_outcome_matches(p, m0, m1, r, o);
+    }
+}
+
+/// The machine's result `r` implements an outcome `o` of the state (any
+/// completed outcome of `theorem::outcome`, e.g. a completed raise or
+/// resource throw).
+pub proof fn lemma_outcome_matches(p: &Program, m0: Machine, m1: Machine, r: Ctl, o: Outcome2)
+    requires
+        m0.inv(p),
+        outcome(p.ap@, m0.g@, o),
+        matches(p, o, m1, r),
+    ensures step_post(p, m0, m1, r),
+{
+    lemma_small(p, &m0);
+    toit_spec::v2::theorem::lemma_outcome_ok(p.ap@, p.cert@, p.trusted@, m0.g@, o);
     match r {
         Ctl::Next => { assert(continues(o, m1.g@)); },
         Ctl::Exit(st, _) => {
@@ -280,8 +317,11 @@ proof fn lemma_local_post(p: &Program, m0: Machine, m1: Machine, r: Ctl)
     ensures step_post(p, m0, m1, r),
 {
     if r == Ctl::Next {
-        assert(outcome_ok(p.ap@, p.cert@, sp::step(p.ap@, m0.g@)));
-        assert(continues(sp::step(p.ap@, m0.g@), m1.g@));
+        let o = sp::step(p.ap@, m0.g@);
+        assert(outcome_ok(p.ap@, p.cert@, o));
+        assert(continues(o, m1.g@));
+        assert(completes(p.ap@, o, o));
+        assert(outcome(p.ap@, m0.g@, o));
     }
 }
 

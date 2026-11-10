@@ -173,14 +173,8 @@ impl Machine {
             assert forall|i: int| 0 <= i < g1.heap.len() implies #[trigger] g1.heap[i].ro == in_ro(p, a[i]) by {
                 assert(g0.heap[i].ro == in_ro(p, a[i]));
             }
-            assert forall|i: int| 0 <= i < p.ap@.roots.len() implies
-                #[trigger] p.roots@[i] == enc(a, p.ap@.roots[i]) && const_ok(g1.heap, p.ap@.roots[i]) by {
-                assert(p.roots@[i] == enc(a, p.ap@.roots[i]) && const_ok(g0.heap, p.ap@.roots[i]));
-            }
-            assert forall|i: int| 0 <= i < p.ap@.literals.len() implies
-                #[trigger] p.literals@[i] == enc(a, p.ap@.literals[i]) && const_ok(g1.heap, p.ap@.literals[i]) by {
-                assert(p.literals@[i] == enc(a, p.ap@.literals[i]) && const_ok(g0.heap, p.ap@.literals[i]));
-            }
+            crate::arrays::lemma_prog_rel_update(p, g0.heap, a, id, g1.heap[id]);
+            assert(g1.heap == g0.heap.update(id, g1.heap[id]));
             assert(prog_rel(p, g1.heap, a));
             assert(self.refines(p));
         }

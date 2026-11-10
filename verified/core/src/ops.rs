@@ -697,6 +697,7 @@ pub fn op_new_double(m: &mut Machine, env: &Env, bci: usize, opcode: u8, bits: u
         sp::step(env.p.ap@, old(m).g@) == sp::binary_result(
             sp::alloc2(old(m).g@, new_double(as1(old(m).g@), p1(env.p.ap@), bits)), sp::new_ref2(old(m).g@)),
         sp::has_slot(old(m).g@, 1),
+        toit_spec::v2::prim::allocates_double(env.p.ap@, old(m).g@, opcode),
         bci + 1 < 0x1000_0000,
     ensures step_post(env.p, *old(m), *final(m), r),
 {
@@ -704,13 +705,19 @@ pub fn op_new_double(m: &mut Machine, env: &Env, bci: usize, opcode: u8, bits: u
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
+    proof { assert(0 <= bci < ap.bytecodes.len()) by { lemma_instr(ap, p.cert@, p.trusted@, g); } }
     m.save();
     proof { crate::alloc::lemma_saved(p, *m); }
     let w = crate::alloc::gc_allocate_double(m, env, bits, Ghost(g));
     if w == 0 {
-        // Out of memory: the checked handler retries and throws.
+        // Out of memory: the resource throw of a double allocation, the
+        // call of the operator's method (`prim::resource_throw`).
         crate::alloc::reload(m, p, Ghost(g));
-        return step_unverified(m, env, bci, opcode, false);
+        proof {
+            assert(toit_spec::v2::prim::resource_throw(ap, g, sp::operator_fallback(ap, g, opcode)));
+            lemma_source_resource(ap, g, sp::operator_fallback(ap, g, opcode));
+        }
+        return crate::calls::fallback_src(m, env, bci, opcode);
     }
     let ghost g1 = sp::alloc2(g, new_double(as1(g), p1(ap), bits));
     crate::alloc::reload(m, p, Ghost(g1));

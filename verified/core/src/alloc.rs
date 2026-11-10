@@ -45,7 +45,7 @@ use crate::exec::*;
 use crate::step::*;
 #[cfg(verus_keep_ghost)]
 use crate::calls::{handler_pre, lemma_tries};
-use toit_spec::types::{Value, HeapObj, Body};
+use toit_spec::types::{Value, HeapObj, Body, Unwind};
 use toit_spec::v2::types::{State2, Program2, Outcome2};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::spec as sp;
@@ -223,6 +223,7 @@ pub fn op_allocate(m: &mut Machine, env: &Env, bci: usize, opcode: u8, c: usize,
     requires
         handler_pre(env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_allocate(env.p.ap@, old(m).g@, c as int, len as int),
+        opcode == 42 || opcode == 43,
         bci + len < 0x1000_0000,
     ensures step_post(env.p, *old(m), *final(m), r),
 {
@@ -235,9 +236,16 @@ pub fn op_allocate(m: &mut Machine, env: &Env, bci: usize, opcode: u8, c: usize,
     proof { lemma_saved(p, *m); }
     let w = gc_allocate_instance(m, env, c, Ghost(g));
     if w == 0 {
-        // Out of memory: the checked handler retries and throws.
+        // Out of memory: the resource throw of ALLOCATE
+        // (`prim::resource_throw`), the out-of-memory error.
         reload(m, p, Ghost(g));
-        return step_unverified(m, env, bci, opcode, false);
+        proof {
+            toit_spec::v2::sound_instr::lemma_instr(ap, p.cert@, p.trusted@, g);
+            let o1 = sp::unwind(ap, g, Unwind::Throw(toit_spec::v2::prim::out_of_memory(ap)));
+            assert(toit_spec::v2::prim::resource_throw(ap, g, o1));
+            lemma_source_resource(ap, g, o1);
+        }
+        return crate::unwind::throw_oom(m, env);
     }
     let ghost o = new_instance(ap, c as int);
     let ghost g1 = sp::alloc2(g, o);
