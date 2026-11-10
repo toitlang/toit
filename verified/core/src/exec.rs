@@ -265,6 +265,17 @@ impl Machine {
         lemma_fins_rel_same(self.mem@, m.mem@, self.ftop as int, g0.fins);
     }
 
+    /// Root `i` is a constant and its word is the table's.
+    pub proof fn lemma_root(&self, p: &Program, i: int)
+        requires self.refines(p), 0 <= i < p.ap@.roots.len(),
+        ensures
+            p.roots@[i] == enc(self.addr(), p.ap@.roots[i]),
+            const_ok(self.g@.heap, p.ap@.roots[i]),
+            encodable(self.addr(), p.ap@.roots[i]),
+    {
+        assert(p.roots@[i] == enc(self.addr(), p.ap@.roots[i]) && const_ok(self.g@.heap, p.ap@.roots[i]));
+    }
+
     /// The top frame's height is `lim - top`.
     pub proof fn lemma_frame(&self, p: &Program)
         requires self.refines(p),

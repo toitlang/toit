@@ -51,3 +51,4 @@ pub mod theorem;
 pub mod unwind;
 pub mod numbers;
 pub mod tail;
+pub mod raise;

@@ -235,7 +235,7 @@ pub fn code_u32(p: &Program, i: usize) -> (r: usize)
 // ---------------------------------------------------------------------------
 // The step.
 
-proof fn lemma_small(p: &Program, m: &Machine)
+pub proof fn lemma_small(p: &Program, m: &Machine)
     requires m.refines(p),
     ensures small(m.g@),
 {

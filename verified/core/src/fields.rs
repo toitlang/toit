@@ -237,7 +237,11 @@ pub fn op_load_field(m: &mut Machine, env: &Env, bci: usize, opcode: u8, f: usiz
     }
     let w = m.at(0);
     if !m.field_access_ok(p, w, Ghost(sp::at(g, 0)), f, false) {
-        return step_unverified(m, env, bci, opcode, false);
+        proof {
+            assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM));
+            lemma_source_step(ap, g);
+        }
+        return m.v_raise_invalid(env);
     }
     let ghost o = sp::at(g, 0);
     let ghost id = o->Obj_0 as int;
@@ -281,7 +285,11 @@ pub fn op_load_field_local(m: &mut Machine, env: &Env, bci: usize, opcode: u8, e
     }
     let w = m.at(slot);
     if !m.field_access_ok(p, w, Ghost(sp::at(g, slot as int)), f, false) {
-        return step_unverified(m, env, bci, opcode, false);
+        proof {
+            assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM));
+            lemma_source_step(ap, g);
+        }
+        return m.v_raise_invalid(env);
     }
     let ghost o = sp::at(g, slot as int);
     let ghost id = o->Obj_0 as int;
@@ -334,7 +342,11 @@ pub fn op_store_field(m: &mut Machine, env: &Env, bci: usize, opcode: u8, f: usi
     let ghost val = sp::at(g, 0);
     let ghost o = sp::at(g, 1);
     if !m.field_access_ok(p, wo, Ghost(o), f, true) {
-        return step_unverified(m, env, bci, opcode, false);
+        proof {
+            assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM));
+            lemma_source_step(ap, g);
+        }
+        return m.v_raise_invalid(env);
     }
     m.set_field_val(p, wo, Ghost(o), f, v, Ghost(val));
     let ghost m1 = *m;
@@ -442,7 +454,11 @@ pub fn op_store_field_this(m: &mut Machine, env: &Env, bci: usize, opcode: u8, f
     let ghost id = o->Obj_0 as int;
     let this = m.mem.read(m.len - 1 - m.base);
     if m.is_ro_word(p, this, Ghost(id)) {
-        return step_unverified(m, env, bci, opcode, false);
+        proof {
+            assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM));
+            lemma_source_step(ap, g);
+        }
+        return m.v_raise_invalid(env);
     }
     let v = m.at(0);
     m.set_field_val(p, this, Ghost(o), f, v, Ghost(sp::at(g, 0)));
@@ -481,7 +497,13 @@ pub fn op_invoke_virtual_get(m: &mut Machine, env: &Env, bci: usize, opcode: u8,
     let w = m.at(0);
     let ghost recv = sp::at(g, 0);
     match m.lookup(p, w, Ghost(recv), sel as i64) {
-        VLookup::Missing => step_unverified(m, env, bci, opcode, false),
+        VLookup::Missing => {
+            proof {
+                assert(sp::step(ap, g) == sp::raise(ap, g, sp::LOOKUP_FAILED));
+                lemma_source_step(ap, g);
+            }
+            m.v_raise_lookup(env, w, Ghost(recv), sel as i64)
+        },
         VLookup::Found(t) => {
             let info = p.methods.at(t);
             proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
@@ -539,7 +561,13 @@ pub fn op_invoke_virtual_set(m: &mut Machine, env: &Env, bci: usize, opcode: u8,
     let ghost val = sp::at(g, 0);
     let ghost recv = sp::at(g, 1);
     match m.lookup(p, w, Ghost(recv), sel as i64) {
-        VLookup::Missing => step_unverified(m, env, bci, opcode, false),
+        VLookup::Missing => {
+            proof {
+                assert(sp::step(ap, g) == sp::raise(ap, g, sp::LOOKUP_FAILED));
+                lemma_source_step(ap, g);
+            }
+            m.v_raise_lookup(env, w, Ghost(recv), sel as i64)
+        },
         VLookup::Found(t) => {
             let info = p.methods.at(t);
             proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }

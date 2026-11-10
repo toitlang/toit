@@ -808,7 +808,11 @@ pub fn op_invoke_static(m: &mut Machine, env: &Env, bci: usize, opcode: u8, d: u
         let receiver = m.at(arity - 1);
         let cid = m.class_of(p, receiver, Ghost(sp::at(g, arity - 1)));
         if !((info.recv_start as i64) <= cid && cid < info.recv_end as i64) {
-            return step_unverified(m, env, bci, opcode, false);
+            proof {
+                assert(sp::step(ap, g) == sp::raise(ap, g, sp::AS_CHECK_FAILED));
+                lemma_source_step(ap, g);
+            }
+            return m.v_raise_none(env, 1);
         }
     }
     let r = m.push_call(env, t, bci + 3);
@@ -857,7 +861,10 @@ pub fn do_invoke_virtual(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel
     }
     let receiver = m.at(n - 1);
     match m.lookup(p, receiver, Ghost(sp::at(g, n - 1)), sel) {
-        VLookup::Missing => step_unverified(m, env, bci, opcode, false),
+        VLookup::Missing => {
+            proof { assert(vo == sp::raise(ap, g, sp::LOOKUP_FAILED)); }
+            m.v_raise_lookup(env, receiver, Ghost(sp::at(g, n - 1)), sel)
+        },
         VLookup::Found(t) => {
             proof { lemma_source_outcome(p, m0, vo); }
             let r = m.push_call(env, t, bci + len);

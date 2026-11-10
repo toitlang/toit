@@ -426,6 +426,14 @@ justification = "The ghost state the reloaded machine represents: the inter-run 
 
 [[trusted]]
 crate = "core"
+file = "src/raise.rs"
+item = "gc_allocate_exception"
+kind = "external_body"
+count = 1
+justification = "ASSUMED: toit_v2_allocate_exception (may GC) keeps the abstract state the views represent, extends the heap by the encoded trace (prim::heap_extended) and appends exactly spec::exception_obj2(value, trace), or only extends the heap on out of memory: the spec's raise completion (prim::raised); TRUSTED.md, GC and allocation."
+
+[[trusted]]
+crate = "core"
 file = "src/step.rs"
 item = "grow_bridge"
 kind = "external_body"

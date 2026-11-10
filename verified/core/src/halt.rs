@@ -141,7 +141,11 @@ pub fn op_halt(m: &mut Machine, env: &Env, bci: usize, opcode: u8, code: usize) 
         let w = m.at(0);
         if w & 1 != 0 {
             // INVALID_PROGRAM.
-            return step_unverified(m, env, bci, opcode, false);
+            proof {
+                assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM));
+                lemma_source_step(ap, g);
+            }
+            return m.v_raise_invalid(env);
         }
         let v = (w as i64) >> 1u64;
         m.drop(1);

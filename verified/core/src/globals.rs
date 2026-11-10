@@ -155,7 +155,13 @@ pub fn op_load_global_dynamic(m: &mut Machine, env: &Env, bci: usize, opcode: u8
     }
     let w = m.at(0);
     let gi = match m.dyn_global_index(p, w, Ghost(sp::at(g, 0))) {
-        None => { return step_unverified(m, env, bci, opcode, false); },
+        None => {
+            proof {
+                assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM));
+                lemma_source_step(ap, g);
+            }
+            return m.v_raise_invalid(env);
+        },
         Some(gi) => gi,
     };
     proof {
@@ -201,7 +207,13 @@ pub fn op_store_global_dynamic(m: &mut Machine, env: &Env, bci: usize, opcode: u
     }
     let w = m.at(1);
     let gi = match m.dyn_global_index(p, w, Ghost(sp::at(g, 1))) {
-        None => { return step_unverified(m, env, bci, opcode, false); },
+        None => {
+            proof {
+                assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM));
+                lemma_source_step(ap, g);
+            }
+            return m.v_raise_invalid(env);
+        },
         Some(gi) => gi,
     };
     let v = m.at(0);
@@ -271,13 +283,6 @@ pub fn op_load_global_lazy(m: &mut Machine, env: &Env, bci: usize, opcode: u8, g
         assert(sp::at(g2, 1) == smi(gi as int));
         assert(toit_spec::spec_common::class_id_of(p1(ap), as1(g2), smi(gi as int)) == p.smi_class_id);
     }
-    // The receiver (the index smi) is in the entry method's receiver range.
-    if info.recv_start != NO_VALUE {
-        let cid = p.smi_class_id;
-        if !((info.recv_start as i64) <= cid && cid < info.recv_end as i64) {
-            return step_unverified(m, env, bci, opcode, false);
-        }
-    }
     let ghost m1 = *m;
     proof { lemma_smi_word_nat(gi as i64); }
     let wi = smi_of(gi as i64);
@@ -290,8 +295,21 @@ pub fn op_load_global_lazy(m: &mut Machine, env: &Env, bci: usize, opcode: u8, g
             if i < g.stack.len() { assert(g2.stack[i] == g.stack[i]); }
         }
         m1.lemma_local_step(p, m);
-        assert(sp::step(ap, g) == sp::call(ap, g2, t as int, bci + len));
     }
+    // The receiver (the index smi) is in the entry method's receiver range.
+    if info.recv_start != NO_VALUE {
+        let cid = p.smi_class_id;
+        if !((info.recv_start as i64) <= cid && cid < info.recv_end as i64) {
+            proof {
+                assert(sp::step(ap, g) == sp::raise(ap, g2, sp::AS_CHECK_FAILED));
+                lemma_source_step(ap, g);
+                crate::calls::lemma_shape(p, g);
+                crate::raise::lemma_shape_stack(p, g, g2);
+            }
+            return m.v_raise_none_from(env, Ghost(m0), 1);
+        }
+    }
+    proof { assert(sp::step(ap, g) == sp::call(ap, g2, t as int, bci + len)); }
     let r = m.push_call(env, t, bci + len);
     proof { lemma_matches(p, m0, *m, r); }
     r

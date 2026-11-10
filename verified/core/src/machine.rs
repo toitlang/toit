@@ -365,6 +365,15 @@ impl Machine {
         cold!(self, |m| env.rt.allocate_instance(&mut m.mem, class_id))
     }
 
+    /// Allocates an exception (MAY GC) without saving or reloading the task
+    /// state (`raise::gc_allocate_exception`). 0 if out of memory.
+    /// Cold path: runs out of line on a copy of the machine (see `cold!`).
+    #[inline(always)]
+    pub fn allocate_exception_raw(&mut self, env: &Env, value: usize, kind: usize,
+                                  ws: &[usize; V2_MESSAGE_MAX_WORDS], count: usize) -> usize {
+        cold!(self, |m| env.rt.allocate_exception(&mut m.mem, value, kind, ws, count))
+    }
+
     /// Allocates a double (MAY GC) without saving or reloading the task
     /// state (`alloc::gc_allocate_double`). 0 if out of memory.
     /// Cold path: runs out of line on a copy of the machine (see `cold!`).

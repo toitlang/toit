@@ -210,6 +210,7 @@ pub fn op_invoke_static_tail(m: &mut Machine, env: &Env, bci: usize, opcode: u8,
     requires
         handler_pre(env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_static_tail(env.p.ap@, old(m).g@, d as int),
+        bci + 3 < 0x1000_0000,
     ensures step_post(env.p, *old(m), *final(m), r),
 {
     let p = env.p;
@@ -230,7 +231,11 @@ pub fn op_invoke_static_tail(m: &mut Machine, env: &Env, bci: usize, opcode: u8,
         let receiver = m.at(arity - 1);
         let cid = m.class_of(p, receiver, Ghost(sp::at(g, arity - 1)));
         if !((info.recv_start as i64) <= cid && cid < info.recv_end as i64) {
-            return step_unverified(m, env, bci, opcode, false);
+            proof {
+                assert(sp::step(ap, g) == sp::raise(ap, g, sp::AS_CHECK_FAILED));
+                lemma_source_step(ap, g);
+            }
+            return m.v_raise_none(env, 1);
         }
     }
     let ghost args = g.stack.subrange(g.stack.len() - arity, g.stack.len() as int);
@@ -316,39 +321,59 @@ pub fn op_invoke_lambda_tail(m: &mut Machine, env: &Env, bci: usize, opcode: u8)
     let ghost rv = g.stack[b];
     let (cnt, _) = match m.inst_x(p, recv, Ghost(rv)) {
         Some(x) => x,
-        None => { return step_unverified(m, env, bci, opcode, false); },
+        None => { proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM)); lemma_source_step(ap, g); } return m.v_raise_invalid(env); },
     };
     if cnt < 2 {
-        return step_unverified(m, env, bci, opcode, false);
+        proof {
+            assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM));
+            lemma_source_step(ap, g);
+        }
+        return m.v_raise_invalid(env);
     }
     let (mw, Ghost(mv)) = m.field_x(p, recv, Ghost(rv), 0);
     let mid = match m.smi_x(p, mw, Ghost(mv)) {
         Some(x) => x,
-        None => { return step_unverified(m, env, bci, opcode, false); },
+        None => { proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM)); lemma_source_step(ap, g); } return m.v_raise_invalid(env); },
     };
     if mid < 0 || mid as usize >= p.methods.len() {
-        return step_unverified(m, env, bci, opcode, false);
+        proof {
+            assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM));
+            lemma_source_step(ap, g);
+        }
+        return m.v_raise_invalid(env);
     }
     let t = mid as usize;
     let info = p.methods.at(t);
     proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
     if info.kind != KIND_LAMBDA {
-        return step_unverified(m, env, bci, opcode, false);
+        proof {
+            assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM));
+            lemma_source_step(ap, g);
+        }
+        return m.v_raise_invalid(env);
     }
     let c = info.aux as usize;
     let (aw, Ghost(av)) = m.field_x(p, recv, Ghost(rv), 1);
     let alen = m.array_x(p, aw, Ghost(av));
     match alen {
-        Some(l) => { if l != c { return step_unverified(m, env, bci, opcode, false); } },
-        None => { if c != 1 { return step_unverified(m, env, bci, opcode, false); } },
+        Some(l) => { if l != c { proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM)); lemma_source_step(ap, g); } return m.v_raise_invalid(env); } },
+        None => { if c != 1 { proof { assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM)); lemma_source_step(ap, g); } return m.v_raise_invalid(env); } },
     }
     let arity_t = info.arity as usize;
     if arity_t < c {
-        return step_unverified(m, env, bci, opcode, false);
+        proof {
+            assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM));
+            lemma_source_step(ap, g);
+        }
+        return m.v_raise_invalid(env);
     }
     let user = arity_t - c;
     if a - 1 < user {
-        return step_unverified(m, env, bci, opcode, false);
+        proof {
+            assert(sp::step(ap, g) == sp::raise(ap, g, sp::CODE_INVOCATION_FAILED));
+            lemma_source_step(ap, g);
+        }
+        return m.v_raise_code(env, false, user, a - 1, t);
     }
     let ghost cap = cap_of(s, av, alen);
     let ghost args = g.stack.subrange(b + 1, b + 1 + user) + cap;
@@ -478,18 +503,30 @@ pub fn op_invoke_initializer_tail(m: &mut Machine, env: &Env, bci: usize, opcode
     }
     let w = m.at(0);
     if w & 1 != 0 {
-        return step_unverified(m, env, bci, opcode, false);
+        proof {
+            assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM));
+            lemma_source_step(ap, g);
+        }
+        return m.v_raise_invalid(env);
     }
     // A smi (the verifier types the operand as a value, not a block).
     let mid = (w as i64) >> 1u64;
     if mid < 0 || mid as usize >= p.methods.len() {
-        return step_unverified(m, env, bci, opcode, false);
+        proof {
+            assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM));
+            lemma_source_step(ap, g);
+        }
+        return m.v_raise_invalid(env);
     }
     let t = mid as usize;
     let info = p.methods.at(t);
     proof { assert(ap.methods[t as int] == method_info(p.methods@[t as int], p.max_height)); }
     if info.kind != KIND_METHOD || info.arity != 0 {
-        return step_unverified(m, env, bci, opcode, false);
+        proof {
+            assert(sp::step(ap, g) == sp::raise(ap, g, sp::INVALID_PROGRAM));
+            lemma_source_step(ap, g);
+        }
+        return m.v_raise_invalid(env);
     }
     proof {
         assert(sp::op_invoke_initializer_tail(ap, g) == sp::replace_frame(ap, g, t as int, Seq::<Value>::empty()));

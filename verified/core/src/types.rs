@@ -162,7 +162,11 @@ pub fn op_as(m: &mut Machine, env: &Env, bci: usize, opcode: u8, enc: usize, int
     }
     let w = m.at(0);
     if !m.check_type(p, w, Ghost(sp::at(g, 0)), enc / 2, enc % 2 == 1, interface) {
-        return step_unverified(m, env, bci, opcode, false);
+        proof {
+            assert(sp::step(ap, g) == sp::raise(ap, g, sp::AS_CHECK_FAILED));
+            lemma_source_step(ap, g);
+        }
+        return m.v_raise_as(env, w, Ghost(sp::at(g, 0)), len);
     }
     m.bci = m.bci + len;
     let ghost g1 = sp::goto(g, g.bci + len);
@@ -197,7 +201,11 @@ pub fn op_as_local(m: &mut Machine, env: &Env, bci: usize, opcode: u8, enc: usiz
     }
     let w = m.at(n);
     if !m.check_type(p, w, Ghost(sp::at(g, n as int)), enc % 32, false, false) {
-        return step_unverified(m, env, bci, opcode, false);
+        proof {
+            assert(sp::step(ap, g) == sp::raise(ap, g, sp::AS_CHECK_FAILED));
+            lemma_source_step(ap, g);
+        }
+        return m.v_raise_as(env, w, Ghost(sp::at(g, n as int)), 2);
     }
     m.bci = m.bci + 2;
     let ghost g1 = sp::goto(g, g.bci + 2);
