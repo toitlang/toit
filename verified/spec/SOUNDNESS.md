@@ -473,7 +473,7 @@ sandbox ctests 93/93). `run_suite.py --format 2` over 428 tests: 274 pass
 primitive, 8 step limit, 2 nondeterministic, 4 compile errors, 3
 primitive-oracle differences (events-primitive-group-test, and the new
 object-encoder-limits/-list tests: the interpreter does not emulate the
-program-oriented encoder). `verify_suite.py`: 443 sources, 439 accepted,
+program-oriented encoder). `verify_suite.toit`: 443 sources, 439 accepted,
 4 do not compile. System snapshots: all three accepted (toit 176, toit.run
 106, run-image 116 primitives; toit.run 36.5 ms). Mutation campaign
 (`--count 18000 --seed 3`): 11,100 mutants, 8,091 rejected (703 by the
@@ -485,7 +485,7 @@ Numbers after the Phase 4 changes (R5, R1, R4; 2026-11-10):
 Numbers after the Phase 4 changes (R5, R1, R4; 2026-11-10), updated for
 the streaming checker (R8, branch spec/verifier-memory):
 
-* `tests/verify_suite.py`: every program found by `run_suite.py` and the
+* `verified/tools/verify_suite.toit`: every program found by `run_suite.py` and the
   spec test programs (443 sources) compiled with `-Xbytecode_format=2`:
   439 accepted (verdict `verify && x_loaded_ok`), 4 do not compile (the
   `-force` negative compiler tests); the same programs as with the

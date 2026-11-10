@@ -19,7 +19,7 @@
 Runs toit_spec_mutate on the format-2 dumps of the spec test programs and of
 the suite tests that pass on the reference interpreter in format 2
 (tests/suite-status.txt), in parallel, and adds up the results. The dumps
-come from verify_suite.py (run it first).
+come from verified/tools/verify_suite.toit (run it first).
 
 Usage: mutation_campaign.py [--count N] [--jobs N] [--max-steps M] [--seed S] [--out FILE]
 """
