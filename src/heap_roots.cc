@@ -29,36 +29,44 @@ void WeakMapFinalizerNode::roots_do(RootCallback* cb) {
   cb->do_root(reinterpret_cast<Object**>(&lambda_));
 }
 
-static bool recursive_zap_dead_values(Program* program, Object* backing_array_object, LivenessOracle* oracle) {
+static bool zap_dead_values_in_array(Program* program, Array* backing_array, LivenessOracle* oracle) {
   bool has_zapped = false;
+  word size = backing_array->length();
+  // The backing has the order key, value, key, value...
+  // We only zap the values.
+  for (word i = 1; i < size; i += 2) {
+    Object* entry_object = backing_array->at(i);
+    if (is_smi(entry_object)) continue;
+    HeapObject* entry = HeapObject::cast(entry_object);
+    if (entry->class_id() == program->tombstone_class_id()) continue;
+    if (!oracle->is_alive(entry)) {
+      backing_array->at_put(i, program->null_object());
+      has_zapped = true;
+    }
+  }
+  return has_zapped;
+}
+
+static bool zap_dead_values_in_backing(Program* program, Object* backing_array_object, LivenessOracle* oracle) {
   if (!is_heap_object(backing_array_object)) return false;  // Defensive.
   if (is_array(backing_array_object)) {
-    Array* backing_array = Array::cast(backing_array_object);
-    word size = backing_array->length();
-    // The backing has the order key, value, key, value...
-    // We only zap the values.
-    for (word i = 1; i < size; i += 2) {
-      Object* entry_object = backing_array->at(i);
-      if (is_smi(entry_object)) continue;
-      HeapObject* entry = HeapObject::cast(entry_object);
-      if (entry->class_id() == program->tombstone_class_id()) continue;
-      if (!oracle->is_alive(entry)) {
-        backing_array->at_put(i, program->null_object());
-        has_zapped = true;
-      }
-    }
-  } else {
-    Smi* class_id = HeapObject::cast(backing_array_object)->class_id();
-    if (class_id != program->large_array_class_id()) return false;  // Defensive.
-    Instance* instance = Instance::cast(backing_array_object);
-    Object* vector_object = instance->at(Instance::LARGE_ARRAY_VECTOR_INDEX);
-    if (!is_array(vector_object)) return false;  // Defensive.
-    Array* vector = Array::cast(vector_object);
-    word size = vector->length();
-    for (word i = 0; i < size; i++) {
-      bool arraylet_had_zaps = recursive_zap_dead_values(program, vector->at(i), oracle);
-      if (arraylet_had_zaps) has_zapped = true;
-    }
+    return zap_dead_values_in_array(program, Array::cast(backing_array_object), oracle);
+  }
+  Smi* class_id = HeapObject::cast(backing_array_object)->class_id();
+  if (class_id != program->large_array_class_id()) return false;  // Defensive.
+  Instance* instance = Instance::cast(backing_array_object);
+  Object* vector_object = instance->at(Instance::LARGE_ARRAY_VECTOR_INDEX);
+  if (!is_array(vector_object)) return false;  // Defensive.
+  Array* vector = Array::cast(vector_object);
+  word size = vector->length();
+  bool has_zapped = false;
+  for (word i = 0; i < size; i++) {
+    // The arraylets are arrays. The vector is an ordinary field, so a
+    // program can put anything into it, including the large array itself:
+    // don't recurse.
+    Object* arraylet = vector->at(i);
+    if (!is_array(arraylet)) continue;  // Defensive.
+    if (zap_dead_values_in_array(program, Array::cast(arraylet), oracle)) has_zapped = true;
   }
   return has_zapped;
 }
@@ -75,7 +83,7 @@ static bool zap_dead_values(Program* program, Instance* map, RootCallback* cb, L
   Smi* class_id = backing_list->class_id();
   if (class_id != program->list_class_id()) return false;
   Object *backing_array_object = backing_list->at(Instance::LIST_ARRAY_INDEX);
-  bool has_zapped = recursive_zap_dead_values(program, backing_array_object, oracle);
+  bool has_zapped = zap_dead_values_in_backing(program, backing_array_object, oracle);
   return has_zapped;
 }
 
