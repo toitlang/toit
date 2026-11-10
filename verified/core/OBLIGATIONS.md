@@ -73,7 +73,7 @@ obligations below would prove.
 | O1 operators | INVOKE_EQ..INVOKE_SIZE, IDENTICAL | smi fast paths of INVOKE_EQ..INVOKE_MOD and IDENTICAL proven (src/ops.rs); left: INVOKE_AT, INVOKE_AT_PUT, INVOKE_SIZE, and the other paths (doubles, which allocate; large integers; `compare_numbers`, i.e. `spec_helpers::compare_mixed`, uninterpreted in the spec; IDENTICAL of distinct heap objects; the virtual-call fallback) |
 | A1 allocation | ALLOCATE(_WIDE) | GC point (see G below) |
 | P1 primitives | PRIMITIVE | calls C++ (see FFI in DESIGN.md); P2 below |
-| H1 halt | HALT 0..3 | simple; result values of the run loop |
+| H1 halt | HALT 1 raising INVALID_PROGRAM | HALT 0 (yield), 1 (exit), 2 (deep sleep), 3 (reset) are verified (src/halt.rs); a heap object as exit value goes through `step_unverified`: needs `raise` (see Y1) |
 | G1 globals (lazy, dynamic) | LOAD_GLOBAL_VAR_LAZY(_WIDE), LOAD_GLOBAL_VAR_DYNAMIC, STORE_GLOBAL_VAR_DYNAMIC | calls the initializer entry point (C1) |
 
 ### G. GC safety

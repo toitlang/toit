@@ -76,6 +76,7 @@ pub open spec fn verified_op(op: u8) -> bool {
     ||| op == 55         // INVOKE_BLOCK
     ||| 62 <= op <= 77   // INVOKE_EQ, relational, arithmetic and bit operators (smi fast paths)
     ||| op == 96         // IDENTICAL
+    ||| op == 100        // HALT
 }
 
 /// The machine continues from a state the spec reaches from `g0`: the same
@@ -712,6 +713,11 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
             let k = p.code.at(bci + 1) as usize;
             proof { assert(sp::step(ap, g) == sp::op_invoke_block(ap, g, k as int)) by { reveal(sp::step); } }
             return crate::blocks::op_invoke_block(m, env, bci, opcode, k);
+        },
+        100 => {
+            let code = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_halt(ap, g, code as int)) by { reveal(sp::step); } }
+            return crate::halt::op_halt(m, env, bci, opcode, code);
         },
         _ => {
             return step_unverified(m, env, bci, opcode);
