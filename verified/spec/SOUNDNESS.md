@@ -4,7 +4,7 @@ This document describes the machine-checked soundness proof of the
 structural verifier of the revised bytecode format (format 2). The proof
 is in Verus, in `src/v2/`. It contains no `assume`, `admit`,
 `external_body` or `assume_specification`. The whole crate verifies in
-about 20 s wall time: `verification results:: 690 verified, 0 errors`
+about 20 s wall time: `verification results:: 718 verified, 0 errors`
 (`verus --crate-type=lib src/lib.rs`).
 
 ## The theorem
@@ -22,13 +22,16 @@ pub proof fn theorem_soundness(p, c, trusted, heap0, globals0, s)
         forall|s1, module, index, o|
             step(p, s) == Outcome2::Primitive(s1, module, index)
                 && completion(p, s1, module, index, o) ==> !(o is Stuck),
+        forall|o| outcome(p, s, o) ==> !(o is Stuck) && !(o is Raise),
         machine_objects_ok(p, s),
 ```
 
 In words: every state reachable from the initial state of an accepted,
-correctly loaded program makes a step that is not stuck, and every
-completion of a PRIMITIVE step is not stuck either. **No `Stuck` variant
-remains possible.** Moreover the objects the machine interprets itself
+correctly loaded program makes a step that is not stuck, every
+completion of a PRIMITIVE step is not stuck either, and neither is any
+outcome of the state with its oracle steps completed (`outcome`: raises
+completed with the machine's trace or out of memory, PRIMITIVE
+completions, resource throws). **No `Stuck` variant remains possible.** Moreover the objects the machine interprets itself
 keep the meaning it gives them (`machine_objects_ok`): every task's stack
 field refers to a stack object (or is the smi 0 once the task has
 terminated), its id is a smi, and the running task's stack field refers
@@ -36,11 +39,20 @@ to a stack object. See "Machine-interpreted objects" below for the other
 objects the VM interprets. The defined failures are ordinary outcomes, not
 stuck ones:
 
-* machine-raised exceptions (`raise`): lookup failure, as-check failure,
-  code invocation failure (wrong block/lambda argument count), invalid
-  program (run-time checked method ids, field indices, read-only
-  objects, dynamic global indices, lambda captures), and missing,
-  unimplemented or denied primitives (PRIMITIVE_LOOKUP_FAILED);
+* machine-raised exceptions (`raise`, an oracle step `Outcome2::Raise`
+  completed by `prim::raised`: the exception with any trace in a heap
+  extended under the primitive contract, or the out-of-memory error when
+  its allocation fails): lookup failure, as-check failure, code
+  invocation failure (wrong block/lambda argument count), invalid program
+  (run-time checked method ids, field indices, read-only objects, dynamic
+  global indices, lambda captures), and missing, unimplemented or denied
+  primitives (PRIMITIVE_LOOKUP_FAILED);
+* resource throws (`prim::resource_throw`), only where the machine grows
+  its stack (calls, virtual calls, operators, tail calls, TRY, lazy
+  globals: out of memory or stack overflow), allocates an instance
+  (ALLOCATE: out of memory) or a double (INVOKE_ADD/SUB/MUL: the
+  operator's method is called instead), and a primitive's out-of-memory
+  result (`PrimRet::OutOfMemory`, raised);
 * `Outcome2::Halt`: uncaught exception, task end, exit, deep sleep and
   reset;
 * out-of-memory: there is no transition to a state that exceeds the
@@ -69,16 +81,28 @@ lemmas).
   specification, validated against the C++ VM, see DESIGN.md).
 * `initial_state(p, heap0, globals0)` (`v2/prim.rs`): one frame of
   `__entry__main` with the main task on the stack.
-* `completion(p, s, module, index, o)` (`theorem.rs`): `o` is
-  `prim_success(p, s, h2, v)` or `prim_failure(s, h2, v)` for any heap `h2`
-  and value `v` with `prim_heap_ok(p, s.heap, h2) && good(h2, v)`, or
-  `prim_missing(p, s)`, or (core primitives 115/116) the machine-completed
-  `task_new_step` / `task_transfer_step` (task creation and switching).
+* `completion(p, s, module, index, o)` (`theorem.rs`, the PRIMITIVE
+  protocol of `prim.rs`): `o` is `prim_missing(p, s)`, or
+  `prim_complete(p, s, h2, r)` for a heap `h2` and result `r`
+  (`Success(v)`: return `v`; `Failure(v)`: push `v`, continue after the
+  PRIMITIVE; `OutOfMemory(v)`: raise the resource error `v`) with
+  `prim_returns(p, s, module, index, h2, r)`, i.e. in `prim_spec` (the
+  default contract `prim_default`: `prim_heap_ok(p, s.heap, h2)`, results
+  are values of `h2`; refined per primitive by `prim_refined`), or (core
+  primitives 115/116, where a call returns only `OutOfMemory`) the
+  machine-completed `task_step` (`task_new_step` / `task_transfer_step`:
+  task creation and switching).
+* `raised(p, s, v, o)` (`prim.rs`): `o` is `throw_exception(p, s', v, tr)`
+  or `unwind(p, s', Throw(roots[4]))` where `s'` is `s` with a heap `h2`
+  that extends `s.heap` under `prim_heap_ok` and `good(h2, tr)`;
+  `completes(p, o, o2)`: `raised` for a `Raise`, else `o2 == o`.
+* `resource_throw(p, s, o)` (`prim.rs`): see the defined failures above.
+* `outcome(p, s, o)`: a completion (`completes`) of `step(p, s)`, of a
+  `completion` of a PRIMITIVE step, or of a `resource_throw`.
 * `continues(o, s2)`: `o == Next(s2)` or `o == Halt(s2, Yield)` (the
   scheduler resumes a yielded task in that state).
-* `transition(p, s, s2)`: `small(s2)` and either `continues(step(p, s),
-  s2)`, or `step(p, s)` is `Primitive(s1, module, index)` and some
-  `completion` of it continues in `s2`.
+* `transition(p, s, s2)`: `small(s2)` and some `outcome(p, s, o)` with
+  `continues(o, s2)`.
 * `run(p, heap0, globals0, tr)`: `tr[0]` is the initial state and every
   `tr[i] -> tr[i+1]` is a `transition`; `reachable(..., s)`: `s` is the
   last state of some run.
@@ -102,7 +126,10 @@ Each hypothesis is an obligation on the implementation.
    trusted is that the VM's loader hands the check the heap and globals
    the machine then runs on (the view of the loaded snapshot).
 2. **Primitives: `prim_heap_ok(p, h, h2)`** (`v2/sound.rs`), quantified
-   over in `completion`: a primitive may only add objects
+   over in `completion` through `prim_default` (a primitive with a
+   precise contract `prim_refined` must also satisfy that; the proof uses
+   only `prim_default`). The same heap contract bounds what a raise
+   allocates (`prim::heap_extended`): a primitive may only add objects
    (`h.len() <= h2.len() < 2^30`); it never changes an object's class; it
    neither changes nor creates suspended stacks (`Stack2`), and does not
    turn an ordinary object into one; it
@@ -193,7 +220,7 @@ opcode families, each with its own lemma:
 | `sound_frames.rs`, `sound_upto.rs` | frames below the top and the heap growing keep conformance |
 | `sound_local.rs` | `lemma_local_step`: steps that change only the top frame, the heap and the globals |
 | `sound_call.rs` | `lemma_call`: pushing a frame |
-| `sound_unwind.rs`, `sound_return.rs`, `sound_raise.rs` | entering finally code, returns, the unwinding loop, raised exceptions |
+| `sound_unwind.rs`, `sound_return.rs`, `sound_raise.rs` | entering finally code, returns, the unwinding loop, raised exceptions and their completions (`lemma_raised`) |
 | `sound_ctx.rs` | the verifier's context chain is the frames' context chain |
 | `sound_heap.rs` | field writes and object replacement |
 | `sound_instr.rs` | facts at the current instruction, the opcode families |
@@ -203,7 +230,9 @@ opcode families, each with its own lemma:
 | `sound_virtual.rs` | virtual calls, field-accessor and operator fast paths, `fast_at` |
 | `sound_tail.rs` | INVOKE_STATIC_TAIL, INVOKE_LAMBDA_TAIL, INVOKE_INITIALIZER_TAIL |
 | `sound_unwind_ops.rs` | THROW, RETURN(_NULL), NON_LOCAL_RETURN, NON_LOCAL_BRANCH, UNWIND |
-| `sound_prim.rs` | PRIMITIVE completions, task creation and switching, the initial state |
+| `sound_prim.rs` | PRIMITIVE completions (including out of memory), task creation and switching, the initial state |
+| `sound_resource.rs` | resource throws (`lemma_resource`) |
+| `sound_prim_spec.rs` | the precise primitive contracts are satisfiable |
 | `sound_step.rs`, `theorem.rs` | the dispatch and the theorem |
 
 Remaining obligations: none inside the proof (no per-opcode lemma is
@@ -236,6 +265,14 @@ of referenced primitives (`--time` adds timings). The verdict is
 
 Phase 4 changed the step function where it was more permissive than the
 machine; each change is listed in `format/SPEC-CHANGELOG.md`:
+
+* Core requests R7, R6 and S1 (2026-11-10): raising is an oracle step
+  (`Outcome2::Raise`, completed by `raised`: the machine's exception
+  carries a trace and is allocated at a GC point that may fail); stack
+  overflow and out of memory are transitions where the machine can run
+  out (`resource_throw`); PRIMITIVE follows the machine's protocol
+  (`prim_returns`, `prim_complete`, `prim_spec` with per-primitive
+  refinements). The step function's other results are unchanged.
 
 * R5 (2026-11-10): the fields of a task the machine owns. The spec treated
   a task's fields 0 (its stack) and 1 (its id) as ordinary instance
@@ -370,6 +407,24 @@ details and fixes:
   stack overflow.
 
 ## Tests
+
+Numbers after the oracle raise, the resource throws and the PRIMITIVE
+protocol (core requests R7, R6, S1; 2026-11-10, branch
+spec/raise-and-resources): `verified/check.sh --tests` passed (Verus spec
+718 / core 328 verified, 0 errors; escape-hatch audit passed, no new
+allowlist entries; layout check; run_tests.sh 15/15; vmverify tests;
+sandbox ctests 93/93). `run_suite.py --format 2` over 428 tests: 274 pass
+(the 273 below plus the new byte-content-depth-test), 137 unimplemented
+primitive, 8 step limit, 2 nondeterministic, 4 compile errors, 3
+primitive-oracle differences (events-primitive-group-test, and the new
+object-encoder-limits/-list tests: the interpreter does not emulate the
+program-oriented encoder). `verify_suite.py`: 443 sources, 439 accepted,
+4 do not compile. System snapshots: all three accepted (toit 176, toit.run
+106, run-image 116 primitives; toit.run 36.5 ms). Mutation campaign
+(`--count 18000 --seed 3`): 11,100 mutants, 8,091 rejected (703 by the
+method-table decoder), 2,306 accepted and run: 2,073 exit, 144 step
+limit, 71 deadlock, 11 uncaught, 6 unimplemented primitive, 1 task
+returned; **0 stuck or interpreter panics**.
 
 Numbers after the Phase 4 changes (R5, R1, R4; 2026-11-10):
 
