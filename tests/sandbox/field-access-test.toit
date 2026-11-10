@@ -8,9 +8,17 @@
 // instance, runs the patched snapshot as an untrusted program, and checks
 // that the access throws INVALID_PROGRAM instead of reading or writing past
 // the end of the object.
+//
+// The checks are the format-1 interpreter's (untrusted format-1 programs run
+// with a separate dispatch table). Untrusted programs must be in format 2
+// by default, so the test compiles in format 1 and allows untrusted format 1
+// (TOIT_UNTRUSTED_FORMAT1=1), also when the suite runs with
+// TOIT_BYTECODE_FORMAT=2. Format 2 runs field accesses on the verified
+// core, which the fuzz harness covers (verified/core/fuzz).
 
 import expect show *
 import host.file
+import host.os
 import .sandbox-util show *
 
 // Opcode numbers, from src/bytecodes.h.
@@ -42,6 +50,8 @@ program-source -> string:
 main args:
   run := args[0]
   compiler := args[1]
+  os.env["TOIT_BYTECODE_FORMAT"] = "1"
+  os.env["TOIT_UNTRUSTED_FORMAT1"] = "1"
 
   with-tmp-directory: | dir |
     snap := "$dir/prog.snapshot"

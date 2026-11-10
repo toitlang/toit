@@ -28,6 +28,7 @@
 #include "snapshot_bundle.h"
 #include "verifier.h"
 #include "interpreter_v2.h"
+#include "verifier_v2.h"
 #include "bytecodes.h"
 #include "utils.h"
 #include "main_utf_8_helper.h"
@@ -108,7 +109,8 @@ static void print_verify_usage() {
       "  --fuzz=<n>             Verify n single-byte mutations of the bytecodes.\n"
       "  --dump=<method id>     Disassemble a method.\n"
       "  --emit-bytecodes=<f>   Write the raw program bytecodes to the file and exit.\n"
-      "  --emit-coverage=<f>    Write per-byte reachability (1=opcode, 2=operand) and exit.\n");
+      "  --emit-coverage=<f>    Write per-byte reachability (1=opcode, 2=operand) and exit.\n"
+      "  --emit-canonical=<f>   Format 2: write the verifier's abstract program (canonical form) and exit.\n");
 }
 
 // Loads the snapshot, optionally corrupts bytecodes, and runs the verifier.
@@ -124,6 +126,7 @@ static int verify_snapshot(int argc, char** argv) {
   int dump = -1;
   const char* emit_bytecodes = null;
   const char* emit_coverage = null;
+  const char* emit_canonical = null;
   const char* path = null;
   for (int i = 0; i < argc; i++) {
     if (strcmp(argv[i], "-q") == 0) options.verbosity = 0;
@@ -144,6 +147,7 @@ static int verify_snapshot(int argc, char** argv) {
     else if (strncmp(argv[i], "--dump=", 7) == 0) dump = atoi(argv[i] + 7);
     else if (strncmp(argv[i], "--emit-bytecodes=", 17) == 0) emit_bytecodes = argv[i] + 17;
     else if (strncmp(argv[i], "--emit-coverage=", 16) == 0) emit_coverage = argv[i] + 16;
+    else if (strncmp(argv[i], "--emit-canonical=", 17) == 0) emit_canonical = argv[i] + 17;
     else if (argv[i][0] == '-') {
       print_verify_usage();
       return 2;
@@ -187,21 +191,37 @@ static int verify_snapshot(int argc, char** argv) {
     return written == static_cast<size_t>(length) ? 0 : 2;
   }
 
+  if (emit_canonical != null) {
+    // Format 2: the canonical form of the abstract program the verifier
+    // builds from VM memory (verified/vmverify/tests/differential.py).
+    V2MethodTable* table = program->is_format2() ? V2MethodTable::compute(program) : null;
+    if (table == null) { fprintf(stderr, "not a well-formed format-2 program\n"); return 1; }
+    bool ok = V2Verifier::write_canonical(program, table, emit_canonical);
+    delete table;
+    return ok ? 0 : 1;
+  }
+
   if (emit_coverage != null) {
     // Writes the reachability of every byte (1 = instruction start, 2 =
     // operand byte, 0 = unreached) so a test can patch only real instruction
     // operands (see tests/sandbox).
     uint8* coverage = unvoid_cast<uint8*>(calloc(length, 1));
     if (program->is_format2()) {
-      // Format 2: every instruction of every method body (the method table
-      // checks of the loader stand in for the verifier, see
-      // verified/core/DESIGN.md).
-      V2MethodTable* table = V2MethodTable::compute(program, options.untrusted);
-      if (table == null) { free(coverage); fprintf(stderr, "could not verify to compute coverage\n"); return 1; }
+      // Format 2: every instruction of every method body of a program the
+      // verifier accepts, decoded from the method's entry.
+      V2MethodTable* table = V2MethodTable::compute(program);
+      if (table == null || !V2Verifier::verify(program, table, !options.untrusted)) {
+        delete table;
+        free(coverage);
+        fprintf(stderr, "could not verify to compute coverage\n");
+        return 1;
+      }
       for (word m = 0; m < table->length(); m++) {
         word bci = table->at(m).entry;
-        while (bci < static_cast<word>(table->at(m).end)) {
+        word end = table->at(m).end;
+        while (bci < end) {
           int op = program->bytecodes.data()[bci];
+          if (op >= V2_OPCODE_COUNT || bci + V2_OPCODE_LENGTHS[op] > end) break;
           coverage[bci] = 1;
           for (int i = 1; i < V2_OPCODE_LENGTHS[op]; i++) coverage[bci + i] = 2;
           bci += V2_OPCODE_LENGTHS[op];

@@ -21,6 +21,7 @@ namespace toit {
 
 class Program;
 class PrimitivePolicy;
+class V2MethodTable;
 
 // Statistics collected by the verifier. All counts refer to the last
 // verification pass (the verifier may run several passes to infer which
@@ -112,7 +113,11 @@ class Verifier {
   // the trusted rules only if verification is enabled. Returns false if the
   // program must not run (the errors have been printed). Builds without the
   // verifier (devices) refuse every untrusted program.
-  static bool verify_for_policy(Program* program, const PrimitivePolicy* policy);
+  // For a format-2 program, [v2_methods] is the method table its process
+  // group will run (the verifier checks the program as described by that
+  // table); null decodes one for the call.
+  static bool verify_for_policy(Program* program, const PrimitivePolicy* policy,
+                                const V2MethodTable* v2_methods = null);
 
   // Testing hook: replaces the program's bytecodes with a writable copy.
   static void set_bytecodes_for_testing(Program* program, uint8* bytes, int length);

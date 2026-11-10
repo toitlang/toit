@@ -55,11 +55,13 @@ int FlashRegistry::allocations_size() {
 int FlashRegistry::erase_chunk(word offset, word size) {
   ASSERT(Utils::is_aligned(offset, FLASH_PAGE_SIZE));
   size = Utils::round_up(size, FLASH_PAGE_SIZE);
+  clear_verified(offset, size);
   memset(region(offset, size), 0xff, size);
   return size;
 }
 
 bool FlashRegistry::write_chunk(const void* chunk, word offset, word size) {
+  clear_verified(offset, size);
   uint8* destination = region(offset, size);
   const uint8* source = static_cast<const uint8*>(chunk);
   for (word i = 0; i < size; i++) destination[i] &= source[i];

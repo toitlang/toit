@@ -70,6 +70,11 @@ main args:
   // toit.run processes must NOT verify at load even when the whole suite is
   // run with -Xverify / TOIT_VERIFY in the environment.
   os.env["TOIT_VERIFY"] = "0"
+  // The opcode numbers and the checks are the format-1 interpreter's: compile
+  // in format 1 also when the suite runs with TOIT_BYTECODE_FORMAT=2. Format
+  // 2 runs on the verified core, which the fuzz harness covers
+  // (verified/core/fuzz).
+  os.env["TOIT_BYTECODE_FORMAT"] = "1"
 
   with-tmp-directory: | dir |
     snap := "$dir/prog.snapshot"
@@ -123,11 +128,8 @@ main args:
         // Caught either by the interpreter at run time (INVALID_PROGRAM), or,
         // if verification is enabled in the environment (-Xverify / the
         // TOIT_VERIFY env var), by the verifier before the program runs.
-        // Format-2 programs (TOIT_BYTECODE_FORMAT=2) run on the verified
-        // core, which terminates the process on a stuck state of the spec.
         if result.output.contains "INVALID_PROGRAM" or result.output.contains "REJECTED"
-            or result.output.contains "verification" or result.output.contains "stuck state"
-            or result.output.contains "format-2 program rejected":
+            or result.output.contains "verification":
           caught-count++
 
     print "runtime-hardening: patched $patched-count variants, $caught-count caught, no crashes"

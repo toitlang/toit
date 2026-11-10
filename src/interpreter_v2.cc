@@ -49,34 +49,6 @@ static const int V2_HAS_SELECTOR = 1 << 2;
 static const int V2_HAS_RECEIVER = 1 << 3;
 static const int V2_MAX_LEB_BYTES = 4;
 
-// Format-2 opcodes that end a method body (format note 8).
-static bool v2_is_terminator(int op) {
-  switch (op) {
-    case RETURN:
-    case RETURN_NULL:
-    case THROW:
-    case BRANCH:
-    case BRANCH_BACK:
-    case INVOKE_STATIC_TAIL:
-    case INVOKE_LAMBDA_TAIL:
-    case INVOKE_INITIALIZER_TAIL:
-    case NON_LOCAL_RETURN:
-    case NON_LOCAL_BRANCH:
-      return true;
-    default:
-      return false;
-  }
-}
-
-// The branch opcodes of format 2: four forward, then four backward ones.
-static const int V2_FIRST_BRANCH = 81;
-static const int V2_FIRST_BRANCH_BACK = 85;
-static const int V2_LAST_BRANCH = 88;
-
-// Opcode numbers that format 2 reuses (src/compiler/bytecode_format.h).
-static const int V2_STORE_FIELD_THIS = NON_LOCAL_RETURN_WIDE;
-static const int V2_LOAD_FIELD_THIS = UNLINK;
-
 static bool v2_read_leb(const uint8* bytes, word length, word* at, uint32* result) {
   uint32 value = 0;
   for (int i = 0; i < V2_MAX_LEB_BYTES; i++) {
@@ -105,7 +77,18 @@ V2MethodTable::~V2MethodTable() {
   free(methods_);
 }
 
-V2MethodTable* V2MethodTable::compute(Program* program, bool untrusted) {
+// Decodes the method headers (format note 15; the reference decoder is
+// method_table_v2 in verified/spec/src/interp/loader.rs). Only what is
+// needed to build the table is checked here: the tag, the header encoding,
+// and that every body lies inside the bytecodes. Everything else (dispatch
+// table, receiver ranges, instructions, branch targets, terminators, HALT
+// in untrusted programs, the program heap) is the structural verifier's
+// job (verifier_v2.h), which runs on this very table before an untrusted
+// program runs. Trusted format-2 programs are verified only with
+// -Xverify/TOIT_VERIFY: the core checks every stuck state of the
+// specification at run time, so an unverified program cannot make it
+// access memory outside the tables.
+V2MethodTable* V2MethodTable::compute(Program* program) {
   const uint8* bytes = program->bytecodes.data();
   word length = program->bytecodes.length();
   if (!program->is_format2()) return v2_fail("missing tag");
@@ -173,91 +156,7 @@ V2MethodTable* V2MethodTable::compute(Program* program, bool untrusted) {
       continue;
     }
     V2MethodTable* table = _new V2MethodTable(methods, count);
-    if (table == null) {
-      free(methods);
-      return null;
-    }
-    // Table checks (loader.rs, check_tables_v2).
-    for (word i = 0; i < program->dispatch_table.length(); i++) {
-      int32 d = program->dispatch_table[i];
-      if (d != -1 && !table->is_valid(d)) {
-        delete table;
-        return v2_fail("dispatch entry is not a method index", i);
-      }
-    }
-    if (program->literals.length() < V2_FAILURE_LITERALS) {
-      delete table;
-      return v2_fail("missing failure literals");
-    }
-    word class_count = program->class_bits.length();
-    for (word d = 0; d < program->dispatch_table.length(); d++) {
-      int32 t = program->dispatch_table[d];
-      if (t < 0) continue;
-      const V2Method& info = table->at(t);
-      if (info.selector == V2_NO_VALUE || info.recv_start == V2_NO_VALUE) continue;
-      word cl = d - info.selector;
-      if (0 <= cl && cl < class_count && !(info.recv_start <= cl && cl < info.recv_end)) {
-        delete table;
-        return v2_fail("dispatch entry outside the receiver range of its method", d);
-      }
-    }
-    for (word m = 0; m < count; m++) {
-      const V2Method& info = table->at(m);
-      word bci = info.entry;
-      int last = -1;
-      while (bci < static_cast<word>(info.end)) {
-        int op = bytes[bci];
-        last = op;
-        if (op >= V2_OPCODE_COUNT) {
-          delete table;
-          return v2_fail("bad opcode", bci);
-        }
-        if (bci + V2_OPCODE_LENGTHS[op] > static_cast<word>(info.end)) break;
-        if (op == V2_LOAD_FIELD_THIS || op == V2_STORE_FIELD_THIS) {
-          word f = bytes[bci + 1];
-          if (info.recv_start == V2_NO_VALUE) {
-            delete table;
-            return v2_fail("this-field access without a receiver range", m);
-          }
-          word limit = Utils::min(static_cast<word>(info.recv_end), class_count);
-          for (word cl = info.recv_start; cl < limit; cl++) {
-            word fields = ((program->class_bits[cl] >> 5) & 0x7ff) - 1;
-            if (f >= fields) {
-              delete table;
-              return v2_fail("this-field access outside the receiver's fields", m);
-            }
-          }
-        }
-        if (V2_FIRST_BRANCH <= op && op <= V2_LAST_BRANCH) {
-          // Branch targets stay inside the method (format note 9); the core
-          // checks them again at run time.
-          // A backward branch may target itself (an empty loop).
-          word offset = bytes[bci + 1] | (bytes[bci + 2] << 8);
-          if (offset == 0 && op < V2_FIRST_BRANCH_BACK) {
-            delete table;
-            return v2_fail("branch with zero offset", bci);
-          }
-          word target = op < V2_FIRST_BRANCH_BACK ? bci + offset : bci - offset;
-          if (target < static_cast<word>(info.entry) || target >= static_cast<word>(info.end)) {
-            delete table;
-            return v2_fail("branch target outside the method", bci);
-          }
-        }
-        if (untrusted && op == HALT && bytes[bci + 1] >= 2) {
-          delete table;
-          return v2_fail("HALT 2 and HALT 3 are not allowed in untrusted programs", bci);
-        }
-        bci += V2_OPCODE_LENGTHS[op];
-      }
-      if (bci != static_cast<word>(info.end)) {
-        delete table;
-        return v2_fail("the last instruction crosses the end of method", m);
-      }
-      if (!v2_is_terminator(last)) {
-        delete table;
-        return v2_fail("method does not end in a terminator", m);
-      }
-    }
+    if (table == null) free(methods);
     return table;
   }
   UNREACHABLE();
@@ -269,11 +168,35 @@ bool V2MethodTable::untrusted_format1_allowed() {
   return env != null && strcmp(env, "1") == 0;
 }
 
-bool V2MethodTable::verify(Program* program, bool untrusted) {
-  V2MethodTable* table = compute(program, untrusted);
-  if (table == null) return false;
-  delete table;
-  return true;
+void v2_program_tables(Program* program, const V2MethodTable* table, Object** globals,
+                       toit_v2_program* p) {
+  memset(p, 0, sizeof(*p));
+  p->bytecodes = program->bytecodes.data();
+  p->bytecodes_length = program->bytecodes.length();
+  p->methods = table->methods();
+  p->methods_length = table->length();
+  p->dispatch = program->dispatch_table.data();
+  p->dispatch_length = program->dispatch_table.length();
+  p->class_bits = program->class_bits.data();
+  p->class_bits_length = program->class_bits.length();
+  p->class_check_ids = program->class_check_ids.data();
+  p->class_check_ids_length = program->class_check_ids.length();
+  p->interface_check_offsets = program->interface_check_offsets.data();
+  p->interface_check_offsets_length = program->interface_check_offsets.length();
+  p->invoke_offsets = reinterpret_cast<const int32*>(program->invoke_bytecode_offsets());
+  p->entry_points = reinterpret_cast<const int32*>(program->entry_point_indexes());
+  p->builtin_class_ids = reinterpret_cast<const uword*>(program->builtin_class_ids());
+  p->roots = reinterpret_cast<const uword*>(program->roots());
+  p->roots_length = Program::ROOT_COUNT;
+  p->literals = reinterpret_cast<const uword*>(program->literals.array());
+  p->literals_length = program->literals.length();
+  p->globals = reinterpret_cast<uword*>(globals);
+  p->globals_length = program->global_variables.length();
+  p->program_heap_start = reinterpret_cast<uword>(program);
+  p->program_heap_size = program->size_no_assets();
+  p->remembered_set_bias = GcMetadata::remembered_set_bias();
+  p->global_max_height = program->global_max_stack_height();
+  p->stack_array_word = Stack::v2_array_word();
 }
 
 word V2MethodTable::entry_method(Program* program, int entry_point_index) const {
@@ -393,33 +316,7 @@ Interpreter::Result Interpreter::run_v2() {
   toit_v2_context context;
   memset(&context, 0, sizeof(context));
   context.process = process_;
-  toit_v2_program* p = &context.program;
-  p->bytecodes = program->bytecodes.data();
-  p->bytecodes_length = program->bytecodes.length();
-  p->methods = table->methods();
-  p->methods_length = table->length();
-  p->dispatch = program->dispatch_table.data();
-  p->dispatch_length = program->dispatch_table.length();
-  p->class_bits = program->class_bits.data();
-  p->class_bits_length = program->class_bits.length();
-  p->class_check_ids = program->class_check_ids.data();
-  p->class_check_ids_length = program->class_check_ids.length();
-  p->interface_check_offsets = program->interface_check_offsets.data();
-  p->interface_check_offsets_length = program->interface_check_offsets.length();
-  p->invoke_offsets = reinterpret_cast<const int32*>(program->invoke_bytecode_offsets());
-  p->entry_points = reinterpret_cast<const int32*>(program->entry_point_indexes());
-  p->builtin_class_ids = reinterpret_cast<const uword*>(program->builtin_class_ids());
-  p->roots = reinterpret_cast<const uword*>(program->roots());
-  p->roots_length = Program::ROOT_COUNT;
-  p->literals = reinterpret_cast<const uword*>(program->literals.array());
-  p->literals_length = program->literals.length();
-  p->globals = reinterpret_cast<uword*>(process_->object_heap()->global_variables());
-  p->globals_length = program->global_variables.length();
-  p->program_heap_start = reinterpret_cast<uword>(program);
-  p->program_heap_size = program->size_no_assets();
-  p->remembered_set_bias = GcMetadata::remembered_set_bias();
-  p->global_max_height = program->global_max_stack_height();
-  p->stack_array_word = Stack::v2_array_word();
+  v2_program_tables(program, table, process_->object_heap()->global_variables(), &context.program);
   context.watermark = &watermark_;
   context.preempt_a_lot = Flags::preempt_a_lot ? 1 : 0;
 

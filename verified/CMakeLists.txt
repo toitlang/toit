@@ -48,18 +48,27 @@ endif()
 set(TOIT_VERIFIED_CORE_ENABLED ON CACHE INTERNAL "")
 
 set(VCORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/core")
+# The VM links one Rust static library: verified/vmverify, which contains
+# the core and the format-2 structural verifier (verified/spec), so that
+# the binary has a single Rust runtime (vmverify/README.md).
+set(VMVERIFY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vmverify")
 set(VCORE_TARGET_DIR "${CMAKE_BINARY_DIR}/verified_core")
-set(VCORE_LIB "${VCORE_TARGET_DIR}/release/${CMAKE_STATIC_LIBRARY_PREFIX}toit_verified_core${CMAKE_STATIC_LIBRARY_SUFFIX}")
-file(GLOB VCORE_SOURCES "${VCORE_DIR}/src/*.rs")
+set(VCORE_LIB "${VCORE_TARGET_DIR}/release/${CMAKE_STATIC_LIBRARY_PREFIX}toit_vmverify${CMAKE_STATIC_LIBRARY_SUFFIX}")
+file(GLOB_RECURSE VCORE_SOURCES
+  "${VCORE_DIR}/src/*.rs"
+  "${VMVERIFY_DIR}/src/*.rs"
+  "${CMAKE_CURRENT_SOURCE_DIR}/spec/src/*.rs")
 
 add_custom_command(
   OUTPUT "${VCORE_LIB}"
-  COMMAND "${TOIT_CARGO}" build --release --quiet
-          --manifest-path "${VCORE_DIR}/Cargo.toml"
+  COMMAND "${TOIT_CARGO}" build --release --quiet --lib
+          --manifest-path "${VMVERIFY_DIR}/Cargo.toml"
           --target-dir "${VCORE_TARGET_DIR}"
-  DEPENDS ${VCORE_SOURCES} "${VCORE_DIR}/Cargo.toml" "${VCORE_DIR}/Cargo.lock"
-  WORKING_DIRECTORY "${VCORE_DIR}"
-  COMMENT "Building the verified interpreter core (cargo)"
+  DEPENDS ${VCORE_SOURCES}
+          "${VCORE_DIR}/Cargo.toml" "${VMVERIFY_DIR}/Cargo.toml" "${VMVERIFY_DIR}/Cargo.lock"
+          "${CMAKE_CURRENT_SOURCE_DIR}/spec/Cargo.toml"
+  WORKING_DIRECTORY "${VMVERIFY_DIR}"
+  COMMENT "Building the verified interpreter core and verifier (cargo)"
   USES_TERMINAL
   VERBATIM
 )

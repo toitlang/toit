@@ -94,13 +94,23 @@ PRIMITIVE(launch) {
     image.release();
     return launch_error(process, "FORMAT_2_REQUIRED");
   }
-  if (!Verifier::verify_for_policy(program, policy)) {
+  // Format 2: the method table the group runs, which is the one verified.
+  V2MethodTable* v2_methods = null;
+  if (program->is_format2()) {
+    v2_methods = V2MethodTable::compute(program);
+    if (v2_methods == null) {
+      // Malformed method headers (the reason is on stderr).
+      image.release();
+      return launch_error(process, "INVALID_SNAPSHOT");
+    }
+  }
+  if (!Verifier::verify_for_policy(program, policy, v2_methods)) {
+    delete v2_methods;
     image.release();
     return launch_error(process, "VERIFICATION_FAILED");
   }
-  ProcessGroup* process_group = ProcessGroup::create(gid, program, image.memory(), policy_holder.take());
-  // Fails for a malformed format-2 program (no method table; the reason is
-  // on stderr). Allocations only fail on devices.
+  // Takes over the method table. Allocations only fail on devices.
+  ProcessGroup* process_group = ProcessGroup::create(gid, program, image.memory(), policy_holder.take(), v2_methods);
   if (process_group == null) {
     image.release();
     return launch_error(process, "INVALID_SNAPSHOT");

@@ -18,6 +18,8 @@
 #include "objects_inline.h"
 #include "os.h"
 #include "process.h"
+#include "interpreter_v2.h"
+#include "verifier_v2.h"
 #include "scheduler.h"
 #include "vm.h"
 
@@ -38,17 +40,25 @@ ProcessGroup::~ProcessGroup() {
 }
 
 ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* memory,
-                                   const PrimitivePolicy* policy) {
+                                   const PrimitivePolicy* policy, V2MethodTable* v2_methods) {
   ASSERT(policy != null);
   MethodEntryTable* entries = null;
-  V2MethodTable* v2_methods = null;
   if (program != null && program->is_format2()) {
-    v2_methods = V2MethodTable::compute(program, policy->is_untrusted());
+    if (v2_methods == null) {
+      v2_methods = V2MethodTable::compute(program);
+      // An untrusted program never runs unverified: launches verify the
+      // table they pass in; any other way here verifies now.
+      if (v2_methods != null && policy->is_untrusted() && !V2Verifier::verify(program, v2_methods, false)) {
+        delete v2_methods;
+        v2_methods = null;
+      }
+    }
     if (v2_methods == null) {
       PrimitivePolicy::release(policy);
       return null;
     }
   } else if (program != null) {
+    ASSERT(v2_methods == null);
     entries = MethodEntryTable::compute(program);
     if (entries == null) {
       PrimitivePolicy::release(policy);
