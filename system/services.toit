@@ -269,6 +269,9 @@ process-policy_ pid/int -> int:
 /**
 Allows the process with the given $pid to send messages to $target, if the
   policy of $pid restricts messaging. Only the system process may call this.
+
+Throws QUOTA_EXCEEDED if the allowed-target set of the process' group is
+  full.
 */
 process-grant-send_ pid/int target/int -> bool:
   #primitive.core.process-grant-send

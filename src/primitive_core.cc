@@ -2201,7 +2201,9 @@ PRIMITIVE(process_send) {
 PRIMITIVE(process_grant_send) {
   PRIVILEGED;
   ARGS(int, pid, int, target);
-  return BOOL(VM::current()->scheduler()->grant_send(pid, target));
+  Scheduler::GrantResult result = VM::current()->scheduler()->grant_send(pid, target);
+  if (result == Scheduler::GRANT_QUOTA_EXCEEDED) FAIL(QUOTA_EXCEEDED);
+  return BOOL(result == Scheduler::GRANT_OK);
 }
 
 PRIMITIVE(process_policy) {
