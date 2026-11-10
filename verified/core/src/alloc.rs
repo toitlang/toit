@@ -50,13 +50,13 @@ use toit_spec::v2::types::{State2, Program2, Outcome2};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::spec as sp;
 #[cfg(verus_keep_ghost)]
-use toit_spec::v2::types::p1;
+use toit_spec::v2::types::{p1, as1};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::sound::{wf, step_ok, outcome_ok};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::verifier::accepts;
 #[cfg(verus_keep_ghost)]
-use toit_spec::spec_common::{class_tag, instance_field_count};
+use toit_spec::spec_common::{class_tag, instance_field_count, new_double};
 
 verus! {
 
@@ -199,6 +199,22 @@ pub fn gc_allocate_instance(m: &mut Machine, env: &Env, c: usize, Ghost(g): Ghos
             && r == enc(final(m).addr(), sp::new_ref2(g)),
 {
     m.allocate_instance_raw(env, c)
+}
+
+/// TRUSTED (TRUSTED.md, "GC and allocation"): allocates a double with the
+/// given bits (C++ `toit_v2_allocate_double`, which may GC): the contract
+/// of `gc_allocate_instance` with the spec's double
+/// (`spec_common::new_double`) as the new object.
+#[verifier::external_body]
+#[inline(always)]
+pub fn gc_allocate_double(m: &mut Machine, env: &Env, bits: u64, Ghost(g): Ghost<State2>) -> (r: usize)
+    requires reloaded(*old(m), g).refines(env.p),
+    ensures
+        r == 0 ==> reloaded(*final(m), g).refines(env.p),
+        r != 0 ==> reloaded(*final(m), sp::alloc2(g, new_double(as1(g), p1(env.p.ap@), bits))).refines(env.p)
+            && r == enc(final(m).addr(), sp::new_ref2(g)),
+{
+    m.allocate_double_raw(env, bits)
 }
 
 /// ALLOCATE(_WIDE) c (`spec::op_allocate`).

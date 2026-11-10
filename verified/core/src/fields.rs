@@ -486,7 +486,7 @@ pub fn op_invoke_virtual_get(m: &mut Machine, env: &Env, bci: usize, opcode: u8,
     }
     let w = m.at(0);
     let ghost recv = sp::at(g, 0);
-    match m.lookup(p, w, Ghost(recv), sel) {
+    match m.lookup(p, w, Ghost(recv), sel as i64) {
         VLookup::Missing => step_unverified(m, env, bci, opcode, false),
         VLookup::Found(t) => {
             let info = p.methods.at(t);
@@ -544,7 +544,7 @@ pub fn op_invoke_virtual_set(m: &mut Machine, env: &Env, bci: usize, opcode: u8,
     let w = m.at(1);
     let ghost val = sp::at(g, 0);
     let ghost recv = sp::at(g, 1);
-    match m.lookup(p, w, Ghost(recv), sel) {
+    match m.lookup(p, w, Ghost(recv), sel as i64) {
         VLookup::Missing => step_unverified(m, env, bci, opcode, false),
         VLookup::Found(t) => {
             let info = p.methods.at(t);

@@ -104,13 +104,20 @@ pub open spec fn tag_bits(cb: Seq<u16>, cid: int) -> int {
 /// model agrees with its header and contents: its class exists; it is an
 /// instance exactly if its class has the instance or task tag, with the
 /// class' field count; it is an array exactly if its class has the array
-/// tag, with the length in its length word (below 2^30); its fields and
-/// elements are encodable values.
+/// tag, with the length in its length word (below 2^30); a double, large
+/// integer or string exactly if its class has that tag; a byte array of
+/// the model only if its class has the byte-array tag (which byte arrays
+/// are: `view::Heap::bytes_len`); its fields and elements are encodable
+/// values.
 pub open spec fn obj_model_ok(o: HeapObj, cb: Seq<u16>, addr: Seq<usize>) -> bool {
     let cid = o.class_id as int;
     &&& cid < cb.len()
     &&& (o.body is Instance) == (tag_bits(cb, cid) == INSTANCE_TAG as int || tag_bits(cb, cid) == TASK_TAG as int)
     &&& (o.body is Array) == (tag_bits(cb, cid) == ARRAY_TAG as int)
+    &&& (o.body is Double) == (tag_bits(cb, cid) == DOUBLE_TAG as int)
+    &&& (o.body is LargeInt) == (tag_bits(cb, cid) == LARGE_INTEGER_TAG as int)
+    &&& (o.body is Str) == (tag_bits(cb, cid) == STRING_TAG as int)
+    &&& (o.body is Bytes) ==> tag_bits(cb, cid) == BYTE_ARRAY_TAG as int
     &&& match o.body {
         Body::Instance(f) => f.len() == ifc_bits(cb, cid)
             && forall|i: int| 0 <= i < f.len() ==> #[trigger] encodable(addr, f[i]),

@@ -547,7 +547,7 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
             proof {
                 assert(sp::step(ap, g) == sp::invoke_virtual(ap, g, sel as int, n + 1, 4)) by { reveal(sp::step); }
             }
-            return crate::calls::op_invoke_virtual(m, env, bci, opcode, sel, n + 1, 4);
+            return crate::calls::op_invoke_virtual(m, env, bci, opcode, sel as i64, n + 1, 4);
         },
         59 => {
             let n = code_u16(p, bci + 1);
@@ -555,7 +555,7 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
             proof {
                 assert(sp::step(ap, g) == sp::invoke_virtual(ap, g, sel as int, n + 1, 5)) by { reveal(sp::step); }
             }
-            return crate::calls::op_invoke_virtual(m, env, bci, opcode, sel, n + 1, 5);
+            return crate::calls::op_invoke_virtual(m, env, bci, opcode, sel as i64, n + 1, 5);
         },
         // Operators: constant opcodes, so that the inlined fast paths fold.
         62 => {

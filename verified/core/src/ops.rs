@@ -34,6 +34,7 @@ use crate::exec::*;
 use crate::step::*;
 #[cfg(verus_keep_ghost)]
 use crate::calls::handler_pre;
+use crate::calls::op_operator_fallback;
 use toit_spec::types::{Value, HeapObj};
 use toit_spec::v2::types::{State2, Program2, Outcome2};
 #[cfg(verus_keep_ghost)]
@@ -47,11 +48,11 @@ use toit_spec::v2::sound_instr::{lemma_instr, lemma_at_good, cur_k};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::verifier::{accepts, value_operands};
 #[cfg(verus_keep_ghost)]
-use toit_spec::spec_common::{smi, smi_ok, tdiv, trem, word_bit_size, is_double};
+use toit_spec::spec_common::{smi, smi_ok, tdiv, trem, word_bit_size, is_double, double_bits, new_double};
 #[cfg(verus_keep_ghost)]
-use toit_spec::spec_helpers::{are_smis, smi_val, identical};
+use toit_spec::spec_helpers::{are_smis, smi_val, identical, is_nan_bits};
 #[cfg(verus_keep_ghost)]
-use toit_spec::spec_step::{smi_arith, relational_smi};
+use toit_spec::spec_step::{smi_arith, relational_smi, relational_flag, float_arith};
 #[cfg(verus_keep_ghost)]
 use vstd::arithmetic::power2::pow2;
 #[cfg(verus_keep_ghost)]
@@ -233,6 +234,7 @@ pub fn smi_arith_word(op: u8, a: usize, b: usize, Ghost(x): Ghost<i64>, Ghost(y)
             &&& smi_range(o->0)
             &&& r->0 == smi_word(o->0 as i64)
         }),
+        r is None ==> smi_arith(pp, op, x as int, y as int) is None,
 {
     proof { lemma_smi_word(x); lemma_smi_word(y); }
     let ai = a as i64;
@@ -306,7 +308,22 @@ pub fn smi_arith_word(op: u8, a: usize, b: usize, Ghost(x): Ghost<i64>, Ghost(y)
                 Some(s) => Some(s as usize),
                 None => None,
             }
+        } else if ys == 63 && ai == 0 {
+            // 0 << 63 is the only shift by 63 whose result is a smi.
+            proof {
+                vstd::arithmetic::power2::lemma2_to64_rest();
+                assert(x * pow2(63) == 0) by (nonlinear_arith) requires x == 0;
+            }
+            Some(0)
         } else {
+            proof {
+                if ys == 63 {
+                    vstd::arithmetic::power2::lemma2_to64_rest();
+                    let q = pow2(63) as int;
+                    assert(q == 0x8000_0000_0000_0000);
+                    assert(x * q >= q || x * q <= -q) by (nonlinear_arith) requires x != 0, q > 0;
+                }
+            }
             None
         }
     } else if op == 71 {
@@ -436,7 +453,71 @@ pub fn op_invoke_eq(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: C
         proof { lemma_matches(p, m0, *m, r); }
         return r;
     }
-    step_unverified(m, env, bci, opcode, false)
+    op_eq_slow(m, env, bci, opcode, a0, a1)
+}
+
+/// INVOKE_EQ with an object operand: identical operands (equal unless a
+/// NaN), null, the number comparison, else the virtual call of `==`.
+#[inline(always)]
+pub fn op_eq_slow(m: &mut Machine, env: &Env, bci: usize, opcode: u8, a0: usize, a1: usize) -> (r: Ctl)
+    requires
+        handler_pre(env.p, *old(m), bci, opcode),
+        sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_eq(env.p.ap@, old(m).g@),
+        opcode == 62,
+        bci + 1 < 0x1000_0000,
+        sp::has_slot(old(m).g@, 0), sp::has_slot(old(m).g@, 1),
+        sp::at(old(m).g@, 0) is Smi || sp::at(old(m).g@, 0) is Obj,
+        sp::at(old(m).g@, 1) is Smi || sp::at(old(m).g@, 1) is Obj,
+        !(sp::at(old(m).g@, 0) is Smi && sp::at(old(m).g@, 1) is Smi),
+        a0 == enc(old(m).addr(), sp::at(old(m).g@, 1)),
+        a1 == enc(old(m).addr(), sp::at(old(m).g@, 0)),
+    ensures step_post(env.p, *old(m), *final(m), r),
+{
+    let p = env.p;
+    let ghost ap = p.ap@;
+    let ghost g = m.g@;
+    let ghost m0 = *m;
+    let ghost v0 = sp::at(g, 1);
+    let ghost v1 = sp::at(g, 0);
+    let ghost s1 = as1(g);
+    proof {
+        m.lemma_at(p, 0);
+        m.lemma_at(p, 1);
+        lemma_enc_inj(g.heap, m0.addr(), v0, v1);
+        assert(const_ok(g.heap, ap.roots[0]));
+        lemma_enc_inj(g.heap, m0.addr(), v0, sp::null2(ap));
+        lemma_enc_inj(g.heap, m0.addr(), v1, sp::null2(ap));
+    }
+    if a0 == a1 {
+        let nan = match m.double_x(p, a0, Ghost(v0)) {
+            Some(bits) => crate::numbers::nan_bits(bits),
+            None => false,
+        };
+        let ghost bv = !(is_double(s1, v0) && is_nan_bits(double_bits(s1, v0)));
+        proof { assert(sp::op_invoke_eq(ap, g) == sp::binary_result(g, sp::boolean2(ap, bv))); }
+        let w = bool_word(p, !nan, Ghost(m0));
+        let r = m.binary_next(p, w, Ghost(sp::boolean2(ap, bv)));
+        proof { lemma_matches(p, m0, *m, r); }
+        return r;
+    }
+    if a0 == p.null || a1 == p.null {
+        proof { assert(sp::op_invoke_eq(ap, g) == sp::binary_result(g, sp::false2(ap))); }
+        let w = bool_word(p, false, Ghost(m0));
+        let r = m.binary_next(p, w, Ghost(sp::boolean2(ap, false)));
+        proof { lemma_matches(p, m0, *m, r); }
+        return r;
+    }
+    let c = m.compare_x(p, a0, Ghost(v0), a1, Ghost(v1));
+    if c != 0 {
+        let b = (c & 32) != 0;
+        proof { assert(sp::op_invoke_eq(ap, g) == sp::binary_result(g, sp::boolean2(ap, b))); }
+        let w = bool_word(p, b, Ghost(m0));
+        let r = m.binary_next(p, w, Ghost(sp::boolean2(ap, b)));
+        proof { lemma_matches(p, m0, *m, r); }
+        return r;
+    }
+    proof { assert(sp::op_invoke_eq(ap, g) == sp::operator_fallback(ap, g, opcode)); }
+    op_operator_fallback(m, env, bci, opcode)
 }
 
 /// INVOKE_LT, INVOKE_GT, INVOKE_LTE, INVOKE_GTE
@@ -485,7 +566,26 @@ pub fn op_invoke_relational(m: &mut Machine, env: &Env, bci: usize, opcode: u8) 
         proof { lemma_matches(p, m0, *m, r); }
         return r;
     }
-    step_unverified(m, env, bci, opcode, false)
+    let c = m.compare_x(p, a0, Ghost(v0), a1, Ghost(v1));
+    if c != 0 {
+        let b = (c & rel_flag(opcode)) != 0;
+        proof { assert(sp::op_invoke_relational(ap, g, opcode) == sp::binary_result(g, sp::boolean2(ap, b))); }
+        let w = bool_word(p, b, Ghost(m0));
+        let r = m.binary_next(p, w, Ghost(sp::boolean2(ap, b)));
+        proof { lemma_matches(p, m0, *m, r); }
+        return r;
+    }
+    proof { assert(sp::op_invoke_relational(ap, g, opcode) == sp::operator_fallback(ap, g, opcode)); }
+    op_operator_fallback(m, env, bci, opcode)
+}
+
+/// `spec_step::relational_flag`.
+#[inline(always)]
+pub fn rel_flag(op: u8) -> (r: u8)
+    requires 63 <= op <= 66,
+    ensures r == relational_flag(op),
+{
+    if op == 63 { 8 } else if op == 65 { 16 } else if op == 64 { 128 } else { 64 }
 }
 
 /// INVOKE_BIT_OR .. INVOKE_MOD (`spec::op_invoke_arith`): the smi fast
@@ -530,10 +630,97 @@ pub fn op_invoke_arith(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r
                 proof { lemma_matches(p, m0, *m, r); }
                 return r;
             },
-            None => {},
+            None => {
+                proof {
+                    assert(!toit_spec::spec_helpers::are_floats(as1(g), v0, v1));
+                    assert(sp::op_invoke_arith(ap, g, opcode) == sp::operator_fallback(ap, g, opcode));
+                }
+                return op_operator_fallback(m, env, bci, opcode);
+            },
         }
     }
-    step_unverified(m, env, bci, opcode, false)
+    op_arith_slow(m, env, bci, opcode, a0, a1)
+}
+
+/// INVOKE_ADD, INVOKE_SUB, INVOKE_MUL of two doubles: a new double (a GC
+/// point); anything else with an object operand: the virtual call.
+#[inline(always)]
+pub fn op_arith_slow(m: &mut Machine, env: &Env, bci: usize, opcode: u8, a0: usize, a1: usize) -> (r: Ctl)
+    requires
+        handler_pre(env.p, *old(m), bci, opcode),
+        sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_arith(env.p.ap@, old(m).g@, opcode),
+        67 <= opcode <= 77,
+        bci + 1 < 0x1000_0000,
+        sp::has_slot(old(m).g@, 0), sp::has_slot(old(m).g@, 1),
+        sp::at(old(m).g@, 0) is Smi || sp::at(old(m).g@, 0) is Obj,
+        sp::at(old(m).g@, 1) is Smi || sp::at(old(m).g@, 1) is Obj,
+        !(sp::at(old(m).g@, 0) is Smi && sp::at(old(m).g@, 1) is Smi),
+        a0 == enc(old(m).addr(), sp::at(old(m).g@, 1)),
+        a1 == enc(old(m).addr(), sp::at(old(m).g@, 0)),
+    ensures step_post(env.p, *old(m), *final(m), r),
+{
+    let p = env.p;
+    let ghost ap = p.ap@;
+    let ghost g = m.g@;
+    let ghost m0 = *m;
+    let ghost v0 = sp::at(g, 1);
+    let ghost v1 = sp::at(g, 0);
+    let ghost s1 = as1(g);
+    proof {
+        m.lemma_at(p, 0);
+        m.lemma_at(p, 1);
+    }
+    if opcode == 73 || opcode == 74 || opcode == 75 {
+        if let Some(x) = m.double_x(p, a0, Ghost(v0)) {
+            if let Some(y) = m.double_x(p, a1, Ghost(v1)) {
+                let bits = if opcode == 73 {
+                    toit_spec::exec_step::x_double_add(x, y)
+                } else if opcode == 74 {
+                    toit_spec::exec_step::x_double_sub(x, y)
+                } else {
+                    toit_spec::exec_step::x_double_mul(x, y)
+                };
+                proof { assert(bits == float_arith(opcode, x, y)); }
+                return op_new_double(m, env, bci, opcode, bits);
+            }
+        }
+    }
+    proof { assert(sp::op_invoke_arith(ap, g, opcode) == sp::operator_fallback(ap, g, opcode)); }
+    op_operator_fallback(m, env, bci, opcode)
+}
+
+/// Replaces the two operands by a new double with `bits` (a GC point).
+#[inline(always)]
+pub fn op_new_double(m: &mut Machine, env: &Env, bci: usize, opcode: u8, bits: u64) -> (r: Ctl)
+    requires
+        handler_pre(env.p, *old(m), bci, opcode),
+        sp::step(env.p.ap@, old(m).g@) == sp::binary_result(
+            sp::alloc2(old(m).g@, new_double(as1(old(m).g@), p1(env.p.ap@), bits)), sp::new_ref2(old(m).g@)),
+        sp::has_slot(old(m).g@, 1),
+        bci + 1 < 0x1000_0000,
+    ensures step_post(env.p, *old(m), *final(m), r),
+{
+    let p = env.p;
+    let ghost ap = p.ap@;
+    let ghost g = m.g@;
+    let ghost m0 = *m;
+    m.save();
+    proof { crate::alloc::lemma_saved(p, *m); }
+    let w = crate::alloc::gc_allocate_double(m, env, bits, Ghost(g));
+    if w == 0 {
+        // Out of memory: the checked handler retries and throws.
+        crate::alloc::reload(m, p, Ghost(g));
+        return step_unverified(m, env, bci, opcode, false);
+    }
+    let ghost g1 = sp::alloc2(g, new_double(as1(g), p1(ap), bits));
+    crate::alloc::reload(m, p, Ghost(g1));
+    proof {
+        assert(m.addr().len() == g1.heap.len());
+        assert(sp::has_slot(g1, 1));
+    }
+    let r = m.binary_next(p, w, Ghost(sp::new_ref2(g)));
+    proof { lemma_matches(p, m0, *m, r); }
+    r
 }
 
 /// IDENTICAL (`spec::identical`): equal words are identical values; a smi
@@ -580,7 +767,11 @@ pub fn op_identical(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: C
         proof { lemma_matches(p, m0, *m, r); }
         return r;
     }
-    step_unverified(m, env, bci, opcode, false)
+    let b = m.identical_slow(p, a0, Ghost(v0), a1, Ghost(v1));
+    let w = bool_word(p, b, Ghost(m0));
+    let r = m.binary_next(p, w, Ghost(sp::boolean2(ap, b)));
+    proof { lemma_matches(p, m0, *m, r); }
+    r
 }
 
 } // verus!

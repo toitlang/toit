@@ -365,6 +365,14 @@ impl Machine {
         cold!(self, |m| env.rt.allocate_instance(&mut m.mem, class_id))
     }
 
+    /// Allocates a double (MAY GC) without saving or reloading the task
+    /// state (`alloc::gc_allocate_double`). 0 if out of memory.
+    /// Cold path: runs out of line on a copy of the machine (see `cold!`).
+    #[inline(always)]
+    pub fn allocate_double_raw(&mut self, env: &Env, bits: u64) -> usize {
+        cold!(self, |m| env.rt.allocate_double(&mut m.mem, bits))
+    }
+
     /// Cold path: runs out of line on a copy of the machine (see `cold!`).
     #[inline(always)]
     pub fn alloc_double(&mut self, env: &Env, bits: u64) -> Option<usize> {

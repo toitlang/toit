@@ -35,6 +35,14 @@ justification = "usize is 64 bits (TRUSTED.md V4): Verus assumes it for the bit-
 [[trusted]]
 crate = "core"
 file = "src/alloc.rs"
+item = "gc_allocate_double"
+kind = "external_body"
+count = 1
+justification = "ASSUMED: toit_v2_allocate_double (may GC) keeps the abstract state the stack, header, globals and heap model represent and appends exactly the spec's double (spec_common::new_double) (or keeps it unchanged on out of memory); TRUSTED.md, GC and allocation."
+
+[[trusted]]
+crate = "core"
+file = "src/alloc.rs"
 item = "gc_allocate_instance"
 kind = "external_body"
 count = 1
@@ -563,6 +571,54 @@ justification = "Raw access of Heap::byte; in bounds by the external_body precon
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
+item = "Heap::byte_at"
+kind = "external_body"
+count = 1
+justification = "Heap accessor: byte i < length of a model byte array is the model's byte (TRUSTED.md, heap model)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::byte_at"
+kind = "unsafe"
+count = 1
+justification = "Reads byte i < length of the content of a model byte array (internal, or raw external memory owned by it)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::bytes_address"
+kind = "plain_rust_item"
+count = 1
+justification = "Helper of byte_at/set_byte_at: the inline content or the external address of a model byte array."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::bytes_address"
+kind = "unsafe"
+count = 2
+justification = "Reads the length and address words of a live byte array (heap integrity, TRUSTED.md V2)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::bytes_len"
+kind = "external_body"
+count = 1
+justification = "Heap accessor and modeling assumption: a byte array is Body::Bytes exactly when it is internal or external with RAW_BYTE_TAG and a non-null address, with that length (TRUSTED.md, heap model)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::bytes_len"
+kind = "unsafe"
+count = 3
+justification = "Reads the length, tag and address words of a live byte array (heap integrity, TRUSTED.md V2)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
 item = "Heap::class_bits"
 kind = "uninterp"
 count = 1
@@ -599,6 +655,22 @@ item = "Heap::class_tag"
 kind = "unsafe"
 count = 1
 justification = "Reads the header word of a live object (heap integrity, TRUSTED.md V2): obj is the model address of an object."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::double_bits"
+kind = "external_body"
+count = 1
+justification = "Heap accessor: the value word of a double is the model's bits (TRUSTED.md, heap model)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::double_bits"
+kind = "unsafe"
+count = 1
+justification = "Reads the value word of a live double (heap integrity, TRUSTED.md V2)."
 
 [[trusted]]
 crate = "core"
@@ -651,6 +723,22 @@ justification = "Raw access of Heap::header; in bounds by the external_body prec
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
+item = "Heap::large_int"
+kind = "external_body"
+count = 1
+justification = "Heap accessor: the value word of a large integer is the model's value (TRUSTED.md, heap model)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::large_int"
+kind = "unsafe"
+count = 1
+justification = "Reads the value word of a live large integer (heap integrity, TRUSTED.md V2)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
 item = "Heap::new"
 kind = "plain_rust_item"
 count = 1
@@ -679,6 +767,22 @@ item = "Heap::set_byte"
 kind = "unsafe"
 count = 1
 justification = "Raw access of Heap::set_byte; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::set_byte_at"
+kind = "external_body"
+count = 1
+justification = "Heap accessor: storing byte i < length of a byte array outside the program heap updates exactly the model's byte; bytes hold no references, so no write barrier (TRUSTED.md, heap model)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::set_byte_at"
+kind = "unsafe"
+count = 1
+justification = "Writes byte i < length of the content of a model byte array outside the program heap (writable memory)."
 
 [[trusted]]
 crate = "core"
@@ -727,6 +831,38 @@ item = "Heap::set_word"
 kind = "unsafe"
 count = 1
 justification = "Raw access of Heap::set_word; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::string_byte"
+kind = "external_body"
+count = 1
+justification = "Heap accessor: byte i < length of the inline or external content is the model's byte (TRUSTED.md, heap model)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::string_byte"
+kind = "unsafe"
+count = 4
+justification = "Reads byte i < length of a live string's content (heap integrity, TRUSTED.md V2)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::string_len"
+kind = "external_body"
+count = 1
+justification = "Heap accessor: the internal length field, or the external length word, is the model's string length (TRUSTED.md, heap model)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::string_len"
+kind = "unsafe"
+count = 2
+justification = "Reads the length fields of a live string (heap integrity, TRUSTED.md V2)."
 
 [[trusted]]
 crate = "core"

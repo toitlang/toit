@@ -314,12 +314,12 @@ impl Machine {
 
     /// `spec::find_method`, when it is not stuck.
     #[inline(always)]
-    pub fn lookup(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>, sel: usize) -> (r: VLookup)
+    pub fn lookup(&self, p: &Program, w: usize, Ghost(v): Ghost<Value>, sel: i64) -> (r: VLookup)
         requires
             self.refines(p),
             w == enc(self.addr(), v),
             encodable(self.addr(), v),
-            sel < 0x1_0000,
+            -0x8000_0000 <= sel < 0x8000_0000,
             !(sp::find_method(p.ap@, self.g@, v, sel as int) is Stuck),
         ensures
             r == VLookup::Missing ==> sp::find_method(p.ap@, self.g@, v, sel as int) is Missing,
@@ -328,12 +328,15 @@ impl Machine {
     {
         let ghost ap = p.ap@;
         let cid = self.class_of(p, w, Ghost(v));
-        let index = (cid + sel as i64) as usize;
+        if sel < 0 {
+            return VLookup::Missing;
+        }
+        let index = (cid + sel) as usize;
         let entry = p.dispatch.at(index);
         if entry == -1 {
             return VLookup::Missing;
         }
-        if p.methods.at(entry as usize).selector as usize != sel {
+        if p.methods.at(entry as usize).selector as i64 != sel {
             return VLookup::Missing;
         }
         VLookup::Found(entry as usize)
@@ -816,11 +819,11 @@ pub fn op_invoke_static(m: &mut Machine, env: &Env, bci: usize, opcode: u8, d: u
 /// INVOKE_VIRTUAL(_WIDE) (`spec::invoke_virtual`) with `n` arguments,
 /// receiver included. Raising LOOKUP_FAILED is not proven yet.
 #[inline(always)]
-pub fn op_invoke_virtual(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel: usize, n: usize, len: usize) -> (r: Ctl)
+pub fn op_invoke_virtual(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel: i64, n: usize, len: usize) -> (r: Ctl)
     requires
         handler_pre(env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::invoke_virtual(env.p.ap@, old(m).g@, sel as int, n as int, len as int),
-        sel < 0x1_0000,
+        -0x8000_0000 <= sel < 0x8000_0000,
         bci + len < 0x1000_0000,
     ensures step_post(env.p, *old(m), *final(m), r),
 {
@@ -845,6 +848,23 @@ pub fn op_invoke_virtual(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel
             r
         },
     }
+}
+
+/// The virtual call of an operator's selector (`spec::operator_fallback`):
+/// opcodes INVOKE_EQ .. INVOKE_AT_PUT when the fast path does not apply.
+#[inline(always)]
+pub fn op_operator_fallback(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
+    requires
+        handler_pre(env.p, *old(m), bci, opcode),
+        62 <= opcode <= 79,
+        sp::step(env.p.ap@, old(m).g@) == sp::operator_fallback(env.p.ap@, old(m).g@, opcode),
+        bci + 1 < 0x1000_0000,
+    ensures step_post(env.p, *old(m), *final(m), r),
+{
+    proof { assert(env.p.ap@.invoke_offsets.len() == 19); }
+    let sel = env.p.invoke_offsets.at((opcode - 62) as usize) as i64;
+    let n = if opcode == 79 { 3 } else { 2 };
+    op_invoke_virtual(m, env, bci, opcode, sel, n, 1)
 }
 
 /// RETURN and RETURN_NULL (`spec::return_from`) with the result `w`.

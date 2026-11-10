@@ -71,7 +71,7 @@ impl Machine {
             start <= cid && cid < end
         } else {
             let sel = p.interface_check_offsets.at(index) as usize;
-            match self.lookup(p, w, Ghost(v), sel) {
+            match self.lookup(p, w, Ghost(v), sel as i64) {
                 VLookup::Found(_) => true,
                 VLookup::Missing => false,
             }
