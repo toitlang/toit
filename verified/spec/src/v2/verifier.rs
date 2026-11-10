@@ -682,9 +682,9 @@ pub open spec fn no_block_params(c: Cert, m: int) -> bool {
     forall|i: int| 0 <= i < c.block_params[m].len() ==> !(#[trigger] c.block_params[m][i])
 }
 
-/// A builtin class of the machine's own objects (Object for unwinding
-/// tokens, Stack, Double): not an instance class with fields, so the
-/// machine objects never pose as instances.
+/// A builtin class of the machine's own objects (Object, Stack, Double,
+/// Smi): not an instance class with fields, so the machine objects never
+/// pose as instances.
 pub open spec fn machine_class_ok(p: Program2, k: int) -> bool {
     let cl = builtin(p1(p), k);
     0 <= cl < class_count(p) && !(is_field_class(p, cl) && ifc(p, cl) >= 1)

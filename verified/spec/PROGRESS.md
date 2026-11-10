@@ -37,11 +37,25 @@ spec changes for the other agents: format/SPEC-CHANGELOG.md.
   must still do outside the verifier (decode the tables, run verify and
   x_loaded_ok, memory bound, primitive contract). R2 recorded in note 5.
 
-## In progress
+* Validation (2026-11-10, after the last spec change): verified/check.sh
+  --tests: Verus core 128 / spec 690 verified, 0 errors; escape-hatch
+  audit passed; layout check passed; spec differential tests 15/15;
+  sandbox ctests 90/91, the failure (tests/sandbox/field-access-test)
+  is pre-existing: it fails identically on sandbox-integration's src/
+  (no file outside verified/ changed on this branch). run_suite.py
+  --format 2: 273 pass (all 268 of the previous run among them), 135
+  unimplemented, 8 step limit, 2 nondeterministic, 4 compile errors, 1
+  primitive-oracle difference (events-primitive-group-test).
+  verify_suite: 434/438 accepted (4 do not compile); system snapshots
+  accepted; mutation campaign 12,300 mutants, 2,450 accepted, 0 stuck.
 
-* Validation.
+## Open (not started here)
 
-## Next
-
-1. Full validation (check.sh --tests, run_suite.py format 2, verify_suite,
-   system snapshots, mutation campaign) and SOUNDNESS.md numbers; R2 note.
+* The VM's loader still sweeps unreachable code (SOUNDNESS.md, "What the
+  VM checks outside the verifier"): drop the sweep when check::verify is
+  linked in (VM-linking work).
+* VM-BUGS.md 3-5 (message encoder, error encoder, byte content of COW
+  arrays and slices): memory-safety bugs in trusted C++ found by the R5
+  audit; for an upstream PR.
+* The core must follow SPEC-CHANGELOG.md (R5, R1, R4 entries).
+* R3 (HASH_FIND, REPEAT): left for the performance pass, as requested.

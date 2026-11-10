@@ -18,7 +18,7 @@ on the spec and on the soundness obligations, and the cost.
 | 1 | [method-table](01-method-table.md) | Method ids are indices into a method table decoded from method headers that carry the body length, the receiver range and the accessor's field. |
 | 2 | [frame-stack](02-frame-stack.md) | Return addresses live on a separate frame stack; the object stack holds only values; every local access is bounded by the frame. |
 | 3 | [block-references](03-block-references.md) | A block reference is `(frame, slot)`, no salt; non-local return and branch name their frame through it. |
-| 4 | [try](04-try.md) | One `TRY` instruction with a handler stack; the finally code gets an unforgeable unwinding token; `UNWIND` resumes it. |
+| 4 | [try](04-try.md) | One `TRY` instruction with a handler stack; the finally code gets an unforgeable unwinding token; `UNWIND` resumes it (the token became a finally record's index in note 17). |
 | 5 | [raised-failures](05-raised-failures.md) | Lookup, as-check, code-invocation, invalid-program and primitive-lookup failures are exceptions raised by the machine. |
 | 6 | [tail-calls](06-tail-calls.md) | Tail calls replace the top frame; no height/arity operands. |
 | 7 | [field-access](07-field-access.md) | Field access is checked; `LOAD_FIELD_THIS`/`STORE_FIELD_THIS` are unchecked, backed by the method's declared receiver range, a receiver check at static calls and a dispatch-table check. |

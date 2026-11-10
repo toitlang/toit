@@ -150,7 +150,7 @@
 1 unimplemented tests/crypto-rsa-test.toit crypto::rsa_get_private_key_der
 2 unimplemented tests/crypto-rsa-test.toit crypto::rsa_get_private_key_der
 1 steplimit tests/crypto-test.toit
-2 steplimit tests/crypto-test.toit
+2 unimplemented tests/crypto-test.toit crypto::sha1_start
 1 unimplemented tests/crypto-vectors-test.toit file::open
 2 unimplemented tests/crypto-vectors-test.toit file::open
 1 pass tests/declaration-test.toit
@@ -197,6 +197,7 @@
 2 pass tests/escaped-newline-test.toit
 1 pass tests/espnow-address-test.toit
 2 pass tests/espnow-address-test.toit
+2 fail tests/events-primitive-group-test.toit 64,32
 1 steplimit tests/exception-test.toit
 2 steplimit tests/exception-test.toit
 1 steplimit tests/exhaustive-hash-test-slow.toit
@@ -266,7 +267,7 @@
 1 pass tests/i2s-coordinator-test.toit
 2 pass tests/i2s-coordinator-test.toit
 1 pass tests/i2s-pattern-test.toit
-2 steplimit tests/i2s-pattern-test.toit
+2 pass tests/i2s-pattern-test.toit
 1 pass tests/i2s-run-output-test.toit
 2 pass tests/i2s-run-output-test.toit
 1 unimplemented tests/i2s-stream-verifier-test.toit bitmap::byte_zap
@@ -313,6 +314,7 @@
 2 pass tests/inheritance-resolution-test.toit
 1 pass tests/instance-test.toit
 2 pass tests/instance-test.toit
+2 pass tests/int-min-division-test.toit
 1 unimplemented tests/interface-address-test.toit system-service:063e228a-3a7a-44a8-b024-d55127255ccb
 2 unimplemented tests/interface-address-test.toit system-service:063e228a-3a7a-44a8-b024-d55127255ccb
 1 pass tests/interface-test.toit
@@ -368,7 +370,7 @@
 1 unimplemented tests/line-wrap-test-slow.toit font::get_nonbuiltin
 2 unimplemented tests/line-wrap-test-slow.toit font::get_nonbuiltin
 1 steplimit tests/list-test.toit
-2 steplimit tests/list-test.toit
+2 pass tests/list-test.toit
 1 unimplemented tests/literal-index-test.toit core::get_real_time_clock
 2 unimplemented tests/literal-index-test.toit core::get_real_time_clock
 1 pass tests/literal-test.toit
@@ -547,6 +549,7 @@
 2 pass tests/reader-writer-test.toit
 1 pass tests/reader2-test.toit
 2 pass tests/reader2-test.toit
+2 pass tests/rebuild-hash-index-test.toit
 1 unimplemented tests/registers-test.toit core::put_uint_little_endian
 2 unimplemented tests/registers-test.toit core::put_uint_little_endian
 1 pass tests/regress/integer-literal-width-test.toit
@@ -723,6 +726,7 @@
 2 unimplemented tests/time-test.toit core::get_real_time_clock
 1 pass tests/timeout-test.toit
 2 pass tests/timeout-test.toit
+2 pass tests/timer-far-deadline-test.toit
 1 unimplemented tests/tison-test.toit encoding::tison_encode
 2 unimplemented tests/tison-test.toit encoding::tison_encode
 1 unimplemented tests/tls-client-cert-test.toit system-service:063e228a-3a7a-44a8-b024-d55127255ccb
@@ -821,6 +825,7 @@
 2 unimplemented tests/x509-test.toit x509::init
 1 unimplemented tests/yaml-test.toit core::read_uint_little_endian
 2 unimplemented tests/yaml-test.toit core::read_uint_little_endian
+2 unimplemented tests/zlib-corrupt-test.toit zlib::zlib_init_inflate
 1 unimplemented tests/zlib-deprecated-test.toit core::crc
 2 unimplemented tests/zlib-deprecated-test.toit core::crc
 1 unimplemented tests/zlib-full-deprecated-test.toit zlib::zlib_init_inflate

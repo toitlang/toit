@@ -364,6 +364,7 @@ accepted tests/tcp-write-close-test.toit
 accepted tests/thread-test.toit
 accepted tests/time-test.toit
 accepted tests/timeout-test.toit
+accepted tests/timer-far-deadline-test.toit
 accepted tests/tison-test.toit
 accepted tests/tls-client-cert-test.toit
 accepted tests/tls-global-cert-simple-test.toit
@@ -413,6 +414,7 @@ accepted tests/wifi-leaker-test-slow.toit
 accepted tests/writer-test.toit
 accepted tests/x509-test.toit
 accepted tests/yaml-test.toit
+accepted tests/zlib-corrupt-test.toit
 accepted tests/zlib-deprecated-test.toit
 accepted tests/zlib-full-deprecated-test.toit
 accepted tests/zlib-full-test.toit
@@ -424,6 +426,7 @@ accepted verified/spec/tests/toit/blocks.toit
 accepted verified/spec/tests/toit/classes.toit
 accepted verified/spec/tests/toit/collections.toit
 accepted verified/spec/tests/toit/exceptions.toit
+accepted verified/spec/tests/toit/finally_records.toit
 accepted verified/spec/tests/toit/floats.toit
 accepted verified/spec/tests/toit/hello.toit
 accepted verified/spec/tests/toit/large_ints.toit

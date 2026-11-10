@@ -371,32 +371,38 @@ details and fixes:
 
 ## Tests
 
-* `tests/verify_suite.py`: every program found by `run_suite.py`
-  (435 sources) compiled with `-Xbytecode_format=2`: 431 accepted, 4 do
-  not compile (the `-force` negative compiler tests). Results in
-  `tests/verify-results.txt`.
+Numbers after the Phase 4 changes (R5, R1, R4; 2026-11-10):
+
+* `tests/verify_suite.py`: every program found by `run_suite.py` and the
+  spec test programs (438 sources) compiled with `-Xbytecode_format=2`:
+  434 accepted (verdict `verify && x_loaded_ok`), 4 do not compile (the
+  `-force` negative compiler tests). Results in `tests/verify-results.txt`.
 * `tests/system_snapshots.sh`: the three system snapshots (toit,
   toit.run, run-image) compiled with `toit.compile -Xbytecode_format=2`
-  are accepted (trusted), referencing 176, 106 and 116 primitives.
-  Verification time of the toit_run snapshot: 37.6 ms in total (load
-  1.6 ms, inference 33.0 ms, check 4.6 ms); the largest (toit) takes
-  198 ms.
+  are accepted (trusted) and satisfy `loaded_ok`, referencing 176, 106
+  and 116 primitives. Verification time of the toit_run snapshot before
+  Phase 4: 37.6 ms in total (load 1.6 ms, inference 33.0 ms, check
+  4.6 ms); the largest (toit) 198 ms (not remeasured: the machines were
+  loaded during this run).
 * `tests/mutation_campaign.py --count 18000 --seed 2` (results in
-  `tests/mutation-results.txt`, 55 s on 12 jobs): 11,400 single-byte and
-  single-operand mutants of 60 programs (5,684 random instruction bytes,
-  4,599 operands, 1,117 method-header bytes), verified with
-  `trusted = false`. 8,966 are rejected (690 of them already by the
-  method-table decoder); the 2,434 accepted ones were run on the reference
-  interpreter for at most 100,000 steps each: 2,199 exited, 133 hit the
-  step limit, 74 deadlocked (all tasks blocked), 13 called an
-  unimplemented primitive, 12 ended with an uncaught exception, 3 tasks
-  returned. **None got stuck or panicked the interpreter.**
-* Spec validation after the last change (the step function is unchanged
-  by this phase; rerun after merging the header shrink):
-  `run_suite.py --format 2` over 421 suite tests: 272 produce the C++
-  VM's output on the reference interpreter (64- and 32-bit), 134 use an
-  unimplemented primitive, 8 hit the step limit, 2 are nondeterministic,
-  4 do not compile, and 1 differs: `events-primitive-group-test` (new on
-  the integration branch), which tests resource-group checks of the
-  `events.*` primitives that the interpreter's primitive emulation does
-  not model (a primitive-oracle difference, not a step difference).
+  `tests/mutation-results.txt`): 12,300 single-byte and single-operand
+  mutants of 60 programs (6,159 random instruction bytes, 4,931 operands,
+  1,210 method-header bytes), verified with `trusted = false`. 9,850 are
+  rejected (770 of them already by the method-table decoder); the 2,450
+  accepted ones were run on the reference interpreter for at most
+  100,000 steps each: 2,204 exited, 119 hit the step limit, 94
+  deadlocked (all tasks blocked), 8 called an unimplemented primitive,
+  24 ended with an uncaught exception, 1 task returned. **None got stuck
+  or panicked the interpreter.**
+* `tests/run_tests.sh`: the 15 spec test programs (new:
+  `finally_records`, try/finally inside finally code, breaks out of
+  finally code, the value slot) produce the C++ VM's output in format 1
+  and format 2, 64- and 32-bit.
+* `run_suite.py --format 2` over 423 suite tests: 273 produce the C++
+  VM's output on the reference interpreter (64- and 32-bit; the 268 of
+  the previous run among them), 135 use an unimplemented primitive, 8 hit
+  the step limit, 2 are nondeterministic, 4 do not compile, and 1
+  differs: `events-primitive-group-test`, which tests resource-group
+  checks of the `events.*` primitives that the interpreter's primitive
+  emulation does not model (a primitive-oracle difference, not a step
+  difference). Per-test status in `tests/suite-status.txt`.
