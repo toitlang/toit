@@ -1402,6 +1402,11 @@ bool VerifierImpl::step(MethodRun* run, State* state, int bci, int* next) {
         error(run, bci, "LOAD_METHOD of method %d which is neither block nor lambda", id);
         return false;
       }
+      // Parameter 0 of a block is the block itself.
+      if (target.arity() < 1) {
+        error(run, bci, "LOAD_METHOD of block %d without parameters", id);
+        return false;
+      }
       MethodInfo& bi = info(id);
       if (bi.load_site != -1 && bi.load_site != bci) {
         error(run, bci, "block %d is loaded from two sites (%d and %d)", id, bi.load_site, bci);
