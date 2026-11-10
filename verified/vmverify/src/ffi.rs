@@ -132,7 +132,8 @@ pub unsafe extern "C" fn toit_vmverify_verify(input: *const VerifyInput, result:
 /// Writes the canonical form (canonical.rs) of the program described by
 /// `input` to the file `path`. Returns 0 on success, 1 if the memory could
 /// not be converted, 2 if the file could not be written. Test support for
-/// tests/differential.py.
+/// tests/differential.py. A path ending in `.tables` gets the raw input
+/// instead (tables.rs, for the fuzz driver).
 ///
 /// # Safety
 /// As `toit_vmverify_verify`; `path` must be a NUL-terminated string.
@@ -143,6 +144,10 @@ pub unsafe extern "C" fn toit_vmverify_canonical(input: *const VerifyInput, path
         Ok(p) => p.to_string(),
         Err(_) => return 2,
     };
+    if path.ends_with(".tables") {
+        // The raw input, for the in-process fuzz driver (tables.rs).
+        return if crate::tables::save(input, &path).is_ok() { 0 } else { 2 };
+    }
     match from_vm::convert(&*input.program, &arities(input)) {
         Err(e) => {
             eprintln!("cannot convert the program: {} ({})", e.what, e.detail);

@@ -34,6 +34,10 @@ path = "src/bin/toit_vmverify_canonical.rs"
 name = "toit_vmverify_mem"
 path = "src/bin/toit_vmverify_mem.rs"
 
+[[bin]]
+name = "toit_vmverify_fuzz"
+path = "src/bin/toit_vmverify_fuzz.rs"
+
 [dependencies]
 toit_spec = { path = "../spec" }
 toit_verified_core = { path = "../core" }

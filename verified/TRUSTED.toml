@@ -1114,6 +1114,14 @@ justification = "Reference interpreter (plain Rust, not verified; DESIGN.md); di
 
 [[trusted]]
 crate = "spec"
+file = "src/lib.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Only `extern crate alloc;` (the inference uses alloc collections so that it also builds without std); no code."
+
+[[trusted]]
+crate = "spec"
 file = "src/spec_helpers.rs"
 item = "compare_mixed"
 kind = "uninterp"
@@ -1164,17 +1172,17 @@ justification = "Format-2 opcode names for tracing and the table test; no semant
 crate = "spec"
 file = "src/v2/heap_check.rs"
 item = "check_heap"
-kind = "plain_rust_item"
+kind = "cfg"
 count = 1
-justification = "Message only: toit_spec_verify's early wording of a heap rejection; the verdict comes from the verified x_loaded_ok (proven equal to loaded_ok)."
+justification = "cfg that keeps the message wrapper (it names the unverified loader's Loaded) out of the Verus build."
 
 [[trusted]]
 crate = "spec"
 file = "src/v2/heap_check.rs"
 item = "check_heap"
-kind = "cfg"
+kind = "plain_rust_item"
 count = 1
-justification = "cfg that keeps the message wrapper (it names the unverified loader's Loaded) out of the Verus build."
+justification = "Message only: toit_spec_verify's early wording of a heap rejection; the verdict comes from the verified x_loaded_ok (proven equal to loaded_ok)."
 
 [[trusted]]
 crate = "spec"
@@ -1266,6 +1274,38 @@ justification = "Test tool (dump side of tests/differential.py): canonical form 
 
 [[trusted]]
 crate = "vmverify"
+file = "src/bin/toit_vmverify_fuzz.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Test tool, not linked into the VM: in-process fuzz driver of toit_vmverify_verify on mutated verifier inputs (tables.rs)."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/bin/toit_vmverify_fuzz.rs"
+item = "main"
+kind = "unsafe"
+count = 2
+justification = "Test tool: zero-initializes a ProgramTables (plain integers and pointers) that Tables::input fills, and saves a finding with tables::save over buffers it owns."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/bin/toit_vmverify_fuzz.rs"
+item = "run"
+kind = "unsafe"
+count = 2
+justification = "Test tool: zero-initialized ProgramTables filled by Tables::input; calls the C ABI entry point with pointers into buffers that live across the call."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/bin/toit_vmverify_mem.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Test tool, not linked into the VM: measures the verifier's memory (counting allocator) and time on dumped programs."
+
+[[trusted]]
+crate = "vmverify"
 file = "src/canonical.rs"
 item = "*"
 kind = "plain_rust_file"
@@ -1318,7 +1358,7 @@ file = "src/from_vm.rs"
 item = "*"
 kind = "plain_rust_file"
 count = 1
-justification = "TRUSTED: builds the abstract program and heap from the tables the core executes (straight-line copy plus a bounds-checked breadth-first walk of the program image); equal to the dump path's on 434/434 suite programs (tests/differential.py)."
+justification = "TRUSTED: builds the abstract program and heap from the tables the core executes (the tables borrowed as slices, plus a bounds-checked breadth-first walk of the program image); equal to the dump path's on every suite program (tests/differential.py)."
 
 [[trusted]]
 crate = "vmverify"
@@ -1342,7 +1382,7 @@ file = "src/from_vm.rs"
 item = "convert"
 kind = "unsafe"
 count = 1
-justification = "Reads the toit_v2_program tables through their pointers and lengths, as the core's Table views do (v2_program_tables fills both)."
+justification = "Borrows the toit_v2_program tables through their pointers and lengths, as the core's Table views do (v2_program_tables fills both); the V2Method array is viewed as VMethod, whose size, alignment and field offsets are asserted equal at compile time."
 
 [[trusted]]
 crate = "vmverify"
@@ -1351,6 +1391,46 @@ item = "table"
 kind = "unsafe"
 count = 1
 justification = "slice::from_raw_parts over a VM table with its length (empty slice for length 0, where the pointer may be null)."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/tables.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "Test support, not on the verification path: saves the FFI input (toit.run --emit-canonical=X.tables) and loads it back for the fuzz driver."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/tables.rs"
+item = "Reader::vec"
+kind = "unsafe"
+count = 1
+justification = "Test support: copies file bytes into a Vec of plain-old-data elements (integers, V2Method) after checking the length."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/tables.rs"
+item = "Tables::load"
+kind = "unsafe"
+count = 1
+justification = "Test support: copies the image bytes into a word buffer of at least that size."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/tables.rs"
+item = "bytes"
+kind = "unsafe"
+count = 1
+justification = "Test support: views a VM table as bytes for saving; the caller passes the table's pointer and length from the FFI input."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/tables.rs"
+item = "save"
+kind = "unsafe"
+count = 1
+justification = "Test support: reads the FFI input's tables and image (valid for their lengths, as for toit_vmverify_verify) to write them to a file."
 
 [[trusted]]
 crate = "vmverify"

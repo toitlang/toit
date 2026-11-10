@@ -23,11 +23,13 @@
 //! - `ffi`:       TRUSTED. The C ABI (src/verifier_v2.h).
 //! - `alloc`:     the counting allocator (memory high-water mark).
 //! - `canonical`: test support: canonical text of an abstract program.
+//! - `tables`:    test support: the FFI input saved and loaded (fuzzing).
 
 pub mod alloc;
 pub mod canonical;
 pub mod ffi;
 pub mod from_vm;
+pub mod tables;
 pub mod verify;
 
 // The core's C entry points are part of this library.
