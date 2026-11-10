@@ -17,6 +17,31 @@ Milestones (newest last):
    slot existence, literal/global index, LOAD_METHOD range, branch target
    and direction. Other opcodes go through `step_unverified` (contract
    ASSUMED, allowlisted). Gate: core 174 verified, 0 errors.
+2. Calls (INVOKE_STATIC, INVOKE_VIRTUAL(_WIDE)), RETURN(_NULL) with the
+   caller's finally entry; heap model accessors (class id, tag, fields).
+3. Fields (all field opcodes and the accessor fast paths), type checks,
+   blocks (LOAD_BLOCK, LOAD/STORE_OUTER, LOAD_OUTER_BLOCK, INVOKE_BLOCK),
+   operator smi fast paths and IDENTICAL (types, blocks and operators by
+   sub-agents on their own branches, merged).
+4. Accepted programs only: `toit_v2_context.accepted` (untrusted or
+   -Xverify); others run on the checked handlers (runtime-hardening-test
+   crashed the core with a patched unverified program before).
+5. Spec changes merged (R5 task fields: the core's handlers implement
+   `field_readable`/`field_writable` exactly; R1 finally records: RETURN
+   follows `fins_popped`; the core's own records are on branch
+   core/refinement-r1, in progress).
+6. End-to-end theorem `src/theorem.rs` (replaces the stub
+   obligations.rs): `theorem_first_run`, `theorem_next_run`.
+7. HALT, dynamic and lazy globals, ALLOCATE (a GC point with a trusted
+   contract over the abstraction, reload proven), plain-array
+   INVOKE_AT/AT_PUT/SIZE (sub-agent). Slow paths call the checked
+   dispatch out of line (inlining a copy at each cost 14% on richards).
+8. Merged sandbox-integration with verified/vmverify: the theorem's
+   loader hypotheses are established by the VM at untrusted launch.
+   Gate: core 282 verified, 0 errors.
+
+Measurements and the final status: see the end of this section after
+the last gate run (benchmark, fuzz, suite).
 
 Updated 2026-11-10. Branch `worktree-agent-a8fb4ad99a9c8d319` (merged with
 `sandbox-integration` at f95b9a1d). Design: DESIGN.md. Proofs:
