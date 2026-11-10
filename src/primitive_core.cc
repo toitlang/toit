@@ -554,7 +554,8 @@ PRIMITIVE(string_write_to_byte_array) {
   if (to == from) return _raw_dest;
   if (from < 0 || to > source_bytes.length() || from > to) FAIL(OUT_OF_BOUNDS);
   if (dest_index < 0 || to - from > dest.length() - dest_index) FAIL(OUT_OF_BOUNDS);
-  memcpy(&dest.address()[dest_index], &source_bytes.address()[from], to - from);
+  // The source and the destination may be the same byte array.
+  memmove(&dest.address()[dest_index], &source_bytes.address()[from], to - from);
   return _raw_dest;
 }
 
@@ -734,14 +735,11 @@ PRIMITIVE(smi_add) {
 PRIMITIVE(smi_subtract) {
   ARGS(word, receiver, Object, arg);
   if (is_smi(arg)) {
-    word other = Smi::value(arg);
-    if ((receiver < 0) && (other > Smi::MAX_SMI_VALUE + receiver)) goto overflow;
-    if ((receiver > 0) && (other < Smi::MIN_SMI_VALUE + receiver)) goto overflow;
-    return Smi::from(receiver - other);
+    // Smis have fewer bits than words, so the difference fits a word.
+    return Primitive::integer(static_cast<int64>(receiver) - Smi::value(arg), process);
   }
   if (!is_large_integer(arg)) FAIL(WRONG_OBJECT_TYPE);
-  overflow:
-  int64 other = is_smi(arg) ? (int64) Smi::value(arg) : LargeInteger::cast(arg)->value();
+  int64 other = LargeInteger::cast(arg)->value();
   return Primitive::integer((int64) receiver - other, process);
 }
 

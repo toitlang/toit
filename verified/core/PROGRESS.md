@@ -222,6 +222,76 @@ mailbox when the machine is idle, so no quota is hit and the test reports
 idle machine at the end of the session). Not a safety problem (the quota
 works when it is reached); the test needs a pacing-independent attack.
 
+## Primitives (branch core/primitives, 2026-11-10)
+
+The allowed primitives ported to verified Rust (src/prims; contract and
+trusted base: TRUSTED.md section 8). Entry point `prims::call(module,
+index, mem, at, n, heap, p, allocator, vs)` returns `PrimOutcome::
+{Success, Failure, NeedsGc, NotPorted}`; its contract is the spec's
+protocol: `prim_default` (`prim_heap_ok`, good encodable results, heap
+invariant kept, no object moved), the per-primitive `core_contract`
+(verified/spec/src/v2/prim_core.rs, definitions only) and `prim_refined`
+(the spec's three examples), except one case of `array_at_put_spec`
+where the spec's example decodes the arguments in another order than
+C++ (`at_put_gap`: a program-heap array with a non-`int` index; the spec
+example should be fixed). `NeedsGc` = an allocation did not fit (no GC
+inside primitives); the caller collects and retries, and after the C++
+protocol's retries completes with `PrimRet::OutOfMemory(ALLOCATION_FAILED)`.
+`NotPorted` (heap unchanged) falls back to C++.
+
+| Family | Ported (proven against prim_default) | With per-primitive functional contract |
+|---|---|---|
+| ints (prims/ints.rs) | 39: smi_* (16), large_integer_* (18), count_leading_zeros, popcount, object_class_id | all 39 (division/modulo and clz up to the result value) |
+| arrays (prims/array.rs) | 8: array_length/at/at_put/new/expand/replace, list_add (small backing; large backing -> C++), rebuild_hash_index | array_length, array_at, array_at_put |
+| blobs (prims/blob.rs) | 33: byte_array_is_raw_bytes/length/at/at_put/new/replace, string_length/at/raw_at/hash_code/compare/slice/add/rune_count/write_to_byte_array/from_rune, concat_strings, blob_equals/hash_code/index_of, 4 JSON helpers, 8 byte-order read/put, int_vector_equals | byte_array_at, byte_array_at_put, string_length |
+| floats (prims/float.rs) | 26: arithmetic, comparisons, sign/is_nan/is_finite, sqrt/ceil/floor/trunc, raw conversions, number_to_float/integer, compare_to, min_special_compare_to | none (float ops are trusted scalars, prims/fp.rs) |
+| total | 106 of the 154 allowed (152 core + 2 bitmap) | 45 |
+
+Stays in C++ (48, contracts written down in TRUSTED.md section 8): task
+and message plumbing, process_send, time/clock/random, finalizers,
+encode_object/error, main/spawn arguments, SDK info, the formatting and
+parsing primitives (int_parse, float_parse, *_to_string, float_round,
+UTF-16, UTF-8 validation, crc), external byte arrays, bitmap blit/byte_zap.
+
+Wiring: a temporary one-line hook in `machine.rs` (`op_primitive_cold`
+calls `prims::bridge::bridge` instead of `Runtime::call_primitive`),
+opt-in with `TOIT_V2_RUST_PRIMITIVES=1`; the bridge runs the Rust port
+only where the policy resolved the VM's own primitive. The verified
+PRIMITIVE handler (core/refinement-2) is to call `prims::call` directly.
+
+Results (final build):
+
+- Gate: `verified/check.sh --tests` passes (core 713 verified, spec 793;
+  audit passed). Full `ctest -j16`: only version, reader,
+  udp-reuse-port-test fail.
+- Differential test (verified/core/tests/prim_diff.sh with
+  tests/fuzz/primitive-diff.toit: random and typed arguments, checksums of
+  results, errors and mutated arguments): 10 seeds x 1,000,000 calls of
+  the 106 ported primitives, identical with C++ and Rust. It found two
+  C++ issues, fixed on this branch: `smi_subtract` overflow (upstream PR
+  toitlang/toit#3375) and `string_write_to_byte_array`'s overlapping
+  `memcpy` (toitlang/toit#3376); and one compiler-dependent NaN payload
+  (gcc commutes `+`/`*`), matched in prims/fp.rs.
+- With the Rust primitives: tests/sandbox 93/93; untrusted suite 280/282
+  identical (the two known differences, program-name-test and
+  set-map-remove-first-test, as without).
+- Benchmarks (verified/core/tests/prim_bench.sh; callgrind instructions
+  inside `toit_v2_run`, C++ bridge vs Rust; raw numbers in
+  /home/flo/work/opentoit-sandbox-artifacts/core-primitives/bench-2.txt):
+  map-string-keys 1.005, string-concat-slice 0.960, list-add 1.080
+  (large-array lists fall back after a Rust attempt), byte-array 1.000,
+  large-int 1.011, float 1.013, string-compare-hash 1.005, direct calls
+  (100k each) smi_add 1.009, string_length 0.977, array_at 0.999,
+  float_add 1.024, blob_equals 1.014; richards/pystone/deltablue 1.000.
+  Wall time (best of 5, loaded machine) within noise. Per call the Rust
+  primitive (about 150-200 instructions with the bridge) costs about the
+  same as `toit_v2_call_primitive` plus the C++ primitive (about 210);
+  both pay the C++ lookup (about 45) and the checked handler's
+  save/move/reload (about 250). A direct call from the verified handler,
+  with the policy check as a table lookup instead of
+  `toit_v2_lookup_primitive` and no reload on the Rust path (no GC
+  point), would save about 300 instructions per call.
+
 ## Fuzz findings (verified/core/fuzz)
 
 Filter: `toit_spec_verify` (verified `check::verify`, untrusted rules).

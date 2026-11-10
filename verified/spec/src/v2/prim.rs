@@ -39,6 +39,8 @@ use crate::v2::sound::{good, prim_heap_ok};
 #[cfg(verus_only)]
 use crate::v2::verifier::{PRIM_TASK_NEW, PRIM_TASK_TRANSFER};
 #[cfg(verus_only)]
+use crate::v2::prim_core::core_contract;
+#[cfg(verus_only)]
 use crate::spec_common::{smi_ok, builtin, instance_field_count, is_instance, fields, set_field,
     STACK_CLASS, TASK_CLASS, ENTRY_MAIN, ENTRY_TASK, class_of_obj, obj_ok, obj, obj_id, smi};
 
@@ -249,8 +251,12 @@ pub spec const ROOT_PERMISSION_DENIED: int = 25;
 pub spec const ROOT_WRONG_OBJECT_TYPE: int = 30;
 
 /// The precise contract of primitive `(module, index)` where one is
-/// stated, else `true`. A primitive ported to Rust is proven against
-/// `prim_spec`, i.e. against this refinement and the default contract.
+/// stated, else `true`: the three examples below, and for the other core
+/// primitives the per-primitive contracts of `v2::prim_core`
+/// (`core_contract`, `true` where none is stated). A primitive ported to
+/// Rust is proven against `prim_spec`, i.e. against this refinement and the
+/// default contract; a C++ primitive is assumed to satisfy it (the core's
+/// leaf contract of the call).
 pub open spec fn prim_refined(p: Program2, module: u8, index: u16, args: Seq<Value>,
     h: Seq<HeapObj>, h2: Seq<HeapObj>, r: PrimRet) -> bool
 {
@@ -260,6 +266,8 @@ pub open spec fn prim_refined(p: Program2, module: u8, index: u16, args: Seq<Val
         array_at_spec(p, args, h, h2, r)
     } else if module == 0 && index as int == PRIM_ARRAY_AT_PUT {
         array_at_put_spec(p, args, h, h2, r)
+    } else if module == 0 {
+        core_contract(p, index as int, args, h, h2, r)
     } else {
         true
     }
@@ -365,31 +373,30 @@ pub open spec fn array_at_spec(p: Program2, args: Seq<Value>, h: Seq<HeapObj>, h
     }
 }
 
-/// `array_at_put(array, index, value)`: a non-array fails with
-/// WRONG_OBJECT_TYPE; an array of the program heap (read-only) with
-/// PERMISSION_DENIED; a smi index inside the array stores the value and
-/// returns it, one outside it (inside the 32-bit range) fails with
-/// OUT_OF_BOUNDS. Only the stored element changes.
+/// `array_at_put(array, index, value)` in the order the C++ decodes its
+/// arguments (`ARGS(Array, int, Object)`, then the checks): a non-array
+/// fails with WRONG_OBJECT_TYPE; for a smi index in the 32-bit range, an
+/// array of the program heap (read-only) fails with PERMISSION_DENIED, an
+/// index inside the array stores the value and returns it, one outside it
+/// fails with OUT_OF_BOUNDS. Only the stored element changes. (Another
+/// index fails while decoding it, before the program-heap check: default.)
 pub open spec fn array_at_put_spec(p: Program2, args: Seq<Value>, h: Seq<HeapObj>, h2: Seq<HeapObj>, r: PrimRet) -> bool {
     args.len() == 3 ==> match array_of(h, args[0]) {
         None => h2 == h && r == PrimRet::Failure(p.roots[ROOT_WRONG_OBJECT_TYPE]),
-        Some((id, e)) =>
-            if h[id].ro {
-                h2 == h && r == PrimRet::Failure(p.roots[ROOT_PERMISSION_DENIED])
-            } else {
-                match args[1] {
-                    Value::Smi(i) =>
-                        if 0 <= i < e.len() {
-                            h2 == h.update(id, HeapObj { body: Body::Array(e.update(i as int, args[2])), ..h[id] })
-                                && r == PrimRet::Success(args[2])
-                        } else if -0x8000_0000 <= i < 0x8000_0000 {
-                            h2 == h && r == PrimRet::Failure(p.roots[ROOT_OUT_OF_BOUNDS])
-                        } else {
-                            true
-                        },
-                    _ => true,
-                }
-            },
+        Some((id, e)) => match args[1] {
+            Value::Smi(i) =>
+                if !(-0x8000_0000 <= i < 0x8000_0000) {
+                    true
+                } else if h[id].ro {
+                    h2 == h && r == PrimRet::Failure(p.roots[ROOT_PERMISSION_DENIED])
+                } else if 0 <= i < e.len() {
+                    h2 == h.update(id, HeapObj { body: Body::Array(e.update(i as int, args[2])), ..h[id] })
+                        && r == PrimRet::Success(args[2])
+                } else {
+                    h2 == h && r == PrimRet::Failure(p.roots[ROOT_OUT_OF_BOUNDS])
+                },
+            _ => true,
+        },
     }
 }
 

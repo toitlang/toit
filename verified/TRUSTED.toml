@@ -51,6 +51,94 @@ justification = "ASSUMED: toit_v2_allocate_instance (may GC) keeps the abstract 
 [[trusted]]
 crate = "core"
 file = "src/ffi.rs"
+item = "Allocator"
+kind = "external_body"
+count = 1
+justification = "Opaque handle (the process pointer) of the non-collecting allocator of the Rust primitives; TRUSTED.md section 8."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Allocator::array"
+kind = "external_body"
+count = 1
+justification = "ASSUMED: toit_v2_try_allocate_array never collects; on success it appends exactly one array of the builtin array class with every element the filler at a fresh address outside the program heap (view::appended), else the heap is unchanged; TRUSTED.md section 8."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Allocator::array"
+kind = "unsafe"
+count = 1
+justification = "FFI call of toit_v2_try_allocate_array with the process the runtime was created for."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Allocator::byte_array"
+kind = "external_body"
+count = 1
+justification = "ASSUMED: toit_v2_try_allocate_byte_array (Process::allocate_byte_array, zeroed bytes, inline or external raw bytes) never collects and appends exactly one byte array or changes nothing; TRUSTED.md section 8."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Allocator::byte_array"
+kind = "unsafe"
+count = 1
+justification = "FFI call of toit_v2_try_allocate_byte_array with the process the runtime was created for."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Allocator::double"
+kind = "external_body"
+count = 1
+justification = "ASSUMED: toit_v2_try_allocate_double never collects and appends exactly one double with the given bits or changes nothing; TRUSTED.md section 8."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Allocator::double"
+kind = "unsafe"
+count = 1
+justification = "FFI call of toit_v2_try_allocate_double with the process the runtime was created for."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Allocator::large_integer"
+kind = "external_body"
+count = 1
+justification = "ASSUMED: toit_v2_try_allocate_large_integer never collects and appends exactly one large integer with the given value or changes nothing; TRUSTED.md section 8."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Allocator::large_integer"
+kind = "unsafe"
+count = 1
+justification = "FFI call of toit_v2_try_allocate_large_integer with the process the runtime was created for."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Allocator::string"
+kind = "external_body"
+count = 1
+justification = "ASSUMED: toit_v2_try_allocate_string (Process::allocate_string, uninitialized bytes the primitive then writes) never collects and appends exactly one string of the length or changes nothing; TRUSTED.md section 8."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Allocator::string"
+kind = "unsafe"
+count = 1
+justification = "FFI call of toit_v2_try_allocate_string with the process the runtime was created for."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
 item = "Context"
 kind = "plain_rust_item"
 count = 1
@@ -71,6 +159,14 @@ item = "PrimitiveRef"
 kind = "external_body"
 count = 1
 justification = "Opaque handle of a C++ PrimitiveEntry found in the process policy; only passed back to toit_v2_call_primitive."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "PrimitiveRef::rust"
+kind = "external_body"
+count = 1
+justification = "Reads the flag toit_v2_lookup_primitive set: the policy resolved the VM's own primitive and the Rust primitives are enabled; no contract (a choice, not a fact the proof uses)."
 
 [[trusted]]
 crate = "core"
@@ -155,6 +251,14 @@ justification = "FFI call to toit_v2_allocate_instance (src/interpreter_v2.cc); 
 [[trusted]]
 crate = "core"
 file = "src/ffi.rs"
+item = "Runtime::allocator"
+kind = "external_body"
+count = 1
+justification = "Hands the process pointer to the allocator of the Rust primitives."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
 item = "Runtime::call_primitive"
 kind = "external_body"
 count = 1
@@ -187,6 +291,22 @@ justification = "FFI call to toit_v2_grow_stack (src/interpreter_v2.cc); argumen
 [[trusted]]
 crate = "core"
 file = "src/ffi.rs"
+item = "Runtime::leave_primitive"
+kind = "external_body"
+count = 1
+justification = "ObjectHeap::leave_primitive after a primitive that needed a GC (installs the deferred heap limit); no heap-model effect."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::leave_primitive"
+kind = "unsafe"
+count = 1
+justification = "FFI call of toit_v2_leave_primitive with the process the runtime was created for."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
 item = "Runtime::lookup_primitive"
 kind = "external_body"
 count = 1
@@ -207,6 +327,22 @@ item = "Runtime::new"
 kind = "plain_rust_item"
 count = 1
 justification = "Constructor of the opaque FFI holder; called once by toit_v2_run."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::primitive_gc"
+kind = "external_body"
+count = 1
+justification = "MAY GC: the collection of the C++ primitive retry protocol (v2_gc); replaces the stack view like the other may-GC calls; only used by the plain-Rust bridge after the machine state was saved."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "Runtime::primitive_gc"
+kind = "unsafe"
+count = 1
+justification = "FFI call of toit_v2_primitive_gc with the process the runtime was created for."
 
 [[trusted]]
 crate = "core"
@@ -331,10 +467,26 @@ justification = "Rust declaration of a C++ function of src/interpreter_v2.cc (ex
 [[trusted]]
 crate = "core"
 file = "src/ffi.rs"
+item = "toit_v2_leave_primitive"
+kind = "plain_rust_item"
+count = 1
+justification = "FFI declaration of a C++ helper of src/interpreter_v2.h (signature checked by the layout check's stubs)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
 item = "toit_v2_lookup_primitive"
 kind = "plain_rust_item"
 count = 1
 justification = "Rust declaration of a C++ function of src/interpreter_v2.cc (extern block); contract in DESIGN.md FFI contract."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_v2_primitive_gc"
+kind = "plain_rust_item"
+count = 1
+justification = "FFI declaration of a C++ helper of src/interpreter_v2.h (signature checked by the layout check's stubs)."
 
 [[trusted]]
 crate = "core"
@@ -371,6 +523,46 @@ justification = "C entry point: builds Program, views and Runtime from the conte
 [[trusted]]
 crate = "core"
 file = "src/ffi.rs"
+item = "toit_v2_try_allocate_array"
+kind = "plain_rust_item"
+count = 1
+justification = "FFI declaration of a C++ helper of src/interpreter_v2.h (signature checked by the layout check's stubs)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_v2_try_allocate_byte_array"
+kind = "plain_rust_item"
+count = 1
+justification = "FFI declaration of a C++ helper of src/interpreter_v2.h (signature checked by the layout check's stubs)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_v2_try_allocate_double"
+kind = "plain_rust_item"
+count = 1
+justification = "FFI declaration of a C++ helper of src/interpreter_v2.h (signature checked by the layout check's stubs)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_v2_try_allocate_large_integer"
+kind = "plain_rust_item"
+count = 1
+justification = "FFI declaration of a C++ helper of src/interpreter_v2.h (signature checked by the layout check's stubs)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_v2_try_allocate_string"
+kind = "plain_rust_item"
+count = 1
+justification = "FFI declaration of a C++ helper of src/interpreter_v2.h (signature checked by the layout check's stubs)."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
 item = "toit_vcore_layout_count"
 kind = "plain_rust_item"
 count = 1
@@ -399,6 +591,30 @@ item = "toit_vcore_opcode_length"
 kind = "plain_rust_item"
 count = 1
 justification = "Layout-check export of the opcode length table; no effect on the VM."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_vcore_prim_count"
+kind = "plain_rust_item"
+count = 1
+justification = "Exports the primitive index table for verified/layout_check.cc, which compares it with MODULE_CORE."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_vcore_prim_entry"
+kind = "plain_rust_item"
+count = 1
+justification = "Exports the primitive index table for verified/layout_check.cc, which compares it with MODULE_CORE."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_vcore_prim_entry"
+kind = "unsafe"
+count = 1
+justification = "Writes the caller's out-parameters (the layout check passes valid pointers)."
 
 [[trusted]]
 crate = "core"
@@ -434,6 +650,118 @@ justification = "ASSUMED: toit_v2_call_primitive (may GC, may switch the task) o
 
 [[trusted]]
 crate = "core"
+file = "src/prims/bridge.rs"
+item = "*"
+kind = "plain_rust_file"
+count = 1
+justification = "TEMPORARY opt-in hook (TOIT_V2_RUST_PRIMITIVES=1) at the C++ bridge call site of the checked PRIMITIVE handler; replaced by the verified PRIMITIVE handler (core/refinement-2); TRUSTED.md section 8."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/bridge.rs"
+item = "bridge"
+kind = "assume_new"
+count = 1
+justification = "The arguments' abstract values for prims::call: the checked handler has no ghost state; the verified PRIMITIVE handler passes the state's prim_args instead."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
+item = "binop"
+kind = "external_body"
+count = 1
+justification = "IEEE-754 add/sub/mul/div/fmod on bit patterns (Rust std, same as the C++ operators and fmod); no contract, compared bit for bit by verified/core/tests/prim_diff.sh."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
+item = "compare"
+kind = "external_body"
+count = 1
+justification = "IEEE-754 comparisons on bit patterns; no contract; differentially tested."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
+item = "compare_numbers"
+kind = "external_body"
+count = 1
+justification = "Interpreter::compare_numbers (copy of machine::compare_num) on integer or double bit patterns; ensures only a non-zero result field; differentially tested."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
+item = "from_int"
+kind = "external_body"
+count = 1
+justification = "(double) of an int64 (Rust `as f64`, round to nearest as C++); no contract."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
+item = "from_raw32"
+kind = "external_body"
+count = 1
+justification = "bit_cast<float> widened to double; no contract."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
+item = "is_finite"
+kind = "external_body"
+count = 1
+justification = "isfinite on a bit pattern; no contract."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
+item = "is_nan"
+kind = "external_body"
+count = 1
+justification = "isnan on a bit pattern; no contract."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
+item = "sign"
+kind = "external_body"
+count = 1
+justification = "float_sign on a bit pattern; ensures the result is -1, 0 or 1."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
+item = "to_int"
+kind = "external_body"
+count = 1
+justification = "number_to_integer of a double: NaN, range check against INT64_MIN/INT64_MAX as C++, truncation; no contract."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
+item = "to_raw32"
+kind = "external_body"
+count = 1
+justification = "bit_cast<uint32>((float) x); no contract."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/fp.rs"
+item = "unop"
+kind = "external_body"
+count = 1
+justification = "IEEE-754 negate/sqrt/ceil/floor/trunc on bit patterns (Rust std = libm); no contract; differentially tested."
+
+[[trusted]]
+crate = "core"
+file = "src/prims/index.rs"
+item = "TABLE"
+kind = "plain_rust_item"
+count = 1
+justification = "Generated (verified/tools/gen_prim_index.sh) name/index/arity table, compared with MODULE_CORE by the layout check."
+
+[[trusted]]
+crate = "core"
 file = "src/raise.rs"
 item = "gc_allocate_exception"
 kind = "external_body"
@@ -455,6 +783,46 @@ item = "run_loop"
 kind = "exec_allows_no_decreases_clause"
 count = 1
 justification = "A program may run forever (the scheduler preempts it); no termination is claimed, only that every step keeps the invariant."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Content"
+kind = "external_body"
+count = 1
+justification = "Opaque view (pointer, length) of the bytes of a string or byte array; valid only within one primitive call (no GC point inside one); TRUSTED.md section 8."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Content::id"
+kind = "uninterp"
+count = 1
+justification = "Ghost: the heap-model object the view belongs to, fixed by the creating accessor's contract."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Content::len"
+kind = "external_body"
+count = 1
+justification = "Returns the length the creating accessor read (== slen)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Content::slen"
+kind = "uninterp"
+count = 1
+justification = "Ghost: the view's length, equal to the object's content length by the creating accessor's contract."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Content::writable"
+kind = "uninterp"
+count = 1
+justification = "Ghost: the bytes may be written (a string or raw byte array outside the program heap), by the creating accessor's contract."
 
 [[trusted]]
 crate = "core"
@@ -547,6 +915,22 @@ justification = "Heap model: address of each abstract object; related to memory 
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
+item = "Heap::array_copy"
+kind = "external_body"
+count = 1
+justification = "memmove of array elements with the write barrier on the destination (as array_replace in C++); contract: the model's destination elements become the source's (bounds required)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::array_copy"
+kind = "unsafe"
+count = 1
+justification = "Raw element access inside both arrays (bounds from the precondition) and the card mark."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
 item = "Heap::array_length"
 kind = "external_body"
 count = 1
@@ -575,6 +959,22 @@ item = "Heap::byte"
 kind = "unsafe"
 count = 1
 justification = "Raw access of Heap::byte; in bounds by the external_body precondition (index < len) or, for heap words, by heap integrity (TRUSTED.md)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::byte_array_content"
+kind = "external_body"
+count = 1
+justification = "TRUSTED layout: inline bytes, or external raw (or mapped) bytes, as ByteArray::Bytes; None for external structs; ensures the length is the model content's (heap integrity V2)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::byte_array_content"
+kind = "unsafe"
+count = 1
+justification = "Reads the length, tag and address words of a byte array (layout-checked offsets)."
 
 [[trusted]]
 crate = "core"
@@ -647,6 +1047,70 @@ item = "Heap::class_tag"
 kind = "unsafe"
 count = 1
 justification = "Reads the header word of a live object (heap integrity, TRUSTED.md V2): obj is the model address of an object."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::content_at"
+kind = "external_body"
+count = 1
+justification = "Reads byte i < length of a content view: the model's byte (heap integrity V2 for blobs)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::content_at"
+kind = "unsafe"
+count = 1
+justification = "Raw byte read inside the view (bound from the precondition)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::content_copy"
+kind = "external_body"
+count = 1
+justification = "memmove inside two content views (bounds required); the model's destination bytes become the source's."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::content_copy"
+kind = "unsafe"
+count = 1
+justification = "Raw memmove inside the views (bounds from the precondition)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::content_fill"
+kind = "external_body"
+count = 1
+justification = "memset inside a writable content view (bounds required); the model's bytes become the value."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::content_fill"
+kind = "unsafe"
+count = 1
+justification = "Raw memset inside the view (bounds from the precondition)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::content_set"
+kind = "external_body"
+count = 1
+justification = "Writes byte i < length of a writable content view; the model's byte changes."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::content_set"
+kind = "unsafe"
+count = 1
+justification = "Raw byte write inside the view (bound from the precondition)."
 
 [[trusted]]
 crate = "core"
@@ -811,6 +1275,22 @@ justification = "Writes field f < field count of a live process-heap instance an
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
+item = "Heap::set_string_hash_field"
+kind = "external_body"
+count = 1
+justification = "Caches a string's hash code in its header (String::_raw_set_hash_code); not in the model, which stays unchanged; only for strings outside the program heap."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::set_string_hash_field"
+kind = "unsafe"
+count = 1
+justification = "Writes the 32-bit hash field of a string (layout-checked offset)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
 item = "Heap::set_word"
 kind = "external_body"
 count = 1
@@ -839,6 +1319,38 @@ item = "Heap::string_byte"
 kind = "unsafe"
 count = 1
 justification = "Reads byte i < length of a live string's content (heap integrity, TRUSTED.md V2)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::string_content"
+kind = "external_body"
+count = 1
+justification = "TRUSTED layout: inline or external string bytes, as String::Bytes; ensures the length is the model content's (heap integrity V2)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::string_content"
+kind = "unsafe"
+count = 1
+justification = "Reads the length and address fields of a string (layout-checked offsets)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::string_hash_field"
+kind = "external_body"
+count = 1
+justification = "Reads a string's cached hash code (String::_raw_hash_code); no model content."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::string_hash_field"
+kind = "unsafe"
+count = 1
+justification = "Reads the 32-bit hash field of a string (layout-checked offset)."
 
 [[trusted]]
 crate = "core"

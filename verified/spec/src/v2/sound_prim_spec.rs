@@ -75,6 +75,23 @@ pub proof fn lemma_array_at_spec(p: Program2, c: Cert, h: Seq<HeapObj>, arr: Val
     }
 }
 
+/// `array_at_put` with an `int` index on an array of the program heap
+/// fails with PERMISSION_DENIED (after decoding the index, as C++).
+pub proof fn lemma_array_at_put_ro_spec(p: Program2, c: Cert, h: Seq<HeapObj>, arr: Value, i: i64, v: Value,
+    id: int, e: Seq<Value>)
+    requires
+        heap_ok(p, c, h), h.len() < 0x4000_0000,
+        array_of(h, arr) == Some((id, e)),
+        h[id].ro,
+        -0x8000_0000 <= i < 0x8000_0000,
+        crate::v2::exec::wf_program2(p), consts_ok(p, h),
+    ensures
+        prim_spec(p, 0, PRIM_ARRAY_AT_PUT as u16, seq![arr, Value::Smi(i), v], h, h,
+            PrimRet::Failure(p.roots[ROOT_PERMISSION_DENIED])),
+{
+    lemma_prim_heap_refl(p, c, h);
+}
+
 /// `array_at_put` inside a writable array stores the value.
 pub proof fn lemma_array_at_put_spec(p: Program2, c: Cert, h: Seq<HeapObj>, arr: Value, i: i64, v: Value,
     id: int, e: Seq<Value>)
@@ -83,6 +100,7 @@ pub proof fn lemma_array_at_put_spec(p: Program2, c: Cert, h: Seq<HeapObj>, arr:
         array_of(h, arr) == Some((id, e)),
         !h[id].ro,
         0 <= i < e.len(),
+        i < 0x8000_0000,
         good(h, v),
     ensures ({
         let h2 = h.update(id, HeapObj { body: Body::Array(e.update(i as int, v)), ..h[id] });

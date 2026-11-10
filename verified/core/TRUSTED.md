@@ -203,3 +203,44 @@ of the three header words the core uses (before: any word offset);
 | `machine.rs` (plain-Rust file), `cold!` | the checked loop runs only programs not accepted; `cold!` (also used by the `*_raw` trampolines of the verified loop's leaf calls) assumes no unwinding panic in the moved-out machine | runtime-hardening-test, the checked loop's run-time checks; review: the `*_raw` bodies only call the FFI |
 | `ffi.rs` plain items (layout tables, `Context`, `ProgramTables`, extern decls) | a C struct field moved | layout check (every offset) |
 | uninterp views (`objs`, `addrs`, `class_bits`, `view`, `hdr`) | none by themselves: they are related to memory only by the accessors' contracts | (the accessors' tests) |
+## 8. Primitives (`src/prims`)
+
+The allowed primitives the core runs in Rust (`prims::call`) are proven
+against the spec's primitive protocol (verified/spec/src/v2/prim.rs:
+`prim_default`, i.e. `prim_heap_ok` and a `good` result or a resource
+error, refined by `prim_refined` and the per-primitive `core_contract` of
+verified/spec/src/v2/prim_core.rs). Status, counts and measurements:
+PROGRESS.md, "Primitives". What the proofs rest on:
+
+| Item | Where | Assumption |
+|---|---|---|
+| Blob bodies | `Heap::lemma_body_tag` (external_body proof fn) | heap integrity (V2) for the bodies `abs::obj_model_ok` leaves open: an object is a string, byte array, double or large integer exactly if its class has that tag. Consistent with `obj_model_ok` (instances and arrays by tag) |
+| Number and blob accessors | `Heap::large_integer_value`, `double_bits`, `string_content`, `byte_array_content`, `byte_array_is_raw`, `string_hash_field`, `set_string_hash_field` | each reads (writes) the layout-checked words of the object `id` the model says has that body; `string_content`/`byte_array_content` return a `Content` whose length is the model's content length (the C++ `String::Bytes`/`ByteArray::Bytes` rules: inline, or external with the raw-bytes tag; mapped files only for reading; external structs never) |
+| Content views | `Content`, `Heap::content_at/set/copy/fill` | a view stays valid for the whole primitive call: primitives never reach a GC point (allocation does not collect, below), so no object moves and no external memory is freed while a view is alive; the views never leave `prims::call`. Every access is bounds-checked by its precondition |
+| Array memmove | `Heap::array_copy` | memmove of elements with the card mark of the destination, as C++ `array_replace` |
+| Allocation without GC | `ffi::Allocator` (`toit_v2_try_allocate_*`) | appends exactly one object of the program's builtin class (`p.ap@.builtin[k]`) with the stated body at a fresh tagged address outside the program heap, keeping the model below 2^30 objects (`view::appended`), or changes nothing and returns 0. The class tag of each builtin class is checked at run time (`prims::builtin_with_tag`), not assumed |
+| Float operations | `prims/fp.rs` (external_body, no contracts) | none: scalar IEEE-754 and libm operations with the C semantics; the contracts do not depend on float values. Compared bit for bit with the C++ by the differential test |
+| The bridge | `prims/bridge.rs` (plain Rust, TEMPORARY) | the preconditions of `prims::call` (`heap_inv`, `args_ok`) hold at the checked PRIMITIVE handler (the machine refines a well-formed state; the arguments are `prim_args`). It runs only where the policy resolves the VM's own primitive (`toit_v2_lookup_primitive` sets `rust`), so denied primitives stay denied. On `NeedsGc` it collects (`toit_v2_primitive_gc`, attempts 1-3 as the C++ protocol) and calls again; a fourth failure throws ALLOCATION_FAILED (the spec's `PrimRet::OutOfMemory`). Replaced by the verified PRIMITIVE handler (branch core/refinement-2) |
+
+### Primitives that stay in C++, and the contract the proof relies on
+
+The theorem needs every allowed primitive to satisfy `prim_default`
+(`prim_heap_ok`: objects are only added, keep their class, machine-owned
+objects (suspended stacks, tasks' stack and id fields) are untouched,
+every object stays well formed with good references; results are good
+values; out of memory is a resource error) and the arity of
+`prim_arity.rs`. For the allowed primitives not ported, reviewed (not
+proven) as follows (src/primitive_core.cc unless noted):
+
+| Primitives | Contract the proof relies on | Why the C++ meets it (review) |
+|---|---|---|
+| `task_new`, `task_transfer` | completed by the machine: `prim::task_step` (`task_new_step`, `task_transfer_step`); a call returns only `OutOfMemory` | `Interpreter::v2_task_transfer` / `v2_start_task` (interpreter_v2.cc) build exactly the spec's new stack and task objects and switch the current task; the C++ allocates a Stack and a Task instance with the stack and id fields and nothing else |
+| `task_has_messages`, `task_receive_message` | `prim_default`; the received value is a good value | the result is null, a finalizer lambda (an existing object), a notifier's object (an existing object) or a new 4-element array of smis and the decoded message; `MessageDecoder` only allocates strings, byte arrays (raw external bytes), arrays, lists, maps, doubles and large integers of the program's builtin classes, each fully initialized before it is reachable; it never creates a Stack or a Task |
+| `process_send` | `prim_default`; the heap is unchanged | encodes the argument into malloced memory (`MessageEncoder` reads, never writes, the heap; neutering of external byte arrays only clears their address and length: a byte array stays a byte array); the result is true, false or a failure root |
+| `add_finalizer`, `remove_finalizer` | `prim_default`; the model is unchanged | they set or clear the finalizer bit in the object header (not modeled) and register the finalizer in a C++ list (a GC root); program-heap objects are left alone |
+| `time`, `time_info`, `seconds_since_epoch_local`, `get_real_time_clock`, `random`, `random_seed`, `gc_count`, `bytes_allocated_delta`, `process_current_id`, `process_system_id`, `word_size`, `platform`, `architecture`, `vm_sdk_*`, `app_sdk_*`, `literal_index`, `spawn_method`, `get_generic_resource_group` | `prim_default` (environment nondeterminism: any good result) | they read the clock, the PRNG, counters or constants and return smis, booleans, program roots, new strings or a new array of smis (`time_info`); `random_seed` only changes the C++ PRNG state |
+| `main_arguments`, `spawn_arguments` | `prim_default` | decode the launch arguments with `MessageDecoder` (as `task_receive_message`) |
+| `encode_object`, `encode_error` | `prim_default` | encode into a malloced buffer (bounded since PR 3373/3374) and return a new byte array; read-only on the heap |
+| `byte_array_new_external`, `create_off_heap_byte_array` | `prim_default` | allocate one byte array with raw external bytes (a proxy of malloced memory), zeroed |
+| `int_parse`, `float_parse`, `float_to_string`, `float_round`, `int64_to_string`, `uint64_to_string`, `printf_style_int64_to_string`, `smi_to_string_base_10`, `string_to_utf_16`, `utf_16_to_string`, `byte_array_convert_to_string`, `byte_array_is_valid_string_content`, `crc` | `prim_default` | read blobs through `Blob` (bounds-checked by the `ARGS` macros) and return smis, large integers, doubles, booleans, new strings or new byte arrays; never write existing objects |
+| bitmap `blit`, `byte_zap` (src/primitive_bitmap.cc) | `prim_default`; only the bytes of the destination byte array change | write inside `MutableBlob` bounds; a byte array stays a byte array |

@@ -83,9 +83,12 @@ Open:
 ### Obligations from Phase 3 (verified/spec/SOUNDNESS.md)
 
 - S1 primitives: every allowed primitive satisfies `prim_heap_ok` and has
-  the arity of verified/spec/src/v2/prim_arity.rs. Open: the core calls
-  the C++ primitive table; none of the allowed primitives is ported to
-  Rust.
+  the arity of verified/spec/src/v2/prim_arity.rs. 106 of the 154 allowed
+  primitives are ported to Rust and proven against `prim_spec`
+  (`prims::call`, TRUSTED.md section 8); open: the verified PRIMITIVE
+  handler must call `prims::call` (branch core/refinement-2), and the
+  remaining 48 (task, message, time, encoding and formatting primitives,
+  bitmap) are reviewed C++ (TRUSTED.md section 8).
 - S2 loader: `theorem::loaded` (the tables are an accepted program with
   `loaded_ok`, the first task encodes `initial_state`). Discharged for
   untrusted launches by verified/vmverify (`check::verify == accepts`,

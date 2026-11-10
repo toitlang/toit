@@ -1999,7 +1999,7 @@ impl Machine {
             return self.raise_msg(env, PRIMITIVE_LOOKUP_FAILED, Msg::primitive(module, index));
         }
         self.save();
-        let (status, result) = env.rt.call_primitive(&mut self.mem, &primitive, arity, self.base);
+        let (status, result) = crate::prims::bridge::bridge(&mut self.mem, &mut self.heap, env, &primitive, module, index, arity, self.base);
         if !self.reload(p) { return Ctl::Stuck(stuck::FATAL); }
         if status == V2_PRIMITIVE_SUCCESS {
             self.return_from(env, result)
