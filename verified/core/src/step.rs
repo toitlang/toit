@@ -144,7 +144,7 @@ pub fn step_unverified(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r
         opcode == env.p.ap@.bytecodes[bci as int],
     ensures step_post(env.p, *old(m), *final(m), r),
 {
-    m.dispatch_unverified(env, bci, opcode)
+    m.dispatch_checked(env, bci, opcode)
 }
 
 /// Grows the stack (a GC point) so that `needed` words are free; the

@@ -312,6 +312,7 @@ int main() {
     { "CONTEXT_SIZE", sizeof(toit_v2_context), false },
     FIELD("CONTEXT_", toit_v2_context, process) FIELD("CONTEXT_", toit_v2_context, program)
     FIELD("CONTEXT_", toit_v2_context, watermark) FIELD("CONTEXT_", toit_v2_context, preempt_a_lot)
+    FIELD("CONTEXT_", toit_v2_context, accepted)
     FIELD("CONTEXT_", toit_v2_context, result_state) FIELD("CONTEXT_", toit_v2_context, result_value)
 #undef FIELD
   };

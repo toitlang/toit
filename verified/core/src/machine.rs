@@ -1296,10 +1296,12 @@ fn compare_num(a: Num, b: Num) -> u8 {
     }
 }
 
-/// Builds the machine for the current task and runs it (`step::run_loop`).
-/// TRUSTED glue: the ghost state is the one the run loop's precondition
-/// names (theorem.rs, `run_requires`); `reload` checks the stack object.
-pub fn run(p: &Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preemption) -> (usize, i64) {
+/// Builds the machine for the current task and runs it: on the verified run
+/// loop (`step::run_loop`) if the program was accepted by the launch
+/// verification, else on the checked handlers (`run_checked`). TRUSTED glue:
+/// the ghost state is the one the run loop's precondition names
+/// (theorem.rs); `reload` checks the stack object.
+pub fn run(p: &Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preemption, accepted: bool) -> (usize, i64) {
     let mem = rt.stack();
     let mut m = Machine {
         mem, globals, heap,
@@ -1322,7 +1324,11 @@ pub fn run(p: &Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preempti
         &mut m.lim as *mut usize, &mut m.method as *mut usize,
         &mut m.globals as *mut Globals, &mut m.heap as *mut Heap,
     ));
-    crate::step::run_loop(&mut m, &env)
+    if accepted {
+        crate::step::run_loop(&mut m, &env)
+    } else {
+        run_checked(&mut m, &env)
+    }
 }
 
 impl Machine {
@@ -2284,5 +2290,191 @@ impl Program {
     #[inline(always)]
     pub fn boolean(&self, b: bool) -> usize {
         if b { self.true_ } else { self.false_ }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The checked interpreter: programs that were not accepted by the launch
+// verification (trusted format-2 programs run without -Xverify) run on the
+// checked handlers only. Every stuck state of the spec is a run-time check,
+// so any program is memory safe (TRUSTED.md section 4); nothing here is
+// proven. Accepted programs run on `step::run_loop`.
+
+/// The run loop for programs that were not accepted.
+fn run_checked(m: &mut Machine, env: &Env) -> (usize, i64) {
+    loop {
+        let bci = m.bci;
+        let ctl = if !m.instruction_in_method(env.p, bci) {
+            Ctl::Stuck(stuck::BAD_INSTRUCTION)
+        } else {
+            let opcode = env.p.code.at(bci);
+            m.dispatch_checked(env, bci, opcode)
+        };
+        match ctl {
+            Ctl::Next => {}
+            Ctl::Exit(state, value) => {
+                m.save();
+                return (state as usize, value);
+            }
+            Ctl::Stuck(reason) => {
+                env.rt.report(V2_REPORT_STUCK, m.bci, reason);
+                m.save();
+                return (RESULT_TERMINATED, 1);
+            }
+        }
+    }
+}
+
+impl Machine {
+    /// The instruction at `bci` is a valid opcode and ends inside the top
+    /// frame's method.
+    #[inline(always)]
+    fn instruction_in_method(&self, p: &Program, bci: usize) -> bool {
+        if self.method >= p.methods.len() { return false; }
+        let end = p.methods.at(self.method).end as usize;
+        if bci >= end || end > p.code.len() { return false; }
+        let opcode = p.code.at(bci);
+        if opcode as usize >= OPCODE_LENGTHS.len() { return false; }
+        bci + OPCODE_LENGTHS[opcode as usize] as usize <= end
+    }
+
+    /// Executes the instruction at `bci` (inside the method) with every run-time
+    /// check: the simple families here, the others in `dispatch_unverified`.
+    #[inline(always)]
+    pub fn dispatch_checked(&mut self, env: &Env, bci: usize, opcode: u8) -> Ctl {
+        let p = env.p;
+        macro_rules! len { () => { OPCODE_LENGTHS[opcode as usize] as usize } }
+        macro_rules! b1 { () => { p.code.at(bci + 1) as usize } }
+        macro_rules! w1 { () => { Self::u16_at(p, bci + 1) } }
+        match opcode {
+            op::LOAD_LOCAL => self.c_load_local(b1!(), len!()),
+            op::LOAD_LOCAL_WIDE => self.c_load_local(w1!(), len!()),
+            14..=19 => self.c_load_local((opcode - op::LOAD_LOCAL_0) as usize, 1),
+            op::POP_LOAD_LOCAL => {
+                let n = b1!();
+                if !self.has_slot(n + 1) { return Ctl::Stuck(stuck::STACK_RANGE); }
+                let v = self.at(n + 1);
+                self.put(0, v);
+                self.bci += 2;
+                Ctl::Next
+            }
+            op::STORE_LOCAL => {
+                let n = b1!();
+                if !self.has_slot(n) { return Ctl::Stuck(stuck::STACK_RANGE); }
+                let v = self.at(0);
+                self.put(n, v);
+                self.bci += 2;
+                Ctl::Next
+            }
+            op::STORE_LOCAL_POP => {
+                let n = b1!();
+                if n < 1 || !self.has_slot(n) { return Ctl::Stuck(stuck::STACK_RANGE); }
+                let v = self.at(0);
+                self.drop(1);
+                self.put(n - 1, v);
+                self.bci += 2;
+                Ctl::Next
+            }
+            op::LOAD_LITERAL | op::LOAD_LITERAL_WIDE => {
+                let i = if opcode == op::LOAD_LITERAL { b1!() } else { w1!() };
+                if i >= p.literals.len() { return Ctl::Stuck(stuck::TABLE_RANGE); }
+                let v = p.literals.at(i);
+                self.push_next_u(v, len!())
+            }
+            op::LOAD_NULL => self.push_next_u(p.null, len!()),
+            op::LOAD_SMI_0 => self.push_next_u(smi(0), len!()),
+            op::LOAD_SMI_1 => self.push_next_u(smi(1), len!()),
+            op::LOAD_SMI_U8 => self.push_next_u(smi(b1!() as i64), len!()),
+            op::LOAD_SMI_U16 => self.push_next_u(smi(w1!() as i64), len!()),
+            op::LOAD_SMI_U32 => self.push_next_u(smi(Self::u32_at(p, bci + 1) as i64), len!()),
+            op::LOAD_SMIS_0 => {
+                let n = b1!();
+                if self.top - self.ftop < n { return Ctl::Stuck(stuck::LIMIT); }
+                let mut i = 0;
+                while i < n {
+                    self.push(0);
+                    i += 1;
+                }
+                self.bci += 2;
+                Ctl::Next
+            }
+            op::LOAD_METHOD => {
+                let m = Self::u32_at(p, bci + 1);
+                if m >= p.methods.len() { return Ctl::Stuck(stuck::NOT_METHOD); }
+                self.push_next_u(smi(m as i64), len!())
+            }
+            op::LOAD_GLOBAL_VAR | op::LOAD_GLOBAL_VAR_WIDE => {
+                let g = if opcode == op::LOAD_GLOBAL_VAR { b1!() } else { w1!() };
+                if g >= self.globals.len() { return Ctl::Stuck(stuck::TABLE_RANGE); }
+                let v = self.globals.at(g);
+                self.push_next_u(v, len!())
+            }
+            op::STORE_GLOBAL_VAR | op::STORE_GLOBAL_VAR_WIDE => {
+                let g = if opcode == op::STORE_GLOBAL_VAR { b1!() } else { w1!() };
+                if g >= self.globals.len() { return Ctl::Stuck(stuck::TABLE_RANGE); }
+                if !self.has_slot(0) { return Ctl::Stuck(stuck::STACK_RANGE); }
+                let v = self.at(0);
+                self.globals.set(g, v);
+                self.bci += len!();
+                Ctl::Next
+            }
+            op::POP | op::POP_1 => {
+                if p.preempt_a_lot { env.pre.request(); }
+                let n = if opcode == op::POP { b1!() } else { 1 };
+                if n > self.lim - self.top { return Ctl::Stuck(stuck::STACK_RANGE); }
+                self.drop(n);
+                self.bci += len!();
+                Ctl::Next
+            }
+            op::BRANCH..=op::BRANCH_IF_NOT_NULL => {
+                let d = w1!();
+                if d == 0 { return Ctl::Stuck(stuck::BAD_BRANCH); }
+                self.c_branch(p, (opcode - op::BRANCH) as usize, bci + d, len!())
+            }
+            op::BRANCH_BACK..=op::BRANCH_BACK_IF_NOT_NULL => {
+                if env.pre.requested() {
+                    env.pre.clear();
+                    return Ctl::Exit(RESULT_PREEMPTED as u32, 0);
+                }
+                let d = w1!();
+                if d > bci { return Ctl::Stuck(stuck::BAD_BRANCH); }
+                self.c_branch(p, (opcode - op::BRANCH_BACK) as usize, bci - d, len!())
+            }
+            _ => self.dispatch_unverified(env, bci, opcode),
+        }
+    }
+
+    #[inline(always)]
+    fn c_load_local(&mut self, n: usize, len: usize) -> Ctl {
+        if !self.has_slot(n) { return Ctl::Stuck(stuck::STACK_RANGE); }
+        let v = self.at(n);
+        self.push_next_u(v, len)
+    }
+
+    #[inline(always)]
+    fn c_branch(&mut self, p: &Program, kind: usize, target: usize, len: usize) -> Ctl {
+        if kind != 0 {
+            if !self.has_slot(0) { return Ctl::Stuck(stuck::STACK_RANGE); }
+            let v = self.at(0);
+            self.drop(1);
+            let taken = if kind == 1 {
+                v != p.false_ && v != p.null
+            } else if kind == 2 {
+                !(v != p.false_ && v != p.null)
+            } else {
+                v != p.null
+            };
+            if !taken {
+                self.bci += len;
+                return Ctl::Next;
+            }
+        }
+        if self.method >= p.methods.len() { return Ctl::Stuck(stuck::BAD_BRANCH); }
+        let m = p.methods.at(self.method);
+        if !((m.entry as usize) <= target && target < (m.end as usize)) {
+            return Ctl::Stuck(stuck::BAD_BRANCH);
+        }
+        self.bci = target;
+        Ctl::Next
     }
 }

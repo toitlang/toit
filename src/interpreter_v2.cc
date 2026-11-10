@@ -34,6 +34,7 @@
 #include "process_group.h"
 #include "program.h"
 #include "scheduler.h"
+#include "verifier.h"
 #include "vm.h"
 
 #include "third_party/dartino/gc_metadata.h"
@@ -422,6 +423,7 @@ Interpreter::Result Interpreter::run_v2() {
   p->stack_array_word = Stack::v2_array_word();
   context.watermark = &watermark_;
   context.preempt_a_lot = Flags::preempt_a_lot ? 1 : 0;
+  context.accepted = (process_->policy()->is_untrusted() || Verifier::is_enabled()) ? 1 : 0;
 
   v2_validate(process_, "run entry");
   toit_v2_run(&context);

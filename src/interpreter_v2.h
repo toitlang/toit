@@ -167,6 +167,12 @@ struct toit_v2_context {
   toit_v2_program program;
   const void* watermark;                  // &Interpreter::watermark_.
   uword preempt_a_lot;
+  // The program was accepted by the launch verification (untrusted
+  // programs, or any program with -Xverify / TOIT_VERIFY=1). Only then does
+  // the core run its verified handlers, which rely on the verifier's
+  // guarantees instead of run-time checks; otherwise it runs the checked
+  // handlers (verified/core/DESIGN.md, "Accepted programs").
+  uword accepted;
   // Out.
   uword result_state;               // Interpreter::Result::State.
   int64 result_value;

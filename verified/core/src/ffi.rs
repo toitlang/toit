@@ -80,6 +80,7 @@ pub struct Context {
     pub program: ProgramTables,
     pub watermark: *const AtomicUsize,
     pub preempt_a_lot: usize,
+    pub accepted: usize,
     pub result_state: usize,
     pub result_value: i64,
 }
@@ -255,7 +256,7 @@ pub unsafe extern "C" fn toit_v2_run(context: *mut Context) -> usize {
     let globals = Globals::from_raw(p.globals, p.globals_length);
     let heap = Heap::new(p.remembered_set_bias);
     let preemption = Preemption::from_raw(c.watermark);
-    let (state, value) = crate::machine::run(&program, runtime, globals, heap, preemption);
+    let (state, value) = crate::machine::run(&program, runtime, globals, heap, preemption, c.accepted != 0);
     c.result_state = state;
     c.result_value = value;
     state
@@ -337,6 +338,7 @@ const STRUCT_LAYOUT: &[(&[u8], usize)] = &[
     (b"CONTEXT_program\0", core::mem::offset_of!(Context, program)),
     (b"CONTEXT_watermark\0", core::mem::offset_of!(Context, watermark)),
     (b"CONTEXT_preempt_a_lot\0", core::mem::offset_of!(Context, preempt_a_lot)),
+    (b"CONTEXT_accepted\0", core::mem::offset_of!(Context, accepted)),
     (b"CONTEXT_result_state\0", core::mem::offset_of!(Context, result_state)),
     (b"CONTEXT_result_value\0", core::mem::offset_of!(Context, result_value)),
 ];
