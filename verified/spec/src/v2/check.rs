@@ -13,14 +13,20 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-//! The executable structural verifier: `verify(p, c, trusted)` is proven
-//! to return exactly `v2::verifier::accepts(p, c, trusted)` (zero
-//! `assume`/`admit`).
+//! The executable structural verifier, one method at a time:
+//! `verify(p, g, oracle, trusted)` is proven to return exactly
+//! `pins_sorted(g) && split_ok(vview(p), g@, ms, trusted)` for the maps
+//! `ms` the oracle yields (zero `assume`/`admit`); `v2::split` proves that
+//! `split_ok` implies `accepts` of the assembled certificate and that
+//! every accepted certificate splits.
 //!
-//! The certificate is computed by `v2::infer` (untrusted). The checker
-//! works one method at a time, one instruction at a time; it does not
-//! recurse and allocates only the successor kinds of the instruction it
-//! checks. The certificate is an array per method indexed by offset.
+//! The program is borrowed (`v2::vprog::VProgram`). The certificate's
+//! global part (`XGlobal`: block-parameter masks, contexts, selector
+//! representatives, pins) is small; the maps of one method at a time come
+//! from a `MapOracle` (`v2::infer`, untrusted) as lists of kinds sharing
+//! their bottoms (`XMaps`), and are dropped after the method. The checker
+//! does not recurse and allocates only the kinds of the instruction it
+//! checks and of its successors.
 //!
 //! `x_post` is exact except for one corner: a LOAD_OUTER whose depth sum
 //! does not fit a u32 yields a kind no certificate can hold; `x_post` then
@@ -28,11 +34,14 @@
 //! `instr_ok` because no map can equal such a successor.
 
 use vstd::prelude::*;
+use alloc::vec::Vec;
 use crate::types::*;
 use crate::v2::types::*;
 use crate::v2::spec::*;
 use crate::v2::bytecodes::*;
 use crate::v2::verifier::*;
+use crate::v2::split::*;
+use crate::v2::vprog::*;
 #[cfg(verus_only)]
 use crate::v2::exec::wf_program2;
 #[cfg(verus_only)]
@@ -70,13 +79,60 @@ pub struct XContext {
     pub kinds: Vec<XKind>,
 }
 
-pub struct XCert {
-    pub maps: Vec<Vec<Option<Vec<XKind>>>>,
-    pub block_params: Vec<Vec<bool>>,
-    pub contexts: Vec<Option<XContext>>,
-    pub sel_rep: Vec<i64>,
+/// A pinned map: the kinds of method `m` at offset `off`, which another
+/// method's rules look up (`v2::split`).
+pub struct XPin {
+    pub m: u32,
+    pub off: u32,
+    pub kinds: Vec<XKind>,
+}
+
+/// The global part of the certificate (`v2::split::GCert`): small tables,
+/// linear in the number of methods.
+pub struct XGlobal {
+    /// The number of methods.
+    pub n: usize,
+    /// The block-parameter mask of method `m` is `bp[bp_off[m]..bp_off[m + 1]]`.
+    pub bp_off: Vec<u32>,
+    pub bp: Vec<bool>,
+    /// The context of block method `t` is `ctxs[ctx_idx[t]]` (none if out
+    /// of range).
+    pub ctx_idx: Vec<u32>,
+    pub ctxs: Vec<XContext>,
+    /// Selector representatives; selectors past the end have none (-1).
+    pub sel_rep: Vec<i32>,
     pub global_count: u64,
     pub prim_arity: Vec<Vec<u8>>,
+    /// Pinned maps, strictly sorted by (method, offset).
+    pub pins: Vec<XPin>,
+}
+
+/// A node of the maps of one method: maps are lists of kinds that share
+/// their bottoms. `parent >= ` the node's own index means none.
+#[derive(Clone, Copy)]
+pub struct XNode {
+    pub parent: u32,
+    pub kind: XKind,
+}
+
+/// No map at this offset.
+pub const NO_MAP: u32 = 0xffff_ffff;
+/// The empty map (any index past the nodes, other than `NO_MAP`).
+pub const EMPTY_MAP: u32 = 0xffff_fffe;
+
+/// The maps of one method: `idx[off]` is `NO_MAP` or the top node of the
+/// map at offset `off`.
+pub struct XMaps {
+    pub idx: Vec<u32>,
+    pub nodes: Vec<XNode>,
+}
+
+/// The certificate a method is checked against: the global part, and the
+/// maps of method `cur` (`cur >= g.n`: the tables, pins only).
+pub struct XCert<'a> {
+    pub g: &'a XGlobal,
+    pub cur: usize,
+    pub maps: &'a XMaps,
 }
 
 pub open spec fn kv(k: Vec<XKind>) -> Seq<Kind> {
@@ -87,21 +143,95 @@ pub open spec fn okv(o: Option<Vec<XKind>>) -> Option<Seq<Kind>> {
     match o { Some(k) => Some(kv(k)), None => None }
 }
 
-pub open spec fn ctxv(o: Option<XContext>) -> Option<Context> {
-    match o { Some(x) => Some(Context { outer: x.outer as int, slot: x.slot as int, kinds: kv(x.kinds) }), None => None }
+pub open spec fn ctx1(x: XContext) -> Context {
+    Context { outer: x.outer as int, slot: x.slot as int, kinds: kv(x.kinds) }
 }
 
-impl View for XCert {
-    type V = Cert;
-    open spec fn view(&self) -> Cert {
-        Cert {
-            maps: self.maps@.map_values(|v: Vec<Option<Vec<XKind>>>| v@.map_values(|o: Option<Vec<XKind>>| okv(o))),
-            block_params: self.block_params@.map_values(|v: Vec<bool>| v@),
-            contexts: self.contexts@.map_values(|o: Option<XContext>| ctxv(o)),
-            sel_rep: self.sel_rep@.map_values(|r: i64| r as int),
+pub open spec fn ctxv(o: Option<XContext>) -> Option<Context> {
+    match o { Some(x) => Some(ctx1(x)), None => None }
+}
+
+/// The kinds of the list whose top node is `i`, bottom first.
+pub open spec fn chain(nodes: Seq<XNode>, i: int) -> Seq<Kind>
+    decreases i,
+{
+    if i < 0 || i >= nodes.len() {
+        Seq::empty()
+    } else {
+        let par = nodes[i].parent as int;
+        (if par < i { chain(nodes, par) } else { Seq::empty() }).push(nodes[i].kind@)
+    }
+}
+
+pub open spec fn map_view(x: &XMaps, o: int) -> Option<Seq<Kind>> {
+    if x.idx@[o] == NO_MAP { None } else { Some(chain(x.nodes@, x.idx@[o] as int)) }
+}
+
+pub open spec fn mapsv(x: &XMaps) -> Maps {
+    Seq::new(x.idx@.len(), |o: int| map_view(x, o))
+}
+
+pub open spec fn bp_view(g: &XGlobal, m: int) -> Seq<bool> {
+    if 0 <= m && m + 1 < g.bp_off@.len() && g.bp_off@[m] <= g.bp_off@[m + 1] && (g.bp_off@[m + 1] as int) <= g.bp@.len() {
+        g.bp@.subrange(g.bp_off@[m] as int, g.bp_off@[m + 1] as int)
+    } else {
+        Seq::empty()
+    }
+}
+
+pub open spec fn ctx_view(g: &XGlobal, t: int) -> Option<Context> {
+    if 0 <= t < g.ctx_idx@.len() && (g.ctx_idx@[t] as int) < g.ctxs@.len() {
+        Some(ctx1(g.ctxs@[g.ctx_idx@[t] as int]))
+    } else {
+        None
+    }
+}
+
+pub open spec fn sel_view(g: &XGlobal, s: int) -> int {
+    if 0 <= s < g.sel_rep@.len() { g.sel_rep@[s] as int } else { -1 }
+}
+
+pub open spec fn pin_key(x: XPin) -> int {
+    x.m as int * 0x1_0000_0000 + x.off as int
+}
+
+pub open spec fn has_pin(g: &XGlobal, m: int, o: int) -> bool {
+    exists|i: int| 0 <= i < g.pins@.len() && (#[trigger] g.pins@[i]).m == m && g.pins@[i].off == o
+}
+
+pub open spec fn pin_view(g: &XGlobal, m: int, o: int) -> Option<Seq<Kind>> {
+    if has_pin(g, m, o) {
+        let i = choose|i: int| 0 <= i < g.pins@.len() && (#[trigger] g.pins@[i]).m == m && g.pins@[i].off == o;
+        Some(kv(g.pins@[i].kinds))
+    } else {
+        None
+    }
+}
+
+/// The pins are strictly sorted by (method, offset).
+pub open spec fn pins_sorted(g: &XGlobal) -> bool {
+    forall|i: int, j: int| 0 <= i < j < g.pins@.len() ==> pin_key(#[trigger] g.pins@[i]) < pin_key(#[trigger] g.pins@[j])
+}
+
+impl View for XGlobal {
+    type V = GCert;
+    open spec fn view(&self) -> GCert {
+        GCert {
+            n: self.n as int,
+            block_params: Seq::new(self.n as nat, |m: int| bp_view(self, m)),
+            contexts: Seq::new(self.n as nat, |t: int| ctx_view(self, t)),
+            sel_rep: Seq::new(0xffff, |s: int| sel_view(self, s)),
             global_count: self.global_count as int,
             prim_arity: self.prim_arity@.map_values(|v: Vec<u8>| v@.map_values(|a: u8| a as int)),
+            pins: |m: int, o: int| pin_view(self, m, o),
         }
+    }
+}
+
+impl<'a> View for XCert<'a> {
+    type V = Cert;
+    open spec fn view(&self) -> Cert {
+        if self.cur < self.g.n { local_cert(self.g@, self.cur as int, mapsv(self.maps)) } else { tables_cert(self.g@) }
     }
 }
 
@@ -111,7 +241,11 @@ impl View for XCert {
 /// The kinds the certificate can hold: depths, slots and method ids fit in
 /// a u32.
 pub open spec fn representable(s: Seq<Kind>) -> bool {
-    forall|i: int| 0 <= i < s.len() ==> match #[trigger] s[i] {
+    forall|i: int| 0 <= i < s.len() ==> kind_repr(#[trigger] s[i])
+}
+
+pub open spec fn kind_repr(k: Kind) -> bool {
+    match k {
         Kind::Method(t) => 0 <= t <= u32::MAX as int,
         Kind::Block(d, x) => 0 <= d <= u32::MAX as int && 0 <= x <= u32::MAX as int,
         _ => true,
@@ -121,12 +255,24 @@ pub open spec fn representable(s: Seq<Kind>) -> bool {
 pub proof fn lemma_representable(k: Vec<XKind>)
     ensures representable(kv(k)),
 {
-    assert forall|i: int| 0 <= i < kv(k).len() implies match #[trigger] kv(k)[i] {
-        Kind::Method(t) => 0 <= t <= u32::MAX as int,
-        Kind::Block(d, x) => 0 <= d <= u32::MAX as int && 0 <= x <= u32::MAX as int,
-        _ => true,
-    } by {
+    assert forall|i: int| 0 <= i < kv(k).len() implies kind_repr(#[trigger] kv(k)[i]) by {
         assert(kv(k)[i] == k@[i]@);
+    }
+}
+
+pub proof fn lemma_chain_repr(nodes: Seq<XNode>, i: int)
+    ensures representable(chain(nodes, i)),
+    decreases i,
+{
+    if 0 <= i < nodes.len() {
+        let par = nodes[i].parent as int;
+        if par < i { lemma_chain_repr(nodes, par); }
+        let s = chain(nodes, i);
+        let b = if par < i { chain(nodes, par) } else { Seq::empty() };
+        assert(s == b.push(nodes[i].kind@));
+        assert forall|j: int| 0 <= j < s.len() implies kind_repr(#[trigger] s[j]) by {
+            if j < b.len() { assert(s[j] == b[j]); assert(kind_repr(b[j])); }
+        }
     }
 }
 
@@ -134,11 +280,16 @@ pub proof fn lemma_map_repr(c: &XCert, m: int, o: int)
     ensures map_at(c@, m, o) is Some ==> representable(map_at(c@, m, o)->0),
 {
     if map_at(c@, m, o) is Some {
-        let v = c.maps@[m]@[o]->0;
-        assert(map_at(c@, m, o) == okv(c.maps@[m]@[o]));
-        lemma_representable(v);
+        if c.cur < c.g.n && m == c.cur {
+            lemma_chain_repr(c.maps.nodes@, c.maps.idx@[o] as int);
+        } else {
+            let g = c.g;
+            let i = choose|i: int| 0 <= i < g.pins@.len() && (#[trigger] g.pins@[i]).m == m && g.pins@[i].off == o;
+            lemma_representable(g.pins@[i].kinds);
+        }
     }
 }
+
 
 /// `x_post`'s result: exact, except that a kind the certificate cannot
 /// hold is reported as `None`.
@@ -266,69 +417,62 @@ pub fn x_pop_push(k: &Vec<XKind>, n: usize, v: XKind) -> (r: Vec<XKind>)
     r
 }
 
-pub fn x_info(p: &ExecProgram, m: usize) -> (r: MethodInfo)
-    requires m < p.methods.len(),
-    ensures r == info(pview2(p), m as int),
-{
-    p.methods[m]
-}
-
-pub fn x_u16(p: &ExecProgram, i: usize) -> (r: i64)
+pub fn x_u16(p: &VProgram, i: usize) -> (r: i64)
     requires i + 2 <= p.bytecodes.len(),
-    ensures r as int == u16_at(p1(pview2(p)), i as int), 0 <= r < 0x10000,
+    ensures r as int == u16_at(p1(vview(p)), i as int), 0 <= r < 0x10000,
 {
     (p.bytecodes[i] as i64) + 256 * (p.bytecodes[i + 1] as i64)
 }
 
-pub fn x_u32(p: &ExecProgram, i: usize) -> (r: i64)
+pub fn x_u32(p: &VProgram, i: usize) -> (r: i64)
     requires i + 4 <= p.bytecodes.len(),
-    ensures r as int == u32_at(p1(pview2(p)), i as int), 0 <= r < 0x1_0000_0000,
+    ensures r as int == u32_at(p1(vview(p)), i as int), 0 <= r < 0x1_0000_0000,
 {
     x_u16(p, i) + 65536 * x_u16(p, i + 2)
 }
 
-pub fn x_class_count(p: &ExecProgram) -> (r: usize)
-    ensures r as int == class_count(pview2(p)),
+pub fn x_class_count(p: &VProgram) -> (r: usize)
+    ensures r as int == class_count(vview(p)),
 {
     p.class_bits.len()
 }
 
 /// `class_count(p) + extra <= p.dispatch.len()` without overflow.
-pub fn x_row_fits(p: &ExecProgram, extra: usize) -> (r: bool)
-    ensures r == (class_count(pview2(p)) + extra <= p.dispatch.len()),
+pub fn x_row_fits(p: &VProgram, extra: usize) -> (r: bool)
+    ensures r == (class_count(vview(p)) + extra <= p.dispatch.len()),
 {
     extra <= p.dispatch.len() && p.class_bits.len() <= p.dispatch.len() - extra
 }
 
-pub fn x_is_instance_class(p: &ExecProgram, cl: i64) -> (r: bool)
-    ensures r == is_instance_class(pview2(p), cl as int),
+pub fn x_is_instance_class(p: &VProgram, cl: i64) -> (r: bool)
+    ensures r == is_instance_class(vview(p), cl as int),
 {
     0 <= cl && (cl as u64) < (p.class_bits.len() as u64) && (p.class_bits[cl as usize] & 0xf) == 2
 }
 
-pub fn x_is_field_class(p: &ExecProgram, cl: i64) -> (r: bool)
-    ensures r == is_field_class(pview2(p), cl as int),
+pub fn x_is_field_class(p: &VProgram, cl: i64) -> (r: bool)
+    ensures r == is_field_class(vview(p), cl as int),
 {
     0 <= cl && (cl as u64) < (p.class_bits.len() as u64)
         && ((p.class_bits[cl as usize] & 0xf) == 2 || (p.class_bits[cl as usize] & 0xf) == 8)
 }
 
-pub fn x_ifc(p: &ExecProgram, cl: usize) -> (r: i64)
+pub fn x_ifc(p: &VProgram, cl: usize) -> (r: i64)
     requires cl < p.class_bits.len(),
-    ensures r as int == ifc(pview2(p), cl as int),
+    ensures r as int == ifc(vview(p), cl as int),
 {
     (((p.class_bits[cl] >> 5u16) & 0x7ff) as i64) - 1
 }
 
-pub fn x_smi_ok(p: &ExecProgram, v: i64) -> (r: bool)
+pub fn x_smi_ok(p: &VProgram, v: i64) -> (r: bool)
     requires 0 <= v < 0x1_0000_0000,
-    ensures r == smi_ok(p1(pview2(p)), v as int),
+    ensures r == smi_ok(p1(vview(p)), v as int),
 {
     p.word_bits != 32 || v <= 0x3fff_ffff
 }
 
-pub fn x_valid(p: &ExecProgram, t: i64) -> (r: bool)
-    ensures r == valid_method(pview2(p), t as int), r ==> (t as usize) as int == t as int,
+pub fn x_valid(p: &VProgram, t: i64) -> (r: bool)
+    ensures r == valid_method(vview(p), t as int), r ==> (t as usize) as int == t as int,
 {
     0 <= t && (t as u64) < (p.methods.len() as u64)
 }
@@ -345,27 +489,122 @@ pub fn x_is_ref(k: XKind) -> (r: bool)
     match k { XKind::Block(_, _) => true, XKind::Param => true, _ => false }
 }
 
+/// The bounds of method `m`'s block-parameter mask in `g.bp`, if valid.
+pub fn x_bp_range(g: &XGlobal, m: usize) -> (r: Option<(usize, usize)>)
+    ensures
+        match r {
+            Some((a, b)) => a <= b <= g.bp@.len() && bp_view(g, m as int) == g.bp@.subrange(a as int, b as int),
+            None => bp_view(g, m as int) == Seq::<bool>::empty(),
+        },
+{
+    if m < g.bp_off.len() && m + 1 < g.bp_off.len() {
+        let a = g.bp_off[m] as usize;
+        let b = g.bp_off[m + 1] as usize;
+        if a <= b && b <= g.bp.len() {
+            return Some((a, b));
+        }
+    }
+    None
+}
+
+/// `c@.block_params[m].len()` for a method `m < g.n`.
+pub fn x_bp_len(c: &XCert, m: usize) -> (r: usize)
+    requires m < c.g.n,
+    ensures r == c@.block_params[m as int].len(),
+{
+    match x_bp_range(c.g, m) {
+        Some((a, b)) => b - a,
+        None => 0,
+    }
+}
+
 pub fn x_is_block_param(c: &XCert, m: usize, i: usize) -> (r: bool)
     ensures r == is_block_param(c@, m as int, i as int),
 {
-    m < c.block_params.len() && i < c.block_params[m].len() && c.block_params[m][i]
+    if m >= c.g.n { return false; }
+    match x_bp_range(c.g, m) {
+        Some((a, b)) => i < b - a && c.g.bp[a + i],
+        None => false,
+    }
 }
 
-pub fn x_ctx_of(c: &XCert, t: usize) -> (r: Option<&XContext>)
+/// `c@.block_params[r] == c@.block_params[m]`.
+pub fn x_bp_eq(c: &XCert, r: usize, m: usize) -> (res: bool)
+    requires r < c.g.n, m < c.g.n,
+    ensures res == (c@.block_params[r as int] == c@.block_params[m as int]),
+{
+    let ghost br = c@.block_params[r as int];
+    let ghost bm = c@.block_params[m as int];
+    let (ra, rb) = match x_bp_range(c.g, r) { Some(x) => x, None => (0, 0) };
+    let (ma, mb) = match x_bp_range(c.g, m) { Some(x) => x, None => (0, 0) };
+    assert(br =~= c.g.bp@.subrange(ra as int, rb as int));
+    assert(bm =~= c.g.bp@.subrange(ma as int, mb as int));
+    if rb - ra != mb - ma { return false; }
+    let mut i = 0;
+    while i < rb - ra
+        invariant
+            ra <= rb <= c.g.bp@.len(), ma <= mb <= c.g.bp@.len(), rb - ra == mb - ma, 0 <= i <= rb - ra,
+            br == c.g.bp@.subrange(ra as int, rb as int), bm == c.g.bp@.subrange(ma as int, mb as int),
+            br == c@.block_params[r as int], bm == c@.block_params[m as int],
+            forall|j: int| 0 <= j < i ==> br[j] == bm[j],
+        decreases rb - ra - i,
+    {
+        if c.g.bp[ra + i] != c.g.bp[ma + i] {
+            assert(br[i as int] == c.g.bp@[ra + i]);
+            assert(bm[i as int] == c.g.bp@[ma + i]);
+            assert(br[i as int] != bm[i as int]);
+            return false;
+        }
+        i += 1;
+    }
+    assert(br =~= bm);
+    true
+}
+
+pub fn x_no_block_params(c: &XCert, m: usize) -> (r: bool)
+    requires m < c.g.n,
+    ensures r == no_block_params(c@, m as int),
+{
+    let ghost b = c@.block_params[m as int];
+    let (a, e) = match x_bp_range(c.g, m) { Some(x) => x, None => (0, 0) };
+    assert(b =~= c.g.bp@.subrange(a as int, e as int));
+    let mut i = a;
+    while i < e
+        invariant a <= i <= e <= c.g.bp@.len(), b == c.g.bp@.subrange(a as int, e as int), b == c@.block_params[m as int],
+            forall|j: int| 0 <= j < i - a ==> !b[j],
+        decreases e - i,
+    {
+        if c.g.bp[i] {
+            assert(b[i - a] == c.g.bp@[i as int]);
+            assert(b[i - a]);
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+pub fn x_ctx_of<'a>(c: &XCert<'a>, t: usize) -> (r: Option<&'a XContext>)
     ensures ctxv(match r { Some(x) => Some(*x), None => None }) == ctx_of(c@, t as int),
 {
-    if t < c.contexts.len() {
-        match &c.contexts[t] {
-            Some(x) => Some(x),
-            None => None,
-        }
+    let g = c.g;
+    if t < g.n && t < g.ctx_idx.len() && (g.ctx_idx[t] as usize) < g.ctxs.len() {
+        Some(&g.ctxs[g.ctx_idx[t] as usize])
     } else {
         None
     }
 }
 
-pub fn x_dispatch_target(p: &ExecProgram, d: i64) -> (r: i64)
-    ensures r as int == dispatch_target(pview2(p), d as int),
+/// `c@.sel_rep[s]` for `s < 0xffff`.
+pub fn x_sel_rep(c: &XCert, s: usize) -> (r: i64)
+    requires s < 0xffff,
+    ensures r as int == c@.sel_rep[s as int],
+{
+    if s < c.g.sel_rep.len() { c.g.sel_rep[s] as i64 } else { -1 }
+}
+
+pub fn x_dispatch_target(p: &VProgram, d: i64) -> (r: i64)
+    ensures r as int == dispatch_target(vview(p), d as int),
 {
     if 0 <= d && (d as u64) < (p.dispatch.len() as u64) { p.dispatch[d as usize] as i64 } else { -1 }
 }
@@ -373,8 +612,8 @@ pub fn x_dispatch_target(p: &ExecProgram, d: i64) -> (r: i64)
 // ---------------------------------------------------------------------------
 // Block slots and contexts.
 
-pub fn x_block_slot(p: &ExecProgram, c: &XCert, om: i64, fk: &Vec<XKind>, i: i64) -> (r: bool)
-    ensures r == block_slot(pview2(p), c@, om as int, kv(*fk), i as int),
+pub fn x_block_slot(p: &VProgram, c: &XCert, om: i64, fk: &Vec<XKind>, i: i64) -> (r: bool)
+    ensures r == block_slot(vview(p), c@, om as int, kv(*fk), i as int),
 {
     if i < 0 || (i as u64) >= (fk.len() as u64) {
         return false;
@@ -382,7 +621,7 @@ pub fn x_block_slot(p: &ExecProgram, c: &XCert, om: i64, fk: &Vec<XKind>, i: i64
     proof { assert(kv(*fk)[i as int] == fk@[i as int]@); }
     match fk[i as usize] {
         XKind::Method(t) => {
-            if !(x_valid(p, t as i64) && p.methods[t as usize].kind == 3) {
+            if !(x_valid(p, t as i64) && x_info(p, t as usize).kind == 3) {
                 return false;
             }
             match x_ctx_of(c, t as usize) {
@@ -394,8 +633,8 @@ pub fn x_block_slot(p: &ExecProgram, c: &XCert, om: i64, fk: &Vec<XKind>, i: i64
     }
 }
 
-pub fn x_block_slot_u(p: &ExecProgram, c: &XCert, om: i64, fk: &Vec<XKind>, i: usize) -> (r: bool)
-    ensures r == block_slot(pview2(p), c@, om as int, kv(*fk), i as int),
+pub fn x_block_slot_u(p: &VProgram, c: &XCert, om: i64, fk: &Vec<XKind>, i: usize) -> (r: bool)
+    ensures r == block_slot(vview(p), c@, om as int, kv(*fk), i as int),
 {
     if i >= fk.len() {
         return false;
@@ -403,7 +642,7 @@ pub fn x_block_slot_u(p: &ExecProgram, c: &XCert, om: i64, fk: &Vec<XKind>, i: u
     proof { assert(kv(*fk)[i as int] == fk@[i as int]@); }
     match fk[i] {
         XKind::Method(t) => {
-            if !(x_valid(p, t as i64) && p.methods[t as usize].kind == 3) {
+            if !(x_valid(p, t as i64) && x_info(p, t as usize).kind == 3) {
                 return false;
             }
             match x_ctx_of(c, t as usize) {
@@ -416,7 +655,7 @@ pub fn x_block_slot_u(p: &ExecProgram, c: &XCert, om: i64, fk: &Vec<XKind>, i: u
 }
 
 /// The context `depth` levels out: its kinds and method.
-pub fn x_ctx_kinds<'a>(c: &'a XCert, m: i64, depth: u32) -> (r: (Option<&'a Vec<XKind>>, i64))
+pub fn x_ctx_kinds<'a>(c: &XCert<'a>, m: i64, depth: u32) -> (r: (Option<&'a Vec<XKind>>, i64))
     requires depth >= 1,
     ensures
         okv(match r.0 { Some(k) => Some(*k), None => None }) == ctx_kinds(c@, m as int, depth as nat),
@@ -431,10 +670,10 @@ pub fn x_ctx_kinds<'a>(c: &'a XCert, m: i64, depth: u32) -> (r: (Option<&'a Vec<
             ctx_method(c@, m as int, depth as nat) == ctx_method(c@, cur as int, d as nat),
         decreases d,
     {
-        if cur < 0 || (cur as u64) >= (c.contexts.len() as u64) {
+        if cur < 0 || (cur as u64) >= (c.g.n as u64) {
             return (None, -1);
         }
-        match &c.contexts[cur as usize] {
+        match x_ctx_of(c, cur as usize) {
             None => return (None, -1),
             Some(ctx) => {
                 if d == 1 {
@@ -448,12 +687,12 @@ pub fn x_ctx_kinds<'a>(c: &'a XCert, m: i64, depth: u32) -> (r: (Option<&'a Vec<
     }
 }
 
-pub fn x_wf_kinds(p: &ExecProgram, c: &XCert, m: i64, k: &Vec<XKind>) -> (r: bool)
-    ensures r == wf_kinds(pview2(p), c@, m as int, kv(*k)),
+pub fn x_wf_kinds(p: &VProgram, c: &XCert, m: i64, k: &Vec<XKind>) -> (r: bool)
+    ensures r == wf_kinds(vview(p), c@, m as int, kv(*k)),
 {
     let mut j = 0;
     while j < k.len()
-        invariant 0 <= j <= k.len(), forall|jj: int| 0 <= jj < j ==> #[trigger] wf_kind(pview2(p), c@, m as int, kv(*k), jj),
+        invariant 0 <= j <= k.len(), forall|jj: int| 0 <= jj < j ==> #[trigger] wf_kind(vview(p), c@, m as int, kv(*k), jj),
         decreases k.len() - j,
     {
         proof { assert(kv(*k)[j as int] == k@[j as int]@); }
@@ -461,18 +700,18 @@ pub fn x_wf_kinds(p: &ExecProgram, c: &XCert, m: i64, k: &Vec<XKind>) -> (r: boo
             XKind::Block(d, i) => {
                 if d == 0 {
                     if !((i as usize) < j && x_block_slot(p, c, m, k, i as i64)) {
-                        proof { assert(!wf_kind(pview2(p), c@, m as int, kv(*k), j as int)); }
+                        proof { assert(!wf_kind(vview(p), c@, m as int, kv(*k), j as int)); }
                         return false;
                     }
                 } else {
                     let (fk, om) = x_ctx_kinds(c, m, d);
                     match fk {
                         None => {
-                            proof { assert(!wf_kind(pview2(p), c@, m as int, kv(*k), j as int)); }
+                            proof { assert(!wf_kind(vview(p), c@, m as int, kv(*k), j as int)); }
                             return false;
                         },
                         Some(fk) => if !x_block_slot(p, c, om, fk, i as i64) {
-                            proof { assert(!wf_kind(pview2(p), c@, m as int, kv(*k), j as int)); }
+                            proof { assert(!wf_kind(vview(p), c@, m as int, kv(*k), j as int)); }
                             return false;
                         },
                     }
@@ -480,16 +719,16 @@ pub fn x_wf_kinds(p: &ExecProgram, c: &XCert, m: i64, k: &Vec<XKind>) -> (r: boo
             },
             _ => {},
         }
-        proof { assert(wf_kind(pview2(p), c@, m as int, kv(*k), j as int)); }
+        proof { assert(wf_kind(vview(p), c@, m as int, kv(*k), j as int)); }
         j += 1;
     }
     true
 }
 
 #[verifier::loop_isolation(false)]
-pub fn x_ctx_ok_at(p: &ExecProgram, c: &XCert, m: i64, k: &Vec<XKind>, i: usize) -> (r: bool)
+pub fn x_ctx_ok_at(p: &VProgram, c: &XCert, m: i64, k: &Vec<XKind>, i: usize) -> (r: bool)
     requires i < k.len(),
-    ensures r == ctx_ok_at(pview2(p), c@, m as int, kv(*k), i as int),
+    ensures r == ctx_ok_at(vview(p), c@, m as int, kv(*k), i as int),
 {
     if !x_block_slot_u(p, c, m, k, i) {
         return true;
@@ -522,13 +761,13 @@ pub fn x_ctx_ok_at(p: &ExecProgram, c: &XCert, m: i64, k: &Vec<XKind>, i: usize)
     }
 }
 
-pub fn x_ctx_ok_upto(p: &ExecProgram, c: &XCert, m: i64, k: &Vec<XKind>, n: usize) -> (r: bool)
-    ensures r == ctx_ok_upto(pview2(p), c@, m as int, kv(*k), n as int),
+pub fn x_ctx_ok_upto(p: &VProgram, c: &XCert, m: i64, k: &Vec<XKind>, n: usize) -> (r: bool)
+    ensures r == ctx_ok_upto(vview(p), c@, m as int, kv(*k), n as int),
 {
     let mut i = 0;
     while i <= n && i < k.len()
         invariant 0 <= i <= k.len(), i <= n + 1,
-            forall|ii: int| 0 <= ii < i ==> #[trigger] ctx_ok_at(pview2(p), c@, m as int, kv(*k), ii),
+            forall|ii: int| 0 <= ii < i ==> #[trigger] ctx_ok_at(vview(p), c@, m as int, kv(*k), ii),
         decreases k.len() - i,
     {
         if !x_ctx_ok_at(p, c, m, k, i) {
@@ -544,8 +783,8 @@ pub open spec fn lref(kd: Kind) -> int {
     match kd { Kind::Block(d, s) => if d == 0 && s >= 0 { s } else { -1 }, _ => -1 }
 }
 
-pub fn x_ctx_ok(p: &ExecProgram, c: &XCert, m: i64, k: &Vec<XKind>) -> (r: bool)
-    ensures r == ctx_ok(pview2(p), c@, m as int, kv(*k)),
+pub fn x_ctx_ok(p: &VProgram, c: &XCert, m: i64, k: &Vec<XKind>) -> (r: bool)
+    ensures r == ctx_ok(vview(p), c@, m as int, kv(*k)),
 {
     // The highest slot a reference of this frame points to.
     let mut top: i64 = -1;
@@ -578,7 +817,7 @@ pub fn x_ctx_ok(p: &ExecProgram, c: &XCert, m: i64, k: &Vec<XKind>) -> (r: bool)
         j += 1;
     }
     let ghost kk = kv(*k);
-    let ghost pv = pview2(p);
+    let ghost pv = vview(p);
     if top < 0 {
         proof {
             assert forall|i: int| 0 <= i < kk.len() && live_from(kk, i) implies #[trigger] ctx_ok_at(pv, c@, m as int, kk, i) by {
@@ -653,16 +892,16 @@ pub fn x_below_token(k: &Vec<XKind>, i: usize) -> (r: bool)
     false
 }
 
-pub fn x_pinned0(p: &ExecProgram, m: usize) -> (r: bool)
+pub fn x_pinned0(p: &VProgram, m: usize) -> (r: bool)
     requires m < p.methods.len(),
-    ensures r == pinned0(pview2(p), m as int),
+    ensures r == pinned0(vview(p), m as int),
 {
-    p.methods[m].recv_start != 0xffff || p.methods[m].kind == 3
+    x_info(p, m).recv_start != 0xffff || x_info(p, m).kind == 3
 }
 
-pub fn x_writable(p: &ExecProgram, m: usize, k: &Vec<XKind>, i: usize, v: XKind) -> (r: bool)
+pub fn x_writable(p: &VProgram, m: usize, k: &Vec<XKind>, i: usize, v: XKind) -> (r: bool)
     requires m < p.methods.len(),
-    ensures r == writable(pview2(p), m as int, kv(*k), i as int, v@),
+    ensures r == writable(vview(p), m as int, kv(*k), i as int, v@),
 {
     if i >= k.len() { return false; }
     proof { assert(kv(*k)[i as int] == k@[i as int]@); }
@@ -673,11 +912,11 @@ pub fn x_writable(p: &ExecProgram, m: usize, k: &Vec<XKind>, i: usize, v: XKind)
     true
 }
 
-pub fn x_leaves0(p: &ExecProgram, m: usize, h: usize, n: usize) -> (r: bool)
+pub fn x_leaves0(p: &VProgram, m: usize, h: usize, n: usize) -> (r: bool)
     requires m < p.methods.len(),
-    ensures r == leaves0(pview2(p), m as int, h as int, n as int),
+    ensures r == leaves0(vview(p), m as int, h as int, n as int),
 {
-    !(x_pinned0(p, m) && p.methods[m].arity >= 1) || (n < h && h - n >= 1)
+    !(x_pinned0(p, m) && x_info(p, m).arity >= 1) || (n < h && h - n >= 1)
 }
 
 pub fn x_args_ok(c: &XCert, t: usize, k: &Vec<XKind>, n: usize) -> (r: bool)
@@ -736,26 +975,25 @@ pub fn x_value_operands(k: &Vec<XKind>, n: usize) -> (r: bool)
     true
 }
 
-pub fn x_sel_ok(p: &ExecProgram, c: &XCert, sel: i64, n: usize, k: &Vec<XKind>) -> (r: bool)
-    ensures r == sel_ok(pview2(p), c@, sel as int, n as int, kv(*k)),
+pub fn x_sel_ok(p: &VProgram, c: &XCert, sel: i64, n: usize, k: &Vec<XKind>) -> (r: bool)
+    ensures r == sel_ok(vview(p), c@, sel as int, n as int, kv(*k)),
 {
     if !(1 <= n && n <= k.len()) { return false; }
     if !(0 <= sel && sel < 0xffff) { return false; }
-    if sel as usize >= c.sel_rep.len() { return false; }
     if !x_row_fits(p, sel as usize) { return false; }
     proof { assert(kv(*k)[k.len() - n] == k@[k.len() - n]@); }
     if !x_is_val(k[k.len() - n]) { return false; }
-    let r = c.sel_rep[sel as usize];
+    let r = x_sel_rep(c, sel as usize);
     if r == -1 { return true; }
     if !x_valid(p, r) { return false; }
     let ru = r as usize;
     proof { assert(ru as int == r as int); }
-    p.methods[ru].arity as usize == n && x_args_ok(c, ru, k, n)
+    x_info(p, ru).arity as usize == n && x_args_ok(c, ru, k, n)
 }
 
-pub fn x_typecheck_index_ok(p: &ExecProgram, op: u8, enc: i64) -> (r: bool)
+pub fn x_typecheck_index_ok(p: &VProgram, op: u8, enc: i64) -> (r: bool)
     requires 0 <= enc < 0x10000,
-    ensures r == typecheck_index_ok(pview2(p), op, enc as int),
+    ensures r == typecheck_index_ok(vview(p), op, enc as int),
 {
     let index = enc / 2;
     if op == IS_INTERFACE || op == IS_INTERFACE_WIDE || op == AS_INTERFACE || op == AS_INTERFACE_WIDE {
@@ -765,11 +1003,11 @@ pub fn x_typecheck_index_ok(p: &ExecProgram, op: u8, enc: i64) -> (r: bool)
     }
 }
 
-pub fn x_this_field_ok(p: &ExecProgram, m: usize, f: i64) -> (r: bool)
+pub fn x_this_field_ok(p: &VProgram, m: usize, f: i64) -> (r: bool)
     requires m < p.methods.len(),
-    ensures r == this_field_ok(pview2(p), m as int, f as int),
+    ensures r == this_field_ok(vview(p), m as int, f as int),
 {
-    let i = p.methods[m];
+    let i = x_info(p, m);
     if i.recv_start == 0xffff || i.arity < 1 || !(i.kind == 0 || i.kind == 1) {
         return false;
     }
@@ -778,8 +1016,8 @@ pub fn x_this_field_ok(p: &ExecProgram, m: usize, f: i64) -> (r: bool)
     }
     let mut cl = i.recv_start;
     while cl < i.recv_end
-        invariant i == p.methods[m as int], i.recv_start <= cl,
-            forall|c2: int| i.recv_start <= c2 < cl ==> #[trigger] is_field_class(pview2(p), c2) && f < ifc(pview2(p), c2),
+        invariant i == vinfo(p, m as int), i.recv_start <= cl,
+            forall|c2: int| i.recv_start <= c2 < cl ==> #[trigger] is_field_class(vview(p), c2) && f < ifc(vview(p), c2),
         decreases i.recv_end - cl,
     {
         if !x_is_field_class(p, cl as i64) || !(f < x_ifc(p, cl as usize)) {
@@ -790,34 +1028,34 @@ pub fn x_this_field_ok(p: &ExecProgram, m: usize, f: i64) -> (r: bool)
     true
 }
 
-pub fn x_range_has_task(p: &ExecProgram, m: usize) -> (r: bool)
-    requires m < p.methods.len(), wf_program2(pview2(p)),
-    ensures r == range_has_task(pview2(p), p.methods@[m as int]),
+pub fn x_range_has_task(p: &VProgram, m: usize) -> (r: bool)
+    requires m < p.methods.len(), wf_program2(vview(p)),
+    ensures r == range_has_task(vview(p), vinfo(p, m as int)),
 {
-    let i = p.methods[m];
+    let i = x_info(p, m);
     let tc = p.builtin[19];
     i.recv_start <= tc && tc < i.recv_end
 }
 
-pub fn x_this_load_ok(p: &ExecProgram, m: usize, f: i64) -> (r: bool)
-    requires m < p.methods.len(), wf_program2(pview2(p)),
-    ensures r == this_load_ok(pview2(p), m as int, f as int),
+pub fn x_this_load_ok(p: &VProgram, m: usize, f: i64) -> (r: bool)
+    requires m < p.methods.len(), wf_program2(vview(p)),
+    ensures r == this_load_ok(vview(p), m as int, f as int),
 {
     x_this_field_ok(p, m, f) && !(x_range_has_task(p, m) && f == 0)
 }
 
-pub fn x_this_store_ok(p: &ExecProgram, m: usize, f: i64) -> (r: bool)
-    requires m < p.methods.len(), wf_program2(pview2(p)),
-    ensures r == this_store_ok(pview2(p), m as int, f as int),
+pub fn x_this_store_ok(p: &VProgram, m: usize, f: i64) -> (r: bool)
+    requires m < p.methods.len(), wf_program2(vview(p)),
+    ensures r == this_store_ok(vview(p), m as int, f as int),
 {
     x_this_field_ok(p, m, f) && !(x_range_has_task(p, m) && f <= 1)
 }
 
-pub fn x_task_class_ok(p: &ExecProgram) -> (r: bool)
-    requires wf_program2(pview2(p)),
-    ensures r == task_class_ok(pview2(p)),
+pub fn x_task_class_ok(p: &VProgram) -> (r: bool)
+    requires wf_program2(vview(p)),
+    ensures r == task_class_ok(vview(p)),
 {
-    let ghost pv = pview2(p);
+    let ghost pv = vview(p);
     let tc = p.builtin[19] as usize;
     assert(tc as int == builtin(p1(pv), TASK_CLASS));
     if !(tc < p.class_bits.len() && (p.class_bits[tc] & 0xf) == 8) {
@@ -830,7 +1068,7 @@ pub fn x_task_class_ok(p: &ExecProgram) -> (r: bool)
     if p.builtin[22] as usize == tc { return false; }
     let mut cl = 0;
     while cl < p.class_bits.len()
-        invariant 0 <= cl <= p.class_bits.len(), tc as int == builtin(p1(pv), TASK_CLASS), pv == pview2(p),
+        invariant 0 <= cl <= p.class_bits.len(), tc as int == builtin(p1(pv), TASK_CLASS), pv == vview(p),
             forall|c2: int| 0 <= c2 < cl && #[trigger] class_tag(p1(pv), c2) == TASK_TAG ==> c2 == tc,
         decreases p.class_bits.len() - cl,
     {
@@ -861,35 +1099,35 @@ pub fn x_shift(k: XKind, d: u32) -> (r: Option<XKind>)
 
 /// The precondition of the transfer functions: a valid instruction inside
 /// the method, and a frame of bounded height.
-pub open spec fn post_pre(p: &ExecProgram, m: usize, off: usize, k: &Vec<XKind>) -> bool {
-    &&& wf_program2(pview2(p))
+pub open spec fn post_pre(p: &VProgram, m: usize, off: usize, k: &Vec<XKind>) -> bool {
+    &&& wf_program2(vview(p))
     &&& m < p.methods.len()
-    &&& p.methods[m as int].entry + off + opcode_length2(p.bytecodes[p.methods[m as int].entry + off]) <= p.methods[m as int].end
-    &&& p.bytecodes[p.methods[m as int].entry + off] < OPCODE_COUNT2
+    &&& vinfo(p, m as int).entry + off + opcode_length2(p.bytecodes[vinfo(p, m as int).entry + off]) <= vinfo(p, m as int).end
+    &&& p.bytecodes[vinfo(p, m as int).entry + off] < OPCODE_COUNT2
     &&& k.len() <= 0x10_0000
 }
 
 /// Decodes the instruction at offset `off` of `m`.
-pub fn x_decode(p: &ExecProgram, m: usize, off: usize) -> (r: (usize, u8, usize, i64, i64))
+pub fn x_decode(p: &VProgram, m: usize, off: usize) -> (r: (usize, u8, usize, i64, i64))
     requires
-        wf_program2(pview2(p)),
+        wf_program2(vview(p)),
         m < p.methods.len(),
-        p.methods[m as int].entry + off + opcode_length2(p.bytecodes[p.methods[m as int].entry + off]) <= p.methods[m as int].end,
+        vinfo(p, m as int).entry + off + opcode_length2(p.bytecodes[vinfo(p, m as int).entry + off]) <= vinfo(p, m as int).end,
     ensures ({
         let (bci, op, len, b1, w1) = r;
-        let pv = pview2(p);
+        let pv = vview(p);
         &&& bci as int == instr_at(pv, m as int, off as int)
         &&& op == op_of(pv, m as int, off as int)
         &&& len as int == opcode_length2(op)
-        &&& bci + len <= p.methods[m as int].end
-        &&& p.methods[m as int].end <= p.bytecodes.len()
+        &&& bci + len <= vinfo(p, m as int).end
+        &&& vinfo(p, m as int).end <= p.bytecodes.len()
         &&& p.bytecodes.len() < 0x1000_0000
         &&& 0 <= b1 < 256 && 0 <= w1 < 0x10000
         &&& (len >= 2 ==> b1 as int == b1_of(pv, m as int, off as int))
         &&& (len >= 3 ==> w1 as int == w1_of(pv, m as int, off as int))
     }),
 {
-    let bci = p.methods[m].entry + off;
+    let bci = x_info(p, m).entry + off;
     let op = p.bytecodes[bci];
     let len = exec_opcode_length2(op);
     let b1: i64 = if len >= 2 { p.bytecodes[bci + 1] as i64 } else { 0 };
@@ -897,13 +1135,13 @@ pub fn x_decode(p: &ExecProgram, m: usize, off: usize) -> (r: (usize, u8, usize,
     (bci, op, len, b1, w1)
 }
 
-pub fn x_post_locals(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
+pub fn x_post_locals(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
     requires
         post_pre(p, m, off, k),
-        ({ let op = op_of(pview2(p), m as int, off as int);
+        ({ let op = op_of(vview(p), m as int, off as int);
            op == LOAD_LOCAL || op == LOAD_LOCAL_WIDE || (LOAD_LOCAL_0 <= op && op <= LOAD_LOCAL_5)
            || op == POP_LOAD_LOCAL || op == STORE_LOCAL || op == STORE_LOCAL_POP }),
-    ensures post_rel(r, post(pview2(p), c@, m as int, off as int, kv(*k), trusted)),
+    ensures post_rel(r, post(vview(p), c@, m as int, off as int, kv(*k), trusted)),
 {
     let (bci, op, len, b1, w1) = x_decode(p, m, off);
     let h = k.len();
@@ -944,16 +1182,16 @@ pub fn x_post_locals(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<X
     }
 }
 
-pub fn x_post_outer(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
+pub fn x_post_outer(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
     requires
         post_pre(p, m, off, k),
-        ({ let op = op_of(pview2(p), m as int, off as int);
+        ({ let op = op_of(vview(p), m as int, off as int);
            op == LOAD_OUTER || op == STORE_OUTER || op == LOAD_OUTER_BLOCK || op == LOAD_BLOCK }),
-    ensures post_rel(r, post(pview2(p), c@, m as int, off as int, kv(*k), trusted)),
+    ensures post_rel(r, post(vview(p), c@, m as int, off as int, kv(*k), trusted)),
 {
     let (bci, op, len, b1, w1) = x_decode(p, m, off);
     let h = k.len();
-    let ghost pv = pview2(p);
+    let ghost pv = vview(p);
     let ghost kk = kv(*k);
     if op == LOAD_BLOCK {
         let i = h as i64 - 1 - b1;
@@ -1014,14 +1252,14 @@ pub fn x_post_outer(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XK
     }
 }
 
-pub fn x_post_fields(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
+pub fn x_post_fields(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
     requires
         post_pre(p, m, off, k),
-        ({ let op = op_of(pview2(p), m as int, off as int);
+        ({ let op = op_of(vview(p), m as int, off as int);
            op == LOAD_FIELD || op == LOAD_FIELD_WIDE || op == LOAD_FIELD_LOCAL || op == POP_LOAD_FIELD_LOCAL
            || op == STORE_FIELD || op == STORE_FIELD_WIDE || op == STORE_FIELD_POP
            || op == LOAD_FIELD_THIS || op == STORE_FIELD_THIS }),
-    ensures post_rel(r, post(pview2(p), c@, m as int, off as int, kv(*k), trusted)),
+    ensures post_rel(r, post(vview(p), c@, m as int, off as int, kv(*k), trusted)),
 {
     let (bci, op, len, b1, w1) = x_decode(p, m, off);
     let h = k.len();
@@ -1053,13 +1291,13 @@ pub fn x_post_fields(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<X
     }
 }
 
-pub fn x_post_consts(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
+pub fn x_post_consts(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
     requires
         post_pre(p, m, off, k),
-        ({ let op = op_of(pview2(p), m as int, off as int);
+        ({ let op = op_of(vview(p), m as int, off as int);
            (LOAD_LITERAL <= op && op <= STORE_GLOBAL_VAR_DYNAMIC) || op == POP || op == POP_1
            || op == ALLOCATE || op == ALLOCATE_WIDE || (IS_CLASS <= op && op <= AS_LOCAL) }),
-    ensures post_rel(r, post(pview2(p), c@, m as int, off as int, kv(*k), trusted)),
+    ensures post_rel(r, post(vview(p), c@, m as int, off as int, kv(*k), trusted)),
 {
     let (bci, op, len, b1, w1) = x_decode(p, m, off);
     let h = k.len();
@@ -1091,12 +1329,12 @@ pub fn x_post_consts(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<X
         let t = x_u32(p, bci + 1);
         if x_valid(p, t) && x_smi_ok(p, t) { Some(x_push(k, XKind::Method(t as u32))) } else { None }
     } else if op == LOAD_GLOBAL_VAR || op == LOAD_GLOBAL_VAR_LAZY {
-        if (b1 as u64) < c.global_count { Some(x_push(k, XKind::Val)) } else { None }
+        if (b1 as u64) < c.g.global_count { Some(x_push(k, XKind::Val)) } else { None }
     } else if op == LOAD_GLOBAL_VAR_WIDE || op == LOAD_GLOBAL_VAR_LAZY_WIDE {
-        if (w1 as u64) < c.global_count { Some(x_push(k, XKind::Val)) } else { None }
+        if (w1 as u64) < c.g.global_count { Some(x_push(k, XKind::Val)) } else { None }
     } else if op == STORE_GLOBAL_VAR || op == STORE_GLOBAL_VAR_WIDE {
         let g = if op == STORE_GLOBAL_VAR { b1 } else { w1 };
-        if (g as u64) < c.global_count && x_value_operands(k, 1) { Some(x_copy(k)) } else { None }
+        if (g as u64) < c.g.global_count && x_value_operands(k, 1) { Some(x_copy(k)) } else { None }
     } else if op == LOAD_GLOBAL_VAR_DYNAMIC {
         if x_value_operands(k, 1) && x_leaves0(p, m, h, 1) { Some(x_update(k, h - 1, XKind::Val)) } else { None }
     } else if op == STORE_GLOBAL_VAR_DYNAMIC {
@@ -1124,20 +1362,20 @@ pub fn x_post_consts(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<X
     }
 }
 
-pub fn x_post_calls(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
+pub fn x_post_calls(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
     requires
         post_pre(p, m, off, k),
-        ({ let op = op_of(pview2(p), m as int, off as int);
+        ({ let op = op_of(vview(p), m as int, off as int);
            op == INVOKE_STATIC || op == INVOKE_BLOCK || (INVOKE_VIRTUAL <= op && op <= INVOKE_SIZE) || op == IDENTICAL }),
-    ensures post_rel(r, post(pview2(p), c@, m as int, off as int, kv(*k), trusted)),
+    ensures post_rel(r, post(vview(p), c@, m as int, off as int, kv(*k), trusted)),
 {
     let (bci, op, len, b1, w1) = x_decode(p, m, off);
     let h = k.len();
     if op == INVOKE_STATIC {
         let t = x_dispatch_target(p, w1);
-        if x_valid(p, t) && x_args_ok(c, t as usize, k, p.methods[t as usize].arity as usize)
-            && x_leaves0(p, m, h, p.methods[t as usize].arity as usize) {
-            let a = p.methods[t as usize].arity as usize;
+        if x_valid(p, t) && x_args_ok(c, t as usize, k, x_info(p, t as usize).arity as usize)
+            && x_leaves0(p, m, h, x_info(p, t as usize).arity as usize) {
+            let a = x_info(p, t as usize).arity as usize;
             Some(x_pop_push(k, a, XKind::Val))
         } else { None }
     } else if op == INVOKE_BLOCK {
@@ -1172,10 +1410,10 @@ pub fn x_post_calls(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XK
     }
 }
 
-pub fn x_post_misc(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
+pub fn x_post_misc(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
     requires
         post_pre(p, m, off, k),
-        ({ let op = op_of(pview2(p), m as int, off as int);
+        ({ let op = op_of(vview(p), m as int, off as int);
            !(op == LOAD_LOCAL || op == LOAD_LOCAL_WIDE || (LOAD_LOCAL_0 <= op && op <= LOAD_LOCAL_5)
              || op == POP_LOAD_LOCAL || op == STORE_LOCAL || op == STORE_LOCAL_POP)
            && !(op == LOAD_OUTER || op == STORE_OUTER || op == LOAD_OUTER_BLOCK || op == LOAD_BLOCK)
@@ -1185,7 +1423,7 @@ pub fn x_post_misc(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKi
            && !((LOAD_LITERAL <= op && op <= STORE_GLOBAL_VAR_DYNAMIC) || op == POP || op == POP_1
              || op == ALLOCATE || op == ALLOCATE_WIDE || (IS_CLASS <= op && op <= AS_LOCAL))
            && !(op == INVOKE_STATIC || op == INVOKE_BLOCK || (INVOKE_VIRTUAL <= op && op <= INVOKE_SIZE) || op == IDENTICAL) }),
-    ensures post_rel(r, post(pview2(p), c@, m as int, off as int, kv(*k), trusted)),
+    ensures post_rel(r, post(vview(p), c@, m as int, off as int, kv(*k), trusted)),
 {
     let (bci, op, len, b1, w1) = x_decode(p, m, off);
     let h = k.len();
@@ -1193,24 +1431,24 @@ pub fn x_post_misc(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKi
         if x_value_operands(k, 1) { Some(x_prefix(k, h - 1)) } else { None }
     } else if op == PRIMITIVE {
         let index = x_u16(p, bci + 2);
-        let a = p.methods[m].arity as usize;
-        if !(h == a && p.methods[m].kind == 0) { return None; }
-        if !((b1 as usize) < c.prim_arity.len() && (index as usize) < c.prim_arity[b1 as usize].len()
-            && c.prim_arity[b1 as usize][index as usize] as usize == a) {
+        let a = x_info(p, m).arity as usize;
+        if !(h == a && x_info(p, m).kind == 0) { return None; }
+        if !((b1 as usize) < c.g.prim_arity.len() && (index as usize) < c.g.prim_arity[b1 as usize].len()
+            && c.g.prim_arity[b1 as usize][index as usize] as usize == a) {
             return None;
         }
         if b1 == 0 && index == X_PRIM_TASK_NEW as i64 && a != 1 { return None; }
         if b1 == 0 && index == X_PRIM_TASK_TRANSFER as i64 {
             if a != 2 { return None; }
             proof { assert(kv(*k)[0] == k@[0]@); assert(kv(*k)[1] == k@[1]@); }
-            if !(x_is_plain(k[0]) && x_is_plain(k[1]) && p.methods[m].recv_start == 0xffff) { return None; }
+            if !(x_is_plain(k[0]) && x_is_plain(k[1]) && x_info(p, m).recv_start == 0xffff) { return None; }
         }
         Some(x_push(k, XKind::Val))
     } else if op == TRY {
         if 1 <= h && x_block_slot(p, c, m as i64, k, (h - 1) as i64) {
             let t = match k[h - 1] { XKind::Method(t) => t, _ => 0 };
             proof { assert(kv(*k)[h - 1] == k@[h - 1]@); assert(kind_method(kv(*k)[h - 1]) == t as int); }
-            if p.methods[t as usize].arity == 1 && x_ctx_ok_upto(p, c, m as i64, k, h - 1) {
+            if x_info(p, t as usize).arity == 1 && x_ctx_ok_upto(p, c, m as i64, k, h - 1) {
                 let k1 = x_push(k, XKind::Val);
                 let k2 = x_push(&k1, XKind::Token);
                 let k3 = x_push(&k2, XKind::Val);
@@ -1238,11 +1476,11 @@ pub fn x_post_misc(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKi
 }
 
 /// `post`: the fall-through successor kinds.
-pub fn x_post(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
+pub fn x_post(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: Option<Vec<XKind>>)
     requires post_pre(p, m, off, k),
-    ensures post_rel(r, post(pview2(p), c@, m as int, off as int, kv(*k), trusted)),
+    ensures post_rel(r, post(vview(p), c@, m as int, off as int, kv(*k), trusted)),
 {
-    let op = p.bytecodes[p.methods[m].entry + off];
+    let op = p.bytecodes[x_info(p, m).entry + off];
     if op == LOAD_LOCAL || op == LOAD_LOCAL_WIDE || (LOAD_LOCAL_0 <= op && op <= LOAD_LOCAL_5)
         || op == POP_LOAD_LOCAL || op == STORE_LOCAL || op == STORE_LOCAL_POP {
         x_post_locals(p, c, m, off, k, trusted)
@@ -1270,36 +1508,285 @@ pub fn x_is_terminator(op: u8) -> (r: bool)
         || op == NON_LOCAL_RETURN || op == NON_LOCAL_BRANCH
 }
 
-pub fn x_map_at<'a>(c: &'a XCert, m: i64, off: i64) -> (r: Option<&'a Vec<XKind>>)
-    ensures okv(match r { Some(k) => Some(*k), None => None }) == map_at(c@, m as int, off as int),
+pub open spec fn rev_kinds(r: Seq<XKind>) -> Seq<Kind> {
+    Seq::new(r.len(), |j: int| r[r.len() - 1 - j]@)
+}
+
+/// The kinds of the list with top node `i` (`chain`), bottom first.
+pub fn x_chain(nodes: &Vec<XNode>, i: u32) -> (r: Vec<XKind>)
+    ensures kv(r) == chain(nodes@, i as int),
 {
-    if 0 <= m && (m as u64) < (c.maps.len() as u64) && 0 <= off && (off as u64) < (c.maps[m as usize].len() as u64) {
-        match &c.maps[m as usize][off as usize] {
-            Some(k) => Some(k),
-            None => None,
+    // The kinds from the top down, then reversed.
+    let mut rev: Vec<XKind> = Vec::new();
+    let mut cur = i as usize;
+    let mut done = cur >= nodes.len();
+    while !done
+        invariant
+            done ==> chain(nodes@, i as int) == rev_kinds(rev@),
+            !done ==> cur < nodes@.len() && chain(nodes@, i as int) == chain(nodes@, cur as int) + rev_kinds(rev@),
+        decreases (if done { 0int } else { cur as int + 1 }),
+    {
+        let nd = nodes[cur];
+        let ghost before = rev@;
+        let ghost par = nd.parent as int;
+        let ghost base = if par < cur { chain(nodes@, par) } else { Seq::<Kind>::empty() };
+        assert(chain(nodes@, cur as int) == base.push(nd.kind@));
+        rev.push(nd.kind);
+        assert(base.push(nd.kind@) + rev_kinds(before) =~= base + rev_kinds(rev@));
+        if (nd.parent as usize) < cur {
+            cur = nd.parent as usize;
+        } else {
+            assert(base + rev_kinds(rev@) =~= rev_kinds(rev@));
+            done = true;
         }
-    } else {
-        None
+    }
+    let mut r: Vec<XKind> = Vec::new();
+    let mut j = rev.len();
+    while j > 0
+        invariant 0 <= j <= rev@.len(), kv(r) =~= rev_kinds(rev@).subrange(0, (rev@.len() - j) as int),
+        decreases j,
+    {
+        j -= 1;
+        let ghost old = kv(r);
+        r.push(rev[j]);
+        assert(kv(r) =~= old.push(rev@[j as int]@));
+        assert(rev_kinds(rev@)[rev@.len() - 1 - j] == rev@[j as int]@);
+        assert(kv(r) =~= rev_kinds(rev@).subrange(0, (rev@.len() - j) as int));
+    }
+    assert(kv(r) =~= rev_kinds(rev@));
+    r
+}
+
+pub proof fn lemma_key(m1: int, o1: int, m2: int, o2: int)
+    requires 0 <= o1 < 0x1_0000_0000, 0 <= o2 < 0x1_0000_0000, 0 <= m1, 0 <= m2,
+    ensures
+        (m1 * 0x1_0000_0000 + o1 == m2 * 0x1_0000_0000 + o2) == (m1 == m2 && o1 == o2),
+        (m1 * 0x1_0000_0000 + o1 < m2 * 0x1_0000_0000 + o2) == (m1 < m2 || (m1 == m2 && o1 < o2)),
+{
+    if m1 < m2 {
+        assert(m1 * 0x1_0000_0000 + 0x1_0000_0000 <= m2 * 0x1_0000_0000) by (nonlinear_arith) requires m1 < m2;
+    } else if m2 < m1 {
+        assert(m2 * 0x1_0000_0000 + 0x1_0000_0000 <= m1 * 0x1_0000_0000) by (nonlinear_arith) requires m2 < m1;
     }
 }
 
+pub fn x_pin_key(x: &XPin) -> (r: u64)
+    ensures r as int == pin_key(*x),
+{
+    assert(x.m as int * 0x1_0000_0000 <= 0xffff_ffff * 0x1_0000_0000) by (nonlinear_arith) requires x.m <= 0xffff_ffff;
+    (x.m as u64) * 0x1_0000_0000 + x.off as u64
+}
+
+/// The pin of method `m` at offset `off`.
+pub fn x_pin_find(g: &XGlobal, m: u32, off: u32) -> (r: Option<usize>)
+    requires pins_sorted(g),
+    ensures
+        match r {
+            Some(i) => i < g.pins@.len() && g.pins@[i as int].m == m && g.pins@[i as int].off == off
+                && pin_view(g, m as int, off as int) == Some(kv(g.pins@[i as int].kinds)),
+            None => pin_view(g, m as int, off as int) is None,
+        },
+{
+    assert(m as int * 0x1_0000_0000 <= 0xffff_ffff * 0x1_0000_0000) by (nonlinear_arith) requires m <= 0xffff_ffff;
+    let key: u64 = (m as u64) * 0x1_0000_0000 + off as u64;
+    let mut lo: usize = 0;
+    let mut hi: usize = g.pins.len();
+    while lo < hi
+        invariant
+            0 <= lo <= hi <= g.pins@.len(), pins_sorted(g), key as int == m as int * 0x1_0000_0000 + off as int,
+            forall|i: int| 0 <= i < lo ==> pin_key(#[trigger] g.pins@[i]) < key,
+            forall|i: int| hi <= i < g.pins@.len() ==> pin_key(#[trigger] g.pins@[i]) > key,
+        decreases hi - lo,
+    {
+        let mid = lo + (hi - lo) / 2;
+        let k = x_pin_key(&g.pins[mid]);
+        if k == key {
+            proof {
+                let x = g.pins@[mid as int];
+                lemma_key(x.m as int, x.off as int, m as int, off as int);
+                assert(has_pin(g, m as int, off as int));
+                let j = choose|j: int| 0 <= j < g.pins@.len() && (#[trigger] g.pins@[j]).m == m && g.pins@[j].off == off;
+                lemma_key(g.pins@[j].m as int, g.pins@[j].off as int, m as int, off as int);
+                if j < mid { assert(pin_key(g.pins@[j]) < pin_key(g.pins@[mid as int])); }
+                if j > mid { assert(pin_key(g.pins@[mid as int]) < pin_key(g.pins@[j])); }
+            }
+            return Some(mid);
+        } else if k < key {
+            proof {
+                assert forall|i: int| 0 <= i < mid + 1 implies pin_key(#[trigger] g.pins@[i]) < key by {
+                    if i < mid { assert(pin_key(g.pins@[i]) < pin_key(g.pins@[mid as int])); }
+                }
+            }
+            lo = mid + 1;
+        } else {
+            proof {
+                assert forall|i: int| mid <= i < g.pins@.len() implies pin_key(#[trigger] g.pins@[i]) > key by {
+                    if i > mid { assert(pin_key(g.pins@[mid as int]) < pin_key(g.pins@[i])); }
+                }
+            }
+            hi = mid;
+        }
+    }
+    proof {
+        if has_pin(g, m as int, off as int) {
+            let j = choose|j: int| 0 <= j < g.pins@.len() && (#[trigger] g.pins@[j]).m == m && g.pins@[j].off == off;
+            lemma_key(g.pins@[j].m as int, g.pins@[j].off as int, m as int, off as int);
+        }
+    }
+    None
+}
+
+pub fn x_map_at(c: &XCert, m: i64, off: i64) -> (r: Option<Vec<XKind>>)
+    requires pins_sorted(c.g),
+    ensures okv(r) == map_at(c@, m as int, off as int),
+{
+    let ghost cc = c@;
+    if m < 0 || (m as u64) >= (c.g.n as u64) || off < 0 {
+        return None;
+    }
+    assert(cc.maps.len() == c.g.n);
+    if c.cur < c.g.n && m as usize == c.cur {
+        assert(cc.maps[m as int] == mapsv(c.maps));
+        if (off as u64) >= (c.maps.idx.len() as u64) {
+            return None;
+        }
+        assert(cc.maps[m as int][off as int] == map_view(c.maps, off as int));
+        let i = c.maps.idx[off as usize];
+        if i == NO_MAP {
+            None
+        } else {
+            let k = x_chain(&c.maps.nodes, i);
+            assert(map_at(cc, m as int, off as int) == Some(kv(k)));
+            Some(k)
+        }
+    } else {
+        assert(cc.maps[m as int] == pin_maps(c.g@)[m as int]);
+        if off >= 0x1000_0000 {
+            assert(cc.maps[m as int].len() == PIN_SPAN);
+            return None;
+        }
+        if m > 0xffff_ffff {
+            // Pins are of methods below 2^32.
+            assert(!has_pin(c.g, m as int, off as int));
+            return None;
+        }
+        assert(cc.maps[m as int][off as int] == pin_at(c.g@, m as int, off as int));
+        assert(pin_at(c.g@, m as int, off as int) == pin_view(c.g, m as int, off as int));
+        match x_pin_find(c.g, m as u32, off as u32) {
+            Some(i) => {
+                let k = x_copy(&c.g.pins[i].kinds);
+                assert(pin_view(c.g, m as int, off as int) == Some(kv(k)));
+                assert(cc.maps[m as int][off as int] == Some(kv(k)));
+                assert(0 <= off < cc.maps[m as int].len());
+                assert(map_at(cc, m as int, off as int) == Some(kv(k)));
+                Some(k)
+            },
+            None => None,
+        }
+    }
+}
+
+/// `chain(nodes, i) == kv(k)`, without building the chain.
+pub fn x_chain_is(nodes: &Vec<XNode>, i: u32, k: &Vec<XKind>) -> (r: bool)
+    ensures r == (chain(nodes@, i as int) == kv(*k)),
+{
+    let ghost s = kv(*k);
+    let mut j = k.len();
+    let mut cur = i as usize;
+    let mut done = cur >= nodes.len();
+    proof {
+        assert(s.subrange(0, j as int) =~= s);
+        if done {
+            assert(chain(nodes@, i as int) =~= Seq::<Kind>::empty());
+            if j > 0 { assert(s.len() > 0); }
+            else { assert(s =~= Seq::<Kind>::empty()); }
+        }
+    }
+    while !done
+        invariant
+            0 <= j <= k@.len(), s == kv(*k),
+            done ==> (chain(nodes@, i as int) == s) == (j == 0),
+            !done ==> cur < nodes@.len()
+                && (chain(nodes@, i as int) == s) == (chain(nodes@, cur as int) == s.subrange(0, j as int)),
+        decreases (if done { 0int } else { cur as int + 1 }),
+    {
+        let nd = nodes[cur];
+        let ghost par = nd.parent as int;
+        let ghost base = if par < cur { chain(nodes@, par) } else { Seq::<Kind>::empty() };
+        assert(chain(nodes@, cur as int) == base.push(nd.kind@));
+        if j == 0 {
+            assert(chain(nodes@, cur as int).len() > 0);
+            assert(chain(nodes@, cur as int) != s.subrange(0, 0));
+            return false;
+        }
+        assert(s[j - 1] == k@[j - 1]@);
+        if !x_kind_eq(nd.kind, k[j - 1]) {
+            proof {
+                assert(chain(nodes@, cur as int)[base.len() as int] == nd.kind@);
+                if chain(nodes@, cur as int) == s.subrange(0, j as int) {
+                    assert(base.len() == j - 1);
+                    assert(s.subrange(0, j as int)[j - 1] == s[j - 1]);
+                }
+            }
+            return false;
+        }
+        proof {
+            let full = chain(nodes@, cur as int);
+            let pre = s.subrange(0, j as int);
+            if base == s.subrange(0, j - 1) {
+                assert(full =~= pre);
+            }
+            if full == pre {
+                assert(base =~= full.drop_last());
+                assert(pre.drop_last() =~= s.subrange(0, j - 1));
+            }
+        }
+        j -= 1;
+        if (nd.parent as usize) < cur {
+            cur = nd.parent as usize;
+        } else {
+            proof {
+                if j == 0 { assert(s.subrange(0, 0) =~= Seq::<Kind>::empty()); }
+                else { assert(s.subrange(0, j as int).len() > 0); }
+            }
+            done = true;
+        }
+    }
+    j == 0
+}
+
 pub fn x_map_is(c: &XCert, m: i64, off: i64, k: &Vec<XKind>) -> (r: bool)
+    requires pins_sorted(c.g),
     ensures r == (map_at(c@, m as int, off as int) == Some(kv(*k))),
 {
+    let ghost cc = c@;
+    if c.cur < c.g.n && m >= 0 && (m as u64) < (c.g.n as u64) && m as usize == c.cur && off >= 0 {
+        // The current method's maps: compare in place.
+        assert(cc.maps.len() == c.g.n);
+        assert(cc.maps[m as int] == mapsv(c.maps));
+        if (off as u64) >= (c.maps.idx.len() as u64) {
+            return false;
+        }
+        assert(cc.maps[m as int][off as int] == map_view(c.maps, off as int));
+        let i = c.maps.idx[off as usize];
+        if i == NO_MAP { return false; }
+        return x_chain_is(&c.maps.nodes, i, k);
+    }
     match x_map_at(c, m, off) {
-        Some(k2) => x_kinds_eq(k2, k),
+        Some(k2) => x_kinds_eq(&k2, k),
         None => false,
     }
 }
 
 #[verifier::loop_isolation(false)]
-pub fn x_terminator_ok(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>) -> (r: bool)
+pub fn x_terminator_ok(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>) -> (r: bool)
     requires
-        wf_program2(pview2(p)),
+        pins_sorted(c.g),
+        wf_program2(vview(p)),
         m < p.methods.len(),
-        p.methods[m as int].entry + off + opcode_length2(p.bytecodes[p.methods[m as int].entry + off]) <= p.methods[m as int].end,
-        p.bytecodes[p.methods[m as int].entry + off] < OPCODE_COUNT2,
-    ensures r == terminator_ok(pview2(p), c@, m as int, off as int, kv(*k)),
+        vinfo(p, m as int).entry + off + opcode_length2(p.bytecodes[vinfo(p, m as int).entry + off]) <= vinfo(p, m as int).end,
+        p.bytecodes[vinfo(p, m as int).entry + off] < OPCODE_COUNT2,
+    ensures r == terminator_ok(vview(p), c@, m as int, off as int, kv(*k)),
 {
     let (bci, op, len, b1, w1) = x_decode(p, m, off);
     let h = k.len();
@@ -1314,7 +1801,7 @@ pub fn x_terminator_ok(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec
     } else if op == INVOKE_STATIC_TAIL {
         let t = x_dispatch_target(p, w1);
         if !x_valid(p, t) { return false; }
-        let a = p.methods[t as usize].arity as usize;
+        let a = x_info(p, t as usize).arity as usize;
         if !x_args_ok(c, t as usize, k, a) { return false; }
         let mut j = h - a;
         while j < h
@@ -1334,7 +1821,7 @@ pub fn x_terminator_ok(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec
         }
         true
     } else if op == INVOKE_LAMBDA_TAIL {
-        if !(p.methods[m].kind == 0 && h == p.methods[m].arity as usize && h >= 1) { return false; }
+        if !(x_info(p, m).kind == 0 && h == x_info(p, m).arity as usize && h >= 1) { return false; }
         let mut i = 0;
         while i < h
             invariant h == k.len(), 0 <= i <= h, kk == kv(*k), forall|ii: int| 0 <= ii < i ==> is_val(#[trigger] kk[ii]),
@@ -1366,7 +1853,7 @@ pub fn x_terminator_ok(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec
                         if !(x_valid(p, om) && b1 <= j as i64 + 1 && (j as usize) < fk.len()) { return false; }
                         let n = (j as i64 + 1 - b1) as usize;
                         if t.len() != n {
-                            proof { assert(kv(*t).len() != kv(*fk).subrange(0, n as int).len()); }
+                            proof { assert(kv(t).len() != kv(*fk).subrange(0, n as int).len()); }
                             return false;
                         }
                         let mut i = 0;
@@ -1376,12 +1863,12 @@ pub fn x_terminator_ok(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec
                             decreases n - i,
                         {
                             if !x_kind_eq(t[i], fk[i]) {
-                                proof { assert(kv(*t)[i as int] != kv(*fk).subrange(0, n as int)[i as int]); }
+                                proof { assert(kv(t)[i as int] != kv(*fk).subrange(0, n as int)[i as int]); }
                                 return false;
                             }
                             i += 1;
                         }
-                        proof { assert(kv(*t) =~= kv(*fk).subrange(0, n as int)); }
+                        proof { assert(kv(t) =~= kv(*fk).subrange(0, n as int)); }
                         true
                     },
                     _ => false,
@@ -1396,12 +1883,12 @@ pub fn x_terminator_ok(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec
     }
 }
 
-pub fn x_shape_ok(p: &ExecProgram, c: &XCert, m: usize, k: &Vec<XKind>) -> (r: bool)
+pub fn x_shape_ok(p: &VProgram, c: &XCert, m: usize, k: &Vec<XKind>) -> (r: bool)
     requires m < p.methods.len(),
-    ensures r == shape_ok(pview2(p), c@, m as int, kv(*k)),
+    ensures r == shape_ok(vview(p), c@, m as int, kv(*k)),
 {
-    if x_pinned0(p, m) && p.methods[m].arity >= 1 && k.len() < 1 { return false; }
-    if p.methods[m].kind == 3 {
+    if x_pinned0(p, m) && x_info(p, m).arity >= 1 && k.len() < 1 { return false; }
+    if x_info(p, m).kind == 3 {
         if k.len() < 1 { return false; }
         proof { assert(kv(*k)[0] == k@[0]@); }
         match x_ctx_of(c, m) {
@@ -1413,11 +1900,11 @@ pub fn x_shape_ok(p: &ExecProgram, c: &XCert, m: usize, k: &Vec<XKind>) -> (r: b
     }
 }
 
-pub fn x_instr_ok(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: bool)
-    requires wf_program2(pview2(p)), m < p.methods.len(),
-    ensures r == instr_ok(pview2(p), c@, m as int, off as int, kv(*k), trusted),
+pub fn x_instr_ok(p: &VProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKind>, trusted: bool) -> (r: bool)
+    requires wf_program2(vview(p)), m < p.methods.len(), pins_sorted(c.g),
+    ensures r == instr_ok(vview(p), c@, m as int, off as int, kv(*k), trusted),
 {
-    let i = p.methods[m];
+    let i = x_info(p, m);
     if !(off < i.end - i.entry) { return false; }
     let bci = i.entry + off;
     let op = p.bytecodes[bci];
@@ -1454,22 +1941,22 @@ pub fn x_instr_ok(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKin
     true
 }
 
-pub fn x_entry_kinds(p: &ExecProgram, c: &XCert, m: usize) -> (r: Vec<XKind>)
+pub fn x_entry_kinds(p: &VProgram, c: &XCert, m: usize) -> (r: Vec<XKind>)
     requires m < p.methods.len(),
-    ensures kv(r) == entry_kinds(pview2(p), c@, m as int),
+    ensures kv(r) == entry_kinds(vview(p), c@, m as int),
 {
-    let a = p.methods[m].arity as usize;
-    let ghost e = entry_kinds(pview2(p), c@, m as int);
+    let a = x_info(p, m).arity as usize;
+    let ghost e = entry_kinds(vview(p), c@, m as int);
     let mut r: Vec<XKind> = Vec::new();
     let mut i = 0;
     while i < a
-        invariant m < p.methods.len(), a == p.methods[m as int].arity, e == entry_kinds(pview2(p), c@, m as int),
+        invariant m < p.methods.len(), a == vinfo(p, m as int).arity, e == entry_kinds(vview(p), c@, m as int),
             0 <= i <= a, r.len() == i, forall|ii: int| 0 <= ii < i ==> #[trigger] kv(r)[ii] == e[ii],
         decreases a - i,
     {
         let ghost before = r@;
         let ghost before_k = kv(r);
-        if p.methods[m].kind == 3 {
+        if x_info(p, m).kind == 3 {
             if i == 0 {
                 match x_ctx_of(c, m) {
                     Some(ctx) => r.push(XKind::Block(1, ctx.slot)),
@@ -1502,44 +1989,51 @@ pub fn x_entry_kinds(p: &ExecProgram, c: &XCert, m: usize) -> (r: Vec<XKind>)
 }
 
 /// Every mapped instruction of `m` is accepted.
-pub fn x_method_body_ok(p: &ExecProgram, c: &XCert, m: usize, trusted: bool) -> (r: bool)
-    requires wf_program2(pview2(p)), m < p.methods.len(), m < c.maps.len(),
+pub fn x_method_body_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool) -> (r: bool)
+    requires wf_program2(vview(p)), m < p.methods.len(), m == c.cur, c.cur < c.g.n, pins_sorted(c.g),
     ensures r == forall|o: int| 0 <= o < c@.maps[m as int].len() && (#[trigger] c@.maps[m as int][o]) is Some ==>
-        instr_ok(pview2(p), c@, m as int, o, c@.maps[m as int][o]->0, trusted),
+        instr_ok(vview(p), c@, m as int, o, c@.maps[m as int][o]->0, trusted),
 {
+    let ghost cm = c@.maps[m as int];
+    assert(cm == mapsv(c.maps));
     let mut off = 0;
-    while off < c.maps[m].len()
+    while off < c.maps.idx.len()
         invariant
-            wf_program2(pview2(p)), m < p.methods.len(), m < c.maps.len(),
-            0 <= off <= c.maps[m as int].len(),
+            wf_program2(vview(p)), m < p.methods.len(), m == c.cur, c.cur < c.g.n, pins_sorted(c.g),
+            cm == c@.maps[m as int], cm == mapsv(c.maps),
+            0 <= off <= c.maps.idx@.len(),
             forall|o: int| 0 <= o < off && (#[trigger] c@.maps[m as int][o]) is Some ==>
-                instr_ok(pview2(p), c@, m as int, o, c@.maps[m as int][o]->0, trusted),
-        decreases c.maps[m as int].len() - off,
+                instr_ok(vview(p), c@, m as int, o, c@.maps[m as int][o]->0, trusted),
+        decreases c.maps.idx@.len() - off,
     {
-        match &c.maps[m][off] {
-            Some(k) => if !x_instr_ok(p, c, m, off, k, trusted) {
-                proof { assert(c@.maps[m as int][off as int] == Some(kv(*k))); }
+        let i = c.maps.idx[off];
+        if i != NO_MAP {
+            let k = x_chain(&c.maps.nodes, i);
+            assert(cm[off as int] == Some(kv(k)));
+            if !x_instr_ok(p, c, m, off, &k, trusted) {
                 return false;
-            },
-            None => {},
+            }
         }
         off += 1;
     }
     true
 }
 
-pub fn x_method_ok(p: &ExecProgram, c: &XCert, m: usize, trusted: bool) -> (r: bool)
+pub fn x_method_ok(p: &VProgram, c: &XCert, m: usize, trusted: bool) -> (r: bool)
     requires
-        wf_program2(pview2(p)), m < p.methods.len(),
-        c.maps.len() == p.methods.len(), c.block_params.len() == p.methods.len(), c.contexts.len() == p.methods.len(),
-    ensures r == method_ok(pview2(p), c@, m as int, trusted),
+        wf_program2(vview(p)), m < p.methods.len(), c.g.n == p.methods.len(), m == c.cur, pins_sorted(c.g),
+    ensures r == method_ok(vview(p), c@, m as int, trusted),
 {
-    let i = p.methods[m];
+    let ghost cc = c@;
+    assert(cc.maps[m as int] == mapsv(c.maps));
+    let i = x_info(p, m);
     if !(i.entry < i.end && i.end <= p.bytecodes.len()) { return false; }
-    if c.maps[m].len() != i.end - i.entry { return false; }
-    if c.block_params[m].len() != i.arity as usize { return false; }
-    if c.contexts[m].is_some() && i.kind != 3 { return false; }
-    if i.kind == 3 && c.contexts[m].is_none() { return true; }
+    if c.maps.idx.len() != i.end - i.entry { return false; }
+    if x_bp_len(c, m) != i.arity as usize { return false; }
+    let ctx = x_ctx_of(c, m);
+    assert(cc.contexts[m as int] == ctx_of(cc, m as int));
+    if ctx.is_some() && i.kind != 3 { return false; }
+    if i.kind == 3 && ctx.is_none() { return true; }
     let e = x_entry_kinds(p, c, m);
     if !x_map_is(c, m as i64, 0, &e) { return false; }
     x_method_body_ok(p, c, m, trusted)
@@ -1548,59 +2042,39 @@ pub fn x_method_ok(p: &ExecProgram, c: &XCert, m: usize, trusted: bool) -> (r: b
 // ---------------------------------------------------------------------------
 // Tables.
 
-#[verifier::loop_isolation(false)]
-pub fn x_no_block_params(c: &XCert, m: usize) -> (r: bool)
-    requires m < c.block_params.len(),
-    ensures r == no_block_params(c@, m as int),
-{
-    let mut i = 0;
-    while i < c.block_params[m].len()
-        invariant m < c.block_params.len(), 0 <= i <= c.block_params[m as int].len(),
-            forall|ii: int| 0 <= ii < i ==> !(#[trigger] c@.block_params[m as int][ii]),
-        decreases c.block_params[m as int].len() - i,
-    {
-        if c.block_params[m][i] {
-            proof { assert(c@.block_params[m as int][i as int]); }
-            return false;
-        }
-        i += 1;
-    }
-    true
-}
-
-pub fn x_machine_class_ok(p: &ExecProgram, k: usize) -> (r: bool)
+pub fn x_machine_class_ok(p: &VProgram, k: usize) -> (r: bool)
     requires k < p.builtin.len(),
-    ensures r == machine_class_ok(pview2(p), k as int),
+    ensures r == machine_class_ok(vview(p), k as int),
 {
     let cl = p.builtin[k] as i64;
     0 <= cl && (cl as u64) < (p.class_bits.len() as u64) && !(x_is_field_class(p, cl) && x_ifc(p, cl as usize) >= 1)
 }
 
-pub fn x_entry_method(p: &ExecProgram, k: usize) -> (r: i64)
+pub fn x_entry_method(p: &VProgram, k: usize) -> (r: i64)
     requires k < p.entry_points.len(),
-    ensures r as int == entry_method(pview2(p), k as int),
+    ensures r as int == entry_method(vview(p), k as int),
 {
     let d = p.entry_points[k] as i64;
     if 0 <= d && (d as u64) < (p.dispatch.len() as u64) { p.dispatch[d as usize] as i64 } else { -1 }
 }
 
-pub fn x_entry_ok(p: &ExecProgram, c: &XCert, k: usize, a: u8) -> (r: bool)
-    requires k < p.entry_points.len(), c.block_params.len() == p.methods.len(),
-    ensures r == entry_ok(pview2(p), c@, k as int, a as int),
+pub fn x_entry_ok(p: &VProgram, c: &XCert, k: usize, a: u8) -> (r: bool)
+    requires k < p.entry_points.len(), c.g.n == p.methods.len(),
+    ensures r == entry_ok(vview(p), c@, k as int, a as int),
 {
     let e = x_entry_method(p, k);
-    x_valid(p, e) && p.methods[e as usize].kind == 0 && p.methods[e as usize].arity == a
+    x_valid(p, e) && x_info(p, e as usize).kind == 0 && x_info(p, e as usize).arity == a
         && x_no_block_params(c, e as usize)
 }
 
-pub fn x_dispatch_entry_ok(p: &ExecProgram, d: usize) -> (r: bool)
+pub fn x_dispatch_entry_ok(p: &VProgram, d: usize) -> (r: bool)
     requires d < p.dispatch.len(), p.dispatch.len() < 0x1000_0000,
-    ensures r == dispatch_entry_ok(pview2(p), d as int),
+    ensures r == dispatch_entry_ok(vview(p), d as int),
 {
     let t = p.dispatch[d] as i64;
     if t == -1 { return true; }
     if !x_valid(p, t) { return false; }
-    let i = p.methods[t as usize];
+    let i = x_info(p, t as usize);
     if !(i.kind == 0 || i.kind == 1) { return false; }
     let cl = d as i64 - i.selector as i64;
     if i.selector != 0xffff && 0 <= cl && (cl as u64) < (p.class_bits.len() as u64) && i.recv_start != 0xffff {
@@ -1610,73 +2084,63 @@ pub fn x_dispatch_entry_ok(p: &ExecProgram, d: usize) -> (r: bool)
     }
 }
 
-pub fn x_bools_eq(a: &Vec<bool>, b: &Vec<bool>) -> (r: bool)
-    ensures r == (a@ == b@),
+pub fn x_method_table_ok(p: &VProgram, c: &XCert, m: usize) -> (r: bool)
+    requires m < p.methods.len(), c.g.n == p.methods.len(),
+    ensures r == method_table_ok(vview(p), c@, m as int),
 {
-    if a.len() != b.len() { return false; }
-    let mut i = 0;
-    while i < a.len()
-        invariant a.len() == b.len(), 0 <= i <= a.len(), forall|j: int| 0 <= j < i ==> a@[j] == b@[j],
-        decreases a.len() - i,
-    {
-        if a[i] != b[i] { return false; }
-        i += 1;
-    }
-    proof { assert(a@ =~= b@); }
-    true
-}
-
-pub fn x_method_table_ok(p: &ExecProgram, c: &XCert, m: usize) -> (r: bool)
-    requires
-        m < p.methods.len(),
-        c.block_params.len() == p.methods.len(),
-        c.contexts.len() == p.methods.len(),
-    ensures r == method_table_ok(pview2(p), c@, m as int),
-{
-    let i = p.methods[m];
+    let ghost cc = c@;
+    let i = x_info(p, m);
     let s = i.selector as usize;
-    if c.block_params[m].len() != i.arity as usize { return false; }
+    if x_bp_len(c, m) != i.arity as usize { return false; }
     if i.selector != 0xffff {
-        if s >= c.sel_rep.len() { return false; }
-        let r = c.sel_rep[s];
-        if !(x_valid(p, r) && p.methods[r as usize].arity == i.arity
-            && x_bools_eq(&c.block_params[r as usize], &c.block_params[m])
+        let r = x_sel_rep(c, s);
+        if !(x_valid(p, r) && x_info(p, r as usize).arity == i.arity
+            && x_bp_eq(c, r as usize, m)
             && x_row_fits(p, s)) {
             return false;
         }
     }
-    if i.recv_start != 0xffff && !(i.arity >= 1 && !c.block_params[m][0]) { return false; }
+    if i.recv_start != 0xffff && !(i.arity >= 1 && !x_is_block_param(c, m, 0)) { return false; }
     if i.kind == 3 && !(i.arity >= 1 && x_no_block_params(c, m)) { return false; }
     if i.kind == 2 && !x_no_block_params(c, m) { return false; }
-    match &c.contexts[m] {
+    assert(cc.contexts[m as int] == ctx_of(cc, m as int));
+    match x_ctx_of(c, m) {
         Some(ctx) => x_valid(p, ctx.outer as i64),
         None => true,
     }
 }
 
-pub fn x_tables_ok(p: &ExecProgram, c: &XCert) -> (r: bool)
-    requires wf_program2(pview2(p)),
-    ensures r == tables_ok(pview2(p), c@),
+pub fn x_tables_ok(p: &VProgram, c: &XCert) -> (r: bool)
+    requires wf_program2(vview(p)), c.cur >= c.g.n, pins_sorted(c.g),
+    ensures r == tables_ok(vview(p), c@),
 {
-    let ghost pv = pview2(p);
+    let ghost pv = vview(p);
+    let ghost cc = c@;
     let n = p.methods.len();
-    if !(c.maps.len() == n && c.block_params.len() == n && c.contexts.len() == n) { return false; }
-    if c.sel_rep.len() > 0xffff { return false; }
+    if c.g.n != n { return false; }
+    let lim = if c.g.sel_rep.len() < 0xffff { c.g.sel_rep.len() } else { 0xffff };
     let mut s = 0;
-    while s < c.sel_rep.len()
-        invariant 0 <= s <= c.sel_rep.len(), pv == pview2(p), forall|ss: int| 0 <= ss < s ==> #[trigger] sel_rep_ok(pv, c@, ss),
-        decreases c.sel_rep.len() - s,
+    while s < lim
+        invariant 0 <= s <= lim, lim <= 0xffff, lim <= c.g.sel_rep@.len(), cc == c@, pv == vview(p),
+            lim == 0xffff || lim == c.g.sel_rep@.len(),
+            forall|ss: int| 0 <= ss < s ==> #[trigger] sel_rep_ok(pv, cc, ss),
+        decreases lim - s,
     {
-        let r = c.sel_rep[s];
-        if !(r == -1 || (x_valid(p, r) && p.methods[r as usize].selector as usize == s)) {
-            proof { assert(!sel_rep_ok(pv, c@, s as int)); }
+        let r = c.g.sel_rep[s] as i64;
+        if !(r == -1 || (x_valid(p, r) && x_info(p, r as usize).selector as usize == s)) {
+            proof { assert(!sel_rep_ok(pv, cc, s as int)); }
             return false;
         }
         s += 1;
     }
+    proof {
+        assert forall|ss: int| 0 <= ss < cc.sel_rep.len() implies #[trigger] sel_rep_ok(pv, cc, ss) by {
+            if ss >= lim { assert(cc.sel_rep[ss] == -1); }
+        }
+    }
     let mut d = 0;
     while d < p.dispatch.len()
-        invariant wf_program2(pv), pv == pview2(p), 0 <= d <= p.dispatch.len(),
+        invariant wf_program2(pv), pv == vview(p), 0 <= d <= p.dispatch.len(),
             forall|dd: int| 0 <= dd < d ==> #[trigger] dispatch_entry_ok(pv, dd),
         decreases p.dispatch.len() - d,
     {
@@ -1685,8 +2149,8 @@ pub fn x_tables_ok(p: &ExecProgram, c: &XCert) -> (r: bool)
     }
     let mut m = 0;
     while m < n
-        invariant n == p.methods.len(), c.block_params.len() == n, c.contexts.len() == n, 0 <= m <= n, pv == pview2(p),
-            forall|mm: int| 0 <= mm < m ==> #[trigger] method_table_ok(pv, c@, mm),
+        invariant n == p.methods.len(), c.g.n == n, 0 <= m <= n, pv == vview(p), cc == c@,
+            forall|mm: int| 0 <= mm < m ==> #[trigger] method_table_ok(pv, cc, mm),
         decreases n - m,
     {
         if !x_method_table_ok(p, c, m) { return false; }
@@ -1694,7 +2158,7 @@ pub fn x_tables_ok(p: &ExecProgram, c: &XCert) -> (r: bool)
     }
     let mut k = 0;
     while k < p.interface_check_offsets.len()
-        invariant 0 <= k <= p.interface_check_offsets.len(), pv == pview2(p),
+        invariant 0 <= k <= p.interface_check_offsets.len(), pv == vview(p),
             forall|kk: int| 0 <= kk < k ==> class_count(pv) + (#[trigger] pv.interface_check_offsets[kk]) as int <= pv.dispatch.len(),
         decreases p.interface_check_offsets.len() - k,
     {
@@ -1710,9 +2174,9 @@ pub fn x_tables_ok(p: &ExecProgram, c: &XCert) -> (r: bool)
     if !(x_is_field_class(p, tc) && x_ifc(p, tc as usize) >= 2) { return false; }
     if !x_task_class_ok(p) { return false; }
     if !x_entry_ok(p, c, 0, 1) { return false; }
-    if p.methods[x_entry_method(p, 0) as usize].recv_start != 0xffff { return false; }
+    if x_info(p, x_entry_method(p, 0) as usize).recv_start != 0xffff { return false; }
     if !x_entry_ok(p, c, 2, 1) { return false; }
-    if p.methods[x_entry_method(p, 2) as usize].recv_start != 0xffff { return false; }
+    if x_info(p, x_entry_method(p, 2) as usize).recv_start != 0xffff { return false; }
     let mut two: Vec<XKind> = Vec::new();
     two.push(XKind::Val);
     two.push(XKind::Val);
@@ -1721,42 +2185,224 @@ pub fn x_tables_ok(p: &ExecProgram, c: &XCert) -> (r: bool)
     x_entry_ok(p, c, 8, 2)
 }
 
-pub fn x_wf_program2(p: &ExecProgram) -> (r: bool)
-    ensures r == wf_program2(pview2(p)),
+pub fn x_wf_program2(p: &VProgram) -> (r: bool)
+    ensures r == wf_program2(vview(p)),
 {
+    let ghost pv = vview(p);
     if !(p.word_bits == 32 || p.word_bits == 64) { return false; }
     if !(p.bytecodes.len() < 0x1000_0000 && p.methods.len() < 0x1000_0000 && p.dispatch.len() < 0x1000_0000) {
         return false;
     }
     let mut m = 0;
     while m < p.methods.len()
-        invariant 0 <= m <= p.methods.len(),
-            forall|mm: int| 0 <= mm < m ==> #[trigger] p.methods@[mm].entry <= p.methods@[mm].end <= p.bytecodes.len(),
+        invariant 0 <= m <= p.methods.len(), pv == vview(p),
+            forall|mm: int| 0 <= mm < m ==> #[trigger] pv.methods[mm].entry <= pv.methods[mm].end <= pv.bytecodes.len(),
         decreases p.methods.len() - m,
     {
-        if !(p.methods[m].entry <= p.methods[m].end && p.methods[m].end <= p.bytecodes.len()) { return false; }
+        let i = x_info(p, m);
+        if !(i.entry <= i.end && i.end <= p.bytecodes.len()) { return false; }
         m += 1;
     }
     p.roots.len() == 35 && p.invoke_offsets.len() == 19 && p.builtin.len() == 23 && p.entry_points.len() == 9
         && p.literals.len() >= 7
 }
 
-/// The structural verifier.
-pub fn verify(p: &ExecProgram, c: &XCert, trusted: bool) -> (r: bool)
-    ensures r == accepts(pview2(p), c@, trusted),
+// ---------------------------------------------------------------------------
+// The streaming verifier.
+
+/// The pins are strictly sorted.
+pub fn x_pins_sorted(g: &XGlobal) -> (r: bool)
+    ensures r == pins_sorted(g),
 {
-    if !x_wf_program2(p) { return false; }
-    if !x_tables_ok(p, c) { return false; }
-    let mut m = 0;
-    while m < p.methods.len()
-        invariant wf_program2(pview2(p)), tables_ok(pview2(p), c@), 0 <= m <= p.methods.len(),
-            forall|mm: int| 0 <= mm < m ==> #[trigger] method_ok(pview2(p), c@, mm, trusted),
-        decreases p.methods.len() - m,
+    let mut i = 1;
+    if g.pins.len() == 0 { return true; }
+    while i < g.pins.len()
+        invariant 1 <= i <= g.pins@.len(),
+            forall|a: int, b: int| 0 <= a < b < i ==> pin_key(#[trigger] g.pins@[a]) < pin_key(#[trigger] g.pins@[b]),
+        decreases g.pins@.len() - i,
     {
-        if !x_method_ok(p, c, m, trusted) { return false; }
-        m += 1;
+        if x_pin_key(&g.pins[i - 1]) >= x_pin_key(&g.pins[i]) {
+            return false;
+        }
+        proof {
+            assert forall|a: int, b: int| 0 <= a < b < i + 1 implies pin_key(#[trigger] g.pins@[a]) < pin_key(#[trigger] g.pins@[b]) by {
+                if b == i && a < i - 1 {
+                    assert(pin_key(g.pins@[a]) < pin_key(g.pins@[i - 1]));
+                }
+            }
+        }
+        i += 1;
     }
     true
 }
+
+/// Computes the maps of a method for the checker (`v2::infer`, untrusted:
+/// the checker decides whatever it returns).
+pub trait MapOracle {
+    fn method_maps(&mut self, m: usize) -> XMaps;
+}
+
+/// The pins of method `m` (from `pins[at]` on, where the pins of the
+/// methods below `m` end) agree with its maps. Returns where the pins of
+/// `m` end, or `None` if one disagrees.
+pub fn x_pins_agree(g: &XGlobal, m: usize, maps: &XMaps, at: usize) -> (r: Option<usize>)
+    requires
+        pins_sorted(g), at <= g.pins@.len(),
+        forall|i: int| at <= i < g.pins@.len() ==> (#[trigger] g.pins@[i]).m >= m,
+    ensures
+        match r {
+            Some(e) => at <= e <= g.pins@.len()
+                && (forall|i: int| e <= i < g.pins@.len() ==> (#[trigger] g.pins@[i]).m > m)
+                && (forall|i: int| at <= i < e ==> (#[trigger] g.pins@[i]).m == m && (g.pins@[i].off as int) < maps.idx@.len()
+                        && mapsv(maps)[g.pins@[i].off as int] == Some(kv(g.pins@[i].kinds))),
+            None => exists|i: int| 0 <= i < g.pins@.len() && (#[trigger] g.pins@[i]).m == m
+                && !((g.pins@[i].off as int) < maps.idx@.len() && mapsv(maps)[g.pins@[i].off as int] == Some(kv(g.pins@[i].kinds))),
+        },
+{
+    let mut i = at;
+    while i < g.pins.len() && g.pins[i].m as usize == m
+        invariant
+            pins_sorted(g), at <= i <= g.pins@.len(),
+            forall|j: int| at <= j < g.pins@.len() ==> (#[trigger] g.pins@[j]).m >= m,
+            forall|j: int| at <= j < i ==> (#[trigger] g.pins@[j]).m == m && (g.pins@[j].off as int) < maps.idx@.len()
+                && mapsv(maps)[g.pins@[j].off as int] == Some(kv(g.pins@[j].kinds)),
+        decreases g.pins@.len() - i,
+    {
+        let x = &g.pins[i];
+        if (x.off as usize) >= maps.idx.len() {
+            return None;
+        }
+        let top = maps.idx[x.off as usize];
+        if top == NO_MAP {
+            return None;
+        }
+        let k = x_chain(&maps.nodes, top);
+        if !x_kinds_eq(&k, &x.kinds) {
+            return None;
+        }
+        i += 1;
+    }
+    proof {
+        assert forall|j: int| i <= j < g.pins@.len() implies (#[trigger] g.pins@[j]).m > m by {
+            if j > i {
+                lemma_key(g.pins@[i as int].m as int, g.pins@[i as int].off as int, g.pins@[j].m as int, g.pins@[j].off as int);
+                assert(pin_key(g.pins@[i as int]) < pin_key(g.pins@[j]));
+            }
+        }
+    }
+    Some(i)
+}
+
+/// The structural verifier, one method at a time: the global part of the
+/// certificate is `g`, the maps of each method come from `o` and are
+/// dropped after the method is checked. Returns exactly whether the pins
+/// are sorted and `split_ok` holds for the maps it was given (`ms`); by
+/// `v2::split`, `split_ok` implies `accepts` of the assembled certificate,
+/// and an accepted certificate always splits.
+pub fn verify<O: MapOracle>(p: &VProgram, g: &XGlobal, o: &mut O, trusted: bool) -> (r: (bool, Ghost<Seq<Maps>>))
+    ensures r.0 == (pins_sorted(g) && split_ok(vview(p), g@, r.1@, trusted)),
+{
+    let ghost pv = vview(p);
+    let ghost pad = Seq::new(g.n as nat, |m: int| Seq::<Option<Seq<Kind>>>::empty());
+    if !x_wf_program2(p) { return (false, Ghost(pad)); }
+    if g.n != p.methods.len() { return (false, Ghost(pad)); }
+    if !x_pins_sorted(g) { return (false, Ghost(pad)); }
+    let empty = XMaps { idx: Vec::new(), nodes: Vec::new() };
+    let tc = XCert { g, cur: g.n, maps: &empty };
+    if !x_tables_ok(p, &tc) { return (false, Ghost(pad)); }
+    let n = p.methods.len();
+    let ghost mut ms: Seq<Maps> = Seq::empty();
+    let mut at: usize = 0;
+    let mut m: usize = 0;
+    while m < n
+        invariant
+            pv == vview(p), wf_program2(pv), n == p.methods.len(), g.n == n, n < 0x1000_0000, pins_sorted(g),
+            tables_ok(pv, tables_cert(g@)),
+            0 <= m <= n, ms.len() == m, at <= g.pins@.len(),
+            forall|mm: int| 0 <= mm < m ==> #[trigger] method_ok(pv, local_cert(g@, mm, ms[mm]), mm, trusted),
+            forall|i: int| 0 <= i < at ==> (#[trigger] g.pins@[i]).m < m && (g.pins@[i].off as int) < ms[g.pins@[i].m as int].len()
+                && ms[g.pins@[i].m as int][g.pins@[i].off as int] == Some(kv(g.pins@[i].kinds)),
+            forall|i: int| at <= i < g.pins@.len() ==> (#[trigger] g.pins@[i]).m >= m,
+        decreases n - m,
+    {
+        let maps = o.method_maps(m);
+        let c = XCert { g, cur: m, maps: &maps };
+        let ghost mm = mapsv(&maps);
+        let ghost ms2 = ms.push(mm) + Seq::new((n - m - 1) as nat, |i: int| Seq::<Option<Seq<Kind>>>::empty());
+        assert(ms2.len() == n);
+        assert(ms2[m as int] == mm);
+        if !x_method_ok(p, &c, m, trusted) {
+            assert(!method_ok(pv, local_cert(g@, m as int, ms2[m as int]), m as int, trusted));
+            return (false, Ghost(ms2));
+        }
+        match x_pins_agree(g, m, &maps, at) {
+            None => {
+                proof {
+                    let i = choose|i: int| 0 <= i < g.pins@.len() && (#[trigger] g.pins@[i]).m == m
+                        && !((g.pins@[i].off as int) < maps.idx@.len() && mapsv(&maps)[g.pins@[i].off as int] == Some(kv(g.pins@[i].kinds)));
+                    lemma_pin_agree_witness(g, i, ms2);
+                }
+                return (false, Ghost(ms2));
+            },
+            Some(e) => {
+                proof {
+                    ms = ms.push(mm);
+                    assert forall|i: int| 0 <= i < e implies (#[trigger] g.pins@[i]).m < m + 1 && (g.pins@[i].off as int) < ms[g.pins@[i].m as int].len()
+                        && ms[g.pins@[i].m as int][g.pins@[i].off as int] == Some(kv(g.pins@[i].kinds)) by {
+                        if i >= at { assert(g.pins@[i].m == m); }
+                    }
+                }
+                at = e;
+            },
+        }
+        m += 1;
+    }
+    if at < g.pins.len() {
+        // A pin of a method that does not exist.
+        proof {
+            lemma_pin_unique(g, at as int);
+            let x = g.pins@[at as int];
+            assert(pin_at(g@, x.m as int, x.off as int) is Some);
+        }
+        return (false, Ghost(ms));
+    }
+    proof {
+        let gv = g@;
+        assert forall|m2: int, o2: int| #[trigger] pin_at(gv, m2, o2) is Some implies
+            0 <= m2 < ms.len() && 0 <= o2 < ms[m2].len() && ms[m2][o2] == pin_at(gv, m2, o2) by {
+            let i = choose|i: int| 0 <= i < g.pins@.len() && (#[trigger] g.pins@[i]).m == m2 && g.pins@[i].off == o2;
+            lemma_pin_unique(g, i);
+            if i >= at { assert(g.pins@[i].m >= n); }
+        }
+    }
+    (true, Ghost(ms))
+}
+
+/// With sorted pins, the pin view at a pin's key is that pin.
+pub proof fn lemma_pin_unique(g: &XGlobal, i: int)
+    requires pins_sorted(g), 0 <= i < g.pins@.len(),
+    ensures pin_view(g, g.pins@[i].m as int, g.pins@[i].off as int) == Some(kv(g.pins@[i].kinds)),
+{
+    let x = g.pins@[i];
+    assert(has_pin(g, x.m as int, x.off as int));
+    let j = choose|j: int| 0 <= j < g.pins@.len() && (#[trigger] g.pins@[j]).m == x.m && g.pins@[j].off == x.off;
+    lemma_key(g.pins@[j].m as int, g.pins@[j].off as int, x.m as int, x.off as int);
+    if j < i { assert(pin_key(g.pins@[j]) < pin_key(g.pins@[i])); }
+    if j > i { assert(pin_key(g.pins@[i]) < pin_key(g.pins@[j])); }
+}
+
+/// A pin of method `m` that disagrees with `ms[m]` breaks `pins_agree`.
+pub proof fn lemma_pin_agree_witness(g: &XGlobal, i: int, ms: Seq<Maps>)
+    requires
+        pins_sorted(g), 0 <= i < g.pins@.len(), (g.pins@[i].m as int) < ms.len(),
+        !((g.pins@[i].off as int) < ms[g.pins@[i].m as int].len()
+            && ms[g.pins@[i].m as int][g.pins@[i].off as int] == Some(kv(g.pins@[i].kinds))),
+    ensures !pins_agree(g@, ms),
+{
+    lemma_pin_unique(g, i);
+    let x = g.pins@[i];
+    assert(pin_at(g@, x.m as int, x.off as int) == Some(kv(x.kinds)));
+}
+
 
 } // verus!

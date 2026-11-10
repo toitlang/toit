@@ -4,6 +4,52 @@ Plan: /home/flo/work/opentoit-sandboxing-reports/07-verified-sandbox-plan.md
 (with the 2026-11-10 addendum); requests: format/PHASE4-REQUESTS.md;
 spec changes for the other agents: format/SPEC-CHANGELOG.md.
 
+## PROGRESS: verifier memory and robustness (branch spec/verifier-memory)
+
+Brief: R6 (total inference), R8 (memory bounded by the largest method),
+no_std readiness, gates. Decisions and results:
+
+* R8 design: `accepts` and the theorem unchanged. `v2/split.rs`:
+  `split_ok` checks each method against its own maps plus the global part
+  and a few pinned maps of other methods (NON_LOCAL_BRANCH targets, task
+  entry offset 1); proven `split_ok ==> accepts(with_maps(g, ms))` and
+  `accepts(c) ==> split_ok(gcert_of(c), c.maps)` (so exists-equivalent),
+  `theorem_soundness_split`. `check::verify(p, g, oracle, t)` is proven to
+  return exactly `pins_sorted(g) && split_ok(vview(p), g@, ms, t)` for the
+  maps the oracle yields one method at a time. Zero admits; Verus 738
+  verified, 0 errors.
+* Representation: program borrowed (`v2/vprog.rs`, `VMethod` = VM's
+  `V2Method` layout); global part `XGlobal` (flat block-parameter bits,
+  context index, selector representatives trimmed, sorted pins with binary
+  search); per-method maps as node lists sharing bottoms (`XMaps`), the
+  checker compares successor maps in place (`x_chain_is`).
+* Heap: `x_loaded_ok_stream` (Verus) checks objects one at a time as
+  vmverify's `from_vm::Objects` converts them; nothing kept.
+* Inference: global phase (`infer_global`), then recomputed per method for
+  the checker (`Oracle`, no origin tracking). Origins are sparse lists apart
+  from the kinds (an 812-byte method made 3 MB of nodes before), per-method
+  budgets for nodes and origin words. Total: bounds-checked everywhere;
+  `x_wf_program2` first; verified functions only within preconditions.
+* Memory (VM, counting allocator): hello world 3619 KB -> 45 KB, sandbox
+  tests 3.6-4.5 MB -> 44-56 KB, toit CLI 24.7 MB -> 431 KB. Time about
+  +20-25 % (hello 21.7 -> 27.0 ms, CLI 229 -> 272 ms, medians under load;
+  one more inference pass). Table in verified/vmverify/README.md.
+* R6: reproducers as regression (`vmverify/tests/findings.sh`, in
+  `check.sh --tests`); in-process fuzz driver of `toit_vmverify_verify`
+  over the saved FFI input (`toit_vmverify_fuzz`, `tests/fuzz_tables.sh`):
+  8 x 15 min on the final code: 445,655 mutants, 101,454 accepted, 0 panics, 0 slow calls (and 428,561 on an earlier build). `panic = "unwind"` + `catch_unwind` kept on hosts (the
+  inference and conversion are unverified; see README "One Rust library").
+* no_std: spec crate builds for riscv32imac/riscv64imac-unknown-none-elf
+  without `std`; vmverify for riscv64imac with a copy of the core patched
+  (`vmverify/tests/nostd_check.sh`). Blockers, all in verified/core: no
+  `#![no_std]`, vstd with `std`, staticlib crate type, not 32-bit clean
+  (machine.rs shifts usize by 32; layout.rs 64-bit constants).
+* Gates: check.sh --tests passed; ctest 1158/1161 (version, reader,
+  udp-reuse-port-test); verify_suite 439/443 accepted (4 compile errors; same set as before plus 5 new tests), system snapshots accepted, differential 439/439 equal, mutation campaign 18,000 mutants (3,744 accepted, 0 stuck).
+* Left: contexts' kinds (half of the global part) could share nodes;
+  the time overhead of the second inference pass; the core's no_std and
+  32-bit work (Phase 5).
+
 ## Done
 
 * R5 (task fields the VM owns): spec, verifier, exec step, reference

@@ -14,7 +14,7 @@
 // directory of this repository.
 
 //! A counting global allocator: the high-water mark of the Rust heap during
-//! a verification (`VerifyResult::peak_bytes`). One relaxed atomic add per
+//! a verification (`VerifyResult::peak_bytes`). Host builds only (`std`). One relaxed atomic add per
 //! allocation and free; the verified core does not allocate on its paths.
 
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -66,6 +66,11 @@ pub fn start_peak() -> usize {
     let now = CURRENT.load(Ordering::Relaxed);
     PEAK.store(now, Ordering::Relaxed);
     now
+}
+
+/// The current level of the Rust heap.
+pub fn current() -> usize {
+    CURRENT.load(Ordering::Relaxed)
 }
 
 /// The peak since `start_peak` returned `base`, above `base`.

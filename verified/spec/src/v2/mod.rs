@@ -19,6 +19,7 @@ pub mod bytecodes;
 pub mod types;
 pub mod spec;
 pub mod prim;
+#[cfg(any(feature = "std", verus_keep_ghost))]
 pub mod exec;
 pub mod verifier;
 pub mod sound;
@@ -44,6 +45,8 @@ pub mod sound_resource;
 pub mod sound_prim_spec;
 pub mod sound_step;
 pub mod theorem;
+pub mod vprog;
+pub mod split;
 #[allow(unused_variables)]
 pub mod check;
 #[cfg(not(verus_keep_ghost))]

@@ -18,12 +18,14 @@ directory of this repository.
 # The format-2 verifier in the VM
 
 Untrusted programs are verified by the structural verifier of format 2
-(verified/spec: `v2::check::verify`, proven equal to the specification's
-`accepts`; `theorem_soundness` in `v2/theorem.rs`) before any of their
-bytecode runs. This crate runs that verifier inside the VM, on the program
-**as the VM will execute it**: the abstract program is built directly from
-the tables the verified core gets, not from a second parse of the snapshot
-bytes.
+(verified/spec: `v2::check::verify`, proven to decide `split_ok`, the
+per-method form of the specification's `accepts`; `theorem_soundness_split`
+in `v2/split.rs`) before any of their bytecode runs. This crate runs that
+verifier inside the VM, on the program **as the VM will execute it**: the
+abstract program is the tables the verified core gets, borrowed in place,
+not a second parse of the snapshot bytes. Its memory is bounded by the
+largest method plus small per-method tables, not by the program (see
+"Memory").
 
 ## One Rust library
 
@@ -39,11 +41,17 @@ the core before (the CMake target keeps its name, `toit_verified_core`).
 
 The profile is `panic = "unwind"` (the core alone uses `abort`): the
 inference runs on untrusted input, and a panic must reject the program,
-not abort the VM (`ffi.rs` wraps the verification in `catch_unwind`). The
-fuzz harness has already found such panics (PHASE4-REQUESTS.md R6). The
-core's handlers do not unwind; benchmarks (richards, deltablue, pystone in
-format 2, minimum of 5 alternating runs, machine under load) were within
-noise of the `abort` build (-13 % to +5 %).
+not abort the VM (`ffi.rs` wraps the verification in `catch_unwind` on
+hosts). The inference is now total (PHASE4-REQUESTS.md R6: bounds-checked
+everywhere, verified functions called within their preconditions, fuzzed;
+see "Fuzzing"), and the verified checker cannot panic on indexing or
+arithmetic (Verus proves it). `catch_unwind` stays anyway: the inference
+(about 750 lines) and the conversion are plain Rust whose panic freedom is
+argued and tested, not proven, and on hosts the catch costs nothing
+measurable (the core's handlers do not unwind; benchmarks of richards,
+deltablue, pystone in format 2 were within noise of the `abort` build,
+-13 % to +5 %). Without `std` (devices) there is no unwinding: a panic
+aborts.
 
 ## The C ABI (src/verifier_v2.h)
 
@@ -106,25 +114,28 @@ Trusted format-2 programs are verified only with `-Xverify`/`TOIT_VERIFY`
 
 | File | Role |
 |---|---|
-| `src/from_vm.rs` | Builds `ExecProgram`, the heap (`Vec<ExecObj>`) and the globals from VM memory: tables copied as they are; roots, globals, literals followed breadth first through the program image (work list, no recursion). An object's kind is its header's class tag, which must equal its class's tag; an instance has its class's field count (`class_bits`), as the core's `instance_fields` reads it; strings and byte arrays (internal or external) must lie in the image. Every read is bounds-checked against `[program_heap_start, +program_heap_size)`. |
-| `src/verify.rs` | The verdict, the four duties of spec/SOUNDNESS.md "What the VM checks outside the verifier": `x_wf_program2` (the inference and `x_loaded_ok` require it), the untrusted `infer`, then the certificate's trusted fields (`global_count` = the globals' count, `prim_arity` = the VM's table) are overwritten, and the program is accepted iff the proven `check::verify` (= `accepts`, untrusted rules) and the proven `heap_check::x_loaded_ok` (= `loaded_ok`) both accept. The unverified `check_heap` only gives an early, readable rejection; the rest is diagnostics. |
-| `src/ffi.rs` | C ABI; panics reject. |
-| `src/alloc.rs` | Counting allocator (measurement). |
+| `src/from_vm.rs` | Views VM memory as the abstract program: the tables are borrowed as slices (`Converted::program()`/`split()` give a `VProgram`; the `V2Method` array is viewed as `VMethod`, whose layout is asserted equal at compile time); the 23 builtin class ids are decoded; roots, globals, literals are converted to values and followed breadth first through the program image (work list, no recursion), one object at a time (`Objects`, a `heap_check::ObjStream`). An object's kind is its header's class tag, which must equal its class's tag; an instance has its class's field count (`class_bits`), as the core's `instance_fields` reads it; strings and byte arrays (internal or external) must lie in the image. Every read is bounds-checked against `[program_heap_start, +program_heap_size)`. |
+| `src/verify.rs` | The verdict, the duties of spec/SOUNDNESS.md "What the VM checks outside the verifier": `x_wf_program2` (the inference and the heap check require it); the proven `heap_check::x_loaded_ok_stream` over the converted objects (accepts only if their heap satisfies `loaded_ok`), and the conversion must complete without error; the untrusted `infer::infer_global`, whose trusted fields (`global_count` = the globals' count, `prim_arity` = the VM's table) are set here; and the proven `check::verify` with the inference's oracle (= `pins_sorted && split_ok`, which implies `accepts` of the assembled certificate, untrusted rules). The rest is diagnostics. |
+| `src/ffi.rs` | C ABI; panics reject (hosts). |
+| `src/counting.rs`, `src/clock.rs` | Counting allocator and phase times (measurement; hosts). |
 
-Not trusted: `canonical.rs`, the `toit_vmverify_canonical` tool (tests).
+Not trusted: `canonical.rs`, `tables.rs`, the `toit_vmverify_canonical`,
+`toit_vmverify_mem` and `toit_vmverify_fuzz` tools (tests).
 `v2/infer.rs` stays untrusted (it only produces the certificate).
-The heap check is verified (`heap_check::x_loaded_ok`, proven equal to
-`loaded_ok`, including the bound of 2^29 objects).
+The heap check is verified (`x_loaded_ok_stream`; `x_loaded_ok` for a heap
+in memory is proven equal to `loaded_ok`, including the bound of 2^29
+objects).
 
 Correspondence with the dump path: `tests/differential.py` compiles every
 suite program in format 2 and compares the canonical form of the program
-built from VM memory (`toit.run --verify --emit-canonical`) with the one
-the reference loader builds from `tools/spec_dump.toit`'s dump
+built from VM memory (`toit.run --verify --emit-canonical`, which
+converts every object with `collect_heap`) with the one the reference
+loader builds from `tools/spec_dump.toit`'s dump
 (`toit_vmverify_canonical`). Objects are renumbered breadth first from the
 roots, globals and literals; large integers compare by value. Result
-(2026-11-10): **434 of 434** compilable programs identical (the 4 others
-are negative compile tests). `verified/check.sh --tests` runs the unit
-tests and a sample of the differential test.
+(2026-11-10, borrowed tables and object stream): **439 of 439** compilable programs identical (the 4 others are negative compile tests).
+`verified/check.sh --tests` runs the unit tests, a sample of the
+differential test and the fuzz reproducers (`tests/findings.sh`).
 
 ## What the C++ format-2 loader still checks
 
@@ -147,18 +158,39 @@ run-time check of a stuck state.
 ## Cost
 
 Measured 2026-11-10, release build (build/host), x86-64, 32 cores shared
-with other jobs (load average 25 to 35, so times vary by up to 1.7x
-between runs). `TOIT_VERIFY_TIME=1` prints each verification; the peak is
-the Rust heap high-water mark of the call (counting allocator).
+with other jobs (load average about 29). `TOIT_VERIFY_TIME=1` prints each
+verification; the peak is the Rust heap high-water mark of the call
+(`counting.rs`, a counting global allocator, not RSS). "Before" is the
+build of sandbox-integration 7a69e0b4 (whole certificate, copied tables),
+"after" this branch; 5 alternating runs each with `tests/measure_vm.sh`
+(medians; under this load absolute times vary by up to 2x between
+batches, the ratio less). The sandbox "before" column is the earlier
+measurement of this README (same tests, another time).
 
-| Program | Bytecodes | Methods | Heap objects | Convert | Infer | Check | Total | Peak memory |
-|---|---|---|---|---|---|---|---|---|
-| hello world (`toit run --untrusted`) | 23.9 KB | 758 | 138 | 0.1 ms | 15-16 ms | 1.6-2.5 ms | 17-19 ms | 3.6 MB |
-| sandbox tests (79 untrusted launches of `ctest -R tests/sandbox/`) | 23.8-35.3 KB | 750-1042 | 133-204 | 0.1-0.5 ms | 16-52 ms | 1.9-4.8 ms | 18-57 ms (median 30) | 3.6-4.5 MB |
-| toit CLI (tools/toit.toit, format 2, `toit.run --verify`) | 323 KB | 7161 | 4010 | 1.7-4.7 ms | 224-392 ms | 29-59 ms | 260-450 ms | 24.1 MB |
+| Program | Bytecodes | Methods | Peak before | Peak after | Total before | Total after |
+|---|---|---|---|---|---|---|
+| hello world (`toit.run --verify`) | 23.9 KB | 758 | 3619 KB | 45 KB | 21.7 ms | 27.0 ms |
+| sandbox tests (83 untrusted launches, `JOBS=1 tests/measure_sandbox.sh`) | 23.8-35.3 KB | 750-1042 | 3.6-4.5 MB | 44-56 KB (median 53) | 18-57 ms (median 30) | 14-43 ms (median 32) |
+| toit CLI (tools/toit.toit, format 2) | 323 KB | 7161 | 24749 KB | 431 KB | 229 ms | 272 ms |
 
-The heap check takes under 0.1 ms in every case. The inference (untrusted)
-is 85 to 90 % of the time; the proven checker is about a tenth.
+Time is about 20 to 25 % higher: the inference runs once more (the checker asks
+for each method's maps after the global phase; the second pass tracks no
+parameter origins), and the checker builds each instruction's kinds from
+the shared nodes (it compares successor maps in place, `x_chain_is`).
+Split of a CLI run (dump path, best of 3, `MEM_DEBUG=1 toit_vmverify_mem`):
+global phase 168 ms (3 rounds of the block-parameter fixpoint), maps for
+the checker 38 ms, checker 43 ms.
+
+The verifier proper, without the conversion from VM memory, on dumps
+(`toit_vmverify_mem`, same allocator; the tables are the loader's, not
+counted):
+
+| Program | Bytecodes | Methods | Largest method | Global part | Largest maps | Peak |
+|---|---|---|---|---|---|---|
+| hello world | 23.9 KB | 758 | 401 B | 27.0 KB | 3.6 KB | 38 KB |
+| run-image | 54.0 KB | 1600 | 717 B | 56.2 KB | 7.0 KB | 70 KB |
+| toit.run | 63.8 KB | 1755 | 717 B | 59.5 KB | 7.0 KB | 73 KB |
+| toit CLI | 323 KB | 7161 | 6047 B | 274 KB | 57 KB | 338 KB |
 
 Code size: `toit.run` grows by 200 KB stripped (3.92 MB -> 4.12 MB, +5.1 %;
 text +173 KB, data +27 KB), compared with a build of the base commit
@@ -191,28 +223,75 @@ verified/core/fuzz/findings/launch-run-*):
   the format-1 VM with a 10-line program (spec/VM-BUGS.md;
   encoder-cyclic-array.*); upstream fix: https://github.com/toitlang/toit/pull/3374.
 
-## Memory high-water mark
+## Memory
 
-The verifier does not recurse over the program (the conversion and the
-inference use work lists; the checker's loops are Verus exec loops with
-`decreases`). It allocates linearly in the program size, not without
-bound, but it holds the whole certificate at once:
+The verifier keeps no data proportional to the program except small
+per-method tables (about 36 bytes per method):
 
-- the abstract program: a copy of the bytecodes and tables (about 1.1 x
-  the bytecode size) and one `ExecObj` per reachable program-heap object
-  (with string and byte-array contents copied);
-- the certificate (`XCert`): for every method one `Option<Vec<XKind>>`
-  (24 bytes) per *byte* of its body, plus, at every reachable instruction
-  start, a vector of the stack's kinds (12 bytes per slot); block-parameter
-  masks and contexts are small;
-- transient per-method state of the inference (origins per offset).
+- **Program**: borrowed in place (`VProgram` over the VM's tables and its
+  `V2Method` array); only the 23 builtin ids, the roots, literals and
+  globals are converted (16 bytes per value).
+- **Heap**: checked one object at a time as it is converted
+  (`x_loaded_ok_stream`); the conversion keeps a work list and an
+  address-to-id map (about 40 bytes per object), freed before the
+  inference.
+- **Certificate, global part** (`XGlobal`): block-parameter bits with a
+  4-byte offset per method, a 4-byte context index per method plus the
+  contexts of block methods (their kinds, 12 bytes per slot: about half
+  of the global part), selector representatives (4 bytes per selector),
+  and the pins (one map per non-local-branch target).
+- **Certificate, maps**: one method at a time. The inference keeps, for
+  the method it analyzes, a node index per bytecode byte (4 bytes), a
+  work-list flag, the nodes (16 bytes per new slot; maps share their
+  bottoms) and, in the global phase, sparse origin lists; the checker
+  gets the same maps (`XMaps`) and drops them after the method. Budgets
+  (`infer.rs`: 16 nodes and 64 origin words per byte) bound what a
+  malformed method can make it allocate; compiled code needs at most 3
+  and 22.
 
-The high-water mark is therefore about `24 B + 12 * sum of stack heights
-at instruction starts + heap copy`, dominated by the per-offset maps:
-about 75 to 150 bytes per bytecode byte in the measurements above. For
-Phase 5 (devices, verification at install time) this is too much for
-large programs: the maps could be stored only at instruction starts (a
-sparse array instead of one entry per byte), and kinds could be
-interned (most maps share long prefixes). The certificate type is
-`v2/check.rs`'s: PHASE4-REQUESTS.md R8. Until then devices cannot verify
-large programs on the device itself.
+So the peak is roughly `36 B x methods + 16 B x values + 40 B x objects +
+largest method's maps`, about 40 to 80 KB for programs of tens of KB of
+bytecode, against a few hundred KB of free heap on the Phase 5 device.
+Further reductions if needed: the contexts' kinds could share nodes like
+the maps (half of the global part), and the heap's id map could be a
+bitmap over the image.
+
+## Fuzzing the entry point in-process
+
+`src/bin/toit_vmverify_fuzz.rs` calls `toit_vmverify_verify` (the C entry
+point the VM calls) on mutated copies of the exact input the VM hands it:
+`toit.run --verify --emit-canonical=X.tables X.snapshot` saves the
+`toit_v2_program` tables, the program image, the globals and the
+primitive table (`tables.rs`; references are relocated to the copy).
+Mutations: method table fields (bounds, selector, arity, kind, receiver
+range), bytecodes (half of them near a method entry), dispatch entries,
+class tables, invoke offsets and entry points, builtin ids, roots,
+literals and globals, image words, truncated tables, the max height and
+primitive arities; one to four per mutant. A verifier panic (result
+`INTERNAL`) or a call over 2 s is a finding. `tests/fuzz_tables.sh` runs
+it on hello world, lambda-test, exception-test, class-id-test and
+task-test.
+
+Runs (2026-11-10, 8 processes x 15 minutes each, `--seed 101` and, on
+the final code, `--seed 301`): 428,561 and 445,655 mutants; on the final
+code 101,454 accepted, 86,197 malformed memory, 242 heap contract,
+147,283 tables, 110,479 methods rejected; **0 verifier panics, 0 calls
+over 2 s** (slowest 261 ms; largest peak 485 KB). The inference of the
+previous branch panicked on such inputs (PHASE4-REQUESTS.md R6; 208
+caught panics in one launch-mode run).
+
+## no_std (Phase 5)
+
+Without the `std` feature this crate and verified/spec are `no_std` +
+`alloc`: no panic catching (a panic aborts; the inference is total), no
+phase times, no counting allocator, no test support, `BTreeMap` instead of
+`HashMap`. `tests/nostd_check.sh` builds verified/spec for
+`riscv32imac-unknown-none-elf` and `riscv64imac-unknown-none-elf`, and
+this crate for `riscv64imac-unknown-none-elf`. What still blocks a device
+build, all in verified/core (not changed here): its `lib.rs` lacks
+`#![no_std]` (it uses no std API), its vstd dependency uses the default
+`std` feature, its `staticlib` crate type needs a panic handler and an
+allocator when built as a dependency (the script patches these three in a
+copy), and it is not 32-bit clean (machine.rs shifts `usize` values by 32,
+layout.rs has 64-bit constants), so the 32-bit RISC-V build of this crate
+fails in the core.

@@ -23,6 +23,7 @@
 //!   layer; the agreement theorems in `exec_step` are stated over views.
 
 use vstd::prelude::*;
+use alloc::vec::Vec;
 
 verus! {
 

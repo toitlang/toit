@@ -14,18 +14,32 @@
 // directory of this repository.
 
 //! TRUSTED: the verdict. Accepts exactly when the two proven checks of
-//! SOUNDNESS.md accept: `check::verify` (equal to `accepts`) and
-//! `heap_check::x_loaded_ok` (equal to `loaded_ok`), both on the program
-//! converted from VM memory and with a certificate whose trusted fields
-//! (`global_count`, `prim_arity`) are set here, not by the untrusted
-//! inference. `x_wf_program2` runs first (the inference and
-//! `x_loaded_ok` require it), and the unverified `check_heap` only gives
-//! an early, readable rejection. Everything after the verdict is
-//! diagnostics.
+//! SOUNDNESS.md accept, on the program converted from VM memory:
+//!
+//! * `check::verify(p, g, oracle, trusted)`, proven to return exactly
+//!   `pins_sorted(g) && split_ok(vview(p), g@, ms, trusted)` for the maps
+//!   `ms` the oracle gave it; `split_ok` implies `accepts(vview(p),
+//!   with_maps(g@, ms), trusted)` (`v2::split::lemma_split_sound`);
+//! * `heap_check::x_loaded_ok_stream(p, objects, global_count, globals)`,
+//!   which accepts only if the heap the converted objects form satisfies
+//!   `loaded_ok` for every certificate with that global count, so for
+//!   `with_maps(g@, ms)` as well. The objects are checked one at a time as
+//!   `from_vm` converts them (none is kept); the conversion must also end
+//!   without error with every object found converted (`complete`).
+//!
+//! So `theorem_soundness_split` (= `theorem_soundness` for that assembled
+//! certificate) applies. The global part `g` comes from the untrusted
+//! inference, except its trusted fields (`global_count`, `prim_arity`),
+//! which are set here from the program's globals and the VM's table.
+//! `x_wf_program2` runs first (the inference needs it). Everything after
+//! the verdict is diagnostics.
 
-use std::time::Instant;
-use toit_spec::interp::loader::Loaded;
-use toit_spec::v2::{check, heap_check, infer};
+use alloc::format;
+use alloc::string::{String, ToString};
+use toit_spec::v2::check::{self, MapOracle, XMaps};
+use crate::clock::Clock;
+use toit_spec::v2::{heap_check, infer};
+use crate::from_vm::Converted;
 
 pub const ACCEPTED: usize = 0;
 /// The VM memory could not be converted (from_vm::Malformed).
@@ -45,7 +59,10 @@ pub struct Verdict {
     pub offset: isize,
     pub message: String,
     pub heap_ns: u64,
+    /// The inference: the global phase and the per-method maps the checker
+    /// asked for.
     pub infer_ns: u64,
+    /// The proven checker, without the time of the maps it asked for.
     pub check_ns: u64,
 }
 
@@ -55,41 +72,63 @@ impl Verdict {
     }
 }
 
-fn ns(t: Instant) -> u64 {
-    t.elapsed().as_nanos() as u64
+/// The inference's oracle, timed.
+struct Timed<'a> {
+    inner: infer::Oracle<'a>,
+    ns: u64,
 }
 
-/// The verdict on a converted program. `prim_arity` is the VM's primitive
-/// table.
-pub fn verify(l: &Loaded, prim_arity: Vec<Vec<u8>>, trusted: bool) -> Verdict {
-    let p = &l.program;
-    // The inference and x_loaded_ok require well-formed tables.
+impl<'a> MapOracle for Timed<'a> {
+    fn method_maps(&mut self, m: usize) -> XMaps {
+        let t = Clock::start();
+        let r = self.inner.method_maps(m);
+        self.ns += t.ns();
+        r
+    }
+}
+
+/// The verdict on a converted program.
+pub fn verify(c: &mut Converted, trusted: bool) -> Verdict {
+    let global_count = c.globals.len() as u64;
+    let prim_arity = c.prim_arity.clone();
+    let globals = core::mem::take(&mut c.globals);
+    let (p, objects) = c.split();
+    let p = &p;
+    // The inference and the heap check require well-formed tables.
     if !check::x_wf_program2(p) {
         return Verdict::new(TABLES, "table sizes or method bounds (wf_program2)".into());
     }
-    let t = Instant::now();
-    if let Err(e) = heap_check::check_heap(l) {
-        let mut v = Verdict::new(HEAP, e);
-        v.heap_ns = ns(t);
+    // The loader's contract, one object at a time.
+    let t = Clock::start();
+    let (heap_ok, _) = heap_check::x_loaded_ok_stream(p, objects, global_count, &globals);
+    let complete = objects.complete();
+    let heap_ns = t.ns();
+    if !heap_ok || !complete {
+        let message = match &objects.error {
+            Some(e) => format!("{} ({})", e.what, e.detail),
+            None => format!("loader contract (loaded_ok); {} objects converted", objects.count()),
+        };
+        let mut v = Verdict::new(if objects.error.is_some() { MALFORMED } else { HEAP }, message);
+        v.heap_ns = heap_ns;
         return v;
     }
-    let mut heap_ns = ns(t);
-    let t = Instant::now();
-    let inferred = infer::infer(p, l.globals.len(), trusted);
-    let infer_ns = ns(t);
-    let mut cert = inferred.cert;
-    cert.global_count = l.globals.len() as u64;
-    cert.prim_arity = prim_arity;
-    let t = Instant::now();
-    let ok = check::verify(p, &cert, trusted);
-    let check_ns = ns(t);
-    let t = Instant::now();
-    let loaded_ok = heap_check::x_loaded_ok(p, &cert, &l.heap, &l.globals);
-    heap_ns += ns(t);
+    objects.release();
+    drop(globals);
+    let t = Clock::start();
+    let mut global = infer::infer_global(p, global_count, prim_arity.clone(), trusted);
+    let mut infer_ns = t.ns();
+    // The trusted fields of the certificate (x_loaded_ok_stream checked the
+    // globals against this count).
+    global.g.global_count = global_count;
+    global.g.prim_arity = prim_arity;
+    let t = Clock::start();
+    let mut oracle = Timed { inner: infer::Oracle::new(p, &global, trusted), ns: 0 };
+    let (ok, _) = check::verify(p, &global.g, &mut oracle, trusted);
+    let at = oracle.inner.last;
+    let check_ns = t.ns().saturating_sub(oracle.ns);
+    infer_ns += oracle.ns;
     let mut v = if !ok {
-        diagnose(l, &cert, &inferred.errors, trusted)
-    } else if !loaded_ok {
-        Verdict::new(HEAP, "loader contract (loaded_ok)".into())
+        diagnose(p, &global, at, trusted)
     } else {
         Verdict::new(ACCEPTED, String::new())
     };
@@ -99,52 +138,40 @@ pub fn verify(l: &Loaded, prim_arity: Vec<Vec<u8>>, trusted: bool) -> Verdict {
     v
 }
 
-/// Why `check::verify` rejected (called only after it did).
-fn diagnose(l: &Loaded, c: &check::XCert, errors: &[(usize, usize, String)], trusted: bool) -> Verdict {
-    let p = &l.program;
-    if !check::x_tables_ok(p, c) {
+/// Why `check::verify` rejected (called only after it did): `at` is the
+/// last method it asked maps for.
+fn diagnose(p: &toit_spec::v2::vprog::VProgram, global: &infer::Global, at: Option<usize>, trusted: bool) -> Verdict {
+    let Some(m) = at else {
         let mut v = Verdict::new(TABLES, "program tables (tables_ok)".into());
-        if let Some((m, off, msg)) = errors.first() {
+        if let Some((m, off, msg)) = global.errors.first() {
             v.message = format!("program tables (tables_ok); inference: method {} +{}: {}", m, off, msg);
         }
         return v;
-    }
-    for m in 0..p.methods.len() {
-        if check::x_method_ok(p, c, m, trusted) { continue; }
-        let mut v = Verdict::new(METHOD, String::new());
-        v.method = m as isize;
-        if let Some((_, off, msg)) = errors.iter().find(|e| e.0 == m) {
-            v.offset = *off as isize;
-            v.message = format!("{}: {}", instruction(l, m, *off), msg);
-            return v;
+    };
+    let mut v = Verdict::new(METHOD, String::new());
+    v.method = m as isize;
+    let (off, why) = infer::diagnose(p, global, m, trusted);
+    match off {
+        Some(off) => {
+            v.offset = off as isize;
+            v.message = format!("{}: {}", instruction(p, m, off), why);
         }
-        // The first offset the checker rejects.
-        let maps = &c.maps[m];
-        for (off, k) in maps.iter().enumerate() {
-            let Some(k) = k else { continue };
-            if !check::x_instr_ok(p, c, m, off, k, trusted) {
-                v.offset = off as isize;
-                v.message = format!("{}: rejected by the checker", instruction(l, m, off));
-                return v;
-            }
-        }
-        v.message = "entry kinds or certificate shape rejected by the checker".into();
-        return v;
+        None => v.message = why,
     }
-    Verdict::new(TABLES, "rejected".into())
+    v
 }
 
 /// The instruction at `off` in method `m`: its name and operand bytes.
-fn instruction(l: &Loaded, m: usize, off: usize) -> String {
+fn instruction(p: &toit_spec::v2::vprog::VProgram, m: usize, off: usize) -> String {
     use toit_spec::v2::bytecodes::{OPCODE_LENGTHS2, OPCODE_NAMES2};
-    let p = &l.program;
-    let info = &p.methods[m];
-    let at = info.entry + off;
-    let Some(&op) = p.bytecodes.get(at).filter(|_| at < info.end) else { return "(no instruction)".into() };
+    let Some(info) = p.methods.get(m) else { return "(no method)".into() };
+    let end = info.end as usize;
+    let at = info.entry as usize + off;
+    let Some(&op) = p.bytecodes.get(at).filter(|_| at < end) else { return "(no instruction)".into() };
     let Some(name) = OPCODE_NAMES2.get(op as usize) else { return format!("bad opcode {}", op) };
     let mut text = name.to_string();
     for i in 1..OPCODE_LENGTHS2[op as usize] as usize {
-        match p.bytecodes.get(at + i).filter(|_| at + i < info.end) {
+        match p.bytecodes.get(at + i).filter(|_| at + i < end) {
             Some(b) => text.push_str(&format!(" {}", b)),
             None => text.push_str(" (past the end)"),
         }

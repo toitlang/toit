@@ -17,10 +17,11 @@
 //! `toit_vmverify_input` and `toit_vmverify_result` (checked by
 //! verified/layout_check.cc).
 
-use std::ffi::{c_char, CStr};
-use std::time::Instant;
+use alloc::format;
+use alloc::string::String;
+use core::ffi::c_char;
 use toit_verified_core::ffi::ProgramTables;
-use crate::alloc;
+use crate::clock::Clock;
 use crate::from_vm::{self, PrimitiveArities};
 use crate::verify;
 
@@ -70,14 +71,15 @@ fn set_message(r: &mut VerifyResult, text: &str) {
 }
 
 unsafe fn arities<'a>(i: &VerifyInput) -> PrimitiveArities<'a> {
-    let counts = if i.prim_module_count == 0 { &[][..] } else { std::slice::from_raw_parts(i.prim_counts, i.prim_module_count) };
-    let arities = if i.prim_arities_length == 0 { &[][..] } else { std::slice::from_raw_parts(i.prim_arities, i.prim_arities_length) };
+    let counts = if i.prim_module_count == 0 { &[][..] } else { core::slice::from_raw_parts(i.prim_counts, i.prim_module_count) };
+    let arities = if i.prim_arities_length == 0 { &[][..] } else { core::slice::from_raw_parts(i.prim_arities, i.prim_arities_length) };
     PrimitiveArities { counts, arities }
 }
 
 /// Verifies the program described by `input`. Returns the result code
-/// (also in `result`). A panic of the verifier rejects the program
-/// (`INTERNAL`).
+/// (also in `result`). On hosts (`std`) a panic of the verifier rejects
+/// the program (`INTERNAL`); without `std` there is no unwinding and a
+/// panic aborts (the inference is total: PHASE4-REQUESTS.md R6).
 ///
 /// # Safety
 /// `input` and `result` must be valid; see `from_vm::convert` for the
@@ -96,26 +98,15 @@ pub unsafe extern "C" fn toit_vmverify_verify(input: *const VerifyInput, result:
     r.check_ns = 0;
     r.peak_bytes = 0;
     set_message(r, "verifier failed");
-    let base = alloc::start_peak();
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let t = Instant::now();
-        let converted = from_vm::convert(&*input.program, &arities(input));
-        let convert_ns = t.elapsed().as_nanos() as u64;
-        match converted {
-            Err(e) => {
-                let mut v = verify::Verdict { code: verify::MALFORMED, method: -1, offset: -1,
-                    message: format!("{} ({})", e.what, e.detail), heap_ns: 0, infer_ns: 0, check_ns: 0 };
-                v.message.truncate(MESSAGE_SIZE - 1);
-                (v, 0, convert_ns)
-            }
-            Ok((loaded, prim_arity)) => {
-                let objects = loaded.heap.len();
-                (verify::verify(&loaded, prim_arity, input.trusted != 0), objects, convert_ns)
-            }
-        }
-    }));
-    r.peak_bytes = alloc::peak_since(base);
-    if let Ok((v, objects, convert_ns)) = outcome {
+    #[cfg(feature = "std")]
+    let base = crate::counting::start_peak();
+    #[cfg(feature = "std")]
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(input))).ok();
+    #[cfg(not(feature = "std"))]
+    let outcome = Some(run(input));
+    #[cfg(feature = "std")]
+    { r.peak_bytes = crate::counting::peak_since(base); }
+    if let Some((v, objects, convert_ns)) = outcome {
         r.code = v.code;
         r.method = v.method;
         r.offset = v.offset;
@@ -129,27 +120,60 @@ pub unsafe extern "C" fn toit_vmverify_verify(input: *const VerifyInput, result:
     r.code
 }
 
+/// The conversion and the verdict: (verdict, objects, conversion time).
+unsafe fn run(input: &VerifyInput) -> (verify::Verdict, usize, u64) {
+    let t = Clock::start();
+    let converted = from_vm::convert(&*input.program, &arities(input));
+    let convert_ns = t.ns();
+    match converted {
+        Err(e) => {
+            let mut message: String = format!("{} ({})", e.what, e.detail);
+            message.truncate(MESSAGE_SIZE - 1);
+            let v = verify::Verdict { code: verify::MALFORMED, method: -1, offset: -1,
+                message, heap_ns: 0, infer_ns: 0, check_ns: 0 };
+            (v, 0, convert_ns)
+        }
+        Ok(mut converted) => {
+            let v = verify::verify(&mut converted, input.trusted != 0);
+            (v, converted.objects.count(), convert_ns)
+        }
+    }
+}
+
 /// Writes the canonical form (canonical.rs) of the program described by
 /// `input` to the file `path`. Returns 0 on success, 1 if the memory could
 /// not be converted, 2 if the file could not be written. Test support for
-/// tests/differential.py.
+/// tests/differential.py. A path ending in `.tables` gets the raw input
+/// instead (tables.rs, for the fuzz driver).
 ///
 /// # Safety
 /// As `toit_vmverify_verify`; `path` must be a NUL-terminated string.
+#[cfg(feature = "std")]
 #[no_mangle]
 pub unsafe extern "C" fn toit_vmverify_canonical(input: *const VerifyInput, path: *const c_char) -> usize {
     let input = &*input;
-    let path = match CStr::from_ptr(path).to_str() {
+    let path = match core::ffi::CStr::from_ptr(path).to_str() {
         Ok(p) => p.to_string(),
         Err(_) => return 2,
     };
+    if path.ends_with(".tables") {
+        // The raw input, for the in-process fuzz driver (tables.rs).
+        return if crate::tables::save(input, &path).is_ok() { 0 } else { 2 };
+    }
     match from_vm::convert(&*input.program, &arities(input)) {
         Err(e) => {
             eprintln!("cannot convert the program: {} ({})", e.what, e.detail);
             1
         }
-        Ok((loaded, prim_arity)) => {
-            let text = crate::canonical::canonical(&loaded, &prim_arity);
+        Ok(mut c) => {
+            let heap = match c.collect_heap() {
+                Ok(heap) => heap,
+                Err(e) => {
+                    eprintln!("cannot convert the program: {} ({})", e.what, e.detail);
+                    return 1;
+                }
+            };
+            let text = crate::canonical::canonical(&c.program(), &heap, &c.globals, &c.prim_arity);
             if std::fs::write(&path, text).is_ok() { 0 } else { 2 }
         }
     }

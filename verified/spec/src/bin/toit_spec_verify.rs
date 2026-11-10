@@ -26,6 +26,8 @@ use std::time::Instant;
 use toit_spec::interp::loader;
 use toit_spec::v2::check;
 use toit_spec::v2::infer;
+use toit_spec::v2::check::MapOracle;
+use toit_spec::v2::vprog::{self, VProgram};
 
 fn main() {
     let mut trusted = false;
@@ -82,41 +84,46 @@ fn main() {
             break;
         }
     }
-    if let Err(e) = toit_spec::v2::heap_check::check_heap(&loaded) {
+    let ep = &loaded.program;
+    let h = vprog::max_height_of(ep);
+    let methods = vprog::vmethods_of(ep, h).unwrap_or_else(|| {
+        println!("rejected (load): methods with different max heights or bounds past 32 bits");
+        std::process::exit(2);
+    });
+    let p = &vprog::vprogram_of(ep, &methods, h);
+    if let Err(e) = toit_spec::v2::heap_check::check_heap(p, &loaded.heap) {
         reasons.push(format!("program heap: {}", e));
     }
-    let p = &loaded.program;
+    let prim_arity: Vec<Vec<u8>> = toit_spec::v2::prim_arity::PRIM_TABLE.iter()
+        .map(|(_, prims)| prims.iter().map(|(_, a)| *a).collect()).collect();
     let t1 = Instant::now();
-    let inferred = infer::infer(p, loaded.globals.len(), trusted);
+    let global = infer::infer_global(p, loaded.globals.len() as u64, prim_arity, trusted);
     let t_infer = t1.elapsed();
     let t2 = Instant::now();
-    let ok = check::verify(p, &inferred.cert, trusted);
+    let (ok, at) = infer::check(p, &global, trusted);
     let t_check = t2.elapsed();
-    for (m, off, msg) in inferred.errors.iter().take(20) {
-        let name = loaded.names.method_at(p.methods[*m].entry)
+    for (m, off, msg) in global.errors.iter().take(20) {
+        let name = p.methods.get(*m).and_then(|i| loaded.names.method_at(i.entry as usize))
             .map(|(_, _, n)| n.to_string()).unwrap_or_default();
         reasons.push(format!("method {} ({}) +{}: {}", m, name, off, msg));
     }
-    if !ok && inferred.errors.is_empty() {
-        if !check::x_tables_ok(p, &inferred.cert) {
-            reasons.push("tables rejected".into());
-        } else {
-            for m in 0..p.methods.len() {
-                if !check::x_method_ok(p, &inferred.cert, m, trusted) {
-                    let name = loaded.names.method_at(p.methods[m].entry)
-                        .map(|(_, _, n)| n.to_string()).unwrap_or_default();
-                    reasons.push(format!("method {} ({}) rejected by the checker: {}", m, name, diagnose(p, &inferred.cert, m, trusted)));
-                    if reasons.len() > 20 { break; }
-                }
+    if !ok && global.errors.is_empty() {
+        match at {
+            None => reasons.push("tables rejected".into()),
+            Some(m) => {
+                let name = p.methods.get(m).and_then(|i| loaded.names.method_at(i.entry as usize))
+                    .map(|(_, _, n)| n.to_string()).unwrap_or_default();
+                let (off, why) = infer::diagnose(p, &global, m, trusted);
+                reasons.push(format!("method {} ({}) rejected by the checker at {:?}: {}", m, name, off, why));
             }
         }
     }
     for &m in &dis {
-        disassemble(p, &inferred.cert, m);
+        disassemble(p, &global, m, trusted);
     }
     // The loader's contract (verified check, `v2::heap_check::x_loaded_ok`)
     // for the certificate the verdict uses.
-    let loaded_ok = ok && toit_spec::v2::heap_check::x_loaded_ok(p, &inferred.cert, &loaded.heap, &loaded.globals);
+    let loaded_ok = ok && toit_spec::v2::heap_check::x_loaded_ok(p, global.g.global_count, &loaded.heap, &loaded.globals);
     if ok && !loaded_ok && reasons.is_empty() {
         reasons.push("program heap or globals violate the loader's contract".into());
     }
@@ -127,11 +134,12 @@ fn main() {
     }
     if !quiet {
         let mut prims: Vec<(u8, u16)> = Vec::new();
-        for info in &p.methods {
-            if info.entry < info.end && p.bytecodes[info.entry] == toit_spec::v2::bytecodes::PRIMITIVE
-                && info.entry + 4 <= info.end {
-                let module = p.bytecodes[info.entry + 1];
-                let index = p.bytecodes[info.entry + 2] as u16 | (p.bytecodes[info.entry + 3] as u16) << 8;
+        for info in p.methods {
+            let (entry, end) = (info.entry as usize, info.end as usize);
+            if entry < end && p.bytecodes[entry] == toit_spec::v2::bytecodes::PRIMITIVE
+                && entry + 4 <= end {
+                let module = p.bytecodes[entry + 1];
+                let index = p.bytecodes[entry + 2] as u16 | (p.bytecodes[entry + 3] as u16) << 8;
                 prims.push((module, index));
             }
         }
@@ -144,26 +152,30 @@ fn main() {
     }
     if time {
         println!("time: load {:.1} ms, infer {:.1} ms ({} rounds), check {:.1} ms, verify total {:.1} ms",
-            t_load.as_secs_f64() * 1e3, t_infer.as_secs_f64() * 1e3, inferred.rounds,
+            t_load.as_secs_f64() * 1e3, t_infer.as_secs_f64() * 1e3, global.rounds,
             t_check.as_secs_f64() * 1e3, (t_infer + t_check).as_secs_f64() * 1e3);
     }
     std::process::exit(if accepted { 0 } else { 1 });
 }
 
 
-fn disassemble(p: &toit_spec::types::ExecProgram, c: &check::XCert, m: usize) {
+fn disassemble(p: &VProgram, global: &infer::Global, m: usize, trusted: bool) {
     use toit_spec::v2::bytecodes::{OPCODE_LENGTHS2, OPCODE_NAMES2};
-    let info = p.methods[m];
+    let Some(info) = p.methods.get(m) else { return };
+    let g = &global.g;
+    let bp = g.bp_off.get(m).zip(g.bp_off.get(m + 1)).and_then(|(a, b)| g.bp.get(*a as usize..*b as usize));
+    let ctx = g.ctx_idx.get(m).and_then(|i| g.ctxs.get(*i as usize)).map(|x| (x.outer, x.slot, x.kinds.clone()));
     println!("method {}: arity {} kind {} max_height {} selector {} recv {}..{} block params {:?} ctx {:?}", m, info.arity, info.kind,
-        info.max_height, info.selector, info.recv_start, info.recv_end, c.block_params.get(m),
-        c.contexts.get(m).and_then(|x| x.as_ref()).map(|x| (x.outer, x.slot, x.kinds.clone())));
-    let mut bci = info.entry;
-    while bci < info.end {
+        p.max_height, info.selector, info.recv_start, info.recv_end, bp, ctx);
+    let maps = infer::Oracle::new(p, global, trusted).method_maps(m);
+    let (entry, end) = (info.entry as usize, info.end as usize);
+    let mut bci = entry;
+    while bci < end {
         let op = p.bytecodes[bci];
         let len = OPCODE_LENGTHS2.get(op as usize).copied().unwrap_or(1) as usize;
         let operands: Vec<String> = (1..len).filter(|i| bci + i < p.bytecodes.len()).map(|i| p.bytecodes[bci + i].to_string()).collect();
-        let off = bci - info.entry;
-        let map = c.maps.get(m).and_then(|v| v.get(off)).and_then(|x| x.as_ref());
+        let off = bci - entry;
+        let map = maps.idx.get(off).filter(|t| **t != check::NO_MAP).map(|t| check::x_chain(&maps.nodes, *t));
         let extra = if op == 53 || op == 54 {
             let d = p.bytecodes[bci + 1] as usize | (p.bytecodes[bci + 2] as usize) << 8;
             format!(" -> {}", p.dispatch.get(d).copied().unwrap_or(-2))
@@ -171,29 +183,4 @@ fn disassemble(p: &toit_spec::types::ExecProgram, c: &check::XCert, m: usize) {
         println!("  {:4} {:24} {:16}{} {:?}", off, OPCODE_NAMES2.get(op as usize).copied().unwrap_or("?"), operands.join(" "), extra, map);
         bci += len;
     }
-}
-
-fn diagnose(p: &toit_spec::types::ExecProgram, c: &check::XCert, m: usize, trusted: bool) -> String {
-    let info = p.methods[m];
-    let e = check::x_entry_kinds(p, c, m);
-    match c.maps.get(m).and_then(|v| v.get(0)).and_then(|x| x.as_ref()) {
-        Some(k) if *k == e => {}
-        k => return format!("entry kinds {:?}, map {:?}", e, k),
-    }
-    for (off, k) in c.maps[m].iter().enumerate() {
-        let k = match k { Some(k) => k, None => continue };
-        if check::x_instr_ok(p, c, m, off, k, trusted) { continue; }
-        let op = p.bytecodes[info.entry + off];
-        let name = toit_spec::v2::bytecodes::OPCODE_NAMES2.get(op as usize).copied().unwrap_or("?");
-        let what = if !check::x_wf_kinds(p, c, m as i64, k) { "wf_kinds" }
-            else if !check::x_ctx_ok(p, c, m as i64, k) { "ctx_ok" }
-            else if !check::x_shape_ok(p, c, m, k) { "shape" }
-            else if k.len() > info.arity as usize + info.max_height as usize { "max_height" }
-            else { "rule or successor" };
-        let ctxs: Vec<String> = k.iter().filter_map(|x| match x {
-            check::XKind::Method(t) => c.contexts.get(*t as usize).and_then(|y| y.as_ref()).map(|y| format!("ctx({})=({},{},{:?})", t, y.outer, y.slot, y.kinds)),
-            _ => None }).collect();
-        return format!("+{} {} {} kinds {:?} {}", off, name, what, k, ctxs.join(" "));
-    }
-    "?".into()
 }

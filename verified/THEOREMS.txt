@@ -34,7 +34,7 @@ pub proof fn theorem_next_run(p: &Program, m0: &Machine, m1: &Machine, m2: &Mach
         reaches(p.ap@, s0, m2.g@),
 
 ==============================================================================
-Top-level theorems: crate spec (11)
+Top-level theorems: crate spec (12)
 ==============================================================================
 
 --- lemma_heap_ext_grows  (spec/src/v2/sound_frames.rs)
@@ -113,18 +113,23 @@ pub proof fn lemma_below_upto(s: State2, s2: State2, fi: int)
     requires same_below(s, s2, fi), bases_ok(s),
     ensures same_upto(s, s2, fi, slots(s, fi)),
 
---- theorem_soundness  (spec/src/v2/theorem.rs)
-pub proof fn theorem_soundness(p: Program2, c: Cert, trusted: bool, heap0: Seq<HeapObj>, globals0: Seq<Value>, s: State2)
+--- lemma_split_complete  (spec/src/v2/split.rs)
+pub proof fn lemma_split_complete(p: Program2, c: Cert, trusted: bool)
+    requires accepts(p, c, trusted),
+    ensures split_ok(p, gcert_of(c), c.maps, trusted), with_maps(gcert_of(c), c.maps) == c,
+
+--- theorem_soundness_split  (spec/src/v2/split.rs)
+pub proof fn theorem_soundness_split(p: Program2, g: GCert, ms: Seq<Maps>, trusted: bool,
+    heap0: Seq<HeapObj>, globals0: Seq<Value>, s: State2)
     requires
-        accepts(p, c, trusted),
-        loaded_ok(p, c, heap0, globals0),
+        split_ok(p, g, ms, trusted),
+        loaded_ok(p, with_maps(g, ms), heap0, globals0),
         reachable(p, heap0, globals0, s),
     ensures
         !(step(p, s) is Stuck),
         forall|s1: State2, module: u8, index: u16, o: Outcome2|
             step(p, s) == Outcome2::Primitive(s1, module, index) && #[trigger] completion(p, s1, module, index, o)
                 ==> !(o is Stuck),
-        forall|o: Outcome2| #[trigger] outcome(p, s, o) ==> !(o is Stuck) && !(o is Raise),
         machine_objects_ok(p, s),
 
 --- theorem_initial  (spec/src/v2/theorem.rs)
@@ -142,7 +147,7 @@ Verified exec entry points: crate core (0)
 ==============================================================================
 
 ==============================================================================
-Verified exec entry points: crate spec (8)
+Verified exec entry points: crate spec (10)
 ==============================================================================
 
 --- step_verified  (spec/src/exec_step.rs)
@@ -154,18 +159,13 @@ pub fn step_verified(p: &ExecProgram, s: &mut ExecState) -> (r: Option<ExecOutco
             None => final(s)@ == old(s)@,
         },
 
---- x_info  (spec/src/v2/check.rs)
-pub fn x_info(p: &ExecProgram, m: usize) -> (r: MethodInfo)
-    requires m < p.methods.len(),
-    ensures r == info(pview2(p), m as int),
-
 --- x_class_count  (spec/src/v2/check.rs)
-pub fn x_class_count(p: &ExecProgram) -> (r: usize)
-    ensures r as int == class_count(pview2(p)),
+pub fn x_class_count(p: &VProgram) -> (r: usize)
+    ensures r as int == class_count(vview(p)),
 
 --- verify  (spec/src/v2/check.rs)
-pub fn verify(p: &ExecProgram, c: &XCert, trusted: bool) -> (r: bool)
-    ensures r == accepts(pview2(p), c@, trusted),
+pub fn verify<O: MapOracle>(p: &VProgram, g: &XGlobal, o: &mut O, trusted: bool) -> (r: (bool, Ghost<Seq<Maps>>))
+    ensures r.0 == (pins_sorted(g) && split_ok(vview(p), g@, r.1@, trusted)),
 
 --- x_frame_height  (spec/src/v2/exec.rs)
 pub fn x_frame_height(s: &ExecState) -> (r: i64)
@@ -187,9 +187,27 @@ pub fn step_verified(p: &ExecProgram, s: &mut ExecState) -> (r: Option<ExecOutco
         },
 
 --- x_loaded_ok  (spec/src/v2/heap_check.rs)
-pub fn x_loaded_ok(p: &ExecProgram, c: &XCert, heap: &Vec<ExecObj>, globals: &Vec<Value>) -> (r: bool)
-    requires wf_program2(pview2(p)),
-    ensures r == loaded_ok(pview2(p), c@, hview(heap), globals@),
+pub fn x_loaded_ok(p: &VProgram, global_count: u64, heap: &Vec<ExecObj>, globals: &Vec<Value>) -> (r: bool)
+    requires wf_program2(vview(p)),
+    ensures forall|c: Cert| c.global_count == global_count as int ==> r == #[trigger] loaded_ok(vview(p), c, hview(heap), globals@),
+
+--- x_loaded_ok_stream  (spec/src/v2/heap_check.rs)
+pub fn x_loaded_ok_stream<S: ObjStream>(p: &VProgram, s: &mut S, global_count: u64, globals: &[Value]) -> (r: (bool, Ghost<Seq<HeapObj>>))
+    requires wf_program2(vview(p)),
+    ensures r.0 ==> forall|c: Cert| c.global_count == global_count as int ==> #[trigger] loaded_ok(vview(p), c, r.1@, globals@),
+
+--- vmethods_of  (spec/src/v2/vprog.rs)
+pub fn vmethods_of(e: &ExecProgram, h: u16) -> (r: Option<Vec<VMethod>>)
+    ensures
+        r is Some ==> r->0@.len() == e.methods@.len()
+            && forall|i: int| 0 <= i < e.methods@.len() ==> #[trigger] minfo(r->0@[i], h) == e.methods@[i],
+
+--- vprogram_of  (spec/src/v2/vprog.rs)
+pub fn vprogram_of<'a>(e: &'a ExecProgram, methods: &'a Vec<VMethod>, h: u16) -> (r: VProgram<'a>)
+    requires
+        methods@.len() == e.methods@.len(),
+        forall|i: int| 0 <= i < e.methods@.len() ==> #[trigger] minfo(methods@[i], h) == e.methods@[i],
+    ensures vview(&r) == pview2(e),
 
 ==============================================================================
 Verified exec entry points: crate vmverify (0)
