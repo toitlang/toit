@@ -21,11 +21,16 @@
 //! in any number of transitions makes a step that is not stuck, and every
 //! completion of a PRIMITIVE step is not stuck either. No `Stuck` variant
 //! remains. The objects the machine interprets itself keep the meaning it
-//! gives them (`machine_objects_ok`: the tasks' stacks and ids). The defined failures are not stuck outcomes: machine-raised
-//! exceptions (lookup, as-check, code invocation, invalid program, missing
-//! or unimplemented primitive: `raise`), an uncaught exception, task end,
-//! exit, deep sleep and reset (`Outcome2::Halt`), and out-of-memory (no
-//! transition to a state beyond `small`).
+//! gives them (`machine_objects_ok`: the tasks' stacks and ids). The
+//! defined failures are not stuck outcomes: machine-raised exceptions
+//! (lookup, as-check, code invocation, invalid program, missing or
+//! unimplemented primitive: `raise`, completed by `prim::raised` with the
+//! machine's trace or the out-of-memory error), the resource throws
+//! (`prim::resource_throw`: stack overflow and out of memory, at the
+//! instructions where the machine grows its stack or allocates), an
+//! uncaught exception, task end, exit, deep sleep and reset
+//! (`Outcome2::Halt`), and out-of-memory (no transition to a state beyond
+//! `small`).
 //!
 //! The untrusted claim is the instance `trusted == false`, under which the
 //! verifier rejects HALT 2 and 3 (deep sleep, reset); `trusted == true`
@@ -73,8 +78,9 @@ pub open spec fn continues(o: Outcome2, s2: State2) -> bool {
 
 /// The outcomes of the machine in state `s`, oracle steps completed: the
 /// step's outcome, a raise completed by `raised` (the machine allocates the
-/// exception and its trace), and every completion of a PRIMITIVE step
-/// (itself completed if it raises).
+/// exception and its trace), every completion of a PRIMITIVE step, and the
+/// resource throws at the instructions where the machine can run out of
+/// stack or memory (`resource_throw`); each completed if it raises.
 pub open spec fn outcome(p: Program2, s: State2, o: Outcome2) -> bool {
     ||| completes(p, step(p, s), o)
     ||| match step(p, s) {
@@ -82,6 +88,7 @@ pub open spec fn outcome(p: Program2, s: State2, o: Outcome2) -> bool {
                 exists|o1: Outcome2| #[trigger] completion(p, s1, module, index, o1) && completes(p, o1, o),
             _ => false,
         }
+    ||| exists|o1: Outcome2| #[trigger] resource_throw(p, s, o1) && completes(p, o1, o)
 }
 
 /// One transition: an outcome of `s` that continues in `s2`. There is no
@@ -152,6 +159,10 @@ pub proof fn lemma_outcome_ok(p: Program2, c: Cert, trusted: bool, s: State2, o:
     crate::v2::sound_step::lemma_step(p, c, trusted, s);
     if completes(p, step(p, s), o) {
         lemma_completes_ok(p, c, step(p, s), o);
+    } else if exists|o1: Outcome2| #[trigger] resource_throw(p, s, o1) && completes(p, o1, o) {
+        let o1 = choose|o1: Outcome2| #[trigger] resource_throw(p, s, o1) && completes(p, o1, o);
+        crate::v2::sound_resource::lemma_resource(p, c, trusted, s, o1);
+        lemma_completes_ok(p, c, o1, o);
     } else {
         match step(p, s) {
             Outcome2::Primitive(s1, module, index) => {

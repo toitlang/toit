@@ -30,6 +30,7 @@ use vstd::prelude::*;
 use crate::types::*;
 use crate::v2::types::*;
 use crate::v2::spec::*;
+use crate::v2::bytecodes::*;
 #[cfg(verus_only)]
 use crate::v2::sound::{good, prim_heap_ok};
 #[cfg(verus_only)]
@@ -82,6 +83,71 @@ pub open spec fn completes(p: Program2, o: Outcome2, o2: Outcome2) -> bool {
     match o {
         Outcome2::Raise(s, value) => raised(p, s, value, o2),
         _ => o2 == o,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Resource throws.
+
+/// Roots holding the errors of exhausted resources (`Program` roots: the
+/// error strings start at index 7).
+pub spec const ROOT_ALLOCATION_FAILED: int = 7;
+pub spec const ROOT_MALLOC_FAILED: int = 17;
+pub spec const ROOT_CROSS_PROCESS_GC: int = 18;
+pub spec const ROOT_STACK_OVERFLOW: int = 28;
+
+/// The instructions before which the machine makes room on its stack for a
+/// frame (the core's `ensure_room`, a GC point): every instruction that
+/// may push a frame or replace the top frame (calls, virtual calls and
+/// their fast paths, operators and their fallbacks, tail calls, TRY, lazy
+/// globals). Growing the stack fails with stack overflow (the stack is at
+/// its maximal size) or out of memory.
+pub open spec fn grows_stack(op: u8) -> bool {
+    ||| op == INVOKE_STATIC || op == INVOKE_STATIC_TAIL || op == INVOKE_BLOCK
+    ||| op == INVOKE_LAMBDA_TAIL || op == INVOKE_INITIALIZER_TAIL
+    ||| op == INVOKE_VIRTUAL || op == INVOKE_VIRTUAL_WIDE || op == INVOKE_VIRTUAL_GET || op == INVOKE_VIRTUAL_SET
+    ||| (INVOKE_EQ <= op && op <= INVOKE_SIZE)
+    ||| op == TRY || op == LOAD_GLOBAL_VAR_LAZY || op == LOAD_GLOBAL_VAR_LAZY_WIDE
+}
+
+/// ALLOCATE(_WIDE): allocating the instance may fail with out of memory.
+pub open spec fn allocates_instance(op: u8) -> bool {
+    op == ALLOCATE || op == ALLOCATE_WIDE
+}
+
+/// INVOKE_ADD/SUB/MUL on two doubles allocate the result; if that fails
+/// the machine calls the operator's method instead (which allocates
+/// through a primitive, and so reports the failure: its completion
+/// `PrimRet::OutOfMemory`).
+pub open spec fn allocates_double(p: Program2, s: State2, op: u8) -> bool {
+    &&& (op == INVOKE_ADD || op == INVOKE_SUB || op == INVOKE_MUL)
+    &&& binary_ok(s)
+    &&& crate::spec_helpers::are_floats(as1(s), at(s, 1), at(s, 0))
+}
+
+/// The resource throws in state `s`: what the machine may do instead of
+/// the step when a resource the abstract machine does not bound runs out.
+/// They exist only at these instructions:
+///
+/// * `grows_stack`: the out-of-memory error is thrown (no allocation), or
+///   the stack-overflow error is raised (an `Exception_` with a trace,
+///   `Outcome2::Raise`, itself completed by `raised`);
+/// * `allocates_instance`: the out-of-memory error is thrown;
+/// * `allocates_double`: the operator's method is called (the fallback
+///   of the step).
+///
+/// A primitive's own resource failure is a completion of PRIMITIVE
+/// (`PrimRet::OutOfMemory`); a raise's is a completion of the raise
+/// (`raised`). Each alternative starts from `s` itself: the instruction
+/// has not run (stack growth and allocation happen before any change).
+pub open spec fn resource_throw(p: Program2, s: State2, o: Outcome2) -> bool {
+    let b = s.bci as int;
+    let op = p.bytecodes[b];
+    &&& 0 <= b < p.bytecodes.len()
+    &&& {
+        ||| (grows_stack(op) || allocates_instance(op)) && o == unwind(p, s, Unwind::Throw(out_of_memory(p)))
+        ||| grows_stack(op) && o == Outcome2::Raise(s, p.roots[ROOT_STACK_OVERFLOW])
+        ||| allocates_double(p, s, op) && o == operator_fallback(p, s, op)
     }
 }
 

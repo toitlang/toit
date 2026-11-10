@@ -4,6 +4,41 @@ One entry per change of `src/v2/spec.rs`, `src/v2/prim.rs`, `src/v2/types.rs`
 or the verifier's rules (`src/v2/verifier.rs`) that an implementation of
 the spec (the verified core, the VM's loader) must follow. Newest first.
 
+## 2026-11-10: resource throws are transitions (core request R6)
+
+What: `prim.rs`: `resource_throw(p, s, o)`, the outcomes the machine may
+produce instead of the step in state `s` when its stack or memory runs
+out. They start from `s` itself (the instruction has not run) and exist
+only at these opcodes (`op = p.bytecodes[s.bci]`):
+
+* `grows_stack(op)`: INVOKE_STATIC, INVOKE_STATIC_TAIL, INVOKE_BLOCK,
+  INVOKE_LAMBDA_TAIL, INVOKE_INITIALIZER_TAIL, INVOKE_VIRTUAL(_WIDE),
+  INVOKE_VIRTUAL_GET/SET, INVOKE_EQ..INVOKE_SIZE (operators, INVOKE_AT,
+  INVOKE_AT_PUT, INVOKE_SIZE), TRY, LOAD_GLOBAL_VAR_LAZY(_WIDE): either
+  `unwind(p, s, Throw(out_of_memory(p)))` (roots[4], nothing allocated) or
+  `Outcome2::Raise(s, p.roots[ROOT_STACK_OVERFLOW])` (roots[28]; an
+  `Exception_` with the machine's trace, completed by `raised`);
+* `allocates_instance(op)`: ALLOCATE(_WIDE): `unwind(p, s,
+  Throw(out_of_memory(p)))`;
+* `allocates_double(p, s, op)`: INVOKE_ADD/SUB/MUL with two doubles:
+  `operator_fallback(p, s, op)` (the result could not be allocated; the
+  operator's method is called, as the core does).
+
+`theorem.rs`: `outcome(p, s, o)` also includes every completed resource
+throw; the theorem is unchanged otherwise (`sound_resource.rs`:
+`lemma_resource`). A primitive's own out-of-memory is a PRIMITIVE
+completion (entry "the PRIMITIVE protocol"), a raise's a completion of
+the raise.
+
+Why: core request R6. The core's `grow_cold` (stack overflow: raise of
+roots[28]; out of memory: throw of roots[4]), ALLOCATE's failed
+allocation (throw of roots[4]) and the failed double allocation of
+`op_invoke_arith_slow_cold` (operator fallback) are now instances of spec
+transitions, so `step::resource_throw` and `exception_like` can be
+replaced by `prim::resource_throw` (completed by `prim::completes`).
+
+Opcodes: those listed above.
+
 ## 2026-11-10: raising is an oracle step (core request R7)
 
 What: `types.rs`: `Outcome2` has a new variant `Raise(State2, Value)`.
