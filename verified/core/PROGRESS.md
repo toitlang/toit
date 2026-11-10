@@ -50,6 +50,15 @@ in DESIGN.md section 8): richards 2,420 M (f1 1,024 M, 2.36x; was 2.44x),
 deltablue 1,782 M (650 M, 2.74x; was 2.92x), pystone 1,772 M (762 M,
 2.33x; was 2.87x).
 
+Wall time (bench.sh, TOIT_VERIFY=1, minimum of 5, after the fuzz run on
+a shared machine): richards 10.12 / 18.69 ms (1.85x), deltablue 6.54 /
+13.30 ms (2.03x), pystone 7.03 / 12.62 ms (1.80x).
+
+Fuzz (ASan build, launch filter, seed 7, 23 min, 11 seed programs):
+80,154 mutants, 11,309 accepted and run (9,176 exit 0, 1,477 exit 1, 633
+exit 255, 23 timeouts), no crash. Results:
+/home/flo/work/opentoit-sandbox-artifacts/refinement2/fuzz1.
+
 Open: wiring the Rust primitives of core/primitives (heap-model conflict,
 OBLIGATIONS.md R-prims); the performance pass (DESIGN.md section 8).
 
