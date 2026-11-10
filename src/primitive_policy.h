@@ -27,8 +27,8 @@ namespace toit {
 // pointer to it. The policies are statically allocated and shared.
 class PrimitivePolicy {
  public:
-  // Keep in sync with the constants in lib/system/api/containers.toit and
-  // system/services.toit.
+  // Keep in sync with the POLICY- constants of ContainerService in
+  // lib/system/api/containers.toit.
   enum Kind {
     SYSTEM = 0,     // The boot process. All primitives, PRIVILEGED ones included.
     TRUSTED = 1,    // Regular containers. All primitives except PRIVILEGED ones.
