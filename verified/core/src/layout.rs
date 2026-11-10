@@ -24,6 +24,9 @@ use vstd::prelude::*;
 
 verus! {
 
+// The core is built for 64-bit hosts (TOIT_VERIFIED_CORE is off otherwise).
+global size_of usize == 8;
+
 pub const WORD_SIZE: usize = 8;
 
 // --- Tagging (src/objects.h, class Object) -------------------------------

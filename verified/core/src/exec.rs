@@ -94,11 +94,35 @@ impl Machine {
         Seq::new((self.len - self.top) as nat, |i: int| self.mem@[self.len - 1 - i])
     }
 
+    /// Height of the object stack.
+    pub open spec fn height(&self) -> int {
+        self.len - self.top
+    }
+
+    /// Everything but the object stack, the stack memory and the bci is
+    /// unchanged (the frame cache, the views of the program and globals).
+    pub open spec fn same_frame(&self, other: &Machine) -> bool {
+        &&& self.len == other.len
+        &&& self.ftop == other.ftop
+        &&& self.base == other.base
+        &&& self.lim == other.lim
+        &&& self.method == other.method
+        &&& self.mend == other.mend
+        &&& self.mfast == other.mfast
+        &&& self.globals@ == other.globals@
+        // The frame records (below ftop) are unchanged.
+        &&& forall|i: int| 0 <= i < self.ftop ==> #[trigger] self.mem@[i] == other.mem@[i]
+    }
+
     pub open spec fn stack_ok(&self) -> bool {
         &&& self.len == self.mem@.len()
         &&& self.ftop <= self.top <= self.len
         &&& self.base <= self.len
         &&& self.lim == self.len - self.base
+        // The top frame's slots exist (its base is at or below the top).
+        &&& self.top <= self.lim
+        // Block references encode slots in BLOCK_SLOT_BITS (reload checks).
+        &&& self.len < 0x10_0000
     }
 
     #[inline(always)]
@@ -113,7 +137,9 @@ impl Machine {
     #[inline(always)]
     pub fn at(&self, n: usize) -> (r: usize)
         requires self.stack_ok(), self.top + n < self.lim,
-        ensures r == self.mem@[self.top + n],
+        ensures
+            r == self.mem@[self.top + n],
+            r == self.words()[self.height() - 1 - n],
     {
         self.mem.read(self.top + n)
     }
@@ -125,13 +151,13 @@ impl Machine {
             final(self).stack_ok(),
             final(self).mem@ == old(self).mem@.update(old(self).top + n, v),
             final(self).top == old(self).top,
-            final(self).ftop == old(self).ftop,
-            final(self).len == old(self).len,
-            final(self).base == old(self).base,
             final(self).bci == old(self).bci,
+            final(self).same_frame(old(self)),
+            final(self).words() == old(self).words().update(old(self).height() - 1 - n, v),
     {
         let i = self.top + n;
         self.mem.write(i, v);
+        assert(self.words() =~= old(self).words().update(old(self).height() - 1 - n, v));
     }
 
     /// Pushes `v`; false (and no change) if the object stack would run into
@@ -145,10 +171,10 @@ impl Machine {
             r ==> final(self).top == old(self).top - 1
                 && final(self).mem@ == old(self).mem@.update(old(self).top - 1, v),
             !r ==> final(self).mem@ == old(self).mem@ && final(self).top == old(self).top,
-            final(self).ftop == old(self).ftop,
-            final(self).len == old(self).len,
-            final(self).base == old(self).base,
             final(self).bci == old(self).bci,
+            final(self).same_frame(old(self)),
+            r ==> final(self).words() == old(self).words().push(v),
+            !r ==> final(self).words() == old(self).words(),
     {
         if self.top <= self.ftop {
             return false;
@@ -156,6 +182,7 @@ impl Machine {
         self.top = self.top - 1;
         let t = self.top;
         self.mem.write(t, v);
+        assert(self.words() =~= old(self).words().push(v));
         true
     }
 
@@ -166,18 +193,25 @@ impl Machine {
             final(self).stack_ok(),
             final(self).top == old(self).top + n,
             final(self).mem@ == old(self).mem@,
-            final(self).ftop == old(self).ftop,
-            final(self).len == old(self).len,
-            final(self).base == old(self).base,
             final(self).bci == old(self).bci,
+            final(self).same_frame(old(self)),
+            final(self).words() == old(self).words().subrange(0, old(self).height() - n),
     {
         self.top = self.top + n;
+        assert(self.words() =~= old(self).words().subrange(0, old(self).height() - n));
     }
 
     /// Pushes `v` and continues after an instruction of length `len`.
     #[inline(always)]
     pub fn push_next(&mut self, v: usize, len: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
+        ensures
+            final(self).stack_ok(),
+            final(self).same_frame(old(self)),
+            old(self).top > old(self).ftop ==> r == Ctl::Next
+                && final(self).words() == old(self).words().push(v)
+                && final(self).bci == old(self).bci + len,
+            old(self).top <= old(self).ftop ==> r == Ctl::Stuck(100),
     {
         if !self.push(v) {
             return Ctl::Stuck(100);
@@ -192,10 +226,17 @@ impl Machine {
         requires
             old(self).stack_ok(), old(self).top + 1 < old(self).lim,
             old(self).bci + 1 < usize::MAX,
+        ensures
+            final(self).stack_ok(),
+            final(self).same_frame(old(self)),
+            r == Ctl::Next,
+            final(self).words() == old(self).words().subrange(0, old(self).height() - 2).push(v),
+            final(self).bci == old(self).bci + 1,
     {
         self.put(1, v);
         self.drop(1);
         self.bci = self.bci + 1;
+        assert(self.words() =~= old(self).words().subrange(0, old(self).height() - 2).push(v));
         Ctl::Next
     }
 
@@ -204,6 +245,14 @@ impl Machine {
     #[inline(always)]
     pub fn op_load_local(&mut self, n: usize, len: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
+        ensures
+            final(self).stack_ok(),
+            final(self).same_frame(old(self)),
+            // `spec::op_load_local`: the slot must belong to the frame.
+            !(old(self).top + n < old(self).lim) ==> r == Ctl::Stuck(1),
+            old(self).top + n < old(self).lim && old(self).top > old(self).ftop ==> r == Ctl::Next
+                && final(self).words() == old(self).words().push(old(self).words()[old(self).height() - 1 - n])
+                && final(self).bci == old(self).bci + len,
     {
         if !self.has_slot(n) {
             return Ctl::Stuck(1);
@@ -215,6 +264,14 @@ impl Machine {
     #[inline(always)]
     pub fn op_pop_load_local(&mut self, n: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + 2 < usize::MAX, n < 256,
+        ensures
+            final(self).stack_ok(),
+            final(self).same_frame(old(self)),
+            !(old(self).top + n + 1 < old(self).lim) ==> r == Ctl::Stuck(1),
+            old(self).top + n + 1 < old(self).lim ==> r == Ctl::Next
+                && final(self).words() == old(self).words().update(old(self).height() - 1,
+                    old(self).words()[old(self).height() - 2 - n])
+                && final(self).bci == old(self).bci + 2,
     {
         if !self.has_slot(n + 1) {
             return Ctl::Stuck(1);
@@ -228,6 +285,14 @@ impl Machine {
     #[inline(always)]
     pub fn op_store_local(&mut self, n: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + 2 < usize::MAX,
+        ensures
+            final(self).stack_ok(),
+            final(self).same_frame(old(self)),
+            !(old(self).top + n < old(self).lim) ==> r == Ctl::Stuck(1),
+            old(self).top + n < old(self).lim ==> r == Ctl::Next
+                && final(self).words() == old(self).words().update(old(self).height() - 1 - n,
+                    old(self).words()[old(self).height() - 1])
+                && final(self).bci == old(self).bci + 2,
     {
         if !self.has_slot(n) {
             return Ctl::Stuck(1);
@@ -241,6 +306,14 @@ impl Machine {
     #[inline(always)]
     pub fn op_store_local_pop(&mut self, n: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + 2 < usize::MAX,
+        ensures
+            final(self).stack_ok(),
+            final(self).same_frame(old(self)),
+            !(1 <= n && old(self).top + n < old(self).lim) ==> r == Ctl::Stuck(1),
+            1 <= n && old(self).top + n < old(self).lim ==> r == Ctl::Next
+                && final(self).words() == old(self).words().update(old(self).height() - 1 - n,
+                    old(self).words()[old(self).height() - 1]).subrange(0, old(self).height() - 1)
+                && final(self).bci == old(self).bci + 2,
     {
         if n < 1 || !self.has_slot(n) {
             return Ctl::Stuck(1);
@@ -249,6 +322,8 @@ impl Machine {
         self.drop(1);
         self.put(n - 1, v);
         self.bci = self.bci + 2;
+        assert(self.words() =~= old(self).words().update(old(self).height() - 1 - n,
+            old(self).words()[old(self).height() - 1]).subrange(0, old(self).height() - 1));
         Ctl::Next
     }
 
@@ -257,6 +332,13 @@ impl Machine {
     #[inline(always)]
     pub fn op_load_literal(&mut self, p: &Program, i: usize, len: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
+        ensures
+            final(self).stack_ok(),
+            final(self).same_frame(old(self)),
+            i >= p.literals@.len() ==> r == Ctl::Stuck(12),
+            i < p.literals@.len() && old(self).top > old(self).ftop ==> r == Ctl::Next
+                && final(self).words() == old(self).words().push(p.literals@[i as int])
+                && final(self).bci == old(self).bci + len,
     {
         if i >= p.literals.len() {
             return Ctl::Stuck(12);
@@ -268,6 +350,13 @@ impl Machine {
     #[inline(always)]
     pub fn op_load_smis_0(&mut self, n: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + 2 < usize::MAX,
+        ensures
+            final(self).stack_ok(),
+            final(self).same_frame(old(self)),
+            old(self).top < old(self).ftop + n ==> r == Ctl::Stuck(100),
+            old(self).top >= old(self).ftop + n ==> r == Ctl::Next
+                && final(self).words() == old(self).words() + Seq::new(n as nat, |i: int| 0usize)
+                && final(self).bci == old(self).bci + 2,
     {
         if self.top - self.ftop < n {
             return Ctl::Stuck(100);
@@ -277,11 +366,16 @@ impl Machine {
             invariant
                 self.stack_ok(),
                 i <= n,
-                self.top - self.ftop >= n - i,
+                self.top >= self.ftop + (n - i),
+                self.bci == old(self).bci,
+                self.same_frame(old(self)),
+                self.words() == old(self).words() + Seq::new(i as nat, |j: int| 0usize),
             decreases n - i,
         {
+            let ghost before = self.words();
             let ok = self.push(0);
             i = i + 1;
+            assert(self.words() =~= old(self).words() + Seq::new(i as nat, |j: int| 0usize));
         }
         self.bci = self.bci + 2;
         Ctl::Next
@@ -290,6 +384,13 @@ impl Machine {
     #[inline(always)]
     pub fn op_load_global(&mut self, g: usize, len: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
+        ensures
+            final(self).stack_ok(),
+            final(self).same_frame(old(self)),
+            g >= old(self).globals@.len() ==> r == Ctl::Stuck(12),
+            g < old(self).globals@.len() && old(self).top > old(self).ftop ==> r == Ctl::Next
+                && final(self).words() == old(self).words().push(old(self).globals@[g as int])
+                && final(self).bci == old(self).bci + len,
     {
         if g >= self.globals.len() {
             return Ctl::Stuck(12);
@@ -301,6 +402,14 @@ impl Machine {
     #[inline(always)]
     pub fn op_store_global(&mut self, g: usize, len: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
+        ensures
+            final(self).stack_ok(),
+            g >= old(self).globals@.len() ==> r == Ctl::Stuck(12),
+            g < old(self).globals@.len() && !(old(self).top < old(self).lim) ==> r == Ctl::Stuck(1),
+            g < old(self).globals@.len() && old(self).top < old(self).lim ==> r == Ctl::Next
+                && final(self).words() == old(self).words()
+                && final(self).globals@ == old(self).globals@.update(g as int, old(self).words()[old(self).height() - 1])
+                && final(self).bci == old(self).bci + len,
     {
         if g >= self.globals.len() {
             return Ctl::Stuck(12);
@@ -317,6 +426,13 @@ impl Machine {
     #[inline(always)]
     pub fn op_pop(&mut self, n: usize, len: usize) -> (r: Ctl)
         requires old(self).stack_ok(), old(self).bci + len < usize::MAX,
+        ensures
+            final(self).stack_ok(),
+            final(self).same_frame(old(self)),
+            !(old(self).top + n <= old(self).lim) ==> r == Ctl::Stuck(1),
+            old(self).top + n <= old(self).lim ==> r == Ctl::Next
+                && final(self).words() == old(self).words().subrange(0, old(self).height() - n)
+                && final(self).bci == old(self).bci + len,
     {
         if n > self.lim - self.top {
             return Ctl::Stuck(1);
@@ -374,19 +490,33 @@ impl Machine {
         let height = self.len - self.top;
         let slot = height - 1 - k;
         let f = self.ftop / FRAME_WORDS - 1;
-        if f >= (1usize << 40) {
+        if f >= 0x100_0000_0000 {
             return Ctl::Stuck(100);
         }
-        let v = smi_word_exec(((f << BLOCK_SLOT_BITS) | slot) as i64);
+        // (f << BLOCK_SLOT_BITS) | slot, with slot < len < 1 << BLOCK_SLOT_BITS.
+        let v = smi_word_exec((f * 0x10_0000 + slot) as i64);
         self.push_next(v, 2)
     }
 
+}
+
+#[inline(always)]
+pub fn smi_word_exec(v: i64) -> (r: usize)
+    requires 0 <= v < 0x4000_0000_0000_0000,
+    ensures r == smi_word(v as int),
+{
+    let u = v as usize;
+    assert(u as int == v as int);
+    u * 2
+}
+
+} // verus!
+
+impl Machine {
     // --- Fields -------------------------------------------------------------
 
     #[inline(always)]
-    pub fn op_load_field_this(&mut self, p: &Program, f: usize) -> (r: Ctl)
-        requires old(self).stack_ok(), old(self).bci + 2 < usize::MAX,
-    {
+    pub fn op_load_field_this(&mut self, p: &Program, f: usize) -> Ctl {
         // The receiver range of the method guarantees the field (checked by
         // the loader); the run-time check below makes the access safe for
         // every program.
@@ -400,17 +530,7 @@ impl Machine {
         let v = self.field(this, f);
         self.push_next(v, 2)
     }
-}
 
-#[inline(always)]
-pub fn smi_word_exec(v: i64) -> (r: usize)
-{
-    (v as usize) << 1
-}
-
-} // verus!
-
-impl Machine {
     #[inline(always)]
     pub fn op_load_outer(&mut self, k: usize) -> Ctl {
         if !self.has_slot(0) { return Ctl::Stuck(1); }

@@ -23,6 +23,8 @@ use core::sync::atomic::AtomicUsize;
 use crate::layout::*;
 use crate::view::*;
 
+verus! {
+
 /// An entry of the method table (`toit::V2Method`).
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -37,6 +39,8 @@ pub struct V2Method {
     pub kind: u8,
     pub unused: u16,
 }
+
+} // verus!
 
 /// `toit_v2_program`.
 #[repr(C)]

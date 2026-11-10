@@ -628,6 +628,12 @@ uword toit_v2_allocate_array(void* raw_process, uword length, uword filler) {
 uword toit_v2_grow_stack(void* raw_process, uword needed) {
   Process* process = v2_process(raw_process);
   Stack* stack = process->task()->stack();
+  // The core has written into the stack since it was last remembered. The
+  // old stack becomes garbage, but the collector still scans it whenever
+  // its card is dirty (old space is swept, not traced, between scavenges),
+  // so its new-space pointers must stay up to date: remember it now, as
+  // Interpreter::store_stack does for format 1.
+  GcMetadata::insert_into_remembered_set(stack);
   word length = stack->length();
   word free = stack->top() - stack->v2_frame_top();
   word new_length = -1;

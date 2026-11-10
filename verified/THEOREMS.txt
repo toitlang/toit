@@ -46,23 +46,8 @@ pub proof fn theorem_initial(p: Program2, c: Cert, trusted: bool, heap0: Seq<Hea
         wf(p, c, initial_state(p, heap0, globals0)),
 
 ==============================================================================
-Verified exec entry points: crate core (2)
+Verified exec entry points: crate core (0)
 ==============================================================================
-
---- covers_exec  (core/src/exec.rs)
-pub fn covers_exec(op: u8) -> (r: bool)
-    ensures
-        r == covers(op),
-
---- entry  (core/src/exec.rs)
-pub fn entry(st: &mut VState, e: &Env, fuel: usize) -> (r: (Outcome, usize))
-    ensures
-        r.0 != Outcome::Next,
-        // The state is touched only if the inputs are well formed, and then
-        // it is a spec run from the initial state.
-        (old(st).wf() && e.wf()) || final(st)@ == old(st)@,
-        old(st).wf() && e.wf() ==> final(st).wf() && exists|rooms: Seq<bool>|
-                #[trigger] spec_run(e.cfg(), old(st)@, rooms) == Some(final(st)@) && rooms.len() == r.1,
 
 ==============================================================================
 Verified exec entry points: crate spec (6)
