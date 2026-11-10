@@ -88,13 +88,13 @@ pub open spec fn exception_post(p: &Program, m: Machine, g: State2, v: Value, r:
 pub fn gc_allocate_exception(m: &mut Machine, env: &Env, value: usize, kind: usize, ws: [usize; 4], count: usize,
     Ghost(g): Ghost<State2>, Ghost(v): Ghost<Value>, Ghost(vs): Ghost<Seq<Value>>) -> (r: usize)
     requires
-        reloaded(*old(m), g).refines(env.p),
+        reloaded(*old(m), g).refines(&env.p),
         value == enc(old(m).addr(), v),
         const_ok(g.heap, v),
         count == vs.len(),
         msg_ok(old(m).addr(), kind, ws@, vs),
     ensures
-        exists|h2: Seq<HeapObj>, trace: Value| #[trigger] exception_post(env.p, *final(m), g, v, r, h2, trace),
+        exists|h2: Seq<HeapObj>, trace: Value| #[trigger] exception_post(&env.p, *final(m), g, v, r, h2, trace),
 {
     m.allocate_exception_raw(env, value, kind, &ws, count)
 }
@@ -132,18 +132,18 @@ impl Machine {
     pub fn raise_with(&mut self, env: &Env, Ghost(src): Ghost<Machine>, value: usize, Ghost(v): Ghost<Value>,
         kind: usize, ws: [usize; 4], count: usize, Ghost(vs): Ghost<Seq<Value>>) -> (r: Ctl)
         requires
-            src.inv(env.p),
-            old(self).refines(env.p),
-            shape_ok(env.p, old(self).g@),
+            src.inv(&env.p),
+            old(self).refines(&env.p),
+            shape_ok(&env.p, old(self).g@),
             source(env.p.ap@, src.g@, Outcome2::Raise(old(self).g@, v)),
             value == enc(old(self).addr(), v),
             const_ok(old(self).g@.heap, v),
             count == vs.len(),
             msg_ok(old(self).addr(), kind, ws@, vs),
             old(self).bci < 0x1000_0000,
-        ensures step_post(env.p, src, *final(self), r),
+        ensures step_post(&env.p, src, *final(self), r),
     {
-        let p = env.p;
+        let p = &env.p;
         let ghost ap = p.ap@;
         let ghost g = self.g@;
         let ghost m0 = src;
@@ -209,15 +209,15 @@ impl Machine {
     pub fn raise_k(&mut self, env: &Env, k: usize, kind: usize, ws: [usize; 4], count: usize,
         Ghost(vs): Ghost<Seq<Value>>) -> (r: Ctl)
         requires
-            old(self).inv(env.p),
+            old(self).inv(&env.p),
             k < 5,
             source(env.p.ap@, old(self).g@, sp::raise(env.p.ap@, old(self).g@, k as int)),
             count == vs.len(),
             msg_ok(old(self).addr(), kind, ws@, vs),
             old(self).bci < 0x1000_0000,
-        ensures step_post(env.p, *old(self), *final(self), r),
+        ensures step_post(&env.p, *old(self), *final(self), r),
     {
-        let p = env.p;
+        let p = &env.p;
         let ghost ap = p.ap@;
         proof {
             assert(ap.literals.len() >= 7);
@@ -234,11 +234,11 @@ impl Machine {
     #[inline(always)]
     pub fn v_raise_none(&mut self, env: &Env, k: usize) -> (r: Ctl)
         requires
-            old(self).inv(env.p),
+            old(self).inv(&env.p),
             k < 5,
             source(env.p.ap@, old(self).g@, sp::raise(env.p.ap@, old(self).g@, k as int)),
             old(self).bci < 0x1000_0000,
-        ensures step_post(env.p, *old(self), *final(self), r),
+        ensures step_post(&env.p, *old(self), *final(self), r),
     {
         self.raise_k(env, k, V2_MESSAGE_NONE, [0, 0, 0, 0], 0, Ghost(Seq::empty()))
     }
@@ -248,15 +248,15 @@ impl Machine {
     #[inline(always)]
     pub fn v_raise_none_from(&mut self, env: &Env, Ghost(src): Ghost<Machine>, k: usize) -> (r: Ctl)
         requires
-            src.inv(env.p),
-            old(self).refines(env.p),
-            shape_ok(env.p, old(self).g@),
+            src.inv(&env.p),
+            old(self).refines(&env.p),
+            shape_ok(&env.p, old(self).g@),
             k < 5,
             source(env.p.ap@, src.g@, sp::raise(env.p.ap@, old(self).g@, k as int)),
             old(self).bci < 0x1000_0000,
-        ensures step_post(env.p, src, *final(self), r),
+        ensures step_post(&env.p, src, *final(self), r),
     {
-        let p = env.p;
+        let p = &env.p;
         let ghost ap = p.ap@;
         proof {
             assert(ap.literals.len() >= 7);
@@ -272,10 +272,10 @@ impl Machine {
     #[inline(always)]
     pub fn v_raise_invalid(&mut self, env: &Env) -> (r: Ctl)
         requires
-            old(self).inv(env.p),
+            old(self).inv(&env.p),
             source(env.p.ap@, old(self).g@, sp::raise(env.p.ap@, old(self).g@, sp::INVALID_PROGRAM)),
             old(self).bci < 0x1000_0000,
-        ensures step_post(env.p, *old(self), *final(self), r),
+        ensures step_post(&env.p, *old(self), *final(self), r),
     {
         let ghost addr = self.addr();
         let w = smi_value_word(self.bci as i64, Ghost(addr));
@@ -290,11 +290,11 @@ impl Machine {
     #[inline(always)]
     pub fn v_raise_as(&mut self, env: &Env, w: usize, Ghost(v): Ghost<Value>, len: usize) -> (r: Ctl)
         requires
-            old(self).inv(env.p),
+            old(self).inv(&env.p),
             source(env.p.ap@, old(self).g@, sp::raise(env.p.ap@, old(self).g@, sp::AS_CHECK_FAILED)),
             old(self).bci + len < 0x1000_0000,
             w == enc(old(self).addr(), v), encodable(old(self).addr(), v),
-        ensures step_post(env.p, *old(self), *final(self), r),
+        ensures step_post(&env.p, *old(self), *final(self), r),
     {
         let ghost addr = self.addr();
         let after = smi_value_word((self.bci + len) as i64, Ghost(addr));
@@ -310,14 +310,14 @@ impl Machine {
     #[inline(always)]
     pub fn v_raise_lookup(&mut self, env: &Env, rw: usize, Ghost(rv): Ghost<Value>, sel: i64) -> (r: Ctl)
         requires
-            old(self).inv(env.p),
+            old(self).inv(&env.p),
             source(env.p.ap@, old(self).g@, sp::raise(env.p.ap@, old(self).g@, sp::LOOKUP_FAILED)),
             old(self).bci < 0x1000_0000,
             rw == enc(old(self).addr(), rv), encodable(old(self).addr(), rv), rv is Smi || rv is Obj,
             -0x8000_0000 <= sel < 0x8000_0000,
-        ensures step_post(env.p, *old(self), *final(self), r),
+        ensures step_post(&env.p, *old(self), *final(self), r),
     {
-        let p = env.p;
+        let p = &env.p;
         let ghost addr = self.addr();
         let cid = self.class_of(p, rw, Ghost(rv));
         let cid = if -0x8000_0000 <= cid && cid < 0x8000_0000 { cid } else { -1 };
@@ -335,13 +335,13 @@ impl Machine {
     #[inline(always)]
     pub fn v_raise_code(&mut self, env: &Env, is_block: bool, expected: usize, provided: usize, target: usize) -> (r: Ctl)
         requires
-            old(self).inv(env.p),
+            old(self).inv(&env.p),
             source(env.p.ap@, old(self).g@, sp::raise(env.p.ap@, old(self).g@, sp::CODE_INVOCATION_FAILED)),
             old(self).bci < 0x1000_0000,
             expected < 0x1_0000, provided < 0x1_0000, target < env.p.methods@.len(),
-        ensures step_post(env.p, *old(self), *final(self), r),
+        ensures step_post(&env.p, *old(self), *final(self), r),
     {
-        let p = env.p;
+        let p = &env.p;
         let ghost addr = self.addr();
         let ghost m0 = *self;
         let bw = crate::ops::bool_word(p, is_block, Ghost(m0));

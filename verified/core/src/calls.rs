@@ -352,15 +352,15 @@ impl Machine {
     #[inline(always)]
     pub fn push_call(&mut self, env: &Env, target: usize, ret: usize) -> (r: Ctl)
         requires
-            old(self).refines(env.p),
+            old(self).refines(&env.p),
             !(sp::call(env.p.ap@, old(self).g@, target as int, ret as int) is Stuck),
             old(self).top - old(self).rtop >= FRAME_WORDS,
         ensures
             r == Ctl::Next || r == Ctl::Exit(RESULT_PREEMPTED as u32, 0),
-            final(self).refines(env.p),
+            final(self).refines(&env.p),
             sp::call(env.p.ap@, old(self).g@, target as int, ret as int) == Outcome2::Next(final(self).g@),
     {
-        let p = env.p;
+        let p = &env.p;
         let ghost m0 = *self;
         let ghost g0 = self.g@;
         proof { self.lemma_frame(p); }
@@ -569,15 +569,15 @@ impl Machine {
     #[inline(always)]
     pub fn do_return(&mut self, env: &Env, w: usize, Ghost(v): Ghost<Value>) -> (r: Ctl)
         requires
-            old(self).refines(env.p),
-            shape_ok(env.p, old(self).g@),
+            old(self).refines(&env.p),
+            shape_ok(&env.p, old(self).g@),
             w == enc(old(self).addr(), v),
             encodable(old(self).addr(), v),
             !(sp::return_from(env.p.ap@, old(self).g@, v) is Stuck),
         ensures
-            matches(env.p, sp::return_from(env.p.ap@, old(self).g@, v), *final(self), r),
+            matches(&env.p, sp::return_from(env.p.ap@, old(self).g@, v), *final(self), r),
     {
-        let p = env.p;
+        let p = &env.p;
         let ghost ap = p.ap@;
         let ghost m0 = *self;
         let ghost g0 = self.g@;
@@ -666,7 +666,7 @@ impl Machine {
     #[inline(always)]
     pub fn enter_finally_normal(&mut self, env: &Env, handler: usize) -> (r: Ctl)
         requires
-            old(self).refines(env.p),
+            old(self).refines(&env.p),
             sp::has_handler(old(self).g@),
             handler == handler_word(old(self).g@.tries.last()),
             forall|x: int| 0 <= x < old(self).g@.tries.len() ==>
@@ -676,11 +676,11 @@ impl Machine {
             !(sp::enter_finally(env.p.ap@, old(self).g@, old(self).g@.tries.last(), None) is Stuck),
         ensures
             r == Ctl::Next || is_limit(r),
-            r == Ctl::Next ==> final(self).refines(env.p)
+            r == Ctl::Next ==> final(self).refines(&env.p)
                 && sp::enter_finally(env.p.ap@, old(self).g@, old(self).g@.tries.last(), None)
                     == Outcome2::Next(final(self).g@),
     {
-        let p = env.p;
+        let p = &env.p;
         let ghost ap = p.ap@;
         let ghost m0 = *self;
         let ghost g0 = self.g@;
@@ -782,16 +782,16 @@ pub open spec fn handler_pre(p: &Program, m: Machine, bci: usize, opcode: u8) ->
 #[inline(always)]
 pub fn op_invoke_static(m: &mut Machine, env: &Env, bci: usize, opcode: u8, d: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         toit_spec::v2::prim::grows_stack(opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::call_static(env.p.ap@, old(m).g@, sp::dispatch_target(env.p.ap@, d as int), 3),
         bci + 3 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
     if let Some(c) = ensure_room(m, env) {
         return c;
     }
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -825,12 +825,12 @@ pub fn op_invoke_static(m: &mut Machine, env: &Env, bci: usize, opcode: u8, d: u
 #[inline(always)]
 pub fn op_invoke_virtual(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel: i64, n: usize, len: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         toit_spec::v2::prim::grows_stack(opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::invoke_virtual(env.p.ap@, old(m).g@, sel as int, n as int, len as int),
         -0x8000_0000 <= sel < 0x8000_0000,
         bci + len < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
     proof { lemma_source_step(env.p.ap@, m.g@); }
     do_invoke_virtual(m, env, bci, opcode, sel, n, len)
@@ -841,17 +841,17 @@ pub fn op_invoke_virtual(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel
 #[inline(always)]
 pub fn do_invoke_virtual(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel: i64, n: usize, len: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         toit_spec::v2::prim::grows_stack(opcode),
         source(env.p.ap@, old(m).g@, sp::invoke_virtual(env.p.ap@, old(m).g@, sel as int, n as int, len as int)),
         -0x8000_0000 <= sel < 0x8000_0000,
         bci + len < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
     if let Some(c) = ensure_room(m, env) {
         return c;
     }
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -881,12 +881,12 @@ pub fn do_invoke_virtual(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel
 #[inline(always)]
 pub fn op_operator_fallback(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         toit_spec::v2::prim::grows_stack(opcode),
         62 <= opcode <= 79,
         sp::step(env.p.ap@, old(m).g@) == sp::operator_fallback(env.p.ap@, old(m).g@, opcode),
         bci + 1 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
     proof { lemma_source_step(env.p.ap@, m.g@); }
     fallback_src(m, env, bci, opcode)
@@ -897,12 +897,12 @@ pub fn op_operator_fallback(m: &mut Machine, env: &Env, bci: usize, opcode: u8) 
 #[inline(always)]
 pub fn fallback_src(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         toit_spec::v2::prim::grows_stack(opcode),
         62 <= opcode <= 79,
         source(env.p.ap@, old(m).g@, sp::operator_fallback(env.p.ap@, old(m).g@, opcode)),
         bci + 1 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
     proof { assert(env.p.ap@.invoke_offsets.len() == 19); }
     let sel = env.p.invoke_offsets.at((opcode - 62) as usize) as i64;
@@ -914,20 +914,20 @@ pub fn fallback_src(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: C
 #[inline(always)]
 pub fn op_return(m: &mut Machine, env: &Env, w: usize, Ghost(v): Ghost<Value>) -> (r: Ctl)
     requires
-        old(m).inv(env.p),
+        old(m).inv(&env.p),
         step_ok(env.p.ap@, env.p.cert@, old(m).g@),
         sp::step(env.p.ap@, old(m).g@) == sp::return_from(env.p.ap@, old(m).g@, v),
         w == enc(old(m).addr(), v),
         encodable(old(m).addr(), v),
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
     let ghost m0 = *m;
     proof {
         assert(outcome_ok(env.p.ap@, env.p.cert@, sp::step(env.p.ap@, m.g@)));
-        lemma_shape(env.p, m.g@);
+        lemma_shape(&env.p, m.g@);
     }
     let r = m.do_return(env, w, Ghost(v));
-    proof { lemma_matches(env.p, m0, *m, r); }
+    proof { lemma_matches(&env.p, m0, *m, r); }
     r
 }
 

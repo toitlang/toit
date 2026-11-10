@@ -419,13 +419,13 @@ impl Machine {
 #[inline(always)]
 pub fn op_invoke_eq(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_eq(env.p.ap@, old(m).g@),
         opcode == 62,
         bci + 1 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -463,7 +463,7 @@ pub fn op_invoke_eq(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: C
 #[inline(always)]
 pub fn op_eq_slow(m: &mut Machine, env: &Env, bci: usize, opcode: u8, a0: usize, a1: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_eq(env.p.ap@, old(m).g@),
         opcode == 62,
         bci + 1 < 0x1000_0000,
@@ -473,9 +473,9 @@ pub fn op_eq_slow(m: &mut Machine, env: &Env, bci: usize, opcode: u8, a0: usize,
         !(sp::at(old(m).g@, 0) is Smi && sp::at(old(m).g@, 1) is Smi),
         a0 == enc(old(m).addr(), sp::at(old(m).g@, 1)),
         a1 == enc(old(m).addr(), sp::at(old(m).g@, 0)),
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -528,13 +528,13 @@ pub fn op_eq_slow(m: &mut Machine, env: &Env, bci: usize, opcode: u8, a0: usize,
 #[inline(always)]
 pub fn op_invoke_relational(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_relational(env.p.ap@, old(m).g@, opcode),
         63 <= opcode <= 66,
         bci + 1 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -595,13 +595,13 @@ pub fn rel_flag(op: u8) -> (r: u8)
 #[inline(always)]
 pub fn op_invoke_arith(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_arith(env.p.ap@, old(m).g@, opcode),
         67 <= opcode <= 77,
         bci + 1 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -649,7 +649,7 @@ pub fn op_invoke_arith(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r
 #[inline(always)]
 pub fn op_arith_slow(m: &mut Machine, env: &Env, bci: usize, opcode: u8, a0: usize, a1: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_arith(env.p.ap@, old(m).g@, opcode),
         67 <= opcode <= 77,
         bci + 1 < 0x1000_0000,
@@ -659,9 +659,9 @@ pub fn op_arith_slow(m: &mut Machine, env: &Env, bci: usize, opcode: u8, a0: usi
         !(sp::at(old(m).g@, 0) is Smi && sp::at(old(m).g@, 1) is Smi),
         a0 == enc(old(m).addr(), sp::at(old(m).g@, 1)),
         a1 == enc(old(m).addr(), sp::at(old(m).g@, 0)),
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -695,15 +695,15 @@ pub fn op_arith_slow(m: &mut Machine, env: &Env, bci: usize, opcode: u8, a0: usi
 #[inline(always)]
 pub fn op_new_double(m: &mut Machine, env: &Env, bci: usize, opcode: u8, bits: u64) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::binary_result(
             sp::alloc2(old(m).g@, new_double(as1(old(m).g@), p1(env.p.ap@), bits)), sp::new_ref2(old(m).g@)),
         sp::has_slot(old(m).g@, 1),
         toit_spec::v2::prim::allocates_double(env.p.ap@, old(m).g@, opcode),
         bci + 1 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -738,15 +738,15 @@ pub fn op_new_double(m: &mut Machine, env: &Env, bci: usize, opcode: u8, bits: u
 #[inline(always)]
 pub fn op_identical(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@)
             == sp::binary_result(old(m).g@, sp::boolean2(env.p.ap@,
                 identical(as1(old(m).g@), sp::at(old(m).g@, 1), sp::at(old(m).g@, 0)))),
         opcode == 96,
         bci + 1 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;

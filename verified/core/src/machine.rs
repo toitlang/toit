@@ -352,7 +352,7 @@ impl Machine {
     fn alloc_instance_cold(&mut self, env: &Env, class_id: usize) -> Option<usize> {
         self.save();
         let r = env.rt.allocate_instance(&mut self.mem, class_id);
-        if !self.reload(env.p) { return None; }
+        if !self.reload(&env.p) { return None; }
         if r == 0 { None } else { Some(r) }
     }
 
@@ -408,7 +408,7 @@ impl Machine {
     fn alloc_double_cold(&mut self, env: &Env, bits: u64) -> Option<usize> {
         self.save();
         let r = env.rt.allocate_double(&mut self.mem, bits);
-        if !self.reload(env.p) { return None; }
+        if !self.reload(&env.p) { return None; }
         if r == 0 { None } else { Some(r) }
     }
 
@@ -422,7 +422,7 @@ impl Machine {
     fn alloc_array_cold(&mut self, env: &Env, length: usize, filler: usize) -> Option<usize> {
         self.save();
         let r = env.rt.allocate_array(&mut self.mem, length, filler);
-        if !self.reload(env.p) { return None; }
+        if !self.reload(&env.p) { return None; }
         if r == 0 { None } else { Some(r) }
     }
 
@@ -458,7 +458,7 @@ impl Machine {
     fn grow_cold(&mut self, env: &Env, needed: usize) -> Ctl {
         self.save();
         let status = env.rt.grow_stack(&mut self.mem, needed);
-        if !self.reload(env.p) { return Ctl::Stuck(stuck::FATAL); }
+        if !self.reload(&env.p) { return Ctl::Stuck(stuck::FATAL); }
         if status == V2_OK { return Ctl::Next; }
         let error = if status == V2_STACK_OVERFLOW {
             env.p.roots.at(ROOT_STACK_OVERFLOW)
@@ -514,7 +514,7 @@ impl Machine {
 
     #[inline(never)]
     fn raise_lookup_cold(&mut self, env: &Env, receiver: usize, sel: i64) -> Ctl {
-        let cid = match self.class_id(env.p, receiver) { Some(c) => c, None => -1 };
+        let cid = match self.class_id(&env.p, receiver) { Some(c) => c, None => -1 };
         self.raise_msg(env, LOOKUP_FAILED, Msg::array(&[smi(sel), smi(cid), receiver]))
     }
 
@@ -542,7 +542,7 @@ impl Machine {
 
     #[inline(never)]
     fn raise_code_cold(&mut self, env: &Env, is_block: bool, expected: usize, provided: usize, target: usize) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         let entry = if target < p.methods.len() { p.methods.at(target).entry as i64 } else { -1 };
         let words = [p.boolean(is_block), smi(expected as i64), smi(provided as i64), smi(entry)];
         self.raise_msg(env, CODE_INVOCATION_FAILED, Msg::array(&words))
@@ -573,7 +573,7 @@ impl Machine {
 
     #[inline(never)]
     fn raise_value_msg_cold(&mut self, env: &Env, value: usize, msg: Msg) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         let cid = p.builtin.at(BUILTIN_EXCEPTION);
         if !is_smi(cid) { return Ctl::Stuck(stuck::FATAL); }
         let cid = smi_value(cid);
@@ -599,7 +599,7 @@ impl Machine {
 
     #[inline(never)]
     fn enter_finally_cold(&mut self, env: &Env, handler: usize, u: Option<Unwinding>) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         let height = handler & 0xffff_ffff;
         let hbci = handler >> 32;
         if !(self.base <= height && height <= self.len - self.top) {
@@ -710,7 +710,7 @@ impl Machine {
             // Pop the frame.
             self.top = self.len - self.base;
             self.pop_frame_record();
-            if !self.refresh_frame(env.p) { return Ctl::Stuck(stuck::FATAL); }
+            if !self.refresh_frame(&env.p) { return Ctl::Stuck(stuck::FATAL); }
         }
     }
 
@@ -729,7 +729,7 @@ impl Machine {
         let ret = self.mem.read(r + FRAME_RET);
         self.top = self.len - self.base;
         self.pop_frame_record();
-        if !self.refresh_frame(env.p) { return Ctl::Stuck(stuck::FATAL); }
+        if !self.refresh_frame(&env.p) { return Ctl::Stuck(stuck::FATAL); }
         if !self.push(result) { return Ctl::Stuck(stuck::LIMIT); }
         self.bci = ret;
         let handler = self.mem.read(self.ftop - FRAME_WORDS + FRAME_HANDLER);
@@ -746,7 +746,7 @@ impl Machine {
     /// `arity` slots.
     #[inline(always)]
     pub fn call(&mut self, env: &Env, target: usize, ret: usize) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         if target >= p.methods.len() { return Ctl::Stuck(stuck::NOT_METHOD); }
         let info = p.methods.at(target);
         let arity = info.arity as usize;
@@ -787,7 +787,7 @@ impl Machine {
     /// `spec::call_static`.
     #[inline(always)]
     pub fn call_static(&mut self, env: &Env, target: i64, len: usize) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         if target < 0 || target as usize >= p.methods.len() { return Ctl::Stuck(stuck::NOT_METHOD); }
         let info = p.methods.at(target as usize);
         let arity = info.arity as usize;
@@ -813,7 +813,7 @@ impl Machine {
     /// by `extra` (lambda captures, copied by the caller afterwards).
     #[inline(always)]
     pub fn replace_frame(&mut self, env: &Env, target: usize, from: usize, n: usize, extra: usize) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         let r = self.ftop - FRAME_WORDS;
         if self.mem.read(r + FRAME_HANDLER) != 0 { return Ctl::Stuck(stuck::BAD_FRAME); }
         // The frame's finally records go (`fins_popped`).
@@ -853,7 +853,7 @@ impl Machine {
     pub fn invoke_virtual(&mut self, env: &Env, sel: i64, n: usize, len: usize) -> Ctl {
         if n < 1 || !self.has_slot(n - 1) { return Ctl::Stuck(stuck::STACK_RANGE); }
         let receiver = self.at(n - 1);
-        match self.find_method(env.p, receiver, sel) {
+        match self.find_method(&env.p, receiver, sel) {
             Lookup::Stuck(r) => Ctl::Stuck(r),
             Lookup::Missing => self.raise_lookup(env, receiver, sel),
             Lookup::Found(t) => {
@@ -1375,7 +1375,7 @@ fn compare_num(a: Num, b: Num) -> u8 {
 /// verification, else on the checked handlers (`run_checked`). TRUSTED glue:
 /// the ghost state is the one the run loop's precondition names
 /// (theorem.rs); `reload` checks the stack object.
-pub fn run(p: &Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preemption, core_arities: Table<u8>,
+pub fn run(p: Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preemption, core_arities: Table<u8>,
            accepted: Option<crate::ffi::Accepted>) -> (usize, i64) {
     let mem = rt.stack();
     let mut m = Machine {
@@ -1384,7 +1384,7 @@ pub fn run(p: &Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preempti
         g: Ghost::assume_new(),
     };
     let env = Env { p, rt, pre, core_arities };
-    if !m.reload(p) || m.ftop < FRAME_WORDS {
+    if !m.reload(&env.p) || m.ftop < FRAME_WORDS {
         env.rt.report(V2_REPORT_STUCK, m.bci, stuck::FATAL);
         return (RESULT_TERMINATED, 1);
     }
@@ -1422,7 +1422,7 @@ impl Machine {
     /// a run-time check here. The instruction lies inside the method.
     #[inline(always)]
     pub fn dispatch_unverified(&mut self, env: &Env, bci: usize, opcode: u8) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         // Operands are decoded in the arms (the opcode is a constant there,
         // so the length folds too).
         macro_rules! len { () => { OPCODE_LENGTHS[opcode as usize] as usize } }
@@ -1543,7 +1543,7 @@ impl Machine {
 
     #[inline(always)]
     fn op_load_global_lazy(&mut self, env: &Env, g: usize, len: usize) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         if g >= self.globals.len() { return Ctl::Stuck(stuck::TABLE_RANGE); }
         let v = self.globals.at(g);
         let lazy = is_heap(v) && self.tag(v) == INSTANCE_TAG
@@ -1593,7 +1593,7 @@ impl Machine {
 
     #[inline(always)]
     fn op_allocate(&mut self, env: &Env, c: usize, len: usize) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         if c >= p.class_bits.len() { return Ctl::Stuck(stuck::TABLE_RANGE); }
         let bits = p.class_bits.at(c);
         if (bits as usize) & CLASS_TAG_MASK != INSTANCE_TAG || p.instance_field_count(c) < 0 {
@@ -1610,7 +1610,7 @@ impl Machine {
 
     #[inline(always)]
     fn op_is(&mut self, env: &Env, enc: usize, interface: bool, len: usize) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         if !self.has_slot(0) { return Ctl::Stuck(stuck::STACK_RANGE); }
         match self.typecheck(p, self.at(0), enc / 2, enc % 2 == 1, interface) {
             Check::Stuck(r) => Ctl::Stuck(r),
@@ -1621,7 +1621,7 @@ impl Machine {
 
     #[inline(always)]
     fn op_as(&mut self, env: &Env, enc: usize, interface: bool, len: usize) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         if !self.has_slot(0) { return Ctl::Stuck(stuck::STACK_RANGE); }
         let v = self.at(0);
         match self.typecheck(p, v, enc / 2, enc % 2 == 1, interface) {
@@ -1633,7 +1633,7 @@ impl Machine {
 
     #[inline(always)]
     fn op_as_local(&mut self, env: &Env, enc: usize) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         if !self.has_slot(enc / 32) { return Ctl::Stuck(stuck::STACK_RANGE); }
         let v = self.at(enc / 32);
         match self.typecheck_class(p, v, enc % 32, false) {
@@ -1645,7 +1645,7 @@ impl Machine {
 
     #[inline(always)]
     fn op_invoke_static_tail(&mut self, env: &Env, d: usize) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         let t = p.dispatch_target(d);
         if t < 0 || t as usize >= p.methods.len() { return Ctl::Stuck(stuck::NOT_METHOD); }
         let info = p.methods.at(t as usize);
@@ -1669,7 +1669,7 @@ impl Machine {
 
     #[inline(always)]
     fn op_invoke_block(&mut self, env: &Env, n: usize) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         if n < 1 || !self.has_slot(n - 1) { return Ctl::Stuck(stuck::STACK_RANGE); }
         let (_, slot) = match self.block_ref(self.at(n - 1)) {
             None => return Ctl::Stuck(stuck::NOT_BLOCK),
@@ -1695,7 +1695,7 @@ impl Machine {
 
     #[inline(never)]
     fn op_invoke_lambda_tail_cold(&mut self, env: &Env) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         if self.ftop < FRAME_WORDS { return Ctl::Stuck(stuck::BAD_FRAME); }
         let a = p.methods.at(self.method).arity as usize;
         if a < 1 || self.lim - self.top != a { return Ctl::Stuck(stuck::STACK_RANGE); }
@@ -1751,7 +1751,7 @@ impl Machine {
 
     #[inline(never)]
     fn op_invoke_initializer_tail_cold(&mut self, env: &Env) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         if !self.has_slot(0) { return Ctl::Stuck(stuck::STACK_RANGE); }
         let v = self.at(0);
         if !is_smi(v) { return self.raise(env, INVALID_PROGRAM); }
@@ -1765,7 +1765,7 @@ impl Machine {
 
     #[inline(always)]
     fn op_invoke_virtual_get(&mut self, env: &Env, sel: i64) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         if !self.has_slot(0) { return Ctl::Stuck(stuck::STACK_RANGE); }
         let recv = self.at(0);
         match self.find_method(p, recv, sel) {
@@ -1790,7 +1790,7 @@ impl Machine {
 
     #[inline(always)]
     fn op_invoke_virtual_set(&mut self, env: &Env, sel: i64) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         if !self.has_slot(1) { return Ctl::Stuck(stuck::STACK_RANGE); }
         let recv = self.at(1);
         let v = self.at(0);
@@ -1817,7 +1817,7 @@ impl Machine {
 
     #[inline(always)]
     fn op_invoke_eq(&mut self, env: &Env) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         let a0 = self.at(1);
         let a1 = self.at(0);
         if is_smi(a0) && is_smi(a1) { return self.binary_result(p.boolean(a0 == a1)); }
@@ -1832,7 +1832,7 @@ impl Machine {
 
     #[inline(never)]
     fn op_invoke_eq_slow_cold(&mut self, env: &Env, a0: usize, a1: usize) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         if a0 == a1 {
             let nan = self.is_double(a0) && f64::from_bits(self.double_bits(a0)).is_nan();
             return self.binary_result(p.boolean(!nan));
@@ -1847,7 +1847,7 @@ impl Machine {
 
     #[inline(always)]
     fn op_invoke_relational(&mut self, env: &Env, opcode: u8) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         let a0 = self.at(1);
         let a1 = self.at(0);
         if is_smi(a0) && is_smi(a1) {
@@ -1871,7 +1871,7 @@ impl Machine {
 
     #[inline(never)]
     fn op_invoke_relational_slow_cold(&mut self, env: &Env, opcode: u8, a0: usize, a1: usize) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         let c = self.compare_numbers(a0, a1);
         if c != 0 {
             let flag = match opcode {
@@ -1929,7 +1929,7 @@ impl Machine {
 
     #[inline(always)]
     fn op_invoke_at(&mut self, env: &Env) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         let recv = self.at(1);
         let arg = self.at(0);
         let null = p.null;
@@ -1944,7 +1944,7 @@ impl Machine {
 
     #[inline(always)]
     fn op_invoke_at_put(&mut self, env: &Env) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         if !self.has_slot(2) { return Ctl::Stuck(stuck::STACK_RANGE); }
         let recv = self.at(2);
         let arg = self.at(1);
@@ -1965,7 +1965,7 @@ impl Machine {
 
     #[inline(always)]
     fn op_invoke_size(&mut self, env: &Env, sel: i64) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         if !self.has_slot(0) { return Ctl::Stuck(stuck::STACK_RANGE); }
         match self.fast_size(p, self.at(0)) {
             Some(n) if smi_ok(n) => {
@@ -1985,7 +1985,7 @@ impl Machine {
 
     #[inline(never)]
     fn op_primitive_cold(&mut self, env: &Env) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         let bci = self.bci;
         let arity = p.methods.at(self.method).arity as usize;
         if self.lim - self.top != arity { return Ctl::Stuck(stuck::STACK_RANGE); }
@@ -2014,7 +2014,7 @@ impl Machine {
 
     #[inline(always)]
     fn op_try(&mut self, env: &Env) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         if !self.has_slot(0) || self.ftop < FRAME_WORDS { return Ctl::Stuck(stuck::STACK_RANGE); }
         let height = self.len - self.top;
         let r = self.ftop - FRAME_WORDS;
@@ -2047,7 +2047,7 @@ impl Machine {
 
     #[inline(never)]
     fn op_unwind_cold(&mut self, env: &Env) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         if !self.has_slot(2) { return Ctl::Stuck(stuck::STACK_RANGE); }
         let token = self.at(1);
         let value = self.at(2);
@@ -2089,7 +2089,7 @@ impl Machine {
 
     #[inline(never)]
     fn op_halt_cold(&mut self, env: &Env, code: usize) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         if code == 0 {
             if !self.push(smi(91)) { return Ctl::Stuck(stuck::LIMIT); }
             self.bci += 2;
@@ -2135,7 +2135,7 @@ impl Machine {
 
     #[inline(always)]
     fn op_non_local_branch(&mut self, env: &Env, hd: usize, off: usize) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         if !self.has_slot(0) { return Ctl::Stuck(stuck::STACK_RANGE); }
         let (f, slot) = match self.block_ref(self.at(0)) {
             None => return Ctl::Stuck(stuck::NOT_BLOCK),
@@ -2283,7 +2283,7 @@ impl Machine {
     pub fn op_load_field(&mut self, env: &Env, f: usize, len: usize) -> Ctl {
         if !self.has_slot(0) { return Ctl::Stuck(1); }
         let obj = self.at(0);
-        if !self.field_ok(env.p, obj, f) {
+        if !self.field_ok(&env.p, obj, f) {
             return self.raise(env, INVALID_PROGRAM);
         }
         let v = self.field(obj, f);
@@ -2299,7 +2299,7 @@ impl Machine {
         let slot = if pop { local + 1 } else { local };
         if !self.has_slot(slot) { return Ctl::Stuck(1); }
         let obj = self.at(slot);
-        if !self.field_ok(env.p, obj, f) {
+        if !self.field_ok(&env.p, obj, f) {
             return self.raise(env, INVALID_PROGRAM);
         }
         let v = self.field(obj, f);
@@ -2317,7 +2317,7 @@ impl Machine {
         if !self.has_slot(1) { return Ctl::Stuck(1); }
         let v = self.at(0);
         let obj = self.at(1);
-        if !self.field_store_ok(env.p, obj, f) || self.is_ro(env.p, obj) {
+        if !self.field_store_ok(&env.p, obj, f) || self.is_ro(&env.p, obj) {
             return self.raise(env, INVALID_PROGRAM);
         }
         self.drop(2);
@@ -2332,7 +2332,7 @@ impl Machine {
 
     #[inline(always)]
     pub fn op_store_field_this(&mut self, env: &Env, f: usize) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         if !self.has_slot(0) { return Ctl::Stuck(1); }
         if self.base >= self.len - self.top { return Ctl::Stuck(8); }
         let this = self.mem.read(self.len - 1 - self.base);
@@ -2385,7 +2385,7 @@ impl Program {
 fn run_checked(m: &mut Machine, env: &Env) -> (usize, i64) {
     loop {
         let bci = m.bci;
-        let ctl = if !m.instruction_in_method(env.p, bci) {
+        let ctl = if !m.instruction_in_method(&env.p, bci) {
             Ctl::Stuck(stuck::BAD_INSTRUCTION)
         } else {
             let opcode = env.p.code.at(bci);
@@ -2423,7 +2423,7 @@ impl Machine {
     /// check: the simple families here, the others in `dispatch_unverified`.
     #[inline(always)]
     pub fn dispatch_checked(&mut self, env: &Env, bci: usize, opcode: u8) -> Ctl {
-        let p = env.p;
+        let p = &env.p;
         macro_rules! len { () => { OPCODE_LENGTHS[opcode as usize] as usize } }
         macro_rules! b1 { () => { p.code.at(bci + 1) as usize } }
         macro_rules! w1 { () => { Self::u16_at(p, bci + 1) } }

@@ -221,13 +221,13 @@ proof fn lemma_field_val(p: &Program, m: &Machine, v: Value, f: int)
 #[inline(always)]
 pub fn op_load_field(m: &mut Machine, env: &Env, bci: usize, opcode: u8, f: usize, len: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_load_field(env.p.ap@, old(m).g@, f as int, len as int),
         f < 0x1_0000,
         bci + len < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -266,13 +266,13 @@ pub fn op_load_field(m: &mut Machine, env: &Env, bci: usize, opcode: u8, f: usiz
 #[inline(always)]
 pub fn op_load_field_local(m: &mut Machine, env: &Env, bci: usize, opcode: u8, enc: usize, pop: bool) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_load_field_local(env.p.ap@, old(m).g@, enc as int, pop),
         enc < 256,
         bci + 2 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -322,13 +322,13 @@ pub fn op_load_field_local(m: &mut Machine, env: &Env, bci: usize, opcode: u8, e
 #[inline(always)]
 pub fn op_store_field(m: &mut Machine, env: &Env, bci: usize, opcode: u8, f: usize, len: usize, keep: bool) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_store_field(env.p.ap@, old(m).g@, f as int, len as int, keep),
         f < 0x1_0000,
         bci + len < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -405,13 +405,13 @@ proof fn lemma_this(p: &Program, m: &Machine, f: int)
 #[inline(always)]
 pub fn op_load_field_this(m: &mut Machine, env: &Env, bci: usize, opcode: u8, f: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_load_field_this(env.p.ap@, old(m).g@, f as int),
         f < 256,
         bci + 2 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -435,13 +435,13 @@ pub fn op_load_field_this(m: &mut Machine, env: &Env, bci: usize, opcode: u8, f:
 #[inline(always)]
 pub fn op_store_field_this(m: &mut Machine, env: &Env, bci: usize, opcode: u8, f: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_store_field_this(env.p.ap@, old(m).g@, f as int),
         f < 256,
         bci + 2 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -480,14 +480,14 @@ pub fn op_store_field_this(m: &mut Machine, env: &Env, bci: usize, opcode: u8, f
 #[inline(always)]
 pub fn op_invoke_virtual_get(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         toit_spec::v2::prim::grows_stack(opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_virtual_get(env.p.ap@, old(m).g@, sel as int),
         sel < 0x1_0000,
         bci + 3 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -542,14 +542,14 @@ pub fn op_invoke_virtual_get(m: &mut Machine, env: &Env, bci: usize, opcode: u8,
 #[inline(always)]
 pub fn op_invoke_virtual_set(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         toit_spec::v2::prim::grows_stack(opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_virtual_set(env.p.ap@, old(m).g@, sel as int),
         sel < 0x1_0000,
         bci + 3 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;

@@ -107,14 +107,14 @@ proof fn lemma_halt_exit(p: &Program, g: State2)
 #[inline(always)]
 pub fn op_halt(m: &mut Machine, env: &Env, bci: usize, opcode: u8, code: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         opcode == 100,
         code == env.p.ap@.bytecodes[bci + 1],
         sp::step(env.p.ap@, old(m).g@) == sp::op_halt(env.p.ap@, old(m).g@, code as int),
         bci + 2 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;

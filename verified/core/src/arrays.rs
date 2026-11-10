@@ -133,11 +133,11 @@ pub proof fn lemma_step_at(p: &Program, g: State2)
 #[inline(always)]
 pub fn op_array(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         78 <= opcode <= 80,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     proof {
         lemma_step_at(p, m.g@);
         lemma_instr(p.ap@, p.cert@, p.trusted@, m.g@);
@@ -817,16 +817,16 @@ pub fn index_x(m: &Machine, p: &Program, wa: usize, Ghost(a): Ghost<Value>) -> (
 #[inline(always)]
 pub fn op_invoke_at(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         opcode == 78,
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_at(env.p.ap@, old(m).g@),
         sp::has_slot(old(m).g@, 0), sp::at(old(m).g@, 0) is Smi || sp::at(old(m).g@, 0) is Obj,
         sp::has_slot(old(m).g@, 1), sp::at(old(m).g@, 1) is Smi || sp::at(old(m).g@, 1) is Obj,
         vals_good(old(m).g@.heap),
         bci + 1 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost s = as1(g);
@@ -886,7 +886,7 @@ pub fn op_invoke_at(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: C
 #[inline(always)]
 pub fn op_invoke_at_put(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         opcode == 79,
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_at_put(env.p.ap@, old(m).g@),
         sp::has_slot(old(m).g@, 0), sp::at(old(m).g@, 0) is Smi || sp::at(old(m).g@, 0) is Obj,
@@ -894,9 +894,9 @@ pub fn op_invoke_at_put(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (
         sp::has_slot(old(m).g@, 2), sp::at(old(m).g@, 2) is Smi || sp::at(old(m).g@, 2) is Obj,
         vals_good(old(m).g@.heap),
         bci + 1 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost s = as1(g);
@@ -961,16 +961,16 @@ pub fn op_invoke_at_put(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (
 #[inline(always)]
 pub fn op_invoke_size(m: &mut Machine, env: &Env, bci: usize, opcode: u8, sel: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         opcode == 80,
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_size(env.p.ap@, old(m).g@, sel as int),
         sp::has_slot(old(m).g@, 0), sp::at(old(m).g@, 0) is Smi || sp::at(old(m).g@, 0) is Obj,
         vals_good(old(m).g@.heap),
         sel < 0x1_0000,
         bci + 3 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;

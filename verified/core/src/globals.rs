@@ -137,13 +137,13 @@ impl Machine {
 #[inline(always)]
 pub fn op_load_global_dynamic(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         opcode == 34,
         sp::step(env.p.ap@, old(m).g@) == sp::op_load_global_dynamic(env.p.ap@, old(m).g@),
         bci + 1 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -187,13 +187,13 @@ pub fn op_load_global_dynamic(m: &mut Machine, env: &Env, bci: usize, opcode: u8
 #[inline(always)]
 pub fn op_store_global_dynamic(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         opcode == 37,
         sp::step(env.p.ap@, old(m).g@) == sp::op_store_global_dynamic(env.p.ap@, old(m).g@),
         bci + 1 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -241,14 +241,14 @@ pub fn op_store_global_dynamic(m: &mut Machine, env: &Env, bci: usize, opcode: u
 #[inline(always)]
 pub fn op_load_global_lazy(m: &mut Machine, env: &Env, bci: usize, opcode: u8, gi: usize, len: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         toit_spec::v2::prim::grows_stack(opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_load_global_lazy(env.p.ap@, old(m).g@, gi as int, len as int),
         gi < 0x1_0000,
         bci + len < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;

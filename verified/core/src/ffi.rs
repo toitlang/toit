@@ -378,7 +378,7 @@ pub unsafe extern "C" fn toit_v2_run(context: *mut Context) -> usize {
     // V2MethodTable::verified, which only V2Verifier::verify's accept path
     // sets).
     let accepted = if c.accepted == V2_ACCEPTED { Some(Accepted { _private: () }) } else { None };
-    let (state, value) = crate::machine::run(&program, runtime, globals, heap, preemption, core_arities, accepted);
+    let (state, value) = crate::machine::run(program, runtime, globals, heap, preemption, core_arities, accepted);
     c.result_state = state;
     c.result_value = value;
     state

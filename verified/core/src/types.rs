@@ -106,13 +106,13 @@ proof fn lemma_put_rel(p: &Program, m0: Machine, m1: Machine, n: int, w: usize, 
 #[inline(always)]
 pub fn op_is(m: &mut Machine, env: &Env, bci: usize, opcode: u8, enc: usize, interface: bool, len: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_is(env.p.ap@, old(m).g@, enc as int, interface, len as int),
         enc < 0x1_0000,
         bci + len < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -145,13 +145,13 @@ pub fn op_is(m: &mut Machine, env: &Env, bci: usize, opcode: u8, enc: usize, int
 #[inline(always)]
 pub fn op_as(m: &mut Machine, env: &Env, bci: usize, opcode: u8, enc: usize, interface: bool, len: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_as(env.p.ap@, old(m).g@, enc as int, interface, len as int),
         enc < 0x1_0000,
         bci + len < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -183,13 +183,13 @@ pub fn op_as(m: &mut Machine, env: &Env, bci: usize, opcode: u8, enc: usize, int
 #[inline(always)]
 pub fn op_as_local(m: &mut Machine, env: &Env, bci: usize, opcode: u8, enc: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_as_local(env.p.ap@, old(m).g@, enc as int),
         enc < 0x100,
         bci + 2 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;

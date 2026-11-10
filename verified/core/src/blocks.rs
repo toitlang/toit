@@ -177,12 +177,12 @@ impl Machine {
 #[inline(always)]
 pub fn op_load_block(m: &mut Machine, env: &Env, bci: usize, opcode: u8, k: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_load_block(old(m).g@, k as int),
         bci + 2 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -209,12 +209,12 @@ pub fn op_load_block(m: &mut Machine, env: &Env, bci: usize, opcode: u8, k: usiz
 #[inline(always)]
 pub fn op_load_outer(m: &mut Machine, env: &Env, bci: usize, opcode: u8, k: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_load_outer(old(m).g@, k as int),
         bci + 2 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -248,12 +248,12 @@ pub fn op_load_outer(m: &mut Machine, env: &Env, bci: usize, opcode: u8, k: usiz
 #[inline(always)]
 pub fn op_store_outer(m: &mut Machine, env: &Env, bci: usize, opcode: u8, k: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_store_outer(old(m).g@, k as int),
         bci + 2 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -310,12 +310,12 @@ pub fn op_store_outer(m: &mut Machine, env: &Env, bci: usize, opcode: u8, k: usi
 #[inline(always)]
 pub fn op_load_outer_block(m: &mut Machine, env: &Env, bci: usize, opcode: u8, k: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_load_outer_block(old(m).g@, k as int),
         bci + 2 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -354,16 +354,16 @@ pub fn op_load_outer_block(m: &mut Machine, env: &Env, bci: usize, opcode: u8, k
 #[inline(always)]
 pub fn op_invoke_block(m: &mut Machine, env: &Env, bci: usize, opcode: u8, n: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         toit_spec::v2::prim::grows_stack(opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_block(env.p.ap@, old(m).g@, n as int),
         bci + 2 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
     if let Some(c) = ensure_room(m, env) {
         return c;
     }
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;

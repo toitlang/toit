@@ -278,7 +278,7 @@ impl Machine {
     #[inline(always)]
     pub fn enter_finally_unwind(&mut self, env: &Env, handler: usize, u: Unw, Ghost(gu): Ghost<Unwind>) -> (r: Ctl)
         requires
-            old(self).refines(env.p),
+            old(self).refines(&env.p),
             sp::has_handler(old(self).g@),
             handler == handler_word(old(self).g@.tries.last()),
             tries_ok(old(self).g@),
@@ -287,11 +287,11 @@ impl Machine {
             !(sp::enter_finally(env.p.ap@, old(self).g@, old(self).g@.tries.last(), Some(gu)) is Stuck),
         ensures
             r == Ctl::Next || is_limit(r),
-            r == Ctl::Next ==> final(self).refines(env.p)
+            r == Ctl::Next ==> final(self).refines(&env.p)
                 && sp::enter_finally(env.p.ap@, old(self).g@, old(self).g@.tries.last(), Some(gu))
                     == Outcome2::Next(final(self).g@),
     {
-        let p = env.p;
+        let p = &env.p;
         let ghost ap = p.ap@;
         let ghost m0 = *self;
         let ghost g0 = self.g@;
@@ -460,15 +460,15 @@ impl Machine {
     #[inline(always)]
     pub fn do_unwind(&mut self, env: &Env, u: Unw, Ghost(gu): Ghost<Unwind>) -> (r: Ctl)
         requires
-            old(self).refines(env.p),
-            shape_ok(env.p, old(self).g@),
+            old(self).refines(&env.p),
+            shape_ok(&env.p, old(self).g@),
             unw_rel(old(self).addr(), u, gu),
             resume_ok(sp::resume_of(gu)),
             !(sp::unwind(env.p.ap@, old(self).g@, gu) is Stuck),
         ensures
-            matches(env.p, sp::unwind(env.p.ap@, old(self).g@, gu), *final(self), r),
+            matches(&env.p, sp::unwind(env.p.ap@, old(self).g@, gu), *final(self), r),
     {
-        let p = env.p;
+        let p = &env.p;
         let ghost ap = p.ap@;
         let ghost o = sp::unwind(ap, self.g@, gu);
         let ghost addr = self.addr();
@@ -482,7 +482,7 @@ impl Machine {
                 sp::unwind(ap, self.g@, gu) == o,
                 !(o is Stuck),
                 o == sp::unwind(ap, old(self).g@, gu),
-                p == env.p,
+                p == (&env.p),
                 ap == p.ap@,
             decreases self.g@.frames.len(),
         {
@@ -584,7 +584,7 @@ pub open spec fn prep_post(p: &Program, m0: Machine, m1: Machine, r: (Prep, Ghos
 #[inline(always)]
 pub fn op_unwinding(m: &mut Machine, env: &Env, bci: usize, opcode: u8, hd: usize, off: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         opcode == 90 || opcode == 93 || opcode == 95 || opcode == 99,
         opcode == 90 ==> sp::has_slot(old(m).g@, 0)
             && sp::step(env.p.ap@, old(m).g@) == sp::unwind(env.p.ap@, old(m).g@, Unwind::Throw(sp::at(old(m).g@, 0))),
@@ -593,7 +593,7 @@ pub fn op_unwinding(m: &mut Machine, env: &Env, bci: usize, opcode: u8, hd: usiz
             && sp::step(env.p.ap@, old(m).g@) == sp::op_non_local_branch(env.p.ap@, old(m).g@, hd as int, off as int),
         opcode == 99 ==> bci + 1 < 0x1000_0000
             && sp::step(env.p.ap@, old(m).g@) == sp::op_unwind(env.p.ap@, old(m).g@),
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
     let ghost m0 = *m;
     let (pr, gu) = if opcode == 90 {
@@ -609,7 +609,7 @@ pub fn op_unwinding(m: &mut Machine, env: &Env, bci: usize, opcode: u8, hd: usiz
         Prep::Done(c) => c,
         Prep::Unwind(u) => {
             let r = m.do_unwind(env, u, gu);
-            proof { lemma_matches(env.p, m0, *m, r); }
+            proof { lemma_matches(&env.p, m0, *m, r); }
             r
         },
     }
@@ -619,12 +619,12 @@ pub fn op_unwinding(m: &mut Machine, env: &Env, bci: usize, opcode: u8, hd: usiz
 #[inline(always)]
 pub fn prep_throw(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: (Prep, Ghost<Unwind>))
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::has_slot(old(m).g@, 0),
         sp::step(env.p.ap@, old(m).g@) == sp::unwind(env.p.ap@, old(m).g@, Unwind::Throw(sp::at(old(m).g@, 0))),
-    ensures prep_post(env.p, *old(m), *final(m), r),
+    ensures prep_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -642,12 +642,12 @@ pub fn prep_throw(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: (Pr
 #[inline(always)]
 pub fn prep_unwind(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: (Prep, Ghost<Unwind>))
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_unwind(env.p.ap@, old(m).g@),
         bci + 1 < 0x1000_0000,
-    ensures prep_post(env.p, *old(m), *final(m), r),
+    ensures prep_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -747,11 +747,11 @@ pub fn ref_frame(w: usize, Ghost(f): Ghost<usize>, Ghost(s): Ghost<usize>) -> (r
 #[inline(always)]
 pub fn prep_non_local_return(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: (Prep, Ghost<Unwind>))
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_non_local_return(env.p.ap@, old(m).g@),
-    ensures prep_post(env.p, *old(m), *final(m), r),
+    ensures prep_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -781,12 +781,12 @@ pub fn prep_non_local_return(m: &mut Machine, env: &Env, bci: usize, opcode: u8)
 #[inline(always)]
 pub fn prep_non_local_branch(m: &mut Machine, env: &Env, bci: usize, opcode: u8, hd: usize, off: usize) -> (r: (Prep, Ghost<Unwind>))
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_non_local_branch(env.p.ap@, old(m).g@, hd as int, off as int),
         off < 0x1_0000_0000,
-    ensures prep_post(env.p, *old(m), *final(m), r),
+    ensures prep_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -827,17 +827,17 @@ pub fn prep_non_local_branch(m: &mut Machine, env: &Env, bci: usize, opcode: u8,
 #[inline(always)]
 pub fn op_try(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         toit_spec::v2::prim::grows_stack(opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_try(env.p.ap@, old(m).g@),
         cur_op(env.p.ap@, old(m).g@) == 97,
         bci + 1 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
     if let Some(c) = ensure_room(m, env) {
         return c;
     }
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -945,12 +945,12 @@ pub proof fn lemma_unwind_not_raise(ap: Program2, s: State2, u: Unwind)
 #[inline(always)]
 pub fn throw_oom(m: &mut Machine, env: &Env) -> (r: Ctl)
     requires
-        old(m).inv(env.p),
+        old(m).inv(&env.p),
         source(env.p.ap@, old(m).g@,
             sp::unwind(env.p.ap@, old(m).g@, Unwind::Throw(toit_spec::v2::prim::out_of_memory(env.p.ap@)))),
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;

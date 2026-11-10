@@ -102,12 +102,12 @@ pub open spec fn prim_call_post(p: &Program, m: Machine, g: State2, module: u8, 
 pub fn gc_call_primitive(m: &mut Machine, env: &Env, prim: &PrimitiveRef, arity: usize, first: usize,
     Ghost(g): Ghost<State2>, Ghost(module): Ghost<u8>, Ghost(index): Ghost<u16>) -> (r: (usize, usize))
     requires
-        reloaded(*old(m), g).refines(env.p),
+        reloaded(*old(m), g).refines(&env.p),
         sp::step(env.p.ap@, g) == Outcome2::Primitive(g, module, index),
         first == sp::base(g),
         arity == sp::frame_height(g),
     ensures
-        exists|gx: State2, v: Value| #[trigger] prim_call_post(env.p, *final(m), g, module, index, r.0, r.1, gx, v),
+        exists|gx: State2, v: Value| #[trigger] prim_call_post(&env.p, *final(m), g, module, index, r.0, r.1, gx, v),
 {
     m.call_primitive_raw(env, prim, arity, first)
 }
@@ -135,12 +135,12 @@ pub proof fn lemma_source_completion(ap: Program2, g: State2, module: u8, index:
 /// by the protocol).
 pub fn op_primitive(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         opcode == 89,
         bci + 4 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -361,7 +361,7 @@ proof fn lemma_refines_heap(p: &Program, m0: Machine, m1: Machine)
 #[inline(always)]
 fn op_rust_primitive(m: &mut Machine, env: &Env, index: u16, arity: usize) -> (r: Option<Ctl>)
     requires
-        old(m).inv(env.p),
+        old(m).inv(&env.p),
         cur_op(env.p.ap@, old(m).g@) == 89,
         sp::step(env.p.ap@, old(m).g@) == Outcome2::Primitive(old(m).g@, 0, index),
         arity == sp::frame_height(old(m).g@),
@@ -369,9 +369,9 @@ fn op_rust_primitive(m: &mut Machine, env: &Env, index: u16, arity: usize) -> (r
         old(m).bci + 4 < 0x1000_0000,
     ensures
         r is None ==> *final(m) == *old(m),
-        r is Some ==> step_post(env.p, *old(m), *final(m), r->Some_0),
+        r is Some ==> step_post(&env.p, *old(m), *final(m), r->Some_0),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -447,10 +447,10 @@ proof fn lemma_completion(p: &Program, g: State2, index: u16, h2: Seq<HeapObj>, 
 /// PRIMITIVE_LOOKUP_FAILED with the module and index as message.
 fn op_prim_missing(m: &mut Machine, env: &Env, module: u8, index: u16) -> (r: Ctl)
     requires
-        old(m).inv(env.p),
+        old(m).inv(&env.p),
         sp::step(env.p.ap@, old(m).g@) == Outcome2::Primitive(old(m).g@, module, index),
         old(m).bci < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
     proof {
         assert(completion(env.p.ap@, m.g@, module, index, prim_missing(env.p.ap@, m.g@)));

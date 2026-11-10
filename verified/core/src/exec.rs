@@ -135,9 +135,12 @@ pub open spec fn is_limit(r: Ctl) -> bool {
     r == Ctl::Stuck(stuck::LIMIT)
 }
 
-/// The environment of one run.
-pub struct Env<'a> {
-    pub p: &'a Program,
+/// The environment of one run. It owns the program (not a reference): the
+/// run loop takes `&Env`, which the compiler treats as not aliased by the
+/// stack's raw pointers, so the table pointers stay in registers or stack
+/// slots instead of being reloaded through `env.p` after every store.
+pub struct Env {
+    pub p: Program,
     pub rt: Runtime,
     pub pre: Preemption,
     /// The core primitives the process' policy resolves to the VM's own: entry

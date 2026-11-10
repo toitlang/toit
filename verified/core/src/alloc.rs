@@ -188,13 +188,13 @@ pub open spec fn new_instance(ap: Program2, c: int) -> HeapObj {
 #[inline(always)]
 pub fn gc_allocate_instance(m: &mut Machine, env: &Env, c: usize, Ghost(g): Ghost<State2>) -> (r: usize)
     requires
-        reloaded(*old(m), g).refines(env.p),
+        reloaded(*old(m), g).refines(&env.p),
         c < env.p.ap@.class_bits.len(),
         class_tag(p1(env.p.ap@), c as int) == INSTANCE_TAG,
         instance_field_count(p1(env.p.ap@), c as int) >= 0,
     ensures
-        r == 0 ==> reloaded(*final(m), g).refines(env.p),
-        r != 0 ==> reloaded(*final(m), sp::alloc2(g, new_instance(env.p.ap@, c as int))).refines(env.p)
+        r == 0 ==> reloaded(*final(m), g).refines(&env.p),
+        r != 0 ==> reloaded(*final(m), sp::alloc2(g, new_instance(env.p.ap@, c as int))).refines(&env.p)
             && r == enc(final(m).addr(), sp::new_ref2(g)),
 {
     m.allocate_instance_raw(env, c)
@@ -207,10 +207,10 @@ pub fn gc_allocate_instance(m: &mut Machine, env: &Env, c: usize, Ghost(g): Ghos
 #[verifier::external_body]
 #[inline(always)]
 pub fn gc_allocate_double(m: &mut Machine, env: &Env, bits: u64, Ghost(g): Ghost<State2>) -> (r: usize)
-    requires reloaded(*old(m), g).refines(env.p),
+    requires reloaded(*old(m), g).refines(&env.p),
     ensures
-        r == 0 ==> reloaded(*final(m), g).refines(env.p),
-        r != 0 ==> reloaded(*final(m), sp::alloc2(g, new_double(as1(g), p1(env.p.ap@), bits))).refines(env.p)
+        r == 0 ==> reloaded(*final(m), g).refines(&env.p),
+        r != 0 ==> reloaded(*final(m), sp::alloc2(g, new_double(as1(g), p1(env.p.ap@), bits))).refines(&env.p)
             && r == enc(final(m).addr(), sp::new_ref2(g)),
 {
     m.allocate_double_raw(env, bits)
@@ -220,13 +220,13 @@ pub fn gc_allocate_double(m: &mut Machine, env: &Env, bits: u64, Ghost(g): Ghost
 #[inline(always)]
 pub fn op_allocate(m: &mut Machine, env: &Env, bci: usize, opcode: u8, c: usize, len: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_allocate(env.p.ap@, old(m).g@, c as int, len as int),
         opcode == 42 || opcode == 43,
         bci + len < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;

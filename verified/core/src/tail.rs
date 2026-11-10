@@ -130,13 +130,13 @@ impl Machine {
     pub fn replace_finish(&mut self, env: &Env, t: usize, new_top: usize, Ghost(m0): Ghost<Machine>,
         Ghost(args): Ghost<Seq<Value>>) -> (r: Ctl)
         requires
-            replace_ready(env.p, m0, *old(self), new_top, args),
+            replace_ready(&env.p, m0, *old(self), new_top, args),
             t < env.p.methods@.len(),
         ensures
             r == Ctl::Next || r == Ctl::Exit(RESULT_PREEMPTED as u32, 0),
-            matches(env.p, sp::replace_frame(env.p.ap@, m0.g@, t as int, args), *final(self), r),
+            matches(&env.p, sp::replace_frame(env.p.ap@, m0.g@, t as int, args), *final(self), r),
     {
-        let p = env.p;
+        let p = &env.p;
         let ghost ap = p.ap@;
         let ghost g0 = m0.g@;
         let ghost m1 = *self;
@@ -207,12 +207,12 @@ impl Machine {
 #[inline(always)]
 pub fn op_invoke_static_tail(m: &mut Machine, env: &Env, bci: usize, opcode: u8, d: usize) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_static_tail(env.p.ap@, old(m).g@, d as int),
         bci + 3 < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -286,12 +286,12 @@ pub open spec fn cap_of(s: toit_spec::types::State, av: Value, alen: Option<usiz
 #[inline(always)]
 pub fn op_invoke_lambda_tail(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_lambda_tail(env.p.ap@, old(m).g@),
         opcode == 56,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost c0 = p.cert@;
     let ghost g = m.g@;
@@ -481,12 +481,12 @@ pub fn op_invoke_lambda_tail(m: &mut Machine, env: &Env, bci: usize, opcode: u8)
 #[inline(always)]
 pub fn op_invoke_initializer_tail(m: &mut Machine, env: &Env, bci: usize, opcode: u8) -> (r: Ctl)
     requires
-        handler_pre(env.p, *old(m), bci, opcode),
+        handler_pre(&env.p, *old(m), bci, opcode),
         sp::step(env.p.ap@, old(m).g@) == sp::op_invoke_initializer_tail(env.p.ap@, old(m).g@),
         opcode == 57,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;

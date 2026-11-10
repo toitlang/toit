@@ -165,9 +165,9 @@ pub open spec fn step_post(p: &Program, m0: Machine, m1: Machine, r: Ctl) -> boo
 #[verifier::external_body]
 #[inline(always)]
 pub fn gc_grow_stack(m: &mut Machine, env: &Env, needed: usize, Ghost(g): Ghost<State2>) -> (r: usize)
-    requires reloaded(*old(m), g).refines(env.p),
+    requires reloaded(*old(m), g).refines(&env.p),
     ensures
-        reloaded(*final(m), g).refines(env.p),
+        reloaded(*final(m), g).refines(&env.p),
         r == V2_OK ==> reloaded(*final(m), g).top - reloaded(*final(m), g).rtop >= needed,
 {
     m.grow_stack_raw(env, needed)
@@ -180,12 +180,12 @@ pub fn gc_grow_stack(m: &mut Machine, env: &Env, needed: usize, Ghost(g): Ghost<
 /// raise of the stack-overflow error, or a throw of the out-of-memory error.
 pub fn grow(m: &mut Machine, env: &Env, needed: usize) -> (r: Ctl)
     requires
-        old(m).inv(env.p),
+        old(m).inv(&env.p),
         toit_spec::v2::prim::grows_stack(env.p.ap@.bytecodes[old(m).bci as int]),
         old(m).bci < 0x1000_0000,
-    ensures step_post(env.p, *old(m), *final(m), r),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -223,12 +223,12 @@ pub fn grow(m: &mut Machine, env: &Env, needed: usize) -> (r: Ctl)
 #[inline(always)]
 pub fn ensure_room(m: &mut Machine, env: &Env) -> (r: Option<Ctl>)
     requires
-        old(m).inv(env.p),
+        old(m).inv(&env.p),
         toit_spec::v2::prim::grows_stack(env.p.ap@.bytecodes[old(m).bci as int]),
         old(m).bci < 0x1000_0000,
     ensures
         r is None ==> *final(m) == *old(m) && final(m).top - final(m).rtop >= FRAME_WORDS + STACK_RESERVE,
-        r is Some ==> step_post(env.p, *old(m), *final(m), r->0),
+        r is Some ==> step_post(&env.p, *old(m), *final(m), r->0),
 {
     proof { assert(env.p.max_height < 0x1_0000); }
     let needed = FRAME_WORDS + env.p.max_height + STACK_RESERVE;
@@ -402,10 +402,10 @@ proof fn lemma_back_branch(p: &Program, g: State2)
 #[verifier::spinoff_prover]
 #[verifier::rlimit(200)]
 pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
-    requires old(m).inv(env.p),
-    ensures step_post(env.p, *old(m), *final(m), r),
+    requires old(m).inv(&env.p),
+    ensures step_post(&env.p, *old(m), *final(m), r),
 {
-    let p = env.p;
+    let p = &env.p;
     let ghost ap = p.ap@;
     let ghost g = m.g@;
     let ghost m0 = *m;
@@ -936,14 +936,14 @@ proof fn lemma_reaches_step(ap: Program2, g0: State2, g1: State2, g2: State2)
 /// claimed.
 #[verifier::exec_allows_no_decreases_clause]
 pub fn run_loop(m: &mut Machine, env: &Env, accepted: &crate::ffi::Accepted) -> (r: (usize, i64))
-    requires old(m).inv(env.p),
-    ensures run_post(env.p, *old(m), *final(m), r),
+    requires old(m).inv(&env.p),
+    ensures run_post(&env.p, *old(m), *final(m), r),
 {
     let ghost m0 = *m;
     proof { lemma_reaches_refl(env.p.ap@, m.g@); }
     loop
         invariant
-            m.inv(env.p),
+            m.inv(&env.p),
             m0 == *old(m),
             reaches(env.p.ap@, m0.g@, m.g@),
     {
@@ -962,18 +962,18 @@ pub fn run_loop(m: &mut Machine, env: &Env, accepted: &crate::ffi::Accepted) -> 
                 m.save();
                 proof {
                     if state == RESULT_PREEMPTED || state == RESULT_YIELDED {
-                        assert(m.refines(env.p));
-                        assert(m.inv(env.p));
+                        assert(m.refines(&env.p));
+                        assert(m.inv(&env.p));
                         assert(reaches(env.p.ap@, m0.g@, m.g@));
                     }
-                    assert(run_post(env.p, m0, *m, (state as usize, value)));
+                    assert(run_post(&env.p, m0, *m, (state as usize, value)));
                 }
                 return (state as usize, value);
             },
             Ctl::Stuck(reason) => {
                 env.rt.report(V2_REPORT_STUCK, m.bci, reason);
                 m.save();
-                assert(run_post(env.p, m0, *m, (RESULT_TERMINATED, 1i64)));
+                assert(run_post(&env.p, m0, *m, (RESULT_TERMINATED, 1i64)));
                 return (RESULT_TERMINATED, 1);
             },
         }

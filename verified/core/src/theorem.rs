@@ -23,8 +23,8 @@
 //!
 //! ```text
 //! pub fn step::run_loop(m: &mut Machine, env: &Env, accepted: &ffi::Accepted) -> (r: (usize, i64))
-//!     requires old(m).inv(env.p),
-//!     ensures run_post(env.p, *old(m), *final(m), r),
+//!     requires old(m).inv(&env.p),
+//!     ensures run_post(&env.p, *old(m), *final(m), r),
 //! ```
 //!
 //! `Machine::inv` is "the machine refines a well-formed state of an
