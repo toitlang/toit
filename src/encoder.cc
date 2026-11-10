@@ -110,6 +110,17 @@ class EncodeVisitor : public Visitor {
 
   void visit_stack(Stack* stack);
 
+  // Whether the given List_ has an array as backing and a size within it.
+  // The fields are ordinary instance fields that Toit code can set to
+  // anything; other lists are encoded as plain instances.
+  static bool is_valid_list(Instance* instance) {
+    Object* backing = instance->at(Instance::LIST_ARRAY_INDEX);
+    Object* size = instance->at(Instance::LIST_SIZE_INDEX);
+    if (!is_array(backing) || !is_smi(size)) return false;
+    word value = Smi::value(size);
+    return 0 <= value && value <= Array::cast(backing)->length();
+  }
+
   void visit_list(Instance* instance, Array* backing_array, word size) {
     if (level_ >= MAX_NESTING_LEVEL) {
       write_opaque(instance);
@@ -130,7 +141,7 @@ class EncodeVisitor : public Visitor {
 
   void visit_instance(Instance* instance) {
     Smi* class_id = instance->class_id();
-    if (class_id == encoder_->program()->list_class_id() && is_array(instance->at(Instance::LIST_ARRAY_INDEX))) {
+    if (class_id == encoder_->program()->list_class_id() && is_valid_list(instance)) {
       // The backing storage in a list can be either an array -- or a
       // large array. Only optimize if it isn't large.
       // We use the same layout assumptions for List_ as the interpreter.
