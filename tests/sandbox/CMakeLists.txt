@@ -50,6 +50,9 @@ set(UNTRUSTED_RUN_TESTS
   "print-long|print-long-main.toit|0|é[.][.][.].*done printing"
   "denied|denied-main.toit|0|hostname: PERMISSION_DENIED.*file: PRIMITIVE_LOOKUP_FAILED"
   "uncaught|uncaught-main.toit|1|PERMISSION_DENIED"
+  # Finally records (unwinding without heap tokens) across calls, stack
+  # growth, GC and task switches.
+  "finally-records|finally-records-main.toit|0|0: 2000 boom.*2: 2000 boom.*r=1 \\[inner\\].*loop=100000.*finally records done"
   # The verifier rejects deep sleep in untrusted programs at launch; the
   # program never runs.
   "deep-sleep|deep-sleep-main.toit|1|HALT 2.*VERIFICATION_FAILED|before deep sleep"

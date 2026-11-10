@@ -76,6 +76,8 @@ pub open spec fn verified_op(op: u8) -> bool {
     ||| op == 55         // INVOKE_BLOCK
     ||| 62 <= op <= 77   // INVOKE_EQ, relational, arithmetic and bit operators (smi fast paths)
     ||| op == 96         // IDENTICAL
+    ||| op == 90 || op == 97 || op == 99  // THROW, TRY, UNWIND
+    ||| op == 93 || op == 95  // NON_LOCAL_RETURN, NON_LOCAL_BRANCH
 }
 
 /// The machine continues from a state the spec reaches from `g0`: the same
@@ -167,7 +169,7 @@ pub fn grow_bridge(m: &mut Machine, env: &Env, needed: usize) -> (r: Ctl)
 pub fn ensure_room(m: &mut Machine, env: &Env) -> (r: Option<Ctl>)
     requires old(m).inv(env.p),
     ensures
-        r is None ==> *final(m) == *old(m) && final(m).top - final(m).rtop >= FRAME_WORDS,
+        r is None ==> *final(m) == *old(m) && final(m).top - final(m).rtop >= FRAME_WORDS + STACK_RESERVE,
         r is Some ==> step_post(env.p, *old(m), *final(m), r->0),
 {
     proof { assert(env.p.max_height < 0x1_0000); }
@@ -712,6 +714,28 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
             let k = p.code.at(bci + 1) as usize;
             proof { assert(sp::step(ap, g) == sp::op_invoke_block(ap, g, k as int)) by { reveal(sp::step); } }
             return crate::blocks::op_invoke_block(m, env, bci, opcode, k);
+        },
+        90 | 93 | 95 | 99 => {
+            // One call site: the unwinding loop is inlined once.
+            let (hd, off) = if opcode == 95 { (p.code.at(bci + 1) as usize, code_u32(p, bci + 2)) } else { (0, 0) };
+            proof {
+                if opcode == 90 {
+                    assert(sp::step(ap, g) == (if !sp::has_slot(g, 0) { sp::stuck(toit_spec::types::Stuck::StackRange) }
+                        else { sp::unwind(ap, g, Unwind::Throw(sp::at(g, 0))) })) by { reveal(sp::step); }
+                    assert(outcome_ok(ap, p.cert@, sp::step(ap, g)));
+                } else if opcode == 93 {
+                    assert(sp::step(ap, g) == sp::op_non_local_return(ap, g)) by { reveal(sp::step); }
+                } else if opcode == 95 {
+                    assert(sp::step(ap, g) == sp::op_non_local_branch(ap, g, hd as int, off as int)) by { reveal(sp::step); }
+                } else {
+                    assert(sp::step(ap, g) == sp::op_unwind(ap, g)) by { reveal(sp::step); }
+                }
+            }
+            return crate::unwind::op_unwinding(m, env, bci, opcode, hd, off);
+        },
+        97 => {
+            proof { assert(sp::step(ap, g) == sp::op_try(ap, g)) by { reveal(sp::step); } }
+            return crate::unwind::op_try(m, env, bci, opcode);
         },
         _ => {
             return step_unverified(m, env, bci, opcode);

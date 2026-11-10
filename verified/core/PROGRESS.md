@@ -17,6 +17,23 @@ Milestones (newest last):
    slot existence, literal/global index, LOAD_METHOD range, branch target
    and direction. Other opcodes go through `step_unverified` (contract
    ASSUMED, allowlisted). Gate: core 174 verified, 0 errors.
+2. Finally records (spec change R1, format note 17, branch
+   core/refinement-r1): entering finally code with an unwinding writes a
+   4-word record after the frame records instead of allocating a heap
+   token (DESIGN.md section 3); C++ copies, shrinks and reports the
+   records with the frame records. The abstraction relates `State2.fins`
+   to the records (`fins_rel`). Proven: RETURN/RETURN_NULL and calls with
+   the records (`do_return` drops the popped frame's records,
+   `fins_popped`; `push_call` moves them), and (src/unwind.rs) THROW, TRY,
+   UNWIND, NON_LOCAL_RETURN and NON_LOCAL_BRANCH against `spec::step`,
+   including the unwinding loop over frames, `enter_finally` with a
+   record, `pop_frame`; raising stays unverified. Gate: core 298 verified,
+   0 errors. Cost: the verified unwinding in the run loop adds about 6
+   percent instructions to richards and 4.5 percent to deltablue on the
+   verified loop (callgrind, `TOIT_VERIFY=1`, against routing these
+   opcodes to the checked handlers; richards throws nothing, the cost is
+   in the loop head's `Ctl` handling, independent of inlining): open for
+   the performance pass.
 
 Updated 2026-11-10. Branch `worktree-agent-a8fb4ad99a9c8d319` (merged with
 `sandbox-integration` at f95b9a1d). Design: DESIGN.md. Proofs:
@@ -60,14 +77,16 @@ OBLIGATIONS.md. Trusted base: TRUSTED.md.
 3. Link `check::verify` into the VM for untrusted format-2 launches
    (today the C++ loader checks stand in).
 4. Port the allowed primitives to Rust with `prim_heap_ok`.
-5. Spec change request R1 (unwinding without a heap token).
+5. Spec change request R1 (unwinding without a heap token): done
+   (milestone 2 above).
 
 ## Known failures with the whole suite in format 2
 
 (`TOIT_BYTECODE_FORMAT=2 ctest`, not an exit criterion any more)
 
-- channel-retention-test, services-resource-close-pressure-test: the
-  unwinding token of note 4 (PHASE4-REQUESTS.md R1).
+- (fixed) channel-retention-test, services-resource-close-pressure-test
+  failed because of the unwinding token of note 4 (R1); with the finally
+  records both pass in format 2.
 - profiler/basic-test, profiler/lambda-test: format 1's
   `SmallInteger.repeat` intrinsic makes `repeat` invisible in profiles;
   in format 2 it is ordinary bytecode and shows up.

@@ -65,10 +65,10 @@ obligations below would prove.
 
 | Family | Opcodes | Reason not yet verified |
 |---|---|---|
-| B1 blocks | NON_LOCAL_RETURN, NON_LOCAL_BRANCH; INVOKE_BLOCK's CODE_INVOCATION_FAILED path | unwinding over frames (`spec::unwind`); raising allocates. LOAD_BLOCK, LOAD_OUTER, STORE_OUTER, LOAD_OUTER_BLOCK and INVOKE_BLOCK are verified (src/blocks.rs) |
+| B1 blocks | INVOKE_BLOCK's CODE_INVOCATION_FAILED path | raising allocates. LOAD_BLOCK, LOAD_OUTER, STORE_OUTER, LOAD_OUTER_BLOCK and INVOKE_BLOCK are verified (src/blocks.rs), NON_LOCAL_RETURN and NON_LOCAL_BRANCH too (src/unwind.rs) |
 | F1 fields | LOAD_FIELD(_WIDE), LOAD_FIELD_LOCAL, POP_LOAD_FIELD_LOCAL, STORE_FIELD(_WIDE/_POP), LOAD_FIELD_THIS, STORE_FIELD_THIS | needs a heap view with a contract (`Heap` is a raw view today): object header, class id, field count, program-heap range, write barrier |
 | C1 calls | INVOKE_STATIC(_TAIL), INVOKE_VIRTUAL(_WIDE/_GET/_SET), INVOKE_LAMBDA_TAIL, INVOKE_INITIALIZER_TAIL, RETURN, RETURN_NULL | needs R2/R3; `call`, `replace_frame`, `return_from` and the preemption point |
-| T1 try/unwind | TRY, UNWIND, THROW | needs R2 and the heap (the token is a 5-element array); `unwind` is a loop over frames, `enter_finally` allocates |
+| T1 try/unwind | (raising only) | TRY, UNWIND and THROW are verified (src/unwind.rs: the unwinding loop `spec::unwind`, `enter_finally` with a finally record, `pop_frame`; TRY never raises for an accepted program). Unwindings started by raising (the failures the machine raises, a primitive's THROW, stack overflow) go through the unverified `raise`/`unwind` of machine.rs |
 | Y1 type checks | AS_*, AS_LOCAL raising AS_CHECK_FAILED | the checks and the IS_*/AS_* successes are verified (`src/types.rs`); the failing AS path goes through `step_unverified`: needs `raise` (allocates the exception, then `unwind`, see T1/A1) |
 | O1 operators | INVOKE_EQ..INVOKE_SIZE, IDENTICAL | smi fast paths of INVOKE_EQ..INVOKE_MOD and IDENTICAL proven (src/ops.rs); left: INVOKE_AT, INVOKE_AT_PUT, INVOKE_SIZE, and the other paths (doubles, which allocate; large integers; `compare_numbers`, i.e. `spec_helpers::compare_mixed`, uninterpreted in the spec; IDENTICAL of distinct heap objects; the virtual-call fallback) |
 | A1 allocation | ALLOCATE(_WIDE) | GC point (see G below) |
@@ -87,9 +87,7 @@ the words:
   view of the (possibly moved) current stack; the `Machine` re-derives its
   cached fields (`reload`) right after. No raw stack pointer survives.
 - By review: object references held in Rust locals across a GC point.
-  The audited places are `enter_finally` (value and payload are pushed on
-  the object stack before the token allocation and re-read after),
-  `raise_value_msg` (the value is a program-heap string, which does not
+  The audited places are `raise_value_msg` (the value is a program-heap string, which does not
   move; the message words are consumed by C++ before its first GC point),
   `op_invoke_arith_slow` (no reference is used after `alloc_double`), and
   `op_primitive` (the result comes back from C++ after the GC).

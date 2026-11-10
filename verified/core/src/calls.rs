@@ -24,7 +24,7 @@ use crate::layout::*;
 use crate::abs::*;
 use crate::exec::*;
 use crate::step::*;
-use toit_spec::types::{Value, Frame, Handler};
+use toit_spec::types::{Value, Frame, Handler, Fin};
 use toit_spec::v2::types::{State2, Program2, Outcome2, Halt2};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::spec as sp;
@@ -153,6 +153,50 @@ proof fn lemma_tries_frame(tries: Seq<Handler>, x: int)
     if x > 0 {
         lemma_tries_frame(tries, x - 1);
         assert(tries[x - 1].frame < tries[x].frame);
+    }
+}
+
+/// The handlers belong to frames up to the top one, in increasing order.
+pub open spec fn tries_ok(g: State2) -> bool {
+    &&& forall|x: int| 0 <= x < g.tries.len() ==> (#[trigger] g.tries[x]).frame + 1 <= g.frames.len()
+    &&& forall|x: int, y: int| 0 <= x < y < g.tries.len() ==> (#[trigger] g.tries[x]).frame < (#[trigger] g.tries[y]).frame
+}
+
+/// The shape of the frames a return and an unwinding rely on (implied by
+/// `wf`, kept while frames are popped): frames with valid methods and
+/// ordered bases, handlers of frames up to the top.
+pub open spec fn shape_ok(p: &Program, g: State2) -> bool {
+    &&& g.frames.len() > 0
+    &&& bases_ok(g)
+    &&& tries_ok(g)
+    &&& forall|fi: int| 0 <= fi < g.frames.len() ==> sp::valid_method(p.ap@, (#[trigger] g.frames[fi]).method as int)
+}
+
+/// Without a handler of the top frame, the handlers belong to frames below it.
+pub proof fn lemma_no_handler(g: State2)
+    requires tries_ok(g), g.frames.len() > 0, !sp::has_handler(g),
+    ensures forall|x: int| 0 <= x < g.tries.len() ==> (#[trigger] g.tries[x]).frame + 1 < g.frames.len(),
+{
+    assert forall|x: int| 0 <= x < g.tries.len() implies (#[trigger] g.tries[x]).frame + 1 < g.frames.len() by {
+        let l = g.tries.len() - 1;
+        assert(g.tries[l] == g.tries.last());
+        if x < l {
+            assert(g.tries[x].frame < g.tries[l].frame);
+        }
+    }
+}
+
+/// A well-formed state has the shape.
+pub proof fn lemma_shape(p: &Program, g: State2)
+    requires accepts(p.ap@, p.cert@, p.trusted@), wf(p.ap@, p.cert@, g),
+    ensures shape_ok(p, g),
+{
+    lemma_tries(p, g);
+    assert forall|fi: int| 0 <= fi < g.frames.len() implies sp::valid_method(p.ap@, (#[trigger] g.frames[fi]).method as int) by {
+        reveal(wf);
+        reveal(toit_spec::v2::sound::wf_task);
+        reveal(toit_spec::v2::sound::frame_ok);
+        assert(toit_spec::v2::sound::frame_ok(p.ap@, p.cert@, g, fi));
     }
 }
 
@@ -377,6 +421,144 @@ impl Machine {
         Ctl::Next
     }
 
+    /// The trailing finally record `k - 1` (records `[ftop, ftop + 4k)`) is
+    /// dropped by `cut_fins(_, g, lim)`.
+    #[inline(always)]
+    pub fn fin_cut(&self, e: usize, g: usize, lim: usize, Ghost(fins): Ghost<Seq<Fin>>, Ghost(k): Ghost<int>) -> (r: bool)
+        requires
+            self.stack_ok(),
+            fins_rel(self.mem@, self.ftop as int, fins),
+            0 < k <= fins.len(),
+            e == self.ftop + FIN_WORDS * k,
+        ensures
+            r == (fins[k - 1].frame as int > g as int
+                || (fins[k - 1].frame as int == g as int && fins[k - 1].height as int >= lim as int)),
+    {
+        proof {
+            assert(fin_rel(self.mem@, self.ftop as int, k - 1, fins[k - 1]));
+            lemma_fin_index(self.ftop as int, fins.len() as int, k - 1, FIN_HEIGHT);
+        }
+        let frame = self.mem.read(e - FIN_WORDS + FIN_FRAME);
+        frame > g || (frame == g && self.mem.read(e - FIN_WORDS + FIN_HEIGHT) >= lim)
+    }
+
+    /// `spec::cut_fins(fins, g, lim)`: drops trailing finally records (only
+    /// `rtop` changes).
+    #[inline(always)]
+    pub fn cut_records(&mut self, g: usize, lim: usize, Ghost(fins): Ghost<Seq<Fin>>)
+        requires
+            old(self).stack_ok(),
+            old(self).rtop == old(self).ftop + FIN_WORDS * fins.len(),
+            fins_rel(old(self).mem@, old(self).ftop as int, fins),
+        ensures
+            final(self).rtop == final(self).ftop + FIN_WORDS * sp::cut_fins(fins, g as int, lim as int).len(),
+            final(self).rtop <= old(self).rtop,
+            sp::cut_fins(fins, g as int, lim as int).len() <= fins.len(),
+            fins_rel(final(self).mem@, final(self).ftop as int, sp::cut_fins(fins, g as int, lim as int)),
+            final(self).stack_ok(),
+            final(self).mem@ == old(self).mem@,
+            final(self).ftop == old(self).ftop,
+            final(self).top == old(self).top,
+            final(self).len == old(self).len,
+            final(self).bci == old(self).bci,
+            final(self).base == old(self).base,
+            final(self).lim == old(self).lim,
+            final(self).method == old(self).method,
+            final(self).globals == old(self).globals,
+            final(self).heap == old(self).heap,
+            final(self).g == old(self).g,
+    {
+        let ghost m0 = *self;
+        let ftop = self.ftop;
+        let mut e = self.rtop;
+        let ghost mut k: int = fins.len() as int;
+        proof { assert(fins.subrange(0, k) =~= fins); }
+        while e > ftop && self.fin_cut(e, g, lim, Ghost(fins), Ghost(k))
+            invariant
+                *self == m0,
+                ftop == m0.ftop,
+                m0.stack_ok(),
+                fins_rel(m0.mem@, ftop as int, fins),
+                0 <= k <= fins.len(),
+                e == ftop + FIN_WORDS * k,
+                sp::cut_fins(fins, g as int, lim as int) == sp::cut_fins(fins.subrange(0, k), g as int, lim as int),
+            decreases e,
+        {
+            proof {
+                let fs = fins.subrange(0, k);
+                assert(fs.last() == fins[k - 1]);
+                assert(fs.drop_last() =~= fins.subrange(0, k - 1));
+            }
+            e = e - FIN_WORDS;
+            proof { k = k - 1; }
+        }
+        proof {
+            let fs = fins.subrange(0, k);
+            if k > 0 {
+                assert(fs.last() == fins[k - 1]);
+            }
+            assert(sp::cut_fins(fs, g as int, lim as int) == fs);
+            lemma_fins_rel_move(m0.mem@, m0.mem@, ftop as int, ftop as int, fins, k);
+        }
+        self.rtop = e;
+    }
+
+    /// Pops the top frame's record and its finally records (`fins_popped`,
+    /// the last ones); the remaining finally records move down over the
+    /// frame record.
+    #[inline(always)]
+    pub fn pop_records(&mut self, Ghost(g): Ghost<State2>)
+        requires
+            old(self).stack_ok(),
+            g.frames.len() >= 1,
+            old(self).ftop == FRAME_WORDS * g.frames.len(),
+            old(self).rtop == old(self).ftop + FIN_WORDS * g.fins.len(),
+            fins_rel(old(self).mem@, old(self).ftop as int, g.fins),
+        ensures
+            final(self).ftop == old(self).ftop - FRAME_WORDS,
+            final(self).rtop == final(self).ftop + FIN_WORDS * sp::fins_popped(g).len(),
+            final(self).rtop + FRAME_WORDS <= old(self).rtop,
+            fins_rel(final(self).mem@, final(self).ftop as int, sp::fins_popped(g)),
+            final(self).mem@.len() == old(self).mem@.len(),
+            forall|i: int| 0 <= i < final(self).ftop ==> #[trigger] final(self).mem@[i] == old(self).mem@[i],
+            forall|i: int| old(self).rtop <= i < old(self).mem@.len() ==> #[trigger] final(self).mem@[i] == old(self).mem@[i],
+            final(self).top == old(self).top,
+            final(self).len == old(self).len,
+            final(self).bci == old(self).bci,
+            final(self).base == old(self).base,
+            final(self).lim == old(self).lim,
+            final(self).method == old(self).method,
+            final(self).globals == old(self).globals,
+            final(self).heap == old(self).heap,
+            final(self).g == old(self).g,
+    {
+        let ghost m0 = *self;
+        let ftop = self.ftop;
+        let r = ftop - FRAME_WORDS;
+        proof {
+            assert(r == FRAME_WORDS * (g.frames.len() - 1));
+            assert(r / FRAME_WORDS == g.frames.len() - 1);
+        }
+        self.cut_records(r / FRAME_WORDS, 0, Ghost(g.fins));
+        let e = self.rtop;
+        let ghost k = sp::fins_popped(g).len() as int;
+        let ghost m1 = *self;
+        if e > ftop {
+            self.mem.copy_within(ftop, r, e - ftop);
+        }
+        proof {
+            assert forall|i: int| 0 <= i < self.mem@.len() && !(r <= i < e - FRAME_WORDS)
+                implies #[trigger] self.mem@[i] == m0.mem@[i] by {}
+            assert forall|i: int| 0 <= i < FIN_WORDS * k implies #[trigger] self.mem@[r + i] == m1.mem@[ftop + i] by {
+                assert(self.mem@[r + i] == m1.mem@[r + i - r + ftop]);
+            }
+            lemma_fins_rel_move(m1.mem@, self.mem@, ftop as int, r as int, sp::fins_popped(g), k);
+            assert(sp::fins_popped(g).subrange(0, k) =~= sp::fins_popped(g));
+        }
+        self.ftop = r;
+        self.rtop = e - FRAME_WORDS;
+    }
+
     /// `spec::return_from(g, v)` for the result word `w`: pops the top frame
     /// and its finally records (the last ones), moves the remaining records
     /// down over the popped frame record and pushes the result; a caller
@@ -386,8 +568,7 @@ impl Machine {
     pub fn do_return(&mut self, env: &Env, w: usize, Ghost(v): Ghost<Value>) -> (r: Ctl)
         requires
             old(self).refines(env.p),
-            accepts(env.p.ap@, env.p.cert@, env.p.trusted@),
-            wf(env.p.ap@, env.p.cert@, old(self).g@),
+            shape_ok(env.p, old(self).g@),
             w == enc(old(self).addr(), v),
             encodable(old(self).addr(), v),
             !(sp::return_from(env.p.ap@, old(self).g@, v) is Stuck),
@@ -400,7 +581,7 @@ impl Machine {
         let ghost g0 = self.g@;
         proof {
             self.lemma_frame(p);
-            lemma_tries(p, g0);
+            lemma_no_handler(g0);
         }
         if self.ftop == FRAME_WORDS {
             env.rt.report(V2_REPORT_TASK_RETURNED, self.bci, 0);
@@ -420,61 +601,9 @@ impl Machine {
             assert(rec(m0.mem@, n - 2, FRAME_BASE) == g0.frames[n - 2].base);
             assert(toit_spec::v2::sound::base_step(g0, n - 2));
         }
-        // Drop the popped frame's finally records (`fins_popped`).
-        let ftop = self.ftop;
-        let fi = r / FRAME_WORDS;
-        let mut e = self.rtop;
-        let ghost mut k: int = g0.fins.len() as int;
-        proof {
-            assert(fi == n - 1) by {
-                assert(r == FRAME_WORDS * (n - 1));
-            }
-            assert(g0.fins.subrange(0, k) =~= g0.fins);
-        }
-        while e > ftop && self.mem.read(e - FIN_WORDS + FIN_FRAME) >= fi
-            invariant
-                *self == m0,
-                ftop == m0.ftop,
-                ftop == FRAME_WORDS * n,
-                fi == n - 1,
-                0 <= k <= g0.fins.len(),
-                e == ftop + FIN_WORDS * k,
-                m0.refines(p),
-                g0 == m0.g@,
-                sp::fins_popped(g0) == sp::cut_fins(g0.fins.subrange(0, k), n - 1, 0),
-            decreases e,
-        {
-            proof {
-                assert(fin_rel(m0.mem@, ftop as int, k - 1, g0.fins[k - 1]));
-                let fs = g0.fins.subrange(0, k);
-                assert(fs.last() == g0.fins[k - 1]);
-                assert(fs.drop_last() =~= g0.fins.subrange(0, k - 1));
-            }
-            e = e - FIN_WORDS;
-            proof { k = k - 1; }
-        }
-        proof {
-            let fs = g0.fins.subrange(0, k);
-            if k > 0 {
-                assert(fin_rel(m0.mem@, ftop as int, k - 1, g0.fins[k - 1]));
-                assert(fs.last() == g0.fins[k - 1]);
-            }
-            assert(sp::cut_fins(fs, n - 1, 0) == fs);
-        }
-        if e > ftop {
-            self.mem.copy_within(ftop, r, e - ftop);
-        }
+        self.pop_records(Ghost(g0));
         let ghost mem1 = self.mem@;
-        proof {
-            assert forall|i: int| 0 <= i < self.mem@.len() && !(r <= i < e - FRAME_WORDS)
-                implies #[trigger] mem1[i] == m0.mem@[i] by {}
-            assert forall|i: int| 0 <= i < FIN_WORDS * k implies #[trigger] mem1[r + i] == m0.mem@[ftop + i] by {
-                assert(mem1[r + i] == m0.mem@[r + i - r + ftop]);
-            }
-        }
-        self.rtop = e - FRAME_WORDS;
         self.top = self.len - self.base;
-        self.ftop = r;
         self.method = method;
         self.base = base;
         self.lim = self.len - base;
@@ -502,24 +631,20 @@ impl Machine {
                 assert(mem1[i] == m0.mem@[i]);
             }
             lemma_frames_rel_same(m0.mem@, self.mem@, g1.frames, g1.tries);
-            assert(g1.fins == g0.fins.subrange(0, k));
-            assert forall|i: int| 0 <= i < FIN_WORDS * k implies #[trigger] self.mem@[r + i] == m0.mem@[ftop + i] by {
-                assert(mem1[r + i] == m0.mem@[ftop + i]);
-            }
-            lemma_fins_rel_move(m0.mem@, self.mem@, ftop as int, r as int, g0.fins, k);
+            assert forall|i: int| self.ftop <= i < self.ftop + FIN_WORDS * g1.fins.len()
+                implies #[trigger] self.mem@[i] == mem1[i] by {}
+            lemma_fins_rel_same(mem1, self.mem@, self.ftop as int, g1.fins);
             let b = sp::top(g0).base as int;
+            assert forall|i: int| t < i < self.len implies #[trigger] self.mem@[i] == m0.mem@[i] by {
+                assert(mem1[i] == m0.mem@[i]);
+            }
             assert(self.words() =~= m0.words().subrange(0, b).push(w));
             assert(enc_seq(m0.addr(), g1.stack) =~= enc_seq(m0.addr(), g0.stack).subrange(0, b).push(w));
             assert forall|i: int| 0 <= i < g1.stack.len() implies #[trigger] encodable(m0.addr(), g1.stack[i]) by {
                 if i < b { assert(g1.stack[i] == g0.stack[i]); }
             }
             assert(self.method < p.methods@.len()) by {
-                assert(toit_spec::v2::spec::valid_method(ap, g0.frames[n - 2].method as int)) by {
-                    reveal(wf);
-                    reveal(toit_spec::v2::sound::wf_task);
-                    reveal(toit_spec::v2::sound::frame_ok);
-                    assert(toit_spec::v2::sound::frame_ok(ap, p.cert@, g0, n - 2));
-                }
+                assert(sp::valid_method(ap, g0.frames[n - 2].method as int));
             }
             assert(self.refines(p));
         }
@@ -734,7 +859,10 @@ pub fn op_return(m: &mut Machine, env: &Env, w: usize, Ghost(v): Ghost<Value>) -
     ensures step_post(env.p, *old(m), *final(m), r),
 {
     let ghost m0 = *m;
-    proof { assert(outcome_ok(env.p.ap@, env.p.cert@, sp::step(env.p.ap@, m.g@))); }
+    proof {
+        assert(outcome_ok(env.p.ap@, env.p.cert@, sp::step(env.p.ap@, m.g@)));
+        lemma_shape(env.p, m.g@);
+    }
     let r = m.do_return(env, w, Ghost(v));
     proof { lemma_matches(env.p, m0, *m, r); }
     r

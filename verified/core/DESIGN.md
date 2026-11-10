@@ -139,6 +139,14 @@ array index:  0 ........... ftop ........ rtop        top ............. len-1
 - Task switches: a suspended task's records stay in its Stack object (the
   core saves `rtop` and the count before the `task_transfer` primitive and
   reloads them from the new current task); a new task starts with none.
+- Proofs: `Machine::refines` relates `State2.fins` to the records
+  (`abs::fins_rel`, `rtop == ftop + 4 * fins.len()`). The record handling
+  of calls, returns (`calls.rs`: `push_call`, `pop_records`,
+  `cut_records`) and of THROW, TRY, UNWIND, NON_LOCAL_RETURN and
+  NON_LOCAL_BRANCH (`unwind.rs`, one inlined unwinding loop for all of
+  them) is verified; machine.rs keeps checked copies for the unverified
+  paths (raising, programs not accepted at launch), which must stay in
+  step with the verified ones.
 - Block references are smis `frame << 20 | slot` (slot = object-stack
   position); `Stack::max_length() < 2^20` is checked by the layout check.
 

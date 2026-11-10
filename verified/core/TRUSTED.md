@@ -15,7 +15,7 @@ Opaque structs holding raw pointers into VM memory. Their ghost content
 |---|---|---|
 | `Table<T>` | an immutable program table `ptr[0..len)` (bytecodes, method table, dispatch table, class tables, roots, literals) | `len() == view.len()`; `at(i)` requires `i < len`, returns `view[i]` |
 | `Globals` | the process' global variables | `at`/`set` require `i < len`; `set` updates `view[i]` |
-| `StackMem` | the array of the current task's `Stack` object | `read`/`write` require `i < len`; `copy_within` is a memmove with an exact contract; `header`/`set_header` access the Stack header words (top, frame top, bci) |
+| `StackMem` | the array of the current task's `Stack` object | `read`/`write` require `i < len`; `copy_within` is a memmove with an exact contract; `header`/`set_header` access the Stack header words (top, record top, bci with the finally-record count) |
 | `Heap` | process and program heap objects | no ghost content: `header`, `word`, `byte`, `u32_at`, `set_word`, `set_byte` access the object a tagged word designates; `set_word` applies the write barrier (card mark) |
 | `Preemption` | `Interpreter::watermark_` | `requested`/`clear`/`request`: environment nondeterminism, no contract |
 
@@ -44,7 +44,8 @@ Assumptions behind the views:
 `Runtime` wraps the C++ functions of src/interpreter_v2.h. Each function
 that may GC takes the only `StackMem` by `&mut` and replaces it with a
 fresh view of the current task's stack; the caller has stored its state
-(top, frame top, bci) into the Stack object first (`Machine::save`) and
+(top, record top, bci and finally-record count) into the Stack object
+first (`Machine::save`) and
 re-derives everything after (`Machine::reload`). The full contract, with
 the precondition the core discharges for each function, is in DESIGN.md,
 "FFI contract".
@@ -107,9 +108,8 @@ verified/core/tests/untrusted_suite.py, not proven. Known differences of
 the core from the spec, all outside the spec's model:
 
 - Allocation can fail (the spec's heap is unbounded): out of memory throws
-  the preallocated `OUT_OF_MEMORY` error. A failed unwinding-token
-  allocation turns the unwinding into an `OUT_OF_MEMORY` throw past the
-  handler (DESIGN.md, open problems).
+  the preallocated `OUT_OF_MEMORY` error. Unwinding itself allocates
+  nothing (finally records live in the task's stack, format note 17).
 - The exception the machine raises carries a stack trace and the format-1
   failure message (the spec's trace is null).
 - Preemption, stack growth and stack overflow (the spec has unbounded

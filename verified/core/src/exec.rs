@@ -395,6 +395,7 @@ impl Machine {
             encodable(old(self).addr(), v),
         ensures
             r ==> final(self).refines(p) && final(self).g@ == sp::push(old(self).g@, v),
+            r ==> final(self).top == old(self).top - 1 && final(self).addr() == old(self).addr(),
             !r ==> *final(self) == *old(self),
             final(self).bci == old(self).bci,
             final(self).ftop == old(self).ftop,
