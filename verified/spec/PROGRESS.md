@@ -30,14 +30,14 @@ no_std readiness, gates. Decisions and results:
   from the kinds (an 812-byte method made 3 MB of nodes before), per-method
   budgets for nodes and origin words. Total: bounds-checked everywhere;
   `x_wf_program2` first; verified functions only within preconditions.
-* Memory (VM, counting allocator): hello world 3619 KB -> 47 KB, sandbox
-  tests 3.6-4.5 MB -> 47-59 KB, toit CLI 24.7 MB -> 431 KB. Time about
-  +30 % (hello 15.4 -> 19.7 ms, CLI 191 -> 247 ms; one more inference
-  pass). Table in verified/vmverify/README.md.
+* Memory (VM, counting allocator): hello world 3619 KB -> 45 KB, sandbox
+  tests 3.6-4.5 MB -> 44-56 KB, toit CLI 24.7 MB -> 431 KB. Time about
+  +20-25 % (hello 21.7 -> 27.0 ms, CLI 229 -> 272 ms, medians under load;
+  one more inference pass). Table in verified/vmverify/README.md.
 * R6: reproducers as regression (`vmverify/tests/findings.sh`, in
   `check.sh --tests`); in-process fuzz driver of `toit_vmverify_verify`
   over the saved FFI input (`toit_vmverify_fuzz`, `tests/fuzz_tables.sh`):
-  FUZZ_SUMMARY. `panic = "unwind"` + `catch_unwind` kept on hosts (the
+  8 x 15 min on the final code: 445,655 mutants, 101,454 accepted, 0 panics, 0 slow calls (and 428,561 on an earlier build). `panic = "unwind"` + `catch_unwind` kept on hosts (the
   inference and conversion are unverified; see README "One Rust library").
 * no_std: spec crate builds for riscv32imac/riscv64imac-unknown-none-elf
   without `std`; vmverify for riscv64imac with a copy of the core patched
@@ -45,7 +45,7 @@ no_std readiness, gates. Decisions and results:
   `#![no_std]`, vstd with `std`, staticlib crate type, not 32-bit clean
   (machine.rs shifts usize by 32; layout.rs 64-bit constants).
 * Gates: check.sh --tests passed; ctest 1158/1161 (version, reader,
-  udp-reuse-port-test); GATES_SUMMARY.
+  udp-reuse-port-test); verify_suite 439/443 accepted (4 compile errors; same set as before plus 5 new tests), system snapshots accepted, differential 439/439 equal, mutation campaign 18,000 mutants (3,744 accepted, 0 stuck).
 * Left: contexts' kinds (half of the global part) could share nodes;
   the time overhead of the second inference pass; the core's no_std and
   32-bit work (Phase 5).

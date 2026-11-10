@@ -158,7 +158,7 @@ run-time check of a stuck state.
 ## Cost
 
 Measured 2026-11-10, release build (build/host), x86-64, 32 cores shared
-with other jobs (load average 30 to 33). `TOIT_VERIFY_TIME=1` prints each
+with other jobs (load average about 29). `TOIT_VERIFY_TIME=1` prints each
 verification; the peak is the Rust heap high-water mark of the call
 (`counting.rs`, a counting global allocator, not RSS). "Before" is the
 build of sandbox-integration 7a69e0b4 (whole certificate, copied tables),
@@ -169,11 +169,11 @@ measurement of this README (same tests, another time).
 
 | Program | Bytecodes | Methods | Peak before | Peak after | Total before | Total after |
 |---|---|---|---|---|---|---|
-| hello world (`toit.run --verify`) | 23.9 KB | 758 | 3619 KB | 47 KB | 15.4 ms | 19.7 ms |
-| sandbox tests (83 untrusted launches, `JOBS=1 tests/measure_sandbox.sh`) | 23.8-35.3 KB | 750-1042 | 3.6-4.5 MB | 47-59 KB (median 56) | 18-57 ms (median 30) | 20-99 ms (median 26) |
-| toit CLI (tools/toit.toit, format 2) | 323 KB | 7161 | 24749 KB | 431 KB | 191 ms | 247 ms |
+| hello world (`toit.run --verify`) | 23.9 KB | 758 | 3619 KB | 45 KB | 21.7 ms | 27.0 ms |
+| sandbox tests (83 untrusted launches, `JOBS=1 tests/measure_sandbox.sh`) | 23.8-35.3 KB | 750-1042 | 3.6-4.5 MB | 44-56 KB (median 53) | 18-57 ms (median 30) | 14-43 ms (median 32) |
+| toit CLI (tools/toit.toit, format 2) | 323 KB | 7161 | 24749 KB | 431 KB | 229 ms | 272 ms |
 
-Time is about 30 % higher: the inference runs once more (the checker asks
+Time is about 20 to 25 % higher: the inference runs once more (the checker asks
 for each method's maps after the global phase; the second pass tracks no
 parameter origins), and the checker builds each instruction's kinds from
 the shared nodes (it compares successor maps in place, `x_chain_is`).
@@ -272,7 +272,13 @@ primitive arities; one to four per mutant. A verifier panic (result
 it on hello world, lambda-test, exception-test, class-id-test and
 task-test.
 
-FUZZ_RESULTS
+Runs (2026-11-10, 8 processes x 15 minutes each, `--seed 101` and, on
+the final code, `--seed 301`): 428,561 and 445,655 mutants; on the final
+code 101,454 accepted, 86,197 malformed memory, 242 heap contract,
+147,283 tables, 110,479 methods rejected; **0 verifier panics, 0 calls
+over 2 s** (slowest 261 ms; largest peak 485 KB). The inference of the
+previous branch panicked on such inputs (PHASE4-REQUESTS.md R6; 208
+caught panics in one launch-mode run).
 
 ## no_std (Phase 5)
 
