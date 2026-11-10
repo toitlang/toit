@@ -41,7 +41,7 @@ pub open spec fn same_upto(s: State2, s2: State2, fi: int, n: int) -> bool {
     &&& limit(s, fi) <= s.stack.len()
     &&& limit(s2, fi) <= s2.stack.len()
     &&& forall|x: int| 0 <= x < fbase(s, fi) + n ==> #[trigger] s2.stack[x] == s.stack[x]
-    &&& heap_ext(s.heap, s2.heap)
+    &&& heap_grows(s.heap, s2.heap)
 }
 
 pub proof fn lemma_upto_kinds(p: Program2, c: Cert, s: State2, s2: State2, fi: int, n: int, f: int)
@@ -230,13 +230,19 @@ pub proof fn lemma_below_upto(s: State2, s2: State2, fi: int)
 // The heap.
 
 pub proof fn lemma_obj_ok_mono(p: Program2, c: Cert, h: Seq<HeapObj>, h2: Seq<HeapObj>, o: HeapObj)
-    requires obj_ok(p, c, h, o), heap_ext(h, h2),
+    requires obj_ok(p, c, h, o), heap_grows(h, h2),
     ensures obj_ok(p, c, h2, o),
 {
     match o.body {
         Body::Instance(f) => {
             assert forall|i: int| 0 <= i < f.len() implies good(h2, #[trigger] f[i]) by {
                 assert(good(h, f[i]));
+            }
+            if o.class_id as int == task_class(p) && f.len() >= 1 {
+                match f[0] {
+                    Value::Obj(id) => if (id as int) < h.len() { assert(h2[id as int].body is Stack2 || !(h[id as int].body is Stack2)); },
+                    _ => {},
+                }
             }
         },
         Body::Array(e) => {
@@ -258,11 +264,15 @@ pub proof fn lemma_obj_ok_mono(p: Program2, c: Cert, h: Seq<HeapObj>, h2: Seq<He
 /// Appending a well-formed object keeps the heap well formed.
 pub proof fn lemma_heap_push(p: Program2, c: Cert, h: Seq<HeapObj>, o: HeapObj)
     requires heap_ok(p, c, h), obj_ok(p, c, h.push(o), o),
-    ensures heap_ok(p, c, h.push(o)), heap_ext(h, h.push(o)),
+    ensures heap_ok(p, c, h.push(o)), heap_ext(p, h, h.push(o)),
 {
     reveal(heap_ok);
     let h2 = h.push(o);
-    assert(heap_ext(h, h2));
+    assert forall|i: int| 0 <= i < h.len() && h[i].class_id as int == task_class(p) implies
+        task_fields_kept(h[i], #[trigger] h2[i]) by {
+        lemma_kept_refl(h[i]);
+    }
+    assert(heap_ext(p, h, h2));
     assert forall|i: int| 0 <= i < h2.len() implies #[trigger] obj_ok(p, c, h2, h2[i]) by {
         if i < h.len() {
             assert(obj_ok(p, c, h, h[i]));

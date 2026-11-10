@@ -1436,15 +1436,18 @@ fn task_transfer(m: &mut Machine, to: Value, detach: Value) -> P {
     if from == to {
         return Ok(PR::Fail(to));
     }
+    // Format 2 (`v2::prim::task_transfer_step`): the running task always
+    // has its stack (`v2::sound::running_ok`; a program cannot write a
+    // task's stack field).
+    if m.format == 2 && !(is_task(m, from) && stack_of(m, from).is_some()) {
+        return Err(Stuck::Fatal);
+    }
     let to_stack = match stack_of(m, to) {
         Some(s) => s,
         None => return Ok(m.fail("ERROR")),
     };
     let from_stack = match (is_task(m, from), stack_of(m, from)) {
         (true, Some(s)) => s,
-        // Format 2 (`v2::prim::task_transfer_step`): a running task whose
-        // stack field was overwritten makes the transfer fail.
-        _ if m.format == 2 => return Ok(m.fail("ERROR")),
         _ => return Err(Stuck::Fatal),
     };
     if m.format == 2 {

@@ -66,6 +66,7 @@ pub open spec fn simple_step(p: Program2, c: Cert, s: State2, s2: State2, k2: Se
     &&& s2.frames == s.frames
     &&& s2.tries == s.tries
     &&& s2.globals == s.globals
+    &&& s2.task == s.task
     &&& 0 <= len
     &&& s2.bci as int == s.bci as int + len
     &&& map_at(c, m, foff(p, s, t) + len) == Some(k2)
@@ -76,7 +77,7 @@ pub open spec fn simple_step(p: Program2, c: Cert, s: State2, s2: State2, k2: Se
     &&& forall|j: int| n <= j < k2.len() ==>
             #[trigger] conf(p, c, s2, t, k2, j, k2[j], s2.stack[b + j]) && !(k2[j] is Token)
     &&& (pinned0(p, m) && arity(p, m) >= 1 ==> k2.len() >= 1 && (n >= 1 || s2.stack[b] == s.stack[b]))
-    &&& heap_ext(s.heap, s2.heap)
+    &&& heap_ext(p, s.heap, s2.heap)
     &&& heap_ok(p, c, s2.heap)
 }
 
@@ -148,10 +149,13 @@ pub proof fn lemma_field_good(p: Program2, c: Cert, s: State2, inst: Value, f: i
     assert(good(s.heap, fs[f]));
 }
 
-/// `this` of a frame whose method passes `this_field_ok` has field `f`.
+/// `this` of a frame whose method passes `this_field_ok` has field `f`;
+/// if it is a task, the method's receiver range includes the task class.
+#[verifier::spinoff_prover]
 pub proof fn lemma_this_ok(p: Program2, c: Cert, trusted: bool, s: State2, f: int)
     requires accepts(p, c, trusted), wf(p, c, s), this_field_ok(p, cur_m(s), f), 0 <= f,
     ensures this_ok(p, s, f),
+        is_task_obj(p, s, s.stack[top(s).base as int]) ==> range_has_task(p, info(p, cur_m(s))),
 {
     lemma_instr(p, c, trusted, s);
     let t = top_i(s);
@@ -162,6 +166,10 @@ pub proof fn lemma_this_ok(p: Program2, c: Cert, trusted: bool, s: State2, f: in
     assert(receiver_ok(p, s, t));
     let r = s.stack[b];
     let cl = class_id_of(p1(p), as1(s), r);
+    let i = info(p, m);
+    assert(fmethod(s, t) == m);
+    assert(fbase(s, t) == b);
+    assert(i.recv_start as int <= cl < i.recv_end as int);
     assert(is_field_class(p, cl) && f < ifc(p, cl));
     assert(tables_ok(p, c));
     assert(machine_class_ok(p, SMI_CLASS));
@@ -196,7 +204,7 @@ pub proof fn lemma_load_field(p: Program2, c: Cert, trusted: bool, s: State2)
     lemma_at_good(p, c, trusted, s, 0);
     let inst = at(s, 0);
     assert(step(p, s) == op_load_field(p, s, f, len)) by { reveal(step); }
-    if !field_ok(s, inst, f) {
+    if !field_readable(p, s, inst, f) {
         lemma_raise_step(p, c, trusted, s, INVALID_PROGRAM);
     } else {
         let v = field(s, inst, f);
@@ -233,7 +241,7 @@ pub proof fn lemma_load_field_local(p: Program2, c: Cert, trusted: bool, s: Stat
     lemma_at_good(p, c, trusted, s, slot);
     let inst = at(s, slot);
     assert(step(p, s) == op_load_field_local(p, s, b1, pop)) by { reveal(step); }
-    if !field_ok(s, inst, f) {
+    if !field_readable(p, s, inst, f) {
         lemma_raise_step(p, c, trusted, s, INVALID_PROGRAM);
     } else {
         let v = field(s, inst, f);
@@ -278,11 +286,12 @@ pub proof fn lemma_store_field(p: Program2, c: Cert, trusted: bool, s: State2)
     let v = at(s, 0);
     let inst = at(s, 1);
     assert(step(p, s) == op_store_field(p, s, f, len, keep)) by { reveal(step); }
-    if !field_ok(s, inst, f) || is_ro(s, inst) {
+    if !field_writable(p, s, inst, f) {
         lemma_raise_step(p, c, trusted, s, INVALID_PROGRAM);
     } else {
         let s0 = drop(s, 2);
         assert(field_ok(s0, inst, f));
+        assert(is_task_obj(p, s0, inst) == is_task_obj(p, s, inst));
         lemma_set_field2(p, c, s0, inst, f, v);
         let s1 = set_field2(s0, inst, f, v);
         assert(k2.subrange(0, h - 2) =~= k.subrange(0, h - 2));

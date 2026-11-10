@@ -59,7 +59,7 @@ pub proof fn lemma_raise_ok(p: Program2, c: Cert, trusted: bool, s: State2, k: i
 pub proof fn lemma_unw_heap(p: Program2, c: Cert, s: State2, kt: Seq<Kind>, h2: Seq<HeapObj>)
     requires
         unw_ok(p, c, s, kt),
-        heap_ext(s.heap, h2),
+        heap_ext(p, s.heap, h2),
         heap_ok(p, c, h2),
         h2.len() < 0x8000_0000,
     ensures unw_ok(p, c, with_heap(s, h2), kt),

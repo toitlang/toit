@@ -64,6 +64,67 @@ LazyInitializer_'s field 0 and reads the global.
 Fix: check `is_smi` and validate the id against the method-entry table;
 raise `INVALID_PROGRAM`.
 
+## 3. The message encoder trusts the fields of lists, list slices and maps
+
+Found by the audit of machine-interpreted objects (SOUNDNESS.md,
+2026-11-10). `src/messaging.cc`, reached by `process_send` (allowed for
+untrusted programs):
+
+* `MessageEncoder::encode` for a `List_` (around line 179) checks that the
+  size is a smi, then `encode_list` -> `encode_array(array, 0, size)`
+  reads `array->at(i)` for every `i < size` without comparing `size` with
+  `array->length()`: a heap over-read whose words are encoded into a
+  message for another process (disclosure, or a crash on a non-object
+  word).
+* `ListSlice_` (around line 182): `from` and `to` are smis but are not
+  checked against the backing's length, and `from <= to` is only an
+  `ASSERT` in `encode_array`: same over-read; `to < from` writes a huge
+  cardinal.
+* `encode_map` (around line 273): `for (i = 0; count < size; i += 2)`
+  reads `array->at(i)` with no bound by the backing array: with a size
+  larger than the live entries it reads past the array until `count`
+  reaches `size`.
+
+Reproduce: crafted bytecode that stores into `List_.size_` (or the slice's
+`to_`, or `Map_.size_`) of a small collection and sends it with
+`process_send`. Library privacy keeps Toit source from doing it.
+
+Fix: in `encode` for lists require `0 <= size <= backing length`; for
+slices require `0 <= from <= to <= backing length` (backing array or list
+size); in `encode_map` bound the loop by the backing length and fail if
+`count < size` at the end.
+
+## 4. The error encoder trusts a list's size
+
+`src/encoder.cc`, `EncodeVisitor::visit_instance` (around line 115):
+for a `List_` whose backing is an array it calls
+`visit_list(..., Smi::value(instance->at(LIST_SIZE_INDEX)))` without
+`is_smi` and without bounding the size by the backing length; `visit_list`
+reads up to 10 elements: a heap over-read (non-object words are then
+visited as objects). Reached by the `encode_error` and `encode_object`
+primitives (allowed for untrusted programs) and, in format 2, by
+`toit_v2_allocate_exception` (`src/interpreter_v2.cc`), which encodes the
+message words of a raised failure, e.g. the receiver of a failed lookup.
+
+Fix: `if (!is_smi(size) || Smi::value(size) < 0 || Smi::value(size) > array->length())`
+encode it as a plain instance.
+
+## 5. Byte content of copy-on-write arrays and slices recurses without bound
+
+`src/objects.cc`, `Object::byte_content` (around line 46), and
+`src/objects_runtime.cc`, `Object::mutable_byte_content`: a
+`ByteArrayCow_` recurses into its backing and a byte-array or string
+slice into the wrapped object, without a depth limit. A COW array or
+slice whose backing is itself (or a cycle of them) overflows the C stack
+and crashes the VM. Reached by every blob-taking primitive allowed for
+untrusted programs (`blob_equals`, `byte_array_replace`, string and
+encoding primitives).
+
+Fix: accept only a byte array or string as the backing of a COW array
+and only a byte array, string or COW array (one level) as the wrapped
+object of a slice, or bound the recursion depth (2 suffices for compiler
+output).
+
 ## Observations (not bugs today)
 
 * `Object::mutable_byte_content` (`src/objects_runtime.cc`) makes an

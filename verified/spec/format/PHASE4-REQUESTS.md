@@ -72,6 +72,11 @@ Request: model a task's first two fields as not accessible (or as
 read-only for the id) in `spec::step` and in the verifier's receiver-range
 check, for example by giving the `Task_` class a field base of 2.
 
+Applied 2026-11-10 (SPEC-CHANGELOG.md): `spec::field_readable` /
+`field_writable`, the verifier's `this_load_ok` / `this_store_ok` and
+`task_class_ok`, and `machine_objects_ok` in the theorem. The spec now
+matches what the core does.
+
 Meanwhile: the core refuses to read or write field 0 of a task and to
 write field 1 (LOAD_FIELD/STORE_FIELD raise INVALID_PROGRAM, the `this`
 variants stop the process with a stuck state). The format-1 interpreter

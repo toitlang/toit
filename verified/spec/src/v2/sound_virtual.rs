@@ -65,7 +65,7 @@ pub proof fn lemma_pp_step(p: Program2, c: Cert, trusted: bool, s: State2, n: in
     requires
         accepts(p, c, trusted), wf(p, c, s),
         pp_map(p, c, s, n, len),
-        heap_ext(s.heap, h2), heap_ok(p, c, h2), good(h2, v),
+        heap_ext(p, s.heap, h2), heap_ok(p, c, h2), good(h2, v),
     ensures wf(p, c, pp_state(s, n, v, h2, len)),
 {
     lemma_instr(p, c, trusted, s);
@@ -140,7 +140,7 @@ pub proof fn lemma_vcall_pre(p: Program2, c: Cert, trusted: bool, s: State2, t: 
     let k = cur_k(p, c, s);
     let keep = k.len() - n;
     let kr = pop_push(k, n, Some(Kind::Val));
-    lemma_heap_ext_refl(s.heap);
+    lemma_heap_ext_refl(p, s.heap);
     assert((s.bci + len) - info(p, m).entry == cur_off(p, s) + len);
     assert(kr.subrange(0, keep) =~= k.subrange(0, keep));
 }
@@ -389,7 +389,7 @@ pub proof fn lemma_field_good(p: Program2, c: Cert, s: State2, inst: Value, f: i
 /// The heap after a fast-path store.
 pub open spec fn put_ok(p: Program2, c: Cert, h: Seq<HeapObj>, h2: Seq<HeapObj>) -> bool {
     &&& heap_ok(p, c, h2)
-    &&& heap_ext(h, h2)
+    &&& heap_ext(p, h, h2)
     &&& h2.len() == h.len()
 }
 
@@ -543,7 +543,7 @@ pub proof fn lemma_pp_ok(p: Program2, c: Cert, trusted: bool, s: State2, n: int,
     requires
         accepts(p, c, trusted), wf(p, c, s),
         pp_map(p, c, s, n, len),
-        heap_ext(s.heap, h2), heap_ok(p, c, h2), good(h2, v),
+        heap_ext(p, s.heap, h2), heap_ok(p, c, h2), good(h2, v),
     ensures ok_np(p, c, Outcome2::Next(pp_state(s, n, v, h2, len))),
 {
     lemma_pp_step(p, c, trusted, s, n, len, v, h2);
@@ -554,7 +554,7 @@ pub proof fn lemma_binres(p: Program2, c: Cert, trusted: bool, s: State2, r: Val
     ensures ok_np(p, c, binary_result(s, r)),
 {
     lemma_instr(p, c, trusted, s);
-    lemma_heap_ext_refl(s.heap);
+    lemma_heap_ext_refl(p, s.heap);
     lemma_pp_ok(p, c, trusted, s, 2, 1, r, s.heap);
     assert(binary_result(s, r) == Outcome2::Next(pp_state(s, 2, r, s.heap, 1)));
 }
@@ -630,10 +630,10 @@ pub proof fn lemma_vget(p: Program2, c: Cert, trusted: bool, s: State2, sel: int
     match find_method(p, s, recv, sel) {
         Lookup2::Found(t) => {
             let f = info(p, t).aux as int;
-            if info(p, t).kind == KIND_FIELD_ACCESSOR && field_ok(s, recv, f) {
+            if info(p, t).kind == KIND_FIELD_ACCESSOR && field_readable(p, s, recv, f) {
                 let v = field(s, recv, f);
                 lemma_field_good(p, c, s, recv, f);
-                lemma_heap_ext_refl(s.heap);
+                lemma_heap_ext_refl(p, s.heap);
                 lemma_pp_ok(p, c, trusted, s, 1, 3, v, s.heap);
                 assert(put(s, 0, v).stack =~= pp_state(s, 1, v, s.heap, 3).stack);
                 assert(next(put(s, 0, v), 3) == Outcome2::Next(pp_state(s, 1, v, s.heap, 3)));
@@ -678,10 +678,11 @@ pub proof fn lemma_step_invoke_virtual_set(p: Program2, c: Cert, trusted: bool, 
     match find_method(p, s, recv, sel) {
         Lookup2::Found(t) => {
             let f = info(p, t).aux as int;
-            if info(p, t).kind == KIND_FIELD_ACCESSOR && field_ok(s, recv, f) && !is_ro(s, recv) {
+            if info(p, t).kind == KIND_FIELD_ACCESSOR && field_writable(p, s, recv, f) {
                 assert(is_val(top_kind(k, 0)));
                 lemma_at_good(p, c, trusted, s, 0);
                 let s0 = drop(s, 2);
+                assert(is_task_obj(p, s0, recv) == is_task_obj(p, s, recv));
                 let s3 = set_field2(s0, recv, f, v);
                 lemma_set_field2(p, c, s0, recv, f, v);
                 lemma_pp_ok(p, c, trusted, s, 2, 3, v, s3.heap);
@@ -814,7 +815,7 @@ pub proof fn lemma_step_invoke_size(p: Program2, c: Cert, trusted: bool, s: Stat
     match fast_size(p1(p), as1(s), at(s, 0)) {
         Some(n) => {
             let v = smi(n);
-            lemma_heap_ext_refl(s.heap);
+            lemma_heap_ext_refl(p, s.heap);
             lemma_pp_ok(p, c, trusted, s, 1, 3, v, s.heap);
             assert(put(s, 0, v).stack =~= pp_state(s, 1, v, s.heap, 3).stack);
             assert(next(put(s, 0, v), 3) == Outcome2::Next(pp_state(s, 1, v, s.heap, 3)));

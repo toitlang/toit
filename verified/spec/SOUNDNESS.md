@@ -4,7 +4,7 @@ This document describes the machine-checked soundness proof of the
 structural verifier of the revised bytecode format (format 2). The proof
 is in Verus, in `src/v2/`. It contains no `assume`, `admit`,
 `external_body` or `assume_specification`. The whole crate verifies in
-about 17 s wall time: `verification results:: 652 verified, 0 errors`
+about 20 s wall time: `verification results:: 667 verified, 0 errors`
 (`verus --crate-type=lib src/lib.rs`).
 
 ## The theorem
@@ -22,12 +22,18 @@ pub proof fn theorem_soundness(p, c, trusted, heap0, globals0, s)
         forall|s1, module, index, o|
             step(p, s) == Outcome2::Primitive(s1, module, index)
                 && completion(p, s1, module, index, o) ==> !(o is Stuck),
+        machine_objects_ok(p, s),
 ```
 
 In words: every state reachable from the initial state of an accepted,
 correctly loaded program makes a step that is not stuck, and every
 completion of a PRIMITIVE step is not stuck either. **No `Stuck` variant
-remains possible.** The defined failures are ordinary outcomes, not
+remains possible.** Moreover the objects the machine interprets itself
+keep the meaning it gives them (`machine_objects_ok`): every task's stack
+field refers to a stack object (or is the smi 0 once the task has
+terminated), its id is a smi, and the running task's stack field refers
+to a stack object. See "Machine-interpreted objects" below for the other
+objects the VM interprets. The defined failures are ordinary outcomes, not
 stuck ones:
 
 * machine-raised exceptions (`raise`): lookup failure, as-check failure,
@@ -86,8 +92,8 @@ Each hypothesis is an obligation on the implementation.
    (its class id is below the class count; objects of classes with
    fields are instances with exactly the class's field count; instance
    fields and array elements are smis or references to existing
-   objects) and is neither a suspended stack (`Stack2`) nor an unwinding
-   token (`Pending`); `globals0.len() == c.global_count` and every global
+   objects) and is neither a suspended stack (`Stack2`), an unwinding
+   token (`Pending`) nor a task (an object of the builtin task class); `globals0.len() == c.global_count` and every global
    is a value; every root and literal is a value. Today the dumped
    program heap is checked by `v2/heap_check.rs` (plain Rust, unverified)
    in `toit_spec_verify`; the Phase 4 loader must establish it.
@@ -95,7 +101,8 @@ Each hypothesis is an obligation on the implementation.
    over in `completion`: a primitive may only add objects
    (`h.len() <= h2.len() < 2^30`); it never changes an object's class; it
    neither changes nor creates suspended stacks (`Stack2`) or unwinding
-   tokens (`Pending`), and does not turn an ordinary object into one; and
+   tokens (`Pending`), and does not turn an ordinary object into one; it
+   creates no task and keeps fields 0 and 1 (stack, id) of every task; and
    every object of `h2` is `basic_obj_ok` in `h2` (no dangling
    references, instance field counts preserved). Its result `v` must be
    a value of `h2` (`good`). Every primitive in the allowed set must be
@@ -133,10 +140,13 @@ satisfies (checked by `heap_check.rs` on the same dumps).
 
 `wf(p, c, s)` (`v2/sound.rs`):
 
-* `heap_ok`: every object is well formed (`basic_obj_ok`), and every
-  suspended task (`Stack2`) either never ran (its code is a value) or is
-  itself a well-formed task (`wf_task`) stopped at a `task_transfer`
-  PRIMITIVE (`at_transfer`);
+* `heap_ok`: every object is well formed (`basic_obj_ok`), every task's
+  stack field is a stack object or the smi 0 and its id a smi
+  (`task_obj_ok`), and every suspended task (`Stack2`) either never ran
+  (its code is a value) or is itself a well-formed task (`wf_task`)
+  stopped at a `task_transfer` PRIMITIVE (`at_transfer`);
+* `running_ok`: the running task is a task whose stack field refers to a
+  stack object;
 * `globals_ok`, `consts_ok`: globals, roots and literals are values;
 * `wf_task`: frame bases are non-decreasing; every frame is `frame_ok`
   and every handler `try_ok`.
@@ -216,8 +226,29 @@ referenced primitives (`--time` adds timings). The verdict depends only on
 
 ## Changes made for the proof
 
-The step function (`spec.rs`) and the abstract types (`types.rs`) are
-unchanged. The verifier (`verifier.rs`, mirrored in `check.rs`; the
+Phase 4 changed the step function where it was more permissive than the
+machine; each change is listed in `format/SPEC-CHANGELOG.md`:
+
+* R5 (2026-11-10): the fields of a task the machine owns. The spec treated
+  a task's fields 0 (its stack) and 1 (its id) as ordinary instance
+  fields, so an accepted program could overwrite the stack field, which
+  the VM then used as a stack (found by the core's end-to-end fuzzer,
+  `verified/core/fuzz/findings/task-stack-field-store.snapshot`). The
+  theorem did not exclude it because nothing in the abstract step reads
+  the field except `task_transfer`, which treated a missing stack as a
+  defined failure: the abstract machine keeps the running task's stack in
+  the state, not in the heap, so the corruption was harmless in the model
+  and fatal in the machine. Now field 0 is neither readable nor writable
+  and field 1 read-only (`field_readable`, `field_writable`; the `this`
+  variants are rejected by the verifier), a running task without its
+  stack is `Stuck` in `task_transfer_step`, and the invariant carries the
+  machine's view (`task_obj_ok`, `running_ok`), which the theorem states
+  (`machine_objects_ok`). The table checks require the task class to be
+  the only class with `TASK_TAG` and distinct from the exception class,
+  so ALLOCATE cannot create a task and the machine's tag test agrees with
+  the spec's class test.
+
+Before Phase 4 the step function was unchanged by the proof. The verifier (`verifier.rs`, mirrored in `check.rs`; the
 equality proof still holds) was tightened where the proof found
 accepted programs that get stuck:
 
@@ -237,6 +268,55 @@ All compiler output is still accepted (see Tests). The invariant itself
 gained one clause during the proof (a block frame's own reference points
 at a slot holding the frame's method), needed to relate the verifier's
 context chain to the frames.
+
+## Machine-interpreted objects (audit, 2026-11-10)
+
+R5 was a gap of one kind: the VM gives an object or field a meaning the
+abstract model did not know, so the theorem said nothing about it. The
+table lists every such place found by reading the VM (`src/objects.h`,
+the interpreters, the encoders, `src/primitive_core.cc`), the format-2
+core and the spec. "Proven" means a consequence of the theorem (the step
+function cannot do it, or `machine_objects_ok`); "run time" means the
+spec checks it at run time and the theorem shows the check is the only
+way through; "trusted" means it rests on a hypothesis (loader, primitive
+contract) or on C++ code outside the spec.
+
+| Object / field | Interpreted by | Why a program cannot corrupt it, or why corruption is harmless | Status |
+|---|---|---|---|
+| Task field 0 (stack) | scheduler, task switch, GC (`Task::stack()`), core | not readable or writable by any opcode (`field_readable`/`field_writable`, `this_load_ok`/`this_store_ok`); primitives keep it (`prim_heap_ok`); only `task_new`/`task_transfer` set it | proven (`machine_objects_ok`) |
+| Task field 1 (id) | `Task::id()` (`Smi::value` unchecked) | read-only for programs; primitives keep it | proven |
+| Other task fields (`name_`, `state_`, ...) | Toit code only | the VM's `Task` has two fields | harmless |
+| Task objects themselves | VM by `TASK_TAG` | only `task_new` creates them: ALLOCATE needs `INSTANCE_TAG`, the task class is the only `TASK_TAG` class (`task_class_ok`), none in the program heap (`loaded_ok`), none from primitives | proven + loader/primitive contract |
+| Stack objects (`Stack2`) | GC, task switch, core (frames, handlers, bci inside) | reachable only through a task's field 0 (unreadable); no opcode writes a non-instance/array body; primitives neither change nor create them | proven + primitive contract (a primitive must not return one) |
+| Frame and handler records | core (inside the stack object) | not addressable: the frame stack is separate, slot access is bounded by the top frame, block references are `(frame, slot)` checked by `ref_ok` | proven (`wf_task`) |
+| Unwinding tokens (`Pending`) | UNWIND | the verifier's `Token` kind cannot be copied, stored, passed or returned; UNWIND checks the body; R1 replaces the object by a smi naming a handler record | proven (`conf`, `pending_ok`) |
+| Block method slots | INVOKE_BLOCK, TRY | referenced slots are not writable (`writable`); the method id is still checked (kind, index) | proven + run time |
+| Lambda fields 0, 1 (method id, captures) | INVOKE_LAMBDA_TAIL | ordinary fields; method index, kind and capture count checked | run time (proven to be the only path) |
+| Lazy initializer field (method id) | LOAD_GLOBAL_VAR_LAZY, `run-global-initializer__`, INVOKE_INITIALIZER_TAIL | class tested; the method id is checked (index, kind, arity 0) | run time |
+| Exception objects (value, trace) | raise (writes a fresh object), Toit code, the trace encoder of the system | created fresh by the machine; programs may change them; consumers are Toit code and primitives that treat them as data | harmless |
+| Oddballs, literals, roots | identity tests | `Oddball` bodies are not writable; roots and literals are values (`consts_ok`) | proven |
+| Program heap (read-only) | machine (address range) | every write checks `ro` and raises | run time |
+| Class ids, instance sizes | dispatch, GC, `basic_obj_ok` | no opcode changes a class; instances keep their class's field count | proven + primitive contract |
+| Builtin tables (class ids, entry points, dispatch, selector and interface offsets) | machine | checked by the verifier (`tables_ok`) | proven (verified) |
+| `List_` (array, size), `ListSlice_`, `Map_` (size, backing), `ByteArraySlice_`, `StringSlice_`, `ByteArrayCow_` | `fast_at`/`fast_size`, primitives, message encoder, error encoder | ordinary instance fields: any accepted program can set them to anything; every consumer must validate. The spec's `fast_at` does (falls back to a call); C++ consumers are trusted | run time (spec); trusted (C++) |
+
+Further gaps found by this audit, all in trusted C++ consumers of the last
+row (code reading; reaching them needs crafted bytecode, because library
+privacy hides the fields from Toit source). They are memory-safety bugs of
+the trusted base, not of the spec; entries 3-5 of `VM-BUGS.md` have the
+details and fixes:
+
+* `MessageEncoder` (`process_send`, untrusted-allowed): a `List_` size is
+  not bounded by the backing array, a list slice's `from`/`to` are not
+  checked against the backing, and `encode_map` scans the backing without
+  bound: heap over-reads copied into another process's message.
+* `EncodeVisitor::visit_instance` (`encode_error`, `encode_object`, and
+  the format-2 raise path, which encodes the receiver of a failed
+  lookup): `Smi::value` of an unchecked `List_` size, no bound by the
+  backing length: heap over-read.
+* `Object::byte_content` / `mutable_byte_content`: a `ByteArrayCow_` or
+  slice whose backing is itself (or a cycle) recurses without bound: C
+  stack overflow.
 
 ## Tests
 
