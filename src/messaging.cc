@@ -248,7 +248,9 @@ bool MessageEncoder::encode_any(Object* object) {
 }
 
 bool MessageEncoder::encode_array(Array* object, word from, word to) {
-  ASSERT(from <= to);
+  // The range comes from the fields of lists and list slices, which Toit
+  // code can set to anything.
+  if (from < 0 || from > to || to > object->length()) return false;
   write_uint8(TAG_ARRAY);
   write_cardinal(to - from);
   for (word i = from; i < to; i++) {
@@ -258,6 +260,11 @@ bool MessageEncoder::encode_array(Array* object, word from, word to) {
 }
 
 bool MessageEncoder::encode_list(Instance* instance, word from, word to) {
+  // Only encode elements that are in the list. The size field is an ordinary
+  // instance field and not necessarily within the backing array: encode_array
+  // checks that.
+  Object* size = instance->at(Instance::LIST_SIZE_INDEX);
+  if (!is_smi(size) || to > Smi::value(size)) return false;
   Object* backing = instance->at(Instance::LIST_ARRAY_INDEX);
   if (is_smi(backing)) return false;
   Smi* class_id = HeapObject::cast(backing)->class_id();
@@ -282,12 +289,22 @@ bool MessageEncoder::encode_map(Instance* instance) {
   object = instance->at(Instance::MAP_SIZE_INDEX);
   if (!is_smi(object)) return false;
   word size = Smi::value(object);
+  if (size < 0) return false;
 
   write_cardinal(size);
   if (size == 0) return true;  // Do this before looking at the backing, which may be null.
+  // The number of used slots in the backing. The size and the backing are
+  // ordinary instance fields, which Toit code can set to anything, so the
+  // entries are bounded by the backing, not by the size.
+  word limit = -1;
   Smi* class_id = backing->class_id();
   if (class_id == program_->list_class_id()) {
-    object = Instance::cast(backing)->at(Instance::LIST_ARRAY_INDEX);
+    Instance* list = Instance::cast(backing);
+    object = list->at(Instance::LIST_SIZE_INDEX);
+    if (!is_smi(object)) return false;
+    limit = Smi::value(object);
+    if (limit < 0) return false;
+    object = list->at(Instance::LIST_ARRAY_INDEX);
     if (is_smi(object)) return false;
     backing = HeapObject::cast(object);
   }
@@ -299,8 +316,13 @@ bool MessageEncoder::encode_map(Instance* instance) {
     return false;
   }
   Array* array = Array::cast(backing);
+  if (limit < 0) {
+    limit = array->length();
+  } else if (limit > array->length()) {
+    return false;
+  }
   word count = 0;
-  for (word i = 0; count < size; i += 2) {
+  for (word i = 0; count < size && i + 1 < limit; i += 2) {
     Object* key = array->at(i);
     Object* value = array->at(i + 1);
     if (is_smi(key) || HeapObject::cast(key)->class_id() != program_->tombstone_class_id()) {
@@ -309,7 +331,8 @@ bool MessageEncoder::encode_map(Instance* instance) {
       count++;
     }
   }
-  return true;
+  // The map has fewer entries than its size field claims.
+  return count == size;
 }
 
 bool MessageEncoder::reserve_external() {
