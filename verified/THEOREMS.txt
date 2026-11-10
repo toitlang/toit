@@ -14,8 +14,13 @@ Top-level theorems: crate core (0)
 ==============================================================================
 
 ==============================================================================
-Top-level theorems: crate spec (4)
+Top-level theorems: crate spec (5)
 ==============================================================================
+
+--- lemma_heap_ext_grows  (spec/src/v2/sound_frames.rs)
+pub proof fn lemma_heap_ext_grows(p: Program2, h: Seq<HeapObj>, h2: Seq<HeapObj>)
+    requires heap_ext(p, h, h2),
+    ensures heap_grows(h, h2),
 
 --- lemma_good_mono  (spec/src/v2/sound_frames.rs)
 pub proof fn lemma_good_mono(h: Seq<HeapObj>, h2: Seq<HeapObj>, v: Value)
@@ -38,6 +43,7 @@ pub proof fn theorem_soundness(p: Program2, c: Cert, trusted: bool, heap0: Seq<H
         forall|s1: State2, module: u8, index: u16, o: Outcome2|
             step(p, s) == Outcome2::Primitive(s1, module, index) && #[trigger] completion(p, s1, module, index, o)
                 ==> !(o is Stuck),
+        machine_objects_ok(p, s),
 
 --- theorem_initial  (spec/src/v2/theorem.rs)
 pub proof fn theorem_initial(p: Program2, c: Cert, trusted: bool, heap0: Seq<HeapObj>, globals0: Seq<Value>)

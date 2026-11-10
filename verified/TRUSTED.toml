@@ -1315,6 +1315,14 @@ justification = "TRUSTED: builds the abstract program and heap from the tables t
 [[trusted]]
 crate = "vmverify"
 file = "src/from_vm.rs"
+item = "Fixture::convert"
+kind = "unsafe"
+count = 1
+justification = "Unit test only: converts a fixture whose tables and image are live vectors of the test."
+
+[[trusted]]
+crate = "vmverify"
+file = "src/from_vm.rs"
 item = "Image::range"
 kind = "unsafe"
 count = 1
