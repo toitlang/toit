@@ -42,6 +42,7 @@ import cli
 import fs
 import host.directory
 import host.file
+import host.pipe
 import system
 
 import .toml
@@ -1254,9 +1255,8 @@ entry-key e/Map -> string:
 
 write-allowlist path/string groups/Map old-entries/List -> none:
   old := {:}
-  old-entries.do: | e/Map |
-    if e.contains "crate" and e.contains "file" and e.contains "item" and e.contains "kind":
-      old[entry-key e] = e
+  // The caller checked that every entry has the key fields.
+  old-entries.do: | e/Map | old[entry-key e] = e
   lines := ALLOWLIST-HEADER.copy
   (sorted-keys groups).do: | key |
     group/Group := groups[key]
@@ -1545,7 +1545,13 @@ audit invocation/cli.Invocation -> int:
     print "  $(pad-right parts[0] 5) $(pad-right parts[1] 32) $(pad-left "$kinds[key]" 4)"
 
   if invocation["update-allowlist"]:
-    write-allowlist allowlist groups (load-allowlist allowlist)
+    old-entries := load-allowlist allowlist
+    // Rewriting needs the key of every entry; leave a broken file alone.
+    old-entries.do: | e |
+      if e is not Map or (["crate", "file", "item", "kind"].any: not e.contains it):
+        pipe.stderr.out.write "$allowlist: entry $(py-repr e) lacks a key field (crate, file, item, kind); fix it before --update-allowlist\n"
+        return 1
+    write-allowlist allowlist groups old-entries
     print "Wrote $allowlist; fill in every TODO justification."
 
   failures.add-all (check-allowlist groups (load-allowlist allowlist))
