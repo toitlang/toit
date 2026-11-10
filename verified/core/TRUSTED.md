@@ -1,99 +1,117 @@
 # Trusted base of the verified core
 
-"Verified" in this crate means: every function inside `verus!` in
-`src/exec.rs` is proven by Verus against the spec in `src/spec.rs`, with
-no `assume`, `admit`, `assume_specification` or `#[verifier::external_body]`
-outside the items listed here. Everything below is assumed, not proven. The
-list must only shrink.
+Everything the core relies on without proof. The machine-checked list of
+every escape hatch (external_body, uninterp, unsafe, plain-Rust items) is
+verified/TRUSTED.toml, enforced by `verified/check.sh`; this file explains
+the contracts behind the entries. The list must only shrink.
 
-Check: `grep -rn "external_body\|assume\|admit\|external\b" src/` must show
-only the items in this file.
+## 1. Memory views (`src/view.rs`)
 
-## 1. Memory views (`src/view.rs`, `#[verifier::external_body]`)
+Opaque structs holding raw pointers into VM memory. Their ghost content
+(`view`, uninterpreted) is related to memory only by the `requires` /
+`ensures` of the `external_body` accessors.
 
-The views are opaque structs holding a raw pointer and a length. Their ghost
-content is an uninterpreted spec function (`view`). Each exec function below
-has a body Verus does not see; its `requires`/`ensures` is the assumed
-contract.
+| View | What it wraps | Contract |
+|---|---|---|
+| `Table<T>` | an immutable program table `ptr[0..len)` (bytecodes, method table, dispatch table, class tables, roots, literals) | `len() == view.len()`; `at(i)` requires `i < len`, returns `view[i]` |
+| `Globals` | the process' global variables | `at`/`set` require `i < len`; `set` updates `view[i]` |
+| `StackMem` | the array of the current task's `Stack` object | `read`/`write` require `i < len`; `copy_within` is a memmove with an exact contract; `header`/`set_header` access the Stack header words (top, frame top, bci) |
+| `Heap` | process and program heap objects | no ghost content: `header`, `word`, `byte`, `u32_at`, `set_word`, `set_byte` access the object a tagged word designates; `set_word` applies the write barrier (card mark) |
+| `Preemption` | `Interpreter::watermark_` | `requested`/`clear`/`request`: environment nondeterminism, no contract |
 
-| Item | Assumed contract |
-|---|---|
-| `StackView` (struct) | Wraps `ptr[0..len)` of `usize` words. Ghost view: `Seq<usize>` of length `len`. Nobody else reads or writes this memory while the view exists. |
-| `StackView::len(&self) -> r` | `ensures r == self@.len()` |
-| `StackView::read(&self, i) -> r` | `requires i < self@.len()`; `ensures r == self@[i]` |
-| `StackView::write(&mut self, i, v)` | `requires i < old(self)@.len()`; `ensures final(self)@ == old(self)@.update(i, v)` |
-| `CodeView` (struct) | Wraps the immutable bytecodes `ptr[0..len)`. Ghost view: `Seq<u8>`. |
-| `CodeView::len(&self) -> r` | `ensures r == self@.len()` |
-| `CodeView::byte(&self, i) -> r` | `requires i < self@.len()`; `ensures r == self@[i]` |
-| `DispatchView` (struct) | Wraps the immutable dispatch table `ptr[0..len)` of `i32`. Ghost view: `Seq<i32>`. |
-| `DispatchView::len(&self) -> r` | `ensures r == self@.len()` |
-| `DispatchView::at(&self, i) -> r` | `requires i < self@.len()`; `ensures r == self@[i]` |
-| `RoomOracle` (struct) | Holds `limit_` and a pointer to `Interpreter::watermark_`. |
-| `RoomOracle::has_room(&self, sp, h) -> r` | No contract (nondeterministic). Modelled in the spec as the `room` input of `spec_invoke_static`. Its answer affects only whether the C++ interpreter handles the call (stack growth, preemption); memory safety of the core never depends on it, because every push is bounds-checked against the stack view. |
+Assumptions behind the views:
 
-The ghost contents (`view`) are declared `uninterp spec fn`: they carry no
-assumption by themselves; the contracts above are what relate them to
-memory.
+- V1 Single owner: the interpreter thread owns the process while the core
+  runs, so nobody else writes the stack, globals or heap; program tables
+  are immutable.
+- V2 Heap integrity: a word with the heap tag that the core reads from a
+  root (object stack, globals, program tables) or from a field of such an
+  object designates a live object with a valid header, and the offsets the
+  core computes from the header (layout constants, field counts from
+  `class_bits`, array lengths) are inside it. Maintained by the GC and by
+  every allocation; the core's own writes only store such words or smis.
+  This is the largest assumption: the core reads object fields through
+  `Heap` without a ghost bound (OBLIGATIONS.md F1).
+- V3 Method table: every `V2Method` has `entry <= end <= bytecodes.len()`
+  (checked by the C++ loader, `V2MethodTable::compute`). The fast dispatch
+  path reads up to `MAX_INSTRUCTION_LENGTH` bytes from `bci < end - 6`.
+- V4 Word size: `usize` is 64 bits and `Object*`, `uword` and
+  `std::atomic<Object**>` are word-sized (the layout check tests the
+  latter; the CMake option is only on for 64-bit hosts).
 
-`Env::code_base` (the address of the bytecodes, which return addresses are
-relative to) is a plain value set by the FFI glue; the spec is stated in
-terms of it and `entry` checks `code_base + code_len` does not overflow, so
-it carries no assumption either.
+## 2. FFI (`src/ffi.rs`, `src/interpreter_v2.cc`)
 
-Implicit assumptions behind the views:
+`Runtime` wraps the C++ functions of src/interpreter_v2.h. Each function
+that may GC takes the only `StackMem` by `&mut` and replaces it with a
+fresh view of the current task's stack; the caller has stored its state
+(top, frame top, bci) into the Stack object first (`Machine::save`) and
+re-derives everything after (`Machine::reload`). The full contract, with
+the precondition the core discharges for each function, is in DESIGN.md,
+"FFI contract".
 
-- The ghost content of a view equals the memory content at the time of each
-  call (no concurrent mutation). True because the interpreter thread owns the
-  process stack while running, and bytecodes and dispatch table are
-  immutable program data.
-- `Object*` and `uword` are `usize`-sized; `std::atomic<Object**>` has the
-  layout of `AtomicUsize` (true for x86-64 and RV64 GCC/Clang).
+`toit_v2_run` builds the program view from the context
+`Interpreter::run_v2` fills and checks the table sizes it relies on
+(roots, literals, method and bytecode limits); `Interpreter::run_v2` is
+trusted to fill it from the process' program and method table.
 
-## 2. FFI glue (`src/ffi.rs`, not processed by Verus)
+Trusted C++ the core depends on (src/interpreter_v2.cc): the method-table
+loader and its checks, `prepare_process_v2` (initial frame), the task
+start and transfer glue (`v2_start_task`, `v2_task_transfer`), stack
+growth (`toit_v2_grow_stack`, `Stack::v2_copy_to`), the GC and shrinking
+of format-2 stacks (`Stack::roots_do`, `Stack::v2_frames_do`), the
+exception allocation and trace encoding, and the C++ primitives.
 
-| Item | Assumption |
-|---|---|
-| `toit_vcore_run(state)` | Caller passes a valid `toit_vcore_state` whose fields describe: the process stack array `[limit_, base_)` (`stack_limit`, `stack_len`), indices `sp`/`try_sp` relative to `limit_`, the program's bytecodes and dispatch table, the frame marker, and `&watermark_`. The verified `entry` re-checks every index and length it relies on (`sp <= len`, `try_sp <= len`, size limits, no address overflow) and declines otherwise; the glue itself only constructs views and copies three words back. |
-| `VcoreState` layout | Must match `toit_vcore_state` in `src/verified_core.h`. Machine-checked by the layout check (size and every field offset). |
-| `toit_vcore_covers`, `toit_vcore_max_height` | Thin wrappers around verified functions (`covers_exec`, `method_max_height`), used only by the layout check. |
-| `toit_vcore_layout_count/entry` | Export the constants of `src/layout.rs` by name for the layout check. |
-| `panic_handler`, `rust_eh_personality` | Never reached: verified code has no panicking operations (overflow and bounds are proven), the trusted views do not panic. |
+The C++ primitive path (`toit_v2_lookup_primitive`,
+`toit_v2_call_primitive`) calls arbitrary `PrimitiveEntry` functions of
+the process' policy with the arguments on the object stack, as the C++
+interpreter does. It is UNVERIFIED and OUTSIDE THE SECURITY BOUNDARY of
+the core: for untrusted programs the policy only resolves the allowed set
+of docs/sandbox-policy.md; trusted format-2 programs (used by the test
+suite) reach every primitive this way. Porting the allowed primitives to
+Rust (with `prim_heap_ok`) removes it for untrusted programs
+(OBLIGATIONS.md S1).
 
 ## 3. Layout constants (`src/layout.rs`)
 
-Every constant is an assumption about the C++ VM. All are compared against
-the C++ headers at build time by `verified/layout_check.cc` (CMake target
-`toit_verified_core_layout`, which `toit_vm` depends on; also the ctest
-`verified_core_layout`). Not checkable from headers, and therefore checked
-against literals in the check program instead (review on change):
+Every constant is compared with the C++ headers by verified/layout_check.cc
+at build time (CMake target `toit_verified_core_layout`, a dependency of
+`toit_vm`; also the ctest `verified_core_layout`): tags, header and field
+offsets (behaviorally, on fake objects), Stack header words, frame record
+layout, roots and builtin class indices, result states, FFI result codes,
+message kinds, method kinds, FFI struct layouts, opcode numbers and
+lengths, the failure-literal count, the table limit, the longest
+instruction, and `Stack::max_length() < 2^BLOCK_SLOT_BITS`. 237 constants
+plus behavioral checks.
 
-- `FRAME_MARKER_SLOT = 0`, `RETURN_ADDRESS_SLOT = 1`: the push order in
-  `CALL_METHOD_WITH_RETURN_ADDRESS`.
-- `SMI_LINK_*_INIT`: literals in the `LINK` handler. `SMI_LINK_REASON_INIT`
-  (-1) is the "normal unwind" marker that the C++ `UNWIND` tests for.
-- The non-local-return reason word `Smi::from(arity << 1)` (bit 0 clear
-  means "return") and the try-block call shape (`[link words][block
-  ref][frame]`) used by the unwinder.
+## 4. Plain Rust (`src/machine.rs`, part of `src/exec.rs`)
 
-## 4. The spec itself
+The run loop and the handlers listed in OBLIGATIONS.md are plain Rust
+outside `verus!`. They follow the spec function of the same name; every
+spec stuck state is a run-time check, so a wrong program terminates the
+process ("verified core: stuck state ..."), it does not crash the VM.
+That this is true is tested (sandbox tests, the untrusted suite, the fuzz
+harness), not proven.
 
-`src/spec.rs` is the definition the handlers are proven against. That it
-matches what `interpreter_run.cc` does is *not* proven; it is a reviewed
-transcription, validated by running the VM's test suite with the core
-enabled. Known, intended differences from the C++ handlers:
+`cold!` (src/machine.rs) moves the `Machine` into an out-of-line function
+by value and back with `ptr::read`/`ptr::write` so that the hot loop keeps
+its state in registers; sound because the machine has no destructor, the
+moved-from place is not read in between, and nothing unwinds
+(panic = abort).
 
-- Every C++ `ASSERT` and every unchecked memory access becomes a `Trap`
-  (the hook FATALs) instead of undefined behavior.
-- `NON_LOCAL_RETURN*` does not write the three temporary unwind words below
-  the final stack pointer (dead slots).
-- `NON_LOCAL_RETURN*` checks the frame marker on the "hit unwind protect"
-  path too (C++ only ASSERTs it).
+## 5. The spec
 
-## 5. The C++ side
+verified/spec/src/v2/spec.rs is the definition the handlers follow. That it
+matches the format-1 VM's observable behavior is validated by the
+differential tests of verified/spec (run_suite.py) and by
+verified/core/tests/untrusted_suite.py, not proven. Known differences of
+the core from the spec, all outside the spec's model:
 
-- `VERIFIED_CORE_HOOK` (`src/verified_core.h`) converts the interpreter's
-  pointers to indices and back. Trusted.
-- The C++ interpreter, GC, scheduler and everything else are trusted, as in
-  the plan (07-verified-sandbox-plan.md). The core never runs across a GC
-  point: none of the covered opcodes allocates, and the hook returns to C++
-  before any opcode that can.
+- Allocation can fail (the spec's heap is unbounded): out of memory throws
+  the preallocated `OUT_OF_MEMORY` error. A failed unwinding-token
+  allocation turns the unwinding into an `OUT_OF_MEMORY` throw past the
+  handler (DESIGN.md, open problems).
+- The exception the machine raises carries a stack trace and the format-1
+  failure message (the spec's trace is null).
+- Preemption, stack growth and stack overflow (the spec has unbounded
+  stacks): a call checks for room first and throws `STACK_OVERFLOW` when
+  the stack cannot grow.

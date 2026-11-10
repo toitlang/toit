@@ -21,6 +21,8 @@
 //! - `exec`:    the machine state and the verified opcode handlers.
 //! - `machine`: the run loop and the handlers not yet verified
 //!              (OBLIGATIONS.md).
+//! - `obligations`: the end-to-end statement left for the proof half
+//!              (UNPROVEN, stated only).
 //!
 //! See DESIGN.md.
 
