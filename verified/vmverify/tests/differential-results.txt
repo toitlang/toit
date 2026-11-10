@@ -36,6 +36,7 @@ equal tests/buffer-test.toit
 equal tests/buffer2-test.toit
 equal tests/buffer3-test.toit
 equal tests/byte-array-test.toit
+equal tests/byte-content-depth-test.toit
 equal tests/byte-order-test.toit
 equal tests/bytes-allocated-test.toit
 equal tests/bytes-deprecated-test.toit
@@ -198,6 +199,7 @@ equal tests/many-uses-test.toit
 equal tests/map-test.toit
 equal tests/math-test.toit
 equal tests/max-heap-size-test.toit
+equal tests/message-encoder-bounds-test.toit
 equal tests/mixin-field-test.toit
 equal tests/mixin-field-type-test.toit
 equal tests/mixin-field2-test.toit
@@ -249,6 +251,8 @@ equal tests/null-check-test.toit
 equal tests/null-equals-test.toit
 equal tests/null-string-test.toit
 equal tests/number-test.toit
+equal tests/object-encoder-limits-test.toit
+equal tests/object-encoder-list-test.toit
 equal tests/object-histogram-test.toit
 equal tests/operators-test.toit
 equal tests/optional-monitor-test.toit
@@ -406,6 +410,7 @@ equal tests/utf-8-test-slow.toit
 equal tests/utils-test.toit
 equal tests/uuid-test.toit
 equal tests/valid-assignment-test.toit
+equal tests/weak-map-cyclic-backing-test.toit
 equal tests/weak-map-test.toit
 equal tests/while-test.toit
 equal tests/while-true-test.toit

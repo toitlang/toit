@@ -425,29 +425,33 @@ details and fixes:
 
 ## Tests
 
-Numbers after the Phase 4 changes (R5, R1, R4; 2026-11-10):
+Numbers after the Phase 4 changes (R5, R1, R4; 2026-11-10), updated for
+the streaming checker (R8, branch spec/verifier-memory):
 
 * `tests/verify_suite.py`: every program found by `run_suite.py` and the
-  spec test programs (438 sources) compiled with `-Xbytecode_format=2`:
-  434 accepted (verdict `verify && x_loaded_ok`), 4 do not compile (the
-  `-force` negative compiler tests). Results in `tests/verify-results.txt`.
+  spec test programs (443 sources) compiled with `-Xbytecode_format=2`:
+  439 accepted (verdict `verify && x_loaded_ok`), 4 do not compile (the
+  `-force` negative compiler tests); the same programs as with the
+  whole-certificate checker, plus 5 new tests. Results in
+  `tests/verify-results.txt`.
 * `tests/system_snapshots.sh`: the three system snapshots (toit,
   toit.run, run-image) compiled with `toit.compile -Xbytecode_format=2`
   are accepted (trusted) and satisfy `loaded_ok`, referencing 176, 106
-  and 116 primitives. Verification time of the toit_run snapshot before
+  and 116 primitives (still so with the streaming checker). Verification time of the toit_run snapshot before
   Phase 4: 37.6 ms in total (load 1.6 ms, inference 33.0 ms, check
   4.6 ms); the largest (toit) 198 ms (not remeasured: the machines were
   loaded during this run).
-* `tests/mutation_campaign.py --count 18000 --seed 2` (results in
-  `tests/mutation-results.txt`): 12,300 single-byte and single-operand
-  mutants of 60 programs (6,159 random instruction bytes, 4,931 operands,
-  1,210 method-header bytes), verified with `trusted = false`. 9,850 are
-  rejected (770 of them already by the method-table decoder); the 2,450
-  accepted ones were run on the reference interpreter for at most
-  100,000 steps each: 2,204 exited, 119 hit the step limit, 94
-  deadlocked (all tasks blocked), 8 called an unimplemented primitive,
-  24 ended with an uncaught exception, 1 task returned. **None got stuck
-  or panicked the interpreter.**
+* `tests/mutation_campaign.py --count 18000 --seed 3` (streaming checker;
+  results in `tests/mutation-results.txt`): 18,000 single-byte and
+  single-operand mutants of 60 programs (8,982 random instruction bytes,
+  7,197 operands, 1,821 method-header bytes), verified with `trusted =
+  false`. 14,256 are rejected (1,136 of them already by the method-table
+  decoder); the 3,744 accepted ones were run on the reference interpreter
+  for at most 100,000 steps each: 3,422 exited, 172 hit the step limit,
+  109 deadlocked, 14 called an unimplemented primitive, 26 ended with an
+  uncaught exception, 1 task returned. **None got stuck or panicked the
+  interpreter.** (Before, seed 2: 12,300 mutants, 2,450 accepted, none
+  stuck.)
 * `tests/run_tests.sh`: the 15 spec test programs (new:
   `finally_records`, try/finally inside finally code, breaks out of
   finally code, the value slot) produce the C++ VM's output in format 1

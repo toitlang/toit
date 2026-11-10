@@ -36,6 +36,7 @@ accepted tests/buffer-test.toit
 accepted tests/buffer2-test.toit
 accepted tests/buffer3-test.toit
 accepted tests/byte-array-test.toit
+accepted tests/byte-content-depth-test.toit
 accepted tests/byte-order-test.toit
 accepted tests/bytes-allocated-test.toit
 accepted tests/bytes-deprecated-test.toit
@@ -198,6 +199,7 @@ accepted tests/many-uses-test.toit
 accepted tests/map-test.toit
 accepted tests/math-test.toit
 accepted tests/max-heap-size-test.toit
+accepted tests/message-encoder-bounds-test.toit
 accepted tests/mixin-field-test.toit
 accepted tests/mixin-field-type-test.toit
 accepted tests/mixin-field2-test.toit
@@ -249,6 +251,8 @@ accepted tests/null-check-test.toit
 accepted tests/null-equals-test.toit
 accepted tests/null-string-test.toit
 accepted tests/number-test.toit
+accepted tests/object-encoder-limits-test.toit
+accepted tests/object-encoder-list-test.toit
 accepted tests/object-histogram-test.toit
 accepted tests/operators-test.toit
 accepted tests/optional-monitor-test.toit
@@ -406,6 +410,7 @@ accepted tests/utf-8-test-slow.toit
 accepted tests/utils-test.toit
 accepted tests/uuid-test.toit
 accepted tests/valid-assignment-test.toit
+accepted tests/weak-map-cyclic-backing-test.toit
 accepted tests/weak-map-test.toit
 accepted tests/while-test.toit
 accepted tests/while-true-test.toit
