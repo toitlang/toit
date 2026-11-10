@@ -310,6 +310,32 @@ the out-of-line checked dispatch (`cold!`) and redoes the decoding; the
 double fast paths (verified, with a double heap accessor) are the next
 step. Raw numbers: /home/flo/work/opentoit-sandbox-artifacts/core-refinement/.
 
+### After the second proof pass (2026-11-10, branch core/refinement-2)
+
+Same method as above (callgrind inside the interpreters, TOIT_VERIFY=1):
+
+| Benchmark | f1 Ir | f2 Ir | ratio | ratio before this pass |
+|---|---|---|---|---|
+| richards | 1,024 M | 2,420 M | 2.36 | 2.44 |
+| deltablue | 650 M | 1,782 M | 2.74 | 2.92 |
+| pystone | 762 M | 1,772 M | 2.33 | 2.87 |
+
+pystone gains most: its double arithmetic and comparisons are now the
+verified inline paths (before: the out-of-line checked dispatch), and
+list accesses (deltablue) no longer leave the loop. Where richards' 34
+instructions per bytecode go (callgrind lines, run_loop inlined): the
+dispatch `match` about 12 percent of all instructions, program-table reads
+(`Table::at`: bytecodes, method table, dispatch table) 11.6 percent, stack
+reads 5.4 percent, the loop head with the `Ctl` result and the unwinding
+code inlined once about 16 percent; the C++ interpreter needs about 14 per
+bytecode. Program tables are still read through `env.p` and the table
+pointer, reloaded after stores through the stack's raw pointers (which
+LLVM cannot prove disjoint from the `Program`). The next steps are
+unchanged (top/bci in locals, table pointers as run-loop arguments with
+`noalias`, tail-call threading). HASH_FIND and REPEAT built-ins (notes 16,
+11) were not added: they would remove the bytecode-level loops of
+`Map`/`Set` lookups and `int.repeat` (format 1's intrinsics).
+
 ## 9. Proofs: abstraction, refinement, the end-to-end theorem
 
 The core is proven against the format-2 specification of verified/spec
