@@ -53,6 +53,7 @@ use crate::abs::*;
 use crate::exec::*;
 use crate::view::*;
 use crate::ffi::Allocator;
+use crate::prims::index as ix;
 use toit_spec::types::{Value, HeapObj, Body};
 use toit_spec::v2::types::Program2;
 use toit_spec::v2::prim::PrimRet;
@@ -364,15 +365,113 @@ pub fn dispatch(index: u16, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutc
         contract(c.p, index as int, a, old(heap), final(heap), r.0, r.1@),
 {
     let i = index as usize;
-    // Each family returns NotPorted (heap unchanged) for the indices it
-    // does not handle.
-    let r = ints::dispatch(i, a, heap, c);
-    if !r.0.not_ported() { return r; }
-    let r = array::dispatch(i, a, heap, c);
-    if !r.0.not_ported() { return r; }
-    let r = blob::dispatch(i, a, heap, c);
-    if !r.0.not_ported() { return r; }
-    float::dispatch(i, a, heap, c)
+    match i {
+        ix::SMI_ADD
+            | ix::SMI_SUBTRACT
+            | ix::SMI_MULTIPLY
+            | ix::SMI_DIVIDE
+            | ix::SMI_MOD
+            | ix::SMI_AND
+            | ix::SMI_OR
+            | ix::SMI_XOR
+            | ix::SMI_SHIFT_RIGHT
+            | ix::SMI_UNSIGNED_SHIFT_RIGHT
+            | ix::SMI_SHIFT_LEFT
+            | ix::SMI_LESS_THAN
+            | ix::SMI_LESS_THAN_OR_EQUAL
+            | ix::SMI_GREATER_THAN
+            | ix::SMI_GREATER_THAN_OR_EQUAL
+            | ix::SMI_EQUALS
+            | ix::LARGE_INTEGER_ADD
+            | ix::LARGE_INTEGER_SUBTRACT
+            | ix::LARGE_INTEGER_MULTIPLY
+            | ix::LARGE_INTEGER_DIVIDE
+            | ix::LARGE_INTEGER_MOD
+            | ix::LARGE_INTEGER_AND
+            | ix::LARGE_INTEGER_OR
+            | ix::LARGE_INTEGER_XOR
+            | ix::LARGE_INTEGER_SHIFT_RIGHT
+            | ix::LARGE_INTEGER_UNSIGNED_SHIFT_RIGHT
+            | ix::LARGE_INTEGER_SHIFT_LEFT
+            | ix::LARGE_INTEGER_LESS_THAN
+            | ix::LARGE_INTEGER_LESS_THAN_OR_EQUAL
+            | ix::LARGE_INTEGER_GREATER_THAN
+            | ix::LARGE_INTEGER_GREATER_THAN_OR_EQUAL
+            | ix::LARGE_INTEGER_EQUALS
+            | ix::SMI_UNARY_MINUS
+            | ix::SMI_NOT
+            | ix::LARGE_INTEGER_UNARY_MINUS
+            | ix::LARGE_INTEGER_NOT
+            | ix::COUNT_LEADING_ZEROS
+            | ix::POPCOUNT
+            | ix::OBJECT_CLASS_ID
+            => ints::dispatch(i, a, heap, c),
+        ix::ARRAY_LENGTH
+            | ix::ARRAY_AT
+            | ix::ARRAY_AT_PUT
+            | ix::ARRAY_NEW
+            | ix::ARRAY_EXPAND
+            | ix::ARRAY_REPLACE
+            | ix::LIST_ADD
+            | ix::REBUILD_HASH_INDEX
+            => array::dispatch(i, a, heap, c),
+        ix::BYTE_ARRAY_IS_RAW_BYTES
+            | ix::BYTE_ARRAY_LENGTH
+            | ix::STRING_LENGTH
+            | ix::STRING_HASH_CODE
+            | ix::BLOB_HASH_CODE
+            | ix::STRING_RUNE_COUNT
+            | ix::CONCAT_STRINGS
+            | ix::BYTE_ARRAY_AT
+            | ix::BYTE_ARRAY_NEW
+            | ix::STRING_AT
+            | ix::STRING_RAW_AT
+            | ix::BLOB_EQUALS
+            | ix::STRING_COMPARE
+            | ix::STRING_ADD
+            | ix::JSON_SKIP_WHITESPACE
+            | ix::HASH_SIMPLE_JSON_STRING
+            | ix::SIZE_OF_JSON_NUMBER
+            | ix::BYTE_ARRAY_AT_PUT
+            | ix::STRING_SLICE
+            | ix::COMPARE_SIMPLE_JSON_STRING
+            | ix::BLOB_INDEX_OF
+            | ix::BYTE_ARRAY_REPLACE
+            | ix::STRING_WRITE_TO_BYTE_ARRAY
+            | ix::READ_INT_BIG_ENDIAN | ix::READ_UINT_BIG_ENDIAN | ix::READ_INT_LITTLE_ENDIAN
+            | ix::READ_UINT_LITTLE_ENDIAN | ix::PUT_UINT_BIG_ENDIAN | ix::PUT_UINT_LITTLE_ENDIAN
+            | ix::PUT_FLOAT_64_LITTLE_ENDIAN | ix::PUT_FLOAT_32_LITTLE_ENDIAN
+            | ix::INT_VECTOR_EQUALS | ix::STRING_FROM_RUNE
+            => blob::dispatch(i, a, heap, c),
+        ix::FLOAT_UNARY_MINUS
+            | ix::FLOAT_SQRT
+            | ix::FLOAT_CEIL
+            | ix::FLOAT_FLOOR
+            | ix::FLOAT_TRUNC
+            | ix::FLOAT_SIGN
+            | ix::FLOAT_IS_NAN
+            | ix::FLOAT_IS_FINITE
+            | ix::FLOAT_TO_RAW
+            | ix::FLOAT_TO_RAW32
+            | ix::NUMBER_TO_FLOAT
+            | ix::NUMBER_TO_INTEGER
+            | ix::RAW_TO_FLOAT
+            | ix::RAW32_TO_FLOAT
+            | ix::FLOAT_ADD
+            | ix::FLOAT_SUBTRACT
+            | ix::FLOAT_MULTIPLY
+            | ix::FLOAT_DIVIDE
+            | ix::FLOAT_MOD
+            | ix::FLOAT_LESS_THAN
+            | ix::FLOAT_LESS_THAN_OR_EQUAL
+            | ix::FLOAT_GREATER_THAN
+            | ix::FLOAT_GREATER_THAN_OR_EQUAL
+            | ix::FLOAT_EQUALS
+            | ix::COMPARE_TO
+            | ix::MIN_SPECIAL_COMPARE_TO
+            => float::dispatch(i, a, heap, c),
+        _ => (PrimOutcome::NotPorted, Ghost(Value::Smi(0))),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -759,7 +858,7 @@ pub proof fn lemma_post_append(p: &Program, h0: &Heap, h1: &Heap, r: usize)
     }
     assert(addrs_ok(o1, a1));
     // Model and well-formedness of every object.
-    assert forall|i: int| 0 <= i < o1.len() implies #[trigger] obj_model_ok(o1[i], cb, a1)
+    assert forall|i: int| #![trigger o1[i]] 0 <= i < o1.len() implies obj_model_ok(o1[i], cb, a1)
         && basic_obj_ok(ap, o1, o1[i]) by {
         if i < n {
             assert(o1[i] == o0[i]);
@@ -773,7 +872,7 @@ pub proof fn lemma_post_append(p: &Program, h0: &Heap, h1: &Heap, r: usize)
     }
     assert(heap_model_ok(o1, a1, cb));
     assert forall|i: int| 0 <= i < o1.len() implies basic_obj_ok(ap, o1, #[trigger] o1[i]) by {
-        assert(obj_model_ok(o1[i], cb, a1) && basic_obj_ok(ap, o1, o1[i]));
+        assert(o1[i] == o1[i]);
     }
     // Read-only flags.
     assert forall|i: int| 0 <= i < o1.len() implies #[trigger] o1[i].ro == in_ro(p, a1[i]) by {
@@ -846,7 +945,7 @@ pub proof fn lemma_post_update(p: &Program, h0: &Heap, h1: &Heap, id: int, o2: H
         }
         lemma_obj_new(ap, o1, a1, cb, o2);
     }
-    assert forall|i: int| 0 <= i < o1.len() implies #[trigger] obj_model_ok(o1[i], cb, a1)
+    assert forall|i: int| #![trigger o1[i]] 0 <= i < o1.len() implies obj_model_ok(o1[i], cb, a1)
         && basic_obj_ok(ap, o1, o1[i]) by {
         if i != id {
             assert(o1[i] == o0[i]);
@@ -859,7 +958,7 @@ pub proof fn lemma_post_update(p: &Program, h0: &Heap, h1: &Heap, id: int, o2: H
     }
     assert(heap_model_ok(o1, a1, cb));
     assert forall|i: int| 0 <= i < o1.len() implies basic_obj_ok(ap, o1, #[trigger] o1[i]) by {
-        assert(obj_model_ok(o1[i], cb, a1) && basic_obj_ok(ap, o1, o1[i]));
+        assert(o1[i] == o1[i]);
     }
     assert forall|i: int| 0 <= i < o1.len() implies #[trigger] o1[i].ro == in_ro(p, a1[i]) by {
         assert(o0[i].ro == in_ro(p, a0[i]));

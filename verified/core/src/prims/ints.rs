@@ -311,49 +311,48 @@ pub fn dispatch(i: usize, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcom
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@), contract(c.p, i as int, a, old(heap), final(heap), r.0, r.1@),
 {
     let n = a.n;
-    if n == 2 {
-        if i == ix::SMI_ADD { return binop(ADD, false, a, heap, c); }
-        if i == ix::SMI_SUBTRACT { return binop(SUB, false, a, heap, c); }
-        if i == ix::SMI_MULTIPLY { return binop(MUL, false, a, heap, c); }
-        if i == ix::SMI_DIVIDE { return binop(DIV, false, a, heap, c); }
-        if i == ix::SMI_MOD { return binop(MOD, false, a, heap, c); }
-        if i == ix::SMI_AND { return binop(AND, false, a, heap, c); }
-        if i == ix::SMI_OR { return binop(OR, false, a, heap, c); }
-        if i == ix::SMI_XOR { return binop(XOR, false, a, heap, c); }
-        if i == ix::SMI_SHIFT_RIGHT { return binop(SHR, false, a, heap, c); }
-        if i == ix::SMI_UNSIGNED_SHIFT_RIGHT { return binop(USHR, false, a, heap, c); }
-        if i == ix::SMI_SHIFT_LEFT { return binop(SHL, false, a, heap, c); }
-        if i == ix::SMI_LESS_THAN { return cmpop(LT, false, a, heap, c); }
-        if i == ix::SMI_LESS_THAN_OR_EQUAL { return cmpop(LTE, false, a, heap, c); }
-        if i == ix::SMI_GREATER_THAN { return cmpop(GT, false, a, heap, c); }
-        if i == ix::SMI_GREATER_THAN_OR_EQUAL { return cmpop(GTE, false, a, heap, c); }
-        if i == ix::SMI_EQUALS { return cmpop(EQ, false, a, heap, c); }
-        if i == ix::LARGE_INTEGER_ADD { return binop(ADD, true, a, heap, c); }
-        if i == ix::LARGE_INTEGER_SUBTRACT { return binop(SUB, true, a, heap, c); }
-        if i == ix::LARGE_INTEGER_MULTIPLY { return binop(MUL, true, a, heap, c); }
-        if i == ix::LARGE_INTEGER_DIVIDE { return binop(DIV, true, a, heap, c); }
-        if i == ix::LARGE_INTEGER_MOD { return binop(MOD, true, a, heap, c); }
-        if i == ix::LARGE_INTEGER_AND { return binop(AND, true, a, heap, c); }
-        if i == ix::LARGE_INTEGER_OR { return binop(OR, true, a, heap, c); }
-        if i == ix::LARGE_INTEGER_XOR { return binop(XOR, true, a, heap, c); }
-        if i == ix::LARGE_INTEGER_SHIFT_RIGHT { return binop(SHR, true, a, heap, c); }
-        if i == ix::LARGE_INTEGER_UNSIGNED_SHIFT_RIGHT { return binop(USHR, true, a, heap, c); }
-        if i == ix::LARGE_INTEGER_SHIFT_LEFT { return binop(SHL, true, a, heap, c); }
-        if i == ix::LARGE_INTEGER_LESS_THAN { return cmpop(LT, true, a, heap, c); }
-        if i == ix::LARGE_INTEGER_LESS_THAN_OR_EQUAL { return cmpop(LTE, true, a, heap, c); }
-        if i == ix::LARGE_INTEGER_GREATER_THAN { return cmpop(GT, true, a, heap, c); }
-        if i == ix::LARGE_INTEGER_GREATER_THAN_OR_EQUAL { return cmpop(GTE, true, a, heap, c); }
-        if i == ix::LARGE_INTEGER_EQUALS { return cmpop(EQ, true, a, heap, c); }
-    } else if n == 1 {
-        if i == ix::SMI_UNARY_MINUS { return unop(NEG, false, a, heap, c); }
-        if i == ix::SMI_NOT { return unop(NOT, false, a, heap, c); }
-        if i == ix::LARGE_INTEGER_UNARY_MINUS { return unop(NEG, true, a, heap, c); }
-        if i == ix::LARGE_INTEGER_NOT { return unop(NOT, true, a, heap, c); }
-        if i == ix::COUNT_LEADING_ZEROS { return unop(CLZ, false, a, heap, c); }
-        if i == ix::POPCOUNT { return unop(POPCOUNT, false, a, heap, c); }
-        if i == ix::OBJECT_CLASS_ID { return object_class_id(a, heap, c); }
+    match i {
+        ix::SMI_ADD if n == 2 => binop(ADD, false, a, heap, c),
+        ix::SMI_SUBTRACT if n == 2 => binop(SUB, false, a, heap, c),
+        ix::SMI_MULTIPLY if n == 2 => binop(MUL, false, a, heap, c),
+        ix::SMI_DIVIDE if n == 2 => binop(DIV, false, a, heap, c),
+        ix::SMI_MOD if n == 2 => binop(MOD, false, a, heap, c),
+        ix::SMI_AND if n == 2 => binop(AND, false, a, heap, c),
+        ix::SMI_OR if n == 2 => binop(OR, false, a, heap, c),
+        ix::SMI_XOR if n == 2 => binop(XOR, false, a, heap, c),
+        ix::SMI_SHIFT_RIGHT if n == 2 => binop(SHR, false, a, heap, c),
+        ix::SMI_UNSIGNED_SHIFT_RIGHT if n == 2 => binop(USHR, false, a, heap, c),
+        ix::SMI_SHIFT_LEFT if n == 2 => binop(SHL, false, a, heap, c),
+        ix::SMI_LESS_THAN if n == 2 => cmpop(LT, false, a, heap, c),
+        ix::SMI_LESS_THAN_OR_EQUAL if n == 2 => cmpop(LTE, false, a, heap, c),
+        ix::SMI_GREATER_THAN if n == 2 => cmpop(GT, false, a, heap, c),
+        ix::SMI_GREATER_THAN_OR_EQUAL if n == 2 => cmpop(GTE, false, a, heap, c),
+        ix::SMI_EQUALS if n == 2 => cmpop(EQ, false, a, heap, c),
+        ix::LARGE_INTEGER_ADD if n == 2 => binop(ADD, true, a, heap, c),
+        ix::LARGE_INTEGER_SUBTRACT if n == 2 => binop(SUB, true, a, heap, c),
+        ix::LARGE_INTEGER_MULTIPLY if n == 2 => binop(MUL, true, a, heap, c),
+        ix::LARGE_INTEGER_DIVIDE if n == 2 => binop(DIV, true, a, heap, c),
+        ix::LARGE_INTEGER_MOD if n == 2 => binop(MOD, true, a, heap, c),
+        ix::LARGE_INTEGER_AND if n == 2 => binop(AND, true, a, heap, c),
+        ix::LARGE_INTEGER_OR if n == 2 => binop(OR, true, a, heap, c),
+        ix::LARGE_INTEGER_XOR if n == 2 => binop(XOR, true, a, heap, c),
+        ix::LARGE_INTEGER_SHIFT_RIGHT if n == 2 => binop(SHR, true, a, heap, c),
+        ix::LARGE_INTEGER_UNSIGNED_SHIFT_RIGHT if n == 2 => binop(USHR, true, a, heap, c),
+        ix::LARGE_INTEGER_SHIFT_LEFT if n == 2 => binop(SHL, true, a, heap, c),
+        ix::LARGE_INTEGER_LESS_THAN if n == 2 => cmpop(LT, true, a, heap, c),
+        ix::LARGE_INTEGER_LESS_THAN_OR_EQUAL if n == 2 => cmpop(LTE, true, a, heap, c),
+        ix::LARGE_INTEGER_GREATER_THAN if n == 2 => cmpop(GT, true, a, heap, c),
+        ix::LARGE_INTEGER_GREATER_THAN_OR_EQUAL if n == 2 => cmpop(GTE, true, a, heap, c),
+        ix::LARGE_INTEGER_EQUALS if n == 2 => cmpop(EQ, true, a, heap, c),
+        ix::SMI_UNARY_MINUS if n == 1 => unop(NEG, false, a, heap, c),
+        ix::SMI_NOT if n == 1 => unop(NOT, false, a, heap, c),
+        ix::LARGE_INTEGER_UNARY_MINUS if n == 1 => unop(NEG, true, a, heap, c),
+        ix::LARGE_INTEGER_NOT if n == 1 => unop(NOT, true, a, heap, c),
+        ix::COUNT_LEADING_ZEROS if n == 1 => unop(CLZ, false, a, heap, c),
+        ix::POPCOUNT if n == 1 => unop(POPCOUNT, false, a, heap, c),
+        ix::OBJECT_CLASS_ID if n == 1 => object_class_id(a, heap, c),
+        _ => (PrimOutcome::NotPorted, Ghost(Value::Smi(0))),
     }
-    (PrimOutcome::NotPorted, Ghost(Value::Smi(0)))
 }
 
 } // verus!

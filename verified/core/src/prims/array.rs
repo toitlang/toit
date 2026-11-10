@@ -662,15 +662,17 @@ pub fn dispatch(i: usize, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcom
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@), contract(c.p, i as int, a, old(heap), final(heap), r.0, r.1@),
 {
     let n = a.n;
-    if i == ix::ARRAY_LENGTH && n == 1 { return array_length(a, heap, c); }
-    if i == ix::ARRAY_AT && n == 2 { return array_at(a, heap, c); }
-    if i == ix::ARRAY_AT_PUT && n == 3 { return array_at_put(a, heap, c); }
-    if i == ix::ARRAY_NEW && n == 2 { return array_new(a, heap, c); }
-    if i == ix::ARRAY_EXPAND && n == 4 { return array_expand(a, heap, c); }
-    if i == ix::ARRAY_REPLACE && n == 5 { return array_replace(a, heap, c); }
-    if i == ix::LIST_ADD && n == 2 { return list_add(a, heap, c); }
-    if i == ix::REBUILD_HASH_INDEX && n == 2 { return rebuild_hash_index(a, heap, c); }
-    (PrimOutcome::NotPorted, Ghost(Value::Smi(0)))
+    match i {
+        ix::ARRAY_LENGTH if n == 1 => array_length(a, heap, c),
+        ix::ARRAY_AT if n == 2 => array_at(a, heap, c),
+        ix::ARRAY_AT_PUT if n == 3 => array_at_put(a, heap, c),
+        ix::ARRAY_NEW if n == 2 => array_new(a, heap, c),
+        ix::ARRAY_EXPAND if n == 4 => array_expand(a, heap, c),
+        ix::ARRAY_REPLACE if n == 5 => array_replace(a, heap, c),
+        ix::LIST_ADD if n == 2 => list_add(a, heap, c),
+        ix::REBUILD_HASH_INDEX if n == 2 => rebuild_hash_index(a, heap, c),
+        _ => (PrimOutcome::NotPorted, Ghost(Value::Smi(0))),
+    }
 }
 
 } // verus!

@@ -554,7 +554,8 @@ PRIMITIVE(string_write_to_byte_array) {
   if (to == from) return _raw_dest;
   if (from < 0 || to > source_bytes.length() || from > to) FAIL(OUT_OF_BOUNDS);
   if (dest_index < 0 || to - from > dest.length() - dest_index) FAIL(OUT_OF_BOUNDS);
-  memcpy(&dest.address()[dest_index], &source_bytes.address()[from], to - from);
+  // The source and the destination may be the same byte array.
+  memmove(&dest.address()[dest_index], &source_bytes.address()[from], to - from);
   return _raw_dest;
 }
 

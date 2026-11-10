@@ -152,7 +152,20 @@ and receiver 0 is not covered, so `0 - MIN_SMI` and
 `MAX_SMI - (-1)` (both 2^62) become `Smi::from(2^62)`, which wraps to
 -2^62. Format 1 and 2: `print 0 - (-4611686018427387904)` prints
 -4611686018427387904. Fix: compute `(int64) receiver - other` (it cannot
-overflow 64 bits) and return `Primitive::integer` of it.
+overflow 64 bits) and return `Primitive::integer` of it. Fixed on
+core/primitives; upstream: https://github.com/toitlang/toit/pull/3375.
+
+## `string_write_to_byte_array` copies overlapping bytes with `memcpy`
+
+Found by the differential test of the primitive port
+(verified/core/tests/prim_diff.py, seeds 1 and 5). `PRIMITIVE(
+string_write_to_byte_array)` (src/primitive_core.cc) copies with `memcpy`
+although the source blob and the destination may be the same byte array
+(or overlapping slices of it): undefined behavior, and with glibc the
+result differs from a `memmove` for overlapping forward copies. Reachable
+from Toit with `#primitive.core.string-write-to-byte-array` (the library's
+`ByteArray.replace` path for strings never aliases, but a program can).
+Fix: `memmove`. Fixed on core/primitives.
 
 ## Observations (not bugs today)
 

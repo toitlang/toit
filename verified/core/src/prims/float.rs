@@ -260,36 +260,35 @@ pub fn dispatch(i: usize, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcom
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@), contract(c.p, i as int, a, old(heap), final(heap), r.0, r.1@),
 {
     let n = a.n;
-    if n == 1 {
-        if i == ix::FLOAT_UNARY_MINUS { return float_unop(0, a, heap, c); }
-        if i == ix::FLOAT_SQRT { return float_unop(1, a, heap, c); }
-        if i == ix::FLOAT_CEIL { return float_unop(2, a, heap, c); }
-        if i == ix::FLOAT_FLOOR { return float_unop(3, a, heap, c); }
-        if i == ix::FLOAT_TRUNC { return float_unop(4, a, heap, c); }
-        if i == ix::FLOAT_SIGN { return float_query(0, a, heap, c); }
-        if i == ix::FLOAT_IS_NAN { return float_query(1, a, heap, c); }
-        if i == ix::FLOAT_IS_FINITE { return float_query(2, a, heap, c); }
-        if i == ix::FLOAT_TO_RAW { return float_query(3, a, heap, c); }
-        if i == ix::FLOAT_TO_RAW32 { return float_query(4, a, heap, c); }
-        if i == ix::NUMBER_TO_FLOAT { return number_to_float(a, heap, c); }
-        if i == ix::NUMBER_TO_INTEGER { return number_to_integer(a, heap, c); }
-        if i == ix::RAW_TO_FLOAT { return raw_to_float(false, a, heap, c); }
-        if i == ix::RAW32_TO_FLOAT { return raw_to_float(true, a, heap, c); }
-    } else if n == 2 {
-        if i == ix::FLOAT_ADD { return float_binop(0, a, heap, c); }
-        if i == ix::FLOAT_SUBTRACT { return float_binop(1, a, heap, c); }
-        if i == ix::FLOAT_MULTIPLY { return float_binop(2, a, heap, c); }
-        if i == ix::FLOAT_DIVIDE { return float_binop(3, a, heap, c); }
-        if i == ix::FLOAT_MOD { return float_binop(4, a, heap, c); }
-        if i == ix::FLOAT_LESS_THAN { return float_compare(0, a, heap, c); }
-        if i == ix::FLOAT_LESS_THAN_OR_EQUAL { return float_compare(1, a, heap, c); }
-        if i == ix::FLOAT_GREATER_THAN { return float_compare(2, a, heap, c); }
-        if i == ix::FLOAT_GREATER_THAN_OR_EQUAL { return float_compare(3, a, heap, c); }
-        if i == ix::FLOAT_EQUALS { return float_compare(4, a, heap, c); }
-        if i == ix::COMPARE_TO { return compare_to(false, a, heap, c); }
-        if i == ix::MIN_SPECIAL_COMPARE_TO { return compare_to(true, a, heap, c); }
+    match i {
+        ix::FLOAT_UNARY_MINUS if n == 1 => float_unop(0, a, heap, c),
+        ix::FLOAT_SQRT if n == 1 => float_unop(1, a, heap, c),
+        ix::FLOAT_CEIL if n == 1 => float_unop(2, a, heap, c),
+        ix::FLOAT_FLOOR if n == 1 => float_unop(3, a, heap, c),
+        ix::FLOAT_TRUNC if n == 1 => float_unop(4, a, heap, c),
+        ix::FLOAT_SIGN if n == 1 => float_query(0, a, heap, c),
+        ix::FLOAT_IS_NAN if n == 1 => float_query(1, a, heap, c),
+        ix::FLOAT_IS_FINITE if n == 1 => float_query(2, a, heap, c),
+        ix::FLOAT_TO_RAW if n == 1 => float_query(3, a, heap, c),
+        ix::FLOAT_TO_RAW32 if n == 1 => float_query(4, a, heap, c),
+        ix::NUMBER_TO_FLOAT if n == 1 => number_to_float(a, heap, c),
+        ix::NUMBER_TO_INTEGER if n == 1 => number_to_integer(a, heap, c),
+        ix::RAW_TO_FLOAT if n == 1 => raw_to_float(false, a, heap, c),
+        ix::RAW32_TO_FLOAT if n == 1 => raw_to_float(true, a, heap, c),
+        ix::FLOAT_ADD if n == 2 => float_binop(0, a, heap, c),
+        ix::FLOAT_SUBTRACT if n == 2 => float_binop(1, a, heap, c),
+        ix::FLOAT_MULTIPLY if n == 2 => float_binop(2, a, heap, c),
+        ix::FLOAT_DIVIDE if n == 2 => float_binop(3, a, heap, c),
+        ix::FLOAT_MOD if n == 2 => float_binop(4, a, heap, c),
+        ix::FLOAT_LESS_THAN if n == 2 => float_compare(0, a, heap, c),
+        ix::FLOAT_LESS_THAN_OR_EQUAL if n == 2 => float_compare(1, a, heap, c),
+        ix::FLOAT_GREATER_THAN if n == 2 => float_compare(2, a, heap, c),
+        ix::FLOAT_GREATER_THAN_OR_EQUAL if n == 2 => float_compare(3, a, heap, c),
+        ix::FLOAT_EQUALS if n == 2 => float_compare(4, a, heap, c),
+        ix::COMPARE_TO if n == 2 => compare_to(false, a, heap, c),
+        ix::MIN_SPECIAL_COMPARE_TO if n == 2 => compare_to(true, a, heap, c),
+        _ => (PrimOutcome::NotPorted, Ghost(Value::Smi(0))),
     }
-    (PrimOutcome::NotPorted, Ghost(Value::Smi(0)))
 }
 
 } // verus!

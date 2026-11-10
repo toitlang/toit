@@ -40,6 +40,7 @@ use crate::prims::array::{array_arg, word_arg, int32_arg, is_ro};
 #[cfg(verus_keep_ghost)]
 use crate::prims::array::{lemma_element_good, lemma_field_good};
 use crate::prims::index as ix;
+use crate::prims::fp;
 use toit_spec::types::{Value, HeapObj, Body};
 #[cfg(verus_keep_ghost)]
 use toit_spec::v2::sound::good;
@@ -1286,42 +1287,289 @@ pub fn size_of_json_number(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutco
     ok(c.p, heap, rw, rv)
 }
 
+// ---------------------------------------------------------------------------
+// Byte order (lib/io/byte-order.toit; a failure runs the Toit fallback).
+
+/// Writes `n` bytes of `value` to `b[offset..]`: least significant first
+/// (`big == false`) or last; each next byte is the value shifted right
+/// (arithmetically) by 8 more bits.
+fn put_bytes(heap: &mut Heap, c: &Ctx, b: &Blob, offset: usize, n: usize, value: i64, big: bool,
+             Ghost(h0): Ghost<Heap>)
+    requires
+        heap_post(c.p, &h0, old(heap)), blob_ok(old(heap), b), b.c.writable(),
+        offset + n <= b.len, n <= 9,
+    ensures heap_post(c.p, &h0, final(heap)),
+{
+    let mut v = value;
+    let mut k: usize = 0;
+    while k < n
+        invariant
+            heap_post(c.p, &h0, heap), blob_ok(heap, b), b.c.writable(),
+            offset + n <= b.len, k <= n,
+        decreases n - k,
+    {
+        let i = if big { n - 1 - k } else { k };
+        let ghost h1 = *heap;
+        heap.content_set(&b.c, b.start + offset + i, (v & 0xff) as u8);
+        proof {
+            let id = b.c.id();
+            let s = content(h1.objs()[id]).update(b.start + offset + i, (v & 0xff) as u8);
+            lemma_post_content(c.p, &h1, heap, id, s);
+            lemma_post_trans(c.p, &h0, &h1, heap);
+            lemma_blob_update(&h1, heap, b, id, s);
+        }
+        v = v >> 8u64;
+        k += 1;
+    }
+}
+
+/// `read_int/uint_big/little_endian(unused, source, width, offset)`.
+pub fn read_endian(signed: bool, big: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
+    requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 4,
+    ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+{
+    let k = blob_classes(c.p, heap);
+    let b = match blob_or_fail(heap, c, &k, a.w[1], Ghost(a.vs@[1]), STRINGS_OR_BYTE_ARRAYS, ROOT_WRONG_BYTES_TYPE) {
+        Ok(b) => b,
+        Err(r) => return r,
+    };
+    let width = match int32_arg(heap, a.w[2], Ghost(a.vs@[2])) {
+        Ok(x) => x,
+        Err(e) => return fail(c.p, heap, e),
+    };
+    let offset = match word_arg(heap, a.w[3], Ghost(a.vs@[3])) {
+        Some(x) => x,
+        None => return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
+    };
+    // The C++ checks in unsigned arithmetic: a negative width or offset is
+    // huge. The signed reads reject width 0 (width - 1 wraps).
+    if offset < 0 || width < 0 || offset as usize > b.len { return fail(c.p, heap, ROOT_OUT_OF_BOUNDS); }
+    let o = offset as usize;
+    let w = width as usize;
+    if signed {
+        if w == 0 || w - 1 >= 8 || o + (w - 1) >= b.len { return fail(c.p, heap, ROOT_OUT_OF_BOUNDS); }
+    } else {
+        if w > 8 || o + w > b.len { return fail(c.p, heap, ROOT_OUT_OF_BOUNDS); }
+    }
+    let mut value: u64 = 0;
+    let mut k: usize = 0;
+    while k < w
+        invariant heap_inv(c.p, heap), blob_ok(heap, &b), o + w <= b.len, k <= w, w <= 8,
+        decreases w - k,
+    {
+        // The most significant byte first.
+        let i = if big { k } else { w - 1 - k };
+        let x = blob_at(heap, &b, o + i);
+        if signed && k == 0 {
+            // Sign-extend the most significant byte.
+            value = if x >= 0x80 { (x as u64) | 0xffff_ffff_ffff_ff00u64 } else { x as u64 };
+        } else {
+            value = (value << 8u64) | (x as u64);
+        }
+        k += 1;
+    }
+    ints::int_res(heap, c, value as i64)
+}
+
+/// `put_uint_big/little_endian(unused, dest, width, offset, value)`.
+pub fn put_endian(big: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
+    requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 5,
+    ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+{
+    let p = c.p;
+    let k = blob_classes(p, heap);
+    let dst = match blob_arg(heap, p, &k, a.w[1], Ghost(a.vs@[1]), MUTABLE) {
+        BlobArg::Ok(b) => b,
+        BlobArg::Fail(e) => return fail(p, heap, e),
+        BlobArg::NotPorted => return (PrimOutcome::NotPorted, Ghost(Value::Smi(0))),
+    };
+    let width = match int32_arg(heap, a.w[2], Ghost(a.vs@[2])) {
+        Ok(x) => x,
+        Err(e) => return fail(p, heap, e),
+    };
+    let offset = match word_arg(heap, a.w[3], Ghost(a.vs@[3])) {
+        Some(x) => x,
+        None => return fail(p, heap, ROOT_WRONG_OBJECT_TYPE),
+    };
+    let value = match ints::int_arg(heap, a.w[4], Ghost(a.vs@[4])) {
+        Some(x) => x,
+        None => return fail(p, heap, ROOT_WRONG_OBJECT_TYPE),
+    };
+    if offset < 0 || width < 0 || offset as usize > dst.len { return fail(p, heap, ROOT_OUT_OF_BOUNDS); }
+    let o = offset as usize;
+    let w = width as usize;
+    if big {
+        // Accepts width 9 (C++: `unsigned_width > 9`).
+        if w > 9 || o + w > dst.len { return fail(p, heap, ROOT_OUT_OF_BOUNDS); }
+    } else {
+        if w == 0 || w - 1 >= 8 || o + (w - 1) >= dst.len { return fail(p, heap, ROOT_OUT_OF_BOUNDS); }
+    }
+    let ghost h0 = *heap;
+    proof { lemma_post_refl(p, heap); }
+    put_bytes(heap, c, &dst, o, w, value, big, Ghost(h0));
+    let (rw, rv) = root(p, heap, ROOT_NULL);
+    (PrimOutcome::Success(rw), rv)
+}
+
+/// `put_float_64/32_little_endian(unused, dest, offset, value)`. The C++
+/// rejects an exact fit at the end (`offset + 8 >= length`); the Toit
+/// fallback then writes it.
+pub fn put_float(f64: bool, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
+    requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 4,
+    ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+{
+    let p = c.p;
+    let k = blob_classes(p, heap);
+    let dst = match blob_arg(heap, p, &k, a.w[1], Ghost(a.vs@[1]), MUTABLE) {
+        BlobArg::Ok(b) => b,
+        BlobArg::Fail(e) => return fail(p, heap, e),
+        BlobArg::NotPorted => return (PrimOutcome::NotPorted, Ghost(Value::Smi(0))),
+    };
+    let offset = match word_arg(heap, a.w[2], Ghost(a.vs@[2])) {
+        Some(x) => x,
+        None => return fail(p, heap, ROOT_WRONG_OBJECT_TYPE),
+    };
+    let x = match crate::prims::float::double_arg(heap, a.w[3], Ghost(a.vs@[3])) {
+        Some(x) => x,
+        None => return fail(p, heap, ROOT_WRONG_OBJECT_TYPE),
+    };
+    let n: usize = if f64 { 8 } else { 4 };
+    if offset < 0 || offset as usize > dst.len || offset as usize + n >= dst.len { return fail(p, heap, ROOT_OUT_OF_BOUNDS); }
+    let bits = if f64 { x } else { fp::to_raw32(x) as u64 };
+    let ghost h0 = *heap;
+    proof { lemma_post_refl(p, heap); }
+    put_bytes(heap, c, &dst, offset as usize, n, bits as i64, false, Ghost(h0));
+    let (rw, rv) = root(p, heap, ROOT_NULL);
+    (PrimOutcome::Success(rw), rv)
+}
+
+/// `int_vector_equals(x, y)`: bit `i` set if byte `i` of the two 64-bit
+/// integers is equal.
+pub fn int_vector_equals(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
+    requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 2,
+    ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+{
+    let x = match ints::int_arg(heap, a.w[0], Ghost(a.vs@[0])) {
+        Some(x) => x,
+        None => return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
+    };
+    let y = match ints::int_arg(heap, a.w[1], Ghost(a.vs@[1])) {
+        Some(y) => y,
+        None => return fail(c.p, heap, ROOT_WRONG_OBJECT_TYPE),
+    };
+    let mut z = (x ^ y) as u64;
+    let mut bits: u64 = 0;
+    let mut i: u64 = 0;
+    while i < 8
+        invariant i <= 8,
+        decreases 8 - i,
+    {
+        if z & 0xff == 0 { bits = bits | (1u64 << i); }
+        z = z >> 8u64;
+        i += 1;
+    }
+    let result = bits & 0xff;
+    proof { assert(bits & 0xff <= 255) by (bit_vector); }
+    let (rw, rv) = smi_res(heap, result as i64);
+    ok(c.p, heap, rw, rv)
+}
+
+/// `string_from_rune(rune)`: the UTF-8 encoding of a code point (no
+/// surrogates).
+pub fn string_from_rune(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
+    requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)), a.n == 1,
+    ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@),
+{
+    let rune = match int32_arg(heap, a.w[0], Ghost(a.vs@[0])) {
+        Ok(x) => x,
+        Err(e) => return fail(c.p, heap, e),
+    };
+    if rune < 0 || rune > 0x10ffff || (0xd800 <= rune && rune <= 0xdfff) {
+        return fail(c.p, heap, ROOT_INVALID_ARGUMENT);
+    }
+    let n: usize = if rune <= 0x7f { 1 } else if rune <= 0x7ff { 2 } else if rune <= 0xffff { 3 } else { 4 };
+    let ghost h0 = *heap;
+    let (w, id) = match new_string(heap, c, n) {
+        Some(r) => r,
+        None => {
+            proof { lemma_post_refl(c.p, heap); }
+            return (PrimOutcome::NeedsGc, Ghost(Value::Smi(0)));
+        },
+    };
+    let dst = heap.string_content(w, id);
+    let r = rune as u32;
+    let mut k: usize = 0;
+    while k < n
+        invariant
+            heap_post(c.p, &h0, heap), content_ok(heap, &dst), dst.writable(), dst.slen() == n,
+            k <= n, n <= 4, dst.id() == id@,
+            id@ == h0.objs().len(), heap.objs().len() == id@ + 1, heap.addrs().len() == id@ + 1,
+            w == heap.addrs()[id@],
+        decreases n - k,
+    {
+        // Byte k: the prefix (k == 0) or a continuation byte.
+        let shift: u32 = 6 * ((n - 1 - k) as u32);
+        let bits = (r >> shift) as u32;
+        let byte: u8 = if k > 0 { (0x80 | (bits & 0x3f)) as u8 }
+            else if n == 1 { (bits & 0x7f) as u8 }
+            else if n == 2 { (0xc0 | (bits & 0x1f)) as u8 }
+            else if n == 3 { (0xe0 | (bits & 0x0f)) as u8 }
+            else { (0xf0 | (bits & 0x07)) as u8 };
+        let ghost h1 = *heap;
+        heap.content_set(&dst, k, byte);
+        proof {
+            let s = content(h1.objs()[id@]).update(k as int, byte);
+            lemma_post_content(c.p, &h1, heap, id@, s);
+            lemma_post_trans(c.p, &h0, &h1, heap);
+        }
+        k += 1;
+    }
+    proof { lemma_new_res(&h0, heap, w, id@); }
+    (PrimOutcome::Success(w), Ghost(Value::Obj(id@ as usize)))
+}
+
 /// The blob family of the dispatch table.
 pub fn dispatch(i: usize, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)),
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@), contract(c.p, i as int, a, old(heap), final(heap), r.0, r.1@),
 {
     let n = a.n;
-    if n == 1 {
-        if i == ix::BYTE_ARRAY_IS_RAW_BYTES { return byte_array_info(false, a, heap, c); }
-        if i == ix::BYTE_ARRAY_LENGTH { return byte_array_info(true, a, heap, c); }
-        if i == ix::STRING_LENGTH { return string_length(a, heap, c); }
-        if i == ix::STRING_HASH_CODE { return string_hash_code(a, heap, c); }
-        if i == ix::BLOB_HASH_CODE { return blob_hash_code(a, heap, c); }
-        if i == ix::STRING_RUNE_COUNT { return string_rune_count(a, heap, c); }
-        if i == ix::CONCAT_STRINGS { return concat_strings(a, heap, c); }
-    } else if n == 2 {
-        if i == ix::BYTE_ARRAY_AT { return byte_array_at(a, heap, c); }
-        if i == ix::BYTE_ARRAY_NEW { return byte_array_new(a, heap, c); }
-        if i == ix::STRING_AT { return string_at(false, a, heap, c); }
-        if i == ix::STRING_RAW_AT { return string_at(true, a, heap, c); }
-        if i == ix::BLOB_EQUALS { return blob_equals(a, heap, c); }
-        if i == ix::STRING_COMPARE { return string_compare(a, heap, c); }
-        if i == ix::STRING_ADD { return string_add(a, heap, c); }
-        if i == ix::JSON_SKIP_WHITESPACE { return json_skip_whitespace(a, heap, c); }
-        if i == ix::HASH_SIMPLE_JSON_STRING { return hash_simple_json_string(a, heap, c); }
-        if i == ix::SIZE_OF_JSON_NUMBER { return size_of_json_number(a, heap, c); }
-    } else if n == 3 {
-        if i == ix::BYTE_ARRAY_AT_PUT { return byte_array_at_put(a, heap, c); }
-        if i == ix::STRING_SLICE { return string_slice(a, heap, c); }
-        if i == ix::COMPARE_SIMPLE_JSON_STRING { return compare_simple_json_string(a, heap, c); }
-    } else if n == 4 {
-        if i == ix::BLOB_INDEX_OF { return blob_index_of(a, heap, c); }
-    } else if n == 5 {
-        if i == ix::BYTE_ARRAY_REPLACE { return byte_array_replace(a, heap, c); }
-        if i == ix::STRING_WRITE_TO_BYTE_ARRAY { return string_write_to_byte_array(a, heap, c); }
+    match i {
+        ix::BYTE_ARRAY_IS_RAW_BYTES if n == 1 => byte_array_info(false, a, heap, c),
+        ix::BYTE_ARRAY_LENGTH if n == 1 => byte_array_info(true, a, heap, c),
+        ix::STRING_LENGTH if n == 1 => string_length(a, heap, c),
+        ix::STRING_HASH_CODE if n == 1 => string_hash_code(a, heap, c),
+        ix::BLOB_HASH_CODE if n == 1 => blob_hash_code(a, heap, c),
+        ix::STRING_RUNE_COUNT if n == 1 => string_rune_count(a, heap, c),
+        ix::CONCAT_STRINGS if n == 1 => concat_strings(a, heap, c),
+        ix::BYTE_ARRAY_AT if n == 2 => byte_array_at(a, heap, c),
+        ix::BYTE_ARRAY_NEW if n == 2 => byte_array_new(a, heap, c),
+        ix::STRING_AT if n == 2 => string_at(false, a, heap, c),
+        ix::STRING_RAW_AT if n == 2 => string_at(true, a, heap, c),
+        ix::BLOB_EQUALS if n == 2 => blob_equals(a, heap, c),
+        ix::STRING_COMPARE if n == 2 => string_compare(a, heap, c),
+        ix::STRING_ADD if n == 2 => string_add(a, heap, c),
+        ix::JSON_SKIP_WHITESPACE if n == 2 => json_skip_whitespace(a, heap, c),
+        ix::HASH_SIMPLE_JSON_STRING if n == 2 => hash_simple_json_string(a, heap, c),
+        ix::SIZE_OF_JSON_NUMBER if n == 2 => size_of_json_number(a, heap, c),
+        ix::BYTE_ARRAY_AT_PUT if n == 3 => byte_array_at_put(a, heap, c),
+        ix::STRING_SLICE if n == 3 => string_slice(a, heap, c),
+        ix::COMPARE_SIMPLE_JSON_STRING if n == 3 => compare_simple_json_string(a, heap, c),
+        ix::BLOB_INDEX_OF if n == 4 => blob_index_of(a, heap, c),
+        ix::BYTE_ARRAY_REPLACE if n == 5 => byte_array_replace(a, heap, c),
+        ix::STRING_WRITE_TO_BYTE_ARRAY if n == 5 => string_write_to_byte_array(a, heap, c),
+        ix::READ_INT_BIG_ENDIAN if n == 4 => read_endian(true, true, a, heap, c),
+        ix::READ_UINT_BIG_ENDIAN if n == 4 => read_endian(false, true, a, heap, c),
+        ix::READ_INT_LITTLE_ENDIAN if n == 4 => read_endian(true, false, a, heap, c),
+        ix::READ_UINT_LITTLE_ENDIAN if n == 4 => read_endian(false, false, a, heap, c),
+        ix::PUT_UINT_BIG_ENDIAN if n == 5 => put_endian(true, a, heap, c),
+        ix::PUT_UINT_LITTLE_ENDIAN if n == 5 => put_endian(false, a, heap, c),
+        ix::PUT_FLOAT_64_LITTLE_ENDIAN if n == 4 => put_float(true, a, heap, c),
+        ix::PUT_FLOAT_32_LITTLE_ENDIAN if n == 4 => put_float(false, a, heap, c),
+        ix::INT_VECTOR_EQUALS if n == 2 => int_vector_equals(a, heap, c),
+        ix::STRING_FROM_RUNE if n == 1 => string_from_rune(a, heap, c),
+        _ => (PrimOutcome::NotPorted, Ghost(Value::Smi(0))),
     }
-    (PrimOutcome::NotPorted, Ghost(Value::Smi(0)))
 }
 
 } // verus!
