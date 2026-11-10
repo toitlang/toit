@@ -109,6 +109,11 @@ uword toit_v2_call_primitive(void*, const void*, uword, uword, uword*) { abort()
 void toit_v2_report(void*, uword, uword, uword) { abort(); }
 }
 
+// Not linked into this program; stands for the computed hash of a string
+// without a cached one.
+static const uint16 ASSIGNED_HASH_MARKER = 0x4321;
+uint16 toit::String::_assign_hash_code() { return ASSIGNED_HASH_MARKER; }
+
 int main() {
   uword max_instruction_length = 0;
   for (int op = 0; op < V2_OPCODE_COUNT; op++) {
@@ -181,8 +186,8 @@ int main() {
     string_external_length_word = g.word_of(reinterpret_cast<void*>(s.length()));
   }
   // The cached hash code: a 32-bit field holding 16 bits; find it by
-  // planting a value. An empty string whose field holds NO_HASH_CODE
-  // computes its hash (0) instead.
+  // planting a value. A string whose field holds NO_HASH_CODE computes its
+  // hash instead (the stub below).
   int string_hash_code_byte = -1;
   uword string_no_hash_code = 0;
   for (int offset = 8; offset < 16 && string_hash_code_byte < 0; offset += 4) {
@@ -195,7 +200,7 @@ int main() {
     Fake f;
     memset(f.words, 0, sizeof(f.words));
     *reinterpret_cast<uint32*>(reinterpret_cast<uint8*>(f.words) + string_hash_code_byte) = 0xFFFF;
-    if (static_cast<String*>(f.object())->hash_code() == 0) string_no_hash_code = 0xFFFF;
+    if (static_cast<String*>(f.object())->hash_code() == ASSIGNED_HASH_MARKER) string_no_hash_code = 0xFFFF;
   }
   int stack_length_word, stack_top_word, stack_record_top_word, stack_bci_word;
   bool stack_records_ok;
