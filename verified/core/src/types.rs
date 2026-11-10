@@ -18,9 +18,8 @@
 //! `spec::op_as`, `spec::op_as_local`). The check itself
 //! (`spec::typecheck`) needs no run-time checks: the value has a class
 //! id, the class check and interface check indices are in their tables
-//! (the spec step is not stuck). Raising AS_CHECK_FAILED is not proven
-//! yet: the AS handlers hand the whole instruction to `step_unverified`
-//! there (before changing anything).
+//! (the spec step is not stuck). A failed AS check raises AS_CHECK_FAILED
+//! (the verified raise, raise.rs).
 
 use vstd::prelude::*;
 use crate::layout::*;

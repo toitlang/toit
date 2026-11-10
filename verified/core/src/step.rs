@@ -24,10 +24,10 @@
 //! indices are in range, branch targets are in the method) and prove that
 //! their result is the spec's next state.
 //!
-//! Opcodes whose handlers are not proven yet go through `step_unverified`,
-//! an `external_body` bridge to the checked handlers of machine.rs: its
-//! contract (the same as `step`'s) is ASSUMED, and listed in
-//! verified/TRUSTED.toml and OBLIGATIONS.md.
+//! Every opcode of format 2 has a verified handler. The C++ calls on its
+//! paths (allocation, stack growth, exception allocation, C++ primitives)
+//! are leaf contracts stated as instances of the spec's transitions,
+//! listed in verified/TRUSTED.toml and TRUSTED.md section 6.
 
 use vstd::prelude::*;
 use crate::layout::*;
@@ -397,7 +397,7 @@ proof fn lemma_back_branch(p: &Program, g: State2)
 
 /// One step: executes the instruction at the bci (`spec::step`). The
 /// opcodes of the top frame (locals, constants, globals, pops, branches)
-/// are verified here; the others go through `step_unverified`.
+/// are handled here, the others by their family's module.
 #[inline(always)]
 #[verifier::spinoff_prover]
 #[verifier::rlimit(200)]

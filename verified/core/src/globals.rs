@@ -21,16 +21,15 @@
 //! initializer (`spec::call_static`, like INVOKE_STATIC: room for the frame
 //! first, then the receiver check of the entry method, whose receiver is
 //! the index smi). The verifier's `entry_ok` gives the entry method and
-//! its arity (2); a failing receiver check would raise AS_CHECK_FAILED,
-//! which is not proven yet (`step_unverified`, before changing anything).
+//! its arity (2); a failing receiver check raises AS_CHECK_FAILED in the
+//! state with the two arguments pushed (raise.rs, `v_raise_none_from`).
 //!
 //! LOAD_GLOBAL_VAR_DYNAMIC and STORE_GLOBAL_VAR_DYNAMIC
 //! (`spec::op_load_global_dynamic`, `spec::op_store_global_dynamic`): the
 //! index operand is a value (the verifier's `value_operands`), so a word
 //! with a clear low bit is a smi; the spec checks that it is a smi in range
-//! (INVALID_PROGRAM otherwise), and so does the handler. Raising
-//! INVALID_PROGRAM is not proven yet: that path hands the instruction to
-//! `step_unverified` (before changing anything).
+//! (INVALID_PROGRAM otherwise, the verified raise), and so does the
+//! handler.
 
 use vstd::prelude::*;
 use crate::layout::*;

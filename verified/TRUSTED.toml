@@ -595,22 +595,6 @@ justification = "Reads byte i < length of the content of a model byte array (int
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
-item = "Heap::bytes_address"
-kind = "plain_rust_item"
-count = 1
-justification = "Helper of byte_at/set_byte_at: the inline content or the external address of a model byte array."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
-item = "Heap::bytes_address"
-kind = "unsafe"
-count = 2
-justification = "Reads the length and address words of a live byte array (heap integrity, TRUSTED.md V2)."
-
-[[trusted]]
-crate = "core"
-file = "src/view.rs"
 item = "Heap::bytes_len"
 kind = "external_body"
 count = 1
@@ -621,7 +605,7 @@ crate = "core"
 file = "src/view.rs"
 item = "Heap::bytes_len"
 kind = "unsafe"
-count = 3
+count = 1
 justification = "Reads the length, tag and address words of a live byte array (heap integrity, TRUSTED.md V2)."
 
 [[trusted]]
@@ -853,7 +837,7 @@ crate = "core"
 file = "src/view.rs"
 item = "Heap::string_byte"
 kind = "unsafe"
-count = 4
+count = 1
 justification = "Reads byte i < length of a live string's content (heap integrity, TRUSTED.md V2)."
 
 [[trusted]]
@@ -869,7 +853,7 @@ crate = "core"
 file = "src/view.rs"
 item = "Heap::string_len"
 kind = "unsafe"
-count = 2
+count = 1
 justification = "Reads the length fields of a live string (heap integrity, TRUSTED.md V2)."
 
 [[trusted]]

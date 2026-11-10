@@ -30,10 +30,9 @@
 //! represent `g` with the new instance appended afterwards (or `g` itself
 //! if the allocation failed). That is "the GC preserves the abstraction"
 //! plus the allocation, stated on the views only; everything else
-//! (the precondition, the reload, the push) is proven. Out of memory:
-//! the instruction goes to `step_unverified`, whose checked handler
-//! retries the allocation and throws the out-of-memory error
-//! (`resource_throw`).
+//! (the precondition, the reload, the push) is proven. Out of memory is
+//! the instruction's resource throw (`prim::resource_throw`): the
+//! out-of-memory error is thrown (`unwind::throw_oom`).
 //!
 //! The verifier proves the class instantiable (`is_instance_class`,
 //! `ifc >= 0`), so the handler checks nothing.

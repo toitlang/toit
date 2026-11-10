@@ -18,8 +18,7 @@
 //! the smi on the stack, HALT 2 enters deep sleep, HALT 3 resets. The
 //! operand of HALT 1 is a value (the verifier's `value_operands`), so a
 //! word with a clear low bit is a smi. HALT 1 of a heap object raises
-//! INVALID_PROGRAM, which is not proven yet: that path hands the
-//! instruction to `step_unverified` (before changing anything).
+//! INVALID_PROGRAM (the verified raise, raise.rs).
 //!
 //! Also the operand lemmas the other handler families of this branch use.
 

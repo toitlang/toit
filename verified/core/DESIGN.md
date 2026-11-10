@@ -148,8 +148,8 @@ array index:  0 ........... ftop ........ rtop        top ............. len-1
   of calls, returns (`calls.rs`: `push_call`, `pop_records`,
   `cut_records`) and of THROW, TRY, UNWIND, NON_LOCAL_RETURN and
   NON_LOCAL_BRANCH (`unwind.rs`, one inlined unwinding loop for all of
-  them) is verified; machine.rs keeps checked copies for the unverified
-  paths (raising, programs not accepted at launch), which must stay in
+  them) is verified; machine.rs keeps checked copies for
+  programs not accepted at launch (the checked loop), which must stay in
   step with the verified ones.
 - Block references are smis `frame << 20 | slot` (slot = object-stack
   position); `Stack::max_length() < 2^20` is checked by the layout check.
@@ -345,15 +345,21 @@ exactly the next state of `step` (or a completion, or the same state when
 the instruction did not run, e.g. stack growth before a call); exits
 preserve it for preemption and yield; the only stuck result is the
 resource stop `LIMIT`. Every run-time check that `step` being not stuck
-implies is gone. Paths not proven yet (raising an exception, doubles and
-other slow paths, and the opcodes not verified) hand the whole
-instruction, before changing anything, to `step_unverified`, whose
-contract is assumed (allowlisted; OBLIGATIONS.md).
+implies is gone. Every opcode and every path is verified: slow paths
+(doubles, large integers, `compare_numbers`, every collection of
+`fast_at`), tail calls, raising (`Outcome2::Raise` completed by
+`prim::raised`), resource throws (`prim::resource_throw`: stack overflow,
+out of memory) and PRIMITIVE (`theorem::completion`). A handler of a path
+that is one of the spec's alternatives (a raise, a resource throw, a
+PRIMITIVE completion) takes `step::source(g, o)` (every completion of `o`
+is an outcome of `g`) instead of `step(g) == o`. The C++ calls on these
+paths are leaf contracts stated as such outcomes (TRUSTED.md section 6).
 
 Run loop (`src/step.rs`). The loop invariant is `Machine::inv` (refines,
 accepted, `wf`) plus `reaches(start, g)`: the state is reached from the
-run's start by `advances` steps (spec steps, completions, the same state,
-or a resource throw). `wf` is re-established after every step from the
+run's start by `advances` steps (the same state, or a state an outcome of
+`theorem::outcome` continues in: the spec's transitions without the size
+bound). `wf` is re-established after every step from the
 spec's `step_ok` (preservation is the verifier's soundness proof).
 
 End-to-end theorem (`src/theorem.rs`). The verified run loop has
@@ -381,7 +387,12 @@ method headers. What stays trusted for the first run: that conversion,
 
 Accepted programs. The verified handlers are only correct for accepted
 programs; a format-2 program that the launch did not verify (a trusted
-program without -Xverify) runs on the checked handlers. Found by
+program without -Xverify) runs on the checked handlers. The verified loop
+takes an `ffi::Accepted` token, built only in `toit_v2_run` when the
+context says `TOIT_V2_ACCEPTED`, which `Interpreter::run_v2` writes only
+for a `V2MethodTable` the launch-time verifier accepted (marked by
+`V2Verifier::verify`'s accept path; under the untrusted rules for an
+untrusted process). Found by
 tests/sandbox/runtime-hardening-test, which crashed the core with a
 patched LOAD_METHOD operand of an unverified trusted program before the
 flag existed.

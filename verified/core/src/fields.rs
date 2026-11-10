@@ -18,9 +18,9 @@
 //! INVOKE_VIRTUAL_GET/SET. Fields are read and written through the heap
 //! model's accessors (view.rs). The checks of `field_readable` and
 //! `field_writable` stay (the spec has them: INVALID_PROGRAM); the `this`
-//! variants have none (the verifier proves the receiver's fields). Raising
-//! INVALID_PROGRAM and LOOKUP_FAILED is not proven yet: those paths hand
-//! the instruction to `step_unverified` before changing anything.
+//! variants have none (the verifier proves the receiver's fields).
+//! INVALID_PROGRAM and LOOKUP_FAILED are raised by the verified raise
+//! (raise.rs).
 
 use vstd::prelude::*;
 use crate::layout::*;

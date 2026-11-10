@@ -23,8 +23,7 @@
 //! The lambda's method id and captures and the initializer's method id
 //! come from the heap: they are checked at run time exactly as the spec
 //! checks them (a failing check raises INVALID_PROGRAM or
-//! CODE_INVOCATION_FAILED). Raising is not proven yet: those paths hand
-//! the whole instruction to `step_unverified` (before changing anything).
+//! CODE_INVOCATION_FAILED, the verified raise of raise.rs).
 
 use vstd::prelude::*;
 use crate::layout::*;

@@ -22,7 +22,7 @@
 //! postcondition. The run loop is such a function:
 //!
 //! ```text
-//! pub fn step::run_loop(m: &mut Machine, env: &Env) -> (r: (usize, i64))
+//! pub fn step::run_loop(m: &mut Machine, env: &Env, accepted: &ffi::Accepted) -> (r: (usize, i64))
 //!     requires old(m).inv(env.p),
 //!     ensures run_post(env.p, *old(m), *final(m), r),
 //! ```
@@ -32,8 +32,10 @@
 //! says the loop never reports a stuck state of the spec and never takes a
 //! fatal path; it returns preempted or yielded only with the machine
 //! refining a well-formed state that the spec reaches from the start
-//! state (transitions of `spec::step`, PRIMITIVE completions, or a
-//! resource throw); every other result ends the process with a defined
+//! state (`step::advances`: the spec's completed outcomes,
+//! `theorem::outcome`: the step, raises completed by `prim::raised`,
+//! PRIMITIVE completions, resource throws `prim::resource_throw`); every
+//! other result ends the process with a defined
 //! outcome (exit, uncaught exception, task end, deep sleep, reset, out of
 //! memory).
 //!
@@ -45,9 +47,9 @@
 //! these two theorems name explicitly are the loader's (`loaded`: the
 //! tables are the accepted program, the machine encodes the initial state)
 //! and the scheduler's (`resumed`: between runs the process is resumed in
-//! the state it left, up to the GC). The assumed refinement of the opcode
-//! paths not proven yet (`step::step_unverified`, `step::grow_bridge`) is
-//! part of the trusted base until they are proven (OBLIGATIONS.md).
+//! the state it left, up to the GC). Every opcode is verified; what stays
+//! assumed are the leaf contracts of the C++ calls, each stated as an
+//! instance of a spec transition (TRUSTED.md section 6).
 
 use vstd::prelude::*;
 use crate::layout::*;

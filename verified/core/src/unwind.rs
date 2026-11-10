@@ -18,7 +18,7 @@
 //! (`spec::enter_finally` with an unwinding), and the handlers of THROW,
 //! TRY and UNWIND. Unwinding allocates nothing, so no GC point lies on
 //! these paths and the words of the unwinding stay valid. Raising (which
-//! allocates the exception) stays unverified (`step_unverified`); TRY
+//! allocates the exception) is raise.rs, on top of this loop; TRY
 //! never raises for an accepted program (the verifier types its operand).
 
 use vstd::prelude::*;

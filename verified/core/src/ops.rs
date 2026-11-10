@@ -18,10 +18,12 @@
 //! 62..=77, `spec::op_invoke_eq`, `op_invoke_relational`,
 //! `op_invoke_arith`) and IDENTICAL. When both operands are smis and the
 //! result is a smi, the handler replaces the operands by the result
-//! (`spec::binary_result`). Every other case (doubles, large integers,
-//! overflow, the virtual call of the operator's selector, IDENTICAL of
-//! two distinct heap objects) hands the whole instruction to
-//! `step_unverified` before changing anything.
+//! (`spec::binary_result`). The other cases are verified too: doubles,
+//! large integers and the mixed comparison (`numbers.rs`; double
+//! arithmetic allocates the result, a GC point whose failure is the
+//! spec's resource throw: the operator's method is called), IDENTICAL of
+//! two distinct heap objects (contents of doubles, large integers,
+//! strings), and the virtual call of the operator's selector.
 //!
 //! The operands are values (not block references) by the verifier's
 //! `value_operands`, so a word with a clear low bit is a smi, and the

@@ -24,8 +24,7 @@
 //! records are not read at all. The slot a block reference names holds
 //! its block method (the verifier's block slots, `lemma_block_target`), so
 //! INVOKE_BLOCK never raises INVALID_PROGRAM. Too few arguments raise
-//! CODE_INVOCATION_FAILED, which is not proven yet: the handler hands the
-//! instruction to `step_unverified` there (before changing anything).
+//! CODE_INVOCATION_FAILED (the verified raise, raise.rs).
 
 use vstd::prelude::*;
 use crate::layout::*;

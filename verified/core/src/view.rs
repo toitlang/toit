@@ -167,6 +167,7 @@ impl StackMem {
     #[verifier::external_body]
     #[inline(always)]
     pub fn header(&self, word: usize) -> (r: usize)
+        requires word == STACK_TOP_WORD || word == STACK_RECORD_TOP_WORD || word == STACK_BCI_WORD,
         ensures r == self.hdr(word),
     {
         unsafe { *self.object.add(word) }
@@ -175,6 +176,7 @@ impl StackMem {
     #[verifier::external_body]
     #[inline(always)]
     pub fn set_header(&mut self, word: usize, v: usize)
+        requires word == STACK_TOP_WORD || word == STACK_RECORD_TOP_WORD || word == STACK_BCI_WORD,
         ensures
             final(self)@ == old(self)@,
             final(self).hdr(word) == v,
@@ -381,8 +383,10 @@ impl Heap {
         ensures r == self.objs()[id].body->Str_0.len(),
     {
         let base = obj - HEAP_TAG;
-        let internal = unsafe { *((base + STRING_INTERNAL_LENGTH_BYTE) as *const u32) } as usize;
-        if internal != STRING_SENTINEL { internal } else { unsafe { *(base as *const usize).add(STRING_EXTERNAL_LENGTH_WORD) } }
+        unsafe {
+            let internal = *((base + STRING_INTERNAL_LENGTH_BYTE) as *const u32) as usize;
+            if internal != STRING_SENTINEL { internal } else { *(base as *const usize).add(STRING_EXTERNAL_LENGTH_WORD) }
+        }
     }
 
     /// Byte `i` of the string `id` (inline content or external memory).
@@ -398,12 +402,14 @@ impl Heap {
         ensures r == self.objs()[id].body->Str_0[i as int],
     {
         let base = obj - HEAP_TAG;
-        let internal = unsafe { *((base + STRING_INTERNAL_LENGTH_BYTE) as *const u32) } as usize;
-        if internal != STRING_SENTINEL {
-            unsafe { *((base + STRING_CONTENT_BYTE + i) as *const u8) }
-        } else {
-            let address = unsafe { *(base as *const usize).add(STRING_EXTERNAL_ADDRESS_WORD) };
-            unsafe { *(address as *const u8).add(i) }
+        unsafe {
+            let internal = *((base + STRING_INTERNAL_LENGTH_BYTE) as *const u32) as usize;
+            if internal != STRING_SENTINEL {
+                *((base + STRING_CONTENT_BYTE + i) as *const u8)
+            } else {
+                let address = *(base as *const usize).add(STRING_EXTERNAL_ADDRESS_WORD);
+                *(address as *const u8).add(i)
+            }
         }
     }
 
@@ -428,11 +434,13 @@ impl Heap {
             r is Some ==> r->0 == self.objs()[id].body->Bytes_0.len(),
     {
         let base = (obj - HEAP_TAG) as *const usize;
-        let raw = unsafe { *base.add(BYTE_ARRAY_LENGTH_WORD) } as isize;
-        if raw >= 0 { return Some(raw as usize); }
-        let tag = unsafe { *base.add(BYTE_ARRAY_EXTERNAL_TAG_WORD) };
-        let address = unsafe { *base.add(BYTE_ARRAY_EXTERNAL_ADDRESS_WORD) };
-        if tag == RAW_BYTE_TAG && address != 0 { Some((-1 - raw) as usize) } else { None }
+        unsafe {
+            let raw = *base.add(BYTE_ARRAY_LENGTH_WORD) as isize;
+            if raw >= 0 { return Some(raw as usize); }
+            let tag = *base.add(BYTE_ARRAY_EXTERNAL_TAG_WORD);
+            let address = *base.add(BYTE_ARRAY_EXTERNAL_ADDRESS_WORD);
+            if tag == RAW_BYTE_TAG && address != 0 { Some((-1 - raw) as usize) } else { None }
+        }
     }
 
     /// Byte `i` of the byte array `id`.
@@ -447,7 +455,15 @@ impl Heap {
             i < self.objs()[id].body->Bytes_0.len(),
         ensures r == self.objs()[id].body->Bytes_0[i as int],
     {
-        unsafe { *Self::bytes_address(obj).add(i) }
+        unsafe {
+            let base = (obj - HEAP_TAG) as *const usize;
+            let address = if (*base.add(BYTE_ARRAY_LENGTH_WORD) as isize) >= 0 {
+                (obj - HEAP_TAG + BYTE_ARRAY_CONTENT_BYTE) as *const u8
+            } else {
+                *base.add(BYTE_ARRAY_EXTERNAL_ADDRESS_WORD) as *const u8
+            };
+            *address.add(i)
+        }
     }
 
     /// Stores `b` into byte `i` of the byte array `id`, outside the program
@@ -470,7 +486,15 @@ impl Heap {
             final(self).addrs() == old(self).addrs(),
             final(self).class_bits() == old(self).class_bits(),
     {
-        unsafe { *Self::bytes_address(obj).add(i) = b }
+        unsafe {
+            let base = (obj - HEAP_TAG) as *const usize;
+            let address = if (*base.add(BYTE_ARRAY_LENGTH_WORD) as isize) >= 0 {
+                (obj - HEAP_TAG + BYTE_ARRAY_CONTENT_BYTE) as *mut u8
+            } else {
+                *base.add(BYTE_ARRAY_EXTERNAL_ADDRESS_WORD) as *mut u8
+            };
+            *address.add(i) = b
+        }
     }
 
     /// The header word of a heap object.
@@ -599,19 +623,6 @@ impl StackMem {
 impl Heap {
     pub fn new(remembered_set_bias: usize) -> Self {
         Heap { remembered_set_bias }
-    }
-
-    /// The address of the bytes of a byte array of the model (internal, or
-    /// external with raw bytes: `bytes_len`).
-    #[inline(always)]
-    fn bytes_address(obj: usize) -> *mut u8 {
-        let base = (obj - HEAP_TAG) as *const usize;
-        let raw = unsafe { *base.add(BYTE_ARRAY_LENGTH_WORD) } as isize;
-        if raw >= 0 {
-            (obj - HEAP_TAG + BYTE_ARRAY_CONTENT_BYTE) as *mut u8
-        } else {
-            unsafe { *base.add(BYTE_ARRAY_EXTERNAL_ADDRESS_WORD) as *mut u8 }
-        }
     }
 }
 

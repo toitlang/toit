@@ -15,9 +15,8 @@
 
 //! Calls and returns, verified: pushing and popping frame records
 //! (`spec::call`, `spec::return_from`), the receiver check of static calls,
-//! virtual dispatch (`spec::find_method`). Paths that raise an exception
-//! are not proven yet: the handlers hand the whole instruction to
-//! `step_unverified` there (before changing anything).
+//! virtual dispatch (`spec::find_method`). Failures raise through the
+//! verified raise (raise.rs).
 
 use vstd::prelude::*;
 use crate::layout::*;
