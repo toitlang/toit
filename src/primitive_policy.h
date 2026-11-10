@@ -66,7 +66,6 @@ class PrimitivePolicy {
 
   static const PrimitivePolicy* system() { return &system_; }
   static const PrimitivePolicy* trusted() { return &trusted_; }
-  static const PrimitivePolicy* untrusted() { return &untrusted_; }
 
   // Returns the standard policy for the given kind, or null if the kind is
   // not a launchable kind (the system policy can not be requested).
@@ -113,10 +112,6 @@ class PrimitivePolicy {
     if (index >= lengths_[module]) return null;
     return &tables_[module][index];
   }
-
-  // Whether the primitive with the given module and index is allowed by this
-  // policy (linked and not stubbed out).
-  bool allows(unsigned module, unsigned index) const;
 
  private:
   PrimitivePolicy() {}

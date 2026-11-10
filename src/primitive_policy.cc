@@ -338,11 +338,6 @@ const PrimitivePolicy* PrimitivePolicy::launchable(int kind) {
   }
 }
 
-bool PrimitivePolicy::allows(unsigned module, unsigned index) const {
-  const PrimitiveEntry* entry = at(module, index);
-  return entry != null && entry->function != reinterpret_cast<void*>(primitive_denied);
-}
-
 bool PrimitivePolicy::may_send_type(int type) const {
   if (!restricts_messaging()) return true;
   if (type >= MESSAGING_RESERVED_MESSAGE_TYPES) return true;
