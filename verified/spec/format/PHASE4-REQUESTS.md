@@ -64,6 +64,9 @@ heap_check.rs checks. Request: a verified executable check of the heap
 part, so that the VM can run it on untrusted launches next to
 `check::verify`.
 
+Applied 2026-11-10: `v2::heap_check::x_loaded_ok` (proven equal to
+`loaded_ok`) and `x_loaded_heap_ok` (the heap part).
+
 ## R5. The fields of a task the VM owns
 
 Problem (found by verified/core/fuzz): a mutant of tests/class-id-test.toit

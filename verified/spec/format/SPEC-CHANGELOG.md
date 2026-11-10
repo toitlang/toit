@@ -4,6 +4,19 @@ One entry per change of `src/v2/spec.rs`, `src/v2/prim.rs`, `src/v2/types.rs`
 or the verifier's rules (`src/v2/verifier.rs`) that an implementation of
 the spec (the verified core, the VM's loader) must follow. Newest first.
 
+## 2026-11-10: a verified check of the loader's contract (R4)
+
+What: `sound.rs` splits `loaded_ok` into `loaded_heap_ok` (heap size, every
+object `loaded_obj_ok`: well formed, not a stack, not a task; roots and
+literals are values) and the globals part; the contract is unchanged.
+`v2/heap_check.rs` is now Verus: `x_loaded_heap_ok(p, heap)` (`Ok` iff
+`loaded_heap_ok`) and `x_loaded_ok(p, c, heap, globals)` (`== loaded_ok`),
+both requiring `wf_program2` (checked by `check::verify` first).
+
+Why: R4; the VM can run the check at untrusted launch.
+
+Opcodes: none.
+
 ## 2026-11-10: finally records instead of heap tokens (R1)
 
 What (format note 17): entering finally code with an unwinding no longer

@@ -461,15 +461,27 @@ pub open spec fn prim_heap_ok(p: Program2, h: Seq<HeapObj>, h2: Seq<HeapObj>) ->
     &&& forall|i: int| 0 <= i < h2.len() ==> basic_obj_ok(p, h2, #[trigger] h2[i])
 }
 
-/// What the loader guarantees about the program heap and globals.
-pub open spec fn loaded_ok(p: Program2, c: Cert, heap0: Seq<HeapObj>, globals0: Seq<Value>) -> bool {
+/// An object of the program heap: well formed, neither a suspended stack
+/// nor a task.
+pub open spec fn loaded_obj_ok(p: Program2, heap0: Seq<HeapObj>, o: HeapObj) -> bool {
+    &&& basic_obj_ok(p, heap0, o)
+    &&& !(o.body is Stack2)
+    &&& o.class_id as int != task_class(p)
+}
+
+/// The heap part of `loaded_ok` (checked by `v2::heap_check::x_loaded_heap_ok`).
+pub open spec fn loaded_heap_ok(p: Program2, heap0: Seq<HeapObj>) -> bool {
     &&& heap0.len() < 0x2000_0000
-    &&& forall|i: int| 0 <= i < heap0.len() ==> basic_obj_ok(p, heap0, #[trigger] heap0[i])
-            && !(heap0[i].body is Stack2)
-            && heap0[i].class_id as int != task_class(p)
+    &&& forall|i: int| 0 <= i < heap0.len() ==> loaded_obj_ok(p, heap0, #[trigger] heap0[i])
+    &&& consts_ok(p, heap0)
+}
+
+/// What the loader guarantees about the program heap and globals
+/// (checked by `v2::heap_check::x_loaded_ok`).
+pub open spec fn loaded_ok(p: Program2, c: Cert, heap0: Seq<HeapObj>, globals0: Seq<Value>) -> bool {
+    &&& loaded_heap_ok(p, heap0)
     &&& globals0.len() == c.global_count
     &&& forall|g: int| 0 <= g < globals0.len() ==> good(heap0, #[trigger] globals0[g])
-    &&& consts_ok(p, heap0)
 }
 
 // ---------------------------------------------------------------------------

@@ -14,8 +14,13 @@ Top-level theorems: crate core (0)
 ==============================================================================
 
 ==============================================================================
-Top-level theorems: crate spec (4)
+Top-level theorems: crate spec (5)
 ==============================================================================
+
+--- lemma_heap_ext_grows  (spec/src/v2/sound_frames.rs)
+pub proof fn lemma_heap_ext_grows(p: Program2, h: Seq<HeapObj>, h2: Seq<HeapObj>)
+    requires heap_ext(p, h, h2),
+    ensures heap_grows(h, h2),
 
 --- lemma_good_mono  (spec/src/v2/sound_frames.rs)
 pub proof fn lemma_good_mono(h: Seq<HeapObj>, h2: Seq<HeapObj>, v: Value)
@@ -38,6 +43,7 @@ pub proof fn theorem_soundness(p: Program2, c: Cert, trusted: bool, heap0: Seq<H
         forall|s1: State2, module: u8, index: u16, o: Outcome2|
             step(p, s) == Outcome2::Primitive(s1, module, index) && #[trigger] completion(p, s1, module, index, o)
                 ==> !(o is Stuck),
+        machine_objects_ok(p, s),
 
 --- theorem_initial  (spec/src/v2/theorem.rs)
 pub proof fn theorem_initial(p: Program2, c: Cert, trusted: bool, heap0: Seq<HeapObj>, globals0: Seq<Value>)
@@ -186,7 +192,7 @@ pub fn op_branch(&mut self, p: &Program, kind: usize, target: usize, len: usize)
         }),
 
 ==============================================================================
-Verified exec entry points: crate spec (6)
+Verified exec entry points: crate spec (7)
 ==============================================================================
 
 --- step_verified  (spec/src/exec_step.rs)
@@ -224,3 +230,8 @@ pub fn step_verified(p: &ExecProgram, s: &mut ExecState) -> (r: Option<ExecOutco
             Some(o) => matches2(step(pview2(p), view2(old(s))), o, view2(final(s))),
             None => view2(final(s)) == view2(old(s)),
         },
+
+--- x_loaded_ok  (spec/src/v2/heap_check.rs)
+pub fn x_loaded_ok(p: &ExecProgram, c: &XCert, heap: &Vec<ExecObj>, globals: &Vec<Value>) -> (r: bool)
+    requires wf_program2(pview2(p)),
+    ensures r == loaded_ok(pview2(p), c@, hview(heap), globals@),

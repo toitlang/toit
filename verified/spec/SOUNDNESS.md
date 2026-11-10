@@ -4,7 +4,7 @@ This document describes the machine-checked soundness proof of the
 structural verifier of the revised bytecode format (format 2). The proof
 is in Verus, in `src/v2/`. It contains no `assume`, `admit`,
 `external_body` or `assume_specification`. The whole crate verifies in
-about 20 s wall time: `verification results:: 684 verified, 0 errors`
+about 20 s wall time: `verification results:: 690 verified, 0 errors`
 (`verus --crate-type=lib src/lib.rs`).
 
 ## The theorem
@@ -94,9 +94,13 @@ Each hypothesis is an obligation on the implementation.
    fields and array elements are smis or references to existing
    objects) and is neither a suspended stack (`Stack2`) nor a task (an
    object of the builtin task class); `globals0.len() == c.global_count`
-   and every global is a value; every root and literal is a value. Today the dumped
-   program heap is checked by `v2/heap_check.rs` (plain Rust, unverified)
-   in `toit_spec_verify`; the Phase 4 loader must establish it.
+   and every global is a value; every root and literal is a value.
+   `v2/heap_check.rs::x_loaded_ok(p, c, heap, globals)` (Verus) is proven
+   to return exactly `loaded_ok(pview2(p), c@, heap, globals)`
+   (`x_loaded_heap_ok` the heap part, `loaded_heap_ok`); the VM can run
+   it at an untrusted launch next to `check::verify`. What remains
+   trusted is that the VM's loader hands the check the heap and globals
+   the machine then runs on (the view of the loaded snapshot).
 2. **Primitives: `prim_heap_ok(p, h, h2)`** (`v2/sound.rs`), quantified
    over in `completion`: a primitive may only add objects
    (`h.len() <= h2.len() < 2^30`); it never changes an object's class; it
@@ -134,7 +138,7 @@ state of every accepted, loaded program, so the invariant is satisfiable
 whenever the hypotheses are; `accepts` holds for real compiler output
 (431 of 431 compilable suite programs and the three system snapshots,
 see Tests), and the loader contract is what the VM's program heap
-satisfies (checked by `heap_check.rs` on the same dumps).
+satisfies (checked by the verified `x_loaded_ok` on the same dumps).
 
 ## The invariant
 
@@ -205,8 +209,8 @@ opcode families, each with its own lemma:
 Remaining obligations: none inside the proof (no per-opcode lemma is
 left unproven, no admits). Outside it:
 
-* the loader contract (hypothesis 1) is only checked by unverified Rust
-  (`heap_check.rs`) today;
+* the loader contract (hypothesis 1) is checked by the verified
+  `x_loaded_ok`; that its input is the machine's loaded heap is trusted;
 * every allowed primitive must be shown to satisfy `prim_heap_ok`
   (hypothesis 2), and `prim_arity.rs` must match the VM's table;
 * the memory bound (hypothesis 3) must be enforced by the implementation;
@@ -222,11 +226,11 @@ left unproven, no admits). Outside it:
 `v2/check.rs::verify(p, c, trusted)` is proven to return exactly
 `accepts(pview2(p), c@, trusted)`; it uses loops only (no recursion over
 the program size). `toit_spec_verify` (`src/bin/toit_spec_verify.rs`)
-loads a dumped format-2 program, checks the program heap
-(`heap_check.rs`), infers a certificate (`infer.rs`, untrusted),
-runs `verify`, and prints the verdict, rejection reasons and the set of
-referenced primitives (`--time` adds timings). The verdict depends only on
-`verify`; inference and the heap check can only cause rejections.
+loads a dumped format-2 program, infers a certificate (`infer.rs`,
+untrusted), runs `verify` and `x_loaded_ok` (the loader's contract for
+that certificate), and prints the verdict, rejection reasons and the set
+of referenced primitives (`--time` adds timings). The verdict is
+`verify && x_loaded_ok`; inference can only cause rejections.
 
 ## Changes made for the proof
 

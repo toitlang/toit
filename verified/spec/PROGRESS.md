@@ -27,13 +27,16 @@ spec changes for the other agents: format/SPEC-CHANGELOG.md.
   against the C++ VM; 433/437 suite programs and the system snapshots
   accepted; run_tests.sh 15/15.
 
+* R4: `v2::heap_check::x_loaded_ok` / `x_loaded_heap_ok` (Verus, proven
+  equal to `loaded_ok` / `loaded_heap_ok`); `toit_spec_verify`'s verdict
+  is `verify && x_loaded_ok`. Verus: 690 verified, 0 errors; 434/438 suite
+  programs and the system snapshots accepted.
+
 ## In progress
 
-* R4.
+* Loader/verifier agreement on unreachable code.
 
 ## Next
 
-1. R4: verified executable heap check (`loaded_ok_heap`).
-3. Loader/verifier agreement on unreachable code.
-4. Full validation (check.sh --tests, run_suite.py format 2, verify_suite,
+1. Full validation (check.sh --tests, run_suite.py format 2, verify_suite,
    system snapshots, mutation campaign) and SOUNDNESS.md numbers; R2 note.
