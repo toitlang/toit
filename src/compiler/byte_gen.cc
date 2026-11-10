@@ -209,6 +209,7 @@ void ByteGen::terminate_body() {
   // called. Every format-2 method ends in a terminator.
   __ load_null();
   __ _throw();
+  emitter()->forget(1);
 }
 
 void ByteGen::visit(Node* node) {
@@ -330,6 +331,9 @@ void ByteGen::_generate_method(Method* node) {
   if (last != RETURN && last != RETURN_NULL && last != INVOKE_STATIC_TAIL) {
     __ load_null();
     __ _throw();
+    // The body is visited for effect: the thrown value is not left on the
+    // stack (the stack-height check in 'visit' expects no new value).
+    emitter()->forget(1);
   }
 }
 
