@@ -18,8 +18,8 @@ interface ContainerService:
   // (sandbox) policy.
   static FLAG-UNTRUSTED    /int ::= 1 << 2
 
-  // Policy kinds. Keep in sync with PrimitivePolicy::Kind in
-  // src/primitive_policy.h.
+  // Policy kinds, as returned by the process-policy primitive. Keep in sync
+  // with PrimitivePolicy::Kind in src/primitive_policy.h.
   static POLICY-TRUSTED   /int ::= 1
   static POLICY-UNTRUSTED /int ::= 2
 
