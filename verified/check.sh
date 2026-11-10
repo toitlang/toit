@@ -162,6 +162,13 @@ if [ "$RUN_TESTS" = 1 ]; then
         --filter tests/exception-test --out "$LOGS/differential"; then
       fail "vmverify differential sample"
     fi
+    # The fuzz reproducers: no verifier panic, rejections where required.
+    if ! bash "$VERIFIED/vmverify/tests/findings.sh" "$BUILD_DIR/sdk/lib/toit/bin/toit.run" > "$LOGS/findings.log" 2>&1; then
+      cat "$LOGS/findings.log"
+      fail "vmverify fuzz findings"
+    else
+      tail -1 "$LOGS/findings.log"
+    fi
   else
     echo "SKIP: $BUILD_DIR/sdk/bin/toit missing (make sdk)"
   fi
