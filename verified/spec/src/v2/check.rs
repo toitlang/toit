@@ -1219,8 +1219,8 @@ pub fn x_post_misc(p: &ExecProgram, c: &XCert, m: usize, off: usize, k: &Vec<XKi
         } else { None }
     } else if op == UNWIND {
         if 3 <= h {
-            proof { assert(kv(*k)[h - 2] == k@[h - 2]@); }
-            if x_is_token(k[h - 2]) {
+            proof { assert(kv(*k)[h - 2] == k@[h - 2]@); assert(kv(*k)[h - 3] == k@[h - 3]@); }
+            if x_is_token(k[h - 2]) && x_is_val(k[h - 3]) {
                 Some(x_prefix(k, h - 3))
             } else { None }
         } else {

@@ -13,11 +13,15 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-//! TRUSTED: the verdict. Accepts exactly when the loader contract's heap
-//! part holds (`heap_check` and the object bound of `loaded_ok`) and the
-//! proven `check::verify` accepts the program with a certificate whose
-//! trusted fields (`global_count`, `prim_arity`) are set here, not by the
-//! untrusted inference. Everything after the verdict is diagnostics.
+//! TRUSTED: the verdict. Accepts exactly when the two proven checks of
+//! SOUNDNESS.md accept: `check::verify` (equal to `accepts`) and
+//! `heap_check::x_loaded_ok` (equal to `loaded_ok`), both on the program
+//! converted from VM memory and with a certificate whose trusted fields
+//! (`global_count`, `prim_arity`) are set here, not by the untrusted
+//! inference. `x_wf_program2` runs first (the inference and
+//! `x_loaded_ok` require it), and the unverified `check_heap` only gives
+//! an early, readable rejection. Everything after the verdict is
+//! diagnostics.
 
 use std::time::Instant;
 use toit_spec::interp::loader::Loaded;
@@ -34,9 +38,6 @@ pub const TABLES: usize = 3;
 pub const METHOD: usize = 4;
 /// The verifier itself failed (a panic); the program is rejected.
 pub const INTERNAL: usize = 5;
-
-/// `loaded_ok`'s bound on the number of program-heap objects.
-const MAX_OBJECTS: usize = 0x2000_0000;
 
 pub struct Verdict {
     pub code: usize,
@@ -61,23 +62,18 @@ fn ns(t: Instant) -> u64 {
 /// The verdict on a converted program. `prim_arity` is the VM's primitive
 /// table.
 pub fn verify(l: &Loaded, prim_arity: Vec<Vec<u8>>, trusted: bool) -> Verdict {
-    let t = Instant::now();
-    if l.heap.len() >= MAX_OBJECTS {
-        return Verdict::new(HEAP, format!("{} program-heap objects", l.heap.len()));
+    let p = &l.program;
+    // The inference and x_loaded_ok require well-formed tables.
+    if !check::x_wf_program2(p) {
+        return Verdict::new(TABLES, "table sizes or method bounds (wf_program2)".into());
     }
+    let t = Instant::now();
     if let Err(e) = heap_check::check_heap(l) {
         let mut v = Verdict::new(HEAP, e);
         v.heap_ns = ns(t);
         return v;
     }
-    let heap_ns = ns(t);
-    let p = &l.program;
-    // The inference indexes the method bodies: give it well-formed tables.
-    if !check::x_wf_program2(p) {
-        let mut v = Verdict::new(TABLES, "table sizes or method bounds (wf_program2)".into());
-        v.heap_ns = heap_ns;
-        return v;
-    }
+    let mut heap_ns = ns(t);
     let t = Instant::now();
     let inferred = infer::infer(p, l.globals.len(), trusted);
     let infer_ns = ns(t);
@@ -87,10 +83,15 @@ pub fn verify(l: &Loaded, prim_arity: Vec<Vec<u8>>, trusted: bool) -> Verdict {
     let t = Instant::now();
     let ok = check::verify(p, &cert, trusted);
     let check_ns = ns(t);
-    let mut v = if ok {
-        Verdict::new(ACCEPTED, String::new())
-    } else {
+    let t = Instant::now();
+    let loaded_ok = heap_check::x_loaded_ok(p, &cert, &l.heap, &l.globals);
+    heap_ns += ns(t);
+    let mut v = if !ok {
         diagnose(l, &cert, &inferred.errors, trusted)
+    } else if !loaded_ok {
+        Verdict::new(HEAP, "loader contract (loaded_ok)".into())
+    } else {
+        Verdict::new(ACCEPTED, String::new())
     };
     v.heap_ns = heap_ns;
     v.infer_ns = infer_ns;

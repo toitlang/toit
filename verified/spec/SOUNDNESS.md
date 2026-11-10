@@ -4,7 +4,7 @@ This document describes the machine-checked soundness proof of the
 structural verifier of the revised bytecode format (format 2). The proof
 is in Verus, in `src/v2/`. It contains no `assume`, `admit`,
 `external_body` or `assume_specification`. The whole crate verifies in
-about 20 s wall time: `verification results:: 667 verified, 0 errors`
+about 20 s wall time: `verification results:: 690 verified, 0 errors`
 (`verus --crate-type=lib src/lib.rs`).
 
 ## The theorem
@@ -92,16 +92,20 @@ Each hypothesis is an obligation on the implementation.
    (its class id is below the class count; objects of classes with
    fields are instances with exactly the class's field count; instance
    fields and array elements are smis or references to existing
-   objects) and is neither a suspended stack (`Stack2`), an unwinding
-   token (`Pending`) nor a task (an object of the builtin task class); `globals0.len() == c.global_count` and every global
-   is a value; every root and literal is a value. Today the dumped
-   program heap is checked by `v2/heap_check.rs` (plain Rust, unverified)
-   in `toit_spec_verify`; the Phase 4 loader must establish it.
+   objects) and is neither a suspended stack (`Stack2`) nor a task (an
+   object of the builtin task class); `globals0.len() == c.global_count`
+   and every global is a value; every root and literal is a value.
+   `v2/heap_check.rs::x_loaded_ok(p, c, heap, globals)` (Verus) is proven
+   to return exactly `loaded_ok(pview2(p), c@, heap, globals)`
+   (`x_loaded_heap_ok` the heap part, `loaded_heap_ok`); the VM can run
+   it at an untrusted launch next to `check::verify`. What remains
+   trusted is that the VM's loader hands the check the heap and globals
+   the machine then runs on (the view of the loaded snapshot).
 2. **Primitives: `prim_heap_ok(p, h, h2)`** (`v2/sound.rs`), quantified
    over in `completion`: a primitive may only add objects
    (`h.len() <= h2.len() < 2^30`); it never changes an object's class; it
-   neither changes nor creates suspended stacks (`Stack2`) or unwinding
-   tokens (`Pending`), and does not turn an ordinary object into one; it
+   neither changes nor creates suspended stacks (`Stack2`), and does not
+   turn an ordinary object into one; it
    creates no task and keeps fields 0 and 1 (stack, id) of every task; and
    every object of `h2` is `basic_obj_ok` in `h2` (no dangling
    references, instance field counts preserved). Its result `v` must be
@@ -134,7 +138,7 @@ state of every accepted, loaded program, so the invariant is satisfiable
 whenever the hypotheses are; `accepts` holds for real compiler output
 (431 of 431 compilable suite programs and the three system snapshots,
 see Tests), and the loader contract is what the VM's program heap
-satisfies (checked by `heap_check.rs` on the same dumps).
+satisfies (checked by the verified `x_loaded_ok` on the same dumps).
 
 ## The invariant
 
@@ -165,10 +169,14 @@ smi `t`; `Block(0, i)` — a reference to slot `i` of this frame;
 (following each block frame's own reference in slot 0), which holds a
 block method whose context is that frame (`good_ref`), and for a block
 frame's own reference the slot holds exactly the frame's method; `Param` —
-a reference into a frame below with `good_ref`; `Token` — null or an
-unwinding token whose pending unwinding can complete (`pending_ok`:
+a reference into a frame below with `good_ref`; `Token` — null or the smi
+index of a finally record (`fin_ok`, format note 17) of this frame whose
+token slot this is and whose unwinding can complete (`pending_ok`:
 non-local returns and branches target frames at or below, branches to a
 mapped offset whose map is a prefix of the target frame's kinds).
+`fins_ok` (part of `wf_task`): the records belong to live frames, are
+ordered by frame and height, and lie below the height of their frame's
+active handler.
 
 ## Proof structure
 
@@ -201,8 +209,8 @@ opcode families, each with its own lemma:
 Remaining obligations: none inside the proof (no per-opcode lemma is
 left unproven, no admits). Outside it:
 
-* the loader contract (hypothesis 1) is only checked by unverified Rust
-  (`heap_check.rs`) today;
+* the loader contract (hypothesis 1) is checked by the verified
+  `x_loaded_ok`; that its input is the machine's loaded heap is trusted;
 * every allowed primitive must be shown to satisfy `prim_heap_ok`
   (hypothesis 2), and `prim_arity.rs` must match the VM's table;
 * the memory bound (hypothesis 3) must be enforced by the implementation;
@@ -218,11 +226,11 @@ left unproven, no admits). Outside it:
 `v2/check.rs::verify(p, c, trusted)` is proven to return exactly
 `accepts(pview2(p), c@, trusted)`; it uses loops only (no recursion over
 the program size). `toit_spec_verify` (`src/bin/toit_spec_verify.rs`)
-loads a dumped format-2 program, checks the program heap
-(`heap_check.rs`), infers a certificate (`infer.rs`, untrusted),
-runs `verify`, and prints the verdict, rejection reasons and the set of
-referenced primitives (`--time` adds timings). The verdict depends only on
-`verify`; inference and the heap check can only cause rejections.
+loads a dumped format-2 program, infers a certificate (`infer.rs`,
+untrusted), runs `verify` and `x_loaded_ok` (the loader's contract for
+that certificate), and prints the verdict, rejection reasons and the set
+of referenced primitives (`--time` adds timings). The verdict is
+`verify && x_loaded_ok`; inference can only cause rejections.
 
 ## Changes made for the proof
 
@@ -248,6 +256,14 @@ machine; each change is listed in `format/SPEC-CHANGELOG.md`:
   so ALLOCATE cannot create a task and the machine's tag test agrees with
   the spec's class test.
 
+* R1 (2026-11-10): unwinding without a heap token. A pending unwinding is
+  a finally record next to the handlers (format note 17); the token is
+  its index. The request's one record per frame was unsound for a
+  try/finally inside finally code (an inner unwinding overwrote the outer
+  record); the record stack with the ordering invariant `fins_ok` is
+  proven instead. `Body::Pending` is gone, and with it the loader's and
+  the primitives' obligations about unwinding tokens.
+
 Before Phase 4 the step function was unchanged by the proof. The verifier (`verifier.rs`, mirrored in `check.rs`; the
 equality proof still holds) was tightened where the proof found
 accepted programs that get stuck:
@@ -269,6 +285,41 @@ gained one clause during the proof (a block frame's own reference points
 at a slot holding the frame's method), needed to relate the verifier's
 context chain to the frames.
 
+## What the VM checks outside the verifier (2026-11-10)
+
+The verifier checks only the instructions at mapped (reachable) offsets;
+the C++ loader (`V2MethodTable::compute`, src/interpreter_v2.cc) also
+sweeps every method linearly and rejects bad opcodes, operands, branch
+targets and `this` field indices in unreachable code. The end-to-end
+fuzzer saw accepted mutants the loader refuses for that reason
+(verified/core/PROGRESS.md). Decision: the verifier is right. The theorem
+shows that every reachable state's bci is a mapped offset of its frame's
+method (`frame_ok`), so unreachable bytes are never decoded by the
+machine; the VM's only other decoder of format-2 code, the stack-trace
+walk (`Stack::v2_frames_do`), decodes the current instruction with bounds
+checks. The loader's per-instruction sweep is therefore redundant once
+`check::verify` runs, and its extra rejections are harmless strictness;
+the VM-linking work should drop it for verified launches (or keep it
+knowing it rejects programs the verifier accepts).
+
+What the VM must still do outside the verifier, and nothing else:
+
+1. Decode the snapshot into the abstract program `pview2(p)` the verifier
+   checks and the machine runs: the method table from the method headers
+   (arity, kind, selector, receiver range, accessor field or capture
+   count, body bounds), the dispatch table, class bits, builtin class
+   ids, entry points, invoke offsets, roots and literals. The verifier
+   re-checks every consistency property it needs (`wf_program2`,
+   `tables_ok`, `method_ok`, including `entry < end <= len`); what it
+   cannot check is that the decoded table is the one the machine uses.
+2. Give the verifier the VM's primitive arities (`c.prim_arity`,
+   `v2/prim_arity.rs` generated from src/primitive.h) and run
+   `check::verify(p, c, trusted)` with `trusted = false` for an untrusted
+   launch.
+3. Run `heap_check::x_loaded_ok` on the loaded program heap and globals.
+4. Enforce the memory bound (hypothesis 3) and the primitive contract
+   (hypothesis 2), as before.
+
 ## Machine-interpreted objects (audit, 2026-11-10)
 
 R5 was a gap of one kind: the VM gives an object or field a meaning the
@@ -289,7 +340,7 @@ contract) or on C++ code outside the spec.
 | Task objects themselves | VM by `TASK_TAG` | only `task_new` creates them: ALLOCATE needs `INSTANCE_TAG`, the task class is the only `TASK_TAG` class (`task_class_ok`), none in the program heap (`loaded_ok`), none from primitives | proven + loader/primitive contract |
 | Stack objects (`Stack2`) | GC, task switch, core (frames, handlers, bci inside) | reachable only through a task's field 0 (unreadable); no opcode writes a non-instance/array body; primitives neither change nor create them | proven + primitive contract (a primitive must not return one) |
 | Frame and handler records | core (inside the stack object) | not addressable: the frame stack is separate, slot access is bounded by the top frame, block references are `(frame, slot)` checked by `ref_ok` | proven (`wf_task`) |
-| Unwinding tokens (`Pending`) | UNWIND | the verifier's `Token` kind cannot be copied, stored, passed or returned; UNWIND checks the body; R1 replaces the object by a smi naming a handler record | proven (`conf`, `pending_ok`) |
+| Unwinding tokens and finally records | UNWIND, TRY, frame pops | the token is a smi naming a record (format note 17, no heap object); the verifier's `Token` kind cannot be copied, stored, passed or returned; UNWIND checks the record's frame and token slot; truncations never drop a record a live token names | proven (`fin_ok`, `fins_ok`) |
 | Block method slots | INVOKE_BLOCK, TRY | referenced slots are not writable (`writable`); the method id is still checked (kind, index) | proven + run time |
 | Lambda fields 0, 1 (method id, captures) | INVOKE_LAMBDA_TAIL | ordinary fields; method index, kind and capture count checked | run time (proven to be the only path) |
 | Lazy initializer field (method id) | LOAD_GLOBAL_VAR_LAZY, `run-global-initializer__`, INVOKE_INITIALIZER_TAIL | class tested; the method id is checked (index, kind, arity 0) | run time |
@@ -320,32 +371,38 @@ details and fixes:
 
 ## Tests
 
-* `tests/verify_suite.py`: every program found by `run_suite.py`
-  (435 sources) compiled with `-Xbytecode_format=2`: 431 accepted, 4 do
-  not compile (the `-force` negative compiler tests). Results in
-  `tests/verify-results.txt`.
+Numbers after the Phase 4 changes (R5, R1, R4; 2026-11-10):
+
+* `tests/verify_suite.py`: every program found by `run_suite.py` and the
+  spec test programs (438 sources) compiled with `-Xbytecode_format=2`:
+  434 accepted (verdict `verify && x_loaded_ok`), 4 do not compile (the
+  `-force` negative compiler tests). Results in `tests/verify-results.txt`.
 * `tests/system_snapshots.sh`: the three system snapshots (toit,
   toit.run, run-image) compiled with `toit.compile -Xbytecode_format=2`
-  are accepted (trusted), referencing 176, 106 and 116 primitives.
-  Verification time of the toit_run snapshot: 37.6 ms in total (load
-  1.6 ms, inference 33.0 ms, check 4.6 ms); the largest (toit) takes
-  198 ms.
+  are accepted (trusted) and satisfy `loaded_ok`, referencing 176, 106
+  and 116 primitives. Verification time of the toit_run snapshot before
+  Phase 4: 37.6 ms in total (load 1.6 ms, inference 33.0 ms, check
+  4.6 ms); the largest (toit) 198 ms (not remeasured: the machines were
+  loaded during this run).
 * `tests/mutation_campaign.py --count 18000 --seed 2` (results in
-  `tests/mutation-results.txt`, 55 s on 12 jobs): 11,400 single-byte and
-  single-operand mutants of 60 programs (5,684 random instruction bytes,
-  4,599 operands, 1,117 method-header bytes), verified with
-  `trusted = false`. 8,966 are rejected (690 of them already by the
-  method-table decoder); the 2,434 accepted ones were run on the reference
-  interpreter for at most 100,000 steps each: 2,199 exited, 133 hit the
-  step limit, 74 deadlocked (all tasks blocked), 13 called an
-  unimplemented primitive, 12 ended with an uncaught exception, 3 tasks
-  returned. **None got stuck or panicked the interpreter.**
-* Spec validation after the last change (the step function is unchanged
-  by this phase; rerun after merging the header shrink):
-  `run_suite.py --format 2` over 421 suite tests: 272 produce the C++
-  VM's output on the reference interpreter (64- and 32-bit), 134 use an
-  unimplemented primitive, 8 hit the step limit, 2 are nondeterministic,
-  4 do not compile, and 1 differs: `events-primitive-group-test` (new on
-  the integration branch), which tests resource-group checks of the
-  `events.*` primitives that the interpreter's primitive emulation does
-  not model (a primitive-oracle difference, not a step difference).
+  `tests/mutation-results.txt`): 12,300 single-byte and single-operand
+  mutants of 60 programs (6,159 random instruction bytes, 4,931 operands,
+  1,210 method-header bytes), verified with `trusted = false`. 9,850 are
+  rejected (770 of them already by the method-table decoder); the 2,450
+  accepted ones were run on the reference interpreter for at most
+  100,000 steps each: 2,204 exited, 119 hit the step limit, 94
+  deadlocked (all tasks blocked), 8 called an unimplemented primitive,
+  24 ended with an uncaught exception, 1 task returned. **None got stuck
+  or panicked the interpreter.**
+* `tests/run_tests.sh`: the 15 spec test programs (new:
+  `finally_records`, try/finally inside finally code, breaks out of
+  finally code, the value slot) produce the C++ VM's output in format 1
+  and format 2, 64- and 32-bit.
+* `run_suite.py --format 2` over 423 suite tests: 273 produce the C++
+  VM's output on the reference interpreter (64- and 32-bit; the 268 of
+  the previous run among them), 135 use an unimplemented primitive, 8 hit
+  the step limit, 2 are nondeterministic, 4 do not compile, and 1
+  differs: `events-primitive-group-test`, which tests resource-group
+  checks of the `events.*` primitives that the interpreter's primitive
+  emulation does not model (a primitive-oracle difference, not a step
+  difference). Per-test status in `tests/suite-status.txt`.

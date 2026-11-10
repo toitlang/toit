@@ -196,7 +196,7 @@ pub fn op_branch(&mut self, p: &Program, kind: usize, target: usize, len: usize)
         }),
 
 ==============================================================================
-Verified exec entry points: crate spec (6)
+Verified exec entry points: crate spec (7)
 ==============================================================================
 
 --- step_verified  (spec/src/exec_step.rs)
@@ -234,6 +234,11 @@ pub fn step_verified(p: &ExecProgram, s: &mut ExecState) -> (r: Option<ExecOutco
             Some(o) => matches2(step(pview2(p), view2(old(s))), o, view2(final(s))),
             None => view2(final(s)) == view2(old(s)),
         },
+
+--- x_loaded_ok  (spec/src/v2/heap_check.rs)
+pub fn x_loaded_ok(p: &ExecProgram, c: &XCert, heap: &Vec<ExecObj>, globals: &Vec<Value>) -> (r: bool)
+    requires wf_program2(pview2(p)),
+    ensures r == loaded_ok(pview2(p), c@, hview(heap), globals@),
 
 ==============================================================================
 Verified exec entry points: crate vmverify (0)

@@ -114,7 +114,13 @@ fn main() {
     for &m in &dis {
         disassemble(p, &inferred.cert, m);
     }
-    let accepted = ok && reasons.is_empty();
+    // The loader's contract (verified check, `v2::heap_check::x_loaded_ok`)
+    // for the certificate the verdict uses.
+    let loaded_ok = ok && toit_spec::v2::heap_check::x_loaded_ok(p, &inferred.cert, &loaded.heap, &loaded.globals);
+    if ok && !loaded_ok && reasons.is_empty() {
+        reasons.push("program heap or globals violate the loader's contract".into());
+    }
+    let accepted = ok && loaded_ok && reasons.is_empty();
     println!("{}", if accepted { "accepted" } else { "rejected" });
     for r in &reasons {
         println!("  {}", r);

@@ -68,6 +68,7 @@ pub open spec fn unw_ok(p: Program2, c: Cert, s: State2, kt: Seq<Kind>) -> bool 
     &&& globals_ok(c, s)
     &&& consts_ok(p, s.heap)
     &&& running_ok(p, s)
+    &&& fins_ok(s)
     &&& s.frames.len() > 0
     &&& bases_ok(s)
     &&& roomy(s)
@@ -91,7 +92,17 @@ pub open spec fn unw_ok(p: Program2, c: Cert, s: State2, kt: Seq<Kind>) -> bool 
 /// The unwinding `u` can complete from the top frame (a token there would
 /// be at slot `kt.len() + 1`).
 pub open spec fn unw_arg_ok(p: Program2, c: Cert, s: State2, kt: Seq<Kind>, u: Unwind) -> bool {
-    pending_ok(p, c, s, top_i(s), kt, kt.len() as int + 1, u)
+    &&& pending_ok(p, c, s, top_i(s), kt, kt.len() as int + 1, resume_of(u))
+    &&& unwind_value_ok(s.heap, u)
+}
+
+/// The exception or return value of an unwinding is a value.
+pub open spec fn unwind_value_ok(heap: Seq<HeapObj>, u: Unwind) -> bool {
+    match u {
+        Unwind::Throw(v) => good(heap, v),
+        Unwind::Return(_, v) => good(heap, v),
+        Unwind::Branch(_, _, _) => true,
+    }
 }
 
 pub proof fn lemma_handlers_lt_top(s: State2, x: int)
@@ -138,6 +149,7 @@ pub proof fn lemma_wf_unw(p: Program2, c: Cert, trusted: bool, s: State2)
     lemma_task_basics(p, c, s);
     lemma_top_kinds(p, c, s);
     assert(frame_ok(p, c, s, t)) by { reveal(wf_task); }
+    assert(fins_ok(s)) by { reveal(wf_task); }
     reveal(frame_ok);
     assert forall|fi: int| 0 <= fi < t implies #[trigger] frame_ok(p, c, s, fi) by { reveal(wf_task); }
     assert forall|x: int| 0 <= x < s.tries.len() implies #[trigger] handler_ok(s, x) by {
@@ -176,51 +188,22 @@ pub proof fn lemma_finally(p: Program2, c: Cert, trusted: bool, s: State2, kt: S
     let kf = finally_kinds(kt);
     let s1 = State2 { stack: s.stack.subrange(0, h.height as int), tries: s.tries.drop_last(), bci: h.bci, ..s };
     assert(base(s) <= h.height as int <= s.stack.len());
-    // The heap and the three pushed values.
-    let (s2h, value, token, reason): (Seq<HeapObj>, Value, Value, Value) = match uo {
-        None => (s.heap, null2(p), null2(p), smi(-1)),
+    // The records and the three pushed values.
+    let (fins2, value, token, reason): (Seq<Fin>, Value, Value, Value) = match uo {
+        None => (s.fins, null2(p), null2(p), smi(-1)),
         Some(w) => {
-            let o = HeapObj { class_id: p.builtin[OBJECT_CLASS], ro: false, body: Body::Pending(w) };
-            (s.heap.push(o),
-             match w { Unwind::Throw(v) => v, _ => null2(p) },
-             Value::Obj(s.heap.len() as usize),
+            (s.fins.push(Fin { frame: h.frame, height: h.height, resume: resume_of(w) }),
+             value_of(p, w),
+             smi(s.fins.len() as int),
              smi(match w { Unwind::Throw(_) => -2int, _ => -1int }))
         },
     };
-    let s2 = State2 { heap: s2h, stack: s1.stack.push(value).push(token).push(reason), ..s1 };
-    assert(enter_finally(p, s, h, uo) == Outcome2::Next(s2)) by {
-        match uo {
-            None => {},
-            Some(w) => {
-                let o = HeapObj { class_id: p.builtin[OBJECT_CLASS], ro: false, body: Body::Pending(w) };
-                assert(alloc2(s1, o).heap == s.heap.push(o));
-                assert(new_ref2(s1) == Value::Obj(s.heap.len() as usize));
-            },
-        }
-    }
-    // Heap.
-    assert(heap_ext(p, s.heap, s2h) && heap_ok(p, c, s2h)) by {
-        match uo {
-            None => {},
-            Some(w) => {
-                let o = HeapObj { class_id: p.builtin[OBJECT_CLASS], ro: false, body: Body::Pending(w) };
-                assert(tables_ok(p, c));
-                assert(machine_class_ok(p, OBJECT_CLASS));
-                assert(unwind_vals_ok(s.heap.push(o), w)) by {
-                    reveal(pending_ok);
-                    match w {
-                        Unwind::Throw(v) => { assert(good(s.heap, v)); },
-                        Unwind::Return(_, v) => { assert(good(s.heap, v)); },
-                        _ => {},
-                    }
-                }
-                assert(obj_ok(p, c, s.heap.push(o), o));
-                lemma_heap_push(p, c, s.heap, o);
-            },
-        }
-    }
-    lemma_globals_heap(c, s, s2h);
-    lemma_consts_heap(p, s.heap, s2h);
+    let s2 = State2 { fins: fins2, stack: s1.stack.push(value).push(token).push(reason), ..s1 };
+    assert(enter_finally(p, s, h, uo) == Outcome2::Next(s2));
+    assert(s2.heap == s.heap);
+    lemma_heap_ext_refl(p, s.heap);
+    lemma_globals_heap(c, s, s.heap);
+    assert(running_ok(p, s2));
     // Frames.
     assert(s2.frames == s.frames);
     assert(s2.tries == s.tries.drop_last());
@@ -275,20 +258,15 @@ pub proof fn lemma_finally(p: Program2, c: Cert, trusted: bool, s: State2, kt: S
             reveal(conf);
             if j == kt.len() {
                 assert(s2.stack[b + j] == value);
-                match uo {
-                    None => {},
-                    Some(w) => {
-                        reveal(pending_ok);
-                        match w { Unwind::Throw(v) => { assert(good(s.heap, v)); }, _ => {} }
-                    },
-                }
+                assert(good(s.heap, null2(p)));
             } else if j == kt.len() + 1 {
                 assert(s2.stack[b + j] == token);
                 match uo {
                     None => {},
                     Some(w) => {
-                        assert(s2.heap[s.heap.len() as int].body == Body::Pending(w));
+                        assert(s2.fins[s.fins.len() as int] == Fin { frame: h.frame, height: h.height, resume: resume_of(w) });
                         lemma_pending_finally(p, c, trusted, s, s2, kt, w);
+                        assert(fin_ok(p, c, s2, t, kinds_of(p, c, s2, t), j, s.fins.len() as int));
                     },
                 }
             } else {
@@ -320,7 +298,47 @@ pub proof fn lemma_finally(p: Program2, c: Cert, trusted: bool, s: State2, kt: S
         assert(s2.tries[x] == s.tries[x]);
         assert((s.tries[x].frame as int) < t);
     }
+    lemma_fins_finally(s, s2, uo);
     assert(wf(p, c, s2)) by { reveal(wf); reveal(wf_task); }
+}
+
+/// Entering a finally code keeps the records ordered: a new record of the
+/// top frame is above the frame's other records (below the TRY).
+pub proof fn lemma_fins_finally(s: State2, s2: State2, uo: Option<Unwind>)
+    requires
+        fins_ok(s), has_handler(s), s.frames.len() > 0,
+        forall|z: int| 0 <= z < s.tries.len() ==> #[trigger] handler_ok(s, z),
+        s2.frames == s.frames,
+        s2.tries == s.tries.drop_last(),
+        s2.fins == match uo {
+            None => s.fins,
+            Some(w) => s.fins.push(Fin { frame: s.tries.last().frame, height: s.tries.last().height, resume: resume_of(w) }),
+        },
+    ensures fins_ok(s2),
+{
+    let h = s.tries.last();
+    let xl = s.tries.len() - 1;
+    assert forall|x: int, k: int| 0 <= x < s2.tries.len() && 0 <= k < s2.fins.len()
+        && (#[trigger] s2.fins[k]).frame == (#[trigger] s2.tries[x]).frame implies
+        s2.fins[k].height < s2.tries[x].height by {
+        assert(s2.tries[x] == s.tries[x]);
+        if k < s.fins.len() {
+            assert(s2.fins[k] == s.fins[k]);
+        } else {
+            lemma_handler_increasing(s, x, xl);
+        }
+    }
+    assert forall|a: int, b: int| 0 <= a < b < s2.fins.len() implies fin_lt(#[trigger] s2.fins[a], #[trigger] s2.fins[b]) by {
+        if b < s.fins.len() {
+            assert(s2.fins[a] == s.fins[a] && s2.fins[b] == s.fins[b]);
+        } else {
+            assert(s2.fins[a] == s.fins[a]);
+            assert(s.fins[a].frame < s.frames.len());
+            if s.fins[a].frame == h.frame {
+                assert(s.fins[a].height < s.tries[xl].height);
+            }
+        }
+    }
 }
 
 pub proof fn lemma_handler_increasing(s: State2, x: int, y: int)
@@ -378,10 +396,9 @@ pub proof fn lemma_pending_finally(p: Program2, c: Cert, trusted: bool, s: State
         unw_ok(p, c, s, kt),
         unw_arg_ok(p, c, s, kt, w),
         s2.frames == s.frames,
-        heap_ext(p, s.heap, s2.heap),
         top_i(s) > 0 ==> same_below(s, s2, top_i(s) - 1),
         kinds_of(p, c, s2, top_i(s)) == finally_kinds(kt),
-    ensures pending_ok(p, c, s2, top_i(s), kinds_of(p, c, s2, top_i(s)), kt.len() as int + 1, w),
+    ensures pending_ok(p, c, s2, top_i(s), kinds_of(p, c, s2, top_i(s)), kt.len() as int + 1, resume_of(w)),
 {
     reveal(pending_ok);
     let t = top_i(s);

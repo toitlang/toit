@@ -380,8 +380,9 @@ objects); 13 -> note 12.
 adds a frame stack (`Frame { method, ret, base }`) and a handler stack
 (`Handler { frame, height, bci }`) to the object stack, which holds only
 values (`Smi`, `Obj`, `BlockRef(frame, slot)`); a suspended task is a
-`Body::Stack2` (object stack, frames, handlers, bci), an unwinding in
-progress through a finally code is a `Body::Pending(Unwind)` heap object.
+`Body::Stack2` (object stack, frames, handlers, finally records, bci); an
+unwinding in progress through a finally code is a finally record
+(`Fin`, format note 17) next to the handlers, named by a smi token.
 The program has a method table (`MethodInfo`) decoded by the trusted
 loader from the method headers; every instruction fetch is checked
 against the current frame's method.

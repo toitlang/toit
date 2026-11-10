@@ -29,9 +29,9 @@ use crate::spec_common::{is_instance, fields, obj, obj_id};
 
 verus! {
 
-/// An object that is neither a suspended task nor an unwinding token.
+/// An object that is not a suspended task.
 pub open spec fn ordinary(o: HeapObj) -> bool {
-    !(o.body is Stack2 || o.body is Pending)
+    !(o.body is Stack2)
 }
 
 /// Replacing an ordinary object by an ordinary object of the same class

@@ -535,7 +535,9 @@ pub open spec fn post(p: Program2, c: Cert, m: int, off: int, k: Seq<Kind>, trus
             Some(k.push(Kind::Val).push(Kind::Token).push(Kind::Val))
         } else { None }
     } else if op == UNWIND {
-        if 3 <= h && top_kind(k, 1) is Token { Some(k.subrange(0, h - 3)) } else { None }
+        // The value slot below the token is the exception or return value
+        // the unwinding resumes with.
+        if 3 <= h && top_kind(k, 1) is Token && is_val(top_kind(k, 2)) { Some(k.subrange(0, h - 3)) } else { None }
     } else if op == HALT {
         // HALT 2 and 3 (deep sleep, reset) only for trusted programs.
         if b1 == 0 { Some(k.push(Kind::Val)) }
@@ -680,9 +682,9 @@ pub open spec fn no_block_params(c: Cert, m: int) -> bool {
     forall|i: int| 0 <= i < c.block_params[m].len() ==> !(#[trigger] c.block_params[m][i])
 }
 
-/// A builtin class of the machine's own objects (Object for unwinding
-/// tokens, Stack, Double): not an instance class with fields, so the
-/// machine objects never pose as instances.
+/// A builtin class of the machine's own objects (Object, Stack, Double,
+/// Smi): not an instance class with fields, so the machine objects never
+/// pose as instances.
 pub open spec fn machine_class_ok(p: Program2, k: int) -> bool {
     let cl = builtin(p1(p), k);
     0 <= cl < class_count(p) && !(is_field_class(p, cl) && ifc(p, cl) >= 1)

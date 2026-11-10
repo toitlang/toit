@@ -107,14 +107,14 @@ Trusted format-2 programs are verified only with `-Xverify`/`TOIT_VERIFY`
 | File | Role |
 |---|---|
 | `src/from_vm.rs` | Builds `ExecProgram`, the heap (`Vec<ExecObj>`) and the globals from VM memory: tables copied as they are; roots, globals, literals followed breadth first through the program image (work list, no recursion). An object's kind is its header's class tag, which must equal its class's tag; an instance has its class's field count (`class_bits`), as the core's `instance_fields` reads it; strings and byte arrays (internal or external) must lie in the image. Every read is bounds-checked against `[program_heap_start, +program_heap_size)`. |
-| `src/verify.rs` | The verdict: `heap_check::check_heap` and `loaded_ok`'s object bound, then `x_wf_program2` (before the inference, which indexes the bodies), the untrusted `infer`, then the certificate's trusted fields (`global_count` = the globals' count, `prim_arity` = the VM's table) are overwritten and the proven `check::verify` decides. The rest is diagnostics. |
+| `src/verify.rs` | The verdict, the four duties of spec/SOUNDNESS.md "What the VM checks outside the verifier": `x_wf_program2` (the inference and `x_loaded_ok` require it), the untrusted `infer`, then the certificate's trusted fields (`global_count` = the globals' count, `prim_arity` = the VM's table) are overwritten, and the program is accepted iff the proven `check::verify` (= `accepts`, untrusted rules) and the proven `heap_check::x_loaded_ok` (= `loaded_ok`) both accept. The unverified `check_heap` only gives an early, readable rejection; the rest is diagnostics. |
 | `src/ffi.rs` | C ABI; panics reject. |
 | `src/alloc.rs` | Counting allocator (measurement). |
 
 Not trusted: `canonical.rs`, the `toit_vmverify_canonical` tool (tests).
 `v2/infer.rs` stays untrusted (it only produces the certificate).
-`v2/heap_check.rs` is trusted plain Rust today; the spec branch replaces
-it by a verified check (PHASE4-REQUESTS.md R4, R7).
+The heap check is verified (`heap_check::x_loaded_ok`, proven equal to
+`loaded_ok`, including the bound of 2^29 objects).
 
 Correspondence with the dump path: `tests/differential.py` compiles every
 suite program in format 2 and compares the canonical form of the program

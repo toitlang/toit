@@ -4,6 +4,55 @@ One entry per change of `src/v2/spec.rs`, `src/v2/prim.rs`, `src/v2/types.rs`
 or the verifier's rules (`src/v2/verifier.rs`) that an implementation of
 the spec (the verified core, the VM's loader) must follow. Newest first.
 
+## 2026-11-10: a verified check of the loader's contract (R4)
+
+What: `sound.rs` splits `loaded_ok` into `loaded_heap_ok` (heap size, every
+object `loaded_obj_ok`: well formed, not a stack, not a task; roots and
+literals are values) and the globals part; the contract is unchanged.
+`v2/heap_check.rs` is now Verus: `x_loaded_heap_ok(p, heap)` (`Ok` iff
+`loaded_heap_ok`) and `x_loaded_ok(p, c, heap, globals)` (`== loaded_ok`),
+both requiring `wf_program2` (checked by `check::verify` first).
+
+Why: R4; the VM can run the check at untrusted launch.
+
+Opcodes: none.
+
+## 2026-11-10: finally records instead of heap tokens (R1)
+
+What (format note 17): entering finally code with an unwinding no longer
+allocates. `types.rs`: new `Resume` and `Fin`; `State2.fins`,
+`ExecState.fins`; `Body::Stack2`/`ExecBody::Stack2` gain the records
+(`Stack2(words, frames, tries, fins, bci)`); `Body::Pending` and
+`ExecBody::Pending` are removed. `spec.rs`:
+
+* `enter_finally(Some(u))`: pops the handler, pushes
+  `Fin { frame, height, resume_of(u) }`, and pushes the value
+  (`value_of(u)`: the exception, the return value, or null for a branch),
+  the token `smi(index of the record)` and the reason.
+* UNWIND: a smi token `k` with `fin_matches(s, k)` (record of the top frame
+  whose token slot is the UNWIND's) truncates `fins` to `k` and resumes
+  `unwind_of(fins[k].resume, value slot)`; other tokens are
+  `Stuck(NotUnwind)`.
+* `return_from`, `pop_frame`, `replace_frame`: drop the popped frame's
+  records (`fins_popped`, i.e. `cut_fins(fins, top, 0)`).
+* TRY: drops the frame's trailing records whose token slot is at the TRY's
+  height or above (`cut_fins(fins, top, H - 1)`) before installing the
+  handler.
+* `prim.rs`: task switching saves and restores the records; a new task has
+  none.
+* Verifier: UNWIND also requires the value slot (below the token) to be a
+  value.
+
+Why: R1 (allocation on every non-local return through a finally, and an
+out-of-memory path that skipped finally code). The request's one record
+per frame was unsound for try/finally nested inside finally code (note
+17), hence the record stack.
+
+Opcodes: TRY, UNWIND, THROW, RETURN, RETURN_NULL, NON_LOCAL_RETURN,
+NON_LOCAL_BRANCH, INVOKE_STATIC_TAIL, INVOKE_LAMBDA_TAIL,
+INVOKE_INITIALIZER_TAIL, every raised failure (they unwind), PRIMITIVE
+core 115/116 (task_new, task_transfer).
+
 ## 2026-11-10: the fields of a task the machine owns (R5)
 
 What: field 0 of a task (`Task::STACK_INDEX`, its stack) is neither

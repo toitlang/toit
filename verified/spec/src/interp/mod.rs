@@ -198,7 +198,7 @@ impl Machine {
         let mut m = Machine {
             p: program,
             s: ExecState { heap, globals, stack: Vec::new(), try_h: 0, bci: 0, task, next_task_id: 1,
-                frames: Vec::new(), tries: Vec::new() },
+                frames: Vec::new(), tries: Vec::new(), fins: Vec::new() },
             format: 1,
             names,
             world: system::World::new(args),

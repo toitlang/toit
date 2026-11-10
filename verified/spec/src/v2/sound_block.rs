@@ -539,20 +539,14 @@ pub proof fn lemma_conf_write(p: Program2, c: Cert, s: State2, x: int, w: Value,
         },
         Kind::Token => {
             match v {
-                Value::Obj(id) => {
-                    if v != null2(p) {
-                        match s.heap[id as int].body {
-                            Body::Pending(u) => {
-                                match u {
-                                    Unwind::Branch(f, bci, hb) => {
-                                        lemma_kinds_write(p, c, s, x, w, f as int);
-                                        assert(frame_kinds_from(p, c, s2, g, kf, f as int) == frame_kinds_from(p, c, s, g, kf, f as int));
-                                    },
-                                    _ => {},
-                                }
-                            },
-                            _ => {},
-                        }
+                Value::Smi(kk) => if v != null2(p) {
+                    match s.fins[kk as int].resume {
+                        Resume::Branch(f, bci, hb) => {
+                            lemma_kinds_write(p, c, s, x, w, f as int);
+                            assert(frame_kinds_from(p, c, s2, g, kf, f as int) == frame_kinds_from(p, c, s, g, kf, f as int));
+
+                        },
+                        _ => {},
                     }
                 },
                 _ => {},

@@ -57,6 +57,7 @@ pub open spec fn call_pre(p: Program2, c: Cert, s: State2, s1: State2, t: int, r
     &&& s1.stack.len() < 0x8000_0000
     &&& small(s)
     &&& (if is_try { s1.tries == s.tries.push(new_handler(s, nb, ret)) } else { s1.tries == s.tries })
+    &&& s1.fins == (if is_try { cut_fins(s.fins, t0, nb - 1) } else { s.fins })
     &&& heap_ext(p, s.heap, s1.heap)
     &&& heap_ok(p, c, s1.heap)
     &&& globals_ok(c, s1)
@@ -91,6 +92,59 @@ pub open spec fn call_args(p: Program2, c: Cert, s1: State2, t: int, ret: int) -
     &&& receiver_ok(p, s2, tn)
 }
 
+/// The records after a call (a TRY cuts the caller's stale ones first).
+pub proof fn lemma_call_fins(p: Program2, c: Cert, trusted: bool, s: State2, s1: State2, t: int, ret: int, is_try: bool)
+    requires accepts(p, c, trusted), wf(p, c, s), call_pre(p, c, s, s1, t, ret, is_try),
+    ensures ({
+        let s2 = call_state(p, s1, t, ret);
+        let t0 = top_i(s);
+        let nb = s1.stack.len() - arity(p, t);
+        &&& fins_ok(s2)
+        &&& fins_kept(s, s2, t0, nb - 1)
+        &&& fins_kept(s, s2, t0, 0)
+    }),
+{
+    let s2 = call_state(p, s1, t, ret);
+    let t0 = top_i(s);
+    let nb = s1.stack.len() - arity(p, t);
+    lemma_wf_parts(p, c, s);
+    lemma_task_basics(p, c, s);
+    assert(fins_ok(s)) by { reveal(wf_task); }
+    if is_try {
+        let mid = State2 { fins: cut_fins(s.fins, t0, nb - 1), ..s };
+        lemma_cut_ok(s, mid, t0, nb - 1);
+        lemma_cut_kept(s, s2, t0, nb - 1);
+        lemma_fins_kept_mono(s, s2, t0, nb - 1, t0, 0);
+        let h = new_handler(s, nb, ret);
+        assert forall|x: int, k: int| 0 <= x < s2.tries.len() && 0 <= k < s2.fins.len()
+            && (#[trigger] s2.fins[k]).frame == (#[trigger] s2.tries[x]).frame implies
+            s2.fins[k].height < s2.tries[x].height by {
+            if x < s.tries.len() {
+                assert(s2.tries[x] == mid.tries[x]);
+            } else {
+                assert(s2.tries[x] == h);
+            }
+        }
+        assert forall|k: int| 0 <= k < s2.fins.len() implies (#[trigger] s2.fins[k]).frame < s2.frames.len() by {
+            assert(mid.fins[k].frame < mid.frames.len());
+        }
+        assert forall|a: int, b: int| 0 <= a < b < s2.fins.len() implies fin_lt(#[trigger] s2.fins[a], #[trigger] s2.fins[b]) by {
+            assert(fin_lt(mid.fins[a], mid.fins[b]));
+        }
+    } else {
+        lemma_fins_kept_same(s, s2, t0, nb - 1);
+        lemma_fins_kept_same(s, s2, t0, 0);
+        assert forall|k: int| 0 <= k < s2.fins.len() implies (#[trigger] s2.fins[k]).frame < s2.frames.len() by {
+            assert(s.fins[k].frame < s.frames.len());
+        }
+        assert forall|x: int, k: int| 0 <= x < s2.tries.len() && 0 <= k < s2.fins.len()
+            && (#[trigger] s2.fins[k]).frame == (#[trigger] s2.tries[x]).frame implies
+            s2.fins[k].height < s2.tries[x].height by {
+            assert(s2.tries[x] == s.tries[x] && s2.fins[k] == s.fins[k]);
+        }
+    }
+}
+
 pub proof fn lemma_call_shape(p: Program2, c: Cert, trusted: bool, s: State2, s1: State2, t: int, ret: int, is_try: bool)
     requires accepts(p, c, trusted), wf(p, c, s), call_pre(p, c, s, s1, t, ret, is_try),
     ensures ({
@@ -109,8 +163,11 @@ pub proof fn lemma_call_shape(p: Program2, c: Cert, trusted: bool, s: State2, s1
         &&& try_frame(s2, t0) == is_try
         &&& forall|g: int| 0 <= g < t0 ==> #[trigger] try_frame(s2, g) == try_frame(s, g)
         &&& (t0 > 0 ==> same_below(s, s2, t0 - 1))
+        &&& fins_ok(s2)
+        &&& fins_kept(s, s2, t0, nb - 1)
     }),
 {
+    lemma_call_fins(p, c, trusted, s, s1, t, ret, is_try);
     let s2 = call_state(p, s1, t, ret);
     let t0 = top_i(s);
     let b = fbase(s, t0);
@@ -254,28 +311,22 @@ pub proof fn lemma_call_caller_conf(p: Program2, c: Cert, trusted: bool, s: Stat
         },
         Kind::Token => {
             match v {
-                Value::Obj(id) => {
-                    if v != null2(p) {
-                        assert(s2.heap[id as int].body == s.heap[id as int].body);
-                        match s.heap[id as int].body {
-                            Body::Pending(u) => {
-                                match u {
-                                    Unwind::Branch(f, bci, hb) => {
-                                        if (f as int) < t0 {
-                                            lemma_kinds_below(p, c, s, s2, f as int, t0 - 1);
-                                        } else {
-                                            let tt = map_at(c, m, bci as int - info(p, m).entry)->0;
-                                            assert(frame_kinds_from(p, c, s, t0, k, f as int) == k);
-                                            assert(frame_kinds_from(p, c, s2, t0, kinds_of(p, c, s2, t0), f as int) == kinds_of(p, c, s2, t0));
-                                            assert(tt == k.subrange(0, tt.len() as int));
-                                            assert(kinds_of(p, c, s2, t0).subrange(0, tt.len() as int) =~= k.subrange(0, tt.len() as int));
-                                        }
-                                    },
-                                    _ => {},
-                                }
-                            },
-                            _ => {},
-                        }
+                Value::Smi(kk) => if v != null2(p) {
+                    assert(s2.fins[kk as int] == s.fins[kk as int]);
+                    match s.fins[kk as int].resume {
+                        Resume::Branch(f, bci, hb) => {
+                            if (f as int) < t0 {
+                                lemma_kinds_below(p, c, s, s2, f as int, t0 - 1);
+                            } else {
+                                let tt = map_at(c, m, bci as int - info(p, m).entry)->0;
+                                assert(frame_kinds_from(p, c, s, t0, k, f as int) == k);
+                                assert(frame_kinds_from(p, c, s2, t0, kinds_of(p, c, s2, t0), f as int) == kinds_of(p, c, s2, t0));
+                                assert(tt == k.subrange(0, tt.len() as int));
+                                assert(kinds_of(p, c, s2, t0).subrange(0, tt.len() as int) =~= k.subrange(0, tt.len() as int));
+                            }
+
+                        },
+                        _ => {},
                     }
                 },
                 _ => {},
