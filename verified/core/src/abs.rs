@@ -123,6 +123,7 @@ pub open spec fn obj_model_ok(o: HeapObj, cb: Seq<u16>, addr: Seq<usize>) -> boo
             && forall|i: int| 0 <= i < f.len() ==> #[trigger] encodable(addr, f[i]),
         Body::Array(e) => e.len() < 0x4000_0000
             && forall|i: int| 0 <= i < e.len() ==> #[trigger] encodable(addr, e[i]),
+        Body::Bytes(b) => b.len() < 0x4000_0000_0000_0000,
         _ => true,
     }
 }
