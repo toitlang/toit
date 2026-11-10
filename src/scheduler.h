@@ -272,6 +272,10 @@ class Scheduler {
   // Keep track of the number of ready processes with an active profiler.
   int num_profiled_processes_ = 0;
 
+  // The number of live processes whose policy limits their run time or CPU
+  // time (see PolicyQuotas::limits_run_time).
+  int num_run_time_limited_processes_ = 0;
+
   // Keep track of the boot process if it still alive.
   Process* boot_process_;
 
