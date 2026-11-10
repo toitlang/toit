@@ -67,6 +67,9 @@ pub open spec fn verified_op(op: u8) -> bool {
     ||| op == 53         // INVOKE_STATIC
     ||| op == 58 || op == 59  // INVOKE_VIRTUAL(_WIDE)
     ||| op == 91 || op == 92  // RETURN, RETURN_NULL
+    ||| op == 5 || op == 6    // LOAD_OUTER, STORE_OUTER
+    ||| op == 38 || op == 39  // LOAD_BLOCK, LOAD_OUTER_BLOCK
+    ||| op == 55         // INVOKE_BLOCK
 }
 
 /// The machine continues from a state the spec reaches from `g0`: the same
@@ -500,6 +503,31 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
                 assert(const_ok(g.heap, ap.roots[0]));
             }
             return crate::calls::op_return(m, env, p.null, Ghost(sp::null2(ap)));
+        },
+        5 => {
+            let k = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_outer(g, k as int)) by { reveal(sp::step); } }
+            return crate::blocks::op_load_outer(m, env, bci, opcode, k);
+        },
+        6 => {
+            let k = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_store_outer(g, k as int)) by { reveal(sp::step); } }
+            return crate::blocks::op_store_outer(m, env, bci, opcode, k);
+        },
+        38 => {
+            let k = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_block(g, k as int)) by { reveal(sp::step); } }
+            return crate::blocks::op_load_block(m, env, bci, opcode, k);
+        },
+        39 => {
+            let k = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_load_outer_block(g, k as int)) by { reveal(sp::step); } }
+            return crate::blocks::op_load_outer_block(m, env, bci, opcode, k);
+        },
+        55 => {
+            let k = p.code.at(bci + 1) as usize;
+            proof { assert(sp::step(ap, g) == sp::op_invoke_block(ap, g, k as int)) by { reveal(sp::step); } }
+            return crate::blocks::op_invoke_block(m, env, bci, opcode, k);
         },
         _ => {
             return step_unverified(m, env, bci, opcode);
