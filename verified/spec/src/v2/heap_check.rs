@@ -148,6 +148,111 @@ pub fn x_loaded_ok(p: &VProgram, global_count: u64, heap: &Vec<ExecObj>, globals
     globals.len() as u64 == global_count && x_all_good(Ghost(h), heap.len(), globals.as_slice())
 }
 
+// ---------------------------------------------------------------------------
+// The heap check, one object at a time.
+
+/// `loaded_obj_ok` reads the heap only through `good`, i.e. its length.
+pub proof fn lemma_loaded_obj_mono(p: Program2, h1: Seq<HeapObj>, h2: Seq<HeapObj>, o: HeapObj)
+    requires loaded_obj_ok(p, h1, o), h1.len() <= h2.len(),
+    ensures loaded_obj_ok(p, h2, o),
+{
+    match o.body {
+        Body::Instance(f) => {
+            assert forall|i: int| 0 <= i < f.len() implies good(h2, #[trigger] f[i]) by { assert(good(h1, f[i])); }
+        },
+        Body::Array(e) => {
+            assert forall|i: int| 0 <= i < e.len() implies good(h2, #[trigger] e[i]) by { assert(good(h1, e[i])); }
+        },
+        _ => {},
+    }
+}
+
+/// The objects of the program heap, in id order, from VM memory (the
+/// trusted conversion, vmverify's `from_vm`), each with the number of
+/// objects found so far (every reference in the objects so far is below
+/// it).
+pub trait ObjStream {
+    fn next_obj(&mut self) -> Option<(ExecObj, usize)>;
+}
+
+/// `x_loaded_ok` without the heap in memory: checks the objects as `s`
+/// yields them. Accepts only if the heap they form (`r.1`, the objects in
+/// order) satisfies `loaded_ok` for every certificate with global count
+/// `global_count`. An object is checked against the count `s` gives with
+/// it; at the end every such count must be at most the number of objects,
+/// so the checks hold for the whole heap (`lemma_loaded_obj_mono`).
+pub fn x_loaded_ok_stream<S: ObjStream>(p: &VProgram, s: &mut S, global_count: u64, globals: &[Value]) -> (r: (bool, Ghost<Seq<HeapObj>>))
+    requires wf_program2(vview(p)),
+    ensures r.0 ==> forall|c: Cert| c.global_count == global_count as int ==> #[trigger] loaded_ok(vview(p), c, r.1@, globals@),
+{
+    let ghost pv = vview(p);
+    let ghost mut h: Seq<HeapObj> = Seq::empty();
+    let mut count: usize = 0;
+    // The largest count an object was checked against.
+    let mut bound: usize = 0;
+    loop
+        invariant
+            wf_program2(pv), pv == vview(p), h.len() == count, count <= 0x2000_0000,
+            forall|i: int| 0 <= i < count ==> loaded_obj_ok(pv, Seq::new(bound as nat, |j: int| h[i]), #[trigger] h[i]),
+        ensures
+            wf_program2(pv), pv == vview(p), h.len() == count, count < 0x2000_0000,
+            forall|i: int| 0 <= i < count ==> loaded_obj_ok(pv, Seq::new(bound as nat, |j: int| h[i]), #[trigger] h[i]),
+        decreases 0x2000_0000 - count,
+    {
+        if count >= 0x1fff_ffff {
+            return (false, Ghost(h));
+        }
+        match s.next_obj() {
+            None => break,
+            Some((o, n)) => {
+                let ghost hn = Seq::new(n as nat, |j: int| o@);
+                if !x_loaded_obj_ok(p, Ghost(hn), n, &o) {
+                    return (false, Ghost(h));
+                }
+                let new_bound = if n > bound { n } else { bound };
+                proof {
+                    assert forall|i: int| 0 <= i < count implies
+                        loaded_obj_ok(pv, Seq::new(new_bound as nat, |j: int| h[i]), #[trigger] h[i]) by {
+                        lemma_loaded_obj_mono(pv, Seq::new(bound as nat, |j: int| h[i]), Seq::new(new_bound as nat, |j: int| h[i]), h[i]);
+                    }
+                    lemma_loaded_obj_mono(pv, hn, Seq::new(new_bound as nat, |j: int| o@), o@);
+                    h = h.push(o@);
+                    assert forall|i: int| 0 <= i < count + 1 implies
+                        loaded_obj_ok(pv, Seq::new(new_bound as nat, |j: int| h[i]), #[trigger] h[i]) by {
+                        if i < count {
+                            assert(h[i] == h.drop_last()[i]);
+                        }
+                    }
+                }
+                bound = new_bound;
+                count += 1;
+            },
+        }
+    }
+    if bound > count {
+        return (false, Ghost(h));
+    }
+    proof {
+        assert forall|i: int| 0 <= i < h.len() implies loaded_obj_ok(pv, h, #[trigger] h[i]) by {
+            lemma_loaded_obj_mono(pv, Seq::new(bound as nat, |j: int| h[i]), h, h[i]);
+        }
+    }
+    if !(x_all_good(Ghost(h), count, p.roots) && x_all_good(Ghost(h), count, p.literals)) {
+        return (false, Ghost(h));
+    }
+    let ok = globals.len() as u64 == global_count && x_all_good(Ghost(h), count, globals);
+    proof {
+        if ok {
+            assert(count < 0x2000_0000);
+            assert(consts_ok(pv, h));
+            assert(loaded_heap_ok(pv, h));
+            assert forall|c: Cert| c.global_count == global_count as int implies #[trigger] loaded_ok(vview(p), c, h, globals@) by {}
+        }
+    }
+    (ok, Ghost(h))
+}
+
+
 } // verus!
 
 /// `toit_spec_verify`'s early check of the heap part of the loader's

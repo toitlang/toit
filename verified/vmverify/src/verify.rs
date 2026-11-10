@@ -20,17 +20,19 @@
 //!   `pins_sorted(g) && split_ok(vview(p), g@, ms, trusted)` for the maps
 //!   `ms` the oracle gave it; `split_ok` implies `accepts(vview(p),
 //!   with_maps(g@, ms), trusted)` (`v2::split::lemma_split_sound`);
-//! * `heap_check::x_loaded_ok(p, g.global_count, heap, globals)`, equal to
+//! * `heap_check::x_loaded_ok_stream(p, objects, global_count, globals)`,
+//!   which accepts only if the heap the converted objects form satisfies
 //!   `loaded_ok` for every certificate with that global count, so for
-//!   `with_maps(g@, ms)` as well.
+//!   `with_maps(g@, ms)` as well. The objects are checked one at a time as
+//!   `from_vm` converts them (none is kept); the conversion must also end
+//!   without error with every object found converted (`complete`).
 //!
 //! So `theorem_soundness_split` (= `theorem_soundness` for that assembled
 //! certificate) applies. The global part `g` comes from the untrusted
 //! inference, except its trusted fields (`global_count`, `prim_arity`),
 //! which are set here from the program's globals and the VM's table.
-//! `x_wf_program2` runs first (the inference needs it), and the
-//! unverified `check_heap` only gives an early, readable rejection.
-//! Everything after the verdict is diagnostics.
+//! `x_wf_program2` runs first (the inference needs it). Everything after
+//! the verdict is diagnostics.
 
 use alloc::format;
 use alloc::string::{String, ToString};
@@ -86,38 +88,47 @@ impl<'a> MapOracle for Timed<'a> {
 }
 
 /// The verdict on a converted program.
-pub fn verify(c: &Converted, trusted: bool) -> Verdict {
-    let p = &c.program();
-    // The inference and x_loaded_ok require well-formed tables.
+pub fn verify(c: &mut Converted, trusted: bool) -> Verdict {
+    let global_count = c.globals.len() as u64;
+    let prim_arity = c.prim_arity.clone();
+    let globals = core::mem::take(&mut c.globals);
+    let (p, objects) = c.split();
+    let p = &p;
+    // The inference and the heap check require well-formed tables.
     if !check::x_wf_program2(p) {
         return Verdict::new(TABLES, "table sizes or method bounds (wf_program2)".into());
     }
+    // The loader's contract, one object at a time.
     let t = Clock::start();
-    if let Err(e) = heap_check::check_heap(p, &c.heap) {
-        let mut v = Verdict::new(HEAP, e);
-        v.heap_ns = t.ns();
+    let (heap_ok, _) = heap_check::x_loaded_ok_stream(p, objects, global_count, &globals);
+    let complete = objects.complete();
+    let heap_ns = t.ns();
+    if !heap_ok || !complete {
+        let message = match &objects.error {
+            Some(e) => format!("{} ({})", e.what, e.detail),
+            None => format!("loader contract (loaded_ok); {} objects converted", objects.count()),
+        };
+        let mut v = Verdict::new(if objects.error.is_some() { MALFORMED } else { HEAP }, message);
+        v.heap_ns = heap_ns;
         return v;
     }
-    let mut heap_ns = t.ns();
+    objects.release();
+    drop(globals);
     let t = Clock::start();
-    let mut global = infer::infer_global(p, c.globals.len() as u64, c.prim_arity.clone(), trusted);
+    let mut global = infer::infer_global(p, global_count, prim_arity.clone(), trusted);
     let mut infer_ns = t.ns();
-    // The trusted fields of the certificate.
-    global.g.global_count = c.globals.len() as u64;
-    global.g.prim_arity = c.prim_arity.clone();
+    // The trusted fields of the certificate (x_loaded_ok_stream checked the
+    // globals against this count).
+    global.g.global_count = global_count;
+    global.g.prim_arity = prim_arity;
     let t = Clock::start();
     let mut oracle = Timed { inner: infer::Oracle::new(p, &global, trusted), ns: 0 };
     let (ok, _) = check::verify(p, &global.g, &mut oracle, trusted);
     let at = oracle.inner.last;
     let check_ns = t.ns().saturating_sub(oracle.ns);
     infer_ns += oracle.ns;
-    let t = Clock::start();
-    let loaded_ok = heap_check::x_loaded_ok(p, global.g.global_count, &c.heap, &c.globals);
-    heap_ns += t.ns();
     let mut v = if !ok {
-        diagnose(c, &global, at, trusted)
-    } else if !loaded_ok {
-        Verdict::new(HEAP, "loader contract (loaded_ok)".into())
+        diagnose(p, &global, at, trusted)
     } else {
         Verdict::new(ACCEPTED, String::new())
     };
@@ -129,8 +140,7 @@ pub fn verify(c: &Converted, trusted: bool) -> Verdict {
 
 /// Why `check::verify` rejected (called only after it did): `at` is the
 /// last method it asked maps for.
-fn diagnose(c: &Converted, global: &infer::Global, at: Option<usize>, trusted: bool) -> Verdict {
-    let p = &c.program();
+fn diagnose(p: &toit_spec::v2::vprog::VProgram, global: &infer::Global, at: Option<usize>, trusted: bool) -> Verdict {
     let Some(m) = at else {
         let mut v = Verdict::new(TABLES, "program tables (tables_ok)".into());
         if let Some((m, off, msg)) = global.errors.first() {

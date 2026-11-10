@@ -24,7 +24,10 @@
 //! repeats, checked below); only the 23 builtin class ids are decoded.
 //! Object references in the roots, globals and literals are followed
 //! through the program image, breadth first (a work list, no recursion),
-//! and every reachable object becomes one `ExecObj`. Nothing is interpreted beyond
+//! and every reachable object becomes one `ExecObj`, one at a time
+//! (`Objects`, a `heap_check::ObjStream`: the verdict checks each object
+//! as it is converted and keeps none; `collect_heap` keeps them all, for
+//! the canonical form). Nothing is interpreted beyond
 //! what the core itself reads: an object's kind is its header's class tag
 //! (which must agree with its class), an instance has the field count of
 //! its class (`class_bits`), as the core's `instance_fields` computes it.
@@ -41,6 +44,7 @@
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use toit_spec::types::{ExecBody, ExecObj, Value};
+use toit_spec::v2::heap_check::ObjStream;
 use toit_spec::v2::vprog::{VMethod, VProgram};
 use toit_verified_core::ffi::{ProgramTables, V2Method};
 use toit_verified_core::layout::*;
@@ -63,7 +67,8 @@ const _: () = {
 };
 
 /// The program as converted from VM memory: borrowed tables, the decoded
-/// builtin class ids, roots, literals, globals and the program heap.
+/// builtin class ids, roots, literals, globals, and the program heap as a
+/// stream of objects.
 pub struct Converted<'a> {
     pub bytecodes: &'a [u8],
     pub methods: &'a [VMethod],
@@ -78,12 +83,46 @@ pub struct Converted<'a> {
     pub roots: Vec<Value>,
     pub literals: Vec<Value>,
     pub globals: Vec<Value>,
-    pub heap: Vec<ExecObj>,
+    /// The program heap, converted on demand in id order.
+    pub objects: Objects<'a>,
     /// The VM's primitive table (arities by module).
     pub prim_arity: Vec<Vec<u8>>,
 }
 
 impl<'a> Converted<'a> {
+    /// The program, and the object stream (for `x_loaded_ok_stream`).
+    pub fn split(&mut self) -> (VProgram<'_>, &mut Objects<'a>) {
+        let p = VProgram {
+            word_bits: (WORD_SIZE * 8) as u8,
+            max_height: self.max_height,
+            bytecodes: self.bytecodes,
+            methods: self.methods,
+            dispatch: self.dispatch,
+            class_bits: self.class_bits,
+            class_check_ids: self.class_check_ids,
+            interface_check_offsets: self.interface_check_offsets,
+            invoke_offsets: self.invoke_offsets,
+            entry_points: self.entry_points,
+            builtin: &self.builtin,
+            roots: &self.roots,
+            literals: &self.literals,
+        };
+        (p, &mut self.objects)
+    }
+
+    /// Converts every object (from the start of the stream; test support:
+    /// the canonical form).
+    pub fn collect_heap(&mut self) -> Result<Vec<ExecObj>, Malformed> {
+        let mut heap = Vec::new();
+        while let Some((o, _)) = self.objects.next_obj() {
+            heap.push(o);
+        }
+        match self.objects.error.take() {
+            Some(e) => Err(e),
+            None => Ok(heap),
+        }
+    }
+
     pub fn program(&self) -> VProgram<'_> {
         VProgram {
             word_bits: (WORD_SIZE * 8) as u8,
@@ -162,16 +201,56 @@ impl Image {
     }
 }
 
-struct Converter<'a> {
+/// The program heap, breadth first from the roots, globals and literals.
+pub struct Objects<'a> {
     image: Image,
     class_bits: &'a [u16],
     /// Untagged address -> object id (index into `queue`).
     ids: BTreeMap<usize, usize>,
     /// Untagged addresses, in id order.
     queue: Vec<usize>,
+    /// The next object to convert.
+    next: usize,
+    /// Why the stream ended early (a malformed object): the program is
+    /// rejected.
+    pub error: Option<Malformed>,
 }
 
-impl<'a> Converter<'a> {
+impl<'a> ObjStream for Objects<'a> {
+    /// The next object and the number of objects found so far.
+    fn next_obj(&mut self) -> Option<(ExecObj, usize)> {
+        if self.error.is_some() { return None; }
+        let addr = *self.queue.get(self.next)?;
+        match self.object(addr) {
+            Ok(o) => {
+                self.next += 1;
+                Some((o, self.queue.len()))
+            }
+            Err(e) => {
+                self.error = Some(e);
+                None
+            }
+        }
+    }
+}
+
+impl<'a> Objects<'a> {
+    /// Every object was converted, without error.
+    pub fn complete(&self) -> bool {
+        self.error.is_none() && self.next == self.queue.len()
+    }
+
+    /// The number of objects converted.
+    pub fn count(&self) -> usize {
+        self.next
+    }
+
+    /// Frees the work list (after the stream).
+    pub fn release(&mut self) {
+        self.ids = BTreeMap::new();
+        self.queue = Vec::new();
+    }
+
     /// A value as the core sees a word: a smi, or a reference to an object
     /// of the program image (which gets an id).
     fn value(&mut self, w: usize) -> Result<Value, Malformed> {
@@ -297,7 +376,7 @@ pub unsafe fn convert<'a>(p: &ProgramTables, prims: &PrimitiveArities) -> Result
         }
         builtin.push(v as u16);
     }
-    let mut c = Converter {
+    let mut c = Objects {
         image: Image {
             start: p.program_heap_start,
             end: p.program_heap_start.checked_add(p.program_heap_size)
@@ -306,18 +385,13 @@ pub unsafe fn convert<'a>(p: &ProgramTables, prims: &PrimitiveArities) -> Result
         class_bits: table(p.class_bits, p.class_bits_length),
         ids: BTreeMap::new(),
         queue: Vec::new(),
+        next: 0,
+        error: None,
     };
     // The order of the dump: roots, globals, literals.
     let roots = c.values(table(p.roots, ROOT_COUNT))?;
     let globals = c.values(table(p.globals, p.globals_length))?;
     let literals = c.values(table(p.literals, p.literals_length))?;
-    let mut heap = Vec::new();
-    let mut next = 0;
-    while next < c.queue.len() {
-        let addr = c.queue[next];
-        heap.push(c.object(addr)?);
-        next += 1;
-    }
     let mut arity = Vec::with_capacity(prims.counts.len());
     let mut at = 0usize;
     for (module, &n) in prims.counts.iter().enumerate() {
@@ -342,7 +416,7 @@ pub unsafe fn convert<'a>(p: &ProgramTables, prims: &PrimitiveArities) -> Result
         roots,
         literals,
         globals,
-        heap,
+        objects: c,
         prim_arity: arity,
     })
 }
@@ -435,36 +509,39 @@ mod tests {
             }
         }
 
-        fn convert(&self) -> Result<Converted<'_>, Malformed> {
+        /// The converted program and its heap.
+        fn convert(&self) -> Result<(Converted<'_>, Vec<ExecObj>), Malformed> {
             let prims = PrimitiveArities { counts: &[], arities: &[] };
-            unsafe { convert(&self.tables(), &prims) }
+            let mut c = unsafe { convert(&self.tables(), &prims) }?;
+            let heap = c.collect_heap()?;
+            Ok((c, heap))
         }
     }
 
     #[test]
     fn converts_objects_breadth_first() {
         let f = Fixture::new();
-        let l = f.convert().unwrap();
+        let (l, heap) = f.convert().unwrap();
         // Globals first (the roots are smis): the instance is object 0, the
         // literal byte array 1, the array (reached through the instance) 2.
-        assert_eq!(l.heap.len(), 3);
+        assert_eq!(heap.len(), 3);
         assert!(matches!(l.globals[0], Value::Obj(0)));
         assert!(matches!(l.literals[0], Value::Obj(1)));
-        match &l.heap[0].body {
+        match &heap[0].body {
             ExecBody::Instance(fields) => {
                 assert!(matches!(fields[..], [Value::Smi(7), Value::Obj(2)]));
             }
             _ => panic!("not an instance"),
         }
-        match &l.heap[1].body {
+        match &heap[1].body {
             ExecBody::Bytes(b) => assert_eq!(b, &vec![1, 2, 3]),
             _ => panic!("not bytes"),
         }
-        match &l.heap[2].body {
+        match &heap[2].body {
             ExecBody::Array(e) => assert!(matches!(e[..], [Value::Smi(1), Value::Obj(0)])),
             _ => panic!("not an array"),
         }
-        assert!(l.heap.iter().all(|o| o.ro));
+        assert!(heap.iter().all(|o| o.ro));
     }
 
     #[test]

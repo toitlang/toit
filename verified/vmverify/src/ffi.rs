@@ -133,9 +133,9 @@ unsafe fn run(input: &VerifyInput) -> (verify::Verdict, usize, u64) {
                 message, heap_ns: 0, infer_ns: 0, check_ns: 0 };
             (v, 0, convert_ns)
         }
-        Ok(converted) => {
-            let objects = converted.heap.len();
-            (verify::verify(&converted, input.trusted != 0), objects, convert_ns)
+        Ok(mut converted) => {
+            let v = verify::verify(&mut converted, input.trusted != 0);
+            (v, converted.objects.count(), convert_ns)
         }
     }
 }
@@ -165,8 +165,15 @@ pub unsafe extern "C" fn toit_vmverify_canonical(input: *const VerifyInput, path
             eprintln!("cannot convert the program: {} ({})", e.what, e.detail);
             1
         }
-        Ok(c) => {
-            let text = crate::canonical::canonical(&c.program(), &c.heap, &c.globals, &c.prim_arity);
+        Ok(mut c) => {
+            let heap = match c.collect_heap() {
+                Ok(heap) => heap,
+                Err(e) => {
+                    eprintln!("cannot convert the program: {} ({})", e.what, e.detail);
+                    return 1;
+                }
+            };
+            let text = crate::canonical::canonical(&c.program(), &heap, &c.globals, &c.prim_arity);
             if std::fs::write(&path, text).is_ok() { 0 } else { 2 }
         }
     }
