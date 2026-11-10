@@ -138,7 +138,8 @@ primitive contract's side), and it is in the format-1 VM too: trusted
 or untrusted, format 1 or 2, `verified/core/fuzz/findings/
 encoder-cyclic-array.toit` segfaults `toit run` (reproducer snapshot:
 encoder-cyclic-array-stack-overflow.snapshot). Fix: bound the nesting
-depth; upstream PR (branch floitsch/encoder-nesting).
+depth: https://github.com/toitlang/toit/pull/3374 (also fixes an
+over-read in `core.encode_object` when its 1 KB buffer overflows).
 
 ## Observations (not bugs today)
 

@@ -189,7 +189,7 @@ verified/core/fuzz/findings/launch-run-*):
   (`encode_error`/`encode_object`) recurses without bound on a cyclic
   array and overflows the native stack, killing the VM. It reproduces in
   the format-1 VM with a 10-line program (spec/VM-BUGS.md;
-  encoder-cyclic-array.*); upstream fix PR in progress.
+  encoder-cyclic-array.*); upstream fix: https://github.com/toitlang/toit/pull/3374.
 
 ## Memory high-water mark
 
