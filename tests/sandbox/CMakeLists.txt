@@ -18,6 +18,7 @@
 # The tests of the structural verifier and the interpreter hardening fork
 # toit.run and toit.compile, so they take both as arguments.
 set(TOOL_TESTS
+  "tests/sandbox/field-access-test.toit"
   "tests/sandbox/runtime-hardening-test.toit"
   "tests/sandbox/verify-reject-test.toit"
   "tests/sandbox/verify-launch-test.toit"
@@ -50,6 +51,8 @@ set(UNTRUSTED_RUN_TESTS
   # Name, program, expected exit code, expected output (regex),
   # optionally output that must not appear (regex).
   "print|print-main.toit|0|hello from the sandbox"
+  # Long messages are truncated at a character boundary.
+  "print-long|print-long-main.toit|0|é[.][.][.].*done printing"
   "denied|denied-main.toit|0|hostname: PERMISSION_DENIED.*file: PRIMITIVE_LOOKUP_FAILED"
   "uncaught|uncaught-main.toit|1|PERMISSION_DENIED"
   # The verifier rejects deep sleep in untrusted programs at launch; the

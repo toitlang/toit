@@ -115,8 +115,15 @@ Grants to the allowed-target set are issued:
 - by the scheduler, when a process of an untrusted group receives an RPC
   request: the requester's pid is granted so the provider can reply.
 
-The set is a ring buffer of `max_send_grants` entries (oldest grant
-evicted). Pids are never reused, so grants for dead processes are inert.
+The set holds at most `max_send_grants` pids, and grants are never
+evicted: evicting an older grant would silently break a capability the
+container uses. The system process and processes of the own group don't
+take up room. When the set is full, a discovery that would grant a new
+provider fails with `QUOTA_EXCEEDED` (the client sees the exception), and
+an RPC request from a new requester to a provider in the container is
+refused like a request to a full mailbox (`process_send` returns false for
+a trusted sender). Pids are never reused, so grants for dead processes are
+inert, but they keep their room.
 
 Services in the system process are reachable by every process, so they
 reject untrusted clients unless the provider opts in
@@ -192,10 +199,13 @@ Quotas can also be given for trusted containers.
 
 Device: containers are started by `system/containers.toit` through
 `programs_registry.spawn`, which takes the policy as its last argument.
-Without an explicit policy a container runs with the default policy of its
-image: trusted, unless the image was installed with
-`ContainerService.FLAG-UNTRUSTED` (for example
-`ContainerImageWriter.commit --untrusted`). Existing images are
+Without an explicit policy a container runs with the trusted policy.
+`ContainerService.FLAG-UNTRUSTED` on an image (for example from
+`ContainerImageWriter.commit --untrusted`, or set by `toit run
+--untrusted`) is binding: a container from a flagged image always runs
+with the untrusted policy, also when the start request asks for the
+trusted policy (only its quotas are used). Running a container from an
+unflagged image untrusted is up to the caller. Existing images are
 unaffected.
 
 ## Verification at launch
@@ -214,6 +224,21 @@ run-critical container ends the system with exit code 1 (so `toit run
 
 Builds without the verifier (FreeRTOS devices) refuse all untrusted
 programs.
+
+## Field accesses
+
+The verifier does not prove the receivers of field accesses, so the
+interpreter checks every field access of an untrusted process at run time,
+in every build. Such processes run with their own dispatch table, which
+sends the seven field bytecodes (`LOAD_FIELD`, `LOAD_FIELD_WIDE`,
+`LOAD_FIELD_LOCAL`, `POP_LOAD_FIELD_LOCAL`, `STORE_FIELD`,
+`STORE_FIELD_WIDE`, `STORE_FIELD_POP`) to entries that check that the
+receiver is an instance (or task) with enough fields, and which calls field
+accessors from `INVOKE_VIRTUAL_GET`/`INVOKE_VIRTUAL_SET` instead of
+inlining them. A failing access throws `INVALID_PROGRAM`. Other processes
+use the unchecked table and don't pay for the check. Builds configured with
+`TOIT_CHECKED_FIELD_ACCESS` in the environment check the field accesses of
+every process.
 
 ## Tests
 
