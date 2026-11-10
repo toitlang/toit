@@ -1,0 +1,102 @@
+VERIFIER-PANIC task-test: header bci 11189: 0x48 -> 0xf6
+VERIFIER-PANIC lambda-test: header bci 20794: 0x0c -> 0x00
+VERIFIER-PANIC exception-test: header bci 2430: 0x07 -> 0x80
+VERIFIER-PANIC print-main: header bci 12610: 0x01 -> 0xcc
+VERIFIER-PANIC task-test: header bci 18449: 0x27 -> 0xbd
+VERIFIER-PANIC string-test: header bci 39004: 0x1d -> 0xff
+VERIFIER-PANIC lambda-test: header bci 11717: 0x1b -> 0x80
+VERIFIER-PANIC lambda-test: header bci 231: 0x00 -> 0x01
+VERIFIER-PANIC task-test: header bci 19600: 0x07 -> 0x8c
+VERIFIER-PANIC exception-test: header bci 2274: 0x0b -> 0xff
+VERIFIER-PANIC string-test: header bci 45782: 0x0c -> 0x00
+VERIFIER-PANIC task-test: header bci 6299: 0x01 -> 0xff
+VERIFIER-PANIC lambda-test: header bci 3426: 0x08 -> 0xee
+VERIFIER-PANIC non-local-branch-test: header bci 10432: 0x07 -> 0xff
+VERIFIER-PANIC lambda-test: header bci 5933: 0x13 -> 0xff
+VERIFIER-PANIC task-test: header bci 18450: 0x01 -> 0xff
+VERIFIER-PANIC lambda-test: header bci 12896: 0x81 -> 0x5f
+VERIFIER-PANIC block-test: header bci 12803: 0x01 -> 0xfa
+VERIFIER-PANIC print-main: header bci 12034: 0x0c -> 0xd2
+VERIFIER-PANIC lambda-test: header bci 12837: 0x1c -> 0xb1
+VERIFIER-PANIC list-test: header bci 27685: 0x10 -> 0x7f
+VERIFIER-PANIC block-test: header bci 3202: 0x17 -> 0xff
+VERIFIER-PANIC lambda-test: header bci 12663: 0xc5 -> 0x02
+VERIFIER-PANIC block-test: header bci 14490: 0xfc -> 0x3f
+VERIFIER-PANIC class-id-test: header bci 4781: 0x09 -> 0xd5
+VERIFIER-PANIC map-test: header bci 7041: 0x26 -> 0xbc
+VERIFIER-PANIC exception-test: header bci 12641: 0x0a -> 0xcd
+VERIFIER-PANIC string-test: header bci 42565: 0x0e -> 0xcf
+VERIFIER-PANIC string-test: header bci 46660: 0xa8 -> 0x7f
+VERIFIER-PANIC non-local-branch-test: header bci 11787: 0x1b -> 0x80
+VERIFIER-PANIC list-test: header bci 17640: 0x0b -> 0x80
+STUCK task-test: operand bci 8338: 0x0c -> 0x01
+VERIFIER-PANIC try-finally-test: header bci 8862: 0x0d -> 0xff
+VERIFIER-PANIC try-finally-test: header bci 5910: 0x13 -> 0xb1
+STUCK list-test: operand bci 18354: 0x0c -> 0x00
+VERIFIER-PANIC print-main: header bci 2933: 0x06 -> 0xff
+VERIFIER-PANIC class-id-test: header bci 3499: 0x0c -> 0x5b
+VERIFIER-PANIC map-test: header bci 16517: 0x1c -> 0xc9
+VERIFIER-PANIC class-id-test: header bci 11566: 0x1b -> 0x80
+VERIFIER-PANIC task-test: header bci 20811: 0x0b -> 0xfd
+VERIFIER-PANIC list-test: header bci 29282: 0xfa -> 0x76
+STUCK exception-test: operand bci 11999: 0x03 -> 0x01
+VERIFIER-PANIC class-id-test: header bci 5388: 0x29 -> 0x80
+VERIFIER-PANIC task-test: header bci 15516: 0x4d -> 0x80
+VERIFIER-PANIC block-test: header bci 14490: 0xfc -> 0x00
+STUCK exception-test: operand bci 11958: 0x0c -> 0x00
+VERIFIER-PANIC lambda-test: header bci 11829: 0x0d -> 0x64
+VERIFIER-PANIC try-finally-test: header bci 17455: 0x12 -> 0x9c
+STUCK exception-test: operand bci 11927: 0x05 -> 0x00
+VERIFIER-PANIC list-test: header bci 18616: 0x03 -> 0x00
+VERIFIER-PANIC class-id-test: header bci 8386: 0x0d -> 0xff
+STUCK list-test: operand bci 18364: 0x09 -> 0x00
+STUCK exception-test: operand bci 11953: 0x06 -> 0x01
+VERIFIER-PANIC block-test: header bci 135: 0x06 -> 0x00
+VERIFIER-PANIC lambda-test: header bci 9420: 0xa2 -> 0x1f
+VERIFIER-PANIC string-test: header bci 5388: 0x82 -> 0x9d
+VERIFIER-PANIC string-test: header bci 48900: 0x16 -> 0x00
+VERIFIER-PANIC lambda-test: header bci 8775: 0x01 -> 0xff
+VERIFIER-PANIC block-test: header bci 1450: 0x03 -> 0x09
+VERIFIER-PANIC lambda-test: header bci 2902: 0x35 -> 0xbd
+VERIFIER-PANIC lambda-test: header bci 9406: 0x0d -> 0x01
+VERIFIER-PANIC map-test: header bci 17000: 0x9d -> 0x7f
+VERIFIER-PANIC lambda-test: header bci 1047: 0x06 -> 0x80
+VERIFIER-PANIC task-test: header bci 12331: 0xb8 -> 0x7f
+VERIFIER-PANIC non-local-branch-test: header bci 17678: 0x02 -> 0x80
+VERIFIER-PANIC exception-test: header bci 14843: 0x0c -> 0x00
+VERIFIER-PANIC list-test: header bci 10863: 0x08 -> 0x01
+VERIFIER-PANIC exception-test: header bci 19494: 0x05 -> 0xff
+VERIFIER-PANIC task-test: header bci 11658: 0x01 -> 0x80
+VERIFIER-PANIC block-test: header bci 5677: 0x50 -> 0x66
+STUCK lambda-test: operand bci 8828: 0x06 -> 0x00
+{
+  "seconds": 1504,
+  "seed": 7,
+  "run": "build/asan/sdk/lib/toit/bin/toit.run",
+  "filter": "the VM's launch-time verification (toit.run --untrusted, verified/vmverify)",
+  "seeds": [
+    "print-main",
+    "block-test",
+    "lambda-test",
+    "try-finally-test",
+    "exception-test",
+    "string-test",
+    "list-test",
+    "map-test",
+    "class-id-test",
+    "non-local-branch-test",
+    "task-test"
+  ],
+  "first": 0,
+  "mutants": 81380,
+  "outcomes": {
+    "rejected": 69825,
+    "exit-0": 9316,
+    "exit-1": 1501,
+    "exit-255": 642,
+    "verifier-panic": 63,
+    "timeout": 25,
+    "stuck": 8
+  },
+  "crashes": []
+}

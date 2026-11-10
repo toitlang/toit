@@ -231,3 +231,6 @@ verified verifier (receiver of LOAD_FIELD_THIS, branch target range, room
 checks that `global_max_height` already covers); cache table pointers in
 the machine; tail-call threading if the toolchain supports it
 (`become`); the REPEAT instruction of note 16.
+
+Launch-time verification cost (time, memory, code size of the verifier
+linked into the VM): verified/vmverify/README.md, "Cost".
