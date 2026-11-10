@@ -193,6 +193,41 @@ const UNWIND_RETURN: usize = 1;
 const UNWIND_BRANCH: usize = 2;
 const TOKEN_LENGTH: usize = 5;
 
+/// The message of a raised failure (`TOIT_V2_MESSAGE_*`). Its words may be
+/// object references: they are passed to C++ only by value and read there
+/// before the first GC point.
+pub struct Msg {
+    pub kind: usize,
+    pub words: [usize; V2_MESSAGE_MAX_WORDS],
+    pub count: usize,
+}
+
+impl Msg {
+    pub fn none() -> Msg {
+        Msg { kind: V2_MESSAGE_NONE, words: [0; V2_MESSAGE_MAX_WORDS], count: 0 }
+    }
+
+    pub fn word(w: usize) -> Msg {
+        Msg { kind: V2_MESSAGE_WORD, words: [w, 0, 0, 0], count: 1 }
+    }
+
+    pub fn array(ws: &[usize]) -> Msg {
+        let mut words = [0; V2_MESSAGE_MAX_WORDS];
+        let count = if ws.len() <= V2_MESSAGE_MAX_WORDS { ws.len() } else { V2_MESSAGE_MAX_WORDS };
+        let mut i = 0;
+        while i < count {
+            words[i] = ws[i];
+            i += 1;
+        }
+        Msg { kind: V2_MESSAGE_ARRAY, words, count }
+    }
+
+    /// Raw (untagged) module and index.
+    pub fn primitive(module: usize, index: usize) -> Msg {
+        Msg { kind: V2_MESSAGE_PRIMITIVE, words: [module, index, 0, 0], count: 2 }
+    }
+}
+
 /// The environment of one run.
 pub struct Env<'a> {
     pub p: &'a Program,
@@ -337,17 +372,58 @@ impl Machine {
     // -----------------------------------------------------------------------
     // Exceptions and unwinding.
 
-    /// Raises failure `k` (`spec::raise`).
+    /// Raises failure `k` (`spec::raise`). `INVALID_PROGRAM` carries the
+    /// bci of the failing instruction as message, as in format 1.
     pub fn raise(&mut self, env: &Env, k: usize) -> Ctl {
+        let msg = if k == INVALID_PROGRAM { Msg::word(smi(self.bci as i64)) } else { Msg::none() };
+        self.raise_msg(env, k, msg)
+    }
+
+    /// Raises failure `k` with the message the format-1 failure entry point
+    /// would have encoded (diagnostics only: the message is part of the
+    /// trace, which the spec leaves null).
+    pub fn raise_msg(&mut self, env: &Env, k: usize, msg: Msg) -> Ctl {
         if env.p.literals.len() < 7 { return Ctl::Stuck(stuck::FATAL); }
         let value = env.p.literals.at(2 + k);
-        self.raise_value(env, value)
+        self.raise_value_msg(env, value, msg)
+    }
+
+    /// `LOOKUP_FAILED` with `[selector offset, class id, receiver]`.
+    #[inline(never)]
+    pub fn raise_lookup(&mut self, env: &Env, receiver: usize, sel: i64) -> Ctl {
+        let cid = match self.class_id(env.p, receiver) { Some(c) => c, None => -1 };
+        self.raise_msg(env, LOOKUP_FAILED, Msg::array(&[smi(sel), smi(cid), receiver]))
+    }
+
+    /// `AS_CHECK_FAILED` with `[value, absolute bci after the check]` (the
+    /// compiler records the class name of the check at that bci).
+    #[inline(never)]
+    pub fn raise_as(&mut self, env: &Env, value: usize, len: usize) -> Ctl {
+        let after = self.bci + len;
+        self.raise_msg(env, AS_CHECK_FAILED, Msg::array(&[value, smi(after as i64)]))
+    }
+
+    /// `CODE_INVOCATION_FAILED` with `[is block, expected, provided, entry
+    /// bci of the target]`.
+    #[inline(never)]
+    pub fn raise_code(&mut self, env: &Env, is_block: bool, expected: usize, provided: usize, target: usize) -> Ctl {
+        let p = env.p;
+        let entry = if target < p.methods.len() { p.methods.at(target).entry as i64 } else { -1 };
+        let words = [p.boolean(is_block), smi(expected as i64), smi(provided as i64), smi(entry)];
+        self.raise_msg(env, CODE_INVOCATION_FAILED, Msg::array(&words))
+    }
+
+    /// Throws an `Exception_` with the given value (a program-heap object:
+    /// it survives the allocation) and an empty message.
+    pub fn raise_value(&mut self, env: &Env, value: usize) -> Ctl {
+        self.raise_value_msg(env, value, Msg::none())
     }
 
     /// Throws an `Exception_` with the given value (a program-heap object:
     /// it survives the allocation). The spec's trace is null; the VM
-    /// encodes the stack trace, as format 1 does (PHASE4-REQUESTS.md).
-    pub fn raise_value(&mut self, env: &Env, value: usize) -> Ctl {
+    /// encodes the stack trace and the message, as format 1 does
+    /// (verified/spec/format/PHASE4-REQUESTS.md).
+    pub fn raise_value_msg(&mut self, env: &Env, value: usize, msg: Msg) -> Ctl {
         let p = env.p;
         let cid = p.builtin.at(BUILTIN_EXCEPTION);
         if !is_smi(cid) { return Ctl::Stuck(stuck::FATAL); }
@@ -356,7 +432,7 @@ impl Machine {
             return Ctl::Stuck(stuck::FATAL);
         }
         self.save();
-        let exception = env.rt.allocate_exception(&mut self.mem, value);
+        let exception = env.rt.allocate_exception(&mut self.mem, value, msg.kind, &msg.words, msg.count);
         if !self.reload(p) { return Ctl::Stuck(stuck::FATAL); }
         if exception == 0 {
             let oom = p.roots.at(ROOT_OUT_OF_MEMORY_ERROR);
@@ -584,7 +660,7 @@ impl Machine {
         let receiver = self.at(n - 1);
         match self.find_method(env.p, receiver, sel) {
             Lookup::Stuck(r) => Ctl::Stuck(r),
-            Lookup::Missing => self.raise(env, LOOKUP_FAILED),
+            Lookup::Missing => self.raise_lookup(env, receiver, sel),
             Lookup::Found(t) => {
                 if env.p.methods.at(t).arity as usize != n { return Ctl::Stuck(stuck::BAD_ARITY); }
                 let ret = self.bci + len;
@@ -1044,7 +1120,7 @@ fn compare_num(a: Num, b: Num) -> u8 {
     if the_double <= -9223372036854778e3 {
         return if lhs_is_int { SIMPLE_GREATER } else { SIMPLE_LESS };
     }
-    if the_double >= 9223372036854778e3 {
+    if the_double >= 9223372036854776e3 {
         return if lhs_is_int { SIMPLE_LESS } else { SIMPLE_GREATER };
     }
     let other_int = the_double as i64;
@@ -1327,20 +1403,22 @@ impl Machine {
     fn op_as(&mut self, env: &Env, enc: usize, interface: bool, len: usize) -> Ctl {
         let p = env.p;
         if !self.has_slot(0) { return Ctl::Stuck(stuck::STACK_RANGE); }
-        match self.typecheck(p, self.at(0), enc / 2, enc % 2 == 1, interface) {
+        let v = self.at(0);
+        match self.typecheck(p, v, enc / 2, enc % 2 == 1, interface) {
             Check::Stuck(r) => Ctl::Stuck(r),
             Check::Yes => { self.bci += len; Ctl::Next }
-            Check::No => self.raise(env, AS_CHECK_FAILED),
+            Check::No => self.raise_as(env, v, len),
         }
     }
 
     fn op_as_local(&mut self, env: &Env, enc: usize) -> Ctl {
         let p = env.p;
         if !self.has_slot(enc / 32) { return Ctl::Stuck(stuck::STACK_RANGE); }
-        match self.typecheck_class(p, self.at(enc / 32), enc % 32, false) {
+        let v = self.at(enc / 32);
+        match self.typecheck_class(p, v, enc % 32, false) {
             Check::Stuck(r) => Ctl::Stuck(r),
             Check::Yes => { self.bci += 2; Ctl::Next }
-            Check::No => self.raise(env, AS_CHECK_FAILED),
+            Check::No => self.raise_as(env, v, 2),
         }
     }
 
@@ -1378,7 +1456,7 @@ impl Machine {
             None => self.raise(env, INVALID_PROGRAM),
             Some(t) => {
                 let arity = p.methods.at(t).arity as usize;
-                if n < arity { return self.raise(env, CODE_INVOCATION_FAILED); }
+                if n < arity { return self.raise_code(env, true, arity, n, t); }
                 self.drop(n - arity);
                 let ret = self.bci + 2;
                 self.call(p, t, ret)
@@ -1414,7 +1492,7 @@ impl Machine {
         let arity = info.arity as usize;
         if arity < c { return self.raise(env, INVALID_PROGRAM); }
         let user = arity - c;
-        if a - 1 < user { return self.raise(env, CODE_INVOCATION_FAILED); }
+        if a - 1 < user { return self.raise_code(env, false, user, a - 1, m); }
         // The user arguments are the parameters 1..1+user, at array indices
         // lim-1-user .. lim-1 (parameter i is at array index lim-1-i).
         let from = self.lim - 1 - user;
@@ -1454,7 +1532,7 @@ impl Machine {
         let recv = self.at(0);
         match self.find_method(p, recv, sel) {
             Lookup::Stuck(r) => Ctl::Stuck(r),
-            Lookup::Missing => self.raise(env, LOOKUP_FAILED),
+            Lookup::Missing => self.raise_lookup(env, recv, sel),
             Lookup::Found(t) => {
                 let info = p.methods.at(t);
                 if info.arity != 1 { return Ctl::Stuck(stuck::BAD_ARITY); }
@@ -1479,7 +1557,7 @@ impl Machine {
         let v = self.at(0);
         match self.find_method(p, recv, sel) {
             Lookup::Stuck(r) => Ctl::Stuck(r),
-            Lookup::Missing => self.raise(env, LOOKUP_FAILED),
+            Lookup::Missing => self.raise_lookup(env, recv, sel),
             Lookup::Found(t) => {
                 let info = p.methods.at(t);
                 if info.arity != 2 { return Ctl::Stuck(stuck::BAD_ARITY); }
@@ -1624,10 +1702,12 @@ impl Machine {
         let module = p.code.at(bci + 1) as usize;
         let index = Self::u16_at(p, bci + 2);
         let (primitive, primitive_arity) = match env.rt.lookup_primitive(module, index) {
-            None => return self.raise(env, PRIMITIVE_LOOKUP_FAILED),
+            None => return self.raise_msg(env, PRIMITIVE_LOOKUP_FAILED, Msg::primitive(module, index)),
             Some(x) => x,
         };
-        if primitive_arity != arity { return self.raise(env, PRIMITIVE_LOOKUP_FAILED); }
+        if primitive_arity != arity {
+            return self.raise_msg(env, PRIMITIVE_LOOKUP_FAILED, Msg::primitive(module, index));
+        }
         self.save();
         let (status, result) = env.rt.call_primitive(&mut self.mem, &primitive, arity, self.base);
         if !self.reload(p) { return Ctl::Stuck(stuck::FATAL); }
@@ -1656,7 +1736,8 @@ impl Machine {
         match self.block_target(p, slot) {
             None => self.raise(env, INVALID_PROGRAM),
             Some(t) => {
-                if p.methods.at(t).arity != 1 { return self.raise(env, CODE_INVOCATION_FAILED); }
+                let arity = p.methods.at(t).arity as usize;
+                if arity != 1 { return self.raise_code(env, true, arity, 1, t); }
                 if !self.push(Self::block_value(fi, slot)) { return Ctl::Stuck(stuck::LIMIT); }
                 let ret = self.bci + 1;
                 self.call(p, t, ret)

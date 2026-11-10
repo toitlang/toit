@@ -67,6 +67,11 @@ static bool v2_is_terminator(int op) {
   }
 }
 
+// The branch opcodes of format 2: four forward, then four backward ones.
+static const int V2_FIRST_BRANCH = 81;
+static const int V2_FIRST_BRANCH_BACK = 85;
+static const int V2_LAST_BRANCH = 88;
+
 // Opcode numbers that format 2 reuses (src/compiler/bytecode_format.h).
 static const int V2_STORE_FIELD_THIS = NON_LOCAL_RETURN_WIDE;
 static const int V2_LOAD_FIELD_THIS = UNLINK;
@@ -220,6 +225,20 @@ V2MethodTable* V2MethodTable::compute(Program* program, bool untrusted) {
               delete table;
               return v2_fail("this-field access outside the receiver's fields", m);
             }
+          }
+        }
+        if (V2_FIRST_BRANCH <= op && op <= V2_LAST_BRANCH) {
+          // Branch targets stay inside the method (format note 9); the core
+          // checks them again at run time.
+          word offset = bytes[bci + 1] | (bytes[bci + 2] << 8);
+          if (offset == 0) {
+            delete table;
+            return v2_fail("branch with zero offset", bci);
+          }
+          word target = op < V2_FIRST_BRANCH_BACK ? bci + offset : bci - offset;
+          if (target < static_cast<word>(info.entry) || target >= static_cast<word>(info.end)) {
+            delete table;
+            return v2_fail("branch target outside the method", bci);
           }
         }
         if (untrusted && op == HALT && bytes[bci + 1] >= 2) {
@@ -404,6 +423,18 @@ Interpreter::Result Interpreter::run_v2() {
     if (watermark_.compare_exchange_strong(watermark, null)) break;
   }
   Result::State state = static_cast<Result::State>(context.result_state);
+  if (state == Result::PREEMPTED) {
+    // For the profiler (Scheduler::run_process): the method of the top
+    // frame, whose bci the stack holds.
+    Stack* stack = process_->task()->stack();
+    word frame_top = stack->v2_frame_top();
+    if (frame_top >= Stack::V2_FRAME_WORDS) {
+      word method = stack->v2_word_at(frame_top - Stack::V2_FRAME_WORDS + Stack::V2_FRAME_METHOD);
+      if (table->is_valid(method)) {
+        preemption_method_header_bcp_ = program->bytecodes.data() + table->header_of(method);
+      }
+    }
+  }
   return Result(state, context.result_value);
 #else
   FATAL("format-2 programs need the verified core (TOIT_VERIFIED_CORE)");
@@ -471,18 +502,35 @@ uword toit_v2_allocate_instance(void* raw_process, uword class_id) {
   });
 }
 
-uword toit_v2_allocate_exception(void* raw_process, uword raw_value) {
+uword toit_v2_allocate_exception(void* raw_process, uword raw_value, uword message_kind,
+                                 const uword* words, uword count) {
   Process* process = v2_process(raw_process);
   Program* program = process->program();
   Object* value = reinterpret_cast<Object*>(raw_value);
   // The trace, as Interpreter::push_error encodes it, with the raising
   // method as the top frame. Optional: a failure leaves the trace null.
+  // The message words are only used here, before the first GC point.
   Object* trace = process->null_object();
   MallocedBuffer buffer(V2_STACK_ENCODING_BUFFER_SIZE);
   if (buffer.has_content()) {
     ProgramOrientedEncoder encoder(program, &buffer);
+    Stack* stack = process->task()->stack();
+    Object* const* elements = reinterpret_cast<Object* const*>(words);
+    if (count > TOIT_V2_MESSAGE_MAX_WORDS) count = 0;
     Stack::v2_frames_skip_ = 0;
-    bool success = encoder.encode_error(value, "", process->task()->stack());
+    bool success;
+    if (message_kind == TOIT_V2_MESSAGE_WORD && count == 1) {
+      success = encoder.encode_error(value, elements[0], stack);
+    } else if (message_kind == TOIT_V2_MESSAGE_ARRAY) {
+      success = encoder.encode_error(value, elements, count, stack);
+    } else if (message_kind == TOIT_V2_MESSAGE_PRIMITIVE && count == 2) {
+      char message[64];
+      snprintf(message, sizeof(message), "Failed to find primitive %d:%d",
+               static_cast<int>(words[0]), static_cast<int>(words[1]));
+      success = encoder.encode_error(value, message, stack);
+    } else {
+      success = encoder.encode_error(value, "", stack);
+    }
     Stack::v2_frames_skip_ = 2;
     if (success) {
       word size = buffer.size();

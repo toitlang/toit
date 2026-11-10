@@ -23,7 +23,10 @@ publish = false
 crate-type = ["staticlib", "rlib"]
 
 [dependencies]
-vstd = { version = "=0.0.0-2026-11-01-0251", default-features = false }
+vstd = "=0.0.0-2026-11-01-0251"
+# The specification the handlers are proven against (spec functions only;
+# nothing of it is linked into the VM).
+toit_spec = { path = "../spec" }
 
 [package.metadata.verus]
 verify = true

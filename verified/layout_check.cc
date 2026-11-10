@@ -92,7 +92,7 @@ extern "C" {
 uword toit_v2_current_stack(void*) { abort(); }
 uword toit_v2_allocate_instance(void*, uword) { abort(); }
 uword toit_v2_allocate_double(void*, uint64) { abort(); }
-uword toit_v2_allocate_exception(void*, uword) { abort(); }
+uword toit_v2_allocate_exception(void*, uword, uword, const uword*, uword) { abort(); }
 uword toit_v2_allocate_array(void*, uword, uword) { abort(); }
 uword toit_v2_grow_stack(void*, uword) { abort(); }
 uword toit_v2_lookup_primitive(void*, uword, uword, const void**, uword*) { abort(); }
@@ -271,6 +271,11 @@ int main() {
     { "V2_REPORT_STUCK", TOIT_V2_REPORT_STUCK, false },
     { "V2_REPORT_UNCAUGHT", TOIT_V2_REPORT_UNCAUGHT, false },
     { "V2_REPORT_TASK_RETURNED", TOIT_V2_REPORT_TASK_RETURNED, false },
+    { "V2_MESSAGE_NONE", TOIT_V2_MESSAGE_NONE, false },
+    { "V2_MESSAGE_WORD", TOIT_V2_MESSAGE_WORD, false },
+    { "V2_MESSAGE_ARRAY", TOIT_V2_MESSAGE_ARRAY, false },
+    { "V2_MESSAGE_PRIMITIVE", TOIT_V2_MESSAGE_PRIMITIVE, false },
+    { "V2_MESSAGE_MAX_WORDS", TOIT_V2_MESSAGE_MAX_WORDS, false },
     { "KIND_METHOD", V2_KIND_METHOD, false },
     { "KIND_FIELD_ACCESSOR", V2_KIND_FIELD_ACCESSOR, false },
     { "KIND_LAMBDA", V2_KIND_LAMBDA, false },

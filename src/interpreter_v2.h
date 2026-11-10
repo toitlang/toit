@@ -100,6 +100,11 @@ class V2MethodTable {
 
   bool is_valid(word index) const { return 0 <= index && index < length_; }
 
+  // The absolute bci of the header of a valid method (methods follow each
+  // other, the first one after the tag). Format-2 method ids in the debug
+  // information (tools/snapshot.toit) are header positions.
+  word header_of(word index) const { return index == 0 ? 4 : methods_[index - 1].end; }
+
   // The index of the method whose body starts at [entry], or -1.
   word index_of_entry(word entry) const;
   const V2Method& at(word index) const { return methods_[index]; }
@@ -168,6 +173,14 @@ static const uword TOIT_V2_PRIMITIVE_THROW = 2;
 static const uword TOIT_V2_PRIMITIVE_MISSING = 0;
 static const uword TOIT_V2_PRIMITIVE_FOUND = 1;
 
+// Messages of the exceptions the core raises (the trace's message, as the
+// format-1 failure entry points of lib/core/exceptions.toit encode it).
+static const uword TOIT_V2_MESSAGE_NONE = 0;       // The empty string.
+static const uword TOIT_V2_MESSAGE_WORD = 1;       // words[0].
+static const uword TOIT_V2_MESSAGE_ARRAY = 2;      // An array of the words.
+static const uword TOIT_V2_MESSAGE_PRIMITIVE = 3;  // "Failed to find primitive m:i".
+static const uword TOIT_V2_MESSAGE_MAX_WORDS = 4;
+
 // Reports (stderr) of the core.
 static const uword TOIT_V2_REPORT_STUCK = 0;
 static const uword TOIT_V2_REPORT_UNCAUGHT = 1;
@@ -193,8 +206,12 @@ uword toit_v2_allocate_instance(void* process, uword class_id);
 // MAY GC. Allocates a double with the given bits. 0 on failure.
 uword toit_v2_allocate_double(void* process, uint64 bits);
 // MAY GC. Allocates an Exception_ with the given value (a program-heap
-// object) and the encoded stack trace of the current task. 0 on failure.
-uword toit_v2_allocate_exception(void* process, uword value);
+// object) and the encoded stack trace of the current task, whose message is
+// built from [message_kind] and the [count] words at [words] (see the
+// TOIT_V2_MESSAGE_* kinds). The words are only read before the first GC
+// point. 0 on failure.
+uword toit_v2_allocate_exception(void* process, uword value, uword message_kind,
+                                 const uword* words, uword count);
 // MAY GC. Allocates an array of [length] elements, all [filler]. 0 on failure.
 uword toit_v2_allocate_array(void* process, uword length, uword filler);
 // MAY GC. Replaces the current task's stack by one with at least [needed]

@@ -123,8 +123,11 @@ main args:
         // Caught either by the interpreter at run time (INVALID_PROGRAM), or,
         // if verification is enabled in the environment (-Xverify / the
         // TOIT_VERIFY env var), by the verifier before the program runs.
+        // Format-2 programs (TOIT_BYTECODE_FORMAT=2) run on the verified
+        // core, which terminates the process on a stuck state of the spec.
         if result.output.contains "INVALID_PROGRAM" or result.output.contains "REJECTED"
-            or result.output.contains "verification":
+            or result.output.contains "verification" or result.output.contains "stuck state"
+            or result.output.contains "format-2 program rejected":
           caught-count++
 
     print "runtime-hardening: patched $patched-count variants, $caught-count caught, no crashes"

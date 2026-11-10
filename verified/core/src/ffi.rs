@@ -84,7 +84,8 @@ extern "C" {
     fn toit_v2_current_stack(process: *mut c_void) -> usize;
     fn toit_v2_allocate_instance(process: *mut c_void, class_id: usize) -> usize;
     fn toit_v2_allocate_double(process: *mut c_void, bits: u64) -> usize;
-    fn toit_v2_allocate_exception(process: *mut c_void, value: usize) -> usize;
+    fn toit_v2_allocate_exception(process: *mut c_void, value: usize, message_kind: usize,
+                                  words: *const usize, count: usize) -> usize;
     fn toit_v2_allocate_array(process: *mut c_void, length: usize, filler: usize) -> usize;
     fn toit_v2_grow_stack(process: *mut c_void, needed: usize) -> usize;
     fn toit_v2_lookup_primitive(process: *mut c_void, module: usize, index: usize,
@@ -129,10 +130,14 @@ impl Runtime {
     }
 
     /// MAY GC. An `Exception_` with the given value (a program-heap object)
-    /// and the encoded stack trace of the current task, or 0.
+    /// and the encoded stack trace of the current task, or 0. The message
+    /// words (object references among them) are only read by C++ before
+    /// its first GC point.
     #[verifier::external_body]
-    pub fn allocate_exception(&self, stack: &mut StackMem, value: usize) -> usize {
-        let r = unsafe { toit_v2_allocate_exception(self.process, value) };
+    pub fn allocate_exception(&self, stack: &mut StackMem, value: usize, kind: usize,
+                              words: &[usize; V2_MESSAGE_MAX_WORDS], count: usize) -> usize {
+        let count = if count <= V2_MESSAGE_MAX_WORDS { count } else { 0 };
+        let r = unsafe { toit_v2_allocate_exception(self.process, value, kind, words.as_ptr(), count) };
         *stack = self.stack();
         r
     }
@@ -285,6 +290,7 @@ layout_table!(
     V2_OK, V2_STACK_OVERFLOW, V2_OUT_OF_MEMORY, V2_PRIMITIVE_SUCCESS, V2_PRIMITIVE_FAILURE,
     V2_PRIMITIVE_THROW, V2_PRIMITIVE_MISSING, V2_PRIMITIVE_FOUND, V2_REPORT_STUCK,
     V2_REPORT_UNCAUGHT, V2_REPORT_TASK_RETURNED,
+    V2_MESSAGE_NONE, V2_MESSAGE_WORD, V2_MESSAGE_ARRAY, V2_MESSAGE_PRIMITIVE, V2_MESSAGE_MAX_WORDS,
     KIND_METHOD, KIND_FIELD_ACCESSOR, KIND_LAMBDA, KIND_BLOCK, NO_VALUE, BLOCK_SLOT_BITS,
 );
 

@@ -274,6 +274,26 @@ bool ProgramOrientedEncoder::encode_error(Object* type, const char* message, Sta
   return !buffer()->has_overflow();
 }
 
+bool ProgramOrientedEncoder::encode_error(Object* type, Object* const* elements, word count, Stack* stack) {
+  write_byte('[');
+  write_byte('#');
+  write_int(4);
+  write_int('E');
+  EncodeVisitor visitor(this);
+  visitor.accept(type);
+  // The encoding of an array (EncodeVisitor::visit_array).
+  write_header(2, 'A');
+  write_int(count);
+  write_byte('[');
+  write_byte('#');
+  write_int(count);
+  for (word i = 0; i < count; i++) {
+    visitor.accept(elements[i]);
+  }
+  visitor.accept(stack);
+  return !buffer()->has_overflow();
+}
+
 bool ProgramOrientedEncoder::encode_profile(Profiler* profiler, String* title, int cutoff) {
   profiler->encode_on(this, title, cutoff);
   return !buffer()->has_overflow();

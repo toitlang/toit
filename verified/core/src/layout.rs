@@ -160,6 +160,11 @@ pub const V2_PRIMITIVE_FOUND: usize = 1;
 pub const V2_REPORT_STUCK: usize = 0;
 pub const V2_REPORT_UNCAUGHT: usize = 1;
 pub const V2_REPORT_TASK_RETURNED: usize = 2;
+pub const V2_MESSAGE_NONE: usize = 0;
+pub const V2_MESSAGE_WORD: usize = 1;
+pub const V2_MESSAGE_ARRAY: usize = 2;
+pub const V2_MESSAGE_PRIMITIVE: usize = 3;
+pub const V2_MESSAGE_MAX_WORDS: usize = 4;
 
 // --- Method kinds (src/interpreter_v2.h) -----------------------------------
 pub const KIND_METHOD: u8 = 0;
