@@ -1318,7 +1318,7 @@ file = "src/from_vm.rs"
 item = "*"
 kind = "plain_rust_file"
 count = 1
-justification = "TRUSTED: builds the abstract program and heap from the tables the core executes (straight-line copy plus a bounds-checked breadth-first walk of the program image); equal to the dump path's on 433/433 suite programs (tests/differential.py)."
+justification = "TRUSTED: builds the abstract program and heap from the tables the core executes (straight-line copy plus a bounds-checked breadth-first walk of the program image); equal to the dump path's on 434/434 suite programs (tests/differential.py)."
 
 [[trusted]]
 crate = "vmverify"

@@ -122,7 +122,7 @@ built from VM memory (`toit.run --verify --emit-canonical`) with the one
 the reference loader builds from `tools/spec_dump.toit`'s dump
 (`toit_vmverify_canonical`). Objects are renumbered breadth first from the
 roots, globals and literals; large integers compare by value. Result
-(2026-11-10): **433 of 433** compilable programs identical (the 4 others
+(2026-11-10): **434 of 434** compilable programs identical (the 4 others
 are negative compile tests). `verified/check.sh --tests` runs the unit
 tests and a sample of the differential test.
 

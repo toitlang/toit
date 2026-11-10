@@ -426,6 +426,7 @@ equal verified/spec/tests/toit/blocks.toit
 equal verified/spec/tests/toit/classes.toit
 equal verified/spec/tests/toit/collections.toit
 equal verified/spec/tests/toit/exceptions.toit
+equal verified/spec/tests/toit/finally_records.toit
 equal verified/spec/tests/toit/floats.toit
 equal verified/spec/tests/toit/hello.toit
 equal verified/spec/tests/toit/large_ints.toit
