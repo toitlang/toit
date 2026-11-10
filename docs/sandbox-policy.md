@@ -158,9 +158,10 @@ example because it is stuck in a primitive), it is killed with exit code
 replaces the `PROCESS_MAX_RUN_TIME` dead-lock `FATAL` for such processes.
 A kill takes effect when the running primitive returns.
 
-`HALT 2` (deep sleep) and `HALT 3` (reset) from an untrusted process
-terminate that process with exit code 242 instead of acting on the
-device.
+`HALT 2` (deep sleep) and `HALT 3` (reset) are rejected by the verifier
+in untrusted programs (see below), so such a program never starts. As a
+second line of defense, an untrusted process that reaches them anyway is
+terminated with exit code 242 instead of acting on the device.
 
 A container explicitly started as untrusted through the container API is
 never critical: its failure doesn't terminate the system, even if its
@@ -197,6 +198,23 @@ image: trusted, unless the image was installed with
 `ContainerImageWriter.commit --untrusted`). Existing images are
 unaffected.
 
+## Verification at launch
+
+Every program that is started with the untrusted policy is checked by the
+structural bytecode verifier (`src/verifier.cc`) with the untrusted rules
+before a process group is created for it: `snapshot.launch` (host) and
+`programs_registry.spawn` (containers in flash) call
+`Verifier::verify_for_policy`. This happens independent of `-Xverify` and
+`TOIT_VERIFY`; trusted programs are still only verified when one of them
+is set. A rejected program never runs: the verifier prints its errors to
+stderr and the launch fails with the error `VERIFICATION_FAILED`. The
+container manager forgets a container whose start failed; a refused
+run-critical container ends the system with exit code 1 (so `toit run
+--untrusted` exits with 1), and `boot` keeps booting the other images.
+
+Builds without the verifier (FreeRTOS devices) refuse all untrusted
+programs.
+
 ## Tests
 
 `tests/sandbox/` contains the negative suite. Each `*-test.toit` is a
@@ -212,10 +230,15 @@ mechanism. `tests/sandbox/cli/` holds programs run directly with
 ## Known gaps
 
 - The untrusted policy is a dispatch-time gate only. It relies on the
-  interpreter hardening (stack-pointer and method-id validation) to keep a
-  malformed program from jumping to code that bypasses the primitive
-  table. Untrusted programs are not structurally verified before they
-  run.
+  interpreter hardening (block and method-id validation) and on the
+  verifier, which is not proven sound yet; a verifier bug lets a
+  malicious snapshot bypass the primitive table.
+- The verifier does not prove the receivers of field accesses. Only
+  builds with `TOIT_CHECKED_FIELD_ACCESS` check them at run time; in
+  other builds a malformed untrusted program can read and write past the
+  end of an object.
+- Untrusted containers in flash are verified on every start, not once at
+  install time, and not at all on devices (which refuse them).
 - A sandbox can make the system process print a warning for every
   unhandled message it sends (rate bounded only by the mailbox quota and
   the system process' speed).

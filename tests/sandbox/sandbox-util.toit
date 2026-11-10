@@ -70,7 +70,8 @@ write-file path/string content/string -> none:
 
 /**
 Finds the offset of the bytecodes inside the snapshot $snapshot-bytes, given
-  the raw $bytecodes of the program (as decoded by tools/snapshot.toit).
+  the raw $bytecodes of the program (as decoded by tools/snapshot.toit or
+  emitted by `toit.run --verify --emit-bytecodes`).
 Returns -1 if not found.
 */
 find-bytecodes snapshot-bytes/ByteArray bytecodes/ByteArray -> int:

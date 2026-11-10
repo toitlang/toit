@@ -25,6 +25,7 @@
 #include "os.h"
 #include "snapshot.h"
 #include "snapshot_bundle.h"
+#include "verifier.h"
 
 #include "objects_inline.h"
 
@@ -68,10 +69,22 @@ int run_program(SnapshotBundle boot_bundle, SnapshotBundle application_bundle, c
       ProgramImage boot_image = read_image_from_bundle(boot_bundle);
       int group_id = vm.scheduler()->next_group_id();
       if (boot_image.is_valid()) {
+        // The boot program is trusted.
+        if (!Verifier::verify_if_enabled(boot_image.program(), false)) {
+          boot_image.release();
+          return 1;
+        }
         exit = vm.scheduler()->run_boot_program(
             boot_image.program(), boot_bundle, application_bundle, argv, group_id);
       } else {
         auto application_image = read_image_from_bundle(application_bundle);
+        // Without a boot program the application runs as the boot program
+        // and is trusted.
+        if (application_image.is_valid() &&
+            !Verifier::verify_if_enabled(application_image.program(), false)) {
+          application_image.release();
+          return 1;
+        }
         exit = vm.scheduler()->run_boot_program(application_image.program(), argv, group_id);
         application_image.release();
       }

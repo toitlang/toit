@@ -19,6 +19,7 @@
 
 import expect show *
 import host.file
+import host.os
 import .sandbox-util show *
 import ...tools.snapshot show SnapshotBundle ToitMethod
 
@@ -60,6 +61,11 @@ MAX-VARIANTS ::= 120
 main args:
   run := args[0]
   compiler := args[1]
+
+  // This test exercises the interpreter's own run-time checks, so the forked
+  // toit.run processes must not verify at load, even when the suite is run
+  // with TOIT_VERIFY=1.
+  os.env["TOIT_VERIFY"] = "0"
 
   with-tmp-directory: | dir |
     snap := "$dir/prog.snapshot"
