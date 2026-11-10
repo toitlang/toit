@@ -208,7 +208,7 @@ Results (final build):
   the 106 ported primitives, identical with C++ and Rust. It found two
   C++ issues, fixed on this branch: `smi_subtract` overflow (upstream PR
   toitlang/toit#3375) and `string_write_to_byte_array`'s overlapping
-  `memcpy` (VM-BUGS.md); and one compiler-dependent NaN payload
+  `memcpy` (toitlang/toit#3376); and one compiler-dependent NaN payload
   (gcc commutes `+`/`*`), matched in prims/fp.rs.
 - With the Rust primitives: tests/sandbox 93/93; untrusted suite 280/282
   identical (the two known differences, program-name-test and

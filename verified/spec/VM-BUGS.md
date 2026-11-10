@@ -165,7 +165,8 @@ although the source blob and the destination may be the same byte array
 result differs from a `memmove` for overlapping forward copies. Reachable
 from Toit with `#primitive.core.string-write-to-byte-array` (the library's
 `ByteArray.replace` path for strings never aliases, but a program can).
-Fix: `memmove`. Fixed on core/primitives.
+Fix: `memmove`. Fixed on core/primitives; upstream:
+https://github.com/toitlang/toit/pull/3376.
 
 ## Observations (not bugs today)
 
