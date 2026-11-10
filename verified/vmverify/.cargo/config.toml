@@ -1,0 +1,12 @@
+# Copyright (C) 2026 Toit contributors.
+#
+# Code generation of the VM's Rust library (this crate contains the
+# verified core; CMake runs cargo from this directory). Larger tail
+# duplication lets LLVM copy the run loop's dispatch (bci load, opcode
+# fetch, jump table) into the handlers instead of jumping back to one shared
+# dispatch block: 2 dispatch sites -> 40, and 3-5 percent fewer
+# instructions on richards, deltablue and pystone (verified/core/DESIGN.md,
+# section 8, performance pass). No effect on the proofs (Verus does not use
+# this file).
+[build]
+rustflags = ["-C", "llvm-args=-tail-dup-size=12"]
