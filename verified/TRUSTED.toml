@@ -1585,6 +1585,22 @@ count = 1
 justification = "Ghost content of the Table view; only related to memory through the external_body contracts (TRUSTED.md section 1)."
 
 [[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "proven_unreachable"
+kind = "external_body"
+count = 1
+justification = "requires false: Verus proves every call site dead (the dispatch's default arm, opcode >= 101 contradicts the verifier's instruction check); lets LLVM drop the jump table's range check (-2.7% instructions on richards); TRUSTED.md section 4."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "proven_unreachable"
+kind = "unsafe"
+count = 1
+justification = "core::hint::unreachable_unchecked in a function whose precondition is false (never executed if the callers' proofs are sound)."
+
+[[trusted]]
 crate = "spec"
 file = "src/bin/toit_spec_mutate.rs"
 item = "*"

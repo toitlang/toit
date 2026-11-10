@@ -842,6 +842,19 @@ impl Heap {
     }
 }
 
+/// A path Verus proves unreachable (`requires false`: no caller can meet
+/// the precondition), marked as such for the compiler so that it can drop
+/// the path (the range check before the dispatch's jump table). TRUSTED
+/// only in that Verus' proof of the callers is sound.
+#[verifier::external_body]
+#[inline(always)]
+pub fn proven_unreachable<A>() -> A
+    requires false,
+{
+    // SAFETY: unreachable: every call site is proven dead (requires false).
+    unsafe { core::hint::unreachable_unchecked() }
+}
+
 /// The preemption flag: the interpreter's watermark, set to
 /// `PREEMPTION_MARKER` by the scheduler from another thread. No contract:
 /// its value is environment nondeterminism.

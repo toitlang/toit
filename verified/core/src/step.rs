@@ -443,7 +443,7 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
             proof { assert(sp::step(ap, g) == sp::op_store_local_pop(g, n as int)) by { reveal(sp::step); } }
             m.op_store_local_pop(p, n)
         },
-        14..=19 => {
+        14 | 15 | 16 | 17 | 18 | 19 => {
             let n = (opcode - 14) as usize;
             proof { assert(sp::step(ap, g) == sp::op_load_local(g, n as int, 1)) by { reveal(sp::step); } }
             m.op_load_local(p, n, 1)
@@ -580,7 +580,7 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
             proof { assert(sp::step(ap, g) == sp::op_as_local(ap, g, enc as int)) by { reveal(sp::step); } }
             return crate::types::op_as_local(m, env, bci, opcode, enc);
         },
-        81..=84 => {
+        81 | 82 | 83 | 84 => {
             let d = code_u16(p, bci + 1);
             let kind = (opcode - 81) as usize;
             proof {
@@ -590,7 +590,7 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
             }
             m.op_branch(p, kind, bci + d, 3)
         },
-        85..=88 => {
+        85 | 86 | 87 | 88 => {
             // BRANCH_BACK*: the preemption point of loops.
             if env.pre.requested() {
                 env.pre.clear();
@@ -840,7 +840,7 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
             proof { assert(sp::step(ap, g) == sp::op_allocate(ap, g, c as int, 3)) by { reveal(sp::step); } }
             return crate::alloc::op_allocate(m, env, bci, opcode, c, 3);
         },
-        78..=80 => {
+        78 | 79 | 80 => {
             return crate::arrays::op_array(m, env, bci, opcode);
         },
         100 => {
@@ -877,7 +877,7 @@ pub fn step(m: &mut Machine, env: &Env) -> (r: Ctl)
             // Every opcode of format 2 (below OPCODE_COUNT2, which the
             // instruction check of the spec requires) has a handler.
             proof { assert(opcode < 101); assert(false); }
-            return Ctl::Stuck(stuck::LIMIT);
+            return crate::view::proven_unreachable();
         },
     };
     proof { lemma_local_post(p, m0, *m, r); }

@@ -151,6 +151,15 @@ its state in registers; sound because the machine has no destructor, the
 moved-from place is not read in between, and nothing unwinds
 (panic = abort).
 
+`view::proven_unreachable` (performance, 2026-11-11) is an external_body
+function with `requires false` whose body is
+`core::hint::unreachable_unchecked()`. Verus proves that no call site can
+meet the precondition, so the body never runs; the compiler may then drop
+the path. Its one use is the default arm of the verified dispatch
+(`step::step`: an opcode >= 101 contradicts the verifier's instruction
+check), which removes the range check before the jump table. It assumes
+nothing about the VM; it is wrong only if Verus' proof of the caller is.
+
 ## 5. The spec
 
 verified/spec/src/v2/spec.rs is the definition the handlers follow. That it
