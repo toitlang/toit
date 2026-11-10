@@ -202,10 +202,12 @@ unwinding) and the unwind tables of `panic = "unwind"`.
 
 ## End-to-end fuzzing with the launch path
 
-`verified/core/fuzz/fuzz.py --filter=launch` (the default) launches each
-mutant as an untrusted container on the ASan build; the VM's own
+`verified/tools/core_fuzz.toit --filter=launch` (the default) launches
+each mutant as an untrusted container on the ASan build; the VM's own
 verifier decides. Runs on 2026-11-10 (16 jobs, logs in
-verified/core/fuzz/findings/launch-run-*):
+verified/core/fuzz/findings/launch-run-*; made with the earlier Python
+driver, whose mutants for a seed differ from the Toit driver's, so the
+seeds do not reproduce them; the findings' snapshots do):
 
 | Run | Build | Minutes | Mutants | Accepted and run | Crash | Stuck | Verifier panic (rejected) |
 |---|---|---|---|---|---|---|---|

@@ -221,7 +221,7 @@ Scripts: build/bench/ir.sh (instruction counts), build/bench/hot.sh
   interpreter can run (run_suite.py status `pass` or `steplimit`) runs
   untrusted in format 2 and trusted in format 1; stdout and exit code
   must match.
-- verified/core/fuzz/fuzz.py: mutates format-2 snapshots, launches each
+- verified/tools/core_fuzz.toit: mutates format-2 snapshots, launches each
   untrusted on an ASan build; the VM's launch-time verifier is the
   filter (`--filter=spec` uses `toit_spec_verify` on a dump instead).
 - The whole suite with `TOIT_BYTECODE_FORMAT=2` (not required any more,
