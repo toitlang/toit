@@ -285,6 +285,41 @@ gained one clause during the proof (a block frame's own reference points
 at a slot holding the frame's method), needed to relate the verifier's
 context chain to the frames.
 
+## What the VM checks outside the verifier (2026-11-10)
+
+The verifier checks only the instructions at mapped (reachable) offsets;
+the C++ loader (`V2MethodTable::compute`, src/interpreter_v2.cc) also
+sweeps every method linearly and rejects bad opcodes, operands, branch
+targets and `this` field indices in unreachable code. The end-to-end
+fuzzer saw accepted mutants the loader refuses for that reason
+(verified/core/PROGRESS.md). Decision: the verifier is right. The theorem
+shows that every reachable state's bci is a mapped offset of its frame's
+method (`frame_ok`), so unreachable bytes are never decoded by the
+machine; the VM's only other decoder of format-2 code, the stack-trace
+walk (`Stack::v2_frames_do`), decodes the current instruction with bounds
+checks. The loader's per-instruction sweep is therefore redundant once
+`check::verify` runs, and its extra rejections are harmless strictness;
+the VM-linking work should drop it for verified launches (or keep it
+knowing it rejects programs the verifier accepts).
+
+What the VM must still do outside the verifier, and nothing else:
+
+1. Decode the snapshot into the abstract program `pview2(p)` the verifier
+   checks and the machine runs: the method table from the method headers
+   (arity, kind, selector, receiver range, accessor field or capture
+   count, body bounds), the dispatch table, class bits, builtin class
+   ids, entry points, invoke offsets, roots and literals. The verifier
+   re-checks every consistency property it needs (`wf_program2`,
+   `tables_ok`, `method_ok`, including `entry < end <= len`); what it
+   cannot check is that the decoded table is the one the machine uses.
+2. Give the verifier the VM's primitive arities (`c.prim_arity`,
+   `v2/prim_arity.rs` generated from src/primitive.h) and run
+   `check::verify(p, c, trusted)` with `trusted = false` for an untrusted
+   launch.
+3. Run `heap_check::x_loaded_ok` on the loaded program heap and globals.
+4. Enforce the memory bound (hypothesis 3) and the primitive contract
+   (hypothesis 2), as before.
+
 ## Machine-interpreted objects (audit, 2026-11-10)
 
 R5 was a gap of one kind: the VM gives an object or field a meaning the

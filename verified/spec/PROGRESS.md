@@ -32,9 +32,14 @@ spec changes for the other agents: format/SPEC-CHANGELOG.md.
   is `verify && x_loaded_ok`. Verus: 690 verified, 0 errors; 434/438 suite
   programs and the system snapshots accepted.
 
+* Loader vs verifier on unreachable code: the verifier is right (the
+  machine decodes only mapped offsets); SOUNDNESS.md lists what the VM
+  must still do outside the verifier (decode the tables, run verify and
+  x_loaded_ok, memory bound, primitive contract). R2 recorded in note 5.
+
 ## In progress
 
-* Loader/verifier agreement on unreachable code.
+* Validation.
 
 ## Next
 
