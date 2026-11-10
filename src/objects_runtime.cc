@@ -22,6 +22,10 @@
 namespace toit {
 
 bool Object::mutable_byte_content(Process* process, uint8** content, word* length, Error** error) {
+  return mutable_byte_content(process, content, length, error, 0);
+}
+
+bool Object::mutable_byte_content(Process* process, uint8** content, word* length, Error** error, int depth) {
   *error = Error::from(process->program()->wrong_object_type());  // Default error if we return false.
   if (is_byte_array(this)) {
     auto byte_array = ByteArray::cast(this);
@@ -34,6 +38,7 @@ bool Object::mutable_byte_content(Process* process, uint8** content, word* lengt
     return true;
   }
   if (!is_instance(this)) return false;
+  if (depth >= MAX_BYTE_CONTENT_DEPTH) return false;
 
   auto program = process->program();
   auto instance = Instance::cast(this);
@@ -41,13 +46,13 @@ bool Object::mutable_byte_content(Process* process, uint8** content, word* lengt
     Object* backing = instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX);
     auto is_mutable = instance->at(Instance::BYTE_ARRAY_COW_IS_MUTABLE_INDEX);
     if (is_mutable == process->true_object()) {
-      return backing->mutable_byte_content(process, content, length, error);
+      return backing->mutable_byte_content(process, content, length, error, depth + 1);
     }
     ASSERT(is_mutable == process->false_object());
 
     const uint8* immutable_content;
     word immutable_length;
-    if (!backing->byte_content(program, &immutable_content, &immutable_length, STRINGS_OR_BYTE_ARRAYS)) {
+    if (!backing->byte_content(program, &immutable_content, &immutable_length, STRINGS_OR_BYTE_ARRAYS, depth + 1)) {
       return false;
     }
 
@@ -71,9 +76,9 @@ bool Object::mutable_byte_content(Process* process, uint8** content, word* lengt
     // TODO(florian): we could eventually accept larger integers here.
     if (!is_smi(from)) return false;
     if (!is_smi(to)) return false;
-    int from_value = Smi::value(from);
-    int to_value = Smi::value(to);
-    bool inner_success = HeapObject::cast(byte_array)->mutable_byte_content(process, content, length, error);
+    word from_value = Smi::value(from);
+    word to_value = Smi::value(to);
+    bool inner_success = byte_array->mutable_byte_content(process, content, length, error, depth + 1);
     if (!inner_success) return false;
     // If the content is null, then we probably failed allocating the object.
     // Might work after a GC.
