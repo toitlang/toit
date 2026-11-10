@@ -17,7 +17,7 @@
 //! of the same name (argument unpacking, failure codes, result).
 
 use super::*;
-use super::prims::PR;
+use super::prims::{PR, MAX_BYTE_CONTENT_DEPTH};
 use crate::types::Stuck;
 
 type P = Result<PR, Stuck>;
@@ -117,11 +117,19 @@ impl Machine {
     /// array is made mutable on the way (a fresh backing with a copy of the
     /// content), like the C++ VM does.
     fn mutable_blob(&mut self, v: Value) -> Option<(Value, usize, usize)> {
+        self.mutable_blob_at(v, 0)
+    }
+
+    /// `mutable_blob` at nesting `depth` (at most `MAX_BYTE_CONTENT_DEPTH`).
+    fn mutable_blob_at(&mut self, v: Value, depth: usize) -> Option<(Value, usize, usize)> {
         if let Some(b) = self.byte_array(v) {
             return Some((v, 0, b.len()));
         }
         let f = self.fields(v)?.clone();
         let cid = self.class_of(v)?;
+        if depth >= MAX_BYTE_CONTENT_DEPTH {
+            return None;
+        }
         if cid == self.builtin(BYTE_ARRAY_COW_CLASS) {
             if f[1] != self.true_v() {
                 let content = self.blob(f[0], false)?;
@@ -134,16 +142,16 @@ impl Machine {
                     fs[0] = backing;
                     fs[1] = t;
                 }
-                return self.mutable_blob(backing);
+                return self.mutable_blob_at(backing, depth + 1);
             }
-            return self.mutable_blob(f[0]);
+            return self.mutable_blob_at(f[0], depth + 1);
         }
         if cid == self.builtin(BYTE_ARRAY_SLICE_CLASS) {
             let (from, to) = match (f[1], f[2]) {
                 (Value::Smi(a), Value::Smi(b)) => (a, b),
                 _ => return None,
             };
-            let (o, start, end) = self.mutable_blob(f[0])?;
+            let (o, start, end) = self.mutable_blob_at(f[0], depth + 1)?;
             if from < 0 || to < from || start + to as usize > end {
                 return None;
             }
@@ -603,7 +611,11 @@ fn core(m: &mut Machine, name: &str, a: &[Value]) -> P {
                 None => return Ok(m.fail("WRONG_OBJECT_TYPE")),
             };
             let index = arg!(m.a_int(a[1]));
-            let src = arg!(m.a_blob(a[2]));
+            // ARGS(Blob): WRONG_BYTES_TYPE.
+            let src = match m.blob(a[2], false) {
+                Some(b) => b,
+                None => return Ok(m.fail("WRONG_BYTES_TYPE")),
+            };
             let from = arg!(m.a_int(a[3]));
             let to = arg!(m.a_int(a[4]));
             if index < 0 || from < 0 || to < 0 || to > src.len() as i64 {

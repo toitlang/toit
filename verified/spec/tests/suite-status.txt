@@ -73,6 +73,7 @@
 2 unimplemented tests/buffer3-test.toit core::put_uint_big_endian
 1 pass tests/byte-array-test.toit
 2 pass tests/byte-array-test.toit
+2 pass tests/byte-content-depth-test.toit
 1 unimplemented tests/byte-order-test.toit core::read_int_little_endian
 2 unimplemented tests/byte-order-test.toit core::read_int_little_endian
 1 unimplemented tests/bytes-allocated-test.toit core::process_stats
@@ -395,6 +396,7 @@
 2 unimplemented tests/math-test.toit encoding::tison_encode
 1 unimplemented tests/max-heap-size-test.toit core::set_max_heap_size
 2 unimplemented tests/max-heap-size-test.toit core::set_max_heap_size
+2 unimplemented tests/message-encoder-bounds-test.toit encoding::tison_encode
 1 pass tests/mixin-field-test.toit
 2 pass tests/mixin-field-test.toit
 1 pass tests/mixin-field-type-test.toit
@@ -497,6 +499,8 @@
 2 unimplemented tests/null-string-test.toit file::mkdir
 1 unimplemented tests/number-test.toit core::random_seed
 2 unimplemented tests/number-test.toit core::random_seed
+2 fail tests/object-encoder-limits-test.toit 64,32
+2 fail tests/object-encoder-list-test.toit 64,32
 1 unimplemented tests/object-histogram-test.toit core::process_stats
 2 unimplemented tests/object-histogram-test.toit core::process_stats
 1 pass tests/operators-test.toit
@@ -809,6 +813,7 @@
 2 unimplemented tests/uuid-test.toit crypto::sha1_start
 1 pass tests/valid-assignment-test.toit
 2 pass tests/valid-assignment-test.toit
+2 unimplemented tests/weak-map-cyclic-backing-test.toit core::process_stats
 1 unimplemented tests/weak-map-test.toit core::process_stats
 2 unimplemented tests/weak-map-test.toit core::process_stats
 1 pass tests/while-test.toit

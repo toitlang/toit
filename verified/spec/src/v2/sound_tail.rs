@@ -49,6 +49,56 @@ pub open spec fn tail_state(p: Program2, s: State2, t: int, args: Seq<Value>) ->
     }
 }
 
+// The refinement view of `replace_frame` (for the core's in-place move,
+// `Machine::replace_frame(target, from, n, extra)`): the new arguments are
+// `n` slots of the old frame from object-stack position `from`, then the
+// captures. Nothing else in the tail-call steps needs restating: their
+// checks are the core's in the same order, a frame with an active handler
+// is `Stuck(BadFrame)`, the frame keeps `ret` and `base`, and the frame's
+// finally records go (`fins_popped`). The core's `ensure_room` before the
+// three opcodes is a resource point (`prim::grows_stack`).
+
+/// The arguments of a tail call as the machine moves them.
+pub open spec fn moved_args(s: State2, from: int, n: int, cap: Seq<Value>) -> Seq<Value> {
+    s.stack.subrange(from, from + n) + cap
+}
+
+/// The three tail calls pass `moved_args`: INVOKE_STATIC_TAIL the top
+/// `arity` slots, INVOKE_LAMBDA_TAIL the parameters after the lambda and
+/// the captures, INVOKE_INITIALIZER_TAIL nothing.
+pub proof fn lemma_tail_moved(s: State2, a: int, user: int, cap: Seq<Value>)
+    requires 0 <= a <= s.stack.len(), 0 <= base(s), base(s) + 1 + user <= s.stack.len(), 0 <= user,
+    ensures
+        s.stack.subrange(s.stack.len() - a, s.stack.len() as int)
+            == moved_args(s, s.stack.len() - a, a, Seq::empty()),
+        s.stack.subrange(base(s) + 1, base(s) + 1 + user) + cap == moved_args(s, base(s) + 1, user, cap),
+        Seq::<Value>::empty() == moved_args(s, s.stack.len() as int, 0, Seq::empty()),
+{
+    assert(s.stack.subrange(s.stack.len() - a, s.stack.len() as int) + Seq::empty()
+        =~= s.stack.subrange(s.stack.len() - a, s.stack.len() as int));
+    assert(s.stack.subrange(s.stack.len() as int, s.stack.len() as int) + Seq::<Value>::empty() =~= Seq::<Value>::empty());
+}
+
+/// `replace_frame` slot by slot: the slots below the frame stay, the moved
+/// slots follow from the frame's base, then the captures.
+pub proof fn lemma_replace_frame_slots(p: Program2, s: State2, t: int, from: int, n: int, cap: Seq<Value>)
+    requires
+        !has_handler(s),
+        0 <= base(s) <= s.stack.len(), 0 <= from, 0 <= n, from + n <= s.stack.len(),
+    ensures ({
+        let s2 = tail_state(p, s, t, moved_args(s, from, n, cap));
+        &&& replace_frame(p, s, t, moved_args(s, from, n, cap)) == Outcome2::Next(s2)
+        &&& s2.stack.len() == base(s) + n + cap.len()
+        &&& forall|i: int| 0 <= i < base(s) ==> #[trigger] s2.stack[i] == s.stack[i]
+        &&& forall|i: int| 0 <= i < n ==> #[trigger] s2.stack[base(s) + i] == s.stack[from + i]
+        &&& forall|j: int| 0 <= j < cap.len() ==> #[trigger] s2.stack[base(s) + n + j] == cap[j]
+    }),
+{
+    let s2 = tail_state(p, s, t, moved_args(s, from, n, cap));
+    assert forall|i: int| 0 <= i < n implies #[trigger] s2.stack[base(s) + i] == s.stack[from + i] by {}
+    assert forall|j: int| 0 <= j < cap.len() implies #[trigger] s2.stack[base(s) + n + j] == cap[j] by {}
+}
+
 /// The new slots conform to the target's entry kinds and its receiver is
 /// in its range.
 pub open spec fn tail_args(p: Program2, c: Cert, s: State2, t: int, args: Seq<Value>) -> bool {

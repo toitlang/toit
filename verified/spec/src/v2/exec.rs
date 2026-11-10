@@ -62,6 +62,9 @@ pub enum ExecOutcome2 {
     Stuck(Stuck),
     Uncaught(Value),
     TaskReturned,
+    /// The machine raises an exception with this value (`Outcome2::Raise`);
+    /// `x_throw_null` is the reference completion.
+    Raise(Value),
 }
 
 /// The exec outcome `r` with final state `s` is the spec outcome `o`.
@@ -71,6 +74,7 @@ pub open spec fn matches2(o: Outcome2, r: ExecOutcome2, s: State2) -> bool {
         ExecOutcome2::Stuck(k) => o == Outcome2::Stuck(k),
         ExecOutcome2::Uncaught(v) => o == Outcome2::Halt(s, Halt2::Uncaught(v)),
         ExecOutcome2::TaskReturned => o == Outcome2::Halt(s, Halt2::TaskReturned),
+        ExecOutcome2::Raise(v) => o == Outcome2::Raise(s, v),
     }
 }
 
@@ -594,10 +598,21 @@ pub fn x_unwind(p: &ExecProgram, s: &mut ExecState, u: Unwind) -> (r: ExecOutcom
     }
 }
 
-/// Raises failure `k`.
+/// Raises failure `k`: an oracle step (`Outcome2::Raise`), completed by
+/// the caller (`x_throw_null` for the reference completion).
+#[allow(unused_variables)]
 pub fn x_raise(p: &ExecProgram, s: &mut ExecState, k: usize) -> (r: ExecOutcome2)
-    requires wf_program2(pview2(p)), k < 5, old(s).fins.len() < 0x1_0000_0000_0000,
+    requires wf_program2(pview2(p)), k < 5,
     ensures matches2(raise(pview2(p), view2(old(s)), k as int), r, view2(final(s))),
+{
+    ExecOutcome2::Raise(p.literals[2 + k])
+}
+
+/// The reference completion of `Raise(s, value)`: an `Exception_` with the
+/// value and a null trace, allocated at the end of the heap; then unwinds.
+pub fn x_throw_null(p: &ExecProgram, s: &mut ExecState, value: Value) -> (r: ExecOutcome2)
+    requires wf_program2(pview2(p)), old(s).fins.len() < 0x1_0000_0000_0000,
+    ensures matches2(throw_exception(pview2(p), view2(old(s)), value, null2(pview2(p))), r, view2(final(s))),
 {
     let ghost s0 = view2(s);
     let ghost pv = pview2(p);
@@ -616,18 +631,18 @@ pub fn x_raise(p: &ExecProgram, s: &mut ExecState, k: usize) -> (r: ExecOutcome2
     while i < n
         invariant
             i <= n, n as int == instance_field_count(p1(pv), cid as int), wf_program2(pv), pv == pview2(p),
-            k < 5, null == null2(pv),
+            null == null2(pv),
             fs@.len() == i,
-            forall|j: int| 0 <= j < i ==> fs@[j] == (if j == 0 { pv.literals[2 + k as int] } else { null }),
+            forall|j: int| 0 <= j < i ==> fs@[j] == (if j == 0 { value } else if j == 1 { null } else { null }),
         decreases n - i,
     {
-        if i == 0 { fs.push(p.literals[2 + k]); } else { fs.push(null); }
+        if i == 0 { fs.push(value); } else { fs.push(null); }
         i = i + 1;
     }
-    let ghost o = exception_obj(pv, k as int);
+    let ghost o = exception_obj2(pv, value, null2(pv));
     proof {
         assert(fs@ =~= Seq::new(instance_field_count(p1(pv), cid as int) as nat, |j: int|
-            if j == 0 { pv.literals[2 + k] } else { null2(pv) }));
+            if j == 0 { value } else if j == 1 { null2(pv) } else { null2(pv) }));
     }
     let e = x_alloc(s, ExecObj { class_id: cid as u16, ro: false, body: ExecBody::Instance(fs) });
     proof { assert(view2(s) == alloc2(s0, o)); }

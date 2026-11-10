@@ -49,6 +49,37 @@ spec changes for the other agents: format/SPEC-CHANGELOG.md.
   verify_suite: 434/438 accepted (4 do not compile); system snapshots
   accepted; mutation campaign 12,300 mutants, 2,450 accepted, 0 stuck.
 
+* Core requests R7, R6 and S1, and the tail-call check (branch
+  spec/raise-and-resources; SPEC-CHANGELOG.md has one entry each):
+  - R7: raising is an oracle step, `Outcome2::Raise(s, v)` completed by
+    `prim::raised` (any trace in a heap extended under the primitive
+    contract, or the out-of-memory error); `raise_null` is the reference
+    completion (`lemma_raise_null`), which the interpreter runs
+    (`exec::x_throw_null`).
+  - R6: `prim::resource_throw` (stack overflow or out of memory at
+    `grows_stack` opcodes, out of memory at ALLOCATE, the operator
+    fallback when a double cannot be allocated); `sound_resource.rs`.
+  - S1: the PRIMITIVE protocol (`prim_returns`, `prim_complete`,
+    `PrimRet::{Success, Failure, OutOfMemory}`, machine-completed task
+    primitives) and `prim_spec` = default contract refined per primitive
+    (smi_add, array_at, array_at_put; satisfiable: `sound_prim_spec.rs`).
+  - Tail calls: nothing in the spec blocked a verified `replace_frame`
+    (the checks match the core's; the missing piece was the stack growth
+    before the three opcodes, now a resource point);
+    `sound_tail::lemma_replace_frame_slots` gives the slot-by-slot view.
+  - `theorem::outcome`/`transition` quantify over the completed oracle
+    steps; the theorem also states no completed outcome is `Stuck`.
+    Verus 718 verified, 0 errors; the core (328 verified) needed no
+    change. The interpreter's byte-content emulation now bounds slice
+    nesting (byte-content-depth-test passes).
+  - Validation: SOUNDNESS.md, "Tests" (check.sh --tests passed; suite 274
+    pass, the previous 273 among them; verify_suite 439/443; system
+    snapshots; 11,100 mutants, 0 stuck).
+  - For the core: `step::resource_throw`/`exception_like` and the raise
+    disjuncts of `advances` can become `theorem::outcome` (completed oracle
+    steps); the assumed bridges' contracts should be restated with
+    `prim::raised`, `prim::resource_throw` and `prim::prim_returns`.
+
 ## Open (not started here)
 
 * The VM's loader still sweeps unreachable code (SOUNDNESS.md, "What the
@@ -57,5 +88,5 @@ spec changes for the other agents: format/SPEC-CHANGELOG.md.
 * VM-BUGS.md 3-5 (message encoder, error encoder, byte content of COW
   arrays and slices): memory-safety bugs in trusted C++ found by the R5
   audit; for an upstream PR.
-* The core must follow SPEC-CHANGELOG.md (R5, R1, R4 entries).
+* The core must follow SPEC-CHANGELOG.md (R5, R1, R4, R7, R6, S1 entries).
 * R3 (HASH_FIND, REPEAT): left for the performance pass, as requested.

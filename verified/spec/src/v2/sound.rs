@@ -487,33 +487,41 @@ pub open spec fn loaded_ok(p: Program2, c: Cert, heap0: Seq<HeapObj>, globals0: 
 // ---------------------------------------------------------------------------
 // The theorem.
 
+/// A completed outcome (not an oracle step) is good: a next state (or the
+/// state of a yield) is well formed; other halts end the process or the
+/// task.
+pub open spec fn final_ok(p: Program2, c: Cert, o: Outcome2) -> bool {
+    match o {
+        Outcome2::Next(s2) => wf(p, c, s2),
+        Outcome2::Halt(s2, h) => h is Yield ==> wf(p, c, s2),
+        _ => false,
+    }
+}
+
 /// The outcome of a step from a well-formed state: not stuck; a next
 /// state (or the state of a yield) is well formed; a PRIMITIVE leaves the
-/// state for its completion (`completions_ok`); other halts end the
-/// process or the task.
+/// state for its completion (`completions_ok`); every completion of a
+/// raise is good (`final_ok`); other halts end the process or the task.
 pub open spec fn outcome_ok(p: Program2, c: Cert, o: Outcome2) -> bool {
     match o {
         Outcome2::Stuck(_) => false,
         Outcome2::Next(s2) => wf(p, c, s2),
         Outcome2::Halt(s2, h) => h is Yield ==> wf(p, c, s2),
         Outcome2::Primitive(s2, _, _) => wf(p, c, s2),
+        Outcome2::Raise(s2, v) => forall|o2: Outcome2| #[trigger] crate::v2::prim::raised(p, s2, v, o2) ==> final_ok(p, c, o2),
     }
 }
 
-/// Every completion of a PRIMITIVE step from `s`: success or failure with
-/// any heap and value the oracle may produce, a missing primitive, and the
-/// task primitives completed by the machine.
+/// Every completion of a PRIMITIVE step from `s`: the continuation after
+/// any heap and result the default primitive contract allows
+/// (`prim_default`, which every `prim_spec` refines), a missing primitive,
+/// and the task primitives completed by the machine.
 pub open spec fn completions_ok(p: Program2, c: Cert, s: State2, module: u8, index: u16) -> bool {
-    &&& forall|h2: Seq<HeapObj>, v: Value| prim_heap_ok(p, s.heap, h2) && good(h2, v) ==> {
-            &&& outcome_ok(p, c, #[trigger] crate::v2::prim::prim_success(p, s, h2, v))
-            &&& outcome_ok(p, c, crate::v2::prim::prim_failure(s, h2, v))
-        }
+    &&& forall|h2: Seq<HeapObj>, r: crate::v2::prim::PrimRet| crate::v2::prim::prim_default(p, s.heap, h2, r) ==>
+            outcome_ok(p, c, #[trigger] crate::v2::prim::prim_complete(p, s, h2, r))
     &&& outcome_ok(p, c, crate::v2::prim::prim_missing(p, s))
-    &&& (module == 0 && index as int == PRIM_TASK_NEW ==>
-            outcome_ok(p, c, crate::v2::prim::task_new_step(p, s, s.stack[fbase(s, top_i(s))])))
-    &&& (module == 0 && index as int == PRIM_TASK_TRANSFER ==>
-            outcome_ok(p, c, crate::v2::prim::task_transfer_step(p, s,
-                s.stack[fbase(s, top_i(s))], s.stack[fbase(s, top_i(s)) + 1])))
+    &&& (crate::v2::prim::machine_completed(module, index) ==>
+            outcome_ok(p, c, crate::v2::prim::task_step(p, s, index)))
 }
 
 /// The opcode at the state's bci.

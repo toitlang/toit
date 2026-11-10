@@ -42,6 +42,9 @@ pub enum PR {
     Done,
 }
 
+/// `Object::MAX_BYTE_CONTENT_DEPTH` (src/objects.h).
+pub const MAX_BYTE_CONTENT_DEPTH: usize = 8;
+
 const ERROR_NAMES: [&str; 28] = [
     "ALLOCATION_FAILED", "ALLOCATION_SIZE_EXCEEDED", "ALREADY_CLOSED", "ALREADY_EXISTS",
     "DIVISION_BY_ZERO", "ERROR", "FILE_NOT_FOUND", "HARDWARE_ERROR", "ILLEGAL_UTF_8",
@@ -201,6 +204,12 @@ impl Machine {
     /// `Blob` unpacking (`Object::byte_content`): strings, byte arrays,
     /// copy-on-write byte arrays, byte-array slices and string slices.
     pub fn blob(&self, v: Value, strings_only: bool) -> Option<Vec<u8>> {
+        self.blob_at(v, strings_only, 0)
+    }
+
+    /// `blob` at nesting `depth`: like the C++ VM, slices and copy-on-write
+    /// byte arrays nest at most `MAX_BYTE_CONTENT_DEPTH` (8) deep.
+    fn blob_at(&self, v: Value, strings_only: bool, depth: usize) -> Option<Vec<u8>> {
         if let Some(s) = self.str_bytes(v) {
             return Some(s.clone());
         }
@@ -211,6 +220,9 @@ impl Machine {
         }
         let f = self.fields(v)?;
         let cid = self.class_of(v)?;
+        if depth >= MAX_BYTE_CONTENT_DEPTH {
+            return None;
+        }
         if !strings_only && cid == self.builtin(BYTE_ARRAY_COW_CLASS) {
             return self.byte_array(f[0]).cloned();
         }
@@ -225,7 +237,7 @@ impl Machine {
             (Value::Smi(a), Value::Smi(b)) => (*a, *b),
             _ => return None,
         };
-        let inner = self.blob(f[0], slice_kind)?;
+        let inner = self.blob_at(f[0], slice_kind, depth + 1)?;
         if from < 0 || to < from || to as usize > inner.len() {
             return None;
         }
