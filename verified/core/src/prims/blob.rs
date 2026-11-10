@@ -86,6 +86,7 @@ pub struct BlobClasses {
     pub str_byte_slice: i64,
 }
 
+#[inline(always)]
 pub fn blob_classes(p: &Program, h: &Heap) -> (r: BlobClasses)
     requires heap_inv(p, h),
 {
@@ -651,6 +652,7 @@ pub fn string_arg(h: &Heap, w: usize, Ghost(v): Ghost<Value>) -> (r: Option<Ghos
 }
 
 /// A blob argument as the `ARGS` macros decode it: failing with `err`.
+#[inline(always)]
 pub fn blob_or_fail(heap: &Heap, c: &Ctx, k: &BlobClasses, w: usize, Ghost(v): Ghost<Value>, mode: u8, err: usize)
     -> (r: Result<Blob, (PrimOutcome, Ghost<Value>)>)
     requires
@@ -1529,6 +1531,7 @@ pub fn string_from_rune(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome,
 }
 
 /// The blob family of the dispatch table.
+#[inline(always)]
 pub fn dispatch(i: usize, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)),
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@), contract(c.p, i as int, a, old(heap), final(heap), r.0, r.1@),

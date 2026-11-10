@@ -215,6 +215,7 @@ pub struct Ctx<'a> {
 
 /// Runs primitive `module`:`index` with the `n` arguments at object-stack
 /// array index `at` downwards (`mem[at]`, `mem[at - 1]`, ...).
+#[inline(always)]
 pub fn call(module: u8, index: u16, mem: &StackMem, at: usize, n: usize, heap: &mut Heap,
             p: &Program, al: &Allocator, Ghost(vs): Ghost<Seq<Value>>) -> (r: (PrimOutcome, Ghost<Value>))
     requires
@@ -356,6 +357,7 @@ pub proof fn lemma_array_at_put_refined(ap: Program2, vs: Seq<Value>, h: Seq<Hea
 }
 
 /// The dispatch table of the core module.
+#[inline(always)]
 pub fn dispatch(index: u16, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires
         heap_inv(c.p, old(heap)),

@@ -657,6 +657,7 @@ pub fn rebuild_hash_index(a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcom
 }
 
 /// The array family of the dispatch table.
+#[inline(always)]
 pub fn dispatch(i: usize, a: &Args, heap: &mut Heap, c: &Ctx) -> (r: (PrimOutcome, Ghost<Value>))
     requires heap_inv(c.p, old(heap)), args_rel(a, old(heap)),
     ensures prim_post(c.p, old(heap), final(heap), r.0, r.1@), contract(c.p, i as int, a, old(heap), final(heap), r.0, r.1@),
