@@ -75,11 +75,12 @@ contract is assumed:
   Rust.
 - S2 loader: `theorem::loaded` (the tables are an accepted program with
   `loaded_ok`, the first task encodes `initial_state`). Discharged for
-  untrusted launches by verified/vmverify (branch vm/verifier-link:
-  `check::verify == accepts`, `heap_check == loaded_ok`) once merged; the
-  core runs the verified loop only for accepted programs
-  (`toit_v2_context.accepted`). `prepare_process_v2` building the
-  initial state stays trusted C++.
+  untrusted launches by verified/vmverify (`check::verify == accepts`,
+  `x_loaded_ok == loaded_ok`, on the tables the core executes); the core
+  runs the verified loop only for accepted programs
+  (`toit_v2_context.accepted`). Trusted: the conversion
+  verified/vmverify/src/from_vm.rs and `prepare_process_v2` building the
+  initial state.
 - S3 size bound `small`: implied by `refines` (stack below 2^20 words,
   heap model below 2^30 objects); exceeding it is a defined stop or a
   resource throw (R6).

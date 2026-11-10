@@ -81,6 +81,7 @@ dependencies = [
 name = "toit_verified_core"
 version = "0.1.0"
 dependencies = [
+ "toit_spec",
  "vstd",
 ]
 

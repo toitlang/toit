@@ -293,6 +293,17 @@ precondition bounds it), this means: for any number of runs and steps,
 the core never fails a view bounds precondition and never takes a fatal
 path, given the contracts of TRUSTED.md section 6.
 
+The hypotheses of `theorem_first_run` are what the VM establishes before
+the core runs a program: at every untrusted launch (and for any program
+with -Xverify / TOIT_VERIFY=1) verified/vmverify converts the
+`toit_v2_program` tables the core executes into the abstract program and
+heap (verified/vmverify/src/from_vm.rs, trusted) and runs the proven
+`check::verify` (equal to `accepts`) and `x_loaded_ok` (equal to
+`loaded_ok`); the C++ loader no longer checks anything beyond decoding the
+method headers. What stays trusted for the first run: that conversion,
+`prepare_process_v2` building the initial frames (`initial_state`), and
+`toit_v2_run` filling `Program` from the same tables.
+
 Accepted programs. The verified handlers are only correct for accepted
 programs; a format-2 program that the launch did not verify (a trusted
 program without -Xverify) runs on the checked handlers. Found by
