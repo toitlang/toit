@@ -36,8 +36,10 @@
 //!
 //! Per method the analysis is a worklist over instruction offsets; the
 //! map at an offset is a node of a list of kinds that shares its bottom
-//! with the maps it came from (`XMaps`), so a method with `i` instructions
-//! costs about 4 bytes per bytecode byte plus 17 bytes per new slot.
+//! with the maps it came from (`XMaps`); the origins the global phase
+//! tracks are sparse lists apart from the kinds. A method costs about 9
+//! bytes per bytecode byte plus 16 bytes per node and 4 per origin word,
+//! within budgets (`node_budget`, `org_budget`).
 //!
 //! The inference is total: it never indexes without a bounds check and
 //! calls the verified functions only within their preconditions; any
@@ -242,56 +244,129 @@ impl<'a> Facts for Frozen<'a> {
 
 /// The maps of one method under construction.
 struct Maps {
+    /// Per offset: the top node of its kinds, or `NO_MAP`.
     idx: Vec<u32>,
     nodes: Vec<XNode>,
-    /// The parameter a node's slot is an unchanged copy of (for inferring
-    /// block parameters that are invoked or passed on), or `NO_ORIGIN`.
-    org: Vec<u8>,
+    /// Per offset (when origins are tracked): where its origins start in
+    /// `orgs`. Origins say which parameter a slot is an unchanged copy of
+    /// (for inferring block parameters that are invoked or passed on);
+    /// they are kept apart from the kinds so that a change of origins
+    /// does not copy the kinds above it.
+    org_at: Vec<u32>,
+    /// Origin lists: a count, then `slot << 8 | parameter` for each slot
+    /// with an origin.
+    orgs: Vec<u32>,
+    /// Upper bounds on the nodes and origin words (memory budget).
+    budget: usize,
+    org_budget: usize,
+}
+
+/// The number of nodes a method of `size` bytes and frames of at most
+/// `limit` slots may create, and the number of origin words: far above
+/// what compiled code needs (at most 3 nodes and 22 origin words per byte
+/// in the suite and the toit CLI, 2026-11-10), so that a malformed method
+/// cannot make the inference allocate without bound.
+fn node_budget(size: usize, limit: usize) -> usize {
+    size.saturating_mul(16).saturating_add(limit.saturating_mul(4)).saturating_add(256)
+}
+
+fn org_budget(size: usize, limit: usize) -> usize {
+    size.saturating_mul(64).saturating_add(limit.saturating_mul(16)).saturating_add(4096)
 }
 
 impl Maps {
-    /// The kinds, origins and node ids of the map with top node `top`,
-    /// bottom first.
-    fn read(&self, top: u32, k: &mut Vec<XKind>, o: &mut Vec<u8>, ids: &mut Vec<u32>) {
+    /// The kinds and node ids of the map at `off`, bottom first, and its
+    /// origins (dense, `NO_ORIGIN` for none).
+    fn read(&self, off: usize, k: &mut Vec<XKind>, o: &mut Vec<u8>, ids: &mut Vec<u32>) {
         k.clear();
         o.clear();
         ids.clear();
-        let mut cur = top as usize;
+        let mut cur = self.idx.get(off).copied().unwrap_or(NO_MAP) as usize;
         while let Some(nd) = self.nodes.get(cur) {
             k.push(nd.kind);
-            o.push(self.org.get(cur).copied().unwrap_or(NO_ORIGIN));
             ids.push(cur as u32);
             let par = nd.parent as usize;
             if par >= cur { break; }
             cur = par;
         }
         k.reverse();
-        o.reverse();
         ids.reverse();
+        o.resize(k.len(), NO_ORIGIN);
+        if let Some(&at) = self.org_at.get(off) {
+            let at = at as usize;
+            let n = self.orgs.get(at).copied().unwrap_or(0) as usize;
+            for i in 0..n {
+                if let Some(&e) = self.orgs.get(at + 1 + i) {
+                    let slot = (e >> 8) as usize;
+                    if slot < o.len() { o[slot] = e as u8; }
+                }
+            }
+        }
     }
 
-    /// The top node of the map `(k, o)`, sharing the first `share` slots
-    /// with the map whose node ids are `ids`. `None` if the arena is full.
-    fn intern(&mut self, ids: &[u32], share: usize, k: &[XKind], o: &[u8]) -> Option<u32> {
+    /// Sets the origins of `off` (dense). Returns whether they changed.
+    /// The origin list at `at` is `o` (dense).
+    fn list_is(&self, at: u32, o: &[u8]) -> bool {
+        let at = at as usize;
+        let n = o.iter().filter(|x| **x != NO_ORIGIN).count();
+        at != NO_MAP as usize && self.orgs.get(at).copied() == Some(n as u32)
+            && o.iter().enumerate().filter(|(_, x)| **x != NO_ORIGIN).enumerate()
+                .all(|(j, (slot, x))| self.orgs.get(at + 1 + j).copied() == Some((slot as u32) << 8 | *x as u32))
+    }
+
+    /// Sets the origins of `off` (dense), reusing the list of offset
+    /// `from` (the predecessor) when it is the same. Returns whether they
+    /// changed.
+    fn set_origins(&mut self, off: usize, o: &[u8], from: usize) -> bool {
+        if off >= self.org_at.len() { return false; }
+        let n = o.iter().filter(|x| **x != NO_ORIGIN).count();
+        let old = self.org_at[off];
+        if old != NO_MAP {
+            if self.list_is(old, o) { return false; }
+        } else if n == 0 {
+            // No list yet means no origins.
+            return false;
+        }
+        if let Some(&prev) = self.org_at.get(from) {
+            if self.list_is(prev, o) {
+                self.org_at[off] = prev;
+                return true;
+            }
+        }
+        self.org_at[off] = self.orgs.len() as u32;
+        self.orgs.push(n as u32);
+        for (slot, x) in o.iter().enumerate() {
+            if *x != NO_ORIGIN { self.orgs.push((slot as u32) << 8 | *x as u32); }
+        }
+        true
+    }
+
+    /// The top node of the kinds `k`, sharing the first `share` slots with
+    /// the map whose node ids are `ids`. `None` if the budget is spent.
+    fn intern(&mut self, ids: &[u32], share: usize, k: &[XKind]) -> Option<u32> {
         let share = share.min(ids.len()).min(k.len());
         let mut top = if share == 0 { EMPTY_MAP } else { ids[share - 1] };
-        for i in share..k.len() {
+        for &kind in &k[share..] {
             let id = self.nodes.len();
-            if id >= EMPTY_MAP as usize {
+            if id >= self.budget || id >= EMPTY_MAP as usize {
                 return None;
             }
-            self.nodes.push(XNode { parent: if top == EMPTY_MAP { id as u32 } else { top }, kind: k[i] });
-            self.org.push(o.get(i).copied().unwrap_or(NO_ORIGIN));
+            self.nodes.push(XNode { parent: if top == EMPTY_MAP { id as u32 } else { top }, kind });
             top = id as u32;
         }
         Some(top)
     }
+
+    /// The origin lists are bounded too.
+    fn origins_full(&self) -> bool {
+        self.orgs.len() >= self.org_budget
+    }
 }
 
-/// The length of the common prefix of `(k1, o1)` and `(k2, o2)`.
-fn common(k1: &[XKind], o1: &[u8], k2: &[XKind], o2: &[u8]) -> usize {
+/// The length of the common prefix of `k1` and `k2`.
+fn common(k1: &[XKind], k2: &[XKind]) -> usize {
     let mut i = 0;
-    while i < k1.len() && i < k2.len() && k1[i] == k2[i] && o1.get(i) == o2.get(i) {
+    while i < k1.len() && i < k2.len() && k1[i] == k2[i] {
         i += 1;
     }
     i
@@ -312,7 +387,14 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
     let limit = info.arity as usize + p.max_height as usize;
     let origins = f.tracks_origins();
     let empty = XMaps { idx: Vec::new(), nodes: Vec::new() };
-    let mut maps = Maps { idx: vec![NO_MAP; size], nodes: Vec::new(), org: Vec::new() };
+    let mut maps = Maps {
+        idx: vec![NO_MAP; size],
+        nodes: Vec::new(),
+        org_at: if origins { vec![NO_MAP; size] } else { Vec::new() },
+        orgs: Vec::new(),
+        budget: node_budget(size, limit),
+        org_budget: org_budget(size, limit),
+    };
     let mut queued = vec![false; size];
     let mut work: Vec<u32> = Vec::new();
     // The entry map.
@@ -324,13 +406,13 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
         return Err((0, "too many parameters".into()));
     }
     let eo: Vec<u8> = (0..e.len()).map(|i| if origins && i < NO_ORIGIN as usize { i as u8 } else { NO_ORIGIN }).collect();
-    maps.idx[0] = maps.intern(&[], 0, &e, &eo).ok_or((0, String::from("maps too large")))?;
+    maps.idx[0] = maps.intern(&[], 0, &e).ok_or((0, String::from("maps too large")))?;
+    maps.set_origins(0, &eo, 0);
     queued[0] = true;
     work.push(0);
     for (t, kt) in f.seeds_of(m) {
         if t >= size || t == 0 || kt.len() > limit { continue; }
-        let ot = vec![NO_ORIGIN; kt.len()];
-        maps.idx[t] = maps.intern(&[], 0, &kt, &ot).ok_or((t, String::from("maps too large")))?;
+        maps.idx[t] = maps.intern(&[], 0, &kt).ok_or((t, String::from("maps too large")))?;
         if !queued[t] {
             queued[t] = true;
             work.push(t as u32);
@@ -341,7 +423,7 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
     while let Some(off) = work.pop() {
         let off = off as usize;
         queued[off] = false;
-        maps.read(maps.idx[off], &mut k, &mut org, &mut ids);
+        maps.read(off, &mut k, &mut org, &mut ids);
         let bci = entry + off;
         let op = p.bytecodes[bci];
         if op >= OPCODE_COUNT2 {
@@ -467,37 +549,41 @@ fn analyze<F: Facts>(p: &VProgram, f: &mut F, m: usize, trusted: bool) -> Result
             if k2.len() > limit {
                 return Err((off, "frame too high".into()));
             }
-            let new_top = if maps.idx[t] == NO_MAP {
-                let share = common(&k, &org, &k2, &o2);
-                Some(maps.intern(&ids, share, &k2, &o2).ok_or((t, String::from("maps too large")))?)
+            let mut changed = false;
+            if maps.idx[t] == NO_MAP {
+                let share = common(&k, &k2);
+                maps.idx[t] = maps.intern(&ids, share, &k2).ok_or((t, String::from("maps too large")))?;
+                if origins { maps.set_origins(t, &o2, off); }
+                changed = true;
             } else {
-                maps.read(maps.idx[t], &mut k_old, &mut o_old, &mut ids_old);
+                maps.read(t, &mut k_old, &mut o_old, &mut ids_old);
                 let Some(j) = join(&k_old, &k2) else {
                     return Err((t, format!("incompatible kinds at merge: {:?} and {:?}", k_old, k2)));
                 };
-                let o_new: Vec<u8> = o_old.iter().zip(o2.iter()).map(|(x, y)| if x == y { *x } else { NO_ORIGIN }).collect();
-                if j == k_old && o_new == o_old {
-                    None
-                } else {
+                if j != k_old {
                     // Share the bottom with the old map or with the incoming
-                    // one (the predecessor's chain), whichever is longer: in
-                    // a loop the incoming map already has the change.
-                    let share_old = common(&k_old, &o_old, &j, &o_new);
-                    let share_in = common(&k, &org, &j, &o_new).min(ids.len());
+                    // one (the predecessor's chain), whichever is longer.
+                    let share_old = common(&k_old, &j);
+                    let share_in = common(&k, &j).min(ids.len());
                     let top = if share_in > share_old {
-                        maps.intern(&ids, share_in, &j, &o_new)
+                        maps.intern(&ids, share_in, &j)
                     } else {
-                        maps.intern(&ids_old, share_old, &j, &o_new)
+                        maps.intern(&ids_old, share_old, &j)
                     };
-                    Some(top.ok_or((t, String::from("maps too large")))?)
+                    maps.idx[t] = top.ok_or((t, String::from("maps too large")))?;
+                    changed = true;
                 }
-            };
-            if let Some(top) = new_top {
-                maps.idx[t] = top;
-                if !queued[t] {
-                    queued[t] = true;
-                    work.push(t as u32);
+                if origins {
+                    let o_new: Vec<u8> = o_old.iter().zip(o2.iter()).map(|(x, y)| if x == y { *x } else { NO_ORIGIN }).collect();
+                    changed |= maps.set_origins(t, &o_new, off);
                 }
+            }
+            if maps.origins_full() {
+                return Err((t, String::from("maps too large")));
+            }
+            if changed && !queued[t] {
+                queued[t] = true;
+                work.push(t as u32);
             }
         }
     }

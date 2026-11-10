@@ -13,14 +13,20 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-//! The executable structural verifier: `verify(p, c, trusted)` is proven
-//! to return exactly `v2::verifier::accepts(p, c, trusted)` (zero
-//! `assume`/`admit`).
+//! The executable structural verifier, one method at a time:
+//! `verify(p, g, oracle, trusted)` is proven to return exactly
+//! `pins_sorted(g) && split_ok(vview(p), g@, ms, trusted)` for the maps
+//! `ms` the oracle yields (zero `assume`/`admit`); `v2::split` proves that
+//! `split_ok` implies `accepts` of the assembled certificate and that
+//! every accepted certificate splits.
 //!
-//! The certificate is computed by `v2::infer` (untrusted). The checker
-//! works one method at a time, one instruction at a time; it does not
-//! recurse and allocates only the successor kinds of the instruction it
-//! checks. The certificate is an array per method indexed by offset.
+//! The program is borrowed (`v2::vprog::VProgram`). The certificate's
+//! global part (`XGlobal`: block-parameter masks, contexts, selector
+//! representatives, pins) is small; the maps of one method at a time come
+//! from a `MapOracle` (`v2::infer`, untrusted) as lists of kinds sharing
+//! their bottoms (`XMaps`), and are dropped after the method. The checker
+//! does not recurse and allocates only the kinds of the instruction it
+//! checks and of its successors.
 //!
 //! `x_post` is exact except for one corner: a LOAD_OUTER whose depth sum
 //! does not fit a u32 yields a kind no certificate can hold; `x_post` then

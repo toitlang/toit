@@ -4,6 +4,33 @@ One entry per change of `src/v2/spec.rs`, `src/v2/prim.rs`, `src/v2/types.rs`
 or the verifier's rules (`src/v2/verifier.rs`) that an implementation of
 the spec (the verified core, the VM's loader) must follow. Newest first.
 
+## 2026-11-10: the verifier checks one method at a time (R8), no_std
+
+What: `accepts` and the theorem are unchanged. New: `v2/split.rs`
+(`split_ok`, the per-method form of `accepts`, proven equivalent:
+`lemma_split_sound`, `lemma_split_complete`, `theorem_soundness_split`),
+`v2/vprog.rs` (`VProgram`: the program as borrowed tables, `VMethod` in
+the VM's `V2Method` layout; `vview(p)` equals `pview2` of the same
+tables). `check::verify` now takes `(p: &VProgram, g: &XGlobal, oracle,
+trusted)` and returns `pins_sorted(g) && split_ok(...)`; `XCert` is the
+certificate one method is checked against. `heap_check::x_loaded_ok`
+takes the global count instead of a certificate; new
+`x_loaded_ok_stream` (one object at a time). The inference API is
+`infer::infer_global` + `infer::Oracle` / `infer::check`.
+
+no_std: the crate has a `std` feature (default). Without it, it is
+`no_std` + `alloc` and leaves out `interp`, `exec_step` and `v2::exec`
+(Verus still sees them: `verus_keep_ghost`). `types.rs` and `v2/exec.rs`
+only gained `use alloc::vec::Vec;` (no other change).
+
+Why: R8 (memory on devices), Phase 5.
+
+For implementations: the VM must call the new entry points (vmverify
+does); the theorem's hypotheses are the same, stated for the assembled
+certificate `with_maps(g, ms)`.
+
+Opcodes: none.
+
 ## 2026-11-10: a verified check of the loader's contract (R4)
 
 What: `sound.rs` splits `loaded_ok` into `loaded_heap_ok` (heap size, every
