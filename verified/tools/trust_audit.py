@@ -131,6 +131,7 @@ KIND_HELP = {
     "plain_rust_file": "file with no verus! block (not verified)",
     "plain_rust_item": "item outside verus! (not verified)",
     "cargo_metadata": "[package.metadata.verus] option other than verify = true",
+    "global_layout": "global size_of/layout directive (Verus assumes it; rustc checks it at compile time)",
 }
 
 
@@ -773,6 +774,8 @@ def scan_file(crate, rel, path, extra_cfgs):
                 occ(name, "bodiless_spec", it.line)
         if it.kind == "assume_specification":
             occ(name, "assume_specification", it.line)
+        if it.kind == "global" and it.in_verus:
+            occ(name, "global_layout", it.line)
         # Unverified code.
         if not it.in_verus and it.kind in plain_kinds:
             if has_verus:
@@ -1090,7 +1093,7 @@ def no_cheating_check(scans, crate, log_path):
                     break
     by_file = {s.rel: s for s in scans if s.crate == crate}
     flagged_kinds = {"external_body", "assume", "admit", "assume_specification", "axiom",
-                     "uninterp", "bodiless_spec", "assume_termination",
+                     "uninterp", "bodiless_spec", "assume_termination", "global_layout",
                      "external_fn_specification", "assume_new", "verus_internal"}
     for f, line, msg in locs:
         s = by_file.get(f)

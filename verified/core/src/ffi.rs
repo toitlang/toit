@@ -245,6 +245,11 @@ pub unsafe extern "C" fn toit_v2_run(context: *mut Context) -> usize {
         byte_array_cow_class_id: builtin(BUILTIN_BYTE_ARRAY_COW),
         large_array_class_id: builtin(BUILTIN_LARGE_ARRAY),
         lazy_initializer_class_id: builtin(BUILTIN_LAZY_INITIALIZER),
+        // The abstract program, certificate and mode of the verifier's
+        // acceptance: the loader's contract (theorem.rs, `run_requires`).
+        ap: Ghost::assume_new(),
+        cert: Ghost::assume_new(),
+        trusted: Ghost::assume_new(),
     };
     let runtime = Runtime::new(c.process, p.stack_array_word);
     let globals = Globals::from_raw(p.globals, p.globals_length);

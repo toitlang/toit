@@ -59,12 +59,21 @@ section() {
 
 # Crate name, directory, extra Verus arguments. Keep in sync with CRATES in
 # verified/tools/trust_audit.py. Commands from verified/core/NOTES.md and
-# verified/spec/DESIGN.md.
-CRATES=(core spec)
+# verified/spec/DESIGN.md. The spec crate is verified first and exports its
+# Verus metadata and an rlib; the core imports both (it is proven against
+# the spec's definitions, verified/core/DESIGN.md section 9).
+CRATES=(spec core)
 crate_args() {
   case "$1" in
-    core) echo "--cfg toit_vcore_hosted" ;;
-    spec) echo "" ;;
+    core) echo "--crate-name toit_verified_core --cfg toit_vcore_hosted --extern toit_spec=$LOGS/libtoit_spec.rlib --import toit_spec=$LOGS/toit_spec.vir" ;;
+    spec) echo "--crate-name toit_spec" ;;
+  esac
+}
+# Arguments of the verifying run only (not of the --no-cheating cross-check).
+crate_verify_args() {
+  case "$1" in
+    core) echo "" ;;
+    spec) echo "--export $LOGS/toit_spec.vir --compile -o $LOGS/libtoit_spec.rlib" ;;
   esac
 }
 
@@ -74,12 +83,13 @@ verify_crate() {
   local name="$1"
   local dir="$VERIFIED/$name"
   local log="$LOGS/$name.log"
-  local args
+  local args vargs
   read -r -a args <<< "$(crate_args "$name")"
+  read -r -a vargs <<< "$(crate_verify_args "$name")"
   local start end rc
   start=$(date +%s.%N)
   if command -v verus > /dev/null; then
-    (cd "$dir" && verus --crate-type=lib "${args[@]}" src/lib.rs --time) > "$log" 2>&1
+    (cd "$dir" && verus --crate-type=lib "${args[@]}" "${vargs[@]}" src/lib.rs --time) > "$log" 2>&1
     rc=$?
   elif command -v cargo-verus > /dev/null; then
     (cd "$dir" && cargo verus verify -- --time) > "$log" 2>&1

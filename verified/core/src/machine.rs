@@ -25,6 +25,7 @@
 //! frame records are `mem[0..ftop]`, `FRAME_WORDS` each.
 
 use crate::layout::*;
+use vstd::prelude::Ghost;
 use crate::ffi::Runtime;
 use crate::view::*;
 use crate::exec::*;
@@ -157,28 +158,6 @@ pub const CODE_INVOCATION_FAILED: usize = 2;
 pub const INVALID_PROGRAM: usize = 3;
 pub const PRIMITIVE_LOOKUP_FAILED: usize = 4;
 
-/// Reasons for a stuck state (`types::Stuck`), reported to stderr.
-pub mod stuck {
-    pub const BAD_INSTRUCTION: usize = 0;
-    pub const STACK_RANGE: usize = 1;
-    pub const BAD_FRAME: usize = 3;
-    pub const NOT_OBJECT: usize = 6;
-    pub const NOT_BLOCK: usize = 9;
-    pub const TABLE_RANGE: usize = 12;
-    pub const NOT_METHOD: usize = 13;
-    pub const BAD_BRANCH: usize = 14;
-    pub const NOT_INSTANTIABLE: usize = 16;
-    pub const FATAL: usize = 17;
-    pub const SMI_RANGE: usize = 18;
-    pub const OUT_OF_FUEL: usize = 19;
-    pub const BAD_ARITY: usize = 20;
-    pub const NOT_UNWIND: usize = 21;
-    pub const NOT_INSTANCE: usize = 8;
-    /// Not a spec state: the implementation ran out of a resource it checks
-    /// (frame room after a successful growth, a smi encoding limit).
-    pub const LIMIT: usize = 100;
-}
-
 /// An unwinding in progress (`types::Unwind`). Words are object references
 /// held across no GC point (see `enter_finally`).
 #[derive(Clone, Copy)]
@@ -252,13 +231,6 @@ macro_rules! cold {
     }};
 }
 
-/// The environment of one run.
-pub struct Env<'a> {
-    pub p: &'a Program,
-    pub rt: Runtime,
-    pub pre: Preemption,
-}
-
 #[inline(always)]
 pub fn smi(v: i64) -> usize {
     (v << 1) as usize
@@ -287,16 +259,6 @@ fn smi_ok(v: i64) -> bool {
 impl Machine {
     // -----------------------------------------------------------------------
     // Saving and reloading the task state.
-
-    /// Stores top, frame top and bci into the Stack object, so that the GC
-    /// and C++ see the task's state.
-    #[inline(always)]
-    pub fn save(&mut self) {
-        let (top, ftop, bci) = (self.top, self.ftop, self.bci);
-        self.mem.set_header(STACK_TOP_WORD, top);
-        self.mem.set_header(STACK_FRAME_TOP_WORD, ftop);
-        self.mem.set_header(STACK_BCI_WORD, bci);
-    }
 
     /// Re-derives the cached state from the (possibly new) stack view.
     /// Returns false if the stack object is malformed.
@@ -329,8 +291,6 @@ impl Machine {
             self.method = 0;
             self.base = 0;
             self.lim = self.len;
-            self.mend = 0;
-            self.mfast = 0;
             return self.ftop == 0;
         }
         let r = self.ftop - FRAME_WORDS;
@@ -342,9 +302,35 @@ impl Machine {
         self.method = method;
         self.base = base;
         self.lim = self.len - base;
-        self.mend = p.methods.at(method).end as usize;
-        self.mfast = self.mend.saturating_sub(MAX_INSTRUCTION_LENGTH);
         true
+    }
+
+    // -----------------------------------------------------------------------
+    // Checked stack helpers of the unverified handlers (the verified ones in
+    // exec.rs rely on the invariant instead of checks).
+
+    #[inline(always)]
+    pub fn has_slot(&self, n: usize) -> bool {
+        n < self.lim - self.top
+    }
+
+    /// Pushes `v` and continues after an instruction of length `len`.
+    #[inline(always)]
+    pub fn push_next_u(&mut self, v: usize, len: usize) -> Ctl {
+        if !self.push(v) {
+            return Ctl::Stuck(stuck::LIMIT);
+        }
+        self.bci = self.bci + len;
+        Ctl::Next
+    }
+
+    /// Replaces the two operands by `v` (`binary_result`).
+    #[inline(always)]
+    pub fn binary_result(&mut self, v: usize) -> Ctl {
+        self.put(1, v);
+        self.drop(1);
+        self.bci = self.bci + 1;
+        Ctl::Next
     }
 
     // -----------------------------------------------------------------------
@@ -710,8 +696,6 @@ impl Machine {
         self.method = target;
         self.base = base;
         self.lim = self.len - base;
-        self.mend = info.end as usize;
-        self.mfast = self.mend.saturating_sub(MAX_INSTRUCTION_LENGTH);
         self.bci = info.entry as usize;
         Self::preempt_point(env)
     }
@@ -769,8 +753,6 @@ impl Machine {
         let info = p.methods.at(target);
         self.mem.write(r + FRAME_METHOD, target);
         self.method = target;
-        self.mend = info.end as usize;
-        self.mfast = self.mend.saturating_sub(MAX_INSTRUCTION_LENGTH);
         self.bci = info.entry as usize;
         Self::preempt_point(env)
     }
@@ -1314,12 +1296,15 @@ fn compare_num(a: Num, b: Num) -> u8 {
     }
 }
 
-/// Runs the current task until the process is preempted, yields or ends.
+/// Builds the machine for the current task and runs it (`step::run_loop`).
+/// TRUSTED glue: the ghost state is the one the run loop's precondition
+/// names (theorem.rs, `run_requires`); `reload` checks the stack object.
 pub fn run(p: &Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preemption) -> (usize, i64) {
     let mem = rt.stack();
     let mut m = Machine {
         mem, globals, heap,
-        len: 0, top: 0, ftop: 0, bci: 0, base: 0, lim: 0, method: 0, mend: 0, mfast: 0,
+        len: 0, top: 0, ftop: 0, bci: 0, base: 0, lim: 0, method: 0,
+        g: Ghost::assume_new(),
     };
     let env = Env { p, rt, pre };
     if !m.reload(p) || m.ftop < FRAME_WORDS {
@@ -1334,62 +1319,28 @@ pub fn run(p: &Program, rt: Runtime, globals: Globals, heap: Heap, pre: Preempti
     // at the loop head than it saves in loads.
     core::hint::black_box((
         &mut m.len as *mut usize, &mut m.ftop as *mut usize, &mut m.base as *mut usize,
-        &mut m.lim as *mut usize, &mut m.method as *mut usize, &mut m.mend as *mut usize,
+        &mut m.lim as *mut usize, &mut m.method as *mut usize,
         &mut m.globals as *mut Globals, &mut m.heap as *mut Heap,
     ));
-    loop {
-        match m.step(&env) {
-            Ctl::Next => {}
-            Ctl::Exit(state, value) => {
-                m.save();
-                return (state as usize, value);
-            }
-            Ctl::Stuck(reason) => {
-                env.rt.report(V2_REPORT_STUCK, m.bci, reason);
-                m.save();
-                return (RESULT_TERMINATED, 1);
-            }
-        }
-    }
+    crate::step::run_loop(&mut m, &env)
 }
 
 impl Machine {
     #[inline(always)]
-    fn u16_at(p: &Program, i: usize) -> usize {
+    pub fn u16_at(p: &Program, i: usize) -> usize {
         p.code.at(i) as usize | (p.code.at(i + 1) as usize) << 8
     }
 
     #[inline(always)]
-    fn u32_at(p: &Program, i: usize) -> usize {
+    pub fn u32_at(p: &Program, i: usize) -> usize {
         Self::u16_at(p, i) | Self::u16_at(p, i + 2) << 16
     }
 
-    /// One step (`spec::step`). The common case is an instruction that
-    /// starts at least `MAX_INSTRUCTION_LENGTH` bytes before the end of the
-    /// method (one comparison); otherwise the exact checks run first.
+    /// Executes an instruction of an opcode family whose refinement is not
+    /// proven yet (`step::unverified_op`): every stuck state of the spec is
+    /// a run-time check here. The instruction lies inside the method.
     #[inline(always)]
-    pub fn step(&mut self, env: &Env) -> Ctl {
-        let bci = self.bci;
-        if bci >= self.mfast && !self.instruction_in_method(env.p, bci) {
-            return Ctl::Stuck(stuck::BAD_INSTRUCTION);
-        }
-        let opcode = env.p.code.at(bci);
-        self.dispatch(env, bci, opcode)
-    }
-
-    /// The exact check: the instruction at `bci` is a valid opcode and ends
-    /// inside the method.
-    #[inline(always)]
-    fn instruction_in_method(&self, p: &Program, bci: usize) -> bool {
-        if bci >= self.mend { return false; }
-        let opcode = p.code.at(bci);
-        if opcode as usize >= OPCODE_LENGTHS.len() { return false; }
-        bci + OPCODE_LENGTHS[opcode as usize] as usize <= self.mend
-    }
-
-    /// Executes the instruction at `bci`, which lies inside the method.
-    #[inline(always)]
-    fn dispatch(&mut self, env: &Env, bci: usize, opcode: u8) -> Ctl {
+    pub fn dispatch_unverified(&mut self, env: &Env, bci: usize, opcode: u8) -> Ctl {
         let p = env.p;
         // Operands are decoded in the arms (the opcode is a constant there,
         // so the length folds too).
@@ -1397,12 +1348,6 @@ impl Machine {
         macro_rules! b1 { () => { p.code.at(bci + 1) as usize } }
         macro_rules! w1 { () => { Self::u16_at(p, bci + 1) } }
         match opcode {
-            op::LOAD_LOCAL => self.op_load_local(b1!(), len!()),
-            op::LOAD_LOCAL_WIDE => self.op_load_local(w1!(), len!()),
-            14..=19 => self.op_load_local((opcode - op::LOAD_LOCAL_0) as usize, 1),
-            op::POP_LOAD_LOCAL => self.op_pop_load_local(b1!()),
-            op::STORE_LOCAL => self.op_store_local(b1!()),
-            op::STORE_LOCAL_POP => self.op_store_local_pop(b1!()),
             op::LOAD_OUTER => self.op_load_outer(b1!()),
             op::STORE_OUTER => self.op_store_outer(b1!()),
             op::LOAD_FIELD => self.op_load_field(env, b1!(), len!()),
@@ -1412,38 +1357,12 @@ impl Machine {
             op::STORE_FIELD => self.op_store_field(env, b1!(), len!(), true),
             op::STORE_FIELD_WIDE => self.op_store_field(env, w1!(), len!(), true),
             op::STORE_FIELD_POP => self.op_store_field(env, b1!(), len!(), false),
-            op::LOAD_LITERAL => self.op_load_literal(p, b1!(), len!()),
-            op::LOAD_LITERAL_WIDE => self.op_load_literal(p, w1!(), len!()),
-            op::LOAD_NULL => self.push_next(p.null, len!()),
-            op::LOAD_SMI_0 => self.push_next(smi(0), len!()),
-            op::LOAD_SMIS_0 => self.op_load_smis_0(b1!()),
-            op::LOAD_SMI_1 => self.push_next(smi(1), len!()),
-            op::LOAD_SMI_U8 => self.push_next(smi(b1!() as i64), len!()),
-            op::LOAD_SMI_U16 => self.push_next(smi(w1!() as i64), len!()),
-            op::LOAD_SMI_U32 => self.push_next(smi(Self::u32_at(p, bci + 1) as i64), len!()),
-            op::LOAD_METHOD => {
-                let m = Self::u32_at(p, bci + 1);
-                if m >= p.methods.len() { return Ctl::Stuck(stuck::NOT_METHOD); }
-                self.push_next(smi(m as i64), len!())
-            }
-            op::LOAD_GLOBAL_VAR => self.op_load_global(b1!(), len!()),
-            op::LOAD_GLOBAL_VAR_WIDE => self.op_load_global(w1!(), len!()),
             op::LOAD_GLOBAL_VAR_LAZY => self.op_load_global_lazy(env, b1!(), len!()),
             op::LOAD_GLOBAL_VAR_LAZY_WIDE => self.op_load_global_lazy(env, w1!(), len!()),
             op::LOAD_GLOBAL_VAR_DYNAMIC => self.op_load_global_dynamic(env),
-            op::STORE_GLOBAL_VAR => self.op_store_global(b1!(), len!()),
-            op::STORE_GLOBAL_VAR_WIDE => self.op_store_global(w1!(), len!()),
             op::STORE_GLOBAL_VAR_DYNAMIC => self.op_store_global_dynamic(env),
             op::LOAD_BLOCK => self.op_load_block(b1!()),
             op::LOAD_OUTER_BLOCK => self.op_load_outer_block(b1!()),
-            op::POP => {
-                if p.preempt_a_lot { env.pre.request(); }
-                self.op_pop(b1!(), len!())
-            }
-            op::POP_1 => {
-                if p.preempt_a_lot { env.pre.request(); }
-                self.op_pop(1, len!())
-            }
             op::ALLOCATE => self.op_allocate(env, b1!(), len!()),
             op::ALLOCATE_WIDE => self.op_allocate(env, w1!(), len!()),
             op::IS_CLASS => self.op_is(env, b1!(), false, len!()),
@@ -1506,18 +1425,6 @@ impl Machine {
                 }
             }
             op::INVOKE_SIZE => self.op_invoke_size(env, w1!() as i64),
-            op::BRANCH..=op::BRANCH_IF_NOT_NULL => {
-                if w1!() == 0 { return Ctl::Stuck(stuck::BAD_BRANCH); }
-                self.op_branch(p, (opcode - op::BRANCH) as usize, bci + w1!(), len!())
-            }
-            op::BRANCH_BACK..=op::BRANCH_BACK_IF_NOT_NULL => {
-                if env.pre.requested() {
-                    env.pre.clear();
-                    return Ctl::Exit(RESULT_PREEMPTED as u32, 0);
-                }
-                if w1!() > bci { return Ctl::Stuck(stuck::BAD_BRANCH); }
-                self.op_branch(p, (opcode - op::BRANCH_BACK) as usize, bci - w1!(), len!())
-            }
             op::PRIMITIVE => self.op_primitive(env),
             op::THROW => {
                 if !self.has_slot(0) { return Ctl::Stuck(stuck::STACK_RANGE); }
@@ -1560,7 +1467,7 @@ impl Machine {
         let v = self.globals.at(g);
         let lazy = is_heap(v) && self.tag(v) == INSTANCE_TAG
             && smi_value(self.heap.header(v)) >> CLASS_ID_OFFSET == p.lazy_initializer_class_id;
-        if !lazy { return self.push_next(v, len); }
+        if !lazy { return self.push_next_u(v, len); }
         if let Some(c) = self.ensure_room(env) { return c; }
         if !self.push(smi(g as i64)) || !self.push(v) { return Ctl::Stuck(stuck::LIMIT); }
         let t = p.entry_method(ENTRY_RUN_GLOBAL_INITIALIZER);
@@ -1616,7 +1523,7 @@ impl Machine {
                 let oom = p.roots.at(ROOT_OUT_OF_MEMORY_ERROR);
                 self.unwind(env, Unwinding::Throw(oom))
             }
-            Some(o) => self.push_next(o, len),
+            Some(o) => self.push_next_u(o, len),
         }
     }
 
@@ -2198,4 +2105,184 @@ pub fn smi_arith(opcode: u8, a: i64, b: i64) -> Option<i64> {
         }
     };
     if smi_ok(r) { Some(r) } else { None }
+}
+
+impl Machine {
+    // --- Blocks ---------------------------------------------------------------
+
+    #[inline(always)]
+    pub fn op_load_block(&mut self, k: usize) -> Ctl {
+        if !self.has_slot(k) || self.ftop < FRAME_WORDS {
+            return Ctl::Stuck(1);
+        }
+        let height = self.len - self.top;
+        let slot = height - 1 - k;
+        let f = self.ftop / FRAME_WORDS - 1;
+        if f >= 0x100_0000_0000 {
+            return Ctl::Stuck(100);
+        }
+        let v = Machine::block_value(f, slot);
+        self.push_next_u(v, 2)
+    }
+
+    // --- Fields -------------------------------------------------------------
+
+    #[inline(always)]
+    pub fn op_load_field_this(&mut self, p: &Program, f: usize) -> Ctl {
+        // The receiver range of the method guarantees the field (checked by
+        // the loader); the run-time check below makes the access safe for
+        // every program.
+        if self.base >= self.len - self.top || self.method >= p.methods.len() {
+            return Ctl::Stuck(8);
+        }
+        let this = self.mem.read(self.len - 1 - self.base);
+        if !self.field_ok(p, this, f) {
+            return Ctl::Stuck(8);
+        }
+        let v = self.field(this, f);
+        self.push_next_u(v, 2)
+    }
+
+    #[inline(always)]
+    pub fn op_load_outer(&mut self, k: usize) -> Ctl {
+        if !self.has_slot(0) { return Ctl::Stuck(1); }
+        let (f, slot) = match self.block_ref(self.at(0)) {
+            None => return Ctl::Stuck(9),
+            Some(r) => r,
+        };
+        let fbase = self.mem.read(f * FRAME_WORDS + FRAME_BASE);
+        if slot < k || slot - k < fbase { return Ctl::Stuck(1); }
+        let v = self.slot(slot - k);
+        self.put(0, v);
+        self.bci += 2;
+        Ctl::Next
+    }
+
+    #[inline(always)]
+    pub fn op_store_outer(&mut self, k: usize) -> Ctl {
+        if !self.has_slot(1) { return Ctl::Stuck(1); }
+        let v = self.at(0);
+        let (f, slot) = match self.block_ref(self.at(1)) {
+            None => return Ctl::Stuck(9),
+            Some(r) => r,
+        };
+        let fbase = self.mem.read(f * FRAME_WORDS + FRAME_BASE);
+        if slot < k || slot - k < fbase { return Ctl::Stuck(1); }
+        let i = slot - k;
+        self.drop(2);
+        if i >= self.len - self.top { return Ctl::Stuck(1); }
+        let index = self.len - 1 - i;
+        self.mem.write(index, v);
+        if !self.push(v) { return Ctl::Stuck(100); }
+        self.bci += 2;
+        Ctl::Next
+    }
+
+    #[inline(always)]
+    pub fn op_load_outer_block(&mut self, k: usize) -> Ctl {
+        if !self.has_slot(0) { return Ctl::Stuck(1); }
+        let (f, slot) = match self.block_ref(self.at(0)) {
+            None => return Ctl::Stuck(9),
+            Some(r) => r,
+        };
+        let fbase = self.mem.read(f * FRAME_WORDS + FRAME_BASE);
+        if slot < k || slot - k < fbase { return Ctl::Stuck(1); }
+        self.put(0, Machine::block_value(f, slot - k));
+        self.bci += 2;
+        Ctl::Next
+    }
+
+    #[inline(always)]
+    pub fn op_load_field(&mut self, env: &Env, f: usize, len: usize) -> Ctl {
+        if !self.has_slot(0) { return Ctl::Stuck(1); }
+        let obj = self.at(0);
+        if !self.field_ok(env.p, obj, f) {
+            return self.raise(env, INVALID_PROGRAM);
+        }
+        let v = self.field(obj, f);
+        self.put(0, v);
+        self.bci += len;
+        Ctl::Next
+    }
+
+    #[inline(always)]
+    pub fn op_load_field_local(&mut self, env: &Env, enc: usize, pop: bool) -> Ctl {
+        let local = enc % 16;
+        let f = enc / 16;
+        let slot = if pop { local + 1 } else { local };
+        if !self.has_slot(slot) { return Ctl::Stuck(1); }
+        let obj = self.at(slot);
+        if !self.field_ok(env.p, obj, f) {
+            return self.raise(env, INVALID_PROGRAM);
+        }
+        let v = self.field(obj, f);
+        if pop {
+            self.put(0, v);
+            self.bci += 2;
+            Ctl::Next
+        } else {
+            self.push_next_u(v, 2)
+        }
+    }
+
+    #[inline(always)]
+    pub fn op_store_field(&mut self, env: &Env, f: usize, len: usize, keep: bool) -> Ctl {
+        if !self.has_slot(1) { return Ctl::Stuck(1); }
+        let v = self.at(0);
+        let obj = self.at(1);
+        if !self.field_store_ok(env.p, obj, f) || self.is_ro(env.p, obj) {
+            return self.raise(env, INVALID_PROGRAM);
+        }
+        self.drop(2);
+        self.heap.set_word(obj, INSTANCE_FIELDS_WORD + f, v);
+        if keep {
+            self.push_next_u(v, len)
+        } else {
+            self.bci += len;
+            Ctl::Next
+        }
+    }
+
+    #[inline(always)]
+    pub fn op_store_field_this(&mut self, env: &Env, f: usize) -> Ctl {
+        let p = env.p;
+        if !self.has_slot(0) { return Ctl::Stuck(1); }
+        if self.base >= self.len - self.top { return Ctl::Stuck(8); }
+        let this = self.mem.read(self.len - 1 - self.base);
+        if !self.field_store_ok(p, this, f) { return Ctl::Stuck(8); }
+        if self.is_ro(p, this) {
+            return self.raise(env, INVALID_PROGRAM);
+        }
+        let v = self.at(0);
+        self.heap.set_word(this, INSTANCE_FIELDS_WORD + f, v);
+        self.bci += 2;
+        Ctl::Next
+    }
+}
+
+impl Program {
+    /// `instance_field_count`: the instance size in words minus the header.
+    #[inline(always)]
+    pub fn instance_field_count(&self, cid: usize) -> i64 {
+        (((self.class_bits.at(cid) >> CLASS_ID_OFFSET) & INSTANCE_SIZE_MASK) as i64) - 1
+    }
+
+    /// `dispatch_target`.
+    #[inline(always)]
+    pub fn dispatch_target(&self, d: usize) -> i64 {
+        if d < self.dispatch.len() { self.dispatch.at(d) as i64 } else { -1 }
+    }
+
+    /// `entry_method`.
+    #[inline(always)]
+    pub fn entry_method(&self, k: usize) -> i64 {
+        let d = self.entry_points.at(k);
+        if d < 0 { return -1; }
+        self.dispatch_target(d as usize)
+    }
+
+    #[inline(always)]
+    pub fn boolean(&self, b: bool) -> usize {
+        if b { self.true_ } else { self.false_ }
+    }
 }

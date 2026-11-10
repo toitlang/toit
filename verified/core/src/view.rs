@@ -30,6 +30,7 @@
 use vstd::prelude::*;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use crate::layout::*;
+use toit_spec::types::HeapObj;
 
 verus! {
 
@@ -182,6 +183,15 @@ pub struct Heap {
 }
 
 impl Heap {
+    /// The heap model: the objects of the process as abstract heap objects
+    /// (`State2::heap`, object ids are indices) ...
+    pub uninterp spec fn objs(&self) -> Seq<HeapObj>;
+
+    /// ... and their current addresses (tagged words). The contracts of
+    /// the accessors and of the calls that may GC (`ffi::Runtime`) relate
+    /// memory to this model (TRUSTED.md, "Heap model").
+    pub uninterp spec fn addrs(&self) -> Seq<usize>;
+
     /// The header word of a heap object.
     #[verifier::external_body]
     #[inline(always)]

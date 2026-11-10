@@ -51,6 +51,9 @@ set(VCORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/core")
 set(VCORE_TARGET_DIR "${CMAKE_BINARY_DIR}/verified_core")
 set(VCORE_LIB "${VCORE_TARGET_DIR}/release/${CMAKE_STATIC_LIBRARY_PREFIX}toit_verified_core${CMAKE_STATIC_LIBRARY_SUFFIX}")
 file(GLOB VCORE_SOURCES "${VCORE_DIR}/src/*.rs")
+# The core depends on the spec crate (ghost definitions it is proven against).
+file(GLOB_RECURSE VCORE_SPEC_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/spec/src/*.rs")
+list(APPEND VCORE_SOURCES ${VCORE_SPEC_SOURCES} "${CMAKE_CURRENT_SOURCE_DIR}/spec/Cargo.toml")
 
 add_custom_command(
   OUTPUT "${VCORE_LIB}"

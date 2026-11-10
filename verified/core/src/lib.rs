@@ -26,11 +26,13 @@
 //!
 //! See DESIGN.md.
 
-#![allow(unused_parens, unused_variables, dead_code)]
+#![allow(unused_parens, unused_variables, dead_code, unused_imports)]
 
 pub mod layout;
 pub mod view;
+pub mod abs;
 pub mod ffi;
 pub mod exec;
 pub mod machine;
+pub mod step;
 pub mod obligations;

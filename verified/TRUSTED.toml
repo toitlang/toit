@@ -26,107 +26,11 @@
 
 [[trusted]]
 crate = "core"
-file = "src/exec.rs"
-item = "Machine::op_load_block"
-kind = "plain_rust_item"
+file = "src/abs.rs"
+item = "size_of"
+kind = "global_layout"
 count = 1
-justification = "Block family handler not yet verified (block references are smis; needs the ghost slot-kind map, OBLIGATIONS.md B1); run-time checks keep it memory safe."
-
-[[trusted]]
-crate = "core"
-file = "src/exec.rs"
-item = "Machine::op_load_field"
-kind = "plain_rust_item"
-count = 1
-justification = "Field family not yet verified: needs a heap abstraction (OBLIGATIONS.md F1); field_ok checks tag, class id and field count first."
-
-[[trusted]]
-crate = "core"
-file = "src/exec.rs"
-item = "Machine::op_load_field_local"
-kind = "plain_rust_item"
-count = 1
-justification = "Field family not yet verified (OBLIGATIONS.md F1); field_ok checks the access first."
-
-[[trusted]]
-crate = "core"
-file = "src/exec.rs"
-item = "Machine::op_load_field_this"
-kind = "plain_rust_item"
-count = 1
-justification = "Field family not yet verified (OBLIGATIONS.md F1); checks the receiver's fields at run time although the loader checked the range."
-
-[[trusted]]
-crate = "core"
-file = "src/exec.rs"
-item = "Machine::op_load_outer"
-kind = "plain_rust_item"
-count = 1
-justification = "Block family handler not yet verified (OBLIGATIONS.md B1); block_ref checks the frame and slot before the access."
-
-[[trusted]]
-crate = "core"
-file = "src/exec.rs"
-item = "Machine::op_load_outer_block"
-kind = "plain_rust_item"
-count = 1
-justification = "Block family handler not yet verified (OBLIGATIONS.md B1); block_ref checks the frame and slot."
-
-[[trusted]]
-crate = "core"
-file = "src/exec.rs"
-item = "Machine::op_store_field"
-kind = "plain_rust_item"
-count = 1
-justification = "Field family not yet verified (OBLIGATIONS.md F1); field_ok and the program-heap check precede the store."
-
-[[trusted]]
-crate = "core"
-file = "src/exec.rs"
-item = "Machine::op_store_field_this"
-kind = "plain_rust_item"
-count = 1
-justification = "Field family not yet verified (OBLIGATIONS.md F1); field_ok and the program-heap check precede the store."
-
-[[trusted]]
-crate = "core"
-file = "src/exec.rs"
-item = "Machine::op_store_outer"
-kind = "plain_rust_item"
-count = 1
-justification = "Block family handler not yet verified (OBLIGATIONS.md B1); block_ref checks the frame and slot before the access."
-
-[[trusted]]
-crate = "core"
-file = "src/exec.rs"
-item = "Program::boolean"
-kind = "plain_rust_item"
-count = 1
-justification = "Plain accessor of the program tables (true/false roots); trivially correct, verified with the handlers that use it later."
-
-[[trusted]]
-crate = "core"
-file = "src/exec.rs"
-item = "Program::dispatch_target"
-kind = "plain_rust_item"
-count = 1
-justification = "Bounds-checked dispatch-table read (returns -1 out of range); outside verus! until the call family is verified (OBLIGATIONS.md C1)."
-
-[[trusted]]
-crate = "core"
-file = "src/exec.rs"
-item = "Program::entry_method"
-kind = "plain_rust_item"
-count = 1
-justification = "Entry-point lookup through dispatch_target; entry_points has ENTRY_POINT_COUNT entries (layout check); call family, OBLIGATIONS.md C1."
-
-[[trusted]]
-crate = "core"
-file = "src/exec.rs"
-item = "Program::instance_field_count"
-kind = "plain_rust_item"
-count = 1
-justification = "Decodes the instance size from class_bits (layout-checked constants); callers bound cid; field family, OBLIGATIONS.md F1."
+justification = "usize is 64 bits (TRUSTED.md V4): Verus assumes it for the bit-vector smi lemmas; the erased build checks it with a compile-time assertion."
 
 [[trusted]]
 crate = "core"
@@ -428,6 +332,14 @@ justification = "Rust declaration of a C++ function of src/interpreter_v2.cc (ex
 crate = "core"
 file = "src/ffi.rs"
 item = "toit_v2_run"
+kind = "assume_new"
+count = 3
+justification = "The abstract program, certificate and verifier mode of the loaded program: the loader's contract (S2), named by the run loop's precondition (theorem.rs); ghost only."
+
+[[trusted]]
+crate = "core"
+file = "src/ffi.rs"
+item = "toit_v2_run"
 kind = "plain_rust_item"
 count = 1
 justification = "C entry point: builds Program, views and Runtime from the context Interpreter::run_v2 filled; checks table sizes; DESIGN.md run-loop contract."
@@ -490,6 +402,14 @@ justification = "cold! moves the Machine into cold_run by value and back (ptr::r
 
 [[trusted]]
 crate = "core"
+file = "src/machine.rs"
+item = "run"
+kind = "assume_new"
+count = 1
+justification = "The ghost state the reloaded machine represents: the inter-run contract (the saved stack refines a reachable wf state, theorem.rs); ghost only."
+
+[[trusted]]
+crate = "core"
 file = "src/obligations.rs"
 item = "abstracts"
 kind = "uninterp"
@@ -535,6 +455,22 @@ item = "reachable"
 kind = "uninterp"
 count = 1
 justification = "Placeholder for spec-reachability of the abstract state; only used in the unproven statement."
+
+[[trusted]]
+crate = "core"
+file = "src/step.rs"
+item = "run_loop"
+kind = "exec_allows_no_decreases_clause"
+count = 1
+justification = "A program may run forever (the scheduler preempts it); no termination is claimed, only that every step keeps the invariant."
+
+[[trusted]]
+crate = "core"
+file = "src/step.rs"
+item = "step_unverified"
+kind = "external_body"
+count = 1
+justification = "UNPROVEN: refinement of the opcode families not verified yet is ASSUMED (OBLIGATIONS.md lists them and the missing lemmas); their handlers keep every run-time check."
 
 [[trusted]]
 crate = "core"
@@ -619,6 +555,14 @@ justification = "Opaque Heap view over VM memory (raw pointer and length); TRUST
 [[trusted]]
 crate = "core"
 file = "src/view.rs"
+item = "Heap::addrs"
+kind = "uninterp"
+count = 1
+justification = "Heap model: address of each abstract object; related to memory only by the trusted accessor and GC contracts (TRUSTED.md, heap model)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
 item = "Heap::byte"
 kind = "external_body"
 count = 1
@@ -655,6 +599,14 @@ item = "Heap::new"
 kind = "plain_rust_item"
 count = 1
 justification = "Constructor of the Heap view from C++ pointers, called only by toit_v2_run / Runtime::stack (TRUSTED.md section 1)."
+
+[[trusted]]
+crate = "core"
+file = "src/view.rs"
+item = "Heap::objs"
+kind = "uninterp"
+count = 1
+justification = "Heap model: the abstract heap (State2::heap); related to memory only by the trusted accessor and GC contracts (TRUSTED.md, heap model)."
 
 [[trusted]]
 crate = "core"

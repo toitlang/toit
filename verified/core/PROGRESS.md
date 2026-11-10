@@ -1,5 +1,23 @@
 # Phase 4a progress (verified core, format 2 on x86-64)
 
+## Proof half (branch core/refinement, 2026-11-10)
+
+Milestones (newest last):
+
+1. Spec import: the core crate depends on `toit_spec` (Cargo) and Verus
+   imports the spec's exported metadata (`verified/check.sh` verifies the
+   spec first with `--export`, then the core with `--import`).
+   Abstraction (`src/abs.rs`): value encoding `enc`, frame records
+   `frames_rel`, program tables `prog_rel`; ghost state `Machine::g`
+   (`State2`) with `Machine::refines`. Run loop in Verus (`src/step.rs`):
+   invariant `refines && wf && accepts`, each step calls the spec's
+   `lemma_step`. Proven refinement (handler result == `spec::step`):
+   locals, constants, LOAD_METHOD, static globals, POP, branches. Checks
+   removed: instruction in method (the `mfast`/`mend` cache is gone),
+   slot existence, literal/global index, LOAD_METHOD range, branch target
+   and direction. Other opcodes go through `step_unverified` (contract
+   ASSUMED, allowlisted). Gate: core 174 verified, 0 errors.
+
 Updated 2026-11-10. Branch `worktree-agent-a8fb4ad99a9c8d319` (merged with
 `sandbox-integration` at f95b9a1d). Design: DESIGN.md. Proofs:
 OBLIGATIONS.md. Trusted base: TRUSTED.md.
