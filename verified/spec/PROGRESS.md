@@ -13,9 +13,15 @@ spec changes for the other agents: format/SPEC-CHANGELOG.md.
   suite programs (4 do not compile) and the three system snapshots are
   still accepted; tests/run_tests.sh 14/14.
 
+* R5 audit: table "Machine-interpreted objects" in SOUNDNESS.md. No
+  further spec gap; three memory-safety gaps in trusted C++ consumers of
+  program-writable collection fields (message encoder, error encoder,
+  byte content of COW arrays/slices), recorded as VM-BUGS.md 3-5 for an
+  upstream PR (src/ is not edited here).
+
 ## In progress
 
-* R5 audit table in SOUNDNESS.md.
+* R1 design.
 
 ## Next
 
