@@ -193,7 +193,7 @@ static int verify_snapshot(int argc, char** argv) {
 
   if (emit_canonical != null) {
     // Format 2: the canonical form of the abstract program the verifier
-    // builds from VM memory (verified/vmverify/tests/differential.py).
+    // builds from VM memory (verified/tools/vmverify_differential.toit).
     V2MethodTable* table = program->is_format2() ? V2MethodTable::compute(program) : null;
     if (table == null) { fprintf(stderr, "not a well-formed format-2 program\n"); return 1; }
     bool ok = V2Verifier::write_canonical(program, table, emit_canonical);

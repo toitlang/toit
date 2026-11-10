@@ -16,7 +16,7 @@
 //! Prints the canonical form (canonical.rs) of a dumped program
 //! (tools/spec_dump.toit), read with the reference loader
 //! (toit_spec::interp::loader), with the verifier's generated primitive
-//! table. The other side of tests/differential.py.
+//! table. The other side of verified/tools/vmverify_differential.toit.
 //!
 //! Usage: toit_vmverify_canonical <dump> <out>
 

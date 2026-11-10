@@ -38,8 +38,9 @@
 //! makes the conversion fail, never read elsewhere.
 //!
 //! The correspondence with the dump path (tools/spec_dump.toit and
-//! toit_spec::interp::loader) is tested by tests/differential.py on every
-//! suite program (canonical.rs).
+//! toit_spec::interp::loader) is tested by
+//! verified/tools/vmverify_differential.toit on every suite program
+//! (canonical.rs).
 
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;

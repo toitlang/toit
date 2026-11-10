@@ -226,15 +226,17 @@ parallel-do items/List --jobs/int --work/Lambda --done/Lambda -> none:
   if items.is-empty: return
   slots := monitor.Semaphore --count=(max 1 jobs)
   finished := monitor.Channel items.size
-  items.size.repeat: | index |
-    slots.down
-    item := items[index]
-    task::
-      result := null
-      exception := catch --trace:
-        result = work.call item
-      slots.up
-      finished.send [index, result, exception]
+  // The feeder starts the work while this task reports what finished.
+  task::
+    items.size.repeat: | index |
+      slots.down
+      item := items[index]
+      task::
+        result := null
+        exception := catch --trace:
+          result = work.call item
+        slots.up
+        finished.send [index, result, exception]
   items.size.repeat:
     entry := finished.receive
     if entry[2]: throw entry[2]
@@ -307,11 +309,44 @@ compile-and-dump src/string out/string dumper/string -> List:
   snapshot := fs.join out "$(name).snapshot"
   dump := fs.join out "$(name).dump"
   if not exists dump:
-    result := run [toit-compile-bin, "-Xbytecode_format=2", "-w", snapshot, src] --timeout-s=300
+    command := [toit-compile-bin, "-Xbytecode_format=2", "-w", snapshot, src]
+    result := run command --timeout-s=300 --environment=TEST-ENV
     if not result.ok: return [null, "compile-error"]
-    result = run [toit-bin, "run", dumper, "--", snapshot, dump] --timeout-s=300
+    command = [toit-bin, "run", dumper, "--", snapshot, dump]
+    result = run command --timeout-s=300 --environment=TEST-ENV
     if not result.ok: return [null, "dump-error"]
   return [dump, null]
+
+/**
+The lines of $text without their line terminators ("\n", "\r\n" or
+  "\r"); a terminator at the end does not start another line.
+*/
+split-lines text/string -> List:
+  lines := []
+  start := 0
+  i := 0
+  while i < text.size:
+    c := text.at --raw i
+    if c == '\n' or c == '\r':
+      lines.add text[start..i]
+      if c == '\r' and i + 1 < text.size and (text.at --raw i + 1) == '\n': i++
+      start = i + 1
+    i++
+  if start < text.size: lines.add text[start..]
+  return lines
+
+/**
+The programs of the suite ($discover with $filters, absolute) followed by
+  the spec test programs in verified/spec/tests/toit; with $filters only
+  the ones whose absolute path contains one of the strings.
+*/
+suite-and-spec-programs filters/List -> List:
+  files := (discover filters).map: fs.join REPO it
+  spec-dir := fs.join SPEC-CRATE "tests/toit"
+  (list-files spec-dir --suffix=".toit").do: files.add (fs.join spec-dir it)
+  if not filters.is-empty:
+    files = files.filter: | f | filters.any: f.contains it
+  return files
 
 /**
 Encodes $value as JSON like Python's `json.dumps(value, indent=..., sort_keys=...)`
@@ -397,5 +432,5 @@ signed n/int -> string:
 
 /** $x with an explicit sign and $digits decimals (Python's "%+.Nf"). */
 signed-float x/float --digits/int=1 -> string:
-  text := x.stringify digits
+  text := x.to-string --precision=digits
   return x >= 0.0 and not text.starts-with "-" ? "+$text" : text

@@ -166,8 +166,10 @@ if [ "$RUN_TESTS" = 1 ]; then
   fi
   if [ -x "$BUILD_DIR/sdk/bin/toit" ]; then
     # The full run (every suite program) is
-    # `verified/vmverify/tests/differential.py`; a sample keeps the gate fast.
-    if ! TOIT="$BUILD_DIR/sdk/bin/toit" python3 "$VERIFIED/vmverify/tests/differential.py" \
+    # `verified/tools/vmverify_differential.toit`; a sample keeps the gate
+    # fast.
+    if ! TOIT="$BUILD_DIR/sdk/bin/toit" "$BUILD_DIR/sdk/bin/toit" run \
+        "$VERIFIED/tools/vmverify_differential.toit" -- \
         --filter tests/class-id-test --filter tests/lambda-test --filter tests/string-test.toit \
         --filter tests/exception-test --out "$LOGS/differential"; then
       fail "vmverify differential sample"
