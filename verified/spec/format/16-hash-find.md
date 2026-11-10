@@ -11,10 +11,10 @@ instruction return in Phase 4 as a verified built-in?
 ## Measurement
 
 Instruction (step) counts of the reference interpreter, attributed to the
-method executing each instruction (`tests/method_steps.py`, which runs
-`toit-spec-run --trace-bci` on both formats). Each intrinsic's replacement
-is charged to the methods where its work now runs: HASH_FIND to the Toit
-body of `find-body_`; HASH_DO to `hash-do_` and to the loops of `Map.do`,
+method executing each instruction (`verified/tools/method_steps.toit`,
+which runs `toit-spec-run --trace-bci` on both formats). Each intrinsic's
+replacement is charged to the methods where its work now runs: HASH_FIND
+to the Toit body of `find-body_`; HASH_DO to `hash-do_` and to the loops of `Map.do`,
 `Set.do` and their reverse forms (which iterate themselves when
 `hash-do_` returns at once); ARRAY_DO to the arrays' `do_`; SMI_REPEAT to
 `SmallInteger_.repeat`. In format 1 these methods count the intrinsic's
