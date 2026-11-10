@@ -25,9 +25,20 @@ current -> uuid.Uuid:
   // external byte arrays across the RPC boundary.
   return uuid.Uuid current-image-id_.copy
 
+/**
+Starts a new container from the image with the given $id.
+
+If $untrusted is true, the container runs with the untrusted (sandbox)
+  policy: it can only call the allowed set of primitives. If $untrusted is
+  false (the default), the container runs with the image's default policy,
+  which is the trusted policy unless the image was installed with
+  $ContainerService.FLAG-UNTRUSTED.
+*/
 start id/uuid.Uuid arguments/any=[] -> Container
     --on-event/Lambda?=null
-    --on-stopped/Lambda?=null:
+    --on-stopped/Lambda?=null
+    --untrusted/bool=false:
+  policy/int? := untrusted ? ContainerService.POLICY-UNTRUSTED : null
   image/List? := _client_.load-image id
   if not image: throw "No such container: $id"
   handle := image[0]
@@ -39,7 +50,7 @@ start id/uuid.Uuid arguments/any=[] -> Container
       --on-event=on-event
       --on-stopped=on-stopped
   try:
-    _client_.start-container handle arguments
+    _client_.start-container handle arguments --policy=policy
     return container
   finally: | is-exception exception |
     if is-exception: container.close
@@ -171,10 +182,12 @@ class ContainerImageWriter extends ServiceResourceProxy:
   commit -> uuid.Uuid
       --data/int=0
       --run-boot/bool=false
-      --run-critical/bool=false:
+      --run-critical/bool=false
+      --untrusted/bool=false:
     flags := 0
     if run-boot: flags |= ContainerService.FLAG-RUN-BOOT
     if run-critical: flags |= ContainerService.FLAG-RUN-CRITICAL
+    if untrusted: flags |= ContainerService.FLAG-UNTRUSTED
     return _client_.image-writer-commit handle_ flags data
 
 // ----------------------------------------------------------------------------

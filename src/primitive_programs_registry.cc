@@ -27,12 +27,16 @@ namespace toit {
 MODULE_IMPLEMENTATION(programs_registry, MODULE_PROGRAMS_REGISTRY)
 
 PRIMITIVE(next_group_id) {
+  PRIVILEGED;
   int group_id = VM::current()->scheduler()->next_group_id();
   return Smi::from(group_id);
 }
 
 PRIMITIVE(spawn) {
-  ARGS(int, offset, int, group_id, Object, arguments);
+  // Starting containers is reserved for the system process. The system
+  // process decides the policy of the new process group.
+  PRIVILEGED;
+  ARGS(int, offset, int, group_id, Object, arguments, int, policy_kind);
 
   const FlashAllocation* allocation = FlashRegistry::allocation(offset);
   if (!allocation) FAIL(OUT_OF_BOUNDS);
@@ -59,7 +63,10 @@ PRIMITIVE(spawn) {
   InitialMemoryManager initial_memory_manager;
   if (!initial_memory_manager.allocate()) FAIL(ALLOCATION_FAILED);
 
-  ProcessGroup* process_group = ProcessGroup::create(group_id, program);
+  const PrimitivePolicy* policy = PrimitivePolicy::launchable(policy_kind);
+  if (policy == null) FAIL(INVALID_ARGUMENT);
+
+  ProcessGroup* process_group = ProcessGroup::create(group_id, program, null, policy);
   if (!process_group) FAIL(MALLOC_FAILED);
   AllocationManager free_process_group(process, process_group);
 
@@ -83,6 +90,7 @@ PRIMITIVE(is_running) {
 }
 
 PRIMITIVE(kill) {
+  PRIVILEGED;
   ARGS(int, offset);
   const FlashAllocation* allocation = FlashRegistry::allocation(offset);
   if (!allocation) FAIL(OUT_OF_BOUNDS);

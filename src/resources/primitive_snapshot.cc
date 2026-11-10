@@ -23,6 +23,7 @@
 #include "../process.h"
 #include "../os.h"
 #include "../vm.h"
+#include "../primitive_policy.h"
 #include "../process_group.h"
 #include "../scheduler.h"
 
@@ -31,8 +32,14 @@ namespace toit {
 MODULE_IMPLEMENTATION(snapshot, MODULE_SNAPSHOT)
 
 PRIMITIVE(launch) {
-  ARGS(Blob, bytes, int, gid, Blob, program_id, Object, arguments);
+  // Launching a program from bytes is reserved for the system process. The
+  // system process decides the policy of the launched program group.
+  PRIVILEGED;
+  ARGS(Blob, bytes, int, gid, Blob, program_id, Object, arguments, int, policy_kind);
   if (program_id.length() != 16) FAIL(OUT_OF_BOUNDS);
+
+  const PrimitivePolicy* policy = PrimitivePolicy::launchable(policy_kind);
+  if (policy == null) FAIL(INVALID_ARGUMENT);
 
   word size = 0;
   { MessageEncoder size_encoder(process, null);
@@ -56,7 +63,7 @@ PRIMITIVE(launch) {
   Snapshot snapshot(bytes.address(), bytes.length());
   auto image = snapshot.read_image(program_id.address());
   Program* program = image.program();
-  ProcessGroup* process_group = ProcessGroup::create(gid, program, image.memory());
+  ProcessGroup* process_group = ProcessGroup::create(gid, program, image.memory(), policy);
   ASSERT(process_group);  // Allocations only fail on devices.
 
   initial_memory_manager.global_variables = program->global_variables.copy();

@@ -1159,7 +1159,10 @@ Interpreter::Result Interpreter::run() {
     B_ARG1(primitive_module);
     const int parameter_offset = Interpreter::FRAME_SIZE;
     unsigned primitive_index = Utils::read_unaligned_uint16(bcp + 2);
-    const PrimitiveEntry* primitive = Primitive::at(primitive_module, primitive_index);
+    // Bounds-checked lookup in the tables of the process' policy. Denied
+    // modules are null and take the lookup-failure path below; denied
+    // primitives in allowed modules fail with PERMISSION_DENIED.
+    const PrimitiveEntry* primitive = process_->policy()->at(primitive_module, primitive_index);
     if (Flags::primitives) printf("[invoking primitive %d::%d]\n", primitive_module, primitive_index);
     if (primitive == null) {
       PUSH(Smi::from(primitive_module));
