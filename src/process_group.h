@@ -17,6 +17,7 @@
 
 #include "linked.h"
 #include "method_entries.h"
+#include "primitive_policy.h"
 #include "process.h"
 #include "top.h"
 
@@ -32,10 +33,16 @@ class ProcessGroup : public ProcessGroupList::Element {
  public:
   ~ProcessGroup();
 
-  static ProcessGroup* create(int id, Program* program, AlignedMemoryBase* memory = null);
+  // Creates a process group with the given policy.
+  static ProcessGroup* create(int id, Program* program, AlignedMemoryBase* memory = null,
+                              const PrimitivePolicy* policy = PrimitivePolicy::trusted());
 
   int id() const { return id_; }
   Program* program() const { return program_; }
+
+  // The policy of the group. It is immutable and shared by all processes in
+  // the group, including the ones spawned from inside the group.
+  const PrimitivePolicy* policy() const { return policy_; }
 
   // The legal method entries of the program (null if there is no program).
   const MethodEntryTable* method_entries() const { return method_entries_; }
@@ -61,7 +68,9 @@ class ProcessGroup : public ProcessGroupList::Element {
 
   ProcessListFromProcessGroup processes_;
 
-  ProcessGroup(int id, Program* program, AlignedMemoryBase* memory);
+  const PrimitivePolicy* const policy_;
+
+  ProcessGroup(int id, Program* program, AlignedMemoryBase* memory, const PrimitivePolicy* policy);
 
   friend class Scheduler;
 };

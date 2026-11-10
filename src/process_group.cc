@@ -23,23 +23,26 @@
 
 namespace toit {
 
-ProcessGroup::ProcessGroup(int id, Program* program, AlignedMemoryBase* memory)
+ProcessGroup::ProcessGroup(int id, Program* program, AlignedMemoryBase* memory, const PrimitivePolicy* policy)
     : id_(id)
     , program_(program)
-    , memory_(memory) {}
+    , memory_(memory)
+    , policy_(policy) {}
 
 ProcessGroup::~ProcessGroup() {
   delete method_entries_;
   delete memory_;
 }
 
-ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* memory) {
+ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* memory,
+                                   const PrimitivePolicy* policy) {
+  ASSERT(policy != null);
   MethodEntryTable* entries = null;
   if (program != null) {
     entries = MethodEntryTable::compute(program);
     if (entries == null) return null;
   }
-  ProcessGroup* result = _new ProcessGroup(id, program, memory);
+  ProcessGroup* result = _new ProcessGroup(id, program, memory, policy);
   if (result == null) {
     delete entries;
     return null;

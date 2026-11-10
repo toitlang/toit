@@ -285,6 +285,7 @@ namespace toit {
   PRIMITIVE(firmware_mapping_copy, 5)        \
   PRIMITIVE(rtc_user_bytes, 0)               \
   PRIMITIVE(hostname, 0)                     \
+  PRIMITIVE(process_policy, 1)               \
 
 #define MODULE_TIMER(PRIMITIVE)              \
   PRIMITIVE(init, 0)                         \
@@ -713,7 +714,7 @@ namespace toit {
   PRIMITIVE(unregister_monitor_notifier, 2)  \
 
 #define MODULE_SNAPSHOT(PRIMITIVE)           \
-  PRIMITIVE(launch, 4)                       \
+  PRIMITIVE(launch, 5)                       \
 
 #define MODULE_IMAGE(PRIMITIVE)              \
   PRIMITIVE(current_id, 0)                   \
@@ -789,7 +790,7 @@ namespace toit {
 
 #define MODULE_PROGRAMS_REGISTRY(PRIMITIVE)  \
   PRIMITIVE(next_group_id, 0)                \
-  PRIMITIVE(spawn, 3)                        \
+  PRIMITIVE(spawn, 4)                        \
   PRIMITIVE(is_running, 1)                   \
   PRIMITIVE(kill, 1)                         \
   PRIMITIVE(bundled_images, 0)               \
@@ -1482,7 +1483,8 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 // Macro for returning a boolean object.
 #define BOOL(value) ((value) ? process->true_object() : process->false_object())
 
-// Support for validating a primitive is only invoked from the system process.
+// Support for validating a primitive is only invoked from the system process,
+// that is a process whose group has the system policy (see primitive_policy.h).
 #define PRIVILEGED \
   if (!process->is_privileged()) return Primitive::mark_as_error(process->program()->privileged_primitive());
 
@@ -1520,6 +1522,12 @@ class Primitive {
     const PrimitiveEntry* table = primitives_[module];
     if (table == null || index >= primitive_counts_[module]) return null;
     return &table[index];
+  }
+
+  // The number of primitives declared in the given module, whether linked
+  // in or not.
+  static unsigned count(unsigned module) {
+    return module < MODULE_COUNT ? primitive_counts_[module] : 0;
   }
 
   // Allocates or returns allocation failure.

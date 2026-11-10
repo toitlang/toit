@@ -21,6 +21,7 @@
 #include "objects_inline.h"
 #include "os.h"
 #include "primitive.h"
+#include "primitive_policy.h"
 #include "printing.h"
 #include "resource.h"
 #include "scheduler.h"
@@ -43,6 +44,7 @@ VM::VM() {
 
   OS::reset_monotonic_time();  // Reset "up time".
   Primitive::set_up();
+  PrimitivePolicy::set_up();
   scheduler_ = _new Scheduler();
 
   event_manager_ = _new EventSourceManager();

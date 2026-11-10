@@ -97,6 +97,10 @@ class Scheduler {
   // This only fails if the process id is invalid there are no retryable (allocation related) failures.
   message_err_t send_message(int process_id, Message* message, bool free_on_failure = true);
 
+  // Returns the policy kind of the process with the given id, or -1 if there
+  // is no such process.
+  int policy_kind(int pid);
+
   // Send notify message.
   void send_notify_message(ObjectNotifier* notifier);
 
