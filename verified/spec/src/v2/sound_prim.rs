@@ -757,19 +757,44 @@ pub proof fn lemma_completions(p: Program2, c: Cert, trusted: bool, s: State2)
     let module = p.bytecodes[s.bci + 1];
     let index = u16_at(p1(p), s.bci + 2) as u16;
     assert(index as int == u16_at(p1(p), s.bci + 2));
-    assert forall|h2: Seq<HeapObj>, v: Value| prim_heap_ok(p, s.heap, h2) && good(h2, v) implies {
-        &&& outcome_ok(p, c, #[trigger] prim_success(p, s, h2, v))
-        &&& outcome_ok(p, c, prim_failure(s, h2, v))
-    } by {
-        lemma_oracle(p, c, trusted, s, h2, v);
+    assert forall|h2: Seq<HeapObj>, r: PrimRet| prim_default(p, s.heap, h2, r) implies
+        outcome_ok(p, c, #[trigger] prim_complete(p, s, h2, r)) by {
+        match r {
+            PrimRet::Success(v) => { lemma_oracle(p, c, trusted, s, h2, v); },
+            PrimRet::Failure(v) => { lemma_oracle(p, c, trusted, s, h2, v); },
+            PrimRet::OutOfMemory(v) => { lemma_prim_oom(p, c, trusted, s, h2, v); },
+        }
     }
     lemma_raise(p, c, trusted, s, PRIMITIVE_LOOKUP_FAILED);
+    lemma_wf_parts(p, c, s);
+    lemma_task_basics(p, c, s);
     if module == 0 && index as int == PRIM_TASK_NEW {
         lemma_task_new(p, c, trusted, s);
     }
     if module == 0 && index as int == PRIM_TASK_TRANSFER {
         lemma_task_transfer(p, c, trusted, s);
     }
+}
+
+/// A primitive ran out of memory: its resource error is raised from the
+/// grown heap.
+pub proof fn lemma_prim_oom(p: Program2, c: Cert, trusted: bool, s: State2, h2: Seq<HeapObj>, v: Value)
+    requires
+        accepts(p, c, trusted), wf(p, c, s), small(s),
+        prim_heap_ok(p, s.heap, h2), resource_error(p, v),
+    ensures outcome_ok(p, c, prim_complete(p, s, h2, PrimRet::OutOfMemory(v))),
+{
+    lemma_wf_unw(p, c, trusted, s);
+    let kt = kinds_of(p, c, s, top_i(s));
+    lemma_wf_parts(p, c, s);
+    lemma_prim_heap(p, c, s.heap, h2);
+    lemma_unw_heap(p, c, s, kt, h2);
+    let s1 = with_heap(s, h2);
+    assert(with_heap2(s, h2) == s1);
+    assert(crate::v2::exec::wf_program2(p));
+    assert(consts_ok(p, h2));
+    assert(good(h2, v));
+    lemma_raised(p, c, trusted, s1, kt, v);
 }
 
 pub proof fn lemma_step_prim(p: Program2, c: Cert, trusted: bool, s: State2)

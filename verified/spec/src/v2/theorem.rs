@@ -57,17 +57,16 @@ use crate::v2::prim::*;
 verus! {
 
 /// The outcomes a PRIMITIVE `(module, index)` step to state `s` may
-/// complete with: success or failure with any heap and result the oracle
-/// may produce, a missing (unimplemented or denied) primitive, and the
-/// task primitives, which the machine completes itself (task switching).
+/// complete with (the protocol of `v2::prim`): a missing (unimplemented or
+/// denied) primitive; the continuation after a call that returned a heap
+/// and result the primitive's contract allows (`prim_returns`: success,
+/// failure, out of memory); and the task primitives, which the machine
+/// completes itself (task creation and switching).
 pub open spec fn completion(p: Program2, s: State2, module: u8, index: u16, o: Outcome2) -> bool {
-    let args = s.frames[s.frames.len() - 1].base as int;
-    ||| exists|h2: Seq<HeapObj>, v: Value| prim_heap_ok(p, s.heap, h2) && good(h2, v)
-            && (o == prim_success(p, s, h2, v) || o == prim_failure(s, h2, v))
     ||| o == prim_missing(p, s)
-    ||| (module == 0 && index as int == PRIM_TASK_NEW && o == task_new_step(p, s, s.stack[args]))
-    ||| (module == 0 && index as int == PRIM_TASK_TRANSFER
-            && o == task_transfer_step(p, s, s.stack[args], s.stack[args + 1]))
+    ||| exists|h2: Seq<HeapObj>, r: PrimRet| #[trigger] prim_returns(p, s, module, index, h2, r)
+            && o == prim_complete(p, s, h2, r)
+    ||| machine_completed(module, index) && o == task_step(p, s, index)
 }
 
 /// The machine continues in `s2` after outcome `o`: a next state, or the
@@ -194,11 +193,12 @@ pub proof fn lemma_completion_ok(p: Program2, c: Cert, s: State2, module: u8, in
     requires completions_ok(p, c, s, module, index), completion(p, s, module, index, o),
     ensures outcome_ok(p, c, o),
 {
-    if exists|h2: Seq<HeapObj>, v: Value| prim_heap_ok(p, s.heap, h2) && good(h2, v)
-            && (o == prim_success(p, s, h2, v) || o == prim_failure(s, h2, v)) {
-        let (h2, v) = choose|h2: Seq<HeapObj>, v: Value| prim_heap_ok(p, s.heap, h2) && good(h2, v)
-            && (o == prim_success(p, s, h2, v) || o == prim_failure(s, h2, v));
-        assert(outcome_ok(p, c, prim_success(p, s, h2, v)));
+    if exists|h2: Seq<HeapObj>, r: PrimRet| #[trigger] prim_returns(p, s, module, index, h2, r)
+            && o == prim_complete(p, s, h2, r) {
+        let (h2, r) = choose|h2: Seq<HeapObj>, r: PrimRet| #[trigger] prim_returns(p, s, module, index, h2, r)
+            && o == prim_complete(p, s, h2, r);
+        lemma_prim_spec_default(p, module, index, prim_args(p, s), s.heap, h2, r);
+        assert(outcome_ok(p, c, prim_complete(p, s, h2, r)));
     }
 }
 

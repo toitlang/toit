@@ -512,20 +512,16 @@ pub open spec fn outcome_ok(p: Program2, c: Cert, o: Outcome2) -> bool {
     }
 }
 
-/// Every completion of a PRIMITIVE step from `s`: success or failure with
-/// any heap and value the oracle may produce, a missing primitive, and the
-/// task primitives completed by the machine.
+/// Every completion of a PRIMITIVE step from `s`: the continuation after
+/// any heap and result the default primitive contract allows
+/// (`prim_default`, which every `prim_spec` refines), a missing primitive,
+/// and the task primitives completed by the machine.
 pub open spec fn completions_ok(p: Program2, c: Cert, s: State2, module: u8, index: u16) -> bool {
-    &&& forall|h2: Seq<HeapObj>, v: Value| prim_heap_ok(p, s.heap, h2) && good(h2, v) ==> {
-            &&& outcome_ok(p, c, #[trigger] crate::v2::prim::prim_success(p, s, h2, v))
-            &&& outcome_ok(p, c, crate::v2::prim::prim_failure(s, h2, v))
-        }
+    &&& forall|h2: Seq<HeapObj>, r: crate::v2::prim::PrimRet| crate::v2::prim::prim_default(p, s.heap, h2, r) ==>
+            outcome_ok(p, c, #[trigger] crate::v2::prim::prim_complete(p, s, h2, r))
     &&& outcome_ok(p, c, crate::v2::prim::prim_missing(p, s))
-    &&& (module == 0 && index as int == PRIM_TASK_NEW ==>
-            outcome_ok(p, c, crate::v2::prim::task_new_step(p, s, s.stack[fbase(s, top_i(s))])))
-    &&& (module == 0 && index as int == PRIM_TASK_TRANSFER ==>
-            outcome_ok(p, c, crate::v2::prim::task_transfer_step(p, s,
-                s.stack[fbase(s, top_i(s))], s.stack[fbase(s, top_i(s)) + 1])))
+    &&& (crate::v2::prim::machine_completed(module, index) ==>
+            outcome_ok(p, c, crate::v2::prim::task_step(p, s, index)))
 }
 
 /// The opcode at the state's bci.

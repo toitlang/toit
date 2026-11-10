@@ -41,6 +41,7 @@ pub mod sound_local_ops;
 pub mod sound_field;
 pub mod sound_block;
 pub mod sound_resource;
+pub mod sound_prim_spec;
 pub mod sound_step;
 pub mod theorem;
 #[allow(unused_variables)]

@@ -24,7 +24,10 @@
 //! parameters of the top frame (PRIMITIVE requires an otherwise empty
 //! frame); success returns from the frame (no arity from the primitive
 //! table), failure continues after the PRIMITIVE with the error pushed, and
-//! a missing primitive raises PRIMITIVE_LOOKUP_FAILED.
+//! a missing primitive raises PRIMITIVE_LOOKUP_FAILED. The protocol, as the
+//! machine implements it, is stated next to `prim_returns`; what a
+//! primitive may return is `prim_spec` (the default contract, refined per
+//! primitive where stated).
 
 use vstd::prelude::*;
 use crate::types::*;
@@ -34,7 +37,9 @@ use crate::v2::bytecodes::*;
 #[cfg(verus_only)]
 use crate::v2::sound::{good, prim_heap_ok};
 #[cfg(verus_only)]
-use crate::spec_common::{builtin, instance_field_count, is_instance, fields, set_field,
+use crate::v2::verifier::{PRIM_TASK_NEW, PRIM_TASK_TRANSFER};
+#[cfg(verus_only)]
+use crate::spec_common::{smi_ok, builtin, instance_field_count, is_instance, fields, set_field,
     STACK_CLASS, TASK_CLASS, ENTRY_MAIN, ENTRY_TASK, class_of_obj, obj_ok, obj, obj_id, smi};
 
 verus! {
@@ -173,6 +178,219 @@ pub open spec fn prim_missing(p: Program2, s: State2) -> Outcome2 {
 
 pub open spec fn wrong_object_type(p: Program2) -> Value {
     p.roots[30]
+}
+
+// ---------------------------------------------------------------------------
+// The PRIMITIVE protocol.
+//
+// PRIMITIVE m i in state `s`: the step (`spec::step`) checks that the top
+// frame holds exactly its method's parameters, the arguments
+// (`prim_args`), and its outcome is `Outcome2::Primitive(s, m, i)`. The
+// machine then
+//
+// 1. looks the primitive up (`toit_v2_lookup_primitive`): if it is not
+//    implemented, denied by the process' policy, or its arity differs from
+//    the method's, the outcome is `prim_missing(p, s)` (a raise of
+//    PRIMITIVE_LOOKUP_FAILED, completed by `raised`);
+// 2. calls it (`toit_v2_call_primitive`, a GC point), which returns a heap
+//    `h2` and a result `r` with `prim_returns(p, s, m, i, h2, r)`, and
+//    continues with `prim_complete(p, s, h2, r)`:
+//    * `Success(v)`: the frame returns `v` (`return_from`);
+//    * `Failure(v)`: `v` is pushed and execution continues after the
+//      PRIMITIVE (bci + 4) in the same frame;
+//    * `OutOfMemory(v)`: memory ran out after the collector's retries; the
+//      error `v` (a `resource_error`) is raised (completed by `raised`);
+// 3. except that the task primitives core.task_new (0:115) and
+//    core.task_transfer (0:116) are completed by the machine
+//    (`task_step`: task creation and switching); for them a call returns
+//    only `OutOfMemory`.
+//
+// `theorem::completion` is exactly these outcomes.
+
+/// What a call of a primitive returns besides the heap (the status and
+/// result word of `toit_v2_call_primitive`).
+pub enum PrimRet {
+    Success(Value),
+    Failure(Value),
+    OutOfMemory(Value),
+}
+
+/// The errors a primitive reports when memory ran out after the
+/// collector's retries: allocation failed, malloc failed, cross-process
+/// GC needed.
+pub open spec fn resource_error(p: Program2, v: Value) -> bool {
+    ||| v == p.roots[ROOT_ALLOCATION_FAILED]
+    ||| v == p.roots[ROOT_MALLOC_FAILED]
+    ||| v == p.roots[ROOT_CROSS_PROCESS_GC]
+}
+
+/// The contract every primitive satisfies (SOUNDNESS.md hypothesis 2):
+/// the heap changes only as `prim_heap_ok` allows, a result is a value of
+/// the new heap, an out-of-memory result a resource error. The theorem
+/// needs only this.
+pub open spec fn prim_default(p: Program2, h: Seq<HeapObj>, h2: Seq<HeapObj>, r: PrimRet) -> bool {
+    &&& prim_heap_ok(p, h, h2)
+    &&& match r {
+        PrimRet::Success(v) => good(h2, v),
+        PrimRet::Failure(v) => good(h2, v),
+        PrimRet::OutOfMemory(v) => resource_error(p, v),
+    }
+}
+
+/// Primitive indices (core module 0) of the precise contracts below
+/// (`v2::prim_arity::PRIM_TABLE`, from src/primitive.h).
+pub spec const PRIM_ARRAY_AT: int = 14;
+pub spec const PRIM_ARRAY_AT_PUT: int = 15;
+pub spec const PRIM_SMI_ADD: int = 51;
+
+/// Error roots used by the precise contracts.
+pub spec const ROOT_OUT_OF_BOUNDS: int = 20;
+pub spec const ROOT_PERMISSION_DENIED: int = 25;
+pub spec const ROOT_WRONG_OBJECT_TYPE: int = 30;
+
+/// The precise contract of primitive `(module, index)` where one is
+/// stated, else `true`. A primitive ported to Rust is proven against
+/// `prim_spec`, i.e. against this refinement and the default contract.
+pub open spec fn prim_refined(p: Program2, module: u8, index: u16, args: Seq<Value>,
+    h: Seq<HeapObj>, h2: Seq<HeapObj>, r: PrimRet) -> bool
+{
+    if module == 0 && index as int == PRIM_SMI_ADD {
+        smi_add_spec(p, args, h, h2, r)
+    } else if module == 0 && index as int == PRIM_ARRAY_AT {
+        array_at_spec(p, args, h, h2, r)
+    } else if module == 0 && index as int == PRIM_ARRAY_AT_PUT {
+        array_at_put_spec(p, args, h, h2, r)
+    } else {
+        true
+    }
+}
+
+/// The set of what primitive `(module, index)` may return for `args` in
+/// heap `h`, as a predicate: `(h2, r)` is in it if it satisfies the default
+/// contract, refined where stated (`prim_refined`). So every element
+/// satisfies `prim_default` (`lemma_prim_spec_default`), which is all the
+/// theorem uses.
+pub open spec fn prim_spec(p: Program2, module: u8, index: u16, args: Seq<Value>, h: Seq<HeapObj>,
+    h2: Seq<HeapObj>, r: PrimRet) -> bool
+{
+    prim_default(p, h, h2, r) && prim_refined(p, module, index, args, h, h2, r)
+}
+
+pub proof fn lemma_prim_spec_default(p: Program2, module: u8, index: u16, args: Seq<Value>, h: Seq<HeapObj>,
+    h2: Seq<HeapObj>, r: PrimRet)
+    requires prim_spec(p, module, index, args, h, h2, r),
+    ensures prim_default(p, h, h2, r),
+{
+}
+
+/// The task primitives, which the machine completes itself.
+pub open spec fn machine_completed(module: u8, index: u16) -> bool {
+    module == 0 && (index as int == PRIM_TASK_NEW || index as int == PRIM_TASK_TRANSFER)
+}
+
+/// The machine's completion of a task primitive in state `s`.
+pub open spec fn task_step(p: Program2, s: State2, index: u16) -> Outcome2 {
+    let a = base(s);
+    if index as int == PRIM_TASK_NEW {
+        task_new_step(p, s, s.stack[a])
+    } else {
+        task_transfer_step(p, s, s.stack[a], s.stack[a + 1])
+    }
+}
+
+/// The call of primitive `(module, index)` in state `s` (the step's
+/// `Primitive` state) may return heap `h2` and result `r`.
+pub open spec fn prim_returns(p: Program2, s: State2, module: u8, index: u16, h2: Seq<HeapObj>, r: PrimRet) -> bool {
+    &&& prim_spec(p, module, index, prim_args(p, s), s.heap, h2, r)
+    &&& (machine_completed(module, index) ==> r is OutOfMemory)
+}
+
+/// How the machine continues after the call returned `h2` and `r`.
+pub open spec fn prim_complete(p: Program2, s: State2, h2: Seq<HeapObj>, r: PrimRet) -> Outcome2 {
+    match r {
+        PrimRet::Success(v) => prim_success(p, s, h2, v),
+        PrimRet::Failure(v) => prim_failure(s, h2, v),
+        PrimRet::OutOfMemory(v) => Outcome2::Raise(with_heap2(s, h2), v),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Precise contracts (examples; the C++ primitives `smi_add`, `array_at`,
+// `array_at_put` of src/primitive_core.cc). Cases not listed are left to
+// the default contract.
+
+/// The array `v` refers to, as `(id, elements)`.
+pub open spec fn array_of(h: Seq<HeapObj>, v: Value) -> Option<(int, Seq<Value>)> {
+    match v {
+        Value::Obj(id) => if (id as int) < h.len() {
+            match h[id as int].body {
+                Body::Array(e) => Some((id as int, e)),
+                _ => None,
+            }
+        } else { None },
+        _ => None,
+    }
+}
+
+/// `smi_add(receiver, arg)`: a non-smi receiver fails with
+/// WRONG_OBJECT_TYPE; two smis whose sum is a smi return the sum; the heap
+/// is unchanged. (Overflow and large integers: default.)
+pub open spec fn smi_add_spec(p: Program2, args: Seq<Value>, h: Seq<HeapObj>, h2: Seq<HeapObj>, r: PrimRet) -> bool {
+    args.len() == 2 ==> match (args[0], args[1]) {
+        (Value::Smi(a), Value::Smi(b)) =>
+            smi_ok(p1(p), a + b) ==> h2 == h && r == PrimRet::Success(smi(a + b)),
+        (Value::Smi(_), _) => true,
+        _ => h2 == h && r == PrimRet::Failure(p.roots[ROOT_WRONG_OBJECT_TYPE]),
+    }
+}
+
+/// `array_at(array, index)`: a non-array fails with WRONG_OBJECT_TYPE; a
+/// smi index inside the array returns the element, one outside it (and
+/// inside the 32-bit range) fails with OUT_OF_BOUNDS; the heap is
+/// unchanged.
+pub open spec fn array_at_spec(p: Program2, args: Seq<Value>, h: Seq<HeapObj>, h2: Seq<HeapObj>, r: PrimRet) -> bool {
+    args.len() == 2 ==> match array_of(h, args[0]) {
+        None => h2 == h && r == PrimRet::Failure(p.roots[ROOT_WRONG_OBJECT_TYPE]),
+        Some((_, e)) => match args[1] {
+            Value::Smi(i) =>
+                if 0 <= i < e.len() {
+                    h2 == h && r == PrimRet::Success(e[i as int])
+                } else if -0x8000_0000 <= i < 0x8000_0000 {
+                    h2 == h && r == PrimRet::Failure(p.roots[ROOT_OUT_OF_BOUNDS])
+                } else {
+                    true
+                },
+            _ => true,
+        },
+    }
+}
+
+/// `array_at_put(array, index, value)`: a non-array fails with
+/// WRONG_OBJECT_TYPE; an array of the program heap (read-only) with
+/// PERMISSION_DENIED; a smi index inside the array stores the value and
+/// returns it, one outside it (inside the 32-bit range) fails with
+/// OUT_OF_BOUNDS. Only the stored element changes.
+pub open spec fn array_at_put_spec(p: Program2, args: Seq<Value>, h: Seq<HeapObj>, h2: Seq<HeapObj>, r: PrimRet) -> bool {
+    args.len() == 3 ==> match array_of(h, args[0]) {
+        None => h2 == h && r == PrimRet::Failure(p.roots[ROOT_WRONG_OBJECT_TYPE]),
+        Some((id, e)) =>
+            if h[id].ro {
+                h2 == h && r == PrimRet::Failure(p.roots[ROOT_PERMISSION_DENIED])
+            } else {
+                match args[1] {
+                    Value::Smi(i) =>
+                        if 0 <= i < e.len() {
+                            h2 == h.update(id, HeapObj { body: Body::Array(e.update(i as int, args[2])), ..h[id] })
+                                && r == PrimRet::Success(args[2])
+                        } else if -0x8000_0000 <= i < 0x8000_0000 {
+                            h2 == h && r == PrimRet::Failure(p.roots[ROOT_OUT_OF_BOUNDS])
+                        } else {
+                            true
+                        },
+                    _ => true,
+                }
+            },
+    }
 }
 
 pub open spec fn new_task_obj2(p: Program2, stack_id: int, id: int) -> HeapObj {

@@ -4,6 +4,48 @@ One entry per change of `src/v2/spec.rs`, `src/v2/prim.rs`, `src/v2/types.rs`
 or the verifier's rules (`src/v2/verifier.rs`) that an implementation of
 the spec (the verified core, the VM's loader) must follow. Newest first.
 
+## 2026-11-10: the PRIMITIVE protocol and per-primitive contracts (S1)
+
+What: `prim.rs` states the call/return protocol the machine implements
+(comment "The PRIMITIVE protocol"), and `theorem::completion` is exactly
+it. After the step's `Outcome2::Primitive(s, m, i)` (the top frame holds
+exactly the method's parameters, `prim_args(p, s)`):
+
+* `prim_missing(p, s)`: not implemented, denied by the policy, or an arity
+  other than the method's (a raise of PRIMITIVE_LOOKUP_FAILED);
+* a call returning heap `h2` and `r: PrimRet` with
+  `prim_returns(p, s, m, i, h2, r)`, continued by `prim_complete(p, s,
+  h2, r)`: `Success(v)` returns `v` from the frame (`prim_success`),
+  `Failure(v)` pushes `v` and continues at bci + 4 (`prim_failure`),
+  `OutOfMemory(v)` (the call's THROW status: memory ran out after the
+  GC's retries; `resource_error(p, v)`: roots 7, 17, 18) is
+  `Outcome2::Raise(with_heap2(s, h2), v)`;
+* core.task_new / core.task_transfer (`machine_completed(m, i)`, 0:115 and
+  0:116): `task_step(p, s, i)` (`task_new_step`, `task_transfer_step`), or
+  a call returning only `OutOfMemory`. The generic success/failure
+  oracle no longer applies to them.
+
+`prim_returns` = `prim_spec(p, m, i, prim_args(p, s), s.heap, h2, r)`
+(and `OutOfMemory` for the task primitives). `prim_spec` (the set of
+allowed `(h2, r)`, as a predicate) is `prim_default(p, h, h2, r)` (the
+hypothesis-2 contract: `prim_heap_ok`, results are values of `h2`,
+out-of-memory values are resource errors) and
+`prim_refined(p, m, i, args, h, h2, r)`, which is `true` except for three
+examples: `smi_add_spec` (0:51), `array_at_spec` (0:14),
+`array_at_put_spec` (0:15) (wrong types, bounds, read-only arrays, the
+stored element; other cases default). `sound.rs::completions_ok`
+quantifies over `prim_default`, so the theorem needs only the default
+(`lemma_prim_spec_default`); `sound_prim_spec.rs` shows the three
+refinements are satisfiable on well-formed heaps.
+
+Why: S1 (OBLIGATIONS.md): the core's `op_primitive_cold` (lookup, arity
+check, `toit_v2_call_primitive` with statuses SUCCESS, FAILURE, THROW)
+can now refine PRIMITIVE step by step; before, the THROW status (raising
+an allocation-failed error) was not a transition. A primitive ported to
+Rust is proven against `prim_spec`.
+
+Opcodes: PRIMITIVE.
+
 ## 2026-11-10: resource throws are transitions (core request R6)
 
 What: `prim.rs`: `resource_throw(p, s, o)`, the outcomes the machine may
