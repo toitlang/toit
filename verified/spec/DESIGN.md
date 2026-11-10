@@ -41,6 +41,7 @@ Phase 4 refines. It specifies two bytecode formats:
 | `../tools/run_suite.toit` | | Differential test on the repository's whole test suite (both formats). |
 | `tests/compare_trace.py` | | Compares the debug VM's `-Xtrace` with the interpreter's instruction trace. |
 | `tests/measure.py` | | Executed-instruction and code-size comparison of the two formats. |
+| `verified/tools/code_size.toit` | | Code size of the two formats on the system snapshots and ten tests (format note 15). |
 | `format/` | | The format-2 decisions. |
 | `VM-BUGS.md` | | C++ VM findings. |
 
